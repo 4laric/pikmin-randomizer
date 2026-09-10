@@ -1,0 +1,11 @@
+/native/
+/bbft/
+/research/
+/output/
+/snapshot.json
+/issue-*.md
+/issue-drafts.json
+/roadmap-body.md
+/github-issues.json
+__pycache__/
+*.pyc
