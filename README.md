@@ -21,7 +21,7 @@ Key files:
 
 ## Next implementation milestone
 
-Extract a Pikmin-only AP world and session runner from this snapshot, retaining native part identities and replay protection. Use Pikmin-native color items and a separately specified goal, without requiring Mario/Zelda regions or shared capability items. Keep the existing BBFT adapter available for compatibility. Decide Impact Site/tutorial and day-limit behavior explicitly during that work.
+The standalone AP world/session runner now exists; see DEVELOPMENT.md. Next, audit actual part-placement slots and carry routes, implement validated relocation, and finish native campaign resume. Current standalone defaults are the Forest of Hope day-two profile, 25 repair rewards plus five unlocks, and a repeating safe day-29 calendar. Physical sunset and complete-seed acceptance remain pending.
 
 This separation does not claim a standalone playable randomizer. Native collection, save/reconnect behavior and route assumptions still require gameplay validation. Previous build outputs, assets, saves, generated seeds and ignored evidence logs were not copied. Build into a new directory under `native/`; never reuse the original CMake cache. Do not run inherited launch scripts until their absolute paths and output/save directories are adjusted to this workspace. AP integration tests need an isolated Archipelago setup; do not repoint the shared installation's world link.
 
