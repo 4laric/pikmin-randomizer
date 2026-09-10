@@ -28,6 +28,8 @@ Physical part relocation, named remote landmarks, bosses, new Pikmin species, tr
 
 ## Implementation status
 
+Final production build (test fixtures OFF) and expanded startup smoke pass: rendered Forest of Hope, 20 actual reds, color grants, area gates, repair goal, and exactly the population-20 and Forest-of-Hope landing checks. Evidence: `output/expanded-production-smoke/runs/*/native.log`. The three targeted BBFT/audio regressions pass; the full CTest inventory was not validated because unrelated test executables were not built.
+
 All three batches are implemented locally. Tracking: [capacity #13](https://github.com/4laric/pikmin-randomizer/issues/13), [bestiary #14](https://github.com/4laric/pikmin-randomizer/issues/14), [exploration #15](https://github.com/4laric/pikmin-randomizer/issues/15).
 
 17 Python tests and 201 AP fills pass. The compiled native probe passes all three categories, including check bit 54. Scripted native gameplay reached every actual population threshold from 20 to 100 after fixing allocation at the initial cap; it uses synthetic stored stock. The full scripted smoke did not pass: a culled dwarf with forced zero health did not produce a death event, and a repeat run encountered a transient state-file open failure. The adapter now pauses/retries failed opens while still rejecting malformed records. Player combat, breeding, all-area scouting and complete campaign acceptance remain open. Do not treat the event probe as proof of those gameplay paths.
