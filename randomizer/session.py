@@ -3,7 +3,7 @@ import json
 import os
 from collections import Counter
 from pathlib import Path
-from .catalog import NAMES, ITEM_IDS, UNLOCKS, REPAIR
+from .catalog import NAMES, ITEM_IDS, UNLOCKS, REPAIR, FLARLIC, active_names, item_pool
 from .seed import fingerprint, solo_rewards
 
 
@@ -22,6 +22,8 @@ class Session:
     def __init__(self, manifest, directory):
         self.manifest = manifest
         self.fingerprint = fingerprint(manifest)
+        self.names = active_names(manifest)
+        self.allowed_items = {ITEM_IDS[n] for n in item_pool(manifest)}
         self.directory = Path(directory)
         self.path = self.directory / "session.json"
         self.rewards = solo_rewards(manifest) if manifest["mode"] == "solo" else {}
@@ -31,10 +33,10 @@ class Session:
             if (type(loaded) is not dict or set(loaded) != set(self.data)
                     or type(loaded["schema"]) is not int or loaded["schema"] != 1 or loaded["fingerprint"] != self.fingerprint):
                 raise ValueError("saved session does not match manifest; refusing to reset it")
-            if (type(loaded["checked"]) is not list or any(type(n) is not str or n not in NAMES for n in loaded["checked"])
+            if (type(loaded["checked"]) is not list or any(type(n) is not str or n not in self.names for n in loaded["checked"])
                     or len(loaded["checked"]) != len(set(loaded["checked"]))):
                 raise ValueError("invalid saved checks")
-            if type(loaded["received"]) is not list or any(type(i) is not int or i not in ITEM_IDS.values() for i in loaded["received"]):
+            if type(loaded["received"]) is not list or any(type(i) is not int or i not in self.allowed_items for i in loaded["received"]):
                 raise ValueError("invalid saved received items")
             identity = loaded["ap_identity"]
             if identity is not None and (type(identity) is not list or len(identity) != 3
@@ -51,13 +53,13 @@ class Session:
             if not bootstrap.exists():
                 raise ValueError("orphaned native check journal")
             fields = bootstrap.read_text(encoding="ascii").split()
-            if len(fields) != 17 or fields[:2] != ["PIKMIN_RANDOMIZER", "1"] or fields[2:4] != ["SESSION", journal.parent.name] or fields[4:6] != ["FINGERPRINT", self.fingerprint]:
+            if len(fields) != 17 or fields[:2] != ["PIKMIN_RANDOMIZER", str(manifest["schema"])] or fields[2:4] != ["SESSION", journal.parent.name] or fields[4:6] != ["FINGERPRINT", self.fingerprint]:
                 raise ValueError("native journal belongs to an incompatible manifest")
             data = journal.read_bytes()
             for line in data[:data.rfind(b"\n") + 1].splitlines():
-                if not line.isdigit() or not 0 <= int(line) < len(NAMES):
+                if not line.isdigit() or not 0 <= int(line) < len(self.names):
                     raise ValueError("corrupt persisted native check journal")
-                name = NAMES[int(line)]
+                name = self.names[int(line)]
                 if name not in self.data["checked"]:
                     self.data["checked"].append(name)
                     recovered = True
@@ -68,7 +70,7 @@ class Session:
         atomic_write(self.path, json.dumps(self.data, indent=2) + "\n")
 
     def collect(self, name):
-        if name not in NAMES:
+        if name not in self.names:
             raise ValueError("unknown native check: " + str(name))
         if name not in self.data["checked"]:
             self.data["checked"].append(name)
@@ -91,7 +93,7 @@ class Session:
         old = self.data["received"]
         if type(index) is not int or index < 0 or index > len(old):
             raise ValueError("AP item stream gap; request full Sync")
-        if type(items) is not list or any(type(i) is not int or i not in ITEM_IDS.values() for i in items):
+        if type(items) is not list or any(type(i) is not int or i not in self.allowed_items for i in items):
             raise ValueError("unknown item in standalone AP stream")
         overlap = min(len(old) - index, len(items))
         if old[index:index + overlap] != items[:overlap]:
@@ -113,8 +115,11 @@ class Session:
     def native_state(self, token, ready):
         inventory = self.inventory
         unlocks = sum(1 << i for i, name in enumerate(UNLOCKS) if inventory[name])
-        checks = sum(1 << i for i, name in enumerate(NAMES) if name in self.data["checked"])
+        checks = sum(1 << i for i, name in enumerate(self.names) if name in self.data["checked"])
         repairs = min(inventory[REPAIR], self.manifest["goal"])
+        if self.manifest["schema"] == 2:
+            flarlic = min(8, inventory[FLARLIC])
+            return f"PIKMIN_STATE 2 {token} {int(ready)} {repairs} {unlocks} {flarlic} {checks} END\n"
         return f"PIKMIN_STATE 1 {token} {int(ready)} {repairs} {unlocks} {checks} END\n"
 
 

@@ -38,7 +38,7 @@ class SeedTests(unittest.TestCase):
         self.assertNotIn("rewards", m)
         self.assertNotEqual(fingerprint(m), fingerprint(generate("abc", slot="Player2")))
         self.assertEqual(len(set(LOCATION_IDS.values())), 30)
-        self.assertEqual(len(set(ITEM_IDS.values())), 6)
+        self.assertEqual(len(set(ITEM_IDS.values())), 7)
         self.assertFalse(set(LOCATION_IDS.values()) & set(ITEM_IDS.values()))
         self.assertNotIn("Pikmin: Main Engine", LOCATION_IDS)
         self.assertNotIn("Pikmin: Positron Generator", LOCATION_IDS)

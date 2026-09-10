@@ -13,8 +13,8 @@ from randomizer.runner import NativeRun
 from randomizer.catalog import UNLOCKS, ITEM_IDS, REPAIR
 
 
-def main(exe, assets, output):
-    session = Session(generate("startup-smoke", "ap"), output)
+def main(exe, assets, output, expanded=False):
+    session = Session(generate("startup-smoke", "ap", expanded=expanded), output)
     session.bind_ap("synthetic-native-smoke", 0, 1)
     run = NativeRun(session)
     _winapi.CreateJunction(str(assets.resolve()), str((run.directory / "assets").resolve()))
@@ -46,11 +46,13 @@ def main(exe, assets, output):
             session.receive(5, [ITEM_IDS[REPAIR]] * 25)
             wait("GOAL: Ship repaired!")
             run.poll()
-            assert not session.data["checked"], "startup invented physical checks"
+            expected = {'Population: 20 Pikmin in the field', 'Explore: The Forest of Hope - Land'} if expanded else set()
+            assert set(session.data['checked']) == expected, session.data['checked']
             text = log.read_text(encoding="utf-8", errors="replace")
             for color in ("YELLOW", "BLUE"):
                 assert text.count(f"PIKMIN_{color}_ONION_GRANTED starter=5") == 1
-            print("PASS native startup: rendered FoH, 20 field reds, color grants, area gates, received-repair goal, zero invented checks")
+            assert 'TEST_ONLY' not in text, 'test fixtures enabled unexpectedly'
+            print("PASS native startup: rendered FoH, 20 field reds, color grants, area gates, received-repair goal; expected checks only", sorted(expected))
             print(log)
         finally:
             if process.poll() is None: process.terminate();process.wait(timeout=10)
@@ -59,4 +61,5 @@ def main(exe, assets, output):
 if __name__ == "__main__":
     p = argparse.ArgumentParser();p.add_argument("--exe", type=Path, required=True)
     p.add_argument("--assets", type=Path, required=True);p.add_argument("--output", type=Path, required=True)
-    a=p.parse_args();main(a.exe,a.assets,a.output.resolve())
+    p.add_argument('--expanded', action='store_true')
+    a=p.parse_args();main(a.exe,a.assets,a.output.resolve(),a.expanded)

@@ -17,9 +17,9 @@ class NativeRun:
         self.directory = session.directory / "runs" / self.token
         self.directory.mkdir(parents=True)
         self.bootstrap = self.directory / "bootstrap.txt"
-        atomic_write(self.bootstrap, "PIKMIN_RANDOMIZER 1\n" +
+        atomic_write(self.bootstrap, f"PIKMIN_RANDOMIZER {session.manifest['schema']}\n" +
                      f"SESSION {self.token}\nFINGERPRINT {session.fingerprint}\n" +
-                     "PROFILE foh-day2\nCATALOG vanilla-sites-v1\nPLACEMENT identity-v1\n" +
+                     f"PROFILE foh-day2\nCATALOG {session.manifest['catalog']}\nPLACEMENT identity-v1\n" +
                      "GOAL 25\nDAYS repeat-day29-v1\nEND\n")
         self.seen = 0
         self.handshaken = False
@@ -32,8 +32,8 @@ class NativeRun:
         hello = self.directory / "hello.txt"
         if not self.handshaken and hello.exists():
             fields = hello.read_text(encoding="ascii").split()
-            if fields != ["PIKMIN_HELLO", "1", self.token, self.session.fingerprint,
-                          "identity-placement-v1", "foh-day2-v1", "repair-goal-v1", "repeat-day29-v1", "END"]:
+            if fields != ["PIKMIN_HELLO", str(self.session.manifest["schema"]), self.token, self.session.fingerprint,
+                          *self.session.manifest["capabilities"], "END"]:
                 raise ValueError("native adapter capability or session handshake mismatch")
             self.handshaken = True
         journal = self.directory / "checks.txt"
@@ -44,9 +44,9 @@ class NativeRun:
             if len(lines) < self.seen:
                 raise ValueError("native check journal was truncated")
             for line in lines[self.seen:]:
-                if not line.isdigit() or not 0 <= int(line) < len(NAMES):
+                if not line.isdigit() or not 0 <= int(line) < len(self.session.names):
                     raise ValueError("invalid native check journal")
-                self.session.collect(NAMES[int(line)])
+                self.session.collect(self.session.names[int(line)])
                 self.seen += 1
 
 
@@ -92,7 +92,7 @@ async def ap_connect(session, server, password, ready):
             if authenticated and ready[0]:
                 pending = set(session.data["checked"]) - sent
                 if pending:
-                    await ws.send(json.dumps([dict(cmd="LocationChecks", locations=[LOCATION_IDS[n] for n in sorted(pending)])]))
+                    await ws.send(json.dumps([dict(cmd="LocationChecks", locations=[session.manifest["locations"][n] for n in sorted(pending)])]))
                     sent.update(pending)
                 if session.goal and not goal_sent:
                     await ws.send(json.dumps([dict(cmd="StatusUpdate", status=30)]))

@@ -69,3 +69,75 @@ NAMES = tuple(PART_IDS) + ("Pikmin: Yellow Onion Discovery", "Pikmin: Blue Onion
 LOCATION_IDS = {name: LOCATION_BASE + i for i, name in enumerate(NAMES)}
 ITEM_IDS = {name: ITEM_BASE + i for i, name in enumerate((*UNLOCKS, REPAIR))}
 REPAIR_COUNT = len(NAMES) - len(UNLOCKS)
+
+# Schema-2 additions only. Never reorder the schema-1 names or item IDs.
+FLARLIC = "Progressive Flarlic"
+ITEM_IDS[FLARLIC] = ITEM_BASE + 6
+POPULATION = {f"Population: {n} Pikmin in the field": n for n in range(20, 101, 10)}
+BESTIARY = {
+    "Bestiary: Dwarf Bulborb": (3, ()),
+    "Bestiary: Spotty Bulborb": (4, ()),
+    "Bestiary: Female Sheargrub": (18, ()),
+    "Bestiary: Male Sheargrub": (19, ()),
+    "Bestiary: Shearwig": (20, ()),
+    "Bestiary: Fiery Blowhog": (15, (NAVEL_ACCESS,)),
+    "Bestiary: Water Dumple": (30, (SPRING_ACCESS, BLUE)),
+    "Bestiary: Wollywog": (33, (NAVEL_ACCESS, BLUE)),
+}
+EXPLORATION = {}
+for stage, (area, access) in enumerate(AREA_ACCESS.items(), 1):
+    for objective in ("Land", "Scout"):
+        EXPLORATION[f"Explore: {area} - {objective}"] = (stage, objective, (access,) if access else ())
+EXPANDED_NAMES = NAMES + tuple(POPULATION) + tuple(BESTIARY) + tuple(EXPLORATION)
+ALL_LOCATION_IDS = {name: LOCATION_BASE + i for i, name in enumerate(EXPANDED_NAMES)}
+
+# Filled from the native loaded pellet config audit, not the maximum carrier count.
+NATIVE_PART_WEIGHTS = {0: 30, 1: 50, 2: 40, 3: 40, 4: 20, 5: 20, 6: 20, 7: 20, 8: 20, 9: 30, 10: 15, 11: 20, 12: 15, 13: 30, 14: 15, 15: 15, 16: 30, 17: 25, 18: 25, 19: 30, 20: 15, 21: 30, 22: 30, 23: 20, 24: 25, 25: 30, 26: 40, 27: 20, 28: 20, 29: 10}
+PART_WEIGHTS = {name: NATIVE_PART_WEIGHTS[part] for name, part in PART_IDS.items()}
+
+
+def active_names(manifest):
+    return EXPANDED_NAMES if manifest["schema"] == 2 else NAMES
+
+
+def field_capacity(inventory, expanded=True):
+    return min(100, 20 + 10 * inventory.get(FLARLIC, 0)) if expanded else 100
+
+
+def can_reach(name, inventory, expanded=False):
+    if name in CHECK_REQUIREMENTS:
+        needs = CHECK_REQUIREMENTS[name]
+        minimum = PART_WEIGHTS.get(name, 0) if expanded else 0
+    elif expanded and name in POPULATION:
+        needs, minimum = (), POPULATION[name]
+    elif expanded and name in BESTIARY:
+        needs, minimum = BESTIARY[name][1], 20
+    elif expanded and name in EXPLORATION:
+        stage, objective, needs = EXPLORATION[name]
+        if objective == "Scout":
+            needs = needs + (YELLOW, BLUE)  # conservative pending route playtest
+        minimum = 20
+    else:
+        return False
+    return all(inventory.get(item, 0) > 0 for item in needs) and field_capacity(inventory, expanded) >= minimum
+
+
+def progression_pool(manifest):
+    return list(UNLOCKS) + ([FLARLIC] * 8 if manifest["schema"] == 2 else [])
+
+
+def item_pool(manifest):
+    progression = progression_pool(manifest)
+    return progression + [REPAIR] * (len(active_names(manifest)) - len(progression))
+
+
+def check_area(name):
+    if name in CHECK_AREAS:
+        return CHECK_AREAS[name]
+    if name in POPULATION:
+        return "The Forest of Hope"
+    if name in BESTIARY:
+        needs = BESTIARY[name][1]
+        return ("The Forest Navel" if NAVEL_ACCESS in needs else
+                "The Distant Spring" if SPRING_ACCESS in needs else "The Forest of Hope")
+    return tuple(AREA_ACCESS)[EXPLORATION[name][0] - 1]

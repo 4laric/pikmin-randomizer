@@ -47,6 +47,21 @@ The assets argument points to existing extracted files containing `dataDir/stage
 
 Build `output/pikmin_randomizer.apworld` and install it into a separate AP setup, generate a `Pikmin Randomizer` slot, and use that generation's exported `.pikmin.json`. Do not manufacture an unrelated AP-mode manifest: the client must match the generated slot's manifest and fingerprint. Launch as above with `--server localhost:38281`. Optional server password comes from `PIKMIN_AP_PASSWORD`. AP authentication validates room/team/slot identity and waits for received-item synchronization before releasing native gameplay.
 
+## Expanded checks (opt-in)
+
+The three implementation batches are specified in [BATCH_PLAN.md](BATCH_PLAN.md).
+Use `python -m randomizer generate --expanded --seed exploration --output output/exploration.json`
+or set `expanded_checks: true` in an AP player configuration. Run with the same session runner above.
+Schema 2 has 55 checks: the original 30, nine actual deployed-population milestones, eight first-defeat species and eight landing/scouting objectives. Start at 20 capacity; eight Progressive Flarlic items raise it to 100. Heavy parts require their native minimum carrier count in generation logic. The goal remains 25 repairs, with 17 surplus repairs in the expanded pool.
+
+Use `python -m randomizer status output/exploration.json --session-dir output/exploration-session --output output/exploration-status.md` for the check list. Population completion is historical, not a live population display. Scout means grounded travel 600 horizontal world units from the ship; named landmarks are future work.
+
+Builds reserve object capacity for 100 while enforcing the received deployment limit. Original settings and schema-1 limits are preserved. The generated native catalog must agree with Python: `python scripts/generate_native_catalog.py --check`.
+
+`scripts/test_expanded_native.py` tests compiled event/protocol behavior. The optional `PIKMIN_RANDOMIZER_TEST_HOOKS=ON` CMake build supports `scripts/test_expanded_startup.py`, which supplies synthetic Onion stock and sets one enemy's health to zero to exercise native withdrawal and death lifecycles. It is not evidence of player combat or breeding. Production builds must keep this option OFF (the default). Add `C:/msys64/mingw64/bin` to PATH for build and smoke commands.
+
+Expanded validation: 17 Python tests, 100 solo seeds per profile, 200 actual AP single-slot fills plus one mixed-profile two-slot fill, and the expanded compiled native probe pass. Full player-driven route/combat/day/save acceptance remains pending.
+
 ## Evidence
 
 - 11 Python contract/session/protocol tests pass; includes 100 solo seeds, duplicates, corrupted manifests, replay conflicts, crash-journal recovery and fake AP server handshake/check/goal exchanges.
