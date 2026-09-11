@@ -25,7 +25,7 @@ class ColorStatsTests(unittest.TestCase):
         for field in ('profile', 'starting_color', 'enemy_mask'):
             self.assertEqual(new[field], old[field])
         self.assertNotEqual(fingerprint(old), fingerprint(new))
-        self.assertIn('COLOR_STATS_WIDE blue ', bootstrap_stats(new))
+        self.assertIn('COLOR_STATS_BALANCED blue ', bootstrap_stats(new))
         self.assertEqual(len(profile_lines(new)), 3)
 
     def test_invalid_profiles_fail_closed(self):
@@ -36,7 +36,7 @@ class ColorStatsTests(unittest.TestCase):
 
     def test_legacy_profile_version_stays_valid(self):
         m = generate('legacy', randomize_color_stats=True)
-        m['capabilities'][m['capabilities'].index('color-stats-v2')] = 'color-stats-v1'
+        m['capabilities'][m['capabilities'].index('color-stats-v3')] = 'color-stats-v1'
         m['color_stats'] = {c: dict(damage=100, movement=100, attack_rate=100, carry=1) for c in ('red', 'yellow', 'blue')}
         validate(m)
         self.assertIn('COLOR_STATS blue ', bootstrap_stats(m))
@@ -49,7 +49,7 @@ class ColorStatsTests(unittest.TestCase):
             bad = copy.deepcopy(m)
             if change == 'missing': del bad['color_stats']['blue']
             elif change == 'extra': bad['color_stats']['red']['throw_height'] = 2
-            else: bad['capabilities'].remove('color-stats-v2')
+            else: bad['capabilities'].remove('color-stats-v3')
             with self.assertRaises(ValueError): validate(bad)
 
     def test_strength_affects_weight_not_colors_or_population(self):
@@ -72,3 +72,15 @@ class ColorStatsTests(unittest.TestCase):
             m = generate(str(seed), randomize_color_stats=True, collection_checks=bool(seed % 2),
                          starting_area='random', starting_color='random', starting_flarlic=1)
             spheres(solo_rewards(m), m)
+
+    def test_balanced_roll_bounds_and_coverage(self):
+        seen = {stat: set() for stat in ('damage', 'movement', 'attack_rate')}
+        for seed in range(100):
+            m = generate(str(seed), 'ap', randomize_color_stats=True)
+            for profile in m['color_stats'].values():
+                self.assertEqual(profile['carry'], 1)
+                for stat in seen: seen[stat].add(profile[stat])
+        for values in seen.values(): self.assertEqual(values, {25, 50, 75, 100})
+        for value in (24, 26, 125):
+            bad = copy.deepcopy(m); bad['color_stats']['red']['movement'] = value
+            with self.assertRaises(ValueError): validate(bad)

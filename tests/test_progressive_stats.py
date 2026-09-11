@@ -15,8 +15,8 @@ class ProgressiveStatsTests(unittest.TestCase):
             m = generate(str(seed), progressive_color_stats=True, starting_area='random', starting_color='random', starting_flarlic=1)
             pool = Counter(item_pool(m))
             self.assertEqual(pool['Ship Repair'], 25)
-            self.assertEqual(len(upgrade_pool()), 18)
-            self.assertEqual(sum(pool.values()), 62)
+            self.assertEqual(len(upgrade_pool(m)), 36)
+            self.assertEqual(sum(pool.values()), 113)
             spheres(solo_rewards(m), m)
 
     def test_only_owned_carry_affects_logic(self):
@@ -30,7 +30,7 @@ class ProgressiveStatsTests(unittest.TestCase):
         self.assertTrue(can_reach_manifest(part, owned, m))
         self.assertEqual(current_profiles(m, owned)['red']['damage'], 100)
         owned['Progressive Red Damage'] = 100
-        self.assertEqual(current_profiles(m, owned)['red']['damage'], 150)
+        self.assertEqual(current_profiles(m, owned)['red']['damage'], 200)
 
     def test_receipts_reconnect_and_journal(self):
         for options in ({'progressive_color_stats': True}, {'randomize_color_stats': True}, {'randomize_color_stats': True, 'progressive_color_stats': True}):
@@ -49,7 +49,7 @@ class ProgressiveStatsTests(unittest.TestCase):
 
     def test_modes_fail_closed(self):
         m = generate('bad', progressive_color_stats=True)
-        m['capabilities'].remove('progressive-color-stats-v1')
+        m['capabilities'].remove('progressive-color-stats-v2')
         with self.assertRaises(ValueError): validate(m)
 
     def test_combined_base_plus_capped_upgrades(self):
@@ -57,12 +57,12 @@ class ProgressiveStatsTests(unittest.TestCase):
             m = generate(str(seed), progressive_color_stats=True, randomize_color_stats=True,
                          starting_area='random', starting_color='random', starting_flarlic=1)
             self.assertEqual(current_profiles(m), m['color_stats'])
-            inv = Counter(upgrade_pool())
+            inv = Counter(upgrade_pool(m))
             upgraded = current_profiles(m, inv)
             for color, base in m['color_stats'].items():
-                self.assertEqual(upgraded[color]['carry'], base['carry'] + 2)
-                self.assertEqual(upgraded[color]['damage'], base['damage'] + 50)
-                self.assertEqual(upgraded[color]['movement'], base['movement'] + 25)
-                self.assertEqual(upgraded[color]['attack_rate'], base['attack_rate'] + 25)
+                self.assertEqual(upgraded[color]['carry'], base['carry'] + 4)
+                self.assertEqual(upgraded[color]['damage'], base['damage'] + 100)
+                self.assertEqual(upgraded[color]['movement'], base['movement'] + 50)
+                self.assertEqual(upgraded[color]['attack_rate'], base['attack_rate'] + 50)
             self.assertEqual(upgraded, current_profiles(m, Counter({n: 99 for n in inv})))
             spheres(solo_rewards(m), m)

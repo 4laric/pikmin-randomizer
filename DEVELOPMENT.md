@@ -1,3 +1,9 @@
+## Starting balance and upgrade density (#69)
+
+New random starts sample Impact, Hope, Navel and Spring; Trial remains an explicit choice. Initial damage/movement/attack rolls are 25/50/75/100%, carrying starts at 1. The progressive pool now contains 36 items: per color four damage, four carry, two movement and two attack-rate upgrades. Progressive stats enable permanent-structure checks for 113 total locations. New capability versions preserve old saved profiles and 18-item pools without migration. Native source `9808df32`; AP world 0.22.0.
+
+Validation: 79 Python tests plus eight subtests; compiled profile bounds and live progressive receipt/cap/retraction checks; 150 campaign AP fills and 10 remote-Blue multiworlds with every check reachable; existing turkey-campaign-01 and turkey-finish-01 manifests validate unchanged. Production startup of the exact new turkey-balance-01 seed passed in a private session: Spring/yellow, field cap 10, rendered world and seeded enemy births. Fresh player session is untouched; 113 checks, six logic spheres, 25 repair goal. Player combat balance remains for playtesting. The mixed-strength actor fixture deliberately retains legacy profiles to exercise carry strengths 3/2 independently of the new initial carry=1 rule.
+
 ## Campaign-wide enemy pools (#44)
 
 `campaign_enemies: true` (CLI `--campaign-enemies`) enables a new versioned layout and overrides the older enemy toggles. Existing seeds retain their layouts. The layout covers 72 eligible generator records: Impact 11 scheduled records for one alternating-day encounter, Hope 21, Navel 10 and Spring 30. Final Trial contains fire hazards and the Emperor encounter, so it has no eligible ordinary enemy slots; these remain intact.

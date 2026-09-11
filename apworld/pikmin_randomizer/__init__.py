@@ -20,7 +20,7 @@ class ExpandedChecks(Toggle):
 
 
 class StartingArea(Choice):
-    """Randomized includes all five areas. New starts enable the expanded five-area catalog."""
+    """Randomized includes Impact, Forest of Hope, Forest Navel and Distant Spring; excludes Final Trial. New starts enable the expanded five-area catalog."""
     display_name = 'Starting Area'
     option_forest = 0
     option_navel = 1
@@ -71,7 +71,7 @@ class PerSpawnEnemies(Toggle):
 
 
 class RandomizeColorStats(Toggle):
-    """Seeded damage (25-200%), movement/attack rate (50-150%), and carrying strength (1-5) per color. Throw height and color abilities stay vanilla. Enables all-area checks."""
+    """Seeded damage, movement and attack rate at 25/50/75/100% per color. Carrying strength starts at 1. Throw height and color abilities stay vanilla. Enables all-area checks."""
     display_name = "Randomize Color Stats"
     default = 0
 
@@ -83,7 +83,7 @@ class PermanentChecks(Toggle):
 
 
 class ProgressiveColorStats(Toggle):
-    """Receive per-color stat upgrades as AP items. Vanilla or rolled bases; damage and carry have two upgrades, movement and attack rate one. Enables collection checks. Stacks additively with rolled stats."""
+    """Receive per-color stat upgrades as AP items. Vanilla or rolled bases; damage and carry have four upgrades, movement and attack rate two (36 items). Enables permanent checks to fit the larger pool. Stacks additively with rolled stats."""
     display_name = "Progressive Color Stats"
     default = 0
 

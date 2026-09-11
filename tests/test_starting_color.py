@@ -20,7 +20,7 @@ class StartingColorTests(unittest.TestCase):
             self.assertEqual(sum(map(len, spheres(rewards, m))), 58)
             start = {'red': RED, 'yellow': YELLOW, 'blue': BLUE}[m['starting_color']]
             self.assertNotIn(start, item_pool(m))
-        self.assertEqual(len(seen), 15)
+        self.assertEqual(len(seen), 12)
 
     def test_red_requirements_and_overlay(self):
         m = generate('blue', starting_area='navel', starting_color='blue')

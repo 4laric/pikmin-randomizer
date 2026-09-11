@@ -15,14 +15,16 @@ p = argparse.ArgumentParser()
 for name in ('exe', 'assets', 'output'): p.add_argument('--'+name, type=Path, required=True)
 p.add_argument('--progressive', action='store_true')
 a = p.parse_args()
-for seed in range(10000):
-    m = generate('stats-fixture-'+str(seed), 'ap', randomize_color_stats=True, starting_flarlic=1, collection_checks=True)
-    stats = m['color_stats']
-    if stats['red']['carry'] == 3 and stats['blue']['carry'] == 2 and stats['red']['attack_rate'] != 100:
-        break
-else: raise AssertionError('no fixture profile')
+# Keep this mixed-strength actor fixture on the legacy profile protocol.
+# Modern starting rolls always have carry=1; progressive protocol tests cover v2 caps.
+m = generate('stats-fixture', 'ap', randomize_color_stats=True, starting_flarlic=1, collection_checks=True)
+m['capabilities'][m['capabilities'].index('color-stats-v3')] = 'color-stats-v2'
+m['color_stats'] = {c: dict(damage=75, movement=75, attack_rate=75, carry=1) for c in ('red', 'yellow', 'blue')}
+m['color_stats']['red']['carry'] = 3
+m['color_stats']['blue']['carry'] = 2
 if a.progressive:
     m = generate('progressive-fixture', 'ap', progressive_color_stats=True, starting_flarlic=1)
+    m['capabilities'][m['capabilities'].index('progressive-color-stats-v2')] = 'progressive-color-stats-v1'
 session = Session(m, a.output.resolve()); session.bind_ap('stats-native-fixture', 0, 1)
 session.receive(0, [ITEM_IDS[item] for item in progression_pool(m) if item != FLARLIC and not item.startswith('Progressive ')])
 run = NativeRun(session); run.write_state(True)
@@ -42,7 +44,7 @@ with log.open('w', encoding='utf-8') as stream:
             run.poll()
             if a.progressive and not upgraded and 'TEST_ONLY progressive_baseline_live' in log.read_text(errors='replace'):
                 from randomizer.stats import upgrade_pool
-                rewards = upgrade_pool(); rewards.remove('Progressive Blue Carry Strength')
+                rewards = upgrade_pool(m); rewards.remove('Progressive Blue Carry Strength')
                 session.receive(len(session.data['received']), [ITEM_IDS[n] for n in rewards])
                 upgraded = True
             run.write_state(True); time.sleep(.1)

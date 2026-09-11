@@ -47,7 +47,7 @@ for rolled, invalid in ((False, False), (False, True), (True, False), (True, Tru
                     assert process.poll() is not None and process.returncode != 0, log.read_text()
                     assert 'retracted stat upgrade' in log.read_text()
                 else:
-                    session.receive(2, [ITEM_IDS[n] for n in upgrade_pool()] * 2)
+                    session.receive(2, [ITEM_IDS[n] for n in upgrade_pool(session.manifest)] * 2)
                     wait(expected('red', 1))
                     wait(expected('blue', 0))
                     wait(expected('yellow', 2))

@@ -26,7 +26,7 @@ for invalid in ('blue 0 100 100 1', 'blue 100 100 100 6', 'green 100 100 100 1')
         m = generate('bad', 'ap', randomize_color_stats=True)
         run = NativeRun(Session(m, d))
         tokens = run.bootstrap.read_text().split()
-        index = tokens.index('COLOR_STATS_WIDE') + 1
+        index = tokens.index('COLOR_STATS_BALANCED') + 1
         tokens[index:index+5] = invalid.split()
         run.bootstrap.write_text(' '.join(tokens))
         result = subprocess.run([exe, '--randomizer-seed', str(run.bootstrap), '--stats-probe'],

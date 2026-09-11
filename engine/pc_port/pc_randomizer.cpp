@@ -36,7 +36,7 @@ unsigned groupAssignments[12] = {};
 unsigned adultAssignments[15] = {};
 std::unordered_map<const void*, unsigned> generatorIds;
 unsigned startingFlarlic = 2;
-bool configuredFlarlic = false, configuredStats = false, progressiveStats = false, wideStats = false;
+bool configuredFlarlic = false, configuredStats = false, progressiveStats = false, wideStats = false, balancedStats = false, doubledStats = false;
 int baseColorStats[3][4] = {{100, 100, 100, 1}, {100, 100, 100, 1}, {100, 100, 100, 1}};
 unsigned statUpgrades[3][4] = {};
 bool benefitItems = false;
@@ -166,8 +166,9 @@ bool pc_randomizer_init(int argc, char** argv) {
         if (schema < 2 || !(input >> startingFlarlic) || startingFlarlic < 1 || startingFlarlic > 10) fail("invalid starting Flarlic");
         input >> end;
     }
-    if (end == "COLOR_STATS" || end == "COLOR_STATS_WIDE") {
+    if (end == "COLOR_STATS" || end == "COLOR_STATS_WIDE" || end == "COLOR_STATS_BALANCED") {
         wideStats = end == "COLOR_STATS_WIDE";
+        balancedStats = end == "COLOR_STATS_BALANCED";
         if (schema < 5) fail("color stats require all-area catalog");
         configuredStats = true;
         const char* colors[] = {"blue", "red", "yellow"};
@@ -176,8 +177,8 @@ bool pc_randomizer_init(int argc, char** argv) {
             for (int stat = 0; stat < 4; ++stat) {
                 int value;
                 if (!(input >> value)) fail("malformed color stats");
-                const int minimum = stat == 3 ? 1 : wideStats ? (stat == 0 ? 25 : 50) : stat == 0 ? 50 : 75;
-                const int maximum = wideStats ? (stat == 3 ? 5 : stat == 0 ? 200 : 150) : stat == 0 ? 150 : stat == 3 ? 3 : 125;
+                const int minimum = stat == 3 ? 1 : balancedStats ? 25 : wideStats ? (stat == 0 ? 25 : 50) : stat == 0 ? 50 : 75;
+                const int maximum = balancedStats ? (stat == 3 ? 1 : 100) : wideStats ? (stat == 3 ? 5 : stat == 0 ? 200 : 150) : stat == 0 ? 150 : stat == 3 ? 3 : 125;
                 if (value < minimum || value > maximum || (stat != 3 && value % 25)) fail("invalid color stats");
                 baseColorStats[c][stat] = colorStats[c][stat] = value;
             }
@@ -186,8 +187,9 @@ bool pc_randomizer_init(int argc, char** argv) {
     }
     if (end == "PROGRESSIVE_STATS") {
         unsigned mode;
-        if (schema < 7 || !(input >> mode) || mode != 1) fail("invalid progressive stats mode");
+        if (schema < 7 || !(input >> mode) || (mode != 1 && mode != 2)) fail("invalid progressive stats mode");
         progressiveStats = true;
+        doubledStats = mode == 2;
         input >> end;
     }
     if (end == "BENEFITS") {
@@ -280,8 +282,8 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (colorPopulation) hello << " color-population-v1";
     if (compactPopulation) hello << " compact-population-v1";
     if (configuredFlarlic) hello << " starting-flarlic-v1";
-    if (configuredStats) hello << (wideStats ? " color-stats-v2" : " color-stats-v1");
-    if (progressiveStats) hello << " progressive-color-stats-v1";
+    if (configuredStats) hello << (balancedStats ? " color-stats-v3" : wideStats ? " color-stats-v2" : " color-stats-v1");
+    if (progressiveStats) hello << (doubledStats ? " progressive-color-stats-v2" : " progressive-color-stats-v1");
     if (benefitItems) hello << " benefit-items-v1";
     if (slotEnemies) hello << " enemy-slots-v1";
     if (groupEnemies) hello << " enemy-groups-v1";
@@ -331,7 +333,7 @@ void pc_randomizer_update() {
     if (progressiveStats) {
         if (!parsed || end != "UPGRADES") fail("missing progressive stat state");
         for (int c = 0; c < 3; ++c) for (int stat = 0; stat < 4; ++stat) {
-            if (!(input >> newStats[c][stat]) || newStats[c][stat] > (stat == 0 || stat == 3 ? 2u : 1u)
+            if (!(input >> newStats[c][stat]) || newStats[c][stat] > (stat == 0 || stat == 3 ? 2u : 1u) * (doubledStats ? 2u : 1u)
                 || newStats[c][stat] < statUpgrades[c][stat]) fail("invalid or retracted stat upgrade");
         }
         parsed = bool(input >> end);

@@ -52,6 +52,7 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         if legacy_checks: raise ValueError("campaign enemies require modern checks")
         per_spawn_enemies = group_spawn_enemies = enemy_shuffle = False
         collection_checks = miniboss_enemies = True
+    if progressive_color_stats: permanent_checks = True  # 36 upgrades need the larger check pool.
     collection_checks = collection_checks or progressive_color_stats or permanent_checks
     result = dict(schema=1, game=GAME, seed=str(seed), slot=slot, mode=mode,
                   profile="foh-day2", catalog="vanilla-sites-v1", rng="sha256-counter-v1",
@@ -78,7 +79,7 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         result.update(schema=4, starting_color=color, catalog='gameplay-checks-v4', locations=dict(ALL_LOCATION_IDS),
                       capabilities=['identity-placement-v1', 'random-start-v1', 'repair-goal-v1', 'repeat-day29-v1'] + EXPANDED_CAPABILITIES + ['starting-color-v1'])
     if all_areas or enemy_shuffle or collection_checks or randomize_color_stats or starting_area in ('random', 'impact', 'spring', 'trial'):
-        profile = tuple(START_AREAS)[SeedRandom(str(seed) + '/all-areas/' + slot).below(5)] if starting_area == 'random' else ('foh-day2' if starting_area == 'forest' else starting_area + '-day2')
+        profile = tuple(p for p in START_AREAS if p != 'trial-day2')[SeedRandom(str(seed) + '/all-areas-v2/' + slot).below(4)] if starting_area == 'random' else ('foh-day2' if starting_area == 'forest' else starting_area + '-day2')
         result.update(schema=5, profile=profile, starting_color=result.get('starting_color', 'red'),
                       catalog='gameplay-checks-v5', assignments=dict(ALL_PART_IDS), locations=dict(ALL_AREA_LOCATION_IDS),
                       capabilities=['identity-placement-v1', 'random-start-v1', 'repair-goal-v1', 'repeat-day29-v1'] + EXPANDED_CAPABILITIES + ['starting-color-v1', 'all-areas-v1'])
@@ -104,11 +105,11 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         result["capabilities"].append("starting-flarlic-v1")
     if randomize_color_stats:
         from .stats import roll_profiles
-        result["color_stats"] = roll_profiles(SeedRandom(str(seed) + "/color-stats-v2/" + slot))
-        result["capabilities"].append("color-stats-v2")
+        result["color_stats"] = roll_profiles(SeedRandom(str(seed) + "/color-stats-v3/" + slot))
+        result["capabilities"].append("color-stats-v3")
     if progressive_color_stats:
         result['progressive_color_stats'] = True
-        result['capabilities'].append('progressive-color-stats-v1')
+        result['capabilities'].append('progressive-color-stats-v2')
     if result['schema'] == 9:
         from .enemies import resolve_layout
         result['enemy_layout'] = resolve_layout(result['enemy_mask'])
@@ -202,7 +203,7 @@ def validate(m):
     if type(m) is dict and "color_stats" in m:
         from .stats import validate_profiles
         expected.add("color_stats")
-        validate_profiles(m["color_stats"], wide="color-stats-v2" in m.get("capabilities", []))
+        validate_profiles(m["color_stats"], wide="color-stats-v2" in m.get("capabilities", []), balanced="color-stats-v3" in m.get("capabilities", []))
         if type(m.get("schema")) is not int or m["schema"] < 5:
             raise ValueError("color stats require the all-area catalog")
     if type(m) is dict and 'progressive_color_stats' in m:
@@ -249,9 +250,9 @@ def validate(m):
     if "starting_flarlic" in m:
         fixed["capabilities"] = fixed["capabilities"] + ["starting-flarlic-v1"]
     if "color_stats" in m:
-        fixed["capabilities"] = fixed["capabilities"] + ["color-stats-v2" if "color-stats-v2" in m["capabilities"] else "color-stats-v1"]
+        fixed["capabilities"] = fixed["capabilities"] + ["color-stats-v3" if "color-stats-v3" in m["capabilities"] else "color-stats-v2" if "color-stats-v2" in m["capabilities"] else "color-stats-v1"]
     if m.get('progressive_color_stats'):
-        fixed['capabilities'] += ['progressive-color-stats-v1']
+        fixed['capabilities'] += ['progressive-color-stats-v2' if 'progressive-color-stats-v2' in m['capabilities'] else 'progressive-color-stats-v1']
     if m.get('benefit_items'):
         fixed['capabilities'] += ['benefit-items-v1']
     if 'spawn_layout' in m:

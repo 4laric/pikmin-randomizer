@@ -6,13 +6,21 @@ WIDE_STAT_VALUES = {'damage': tuple(range(25, 201, 25)), 'movement': tuple(range
                     'attack_rate': tuple(range(50, 151, 25)), 'carry': (1, 2, 3, 4, 5)}
 UPGRADE_TIERS = {'damage': (100, 125, 150), 'movement': (100, 125),
                  'attack_rate': (100, 125), 'carry': (1, 2, 3)}
+BALANCED_STAT_VALUES = {'damage': (25,50,75,100), 'movement': (25,50,75,100),
+                        'attack_rate': (25,50,75,100), 'carry': (1,)}
+DOUBLE_UPGRADE_TIERS = {'damage': (100,125,150,175,200), 'movement': (100,125,150),
+                        'attack_rate': (100,125,150), 'carry': (1,2,3,4,5)}
+
+def upgrade_tiers(manifest=None):
+    return DOUBLE_UPGRADE_TIERS if manifest and 'progressive-color-stats-v2' in manifest.get('capabilities', ()) else UPGRADE_TIERS
+
 UPGRADE_ITEMS = {f'Progressive {color.title()} {label}': (color, stat)
                  for color in COLORS for stat, label in
                  (('damage', 'Damage'), ('movement', 'Movement'), ('attack_rate', 'Attack Rate'), ('carry', 'Carry Strength'))}
 
 
-def upgrade_pool():
-    return [name for name, (_, stat) in UPGRADE_ITEMS.items() for _ in UPGRADE_TIERS[stat][1:]]
+def upgrade_pool(manifest=None):
+    return [name for name, (_, stat) in UPGRADE_ITEMS.items() for _ in upgrade_tiers(manifest)[stat][1:]]
 
 
 def current_profiles(manifest, inventory=None):
@@ -21,7 +29,7 @@ def current_profiles(manifest, inventory=None):
     inventory = inventory or {}
     profiles = {color: {} for color in COLORS}
     for name, (color, stat) in UPGRADE_ITEMS.items():
-        tiers = UPGRADE_TIERS[stat]
+        tiers = upgrade_tiers(manifest)[stat]
         base = manifest.get('color_stats', {}).get(color, {}).get(stat, tiers[0])
         profiles[color][stat] = base + tiers[min(len(tiers)-1, inventory.get(name, 0))] - tiers[0]
     return profiles
@@ -30,17 +38,17 @@ def current_profiles(manifest, inventory=None):
 def upgrade_counts(manifest, inventory):
     if not manifest.get('progressive_color_stats'): return ''
     names = {(color, stat): name for name, (color, stat) in UPGRADE_ITEMS.items()}
-    return ' UPGRADES ' + ' '.join(str(min(len(UPGRADE_TIERS[stat])-1, inventory.get(names[color, stat], 0)))
+    return ' UPGRADES ' + ' '.join(str(min(len(upgrade_tiers(manifest)[stat])-1, inventory.get(names[color, stat], 0)))
         for color in ('blue', 'red', 'yellow') for stat in UPGRADE_TIERS)
 
 
 def roll_profiles(rng):
-    return {color: {stat: values[rng.below(len(values))] for stat, values in WIDE_STAT_VALUES.items()}
+    return {color: {stat: values[rng.below(len(values))] for stat, values in BALANCED_STAT_VALUES.items()}
             for color in COLORS}
 
 
-def validate_profiles(profiles, wide=False):
-    allowed = WIDE_STAT_VALUES if wide else STAT_VALUES
+def validate_profiles(profiles, wide=False, balanced=False):
+    allowed = BALANCED_STAT_VALUES if balanced else WIDE_STAT_VALUES if wide else STAT_VALUES
     if type(profiles) is not dict or set(profiles) != set(COLORS):
         raise ValueError('invalid color stat profiles')
     for profile in profiles.values():
@@ -54,7 +62,7 @@ def validate_profiles(profiles, wide=False):
 def bootstrap_stats(manifest):
     if 'color_stats' not in manifest:
         return ''
-    return ('COLOR_STATS_WIDE ' if 'color-stats-v2' in manifest['capabilities'] else 'COLOR_STATS ') + ' '.join(color + ' ' + ' '.join(
+    return ('COLOR_STATS_BALANCED ' if 'color-stats-v3' in manifest['capabilities'] else 'COLOR_STATS_WIDE ' if 'color-stats-v2' in manifest['capabilities'] else 'COLOR_STATS ') + ' '.join(color + ' ' + ' '.join(
         str(manifest['color_stats'][color][stat]) for stat in STAT_VALUES)
         for color in ('blue', 'red', 'yellow')) + '\n'
 

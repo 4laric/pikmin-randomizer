@@ -239,7 +239,7 @@ def progression_pool(manifest):
         unlocks[unlocks.index(NAVEL_ACCESS)] = FOREST_ACCESS
     if starting_color(manifest) != 'red':
         unlocks[unlocks.index({'yellow': YELLOW, 'blue': BLUE}[starting_color(manifest)])] = RED
-    unlocks += upgrade_pool() if manifest.get('progressive_color_stats') else []
+    unlocks += upgrade_pool(manifest) if manifest.get('progressive_color_stats') else []
     return unlocks + ([FLARLIC] * (10 - manifest.get("starting_flarlic", 2)) if manifest["schema"] >= 2 else [])
 
 
