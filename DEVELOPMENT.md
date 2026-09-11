@@ -381,3 +381,14 @@ miniboss-slots-v1 is an explicit manifest flag/capability with ENEMY_MINIBOSSES 
 Validation: 76 Python tests pass, including 100 compact/miniboss solo all-check fills, exact thresholds and no heals, source guarantees and tamper rejection (output/next61-unit3.log). Packaged AP passes 150 fills across all starts/colors and ten remote-Blue multiworlds (output/next61-ap.log). Native probes pass compact population gating/deduplication, all 19 bestiary checks, legacy collection checks, and owned miniboss identity/recovery plus four malformed adapters. Production build hooks OFF passes. Actual Hope births include 4,9,17,24,32; Spring retains 4/32 (output/miniboss61-startup2). All three replacement species also spawn in the exact delivered seed's isolated render/handshake smoke (output/next61-final-smoke). No full combat, boulder engagement, corpse route or day-cycle acceptance claim.
 
 Local output/turkey-finish-01 is fresh and leaves earlier sessions untouched. Fingerprint 5eee82bf6894632e6ce6368f153e579c6ed380ade110c2c567dc904ce5ef67c6; native SHA256 27992f24684d5d69f411c205241277293eb7c3853d4948b54066c5035b3059a6. Solo spheres contain 7/1/4/93/8 checks. AP archive: output/pikmin_randomizer-0.20.0.apworld. Physical miniboss acceptance and native campaign resume remain open.
+
+
+## Quick-release grab timing (#62)
+
+Native 993e22d8 permits the nearby Normal target while awaiting the grab animation event, and waits for attachment before acting on released A. Pending dead targets return immediately after cancellation. The original non-PC path stays intact.
+
+Production build passes with test hooks OFF (output/grab62-build.log). The separate real-game fixture tools/preview_throw_grab.cpp enters ThrowWait with A released, then runs the actual animation/state machine to Flying. Isolated near/far cases pass in output/grab62-live6: distance 4 begins Normal and throws after 4 idle frames; distance 65 begins GoHang and throws after 16. Hanged can begin/end inside one idle iteration, so the assertion observes Flying rather than requiring a sampled Hanged state. This tests release during preparation, not physical SDL press delivery or full controller feel. Earlier fixture runs failed setup/assertions and are not acceptance evidence.
+
+Reproduce with engine/tools/verify_throw_windows.py --build <completed-build> --output <fixture-dir>, then scripts/test_throw_grab_native.py --exe <fixture-exe> --assets <assets> --output <fresh-private-dir>. Fixture requires Windows/MinGW and the root randomizer package; production has no fixture main.
+
+Local turkey-finish-01/Play.cmd now uses bin/nectar-grab.exe (SHA256 9226a16217395c2fd1806597389e396ab2f69f60862abcf3cb60cc2630fb3748). Seed and player session untouched; no running game terminated. Physical rapid taps, held throws and D-pad held-color switching remain player acceptance items.
