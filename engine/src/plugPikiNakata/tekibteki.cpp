@@ -17,6 +17,11 @@
 #include "NaviMgr.h"
 #include "Pellet.h"
 #include "PikiMgr.h"
+#if defined(PIKI_PC_PORT)
+#include "PikiAI.h"
+#include "PikiState.h"
+#include "PlayerState.h"
+#endif
 #include "RadarInfo.h"
 #include "Route.h"
 #include "Shape.h"
@@ -931,6 +936,29 @@ void BTeki::spawnPellets(int kind, int color, int count)
 		}
 
 		pellet->playEventSound(pellet, SE_PELLET_BORN);
+#if defined(PIKI_PC_PORT)
+		// Only attackers still assigned to this Posy follow its actual drop.
+		// Do not enable general nearby-work scanning or choose another pellet.
+		if (mTekiType == TEKI_Palm && mHealth <= 0.0f && !pellet->isUfoParts()
+		    && pikiMgr && playerState && !playerState->inDayEnd()) {
+			Iterator attackers(pikiMgr);
+			CI_LOOP(attackers) {
+				Piki* piki = static_cast<Piki*>(*attackers);
+				if (!piki->isAlive() || piki->isHolding() || piki->isKinoko()
+				    || piki->mMode != PikiMode::AttackMode || !piki->mActiveAction
+				    || piki->mActiveAction->mCurrActionIdx != PikiAction::Attack
+				    || qdist2(this, piki) >= 200.0f) continue;
+				ActAttack* attack = static_cast<ActAttack*>(piki->mActiveAction->mChildActions[PikiAction::Attack].mAction);
+				PikiState* state = static_cast<PikiState*>(piki->getCurrState());
+				if (!attack->targets(this) || !state || !state->freeAI()
+				    || pellet->getNearestFreeSlotIndex(piki->mSRT.t) < 0) continue;
+				piki->mActiveAction->abandon(nullptr);
+				piki->mActiveAction->mCurrActionIdx = PikiAction::Transport;
+				piki->mActiveAction->mChildActions[PikiAction::Transport].initialise(pellet);
+				piki->mMode = PikiMode::TransportMode;
+			}
+		}
+#endif
 	}
 }
 

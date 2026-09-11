@@ -357,6 +357,9 @@ public:
 	};
 
 	ActAttack(Piki*);
+#if defined(PIKI_PC_PORT)
+	bool targets(Creature* creature) { return mOther.getPtr() == creature; }
+#endif
 
 	virtual ~ActAttack() { }                                   // _44
 	virtual void init(Creature*);                              // _48

@@ -361,3 +361,8 @@ Production build and isolated grouped Hope/Spring startup also pass (output/corp
 
 Native 88557248 sets both PcConfig initializers and applyDefaults to the Enhanced preset: FXAA, subtle bloom, 8x anisotropy, original fog and neutral grading. Config loading still overlays saved preferences; reset-to-defaults also selects Enhanced. Source comparison against graphicsPresetFor/applyGraphicsPreset confirms matching values.
 Production build passes with hooks OFF; fresh isolated Hope/Spring grouped startup renders and handshakes (output/enhanced56-startup). Both local playtest launchers point to nectar-enhanced.exe on next launch. Saved configs and active game preserved; no visual-quality benchmark performed.
+
+## Pellet Posy follow-through (#57)
+
+Native 699a7c3a keeps nearby eligible Posy attackers waiting during the death animation. spawnPellets hands that exact drop to Pikmin still assigned to the source via ActTransport; no nearby-work scan is used. Whistle/action changes, holding items, mushroom status, day end, distance and occupied slots exclude handoff. Non-PC behavior stays unchanged. Normal transport handles landing, slots, routes and randomized carrying strength. Source review confirms normal cleanup releases the attack target and carrying uses calcCarryStrength. Physical single/multiple-attacker, whistle cancellation and full Onion delivery acceptance remain open.
+Production build (hooks OFF) passes: output/posy57-build.log. Isolated grouped Hope/Spring startup renders and handshakes: output/posy57-startup. These startup checks do not exercise the new Posy interaction. Local mixed/groups launchers now use nectar-posy.exe without changing active sessions.

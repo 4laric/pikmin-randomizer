@@ -30,6 +30,10 @@ For an explicit named mapping, run `python -m randomizer enemy-spoiler <seed.jso
 
 All-five-area disk/cache audits, actual mixed births, generation and AP reachability tests pass. Physical combat and return-route acceptance remain open, especially the larger Bulbear footprint. Mixed species within a single group, cross-family pools, density changes and bosses remain future tracks.
 
+## Pellet Posy follow-through
+
+On PC, Pikmin attacking a Pellet Posy wait for its death animation and attempt to carry its actual dropped pellet. This works with Chain Actions off. Whistled-away Pikmin are excluded, and normal transport handles carrier slots and randomized strength. Physical throw-to-delivery acceptance is pending in #57.
+
 ## Graphics presets
 
 Fresh settings now default to Enhanced (FXAA, 8x anisotropy and subtle bloom). Saved preferences are preserved. Open F1, choose Graphics, and select Original or Enhanced with Left/Right. Enhanced adds FXAA, 8x anisotropic filtering and subtle bloom while retaining original fog and neutral colors. Save to retain changes; closing without saving restores the previous graphics. Individual changes show Custom. Resolution and gameplay settings are preserved.

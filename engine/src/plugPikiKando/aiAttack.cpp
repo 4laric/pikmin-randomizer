@@ -271,6 +271,18 @@ int ActAttack::exec()
 		if (mPiki->isStickTo()) {
 			mPiki->endStickObject();
 		}
+#if defined(PIKI_PC_PORT)
+		// The Posy drops its pellet at the end of its death animation. Keep
+		// this exact target until then; spawnPellets hands us its actual drop.
+		// Whistling abandons this action, so it also cancels the handoff.
+		Creature* source = mOther.getPtr();
+		if (source->isTeki() && static_cast<Teki*>(source)->mTekiType == TEKI_Palm
+		    && source->isVisible() && !mPiki->isHolding() && !mPiki->isKinoko()
+		    && qdist2(source, mPiki) < 200.0f) {
+			mPiki->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
+			return ACTOUT_Continue;
+		}
+#endif
 		return ACTOUT_Success;
 	}
 
