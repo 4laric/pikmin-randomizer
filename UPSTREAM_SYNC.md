@@ -9,7 +9,7 @@ The desktop heartbeat runs daily at 10:00 America/Toronto and stays quiet on unc
 - Upstream: `SSunnKing/Open-Nectar---Pikmin-Native-PC-Port`, branch `main`.
 - Last fetched/reviewed: `398258e7d84906e4938eab076785d0b8879d4043`.
 - Last integrated upstream: `398258e7d84906e4938eab076785d0b8879d4043` (health-gauge PR #2 merged).
-- Current maintained downstream native commit: `663e0279` (see ENGINE_SOURCE.md); per-color stats and progressive upgrades added after integration in #28/#29/#30, with permanent checks in #31 and damage-based structure work in #32, expanded bestiary/landing-only checks in #33.
+- Current maintained downstream native commit: `2f06772b` (see ENGINE_SOURCE.md); per-color stats and progressive upgrades added after integration in #28/#29/#30, with permanent checks in #31 and damage-based structure work in #32, expanded bestiary/landing-only checks in #33.
 - **Integration complete:** [#26](https://github.com/4laric/pikmin-randomizer/issues/26), all 14 commits across 51 files, merged without conflicts. No pending upstream commits as of this review.
 - [Health gauges PR #2](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port/pull/2): MERGED at `398258e7`, 2026-09-11.
 - [Save-slot PR #3](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port/pull/3): OPEN, commit `c0b6d377`. Two files, 29 PC-only lines; no randomizer fixtures or game content.
@@ -62,4 +62,4 @@ Issue #36 updates Python/AP source-aware bestiary logic and versioned seed enemy
 
 ## Public CI repair (#64)
 
-Upstream PR #7 separates private matching builds (manual dispatch, existing container access required) from automatic public Linux validation. Global sqrtf/fmodf calls fix GCC math.h namespace failures; the clean-distro job downloads its package into the directory it executes. Native 663e0279 merges upstream main plus CI branch 9d82224d. Save PR branch f8a11be6 and boss PR branch 4024682c also include the CI changes. Linux CI validation remains in progress at this entry.
+Upstream PR #7 separates private matching builds (manual dispatch, existing container access required) from automatic public Linux validation. Global sqrtf/fmodf calls fix GCC math.h namespace failures; the clean-distro job downloads its package into the directory it executes. Native 2f06772b merges upstream main plus CI branch 69ca29f8. Save PR branch 5fe454a1 and boss PR branch 55e46c33 also include the CI changes. Linux CI validation remains in progress at this entry.

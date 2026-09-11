@@ -402,3 +402,5 @@ Native 9d5bfddd integrates the isolated validated fix 8814b166 atop the quick-gr
 ## Upstream public CI portability (#64)
 
 Native 663e0279 merges upstream health-gauge merge 398258e7 and CI repair branch 9d82224d. Global float math calls avoid GCC namespace failures without changing float precision. Windows production game/probe builds pass (output/ci64-windows-final.log); all 76 Python tests pass (output/ci64-python.log). Upstream Linux build/package/smoke CI is being verified in PR #7. The private original-game matching workflow is now manual, not represented as a passing public build. Public engine snapshot excludes native CI workflows by design; root randomizer CI remains separate. Existing player binary/session unchanged.
+
+Native 2f06772b adds the explicit no-assets audio-test skip from upstream CI branch69ca29f8. Windows production rebuild passes and an isolated asset-free --audio-self-test returns77. Linux prior run compiled USA/PAL and passed21 offline tests, then timed out in the asset-backed audio test; current CI validates the skip and remaining packaging.

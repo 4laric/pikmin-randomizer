@@ -676,7 +676,8 @@ message(STATUS "")
 if(PIKMIN_NATIVE_JAUDIO)
     add_test(NAME pc_jaudio_integration_test COMMAND pikmin_pc --audio-self-test)
     set_tests_properties(pc_jaudio_integration_test PROPERTIES
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" TIMEOUT 30)
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" TIMEOUT 30
+        SKIP_RETURN_CODE 77 LABELS "game-assets")
 endif()
 
 # Standalone adapter harness; exercises real file I/O without game assets.
