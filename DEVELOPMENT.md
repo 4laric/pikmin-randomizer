@@ -111,6 +111,24 @@ Expanded validation: 17 Python tests, 100 solo seeds per profile, 200 actual AP 
 
 ## Evidence
 
+### Enemy health gauges (#20)
+
+`DGXGraphics::drawOneTri` now calls `GXEnd` on PC. The hardware consumes a
+primitive's declared vertex count, but the PC renderer submits it in
+`pc_gfx_end`; without that call the next `GXBegin` discarded each health-gauge
+triangle. This affected ordinary seeds as well as enemy shuffle.
+
+An isolated Spring fixture moved one Bulbear near Olimar and held its health
+at 50%. Before the fix, its gauge reached Display state with ratio 0.5 and a
+valid screen projection, but the captured framebuffer had no gauge. After
+the fix, the framebuffer shows the yellow half-circle and black border.
+Local captures: `output/gauge-diagnostic-03/frame.png` and
+`output/gauge-fixed-01/frame.png`. This is scripted rendering evidence,
+not a player-combat test. Diagnostic modifications were saved to
+`output/gauge-diagnostic.patch` and removed; production test hooks remain OFF.
+The change affects other callers of the same triangle helper too. Full-health
+hiding and death behavior were not changed; player acceptance remains in #20.
+
 - 11 Python contract/session/protocol tests pass; includes 100 solo seeds, duplicates, corrupted manifests, replay conflicts, crash-journal recovery and fake AP server handshake/check/goal exchanges.
 - 100 actual AP single-slot fills and one two-slot fill pass with the packaged world: `output/apworld-tests.log`.
 - Three inherited BBFT/audio CTest regressions pass.
