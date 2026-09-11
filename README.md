@@ -40,6 +40,8 @@ New collection seeds replace every aggregate population milestone with separate 
 
 Logic requires the matching Onion and audited farming access; only the starting color's initial 20 is credited without farming. Flarlic limits the field, not these totals. New checks use fresh AP IDs and a `color-population-v1` capability; old manifests retain their aggregate checks and IDs. Use a fresh seed and updated native executable. Test package: `output/turkey-population-01/Play.cmd` (Hope/yellow, field cap 10, enemy shuffle, wide stats and progressive upgrades).
 
+Enemy randomizer development plan: [phased roadmap](ENEMY_RANDOMIZER_ROADMAP.md), from individual spawn shuffling through opt-in boss encounters.
+
 ## Enemy layout and progression (v0.15.0)
 
 Enemy-family swaps were already deterministic in `enemy_mask`. New seeds additionally contain a versioned `enemy_layout` describing the resulting species sources, protected spawns and earliest campaign days. All 19 bestiary rules use those sources rather than fixed area assumptions. Changing a mask without updating the matching layout is rejected. Native still consumes the same saved mask; it does not reroll on launch.
