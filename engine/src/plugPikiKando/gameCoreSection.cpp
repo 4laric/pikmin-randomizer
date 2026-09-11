@@ -1800,21 +1800,24 @@ void GameCoreSection::updateAI()
         }
     }
     static bool bbftRedsQueued = false, bbftRedsReady = false;
+    static int bbftInitialField = 20;
     if (pc_bbft_skip_tutorial() && !gameflow.mMoviePlayer->mIsActive
         && !gameflow.mPauseAll && !gameflow.mIsUIOverlayActive && itemMgr) {
         GoalItem* redOnion = itemMgr->getContainer(initialColor);
+        const int initialField = bbftRedsQueued ? bbftInitialField : pc_randomizer_enabled() && pc_randomizer_field_capacity() < 20 ? pc_randomizer_field_capacity() : 20;
         if (!bbftRedsQueued && redOnion && redOnion->getTotalStorePikis() >= 20) {
             // Use normal Onion withdrawal: initialized actors descend the legs
             // and join Olimar through their native exit state, no fake count.
-            redOnion->exitPikis(20);
+            bbftInitialField = initialField;
+            redOnion->exitPikis(initialField);
             bbftRedsQueued = true;
         }
-        if (bbftRedsQueued && !bbftRedsReady && redOnion && redOnion->getTotalStorePikis() == 0
-            && GameStat::allPikis[initialColor] - GameStat::containerPikis[initialColor] == 20) {
-            if (initialColor == Red) pc_bbft_milestone("PIKMIN_FOH_READY day=2 field_red=20 main_engine_ap_check=0");
+        if (bbftRedsQueued && !bbftRedsReady && redOnion && redOnion->getTotalStorePikis() == 20 - initialField
+            && GameStat::allPikis[initialColor] - GameStat::containerPikis[initialColor] == initialField) {
+            if (initialColor == Red && initialField == 20) pc_bbft_milestone("PIKMIN_FOH_READY day=2 field_red=20 main_engine_ap_check=0");
             if (pc_randomizer_enabled()) {
-                std::printf("[Pikmin Randomizer] START_COLOR_READY stage=%d color=%d field=20\n", flowCont.mCurrentStage->mStageID, initialColor);
-                if (initialColor == Red) std::printf("[Pikmin Randomizer] START_READY stage=%d field_red=20\n", flowCont.mCurrentStage->mStageID);
+                std::printf("[Pikmin Randomizer] START_COLOR_READY stage=%d color=%d field=%d\n", flowCont.mCurrentStage->mStageID, initialColor, initialField);
+                if (initialColor == Red) std::printf("[Pikmin Randomizer] START_READY stage=%d field_red=%d\n", flowCont.mCurrentStage->mStageID, initialField);
             }
             bbftRedsReady = true;
         }

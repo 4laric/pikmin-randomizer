@@ -3,7 +3,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from BaseClasses import Item, ItemClassification, Location, Region
-from Options import PerGameCommonOptions, Toggle, Choice
+from Options import PerGameCommonOptions, Toggle, Choice, Range
 from worlds.AutoWorld import World
 from .core.catalog import (GAME, ITEM_IDS, LOCATION_IDS, NAMES, CHECK_AREAS,
                            CHECK_REQUIREMENTS, UNLOCKS, REPAIR, REPAIR_COUNT, ALL_LOCATION_IDS,
@@ -45,8 +45,17 @@ class CollectionChecks(Toggle):
     default = 0
 
 
+class StartingFlarlic(Range):
+    """Initial field capacity in tens. Remaining Flarlic items raise the cap to 100. Enables expanded checks."""
+    display_name = "Starting Flarlic"
+    range_start = 1
+    range_end = 10
+    default = 1
+
+
 @dataclass
 class PikminOptions(PerGameCommonOptions):
+    starting_flarlic: StartingFlarlic
     expanded_checks: ExpandedChecks
     starting_area: StartingArea
     starting_color: StartingColor
@@ -85,6 +94,12 @@ class PikminRandomizerWorld(World):
         return PikminItem(name, ItemClassification.progression, ITEM_IDS[name], self.player)
 
     def create_items(self):
+        # Sparse cap-10 starts need farming access before reverse fill spends
+        # their only landing check. This can be delivered from another world.
+        if self.manifest().get('starting_flarlic') == 1:
+            early = FLARLIC if self.manifest()['profile'] == 'foh-day2' else 'Pikmin: Forest of Hope Access'
+            self.multiworld.early_items[self.player][early] = max(
+                1, self.multiworld.early_items[self.player].get(early, 0))
         repairs = 0
         for name in item_pool(self.manifest()):
             item = self.create_item(name)
@@ -106,7 +121,7 @@ class PikminRandomizerWorld(World):
             self._manifest = generate(str(self.multiworld.seed_name), "ap", self.multiworld.player_name[self.player],
                             expanded=bool(self.options.expanded_checks),
                             starting_area=('forest', 'navel', 'random', 'impact', 'spring', 'trial')[self.options.starting_area.value],
-                            starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas), enemy_shuffle=bool(self.options.enemy_shuffle), collection_checks=bool(self.options.collection_checks))
+                            starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas), enemy_shuffle=bool(self.options.enemy_shuffle), collection_checks=bool(self.options.collection_checks), starting_flarlic=self.options.starting_flarlic.value)
         return self._manifest
 
     def fill_slot_data(self):

@@ -5,7 +5,7 @@ Experimental standalone and Archipelago randomizer for Pikmin 1, built on Open N
 ## Current features
 
 - Random starting area across all five areas, and random red/yellow/blue starting color.
-- Area and Onion unlock items, 25 Ship Repair rewards for victory, and Flarlic increasing field capacity from 20 to 100.
+- Area and Onion unlock items, 25 Ship Repair rewards for victory, and Flarlic increasing field capacity from a configurable default of 10 to 100.
 - Exploration checks and optional Onion corpse-delivery bestiary checks; total-population milestones up to 500 include stored Pikmin and sprouts.
 - Seeded Bulborb/Bulbear and Sheargrub family swaps, with protected enemies pinned.
 - Solo play, a standalone AP world, persistent check/reward history, and a transparent progress overlay.
@@ -46,6 +46,16 @@ python scripts/build_apworld.py
 ```
 
 Install `output/pikmin_randomizer.apworld` into your Archipelago setup. Generate a `Pikmin Randomizer` slot, then launch its exported `.pikmin.json` with the run command above and `--server HOST:PORT`. Use that generated manifest, not an unrelated solo seed. The AP option `collection_checks: true` selects corpse deliveries and total population. Optional server password: `PIKMIN_AP_PASSWORD` environment variable.
+
+```yaml
+Pikmin Randomizer:
+  starting_flarlic: 1
+  collection_checks: true
+```
+
+`starting_flarlic` accepts 1–10 and defaults to 1: each unit grants 10 field capacity. The pool contains the remaining Flarlic needed to reach 100 (nine at the default). The starter population is still 20; with a cap of 10, ten remain stored in the Onion. This option enables expanded checks. Solo generation uses the same default via `--starting-flarlic`. Existing manifests without this option retain their original capacity rules.
+
+At cap 10, AP requests an early Flarlic for Forest of Hope starts, or early Forest of Hope access for other starts, so sparse opening checks can lead to farming and further progression. These items may be in another player's world. New configured seeds require the updated native build and AP world v0.8.0; older native builds reject the new bootstrap instead of silently using the wrong cap.
 
 ## Source and development
 

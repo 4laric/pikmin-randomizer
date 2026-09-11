@@ -1,5 +1,11 @@
 # Standalone milestone: local implementation
 
+## Starting Flarlic (issue #24)
+
+New YAML/CLI generations default to `starting_flarlic: 1` (10 field capacity), configurable from 1 through 10. The remaining `10 - starting_flarlic` Flarlic items are in the pool. Native startup withdraws at most the cap from the original 20 starter Pikmin, leaving the remainder stored. Overlay, status, carry-weight logic and native state use the same initial capacity. Existing manifests remain unchanged. An optional manifest field and required `starting-flarlic-v1` capability accompany a strict `STARTING_FLARLIC` bootstrap extension; old native builds reject it. AP package version is 0.8.0.
+
+AP's global early-item request provides Flarlic for Forest of Hope starts or Forest of Hope access for other cap-10 starts, allowing remote delivery while avoiding reverse-fill dead ends. Validation: 34 Python tests, 2,160 AP single-slot fills and a remote-Blue two-slot fill; native capacity/legacy protocol tests; production startup with ten red Pikmin in the field and ten stored, total-population-20 check, color grants, area gating and goal handling.
+
 The native port now has a separate `--randomizer-seed` adapter and a Python solo/AP runner. No BBFT conductor or shared AP installation link is required. Physical parts are still at their original positions: the native adapter deliberately rejects relocation manifests until the slot/carry audit is complete.
 
 ## Implemented

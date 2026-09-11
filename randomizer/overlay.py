@@ -22,7 +22,7 @@ def snapshot(manifest, data):
         names = {v: k for k, v in ITEM_IDS.items()}
         events = [('Received from Archipelago', names[item]) for item in data['received']]
     inventory = Counter(item for _, item in events)
-    return events, field_capacity(inventory, manifest['schema'] >= 2), min(25, inventory[REPAIR])
+    return events, field_capacity(inventory, manifest['schema'] >= 2, manifest.get('starting_flarlic', 2)), min(25, inventory[REPAIR])
 
 
 def main(manifest_path, session_path, pid):

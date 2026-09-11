@@ -11,6 +11,10 @@ int main(int argc, char** argv) {
         if (pc_randomizer_enabled() || pc_randomizer_goal() || pc_randomizer_next_day(29) != 30) return 4;
         std::puts("standalone adapter inert"); return 0;
     }
+    for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--capacity-probe")) {
+        std::printf("CAPACITY_PROBE %d\n", pc_randomizer_field_capacity());
+        return 0;
+    }
     for (int i = 0; i < 100; ++i) {
         pc_randomizer_update();
         if (pc_randomizer_ready()) {

@@ -13,9 +13,10 @@ from randomizer.runner import NativeRun
 from randomizer.catalog import UNLOCKS, ITEM_IDS, REPAIR, FOREST_ACCESS, NAVEL_ACCESS, progression_pool, FLARLIC, START_AREAS
 
 
-def main(exe, assets, output, expanded=False, starting_area='forest', seed='startup-smoke', starting_color='red', all_areas=False, enemy_shuffle=False, save_fixture=False, collection_checks=False, collection_fixture=False):
+def main(exe, assets, output, expanded=False, starting_area='forest', seed='startup-smoke', starting_color='red', all_areas=False, enemy_shuffle=False, save_fixture=False, collection_checks=False, collection_fixture=False, starting_flarlic=None):
     collection_checks = collection_checks or collection_fixture
-    session = Session(generate(seed, "ap", expanded=expanded, starting_area=starting_area, starting_color=starting_color, all_areas=all_areas, enemy_shuffle=enemy_shuffle, collection_checks=collection_checks), output)
+    session = Session(generate(seed, "ap", expanded=expanded, starting_area=starting_area, starting_color=starting_color, all_areas=all_areas, enemy_shuffle=enemy_shuffle, collection_checks=collection_checks, starting_flarlic=starting_flarlic), output)
+    initial_field = min(20, 10 * (starting_flarlic if starting_flarlic is not None else 2))
     color = session.manifest.get('starting_color', 'red')
     native_color = {'blue': 0, 'red': 1, 'yellow': 2}[color]
     stage, area, _ = START_AREAS[session.manifest['profile']]
@@ -44,7 +45,7 @@ def main(exe, assets, output, expanded=False, starting_area='forest', seed='star
                     if marker in log.read_text(encoding="utf-8", errors="replace"): return
                     time.sleep(.1)
                 raise AssertionError(f"timeout: {marker}; {log}")
-            wait(f"START_COLOR_READY stage={stage} color={native_color} field=20")
+            wait(f"START_COLOR_READY stage={stage} color={native_color} field={initial_field}")
             wait("PIKMIN_WORLD_RENDERED")
             if save_fixture:
                 wait('TEST_ONLY invalid_save_slots_rejected')
@@ -62,6 +63,8 @@ def main(exe, assets, output, expanded=False, starting_area='forest', seed='star
             wait("GOAL: Ship repaired!")
             run.poll()
             expected = {'Population: 20 total Pikmin' if collection_checks else 'Population: 20 Pikmin in the field', f'Explore: {area} - Land'} if expanded else set()
+            if not collection_checks and initial_field < 20:
+                expected.discard('Population: 20 Pikmin in the field')
             if collection_fixture:
                 from randomizer.catalog import TOTAL_POPULATION
                 expected |= set(TOTAL_POPULATION) | {'Bestiary: Deliver Dwarf Bulborb'}
@@ -72,7 +75,7 @@ def main(exe, assets, output, expanded=False, starting_area='forest', seed='star
             assert f'PIKMIN_{color.upper()}_ONION_GRANTED starter=5' not in text
             if not save_fixture and not collection_fixture:
                 assert 'TEST_ONLY' not in text, 'test fixtures enabled unexpectedly'
-            print(f"PASS native startup: {area}, 20 {color} Pikmin, other color grants exactly once, area gates, goal; expected checks only", sorted(expected), flush=True)
+            print(f"PASS native startup: {area}, {initial_field} {color} Pikmin, other color grants exactly once, area gates, goal; expected checks only", sorted(expected), flush=True)
             print(log)
         finally:
             if process.poll() is None: process.terminate();process.wait(timeout=10)
@@ -81,6 +84,7 @@ def main(exe, assets, output, expanded=False, starting_area='forest', seed='star
 if __name__ == "__main__":
     p = argparse.ArgumentParser();p.add_argument("--exe", type=Path, required=True)
     p.add_argument("--assets", type=Path, required=True);p.add_argument("--output", type=Path, required=True)
+    p.add_argument('--starting-flarlic', type=int, choices=range(1, 11))
     p.add_argument('--expanded', action='store_true')
     p.add_argument('--starting-area', choices=['impact', 'forest', 'navel', 'spring', 'trial', 'random'], default='forest')
     p.add_argument('--all-areas', action='store_true')
@@ -90,4 +94,4 @@ if __name__ == "__main__":
     p.add_argument('--collection-fixture', action='store_true', help='Requires TEST_HOOKS; synthetic stock and corpse absorption')
     p.add_argument('--seed', default='startup-smoke')
     p.add_argument('--starting-color', choices=['red', 'yellow', 'blue', 'random'], default='red')
-    a=p.parse_args();main(a.exe,a.assets,a.output.resolve(),a.expanded,a.starting_area,a.seed,a.starting_color,a.all_areas,a.enemy_shuffle,a.save_fixture,a.collection_checks,a.collection_fixture)
+    a=p.parse_args();main(a.exe,a.assets,a.output.resolve(),a.expanded,a.starting_area,a.seed,a.starting_color,a.all_areas,a.enemy_shuffle,a.save_fixture,a.collection_checks,a.collection_fixture,a.starting_flarlic)

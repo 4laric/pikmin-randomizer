@@ -12,6 +12,7 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
     gen = sub.add_parser("generate")
     gen.add_argument("--seed", required=True)
+    gen.add_argument("--starting-flarlic", type=int, choices=range(1, 11), default=1, help="Initial field capacity in tens (default 1 = 10 Pikmin)")
     gen.add_argument("--expanded", action="store_true", help="Flarlic, population, bestiary and exploration checks")
     gen.add_argument('--starting-area', choices=['forest', 'navel', 'impact', 'spring', 'trial', 'random'], default='forest', help='Random includes all five areas')
     gen.add_argument('--all-areas', action='store_true', help='Enable five-area catalog with a fixed start')
@@ -35,7 +36,7 @@ def main():
     status.add_argument("--output", type=Path)
     args = parser.parse_args()
     if args.command == "generate":
-        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas, enemy_shuffle=args.enemy_shuffle, collection_checks=args.collection_checks)
+        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas, enemy_shuffle=args.enemy_shuffle, collection_checks=args.collection_checks, starting_flarlic=args.starting_flarlic)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8") as f:
             f.write(json.dumps(manifest, indent=2) + "\n")
@@ -53,7 +54,7 @@ def main():
                 checked = set(session.data["checked"])
                 lines = ["# Pikmin Randomizer status", "",
                          f"Collected: {len(checked)}/{len(session.names)} checks. "
-                         f"Field capacity: {field_capacity(session.inventory, manifest['schema'] >= 2)}. "
+                         f"Field capacity: {field_capacity(session.inventory, manifest['schema'] >= 2, manifest.get('starting_flarlic', 2))}. "
                          f"Repair goal: {min(session.inventory['Ship Repair'], 25)}/25.", "",
                          "Population entries record reached milestones, not the current population.", ""]
                 from .catalog import TOTAL_POPULATION, DELIVERY_BESTIARY

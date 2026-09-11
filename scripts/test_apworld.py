@@ -30,7 +30,7 @@ def main(ap):
               mw = setup_multiworld(mod.PikminRandomizerWorld, seed=seed, options={"expanded_checks": expanded, "starting_area": start, "starting_color": color, 'all_areas': all_areas})
               mw.seed_name = str(seed)
               world = mw.worlds[1]
-              assert len(mw.get_locations()) == (58 if world.manifest()['schema'] >= 5 else 55 if expanded else 30)
+              assert len(mw.get_locations()) == (58 if world.manifest()['schema'] >= 5 else 55 if world.manifest()['schema'] >= 2 else 30)
               assert len(mw.itempool) == len(mw.get_locations())
               distribute_items_restrictive(mw)
               assert mw.can_beat_game(), seed
@@ -49,6 +49,15 @@ def main(ap):
             assert mw.worlds[1].manifest()['schema'] == 6
             distribute_items_restrictive(mw)
             assert mw.can_beat_game() and not mw.get_unfilled_locations()
+        for initial in (1, 2, 10):
+            for seed in range(20):
+                mw = setup_multiworld(mod.PikminRandomizerWorld, seed=seed,
+                                     options={'starting_flarlic': initial, 'collection_checks': bool(seed % 2)})
+                m = mw.worlds[1].manifest()
+                assert m['starting_flarlic'] == initial
+                assert sum(item.name == FLARLIC for item in mw.itempool) == 10 - initial
+                distribute_items_restrictive(mw)
+                assert mw.can_beat_game() and not mw.get_unfilled_locations()
         # A two-slot fill exercises cross-player rewards instead of only solo AP.
         for seed in range(100):
             mw = setup_multiworld(mod.PikminRandomizerWorld, seed=seed,
@@ -67,13 +76,14 @@ def main(ap):
         water = mw.get_location('Bestiary: Water Dumple', 1)
         assert not water.can_reach(initial)
         assert remote.can_reach(initial)
+        initial.collect(mw.worlds[1].create_item(FLARLIC), True)
         initial.collect(blue, True)
         assert water.can_reach(initial)
         distribute_items_restrictive(mw)
         assert mw.can_beat_game()
         assert any(loc.item.player != loc.player for loc in mw.get_locations())
         assert remote.item.player == 1 and remote.player == 2
-        print(f"Packaged AP world: {len(configs)*100+200} single-slot fills including collection checks and a remote-Blue two-slot fill pass")
+        print(f"Packaged AP world: {len(configs)*100+200} single-slot fills plus 60 starting-Flarlic fills, including collection checks and a remote-Blue two-slot fill pass")
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser();p.add_argument("ap", type=Path);main(p.parse_args().ap)

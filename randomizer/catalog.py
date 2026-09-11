@@ -137,11 +137,11 @@ def active_names(manifest):
     return EXPANDED_NAMES if manifest["schema"] >= 2 else NAMES
 
 
-def field_capacity(inventory, expanded=True):
-    return min(100, 20 + 10 * inventory.get(FLARLIC, 0)) if expanded else 100
+def field_capacity(inventory, expanded=True, starting_flarlic=2):
+    return min(100, 10 * (starting_flarlic + inventory.get(FLARLIC, 0))) if expanded else 100
 
 
-def can_reach(name, inventory, expanded=False):
+def can_reach(name, inventory, expanded=False, starting_flarlic=2):
     if name in CHECK_REQUIREMENTS:
         needs = CHECK_REQUIREMENTS[name]
         minimum = PART_WEIGHTS.get(name, 0) if expanded else 0
@@ -153,10 +153,10 @@ def can_reach(name, inventory, expanded=False):
         stage, objective, needs = EXPLORATION[name]
         if objective == "Scout":
             needs = needs + (YELLOW, BLUE)  # conservative pending route playtest
-        minimum = 20
+        minimum = 1 if objective == "Land" else 20
     else:
         return False
-    return all(inventory.get(item, 0) > 0 for item in needs) and field_capacity(inventory, expanded) >= minimum
+    return all(inventory.get(item, 0) > 0 for item in needs) and field_capacity(inventory, expanded, starting_flarlic) >= minimum
 
 
 def progression_pool(manifest):
@@ -167,7 +167,7 @@ def progression_pool(manifest):
         unlocks[unlocks.index(NAVEL_ACCESS)] = FOREST_ACCESS
     if starting_color(manifest) != 'red':
         unlocks[unlocks.index({'yellow': YELLOW, 'blue': BLUE}[starting_color(manifest)])] = RED
-    return unlocks + ([FLARLIC] * 8 if manifest["schema"] >= 2 else [])
+    return unlocks + ([FLARLIC] * (10 - manifest.get("starting_flarlic", 2)) if manifest["schema"] >= 2 else [])
 
 
 def can_reach_manifest(name, inventory, manifest):
@@ -185,7 +185,7 @@ def can_reach_manifest(name, inventory, manifest):
             if not all(owned.get(c, 0) for c in (RED, YELLOW, BLUE)): return False
             return can_reach_manifest(DELIVERY_BESTIARY[name], inventory, {**manifest, 'schema': 6})
     if manifest['schema'] < 3:
-        return can_reach(name, inventory, manifest['schema'] == 2)
+        return can_reach(name, inventory, manifest['schema'] == 2, manifest.get('starting_flarlic', 2))
     start = START_AREAS[manifest['profile']][1]
     owned = color_inventory(inventory, manifest) if manifest['schema'] >= 4 else dict(inventory)
     moved_species = name == 'Bestiary: Spotty Bulborb' and manifest.get('enemy_mask', 0) & 2
@@ -208,7 +208,7 @@ def can_reach_manifest(name, inventory, manifest):
     if manifest['schema'] >= 5 and name in IMPACT_EXPLORATION:
         return IMPACT_EXPLORATION[name][1] == 'Land' or all(owned.get(c, 0) for c in (RED, YELLOW, BLUE))
     if manifest['schema'] >= 5 and name == POSITRON:
-        return all(owned.get(c, 0) for c in (RED, YELLOW, BLUE)) and field_capacity(owned) >= NATIVE_PART_WEIGHTS[27]
+        return all(owned.get(c, 0) for c in (RED, YELLOW, BLUE)) and field_capacity(owned, True, manifest.get('starting_flarlic', 2)) >= NATIVE_PART_WEIGHTS[27]
     # Evaluate existing conservative color/weight rules after area access.
     if manifest['schema'] >= 4:
         # Legacy routes assumed permanent red access. Preserve that assumption
@@ -223,7 +223,7 @@ def can_reach_manifest(name, inventory, manifest):
             return False
     for access in (NAVEL_ACCESS, SPRING_ACCESS, TRIAL_ACCESS):
         owned[access] = 1
-    return can_reach(name, owned, True)
+    return can_reach(name, owned, True, manifest.get('starting_flarlic', 2))
 
 
 def item_pool(manifest):

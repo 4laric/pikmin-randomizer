@@ -22,6 +22,8 @@ unsigned repairs = 0, unlocks = 0, flarlic = 0, schema = 1, checkCount = 30;
 int startStage = 1;
 int startColor = 1; // Native IDs: blue 0, red 1, yellow 2.
 unsigned enemyMask = 0;
+unsigned startingFlarlic = 2;
+bool configuredFlarlic = false;
 std::uint64_t checks = 0;
 std::string token, fingerprint, saveRoot;
 std::filesystem::path directory;
@@ -90,7 +92,13 @@ bool pc_randomizer_init(int argc, char** argv) {
         expect(input, "ENEMIES");
         if (!(input >> enemyMask) || (schema == 6 && enemyMask < 1) || enemyMask > 7) fail("invalid enemy permutation");
     }
-    expect(input, "END");
+    std::string end; input >> end;
+    if (end == "STARTING_FLARLIC") {
+        configuredFlarlic = true;
+        if (schema < 2 || !(input >> startingFlarlic) || startingFlarlic < 1 || startingFlarlic > 10) fail("invalid starting Flarlic");
+        input >> end;
+    }
+    if (end != "END") fail("unsupported or malformed bootstrap");
     std::string extra;
     if (input >> extra) fail("trailing bootstrap data");
     directory = std::filesystem::absolute(bootstrap).parent_path();
@@ -108,6 +116,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (schema >= 5) hello << " all-areas-v1";
     if (schema >= 6) hello << " enemy-families-v1";
     if (schema >= 7) hello << " total-population-v1 corpse-delivery-v1";
+    if (configuredFlarlic) hello << " starting-flarlic-v1";
     hello << " END\n";
     hello.close();
     if (!hello) fail("cannot write native handshake");
@@ -136,7 +145,7 @@ void pc_randomizer_update() {
     if (parsed && schema >= 2) parsed = bool(input >> newFlarlic);
     parsed = parsed && bool(input >> newChecks >> end);
     if (!parsed || magic != "PIKMIN_STATE" || version != schema || session != token || newReady > 1
-        || newRepairs > 25 || newUnlocks > (schema >= 5 ? 255u : schema == 4 ? 127u : schema == 3 ? 63u : 31u) || newFlarlic > 8 || newChecks >= (1ull << checkCount)
+        || newRepairs > 25 || newUnlocks > (schema >= 5 ? 255u : schema == 4 ? 127u : schema == 3 ? 63u : 31u) || newFlarlic > 10 - startingFlarlic || newChecks >= (1ull << checkCount)
         || end != "END" || (input >> extra))
         fail("invalid state: identity, version or range mismatch");
     // Inventory is monotonic within this authenticated run.
@@ -145,7 +154,7 @@ void pc_randomizer_update() {
     ready = newReady != 0;
     repairs = newRepairs;
     unlocks = newUnlocks;
-    if (flarlic != newFlarlic) std::printf("[Pikmin Randomizer] CAPACITY %u\n", 20 + 10 * newFlarlic);
+    if (flarlic != newFlarlic) std::printf("[Pikmin Randomizer] CAPACITY %u\n", 10 * (startingFlarlic + newFlarlic));
     flarlic = newFlarlic;
     checks |= newChecks;
     lastStamp = stamp;
@@ -217,7 +226,7 @@ void pc_randomizer_check(const char* name) {
 }
 
 bool pc_randomizer_expanded() { return enabled && schema >= 2; }
-int pc_randomizer_field_capacity() { return pc_randomizer_expanded() ? 20 + 10 * (int)flarlic : 100; }
+int pc_randomizer_field_capacity() { return pc_randomizer_expanded() ? 10 * (int)(startingFlarlic + flarlic) : 100; }
 namespace {
 bool accessibleStage(int stage) {
     return (stage == 0 && pc_randomizer_has("Pikmin: Impact Site Access")) || (stage == 1 && pc_randomizer_has("Pikmin: Forest of Hope Access")) || (stage == 2 && pc_randomizer_has("Pikmin: Forest Navel Access"))

@@ -124,7 +124,7 @@ class Session:
         checks = sum(1 << i for i, name in enumerate(self.names) if name in self.data["checked"])
         repairs = min(inventory[REPAIR], self.manifest["goal"])
         if self.manifest["schema"] >= 2:
-            flarlic = min(8, inventory[FLARLIC])
+            flarlic = min(10 - self.manifest.get("starting_flarlic", 2), inventory[FLARLIC])
             return f"PIKMIN_STATE {self.manifest['schema']} {token} {int(ready)} {repairs} {unlocks} {flarlic} {checks} END\n"
         return f"PIKMIN_STATE 1 {token} {int(ready)} {repairs} {unlocks} {checks} END\n"
 

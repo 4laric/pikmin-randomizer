@@ -42,12 +42,16 @@ class SeedRandom:
         return values
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None):
     result = dict(schema=1, game=GAME, seed=str(seed), slot=slot, mode=mode,
                   profile="foh-day2", catalog="vanilla-sites-v1", rng="sha256-counter-v1",
                   placement="identity-v1", assignments=dict(PART_IDS),
                   locations=dict(LOCATION_IDS), goal=REPAIR_COUNT, day_policy="repeat-day29-v1",
                   capabilities=list(CAPABILITIES))
+    if starting_flarlic is not None:
+        if type(starting_flarlic) is not int or not 1 <= starting_flarlic <= 10:
+            raise ValueError("starting_flarlic must be an integer from 1 to 10")
+        expanded = True
     if expanded:
         result.update(schema=2, catalog="gameplay-checks-v2", locations=dict(ALL_LOCATION_IDS),
                       capabilities=CAPABILITIES + EXPANDED_CAPABILITIES)
@@ -76,6 +80,9 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         result.update(schema=7, catalog='gameplay-checks-v7', locations=dict(COLLECTION_LOCATION_IDS),
                       enemy_shuffle=result.get('enemy_shuffle', 'none'), enemy_mask=result.get('enemy_mask', 0))
         result['capabilities'] = [c for c in result['capabilities'] if c not in ('population-v1', 'bestiary-v1', 'enemy-families-v1')] + ['enemy-families-v1', 'total-population-v1', 'corpse-delivery-v1']
+    if starting_flarlic is not None:
+        result["starting_flarlic"] = starting_flarlic
+        result["capabilities"].append("starting-flarlic-v1")
     validate(result)
     return result
 
@@ -87,6 +94,10 @@ def validate(m):
         expected.add('starting_color')
     if type(m) is dict and m.get('schema') in (6, 7):
         expected.update(('enemy_shuffle', 'enemy_mask'))
+    if type(m) is dict and "starting_flarlic" in m:
+        expected.add("starting_flarlic")
+        if type(m["starting_flarlic"]) is not int or not 1 <= m["starting_flarlic"] <= 10 or m.get("schema", 0) < 2:
+            raise ValueError("invalid starting_flarlic")
     if type(m) is not dict or set(m) != expected:
         raise ValueError("manifest fields do not match schema 1")
     if type(m["schema"]) is not int or m["schema"] not in (1, 2, 3, 4, 5, 6, 7):
@@ -115,6 +126,8 @@ def validate(m):
     if m['schema'] >= 7:
         fixed.update(catalog='gameplay-checks-v7', enemy_shuffle='families-v1' if m['enemy_mask'] else 'none',
                      capabilities=[c for c in fixed['capabilities'] if c not in ('population-v1', 'bestiary-v1')] + ['total-population-v1', 'corpse-delivery-v1'])
+    if "starting_flarlic" in m:
+        fixed["capabilities"] = fixed["capabilities"] + ["starting-flarlic-v1"]
     for key, value in fixed.items():
         if type(m[key]) is not type(value) or m[key] != value:
             raise ValueError(f"unsupported {key}: {m[key]!r}")

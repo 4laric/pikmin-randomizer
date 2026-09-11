@@ -1,6 +1,6 @@
 # Native source provenance
 
-`engine/` is a source-only snapshot of the isolated Open Nectar/BBFT-derived native checkout used for this randomizer, at native commit `33ce44c`. It includes the inherited native compatibility and adapter code, standalone randomizer integration, health-gauge fix, guarded day-end saves, and collection-check hooks. The native source history is retained locally; this directory is a snapshot, not a submodule.
+`engine/` is a source-only snapshot of the isolated Open Nectar/BBFT-derived native checkout used for this randomizer, at native commit `f06cd1e`. It includes the inherited native compatibility and adapter code, standalone randomizer integration, health-gauge fix, guarded day-end saves, collection-check hooks, and configurable starting Flarlic. The native source history is retained locally; this directory is a snapshot, not a submodule.
 
 Upstream: https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port (itself based on https://github.com/projectPiki/pikmin). The preserved local upstream boundary is `71db8405b78d5ae5765ac5d5f71d3305ca67c1ef`. Local BBFT-derived changes are included in the engine source; standalone play does not require the BBFT conductor or its separate repository.
 
