@@ -42,7 +42,7 @@ class SeedRandom:
         return values
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest"):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red"):
     result = dict(schema=1, game=GAME, seed=str(seed), slot=slot, mode=mode,
                   profile="foh-day2", catalog="vanilla-sites-v1", rng="sha256-counter-v1",
                   placement="identity-v1", assignments=dict(PART_IDS),
@@ -57,6 +57,12 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         selected = ("foh-day2", "navel-day2")[SeedRandom(str(seed) + "/start/" + slot).below(2)] if starting_area == "random" else "navel-day2"
         result.update(schema=3, profile=selected, catalog="gameplay-checks-v3", locations=dict(ALL_LOCATION_IDS),
                       capabilities=["identity-placement-v1", "random-start-v1", "repair-goal-v1", "repeat-day29-v1"] + EXPANDED_CAPABILITIES)
+    if starting_color != 'red':
+        if starting_color not in ('yellow', 'blue', 'random'):
+            raise ValueError('unsupported starting color')
+        color = ('red', 'yellow', 'blue')[SeedRandom(str(seed) + '/color/' + slot).below(3)] if starting_color == 'random' else starting_color
+        result.update(schema=4, starting_color=color, catalog='gameplay-checks-v4', locations=dict(ALL_LOCATION_IDS),
+                      capabilities=['identity-placement-v1', 'random-start-v1', 'repair-goal-v1', 'repeat-day29-v1'] + EXPANDED_CAPABILITIES + ['starting-color-v1'])
     validate(result)
     return result
 
@@ -64,9 +70,11 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
 def validate(m):
     expected = {"schema", "game", "seed", "slot", "mode", "profile", "catalog", "rng", "placement",
                 "assignments", "locations", "goal", "day_policy", "capabilities"}
+    if type(m) is dict and m.get('schema') == 4:
+        expected.add('starting_color')
     if type(m) is not dict or set(m) != expected:
         raise ValueError("manifest fields do not match schema 1")
-    if type(m["schema"]) is not int or m["schema"] not in (1, 2, 3):
+    if type(m["schema"]) is not int or m["schema"] not in (1, 2, 3, 4):
         raise ValueError("unsupported manifest schema")
     expanded = m["schema"] >= 2
     fixed = dict(schema=m["schema"], game=GAME, profile="foh-day2", catalog="vanilla-sites-v1",
@@ -74,11 +82,15 @@ def validate(m):
                  day_policy="repeat-day29-v1", capabilities=CAPABILITIES)
     if expanded:
         fixed.update(catalog="gameplay-checks-v2", capabilities=CAPABILITIES + EXPANDED_CAPABILITIES)
-    if m['schema'] == 3:
+    if m['schema'] >= 3:
         if m['profile'] not in ('foh-day2', 'navel-day2'):
             raise ValueError('unsupported start profile')
         fixed.update(profile=m['profile'], catalog='gameplay-checks-v3',
                      capabilities=['identity-placement-v1', 'random-start-v1', 'repair-goal-v1', 'repeat-day29-v1'] + EXPANDED_CAPABILITIES)
+    if m['schema'] == 4:
+        if m['starting_color'] not in ('red', 'yellow', 'blue'):
+            raise ValueError('unsupported starting color')
+        fixed.update(catalog='gameplay-checks-v4', capabilities=fixed['capabilities'] + ['starting-color-v1'])
     for key, value in fixed.items():
         if type(m[key]) is not type(value) or m[key] != value:
             raise ValueError(f"unsupported {key}: {m[key]!r}")

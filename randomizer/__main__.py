@@ -14,6 +14,7 @@ def main():
     gen.add_argument("--seed", required=True)
     gen.add_argument("--expanded", action="store_true", help="Flarlic, population, bestiary and exploration checks")
     gen.add_argument('--starting-area', choices=['forest', 'navel', 'random'], default='forest', help='Random/navel enables expanded checks')
+    gen.add_argument('--starting-color', choices=['red', 'yellow', 'blue', 'random'], default='red', help='Non-default enables expanded checks')
     gen.add_argument("--slot", default="Player1")
     gen.add_argument("--mode", choices=["solo", "ap"], default="solo")
     gen.add_argument("--output", type=Path, required=True)
@@ -31,11 +32,11 @@ def main():
     status.add_argument("--output", type=Path)
     args = parser.parse_args()
     if args.command == "generate":
-        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area)
+        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8") as f:
             f.write(json.dumps(manifest, indent=2) + "\n")
-        print(f"Created {args.output}: {len(manifest['locations'])} checks; start {manifest['profile']}; goal 25 repairs; physical placements pinned")
+        print(f"Created {args.output}: {len(manifest['locations'])} checks; start {manifest['profile']} / {manifest.get('starting_color', 'red')}; goal 25 repairs; physical placements pinned")
     else:
         manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
         validate(manifest)

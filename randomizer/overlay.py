@@ -8,7 +8,7 @@ from pathlib import Path
 import time
 import tkinter as tk
 
-from .catalog import ITEM_IDS, REPAIR, YELLOW, BLUE, field_capacity
+from .catalog import ITEM_IDS, REPAIR, RED, YELLOW, BLUE, field_capacity, color_inventory
 from .seed import fingerprint, solo_rewards
 
 
@@ -95,9 +95,9 @@ def main(manifest_path, session_path, pid):
             canvas.delete('all')
             events, cap, repairs = state
             draw(f'FIELD CAP {cap}    REPAIRS {repairs}/25', 8, '#bce8da', 12)
-            owned = {item for _, item in events}
+            owned = color_inventory(Counter(item for _, item in events), manifest)
             for index, (label, color, unlocked) in enumerate((
-                    ('RED', '#ff7979', True), ('YELLOW', '#ffe17b', YELLOW in owned),
+                    ('RED', '#ff7979', RED in owned), ('YELLOW', '#ffe17b', YELLOW in owned),
                     ('BLUE', '#7fbcff', BLUE in owned))):
                 x = 14 + index * 138
                 canvas.create_oval(x, 41, x+16, 57, fill=color if unlocked else '#27313c',

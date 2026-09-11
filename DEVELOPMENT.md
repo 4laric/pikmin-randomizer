@@ -49,7 +49,19 @@ Build `output/pikmin_randomizer.apworld` and install it into a separate AP setup
 
 ## Expanded checks (opt-in)
 
-### Randomized starting area
+### Randomized starting color (schema 4)
+
+Add `--starting-color random` to generation, or choose `red`, `yellow`, or `blue`. In AP use `starting_color: randomized` (or a named color). Non-default color options enable expanded checks. Area and color use separate deterministic streams; selecting a color does not reroll the area. The chosen color is recorded explicitly in schema 4. Schemas 1-3 retain red starts and their existing reward layouts.
+
+The selected Onion starts owned with 20 stored Pikmin, then withdraws the matching squad through native Onion behavior. The other two Onion unlocks are shuffled; non-red starts introduce Red Onion while removing the starting color's unlock from the pool. Received other-color unlocks grant five stored Pikmin once. When no camp Onion actor exists in the current area, that stock becomes usable on a subsequent landing. The overlay always counts the selected starting color as owned and does not assume red access.
+
+Logic conservatively requires red for ship parts, scouting and Navel bestiary approaches because legacy routes assumed permanent red access. Non-red Navel starts cannot use population checks above 20 in logic until red or Forest of Hope access is obtained. These restrictions can be relaxed only after fire-free routes and breeding access are audited. Native hazards retain their original behavior. This feature does not implement full campaign resume/extinction recovery.
+
+Tests cover 300 randomized solo seeds across all six area/color combinations, red item receipts and session recovery, 900 AP single-slot fills and one mixed-color two-slot fill. `scripts/test_starting_color_matrix.py` exercises native starts with synthetic receipts for the other colors; it does not certify physical breeding or day/area transitions. Gameplay acceptance remains tracked in issue #18.
+
+All six production native startup tests pass (`output/start-color-matrix.log`): selected area renders, matching 20-Pikmin squad deploys, other colors grant five once, starting color receives no extra grant, and only the expected starting checks fire. 23 Python tests, both legacy native protocol probes and three targeted BBFT/audio regressions also pass. A fresh example package is `output/turkey-spin-05/Play.cmd` (Navel/blue).
+
+### Starting area options
 
 Use `python -m randomizer generate --starting-area random --seed my-seed --output output/my-seed.json`.
 AP option: `starting_area: randomized` (also `forest` or `navel`). Randomized/Navel starts automatically enable expanded checks and schema 3. Supported random pool: Forest of Hope and Forest Navel, with deterministic selection from seed and slot. Spring and Trial starts are disabled pending opening audits. The selected profile is recorded in the manifest; old schema-1/2 seeds remain unchanged.

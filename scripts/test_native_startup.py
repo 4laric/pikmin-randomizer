@@ -10,11 +10,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from randomizer.seed import generate
 from randomizer.session import Session
 from randomizer.runner import NativeRun
-from randomizer.catalog import UNLOCKS, ITEM_IDS, REPAIR, FOREST_ACCESS, NAVEL_ACCESS
+from randomizer.catalog import UNLOCKS, ITEM_IDS, REPAIR, FOREST_ACCESS, NAVEL_ACCESS, progression_pool, FLARLIC
 
 
-def main(exe, assets, output, expanded=False, starting_area='forest', seed='startup-smoke'):
-    session = Session(generate(seed, "ap", expanded=expanded, starting_area=starting_area), output)
+def main(exe, assets, output, expanded=False, starting_area='forest', seed='startup-smoke', starting_color='red'):
+    session = Session(generate(seed, "ap", expanded=expanded, starting_area=starting_area, starting_color=starting_color), output)
+    color = session.manifest.get('starting_color', 'red')
+    native_color = {'blue': 0, 'red': 1, 'yellow': 2}[color]
     navel = session.manifest['profile'] == 'navel-day2'
     expanded = session.manifest['schema'] >= 2
     session.bind_ap("synthetic-native-smoke", 0, 1)
@@ -37,13 +39,14 @@ def main(exe, assets, output, expanded=False, starting_area='forest', seed='star
                     if marker in log.read_text(encoding="utf-8", errors="replace"): return
                     time.sleep(.1)
                 raise AssertionError(f"timeout: {marker}; {log}")
-            wait(f"START_READY stage={2 if navel else 1} field_red=20")
+            wait(f"START_COLOR_READY stage={2 if navel else 1} color={native_color} field=20")
             wait("PIKMIN_WORLD_RENDERED")
             wait(f"PIKMIN_AREA_ACCESS impact=0 forest={0 if navel else 1} navel={1 if navel else 0} spring=0 trial=0")
-            for i, item in enumerate(tuple(FOREST_ACCESS if navel and item == NAVEL_ACCESS else item for item in UNLOCKS)):
+            grants = [item for item in progression_pool(session.manifest) if item != FLARLIC]
+            for i, item in enumerate(grants):
                 session.receive(i, [ITEM_IDS[item]])
                 if i < 2:
-                    wait(f"PIKMIN_{'YELLOW' if i == 0 else 'BLUE'}_ONION_GRANTED starter=5")
+                    wait(f"PIKMIN_{item.split()[0].upper()}_ONION_GRANTED starter=5")
             wait("PIKMIN_AREA_ACCESS impact=0 forest=1 navel=1 spring=1 trial=1")
             session.receive(5, [ITEM_IDS[REPAIR]] * 25)
             wait("GOAL: Ship repaired!")
@@ -52,10 +55,11 @@ def main(exe, assets, output, expanded=False, starting_area='forest', seed='star
             expected = {'Population: 20 Pikmin in the field', f'Explore: {area} - Land'} if expanded else set()
             assert set(session.data['checked']) == expected, session.data['checked']
             text = log.read_text(encoding="utf-8", errors="replace")
-            for color in ("YELLOW", "BLUE"):
-                assert text.count(f"PIKMIN_{color}_ONION_GRANTED starter=5") == 1
+            for item in grants[:2]:
+                assert text.count(f"PIKMIN_{item.split()[0].upper()}_ONION_GRANTED starter=5") == 1
+            assert f'PIKMIN_{color.upper()}_ONION_GRANTED starter=5' not in text
             assert 'TEST_ONLY' not in text, 'test fixtures enabled unexpectedly'
-            print(f"PASS native startup: rendered {area}, 20 field reds, color grants, area gates, received-repair goal; expected checks only", sorted(expected))
+            print(f"PASS native startup: {area}, 20 {color} Pikmin, other color grants exactly once, area gates, goal; expected checks only", sorted(expected), flush=True)
             print(log)
         finally:
             if process.poll() is None: process.terminate();process.wait(timeout=10)
@@ -67,4 +71,5 @@ if __name__ == "__main__":
     p.add_argument('--expanded', action='store_true')
     p.add_argument('--starting-area', choices=['forest', 'navel', 'random'], default='forest')
     p.add_argument('--seed', default='startup-smoke')
-    a=p.parse_args();main(a.exe,a.assets,a.output.resolve(),a.expanded,a.starting_area,a.seed)
+    p.add_argument('--starting-color', choices=['red', 'yellow', 'blue', 'random'], default='red')
+    a=p.parse_args();main(a.exe,a.assets,a.output.resolve(),a.expanded,a.starting_area,a.seed,a.starting_color)

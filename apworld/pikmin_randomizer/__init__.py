@@ -26,10 +26,21 @@ class StartingArea(Choice):
     default = 0
 
 
+class StartingColor(Choice):
+    """Starting Onion and 20 Pikmin. Non-default enables expanded checks."""
+    display_name = 'Starting Color'
+    option_red = 0
+    option_yellow = 1
+    option_blue = 2
+    option_randomized = 3
+    default = 0
+
+
 @dataclass
 class PikminOptions(PerGameCommonOptions):
     expanded_checks: ExpandedChecks
     starting_area: StartingArea
+    starting_color: StartingColor
 
 
 class PikminItem(Item):
@@ -82,7 +93,8 @@ class PikminRandomizerWorld(World):
         if not hasattr(self, '_manifest'):
             self._manifest = generate(str(self.multiworld.seed_name), "ap", self.multiworld.player_name[self.player],
                             expanded=bool(self.options.expanded_checks),
-                            starting_area=('forest', 'navel', 'random')[self.options.starting_area.value])
+                            starting_area=('forest', 'navel', 'random')[self.options.starting_area.value],
+                            starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value])
         return self._manifest
 
     def fill_slot_data(self):

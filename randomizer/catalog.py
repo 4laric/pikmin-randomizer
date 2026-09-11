@@ -75,6 +75,18 @@ FLARLIC = "Progressive Flarlic"
 ITEM_IDS[FLARLIC] = ITEM_BASE + 6
 FOREST_ACCESS = "Pikmin: Forest of Hope Access"
 ITEM_IDS[FOREST_ACCESS] = ITEM_BASE + 7
+RED = 'Red Onion'
+ITEM_IDS[RED] = ITEM_BASE + 8
+
+
+def starting_color(manifest):
+    return manifest.get('starting_color', 'red')
+
+
+def color_inventory(inventory, manifest):
+    owned = dict(inventory)
+    owned[{'red': RED, 'yellow': YELLOW, 'blue': BLUE}[starting_color(manifest)]] = 1
+    return owned
 POPULATION = {f"Population: {n} Pikmin in the field": n for n in range(20, 101, 10)}
 BESTIARY = {
     "Bestiary: Dwarf Bulborb": (3, ()),
@@ -128,6 +140,8 @@ def progression_pool(manifest):
     unlocks = list(UNLOCKS)
     if manifest.get('profile') == 'navel-day2':
         unlocks[unlocks.index(NAVEL_ACCESS)] = FOREST_ACCESS
+    if starting_color(manifest) != 'red':
+        unlocks[unlocks.index({'yellow': YELLOW, 'blue': BLUE}[starting_color(manifest)])] = RED
     return unlocks + ([FLARLIC] * 8 if manifest["schema"] >= 2 else [])
 
 
@@ -141,7 +155,18 @@ def can_reach_manifest(name, inventory, manifest):
         if area != start and not inventory.get(access, 0):
             return False
     # Evaluate existing conservative color/weight rules after area access.
-    owned = dict(inventory)
+    owned = color_inventory(inventory, manifest) if manifest['schema'] >= 4 else dict(inventory)
+    if manifest['schema'] >= 4:
+        # Legacy routes assumed permanent red access. Preserve that assumption
+        # explicitly until individual fire-free part/scout routes are audited.
+        needs_red = name in PART_IDS or (name in EXPLORATION and EXPLORATION[name][1] == 'Scout') or name == 'Bestiary: Fiery Blowhog'
+        if name in BESTIARY and check_area(name) == 'The Forest Navel':
+            needs_red = True  # The approaches were only modeled with reds available.
+        # Do not assume non-red Navel squads can farm beyond their starting 20.
+        if name in POPULATION and POPULATION[name] > 20 and start == 'The Forest Navel':
+            needs_red = not inventory.get(FOREST_ACCESS, 0)
+        if needs_red and not owned.get(RED, 0):
+            return False
     for access in (NAVEL_ACCESS, SPRING_ACCESS, TRIAL_ACCESS):
         owned[access] = 1
     return can_reach(name, owned, True)
