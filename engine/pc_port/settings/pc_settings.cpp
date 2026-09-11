@@ -94,12 +94,12 @@ struct PcConfig {
     int dayMinutes = 10;
     // Colour grading. Neutral by default: the port should look like the game
     // until someone asks otherwise.
-    int antialiasing = 0;   // 0 off, 1 FXAA
+    int antialiasing = 1;   // Enhanced defaults: FXAA, subtle bloom, 8x filtering
     int fog = 1;            // the game's own fog, on by default
-    int bloom = 0;          // 0 off, 1 subtle, 2 normal, 3 strong
+    int bloom = 1;          // 0 off, 1 subtle, 2 normal, 3 strong
     int ssao = 0;           // 0 off, 1 subtle, 2 normal, 3 strong
     int dof = 0;            // 0 off, 1 subtle, 2 normal, 3 strong
-    int anisotropy = 0;     // 0 off, else 2/4/8/16 samples
+    int anisotropy = 8;     // 0 off, else 2/4/8/16 samples
     int colourGrading = 0;
     float gamma       = 1.0f;
     float brightness  = 0.0f;
@@ -127,12 +127,12 @@ struct PcConfig {
         mouseWheelAction = 0;
         pikiLimit = 100;
         dayMinutes = 10;
-        antialiasing  = 0;
+        antialiasing  = 1;
         fog           = 1;
-        bloom         = 0;
+        bloom         = 1;
         ssao          = 0;
         dof           = 0;
-        anisotropy    = 0;
+        anisotropy    = 8;
         colourGrading = 0;
         gamma         = 1.0f;
         brightness    = 0.0f;

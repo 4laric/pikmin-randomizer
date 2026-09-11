@@ -356,3 +356,8 @@ Validation: production build with test hooks OFF passes; isolated grouped startu
 
 Native 4ddb72cd resolves the original eight corpse checks by stable collection names instead of positions in the active catalog. Color population milestones had shifted those positions, causing a Bulborb to award Wogpole. Expanded bestiary protocol now exercises all nineteen species and rejects premature Wogpole credit; both modern check sets and legacy collection protocol pass. Existing session rewards/history are preserved rather than retroactively rewritten.
 Production build and isolated grouped Hope/Spring startup also pass (output/corpse55-startup). Both local mixed/groups launchers use nectar-corpse-fix.exe on next launch; running game remains untouched.
+
+## Enhanced graphics defaults (#56)
+
+Native 88557248 sets both PcConfig initializers and applyDefaults to the Enhanced preset: FXAA, subtle bloom, 8x anisotropy, original fog and neutral grading. Config loading still overlays saved preferences; reset-to-defaults also selects Enhanced. Source comparison against graphicsPresetFor/applyGraphicsPreset confirms matching values.
+Production build passes with hooks OFF; fresh isolated Hope/Spring grouped startup renders and handshakes (output/enhanced56-startup). Both local playtest launchers point to nectar-enhanced.exe on next launch. Saved configs and active game preserved; no visual-quality benchmark performed.

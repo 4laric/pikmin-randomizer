@@ -32,7 +32,7 @@ All-five-area disk/cache audits, actual mixed births, generation and AP reachabi
 
 ## Graphics presets
 
-Open F1, choose Graphics, and select Original or Enhanced with Left/Right. Enhanced adds FXAA, 8x anisotropic filtering and subtle bloom while retaining original fog and neutral colors. Save to retain changes; closing without saving restores the previous graphics. Individual changes show Custom. Resolution and gameplay settings are preserved.
+Fresh settings now default to Enhanced (FXAA, 8x anisotropy and subtle bloom). Saved preferences are preserved. Open F1, choose Graphics, and select Original or Enhanced with Left/Right. Enhanced adds FXAA, 8x anisotropic filtering and subtle bloom while retaining original fog and neutral colors. Save to retain changes; closing without saving restores the previous graphics. Individual changes show Custom. Resolution and gameplay settings are preserved.
 
 ## Useful rewards (v0.17.0)
 
