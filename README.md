@@ -15,6 +15,14 @@ Experimental standalone and Archipelago randomizer for Pikmin 1, built on Open N
 
 The current native build fixes a boss-generator decoding bug that turned Snagrets, geysers, beetles and other entries into Beady Long Legs on PC. Rebuild or use the corrected package; changing a seed alone cannot fix an older executable.
 
+## Enemy layout and progression (v0.15.0)
+
+Enemy-family swaps were already deterministic in `enemy_mask`. New seeds additionally contain a versioned `enemy_layout` describing the resulting species sources, protected spawns and earliest campaign days. All 19 bestiary rules use those sources rather than fixed area assumptions. Changing a mask without updating the matching layout is rejected. Native still consumes the same saved mask; it does not reroll on launch.
+
+For example, swapping adult Bulborbs/Bulbears moves the Bulborb check to Distant Spring and the Bulbear check to Forest of Hope. Protected Dwarf Bulborbs remain available in Hope even when unprotected dwarfs swap. Later sources also count: unshuffled Dwarf Bulbears appear in Spring from day 16, and Snitchbugs have sources in both Hope and Spring. The status report lists source areas and later-day availability. Logic assumes days can be advanced under the existing repeat-day policy; the schedule is not a new item gate.
+
+Return routes conservatively require all three colors. Carry requirements use the actual species' native corpse weight and the weakest owned/rolled carrying strength among those required colors; damage and movement upgrades do not bypass area/color access. The pool still has 59/120 checks. Older manifests without `enemy_layout` retain their previous logic; generate a fresh seed for the revised rules.
+
 ## No exploration rewards (v0.14.0)
 
 New collection-mode seeds award neither landing nor scout checks. There are **59 checks**, or **120 with permanent structures**, including all 19 bestiary checks. Population milestones supply opening checks; the repair goal remains 25. Existing seeds retain their saved catalogs, including any landing checks. Use the new native build and a fresh seed for this change.

@@ -100,6 +100,9 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
     if progressive_color_stats:
         result['progressive_color_stats'] = True
         result['capabilities'].append('progressive-color-stats-v1')
+    if result['schema'] == 9:
+        from .enemies import resolve_layout
+        result['enemy_layout'] = resolve_layout(result['enemy_mask'])
     validate(result)
     return result
 
@@ -117,6 +120,16 @@ def validate(m):
             expected.add('no_exploration')
             if m['no_exploration'] is not True: raise ValueError('invalid no_exploration')
         if type(m.get('permanent_checks')) is not bool: raise ValueError('invalid permanent_checks')
+    if type(m) is dict and 'enemy_layout' in m:
+        expected.add('enemy_layout')
+        from .enemies import resolve_layout, sources_for
+        from .catalog import BESTIARY_TARGETS
+        if m.get('schema') != 9 or type(m.get('enemy_mask')) is not int or not 0 <= m['enemy_mask'] <= 7:
+            raise ValueError('enemy layout requires schema 9 and a valid seed mask')
+        if canonical(m['enemy_layout']) != canonical(resolve_layout(m['enemy_mask'])):
+            raise ValueError('enemy layout disagrees with seeded permutation/source catalog')
+        if any(not sources_for(m['enemy_layout'], species) for species, _ in BESTIARY_TARGETS.values()):
+            raise ValueError('bestiary species has no source in enemy layout')
     if type(m) is dict and "starting_flarlic" in m:
         expected.add("starting_flarlic")
         if type(m["starting_flarlic"]) is not int or not 1 <= m["starting_flarlic"] <= 10 or m.get("schema", 0) < 2:

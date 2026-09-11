@@ -56,3 +56,5 @@ Native `6a3ef245` replaces implementation-defined GenObjectBoss bitfields with e
 Corrected production executable (TEST_HOOKS OFF): `output/turkey-bossfix-01/bin/nectar.exe`, SHA-256 `F925414EC4A8DCA6E3C8E47BF6FC4BDA47135CEB55B9D05FBFB4E6675778AF23`. New packages should use this build or rebuild current source.
 
 Boss fix upstream submission: [PR #4](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port/pull/4), OPEN, commit `68d3c567`, based on freshly fetched upstream `18ce1303`. One source file, 13 insertions / 39 deletions. The two methods match the downstream native-tested implementation; randomizer logging/fixtures are excluded. PR explicitly distinguishes downstream gameplay evidence from an unvalidated clean upstream build.
+
+Issue #36 updates Python/AP source-aware bestiary logic and versioned seed enemy layouts; native remains `6a3ef245` with the existing family mask. Validated all masks against the native probe and audited retail source/protection facts. `output/turkey-layout-01` reuses the current boss-fixed production executable. No native/upstream source integration was performed for this change.

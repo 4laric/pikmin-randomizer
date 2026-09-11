@@ -63,7 +63,7 @@ def main():
                 from .stats import profile_lines
                 if "color_stats" in manifest or manifest.get("progressive_color_stats"):
                     lines += ["## Color profiles", ""] + profile_lines(manifest, session.inventory) + [""]
-                from .catalog import TOTAL_POPULATION, DELIVERY_BESTIARY, FINE_POPULATION, OBSTACLES, NEW_BESTIARY
+                from .catalog import TOTAL_POPULATION, DELIVERY_BESTIARY, FINE_POPULATION, OBSTACLES, NEW_BESTIARY, bestiary_sources, START_AREAS
                 for category, entries in (("Parts and Onions", NAMES + (POSITRON,)), ("Population", FINE_POPULATION if manifest['schema'] >= 8 else TOTAL_POPULATION if manifest['schema'] >= 7 else POPULATION),
                                           ("Bestiary - deliveries and defeats" if manifest['schema'] >= 7 else "Bestiary - first defeats", ({**DELIVERY_BESTIARY, **NEW_BESTIARY}) if manifest['schema'] >= 7 else BESTIARY), ("Exploration", ALL_EXPLORATION), ("Permanent obstacles", OBSTACLES)):
                     enabled = [n for n in entries if n in session.names]
@@ -72,6 +72,13 @@ def main():
                     for name in enabled:
                         available = can_reach_manifest(name, session.inventory, manifest)
                         suffix = "" if name in checked else (" - available in logic" if available else " - needs progression")
+                        sources = bestiary_sources(name, manifest)
+                        if sources:
+                            stages = {}
+                            for row in sources: stages[row['stage']] = min(stages.get(row['stage'], 999), row['first_day'])
+                            descriptions = [next(area for sid, area, _ in START_AREAS.values() if sid == stage)
+                                + (f" (day {day}+)" if day > 2 else '') for stage, day in sorted(stages.items())]
+                            suffix += ' — sources: ' + ', '.join(descriptions)
                         lines.append(f"- [{'x' if name in checked else ' '}] {name}{suffix}")
                     lines.append("")
                 text = "\n".join(lines)

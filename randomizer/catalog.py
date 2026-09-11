@@ -161,6 +161,18 @@ def modern_names(permanent, no_exploration=False):
     names = MODERN_PERMANENT_NAMES if permanent else MODERN_COLLECTION_NAMES
     return tuple(n for n in names if not n.startswith('Explore:')) if no_exploration else names
 
+# Corpse minima verified through native PelletConfig, including legacy species.
+BESTIARY_WEIGHTS = {3: 3, 4: 10, 18: 1, 19: 1, 20: 1, 15: 7, 30: 5, 33: 7}
+BESTIARY_TARGETS = {name: (BESTIARY[legacy][0], BESTIARY_WEIGHTS[BESTIARY[legacy][0]])
+                    for name, legacy in DELIVERY_BESTIARY.items()}
+BESTIARY_TARGETS.update({name: (row[0], row[2]) for name, row in NEW_BESTIARY.items()})
+
+
+def bestiary_sources(name, manifest):
+    from .enemies import sources_for
+    if name not in BESTIARY_TARGETS or 'enemy_layout' not in manifest: return []
+    return sources_for(manifest['enemy_layout'], BESTIARY_TARGETS[name][0])
+
 # Filled from the native loaded pellet config audit, not the maximum carrier count.
 NATIVE_PART_WEIGHTS = {0: 30, 1: 50, 2: 40, 3: 40, 4: 20, 5: 20, 6: 20, 7: 20, 8: 20, 9: 30, 10: 15, 11: 20, 12: 15, 13: 30, 14: 15, 15: 15, 16: 30, 17: 25, 18: 25, 19: 30, 20: 15, 21: 30, 22: 30, 23: 20, 24: 25, 25: 30, 26: 40, 27: 20, 28: 20, 29: 10}
 PART_WEIGHTS = {name: NATIVE_PART_WEIGHTS[part] for name, part in PART_IDS.items()}
@@ -221,6 +233,18 @@ def route_strength(name, manifest, inventory=None):
 
 
 def can_reach_manifest(name, inventory, manifest):
+    if 'enemy_layout' in manifest and name in BESTIARY_TARGETS:
+        if name not in active_names(manifest): return False
+        owned = color_inventory(inventory, manifest)
+        if not all(owned.get(c, 0) for c in (RED, YELLOW, BLUE)): return False
+        profiles = current_profiles(manifest, inventory)
+        strength = min(row['carry'] for row in profiles.values()) if profiles else 1
+        if field_capacity(inventory, True, manifest.get('starting_flarlic', 2)) * strength < BESTIARY_TARGETS[name][1]: return False
+        start = START_AREAS[manifest['profile']][0]
+        for row in bestiary_sources(name, manifest):
+            access = next(access for stage, _, access in START_AREAS.values() if stage == row['stage'])
+            if row['stage'] == start or inventory.get(access, 0): return True
+        return False
     if manifest['schema'] >= 9:
         if name not in active_names(manifest): return False
         if name in NEW_BESTIARY:

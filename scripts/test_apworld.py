@@ -77,6 +77,19 @@ def main(ap):
             assert len(mw.get_locations()) > 64
             distribute_items_restrictive(mw)
             assert mw.can_beat_game() and not mw.get_unfilled_locations()
+        # Explicitly fill every enemy permutation across all starts/colors.
+        from randomizer.enemies import resolve_layout
+        for mask in range(8):
+            for area in (0, 1, 3, 4, 5):
+                for color in range(3):
+                    mw = setup_multiworld(mod.PikminRandomizerWorld, seed=1000 + mask*100 + area*10 + color,
+                        options={'enemy_shuffle': True, 'permanent_checks': True, 'progressive_color_stats': True,
+                                 'randomize_color_stats': True, 'starting_area': area, 'starting_color': color})
+                    m = mw.worlds[1].manifest()
+                    m['enemy_mask'] = mask; m['enemy_shuffle'] = 'families-v1' if mask else 'none'
+                    m['enemy_layout'] = resolve_layout(mask); validate(m)
+                    distribute_items_restrictive(mw)
+                    assert mw.can_beat_game() and not mw.get_unfilled_locations(), (mask,area,color)
         # A two-slot fill exercises cross-player rewards instead of only solo AP.
         for seed in range(100):
             mw = setup_multiworld(mod.PikminRandomizerWorld, seed=seed,
@@ -116,7 +129,20 @@ def main(ap):
         assert part.can_reach(initial)
         distribute_items_restrictive(mw)
         assert mw.can_beat_game() and not mw.get_unfilled_locations()
-        print(f"Packaged AP world: {len(configs)*100+200} single-slot fills plus 60 starting-Flarlic, 100 color-stat, 100 progressive-stat and 100 permanent-check fills; remote-Blue and remote-Carry two-slot fills pass")
+        # Remote area access gates the species moved there by the seed's swap.
+        mw = setup_multiworld([mod.PikminRandomizerWorld] * 2, seed=369,
+            options=[{'enemy_shuffle': True, 'collection_checks': True}, {'collection_checks': True}])
+        m=mw.worlds[1].manifest(); m['enemy_mask']=2; m['enemy_shuffle']='families-v1'; m['enemy_layout']=resolve_layout(2)
+        access=next(item for item in mw.itempool if item.player==1 and item.name=='Pikmin: Distant Spring Access')
+        mw.itempool.remove(access)
+        remote=mw.get_location('Population: 20 total Pikmin',2); remote.place_locked_item(access)
+        initial=CollectionState(mw)
+        for name in ('Yellow Onion','Blue Onion'): initial.collect(mw.worlds[1].create_item(name),True)
+        moved=mw.get_location('Bestiary: Deliver Spotty Bulborb',1)
+        assert not moved.can_reach(initial) and remote.can_reach(initial)
+        initial.collect(access,True); assert moved.can_reach(initial)
+        distribute_items_restrictive(mw); assert mw.can_beat_game() and not mw.get_unfilled_locations()
+        print(f"Packaged AP world: {len(configs)*100+200} single-slot fills plus 60 starting-Flarlic, 100 color-stat, 100 progressive-stat and 100 permanent-check fills, plus 120 explicit enemy-layout fills; remote-Blue, remote-Carry and remote-enemy-area two-slot fills pass")
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser();p.add_argument("ap", type=Path);main(p.parse_args().ap)

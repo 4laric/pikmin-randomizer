@@ -11,7 +11,7 @@ def build(output):
         for name in ("__init__.py", "archipelago.json"):
             archive.write(ROOT / "apworld/pikmin_randomizer" / name, "pikmin_randomizer/" + name)
         archive.writestr("pikmin_randomizer/core/__init__.py", "")
-        for name in ("catalog.py", "seed.py", "stats.py", "obstacles.py"):
+        for name in ("catalog.py", "seed.py", "stats.py", "obstacles.py", "enemies.py"):
             archive.write(ROOT / "randomizer" / name, "pikmin_randomizer/core/" + name)
     return output
 

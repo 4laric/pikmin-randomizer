@@ -5,6 +5,7 @@ import sys
 import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from randomizer.seed import generate
+from randomizer.enemies import resolve_layout
 from randomizer.runner import NativeRun
 from randomizer.session import Session
 
@@ -22,6 +23,8 @@ for mask in range(8):
         for bit, (a, b) in enumerate(((3, 31), (4, 32), (18, 19))):
             if mask & (1 << bit): expected[a], expected[b] = b, a
         assert actual == expected
+        for row in resolve_layout(mask)['sources']:
+            assert row['actual'] == (row['original'] if row['protected'] else actual[row['original']])
         run.poll()
         assert run.handshaken
 print('PASS native enemy permutations: all seven masks, opt-out, protected spawns, and all 35 type IDs')
