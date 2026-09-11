@@ -9,9 +9,10 @@ from randomizer.enemy_slots import verify_source_assets
 p=argparse.ArgumentParser()
 for name in ('exe','assets','output'):p.add_argument('--'+name,type=Path,required=True)
 p.add_argument('--groups',action='store_true')
+p.add_argument('--miniboss',action='store_true')
 a=p.parse_args();verify_source_assets(a.assets)
 for area in ('forest','spring'):
-    m=generate('slot-production-'+area,'ap',per_spawn_enemies=True,group_spawn_enemies=a.groups,starting_area=area,starting_color='yellow',starting_flarlic=1)
+    m=generate('slot-production-'+area,'ap',per_spawn_enemies=True,group_spawn_enemies=a.groups,miniboss_enemies=a.miniboss,starting_area=area,starting_color='yellow',starting_flarlic=1)
     s=Session(m,a.output.resolve()/area);r=NativeRun(s);r.write_state(True)
     _winapi.CreateJunction(str(a.assets.resolve()),str(r.directory/'assets'))
     env=dict(os.environ,PIKMIN_RANDOMIZER_TEST_BACKGROUND='1',SDL_AUDIODRIVER='dummy')
@@ -39,7 +40,9 @@ for area in ('forest','spring'):
                     adults.append(int(fields['actual']))
                 elif int(fields['uid']) in choices:assert choices[int(fields['uid'])]==int(fields['actual'])
                 else:assert fields['original']==fields['actual']
-            assert set(adults)=={4,32} and r.handshaken and 'TEST_ONLY' not in text
+            assert {4,32} <= set(adults) and r.handshaken and 'TEST_ONLY' not in text
+            if not a.miniboss: assert set(adults)=={4,32}
+            print('Born species:', sorted(set(adults)),flush=True)
             print('PASS production',area,'mixed adult births match seed; yellow cap 10, rendered, handshake',flush=True)
         finally:
             if process.poll() is None:process.terminate();process.wait(timeout=10)

@@ -16,7 +16,7 @@ class ProgressiveStatsTests(unittest.TestCase):
             pool = Counter(item_pool(m))
             self.assertEqual(pool['Ship Repair'], 25)
             self.assertEqual(len(upgrade_pool()), 18)
-            self.assertEqual(sum(pool.values()), 77)
+            self.assertEqual(sum(pool.values()), 62)
             spheres(solo_rewards(m), m)
 
     def test_only_owned_carry_affects_logic(self):

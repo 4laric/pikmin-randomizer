@@ -28,4 +28,4 @@ for permanent in (False, True):
                 assert set(s.data['checked']) == expected
                 assert len((r.directory / 'checks.txt').read_text().splitlines()) == len(expected)
                 assert Session(m, d).data['checked'] == s.data['checked']
-print('PASS: 12 native cases; separate colors, locked Onions, 19/20/500 thresholds, cap 10, gating and replay')
+print('PASS: 12 native cases; separate colors, locked Onions, 9/10/100 thresholds, cap 10, gating and replay')

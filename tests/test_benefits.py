@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from collections import Counter
 from randomizer.benefits import BENEFIT_ITEMS, WHISTLE, PLUCK, DELIVERY, FLOWERS, HEAL
-from randomizer.catalog import item_pool, REPAIR, ITEM_IDS, can_reach_manifest
+from randomizer.catalog import MODERN_LOCATION_IDS, modern_names, item_pool, REPAIR, ITEM_IDS, can_reach_manifest
 from randomizer.seed import generate, validate, solo_rewards, spheres
 from randomizer.session import Session
 from randomizer.runner import NativeRun
@@ -18,7 +18,8 @@ class BenefitTests(unittest.TestCase):
                 pool = Counter(item_pool(m))
                 self.assertEqual(pool[REPAIR], 25)
                 self.assertEqual((pool[WHISTLE], pool[PLUCK]), (2, 2))
-                self.assertTrue(all(pool[n] for n in BENEFIT_ITEMS))
+                self.assertEqual(pool[HEAL], 0)
+                self.assertTrue(all(pool[n] for n in (WHISTLE, PLUCK)))
                 self.assertEqual(sum(pool.values()), len(m['locations']))
                 rewards = solo_rewards(m)
                 self.assertEqual(pool, Counter(rewards.values()))
@@ -38,6 +39,9 @@ class BenefitTests(unittest.TestCase):
 
     def test_receipt_replay_and_journal_recovery(self):
         m = generate('receipts', 'ap', permanent_checks=True)
+        m.pop('compact_population'); m['capabilities'].remove('compact-population-v1')
+        m['locations'] = {n: MODERN_LOCATION_IDS[n] for n in modern_names(True, True, True)}
+        validate(m)
         with tempfile.TemporaryDirectory() as d:
             s = Session(m, d); s.bind_ap('room', 0, 1)
             ids = [ITEM_IDS[n] for n in (DELIVERY, FLOWERS, HEAL, WHISTLE, PLUCK)]

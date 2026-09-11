@@ -161,7 +161,14 @@ COLOR_POPULATION = {f"Population: {n} total {color} Pikmin": (color, n)
 MODERN_LOCATION_IDS.update({name: LOCATION_BASE + 300 + i for i, name in enumerate(COLOR_POPULATION)})
 
 
+COMPACT_POPULATION = {f"Population: {n} total {color} Pikmin": (color, n)
+                      for color in ("Red", "Yellow", "Blue") for n in (10, 25, 50, 100)}
+MODERN_LOCATION_IDS.update({name: LOCATION_BASE + 400 + i for i, name in enumerate(
+    n for n in COMPACT_POPULATION if n not in MODERN_LOCATION_IDS)})
+
+
 def population_checks(manifest):
+    if manifest.get("compact_population"): return COMPACT_POPULATION
     thresholds = FINE_POPULATION if has_permanent(manifest) else TOTAL_POPULATION
     if manifest.get('color_population'):
         return {name: row for name, row in COLOR_POPULATION.items() if row[1] in thresholds.values()}
@@ -171,10 +178,10 @@ def population_checks(manifest):
 def has_permanent(manifest):
     return manifest.get('permanent_checks', False) if manifest['schema'] >= 9 else manifest['schema'] == 8
 
-def modern_names(permanent, no_exploration=False, color_population=False):
+def modern_names(permanent, no_exploration=False, color_population=False, compact_population=False):
     names = MODERN_PERMANENT_NAMES if permanent else MODERN_COLLECTION_NAMES
     if color_population:
-        names = tuple(n for n in names if n not in FINE_POPULATION) + tuple(population_checks({'schema': 9, 'permanent_checks': permanent, 'color_population': True}))
+        names = tuple(n for n in names if n not in FINE_POPULATION) + tuple(population_checks({'schema': 9, 'permanent_checks': permanent, 'color_population': True, 'compact_population': compact_population}))
     return tuple(n for n in names if not n.startswith('Explore:')) if no_exploration else names
 
 # Corpse minima verified through native PelletConfig, including legacy species.
@@ -195,7 +202,7 @@ PART_WEIGHTS = {name: NATIVE_PART_WEIGHTS[part] for name, part in PART_IDS.items
 
 
 def active_names(manifest):
-    if manifest['schema'] >= 9: return modern_names(has_permanent(manifest), manifest.get("no_exploration", False), manifest.get("color_population", False))
+    if manifest['schema'] >= 9: return modern_names(has_permanent(manifest), manifest.get("no_exploration", False), manifest.get("color_population", False), manifest.get("compact_population", False))
     if manifest['schema'] >= 8: return PERMANENT_NAMES
     if manifest['schema'] >= 7: return COLLECTION_NAMES
     if manifest['schema'] >= 5: return ALL_AREA_NAMES
@@ -346,13 +353,13 @@ def item_pool(manifest):
     progression = progression_pool(manifest)
     slots = len(active_names(manifest)) - len(progression)
     if manifest.get('benefit_items'):
-        return progression + [REPAIR] * REPAIR_COUNT + benefit_pool(slots - REPAIR_COUNT)
+        return progression + [REPAIR] * REPAIR_COUNT + benefit_pool(slots - REPAIR_COUNT, no_heal=manifest.get("compact_population", False))
     return progression + [REPAIR] * slots
 
 
 def check_area(name):
     if name in NEW_BESTIARY: return NEW_BESTIARY[name][1]
-    if name in FINE_POPULATION or name in COLOR_POPULATION: return 'The Forest of Hope'
+    if name in FINE_POPULATION or name in COLOR_POPULATION or name in COMPACT_POPULATION: return 'The Forest of Hope'
     if name in OBSTACLES:
         return next(area for stage, area, _ in START_AREAS.values() if stage == OBSTACLES[name][0])
     if name in DELIVERY_BESTIARY: return check_area(DELIVERY_BESTIARY[name])

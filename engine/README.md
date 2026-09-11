@@ -495,3 +495,7 @@ The code is offered under [CC0 1.0](LICENSE.MD). This license does not grant rig
 
 - [LEGAL.md](LEGAL.md) - Legal notice
 - [CONTRIBUTING.md](CONTRIBUTING.md) - Contribution guide
+
+### Skip cinematics
+
+Press Start (Enter by default) during a cinematic to skip ahead while preserving its gameplay events. Previously unskippable in-engine movies are supported. Press again for each queued movie; text prompts and results/save screens keep their usual confirmation controls.

@@ -9,7 +9,7 @@ The desktop heartbeat runs daily at 10:00 America/Toronto and stays quiet on unc
 - Upstream: `SSunnKing/Open-Nectar---Pikmin-Native-PC-Port`, branch `main`.
 - Last fetched/reviewed: `18ce1303b488bc906721d1389143b65ace345695`.
 - Last integrated upstream: `18ce1303b488bc906721d1389143b65ace345695`.
-- Current maintained downstream native commit: `f8d36e1c` (see ENGINE_SOURCE.md); per-color stats and progressive upgrades added after integration in #28/#29/#30, with permanent checks in #31 and damage-based structure work in #32, expanded bestiary/landing-only checks in #33.
+- Current maintained downstream native commit: `b705642e` (see ENGINE_SOURCE.md); per-color stats and progressive upgrades added after integration in #28/#29/#30, with permanent checks in #31 and damage-based structure work in #32, expanded bestiary/landing-only checks in #33.
 - **Integration complete:** [#26](https://github.com/4laric/pikmin-randomizer/issues/26), all 14 commits across 51 files, merged without conflicts. No pending upstream commits as of this review.
 - [Health gauges PR #2](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port/pull/2): OPEN, commit `b487872`.
 - [Save-slot PR #3](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port/pull/3): OPEN, commit `c0b6d377`. Two files, 29 PC-only lines; no randomizer fixtures or game content.

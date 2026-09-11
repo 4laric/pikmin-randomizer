@@ -34,6 +34,9 @@ int main(int argc, char**) {
     if (backgroundTest) _putenv_s("PIKMIN_BBFT_TEST_BACKGROUND", "1");
     assert(!pc_bbft_enabled() && !pc_bbft_hold() && pc_bbft_forest_access());
     assert(!std::strcmp(pc_bbft_save_root(), "save"));
+    pc_bbft_start_button(true); assert(pc_bbft_take_skip());
+    pc_bbft_start_button(true); assert(!pc_bbft_take_skip());
+    pc_bbft_start_button(false);
     pc_bbft_update(); pc_bbft_warp(); pc_bbft_check("test");
     assert(!updates && !warps && !checks);
     char exe[] = "nectar", arg[] = "--bbft-port", port[] = "39000";

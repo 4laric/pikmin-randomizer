@@ -359,6 +359,9 @@ public:
 
 	/// Updates playback time to end of current scene, and updates scene skipping flag (see SceneSkipFlag enum).
 	void skipScene(int sceneSkipFlag);
+#ifdef PIKI_PC_PORT
+	void requestSkip() { mSkipToEnd = true; }
+#endif
 
 	/// Updates and transitions scenes, handles actor spawning/despawning, and triggers events - returns TRUE if playback is finished.
 	BOOL update();
@@ -452,6 +455,9 @@ public:
 	f32 mCameraBlendRatio;      ///< _2E0
 	bool mUseStaticCamera;      ///< _2E4
 	bool mIsPlaying;            ///< _2E5
+#ifdef PIKI_PC_PORT
+	bool mSkipToEnd; // Advance through event boundaries, retaining normal scene lifecycle.
+#endif
 };
 
 #endif

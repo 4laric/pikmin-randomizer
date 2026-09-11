@@ -27,7 +27,7 @@ const char* pc_bbft_save_root() {
 }
 static bool startDown = false, skipRequested = false;
 void pc_bbft_start_button(bool down) {
-    skipRequested = enabled && pc_bbft_accept_input() && down && !startDown;
+    skipRequested = pc_bbft_accept_input() && down && !startDown;
     startDown = down;
 }
 bool pc_bbft_take_skip() {

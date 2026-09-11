@@ -4,7 +4,7 @@ import hashlib
 from .spawn_data import ADULT_SLOTS, GROUP_SLOTS, GENERATOR_SLOTS, SOURCE_FILES, CATALOG_HASH
 
 
-def resolve_spawn_layout(seed, slot):
+def resolve_spawn_layout(seed, slot, miniboss=False):
     from .seed import SeedRandom
     rng = SeedRandom(str(seed) + '/adult-slots-v1/' + slot)
     # Preserve the original total of nine Bulborbs and six Bulbears.
@@ -15,7 +15,17 @@ def resolve_spawn_layout(seed, slot):
                 and row['first_day'] == 2 and 0 < row['respawn_days'] <= 5
                 and (row['expires_after_day'] is None or row['expires_after_day'] >= 29)} == {4, 32}
                for stage in (1, 3)):
-            return dict(version='adult-slots-v1', catalog_hash=CATALOG_HASH,
+            if miniboss:
+                extra = SeedRandom(str(seed) + '/miniboss-slots-v1/' + slot)
+                candidates = [i for i,r in enumerate(ADULT_SLOTS) if r['first_day']==2 and 0 < r['respawn_days'] <= 5 and (r['expires_after_day'] is None or r['expires_after_day'] >= 29)]
+                for attempt in range(256):
+                    changed = list(actual)
+                    for i, species in zip(extra.shuffle(candidates)[:3], extra.shuffle([9,17,24])): changed[i] = species
+                    if all({4,32} <= {changed[i] for i in candidates if ADULT_SLOTS[i]['stage']==stage} for stage in (1,3)):
+                        actual = changed
+                        break
+                else: raise ValueError('cannot retain renewable adult species with minibosses')
+            return dict(version='miniboss-slots-v1' if miniboss else 'adult-slots-v1', catalog_hash=CATALOG_HASH,
                         assignments=[dict(uid=row['uid'], actual=value) for row, value in zip(ADULT_SLOTS, actual)])
     raise ValueError('could not assign persistent sources for both adult species')
 
@@ -52,7 +62,7 @@ def spawn_sources(layout, groups=None):
 
 def bootstrap_slots(manifest):
     if 'spawn_layout' not in manifest: return ''
-    text = 'ENEMY_SLOTS ' + CATALOG_HASH + ' 15 ' + ' '.join(f"{r['uid']} {r['actual']}" for r in manifest['spawn_layout']['assignments']) + '\n'
+    text = ('ENEMY_MINIBOSSES 1\n' if manifest.get('miniboss_enemies') else '') + 'ENEMY_SLOTS ' + CATALOG_HASH + ' 15 ' + ' '.join(f"{r['uid']} {r['actual']}" for r in manifest['spawn_layout']['assignments']) + '\n'
     if 'group_layout' in manifest:
         text += 'ENEMY_GROUPS ' + CATALOG_HASH + ' 12 ' + ' '.join(f"{r['uid']} {r['actual']}" for r in manifest['group_layout']['assignments']) + '\n'
     return text
@@ -61,7 +71,7 @@ def bootstrap_slots(manifest):
 def spoiler(manifest):
     if 'spawn_layout' not in manifest:
         raise ValueError('this seed does not use per-spawn enemies')
-    names = {4: 'Spotty Bulborb', 32: 'Spotty Bulbear',3:'Dwarf Bulborb',31:'Dwarf Bulbear',18:'Female Sheargrub',19:'Male Sheargrub'}
+    names = {9:'Puffstool',17:'Armored Cannon Beetle',24:'Mamuta',4: 'Spotty Bulborb', 32: 'Spotty Bulbear',3:'Dwarf Bulborb',31:'Dwarf Bulbear',18:'Female Sheargrub',19:'Male Sheargrub'}
     rows = list(zip(ADULT_SLOTS, manifest['spawn_layout']['assignments']))
     if 'group_layout' in manifest: rows += list(zip(GROUP_SLOTS, manifest['group_layout']['assignments']))
     return [dict(slot, original_name=names[slot['original']], actual=assignment['actual'],

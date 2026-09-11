@@ -88,6 +88,10 @@ void GenObjectTeki::updateUseList(Generator* generator, int)
     // Keep original generator identity; reserve replacement assets before birth.
     const int replacement = pc_randomizer_enemy_for_generator(mTekiType, randomizerProtected(mPersonality), generator);
     tekiMgr->mUsingType[replacement] = true;
+    // Replacements may spawn their own actors (Cannon Beetle boulders).
+    const int replacementSpawn = tekiMgr->mTekiParams[replacement]->getI(TPI_SpawnType);
+    if (replacementSpawn >= TEKI_START && replacementSpawn < TEKI_TypeCount)
+        tekiMgr->mUsingType[replacementSpawn] = true;
 
 	if (!tekiMgr->hasType(mTekiType)) {
 		ERROR("!tekiMgr->hasType(kind)\n");

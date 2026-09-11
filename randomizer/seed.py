@@ -42,8 +42,8 @@ class SeedRandom:
         return values
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False):
-    if group_spawn_enemies: per_spawn_enemies = True
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False):
+    if group_spawn_enemies or miniboss_enemies: per_spawn_enemies = True
     if per_spawn_enemies:
         if legacy_checks: raise ValueError('per-spawn enemies require modern checks')
         collection_checks = True
@@ -91,10 +91,10 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         result.update(schema=8, catalog='gameplay-checks-v8', locations=dict(PERMANENT_LOCATION_IDS))
         result['capabilities'] += ['permanent-checks-v1', 'check-set-v1']
     if collection_checks and not legacy_checks:
-        result.update(schema=9, catalog='gameplay-checks-v9', permanent_checks=bool(permanent_checks), no_exploration=True, color_population=True,
-                      locations={n: MODERN_LOCATION_IDS[n] for n in modern_names(permanent_checks, True, True)})
+        result.update(schema=9, catalog='gameplay-checks-v9', permanent_checks=bool(permanent_checks), no_exploration=True, color_population=True, compact_population=True,
+                      locations={n: MODERN_LOCATION_IDS[n] for n in modern_names(permanent_checks, True, True, True)})
         result['capabilities'] = [c for c in result['capabilities'] if c not in ('permanent-checks-v1', 'check-set-v1')]
-        result['capabilities'] += (['permanent-checks-v1'] if permanent_checks else []) + ['check-set-v1', 'bestiary-v2', 'no-exploration-v1', 'color-population-v1']
+        result['capabilities'] += (['permanent-checks-v1'] if permanent_checks else []) + ['check-set-v1', 'bestiary-v2', 'no-exploration-v1', 'color-population-v1', 'compact-population-v1']
     if starting_flarlic is not None:
         result["starting_flarlic"] = starting_flarlic
         result["capabilities"].append("starting-flarlic-v1")
@@ -112,7 +112,7 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         result['capabilities'].append('benefit-items-v1')
         if per_spawn_enemies:
             from .enemy_slots import resolve_spawn_layout, spawn_sources
-            result['spawn_layout'] = resolve_spawn_layout(result['seed'], slot)
+            result['spawn_layout'] = resolve_spawn_layout(result['seed'], slot, miniboss_enemies)
             result['enemy_layout'] = spawn_sources(result['spawn_layout'])
             result['enemy_shuffle'] = 'adult-slots-v1'
             result['capabilities'].append('enemy-slots-v1')
@@ -121,6 +121,9 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         result["group_layout"] = resolve_group_layout(result["seed"], slot)
         result["enemy_layout"] = spawn_sources(result["spawn_layout"], result["group_layout"])
         result["capabilities"].append("enemy-groups-v1")
+    if miniboss_enemies:
+        result['miniboss_enemies'] = True
+        result['capabilities'].append('miniboss-slots-v1')
     validate(result)
     return result
 
@@ -134,6 +137,9 @@ def validate(m):
         expected.update(('enemy_shuffle', 'enemy_mask'))
     if type(m) is dict and m.get('schema') == 9:
         expected.add('permanent_checks')
+        if 'compact_population' in m:
+            expected.add('compact_population')
+            if m['compact_population'] is not True or not m.get('color_population'): raise ValueError('invalid compact_population')
         if 'benefit_items' in m:
             expected.add('benefit_items')
             if m['benefit_items'] is not True or not m.get('color_population'): raise ValueError('invalid benefit_items')
@@ -144,12 +150,15 @@ def validate(m):
             expected.add('no_exploration')
             if m['no_exploration'] is not True: raise ValueError('invalid no_exploration')
         if type(m.get('permanent_checks')) is not bool: raise ValueError('invalid permanent_checks')
+    if type(m) is dict and 'miniboss_enemies' in m:
+        expected.add('miniboss_enemies')
+        if m['miniboss_enemies'] is not True or 'spawn_layout' not in m: raise ValueError('invalid miniboss_enemies')
     if type(m) is dict and 'spawn_layout' in m:
         expected.add('spawn_layout')
         from .enemy_slots import resolve_spawn_layout
         if m.get('schema') != 9 or m.get('enemy_mask') != 0 or 'enemy_layout' not in m:
             raise ValueError('per-spawn layout requires modern zero-mask seed')
-        if canonical(m['spawn_layout']) != canonical(resolve_spawn_layout(m.get('seed', ''), m.get('slot', ''))):
+        if canonical(m['spawn_layout']) != canonical(resolve_spawn_layout(m.get('seed', ''), m.get('slot', ''), m.get('miniboss_enemies',False))):
             raise ValueError('invalid per-spawn layout or source catalog')
     if type(m) is dict and 'group_layout' in m:
         expected.add('group_layout')
@@ -217,6 +226,8 @@ def validate(m):
             + (['permanent-checks-v1'] if m['permanent_checks'] else []) + ['check-set-v1', 'bestiary-v2', 'no-exploration-v1' if m.get('no_exploration') else 'landing-only-v1'])
     if m.get('color_population'):
         fixed['capabilities'] += ['color-population-v1']
+    if m.get('compact_population'):
+        fixed['capabilities'] += ['compact-population-v1']
     if "starting_flarlic" in m:
         fixed["capabilities"] = fixed["capabilities"] + ["starting-flarlic-v1"]
     if "color_stats" in m:
@@ -229,6 +240,8 @@ def validate(m):
         fixed['capabilities'] += ['enemy-slots-v1']
     if 'group_layout' in m:
         fixed['capabilities'] += ['enemy-groups-v1']
+    if m.get('miniboss_enemies'):
+        fixed['capabilities'] += ['miniboss-slots-v1']
     for key, value in fixed.items():
         if type(m[key]) is not type(value) or m[key] != value:
             raise ValueError(f"unsupported {key}: {m[key]!r}")
@@ -237,7 +250,7 @@ def validate(m):
             raise ValueError(f"invalid {key}")
     if m["mode"] not in ("solo", "ap"):
         raise ValueError("mode must be solo or ap")
-    for key, value in (("assignments", ALL_PART_IDS if m['schema'] >= 5 else PART_IDS), ("locations", {n: MODERN_LOCATION_IDS[n] for n in modern_names(m["permanent_checks"], m.get("no_exploration", False), m.get("color_population", False))} if m["schema"] == 9 else PERMANENT_LOCATION_IDS if m['schema'] >= 8 else COLLECTION_LOCATION_IDS if m['schema'] >= 7 else ALL_AREA_LOCATION_IDS if m['schema'] >= 5 else ALL_LOCATION_IDS if expanded else LOCATION_IDS)):
+    for key, value in (("assignments", ALL_PART_IDS if m['schema'] >= 5 else PART_IDS), ("locations", {n: MODERN_LOCATION_IDS[n] for n in modern_names(m["permanent_checks"], m.get("no_exploration", False), m.get("color_population", False), m.get("compact_population", False))} if m["schema"] == 9 else PERMANENT_LOCATION_IDS if m['schema'] >= 8 else COLLECTION_LOCATION_IDS if m['schema'] >= 7 else ALL_AREA_LOCATION_IDS if m['schema'] >= 5 else ALL_LOCATION_IDS if expanded else LOCATION_IDS)):
         if type(m[key]) is not dict or m[key] != value or any(type(v) is not int for v in m[key].values()):
             raise ValueError(f"unsupported {key}; relocation is not implemented")
 

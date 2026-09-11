@@ -26,6 +26,8 @@ unsigned repairs = 0, unlocks = 0, flarlic = 0, schema = 1, checkCount = 30;
 int startStage = 1;
 int startColor = 1; // Native IDs: blue 0, red 1, yellow 2.
 unsigned enemyMask = 0;
+bool compactPopulation = false;
+bool minibossEnemies = false;
 bool slotEnemies = false;
 bool groupEnemies = false;
 unsigned groupAssignments[12] = {};
@@ -56,7 +58,7 @@ void expect(std::istream& in, const char* expected) {
     std::string word;
     if (!(in >> word) || word != expected) fail("unsupported or malformed bootstrap");
 }
-const char* checkName(unsigned i) { return colorPopulation ? (permanentChecks ? randomizerColorPermanentNames[i] : randomizerColorCollectionNames[i]) : noExploration ? (permanentChecks ? randomizerNoExplorePermanentNames[i] : randomizerNoExploreCollectionNames[i]) : schema >= 9 ? (permanentChecks ? randomizerModernPermanentNames[i] : randomizerModernCollectionNames[i]) : schema >= 8 ? randomizerPermanentNames[i] : schema >= 7 ? randomizerCollectionNames[i] : randomizerCheckNames[i]; }
+const char* checkName(unsigned i) { return compactPopulation ? (permanentChecks ? randomizerCompactPermanentNames[i] : randomizerCompactCollectionNames[i]) : colorPopulation ? (permanentChecks ? randomizerColorPermanentNames[i] : randomizerColorCollectionNames[i]) : noExploration ? (permanentChecks ? randomizerNoExplorePermanentNames[i] : randomizerNoExploreCollectionNames[i]) : schema >= 9 ? (permanentChecks ? randomizerModernPermanentNames[i] : randomizerModernCollectionNames[i]) : schema >= 8 ? randomizerPermanentNames[i] : schema >= 7 ? randomizerCollectionNames[i] : randomizerCheckNames[i]; }
 int index(const char* name) {
     if (name) for (unsigned i = 0; i < checkCount; ++i) if (!std::strcmp(name, checkName(i))) return (int)i;
     return -1;
@@ -106,11 +108,12 @@ bool pc_randomizer_init(int argc, char** argv) {
     permanentChecks = schema == 8;
     if (schema >= 9) {
         expect(input, "CHECKSET"); int value;
-        if (!(input >> value) || (value < 0 || value > 7 || ((value & 4) && !(value & 2)))) fail("invalid check set");
+        if (!(input >> value) || (value < 0 || value > 15 || ((value & 4) && !(value & 2)) || ((value & 8) && !(value & 4)))) fail("invalid check set");
         permanentChecks = (value & 1) != 0;
         noExploration = (value & 2) != 0;
         colorPopulation = (value & 4) != 0;
-        checkCount = colorPopulation ? (permanentChecks ? sizeof(randomizerColorPermanentNames)/sizeof(*randomizerColorPermanentNames) : sizeof(randomizerColorCollectionNames)/sizeof(*randomizerColorCollectionNames)) : noExploration ? (permanentChecks ? sizeof(randomizerNoExplorePermanentNames)/sizeof(*randomizerNoExplorePermanentNames) : sizeof(randomizerNoExploreCollectionNames)/sizeof(*randomizerNoExploreCollectionNames)) : permanentChecks ? sizeof(randomizerModernPermanentNames)/sizeof(*randomizerModernPermanentNames)
+        compactPopulation = (value & 8) != 0;
+        checkCount = compactPopulation ? (permanentChecks ? sizeof(randomizerCompactPermanentNames)/sizeof(*randomizerCompactPermanentNames) : sizeof(randomizerCompactCollectionNames)/sizeof(*randomizerCompactCollectionNames)) : colorPopulation ? (permanentChecks ? sizeof(randomizerColorPermanentNames)/sizeof(*randomizerColorPermanentNames) : sizeof(randomizerColorCollectionNames)/sizeof(*randomizerColorCollectionNames)) : noExploration ? (permanentChecks ? sizeof(randomizerNoExplorePermanentNames)/sizeof(*randomizerNoExplorePermanentNames) : sizeof(randomizerNoExploreCollectionNames)/sizeof(*randomizerNoExploreCollectionNames)) : permanentChecks ? sizeof(randomizerModernPermanentNames)/sizeof(*randomizerModernPermanentNames)
             : sizeof(randomizerModernCollectionNames)/sizeof(*randomizerModernCollectionNames);
     }
     if (schema >= 6) {
@@ -153,19 +156,27 @@ bool pc_randomizer_init(int argc, char** argv) {
         benefitItems = true;
         input >> end;
     }
+    if (end == "ENEMY_MINIBOSSES") {
+        int version;
+        if (schema != 9 || !(input >> version) || version != 1) fail("invalid miniboss adapter version");
+        minibossEnemies = true;
+        input >> end;
+        if (end != "ENEMY_SLOTS") fail("miniboss adapters require owned slots");
+    }
     if (end == "ENEMY_SLOTS") {
         std::string catalog; unsigned count;
         if (schema != 9 || enemyMask || !(input >> catalog >> count) || catalog != randomizerSpawnCatalogHash || count != 15)
             fail("incompatible enemy slot catalog");
-        unsigned bulborbs = 0;
+        unsigned bulborbs = 0, puffstools = 0, beetles = 0, mamutas = 0;
         for (unsigned i = 0; i < 15; ++i) {
             unsigned uid, species;
-            if (!(input >> uid >> species) || uid != randomizerAdultSlots[i] || (species != 4 && species != 32))
+            if (!(input >> uid >> species) || uid != randomizerAdultSlots[i] || (species != 4 && species != 32 && !(minibossEnemies && (species == 9 || species == 17 || species == 24))))
                 fail("invalid enemy slot assignment");
             adultAssignments[i] = species;
             bulborbs += species == 4;
+            puffstools += species == 9; beetles += species == 17; mamutas += species == 24;
         }
-        if (bulborbs != 9) fail("invalid enemy slot species totals");
+        if (minibossEnemies ? (puffstools != 1 || beetles != 1 || mamutas != 1) : bulborbs != 9) fail("invalid enemy slot species totals");
         slotEnemies = true;
         input >> end;
     }
@@ -223,12 +234,14 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (schema >= 8) hello << " check-set-v1";
     if (schema >= 9) hello << (noExploration ? " bestiary-v2 no-exploration-v1" : " bestiary-v2 landing-only-v1");
     if (colorPopulation) hello << " color-population-v1";
+    if (compactPopulation) hello << " compact-population-v1";
     if (configuredFlarlic) hello << " starting-flarlic-v1";
     if (configuredStats) hello << (wideStats ? " color-stats-v2" : " color-stats-v1");
     if (progressiveStats) hello << " progressive-color-stats-v1";
     if (benefitItems) hello << " benefit-items-v1";
     if (slotEnemies) hello << " enemy-slots-v1";
     if (groupEnemies) hello << " enemy-groups-v1";
+    if (minibossEnemies) hello << " miniboss-slots-v1";
     hello << " END\n";
     hello.close();
     if (!hello) fail("cannot write native handshake");
@@ -475,8 +488,9 @@ void pc_randomizer_observe_color_population(int color, int totalPikmin, bool gam
     const char* colors[] = {"Blue", "Red", "Yellow"};
     const char* onions[] = {"Blue Onion", "Red Onion", "Yellow Onion"};
     if (!pc_randomizer_has(onions[color])) return;
-    const int* thresholds = permanentChecks ? randomizerFinePopulation : randomizerTotalPopulation;
-    const int length = permanentChecks ? 19 : 9;
+    static const int compactThresholds[] = {10, 25, 50, 100};
+    const int* thresholds = compactPopulation ? compactThresholds : permanentChecks ? randomizerFinePopulation : randomizerTotalPopulation;
+    const int length = compactPopulation ? 4 : permanentChecks ? 19 : 9;
     for (int i = 0; i < length; ++i) if (totalPikmin >= thresholds[i]) {
         char name[80]; std::snprintf(name, sizeof(name), "Population: %d total %s Pikmin", thresholds[i], colors[color]);
         pc_randomizer_check(name);

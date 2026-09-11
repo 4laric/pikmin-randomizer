@@ -19,6 +19,7 @@ def main():
     gen.add_argument("--expanded", action="store_true", help="Flarlic, population, bestiary and exploration checks")
     gen.add_argument('--starting-area', choices=['forest', 'navel', 'impact', 'spring', 'trial', 'random'], default='forest', help='Random includes all five areas')
     gen.add_argument('--all-areas', action='store_true', help='Enable five-area catalog with a fixed start')
+    gen.add_argument('--miniboss-enemies', action='store_true', help='Experimental: three adult slots become Puffstool, Mamuta and Cannon Beetle')
     gen.add_argument('--per-spawn-enemies', action='store_true', help='Opt-in named adult Bulborb/Bulbear slots; overrides global family swaps')
     gen.add_argument('--group-spawn-enemies', action='store_true', help='Experimental dwarf/Sheargrub groups; implies per-spawn adults')
     gen.add_argument('--enemy-shuffle', action='store_true', help='Seeded compatible enemy-family swaps')
@@ -44,7 +45,7 @@ def main():
     enemy_spoiler.add_argument('--output', type=Path)
     args = parser.parse_args()
     if args.command == "generate":
-        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas, enemy_shuffle=args.enemy_shuffle, collection_checks=args.collection_checks, starting_flarlic=args.starting_flarlic, randomize_color_stats=args.randomize_color_stats, progressive_color_stats=args.progressive_color_stats, permanent_checks=args.permanent_checks, per_spawn_enemies=args.per_spawn_enemies, group_spawn_enemies=args.group_spawn_enemies)
+        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas, enemy_shuffle=args.enemy_shuffle, collection_checks=args.collection_checks, starting_flarlic=args.starting_flarlic, randomize_color_stats=args.randomize_color_stats, progressive_color_stats=args.progressive_color_stats, permanent_checks=args.permanent_checks, per_spawn_enemies=args.per_spawn_enemies, group_spawn_enemies=args.group_spawn_enemies, miniboss_enemies=args.miniboss_enemies)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8") as f:
             f.write(json.dumps(manifest, indent=2) + "\n")

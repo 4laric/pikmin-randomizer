@@ -2,6 +2,16 @@
 
 Experimental standalone and Archipelago randomizer for Pikmin 1, built on Open Nectar.
 
+## Completion playtest (v0.20.0)
+
+Fresh collection seeds now have population checks at **10, 25, 50 and 100 per color** (12 total), and no Captain Heal in the item pool. Full permanent-structure mode has 113 checks; without structures there are 62. Matching location names retain their AP IDs; new 10/25 milestones use new IDs. Existing manifests retain their original check sets and rewards. Fresh bonus slots use two Pikmin Deliveries per Flower Shower, after the captain upgrades.
+
+Opt-in `miniboss_enemies: true` / `--miniboss-enemies` replaces three named adult slots with one Puffstool, one Mamuta and one Armored Cannon Beetle. It implies per-spawn mode and combines with grouped enemies. Choices are saved before fill, and the seed preserves early renewable Bulborb/Bulbear sources in both areas. That currently leaves the replacements in Hope. Counts, schedules, protected originals and original drop personality stay intact. Cannon Beetle projectile dependencies are preloaded. Boss-manager encounters, Progg and density changes are excluded.
+
+**Experimental:** native births/rendering and solo/AP reachability pass, but combat, enlarged footprint clearance, corpse-return routes and actual revisit behavior need player acceptance (#61/#46). Full native campaign resume is still unfinished (#6); keep the game running between breaks if preserving day/squad matters. This is not a fully validated full-campaign release.
+
+Fresh local solo seed: `output/turkey-finish-01/Play.cmd`. Resolved random start is Hope/red, cap 10, wide stats and progressive upgrades, 113 checks, five logic spheres, 25 Ship Repairs to finish. Includes the recent bestiary, counter, Posy, D-pad and graphics changes. Start/Enter can skip cinematics through their gameplay event boundaries; text/result/save screens retain normal controls (engine/tools/CUTSCENE_SKIP.md). Named enemy mappings are in the optional `enemy-spoiler.json`.
+
 ## Current features
 
 - Random starting area across all five areas, and random red/yellow/blue starting color.

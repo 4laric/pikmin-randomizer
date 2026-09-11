@@ -53,6 +53,11 @@ class GroupSpawnEnemies(Toggle):
     default = 0
 
 
+class MinibossEnemies(Toggle):
+    """Experimental adult replacements: one Puffstool, Mamuta and Cannon Beetle. Implies per-spawn enemies."""
+    display_name = "Experimental Miniboss Enemies"
+    default = 0
+
 class PerSpawnEnemies(Toggle):
     """Opt-in individual adult Bulborb/Bulbear assignments at 15 named points. Overrides global enemy_shuffle. Other species remain vanilla; enables modern collection checks. Requires matching generator assets."""
     display_name = 'Per-Spawn Adult Enemies'
@@ -88,6 +93,7 @@ class StartingFlarlic(Range):
 @dataclass
 class PikminOptions(PerGameCommonOptions):
     group_spawn_enemies: GroupSpawnEnemies
+    miniboss_enemies: MinibossEnemies
     per_spawn_enemies: PerSpawnEnemies
     permanent_checks: PermanentChecks
     progressive_color_stats: ProgressiveColorStats
@@ -159,7 +165,7 @@ class PikminRandomizerWorld(World):
             self._manifest = generate(str(self.multiworld.seed_name), "ap", self.multiworld.player_name[self.player],
                             expanded=bool(self.options.expanded_checks),
                             starting_area=('forest', 'navel', 'random', 'impact', 'spring', 'trial')[self.options.starting_area.value],
-                            starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas), enemy_shuffle=bool(self.options.enemy_shuffle), collection_checks=bool(self.options.collection_checks), starting_flarlic=self.options.starting_flarlic.value, randomize_color_stats=bool(self.options.randomize_color_stats), progressive_color_stats=bool(self.options.progressive_color_stats), permanent_checks=bool(self.options.permanent_checks), per_spawn_enemies=bool(self.options.per_spawn_enemies), group_spawn_enemies=bool(self.options.group_spawn_enemies))
+                            starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas), enemy_shuffle=bool(self.options.enemy_shuffle), collection_checks=bool(self.options.collection_checks), starting_flarlic=self.options.starting_flarlic.value, randomize_color_stats=bool(self.options.randomize_color_stats), progressive_color_stats=bool(self.options.progressive_color_stats), permanent_checks=bool(self.options.permanent_checks), per_spawn_enemies=bool(self.options.per_spawn_enemies), group_spawn_enemies=bool(self.options.group_spawn_enemies), miniboss_enemies=bool(self.options.miniboss_enemies))
         return self._manifest
 
     def fill_slot_data(self):

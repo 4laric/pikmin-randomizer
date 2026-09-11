@@ -7,12 +7,12 @@ PLUCK = 'Progressive Plucking Speed'
 BENEFIT_ITEMS = (DELIVERY, FLOWERS, HEAL, WHISTLE, PLUCK)
 
 
-def benefit_pool(slots):
+def benefit_pool(slots, no_heal=False):
     if slots < 4:
         raise ValueError('not enough locations for captain upgrades')
     # Two upgrades each, then 50% deliveries, 25% flowers and 25% heals.
-    repeat = (DELIVERY, FLOWERS, DELIVERY, HEAL)
-    return [WHISTLE] * 2 + [PLUCK] * 2 + [repeat[i % 4] for i in range(slots - 4)]
+    repeat = (DELIVERY, FLOWERS, DELIVERY) if no_heal else (DELIVERY, FLOWERS, DELIVERY, HEAL)
+    return [WHISTLE] * 2 + [PLUCK] * 2 + [repeat[i % len(repeat)] for i in range(slots - 4)]
 
 
 def benefit_state(manifest, inventory):

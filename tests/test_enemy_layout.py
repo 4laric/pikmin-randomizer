@@ -14,7 +14,7 @@ class EnemyLayoutTests(unittest.TestCase):
         for mask in range(8):
             m=self.manifest(mask); fingerprints.add(fingerprint(m))
             for name in BESTIARY_TARGETS: self.assertTrue(bestiary_sources(name,m))
-            self.assertEqual(sum(map(len,spheres(solo_rewards(m),m))),77)
+            self.assertEqual(sum(map(len,spheres(solo_rewards(m),m))),62)
         self.assertEqual(len(fingerprints),8)
     def test_swapped_adults_and_protected_survivors(self):
         colors={RED:1,BLUE:1,YELLOW:1}

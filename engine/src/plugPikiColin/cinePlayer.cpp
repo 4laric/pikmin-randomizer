@@ -52,6 +52,9 @@ void CineShapeObject::init(immut char* modelPath, immut char* animPath, immut ch
 void CinematicPlayer::init(immut char* cinFilePath)
 {
 	// reset cutscene-specific things
+#ifdef PIKI_PC_PORT
+	mSkipToEnd = false;
+#endif
 	mTotalDuration       = 0;
 	mCurrentData         = nullptr;
 	mCurrentPlaybackTime = 0.0f;
@@ -370,7 +373,32 @@ void CinematicPlayer::skipScene(int sceneSkipFlag)
 BOOL CinematicPlayer::update()
 {
 	BOOL isFinished = FALSE;
-	if (mCurrentScene && mIsPlaying && mSceneSkipFlag == SCENESKIP_NULL && mPlaybackMode == CINMODE_LoopScene) {
+#ifdef PIKI_PC_PORT
+	if (mSkipToEnd && mCurrentScene && mCurrentScene == mPreviousScene) {
+		// Visit one event boundary per update so queued messages are consumed
+		// between events. Render the last authored frame before leaving a scene:
+		// cinematic actors also move real Onions, the ship and Olimar in draw().
+		const float length = abs(mCurrentScene->mEndFrame - mCurrentScene->mStartFrame);
+		const float end = mCurrentSceneStartTime + length;
+		const float last = end - 0.001f;
+		float target = last;
+		if (absF(mCurrentSceneFrame - mCurrentScene->mStartFrame) >= length - 0.01f) {
+			target = end;
+		} else if (mCurrentScene->mEndFrame > mCurrentScene->mStartFrame) {
+			for (AnimKey* key = mCurrentScene->mKey.mNext; key != &mCurrentScene->mKey; key = key->mNext) {
+				if (key->mEventType == ANIMEVENT_None || key->mFrameIndex < mPreviousSceneFrame) continue;
+				const float time = mCurrentSceneStartTime + key->mFrameIndex - mCurrentScene->mStartFrame + 0.001f;
+				if (time >= mCurrentPlaybackTime && time < target) target = time;
+			}
+		}
+		mCurrentPlaybackTime = target;
+	}
+#endif
+	if (mCurrentScene && mIsPlaying && mSceneSkipFlag == SCENESKIP_NULL && mPlaybackMode == CINMODE_LoopScene
+#ifdef PIKI_PC_PORT
+	    && !mSkipToEnd
+#endif
+	) {
 		// loop scene!
 		if (mCurrentPlaybackTime >= (f32)abs(mCurrentScene->mEndFrame - mCurrentScene->mStartFrame) + mCurrentSceneStartTime) {
 			// we're at the end of a loop, so go back to the start of the scene
@@ -480,6 +508,9 @@ BOOL CinematicPlayer::update()
 	// landing, Olimar waking after the crash -- plays at double speed. Advance
 	// by the real elapsed time instead, expressed in those 30 Hz frames, which
 	// is exactly 1.0 per tick at 30 Hz and leaves the original timing intact.
+#ifdef PIKI_PC_PORT
+	if (!mSkipToEnd)
+#endif
 	mCurrentPlaybackTime += gsys->getFrameTime() * 30.0f;
 
 	if (isFinished) {

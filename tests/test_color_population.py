@@ -1,6 +1,6 @@
 import copy
 import unittest
-from randomizer.catalog import (COLOR_POPULATION, MODERN_LOCATION_IDS, population_checks,
+from randomizer.catalog import (COLOR_POPULATION, COMPACT_POPULATION, MODERN_LOCATION_IDS, population_checks,
     modern_names, active_names, can_reach_manifest, FOREST_ACCESS)
 from randomizer.seed import generate, validate
 
@@ -10,10 +10,11 @@ class ColorPopulationTests(unittest.TestCase):
         self.assertEqual(len(MODERN_LOCATION_IDS), len(set(MODERN_LOCATION_IDS.values())))
         for permanent in (False, True):
             m = generate('colors', collection_checks=True, permanent_checks=permanent)
-            self.assertEqual(len(population_checks(m)), 57 if permanent else 27)
-            self.assertTrue(all(name in COLOR_POPULATION for name in active_names(m) if name.startswith('Population:')))
+            self.assertEqual(len(population_checks(m)), 12)
+            self.assertTrue(all(name in COMPACT_POPULATION for name in active_names(m) if name.startswith('Population:')))
             old = copy.deepcopy(m)
             old.pop('benefit_items'); old['capabilities'].remove('benefit-items-v1')
+            old.pop('compact_population'); old['capabilities'].remove('compact-population-v1')
             old.pop('color_population'); old['capabilities'].remove('color-population-v1')
             old['locations'] = {n: MODERN_LOCATION_IDS[n] for n in modern_names(permanent, True)}
             validate(old)
@@ -25,8 +26,8 @@ class ColorPopulationTests(unittest.TestCase):
         for starting in ('red', 'yellow', 'blue'):
             m = generate('colors', collection_checks=True, starting_area='spring', starting_color=starting, starting_flarlic=1)
             for color in ('Red', 'Yellow', 'Blue'):
-                low = f'Population: 20 total {color} Pikmin'
-                high = f'Population: 500 total {color} Pikmin'
+                low = f'Population: 10 total {color} Pikmin'
+                high = f'Population: 100 total {color} Pikmin'
                 self.assertEqual(can_reach_manifest(low, {}, m), color.lower() == starting)
                 self.assertFalse(can_reach_manifest(high, {}, m))
                 self.assertEqual(can_reach_manifest(high, {FOREST_ACCESS: 1}, m), color.lower() == starting)
