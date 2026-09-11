@@ -8,7 +8,7 @@ from pathlib import Path
 import time
 import tkinter as tk
 
-from .catalog import ITEM_IDS, REPAIR, field_capacity
+from .catalog import ITEM_IDS, REPAIR, YELLOW, BLUE, field_capacity
 from .seed import fingerprint, solo_rewards
 
 
@@ -50,7 +50,7 @@ def main(manifest_path, session_path, pid):
     root.attributes('-topmost', True)
     root.attributes('-transparentcolor', '#010203')
     root.configure(bg='#010203')
-    canvas = tk.Canvas(root, width=430, height=190, bg='#010203', highlightthickness=0)
+    canvas = tk.Canvas(root, width=430, height=235, bg='#010203', highlightthickness=0)
     canvas.pack()
     root.update_idletasks()
     hwnd = user.GetParent(root.winfo_id()) or root.winfo_id()
@@ -61,10 +61,10 @@ def main(manifest_path, session_path, pid):
     state = ([], 20 if manifest['schema'] >= 2 else 100, 0)
     cache = None
 
-    def draw(text, y, color, size=13):
+    def draw(text, y, color, size=13, x=12):
         for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-            canvas.create_text(12+dx, y+dy, anchor='nw', text=text, fill='#101820', font=('Segoe UI', size, 'bold'))
-        canvas.create_text(12, y, anchor='nw', text=text, fill=color, font=('Segoe UI', size, 'bold'))
+            canvas.create_text(x+dx, y+dy, anchor='nw', text=text, fill='#101820', font=('Segoe UI', size, 'bold'))
+        canvas.create_text(x, y, anchor='nw', text=text, fill=color, font=('Segoe UI', size, 'bold'))
 
     def tick():
         nonlocal previous, changed_at, state, cache
@@ -90,16 +90,27 @@ def main(manifest_path, session_path, pid):
             rect, origin = w.RECT(), w.POINT(0, 0)
             user.GetClientRect(game, c.byref(rect))
             user.ClientToScreen(game, c.byref(origin))
-            root.geometry(f'430x190+{origin.x + max(0, rect.right-450)}+{origin.y+20}')
+            root.geometry(f'430x235+{origin.x + max(0, rect.right-450)}+{origin.y+20}')
             root.deiconify()
             canvas.delete('all')
             events, cap, repairs = state
             draw(f'FIELD CAP {cap}    REPAIRS {repairs}/25', 8, '#bce8da', 12)
-            draw('RECEIVED' if time.monotonic()-changed_at < 12 else 'RECENT ITEMS', 39, '#9dc9da', 10)
+            owned = {item for _, item in events}
+            for index, (label, color, unlocked) in enumerate((
+                    ('RED', '#ff7979', True), ('YELLOW', '#ffe17b', YELLOW in owned),
+                    ('BLUE', '#7fbcff', BLUE in owned))):
+                x = 14 + index * 138
+                canvas.create_oval(x, 41, x+16, 57, fill=color if unlocked else '#27313c',
+                                   outline=color if unlocked else '#86939e', width=2)
+                if not unlocked:
+                    canvas.create_line(x+3, 54, x+13, 44, fill='#86939e', width=2)
+                draw(label, 36, color if unlocked else '#a1aab4', 10, x+24)
+                draw('UNLOCKED' if unlocked else 'LOCKED', 53, '#c6d5dc' if unlocked else '#a1aab4', 8, x+24)
+            draw('RECEIVED' if time.monotonic()-changed_at < 12 else 'RECENT ITEMS', 84, '#9dc9da', 10)
             for index, (source, item) in enumerate(events[-3:][::-1]):
-                draw(item.replace('Pikmin: ', ''), 61+index*40, '#ffffff', 12)
+                draw(item.replace('Pikmin: ', ''), 106+index*40, '#ffffff', 12)
                 short = source.replace('Bestiary: ', '').replace('Pikmin: ', '').replace('Explore: ', '')
-                draw(short[:56], 81+index*40, '#b5c4cc', 9)
+                draw(short[:56], 126+index*40, '#b5c4cc', 9)
         root.after(250, tick)
 
     try:
