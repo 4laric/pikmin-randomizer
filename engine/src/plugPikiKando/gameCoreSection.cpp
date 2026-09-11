@@ -1,4 +1,5 @@
 #include "BuildingItem.h"
+#include "CPlate.h"
 #include "KusaItem.h"
 #include "Generator.h"
 #include "WorkObject.h"
@@ -1886,13 +1887,49 @@ void pc_randomizer_test_color_stats()
 }
 #endif
 
+static void randomizerApplyBenefits(Navi* navi)
+{
+    if (!pc_randomizer_ready() || !navi || !navi->isAlive() || !itemMgr || !pikiMgr) return;
+    if (pc_randomizer_benefit_pending(PC_BENEFIT_DELIVERY)) {
+        int selected = -1;
+        const char* onions[] = {"Blue Onion", "Red Onion", "Yellow Onion"};
+        for (int color = 0; color < 3; ++color)
+            if (pc_randomizer_has(onions[color]) && playerState->hasBootContainer(color) && itemMgr->getContainer(color)
+                && (selected < 0 || GameStat::allPikis[color] < GameStat::allPikis[selected])) selected = color;
+        if (selected >= 0 && pc_randomizer_consume_benefit(PC_BENEFIT_DELIVERY)) {
+            itemMgr->getContainer(selected)->mHeldPikis[Leaf] += 10;
+            pikiInfMgr.mPikiCounts[selected][Leaf] += 10;
+            GameStat::containerPikis.add(selected, 10);
+            GameStat::update();
+            std::printf("[Pikmin Randomizer] PIKMIN_DELIVERY color=%d count=10\n", selected);
+        }
+    }
+    if (pc_randomizer_benefit_pending(PC_BENEFIT_FLOWERS)) {
+        bool consumed = false;
+        Iterator it(pikiMgr);
+        CI_LOOP(it) {
+            Piki* piki = static_cast<Piki*>(*it);
+            if (!piki || !piki->isAlive() || piki->isKinoko() || piki->mHappa >= Flower) continue;
+            if (!consumed) consumed = pc_randomizer_consume_benefit(PC_BENEFIT_FLOWERS);
+            if (consumed) while (piki->mHappa < Flower) {
+                piki->setFlower(piki->mHappa + 1);
+                if (piki->mMode == PikiMode::FormationMode && piki->mNavi)
+                    piki->mNavi->mPlateMgr->changeFlower(piki);
+            }
+        }
+    }
+    if (navi->mHealth < C_NAVI_PARM(navi, mHealth) && pc_randomizer_consume_benefit(PC_BENEFIT_HEAL))
+        navi->mHealth = C_NAVI_PARM(navi, mHealth);
+}
+
 void GameCoreSection::updateAI()
 {
     if (pc_randomizer_expanded()) {
         AICONST.mMaxPikisOnField(pc_randomizer_field_capacity());
         const bool active = !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll
             && !gameflow.mIsUIOverlayActive && mNavi && mNavi->mHealth > 0.0f;
-        if (active) {
+        if (active && !playerState->mInDayEnd) {
+            randomizerApplyBenefits(mNavi);
             const int field = int(GameStat::formationPikis) + int(GameStat::freePikis) + int(GameStat::workPikis);
             pc_randomizer_observe_population(field, true);
             pc_randomizer_observe_total_population(int(GameStat::allPikis), true);
@@ -2012,6 +2049,41 @@ void GameCoreSection::updateAI()
 #if defined(PIKMIN_RANDOMIZER_TEST_HOOKS)
     const char* scripted = std::getenv("PIKMIN_RANDOMIZER_TEST_SCRIPT");
     const char* background = std::getenv("PIKMIN_RANDOMIZER_TEST_BACKGROUND");
+    if (pc_randomizer_ready() && scripted && !std::strcmp(scripted, "benefits")
+        && background && !std::strcmp(background, "1") && bbftRedsReady
+        && !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll && !gameflow.mIsUIOverlayActive) {
+        static bool baseline = false;
+        static int stock = 0, field = 0;
+        GoalItem* onion = itemMgr->getContainer(initialColor);
+        if (!baseline) {
+            stock = onion->getTotalStorePikis();
+            field = int(GameStat::formationPikis) + int(GameStat::freePikis) + int(GameStat::workPikis);
+            mNavi->mHealth = C_NAVI_PARM(mNavi, mHealth) / 2.0f;
+            baseline = true;
+            std::puts("TEST_ONLY benefits_ready"); std::fflush(stdout);
+        } else if (pc_randomizer_benefit_multiplier(PC_BENEFIT_WHISTLE) == 1.5f) {
+            int flowers = 0;
+            Iterator it(pikiMgr);
+            CI_LOOP(it) {
+                Piki* piki = static_cast<Piki*>(*it);
+                if (piki && piki->isAlive()) {
+                    if (piki->mHappa != Flower) std::abort();
+                    ++flowers;
+                }
+            }
+            if (onion->getTotalStorePikis() != stock + 10 || flowers != field
+                || mNavi->mHealth != C_NAVI_PARM(mNavi, mHealth)
+                || pc_randomizer_benefit_multiplier(PC_BENEFIT_PLUCK) != 1.5f
+                || pc_randomizer_field_capacity() != 10) std::abort();
+            for (int color = 0; color < 3; ++color)
+                if (color != initialColor && GameStat::allPikis[color] != 0) std::abort();
+            // No duplicate effects on a second application, including at full health.
+            randomizerApplyBenefits(mNavi);
+            if (onion->getTotalStorePikis() != stock + 10) std::abort();
+            std::printf("TEST_ONLY benefits_pass color=%d stock_added=10 field_flowers=%d heal=full whistle=150 pluck=150\n", initialColor, flowers);
+            std::fflush(stdout); std::exit(0);
+        }
+    }
     if (scripted && !std::strcmp(scripted, "boss-params") && background && !std::strcmp(background, "1")
         && pc_randomizer_ready() && bbftRedsReady && !gameflow.mMoviePlayer->mIsActive) {
         const u32 retail[] = {0xc4, 0x08, 0x09, 0x45, 0x85, 0x1b5c0};

@@ -103,6 +103,8 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
     if result['schema'] == 9:
         from .enemies import resolve_layout
         result['enemy_layout'] = resolve_layout(result['enemy_mask'])
+        result['benefit_items'] = True
+        result['capabilities'].append('benefit-items-v1')
     validate(result)
     return result
 
@@ -116,6 +118,9 @@ def validate(m):
         expected.update(('enemy_shuffle', 'enemy_mask'))
     if type(m) is dict and m.get('schema') == 9:
         expected.add('permanent_checks')
+        if 'benefit_items' in m:
+            expected.add('benefit_items')
+            if m['benefit_items'] is not True or not m.get('color_population'): raise ValueError('invalid benefit_items')
         if 'color_population' in m:
             expected.add('color_population')
             if m['color_population'] is not True or not m.get('no_exploration'): raise ValueError('invalid color_population')
@@ -188,6 +193,8 @@ def validate(m):
         fixed["capabilities"] = fixed["capabilities"] + ["color-stats-v2" if "color-stats-v2" in m["capabilities"] else "color-stats-v1"]
     if m.get('progressive_color_stats'):
         fixed['capabilities'] += ['progressive-color-stats-v1']
+    if m.get('benefit_items'):
+        fixed['capabilities'] += ['benefit-items-v1']
     for key, value in fixed.items():
         if type(m[key]) is not type(value) or m[key] != value:
             raise ValueError(f"unsupported {key}: {m[key]!r}")
@@ -231,7 +238,9 @@ def solo_rewards(manifest):
     rewards = place(order, Counter(), {})
     if rewards is None:
         raise ValueError("cannot place progression without a self-lock")
-    rewards.update({n: REPAIR for n in names if n not in rewards})
+    remaining = Counter(item_pool(manifest)) - Counter(rewards.values())
+    filler = rng.shuffle(list(remaining.elements())) if manifest.get('benefit_items') else [REPAIR] * sum(remaining.values())
+    rewards.update(zip((n for n in names if n not in rewards), filler))
     if Counter(rewards.values()) != Counter(item_pool(manifest)):
         raise ValueError("item pool does not match location count")
     return rewards

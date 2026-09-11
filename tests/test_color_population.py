@@ -13,6 +13,7 @@ class ColorPopulationTests(unittest.TestCase):
             self.assertEqual(len(population_checks(m)), 57 if permanent else 27)
             self.assertTrue(all(name in COLOR_POPULATION for name in active_names(m) if name.startswith('Population:')))
             old = copy.deepcopy(m)
+            old.pop('benefit_items'); old['capabilities'].remove('benefit-items-v1')
             old.pop('color_population'); old['capabilities'].remove('color-population-v1')
             old['locations'] = {n: MODERN_LOCATION_IDS[n] for n in modern_names(permanent, True)}
             validate(old)

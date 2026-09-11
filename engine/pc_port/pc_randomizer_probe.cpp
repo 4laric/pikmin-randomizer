@@ -27,6 +27,15 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 100; ++i) {
         pc_randomizer_update();
         if (pc_randomizer_ready()) {
+            for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--benefit-probe")) {
+                int used = 0;
+                for (int kind = 0; kind < 3; ++kind)
+                    while (pc_randomizer_consume_benefit(static_cast<PcBenefit>(kind))) ++used;
+                assert(!pc_randomizer_consume_benefit(PC_BENEFIT_WHISTLE));
+                std::printf("BENEFIT_PROBE used=%d whistle=%.2f pluck=%.2f\n", used,
+                    pc_randomizer_benefit_multiplier(PC_BENEFIT_WHISTLE), pc_randomizer_benefit_multiplier(PC_BENEFIT_PLUCK));
+                return 0;
+            }
             for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--color-population-probe")) {
                 const char* colors[] = {"Blue", "Red", "Yellow"};
                 const char* onions[] = {"Blue Onion", "Red Onion", "Yellow Onion"};

@@ -60,6 +60,8 @@ def main():
                          f"Field capacity: {field_capacity(session.inventory, manifest['schema'] >= 2, manifest.get('starting_flarlic', 2))}. "
                          f"Repair goal: {min(session.inventory['Ship Repair'], 25)}/25.", "",
                          "Population entries record reached milestones, not the current population.", ""]
+                from .benefits import benefit_lines
+                lines += benefit_lines(manifest, session.inventory) + [""]
                 from .stats import profile_lines
                 if "color_stats" in manifest or manifest.get("progressive_color_stats"):
                     lines += ["## Color profiles", ""] + profile_lines(manifest, session.inventory) + [""]

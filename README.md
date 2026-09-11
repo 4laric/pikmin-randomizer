@@ -16,6 +16,24 @@ Experimental standalone and Archipelago randomizer for Pikmin 1, built on Open N
 
 The current native build fixes a boss-generator decoding bug that turned Snagrets, geysers, beetles and other entries into Beady Long Legs on PC. Rebuild or use the corrected package; changing a seed alone cannot fix an older executable.
 
+## Useful rewards (v0.17.0)
+
+New collection seeds contain exactly **25 Ship Repairs**, the existing unlocks/Flarlic/stat items, and these benefits in the remaining slots:
+
+| Item | Effect |
+| --- | --- |
+| Pikmin Delivery (10) | Adds 10 leaf Pikmin to the unlocked, booted Onion with the smallest total population. Does not spawn extra field Pikmin or unlock colors. |
+| Flower Shower | Flowers living field Pikmin, maintaining their formation counts. Waits if there are no eligible Pikmin. Stored Pikmin and sprouts are unchanged. |
+| Captain Heal | Fully heals a living, injured Olimar. Waits while health is full. |
+| Progressive Whistle Radius | Two +25% upgrades, reaching 150% radius; the displayed circle grows with the effective radius. |
+| Progressive Plucking Speed | Two +25% upgrades, reaching 150% plucking animation speed. |
+
+Each seed gets two copies of each captain upgrade. Remaining benefits cycle 2 deliveries : 1 flower shower : 1 heal, with a partial cycle when needed. They are useful AP items; conservative logic does not depend on deliveries to satisfy population checks. Solo filler placement is seeded and shuffled. The HUD/status shows current whistle and plucking percentages.
+
+Consumables wait for active gameplay outside pauses, menus, cutscenes and day-end. Their consumption journal prevents replay on reconnect/relaunch; permanent upgrades are restored from receipts. As native campaign resume remains unfinished, already-consumed effects are not restored into the fresh campaign on relaunch. Consumption is persisted immediately before the native effect: a crash in that narrow interval may lose that effect, rather than duplicate it. A damaged journal fails closed.
+
+Old seeds retain their original pool. Use a fresh seed and updated executable; native capability `benefit-items-v1` gates the new protocol. Local playtest: `output/turkey-benefits-01/Play.cmd`.
+
 ## Color-specific population checks (v0.16.0)
 
 New collection seeds replace every aggregate population milestone with separate Red, Yellow and Blue milestones. Totals include field Pikmin, stored Pikmin and sprouts of that color; colors never combine toward a threshold. There are 27 population checks (9 per color), or 57 (19 per color) with permanent checks enabled, for **77/158 total locations**. Thresholds still run through 500 per color. Extra locations use the existing reward pool, leaving room for future bonuses and traps.

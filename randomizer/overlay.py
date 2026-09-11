@@ -11,6 +11,7 @@ import tkinter as tk
 from .catalog import ITEM_IDS, REPAIR, RED, YELLOW, BLUE, field_capacity, color_inventory
 from .seed import fingerprint, solo_rewards
 from .stats import profile_lines
+from .benefits import benefit_lines
 
 
 def snapshot(manifest, data):
@@ -52,6 +53,7 @@ def main(manifest_path, session_path, pid):
     root.attributes('-transparentcolor', '#010203')
     root.configure(bg='#010203')
     height = 295 if ('color_stats' in manifest or manifest.get('progressive_color_stats')) else 235
+    if manifest.get('benefit_items'): height += 22
     canvas = tk.Canvas(root, width=430, height=height, bg='#010203', highlightthickness=0)
     canvas.pack()
     root.update_idletasks()
@@ -111,6 +113,9 @@ def main(manifest_path, session_path, pid):
             stat_offset = 60 if ('color_stats' in manifest or manifest.get('progressive_color_stats')) else 0
             for index, line in enumerate(profile_lines(manifest, Counter(item for _, item in events))):
                 draw(line, 78 + index*18, '#c6d5dc', 8)
+            for line in benefit_lines(manifest, Counter(item for _, item in events)):
+                draw(line, 78 + stat_offset, '#c6d5dc', 8)
+                stat_offset += 22
             draw('RECEIVED' if time.monotonic()-changed_at < 12 else 'RECENT ITEMS', 84+stat_offset, '#9dc9da', 10)
             for index, (source, item) in enumerate(events[-3:][::-1]):
                 draw(item.replace('Pikmin: ', ''), 106+stat_offset+index*40, '#ffffff', 12)

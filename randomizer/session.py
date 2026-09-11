@@ -6,6 +6,7 @@ from pathlib import Path
 from .catalog import NAMES, ITEM_IDS, UNLOCKS, REPAIR, FLARLIC, FOREST_ACCESS, IMPACT_ACCESS, RED, active_names, item_pool
 from .seed import fingerprint, solo_rewards
 from .stats import upgrade_counts
+from .benefits import benefit_state
 
 
 def atomic_write(path, text):
@@ -54,7 +55,7 @@ class Session:
             if not bootstrap.exists():
                 raise ValueError("orphaned native check journal")
             fields = bootstrap.read_text(encoding="ascii").split()
-            if len(fields) != ((23 if manifest['schema'] >= 9 else 21 if manifest['schema'] >= 6 else 19 if manifest['schema'] >= 4 else 17) + (2 if 'starting_flarlic' in manifest else 0) + (16 if 'color_stats' in manifest else 0) + (2 if manifest.get('progressive_color_stats') else 0)) or fields[:2] != ["PIKMIN_RANDOMIZER", str(manifest["schema"])] or fields[2:4] != ["SESSION", journal.parent.name] or fields[4:6] != ["FINGERPRINT", self.fingerprint]:
+            if len(fields) != ((23 if manifest['schema'] >= 9 else 21 if manifest['schema'] >= 6 else 19 if manifest['schema'] >= 4 else 17) + (2 if 'starting_flarlic' in manifest else 0) + (16 if 'color_stats' in manifest else 0) + (2 if manifest.get('progressive_color_stats') else 0) + (2 if manifest.get('benefit_items') else 0)) or fields[:2] != ["PIKMIN_RANDOMIZER", str(manifest["schema"])] or fields[2:4] != ["SESSION", journal.parent.name] or fields[4:6] != ["FINGERPRINT", self.fingerprint]:
                 raise ValueError("native journal belongs to an incompatible manifest")
             data = journal.read_bytes()
             for line in data[:data.rfind(b"\n") + 1].splitlines():
@@ -129,7 +130,7 @@ class Session:
         repairs = min(inventory[REPAIR], self.manifest["goal"])
         if self.manifest["schema"] >= 2:
             flarlic = min(10 - self.manifest.get("starting_flarlic", 2), inventory[FLARLIC])
-            return f"PIKMIN_STATE {self.manifest['schema']} {token} {int(ready)} {repairs} {unlocks} {flarlic} {checks}{upgrade_counts(self.manifest, inventory)} END\n"
+            return f"PIKMIN_STATE {self.manifest['schema']} {token} {int(ready)} {repairs} {unlocks} {flarlic} {checks}{upgrade_counts(self.manifest, inventory)}{benefit_state(self.manifest, inventory)} END\n"
         return f"PIKMIN_STATE 1 {token} {int(ready)} {repairs} {unlocks} {checks} END\n"
 
 

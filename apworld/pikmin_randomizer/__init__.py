@@ -10,6 +10,7 @@ from .core.catalog import (GAME, ITEM_IDS, LOCATION_IDS, NAMES, CHECK_AREAS,
                            active_names, item_pool, check_area, can_reach_manifest, FLARLIC, ALL_AREA_LOCATION_IDS, START_AREAS, COLLECTION_LOCATION_IDS, PERMANENT_LOCATION_IDS, MODERN_LOCATION_IDS)
 from .core.seed import generate, fingerprint
 from .core.stats import UPGRADE_ITEMS
+from .core.benefits import BENEFIT_ITEMS
 
 
 class ExpandedChecks(Toggle):
@@ -113,7 +114,7 @@ class PikminRandomizerWorld(World):
                     region.locations.append(PikminLocation(self.player, name, self.manifest()['locations'][name], region))
 
     def create_item(self, name):
-        classification = ItemClassification.useful if name in UPGRADE_ITEMS and UPGRADE_ITEMS[name][1] != 'carry' else ItemClassification.progression
+        classification = ItemClassification.useful if name in BENEFIT_ITEMS or (name in UPGRADE_ITEMS and UPGRADE_ITEMS[name][1] != 'carry') else ItemClassification.progression
         return PikminItem(name, classification, ITEM_IDS[name], self.player)
 
     def create_items(self):

@@ -1,4 +1,5 @@
 #include "Navi.h"
+#include "pc_randomizer.h"
 #include <cstdlib>
 #if defined(PIKI_PC_PORT)
 #include "GameStat.h"
@@ -990,7 +991,7 @@ void Navi::update()
 	mPlateMgr->update();
 	updateWalkAnimation();
 	mWalkAnimPrevPos = mSRT.t;
-	mNaviAnimMgr.updateAnimation(mMotionSpeed);
+	mNaviAnimMgr.updateAnimation(mMotionSpeed * (mStateMachine->getCurrID(this) == NAVISTATE_Nuku ? pc_randomizer_benefit_multiplier(PC_BENEFIT_PLUCK) : 1.0f));
 
 	STACK_PAD_VAR(1);
 
@@ -2378,6 +2379,7 @@ void Navi::renderCircle(Graphics& gfx)
 	}
 	}
 
+	rad *= pc_randomizer_benefit_multiplier(PC_BENEFIT_WHISTLE);
 	mWhistleCircleRadius = rad;
 
 	static f32 ang = 0.0f;

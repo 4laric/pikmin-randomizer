@@ -1,4 +1,5 @@
 #include "NaviState.h"
+#include "pc_randomizer.h"
 #include <cstdlib>
 #include <cstdio>
 #include "AIConstant.h"
@@ -1736,7 +1737,7 @@ void NaviGatherState::exec(Navi* navi)
 			navi->mWhistleTimer = C_NAVI_PARM(navi, mWhistleExpandTime);
 
 			if (!gameflow.mPauseAll) {
-				navi->callPikis(C_NAVI_PARM(navi, mWhistleMaxRadius));
+				navi->callPikis(C_NAVI_PARM(navi, mWhistleMaxRadius) * pc_randomizer_benefit_multiplier(PC_BENEFIT_WHISTLE));
 			} else {
 				navi->callDebugs(C_NAVI_PARM(navi, mWhistleMaxRadius));
 			}
@@ -1756,6 +1757,7 @@ void NaviGatherState::exec(Navi* navi)
 		check                    = true;
 		navi->mWhistleTimer      = 0.0f;
 		navi->mWhistleCircleMode = 2;
+		scale *= pc_randomizer_benefit_multiplier(PC_BENEFIT_WHISTLE);
 		mWhistleCallRadius       = scale;
 		if (!gameflow.mPauseAll) {
 			navi->callPikis(scale);

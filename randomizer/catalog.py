@@ -81,6 +81,8 @@ IMPACT_ACCESS = 'Pikmin: Impact Site Access'
 ITEM_IDS[IMPACT_ACCESS] = ITEM_BASE + 9
 from .stats import UPGRADE_ITEMS, upgrade_pool, current_profiles
 ITEM_IDS.update({name: ITEM_BASE + 10 + i for i, name in enumerate(UPGRADE_ITEMS)})
+from .benefits import BENEFIT_ITEMS, benefit_pool
+ITEM_IDS.update({name: ITEM_BASE + 30 + i for i, name in enumerate(BENEFIT_ITEMS)})
 START_AREAS = {
     'impact-day2': (0, 'The Impact Site', IMPACT_ACCESS),
     'foh-day2': (1, 'The Forest of Hope', FOREST_ACCESS),
@@ -342,7 +344,10 @@ def can_reach_manifest(name, inventory, manifest):
 
 def item_pool(manifest):
     progression = progression_pool(manifest)
-    return progression + [REPAIR] * (len(active_names(manifest)) - len(progression))
+    slots = len(active_names(manifest)) - len(progression)
+    if manifest.get('benefit_items'):
+        return progression + [REPAIR] * REPAIR_COUNT + benefit_pool(slots - REPAIR_COUNT)
+    return progression + [REPAIR] * slots
 
 
 def check_area(name):

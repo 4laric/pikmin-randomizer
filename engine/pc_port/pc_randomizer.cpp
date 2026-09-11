@@ -28,6 +28,9 @@ unsigned startingFlarlic = 2;
 bool configuredFlarlic = false, configuredStats = false, progressiveStats = false, wideStats = false;
 int baseColorStats[3][4] = {{100, 100, 100, 1}, {100, 100, 100, 1}, {100, 100, 100, 1}};
 unsigned statUpgrades[3][4] = {};
+bool benefitItems = false;
+unsigned benefits[5] = {}, consumedBenefits[3] = {};
+std::filesystem::path benefitJournal;
 int colorStats[3][4] = {{100, 100, 100, 1}, {100, 100, 100, 1}, {100, 100, 100, 1}};
 std::set<unsigned> checks;
 std::string token, fingerprint, saveRoot;
@@ -137,6 +140,12 @@ bool pc_randomizer_init(int argc, char** argv) {
         progressiveStats = true;
         input >> end;
     }
+    if (end == "BENEFITS") {
+        unsigned mode;
+        if (!colorPopulation || !(input >> mode) || mode != 1) fail("invalid benefit mode");
+        benefitItems = true;
+        input >> end;
+    }
     if (end != "END") fail("unsupported or malformed bootstrap");
     std::string extra;
     if (input >> extra) fail("trailing bootstrap data");
@@ -145,6 +154,24 @@ bool pc_randomizer_init(int argc, char** argv) {
     // A run directory is single-use. Never reset a previous run's check journal.
     if (std::filesystem::exists(directory / "hello.txt") || std::filesystem::exists(directory / "checks.txt"))
         fail("run directory already used; launch a new session run");
+    if (benefitItems) {
+        benefitJournal = directory.parent_path().parent_path() / "benefits-used.txt";
+        if (std::filesystem::exists(benefitJournal)) {
+            std::ifstream history(benefitJournal);
+            if (!history) fail("cannot read benefit consumption journal");
+            std::string line;
+            while (std::getline(history, line)) {
+                if (history.eof()) fail("incomplete benefit consumption journal");
+                std::istringstream row(line); std::string savedFingerprint, trailing;
+                unsigned kind, count;
+                if (!(row >> savedFingerprint >> kind >> count) || savedFingerprint != fingerprint
+                    || kind >= 3 || count != consumedBenefits[kind] + 1 || count > checkCount || (row >> trailing))
+                    fail("invalid benefit consumption journal");
+                consumedBenefits[kind] = count;
+            }
+            if (!history.eof()) fail("cannot read benefit consumption journal");
+        }
+    }
     enabled = true;
     pc_randomizer_update(); // Validate initial state before creating a handshake.
     std::ofstream hello(directory / "hello.tmp");
@@ -162,6 +189,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (configuredFlarlic) hello << " starting-flarlic-v1";
     if (configuredStats) hello << (wideStats ? " color-stats-v2" : " color-stats-v1");
     if (progressiveStats) hello << " progressive-color-stats-v1";
+    if (benefitItems) hello << " benefit-items-v1";
     hello << " END\n";
     hello.close();
     if (!hello) fail("cannot write native handshake");
@@ -211,6 +239,15 @@ void pc_randomizer_update() {
         }
         parsed = bool(input >> end);
     }
+    unsigned newBenefits[5] = {};
+    if (benefitItems) {
+        if (!parsed || end != "BENEFITS") fail("missing benefit state");
+        for (int kind = 0; kind < 5; ++kind)
+            if (!(input >> newBenefits[kind]) || newBenefits[kind] > (kind < 3 ? checkCount : 2u)
+                || newBenefits[kind] < benefits[kind] || (kind < 3 && newBenefits[kind] < consumedBenefits[kind]))
+                fail("invalid or retracted benefit receipt");
+        parsed = bool(input >> end);
+    }
     if (!parsed || magic != "PIKMIN_STATE" || version != schema || session != token || newReady > 1
         || newRepairs > 25 || newUnlocks > (schema >= 5 ? 255u : schema == 4 ? 127u : schema == 3 ? 63u : 31u) || newFlarlic > 10 - startingFlarlic
         || end != "END" || (input >> extra))
@@ -224,6 +261,7 @@ void pc_randomizer_update() {
         statUpgrades[c][stat] = newStats[c][stat];
         colorStats[c][stat] = baseColorStats[c][stat] + (stat == 3 ? newStats[c][stat] : 25 * newStats[c][stat]);
     }
+    for (int kind = 0; kind < 5; ++kind) benefits[kind] = newBenefits[kind];
     ready = newReady != 0;
     repairs = newRepairs;
     unlocks = newUnlocks;
@@ -238,6 +276,28 @@ void pc_randomizer_update() {
     }
 }
 
+bool pc_randomizer_benefit_pending(PcBenefit kind) {
+    return enabled && benefitItems && ready && kind >= 0 && kind < 3 && benefits[kind] > consumedBenefits[kind];
+}
+bool pc_randomizer_consume_benefit(PcBenefit kind) {
+    if (!pc_randomizer_benefit_pending(kind)) return false;
+    // Persist before applying a non-transactional native effect: never duplicate it on replay.
+    FILE* file = std::fopen(benefitJournal.string().c_str(), "a");
+    if (!file) fail("cannot open benefit consumption journal");
+    bool ok = std::fprintf(file, "%s %d %u\n", fingerprint.c_str(), int(kind), consumedBenefits[kind] + 1) > 0 && std::fflush(file) == 0;
+#ifdef _WIN32
+    ok = ok && _commit(_fileno(file)) == 0;
+#else
+    ok = ok && fsync(fileno(file)) == 0;
+#endif
+    if (std::fclose(file) != 0 || !ok) fail("cannot persist benefit consumption");
+    ++consumedBenefits[kind];
+    std::printf("[Pikmin Randomizer] BENEFIT_USED kind=%d count=%u\n", int(kind), consumedBenefits[kind]);
+    return true;
+}
+float pc_randomizer_benefit_multiplier(PcBenefit kind) {
+    return enabled && benefitItems && (kind == PC_BENEFIT_WHISTLE || kind == PC_BENEFIT_PLUCK) ? 1.0f + 0.25f * benefits[kind] : 1.0f;
+}
 bool pc_randomizer_enabled() { return enabled; }
 int pc_randomizer_start_stage() { return startStage; }
 int pc_randomizer_start_color() { return startColor; }
