@@ -6,6 +6,17 @@ from randomizer.stats import bootstrap_stats, profile_lines
 
 
 class ColorStatsTests(unittest.TestCase):
+    def test_profiles_reveal_on_color_unlock(self):
+        for starting in ('red', 'yellow', 'blue'):
+            manifest = {'starting_color': starting, 'progressive_color_stats': True}
+            inventory = {f'Progressive {color.title()} Damage': 1 for color in ('red', 'yellow', 'blue')}
+            for color, line in zip(('red', 'yellow', 'blue'), profile_lines(manifest, inventory)):
+                self.assertEqual('DMG 125%' in line, color == starting)
+                self.assertEqual('undiscovered' in line, color != starting)
+            inventory.update({'Red Onion': 1, 'Yellow Onion': 1, 'Blue Onion': 1})
+            self.assertTrue(all('DMG 125%' in line for line in profile_lines(manifest, inventory)))
+        self.assertEqual(profile_lines({}), [])
+
     def test_deterministic_profiles_and_legacy(self):
         old = generate('same', enemy_shuffle=True, starting_area='random', starting_color='random')
         new = generate('same', enemy_shuffle=True, starting_area='random', starting_color='random', randomize_color_stats=True)

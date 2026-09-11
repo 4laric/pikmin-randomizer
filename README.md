@@ -9,6 +9,7 @@ Experimental standalone and Archipelago randomizer for Pikmin 1, built on Open N
 - Exploration checks and optional Onion corpse-delivery bestiary checks; total-population milestones up to 500 include stored Pikmin and sprouts.
 - Seeded Bulborb/Bulbear and Sheargrub family swaps, with protected enemies pinned.
 - Optional seeded damage, movement, attack rate and carrying-strength profiles for each base color.
+- HUD and status profiles reveal when each color's Onion is unlocked; the starting color is visible immediately. Upgrades received before discovery stay hidden until that unlock.
 - Solo play, a standalone AP world, persistent check/reward history, and a transparent progress overlay.
 
 **Prototype limitations:** physical ship parts remain in vanilla positions. Relaunch restores checks and rewards but starts a fresh native campaign; exact day/area/squad resume and extinction recovery are unfinished. Some starting combinations deliberately require remote progression in multiworld. Enemy-family swaps have player validation; corpse deliveries and the day-end save fix still need full gameplay acceptance.

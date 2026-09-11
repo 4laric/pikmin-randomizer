@@ -60,8 +60,13 @@ def bootstrap_stats(manifest):
 
 
 def profile_lines(manifest, inventory=None):
+    # Import here because catalog uses the gameplay profile helpers above.
+    from .catalog import color_inventory, RED, YELLOW, BLUE
+
     profiles = current_profiles(manifest, inventory)
     if not profiles:
         return []
+    owned = color_inventory(inventory or {}, manifest)
     return [f"{color.upper():6} DMG {p['damage']}%  MOVE {p['movement']}%  ATK {p['attack_rate']}%  CARRY {p['carry']}"
-            for color in COLORS for p in (profiles[color],)]
+            if owned.get(onion, 0) > 0 else f"{color.upper():6} ??? (undiscovered)"
+            for color, onion in zip(COLORS, (RED, YELLOW, BLUE)) for p in (profiles[color],)]
