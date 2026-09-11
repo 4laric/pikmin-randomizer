@@ -23,7 +23,8 @@ int startStage = 1;
 int startColor = 1; // Native IDs: blue 0, red 1, yellow 2.
 unsigned enemyMask = 0;
 unsigned startingFlarlic = 2;
-bool configuredFlarlic = false, configuredStats = false;
+bool configuredFlarlic = false, configuredStats = false, progressiveStats = false;
+unsigned statUpgrades[3][4] = {};
 int colorStats[3][4] = {{100, 100, 100, 1}, {100, 100, 100, 1}, {100, 100, 100, 1}};
 std::uint64_t checks = 0;
 std::string token, fingerprint, saveRoot;
@@ -116,6 +117,12 @@ bool pc_randomizer_init(int argc, char** argv) {
         }
         input >> end;
     }
+    if (end == "PROGRESSIVE_STATS") {
+        unsigned mode;
+        if (schema != 7 || configuredStats || !(input >> mode) || mode != 1) fail("invalid progressive stats mode");
+        progressiveStats = true;
+        input >> end;
+    }
     if (end != "END") fail("unsupported or malformed bootstrap");
     std::string extra;
     if (input >> extra) fail("trailing bootstrap data");
@@ -136,6 +143,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (schema >= 7) hello << " total-population-v1 corpse-delivery-v1";
     if (configuredFlarlic) hello << " starting-flarlic-v1";
     if (configuredStats) hello << " color-stats-v1";
+    if (progressiveStats) hello << " progressive-color-stats-v1";
     hello << " END\n";
     hello.close();
     if (!hello) fail("cannot write native handshake");
@@ -163,6 +171,15 @@ void pc_randomizer_update() {
     bool parsed = bool(input >> magic >> version >> session >> newReady >> newRepairs >> newUnlocks);
     if (parsed && schema >= 2) parsed = bool(input >> newFlarlic);
     parsed = parsed && bool(input >> newChecks >> end);
+    unsigned newStats[3][4] = {};
+    if (progressiveStats) {
+        if (!parsed || end != "UPGRADES") fail("missing progressive stat state");
+        for (int c = 0; c < 3; ++c) for (int stat = 0; stat < 4; ++stat) {
+            if (!(input >> newStats[c][stat]) || newStats[c][stat] > (stat == 0 || stat == 3 ? 2u : 1u)
+                || newStats[c][stat] < statUpgrades[c][stat]) fail("invalid or retracted stat upgrade");
+        }
+        parsed = bool(input >> end);
+    }
     if (!parsed || magic != "PIKMIN_STATE" || version != schema || session != token || newReady > 1
         || newRepairs > 25 || newUnlocks > (schema >= 5 ? 255u : schema == 4 ? 127u : schema == 3 ? 63u : 31u) || newFlarlic > 10 - startingFlarlic || newChecks >= (1ull << checkCount)
         || end != "END" || (input >> extra))
@@ -170,6 +187,12 @@ void pc_randomizer_update() {
     // Inventory is monotonic within this authenticated run.
     if (newRepairs < repairs || (newUnlocks & unlocks) != unlocks || newFlarlic < flarlic)
         fail("state attempted to retract received progression");
+    if (progressiveStats) for (int c = 0; c < 3; ++c) for (int stat = 0; stat < 4; ++stat) {
+        if (statUpgrades[c][stat] != newStats[c][stat])
+            std::printf("[Pikmin Randomizer] STAT_UPGRADE color=%d stat=%d tier=%u\n", c, stat, newStats[c][stat]);
+        statUpgrades[c][stat] = newStats[c][stat];
+        colorStats[c][stat] = stat == 3 ? 1 + newStats[c][stat] : 100 + 25 * newStats[c][stat];
+    }
     ready = newReady != 0;
     repairs = newRepairs;
     unlocks = newUnlocks;
@@ -245,7 +268,7 @@ void pc_randomizer_check(const char* name) {
 }
 
 bool pc_randomizer_expanded() { return enabled && schema >= 2; }
-bool pc_randomizer_color_stats() { return enabled && configuredStats; }
+bool pc_randomizer_color_stats() { return enabled && (configuredStats || progressiveStats); }
 float pc_randomizer_color_multiplier(int color, PcPikminStat stat) {
     return pc_randomizer_color_stats() && color >= 0 && color < 3 && stat >= 0 && stat < 3 ? colorStats[color][stat] / 100.0f : 1.0f;
 }

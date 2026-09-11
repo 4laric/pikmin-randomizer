@@ -9,6 +9,7 @@ from .core.catalog import (GAME, ITEM_IDS, LOCATION_IDS, NAMES, CHECK_AREAS,
                            CHECK_REQUIREMENTS, UNLOCKS, REPAIR, REPAIR_COUNT, ALL_LOCATION_IDS,
                            active_names, item_pool, check_area, can_reach_manifest, FLARLIC, ALL_AREA_LOCATION_IDS, START_AREAS, COLLECTION_LOCATION_IDS)
 from .core.seed import generate, fingerprint
+from .core.stats import UPGRADE_ITEMS
 
 
 class ExpandedChecks(Toggle):
@@ -51,6 +52,12 @@ class RandomizeColorStats(Toggle):
     default = 0
 
 
+class ProgressiveColorStats(Toggle):
+    """Receive per-color stat upgrades as AP items. Vanilla bases; damage and carry have two upgrades, movement and attack rate one. Enables collection checks. Mutually exclusive with rolled stats."""
+    display_name = "Progressive Color Stats"
+    default = 0
+
+
 class StartingFlarlic(Range):
     """Initial field capacity in tens. Remaining Flarlic items raise the cap to 100. Enables expanded checks."""
     display_name = "Starting Flarlic"
@@ -61,6 +68,7 @@ class StartingFlarlic(Range):
 
 @dataclass
 class PikminOptions(PerGameCommonOptions):
+    progressive_color_stats: ProgressiveColorStats
     randomize_color_stats: RandomizeColorStats
     starting_flarlic: StartingFlarlic
     expanded_checks: ExpandedChecks
@@ -98,7 +106,8 @@ class PikminRandomizerWorld(World):
                     region.locations.append(PikminLocation(self.player, name, self.manifest()['locations'][name], region))
 
     def create_item(self, name):
-        return PikminItem(name, ItemClassification.progression, ITEM_IDS[name], self.player)
+        classification = ItemClassification.useful if name in UPGRADE_ITEMS and UPGRADE_ITEMS[name][1] != 'carry' else ItemClassification.progression
+        return PikminItem(name, classification, ITEM_IDS[name], self.player)
 
     def create_items(self):
         # Sparse cap-10 starts need farming access before reverse fill spends
@@ -128,7 +137,7 @@ class PikminRandomizerWorld(World):
             self._manifest = generate(str(self.multiworld.seed_name), "ap", self.multiworld.player_name[self.player],
                             expanded=bool(self.options.expanded_checks),
                             starting_area=('forest', 'navel', 'random', 'impact', 'spring', 'trial')[self.options.starting_area.value],
-                            starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas), enemy_shuffle=bool(self.options.enemy_shuffle), collection_checks=bool(self.options.collection_checks), starting_flarlic=self.options.starting_flarlic.value, randomize_color_stats=bool(self.options.randomize_color_stats))
+                            starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas), enemy_shuffle=bool(self.options.enemy_shuffle), collection_checks=bool(self.options.collection_checks), starting_flarlic=self.options.starting_flarlic.value, randomize_color_stats=bool(self.options.randomize_color_stats), progressive_color_stats=bool(self.options.progressive_color_stats))
         return self._manifest
 
     def fill_slot_data(self):

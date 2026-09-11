@@ -51,7 +51,7 @@ def main(manifest_path, session_path, pid):
     root.attributes('-topmost', True)
     root.attributes('-transparentcolor', '#010203')
     root.configure(bg='#010203')
-    height = 295 if 'color_stats' in manifest else 235
+    height = 295 if ('color_stats' in manifest or manifest.get('progressive_color_stats')) else 235
     canvas = tk.Canvas(root, width=430, height=height, bg='#010203', highlightthickness=0)
     canvas.pack()
     root.update_idletasks()
@@ -108,8 +108,8 @@ def main(manifest_path, session_path, pid):
                     canvas.create_line(x+3, 54, x+13, 44, fill='#86939e', width=2)
                 draw(label, 36, color if unlocked else '#a1aab4', 10, x+24)
                 draw('UNLOCKED' if unlocked else 'LOCKED', 53, '#c6d5dc' if unlocked else '#a1aab4', 8, x+24)
-            stat_offset = 60 if 'color_stats' in manifest else 0
-            for index, line in enumerate(profile_lines(manifest)):
+            stat_offset = 60 if ('color_stats' in manifest or manifest.get('progressive_color_stats')) else 0
+            for index, line in enumerate(profile_lines(manifest, Counter(item for _, item in events))):
                 draw(line, 78 + index*18, '#c6d5dc', 8)
             draw('RECEIVED' if time.monotonic()-changed_at < 12 else 'RECENT ITEMS', 84+stat_offset, '#9dc9da', 10)
             for index, (source, item) in enumerate(events[-3:][::-1]):

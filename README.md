@@ -52,14 +52,16 @@ Install `output/pikmin_randomizer.apworld` into your Archipelago setup. Generate
 Pikmin Randomizer:
   starting_flarlic: 1
   collection_checks: true
-  randomize_color_stats: true
+  progressive_color_stats: true
 ```
 
 `starting_flarlic` accepts 1–10 and defaults to 1: each unit grants 10 field capacity. The pool contains the remaining Flarlic needed to reach 100 (nine at the default). The starter population is still 20; with a cap of 10, ten remain stored in the Onion. This option enables expanded checks. Solo generation uses the same default via `--starting-flarlic`. Existing manifests without this option retain their original capacity rules.
 
 At cap 10, AP requests an early Flarlic for Forest of Hope starts, or early Forest of Hope access for other starts, so sparse opening checks can lead to farming and further progression. These items may be in another player's world. New configured seeds require the updated native build and AP world v0.8.0; older native builds reject the new bootstrap instead of silently using the wrong cap.
 
-`randomize_color_stats: true` (AP world v0.9.0) gives each color one fixed profile per seed: damage at 50/75/100/125/150% of that color's vanilla damage, movement and attack rate at 75/100/125%, and carrying strength at 1/2/3 units. CLI: `--randomize-color-stats`. This is opt-in and enables all-area expanded checks; existing seeds retain vanilla stats. The overlay and `status` command show each profile. Throw height, water/fire abilities and bomb handling remain vanilla.
+`progressive_color_stats: true` (AP world v0.10.0) adds separate progressive AP items for each color's damage, movement, attack rate and carrying strength. All colors start at their vanilla bases. Damage upgrades to 125%, then 150%; carrying strength upgrades from 1 to 2, then 3. Movement and attack rate each have one upgrade to 125%. The 18 upgrade items fit the existing 58 collection checks while preserving all unlocks and at least 25 repair rewards. Carry upgrades are progression; other stat upgrades are useful items. CLI: `--progressive-color-stats`. This opt-in enables collection checks. Received upgrades immediately affect existing Pikmin, are capped, survive receipt replay/reconnect, and appear in the live overlay/status. Carry logic credits only upgrades already owned. Throw height, water/fire abilities and bomb handling remain vanilla.
+
+The earlier fixed-profile option `randomize_color_stats: true` / `--randomize-color-stats` remains supported for existing seeds: damage 50/75/100/125/150%, movement and attack rate 75/100/125%, carry 1/2/3. Choose either progressive upgrades or fixed rolls; combining them is rejected. With both options off, stats remain vanilla.
 
 Carrying sums the strength of attached Pikmin while each still occupies one physical slot and one field-cap slot. Hauling uses the crew's average movement multiplier; the existing flower/extra-carrier speed bonus is bounded for stronger crews. Part logic uses `ceil(weight / guaranteed strength)` while retaining the inherited route-color requirements. Guaranteed strength is the weakest profile among the required route colors (including the inherited red-access assumption), so the logic can under-credit a stronger specialized crew rather than invent a route. Population checks still count bodies. Full-route gameplay acceptance remains separate from the native mixed-crew fixture.
 

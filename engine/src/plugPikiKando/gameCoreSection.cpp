@@ -1990,6 +1990,19 @@ void GameCoreSection::updateAI()
             std::puts("[Pikmin Randomizer] TEST_ONLY native_save_written_and_read_back consecutive=2");
         }
     }
+    if (pc_randomizer_color_stats() && scripted && !std::strcmp(scripted, "progressive-stats")
+        && background && !std::strcmp(background, "1") && bbftRedsReady
+        && pc_bbft_color_access(Blue) && pc_bbft_color_access(Yellow)
+        && !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll && !gameflow.mIsUIOverlayActive) {
+        static bool baseline = false;
+        if (!baseline) {
+            if (pc_randomizer_carry_strength(Red) != 1 || pc_randomizer_color_multiplier(Red, PC_PIKI_DAMAGE) != 1.0f) std::abort();
+            std::puts("[Pikmin Randomizer] TEST_ONLY progressive_baseline_live");
+            baseline = true;
+        }
+        if (pc_randomizer_carry_strength(Red) == 3 && pc_randomizer_carry_strength(Blue) == 2)
+            pc_randomizer_test_color_stats();
+    }
     if (pc_randomizer_color_stats() && scripted && !std::strcmp(scripted, "stats")
         && background && !std::strcmp(background, "1") && bbftRedsReady
         && pc_bbft_color_access(Blue) && pc_bbft_color_access(Yellow)

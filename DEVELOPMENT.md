@@ -1,5 +1,15 @@
 # Standalone milestone: local implementation
 
+## Progressive per-color AP upgrades (issue #29)
+
+AP world v0.10.0 adds `progressive_color_stats` / `--progressive-color-stats`. Twelve item types (one per color/stat), eighteen total copies: damage has two +25% tiers, carry strength has two +1 tiers, movement and attack rate each have one +25% tier. Starts use vanilla values; the original red damage bonus remains. Collection checks are enabled to retain the 25-repair goal and every unlock within the 58-location pool. Carry items are progression and other stat items useful. Rolled-stat mode remains supported but is mutually exclusive with progressive mode.
+
+The bootstrap requires `PROGRESSIVE_STATS 1` and the matching `progressive-color-stats-v1` handshake. Authenticated cumulative receipts produce twelve capped `UPGRADES` counts in native state; parsing rejects missing, malformed, excessive and retracted tiers before committing the state. Live getters serve existing actors and weighted crews. Overlay/status derive profiles from the same receipts; route logic credits only received carry tiers. Receipt replay and journal recovery preserve upgrades; extension-aware journal validation also fixes relaunch for starting-Flarlic and rolled-stat seeds. This does not implement native day/squad persistence.
+
+Validation: 42 Python tests, 2,360 packaged AP fills, remote-Blue and remote-Red-Carry two-player fills. The latter makes a weight-40 part reachable at field cap 20 only after a remote red carry upgrade. Native progressive protocol validates baseline, independent tiers, receipt replay, caps and retraction rejection; old rolled-stat and Flarlic protocol suites pass. The live test-hook fixture starts with vanilla stats, receives upgrades after actors exist, then verifies all three damage/movement/attack hooks and seven bodies lifting a weight-20 part, including put-down after losing strength. Native source commit `568ec58f`. Full player-driven combat/routes remain pending.
+
+Fresh local seed: `output/turkey-upgrades-01/Play.cmd` (Forest of Hope/blue, cap 10, enemy swaps, collection checks, progressive stats). The accompanying production binary has TEST_HOOKS OFF; hidden startup passed rendered world, ten blue Pikmin, one-time other-color grants, live stat receipts, area/goal gates and only the expected opening checks. Player session remains fresh. AP artifact: `output/pikmin_randomizer-0.10.0.apworld`. Generated seeds, binaries and test logs stay local.
+
 ## Per-color stat randomization (issue #28)
 
 Opt-in `randomize_color_stats` YAML / `--randomize-color-stats` CLI, AP world v0.9.0. Profiles use an independent SHA256 stream and integer percentages; `color-stats-v1` is required by the manifest/handshake and `COLOR_STATS` is a strict bootstrap extension. Old seeds omit both and retain unity multipliers. Damage is 50–150% of the existing color-specific base; movement and attack rate are 75–125%; carry strength is integer 1–3. No throw or ability changes.

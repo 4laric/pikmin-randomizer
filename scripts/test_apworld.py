@@ -65,6 +65,11 @@ def main(ap):
             assert 'color_stats' in mw.worlds[1].manifest()
             distribute_items_restrictive(mw)
             assert mw.can_beat_game() and not mw.get_unfilled_locations()
+        for seed in range(100):
+            mw = setup_multiworld(mod.PikminRandomizerWorld, seed=seed,
+                                 options={'progressive_color_stats': True, 'starting_area': 2, 'starting_color': 3})
+            distribute_items_restrictive(mw)
+            assert mw.can_beat_game() and not mw.get_unfilled_locations()
         # A two-slot fill exercises cross-player rewards instead of only solo AP.
         for seed in range(100):
             mw = setup_multiworld(mod.PikminRandomizerWorld, seed=seed,
@@ -90,7 +95,21 @@ def main(ap):
         assert mw.can_beat_game()
         assert any(loc.item.player != loc.player for loc in mw.get_locations())
         assert remote.item.player == 1 and remote.player == 2
-        print(f"Packaged AP world: {len(configs)*100+200} single-slot fills plus 60 starting-Flarlic and 100 color-stat fills, including collection checks and a remote-Blue two-slot fill pass")
+        mw = setup_multiworld([mod.PikminRandomizerWorld] * 2, seed=291,
+                             options=[{'progressive_color_stats': True}, {'progressive_color_stats': True}])
+        carry = next(item for item in mw.itempool if item.player == 1 and item.name == 'Progressive Red Carry Strength')
+        mw.itempool.remove(carry)
+        remote = mw.get_location('Explore: The Forest of Hope - Land', 2)
+        remote.place_locked_item(carry)
+        initial = CollectionState(mw)
+        initial.collect(mw.worlds[1].create_item(FLARLIC), True)
+        part = mw.get_location('Pikmin: Eternal Fuel Dynamo', 1)
+        assert not part.can_reach(initial) and remote.can_reach(initial)
+        initial.collect(carry, True)
+        assert part.can_reach(initial)
+        distribute_items_restrictive(mw)
+        assert mw.can_beat_game() and not mw.get_unfilled_locations()
+        print(f"Packaged AP world: {len(configs)*100+200} single-slot fills plus 60 starting-Flarlic and 100 color-stat and 100 progressive-stat fills, including collection checks and a remote-Blue two-slot fill pass")
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser();p.add_argument("ap", type=Path);main(p.parse_args().ap)
