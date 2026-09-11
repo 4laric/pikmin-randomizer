@@ -11,7 +11,7 @@ from randomizer.runner import NativeRun
 
 exe = str(Path(sys.argv[1]).resolve())
 with tempfile.TemporaryDirectory() as d:
-    m = generate('permanent-probe', 'ap', permanent_checks=True, progressive_color_stats=True, randomize_color_stats=True)
+    m = generate('permanent-probe', 'ap', permanent_checks=True, progressive_color_stats=True, randomize_color_stats=True, legacy_checks=True)
     s = Session(m, d); s.bind_ap('fixture', 0, 1)
     s.receive(0, [ITEM_IDS[n] for n in progression_pool(m)])
     s.collect('Population: 450 total Pikmin')

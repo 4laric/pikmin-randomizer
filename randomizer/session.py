@@ -1,6 +1,7 @@
 """Crash-safe check/reward journal. Native campaign saves are a separate concern."""
 import json
 import os
+import time
 from collections import Counter
 from pathlib import Path
 from .catalog import NAMES, ITEM_IDS, UNLOCKS, REPAIR, FLARLIC, FOREST_ACCESS, IMPACT_ACCESS, RED, active_names, item_pool
@@ -17,7 +18,17 @@ def atomic_write(path, text):
         f.write(text)
         f.flush()
         os.fsync(f.fileno())
-    os.replace(temp, path)
+    # Native readers can briefly hold a Windows handle without delete sharing.
+    # Retry replacement, never truncate the live journal to work around a lock.
+    deadline = time.monotonic() + 1.0
+    while True:
+        try:
+            os.replace(temp, path)
+            break
+        except PermissionError as exc:
+            if os.name != 'nt' or getattr(exc, 'winerror', None) not in (5, 32, 33) or time.monotonic() >= deadline:
+                raise
+            time.sleep(0.01)
 
 
 class Session:
