@@ -9,7 +9,7 @@ class BestiaryV2Tests(unittest.TestCase):
             old = generate('compat', collection_checks=True, permanent_checks=permanent, legacy_checks=True)
             new = generate('compat', collection_checks=True, permanent_checks=permanent)
             validate(old); validate(new)
-            self.assertEqual(len(new['locations']), 120 if permanent else 59)
+            self.assertEqual(len(new['locations']), 158 if permanent else 77)
             self.assertEqual(len(NEW_BESTIARY), 11)
             for n, ident in new['locations'].items():
                 self.assertFalse(n.startswith('Explore:'))
@@ -31,6 +31,8 @@ class BestiaryV2Tests(unittest.TestCase):
 
     def test_existing_landing_manifest(self):
         m = generate('previous', collection_checks=True)
+        m.pop('color_population')
+        m['capabilities'].remove('color-population-v1')
         m.pop('no_exploration')
         m['capabilities'][m['capabilities'].index('no-exploration-v1')] = 'landing-only-v1'
         m['locations'] = {n: MODERN_LOCATION_IDS[n] for n in modern_names(False)}

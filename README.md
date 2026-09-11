@@ -16,6 +16,12 @@ Experimental standalone and Archipelago randomizer for Pikmin 1, built on Open N
 
 The current native build fixes a boss-generator decoding bug that turned Snagrets, geysers, beetles and other entries into Beady Long Legs on PC. Rebuild or use the corrected package; changing a seed alone cannot fix an older executable.
 
+## Color-specific population checks (v0.16.0)
+
+New collection seeds replace every aggregate population milestone with separate Red, Yellow and Blue milestones. Totals include field Pikmin, stored Pikmin and sprouts of that color; colors never combine toward a threshold. There are 27 population checks (9 per color), or 57 (19 per color) with permanent checks enabled, for **77/158 total locations**. Thresholds still run through 500 per color. Extra locations use the existing reward pool, leaving room for future bonuses and traps.
+
+Logic requires the matching Onion and audited farming access; only the starting color's initial 20 is credited without farming. Flarlic limits the field, not these totals. New checks use fresh AP IDs and a `color-population-v1` capability; old manifests retain their aggregate checks and IDs. Use a fresh seed and updated native executable. Test package: `output/turkey-population-01/Play.cmd` (Hope/yellow, field cap 10, enemy shuffle, wide stats and progressive upgrades).
+
 ## Enemy layout and progression (v0.15.0)
 
 Enemy-family swaps were already deterministic in `enemy_mask`. New seeds additionally contain a versioned `enemy_layout` describing the resulting species sources, protected spawns and earliest campaign days. All 19 bestiary rules use those sources rather than fixed area assumptions. Changing a mask without updating the matching layout is rejected. Native still consumes the same saved mask; it does not reroll on launch.

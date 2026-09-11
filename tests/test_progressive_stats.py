@@ -14,9 +14,9 @@ class ProgressiveStatsTests(unittest.TestCase):
         for seed in range(60):
             m = generate(str(seed), progressive_color_stats=True, starting_area='random', starting_color='random', starting_flarlic=1)
             pool = Counter(item_pool(m))
-            self.assertEqual(pool['Ship Repair'], 26)
+            self.assertEqual(pool['Ship Repair'], 44)
             self.assertEqual(len(upgrade_pool()), 18)
-            self.assertEqual(sum(pool.values()), 59)
+            self.assertEqual(sum(pool.values()), 77)
             spheres(solo_rewards(m), m)
 
     def test_only_owned_carry_affects_logic(self):

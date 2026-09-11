@@ -27,6 +27,30 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 100; ++i) {
         pc_randomizer_update();
         if (pc_randomizer_ready()) {
+            for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--color-population-probe")) {
+                const char* colors[] = {"Blue", "Red", "Yellow"};
+                const char* onions[] = {"Blue Onion", "Red Onion", "Yellow Onion"};
+                pc_randomizer_observe_total_population(1500, true);
+                pc_randomizer_observe_population(100, true);
+                pc_randomizer_observe_color_population(-1, 500, true);
+                pc_randomizer_observe_color_population(3, 500, true);
+                for (int color = 0; color < 3; ++color) {
+                    char low[80], high[80];
+                    std::snprintf(low, sizeof(low), "Population: 20 total %s Pikmin", colors[color]);
+                    std::snprintf(high, sizeof(high), "Population: 500 total %s Pikmin", colors[color]);
+                    pc_randomizer_observe_color_population(color, 500, false);
+                    pc_randomizer_observe_color_population(color, -1, true);
+                    pc_randomizer_observe_color_population(color, 19, true);
+                    assert(!pc_randomizer_checked(low));
+                    pc_randomizer_observe_color_population(color, 20, true);
+                    assert(pc_randomizer_checked(low) == pc_randomizer_has(onions[color]));
+                    assert(!pc_randomizer_checked(high));
+                    pc_randomizer_observe_color_population(color, 500, true);
+                    pc_randomizer_observe_color_population(color, 500, true);
+                    assert(pc_randomizer_checked(high) == pc_randomizer_has(onions[color]));
+                }
+                std::puts("COLOR_POPULATION_PASS"); return 0;
+            }
             bool modernProbe = false;
             for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--bestiary-probe")) modernProbe = true;
             if (modernProbe) {

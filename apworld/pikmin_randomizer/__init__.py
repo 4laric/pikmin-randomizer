@@ -41,7 +41,7 @@ class StartingColor(Choice):
 
 
 class CollectionChecks(Toggle):
-    """Count corpse deliveries at Onions and total living population up to 500. Enables all-area expanded checks."""
+    """Count corpse deliveries at Onions and total living population up to 500 per color. Enables all-area expanded checks."""
     display_name = 'Corpse Delivery and Total Population Checks'
     default = 1
 
@@ -53,7 +53,7 @@ class RandomizeColorStats(Toggle):
 
 
 class PermanentChecks(Toggle):
-    """Enable 19 total-population milestones and 51 individual walls, climbing sticks, bridges and boxes. Enables collection checks; 120 total checks. Obstacle routes currently require all colors conservatively; boxes also require field capacity 100."""
+    """Enable 57 color-specific total-population milestones and 51 individual walls, climbing sticks, bridges and boxes. Enables collection checks; 158 total checks. Obstacle routes currently require all colors conservatively; boxes also require field capacity 100."""
     display_name = 'Permanent Structure and Granular Population Checks'
     default = 0
 

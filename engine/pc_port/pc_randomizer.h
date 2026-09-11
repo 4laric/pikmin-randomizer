@@ -26,6 +26,7 @@ int pc_randomizer_enemy_type(int original, bool protectedSpawn);
 int pc_randomizer_field_capacity();
 void pc_randomizer_observe_population(int activePikmin, bool gameplay);
 bool pc_randomizer_collection_checks();
+void pc_randomizer_observe_color_population(int color, int totalPikmin, bool gameplay);
 void pc_randomizer_observe_total_population(int totalPikmin, bool gameplay);
 void pc_randomizer_corpse_delivered(int type, int stage, bool gameplay);
 void pc_randomizer_enemy_defeated(int type, int stage, bool healthDepleted, bool gameplay);

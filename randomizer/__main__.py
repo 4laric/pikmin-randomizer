@@ -63,8 +63,8 @@ def main():
                 from .stats import profile_lines
                 if "color_stats" in manifest or manifest.get("progressive_color_stats"):
                     lines += ["## Color profiles", ""] + profile_lines(manifest, session.inventory) + [""]
-                from .catalog import TOTAL_POPULATION, DELIVERY_BESTIARY, FINE_POPULATION, OBSTACLES, NEW_BESTIARY, bestiary_sources, START_AREAS
-                for category, entries in (("Parts and Onions", NAMES + (POSITRON,)), ("Population", FINE_POPULATION if manifest['schema'] >= 8 else TOTAL_POPULATION if manifest['schema'] >= 7 else POPULATION),
+                from .catalog import population_checks, TOTAL_POPULATION, DELIVERY_BESTIARY, FINE_POPULATION, OBSTACLES, NEW_BESTIARY, bestiary_sources, START_AREAS
+                for category, entries in (("Parts and Onions", NAMES + (POSITRON,)), ("Population", population_checks(manifest) if manifest['schema'] >= 7 else POPULATION),
                                           ("Bestiary - deliveries and defeats" if manifest['schema'] >= 7 else "Bestiary - first defeats", ({**DELIVERY_BESTIARY, **NEW_BESTIARY}) if manifest['schema'] >= 7 else BESTIARY), ("Exploration", ALL_EXPLORATION), ("Permanent obstacles", OBSTACLES)):
                     enabled = [n for n in entries if n in session.names]
                     if not enabled: continue

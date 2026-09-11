@@ -1896,6 +1896,8 @@ void GameCoreSection::updateAI()
             const int field = int(GameStat::formationPikis) + int(GameStat::freePikis) + int(GameStat::workPikis);
             pc_randomizer_observe_population(field, true);
             pc_randomizer_observe_total_population(int(GameStat::allPikis), true);
+            for (int color = PikiMinColor; color < PikiColorCount; ++color)
+                pc_randomizer_observe_color_population(color, GameStat::allPikis[color], true);
             if (flowCont.mCurrentStage) {
                 auto observe = [](Creature* obj, int kind, bool complete) {
                     if (!obj || !obj->mGenerator) return;

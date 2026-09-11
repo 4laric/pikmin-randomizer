@@ -19,7 +19,7 @@
 #endif
 
 namespace {
-bool enabled = false, ready = false, goalReported = false, permanentChecks = false, noExploration = false;
+bool enabled = false, ready = false, goalReported = false, permanentChecks = false, noExploration = false, colorPopulation = false;
 unsigned repairs = 0, unlocks = 0, flarlic = 0, schema = 1, checkCount = 30;
 int startStage = 1;
 int startColor = 1; // Native IDs: blue 0, red 1, yellow 2.
@@ -46,7 +46,7 @@ void expect(std::istream& in, const char* expected) {
     std::string word;
     if (!(in >> word) || word != expected) fail("unsupported or malformed bootstrap");
 }
-const char* checkName(unsigned i) { return noExploration ? (permanentChecks ? randomizerNoExplorePermanentNames[i] : randomizerNoExploreCollectionNames[i]) : schema >= 9 ? (permanentChecks ? randomizerModernPermanentNames[i] : randomizerModernCollectionNames[i]) : schema >= 8 ? randomizerPermanentNames[i] : schema >= 7 ? randomizerCollectionNames[i] : randomizerCheckNames[i]; }
+const char* checkName(unsigned i) { return colorPopulation ? (permanentChecks ? randomizerColorPermanentNames[i] : randomizerColorCollectionNames[i]) : noExploration ? (permanentChecks ? randomizerNoExplorePermanentNames[i] : randomizerNoExploreCollectionNames[i]) : schema >= 9 ? (permanentChecks ? randomizerModernPermanentNames[i] : randomizerModernCollectionNames[i]) : schema >= 8 ? randomizerPermanentNames[i] : schema >= 7 ? randomizerCollectionNames[i] : randomizerCheckNames[i]; }
 int index(const char* name) {
     if (name) for (unsigned i = 0; i < checkCount; ++i) if (!std::strcmp(name, checkName(i))) return (int)i;
     return -1;
@@ -96,10 +96,11 @@ bool pc_randomizer_init(int argc, char** argv) {
     permanentChecks = schema == 8;
     if (schema >= 9) {
         expect(input, "CHECKSET"); int value;
-        if (!(input >> value) || (value < 0 || value > 3)) fail("invalid check set");
+        if (!(input >> value) || (value < 0 || value > 7 || ((value & 4) && !(value & 2)))) fail("invalid check set");
         permanentChecks = (value & 1) != 0;
         noExploration = (value & 2) != 0;
-        checkCount = noExploration ? (permanentChecks ? sizeof(randomizerNoExplorePermanentNames)/sizeof(*randomizerNoExplorePermanentNames) : sizeof(randomizerNoExploreCollectionNames)/sizeof(*randomizerNoExploreCollectionNames)) : permanentChecks ? sizeof(randomizerModernPermanentNames)/sizeof(*randomizerModernPermanentNames)
+        colorPopulation = (value & 4) != 0;
+        checkCount = colorPopulation ? (permanentChecks ? sizeof(randomizerColorPermanentNames)/sizeof(*randomizerColorPermanentNames) : sizeof(randomizerColorCollectionNames)/sizeof(*randomizerColorCollectionNames)) : noExploration ? (permanentChecks ? sizeof(randomizerNoExplorePermanentNames)/sizeof(*randomizerNoExplorePermanentNames) : sizeof(randomizerNoExploreCollectionNames)/sizeof(*randomizerNoExploreCollectionNames)) : permanentChecks ? sizeof(randomizerModernPermanentNames)/sizeof(*randomizerModernPermanentNames)
             : sizeof(randomizerModernCollectionNames)/sizeof(*randomizerModernCollectionNames);
     }
     if (schema >= 6) {
@@ -157,6 +158,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (permanentChecks) hello << " permanent-checks-v1";
     if (schema >= 8) hello << " check-set-v1";
     if (schema >= 9) hello << (noExploration ? " bestiary-v2 no-exploration-v1" : " bestiary-v2 landing-only-v1");
+    if (colorPopulation) hello << " color-population-v1";
     if (configuredFlarlic) hello << " starting-flarlic-v1";
     if (configuredStats) hello << (wideStats ? " color-stats-v2" : " color-stats-v1");
     if (progressiveStats) hello << " progressive-color-stats-v1";
@@ -326,8 +328,20 @@ void pc_randomizer_enemy_defeated(int type, int stage, bool healthDepleted, bool
         if (type == randomizerEnemyTypes[i]) pc_randomizer_check(randomizerCheckNames[39 + i]);
 }
 bool pc_randomizer_collection_checks() { return enabled && schema >= 7; }
+void pc_randomizer_observe_color_population(int color, int totalPikmin, bool gameplay) {
+    if (!enabled || !colorPopulation || !gameplay || !ready || color < 0 || color > 2 || totalPikmin < 0) return;
+    const char* colors[] = {"Blue", "Red", "Yellow"};
+    const char* onions[] = {"Blue Onion", "Red Onion", "Yellow Onion"};
+    if (!pc_randomizer_has(onions[color])) return;
+    const int* thresholds = permanentChecks ? randomizerFinePopulation : randomizerTotalPopulation;
+    const int length = permanentChecks ? 19 : 9;
+    for (int i = 0; i < length; ++i) if (totalPikmin >= thresholds[i]) {
+        char name[80]; std::snprintf(name, sizeof(name), "Population: %d total %s Pikmin", thresholds[i], colors[color]);
+        pc_randomizer_check(name);
+    }
+}
 void pc_randomizer_observe_total_population(int totalPikmin, bool gameplay) {
-    if (!pc_randomizer_collection_checks() || !gameplay || !ready || totalPikmin < 0) return;
+    if (colorPopulation || !pc_randomizer_collection_checks() || !gameplay || !ready || totalPikmin < 0) return;
     if (permanentChecks) {
         for (int count : randomizerFinePopulation) if (totalPikmin >= count) {
             char name[80]; std::snprintf(name, sizeof(name), "Population: %d total Pikmin", count);

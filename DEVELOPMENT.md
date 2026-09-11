@@ -301,3 +301,12 @@ hiding and death behavior were not changed; player acceptance remains in #20.
 - Full native build passes. Initial build exposed an inherited missing `bbft_checked` test stub; adding that fake-transport function fixed the test link.
 
 Physical part carrying, full-seed solo/AP completion, day rollover and exact campaign resume remain open acceptance work. Planning/issues: https://github.com/4laric/pikmin-randomizer/issues/1 .
+
+## Per-color population milestones (2026-09-11, issue #39)
+
+New schema-9 manifests carry color_population=true and color-population-v1; CHECKSET bit 4 selects the new native catalogs and older binaries reject that check set. Existing schema-9 manifests without the flag and earlier versions preserve their catalogs. Fresh AP IDs begin at LOCATION_BASE+300, reserving all retired aggregate IDs.
+
+GameCoreSection observes GameStat::allPikis[color], the existing per-color sum of formation/free/work Pikmin, sprouts (mePikis), and Onion storage. Native observation requires gameplay, a ready session and the matching unlocked Onion; it awards milestones once via the durable check journal. The aggregate observer is suppressed in color mode. Logic requires the matching color and existing audited farming routes, except the starting color's initial 20. Native source commit: 386eb6ae; public snapshot refreshed.
+
+Validation: production game and protocol probe builds pass with test hooks OFF. All 59 Python tests pass. Twelve compiled per-color cases cover all starting colors, both milestone sets, locked/all-Onion inventories, thresholds 19/20/500 at cap 10, inactive/invalid observations and journal replay. Legacy collection and modern bestiary protocol regressions pass. Native counter wiring reviewed against GameStat::update and sprout registration; player validation of growing/storing Pikmin remains pending. Local package output/turkey-population-01/Play.cmd has 158 checks, Forest of Hope/yellow, cap 10, enemy shuffle, wide stat rolls and progressive stat items. AP world version 0.16.0.
+`scripts/test_apworld.py` also passes: 2,580 single-slot fills across legacy/new catalogs, starting combinations, stat modes and enemy masks, plus three multiworld cases. Log: output/color-population-ap-tests.log.
