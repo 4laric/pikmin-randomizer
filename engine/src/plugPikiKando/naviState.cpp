@@ -1,5 +1,8 @@
 #include "NaviState.h"
 #include "pc_randomizer.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_whistle.h"
+#endif
 #include <cstdlib>
 #include <cstdio>
 #include "AIConstant.h"
@@ -1679,6 +1682,16 @@ void NaviGatherState::init(Navi* navi)
 	UtEffectMgr::cast(kEffID, parm);
 	UtEffectMgr::cast(KandoEffect::NaviFue0, parm);
 	mWhistleEffectsStopped = false;
+
+#if defined(PIKI_PC_PORT)
+	// A short tap should recruit immediately, even before the animation loop.
+	navi->mWhistleRadiusFrac = pc_whistle_fraction(0.0f);
+	navi->mWhistleCircleMode = 2;
+	mWhistleCallRadius = (C_NAVI_PARM(navi, mWhistleMinRadius)
+	    + navi->mWhistleRadiusFrac * (C_NAVI_PARM(navi, mWhistleMaxRadius) - C_NAVI_PARM(navi, mWhistleMinRadius)))
+	    * pc_randomizer_benefit_multiplier(PC_BENEFIT_WHISTLE);
+	if (!gameflow.mPauseAll) navi->callPikis(mWhistleCallRadius, false);
+#endif
 	rumbleMgr->start(RUMBLE_Unk3, 0, nullptr);
 }
 
@@ -1717,6 +1730,26 @@ void NaviGatherState::exec(Navi* navi)
 	bool down = navi->mKontroller->keyDown(KeyConfig::_instance->mSetCursorKey.mBind);
 	bool up   = navi->mKontroller->keyUp(KeyConfig::_instance->mSetCursorKey.mBind);
 	navi->makeVelocity(false);
+
+#if defined(PIKI_PC_PORT)
+	if (down) navi->mWhistleTimer += gsys->getFrameTime();
+	navi->mWhistleRadiusFrac = pc_whistle_fraction(navi->mWhistleTimer);
+	navi->mWhistleCircleMode = 2;
+	mWhistleCallRadius = (C_NAVI_PARM(navi, mWhistleMinRadius)
+	    + navi->mWhistleRadiusFrac * (C_NAVI_PARM(navi, mWhistleMaxRadius) - C_NAVI_PARM(navi, mWhistleMinRadius)))
+	    * pc_randomizer_benefit_multiplier(PC_BENEFIT_WHISTLE);
+	if (!gameflow.mPauseAll) {
+		navi->callPikis(mWhistleCallRadius, pc_whistle_recall_workers(navi->mWhistleTimer, down));
+	} else {
+		navi->callDebugs(mWhistleCallRadius);
+	}
+	if (up) {
+		navi->mWhistleCircleMode = 0;
+		navi->mNaviAnimMgr.getUpperAnimator().finishMotion(PaniMotionInfo(PANI_NO_MOTION, navi));
+		transit(navi, NAVISTATE_Walk);
+	}
+	return;
+#endif
 
 	if (mWhistleAnimPhase == 0) {
 		return;

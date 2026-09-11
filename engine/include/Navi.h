@@ -95,7 +95,7 @@ public:
 	void startMotion(immut PaniMotionInfo&, immut PaniMotionInfo&);
 	void enableMotionBlend();
 	void updateWalkAnimation();
-	void callPikis(f32);
+	void callPikis(f32, bool recallWorkers = true);
 	void callDebugs(f32);
 	void releasePikis();
 	bool procActionButton();

@@ -1123,7 +1123,7 @@ void Navi::animationKeyUpdated(immut PaniAnimKeyEvent& event)
 /**
  * @todo: Documentation
  */
-void Navi::callPikis(f32 radius)
+void Navi::callPikis(f32 radius, bool recallWorkers)
 {
 	Vector3f unused = mCursorWorldPos - mSRT.t;
 	STACK_PAD_VAR(4);
@@ -1151,6 +1151,17 @@ void Navi::callPikis(f32 radius)
 		} else if (state == PIKISTATE_Flown) {
 			static_cast<PikiFlownState*>(piki->getCurrState())->mKnockdownTimer = 0.0f;
 		}
+
+#if defined(PIKI_PC_PORT)
+		// A tap gathers idle Pikmin without abandoning their work. Rescue
+		// responses above, and Pikmin on fire, must never wait for a long hold.
+		const bool rescue = piki->isFired() || state == PIKISTATE_Drown
+		    || state == PIKISTATE_Flick || state == PIKISTATE_Flown;
+		if (!recallWorkers && piki->mMode != PikiMode::FreeMode
+		    && piki->mMode != PikiMode::FormationMode && !rescue) {
+			continue;
+		}
+#endif
 
 		if ((piki->mNavi == this || piki->mNavi == nullptr) && !piki->isKinoko() && piki->isAlive() && !piki->isBuried()
 		    && (piki->mMode != PikiMode::FormationMode || piki->getState() == PIKISTATE_Emotion) && piki->mIsCallable

@@ -406,3 +406,12 @@ Native 663e0279 merges upstream health-gauge merge 398258e7 and CI repair branch
 Native 2f06772b adds the explicit no-assets audio-test skip from upstream CI branch69ca29f8. Windows production rebuild passes and an isolated asset-free --audio-self-test returns77. Linux prior run compiled USA/PAL and passed21 offline tests, then timed out in the asset-backed audio test; current CI validates the skip and remaining packaging.
 
 Final CI branch fab3f170 is merged into native ab4007e9 and open upstream save/boss branches22339471/7e46481e. Upstream PR7 run34637042965 and fork run34637037588 both pass build/package and clean Debian12 smoke. Twenty-one offline tests pass; audio integration reports an explicit asset-unavailable skip. Tar artifacts preserve the bundled loader executable bit; smoke installs the documented graphics runtime and resolves dependencies with the packaged loader. No player executable/session changes.
+
+
+## Responsive whistle and worker protection (#65)
+
+Native0baff6f8 recruits from whistle init and continuously while held. Radius starts35% between configured min/max and grows to the unchanged maximum in0.6s, with AP range scaling and matching visible circle. A held full whistle recalls workers; short/released calls protect all non-Free/non-Formation mode tags except existing fire/drowning/knockdown rescue. Original eligibility checks remain. Sustained radius is initialized; PC holds remain active until release.
+
+Production game/probe build passes (output/whistle65-build-final.log). Actual-engine isolated fixture passes23 protected mode tags, idle tap -> LookAt, held worker -> LookAt, out-of-range rejection and hold/radius boundaries (output/whistle65-live). This uses real recruitment code with synthetic mode tags, not every task animation/cleanup or physical gamepad input. See engine/tools/WHISTLE_QOL.md for reproduction and limits.
+
+Local turkey-finish-01/Play.cmd selects separate nectar-whistle.exe, SHA256 C365012F55551CFC85018EC9591DB7295CE3DBB96E56003B18C0B56BEF432B51. Previous launcher backed up as Play-before-whistle.cmd. Running games, seed and session untouched. Physical whistle feel and task-specific acceptance remain open.
