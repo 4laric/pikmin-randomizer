@@ -21,7 +21,7 @@ The desktop heartbeat runs daily at 10:00 America/Toronto and stays quiet on unc
 3. Import the needed upstream history into the isolated `native/` repository and create a separate candidate worktree/branch. Merge there and resolve conflicts. Keep the playable native checkout and packaged binaries unchanged until validation passes. Preserve the PC-only health-gauge/save fixes until equivalent upstream fixes are present; avoid duplicating merged fixes.
 4. Configure a fresh build with portable optimization settings and randomizer test hooks disabled. Build `pikmin_pc` and `pc_randomizer_probe`; run Python tests, catalog check, packaged AP fills, and affected native protocol/startup regressions. Changes to save handling, rendering, enemy creation or color/population behavior require focused checks. Build/test failures stay in the candidate with exact evidence; do not repeatedly retry an unchanged blocker.
 5. Promote a passing native candidate, update `engine/` using the source-only export, audit incoming files and licenses, and update ENGINE_SOURCE.md plus this ledger with integrated SHA, native commit and validation. Commit/push the randomizer source as authorized. Never include extracted assets, binaries, saves or logs, and never overwrite a running game binary.
-6. Report only a verified integration, meaningful PR feedback, actionable failure or required user input. New upstream messages/PRs beyond the explicitly authorized save and health fixes need separate authorization.
+6. Report only a verified integration, meaningful PR feedback, actionable failure or required user input. The user also authorized upstreaming the boss-generator fix (#35). Other new upstream messages/PRs need separate authorization.
 
 ## Save PR evidence and limits
 
@@ -51,6 +51,8 @@ Native `db04c6c9`; new seeds exclude all exploration checks while preserving old
 
 ## Boss generator decoding — issue #35
 
-Native `6a3ef245` replaces implementation-defined GenObjectBoss bitfields with explicit retail bit positions in read/write paths. The same bitfield code exists at integrated upstream 18ce1303; no new upstream PR has been opened for this fix. Passed 7,686 native parameter/serialization cases and all five area spawn/startup audits: exactly one Spider in Navel, none in the other four areas; Hope Snagrets and Trial Emperor restored. Evidence: `output/boss35-*`. See DEVELOPMENT.md for test scope.
+Native `6a3ef245` replaces implementation-defined GenObjectBoss bitfields with explicit retail bit positions in read/write paths. The same bitfield code exists at integrated upstream 18ce1303; submitted as upstream PR #4 at user request. Passed 7,686 native parameter/serialization cases and all five area spawn/startup audits: exactly one Spider in Navel, none in the other four areas; Hope Snagrets and Trial Emperor restored. Evidence: `output/boss35-*`. See DEVELOPMENT.md for test scope.
 
 Corrected production executable (TEST_HOOKS OFF): `output/turkey-bossfix-01/bin/nectar.exe`, SHA-256 `F925414EC4A8DCA6E3C8E47BF6FC4BDA47135CEB55B9D05FBFB4E6675778AF23`. New packages should use this build or rebuild current source.
+
+Boss fix upstream submission: [PR #4](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port/pull/4), OPEN, commit `68d3c567`, based on freshly fetched upstream `18ce1303`. One source file, 13 insertions / 39 deletions. The two methods match the downstream native-tested implementation; randomizer logging/fixtures are excluded. PR explicitly distinguishes downstream gameplay evidence from an unvalidated clean upstream build.
