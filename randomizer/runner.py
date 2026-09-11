@@ -22,7 +22,7 @@ class NativeRun:
                      f"SESSION {self.token}\nFINGERPRINT {session.fingerprint}\n" +
                      f"PROFILE {session.manifest['profile']}\nCATALOG {session.manifest['catalog']}\nPLACEMENT identity-v1\n" +
                      "GOAL 25\nDAYS repeat-day29-v1\n" +
-                     (f"COLOR {session.manifest['starting_color']}\n" if session.manifest['schema'] == 4 else '') + "END\n")
+                     (f"COLOR {session.manifest['starting_color']}\n" if session.manifest['schema'] >= 4 else '') + "END\n")
         self.seen = 0
         self.handshaken = False
         self.write_state(False)

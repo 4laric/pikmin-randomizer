@@ -7,7 +7,7 @@ from Options import PerGameCommonOptions, Toggle, Choice
 from worlds.AutoWorld import World
 from .core.catalog import (GAME, ITEM_IDS, LOCATION_IDS, NAMES, CHECK_AREAS,
                            CHECK_REQUIREMENTS, UNLOCKS, REPAIR, REPAIR_COUNT, ALL_LOCATION_IDS,
-                           active_names, item_pool, check_area, can_reach_manifest, FLARLIC)
+                           active_names, item_pool, check_area, can_reach_manifest, FLARLIC, ALL_AREA_LOCATION_IDS, START_AREAS)
 from .core.seed import generate, fingerprint
 
 
@@ -18,11 +18,14 @@ class ExpandedChecks(Toggle):
 
 
 class StartingArea(Choice):
-    """Randomized/Navel starts enable expanded checks. Spring and Trial starts are not supported."""
+    """Randomized includes all five areas. New starts enable the expanded five-area catalog."""
     display_name = 'Starting Area'
     option_forest = 0
     option_navel = 1
     option_randomized = 2
+    option_impact = 3
+    option_spring = 4
+    option_trial = 5
     default = 0
 
 
@@ -41,6 +44,7 @@ class PikminOptions(PerGameCommonOptions):
     expanded_checks: ExpandedChecks
     starting_area: StartingArea
     starting_color: StartingColor
+    all_areas: Toggle
 
 
 class PikminItem(Item):
@@ -55,19 +59,19 @@ class PikminRandomizerWorld(World):
     game = GAME
     options_dataclass = PikminOptions
     item_name_to_id = ITEM_IDS
-    location_name_to_id = ALL_LOCATION_IDS
+    location_name_to_id = ALL_AREA_LOCATION_IDS
     required_client_version = (0, 6, 0)
 
     def create_regions(self):
         menu = Region("Menu", self.player, self.multiworld)
         self.multiworld.regions.append(menu)
-        for area in dict.fromkeys(CHECK_AREAS.values()):
+        for _, area, _ in START_AREAS.values():
             region = Region(area, self.player, self.multiworld)
             self.multiworld.regions.append(region)
             menu.connect(region)
             for name in active_names(self.manifest()):
                 if check_area(name) == area:
-                    region.locations.append(PikminLocation(self.player, name, ALL_LOCATION_IDS[name], region))
+                    region.locations.append(PikminLocation(self.player, name, ALL_AREA_LOCATION_IDS[name], region))
 
     def create_item(self, name):
         return PikminItem(name, ItemClassification.progression, ITEM_IDS[name], self.player)
@@ -93,8 +97,8 @@ class PikminRandomizerWorld(World):
         if not hasattr(self, '_manifest'):
             self._manifest = generate(str(self.multiworld.seed_name), "ap", self.multiworld.player_name[self.player],
                             expanded=bool(self.options.expanded_checks),
-                            starting_area=('forest', 'navel', 'random')[self.options.starting_area.value],
-                            starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value])
+                            starting_area=('forest', 'navel', 'random', 'impact', 'spring', 'trial')[self.options.starting_area.value],
+                            starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas))
         return self._manifest
 
     def fill_slot_data(self):

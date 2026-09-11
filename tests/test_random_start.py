@@ -16,8 +16,8 @@ class RandomStartTests(unittest.TestCase):
             profiles.add(m['profile'])
             rewards = solo_rewards(m)
             self.assertEqual(Counter(rewards.values()), Counter(item_pool(m)))
-            self.assertEqual(sum(map(len, spheres(rewards, m))), 55)
-        self.assertEqual(profiles, {'foh-day2', 'navel-day2'})
+            self.assertEqual(sum(map(len, spheres(rewards, m))), 58)
+        self.assertEqual(profiles, {'impact-day2', 'foh-day2', 'navel-day2', 'spring-day2', 'trial-day2'})
 
     def test_navel_gates(self):
         m = generate('navel', starting_area='navel')

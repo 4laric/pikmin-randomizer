@@ -4,7 +4,7 @@ from pathlib import Path
 from .seed import generate, validate, fingerprint, solo_rewards, spheres
 from .runner import launch
 from .session import Session, SessionLock
-from .catalog import field_capacity, can_reach_manifest, POPULATION, BESTIARY, EXPLORATION, NAMES
+from .catalog import field_capacity, can_reach_manifest, POPULATION, BESTIARY, ALL_EXPLORATION, NAMES, POSITRON
 
 
 def main():
@@ -13,7 +13,8 @@ def main():
     gen = sub.add_parser("generate")
     gen.add_argument("--seed", required=True)
     gen.add_argument("--expanded", action="store_true", help="Flarlic, population, bestiary and exploration checks")
-    gen.add_argument('--starting-area', choices=['forest', 'navel', 'random'], default='forest', help='Random/navel enables expanded checks')
+    gen.add_argument('--starting-area', choices=['forest', 'navel', 'impact', 'spring', 'trial', 'random'], default='forest', help='Random includes all five areas')
+    gen.add_argument('--all-areas', action='store_true', help='Enable five-area catalog with a fixed start')
     gen.add_argument('--starting-color', choices=['red', 'yellow', 'blue', 'random'], default='red', help='Non-default enables expanded checks')
     gen.add_argument("--slot", default="Player1")
     gen.add_argument("--mode", choices=["solo", "ap"], default="solo")
@@ -32,7 +33,7 @@ def main():
     status.add_argument("--output", type=Path)
     args = parser.parse_args()
     if args.command == "generate":
-        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color)
+        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8") as f:
             f.write(json.dumps(manifest, indent=2) + "\n")
@@ -41,7 +42,7 @@ def main():
         manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
         validate(manifest)
         if args.command == "validate":
-            print(f"Valid {fingerprint(manifest)}; {len(manifest['locations'])} checks, 28 pinned parts")
+            print(f"Valid {fingerprint(manifest)}; {len(manifest['locations'])} checks, {len(manifest['assignments'])} pinned parts")
             if manifest["mode"] == "solo":
                 print(f"Conservative logic: {len(spheres(solo_rewards(manifest), manifest))} progression spheres")
         elif args.command == "status":
@@ -53,8 +54,8 @@ def main():
                          f"Field capacity: {field_capacity(session.inventory, manifest['schema'] >= 2)}. "
                          f"Repair goal: {min(session.inventory['Ship Repair'], 25)}/25.", "",
                          "Population entries record reached milestones, not the current population.", ""]
-                for category, entries in (("Parts and Onions", NAMES), ("Population", POPULATION),
-                                          ("Bestiary - first defeats", BESTIARY), ("Exploration", EXPLORATION)):
+                for category, entries in (("Parts and Onions", NAMES + (POSITRON,)), ("Population", POPULATION),
+                                          ("Bestiary - first defeats", BESTIARY), ("Exploration", ALL_EXPLORATION)):
                     enabled = [n for n in entries if n in session.names]
                     if not enabled: continue
                     lines += ["## " + category, ""]

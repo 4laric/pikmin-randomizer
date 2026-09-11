@@ -3,7 +3,7 @@ import json
 import os
 from collections import Counter
 from pathlib import Path
-from .catalog import NAMES, ITEM_IDS, UNLOCKS, REPAIR, FLARLIC, FOREST_ACCESS, RED, active_names, item_pool
+from .catalog import NAMES, ITEM_IDS, UNLOCKS, REPAIR, FLARLIC, FOREST_ACCESS, IMPACT_ACCESS, RED, active_names, item_pool
 from .seed import fingerprint, solo_rewards
 
 
@@ -53,7 +53,7 @@ class Session:
             if not bootstrap.exists():
                 raise ValueError("orphaned native check journal")
             fields = bootstrap.read_text(encoding="ascii").split()
-            if len(fields) != (19 if manifest['schema'] == 4 else 17) or fields[:2] != ["PIKMIN_RANDOMIZER", str(manifest["schema"])] or fields[2:4] != ["SESSION", journal.parent.name] or fields[4:6] != ["FINGERPRINT", self.fingerprint]:
+            if len(fields) != (19 if manifest['schema'] >= 4 else 17) or fields[:2] != ["PIKMIN_RANDOMIZER", str(manifest["schema"])] or fields[2:4] != ["SESSION", journal.parent.name] or fields[4:6] != ["FINGERPRINT", self.fingerprint]:
                 raise ValueError("native journal belongs to an incompatible manifest")
             data = journal.read_bytes()
             for line in data[:data.rfind(b"\n") + 1].splitlines():
@@ -119,6 +119,8 @@ class Session:
             unlocks |= 32
         if self.manifest['schema'] >= 4 and inventory[RED]:
             unlocks |= 64
+        if self.manifest['schema'] >= 5 and inventory[IMPACT_ACCESS]:
+            unlocks |= 128
         checks = sum(1 << i for i, name in enumerate(self.names) if name in self.data["checked"])
         repairs = min(inventory[REPAIR], self.manifest["goal"])
         if self.manifest["schema"] >= 2:

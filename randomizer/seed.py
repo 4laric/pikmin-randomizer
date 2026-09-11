@@ -4,7 +4,7 @@ import json
 from collections import Counter
 from .catalog import (GAME, NAMES, PART_IDS, LOCATION_IDS, UNLOCKS,
                       REPAIR, REPAIR_COUNT, CHECK_REQUIREMENTS, active_names, ALL_LOCATION_IDS,
-                      can_reach, can_reach_manifest, progression_pool, item_pool)
+                      can_reach, can_reach_manifest, progression_pool, item_pool, START_AREAS, ALL_AREA_LOCATION_IDS, ALL_PART_IDS)
 
 EXPANDED_CAPABILITIES = ["flarlic-v1", "population-v1", "bestiary-v1", "exploration-v1"]
 
@@ -42,7 +42,7 @@ class SeedRandom:
         return values
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red"):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False):
     result = dict(schema=1, game=GAME, seed=str(seed), slot=slot, mode=mode,
                   profile="foh-day2", catalog="vanilla-sites-v1", rng="sha256-counter-v1",
                   placement="identity-v1", assignments=dict(PART_IDS),
@@ -52,7 +52,7 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         result.update(schema=2, catalog="gameplay-checks-v2", locations=dict(ALL_LOCATION_IDS),
                       capabilities=CAPABILITIES + EXPANDED_CAPABILITIES)
     if starting_area != "forest":
-        if starting_area not in ("random", "navel"):
+        if starting_area not in ("random", "navel", "impact", "spring", "trial"):
             raise ValueError("unsupported starting area")
         selected = ("foh-day2", "navel-day2")[SeedRandom(str(seed) + "/start/" + slot).below(2)] if starting_area == "random" else "navel-day2"
         result.update(schema=3, profile=selected, catalog="gameplay-checks-v3", locations=dict(ALL_LOCATION_IDS),
@@ -63,6 +63,11 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         color = ('red', 'yellow', 'blue')[SeedRandom(str(seed) + '/color/' + slot).below(3)] if starting_color == 'random' else starting_color
         result.update(schema=4, starting_color=color, catalog='gameplay-checks-v4', locations=dict(ALL_LOCATION_IDS),
                       capabilities=['identity-placement-v1', 'random-start-v1', 'repair-goal-v1', 'repeat-day29-v1'] + EXPANDED_CAPABILITIES + ['starting-color-v1'])
+    if all_areas or starting_area in ('random', 'impact', 'spring', 'trial'):
+        profile = tuple(START_AREAS)[SeedRandom(str(seed) + '/all-areas/' + slot).below(5)] if starting_area == 'random' else ('foh-day2' if starting_area == 'forest' else starting_area + '-day2')
+        result.update(schema=5, profile=profile, starting_color=result.get('starting_color', 'red'),
+                      catalog='gameplay-checks-v5', assignments=dict(ALL_PART_IDS), locations=dict(ALL_AREA_LOCATION_IDS),
+                      capabilities=['identity-placement-v1', 'random-start-v1', 'repair-goal-v1', 'repeat-day29-v1'] + EXPANDED_CAPABILITIES + ['starting-color-v1', 'all-areas-v1'])
     validate(result)
     return result
 
@@ -70,11 +75,11 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
 def validate(m):
     expected = {"schema", "game", "seed", "slot", "mode", "profile", "catalog", "rng", "placement",
                 "assignments", "locations", "goal", "day_policy", "capabilities"}
-    if type(m) is dict and m.get('schema') == 4:
+    if type(m) is dict and m.get('schema', 0) in (4, 5):
         expected.add('starting_color')
     if type(m) is not dict or set(m) != expected:
         raise ValueError("manifest fields do not match schema 1")
-    if type(m["schema"]) is not int or m["schema"] not in (1, 2, 3, 4):
+    if type(m["schema"]) is not int or m["schema"] not in (1, 2, 3, 4, 5):
         raise ValueError("unsupported manifest schema")
     expanded = m["schema"] >= 2
     fixed = dict(schema=m["schema"], game=GAME, profile="foh-day2", catalog="vanilla-sites-v1",
@@ -83,14 +88,16 @@ def validate(m):
     if expanded:
         fixed.update(catalog="gameplay-checks-v2", capabilities=CAPABILITIES + EXPANDED_CAPABILITIES)
     if m['schema'] >= 3:
-        if m['profile'] not in ('foh-day2', 'navel-day2'):
+        if m['profile'] not in (START_AREAS if m['schema'] >= 5 else ('foh-day2', 'navel-day2')):
             raise ValueError('unsupported start profile')
         fixed.update(profile=m['profile'], catalog='gameplay-checks-v3',
                      capabilities=['identity-placement-v1', 'random-start-v1', 'repair-goal-v1', 'repeat-day29-v1'] + EXPANDED_CAPABILITIES)
-    if m['schema'] == 4:
+    if m['schema'] >= 4:
         if m['starting_color'] not in ('red', 'yellow', 'blue'):
             raise ValueError('unsupported starting color')
         fixed.update(catalog='gameplay-checks-v4', capabilities=fixed['capabilities'] + ['starting-color-v1'])
+    if m['schema'] >= 5:
+        fixed.update(catalog='gameplay-checks-v5', capabilities=fixed['capabilities'] + ['all-areas-v1'])
     for key, value in fixed.items():
         if type(m[key]) is not type(value) or m[key] != value:
             raise ValueError(f"unsupported {key}: {m[key]!r}")
@@ -99,7 +106,7 @@ def validate(m):
             raise ValueError(f"invalid {key}")
     if m["mode"] not in ("solo", "ap"):
         raise ValueError("mode must be solo or ap")
-    for key, value in (("assignments", PART_IDS), ("locations", ALL_LOCATION_IDS if expanded else LOCATION_IDS)):
+    for key, value in (("assignments", ALL_PART_IDS if m['schema'] >= 5 else PART_IDS), ("locations", ALL_AREA_LOCATION_IDS if m['schema'] >= 5 else ALL_LOCATION_IDS if expanded else LOCATION_IDS)):
         if type(m[key]) is not dict or m[key] != value or any(type(v) is not int for v in m[key].values()):
             raise ValueError(f"unsupported {key}; relocation is not implemented")
 

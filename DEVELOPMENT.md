@@ -49,6 +49,20 @@ Build `output/pikmin_randomizer.apworld` and install it into a separate AP setup
 
 ## Expanded checks (opt-in)
 
+### All five areas (current schema 5)
+
+New generation with `--starting-area random` now samples all five areas. Fixed choices are `impact`, `forest`, `navel`, `spring`, and `trial`; `--all-areas` enables the five-area catalog with a fixed Forest/Navel start. Combine with `--starting-color random` or a fixed color. AP uses `starting_area: randomized`, the named choices, and `all_areas: true` when retaining a fixed Forest/Navel start. Old manifests remain valid and are not rerolled.
+
+All 15 area/color pairs are intentionally allowed, including risky Distant Spring red/yellow starts. No automatic blue grant, rescue, local placement restriction or hazard adjustment is made. In multiworld, a player may exhaust local checks and wait for a remote item. The AP test explicitly places the Spring player's Blue Onion at the other player's landing check and verifies water access only after receipt. Global solvability does not promise continuous local progression. Solo uses a constructive local fill.
+
+The starting area is free; the other four area access items are shuffled. Impact Site now has landing, scouting and Positron Generator checks (new IDs 55-57); Main Engine remains synthetic tutorial completion and not a check. Total: 58 checks, two color unlocks, four area unlocks, eight Flarlic and 44 repair rewards; goal remains 25. No part relocation is introduced.
+
+Restricted starts cannot assume population farming above 20 until Forest of Hope access, or Navel access with reds. No early boss kill or non-blue water crossing is assumed. These are conservative rules, not claims of complete route or extinction acceptance. Impact Site runs day two with tutorial completion state. Received colors without a current camp Onion remain stored until a subsequent landing; exact campaign resume remains unfinished.
+
+Validation: 26 Python tests; 1,900 AP single-slot fills plus a remote-Blue two-slot fill; compiled gates for all 15 area/color pairs, including native journal IDs 55-57. Production startup matrix evidence is in `output/all-area-matrix.log`. Physical Positron delivery, repeated visits, day transitions and complete seed playtests remain open under #16/#6/#7. Earlier sections below describe previous schema milestones where their scope differs.
+
+All 15 production native starts pass: selected area renders, matching 20-Pikmin squad deploys, only starting area is accessible initially, other-color receipts grant once, all received area gates open, and only landing/population-20 checks fire. Legacy protocol probes and the three targeted BBFT/audio regressions pass. Fresh standalone example: `output/turkey-spring-01/Play.cmd` (fixed Spring/yellow); it is a solo playtest, not an AP-connected slot.
+
 ### Randomized starting color (schema 4)
 
 Add `--starting-color random` to generation, or choose `red`, `yellow`, or `blue`. In AP use `starting_color: randomized` (or a named color). Non-default color options enable expanded checks. Area and color use separate deterministic streams; selecting a color does not reroll the area. The chosen color is recorded explicitly in schema 4. Schemas 1-3 retain red starts and their existing reward layouts.

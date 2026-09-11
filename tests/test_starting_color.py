@@ -17,10 +17,10 @@ class StartingColorTests(unittest.TestCase):
             self.assertEqual(m, generate(str(seed), starting_area='random', starting_color='random'))
             rewards = solo_rewards(m)
             self.assertEqual(Counter(rewards.values()), Counter(item_pool(m)))
-            self.assertEqual(sum(map(len, spheres(rewards, m))), 55)
+            self.assertEqual(sum(map(len, spheres(rewards, m))), 58)
             start = {'red': RED, 'yellow': YELLOW, 'blue': BLUE}[m['starting_color']]
             self.assertNotIn(start, item_pool(m))
-        self.assertEqual(len(seen), 6)
+        self.assertEqual(len(seen), 15)
 
     def test_red_requirements_and_overlay(self):
         m = generate('blue', starting_area='navel', starting_color='blue')

@@ -77,6 +77,17 @@ FOREST_ACCESS = "Pikmin: Forest of Hope Access"
 ITEM_IDS[FOREST_ACCESS] = ITEM_BASE + 7
 RED = 'Red Onion'
 ITEM_IDS[RED] = ITEM_BASE + 8
+IMPACT_ACCESS = 'Pikmin: Impact Site Access'
+ITEM_IDS[IMPACT_ACCESS] = ITEM_BASE + 9
+START_AREAS = {
+    'impact-day2': (0, 'The Impact Site', IMPACT_ACCESS),
+    'foh-day2': (1, 'The Forest of Hope', FOREST_ACCESS),
+    'navel-day2': (2, 'The Forest Navel', NAVEL_ACCESS),
+    'spring-day2': (3, 'The Distant Spring', SPRING_ACCESS),
+    'trial-day2': (4, 'The Final Trial', TRIAL_ACCESS),
+}
+POSITRON = 'Pikmin: Positron Generator'
+ALL_PART_IDS = {**PART_IDS, POSITRON: 27}
 
 
 def starting_color(manifest):
@@ -104,6 +115,10 @@ for stage, (area, access) in enumerate(AREA_ACCESS.items(), 1):
         EXPLORATION[f"Explore: {area} - {objective}"] = (stage, objective, (access,) if access else ())
 EXPANDED_NAMES = NAMES + tuple(POPULATION) + tuple(BESTIARY) + tuple(EXPLORATION)
 ALL_LOCATION_IDS = {name: LOCATION_BASE + i for i, name in enumerate(EXPANDED_NAMES)}
+IMPACT_EXPLORATION = {f'Explore: The Impact Site - {objective}': (0, objective, (IMPACT_ACCESS,)) for objective in ('Land', 'Scout')}
+ALL_EXPLORATION = {**EXPLORATION, **IMPACT_EXPLORATION}
+ALL_AREA_NAMES = EXPANDED_NAMES + tuple(IMPACT_EXPLORATION) + (POSITRON,)
+ALL_AREA_LOCATION_IDS = {name: LOCATION_BASE + i for i, name in enumerate(ALL_AREA_NAMES)}
 
 # Filled from the native loaded pellet config audit, not the maximum carrier count.
 NATIVE_PART_WEIGHTS = {0: 30, 1: 50, 2: 40, 3: 40, 4: 20, 5: 20, 6: 20, 7: 20, 8: 20, 9: 30, 10: 15, 11: 20, 12: 15, 13: 30, 14: 15, 15: 15, 16: 30, 17: 25, 18: 25, 19: 30, 20: 15, 21: 30, 22: 30, 23: 20, 24: 25, 25: 30, 26: 40, 27: 20, 28: 20, 29: 10}
@@ -111,6 +126,7 @@ PART_WEIGHTS = {name: NATIVE_PART_WEIGHTS[part] for name, part in PART_IDS.items
 
 
 def active_names(manifest):
+    if manifest['schema'] >= 5: return ALL_AREA_NAMES
     return EXPANDED_NAMES if manifest["schema"] >= 2 else NAMES
 
 
@@ -138,7 +154,9 @@ def can_reach(name, inventory, expanded=False):
 
 def progression_pool(manifest):
     unlocks = list(UNLOCKS)
-    if manifest.get('profile') == 'navel-day2':
+    if manifest['schema'] >= 5:
+        unlocks = [YELLOW, BLUE] + [access for profile, (_, _, access) in START_AREAS.items() if profile != manifest['profile']]
+    elif manifest.get('profile') == 'navel-day2':
         unlocks[unlocks.index(NAVEL_ACCESS)] = FOREST_ACCESS
     if starting_color(manifest) != 'red':
         unlocks[unlocks.index({'yellow': YELLOW, 'blue': BLUE}[starting_color(manifest)])] = RED
@@ -148,14 +166,25 @@ def progression_pool(manifest):
 def can_reach_manifest(name, inventory, manifest):
     if manifest['schema'] < 3:
         return can_reach(name, inventory, manifest['schema'] == 2)
-    start = 'The Forest Navel' if manifest['profile'] == 'navel-day2' else 'The Forest of Hope'
+    start = START_AREAS[manifest['profile']][1]
+    owned = color_inventory(inventory, manifest) if manifest['schema'] >= 4 else dict(inventory)
+    if manifest['schema'] >= 5:
+        if name not in ALL_AREA_LOCATION_IDS: return False
+        if name in POPULATION and POPULATION[name] > 20:
+            # Only audited legacy farming access can justify higher populations.
+            farm = start == 'The Forest of Hope' or inventory.get(FOREST_ACCESS, 0)
+            farm = farm or ((start == 'The Forest Navel' or inventory.get(NAVEL_ACCESS, 0)) and owned.get(RED, 0))
+            if not farm: return False
     if name not in POPULATION:
         area = check_area(name)
-        access = FOREST_ACCESS if area == 'The Forest of Hope' else AREA_ACCESS[area]
+        access = next(access for _, title, access in START_AREAS.values() if title == area)
         if area != start and not inventory.get(access, 0):
             return False
+    if manifest['schema'] >= 5 and name in IMPACT_EXPLORATION:
+        return IMPACT_EXPLORATION[name][1] == 'Land' or all(owned.get(c, 0) for c in (RED, YELLOW, BLUE))
+    if manifest['schema'] >= 5 and name == POSITRON:
+        return all(owned.get(c, 0) for c in (RED, YELLOW, BLUE)) and field_capacity(owned) >= NATIVE_PART_WEIGHTS[27]
     # Evaluate existing conservative color/weight rules after area access.
-    owned = color_inventory(inventory, manifest) if manifest['schema'] >= 4 else dict(inventory)
     if manifest['schema'] >= 4:
         # Legacy routes assumed permanent red access. Preserve that assumption
         # explicitly until individual fire-free part/scout routes are audited.
@@ -178,6 +207,7 @@ def item_pool(manifest):
 
 
 def check_area(name):
+    if name == POSITRON or name in IMPACT_EXPLORATION: return 'The Impact Site'
     if name in CHECK_AREAS:
         return CHECK_AREAS[name]
     if name in POPULATION:
