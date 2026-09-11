@@ -75,6 +75,7 @@ struct MoviePlayer {
 	void sndStopMovie(MovieInfo*);
 	void update();
 	void skipScene(int);
+	void requestSkip(); // Player request; results-screen backdrops must keep running.
 	void getLookAtPos(Vector3f&);
 	bool setCamera(Graphics&);
 	void addLights(Graphics&);

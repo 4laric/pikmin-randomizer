@@ -6,6 +6,8 @@ import subprocess
 parser = argparse.ArgumentParser(description='Link and run cinematic regression fixture against a completed Windows Ninja game build.')
 parser.add_argument('--build', type=Path, required=True)
 parser.add_argument('--output', type=Path, required=True)
+parser.add_argument('--dayend', action='store_true')
+parser.add_argument('--baseline', action='store_true')
 parser.add_argument('--live', action='store_true', help='Build live fixture only; run it with a private randomizer bootstrap and assets.')
 args = parser.parse_args()
 build, output = args.build.resolve(), args.output.resolve()
@@ -16,11 +18,18 @@ source = Path(next(v for k,v in cache.items() if k.startswith('CMAKE_HOME_DIRECT
 commands = subprocess.check_output([ninja,'-t','commands','pikmin_pc'],cwd=build,text=True).splitlines()
 main_obj = 'CMakeFiles/pikmin_pc.dir/pc_port/pc_main.cpp.obj'
 compile_args = shlex.split(next(c for c in commands if main_obj in c and ' -c ' in c).replace('\\','/'))
-name = 'preview_cutscene_skip' if args.live else 'verify_cutscene_skip'
+name = 'preview_dayend_skip' if args.dayend else ('preview_cutscene_skip' if args.live else 'verify_cutscene_skip')
 obj = output/(name+'.obj')
 exe = output/(name+'.exe')
 compile_args[compile_args.index('-o')+1] = str(obj)
 compile_args[compile_args.index('-c')+1] = str(source/'tools'/(name+'.cpp'))
+if args.baseline:
+    original = subprocess.check_output(['git','show','b705642e:src/plugPikiColin/newPikiGame.cpp'],cwd=source,text=True)
+    baseline = output/'baseline_newPikiGame.cpp'
+    baseline.write_text(original)
+    fixture = output/'baseline_fixture.cpp'
+    fixture.write_text((source/'tools/preview_dayend_skip.cpp').read_text(encoding='utf-8-sig').replace('../src/plugPikiColin/newPikiGame.cpp',baseline.as_posix()))
+    compile_args[compile_args.index('-c')+1] = str(fixture)
 for flag in ('-MF','-MT'):
     if flag in compile_args:
         i=compile_args.index(flag); del compile_args[i:i+2]
@@ -32,7 +41,7 @@ link_args.append('-flto=4')
 with (output/'build.log').open('w') as log:
     subprocess.run(compile_args,cwd=build,stdout=log,stderr=subprocess.STDOUT,check=True)
     subprocess.run(link_args,cwd=build,stdout=log,stderr=subprocess.STDOUT,check=True)
-if args.live:
+if args.live or args.dayend:
     print(exe)
     raise SystemExit(0)
 with (output/'run.log').open('w') as log:

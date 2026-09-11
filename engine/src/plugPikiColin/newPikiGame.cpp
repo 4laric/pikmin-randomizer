@@ -168,6 +168,13 @@ DEFINE_PRINT("newPikiGame");
  * @note Size: 0x694.
  */
 struct GameMovieInterface : public GameInterface {
+    bool movieSkipAllowed() override {
+        return !resultWindow && !challengeWindow && !totalWindow
+#if !defined(VERSION_PIKIDEMO)
+            && !memcardWindow
+#endif
+            ;
+    }
 
 	/**
 	 * @brief Construct a game message shuttle.
@@ -1309,10 +1316,17 @@ ModeState* DayOverModeState::update(u32& result)
 		}
 	}
 
-	if (!gameflow.mMoviePlayer->mIsActive || skipped)
+	if ((!gameflow.mMoviePlayer->mIsActive || skipped)
 #else
-	if (!gameflow.mMoviePlayer->mIsActive)
+	if ((!gameflow.mMoviePlayer->mIsActive)
 #endif
+	    // Results/save UI owns this transition. A background movie ending must
+	    // never advance an ordinary day into the game-ending phases below.
+	    && !resultWindow && !challengeWindow
+#if !defined(VERSION_PIKIDEMO)
+        && !memcardWindow
+#endif
+        )
 	{
 		// once the current cutscene is finished, handle transition to the next phase
 		ModeState* nextState = nullptr;

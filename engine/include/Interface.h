@@ -40,6 +40,7 @@ enum GameMovieCommand {
  * @note Size: 0x4.
  */
 struct GameInterface {
+	virtual bool movieSkipAllowed() { return true; } // Active results UI owns its background movies.
 	virtual void message(int, int) { }                                                       // _08
 	virtual void movie(int, int, Creature*, immut Vector3f*, immut Vector3f*, u32, bool) { } // _0C
 	virtual void parseMessages() { }                                                         // _10

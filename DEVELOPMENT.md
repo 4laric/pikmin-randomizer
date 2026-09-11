@@ -392,3 +392,8 @@ Production build passes with test hooks OFF (output/grab62-build.log). The separ
 Reproduce with engine/tools/verify_throw_windows.py --build <completed-build> --output <fixture-dir>, then scripts/test_throw_grab_native.py --exe <fixture-exe> --assets <assets> --output <fresh-private-dir>. Fixture requires Windows/MinGW and the root randomizer package; production has no fixture main.
 
 Local turkey-finish-01/Play.cmd now uses bin/nectar-grab.exe (SHA256 9226a16217395c2fd1806597389e396ab2f69f60862abcf3cb60cc2630fb3748). Seed and player session untouched; no running game terminated. Physical rapid taps, held throws and D-pad held-color switching remain player acceptance items.
+
+
+## Day-end skip correction (#63)
+
+Native 9d5bfddd integrates the isolated validated fix 8814b166 atop the quick-grab change. Results/save dialogs now retain control of background movies and day-end phase transitions. The implementation task reproduced the old failure with actual DayOver code, then verified the fixed ordinary Hope day-end reaches the next-day map and writes a private card file; all 42 cinematic regression cases passed. See engine/tools/DAYEND_SKIP_FIX.md for reproduction and coverage limits. Player executable staging is owned by the playtest task; no player session was modified during source integration.

@@ -10,3 +10,5 @@ Validation:
 - `--live` builds the isolated live fixture. With private schema-5 bootstraps, real landing movies 41, 42 and 43 skip and return to 60 stable gameplay frames. Extracted assets are not modified or distributed.
 - Asset audit: 125 scene cuts, all forward/nonzero; at most eight keys in one cut. Exhaustive gameplay acceptance of every discovery, ending and day-end sequence remains separate from these checks.
 - Production build: Release, JAudio ON, test hooks OFF.
+
+Day-end correction (#63): results and save screens now own their looping backgrounds, so pressing Start cannot skip past them into the title-return path. See tools/DAYEND_SKIP_FIX.md for the full day-end regression and save evidence.
