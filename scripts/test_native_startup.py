@@ -13,7 +13,7 @@ from randomizer.runner import NativeRun
 from randomizer.catalog import UNLOCKS, ITEM_IDS, REPAIR, FOREST_ACCESS, NAVEL_ACCESS, progression_pool, FLARLIC, START_AREAS
 
 
-def main(exe, assets, output, expanded=False, starting_area='forest', seed='startup-smoke', starting_color='red', all_areas=False, enemy_shuffle=False):
+def main(exe, assets, output, expanded=False, starting_area='forest', seed='startup-smoke', starting_color='red', all_areas=False, enemy_shuffle=False, save_fixture=False):
     session = Session(generate(seed, "ap", expanded=expanded, starting_area=starting_area, starting_color=starting_color, all_areas=all_areas, enemy_shuffle=enemy_shuffle), output)
     color = session.manifest.get('starting_color', 'red')
     native_color = {'blue': 0, 'red': 1, 'yellow': 2}[color]
@@ -24,6 +24,8 @@ def main(exe, assets, output, expanded=False, starting_area='forest', seed='star
     _winapi.CreateJunction(str(assets.resolve()), str((run.directory / "assets").resolve()))
     env = dict(os.environ, PIKMIN_RANDOMIZER_TEST_BACKGROUND="1", SDL_AUDIODRIVER="dummy")
     env.pop("BBFT_PORT", None)
+    if save_fixture:
+        env['PIKMIN_RANDOMIZER_TEST_SCRIPT'] = 'save'
     log = run.directory / "native.log"
     with log.open("w", encoding="utf-8") as stream:
         startup = subprocess.STARTUPINFO();startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
@@ -41,6 +43,9 @@ def main(exe, assets, output, expanded=False, starting_area='forest', seed='star
                 raise AssertionError(f"timeout: {marker}; {log}")
             wait(f"START_COLOR_READY stage={stage} color={native_color} field=20")
             wait("PIKMIN_WORLD_RENDERED")
+            if save_fixture:
+                wait('TEST_ONLY invalid_save_slots_rejected')
+                wait('TEST_ONLY native_save_written_and_read_back')
             wait('PIKMIN_AREA_ACCESS ' + ' '.join(f'{name}={int(i == stage)}' for i, name in enumerate(('impact', 'forest', 'navel', 'spring', 'trial'))))
             grants = [item for item in progression_pool(session.manifest) if item != FLARLIC]
             for i, item in enumerate(grants):
@@ -57,7 +62,8 @@ def main(exe, assets, output, expanded=False, starting_area='forest', seed='star
             for item in grants[:2]:
                 assert text.count(f"PIKMIN_{item.split()[0].upper()}_ONION_GRANTED starter=5") == 1
             assert f'PIKMIN_{color.upper()}_ONION_GRANTED starter=5' not in text
-            assert 'TEST_ONLY' not in text, 'test fixtures enabled unexpectedly'
+            if not save_fixture:
+                assert 'TEST_ONLY' not in text, 'test fixtures enabled unexpectedly'
             print(f"PASS native startup: {area}, 20 {color} Pikmin, other color grants exactly once, area gates, goal; expected checks only", sorted(expected), flush=True)
             print(log)
         finally:
@@ -71,6 +77,7 @@ if __name__ == "__main__":
     p.add_argument('--starting-area', choices=['impact', 'forest', 'navel', 'spring', 'trial', 'random'], default='forest')
     p.add_argument('--all-areas', action='store_true')
     p.add_argument('--enemy-shuffle', action='store_true')
+    p.add_argument('--save-fixture', action='store_true', help='Requires TEST_HOOKS build; tests isolated card saving')
     p.add_argument('--seed', default='startup-smoke')
     p.add_argument('--starting-color', choices=['red', 'yellow', 'blue', 'random'], default='red')
-    a=p.parse_args();main(a.exe,a.assets,a.output.resolve(),a.expanded,a.starting_area,a.seed,a.starting_color,a.all_areas,a.enemy_shuffle)
+    a=p.parse_args();main(a.exe,a.assets,a.output.resolve(),a.expanded,a.starting_area,a.seed,a.starting_color,a.all_areas,a.enemy_shuffle,a.save_fixture)

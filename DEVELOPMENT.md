@@ -111,6 +111,26 @@ Expanded validation: 17 Python tests, 100 solo seeds per profile, 200 actual AP 
 
 ## Evidence
 
+### Consecutive saves after direct boot (#21)
+
+The day-end crash dump contains a serialized day-4 save at `cardData - 0x2000`:
+the first save rotated the unset current index (zero) into the backup index,
+and a later save used block index -1. Padding erased adjacent globals,
+including `playerState`, which then crashed ship rendering. A first save now
+derives the redundant backup block from card quick-info records when the old
+current index is invalid. The writer rejects backup indices outside 1–4 before
+touching state or card data; the save UI requests card preparation for unset
+indices.
+
+With `PIKMIN_RANDOMIZER_TEST_HOOKS=ON`, pass `--save-fixture` to
+`scripts/test_native_startup.py` using a fresh disposable output directory.
+The fixture checks rejected indices 0/5/255 against an unchanged card buffer
+and live state pointers, creates a private card, makes two consecutive saves
+starting with current index zero, and verifies the resulting slot metadata.
+It deliberately creates a new card in that test run only. Production builds
+must use test hooks OFF. This is native save/rotation coverage, not full
+day-end UI or exact campaign resume acceptance; #6 remains open.
+
 ### Enemy health gauges (#20)
 
 `DGXGraphics::drawOneTri` now calls `GXEnd` on PC. The hardware consumes a
