@@ -1,5 +1,13 @@
 # Standalone milestone: local implementation
 
+## Combined wide rolls and upgrades (issue #30)
+
+AP v0.11.0 supports both stat options together. New initial rolls use `color-stats-v2`, the `COLOR_STATS_WIDE` bootstrap marker and an independent v2 random stream: damage 25–200%, movement/attack rate 50–150% (25-point increments), carrying strength 1–5. Original v1 manifests and their narrower ranges remain valid. Native stores the immutable initial profiles separately from current profiles; each authenticated tier adds +25 percentage points or +1 carrying strength to that baseline. Maximum upgraded values are damage 250%, movement/attack rate 175%, carry 7. Existing color abilities and throw heights are unchanged.
+
+Validated 45 Python tests, 2,360 packaged AP fills (including 50 combined-mode seeds), both existing two-player cases, native combined-mode receipt/cap/retraction protocol and standalone stats/Flarlic protocols. Production TEST_HOOKS OFF startup passed the exact new seed's rolled area/color/options, live upgrades, expected checks, color grants and area/goal gates. Native source `622ae8f8`. Wider extremes still need player-driven combat/route feedback; the prior weighted-crew fixture validates the underlying carrying hooks.
+
+Fresh local test package: `output/turkey-mixed-01/Play.cmd`, Forest of Hope/blue, field cap 10, enemy-family shuffle, collection checks and both stat modes. Starting profiles (damage/movement/attack/carry): red 100/125/100/5; yellow 150/150/100/5; blue 125/50/125/1. AP package: `output/pikmin_randomizer-0.11.0.apworld`. The player session is fresh; hidden startup used a separate private session.
+
 ## Progressive per-color AP upgrades (issue #29)
 
 AP world v0.10.0 adds `progressive_color_stats` / `--progressive-color-stats`. Twelve item types (one per color/stat), eighteen total copies: damage has two +25% tiers, carry strength has two +1 tiers, movement and attack rate each have one +25% tier. Starts use vanilla values; the original red damage bonus remains. Collection checks are enabled to retain the 25-repair goal and every unlock within the 58-location pool. Carry items are progression and other stat items useful. Rolled-stat mode remains supported but is mutually exclusive with progressive mode.

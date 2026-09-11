@@ -14,19 +14,31 @@ class ColorStatsTests(unittest.TestCase):
         for field in ('profile', 'starting_color', 'enemy_mask'):
             self.assertEqual(new[field], old[field])
         self.assertNotEqual(fingerprint(old), fingerprint(new))
-        self.assertIn('COLOR_STATS blue ', bootstrap_stats(new))
+        self.assertIn('COLOR_STATS_WIDE blue ', bootstrap_stats(new))
         self.assertEqual(len(profile_lines(new)), 3)
 
     def test_invalid_profiles_fail_closed(self):
         m = generate('stats', randomize_color_stats=True)
-        for value in (0, 4, True, 1.5, '2'):
+        for value in (0, 6, True, 1.5, '2'):
             bad = copy.deepcopy(m); bad['color_stats']['red']['carry'] = value
             with self.assertRaises(ValueError): validate(bad)
+
+    def test_legacy_profile_version_stays_valid(self):
+        m = generate('legacy', randomize_color_stats=True)
+        m['capabilities'][m['capabilities'].index('color-stats-v2')] = 'color-stats-v1'
+        m['color_stats'] = {c: dict(damage=100, movement=100, attack_rate=100, carry=1) for c in ('red', 'yellow', 'blue')}
+        validate(m)
+        self.assertIn('COLOR_STATS blue ', bootstrap_stats(m))
+        m['color_stats']['red']['carry'] = 5
+        with self.assertRaises(ValueError): validate(m)
+
+    def test_profile_shape_and_capability(self):
+        m = generate('invalid', randomize_color_stats=True)
         for change in ('missing', 'extra', 'capability'):
             bad = copy.deepcopy(m)
             if change == 'missing': del bad['color_stats']['blue']
             elif change == 'extra': bad['color_stats']['red']['throw_height'] = 2
-            else: bad['capabilities'].remove('color-stats-v1')
+            else: bad['capabilities'].remove('color-stats-v2')
             with self.assertRaises(ValueError): validate(bad)
 
     def test_strength_affects_weight_not_colors_or_population(self):

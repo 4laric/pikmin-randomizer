@@ -23,7 +23,8 @@ int startStage = 1;
 int startColor = 1; // Native IDs: blue 0, red 1, yellow 2.
 unsigned enemyMask = 0;
 unsigned startingFlarlic = 2;
-bool configuredFlarlic = false, configuredStats = false, progressiveStats = false;
+bool configuredFlarlic = false, configuredStats = false, progressiveStats = false, wideStats = false;
+int baseColorStats[3][4] = {{100, 100, 100, 1}, {100, 100, 100, 1}, {100, 100, 100, 1}};
 unsigned statUpgrades[3][4] = {};
 int colorStats[3][4] = {{100, 100, 100, 1}, {100, 100, 100, 1}, {100, 100, 100, 1}};
 std::uint64_t checks = 0;
@@ -100,7 +101,8 @@ bool pc_randomizer_init(int argc, char** argv) {
         if (schema < 2 || !(input >> startingFlarlic) || startingFlarlic < 1 || startingFlarlic > 10) fail("invalid starting Flarlic");
         input >> end;
     }
-    if (end == "COLOR_STATS") {
+    if (end == "COLOR_STATS" || end == "COLOR_STATS_WIDE") {
+        wideStats = end == "COLOR_STATS_WIDE";
         if (schema < 5) fail("color stats require all-area catalog");
         configuredStats = true;
         const char* colors[] = {"blue", "red", "yellow"};
@@ -109,17 +111,17 @@ bool pc_randomizer_init(int argc, char** argv) {
             for (int stat = 0; stat < 4; ++stat) {
                 int value;
                 if (!(input >> value)) fail("malformed color stats");
-                const int minimum = stat == 0 ? 50 : stat == 3 ? 1 : 75;
-                const int maximum = stat == 0 ? 150 : stat == 3 ? 3 : 125;
+                const int minimum = stat == 3 ? 1 : wideStats ? (stat == 0 ? 25 : 50) : stat == 0 ? 50 : 75;
+                const int maximum = wideStats ? (stat == 3 ? 5 : stat == 0 ? 200 : 150) : stat == 0 ? 150 : stat == 3 ? 3 : 125;
                 if (value < minimum || value > maximum || (stat != 3 && value % 25)) fail("invalid color stats");
-                colorStats[c][stat] = value;
+                baseColorStats[c][stat] = colorStats[c][stat] = value;
             }
         }
         input >> end;
     }
     if (end == "PROGRESSIVE_STATS") {
         unsigned mode;
-        if (schema != 7 || configuredStats || !(input >> mode) || mode != 1) fail("invalid progressive stats mode");
+        if (schema != 7 || !(input >> mode) || mode != 1) fail("invalid progressive stats mode");
         progressiveStats = true;
         input >> end;
     }
@@ -142,7 +144,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (schema >= 6) hello << " enemy-families-v1";
     if (schema >= 7) hello << " total-population-v1 corpse-delivery-v1";
     if (configuredFlarlic) hello << " starting-flarlic-v1";
-    if (configuredStats) hello << " color-stats-v1";
+    if (configuredStats) hello << (wideStats ? " color-stats-v2" : " color-stats-v1");
     if (progressiveStats) hello << " progressive-color-stats-v1";
     hello << " END\n";
     hello.close();
@@ -191,7 +193,7 @@ void pc_randomizer_update() {
         if (statUpgrades[c][stat] != newStats[c][stat])
             std::printf("[Pikmin Randomizer] STAT_UPGRADE color=%d stat=%d tier=%u\n", c, stat, newStats[c][stat]);
         statUpgrades[c][stat] = newStats[c][stat];
-        colorStats[c][stat] = stat == 3 ? 1 + newStats[c][stat] : 100 + 25 * newStats[c][stat];
+        colorStats[c][stat] = baseColorStats[c][stat] + (stat == 3 ? newStats[c][stat] : 25 * newStats[c][stat]);
     }
     ready = newReady != 0;
     repairs = newRepairs;

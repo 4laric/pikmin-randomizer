@@ -47,13 +47,13 @@ class CollectionChecks(Toggle):
 
 
 class RandomizeColorStats(Toggle):
-    """Seeded damage (50-150%), movement/attack rate (75-125%), and carrying strength (1-3) per color. Throw height and color abilities stay vanilla. Enables all-area checks."""
+    """Seeded damage (25-200%), movement/attack rate (50-150%), and carrying strength (1-5) per color. Throw height and color abilities stay vanilla. Enables all-area checks."""
     display_name = "Randomize Color Stats"
     default = 0
 
 
 class ProgressiveColorStats(Toggle):
-    """Receive per-color stat upgrades as AP items. Vanilla bases; damage and carry have two upgrades, movement and attack rate one. Enables collection checks. Mutually exclusive with rolled stats."""
+    """Receive per-color stat upgrades as AP items. Vanilla or rolled bases; damage and carry have two upgrades, movement and attack rate one. Enables collection checks. Stacks additively with rolled stats."""
     display_name = "Progressive Color Stats"
     default = 0
 

@@ -43,8 +43,6 @@ class SeedRandom:
 
 
 def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False):
-    if randomize_color_stats and progressive_color_stats:
-        raise ValueError('choose rolled or progressive color stats, not both')
     collection_checks = collection_checks or progressive_color_stats
     result = dict(schema=1, game=GAME, seed=str(seed), slot=slot, mode=mode,
                   profile="foh-day2", catalog="vanilla-sites-v1", rng="sha256-counter-v1",
@@ -88,8 +86,8 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         result["capabilities"].append("starting-flarlic-v1")
     if randomize_color_stats:
         from .stats import roll_profiles
-        result["color_stats"] = roll_profiles(SeedRandom(str(seed) + "/color-stats-v1/" + slot))
-        result["capabilities"].append("color-stats-v1")
+        result["color_stats"] = roll_profiles(SeedRandom(str(seed) + "/color-stats-v2/" + slot))
+        result["capabilities"].append("color-stats-v2")
     if progressive_color_stats:
         result['progressive_color_stats'] = True
         result['capabilities'].append('progressive-color-stats-v1')
@@ -111,12 +109,12 @@ def validate(m):
     if type(m) is dict and "color_stats" in m:
         from .stats import validate_profiles
         expected.add("color_stats")
-        validate_profiles(m["color_stats"])
+        validate_profiles(m["color_stats"], wide="color-stats-v2" in m.get("capabilities", []))
         if type(m.get("schema")) is not int or m["schema"] < 5:
             raise ValueError("color stats require the all-area catalog")
     if type(m) is dict and 'progressive_color_stats' in m:
         expected.add('progressive_color_stats')
-        if m['progressive_color_stats'] is not True or m.get('schema') != 7 or 'color_stats' in m:
+        if m['progressive_color_stats'] is not True or m.get('schema') != 7:
             raise ValueError('invalid progressive color stats mode')
     if type(m) is not dict or set(m) != expected:
         raise ValueError("manifest fields do not match schema 1")
@@ -149,7 +147,7 @@ def validate(m):
     if "starting_flarlic" in m:
         fixed["capabilities"] = fixed["capabilities"] + ["starting-flarlic-v1"]
     if "color_stats" in m:
-        fixed["capabilities"] = fixed["capabilities"] + ["color-stats-v1"]
+        fixed["capabilities"] = fixed["capabilities"] + ["color-stats-v2" if "color-stats-v2" in m["capabilities"] else "color-stats-v1"]
     if m.get('progressive_color_stats'):
         fixed['capabilities'] += ['progressive-color-stats-v1']
     for key, value in fixed.items():

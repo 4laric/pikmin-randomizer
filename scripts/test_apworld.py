@@ -67,7 +67,7 @@ def main(ap):
             assert mw.can_beat_game() and not mw.get_unfilled_locations()
         for seed in range(100):
             mw = setup_multiworld(mod.PikminRandomizerWorld, seed=seed,
-                                 options={'progressive_color_stats': True, 'starting_area': 2, 'starting_color': 3})
+                                 options={'progressive_color_stats': True, 'randomize_color_stats': bool(seed % 2), 'starting_area': 2, 'starting_color': 3})
             distribute_items_restrictive(mw)
             assert mw.can_beat_game() and not mw.get_unfilled_locations()
         # A two-slot fill exercises cross-player rewards instead of only solo AP.
