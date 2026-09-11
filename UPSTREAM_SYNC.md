@@ -7,12 +7,12 @@ The desktop heartbeat runs daily at 10:00 America/Toronto and stays quiet on unc
 ## Recorded state (2026-09-11)
 
 - Upstream: `SSunnKing/Open-Nectar---Pikmin-Native-PC-Port`, branch `main`.
-- Last fetched/reviewed: `398258e7d84906e4938eab076785d0b8879d4043`.
+- Last fetched/reviewed: `f80a7246a77e3b77e96c81fd12e2d9c7814c2c8f` (new PR base; not yet integrated downstream).
 - Last integrated upstream: `398258e7d84906e4938eab076785d0b8879d4043` (health-gauge PR #2 merged).
 - Current maintained downstream native commit: `9808df32` (see ENGINE_SOURCE.md); per-color stats and progressive upgrades added after integration in #28/#29/#30, with permanent checks in #31 and damage-based structure work in #32, expanded bestiary/landing-only checks in #33.
-- **Integration complete:** [#26](https://github.com/4laric/pikmin-randomizer/issues/26), all 14 commits across 51 files, merged without conflicts. No pending upstream commits as of this review.
+- **Earlier integration complete:** [#26](https://github.com/4laric/pikmin-randomizer/issues/26), all 14 commits across 51 files, merged without conflicts. This historical integration does not include the newer reviewed commits above.
 - [Health gauges PR #2](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port/pull/2): MERGED at `398258e7`, 2026-09-11.
-- [Save-slot PR #3](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port/pull/3): OPEN, commit `c0b6d377`. Two files, 29 PC-only lines; no randomizer fixtures or game content.
+- [Save-slot PR #3](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port/pull/3): CLOSED after maintainer manually applied the save guards on main in `4df56740`; not rejected. CI PR #7 was likewise applied manually and closed. Boss PR #4 and health-gauge PR #2 are merged.
 
 ## Integration workflow
 
@@ -65,3 +65,13 @@ Issue #36 updates Python/AP source-aware bestiary logic and versioned seed enemy
 Upstream PR #7 separates private matching builds (manual dispatch, existing container access required) from automatic public Linux validation. Global sqrtf/fmodf calls fix GCC math.h namespace failures; the clean-distro job downloads its package into the directory it executes. Native 30b4364b merges upstream main plus CI branch fab3f170. Save PR branch 22339471 and boss PR branch 7e46481e also include the CI changes. Final upstream PR #7 CI and fork CI pass: Linux USA/PAL builds, 21 offline tests (asset-dependent audio explicitly skipped), standalone packaging, permission-preserving tar artifact and clean Debian12 launcher/dependency smoke. The smoke environment installs the documented GBM/DRM/Mesa graphics runtime. Evidence: https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port/actions/runs/34637042965 .
 
 During CI repair the maintainer merged boss PR #4 at b8a31a8a (2026-09-11 18:51:56 UTC). Its PR checks remain attached to that earlier head; the updated boss branch7e46481e passes fork CI run34637067020. Save PR #3 current upstream checks pass. Main b8a31a8a was observed but has not been integrated as an upstream merge commit here; its boss patch is already present downstream. PR #7 is ready and green, awaiting upstream review/merge.
+
+## Three focused upstream PRs (#71–#73)
+
+User authorized submission of quick-grab timing, post-process color mask and hold-to-pluck. All branches start directly at reviewed upstream `f80a7246`, independently, with one source file each. No randomizer hooks, other PRs, CI changes, settings presets or defaults are bundled.
+
+- [PR #11](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port/pull/11): quick-release grab, `ea190fad`, tracking #71. Rerun of the existing downstream real-engine fixture passes near and approaching targets with A released (Flying reached in 2 and 16 sampled frames). This is not physical SDL/controller input validation.
+- [PR #12](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port/pull/12): post-process color-mask save/enable/restore, `b3058ada`, tracking #72. Existing downstream GL fixture rerun passes poisoned targets, mixed/all-disabled masks, FXAA/bloom/grading and mask restoration on Intel OpenGL 3.3.
+- [PR #13](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port/pull/13): hold-to-continue initiated plucking, `086521ef`, tracking #73. Existing downstream live fixture rerun passes unbroken hold, release, whistle cancellation, re-press, animation-boundary release and bounded fast-pluck counter. Physical multi-sprout controller acceptance remains distinct.
+
+These reruns use the existing downstream fixture binaries, not newly built upstream binaries. All patches applied cleanly and passed diff checks. Fresh upstream CI builds were still running when submitted; do not infer a green upstream build from downstream fixture results. Upstream runs: 34648747460 / 34648752134 / 34648761610 respectively. Local evidence is under output/upstream-grab-71-recheck, output/upstream-color-mask-72-recheck and output/upstream-pluck-73-recheck. No downstream game binary, save or playable checkout was changed.
