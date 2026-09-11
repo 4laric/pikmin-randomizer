@@ -39,7 +39,10 @@ int baseColorStats[3][4] = {{100, 100, 100, 1}, {100, 100, 100, 1}, {100, 100, 1
 unsigned statUpgrades[3][4] = {};
 bool benefitItems = false;
 unsigned benefits[5] = {}, consumedBenefits[3] = {};
-std::filesystem::path benefitJournal;
+std::filesystem::path benefitJournal, campaignDirectory;
+std::string campaignBlock;
+unsigned long long campaignGeneration = 0;
+bool campaignResumed = false;
 int colorStats[3][4] = {{100, 100, 100, 1}, {100, 100, 100, 1}, {100, 100, 100, 1}};
 std::set<unsigned> checks;
 std::string token, fingerprint, saveRoot;
@@ -50,6 +53,41 @@ const char* items[] = { "Yellow Onion", "Blue Onion", "Pikmin: Forest Navel Acce
 [[noreturn]] void fail(const char* message) {
     std::fprintf(stderr, "[Pikmin Randomizer] %s\n", message);
     std::exit(2);
+}
+uint64_t checkpointHash(const std::string& bytes) {
+    uint64_t hash = 14695981039346656037ULL;
+    for (unsigned char byte : bytes) { hash ^= byte; hash *= 1099511628211ULL; }
+    return hash;
+}
+void loadCampaignCheckpoint() {
+    if (!std::filesystem::exists(campaignDirectory)) return;
+    std::filesystem::path latest;
+    for (const auto& entry : std::filesystem::directory_iterator(campaignDirectory)) {
+        if (entry.path().extension() != ".sav") continue;
+        const auto name = entry.path().stem().string();
+        if (name.size() != 20 || name.find_first_not_of("0123456789") != std::string::npos)
+            fail("invalid campaign checkpoint filename");
+        const auto generation = std::stoull(name);
+        if (generation > campaignGeneration) { campaignGeneration = generation; latest = entry.path(); }
+    }
+    if (latest.empty()) return;
+    std::ifstream file(latest, std::ios::binary);
+    std::string header; std::getline(file, header);
+    std::istringstream meta(header);
+    std::string magic, savedFingerprint, extra;
+    unsigned long long generation; uint64_t hash;
+    unsigned used[3];
+    if (!(meta >> magic >> savedFingerprint >> generation >> used[0] >> used[1] >> used[2] >> hash)
+        || magic != "PIKMIN_CAMPAIGN_1" || savedFingerprint != fingerprint || generation != campaignGeneration
+        || used[0] > checkCount || used[1] > checkCount || used[2] > checkCount || (meta >> extra))
+        fail("campaign checkpoint header/seed mismatch; preserve campaign files for recovery");
+    campaignBlock.resize(32768);
+    file.read(&campaignBlock[0], 32768);
+    if (file.gcount() != 32768 || file.peek() != EOF
+        || checkpointHash(header.substr(0, header.rfind(' ')) + "\n" + campaignBlock) != hash)
+        fail("campaign checkpoint is damaged; preserve campaign files for recovery");
+    for (int i=0; i<3; ++i) consumedBenefits[i] = used[i];
+    campaignResumed = true;
 }
 bool hex64(const std::string& s) {
     return s.size() == 64 && s.find_first_not_of("0123456789abcdef") == std::string::npos;
@@ -198,28 +236,13 @@ bool pc_randomizer_init(int argc, char** argv) {
     std::string extra;
     if (input >> extra) fail("trailing bootstrap data");
     directory = std::filesystem::absolute(bootstrap).parent_path();
-    saveRoot = (directory / "save").generic_string();
-    // A run directory is single-use. Never reset a previous run's check journal.
+    campaignDirectory = directory.parent_path().parent_path() / "campaign";
+    saveRoot = (campaignDirectory / "card").generic_string();
     if (std::filesystem::exists(directory / "hello.txt") || std::filesystem::exists(directory / "checks.txt"))
         fail("run directory already used; launch a new session run");
-    if (benefitItems) {
-        benefitJournal = directory.parent_path().parent_path() / "benefits-used.txt";
-        if (std::filesystem::exists(benefitJournal)) {
-            std::ifstream history(benefitJournal);
-            if (!history) fail("cannot read benefit consumption journal");
-            std::string line;
-            while (std::getline(history, line)) {
-                if (history.eof()) fail("incomplete benefit consumption journal");
-                std::istringstream row(line); std::string savedFingerprint, trailing;
-                unsigned kind, count;
-                if (!(row >> savedFingerprint >> kind >> count) || savedFingerprint != fingerprint
-                    || kind >= 3 || count != consumedBenefits[kind] + 1 || count > checkCount || (row >> trailing))
-                    fail("invalid benefit consumption journal");
-                consumedBenefits[kind] = count;
-            }
-            if (!history.eof()) fail("cannot read benefit consumption journal");
-        }
-    }
+    // Consumption belongs to the saved world, not to the latest abandoned day.
+    benefitJournal = directory / "benefits-used.txt";
+    loadCampaignCheckpoint();
     enabled = true;
     pc_randomizer_update(); // Validate initial state before creating a handshake.
     std::ofstream hello(directory / "hello.tmp");
@@ -542,4 +565,40 @@ void pc_randomizer_observe_obstacle(int stage, int kind, float x, float z, bool 
     }
     if (logged.emplace(stage, kind, px, pz).second)
         std::printf("[Pikmin Randomizer] OBSTACLE_INSTANCE stage=%d kind=%d x=%d z=%d complete=%d\n", stage, kind, px, pz, int(complete));
+}
+
+// Immutable generations keep the last committed day intact if a write is interrupted.
+bool pc_randomizer_resumed() { return enabled && campaignResumed; }
+bool pc_randomizer_load_campaign(void* destination) {
+    if (!pc_randomizer_resumed()) return false;
+    std::memcpy(destination, campaignBlock.data(), 32768);
+    return true;
+}
+void pc_randomizer_save_campaign(const void* source) {
+    if (!enabled) return;
+    std::filesystem::create_directories(campaignDirectory);
+    const auto generation = campaignGeneration + 1;
+    std::ostringstream meta;
+    meta << "PIKMIN_CAMPAIGN_1 " << fingerprint << ' ' << generation;
+    for (unsigned used : consumedBenefits) meta << ' ' << used;
+    std::string block(static_cast<const char*>(source), 32768);
+    const auto hash = checkpointHash(meta.str() + "\n" + block);
+    std::string bytes = meta.str() + " " + std::to_string(hash) + "\n" + block;
+    char name[32]; std::snprintf(name, sizeof(name), "%020llu.sav", generation);
+    auto final = campaignDirectory / name;
+    auto temporary = campaignDirectory / (token + ".tmp");
+    FILE* file = std::fopen(temporary.string().c_str(), "wb");
+    if (!file) fail("cannot create campaign checkpoint");
+    bool ok = std::fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size() && std::fflush(file) == 0;
+#ifdef _WIN32
+    if (ok) ok = _commit(_fileno(file)) == 0;
+#else
+    if (ok) ok = fsync(fileno(file)) == 0;
+#endif
+    if (std::fclose(file) != 0) ok = false;
+    if (!ok) fail("cannot flush campaign checkpoint");
+    std::filesystem::rename(temporary, final);
+    campaignGeneration = generation;
+    std::printf("[Pikmin Randomizer] CAMPAIGN_SAVED generation=%llu\n", generation);
+    std::fflush(stdout);
 }

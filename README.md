@@ -8,7 +8,7 @@ Fresh collection seeds now have population checks at **10, 25, 50 and 100 per co
 
 Opt-in `miniboss_enemies: true` / `--miniboss-enemies` replaces three named adult slots with one Puffstool, one Mamuta and one Armored Cannon Beetle. It implies per-spawn mode and combines with grouped enemies. Choices are saved before fill, and the seed preserves early renewable Bulborb/Bulbear sources in both areas. That currently leaves the replacements in Hope. Counts, schedules, protected originals and original drop personality stay intact. Cannon Beetle projectile dependencies are preloaded. Boss-manager encounters, Progg and density changes are excluded.
 
-**Experimental:** native births/rendering and solo/AP reachability pass, but combat, enlarged footprint clearance, corpse-return routes and actual revisit behavior need player acceptance (#61/#46). Full native campaign resume is still unfinished (#6); keep the game running between breaks if preserving day/squad matters. This is not a fully validated full-campaign release.
+**Experimental:** native births/rendering and solo/AP reachability pass, but combat, enlarged footprint clearance, corpse-return routes and actual revisit behavior need player acceptance (#61/#46). Day-end campaign saves now resume on the next launch (#6); mid-day quitting returns to the last saved day. This is not a fully validated full-campaign release.
 
 Fresh local solo seed: `output/turkey-finish-01/Play.cmd`. Resolved random start is Hope/red, cap 10, wide stats and progressive upgrades, 113 checks, five logic spheres, 25 Ship Repairs to finish. Includes the recent bestiary, counter, Posy, D-pad and graphics changes. Start/Enter can skip cinematics through their gameplay event boundaries; text/result/save screens retain normal controls (engine/tools/CUTSCENE_SKIP.md). Named enemy mappings are in the optional `enemy-spoiler.json`.
 
@@ -22,7 +22,7 @@ Fresh local solo seed: `output/turkey-finish-01/Play.cmd`. Resolved random start
 - HUD and status profiles reveal when each color's Onion is unlocked; the starting color is visible immediately. Upgrades received before discovery stay hidden until that unlock.
 - Solo play, a standalone AP world, persistent check/reward history, and a transparent progress overlay.
 
-**Prototype limitations:** physical ship parts remain in vanilla positions. Relaunch restores checks and rewards but starts a fresh native campaign; exact day/area/squad resume and extinction recovery are unfinished. Some starting combinations deliberately require remote progression in multiworld. Enemy-family swaps have player validation; corpse deliveries and the day-end save fix still need full gameplay acceptance.
+**Prototype limitations:** physical ship parts remain in vanilla positions. Relaunch restores checks/rewards and the last committed day-end campaign checkpoint. Mid-day squad positions are not saved; extinction recovery still needs gameplay acceptance. Some starting combinations deliberately require remote progression in multiworld. Enemy-family swaps have player validation; corpse deliveries and the day-end save fix still need full gameplay acceptance.
 
 The current native build fixes a boss-generator decoding bug that turned Snagrets, geysers, beetles and other entries into Beady Long Legs on PC. Rebuild or use the corrected package; changing a seed alone cannot fix an older executable.
 
@@ -34,7 +34,7 @@ Vanilla caches store group survivor counts rather than individual member identit
 
 Set AP YAML `per_spawn_enemies: true`, or generate with `--per-spawn-enemies`, for independent choices at 15 named adult Bulborb/Bulbear generators in Forest of Hope and Distant Spring. Both species have early renewable sources in both areas; total counts remain nine Bulborbs and six Bulbears. Other species keep vanilla identities in this mode. This option overrides the global `enemy_shuffle` mask; it is off by default and old seeds retain their choices.
 
-The seed records every choice before AP fill. Owned generator IDs survive tagged native cache records, without changing vanilla names, positions, schedules or drops. Source hashes reject incompatible generator assets before launch. Use a fresh seed and an executable supporting `enemy-slots-v1`; full native campaign resume remains unfinished.
+The seed records every choice before AP fill. Owned generator IDs survive tagged native cache records, without changing vanilla names, positions, schedules or drops. Source hashes reject incompatible generator assets before launch. Use a fresh seed and an executable supporting `enemy-slots-v1`; campaign progress resumes from the last day-end save.
 
 For an explicit named mapping, run `python -m randomizer enemy-spoiler <seed.json> --output enemy-spoiler.json`. It includes original/replacement species and schedule/source facts; the normal overlay does not reveal the mapping. Local playtest: `output/turkey-slots-01/Play.cmd`.
 
@@ -66,7 +66,9 @@ New collection seeds contain exactly **25 Ship Repairs**, the existing unlocks/F
 
 Each seed gets two copies of each captain upgrade. Remaining benefits cycle 2 deliveries : 1 flower shower : 1 heal, with a partial cycle when needed. They are useful AP items; conservative logic does not depend on deliveries to satisfy population checks. Solo filler placement is seeded and shuffled. The HUD/status shows current whistle and plucking percentages.
 
-Consumables wait for active gameplay outside pauses, menus, cutscenes and day-end. Their consumption journal prevents replay on reconnect/relaunch; permanent upgrades are restored from receipts. As native campaign resume remains unfinished, already-consumed effects are not restored into the fresh campaign on relaunch. Consumption is persisted immediately before the native effect: a crash in that narrow interval may lose that effect, rather than duplicate it. A damaged journal fails closed.
+Consumables wait for active gameplay outside pauses, menus, cutscenes and day-end. Day-end checkpoints store native world data and consumed-bonus counters together. Relaunch retains current AP checks/receipts, restores the saved world and only reapplies bonuses absent from that saved world. Permanent upgrades come from current receipts. An unsaved day rolls back; bonuses consumed during it become pending again. Incomplete checkpoint writes are ignored; corrupt or foreign-seed committed checkpoints stop launch instead of silently resetting progress.
+
+Save at the normal end-of-day results screen and wait until the area-selection screen returns before closing. Relaunch the same `Play.cmd` and session directory to continue at the next saved day. `session/campaign/` contains immutable save generations and the native card. Keep it with `session.json`; do not mix seeds. Older builds' per-run card files are preserved but are not automatically imported: this resume path starts with the first save made by the new build.
 
 Old seeds retain their original pool. Use a fresh seed and updated executable; native capability `benefit-items-v1` gates the new protocol. Local playtest: `output/turkey-benefits-01/Play.cmd`.
 

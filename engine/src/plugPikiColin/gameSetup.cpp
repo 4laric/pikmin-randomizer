@@ -262,6 +262,15 @@ void GameSetupSection::update()
         gameflow.mPlayState.Initialise();
         pc_permadeath_set_pending(false);
         pc_permadeath_begin_new_run();
+        if (pc_randomizer_enabled() && gameflow.mMemoryCard.loadRandomizerCampaign()) {
+            gameflow.mWorldClock.setTime(gameflow.mParameters->mStartHour());
+            gameflow.mCurrentStageID = -1;
+            gameflow.mPendingStageUnlockID = -1;
+            gameflow.mNextOnePlayerSectionID = ONEPLAYER_MapSelect;
+            std::printf("[Pikmin Randomizer] CAMPAIGN_RESUMED day=%d\n", gameflow.mWorldClock.mCurrentDay);
+            gsys->softReset();
+            return;
+        }
         StageInfo* stage = static_cast<StageInfo*>(flowCont.mStageList.mChild);
         if (pc_bbft_skip_tutorial()) {
             const int selected = pc_randomizer_enabled() ? pc_randomizer_start_stage() : STAGE_Forest;

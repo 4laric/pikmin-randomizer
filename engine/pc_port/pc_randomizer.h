@@ -46,3 +46,7 @@ void pc_randomizer_observe_exploration(int stage, float dx, float dz, bool groun
 void pc_randomizer_validate_part_weight(int part, int minimum);
 
 void pc_randomizer_observe_obstacle(int stage, int kind, float x, float z, bool complete, bool gameplay);
+
+bool pc_randomizer_resumed();
+bool pc_randomizer_load_campaign(void* destination);
+void pc_randomizer_save_campaign(const void* source);

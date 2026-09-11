@@ -1997,11 +1997,16 @@ void GameCoreSection::updateAI()
             bbftAreaMask = mask;
         }
     }
-    // Grants are once per fresh BBFT session, never once per stage or refill.
+    // Grants are once per campaign unlock; restored boot flags prevent replay.
     static bool bbftColorGranted[3] = {};
     static bool initialColorRegistered = false;
     const int initialColor = pc_randomizer_enabled() ? pc_randomizer_start_color() : Red;
-    if (!initialColorRegistered) { bbftColorGranted[initialColor] = true; initialColorRegistered = true; }
+    if (!initialColorRegistered) {
+        if (pc_randomizer_resumed()) {
+            for (int color=0; color<3; ++color) bbftColorGranted[color] = playerState->hasBootContainer(color);
+        } else bbftColorGranted[initialColor] = true;
+        initialColorRegistered = true;
+    }
     if (pc_bbft_progression() && itemMgr && !gameflow.mMoviePlayer->mIsActive) {
         for (int color = 0; color < 3; ++color) {
             if (bbftColorGranted[color] || !pc_bbft_color_access(color)) continue;
@@ -2027,7 +2032,7 @@ void GameCoreSection::updateAI()
     }
     static bool bbftRedsQueued = false, bbftRedsReady = false;
     static int bbftInitialField = 20;
-    if (pc_bbft_skip_tutorial() && !gameflow.mMoviePlayer->mIsActive
+    if (pc_bbft_skip_tutorial() && !pc_randomizer_resumed() && !gameflow.mMoviePlayer->mIsActive
         && !gameflow.mPauseAll && !gameflow.mIsUIOverlayActive && itemMgr) {
         GoalItem* redOnion = itemMgr->getContainer(initialColor);
         const int initialField = bbftRedsQueued ? bbftInitialField : pc_randomizer_enabled() && pc_randomizer_field_capacity() < 20 ? pc_randomizer_field_capacity() : 20;

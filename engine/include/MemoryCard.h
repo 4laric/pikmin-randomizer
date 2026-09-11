@@ -56,6 +56,9 @@ public:
 	void loadOptions();
 	void saveOptions();
 	void loadCurrentGame();
+#if defined(PIKI_PC_PORT)
+	bool loadRandomizerCampaign();
+#endif
 	void saveCurrentGame();
 
 	s32 makeDefaultFile();

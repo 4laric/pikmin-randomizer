@@ -1,4 +1,8 @@
 #include "MemoryCard.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_randomizer.h"
+#include <cstdlib>
+#endif
 #include "BaseInf.h"
 #include "CardUtil.h"
 #include "DebugLog.h"
@@ -889,6 +893,10 @@ void MemoryCard::saveCurrentGame()
 
 	writeOneGameFile(gameflow.mGamePrefs.mSpareMemCardSaveIndex - 1);
 	waitPolling();
+#if defined(PIKI_PC_PORT)
+	if (mDidSaveFail) { gsys->mIsCardSaving = FALSE; return; }
+	pc_randomizer_save_campaign(getGameFilePtr(gameflow.mGamePrefs.mSpareMemCardSaveIndex - 1));
+#endif
 	saveOptions();
 
 	u8 idx                                     = gameflow.mGamePrefs.mMemCardSaveIndex;
@@ -1442,3 +1450,28 @@ void MemoryCard::init()
 {
 	CardUtilInit(&CardStack[0x2000], 0x2000, 0xe);
 }
+
+#if defined(PIKI_PC_PORT)
+bool MemoryCard::loadRandomizerCampaign() {
+    if (!pc_randomizer_resumed()) return false;
+    // Establish the ordinary card directory before restoring the committed world.
+    if (getMemoryCardState(true) == 0 && mSaveFileIndex >= 0) {
+        CardQuickInfo infos[4];
+        getQuickInfos(infos);
+    }
+    pc_randomizer_load_campaign(getGameFilePtr(0));
+    struct CheckpointStream : RamStream {
+        CheckpointStream(void* data) : RamStream(data, 32768) {}
+        void read(void* dest, int size) override {
+            if (size < 0 || mPosition < 0 || mPosition > mLength || size > mLength - mPosition) {
+                OSReport("Invalid campaign stream bounds\n"); std::abort();
+            }
+            RamStream::read(dest, size);
+        }
+    } stream(getGameFilePtr(0));
+    readCurrentGame(&stream);
+    gameflow.mGamePrefs.mMemCardSaveIndex = 0;
+    gameflow.mGamePrefs.mHasSaveGame = true;
+    return true;
+}
+#endif

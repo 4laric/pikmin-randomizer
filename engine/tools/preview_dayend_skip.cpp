@@ -1,6 +1,8 @@
 #include <SDL2/SDL.h>
 #include "../src/plugPikiColin/newPikiGame.cpp"
 #include "App.h"
+#include "ItemMgr.h"
+#include "GoalItem.h"
 #include "Node.h"
 #include "pc_window.h"
 #include "pc_bbft.h"
@@ -10,6 +12,7 @@
 #include <cstdlib>
 
 static bool confirmResults;
+static bool resumeTest;
 struct ResultController : Controller {
     int ticks=0;
     ResultController(): Controller(1) {}
@@ -24,11 +27,31 @@ public:
         if (++frames>3000) finish(1,"timeout");
         int result=PlugPikiApp::idle();
         if (started && gameflow.mCurrGameSectionID != SECTION_OnePlayer) finish(2,"returned to title instead of results");
+        if (resumeTest && pc_randomizer_resumed() && gameflow.mWorldClock.mCurrentDay == 8) {
+            if (++held == 120) {
+                if (playerState->mTotalBornPikiNum != 1234) finish(7,"born count did not restore");
+                for (int color=0; color<3; ++color) {
+                    if (pikiInfMgr.mPikiCounts[color][Flower] != 17 + color) finish(8,"flower population did not restore");
+                    if (!playerState->hasBootContainer(color)) finish(9,"Onion boot flag did not restore");
+                }
+                finish(0,"campaign resumed on day 8; population, flowers and Onion flags restored");
+            }
+            return result;
+        }
         MoviePlayer* movies=gameflow.mMoviePlayer;
         if (movies && movies->mIsActive && frames%5==0) movies->requestSkip();
         if (!started && gamecore && movies && !movies->mIsActive && !gameflow.mPauseAll && !gameflow.mIsUIOverlayActive) {
             if (++ready==60) {
                 started=true;
+                if (resumeTest) {
+                    gameflow.mWorldClock.mCurrentDay = 7;
+                    playerState->mTotalBornPikiNum = 1234;
+                    for (int color=0; color<3; ++color) {
+                        GoalItem* onion = itemMgr->getContainer(color);
+                        if (onion) onion->mHeldPikis[Flower] = 17 + color;
+                        pikiInfMgr.mPikiCounts[color][Flower] = 17 + color;
+                    }
+                }
                 gamecore->forceDayEnd();
                 gameflow.mIsDayEndTriggered=TRUE;
                 std::puts("DAYEND forced ordinary sunset");
@@ -52,6 +75,7 @@ public:
     static void finish(int code,const char* text) { std::printf("%s DAYEND %s\n",code?"FAIL":"PASS",text);std::fflush(stdout);std::_Exit(code); }
 };
 int main(int argc,char** argv) {
+    resumeTest = std::getenv("PIKMIN_CAMPAIGN_TEST") != nullptr;
     SDL_SetMainReady();pc_gpu_preference_apply();
     _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND","1");pc_bbft_init(argc,argv);
     if(!pc_window_init("Day-end skip regression",640,480))return 4;

@@ -1,3 +1,11 @@
+## Day-end campaign checkpoints (issue #6)
+
+Validation: production Windows build (test hooks OFF), 76 Python tests plus 8 subtests, compiled receipt/checkpoint tests (saved and unsaved consumption, duplicate/delayed receipts, wrong-seed and damaged payload rejection, interrupted temporary file ignored), and a live day-end save followed by two independent map resumes restoring day 8, all Onion boot flags and per-color flower counts. Commands: `python scripts/test_benefits_protocol.py native/build-stats/pc_randomizer_probe.exe`; link with `native/tools/verify_cutscene_windows.py --dayend` and run `native/tools/run_campaign_resume.py`.
+
+Native campaign resume uses the ordinary 32 KiB `MemoryCard::writeCurrentGame` payload after a successful day-end card write. The payload includes PlayerState, stage records, generator cache and Onion counts. A seed-bound versioned checkpoint stores that payload and consumed-benefit counters together, fsyncs a temporary file, then publishes an immutable numbered generation. Restart validates the latest committed generation and restores it through `readCurrentGame` after common game initialization, entering the map screen. Starter-color grants use restored boot flags and initial automatic withdrawal is disabled on resumed campaigns.
+
+AP checks and item receipts retain their existing durable session protocol. Consumed bonuses roll back with the native world, so effects saved in the checkpoint are not replayed and effects from an abandoned day become pending again. Native card files live under the stable session campaign directory. Legacy private run saves are preserved, with no automatic import because they have no checkpoint-consumption pairing. Mid-day save/suspend and full extinction gameplay acceptance remain outside this implementation.
+
 # Standalone milestone: local implementation
 
 ## Seeded enemy sources drive bestiary logic (issue #36)
