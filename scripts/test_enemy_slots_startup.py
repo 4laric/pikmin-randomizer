@@ -8,11 +8,12 @@ from randomizer.runner import NativeRun
 from randomizer.enemy_slots import verify_source_assets
 p=argparse.ArgumentParser()
 for name in ('exe','assets','output'):p.add_argument('--'+name,type=Path,required=True)
+p.add_argument('--campaign',action='store_true')
 p.add_argument('--groups',action='store_true')
 p.add_argument('--miniboss',action='store_true')
 a=p.parse_args();verify_source_assets(a.assets)
-for area in ('forest','spring'):
-    m=generate('slot-production-'+area,'ap',per_spawn_enemies=True,group_spawn_enemies=a.groups,miniboss_enemies=a.miniboss,starting_area=area,starting_color='yellow',starting_flarlic=1)
+for area in (('impact','forest','navel','spring','trial') if a.campaign else ('forest','spring')):
+    m=generate('slot-production-'+area,'ap',per_spawn_enemies=True,group_spawn_enemies=a.groups,miniboss_enemies=a.miniboss,starting_area=area,starting_color='yellow',starting_flarlic=1,campaign_enemies=a.campaign)
     s=Session(m,a.output.resolve()/area);r=NativeRun(s);r.write_state(True)
     _winapi.CreateJunction(str(a.assets.resolve()),str(r.directory/'assets'))
     env=dict(os.environ,PIKMIN_RANDOMIZER_TEST_BACKGROUND='1',SDL_AUDIODRIVER='dummy')
@@ -29,20 +30,27 @@ for area in ('forest','spring'):
                 if 'PIKMIN_WORLD_RENDERED' in text and 'color=2 field=10' in text:break
                 time.sleep(.1)
             else:raise AssertionError(f'production startup failed: {log}')
-            choices={row['uid']:row['actual'] for row in m['spawn_layout']['assignments']}
-            if a.groups:choices.update((row['uid'],row['actual']) for row in m['group_layout']['assignments'])
-            adults=[]
+            choices={row['uid']:row['actual'] for row in m['campaign_layout' if a.campaign else 'spawn_layout']['assignments']}
+            if a.groups and not a.campaign:choices.update((row['uid'],row['actual']) for row in m['group_layout']['assignments'])
+            adults=[]; born={}
             for line in text.splitlines():
                 if not line.startswith('ENEMY_SLOT_BIRTH '):continue
                 fields=dict(x.split('=',1) for x in line.split()[1:])
+                born[int(fields['uid'])]=int(fields['actual'])
                 if int(fields['original']) in (4,32):
                     assert choices[int(fields['uid'])]==int(fields['actual'])
                     adults.append(int(fields['actual']))
                 elif int(fields['uid']) in choices:assert choices[int(fields['uid'])]==int(fields['actual'])
                 else:assert fields['original']==fields['actual']
-            assert {4,32} <= set(adults) and r.handshaken and 'TEST_ONLY' not in text
-            if not a.miniboss: assert set(adults)=={4,32}
-            print('Born species:', sorted(set(adults)),flush=True)
-            print('PASS production',area,'mixed adult births match seed; yellow cap 10, rendered, handshake',flush=True)
+            assert r.handshaken and 'TEST_ONLY' not in text
+            if not a.campaign:assert {4,32} <= set(adults)
+            if not a.miniboss and not a.campaign: assert set(adults)=={4,32}
+            if a.campaign:
+                from randomizer.campaign_data import CAMPAIGN_SLOTS
+                stage=('impact','forest','navel','spring','trial').index(area)
+                expected={r['uid'] for r in CAMPAIGN_SLOTS if r['stage']==stage and r['first_day']==2}
+                assert expected<=set(born),(area,expected-set(born))
+            print('Born species:', sorted(set(born.values())),flush=True)
+            print('PASS production',area,'active births match seed; yellow cap 10, rendered, handshake',flush=True)
         finally:
             if process.poll() is None:process.terminate();process.wait(timeout=10)

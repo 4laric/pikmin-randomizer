@@ -1,3 +1,6 @@
+#if defined(PIKMIN_RANDOMIZER_TEST_HOOKS)
+#include "pc_randomizer_campaign_catalog.h"
+#endif
 #include "BuildingItem.h"
 #include "CPlate.h"
 #include "KusaItem.h"
@@ -2094,7 +2097,11 @@ void GameCoreSection::updateAI()
                     gen->mAliveCount = gen->mGenType->getMaxCount() - 1;
                     gen->mLatestSpawnDay = gameflow.mWorldClock.mCurrentDay;
                 }
-                if (pc_randomizer_spawn_slots() && teki && (species == 4 || species == 32 || group)) {
+                bool campaignCandidate = false;
+                if (std::getenv("PIKMIN_RANDOMIZER_TEST_CAMPAIGN") && teki)
+                    for (const auto& row : randomizerCampaignSlots)
+                        if (row.uid == pc_randomizer_generator_id(gen)) campaignCandidate = true;
+                if (pc_randomizer_spawn_slots() && teki && (std::getenv("PIKMIN_RANDOMIZER_TEST_CAMPAIGN") ? campaignCandidate : (species == 4 || species == 32 || group))) {
                     auditCache.saveGenerator(gen);
                     ++cachedAdults;
                 }
@@ -2138,7 +2145,7 @@ void GameCoreSection::updateAI()
             GenObjectTeki* object = static_cast<GenObjectTeki*>(gen->mGenObject);
             int actual = pc_randomizer_enemy_for_generator(object->mTekiType, false, gen);
             std::printf("CACHE_SLOT uid=%u actual=%d\n", pc_randomizer_generator_id(gen), actual);
-            if (object->mTekiType == 3 || object->mTekiType == 31 || object->mTekiType == 18 || object->mTekiType == 19) {
+            if (!std::getenv("PIKMIN_RANDOMIZER_TEST_CAMPAIGN") && (object->mTekiType == 3 || object->mTekiType == 31 || object->mTekiType == 18 || object->mTekiType == 19)) {
                 int survivors = gen->mAliveCount;
                 if (std::getenv("PIKMIN_RANDOMIZER_TEST_GROUP_RESPAWN")) {
                     gen->mLatestSpawnDay -= gen->getRebirthDay();

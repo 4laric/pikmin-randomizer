@@ -42,12 +42,16 @@ class SeedRandom:
         return values
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False):
     if group_spawn_enemies or miniboss_enemies: per_spawn_enemies = True
     if per_spawn_enemies:
         if legacy_checks: raise ValueError('per-spawn enemies require modern checks')
         collection_checks = True
         enemy_shuffle = False
+    if campaign_enemies:
+        if legacy_checks: raise ValueError("campaign enemies require modern checks")
+        per_spawn_enemies = group_spawn_enemies = enemy_shuffle = False
+        collection_checks = miniboss_enemies = True
     collection_checks = collection_checks or progressive_color_stats or permanent_checks
     result = dict(schema=1, game=GAME, seed=str(seed), slot=slot, mode=mode,
                   profile="foh-day2", catalog="vanilla-sites-v1", rng="sha256-counter-v1",
@@ -121,6 +125,12 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         result["group_layout"] = resolve_group_layout(result["seed"], slot)
         result["enemy_layout"] = spawn_sources(result["spawn_layout"], result["group_layout"])
         result["capabilities"].append("enemy-groups-v1")
+    if campaign_enemies:
+        from .campaign_enemies import resolve_campaign, campaign_sources
+        result['campaign_layout'] = resolve_campaign(result['seed'], slot)
+        result['enemy_layout'] = campaign_sources(result['campaign_layout'])
+        result['enemy_shuffle'] = 'campaign-v1'
+        result['capabilities'].append('enemy-campaign-v1')
     if miniboss_enemies:
         result['miniboss_enemies'] = True
         result['capabilities'].append('miniboss-slots-v1')
@@ -152,7 +162,14 @@ def validate(m):
         if type(m.get('permanent_checks')) is not bool: raise ValueError('invalid permanent_checks')
     if type(m) is dict and 'miniboss_enemies' in m:
         expected.add('miniboss_enemies')
-        if m['miniboss_enemies'] is not True or 'spawn_layout' not in m: raise ValueError('invalid miniboss_enemies')
+        if m['miniboss_enemies'] is not True or not ('spawn_layout' in m or 'campaign_layout' in m): raise ValueError('invalid miniboss_enemies')
+    if type(m) is dict and 'campaign_layout' in m:
+        from .campaign_enemies import resolve_campaign
+        expected.add('campaign_layout')
+        if m.get('schema') != 9 or m.get('enemy_mask') != 0 or not m.get('miniboss_enemies') or 'spawn_layout' in m or 'group_layout' in m:
+            raise ValueError('invalid campaign enemy mode')
+        if canonical(m['campaign_layout']) != canonical(resolve_campaign(m.get('seed',''),m.get('slot',''))):
+            raise ValueError('invalid campaign enemy layout')
     if type(m) is dict and 'spawn_layout' in m:
         expected.add('spawn_layout')
         from .enemy_slots import resolve_spawn_layout
@@ -172,7 +189,8 @@ def validate(m):
         if m.get('schema') != 9 or type(m.get('enemy_mask')) is not int or not 0 <= m['enemy_mask'] <= 7:
             raise ValueError('enemy layout requires schema 9 and a valid seed mask')
         from .enemy_slots import spawn_sources
-        expected_sources = spawn_sources(m['spawn_layout'], m.get('group_layout')) if 'spawn_layout' in m else resolve_layout(m['enemy_mask'])
+        from .campaign_enemies import campaign_sources
+        expected_sources = campaign_sources(m['campaign_layout']) if 'campaign_layout' in m else spawn_sources(m['spawn_layout'], m.get('group_layout')) if 'spawn_layout' in m else resolve_layout(m['enemy_mask'])
         if canonical(m['enemy_layout']) != canonical(expected_sources):
             raise ValueError('enemy layout disagrees with seeded permutation/source catalog')
         if any(not sources_for(m['enemy_layout'], species) for species, _ in BESTIARY_TARGETS.values()):
@@ -217,7 +235,7 @@ def validate(m):
             raise ValueError('unsupported enemy permutation')
         fixed.update(catalog='gameplay-checks-v6', enemy_shuffle='families-v1', capabilities=fixed['capabilities'] + ['enemy-families-v1'])
     if m['schema'] >= 7:
-        fixed.update(catalog='gameplay-checks-v7', enemy_shuffle='adult-slots-v1' if 'spawn_layout' in m else 'families-v1' if m['enemy_mask'] else 'none',
+        fixed.update(catalog='gameplay-checks-v7', enemy_shuffle='campaign-v1' if 'campaign_layout' in m else 'adult-slots-v1' if 'spawn_layout' in m else 'families-v1' if m['enemy_mask'] else 'none',
                      capabilities=[c for c in fixed['capabilities'] if c not in ('population-v1', 'bestiary-v1')] + ['total-population-v1', 'corpse-delivery-v1'])
     if m['schema'] == 8:
         fixed.update(catalog='gameplay-checks-v8', capabilities=fixed['capabilities'] + ['permanent-checks-v1', 'check-set-v1'])
@@ -240,6 +258,8 @@ def validate(m):
         fixed['capabilities'] += ['enemy-slots-v1']
     if 'group_layout' in m:
         fixed['capabilities'] += ['enemy-groups-v1']
+    if 'campaign_layout' in m:
+        fixed['capabilities'] += ['enemy-campaign-v1']
     if m.get('miniboss_enemies'):
         fixed['capabilities'] += ['miniboss-slots-v1']
     for key, value in fixed.items():

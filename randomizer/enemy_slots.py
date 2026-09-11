@@ -61,6 +61,9 @@ def spawn_sources(layout, groups=None):
 
 
 def bootstrap_slots(manifest):
+    if 'campaign_layout' in manifest:
+        from .campaign_enemies import campaign_bootstrap
+        return campaign_bootstrap(manifest)
     if 'spawn_layout' not in manifest: return ''
     text = ('ENEMY_MINIBOSSES 1\n' if manifest.get('miniboss_enemies') else '') + 'ENEMY_SLOTS ' + CATALOG_HASH + ' 15 ' + ' '.join(f"{r['uid']} {r['actual']}" for r in manifest['spawn_layout']['assignments']) + '\n'
     if 'group_layout' in manifest:
@@ -69,6 +72,10 @@ def bootstrap_slots(manifest):
 
 
 def spoiler(manifest):
+    if 'campaign_layout' in manifest:
+        from .campaign_data import CAMPAIGN_SLOTS
+        names={0:'Yellow Wollywog',3:'Dwarf Bulborb',4:'Spotty Bulborb',9:'Puffstool',11:'Swooping Snitchbug',15:'Fiery Blowhog',16:'Puffy Blowhog',17:'Armored Cannon Beetle',18:'Female Sheargrub',19:'Male Sheargrub',20:'Shearwig',24:'Mamuta',25:'Wogpole',30:'Water Dumple',31:'Dwarf Bulbear',32:'Spotty Bulbear',33:'Wollywog'}
+        return [dict(r,actual=a['actual'],original_name=names[r['original']],actual_name=names[a['actual']]) for r,a in zip(CAMPAIGN_SLOTS,manifest['campaign_layout']['assignments'])]
     if 'spawn_layout' not in manifest:
         raise ValueError('this seed does not use per-spawn enemies')
     names = {9:'Puffstool',17:'Armored Cannon Beetle',24:'Mamuta',4: 'Spotty Bulborb', 32: 'Spotty Bulbear',3:'Dwarf Bulborb',31:'Dwarf Bulbear',18:'Female Sheargrub',19:'Male Sheargrub'}

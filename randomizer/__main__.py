@@ -12,8 +12,9 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
     gen = sub.add_parser("generate")
     gen.add_argument("--seed", required=True)
+    gen.add_argument("--campaign-enemies", action="store_true", help="Campaign-wide compatible pools, including Teki minibosses; overrides older enemy toggles")
     gen.add_argument("--starting-flarlic", type=int, choices=range(1, 11), default=1, help="Initial field capacity in tens (default 1 = 10 Pikmin)")
-    gen.add_argument("--permanent-checks", action="store_true", help="Finer population and permanent obstacle completion checks")
+    gen.add_argument("--permanent-checks", action="store_true", help="Add 51 permanent obstacle completion checks")
     gen.add_argument("--progressive-color-stats", action="store_true", help="AP stat upgrades per color; enables collection checks")
     gen.add_argument("--randomize-color-stats", action="store_true", help="Seeded damage, movement, attack rate and carrying strength per color")
     gen.add_argument("--expanded", action="store_true", help="Flarlic, population, bestiary and exploration checks")
@@ -23,7 +24,7 @@ def main():
     gen.add_argument('--per-spawn-enemies', action='store_true', help='Opt-in named adult Bulborb/Bulbear slots; overrides global family swaps')
     gen.add_argument('--group-spawn-enemies', action='store_true', help='Experimental dwarf/Sheargrub groups; implies per-spawn adults')
     gen.add_argument('--enemy-shuffle', action='store_true', help='Seeded compatible enemy-family swaps')
-    gen.add_argument('--collection-checks', action='store_true', default=True, help='Onion corpse deliveries and total population milestones through 500')
+    gen.add_argument('--collection-checks', action='store_true', default=True, help='Onion corpse deliveries and population 10/25/50/100 per color')
     gen.add_argument('--starting-color', choices=['red', 'yellow', 'blue', 'random'], default='red', help='Non-default enables expanded checks')
     gen.add_argument("--slot", default="Player1")
     gen.add_argument("--mode", choices=["solo", "ap"], default="solo")
@@ -45,7 +46,7 @@ def main():
     enemy_spoiler.add_argument('--output', type=Path)
     args = parser.parse_args()
     if args.command == "generate":
-        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas, enemy_shuffle=args.enemy_shuffle, collection_checks=args.collection_checks, starting_flarlic=args.starting_flarlic, randomize_color_stats=args.randomize_color_stats, progressive_color_stats=args.progressive_color_stats, permanent_checks=args.permanent_checks, per_spawn_enemies=args.per_spawn_enemies, group_spawn_enemies=args.group_spawn_enemies, miniboss_enemies=args.miniboss_enemies)
+        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas, enemy_shuffle=args.enemy_shuffle, collection_checks=args.collection_checks, starting_flarlic=args.starting_flarlic, randomize_color_stats=args.randomize_color_stats, progressive_color_stats=args.progressive_color_stats, permanent_checks=args.permanent_checks, per_spawn_enemies=args.per_spawn_enemies, group_spawn_enemies=args.group_spawn_enemies, miniboss_enemies=args.miniboss_enemies, campaign_enemies=args.campaign_enemies)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8") as f:
             f.write(json.dumps(manifest, indent=2) + "\n")

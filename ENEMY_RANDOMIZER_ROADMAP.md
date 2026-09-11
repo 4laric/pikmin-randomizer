@@ -6,6 +6,9 @@ The next playable milestone is **different members of the same family at individ
 
 ## Current baseline
 
+Campaign-wide tranche (#44): `campaign_enemies` now covers 72 compatible Teki generator records across Impact, Hope, Navel and Spring, with one seeded miniboss in each large area. Final Trial hazards/Emperor remain pinned. Native mapping, source-aware AP fills, five-stage disk/cache and startup tests pass; physical combat/carry-route acceptance remains open. See DEVELOPMENT.md for the cohort matrix and exact coverage.
+
+
 Grouped tranche (#53): opt-in fixed-count circular generators now receive group-wide dwarf or Sheargrub choices, in addition to the 15 adult choices. Twelve groups retain original counts/distributions/schedules and protected sources; Spring's dwarf groups remain day-16 sources. Per-member mixed groups need additional persistent member identities and are deferred. Physical compatibility/route acceptance still gates broader habitat pools.
 
 Progress update: the first experimental per-spawn tranche supports 15 named adult generators in Hope/Spring. The 690-record five-area registry matches native disk/cache reads; actual stage-cache APIs restore all 15 choices, with mixed species observed at startup. All-check solo/AP reachability tests pass. Physical clearance/corpse-route acceptance and distributed dwarf/grub adapters remain open, so #42/#43 remain tracking issues. The global-mask baseline below still applies to legacy/default family mode.

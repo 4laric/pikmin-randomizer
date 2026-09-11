@@ -5,6 +5,7 @@
 #include <thread>
 #include <cstring>
 #include "pc_randomizer_spawn_catalog.h"
+#include "pc_randomizer_campaign_catalog.h"
 #undef NDEBUG
 #include <cassert>
 int main(int argc, char** argv) {
@@ -12,6 +13,22 @@ int main(int argc, char** argv) {
     if (!pc_randomizer_init(argc, argv)) {
         if (pc_randomizer_enabled() || pc_randomizer_goal() || pc_randomizer_next_day(29) != 30) return 4;
         std::puts("standalone adapter inert"); return 0;
+    }
+    for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--campaign-probe")) {
+        int objects[72] = {};
+        for (int i=71; i>=0; --i) {
+            const auto& row = randomizerCampaignSlots[i];
+            pc_randomizer_set_generator_id(&objects[i], row.uid);
+            std::printf("CAMPAIGN_PROBE %u %d\n", row.uid, pc_randomizer_enemy_for_generator(row.original, false, &objects[i]));
+        }
+        for (const auto& row : randomizerSpawnSlots) {
+            bool eligible = false;
+            for (const auto& candidate : randomizerCampaignSlots) if (candidate.uid == row.uid) eligible = true;
+            if (eligible) continue;
+            int object; pc_randomizer_set_generator_id(&object, row.uid);
+            assert(pc_randomizer_enemy_for_generator(row.species, true, &object) == row.species);
+        }
+        return 0;
     }
     for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--capacity-probe")) {
         std::printf("CAPACITY_PROBE %d\n", pc_randomizer_field_capacity());

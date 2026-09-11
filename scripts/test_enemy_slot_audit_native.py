@@ -8,27 +8,32 @@ from randomizer.session import Session
 from randomizer.runner import NativeRun
 p=argparse.ArgumentParser()
 for n in ('exe','assets','output'):p.add_argument('--'+n,type=Path,required=True)
+p.add_argument('--campaign',action='store_true')
 p.add_argument('--per-spawn',action='store_true')
 p.add_argument('--groups',action='store_true')
 p.add_argument('--respawn',action='store_true')
 p.add_argument('--bad-cache',action='store_true',help='Require explicit rejection of a corrupted tagged cache record')
 a=p.parse_args();facts=audit(a.assets);evidence={}
 for stage,area in enumerate(('impact','forest','navel','spring','trial')):
-    m=generate('spawn-audit-'+area,'ap',collection_checks=True,starting_area=area,starting_flarlic=1,per_spawn_enemies=a.per_spawn,group_spawn_enemies=a.groups)
+    m=generate('spawn-audit-'+area,'ap',collection_checks=True,starting_area=area,starting_flarlic=1,per_spawn_enemies=a.per_spawn,group_spawn_enemies=a.groups,campaign_enemies=a.campaign)
     s=Session(m,a.output.resolve()/area);r=NativeRun(s);r.write_state(True)
     (r.directory/'audit-files.txt').write_text('\n'.join(f['file'] for f in facts['files'] if f['stage']==stage)+'\n')
     _winapi.CreateJunction(str(a.assets.resolve()),str(r.directory/'assets'))
     env=dict(os.environ,PIKMIN_RANDOMIZER_TEST_BACKGROUND='1',SDL_AUDIODRIVER='dummy',PIKMIN_RANDOMIZER_TEST_SCRIPT='spawn-audit');env.pop('BBFT_PORT',None)
+    if a.campaign:
+        env['PIKMIN_RANDOMIZER_TEST_CAMPAIGN']='1'
+        env['PIKMIN_ENEMY_TEST_DAY']='8' if stage==0 else '16' if stage==3 else '2'
     if a.bad_cache:
-        assert a.per_spawn
+        assert a.per_spawn or a.campaign
         env['PIKMIN_RANDOMIZER_TEST_BAD_SLOT_CACHE']='1'
     if a.respawn:
         assert a.groups
         env['PIKMIN_RANDOMIZER_TEST_GROUP_RESPAWN']='1'
     startup=subprocess.STARTUPINFO();startup.dwFlags|=subprocess.STARTF_USESHOWWINDOW
     log=r.directory/'native.log'
-    with log.open('w',encoding='utf-8') as stream:
-        process=subprocess.Popen([str(a.exe.resolve()),'--randomizer-seed',str(r.bootstrap)],cwd=r.directory,env=env,startupinfo=startup,stdout=stream,stderr=subprocess.STDOUT)
+    error_log=r.directory/'native-stderr.log'
+    with log.open('w',encoding='utf-8') as stream, error_log.open('w',encoding='utf-8') as errors:
+        process=subprocess.Popen([str(a.exe.resolve()),'--randomizer-seed',str(r.bootstrap)],cwd=r.directory,env=env,startupinfo=startup,stdout=stream,stderr=errors)
         try:
             deadline=time.monotonic()+120
             while process.poll() is None and time.monotonic()<deadline:
@@ -36,7 +41,7 @@ for stage,area in enumerate(('impact','forest','navel','spring','trial')):
             assert process.poll()==(2 if a.bad_cache else 0), f'exit {process.poll()}; {log}'
         finally:
             if process.poll() is None:process.terminate();process.wait(timeout=10)
-    text=log.read_text(errors='replace');seen={}
+    text=log.read_text(errors='replace')+'\n'+error_log.read_text(errors='replace');seen={}
     if a.bad_cache:
         assert 'incompatible enemy slot cache record' in text,log
         print('PASS malformed tagged cache rejected before restore',flush=True)
@@ -57,8 +62,8 @@ for stage,area in enumerate(('impact','forest','navel','spring','trial')):
         assert int(fields['protected'])==protected,row['id']
         evidence[row['id']]={'anchor_terrain':int(fields['terrain']), 'disk_and_cache_roundtrip':True}
     assert 'TEST_ONLY spawn_audit_pass' in text,log
-    if a.per_spawn or a.groups:
-        assignments={row['uid']:row['actual'] for row in m['spawn_layout']['assignments']}
+    if a.per_spawn or a.groups or a.campaign:
+        assignments={row['uid']:row['actual'] for row in m['campaign_layout' if a.campaign else 'spawn_layout']['assignments']}
         if a.groups:assignments.update((r['uid'],r['actual']) for r in m['group_layout']['assignments'])
         adults=[]
         for line in text.splitlines():
@@ -69,14 +74,15 @@ for stage,area in enumerate(('impact','forest','navel','spring','trial')):
                 adults.append(int(fields['actual']))
             elif int(fields['uid']) in assignments:assert assignments[int(fields['uid'])]==int(fields['actual']),line
             else:assert fields['actual']==fields['original'],line
-        if stage in (1,3):assert set(adults)=={4,32},(stage,adults,log)
+        if not a.campaign and stage in (1,3):assert set(adults)=={4,32},(stage,adults,log)
         cached={}
         for line in text.splitlines():
             if line.startswith('CACHE_SLOT '):
                 fields=dict(x.split('=',1) for x in line.split()[1:])
                 cached[int(fields['uid'])]=int(fields['actual'])
         from randomizer.spawn_data import ADULT_SLOTS, GROUP_SLOTS
-        rows=ADULT_SLOTS+(GROUP_SLOTS if a.groups else ())
+        from randomizer.campaign_data import CAMPAIGN_SLOTS
+        rows=CAMPAIGN_SLOTS if a.campaign else ADULT_SLOTS+(GROUP_SLOTS if a.groups else ())
         assert cached=={row['uid']:assignments[row['uid']] for row in rows if row['stage']==stage},(stage,cached)
         if a.groups:
             survivors={}

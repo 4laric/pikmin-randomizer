@@ -1,3 +1,24 @@
+## Campaign-wide enemy pools (#44)
+
+`campaign_enemies: true` (CLI `--campaign-enemies`) enables a new versioned layout and overrides the older enemy toggles. Existing seeds retain their layouts. The layout covers 72 eligible generator records: Impact 11 scheduled records for one alternating-day encounter, Hope 21, Navel 10 and Spring 30. Final Trial contains fire hazards and the Emperor encounter, so it has no eligible ordinary enemy slots; these remain intact.
+
+| Cohort | Replacement pool |
+| --- | --- |
+| Ground | Bulborb, Bulbear and Fiery Blowhog, plus one Puffstool/Mamuta/Cannon Beetle replacement in each of Hope, Navel and Spring |
+| Frogs | Yellow Wollywog and Wollywog |
+| Flying | Swooping Snitchbug and Puffy Blowhog |
+| Dwarfs | Dwarf Bulborb and Dwarf Bulbear |
+| Grubs | Female Sheargrub, Male Sheargrub and Shearwig |
+| Aquatic | Wogpole and Water Dumple |
+
+The three Teki miniboss types are distributed one each across the three large areas, at renewable non-expiring slots. Impact's Mamuta slot receives a consistent ground-enemy assignment across its day-8-and-later files. Group counts, distributions, schedules, source IDs and original drop profiles remain unchanged. Named ship-part carriers, special personalities, spawners, boss-manager encounters and non-enemies remain pinned. Native anchor audits put all aquatic candidates on water terrain and all ground candidates on non-water terrain; these samples do not prove complete footprint clearance or corpse-return routes.
+
+Assignments resolve before item fill. Reachability derives from the resulting persistent species sources, including the unchanged Clamclamp pearl source. Every bestiary species remains represented, Hope retains renewable Bulborb/Bulbear sources, and Navel retains renewable ground farming. No runtime rerolls or seed migration.
+
+Validation: 78 Python tests plus 8 subtests; 150 AP fills across all area/color starts and 10 remote-Blue multiworld fills reaching every check; compiled agreement for all 72 mappings and malformed bootstrap rejection; all 690 source records audited through native disk/cache serialization across five stages; production boots with active assignments checked in all five stages; scheduled Impact/day-8 and Spring/day-16 audits. The expanded mode also passes an actual day-end save followed by two independent map resumes. Combat, camera-culling behavior and full physical corpse-return routes still need playtest acceptance; this is an experimental expansion, not a claim that those have all been played through.
+
+Fresh local playtest: `output/turkey-campaign-01/Play.cmd`, Navel/red, field cap 10, both stat options, permanent checks, 113 checks, 25 repairs. Existing turkey-finish-01 saves and launchers are unchanged. AP development artifact: `output/pikmin_randomizer-0.21.0.apworld`.
+
 ## Day-end campaign checkpoints (issue #6)
 
 Validation: production Windows build (test hooks OFF), 76 Python tests plus 8 subtests, compiled receipt/checkpoint tests (saved and unsaved consumption, duplicate/delayed receipts, wrong-seed and damaged payload rejection, interrupted temporary file ignored), and a live day-end save followed by two independent map resumes restoring day 8, all Onion boot flags and per-color flower counts. Commands: `python scripts/test_benefits_protocol.py native/build-stats/pc_randomizer_probe.exe`; link with `native/tools/verify_cutscene_windows.py --dayend` and run `native/tools/run_campaign_resume.py`.

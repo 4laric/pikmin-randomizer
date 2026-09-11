@@ -1,5 +1,23 @@
 # Pikmin Randomizer
 
+## Campaign-wide enemy pools (#44)
+
+`campaign_enemies: true` (CLI `--campaign-enemies`) enables a new versioned layout and overrides the older enemy toggles. Existing seeds retain their layouts. The layout covers 72 eligible generator records: Impact 11 scheduled records for one alternating-day encounter, Hope 21, Navel 10 and Spring 30. Final Trial contains fire hazards and the Emperor encounter, so it has no eligible ordinary enemy slots; these remain intact.
+
+| Cohort | Replacement pool |
+| --- | --- |
+| Ground | Bulborb, Bulbear and Fiery Blowhog, plus one Puffstool/Mamuta/Cannon Beetle replacement in each of Hope, Navel and Spring |
+| Frogs | Yellow Wollywog and Wollywog |
+| Flying | Swooping Snitchbug and Puffy Blowhog |
+| Dwarfs | Dwarf Bulborb and Dwarf Bulbear |
+| Grubs | Female Sheargrub, Male Sheargrub and Shearwig |
+| Aquatic | Wogpole and Water Dumple |
+
+The three Teki miniboss types are distributed one each across the three large areas, at renewable non-expiring slots. Impact's Mamuta slot receives a consistent ground-enemy assignment across its day-8-and-later files. Group counts, distributions, schedules, source IDs and original drop profiles remain unchanged. Named ship-part carriers, special personalities, spawners, boss-manager encounters and non-enemies remain pinned. Native anchor audits put all aquatic candidates on water terrain and all ground candidates on non-water terrain; these samples do not prove complete footprint clearance or corpse-return routes.
+
+Assignments resolve before item fill. Reachability derives from the resulting persistent species sources, including the unchanged Clamclamp pearl source. Every bestiary species remains represented, Hope retains renewable Bulborb/Bulbear sources, and Navel retains renewable ground farming. No runtime rerolls or seed migration.
+
+
 Experimental standalone and Archipelago randomizer for Pikmin 1, built on Open Nectar.
 
 ## Completion playtest (v0.20.0)

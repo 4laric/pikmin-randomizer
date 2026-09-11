@@ -1,6 +1,7 @@
 #include "pc_randomizer.h"
 #include "pc_randomizer_catalog.h"
 #include "pc_randomizer_spawn_catalog.h"
+#include "pc_randomizer_campaign_catalog.h"
 #include <unordered_map>
 #include <cstdint>
 #include <cmath>
@@ -28,7 +29,8 @@ int startColor = 1; // Native IDs: blue 0, red 1, yellow 2.
 unsigned enemyMask = 0;
 bool compactPopulation = false;
 bool minibossEnemies = false;
-bool slotEnemies = false;
+bool slotEnemies = false, campaignEnemies = false;
+unsigned campaignAssignments[72] = {};
 bool groupEnemies = false;
 unsigned groupAssignments[12] = {};
 unsigned adultAssignments[15] = {};
@@ -194,6 +196,25 @@ bool pc_randomizer_init(int argc, char** argv) {
         benefitItems = true;
         input >> end;
     }
+    if (end == "ENEMY_CAMPAIGN") {
+        unsigned version, count, miniboss; std::string catalog;
+        if (schema != 9 || enemyMask || !(input >> version >> catalog >> count >> miniboss)
+            || version != 1 || catalog != randomizerCampaignHash || count != 72 || miniboss != 1)
+            fail("incompatible campaign enemy catalog");
+        unsigned heavies[5] = {};
+        for (unsigned i=0; i<count; ++i) {
+            unsigned uid, species; const auto& row = randomizerCampaignSlots[i];
+            if (!(input >> uid >> species) || uid != row.uid || species >= 35 || !(row.minibossAllowed & (1ULL << species)))
+                fail("unsupported campaign enemy assignment");
+            if (species == 9 || species == 17 || species == 24) ++heavies[row.stage];
+            campaignAssignments[i] = species;
+        }
+        if (heavies[0] || heavies[1] != 1 || heavies[2] != 1 || heavies[3] != 1 || heavies[4])
+            fail("campaign enemy heavy encounter budget exceeded");
+        campaignEnemies = minibossEnemies = true;
+        input >> end;
+        if (end != "END") fail("campaign enemy mode cannot mix legacy layouts");
+    }
     if (end == "ENEMY_MINIBOSSES") {
         int version;
         if (schema != 9 || !(input >> version) || version != 1) fail("invalid miniboss adapter version");
@@ -264,6 +285,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (benefitItems) hello << " benefit-items-v1";
     if (slotEnemies) hello << " enemy-slots-v1";
     if (groupEnemies) hello << " enemy-groups-v1";
+    if (campaignEnemies) hello << " enemy-campaign-v1";
     if (minibossEnemies) hello << " miniboss-slots-v1";
     hello << " END\n";
     hello.close();
@@ -376,7 +398,7 @@ float pc_randomizer_benefit_multiplier(PcBenefit kind) {
 bool pc_randomizer_enabled() { return enabled; }
 int pc_randomizer_start_stage() { return startStage; }
 int pc_randomizer_start_color() { return startColor; }
-bool pc_randomizer_spawn_slots() { return enabled && slotEnemies; }
+bool pc_randomizer_spawn_slots() { return enabled && (slotEnemies || campaignEnemies); }
 bool pc_randomizer_group_slots() { return enabled && groupEnemies; }
 unsigned pc_randomizer_generator_id(const void* generator) {
     auto it = generatorIds.find(generator);
@@ -400,6 +422,15 @@ void pc_randomizer_bind_generator(const void* generator, int stage, const char* 
 }
 int pc_randomizer_enemy_for_generator(int original, bool protectedSpawn, const void* generator) {
     if (!pc_randomizer_spawn_slots()) return pc_randomizer_enemy_type(original, protectedSpawn);
+    if (campaignEnemies) {
+        const unsigned uid = pc_randomizer_generator_id(generator);
+        for (unsigned i=0; i<72; ++i) if (randomizerCampaignSlots[i].uid == uid) {
+            if (protectedSpawn || randomizerCampaignSlots[i].original != original) fail("campaign enemy source changed");
+            return campaignAssignments[i];
+        }
+        // Bosses, hazards, named drops and unlisted special personalities stay pinned.
+        return original;
+    }
     if (groupEnemies && (original == 3 || original == 31 || original == 18 || original == 19)) {
         if (protectedSpawn) return original;
         unsigned uid = pc_randomizer_generator_id(generator);
@@ -419,7 +450,7 @@ int pc_randomizer_enemy_for_generator(int original, bool protectedSpawn, const v
     fail("adult enemy has no supported generator ID");
 }
 void pc_randomizer_bad_spawn_cache() { fail("incompatible enemy slot cache record"); }
-bool pc_randomizer_enemy_shuffle() { return enabled && schema >= 6 && (enemyMask != 0 || slotEnemies); }
+bool pc_randomizer_enemy_shuffle() { return enabled && schema >= 6 && (enemyMask != 0 || slotEnemies || campaignEnemies); }
 int pc_randomizer_enemy_type(int original, bool protectedSpawn) {
     if (!pc_randomizer_enemy_shuffle() || protectedSpawn) return original;
     const int pairs[3][2] = {{3, 31}, {4, 32}, {18, 19}};

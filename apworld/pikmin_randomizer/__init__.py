@@ -14,7 +14,7 @@ from .core.benefits import BENEFIT_ITEMS
 
 
 class ExpandedChecks(Toggle):
-    """Enable Flarlic capacity, field population, first-defeat bestiary and exploration checks."""
+    """Legacy expanded check catalog. Modern collection checks already enable capacity and all five areas."""
     display_name = "Expanded Checks"
     default = 0
 
@@ -42,9 +42,15 @@ class StartingColor(Choice):
 
 
 class CollectionChecks(Toggle):
-    """Count corpse deliveries at Onions and total living population up to 500 per color. Enables all-area expanded checks."""
+    """Bestiary corpse deliveries (Puffy Blowhog defeat and Clamclamp pearl), plus total population 10/25/50/100 per color. Enables all five areas; no scout or landing checks."""
     display_name = 'Corpse Delivery and Total Population Checks'
     default = 1
+
+
+class CampaignEnemies(Toggle):
+    """Campaign-wide compatible ground, frog, flying, small-enemy and aquatic pools, with a Teki miniboss in Hope, Navel and Spring. Impact's scheduled Mamuta is included. Final Trial bosses/hazards and scripted drops remain pinned. Overrides older enemy toggles."""
+    display_name = 'Campaign Enemy Randomizer'
+    default = 0
 
 
 class GroupSpawnEnemies(Toggle):
@@ -71,7 +77,7 @@ class RandomizeColorStats(Toggle):
 
 
 class PermanentChecks(Toggle):
-    """Enable 57 color-specific total-population milestones and 51 individual walls, climbing sticks, bridges and boxes. Enables collection checks; 158 total checks. Obstacle routes currently require all colors conservatively; boxes also require field capacity 100."""
+    """Add 51 individual walls, climbing sticks, bridges and boxes. Enables collection checks; 113 total checks. Obstacle routes currently require all colors conservatively; boxes also require field capacity 100."""
     display_name = 'Permanent Structure and Granular Population Checks'
     default = 0
 
@@ -92,6 +98,7 @@ class StartingFlarlic(Range):
 
 @dataclass
 class PikminOptions(PerGameCommonOptions):
+    campaign_enemies: CampaignEnemies
     group_spawn_enemies: GroupSpawnEnemies
     miniboss_enemies: MinibossEnemies
     per_spawn_enemies: PerSpawnEnemies
@@ -165,7 +172,7 @@ class PikminRandomizerWorld(World):
             self._manifest = generate(str(self.multiworld.seed_name), "ap", self.multiworld.player_name[self.player],
                             expanded=bool(self.options.expanded_checks),
                             starting_area=('forest', 'navel', 'random', 'impact', 'spring', 'trial')[self.options.starting_area.value],
-                            starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas), enemy_shuffle=bool(self.options.enemy_shuffle), collection_checks=bool(self.options.collection_checks), starting_flarlic=self.options.starting_flarlic.value, randomize_color_stats=bool(self.options.randomize_color_stats), progressive_color_stats=bool(self.options.progressive_color_stats), permanent_checks=bool(self.options.permanent_checks), per_spawn_enemies=bool(self.options.per_spawn_enemies), group_spawn_enemies=bool(self.options.group_spawn_enemies), miniboss_enemies=bool(self.options.miniboss_enemies))
+                            starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas), enemy_shuffle=bool(self.options.enemy_shuffle), collection_checks=bool(self.options.collection_checks), starting_flarlic=self.options.starting_flarlic.value, randomize_color_stats=bool(self.options.randomize_color_stats), progressive_color_stats=bool(self.options.progressive_color_stats), permanent_checks=bool(self.options.permanent_checks), per_spawn_enemies=bool(self.options.per_spawn_enemies), group_spawn_enemies=bool(self.options.group_spawn_enemies), miniboss_enemies=bool(self.options.miniboss_enemies), campaign_enemies=bool(self.options.campaign_enemies))
         return self._manifest
 
     def fill_slot_data(self):
