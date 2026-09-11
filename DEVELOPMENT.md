@@ -1,5 +1,17 @@
 # Standalone milestone: local implementation
 
+## Per-color stat randomization (issue #28)
+
+Opt-in `randomize_color_stats` YAML / `--randomize-color-stats` CLI, AP world v0.9.0. Profiles use an independent SHA256 stream and integer percentages; `color-stats-v1` is required by the manifest/handshake and `COLOR_STATS` is a strict bootstrap extension. Old seeds omit both and retain unity multipliers. Damage is 50–150% of the existing color-specific base; movement and attack rate are 75–125%; carry strength is integer 1–3. No throw or ability changes.
+
+Native hooks: `Piki::getAttackPower`, all walking-speed entry points, and attack-loop playback after animation metadata chooses its speed. `ActTransport` lift/continuation/gauge counts and `Pellet` active-carrier checks sum strength; slot allocation and population remain body counts. Hauling averages crew movement multipliers, with bounded effective-carrier speed bonuses. Native type arrays and save layouts are unchanged. The overlay/status displays all profiles. Logic reduces part headcounts conservatively using the weakest required route-color strength; it does not assume an off-route strong color can perform the delivery.
+
+The synthetic native fixture uses real Pikmin and a real ship-part pellet, checks damage/walking/attack timing for all three colors, then attaches a mixed crew, skips their lifting animation, invokes native route/lift behavior and verifies put-down after losing sufficient strength. It does not establish a complete player-driven carry route or combat playthrough. Run `scripts/test_color_stats_protocol.py` with the native probe; run `scripts/test_color_stats_native.py` with a TEST_HOOKS build and private user assets. Production builds must have TEST_HOOKS disabled.
+
+Validation: 38 Python tests; 2,260 packaged AP single-slot fills plus the remote-Blue two-player case; native color-stat/legacy, Flarlic, all-area/color, enemy and collection protocol tests. The live fixture passed with seven bodies supplying strength 20 for a weight-20 ship part, including slot allocation, hauling speed and put-down after one red detached. Native commit `9783304e` built with native JAudio, portable CPU settings and TEST_HOOKS OFF in `native/build-stats`. Its production startup rendered Impact Site with ten yellows, emitted only the two expected opening checks, applied other-color grants once and passed area/goal gates without test fixtures.
+
+Local playtest: `output/turkey-stats-01/Play.cmd`, fresh solo seed, random area/color (rolled Impact Site/yellow), collection checks, enemy swaps, starting Flarlic 1 and randomized stats. Separate private smoke-test sessions were used; the player's session is fresh. AP package: `output/pikmin_randomizer-0.9.0.apworld`. These generated files and user assets are excluded from source control. Full player-driven combat and carrying-route acceptance remain to be tested.
+
 ## Starting Flarlic (issue #24)
 
 New YAML/CLI generations default to `starting_flarlic: 1` (10 field capacity), configurable from 1 through 10. The remaining `10 - starting_flarlic` Flarlic items are in the pool. Native startup withdraws at most the cap from the original 20 starter Pikmin, leaving the remainder stored. Overlay, status, carry-weight logic and native state use the same initial capacity. Existing manifests remain unchanged. An optional manifest field and required `starting-flarlic-v1` capability accompany a strict `STARTING_FLARLIC` bootstrap extension; old native builds reject it. AP package version is 0.8.0.

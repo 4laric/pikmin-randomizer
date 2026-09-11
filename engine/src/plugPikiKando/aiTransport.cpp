@@ -1,3 +1,4 @@
+#include "pc_randomizer.h"
 #include "AIConstant.h"
 #include "AIPerf.h"
 #include "DebugLog.h"
@@ -146,9 +147,10 @@ f32 ActTransport::getCarriers()
 		{
 			Piki* piki = static_cast<Piki*>(*iter);
 			if (piki->isPiki()) {
-				carriers += 0.5f * piki->mHappa + 1.0f;
+				carriers += (0.5f * piki->mHappa + 1.0f) * pc_randomizer_carry_strength(piki->mColor);
 			}
 		}
+		if (pc_randomizer_color_stats() && carriers > 2.0f * pel->mConfig->mCarryMaxPikis()) carriers = 2.0f * pel->mConfig->mCarryMaxPikis();
 		return carriers;
 	}
 	return 0.0f;
@@ -160,7 +162,7 @@ f32 ActTransport::getCarriers()
  * @todo: Documentation
  * @note UNUSED Size: 00001C
  */
-int ActTransport::getNumStickers()
+int ActTransport::getCarryStrength()
 {
 	Pellet* pel = mPellet.getPtr();
 	if (pel) {
@@ -173,7 +175,7 @@ int ActTransport::getNumStickers()
  * @todo: Documentation
  * @note UNUSED Size: 000140
  */
-int ActTransport::calcNumStickers()
+int ActTransport::calcCarryStrength()
 {
 	Pellet* pel = mPellet.getPtr();
 	if (pel) {
@@ -184,7 +186,7 @@ int ActTransport::calcNumStickers()
 		{
 			Creature* piki = *iter;
 			if (piki->isPiki()) {
-				count++;
+				count += pc_randomizer_carry_strength(static_cast<Piki*>(piki)->mColor);
 			}
 		}
 
@@ -287,7 +289,7 @@ void ActTransport::animationKeyUpdated(immut PaniAnimKeyEvent& event)
 	{
 		if (mState == STATE_Lift) {
 			Pellet* pel  = mPellet.getPtr();
-			int numStick = getNumStickers();
+			int numStick = getCarryStrength();
 			if (pel && numStick < pel->mConfig->mCarryMinPikis()) {
 				mLiftRetryCount--;
 				if (mLiftRetryCount < 0) {
@@ -391,7 +393,7 @@ int ActTransport::execJump()
 		mPiki->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
 		mPiki->mVelocity.set(0.0f, 0.0f, 0.0f);
 
-		int numStickers = calcNumStickers();
+		int numStickers = calcCarryStrength();
 		int minWeight   = pel->mConfig->mCarryMinPikis();
 		Vector3f carryInfoPos(pel->mSRT.t);
 		carryInfoPos.y += 5.0f + pel->getCylinderHeight();
@@ -497,7 +499,7 @@ bool ActTransport::gotoLiftPos()
 		mPiki->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
 		mPiki->mVelocity.set(0.0f, 0.0f, 0.0f);
 
-		int currentCarriers  = calcNumStickers();
+		int currentCarriers  = calcCarryStrength();
 		int requiredCarriers = pellet->mConfig->mCarryMinPikis();
 		Vector3f carryInfoPos(pellet->mSRT.t);
 		carryInfoPos.y += 5.0f + pellet->getCylinderHeight();
@@ -545,7 +547,7 @@ void ActTransport::doLift()
 {
 	Pellet* pel = mPellet.getPtr();
 	Stickers stuckList(pel);
-	int numStickers = getNumStickers();
+	int numStickers = getCarryStrength();
 	int count       = 0;
 	Iterator iter(&stuckList);
 	CI_LOOP(iter)
@@ -556,7 +558,7 @@ void ActTransport::doLift()
 			if (piki->mMode == PikiMode::TransportMode) {
 				ActTransport* action = static_cast<ActTransport*>(piki->mActiveAction->getCurrAction());
 				if (action->mIsLiftActionDone) {
-					count++;
+					count += pc_randomizer_carry_strength(static_cast<Piki*>(piki)->mColor);
 				}
 			}
 		}
@@ -751,7 +753,7 @@ int ActTransport::exec()
 	case STATE_Goal:
 	{
 		Stickers stuckList(pel);
-		int numStickers = getNumStickers();
+		int numStickers = getCarryStrength();
 		int minWeight   = pel->mConfig->mCarryMinPikis();
 		if (numStickers < minWeight) {
 			PRINT("小人数!!!\n"); // 'small group!!!' lol
@@ -889,7 +891,7 @@ int ActTransport::moveGuruGuru()
 {
 	Pellet* pel = mPellet.getPtr();
 	Stickers stuckList(pel);
-	int numStickers = getNumStickers();
+	int numStickers = getCarryStrength();
 	int minWeight   = pel->mConfig->mCarryMinPikis();
 
 	if (numStickers < minWeight) {
@@ -1078,7 +1080,7 @@ void ActTransport::cleanup()
 	mPiki->endStickObject();
 	Pellet* pel = mPellet.getPtr();
 	if (pel) {
-		int numStickers = calcNumStickers();
+		int numStickers = calcCarryStrength();
 		int minCarry    = pel->mConfig->mCarryMinPikis();
 		if (numStickers > 0) {
 			Vector3f carryInfoPos(pel->mSRT.t);
@@ -1544,7 +1546,7 @@ void ActTransport::draw(Graphics& gfx)
 int ActTransport::moveToWayPoint()
 {
 	Pellet* pel         = mPellet.getPtr();
-	int currentCarriers = getNumStickers();
+	int currentCarriers = getCarryStrength();
 	int minCarriers     = pel->mConfig->mCarryMinPikis();
 
 	if (currentCarriers < minCarriers) {

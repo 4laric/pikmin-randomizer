@@ -105,7 +105,7 @@ void PaniPikiAnimMgr::finishMotion(PaniAnimKeyListener* listener)
 /**
  * @todo: Documentation
  */
-void PaniPikiAnimMgr::updateAnimation(f32 speed)
+void PaniPikiAnimMgr::updateAnimation(f32 speed, f32 rate)
 {
 #if defined(PIKI_PC_PORT)
 	if (!pc_render_is_authoritative()) return;
@@ -123,13 +123,13 @@ void PaniPikiAnimMgr::updateAnimation(f32 speed)
 		mAnimSpeed = mUpperAnimator.getAnimationSpeed();
 	}
 
-	mUpperAnimator.animate(mAnimSpeed);
+	mUpperAnimator.animate(mAnimSpeed * rate);
 
 	if (!mLowerAnimator.getCurrentOption(ANIMFLAG_UseDynamicSpeed)) {
 		mAnimSpeed = mLowerAnimator.getAnimationSpeed();
 	}
 
-	mLowerAnimator.animate(currSpeed);
+	mLowerAnimator.animate(currSpeed * rate);
 }
 
 /**

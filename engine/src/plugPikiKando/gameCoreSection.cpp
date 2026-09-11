@@ -48,6 +48,7 @@
 #include "PikiHeadItem.h"
 #include "PikiInfo.h"
 #include "PikiMgr.h"
+#include "PikiAI.h"
 #include "PikiState.h"
 #include "PlantMgr.h"
 #include "PlayerState.h"
@@ -1724,6 +1725,95 @@ void GameCoreSection::startSundownWarn()
 /**
  * @todo: Documentation
  */
+
+#if defined(PIKMIN_RANDOMIZER_TEST_HOOKS)
+void pc_randomizer_test_color_stats()
+{
+    auto require = [](bool ok, const char* why) {
+        if (!ok) { std::printf("[Pikmin Randomizer] STATS_TEST_FAIL %s\n", why); std::fflush(stdout); std::abort(); }
+    };
+    require(pc_randomizer_color_stats(), "profiles missing");
+    Piki* crew[10]; int available = 0;
+    Iterator pikis(pikiMgr);
+    CI_LOOP(pikis) {
+        Piki* piki = static_cast<Piki*>(*pikis);
+        if (piki && piki->isAlive() && piki->mColor == Red && available < 10) crew[available++] = piki;
+    }
+    require(available == 10, "initial field count");
+    Piki* sample = crew[0];
+    for (int color = 0; color < 3; ++color) {
+        sample->initColor(color);
+        const f32 base = color == Blue ? pikiMgr->mPikiParms->mPikiParms.mBlueAttackPower()
+            : color == Red ? pikiMgr->mPikiParms->mPikiParms.mRedAttackPower() : pikiMgr->mPikiParms->mPikiParms.mYellowAttackPower();
+        require(std::fabs(sample->getAttackPower() - base * pc_randomizer_color_multiplier(color, PC_PIKI_DAMAGE)) < 0.001f, "damage hook");
+        const f32 speed = pikiMgr->mPikiParms->mPikiParms.mMaxLeafMoveSpeed() * pc_randomizer_color_multiplier(color, PC_PIKI_MOVEMENT);
+        Vector3f direction(1.0f, 0.0f, 0.0f);
+        sample->setSpeed(1.0f, direction);
+        require(std::fabs(sample->mTargetVelocity.x - speed) < 0.001f && std::fabs(sample->getSpeed(1.0f) - speed) < 0.001f, "movement hook");
+        sample->startMotion(PaniMotionInfo(PIKIANIM_Kuttuku), PaniMotionInfo(PIKIANIM_Kuttuku));
+        f32 before = sample->mPikiAnimMgr.getUpperAnimator().mAnimationCounter;
+        sample->mPikiAnimMgr.updateAnimation(30.0f);
+        f32 baseStep = sample->mPikiAnimMgr.getUpperAnimator().mAnimationCounter - before;
+        sample->startMotion(PaniMotionInfo(PIKIANIM_Kuttuku), PaniMotionInfo(PIKIANIM_Kuttuku));
+        before = sample->mPikiAnimMgr.getUpperAnimator().mAnimationCounter;
+        sample->doAnimation();
+        f32 step = sample->mPikiAnimMgr.getUpperAnimator().mAnimationCounter - before;
+        require(baseStep > 0.0f && std::fabs(step - baseStep * pc_randomizer_color_multiplier(color, PC_PIKI_ATTACK_RATE)) < 0.01f, "attack animation hook");
+        std::printf("[Pikmin Randomizer] TEST_ONLY stats_actor color=%d damage=%.3f speed=%.3f attack_ratio=%.3f\n", color, sample->getAttackPower(), speed, step/baseStep);
+    }
+    sample->initColor(Blue);
+    const int redStrength = pc_randomizer_carry_strength(Red), blueStrength = pc_randomizer_carry_strength(Blue);
+    Pellet* pellet = nullptr; int bodies = 0;
+    Iterator pellets(pelletMgr);
+    CI_LOOP(pellets) {
+        Pellet* candidate = static_cast<Pellet*>(*pellets);
+        if (!candidate || !candidate->isAlive() || !candidate->isUfoParts() || !candidate->mConfig) continue;
+        int weight = candidate->mConfig->mCarryMinPikis();
+        int count = 1 + (weight - blueStrength + redStrength - 1) / redStrength;
+        if (weight >= 15 && count >= 2 && count <= available && count < weight && count <= candidate->mConfig->mCarryMaxPikis()) {
+            pellet = candidate; bodies = count; break;
+        }
+    }
+    require(pellet != nullptr, "eligible real ship part");
+    ActTransport* actions[10];
+    for (int i = 0; i < bodies; ++i) {
+        Piki* piki = crew[i];
+        piki->mActiveAction->abandon(nullptr);
+        piki->mActiveAction->mCurrActionIdx = PikiAction::Transport;
+        piki->mActiveAction->mChildActions[PikiAction::Transport].initialise(pellet);
+        piki->mMode = PikiMode::TransportMode;
+        actions[i] = static_cast<ActTransport*>(piki->mActiveAction->getCurrAction());
+        actions[i]->mSlotIndex = i;
+        piki->mSRT.t = pellet->getSlotGlobalPos(i, 0.0f);
+        piki->startStickObject(pellet, nullptr, i, 0.0f);
+        actions[i]->mIsLiftActionDone = true; // Fixture skips the lifting animation only.
+        require(!pellet->isSlotFree(i), "one physical slot per carrier");
+    }
+    const int expected = blueStrength + (bodies - 1) * redStrength;
+    require(actions[0]->calcCarryStrength() == expected, "mixed attached strength");
+    pellet->update();
+    require(pellet->mCarrierCounter == expected, "pellet aggregate strength");
+    ActTransport* leader = nullptr;
+    for (int i = 0; i < bodies; ++i) if (actions[i]->isStickLeader()) leader = actions[i];
+    require(leader != nullptr, "carry leader");
+    leader->doLift();
+    require(leader->mState == ActTransport::STATE_Move && pellet->getPickOffset() != 0.0f, "native weighted lift");
+    Vector3f direction(10.0f, 0.0f, 0.0f);
+    pellet->doCarry(crew[0], direction, expected);
+    const f32 expectedMove = (pc_randomizer_color_multiplier(Blue, PC_PIKI_MOVEMENT)
+        + (bodies - 1) * pc_randomizer_color_multiplier(Red, PC_PIKI_MOVEMENT)) / bodies;
+    require(std::fabs(pellet->mCarryDirection.x - 10.0f * expectedMove) < 0.001f, "crew average hauling speed");
+    crew[bodies - 1]->endStickObject();
+    require(pellet->isSlotFree(bodies - 1), "released body slot");
+    pellet->update();
+    require(actions[0]->calcCarryStrength() == expected - redStrength, "remaining crew strength");
+    require(pellet->mCarrierCounter == 0 && pellet->mPikiCarrier == nullptr && pellet->getPickOffset() == 0.0f, "put down below weight");
+    std::printf("[Pikmin Randomizer] TEST_ONLY stats_carry_pass bodies=%d strength=%d weight=%d slots=%d\n", bodies, expected, pellet->mConfig->mCarryMinPikis(), bodies);
+    std::fflush(stdout);
+    std::exit(0); // Isolated fixture process; never continue a synthetic session.
+}
+#endif
+
 void GameCoreSection::updateAI()
 {
     if (pc_randomizer_expanded()) {
@@ -1900,6 +1990,11 @@ void GameCoreSection::updateAI()
             std::puts("[Pikmin Randomizer] TEST_ONLY native_save_written_and_read_back consecutive=2");
         }
     }
+    if (pc_randomizer_color_stats() && scripted && !std::strcmp(scripted, "stats")
+        && background && !std::strcmp(background, "1") && bbftRedsReady
+        && pc_bbft_color_access(Blue) && pc_bbft_color_access(Yellow)
+        && !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll && !gameflow.mIsUIOverlayActive)
+        pc_randomizer_test_color_stats();
     if (pc_randomizer_expanded() && scripted && !std::strcmp(scripted, "capacity")
         && background && !std::strcmp(background, "1") && bbftRedsReady
         && !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll && !gameflow.mIsUIOverlayActive) {

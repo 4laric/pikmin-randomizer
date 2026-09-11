@@ -45,6 +45,12 @@ class CollectionChecks(Toggle):
     default = 0
 
 
+class RandomizeColorStats(Toggle):
+    """Seeded damage (50-150%), movement/attack rate (75-125%), and carrying strength (1-3) per color. Throw height and color abilities stay vanilla. Enables all-area checks."""
+    display_name = "Randomize Color Stats"
+    default = 0
+
+
 class StartingFlarlic(Range):
     """Initial field capacity in tens. Remaining Flarlic items raise the cap to 100. Enables expanded checks."""
     display_name = "Starting Flarlic"
@@ -55,6 +61,7 @@ class StartingFlarlic(Range):
 
 @dataclass
 class PikminOptions(PerGameCommonOptions):
+    randomize_color_stats: RandomizeColorStats
     starting_flarlic: StartingFlarlic
     expanded_checks: ExpandedChecks
     starting_area: StartingArea
@@ -121,7 +128,7 @@ class PikminRandomizerWorld(World):
             self._manifest = generate(str(self.multiworld.seed_name), "ap", self.multiworld.player_name[self.player],
                             expanded=bool(self.options.expanded_checks),
                             starting_area=('forest', 'navel', 'random', 'impact', 'spring', 'trial')[self.options.starting_area.value],
-                            starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas), enemy_shuffle=bool(self.options.enemy_shuffle), collection_checks=bool(self.options.collection_checks), starting_flarlic=self.options.starting_flarlic.value)
+                            starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas), enemy_shuffle=bool(self.options.enemy_shuffle), collection_checks=bool(self.options.collection_checks), starting_flarlic=self.options.starting_flarlic.value, randomize_color_stats=bool(self.options.randomize_color_stats))
         return self._manifest
 
     def fill_slot_data(self):

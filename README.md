@@ -8,6 +8,7 @@ Experimental standalone and Archipelago randomizer for Pikmin 1, built on Open N
 - Area and Onion unlock items, 25 Ship Repair rewards for victory, and Flarlic increasing field capacity from a configurable default of 10 to 100.
 - Exploration checks and optional Onion corpse-delivery bestiary checks; total-population milestones up to 500 include stored Pikmin and sprouts.
 - Seeded Bulborb/Bulbear and Sheargrub family swaps, with protected enemies pinned.
+- Optional seeded damage, movement, attack rate and carrying-strength profiles for each base color.
 - Solo play, a standalone AP world, persistent check/reward history, and a transparent progress overlay.
 
 **Prototype limitations:** physical ship parts remain in vanilla positions. Relaunch restores checks and rewards but starts a fresh native campaign; exact day/area/squad resume and extinction recovery are unfinished. Some starting combinations deliberately require remote progression in multiworld. Enemy-family swaps have player validation; corpse deliveries and the day-end save fix still need full gameplay acceptance.
@@ -51,11 +52,16 @@ Install `output/pikmin_randomizer.apworld` into your Archipelago setup. Generate
 Pikmin Randomizer:
   starting_flarlic: 1
   collection_checks: true
+  randomize_color_stats: true
 ```
 
 `starting_flarlic` accepts 1–10 and defaults to 1: each unit grants 10 field capacity. The pool contains the remaining Flarlic needed to reach 100 (nine at the default). The starter population is still 20; with a cap of 10, ten remain stored in the Onion. This option enables expanded checks. Solo generation uses the same default via `--starting-flarlic`. Existing manifests without this option retain their original capacity rules.
 
 At cap 10, AP requests an early Flarlic for Forest of Hope starts, or early Forest of Hope access for other starts, so sparse opening checks can lead to farming and further progression. These items may be in another player's world. New configured seeds require the updated native build and AP world v0.8.0; older native builds reject the new bootstrap instead of silently using the wrong cap.
+
+`randomize_color_stats: true` (AP world v0.9.0) gives each color one fixed profile per seed: damage at 50/75/100/125/150% of that color's vanilla damage, movement and attack rate at 75/100/125%, and carrying strength at 1/2/3 units. CLI: `--randomize-color-stats`. This is opt-in and enables all-area expanded checks; existing seeds retain vanilla stats. The overlay and `status` command show each profile. Throw height, water/fire abilities and bomb handling remain vanilla.
+
+Carrying sums the strength of attached Pikmin while each still occupies one physical slot and one field-cap slot. Hauling uses the crew's average movement multiplier; the existing flower/extra-carrier speed bonus is bounded for stronger crews. Part logic uses `ceil(weight / guaranteed strength)` while retaining the inherited route-color requirements. Guaranteed strength is the weakest profile among the required route colors (including the inherited red-access assumption), so the logic can under-credit a stronger specialized crew rather than invent a route. Population checks still count bodies. Full-route gameplay acceptance remains separate from the native mixed-crew fixture.
 
 ## Source and development
 

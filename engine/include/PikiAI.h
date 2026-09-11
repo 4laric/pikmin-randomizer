@@ -1953,6 +1953,7 @@ protected:
  * @note Size: 0xC0.
  */
 struct ActTransport : public Action, virtual PaniAnimKeyListener {
+    friend void pc_randomizer_test_color_stats();
 public:
 	/**
 	 * @brief The state of the action.
@@ -1991,8 +1992,8 @@ protected:
 	void turnOver();
 	bool isStickLeader();
 	f32 getCarriers();
-	int getNumStickers();
-	int calcNumStickers();
+	int getCarryStrength();
+	int calcCarryStrength();
 	Pellet* findPellet();
 	void setSlotIndex();
 	bool gotoLiftPos();

@@ -15,6 +15,14 @@ int main(int argc, char** argv) {
         std::printf("CAPACITY_PROBE %d\n", pc_randomizer_field_capacity());
         return 0;
     }
+    for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--stats-probe")) {
+        for (int color = 0; color < 3; ++color)
+            std::printf("STATS_PROBE %d %.0f %.0f %.0f %d\n", color,
+                100 * pc_randomizer_color_multiplier(color, PC_PIKI_DAMAGE),
+                100 * pc_randomizer_color_multiplier(color, PC_PIKI_MOVEMENT),
+                100 * pc_randomizer_color_multiplier(color, PC_PIKI_ATTACK_RATE), pc_randomizer_carry_strength(color));
+        return 0;
+    }
     for (int i = 0; i < 100; ++i) {
         pc_randomizer_update();
         if (pc_randomizer_ready()) {

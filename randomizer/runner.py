@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from .catalog import GAME, NAMES, LOCATION_IDS
 from .seed import fingerprint
+from .stats import bootstrap_stats
 from .session import Session, SessionLock, atomic_write
 
 
@@ -23,7 +24,7 @@ class NativeRun:
                      f"PROFILE {session.manifest['profile']}\nCATALOG {session.manifest['catalog']}\nPLACEMENT identity-v1\n" +
                      "GOAL 25\nDAYS repeat-day29-v1\n" +
                      (f"COLOR {session.manifest['starting_color']}\n" if session.manifest['schema'] >= 4 else '') +
-                     (f"ENEMIES {session.manifest['enemy_mask']}\n" if session.manifest['schema'] >= 6 else '') + (f"STARTING_FLARLIC {session.manifest['starting_flarlic']}\n" if "starting_flarlic" in session.manifest else "") + "END\n")
+                     (f"ENEMIES {session.manifest['enemy_mask']}\n" if session.manifest['schema'] >= 6 else '') + (f"STARTING_FLARLIC {session.manifest['starting_flarlic']}\n" if "starting_flarlic" in session.manifest else "") + bootstrap_stats(session.manifest) + "END\n")
         self.seen = 0
         self.handshaken = False
         self.write_state(False)

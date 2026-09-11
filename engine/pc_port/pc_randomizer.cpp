@@ -23,7 +23,8 @@ int startStage = 1;
 int startColor = 1; // Native IDs: blue 0, red 1, yellow 2.
 unsigned enemyMask = 0;
 unsigned startingFlarlic = 2;
-bool configuredFlarlic = false;
+bool configuredFlarlic = false, configuredStats = false;
+int colorStats[3][4] = {{100, 100, 100, 1}, {100, 100, 100, 1}, {100, 100, 100, 1}};
 std::uint64_t checks = 0;
 std::string token, fingerprint, saveRoot;
 std::filesystem::path directory;
@@ -98,6 +99,23 @@ bool pc_randomizer_init(int argc, char** argv) {
         if (schema < 2 || !(input >> startingFlarlic) || startingFlarlic < 1 || startingFlarlic > 10) fail("invalid starting Flarlic");
         input >> end;
     }
+    if (end == "COLOR_STATS") {
+        if (schema < 5) fail("color stats require all-area catalog");
+        configuredStats = true;
+        const char* colors[] = {"blue", "red", "yellow"};
+        for (int c = 0; c < 3; ++c) {
+            expect(input, colors[c]);
+            for (int stat = 0; stat < 4; ++stat) {
+                int value;
+                if (!(input >> value)) fail("malformed color stats");
+                const int minimum = stat == 0 ? 50 : stat == 3 ? 1 : 75;
+                const int maximum = stat == 0 ? 150 : stat == 3 ? 3 : 125;
+                if (value < minimum || value > maximum || (stat != 3 && value % 25)) fail("invalid color stats");
+                colorStats[c][stat] = value;
+            }
+        }
+        input >> end;
+    }
     if (end != "END") fail("unsupported or malformed bootstrap");
     std::string extra;
     if (input >> extra) fail("trailing bootstrap data");
@@ -117,6 +135,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (schema >= 6) hello << " enemy-families-v1";
     if (schema >= 7) hello << " total-population-v1 corpse-delivery-v1";
     if (configuredFlarlic) hello << " starting-flarlic-v1";
+    if (configuredStats) hello << " color-stats-v1";
     hello << " END\n";
     hello.close();
     if (!hello) fail("cannot write native handshake");
@@ -226,6 +245,13 @@ void pc_randomizer_check(const char* name) {
 }
 
 bool pc_randomizer_expanded() { return enabled && schema >= 2; }
+bool pc_randomizer_color_stats() { return enabled && configuredStats; }
+float pc_randomizer_color_multiplier(int color, PcPikminStat stat) {
+    return pc_randomizer_color_stats() && color >= 0 && color < 3 && stat >= 0 && stat < 3 ? colorStats[color][stat] / 100.0f : 1.0f;
+}
+int pc_randomizer_carry_strength(int color) {
+    return pc_randomizer_color_stats() && color >= 0 && color < 3 ? colorStats[color][3] : 1;
+}
 int pc_randomizer_field_capacity() { return pc_randomizer_expanded() ? 10 * (int)(startingFlarlic + flarlic) : 100; }
 namespace {
 bool accessibleStage(int stage) {

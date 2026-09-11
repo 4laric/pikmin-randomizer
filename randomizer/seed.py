@@ -42,7 +42,7 @@ class SeedRandom:
         return values
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False):
     result = dict(schema=1, game=GAME, seed=str(seed), slot=slot, mode=mode,
                   profile="foh-day2", catalog="vanilla-sites-v1", rng="sha256-counter-v1",
                   placement="identity-v1", assignments=dict(PART_IDS),
@@ -67,7 +67,7 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         color = ('red', 'yellow', 'blue')[SeedRandom(str(seed) + '/color/' + slot).below(3)] if starting_color == 'random' else starting_color
         result.update(schema=4, starting_color=color, catalog='gameplay-checks-v4', locations=dict(ALL_LOCATION_IDS),
                       capabilities=['identity-placement-v1', 'random-start-v1', 'repair-goal-v1', 'repeat-day29-v1'] + EXPANDED_CAPABILITIES + ['starting-color-v1'])
-    if all_areas or enemy_shuffle or collection_checks or starting_area in ('random', 'impact', 'spring', 'trial'):
+    if all_areas or enemy_shuffle or collection_checks or randomize_color_stats or starting_area in ('random', 'impact', 'spring', 'trial'):
         profile = tuple(START_AREAS)[SeedRandom(str(seed) + '/all-areas/' + slot).below(5)] if starting_area == 'random' else ('foh-day2' if starting_area == 'forest' else starting_area + '-day2')
         result.update(schema=5, profile=profile, starting_color=result.get('starting_color', 'red'),
                       catalog='gameplay-checks-v5', assignments=dict(ALL_PART_IDS), locations=dict(ALL_AREA_LOCATION_IDS),
@@ -83,6 +83,10 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
     if starting_flarlic is not None:
         result["starting_flarlic"] = starting_flarlic
         result["capabilities"].append("starting-flarlic-v1")
+    if randomize_color_stats:
+        from .stats import roll_profiles
+        result["color_stats"] = roll_profiles(SeedRandom(str(seed) + "/color-stats-v1/" + slot))
+        result["capabilities"].append("color-stats-v1")
     validate(result)
     return result
 
@@ -98,6 +102,12 @@ def validate(m):
         expected.add("starting_flarlic")
         if type(m["starting_flarlic"]) is not int or not 1 <= m["starting_flarlic"] <= 10 or m.get("schema", 0) < 2:
             raise ValueError("invalid starting_flarlic")
+    if type(m) is dict and "color_stats" in m:
+        from .stats import validate_profiles
+        expected.add("color_stats")
+        validate_profiles(m["color_stats"])
+        if type(m.get("schema")) is not int or m["schema"] < 5:
+            raise ValueError("color stats require the all-area catalog")
     if type(m) is not dict or set(m) != expected:
         raise ValueError("manifest fields do not match schema 1")
     if type(m["schema"]) is not int or m["schema"] not in (1, 2, 3, 4, 5, 6, 7):
@@ -128,6 +138,8 @@ def validate(m):
                      capabilities=[c for c in fixed['capabilities'] if c not in ('population-v1', 'bestiary-v1')] + ['total-population-v1', 'corpse-delivery-v1'])
     if "starting_flarlic" in m:
         fixed["capabilities"] = fixed["capabilities"] + ["starting-flarlic-v1"]
+    if "color_stats" in m:
+        fixed["capabilities"] = fixed["capabilities"] + ["color-stats-v1"]
     for key, value in fixed.items():
         if type(m[key]) is not type(value) or m[key] != value:
             raise ValueError(f"unsupported {key}: {m[key]!r}")

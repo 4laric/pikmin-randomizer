@@ -139,7 +139,7 @@ struct PaniPikiAnimMgr {
 	void finishMotion(immut PaniMotionInfo*, immut PaniMotionInfo*);
 	void startMotion(immut PaniMotionInfo&, immut PaniMotionInfo&);
 	void finishMotion(PaniAnimKeyListener*);
-	void updateAnimation(f32);
+	void updateAnimation(f32, f32 rate = 1.0f);
 	void updateContext();
 
 	// unused/inlined:

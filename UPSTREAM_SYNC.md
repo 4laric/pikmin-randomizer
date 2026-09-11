@@ -9,7 +9,7 @@ The desktop heartbeat runs daily at 10:00 America/Toronto and stays quiet on unc
 - Upstream: `SSunnKing/Open-Nectar---Pikmin-Native-PC-Port`, branch `main`.
 - Last fetched/reviewed: `18ce1303b488bc906721d1389143b65ace345695`.
 - Last integrated upstream: `18ce1303b488bc906721d1389143b65ace345695`.
-- Current maintained downstream native commit: `9be55fad` (see ENGINE_SOURCE.md).
+- Current maintained downstream native commit: `9783304e` (see ENGINE_SOURCE.md); per-color stats added after integration in #28.
 - **Integration complete:** [#26](https://github.com/4laric/pikmin-randomizer/issues/26), all 14 commits across 51 files, merged without conflicts. No pending upstream commits as of this review.
 - [Health gauges PR #2](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port/pull/2): OPEN, commit `b487872`.
 - [Save-slot PR #3](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port/pull/3): OPEN, commit `c0b6d377`. Two files, 29 PC-only lines; no randomizer fixtures or game content.
@@ -35,4 +35,4 @@ Native merge `9be55fad` retains the downstream Windows compatibility patches, he
 
 A hidden production gameplay startup with enemy shuffle, collection checks and starting Flarlic 1 rendered the world, withdrew 10 red Pikmin with 10 still stored, reported the two expected opening checks, applied other-color grants exactly once and passed area/goal gates. No physical full-campaign, PAL, movie playback or day-end UI acceptance is claimed. Existing save routines and our save guards are unchanged by this merge.
 
-The validated local executable is `output/native-upstream-26/build-sync/bin/nectar.exe`, SHA-256 `A6F7D3AE733751F6345A6D984E98D7B55E65C2942DDE639190C20817AFB89754`. The previous playtest packages remain intact. Future packages should use this executable or rebuild from current source; older `native/build-randomizer` binaries predate this integration until rebuilt. Local test evidence is under `output/sync26-*` and is excluded from GitHub.
+The integration executable is `output/native-upstream-26/build-sync/bin/nectar.exe`, SHA-256 `A6F7D3AE733751F6345A6D984E98D7B55E65C2942DDE639190C20817AFB89754`. The current #28 production executable is `native/build-stats/bin/nectar.exe`, also packaged in `output/turkey-stats-01/bin/nectar.exe`, SHA-256 `9FB0F2FE7B62968EF4EFD2301DFBCCA3422FE284C49866169A2D802A00279C39`; it retains this upstream integration and adds per-color stats. See DEVELOPMENT.md for its validation. Future packages should use the current executable or rebuild current source; older `native/build-randomizer` binaries predate this integration until rebuilt. Local test evidence is under `output/sync26-*` and `output/stats28-*` and is excluded from GitHub.

@@ -1,4 +1,8 @@
 #pragma once
+enum PcPikminStat { PC_PIKI_DAMAGE, PC_PIKI_MOVEMENT, PC_PIKI_ATTACK_RATE };
+bool pc_randomizer_color_stats();
+float pc_randomizer_color_multiplier(int color, PcPikminStat stat);
+int pc_randomizer_carry_strength(int color);
 // Standalone file-IPC adapter. No game state is touched before validation.
 bool pc_randomizer_init(int argc, char** argv);
 bool pc_randomizer_enabled();

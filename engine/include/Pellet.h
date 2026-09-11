@@ -409,7 +409,7 @@ public:
 	PelletConfig* mConfig;                // _55C
 	f32 mMotionSpeed;                     // _560
 	int mSlotFlags[3];                    // _564
-	u16 mCarrierCounter;                  // _570
+	u16 mCarrierCounter;                  // _570, carrying strength; attachment slots still count bodies
 	CollInfo* mPelletCollInfo;            // _574
 	SearchData mSearchData[4];            // _578
 	ShapeDynMaterials mAnimatedMaterials; // _5A8

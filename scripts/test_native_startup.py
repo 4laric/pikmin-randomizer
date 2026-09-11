@@ -13,9 +13,9 @@ from randomizer.runner import NativeRun
 from randomizer.catalog import UNLOCKS, ITEM_IDS, REPAIR, FOREST_ACCESS, NAVEL_ACCESS, progression_pool, FLARLIC, START_AREAS
 
 
-def main(exe, assets, output, expanded=False, starting_area='forest', seed='startup-smoke', starting_color='red', all_areas=False, enemy_shuffle=False, save_fixture=False, collection_checks=False, collection_fixture=False, starting_flarlic=None):
+def main(exe, assets, output, expanded=False, starting_area='forest', seed='startup-smoke', starting_color='red', all_areas=False, enemy_shuffle=False, save_fixture=False, collection_checks=False, collection_fixture=False, starting_flarlic=None, randomize_color_stats=False):
     collection_checks = collection_checks or collection_fixture
-    session = Session(generate(seed, "ap", expanded=expanded, starting_area=starting_area, starting_color=starting_color, all_areas=all_areas, enemy_shuffle=enemy_shuffle, collection_checks=collection_checks, starting_flarlic=starting_flarlic), output)
+    session = Session(generate(seed, "ap", expanded=expanded, starting_area=starting_area, starting_color=starting_color, all_areas=all_areas, enemy_shuffle=enemy_shuffle, collection_checks=collection_checks, starting_flarlic=starting_flarlic, randomize_color_stats=randomize_color_stats), output)
     initial_field = min(20, 10 * (starting_flarlic if starting_flarlic is not None else 2))
     color = session.manifest.get('starting_color', 'red')
     native_color = {'blue': 0, 'red': 1, 'yellow': 2}[color]
@@ -89,9 +89,10 @@ if __name__ == "__main__":
     p.add_argument('--starting-area', choices=['impact', 'forest', 'navel', 'spring', 'trial', 'random'], default='forest')
     p.add_argument('--all-areas', action='store_true')
     p.add_argument('--enemy-shuffle', action='store_true')
+    p.add_argument('--randomize-color-stats', action='store_true')
     p.add_argument('--save-fixture', action='store_true', help='Requires TEST_HOOKS build; tests isolated card saving')
     p.add_argument('--collection-checks', action='store_true')
     p.add_argument('--collection-fixture', action='store_true', help='Requires TEST_HOOKS; synthetic stock and corpse absorption')
     p.add_argument('--seed', default='startup-smoke')
     p.add_argument('--starting-color', choices=['red', 'yellow', 'blue', 'random'], default='red')
-    a=p.parse_args();main(a.exe,a.assets,a.output.resolve(),a.expanded,a.starting_area,a.seed,a.starting_color,a.all_areas,a.enemy_shuffle,a.save_fixture,a.collection_checks,a.collection_fixture,a.starting_flarlic)
+    a=p.parse_args();main(a.exe,a.assets,a.output.resolve(),a.expanded,a.starting_area,a.seed,a.starting_color,a.all_areas,a.enemy_shuffle,a.save_fixture,a.collection_checks,a.collection_fixture,a.starting_flarlic,a.randomize_color_stats)

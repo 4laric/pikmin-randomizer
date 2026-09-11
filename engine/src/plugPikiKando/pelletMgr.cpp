@@ -1,3 +1,4 @@
+#include "pc_randomizer.h"
 #include "AIPerf.h"
 #include "pc_bbft.h"
 #include "Age.h"
@@ -448,13 +449,24 @@ void Pellet::startGoal()
  */
 void Pellet::doCarry(Creature* carryingPiki, immut Vector3f& direction, u16 carrierCount)
 {
+    f32 movement = 1.0f;
+    if (pc_randomizer_color_stats() && carryingPiki->isPiki()) {
+        Stickers crew(this); Iterator it(&crew); int bodies = 0; f32 sum = 0.0f;
+        CI_LOOP(it) {
+            Creature* carrier = *it;
+            if (carrier && carrier->isPiki()) {
+                ++bodies; sum += pc_randomizer_color_multiplier(static_cast<Piki*>(carrier)->mColor, PC_PIKI_MOVEMENT);
+            }
+        }
+        if (bodies) movement = sum / bodies;
+    }
 	if (mCarryState == 1) {
 		mTransitionTimer -= gsys->getFrameTime();
 		if (mTransitionTimer <= 0.0f) {
 			mCarryState = 2;
 		}
 
-		mCarryDirection = direction * 0.5f;
+		mCarryDirection = direction * (0.5f * movement);
 		return;
 	}
 
@@ -470,7 +482,7 @@ void Pellet::doCarry(Creature* carryingPiki, immut Vector3f& direction, u16 carr
 			return;
 		}
 
-		mCarryDirection = direction;
+		mCarryDirection = direction * movement;
 		mPikiCarrier    = carryingPiki;
 		mCarrierCount   = carrierCount;
 		PRINT("%s win\n", ObjType::getName(mPikiCarrier->mObjType));
@@ -480,7 +492,7 @@ void Pellet::doCarry(Creature* carryingPiki, immut Vector3f& direction, u16 carr
 		return;
 	}
 
-	mCarryDirection = direction;
+	mCarryDirection = direction * movement;
 	mPikiCarrier    = carryingPiki;
 	mCarrierCount   = carrierCount;
 }
@@ -1213,7 +1225,7 @@ void Pellet::update()
 	{
 		Creature* piki = *iter;
 		if (piki && piki->isPiki()) {
-			carryCount++;
+			carryCount += pc_randomizer_carry_strength(static_cast<Piki*>(piki)->mColor);
 		}
 	}
 
@@ -1236,7 +1248,7 @@ void Pellet::update()
 			{
 				Creature* piki = *iter2;
 				if (piki && piki->isPiki()) {
-					carryCount2++;
+					carryCount2 += pc_randomizer_carry_strength(static_cast<Piki*>(piki)->mColor);
 				}
 			}
 

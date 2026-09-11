@@ -13,6 +13,7 @@ def main():
     gen = sub.add_parser("generate")
     gen.add_argument("--seed", required=True)
     gen.add_argument("--starting-flarlic", type=int, choices=range(1, 11), default=1, help="Initial field capacity in tens (default 1 = 10 Pikmin)")
+    gen.add_argument("--randomize-color-stats", action="store_true", help="Seeded damage, movement, attack rate and carrying strength per color")
     gen.add_argument("--expanded", action="store_true", help="Flarlic, population, bestiary and exploration checks")
     gen.add_argument('--starting-area', choices=['forest', 'navel', 'impact', 'spring', 'trial', 'random'], default='forest', help='Random includes all five areas')
     gen.add_argument('--all-areas', action='store_true', help='Enable five-area catalog with a fixed start')
@@ -36,7 +37,7 @@ def main():
     status.add_argument("--output", type=Path)
     args = parser.parse_args()
     if args.command == "generate":
-        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas, enemy_shuffle=args.enemy_shuffle, collection_checks=args.collection_checks, starting_flarlic=args.starting_flarlic)
+        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas, enemy_shuffle=args.enemy_shuffle, collection_checks=args.collection_checks, starting_flarlic=args.starting_flarlic, randomize_color_stats=args.randomize_color_stats)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8") as f:
             f.write(json.dumps(manifest, indent=2) + "\n")
@@ -57,6 +58,9 @@ def main():
                          f"Field capacity: {field_capacity(session.inventory, manifest['schema'] >= 2, manifest.get('starting_flarlic', 2))}. "
                          f"Repair goal: {min(session.inventory['Ship Repair'], 25)}/25.", "",
                          "Population entries record reached milestones, not the current population.", ""]
+                from .stats import profile_lines
+                if "color_stats" in manifest:
+                    lines += ["## Color profiles", ""] + profile_lines(manifest) + [""]
                 from .catalog import TOTAL_POPULATION, DELIVERY_BESTIARY
                 for category, entries in (("Parts and Onions", NAMES + (POSITRON,)), ("Population", TOTAL_POPULATION if manifest['schema'] >= 7 else POPULATION),
                                           ("Bestiary - Onion deliveries" if manifest['schema'] >= 7 else "Bestiary - first defeats", DELIVERY_BESTIARY if manifest['schema'] >= 7 else BESTIARY), ("Exploration", ALL_EXPLORATION)):
