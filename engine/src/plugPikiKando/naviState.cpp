@@ -633,6 +633,9 @@ void NaviWalkState::exec(Navi* navi)
 	}
 
 	navi->findNextThrowPiki();
+#if defined(PIKI_PC_PORT)
+	pc_cycle_throw_color(navi, navi->mNextThrowPiki);
+#endif
 
 	// NB: This code never runs because AD0 is always nullptr.
 	if (navi->mGroundTriangle && navi->_AD0 && (navi->_AD0 != navi->mGroundTriangle)) {
@@ -2087,6 +2090,20 @@ void NaviThrowWaitState::exec(Navi* navi)
 		return;
 	}
 	navi->makeVelocity(false);
+
+#if defined(PIKI_PC_PORT)
+	// Swap only once the original grab has completed. Preserve the captain's
+	// charge and animation; return the previous Pikmin to its normal squad state.
+	if (mHeldThrowPiki && mIsHoldingThrowPiki && mHeldThrowPiki->isAlive()
+	    && mHeldThrowPiki->getState() == PIKISTATE_Hanged) {
+		Piki* replacement = pc_cycle_throw_color(navi, mHeldThrowPiki);
+		if (replacement) {
+			mHeldThrowPiki->mFSM->transit(mHeldThrowPiki, PIKISTATE_Normal);
+			mHeldThrowPiki = replacement;
+			mHeldThrowPiki->mFSM->transit(mHeldThrowPiki, PIKISTATE_Hanged);
+		}
+	}
+#endif
 
 	if (!mHeldThrowPiki) {
 		if (mPendingThrowPiki) {

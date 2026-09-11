@@ -30,6 +30,10 @@ For an explicit named mapping, run `python -m randomizer enemy-spoiler <seed.jso
 
 All-five-area disk/cache audits, actual mixed births, generation and AP reachability tests pass. Physical combat and return-route acceptance remain open, especially the larger Bulbear footprint. Mixed species within a single group, cross-family pools, density changes and bosses remain future tracks.
 
+## D-pad throw color selection
+
+Tap D-pad Left/Right (keyboard Left/Right arrows with default bindings) to cycle available throwable squad colors. Once a Pikmin is held ready to throw, the same controls swap it while preserving charge. Existing throw preview shows the selected Pikmin. One available color is a no-op; Up/Down and menu controls retain their functions. Works with mouse-wheel camera zoom. Physical controller/held-release acceptance remains in #58.
+
 ## Pellet Posy follow-through
 
 On PC, Pikmin attacking a Pellet Posy wait for its death animation and attempt to carry its actual dropped pellet. This works with Chain Actions off. Whistled-away Pikmin are excluded, and normal transport handles carrier slots and randomized strength. Physical throw-to-delivery acceptance is pending in #57.

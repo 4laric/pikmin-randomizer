@@ -685,8 +685,7 @@ static bool pcSquadHasColor(int color)
  */
 static void pcUpdatePreferredThrowColor()
 {
-	if (pc_settings_get_mouse_wheel_action() != 0) {
-		sPreferredThrowColor = -1;
+	if (pc_settings_get_mouse_wheel_action() != 0 && sPreferredThrowColor < 0) {
 		return;
 	}
 
@@ -711,7 +710,7 @@ static void pcUpdatePreferredThrowColor()
 		}
 	}
 
-	const int steps = pc_window_take_wheel_steps();
+	const int steps = pc_settings_get_mouse_wheel_action() == 0 ? pc_window_take_wheel_steps() : 0;
 	if (steps != 0) {
 		index = ((index + steps) % presentCount + presentCount) % presentCount;
 	}
@@ -722,6 +721,32 @@ static void pcUpdatePreferredThrowColor()
 		        sPreferredThrowColor, presentCount);
 		fflush(stderr);
 	}
+}
+
+Piki* pc_cycle_throw_color(Navi* navi, Piki* current)
+{
+	const int direction = int(navi->mKontroller->keyClick(KBBTN_DPAD_RIGHT))
+	                    - int(navi->mKontroller->keyClick(KBBTN_DPAD_LEFT));
+	if (!direction || !current) return nullptr;
+	for (int step = 1; step < PikiColorCount; ++step) {
+		const int color = (current->mColor + direction * step + PikiColorCount) % PikiColorCount;
+		Piki* nearest = nullptr;
+		f32 distance = 200.0f;
+		Iterator squad(navi->mPlateMgr);
+		CI_LOOP(squad) {
+			Piki* piki = static_cast<Piki*>(*squad);
+			if (piki->mColor != color || !piki->isAlive() || !piki->isThrowable()
+			    || piki->getState() != PIKISTATE_Normal) continue;
+			const f32 candidateDistance = qdist2(piki, navi);
+			if (candidateDistance < distance) { nearest = piki; distance = candidateDistance; }
+		}
+		if (nearest) {
+			sPreferredThrowColor = color;
+			navi->mNextThrowPiki = nearest;
+			return nearest;
+		}
+	}
+	return nullptr;
 }
 #endif
 
