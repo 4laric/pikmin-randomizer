@@ -33,4 +33,10 @@ Implementation spec: [SPEC.md](SPEC.md). Roadmap: https://github.com/4laric/pikm
 
 ## Standalone implementation
 
+For Onion-delivery bestiary checks and total-population milestones through 500,
+generate with `--collection-checks`, or enable `collection_checks: true` in the
+AP world (v0.7.0). Existing seed files keep their original field/kill checks.
+The new playtest is `output/turkey-collection-01/Play.cmd`. See issue #22 and
+DEVELOPMENT.md for logic and validation details.
+
 See [DEVELOPMENT.md](DEVELOPMENT.md) for the implemented solo/AP foundation, local build, tests and launch commands. Physical placement is still pinned pending route validation; exact native campaign resume is not yet implemented.

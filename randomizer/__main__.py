@@ -16,6 +16,7 @@ def main():
     gen.add_argument('--starting-area', choices=['forest', 'navel', 'impact', 'spring', 'trial', 'random'], default='forest', help='Random includes all five areas')
     gen.add_argument('--all-areas', action='store_true', help='Enable five-area catalog with a fixed start')
     gen.add_argument('--enemy-shuffle', action='store_true', help='Seeded compatible enemy-family swaps')
+    gen.add_argument('--collection-checks', action='store_true', help='Onion corpse deliveries and total population milestones through 500')
     gen.add_argument('--starting-color', choices=['red', 'yellow', 'blue', 'random'], default='red', help='Non-default enables expanded checks')
     gen.add_argument("--slot", default="Player1")
     gen.add_argument("--mode", choices=["solo", "ap"], default="solo")
@@ -34,7 +35,7 @@ def main():
     status.add_argument("--output", type=Path)
     args = parser.parse_args()
     if args.command == "generate":
-        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas, enemy_shuffle=args.enemy_shuffle)
+        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas, enemy_shuffle=args.enemy_shuffle, collection_checks=args.collection_checks)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8") as f:
             f.write(json.dumps(manifest, indent=2) + "\n")
@@ -55,8 +56,9 @@ def main():
                          f"Field capacity: {field_capacity(session.inventory, manifest['schema'] >= 2)}. "
                          f"Repair goal: {min(session.inventory['Ship Repair'], 25)}/25.", "",
                          "Population entries record reached milestones, not the current population.", ""]
-                for category, entries in (("Parts and Onions", NAMES + (POSITRON,)), ("Population", POPULATION),
-                                          ("Bestiary - first defeats", BESTIARY), ("Exploration", ALL_EXPLORATION)):
+                from .catalog import TOTAL_POPULATION, DELIVERY_BESTIARY
+                for category, entries in (("Parts and Onions", NAMES + (POSITRON,)), ("Population", TOTAL_POPULATION if manifest['schema'] >= 7 else POPULATION),
+                                          ("Bestiary - Onion deliveries" if manifest['schema'] >= 7 else "Bestiary - first defeats", DELIVERY_BESTIARY if manifest['schema'] >= 7 else BESTIARY), ("Exploration", ALL_EXPLORATION)):
                     enabled = [n for n in entries if n in session.names]
                     if not enabled: continue
                     lines += ["## " + category, ""]

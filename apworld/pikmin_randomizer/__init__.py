@@ -7,7 +7,7 @@ from Options import PerGameCommonOptions, Toggle, Choice
 from worlds.AutoWorld import World
 from .core.catalog import (GAME, ITEM_IDS, LOCATION_IDS, NAMES, CHECK_AREAS,
                            CHECK_REQUIREMENTS, UNLOCKS, REPAIR, REPAIR_COUNT, ALL_LOCATION_IDS,
-                           active_names, item_pool, check_area, can_reach_manifest, FLARLIC, ALL_AREA_LOCATION_IDS, START_AREAS)
+                           active_names, item_pool, check_area, can_reach_manifest, FLARLIC, ALL_AREA_LOCATION_IDS, START_AREAS, COLLECTION_LOCATION_IDS)
 from .core.seed import generate, fingerprint
 
 
@@ -39,6 +39,12 @@ class StartingColor(Choice):
     default = 0
 
 
+class CollectionChecks(Toggle):
+    """Count corpse deliveries at Onions and total living population up to 500. Enables all-area expanded checks."""
+    display_name = 'Corpse Delivery and Total Population Checks'
+    default = 0
+
+
 @dataclass
 class PikminOptions(PerGameCommonOptions):
     expanded_checks: ExpandedChecks
@@ -46,6 +52,7 @@ class PikminOptions(PerGameCommonOptions):
     starting_color: StartingColor
     all_areas: Toggle
     enemy_shuffle: Toggle
+    collection_checks: CollectionChecks
 
 
 class PikminItem(Item):
@@ -60,7 +67,7 @@ class PikminRandomizerWorld(World):
     game = GAME
     options_dataclass = PikminOptions
     item_name_to_id = ITEM_IDS
-    location_name_to_id = ALL_AREA_LOCATION_IDS
+    location_name_to_id = {**ALL_AREA_LOCATION_IDS, **COLLECTION_LOCATION_IDS}
     required_client_version = (0, 6, 0)
 
     def create_regions(self):
@@ -72,7 +79,7 @@ class PikminRandomizerWorld(World):
             menu.connect(region)
             for name in active_names(self.manifest()):
                 if check_area(name) == area:
-                    region.locations.append(PikminLocation(self.player, name, ALL_AREA_LOCATION_IDS[name], region))
+                    region.locations.append(PikminLocation(self.player, name, self.manifest()['locations'][name], region))
 
     def create_item(self, name):
         return PikminItem(name, ItemClassification.progression, ITEM_IDS[name], self.player)
@@ -99,7 +106,7 @@ class PikminRandomizerWorld(World):
             self._manifest = generate(str(self.multiworld.seed_name), "ap", self.multiworld.player_name[self.player],
                             expanded=bool(self.options.expanded_checks),
                             starting_area=('forest', 'navel', 'random', 'impact', 'spring', 'trial')[self.options.starting_area.value],
-                            starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas), enemy_shuffle=bool(self.options.enemy_shuffle))
+                            starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas), enemy_shuffle=bool(self.options.enemy_shuffle), collection_checks=bool(self.options.collection_checks))
         return self._manifest
 
     def fill_slot_data(self):

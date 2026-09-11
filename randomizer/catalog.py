@@ -119,6 +119,12 @@ IMPACT_EXPLORATION = {f'Explore: The Impact Site - {objective}': (0, objective, 
 ALL_EXPLORATION = {**EXPLORATION, **IMPACT_EXPLORATION}
 ALL_AREA_NAMES = EXPANDED_NAMES + tuple(IMPACT_EXPLORATION) + (POSITRON,)
 ALL_AREA_LOCATION_IDS = {name: LOCATION_BASE + i for i, name in enumerate(ALL_AREA_NAMES)}
+TOTAL_POPULATION = {f"Population: {n} total Pikmin": n for n in (20, 40, 60, 80, 100, 150, 200, 300, 500)}
+DELIVERY_BESTIARY = {name.replace('Bestiary: ', 'Bestiary: Deliver '): name for name in BESTIARY}
+COLLECTION_NAMES = NAMES + tuple(TOTAL_POPULATION) + tuple(DELIVERY_BESTIARY) + tuple(ALL_EXPLORATION) + (POSITRON,)
+COLLECTION_LOCATION_IDS = {name: ALL_AREA_LOCATION_IDS[name] if name in ALL_AREA_LOCATION_IDS else LOCATION_BASE + len(ALL_AREA_NAMES) + i
+                           for i, name in enumerate(tuple(TOTAL_POPULATION) + tuple(DELIVERY_BESTIARY))}
+COLLECTION_LOCATION_IDS = {name: ALL_AREA_LOCATION_IDS.get(name, COLLECTION_LOCATION_IDS.get(name)) for name in COLLECTION_NAMES}
 
 # Filled from the native loaded pellet config audit, not the maximum carrier count.
 NATIVE_PART_WEIGHTS = {0: 30, 1: 50, 2: 40, 3: 40, 4: 20, 5: 20, 6: 20, 7: 20, 8: 20, 9: 30, 10: 15, 11: 20, 12: 15, 13: 30, 14: 15, 15: 15, 16: 30, 17: 25, 18: 25, 19: 30, 20: 15, 21: 30, 22: 30, 23: 20, 24: 25, 25: 30, 26: 40, 27: 20, 28: 20, 29: 10}
@@ -126,6 +132,7 @@ PART_WEIGHTS = {name: NATIVE_PART_WEIGHTS[part] for name, part in PART_IDS.items
 
 
 def active_names(manifest):
+    if manifest['schema'] >= 7: return COLLECTION_NAMES
     if manifest['schema'] >= 5: return ALL_AREA_NAMES
     return EXPANDED_NAMES if manifest["schema"] >= 2 else NAMES
 
@@ -164,6 +171,19 @@ def progression_pool(manifest):
 
 
 def can_reach_manifest(name, inventory, manifest):
+    if manifest['schema'] >= 7:
+        if name not in COLLECTION_LOCATION_IDS: return False
+        if name in TOTAL_POPULATION:
+            if TOTAL_POPULATION[name] <= 20: return True
+            owned = color_inventory(inventory, manifest)
+            start = START_AREAS[manifest['profile']][1]
+            return bool(start == 'The Forest of Hope' or inventory.get(FOREST_ACCESS, 0)
+                        or ((start == 'The Forest Navel' or inventory.get(NAVEL_ACCESS, 0)) and owned.get(RED, 0)))
+        if name in DELIVERY_BESTIARY:
+            # Carry-home approaches remain conservative until route playtests.
+            owned = color_inventory(inventory, manifest)
+            if not all(owned.get(c, 0) for c in (RED, YELLOW, BLUE)): return False
+            return can_reach_manifest(DELIVERY_BESTIARY[name], inventory, {**manifest, 'schema': 6})
     if manifest['schema'] < 3:
         return can_reach(name, inventory, manifest['schema'] == 2)
     start = START_AREAS[manifest['profile']][1]
@@ -212,6 +232,8 @@ def item_pool(manifest):
 
 
 def check_area(name):
+    if name in TOTAL_POPULATION: return 'The Forest of Hope'
+    if name in DELIVERY_BESTIARY: return check_area(DELIVERY_BESTIARY[name])
     if name == POSITRON or name in IMPACT_EXPLORATION: return 'The Impact Site'
     if name in CHECK_AREAS:
         return CHECK_AREAS[name]

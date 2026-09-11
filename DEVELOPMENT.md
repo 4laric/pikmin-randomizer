@@ -111,6 +111,38 @@ Expanded validation: 17 Python tests, 100 solo seeds per profile, 200 actual AP 
 
 ## Evidence
 
+### Corpse deliveries and total population (#22, schema 7)
+
+Generate with `--collection-checks` (AP option `collection_checks: true`).
+This enables the five-area expanded catalog. Existing schemas 1–6 retain their
+original semantics and IDs. Schema 7 uses distinct AP IDs for the replacement
+checks, advertises `total-population-v1`/`corpse-delivery-v1`, and supports
+enemy shuffle either enabled or disabled.
+
+Population milestones are 20, 40, 60, 80, 100, 150, 200, 300, and 500 total
+living Pikmin, using the game's `GameStat::allPikis` (field, sprouts, and Onion
+storage). These are historical milestones, not cumulative births. Above 20,
+logic requires an audited farming area; Flarlic is not required to accumulate
+stored population. Flarlic still gates deployment and ship-part carry weights.
+
+The eight bestiary locations now require corpse absorption at an Onion.
+`GoalItem::suckMe` identifies corpse configs by type, color, and actual species
+model ID, so ordinary pellets and ship parts do not count. Kills are suppressed
+for schema 7. The original death hook remains for old seeds. Delivery logic
+conservatively requires all three colors for carry-home routes. Loaded corpse
+minimum weights were audited as 3, 10, 1, 1, 1, 7, 5, and 7 respectively, all
+below starting capacity 20.
+
+Validation: 32 Python tests, 2100 AP single-slot fills including 100 schema-7
+fills, existing remote-Blue multiworld coverage, new native protocol tests,
+legacy expanded/enemy probes, and three native/audio regressions. A test-hook
+fixture (`--collection-fixture` in `test_native_startup.py`) adds 480 stored
+Pikmin alongside 20 deployed, confirms the 500 milestone at capacity 20, kills
+a real Dwarf Bulborb without a check, then invokes the Onion callback on its
+corpse and verifies the delivery check. This tests native callbacks and loaded
+configs; player carrying/absorption animations remain acceptance work. Test
+hooks must be OFF for delivered builds.
+
 ### Consecutive saves after direct boot (#21)
 
 The day-end crash dump contains a serialized day-4 save at `cardData - 0x2000`:
