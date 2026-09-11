@@ -22,7 +22,7 @@ def content():
 
 if __name__ == "__main__":
     p=argparse.ArgumentParser();p.add_argument("--check", action="store_true");args=p.parse_args()
-    target=ROOT / "native/pc_port/pc_randomizer_catalog.h"
+    target=ROOT / ("native" if (ROOT / "native/.git").exists() else "engine") / "pc_port/pc_randomizer_catalog.h"
     if args.check:
         assert target.read_text(encoding="utf-8") == content(), "native catalog is stale"
     else:

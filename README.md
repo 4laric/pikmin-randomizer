@@ -1,42 +1,61 @@
-# Pikmin Randomizer development track
+# Pikmin Randomizer
 
-Independent source snapshots for the Pikmin Randomizer task, separated from ongoing BBFT work on 2026-09-10. Both repositories use branch `codex/pikmin-randomizer`; existing Git history and uncommitted source changes were preserved. `snapshot.json` records source commits and SHA-256 hashes. No original checkout was modified.
+Experimental standalone and Archipelago randomizer for Pikmin 1, built on Open Nectar.
 
-## Working directories
+## Current features
 
-- `native/`: Open Nectar native PC port, including Pikmin adapter and native progression hooks. See `native/BBFT.md` for current behavior and build instructions.
-- `bbft/`: preserved BBFT logic, conductor, transport and tests needed by the current adapter. This is an isolated dependency snapshot, not yet a standalone Pikmin AP world.
+- Random starting area across all five areas, and random red/yellow/blue starting color.
+- Area and Onion unlock items, 25 Ship Repair rewards for victory, and Flarlic increasing field capacity from 20 to 100.
+- Exploration checks and optional Onion corpse-delivery bestiary checks; total-population milestones up to 500 include stored Pikmin and sprouts.
+- Seeded Bulborb/Bulbear and Sheargrub family swaps, with protected enemies pinned.
+- Solo play, a standalone AP world, persistent check/reward history, and a transparent progress overlay.
 
-Use these copies for this task. They have independent Git indexes, working files and branches. The local clone origins point to the original source repositories for provenance; do not push back to them. Integrate selected changes deliberately after review.
+**Prototype limitations:** physical ship parts remain in vanilla positions. Relaunch restores checks and rewards but starts a fresh native campaign; exact day/area/squad resume and extinction recovery are unfinished. Some starting combinations deliberately require remote progression in multiworld. Enemy-family swaps have player validation; corpse deliveries and the day-end save fix still need full gameplay acceptance.
 
-## Inherited progress
+## Build on Windows
 
-Full progression mode starts day two in Forest of Hope with red Pikmin. It reports 28 ship parts outside Impact Site plus Yellow and Blue Onion discovery, gates later areas, and supports received color unlocks. BBFT shared-capability mode maps blue unlock to Zora Tunic and gates bomb rocks with Bomb Bag. Route logic includes refined color requirements and compatibility for earlier seeds.
+Install Python 3.12 (including tkinter), Git, CMake, Ninja, and MSYS2's MinGW64 GCC and SDL2 packages. Run in PowerShell with the MinGW64 `bin` directory on PATH. This is the tested platform; inherited engine documentation also describes Linux, which has not been validated for this randomizer.
 
-Key files:
-- `native/pc_port/pc_bbft.cpp` and `.h`: native adapter.
-- `bbft/worlds/bbft/pikmin_progression.py`: dependency-free part catalog and requirements.
-- `bbft/worlds/bbft/test/test_pikmin_routes.py` and `test_pikmin_skip_tutorial.py`: AP integration coverage.
-- `bbft/scripts/test_pikmin_progression.py`: opt-in native smoke.
+```powershell
+git clone https://github.com/4laric/pikmin-randomizer.git
+cd pikmin-randomizer
+$env:PATH = "C:\msys64\mingw64\bin;" + $env:PATH
+cmake -S engine -B engine/build-randomizer -G Ninja -DCMAKE_BUILD_TYPE=Release -DPIKMIN_NATIVE_JAUDIO=ON -DPIKMIN_NATIVE_OPTIMIZE=OFF -DPIKMIN_RANDOMIZER_TEST_HOOKS=OFF
+cmake --build engine/build-randomizer --target pikmin_pc pc_randomizer_probe -j 6
+python -m unittest discover -s tests -v
+python scripts/test_collection_protocol.py engine/build-randomizer/pc_randomizer_probe.exe
+```
 
-## Next implementation milestone
+The game executable is `engine/build-randomizer/bin/nectar.exe`. Keep MinGW64 on PATH when launching so its runtime DLLs can be found. Game assets are not included: supply your own extracted assets directory containing `dataDir/stages/`. See [the engine's asset instructions](engine/assets/README.md).
 
-The standalone AP world/session runner now exists; see DEVELOPMENT.md. Next, audit actual part-placement slots and carry routes, implement validated relocation, and finish native campaign resume. Current standalone defaults are the Forest of Hope day-two profile, 25 repair rewards plus five unlocks, and a repeating safe day-29 calendar. Physical sunset and complete-seed acceptance remain pending.
+## Try a solo seed
 
-This separation does not claim a standalone playable randomizer. Native collection, save/reconnect behavior and route assumptions still require gameplay validation. Previous build outputs, assets, saves, generated seeds and ignored evidence logs were not copied. Build into a new directory under `native/`; never reuse the original CMake cache. Do not run inherited launch scripts until their absolute paths and output/save directories are adjusted to this workspace. AP integration tests need an isolated Archipelago setup; do not repoint the shared installation's world link.
+```powershell
+python -m randomizer generate --seed first-spin --expanded --starting-area random --starting-color random --enemy-shuffle --collection-checks --output output/first-spin.json
+python -m randomizer run output/first-spin.json --session-dir output/first-spin-session --exe engine/build-randomizer/bin/nectar.exe --assets "C:/path/to/your/assets"
+```
 
-## Specification and issue tracking
+Keep the terminal open while playing. Use a new manifest filename for a new seed. Omitting `--collection-checks` retains the older kill/field-count checks. No PowerShell script execution-policy changes are needed for these commands.
 
-Private planning repository: https://github.com/4laric/pikmin-randomizer
+## Archipelago
 
-Implementation spec: [SPEC.md](SPEC.md). Roadmap: https://github.com/4laric/pikmin-randomizer/issues/1 . Eleven scoped implementation issues (#2 through #12) contain dependencies and acceptance criteria. The GitHub repository currently holds planning documents only; native and BBFT source snapshots remain local. Local issue links are recorded in `github-issues.json`.
+```powershell
+python -m pip install -r requirements-ap.txt
+python scripts/build_apworld.py
+```
 
-## Standalone implementation
+Install `output/pikmin_randomizer.apworld` into your Archipelago setup. Generate a `Pikmin Randomizer` slot, then launch its exported `.pikmin.json` with the run command above and `--server HOST:PORT`. Use that generated manifest, not an unrelated solo seed. The AP option `collection_checks: true` selects corpse deliveries and total population. Optional server password: `PIKMIN_AP_PASSWORD` environment variable.
 
-For Onion-delivery bestiary checks and total-population milestones through 500,
-generate with `--collection-checks`, or enable `collection_checks: true` in the
-AP world (v0.7.0). Existing seed files keep their original field/kill checks.
-The new playtest is `output/turkey-collection-01/Play.cmd`. See issue #22 and
-DEVELOPMENT.md for logic and validation details.
+## Source and development
 
-See [DEVELOPMENT.md](DEVELOPMENT.md) for the implemented solo/AP foundation, local build, tests and launch commands. Physical placement is still pinned pending route validation; exact native campaign resume is not yet implemented.
+- `randomizer/`: standalone seed logic, session runner, and overlay.
+- `apworld/`: AP integration; `tests/` and `scripts/`: validation and packaging.
+- `engine/`: complete source snapshot required by this randomizer, with licenses and provenance in [ENGINE_SOURCE.md](ENGINE_SOURCE.md). No separate BBFT checkout is needed.
+- [DEVELOPMENT.md](DEVELOPMENT.md): detailed implementation and historical validation; its `native/` paths refer to the maintainer's isolated development checkout. Use `engine/` in a public checkout.
+- [SPEC.md](SPEC.md), [BATCH_PLAN.md](BATCH_PLAN.md), and [GitHub issues](https://github.com/4laric/pikmin-randomizer/issues): roadmap and outstanding work.
+
+Builds, extracted assets, seeds, saves, logs, and runtime state are excluded. This source upload is not a prebuilt game release.
+
+## Credits
+
+Built on [Open Nectar](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port) and the [projectPiki Pikmin decompilation](https://github.com/projectPiki/pikmin). Thanks to TheLynk for permission to use the Pikmin AP world's logic and locations as a reference; this remains a separate project as requested. See the preserved [engine license](engine/LICENSE.MD) and [third-party notice](engine/LEGAL.md).

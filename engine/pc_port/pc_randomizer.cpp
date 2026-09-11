@@ -1,0 +1,262 @@
+#include "pc_randomizer.h"
+#include "pc_randomizer_catalog.h"
+#include <cstdint>
+#include <cmath>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+#include <string>
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
+
+namespace {
+bool enabled = false, ready = false, goalReported = false;
+unsigned repairs = 0, unlocks = 0, flarlic = 0, schema = 1, checkCount = 30;
+int startStage = 1;
+int startColor = 1; // Native IDs: blue 0, red 1, yellow 2.
+unsigned enemyMask = 0;
+std::uint64_t checks = 0;
+std::string token, fingerprint, saveRoot;
+std::filesystem::path directory;
+std::filesystem::file_time_type lastStamp{};
+auto lastFresh = std::chrono::steady_clock::now();
+const char* items[] = { "Yellow Onion", "Blue Onion", "Pikmin: Forest Navel Access", "Pikmin: Distant Spring Access", "Pikmin: Final Trial Access" };
+[[noreturn]] void fail(const char* message) {
+    std::fprintf(stderr, "[Pikmin Randomizer] %s\n", message);
+    std::exit(2);
+}
+bool hex64(const std::string& s) {
+    return s.size() == 64 && s.find_first_not_of("0123456789abcdef") == std::string::npos;
+}
+void expect(std::istream& in, const char* expected) {
+    std::string word;
+    if (!(in >> word) || word != expected) fail("unsupported or malformed bootstrap");
+}
+const char* checkName(unsigned i) { return schema >= 7 ? randomizerCollectionNames[i] : randomizerCheckNames[i]; }
+int index(const char* name) {
+    if (name) for (unsigned i = 0; i < checkCount; ++i) if (!std::strcmp(name, checkName(i))) return (int)i;
+    return -1;
+}
+}
+
+bool pc_randomizer_init(int argc, char** argv) {
+    const char* bootstrap = nullptr;
+    bool bbft = std::getenv("BBFT_PORT") && *std::getenv("BBFT_PORT");
+    for (int i = 1; i < argc; ++i) {
+        if (!std::strcmp(argv[i], "--bbft-port")) bbft = true;
+        if (!std::strcmp(argv[i], "--randomizer-seed")) {
+            if (bootstrap || ++i >= argc) fail("--randomizer-seed requires one bootstrap file");
+            bootstrap = argv[i];
+        }
+    }
+    if (!bootstrap) return false;
+    if (bbft) fail("standalone and BBFT modes cannot be combined");
+    std::ifstream input(bootstrap);
+    if (!input) fail("cannot open standalone bootstrap");
+    expect(input, "PIKMIN_RANDOMIZER");
+    std::string version; input >> version;
+    if (version != "1" && version != "2" && version != "3" && version != "4" && version != "5" && version != "6" && version != "7") fail("unsupported bootstrap version");
+    schema = (unsigned)(version[0] - '0');
+    checkCount = schema >= 5 ? 58 : schema >= 2 ? 55 : 30;
+    expect(input, "SESSION"); input >> token;
+    expect(input, "FINGERPRINT"); input >> fingerprint;
+    if (!hex64(token) || !hex64(fingerprint)) fail("invalid session or manifest fingerprint");
+    expect(input, "PROFILE");
+    std::string profile; input >> profile;
+    if (profile == "navel-day2" && schema >= 3) startStage = 2;
+    else if (profile == "impact-day2" && schema >= 5) startStage = 0;
+    else if (profile == "spring-day2" && schema >= 5) startStage = 3;
+    else if (profile == "trial-day2" && schema >= 5) startStage = 4;
+    else if (profile != "foh-day2") fail("unsupported start profile");
+    expect(input, "CATALOG"); expect(input, schema == 7 ? "gameplay-checks-v7" : schema == 6 ? "gameplay-checks-v6" : schema == 5 ? "gameplay-checks-v5" : schema == 4 ? "gameplay-checks-v4" : schema == 3 ? "gameplay-checks-v3" : schema == 2 ? "gameplay-checks-v2" : "vanilla-sites-v1");
+    expect(input, "PLACEMENT"); expect(input, "identity-v1");
+    expect(input, "GOAL"); expect(input, "25");
+    expect(input, "DAYS"); expect(input, "repeat-day29-v1");
+    if (schema >= 4) {
+        expect(input, "COLOR"); std::string color; input >> color;
+        if (color == "red") startColor = 1;
+        else if (color == "yellow") startColor = 2;
+        else if (color == "blue") startColor = 0;
+        else fail("unsupported starting color");
+    }
+    if (schema >= 6) {
+        expect(input, "ENEMIES");
+        if (!(input >> enemyMask) || (schema == 6 && enemyMask < 1) || enemyMask > 7) fail("invalid enemy permutation");
+    }
+    expect(input, "END");
+    std::string extra;
+    if (input >> extra) fail("trailing bootstrap data");
+    directory = std::filesystem::absolute(bootstrap).parent_path();
+    saveRoot = (directory / "save").generic_string();
+    // A run directory is single-use. Never reset a previous run's check journal.
+    if (std::filesystem::exists(directory / "hello.txt") || std::filesystem::exists(directory / "checks.txt"))
+        fail("run directory already used; launch a new session run");
+    enabled = true;
+    pc_randomizer_update(); // Validate initial state before creating a handshake.
+    std::ofstream hello(directory / "hello.tmp");
+    hello << "PIKMIN_HELLO " << schema << ' ' << token << ' ' << fingerprint
+          << " identity-placement-v1 " << (schema >= 3 ? "random-start-v1" : "foh-day2-v1") << " repair-goal-v1 repeat-day29-v1";
+    if (schema >= 2) hello << (schema >= 7 ? " flarlic-v1 exploration-v1" : " flarlic-v1 population-v1 bestiary-v1 exploration-v1");
+    if (schema >= 4) hello << " starting-color-v1";
+    if (schema >= 5) hello << " all-areas-v1";
+    if (schema >= 6) hello << " enemy-families-v1";
+    if (schema >= 7) hello << " total-population-v1 corpse-delivery-v1";
+    hello << " END\n";
+    hello.close();
+    if (!hello) fail("cannot write native handshake");
+    std::filesystem::rename(directory / "hello.tmp", directory / "hello.txt");
+    std::printf("[Pikmin Randomizer] initialized; identity placements, 25 repair goal\n");
+    return true;
+}
+
+void pc_randomizer_update() {
+    if (!enabled) return;
+    std::error_code error;
+    const auto stamp = std::filesystem::last_write_time(directory / "state.txt", error);
+    if (error) { ready = false; return; }
+    if (stamp == lastStamp) {
+        if (std::chrono::steady_clock::now() - lastFresh > std::chrono::seconds(3)) ready = false;
+        return;
+    }
+    std::ifstream input(directory / "state.txt");
+    // Windows may briefly deny opening a file being atomically replaced.
+    // Pause and retry; an opened but malformed record still fails closed.
+    if (!input.is_open()) { ready = false; return; }
+    std::string magic, session, end, extra;
+    unsigned version, newReady, newRepairs, newUnlocks, newFlarlic = 0;
+    std::uint64_t newChecks;
+    bool parsed = bool(input >> magic >> version >> session >> newReady >> newRepairs >> newUnlocks);
+    if (parsed && schema >= 2) parsed = bool(input >> newFlarlic);
+    parsed = parsed && bool(input >> newChecks >> end);
+    if (!parsed || magic != "PIKMIN_STATE" || version != schema || session != token || newReady > 1
+        || newRepairs > 25 || newUnlocks > (schema >= 5 ? 255u : schema == 4 ? 127u : schema == 3 ? 63u : 31u) || newFlarlic > 8 || newChecks >= (1ull << checkCount)
+        || end != "END" || (input >> extra))
+        fail("invalid state: identity, version or range mismatch");
+    // Inventory is monotonic within this authenticated run.
+    if (newRepairs < repairs || (newUnlocks & unlocks) != unlocks || newFlarlic < flarlic)
+        fail("state attempted to retract received progression");
+    ready = newReady != 0;
+    repairs = newRepairs;
+    unlocks = newUnlocks;
+    if (flarlic != newFlarlic) std::printf("[Pikmin Randomizer] CAPACITY %u\n", 20 + 10 * newFlarlic);
+    flarlic = newFlarlic;
+    checks |= newChecks;
+    lastStamp = stamp;
+    lastFresh = std::chrono::steady_clock::now();
+    if (repairs == 25 && !goalReported) {
+        goalReported = true;
+        std::puts("[Pikmin Randomizer] GOAL: Ship repaired! 25/25 repair rewards received.");
+    }
+}
+
+bool pc_randomizer_enabled() { return enabled; }
+int pc_randomizer_start_stage() { return startStage; }
+int pc_randomizer_start_color() { return startColor; }
+bool pc_randomizer_enemy_shuffle() { return enabled && schema >= 6 && enemyMask != 0; }
+int pc_randomizer_enemy_type(int original, bool protectedSpawn) {
+    if (!pc_randomizer_enemy_shuffle() || protectedSpawn) return original;
+    const int pairs[3][2] = {{3, 31}, {4, 32}, {18, 19}};
+    for (unsigned i = 0; i < 3; ++i) if (enemyMask & (1u << i)) {
+        if (original == pairs[i][0]) return pairs[i][1];
+        if (original == pairs[i][1]) return pairs[i][0];
+    }
+    return original;
+}
+bool pc_randomizer_ready() { return ready; }
+bool pc_randomizer_goal() { return enabled && repairs == 25; }
+int pc_randomizer_repairs() { return (int)repairs; }
+const char* pc_randomizer_save_root() { return saveRoot.c_str(); }
+int pc_randomizer_next_day(int day) { return enabled && day >= 28 ? 29 : day + 1; }
+bool pc_randomizer_has(const char* name) {
+    if (!enabled || !name) return false;
+    if (!std::strcmp(name, "Red Onion")) return startColor == 1 || (unlocks & 64u);
+    if (startColor == 0 && !std::strcmp(name, "Blue Onion")) return true;
+    if (startColor == 2 && !std::strcmp(name, "Yellow Onion")) return true;
+    if (!std::strcmp(name, "Pikmin Access")) return true;
+    if (!std::strcmp(name, "Pikmin: Forest of Hope Access")) return startStage == 1 || (unlocks & 32u);
+    if (startStage == 2 && !std::strcmp(name, "Pikmin: Forest Navel Access")) return true;
+    if (startStage == 3 && !std::strcmp(name, "Pikmin: Distant Spring Access")) return true;
+    if (startStage == 4 && !std::strcmp(name, "Pikmin: Final Trial Access")) return true;
+    if (!std::strcmp(name, "Pikmin: Impact Site Access")) return schema >= 5 && (startStage == 0 || (unlocks & 128u));
+    for (unsigned i = 0; i < 5; ++i)
+        if (!std::strcmp(name, items[i])) return (unlocks & (1u << i)) != 0;
+    return false;
+}
+bool pc_randomizer_checked(const char* name) {
+    const int slot = index(name);
+    return slot >= 0 && (checks & (1ull << slot)) != 0;
+}
+void pc_randomizer_check(const char* name) {
+    if (!enabled || !ready) return;
+    const int slot = index(name);
+    if (slot < 0) {
+        // Main Engine is the synthetic tutorial completion, not a standalone check.
+        if (name && !std::strcmp(name, "Pikmin: Main Engine")) return;
+        fail("unknown native collection identity");
+    }
+    if (checks & (1ull << slot)) return;
+    FILE* file = std::fopen((directory / "checks.txt").string().c_str(), "a");
+    if (!file) fail("cannot persist native collection");
+    bool ok = std::fprintf(file, "%d\n", slot) > 0 && std::fflush(file) == 0;
+#ifdef _WIN32
+    ok = ok && _commit(_fileno(file)) == 0;
+#else
+    ok = ok && fsync(fileno(file)) == 0;
+#endif
+    ok = std::fclose(file) == 0 && ok;
+    if (!ok) fail("native collection persistence failed");
+    checks |= 1ull << slot;
+    std::printf("[Pikmin Randomizer] CHECK %d %s\n", slot, name);
+}
+
+bool pc_randomizer_expanded() { return enabled && schema >= 2; }
+int pc_randomizer_field_capacity() { return pc_randomizer_expanded() ? 20 + 10 * (int)flarlic : 100; }
+namespace {
+bool accessibleStage(int stage) {
+    return (stage == 0 && pc_randomizer_has("Pikmin: Impact Site Access")) || (stage == 1 && pc_randomizer_has("Pikmin: Forest of Hope Access")) || (stage == 2 && pc_randomizer_has("Pikmin: Forest Navel Access"))
+        || (stage == 3 && pc_randomizer_has("Pikmin: Distant Spring Access"))
+        || (stage == 4 && pc_randomizer_has("Pikmin: Final Trial Access"));
+}
+}
+void pc_randomizer_observe_population(int activePikmin, bool gameplay) {
+    if (schema >= 7 || !pc_randomizer_expanded() || !gameplay || !ready || activePikmin < 0
+        || activePikmin > pc_randomizer_field_capacity()) return;
+    for (int i = 0; i < 9; ++i)
+        if (activePikmin >= 20 + 10 * i) pc_randomizer_check(randomizerCheckNames[30 + i]);
+}
+void pc_randomizer_enemy_defeated(int type, int stage, bool healthDepleted, bool gameplay) {
+    if (schema >= 7 || !pc_randomizer_expanded() || !healthDepleted || !gameplay || !ready || !accessibleStage(stage)) return;
+    for (int i = 0; i < 8; ++i)
+        if (type == randomizerEnemyTypes[i]) pc_randomizer_check(randomizerCheckNames[39 + i]);
+}
+bool pc_randomizer_collection_checks() { return enabled && schema >= 7; }
+void pc_randomizer_observe_total_population(int totalPikmin, bool gameplay) {
+    if (!pc_randomizer_collection_checks() || !gameplay || !ready || totalPikmin < 0) return;
+    for (int i = 0; i < 9; ++i)
+        if (totalPikmin >= randomizerTotalPopulation[i]) pc_randomizer_check(checkName(30 + i));
+}
+void pc_randomizer_corpse_delivered(int type, int stage, bool gameplay) {
+    if (!pc_randomizer_collection_checks() || !gameplay || !ready || !accessibleStage(stage)) return;
+    for (int i = 0; i < 8; ++i)
+        if (type == randomizerEnemyTypes[i]) pc_randomizer_check(checkName(39 + i));
+}
+void pc_randomizer_observe_exploration(int stage, float dx, float dz, bool grounded, bool gameplay) {
+    if (!pc_randomizer_expanded() || !grounded || !gameplay || !ready || !accessibleStage(stage)
+        || !std::isfinite(dx) || !std::isfinite(dz)) return;
+    const int landIndex = stage == 0 ? 55 : 47 + (stage - 1) * 2;
+    pc_randomizer_check(randomizerCheckNames[landIndex]);
+    if (dx * dx + dz * dz >= 600.0f * 600.0f)
+        pc_randomizer_check(randomizerCheckNames[landIndex + 1]);
+}
+
+void pc_randomizer_validate_part_weight(int part, int minimum) {
+    if (pc_randomizer_expanded() && (part < 0 || part >= 30 || randomizerPartWeights[part] != minimum))
+        fail("loaded part weight differs from seed logic catalog");
+}
