@@ -1,5 +1,7 @@
 #include "pc_randomizer.h"
 #include "pc_randomizer_catalog.h"
+#include "pc_randomizer_spawn_catalog.h"
+#include <unordered_map>
 #include <cstdint>
 #include <cmath>
 #include <chrono>
@@ -24,6 +26,9 @@ unsigned repairs = 0, unlocks = 0, flarlic = 0, schema = 1, checkCount = 30;
 int startStage = 1;
 int startColor = 1; // Native IDs: blue 0, red 1, yellow 2.
 unsigned enemyMask = 0;
+bool slotEnemies = false;
+unsigned adultAssignments[15] = {};
+std::unordered_map<const void*, unsigned> generatorIds;
 unsigned startingFlarlic = 2;
 bool configuredFlarlic = false, configuredStats = false, progressiveStats = false, wideStats = false;
 int baseColorStats[3][4] = {{100, 100, 100, 1}, {100, 100, 100, 1}, {100, 100, 100, 1}};
@@ -146,6 +151,22 @@ bool pc_randomizer_init(int argc, char** argv) {
         benefitItems = true;
         input >> end;
     }
+    if (end == "ENEMY_SLOTS") {
+        std::string catalog; unsigned count;
+        if (schema != 9 || enemyMask || !(input >> catalog >> count) || catalog != randomizerSpawnCatalogHash || count != 15)
+            fail("incompatible enemy slot catalog");
+        unsigned bulborbs = 0;
+        for (unsigned i = 0; i < 15; ++i) {
+            unsigned uid, species;
+            if (!(input >> uid >> species) || uid != randomizerAdultSlots[i] || (species != 4 && species != 32))
+                fail("invalid enemy slot assignment");
+            adultAssignments[i] = species;
+            bulborbs += species == 4;
+        }
+        if (bulborbs != 9) fail("invalid enemy slot species totals");
+        slotEnemies = true;
+        input >> end;
+    }
     if (end != "END") fail("unsupported or malformed bootstrap");
     std::string extra;
     if (input >> extra) fail("trailing bootstrap data");
@@ -190,6 +211,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (configuredStats) hello << (wideStats ? " color-stats-v2" : " color-stats-v1");
     if (progressiveStats) hello << " progressive-color-stats-v1";
     if (benefitItems) hello << " benefit-items-v1";
+    if (slotEnemies) hello << " enemy-slots-v1";
     hello << " END\n";
     hello.close();
     if (!hello) fail("cannot write native handshake");
@@ -301,7 +323,40 @@ float pc_randomizer_benefit_multiplier(PcBenefit kind) {
 bool pc_randomizer_enabled() { return enabled; }
 int pc_randomizer_start_stage() { return startStage; }
 int pc_randomizer_start_color() { return startColor; }
-bool pc_randomizer_enemy_shuffle() { return enabled && schema >= 6 && enemyMask != 0; }
+bool pc_randomizer_spawn_slots() { return enabled && slotEnemies; }
+unsigned pc_randomizer_generator_id(const void* generator) {
+    auto it = generatorIds.find(generator);
+    return it == generatorIds.end() ? 0 : it->second;
+}
+void pc_randomizer_set_generator_id(const void* generator, unsigned uid) {
+    if (!uid) { generatorIds.erase(generator); return; }
+    if (!pc_randomizer_spawn_slots()) return;
+    for (const auto& row : randomizerSpawnSlots) if (row.uid == uid) {
+        generatorIds[generator] = uid; return;
+    }
+    fail("unknown saved generator ID");
+}
+void pc_randomizer_bind_generator(const void* generator, int stage, const char* file, int offset) {
+    pc_randomizer_set_generator_id(generator, 0);
+    if (!pc_randomizer_spawn_slots() || !file) return;
+    for (const auto& row : randomizerSpawnSlots)
+        if (row.stage == stage && row.offset == offset && !std::strcmp(row.file, file)) {
+            pc_randomizer_set_generator_id(generator, row.uid); return;
+        }
+}
+int pc_randomizer_enemy_for_generator(int original, bool protectedSpawn, const void* generator) {
+    if (!pc_randomizer_spawn_slots()) return pc_randomizer_enemy_type(original, protectedSpawn);
+    if (original != 4 && original != 32) return original;
+    unsigned uid = pc_randomizer_generator_id(generator);
+    for (unsigned i = 0; i < 15; ++i) if (randomizerAdultSlots[i] == uid) {
+        for (const auto& row : randomizerSpawnSlots) if (row.uid == uid && (row.species != original || protectedSpawn))
+            fail("enemy slot source changed");
+        return adultAssignments[i];
+    }
+    fail("adult enemy has no supported generator ID");
+}
+void pc_randomizer_bad_spawn_cache() { fail("incompatible enemy slot cache record"); }
+bool pc_randomizer_enemy_shuffle() { return enabled && schema >= 6 && (enemyMask != 0 || slotEnemies); }
 int pc_randomizer_enemy_type(int original, bool protectedSpawn) {
     if (!pc_randomizer_enemy_shuffle() || protectedSpawn) return original;
     const int pairs[3][2] = {{3, 31}, {4, 32}, {18, 19}};

@@ -42,7 +42,11 @@ class SeedRandom:
         return values
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False):
+    if per_spawn_enemies:
+        if legacy_checks: raise ValueError('per-spawn enemies require modern checks')
+        collection_checks = True
+        enemy_shuffle = False
     collection_checks = collection_checks or progressive_color_stats or permanent_checks
     result = dict(schema=1, game=GAME, seed=str(seed), slot=slot, mode=mode,
                   profile="foh-day2", catalog="vanilla-sites-v1", rng="sha256-counter-v1",
@@ -105,6 +109,12 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         result['enemy_layout'] = resolve_layout(result['enemy_mask'])
         result['benefit_items'] = True
         result['capabilities'].append('benefit-items-v1')
+        if per_spawn_enemies:
+            from .enemy_slots import resolve_spawn_layout, spawn_sources
+            result['spawn_layout'] = resolve_spawn_layout(result['seed'], slot)
+            result['enemy_layout'] = spawn_sources(result['spawn_layout'])
+            result['enemy_shuffle'] = 'adult-slots-v1'
+            result['capabilities'].append('enemy-slots-v1')
     validate(result)
     return result
 
@@ -128,13 +138,22 @@ def validate(m):
             expected.add('no_exploration')
             if m['no_exploration'] is not True: raise ValueError('invalid no_exploration')
         if type(m.get('permanent_checks')) is not bool: raise ValueError('invalid permanent_checks')
+    if type(m) is dict and 'spawn_layout' in m:
+        expected.add('spawn_layout')
+        from .enemy_slots import resolve_spawn_layout
+        if m.get('schema') != 9 or m.get('enemy_mask') != 0 or 'enemy_layout' not in m:
+            raise ValueError('per-spawn layout requires modern zero-mask seed')
+        if canonical(m['spawn_layout']) != canonical(resolve_spawn_layout(m.get('seed', ''), m.get('slot', ''))):
+            raise ValueError('invalid per-spawn layout or source catalog')
     if type(m) is dict and 'enemy_layout' in m:
         expected.add('enemy_layout')
         from .enemies import resolve_layout, sources_for
         from .catalog import BESTIARY_TARGETS
         if m.get('schema') != 9 or type(m.get('enemy_mask')) is not int or not 0 <= m['enemy_mask'] <= 7:
             raise ValueError('enemy layout requires schema 9 and a valid seed mask')
-        if canonical(m['enemy_layout']) != canonical(resolve_layout(m['enemy_mask'])):
+        from .enemy_slots import spawn_sources
+        expected_sources = spawn_sources(m['spawn_layout']) if 'spawn_layout' in m else resolve_layout(m['enemy_mask'])
+        if canonical(m['enemy_layout']) != canonical(expected_sources):
             raise ValueError('enemy layout disagrees with seeded permutation/source catalog')
         if any(not sources_for(m['enemy_layout'], species) for species, _ in BESTIARY_TARGETS.values()):
             raise ValueError('bestiary species has no source in enemy layout')
@@ -178,7 +197,7 @@ def validate(m):
             raise ValueError('unsupported enemy permutation')
         fixed.update(catalog='gameplay-checks-v6', enemy_shuffle='families-v1', capabilities=fixed['capabilities'] + ['enemy-families-v1'])
     if m['schema'] >= 7:
-        fixed.update(catalog='gameplay-checks-v7', enemy_shuffle='families-v1' if m['enemy_mask'] else 'none',
+        fixed.update(catalog='gameplay-checks-v7', enemy_shuffle='adult-slots-v1' if 'spawn_layout' in m else 'families-v1' if m['enemy_mask'] else 'none',
                      capabilities=[c for c in fixed['capabilities'] if c not in ('population-v1', 'bestiary-v1')] + ['total-population-v1', 'corpse-delivery-v1'])
     if m['schema'] == 8:
         fixed.update(catalog='gameplay-checks-v8', capabilities=fixed['capabilities'] + ['permanent-checks-v1', 'check-set-v1'])
@@ -195,6 +214,8 @@ def validate(m):
         fixed['capabilities'] += ['progressive-color-stats-v1']
     if m.get('benefit_items'):
         fixed['capabilities'] += ['benefit-items-v1']
+    if 'spawn_layout' in m:
+        fixed['capabilities'] += ['enemy-slots-v1']
     for key, value in fixed.items():
         if type(m[key]) is not type(value) or m[key] != value:
             raise ValueError(f"unsupported {key}: {m[key]!r}")

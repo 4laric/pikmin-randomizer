@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <thread>
 #include <cstring>
+#include "pc_randomizer_spawn_catalog.h"
 #undef NDEBUG
 #include <cassert>
 int main(int argc, char** argv) {
@@ -14,6 +15,25 @@ int main(int argc, char** argv) {
     }
     for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--capacity-probe")) {
         std::printf("CAPACITY_PROBE %d\n", pc_randomizer_field_capacity());
+        return 0;
+    }
+    for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--slot-probe")) {
+        assert(pc_randomizer_spawn_slots());
+        int objects[15] = {}, restored[15] = {};
+        for (int i = 14; i >= 0; --i) {
+            const RandomizerSpawnSlot* source = nullptr;
+            for (const auto& row : randomizerSpawnSlots) if (row.uid == randomizerAdultSlots[i]) source = &row;
+            assert(source);
+            pc_randomizer_bind_generator(&objects[i], source->stage, source->file, source->offset);
+            assert(pc_randomizer_generator_id(&objects[i]) == source->uid);
+            pc_randomizer_set_generator_id(&restored[i], pc_randomizer_generator_id(&objects[i]));
+            const int actual = pc_randomizer_enemy_for_generator(source->species, false, &objects[i]);
+            assert(pc_randomizer_enemy_for_generator(source->species, false, &restored[i]) == actual);
+            assert(pc_randomizer_enemy_for_generator(3, false, &objects[i]) == 3);
+            std::printf("SLOT_PROBE %u %d\n", source->uid, actual);
+            pc_randomizer_set_generator_id(&objects[i], 0);
+            assert(pc_randomizer_generator_id(&objects[i]) == 0);
+        }
         return 0;
     }
     for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--stats-probe")) {

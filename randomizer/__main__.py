@@ -19,6 +19,7 @@ def main():
     gen.add_argument("--expanded", action="store_true", help="Flarlic, population, bestiary and exploration checks")
     gen.add_argument('--starting-area', choices=['forest', 'navel', 'impact', 'spring', 'trial', 'random'], default='forest', help='Random includes all five areas')
     gen.add_argument('--all-areas', action='store_true', help='Enable five-area catalog with a fixed start')
+    gen.add_argument('--per-spawn-enemies', action='store_true', help='Opt-in named adult Bulborb/Bulbear slots; overrides global family swaps')
     gen.add_argument('--enemy-shuffle', action='store_true', help='Seeded compatible enemy-family swaps')
     gen.add_argument('--collection-checks', action='store_true', default=True, help='Onion corpse deliveries and total population milestones through 500')
     gen.add_argument('--starting-color', choices=['red', 'yellow', 'blue', 'random'], default='red', help='Non-default enables expanded checks')
@@ -37,9 +38,12 @@ def main():
     status.add_argument("manifest", type=Path)
     status.add_argument("--session-dir", type=Path, required=True)
     status.add_argument("--output", type=Path)
+    enemy_spoiler = sub.add_parser('enemy-spoiler', help='Explicit spoiler: named per-spawn enemy choices and source schedules')
+    enemy_spoiler.add_argument('manifest', type=Path)
+    enemy_spoiler.add_argument('--output', type=Path)
     args = parser.parse_args()
     if args.command == "generate":
-        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas, enemy_shuffle=args.enemy_shuffle, collection_checks=args.collection_checks, starting_flarlic=args.starting_flarlic, randomize_color_stats=args.randomize_color_stats, progressive_color_stats=args.progressive_color_stats, permanent_checks=args.permanent_checks)
+        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas, enemy_shuffle=args.enemy_shuffle, collection_checks=args.collection_checks, starting_flarlic=args.starting_flarlic, randomize_color_stats=args.randomize_color_stats, progressive_color_stats=args.progressive_color_stats, permanent_checks=args.permanent_checks, per_spawn_enemies=args.per_spawn_enemies)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8") as f:
             f.write(json.dumps(manifest, indent=2) + "\n")
@@ -47,7 +51,12 @@ def main():
     else:
         manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
         validate(manifest)
-        if args.command == "validate":
+        if args.command == 'enemy-spoiler':
+            from .enemy_slots import spoiler
+            text = json.dumps(spoiler(manifest), indent=2) + '\n'
+            if args.output: args.output.write_text(text, encoding='utf-8')
+            else: print(text, end='')
+        elif args.command == "validate":
             print(f"Valid {fingerprint(manifest)}; {len(manifest['locations'])} checks, {len(manifest['assignments'])} pinned parts")
             if manifest["mode"] == "solo":
                 print(f"Conservative logic: {len(spheres(solo_rewards(manifest), manifest))} progression spheres")

@@ -11,6 +11,11 @@
 #include "sysNew.h"
 #include "teki.h"
 #include <cstdio>
+#if defined(PIKI_PC_PORT)
+#include "pc_randomizer.h"
+#include "FlowController.h"
+#include <cstring>
+#endif
 
 /**
  * @todo: Documentation
@@ -490,6 +495,9 @@ Generator::Generator(int)
  */
 Generator::~Generator()
 {
+#if defined(PIKI_PC_PORT)
+    pc_randomizer_set_generator_id(this, 0);
+#endif
 	mNextGenerator = nullptr;
 }
 
@@ -726,6 +734,9 @@ const char* coStrings[] = { "なし", "常に" };
  */
 void Generator::read(RandomAccessStream& input)
 {
+#if defined(PIKI_PC_PORT)
+    pc_randomizer_set_generator_id(this, 0);
+#endif
 	STACK_PAD_TERNARY(this, 2);
 	STACK_PAD_VAR(4);
 
@@ -815,6 +826,12 @@ void Generator::read(RandomAccessStream& input)
 	}
 	STACK_PAD_TERNARY(this, 5);
 	STACK_PAD_INLINE(3);
+#if defined(PIKI_PC_PORT)
+    if (ramMode && pc_randomizer_spawn_slots() && mGenObject && (mGenObject->mID == 'teki' || mGenObject->mID == 'boss')) {
+        if (input.getPending() < 8 || input.readInt() != 0x534c5431) pc_randomizer_bad_spawn_cache();
+        pc_randomizer_set_generator_id(this, static_cast<unsigned>(input.readInt()));
+    }
+#endif
 }
 
 /**
@@ -886,6 +903,12 @@ void Generator::write(RandomAccessStream& output)
 	} else {
 		output.writeInt(0);
 	}
+#if defined(PIKI_PC_PORT)
+    if (ramMode && pc_randomizer_spawn_slots() && mGenObject && (mGenObject->mID == 'teki' || mGenObject->mID == 'boss')) {
+        output.writeInt(0x534c5431);
+        output.writeInt(static_cast<int>(pc_randomizer_generator_id(this)));
+    }
+#endif
 }
 
 /**
@@ -1021,16 +1044,33 @@ void GeneratorMgr::read(RandomAccessStream& input, bool p2)
 	}
 #endif
 
+#if defined(PIKI_PC_PORT)
+    char sourceFile[128] = {};
+    if (mName) {
+        if (!std::strcmp(mName, "default")) std::snprintf(sourceFile, sizeof(sourceFile), "default.gen");
+        else if (!std::strcmp(mName, "init")) std::snprintf(sourceFile, sizeof(sourceFile), "init.gen");
+        else if (!std::strcmp(mName, "plant")) std::snprintf(sourceFile, sizeof(sourceFile), "plants.gen");
+        else if (!std::strcmp(mName, "daily")) std::snprintf(sourceFile, sizeof(sourceFile), "%d.gen", (gameflow.mWorldClock.mCurrentDay - 1) % 30);
+        else std::snprintf(sourceFile, sizeof(sourceFile), "%s", mName);
+    }
+#endif
 	for (int i = 0; i < mGenCount; i++) {
+        const int sourceOffset = input.getPosition();
 		if (!mGenListHead) {
 			mGenListHead = new Generator();
 			mGenListHead->read(input);
+#if defined(PIKI_PC_PORT)
+            if (!Generator::ramMode && flowCont.mCurrentStage) pc_randomizer_bind_generator(mGenListHead, flowCont.mCurrentStage->mStageID, sourceFile, sourceOffset);
+#endif
 			mGenListHead->mMgr = this;
 			generatorList->mGenListHead->add(mGenListHead);
 		} else {
 			Generator* newGen = new Generator();
 			newGen->mMgr      = this;
 			newGen->read(input);
+#if defined(PIKI_PC_PORT)
+            if (!Generator::ramMode && flowCont.mCurrentStage) pc_randomizer_bind_generator(newGen, flowCont.mCurrentStage->mStageID, sourceFile, sourceOffset);
+#endif
 
 			Generator* endList = mGenListHead;
 			for (endList; endList->mNextGenerator; endList = endList->mNextGenerator) {

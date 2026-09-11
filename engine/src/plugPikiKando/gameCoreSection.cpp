@@ -6,6 +6,8 @@
 #include "GameCoreSection.h"
 #include "pc_bbft.h"
 #include "pc_randomizer.h"
+#include "MapCode.h"
+#include <fstream>
 #if defined(PIKI_PC_PORT)
 #include <SDL.h>
 #include <cstdlib>
@@ -2049,6 +2051,88 @@ void GameCoreSection::updateAI()
 #if defined(PIKMIN_RANDOMIZER_TEST_HOOKS)
     const char* scripted = std::getenv("PIKMIN_RANDOMIZER_TEST_SCRIPT");
     const char* background = std::getenv("PIKMIN_RANDOMIZER_TEST_BACKGROUND");
+    if (pc_randomizer_ready() && scripted && !std::strcmp(scripted, "spawn-audit")
+        && background && !std::strcmp(background, "1") && bbftRedsReady) {
+        const char* folders[] = {"practice", "stage1", "stage2", "stage3", "last"};
+        const int stage = flowCont.mCurrentStage->mStageID;
+        std::ifstream files("audit-files.txt"); std::string file;
+        if (!files) std::abort();
+        int records = 0;
+        struct AuditCache : GeneratorCache { int used() const { return mUsedSize; } int freeBytes() const { return mFreeSize; } } auditCache;
+        auditCache.initGame();
+        auditCache.beginSave(stage);
+        int cachedAdults = 0;
+        while (files >> file) {
+            char path[256]; std::snprintf(path, sizeof(path), "stages/%s/%s", folders[stage], file.c_str());
+            RandomAccessStream* input = gsys->openFile(path);
+            if (!input) std::abort();
+            const int version = input->readInt();
+            for (int i = 0; i < (version == 0x312e3076 ? 4 : 3); ++i) input->readFloat();
+            const int count = input->readInt();
+            if (count < 0 || count > 1000) std::abort();
+            for (int i = 0; i < count; ++i) {
+                const int offset = input->getPosition();
+                Generator* gen = new Generator(); gen->read(*input);
+                pc_randomizer_bind_generator(gen, stage, file.c_str(), offset);
+                if (!gen->mGenObject) continue;
+                const bool teki = gen->mGenObject->mID == 'teki', boss = gen->mGenObject->mID == 'boss';
+                if (!teki && !boss) continue;
+                if (pc_randomizer_spawn_slots() && !pc_randomizer_generator_id(gen)) std::abort();
+                if (!gen->mGenArea || !gen->mGenType) {
+                    std::fprintf(stderr, "SPAWN_AUDIT invalid enemy components file=%s offset=%d\n", file.c_str(), offset); std::abort();
+                }
+                const int species = teki ? static_cast<GenObjectTeki*>(gen->mGenObject)->mTekiType : static_cast<GenObjectBoss*>(gen->mGenObject)->mBossID;
+                if (pc_randomizer_spawn_slots() && teki && (species == 4 || species == 32)) {
+                    auditCache.saveGenerator(gen);
+                    ++cachedAdults;
+                }
+                TekiPersonality* personality = teki ? static_cast<GenObjectTeki*>(gen->mGenObject)->mPersonality : nullptr;
+                const bool protectedSpawn = !teki || personality->mID.mId != 'none' || personality->getI(TekiPersonality::INT_Parameter0) != 0;
+                const int x = int(int(gen->mGenPosition.x) + gen->mGenOffset.x);
+                const int y = int(int(gen->mGenPosition.y) + gen->mGenOffset.y);
+                const int z = int(int(gen->mGenPosition.z) + gen->mGenOffset.z);
+                const Vector3f pos = gen->getPos();
+                CollTriInfo* anchor = mMapMgr->getCurrTri(pos.x, pos.z, true);
+                const int terrain = anchor ? MapCode::getAttribute(anchor) : -1;
+                char data[2048] = {};
+                RamStream saved(data, sizeof(data));
+                Generator::ramMode = true; gen->write(saved);
+                if (pc_randomizer_spawn_slots() && std::getenv("PIKMIN_RANDOMIZER_TEST_BAD_SLOT_CACHE"))
+                    data[saved.getPosition() - 8] = 0;
+                saved.setPosition(0);
+                Generator* restored = new Generator(); restored->read(saved); Generator::ramMode = false;
+                const int restoredSpecies = teki ? static_cast<GenObjectTeki*>(restored->mGenObject)->mTekiType : static_cast<GenObjectBoss*>(restored->mGenObject)->mBossID;
+                if (restoredSpecies != species || restored->mGenPosition.x != x || restored->mGenPosition.y != y || restored->mGenPosition.z != z
+                    || restored->mCarryOverFlags != gen->mCarryOverFlags || restored->getRebirthDay() != gen->getRebirthDay()
+                    || pc_randomizer_generator_id(restored) != pc_randomizer_generator_id(gen)) {
+                    std::fprintf(stderr, "SPAWN_AUDIT cache mismatch file=%s offset=%d\n", file.c_str(), offset); std::abort();
+                }
+                std::printf("SPAWN_AUDIT stage=%d file=%s offset=%d kind=%s species=%d cache=%d,%d,%d count=%d respawn=%d flags=%u protected=%d terrain=%d\n",
+                    stage, file.c_str(), offset, teki ? "teki" : "boss", species, x, y, z, gen->mGenType->getMaxCount(), gen->getRebirthDay(),
+                    gen->mCarryOverFlags, int(protectedSpawn), terrain);
+                ++records;
+                delete restored;
+                delete gen;
+            }
+            if (input->getPending() != 0) std::abort();
+            input->close();
+        }
+        auditCache.endSave();
+        GeneratorList* liveList = generatorList;
+        generatorList = new GeneratorList();
+        if (!auditCache.preload(stage)) std::abort();
+        int restoredAdults = 0;
+        for (Generator* gen = static_cast<Generator*>(generatorList->mGenListHead->mChild); gen; gen = static_cast<Generator*>(gen->mNext)) {
+            GenObjectTeki* object = static_cast<GenObjectTeki*>(gen->mGenObject);
+            int actual = pc_randomizer_enemy_for_generator(object->mTekiType, false, gen);
+            std::printf("CACHE_SLOT uid=%u actual=%d\n", pc_randomizer_generator_id(gen), actual);
+            ++restoredAdults;
+        }
+        generatorList = liveList;
+        if (restoredAdults != cachedAdults || auditCache.freeBytes() <= 0) std::abort();
+        std::printf("TEST_ONLY spawn_cache_pass stage=%d adults=%d bytes=%d\n", stage, cachedAdults, auditCache.used());
+        std::printf("TEST_ONLY spawn_audit_pass stage=%d records=%d\n", stage, records); std::fflush(stdout); std::exit(0);
+    }
     if (pc_randomizer_ready() && scripted && !std::strcmp(scripted, "benefits")
         && background && !std::strcmp(background, "1") && bbftRedsReady
         && !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll && !gameflow.mIsUIOverlayActive) {

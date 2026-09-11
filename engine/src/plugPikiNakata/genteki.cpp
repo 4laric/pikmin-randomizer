@@ -77,7 +77,7 @@ void GenObjectTeki::doWrite(RandomAccessStream& output)
 /**
  * @todo: Documentation
  */
-void GenObjectTeki::updateUseList(Generator*, int)
+void GenObjectTeki::updateUseList(Generator* generator, int)
 {
 	if (mTekiType < TEKI_START || mTekiType >= TEKI_TypeCount) {
 		ERROR("GenObjectTeki::updateUseList:kind:%d\n", mTekiType);
@@ -86,7 +86,7 @@ void GenObjectTeki::updateUseList(Generator*, int)
 
 	tekiMgr->mUsingType[mTekiType] = true;
     // Keep original generator identity; reserve replacement assets before birth.
-    const int replacement = pc_randomizer_enemy_type(mTekiType, randomizerProtected(mPersonality));
+    const int replacement = pc_randomizer_enemy_for_generator(mTekiType, randomizerProtected(mPersonality), generator);
     tekiMgr->mUsingType[replacement] = true;
 
 	if (!tekiMgr->hasType(mTekiType)) {
@@ -106,7 +106,7 @@ void GenObjectTeki::updateUseList(Generator*, int)
 Creature* GenObjectTeki::birth(BirthInfo& info)
 {
     const bool protectedSpawn = randomizerProtected(mPersonality);
-    const int replacement = pc_randomizer_enemy_type(mTekiType, protectedSpawn);
+    const int replacement = pc_randomizer_enemy_for_generator(mTekiType, protectedSpawn, info.mGenerator);
 	Teki* teki = tekiMgr->newTeki(replacement);
 	if (!teki) {
 		return nullptr;
@@ -124,6 +124,8 @@ Creature* GenObjectTeki::birth(BirthInfo& info)
 	}
 
 	teki->mRebirthDay = info.mGenerator->getRebirthDay();
+    if (pc_randomizer_spawn_slots())
+        std::printf("ENEMY_SLOT_BIRTH uid=%u original=%d actual=%d\n", pc_randomizer_generator_id(info.mGenerator), mTekiType, replacement);
     if (pc_randomizer_enemy_shuffle())
         std::printf("[Pikmin Randomizer] ENEMY_SPAWN original=%d actual=%d protected=%d x=%.1f z=%.1f\n", mTekiType, replacement, int(protectedSpawn), info.mPosition.x, info.mPosition.z);
 	return teki;

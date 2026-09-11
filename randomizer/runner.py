@@ -9,6 +9,7 @@ from pathlib import Path
 from .catalog import GAME, NAMES, LOCATION_IDS
 from .seed import fingerprint
 from .stats import bootstrap_stats
+from .enemy_slots import bootstrap_slots, verify_source_assets
 from .session import Session, SessionLock, atomic_write
 
 
@@ -24,7 +25,7 @@ class NativeRun:
                      f"PROFILE {session.manifest['profile']}\nCATALOG {session.manifest['catalog']}\nPLACEMENT identity-v1\n" +
                      "GOAL 25\nDAYS repeat-day29-v1\n" +
                      (f"COLOR {session.manifest['starting_color']}\n" if session.manifest['schema'] >= 4 else '') +
-                     (f"CHECKSET {int(session.manifest['permanent_checks']) + 2 * int(session.manifest.get('no_exploration', False)) + 4 * int(session.manifest.get('color_population', False))}\n" if session.manifest['schema'] >= 9 else '') + (f"ENEMIES {session.manifest['enemy_mask']}\n" if session.manifest['schema'] >= 6 else '') + (f"STARTING_FLARLIC {session.manifest['starting_flarlic']}\n" if "starting_flarlic" in session.manifest else "") + bootstrap_stats(session.manifest) + ("PROGRESSIVE_STATS 1\n" if session.manifest.get("progressive_color_stats") else "") + ("BENEFITS 1\n" if session.manifest.get("benefit_items") else "") + "END\n")
+                     (f"CHECKSET {int(session.manifest['permanent_checks']) + 2 * int(session.manifest.get('no_exploration', False)) + 4 * int(session.manifest.get('color_population', False))}\n" if session.manifest['schema'] >= 9 else '') + (f"ENEMIES {session.manifest['enemy_mask']}\n" if session.manifest['schema'] >= 6 else '') + (f"STARTING_FLARLIC {session.manifest['starting_flarlic']}\n" if "starting_flarlic" in session.manifest else "") + bootstrap_stats(session.manifest) + ("PROGRESSIVE_STATS 1\n" if session.manifest.get("progressive_color_stats") else "") + ("BENEFITS 1\n" if session.manifest.get("benefit_items") else "") + bootstrap_slots(session.manifest) + "END\n")
         self.seen = 0
         self.handshaken = False
         self.write_state(False)
@@ -158,6 +159,7 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None):
         exe = Path(exe).resolve(strict=True)
         if not assets or not (Path(assets) / "dataDir" / "stages").is_dir():
             raise ValueError("--assets must point to the extracted assets directory containing dataDir/stages/")
+        if 'spawn_layout' in manifest: verify_source_assets(assets)
         # Windows directory junction, only into the new private runtime directory.
         target = run.directory / "assets"
         import _winapi
