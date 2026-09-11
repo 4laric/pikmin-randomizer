@@ -1,4 +1,5 @@
 #include "pc_randomizer.h"
+#include "pc_randomizer_catalog.h"
 #include <chrono>
 #include <cstdio>
 #include <thread>
@@ -26,6 +27,29 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 100; ++i) {
         pc_randomizer_update();
         if (pc_randomizer_ready()) {
+            bool permanentProbe = false;
+            for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--permanent-probe")) permanentProbe = true;
+            if (permanentProbe) {
+                assert(pc_randomizer_checked("Population: 450 total Pikmin")); // restored index above 63
+                pc_randomizer_observe_total_population(500, false);
+                assert(!pc_randomizer_checked("Population: 350 total Pikmin"));
+                pc_randomizer_observe_total_population(500, true);
+                for (int value : randomizerFinePopulation) {
+                    char name[80]; std::snprintf(name, sizeof(name), "Population: %d total Pikmin", value);
+                    assert(pc_randomizer_checked(name));
+                }
+                for (const auto& o : randomizerObstacles) {
+                    assert(!pc_randomizer_checked(o.name));
+                    pc_randomizer_observe_obstacle(o.stage, o.kind, o.x, o.z, false, true);
+                    pc_randomizer_observe_obstacle(o.stage, o.kind, o.x, o.z, true, false);
+                    pc_randomizer_observe_obstacle(o.stage, o.kind, o.x+20, o.z, true, true);
+                    assert(!pc_randomizer_checked(o.name));
+                    pc_randomizer_observe_obstacle(o.stage, o.kind, o.x, o.z, true, true);
+                    assert(pc_randomizer_checked(o.name));
+                    pc_randomizer_observe_obstacle(o.stage, o.kind, o.x, o.z, true, true);
+                }
+                std::puts("PERMANENT_PASS"); return 0;
+            }
             bool upgradeProbe = false;
             for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--upgrade-probe")) upgradeProbe = true;
             if (upgradeProbe) {

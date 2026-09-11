@@ -70,6 +70,13 @@ def main(ap):
                                  options={'progressive_color_stats': True, 'randomize_color_stats': bool(seed % 2), 'starting_area': 2, 'starting_color': 3})
             distribute_items_restrictive(mw)
             assert mw.can_beat_game() and not mw.get_unfilled_locations()
+        for seed in range(100):
+            mw = setup_multiworld(mod.PikminRandomizerWorld, seed=seed,
+                                 options={'permanent_checks': True, 'progressive_color_stats': True,
+                                          'randomize_color_stats': True, 'starting_area': 2, 'starting_color': 3})
+            assert len(mw.get_locations()) > 64
+            distribute_items_restrictive(mw)
+            assert mw.can_beat_game() and not mw.get_unfilled_locations()
         # A two-slot fill exercises cross-player rewards instead of only solo AP.
         for seed in range(100):
             mw = setup_multiworld(mod.PikminRandomizerWorld, seed=seed,
@@ -109,7 +116,7 @@ def main(ap):
         assert part.can_reach(initial)
         distribute_items_restrictive(mw)
         assert mw.can_beat_game() and not mw.get_unfilled_locations()
-        print(f"Packaged AP world: {len(configs)*100+200} single-slot fills plus 60 starting-Flarlic and 100 color-stat and 100 progressive-stat fills, including collection checks and a remote-Blue two-slot fill pass")
+        print(f"Packaged AP world: {len(configs)*100+200} single-slot fills plus 60 starting-Flarlic, 100 color-stat, 100 progressive-stat and 100 permanent-check fills; remote-Blue and remote-Carry two-slot fills pass")
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser();p.add_argument("ap", type=Path);main(p.parse_args().ap)

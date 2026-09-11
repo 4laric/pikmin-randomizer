@@ -128,12 +128,20 @@ COLLECTION_LOCATION_IDS = {name: ALL_AREA_LOCATION_IDS[name] if name in ALL_AREA
                            for i, name in enumerate(tuple(TOTAL_POPULATION) + tuple(DELIVERY_BESTIARY))}
 COLLECTION_LOCATION_IDS = {name: ALL_AREA_LOCATION_IDS.get(name, COLLECTION_LOCATION_IDS.get(name)) for name in COLLECTION_NAMES}
 
+from .obstacles import OBSTACLES
+FINE_POPULATION = {f"Population: {n} total Pikmin": n for n in
+                   (*range(20, 101, 10), 125, 150, 175, 200, *range(250, 501, 50))}
+PERMANENT_NAMES = COLLECTION_NAMES + tuple(n for n in FINE_POPULATION if n not in TOTAL_POPULATION) + tuple(OBSTACLES)
+PERMANENT_LOCATION_IDS = {**COLLECTION_LOCATION_IDS, **{n: LOCATION_BASE + 100 + i
+    for i, n in enumerate(PERMANENT_NAMES[len(COLLECTION_NAMES):])}}
+
 # Filled from the native loaded pellet config audit, not the maximum carrier count.
 NATIVE_PART_WEIGHTS = {0: 30, 1: 50, 2: 40, 3: 40, 4: 20, 5: 20, 6: 20, 7: 20, 8: 20, 9: 30, 10: 15, 11: 20, 12: 15, 13: 30, 14: 15, 15: 15, 16: 30, 17: 25, 18: 25, 19: 30, 20: 15, 21: 30, 22: 30, 23: 20, 24: 25, 25: 30, 26: 40, 27: 20, 28: 20, 29: 10}
 PART_WEIGHTS = {name: NATIVE_PART_WEIGHTS[part] for name, part in PART_IDS.items()}
 
 
 def active_names(manifest):
+    if manifest['schema'] >= 8: return PERMANENT_NAMES
     if manifest['schema'] >= 7: return COLLECTION_NAMES
     if manifest['schema'] >= 5: return ALL_AREA_NAMES
     return EXPANDED_NAMES if manifest["schema"] >= 2 else NAMES
@@ -186,10 +194,19 @@ def route_strength(name, manifest, inventory=None):
 
 
 def can_reach_manifest(name, inventory, manifest):
+    if manifest['schema'] >= 8 and name in OBSTACLES:
+        stage, kind, _, _ = OBSTACLES[name]
+        _, area, access = next(row for row in START_AREAS.values() if row[0] == stage)
+        owned = color_inventory(inventory, manifest)
+        return bool((START_AREAS[manifest['profile']][1] == area or inventory.get(access, 0))
+                    and all(owned.get(c, 0) for c in (RED, YELLOW, BLUE))
+                    and (kind != 102 or field_capacity(inventory, True, manifest.get('starting_flarlic', 2)) >= 100))
     if manifest['schema'] >= 7:
-        if name not in COLLECTION_LOCATION_IDS: return False
-        if name in TOTAL_POPULATION:
-            if TOTAL_POPULATION[name] <= 20: return True
+        ids = PERMANENT_LOCATION_IDS if manifest['schema'] >= 8 else COLLECTION_LOCATION_IDS
+        population = FINE_POPULATION if manifest['schema'] >= 8 else TOTAL_POPULATION
+        if name not in ids: return False
+        if name in population:
+            if population[name] <= 20: return True
             owned = color_inventory(inventory, manifest)
             start = START_AREAS[manifest['profile']][1]
             return bool(start == 'The Forest of Hope' or inventory.get(FOREST_ACCESS, 0)
@@ -247,7 +264,9 @@ def item_pool(manifest):
 
 
 def check_area(name):
-    if name in TOTAL_POPULATION: return 'The Forest of Hope'
+    if name in FINE_POPULATION: return 'The Forest of Hope'
+    if name in OBSTACLES:
+        return next(area for stage, area, _ in START_AREAS.values() if stage == OBSTACLES[name][0])
     if name in DELIVERY_BESTIARY: return check_area(DELIVERY_BESTIARY[name])
     if name == POSITRON or name in IMPACT_EXPLORATION: return 'The Impact Site'
     if name in CHECK_AREAS:

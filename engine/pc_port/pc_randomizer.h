@@ -32,3 +32,5 @@ void pc_randomizer_enemy_defeated(int type, int stage, bool healthDepleted, bool
 void pc_randomizer_observe_exploration(int stage, float dx, float dz, bool grounded, bool gameplay);
 
 void pc_randomizer_validate_part_weight(int part, int minimum);
+
+void pc_randomizer_observe_obstacle(int stage, int kind, float x, float z, bool complete, bool gameplay);

@@ -1,3 +1,7 @@
+#include "BuildingItem.h"
+#include "KusaItem.h"
+#include "Generator.h"
+#include "WorkObject.h"
 #include "GameCoreSection.h"
 #include "pc_bbft.h"
 #include "pc_randomizer.h"
@@ -1824,6 +1828,29 @@ void GameCoreSection::updateAI()
             const int field = int(GameStat::formationPikis) + int(GameStat::freePikis) + int(GameStat::workPikis);
             pc_randomizer_observe_population(field, true);
             pc_randomizer_observe_total_population(int(GameStat::allPikis), true);
+            if (flowCont.mCurrentStage) {
+                auto observe = [](Creature* obj, int kind, bool complete) {
+                    if (!obj || !obj->mGenerator) return;
+                    const Vector3f pos = obj->mGenerator->mGenPosition + obj->mGenerator->mGenOffset;
+                    pc_randomizer_observe_obstacle(flowCont.mCurrentStage->mStageID, kind, pos.x, pos.z, complete, true);
+                };
+                if (itemMgr) {
+                    Iterator it(itemMgr->mMeltingPotMgr);
+                    CI_LOOP(it) {
+                        Creature* obj = *it;
+                        if (!obj) continue;
+                        if (obj->isSluice()) observe(obj, obj->mObjType, static_cast<BuildingItem*>(obj)->isCompleted());
+                        else if (obj->mObjType == OBJTYPE_Kusa) observe(obj, 100, obj->mMaxHealth > 0 && obj->mHealth >= obj->mMaxHealth);
+                    }
+                }
+                if (workObjectMgr) {
+                    Iterator it(workObjectMgr);
+                    CI_LOOP(it) {
+                        WorkObject* obj = static_cast<WorkObject*>(*it);
+                        if (obj && (obj->isBridge() || obj->isHinderRock())) observe(obj, obj->isBridge() ? 101 : 102, obj->isFinished());
+                    }
+                }
+            }
             UfoItem* ship = itemMgr ? itemMgr->getUfo() : nullptr;
             if (ship && flowCont.mCurrentStage) {
                 const Vector3f base = ship->getGoalPos();
@@ -1988,6 +2015,48 @@ void GameCoreSection::updateAI()
             gameflow.mMemoryCard.getQuickInfos(infos);
             if (infos[0].mCurrentDay != gameflow.mWorldClock.mCurrentDay || infos[0].mSaveStatus != PlayState::ReadyToSave) std::abort();
             std::puts("[Pikmin Randomizer] TEST_ONLY native_save_written_and_read_back consecutive=2");
+        }
+    }
+    if (pc_randomizer_enabled() && scripted && !std::strcmp(scripted, "permanent")
+        && background && !std::strcmp(background, "1") && bbftRedsReady
+        && !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll && !gameflow.mIsUIOverlayActive) {
+        static int phase = 0;
+        if (phase == 0 || (phase == 1 && pc_randomizer_repairs() >= 1)) {
+            const bool full = phase == 1;
+            auto change = [full](Creature* obj, int kind) {
+                if (!obj || !obj->mGenerator) return;
+                if (kind == 0) {
+                    BuildingItem* wall = static_cast<BuildingItem*>(obj);
+                    wall->mCurrStage = wall->mNumStages - (full ? 0 : 1);
+                } else if (kind == 1) obj->mHealth = obj->mMaxHealth - (full ? 0.0f : 1.0f);
+                else if (kind == 2) {
+                    Bridge* bridge = static_cast<Bridge*>(obj);
+                    for (int i = 0; i < bridge->getStage(); ++i) {
+                        const bool done = full || (i == 0 && bridge->getStage() > 1);
+                        bridge->mStageProgressList[i] = done ? bridge->mMaxHealth : 0.0f;
+                        bridge->setStageFinished(i, done);
+                    }
+                } else static_cast<HinderRock*>(obj)->mState = full ? 2 : 0;
+                if (full) {
+                    char buffer[4096] = {};
+                    RamStream stream(buffer, sizeof(buffer));
+                    obj->doSave(stream); stream.setPosition(0); obj->doLoad(stream);
+                }
+            };
+            Iterator items(itemMgr->mMeltingPotMgr);
+            CI_LOOP(items) {
+                Creature* obj = *items;
+                if (obj->isSluice()) change(obj, 0);
+                else if (obj->mObjType == OBJTYPE_Kusa) change(obj, 1);
+            }
+            Iterator works(workObjectMgr);
+            CI_LOOP(works) {
+                WorkObject* obj = static_cast<WorkObject*>(*works);
+                if (obj->isBridge()) change(obj, 2);
+                else if (obj->isHinderRock()) change(obj, 3);
+            }
+            ++phase;
+            std::puts(full ? "[Pikmin Randomizer] TEST_ONLY permanent_complete_loaded" : "[Pikmin Randomizer] TEST_ONLY permanent_partial_ready");
         }
     }
     if (pc_randomizer_color_stats() && scripted && !std::strcmp(scripted, "progressive-stats")

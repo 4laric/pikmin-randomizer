@@ -7,7 +7,7 @@ from Options import PerGameCommonOptions, Toggle, Choice, Range
 from worlds.AutoWorld import World
 from .core.catalog import (GAME, ITEM_IDS, LOCATION_IDS, NAMES, CHECK_AREAS,
                            CHECK_REQUIREMENTS, UNLOCKS, REPAIR, REPAIR_COUNT, ALL_LOCATION_IDS,
-                           active_names, item_pool, check_area, can_reach_manifest, FLARLIC, ALL_AREA_LOCATION_IDS, START_AREAS, COLLECTION_LOCATION_IDS)
+                           active_names, item_pool, check_area, can_reach_manifest, FLARLIC, ALL_AREA_LOCATION_IDS, START_AREAS, COLLECTION_LOCATION_IDS, PERMANENT_LOCATION_IDS)
 from .core.seed import generate, fingerprint
 from .core.stats import UPGRADE_ITEMS
 
@@ -52,6 +52,12 @@ class RandomizeColorStats(Toggle):
     default = 0
 
 
+class PermanentChecks(Toggle):
+    """Enable 19 total-population milestones and 51 individual walls, climbing sticks, bridges and boxes. Enables collection checks; 119 total checks. Obstacle routes currently require all colors conservatively; boxes also require field capacity 100."""
+    display_name = 'Permanent Structure and Granular Population Checks'
+    default = 0
+
+
 class ProgressiveColorStats(Toggle):
     """Receive per-color stat upgrades as AP items. Vanilla or rolled bases; damage and carry have two upgrades, movement and attack rate one. Enables collection checks. Stacks additively with rolled stats."""
     display_name = "Progressive Color Stats"
@@ -68,6 +74,7 @@ class StartingFlarlic(Range):
 
 @dataclass
 class PikminOptions(PerGameCommonOptions):
+    permanent_checks: PermanentChecks
     progressive_color_stats: ProgressiveColorStats
     randomize_color_stats: RandomizeColorStats
     starting_flarlic: StartingFlarlic
@@ -91,7 +98,7 @@ class PikminRandomizerWorld(World):
     game = GAME
     options_dataclass = PikminOptions
     item_name_to_id = ITEM_IDS
-    location_name_to_id = {**ALL_AREA_LOCATION_IDS, **COLLECTION_LOCATION_IDS}
+    location_name_to_id = {**ALL_AREA_LOCATION_IDS, **PERMANENT_LOCATION_IDS}
     required_client_version = (0, 6, 0)
 
     def create_regions(self):
@@ -137,7 +144,7 @@ class PikminRandomizerWorld(World):
             self._manifest = generate(str(self.multiworld.seed_name), "ap", self.multiworld.player_name[self.player],
                             expanded=bool(self.options.expanded_checks),
                             starting_area=('forest', 'navel', 'random', 'impact', 'spring', 'trial')[self.options.starting_area.value],
-                            starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas), enemy_shuffle=bool(self.options.enemy_shuffle), collection_checks=bool(self.options.collection_checks), starting_flarlic=self.options.starting_flarlic.value, randomize_color_stats=bool(self.options.randomize_color_stats), progressive_color_stats=bool(self.options.progressive_color_stats))
+                            starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas), enemy_shuffle=bool(self.options.enemy_shuffle), collection_checks=bool(self.options.collection_checks), starting_flarlic=self.options.starting_flarlic.value, randomize_color_stats=bool(self.options.randomize_color_stats), progressive_color_stats=bool(self.options.progressive_color_stats), permanent_checks=bool(self.options.permanent_checks))
         return self._manifest
 
     def fill_slot_data(self):

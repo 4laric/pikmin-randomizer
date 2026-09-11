@@ -13,9 +13,9 @@ from randomizer.runner import NativeRun
 from randomizer.catalog import UNLOCKS, ITEM_IDS, REPAIR, FOREST_ACCESS, NAVEL_ACCESS, progression_pool, FLARLIC, START_AREAS
 
 
-def main(exe, assets, output, expanded=False, starting_area='forest', seed='startup-smoke', starting_color='red', all_areas=False, enemy_shuffle=False, save_fixture=False, collection_checks=False, collection_fixture=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False):
+def main(exe, assets, output, expanded=False, starting_area='forest', seed='startup-smoke', starting_color='red', all_areas=False, enemy_shuffle=False, save_fixture=False, collection_checks=False, collection_fixture=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False):
     collection_checks = collection_checks or collection_fixture
-    session = Session(generate(seed, "ap", expanded=expanded, starting_area=starting_area, starting_color=starting_color, all_areas=all_areas, enemy_shuffle=enemy_shuffle, collection_checks=collection_checks, starting_flarlic=starting_flarlic, randomize_color_stats=randomize_color_stats, progressive_color_stats=progressive_color_stats), output)
+    session = Session(generate(seed, "ap", expanded=expanded, starting_area=starting_area, starting_color=starting_color, all_areas=all_areas, enemy_shuffle=enemy_shuffle, collection_checks=collection_checks, starting_flarlic=starting_flarlic, randomize_color_stats=randomize_color_stats, progressive_color_stats=progressive_color_stats, permanent_checks=permanent_checks), output)
     initial_field = min(20, 10 * (starting_flarlic if starting_flarlic is not None else 2))
     color = session.manifest.get('starting_color', 'red')
     native_color = {'blue': 0, 'red': 1, 'yellow': 2}[color]
@@ -63,6 +63,9 @@ def main(exe, assets, output, expanded=False, starting_area='forest', seed='star
             wait("GOAL: Ship repaired!")
             run.poll()
             expected = {'Population: 20 total Pikmin' if collection_checks else 'Population: 20 Pikmin in the field', f'Explore: {area} - Land'} if expanded else set()
+            if session.manifest['schema'] >= 8:
+                # The two received Onion unlocks each add five stored starters.
+                expected.add('Population: 30 total Pikmin')
             if not collection_checks and initial_field < 20:
                 expected.discard('Population: 20 Pikmin in the field')
             if collection_fixture:
@@ -91,9 +94,10 @@ if __name__ == "__main__":
     p.add_argument('--enemy-shuffle', action='store_true')
     p.add_argument('--randomize-color-stats', action='store_true')
     p.add_argument('--progressive-color-stats', action='store_true')
+    p.add_argument('--permanent-checks', action='store_true')
     p.add_argument('--save-fixture', action='store_true', help='Requires TEST_HOOKS build; tests isolated card saving')
     p.add_argument('--collection-checks', action='store_true')
     p.add_argument('--collection-fixture', action='store_true', help='Requires TEST_HOOKS; synthetic stock and corpse absorption')
     p.add_argument('--seed', default='startup-smoke')
     p.add_argument('--starting-color', choices=['red', 'yellow', 'blue', 'random'], default='red')
-    a=p.parse_args();main(a.exe,a.assets,a.output.resolve(),a.expanded,a.starting_area,a.seed,a.starting_color,a.all_areas,a.enemy_shuffle,a.save_fixture,a.collection_checks,a.collection_fixture,a.starting_flarlic,a.randomize_color_stats,a.progressive_color_stats)
+    a=p.parse_args();main(a.exe,a.assets,a.output.resolve(),a.expanded,a.starting_area,a.seed,a.starting_color,a.all_areas,a.enemy_shuffle,a.save_fixture,a.collection_checks,a.collection_fixture,a.starting_flarlic,a.randomize_color_stats,a.progressive_color_stats,a.permanent_checks)

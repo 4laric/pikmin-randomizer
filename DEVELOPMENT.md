@@ -1,5 +1,31 @@
 # Standalone milestone: local implementation
 
+## Permanent structures and scalable checks (issue #31)
+
+AP world v0.12.0 option `permanent_checks` / CLI `--permanent-checks` creates schema 8 with 119 locations. The first 58 native journal indices and all existing AP location IDs remain unchanged. Ten new population thresholds and 51 individual structures are appended; new AP IDs start at `LOCATION_BASE + 100`. Native schema 8 uses `CHECKS count index...` with bounded, unique indices and a required `check-set-v1` capability. Internal storage is a set, avoiding shifts beyond 64 bits; schemas 1–7 retain their original mask protocol. Check journals remain one index per complete line and merge idempotently on relaunch.
+
+The 19 total-population thresholds are 20–100 every 10, 125/150/175/200, and 250–500 every 50. Populations still count living field/stored/sprout bodies, not carrying strength. Extra checks currently add repair rewards above the unchanged 25-repair goal; future item-pool changes can use this space.
+
+The native all-area audit identified the following retail generator instances. `randomizer/obstacles.py` stores stable area, kind and rounded generator-position-plus-offset identities; it never identifies moving boxes by their current position. Full native observations are compared with this catalog by `scripts/audit_permanent_checks.py`.
+
+| Area | Walls | Sticks | Bridges | Boxes |
+| --- | ---: | ---: | ---: | ---: |
+| Impact Site | 2 | 1 | 0 | 1 |
+| Forest of Hope | 9 | 0 | 2 | 1 |
+| Forest Navel | 8 | 4 | 5 | 0 |
+| Distant Spring | 5 | 3 | 4 | 0 |
+| Final Trial | 3 | 0 | 2 | 1 |
+
+Active-gameplay observers scan the native MeltingPot item manager for walls/climbing sticks and WorkObject manager for bridges/boxes. Completion uses `BuildingItem::isCompleted`, built stick health reaching its maximum, `Bridge::isFinished`, and `HinderRock::isFinished`. Unknown identities, partial work, paused/unready observations and inaccessible areas do not award checks. Repeated frames/revisits deduplicate through the same native/session journal. These hooks do not alter object layouts or native save formats.
+
+Route logic deliberately requires area access and all three colors for each structure; boxes additionally require capacity 100. This is conservative pending per-instance approach playtests, and does not credit rolled carrying strength toward the vanilla box pusher-body count. The status command lists structures and logic availability. Physical campaign/obstacle resume remains issue #6; AP journal recovery alone does not restore the native world.
+
+Validation: 48 Python tests; 2,460 packaged AP fills including 100 new all-area/random-color/both-stat-mode schema-8 seeds, plus remote-Blue and remote-Carry two-player cases. Native protocol tests exercise restoration above index 64, all 19 milestones/all 51 identities, malformed/duplicate/out-of-range sets, partial and unknown identity suppression, and journal deduplication. Existing legacy, all-area/color, collection and progressive-stat protocols pass. Five hidden TEST_HOOKS fixtures validated all 51 real structures: partial state produces no check, completed values survive each object's actual native doSave/doLoad routines, the central gameplay observer reports only that area's structures, and repeated frames do not duplicate rewards. The bridge fixture explicitly sets saved work-progress values as well as completed geometry.
+
+Native source `165ff3c5`; production TEST_HOOKS OFF build passed the fresh seed startup, ten blue field Pikmin, live stat receipts, other-color grants exactly once, area/goal gates, and only the landing/population-20/population-30 checks (30 follows the two five-Pikmin Onion grants). No obstacle was spuriously checked during startup.
+
+Fresh local playtest: `output/turkey-build-01/Play.cmd`, Impact Site/blue, field cap 10, both stat options, enemy-family shuffle and permanent checks. Player session is fresh; tests use separate private sessions. AP artifact: `output/pikmin_randomizer-0.12.0.apworld`. Full player-driven route/combat/day-end acceptance is still pending.
+
 ## Combined wide rolls and upgrades (issue #30)
 
 AP v0.11.0 supports both stat options together. New initial rolls use `color-stats-v2`, the `COLOR_STATS_WIDE` bootstrap marker and an independent v2 random stream: damage 25–200%, movement/attack rate 50–150% (25-point increments), carrying strength 1–5. Original v1 manifests and their narrower ranges remain valid. Native stores the immutable initial profiles separately from current profiles; each authenticated tier adds +25 percentage points or +1 carrying strength to that baseline. Maximum upgraded values are damage 250%, movement/attack rate 175%, carry 7. Existing color abilities and throw heights are unchanged.

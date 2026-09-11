@@ -13,6 +13,7 @@ def main():
     gen = sub.add_parser("generate")
     gen.add_argument("--seed", required=True)
     gen.add_argument("--starting-flarlic", type=int, choices=range(1, 11), default=1, help="Initial field capacity in tens (default 1 = 10 Pikmin)")
+    gen.add_argument("--permanent-checks", action="store_true", help="Finer population and permanent obstacle completion checks")
     gen.add_argument("--progressive-color-stats", action="store_true", help="AP stat upgrades per color; enables collection checks")
     gen.add_argument("--randomize-color-stats", action="store_true", help="Seeded damage, movement, attack rate and carrying strength per color")
     gen.add_argument("--expanded", action="store_true", help="Flarlic, population, bestiary and exploration checks")
@@ -38,7 +39,7 @@ def main():
     status.add_argument("--output", type=Path)
     args = parser.parse_args()
     if args.command == "generate":
-        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas, enemy_shuffle=args.enemy_shuffle, collection_checks=args.collection_checks, starting_flarlic=args.starting_flarlic, randomize_color_stats=args.randomize_color_stats, progressive_color_stats=args.progressive_color_stats)
+        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas, enemy_shuffle=args.enemy_shuffle, collection_checks=args.collection_checks, starting_flarlic=args.starting_flarlic, randomize_color_stats=args.randomize_color_stats, progressive_color_stats=args.progressive_color_stats, permanent_checks=args.permanent_checks)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8") as f:
             f.write(json.dumps(manifest, indent=2) + "\n")
@@ -62,9 +63,9 @@ def main():
                 from .stats import profile_lines
                 if "color_stats" in manifest or manifest.get("progressive_color_stats"):
                     lines += ["## Color profiles", ""] + profile_lines(manifest, session.inventory) + [""]
-                from .catalog import TOTAL_POPULATION, DELIVERY_BESTIARY
-                for category, entries in (("Parts and Onions", NAMES + (POSITRON,)), ("Population", TOTAL_POPULATION if manifest['schema'] >= 7 else POPULATION),
-                                          ("Bestiary - Onion deliveries" if manifest['schema'] >= 7 else "Bestiary - first defeats", DELIVERY_BESTIARY if manifest['schema'] >= 7 else BESTIARY), ("Exploration", ALL_EXPLORATION)):
+                from .catalog import TOTAL_POPULATION, DELIVERY_BESTIARY, FINE_POPULATION, OBSTACLES
+                for category, entries in (("Parts and Onions", NAMES + (POSITRON,)), ("Population", FINE_POPULATION if manifest['schema'] >= 8 else TOTAL_POPULATION if manifest['schema'] >= 7 else POPULATION),
+                                          ("Bestiary - Onion deliveries" if manifest['schema'] >= 7 else "Bestiary - first defeats", DELIVERY_BESTIARY if manifest['schema'] >= 7 else BESTIARY), ("Exploration", ALL_EXPLORATION), ("Permanent obstacles", OBSTACLES)):
                     enabled = [n for n in entries if n in session.names]
                     if not enabled: continue
                     lines += ["## " + category, ""]

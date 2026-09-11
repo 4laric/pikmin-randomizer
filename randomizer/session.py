@@ -123,6 +123,9 @@ class Session:
         if self.manifest['schema'] >= 5 and inventory[IMPACT_ACCESS]:
             unlocks |= 128
         checks = sum(1 << i for i, name in enumerate(self.names) if name in self.data["checked"])
+        if self.manifest['schema'] >= 8:
+            indices = [str(i) for i, n in enumerate(self.names) if n in self.data['checked']]
+            checks = 'CHECKS ' + str(len(indices)) + (' ' + ' '.join(indices) if indices else '')
         repairs = min(inventory[REPAIR], self.manifest["goal"])
         if self.manifest["schema"] >= 2:
             flarlic = min(10 - self.manifest.get("starting_flarlic", 2), inventory[FLARLIC])

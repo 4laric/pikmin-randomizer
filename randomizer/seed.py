@@ -4,7 +4,7 @@ import json
 from collections import Counter
 from .catalog import (GAME, NAMES, PART_IDS, LOCATION_IDS, UNLOCKS,
                       REPAIR, REPAIR_COUNT, CHECK_REQUIREMENTS, active_names, ALL_LOCATION_IDS,
-                      can_reach, can_reach_manifest, progression_pool, item_pool, START_AREAS, ALL_AREA_LOCATION_IDS, ALL_PART_IDS, COLLECTION_LOCATION_IDS)
+                      can_reach, can_reach_manifest, progression_pool, item_pool, START_AREAS, ALL_AREA_LOCATION_IDS, ALL_PART_IDS, COLLECTION_LOCATION_IDS, PERMANENT_LOCATION_IDS)
 
 EXPANDED_CAPABILITIES = ["flarlic-v1", "population-v1", "bestiary-v1", "exploration-v1"]
 
@@ -42,8 +42,8 @@ class SeedRandom:
         return values
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False):
-    collection_checks = collection_checks or progressive_color_stats
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False):
+    collection_checks = collection_checks or progressive_color_stats or permanent_checks
     result = dict(schema=1, game=GAME, seed=str(seed), slot=slot, mode=mode,
                   profile="foh-day2", catalog="vanilla-sites-v1", rng="sha256-counter-v1",
                   placement="identity-v1", assignments=dict(PART_IDS),
@@ -81,6 +81,10 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         result.update(schema=7, catalog='gameplay-checks-v7', locations=dict(COLLECTION_LOCATION_IDS),
                       enemy_shuffle=result.get('enemy_shuffle', 'none'), enemy_mask=result.get('enemy_mask', 0))
         result['capabilities'] = [c for c in result['capabilities'] if c not in ('population-v1', 'bestiary-v1', 'enemy-families-v1')] + ['enemy-families-v1', 'total-population-v1', 'corpse-delivery-v1']
+    if permanent_checks:
+        from .catalog import PERMANENT_LOCATION_IDS
+        result.update(schema=8, catalog='gameplay-checks-v8', locations=dict(PERMANENT_LOCATION_IDS))
+        result['capabilities'] += ['permanent-checks-v1', 'check-set-v1']
     if starting_flarlic is not None:
         result["starting_flarlic"] = starting_flarlic
         result["capabilities"].append("starting-flarlic-v1")
@@ -98,9 +102,9 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
 def validate(m):
     expected = {"schema", "game", "seed", "slot", "mode", "profile", "catalog", "rng", "placement",
                 "assignments", "locations", "goal", "day_policy", "capabilities"}
-    if type(m) is dict and m.get('schema', 0) in (4, 5, 6, 7):
+    if type(m) is dict and m.get('schema', 0) in (4, 5, 6, 7, 8):
         expected.add('starting_color')
-    if type(m) is dict and m.get('schema') in (6, 7):
+    if type(m) is dict and m.get('schema') in (6, 7, 8):
         expected.update(('enemy_shuffle', 'enemy_mask'))
     if type(m) is dict and "starting_flarlic" in m:
         expected.add("starting_flarlic")
@@ -114,11 +118,11 @@ def validate(m):
             raise ValueError("color stats require the all-area catalog")
     if type(m) is dict and 'progressive_color_stats' in m:
         expected.add('progressive_color_stats')
-        if m['progressive_color_stats'] is not True or m.get('schema') != 7:
+        if m['progressive_color_stats'] is not True or m.get('schema') not in (7, 8):
             raise ValueError('invalid progressive color stats mode')
     if type(m) is not dict or set(m) != expected:
         raise ValueError("manifest fields do not match schema 1")
-    if type(m["schema"]) is not int or m["schema"] not in (1, 2, 3, 4, 5, 6, 7):
+    if type(m["schema"]) is not int or m["schema"] not in (1, 2, 3, 4, 5, 6, 7, 8):
         raise ValueError("unsupported manifest schema")
     expanded = m["schema"] >= 2
     fixed = dict(schema=m["schema"], game=GAME, profile="foh-day2", catalog="vanilla-sites-v1",
@@ -144,6 +148,8 @@ def validate(m):
     if m['schema'] >= 7:
         fixed.update(catalog='gameplay-checks-v7', enemy_shuffle='families-v1' if m['enemy_mask'] else 'none',
                      capabilities=[c for c in fixed['capabilities'] if c not in ('population-v1', 'bestiary-v1')] + ['total-population-v1', 'corpse-delivery-v1'])
+    if m['schema'] >= 8:
+        fixed.update(catalog='gameplay-checks-v8', capabilities=fixed['capabilities'] + ['permanent-checks-v1', 'check-set-v1'])
     if "starting_flarlic" in m:
         fixed["capabilities"] = fixed["capabilities"] + ["starting-flarlic-v1"]
     if "color_stats" in m:
@@ -158,7 +164,7 @@ def validate(m):
             raise ValueError(f"invalid {key}")
     if m["mode"] not in ("solo", "ap"):
         raise ValueError("mode must be solo or ap")
-    for key, value in (("assignments", ALL_PART_IDS if m['schema'] >= 5 else PART_IDS), ("locations", COLLECTION_LOCATION_IDS if m['schema'] >= 7 else ALL_AREA_LOCATION_IDS if m['schema'] >= 5 else ALL_LOCATION_IDS if expanded else LOCATION_IDS)):
+    for key, value in (("assignments", ALL_PART_IDS if m['schema'] >= 5 else PART_IDS), ("locations", PERMANENT_LOCATION_IDS if m['schema'] >= 8 else COLLECTION_LOCATION_IDS if m['schema'] >= 7 else ALL_AREA_LOCATION_IDS if m['schema'] >= 5 else ALL_LOCATION_IDS if expanded else LOCATION_IDS)):
         if type(m[key]) is not dict or m[key] != value or any(type(v) is not int for v in m[key].values()):
             raise ValueError(f"unsupported {key}; relocation is not implemented")
 

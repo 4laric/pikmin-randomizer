@@ -10,6 +10,8 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <set>
+#include <tuple>
 #ifdef _WIN32
 #include <io.h>
 #else
@@ -27,7 +29,7 @@ bool configuredFlarlic = false, configuredStats = false, progressiveStats = fals
 int baseColorStats[3][4] = {{100, 100, 100, 1}, {100, 100, 100, 1}, {100, 100, 100, 1}};
 unsigned statUpgrades[3][4] = {};
 int colorStats[3][4] = {{100, 100, 100, 1}, {100, 100, 100, 1}, {100, 100, 100, 1}};
-std::uint64_t checks = 0;
+std::set<unsigned> checks;
 std::string token, fingerprint, saveRoot;
 std::filesystem::path directory;
 std::filesystem::file_time_type lastStamp{};
@@ -44,7 +46,7 @@ void expect(std::istream& in, const char* expected) {
     std::string word;
     if (!(in >> word) || word != expected) fail("unsupported or malformed bootstrap");
 }
-const char* checkName(unsigned i) { return schema >= 7 ? randomizerCollectionNames[i] : randomizerCheckNames[i]; }
+const char* checkName(unsigned i) { return schema >= 8 ? randomizerPermanentNames[i] : schema >= 7 ? randomizerCollectionNames[i] : randomizerCheckNames[i]; }
 int index(const char* name) {
     if (name) for (unsigned i = 0; i < checkCount; ++i) if (!std::strcmp(name, checkName(i))) return (int)i;
     return -1;
@@ -67,9 +69,9 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (!input) fail("cannot open standalone bootstrap");
     expect(input, "PIKMIN_RANDOMIZER");
     std::string version; input >> version;
-    if (version != "1" && version != "2" && version != "3" && version != "4" && version != "5" && version != "6" && version != "7") fail("unsupported bootstrap version");
+    if (version != "1" && version != "2" && version != "3" && version != "4" && version != "5" && version != "6" && version != "7" && version != "8") fail("unsupported bootstrap version");
     schema = (unsigned)(version[0] - '0');
-    checkCount = schema >= 5 ? 58 : schema >= 2 ? 55 : 30;
+    checkCount = schema >= 8 ? unsigned(sizeof(randomizerPermanentNames)/sizeof(*randomizerPermanentNames)) : schema >= 5 ? 58 : schema >= 2 ? 55 : 30;
     expect(input, "SESSION"); input >> token;
     expect(input, "FINGERPRINT"); input >> fingerprint;
     if (!hex64(token) || !hex64(fingerprint)) fail("invalid session or manifest fingerprint");
@@ -80,7 +82,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     else if (profile == "spring-day2" && schema >= 5) startStage = 3;
     else if (profile == "trial-day2" && schema >= 5) startStage = 4;
     else if (profile != "foh-day2") fail("unsupported start profile");
-    expect(input, "CATALOG"); expect(input, schema == 7 ? "gameplay-checks-v7" : schema == 6 ? "gameplay-checks-v6" : schema == 5 ? "gameplay-checks-v5" : schema == 4 ? "gameplay-checks-v4" : schema == 3 ? "gameplay-checks-v3" : schema == 2 ? "gameplay-checks-v2" : "vanilla-sites-v1");
+    expect(input, "CATALOG"); expect(input, schema == 8 ? "gameplay-checks-v8" : schema == 7 ? "gameplay-checks-v7" : schema == 6 ? "gameplay-checks-v6" : schema == 5 ? "gameplay-checks-v5" : schema == 4 ? "gameplay-checks-v4" : schema == 3 ? "gameplay-checks-v3" : schema == 2 ? "gameplay-checks-v2" : "vanilla-sites-v1");
     expect(input, "PLACEMENT"); expect(input, "identity-v1");
     expect(input, "GOAL"); expect(input, "25");
     expect(input, "DAYS"); expect(input, "repeat-day29-v1");
@@ -121,7 +123,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     }
     if (end == "PROGRESSIVE_STATS") {
         unsigned mode;
-        if (schema != 7 || !(input >> mode) || mode != 1) fail("invalid progressive stats mode");
+        if (schema < 7 || !(input >> mode) || mode != 1) fail("invalid progressive stats mode");
         progressiveStats = true;
         input >> end;
     }
@@ -143,6 +145,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (schema >= 5) hello << " all-areas-v1";
     if (schema >= 6) hello << " enemy-families-v1";
     if (schema >= 7) hello << " total-population-v1 corpse-delivery-v1";
+    if (schema >= 8) hello << " permanent-checks-v1 check-set-v1";
     if (configuredFlarlic) hello << " starting-flarlic-v1";
     if (configuredStats) hello << (wideStats ? " color-stats-v2" : " color-stats-v1");
     if (progressiveStats) hello << " progressive-color-stats-v1";
@@ -169,10 +172,23 @@ void pc_randomizer_update() {
     if (!input.is_open()) { ready = false; return; }
     std::string magic, session, end, extra;
     unsigned version, newReady, newRepairs, newUnlocks, newFlarlic = 0;
-    std::uint64_t newChecks;
+    std::set<unsigned> newChecks;
     bool parsed = bool(input >> magic >> version >> session >> newReady >> newRepairs >> newUnlocks);
     if (parsed && schema >= 2) parsed = bool(input >> newFlarlic);
-    parsed = parsed && bool(input >> newChecks >> end);
+    if (schema >= 8) {
+        std::string marker; unsigned count;
+        if (!parsed || !(input >> marker >> count) || marker != "CHECKS" || count > checkCount) fail("invalid check set header");
+        for (unsigned i = 0; i < count; ++i) {
+            unsigned slot;
+            if (!(input >> slot) || slot >= checkCount || !newChecks.insert(slot).second) fail("invalid or duplicate check index");
+        }
+    } else {
+        std::uint64_t mask = 0;
+        parsed = parsed && bool(input >> mask);
+        if (parsed && mask >= (1ull << checkCount)) fail("invalid legacy check mask");
+        for (unsigned i = 0; i < checkCount; ++i) if (mask & (1ull << i)) newChecks.insert(i);
+    }
+    parsed = parsed && bool(input >> end);
     unsigned newStats[3][4] = {};
     if (progressiveStats) {
         if (!parsed || end != "UPGRADES") fail("missing progressive stat state");
@@ -183,7 +199,7 @@ void pc_randomizer_update() {
         parsed = bool(input >> end);
     }
     if (!parsed || magic != "PIKMIN_STATE" || version != schema || session != token || newReady > 1
-        || newRepairs > 25 || newUnlocks > (schema >= 5 ? 255u : schema == 4 ? 127u : schema == 3 ? 63u : 31u) || newFlarlic > 10 - startingFlarlic || newChecks >= (1ull << checkCount)
+        || newRepairs > 25 || newUnlocks > (schema >= 5 ? 255u : schema == 4 ? 127u : schema == 3 ? 63u : 31u) || newFlarlic > 10 - startingFlarlic
         || end != "END" || (input >> extra))
         fail("invalid state: identity, version or range mismatch");
     // Inventory is monotonic within this authenticated run.
@@ -200,7 +216,7 @@ void pc_randomizer_update() {
     unlocks = newUnlocks;
     if (flarlic != newFlarlic) std::printf("[Pikmin Randomizer] CAPACITY %u\n", 10 * (startingFlarlic + newFlarlic));
     flarlic = newFlarlic;
-    checks |= newChecks;
+    checks.insert(newChecks.begin(), newChecks.end());
     lastStamp = stamp;
     lastFresh = std::chrono::steady_clock::now();
     if (repairs == 25 && !goalReported) {
@@ -244,7 +260,7 @@ bool pc_randomizer_has(const char* name) {
 }
 bool pc_randomizer_checked(const char* name) {
     const int slot = index(name);
-    return slot >= 0 && (checks & (1ull << slot)) != 0;
+    return slot >= 0 && checks.count(unsigned(slot)) != 0;
 }
 void pc_randomizer_check(const char* name) {
     if (!enabled || !ready) return;
@@ -254,7 +270,7 @@ void pc_randomizer_check(const char* name) {
         if (name && !std::strcmp(name, "Pikmin: Main Engine")) return;
         fail("unknown native collection identity");
     }
-    if (checks & (1ull << slot)) return;
+    if (checks.count(unsigned(slot))) return;
     FILE* file = std::fopen((directory / "checks.txt").string().c_str(), "a");
     if (!file) fail("cannot persist native collection");
     bool ok = std::fprintf(file, "%d\n", slot) > 0 && std::fflush(file) == 0;
@@ -265,7 +281,7 @@ void pc_randomizer_check(const char* name) {
 #endif
     ok = std::fclose(file) == 0 && ok;
     if (!ok) fail("native collection persistence failed");
-    checks |= 1ull << slot;
+    checks.insert(unsigned(slot));
     std::printf("[Pikmin Randomizer] CHECK %d %s\n", slot, name);
 }
 
@@ -299,6 +315,13 @@ void pc_randomizer_enemy_defeated(int type, int stage, bool healthDepleted, bool
 bool pc_randomizer_collection_checks() { return enabled && schema >= 7; }
 void pc_randomizer_observe_total_population(int totalPikmin, bool gameplay) {
     if (!pc_randomizer_collection_checks() || !gameplay || !ready || totalPikmin < 0) return;
+    if (schema >= 8) {
+        for (int count : randomizerFinePopulation) if (totalPikmin >= count) {
+            char name[80]; std::snprintf(name, sizeof(name), "Population: %d total Pikmin", count);
+            pc_randomizer_check(name);
+        }
+        return;
+    }
     for (int i = 0; i < 9; ++i)
         if (totalPikmin >= randomizerTotalPopulation[i]) pc_randomizer_check(checkName(30 + i));
 }
@@ -319,4 +342,17 @@ void pc_randomizer_observe_exploration(int stage, float dx, float dz, bool groun
 void pc_randomizer_validate_part_weight(int part, int minimum) {
     if (pc_randomizer_expanded() && (part < 0 || part >= 30 || randomizerPartWeights[part] != minimum))
         fail("loaded part weight differs from seed logic catalog");
+}
+
+void pc_randomizer_observe_obstacle(int stage, int kind, float x, float z, bool complete, bool gameplay) {
+    if (!enabled || !ready || !gameplay || !accessibleStage(stage) || !std::isfinite(x) || !std::isfinite(z)) return;
+    static std::set<std::tuple<int,int,int,int>> logged;
+    const int px = int(std::round(x)), pz = int(std::round(z));
+    if (schema >= 8 && complete) {
+        for (const auto& obstacle : randomizerObstacles)
+            if (obstacle.stage == stage && obstacle.kind == kind && obstacle.x == px && obstacle.z == pz)
+                pc_randomizer_check(obstacle.name);
+    }
+    if (logged.emplace(stage, kind, px, pz).second)
+        std::printf("[Pikmin Randomizer] OBSTACLE_INSTANCE stage=%d kind=%d x=%d z=%d complete=%d\n", stage, kind, px, pz, int(complete));
 }
