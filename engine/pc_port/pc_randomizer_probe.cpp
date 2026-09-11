@@ -95,6 +95,16 @@ int main(int argc, char** argv) {
             bool modernProbe = false;
             for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--bestiary-probe")) modernProbe = true;
             if (modernProbe) {
+                const int types[] = {3, 4, 18, 19, 20, 15, 30, 33};
+                const char* names[] = {"Dwarf Bulborb", "Spotty Bulborb", "Female Sheargrub", "Male Sheargrub", "Shearwig", "Fiery Blowhog", "Water Dumple", "Wollywog"};
+                for (int n = 0; n < 8; ++n) {
+                    char name[100]; std::snprintf(name, sizeof(name), "Bestiary: Deliver %s", names[n]);
+                    pc_randomizer_corpse_delivered(types[n], 1, true);
+                    pc_randomizer_corpse_delivered(types[n], 1, true);
+                    assert(pc_randomizer_checked(name));
+                }
+                // In shifted catalogs the old index incorrectly awarded this.
+                assert(!pc_randomizer_checked("Bestiary: Deliver Wogpole"));
                 for (const auto& entry : randomizerNewBestiary) {
                     pc_randomizer_corpse_delivered(entry.type, 1, false);
                     pc_randomizer_corpse_delivered(entry.type, 4, true);

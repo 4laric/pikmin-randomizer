@@ -497,7 +497,9 @@ void pc_randomizer_observe_total_population(int totalPikmin, bool gameplay) {
 void pc_randomizer_corpse_delivered(int type, int stage, bool gameplay) {
     if (!pc_randomizer_collection_checks() || !gameplay || !ready || !accessibleStage(stage)) return;
     for (int i = 0; i < 8; ++i)
-        if (type == randomizerEnemyTypes[i]) pc_randomizer_check(checkName(39 + i));
+        // Population variants shift catalog positions; resolve the stable name
+        // from the original collection catalog in the active check set.
+        if (type == randomizerEnemyTypes[i]) pc_randomizer_check(randomizerCollectionNames[39 + i]);
     if (schema >= 9 && type != 16) for (const auto& entry : randomizerNewBestiary)
         if (entry.type == type) pc_randomizer_check(entry.name);
 }

@@ -351,3 +351,8 @@ Physical combat/clearance/corpse-return and player-driven day transitions remain
 PC initialization now starts with TS_Off, so direct gameplay launches do not inherit the polys/anims renderer overlay. The legacy debug menu is not compiled into this port. Original non-PC initialization is preserved. Native commit: 44e3fef2.
 
 Validation: production build with test hooks OFF passes; isolated grouped startup in Hope and Spring renders, handshakes and matches seeded births (output/timers54-startup). Source inspection confirms the performance text is gated by TS_Off; no framebuffer comparison was performed. Local turkey-mixed-01 and turkey-groups-01 launchers now use bin/nectar-no-counters.exe; running processes and sessions were preserved. SHA256: f89db3d3afe13acbfe30356256380f6c96764d99bf0ffbb2b1609e3de795b48a.
+
+## Corpse catalog index repair (#55)
+
+Native 4ddb72cd resolves the original eight corpse checks by stable collection names instead of positions in the active catalog. Color population milestones had shifted those positions, causing a Bulborb to award Wogpole. Expanded bestiary protocol now exercises all nineteen species and rejects premature Wogpole credit; both modern check sets and legacy collection protocol pass. Existing session rewards/history are preserved rather than retroactively rewritten.
+Production build and isolated grouped Hope/Spring startup also pass (output/corpse55-startup). Both local mixed/groups launchers use nectar-corpse-fix.exe on next launch; running game remains untouched.
