@@ -284,7 +284,8 @@ extern bool DelayPikiBirth;
 
 #if defined(PIKI_PC_PORT)
 /// Colour chosen with the mouse wheel, or -1 when no preference is active.
-int pc_preferred_throw_color();
+int pc_preferred_throw_color(); // Selection class, including bomb yellows.
+int pc_throw_selection_class(Piki*);
 /// Handle one D-pad color-selection edge; returns a different-color candidate.
 Piki* pc_cycle_throw_color(Navi*, Piki* current);
 #endif

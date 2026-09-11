@@ -753,7 +753,7 @@ void NaviWalkState::exec(Navi* navi)
 			CI_LOOP(pf)
 			{
 				Piki* piki = (Piki*)*pf;
-				if (restrict && piki->mColor != preferredColor) {
+				if (restrict && pc_throw_selection_class(piki) != preferredColor) {
 					continue;
 				}
 				if (!roughCull(piki, navi, maxDist)) {
@@ -2007,7 +2007,7 @@ void NaviThrowWaitState::init(Navi* navi)
 		CI_LOOP(pf)
 		{
 			Piki* piki = (Piki*)*pf;
-			if (restrict && piki->mColor != preferredColor) {
+			if (restrict && pc_throw_selection_class(piki) != preferredColor) {
 				continue;
 			}
 			if (!roughCull(piki, navi, maxDist)) {

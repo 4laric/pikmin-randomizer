@@ -424,3 +424,12 @@ Native8cb303f8 uses held extract input only inside active Nuku. Release or held 
 Production game/probe build passes (output/pluck66-build.log). The real-engine isolated fixture passes unbroken hold without a preceding release, release, whistle cancel, re-press, release between exec and KEY_Finished, and bounded fast-pluck counter (output/pluck66-live). It sets up an initiated Nuku state with a live Pikmin; this is input/state regression coverage, not physical controller or a complete multi-sprout animation playtest. Build using engine/tools/verify_pluck_windows.py, run through scripts/test_pluck_native.py with an isolated output directory and local assets.
 
 Local turkey-finish-01/Play.cmd now selects nectar-pluck.exe, SHA256836FC4CBABF9346E61369D09BBA6B708644EC6F067EE18F61011E6D067EE6BC8. Includes whistle65. Previous launcher backed up; running processes, seed and session untouched. Physical multi-sprout acceptance remains open.
+
+
+## Bomb-yellow selection class (#67)
+
+Native30b4364b adds class3 for Yellow+hasBomb, retaining existing color IDs for ordinary Pikmin. D-pad cycling, shared wheel preference, next-Pikmin preview and both grab filters use the same class. Empty classes and simultaneous directions preserve previous behavior; range remains200. Existing held swapping and bomb mechanics remain unchanged.
+
+Production game/probe build passes (output/bomb67-build.log). Actual-engine selection fixture passes left/right between two yellow classes, preview persistence, simultaneous cancellation and empty bomb group (output/bomb67-live2). The first fixture run was invalidated by the red-only seed enforcing locked colors; corrected fixture sets colors/held sentinel synchronously without an AI tick. This is selection coverage, not real bomb-fuse/held-throw gameplay validation. See engine/tools/BOMB_SELECTION.md.
+
+Local turkey-finish-01/Play.cmd selects separate nectar-bomb-selection.exe, SHA2561AD88747F6C8BB51906E3A3373FC4DDD6AC91533366F723633D67A787210B46C. Includes whistle65/pluck66; previous launcher backed up. Player session and running processes unchanged. Physical bomb swapping/throw acceptance remains open.

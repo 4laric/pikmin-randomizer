@@ -665,13 +665,20 @@ static int sPreferredThrowColor = -1;
 /// actually thrown.
 int pc_preferred_throw_color() { return sPreferredThrowColor; }
 
-/// True when the squad holds at least one Pikmin of @p color.
-static bool pcSquadHasColor(int color)
+// Selection classes retain the three color IDs; bomb yellows are class 3.
+int pc_throw_selection_class(Piki* piki)
 {
-	if (color < 0 || color >= PikiColorCount) {
-		return false;
-	}
-	return GameStat::formationPikis.mCounts[color] > 0;
+    return piki->mColor == Yellow && piki->hasBomb() ? PikiColorCount : piki->mColor;
+}
+
+static bool pcSquadHasColor(Navi* navi, int selection)
+{
+    Iterator squad(navi->mPlateMgr);
+    CI_LOOP(squad) {
+        Piki* piki = static_cast<Piki*>(*squad);
+        if (piki->isAlive() && pc_throw_selection_class(piki) == selection) return true;
+    }
+    return false;
 }
 
 /**
@@ -683,16 +690,16 @@ static bool pcSquadHasColor(int color)
  * any of them. A preference whose colour ran out snaps to one that exists,
  * otherwise the wheel would appear stuck on an empty colour.
  */
-static void pcUpdatePreferredThrowColor()
+static void pcUpdatePreferredThrowColor(Navi* navi)
 {
 	if (pc_settings_get_mouse_wheel_action() != 0 && sPreferredThrowColor < 0) {
 		return;
 	}
 
-	int present[PikiColorCount];
+	int present[PikiColorCount + 1];
 	int presentCount = 0;
-	for (int color = 0; color < PikiColorCount; color++) {
-		if (pcSquadHasColor(color)) {
+	for (int color = 0; color < PikiColorCount + 1; color++) {
+		if (pcSquadHasColor(navi, color)) {
 			present[presentCount++] = color;
 		}
 	}
@@ -728,14 +735,14 @@ Piki* pc_cycle_throw_color(Navi* navi, Piki* current)
 	const int direction = int(navi->mKontroller->keyClick(KBBTN_DPAD_RIGHT))
 	                    - int(navi->mKontroller->keyClick(KBBTN_DPAD_LEFT));
 	if (!direction || !current) return nullptr;
-	for (int step = 1; step < PikiColorCount; ++step) {
-		const int color = (current->mColor + direction * step + PikiColorCount) % PikiColorCount;
+	for (int step = 1; step < PikiColorCount + 1; ++step) {
+		const int color = (pc_throw_selection_class(current) + direction * step + PikiColorCount + 1) % (PikiColorCount + 1);
 		Piki* nearest = nullptr;
 		f32 distance = 200.0f;
 		Iterator squad(navi->mPlateMgr);
 		CI_LOOP(squad) {
 			Piki* piki = static_cast<Piki*>(*squad);
-			if (piki->mColor != color || !piki->isAlive() || !piki->isThrowable()
+			if (pc_throw_selection_class(piki) != color || !piki->isAlive() || !piki->isThrowable()
 			    || piki->getState() != PIKISTATE_Normal) continue;
 			const f32 candidateDistance = qdist2(piki, navi);
 			if (candidateDistance < distance) { nearest = piki; distance = candidateDistance; }
@@ -753,7 +760,7 @@ Piki* pc_cycle_throw_color(Navi* navi, Piki* current)
 void Navi::findNextThrowPiki()
 {
 #if defined(PIKI_PC_PORT)
-	pcUpdatePreferredThrowColor();
+	pcUpdatePreferredThrowColor(this);
 #endif
 	mNextThrowPiki = nullptr;
 	Iterator iter(mPlateMgr);
@@ -769,7 +776,7 @@ void Navi::findNextThrowPiki()
 		if (dist < minDist && piki->getState() == PIKISTATE_Normal && piki->isThrowable()) {
 #if defined(PIKI_PC_PORT)
 			// With a colour chosen, only that colour competes for nearest.
-			if (sPreferredThrowColor >= 0 && piki->mColor != sPreferredThrowColor) {
+			if (sPreferredThrowColor >= 0 && pc_throw_selection_class(piki) != sPreferredThrowColor) {
 				continue;
 			}
 #endif
