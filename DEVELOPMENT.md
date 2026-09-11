@@ -1,3 +1,11 @@
+## Bomb placement warnings (#74)
+
+Native `161e688a` makes PC InteractWarn ignore bomb carriers. Previously one planter's warning could interrupt another carrier, transition it through LookAt, then return it to formation before bomb placement. Other Pikmin retain warning reactions. Explosion damage, chain logic and player whistle paths are unchanged.
+
+The real-engine fixture reproduced the old interruption and passes after the fix: multiple carriers retain normal state/bomb task, ordinary Pikmin enter LookAt, damaged carriers receive no pending recall, and released carriers react again. Held-creature sentinels exercise hasBomb synchronously; no real bomb deployment is simulated. See engine/tools/BOMB_WARNING.md. Production build with test hooks OFF passes and the exact turkey-wide-02 seed renders/handshakes with correct campaign enemy births in a private session. Full player multi-bomb/wall interaction still needs acceptance.
+
+Existing turkey-wide-02/Play.cmd now uses separate bin/nectar-bomb-warning.exe on relaunch. Prior launcher is backed up; seed, session and active game are unchanged. Evidence: output/bomb74-before-live, output/bomb74-after-live, output/bomb74-production-smoke.
+
 ## YAML balance options (#70)
 
 AP world 0.23.0 exposes initial min/max damage, movement and attack-rate percentages (25/50/75/100), per-color upgrade counts (damage/carry 0-4, movement/attack 0-2), and the randomized starting-area subset (four non-Trial regions). Current defaults are unchanged. `examples/Player1.yaml` documents the full playtest settings and existing options. Count overrides are stored as `stat_upgrade_counts`; profiles and starts remain resolved in the manifest. Native protocol uses the existing v3 profiles/v2 upgrades and Python clamps state to configured counts. No native rebuild or source snapshot change required. Lower counts free consumable slots; permanent checks remain implied by progressive stats.
