@@ -415,3 +415,12 @@ Native0baff6f8 recruits from whistle init and continuously while held. Radius st
 Production game/probe build passes (output/whistle65-build-final.log). Actual-engine isolated fixture passes23 protected mode tags, idle tap -> LookAt, held worker -> LookAt, out-of-range rejection and hold/radius boundaries (output/whistle65-live). This uses real recruitment code with synthetic mode tags, not every task animation/cleanup or physical gamepad input. See engine/tools/WHISTLE_QOL.md for reproduction and limits.
 
 Local turkey-finish-01/Play.cmd selects separate nectar-whistle.exe, SHA256 C365012F55551CFC85018EC9591DB7295CE3DBB96E56003B18C0B56BEF432B51. Previous launcher backed up as Play-before-whistle.cmd. Running games, seed and session untouched. Physical whistle feel and task-specific acceptance remain open.
+
+
+## Hold to continue initiated plucking (#66)
+
+Native8cb303f8 uses held extract input only inside active Nuku. Release or held whistle clears continuation, including fresh input sampling at KEY_Finished. First-pluck initiation and normal next-sprout selection/range remain unchanged. Fast continuation is set once at the animation boundary instead of incrementing per frame. Original non-PC behavior remains behind the existing platform branch.
+
+Production game/probe build passes (output/pluck66-build.log). The real-engine isolated fixture passes unbroken hold without a preceding release, release, whistle cancel, re-press, release between exec and KEY_Finished, and bounded fast-pluck counter (output/pluck66-live). It sets up an initiated Nuku state with a live Pikmin; this is input/state regression coverage, not physical controller or a complete multi-sprout animation playtest. Build using engine/tools/verify_pluck_windows.py, run through scripts/test_pluck_native.py with an isolated output directory and local assets.
+
+Local turkey-finish-01/Play.cmd now selects nectar-pluck.exe, SHA256836FC4CBABF9346E61369D09BBA6B708644EC6F067EE18F61011E6D067EE6BC8. Includes whistle65. Previous launcher backed up; running processes, seed and session untouched. Physical multi-sprout acceptance remains open.
