@@ -42,7 +42,7 @@ class SeedRandom:
         return values
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False):
     result = dict(schema=1, game=GAME, seed=str(seed), slot=slot, mode=mode,
                   profile="foh-day2", catalog="vanilla-sites-v1", rng="sha256-counter-v1",
                   placement="identity-v1", assignments=dict(PART_IDS),
@@ -63,11 +63,15 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         color = ('red', 'yellow', 'blue')[SeedRandom(str(seed) + '/color/' + slot).below(3)] if starting_color == 'random' else starting_color
         result.update(schema=4, starting_color=color, catalog='gameplay-checks-v4', locations=dict(ALL_LOCATION_IDS),
                       capabilities=['identity-placement-v1', 'random-start-v1', 'repair-goal-v1', 'repeat-day29-v1'] + EXPANDED_CAPABILITIES + ['starting-color-v1'])
-    if all_areas or starting_area in ('random', 'impact', 'spring', 'trial'):
+    if all_areas or enemy_shuffle or starting_area in ('random', 'impact', 'spring', 'trial'):
         profile = tuple(START_AREAS)[SeedRandom(str(seed) + '/all-areas/' + slot).below(5)] if starting_area == 'random' else ('foh-day2' if starting_area == 'forest' else starting_area + '-day2')
         result.update(schema=5, profile=profile, starting_color=result.get('starting_color', 'red'),
                       catalog='gameplay-checks-v5', assignments=dict(ALL_PART_IDS), locations=dict(ALL_AREA_LOCATION_IDS),
                       capabilities=['identity-placement-v1', 'random-start-v1', 'repair-goal-v1', 'repeat-day29-v1'] + EXPANDED_CAPABILITIES + ['starting-color-v1', 'all-areas-v1'])
+    if enemy_shuffle:
+        result.update(schema=6, catalog='gameplay-checks-v6', enemy_shuffle='families-v1',
+                      enemy_mask=1 + SeedRandom(str(seed) + '/enemies/' + slot).below(7),
+                      capabilities=result['capabilities'] + ['enemy-families-v1'])
     validate(result)
     return result
 
@@ -75,11 +79,13 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
 def validate(m):
     expected = {"schema", "game", "seed", "slot", "mode", "profile", "catalog", "rng", "placement",
                 "assignments", "locations", "goal", "day_policy", "capabilities"}
-    if type(m) is dict and m.get('schema', 0) in (4, 5):
+    if type(m) is dict and m.get('schema', 0) in (4, 5, 6):
         expected.add('starting_color')
+    if type(m) is dict and m.get('schema') == 6:
+        expected.update(('enemy_shuffle', 'enemy_mask'))
     if type(m) is not dict or set(m) != expected:
         raise ValueError("manifest fields do not match schema 1")
-    if type(m["schema"]) is not int or m["schema"] not in (1, 2, 3, 4, 5):
+    if type(m["schema"]) is not int or m["schema"] not in (1, 2, 3, 4, 5, 6):
         raise ValueError("unsupported manifest schema")
     expanded = m["schema"] >= 2
     fixed = dict(schema=m["schema"], game=GAME, profile="foh-day2", catalog="vanilla-sites-v1",
@@ -98,6 +104,10 @@ def validate(m):
         fixed.update(catalog='gameplay-checks-v4', capabilities=fixed['capabilities'] + ['starting-color-v1'])
     if m['schema'] >= 5:
         fixed.update(catalog='gameplay-checks-v5', capabilities=fixed['capabilities'] + ['all-areas-v1'])
+    if m['schema'] >= 6:
+        if type(m['enemy_mask']) is not int or not 1 <= m['enemy_mask'] <= 7:
+            raise ValueError('unsupported enemy permutation')
+        fixed.update(catalog='gameplay-checks-v6', enemy_shuffle='families-v1', capabilities=fixed['capabilities'] + ['enemy-families-v1'])
     for key, value in fixed.items():
         if type(m[key]) is not type(value) or m[key] != value:
             raise ValueError(f"unsupported {key}: {m[key]!r}")

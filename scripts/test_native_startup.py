@@ -13,8 +13,8 @@ from randomizer.runner import NativeRun
 from randomizer.catalog import UNLOCKS, ITEM_IDS, REPAIR, FOREST_ACCESS, NAVEL_ACCESS, progression_pool, FLARLIC, START_AREAS
 
 
-def main(exe, assets, output, expanded=False, starting_area='forest', seed='startup-smoke', starting_color='red', all_areas=False):
-    session = Session(generate(seed, "ap", expanded=expanded, starting_area=starting_area, starting_color=starting_color, all_areas=all_areas), output)
+def main(exe, assets, output, expanded=False, starting_area='forest', seed='startup-smoke', starting_color='red', all_areas=False, enemy_shuffle=False):
+    session = Session(generate(seed, "ap", expanded=expanded, starting_area=starting_area, starting_color=starting_color, all_areas=all_areas, enemy_shuffle=enemy_shuffle), output)
     color = session.manifest.get('starting_color', 'red')
     native_color = {'blue': 0, 'red': 1, 'yellow': 2}[color]
     stage, area, _ = START_AREAS[session.manifest['profile']]
@@ -70,6 +70,7 @@ if __name__ == "__main__":
     p.add_argument('--expanded', action='store_true')
     p.add_argument('--starting-area', choices=['impact', 'forest', 'navel', 'spring', 'trial', 'random'], default='forest')
     p.add_argument('--all-areas', action='store_true')
+    p.add_argument('--enemy-shuffle', action='store_true')
     p.add_argument('--seed', default='startup-smoke')
     p.add_argument('--starting-color', choices=['red', 'yellow', 'blue', 'random'], default='red')
-    a=p.parse_args();main(a.exe,a.assets,a.output.resolve(),a.expanded,a.starting_area,a.seed,a.starting_color,a.all_areas)
+    a=p.parse_args();main(a.exe,a.assets,a.output.resolve(),a.expanded,a.starting_area,a.seed,a.starting_color,a.all_areas,a.enemy_shuffle)

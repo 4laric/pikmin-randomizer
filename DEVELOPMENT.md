@@ -49,6 +49,16 @@ Build `output/pikmin_randomizer.apworld` and install it into a separate AP setup
 
 ## Expanded checks (opt-in)
 
+### Enemy family swaps (schema 6 prototype)
+
+Enable `--enemy-shuffle` during CLI generation or `enemy_shuffle: true` in AP. This enables the five-area catalog with 58 checks and unchanged reward pool. Seed and slot select one of seven nonempty combinations of three swaps: dwarf Bulborb/Bulbear, adult Bulborb/Bulbear, female/male Sheargrub. These are global species-family swaps, not independent arbitrary replacements at every spawn. Starting area/color selections are unaffected by the separate enemy stream.
+
+Only those six native type IDs can change. Named pellet/drop IDs and nonzero special personality parameters pin a generator; bosses, water creatures, spawners, plants and hazards are outside the pool. Original generator type data is not mutated; replacement assets are marked for loading before birth, then the replacement uses its own native AI with the original spawn personality. All seven masks and protected-spawn overrides are verified in the compiled probe.
+
+Bestiary checks still mean defeating the actual species. Adult Bulborb rules move conservatively to Distant Spring with all colors when its swap is enabled; native Spring startup confirms adult Bulbears become Bulborbs. Dwarf Bulborb rules retain Forest of Hope because protected dwarf spawns remain there; the audit did not find an original dwarf Bulbear source in Spring and makes no such assumption.
+
+Evidence: 28 Python tests (including 200 randomized enemy seeds), 2,000 AP single-slot fills plus the remote-Blue two-slot fill, and both legacy native probes pass. Production Forest/Spring startup with all three swaps passes. `scripts/audit_enemy_smoke.py output/enemy-forest-smoke output/enemy-spring-smoke` verifies 60/46 real native births with 19/6 replacements, protected spawns and the original Cannon Beetle retained. This is spawn/initial-AI evidence, not combat, carcass delivery or save/revisit acceptance. Those remain open in issue #19 and full native resume remains #6. No existing playtest is changed.
+
 ### All five areas (current schema 5)
 
 New generation with `--starting-area random` now samples all five areas. Fixed choices are `impact`, `forest`, `navel`, `spring`, and `trial`; `--all-areas` enables the five-area catalog with a fixed Forest/Navel start. Combine with `--starting-color random` or a fixed color. AP uses `starting_area: randomized`, the named choices, and `all_areas: true` when retaining a fixed Forest/Navel start. Old manifests remain valid and are not rerolled.

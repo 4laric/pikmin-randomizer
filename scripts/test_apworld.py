@@ -43,8 +43,14 @@ def main(ap):
               assert mw.completion_condition[1](state)
               data = world.fill_slot_data();validate(data["manifest"])
               assert data["manifest_fingerprint"] == fingerprint(data["manifest"])
+        for seed in range(100):
+            mw = setup_multiworld(mod.PikminRandomizerWorld, seed=seed,
+                                 options={'enemy_shuffle': True, 'starting_area': 2, 'starting_color': 3})
+            assert mw.worlds[1].manifest()['schema'] == 6
+            distribute_items_restrictive(mw)
+            assert mw.can_beat_game() and not mw.get_unfilled_locations()
         # A two-slot fill exercises cross-player rewards instead of only solo AP.
-        mw = setup_multiworld([mod.PikminRandomizerWorld] * 2, seed=211, options=[{"expanded_checks": True, "starting_area": 4, "starting_color": 0}, {"expanded_checks": True}])
+        mw = setup_multiworld([mod.PikminRandomizerWorld] * 2, seed=211, options=[{"expanded_checks": True, "starting_area": 4, "starting_color": 0, 'enemy_shuffle': True}, {"expanded_checks": True}])
         mw.seed_name = "two-slot"
         # Explicitly exercise the requested wait-for-remote-blue scenario.
         blue = next(item for item in mw.itempool if item.player == 1 and item.name == 'Blue Onion')
@@ -61,7 +67,7 @@ def main(ap):
         assert mw.can_beat_game()
         assert any(loc.item.player != loc.player for loc in mw.get_locations())
         assert remote.item.player == 1 and remote.player == 2
-        print(f"Packaged AP world: {len(configs)*100} single-slot fills and a remote-Blue two-slot fill pass; goal and manifest parity verified")
+        print(f"Packaged AP world: {len(configs)*100+100} single-slot fills including enemy shuffle and a remote-Blue two-slot fill pass")
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser();p.add_argument("ap", type=Path);main(p.parse_args().ap)

@@ -45,6 +45,7 @@ class PikminOptions(PerGameCommonOptions):
     starting_area: StartingArea
     starting_color: StartingColor
     all_areas: Toggle
+    enemy_shuffle: Toggle
 
 
 class PikminItem(Item):
@@ -98,7 +99,7 @@ class PikminRandomizerWorld(World):
             self._manifest = generate(str(self.multiworld.seed_name), "ap", self.multiworld.player_name[self.player],
                             expanded=bool(self.options.expanded_checks),
                             starting_area=('forest', 'navel', 'random', 'impact', 'spring', 'trial')[self.options.starting_area.value],
-                            starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas))
+                            starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas), enemy_shuffle=bool(self.options.enemy_shuffle))
         return self._manifest
 
     def fill_slot_data(self):

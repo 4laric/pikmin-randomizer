@@ -168,6 +168,11 @@ def can_reach_manifest(name, inventory, manifest):
         return can_reach(name, inventory, manifest['schema'] == 2)
     start = START_AREAS[manifest['profile']][1]
     owned = color_inventory(inventory, manifest) if manifest['schema'] >= 4 else dict(inventory)
+    moved_species = name == 'Bestiary: Spotty Bulborb' and manifest.get('enemy_mask', 0) & 2
+    if moved_species:
+        # Untagged adult Bulbears were verified in Distant Spring's native boot.
+        # Protected dwarf Bulborbs remain in Forest of Hope; no new source assumed.
+        return (start == 'The Distant Spring' or inventory.get(SPRING_ACCESS, 0)) and all(owned.get(c, 0) for c in (RED, YELLOW, BLUE))
     if manifest['schema'] >= 5:
         if name not in ALL_AREA_LOCATION_IDS: return False
         if name in POPULATION and POPULATION[name] > 20:

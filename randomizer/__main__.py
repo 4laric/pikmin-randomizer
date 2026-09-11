@@ -15,6 +15,7 @@ def main():
     gen.add_argument("--expanded", action="store_true", help="Flarlic, population, bestiary and exploration checks")
     gen.add_argument('--starting-area', choices=['forest', 'navel', 'impact', 'spring', 'trial', 'random'], default='forest', help='Random includes all five areas')
     gen.add_argument('--all-areas', action='store_true', help='Enable five-area catalog with a fixed start')
+    gen.add_argument('--enemy-shuffle', action='store_true', help='Seeded compatible enemy-family swaps')
     gen.add_argument('--starting-color', choices=['red', 'yellow', 'blue', 'random'], default='red', help='Non-default enables expanded checks')
     gen.add_argument("--slot", default="Player1")
     gen.add_argument("--mode", choices=["solo", "ap"], default="solo")
@@ -33,7 +34,7 @@ def main():
     status.add_argument("--output", type=Path)
     args = parser.parse_args()
     if args.command == "generate":
-        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas)
+        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas, enemy_shuffle=args.enemy_shuffle)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8") as f:
             f.write(json.dumps(manifest, indent=2) + "\n")

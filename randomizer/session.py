@@ -53,7 +53,7 @@ class Session:
             if not bootstrap.exists():
                 raise ValueError("orphaned native check journal")
             fields = bootstrap.read_text(encoding="ascii").split()
-            if len(fields) != (19 if manifest['schema'] >= 4 else 17) or fields[:2] != ["PIKMIN_RANDOMIZER", str(manifest["schema"])] or fields[2:4] != ["SESSION", journal.parent.name] or fields[4:6] != ["FINGERPRINT", self.fingerprint]:
+            if len(fields) != (21 if manifest['schema'] >= 6 else 19 if manifest['schema'] >= 4 else 17) or fields[:2] != ["PIKMIN_RANDOMIZER", str(manifest["schema"])] or fields[2:4] != ["SESSION", journal.parent.name] or fields[4:6] != ["FINGERPRINT", self.fingerprint]:
                 raise ValueError("native journal belongs to an incompatible manifest")
             data = journal.read_bytes()
             for line in data[:data.rfind(b"\n") + 1].splitlines():
