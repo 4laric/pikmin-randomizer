@@ -162,6 +162,7 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None):
         log = (run.directory / "native.log").open("w", encoding="utf-8")
         startup = subprocess.STARTUPINFO()
         startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startup.wShowWindow = subprocess.SW_SHOWNORMAL
         process = subprocess.Popen([str(exe), "--randomizer-seed", str(run.bootstrap.resolve())],
             cwd=run.directory, env=env, stdout=log, stderr=subprocess.STDOUT, startupinfo=startup)
     print(f"Native bootstrap: {run.bootstrap.resolve()}", flush=True)
