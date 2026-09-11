@@ -22,6 +22,7 @@ cd pikmin-randomizer
 $env:PATH = "C:\msys64\mingw64\bin;" + $env:PATH
 cmake -S engine -B engine/build-randomizer -G Ninja -DCMAKE_BUILD_TYPE=Release -DPIKMIN_NATIVE_JAUDIO=ON -DPIKMIN_NATIVE_OPTIMIZE=OFF -DPIKMIN_RANDOMIZER_TEST_HOOKS=OFF
 cmake --build engine/build-randomizer --target pikmin_pc pc_randomizer_probe -j 6
+python -m pip install -r requirements-ap.txt
 python -m unittest discover -s tests -v
 python scripts/test_collection_protocol.py engine/build-randomizer/pc_randomizer_probe.exe
 ```
