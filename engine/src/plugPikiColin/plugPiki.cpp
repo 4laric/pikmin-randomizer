@@ -305,8 +305,14 @@ PlugPikiApp::PlugPikiApp()
 		mCommandStream = nullptr;
 	}
 
-	// default is to print debug timers to the screen, but this is switched off in every game section so it never actually happens
+#if defined(PIKI_PC_PORT)
+	// Direct gameplay launches skip the title screen that normally hides these
+	// counters, and the PC build has no legacy debug menu to turn them off.
+	gsys->mTimerState = TS_Off;
+#else
+	// Original sections disable the startup debug timers when entered.
 	gsys->mTimerState = TS_On;
+#endif
 
 	// also do system hard reset
 	gsys->hardReset();

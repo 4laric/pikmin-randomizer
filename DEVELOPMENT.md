@@ -345,3 +345,9 @@ Validation: 74 Python tests pass, including 100 group layouts with every-check s
 Local seed: output/turkey-groups-01/Play.cmd, Hope/yellow, cap 10, wide stats/progressive upgrades, 158 checks and three solo spheres. Production SHA256 5AB1CD89521F30579D6206E537C1BDA29819345C950F6660954E38736B5DF830. AP artifact: output/pikmin_randomizer-0.19.0.apworld. Previous seeds/bundles are unchanged.
 
 Physical combat/clearance/corpse-return and player-driven day transitions remain acceptance work; fixtures exercise native survivor/respawn mechanics, not a complete campaign. Full campaign resume remains #6. Mixed species within one generator would need persistent per-member identity and is deferred; broader habitat pools, density and boss adapters remain later tracks.
+
+## Direct-launch performance counters (#54)
+
+PC initialization now starts with TS_Off, so direct gameplay launches do not inherit the polys/anims renderer overlay. The legacy debug menu is not compiled into this port. Original non-PC initialization is preserved. Native commit: 44e3fef2.
+
+Validation: production build with test hooks OFF passes; isolated grouped startup in Hope and Spring renders, handshakes and matches seeded births (output/timers54-startup). Source inspection confirms the performance text is gated by TS_Off; no framebuffer comparison was performed. Local turkey-mixed-01 and turkey-groups-01 launchers now use bin/nectar-no-counters.exe; running processes and sessions were preserved. SHA256: f89db3d3afe13acbfe30356256380f6c96764d99bf0ffbb2b1609e3de795b48a.
