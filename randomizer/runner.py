@@ -4,6 +4,7 @@ import json
 import os
 import secrets
 import subprocess
+import sys
 from pathlib import Path
 from .catalog import GAME, NAMES, LOCATION_IDS
 from .seed import fingerprint
@@ -148,6 +149,7 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None):
     session = Session(manifest, session_dir)
     run = NativeRun(session)
     process = None
+    overlay = None
     log = None
     if exe:
         exe = Path(exe).resolve(strict=True)
@@ -165,6 +167,15 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None):
         startup.wShowWindow = 1  # Win32 SW_SHOWNORMAL; not exported by subprocess.
         process = subprocess.Popen([str(exe), "--randomizer-seed", str(run.bootstrap.resolve())],
             cwd=run.directory, env=env, stdout=log, stderr=subprocess.STDOUT, startupinfo=startup)
+        overlay_manifest = run.directory / 'overlay-manifest.json'
+        atomic_write(overlay_manifest, json.dumps(manifest))
+        try:
+            overlay = subprocess.Popen([sys.executable, '-m', 'randomizer.overlay',
+                '--manifest', str(overlay_manifest.resolve()), '--session-dir', str(session_dir.resolve()),
+                '--pid', str(process.pid)], cwd=Path(__file__).resolve().parents[1],
+                stdout=log, stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NO_WINDOW)
+        except OSError as exc:
+            print(f'Overlay unavailable: {exc}', flush=True)
     print(f"Native bootstrap: {run.bootstrap.resolve()}", flush=True)
     try:
         asyncio.run(serve(session, run, process, server, os.getenv("PIKMIN_AP_PASSWORD")))
@@ -173,6 +184,9 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None):
             process.terminate()
             process.wait(timeout=10)
         if log:
+            if overlay and overlay.poll() is None:
+                overlay.terminate()
+                overlay.wait(timeout=5)
             log.close()
     if process and process.returncode:
         raise RuntimeError(f"native process exited {process.returncode}; see {run.directory / 'native.log'}")
