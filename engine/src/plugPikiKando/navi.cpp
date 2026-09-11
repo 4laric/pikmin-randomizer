@@ -1023,7 +1023,13 @@ void Navi::update()
 	mPlateMgr->update();
 	updateWalkAnimation();
 	mWalkAnimPrevPos = mSRT.t;
-	mNaviAnimMgr.updateAnimation(mMotionSpeed * (mStateMachine->getCurrID(this) == NAVISTATE_Nuku ? pc_randomizer_benefit_multiplier(PC_BENEFIT_PLUCK) : 1.0f));
+	f32 actionSpeed = mStateMachine->getCurrID(this) == NAVISTATE_Nuku ? pc_randomizer_benefit_multiplier(PC_BENEFIT_PLUCK) : 1.0f;
+#if defined(PIKI_PC_PORT)
+	// Apply after updateWalkAnimation resets the base rate each frame.
+	// Only release/recovery accelerates; held aim and charge stay unchanged.
+	if (mStateMachine->getCurrID(this) == NAVISTATE_Throw) actionSpeed = 1.5f;
+#endif
+	mNaviAnimMgr.updateAnimation(mMotionSpeed * actionSpeed);
 
 	STACK_PAD_VAR(1);
 

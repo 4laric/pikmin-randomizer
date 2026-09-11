@@ -1,3 +1,9 @@
+## Faster repeated throws (#75)
+
+Native `18a08293` multiplies animation speed by 1.5 only during PC NAVISTATE_Throw. Applied at animation update after updateWalkAnimation, which resets the base rate every frame. Release/recovery lasts roughly two-thirds its previous duration. Grab/held charge, trajectory, Pikmin stats and input semantics are unchanged. This does not introduce hold-to-auto-throw or an input buffer.
+
+Production build and the exact turkey-wide-02 private startup passed. Rebuilt real-engine quick-release fixture passes both near/far targets reaching Flying (sampled 4/16 idle iterations; these are regression counts, not controlled speed benchmarks). Player cadence acceptance remains for playtesting. Evidence output/throw75-build.log, output/throw75-live and output/throw75-production-smoke. Current seed launcher selects separate nectar-fast-throw.exe, including bomb warning fix; seed/session/active process unchanged, previous launcher backed up.
+
 ## Bomb placement warnings (#74)
 
 Native `161e688a` makes PC InteractWarn ignore bomb carriers. Previously one planter's warning could interrupt another carrier, transition it through LookAt, then return it to formation before bomb placement. Other Pikmin retain warning reactions. Explosion damage, chain logic and player whistle paths are unchanged.
