@@ -9,4 +9,3 @@ Original `LICENSE.MD`, `LEGAL.md`, and per-file notices are preserved. The inher
 The export copies only Git-tracked text files, excluding the upstream portable archive, formatter executable, CI workflows and editor settings. It never copies extracted assets, untracked runtime files, saves, build outputs or nested Git history. `scripts/export_native_source.py` refreshes this snapshot from the maintainer's ignored `native/` checkout; it is not required to build a public checkout. Review deletions manually when refreshing a later snapshot.
 
 Graphics integration (#48): Original/Enhanced/Custom presets preserve existing settings; Enhanced selects FXAA, 8x anisotropy and subtle bloom. Unsaved previews revert on menu close. Post-processing now sets and restores GL color-write masks. See engine/tools/GRAPHICS_VALIDATION.md for the focused renderer/menu/scene validation workflow.
-
