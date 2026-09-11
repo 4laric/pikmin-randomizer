@@ -1731,6 +1731,74 @@ void GameCoreSection::startSundownWarn()
  */
 
 #if defined(PIKMIN_RANDOMIZER_TEST_HOOKS)
+
+void pc_randomizer_test_work_damage()
+{
+    auto require = [](bool ok, const char* why) {
+        if (!ok) { std::printf("WORK_TEST_FAIL %s\n", why); std::fflush(stdout); std::abort(); }
+    };
+    Piki* sample = nullptr;
+    Iterator pikis(pikiMgr);
+    CI_LOOP(pikis) { Piki* p = static_cast<Piki*>(*pikis); if (p && p->isAlive()) { sample = p; break; } }
+    BuildingItem* wall = nullptr; BuildingItem* bomb = nullptr; KusaItem* stick = nullptr; Bridge* bridge = nullptr;
+    Iterator items(itemMgr->mMeltingPotMgr);
+    CI_LOOP(items) {
+        Creature* obj = *items;
+        if (obj->mObjType == OBJTYPE_SluiceSoft) wall = static_cast<BuildingItem*>(obj);
+        if (obj->mObjType == OBJTYPE_SluiceBomb || obj->mObjType == OBJTYPE_SluiceBombHard) bomb = static_cast<BuildingItem*>(obj);
+        if (obj->mObjType == OBJTYPE_Kusa) stick = static_cast<KusaItem*>(obj);
+    }
+    Iterator works(workObjectMgr);
+    CI_LOOP(works) { WorkObject* obj = static_cast<WorkObject*>(*works); if (obj->isBridge()) bridge = static_cast<Bridge*>(obj); }
+    require(sample && wall && bomb && stick && stick->mBaseItem && bridge, "real Navel objects");
+    sample->mActiveAction->abandon(nullptr);
+    ActBreakWall wallAction(sample); wallAction.init(wall); wallAction.mWorkTimer = 0;
+    ActBridge bridgeAction(sample); bridgeAction.init(bridge); bridgeAction.mStageID = 0;
+    ActBoMake stickAction(sample); stickAction.mBuildObject = stick->mBaseItem;
+    wall->mMaxHealth = wall->mHealth = 100.0f; wall->mCurrStage = 0;
+    bridge->mMaxHealth = 100.0f; bridge->mStageProgressList[0] = 0.0f; bridge->setStageFinished(0, false);
+    stick->mMaxHealth = 1000.0f; stick->mHealth = 0.0f;
+    for (int color = 0; color < 3; ++color) {
+        sample->initColor(color);
+        const f32 damage = sample->getAttackPower();
+        const int intervals[] = {0, 1, 59};
+        for (int elapsed : intervals) {
+            const f32 beforeWall = wall->mHealth;
+            wallAction.mStartAttackTime = gameflow.mWorldClock.mCurrentGameMinute - elapsed;
+            wallAction.animationKeyUpdated(PaniAnimKeyEvent(KEY_Action0)); wallAction.breakWall();
+            require(std::fabs(beforeWall - wall->mHealth - damage / 600.0f) < 0.0001f, "wall damage independent of time");
+            const f32 afterWall = wall->mHealth;
+            wallAction.breakWall();
+            require(wall->mHealth == afterWall, "wall event consumed once");
+            const f32 beforeBridge = bridge->mStageProgressList[0];
+            bridgeAction.animationKeyUpdated(PaniAnimKeyEvent(KEY_LoopEnd)); bridgeAction.doWork(elapsed);
+            require(std::fabs(bridge->mStageProgressList[0] - beforeBridge - damage / 600.0f) < 0.0001f, "bridge damage independent of time");
+            require(!bridgeAction.mIsAttackReady, "bridge event consumed");
+            const f32 beforeStick = stick->mHealth;
+            stickAction.animationKeyUpdated(PaniAnimKeyEvent(KEY_Action0));
+            require(std::fabs(stick->mHealth - beforeStick - damage * 0.04f) < 0.0001f, "stick damage");
+        }
+        sample->mMode = PikiMode::BreakwallMode;
+        const int motions[] = {PIKIANIM_Kuttuku, PIKIANIM_Job2};
+        for (int motion : motions) {
+            sample->startMotion(PaniMotionInfo(motion), PaniMotionInfo(motion));
+            f32 before = sample->mPikiAnimMgr.getUpperAnimator().mAnimationCounter;
+            sample->mPikiAnimMgr.updateAnimation(30.0f);
+            f32 baseStep = sample->mPikiAnimMgr.getUpperAnimator().mAnimationCounter - before;
+            sample->startMotion(PaniMotionInfo(motion), PaniMotionInfo(motion));
+            before = sample->mPikiAnimMgr.getUpperAnimator().mAnimationCounter;
+            sample->doAnimation();
+            f32 step = sample->mPikiAnimMgr.getUpperAnimator().mAnimationCounter - before;
+            require(baseStep > 0 && std::fabs(step - baseStep * pc_randomizer_color_multiplier(color, PC_PIKI_ATTACK_RATE)) < 0.01f, "work animation speed");
+        }
+        const f32 bombHealth = bomb->mHealth;
+        InteractAttack attack(sample, nullptr, damage, false);
+        require(!bomb->stimulate(attack) && bomb->mHealth == bombHealth, "bomb wall rejects ordinary damage");
+        std::printf("TEST_ONLY work_damage color=%d damage=%.3f elapsed=0,1,59 animations=Kuttuku,Job2\n", color, damage);
+    }
+    std::puts("TEST_ONLY work_damage_pass"); std::fflush(stdout); std::exit(0);
+}
+
 void pc_randomizer_test_color_stats()
 {
     auto require = [](bool ok, const char* why) {
@@ -2059,6 +2127,11 @@ void GameCoreSection::updateAI()
             std::puts(full ? "[Pikmin Randomizer] TEST_ONLY permanent_complete_loaded" : "[Pikmin Randomizer] TEST_ONLY permanent_partial_ready");
         }
     }
+    if (pc_randomizer_ready() && scripted && !std::strcmp(scripted, "work-damage")
+        && background && !std::strcmp(background, "1") && bbftRedsReady
+        && pc_bbft_color_access(Blue) && pc_bbft_color_access(Yellow)
+        && !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll && !gameflow.mIsUIOverlayActive)
+        pc_randomizer_test_work_damage();
     if (pc_randomizer_color_stats() && scripted && !std::strcmp(scripted, "progressive-stats")
         && background && !std::strcmp(background, "1") && bbftRedsReady
         && pc_bbft_color_access(Blue) && pc_bbft_color_access(Yellow)

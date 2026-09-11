@@ -2503,7 +2503,8 @@ void Piki::doAnimation()
 	mLastAnimPosition = mSRT.t;
 	// Change only attack loops, not walking, thrown arcs, plucking or cutscenes.
     const int motion = mPikiAnimMgr.getUpperAnimator().getCurrentMotionIndex();
-    const bool attackLoop = motion == PIKIANIM_Attack || motion == PIKIANIM_Kuttuku;
+    const bool attackLoop = motion == PIKIANIM_Attack || motion == PIKIANIM_Kuttuku
+        || (motion == PIKIANIM_Job2 && mMode == PikiMode::BreakwallMode);
     mPikiAnimMgr.updateAnimation(mMotionSpeed, attackLoop ? pc_randomizer_color_multiplier(mColor, PC_PIKI_ATTACK_RATE) : 1.0f);
 }
 

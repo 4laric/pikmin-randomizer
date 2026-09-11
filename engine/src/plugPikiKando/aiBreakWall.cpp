@@ -8,6 +8,7 @@
 #include "PikiState.h"
 #include "UtEffect.h"
 #include "gameflow.h"
+#include "pc_randomizer.h"
 
 /**
  * @todo: Documentation
@@ -199,8 +200,10 @@ int ActBreakWall::breakWall()
 		timeSinceLastAttack = 1;
 	}
 
-	if (timeSinceLastAttack > 0 && mIsAttackReady) {
-		InteractAttack attack(mPiki, nullptr, timeSinceLastAttack / 60.0f, false);
+	if (mIsAttackReady && (pc_randomizer_enabled() ? pc_randomizer_ready() : timeSinceLastAttack > 0)) {
+		// Native wall health is measured in work units. A base-10 hit supplies 1/60 unit.
+		const f32 work = pc_randomizer_enabled() ? mPiki->getAttackPower() / 600.0f : timeSinceLastAttack / 60.0f;
+		InteractAttack attack(mPiki, nullptr, work, false);
 		mIsAttackReady = false;
 		if (!mWall->stimulate(attack)) {
 			if (mWall->isCompleted()) {

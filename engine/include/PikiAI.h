@@ -390,6 +390,7 @@ protected:
  * @note Size: 0x24.
  */
 struct ActBoMake : public Action, private PaniAnimKeyListener {
+    friend void pc_randomizer_test_work_damage();
 public:
 	/**
 	 * @brief TODO
@@ -612,6 +613,7 @@ protected:
  * @note Size: 0x34.
  */
 struct ActBreakWall : public Action, public PaniAnimKeyListener {
+    friend void pc_randomizer_test_work_damage();
 public:
 	/**
 	 * @brief TODO
@@ -656,6 +658,7 @@ protected:
  * @note Size: 0x58.
  */
 struct ActBridge : public Action, virtual PaniAnimKeyListener {
+    friend void pc_randomizer_test_work_damage();
 public:
 	/**
 	 * @brief TODO

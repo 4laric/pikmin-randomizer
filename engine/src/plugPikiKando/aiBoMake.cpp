@@ -2,6 +2,7 @@
 #include "Dolphin/os.h"
 #include "Interactions.h"
 #include "PikiAI.h"
+#include "pc_randomizer.h"
 
 /**
  * @todo: Documentation
@@ -131,7 +132,9 @@ void ActBoMake::animationKeyUpdated(immut PaniAnimKeyEvent& event)
 	}
 	case KEY_Action0:
 	{
-		InteractBuild build(mPiki, 0, 1.0f);
+		if (pc_randomizer_enabled() && !pc_randomizer_ready()) break;
+		// Stick work uses a different native unit: one base-10 hit is one unit.
+		InteractBuild build(mPiki, 0, pc_randomizer_enabled() ? mPiki->getAttackPower() / 10.0f : 1.0f);
 		mBuildObject->stimulate(build); // the one time it's not in the same line, smh
 		break;
 	}

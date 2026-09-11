@@ -1,5 +1,15 @@
 # Standalone milestone: local implementation
 
+## Damage-based structure work (issue #32)
+
+Native `9c1bac13` replaces elapsed-minute wall/bridge work with damage per native animation event in ready standalone randomizer sessions. `ActBreakWall` consumes Action0, `ActBridge` consumes LoopEnd, and `ActBoMake` builds on Action0. Walls/bridges receive `Piki::getAttackPower() / 600`; sticks receive `getAttackPower() / 10`, followed by the existing 0.4 height conversion. This preserves the native base-10 stick contribution and uses one old one-minute wall/bridge work quantum per base-10 event as initial tuning. It does not promise identical vanilla completion times; field balance remains a playtest concern. Ordinary non-randomizer play retains its previous work calculation.
+
+Actual damage includes red's native bonus and current rolled/progressive color modifiers. The alternate Job2 wall motion now receives attack-rate scaling while in BreakwallMode, alongside the existing Kuttuku work animation. Bomb-wall rejection still occurs in the original InteractAttack handler. No object/save layout, check identity, AP item pool, throw height or color ability changed. No new AP option or manifest schema is needed; existing randomizer seeds receive this behavior with the updated executable.
+
+Validation: 48 Python tests. `scripts/test_work_damage_native.py` with TEST_HOOKS ON uses real Navel actors/objects and feeds native animation callbacks; it checks three damage profiles (10, 18.75, 15), identical per-hit work at elapsed 0/1/59 game minutes, one-time wall event consumption, bridge flag consumption, stick height, both work-animation rate multipliers and bomb-wall rejection. The separate permanent fixture passed all 17 Navel structures: partial rejection, completed-state serialization/reload and repeated-frame reward deduplication. These are synthetic action/observer tests, not unattended player pathfinding or full construction playthroughs.
+
+Fresh local package: `output/turkey-work-01/Play.cmd`, Forest Navel / blue (color rolled), cap 10, 119 checks, both stat options and enemy-family shuffle. Navel was selected to expose walls, bridges and sticks together. Production build has TEST_HOOKS OFF; startup evidence and binary hash are recorded in UPSTREAM_SYNC.md. Player session is separate from validation sessions.
+
 ## Permanent structures and scalable checks (issue #31)
 
 AP world v0.12.0 option `permanent_checks` / CLI `--permanent-checks` creates schema 8 with 119 locations. The first 58 native journal indices and all existing AP location IDs remain unchanged. Ten new population thresholds and 51 individual structures are appended; new AP IDs start at `LOCATION_BASE + 100`. Native schema 8 uses `CHECKS count index...` with bounded, unique indices and a required `check-set-v1` capability. Internal storage is a set, avoiding shifts beyond 64 bits; schemas 1–7 retain their original mask protocol. Check journals remain one index per complete line and merge idempotently on relaunch.

@@ -8,6 +8,7 @@
 #include "bugprint.h"
 #include "gameflow.h"
 #include "zen/Math.h"
+#include "pc_randomizer.h"
 
 /**
  * @todo: Documentation
@@ -322,7 +323,9 @@ int ActBridge::exeWork()
  */
 void ActBridge::doWork(int mins)
 {
-	InteractBuild build(mPiki, mStageID, mins / 60.0f);
+	// Consume one animation-loop work event, independent of the game clock.
+	const f32 work = pc_randomizer_enabled() ? mPiki->getAttackPower() / 600.0f : mins / 60.0f;
+	InteractBuild build(mPiki, mStageID, work);
 	mBridge->stimulate(build);
 	mStartWorkTime = gameflow.mWorldClock.mCurrentGameMinute;
 	mIsAttackReady = FALSE;
@@ -581,7 +584,7 @@ int ActBridge::newExeWork()
 	}
 
 	int timeSinceLastWork = (gameflow.mWorldClock.mCurrentGameMinute - mStartWorkTime + 60) % 60;
-	if (timeSinceLastWork > 0 && mIsAttackReady) {
+	if (mIsAttackReady && (pc_randomizer_enabled() ? pc_randomizer_ready() : timeSinceLastWork > 0)) {
 		doWork(timeSinceLastWork);
 	}
 
