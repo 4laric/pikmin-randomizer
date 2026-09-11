@@ -20,6 +20,9 @@
 #include "zen/DrawHiScore.h"
 #include "zen/ogStart.h"
 #include "zen/ogTitle.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_gfx.h"
+#endif
 
 class TitleSetupSection;
 
@@ -565,6 +568,9 @@ public:
 		gfx.setScissor(AREA_FULL_SCREEN(gfx));
 		gfx.setClearColour(COLOUR_TRANSPARENT);
 		gfx.clearBuffer(Graphics::ClearBufferFlag::Both, false);
+#if defined(PIKI_PC_PORT)
+		pc_gfx_title_debug_probe("after_clear");
+#endif
 		gfx.mAmbientColour.set(48, 48, 48, 255);
 
 		// (this is a wacky way of resetting the graphics context's last model matrix to the identity)
@@ -608,6 +614,9 @@ public:
 		}
 
 		mPlayer->refresh(gfx);
+#if defined(PIKI_PC_PORT)
+		pc_gfx_title_debug_probe("after_3d");
+#endif
 
 		// unused!
 		static f32 rspin = 0.0f;
@@ -635,7 +644,15 @@ public:
 		gfx.flushCachedShapes();
 		gsys->flushLFlares(gfx);
 
+#if defined(PIKI_PC_PORT)
+		pc_gfx_begin_menu_2d();
+		pc_gfx_title_debug_probe("after_begin_menu");
+		const int menuW = pc_gfx_menu_virt_width();
+		gfx.setOrthogonal(orthoMtx.mMtx, RectArea(0, 0, menuW, gfx.mScreenHeight));
+		pc_gfx_title_debug_probe("after_ortho");
+#else
 		gfx.setOrthogonal(orthoMtx.mMtx, AREA_FULL_SCREEN(gfx));
+#endif
 		gfx.useMatrix(Matrix4f::ident, 0); // colin i think it's been set mate
 
 		// this is just for fading the debug menu
@@ -666,8 +683,20 @@ public:
 			drawMenu(gfx, mActiveDebugMenu, 1.0f);
 		} else {
 			// draw PRESS START, main title menu, or hiscore menus as required
+#if defined(PIKI_PC_PORT)
+			pc_gfx_set_menu_clip_43(1);
+#endif
 			startWindow->draw(gfx);
+#if defined(PIKI_PC_PORT)
+			pc_gfx_title_debug_probe("after_start");
+#endif
 			titleWindow->draw(gfx);
+#if defined(PIKI_PC_PORT)
+			pc_gfx_set_menu_clip_43(0);
+#endif
+#if defined(PIKI_PC_PORT)
+			pc_gfx_title_debug_probe("after_title");
+#endif
 			if (totalWindow) {
 				// hiscore menu is a full-screen overlay
 				gfx.setOrthogonal(orthoMtx.mMtx, AREA_FULL_SCREEN(gfx));

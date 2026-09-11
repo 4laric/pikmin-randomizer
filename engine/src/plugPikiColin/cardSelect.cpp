@@ -5,6 +5,7 @@
 #include "Dolphin/os.h"
 #include "FlowController.h"
 #include "Generator.h"
+#include "Geometry.h"
 #include "Graphics.h"
 #include "MemoryCard.h"
 #include "PlayerState.h"
@@ -15,6 +16,7 @@
 #include "sysNew.h"
 #include "zen/ogFileChkSel.h"
 #if defined(PIKI_PC_PORT)
+#include "pc_gfx.h"
 #include "pc_permadeath.h"
 #include "settings/pc_settings.h"
 #endif
@@ -220,6 +222,18 @@ struct CardSelectSetupSection : public Node {
 	 */
 	virtual void draw(Graphics& gfx) // _14 (weak)
 	{
+#if defined(PIKI_PC_PORT)
+		pc_gfx_begin_menu_2d();
+		const int menuW = pc_gfx_menu_virt_width();
+		const RectArea menuArea(0, 0, menuW, gfx.mScreenHeight);
+		gfx.setViewport(menuArea);
+		gfx.setScissor(menuArea);
+		gfx.setClearColour(COLOUR_TRANSPARENT);
+		gfx.clearBuffer(Graphics::ClearBufferFlag::Both, false);
+
+		Matrix4f mtx;
+		gfx.setOrthogonal(mtx.mMtx, menuArea);
+#else
 		gfx.setViewport(AREA_FULL_SCREEN(gfx));
 		gfx.setScissor(AREA_FULL_SCREEN(gfx));
 		gfx.setClearColour(COLOUR_TRANSPARENT);
@@ -227,6 +241,7 @@ struct CardSelectSetupSection : public Node {
 
 		Matrix4f mtx;
 		gfx.setOrthogonal(mtx.mMtx, AREA_FULL_SCREEN(gfx));
+#endif
 
 #if defined(PIKI_PC_PORT)
 		// Before the early return: the file screen is closed while the prompt
@@ -269,7 +284,18 @@ struct CardSelectSetupSection : public Node {
 				// An empty slot means a run is about to be created, and its
 				// rules belong to the file. Ask now, while nothing has been
 				// committed and backing out is still free.
-				if (card.mSaveStatus == PlayState::Fresh) {
+				// Anything that is not a run already in progress. Fresh (1)
+				// is a file that exists on the card but was never initialised;
+				// a slot with no file at all is 0, straight from
+				// CardQuickInfo's constructor, because the scan only fills in
+				// slots it found a file for.
+				//
+				// Testing for Fresh alone missed the most ordinary case there
+				// is -- the first file on an empty card -- and the run was
+				// created without ever asking. It looked like a European
+				// problem because that install started with an empty card;
+				// USA does the same on a card with nothing on it.
+				if (card.mSaveStatus != PlayState::ReadyToSave) {
 					mPendingCard           = card;
 					mPendingSlot           = returnCode - zen::ogScrFileChkSelMgr::FILECHKSEL_SlotOffset;
 					mAwaitingNewGameChoice = true;

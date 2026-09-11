@@ -9,6 +9,10 @@
 #include "sysNew.h"
 #include "zen/DrawGameInfo.h"
 #include "zen/Graphics.h"
+#if defined(PIKI_PC_PORT)
+#include "Geometry.h"
+#include "pc_gfx.h"
+#endif
 #include "zen/Math.h"
 #include "zen/Number.h"
 #include "zen/ogSub.h"
@@ -717,6 +721,16 @@ zen::DrawGameInfo::DrawGameInfo(zen::DrawGameInfo::playModeFlag playMode)
 		}
 	}
 
+#if defined(PIKI_PC_PORT)
+	// play09.blo ships a leftover 'c_lr' picture at (772,406) with the
+	// placeholder 7_64.bti. On 4:3 it sits past the 640 edge. After HUD B
+	// the sun BLO is shifted by (V-640)/2, so at 21:9 it lands on the
+	// pikmin counter (and the old 1000 scissor had been hiding it).
+	if (P2DPane* stray = mUpperScreenMgr->search('c_lr', false)) {
+		stray->hide();
+	}
+#endif
+
 	pane = mLowerScreenMgr->search('li_i', true);
 	pane->setCallBack(new NaviIconCallBack(pane));
 
@@ -765,15 +779,31 @@ void zen::DrawGameInfo::update()
  */
 void zen::DrawGameInfo::draw(Graphics& gfx)
 {
+#if defined(PIKI_PC_PORT)
+	pc_gfx_set_hud_wide(1);
+	const int virtW = pc_gfx_get_hud_virtual_width();
+	const int dx    = virtW - 640;
+	Matrix4f ortho;
+	gfx.setOrthogonal(ortho.mMtx, RectArea(0, 0, virtW, gfx.mScreenHeight));
+#endif
 	mDamageEffect.draw(gfx);
 	gfx.setFog(false);
 	GXSetZMode(GX_FALSE, GX_ALWAYS, GX_FALSE);
 
+#if defined(PIKI_PC_PORT)
+	P2DPerspGraph perspGraph(0, 0, virtW, 480, 30.0f, 1.0f, 5000.0f);
+	perspGraph.setPort();
+	mUpperScreenMgr->draw(&perspGraph, dx / 2);
+	mLowerScreenMgr->draw(&perspGraph, 0);
+	mModeScreenMgr->draw(&perspGraph, dx);
+	pc_gfx_set_hud_wide(0);
+#else
 	P2DPerspGraph perspGraph(0, 0, 640, 480, 30.0f, 1.0f, 5000.0f);
 	perspGraph.setPort();
 	mUpperScreenMgr->draw(&perspGraph);
 	mLowerScreenMgr->draw(&perspGraph);
 	mModeScreenMgr->draw(&perspGraph);
+#endif
 }
 
 /**

@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include "settings/pc_settings.h"
 #include <chrono>
 #include <thread>
 #include <mutex>
@@ -119,6 +120,17 @@ void OSTicksToCalendarTime(OSTime ticks, OSCalendarTime* timeDate) {
 /* ──────────────────────────────────────────────
  *  Reporting / Errors
  * ────────────────────────────────────────────── */
+// The console's system language. Only the PAL release asks -- it ships five
+// languages on one disc and picks with this -- so the USA build never linked
+// against it.
+//
+// There is no system menu here to ask. The installer records the choice in the
+// settings file and pc_settings_startup_language() reads it, straight from
+// disk and without the rest of the settings, because this is called from a
+// static initialiser: by the time settings are loaded normally, the game has
+// already decided which language it is running in.
+u8 OSGetLanguage() { return pc_settings_startup_language(); }
+
 void OSReport(const char* message, ...) {
     va_list args;
     va_start(args, message);

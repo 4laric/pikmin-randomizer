@@ -15,7 +15,15 @@
 #include "P2D/Font.h"
 #include "P2D/Print.h"
 #include "P2D/Screen.h"
+#include "P2D/Pane.h"
 #include "settings/pc_settings.h"
+#include "pc_gfx.h"
+
+static f32 filesel_fx_x(int slot, P2DPane* pane)
+{
+	(void)slot;
+	return f32(pane->getPosH()) + f32(pane->getWidth()) / 2.0f + f32(pc_gfx_menu_shift_center());
+}
 #endif
 
 /**
@@ -735,6 +743,9 @@ void zen::ogScrFileSelectMgr::setDataNumber(int dataNum)
 	pos.set(0.0f, 0.0f, 0.0f);
 	pos.x = f32(pane->getPosH()) + f32(pane->getWidth()) / 2.0f;
 	pos.y = 480.0f - (f32(pane->getPosV()) + f32(pane->getHeight()) / 2.0f);
+#if defined(PIKI_PC_PORT)
+	pos.x = filesel_fx_x(mCurrSlotIdx, pane);
+#endif
 
 	if (mCursorMoveEffectOnyon) {
 		mCursorMoveEffectOnyon->forceFinish();
@@ -747,6 +758,9 @@ void zen::ogScrFileSelectMgr::setDataNumber(int dataNum)
 	pos2.set(0.0f, 0.0f, 0.0f);
 	pos2.x = f32(pane->getPosH()) + f32(pane->getWidth()) / 2.0f;
 	pos2.y = 480.0f - (f32(pane->getPosV()) + f32(pane->getHeight()) / 2.0f);
+#if defined(PIKI_PC_PORT)
+	pos2.x = filesel_fx_x(mCurrSlotIdx, pane);
+#endif
 
 	if (mCursorMoveEffectPikminGroup) {
 		mCursorMoveEffectPikminGroup->forceFinish();
@@ -1051,6 +1065,9 @@ void zen::ogScrFileSelectMgr::start(bool saveMode, int fileSelMode)
 	if (!mSaveMode) {
 		Vector3f pos;
 		pos.set(320.0f, 240.0f, 0.0f);
+#if defined(PIKI_PC_PORT)
+		pos.x = 320.0f + f32(pc_gfx_menu_shift_center());
+#endif
 		mFxMgr->create(EFF2D_Unk17, pos, nullptr, nullptr);
 		mFxMgr->create(EFF2D_Unk18, pos, nullptr, nullptr);
 		mFxMgr->create(EFF2D_Unk19, pos, nullptr, nullptr);
@@ -1170,11 +1187,17 @@ void zen::ogScrFileSelectMgr::KetteiEffectStart()
 	pos.set(0.0f, 0.0f, 0.0f);
 	pos.x = f32(mIconOnyonPanes[mCurrSlotIdx]->getPosH()) + f32(mIconOnyonPanes[mCurrSlotIdx]->getWidth()) / 2.0f;
 	pos.y = 480.0f - (f32(mIconOnyonPanes[mCurrSlotIdx]->getPosV()) + f32(mIconOnyonPanes[mCurrSlotIdx]->getHeight()) / 2.0f);
+#if defined(PIKI_PC_PORT)
+	pos.x = filesel_fx_x(mCurrSlotIdx, mIconOnyonPanes[mCurrSlotIdx]);
+#endif
 
 	mFxMgr->create(EFF2D_Unk37, pos, nullptr, nullptr);
 
 	pos.x = f32(mIconPikminPanes[mCurrSlotIdx]->getPosH()) + f32(mIconPikminPanes[mCurrSlotIdx]->getWidth()) / 2.0f;
 	pos.y = 480.0f - (f32(mIconPikminPanes[mCurrSlotIdx]->getPosV()) + f32(mIconPikminPanes[mCurrSlotIdx]->getHeight()) / 2.0f);
+#if defined(PIKI_PC_PORT)
+	pos.x = filesel_fx_x(mCurrSlotIdx, mIconPikminPanes[mCurrSlotIdx]);
+#endif
 
 	mFxMgr->create(EFF2D_Unk34, pos, nullptr, nullptr);
 }
@@ -1189,10 +1212,16 @@ void zen::ogScrFileSelectMgr::TailEffectStart()
 
 	pos.x                        = f32(mIconOnyonPanes[mCurrSlotIdx]->getPosH()) + f32(mIconOnyonPanes[mCurrSlotIdx]->getWidth()) / 2.0f;
 	pos.y                        = 480.0f - (mIconOnyonPanes[mCurrSlotIdx]->getPosV() + mIconOnyonPanes[mCurrSlotIdx]->getHeight());
+#if defined(PIKI_PC_PORT)
+	pos.x = filesel_fx_x(mCurrSlotIdx, mIconOnyonPanes[mCurrSlotIdx]);
+#endif
 	mSelectionConfirmEffectOnyon = mFxMgr->create(EFF2D_Unk38, pos, nullptr, nullptr);
 
 	pos.x = f32(mIconPikminPanes[mCurrSlotIdx]->getPosH()) + f32(mIconPikminPanes[mCurrSlotIdx]->getWidth()) / 2.0f;
 	pos.y = 480.0f - (mIconPikminPanes[mCurrSlotIdx]->getPosV() + mIconPikminPanes[mCurrSlotIdx]->getHeight());
+#if defined(PIKI_PC_PORT)
+	pos.x = filesel_fx_x(mCurrSlotIdx, mIconPikminPanes[mCurrSlotIdx]);
+#endif
 	mSelectionConfirmEffectPikminGroup = mFxMgr->create(EFF2D_Unk33, pos, nullptr, nullptr);
 }
 
@@ -1205,6 +1234,9 @@ void zen::ogScrFileSelectMgr::TailEffectMove(int x, int y)
 	Vector3f pos;
 	int newX = x + mIconOnyonPanes[mCurrSlotIdx]->getWidth() / 2;
 	int newY = y + mIconOnyonPanes[mCurrSlotIdx]->getHeight();
+#if defined(PIKI_PC_PORT)
+	newX += pc_gfx_menu_shift_center();
+#endif
 
 	pos.set(newX, 480 - newY, 0.0f);
 	mSelectionConfirmEffectOnyon->setEmitPos(pos);
@@ -1219,6 +1251,9 @@ void zen::ogScrFileSelectMgr::TailEffectMoveM(int x, int y)
 	Vector3f pos;
 	int newX = x + mIconPikminPanes[mCurrSlotIdx]->getWidth() / 2;
 	int newY = y + mIconPikminPanes[mCurrSlotIdx]->getHeight();
+#if defined(PIKI_PC_PORT)
+	newX += pc_gfx_menu_shift_center();
+#endif
 
 	pos.set(newX, 480 - newY + 100, 0.0f);
 	mSelectionConfirmEffectPikminGroup->setEmitPos(pos);
@@ -1407,6 +1442,24 @@ void zen::ogScrFileSelectMgr::draw(Graphics& gfx)
 		return;
 	}
 
+#if defined(PIKI_PC_PORT)
+	pc_gfx_filesel_debug_probe("before_slots");
+	pc_gfx_begin_menu_2d();
+	const int virtW = pc_gfx_menu_virt_width();
+	P2DPerspGraph perspGraph(0, 0, virtW, 480, 30.0f, 1.0f, 5000.0f);
+	perspGraph.setPort();
+
+	// data_b is drawn (and clipped) by ogFileChkSel. Slots, chrome and 2D FX
+	// stay in the original 640×480 so they do not paint the side bars.
+	pc_gfx_set_menu_clip_43(1);
+	pc_gfx_apply_menu_clip_43();
+
+	for (int i = 0; i < 3; i++) {
+		const int slotX = pc_gfx_menu_shift_center();
+		mSlotScreensData[i]->draw(slotX, 0, &perspGraph);
+		mSlotScreensNoData[i]->draw(slotX, 0, &perspGraph);
+	}
+#else
 	P2DPerspGraph perspGraph(0, 0, 640, 480, 30.0f, 1.0f, 5000.0f);
 	perspGraph.setPort();
 
@@ -1414,12 +1467,34 @@ void zen::ogScrFileSelectMgr::draw(Graphics& gfx)
 		mSlotScreensData[i]->draw(0, 0, &perspGraph);
 		mSlotScreensNoData[i]->draw(0, 0, &perspGraph);
 	}
+#endif
 
+#if defined(PIKI_PC_PORT)
+	pc_gfx_filesel_debug_probe("before_fx");
+	pc_gfx_filesel_debug_set_fx(1);
+#endif
 	mFxMgr->draw(gfx);
+#if defined(PIKI_PC_PORT)
+	pc_gfx_filesel_debug_set_fx(0);
+	pc_gfx_filesel_debug_probe("after_fx");
+#endif
 	gfx.setFog(false);
 	GXSetZMode(GX_FALSE, GX_ALWAYS, GX_FALSE);
+#if defined(PIKI_PC_PORT)
+	const int chromeX = pc_gfx_menu_shift_center();
+	mCopyCursorsScreen->draw(chromeX, 0, &perspGraph);
+	mMainUIScreen->draw(chromeX, 0, &perspGraph);
+	mFileInfoScreen->draw(chromeX, 0, &perspGraph);
+	pc_gfx_set_menu_clip_43(0);
+	pc_gfx_set_scissor(0, 0, (u32)virtW, 480);
+	mBlackOverlayScreen->draw(0, 0, &perspGraph);
+#else
 	mCopyCursorsScreen->draw(0, 0, &perspGraph);
 	mMainUIScreen->draw(0, 0, &perspGraph);
 	mFileInfoScreen->draw(0, 0, &perspGraph);
 	mBlackOverlayScreen->draw(0, 0, &perspGraph);
+#endif
+#if defined(PIKI_PC_PORT)
+	pc_gfx_filesel_debug_probe("after_ui");
+#endif
 }

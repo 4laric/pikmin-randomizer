@@ -13,6 +13,25 @@ struct DiscIdentity {
     std::uint8_t revision = 0;
 };
 
+// Un disco que el port sabe usar. La lista vive en gamecube_image.cpp.
+struct KnownDisc {
+    const char* gameId;
+    std::uint8_t revision;
+    const char* description;   // como se le enseña al usuario
+    const char* sha256;        // volcado integro de referencia
+    // Codigos de idioma que trae el disco, en el orden en que el juego los
+    // numera. Una sola entrada significa que no hay nada que elegir.
+    const char* const* languages;
+    int languageCount;
+    // Nombre base del ejecutable compilado para esta version. El juego se
+    // compila desde la decompilacion y esa decompilacion es condicional segun
+    // la version, asi que cada disco necesita el suyo.
+    const char* executable;
+};
+
+// El disco de la lista que coincide con la identidad dada, o nullptr.
+const KnownDisc* findKnownDisc(const DiscIdentity& identity);
+
 using ProgressCallback = std::function<void(std::uint32_t current, std::uint32_t total,
                                             const std::string& path)>;
 

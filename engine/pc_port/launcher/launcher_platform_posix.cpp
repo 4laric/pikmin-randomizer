@@ -138,7 +138,7 @@ fs::path askForInstallDirectory()
         if (const char* home = std::getenv("HOME")) initial = fs::path(home).string() + "/";
         const std::string selected = runDialog("zenity", {
             "--file-selection", "--directory",
-            "--title=Pikmin Native - Selecciona la carpeta de instalación",
+            "--title=Open Nectar - Choose the install folder",
             "--filename=" + initial
         });
         if (!selected.empty()) return selected;
@@ -146,7 +146,7 @@ fs::path askForInstallDirectory()
         const std::string initial = std::getenv("HOME") ? std::getenv("HOME") : ".";
         const std::string selected = runDialog("kdialog", {
             "--getexistingdirectory", initial,
-            "--title", "Pikmin Native - Selecciona la carpeta de instalación"
+            "--title", "Open Nectar - Choose the install folder"
         });
         if (!selected.empty()) return selected;
     }
@@ -157,9 +157,9 @@ fs::path askForImage()
 {
     if (commandExists("zenity")) {
         const std::string selected = runDialog("zenity", {
-            "--file-selection", "--title=Pikmin Native - Selecciona tu disco",
+            "--file-selection", "--title=Open Nectar - Choose your disc image",
             "--file-filter=GameCube ISO/GCM | *.iso *.ISO *.gcm *.GCM",
-            "--file-filter=Todos los archivos | *"
+            "--file-filter=All files | *"
         });
         if (!selected.empty()) return selected;
     }
@@ -170,6 +170,38 @@ fs::path askForImage()
         if (!selected.empty()) return selected;
     }
     return {};
+}
+
+int askForLanguage(const std::vector<std::string>& names)
+{
+    if (names.size() < 2) return 0;
+
+    if (commandExists("zenity")) {
+        std::vector<std::string> args {
+            "--list", "--title=Open Nectar - Language",
+            "--text=This disc carries several languages. Which one do you want to play in?",
+            "--column=Language", "--height=320"
+        };
+        for (const std::string& name : names) args.push_back(name);
+        const std::string chosen = runDialog("zenity", args);
+        for (std::size_t i = 0; i < names.size(); ++i) {
+            if (chosen == names[i]) return static_cast<int>(i);
+        }
+        return -1;
+    }
+
+    if (commandExists("kdialog")) {
+        std::vector<std::string> args { "--menu", "Which language do you want to play in?" };
+        for (std::size_t i = 0; i < names.size(); ++i) {
+            args.push_back(std::to_string(i));
+            args.push_back(names[i]);
+        }
+        const std::string chosen = runDialog("kdialog", args);
+        if (chosen.empty()) return -1;
+        return std::atoi(chosen.c_str());
+    }
+
+    return -1;
 }
 
 // When the launcher is started by double-clicking it in a file manager there

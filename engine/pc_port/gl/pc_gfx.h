@@ -27,6 +27,40 @@ void pc_gfx_set_aspect_ratio_mode(int mode);
 int pc_gfx_get_aspect_ratio_mode(void);
 float pc_gfx_get_current_aspect_ratio(void);
 
+// Menu 2D: uniform 640x480 inside the RT (pillarbox). World keeps the
+// stretched map. Viewport and scissor share map_gx_rect, so this flag
+// applies to both. Reset at begin_frame.
+void pc_gfx_set_ui_43(int enabled);
+void pc_gfx_set_ui_43_no_bars(int enabled);
+int pc_gfx_get_ui_43(void);
+
+// Translucent quad over the whole render target, ignoring GX 640/hud mapping.
+// Used by the F1 overlay so the dim covers 16:9 even when leftover menu
+// scissors still describe a left-aligned 4:3 rect.
+void pc_gfx_dim_full_target(unsigned char alpha);
+
+// Field HUD: GX space is V=480*aspect by 480, mapped uniformly onto the RT.
+// Panes are translated in that space (left / centre / right). Not a stretch.
+void pc_gfx_set_hud_wide(int enabled);
+int pc_gfx_get_hud_wide(void);
+int pc_gfx_get_hud_virtual_width(void);
+
+// Menu layout. Default is widescreen (same as field HUD B).
+// Revert to 4:3 pillarbox (A) without a rebuild: PIKMIN_MENU_PILLARBOX=1
+// or compile with -DNECTAR_MENU_PILLARBOX.
+int pc_gfx_menu_wide(void);
+void pc_gfx_begin_menu_2d(void);
+int pc_gfx_menu_virt_width(void);
+int pc_gfx_menu_shift_center(void);
+int pc_gfx_menu_shift_right(void);
+int pc_gfx_menu_shift_slot(int slotIndex);
+
+// Title 2D only: keep MenuPanel p00N (the water-drop pictures) inside the
+// centred 640×480. P2DPerspGraph disables pane scissor, so they otherwise
+// fly across the 16:9 bars. Reset at begin_frame.
+void pc_gfx_set_menu_clip_43(int enabled);
+void pc_gfx_apply_menu_clip_43(void);
+
 // Viewport / Scissor / Matrices
 void pc_gfx_set_projection(const Mtx44 mtx, GXProjectionType type);
 void pc_gfx_set_viewport(f32 xOrig, f32 yOrig, f32 wd, f32 ht, f32 nearZ, f32 farZ);
@@ -72,6 +106,12 @@ void pc_gfx_set_tev_swap_mode_table(GXTevSwapSel table, GXTevColorChan red, GXTe
 
 // Texture Management
 void pc_gfx_init_tex_obj(GXTexObj* obj, void* imagePtr, u16 width, u16 height, GXTexFmt format, GXTexWrapMode wrapS, GXTexWrapMode wrapT, GXBool mipmap);
+
+/// A texture whose pixels are already RGBA, row by row, with no GameCube
+/// tiling. Nothing on the console could do this; it exists so the H4M player
+/// can hand over a finished picture instead of encoding one into a hardware
+/// format and unpicking it again with four TEV stages.
+void pc_gfx_init_tex_obj_rgba(GXTexObj* obj, void* rgba, u16 width, u16 height);
 void pc_gfx_init_tex_obj_ci(GXTexObj* obj, void* imagePtr, u16 width, u16 height, GXCITexFmt format,
                             GXTexWrapMode wrapS, GXTexWrapMode wrapT, GXBool mipmap, u32 tlutName);
 void pc_gfx_init_tlut_obj(GXTlutObj* obj, void* lut, GXTlutFmt format, u16 numEntries);
@@ -191,6 +231,21 @@ void pc_gfx_get_pool_peaks(int* matrixPeak, int* matrixMax, int* shapePeak, int*
 // once per frame, right after renderall. No-op unless PIKMIN_TICK_STATS is set.
 void pc_gfx_flush_batch(void);
 void pc_gfx_flush_submit_stats(void);
+
+// File-select stain probe. Off unless PIKMIN_FILESEL_DEBUG=1. Reads the same
+// left/right pixels before particles, after particles, after the rest of the
+// UI, and on both sides of the late post pass, and dumps blend/TEV on the
+// particle draws in between. One report every 60 file-select frames.
+void pc_gfx_filesel_debug_probe(const char* tag);
+void pc_gfx_filesel_debug_set_fx(int active);
+void pc_gfx_filesel_debug_note_aspect(float aspect, int screenW, int screenH);
+void pc_gfx_filesel_debug_note_ptcl(unsigned blendFactor, unsigned zMode, unsigned tevMode, float scaleSize);
+
+// Title Start/Options crop probe. Off unless PIKMIN_TITLE_DEBUG=1.
+// Prints viewport/scissor/mapping plus a 7-point scan. Heartbeat once a
+// second; also prints the rest of that frame if the 5%/95% samples are
+// black while the centre is not — the failure, not the first N events.
+void pc_gfx_title_debug_probe(const char* tag);
 
 class PcRenderPacketStore;
 PcRenderPacketStore& pc_gfx_get_packet_store();
