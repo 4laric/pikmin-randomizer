@@ -397,3 +397,8 @@ Local turkey-finish-01/Play.cmd now uses bin/nectar-grab.exe (SHA256 9226a162173
 ## Day-end skip correction (#63)
 
 Native 9d5bfddd integrates the isolated validated fix 8814b166 atop the quick-grab change. Results/save dialogs now retain control of background movies and day-end phase transitions. The implementation task reproduced the old failure with actual DayOver code, then verified the fixed ordinary Hope day-end reaches the next-day map and writes a private card file; all 42 cinematic regression cases passed. See engine/tools/DAYEND_SKIP_FIX.md for reproduction and coverage limits. Player executable staging is owned by the playtest task; no player session was modified during source integration.
+
+
+## Upstream public CI portability (#64)
+
+Native 663e0279 merges upstream health-gauge merge 398258e7 and CI repair branch 9d82224d. Global float math calls avoid GCC namespace failures without changing float precision. Windows production game/probe builds pass (output/ci64-windows-final.log); all 76 Python tests pass (output/ci64-python.log). Upstream Linux build/package/smoke CI is being verified in PR #7. The private original-game matching workflow is now manual, not represented as a passing public build. Public engine snapshot excludes native CI workflows by design; root randomizer CI remains separate. Existing player binary/session unchanged.
