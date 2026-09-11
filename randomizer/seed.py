@@ -86,10 +86,10 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         result.update(schema=8, catalog='gameplay-checks-v8', locations=dict(PERMANENT_LOCATION_IDS))
         result['capabilities'] += ['permanent-checks-v1', 'check-set-v1']
     if collection_checks and not legacy_checks:
-        result.update(schema=9, catalog='gameplay-checks-v9', permanent_checks=bool(permanent_checks),
-                      locations={n: MODERN_LOCATION_IDS[n] for n in modern_names(permanent_checks)})
+        result.update(schema=9, catalog='gameplay-checks-v9', permanent_checks=bool(permanent_checks), no_exploration=True,
+                      locations={n: MODERN_LOCATION_IDS[n] for n in modern_names(permanent_checks, True)})
         result['capabilities'] = [c for c in result['capabilities'] if c not in ('permanent-checks-v1', 'check-set-v1')]
-        result['capabilities'] += (['permanent-checks-v1'] if permanent_checks else []) + ['check-set-v1', 'bestiary-v2', 'landing-only-v1']
+        result['capabilities'] += (['permanent-checks-v1'] if permanent_checks else []) + ['check-set-v1', 'bestiary-v2', 'no-exploration-v1']
     if starting_flarlic is not None:
         result["starting_flarlic"] = starting_flarlic
         result["capabilities"].append("starting-flarlic-v1")
@@ -113,6 +113,9 @@ def validate(m):
         expected.update(('enemy_shuffle', 'enemy_mask'))
     if type(m) is dict and m.get('schema') == 9:
         expected.add('permanent_checks')
+        if 'no_exploration' in m:
+            expected.add('no_exploration')
+            if m['no_exploration'] is not True: raise ValueError('invalid no_exploration')
         if type(m.get('permanent_checks')) is not bool: raise ValueError('invalid permanent_checks')
     if type(m) is dict and "starting_flarlic" in m:
         expected.add("starting_flarlic")
@@ -160,7 +163,7 @@ def validate(m):
         fixed.update(catalog='gameplay-checks-v8', capabilities=fixed['capabilities'] + ['permanent-checks-v1', 'check-set-v1'])
     if m['schema'] == 9:
         fixed.update(catalog='gameplay-checks-v9', capabilities=fixed['capabilities']
-            + (['permanent-checks-v1'] if m['permanent_checks'] else []) + ['check-set-v1', 'bestiary-v2', 'landing-only-v1'])
+            + (['permanent-checks-v1'] if m['permanent_checks'] else []) + ['check-set-v1', 'bestiary-v2', 'no-exploration-v1' if m.get('no_exploration') else 'landing-only-v1'])
     if "starting_flarlic" in m:
         fixed["capabilities"] = fixed["capabilities"] + ["starting-flarlic-v1"]
     if "color_stats" in m:
@@ -175,7 +178,7 @@ def validate(m):
             raise ValueError(f"invalid {key}")
     if m["mode"] not in ("solo", "ap"):
         raise ValueError("mode must be solo or ap")
-    for key, value in (("assignments", ALL_PART_IDS if m['schema'] >= 5 else PART_IDS), ("locations", {n: MODERN_LOCATION_IDS[n] for n in modern_names(m["permanent_checks"])} if m["schema"] == 9 else PERMANENT_LOCATION_IDS if m['schema'] >= 8 else COLLECTION_LOCATION_IDS if m['schema'] >= 7 else ALL_AREA_LOCATION_IDS if m['schema'] >= 5 else ALL_LOCATION_IDS if expanded else LOCATION_IDS)):
+    for key, value in (("assignments", ALL_PART_IDS if m['schema'] >= 5 else PART_IDS), ("locations", {n: MODERN_LOCATION_IDS[n] for n in modern_names(m["permanent_checks"], m.get("no_exploration", False))} if m["schema"] == 9 else PERMANENT_LOCATION_IDS if m['schema'] >= 8 else COLLECTION_LOCATION_IDS if m['schema'] >= 7 else ALL_AREA_LOCATION_IDS if m['schema'] >= 5 else ALL_LOCATION_IDS if expanded else LOCATION_IDS)):
         if type(m[key]) is not dict or m[key] != value or any(type(v) is not int for v in m[key].values()):
             raise ValueError(f"unsupported {key}; relocation is not implemented")
 

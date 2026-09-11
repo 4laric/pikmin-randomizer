@@ -19,7 +19,7 @@
 #endif
 
 namespace {
-bool enabled = false, ready = false, goalReported = false, permanentChecks = false;
+bool enabled = false, ready = false, goalReported = false, permanentChecks = false, noExploration = false;
 unsigned repairs = 0, unlocks = 0, flarlic = 0, schema = 1, checkCount = 30;
 int startStage = 1;
 int startColor = 1; // Native IDs: blue 0, red 1, yellow 2.
@@ -46,7 +46,7 @@ void expect(std::istream& in, const char* expected) {
     std::string word;
     if (!(in >> word) || word != expected) fail("unsupported or malformed bootstrap");
 }
-const char* checkName(unsigned i) { return schema >= 9 ? (permanentChecks ? randomizerModernPermanentNames[i] : randomizerModernCollectionNames[i]) : schema >= 8 ? randomizerPermanentNames[i] : schema >= 7 ? randomizerCollectionNames[i] : randomizerCheckNames[i]; }
+const char* checkName(unsigned i) { return noExploration ? (permanentChecks ? randomizerNoExplorePermanentNames[i] : randomizerNoExploreCollectionNames[i]) : schema >= 9 ? (permanentChecks ? randomizerModernPermanentNames[i] : randomizerModernCollectionNames[i]) : schema >= 8 ? randomizerPermanentNames[i] : schema >= 7 ? randomizerCollectionNames[i] : randomizerCheckNames[i]; }
 int index(const char* name) {
     if (name) for (unsigned i = 0; i < checkCount; ++i) if (!std::strcmp(name, checkName(i))) return (int)i;
     return -1;
@@ -96,9 +96,10 @@ bool pc_randomizer_init(int argc, char** argv) {
     permanentChecks = schema == 8;
     if (schema >= 9) {
         expect(input, "CHECKSET"); int value;
-        if (!(input >> value) || (value != 0 && value != 1)) fail("invalid check set");
-        permanentChecks = value != 0;
-        checkCount = permanentChecks ? sizeof(randomizerModernPermanentNames)/sizeof(*randomizerModernPermanentNames)
+        if (!(input >> value) || (value < 0 || value > 3)) fail("invalid check set");
+        permanentChecks = (value & 1) != 0;
+        noExploration = (value & 2) != 0;
+        checkCount = noExploration ? (permanentChecks ? sizeof(randomizerNoExplorePermanentNames)/sizeof(*randomizerNoExplorePermanentNames) : sizeof(randomizerNoExploreCollectionNames)/sizeof(*randomizerNoExploreCollectionNames)) : permanentChecks ? sizeof(randomizerModernPermanentNames)/sizeof(*randomizerModernPermanentNames)
             : sizeof(randomizerModernCollectionNames)/sizeof(*randomizerModernCollectionNames);
     }
     if (schema >= 6) {
@@ -155,7 +156,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (schema >= 7) hello << " total-population-v1 corpse-delivery-v1";
     if (permanentChecks) hello << " permanent-checks-v1";
     if (schema >= 8) hello << " check-set-v1";
-    if (schema >= 9) hello << " bestiary-v2 landing-only-v1";
+    if (schema >= 9) hello << (noExploration ? " bestiary-v2 no-exploration-v1" : " bestiary-v2 landing-only-v1");
     if (configuredFlarlic) hello << " starting-flarlic-v1";
     if (configuredStats) hello << (wideStats ? " color-stats-v2" : " color-stats-v1");
     if (progressiveStats) hello << " progressive-color-stats-v1";
@@ -345,7 +346,7 @@ void pc_randomizer_corpse_delivered(int type, int stage, bool gameplay) {
         if (entry.type == type) pc_randomizer_check(entry.name);
 }
 void pc_randomizer_observe_exploration(int stage, float dx, float dz, bool grounded, bool gameplay) {
-    if (!pc_randomizer_expanded() || !grounded || !gameplay || !ready || !accessibleStage(stage)
+    if (noExploration || !pc_randomizer_expanded() || !grounded || !gameplay || !ready || !accessibleStage(stage)
         || !std::isfinite(dx) || !std::isfinite(dz)) return;
     const int landIndex = stage == 0 ? 55 : 47 + (stage - 1) * 2;
     pc_randomizer_check(randomizerCheckNames[landIndex]);

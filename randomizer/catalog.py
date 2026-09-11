@@ -157,8 +157,9 @@ MODERN_LOCATION_IDS = {**PERMANENT_LOCATION_IDS, **{n: LOCATION_BASE + 200 + i f
 def has_permanent(manifest):
     return manifest.get('permanent_checks', False) if manifest['schema'] >= 9 else manifest['schema'] == 8
 
-def modern_names(permanent):
-    return MODERN_PERMANENT_NAMES if permanent else MODERN_COLLECTION_NAMES
+def modern_names(permanent, no_exploration=False):
+    names = MODERN_PERMANENT_NAMES if permanent else MODERN_COLLECTION_NAMES
+    return tuple(n for n in names if not n.startswith('Explore:')) if no_exploration else names
 
 # Filled from the native loaded pellet config audit, not the maximum carrier count.
 NATIVE_PART_WEIGHTS = {0: 30, 1: 50, 2: 40, 3: 40, 4: 20, 5: 20, 6: 20, 7: 20, 8: 20, 9: 30, 10: 15, 11: 20, 12: 15, 13: 30, 14: 15, 15: 15, 16: 30, 17: 25, 18: 25, 19: 30, 20: 15, 21: 30, 22: 30, 23: 20, 24: 25, 25: 30, 26: 40, 27: 20, 28: 20, 29: 10}
@@ -166,7 +167,7 @@ PART_WEIGHTS = {name: NATIVE_PART_WEIGHTS[part] for name, part in PART_IDS.items
 
 
 def active_names(manifest):
-    if manifest['schema'] >= 9: return modern_names(has_permanent(manifest))
+    if manifest['schema'] >= 9: return modern_names(has_permanent(manifest), manifest.get("no_exploration", False))
     if manifest['schema'] >= 8: return PERMANENT_NAMES
     if manifest['schema'] >= 7: return COLLECTION_NAMES
     if manifest['schema'] >= 5: return ALL_AREA_NAMES

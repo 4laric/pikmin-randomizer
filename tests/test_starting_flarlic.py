@@ -17,7 +17,7 @@ class StartingFlarlicTests(unittest.TestCase):
                 self.assertEqual(field_capacity({}, True, initial), 10 * initial)
                 self.assertEqual(field_capacity({FLARLIC: 20}, True, initial), 100)
                 spheres(solo_rewards(m), m)
-                self.assertTrue(can_reach_manifest('Explore: The Forest of Hope - Land', {}, m))
+                self.assertEqual(can_reach_manifest('Explore: The Forest of Hope - Land', {}, m), not collection)
                 with TemporaryDirectory() as d:
                     session = Session(m, d)
                     self.assertEqual(snapshot(m, session.data)[1], initial * 10)

@@ -13,6 +13,10 @@ Experimental standalone and Archipelago randomizer for Pikmin 1, built on Open N
 
 **Prototype limitations:** physical ship parts remain in vanilla positions. Relaunch restores checks and rewards but starts a fresh native campaign; exact day/area/squad resume and extinction recovery are unfinished. Some starting combinations deliberately require remote progression in multiworld. Enemy-family swaps have player validation; corpse deliveries and the day-end save fix still need full gameplay acceptance.
 
+## No exploration rewards (v0.14.0)
+
+New collection-mode seeds award neither landing nor scout checks. There are **59 checks**, or **120 with permanent structures**, including all 19 bestiary checks. Population milestones supply opening checks; the repair goal remains 25. Existing seeds retain their saved catalogs, including any landing checks. Use the new native build and a fresh seed for this change.
+
 ## Expanded bestiary (v0.13.0)
 
 New collection-mode seeds have **19 bestiary checks** and **five landing checks**; scout-distance checks are retired. Collection mode is now the CLI/AP default. There are 64 locations without permanent structures, or 125 with `permanent_checks: true`. Existing manifests retain their original catalogs and IDs; use a fresh seed and current native build for the new list. Explicit legacy AP collection opt-out still selects the older catalog.

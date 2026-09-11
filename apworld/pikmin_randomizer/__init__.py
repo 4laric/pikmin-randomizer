@@ -53,7 +53,7 @@ class RandomizeColorStats(Toggle):
 
 
 class PermanentChecks(Toggle):
-    """Enable 19 total-population milestones and 51 individual walls, climbing sticks, bridges and boxes. Enables collection checks; 125 total checks. Obstacle routes currently require all colors conservatively; boxes also require field capacity 100."""
+    """Enable 19 total-population milestones and 51 individual walls, climbing sticks, bridges and boxes. Enables collection checks; 120 total checks. Obstacle routes currently require all colors conservatively; boxes also require field capacity 100."""
     display_name = 'Permanent Structure and Granular Population Checks'
     default = 0
 
@@ -118,7 +118,7 @@ class PikminRandomizerWorld(World):
 
     def create_items(self):
         # Sparse cap-10 starts need farming access before reverse fill spends
-        # their only landing check. This can be delivered from another world.
+        # their opening population check. This can be delivered from another world.
         if self.manifest().get('starting_flarlic') == 1:
             early = FLARLIC if self.manifest()['profile'] == 'foh-day2' else 'Pikmin: Forest of Hope Access'
             self.multiworld.early_items[self.player][early] = max(

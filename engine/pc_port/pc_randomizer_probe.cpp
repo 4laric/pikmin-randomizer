@@ -49,7 +49,7 @@ int main(int argc, char** argv) {
                     assert(pc_randomizer_checked(entry.name));
                 }
                 pc_randomizer_observe_exploration(1, 9999, 9999, true, true);
-                assert(pc_randomizer_checked("Explore: The Forest of Hope - Land"));
+                assert(!pc_randomizer_checked("Explore: The Forest of Hope - Land"));
                 assert(!pc_randomizer_checked("Explore: The Forest of Hope - Scout"));
                 std::puts("BESTIARY_PASS"); return 0;
             }

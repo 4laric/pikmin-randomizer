@@ -106,7 +106,7 @@ def main(ap):
                              options=[{'progressive_color_stats': True}, {'progressive_color_stats': True}])
         carry = next(item for item in mw.itempool if item.player == 1 and item.name == 'Progressive Red Carry Strength')
         mw.itempool.remove(carry)
-        remote = mw.get_location('Explore: The Forest of Hope - Land', 2)
+        remote = mw.get_location('Population: 20 total Pikmin', 2)
         remote.place_locked_item(carry)
         initial = CollectionState(mw)
         initial.collect(mw.worlds[1].create_item(FLARLIC), True)

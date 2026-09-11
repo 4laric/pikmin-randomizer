@@ -9,10 +9,10 @@ class BestiaryV2Tests(unittest.TestCase):
             old = generate('compat', collection_checks=True, permanent_checks=permanent, legacy_checks=True)
             new = generate('compat', collection_checks=True, permanent_checks=permanent)
             validate(old); validate(new)
-            self.assertEqual(len(new['locations']), 125 if permanent else 64)
+            self.assertEqual(len(new['locations']), 120 if permanent else 59)
             self.assertEqual(len(NEW_BESTIARY), 11)
             for n, ident in new['locations'].items():
-                self.assertFalse(n.endswith(' - Scout'))
+                self.assertFalse(n.startswith('Explore:'))
                 if n in old['locations']: self.assertEqual(ident, old['locations'][n])
             self.assertEqual(len(new['locations']), len(set(new['locations'].values())))
             self.assertTrue(any(n.endswith(' - Scout') for n in old['locations']))
@@ -28,3 +28,12 @@ class BestiaryV2Tests(unittest.TestCase):
         self.assertTrue(can_reach_manifest('Bestiary: Deliver Armored Cannon Beetle', full, m))
         self.assertFalse(can_reach_manifest('Explore: The Forest of Hope - Scout', full, m))
         self.assertGreaterEqual(item_pool(m).count(REPAIR), 25)
+
+    def test_existing_landing_manifest(self):
+        m = generate('previous', collection_checks=True)
+        m.pop('no_exploration')
+        m['capabilities'][m['capabilities'].index('no-exploration-v1')] = 'landing-only-v1'
+        m['locations'] = {n: MODERN_LOCATION_IDS[n] for n in modern_names(False)}
+        validate(m)
+        self.assertEqual(len(active_names(m)), 64)
+        self.assertTrue(can_reach_manifest('Explore: The Forest of Hope - Land', {}, m))

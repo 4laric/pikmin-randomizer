@@ -1,5 +1,11 @@
 # Standalone milestone: local implementation
 
+## Remove landing checks (issue #34)
+
+New schema-9 manifests require `no_exploration: true` and `no-exploration-v1` instead of `landing-only-v1`. CHECKSET bit 1 selects exploration-free immutable arrays; bit 0 still selects permanent structures. The native observer returns before awarding exploration checks. Existing schema-9 manifests without this field retain their 64/125 catalogs, and schemas 1–8 are unchanged. Remaining AP IDs are unchanged; no retired ID is reused. New pools have 59/120 locations and at least 25 repairs with both stat modes at starting Flarlic 1. The modern remote-carry test now places its reward at population 20 instead of landing.
+
+51 Python tests and compiled bestiary/legacy collection protocols validate catalog compatibility, no landing/scout rewards, initial progression, replay and pool balance. Production build keeps TEST_HOOKS OFF. Local package: `output/turkey-no-land-01/Play.cmd`. AP v0.14.0.
+
 ## Bestiary through minibosses; landing-only exploration (issue #33)
 
 Schema 9 / AP v0.13.0 adds eleven species checks and removes five scout checks: 64 collection locations, or 125 with permanent structures. The required boolean `permanent_checks` selects the two immutable native check arrays via `CHECKSET 0/1`. `bestiary-v2`, `landing-only-v1` and `check-set-v1` are required handshake capabilities. Existing AP IDs are retained; new IDs start at LOCATION_BASE + 200. Retired scout IDs remain reserved. Schema 1–8 manifests and journals retain their original order and behavior. The generation helper's `legacy_checks=True` is for compatibility tests; CLI and AP defaults use modern collection checks.

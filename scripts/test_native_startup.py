@@ -66,6 +66,7 @@ def main(exe, assets, output, expanded=False, starting_area='forest', seed='star
             if session.manifest.get('permanent_checks', session.manifest['schema'] == 8):
                 # The two received Onion unlocks each add five stored starters.
                 expected.add('Population: 30 total Pikmin')
+            if session.manifest.get('no_exploration'): expected.discard(f'Explore: {area} - Land')
             if not collection_checks and initial_field < 20:
                 expected.discard('Population: 20 Pikmin in the field')
             if collection_fixture:
