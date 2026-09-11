@@ -2010,6 +2010,26 @@ void GameCoreSection::updateAI()
 #if defined(PIKMIN_RANDOMIZER_TEST_HOOKS)
     const char* scripted = std::getenv("PIKMIN_RANDOMIZER_TEST_SCRIPT");
     const char* background = std::getenv("PIKMIN_RANDOMIZER_TEST_BACKGROUND");
+    if (scripted && !std::strcmp(scripted, "boss-params") && background && !std::strcmp(background, "1")
+        && pc_randomizer_ready() && bbftRedsReady && !gameflow.mMoviePlayer->mIsActive) {
+        const u32 retail[] = {0xc4, 0x08, 0x09, 0x45, 0x85, 0x1b5c0};
+        auto check = [](u32 word) {
+            char data[16] = {};
+            RamStream stream(data, sizeof(data)); stream.writeInt(word); stream.setPosition(0);
+            GenObjectBoss obj; obj.readParameters(stream);
+            if (obj.mBossID != (word & 15) || obj.mItemIndex != ((word >> 4) & 3)
+                || obj.mItemColour != ((word >> 6) & 3) || obj.mItemCount != ((word >> 8) & 15)
+                || obj.mPelletConfigIdx != static_cast<int>(word >> 12) - 1) std::abort();
+            stream.setPosition(0); obj.writeParameters(stream); stream.setPosition(0);
+            if (static_cast<u32>(stream.readInt()) != word) std::abort();
+        };
+        for (u32 word : retail) check(word);
+        const u32 payloads[] = {0, 1, 0xfffff};
+        for (u32 id = 0; id < 10; ++id) for (u32 item = 0; item < 4; ++item)
+            for (u32 color = 0; color < 4; ++color) for (u32 count = 0; count < 16; ++count)
+                for (u32 payload : payloads) check(id | (item << 4) | (color << 6) | (count << 8) | (payload << 12));
+        std::puts("TEST_ONLY boss_params_pass cases=7686"); std::fflush(stdout); std::exit(0);
+    }
     if (scripted && !std::strcmp(scripted, "bestiary-v2") && background && !std::strcmp(background, "1")
         && pc_randomizer_ready() && bbftRedsReady && pc_bbft_color_access(Blue) && pc_bbft_color_access(Yellow)
         && !gameflow.mMoviePlayer->mIsActive) {

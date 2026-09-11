@@ -1,5 +1,15 @@
 # Standalone milestone: local implementation
 
+## Boss generator bit layout (issue #35)
+
+Player reports of multiple Beady Long Legs were caused by the inherited native generator reader, not the family-shuffle mapping. `GenObjectBoss::readParameters` used C++ bitfields whose allocation order differs between the original target and the Windows compiler. Boss kind occupies bits 0–3 in the file; the old PC reader took bits 28–31. Real packed words such as 0xc4 (Flint Beetle), 0x08/09 (geysers), 0x45/85 (Candypop colors) and the Snagret entries consequently decoded as Spider. The same defect corrupted carried-item parameters.
+
+Explicit masks/shifts now implement the fixed wire format in both read and write paths: kind 0–3, item index 4–5, color 6–7, count 8–11, pellet-index-plus-one 12–31. Legacy versioned readers remain unchanged. Native cache writes now match retail layout. The bitfield code is present in our integrated upstream revision 18ce1303; this source fix does not change the randomizer permutation. New spawn diagnostics record decoded boss kind and birth result during standalone runs.
+
+The test-hook fixture exercises real GenObjectBoss read/write methods and RamStream for six retail words and 7,680 parameter combinations, including no-pellet and maximum-payload boundaries. Separate hidden area boots audit real generators and require one Spider in Navel and none elsewhere. Candypop creation legitimately returns null when the matching Onion is unavailable, as guarded in BossMgr::create; the audit permits this skip only for Candypops. Tests cover startup and spawn identity, not full boss fights or player-driven day-end save UI. User assets remain untouched.
+
+Local corrected playtest: `output/turkey-bossfix-01/Play.cmd`, Forest of Hope/yellow, cap 10, both stat modes, enemy-family shuffle and 120 checks. Old packaged executables remain old builds; use the new launcher or rebuild current source.
+
 ## Remove landing checks (issue #34)
 
 New schema-9 manifests require `no_exploration: true` and `no-exploration-v1` instead of `landing-only-v1`. CHECKSET bit 1 selects exploration-free immutable arrays; bit 0 still selects permanent structures. The native observer returns before awarding exploration checks. Existing schema-9 manifests without this field retain their 64/125 catalogs, and schemas 1–8 are unchanged. Remaining AP IDs are unchanged; no retired ID is reused. New pools have 59/120 locations and at least 25 repairs with both stat modes at starting Flarlic 1. The modern remote-carry test now places its reward at population 20 instead of landing.
