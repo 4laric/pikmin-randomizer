@@ -24,6 +24,7 @@ int pc_randomizer_start_color();
 bool pc_randomizer_enemy_shuffle();
 int pc_randomizer_enemy_type(int original, bool protectedSpawn);
 bool pc_randomizer_spawn_slots();
+bool pc_randomizer_group_slots();
 unsigned pc_randomizer_generator_id(const void* generator);
 void pc_randomizer_set_generator_id(const void* generator, unsigned uid);
 void pc_randomizer_bind_generator(const void* generator, int stage, const char* file, int offset);

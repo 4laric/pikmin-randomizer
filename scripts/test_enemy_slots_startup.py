@@ -8,9 +8,10 @@ from randomizer.runner import NativeRun
 from randomizer.enemy_slots import verify_source_assets
 p=argparse.ArgumentParser()
 for name in ('exe','assets','output'):p.add_argument('--'+name,type=Path,required=True)
+p.add_argument('--groups',action='store_true')
 a=p.parse_args();verify_source_assets(a.assets)
 for area in ('forest','spring'):
-    m=generate('slot-production-'+area,'ap',per_spawn_enemies=True,starting_area=area,starting_color='yellow',starting_flarlic=1)
+    m=generate('slot-production-'+area,'ap',per_spawn_enemies=True,group_spawn_enemies=a.groups,starting_area=area,starting_color='yellow',starting_flarlic=1)
     s=Session(m,a.output.resolve()/area);r=NativeRun(s);r.write_state(True)
     _winapi.CreateJunction(str(a.assets.resolve()),str(r.directory/'assets'))
     env=dict(os.environ,PIKMIN_RANDOMIZER_TEST_BACKGROUND='1',SDL_AUDIODRIVER='dummy')
@@ -28,6 +29,7 @@ for area in ('forest','spring'):
                 time.sleep(.1)
             else:raise AssertionError(f'production startup failed: {log}')
             choices={row['uid']:row['actual'] for row in m['spawn_layout']['assignments']}
+            if a.groups:choices.update((row['uid'],row['actual']) for row in m['group_layout']['assignments'])
             adults=[]
             for line in text.splitlines():
                 if not line.startswith('ENEMY_SLOT_BIRTH '):continue
@@ -35,6 +37,7 @@ for area in ('forest','spring'):
                 if int(fields['original']) in (4,32):
                     assert choices[int(fields['uid'])]==int(fields['actual'])
                     adults.append(int(fields['actual']))
+                elif int(fields['uid']) in choices:assert choices[int(fields['uid'])]==int(fields['actual'])
                 else:assert fields['original']==fields['actual']
             assert set(adults)=={4,32} and r.handshaken and 'TEST_ONLY' not in text
             print('PASS production',area,'mixed adult births match seed; yellow cap 10, rendered, handshake',flush=True)

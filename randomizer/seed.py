@@ -42,7 +42,8 @@ class SeedRandom:
         return values
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False):
+    if group_spawn_enemies: per_spawn_enemies = True
     if per_spawn_enemies:
         if legacy_checks: raise ValueError('per-spawn enemies require modern checks')
         collection_checks = True
@@ -115,6 +116,11 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
             result['enemy_layout'] = spawn_sources(result['spawn_layout'])
             result['enemy_shuffle'] = 'adult-slots-v1'
             result['capabilities'].append('enemy-slots-v1')
+    if group_spawn_enemies:
+        from .enemy_slots import resolve_group_layout, spawn_sources
+        result["group_layout"] = resolve_group_layout(result["seed"], slot)
+        result["enemy_layout"] = spawn_sources(result["spawn_layout"], result["group_layout"])
+        result["capabilities"].append("enemy-groups-v1")
     validate(result)
     return result
 
@@ -145,6 +151,11 @@ def validate(m):
             raise ValueError('per-spawn layout requires modern zero-mask seed')
         if canonical(m['spawn_layout']) != canonical(resolve_spawn_layout(m.get('seed', ''), m.get('slot', ''))):
             raise ValueError('invalid per-spawn layout or source catalog')
+    if type(m) is dict and 'group_layout' in m:
+        expected.add('group_layout')
+        from .enemy_slots import resolve_group_layout
+        if 'spawn_layout' not in m or canonical(m['group_layout']) != canonical(resolve_group_layout(m.get('seed',''),m.get('slot',''))):
+            raise ValueError('invalid grouped enemy layout')
     if type(m) is dict and 'enemy_layout' in m:
         expected.add('enemy_layout')
         from .enemies import resolve_layout, sources_for
@@ -152,7 +163,7 @@ def validate(m):
         if m.get('schema') != 9 or type(m.get('enemy_mask')) is not int or not 0 <= m['enemy_mask'] <= 7:
             raise ValueError('enemy layout requires schema 9 and a valid seed mask')
         from .enemy_slots import spawn_sources
-        expected_sources = spawn_sources(m['spawn_layout']) if 'spawn_layout' in m else resolve_layout(m['enemy_mask'])
+        expected_sources = spawn_sources(m['spawn_layout'], m.get('group_layout')) if 'spawn_layout' in m else resolve_layout(m['enemy_mask'])
         if canonical(m['enemy_layout']) != canonical(expected_sources):
             raise ValueError('enemy layout disagrees with seeded permutation/source catalog')
         if any(not sources_for(m['enemy_layout'], species) for species, _ in BESTIARY_TARGETS.values()):
@@ -216,6 +227,8 @@ def validate(m):
         fixed['capabilities'] += ['benefit-items-v1']
     if 'spawn_layout' in m:
         fixed['capabilities'] += ['enemy-slots-v1']
+    if 'group_layout' in m:
+        fixed['capabilities'] += ['enemy-groups-v1']
     for key, value in fixed.items():
         if type(m[key]) is not type(value) or m[key] != value:
             raise ValueError(f"unsupported {key}: {m[key]!r}")

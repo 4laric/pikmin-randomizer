@@ -6,6 +6,8 @@ The next playable milestone is **different members of the same family at individ
 
 ## Current baseline
 
+Grouped tranche (#53): opt-in fixed-count circular generators now receive group-wide dwarf or Sheargrub choices, in addition to the 15 adult choices. Twelve groups retain original counts/distributions/schedules and protected sources; Spring's dwarf groups remain day-16 sources. Per-member mixed groups need additional persistent member identities and are deferred. Physical compatibility/route acceptance still gates broader habitat pools.
+
 Progress update: the first experimental per-spawn tranche supports 15 named adult generators in Hope/Spring. The 690-record five-area registry matches native disk/cache reads; actual stage-cache APIs restore all 15 choices, with mixed species observed at startup. All-check solo/AP reachability tests pass. Physical clearance/corpse-route acceptance and distributed dwarf/grub adapters remain open, so #42/#43 remain tracking issues. The global-mask baseline below still applies to legacy/default family mode.
 
 - `enemy_shuffle` currently selects a deterministic nonzero three-bit mask: dwarf Bulborb/Bulbear, adult Bulborb/Bulbear, and female/male Sheargrub pairs. There are seven nonempty masks, plus vanilla/off. Every eligible instance of a species follows the same global swap.

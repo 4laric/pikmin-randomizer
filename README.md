@@ -18,13 +18,17 @@ The current native build fixes a boss-generator decoding bug that turned Snagret
 
 ## Per-spawn adult enemies (v0.18.0, experimental)
 
+**v0.19.0 adds `group_spawn_enemies: true` / `--group-spawn-enemies`.** This implies adult per-spawn mode and adds 12 fixed-count circular generators: two Hope dwarf singles, six Hope Sheargrub groups, and four Spring dwarf groups that activate from day 16. Each generator rolls one species for its entire group. Group sizes, distributions, schedules and protected drops are preserved; per-species body totals can change. The seed guarantees early Hope sources for both dwarf types and both Sheargrub sexes, and keeps Spring's later timing in bestiary logic. Protected farming sources remain untouched.
+
+Vanilla caches store group survivor counts rather than individual member identities. Group-wide choices prevent a survivor changing species on reload. Native fixtures cover reduced survivor counts and the respawn interval; full physical route/combat/day-cycle acceptance remains open. Use a fresh seed and an executable with `enemy-groups-v1`. Local grouped playtest: `output/turkey-groups-01/Play.cmd`; named mappings are available through `enemy-spoiler`.
+
 Set AP YAML `per_spawn_enemies: true`, or generate with `--per-spawn-enemies`, for independent choices at 15 named adult Bulborb/Bulbear generators in Forest of Hope and Distant Spring. Both species have early renewable sources in both areas; total counts remain nine Bulborbs and six Bulbears. Other species keep vanilla identities in this mode. This option overrides the global `enemy_shuffle` mask; it is off by default and old seeds retain their choices.
 
 The seed records every choice before AP fill. Owned generator IDs survive tagged native cache records, without changing vanilla names, positions, schedules or drops. Source hashes reject incompatible generator assets before launch. Use a fresh seed and an executable supporting `enemy-slots-v1`; full native campaign resume remains unfinished.
 
 For an explicit named mapping, run `python -m randomizer enemy-spoiler <seed.json> --output enemy-spoiler.json`. It includes original/replacement species and schedule/source facts; the normal overlay does not reveal the mapping. Local playtest: `output/turkey-slots-01/Play.cmd`.
 
-All-five-area disk/cache audits, actual mixed births, generation and AP reachability tests pass. Physical combat and return-route acceptance remain open, especially the larger Bulbear footprint. Distributed dwarf/grub spawns, cross-family pools, density changes and bosses remain future tracks.
+All-five-area disk/cache audits, actual mixed births, generation and AP reachability tests pass. Physical combat and return-route acceptance remain open, especially the larger Bulbear footprint. Mixed species within a single group, cross-family pools, density changes and bosses remain future tracks.
 
 ## Graphics presets
 

@@ -2082,7 +2082,14 @@ void GameCoreSection::updateAI()
                     std::fprintf(stderr, "SPAWN_AUDIT invalid enemy components file=%s offset=%d\n", file.c_str(), offset); std::abort();
                 }
                 const int species = teki ? static_cast<GenObjectTeki*>(gen->mGenObject)->mTekiType : static_cast<GenObjectBoss*>(gen->mGenObject)->mBossID;
-                if (pc_randomizer_spawn_slots() && teki && (species == 4 || species == 32)) {
+                const bool group = pc_randomizer_group_slots() && teki && (species == 3 || species == 31 || species == 18 || species == 19)
+                    && static_cast<GenObjectTeki*>(gen->mGenObject)->mPersonality->mID.mId == 'none'
+                    && static_cast<GenObjectTeki*>(gen->mGenObject)->mPersonality->getI(TekiPersonality::INT_Parameter0) == 0;
+                if (group) {
+                    gen->mAliveCount = gen->mGenType->getMaxCount() - 1;
+                    gen->mLatestSpawnDay = gameflow.mWorldClock.mCurrentDay;
+                }
+                if (pc_randomizer_spawn_slots() && teki && (species == 4 || species == 32 || group)) {
                     auditCache.saveGenerator(gen);
                     ++cachedAdults;
                 }
@@ -2104,7 +2111,7 @@ void GameCoreSection::updateAI()
                 const int restoredSpecies = teki ? static_cast<GenObjectTeki*>(restored->mGenObject)->mTekiType : static_cast<GenObjectBoss*>(restored->mGenObject)->mBossID;
                 if (restoredSpecies != species || restored->mGenPosition.x != x || restored->mGenPosition.y != y || restored->mGenPosition.z != z
                     || restored->mCarryOverFlags != gen->mCarryOverFlags || restored->getRebirthDay() != gen->getRebirthDay()
-                    || pc_randomizer_generator_id(restored) != pc_randomizer_generator_id(gen)) {
+                    || pc_randomizer_generator_id(restored) != pc_randomizer_generator_id(gen) || restored->mAliveCount != gen->mAliveCount) {
                     std::fprintf(stderr, "SPAWN_AUDIT cache mismatch file=%s offset=%d\n", file.c_str(), offset); std::abort();
                 }
                 std::printf("SPAWN_AUDIT stage=%d file=%s offset=%d kind=%s species=%d cache=%d,%d,%d count=%d respawn=%d flags=%u protected=%d terrain=%d\n",
@@ -2126,6 +2133,16 @@ void GameCoreSection::updateAI()
             GenObjectTeki* object = static_cast<GenObjectTeki*>(gen->mGenObject);
             int actual = pc_randomizer_enemy_for_generator(object->mTekiType, false, gen);
             std::printf("CACHE_SLOT uid=%u actual=%d\n", pc_randomizer_generator_id(gen), actual);
+            if (object->mTekiType == 3 || object->mTekiType == 31 || object->mTekiType == 18 || object->mTekiType == 19) {
+                int survivors = gen->mAliveCount;
+                if (std::getenv("PIKMIN_RANDOMIZER_TEST_GROUP_RESPAWN")) {
+                    gen->mLatestSpawnDay -= gen->getRebirthDay();
+                    survivors = gen->mGenType->getMaxCount();
+                }
+                Generator::ramMode = true; gen->init(); Generator::ramMode = false;
+                if (gen->mAliveCount != survivors) std::abort();
+                std::printf("GROUP_SURVIVORS uid=%u count=%d\n", pc_randomizer_generator_id(gen), survivors);
+            }
             ++restoredAdults;
         }
         generatorList = liveList;

@@ -1,7 +1,7 @@
 """Opt-in per-generator adult family layout; names/IDs survive cache serialization."""
 from pathlib import Path
 import hashlib
-from .spawn_data import ADULT_SLOTS, GENERATOR_SLOTS, SOURCE_FILES, CATALOG_HASH
+from .spawn_data import ADULT_SLOTS, GROUP_SLOTS, GENERATOR_SLOTS, SOURCE_FILES, CATALOG_HASH
 
 
 def resolve_spawn_layout(seed, slot):
@@ -20,7 +20,22 @@ def resolve_spawn_layout(seed, slot):
     raise ValueError('could not assign persistent sources for both adult species')
 
 
-def spawn_sources(layout):
+def resolve_group_layout(seed, slot):
+    from .seed import SeedRandom
+    rng = SeedRandom(str(seed) + '/family-groups-v1/' + slot)
+    choices = {}
+    for stage, pair in ((1, (3,31)), (3, (3,31)), (1, (18,19))):
+        rows = [r for r in GROUP_SLOTS if r['stage']==stage and r['original'] in pair]
+        for _ in range(256):
+            values = rng.shuffle(list(pair) * (len(rows)//2))
+            if {v for r,v in zip(rows,values) if r['first_day']==min(x['first_day'] for x in rows)} == set(pair): break
+        else: raise ValueError('could not retain early group species coverage')
+        choices.update((r['uid'],v) for r,v in zip(rows,values))
+    return dict(version='family-groups-v1',catalog_hash=CATALOG_HASH,
+                assignments=[dict(uid=r['uid'],actual=choices[r['uid']]) for r in GROUP_SLOTS])
+
+
+def spawn_sources(layout, groups=None):
     from .enemies import resolve_layout
     sources = [row for row in resolve_layout(0)['sources'] if row['original'] not in (4, 32)]
     for slot, assignment in zip(ADULT_SLOTS, layout['assignments']):
@@ -28,22 +43,31 @@ def spawn_sources(layout):
         if slot['expires_after_day'] is not None and slot['expires_after_day'] < 29: continue
         sources.append(dict(stage=slot['stage'], original=slot['original'], actual=assignment['actual'],
                             protected=False, first_day=slot['first_day']))
-    return dict(version='adult-slot-sources-v1', sources=sources)
+    if groups:
+        sources = [r for r in sources if r['protected'] or r['original'] not in (3,31,18,19)]
+        for slot, assignment in zip(GROUP_SLOTS, groups['assignments']):
+            sources.append(dict(stage=slot['stage'],original=slot['original'],actual=assignment['actual'],protected=False,first_day=slot['first_day']))
+    return dict(version='family-group-sources-v1' if groups else 'adult-slot-sources-v1', sources=sources)
 
 
 def bootstrap_slots(manifest):
     if 'spawn_layout' not in manifest: return ''
-    return 'ENEMY_SLOTS ' + CATALOG_HASH + ' 15 ' + ' '.join(f"{r['uid']} {r['actual']}" for r in manifest['spawn_layout']['assignments']) + '\n'
+    text = 'ENEMY_SLOTS ' + CATALOG_HASH + ' 15 ' + ' '.join(f"{r['uid']} {r['actual']}" for r in manifest['spawn_layout']['assignments']) + '\n'
+    if 'group_layout' in manifest:
+        text += 'ENEMY_GROUPS ' + CATALOG_HASH + ' 12 ' + ' '.join(f"{r['uid']} {r['actual']}" for r in manifest['group_layout']['assignments']) + '\n'
+    return text
 
 
 def spoiler(manifest):
     if 'spawn_layout' not in manifest:
         raise ValueError('this seed does not use per-spawn enemies')
-    names = {4: 'Spotty Bulborb', 32: 'Spotty Bulbear'}
+    names = {4: 'Spotty Bulborb', 32: 'Spotty Bulbear',3:'Dwarf Bulborb',31:'Dwarf Bulbear',18:'Female Sheargrub',19:'Male Sheargrub'}
+    rows = list(zip(ADULT_SLOTS, manifest['spawn_layout']['assignments']))
+    if 'group_layout' in manifest: rows += list(zip(GROUP_SLOTS, manifest['group_layout']['assignments']))
     return [dict(slot, original_name=names[slot['original']], actual=assignment['actual'],
                  actual_name=names[assignment['actual']], protected=False,
                  route_policy='All three colors and conservative corpse carrying requirements; physical route acceptance pending')
-            for slot, assignment in zip(ADULT_SLOTS, manifest['spawn_layout']['assignments'])]
+            for slot, assignment in rows]
 
 
 def verify_source_assets(assets):

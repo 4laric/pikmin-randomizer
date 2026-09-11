@@ -27,6 +27,8 @@ int startStage = 1;
 int startColor = 1; // Native IDs: blue 0, red 1, yellow 2.
 unsigned enemyMask = 0;
 bool slotEnemies = false;
+bool groupEnemies = false;
+unsigned groupAssignments[12] = {};
 unsigned adultAssignments[15] = {};
 std::unordered_map<const void*, unsigned> generatorIds;
 unsigned startingFlarlic = 2;
@@ -167,6 +169,20 @@ bool pc_randomizer_init(int argc, char** argv) {
         slotEnemies = true;
         input >> end;
     }
+    if (end == "ENEMY_GROUPS") {
+        std::string catalog; unsigned count;
+        if (!slotEnemies || !(input >> catalog >> count) || catalog != randomizerSpawnCatalogHash || count != 12)
+            fail("incompatible enemy group catalog");
+        for (unsigned i=0; i<12; ++i) {
+            unsigned uid, species;
+            if (!(input >> uid >> species) || uid != randomizerGroupSlots[i] ||
+                (randomizerGroupOriginals[i] == 3 || randomizerGroupOriginals[i] == 31 ? species != 3 && species != 31 : species != 18 && species != 19))
+                fail("invalid enemy group assignment");
+            groupAssignments[i] = species;
+        }
+        groupEnemies = true;
+        input >> end;
+    }
     if (end != "END") fail("unsupported or malformed bootstrap");
     std::string extra;
     if (input >> extra) fail("trailing bootstrap data");
@@ -212,6 +228,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (progressiveStats) hello << " progressive-color-stats-v1";
     if (benefitItems) hello << " benefit-items-v1";
     if (slotEnemies) hello << " enemy-slots-v1";
+    if (groupEnemies) hello << " enemy-groups-v1";
     hello << " END\n";
     hello.close();
     if (!hello) fail("cannot write native handshake");
@@ -324,6 +341,7 @@ bool pc_randomizer_enabled() { return enabled; }
 int pc_randomizer_start_stage() { return startStage; }
 int pc_randomizer_start_color() { return startColor; }
 bool pc_randomizer_spawn_slots() { return enabled && slotEnemies; }
+bool pc_randomizer_group_slots() { return enabled && groupEnemies; }
 unsigned pc_randomizer_generator_id(const void* generator) {
     auto it = generatorIds.find(generator);
     return it == generatorIds.end() ? 0 : it->second;
@@ -346,6 +364,15 @@ void pc_randomizer_bind_generator(const void* generator, int stage, const char* 
 }
 int pc_randomizer_enemy_for_generator(int original, bool protectedSpawn, const void* generator) {
     if (!pc_randomizer_spawn_slots()) return pc_randomizer_enemy_type(original, protectedSpawn);
+    if (groupEnemies && (original == 3 || original == 31 || original == 18 || original == 19)) {
+        if (protectedSpawn) return original;
+        unsigned uid = pc_randomizer_generator_id(generator);
+        for (unsigned i=0; i<12; ++i) if (randomizerGroupSlots[i] == uid) {
+            if (randomizerGroupOriginals[i] != original) fail("enemy group source changed");
+            return groupAssignments[i];
+        }
+        fail("unprotected family group has no supported generator ID");
+    }
     if (original != 4 && original != 32) return original;
     unsigned uid = pc_randomizer_generator_id(generator);
     for (unsigned i = 0; i < 15; ++i) if (randomizerAdultSlots[i] == uid) {

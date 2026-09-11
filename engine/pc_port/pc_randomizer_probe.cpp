@@ -17,6 +17,18 @@ int main(int argc, char** argv) {
         std::printf("CAPACITY_PROBE %d\n", pc_randomizer_field_capacity());
         return 0;
     }
+    for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--group-probe")) {
+        assert(pc_randomizer_group_slots());
+        int objects[12] = {};
+        for (int i=11; i>=0; --i) {
+            pc_randomizer_set_generator_id(&objects[i], randomizerGroupSlots[i]);
+            const int original = randomizerGroupOriginals[i];
+            const int actual = pc_randomizer_enemy_for_generator(original, false, &objects[i]);
+            assert(pc_randomizer_enemy_for_generator(original, true, &objects[i]) == original);
+            std::printf("GROUP_PROBE %u %d\n", randomizerGroupSlots[i], actual);
+        }
+        return 0;
+    }
     for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--slot-probe")) {
         assert(pc_randomizer_spawn_slots());
         int objects[15] = {}, restored[15] = {};

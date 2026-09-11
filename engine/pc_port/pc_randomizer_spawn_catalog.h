@@ -696,3 +696,5 @@ static const RandomizerSpawnSlot randomizerSpawnSlots[] = {
 };
 static const unsigned randomizerAdultSlots[] = {3640055869u, 3138990329u, 3731060235u, 3960948767u, 1877315663u, 4222852521u, 1254096625u, 407876267u, 2074106479u, 3921089765u, 3850487044u, 2175753366u, 1945764764u, 3886812794u, 1787125272u};
 static const char* randomizerAdultLabels[] = {"hope_adult_01", "hope_adult_02", "hope_adult_03", "hope_adult_04", "hope_adult_05", "hope_adult_06", "hope_adult_07", "hope_adult_08", "hope_adult_09", "spring_adult_01", "spring_adult_02", "spring_adult_03", "spring_adult_04", "spring_adult_05", "spring_adult_06"};
+static const unsigned randomizerGroupSlots[] = {2049888785u, 3768801221u, 2637843033u, 1849273021u, 517610653u, 2380387682u, 3679976242u, 1102975523u, 3417529495u, 1428724902u, 648204418u, 3157218646u};
+static const int randomizerGroupOriginals[] = {3, 18, 19, 3, 18, 19, 19, 18, 31, 31, 31, 31};

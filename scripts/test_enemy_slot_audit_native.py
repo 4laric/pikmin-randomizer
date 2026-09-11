@@ -9,10 +9,12 @@ from randomizer.runner import NativeRun
 p=argparse.ArgumentParser()
 for n in ('exe','assets','output'):p.add_argument('--'+n,type=Path,required=True)
 p.add_argument('--per-spawn',action='store_true')
+p.add_argument('--groups',action='store_true')
+p.add_argument('--respawn',action='store_true')
 p.add_argument('--bad-cache',action='store_true',help='Require explicit rejection of a corrupted tagged cache record')
 a=p.parse_args();facts=audit(a.assets);evidence={}
 for stage,area in enumerate(('impact','forest','navel','spring','trial')):
-    m=generate('spawn-audit-'+area,'ap',collection_checks=True,starting_area=area,starting_flarlic=1,per_spawn_enemies=a.per_spawn)
+    m=generate('spawn-audit-'+area,'ap',collection_checks=True,starting_area=area,starting_flarlic=1,per_spawn_enemies=a.per_spawn,group_spawn_enemies=a.groups)
     s=Session(m,a.output.resolve()/area);r=NativeRun(s);r.write_state(True)
     (r.directory/'audit-files.txt').write_text('\n'.join(f['file'] for f in facts['files'] if f['stage']==stage)+'\n')
     _winapi.CreateJunction(str(a.assets.resolve()),str(r.directory/'assets'))
@@ -20,6 +22,9 @@ for stage,area in enumerate(('impact','forest','navel','spring','trial')):
     if a.bad_cache:
         assert a.per_spawn
         env['PIKMIN_RANDOMIZER_TEST_BAD_SLOT_CACHE']='1'
+    if a.respawn:
+        assert a.groups
+        env['PIKMIN_RANDOMIZER_TEST_GROUP_RESPAWN']='1'
     startup=subprocess.STARTUPINFO();startup.dwFlags|=subprocess.STARTF_USESHOWWINDOW
     log=r.directory/'native.log'
     with log.open('w',encoding='utf-8') as stream:
@@ -52,8 +57,9 @@ for stage,area in enumerate(('impact','forest','navel','spring','trial')):
         assert int(fields['protected'])==protected,row['id']
         evidence[row['id']]={'anchor_terrain':int(fields['terrain']), 'disk_and_cache_roundtrip':True}
     assert 'TEST_ONLY spawn_audit_pass' in text,log
-    if a.per_spawn:
+    if a.per_spawn or a.groups:
         assignments={row['uid']:row['actual'] for row in m['spawn_layout']['assignments']}
+        if a.groups:assignments.update((r['uid'],r['actual']) for r in m['group_layout']['assignments'])
         adults=[]
         for line in text.splitlines():
             if not line.startswith('ENEMY_SLOT_BIRTH '):continue
@@ -61,6 +67,7 @@ for stage,area in enumerate(('impact','forest','navel','spring','trial')):
             if int(fields['original']) in (4,32):
                 assert assignments[int(fields['uid'])]==int(fields['actual']),line
                 adults.append(int(fields['actual']))
+            elif int(fields['uid']) in assignments:assert assignments[int(fields['uid'])]==int(fields['actual']),line
             else:assert fields['actual']==fields['original'],line
         if stage in (1,3):assert set(adults)=={4,32},(stage,adults,log)
         cached={}
@@ -68,8 +75,15 @@ for stage,area in enumerate(('impact','forest','navel','spring','trial')):
             if line.startswith('CACHE_SLOT '):
                 fields=dict(x.split('=',1) for x in line.split()[1:])
                 cached[int(fields['uid'])]=int(fields['actual'])
-        from randomizer.spawn_data import ADULT_SLOTS
-        assert cached=={row['uid']:assignments[row['uid']] for row in ADULT_SLOTS if row['stage']==stage},(stage,cached)
+        from randomizer.spawn_data import ADULT_SLOTS, GROUP_SLOTS
+        rows=ADULT_SLOTS+(GROUP_SLOTS if a.groups else ())
+        assert cached=={row['uid']:assignments[row['uid']] for row in rows if row['stage']==stage},(stage,cached)
+        if a.groups:
+            survivors={}
+            for line in text.splitlines():
+                if line.startswith('GROUP_SURVIVORS '):
+                    fields=dict(x.split('=',1) for x in line.split()[1:]);survivors[int(fields['uid'])]=int(fields['count'])
+            assert survivors=={row['uid']:row['count']-(0 if a.respawn else 1) for row in GROUP_SLOTS if row['stage']==stage},(stage,survivors)
         assert 'TEST_ONLY spawn_cache_pass' in text
     print('PASS',area,len(seen),'disk/cache records',flush=True)
 (a.output/'evidence.json').write_text(json.dumps({'catalog':facts['sha256'],'slots':evidence},indent=2)+'\n')
