@@ -27,7 +27,7 @@ def main(ap):
         configs += [(True, area, color, True) for area in (0, 1, 3, 4, 5) for color in (0, 1, 2)]
         for expanded, start, color, all_areas in configs:
           for seed in range(100):
-              mw = setup_multiworld(mod.PikminRandomizerWorld, seed=seed, options={"expanded_checks": expanded, "starting_area": start, "starting_color": color, 'all_areas': all_areas})
+              mw = setup_multiworld(mod.PikminRandomizerWorld, seed=seed, options={"collection_checks": False, "expanded_checks": expanded, "starting_area": start, "starting_color": color, 'all_areas': all_areas})
               mw.seed_name = str(seed)
               world = mw.worlds[1]
               assert len(mw.get_locations()) == (58 if world.manifest()['schema'] >= 5 else 55 if world.manifest()['schema'] >= 2 else 30)
@@ -45,7 +45,7 @@ def main(ap):
               assert data["manifest_fingerprint"] == fingerprint(data["manifest"])
         for seed in range(100):
             mw = setup_multiworld(mod.PikminRandomizerWorld, seed=seed,
-                                 options={'enemy_shuffle': True, 'starting_area': 2, 'starting_color': 3})
+                                 options={'collection_checks': False, 'enemy_shuffle': True, 'starting_area': 2, 'starting_color': 3})
             assert mw.worlds[1].manifest()['schema'] == 6
             distribute_items_restrictive(mw)
             assert mw.can_beat_game() and not mw.get_unfilled_locations()
@@ -81,10 +81,10 @@ def main(ap):
         for seed in range(100):
             mw = setup_multiworld(mod.PikminRandomizerWorld, seed=seed,
                                  options={'collection_checks': True, 'enemy_shuffle': bool(seed % 2), 'starting_area': 2, 'starting_color': 3})
-            assert mw.worlds[1].manifest()['schema'] == 7
+            assert mw.worlds[1].manifest()['schema'] == 9
             distribute_items_restrictive(mw)
             assert mw.can_beat_game() and not mw.get_unfilled_locations()
-        mw = setup_multiworld([mod.PikminRandomizerWorld] * 2, seed=211, options=[{"expanded_checks": True, "starting_area": 4, "starting_color": 0, 'enemy_shuffle': True}, {"expanded_checks": True}])
+        mw = setup_multiworld([mod.PikminRandomizerWorld] * 2, seed=211, options=[{"collection_checks": False, "expanded_checks": True, "starting_area": 4, "starting_color": 0, 'enemy_shuffle': True}, {"collection_checks": False, "expanded_checks": True}])
         mw.seed_name = "two-slot"
         # Explicitly exercise the requested wait-for-remote-blue scenario.
         blue = next(item for item in mw.itempool if item.player == 1 and item.name == 'Blue Onion')

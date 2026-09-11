@@ -27,6 +27,32 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 100; ++i) {
         pc_randomizer_update();
         if (pc_randomizer_ready()) {
+            bool modernProbe = false;
+            for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--bestiary-probe")) modernProbe = true;
+            if (modernProbe) {
+                for (const auto& entry : randomizerNewBestiary) {
+                    pc_randomizer_corpse_delivered(entry.type, 1, false);
+                    pc_randomizer_corpse_delivered(entry.type, 4, true);
+                    pc_randomizer_enemy_defeated(entry.type, 1, false, true);
+                    pc_randomizer_enemy_defeated(entry.type, 1, true, false);
+                    assert(!pc_randomizer_checked(entry.name));
+                    if (entry.type == 16) {
+                        pc_randomizer_corpse_delivered(entry.type, 1, true);
+                        assert(!pc_randomizer_checked(entry.name));
+                        pc_randomizer_enemy_defeated(entry.type, 1, true, true);
+                    } else {
+                        pc_randomizer_enemy_defeated(entry.type, 1, true, true);
+                        assert(!pc_randomizer_checked(entry.name));
+                        pc_randomizer_corpse_delivered(entry.type, 1, true);
+                        pc_randomizer_corpse_delivered(entry.type, 1, true);
+                    }
+                    assert(pc_randomizer_checked(entry.name));
+                }
+                pc_randomizer_observe_exploration(1, 9999, 9999, true, true);
+                assert(pc_randomizer_checked("Explore: The Forest of Hope - Land"));
+                assert(!pc_randomizer_checked("Explore: The Forest of Hope - Scout"));
+                std::puts("BESTIARY_PASS"); return 0;
+            }
             bool permanentProbe = false;
             for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--permanent-probe")) permanentProbe = true;
             if (permanentProbe) {

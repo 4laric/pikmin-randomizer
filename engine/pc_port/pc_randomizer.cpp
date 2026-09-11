@@ -19,7 +19,7 @@
 #endif
 
 namespace {
-bool enabled = false, ready = false, goalReported = false;
+bool enabled = false, ready = false, goalReported = false, permanentChecks = false;
 unsigned repairs = 0, unlocks = 0, flarlic = 0, schema = 1, checkCount = 30;
 int startStage = 1;
 int startColor = 1; // Native IDs: blue 0, red 1, yellow 2.
@@ -46,7 +46,7 @@ void expect(std::istream& in, const char* expected) {
     std::string word;
     if (!(in >> word) || word != expected) fail("unsupported or malformed bootstrap");
 }
-const char* checkName(unsigned i) { return schema >= 8 ? randomizerPermanentNames[i] : schema >= 7 ? randomizerCollectionNames[i] : randomizerCheckNames[i]; }
+const char* checkName(unsigned i) { return schema >= 9 ? (permanentChecks ? randomizerModernPermanentNames[i] : randomizerModernCollectionNames[i]) : schema >= 8 ? randomizerPermanentNames[i] : schema >= 7 ? randomizerCollectionNames[i] : randomizerCheckNames[i]; }
 int index(const char* name) {
     if (name) for (unsigned i = 0; i < checkCount; ++i) if (!std::strcmp(name, checkName(i))) return (int)i;
     return -1;
@@ -69,7 +69,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (!input) fail("cannot open standalone bootstrap");
     expect(input, "PIKMIN_RANDOMIZER");
     std::string version; input >> version;
-    if (version != "1" && version != "2" && version != "3" && version != "4" && version != "5" && version != "6" && version != "7" && version != "8") fail("unsupported bootstrap version");
+    if (version != "1" && version != "2" && version != "3" && version != "4" && version != "5" && version != "6" && version != "7" && version != "8" && version != "9") fail("unsupported bootstrap version");
     schema = (unsigned)(version[0] - '0');
     checkCount = schema >= 8 ? unsigned(sizeof(randomizerPermanentNames)/sizeof(*randomizerPermanentNames)) : schema >= 5 ? 58 : schema >= 2 ? 55 : 30;
     expect(input, "SESSION"); input >> token;
@@ -82,7 +82,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     else if (profile == "spring-day2" && schema >= 5) startStage = 3;
     else if (profile == "trial-day2" && schema >= 5) startStage = 4;
     else if (profile != "foh-day2") fail("unsupported start profile");
-    expect(input, "CATALOG"); expect(input, schema == 8 ? "gameplay-checks-v8" : schema == 7 ? "gameplay-checks-v7" : schema == 6 ? "gameplay-checks-v6" : schema == 5 ? "gameplay-checks-v5" : schema == 4 ? "gameplay-checks-v4" : schema == 3 ? "gameplay-checks-v3" : schema == 2 ? "gameplay-checks-v2" : "vanilla-sites-v1");
+    expect(input, "CATALOG"); expect(input, schema == 9 ? "gameplay-checks-v9" : schema == 8 ? "gameplay-checks-v8" : schema == 7 ? "gameplay-checks-v7" : schema == 6 ? "gameplay-checks-v6" : schema == 5 ? "gameplay-checks-v5" : schema == 4 ? "gameplay-checks-v4" : schema == 3 ? "gameplay-checks-v3" : schema == 2 ? "gameplay-checks-v2" : "vanilla-sites-v1");
     expect(input, "PLACEMENT"); expect(input, "identity-v1");
     expect(input, "GOAL"); expect(input, "25");
     expect(input, "DAYS"); expect(input, "repeat-day29-v1");
@@ -92,6 +92,14 @@ bool pc_randomizer_init(int argc, char** argv) {
         else if (color == "yellow") startColor = 2;
         else if (color == "blue") startColor = 0;
         else fail("unsupported starting color");
+    }
+    permanentChecks = schema == 8;
+    if (schema >= 9) {
+        expect(input, "CHECKSET"); int value;
+        if (!(input >> value) || (value != 0 && value != 1)) fail("invalid check set");
+        permanentChecks = value != 0;
+        checkCount = permanentChecks ? sizeof(randomizerModernPermanentNames)/sizeof(*randomizerModernPermanentNames)
+            : sizeof(randomizerModernCollectionNames)/sizeof(*randomizerModernCollectionNames);
     }
     if (schema >= 6) {
         expect(input, "ENEMIES");
@@ -145,7 +153,9 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (schema >= 5) hello << " all-areas-v1";
     if (schema >= 6) hello << " enemy-families-v1";
     if (schema >= 7) hello << " total-population-v1 corpse-delivery-v1";
-    if (schema >= 8) hello << " permanent-checks-v1 check-set-v1";
+    if (permanentChecks) hello << " permanent-checks-v1";
+    if (schema >= 8) hello << " check-set-v1";
+    if (schema >= 9) hello << " bestiary-v2 landing-only-v1";
     if (configuredFlarlic) hello << " starting-flarlic-v1";
     if (configuredStats) hello << (wideStats ? " color-stats-v2" : " color-stats-v1");
     if (progressiveStats) hello << " progressive-color-stats-v1";
@@ -308,6 +318,8 @@ void pc_randomizer_observe_population(int activePikmin, bool gameplay) {
         if (activePikmin >= 20 + 10 * i) pc_randomizer_check(randomizerCheckNames[30 + i]);
 }
 void pc_randomizer_enemy_defeated(int type, int stage, bool healthDepleted, bool gameplay) {
+    if (schema >= 9 && type == 16 && healthDepleted && gameplay && ready && accessibleStage(stage))
+        pc_randomizer_check("Bestiary: Defeat Puffy Blowhog");
     if (schema >= 7 || !pc_randomizer_expanded() || !healthDepleted || !gameplay || !ready || !accessibleStage(stage)) return;
     for (int i = 0; i < 8; ++i)
         if (type == randomizerEnemyTypes[i]) pc_randomizer_check(randomizerCheckNames[39 + i]);
@@ -315,7 +327,7 @@ void pc_randomizer_enemy_defeated(int type, int stage, bool healthDepleted, bool
 bool pc_randomizer_collection_checks() { return enabled && schema >= 7; }
 void pc_randomizer_observe_total_population(int totalPikmin, bool gameplay) {
     if (!pc_randomizer_collection_checks() || !gameplay || !ready || totalPikmin < 0) return;
-    if (schema >= 8) {
+    if (permanentChecks) {
         for (int count : randomizerFinePopulation) if (totalPikmin >= count) {
             char name[80]; std::snprintf(name, sizeof(name), "Population: %d total Pikmin", count);
             pc_randomizer_check(name);
@@ -329,13 +341,15 @@ void pc_randomizer_corpse_delivered(int type, int stage, bool gameplay) {
     if (!pc_randomizer_collection_checks() || !gameplay || !ready || !accessibleStage(stage)) return;
     for (int i = 0; i < 8; ++i)
         if (type == randomizerEnemyTypes[i]) pc_randomizer_check(checkName(39 + i));
+    if (schema >= 9 && type != 16) for (const auto& entry : randomizerNewBestiary)
+        if (entry.type == type) pc_randomizer_check(entry.name);
 }
 void pc_randomizer_observe_exploration(int stage, float dx, float dz, bool grounded, bool gameplay) {
     if (!pc_randomizer_expanded() || !grounded || !gameplay || !ready || !accessibleStage(stage)
         || !std::isfinite(dx) || !std::isfinite(dz)) return;
     const int landIndex = stage == 0 ? 55 : 47 + (stage - 1) * 2;
     pc_randomizer_check(randomizerCheckNames[landIndex]);
-    if (dx * dx + dz * dz >= 600.0f * 600.0f)
+    if (schema < 9 && dx * dx + dz * dz >= 600.0f * 600.0f)
         pc_randomizer_check(randomizerCheckNames[landIndex + 1]);
 }
 
@@ -348,7 +362,7 @@ void pc_randomizer_observe_obstacle(int stage, int kind, float x, float z, bool 
     if (!enabled || !ready || !gameplay || !accessibleStage(stage) || !std::isfinite(x) || !std::isfinite(z)) return;
     static std::set<std::tuple<int,int,int,int>> logged;
     const int px = int(std::round(x)), pz = int(std::round(z));
-    if (schema >= 8 && complete) {
+    if (permanentChecks && complete) {
         for (const auto& obstacle : randomizerObstacles)
             if (obstacle.stage == stage && obstacle.kind == kind && obstacle.x == px && obstacle.z == pz)
                 pc_randomizer_check(obstacle.name);

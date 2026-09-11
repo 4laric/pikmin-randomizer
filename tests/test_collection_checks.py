@@ -10,10 +10,10 @@ class CollectionChecksTest(unittest.TestCase):
         old = generate('old', enemy_shuffle=True)
         new = generate('new', collection_checks=True)
         validate(old); validate(new)
-        self.assertEqual((old['schema'], new['schema']), (6, 7))
+        self.assertEqual((old['schema'], new['schema']), (6, 9))
         combined = {**ALL_AREA_LOCATION_IDS, **COLLECTION_LOCATION_IDS}
         self.assertEqual(len(combined), len(set(combined.values())))
-        self.assertEqual(len(active_names(new)), 58)
+        self.assertEqual(len(active_names(new)), 64)
         self.assertIn('Population: 100 Pikmin in the field', old['locations'])
         self.assertNotIn('Population: 100 Pikmin in the field', new['locations'])
 
@@ -36,4 +36,4 @@ class CollectionChecksTest(unittest.TestCase):
             for seed in range(100):
                 m = generate(str(seed), starting_area='random', starting_color='random',
                              enemy_shuffle=shuffle, collection_checks=True)
-                self.assertEqual(sum(map(len, spheres(solo_rewards(m), m))), 58)
+                self.assertEqual(sum(map(len, spheres(solo_rewards(m), m))), 64)

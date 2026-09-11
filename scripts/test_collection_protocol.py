@@ -11,7 +11,7 @@ from randomizer.session import Session
 
 for shuffle in (False, True):
     with tempfile.TemporaryDirectory() as d:
-        session = Session(generate('collection', 'ap', collection_checks=True, enemy_shuffle=shuffle), d)
+        session = Session(generate('collection', 'ap', collection_checks=True, legacy_checks=True, enemy_shuffle=shuffle), d)
         run = NativeRun(session); run.write_state(True)
         result = subprocess.run([str(Path(sys.argv[1]).resolve()), '--randomizer-seed', str(run.bootstrap), '--collection-probe'],
                                 capture_output=True, text=True, timeout=15)

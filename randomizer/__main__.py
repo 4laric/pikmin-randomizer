@@ -20,7 +20,7 @@ def main():
     gen.add_argument('--starting-area', choices=['forest', 'navel', 'impact', 'spring', 'trial', 'random'], default='forest', help='Random includes all five areas')
     gen.add_argument('--all-areas', action='store_true', help='Enable five-area catalog with a fixed start')
     gen.add_argument('--enemy-shuffle', action='store_true', help='Seeded compatible enemy-family swaps')
-    gen.add_argument('--collection-checks', action='store_true', help='Onion corpse deliveries and total population milestones through 500')
+    gen.add_argument('--collection-checks', action='store_true', default=True, help='Onion corpse deliveries and total population milestones through 500')
     gen.add_argument('--starting-color', choices=['red', 'yellow', 'blue', 'random'], default='red', help='Non-default enables expanded checks')
     gen.add_argument("--slot", default="Player1")
     gen.add_argument("--mode", choices=["solo", "ap"], default="solo")
@@ -63,9 +63,9 @@ def main():
                 from .stats import profile_lines
                 if "color_stats" in manifest or manifest.get("progressive_color_stats"):
                     lines += ["## Color profiles", ""] + profile_lines(manifest, session.inventory) + [""]
-                from .catalog import TOTAL_POPULATION, DELIVERY_BESTIARY, FINE_POPULATION, OBSTACLES
+                from .catalog import TOTAL_POPULATION, DELIVERY_BESTIARY, FINE_POPULATION, OBSTACLES, NEW_BESTIARY
                 for category, entries in (("Parts and Onions", NAMES + (POSITRON,)), ("Population", FINE_POPULATION if manifest['schema'] >= 8 else TOTAL_POPULATION if manifest['schema'] >= 7 else POPULATION),
-                                          ("Bestiary - Onion deliveries" if manifest['schema'] >= 7 else "Bestiary - first defeats", DELIVERY_BESTIARY if manifest['schema'] >= 7 else BESTIARY), ("Exploration", ALL_EXPLORATION), ("Permanent obstacles", OBSTACLES)):
+                                          ("Bestiary - deliveries and defeats" if manifest['schema'] >= 7 else "Bestiary - first defeats", ({**DELIVERY_BESTIARY, **NEW_BESTIARY}) if manifest['schema'] >= 7 else BESTIARY), ("Exploration", ALL_EXPLORATION), ("Permanent obstacles", OBSTACLES)):
                     enabled = [n for n in entries if n in session.names]
                     if not enabled: continue
                     lines += ["## " + category, ""]

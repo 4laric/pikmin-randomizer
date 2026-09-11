@@ -1,5 +1,17 @@
 # Standalone milestone: local implementation
 
+## Bestiary through minibosses; landing-only exploration (issue #33)
+
+Schema 9 / AP v0.13.0 adds eleven species checks and removes five scout checks: 64 collection locations, or 125 with permanent structures. The required boolean `permanent_checks` selects the two immutable native check arrays via `CHECKSET 0/1`. `bestiary-v2`, `landing-only-v1` and `check-set-v1` are required handshake capabilities. Existing AP IDs are retained; new IDs start at LOCATION_BASE + 200. Retired scout IDs remain reserved. Schema 1–8 manifests and journals retain their original order and behavior. The generation helper's `legacy_checks=True` is for compatibility tests; CLI and AP defaults use modern collection checks.
+
+Ten new species use the real Onion absorption callback, including Clamclamp's pearl (native TEKI_Pearl 13, stored as a corpse pellet). Puffy Blowhog (16) alone uses health-depleted BTeki::die; non-gameplay cleanup, nonlethal removal, other corpse-species deaths and delivery of a fictitious Puffy corpse do not award it. Actual species IDs survive family swaps. New source routes conservatively require all colors plus the representative area's access, with Hope substituted for shuffled Bulbears. Mamuta still follows the native Impact Site day schedule. New corpse checks use conservative body-cap requirements; rolled carrying strength is not yet credited toward these bounds.
+
+Loaded native carry minima: Dwarf Bulbear 3, Wogpole 1, Spotty Bulbear 10, Yellow Wollywog 7, Snitchbug 3, Breadbug 3, Puffstool 10, Cannon Beetle 30, Clamclamp pearl 3, Mamuta 8. Existing bestiary rules stay unchanged.
+
+Validation: 50 Python tests including stable IDs, schema-7/8 compatibility, complete solo fills, carrier requirements, pool size and journal replay. Packaged AP: 2,460 fills plus remote-Blue/remote-Carry two-player cases. Compiled new-bestiary protocol covers both catalog sizes, all eleven additions, defeat/delivery/gameplay/area gating, scout suppression, duplicate delivery and journal recovery; legacy collection and permanent protocols also pass. A TEST_HOOKS fixture sends ten real loaded corpse/pearl configurations through GoalItem::suckMe and exercises the Puffy type through BTeki::die. It verifies all eleven emitted checks; it substitutes configurations/type in an isolated process and does not claim ten physical carry routes or a full Puffy combat animation were played through. Production build disables test hooks.
+
+Local playtest: `output/turkey-bestiary-01/Play.cmd`, both stat modes, enemy-family shuffle, cap 10 and 125 checks. Full physical route/combat acceptance remains open; campaign resume remains #6.
+
 ## Damage-based structure work (issue #32)
 
 Native `9c1bac13` replaces elapsed-minute wall/bridge work with damage per native animation event in ready standalone randomizer sessions. `ActBreakWall` consumes Action0, `ActBridge` consumes LoopEnd, and `ActBoMake` builds on Action0. Walls/bridges receive `Piki::getAttackPower() / 600`; sticks receive `getAttackPower() / 10`, followed by the existing 0.4 height conversion. This preserves the native base-10 stick contribution and uses one old one-minute wall/bridge work quantum per base-10 event as initial tuning. It does not promise identical vanilla completion times; field balance remains a playtest concern. Ordinary non-randomizer play retains its previous work calculation.

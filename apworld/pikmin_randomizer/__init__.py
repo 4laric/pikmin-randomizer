@@ -7,7 +7,7 @@ from Options import PerGameCommonOptions, Toggle, Choice, Range
 from worlds.AutoWorld import World
 from .core.catalog import (GAME, ITEM_IDS, LOCATION_IDS, NAMES, CHECK_AREAS,
                            CHECK_REQUIREMENTS, UNLOCKS, REPAIR, REPAIR_COUNT, ALL_LOCATION_IDS,
-                           active_names, item_pool, check_area, can_reach_manifest, FLARLIC, ALL_AREA_LOCATION_IDS, START_AREAS, COLLECTION_LOCATION_IDS, PERMANENT_LOCATION_IDS)
+                           active_names, item_pool, check_area, can_reach_manifest, FLARLIC, ALL_AREA_LOCATION_IDS, START_AREAS, COLLECTION_LOCATION_IDS, PERMANENT_LOCATION_IDS, MODERN_LOCATION_IDS)
 from .core.seed import generate, fingerprint
 from .core.stats import UPGRADE_ITEMS
 
@@ -43,7 +43,7 @@ class StartingColor(Choice):
 class CollectionChecks(Toggle):
     """Count corpse deliveries at Onions and total living population up to 500. Enables all-area expanded checks."""
     display_name = 'Corpse Delivery and Total Population Checks'
-    default = 0
+    default = 1
 
 
 class RandomizeColorStats(Toggle):
@@ -53,7 +53,7 @@ class RandomizeColorStats(Toggle):
 
 
 class PermanentChecks(Toggle):
-    """Enable 19 total-population milestones and 51 individual walls, climbing sticks, bridges and boxes. Enables collection checks; 119 total checks. Obstacle routes currently require all colors conservatively; boxes also require field capacity 100."""
+    """Enable 19 total-population milestones and 51 individual walls, climbing sticks, bridges and boxes. Enables collection checks; 125 total checks. Obstacle routes currently require all colors conservatively; boxes also require field capacity 100."""
     display_name = 'Permanent Structure and Granular Population Checks'
     default = 0
 
@@ -98,7 +98,7 @@ class PikminRandomizerWorld(World):
     game = GAME
     options_dataclass = PikminOptions
     item_name_to_id = ITEM_IDS
-    location_name_to_id = {**ALL_AREA_LOCATION_IDS, **PERMANENT_LOCATION_IDS}
+    location_name_to_id = {**ALL_AREA_LOCATION_IDS, **MODERN_LOCATION_IDS}
     required_client_version = (0, 6, 0)
 
     def create_regions(self):

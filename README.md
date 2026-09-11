@@ -13,6 +13,12 @@ Experimental standalone and Archipelago randomizer for Pikmin 1, built on Open N
 
 **Prototype limitations:** physical ship parts remain in vanilla positions. Relaunch restores checks and rewards but starts a fresh native campaign; exact day/area/squad resume and extinction recovery are unfinished. Some starting combinations deliberately require remote progression in multiworld. Enemy-family swaps have player validation; corpse deliveries and the day-end save fix still need full gameplay acceptance.
 
+## Expanded bestiary (v0.13.0)
+
+New collection-mode seeds have **19 bestiary checks** and **five landing checks**; scout-distance checks are retired. Collection mode is now the CLI/AP default. There are 64 locations without permanent structures, or 125 with `permanent_checks: true`. Existing manifests retain their original catalogs and IDs; use a fresh seed and current native build for the new list. Explicit legacy AP collection opt-out still selects the older catalog.
+
+The eleven additions are Dwarf Bulbear, Wogpole, Spotty Bulbear, Yellow Wollywog, Puffy Blowhog, Swooping Snitchbug, Breadbug, Puffstool, Armored Cannon Beetle, Pearly Clamclamp and Mamuta. Deliver bodies to an Onion for all except Puffy Blowhog (defeat it; no corpse) and Clamclamp (deliver its pearl). Each species pays once; boss and harmless-creature checks remain outside this batch. Family swaps report the actual species. Carry-home routes remain conservative and require all colors; the new checks also respect native corpse weights, including 30 carriers for the Cannon Beetle. Damage does not auto-complete any location.
+
 ## Build on Windows
 
 Install Python 3.12 (including tkinter), Git, CMake, Ninja, and MSYS2's MinGW64 GCC and SDL2 packages. Run in PowerShell with the MinGW64 `bin` directory on PATH. This is the tested platform; inherited engine documentation also describes Linux, which has not been validated for this randomizer.
@@ -37,7 +43,7 @@ python -m randomizer generate --seed first-spin --expanded --starting-area rando
 python -m randomizer run output/first-spin.json --session-dir output/first-spin-session --exe engine/build-randomizer/bin/nectar.exe --assets "C:/path/to/your/assets"
 ```
 
-Keep the terminal open while playing. Use a new manifest filename for a new seed. Omitting `--collection-checks` retains the older kill/field-count checks. No PowerShell script execution-policy changes are needed for these commands.
+Keep the terminal open while playing. Use a new manifest filename for a new seed. `--collection-checks` is enabled by default; existing saved seeds retain their original kill/delivery rules. No PowerShell script execution-policy changes are needed for these commands.
 
 ## Archipelago
 
@@ -65,7 +71,7 @@ At cap 10, AP requests an early Flarlic for Forest of Hope starts, or early Fore
 
 `randomize_color_stats: true` / `--randomize-color-stats` now rolls wider initial profiles: damage 25–200%, movement and attack rate 50–150%, all in 25-point steps, and carry strength 1–5. Enable both options for upgrades on top of those rolls: a carry-5 color reaches 7, a damage-25% color reaches 75%, and a damage-200% color reaches 250%. Bonuses add to the immutable baseline and never compound on reconnect. New rolls require `color-stats-v2`; existing saved v1 profiles retain their values. With both options off, stats remain vanilla. Throw height is unchanged.
 
-`permanent_checks: true` (AP v0.12.0), or CLI `--permanent-checks`, expands the pool to **119 checks**: 19 total-population milestones and individual completion checks for 27 walls, 8 climbing sticks, 13 bridges and 3 pushable boxes across all five areas. Population thresholds are every 10 from 20 through 100, every 25 through 200, then every 50 through 500. Partial damage/building never counts; each finished structure pays once. Old location IDs and old seeds remain supported; a new schema uses a scalable check set beyond 64 locations. New checks currently add repair rewards beyond the unchanged 25-repair goal, leaving room to rebalance future upgrade pools.
+`permanent_checks: true` (AP v0.12.0), or CLI `--permanent-checks`, originally expanded the pool to **119 checks** (125 in new v0.13.0 seeds): 19 total-population milestones and individual completion checks for 27 walls, 8 climbing sticks, 13 bridges and 3 pushable boxes across all five areas. Population thresholds are every 10 from 20 through 100, every 25 through 200, then every 50 through 500. Partial damage/building never counts; each finished structure pays once. Old location IDs and old seeds remain supported; a new schema uses a scalable check set beyond 64 locations. New checks currently add repair rewards beyond the unchanged 25-repair goal, leaving room to rebalance future upgrade pools.
 
 Wall, bridge and climbing-stick work now uses each worker's actual damage per animation event in randomizer sessions. Damage upgrades increase work per hit; attack-rate upgrades increase work frequency, including the alternate wall animation. Red Pikmin's native damage bonus counts. Waiting between hits adds no accumulated work. Bomb walls still require bombs. Structure completions remain location checks only; receiving an item never completes a structure.
 

@@ -2010,6 +2010,32 @@ void GameCoreSection::updateAI()
 #if defined(PIKMIN_RANDOMIZER_TEST_HOOKS)
     const char* scripted = std::getenv("PIKMIN_RANDOMIZER_TEST_SCRIPT");
     const char* background = std::getenv("PIKMIN_RANDOMIZER_TEST_BACKGROUND");
+    if (scripted && !std::strcmp(scripted, "bestiary-v2") && background && !std::strcmp(background, "1")
+        && pc_randomizer_ready() && bbftRedsReady && pc_bbft_color_access(Blue) && pc_bbft_color_access(Yellow)
+        && !gameflow.mMoviePlayer->mIsActive) {
+        GoalItem* onion = itemMgr->getContainer(pc_randomizer_start_color());
+        Pellet* sample = nullptr;
+        Iterator pellets(pelletMgr);
+        CI_LOOP(pellets) { sample = static_cast<Pellet*>(*pellets); if (sample) break; }
+        if (!sample || !onion) std::abort();
+        const int species[] = {31, 25, 32, 0, 11, 8, 9, 17, 13, 24};
+        for (int type : species) {
+            PelletConfig* config = pelletMgr->getConfig(TekiMgr::getTypeId(type));
+            if (!config || config->mPelletType() != PELTYPE_Corpse || config->mPelletColor() != -1) {
+                std::printf("BESTIARY_FAIL config type=%d\n", type); std::fflush(stdout); std::abort();
+            }
+            std::printf("TEST_ONLY bestiary_config type=%d weight=%d\n", type, config->mCarryMinPikis());
+            sample->mConfig = config; // Isolated fixture substitutes real loaded configs, not carry physics.
+            onion->suckMe(sample); onion->suckMe(sample);
+        }
+        Iterator enemies(tekiMgr);
+        Teki* victim = nullptr;
+        CI_LOOP(enemies) { victim = static_cast<Teki*>(*enemies); if (victim && !victim->mDeadState) break; }
+        if (!victim) std::abort();
+        victim->mTekiType = TEKI_Mar; victim->mHealth = 0; victim->die();
+        if (!pc_randomizer_checked("Bestiary: Defeat Puffy Blowhog")) std::abort();
+        std::puts("TEST_ONLY bestiary_v2_pass"); std::fflush(stdout); std::exit(0);
+    }
     if (scripted && !std::strcmp(scripted, "collection") && background && !std::strcmp(background, "1")
         && pc_randomizer_collection_checks() && bbftRedsReady && !gameflow.mMoviePlayer->mIsActive) {
         static bool prepared = false, delivered = false;

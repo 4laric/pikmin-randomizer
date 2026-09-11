@@ -135,12 +135,38 @@ PERMANENT_NAMES = COLLECTION_NAMES + tuple(n for n in FINE_POPULATION if n not i
 PERMANENT_LOCATION_IDS = {**COLLECTION_LOCATION_IDS, **{n: LOCATION_BASE + 100 + i
     for i, n in enumerate(PERMANENT_NAMES[len(COLLECTION_NAMES):])}}
 
+# Schema 9 keeps existing AP IDs; retired scout IDs are never reused.
+NEW_BESTIARY = {
+    # native species, representative audited area, minimum carrier bodies
+    "Bestiary: Deliver Dwarf Bulbear": (31, 'The Distant Spring', 3),
+    "Bestiary: Deliver Wogpole": (25, 'The Distant Spring', 1),
+    "Bestiary: Deliver Spotty Bulbear": (32, 'The Distant Spring', 10),
+    "Bestiary: Deliver Yellow Wollywog": (0, 'The Distant Spring', 7),
+    "Bestiary: Defeat Puffy Blowhog": (16, 'The Distant Spring', 1),
+    "Bestiary: Deliver Swooping Snitchbug": (11, 'The Distant Spring', 3),
+    "Bestiary: Deliver Breadbug": (8, 'The Forest Navel', 3),
+    "Bestiary: Deliver Puffstool": (9, 'The Forest Navel', 10),
+    "Bestiary: Deliver Armored Cannon Beetle": (17, 'The Forest of Hope', 30),
+    "Bestiary: Deliver Pearly Clamclamp Pearl": (13, 'The Impact Site', 3),
+    "Bestiary: Deliver Mamuta": (24, 'The Impact Site', 8),
+}
+MODERN_COLLECTION_NAMES = tuple(n for n in COLLECTION_NAMES if not n.endswith(' - Scout')) + tuple(NEW_BESTIARY)
+MODERN_PERMANENT_NAMES = MODERN_COLLECTION_NAMES + tuple(n for n in PERMANENT_NAMES if n not in COLLECTION_NAMES)
+MODERN_LOCATION_IDS = {**PERMANENT_LOCATION_IDS, **{n: LOCATION_BASE + 200 + i for i, n in enumerate(NEW_BESTIARY)}}
+
+def has_permanent(manifest):
+    return manifest.get('permanent_checks', False) if manifest['schema'] >= 9 else manifest['schema'] == 8
+
+def modern_names(permanent):
+    return MODERN_PERMANENT_NAMES if permanent else MODERN_COLLECTION_NAMES
+
 # Filled from the native loaded pellet config audit, not the maximum carrier count.
 NATIVE_PART_WEIGHTS = {0: 30, 1: 50, 2: 40, 3: 40, 4: 20, 5: 20, 6: 20, 7: 20, 8: 20, 9: 30, 10: 15, 11: 20, 12: 15, 13: 30, 14: 15, 15: 15, 16: 30, 17: 25, 18: 25, 19: 30, 20: 15, 21: 30, 22: 30, 23: 20, 24: 25, 25: 30, 26: 40, 27: 20, 28: 20, 29: 10}
 PART_WEIGHTS = {name: NATIVE_PART_WEIGHTS[part] for name, part in PART_IDS.items()}
 
 
 def active_names(manifest):
+    if manifest['schema'] >= 9: return modern_names(has_permanent(manifest))
     if manifest['schema'] >= 8: return PERMANENT_NAMES
     if manifest['schema'] >= 7: return COLLECTION_NAMES
     if manifest['schema'] >= 5: return ALL_AREA_NAMES
@@ -194,7 +220,20 @@ def route_strength(name, manifest, inventory=None):
 
 
 def can_reach_manifest(name, inventory, manifest):
-    if manifest['schema'] >= 8 and name in OBSTACLES:
+    if manifest['schema'] >= 9:
+        if name not in active_names(manifest): return False
+        if name in NEW_BESTIARY:
+            species, area, bodies = NEW_BESTIARY[name]
+            start = START_AREAS[manifest['profile']][1]
+            owned = color_inventory(inventory, manifest)
+            # Preserve conservative return routes; swapped Bulbears can use Hope.
+            if species in (31, 32) and manifest.get('enemy_mask', 0) & (1 if species == 31 else 2):
+                area = 'The Forest of Hope'
+            access = next(a for _, title, a in START_AREAS.values() if title == area)
+            return bool((start == area or inventory.get(access, 0))
+                and all(owned.get(c, 0) for c in (RED, YELLOW, BLUE))
+                and field_capacity(inventory, True, manifest.get('starting_flarlic', 2)) >= bodies)
+    if has_permanent(manifest) and name in OBSTACLES:
         stage, kind, _, _ = OBSTACLES[name]
         _, area, access = next(row for row in START_AREAS.values() if row[0] == stage)
         owned = color_inventory(inventory, manifest)
@@ -202,8 +241,8 @@ def can_reach_manifest(name, inventory, manifest):
                     and all(owned.get(c, 0) for c in (RED, YELLOW, BLUE))
                     and (kind != 102 or field_capacity(inventory, True, manifest.get('starting_flarlic', 2)) >= 100))
     if manifest['schema'] >= 7:
-        ids = PERMANENT_LOCATION_IDS if manifest['schema'] >= 8 else COLLECTION_LOCATION_IDS
-        population = FINE_POPULATION if manifest['schema'] >= 8 else TOTAL_POPULATION
+        ids = MODERN_LOCATION_IDS if manifest['schema'] >= 9 else PERMANENT_LOCATION_IDS if manifest['schema'] >= 8 else COLLECTION_LOCATION_IDS
+        population = FINE_POPULATION if has_permanent(manifest) else TOTAL_POPULATION
         if name not in ids: return False
         if name in population:
             if population[name] <= 20: return True
@@ -264,6 +303,7 @@ def item_pool(manifest):
 
 
 def check_area(name):
+    if name in NEW_BESTIARY: return NEW_BESTIARY[name][1]
     if name in FINE_POPULATION: return 'The Forest of Hope'
     if name in OBSTACLES:
         return next(area for stage, area, _ in START_AREAS.values() if stage == OBSTACLES[name][0])

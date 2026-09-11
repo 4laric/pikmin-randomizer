@@ -28,7 +28,7 @@ class PermanentChecksTests(unittest.TestCase):
             session = Session(m, d); run = NativeRun(session)
             (run.directory / 'checks.txt').write_text('64\n64\n67\n')
             restored = Session(m, d)
-            self.assertEqual(restored.data['checked'], [PERMANENT_NAMES[64], PERMANENT_NAMES[67]])
+            self.assertEqual(restored.data['checked'], [session.names[64], session.names[67]])
             self.assertIn('CHECKS 2 64 67', restored.native_state(run.token, True))
 
     def test_obstacles_require_colors_and_area(self):

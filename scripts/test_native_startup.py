@@ -63,7 +63,7 @@ def main(exe, assets, output, expanded=False, starting_area='forest', seed='star
             wait("GOAL: Ship repaired!")
             run.poll()
             expected = {'Population: 20 total Pikmin' if collection_checks else 'Population: 20 Pikmin in the field', f'Explore: {area} - Land'} if expanded else set()
-            if session.manifest['schema'] >= 8:
+            if session.manifest.get('permanent_checks', session.manifest['schema'] == 8):
                 # The two received Onion unlocks each add five stored starters.
                 expected.add('Population: 30 total Pikmin')
             if not collection_checks and initial_field < 20:

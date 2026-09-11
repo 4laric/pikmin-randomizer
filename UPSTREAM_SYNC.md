@@ -9,7 +9,7 @@ The desktop heartbeat runs daily at 10:00 America/Toronto and stays quiet on unc
 - Upstream: `SSunnKing/Open-Nectar---Pikmin-Native-PC-Port`, branch `main`.
 - Last fetched/reviewed: `18ce1303b488bc906721d1389143b65ace345695`.
 - Last integrated upstream: `18ce1303b488bc906721d1389143b65ace345695`.
-- Current maintained downstream native commit: `9c1bac13` (see ENGINE_SOURCE.md); per-color stats and progressive upgrades added after integration in #28/#29/#30, with permanent checks in #31 and damage-based structure work in #32.
+- Current maintained downstream native commit: `c048b606` (see ENGINE_SOURCE.md); per-color stats and progressive upgrades added after integration in #28/#29/#30, with permanent checks in #31 and damage-based structure work in #32, expanded bestiary/landing-only checks in #33.
 - **Integration complete:** [#26](https://github.com/4laric/pikmin-randomizer/issues/26), all 14 commits across 51 files, merged without conflicts. No pending upstream commits as of this review.
 - [Health gauges PR #2](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port/pull/2): OPEN, commit `b487872`.
 - [Save-slot PR #3](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port/pull/3): OPEN, commit `c0b6d377`. Two files, 29 PC-only lines; no randomizer fixtures or game content.
@@ -40,3 +40,7 @@ The integration executable is `output/native-upstream-26/build-sync/bin/nectar.e
 ## Damage-based work validation — issue #32
 
 Current native source `9c1bac13` adds per-hit structure work and alternate wall-animation attack-rate scaling. The production TEST_HOOKS OFF executable is `native/build-stats/bin/nectar.exe`, packaged in `output/turkey-work-01/bin/nectar.exe`, SHA-256 `0257E30399D6C25084A3EB5D8926B229109ECAD6DB2F58E17BB9260F03B0E9A6`. Validation includes 48 Python tests, real-object work/damage/clock fixtures, Navel completion/serialization/deduplication, and a separate production startup session. Evidence is under ignored `output/work32-*`; see DEVELOPMENT.md for exact scope and remaining gameplay balance checks.
+
+## Bestiary validation — issue #33
+
+Current native `c048b606`, production TEST_HOOKS OFF, packaged in `output/turkey-bestiary-01/bin/nectar.exe`; SHA-256 `CE158D7535EB557EDF4FEF8FE2DFFFF106465A64FA62A4665AC6DB8582E1256D`. Schema 9 adds eleven bestiary checks and retires scout checks; legacy schemas remain supported. Passed 50 Python tests, 2,460 AP fills and two multiworld cases, new/legacy compiled protocols and synthetic native Onion/death callbacks with real loaded corpse weights. Local evidence: `output/bestiary33-*`. See DEVELOPMENT.md for physical carry/combat validation limits.
