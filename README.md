@@ -16,6 +16,10 @@ Experimental standalone and Archipelago randomizer for Pikmin 1, built on Open N
 
 The current native build fixes a boss-generator decoding bug that turned Snagrets, geysers, beetles and other entries into Beady Long Legs on PC. Rebuild or use the corrected package; changing a seed alone cannot fix an older executable.
 
+## Graphics presets
+
+Open F1, choose Graphics, and select Original or Enhanced with Left/Right. Enhanced adds FXAA, 8x anisotropic filtering and subtle bloom while retaining original fog and neutral colors. Save to retain changes; closing without saving restores the previous graphics. Individual changes show Custom. Resolution and gameplay settings are preserved.
+
 ## Useful rewards (v0.17.0)
 
 New collection seeds contain exactly **25 Ship Repairs**, the existing unlocks/Flarlic/stat items, and these benefits in the remaining slots:

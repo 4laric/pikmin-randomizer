@@ -323,6 +323,14 @@ Every effect has an Off, and each applies as you move through the menu, against
 the scene behind it. The reference machine for this project is a GTX 1050, so
 none of this is mandatory.
 
+- **Preset**: choose **Enhanced** for FXAA, 8x anisotropic texture filtering
+  and subtle bloom, with the original fog and colours. **Original** disables
+  those enhancements. Changing individual values displays **Custom**. Existing
+  settings are preserved; neither preset changes resolution, render scale or
+  frame rate. Ambient occlusion and depth of field remain optional.
+- Return to the main F1 page and choose **Save** to keep a preview. Closing F1
+  without saving restores the confirmed graphics settings.
+
 - **Depth of field**: the focus plane follows the captain — what sits at his
   distance stays sharp, what is nearer or further falls away. Four steps. The
   sharp band is a fraction of the camera's distance to him, so it behaves the

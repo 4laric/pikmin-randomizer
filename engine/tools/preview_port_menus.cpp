@@ -3,7 +3,57 @@
 // The wrapper omits the production pc_settings.cpp object when linking.
 #include <SDL.h>
 #include <GL/gl.h>
+#include <algorithm>
+#include <iterator>
 #include "settings/pc_settings.cpp"
+
+static bool sameNonGraphicsSettings(const PcConfig& a, const PcConfig& b)
+{
+    return a.windowWidth == b.windowWidth && a.windowHeight == b.windowHeight &&
+           a.displayMode == b.displayMode && a.refreshRate == b.refreshRate &&
+           a.vsync == b.vsync && a.renderScale == b.renderScale &&
+           a.aspectRatioMode == b.aspectRatioMode && a.fpsMode == b.fpsMode &&
+           a.controlMode == b.controlMode && a.mouseSensitivity == b.mouseSensitivity &&
+           a.stickDeadZone == b.stickDeadZone && a.stickInvert == b.stickInvert &&
+           a.cStickInvert == b.cStickInvert && a.chainActions == b.chainActions &&
+           a.mouseWheelAction == b.mouseWheelAction && a.pikiLimit == b.pikiLimit &&
+           a.dayMinutes == b.dayMinutes && a.debugKeys == b.debugKeys &&
+           std::equal(std::begin(a.keyboardBindings), std::end(a.keyboardBindings),
+                      std::begin(b.keyboardBindings)) &&
+           std::equal(std::begin(a.gamepadBindings), std::end(a.gamepadBindings),
+                      std::begin(b.gamepadBindings));
+}
+
+static int assertGraphicsPresets()
+{
+    sConfig.applyDefaults();
+    sConfig.windowWidth = 1920;
+    sConfig.windowHeight = 1080;
+    sConfig.fpsMode = 2;
+    sConfig.pikiLimit = 500;
+    const PcConfig baseline = sConfig;
+
+    sPending = sConfig;
+    applyGraphicsPreset(sPending, GRAPHICS_PRESET_ORIGINAL);
+    if (graphicsPresetFor(sPending) != GRAPHICS_PRESET_ORIGINAL ||
+        sPending.antialiasing != 0 || sPending.fog != 1 || sPending.bloom != 0 ||
+        sPending.ssao != 0 || sPending.dof != 0 || sPending.anisotropy != 0 ||
+        sPending.colourGrading != 0 || sPending.gamma != 1.0f ||
+        sPending.brightness != 0.0f || sPending.saturation != 1.0f ||
+        !sameNonGraphicsSettings(sPending, baseline)) return 5;
+
+    applyGraphicsPreset(sPending, GRAPHICS_PRESET_ENHANCED);
+    if (graphicsPresetFor(sPending) != GRAPHICS_PRESET_ENHANCED ||
+        sPending.antialiasing != 1 || sPending.fog != 1 || sPending.bloom != 1 ||
+        sPending.ssao != 0 || sPending.dof != 0 || sPending.anisotropy != 8 ||
+        sPending.colourGrading != 0 || sPending.gamma != 1.0f ||
+        sPending.brightness != 0.0f || sPending.saturation != 1.0f ||
+        !sameNonGraphicsSettings(sPending, baseline)) return 6;
+
+    sPending.bloom = 2;
+    if (graphicsPresetFor(sPending) != GRAPHICS_PRESET_CUSTOM) return 7;
+    return 0;
+}
 
 int main(int argc, char** argv)
 {
@@ -12,10 +62,12 @@ int main(int argc, char** argv)
     if (!pc_window_init("Port menu verification", std::atoi(argv[2]), std::atoi(argv[3]))) return 2;
     gsys->Initialise();
     pc_settings_p2d_init();
+    const int assertionResult = assertGraphicsPresets();
+    if (assertionResult != 0) return assertionResult;
     sConfig.applyDefaults();
     rebuildResolutionList();
 
-    for (int page = 0; page < 17; ++page) {
+    for (int page = 0; page < 20; ++page) {
         sPending = sConfig;
         sMenuOpen = page != 15;
         sSelection = ROW_DISPLAY_MODE;
@@ -26,6 +78,7 @@ int main(int argc, char** argv)
         sInAdvancedSubmenu = page == 3;
         sInResolutionSubmenu = page == 4;
         sInModsSubmenu = page == 5;
+        sInGraphicsSubmenu = page >= 17;
         sVideoConfirmActive = page == 6;
         sVideoConfirmStartMs = SDL_GetTicks();
         if (page == 4) openResolutionSubmenu();
@@ -51,6 +104,13 @@ int main(int argc, char** argv)
             sWaitingForButton = true;
         }
         if (page == 14) sSelection = ROW_SAVE;
+        if (page == 17) applyGraphicsPreset(sPending, GRAPHICS_PRESET_ORIGINAL);
+        if (page == 18) applyGraphicsPreset(sPending, GRAPHICS_PRESET_ENHANCED);
+        if (page == 19) {
+            sPending.bloom = 2;
+            sPending.anisotropy = 16;
+            sGraphicsSelection = kGraphicsRowCount - 1;
+        }
 
         pc_gfx_begin_frame();
         glClearColor(0.15f, 0.25f, 0.4f, 1);

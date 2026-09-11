@@ -251,7 +251,13 @@ constexpr int kAdvancedRowCount = 4;
 // reference machine is a GTX 1050 -- so nothing here may be mandatory.
 bool sInGraphicsSubmenu = false;
 int sGraphicsSelection = 0;
-constexpr int kGraphicsRowCount = 10;
+constexpr int kGraphicsRowCount = 11;
+
+enum GraphicsPreset {
+    GRAPHICS_PRESET_ORIGINAL = 0,
+    GRAPHICS_PRESET_ENHANCED = 1,
+    GRAPHICS_PRESET_CUSTOM = 2,
+};
 
 // Colour grading stops. Neutral is in every list, and the pass is skipped
 // entirely when all three sit there.
@@ -409,6 +415,56 @@ bool isVideoSettingChanged() {
            (fabs(sPending.refreshRate - sConfig.refreshRate) > 0.5);
 }
 
+int graphicsPresetFor(const PcConfig& config) {
+    const bool neutral = config.colourGrading == 0 && config.gamma == 1.0f &&
+                         config.brightness == 0.0f && config.saturation == 1.0f;
+    if (config.antialiasing == 0 && config.fog == 1 && config.bloom == 0 &&
+        config.ssao == 0 && config.dof == 0 && config.anisotropy == 0 && neutral)
+        return GRAPHICS_PRESET_ORIGINAL;
+    if (config.antialiasing == 1 && config.fog == 1 && config.bloom == 1 &&
+        config.ssao == 0 && config.dof == 0 && config.anisotropy == 8 && neutral)
+        return GRAPHICS_PRESET_ENHANCED;
+    return GRAPHICS_PRESET_CUSTOM;
+}
+
+void applyGraphicsPreset(PcConfig& config, int preset) {
+    if (preset == GRAPHICS_PRESET_ORIGINAL) {
+        config.antialiasing = 0;
+        config.fog = 1;
+        config.bloom = 0;
+        config.ssao = 0;
+        config.dof = 0;
+        config.anisotropy = 0;
+        config.colourGrading = 0;
+        config.gamma = 1.0f;
+        config.brightness = 0.0f;
+        config.saturation = 1.0f;
+    } else if (preset == GRAPHICS_PRESET_ENHANCED) {
+        config.antialiasing = 1;
+        config.fog = 1;
+        config.bloom = 1;
+        config.ssao = 0;
+        config.dof = 0;
+        config.anisotropy = 8;
+        config.colourGrading = 0;
+        config.gamma = 1.0f;
+        config.brightness = 0.0f;
+        config.saturation = 1.0f;
+    }
+}
+
+bool isGraphicsSettingChanged() {
+    return graphicsPresetFor(sPending) != graphicsPresetFor(sConfig) ||
+           sPending.antialiasing != sConfig.antialiasing ||
+           sPending.fog != sConfig.fog || sPending.bloom != sConfig.bloom ||
+           sPending.ssao != sConfig.ssao || sPending.dof != sConfig.dof ||
+           sPending.anisotropy != sConfig.anisotropy ||
+           sPending.colourGrading != sConfig.colourGrading ||
+           sPending.gamma != sConfig.gamma ||
+           sPending.brightness != sConfig.brightness ||
+           sPending.saturation != sConfig.saturation;
+}
+
 void applyVideo() {
     pc_window_set_display_mode(sPending.displayMode);
     pc_window_set_window_size(sPending.windowWidth, sPending.windowHeight);
@@ -522,6 +578,7 @@ void revertVideoSettings() {
 }
 
 void closeMenu() {
+    const bool graphicsChanged = isGraphicsSettingChanged();
     // Revert any video settings that were not confirmed.
     if (sVideoConfirmActive) {
         revertVideoSettings();
@@ -529,6 +586,12 @@ void closeMenu() {
         sPending = sConfig;
         applyVideo();
         syncResolutionIndex();
+    }
+    // Graphics are previewed immediately too; restore them when the menu is
+    // closed without Save, including when video changes were also pending.
+    if (graphicsChanged) {
+        sPending = sConfig;
+        applyGraphics(sConfig);
     }
     // No dejar el menu memorizado dentro de la lista: al reabrir F1 se espera
     // la pagina principal.
@@ -1208,19 +1271,26 @@ void pollMenuInput() {
         };
 
         if (sGraphicsSelection == 0) {
-            if (left || right) sPending.antialiasing = sPending.antialiasing ? 0 : 1;
+            if (left || right) {
+                // From Custom, either direction gives a predictable named
+                // preset instead of cycling through an invisible state.
+                applyGraphicsPreset(sPending, right ? GRAPHICS_PRESET_ENHANCED
+                                                     : GRAPHICS_PRESET_ORIGINAL);
+            }
         } else if (sGraphicsSelection == 1) {
-            if (left || right) sPending.fog = sPending.fog ? 0 : 1;
+            if (left || right) sPending.antialiasing = sPending.antialiasing ? 0 : 1;
         } else if (sGraphicsSelection == 2) {
+            if (left || right) sPending.fog = sPending.fog ? 0 : 1;
+        } else if (sGraphicsSelection == 3) {
             if (left) sPending.bloom = (sPending.bloom + 3) % 4;
             else if (right) sPending.bloom = (sPending.bloom + 1) % 4;
-        } else if (sGraphicsSelection == 3) {
+        } else if (sGraphicsSelection == 4) {
             if (left) sPending.ssao = (sPending.ssao + 3) % 4;
             else if (right) sPending.ssao = (sPending.ssao + 1) % 4;
-        } else if (sGraphicsSelection == 4) {
+        } else if (sGraphicsSelection == 5) {
             if (left) sPending.dof = (sPending.dof + 3) % 4;
             else if (right) sPending.dof = (sPending.dof + 1) % 4;
-        } else if (sGraphicsSelection == 5) {
+        } else if (sGraphicsSelection == 6) {
             // 0, 2, 4, 8, 16. Anything the driver will not give is clamped
             // where it is applied rather than hidden from the menu, so the
             // setting reads the same on every machine.
@@ -1232,13 +1302,13 @@ void pollMenuInput() {
             if (left) idx = (idx + 4) % 5;
             else if (right) idx = (idx + 1) % 5;
             sPending.anisotropy = kAniso[idx];
-        } else if (sGraphicsSelection == 6) {
-            if (left || right) sPending.colourGrading = sPending.colourGrading ? 0 : 1;
         } else if (sGraphicsSelection == 7) {
-            if (left || right) sPending.gamma = step(sPending.gamma, kGammaStops, kGammaStopCount, left);
+            if (left || right) sPending.colourGrading = sPending.colourGrading ? 0 : 1;
         } else if (sGraphicsSelection == 8) {
-            if (left || right) sPending.brightness = step(sPending.brightness, kBrightnessStops, kBrightnessStopCount, left);
+            if (left || right) sPending.gamma = step(sPending.gamma, kGammaStops, kGammaStopCount, left);
         } else if (sGraphicsSelection == 9) {
+            if (left || right) sPending.brightness = step(sPending.brightness, kBrightnessStops, kBrightnessStopCount, left);
+        } else if (sGraphicsSelection == 10) {
             if (left || right) sPending.saturation = step(sPending.saturation, kSaturationStops, kSaturationStopCount, left);
         }
         // Applied as you move, so the effect can be judged against the scene
@@ -2317,10 +2387,11 @@ void pc_settings_draw(void) {
         const int subX = px1 + 18, subY = py1 + 44;
         const int subW = panelW - 36, subH = panelH - 58;
         drawSubmenuSurface(gfx, subX, subY, subW, subH, "Graphics",
-                           "Left/Right: change   These change how the game looks",
+                           "Left/Right: preset or value",
                            "Up/Down: select   Esc/B: back");
 
         const char* labels[kGraphicsRowCount] = {
+            "Preset",
             "Antialiasing",
             "Fog",
             "Bloom",
@@ -2333,8 +2404,8 @@ void pc_settings_draw(void) {
             "Saturation",
         };
 
-        const int listStartY = subY + 62;
-        const int itemH = 22;
+        const int listStartY = subY + 58;
+        const int itemH = 20;
         const bool gradingOn = sPending.colourGrading != 0;
 
         for (int i = 0; i < kGraphicsRowCount; i++) {
@@ -2343,35 +2414,39 @@ void pc_settings_draw(void) {
 
             char value[64];
             if (i == 0) {
-                snprintf(value, sizeof(value), "%s", sPending.antialiasing ? "FXAA" : "Off");
+                const int preset = graphicsPresetFor(sPending);
+                const char* names[3] = { "Original", "Enhanced", "Custom" };
+                snprintf(value, sizeof(value), "%s", names[preset]);
             } else if (i == 1) {
+                snprintf(value, sizeof(value), "%s", sPending.antialiasing ? "FXAA" : "Off");
+            } else if (i == 2) {
                 // The game draws fog of its own, so on is the original and off
                 // is the deviation. Say which is which.
                 snprintf(value, sizeof(value), "%s", sPending.fog ? "On  (original)" : "Off");
-            } else if (i == 2) {
+            } else if (i == 3) {
                 const char* bloomNames[4] = { "Off", "Subtle", "Normal", "Strong" };
                 const int b = (sPending.bloom >= 0 && sPending.bloom <= 3) ? sPending.bloom : 0;
                 snprintf(value, sizeof(value), "%s", bloomNames[b]);
-            } else if (i == 3) {
+            } else if (i == 4) {
                 const char* aoNames[4] = { "Off", "Subtle", "Normal", "Strong" };
                 const int a = (sPending.ssao >= 0 && sPending.ssao <= 3) ? sPending.ssao : 0;
                 snprintf(value, sizeof(value), "%s", aoNames[a]);
-            } else if (i == 4) {
+            } else if (i == 5) {
                 const char* dofNames[4] = { "Off", "Subtle", "Normal", "Strong" };
                 const int d = (sPending.dof >= 0 && sPending.dof <= 3) ? sPending.dof : 0;
                 snprintf(value, sizeof(value), "%s", dofNames[d]);
-            } else if (i == 5) {
+            } else if (i == 6) {
                 if (sPending.anisotropy <= 1) snprintf(value, sizeof(value), "Trilinear");
                 else snprintf(value, sizeof(value), "Anisotropic %dx", sPending.anisotropy);
-            } else if (i == 6) {
+            } else if (i == 7) {
                 snprintf(value, sizeof(value), "%s", gradingOn ? "On" : "Off");
             } else if (!gradingOn) {
                 // The three sliders do nothing while grading is off. Saying so
                 // beats letting someone move them and conclude it is broken.
                 snprintf(value, sizeof(value), "--");
-            } else if (i == 7) {
-                snprintf(value, sizeof(value), sPending.gamma == 1.0f ? "%.2f  (neutral)" : "%.2f", sPending.gamma);
             } else if (i == 8) {
+                snprintf(value, sizeof(value), sPending.gamma == 1.0f ? "%.2f  (neutral)" : "%.2f", sPending.gamma);
+            } else if (i == 9) {
                 snprintf(value, sizeof(value), sPending.brightness == 0.0f ? "%+.2f  (neutral)" : "%+.2f", sPending.brightness);
             } else {
                 snprintf(value, sizeof(value), sPending.saturation == 1.0f ? "%.2f  (neutral)" : "%.2f", sPending.saturation);
