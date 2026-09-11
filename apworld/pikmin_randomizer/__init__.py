@@ -3,7 +3,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from BaseClasses import Item, ItemClassification, Location, Region
-from Options import PerGameCommonOptions, Toggle, Choice, Range
+from Options import PerGameCommonOptions, Toggle, Choice, Range, OptionSet
 from worlds.AutoWorld import World
 from .core.catalog import (GAME, ITEM_IDS, LOCATION_IDS, NAMES, CHECK_AREAS,
                            CHECK_REQUIREMENTS, UNLOCKS, REPAIR, REPAIR_COUNT, ALL_LOCATION_IDS,
@@ -83,7 +83,7 @@ class PermanentChecks(Toggle):
 
 
 class ProgressiveColorStats(Toggle):
-    """Receive per-color stat upgrades as AP items. Vanilla or rolled bases; damage and carry have four upgrades, movement and attack rate two (36 items). Enables permanent checks to fit the larger pool. Stacks additively with rolled stats."""
+    """Receive per-color stat upgrades as AP items. Vanilla or rolled bases; configurable counts default to four damage/carry and two movement/attack-rate upgrades per color (36 items). Enables permanent checks to fit the larger pool. Stacks additively with rolled stats."""
     display_name = "Progressive Color Stats"
     default = 0
 
@@ -96,8 +96,68 @@ class StartingFlarlic(Range):
     default = 1
 
 
+class RandomStartAreas(OptionSet):
+    """Eligible areas when starting_area is randomized. Must be nonempty. Final Trial is never eligible."""
+    display_name = 'Random Starting Areas'
+    valid_keys = frozenset({'impact', 'forest', 'navel', 'spring'})
+    default = valid_keys
+
+
+class InitialStatMinimum(Choice):
+    """Minimum initial percentage when randomize_color_stats is on. Use 25, 50, 75 or 100; must not exceed maximum. Rolls use 25-point steps."""
+    display_name = 'Initial Stat Minimum'
+    option_25 = 25
+    option_50 = 50
+    option_75 = 75
+    option_100 = 100
+    default = 25
+
+
+class InitialStatMaximum(InitialStatMinimum):
+    """Maximum initial percentage when randomize_color_stats is on. Use 25, 50, 75 or 100; must not be below minimum."""
+    display_name = 'Initial Stat Maximum'
+    default = 100
+
+
+class DamageUpgrades(Range):
+    """Copies per color when progressive_color_stats is on. Each adds 25 percentage points of base damage."""
+    display_name = 'Damage Upgrades Per Color'
+    range_start = 0
+    range_end = 4
+    default = 4
+
+
+class CarryUpgrades(DamageUpgrades):
+    """Copies per color when progressive_color_stats is on. Each adds 1 carrying strength; initial strength stays 1."""
+    display_name = 'Carry Upgrades Per Color'
+
+
+class MovementUpgrades(Range):
+    """Copies per color when progressive_color_stats is on. Each adds 25 percentage points of movement speed."""
+    display_name = 'Movement Upgrades Per Color'
+    range_start = 0
+    range_end = 2
+    default = 2
+
+
+class AttackRateUpgrades(MovementUpgrades):
+    """Copies per color when progressive_color_stats is on. Each adds 25 percentage points of attack rate."""
+    display_name = 'Attack Rate Upgrades Per Color'
+
+
 @dataclass
 class PikminOptions(PerGameCommonOptions):
+    random_start_areas: RandomStartAreas
+    initial_damage_min: InitialStatMinimum
+    initial_damage_max: InitialStatMaximum
+    initial_movement_min: InitialStatMinimum
+    initial_movement_max: InitialStatMaximum
+    initial_attack_rate_min: InitialStatMinimum
+    initial_attack_rate_max: InitialStatMaximum
+    damage_upgrades: DamageUpgrades
+    movement_upgrades: MovementUpgrades
+    attack_rate_upgrades: AttackRateUpgrades
+    carry_upgrades: CarryUpgrades
     campaign_enemies: CampaignEnemies
     group_spawn_enemies: GroupSpawnEnemies
     miniboss_enemies: MinibossEnemies
@@ -172,7 +232,10 @@ class PikminRandomizerWorld(World):
             self._manifest = generate(str(self.multiworld.seed_name), "ap", self.multiworld.player_name[self.player],
                             expanded=bool(self.options.expanded_checks),
                             starting_area=('forest', 'navel', 'random', 'impact', 'spring', 'trial')[self.options.starting_area.value],
-                            starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas), enemy_shuffle=bool(self.options.enemy_shuffle), collection_checks=bool(self.options.collection_checks), starting_flarlic=self.options.starting_flarlic.value, randomize_color_stats=bool(self.options.randomize_color_stats), progressive_color_stats=bool(self.options.progressive_color_stats), permanent_checks=bool(self.options.permanent_checks), per_spawn_enemies=bool(self.options.per_spawn_enemies), group_spawn_enemies=bool(self.options.group_spawn_enemies), miniboss_enemies=bool(self.options.miniboss_enemies), campaign_enemies=bool(self.options.campaign_enemies))
+                            starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas), enemy_shuffle=bool(self.options.enemy_shuffle), collection_checks=bool(self.options.collection_checks), starting_flarlic=self.options.starting_flarlic.value, randomize_color_stats=bool(self.options.randomize_color_stats), progressive_color_stats=bool(self.options.progressive_color_stats), permanent_checks=bool(self.options.permanent_checks), per_spawn_enemies=bool(self.options.per_spawn_enemies), group_spawn_enemies=bool(self.options.group_spawn_enemies), miniboss_enemies=bool(self.options.miniboss_enemies), campaign_enemies=bool(self.options.campaign_enemies),
+                            random_start_areas=self.options.random_start_areas.value,
+                            initial_stat_bounds={stat: [getattr(self.options, 'initial_' + stat + '_min').value, getattr(self.options, 'initial_' + stat + '_max').value] for stat in ('damage', 'movement', 'attack_rate')},
+                            stat_upgrade_counts={stat: getattr(self.options, stat + '_upgrades').value for stat in ('damage', 'movement', 'attack_rate', 'carry')})
         return self._manifest
 
     def fill_slot_data(self):

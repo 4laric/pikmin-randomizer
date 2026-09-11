@@ -1,3 +1,9 @@
+## YAML balance options (#70)
+
+AP world 0.23.0 exposes initial min/max damage, movement and attack-rate percentages (25/50/75/100), per-color upgrade counts (damage/carry 0-4, movement/attack 0-2), and the randomized starting-area subset (four non-Trial regions). Current defaults are unchanged. `examples/Player1.yaml` documents the full playtest settings and existing options. Count overrides are stored as `stat_upgrade_counts`; profiles and starts remain resolved in the manifest. Native protocol uses the existing v3 profiles/v2 upgrades and Python clamps state to configured counts. No native rebuild or source snapshot change required. Lower counts free consumable slots; permanent checks remain implied by progressive stats.
+
+Validation: existing 79 Python tests plus eight subtests, four new balance tests; 150 packaged AP fills with varied custom upgrade counts, fixed/subrange stat rolls and restricted start pools, plus 10 remote-Blue multiworlds; actual example YAML parsed and filled with all checks reachable. Compiled live protocol also covers custom limits and zero carry/movement upgrades, with reconnect/duplicate receipt caps preserved. Larger ranges, different upgrade increments, population thresholds and repair goal remain fixed, as documented in README.
+
 ## Starting balance and upgrade density (#69)
 
 New random starts sample Impact, Hope, Navel and Spring; Trial remains an explicit choice. Initial damage/movement/attack rolls are 25/50/75/100%, carrying starts at 1. The progressive pool now contains 36 items: per color four damage, four carry, two movement and two attack-rate upgrades. Progressive stats enable permanent-structure checks for 113 total locations. New capability versions preserve old saved profiles and 18-item pools without migration. Native source `9808df32`; AP world 0.22.0.

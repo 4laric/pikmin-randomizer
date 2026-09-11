@@ -11,7 +11,28 @@ BALANCED_STAT_VALUES = {'damage': (25,50,75,100), 'movement': (25,50,75,100),
 DOUBLE_UPGRADE_TIERS = {'damage': (100,125,150,175,200), 'movement': (100,125,150),
                         'attack_rate': (100,125,150), 'carry': (1,2,3,4,5)}
 
+UPGRADE_LIMITS = {'damage': 4, 'movement': 2, 'attack_rate': 2, 'carry': 4}
+
+
+def validate_upgrade_limits(limits):
+    if type(limits) is not dict or set(limits) != set(UPGRADE_LIMITS):
+        raise ValueError('upgrade counts must specify damage, movement, attack_rate and carry')
+    for stat, value in limits.items():
+        if type(value) is not int or not 0 <= value <= UPGRADE_LIMITS[stat]:
+            raise ValueError(f'{stat} upgrade count must be 0..{UPGRADE_LIMITS[stat]}')
+
+
+def validate_roll_bounds(bounds):
+    if type(bounds) is not dict or set(bounds) != {'damage', 'movement', 'attack_rate'}:
+        raise ValueError('initial stat bounds must specify damage, movement and attack_rate')
+    for stat, pair in bounds.items():
+        if not isinstance(pair, (tuple, list)) or len(pair) != 2 or any(type(v) is not int or v not in (25, 50, 75, 100) for v in pair) or pair[0] > pair[1]:
+            raise ValueError(f'{stat} bounds must be ordered 25/50/75/100 percentages')
+
+
 def upgrade_tiers(manifest=None):
+    if manifest and 'stat_upgrade_counts' in manifest:
+        return {stat: tiers[:manifest['stat_upgrade_counts'][stat] + 1] for stat, tiers in DOUBLE_UPGRADE_TIERS.items()}
     return DOUBLE_UPGRADE_TIERS if manifest and 'progressive-color-stats-v2' in manifest.get('capabilities', ()) else UPGRADE_TIERS
 
 UPGRADE_ITEMS = {f'Progressive {color.title()} {label}': (color, stat)
@@ -42,8 +63,13 @@ def upgrade_counts(manifest, inventory):
         for color in ('blue', 'red', 'yellow') for stat in UPGRADE_TIERS)
 
 
-def roll_profiles(rng):
-    return {color: {stat: values[rng.below(len(values))] for stat, values in BALANCED_STAT_VALUES.items()}
+def roll_profiles(rng, bounds=None):
+    values_by_stat = BALANCED_STAT_VALUES
+    if bounds is not None:
+        validate_roll_bounds(bounds)
+        values_by_stat = {stat: tuple(range(pair[0], pair[1] + 1, 25)) for stat, pair in bounds.items()}
+        values_by_stat = {stat: values_by_stat.get(stat, (1,)) for stat in BALANCED_STAT_VALUES}
+    return {color: {stat: values[rng.below(len(values))] for stat, values in values_by_stat.items()}
             for color in COLORS}
 
 

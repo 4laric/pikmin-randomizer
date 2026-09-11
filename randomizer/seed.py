@@ -42,7 +42,14 @@ class SeedRandom:
         return values
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None):
+    from .stats import validate_roll_bounds, validate_upgrade_limits
+    if initial_stat_bounds is not None: validate_roll_bounds(initial_stat_bounds)
+    if stat_upgrade_counts is not None: validate_upgrade_limits(stat_upgrade_counts)
+    area_names = ('impact', 'forest', 'navel', 'spring')
+    if random_start_areas is not None:
+        if not isinstance(random_start_areas, (list, tuple, set, frozenset)) or not random_start_areas or any(a not in area_names for a in random_start_areas):
+            raise ValueError('random_start_areas must be a nonempty subset of impact, forest, navel, spring')
     if group_spawn_enemies or miniboss_enemies: per_spawn_enemies = True
     if per_spawn_enemies:
         if legacy_checks: raise ValueError('per-spawn enemies require modern checks')
@@ -79,7 +86,8 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         result.update(schema=4, starting_color=color, catalog='gameplay-checks-v4', locations=dict(ALL_LOCATION_IDS),
                       capabilities=['identity-placement-v1', 'random-start-v1', 'repair-goal-v1', 'repeat-day29-v1'] + EXPANDED_CAPABILITIES + ['starting-color-v1'])
     if all_areas or enemy_shuffle or collection_checks or randomize_color_stats or starting_area in ('random', 'impact', 'spring', 'trial'):
-        profile = tuple(p for p in START_AREAS if p != 'trial-day2')[SeedRandom(str(seed) + '/all-areas-v2/' + slot).below(4)] if starting_area == 'random' else ('foh-day2' if starting_area == 'forest' else starting_area + '-day2')
+        eligible = tuple(p for p in START_AREAS if p != 'trial-day2' and (random_start_areas is None or ('forest' if p == 'foh-day2' else p.removesuffix('-day2')) in random_start_areas))
+        profile = eligible[SeedRandom(str(seed) + '/all-areas-v2/' + slot).below(len(eligible))] if starting_area == 'random' else ('foh-day2' if starting_area == 'forest' else starting_area + '-day2')
         result.update(schema=5, profile=profile, starting_color=result.get('starting_color', 'red'),
                       catalog='gameplay-checks-v5', assignments=dict(ALL_PART_IDS), locations=dict(ALL_AREA_LOCATION_IDS),
                       capabilities=['identity-placement-v1', 'random-start-v1', 'repair-goal-v1', 'repeat-day29-v1'] + EXPANDED_CAPABILITIES + ['starting-color-v1', 'all-areas-v1'])
@@ -105,11 +113,13 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         result["capabilities"].append("starting-flarlic-v1")
     if randomize_color_stats:
         from .stats import roll_profiles
-        result["color_stats"] = roll_profiles(SeedRandom(str(seed) + "/color-stats-v3/" + slot))
+        result["color_stats"] = roll_profiles(SeedRandom(str(seed) + "/color-stats-v3/" + slot), initial_stat_bounds)
         result["capabilities"].append("color-stats-v3")
     if progressive_color_stats:
         result['progressive_color_stats'] = True
         result['capabilities'].append('progressive-color-stats-v2')
+        if stat_upgrade_counts is not None:
+            result['stat_upgrade_counts'] = dict(stat_upgrade_counts)
     if result['schema'] == 9:
         from .enemies import resolve_layout
         result['enemy_layout'] = resolve_layout(result['enemy_mask'])
@@ -210,6 +220,12 @@ def validate(m):
         expected.add('progressive_color_stats')
         if m['progressive_color_stats'] is not True or m.get('schema') not in (7, 8, 9):
             raise ValueError('invalid progressive color stats mode')
+    if type(m) is dict and 'stat_upgrade_counts' in m:
+        from .stats import validate_upgrade_limits
+        expected.add('stat_upgrade_counts')
+        validate_upgrade_limits(m['stat_upgrade_counts'])
+        if not m.get('progressive_color_stats') or 'progressive-color-stats-v2' not in m.get('capabilities', []):
+            raise ValueError('custom upgrade counts require progressive stats v2')
     if type(m) is not dict or set(m) != expected:
         raise ValueError("manifest fields do not match schema 1")
     if type(m["schema"]) is not int or m["schema"] not in (1, 2, 3, 4, 5, 6, 7, 8, 9):

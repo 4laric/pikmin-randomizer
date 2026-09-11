@@ -12,9 +12,9 @@ from randomizer.catalog import ITEM_IDS, REPAIR
 from randomizer.stats import upgrade_pool, current_profiles
 
 exe = str(Path(sys.argv[1]).resolve())
-for rolled, invalid in ((False, False), (False, True), (True, False), (True, True)):
+for rolled, invalid, counts in ((False, False, None), (False, True, None), (True, False, None), (True, True, None), (True, False, dict(damage=1, movement=0, attack_rate=1, carry=0))):
     with tempfile.TemporaryDirectory() as d:
-        session = Session(generate('live', 'ap', progressive_color_stats=True, randomize_color_stats=rolled, starting_flarlic=1), d)
+        session = Session(generate('live', 'ap', progressive_color_stats=True, randomize_color_stats=rolled, starting_flarlic=1, stat_upgrade_counts=counts), d)
         session.bind_ap('room', 0, 1)
         run = NativeRun(session); run.write_state(True)
         log = Path(d) / 'probe.log'
@@ -34,7 +34,7 @@ for rolled, invalid in ((False, False), (False, True), (True, False), (True, Tru
                     return f"LIVE_STATS {index} {p['damage']} {p['movement']} {p['attack_rate']} {p['carry']}"
                 wait(expected('red', 1))
                 run.poll(); assert run.handshaken
-                ids = [ITEM_IDS['Progressive Red Carry Strength'], ITEM_IDS['Progressive Red Damage']]
+                ids = [ITEM_IDS[n] for n in (('Progressive Red Attack Rate', 'Progressive Red Damage') if counts is not None else ('Progressive Red Carry Strength', 'Progressive Red Damage'))]
                 session.receive(0, ids); session.receive(0, ids)
                 wait(expected('red', 1))
                 if invalid:

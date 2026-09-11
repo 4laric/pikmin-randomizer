@@ -1,3 +1,20 @@
+## YAML balance controls (#70)
+
+Use [examples/Player1.yaml](examples/Player1.yaml) with AP world 0.23.0 for the complete current playtest configuration, including enemy modes, check categories, starting color, area and Flarlic. The option defaults preserve the existing balance; the example enables campaign enemies and both stat toggles.
+
+| Setting | Supported values | Default |
+| --- | --- | --- |
+| `random_start_areas` | Nonempty list of `impact`, `forest`, `navel`, `spring`; used by randomized starting area | All four |
+| `initial_damage_min` / `initial_damage_max` | 25, 50, 75, 100 (percent) | 25 / 100 |
+| `initial_movement_min` / `initial_movement_max` | 25, 50, 75, 100 (percent) | 25 / 100 |
+| `initial_attack_rate_min` / `initial_attack_rate_max` | 25, 50, 75, 100 (percent) | 25 / 100 |
+| `damage_upgrades` / `carry_upgrades` | 0–4 copies per color | 4 / 4 |
+| `movement_upgrades` / `attack_rate_upgrades` | 0–2 copies per color | 2 / 2 |
+
+Initial bounds apply when `randomize_color_stats` is enabled; each minimum must be at most its maximum. Equal bounds fix that stat for all colors. Upgrade counts apply when `progressive_color_stats` is enabled and use the existing +25-point/+1-carry increments. Fewer upgrades mean more consumables. Progressive stats still enable permanent checks. These ranges match the current supported balance limits; carrying starts at 1, throw height stays vanilla, and the goal stays at 25 repairs. Population milestones remain 10/25/50/100 per color. Captain Heal remains excluded. Explicit `starting_area: trial` is available, but Trial cannot enter the randomized pool.
+
+Resolved profiles/start and custom upgrade counts are saved in the manifest and fingerprint. Editing YAML affects newly generated seeds only; old manifests keep their original behavior. This update uses the current native executable.
+
 # Pikmin Randomizer
 
 ## Campaign-wide enemy pools (#44)

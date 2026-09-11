@@ -1,0 +1,37 @@
+# Current playtest settings. Install pikmin_randomizer-0.23.0.apworld to generate.
+name: Player1
+game: Pikmin Randomizer
+Pikmin Randomizer:
+  starting_area: randomized
+  # Used only for randomized starts. Trial is not permitted in this list.
+  random_start_areas: [impact, forest, navel, spring]
+  starting_color: randomized
+  starting_flarlic: 1  # 1..10; each represents 10 field capacity
+
+  randomize_color_stats: true
+  # Integer percentages: 25, 50, 75 or 100. Each minimum <= maximum.
+  # Same bounds apply independently to each color. Carry always starts at 1.
+  initial_damage_min: 25
+  initial_damage_max: 100
+  initial_movement_min: 25
+  initial_movement_max: 100
+  initial_attack_rate_min: 25
+  initial_attack_rate_max: 100
+
+  progressive_color_stats: true
+  # Copies PER COLOR. These defaults produce 36 upgrades in total.
+  damage_upgrades: 4      # 0..4, +25 percentage points each
+  movement_upgrades: 2    # 0..2, +25 percentage points each
+  attack_rate_upgrades: 2 # 0..2, +25 percentage points each
+  carry_upgrades: 4       # 0..4, +1 strength each
+
+  collection_checks: true # Corpse/bestiary and population 10/25/50/100 per color
+  permanent_checks: true  # Walls/sticks/bridges/boxes; implied by progressive stats
+  all_areas: true
+  expanded_checks: false  # Legacy toggle; modern collection checks already expand
+
+  campaign_enemies: true # Overrides the older modes below
+  miniboss_enemies: false
+  group_spawn_enemies: false
+  per_spawn_enemies: false
+  enemy_shuffle: false
