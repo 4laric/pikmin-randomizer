@@ -3,11 +3,11 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from BaseClasses import Item, ItemClassification, Location, Region
-from Options import PerGameCommonOptions, Toggle
+from Options import PerGameCommonOptions, Toggle, Choice
 from worlds.AutoWorld import World
 from .core.catalog import (GAME, ITEM_IDS, LOCATION_IDS, NAMES, CHECK_AREAS,
                            CHECK_REQUIREMENTS, UNLOCKS, REPAIR, REPAIR_COUNT, ALL_LOCATION_IDS,
-                           active_names, item_pool, check_area, can_reach, FLARLIC)
+                           active_names, item_pool, check_area, can_reach_manifest, FLARLIC)
 from .core.seed import generate, fingerprint
 
 
@@ -17,9 +17,19 @@ class ExpandedChecks(Toggle):
     default = 0
 
 
+class StartingArea(Choice):
+    """Randomized/Navel starts enable expanded checks. Spring and Trial starts are not supported."""
+    display_name = 'Starting Area'
+    option_forest = 0
+    option_navel = 1
+    option_randomized = 2
+    default = 0
+
+
 @dataclass
 class PikminOptions(PerGameCommonOptions):
     expanded_checks: ExpandedChecks
+    starting_area: StartingArea
 
 
 class PikminItem(Item):
@@ -64,13 +74,16 @@ class PikminRandomizerWorld(World):
     def set_rules(self):
         expanded = bool(self.options.expanded_checks)
         for name in active_names(self.manifest()):
-            self.get_location(name).access_rule = lambda state, name=name: can_reach(
-                name, {item: state.count(item, self.player) for item in ITEM_IDS}, expanded)
+            self.get_location(name).access_rule = lambda state, name=name: can_reach_manifest(
+                name, {item: state.count(item, self.player) for item in ITEM_IDS}, self.manifest())
         self.multiworld.completion_condition[self.player] = lambda state: state.has(REPAIR, self.player, REPAIR_COUNT)
 
     def manifest(self):
-        return generate(str(self.multiworld.seed_name), "ap", self.multiworld.player_name[self.player],
-                        expanded=bool(self.options.expanded_checks))
+        if not hasattr(self, '_manifest'):
+            self._manifest = generate(str(self.multiworld.seed_name), "ap", self.multiworld.player_name[self.player],
+                            expanded=bool(self.options.expanded_checks),
+                            starting_area=('forest', 'navel', 'random')[self.options.starting_area.value])
+        return self._manifest
 
     def fill_slot_data(self):
         manifest = self.manifest()

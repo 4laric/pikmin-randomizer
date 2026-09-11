@@ -3,7 +3,7 @@ import json
 import os
 from collections import Counter
 from pathlib import Path
-from .catalog import NAMES, ITEM_IDS, UNLOCKS, REPAIR, FLARLIC, active_names, item_pool
+from .catalog import NAMES, ITEM_IDS, UNLOCKS, REPAIR, FLARLIC, FOREST_ACCESS, active_names, item_pool
 from .seed import fingerprint, solo_rewards
 
 
@@ -115,11 +115,13 @@ class Session:
     def native_state(self, token, ready):
         inventory = self.inventory
         unlocks = sum(1 << i for i, name in enumerate(UNLOCKS) if inventory[name])
+        if self.manifest['schema'] >= 3 and inventory[FOREST_ACCESS]:
+            unlocks |= 32
         checks = sum(1 << i for i, name in enumerate(self.names) if name in self.data["checked"])
         repairs = min(inventory[REPAIR], self.manifest["goal"])
-        if self.manifest["schema"] == 2:
+        if self.manifest["schema"] >= 2:
             flarlic = min(8, inventory[FLARLIC])
-            return f"PIKMIN_STATE 2 {token} {int(ready)} {repairs} {unlocks} {flarlic} {checks} END\n"
+            return f"PIKMIN_STATE {self.manifest['schema']} {token} {int(ready)} {repairs} {unlocks} {flarlic} {checks} END\n"
         return f"PIKMIN_STATE 1 {token} {int(ready)} {repairs} {unlocks} {checks} END\n"
 
 

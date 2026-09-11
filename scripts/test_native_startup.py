@@ -10,11 +10,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from randomizer.seed import generate
 from randomizer.session import Session
 from randomizer.runner import NativeRun
-from randomizer.catalog import UNLOCKS, ITEM_IDS, REPAIR
+from randomizer.catalog import UNLOCKS, ITEM_IDS, REPAIR, FOREST_ACCESS, NAVEL_ACCESS
 
 
-def main(exe, assets, output, expanded=False):
-    session = Session(generate("startup-smoke", "ap", expanded=expanded), output)
+def main(exe, assets, output, expanded=False, starting_area='forest', seed='startup-smoke'):
+    session = Session(generate(seed, "ap", expanded=expanded, starting_area=starting_area), output)
+    navel = session.manifest['profile'] == 'navel-day2'
+    expanded = session.manifest['schema'] >= 2
     session.bind_ap("synthetic-native-smoke", 0, 1)
     run = NativeRun(session)
     _winapi.CreateJunction(str(assets.resolve()), str((run.directory / "assets").resolve()))
@@ -35,10 +37,10 @@ def main(exe, assets, output, expanded=False):
                     if marker in log.read_text(encoding="utf-8", errors="replace"): return
                     time.sleep(.1)
                 raise AssertionError(f"timeout: {marker}; {log}")
-            wait("PIKMIN_FOH_READY day=2 field_red=20 main_engine_ap_check=0")
+            wait(f"START_READY stage={2 if navel else 1} field_red=20")
             wait("PIKMIN_WORLD_RENDERED")
-            wait("PIKMIN_AREA_ACCESS impact=0 forest=1 navel=0 spring=0 trial=0")
-            for i, item in enumerate(UNLOCKS):
+            wait(f"PIKMIN_AREA_ACCESS impact=0 forest={0 if navel else 1} navel={1 if navel else 0} spring=0 trial=0")
+            for i, item in enumerate(tuple(FOREST_ACCESS if navel and item == NAVEL_ACCESS else item for item in UNLOCKS)):
                 session.receive(i, [ITEM_IDS[item]])
                 if i < 2:
                     wait(f"PIKMIN_{'YELLOW' if i == 0 else 'BLUE'}_ONION_GRANTED starter=5")
@@ -46,13 +48,14 @@ def main(exe, assets, output, expanded=False):
             session.receive(5, [ITEM_IDS[REPAIR]] * 25)
             wait("GOAL: Ship repaired!")
             run.poll()
-            expected = {'Population: 20 Pikmin in the field', 'Explore: The Forest of Hope - Land'} if expanded else set()
+            area = 'The Forest Navel' if navel else 'The Forest of Hope'
+            expected = {'Population: 20 Pikmin in the field', f'Explore: {area} - Land'} if expanded else set()
             assert set(session.data['checked']) == expected, session.data['checked']
             text = log.read_text(encoding="utf-8", errors="replace")
             for color in ("YELLOW", "BLUE"):
                 assert text.count(f"PIKMIN_{color}_ONION_GRANTED starter=5") == 1
             assert 'TEST_ONLY' not in text, 'test fixtures enabled unexpectedly'
-            print("PASS native startup: rendered FoH, 20 field reds, color grants, area gates, received-repair goal; expected checks only", sorted(expected))
+            print(f"PASS native startup: rendered {area}, 20 field reds, color grants, area gates, received-repair goal; expected checks only", sorted(expected))
             print(log)
         finally:
             if process.poll() is None: process.terminate();process.wait(timeout=10)
@@ -62,4 +65,6 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser();p.add_argument("--exe", type=Path, required=True)
     p.add_argument("--assets", type=Path, required=True);p.add_argument("--output", type=Path, required=True)
     p.add_argument('--expanded', action='store_true')
-    a=p.parse_args();main(a.exe,a.assets,a.output.resolve(),a.expanded)
+    p.add_argument('--starting-area', choices=['forest', 'navel', 'random'], default='forest')
+    p.add_argument('--seed', default='startup-smoke')
+    a=p.parse_args();main(a.exe,a.assets,a.output.resolve(),a.expanded,a.starting_area,a.seed)

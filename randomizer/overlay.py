@@ -22,7 +22,7 @@ def snapshot(manifest, data):
         names = {v: k for k, v in ITEM_IDS.items()}
         events = [('Received from Archipelago', names[item]) for item in data['received']]
     inventory = Counter(item for _, item in events)
-    return events, field_capacity(inventory, manifest['schema'] == 2), min(25, inventory[REPAIR])
+    return events, field_capacity(inventory, manifest['schema'] >= 2), min(25, inventory[REPAIR])
 
 
 def main(manifest_path, session_path, pid):
@@ -58,7 +58,7 @@ def main(manifest_path, session_path, pid):
     user.SetWindowLongW(hwnd, -20, user.GetWindowLongW(hwnd, -20) | 0x80000 | 0x20 | 0x80 | 0x08000000)
     previous = None
     changed_at = time.monotonic()
-    state = ([], 20 if manifest['schema'] == 2 else 100, 0)
+    state = ([], 20 if manifest['schema'] >= 2 else 100, 0)
     cache = None
 
     def draw(text, y, color, size=13):

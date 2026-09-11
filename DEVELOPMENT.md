@@ -49,6 +49,17 @@ Build `output/pikmin_randomizer.apworld` and install it into a separate AP setup
 
 ## Expanded checks (opt-in)
 
+### Randomized starting area
+
+Use `python -m randomizer generate --starting-area random --seed my-seed --output output/my-seed.json`.
+AP option: `starting_area: randomized` (also `forest` or `navel`). Randomized/Navel starts automatically enable expanded checks and schema 3. Supported random pool: Forest of Hope and Forest Navel, with deterministic selection from seed and slot. Spring and Trial starts are disabled pending opening audits. The selected profile is recorded in the manifest; old schema-1/2 seeds remain unchanged.
+
+Navel starts grant Navel access and replace its pool item with Forest of Hope access. Other area unlocks remain independent items; this is not a forced linear level order. Start with 20 reds and a 20 field cap in either area. Color and weight requirements remain conservative; no new color-route assumptions are introduced. Population checks are available in the starting area; species and location checks retain their area gates. Keep the 55-check/25-repair pool balance.
+
+Validation: 20 Python tests (including 200 randomized-start solo fills), 400 AP single-slot fills plus one mixed-start two-slot fill. Native Navel startup verifies rendered gameplay, Red Onion withdrawal of 20 reds, initial travel gates, received area/color grants and the two expected starting checks. Complete Navel breeding, travel/day transitions, scouting and full-seed completion still require player acceptance. Full native campaign resume remains incomplete as documented above.
+
+Track implementation and remaining acceptance in issue #16. The current playtest executable is copied into its package, so rebuilding does not change an active playtest.
+
 The three implementation batches are specified in [BATCH_PLAN.md](BATCH_PLAN.md).
 Use `python -m randomizer generate --expanded --seed exploration --output output/exploration.json`
 or set `expanded_checks: true` in an AP player configuration. Run with the same session runner above.

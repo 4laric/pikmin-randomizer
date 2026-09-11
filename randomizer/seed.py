@@ -4,7 +4,7 @@ import json
 from collections import Counter
 from .catalog import (GAME, NAMES, PART_IDS, LOCATION_IDS, UNLOCKS,
                       REPAIR, REPAIR_COUNT, CHECK_REQUIREMENTS, active_names, ALL_LOCATION_IDS,
-                      can_reach, progression_pool, item_pool)
+                      can_reach, can_reach_manifest, progression_pool, item_pool)
 
 EXPANDED_CAPABILITIES = ["flarlic-v1", "population-v1", "bestiary-v1", "exploration-v1"]
 
@@ -42,7 +42,7 @@ class SeedRandom:
         return values
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest"):
     result = dict(schema=1, game=GAME, seed=str(seed), slot=slot, mode=mode,
                   profile="foh-day2", catalog="vanilla-sites-v1", rng="sha256-counter-v1",
                   placement="identity-v1", assignments=dict(PART_IDS),
@@ -51,6 +51,12 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False):
     if expanded:
         result.update(schema=2, catalog="gameplay-checks-v2", locations=dict(ALL_LOCATION_IDS),
                       capabilities=CAPABILITIES + EXPANDED_CAPABILITIES)
+    if starting_area != "forest":
+        if starting_area not in ("random", "navel"):
+            raise ValueError("unsupported starting area")
+        selected = ("foh-day2", "navel-day2")[SeedRandom(str(seed) + "/start/" + slot).below(2)] if starting_area == "random" else "navel-day2"
+        result.update(schema=3, profile=selected, catalog="gameplay-checks-v3", locations=dict(ALL_LOCATION_IDS),
+                      capabilities=["identity-placement-v1", "random-start-v1", "repair-goal-v1", "repeat-day29-v1"] + EXPANDED_CAPABILITIES)
     validate(result)
     return result
 
@@ -60,14 +66,19 @@ def validate(m):
                 "assignments", "locations", "goal", "day_policy", "capabilities"}
     if type(m) is not dict or set(m) != expected:
         raise ValueError("manifest fields do not match schema 1")
-    if type(m["schema"]) is not int or m["schema"] not in (1, 2):
+    if type(m["schema"]) is not int or m["schema"] not in (1, 2, 3):
         raise ValueError("unsupported manifest schema")
-    expanded = m["schema"] == 2
+    expanded = m["schema"] >= 2
     fixed = dict(schema=m["schema"], game=GAME, profile="foh-day2", catalog="vanilla-sites-v1",
                  rng="sha256-counter-v1", placement="identity-v1", goal=REPAIR_COUNT,
                  day_policy="repeat-day29-v1", capabilities=CAPABILITIES)
     if expanded:
         fixed.update(catalog="gameplay-checks-v2", capabilities=CAPABILITIES + EXPANDED_CAPABILITIES)
+    if m['schema'] == 3:
+        if m['profile'] not in ('foh-day2', 'navel-day2'):
+            raise ValueError('unsupported start profile')
+        fixed.update(profile=m['profile'], catalog='gameplay-checks-v3',
+                     capabilities=['identity-placement-v1', 'random-start-v1', 'repair-goal-v1', 'repeat-day29-v1'] + EXPANDED_CAPABILITIES)
     for key, value in fixed.items():
         if type(m[key]) is not type(value) or m[key] != value:
             raise ValueError(f"unsupported {key}: {m[key]!r}")
@@ -94,7 +105,7 @@ def solo_rewards(manifest):
     def place(remaining, owned, placed):
         if not remaining:
             return placed
-        available = [n for n in names if n not in placed and can_reach(n, owned, expanded)]
+        available = [n for n in names if n not in placed and can_reach_manifest(n, owned, manifest)]
         if not available:
             return None
         location = available[rng.below(len(available))]
@@ -114,12 +125,12 @@ def solo_rewards(manifest):
     return rewards
 
 
-def spheres(rewards):
+def spheres(rewards, manifest=None):
     expanded = len(rewards) > len(NAMES)
     names = tuple(rewards)
     inventory, remaining, result = Counter(), set(names), []
     while remaining:
-        reachable = [n for n in names if n in remaining and can_reach(n, inventory, expanded)]
+        reachable = [n for n in names if n in remaining and (can_reach_manifest(n, inventory, manifest) if manifest else can_reach(n, inventory, expanded))]
         if not reachable:
             raise ValueError("unreachable checks: " + ", ".join(sorted(remaining)))
         result.append(reachable)

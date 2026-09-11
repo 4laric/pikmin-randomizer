@@ -73,6 +73,8 @@ REPAIR_COUNT = len(NAMES) - len(UNLOCKS)
 # Schema-2 additions only. Never reorder the schema-1 names or item IDs.
 FLARLIC = "Progressive Flarlic"
 ITEM_IDS[FLARLIC] = ITEM_BASE + 6
+FOREST_ACCESS = "Pikmin: Forest of Hope Access"
+ITEM_IDS[FOREST_ACCESS] = ITEM_BASE + 7
 POPULATION = {f"Population: {n} Pikmin in the field": n for n in range(20, 101, 10)}
 BESTIARY = {
     "Bestiary: Dwarf Bulborb": (3, ()),
@@ -97,7 +99,7 @@ PART_WEIGHTS = {name: NATIVE_PART_WEIGHTS[part] for name, part in PART_IDS.items
 
 
 def active_names(manifest):
-    return EXPANDED_NAMES if manifest["schema"] == 2 else NAMES
+    return EXPANDED_NAMES if manifest["schema"] >= 2 else NAMES
 
 
 def field_capacity(inventory, expanded=True):
@@ -123,7 +125,26 @@ def can_reach(name, inventory, expanded=False):
 
 
 def progression_pool(manifest):
-    return list(UNLOCKS) + ([FLARLIC] * 8 if manifest["schema"] == 2 else [])
+    unlocks = list(UNLOCKS)
+    if manifest.get('profile') == 'navel-day2':
+        unlocks[unlocks.index(NAVEL_ACCESS)] = FOREST_ACCESS
+    return unlocks + ([FLARLIC] * 8 if manifest["schema"] >= 2 else [])
+
+
+def can_reach_manifest(name, inventory, manifest):
+    if manifest['schema'] < 3:
+        return can_reach(name, inventory, manifest['schema'] == 2)
+    start = 'The Forest Navel' if manifest['profile'] == 'navel-day2' else 'The Forest of Hope'
+    if name not in POPULATION:
+        area = check_area(name)
+        access = FOREST_ACCESS if area == 'The Forest of Hope' else AREA_ACCESS[area]
+        if area != start and not inventory.get(access, 0):
+            return False
+    # Evaluate existing conservative color/weight rules after area access.
+    owned = dict(inventory)
+    for access in (NAVEL_ACCESS, SPRING_ACCESS, TRIAL_ACCESS):
+        owned[access] = 1
+    return can_reach(name, owned, True)
 
 
 def item_pool(manifest):

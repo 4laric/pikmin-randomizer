@@ -20,7 +20,7 @@ class NativeRun:
         self.bootstrap = self.directory / "bootstrap.txt"
         atomic_write(self.bootstrap, f"PIKMIN_RANDOMIZER {session.manifest['schema']}\n" +
                      f"SESSION {self.token}\nFINGERPRINT {session.fingerprint}\n" +
-                     f"PROFILE foh-day2\nCATALOG {session.manifest['catalog']}\nPLACEMENT identity-v1\n" +
+                     f"PROFILE {session.manifest['profile']}\nCATALOG {session.manifest['catalog']}\nPLACEMENT identity-v1\n" +
                      "GOAL 25\nDAYS repeat-day29-v1\nEND\n")
         self.seen = 0
         self.handshaken = False

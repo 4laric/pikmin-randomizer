@@ -4,7 +4,7 @@ from pathlib import Path
 from .seed import generate, validate, fingerprint, solo_rewards, spheres
 from .runner import launch
 from .session import Session, SessionLock
-from .catalog import field_capacity, can_reach, POPULATION, BESTIARY, EXPLORATION, NAMES
+from .catalog import field_capacity, can_reach_manifest, POPULATION, BESTIARY, EXPLORATION, NAMES
 
 
 def main():
@@ -13,6 +13,7 @@ def main():
     gen = sub.add_parser("generate")
     gen.add_argument("--seed", required=True)
     gen.add_argument("--expanded", action="store_true", help="Flarlic, population, bestiary and exploration checks")
+    gen.add_argument('--starting-area', choices=['forest', 'navel', 'random'], default='forest', help='Random/navel enables expanded checks')
     gen.add_argument("--slot", default="Player1")
     gen.add_argument("--mode", choices=["solo", "ap"], default="solo")
     gen.add_argument("--output", type=Path, required=True)
@@ -30,25 +31,25 @@ def main():
     status.add_argument("--output", type=Path)
     args = parser.parse_args()
     if args.command == "generate":
-        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded)
+        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8") as f:
             f.write(json.dumps(manifest, indent=2) + "\n")
-        print(f"Created {args.output}: {len(manifest['locations'])} checks; goal 25 repairs; physical placements pinned")
+        print(f"Created {args.output}: {len(manifest['locations'])} checks; start {manifest['profile']}; goal 25 repairs; physical placements pinned")
     else:
         manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
         validate(manifest)
         if args.command == "validate":
             print(f"Valid {fingerprint(manifest)}; {len(manifest['locations'])} checks, 28 pinned parts")
             if manifest["mode"] == "solo":
-                print(f"Conservative logic: {len(spheres(solo_rewards(manifest)))} progression spheres")
+                print(f"Conservative logic: {len(spheres(solo_rewards(manifest), manifest))} progression spheres")
         elif args.command == "status":
             with SessionLock(args.session_dir):
                 session = Session(manifest, args.session_dir)
                 checked = set(session.data["checked"])
                 lines = ["# Pikmin Randomizer status", "",
                          f"Collected: {len(checked)}/{len(session.names)} checks. "
-                         f"Field capacity: {field_capacity(session.inventory, manifest['schema'] == 2)}. "
+                         f"Field capacity: {field_capacity(session.inventory, manifest['schema'] >= 2)}. "
                          f"Repair goal: {min(session.inventory['Ship Repair'], 25)}/25.", "",
                          "Population entries record reached milestones, not the current population.", ""]
                 for category, entries in (("Parts and Onions", NAMES), ("Population", POPULATION),
@@ -57,7 +58,7 @@ def main():
                     if not enabled: continue
                     lines += ["## " + category, ""]
                     for name in enabled:
-                        available = can_reach(name, session.inventory, manifest["schema"] == 2)
+                        available = can_reach_manifest(name, session.inventory, manifest)
                         suffix = "" if name in checked else (" - available in logic" if available else " - needs progression")
                         lines.append(f"- [{'x' if name in checked else ' '}] {name}{suffix}")
                     lines.append("")
