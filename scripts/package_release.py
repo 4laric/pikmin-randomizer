@@ -69,7 +69,7 @@ def copy_tree_files(source, target, relative_paths):
 
 # --- Stage assembly ----------------------------------------------------------
 
-def stage_core(repo, stage, exe, dlls, seed):
+def stage_core(repo, stage, exe, dlls, seed, extractor=None):
     if not exe.is_file():
         raise PackageError(f"executable not found: {exe}")
     if TEST_HOOK_MARKER in exe.read_bytes():
@@ -81,8 +81,14 @@ def stage_core(repo, stage, exe, dlls, seed):
         if not dll.is_file():
             raise PackageError(f"runtime DLL not found: {dll}")
         shutil.copy2(dll, stage / "bin" / dll.name)
+    # The engine's installer lets the launcher extract assets straight from a disc image.
+    extractor = Path(extractor) if extractor else exe.parent / "nectar-launcher.exe"
+    if extractor.is_file():
+        shutil.copy2(extractor, stage / "bin" / "nectar-launcher.exe")
+    else:
+        print(f"WARNING: {extractor} not found; players must supply an already extracted assets folder.", file=sys.stderr)
     copy_tree_files(repo, stage, tracked_python_files(repo))
-    copy_tree_files(repo, stage, [Path("launcher/launcher.py")])
+    copy_tree_files(repo, stage, [Path("launcher/launcher.py"), Path("launcher/gui.py"), Path("launcher/discimage.py")])
     shutil.copy2(repo / "launcher" / "Play.cmd", stage / "Play.cmd")
     copy_tree_files(repo, stage, [Path("examples/Player1.yaml"), Path("README.md")])
     if (repo / "CHANGELOG.md").is_file():
@@ -120,6 +126,43 @@ def stage_runtime(stage, embed_zip, tk_source):
               "will be unavailable to players using the bundled Python.", file=sys.stderr)
     version_file = next((p for p in runtime.glob("python3*.dll")), None)
     return version_from_embed(embed_zip, version_file)
+
+
+INSTALL_SKIP_DIRS = {"site-packages", "test", "tests", "idlelib", "ensurepip", "__pycache__", "turtledemo", "pydoc_data"}
+
+
+def stage_runtime_from_install(stage, install_dir):
+    """Copy a python.org CPython installation (relocatable) into runtime/ with tkinter and vendored websockets.
+
+    A ._pth file next to python.exe pins the module search path to the copied Lib/DLLs, the package
+    root and Lib/site-packages, so the bundled interpreter ignores any Python on the player's machine.
+    """
+    install_dir = Path(install_dir)
+    python = install_dir / "python.exe"
+    if not python.is_file() or not (install_dir / "Lib").is_dir() or not (install_dir / "DLLs").is_dir():
+        raise PackageError(f"--python-install must be a full CPython install directory (python.exe, Lib, DLLs): {install_dir}")
+    if not (install_dir / "Lib" / "tkinter").is_dir() or not (install_dir / "tcl").is_dir():
+        raise PackageError(f"{install_dir} has no tkinter/tcl; install python.org Python with 'tcl/tk and IDLE' selected")
+    runtime = stage / "runtime"
+    runtime.mkdir()
+    for name in ("python.exe", "pythonw.exe", "LICENSE.txt"):
+        if (install_dir / name).is_file():
+            shutil.copy2(install_dir / name, runtime / name)
+    for dll in list(install_dir.glob("python3*.dll")) + list(install_dir.glob("vcruntime*.dll")):
+        shutil.copy2(dll, runtime / dll.name)
+    shutil.copytree(install_dir / "DLLs", runtime / "DLLs", ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(install_dir / "Lib", runtime / "Lib", ignore=lambda d, names: [n for n in names if n in INSTALL_SKIP_DIRS])
+    shutil.copytree(install_dir / "tcl", runtime / "tcl", ignore=shutil.ignore_patterns("__pycache__"))
+    site_packages = runtime / "Lib" / "site-packages"
+    site_packages.mkdir(parents=True)
+    vendor_websockets(site_packages)
+    version = next((p.stem[len("python"):] for p in runtime.glob("python3*.dll") if p.stem != "python3"), "312")
+    (runtime / f"python{version}._pth").write_bytes(b"Lib\nDLLs\n..\nLib\\site-packages\nimport site\n")
+    reported = subprocess.run([str(runtime / "python.exe"), "-c", "import sys, tkinter, websockets; print(sys.version.split()[0])"],
+                              capture_output=True, text=True)
+    if reported.returncode:
+        raise PackageError("bundled runtime self-check failed: " + (reported.stderr or reported.stdout).strip())
+    return reported.stdout.strip()
 
 
 def version_from_embed(embed_zip, dll):
@@ -198,18 +241,24 @@ def zip_stage(stage, zip_path):
             archive.write(path, path.relative_to(stage).as_posix())
 
 
-def package(version, exe, dlls=None, python_embed=None, tk_source=None, seed=None, output_dir=None, repo=REPO):
+def package(version, exe, dlls=None, python_embed=None, tk_source=None, seed=None, output_dir=None, repo=REPO,
+            python_install=None, extractor=None):
     exe = Path(exe).resolve()
     if dlls is None:
         dlls = [exe.parent / "SDL2.dll", exe.parent / "libwinpthread-1.dll"]
+    if python_embed and python_install:
+        raise PackageError("use either --python-embed or --python-install, not both")
     output_dir = Path(output_dir or repo / "output")
     zip_path = output_dir / f"pikrando-{version}-windows-x64.zip"
     with tempfile.TemporaryDirectory() as tmp:
         stage = Path(tmp) / f"pikrando-{version}"
         stage.mkdir()
-        stage_core(repo, stage, exe, [Path(d) for d in dlls], Path(seed) if seed else None)
+        stage_core(repo, stage, exe, [Path(d) for d in dlls], Path(seed) if seed else None, extractor)
         (stage / "VERSION").write_bytes((version + "\n").encode("utf-8"))
-        runtime_version = stage_runtime(stage, Path(python_embed), tk_source) if python_embed else "system"
+        if python_install:
+            runtime_version = stage_runtime_from_install(stage, python_install)
+        else:
+            runtime_version = stage_runtime(stage, Path(python_embed), tk_source) if python_embed else "system"
         audit(stage)
         manifest = write_manifest(stage, repo, version, exe, runtime_version)
         zip_stage(stage, zip_path)
@@ -225,12 +274,14 @@ def main(argv=None):
     parser.add_argument("--dlls", type=Path, nargs="*", help="runtime DLLs (default: SDL2.dll, libwinpthread-1.dll next to the exe)")
     parser.add_argument("--python-embed", type=Path, help="python-3.12.x-embed-amd64.zip from python.org")
     parser.add_argument("--tk-source", type=Path, help="full CPython 3.12 install to copy tkinter from")
+    parser.add_argument("--python-install", type=Path, help="full python.org CPython 3.12 install to copy as the bundled runtime (with tkinter)")
+    parser.add_argument("--extractor", type=Path, help="nectar-launcher.exe for disc-image extraction (default: next to the exe)")
     parser.add_argument("--seed", type=Path, help="example seed.json copied to seeds/")
     parser.add_argument("--output-dir", type=Path, default=REPO / "output")
     args = parser.parse_args(argv)
     try:
         zip_path, sums, manifest = package(args.version, args.exe, args.dlls, args.python_embed, args.tk_source,
-                                           args.seed, args.output_dir)
+                                           args.seed, args.output_dir, python_install=args.python_install, extractor=args.extractor)
     except (PackageError, subprocess.CalledProcessError, OSError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1

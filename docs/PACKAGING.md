@@ -61,3 +61,13 @@ must have `websockets` installed for AP mode.
 
 Nothing is written inside the extracted package folder, so it can be replaced by a newer version
 without losing sessions.
+
+## Bundling a python.org runtime
+
+Install Python 3.12 from python.org (keep "tcl/tk and IDLE" selected), then pass its folder:
+
+```bash
+python scripts/package_release.py --version <version> --python-install "C:\Users\<you>\AppData\Local\Programs\Python\Python312"
+```
+
+The packager copies python.exe/pythonw.exe, the interpreter DLLs, `DLLs`, `Lib` (without site-packages, tests, IDLE), `tcl`, vendors `websockets`, writes a `._pth` that pins the search path to the copy, and self-checks `import tkinter, websockets` with the bundled interpreter. `--python-embed` remains available for the embeddable zip. `bin/nectar-launcher.exe` (the engine's installer, built from the `pikmin_launcher` CMake target) is packaged automatically when it sits next to `nectar.exe`; it is what lets `Play.cmd` extract game data from a disc image.

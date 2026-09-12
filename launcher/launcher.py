@@ -16,6 +16,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+import discimage
+is_disc_image = discimage.is_disc_image
 
 APP_NAME = "PikminRandomizer"
 SESSION_ID_LENGTH = 16
@@ -148,6 +152,23 @@ def assets_problem(directory):
     return None
 
 
+def extractor_path(root=ROOT):
+    return root / "bin" / "nectar-launcher.exe"
+
+
+def game_data_dir():
+    """Where assets extracted from a disc image live: <game-data>/assets/dataDir/..."""
+    return app_dir() / "game-data"
+
+
+def extract_image(image, install_root=None, on_line=None, root=ROOT):
+    """Extract a Pikmin ISO/GCM (read only) and return the assets folder; reuses a previous extraction."""
+    try:
+        return discimage.extract_image(image, extractor_path(root), install_root or game_data_dir(), assets_problem, on_line)
+    except discimage.ExtractError as exc:
+        raise LaunchError(str(exc))
+
+
 def pick_folder_dialog():
     """Return a path from a tkinter folder dialog, or None when no GUI is available."""
     try:
@@ -182,7 +203,14 @@ def ask_assets(ask=input, dialog=pick_folder_dialog):
                       "Extract the game assets first, then run Play.cmd again (or use --assets <dir>).")
 
 
-def resolve_assets(config, override=None, reset=False, ask=input, dialog=pick_folder_dialog):
+def resolve_assets(config, override=None, reset=False, ask=input, dialog=pick_folder_dialog, on_line=print):
+    if override and is_disc_image(override):
+        # A disc image is remembered as the source; its extraction is reused on later launches.
+        assets = extract_image(override, on_line=on_line)
+        config["image"] = str(Path(override).resolve())
+        config["assets"] = assets
+        save_config(config)
+        return assets
     if override:
         problem = assets_problem(override)
         if problem:
@@ -289,10 +317,14 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Pikipelago launcher")
     parser.add_argument("seed", nargs="?", help="seed.json (default: seeds\\seed.json in the package)")
     parser.add_argument("--server", help="Archipelago host:port (AP seeds)")
-    parser.add_argument("--assets", help="extracted assets folder containing dataDir\\stages")
+    parser.add_argument("--assets", help="extracted assets folder containing dataDir/stages, or a Pikmin .iso/.gcm to extract from")
     parser.add_argument("--reset-assets", action="store_true", help="forget the saved assets folder and ask again")
     parser.add_argument("--pause-on-exit", action="store_true", help="wait for Enter before closing on failure")
     args = parser.parse_args(argv)
+    for stream in (sys.stdout, sys.stderr):
+        # The installer prints non-ASCII file names; never let the console encoding abort a launch.
+        if stream and hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
     try:
         code = launch(args)
     except LaunchError as exc:

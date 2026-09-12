@@ -16,7 +16,7 @@ The project is now called **Pikipelago**. Archipelago still lists it as `Pikmin 
 ## Requirements
 
 - Windows 10/11 x64.
-- Your own legally extracted Pikmin 1 (GameCube, GPIE01) assets directory containing `dataDir/stages/`. Assets are not included; see [the engine's asset instructions](engine/assets/README.md). The runner links to the directory and never writes to the original files.
+- Your own legally obtained Pikmin 1 disc image (GameCube, USA Rev 1 `GPIE01` or Europe `GPIP01`, uncompressed `.iso`/`.gcm`), or an already extracted assets directory containing `dataDir/stages/`. Assets are not included; see [the engine's asset instructions](engine/assets/README.md). The runner links to the directory and never writes to the original files.
 - `Play.cmd` uses the bundled runtime when present, otherwise Python 3.12 with tkinter and the `websockets` package (`python -m pip install -r requirements-ap.txt`). tkinter provides the overlay and F8 tracker; `websockets` is only needed for Archipelago play.
 - For Archipelago play: the `pikmin_randomizer` .apworld and an Archipelago 0.6 or newer host.
 
@@ -24,8 +24,8 @@ The project is now called **Pikipelago**. Archipelago still lists it as `Pikmin 
 
 1. Download the release ZIP and, for multiworld, the matching `pikmin_randomizer-<version>.apworld`.
 2. Extract the ZIP to a folder of your choice. Saves and settings live under `%APPDATA%\PikminRandomizer`, one session per seed, so the game folder can be replaced by a newer release without losing progress.
-3. Run `Play.cmd`.
-4. On the first run, point it at your extracted assets directory (the one containing `dataDir/stages/`).
+3. Run `Play.cmd`. The Pikipelago window opens.
+4. Pick a seed (the package ships one in `seeds`), then either choose your Pikmin disc image (`.iso` or `.gcm`; USA Rev 1 or Europe) or a folder that already contains extracted `dataDir/stages/`. The first Play extracts about 650 MB of game data from the image into `%APPDATA%\PikminRandomizer\game-data`; the image itself is only read. RVZ/WIA/GCZ images must be converted to ISO first (dolphin-tool).
 5. Play. Save at the end-of-day results screen, wait until the area map returns, then close the game. Relaunch the same `Play.cmd` to resume from that day.
 
 ## Solo play
@@ -68,7 +68,7 @@ Other subcommands: `validate <seed.json>` checks a manifest and reports its prog
 python -m randomizer run <slot>.pikmin.json --session-dir <dir>/session --exe <path to nectar.exe> --assets "C:/path/to/your/assets" --server host:port
 ```
 
-`Play.cmd` asks for the server address and password when the seed is an Archipelago seed. When running the module directly, pass `--server host:port` and set the password in the `PIKMIN_AP_PASSWORD` environment variable before launching.
+For an Archipelago seed the window shows server and password fields; the password is passed to the game runner for that launch only and never saved. `Play.cmd --console <seed.json>` runs the text launcher instead of the window. When running the module directly, pass `--server host:port` and set the password in the `PIKMIN_AP_PASSWORD` environment variable before launching.
 
 Universal Tracker is supported: install the same `.apworld` next to Universal Tracker, connect it to the room with your slot name, and it rebuilds this seed's exact check logic from the server's slot data without a YAML. The in-game F8 tracker keeps working alongside it.
 
