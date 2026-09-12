@@ -16,7 +16,7 @@ The project is now called **Pikipelago**. Archipelago still lists it as `Pikmin 
 ## Requirements
 
 - Windows 10/11 x64.
-- Your own legally obtained Pikmin 1 disc image (GameCube, USA Rev 1 `GPIE01` or Europe `GPIP01`, uncompressed `.iso`/`.gcm`), or an already extracted assets directory containing `dataDir/stages/`. Assets are not included; see [the engine's asset instructions](engine/assets/README.md). The runner links to the directory and never writes to the original files.
+- Your own legally obtained Pikmin 1 disc image (GameCube, USA Rev 1 `GPIE01` or Europe `GPIP01`, as `.iso`/`.gcm` or Dolphin's `.rvz`/`.wia`), or an already extracted assets directory containing `dataDir/stages/`. Assets are not included; see [the engine's asset instructions](engine/assets/README.md). The runner links to the directory and never writes to the original files.
 - `Play.cmd` uses the bundled runtime when present, otherwise Python 3.12 with tkinter and the `websockets` package (`python -m pip install -r requirements-ap.txt`). tkinter provides the overlay and F8 tracker; `websockets` is only needed for Archipelago play.
 - For Archipelago play: the `pikmin_randomizer` .apworld and an Archipelago 0.6 or newer host.
 
@@ -25,7 +25,7 @@ The project is now called **Pikipelago**. Archipelago still lists it as `Pikmin 
 1. Download the release ZIP and, for multiworld, the matching `pikmin_randomizer-<version>.apworld`.
 2. Extract the ZIP to a folder of your choice. Saves and settings live under `%APPDATA%\PikminRandomizer`, one session per seed, so the game folder can be replaced by a newer release without losing progress.
 3. Run `Play.cmd`. The Pikipelago window opens.
-4. Pick a seed (the package ships one in `seeds`), then either choose your Pikmin disc image (`.iso` or `.gcm`; USA Rev 1 or Europe) or a folder that already contains extracted `dataDir/stages/`. The first Play extracts about 650 MB of game data from the image into `%APPDATA%\PikminRandomizer\game-data`; the image itself is only read. RVZ/WIA/GCZ images must be converted to ISO first (dolphin-tool).
+4. Pick a seed (the package ships one in `seeds`), then either choose your Pikmin disc image (`.iso`, `.gcm`, `.rvz` or `.wia`; USA Rev 1 or Europe) or a folder that already contains extracted `dataDir/stages/`. The first Play extracts about 650 MB of game data from the image into `%APPDATA%\PikminRandomizer\game-data`; the image itself is only read. RVZ and WIA images are decoded to a temporary ISO first (about half a minute, 1.4 GB of temporary disk space, deleted afterwards). GCZ, CISO and NKit images must be converted with dolphin-tool.
 5. Play. Save at the end-of-day results screen, wait until the area map returns, then close the game. Relaunch the same `Play.cmd` to resume from that day.
 
 ## Solo play

@@ -219,7 +219,7 @@ class LauncherApp:
     def browse_image(self):
         from tkinter import filedialog
         chosen = filedialog.askopenfilename(title="Choose your Pikmin disc image",
-                                            filetypes=[("GameCube image", "*.iso *.gcm"), ("All files", "*.*")])
+                                            filetypes=[("GameCube image", "*.iso *.gcm *.rvz *.wia"), ("All files", "*.*")])
         if chosen:
             self.source_var.set(str(Path(chosen)))
 
@@ -232,14 +232,14 @@ class LauncherApp:
     def refresh_source_status(self):
         source = self.source_var.get().strip().strip('"')
         if not source:
-            text = "Choose your own Pikmin (USA Rev 1 or Europe) .iso/.gcm, or a folder that already contains dataDir."
+            text = "Choose your own Pikmin (USA Rev 1 or Europe) disc image (.iso, .gcm, .rvz or .wia), or a folder that already contains dataDir."
         elif discimage.is_disc_image(source):
             if not Path(source).is_file():
                 text = "That disc image does not exist."
             elif discimage.assets_ready(launcher.game_data_dir(), launcher.assets_problem):
                 text = f"Disc image; assets already extracted to {launcher.game_data_dir() / 'assets'}."
             else:
-                text = "Disc image; the first Play extracts about 650 MB of game data (a few minutes). The image is never modified."
+                text = "Disc image; the first Play extracts about 650 MB of game data (a few minutes; RVZ is decoded first). The image is never modified."
         else:
             problem = launcher.assets_problem(source)
             text = "Extracted assets folder looks good." if problem is None else problem

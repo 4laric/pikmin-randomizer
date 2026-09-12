@@ -20,7 +20,8 @@ launcher = load("launcher")
 
 def test_image_detection_and_progress():
     assert discimage.is_disc_image("Pikmin.ISO") and discimage.is_disc_image(Path("x") / "game.gcm")
-    assert not discimage.is_disc_image("Pikmin.rvz") and not discimage.is_disc_image("") and not discimage.is_disc_image(None)
+    assert discimage.is_disc_image("Pikmin.rvz") and discimage.needs_conversion("Pikmin.RVZ") and not discimage.needs_conversion("Pikmin.iso")
+    assert not discimage.is_disc_image("Pikmin.gcz") and not discimage.is_disc_image("") and not discimage.is_disc_image(None)
     assert discimage.progress_percent("[42%] dataDir/stages/x") == 42
     assert discimage.progress_percent("Checking the image...") is None
 
