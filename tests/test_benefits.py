@@ -16,7 +16,7 @@ class BenefitTests(unittest.TestCase):
                 m = generate(str(seed), collection_checks=True, permanent_checks=permanent,
                              progressive_color_stats=True, starting_area='random', starting_color='random', starting_flarlic=1)
                 pool = Counter(item_pool(m))
-                self.assertEqual(pool[REPAIR], 25)
+                self.assertEqual(pool[REPAIR], 30)
                 self.assertEqual((pool[WHISTLE], pool[PLUCK]), (2, 2))
                 self.assertEqual(pool[HEAL], 0)
                 self.assertTrue(all(pool[n] for n in (WHISTLE, PLUCK)))
@@ -30,7 +30,7 @@ class BenefitTests(unittest.TestCase):
 
     def test_legacy_pool_and_capability(self):
         m = generate('old', permanent_checks=True)
-        old = copy.deepcopy(m); old.pop('benefit_items'); old['capabilities'].remove('benefit-items-v1')
+        old = copy.deepcopy(m); old.pop('benefit_items'); old.pop('repair_pool_count'); old['capabilities'].remove('benefit-items-v1')
         validate(old)
         self.assertGreater(item_pool(old).count(REPAIR), 25)
         self.assertFalse(set(item_pool(old)) & set(BENEFIT_ITEMS))
@@ -55,3 +55,15 @@ class BenefitTests(unittest.TestCase):
             self.assertEqual(restored.data['checked'], [s.names[0]])
             restored.receive(len(ids), [ITEM_IDS[WHISTLE]] * 3)
             self.assertIn('BENEFITS 1 1 1 2 1 END', restored.native_state(r.token, True))
+
+    def test_repair_surplus_preserves_legacy(self):
+        m = generate('surplus', collection_checks=True)
+        self.assertEqual(m['goal'], 25)
+        self.assertEqual(item_pool(m).count(REPAIR), 30)
+        old = copy.deepcopy(m); old.pop('repair_pool_count')
+        validate(old)
+        self.assertEqual(item_pool(old).count(REPAIR), 25)
+        self.assertEqual(len(item_pool(old)), len(item_pool(m)))
+        for value in (25, 31, True, 30.0):
+            bad = copy.deepcopy(m); bad['repair_pool_count'] = value
+            with self.assertRaises(ValueError): validate(bad)

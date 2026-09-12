@@ -124,6 +124,7 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         from .enemies import resolve_layout
         result['enemy_layout'] = resolve_layout(result['enemy_mask'])
         result['benefit_items'] = True
+        result['repair_pool_count'] = 30
         result['capabilities'].append('benefit-items-v1')
         if per_spawn_enemies:
             from .enemy_slots import resolve_spawn_layout, spawn_sources
@@ -220,6 +221,10 @@ def validate(m):
         expected.add('progressive_color_stats')
         if m['progressive_color_stats'] is not True or m.get('schema') not in (7, 8, 9):
             raise ValueError('invalid progressive color stats mode')
+    if type(m) is dict and 'repair_pool_count' in m:
+        expected.add('repair_pool_count')
+        if type(m['repair_pool_count']) is not int or m['repair_pool_count'] != 30 or not m.get('benefit_items'):
+            raise ValueError('invalid repair pool count')
     if type(m) is dict and 'stat_upgrade_counts' in m:
         from .stats import validate_upgrade_limits
         expected.add('stat_upgrade_counts')

@@ -14,7 +14,7 @@ class ProgressiveStatsTests(unittest.TestCase):
         for seed in range(60):
             m = generate(str(seed), progressive_color_stats=True, starting_area='random', starting_color='random', starting_flarlic=1)
             pool = Counter(item_pool(m))
-            self.assertEqual(pool['Ship Repair'], 25)
+            self.assertEqual(pool['Ship Repair'], 30)
             self.assertEqual(len(upgrade_pool(m)), 36)
             self.assertEqual(sum(pool.values()), 113)
             spheres(solo_rewards(m), m)

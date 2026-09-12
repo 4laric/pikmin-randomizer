@@ -31,7 +31,7 @@ class BestiaryV2Tests(unittest.TestCase):
 
     def test_existing_landing_manifest(self):
         m = generate('previous', collection_checks=True)
-        m.pop('benefit_items'); m['capabilities'].remove('benefit-items-v1')
+        m.pop('benefit_items'); m.pop('repair_pool_count'); m['capabilities'].remove('benefit-items-v1')
         m.pop('compact_population'); m['capabilities'].remove('compact-population-v1')
         m.pop('color_population')
         m['capabilities'].remove('color-population-v1')

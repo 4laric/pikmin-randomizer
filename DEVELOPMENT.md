@@ -1,3 +1,9 @@
+## Repair pool surplus (#76)
+
+New modern manifests set repair_pool_count=30; the completion goal remains 25. item_pool uses the stored count, falling back to 25 for existing benefit manifests. Five consumables are replaced. Existing AP classification marks only the first 25 repairs progression, with the five extras useful. No native protocol or game change required. AP 0.24.0.
+
+Validation: broad Python suite passed 82 tests/eight subtests; two historical-manifest fixture failures were corrected to omit the new field when constructing pre-benefit schemas, and all nine affected bestiary/population/benefit tests then passed. 150 packaged AP custom-balance fills and 10 remote-Blue multiworlds reach every check; example YAML validates 30 repairs / 25 progression items. Legacy count fallback, invalid counts, unchanged pool size and goal covered. Existing playtest seed/session not modified.
+
 ## Faster repeated throws (#75)
 
 Native `18a08293` multiplies animation speed by 1.5 only during PC NAVISTATE_Throw. Applied at animation update after updateWalkAnimation, which resets the base rate every frame. Release/recovery lasts roughly two-thirds its previous duration. Grab/held charge, trajectory, Pikmin stats and input semantics are unchanged. This does not introduce hold-to-auto-throw or an input buffer.

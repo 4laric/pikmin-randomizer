@@ -353,7 +353,8 @@ def item_pool(manifest):
     progression = progression_pool(manifest)
     slots = len(active_names(manifest)) - len(progression)
     if manifest.get('benefit_items'):
-        return progression + [REPAIR] * REPAIR_COUNT + benefit_pool(slots - REPAIR_COUNT, no_heal=manifest.get("compact_population", False))
+        repair_count = manifest.get('repair_pool_count', REPAIR_COUNT)
+        return progression + [REPAIR] * repair_count + benefit_pool(slots - repair_count, no_heal=manifest.get("compact_population", False))
     return progression + [REPAIR] * slots
 
 

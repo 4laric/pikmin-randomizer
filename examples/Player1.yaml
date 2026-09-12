@@ -1,4 +1,4 @@
-# Current playtest settings. Install pikmin_randomizer-0.23.0.apworld to generate.
+# Current playtest settings. Install pikmin_randomizer-0.24.0.apworld to generate.
 name: Player1
 game: Pikmin Randomizer
 Pikmin Randomizer:
@@ -35,3 +35,5 @@ Pikmin Randomizer:
   group_spawn_enemies: false
   per_spawn_enemies: false
   enemy_shuffle: false
+
+# New seeds contain 30 Ship Repairs; 25 are required to finish.

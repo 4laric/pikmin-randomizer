@@ -34,6 +34,8 @@ with tempfile.TemporaryDirectory() as folder:
         example = yaml.safe_load((ROOT / 'examples/Player1.yaml').read_text(encoding='utf-8'))
         options = example['Pikmin Randomizer']
         mw = setup_multiworld(mod.PikminRandomizerWorld, seed=7023, options=options)
+        repairs = [item for item in mw.itempool if item.name == mod.REPAIR]
+        assert len(repairs) == 30 and sum(item.advancement for item in repairs) == 25
         complete(mw)
         assert mw.worlds[1].manifest()['stat_upgrade_counts'] == dict(damage=4, movement=2, attack_rate=2, carry=4)
     for seed in range(0 if '--yaml-only' in sys.argv else 150):

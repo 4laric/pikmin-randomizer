@@ -1,3 +1,7 @@
+## Repair pool default (#76)
+
+New modern seeds contain **30 Ship Repairs**, with **25 required to finish**. Five surplus repairs replace consumables without changing check count or unlocks. AP classifies the surplus as useful. Existing manifests preserve their original reward pools. Available in AP world 0.24.0; no native update needed.
+
 ## YAML balance controls (#70)
 
 Use [examples/Player1.yaml](examples/Player1.yaml) with AP world 0.23.0 for the complete current playtest configuration, including enemy modes, check categories, starting color, area and Flarlic. The option defaults preserve the existing balance; the example enables campaign enemies and both stat toggles.
