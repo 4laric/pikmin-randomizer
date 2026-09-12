@@ -1,7 +1,7 @@
 import copy
 import struct
 import unittest
-from experimental.pikmin2_beasts_floor2 import source_floor, flower_plan, decode_no_cargo
+from experimental.pikmin2_beasts_floor2 import source_floor, flower_plan, decode_no_cargo, CARGO_FREE_CONFIG, POLICY
 
 
 def catalog():
@@ -13,6 +13,10 @@ def catalog():
 
 
 class FloorTwoTests(unittest.TestCase):
+    def test_explicit_cargo_free_contract_and_version(self):
+        self.assertEqual(CARGO_FREE_CONFIG,b'P2_CARGO_FREE_1\n')
+        self.assertEqual(POLICY,'P2_BEASTS_FLOOR2_PREPARE_2')
+
     def test_source_rejects_hidden_cargo_weighted_and_changed_counts(self):
         self.assertFalse(source_floor(catalog())['treasures'])
         for mutation in ('cargo','count','weighted','cap'):

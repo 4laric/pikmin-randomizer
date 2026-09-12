@@ -18,6 +18,7 @@
 #include "pc_p2_cave.h"
 #include "pc_p2_enemy.h"
 #include "pc_p2_cargo.h"
+#include "pc_p2_preview_policy.h"
 #include <fstream>
 #include <filesystem>
 #include <vector>
@@ -34,6 +35,8 @@
 static Pellet* previewTreasure = nullptr;
 static Shape* previewShape = nullptr;
 static bool delivered = false;
+static bool cargoFree = false;
+static bool setupComplete = false;
 static int initialRepairs = 0;
 static GoalItem* podAnchor=nullptr;
 static Shape* podShape=nullptr;
@@ -74,15 +77,24 @@ Suckable* pc_p2_preview_goal(){return pc_pikipelago_room_preview()?podAnchor:nul
 bool pc_p2_preview_is_pod(GoalItem* goal){return pc_pikipelago_room_preview() && podAnchor && goal==podAnchor;}
 int pc_p2_preview_pokos(){return podAnchor?economy.total():-1;}
 bool pc_p2_preview_ready() { return pc_pikipelago_room_preview() && previewShape && previewTreasure; }
+bool pc_p2_preview_cargo_free_ready() { return pc_pikipelago_room_preview() && cargoFree && setupComplete; }
 Pellet* pc_p2_preview_treasure() { return previewTreasure; }
 
 void pc_p2_preview_setup() {
     if (!pc_pikipelago_room_preview()) return;
     previewTreasure = nullptr; previewShape = nullptr; delivered = false;
+    cargoFree=false;setupComplete=false;treasureId.clear();treasureValue=0;corpseValue=0;
     podAnchor=nullptr;podShape=nullptr;corpses.clear();
     initialRepairs = playerState->getCurrParts();
     cargo.clear();std::vector<P2CargoSpec> specs;
-    if(std::filesystem::exists("p2-cargo.txt")) {
+    const bool hasCargoConfig=std::filesystem::exists("p2-cargo.txt");
+    if(std::filesystem::exists("p2-cargo-free.txt")) {
+        std::ifstream config("p2-cargo-free.txt");
+        try { p2ReadCargoFree(config); cargoFree=true; }
+        catch(const std::exception& e){std::fprintf(stderr,"P2 preview: %s\n",e.what());std::abort();}
+        if(hasCargoConfig){std::fprintf(stderr,"P2 cargo-free preview forbids cargo config\n");std::abort();}
+    }
+    if(hasCargoConfig) {
         std::ifstream config("p2-cargo.txt");if(!config){std::fprintf(stderr,"Cannot read P2 cargo config\n");std::abort();}
         try{specs=p2ReadCargo(config);}catch(const std::exception& e){std::fprintf(stderr,"P2 cargo: %s\n",e.what());std::abort();}
     }
@@ -104,12 +116,14 @@ void pc_p2_preview_setup() {
         for(const auto& spec:specs){auto found=spawned.find(spec.generator);if(found==spawned.end()){std::fprintf(stderr,"P2 cargo unknown actor %u\n",spec.generator);std::abort();}cargo.push_back({spec,found->second,nullptr,nullptr});}
         previewTreasure=cargo.front().actor;
     }
-    if (!previewTreasure) { std::fprintf(stderr,"P2 preview: treasure generator missing\n"); std::abort(); }
+    try { p2ValidatePreviewCargo(cargoFree,hasCargoConfig,previewTreasure!=nullptr); }
+    catch(const std::exception& e){std::fprintf(stderr,"P2 preview: %s\n",e.what());std::abort();}
     const int previousHeap = gsys->setHeap(SYSHEAP_App);
     std::printf("[Pikipelago] P2_PREVIEW_HEAP previous=%d map_vertices=%p movie_range=%p..%p\n", previousHeap,
         static_cast<void*>(mapMgr->mMapModel->mVertexList),
         reinterpret_cast<void*>(gsys->mHeaps[SYSHEAP_Movie].mInitialStackTop),
         reinterpret_cast<void*>(gsys->mHeaps[SYSHEAP_Movie].mInitialStackLimit));
+    if(!cargoFree) {
     std::string firstModel=cargo.empty()?"treasure":cargo.front().spec.model;
     previewShape = gameflow.loadShape(("courses/pikmin2room/"+firstModel+".mod").c_str(), true);
     if (!previewShape) { std::fprintf(stderr,"P2 preview: converted treasure missing\n"); std::abort(); }
@@ -117,6 +131,7 @@ void pc_p2_preview_setup() {
     // Upload only this late-loaded static model's textures through the PC texture API.
     for (int i=0;i<previewShape->mTexAttrCount;++i)
         if (previewShape->mTexAttrList[i].mTexture) previewShape->mTexAttrList[i].mTexture->attach();
+    }
     if(FILE* config=std::fopen("p2-pod.txt","r")) {
         char version[32],id[64],corpseId[64];int weight,capacity;
         bool valid=std::fscanf(config,"%31s %63s %d %d %d %63s %d",version,id,&treasureValue,&weight,&capacity,corpseId,&corpseValue)==7;
@@ -127,7 +142,7 @@ void pc_p2_preview_setup() {
         treasureId=id;economy.load("p2-economy.txt");
         podAnchor=itemMgr->getContainer(Red);
         if(!podAnchor){std::fprintf(stderr,"P2 pod anchor missing\n");std::abort();}
-        if(cargo.empty()) {
+        if(previewTreasure && cargo.empty()) {
             previewTreasure->mConfig->mCarryMinPikis.mValue=weight;
             previewTreasure->mConfig->mCarryMaxPikis.mValue=capacity;
         }
@@ -162,12 +177,14 @@ void pc_p2_preview_setup() {
     const float points[][2]={{-85,0},{-175,-100},{185,-180},{-220,-180}};
     for (const auto& point : points)
         std::printf("[Pikipelago] P2_ROOM_GROUND x=%.1f z=%.1f y=%.3f\n",point[0],point[1],mapMgr->getMinY(point[0],point[1],true));
-    std::printf("[Pikipelago] P2_ROOM_READY treasure=%s carry=%d repairs=%d\n",podAnchor?treasureId.c_str():"bolt",previewTreasure->mConfig->mCarryMinPikis(),initialRepairs);
+    setupComplete=true;
+    if(cargoFree) std::printf("[Pikipelago] P2_ROOM_CARGO_FREE_READY cargo=0 repairs=%d\n",initialRepairs);
+    else std::printf("[Pikipelago] P2_ROOM_READY treasure=%s carry=%d repairs=%d\n",podAnchor?treasureId.c_str():"bolt",previewTreasure->mConfig->mCarryMinPikis(),initialRepairs);
     std::fflush(stdout);
 }
 
 bool pc_p2_preview_draw(Pellet* pellet, Graphics& gfx, Matrix4f& matrix) {
-    if(!pc_pikipelago_room_preview())return false;
+    if(!pc_pikipelago_room_preview() || !pellet)return false;
     Cargo* c=cargoFor(pellet);Shape* shape=c?c->shape:(pellet==previewTreasure?previewShape:nullptr);
     if(!shape || pellet->mConfig->mModelId.mId!='pr05')return false;
     shape->updateAnim(gfx,matrix,nullptr,pellet);
@@ -176,12 +193,14 @@ bool pc_p2_preview_draw(Pellet* pellet, Graphics& gfx, Matrix4f& matrix) {
 }
 
 bool pc_p2_preview_deliver(Pellet* pellet) {
+    if(!pellet)return false;
     if(pc_pikipelago_room_preview() && podAnchor) {
         // P1's long-idle captain can be carried like a pellet. Returning him to
         // the Pod must finish the normal wake-up path, never create money/seeds.
         if(naviMgr && pellet->mConfig->mModelId.mId=='navi' && pellet->mPelletView==static_cast<PelletView*>(naviMgr->getNavi())) {
             std::puts("[Pikipelago] P2_POD_CAPTAIN_RETURN pokos_unchanged=1 seeds=0");return true;
         }
+        if(cargoFree){std::fprintf(stderr,"Cargo-free P2 Pod refuses cargo rewards and seed side effects\n");std::abort();}
         std::string receipt;int value=0;Cargo* c=cargoFor(pellet);
         if(c){receipt="treasure:"+c->spec.instance;value=c->spec.value;}
         else if(pellet==previewTreasure){receipt="treasure:"+treasureId;value=treasureValue;}

@@ -9,6 +9,8 @@ bool pc_p2_preview_draw(Pellet*, Graphics&, Matrix4f&);
 bool pc_p2_preview_deliver(Pellet*);
 
 bool pc_p2_preview_ready();
+// Separate from treasure readiness: old fixture callers require a nonnull target.
+bool pc_p2_preview_cargo_free_ready();
 Pellet* pc_p2_preview_treasure();
 Suckable* pc_p2_preview_goal();
 bool pc_p2_preview_is_pod(GoalItem*);

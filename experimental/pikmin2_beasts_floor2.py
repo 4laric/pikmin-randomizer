@@ -11,7 +11,8 @@ from experimental.pikmin2_collision import attach_collision, ground_height, rout
 from scripts.preview_pikmin2_room import generator, overlay, records
 
 UNIT = 'room_cent2_4_tsuchi'
-POLICY = 'P2_BEASTS_FLOOR2_PREPARE_1'
+POLICY = 'P2_BEASTS_FLOOR2_PREPARE_2'
+CARGO_FREE_CONFIG = b'P2_CARGO_FREE_1\n'
 
 
 def sha(raw):
@@ -127,14 +128,16 @@ def prepare(assets, units, catalog_path, purple, output):
     run = output.resolve()/uuid.uuid4().hex; run.mkdir(parents=True)
     overlay(assets, run/'assets', overrides)
     (run/'p2-purple.txt').write_bytes((purple/'p2-purple.txt').read_bytes())
+    (run/'p2-cargo-free.txt').write_bytes(CARGO_FREE_CONFIG)
     report = dict(schema=1, policy=POLICY, cave='forest_1', floor=2, native_ready=False,
         retail_generation=False, complete_roster=False, source_definition=floor,
         catalog_sha256=sha(catalog_raw), source_sha256=imported['source_sha256'], unit=metadata,
         flowers=flowers, engineering_anchors=positions, generator_audit=audit,
         unsupported=['Egg x2 and its TamagoMushi helper/drops', 'HikariKinoko x6', 'KareOoinu_s x2', 'Descent and floor lifecycle', 'Research Pod cargo-free initialization'],
-        native_blocker='pc_p2_preview_setup aborts when pr05 is absent; requires explicit cargo-free opt-in before treasure binding/loading, preserving Pod/Purple setup. No dummy cargo permitted.',
+        native_blocker='Requires native P2_CARGO_FREE_1 support and dedicated runtime validation; old native aborts for missing treasure. No dummy cargo permitted.',
         limitations=['One selected cent2 room with exits capped; not retail room generation.', 'Violet actors use existing P1 Pom conversion proxy, not source P2 Pom FSM/models.', 'No native launch or conversion acceptance in this batch.'],
-        override_sha256={k:sha(v) for k,v in sorted(overrides.items())}, purple_config_sha256=sha((run/'p2-purple.txt').read_bytes()))
+        override_sha256={k:sha(v) for k,v in sorted(overrides.items())}, purple_config_sha256=sha((run/'p2-purple.txt').read_bytes()),
+        cargo_free_config_sha256=sha(CARGO_FREE_CONFIG))
     (run/'readiness.json').write_text(json.dumps(report, indent=2)+'\n')
     return run
 
