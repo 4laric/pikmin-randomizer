@@ -103,6 +103,7 @@ int main(int argc, char** argv) {
                     while (pc_randomizer_consume_benefit(static_cast<PcBenefit>(kind))) ++used;
                 while (pc_randomizer_consume_benefit(PC_BENEFIT_BOMBS)) ++used;
                 while (pc_randomizer_consume_benefit(PC_BENEFIT_BOMB_TRAP)) ++used;
+                while (pc_randomizer_consume_benefit(PC_BENEFIT_PROGG)) ++used;
                 assert(!pc_randomizer_consume_benefit(PC_BENEFIT_WHISTLE));
                 std::printf("CAPTAIN_MOVE %.2f\n", pc_randomizer_captain_movement_multiplier());
                 std::printf("BENEFIT_PROBE used=%d whistle=%.2f pluck=%.2f\n", used,

@@ -30,6 +30,7 @@
 #include "AIPerf.h"
 #include "BombItem.h"
 #include "MizuItem.h"
+#include "TekiPersonality.h"
 #include "Boss.h"
 #include "CodeInitializer.h"
 #include "DayMgr.h"
@@ -1134,6 +1135,7 @@ void GameCoreSection::initStage()
 
 	memStat->start("teki");
 	int oldT = gsys->setHeap(SYSHEAP_Teki);
+	if (pc_randomizer_progg_traps()) tekiMgr->mUsingType[TEKI_Dororo] = true;
 	tekiMgr->startStage();
 	gsys->setHeap(oldT);
 	memStat->end("teki");
@@ -1937,6 +1939,40 @@ static void randomizerApplyBenefits(Navi* navi, MapMgr* map)
                 std::printf("[Pikmin Randomizer] BOMB_AMBUSH count=5 state=lit fuse=%.2f cooldown=%.2f\n", longestFuse, bombTrapCooldown);
                 std::fflush(stdout);
             } else for (int i = 0; i < count; ++i) spawned[i]->kill(false);
+        }
+    }
+    static float proggCooldown = 0.0f;
+    proggCooldown = std::max(0.0f, proggCooldown - gsys->getFrameTime());
+    if (map && tekiMgr && proggCooldown == 0.0f && pc_randomizer_benefit_pending(PC_BENEFIT_PROGG)
+        && itemMgr->getNearestContainer(navi->mSRT.t, 12800.0f)) {
+        bool livingProgg = false;
+        Iterator enemies(tekiMgr);
+        CI_LOOP(enemies) {
+            Teki* enemy = static_cast<Teki*>(*enemies);
+            if (enemy && enemy->mTekiType == TEKI_Dororo && enemy->isAlive()) { livingProgg = true; break; }
+        }
+        if (!livingProgg) for (int sample = 0; sample < 12; ++sample) {
+            const float angle = navi->mFaceDirection + PI + sample * (2.0f * PI / 12.0f);
+            Vector3f pos = navi->mSRT.t + Vector3f(250.0f * sinf(angle), 0, 250.0f * cosf(angle));
+            CollTriInfo* ground = map->getCurrTri(pos.x, pos.z, true);
+            if (!ground || MapCode::getAttribute(ground) == ATTR_Water) continue;
+            pos.y = map->getMinY(pos.x, pos.z, true);
+            if (std::fabs(pos.y - navi->mSRT.t.y) > 25.0f) continue;
+            Teki* progg = tekiMgr->newTeki(TEKI_Dororo);
+            if (!progg) break;
+            progg->mGenerator = nullptr;
+            progg->mPersonality->reset();
+            progg->mPersonality->mPosition = pos;
+            progg->mPersonality->mNestPosition = pos;
+            progg->mPersonality->mFaceDirection = angle + PI;
+            progg->reset();
+            if (pc_randomizer_consume_benefit(PC_BENEFIT_PROGG)) {
+                progg->startAI(0);
+                proggCooldown = 30.0f;
+                std::printf("[Pikmin Randomizer] PROGG_AMBUSH count=1 x=%.1f z=%.1f\n", pos.x, pos.z);
+                std::fflush(stdout);
+            } else progg->kill(false);
+            break;
         }
     }
     bool yellowOnField = false;

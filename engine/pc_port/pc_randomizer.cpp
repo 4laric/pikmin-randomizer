@@ -40,9 +40,9 @@ unsigned startingFlarlic = 2;
 bool configuredFlarlic = false, configuredStats = false, progressiveStats = false, wideStats = false, balancedStats = false, doubledStats = false;
 int baseColorStats[3][4] = {{100, 100, 100, 1}, {100, 100, 100, 1}, {100, 100, 100, 1}};
 unsigned statUpgrades[3][4] = {};
-bool benefitItems = false, bombDeliveries = false, combinedCaptain = false, bombTraps = false;
-unsigned benefits[7] = {}, consumedBenefits[5] = {};
-int consumedIndex(PcBenefit kind) { return kind == PC_BENEFIT_BOMB_TRAP ? 4 : kind == PC_BENEFIT_BOMBS ? 3 : int(kind); }
+bool benefitItems = false, bombDeliveries = false, combinedCaptain = false, bombTraps = false, proggTraps = false;
+unsigned benefits[8] = {}, consumedBenefits[6] = {};
+int consumedIndex(PcBenefit kind) { return kind == PC_BENEFIT_PROGG ? 5 : kind == PC_BENEFIT_BOMB_TRAP ? 4 : kind == PC_BENEFIT_BOMBS ? 3 : int(kind); }
 std::filesystem::path benefitJournal, campaignDirectory;
 std::string campaignBlock;
 unsigned long long campaignGeneration = 0;
@@ -80,10 +80,10 @@ void loadCampaignCheckpoint() {
     std::istringstream meta(header);
     std::string magic, savedFingerprint, extra;
     unsigned long long generation; uint64_t hash;
-    unsigned used[5] = {};
+    unsigned used[6] = {};
     bool valid = bool(meta >> magic >> savedFingerprint >> generation);
-    for (int i = 0; i < (bombTraps ? 5 : bombDeliveries ? 4 : 3); ++i) valid = valid && bool(meta >> used[i]) && used[i] <= checkCount;
-    if (!valid || !(meta >> hash) || magic != (bombTraps ? "PIKMIN_CAMPAIGN_3" : bombDeliveries ? "PIKMIN_CAMPAIGN_2" : "PIKMIN_CAMPAIGN_1")
+    for (int i = 0; i < (proggTraps ? 6 : bombTraps ? 5 : bombDeliveries ? 4 : 3); ++i) valid = valid && bool(meta >> used[i]) && used[i] <= checkCount;
+    if (!valid || !(meta >> hash) || magic != (proggTraps ? "PIKMIN_CAMPAIGN_4" : bombTraps ? "PIKMIN_CAMPAIGN_3" : bombDeliveries ? "PIKMIN_CAMPAIGN_2" : "PIKMIN_CAMPAIGN_1")
         || savedFingerprint != fingerprint || generation != campaignGeneration || (meta >> extra))
         fail("campaign checkpoint header/seed mismatch; preserve campaign files for recovery");
     campaignBlock.resize(32768);
@@ -91,7 +91,7 @@ void loadCampaignCheckpoint() {
     if (file.gcount() != 32768 || file.peek() != EOF
         || checkpointHash(header.substr(0, header.rfind(' ')) + "\n" + campaignBlock) != hash)
         fail("campaign checkpoint is damaged; preserve campaign files for recovery");
-    for (int i=0; i<5; ++i) consumedBenefits[i] = used[i];
+    for (int i=0; i<6; ++i) consumedBenefits[i] = used[i];
     campaignResumed = true;
 }
 bool hex64(const std::string& s) {
@@ -215,11 +215,12 @@ bool pc_randomizer_init(int argc, char** argv) {
     }
     if (end == "BENEFITS") {
         unsigned mode;
-        if (!colorPopulation || !(input >> mode) || (mode < 1 || mode > 8)) fail("invalid benefit mode");
+        if (!colorPopulation || !(input >> mode) || (mode < 1 || mode > 16)) fail("invalid benefit mode");
         benefitItems = true;
         bombDeliveries = ((mode - 1) & 1) != 0;
         combinedCaptain = ((mode - 1) & 2) != 0;
         bombTraps = ((mode - 1) & 4) != 0;
+        proggTraps = ((mode - 1) & 8) != 0;
         input >> end;
     }
     if (end == "ENEMY_CAMPAIGN") {
@@ -312,6 +313,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (combinedCaptain) hello << " combined-captain-v1";
     if (bombDeliveries) hello << " bomb-delivery-v1";
     if (bombTraps) hello << " bomb-ambush-v1";
+    if (proggTraps) hello << " progg-ambush-v1";
     if (slotEnemies) hello << " enemy-slots-v1";
     if (groupEnemies) hello << " enemy-groups-v1";
     if (campaignEnemies) hello << " enemy-campaign-v1";
@@ -366,10 +368,10 @@ void pc_randomizer_update() {
         }
         parsed = bool(input >> end);
     }
-    unsigned newBenefits[7] = {};
+    unsigned newBenefits[8] = {};
     if (benefitItems) {
         if (!parsed || end != "BENEFITS") fail("missing benefit state");
-        for (int kind = 0; kind < (bombTraps ? 7 : bombDeliveries ? 6 : 5); ++kind)
+        for (int kind = 0; kind < (proggTraps ? 8 : bombTraps ? 7 : bombDeliveries ? 6 : 5); ++kind)
             if (!(input >> newBenefits[kind]) || newBenefits[kind] > (kind < 3 || kind >= 5 ? checkCount : 2u)
                 || newBenefits[kind] < benefits[kind] || ((kind < 3 || kind >= 5) && newBenefits[kind] < consumedBenefits[consumedIndex(static_cast<PcBenefit>(kind))]))
                 fail("invalid or retracted benefit receipt");
@@ -393,7 +395,7 @@ void pc_randomizer_update() {
         statUpgrades[c][stat] = newStats[c][stat];
         colorStats[c][stat] = baseColorStats[c][stat] + (stat == 3 ? newStats[c][stat] : 25 * newStats[c][stat]);
     }
-    for (int kind = 0; kind < 7; ++kind) benefits[kind] = newBenefits[kind];
+    for (int kind = 0; kind < 8; ++kind) benefits[kind] = newBenefits[kind];
     emperorDefeated = emperorDefeated || newEmperor != 0;
     ready = newReady != 0;
     repairs = newRepairs;
@@ -409,8 +411,9 @@ void pc_randomizer_update() {
     }
 }
 
+bool pc_randomizer_progg_traps() { return enabled && proggTraps; }
 bool pc_randomizer_benefit_pending(PcBenefit kind) {
-    return enabled && benefitItems && ready && ((kind >= 0 && kind < 3) || (kind == PC_BENEFIT_BOMBS && bombDeliveries) || (kind == PC_BENEFIT_BOMB_TRAP && bombTraps)) && benefits[kind] > consumedBenefits[consumedIndex(kind)];
+    return enabled && benefitItems && ready && ((kind >= 0 && kind < 3) || (kind == PC_BENEFIT_BOMBS && bombDeliveries) || (kind == PC_BENEFIT_BOMB_TRAP && bombTraps) || (kind == PC_BENEFIT_PROGG && proggTraps)) && benefits[kind] > consumedBenefits[consumedIndex(kind)];
 }
 bool pc_randomizer_consume_benefit(PcBenefit kind) {
     if (!pc_randomizer_benefit_pending(kind)) return false;
@@ -671,8 +674,8 @@ void pc_randomizer_save_campaign(const void* source) {
     std::filesystem::create_directories(campaignDirectory);
     const auto generation = campaignGeneration + 1;
     std::ostringstream meta;
-    meta << (bombTraps ? "PIKMIN_CAMPAIGN_3 " : bombDeliveries ? "PIKMIN_CAMPAIGN_2 " : "PIKMIN_CAMPAIGN_1 ") << fingerprint << ' ' << generation;
-    for (int i = 0; i < (bombTraps ? 5 : bombDeliveries ? 4 : 3); ++i) meta << ' ' << consumedBenefits[i];
+    meta << (proggTraps ? "PIKMIN_CAMPAIGN_4 " : bombTraps ? "PIKMIN_CAMPAIGN_3 " : bombDeliveries ? "PIKMIN_CAMPAIGN_2 " : "PIKMIN_CAMPAIGN_1 ") << fingerprint << ' ' << generation;
+    for (int i = 0; i < (proggTraps ? 6 : bombTraps ? 5 : bombDeliveries ? 4 : 3); ++i) meta << ' ' << consumedBenefits[i];
     std::string block(static_cast<const char*>(source), 32768);
     const auto hash = checkpointHash(meta.str() + "\n" + block);
     std::string bytes = meta.str() + " " + std::to_string(hash) + "\n" + block;

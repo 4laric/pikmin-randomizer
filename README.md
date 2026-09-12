@@ -246,3 +246,6 @@ Existing seed manifests retain the legacy pluck-only upgrade and save format. Ne
 
 
 Bomb Ambush summons five lit bomb rocks in a ring around Olimar, using the native fuse (about two seconds) and explosion damage. Enable it for new seeds with `bomb_trap_weight: 1` in YAML or `--bomb-trap-weight 1` in the CLI. The weight ranges from 0–10; default 0 disables it. Traps replace filler only and are classified as Archipelago traps. They need no Yellow Pikmin, wait for active gameplay on nearby dry ground, and queued ambushes are separated by at least five seconds of active gameplay. Existing seeds are unchanged.
+
+
+Smoky Progg Ambush is an optional trap: `progg_trap_weight: 1` (CLI `--progg-trap-weight 1`) adds it to new seeds' filler pool. Range 0–10, default 0 disables. Each receipt spawns one native Smoky Progg nearby with its normal emergence and Onion-seeking AI. It waits for active gameplay, suitable ground and an Onion, and queues while any Progg is alive in the area. A minimum 30-second active-gameplay cooldown also separates spawns. The Progg adds no bestiary check or progression requirement; its ordinary behavior and lifespan apply. Runtime ambushes end with the day; existing seeds keep their current pools.
