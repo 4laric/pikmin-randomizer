@@ -106,13 +106,18 @@ async def ap_connect(session, server, password, ready):
                         session.bind_ap(room_seed, packet["team"], packet["slot"])
                         authenticated = True
                         # Do not release the native game until the authoritative
-                        # item stream has been reconciled, including an empty stream.
-                        await ws.send(json.dumps([{"cmd": "Sync"}]))
+                        # item stream has been reconciled. A real server answers Sync
+                        # only when items exist, so the Get reply (processed in order
+                        # after any ReceivedItems) marks an empty stream as reconciled.
+                        await ws.send(json.dumps([{"cmd": "Sync"}, {"cmd": "Get", "keys": []}]))
                     elif cmd == "ReceivedItems":
                         if not authenticated:
                             raise ValueError("AP sent items before slot authentication")
                         session.receive(packet["index"], [item["item"] for item in packet["items"]])
                         ready[0] = True
+                    elif cmd == "Retrieved":
+                        if authenticated:
+                            ready[0] = True
                     elif cmd == "Bounced" and unit and "DeathLink" in packet.get("tags", []):
                         data = packet.get("data") or {}
                         # Skip our own echoes; the server bounces to every DeathLink client.

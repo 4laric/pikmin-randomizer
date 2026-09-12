@@ -83,7 +83,7 @@ class DeathLinkProtocolTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(connect['tags'], ['AP', 'DeathLink'])
                 await ws.send(json.dumps([dict(cmd='Connected', team=0, slot=1,
                     slot_data=dict(manifest=session.manifest, manifest_fingerprint=session.fingerprint))]))
-                self.assertEqual(json.loads(await ws.recv()), [{'cmd': 'Sync'}])
+                self.assertEqual(json.loads(await ws.recv()), [{'cmd': 'Sync'}, {'cmd': 'Get', 'keys': []}])
                 await ws.send(json.dumps([dict(cmd='ReceivedItems', index=0, items=[])]))
                 # A link from another player, then one before authentication would have been dropped.
                 await ws.send(json.dumps([dict(cmd='Bounced', tags=['DeathLink'], data=dict(time=1.0, source='Other', cause='Other died'))]))

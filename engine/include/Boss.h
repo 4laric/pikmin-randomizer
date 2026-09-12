@@ -11,6 +11,7 @@
 #include "Vector.h"
 #include "types.h"
 
+struct PrereleaseTrapState;
 class BirthInfo;
 class BossMgr;
 class GenObjectBoss;
@@ -368,6 +369,13 @@ public:
 	void kill(Creature*);
 	void refresh2d(Graphics&);
 	void finalSetup();
+#if defined(PIKI_PC_PORT)
+    bool beginPrereleaseTrap();
+    void tickPrereleaseTrap(float seconds);
+    void endPrereleaseTrap();
+    float prereleaseSeconds() const;
+    PrereleaseTrapState* mPrereleaseTrap = nullptr;
+#endif
 	BossShapeObject* getBossShapeObject(int bossID);
 
 	// unused/inlined:

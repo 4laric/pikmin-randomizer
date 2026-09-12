@@ -1,4 +1,5 @@
 #include "MemoryCard.h"
+#include "Boss.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_randomizer.h"
 #include <cstdlib>
@@ -924,6 +925,9 @@ void MemoryCard::saveCurrentGame()
  */
 void MemoryCard::writeCurrentGame(RandomAccessStream* output, PlayState& playState)
 {
+#if defined(PIKI_PC_PORT)
+    if (bossMgr) bossMgr->endPrereleaseTrap();
+#endif
 	if (playerState) {
 #if defined(VERSION_PIKIDEMO)
 		playState.mRedPikiCount    = playerState->hasContainer(Red) ? playerState->getCardPikiCount(Red) : -1;

@@ -597,3 +597,10 @@ README.md is now a player guide; prior release notes moved verbatim to CHANGELOG
 ## Universal Tracker (#97)
 
 The AP world sets `ut_can_gen_without_yaml`, returns slot_data from a static `interpret_slot_data`, and `manifest()` uses `multiworld.re_gen_passthrough[GAME]` (fingerprint-checked) so UT's local regeneration with default options rebuilds the authoritative manifest, locations, item pool and rules; `generate_output` is skipped when `generation_is_fake`. Validation: scripts/test_ut_regen.py regenerates 12 slots across randomized start/color/stats, campaign and grouped enemies, traps, death link and the repairs goal, comparing manifests, locations, pools and 48 reachability snapshots, then fills. Live UT client testing against a hosted room remains open.
+
+
+## Live room, readiness fix and native branch unification (#27 #97)
+
+Native branch codex/pikmin-randomizer now contains the DeathLink adapter (merge 1aab378c); the worktree branch claude/deathlink merged it back and the engine/ snapshot is re-exported from that superset. scripts/test_room_live.py generates nothing itself: given an extracted Generate.py output for two Pikmin slots and a running MultiServer, it runs the production exe as slot 1 (background test mode) and a headless runner as slot 2 with a scripted native handshake, then verifies real-server authentication, a native check reaching the server, a cross-slot item reaching the game, and a DeathLink Bounce killing field Pikmin in the running game while slot 2 ignores its own echo. Room generation for the test is done with a wrapper that imports the packaged apworld and registers its data package before calling Generate/Main (output/room-test/gen.py pattern).
+
+Finding: a real server answers `Sync` only when the slot has received items, so a fresh slot never became ready. The runner now sends `Sync` followed by `Get keys=[]`; the ordered `Retrieved` reply proves the (possibly empty) item stream was flushed and releases the native game. Covered by tests/test_ap_protocol.py. Universal Tracker's own client was not exercised: it is not installed here.
