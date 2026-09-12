@@ -35,6 +35,9 @@ def extract(iso,output,treasure='dia_a_red'):
             if len(data)!=size: raise ValueError('Truncated local asset')
             hashes[path]=hashlib.sha256(data).hexdigest();return data
         configs=pellet_catalog(read('user/Abe/Pellet/us/otakara_config.txt').decode('shift_jis'))
+        equipment=pellet_catalog(read('user/Abe/Pellet/us/item_config.txt').decode('shift_jis'))
+        if configs.keys() & equipment.keys():raise ValueError('Ambiguous treasure identity')
+        configs.update(equipment)
         corpses=pellet_catalog(read('user/Abe/Pellet/us/carcass_config.txt').decode('shift_jis'))
         selected=configs[treasure];corpse=corpses['Kochappy']
         for source,directory in [('user/Kando/pod/arc.szs','pod'),
@@ -48,7 +51,7 @@ def extract(iso,output,treasure='dia_a_red'):
         item=convert(treasure_model,output/'treasure.mod',True,y_offset=-item['bounds'][1],bake_rigid=True)
         money,weight,capacity=[int(selected[k]) for k in ('money','min','max')]
         # Carry strength may exceed physical slots (e.g. Purple-dependent treasures).
-        if not 0<=money<=1000000 or not 1<=weight<=1000 or not 1<=capacity<=96: raise ValueError('Invalid treasure economy')
+        if not 0<=money<=1000000 or not 1<=weight<=1000 or not 1<=capacity<=128: raise ValueError('Invalid treasure economy')
         (output/'p2-pod.txt').write_text(f'P2_POD_1\n{treasure} {money} {weight} {capacity}\nKochappy {int(corpse["money"])}\n')
         result=dict(schema=1,treasure=selected,corpse=corpse,pod=pod,model=item,source_sha256=hashes,
                     limitations=['Static bind pose; no animation, effects or texture-matrix playback.',

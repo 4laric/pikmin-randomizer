@@ -102,6 +102,7 @@ static void capture(const char* path="p2-room.ppm") {
     FILE* f=std::fopen(path,"wb");require(f!=nullptr,"capture file");std::fprintf(f,"P6\n%d %d\n255\n",w,h);
     for(int y=h-1;y>=0;--y)std::fwrite(pixels.data()+size_t(y)*w*3,1,size_t(w)*3,f);std::fclose(f);
 }
+#include "preview_p2_purple.inc"
 class RoomApp : public PlugPikiApp {
     int frames=0,repairs=0;
     Teki* enemy=nullptr;
@@ -113,7 +114,8 @@ public:
         int result=PlugPikiApp::idle();require(++frames<10000,"timeout");
         if(gameflow.mMoviePlayer && gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
         if(!pc_p2_preview_ready() || !naviMgr || !pikiMgr || !tekiMgr)return result;
-        Navi* n=naviMgr->getNavi();if(!n || !n->getCurrState() || (phase<=1 && n->getCurrState()->getID()!=NAVISTATE_Walk) || gameflow.mPauseAll || gameflow.mIsUIOverlayActive)return result;
+        Navi* n=naviMgr->getNavi();if(!n || !n->getCurrState() || (!pc_p2_purples_enabled() && phase<=1 && n->getCurrState()->getID()!=NAVISTATE_Walk) || gameflow.mPauseAll || gameflow.mIsUIOverlayActive)return result;
+        if(pc_p2_purples_enabled()){purpleFixture(n);std::fflush(stdout);return result;}
         if(phase==0) {
             if(++ticks<60)return result;
             for(int f=0;f<DEMOFLAG_COUNT;++f)playerState->mDemoFlags.setFlagOnly(f);

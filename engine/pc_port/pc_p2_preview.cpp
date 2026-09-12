@@ -13,6 +13,7 @@
 #include "Texture.h"
 #include "system.h"
 #include "pc_p2_economy.h"
+#include "pc_p2_purple.h"
 #include "GoalItem.h"
 #include "ItemMgr.h"
 #include "Generator.h"
@@ -75,7 +76,7 @@ void pc_p2_preview_setup() {
         char version[32],id[64],corpseId[64];int weight,capacity;
         bool valid=std::fscanf(config,"%31s %63s %d %d %d %63s %d",version,id,&treasureValue,&weight,&capacity,corpseId,&corpseValue)==7;
         std::fclose(config);
-        if(!valid || std::string(version)!="P2_POD_1" || weight<1 || weight>1000 || capacity<1 || capacity>96 || treasureValue<0 || treasureValue>1000000 || corpseValue<0 || corpseValue>1000000 || std::string(corpseId)!="Kochappy") {
+        if(!valid || std::string(version)!="P2_POD_1" || weight<1 || weight>1000 || capacity<1 || capacity>128 || treasureValue<0 || treasureValue>1000000 || corpseValue<0 || corpseValue>1000000 || std::string(corpseId)!="Kochappy") {
             std::fprintf(stderr,"Invalid P2 pod config\n");std::abort();
         }
         treasureId=id;economy.load("p2-economy.txt");
@@ -94,6 +95,7 @@ void pc_p2_preview_setup() {
         std::printf("[Pikipelago] P2_POD_READY treasure=%s value=%d weight=%d capacity=%d pokos=%d\n",id,treasureValue,weight,capacity,economy.total());
         podTitle("");
     }
+    pc_p2_purple_setup();
     gsys->setHeap(previousHeap);
     const float points[][2]={{-85,0},{-175,-100},{185,-180},{-220,-180}};
     for (const auto& point : points)
@@ -111,15 +113,21 @@ bool pc_p2_preview_draw(Pellet* pellet, Graphics& gfx, Matrix4f& matrix) {
 
 bool pc_p2_preview_deliver(Pellet* pellet) {
     if(pc_pikipelago_room_preview() && podAnchor) {
+        // P1's long-idle captain can be carried like a pellet. Returning him to
+        // the Pod must finish the normal wake-up path, never create money/seeds.
+        if(naviMgr && pellet->mConfig->mModelId.mId=='navi' && pellet->mPelletView==static_cast<PelletView*>(naviMgr->getNavi())) {
+            std::puts("[Pikipelago] P2_POD_CAPTAIN_RETURN pokos_unchanged=1 seeds=0");return true;
+        }
         std::string receipt;int value=0;
         if(pellet==previewTreasure){receipt="treasure:"+treasureId;value=treasureValue;}
         else {
             auto found=corpses.find(pellet->mPelletView);
-            if(found==corpses.end()) {std::fprintf(stderr,"Unregistered P2 pod cargo; refusing seed side effects\n");std::abort();}
+            if(found==corpses.end()) {std::fprintf(stderr,"Unregistered P2 pod cargo id=%08x view=%p pellet=%p treasure=%p; refusing seed side effects\n",pellet->mConfig->mModelId.mId,(void*)pellet->mPelletView,(void*)pellet,(void*)previewTreasure);std::abort();}
             receipt=found->second;value=corpseValue;
         }
         bool added=economy.credit(receipt,value);
         podTitle((pellet==previewTreasure?treasureId:"Dwarf Bulborb")+" +"+std::to_string(added?value:0));
+        pc_p2_purple_status();
         std::printf("[Pikipelago] P2_POD_RECEIPT id=%s value=%d new=%d pokos=%d seeds=0\n",receipt.c_str(),value,int(added),economy.total());
         if(pellet==previewTreasure) {
             delivered=true;

@@ -1,3 +1,4 @@
+#include "pc_p2_purple.h"
 #include "DebugLog.h"
 #include "EffectMgr.h"
 #include "Interactions.h"
@@ -69,6 +70,13 @@ void PomAi::initAI(Pom* pom)
 	               + NsMathI::getRand(NsLibMath<int>::abs(C_POM_PARM(mPom, mMaxCycles) - C_POM_PARM(mPom, mMinCycles) + 1));
 	mCurrentDeform = 0.0f;
 	mDeformAmount  = 0.0f;
+    if(pc_p2_violet(mPom)) {
+        PomProp* props=static_cast<PomProp*>(mPom->mProps);
+        props->mPomProps.mMaxPikiPerCycle.mValue=5;
+        props->mPomProps.mCloseWaitTime.mValue=5.f;
+        props->mPomProps.mDoKillSameColorPiki.mValue=FALSE;
+        mMaxSeedCount=5; // In this preview count converted Pikmin, not cycles.
+    }
 }
 
 /**
@@ -164,7 +172,7 @@ void PomAi::keyFinished()
 		effectMgr->create(EffectMgr::EFF_Teki_DeathWaveS, mPom->mSRT.t, nullptr, nullptr);
 
 		playSound(0);
-		mPom->createPellet(mPom->mSRT.t, 150.0f, true);
+		if(!pc_p2_violet(mPom))mPom->createPellet(mPom->mSRT.t, 150.0f, true);
 	}
 
 	mPom->setMotionFinish(1);
@@ -315,6 +323,8 @@ int PomAi::killStickPiki()
  */
 void PomAi::createPikiHead()
 {
+    int converted=pc_p2_convert_violet(mPom,5-mReleasedSeedCount);
+    if(converted>=0){mReleasedSeedCount+=converted;playSound(3);return;}
 	int seedCount = killStickPiki();
 	Navi* player  = naviMgr->getNavi();
 	f32 baseAngle = atan2f(mPom->mSRT.t.x - player->mSRT.t.x, mPom->mSRT.t.z - player->mSRT.t.z);

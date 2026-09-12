@@ -332,6 +332,9 @@ public:
 	f32 mColourBlendRatio;                // _538
 	SearchData mPikiSearchData[6];        // _53C
 	bool mEraseOnKill;                    // _584
+    // Experimental sequel identity, never an index into legacy three-color arrays.
+    bool mP2Purple = false;
+    float mP2AnimationTime = 0;
 };
 
 /**

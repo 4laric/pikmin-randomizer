@@ -1,3 +1,5 @@
+#include "pc_p2_purple.h"
+#include "pc_p2_purple.h"
 #include "pc_randomizer.h"
 #include "pc_bbft.h"
 #include "Piki.h"
@@ -184,6 +186,7 @@ void Piki::subCntCallback()
  */
 f32 Piki::getAttackPower()
 {
+    if(pc_p2_is_purple(this))return pc_p2_purple_attack();
 	if (mColor == Blue) {
 		return pikiMgr->mPikiParms->mPikiParms.mBlueAttackPower() * pc_randomizer_color_multiplier(mColor, PC_PIKI_DAMAGE);
 	}
@@ -640,7 +643,7 @@ void Piki::updateFire()
 	if (mFiredState) {
 		int state = getState();
 		if (mFiredState != 2 && state != PIKISTATE_Dying && state != PIKISTATE_Dead && state != PIKISTATE_Fired && state != PIKISTATE_Drown
-		    && mColor != Red) {
+		    && (mColor != Red || pc_p2_is_purple(this))) {
 			changeMode(PikiMode::FreeMode, mNavi);
 			mFSM->transit(this, PIKISTATE_Fired);
 		}
@@ -1263,6 +1266,7 @@ int Piki::graspSituation(Creature** outTarget)
  */
 void Piki::initColor(int color)
 {
+    mP2Purple=false;mP2AnimationTime=0;
     if (!pc_bbft_color_access(color)) color = Red;
 	mColor = color;
 	if (flowCont.mIsVersusMode == TRUE) {
@@ -2247,7 +2251,7 @@ void Piki::setSpeed(f32 speedRatio)
 
 	f32 min = pikiMgr->mPikiParms->mPikiParms.mMinMoveSpeed() * scale;
 
-	mMoveSpeed = ((max - min) * speedRatio + min) * pc_randomizer_color_multiplier(mColor, PC_PIKI_MOVEMENT);
+	mMoveSpeed = ((max - min) * speedRatio + min) * pc_randomizer_color_multiplier(mColor, PC_PIKI_MOVEMENT) * pc_p2_move_multiplier(this);
 }
 
 /**
@@ -2265,7 +2269,7 @@ f32 Piki::getSpeed(f32 speedRatio)
 
 	f32 min = pikiMgr->mPikiParms->mPikiParms.mMinMoveSpeed() * scale;
 
-	return ((max - min) * speedRatio + min) * pc_randomizer_color_multiplier(mColor, PC_PIKI_MOVEMENT);
+	return ((max - min) * speedRatio + min) * pc_randomizer_color_multiplier(mColor, PC_PIKI_MOVEMENT) * pc_p2_move_multiplier(this);
 }
 
 /**
@@ -2282,7 +2286,7 @@ void Piki::setSpeed(f32 speedRatio, immut Vector3f& direction)
 		max = pikiMgr->mPikiParms->mPikiParms.mMaxBudMoveSpeed();
 	}
 
-	mMoveSpeed      = ((max - min) * speedRatio + min) * pc_randomizer_color_multiplier(mColor, PC_PIKI_MOVEMENT);
+	mMoveSpeed      = ((max - min) * speedRatio + min) * pc_randomizer_color_multiplier(mColor, PC_PIKI_MOVEMENT) * pc_p2_move_multiplier(this);
 	mTargetVelocity = mMoveSpeed * direction;
 }
 
@@ -2301,7 +2305,7 @@ void Piki::setSpeed(f32 speedRatio, f32 angle)
 
 	f32 min = pikiMgr->mPikiParms->mPikiParms.mMinMoveSpeed() * scale;
 
-	mMoveSpeed = ((max - min) * speedRatio + min) * pc_randomizer_color_multiplier(mColor, PC_PIKI_MOVEMENT);
+	mMoveSpeed = ((max - min) * speedRatio + min) * pc_randomizer_color_multiplier(mColor, PC_PIKI_MOVEMENT) * pc_p2_move_multiplier(this);
 	mTargetVelocity.set(mMoveSpeed * cosf(angle), 0.0f, mMoveSpeed * sinf(angle));
 }
 
@@ -2499,6 +2503,7 @@ void Piki::updateLookCreature()
  */
 void Piki::doAnimation()
 {
+    if(pc_p2_is_purple(this))mP2AnimationTime+=gsys->getFrameTime();
 	updateWalkAnimation();
 	mLastAnimPosition = mSRT.t;
 	// Change only attack loops, not walking, thrown arcs, plucking or cutscenes.

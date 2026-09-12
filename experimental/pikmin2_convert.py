@@ -35,7 +35,7 @@ def blocks(data):
         result[data[at:at+4].decode('ascii')]=data[at:at+size]; at+=size
     return result
 
-def decode(data, approximate_materials=False, bake_rigid=False):
+def decode(data, approximate_materials=False, bake_rigid=False, pose=None):
     b=blocks(data); j=b['JNT1']; d=b['DRW1']
     if u16(b['EVP1'],8)!=0: raise ValueError('Skinned envelopes not supported')
     if not bake_rigid and (u16(j,8)!=1 or u16(d,8)!=1 or d[u32(d,12)]!=0 or u16(d,u32(d,16))!=0): raise ValueError('Only one rigid joint supported')
@@ -43,7 +43,7 @@ def decode(data, approximate_materials=False, bake_rigid=False):
     if not bake_rigid and (unpack(j,'3f',jo+4)!=(1.,1.,1.) or unpack(j,'3h',jo+16)!=(0,0,0) or unpack(j,'3f',jo+24)!=(0.,0.,0.)): raise ValueError('Non-identity joint transform')
     if bake_rigid:
         from experimental.pikmin2_rigid import joint_matrices
-        matrices=joint_matrices(b)
+        matrices=joint_matrices(b,pose)
         draw_joints=[u16(d,u32(d,16)+2*i) for i in range(u16(d,8))]
         if any(d[u32(d,12)+i]!=0 or joint>=len(matrices) for i,joint in enumerate(draw_joints)):
             raise ValueError('Non-rigid draw matrix')
@@ -157,16 +157,20 @@ class Writer:
     def end(self):
         self.pad(); struct.pack_into('>I',self.data,self.start+4,len(self.data)-self.start-8)
 
-def convert(source, output, approximate_materials=False, y_offset=0.0, bake_rigid=False):
-    report=write_model(decode(Path(source).read_bytes(), approximate_materials,bake_rigid),output,str(source),y_offset)
+def convert(source, output, approximate_materials=False, y_offset=0.0, bake_rigid=False, pose=None, material_colors=None):
+    if pose is not None and not bake_rigid: raise ValueError('Animation pose requires rigid baking')
+    report=write_model(decode(Path(source).read_bytes(), approximate_materials,bake_rigid,pose),output,str(source),y_offset,material_colors)
     report['rigid_bind_pose_baked']=bake_rigid
     Path(output).with_suffix('.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     return report
 
 
-def write_model(decoded, output, source, y_offset=0.0):
+def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
     if not math.isfinite(y_offset): raise ValueError("Y offset must be finite")
     b,a,shapes,mats=decoded; w=Writer()
+    colors=material_colors if material_colors is not None else [(255,255,255,255)]*len(shapes)
+    if len(colors)!=len(shapes) or any(len(c)!=4 or any(type(v)!=int or not 0<=v<=255 for v in c) for c in colors):
+        raise ValueError('Expected one RGBA8 material color per shape')
     a[9]=[(x,y+y_offset,z) for x,y,z in a[9]]
     w.begin(0);w.pad();w.put('II',0,0);w.end()
     for attr,tag,fmt in ((9,16,'3f'),(10,17,'3f'),(11,19,'4B'),(13,24,'2f')):
@@ -198,8 +202,8 @@ def write_model(decoded, output, source, y_offset=0.0):
         w.data+=bytes([15,8,10,15,0,0,0,1,0,0,0,0] if tex>=0 else [15,15,15,10,0,0,0,1,0,0,0,0])
         w.data+=bytes([7,4,5,7,0,0,0,1,0,0,0,0] if tex>=0 else [7,7,7,5,0,0,0,1,0,0,0,0])
     for i,tex in enumerate(mats):
-        w.put('Ii4BI',257,tex,255,255,255,255,i)
-        w.put('4BIfII',255,255,255,255,0,0.,0,0)
+        w.put('Ii4BI',257,tex,*colors[i],i)
+        w.put('4BIfII',*colors[i],0,0.,0,0)
         w.put('If',0x1800 if 11 in a else 0,0.)
         w.put('4I',0,0,0,0)
         w.put('I3fI',0,1.,1.,1.,1 if tex>=0 else 0)

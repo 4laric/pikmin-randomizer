@@ -8,12 +8,13 @@ import subprocess
 import uuid
 
 from experimental.pikmin2_collision import attach_collision, ground_height, route_ini
-from scripts.preview_pikmin2_room import generator, overlay
+from scripts.preview_pikmin2_room import generator, overlay, records
 
 UNIT = 'room_north_tutorial_1_snow'
 
 
-def prepare(assets, imported, treasure, output, assembled=None, floor=1, pod=None):
+def prepare(assets, imported, treasure, output, assembled=None, floor=1, pod=None, purple=None):
+    if purple and not pod:raise ValueError('Purple preview requires Research Pod')
     if floor not in (1,2) or (floor==2 and assembled):
         raise ValueError('Choose floor 1 assembly or standalone floor 2')
     manifest=json.loads((imported/'manifest.json').read_text())
@@ -74,6 +75,19 @@ def prepare(assets, imported, treasure, output, assembled=None, floor=1, pod=Non
         stage=re.sub(rb'(?m)^navi_start[^\r\n]*',b'navi_start -680.0 500.0',stage)
         # Walk out along the source return route in reverse, without reversing its links.
         walk=[(-340,510),(-85,595),(170,560),(425,425),(595,255),(660,0),(660,-170),(600,-325),(475,-425)]
+    if purple:
+        template=next(r for r in records(assets/'dataDir/stages/chal0/default.gen') if r[72:76]==b'ssob' and r[76:80]==b'\x02\x00\x00\x00')
+        count=struct.unpack_from('>I',actors,20)[0]
+        positions=[(-140,60),(140,60)] if floor==1 else [(-600,350),(-400,400)]
+        for i,(x,z) in enumerate(positions):
+            y=ground_height(room['vertices'],room['triangles'],x,z)
+            if y is None:raise ValueError('Violet flower has no ground')
+            flower=bytearray(template);struct.pack_into('>I',flower,8,count+i+1)
+            flower[16:48]=f'preview violet {i}'.encode().ljust(32,b'\0')
+            struct.pack_into('>6f',flower,48,x,y,z,0,0,0)
+            struct.pack_into('>I',flower,80,5|(1<<6)) # Pom, Red legacy storage color; explicit P2 Violet metadata.
+            actors.extend(flower)
+        struct.pack_into('>I',actors,20,count+len(positions))
     overrides={'dataDir/stages/chal0.ini':stage,
                'dataDir/stages/chal0/default.gen':bytes(actors),
                'dataDir/courses/pikmin2room/room.mod':model,
@@ -82,11 +96,14 @@ def prepare(assets, imported, treasure, output, assembled=None, floor=1, pod=Non
     if pod:
         overrides['dataDir/courses/pikmin2room/pod.mod']=(pod/'pod.mod').read_bytes()
         overrides['dataDir/courses/pikmin2room/treasure.mod']=(pod/'treasure.mod').read_bytes()
+    if purple:
+        for path in purple.glob('*.mod'):overrides['dataDir/courses/pikmin2room/'+path.name]=path.read_bytes()
     for path in (assets/'dataDir/stages/chal0').glob('*.gen'):
         overrides.setdefault('dataDir/stages/chal0/'+path.name,empty)
     run=output.resolve()/uuid.uuid4().hex
     run.mkdir(parents=True)
     if pod: (run/'p2-pod.txt').write_bytes((pod/'p2-pod.txt').read_bytes())
+    if purple: (run/'p2-purple.txt').write_bytes((purple/'p2-purple.txt').read_bytes())
     probes=[(-680,500),(-680,595),(475,-425),(660,0)] if floor==2 else [(-85,0),(-175,-100),(185,-180),(-220,-180)]
     heights=[ground_height(room['vertices'],room['triangles'],x,z) for x,z in probes]
     if any(y is None for y in heights):
@@ -98,9 +115,9 @@ def prepare(assets, imported, treasure, output, assembled=None, floor=1, pod=Non
         (run/'p2-second-floor.txt').write_text(str(len(walk))+'\n'+'\n'.join(f'{x} {z}' for x,z in walk))
     overlay(assets,run/'assets',overrides)
     (run/'preview.json').write_text(json.dumps(dict(unit=name,floor=floor,experimental=True,ap=False,save_resume=False,
-        assembled_geometry=bool(assembled),pod=bool(pod),complete_floor=False,
+        assembled_geometry=bool(assembled),pod=bool(pod),purple=bool(purple),complete_floor=False,
         actors=('20 Reds and source-configured treasure; Dwarf corpse on floor 1' if pod else '20 Reds, bolt and temporary Onion; Dwarf on floor 1'),
-        limitations='Engineering layout; no actual cave roster, descent, Purples or campaign persistence.'),indent=2))
+        limitations='Engineering layout; no actual cave roster, descent or campaign persistence. Purple support is experimental and opt-in.'),indent=2))
     return run
 
 
@@ -114,8 +131,9 @@ if __name__=='__main__':
     parser.add_argument('--assembled',type=Path,help='Optional authored floor assembly directory')
     parser.add_argument('--floor',type=int,choices=(1,2),default=1)
     parser.add_argument('--pod',type=Path,help='Opt-in Research Pod assets and source economy config')
+    parser.add_argument('--purple',type=Path,help='Experimental Purple pose bank and two Violet conversion flowers')
     args=parser.parse_args()
-    run=prepare(args.assets.resolve(),args.imported.resolve(),args.treasure.resolve(),args.output,args.assembled.resolve() if args.assembled else None,args.floor,args.pod.resolve() if args.pod else None)
+    run=prepare(args.assets.resolve(),args.imported.resolve(),args.treasure.resolve(),args.output,args.assembled.resolve() if args.assembled else None,args.floor,args.pod.resolve() if args.pod else None,args.purple.resolve() if args.purple else None)
     print(run,flush=True)
     if args.exe:
         with (run/'native.log').open('w',encoding='utf-8') as log:

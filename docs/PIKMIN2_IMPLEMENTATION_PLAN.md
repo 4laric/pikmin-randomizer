@@ -18,7 +18,7 @@ Cave content references: [Emergence Cave](https://www.pikminwiki.com/Emergence_C
 
 The player has confirmed movement and carrying in an imported P2 room after floor and route corrections. We have rigid model/texture conversion, separate collision conversion, native P1 actors, an imported treasure visual, and a distinct collection receipt. Fifteen focused Python tests and a native far-corpse delivery fixture support that result. See [prototype evidence](PIKMIN2_ROOM_PREVIEW.md).
 
-It does **not** prove animated P2 characters, arbitrary materials, procedural caves, cave persistence, a Research Pod, two captains, Purple/White behavior, or a complete campaign. The current receiver is an Onion; the treasure uses pellet physics. Those are useful prototype scaffolding, not final sequel semantics. A successful room is evidence that engine reuse is practical, not a meaningful percentage of a finished port.
+That initial room did **not** prove animated P2 characters, arbitrary materials, procedural caves, cave persistence, a Research Pod, two captains, Purple/White behavior, or a complete campaign. Its receiver was an Onion and the treasure used pellet physics. Subsequent Pod and Purple increments are recorded below. A successful room is evidence that engine reuse is practical, not a meaningful percentage of a finished port.
 
 ## First slice: playable contract
 
@@ -96,3 +96,5 @@ Current Open Nectar prototype native commit: `5b0e3857f3f367b6c4003498110b86c551
 Batch #110: [Emergence import and floor previews](PIKMIN2_EMERGENCE_IMPORT.md). Both floor definitions and all referenced unit assets convert. An authored first-floor assembly passes native walking and cross-seam carrying; the second floor now passes native slope traversal and return carrying on the original directed graph. Actual cave gameplay and visual fidelity remain outstanding.
 
 Batch #111: [Research Pod and economy preview](PIKMIN2_RESEARCH_POD.md). Static imported Pod, source-configured treasure weight/value, corpse currency and a separate duplicate-resistant receipt ledger are implemented in the isolated preview. The first native run reached 182 Pokos from treasure and corpse deliveries without P1 repair or seed credit. This is not cave/world persistence or a complete Pod actor; full acceptance remains tracked on the issue.
+
+Batch #113: [Purple preview](PIKMIN2_PURPLE_PREVIEW.md). Opt-in Purple species metadata, actual source model with sampled idle/walk/attack poses, separate ten-unit carrying strength, source numeric stats and Violet conversion are implemented. The isolated Atlas scenario exercises a 101-strength load. Landing/stun, full animation coverage, ship inventory and lifecycle persistence remain open; this is not the full Purple acceptance gate.

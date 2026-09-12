@@ -1,3 +1,4 @@
+#include "pc_p2_purple.h"
 #include "ViewPiki.h"
 #include "AIPerf.h"
 #include "DebugLog.h"
@@ -455,14 +456,14 @@ void ViewPiki::demoDraw(Graphics& gfx, immut Matrix4f* mtx)
 	}
 
 	if (aiCullable()) {
-		mPikiShape->mShape->drawshape(gfx, *gfx.mCamera, nullptr);
+		if(!pc_p2_draw_purple(this,gfx))mPikiShape->mShape->drawshape(gfx, *gfx.mCamera, nullptr);
 	}
 
 	if (mIsPanicked) {
 		mPanickedEffect->updatePos(mShadowPos);
 	}
 
-	if (aiCullable() && AIPerf::optLevel < 3 && mHappaModel) {
+	if (!pc_p2_is_purple(this) && aiCullable() && AIPerf::optLevel < 3 && mHappaModel) {
 		gfx.useMatrix(mPikiShape->mShape->getAnimMatrix(6), 0);
 		mHappaModel->drawshape(gfx, *gfx.mCamera, nullptr);
 	}

@@ -21,7 +21,7 @@ def apply(matrix,point,normal=False):
     return tuple(sum(matrix[r][k]*point[k] for k in range(3))+(0 if normal else matrix[r][3]) for r in range(3))
 
 
-def joint_matrices(blocks):
+def joint_matrices(blocks, local_overrides=None):
     def read(b,fmt,at): return struct.unpack_from('>'+fmt,b,at)
     j=blocks['JNT1'];h=blocks['INF1'];count=read(j,'H',8)[0]
     at=read(h,'I',20)[0];stack=[];current=None;parents={}
@@ -44,7 +44,7 @@ def joint_matrices(blocks):
         remap=read(j,'I',16)[0];record=index if not remap else read(j,'H',remap+2*index)[0]
         at=read(j,'I',12)[0]+64*record
         if read(j,'3f',at+4)!=(1.,1.,1.): raise ValueError('Scaled rigid joints not supported')
-        matrix=local_matrix(read(j,'3h',at+16),read(j,'3f',at+24))
+        matrix=local_matrix(read(j,'3h',at+16),read(j,'3f',at+24)) if local_overrides is None else local_overrides[index]
         if parents[index] is not None: matrix=compose(world(parents[index]),matrix)
         matrices[index]=matrix;visiting.remove(index);return matrix
     return [world(i) for i in range(count)]
