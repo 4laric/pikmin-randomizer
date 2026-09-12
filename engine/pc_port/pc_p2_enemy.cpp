@@ -2,6 +2,7 @@
 #include "pc_p2_animation.h"
 #include "pc_p2_snow_policy.h"
 #include "pc_p2_snow_attack_policy.h"
+#include "pc_p2_snow_turn_policy.h"
 #include "TekiConditions.h"
 #include "Material.h"
 #include <chrono>
@@ -29,10 +30,19 @@ std::set<PelletView*> actors;
 std::map<std::string,p2animation::Clip> timing;
 P2SnowHealthPolicy healthPolicy;
 P2SnowAttackPolicy attackPolicy;
+P2SnowTurnPolicy turnPolicy;
 }
 float pc_p2_snow_max_health(const BTeki* actor,float fallback) { return healthPolicy.life(actor,fallback); }
-void pc_p2_snow_reset() { clips.clear();actors.clear();timing.clear();healthPolicy.reset();attackPolicy.reset(); }
-void pc_p2_snow_forget(BTeki* actor) { healthPolicy.forget(actor);attackPolicy.forget(actor);actors.erase(static_cast<PelletView*>(actor)); }
+void pc_p2_snow_reset() { clips.clear();actors.clear();timing.clear();healthPolicy.reset();attackPolicy.reset();turnPolicy.reset(); }
+void pc_p2_snow_forget(BTeki* actor) { healthPolicy.forget(actor);attackPolicy.forget(actor);turnPolicy.forget(actor);actors.erase(static_cast<PelletView*>(actor)); }
+bool pc_p2_snow_turn(BTeki* actor,float targetAngle,float arrivalStep,bool& arrived) {
+    if(!actor->isAlive())return false;
+    P2SnowTurnPolicy::Result result;
+    if(!turnPolicy.evaluate(actor,actor->getDirection(),targetAngle,arrivalStep,result))return false;
+    arrived=result.valid && result.arrived;
+    if(result.valid)actor->setDirection(result.direction);
+    return true;
+}
 bool pc_p2_snow_attackable(BTeki* actor,Creature& target,bool& result) {
     if(!attackPolicy.contains(actor))return false;
     TekiRecognitionCondition recognition(static_cast<Teki*>(actor));
@@ -52,6 +62,8 @@ void pc_p2_snow_setup() {
     if(policy && !healthPolicy.read(policy))std::abort();
     std::ifstream attack("p2-snow-attack.txt");
     if(attack && !attackPolicy.read(attack))std::abort();
+    std::ifstream turn("p2-snow-turn.txt");
+    if(turn && !turnPolicy.read(turn))std::abort();
     // Validate the entire bank before allocating Shapes or uploading textures.
     size_t total=0,poses=0;
     std::vector<unsigned char> reference;
@@ -120,6 +132,8 @@ void pc_p2_snow_setup() {
             if(teki->mTekiType!=TEKI_Chappy)std::abort();
             actors.insert(static_cast<PelletView*>(teki));
             attackPolicy.bind(static_cast<BTeki*>(teki));
+            turnPolicy.bind(static_cast<BTeki*>(teki));
+            if(turnPolicy.enabled())std::printf("P2_SNOW_TURN generator=%u gain=0.4 cap_degrees_per_update=10 arrival=P1 source_rotation_end_180=not_applied\n",teki->mGenerator->_70);
             if(attackPolicy.enabled())std::printf("P2_SNOW_ATTACK generator=%u range=30 half_angle=20 scope=entry_only source=YellowKochappy_fp20_fp21\n",teki->mGenerator->_70);
             if(healthPolicy.enabled()) {
                 const float oldHealth=teki->mHealth;

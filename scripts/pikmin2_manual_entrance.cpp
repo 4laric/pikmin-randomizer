@@ -52,7 +52,7 @@ public:
 };
 int main(int argc,char**argv){
  std::ifstream mode("manual-entrance.txt");std::string value;mode>>value;
- if(value!="enter" && value!="returned")return 3;returned=value=="returned";
+ if(value!="enter" && value!="returned" && value!="repeat")return 3;returned=value=="returned";
  std::ifstream entry("p2-cave-entry.txt");std::string header;entry>>header>>entryToken;
  if(header!="P2_CAVE_ENTRY_1" || entryToken.size()!=32)return 3;
  SDL_SetMainReady();pc_gpu_preference_apply();pc_bbft_init(argc,argv);

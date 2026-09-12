@@ -1326,6 +1326,11 @@ bool BTeki::moveToward(immut Vector3f& target, f32 speed)
  */
 bool BTeki::turnToward(f32 targetAngle, f32 turnSpeed)
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    bool sourceArrived=false;
+    if(pc_p2_snow_turn(this,targetAngle,turnSpeed*NSystem::getFrameTime(),sourceArrived))return sourceArrived;
+#endif
+
 	f32 faceDir   = NMathF::roundAngle(getDirection());
 	f32 nearerDir = NMathF::calcNearerDirection(faceDir, targetAngle);
 	f32 speed     = turnSpeed * NSystem::getFrameTime();

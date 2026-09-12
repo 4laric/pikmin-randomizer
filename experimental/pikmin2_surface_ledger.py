@@ -142,9 +142,20 @@ class SurfaceLedger:
             atomic_write(self.path, json.dumps(validate(candidate), indent=2))
             return candidate
 
-    def enter_cave(self, expected_revision, trip_id):
+    def enter_cave(self, expected_revision, trip_id, *, native_entry=None):
+        """Optionally consume a live surface transfer in the same entry transaction.
+
+        The source token is the trip ID, so a native entry cannot be reused for a
+        later visit. Omitted native_entry preserves the original request digest.
+        Surface acquisition is not implemented: receipt keys/values must match.
+        """
         if not _hex(trip_id, 32):
             raise ValueError('Invalid cave trip ID')
+        if native_entry is not None:
+            native_entry = deepcopy(native_entry)
+            if (not isinstance(native_entry, dict) or set(native_entry) != {'text', 'position', 'receipts'}
+                    or not isinstance(native_entry['text'], str) or not isinstance(native_entry['receipts'], dict)):
+                raise ValueError('Invalid native surface entry fields')
         def apply(state):
             if state['phase'] != 'surface':
                 raise ValueError('Surface is already suspended')
@@ -152,9 +163,32 @@ class SurfaceLedger:
                 raise ValueError('Ledger history full; cannot start another cave trip')
             checkpoint = initial(self.content)
             checkpoint.update({k: deepcopy(state['surface'][k]) for k in ('squad', 'health', 'receipts')})
+            if native_entry is not None:
+                if native_entry['receipts'] != state['surface']['receipts']:
+                    raise ValueError('Surface receipts changed; surface acquisition is unsupported')
+                handed = transition(checkpoint, trip_id, native_entry['text'], native_entry['receipts'], {})
+                if native_entry['position'] is not None:
+                    destination = deepcopy(state['surface'])
+                    destination['position'] = deepcopy(native_entry['position'])
+                    _surface(destination, self.content)
+                elif handed['status'] != 'failed':
+                    raise ValueError('Living surface entry requires actual native position')
+                if handed['status'] == 'failed':
+                    # Do not replace the suspended surface with an invalid empty
+                    # active snapshot. The authoritative terminal trip prevents revival.
+                    state['phase'] = 'failed'
+                    state['trip'] = dict(id=trip_id, cave='tutorial_1', token=None, checkpoint=handed)
+                    return
+                state['surface']['position'] = deepcopy(native_entry['position'])
+                for key in ('squad', 'health', 'receipts'):
+                    state['surface'][key] = deepcopy(handed[key])
+                    checkpoint[key] = deepcopy(handed[key])
             state['phase'] = 'cave'
             state['trip'] = dict(id=trip_id, cave='tutorial_1', token=uuid.uuid4().hex, checkpoint=checkpoint)
-        return self._change(expected_revision, f'enter:{trip_id}', dict(trip=trip_id), apply)
+        request = dict(trip=trip_id)
+        if native_entry is not None:
+            request['native_entry'] = native_entry
+        return self._change(expected_revision, f'enter:{trip_id}', request, apply)
 
     def apply_floor(self, expected_revision, token, text, receipts, allowed):
         if not _hex(token, 32):
