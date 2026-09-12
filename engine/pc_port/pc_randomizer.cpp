@@ -42,6 +42,11 @@ int baseColorStats[3][4] = {{100, 100, 100, 1}, {100, 100, 100, 1}, {100, 100, 1
 unsigned statUpgrades[3][4] = {};
 bool benefitItems = false, bombDeliveries = false, combinedCaptain = false;
 unsigned benefits[6] = {}, consumedBenefits[4] = {};
+// DeathLink: the first state value read is the baseline, so links received while
+// the game was closed never replay. Pending links are bounded; each applies once.
+unsigned deathLinkUnit = 0, deathLinksSeen = 0, deathLinksPending = 0, deathsReported = 0;
+bool deathLinkBaseline = false;
+std::set<const void*> inducedDeaths;
 int consumedIndex(PcBenefit kind) { return kind == PC_BENEFIT_BOMBS ? 3 : int(kind); }
 std::filesystem::path benefitJournal, campaignDirectory;
 std::string campaignBlock;
@@ -221,6 +226,10 @@ bool pc_randomizer_init(int argc, char** argv) {
         combinedCaptain = mode >= 3;
         input >> end;
     }
+    if (end == "DEATHLINK") {
+        if (schema != 9 || !(input >> deathLinkUnit) || deathLinkUnit < 1 || deathLinkUnit > 100) fail("invalid DeathLink unit");
+        input >> end;
+    }
     if (end == "ENEMY_CAMPAIGN") {
         unsigned version, count, miniboss; std::string catalog;
         if (schema != 9 || enemyMask || !(input >> version >> catalog >> count >> miniboss)
@@ -315,6 +324,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (campaignEnemies) hello << " enemy-campaign-v1";
     if (minibossEnemies) hello << " miniboss-slots-v1";
     if (emperorGoal) hello << " emperor-goal-v1";
+    if (deathLinkUnit) hello << " death-link-v1";
     hello << " END\n";
     hello.close();
     if (!hello) fail("cannot write native handshake");
@@ -378,6 +388,11 @@ void pc_randomizer_update() {
         if (!parsed || end != "EMPEROR" || !(input >> newEmperor) || newEmperor > 1 || (newEmperor && newRepairs < 25)) fail("invalid Emperor state");
         parsed = bool(input >> end);
     }
+    unsigned newDeathLinks = 0;
+    if (deathLinkUnit) {
+        if (!parsed || end != "DEATHLINK" || !(input >> newDeathLinks)) fail("invalid DeathLink state");
+        parsed = bool(input >> end);
+    }
     if (!parsed || magic != "PIKMIN_STATE" || version != schema || session != token || newReady > 1
         || newRepairs > 25 || newUnlocks > (schema >= 5 ? 255u : schema == 4 ? 127u : schema == 3 ? 63u : 31u) || newFlarlic > 10 - startingFlarlic
         || end != "END" || (input >> extra))
@@ -393,6 +408,14 @@ void pc_randomizer_update() {
     }
     for (int kind = 0; kind < 6; ++kind) benefits[kind] = newBenefits[kind];
     emperorDefeated = emperorDefeated || newEmperor != 0;
+    if (deathLinkUnit) {
+        if (!deathLinkBaseline) { deathLinksSeen = newDeathLinks; deathLinkBaseline = true; }
+        else if (newDeathLinks < deathLinksSeen) fail("state retracted received DeathLinks");
+        else {
+            deathLinksPending = std::min(3u, deathLinksPending + (newDeathLinks - deathLinksSeen));
+            deathLinksSeen = newDeathLinks;
+        }
+    }
     ready = newReady != 0;
     repairs = newRepairs;
     unlocks = newUnlocks;
@@ -515,6 +538,29 @@ void pc_randomizer_emperor_defeated() {
     std::filesystem::rename(directory / "emperor.tmp", directory / "emperor.txt");
     emperorDefeated = true;
     std::puts("[Pikmin Randomizer] GOAL: Emperor Bulblax defeated!");
+}
+int pc_randomizer_deathlink_casualties() {
+    return enabled && deathLinkUnit && ready && deathLinksPending ? int(deathLinkUnit) : 0;
+}
+void pc_randomizer_deathlink_induce(const void* piki) {
+    if (piki) inducedDeaths.insert(piki);
+}
+void pc_randomizer_deathlink_consume(int killed) {
+    if (!deathLinksPending) return;
+    // Fewer than a full unit on the field is not banked against future Pikmin.
+    --deathLinksPending;
+    std::printf("[Pikmin Randomizer] DEATHLINK_APPLIED killed=%d pending=%u\n", killed, deathLinksPending);
+}
+void pc_randomizer_observe_pikmin_death(const void* piki) {
+    if (!enabled || !deathLinkUnit) return;
+    if (piki && inducedDeaths.erase(piki)) return; // Induced casualties never feed the outgoing threshold.
+    FILE* file = std::fopen((directory / "deaths.txt").string().c_str(), "a");
+    if (!file) fail("cannot open Pikmin death journal");
+    // Each line is this run's running total; the runner credits the difference.
+    bool ok = std::fprintf(file, "%u\n", deathsReported + 1) > 0 && std::fflush(file) == 0;
+    ok = std::fclose(file) == 0 && ok;
+    if (!ok) fail("Pikmin death journal write failed");
+    ++deathsReported;
 }
 int pc_randomizer_repairs() { return (int)repairs; }
 const char* pc_randomizer_save_root() { return saveRoot.c_str(); }

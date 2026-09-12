@@ -1,8 +1,10 @@
-# Current playtest settings. Install pikmin_randomizer-0.27.0.apworld to generate.
+# Current playtest settings. Install pikmin_randomizer-0.29.0.apworld to generate.
 name: Player1
 game: Pikmin Randomizer
 Pikmin Randomizer:
   goal: emperor_bulblax  # or repairs for the original 25-repair finish
+  death_link: false  # true: every death_link_pikmin ordinary Pikmin deaths sends a link; each received link kills up to that many field Pikmin
+  death_link_pikmin: 10  # 1..100
   starting_area: randomized
   # Used only for randomized starts. Trial is not permitted in this list.
   random_start_areas: [impact, forest, navel, spring]

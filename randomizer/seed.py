@@ -42,8 +42,13 @@ class SeedRandom:
         return values
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, death_link=False, death_link_pikmin=10):
     if type(bomb_rock_weight) is not int or not 0 <= bomb_rock_weight <= 10: raise ValueError("bomb_rock_weight must be 0..10")
+    if type(death_link) is not bool: raise ValueError("invalid death_link")
+    if type(death_link_pikmin) is not int or not 1 <= death_link_pikmin <= 100: raise ValueError("death_link_pikmin must be 1..100")
+    if death_link:
+        if legacy_checks: raise ValueError("death link requires modern checks")
+        collection_checks = True
     if bomb_rock_weight:
         if legacy_checks: raise ValueError("bomb deliveries require modern checks")
         collection_checks = True
@@ -163,6 +168,11 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
     if goal_mode == "emperor_bulblax":
         result["goal_mode"] = goal_mode
         result["capabilities"].append("emperor-goal-v1")
+    if death_link:
+        # One unit sets both the outgoing threshold and incoming casualties.
+        result["death_link"] = True
+        result["death_link_pikmin"] = death_link_pikmin
+        result["capabilities"].append("death-link-v1")
     validate(result)
     return result
 
@@ -248,6 +258,11 @@ def validate(m):
     if type(m) is dict and 'goal_mode' in m:
         expected.add('goal_mode')
         if m.get('schema') != 9 or m['goal_mode'] != 'emperor_bulblax': raise ValueError('invalid goal_mode')
+    if type(m) is dict and ('death_link' in m or 'death_link_pikmin' in m):
+        expected.update(('death_link', 'death_link_pikmin'))
+        if m.get('schema') != 9 or m.get('death_link') is not True or type(m.get('death_link_pikmin')) is not int \
+                or not 1 <= m['death_link_pikmin'] <= 100:
+            raise ValueError('invalid death_link')
     if type(m) is dict and 'no_sticks' in m:
         expected.add('no_sticks')
         if m.get('schema') != 9 or m['no_sticks'] is not True:
@@ -318,6 +333,7 @@ def validate(m):
     if m.get('miniboss_enemies'):
         fixed['capabilities'] += ['miniboss-slots-v1']
     if m.get("goal_mode") == "emperor_bulblax": fixed["capabilities"].append("emperor-goal-v1")
+    if m.get("death_link"): fixed["capabilities"].append("death-link-v1")
     for key, value in fixed.items():
         if type(m[key]) is not type(value) or m[key] != value:
             raise ValueError(f"unsupported {key}: {m[key]!r}")

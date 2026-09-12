@@ -23,6 +23,8 @@ def main():
     gen.add_argument('--all-areas', action='store_true', help='Enable five-area catalog with a fixed start')
     gen.add_argument('--miniboss-enemies', action='store_true', help='Experimental: three adult slots become Puffstool, Mamuta and Cannon Beetle')
     gen.add_argument('--bomb-rock-weight', type=int, default=1, choices=range(11), help='Bomb delivery filler weight (0 disables; default 1)')
+    gen.add_argument('--death-link', action='store_true', help='AP DeathLink: every N ordinary Pikmin deaths sends a link; each received link kills up to N field Pikmin')
+    gen.add_argument('--death-link-pikmin', type=int, default=10, choices=range(1, 101), metavar='N', help='DeathLink unit in Pikmin (1..100; default 10)')
     gen.add_argument('--per-spawn-enemies', action='store_true', help='Opt-in named adult Bulborb/Bulbear slots; overrides global family swaps')
     gen.add_argument('--group-spawn-enemies', action='store_true', help='Experimental dwarf/Sheargrub groups; implies per-spawn adults')
     gen.add_argument('--enemy-shuffle', action='store_true', help='Seeded compatible enemy-family swaps')
@@ -48,7 +50,7 @@ def main():
     enemy_spoiler.add_argument('--output', type=Path)
     args = parser.parse_args()
     if args.command == "generate":
-        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas, enemy_shuffle=args.enemy_shuffle, collection_checks=args.collection_checks, starting_flarlic=args.starting_flarlic, randomize_color_stats=args.randomize_color_stats, progressive_color_stats=args.progressive_color_stats, permanent_checks=args.permanent_checks, per_spawn_enemies=args.per_spawn_enemies, group_spawn_enemies=args.group_spawn_enemies, miniboss_enemies=args.miniboss_enemies, campaign_enemies=args.campaign_enemies, bomb_rock_weight=args.bomb_rock_weight, goal_mode=args.goal, combined_captain=bool(args.collection_checks or args.permanent_checks or args.progressive_color_stats or args.per_spawn_enemies or args.group_spawn_enemies or args.miniboss_enemies or args.campaign_enemies or args.goal == "emperor_bulblax"))
+        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas, enemy_shuffle=args.enemy_shuffle, collection_checks=args.collection_checks, starting_flarlic=args.starting_flarlic, randomize_color_stats=args.randomize_color_stats, progressive_color_stats=args.progressive_color_stats, permanent_checks=args.permanent_checks, per_spawn_enemies=args.per_spawn_enemies, group_spawn_enemies=args.group_spawn_enemies, miniboss_enemies=args.miniboss_enemies, campaign_enemies=args.campaign_enemies, bomb_rock_weight=args.bomb_rock_weight, death_link=args.death_link, death_link_pikmin=args.death_link_pikmin, goal_mode=args.goal, combined_captain=bool(args.collection_checks or args.permanent_checks or args.progressive_color_stats or args.per_spawn_enemies or args.group_spawn_enemies or args.miniboss_enemies or args.campaign_enemies or args.goal == "emperor_bulblax"))
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8") as f:
             f.write(json.dumps(manifest, indent=2) + "\n")
@@ -76,6 +78,9 @@ def main():
                          "Population entries record reached milestones, not the current population.", ""]
                 from .benefits import benefit_lines
                 lines += benefit_lines(manifest, session.inventory) + [""]
+                if session.death_link_unit:
+                    from .session import death_link_summary
+                    lines += [death_link_summary(manifest, session.data), ""]
                 from .stats import profile_lines
                 if "color_stats" in manifest or manifest.get("progressive_color_stats"):
                     lines += ["## Color profiles", ""] + profile_lines(manifest, session.inventory) + [""]

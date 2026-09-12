@@ -25,8 +25,9 @@ class NativeRun:
                      f"PROFILE {session.manifest['profile']}\nCATALOG {session.manifest['catalog']}\nPLACEMENT identity-v1\n" +
                      ("GOAL emperor25\n" if session.manifest.get("goal_mode") == "emperor_bulblax" else "GOAL 25\n") + "DAYS repeat-day29-v1\n" +
                      (f"COLOR {session.manifest['starting_color']}\n" if session.manifest['schema'] >= 4 else '') +
-                     (f"CHECKSET {int(session.manifest['permanent_checks']) + 2 * int(session.manifest.get('no_exploration', False)) + 4 * int(session.manifest.get('color_population', False)) + 8 * int(session.manifest.get('compact_population', False)) + 16 * int(session.manifest.get('no_sticks', False))}\n" if session.manifest['schema'] >= 9 else '') + (f"ENEMIES {session.manifest['enemy_mask']}\n" if session.manifest['schema'] >= 6 else '') + (f"STARTING_FLARLIC {session.manifest['starting_flarlic']}\n" if "starting_flarlic" in session.manifest else "") + bootstrap_stats(session.manifest) + ("PROGRESSIVE_STATS " + ("2" if "progressive-color-stats-v2" in session.manifest["capabilities"] else "1") + "\n" if session.manifest.get("progressive_color_stats") else "") + (("BENEFITS " + str(1 + int(bool(session.manifest.get("bomb_rock_weight"))) + 2 * int(bool(session.manifest.get("combined_captain")))) + "\n") if session.manifest.get("benefit_items") else "") + bootstrap_slots(session.manifest) + "END\n")
+                     (f"CHECKSET {int(session.manifest['permanent_checks']) + 2 * int(session.manifest.get('no_exploration', False)) + 4 * int(session.manifest.get('color_population', False)) + 8 * int(session.manifest.get('compact_population', False)) + 16 * int(session.manifest.get('no_sticks', False))}\n" if session.manifest['schema'] >= 9 else '') + (f"ENEMIES {session.manifest['enemy_mask']}\n" if session.manifest['schema'] >= 6 else '') + (f"STARTING_FLARLIC {session.manifest['starting_flarlic']}\n" if "starting_flarlic" in session.manifest else "") + bootstrap_stats(session.manifest) + ("PROGRESSIVE_STATS " + ("2" if "progressive-color-stats-v2" in session.manifest["capabilities"] else "1") + "\n" if session.manifest.get("progressive_color_stats") else "") + (("BENEFITS " + str(1 + int(bool(session.manifest.get("bomb_rock_weight"))) + 2 * int(bool(session.manifest.get("combined_captain")))) + "\n") if session.manifest.get("benefit_items") else "") + (f"DEATHLINK {session.death_link_unit}\n" if session.death_link_unit else "") + bootstrap_slots(session.manifest) + "END\n")
         self.seen = 0
+        self.deaths_seen = 0
         self.handshaken = False
         self.write_state(False)
 
@@ -55,17 +56,33 @@ class NativeRun:
                     raise ValueError("invalid native check journal")
                 self.session.collect(self.session.names[int(line)])
                 self.seen += 1
+        deaths = self.directory / "deaths.txt"
+        if self.handshaken and self.session.death_link_unit and deaths.exists():
+            # Each line is this run's running count of ordinary Pikmin deaths.
+            data = deaths.read_bytes()
+            lines = data[:data.rfind(b"\n") + 1].splitlines()
+            if lines:
+                if not lines[-1].isdigit() or int(lines[-1]) < self.deaths_seen or len(lines) != int(lines[-1]):
+                    raise ValueError("invalid native death journal")
+                total = int(lines[-1])
+                self.session.record_deaths(total - self.deaths_seen)
+                self.deaths_seen = total
 
 
 async def ap_connect(session, server, password, ready):
     import websockets
     if not server.startswith(("ws://", "wss://")):
         server = "ws://" + server
+    import time
+    unit = session.death_link_unit
     async with websockets.connect(server) as ws:
         authenticated = False
         room_seed = None
         sent = set()
         goal_sent = False
+        # Links accumulated while offline are not replayed on (re)connect.
+        links_sent = session.data["pikmin_deaths"] // unit if unit else 0
+        sent_times = set()
         while True:
             try:
                 raw = await asyncio.wait_for(ws.recv(), 0.2)
@@ -79,7 +96,7 @@ async def ap_connect(session, server, password, ready):
                         await ws.send(json.dumps([dict(cmd="Connect", game=GAME,
                             name=session.manifest["slot"], password=password,
                             uuid=session.fingerprint, version=dict(major=0, minor=6, build=0, **{"class": "Version"}),
-                            items_handling=7, tags=["AP"], slot_data=True)]))
+                            items_handling=7, tags=["AP", "DeathLink"] if unit else ["AP"], slot_data=True)]))
                     elif cmd == "ConnectionRefused":
                         raise ValueError("AP connection refused: " + str(packet.get("errors")))
                     elif cmd == "Connected":
@@ -96,7 +113,19 @@ async def ap_connect(session, server, password, ready):
                             raise ValueError("AP sent items before slot authentication")
                         session.receive(packet["index"], [item["item"] for item in packet["items"]])
                         ready[0] = True
+                    elif cmd == "Bounced" and unit and "DeathLink" in packet.get("tags", []):
+                        data = packet.get("data") or {}
+                        # Skip our own echoes; the server bounces to every DeathLink client.
+                        if authenticated and data.get("time") not in sent_times and data.get("source") != session.manifest["slot"]:
+                            session.receive_death_link()
+                            print(f"DeathLink received from {data.get('source')}: {data.get('cause', '')}", flush=True)
             if authenticated and ready[0]:
+                while unit and session.data["pikmin_deaths"] // unit > links_sent:
+                    links_sent += 1
+                    stamp = time.time()
+                    sent_times.add(stamp)
+                    await ws.send(json.dumps([dict(cmd="Bounce", tags=["DeathLink"], data=dict(
+                        time=stamp, source=session.manifest["slot"], cause=f"{session.manifest['slot']} lost {unit} Pikmin"))]))
                 pending = set(session.data["checked"]) - sent
                 if pending:
                     await ws.send(json.dumps([dict(cmd="LocationChecks", locations=[session.manifest["locations"][n] for n in sorted(pending)])]))

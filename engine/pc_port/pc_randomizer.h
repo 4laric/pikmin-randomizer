@@ -54,3 +54,11 @@ void pc_randomizer_save_campaign(const void* source);
 
 bool pc_randomizer_emperor_available();
 void pc_randomizer_emperor_defeated();
+
+// DeathLink. Casualties are how many living field Pikmin a pending link should
+// take (0 when nothing is pending); mark each induced Pikmin before killing it,
+// then consume the link once. Ordinary deaths are journaled for the runner.
+int pc_randomizer_deathlink_casualties();
+void pc_randomizer_deathlink_induce(const void* piki);
+void pc_randomizer_deathlink_consume(int killed);
+void pc_randomizer_observe_pikmin_death(const void* piki);
