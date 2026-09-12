@@ -51,6 +51,8 @@ The cave inventory distinguishes:
 - References from campaign, Challenge and Battle retail tables.
 - References only from the alternate KFes Challenge table, selected by
   `mKFesVersion` in `src/plugProjectKandoU/vsGameSection.cpp:436`.
+- Stage registrations outside the retail inventory, recorded without claiming
+  that an active entrance exists.
 - Files not referenced by either table set, whose status remains unresolved.
 
 The report preserves overlapping retail/KFes references. A filename containing
@@ -83,8 +85,9 @@ numbers (`include/JSystem/JMessage/data.h:55` and `TResource.h`).
 The bounded BMG reader accepts the observed ordered MID form, group zero,
 eight-byte INF entries and encoding 3 (Shift-JIS) or 1 (single-byte font).
 Encoding 1 non-ASCII text remains unresolved without a font mapping. Missing,
-empty and control-code-bearing names have explicit statuses; control payloads
-are not silently stripped. English line breaks are preserved, not renamed.
+empty and unrecognized-control names have explicit statuses. The cave-title
+exception below retains known presentation controls separately. English line
+breaks are preserved, not renamed.
 
 Config archive selection is in `gamePelletList.cpp:78`: PAL uses its PAL
 archive; the non-PAL Japanese/English branches select Japanese/US archives.
@@ -93,6 +96,35 @@ Message archive names and language selection are in
 `src/sysGCU/messageMgr.cpp:20` and `:44`. This report probes every onboard
 language table using the **US display offsets**. It does not certify foreign
 regional dictionary/UI joins or treat all onboard language files as complete.
+
+## Campaign cave name follow-up
+
+`campaign_cave_names` joins each stable inventory cave ID to the filename/tag
+triples in `user/Abe/stages.txt`, following `CourseInfo::read` framing in
+`src/plugProjectKandoU/gameStages.cpp:206` and `CaveOtakaraInfo::read` at `:47`.
+It then uses the 14 campaign entries from
+`src/plugProjectOgawaU/ogObjAnaDemo.cpp:12` to obtain BMG message numbers.
+Unknown tags, duplicate joins, and missing campaign references fail validation.
+The Challenge placeholder entries in that title table are not used as names.
+
+English cave titles contain presentation tags. For this lookup only, the reader
+recognizes `FF0001` (font size, two-byte payload), `030004` (reset font height,
+no payload), and `030005` (set font height, two-byte payload). Their behavior is
+in `src/sysGCU/messageRendering.cpp:409` and `:506`; length-prefixed framing is
+in `src/JSystem/JMessage/processor.cpp:260`. They change sizing, not character
+content. Embedded NUL payload bytes are not mistaken for string terminators.
+The result status is `resolved_with_presentation_controls`, with tags and exact
+payload hex retained beside the literal title. Other controls remain unresolved;
+this is not a general BMG renderer and treasure-name behavior stays unchanged.
+
+`stage_cave_references` also retains all 26 source registrations, including nine
+extensionless references on `test_map` that do not name existing disc files.
+No extension or replacement filename is guessed. Three retail-course `test`
+tags explicitly register `caveinfo.txt`; it now has the separate
+`stage_registered_outside_retail_inventory` classification. Registration alone
+does not prove an entrance is active or change the 14-cave campaign inventory.
+Only the regional audit files changed in this follow-up, based on integration
+`feb8f31324f69a80c731616caa55560f41aa07a7`.
 
 ## Local validation results
 
@@ -106,8 +138,11 @@ Validated against the local US GPVE01 revision 0 disc using a freshly generated
   `g_futa_daisen` normal name contains control codes and remains unresolved.
   The French, German, Dutch, Italian and Spanish archives each have 201 empty
   normal-name slots at these US offsets. Archive presence is insufficient.
-- Across 85 cave-definition files: 54 retail referenced, five KFes-only, and
-  26 with unresolved unreferenced status.
+- All 14 campaign cave message IDs reconcile. English resolves all 14 with
+  sizing controls retained; Japanese resolves all 14 directly. The other five
+  onboard language tables have 14 empty cave-title slots each.
+- Across 85 cave-definition files: 54 retail referenced, five KFes-only, one
+  registered outside the retail inventory, and 25 unresolved/unreferenced.
 - Each onboard regional runtime archive has 188 Otakara, 13 Item, 51 Carcass,
   four NumberPellet and one Fruit entries. Source IDs and order match the US
   lists. Japanese differs in 131 Otakara and two Item records; PAL differs in
@@ -118,16 +153,19 @@ Validated against the local US GPVE01 revision 0 disc using a freshly generated
   for `Sokkuri` and `UmiMushiBlind`. The report retains the field differences;
   it does not substitute loose data into runtime results.
 
-Eleven synthetic tests cover index/dictionary separation, message variants,
+Nineteen synthetic tests cover index/dictionary separation, message variants,
 Shift-JIS, empty/control/unsupported-font names, malformed BMG tables,
 regional key movement, stale provenance, catalog drift, unloaded records and
-table-backed KFes classification. No native build or gameplay test is claimed.
+table-backed KFes classification, stage framing, cave-name joins, absent names,
+non-retail registrations and bounded presentation control handling. Local US
+disc runs validate all joins. No native build or gameplay test is claimed.
 
 ## Remaining acceptance
 
 Keep #147 open. Actual PAL/JPN discs and revisions, localized UI rendering,
 regional asset availability, generated placement instances, natural collection
-and save/load need validation. The 26 unreferenced cave files need further
-reachability/classification evidence. Controlled Japanese text and broader
-localized cave/enemy names remain additional work. This source audit does not
+and save/load need validation. The 25 unreferenced cave files and the separate
+non-retail registration need further reachability/classification evidence.
+Controlled Japanese treasure text and broader localized mode/enemy names remain
+additional work. This source audit does not
 enable regional support or close runtime acceptance in #140.
