@@ -40,4 +40,3 @@ class TopologyTests(unittest.TestCase):
         self.assertFalse(report['native_conversion_approved'])
 
 if __name__=='__main__':unittest.main()
-
