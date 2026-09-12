@@ -42,3 +42,5 @@ The user heard a continuous dial tone during an automated preview. It stopped wh
 The local engineering launchers temporarily use the same silent device while this is investigated. Normal P1/AP audio settings and system volume are unchanged.
 
 The final silent fixture also passed the previous no-Pod Onion/bolt/combat/corpse path (`1aaf0c7570e8478181fa0e7f9ba402eb`), exercising the guards in the same native build. Its PCM was captured locally for comparison; a renderer or sequencing root cause has not been established. Native source snapshot: `9630447e`.
+
+Subsequent #112 integration: [two-floor cave checkpoints](PIKMIN2_CAVE_CHECKPOINTS.md) now persist squad identity, maturity, health and receipts together at floor boundaries. Standalone preview launchers retain their earlier save behavior.

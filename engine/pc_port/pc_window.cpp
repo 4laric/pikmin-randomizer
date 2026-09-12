@@ -5,6 +5,7 @@
 #endif
 #include "pc_window.h"
 #include "pc_bbft.h"
+#include "pc_p2_cave.h"
 #ifdef __linux__
 #include "pc_gpu_preference.h"
 #endif
@@ -622,6 +623,9 @@ void pc_window_poll_events(PADStatus* pad) {
                 }
                 break;
             case SDL_KEYDOWN:
+                if (event.key.keysym.scancode == SDL_SCANCODE_F6 && !event.key.repeat && !sSettingsMenuOpen) {
+                    pc_p2_cave_request();
+                }
                 if (event.key.keysym.scancode == SDL_SCANCODE_F9 && !event.key.repeat) {
                     pc_bbft_warp();
                 }

@@ -9,6 +9,7 @@
 #include "GameCoreSection.h"
 #include "pc_bbft.h"
 #include "pc_p2_preview.h"
+#include "pc_p2_cave.h"
 #include "pc_randomizer.h"
 #include "MapCode.h"
 #include <fstream>
@@ -2078,6 +2079,7 @@ static void randomizerApplyBenefits(Navi* navi, MapMgr* map)
 
 void GameCoreSection::updateAI()
 {
+    pc_p2_cave_tick();
     if (pc_randomizer_expanded()) {
         AICONST.mMaxPikisOnField(pc_randomizer_field_capacity());
         const bool active = !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll

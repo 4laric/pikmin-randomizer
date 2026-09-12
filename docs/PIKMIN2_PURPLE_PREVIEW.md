@@ -58,3 +58,5 @@ Validation: Windows production/fixture builds; native flare UV/count/centering a
 The fixture assigns transport actions explicitly and parks only the captain away from the cargo route after testing plucking. It does not teleport carriers or treasure. Final run `219f70f5dc70402f8afc5a0c020472e8`, using native `6a1c352be46e` and the speed-scaled detector, also passed the complete loop and captain return hook. It recorded one drop/reacquisition on the approach before successful delivery. Logs, binaries and captures remain in ignored local output directories.
 
 Final Python regression: 156 tests and eight subtests passed (output/pikmin2-polish119-tests-final.log).
+
+Subsequent #112 integration: [two-floor cave checkpoints](PIKMIN2_CAVE_CHECKPOINTS.md) now persist squad identity, maturity, health and receipts together at floor boundaries. Standalone preview launchers retain their earlier save behavior.

@@ -14,6 +14,7 @@
 #include "system.h"
 #include "pc_p2_economy.h"
 #include "pc_p2_purple.h"
+#include "pc_p2_cave.h"
 #include "GoalItem.h"
 #include "ItemMgr.h"
 #include "Generator.h"
@@ -96,6 +97,7 @@ void pc_p2_preview_setup() {
         podTitle("");
     }
     pc_p2_purple_setup();
+    pc_p2_cave_setup();
     gsys->setHeap(previousHeap);
     const float points[][2]={{-85,0},{-175,-100},{185,-180},{-220,-180}};
     for (const auto& point : points)
@@ -123,7 +125,7 @@ bool pc_p2_preview_deliver(Pellet* pellet) {
         else {
             auto found=corpses.find(pellet->mPelletView);
             if(found==corpses.end()) {std::fprintf(stderr,"Unregistered P2 pod cargo id=%08x view=%p pellet=%p treasure=%p; refusing seed side effects\n",pellet->mConfig->mModelId.mId,(void*)pellet->mPelletView,(void*)pellet,(void*)previewTreasure);std::abort();}
-            receipt=found->second;value=corpseValue;
+            receipt="corpse:"+pc_p2_cave_receipt_prefix()+found->second.substr(7);value=corpseValue;
         }
         bool added=economy.credit(receipt,value);
         podTitle((pellet==previewTreasure?treasureId:"Dwarf Bulborb")+" +"+std::to_string(added?value:0));

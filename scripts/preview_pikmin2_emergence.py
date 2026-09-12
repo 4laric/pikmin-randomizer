@@ -13,7 +13,7 @@ from scripts.preview_pikmin2_room import generator, overlay, records
 UNIT = 'room_north_tutorial_1_snow'
 
 
-def prepare(assets, imported, treasure, output, assembled=None, floor=1, pod=None, purple=None):
+def prepare(assets, imported, treasure, output, assembled=None, floor=1, pod=None, purple=None, violet=True, squad=None):
     if purple and not pod:raise ValueError('Purple preview requires Research Pod')
     if floor not in (1,2) or (floor==2 and assembled):
         raise ValueError('Choose floor 1 assembly or standalone floor 2')
@@ -75,7 +75,7 @@ def prepare(assets, imported, treasure, output, assembled=None, floor=1, pod=Non
         stage=re.sub(rb'(?m)^navi_start[^\r\n]*',b'navi_start -680.0 500.0',stage)
         # Walk out along the source return route in reverse, without reversing its links.
         walk=[(-340,510),(-85,595),(170,560),(425,425),(595,255),(660,0),(660,-170),(600,-325),(475,-425)]
-    if purple:
+    if purple and violet:
         template=next(r for r in records(assets/'dataDir/stages/chal0/default.gen') if r[72:76]==b'ssob' and r[76:80]==b'\x02\x00\x00\x00')
         count=struct.unpack_from('>I',actors,20)[0]
         positions=[(-140,60),(140,60)] if floor==1 else [(-600,350),(-400,400)]
@@ -88,6 +88,17 @@ def prepare(assets, imported, treasure, output, assembled=None, floor=1, pod=Non
             struct.pack_into('>I',flower,80,5|(1<<6)) # Pom, Red legacy storage color; explicit P2 Violet metadata.
             actors.extend(flower)
         struct.pack_into('>I',actors,20,count+len(positions))
+    if squad is not None:
+        if not 1 <= len(squad) <= 100: raise ValueError('Cave entry requires 1-100 survivors')
+        starts=[match.start() for match in re.finditer(b'    0.0v',actors)]+[len(actors)]
+        entries=[bytearray(actors[a:b]) for a,b in zip(starts,starts[1:])]
+        pikis=[e for e in entries if bytes(e[16:48]).rstrip(b'\0')==b'preview red pikmin']
+        if len(pikis)!=20: raise ValueError('Expected twenty scaffold spawn templates')
+        entries=[e for e in entries if bytes(e[16:48]).rstrip(b'\0')!=b'preview red pikmin']
+        for i in range(len(squad)):
+            p=bytearray(pikis[i%len(pikis)]);struct.pack_into('>I',p,8,1000+i)
+            entries.append(p)
+        actors=actors[:24]+b''.join(entries);struct.pack_into('>I',actors,20,len(entries))
     overrides={'dataDir/stages/chal0.ini':stage,
                'dataDir/stages/chal0/default.gen':bytes(actors),
                'dataDir/courses/pikmin2room/room.mod':model,
@@ -114,10 +125,12 @@ def prepare(assets, imported, treasure, output, assembled=None, floor=1, pod=Non
     if floor==2:
         (run/'p2-second-floor.txt').write_text(str(len(walk))+'\n'+'\n'.join(f'{x} {z}' for x,z in walk))
     overlay(assets,run/'assets',overrides)
-    (run/'preview.json').write_text(json.dumps(dict(unit=name,floor=floor,experimental=True,ap=False,save_resume=False,
+    (run/'preview.json').write_text(json.dumps(dict(unit=name,floor=floor,experimental=True,ap=False,save_resume=squad is not None,
         assembled_geometry=bool(assembled),pod=bool(pod),purple=bool(purple),complete_floor=False,
-        actors=('20 Reds and source-configured treasure; Dwarf corpse on floor 1' if pod else '20 Reds, bolt and temporary Onion; Dwarf on floor 1'),
-        limitations='Engineering layout; no actual cave roster, descent or campaign persistence. Purple support is experimental and opt-in.'),indent=2))
+        actors=(f'{len(squad)} transferred survivors; source-configured treasure' if squad is not None else
+                '20 Reds and source-configured treasure; Dwarf corpse on floor 1' if pod else '20 Reds, bolt and temporary Onion; Dwarf on floor 1'),
+        limitations=('Floor boundaries are saved by the campaign runner; no mid-floor save, surface map or full cave roster.' if squad is not None else
+                     'Engineering layout; no actual cave roster, descent or campaign persistence. Purple support is experimental and opt-in.')),indent=2))
     return run
 
 
