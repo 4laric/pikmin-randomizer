@@ -148,10 +148,17 @@ async def serve(session, run, process=None, server=None, password=None):
             raise ValueError("AP mode requires --server")
         async def reconnect():
             import websockets
+            from websockets.exceptions import InvalidHandshake
             while True:
                 try:
                     await ap_connect(session, server, password, ready)
-                except (OSError, websockets.ConnectionClosed) as exc:
+                except InvalidHandshake:
+                    ready[0] = False
+                    print("AP connection handshake failed. Check the server address and port, "
+                          "whether it requires ws:// or wss://, and that the room is running; "
+                          "retrying in 2 seconds.", flush=True)
+                    await asyncio.sleep(2)
+                except (OSError, asyncio.TimeoutError, websockets.ConnectionClosed) as exc:
                     ready[0] = False
                     print(f"AP disconnected: {exc}; retrying", flush=True)
                     await asyncio.sleep(2)
