@@ -129,6 +129,7 @@ static void capture(const char* path="p2-room.ppm") {
     for(int y=h-1;y>=0;--y)std::fwrite(pixels.data()+size_t(y)*w*3,1,size_t(w)*3,f);std::fclose(f);
 }
 #include "preview_p2_purple.inc"
+#include "preview_p2_cargo.inc"
 #include "preview_p2_cave.inc"
 #include "preview_p2_snow.inc"
 class RoomApp : public PlugPikiApp {
@@ -145,6 +146,7 @@ public:
         Navi* n=naviMgr->getNavi();if(!n || !n->getCurrState() || (!pc_p2_purples_enabled() && phase<=1 && n->getCurrState()->getID()!=NAVISTATE_Walk) || gameflow.mPauseAll || gameflow.mIsUIOverlayActive)return result;
         static bool digitsVerified=false;
         if(!digitsVerified){verifyCarryDigits();digitsVerified=true;}
+        if(cargoCarryFixture(n))return result;
         if(snowRenderFixture(n))return result;
         if(pc_p2_cave_floor()){caveFixture(n);std::fflush(stdout);return result;}
         if(pc_p2_purples_enabled()){purpleFixture(n);std::fflush(stdout);return result;}

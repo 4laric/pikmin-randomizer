@@ -132,7 +132,7 @@ def transition(state, token, text, receipts, allowed):
     return validate(next_state)
 
 
-def content_identity(imported, pods, purple, transitions=None, snow=None):
+def content_identity(imported, pods, purple, transitions=None, snow=None, roster=None):
     files = []
     for floor, unit in enumerate(('room_north_tutorial_1_snow', 'room_purple14x14_snow'), 1):
         for name in ('render.mod', 'collision.json'):
@@ -146,7 +146,14 @@ def content_identity(imported, pods, purple, transitions=None, snow=None):
     if snow:
         files.extend((f'snow/{p.name}', p) for p in sorted(snow.glob('snow_*.mod')))
         files.extend((f'snow/{name}', snow/name) for name in ('snow.json', 'p2-snow.txt'))
+    if roster:
+        files.append(('roster/manifest', roster/'content.json'))
+        files.extend((f'roster/{p.parent.name}/treasure.mod', p)
+                     for p in sorted((roster/'treasures').glob('*/treasure.mod')))
     digest = hashlib.sha256(b'P2_CAVE_LAYOUT_1:two-standalone-rooms:all-survivors:boundary-checkpoint')
+    if roster:
+        from experimental.pikmin2_roster import POLICY
+        digest.update((POLICY+':separate-cargo-instances:4+7-snow').encode('ascii'))
     for label, path in files:
         digest.update(label.encode() + b'\0' + hashlib.sha256(path.read_bytes()).digest())
     for floor, data in sorted((transitions or {}).items()):
@@ -158,6 +165,9 @@ def allowed_receipts(run, floor):
     words = (run/'p2-pod.txt').read_text().split()
     if len(words) != 7 or words[0] != 'P2_POD_1': raise ValueError('Unexpected Pod config')
     allowed = {f'treasure:{words[1]}': int(words[2])}
+    if (run/'p2-cargo.txt').exists():
+        from experimental.pikmin2_cargo import read_cargo
+        allowed = {f'treasure:{row["instance"]}': row['value'] for row in read_cargo(run/'p2-cargo.txt')}
     # Native enemy generator identifiers are derived from the actual prepared file.
     from scripts.preview_pikmin2_room import records
     for row in records(run/'assets/dataDir/stages/chal0/default.gen'):
@@ -167,10 +177,12 @@ def allowed_receipts(run, floor):
     return allowed
 
 
-def run_campaign(assets, imported, pods, purple, treasure, exe, session, transitions=None, snow=None):
+def run_campaign(assets, imported, pods, purple, treasure, exe, session, transitions=None, snow=None, roster=None):
     from experimental.pikmin2_transitions import read_transitions
     anchors = read_transitions(transitions)
-    content = content_identity(imported, pods, purple, anchors, snow)
+    if roster and not snow:
+        raise ValueError('Complete enemy roster requires Snow assets')
+    content = content_identity(imported, pods, purple, anchors, snow, roster)
     with SessionLock(session):
         checkpoint = session/'checkpoint.json'
         if checkpoint.exists(): state = load(checkpoint, content)
@@ -183,6 +195,9 @@ def run_campaign(assets, imported, pods, purple, treasure, exe, session, transit
             floor = state['floor']
             run = prepare(assets, imported, treasure, session/'runs', floor=floor, pod=pods[floor-1],
                           purple=purple, violet=floor == 2, squad=state['squad'])
+            if roster:
+                from experimental.pikmin2_roster import install
+                install(roster, run, floor, assets, imported)
             if snow:
                 install_snow(snow, run)
             token = uuid.uuid4().hex
@@ -208,7 +223,7 @@ def run_campaign(assets, imported, pods, purple, treasure, exe, session, transit
 
 
 def install_snow(imported, run):
-    """Opt in only the current scaffold dwarf; floor 2 has no enemy yet."""
+    """Opt in the prepared dwarf-family actors, including an optional roster."""
     import struct
     from scripts.preview_pikmin2_room import records
     from experimental.pikmin2_enemy import install
@@ -225,8 +240,10 @@ if __name__ == '__main__':
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--transitions', type=Path, help='Optional floor1.txt/floor2.txt world markers; requires matching native renderer hook')
     parser.add_argument('--snow', type=Path, help='Opt-in source Snow Bulborb visuals on existing scaffold enemies')
+    parser.add_argument('--roster', type=Path, help='All source treasures/enemy counts with deterministic engineering placements')
     args = parser.parse_args()
     run_campaign(args.assets.resolve(), args.imported.resolve(), [args.pod1.resolve(), args.pod2.resolve()],
                  args.purple.resolve(), args.treasure.resolve(), args.exe.resolve(), args.session.resolve(),
                  args.transitions.resolve() if args.transitions else None,
-                 args.snow.resolve() if args.snow else None)
+                 args.snow.resolve() if args.snow else None,
+                 args.roster.resolve() if args.roster else None)

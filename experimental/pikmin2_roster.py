@@ -10,7 +10,7 @@ import struct
 from experimental.pikmin2_collision import ground_height
 from scripts.preview_pikmin2_room import generator, records
 
-POLICY = 'P2_ENGINEERING_ROSTER_1'
+POLICY = 'P2_ENGINEERING_ROSTER_2'
 
 
 def placements(room, actors, kind):
@@ -97,6 +97,16 @@ def install(content_import, run, floor, assets, imported):
         raise ValueError('Unexpected Emergence roster count')
     if any(a['catalog_id']!='YellowKochappy' for a in enemies):raise ValueError('Unsupported enemy species')
     items=placements(room,targets,2);mobs=placements(room,enemies,0)
+    if floor==2:
+        for item in items:
+            if item['catalog_id']=='map01':
+                item['source_projected_position']=item['position']
+                x,z=-470,670
+                y=ground_height(room['vertices'],room['triangles'],x,z)
+                if y is None:raise ValueError('Atlas engineering placement lacks ground')
+                item['position']=[x,y,z]
+                item['placement_override']='Flat landing-side approach; native haul from source slot drops at slope near (-250,555).'
+                item['ground_projection_delta']=y-item['source_position'][1]
     audit(room,items+mobs,floor)
     # Legacy fixture accessors retain the Pod-selected item as their first cargo.
     selected=(run/'p2-pod.txt').read_text().split()[1]

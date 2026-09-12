@@ -59,3 +59,5 @@ four/seven Snow targets, twenty preserved Pikmin, and two preserved Violet
 flowers on floor2. Source generator hash stayed unchanged. Reinstall rejected.
 Evidence lives locally under this track's `output/roster114/result.json`.
 Native collection/combat and player clearance acceptance are integration work.
+
+Policy2 integration exception: the Atlas uses flat landing-side(-470,25,670) after its original native haul dropped at the slope. Original source/source-projected coordinates remain in runtime metadata; #123 tracks restoring the source placement.

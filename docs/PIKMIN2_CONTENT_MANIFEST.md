@@ -93,3 +93,5 @@ resolution. Local extraction prepared all three converted models successfully.
 A second independent extraction produced byte-identical content manifest and
 three model files. This is content preparation evidence, not native multi-item
 collection or complete cave gameplay acceptance.
+
+Subsequent integration: [roster playtest](PIKMIN2_ROSTER_PLAYTEST.md) adds optional native per-instance cargo and the full treasure/enemy counts. The original extraction manifest remains immutable and describes its preparation-stage limitations; the runtime installer writes a separate engineered roster report.

@@ -16,6 +16,10 @@
 #include "pc_p2_purple.h"
 #include "pc_p2_cave.h"
 #include "pc_p2_enemy.h"
+#include "pc_p2_cargo.h"
+#include <fstream>
+#include <filesystem>
+#include <vector>
 #include "GoalItem.h"
 #include "ItemMgr.h"
 #include "Generator.h"
@@ -36,6 +40,28 @@ static P2Economy economy;
 static std::string treasureId;
 static int treasureValue=0,corpseValue=0;
 static std::map<PelletView*,std::string> corpses;
+struct Cargo { P2CargoSpec spec; Pellet* actor; Shape* shape; PelletConfig* config; };
+static std::vector<Cargo> cargo;
+static Cargo* cargoFor(Pellet* p){for(auto& c:cargo)if(c.actor==p)return &c;return nullptr;}
+int pc_p2_preview_cargo_count(){return int(cargo.size());}
+Pellet* pc_p2_preview_cargo_at(int index){return index>=0&&index<int(cargo.size())?cargo[index].actor:nullptr;}
+Shape* pc_p2_preview_cargo_shape(Pellet* p){Cargo* c=cargoFor(p);return c?c->shape:nullptr;}
+// Build a fresh Parameters chain and CoreNode; never copy their intrusive links.
+// Values/immutable source name are copied individually. Configs live on App heap,
+// like the actors, for this one-floor process. They are not deleted on collection.
+static PelletConfig* privateConfig(PelletConfig* source,int weight,int slots) {
+    PelletConfig* result=new PelletConfig;
+#define COPY_VALUE(name) result->name.mValue=source->name.mValue
+    COPY_VALUE(mPelletName);COPY_VALUE(mPelletType);COPY_VALUE(mPelletColor);
+    COPY_VALUE(mUseDynamicMotion);COPY_VALUE(_A0);COPY_VALUE(_B0);COPY_VALUE(_C0);
+    COPY_VALUE(mMatchingOnyonSeeds);COPY_VALUE(mNonMatchingOnyonSeeds);
+    COPY_VALUE(mPelletScale);COPY_VALUE(mCarryInfoHeight);COPY_VALUE(mAnimSoundID);COPY_VALUE(mBounceSoundID);
+#undef COPY_VALUE
+    result->mModelId=source->mModelId;result->mPelletId=source->mPelletId;result->mUnusedId=source->mUnusedId;
+    result->mRepairAnimJointIndex=source->mRepairAnimJointIndex;
+    result->mCarryMinPikis.mValue=weight;result->mCarryMaxPikis.mValue=slots;
+    return result;
+}
 static void podTitle(const std::string& recent) {
     if(SDL_Window* window=SDL_GL_GetCurrentWindow()) {
         std::string title="Pikipelago - Research Pod: "+std::to_string(economy.total())+" Pokos";
@@ -54,13 +80,28 @@ void pc_p2_preview_setup() {
     previewTreasure = nullptr; previewShape = nullptr; delivered = false;
     podAnchor=nullptr;podShape=nullptr;corpses.clear();
     initialRepairs = playerState->getCurrParts();
+    cargo.clear();std::vector<P2CargoSpec> specs;
+    if(std::filesystem::exists("p2-cargo.txt")) {
+        std::ifstream config("p2-cargo.txt");if(!config){std::fprintf(stderr,"Cannot read P2 cargo config\n");std::abort();}
+        try{specs=p2ReadCargo(config);}catch(const std::exception& e){std::fprintf(stderr,"P2 cargo: %s\n",e.what());std::abort();}
+    }
+    std::map<uint32_t,Pellet*> spawned;
     Iterator it(pelletMgr);
     CI_LOOP(it) {
         Pellet* pellet = static_cast<Pellet*>(*it);
         if (pellet && pellet->mConfig->mModelId.mId == 'pr05') {
+            if(!specs.empty()) {
+                if(!pellet->mGenerator || !spawned.emplace(pellet->mGenerator->_70,pellet).second){std::fprintf(stderr,"P2 cargo duplicate/missing generator\n");std::abort();}
+                continue;
+            }
             if (previewTreasure) { std::fprintf(stderr,"P2 preview: duplicate treasure\n"); std::abort(); }
             previewTreasure = pellet;
         }
+    }
+    if(!specs.empty()) {
+        if(spawned.size()!=specs.size()){std::fprintf(stderr,"P2 cargo actor count mismatch\n");std::abort();}
+        for(const auto& spec:specs){auto found=spawned.find(spec.generator);if(found==spawned.end()){std::fprintf(stderr,"P2 cargo unknown actor %u\n",spec.generator);std::abort();}cargo.push_back({spec,found->second,nullptr,nullptr});}
+        previewTreasure=cargo.front().actor;
     }
     if (!previewTreasure) { std::fprintf(stderr,"P2 preview: treasure generator missing\n"); std::abort(); }
     const int previousHeap = gsys->setHeap(SYSHEAP_App);
@@ -68,7 +109,8 @@ void pc_p2_preview_setup() {
         static_cast<void*>(mapMgr->mMapModel->mVertexList),
         reinterpret_cast<void*>(gsys->mHeaps[SYSHEAP_Movie].mInitialStackTop),
         reinterpret_cast<void*>(gsys->mHeaps[SYSHEAP_Movie].mInitialStackLimit));
-    previewShape = gameflow.loadShape("courses/pikmin2room/treasure.mod", true);
+    std::string firstModel=cargo.empty()?"treasure":cargo.front().spec.model;
+    previewShape = gameflow.loadShape(("courses/pikmin2room/"+firstModel+".mod").c_str(), true);
     if (!previewShape) { std::fprintf(stderr,"P2 preview: converted treasure missing\n"); std::abort(); }
     // Stage finalSetup can run during rendering, where attachObjs is forbidden.
     // Upload only this late-loaded static model's textures through the PC texture API.
@@ -84,8 +126,10 @@ void pc_p2_preview_setup() {
         treasureId=id;economy.load("p2-economy.txt");
         podAnchor=itemMgr->getContainer(Red);
         if(!podAnchor){std::fprintf(stderr,"P2 pod anchor missing\n");std::abort();}
-        previewTreasure->mConfig->mCarryMinPikis.mValue=weight;
-        previewTreasure->mConfig->mCarryMaxPikis.mValue=capacity;
+        if(cargo.empty()) {
+            previewTreasure->mConfig->mCarryMinPikis.mValue=weight;
+            previewTreasure->mConfig->mCarryMaxPikis.mValue=capacity;
+        }
         podShape=gameflow.loadShape("courses/pikmin2room/pod.mod",true);
         if(!podShape){std::fprintf(stderr,"P2 pod shape missing\n");std::abort();}
         for(int i=0;i<podShape->mTexAttrCount;++i)if(podShape->mTexAttrList[i].mTexture)podShape->mTexAttrList[i].mTexture->attach();
@@ -96,6 +140,18 @@ void pc_p2_preview_setup() {
         }
         std::printf("[Pikipelago] P2_POD_READY treasure=%s value=%d weight=%d capacity=%d pokos=%d\n",id,treasureValue,weight,capacity,economy.total());
         podTitle("");
+    }
+    if(!cargo.empty()) {
+        if(!podAnchor){std::fprintf(stderr,"P2 cargo requires Pod\n");std::abort();}
+        for(auto& c:cargo) {
+            c.config=privateConfig(c.actor->mConfig,c.spec.weight,c.spec.slots);
+            c.actor->mConfig=c.config;
+            c.shape=&c==&cargo.front()?previewShape:gameflow.loadShape(("courses/pikmin2room/"+c.spec.model+".mod").c_str(),true);
+            if(!c.shape){std::fprintf(stderr,"P2 cargo missing model\n");std::abort();}
+            for(int i=0;i<c.shape->mTexAttrCount;++i)if(c.shape->mTexAttrList[i].mTexture)c.shape->mTexAttrList[i].mTexture->attach();
+            std::printf("P2_CARGO_READY generator=%u instance=%s model=%s value=%d weight=%d slots=%d config=%p\n",c.spec.generator,c.spec.instance.c_str(),c.spec.model.c_str(),c.spec.value,c.spec.weight,c.spec.slots,(void*)c.config);
+        }
+        treasureId=cargo.front().spec.instance;treasureValue=cargo.front().spec.value;
     }
     pc_p2_snow_setup();
     pc_p2_purple_setup();
@@ -109,9 +165,11 @@ void pc_p2_preview_setup() {
 }
 
 bool pc_p2_preview_draw(Pellet* pellet, Graphics& gfx, Matrix4f& matrix) {
-    if (!pc_pikipelago_room_preview() || pellet != previewTreasure || !previewShape || pellet->mConfig->mModelId.mId != 'pr05') return false;
-    previewShape->updateAnim(gfx,matrix,nullptr,pellet);
-    previewShape->drawshape(gfx,*gfx.mCamera,nullptr);
+    if(!pc_pikipelago_room_preview())return false;
+    Cargo* c=cargoFor(pellet);Shape* shape=c?c->shape:(pellet==previewTreasure?previewShape:nullptr);
+    if(!shape || pellet->mConfig->mModelId.mId!='pr05')return false;
+    shape->updateAnim(gfx,matrix,nullptr,pellet);
+    shape->drawshape(gfx,*gfx.mCamera,nullptr);
     return true;
 }
 
@@ -122,15 +180,16 @@ bool pc_p2_preview_deliver(Pellet* pellet) {
         if(naviMgr && pellet->mConfig->mModelId.mId=='navi' && pellet->mPelletView==static_cast<PelletView*>(naviMgr->getNavi())) {
             std::puts("[Pikipelago] P2_POD_CAPTAIN_RETURN pokos_unchanged=1 seeds=0");return true;
         }
-        std::string receipt;int value=0;
-        if(pellet==previewTreasure){receipt="treasure:"+treasureId;value=treasureValue;}
+        std::string receipt;int value=0;Cargo* c=cargoFor(pellet);
+        if(c){receipt="treasure:"+c->spec.instance;value=c->spec.value;}
+        else if(pellet==previewTreasure){receipt="treasure:"+treasureId;value=treasureValue;}
         else {
             auto found=corpses.find(pellet->mPelletView);
             if(found==corpses.end()) {std::fprintf(stderr,"Unregistered P2 pod cargo id=%08x view=%p pellet=%p treasure=%p; refusing seed side effects\n",pellet->mConfig->mModelId.mId,(void*)pellet->mPelletView,(void*)pellet,(void*)previewTreasure);std::abort();}
             receipt="corpse:"+pc_p2_cave_receipt_prefix()+found->second.substr(7);value=corpseValue;
         }
         bool added=economy.credit(receipt,value);
-        podTitle((pellet==previewTreasure?treasureId:(pc_p2_enemy_name(pellet->mPelletView)?pc_p2_enemy_name(pellet->mPelletView):"Dwarf Bulborb"))+" +"+std::to_string(added?value:0));
+        podTitle((c?c->spec.instance:pellet==previewTreasure?treasureId:(pc_p2_enemy_name(pellet->mPelletView)?pc_p2_enemy_name(pellet->mPelletView):"Dwarf Bulborb"))+" +"+std::to_string(added?value:0));
         pc_p2_purple_status();
         std::printf("[Pikipelago] P2_POD_RECEIPT id=%s value=%d new=%d pokos=%d seeds=0\n",receipt.c_str(),value,int(added),economy.total());
         if(pellet==previewTreasure) {

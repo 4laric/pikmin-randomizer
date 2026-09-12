@@ -28,3 +28,5 @@ The separate combined Snow fixture passed controller movement, treasure transpor
 Next content integration must implement per-instance multi-treasure registration and receipt handling before enabling the480-Poko roster. Surface round trip, authentic physical transition actors and full P2 behavior remain further gates.
 
 Final native revision: `292c6830`. Both markers were visually inspected in native captures after synthetic captain positioning; their world projection/material state is set explicitly. Final executable SHA-256: `d696330562032d720952875c52d94a2d725fa114661c57dc735952ebf1467af9`. Fresh local launcher: `output/p2-next/Play.cmd`; player session was not pre-run.
+
+Subsequent integration: [roster playtest](PIKMIN2_ROSTER_PLAYTEST.md) adds optional native per-instance cargo and the full treasure/enemy counts. The original extraction manifest remains immutable and describes its preparation-stage limitations; the runtime installer writes a separate engineered roster report.
