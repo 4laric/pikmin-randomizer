@@ -6,6 +6,7 @@ Run with the lifecycle fixture executable, never the player's game executable.
 import argparse
 from collections import Counter
 import json
+import hashlib
 import os
 from pathlib import Path
 import subprocess
@@ -52,8 +53,13 @@ class FixtureProcess:
         return result
 
 
+def executable_identity(exe):
+    return dict(path=str(exe.resolve()), sha256=hashlib.sha256(exe.read_bytes()).hexdigest())
+
+
 def run_test(args):
     args.output.mkdir(parents=True, exist_ok=False)
+    executable = executable_identity(args.exe)
     content = NativeContent(args.assets, args.imported, [args.pod1, args.pod2], args.purple,
                             args.treasure, args.transitions, args.snow, args.roster, args.transition_assets)
     campaign = uuid.uuid4().hex
@@ -99,7 +105,7 @@ def run_test(args):
     assert not failed['trip']['checkpoint']['receipts']
     assert SurfaceRunner(failed_ledger, content, args.exe, death_process).resume() == failed
     assert len(death_process.runs) == 1
-    report = dict(surface_renderer=False, final=final, failed=failed,
+    report = dict(surface_renderer=False, executable=executable, final=final, failed=failed,
                   processes=paused_process.runs+restore_process.runs+finish_process.runs+death_process.runs)
     (args.output/'result.json').write_text(json.dumps(report, indent=2))
     print(f'PASS: actual native two-floor handoffs, repeated entry restore, {sum(returned["receipts"].values())} Pokos returned once, extinction preserved. Host surface snapshot only.')
