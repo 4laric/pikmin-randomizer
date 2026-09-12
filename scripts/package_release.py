@@ -141,8 +141,9 @@ def stage_runtime_from_install(stage, install_dir):
     python = install_dir / "python.exe"
     if not python.is_file() or not (install_dir / "Lib").is_dir() or not (install_dir / "DLLs").is_dir():
         raise PackageError(f"--python-install must be a full CPython install directory (python.exe, Lib, DLLs): {install_dir}")
-    if not (install_dir / "Lib" / "tkinter").is_dir() or not (install_dir / "tcl").is_dir():
-        raise PackageError(f"{install_dir} has no tkinter/tcl; install python.org Python with 'tcl/tk and IDLE' selected")
+    # Tcl 9 builds (Python 3.14 install manager) ship the Tcl library inside the DLL; older ones need tcl/.
+    if not (install_dir / "Lib" / "tkinter").is_dir() or not (install_dir / "DLLs" / "_tkinter.pyd").is_file():
+        raise PackageError(f"{install_dir} has no tkinter; install python.org Python with 'tcl/tk and IDLE' selected")
     runtime = stage / "runtime"
     runtime.mkdir()
     for name in ("python.exe", "pythonw.exe", "LICENSE.txt"):
@@ -152,16 +153,19 @@ def stage_runtime_from_install(stage, install_dir):
         shutil.copy2(dll, runtime / dll.name)
     shutil.copytree(install_dir / "DLLs", runtime / "DLLs", ignore=shutil.ignore_patterns("__pycache__"))
     shutil.copytree(install_dir / "Lib", runtime / "Lib", ignore=lambda d, names: [n for n in names if n in INSTALL_SKIP_DIRS])
-    shutil.copytree(install_dir / "tcl", runtime / "tcl", ignore=shutil.ignore_patterns("__pycache__"))
+    if (install_dir / "tcl").is_dir():
+        shutil.copytree(install_dir / "tcl", runtime / "tcl", ignore=shutil.ignore_patterns("__pycache__"))
     site_packages = runtime / "Lib" / "site-packages"
     site_packages.mkdir(parents=True)
     vendor_websockets(site_packages)
     version = next((p.stem[len("python"):] for p in runtime.glob("python3*.dll") if p.stem != "python3"), "312")
     (runtime / f"python{version}._pth").write_bytes(b"Lib\nDLLs\n..\nLib\\site-packages\nimport site\n")
-    reported = subprocess.run([str(runtime / "python.exe"), "-c", "import sys, tkinter, websockets; print(sys.version.split()[0])"],
+    reported = subprocess.run([str(runtime / "python.exe"), "-B", "-c", "import sys, tkinter, websockets; print(sys.version.split()[0])"],
                               capture_output=True, text=True)
     if reported.returncode:
         raise PackageError("bundled runtime self-check failed: " + (reported.stderr or reported.stdout).strip())
+    for cache in runtime.rglob("__pycache__"):
+        shutil.rmtree(cache, ignore_errors=True)  # The audit forbids bytecode caches in the package.
     return reported.stdout.strip()
 
 
@@ -203,8 +207,39 @@ def stage_tkinter(runtime, tk_source):
 
 # --- Checks and outputs -------------------------------------------------------
 
-def audit(stage):
+RUNTIME_DLLS = ("SDL2.dll", "libwinpthread-1.dll", "libgcc_s_seh-1.dll", "libstdc++-6.dll")
+MINGW_BIN = Path(os.environ.get("MINGW_BIN", r"C:\msys64\mingw64\bin"))
+SYSTEM_DLLS = {"kernel32.dll", "user32.dll", "msvcrt.dll", "opengl32.dll", "ws2_32.dll", "comdlg32.dll", "ole32.dll",
+               "shell32.dll", "advapi32.dll", "gdi32.dll", "imm32.dll", "oleaut32.dll", "setupapi.dll", "version.dll",
+               "winmm.dll", "ntdll.dll", "shlwapi.dll", "dbghelp.dll", "uuid.dll", "crypt32.dll", "bcrypt.dll",
+               "userenv.dll", "ws2_32.dll", "psapi.dll", "dinput8.dll", "xinput1_4.dll", "hid.dll", "dwmapi.dll",
+               "d3d11.dll", "dxgi.dll", "avrt.dll", "mmdevapi.dll", "wininet.dll", "iphlpapi.dll"}
+
+
+def imported_dlls(binary):
+    """DLL names referenced by a PE file (string scan; covers import tables and LoadLibrary names)."""
+    import re
+    return {m.decode("ascii").lower() for m in re.findall(rb"[A-Za-z0-9_+.\-]{1,60}\.dll", binary.read_bytes())}
+
+
+def audit_binaries(stage):
+    """Every non-system DLL a packaged executable references must ship in bin/."""
+    bin_dir = stage / "bin"
+    if not bin_dir.is_dir():
+        return []
+    present = {p.name.lower() for p in bin_dir.iterdir()}
     problems = []
+    for binary in sorted(bin_dir.glob("*.exe")):
+        for name in sorted(imported_dlls(binary)):
+            if name in SYSTEM_DLLS or name.startswith("api-ms-win") or name.startswith("ext-ms-") or name in present:
+                continue
+            if name.startswith(("lib", "sdl")) or name.endswith(("-6.dll", "-1.dll")):
+                problems.append(f"{binary.name} needs {name}, which is not in bin/")
+    return problems
+
+
+def audit(stage):
+    problems = audit_binaries(stage)
     for path in sorted(p for p in stage.rglob("*") if p.is_file()):
         relative = path.relative_to(stage).as_posix()
         name = path.name.lower()
@@ -245,7 +280,11 @@ def package(version, exe, dlls=None, python_embed=None, tk_source=None, seed=Non
             python_install=None, extractor=None):
     exe = Path(exe).resolve()
     if dlls is None:
-        dlls = [exe.parent / "SDL2.dll", exe.parent / "libwinpthread-1.dll"]
+        # MinGW builds also need the GCC runtime; take it from beside the exe or from the toolchain.
+        dlls = []
+        for name in RUNTIME_DLLS:
+            candidates = [exe.parent / name] + ([MINGW_BIN / name] if name.startswith("lib") else [])
+            dlls.append(next((c for c in candidates if c.is_file()), candidates[0]))
     if python_embed and python_install:
         raise PackageError("use either --python-embed or --python-install, not both")
     output_dir = Path(output_dir or repo / "output")

@@ -71,3 +71,9 @@ python scripts/package_release.py --version <version> --python-install "C:\Users
 ```
 
 The packager copies python.exe/pythonw.exe, the interpreter DLLs, `DLLs`, `Lib` (without site-packages, tests, IDLE), `tcl`, vendors `websockets`, writes a `._pth` that pins the search path to the copy, and self-checks `import tkinter, websockets` with the bundled interpreter. `--python-embed` remains available for the embeddable zip. `bin/nectar-launcher.exe` (the engine's installer, built from the `pikmin_launcher` CMake target) is packaged automatically when it sits next to `nectar.exe`; it is what lets `Play.cmd` extract game data from a disc image.
+
+## What the package must carry
+
+`nectar.exe` and `nectar-launcher.exe` are MinGW builds and import `libgcc_s_seh-1.dll` and `libstdc++-6.dll` as well as `SDL2.dll` and `libwinpthread-1.dll`. The packager copies all four from beside the exe, falling back to the MinGW `bin` folder (override with the `MINGW_BIN` environment variable) for the GCC runtime, and the audit refuses a package whose executables reference a non-system DLL that is not in `bin/`. This was found by launching the package with a bare `PATH`; every earlier local test had the toolchain on `PATH` and hid it.
+
+The python.org install manager (Python 3.14) places installs under `AppData/Local/Python/pythoncore-3.14-64` and ships Tcl 9 inside the DLLs with no `tcl` folder; `--python-install` accepts that layout. Play.cmd quotes the bundled interpreter path so the package works from folders with spaces.

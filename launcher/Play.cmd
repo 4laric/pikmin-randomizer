@@ -8,8 +8,9 @@ set "PY="
 set "PYW="
 
 if exist "%ROOT%runtime\python.exe" (
-    set "PY=%ROOT%runtime\python.exe"
-    if exist "%ROOT%runtime\pythonw.exe" set "PYW=%ROOT%runtime\pythonw.exe"
+    rem Quoted: the package may live in a folder with spaces.
+    set PY="%ROOT%runtime\python.exe"
+    if exist "%ROOT%runtime\pythonw.exe" set PYW="%ROOT%runtime\pythonw.exe"
     goto :run
 )
 
@@ -40,7 +41,7 @@ if /I "%~1"=="--console" (
     %PY% "%ROOT%launcher\launcher.py" --pause-on-exit %2 %3 %4 %5 %6 %7 %8 %9
     exit /b %errorlevel%
 )
-if "%PYW%"=="" set "PYW=%PY%"
+if not defined PYW set PYW=%PY%
 rem The window keeps its own log. If it cannot open, the console launcher takes over.
 %PYW% "%ROOT%launcher\gui.py" %*
 if errorlevel 1 (
