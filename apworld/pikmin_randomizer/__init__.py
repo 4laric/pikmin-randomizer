@@ -145,6 +145,14 @@ class AttackRateUpgrades(MovementUpgrades):
     display_name = 'Attack Rate Upgrades Per Color'
 
 
+class GoalMode(Choice):
+    """Repairs completes at 25 repairs. Emperor Bulblax unlocks his fight at 25 repairs and requires defeating him; Final Trial Access is still required."""
+    display_name = "Goal"
+    option_repairs = 0
+    option_emperor_bulblax = 1
+    default = 1
+
+
 class BombRockWeight(Range):
     """Filler weight for deliveries of three loose bomb rocks at a landing Onion. Pikmin Delivery / Flower Shower weights are 2 / 1. Zero disables. Queued until a safe gameplay landing; not required by logic."""
     display_name = 'Bomb Rock Delivery Weight'
@@ -155,6 +163,7 @@ class BombRockWeight(Range):
 
 @dataclass
 class PikminOptions(PerGameCommonOptions):
+    goal: GoalMode
     bomb_rock_weight: BombRockWeight
     random_start_areas: RandomStartAreas
     initial_damage_min: InitialStatMinimum
@@ -234,11 +243,14 @@ class PikminRandomizerWorld(World):
         for name in active_names(self.manifest()):
             self.get_location(name).access_rule = lambda state, name=name: can_reach_manifest(
                 name, {item: state.count(item, self.player) for item in ITEM_IDS}, self.manifest())
-        self.multiworld.completion_condition[self.player] = lambda state: state.has(REPAIR, self.player, REPAIR_COUNT)
+        self.multiworld.completion_condition[self.player] = lambda state: state.has(REPAIR, self.player, REPAIR_COUNT) and (
+            self.manifest().get('goal_mode') != 'emperor_bulblax' or can_reach_manifest('Pikmin: Secret Safe',
+                {item: state.count(item, self.player) for item in ITEM_IDS}, self.manifest()))
 
     def manifest(self):
         if not hasattr(self, '_manifest'):
             self._manifest = generate(str(self.multiworld.seed_name), "ap", self.multiworld.player_name[self.player],
+                            goal_mode=("repairs", "emperor_bulblax")[self.options.goal.value],
                             expanded=bool(self.options.expanded_checks), bomb_rock_weight=self.options.bomb_rock_weight.value,
                             starting_area=('forest', 'navel', 'random', 'impact', 'spring', 'trial')[self.options.starting_area.value],
                             starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas), enemy_shuffle=bool(self.options.enemy_shuffle), collection_checks=bool(self.options.collection_checks), starting_flarlic=self.options.starting_flarlic.value, randomize_color_stats=bool(self.options.randomize_color_stats), progressive_color_stats=bool(self.options.progressive_color_stats), permanent_checks=bool(self.options.permanent_checks), per_spawn_enemies=bool(self.options.per_spawn_enemies), group_spawn_enemies=bool(self.options.group_spawn_enemies), miniboss_enemies=bool(self.options.miniboss_enemies), campaign_enemies=bool(self.options.campaign_enemies),

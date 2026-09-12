@@ -40,9 +40,12 @@ class TrackerModel:
         cap = field_capacity(inventory, self.manifest['schema'] >= 2, self.manifest.get('starting_flarlic', 2))
         owned = color_inventory(inventory, self.manifest)
         onions = '   '.join(f'{color}: {"unlocked" if owned.get(color + " Onion", 0) else "locked"}' for color in ('Red', 'Yellow', 'Blue'))
+        finale = ""
+        if self.manifest.get("goal_mode") == "emperor_bulblax":
+            finale = "    Emperor: " + ("defeated" if data.get("emperor_defeated") else "unlocked" if inventory[REPAIR] >= 25 else "locked until 25 repairs")
         return dict(rows=rows, inventory=inventory, profiles=profile_lines(self.manifest, inventory),
                     benefits=benefit_lines(self.manifest, inventory), onions=onions,
-                    summary=f'{len(checked)}/{len(rows)} checks    Repairs {inventory[REPAIR]}/{self.manifest["goal"]} required    Field cap {cap}')
+                    summary=f'{len(checked)}/{len(rows)} checks    Repairs {inventory[REPAIR]}/{self.manifest["goal"]} required    Field cap {cap}{finale}')
 
     @staticmethod
     def filter_rows(rows, query='', area='All areas', status='Unchecked'):

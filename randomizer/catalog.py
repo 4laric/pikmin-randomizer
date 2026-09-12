@@ -258,6 +258,7 @@ def route_strength(name, manifest, inventory=None):
 
 
 def can_reach_manifest(name, inventory, manifest):
+    if name == "Pikmin: Secret Safe" and manifest.get("goal_mode") == "emperor_bulblax" and inventory.get(REPAIR, 0) < 25: return False
     if 'enemy_layout' in manifest and name in BESTIARY_TARGETS:
         if name not in active_names(manifest): return False
         owned = color_inventory(inventory, manifest)

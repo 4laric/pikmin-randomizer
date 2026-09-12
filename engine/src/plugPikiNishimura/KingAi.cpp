@@ -1,3 +1,6 @@
+#if defined(PIKI_PC_PORT)
+#include "pc_randomizer.h"
+#endif
 #include "Collision.h"
 #include "DebugLog.h"
 #include "GameStat.h"
@@ -252,6 +255,9 @@ void KingAi::keyFinished()
 	{
 		mKing->createPellet(mKing->mSRT.t, 300.0f, false);
 		GameStat::killTekis.inc();
+		#if defined(PIKI_PC_PORT)
+		if (mKing->getCurrentLife() <= 0.0f) pc_randomizer_emperor_defeated();
+		#endif
 		mKing->doKill();
 		break;
 	}
@@ -1111,6 +1117,9 @@ bool KingAi::targetLostTransit()
  */
 bool KingAi::appearTransit()
 {
+#if defined(PIKI_PC_PORT)
+	if (!pc_randomizer_emperor_available()) return false;
+#endif
 	Iterator iterNavi(naviMgr);
 	CI_LOOP(iterNavi)
 	{

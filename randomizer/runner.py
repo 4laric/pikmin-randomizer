@@ -23,7 +23,7 @@ class NativeRun:
         atomic_write(self.bootstrap, f"PIKMIN_RANDOMIZER {session.manifest['schema']}\n" +
                      f"SESSION {self.token}\nFINGERPRINT {session.fingerprint}\n" +
                      f"PROFILE {session.manifest['profile']}\nCATALOG {session.manifest['catalog']}\nPLACEMENT identity-v1\n" +
-                     "GOAL 25\nDAYS repeat-day29-v1\n" +
+                     ("GOAL emperor25\n" if session.manifest.get("goal_mode") == "emperor_bulblax" else "GOAL 25\n") + "DAYS repeat-day29-v1\n" +
                      (f"COLOR {session.manifest['starting_color']}\n" if session.manifest['schema'] >= 4 else '') +
                      (f"CHECKSET {int(session.manifest['permanent_checks']) + 2 * int(session.manifest.get('no_exploration', False)) + 4 * int(session.manifest.get('color_population', False)) + 8 * int(session.manifest.get('compact_population', False)) + 16 * int(session.manifest.get('no_sticks', False))}\n" if session.manifest['schema'] >= 9 else '') + (f"ENEMIES {session.manifest['enemy_mask']}\n" if session.manifest['schema'] >= 6 else '') + (f"STARTING_FLARLIC {session.manifest['starting_flarlic']}\n" if "starting_flarlic" in session.manifest else "") + bootstrap_stats(session.manifest) + ("PROGRESSIVE_STATS " + ("2" if "progressive-color-stats-v2" in session.manifest["capabilities"] else "1") + "\n" if session.manifest.get("progressive_color_stats") else "") + (("BENEFITS 2\n" if session.manifest.get("bomb_rock_weight") else "BENEFITS 1\n") if session.manifest.get("benefit_items") else "") + bootstrap_slots(session.manifest) + "END\n")
         self.seen = 0
@@ -41,6 +41,8 @@ class NativeRun:
                           *self.session.manifest["capabilities"], "END"]:
                 raise ValueError("native adapter capability or session handshake mismatch")
             self.handshaken = True
+        if self.handshaken:
+            self.session.recover_emperor(self.directory)
         journal = self.directory / "checks.txt"
         if self.handshaken and journal.exists():
             data = journal.read_bytes()
@@ -129,7 +131,7 @@ async def serve(session, run, process=None, server=None, password=None):
             run.poll()
             run.write_state(run.handshaken and ready[0])
             if session.goal and not previous_goal:
-                print("PIKMIN_RANDOMIZER_GOAL: ship repaired", flush=True)
+                print("PIKMIN_RANDOMIZER_GOAL: seed complete", flush=True)
                 previous_goal = True
             await asyncio.sleep(0.1)
     finally:

@@ -50,3 +50,6 @@ void pc_randomizer_observe_obstacle(int stage, int kind, float x, float z, bool 
 bool pc_randomizer_resumed();
 bool pc_randomizer_load_campaign(void* destination);
 void pc_randomizer_save_campaign(const void* source);
+
+bool pc_randomizer_emperor_available();
+void pc_randomizer_emperor_defeated();

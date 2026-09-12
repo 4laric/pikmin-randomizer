@@ -76,6 +76,14 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 100; ++i) {
         pc_randomizer_update();
         if (pc_randomizer_ready()) {
+            for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--emperor-probe")) {
+                const bool unlocked = pc_randomizer_repairs() == 25;
+                assert(pc_randomizer_emperor_available() == unlocked);
+                pc_randomizer_emperor_defeated();
+                assert(pc_randomizer_goal() == unlocked);
+                std::puts("EMPEROR_PASS");
+                return 0;
+            }
             for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--benefit-probe")) {
                 char saved[32768] = {};
                 if (pc_randomizer_resumed()) {

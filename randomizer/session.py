@@ -41,6 +41,7 @@ class Session:
         self.path = self.directory / "session.json"
         self.rewards = solo_rewards(manifest) if manifest["mode"] == "solo" else {}
         self.data = dict(schema=1, fingerprint=self.fingerprint, checked=[], received=[], ap_identity=None)
+        if manifest.get("goal_mode") == "emperor_bulblax": self.data["emperor_defeated"] = False
         if self.path.exists():
             loaded = json.loads(self.path.read_text(encoding="utf-8"))
             if (type(loaded) is not dict or set(loaded) != set(self.data)
@@ -57,6 +58,7 @@ class Session:
                 raise ValueError("invalid AP identity")
             if manifest["mode"] == "solo" and (loaded["received"] or identity is not None):
                 raise ValueError("solo save contains AP state")
+            if "emperor_defeated" in loaded and type(loaded["emperor_defeated"]) is not bool: raise ValueError("invalid emperor state")
             self.data = loaded
         # Native delivery is fsynced before the runner sees it. Recover complete
         # records from older runs if the runner was interrupted before its save.
@@ -77,6 +79,21 @@ class Session:
                     self.data["checked"].append(name)
                     recovered = True
         if recovered:
+            self.save()
+        for journal in self.directory.glob("runs/*/emperor.txt"):
+            self.recover_emperor(journal.parent)
+
+    def recover_emperor(self, directory):
+        path = Path(directory) / "emperor.txt"
+        if not path.exists(): return
+        text = path.read_text(encoding="ascii")
+        if not text.endswith("\n"): return
+        expected = f"EMPEROR_DEFEATED {Path(directory).name} {self.fingerprint}\n"
+        if self.manifest.get("goal_mode") != "emperor_bulblax" or text != expected:
+            raise ValueError("foreign or invalid Emperor journal")
+        if self.inventory[REPAIR] < 25: raise ValueError("Emperor defeated before repair gate")
+        if not self.data["emperor_defeated"]:
+            self.data["emperor_defeated"] = True
             self.save()
 
     def save(self):
@@ -123,7 +140,7 @@ class Session:
 
     @property
     def goal(self):
-        return self.inventory[REPAIR] >= self.manifest["goal"]
+        return self.inventory[REPAIR] >= self.manifest["goal"] and (self.manifest.get("goal_mode") != "emperor_bulblax" or self.data["emperor_defeated"])
 
     def native_state(self, token, ready):
         inventory = self.inventory
@@ -138,10 +155,11 @@ class Session:
         if self.manifest['schema'] >= 8:
             indices = [str(i) for i, n in enumerate(self.names) if n in self.data['checked']]
             checks = 'CHECKS ' + str(len(indices)) + (' ' + ' '.join(indices) if indices else '')
+        emperor = (" EMPEROR " + str(int(self.data["emperor_defeated"]))) if self.manifest.get("goal_mode") == "emperor_bulblax" else ""
         repairs = min(inventory[REPAIR], self.manifest["goal"])
         if self.manifest["schema"] >= 2:
             flarlic = min(10 - self.manifest.get("starting_flarlic", 2), inventory[FLARLIC])
-            return f"PIKMIN_STATE {self.manifest['schema']} {token} {int(ready)} {repairs} {unlocks} {flarlic} {checks}{upgrade_counts(self.manifest, inventory)}{benefit_state(self.manifest, inventory)} END\n"
+            return f"PIKMIN_STATE {self.manifest['schema']} {token} {int(ready)} {repairs} {unlocks} {flarlic} {checks}{upgrade_counts(self.manifest, inventory)}{benefit_state(self.manifest, inventory)}{emperor} END\n"
         return f"PIKMIN_STATE 1 {token} {int(ready)} {repairs} {unlocks} {checks} END\n"
 
 

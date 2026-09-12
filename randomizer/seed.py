@@ -42,7 +42,7 @@ class SeedRandom:
         return values
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs"):
     if type(bomb_rock_weight) is not int or not 0 <= bomb_rock_weight <= 10: raise ValueError("bomb_rock_weight must be 0..10")
     if bomb_rock_weight:
         if legacy_checks: raise ValueError("bomb deliveries require modern checks")
@@ -63,6 +63,8 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         if legacy_checks: raise ValueError("campaign enemies require modern checks")
         per_spawn_enemies = group_spawn_enemies = enemy_shuffle = False
         collection_checks = miniboss_enemies = True
+    if goal_mode not in ("repairs", "emperor_bulblax"): raise ValueError("invalid goal_mode")
+    if goal_mode == "emperor_bulblax": collection_checks = True
     if progressive_color_stats: permanent_checks = True  # 36 upgrades need the larger check pool.
     collection_checks = collection_checks or progressive_color_stats or permanent_checks
     result = dict(schema=1, game=GAME, seed=str(seed), slot=slot, mode=mode,
@@ -153,6 +155,9 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
     if miniboss_enemies:
         result['miniboss_enemies'] = True
         result['capabilities'].append('miniboss-slots-v1')
+    if goal_mode == "emperor_bulblax":
+        result["goal_mode"] = goal_mode
+        result["capabilities"].append("emperor-goal-v1")
     validate(result)
     return result
 
@@ -232,6 +237,9 @@ def validate(m):
         expected.add('bomb_rock_weight')
         if type(m['bomb_rock_weight']) is not int or not 1 <= m['bomb_rock_weight'] <= 10 or not m.get('benefit_items'):
             raise ValueError('invalid bomb delivery weight')
+    if type(m) is dict and 'goal_mode' in m:
+        expected.add('goal_mode')
+        if m.get('schema') != 9 or m['goal_mode'] != 'emperor_bulblax': raise ValueError('invalid goal_mode')
     if type(m) is dict and 'no_sticks' in m:
         expected.add('no_sticks')
         if m.get('schema') != 9 or m['no_sticks'] is not True:
@@ -300,6 +308,7 @@ def validate(m):
         fixed['capabilities'] += ['enemy-campaign-v1']
     if m.get('miniboss_enemies'):
         fixed['capabilities'] += ['miniboss-slots-v1']
+    if m.get("goal_mode") == "emperor_bulblax": fixed["capabilities"].append("emperor-goal-v1")
     for key, value in fixed.items():
         if type(m[key]) is not type(value) or m[key] != value:
             raise ValueError(f"unsupported {key}: {m[key]!r}")

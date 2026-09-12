@@ -22,7 +22,7 @@
 #endif
 
 namespace {
-bool noSticks = false;
+bool noSticks = false, emperorGoal = false, emperorDefeated = false;
 bool enabled = false, ready = false, goalReported = false, permanentChecks = false, noExploration = false, colorPopulation = false;
 unsigned repairs = 0, unlocks = 0, flarlic = 0, schema = 1, checkCount = 30;
 int startStage = 1;
@@ -148,7 +148,9 @@ bool pc_randomizer_init(int argc, char** argv) {
     else if (profile != "foh-day2") fail("unsupported start profile");
     expect(input, "CATALOG"); expect(input, schema == 9 ? "gameplay-checks-v9" : schema == 8 ? "gameplay-checks-v8" : schema == 7 ? "gameplay-checks-v7" : schema == 6 ? "gameplay-checks-v6" : schema == 5 ? "gameplay-checks-v5" : schema == 4 ? "gameplay-checks-v4" : schema == 3 ? "gameplay-checks-v3" : schema == 2 ? "gameplay-checks-v2" : "vanilla-sites-v1");
     expect(input, "PLACEMENT"); expect(input, "identity-v1");
-    expect(input, "GOAL"); expect(input, "25");
+    expect(input, "GOAL"); std::string goalType; input >> goalType;
+    if (goalType != "25" && !(schema == 9 && goalType == "emperor25")) fail("invalid goal");
+    emperorGoal = goalType == "emperor25";
     expect(input, "DAYS"); expect(input, "repeat-day29-v1");
     if (schema >= 4) {
         expect(input, "COLOR"); std::string color; input >> color;
@@ -310,6 +312,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (groupEnemies) hello << " enemy-groups-v1";
     if (campaignEnemies) hello << " enemy-campaign-v1";
     if (minibossEnemies) hello << " miniboss-slots-v1";
+    if (emperorGoal) hello << " emperor-goal-v1";
     hello << " END\n";
     hello.close();
     if (!hello) fail("cannot write native handshake");
@@ -368,6 +371,11 @@ void pc_randomizer_update() {
                 fail("invalid or retracted benefit receipt");
         parsed = bool(input >> end);
     }
+    unsigned newEmperor = 0;
+    if (emperorGoal) {
+        if (!parsed || end != "EMPEROR" || !(input >> newEmperor) || newEmperor > 1 || (newEmperor && newRepairs < 25)) fail("invalid Emperor state");
+        parsed = bool(input >> end);
+    }
     if (!parsed || magic != "PIKMIN_STATE" || version != schema || session != token || newReady > 1
         || newRepairs > 25 || newUnlocks > (schema >= 5 ? 255u : schema == 4 ? 127u : schema == 3 ? 63u : 31u) || newFlarlic > 10 - startingFlarlic
         || end != "END" || (input >> extra))
@@ -382,6 +390,7 @@ void pc_randomizer_update() {
         colorStats[c][stat] = baseColorStats[c][stat] + (stat == 3 ? newStats[c][stat] : 25 * newStats[c][stat]);
     }
     for (int kind = 0; kind < 6; ++kind) benefits[kind] = newBenefits[kind];
+    emperorDefeated = emperorDefeated || newEmperor != 0;
     ready = newReady != 0;
     repairs = newRepairs;
     unlocks = newUnlocks;
@@ -390,9 +399,9 @@ void pc_randomizer_update() {
     checks.insert(newChecks.begin(), newChecks.end());
     lastStamp = stamp;
     lastFresh = std::chrono::steady_clock::now();
-    if (repairs == 25 && !goalReported) {
+    if (pc_randomizer_goal() && !goalReported) {
         goalReported = true;
-        std::puts("[Pikmin Randomizer] GOAL: Ship repaired! 25/25 repair rewards received.");
+        std::puts("[Pikmin Randomizer] GOAL: Seed complete.");
     }
 }
 
@@ -484,7 +493,24 @@ int pc_randomizer_enemy_type(int original, bool protectedSpawn) {
     return original;
 }
 bool pc_randomizer_ready() { return ready; }
-bool pc_randomizer_goal() { return enabled && repairs == 25; }
+bool pc_randomizer_goal() { return enabled && repairs == 25 && (!emperorGoal || emperorDefeated); }
+bool pc_randomizer_emperor_available() { return !enabled || !emperorGoal || (ready && repairs == 25); }
+void pc_randomizer_emperor_defeated() {
+    if (!enabled || !emperorGoal || !ready || repairs != 25 || emperorDefeated) return;
+    FILE* file = std::fopen((directory / "emperor.tmp").string().c_str(), "w");
+    if (!file) fail("cannot persist Emperor defeat");
+    bool ok = std::fprintf(file, "EMPEROR_DEFEATED %s %s\n", token.c_str(), fingerprint.c_str()) > 0 && std::fflush(file) == 0;
+#ifdef _WIN32
+    ok = ok && _commit(_fileno(file)) == 0;
+#else
+    ok = ok && fsync(fileno(file)) == 0;
+#endif
+    ok = std::fclose(file) == 0 && ok;
+    if (!ok) fail("Emperor defeat persistence failed");
+    std::filesystem::rename(directory / "emperor.tmp", directory / "emperor.txt");
+    emperorDefeated = true;
+    std::puts("[Pikmin Randomizer] GOAL: Emperor Bulblax defeated!");
+}
 int pc_randomizer_repairs() { return (int)repairs; }
 const char* pc_randomizer_save_root() { return saveRoot.c_str(); }
 int pc_randomizer_next_day(int day) { return enabled && day >= 28 ? 29 : day + 1; }

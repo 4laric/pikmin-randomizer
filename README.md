@@ -1,3 +1,11 @@
+## Emperor Bulblax finale (#86)
+
+New AP/CLI seeds default to goal: emperor_bulblax (CLI --goal emperor_bulblax). At 25 repair rewards the Emperor can emerge normally; his completed death animation records the goal. Final Trial Access remains separate. The Secret Safe requires 25 repairs in logic to prevent placing needed repairs behind the boss gate. No new reward/check is added. goal: repairs retains immediate completion at 25; existing manifests and programmatic generate() defaults remain repair-only.
+
+Native 99056e2a and AP 0.27.0 add an explicit emperor25 bootstrap goal, emperor-goal-v1 handshake, persistent authenticated defeat journal and monotonic session completion. Reconnect and runner-crash recovery preserve completion; no ending cinematic is forced. The game title and F8 tracker show finale status. Existing seed/session files are not migrated.
+
+Validation: 95 Python tests/eight subtests plus seven affected goal/tracker tests passed; 150 packaged AP fills/10 multiworlds reach every check; native gate/journal/replay and legacy bomb/save protocols pass. Windows production build passes. Live Final Trial fixture holds Emperor dormant at 24 repairs, sends the 25th to activate, forces HP to zero, observes the real death animation and verifies persisted client completion. Normal player combat and ending UI acceptance remain for playtesting.
+
 ## Climbing-stick checks retired (#79)
 
 New modern seeds exclude all eight climbing sticks because their state resets daily. Full check sets now contain 105 locations, including 43 walls, bridges and boxes. Thirty repairs remain in the pool with 25 required; the smaller check set reduces filler. AP package 0.26.0. The optional no_sticks manifest marker preserves historical check sets and location IDs when absent. Existing seeds and saves are unchanged; no native rebuild is required.
