@@ -1,3 +1,4 @@
+#include "pc_p2_sheargrub.h"
 #include "pc_p2_preview.h"
 #include "pc_bbft.h"
 #include "Pellet.h"
@@ -154,6 +155,7 @@ void pc_p2_preview_setup() {
         treasureId=cargo.front().spec.instance;treasureValue=cargo.front().spec.value;
     }
     pc_p2_snow_setup();
+    pc_p2_sheargrub_setup();
     pc_p2_purple_setup();
     pc_p2_cave_setup();
     gsys->setHeap(previousHeap);
@@ -183,13 +185,16 @@ bool pc_p2_preview_deliver(Pellet* pellet) {
         std::string receipt;int value=0;Cargo* c=cargoFor(pellet);
         if(c){receipt="treasure:"+c->spec.instance;value=c->spec.value;}
         else if(pellet==previewTreasure){receipt="treasure:"+treasureId;value=treasureValue;}
+        else if(unsigned generator=0;pc_p2_sheargrub_receipt(pellet->mPelletView,generator,value)) {
+            receipt="corpse:"+pc_p2_cave_receipt_prefix()+"uji:"+std::to_string(generator);
+        }
         else {
             auto found=corpses.find(pellet->mPelletView);
             if(found==corpses.end()) {std::fprintf(stderr,"Unregistered P2 pod cargo id=%08x view=%p pellet=%p treasure=%p; refusing seed side effects\n",pellet->mConfig->mModelId.mId,(void*)pellet->mPelletView,(void*)pellet,(void*)previewTreasure);std::abort();}
             receipt="corpse:"+pc_p2_cave_receipt_prefix()+found->second.substr(7);value=corpseValue;
         }
         bool added=economy.credit(receipt,value);
-        podTitle((c?c->spec.instance:pellet==previewTreasure?treasureId:(pc_p2_enemy_name(pellet->mPelletView)?pc_p2_enemy_name(pellet->mPelletView):"Dwarf Bulborb"))+" +"+std::to_string(added?value:0));
+        podTitle((c?c->spec.instance:pellet==previewTreasure?treasureId:(pc_p2_sheargrub_name(pellet->mPelletView)?pc_p2_sheargrub_name(pellet->mPelletView):pc_p2_enemy_name(pellet->mPelletView)?pc_p2_enemy_name(pellet->mPelletView):"Dwarf Bulborb"))+" +"+std::to_string(added?value:0));
         pc_p2_purple_status();
         std::printf("[Pikipelago] P2_POD_RECEIPT id=%s value=%d new=%d pokos=%d seeds=0\n",receipt.c_str(),value,int(added),economy.total());
         if(pellet==previewTreasure) {

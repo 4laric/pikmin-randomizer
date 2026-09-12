@@ -1,3 +1,6 @@
+#ifdef PIKI_PC_PORT
+#include "pc_p2_sheargrub.h"
+#endif
 #include "DebugLog.h"
 #include "Dolphin/os.h"
 #include "MemStat.h"
@@ -108,7 +111,7 @@ int TekiMgr::typeIds[TEKI_TypeCount] = {
 void TekiMgr::initTekiMgr()
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
-	pc_p2_snow_reset();
+	{ pc_p2_snow_reset(); pc_p2_sheargrub_reset(); }
 #endif
 	tekiMgr = nullptr;
 }
@@ -135,7 +138,7 @@ TekiMgr::TekiMgr()
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
 	// Stage teardown nulls the global manager. Do not clear an unrelated live manager.
-	if (!tekiMgr) pc_p2_snow_reset();
+	if (!tekiMgr) { pc_p2_snow_reset(); pc_p2_sheargrub_reset(); }
 #endif
 	PRINT_NAKATA("TekiMgr>\n");
 	memStat->start("tekiMgr");
@@ -266,7 +269,7 @@ Teki* TekiMgr::newTeki(int type)
 	}
 
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
-	pc_p2_snow_forget(teki);
+	pc_p2_snow_forget(teki); pc_p2_sheargrub_forget(teki);
 #endif
 	teki->init(type);
 	return teki;
@@ -278,7 +281,7 @@ Teki* TekiMgr::newTeki(int type)
 void TekiMgr::reset()
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
-	if (this == tekiMgr) pc_p2_snow_reset();
+	if (this == tekiMgr) { pc_p2_snow_reset(); pc_p2_sheargrub_reset(); }
 #endif
 	PRINT_NAKATA("reset>\n");
 	Iterator iter(this);

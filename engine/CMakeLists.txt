@@ -167,6 +167,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_purple.cpp
     pc_port/pc_p2_cave.cpp
     pc_port/pc_p2_enemy.cpp
+    pc_port/pc_p2_sheargrub.cpp
     pc_port/pc_randomizer.cpp
     pc_port/pc_main.cpp
     pc_port/pc_window.cpp
