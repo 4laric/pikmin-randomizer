@@ -76,12 +76,12 @@ static void purpleFixture(Navi* n) {
         float dx=target->mSRT.t.x-treasureStart.x,dz=target->mSRT.t.z-treasureStart.z;
         require(dx*dx+dz*dz<4,"ten Purples moved the 101-weight Atlas");
         if(timer%150==0)std::printf("P2_PURPLE_INSUFFICIENT strength=%d\n",target->mCarrierCounter);
-        if(target->mCarrierCounter==100 && timer>240){assign(reds[0]);state=5;timer=0;std::puts("P2_PURPLE_100_CANNOT_LIFT_101_PASS");}
+        if(target->mCarrierCounter==100 && timer>240){capture("p2-purple-100-of-101.ppm");assign(reds[0]);state=5;timer=0;std::puts("P2_PURPLE_100_CANNOT_LIFT_101_PASS");}
         require(timer<1400,"ten Purple carriers did not attach");
     } else if(state==5) {
         float dx=target->mSRT.t.x-treasureStart.x,dz=target->mSRT.t.z-treasureStart.z;
         if(timer%150==0)std::printf("P2_PURPLE_MIXED strength=%d distance=%.2f\n",target->mCarrierCounter,std::sqrt(dx*dx+dz*dz));
-        if(dx*dx+dz*dz>100 && target->isAlive()) {for(size_t i=1;i<reds.size();++i)assign(reds[i]);state=6;timer=0;std::puts("P2_PURPLE_101_MIXED_LIFT_PASS");}
+        if(dx*dx+dz*dz>100 && target->isAlive()) {capture("p2-purple-101-lift.ppm");for(size_t i=1;i<reds.size();++i)assign(reds[i]);state=6;timer=0;std::puts("P2_PURPLE_101_MIXED_LIFT_PASS");}
         require(timer<1800,"ten Purples and one Red failed to move Atlas");
     } else if(state==6) {
         if(timer%150==0)std::printf("P2_PURPLE_DELIVERY state=%d strength=%d pos=%.1f,%.1f,%.1f pokos=%d\n",target->getState(),target->mCarrierCounter,target->mSRT.t.x,target->mSRT.t.y,target->mSRT.t.z,pc_p2_preview_pokos());

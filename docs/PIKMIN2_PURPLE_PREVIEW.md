@@ -36,6 +36,16 @@ The preview command accepts `--purple <purple-output>` together with `--pod <atl
 
 The first increment does not close #113 or enable Purples in normal P1/AP seeds.
 
+## Snow and carry-display polish (#119)
+
+Native `85074274` removes the PC carry gauge's 99 clamp and centers all digits. This changes presentation only: the Atlas still requires 101 strength. Console matching paths retain their original behavior.
+
+The static importer now preserves source blend/depth/alpha state, draw categories and hierarchy order. For recognizable untransformed UV0 diffuse stages it uses the diffuse texture instead of the first input, which can be a procedural noise texture. The snow's view-dependent sparkle calculation is still omitted; this remains an approximation of original J3D shading. Terrain geometry and collision are unchanged. Assembled floors retain these per-instance material settings and order.
+
+Updated local launcher: `output/pikmin2-polish119/Play.cmd`; the previous Purple preview remains available. Production executable SHA256: `E181BC6A272646EF8935E3E468BDAC0BAB4306647BE196F23490E7D44B8FD843`.
+
+Validation: Windows production/fixture builds; native flare UV/count/centering assertions at 0, 9, 10, 99, 100, 101 and 1000; Purple conversion, 100/101 strength boundary and 200-Poko delivery; ordinary room movement, combat and corpse transport regression. Final snow captures before/after camera-follow movement were inspected in `output/pikmin2-polish119/final-render/89f148f1bccd4843a491ddc112318628`. All eight unit conversions preserve geometry/texture chunks and byte-identical collision; only material and joint draw-order chunks differ. Earlier diagnostic renders exposed missing snow and were superseded by diffuse-stage selection. Full physical camera-sweep acceptance remains for playtesting.
+
 ## Validation
 
 - 49 focused Python tests passed, including BCA frame sampling, rejected scale/skeleton/truncation, source color/stats, Atlas equipment catalog lookup and local Violet generator preparation. Tests requiring user-owned assets skip in a source-only checkout.
@@ -46,3 +56,5 @@ The first increment does not close #113 or enable Purples in normal P1/AP seeds.
 - Native captures were inspected for the Purple body, source leaf attachment and violet sprouts. Materials remain simplified and notably flatter than P2's original shading.
 
 The fixture assigns transport actions explicitly and parks only the captain away from the cargo route after testing plucking. It does not teleport carriers or treasure. Final run `219f70f5dc70402f8afc5a0c020472e8`, using native `6a1c352be46e` and the speed-scaled detector, also passed the complete loop and captain return hook. It recorded one drop/reacquisition on the approach before successful delivery. Logs, binaries and captures remain in ignored local output directories.
+
+Final Python regression: 156 tests and eight subtests passed (output/pikmin2-polish119-tests-final.log).

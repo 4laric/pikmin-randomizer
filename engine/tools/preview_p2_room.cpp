@@ -19,7 +19,10 @@
 #include "PelletState.h"
 #include "MapMgr.h"
 #include "Camera.h"
+#include "LifeGauge.h"
+#include "Light.h"
 #include "Shape.h"
+#include "Material.h"
 #include "Mesh.h"
 #include "PlayerState.h"
 #include "Demo.h"
@@ -41,6 +44,25 @@ static std::vector<Vector3f> walkGoals;
 static int walkPoint=0;
 static Vector3f origin;
 static void require(bool value,const char* message) { if(!value) { std::printf("FAIL p2 room: %s\n",message);std::fflush(stdout);std::_Exit(1); } }
+static void verifyCarryDigits() {
+    GaugeInfo gauge;
+    LFlareGroup* group=lgMgr->mDigitFlareGroup;
+    for(int value : {0,9,10,99,100,101,1000}) {
+        LFInfo* previous=group->mLFInfo;
+        Colour white(255,255,255,255);
+        gauge.showDigits(Vector3f(0,0,0),white,value,8,8);
+        int actual=0,count=0;float sum=0;
+        for(LFInfo* f=group->mLFInfo;f!=previous;f=f->mPrevInfo) {
+            require(f!=nullptr,"missing carry digit");
+            actual=actual*10+int(std::round(f->mUvMin.x*11));
+            sum+=f->mFlarePos.x;++count;
+        }
+        require(actual==value && count==(value>=1000?4:value>=100?3:value>=10?2:1),"carry digit value/count");
+        require(std::fabs(sum)<0.001f,"carry number not centered");
+        group->mLFInfo=previous;
+    }
+    std::puts("P2_CARRY_DIGITS_PASS 0 9 10 99 100 101 1000: actual flare UVs and centering");
+}
 // Navi::update polls its controller after GameCoreSection::updateAI starts.
 // Override that virtual poll in the standalone fixture, never production input.
 class FixtureController : public Kontroller {
@@ -74,6 +96,10 @@ static void cameraLog(Navi* n,const char* tag) {
     Camera* c=n->mNaviCamera;if(!c)return;
     if(mapMgr->mMapModel && mapMgr->mMapModel->mJointCount>0) {
         Shape* model=mapMgr->mMapModel;
+        for(int i=model->mTotalMatpolyCount-1;i>=0;--i){
+            Material* m=model->mMatpolyList[i]->mMaterial;
+            std::printf("P2_MATERIAL_%s index=%u flags=%x pixel=%x,%x,%x,%x\n",tag,m->mIndex,m->mFlags,m->mPeInfo.mControlFlags,m->mPeInfo.mAlphaCompareFlags,m->mPeInfo.mDepthTestFlags,m->mPeInfo.mBlendModeFlags);
+        }
         unsigned vertices=hashBytes(model->mVertexList,sizeof(Vector3f)*(model->mVertexCount<350?model->mVertexCount:350));
         unsigned lists=2166136261u;
         for(int m=0;m<model->mMeshCount;++m)for(int g=0;g<model->mMeshList[m].mMtxGroupCount;++g){
@@ -115,6 +141,8 @@ public:
         if(gameflow.mMoviePlayer && gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
         if(!pc_p2_preview_ready() || !naviMgr || !pikiMgr || !tekiMgr)return result;
         Navi* n=naviMgr->getNavi();if(!n || !n->getCurrState() || (!pc_p2_purples_enabled() && phase<=1 && n->getCurrState()->getID()!=NAVISTATE_Walk) || gameflow.mPauseAll || gameflow.mIsUIOverlayActive)return result;
+        static bool digitsVerified=false;
+        if(!digitsVerified){verifyCarryDigits();digitsVerified=true;}
         if(pc_p2_purples_enabled()){purpleFixture(n);std::fflush(stdout);return result;}
         if(phase==0) {
             if(++ticks<60)return result;
@@ -158,6 +186,7 @@ public:
             std::printf("P2_FIXTURE_MOVEMENT_PASS distance=%.2f\n",std::sqrt(dx*dx+dz*dz));
             if(assembled)require(n->mSRT.t.z>890 && origin.z<350,"captain did not cross both seams");
             cameraLog(n,"MOVED");capture("p2-room-moved.ppm");
+            if(FILE* renderOnly=std::fopen("p2-render-only.txt","r")){std::fclose(renderOnly);std::puts("PASS p2 render: ground, movement and two camera captures");std::fflush(stdout);std::_Exit(0);}
             Pellet* target=pc_p2_preview_treasure();int count=0;Iterator p(pikiMgr);CI_LOOP(p){
                 Piki* v=static_cast<Piki*>(*p);if(!v->isAlive())continue;
                 v->mActiveAction->abandon(nullptr);v->mActiveAction->mCurrActionIdx=PikiAction::Transport;

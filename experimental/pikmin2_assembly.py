@@ -23,9 +23,11 @@ def transform(point, turn, offset=(0,0,0)):
 
 
 def merged_model(instances):
-    arrays={}; shapes=[]; materials=[]; textures=[]
+    arrays={}; shapes=[]; materials=[]; textures=[]; states=[]; order=[]
     for model,turn,offset in instances:
         blocks,attrs,meshes,mats=decode(model,True)
+        order.extend(len(shapes)+i for i in blocks['_draw_order'])
+        states.extend(blocks['_render_states'])
         attr_offsets={k:len(arrays.get(k,[])) for k in attrs}
         for attr,values in attrs.items():
             if attr==9: values=[transform(v,turn,offset) for v in values]
@@ -51,7 +53,7 @@ def merged_model(instances):
         at=32+32*i;struct.pack_into('>I',header,28,len(tex)-at)
         tex[at:at+32]=header;tex.extend(data)
     struct.pack_into('>I',tex,4,len(tex))
-    return {'TEX1':bytes(tex)},arrays,shapes,materials
+    return {'TEX1':bytes(tex),'_render_states':states,'_draw_order':order},arrays,shapes,materials
 
 
 def merge_rooms(instances, seams):

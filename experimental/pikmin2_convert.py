@@ -1,5 +1,5 @@
 """Restricted static J3D BMD -> Open Nectar MOD proof-of-concept.
-Material shading is deliberately reduced to vertex color times the first texture.
+Material shading is reduced to vertex color times a diffuse texture.
 Identity-root models are accepted by default; static rigid bind-pose baking is
 opt-in. This is not a general J3D exporter.
 """
@@ -34,6 +34,44 @@ def blocks(data):
         if size<8 or at+size>len(data): raise ValueError('Invalid block length')
         result[data[at:at+4].decode('ascii')]=data[at:at+size]; at+=size
     return result
+
+def pixel_state(m, r):
+    """Translate MAT3 pixel-engine state to the native PVW bit fields."""
+    def entry(table, index, size):
+        start=u32(m,table)+index*size
+        end=min([u32(m,i) for i in range(12,132,4) if u32(m,i)>u32(m,table)]+[len(m)])
+        if not u32(m,table) or start+size>end:
+            raise ValueError('Invalid material pixel-state reference')
+        return m[start:start+size]
+    test,func,write,_=entry(116,m[r+6],4)
+    mode,src,dst,logic=entry(112,u16(m,r+0x148),4)
+    comp0,ref0,op,comp1,ref1,*_=entry(108,u16(m,r+0x146),8)
+    if test>1 or write>1 or func>7 or mode>3 or src>7 or dst>7 or logic>15 or comp0>7 or comp1>7 or op>3:
+        raise ValueError('Unsupported material pixel state')
+    category=m[r]&7
+    if category not in (1,2,4): raise ValueError('Unsupported material draw category')
+    return ((category<<8)|1, 1,
+            comp0|(ref0<<4)|(op<<16)|(comp1<<20)|(ref1<<24),
+            test|(write<<1)|(func<<8), mode|(src<<4)|(dst<<8)|(logic<<12))
+
+def diffuse_slot(m, r):
+    """Prefer an explicit untransformed UV0 diffuse stage over a noise input.
+
+    Snow uses its first textures for a view-dependent sparkle calculation.
+    The restricted exporter cannot reproduce that calculation, but can retain
+    its actual texture-times-vertex-color base instead of displaying raw noise.
+    """
+    count=m[u32(m,88)+m[r+4]]
+    for i in range(count):
+        stage=u32(m,92)+u16(m,r+0xe4+2*i)*20
+        color=list(m[stage+1:stage+10])
+        if color not in ([15,10,8,15,0,0,0,1,0],[15,8,10,15,0,0,0,1,0]):continue
+        order=u32(m,76)+u16(m,r+0xbc+2*i)*4
+        coord,slot=m[order:order+2]
+        if coord>=8 or slot>=8:continue
+        gen=u32(m,56)+u16(m,r+0x28+2*coord)*4
+        if list(m[gen:gen+3])==[1,4,60]:return slot
+    return 0
 
 def decode(data, approximate_materials=False, bake_rigid=False, pose=None):
     b=blocks(data); j=b['JNT1']; d=b['DRW1']
@@ -120,13 +158,16 @@ def decode(data, approximate_materials=False, bake_rigid=False, pose=None):
                 else: triangles.extend([verts[0],verts[i],verts[i+1]] for i in range(1,count-1))
             if at!=end: raise ValueError('Primitive packet overrun')
         shapes.append(triangles)
-    hierarchy=b['INF1']; at=u32(hierarchy,20); mat=0; mapping={}
+    hierarchy=b['INF1']; at=u32(hierarchy,20); mat=0; mapping={}; order=[]
     while True:
         typ,idx=unpack(hierarchy,'HH',at); at+=4
         if typ==0: break
         if typ==0x11: mat=idx
-        if typ==0x12: mapping[idx]=mat
-    m=b['MAT3']; materials=[]
+        if typ==0x12:
+            mapping[idx]=mat;order.append(idx)
+    if sorted(order)!=list(range(len(shapes))): raise ValueError('Expected each shape once in draw hierarchy')
+    b['_draw_order']=order
+    m=b['MAT3']; materials=[]; states=[]
     for i in range(u16(m,8)):
         r=u32(m,12)+u16(m,u32(m,16)+2*i)*332
         if not approximate_materials and m[u32(m,88)+m[r+4]]!=1: raise ValueError('Only single-stage materials supported')
@@ -134,8 +175,11 @@ def decode(data, approximate_materials=False, bake_rigid=False, pose=None):
             indirect=u32(m,24)
             if indirect and (m[indirect+i*312] or m[indirect+i*312+1]): raise ValueError('Indirect textures unsupported')
             if any(u16(m,r+132+2*k)!=65535 for k in range(1,8)): raise ValueError('Multiple texture inputs unsupported')
-        tex=u16(m,r+132); tex=-1 if tex==65535 else u16(m,u32(m,72)+tex*2)
+        slot=diffuse_slot(m,r) if approximate_materials else 0
+        tex=u16(m,r+132+2*slot); tex=-1 if tex==65535 else u16(m,u32(m,72)+tex*2)
         materials.append(tex)
+        states.append(pixel_state(m,r))
+    b['_render_states']=[states[mapping[i]] for i in range(len(shapes))]
     if bake_rigid:
         from experimental.pikmin2_rigid import bake
         # Primitive strips/fans share vertex dictionaries; bake each reference independently.
@@ -168,6 +212,8 @@ def convert(source, output, approximate_materials=False, y_offset=0.0, bake_rigi
 def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
     if not math.isfinite(y_offset): raise ValueError("Y offset must be finite")
     b,a,shapes,mats=decoded; w=Writer()
+    states=b['_render_states']
+    if len(states)!=len(shapes): raise ValueError('Expected pixel state for every shape')
     colors=material_colors if material_colors is not None else [(255,255,255,255)]*len(shapes)
     if len(colors)!=len(shapes) or any(len(c)!=4 or any(type(v)!=int or not 0<=v<=255 for v in c) for c in colors):
         raise ValueError('Expected one RGBA8 material color per shape')
@@ -202,10 +248,10 @@ def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
         w.data+=bytes([15,8,10,15,0,0,0,1,0,0,0,0] if tex>=0 else [15,15,15,10,0,0,0,1,0,0,0,0])
         w.data+=bytes([7,4,5,7,0,0,0,1,0,0,0,0] if tex>=0 else [7,7,7,5,0,0,0,1,0,0,0,0])
     for i,tex in enumerate(mats):
-        w.put('Ii4BI',257,tex,*colors[i],i)
+        w.put('Ii4BI',states[i][0],tex,*colors[i],i)
         w.put('4BIfII',*colors[i],0,0.,0,0)
         w.put('If',0x1800 if 11 in a else 0,0.)
-        w.put('4I',0,0,0,0)
+        w.put('4I',*states[i][1:])
         w.put('I3fI',0,1.,1.,1.,1 if tex>=0 else 0)
         if tex>=0:w.data+=bytes([0,1,4,10])
         w.put('I',1 if tex>=0 else 0)
@@ -226,10 +272,12 @@ def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
     w.end();w.begin(96,1);w.pad()
     bounds=[min(v[k] for v in a[9]) for k in range(3)]+[max(v[k] for v in a[9]) for k in range(3)]
     w.put('iI6ff9fI',-1,0,*bounds,0.,1.,1.,1.,0.,0.,0.,0.,0.,0.,len(shapes))
-    for i in range(len(shapes)):w.put('HH',i,i)
+    # Native material traversal walks the joint list backwards within each pass.
+    # J3D hierarchy order matters for depth-write-disabled terrain overlays.
+    for i in reversed(b['_draw_order']):w.put('HH',i,i)
     w.end();w.begin(65535);w.end()
     output=Path(output);output.parent.mkdir(parents=True,exist_ok=True);output.write_bytes(w.data)
-    report={'source':str(source),'output':str(output),'vertices':len(a[9]),'triangles':sum(map(len,shapes)),'shapes':len(shapes),'textures':texture_count,'bounds':bounds,'y_offset':y_offset,'discarded_attributes':[k for k in a if k not in (9,10,11,13)],'material_policy':'static vertex color multiplied by first texture; original TEV not reproduced'}
+    report={'source':str(source),'output':str(output),'vertices':len(a[9]),'triangles':sum(map(len,shapes)),'shapes':len(shapes),'textures':texture_count,'bounds':bounds,'y_offset':y_offset,'discarded_attributes':[k for k in a if k not in (9,10,11,13)],'material_policy':'vertex color times identifiable UV0 diffuse texture (first texture fallback); original TEV not reproduced','pixel_state_policy':'source blend, alpha compare, depth test/write, draw category and hierarchy order preserved'}
     output.with_suffix('.json').write_text(json.dumps(report,indent=2),encoding='utf-8');return report
 
 if __name__=='__main__':

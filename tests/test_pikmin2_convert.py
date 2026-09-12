@@ -3,10 +3,41 @@ from pathlib import Path
 import struct
 import unittest
 import tempfile
-from experimental.pikmin2_convert import Writer, blocks, convert, decode
+from experimental.pikmin2_convert import Writer, blocks, convert, decode, pixel_state, diffuse_slot
 
 ROOM=Path(__file__).resolve().parents[1]/'output/pikmin2-content-probe/arc/view.bmd'
 class ConverterTests(unittest.TestCase):
+    def test_diffuse_stage_selected_instead_of_sparkle_noise(self):
+        m=bytearray(640);r=132
+        for off,start in ((88,464),(92,480),(76,560),(56,580)):
+            struct.pack_into('>I',m,off,start)
+        m[464]=2
+        struct.pack_into('>HH',m,r+0xe4,0,1)
+        m[501:510]=bytes([15,10,8,15,0,0,0,1,0])
+        struct.pack_into('>H',m,r+0xbe,0)
+        m[560:564]=bytes([2,2,4,255])
+        struct.pack_into('>H',m,r+0x2c,0)
+        m[580:584]=bytes([1,4,60,255])
+        self.assertEqual(diffuse_slot(m,r),2)
+        m[581]=1 # normal-generated texture is not an untransformed UV0 base
+        self.assertEqual(diffuse_slot(m,r),0)
+
+    def test_layer_pixel_state_preserves_blend_depth_and_alpha(self):
+        m=bytearray(500);r=132
+        m[r]=4
+        for off,start in ((108,464),(112,472),(116,476)):
+            struct.pack_into('>I',m,off,start)
+        struct.pack_into('>HH',m,r+0x146,0,0)
+        m[464:472]=bytes([4,128,0,3,240,255,255,255])
+        m[472:476]=bytes([1,4,5,3]) # source-alpha blending
+        m[476:480]=bytes([1,3,0,255]) # LEQUAL, no depth writes
+        self.assertEqual(pixel_state(m,r),(0x401,1,4|(128<<4)|(3<<20)|(240<<24),0x301,0x3541))
+        m[472]=0;m[478]=1;m[r]=1
+        self.assertEqual(pixel_state(m,r)[0],0x101)
+        self.assertEqual(pixel_state(m,r)[3],0x303)
+        m[r+6]=255
+        with self.assertRaisesRegex(ValueError,'pixel-state reference'):pixel_state(m,r)
+
     def test_rejects_wrong_container_and_truncated_blocks(self):
         with self.assertRaises(ValueError): blocks(b'not a model')
         data=b'J3D2bmd3'+struct.pack('>II',40,1)+bytes(16)+b'VTX1'+struct.pack('>I',64)
