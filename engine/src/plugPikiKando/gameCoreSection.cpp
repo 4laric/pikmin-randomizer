@@ -29,6 +29,7 @@
 #include "AIConstant.h"
 #include "AIPerf.h"
 #include "BombItem.h"
+#include "MizuItem.h"
 #include "Boss.h"
 #include "CodeInitializer.h"
 #include "DayMgr.h"
@@ -1996,18 +1997,35 @@ static void randomizerApplyBenefits(Navi* navi, MapMgr* map)
             std::printf("[Pikmin Randomizer] PIKMIN_DELIVERY color=%d count=10\n", selected);
         }
     }
-    if (pc_randomizer_benefit_pending(PC_BENEFIT_FLOWERS)) {
-        bool consumed = false;
-        Iterator it(pikiMgr);
-        CI_LOOP(it) {
-            Piki* piki = static_cast<Piki*>(*it);
-            if (!piki || !piki->isAlive() || piki->isKinoko() || piki->mHappa >= Flower) continue;
-            if (!consumed) consumed = pc_randomizer_consume_benefit(PC_BENEFIT_FLOWERS);
-            if (consumed) while (piki->mHappa < Flower) {
-                piki->setFlower(piki->mHappa + 1);
-                if (piki->mMode == PikiMode::FormationMode && piki->mNavi)
-                    piki->mNavi->mPlateMgr->changeFlower(piki);
+    static float nectarCooldown = 0.0f;
+    nectarCooldown = std::max(0.0f, nectarCooldown - gsys->getFrameTime());
+    if (map && nectarCooldown == 0.0f && pc_randomizer_benefit_pending(PC_BENEFIT_FLOWERS)) {
+        Vector3f positions[5];
+        int found = 0;
+        for (int i = 0; i < 5; ++i) {
+            const float angle = navi->mFaceDirection + i * (2.0f * PI / 5.0f);
+            Vector3f pos = navi->mSRT.t + Vector3f(50.0f * sinf(angle), 0, 50.0f * cosf(angle));
+            CollTriInfo* ground = map->getCurrTri(pos.x, pos.z, true);
+            if (!ground || MapCode::getAttribute(ground) == ATTR_Water) break;
+            pos.y = map->getMinY(pos.x, pos.z, true);
+            if (std::fabs(pos.y - navi->mSRT.t.y) > 25.0f) break;
+            positions[found++] = pos;
+        }
+        if (found == 5) {
+            MizuItem* spawned[5] = {};
+            int count = 0;
+            for (; count < 5; ++count) {
+                // Native nectar appearance/drinking, with no deferred second allocation.
+                spawned[count] = static_cast<MizuItem*>(itemMgr->birth(OBJTYPE_Water));
+                if (!spawned[count]) break;
+                spawned[count]->init(positions[count]);
+                spawned[count]->startAI(0);
             }
+            if (count == 5 && pc_randomizer_consume_benefit(PC_BENEFIT_FLOWERS)) {
+                nectarCooldown = 5.0f;
+                std::puts("[Pikmin Randomizer] FLOWER_SHOWER nectar=5");
+                std::fflush(stdout);
+            } else for (int i = 0; i < count; ++i) spawned[i]->kill(false);
         }
     }
     if (navi->mHealth < C_NAVI_PARM(navi, mHealth) && pc_randomizer_consume_benefit(PC_BENEFIT_HEAL))
@@ -2267,10 +2285,16 @@ void GameCoreSection::updateAI()
             CI_LOOP(it) {
                 Piki* piki = static_cast<Piki*>(*it);
                 if (piki && piki->isAlive()) {
-                    if (piki->mHappa != Flower) std::abort();
-                    ++flowers;
+                    ++flowers; // Count bodies; flowering now requires drinking nectar.
                 }
             }
+            int nectar = 0;
+            Iterator drops(itemMgr);
+            CI_LOOP(drops) {
+                Creature* drop = *drops;
+                if (drop && drop->mObjType == OBJTYPE_Water && drop->isAlive()) ++nectar;
+            }
+            if (nectar < 5 || pc_randomizer_benefit_pending(PC_BENEFIT_FLOWERS)) std::abort();
             if (onion->getTotalStorePikis() != stock + 10 || flowers != field
                 || mNavi->mHealth != C_NAVI_PARM(mNavi, mHealth)
                 || pc_randomizer_benefit_multiplier(PC_BENEFIT_PLUCK) != 1.5f
@@ -2280,7 +2304,7 @@ void GameCoreSection::updateAI()
             // No duplicate effects on a second application, including at full health.
             randomizerApplyBenefits(mNavi, mMapMgr);
             if (onion->getTotalStorePikis() != stock + 10) std::abort();
-            std::printf("TEST_ONLY benefits_pass color=%d stock_added=10 field_flowers=%d heal=full whistle=150 pluck=150\n", initialColor, flowers);
+            std::printf("TEST_ONLY benefits_pass color=%d stock_added=10 field_bodies=%d nectar=5 heal=full whistle=150 pluck=150\n", initialColor, flowers);
             std::fflush(stdout); std::exit(0);
         }
     }

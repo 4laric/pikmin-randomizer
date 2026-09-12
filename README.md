@@ -124,7 +124,7 @@ New collection seeds contain exactly **25 Ship Repairs**, the existing unlocks/F
 | Item | Effect |
 | --- | --- |
 | Pikmin Delivery (10) | Adds 10 leaf Pikmin to the unlocked, booted Onion with the smallest total population. Does not spawn extra field Pikmin or unlock colors. |
-| Flower Shower | Flowers living field Pikmin, maintaining their formation counts. Waits if there are no eligible Pikmin. Stored Pikmin and sprouts are unchanged. |
+| Flower Shower | Spawns five drinkable nectar drops near Olimar. Pikmin flower through normal drinking; waits for suitable dry ground during active gameplay. |
 | Captain Heal | Fully heals a living, injured Olimar. Waits while health is full. |
 | Progressive Whistle Radius | Two +25% upgrades, reaching 150% radius; the displayed circle grows with the effective radius. |
 | Progressive Olimar Speed | Two +25% upgrades to both Olimar movement and plucking, reaching 150%. Replaces the pluck-only item in new seeds. |
