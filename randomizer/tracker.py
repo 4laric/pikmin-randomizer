@@ -64,7 +64,7 @@ class TrackerWindow:
         self.data = None
         self.window = tk.Toplevel(root)
         self.window.withdraw()
-        self.window.title('Pikmin Randomizer — Tracker')
+        self.window.title('Pikipelago — Tracker')
         self.window.geometry('940x620')
         self.window.minsize(660, 430)
         self.window.protocol('WM_DELETE_WINDOW', on_close)

@@ -73,7 +73,7 @@ def load_manifest(path):
     try:
         validate(manifest)
     except (ValueError, KeyError, TypeError) as exc:
-        raise LaunchError(f"{path} is not a valid Pikmin Randomizer seed: {exc}")
+        raise LaunchError(f"{path} is not a valid Pikipelago seed: {exc}")
     return manifest
 
 
@@ -115,7 +115,7 @@ def choose_seed(seed_arg, root=ROOT, ask=input):
 
 
 def seed_card(manifest, seed_path, root=ROOT):
-    lines = ["=" * 60, "Pikmin Randomizer",
+    lines = ["=" * 60, "Pikipelago",
              f"  Runtime version: {runtime_version(root)}",
              f"  Seed file:       {Path(seed_path).name}",
              f"  Slot:            {manifest.get('slot', '?')}",
@@ -286,7 +286,7 @@ def run(command, env, root=ROOT):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Pikmin Randomizer launcher")
+    parser = argparse.ArgumentParser(description="Pikipelago launcher")
     parser.add_argument("seed", nargs="?", help="seed.json (default: seeds\\seed.json in the package)")
     parser.add_argument("--server", help="Archipelago host:port (AP seeds)")
     parser.add_argument("--assets", help="extracted assets folder containing dataDir\\stages")

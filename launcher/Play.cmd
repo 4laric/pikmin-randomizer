@@ -1,6 +1,6 @@
 @echo off
 setlocal
-rem Pikmin Randomizer entry point. Drag a seed.json onto this file, or run it directly.
+rem Pikipelago entry point. Drag a seed.json onto this file, or run it directly.
 rem Uses the bundled runtime when present, otherwise a system Python 3.12 or newer.
 set "ROOT=%~dp0"
 set "PY="

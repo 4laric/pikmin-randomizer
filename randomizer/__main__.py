@@ -8,7 +8,7 @@ from .catalog import field_capacity, can_reach_manifest, POPULATION, BESTIARY, A
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Pikmin Randomizer: standalone identity-placement milestone")
+    parser = argparse.ArgumentParser(description="Pikipelago: standalone identity-placement milestone")
     sub = parser.add_subparsers(dest="command", required=True)
     gen = sub.add_parser("generate")
     gen.add_argument("--goal", choices=("repairs", "emperor_bulblax"), default="emperor_bulblax")
@@ -73,7 +73,7 @@ def main():
             with SessionLock(args.session_dir):
                 session = Session(manifest, args.session_dir)
                 checked = set(session.data["checked"])
-                lines = ["# Pikmin Randomizer status", "",
+                lines = ["# Pikipelago status", "",
                          f"Collected: {len(checked)}/{len(session.names)} checks. "
                          f"Field capacity: {field_capacity(session.inventory, manifest['schema'] >= 2, manifest.get('starting_flarlic', 2))}. "
                          f"Repair goal: {min(session.inventory['Ship Repair'], 25)}/25.", "",
