@@ -39,6 +39,7 @@
 #include "sysNew.h"
 #include "teki.h"
 #include "zen/DrawContainer.h"
+#include "pc_p2_preview.h"
 #include "zen/ogTutorial.h"
 
 #include "CPlate.h"
@@ -598,7 +599,7 @@ void NaviWalkState::exec(Navi* navi)
 
 	for (int i = 0; i < 3; i++) {
 		GoalItem* onyon = itemMgr->getContainer(i);
-		if (!onyon) {
+		if (!onyon || pc_p2_preview_is_pod(onyon)) {
 			continue;
 		}
 		CollPart* coll = onyon->mCollInfo->getSphere('cont');

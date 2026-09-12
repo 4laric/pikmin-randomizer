@@ -73,3 +73,11 @@ The optional assembly does not change the single-room preview. Its bolt and Dwar
 Assembly native evidence: `output/pikmin2-emergence-preview/8ace34256aa84af6b47194d9fe29e552` exited 0. Olimar walked 753.57 units from the starting room across both seams into the far room using controller input. The bolt returned from that room with repairs unchanged and seeds=0. Native combat killed the distant Dwarf, then carriers moved its corpse over 1,259 units back across both joins and completed Onion delivery. Source actor positions were not teleported by the fixture. Sampled vertex and complete display-list hashes stayed stable; the final render matrix matched the stationary camera. Movement and final screenshots were inspected. The visual approximations are still apparent and this is not a manual gameplay sign-off.
 
 Windows fixture build passed; native fixture source `34f2760ef5c9ffa701da676d4b4cb04f8acf5fd8`. Local `floor1-03` adds source-hash provenance to the manifest; its MOD is byte-identical to the tested `floor1-02`. Use `output/pikmin2-emergence110/Play-floor1.cmd` for the assembled engineering layout. The earlier single-room launcher remains available.
+
+## Second-floor terrain and carrying
+
+The standalone `--floor 2` preview uses `room_purple14x14_snow`. Actors are projected onto decoded collision, including the starting platform at Y=25 and the test cargo at approximately Y=-69.6. Four native ground probes compare against those actual positions. The controller follows the slope route out to the lower section; the original directed route graph remains unchanged, including its source waypoint heights.
+
+Native run `output/pikmin2-emergence-preview/2674c283e9044211adbe2ef47601e82d` exited 0: controller traversal covered 1,773.18 units and native carriers returned the bolt to the starting platform. Repairs remained unchanged and the treasure produced no seeds. Start and moved screenshots were inspected. Rendering still has the documented material approximations and exposed room boundaries; the starting camera can be obscured by the temporary ship. This is terrain/transport evidence, not full second-floor gameplay: its real roster, Purple Candypops, heavy treasure requirements and exit belong to later batches.
+
+The next increment adds an optional [Research Pod preview](PIKMIN2_RESEARCH_POD.md) to these same isolated layouts.

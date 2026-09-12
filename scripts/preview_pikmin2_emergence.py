@@ -13,14 +13,17 @@ from scripts.preview_pikmin2_room import generator, overlay
 UNIT = 'room_north_tutorial_1_snow'
 
 
-def prepare(assets, imported, treasure, output, assembled=None):
+def prepare(assets, imported, treasure, output, assembled=None, floor=1, pod=None):
+    if floor not in (1,2) or (floor==2 and assembled):
+        raise ValueError('Choose floor 1 assembly or standalone floor 2')
     manifest=json.loads((imported/'manifest.json').read_text())
     if manifest['schema']!=1 or manifest['cave']!='tutorial_1':
         raise ValueError('Expected Emergence import manifest')
-    unit=manifest['units'][UNIT]
-    if any(row['unreachable_sources'] for row in unit['route_audit']):
-        raise ValueError('Entrance room has unreachable route destinations')
-    directory=assembled if assembled else imported/'units'/UNIT
+    name=UNIT if floor==1 else 'room_purple14x14_snow'
+    unit=manifest['units'][name]
+    if any(row['unreachable_sources'] for row in unit['start_destination_audit']):
+        raise ValueError('Room has unreachable start destination')
+    directory=assembled if assembled else imported/'units'/name
     if assembled:
         assembly=json.loads((assembled/'assembly.json').read_text())
         if assembly['cave']!='tutorial_1' or assembly['floor']!=1 or not assembly['assembled']:
@@ -28,7 +31,7 @@ def prepare(assets, imported, treasure, output, assembled=None):
     room=json.loads((directory/'collision.json').read_text())
     # Preserve source routes; unlike room105 these destinations already connect.
     routes=route_ini(room['routes']).encode('utf-8')
-    model=attach_collision((directory/'render.mod').read_bytes(),room,cap_exits=not bool(assembled))
+    model=attach_collision((directory/'render.mod').read_bytes(),room,cap_exits=floor==1 and not bool(assembled))
     stage=(assets/'dataDir/stages/chal0.ini').read_bytes()
     stage=re.sub(rb'(?m)^map_file[^\r\n]*',b'map_file courses/pikmin2room/room.mod',stage)
     stage=re.sub(rb'(?m)^navi_start[^\r\n]*',b'navi_start -85.0 0.0',stage)
@@ -45,29 +48,59 @@ def prepare(assets, imported, treasure, output, assembled=None):
         placements={b'preview treasure bolt':(0,0,1020),b'preview dwarf bulborb':(0,0,1190)}
         found=set()
         for start in starts:
-            name=bytes(actors[start+16:start+48]).rstrip(b'\0')
-            if name in placements:
-                struct.pack_into('>3f',actors,start+48,*placements[name]);found.add(name)
+            label=bytes(actors[start+16:start+48]).rstrip(b'\0')
+            if label in placements:
+                struct.pack_into('>3f',actors,start+48,*placements[label]);found.add(label)
         if found!=set(placements): raise ValueError('Missing distant test actor')
+    walk=[]
+    if floor==2:
+        def grounded(x,z):
+            y=ground_height(room['vertices'],room['triangles'],x,z)
+            if y is None: raise ValueError('Missing floor beneath second-floor actor')
+            return (x,y,z)
+        starts=[match.start() for match in re.finditer(b'    0.0v',actors)]+[len(actors)]
+        entries=[];piki=0
+        for start,end in zip(starts,starts[1:]):
+            entry=bytearray(actors[start:end]);label=bytes(entry[16:48]).rstrip(b'\0')
+            if label==b'preview dwarf bulborb': continue # terrain/carry fixture, no combat roster yet
+            if label==b'preview red onion': position=grounded(-680,595)
+            elif label==b'preview ship': position=grounded(-800,700)
+            elif label==b'preview treasure bolt': position=grounded(475,-425)
+            elif label==b'preview red pikmin':
+                position=grounded(-750+(piki%5)*12,520+(piki//5)*12);piki+=1
+            else: raise ValueError('Unknown second-floor scaffold actor')
+            struct.pack_into('>3f',entry,48,*position);entries.append(entry)
+        actors=bytearray(b'1.0v'+struct.pack('>4fI',*grounded(-680,500),45,len(entries))+b''.join(entries))
+        stage=re.sub(rb'(?m)^navi_start[^\r\n]*',b'navi_start -680.0 500.0',stage)
+        # Walk out along the source return route in reverse, without reversing its links.
+        walk=[(-340,510),(-85,595),(170,560),(425,425),(595,255),(660,0),(660,-170),(600,-325),(475,-425)]
     overrides={'dataDir/stages/chal0.ini':stage,
                'dataDir/stages/chal0/default.gen':bytes(actors),
                'dataDir/courses/pikmin2room/room.mod':model,
                'dataDir/courses/pikmin2room/room.ini':routes,
                'dataDir/courses/pikmin2room/treasure.mod':treasure.read_bytes()}
+    if pod:
+        overrides['dataDir/courses/pikmin2room/pod.mod']=(pod/'pod.mod').read_bytes()
+        overrides['dataDir/courses/pikmin2room/treasure.mod']=(pod/'treasure.mod').read_bytes()
     for path in (assets/'dataDir/stages/chal0').glob('*.gen'):
         overrides.setdefault('dataDir/stages/chal0/'+path.name,empty)
     run=output.resolve()/uuid.uuid4().hex
     run.mkdir(parents=True)
-    heights=[ground_height(room['vertices'],room['triangles'],x,z)
-             for x,z in [(-85,0),(-175,-100),(185,-180),(-220,-180)]]
+    if pod: (run/'p2-pod.txt').write_bytes((pod/'p2-pod.txt').read_bytes())
+    probes=[(-680,500),(-680,595),(475,-425),(660,0)] if floor==2 else [(-85,0),(-175,-100),(185,-180),(-220,-180)]
+    heights=[ground_height(room['vertices'],room['triangles'],x,z) for x,z in probes]
     if any(y is None for y in heights):
         raise ValueError('Missing ground beneath preview actor fixture')
     (run/'p2-ground.txt').write_text(' '.join(str(y) for y in heights))
+    (run/'p2-probe-positions.txt').write_text('\n'.join(f'{x} {z}' for x,z in probes))
     if assembled: (run/'p2-assembled.txt').write_text('1\n')
+    if floor==2:
+        (run/'p2-second-floor.txt').write_text(str(len(walk))+'\n'+'\n'.join(f'{x} {z}' for x,z in walk))
     overlay(assets,run/'assets',overrides)
-    (run/'preview.json').write_text(json.dumps(dict(unit=UNIT,experimental=True,ap=False,save_resume=False,
-        assembled_geometry=bool(assembled),complete_floor=False,actors='20 Reds, P1 Dwarf Bulborb, Onion and bolt from room105 fixture',
-        limitations='Authored engineering layout; no Pod, actual cave roster, descent, Purples or campaign persistence.'),indent=2))
+    (run/'preview.json').write_text(json.dumps(dict(unit=name,floor=floor,experimental=True,ap=False,save_resume=False,
+        assembled_geometry=bool(assembled),pod=bool(pod),complete_floor=False,
+        actors=('20 Reds and source-configured treasure; Dwarf corpse on floor 1' if pod else '20 Reds, bolt and temporary Onion; Dwarf on floor 1'),
+        limitations='Engineering layout; no actual cave roster, descent, Purples or campaign persistence.'),indent=2))
     return run
 
 
@@ -79,8 +112,10 @@ if __name__=='__main__':
     parser.add_argument('--output',type=Path,default=Path('output/pikmin2-emergence-preview'))
     parser.add_argument('--exe',type=Path)
     parser.add_argument('--assembled',type=Path,help='Optional authored floor assembly directory')
+    parser.add_argument('--floor',type=int,choices=(1,2),default=1)
+    parser.add_argument('--pod',type=Path,help='Opt-in Research Pod assets and source economy config')
     args=parser.parse_args()
-    run=prepare(args.assets.resolve(),args.imported.resolve(),args.treasure.resolve(),args.output,args.assembled.resolve() if args.assembled else None)
+    run=prepare(args.assets.resolve(),args.imported.resolve(),args.treasure.resolve(),args.output,args.assembled.resolve() if args.assembled else None,args.floor,args.pod.resolve() if args.pod else None)
     print(run,flush=True)
     if args.exe:
         with (run/'native.log').open('w',encoding='utf-8') as log:

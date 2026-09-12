@@ -36,6 +36,8 @@
 #include <vector>
 static int phase=0,ticks=0;
 static bool assembled=false;
+static bool secondFloor=false;
+static std::vector<Vector3f> walkGoals;
 static int walkPoint=0;
 static Vector3f origin;
 static void require(bool value,const char* message) { if(!value) { std::printf("FAIL p2 room: %s\n",message);std::fflush(stdout);std::_Exit(1); } }
@@ -45,15 +47,14 @@ class FixtureController : public Kontroller {
 public:
     FixtureController() : Kontroller(1) {}
     void update() override {
-        updateCont(phase==1?KBBTN_MSTICK_RIGHT:0);
-        mMainStickX=phase==1?74:0; mMainStickY=0;
-        if(assembled && phase==1 && naviMgr) {
+        updateCont((phase==1 || phase==7)?KBBTN_MSTICK_RIGHT:0);
+        mMainStickX=(phase==1 || phase==7)?74:0; mMainStickY=0;
+        if((assembled || secondFloor) && (phase==1 || phase==7) && naviMgr) {
             Navi* n=naviMgr->getNavi();
             if(n && n->mNaviCamera) {
-                const float goals[]={275,510,800,920};
-                float dx=-n->mSRT.t.x,dz=goals[walkPoint]-n->mSRT.t.z;
+                float dx=walkGoals[walkPoint].x-n->mSRT.t.x,dz=walkGoals[walkPoint].z-n->mSRT.t.z;
                 float distance=std::sqrt(dx*dx+dz*dz);
-                if(distance<20 && walkPoint<3)++walkPoint;
+                if(distance<20 && walkPoint+1<int(walkGoals.size()))++walkPoint;
                 if(distance>1) {
                     const Vector3f& axis=n->mNaviCamera->mViewXAxis;
                     mMainStickX=static_cast<signed char>(65*(dx*axis.x+dz*axis.z)/distance);
@@ -120,8 +121,12 @@ public:
             Iterator e(tekiMgr);CI_LOOP(e){Teki* v=static_cast<Teki*>(*e);if(v->isAlive() && v->mTekiType==TEKI_Chappy){++dwarfs;enemy=v;}}
             cameraLog(n,"START");capture("p2-room-start.ppm");
             std::printf("P2_FIXTURE_COUNTS reds=%d dwarfs=%d\n",reds,dwarfs);
-            require(reds==20,"expected twenty field reds");require(dwarfs==1,"expected one dwarf bulborb");
-            const float points[][2]={{-85,0},{-175,-100},{185,-180},{-220,-180}};
+            require(reds==20,"expected twenty field reds");require(dwarfs==(secondFloor?0:1),"unexpected dwarf fixture count");
+            float points[][2]={{-85,0},{-175,-100},{185,-180},{-220,-180}};
+            if(FILE* positions=std::fopen("p2-probe-positions.txt","r")) {
+                for(auto& p:points)require(std::fscanf(positions,"%f %f",&p[0],&p[1])==2 && std::isfinite(p[0]) && std::isfinite(p[1]),"ground position fixture framing");
+                std::fclose(positions);
+            }
             float expected[4]={0,0,0,0};
             if(FILE* ground=std::fopen("p2-ground.txt","r")) {
                 require(std::fscanf(ground,"%f %f %f %f",&expected[0],&expected[1],&expected[2],&expected[3])==4,"ground fixture framing");
@@ -130,14 +135,24 @@ public:
             for(int i=0;i<4;++i)require(std::isfinite(expected[i]) && std::fabs(mapMgr->getMinY(points[i][0],points[i][1],true)-expected[i])<0.05f,"native ground differs from decoded fixture terrain");
             n->mKontroller=new FixtureController();
             repairs=playerState->getCurrParts();origin=n->mSRT.t;phase=1;ticks=0;
+            if(pc_p2_preview_goal())require(pc_p2_preview_pokos()==0,"new Pod fixture must start with empty ledger");
+            if(pc_p2_preview_goal()) {
+                int index=0;Iterator mixed(pikiMgr);CI_LOOP(mixed) {
+                    Piki* v=static_cast<Piki*>(*mixed);if(!v->isAlive())continue;
+                    int color=index++%3;v->setColor(color);require(v->mColor==color,"mixed Pod squad colors unavailable");
+                }
+                std::puts("P2_POD_MIXED_SQUAD blue/red/yellow, normal carrying strength");
+            }
             std::puts("P2_FIXTURE_ACTORS_GROUND_PASS");
-        } else if(phase==1 && ++ticks>=(assembled?1800:60)) {
-            require(!assembled,"controller did not cross the room seams before timeout");
+        } else if(phase==1 && ++ticks>=((assembled||secondFloor)?1800:60)) {
+            require(!assembled && !secondFloor,"controller did not finish terrain route before timeout");
         }
-        if(phase==1 && (assembled?(walkPoint==3 && n->mSRT.t.z>890 && std::fabs(n->mSRT.t.x)<30):ticks>=60)) {
+        bool arrived=secondFloor ? (walkPoint+1==int(walkGoals.size()) && std::fabs(n->mSRT.t.x-walkGoals.back().x)<25 && std::fabs(n->mSRT.t.z-walkGoals.back().z)<25)
+                                : (assembled?(walkPoint==3 && n->mSRT.t.z>890 && std::fabs(n->mSRT.t.x)<30):ticks>=60);
+        if(phase==1 && arrived) {
             float dx=n->mSRT.t.x-origin.x,dz=n->mSRT.t.z-origin.z;
             std::printf("P2_MOVE_DEBUG origin=%.2f,%.2f,%.2f now=%.2f,%.2f,%.2f stick=%d,%d main=%.2f,%.2f vel=%.2f,%.2f target=%.2f,%.2f flags=%u state=%d\n",origin.x,origin.y,origin.z,n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z,int(n->mKontroller->mMainStickX),int(n->mKontroller->mMainStickY),n->mMainStick.x,n->mMainStick.z,n->mVelocity.x,n->mVelocity.z,n->mTargetVelocity.x,n->mTargetVelocity.z,n->mKontroller->mCurrentInput,n->getCurrState()->getID());
-            require(dx*dx+dz*dz>4,"controller movement failed");require(std::fabs(n->mSRT.t.y)<5,"captain left floor");
+            require(dx*dx+dz*dz>4,"controller movement failed");require(std::fabs(n->mSRT.t.y-mapMgr->getMinY(n->mSRT.t.x,n->mSRT.t.z,true))<5,"captain left floor");
             std::printf("P2_FIXTURE_MOVEMENT_PASS distance=%.2f\n",std::sqrt(dx*dx+dz*dz));
             if(assembled)require(n->mSRT.t.z>890 && origin.z<350,"captain did not cross both seams");
             cameraLog(n,"MOVED");capture("p2-room-moved.ppm");
@@ -151,6 +166,12 @@ public:
         } else if(phase==2) {
             if(FILE* f=std::fopen("treasure-receipt.txt","r")) {
                 std::fclose(f);require(playerState->getCurrParts()==repairs,"treasure changed repairs");
+                if(pc_p2_preview_goal())require(pc_p2_preview_pokos()==180,"Citrus Lump must award 180 Pokos");
+                if(secondFloor) {
+                    cameraLog(n,"FINAL");capture();
+                    std::puts("PASS p2 second floor: decoded terrain, controller slope traversal and native return delivery; no combat or cave lifecycle claim");
+                    std::fflush(stdout);std::_Exit(0);
+                }
                 std::puts("P2_FIXTURE_DELIVERY_PASS"); phase=3; ticks=0;
             }
             require(++ticks<5000,"native transport did not deliver");
@@ -194,21 +215,44 @@ public:
                 }
             }
             if(!corpse->isAlive()) {
+                if(pc_p2_preview_goal())require(pc_p2_preview_pokos()==182 && playerState->getCurrParts()==repairs,"corpse must add two Pokos without repairs");
                 require(corpseReachedGoal && corpseDistance>(assembled?1000:100),"corpse disappeared without traversing room and entering Onion goal");
                 const float ground=mapMgr->getMinY(n->mSRT.t.x,n->mSRT.t.z,true);
                 std::printf("P2_FINAL_POSITION x=%.3f y=%.3f z=%.3f ground=%.3f velocity=%.3f,%.3f stick=%d,%d\n",n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z,ground,n->mVelocity.x,n->mVelocity.z,int(n->mKontroller->mMainStickX),int(n->mKontroller->mMainStickY));
                 cameraLog(n,"FINAL");capture();
                 require(std::fabs(n->mSRT.t.x)<=340 && std::fabs(n->mSRT.t.z)<=(assembled?1360:340),"captain outside room bounds");
                 require(std::fabs(n->mSRT.t.y-ground)<5 && std::fabs(ground)<0.05f,"captain final position not on room floor");
-                std::puts("PASS p2 room: actors, ground, controller movement, native carry delivery, unchanged repairs, native combat kill, far corpse transport and delivery");std::fflush(stdout);std::_Exit(0);
+                if(pc_p2_preview_goal() && assembled) {
+                    walkGoals.clear();for(float z:{800.f,510.f,275.f,0.f,-250.f})walkGoals.push_back(Vector3f(0,0,z));
+                    walkPoint=0;phase=7;ticks=0;
+                } else {
+                    std::puts("PASS p2 room: actors, ground, controller movement, native carry delivery, unchanged repairs, native combat kill, far corpse transport and delivery");std::fflush(stdout);std::_Exit(0);
+                }
             }
             require(ticks<1800,"far corpse carrying stalled or gave up");
+        } else if(phase==7) {
+            if(walkPoint+1==int(walkGoals.size()) && std::fabs(n->mSRT.t.z+250)<25) {
+                capture("p2-pod-return.ppm");
+                require(pc_p2_preview_pokos()==182,"Pod balance changed on walk back");
+                std::puts("PASS p2 Pod: mixed-color native treasure and corpse delivery, 182 Pokos, unchanged repairs, controller return to Pod");
+                std::fflush(stdout);std::_Exit(0);
+            }
+            require(++ticks<1800,"return walk to Pod stalled");
         }
         std::fflush(stdout);return result;
     }
 };
 int main(int argc,char** argv) {
+    // Automated fixture only: keep the real mixer/timing, never open a speaker device.
+    SDL_setenv("SDL_AUDIODRIVER","dummy",1);
+    for(float z:{275.f,510.f,800.f,920.f})walkGoals.push_back(Vector3f(0,0,z));
     if(FILE* marker=std::fopen("p2-assembled.txt","r")){assembled=true;std::fclose(marker);}
+    if(FILE* route=std::fopen("p2-second-floor.txt","r")) {
+        secondFloor=true;walkGoals.clear();int count=0;
+        require(std::fscanf(route,"%d",&count)==1 && count>0 && count<=32,"walk fixture count");
+        for(int i=0;i<count;++i){float x,z;require(std::fscanf(route,"%f %f",&x,&z)==2 && std::isfinite(x) && std::isfinite(z),"walk fixture point");walkGoals.push_back(Vector3f(x,0,z));}
+        std::fclose(route);
+    }
     SDL_SetMainReady();pc_gpu_preference_apply();_putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND","1");pc_bbft_init(argc,argv);
     require(pc_pikipelago_room_preview(),"requires --experimental-pikmin2-room");
     if(!pc_window_init("P2 room integration fixture",960,720))return 3;

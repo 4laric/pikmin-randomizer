@@ -1,6 +1,7 @@
 """Restricted static J3D BMD -> Open Nectar MOD proof-of-concept.
 Material shading is deliberately reduced to vertex color times the first texture.
-Only rigid, identity-root models are accepted; this is not a general J3D exporter.
+Identity-root models are accepted by default; static rigid bind-pose baking is
+opt-in. This is not a general J3D exporter.
 """
 from pathlib import Path
 import argparse
@@ -34,11 +35,18 @@ def blocks(data):
         result[data[at:at+4].decode('ascii')]=data[at:at+size]; at+=size
     return result
 
-def decode(data, approximate_materials=False):
+def decode(data, approximate_materials=False, bake_rigid=False):
     b=blocks(data); j=b['JNT1']; d=b['DRW1']
-    if u16(j,8)!=1 or u16(b['EVP1'],8)!=0 or u16(d,8)!=1 or d[u32(d,12)]!=0 or u16(d,u32(d,16))!=0: raise ValueError('Only one rigid joint supported')
+    if u16(b['EVP1'],8)!=0: raise ValueError('Skinned envelopes not supported')
+    if not bake_rigid and (u16(j,8)!=1 or u16(d,8)!=1 or d[u32(d,12)]!=0 or u16(d,u32(d,16))!=0): raise ValueError('Only one rigid joint supported')
     jo=u32(j,12)
-    if unpack(j,'3f',jo+4)!=(1.,1.,1.) or unpack(j,'3h',jo+16)!=(0,0,0) or unpack(j,'3f',jo+24)!=(0.,0.,0.): raise ValueError('Non-identity joint transform')
+    if not bake_rigid and (unpack(j,'3f',jo+4)!=(1.,1.,1.) or unpack(j,'3h',jo+16)!=(0,0,0) or unpack(j,'3f',jo+24)!=(0.,0.,0.)): raise ValueError('Non-identity joint transform')
+    if bake_rigid:
+        from experimental.pikmin2_rigid import joint_matrices
+        matrices=joint_matrices(b)
+        draw_joints=[u16(d,u32(d,16)+2*i) for i in range(u16(d,8))]
+        if any(d[u32(d,12)+i]!=0 or joint>=len(matrices) for i,joint in enumerate(draw_joints)):
+            raise ValueError('Non-rigid draw matrix')
     v=b['VTX1']; formats={}; at=u32(v,8)
     while u32(v,at)!=255:
         attr,count,kind=unpack(v,'III',at); formats[attr]=(count,kind,v[at+12]); at+=16
@@ -61,15 +69,22 @@ def decode(data, approximate_materials=False):
     s=b['SHP1']; shapes=[]
     for si in range(u16(s,8)):
         rec=u32(s,12)+u16(s,u32(s,16)+2*si)*40
-        if s[rec]!=0: raise ValueError('Unsupported shape matrix type')
+        if s[rec]!=0 and not (bake_rigid and s[rec]==3): raise ValueError('Unsupported shape matrix type')
         groups,desc,mi,di=unpack(s,'4H',rec+2); attrs=[]; at=u32(s,24)+desc
         while u32(s,at)!=255:
             attr,kind=unpack(s,'II',at); at+=8
-            if (attr not in (0,9,10,11,13) and not (approximate_materials and attr in (12,*range(14,21)))) or kind not in (1,2,3): raise ValueError('Unsupported display-list attribute')
-            if kind==1 and attr!=0: raise ValueError('Direct non-matrix attribute unsupported')
+            if (attr not in (0,9,10,11,13) and not (approximate_materials and attr in (12,*range(14,21))) and not (bake_rigid and approximate_materials and attr==1)) or kind not in (1,2,3): raise ValueError('Unsupported display-list attribute')
+            if kind==1 and attr not in ((0,1) if bake_rigid else (0,)): raise ValueError('Direct non-matrix attribute unsupported')
             attrs.append((attr,kind))
-        triangles=[]
+        triangles=[];matrix_slots={}
         for gi in range(groups):
+            if bake_rigid:
+                _,matrix_count,first=unpack(s,'HHI',u32(s,36)+(mi+gi)*8)
+                for slot in range(matrix_count):
+                    draw=u16(s,u32(s,28)+2*(first+slot))
+                    if draw!=65535:
+                        if draw>=len(draw_joints): raise ValueError('Invalid rigid draw reference')
+                        matrix_slots[slot]=draw_joints[draw]
             size,off=unpack(s,'II',u32(s,40)+(di+gi)*8); at=u32(s,32)+off; end=at+size
             while at<end:
                 op=s[at]; at+=1
@@ -77,14 +92,22 @@ def decode(data, approximate_materials=False):
                 if op not in (0x80,0x90,0x98,0xA0): raise ValueError(f'Unsupported primitive {op:#x}')
                 count=u16(s,at); at+=2; verts=[]
                 for _ in range(count):
-                    vv={}
+                    vv={};matrix_slot=0
                     for attr,kind in attrs:
                         value=s[at] if kind in (1,2) else u16(s,at); at+=1 if kind in (1,2) else 2
                         if attr==0:
-                            if value!=0: raise ValueError('Non-root matrix reference')
+                            if bake_rigid:
+                                if value%3: raise ValueError('Invalid matrix slot')
+                                matrix_slot=value//3
+                            elif value!=0: raise ValueError('Non-root matrix reference')
+                        elif attr==1 and bake_rigid:
+                            pass # texture matrix animation omitted in explicit approximation mode
                         else:
                             if value>=len(arrays[attr]): raise ValueError('Vertex index out of range')
                             vv[attr]=value
+                    if bake_rigid:
+                        if matrix_slot not in matrix_slots: raise ValueError('Missing rigid matrix slot')
+                        vv[0]=matrix_slots[matrix_slot]
                     verts.append(vv)
                 if op==0x90:
                     if count%3: raise ValueError('Partial triangle')
@@ -113,6 +136,11 @@ def decode(data, approximate_materials=False):
             if any(u16(m,r+132+2*k)!=65535 for k in range(1,8)): raise ValueError('Multiple texture inputs unsupported')
         tex=u16(m,r+132); tex=-1 if tex==65535 else u16(m,u32(m,72)+tex*2)
         materials.append(tex)
+    if bake_rigid:
+        from experimental.pikmin2_rigid import bake
+        # Primitive strips/fans share vertex dictionaries; bake each reference independently.
+        shapes=[[[dict(v) for v in tri] for tri in shape] for shape in shapes]
+        bake(arrays,shapes,matrices)
     # Array blocks carry alignment padding; only referenced entries are vertices.
     for attr in arrays:
         used=[v[attr] for tris in shapes for tri in tris for v in tri if attr in v]
@@ -129,8 +157,11 @@ class Writer:
     def end(self):
         self.pad(); struct.pack_into('>I',self.data,self.start+4,len(self.data)-self.start-8)
 
-def convert(source, output, approximate_materials=False, y_offset=0.0):
-    return write_model(decode(Path(source).read_bytes(), approximate_materials),output,str(source),y_offset)
+def convert(source, output, approximate_materials=False, y_offset=0.0, bake_rigid=False):
+    report=write_model(decode(Path(source).read_bytes(), approximate_materials,bake_rigid),output,str(source),y_offset)
+    report['rigid_bind_pose_baked']=bake_rigid
+    Path(output).with_suffix('.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
+    return report
 
 
 def write_model(decoded, output, source, y_offset=0.0):

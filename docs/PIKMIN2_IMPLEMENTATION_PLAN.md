@@ -83,7 +83,7 @@ For persistence, exercise process restart at floor entry, after collection, desc
 
 The highest uncertainties are animation/material compatibility, generated-room connectivity, two-captain ownership and durable campaign state. Resolve these as gates before estimating the entire project. Static room conversion is lower risk now; arbitrary P2 content remains unproven. Full enemy/boss fidelity and presentation are a substantial content effort even if the engine primitives are reusable.
 
-Next implementation action is #110: produce the Emergence manifest and a first fixed floor with audited destinations. This document authorizes no automatic merge of experimental code into v0.1. General engine fixes can be proposed upstream separately from campaign-specific additions.
+Continue #111's Pod/economy acceptance, then #112's cave entry/descent/exit and squad checkpoints. This document authorizes no automatic merge of experimental code into v0.1. General engine fixes can be proposed upstream separately from campaign-specific additions.
 
 ## Source basis
 
@@ -93,4 +93,6 @@ Current Open Nectar prototype native commit: `5b0e3857f3f367b6c4003498110b86c551
 
 ## Implementation progress
 
-Batch #110 has started: [Emergence import and entrance-room preview](PIKMIN2_EMERGENCE_IMPORT.md). Both floor definitions and all referenced unit assets convert. An authored first-floor assembly now passes native walking and cross-seam carrying; second-floor native validation and actual cave gameplay remain outstanding.
+Batch #110: [Emergence import and floor previews](PIKMIN2_EMERGENCE_IMPORT.md). Both floor definitions and all referenced unit assets convert. An authored first-floor assembly passes native walking and cross-seam carrying; the second floor now passes native slope traversal and return carrying on the original directed graph. Actual cave gameplay and visual fidelity remain outstanding.
+
+Batch #111: [Research Pod and economy preview](PIKMIN2_RESEARCH_POD.md). Static imported Pod, source-configured treasure weight/value, corpse currency and a separate duplicate-resistant receipt ledger are implemented in the isolated preview. The first native run reached 182 Pokos from treasure and corpse deliveries without P1 repair or seed credit. This is not cave/world persistence or a complete Pod actor; full acceptance remains tracked on the issue.

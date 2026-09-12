@@ -13,6 +13,7 @@
 #include "MoviePlayer.h"
 #include "Navi.h"
 #include "Pellet.h"
+#include "pc_p2_preview.h"
 #include "PelletState.h"
 #include "PikiAI.h"
 #include "PikiMgr.h"
@@ -999,6 +1000,7 @@ int ActTransport::moveGuruGuru()
 void ActTransport::decideGoal(Creature* cargo)
 {
 	Pellet* pel = mPellet.getPtr();
+    if(Suckable* pod=pc_p2_preview_goal()) {mGoal=pod;pel->mTargetGoal=pod;return;}
 	PRINT("pellet type is %d\n", pel->mConfig->mPelletType());
 	if (pel->mConfig->mPelletType() == PELTYPE_UfoPart) {
 		mGoal = itemMgr->getUfo();
