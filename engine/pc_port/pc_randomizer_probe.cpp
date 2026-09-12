@@ -84,6 +84,30 @@ int main(int argc, char** argv) {
                 std::puts("RETIRED_STICK_PASS");
                 return 0;
             }
+            for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--deathlink-probe")) {
+                // Baseline: whatever count the first state carried is not applied.
+                assert(pc_randomizer_deathlink_casualties() == 0);
+                int fake[2];
+                pc_randomizer_deathlink_induce(&fake[0]);
+                pc_randomizer_observe_pikmin_death(&fake[0]); // Induced: not journaled.
+                pc_randomizer_observe_pikmin_death(&fake[1]);
+                pc_randomizer_observe_pikmin_death(nullptr);
+                pc_randomizer_observe_pikmin_death(&fake[0]); // Ordinary again once the mark is spent.
+                std::puts("DEATHLINK_BASELINE deaths=3");
+                std::fflush(stdout);
+                for (int wait = 0; wait < 100; ++wait) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                    pc_randomizer_update();
+                    const int casualties = pc_randomizer_deathlink_casualties();
+                    if (!casualties) continue;
+                    int applied = 0;
+                    while (pc_randomizer_deathlink_casualties()) { pc_randomizer_deathlink_consume(casualties - 1); ++applied; }
+                    std::printf("DEATHLINK_PASS unit=%d applied=%d\n", casualties, applied);
+                    return 0;
+                }
+                std::puts("DEATHLINK_TIMEOUT");
+                return 1;
+            }
             for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--emperor-probe")) {
                 const bool unlocked = pc_randomizer_repairs() == 25;
                 assert(pc_randomizer_emperor_available() == unlocked);
