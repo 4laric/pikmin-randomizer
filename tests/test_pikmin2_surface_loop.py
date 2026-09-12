@@ -16,7 +16,7 @@ class SurfaceLoopTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.root=Path(self.tmp.name);self.exe=self.root/'game.exe';self.exe.write_bytes(b'test')
-        self.args=SimpleNamespace(output=self.root/'output',surface_exe=self.exe,cave_exe=self.exe,
+        self.args=SimpleNamespace(source_import=None,pocket=None,output=self.root/'output',surface_exe=self.exe,cave_exe=self.exe,
             assets=None,imported=None,pod1=None,pod2=None,purple=None,treasure=None,transitions=None,
             snow=None,roster=None,transition_assets=None)
         self.content=SimpleNamespace(identity='a'*64,stage=self.cave_stage)

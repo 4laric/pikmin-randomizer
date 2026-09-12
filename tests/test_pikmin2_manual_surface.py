@@ -63,7 +63,7 @@ class ManualSurfaceTests(unittest.TestCase):
 
     def test_failed_session_never_launches(self):
         (self.root/'failed-entry.json').write_text('{}')
-        args=SimpleNamespace(output=self.root,assets=None,imported=None,pod1=None,pod2=None,purple=None,
+        args=SimpleNamespace(source_import=None,pocket=None,output=self.root,assets=None,imported=None,pod1=None,pod2=None,purple=None,
                              treasure=None,transitions=None,snow=None,roster=None,transition_assets=None)
         with patch.object(manual,'NativeContent',return_value=self.content),patch.object(manual.subprocess,'run') as process:
             with self.assertRaisesRegex(RuntimeError,'failed'):manual.play(args,process)
@@ -72,7 +72,7 @@ class ManualSurfaceTests(unittest.TestCase):
     def test_closed_entrance_reuses_command_without_creating_cave(self):
         exe=self.root/'manual.exe';exe.write_bytes(b'test executable')
         (self.run/'p2-cave-transfer.txt').unlink()
-        args=SimpleNamespace(output=self.root,assets=None,imported=None,pod1=None,pod2=None,purple=None,
+        args=SimpleNamespace(source_import=None,pocket=None,output=self.root,assets=None,imported=None,pod1=None,pod2=None,purple=None,
              treasure=None,transitions=None,snow=None,roster=None,transition_assets=None,surface_exe=exe,cave_exe=exe)
         with patch.object(manual,'NativeContent',return_value=self.content),\
              patch.object(manual,'launch_surface',return_value=(self.run,self.command['checkpoint'],self.command['token'])) as stage,\
@@ -84,7 +84,7 @@ class ManualSurfaceTests(unittest.TestCase):
     def test_launcher_failure_keeps_replay_command(self):
         exe=self.root/'manual.exe';exe.write_bytes(b'test executable')
         (self.run/'p2-cave-transfer.txt').unlink()
-        args=SimpleNamespace(output=self.root,assets=None,imported=None,pod1=None,pod2=None,purple=None,
+        args=SimpleNamespace(source_import=None,pocket=None,output=self.root,assets=None,imported=None,pod1=None,pod2=None,purple=None,
              treasure=None,transitions=None,snow=None,roster=None,transition_assets=None,surface_exe=exe,cave_exe=exe)
         with patch.object(manual,'NativeContent',return_value=self.content),\
              patch.object(manual,'launch_surface',return_value=(self.run,self.command['checkpoint'],self.command['token'])),\

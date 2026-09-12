@@ -57,21 +57,22 @@ def play(args, process=subprocess.run):
     print(WARNING,flush=True)
     args.output.mkdir(parents=True,exist_ok=True)
     content=NativeContent(args.assets,args.imported,[args.pod1,args.pod2],args.purple,args.treasure,
-                          args.transitions,args.snow,args.roster,args.transition_assets)
+                          args.transitions,args.snow,args.roster,args.transition_assets,
+                          source_import=args.source_import,pocket=args.pocket)
     with SessionLock(args.output/'manual-host-lease'):
         if any((args.output/name).exists() for name in ('failed-entry.json','failed-return.json')):
             raise RuntimeError('This entrance session failed; retained without revival. Use a new output for a new test.')
-        provenance=dict(surface=executable_identity(args.surface_exe),cave=executable_identity(args.cave_exe))
-        atomic_write(args.output/f'launch-{uuid.uuid4().hex}.json',json.dumps(provenance,indent=2))
         command_path=args.output/'entry-command.json'
         if command_path.exists():
             command=json.loads(command_path.read_text())
-            if command['content']!=content.identity:raise ValueError('Content changed; retain original bundle')
+            if command['content']!=content.identity:raise ValueError('Content changed or legacy surface identity; retain original bundle and launcher; session preserved')
         else:
             run,state,token=launch_surface(args,content,initial_snapshot(),'enter',process)
             command=dict(content=content.identity,campaign=uuid.uuid4().hex,trip=uuid.uuid4().hex,
                          run=str(run),checkpoint=state,token=token)
             atomic_write(command_path,json.dumps(command,indent=2))
+        provenance=dict(surface=executable_identity(args.surface_exe),cave=executable_identity(args.cave_exe))
+        atomic_write(args.output/f'launch-{uuid.uuid4().hex}.json',json.dumps(provenance,indent=2))
         ledger=SurfaceLedger(args.output/'session',content.identity,command['campaign'])
         if not ledger.path.exists():
             run=Path(command['run'])

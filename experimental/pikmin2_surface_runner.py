@@ -8,9 +8,9 @@ from randomizer.session import SessionLock, atomic_write
 
 
 class NativeContent:
-    """Existing two-floor staging, with the same content identity as cave runner."""
+    """Two-floor staging with cave-only identity or opt-in versioned surface binding."""
     def __init__(self, assets, imported, pods, purple, treasure, transitions=None,
-                 snow=None, roster=None, transition_assets=None):
+                 snow=None, roster=None, transition_assets=None, *, source_import=None, pocket=None):
         from experimental.pikmin2_transitions import read_transitions, read_visuals
         self.assets, self.imported = Path(assets), Path(imported)
         self.pods, self.purple, self.treasure = list(map(Path, pods)), Path(purple), Path(treasure)
@@ -18,8 +18,13 @@ class NativeContent:
         self.anchors, self.visuals = read_transitions(transitions), read_visuals(transition_assets)
         if len(self.pods) != 2 or (self.visuals and not self.anchors) or (roster and not snow):
             raise ValueError('Invalid two-floor content options')
+        if (source_import is None) != (pocket is None):
+            raise ValueError('Surface identity requires source import and pocket together')
         self.identity = cave.content_identity(self.imported, self.pods, self.purple,
                                              self.anchors, snow, roster, self.visuals)
+        if source_import is not None:
+            from experimental.pikmin2_surface_identity import surface_identity
+            self.identity = surface_identity(self.identity, self.treasure, source_import, pocket)
 
     def stage(self, checkpoint, token, runs):
         from experimental.pikmin2_transitions import install_visuals

@@ -44,14 +44,15 @@ def play(args, process=subprocess.run):
     print(WARNING,flush=True)
     args.output.mkdir(parents=True,exist_ok=True)
     content=NativeContent(args.assets,args.imported,[args.pod1,args.pod2],args.purple,args.treasure,
-                          args.transitions,args.snow,args.roster,args.transition_assets)
+                          args.transitions,args.snow,args.roster,args.transition_assets,
+                          source_import=args.source_import,pocket=args.pocket)
     with SessionLock(args.output/'manual-host-lease'):
         if (args.output/'entry-command.json').exists():
             raise ValueError('One-trip output belongs to the previous launcher; use a new repeat-visit output')
         identity_path=args.output/'loop-identity.json'
         if identity_path.exists():
             identity=json.loads(identity_path.read_text())
-            if identity['content']!=content.identity:raise ValueError('Content changed; retain the original bundle')
+            if identity['content']!=content.identity:raise ValueError('Content changed or legacy surface identity; retain original bundle and launcher; session preserved')
         else:
             if (args.output/'session').exists():raise ValueError('Missing loop identity; refusing to reset existing session')
             identity=dict(content=content.identity,campaign=uuid.uuid4().hex)
