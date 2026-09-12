@@ -101,6 +101,13 @@ Batch #113: [Purple preview](PIKMIN2_PURPLE_PREVIEW.md). Opt-in Purple species m
 
 Batch #112: [Cave checkpoints](PIKMIN2_CAVE_CHECKPOINTS.md). Two standalone floors are linked with F6 at the Pod, survivor/Purple/maturity/health transfer and atomic receipt checkpoints. Mid-floor closes roll the whole floor back; extinction persists failure. Surface entry/return, physical transition actors and complete authored content remain open.
 
-Combined follow-up: [Snow and transition playtest](PIKMIN2_COMBINED_PLAYTEST.md) integrates opt-in source enemy visuals and marker-based descent/exit. [Content manifest](PIKMIN2_CONTENT_MANIFEST.md) prepares all three treasures independently; native multi-treasure support remains next.
+Combined follow-up: [Snow and transition playtest](PIKMIN2_COMBINED_PLAYTEST.md) integrates opt-in source enemy visuals and marker-based descent/exit. [Content manifest](PIKMIN2_CONTENT_MANIFEST.md) prepares all three treasures independently; the roster follow-up below integrates their native receipts.
 
 Roster follow-up: [three-treasure/full enemy-count playtest](PIKMIN2_ROSTER_PLAYTEST.md) connects optional per-instance cargo and deterministic4+7 Snow placements to the checkpoint runner. Source behavior/animation fidelity and surface roundtrip remain outstanding.
+
+Transition follow-up: [imported hole/geyser models](PIKMIN2_TRANSITION_ASSETS.md)
+replace the engineering markers in an opt-in bundle, retaining F6 and tested
+checkpoint semantics. Both models were inspected in native renders; two-floor
+save/reload tests pass. Geyser effects/animation, physical transition actors and
+the surface entry/return pocket remain open. Original Atlas source-position
+hauling still stalls uphill (#123); the validated placement is retained.

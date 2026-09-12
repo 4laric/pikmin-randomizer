@@ -18,7 +18,7 @@ from scripts.preview_pikmin2_emergence import prepare
 def test(args):
     args.output.mkdir(parents=True, exist_ok=False)
     session = args.output/'session'
-    options = dict(transitions=args.transitions, snow=args.snow, roster=args.roster)
+    options = dict(transitions=args.transitions, snow=args.snow, roster=args.roster, transition_assets=args.transition_assets)
     expected = {'treasure:dia_a_red':180, 'treasure:map01':200}
     entry_receipts = {'treasure:dia_a_red':180}
     if args.roster:
@@ -45,6 +45,9 @@ def test(args):
                       purple=args.purple,squad=state['squad'])
         if args.transitions:
             (run/'p2-cave-transition.txt').write_bytes((args.transitions/'floor2.txt').read_bytes())
+        if args.transition_assets:
+            from experimental.pikmin2_transitions import read_visuals, install_visuals
+            install_visuals(read_visuals(args.transition_assets),run,2)
         if args.roster:
             from experimental.pikmin2_roster import install
             install(args.roster,run,2,args.assets,args.imported)
@@ -75,6 +78,7 @@ if __name__ == '__main__':
     parser.add_argument('--transitions',type=Path)
     parser.add_argument('--snow',type=Path)
     parser.add_argument('--roster',type=Path)
+    parser.add_argument('--transition-assets',type=Path)
     args = parser.parse_args()
     for name,value in vars(args).items():
         if value is not None: setattr(args,name,value.resolve())

@@ -132,7 +132,7 @@ def transition(state, token, text, receipts, allowed):
     return validate(next_state)
 
 
-def content_identity(imported, pods, purple, transitions=None, snow=None, roster=None):
+def content_identity(imported, pods, purple, transitions=None, snow=None, roster=None, visuals=None):
     files = []
     for floor, unit in enumerate(('room_north_tutorial_1_snow', 'room_purple14x14_snow'), 1):
         for name in ('render.mod', 'collision.json'):
@@ -158,6 +158,8 @@ def content_identity(imported, pods, purple, transitions=None, snow=None, roster
         digest.update(label.encode() + b'\0' + hashlib.sha256(path.read_bytes()).digest())
     for floor, data in sorted((transitions or {}).items()):
         digest.update(f'transition{floor}'.encode() + b'\0' + hashlib.sha256(data).digest())
+    for name, data in sorted((visuals or {}).items()):
+        digest.update(f'transition-visual/{name}'.encode() + b'\0' + hashlib.sha256(data).digest())
     return digest.hexdigest()
 
 
@@ -177,12 +179,15 @@ def allowed_receipts(run, floor):
     return allowed
 
 
-def run_campaign(assets, imported, pods, purple, treasure, exe, session, transitions=None, snow=None, roster=None):
-    from experimental.pikmin2_transitions import read_transitions
+def run_campaign(assets, imported, pods, purple, treasure, exe, session, transitions=None, snow=None, roster=None, transition_assets=None):
+    from experimental.pikmin2_transitions import read_transitions, read_visuals, install_visuals
     anchors = read_transitions(transitions)
+    visuals = read_visuals(transition_assets)
+    if visuals and not anchors:
+        raise ValueError('Transition visuals require transition anchors')
     if roster and not snow:
         raise ValueError('Complete enemy roster requires Snow assets')
-    content = content_identity(imported, pods, purple, anchors, snow, roster)
+    content = content_identity(imported, pods, purple, anchors, snow, roster, visuals)
     with SessionLock(session):
         checkpoint = session/'checkpoint.json'
         if checkpoint.exists(): state = load(checkpoint, content)
@@ -204,10 +209,12 @@ def run_campaign(assets, imported, pods, purple, treasure, exe, session, transit
             (run/'p2-cave-entry.txt').write_text(entry_text(state, token))
             if anchors:
                 (run/'p2-cave-transition.txt').write_bytes(anchors[floor])
+            install_visuals(visuals, run, floor)
             (run/'p2-economy.txt').write_text(ledger_text(state['receipts']))
             allowed = allowed_receipts(run, floor)
             print(f'Emergence Cave — floor {floor}: {len(state["squad"])} Pikmin, {sum(state["receipts"].values())} Pokos.', flush=True)
-            target = ('marked hole' if floor == 1 else 'marked geyser') if anchors else 'Pod'
+            target = (('hole' if floor == 1 else 'geyser') if visuals else
+                      ('marked hole' if floor == 1 else 'marked geyser')) if anchors else 'Pod'
             print(f'F6 near the {target}: descend/leave. Closing mid-floor restores this entry checkpoint.', flush=True)
             with (run/'native.log').open('w') as log:
                 result = subprocess.run([str(exe), '--experimental-pikmin2-room'], cwd=run, stdout=log, stderr=subprocess.STDOUT)
@@ -241,9 +248,11 @@ if __name__ == '__main__':
     parser.add_argument('--transitions', type=Path, help='Optional floor1.txt/floor2.txt world markers; requires matching native renderer hook')
     parser.add_argument('--snow', type=Path, help='Opt-in source Snow Bulborb visuals on existing scaffold enemies')
     parser.add_argument('--roster', type=Path, help='All source treasures/enemy counts with deterministic engineering placements')
+    parser.add_argument('--transition-assets', type=Path, help='Optional imported hole/geyser model bundle')
     args = parser.parse_args()
     run_campaign(args.assets.resolve(), args.imported.resolve(), [args.pod1.resolve(), args.pod2.resolve()],
                  args.purple.resolve(), args.treasure.resolve(), args.exe.resolve(), args.session.resolve(),
                  args.transitions.resolve() if args.transitions else None,
                  args.snow.resolve() if args.snow else None,
-                 args.roster.resolve() if args.roster else None)
+                 args.roster.resolve() if args.roster else None,
+                 args.transition_assets.resolve() if args.transition_assets else None)

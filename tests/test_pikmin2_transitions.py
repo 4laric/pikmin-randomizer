@@ -1,11 +1,45 @@
 from pathlib import Path
 import tempfile
 import unittest
-from experimental.pikmin2_transitions import read_transitions
+import hashlib
+import json
+from experimental.pikmin2_transitions import read_transitions, read_visuals, install_visuals
 from experimental.pikmin2_campaign import content_identity
 
 
 class TransitionConfigTests(unittest.TestCase):
+    def test_visual_bundle_is_frozen_verified_and_installed_privately(self):
+        self.assertEqual(read_visuals(None), {})
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            models={}
+            for kind in ('hole', 'geyser'):
+                name=f'cave_{kind}.mod';data=kind.encode()
+                (root/name).write_bytes(data)
+                models[kind]=dict(file=name,sha256=hashlib.sha256(data).hexdigest(),
+                                  placement=dict(y_offset=0,scale=1,yaw_degrees=0))
+            manifest=dict(schema=1,models=models)
+            path=root/'transition-assets.json'
+            path.write_text(json.dumps(manifest))
+            frozen=read_visuals(root)
+            (root/'cave_hole.mod').write_bytes(b'changed')
+            self.assertEqual(frozen['cave_hole.mod'],b'hole')
+            with self.assertRaises(ValueError): read_visuals(root)
+            run=root/'run';target=run/'assets/dataDir/courses/pikmin2room'
+            target.mkdir(parents=True)
+            install_visuals(frozen,run,1)
+            self.assertEqual((target/'cave_hole.mod').read_bytes(),b'hole')
+            self.assertEqual((run/'p2-cave-visual.txt').read_text(),'P2_CAVE_VISUAL_1 hole\n')
+            with self.assertRaises(ValueError): install_visuals(frozen,run,1)
+            with self.assertRaises(ValueError): install_visuals(frozen,run,3)
+            (root/'cave_hole.mod').write_bytes(b'hole')
+            for field,value in (('file','../cave_hole.mod'),('placement',dict(y_offset=1,scale=1,yaw_degrees=0))):
+                changed=json.loads(json.dumps(manifest));changed['models']['hole'][field]=value
+                path.write_text(json.dumps(changed))
+                with self.assertRaises(ValueError): read_visuals(root)
+            manifest['models'].pop('geyser');path.write_text(json.dumps(manifest))
+            with self.assertRaises(ValueError): read_visuals(root)
+
     def test_coordinates_are_bound_to_save_identity(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -21,6 +55,9 @@ class TransitionConfigTests(unittest.TestCase):
             moved = content_identity(root, [root,root], root, {1:b'hole at B'})
             self.assertNotEqual(baseline, marked)
             self.assertNotEqual(marked, moved)
+            visual = content_identity(root, [root,root], root, visuals={'cave_hole.mod':b'first'})
+            self.assertNotEqual(baseline, visual)
+            self.assertNotEqual(visual, content_identity(root, [root,root], root, visuals={'cave_hole.mod':b'second'}))
             snow = root/'snow'
             snow.mkdir()
             for name in ('snow.json', 'p2-snow.txt', 'snow_wait_00.mod'):

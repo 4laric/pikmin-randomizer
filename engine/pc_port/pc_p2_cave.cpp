@@ -2,6 +2,7 @@
 #include "pc_p2_cave_anchor.h"
 #include "Graphics.h"
 #include "Camera.h"
+#include "Shape.h"
 #include "pc_p2_preview.h"
 #include "pc_p2_purple.h"
 #include "pc_bbft.h"
@@ -33,6 +34,7 @@ bool requested=false;
 bool completed=false;
 float titleTimer=0;
 P2CaveAnchor anchor;
+Shape* transitionShape=nullptr;
 struct Survivor {int color,maturity;};
 void invalid(const char* reason){std::fprintf(stderr,"Invalid P2 cave entry: %s\n",reason);std::abort();}
 bool active(){return floorId && !completed && pc_p2_preview_ready() && naviMgr && naviMgr->getNavi() && naviMgr->getNavi()->getCurrState();}
@@ -43,7 +45,7 @@ void notice(const char* text){SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATIO
 int pc_p2_cave_floor(){return floorId;}
 std::string pc_p2_cave_receipt_prefix(){return floorId?"floor"+std::to_string(floorId)+":":"";}
 void pc_p2_cave_setup(){
-    floorId=0;token.clear();requested=false;completed=false;titleTimer=0;anchor=P2CaveAnchor{};
+    floorId=0;token.clear();requested=false;completed=false;titleTimer=0;anchor=P2CaveAnchor{};transitionShape=nullptr;
     if(!pc_pikipelago_room_preview())return;
     std::ifstream in("p2-cave-entry.txt");if(!in)return;
     std::string version,extra;int floor,count;float health;
@@ -67,6 +69,18 @@ void pc_p2_cave_setup(){
     std::ifstream location("p2-cave-transition.txt");
     if(location && !p2_cave_read_anchor(location,floor,anchor))invalid("transition anchor");
     if(anchor.enabled)std::printf("P2_CAVE_ANCHOR kind=%s x=%.3f y=%.3f z=%.3f radius=%.3f\n",anchor.kind.c_str(),anchor.x,anchor.y,anchor.z,anchor.radius);
+    std::ifstream visual("p2-cave-visual.txt");
+    if(visual){
+        std::string header,kind,trailing;
+        if(!(visual>>header>>kind) || header!="P2_CAVE_VISUAL_1" || !anchor.enabled
+                || kind!=anchor.kind || (visual>>trailing) || !visual.eof())invalid("transition visual");
+        const std::string path="courses/pikmin2room/cave_"+kind+".mod";
+        transitionShape=gameflow.loadShape(path.c_str(),true);
+        if(!transitionShape)invalid("missing transition model");
+        for(int i=0;i<transitionShape->mTexAttrCount;++i)
+            if(transitionShape->mTexAttrList[i].mTexture)transitionShape->mTexAttrList[i].mTexture->attach();
+        std::printf("P2_CAVE_VISUAL_READY kind=%s vertices=%d\n",kind.c_str(),transitionShape->mVertexCount);
+    }
     std::printf("P2_CAVE_READY floor=%d survivors=%d health=%.9g\n",floor,count,health);std::fflush(stdout);
 }
 void pc_p2_cave_request(){if(active())requested=true;}
@@ -101,7 +115,7 @@ bool pc_p2_cave_checkpoint(bool confirm){
     float dx=n->mSRT.t.x-pod->mSRT.t.x,dz=n->mSRT.t.z-pod->mSRT.t.z;
     const bool nearExit=anchor.enabled?anchor.contains(n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z):dx*dx+dz*dz<=150.f*150.f;
     if(!failed && (!nearExit || n->getCurrState()->getID()!=NAVISTATE_Walk)){
-        if(confirm)notice(anchor.enabled?"Stand inside the marked hole/geyser to descend or leave the cave.":"Return to the Research Pod to descend or leave the cave.");return false;
+        if(confirm)notice(anchor.enabled?"Stand at the hole/geyser to descend or leave the cave.":"Return to the Research Pod to descend or leave the cave.");return false;
     }
     if(confirm && !failed){
         const char* action=floorId==1?"Descend":"Leave cave";
@@ -153,6 +167,14 @@ void pc_p2_cave_draw_transition(Graphics& gfx){
         gfx.mCamera->mAspectRatio,gfx.mCamera->mNear,gfx.mCamera->mFar,1.f);
     gfx.useMaterial(nullptr);
     gfx.setDepth(true);
+    if(transitionShape){
+        Matrix4f world,view;
+        world.makeSRT(Vector3f(1,1,1),Vector3f(0,0,0),Vector3f(anchor.x,anchor.y,anchor.z));
+        gfx.mCamera->mLookAtMtx.multiplyTo(world,view);
+        transitionShape->updateAnim(gfx,view,nullptr,nullptr);
+        transitionShape->drawshape(gfx,*gfx.mCamera,nullptr);
+        return;
+    }
     // Honest engineering marker, not an imported P2 actor. Ring + down/up arrow.
     // The caller is a world-overlay boundary and resets the matrix for subsequent UI.
     const Colour oldColour=gfx.mPrimaryColour;
