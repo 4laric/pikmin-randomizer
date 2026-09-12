@@ -3,13 +3,14 @@ import argparse
 import hashlib
 import json
 import struct
+import time
 from pathlib import Path
 from experimental.pikmin2_assets import disc_files, archive_files
 from experimental.pikmin2_convert import blocks, convert, u32, u16, texture_layout
 from experimental.pikmin2_purple import bca_pose
 
 SPECIES = 'YellowKochappy'
-CLIPS = ('wait1', 'move1', 'attack', 'dead', 'flick')
+from experimental.pikmin2_animation import CLIPS, sample_frames, parse_bank, validate_files, CLIP_BYTES, TOTAL_BYTES
 
 def replace_texture_zero(model, texture):
     """Match YellowKochappy::Obj::changeMaterial's image slot zero replacement."""
@@ -37,7 +38,8 @@ def replace_texture_zero(model, texture):
     struct.pack_into('>I', result, 8, len(result))
     return bytes(result)
 
-def extract(iso, output):
+def extract(iso, output, pose_limit=24):
+    started = time.perf_counter()
     output.mkdir(parents=True, exist_ok=False)
     catalog = disc_files(iso)
     hashes = {}
@@ -55,21 +57,28 @@ def extract(iso, output):
     path = output/'snow.bmd'
     path.write_bytes(model)
     joints = u16(blocks(model)['JNT1'], 8)
-    rows = ['P2_SNOW_1']
+    rows = ['P2_SNOW_2']
     report = {}
     for name in CLIPS:
         clip = motions[name+'.bca']
         duration, _ = bca_pose(clip, 0, joints, allow_scale=True)
-        count = min(12, duration)
-        rows.append(f'{name} {count} {duration}')
+        frames = sample_frames(duration, pose_limit)
+        count = len(frames)
+        rows.append(f'{name} {count} {duration} ' + ' '.join(map(str, frames)))
         for i in range(count):
             # Include final death pose rather than looping short of it.
-            frame = round(i*(duration-1)/max(1,count-1))
+            frame = frames[i]
             _, pose = bca_pose(clip, frame, joints, allow_scale=True)
             convert(path, output/f'snow_{name}_{i:02}.mod', True, bake_rigid=True, pose=pose)
-        report[name] = {'source_frames': duration, 'poses': count, 'sha256': hashlib.sha256(clip).hexdigest()}
+        report[name] = {'source_frames': duration, 'poses': count, 'frames': frames, 'sha256': hashlib.sha256(clip).hexdigest()}
     (output/'p2-snow.txt').write_text('\n'.join(rows)+'\n')
+    _, mod_bytes = validate_files(output, parse_bank('\n'.join(rows)))
     result = {'schema': 1, 'species': SPECIES, 'source_sha256': hashes, 'joints': joints, 'motions': report,
+              'animation_version': 2,
+              'cost': {'mod_bytes': mod_bytes, 'clip_budget_bytes': CLIP_BYTES, 'total_budget_bytes': TOTAL_BYTES,
+                       'extract_seconds': round(time.perf_counter()-started, 3),
+                       'extract_advisory_seconds': 30, 'load_advisory_seconds': 5,
+                       'legacy_pose_count': 60, 'pose_count': sum(x['poses'] for x in report.values())},
               'limitations': ['P1 dwarf combat, collision and animation event timing remain in use.',
                               'Sampled source poses; no source skeletal animation runtime or blending.']}
     (output/'snow.json').write_text(json.dumps(result, indent=2))
@@ -87,8 +96,13 @@ def install(imported, run, generator_ids):
     destination=run/'assets/dataDir/courses/pikmin2room'
     # Overlay creates junction-backed base assets; this room itself is private.
     if not destination.is_dir():raise ValueError('Expected prepared private room')
-    paths=[imported/f'snow_{name}_{i:02}.mod' for name in CLIPS for i in range(metadata['motions'][name]['poses'])]
-    if any(not path.is_file() for path in paths):raise ValueError('Incomplete Snow pose bank')
+    bank = parse_bank((imported/'p2-snow.txt').read_text())
+    for name, info in bank.items():
+        if any(metadata['motions'][name].get(key) != info[key] for key in ('poses', 'source_frames')):
+            raise ValueError('Snow metadata and animation config disagree')
+        if info['frames'] is not None and metadata['motions'][name].get('frames') != info['frames']:
+            raise ValueError('Snow source frame metadata disagrees')
+    paths, _ = validate_files(imported, bank)
     for path in paths:shutil.copyfile(path,destination/path.name)
     shutil.copyfile(imported/'p2-snow.txt',run/'p2-snow.txt')
     (run/'p2-snow-actors.txt').write_text('P2_SNOW_ACTORS_1 '+str(len(ids))+'\n'+'\n'.join(map(str,ids))+'\n')
@@ -97,6 +111,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--iso', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--pose-limit', type=int, default=24, choices=range(2,25))
     args = parser.parse_args()
-    print(json.dumps(extract(args.iso, args.output), indent=2))
+    print(json.dumps(extract(args.iso, args.output, args.pose_limit), indent=2))
 

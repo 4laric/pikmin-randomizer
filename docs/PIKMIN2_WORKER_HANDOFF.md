@@ -6,12 +6,14 @@ Coordination baseline: 2026-09-12. Parent [#109](https://github.com/4laric/pikmi
 
 | Owner | Issues | Reserved work |
 |---|---|---|
-| Codex animation/enemy subagent | #128, #120 | Snow animation importer, native enemy rendering, animation-specific modules/tests |
-| Codex cave content subagent | #129, #154 | New retail cave catalog decoder, metadata audit, catalog tests |
-| Codex lifecycle subagent | #112, #132 | Campaign Python, durable surface/cave handoff state, lifecycle tests |
+| Codex animation/enemy subagent | #128, #120 | Snow animation performance diagnostic harness and isolated runtime validation |
+| Codex cave content subagent | #129, #154 | Per-floor asset/actor/cargo dependency manifests, including caps and aliases |
+| Codex lifecycle subagent | #112, #132 | Runner adapter for the durable surface/cave ledger; failure/resume tests |
 | Codex integration lead | #109, #114 | Shared interfaces, combined builds/tests, native snapshot export, integration |
 
 These reservations describe the current batches, not permanent ownership of entire epics. Check the latest issue comments before claiming work. Ask the integration lead before editing another lane's files, shared converters, preview launchers, native build configuration, save protocols or actor interfaces.
+
+The preceding batch added the retail cave catalog decoder, atomic surface/cave ledger and capped Snow pose playback. Combined validation passed 62 tests and 17 subtests; the full native build passed at native commit `872f0f00`. Native rendering and performance validation is assigned to the next diagnostic batch. Neither the ledger nor its planned runner constitutes a playable native surface return.
 
 ## Starting on another laptop or agent
 

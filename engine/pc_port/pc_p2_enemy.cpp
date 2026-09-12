@@ -1,4 +1,8 @@
 #include "pc_p2_enemy.h"
+#include "pc_p2_animation.h"
+#include "Material.h"
+#include <chrono>
+#include <iterator>
 #include "pc_bbft.h"
 #include "pc_p2_preview.h"
 #include "teki.h"
@@ -19,25 +23,73 @@
 namespace {
 std::map<std::string,std::vector<Shape*>> clips;
 std::set<PelletView*> actors;
+std::map<std::string,p2animation::Clip> timing;
 }
 const char* pc_p2_enemy_name(PelletView* view) { return actors.count(view)?"Snow Bulborb":nullptr; }
 void pc_p2_snow_setup() {
     clips.clear();actors.clear();
     if(!pc_pikipelago_room_preview())return;
     std::ifstream in("p2-snow.txt");if(!in)return;
-    std::string word;in>>word;
-    if(word!="P2_SNOW_1" || !pc_p2_preview_goal())std::abort();
-    for(const char* name:{"wait1","move1","attack","dead","flick"}) {
-        int count,duration;
-        if(!(in>>word>>count>>duration) || word!=name || count<1 || count>12 || duration<1 || duration>10000)std::abort();
-        for(int i=0;i<count;++i) {
-            char path[128];std::snprintf(path,sizeof(path),"courses/pikmin2room/snow_%s_%02d.mod",name,i);
-            Shape* shape=gameflow.loadShape(path,true);if(!shape)std::abort();
-            for(int t=0;t<shape->mTexAttrCount;++t)if(shape->mTexAttrList[t].mTexture)shape->mTexAttrList[t].mTexture->attach();
-            clips[name].push_back(shape);
+    const auto started=std::chrono::steady_clock::now();
+    std::vector<p2animation::Clip> manifest;
+    if(!p2animation::parse(in,manifest) || !pc_p2_preview_goal())std::abort();
+    // Validate the entire bank before allocating Shapes or uploading textures.
+    size_t total=0,poses=0;
+    std::vector<unsigned char> reference;
+    for(const auto& clip:manifest) {
+        size_t clipBytes=0;
+        for(int i=0;i<clip.count;++i) {
+            char path[160];std::snprintf(path,sizeof(path),"assets/dataDir/courses/pikmin2room/snow_%s_%02d.mod",clip.name.c_str(),i);
+            std::ifstream file(path,std::ios::binary|std::ios::ate);
+            if(!file)std::abort();
+            auto bytes=file.tellg();
+            if(bytes<=0 || size_t(bytes)>p2animation::ClipBytes-clipBytes || size_t(bytes)>p2animation::TotalBytes-total)std::abort();
+            clipBytes+=size_t(bytes);total+=size_t(bytes);
+            file.seekg(0);
+            std::vector<unsigned char> data(size_t(bytes),0),resources;
+            if(!file.read(reinterpret_cast<char*>(data.data()),bytes) || !p2animation::resources(data,resources))std::abort();
+            if(!reference.empty() && reference!=resources)std::abort();
+            reference=resources;
         }
     }
-    if(in>>word)std::abort();
+    Shape* shared=nullptr;
+    int attachments=0;
+    timing.clear();
+    for(const auto& clip:manifest) {
+        timing[clip.name]=clip;
+        for(int i=0;i<clip.count;++i) {
+            char path[128];std::snprintf(path,sizeof(path),"courses/pikmin2room/snow_%s_%02d.mod",clip.name.c_str(),i);
+            Shape* shape=gameflow.loadShape(path,true);if(!shape)std::abort();
+            if(!shared) {
+                shared=shape;
+                for(int t=0;t<shape->mTexAttrCount;++t)if(shape->mTexAttrList[t].mTexture) {
+                    shape->mTexAttrList[t].mTexture->attach();++attachments;
+                }
+            } else {
+                // Resources are byte-identical. Keep pose geometry private, but
+                // use one immutable material/texture set for every render path.
+                // loadShape still allocates CPU resource copies on the scene heap.
+                if(shape->mMaterialCount!=shared->mMaterialCount || shape->mTexAttrCount!=shared->mTexAttrCount ||
+                   shape->mTevInfoCount!=shared->mTevInfoCount)std::abort();
+                for(int j=0;j<shape->mTotalMatpolyCount;++j) {
+                    auto* poly=shape->mMatpolyList[j];
+                    if(!poly || !poly->mMaterial)continue;
+                    int material=-1;
+                    for(int m=0;m<shape->mMaterialCount;++m)if(poly->mMaterial==&shape->mMaterialList[m])material=m;
+                    if(material<0)std::abort();
+                    poly->mMaterial=&shared->mMaterialList[material];
+                }
+                shape->mMaterialList=shared->mMaterialList;
+                shape->mTexAttrList=shared->mTexAttrList;
+                shape->mTevInfoList=shared->mTevInfoList;
+            }
+            clips[clip.name].push_back(shape);++poses;
+        }
+    }
+    const double seconds=std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count();
+    std::printf("P2_SNOW_BANK poses=%zu mod_bytes=%zu texture_attach_calls=%d load_seconds=%.3f load_budget_seconds=5 budget_exceeded=%d\n",
+                poses,total,attachments,seconds,int(seconds>5));
+    std::string word;
     std::ifstream placements("p2-snow-actors.txt");int count;
     if(!(placements>>word>>count) || word!="P2_SNOW_ACTORS_1" || count<1 || count>100)std::abort();
     std::set<unsigned long> wanted;
@@ -64,9 +116,7 @@ bool pc_p2_snow_draw(BTeki* teki,Graphics& gfx,const Matrix4f& matrix,bool corps
     // Source poses follow normalized P1 motion progress; P1 events stay authoritative.
     int frames=teki->mTekiAnimator->getFrameCount();
     float phase=frames>1?teki->mTekiAnimator->getCounter()/(frames-1):0;
-    if(!std::isfinite(phase))phase=0;
-    if(phase<0)phase=0;if(phase>1)phase=1;
-    size_t index=corpse?bank.size()-1:size_t(phase*(bank.size()-1));
+    size_t index=timing.at(name).index(phase,corpse);
     bank[index]->updateAnim(gfx,matrix,nullptr,teki);
     bank[index]->drawshape(gfx,*gfx.mCamera,nullptr);return true;
 }
