@@ -90,3 +90,7 @@ Next implementation action is #110: produce the Emergence manifest and a first f
 Behavior reference: local `native/pikmin2-research`, commit `632af93787b9c95b63f0c13be32b161375ce3a96`. Relevant primary sources include `src/plugProjectKandoU/gameMapParts.cpp` (room assets), `gameCaveInfo.cpp` (layout information), `include/Game/Piki.h` and Pikmin state implementations (colors/carrying/abilities), `include/Game/gamePlayData.h` and `singleGS_CaveGame.cpp` (campaign/cave state). Resolve full file paths in the checkout before implementation; translate behavior at our engine boundaries.
 
 Current Open Nectar prototype native commit: `5b0e3857f3f367b6c4003498110b86c551a514c5`; root carry/floor fix: `7f72f92`. Historical research reports predate the working room; the linked preview evidence supersedes their unvalidated-render status.
+
+## Implementation progress
+
+Batch #110 has started: [Emergence import and entrance-room preview](PIKMIN2_EMERGENCE_IMPORT.md). Both floor definitions and all referenced unit assets convert; complete floor assembly and cave gameplay remain outstanding.

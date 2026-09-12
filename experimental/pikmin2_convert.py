@@ -16,6 +16,15 @@ def u32(b, at): return unpack(b,'I',at)[0]
 def u16(b, at): return unpack(b,'H',at)[0]
 def pack(fmt,*v): return struct.pack('>'+fmt,*v)
 
+def texture_layout(kind, width, height):
+    # GX tiled base-level bytes; MOD's format enumeration differs from GX.
+    layouts={0:(3,8,8,32),1:(4,8,4,32),2:(5,8,4,32),3:(6,4,4,32),
+             4:(0,4,4,32),5:(2,4,4,32),6:(7,4,4,64),14:(1,8,8,32)}
+    if kind not in layouts or width<=0 or height<=0:
+        raise ValueError('Unsupported texture format or dimensions')
+    fmt,bw,bh,size=layouts[kind]
+    return fmt,((width+bw-1)//bw)*((height+bh-1)//bh)*size
+
 def blocks(data):
     if data[:8] != b'J3D2bmd3' or u32(data,8) != len(data): raise ValueError('Expected complete J3D2bmd3')
     result={}; at=32
@@ -33,12 +42,14 @@ def decode(data, approximate_materials=False):
     v=b['VTX1']; formats={}; at=u32(v,8)
     while u32(v,at)!=255:
         attr,count,kind=unpack(v,'III',at); formats[attr]=(count,kind,v[at+12]); at+=16
-    offsets={9:u32(v,12),10:u32(v,16),11:u32(v,24),13:u32(v,32)}
+    offsets={9:u32(v,12),10:u32(v,16),11:u32(v,24),12:u32(v,28),
+             **{13+i:u32(v,32+4*i) for i in range(8)}}
     arrays={}
     for attr,(count,kind,shift) in formats.items():
-        if attr not in offsets: raise ValueError(f'Unsupported vertex attribute {attr}')
+        if attr not in offsets or (attr not in (9,10,11,13) and not approximate_materials):
+            raise ValueError(f'Unsupported vertex attribute {attr}')
         start=offsets[attr]; end=min([x for x in offsets.values() if x>start]+[len(v)])
-        if attr==11:
+        if attr in (11,12):
             if kind!=5: raise ValueError('Only RGBA8 colors supported')
             stride=4; values=[tuple(v[x:x+4]) for x in range(start,end-stride+1,stride)]
         else:
@@ -54,7 +65,7 @@ def decode(data, approximate_materials=False):
         groups,desc,mi,di=unpack(s,'4H',rec+2); attrs=[]; at=u32(s,24)+desc
         while u32(s,at)!=255:
             attr,kind=unpack(s,'II',at); at+=8
-            if attr not in (0,9,10,11,13) or kind not in (1,2,3): raise ValueError('Unsupported display-list attribute')
+            if (attr not in (0,9,10,11,13) and not (approximate_materials and attr in (12,*range(14,21)))) or kind not in (1,2,3): raise ValueError('Unsupported display-list attribute')
             if kind==1 and attr!=0: raise ValueError('Direct non-matrix attribute unsupported')
             attrs.append((attr,kind))
         triangles=[]
@@ -132,10 +143,10 @@ def convert(source, output, approximate_materials=False, y_offset=0.0):
     w.begin(32,texture_count);w.pad()
     for i in range(texture_count):
         r=u32(t,12)+32*i; kind=t[r]; width,height=unpack(t,'HH',r+2)
-        if kind not in (0,14) or t[r+8]!=0: raise ValueError('Only unpaletted I4/CMPR textures supported')
-        size=((width+7)//8)*((height+7)//8)*32; start=r+u32(t,r+28)
+        if t[r+8]!=0: raise ValueError('Paletted textures unsupported')
+        fmt,size=texture_layout(kind,width,height); start=r+u32(t,r+28)
         if start+size>len(t):raise ValueError('Truncated texture')
-        w.put('HH7I',width,height,1 if kind==14 else 3,1,0,0,0,0,size);w.data+=t[start:start+size]
+        w.put('HH7I',width,height,fmt,1,0,0,0,0,size);w.data+=t[start:start+size]
     w.end();w.begin(34,texture_count);w.pad()
     for i in range(texture_count):
         r=u32(t,12)+32*i
@@ -179,7 +190,7 @@ def convert(source, output, approximate_materials=False, y_offset=0.0):
     for i in range(len(shapes)):w.put('HH',i,i)
     w.end();w.begin(65535);w.end()
     output=Path(output);output.parent.mkdir(parents=True,exist_ok=True);output.write_bytes(w.data)
-    report={'source':str(source),'output':str(output),'vertices':len(a[9]),'triangles':sum(map(len,shapes)),'shapes':len(shapes),'textures':texture_count,'bounds':bounds,'y_offset':y_offset,'material_policy':'static vertex color multiplied by first texture; original TEV not reproduced'}
+    report={'source':str(source),'output':str(output),'vertices':len(a[9]),'triangles':sum(map(len,shapes)),'shapes':len(shapes),'textures':texture_count,'bounds':bounds,'y_offset':y_offset,'discarded_attributes':[k for k in a if k not in (9,10,11,13)],'material_policy':'static vertex color multiplied by first texture; original TEV not reproduced'}
     output.with_suffix('.json').write_text(json.dumps(report,indent=2),encoding='utf-8');return report
 
 if __name__=='__main__':

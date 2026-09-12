@@ -106,7 +106,12 @@ public:
             std::printf("P2_FIXTURE_COUNTS reds=%d dwarfs=%d\n",reds,dwarfs);
             require(reds==20,"expected twenty field reds");require(dwarfs==1,"expected one dwarf bulborb");
             const float points[][2]={{-85,0},{-175,-100},{185,-180},{-220,-180}};
-            for(auto& p:points)require(std::fabs(mapMgr->getMinY(p[0],p[1],true))<0.05f,"native ground differs from decoded zero plane");
+            float expected[4]={0,0,0,0};
+            if(FILE* ground=std::fopen("p2-ground.txt","r")) {
+                require(std::fscanf(ground,"%f %f %f %f",&expected[0],&expected[1],&expected[2],&expected[3])==4,"ground fixture framing");
+                std::fclose(ground);
+            }
+            for(int i=0;i<4;++i)require(std::isfinite(expected[i]) && std::fabs(mapMgr->getMinY(points[i][0],points[i][1],true)-expected[i])<0.05f,"native ground differs from decoded fixture terrain");
             n->mKontroller=new FixtureController();
             repairs=playerState->getCurrParts();origin=n->mSRT.t;phase=1;ticks=0;
             std::puts("P2_FIXTURE_ACTORS_GROUND_PASS");
@@ -160,7 +165,7 @@ public:
                 int transport=0,free=0;Iterator p(pikiMgr);CI_LOOP(p){Piki* v=static_cast<Piki*>(*p);if(v->mMode==PikiMode::TransportMode)++transport;if(v->mMode==PikiMode::FreeMode)++free;}
                 std::printf("P2_CORPSE_PROGRESS state=%d alive=%d x=%.2f y=%.2f z=%.2f distance=%.2f transport=%d free=%d goal=%p\n",corpse->getState(),int(corpse->isAlive()),corpse->mSRT.t.x,corpse->mSRT.t.y,corpse->mSRT.t.z,corpseDistance,transport,free,(void*)corpse->mTargetGoal);
                 capture("p2-room-corpse.ppm");
-                if(ticks==150 && transport==0) {
+                if(ticks==150 && transport<corpse->mConfig->mCarryMinPikis()) {
                     Iterator recruits(pikiMgr);int count=0;CI_LOOP(recruits){Piki* p=static_cast<Piki*>(*recruits);if(!p->isAlive())continue;
                         p->mActiveAction->abandon(nullptr);p->mActiveAction->mCurrActionIdx=PikiAction::Transport;
                         p->mActiveAction->mChildActions[PikiAction::Transport].initialise(corpse);p->mMode=PikiMode::TransportMode;++count;
