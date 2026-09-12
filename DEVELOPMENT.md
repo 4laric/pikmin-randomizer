@@ -1,3 +1,7 @@
+## Faster Candypop Bud closing (#80)
+
+Native cd615695 caps positive PC closing waits at five seconds (retail data specifies 30). Timer starts under the existing contact rule; ten attached Pikmin still trigger immediate closing. Shorter custom waits, disabled timers, non-PC behavior and conversion remain unchanged. No asset, seed or save changes. Separate nectar-candypop.exe staged for the current playtest next launch. Native production build passed. Source predicate reviewed; physical timing acceptance remains for playtesting.
+
 ## Climbing-stick checks retired (#79)
 
 New modern seeds exclude all eight climbing sticks because their state resets daily. Full check sets now contain 105 locations, including 43 walls, bridges and boxes. Thirty repairs remain in the pool with 25 required; the smaller check set reduces filler. AP package 0.26.0. The optional no_sticks manifest marker preserves historical check sets and location IDs when absent. Existing seeds and saves are unchanged; no native rebuild is required.

@@ -466,14 +466,19 @@ bool PomAi::petalShakeTransit()
  */
 bool PomAi::petalCloseTransit()
 {
+	f32 closeWait = C_POM_PARM(mPom, mCloseWaitTime);
+#if defined(PIKI_PC_PORT)
+	// Retail waits 30 seconds; keep short/custom and disabled timers intact.
+	if (closeWait > 5.0f) closeWait = 5.0f;
+#endif
 	if (C_POM_PARM(mPom, mMaxPikiPerCycle) != 0) {
 		if (mPrevStickPikiCount >= C_POM_PARM(mPom, mMaxPikiPerCycle)) {
 			return true;
 		}
-		if (C_POM_PARM(mPom, mCloseWaitTime) > 0.0f && mPom->getWalkTimer() > (C_POM_PARM(mPom, mCloseWaitTime))) {
+		if (closeWait > 0.0f && mPom->getWalkTimer() > closeWait) {
 			return true;
 		}
-	} else if (mPom->getWalkTimer() > (C_POM_PARM(mPom, mCloseWaitTime))) {
+	} else if (mPom->getWalkTimer() > closeWait) {
 		return true;
 	}
 
