@@ -81,7 +81,7 @@ IMPACT_ACCESS = 'Pikmin: Impact Site Access'
 ITEM_IDS[IMPACT_ACCESS] = ITEM_BASE + 9
 from .stats import UPGRADE_ITEMS, upgrade_pool, current_profiles
 ITEM_IDS.update({name: ITEM_BASE + 10 + i for i, name in enumerate(UPGRADE_ITEMS)})
-from .benefits import BENEFIT_ITEMS, benefit_pool
+from .benefits import ALL_BENEFIT_ITEMS as BENEFIT_ITEMS, benefit_pool
 ITEM_IDS.update({name: ITEM_BASE + 30 + i for i, name in enumerate(BENEFIT_ITEMS)})
 START_AREAS = {
     'impact-day2': (0, 'The Impact Site', IMPACT_ACCESS),
@@ -354,7 +354,7 @@ def item_pool(manifest):
     slots = len(active_names(manifest)) - len(progression)
     if manifest.get('benefit_items'):
         repair_count = manifest.get('repair_pool_count', REPAIR_COUNT)
-        return progression + [REPAIR] * repair_count + benefit_pool(slots - repair_count, no_heal=manifest.get("compact_population", False))
+        return progression + [REPAIR] * repair_count + benefit_pool(slots - repair_count, no_heal=manifest.get("compact_population", False), bomb_weight=manifest.get("bomb_rock_weight", 0))
     return progression + [REPAIR] * slots
 
 

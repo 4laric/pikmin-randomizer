@@ -1,3 +1,11 @@
+## Bomb Rock Delivery (#78)
+
+`Bomb Rock Delivery (3)` adds three loose, unlit bombs near an active landing Onion. New AP/CLI generation enables `bomb_rock_weight: 1` by default. Set 0 to disable or 1–10 to weight the filler mix against Pikmin Delivery (weight 2) and Flower Shower (weight 1). Captain upgrades and the 30-repair/25-required goal remain unchanged. Bomb rewards are useful filler; reachability still relies on ordinary bomb sources.
+
+Deliveries wait for active gameplay, an available Onion, three dry nearby ground positions and free native item slots. They do not require Yellow to be unlocked before spawning; yellows are still needed to pick them up. Deliveries received while on the area map wait until landing. They follow the native day lifecycle, with consumption recorded in day-end checkpoints; unsaved deliveries replay after rollback. Old seeds and save formats remain supported.
+
+AP world 0.25.0 and a matching updated native executable are required for new bomb-enabled seeds. The current playtest launcher uses the updated executable on relaunch, but an existing seed cannot gain new reward placements. Internal `generate()` callers opt in with `bomb_rock_weight=1` to preserve historical test/integration defaults. CLI: `--bomb-rock-weight 1`.
+
 ## F8 tracker (#77)
 
 While the game is focused, press **F8** to open the searchable tracker window over the game. Filter checks by area and status; inspect received items, Onion unlocks, field capacity, repairs and discovered color stats. **F8** or **Esc** closes it and returns focus to the game. The HUD displays the shortcut. This is a Windows companion window provided by the existing HUD, not a native pause menu: **the game continues running, so pause first when needed**.

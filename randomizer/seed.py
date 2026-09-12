@@ -42,7 +42,11 @@ class SeedRandom:
         return values
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0):
+    if type(bomb_rock_weight) is not int or not 0 <= bomb_rock_weight <= 10: raise ValueError("bomb_rock_weight must be 0..10")
+    if bomb_rock_weight:
+        if legacy_checks: raise ValueError("bomb deliveries require modern checks")
+        collection_checks = True
     from .stats import validate_roll_bounds, validate_upgrade_limits
     if initial_stat_bounds is not None: validate_roll_bounds(initial_stat_bounds)
     if stat_upgrade_counts is not None: validate_upgrade_limits(stat_upgrade_counts)
@@ -126,6 +130,9 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         result['benefit_items'] = True
         result['repair_pool_count'] = 30
         result['capabilities'].append('benefit-items-v1')
+        if bomb_rock_weight:
+            result['bomb_rock_weight'] = bomb_rock_weight
+            result['capabilities'].append('bomb-delivery-v1')
         if per_spawn_enemies:
             from .enemy_slots import resolve_spawn_layout, spawn_sources
             result['spawn_layout'] = resolve_spawn_layout(result['seed'], slot, miniboss_enemies)
@@ -221,6 +228,10 @@ def validate(m):
         expected.add('progressive_color_stats')
         if m['progressive_color_stats'] is not True or m.get('schema') not in (7, 8, 9):
             raise ValueError('invalid progressive color stats mode')
+    if type(m) is dict and 'bomb_rock_weight' in m:
+        expected.add('bomb_rock_weight')
+        if type(m['bomb_rock_weight']) is not int or not 1 <= m['bomb_rock_weight'] <= 10 or not m.get('benefit_items'):
+            raise ValueError('invalid bomb delivery weight')
     if type(m) is dict and 'repair_pool_count' in m:
         expected.add('repair_pool_count')
         if type(m['repair_pool_count']) is not int or m['repair_pool_count'] != 30 or not m.get('benefit_items'):
@@ -276,6 +287,7 @@ def validate(m):
         fixed['capabilities'] += ['progressive-color-stats-v2' if 'progressive-color-stats-v2' in m['capabilities'] else 'progressive-color-stats-v1']
     if m.get('benefit_items'):
         fixed['capabilities'] += ['benefit-items-v1']
+        if m.get('bomb_rock_weight'): fixed['capabilities'] += ['bomb-delivery-v1']
     if 'spawn_layout' in m:
         fixed['capabilities'] += ['enemy-slots-v1']
     if 'group_layout' in m:

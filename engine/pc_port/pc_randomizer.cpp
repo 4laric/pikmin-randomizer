@@ -39,8 +39,9 @@ unsigned startingFlarlic = 2;
 bool configuredFlarlic = false, configuredStats = false, progressiveStats = false, wideStats = false, balancedStats = false, doubledStats = false;
 int baseColorStats[3][4] = {{100, 100, 100, 1}, {100, 100, 100, 1}, {100, 100, 100, 1}};
 unsigned statUpgrades[3][4] = {};
-bool benefitItems = false;
-unsigned benefits[5] = {}, consumedBenefits[3] = {};
+bool benefitItems = false, bombDeliveries = false;
+unsigned benefits[6] = {}, consumedBenefits[4] = {};
+int consumedIndex(PcBenefit kind) { return kind == PC_BENEFIT_BOMBS ? 3 : int(kind); }
 std::filesystem::path benefitJournal, campaignDirectory;
 std::string campaignBlock;
 unsigned long long campaignGeneration = 0;
@@ -78,17 +79,18 @@ void loadCampaignCheckpoint() {
     std::istringstream meta(header);
     std::string magic, savedFingerprint, extra;
     unsigned long long generation; uint64_t hash;
-    unsigned used[3];
-    if (!(meta >> magic >> savedFingerprint >> generation >> used[0] >> used[1] >> used[2] >> hash)
-        || magic != "PIKMIN_CAMPAIGN_1" || savedFingerprint != fingerprint || generation != campaignGeneration
-        || used[0] > checkCount || used[1] > checkCount || used[2] > checkCount || (meta >> extra))
+    unsigned used[4] = {};
+    bool valid = bool(meta >> magic >> savedFingerprint >> generation);
+    for (int i = 0; i < (bombDeliveries ? 4 : 3); ++i) valid = valid && bool(meta >> used[i]) && used[i] <= checkCount;
+    if (!valid || !(meta >> hash) || magic != (bombDeliveries ? "PIKMIN_CAMPAIGN_2" : "PIKMIN_CAMPAIGN_1")
+        || savedFingerprint != fingerprint || generation != campaignGeneration || (meta >> extra))
         fail("campaign checkpoint header/seed mismatch; preserve campaign files for recovery");
     campaignBlock.resize(32768);
     file.read(&campaignBlock[0], 32768);
     if (file.gcount() != 32768 || file.peek() != EOF
         || checkpointHash(header.substr(0, header.rfind(' ')) + "\n" + campaignBlock) != hash)
         fail("campaign checkpoint is damaged; preserve campaign files for recovery");
-    for (int i=0; i<3; ++i) consumedBenefits[i] = used[i];
+    for (int i=0; i<4; ++i) consumedBenefits[i] = used[i];
     campaignResumed = true;
 }
 bool hex64(const std::string& s) {
@@ -194,8 +196,9 @@ bool pc_randomizer_init(int argc, char** argv) {
     }
     if (end == "BENEFITS") {
         unsigned mode;
-        if (!colorPopulation || !(input >> mode) || mode != 1) fail("invalid benefit mode");
+        if (!colorPopulation || !(input >> mode) || (mode != 1 && mode != 2)) fail("invalid benefit mode");
         benefitItems = true;
+        bombDeliveries = mode == 2;
         input >> end;
     }
     if (end == "ENEMY_CAMPAIGN") {
@@ -285,6 +288,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (configuredStats) hello << (balancedStats ? " color-stats-v3" : wideStats ? " color-stats-v2" : " color-stats-v1");
     if (progressiveStats) hello << (doubledStats ? " progressive-color-stats-v2" : " progressive-color-stats-v1");
     if (benefitItems) hello << " benefit-items-v1";
+    if (bombDeliveries) hello << " bomb-delivery-v1";
     if (slotEnemies) hello << " enemy-slots-v1";
     if (groupEnemies) hello << " enemy-groups-v1";
     if (campaignEnemies) hello << " enemy-campaign-v1";
@@ -338,12 +342,12 @@ void pc_randomizer_update() {
         }
         parsed = bool(input >> end);
     }
-    unsigned newBenefits[5] = {};
+    unsigned newBenefits[6] = {};
     if (benefitItems) {
         if (!parsed || end != "BENEFITS") fail("missing benefit state");
-        for (int kind = 0; kind < 5; ++kind)
-            if (!(input >> newBenefits[kind]) || newBenefits[kind] > (kind < 3 ? checkCount : 2u)
-                || newBenefits[kind] < benefits[kind] || (kind < 3 && newBenefits[kind] < consumedBenefits[kind]))
+        for (int kind = 0; kind < (bombDeliveries ? 6 : 5); ++kind)
+            if (!(input >> newBenefits[kind]) || newBenefits[kind] > (kind < 3 || kind == 5 ? checkCount : 2u)
+                || newBenefits[kind] < benefits[kind] || ((kind < 3 || kind == 5) && newBenefits[kind] < consumedBenefits[consumedIndex(static_cast<PcBenefit>(kind))]))
                 fail("invalid or retracted benefit receipt");
         parsed = bool(input >> end);
     }
@@ -360,7 +364,7 @@ void pc_randomizer_update() {
         statUpgrades[c][stat] = newStats[c][stat];
         colorStats[c][stat] = baseColorStats[c][stat] + (stat == 3 ? newStats[c][stat] : 25 * newStats[c][stat]);
     }
-    for (int kind = 0; kind < 5; ++kind) benefits[kind] = newBenefits[kind];
+    for (int kind = 0; kind < 6; ++kind) benefits[kind] = newBenefits[kind];
     ready = newReady != 0;
     repairs = newRepairs;
     unlocks = newUnlocks;
@@ -376,22 +380,22 @@ void pc_randomizer_update() {
 }
 
 bool pc_randomizer_benefit_pending(PcBenefit kind) {
-    return enabled && benefitItems && ready && kind >= 0 && kind < 3 && benefits[kind] > consumedBenefits[kind];
+    return enabled && benefitItems && ready && ((kind >= 0 && kind < 3) || (kind == PC_BENEFIT_BOMBS && bombDeliveries)) && benefits[kind] > consumedBenefits[consumedIndex(kind)];
 }
 bool pc_randomizer_consume_benefit(PcBenefit kind) {
     if (!pc_randomizer_benefit_pending(kind)) return false;
     // Persist before applying a non-transactional native effect: never duplicate it on replay.
     FILE* file = std::fopen(benefitJournal.string().c_str(), "a");
     if (!file) fail("cannot open benefit consumption journal");
-    bool ok = std::fprintf(file, "%s %d %u\n", fingerprint.c_str(), int(kind), consumedBenefits[kind] + 1) > 0 && std::fflush(file) == 0;
+    bool ok = std::fprintf(file, "%s %d %u\n", fingerprint.c_str(), int(kind), consumedBenefits[consumedIndex(kind)] + 1) > 0 && std::fflush(file) == 0;
 #ifdef _WIN32
     ok = ok && _commit(_fileno(file)) == 0;
 #else
     ok = ok && fsync(fileno(file)) == 0;
 #endif
     if (std::fclose(file) != 0 || !ok) fail("cannot persist benefit consumption");
-    ++consumedBenefits[kind];
-    std::printf("[Pikmin Randomizer] BENEFIT_USED kind=%d count=%u\n", int(kind), consumedBenefits[kind]);
+    ++consumedBenefits[consumedIndex(kind)];
+    std::printf("[Pikmin Randomizer] BENEFIT_USED kind=%d count=%u\n", int(kind), consumedBenefits[consumedIndex(kind)]);
     return true;
 }
 float pc_randomizer_benefit_multiplier(PcBenefit kind) {
@@ -612,8 +616,8 @@ void pc_randomizer_save_campaign(const void* source) {
     std::filesystem::create_directories(campaignDirectory);
     const auto generation = campaignGeneration + 1;
     std::ostringstream meta;
-    meta << "PIKMIN_CAMPAIGN_1 " << fingerprint << ' ' << generation;
-    for (unsigned used : consumedBenefits) meta << ' ' << used;
+    meta << (bombDeliveries ? "PIKMIN_CAMPAIGN_2 " : "PIKMIN_CAMPAIGN_1 ") << fingerprint << ' ' << generation;
+    for (int i = 0; i < (bombDeliveries ? 4 : 3); ++i) meta << ' ' << consumedBenefits[i];
     std::string block(static_cast<const char*>(source), 32768);
     const auto hash = checkpointHash(meta.str() + "\n" + block);
     std::string bytes = meta.str() + " " + std::to_string(hash) + "\n" + block;

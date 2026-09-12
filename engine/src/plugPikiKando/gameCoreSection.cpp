@@ -1892,9 +1892,42 @@ void pc_randomizer_test_color_stats()
 }
 #endif
 
-static void randomizerApplyBenefits(Navi* navi)
+static void randomizerApplyBenefits(Navi* navi, MapMgr* map)
 {
     if (!pc_randomizer_ready() || !navi || !navi->isAlive() || !itemMgr || !pikiMgr) return;
+    if (map && pc_randomizer_benefit_pending(PC_BENEFIT_BOMBS)) {
+        GoalItem* landing = nullptr;
+        const char* names[] = {"Blue Onion", "Red Onion", "Yellow Onion"};
+        for (int color = 0; color < 3 && !landing; ++color)
+            if (pc_randomizer_has(names[color]) && playerState->hasBootContainer(color)) landing = itemMgr->getContainer(color);
+        if (landing) {
+            Vector3f positions[3];
+            int found = 0;
+            for (int sample = 0; sample < 12 && found < 3; ++sample) {
+                const float angle = sample * (2.0f * PI / 12.0f);
+                Vector3f pos = landing->mSRT.t + Vector3f(40.0f * sinf(angle), 0, 40.0f * cosf(angle));
+                CollTriInfo* ground = map->getCurrTri(pos.x, pos.z, true);
+                if (!ground || MapCode::getAttribute(ground) == ATTR_Water) continue;
+                pos.y = map->getMinY(pos.x, pos.z, true);
+                if (std::fabs(pos.y - landing->mSRT.t.y) > 25.0f) continue;
+                pos.y += 3.0f;
+                positions[found++] = pos;
+            }
+            if (found == 3) {
+                BombItem* spawned[3] = {};
+                int count = 0;
+                for (; count < 3; ++count) {
+                    spawned[count] = static_cast<BombItem*>(itemMgr->birth(OBJTYPE_Bomb));
+                    if (!spawned[count]) break;
+                    spawned[count]->init(positions[count]);
+                    spawned[count]->startAI(0); // Unlit, loose and available for normal pickup.
+                }
+                if (count == 3 && pc_randomizer_consume_benefit(PC_BENEFIT_BOMBS))
+                    std::puts("[Pikmin Randomizer] BOMB_DELIVERY count=3 state=unlit");
+                else for (int i = 0; i < count; ++i) spawned[i]->kill(false);
+            }
+        }
+    }
     if (pc_randomizer_benefit_pending(PC_BENEFIT_DELIVERY)) {
         int selected = -1;
         const char* onions[] = {"Blue Onion", "Red Onion", "Yellow Onion"};
@@ -1934,7 +1967,7 @@ void GameCoreSection::updateAI()
         const bool active = !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll
             && !gameflow.mIsUIOverlayActive && mNavi && mNavi->mHealth > 0.0f;
         if (active && !playerState->mInDayEnd) {
-            randomizerApplyBenefits(mNavi);
+            randomizerApplyBenefits(mNavi, mMapMgr);
             const int field = int(GameStat::formationPikis) + int(GameStat::freePikis) + int(GameStat::workPikis);
             pc_randomizer_observe_population(field, true);
             pc_randomizer_observe_total_population(int(GameStat::allPikis), true);
@@ -2191,7 +2224,7 @@ void GameCoreSection::updateAI()
             for (int color = 0; color < 3; ++color)
                 if (color != initialColor && GameStat::allPikis[color] != 0) std::abort();
             // No duplicate effects on a second application, including at full health.
-            randomizerApplyBenefits(mNavi);
+            randomizerApplyBenefits(mNavi, mMapMgr);
             if (onion->getTotalStorePikis() != stock + 10) std::abort();
             std::printf("TEST_ONLY benefits_pass color=%d stock_added=10 field_flowers=%d heal=full whistle=150 pluck=150\n", initialColor, flowers);
             std::fflush(stdout); std::exit(0);

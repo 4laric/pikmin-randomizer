@@ -10,7 +10,7 @@ from .core.catalog import (GAME, ITEM_IDS, LOCATION_IDS, NAMES, CHECK_AREAS,
                            active_names, item_pool, check_area, can_reach_manifest, FLARLIC, ALL_AREA_LOCATION_IDS, START_AREAS, COLLECTION_LOCATION_IDS, PERMANENT_LOCATION_IDS, MODERN_LOCATION_IDS)
 from .core.seed import generate, fingerprint
 from .core.stats import UPGRADE_ITEMS
-from .core.benefits import BENEFIT_ITEMS
+from .core.benefits import ALL_BENEFIT_ITEMS as BENEFIT_ITEMS
 
 
 class ExpandedChecks(Toggle):
@@ -145,8 +145,17 @@ class AttackRateUpgrades(MovementUpgrades):
     display_name = 'Attack Rate Upgrades Per Color'
 
 
+class BombRockWeight(Range):
+    """Filler weight for deliveries of three loose bomb rocks at a landing Onion. Pikmin Delivery / Flower Shower weights are 2 / 1. Zero disables. Queued until a safe gameplay landing; not required by logic."""
+    display_name = 'Bomb Rock Delivery Weight'
+    range_start = 0
+    range_end = 10
+    default = 1
+
+
 @dataclass
 class PikminOptions(PerGameCommonOptions):
+    bomb_rock_weight: BombRockWeight
     random_start_areas: RandomStartAreas
     initial_damage_min: InitialStatMinimum
     initial_damage_max: InitialStatMaximum
@@ -230,7 +239,7 @@ class PikminRandomizerWorld(World):
     def manifest(self):
         if not hasattr(self, '_manifest'):
             self._manifest = generate(str(self.multiworld.seed_name), "ap", self.multiworld.player_name[self.player],
-                            expanded=bool(self.options.expanded_checks),
+                            expanded=bool(self.options.expanded_checks), bomb_rock_weight=self.options.bomb_rock_weight.value,
                             starting_area=('forest', 'navel', 'random', 'impact', 'spring', 'trial')[self.options.starting_area.value],
                             starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas), enemy_shuffle=bool(self.options.enemy_shuffle), collection_checks=bool(self.options.collection_checks), starting_flarlic=self.options.starting_flarlic.value, randomize_color_stats=bool(self.options.randomize_color_stats), progressive_color_stats=bool(self.options.progressive_color_stats), permanent_checks=bool(self.options.permanent_checks), per_spawn_enemies=bool(self.options.per_spawn_enemies), group_spawn_enemies=bool(self.options.group_spawn_enemies), miniboss_enemies=bool(self.options.miniboss_enemies), campaign_enemies=bool(self.options.campaign_enemies),
                             random_start_areas=self.options.random_start_areas.value,

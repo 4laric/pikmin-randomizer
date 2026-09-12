@@ -1,4 +1,4 @@
-# Current playtest settings. Install pikmin_randomizer-0.24.0.apworld to generate.
+# Current playtest settings. Install pikmin_randomizer-0.25.0.apworld to generate.
 name: Player1
 game: Pikmin Randomizer
 Pikmin Randomizer:
@@ -30,6 +30,7 @@ Pikmin Randomizer:
   all_areas: true
   expanded_checks: false  # Legacy toggle; modern collection checks already expand
 
+  bomb_rock_weight: 1 # 0 disables; filler weights Pikmin:flower:bomb = 2:1:this
   campaign_enemies: true # Overrides the older modes below
   miniboss_enemies: false
   group_spawn_enemies: false

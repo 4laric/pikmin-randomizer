@@ -85,6 +85,7 @@ int main(int argc, char** argv) {
                 int used = 0;
                 for (int kind = 0; kind < 3; ++kind)
                     while (pc_randomizer_consume_benefit(static_cast<PcBenefit>(kind))) ++used;
+                while (pc_randomizer_consume_benefit(PC_BENEFIT_BOMBS)) ++used;
                 assert(!pc_randomizer_consume_benefit(PC_BENEFIT_WHISTLE));
                 std::printf("BENEFIT_PROBE used=%d whistle=%.2f pluck=%.2f\n", used,
                     pc_randomizer_benefit_multiplier(PC_BENEFIT_WHISTLE), pc_randomizer_benefit_multiplier(PC_BENEFIT_PLUCK));

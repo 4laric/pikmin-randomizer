@@ -1,3 +1,11 @@
+## Bomb Rock Delivery (#78)
+
+Native `ab5fec63`, AP 0.25.0. New AP/CLI seeds default bomb_rock_weight to 1 (range 0–10, zero disables). After captain upgrades, filler repeats two Pikmin Deliveries, one Flower Shower and the configured number of Bomb Rock Deliveries. Each grants three unlit loose bombs near an active Onion, retrying outside gameplay or when dry ground/item capacity is unavailable. These useful items do not enter reachability logic. Internal generate() retains opt-in default zero for legacy callers.
+
+BENEFITS 2 adds a sixth receipt counter; PIKMIN_CAMPAIGN_2 persists the fourth consumable counter. Old seeds retain their original protocol/checkpoint formats. Saved consumption survives resume; unsaved world rollback can replay its matching consumption. Existing seeds gain no new rewards.
+
+Validation: native production build passed; legacy and new protocol probes passed including save/resume, rollback, duplicate receipts and malformed/retracted bomb counts. Live startup in all five areas spawned exactly one delivery of three unlit bombs. Packaged Archipelago validation passed 150 custom-balance fills and 10 remote-Blue multiworlds. Physical pickup and player placement acceptance remain for playtesting. Separate nectar-bomb-delivery.exe staged for turkey-wide-02 next launch; seed/session untouched.
+
 ## Game-linked tracker (#77)
 
 Windows Python HUD opens a focused Tk tracker on F8 (20ms edge polling, restricted to game/tracker process foreground). Escape/window-close/F8 withdraw it and request game focus. No global hotkey registration; existing native default mappings have no F8 action. The tracker is a separate companion window and does not pause native simulation. Unrelated applications do not trigger opening.
