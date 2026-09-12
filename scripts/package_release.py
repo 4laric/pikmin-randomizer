@@ -94,11 +94,12 @@ def stage_core(repo, stage, exe, dlls, seed, extractor=None):
     if (repo / "CHANGELOG.md").is_file():
         shutil.copy2(repo / "CHANGELOG.md", stage / "CHANGELOG.md")
     (stage / "LICENSES").mkdir()
-    for notice in ("LICENSE.MD", "LEGAL.md"):
-        source = repo / "native" / notice
+    engine = repo / "native" if (repo / "native" / "LICENSE.MD").is_file() else repo / "engine"
+    for name, source in (("LICENSE", repo / "LICENSE"), ("LEGAL.md", repo / "LEGAL.md"),
+                         ("engine-LICENSE.MD", engine / "LICENSE.MD"), ("engine-LEGAL.md", engine / "LEGAL.md")):
         if not source.is_file():
             raise PackageError(f"license notice missing: {source}")
-        shutil.copy2(source, stage / "LICENSES" / notice)
+        shutil.copy2(source, stage / "LICENSES" / name)
     if seed:
         (stage / "seeds").mkdir()
         shutil.copy2(seed, stage / "seeds" / "seed.json")
