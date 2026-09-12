@@ -32,7 +32,7 @@ def test_package_contents(fake_build, tmp_path):
         inner = json.loads(archive.read("release-manifest.json"))
         assert archive.read("VERSION") == b"0.0.1-test\n"
     for expected in ("bin/nectar.exe", "bin/SDL2.dll", "bin/libwinpthread-1.dll", "randomizer/runner.py",
-                     "randomizer/__init__.py", "launcher/launcher.py", "Play.cmd", "examples/Player1.yaml",
+                     "randomizer/__init__.py", "launcher/launcher.py", "launcher/gui.py", "launcher/discimage.py", "launcher/rvz.py", "Play.cmd", "examples/Player1.yaml",
                      "README.md", "LICENSES/LICENSE.MD", "LICENSES/LEGAL.md", "seeds/seed.json"):
         assert expected in names
     assert not any("__pycache__" in n or n.startswith("runtime/") for n in names)

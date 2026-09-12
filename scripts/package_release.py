@@ -88,7 +88,7 @@ def stage_core(repo, stage, exe, dlls, seed, extractor=None):
     else:
         print(f"WARNING: {extractor} not found; players must supply an already extracted assets folder.", file=sys.stderr)
     copy_tree_files(repo, stage, tracked_python_files(repo))
-    copy_tree_files(repo, stage, [Path("launcher/launcher.py"), Path("launcher/gui.py"), Path("launcher/discimage.py")])
+    copy_tree_files(repo, stage, [Path("launcher") / name for name in ("launcher.py", "gui.py", "discimage.py", "rvz.py")])
     shutil.copy2(repo / "launcher" / "Play.cmd", stage / "Play.cmd")
     copy_tree_files(repo, stage, [Path("examples/Player1.yaml"), Path("README.md")])
     if (repo / "CHANGELOG.md").is_file():
