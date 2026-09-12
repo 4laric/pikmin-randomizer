@@ -179,6 +179,7 @@ async def serve(session, run, process=None, server=None, password=None, updates=
         if not server:
             raise ValueError("AP mode requires --server")
         async def reconnect():
+            nonlocal server
             import websockets
             from websockets.exceptions import InvalidHandshake
             while True:
@@ -193,6 +194,10 @@ async def serve(session, run, process=None, server=None, password=None, updates=
                     await asyncio.Future()
                 except InvalidHandshake:
                     ready[0] = False
+                    if not server.startswith(("ws://", "wss://")):
+                        server = "wss://" + server
+                        print("AP connection handshake failed. Trying a secure connection (wss://)…", flush=True)
+                        continue
                     print("AP connection handshake failed. Check the server address and port, "
                           "whether it requires ws:// or wss://, and that the room is running; "
                           "retrying in 2 seconds.", flush=True)
