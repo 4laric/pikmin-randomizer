@@ -159,6 +159,19 @@ Open an issue at <https://github.com/4laric/pikmin-randomizer/issues>. Please in
 
 Seed logic, the session runner and the overlay live in `randomizer/`; the AP integration in `apworld/`; tests and packaging in `tests/` and `scripts/`. [DEVELOPMENT.md](DEVELOPMENT.md) records implementation details and historical validation (its `native/` paths refer to the maintainer's isolated checkout; use `engine/` in a public checkout), [SPEC.md](SPEC.md) and [BATCH_PLAN.md](BATCH_PLAN.md) hold the design and roadmap, [ENEMY_RANDOMIZER_ROADMAP.md](ENEMY_RANDOMIZER_ROADMAP.md) the enemy randomizer plan, and [CHANGELOG.md](CHANGELOG.md) the per-release notes including the Windows build instructions. `engine/` is the complete engine snapshot with licenses and provenance in [ENGINE_SOURCE.md](ENGINE_SOURCE.md).
 
+## AI disclosure
+
+Most of this project's code was written with LLM assistance (Codex and Claude), directed and reviewed by the maintainer. That is stated up front because this community has good reasons to be wary of AI-built worlds: the usual failure is a world nobody can debug because nobody understands it, and the usual cost falls on the people running the multiworld, not the author.
+
+What is done about that:
+
+- AI-written code is treated as broken until a test proves otherwise. The Python suite in `tests/` covers the apworld, the seed logic, DeathLink, traps, the launcher and the packaging, and the engine patches have their own C++ test harness. All of it runs before every release.
+- The maintainer understands the codebase and is the one answering bug reports. Every feature has a GitHub issue with scope, acceptance criteria and validation notes, and the issue is closed only when the evidence is there.
+- Everything is open. The code is CC0, the engine is Open Nectar (also CC0), and no game data is distributed. Audit, fork or replace any of it.
+- Human playtime is still limited. Enemy modes, traps and DeathLink kills have engine-level testing but not many hours in real hands, which is why the current builds are an invited playtest and not a release.
+
+If you would rather not play an AI-assisted world, that is a fair choice and [TheLynk's Dolphin Pikmin apworld](https://github.com/TheLynk/Archipelago) is a good one. If you do play, bug reports with the seed id and `native.log` get fixed quickly; see [Reporting problems](#reporting-problems).
+
 ## Credits
 
 Built on [Open Nectar](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port) and the [projectPiki Pikmin decompilation](https://github.com/projectPiki/pikmin). Thanks to TheLynk for permission to use the Pikmin AP world's logic and locations as a reference; this remains a separate project as requested. This project's own code and documentation are public domain under [CC0 1.0](LICENSE); see [LEGAL.md](LEGAL.md). The engine keeps its own [license](engine/LICENSE.MD) and [third-party notice](engine/LEGAL.md).
