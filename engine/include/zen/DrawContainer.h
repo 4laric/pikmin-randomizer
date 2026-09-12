@@ -602,6 +602,18 @@ public:
 			setTextBox(DrawContainer::COLOR_Yellow, screen, i, tag1, tag2);
 		}
 
+#if defined(PIKI_PC_PORT)
+		P2DTextBox* boxes[] = {mRedTextBoxes[MSG_SquadTotalFull], mRedShadowBoxes[MSG_SquadTotalFull],
+		    mBlueTextBoxes[MSG_SquadTotalFull], mBlueShadowBoxes[MSG_SquadTotalFull],
+		    mYellowTextBoxes[MSG_SquadTotalFull], mYellowShadowBoxes[MSG_SquadTotalFull],
+	    mRedTextBoxes[MSG_SquadCapacityFull], mRedShadowBoxes[MSG_SquadCapacityFull],
+	    mBlueTextBoxes[MSG_SquadCapacityFull], mBlueShadowBoxes[MSG_SquadCapacityFull],
+	    mYellowTextBoxes[MSG_SquadCapacityFull], mYellowShadowBoxes[MSG_SquadCapacityFull]};
+		for (int i = 0; i < 12; ++i) {
+			mFieldLimitTemplates[i] = boxes[i]->getString();
+			mFieldLimitText[i] = nullptr;
+		}
+#endif
 		init(DrawContainer::COLOR_Red);
 	}
 
@@ -656,6 +668,9 @@ public:
 		tBox2->hide();
 		tBox2->setAlpha(0);
 	}
+#if defined(PIKI_PC_PORT)
+	void setFieldLimit(int limit);
+#endif
 	void setMessage(messageFlag msg, f32 p2)
 	{
 		if (mMessage != msg) {
@@ -801,6 +816,10 @@ public:
 	}
 
 protected:
+#if defined(PIKI_PC_PORT)
+	char* mFieldLimitTemplates[12];
+	char* mFieldLimitText[12];
+#endif
 	messageFlag mMessage;                    // _00
 	int mMessageCount;                       // _04
 	P2DTextBox** mRedTextBoxes;              // _08

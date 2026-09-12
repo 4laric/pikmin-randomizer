@@ -8,6 +8,31 @@
 #include "zen/TexAnim.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_gfx.h"
+#include <cstring>
+#include <cstdio>
+#endif
+
+
+#if defined(PIKI_PC_PORT)
+void zen::MessageMgr::setFieldLimit(int limit)
+{
+	P2DTextBox* boxes[] = {mRedTextBoxes[MSG_SquadTotalFull], mRedShadowBoxes[MSG_SquadTotalFull],
+	    mBlueTextBoxes[MSG_SquadTotalFull], mBlueShadowBoxes[MSG_SquadTotalFull],
+	    mYellowTextBoxes[MSG_SquadTotalFull], mYellowShadowBoxes[MSG_SquadTotalFull],
+	    mRedTextBoxes[MSG_SquadCapacityFull], mRedShadowBoxes[MSG_SquadCapacityFull],
+	    mBlueTextBoxes[MSG_SquadCapacityFull], mBlueShadowBoxes[MSG_SquadCapacityFull],
+	    mYellowTextBoxes[MSG_SquadCapacityFull], mYellowShadowBoxes[MSG_SquadCapacityFull]};
+	for (int i = 0; i < 12; ++i) {
+		const char* original = mFieldLimitTemplates[i];
+		const char* number = original ? std::strstr(original, "100") : nullptr;
+		if (!number) continue;
+		// Preserve localized text and embedded formatting; retain the original for later upgrades.
+		const size_t capacity = std::strlen(original) + 12;
+		if (!mFieldLimitText[i]) mFieldLimitText[i] = new char[capacity];
+		std::snprintf(mFieldLimitText[i], capacity, "%.*s%d%s", int(number - original), original, limit, number + 3);
+		boxes[i]->setString(mFieldLimitText[i]);
+	}
+}
 #endif
 
 /**
@@ -167,6 +192,9 @@ void zen::DrawContainer::start(zen::DrawContainer::containerType color, int p2, 
 		mSquadCapacity         = p5;
 		mSquadTotalCount       = p6;
 		mSquadTotalLimit       = p7;
+#if defined(PIKI_PC_PORT)
+		mMessageMgr->setFieldLimit(mSquadTotalLimit);
+#endif
 		mFrameTimer            = 0.0f;
 
 		setDispParam();

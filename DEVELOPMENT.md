@@ -1,3 +1,7 @@
+## Effective capacity in Onion warnings (#81)
+
+Native b8f1f650 updates both squad-capacity and total-field warning messages on each Onion menu opening, using the actual withdrawal limit passed by Navi. All three colors and both text/shadow layers preserve their original asset templates, line breaks and formatting; replacing only the 100 token means later upgrades can refresh the number repeatedly. English asset inspection confirms the token in all 12 panes. No seed/save changes. Native production build and physical acceptance status recorded in issue #81.
+
 ## Faster Candypop Bud closing (#80)
 
 Native cd615695 caps positive PC closing waits at five seconds (retail data specifies 30). Timer starts under the existing contact rule; ten attached Pikmin still trigger immediate closing. Shorter custom waits, disabled timers, non-PC behavior and conversion remain unchanged. No asset, seed or save changes. Separate nectar-candypop.exe staged for the current playtest next launch. Native production build passed. Source predicate reviewed; physical timing acceptance remains for playtesting.
