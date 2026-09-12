@@ -36,6 +36,22 @@ def describe_start(manifest):
     return AREA_NAMES.get(manifest.get("profile", ""), manifest.get("profile", "?"))
 
 
+def starting_stats_hint(manifest):
+    if not manifest:
+        return ""
+    color = manifest.get("starting_color", "red")
+    stats = manifest.get("color_stats", {}).get(color)
+    if not stats:
+        return "Starting Pikmin stats: standard."
+    unusual = any(stats.get(key, default) != default for key, default in
+                  (("movement", 100), ("damage", 100), ("attack_rate", 100), ("carry", 1)))
+    if not unusual:
+        return "Starting Pikmin stats: standard."
+    return (f"Seed starting stats — {color.title()} Pikmin: movement {stats['movement']}%, "
+            f"damage {stats['damage']}%, attack rate {stats['attack_rate']}%, carry strength {stats['carry']}. "
+            "These are seed rules, not the game's playback speed.")
+
+
 class LauncherApp:
     def __init__(self, root, seed_arg=None, server_arg=None):
         import tkinter as tk
@@ -120,6 +136,11 @@ class LauncherApp:
         self.resume_var = tk.StringVar()
         ttk.Label(seed, textvariable=self.resume_var, style="Muted.TLabel", wraplength=700).grid(
             row=4, column=0, columnspan=3, sticky="w", pady=(4, 0))
+        self.stats_hint_var = tk.StringVar()
+        ttk.Label(seed, textvariable=self.stats_hint_var, style="Panel.TLabel", wraplength=760).grid(
+            row=5, column=0, columnspan=3, sticky="w", pady=(6, 0))
+        ttk.Label(seed, text="While playing: F1 opens game settings (graphics, audio and controls). F8 opens the tracker.",
+                  style="Muted.TLabel", wraplength=760).grid(row=6, column=0, columnspan=3, sticky="w", pady=(6, 0))
         self.seed_var.trace_add("write", lambda *a: self.on_seed_changed())
 
         data = self.panel(self.root, "2. SET UP GAME DATA — ONCE")
@@ -222,6 +243,7 @@ class LauncherApp:
     def on_seed_changed(self):
         path = self.seed_var.get().strip()
         self.manifest = None
+        self.stats_hint_var.set("")
         if path and Path(path).is_file():
             try:
                 self.manifest = launcher.load_manifest(path)
@@ -230,6 +252,7 @@ class LauncherApp:
                 self.play_button.configure(text="PLAY")
                 self.render_card(error=str(exc))
                 return
+        self.stats_hint_var.set(starting_stats_hint(self.manifest))
         self.render_card()
         self.resume_var.set(launcher.run_summary(self.manifest, path) if self.manifest else "")
         if self.manifest and self.manifest.get("mode") == "ap":

@@ -124,3 +124,18 @@ def test_reconnect_sends_credentials_only_through_pipe(root):
     assert json.loads(pipe.getvalue()) == {"server": "localhost:38281", "password": "private password"}
     assert "private password" not in gui.launcher.config_path().read_text()
     assert "private password" not in app.log.get("1.0", "end")
+
+def test_seed_stats_explain_slow_pikmin_before_play(root, tmp_path):
+    import json
+    from randomizer.seed import generate
+    gui = load_gui()
+    manifest = generate("slow-stats", "solo", randomize_color_stats=True)
+    manifest["color_stats"]["red"].update(movement=50, damage=25)
+    path = tmp_path / "slow.json"
+    path.write_text(json.dumps(manifest))
+    app = gui.LauncherApp(root, str(path))
+    text = app.stats_hint_var.get()
+    assert "movement 50%" in text and "damage 25%" in text
+    assert "not the game's playback speed" in text
+    assert "Yellow" not in text and "Blue" not in text
+    assert gui.starting_stats_hint(generate("standard")) == "Starting Pikmin stats: standard."
