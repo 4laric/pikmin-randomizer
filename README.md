@@ -68,6 +68,8 @@ python -m randomizer run <slot>.pikmin.json --session-dir <dir>/session --exe <p
 
 `Play.cmd` asks for the server address and password when the seed is an Archipelago seed. When running the module directly, pass `--server host:port` and set the password in the `PIKMIN_AP_PASSWORD` environment variable before launching.
 
+Universal Tracker is supported: install the same `.apworld` next to Universal Tracker, connect it to the room with your slot name, and it rebuilds this seed's exact check logic from the server's slot data without a YAML. The in-game F8 tracker keeps working alongside it.
+
 DeathLink is supported. With `death_link: true`, every `death_link_pikmin` ordinary Pikmin deaths (default 10, remainder kept across days) send one link to the room, and each received link kills up to that many living field Pikmin through their normal death; Olimar and Onion stock are never touched. Links that arrive while the game is closed are dropped, and a link is applied only during active gameplay. The HUD and F8 tracker show the received count and progress toward the next send. Pikmin left behind at sunset do not count. Received items are applied while you play and persist across relaunches; consumable rewards received on the area map wait until you land. Some starting combinations deliberately require progression from other players' worlds.
 
 ## Options

@@ -592,3 +592,8 @@ DeathLink (`death_link: true`, `death_link_pikmin: 1..100`, CLI `--death-link --
 Validation: tests/test_death_link.py (manifest, journal, session, fake-server Bounce send/receive/echo/stale), scripts/test_deathlink_protocol.py against the compiled probe (baseline ignored, five queued links applied as three, induced death excluded). Player combat acceptance of induced deaths remains open. AP world 0.29.0.
 
 README.md is now a player guide; prior release notes moved verbatim to CHANGELOG.md. `launcher/launcher.py` + `launcher/Play.cmd` replace the generated per-seed launcher (assets and last server remembered under `%APPDATA%\PikminRandomizer`, sessions per fingerprint, AP prompts, actionable failures). `scripts/package_release.py` assembles the asset-free ZIP with optional embeddable runtime (docs/PACKAGING.md). The embeddable-runtime path is untested on this machine: no python.org install is available to supply tkinter, so a bundled runtime built here would lack the overlay/tracker until one is provided.
+
+
+## Universal Tracker (#97)
+
+The AP world sets `ut_can_gen_without_yaml`, returns slot_data from a static `interpret_slot_data`, and `manifest()` uses `multiworld.re_gen_passthrough[GAME]` (fingerprint-checked) so UT's local regeneration with default options rebuilds the authoritative manifest, locations, item pool and rules; `generate_output` is skipped when `generation_is_fake`. Validation: scripts/test_ut_regen.py regenerates 12 slots across randomized start/color/stats, campaign and grouped enemies, traps, death link and the repairs goal, comparing manifests, locations, pools and 48 reachability snapshots, then fills. Live UT client testing against a hosted room remains open.
