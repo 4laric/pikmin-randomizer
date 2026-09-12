@@ -93,4 +93,4 @@ Current Open Nectar prototype native commit: `5b0e3857f3f367b6c4003498110b86c551
 
 ## Implementation progress
 
-Batch #110 has started: [Emergence import and entrance-room preview](PIKMIN2_EMERGENCE_IMPORT.md). Both floor definitions and all referenced unit assets convert; complete floor assembly and cave gameplay remain outstanding.
+Batch #110 has started: [Emergence import and entrance-room preview](PIKMIN2_EMERGENCE_IMPORT.md). Both floor definitions and all referenced unit assets convert. An authored first-floor assembly now passes native walking and cross-seam carrying; second-floor native validation and actual cave gameplay remain outstanding.

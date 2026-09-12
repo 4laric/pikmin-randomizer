@@ -39,8 +39,8 @@ Visual inspection shows the imported snow terrain with live actors, but first-te
 
 ## Still required in #110
 
-- Assemble floor one's rooms and connectors with consistent geometry/collision/door/route transforms. Its source definition requests two rooms; importing its main unit alone is not a complete floor.
-- Validate seam corridors, final start/exit placement and carrying across the assembled floor.
+- First-floor geometry is now assembled in an authored arrangement (see below). Original P2 layout generation and actual floor content remain unimplemented.
+- Replace the scaffold start/receiver/content with the actual floor start, exit and roster; preserve the validated seam paths.
 - Validate the second-floor room natively, including slopes, material approximations and destination approach heights.
 - Resolve local visual/collision discrepancies where they affect play; do not apply the concrete prototype's -1 offset globally.
 - Replace scaffold actors through the subsequent Research Pod/treasure, cave lifecycle and Purple batches (#111–#114).
@@ -52,3 +52,24 @@ The importer reports `assembled: false` and `native_validated: false`. Native ev
 Run `output/pikmin2-emergence-preview/da025222e1cb446f854f48e90a2146cc` exited 0. Controller movement covered 229.01 units; the bolt receipt recorded one collection with repairs unchanged and no seeds. Actual attack AI killed the Dwarf; transport AI carried its corpse over 242 units and completed Onion delivery. Static geometry and display-list hashes matched between start and finish; the final render matrix matched the stationary camera exactly. Start/final screenshots were inspected. The fixture uses explicit AI assignment and remains distinct from manual controller sign-off.
 
 The Windows fixture build passed against the existing production build. Native fixture source commit: `f292a0286aeafae3a6ce548a89beaf6e1a5b710b`; no production engine behavior changed. Final local manifest: `output/pikmin2-emergence110/import-03/manifest.json`.
+
+
+## Authored first-floor assembly
+
+`experimental/pikmin2_assembly.py` joins two entrance-room instances with an allowed straight snow connector. The second room is rotated 180 degrees, with centers at Z=0 and Z=1020 and the connector at Z=510. This is a deterministic engineering arrangement from the source floor pool, not a recreation of the original map generator.
+
+One shared transform handles render positions, normals, collision, waypoints and placement headings. Materials/textures and mesh indices are merged into one rigid MOD. Matched, oppositely facing door nodes are welded into shared route points, preserving all original directed links and avoiding zero-length seam edges. Missing, reused, misaligned or unsealed doors fail validation. No perimeter caps close the connected corridor.
+
+Offline coverage includes 195 ground samples across both seams in a 60-unit-wide strip, complete directed route reachability, deterministic binary output and byte-identical conversion of a single untransformed unit. Thirty-five focused tests pass. The assembly has 1,336 rendered triangles. The scene still uses the documented material approximations.
+
+```powershell
+python -m experimental.pikmin2_assembly --imported output/emergence-new --output output/emergence-floor1-new
+python -m scripts.preview_pikmin2_emergence --assets "PATH/pikmin/assets" --imported output/emergence-new --assembled output/emergence-floor1-new --treasure "PATH/room105/treasure.mod" --exe "PATH/nectar-p2-room.exe"
+```
+
+The optional assembly does not change the single-room preview. Its bolt and Dwarf are placed in the far room so transport must cross both joins to the temporary Onion. The fixture steers actual controller input through the corridor using camera-relative axes, then exercises actual attack and transport AI without teleporting actors. Explicit Pikmin AI assignment is still a fixture limitation.
+
+
+Assembly native evidence: `output/pikmin2-emergence-preview/8ace34256aa84af6b47194d9fe29e552` exited 0. Olimar walked 753.57 units from the starting room across both seams into the far room using controller input. The bolt returned from that room with repairs unchanged and seeds=0. Native combat killed the distant Dwarf, then carriers moved its corpse over 1,259 units back across both joins and completed Onion delivery. Source actor positions were not teleported by the fixture. Sampled vertex and complete display-list hashes stayed stable; the final render matrix matched the stationary camera. Movement and final screenshots were inspected. The visual approximations are still apparent and this is not a manual gameplay sign-off.
+
+Windows fixture build passed; native fixture source `34f2760ef5c9ffa701da676d4b4cb04f8acf5fd8`. Local `floor1-03` adds source-hash provenance to the manifest; its MOD is byte-identical to the tested `floor1-02`. Use `output/pikmin2-emergence110/Play-floor1.cmd` for the assembled engineering layout. The earlier single-room launcher remains available.

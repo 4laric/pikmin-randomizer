@@ -130,8 +130,12 @@ class Writer:
         self.pad(); struct.pack_into('>I',self.data,self.start+4,len(self.data)-self.start-8)
 
 def convert(source, output, approximate_materials=False, y_offset=0.0):
+    return write_model(decode(Path(source).read_bytes(), approximate_materials),output,str(source),y_offset)
+
+
+def write_model(decoded, output, source, y_offset=0.0):
     if not math.isfinite(y_offset): raise ValueError("Y offset must be finite")
-    b,a,shapes,mats=decode(Path(source).read_bytes(), approximate_materials); w=Writer()
+    b,a,shapes,mats=decoded; w=Writer()
     a[9]=[(x,y+y_offset,z) for x,y,z in a[9]]
     w.begin(0);w.pad();w.put('II',0,0);w.end()
     for attr,tag,fmt in ((9,16,'3f'),(10,17,'3f'),(11,19,'4B'),(13,24,'2f')):

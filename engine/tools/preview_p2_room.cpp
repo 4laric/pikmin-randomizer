@@ -35,6 +35,8 @@
 #include <cstdlib>
 #include <vector>
 static int phase=0,ticks=0;
+static bool assembled=false;
+static int walkPoint=0;
 static Vector3f origin;
 static void require(bool value,const char* message) { if(!value) { std::printf("FAIL p2 room: %s\n",message);std::fflush(stdout);std::_Exit(1); } }
 // Navi::update polls its controller after GameCoreSection::updateAI starts.
@@ -45,6 +47,20 @@ public:
     void update() override {
         updateCont(phase==1?KBBTN_MSTICK_RIGHT:0);
         mMainStickX=phase==1?74:0; mMainStickY=0;
+        if(assembled && phase==1 && naviMgr) {
+            Navi* n=naviMgr->getNavi();
+            if(n && n->mNaviCamera) {
+                const float goals[]={275,510,800,920};
+                float dx=-n->mSRT.t.x,dz=goals[walkPoint]-n->mSRT.t.z;
+                float distance=std::sqrt(dx*dx+dz*dz);
+                if(distance<20 && walkPoint<3)++walkPoint;
+                if(distance>1) {
+                    const Vector3f& axis=n->mNaviCamera->mViewXAxis;
+                    mMainStickX=static_cast<signed char>(65*(dx*axis.x+dz*axis.z)/distance);
+                    mMainStickY=static_cast<signed char>(65*(dx*axis.z-dz*axis.x)/distance);
+                }
+            }
+        }
         mSubStickX=0; mSubStickY=0;
     }
 };
@@ -115,11 +131,15 @@ public:
             n->mKontroller=new FixtureController();
             repairs=playerState->getCurrParts();origin=n->mSRT.t;phase=1;ticks=0;
             std::puts("P2_FIXTURE_ACTORS_GROUND_PASS");
-        } else if(phase==1 && ++ticks>=60) {
+        } else if(phase==1 && ++ticks>=(assembled?1800:60)) {
+            require(!assembled,"controller did not cross the room seams before timeout");
+        }
+        if(phase==1 && (assembled?(walkPoint==3 && n->mSRT.t.z>890 && std::fabs(n->mSRT.t.x)<30):ticks>=60)) {
             float dx=n->mSRT.t.x-origin.x,dz=n->mSRT.t.z-origin.z;
             std::printf("P2_MOVE_DEBUG origin=%.2f,%.2f,%.2f now=%.2f,%.2f,%.2f stick=%d,%d main=%.2f,%.2f vel=%.2f,%.2f target=%.2f,%.2f flags=%u state=%d\n",origin.x,origin.y,origin.z,n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z,int(n->mKontroller->mMainStickX),int(n->mKontroller->mMainStickY),n->mMainStick.x,n->mMainStick.z,n->mVelocity.x,n->mVelocity.z,n->mTargetVelocity.x,n->mTargetVelocity.z,n->mKontroller->mCurrentInput,n->getCurrState()->getID());
             require(dx*dx+dz*dz>4,"controller movement failed");require(std::fabs(n->mSRT.t.y)<5,"captain left floor");
             std::printf("P2_FIXTURE_MOVEMENT_PASS distance=%.2f\n",std::sqrt(dx*dx+dz*dz));
+            if(assembled)require(n->mSRT.t.z>890 && origin.z<350,"captain did not cross both seams");
             cameraLog(n,"MOVED");capture("p2-room-moved.ppm");
             Pellet* target=pc_p2_preview_treasure();int count=0;Iterator p(pikiMgr);CI_LOOP(p){
                 Piki* v=static_cast<Piki*>(*p);if(!v->isAlive())continue;
@@ -174,11 +194,11 @@ public:
                 }
             }
             if(!corpse->isAlive()) {
-                require(corpseReachedGoal && corpseDistance>100,"corpse disappeared without traversing room and entering Onion goal");
+                require(corpseReachedGoal && corpseDistance>(assembled?1000:100),"corpse disappeared without traversing room and entering Onion goal");
                 const float ground=mapMgr->getMinY(n->mSRT.t.x,n->mSRT.t.z,true);
                 std::printf("P2_FINAL_POSITION x=%.3f y=%.3f z=%.3f ground=%.3f velocity=%.3f,%.3f stick=%d,%d\n",n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z,ground,n->mVelocity.x,n->mVelocity.z,int(n->mKontroller->mMainStickX),int(n->mKontroller->mMainStickY));
                 cameraLog(n,"FINAL");capture();
-                require(std::fabs(n->mSRT.t.x)<=340 && std::fabs(n->mSRT.t.z)<=340,"captain outside capped room bounds");
+                require(std::fabs(n->mSRT.t.x)<=340 && std::fabs(n->mSRT.t.z)<=(assembled?1360:340),"captain outside room bounds");
                 require(std::fabs(n->mSRT.t.y-ground)<5 && std::fabs(ground)<0.05f,"captain final position not on room floor");
                 std::puts("PASS p2 room: actors, ground, controller movement, native carry delivery, unchanged repairs, native combat kill, far corpse transport and delivery");std::fflush(stdout);std::_Exit(0);
             }
@@ -188,6 +208,7 @@ public:
     }
 };
 int main(int argc,char** argv) {
+    if(FILE* marker=std::fopen("p2-assembled.txt","r")){assembled=true;std::fclose(marker);}
     SDL_SetMainReady();pc_gpu_preference_apply();_putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND","1");pc_bbft_init(argc,argv);
     require(pc_pikipelago_room_preview(),"requires --experimental-pikmin2-room");
     if(!pc_window_init("P2 room integration fixture",960,720))return 3;
