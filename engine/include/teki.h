@@ -17,6 +17,9 @@
 #include "system.h"
 #include "types.h"
 #include "zen/CallBack.h"
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+#include "pc_p2_enemy.h"
+#endif
 
 class CollEvent;
 class Colour;
@@ -393,7 +396,13 @@ public:
 	void setPersonalityF(int idx, f32 val) { mPersonality->setF(idx, val); }
 	void setPersonalityI(int idx, int val) { mPersonality->setI(idx, val); }
 
-	f32 getParameterF(int idx) { return mTekiParams->getF(idx); } // see TekiFloatParams enum
+	f32 getParameterF(int idx) {
+		const f32 value=mTekiParams->getF(idx);
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+		if(idx==TPF_Life)return pc_p2_snow_max_health(this,value);
+#endif
+		return value;
+	} // see TekiFloatParams enum
 	int getParameterI(int idx) { return mTekiParams->getI(idx); } // see TekiIntParams enum
 
 	void outputDirectionVector(Vector3f& outDir) { BTeki::outputDirectionVector(getDirection(), outDir); }

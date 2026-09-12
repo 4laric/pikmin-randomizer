@@ -1,5 +1,6 @@
 #include "pc_p2_enemy.h"
 #include "pc_p2_animation.h"
+#include "pc_p2_snow_policy.h"
 #include "Material.h"
 #include <chrono>
 #include <iterator>
@@ -24,15 +25,21 @@ namespace {
 std::map<std::string,std::vector<Shape*>> clips;
 std::set<PelletView*> actors;
 std::map<std::string,p2animation::Clip> timing;
+P2SnowHealthPolicy healthPolicy;
 }
+float pc_p2_snow_max_health(const BTeki* actor,float fallback) { return healthPolicy.life(actor,fallback); }
+void pc_p2_snow_reset() { clips.clear();actors.clear();timing.clear();healthPolicy.reset(); }
+void pc_p2_snow_forget(BTeki* actor) { healthPolicy.forget(actor);actors.erase(static_cast<PelletView*>(actor)); }
 const char* pc_p2_enemy_name(PelletView* view) { return actors.count(view)?"Snow Bulborb":nullptr; }
 void pc_p2_snow_setup() {
-    clips.clear();actors.clear();
+    pc_p2_snow_reset();
     if(!pc_pikipelago_room_preview())return;
     std::ifstream in("p2-snow.txt");if(!in)return;
     const auto started=std::chrono::steady_clock::now();
     std::vector<p2animation::Clip> manifest;
     if(!p2animation::parse(in,manifest) || !pc_p2_preview_goal())std::abort();
+    std::ifstream policy("p2-snow-policy.txt");
+    if(policy && !healthPolicy.read(policy))std::abort();
     // Validate the entire bank before allocating Shapes or uploading textures.
     size_t total=0,poses=0;
     std::vector<unsigned char> reference;
@@ -100,6 +107,13 @@ void pc_p2_snow_setup() {
         if(teki && teki->mGenerator && wanted.erase(teki->mGenerator->_70)) {
             if(teki->mTekiType!=TEKI_Chappy)std::abort();
             actors.insert(static_cast<PelletView*>(teki));
+            if(healthPolicy.enabled()) {
+                const float oldHealth=teki->mHealth;
+                healthPolicy.bind(static_cast<BTeki*>(teki));
+                teki->mHealth=teki->getParameterF(TPF_Life);
+                std::printf("P2_SNOW_POLICY generator=%u health=%.1f max_health=%.1f previous=%.1f source=YellowKochappy_fp00\n",
+                            teki->mGenerator->_70,teki->mHealth,teki->getParameterF(TPF_Life),oldHealth);
+            }
             std::printf("P2_ENEMY_READY species=YellowKochappy native_family=Chappy generator=%u behavior=P1\n",teki->mGenerator->_70);
         }
     }

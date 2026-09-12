@@ -107,6 +107,9 @@ int TekiMgr::typeIds[TEKI_TypeCount] = {
  */
 void TekiMgr::initTekiMgr()
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	pc_p2_snow_reset();
+#endif
 	tekiMgr = nullptr;
 }
 
@@ -130,6 +133,10 @@ int TekiMgr::getTypeIndex(immut char* typeName)
  */
 TekiMgr::TekiMgr()
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	// Stage teardown nulls the global manager. Do not clear an unrelated live manager.
+	if (!tekiMgr) pc_p2_snow_reset();
+#endif
 	PRINT_NAKATA("TekiMgr>\n");
 	memStat->start("tekiMgr");
 	int heapStartSize = NSystem::getFreeHeap();
@@ -258,6 +265,9 @@ Teki* TekiMgr::newTeki(int type)
 		return nullptr;
 	}
 
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	pc_p2_snow_forget(teki);
+#endif
 	teki->init(type);
 	return teki;
 }
@@ -267,6 +277,9 @@ Teki* TekiMgr::newTeki(int type)
  */
 void TekiMgr::reset()
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	if (this == tekiMgr) pc_p2_snow_reset();
+#endif
 	PRINT_NAKATA("reset>\n");
 	Iterator iter(this);
 	CI_LOOP(iter)
