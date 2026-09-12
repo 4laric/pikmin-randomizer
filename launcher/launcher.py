@@ -229,6 +229,43 @@ def resolve_assets(config, override=None, reset=False, ask=input, dialog=pick_fo
     return assets
 
 
+def create_solo_seed(seed_name=""):
+    """Create a new local run without overwriting an existing seed or save."""
+    import uuid
+    from randomizer.seed import generate
+    token = uuid.uuid4().hex
+    manifest = generate(seed_name.strip() or token[:12], "solo", collection_checks=True,
+                        permanent_checks=True, starting_area="random", starting_color="random",
+                        goal_mode="emperor_bulblax", bomb_rock_weight=1)
+    folder = app_dir() / "seeds"
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"solo-{token}.json"
+    with path.open("x", encoding="utf-8") as stream:
+        json.dump(manifest, stream, indent=2)
+        stream.write("\n")
+    return path
+
+
+def validate_server(value):
+    """Validate a game endpoint, not an Archipelago room's web page."""
+    from urllib.parse import urlsplit
+    value = value.strip()
+    if not value:
+        raise LaunchError("Enter the server address and port shown on your Archipelago room page.")
+    try:
+        url = urlsplit(value if "://" in value else "ws://" + value)
+        if url.scheme not in ("ws", "wss") or url.path not in ("", "/") or url.query or url.fragment:
+            raise ValueError()
+        if not url.hostname or any(c.isspace() for c in value) or url.username or url.password:
+            raise ValueError()
+        if url.port is None or not 1 <= url.port <= 65535:
+            raise ValueError()
+    except ValueError:
+        raise LaunchError("Use the room's server address and port, for example archipelago.gg:38281, "
+                          "not its browser URL. Keep ws:// or wss:// if supplied by the host.") from None
+    return value
+
+
 # --- Archipelago ------------------------------------------------------------
 
 def resolve_server(config, override=None, ask=input):
@@ -258,8 +295,8 @@ def check_ap_dependencies():
     try:
         import websockets  # noqa: F401
     except ImportError:
-        raise LaunchError("AP mode needs the 'websockets' package, which is missing from this Python.\n"
-                          f"Install it with:  \"{sys.executable}\" -m pip install \"websockets>=13,<14\"")
+        raise LaunchError("The AP connection component is missing. Download and extract the complete "
+                          "Windows release ZIP, including its runtime folder.")
 
 
 # --- Launch -----------------------------------------------------------------
@@ -284,13 +321,13 @@ def explain_failure(returncode, output, session):
         return ("Another launcher is already running this seed. Close the other game window first, "
                 f"or wait for it to exit.\nSession: {session}")
     if "--assets must point" in text or "dataDir/stages" in text:
-        return ("The assets folder is missing dataDir\\stages. Run Play.cmd with --reset-assets to choose it again.")
+        return ("The assets folder is missing dataDir\\stages. Choose your disc image or a different folder in the launcher.")
     if "AP connection refused" in text:
         return "The Archipelago server refused the connection: check the slot name, password and server address.\n" + text.strip().splitlines()[-1]
     if "AP slot manifest does not match" in text:
         return "This seed.json is not the one the Archipelago room was generated with. Use the seed from the room's output."
     if "No module named 'websockets'" in text or "ModuleNotFoundError: No module named 'websockets'" in text:
-        return "AP mode needs the 'websockets' package. Install it with pip (see docs) and try again."
+        return "The AP connection component is missing. Download and extract the complete Windows release ZIP, including its runtime folder."
     if "native process exited" in text:
         log = newest_native_log(session)
         where = f"\nSee the game log: {log}" if log else ""
@@ -372,6 +409,45 @@ def launch(args):
     print("Runner exited normally.")
     return 0
 
+
+
+
+def run_summary(manifest, seed_path):
+    """Summarize the existing journal without creating or migrating a session."""
+    try:
+        data = json.loads((session_dir(manifest, seed_path) / "session.json").read_text(encoding="utf-8"))
+        from randomizer.seed import fingerprint
+        if data.get("fingerprint") != fingerprint(manifest):
+            return "Saved session needs attention; identity does not match."
+        checked = data.get("checked")
+        if not isinstance(checked, list):
+            return "Saved session needs attention."
+        return f"Continue existing run · {len(checked)} checks recorded. Campaign resumes from its last day-end save."
+    except FileNotFoundError:
+        return "New run · no saved progress yet."
+    except (OSError, ValueError, AttributeError):
+        return "Saved session could not be read; it will not be reset."
+
+
+def diagnostic_report(manifest, source, log_text):
+    """An allowlist report: never copy arbitrary log lines or credentials."""
+    import re
+    report = {"version": runtime_version(), "assets_ready": assets_problem(source) is None if source else False}
+    if manifest:
+        report.update(seed_fingerprint=short_fingerprint(manifest), mode=manifest["mode"],
+                      schema=manifest["schema"], starting_area=manifest["profile"])
+    categories = {
+        "handshake_failed": "AP connection handshake failed",
+        "connection_refused": "AP connection refused",
+        "credentials_refused": "PIKMIN_AP_STATUS: refused",
+        "seed_mismatch": "AP slot manifest does not match",
+        "connected": "PIKMIN_AP_STATUS: connected",
+        "install_permission_denied": "Permission denied",
+    }
+    report["events"] = [name for name, marker in categories.items() if marker in log_text]
+    report["installer_exit_codes"] = re.findall(r"installer exit (\d+)", log_text)[-5:]
+    report["runner_exit_codes"] = re.findall(r"runner exited with code (-?\d+)", log_text)[-5:]
+    return "Pikipelago diagnostic report\n" + json.dumps(report, indent=2) + "\n"
 
 if __name__ == "__main__":
     sys.exit(main())

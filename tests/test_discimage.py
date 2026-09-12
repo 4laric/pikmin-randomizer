@@ -44,10 +44,11 @@ def test_extract_reuses_complete_extraction_and_reports_failure(tmp_path):
     # A complete extraction is reused without running the extractor again.
     bad = fake_extractor(tmp_path, "echo should not run & exit /b 9")
     assert discimage.extract_image(image, bad, root, launcher.assets_problem) == assets
-    # Failure surfaces the installer's last lines and the disc requirement.
+    # Failure preserves the actual diagnostic without blaming the disc format.
     with pytest.raises(discimage.ExtractError) as info:
         discimage.extract_image(image, bad, tmp_path / "fresh", launcher.assets_problem)
-    assert "exit 9" in str(info.value) and "GPIE01" in str(info.value)
+    assert "exit 9" in str(info.value) and "should not run" in str(info.value)
+    assert "The image must be" not in str(info.value)
     with pytest.raises(discimage.ExtractError):
         discimage.extract_image(tmp_path / "missing.iso", good, root, launcher.assets_problem)
     with pytest.raises(discimage.ExtractError):
@@ -67,3 +68,25 @@ def test_launcher_resolves_image_override(tmp_path, monkeypatch):
     assert calls == [str(image)] and config["image"] == str(image.resolve())
     assert launcher.load_config()["assets"] == str(tmp_path / "assets")
     assert launcher.game_data_dir() == tmp_path / "appdata" / "PikminRandomizer" / "game-data"
+
+def test_interrupted_decode_is_not_reused(tmp_path, monkeypatch):
+    old = tmp_path / "Pikmin.converted.iso"
+    old.write_bytes(b"incomplete")
+    monkeypatch.setattr(discimage.rvz, "describe", lambda image: {})
+    paths = []
+    def convert(image, path, progress):
+        paths.append(path)
+        path.write_bytes(b"complete")
+    monkeypatch.setattr(discimage.rvz, "convert_to_iso", convert)
+    result = discimage.convert_image(tmp_path / "Pikmin.rvz", tmp_path)
+    assert result != old and result.read_bytes() == b"complete"
+    assert old.read_bytes() == b"incomplete"
+    def failed(image, path, progress):
+        paths.append(path)
+        path.write_bytes(b"partial")
+        raise discimage.rvz.RvzError("decode failed")
+    monkeypatch.setattr(discimage.rvz, "convert_to_iso", failed)
+    with pytest.raises(discimage.ExtractError, match="decode failed"):
+        discimage.convert_image(tmp_path / "Pikmin.rvz", tmp_path)
+    assert not paths[-1].exists()
+    assert result.exists()  # Only the failed attempt's own file is removed.

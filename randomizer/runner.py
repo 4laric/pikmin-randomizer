@@ -69,6 +69,34 @@ class NativeRun:
                 self.deaths_seen = total
 
 
+class APConnectionRefused(ValueError):
+    """Credentials may be corrected through the launcher's private input pipe."""
+
+
+def connection_updates(stream):
+    """Read GUI reconnect requests from stdin; the daemon cannot block shutdown."""
+    import queue
+    import threading
+    updates = queue.Queue(maxsize=1)
+    def read():
+        for line in stream:
+            try:
+                command = json.loads(line)
+                if (not isinstance(command, dict) or set(command) != {"server", "password"}
+                        or not isinstance(command["server"], str) or not command["server"].strip()
+                        or command["password"] is not None and not isinstance(command["password"], str)):
+                    continue
+                try:
+                    updates.get_nowait()
+                except queue.Empty:
+                    pass
+                updates.put_nowait(command)
+            except (ValueError, queue.Full):
+                pass
+    threading.Thread(target=read, daemon=True).start()
+    return updates
+
+
 async def ap_connect(session, server, password, ready):
     import websockets
     if not server.startswith(("ws://", "wss://")):
@@ -98,7 +126,7 @@ async def ap_connect(session, server, password, ready):
                             uuid=session.fingerprint, version=dict(major=0, minor=6, build=0, **{"class": "Version"}),
                             items_handling=7, tags=["AP", "DeathLink"] if unit else ["AP"], slot_data=True)]))
                     elif cmd == "ConnectionRefused":
-                        raise ValueError("AP connection refused: " + str(packet.get("errors")))
+                        raise APConnectionRefused("AP connection refused: " + str(packet.get("errors")))
                     elif cmd == "Connected":
                         data = packet.get("slot_data", {})
                         if data.get("manifest_fingerprint") != session.fingerprint or data.get("manifest") != session.manifest:
@@ -114,9 +142,13 @@ async def ap_connect(session, server, password, ready):
                         if not authenticated:
                             raise ValueError("AP sent items before slot authentication")
                         session.receive(packet["index"], [item["item"] for item in packet["items"]])
+                        if not ready[0]:
+                            print("PIKMIN_AP_STATUS: connected", flush=True)
                         ready[0] = True
                     elif cmd == "Retrieved":
                         if authenticated:
+                            if not ready[0]:
+                                print("PIKMIN_AP_STATUS: connected", flush=True)
                             ready[0] = True
                     elif cmd == "Bounced" and unit and "DeathLink" in packet.get("tags", []):
                         data = packet.get("data") or {}
@@ -140,7 +172,7 @@ async def ap_connect(session, server, password, ready):
                     goal_sent = True
 
 
-async def serve(session, run, process=None, server=None, password=None):
+async def serve(session, run, process=None, server=None, password=None, updates=None):
     ready = [session.manifest["mode"] == "solo"]
     task = None
     if session.manifest["mode"] == "ap":
@@ -152,6 +184,13 @@ async def serve(session, run, process=None, server=None, password=None):
             while True:
                 try:
                     await ap_connect(session, server, password, ready)
+                except APConnectionRefused:
+                    if updates is None:
+                        raise
+                    ready[0] = False
+                    print("PIKMIN_AP_STATUS: refused", flush=True)
+                    # Wait for corrected credentials; do not repeatedly submit them.
+                    await asyncio.Future()
                 except InvalidHandshake:
                     ready[0] = False
                     print("AP connection handshake failed. Check the server address and port, "
@@ -167,6 +206,23 @@ async def serve(session, run, process=None, server=None, password=None):
     previous_goal = False
     try:
         while process is None or process.poll() is None:
+            if updates is not None and task is not None:
+                import queue
+                try:
+                    command = updates.get_nowait()
+                except queue.Empty:
+                    command = None
+                if command is not None:
+                    # Preserve fatal protocol/manifest failures even if a request races them.
+                    if task.done():
+                        await task
+                    task.cancel()
+                    await asyncio.gather(task, return_exceptions=True)
+                    ready[0] = False
+                    run.write_state(False)
+                    server, password = command["server"], command["password"]
+                    print("PIKMIN_AP_STATUS: connecting", flush=True)
+                    task = asyncio.create_task(reconnect())
             if task is not None and task.done():
                 await task
             run.poll()
@@ -226,7 +282,8 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None):
             print(f'Overlay unavailable: {exc}', flush=True)
     print(f"Native bootstrap: {run.bootstrap.resolve()}", flush=True)
     try:
-        asyncio.run(serve(session, run, process, server, os.getenv("PIKMIN_AP_PASSWORD")))
+        updates = connection_updates(sys.stdin) if os.getenv("PIKMIN_AP_CONTROL") == "1" and manifest["mode"] == "ap" else None
+        asyncio.run(serve(session, run, process, server, os.getenv("PIKMIN_AP_PASSWORD"), updates))
     finally:
         if process and process.poll() is None:
             process.terminate()
