@@ -56,7 +56,7 @@ class TrackerTests(unittest.TestCase):
             m = generate('widgets', campaign_enemies=True, progressive_color_stats=True)
             window = TrackerWindow(root, m, lambda: None)
             window.update(self.data(m)); root.update_idletasks()
-            self.assertEqual(len(window.checks.get_children()), 113)
+            self.assertEqual(len(window.checks.get_children()), 105)
             window.query.set('population'); root.update_idletasks()
             self.assertEqual(len(window.checks.get_children()), 12)
             window.status.set('Checked')

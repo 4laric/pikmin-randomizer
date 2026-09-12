@@ -24,12 +24,12 @@ class BalanceOptionsTests(unittest.TestCase):
                          starting_area='random', random_start_areas=['spring'], starting_flarlic=1)
             self.assertEqual(m['profile'], 'spring-day2')
             self.assertEqual(len(upgrade_pool(m)), 3 * sum(counts.values()))
-            self.assertEqual(len(item_pool(m)), 113)
+            self.assertEqual(len(item_pool(m)), 105)
             for p in current_profiles(m, Counter({n: 99 for n in upgrade_pool(m)})).values():
                 self.assertEqual(p['damage'], 75)
                 self.assertEqual(p['movement'], 25)
                 self.assertEqual(p['carry'], 1 + carry)
-            self.assertEqual(sum(map(len, spheres(solo_rewards(m), m))), 113)
+            self.assertEqual(sum(map(len, spheres(solo_rewards(m), m))), 105)
 
     def test_reject_invalid_configuration(self):
         for areas in ([], ['trial'], ['forest', 'typo']):

@@ -39,7 +39,7 @@ class BenefitTests(unittest.TestCase):
 
     def test_receipt_replay_and_journal_recovery(self):
         m = generate('receipts', 'ap', permanent_checks=True)
-        m.pop('compact_population'); m['capabilities'].remove('compact-population-v1')
+        m.pop('no_sticks'); m.pop('compact_population'); m['capabilities'].remove('compact-population-v1')
         m['locations'] = {n: MODERN_LOCATION_IDS[n] for n in modern_names(True, True, True)}
         validate(m)
         with tempfile.TemporaryDirectory() as d:

@@ -25,7 +25,7 @@ class MinibossPoolTests(unittest.TestCase):
             self.assertEqual(len(population_checks(m)), 12)
             self.assertEqual({n for _, n in population_checks(m).values()}, {10, 25, 50, 100})
             self.assertNotIn('Captain Heal', item_pool(m))
-            self.assertEqual(sum(map(len, spheres(solo_rewards(m), m))), 113)
+            self.assertEqual(sum(map(len, spheres(solo_rewards(m), m))), 105)
 
     def test_tampering_and_old_manifest(self):
         m = generate('identity', miniboss_enemies=True)

@@ -1,3 +1,7 @@
+## Climbing-stick checks retired (#79)
+
+New modern seeds exclude all eight climbing sticks because their state resets daily. Full check sets now contain 105 locations, including 43 walls, bridges and boxes. Thirty repairs remain in the pool with 25 required; the smaller check set reduces filler. AP package 0.26.0. The optional no_sticks manifest marker preserves historical check sets and location IDs when absent. Existing seeds and saves are unchanged; no native rebuild is required.
+
 ## Bomb Rock Delivery (#78)
 
 `Bomb Rock Delivery (3)` adds three loose, unlit bombs near an active landing Onion. New AP/CLI generation enables `bomb_rock_weight: 1` by default. Set 0 to disable or 1–10 to weight the filler mix against Pikmin Delivery (weight 2) and Flower Shower (weight 1). Captain upgrades and the 30-repair/25-required goal remain unchanged. Bomb rewards are useful filler; reachability still relies on ordinary bomb sources.

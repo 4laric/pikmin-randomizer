@@ -77,7 +77,7 @@ class RandomizeColorStats(Toggle):
 
 
 class PermanentChecks(Toggle):
-    """Add 51 individual walls, climbing sticks, bridges and boxes. Enables collection checks; 113 total checks. Obstacle routes currently require all colors conservatively; boxes also require field capacity 100."""
+    """Add 43 individual walls, bridges and boxes. Enables collection checks; 105 total checks. Climbing sticks are excluded because they reset daily. Obstacle routes currently require all colors conservatively; boxes also require field capacity 100."""
     display_name = 'Permanent Structure and Granular Population Checks'
     default = 0
 

@@ -178,8 +178,10 @@ def population_checks(manifest):
 def has_permanent(manifest):
     return manifest.get('permanent_checks', False) if manifest['schema'] >= 9 else manifest['schema'] == 8
 
-def modern_names(permanent, no_exploration=False, color_population=False, compact_population=False):
+def modern_names(permanent, no_exploration=False, color_population=False, compact_population=False, no_sticks=False):
     names = MODERN_PERMANENT_NAMES if permanent else MODERN_COLLECTION_NAMES
+    if no_sticks:
+        names = tuple(n for n in names if n not in OBSTACLES or OBSTACLES[n][1] != 100)
     if color_population:
         names = tuple(n for n in names if n not in FINE_POPULATION) + tuple(population_checks({'schema': 9, 'permanent_checks': permanent, 'color_population': True, 'compact_population': compact_population}))
     return tuple(n for n in names if not n.startswith('Explore:')) if no_exploration else names
@@ -202,7 +204,7 @@ PART_WEIGHTS = {name: NATIVE_PART_WEIGHTS[part] for name, part in PART_IDS.items
 
 
 def active_names(manifest):
-    if manifest['schema'] >= 9: return modern_names(has_permanent(manifest), manifest.get("no_exploration", False), manifest.get("color_population", False), manifest.get("compact_population", False))
+    if manifest['schema'] >= 9: return modern_names(has_permanent(manifest), manifest.get("no_exploration", False), manifest.get("color_population", False), manifest.get("compact_population", False), manifest.get("no_sticks", False))
     if manifest['schema'] >= 8: return PERMANENT_NAMES
     if manifest['schema'] >= 7: return COLLECTION_NAMES
     if manifest['schema'] >= 5: return ALL_AREA_NAMES

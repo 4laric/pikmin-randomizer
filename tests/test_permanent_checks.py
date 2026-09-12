@@ -34,6 +34,6 @@ class PermanentChecksTests(unittest.TestCase):
     def test_obstacles_require_colors_and_area(self):
         m = generate('gates', permanent_checks=True, starting_flarlic=10)
         full = Counter(progression_pool(m))
-        for name in OBSTACLES:
+        for name in (n for n in OBSTACLES if n in m['locations']):
             self.assertFalse(can_reach_manifest(name, {}, m))
             self.assertTrue(can_reach_manifest(name, full, m))

@@ -108,8 +108,8 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         result.update(schema=8, catalog='gameplay-checks-v8', locations=dict(PERMANENT_LOCATION_IDS))
         result['capabilities'] += ['permanent-checks-v1', 'check-set-v1']
     if collection_checks and not legacy_checks:
-        result.update(schema=9, catalog='gameplay-checks-v9', permanent_checks=bool(permanent_checks), no_exploration=True, color_population=True, compact_population=True,
-                      locations={n: MODERN_LOCATION_IDS[n] for n in modern_names(permanent_checks, True, True, True)})
+        result.update(schema=9, catalog='gameplay-checks-v9', permanent_checks=bool(permanent_checks), no_exploration=True, color_population=True, compact_population=True, no_sticks=True,
+                      locations={n: MODERN_LOCATION_IDS[n] for n in modern_names(permanent_checks, True, True, True, True)})
         result['capabilities'] = [c for c in result['capabilities'] if c not in ('permanent-checks-v1', 'check-set-v1')]
         result['capabilities'] += (['permanent-checks-v1'] if permanent_checks else []) + ['check-set-v1', 'bestiary-v2', 'no-exploration-v1', 'color-population-v1', 'compact-population-v1']
     if starting_flarlic is not None:
@@ -232,6 +232,10 @@ def validate(m):
         expected.add('bomb_rock_weight')
         if type(m['bomb_rock_weight']) is not int or not 1 <= m['bomb_rock_weight'] <= 10 or not m.get('benefit_items'):
             raise ValueError('invalid bomb delivery weight')
+    if type(m) is dict and 'no_sticks' in m:
+        expected.add('no_sticks')
+        if m.get('schema') != 9 or m['no_sticks'] is not True:
+            raise ValueError('invalid no_sticks')
     if type(m) is dict and 'repair_pool_count' in m:
         expected.add('repair_pool_count')
         if type(m['repair_pool_count']) is not int or m['repair_pool_count'] != 30 or not m.get('benefit_items'):
@@ -304,7 +308,7 @@ def validate(m):
             raise ValueError(f"invalid {key}")
     if m["mode"] not in ("solo", "ap"):
         raise ValueError("mode must be solo or ap")
-    for key, value in (("assignments", ALL_PART_IDS if m['schema'] >= 5 else PART_IDS), ("locations", {n: MODERN_LOCATION_IDS[n] for n in modern_names(m["permanent_checks"], m.get("no_exploration", False), m.get("color_population", False), m.get("compact_population", False))} if m["schema"] == 9 else PERMANENT_LOCATION_IDS if m['schema'] >= 8 else COLLECTION_LOCATION_IDS if m['schema'] >= 7 else ALL_AREA_LOCATION_IDS if m['schema'] >= 5 else ALL_LOCATION_IDS if expanded else LOCATION_IDS)):
+    for key, value in (("assignments", ALL_PART_IDS if m['schema'] >= 5 else PART_IDS), ("locations", {n: MODERN_LOCATION_IDS[n] for n in modern_names(m["permanent_checks"], m.get("no_exploration", False), m.get("color_population", False), m.get("compact_population", False), m.get("no_sticks", False))} if m["schema"] == 9 else PERMANENT_LOCATION_IDS if m['schema'] >= 8 else COLLECTION_LOCATION_IDS if m['schema'] >= 7 else ALL_AREA_LOCATION_IDS if m['schema'] >= 5 else ALL_LOCATION_IDS if expanded else LOCATION_IDS)):
         if type(m[key]) is not dict or m[key] != value or any(type(v) is not int for v in m[key].values()):
             raise ValueError(f"unsupported {key}; relocation is not implemented")
 
