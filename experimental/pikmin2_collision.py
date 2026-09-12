@@ -32,10 +32,10 @@ def plane(vertices, tri):
     return (*n, sum(n[i]*a[i] for i in range(3)))
 
 
-def collision_geometry(room, cap_exits=False):
+def collision_geometry(room, cap_exits=False, *, mapcode_translator=translate_mapcode):
     vertices = [list(v) for v in room['vertices']]
     triangles = [list(t) for t in room['triangles']]
-    codes = [translate_mapcode(c) for c in room['mapcodes']]
+    codes = [mapcode_translator(c) for c in room['mapcodes']]
     if len(codes) != len(triangles):
         raise ValueError('Mapcode count mismatch')
     if cap_exits:
@@ -114,8 +114,8 @@ def route_ini(routes):
     return '\n'.join(lines+['}',''])
 
 
-def attach_collision(mod, room, cap_exits=False):
-    vertices,triangles,codes=collision_geometry(room,cap_exits)
+def attach_collision(mod, room, cap_exits=False, *, mapcode_translator=translate_mapcode):
+    vertices,triangles,codes=collision_geometry(room,cap_exits,mapcode_translator=mapcode_translator)
     chunks=[]
     cursor=0
     offset=None
@@ -162,7 +162,7 @@ def ground_height(vertices, triangles, x, z, ceiling=10000):
 
 
 
-def decode_room(texts):
+def decode_room(texts, *, mapcode_translator=translate_mapcode):
     """Decode locally extracted P2 grid/mapcode/routes; no research-script dependency.
 
     P2 acceleration data is intentionally discarded and replaced by the P1 grid.
@@ -230,7 +230,7 @@ def decode_room(texts):
               mapcodes=list(codes[4:]),routes=routes,spawns=spawns,
               bounds={name:[fn(v[i] for v in vertices) for i in range(3)] for name,fn in [('min',min),('max',max)]},
               unconverted_acceleration_bytes=len(data)-cursor)
-    collision_geometry(room) # validate indices, degenerates and known material map
+    collision_geometry(room,mapcode_translator=mapcode_translator) # validate indices, degenerates and known material map
     return room
 
 
