@@ -127,7 +127,7 @@ New collection seeds contain exactly **25 Ship Repairs**, the existing unlocks/F
 | Flower Shower | Flowers living field Pikmin, maintaining their formation counts. Waits if there are no eligible Pikmin. Stored Pikmin and sprouts are unchanged. |
 | Captain Heal | Fully heals a living, injured Olimar. Waits while health is full. |
 | Progressive Whistle Radius | Two +25% upgrades, reaching 150% radius; the displayed circle grows with the effective radius. |
-| Progressive Plucking Speed | Two +25% upgrades, reaching 150% plucking animation speed. |
+| Progressive Olimar Speed | Two +25% upgrades to both Olimar movement and plucking, reaching 150%. Replaces the pluck-only item in new seeds. |
 
 Each seed gets two copies of each captain upgrade. Remaining benefits cycle 2 deliveries : 1 flower shower : 1 heal, with a partial cycle when needed. They are useful AP items; conservative logic does not depend on deliveries to satisfy population checks. Solo filler placement is seeded and shuffled. The HUD/status shows current whistle and plucking percentages.
 
@@ -239,3 +239,7 @@ Builds, extracted assets, seeds, saves, logs, and runtime state are excluded. Th
 ## Credits
 
 Built on [Open Nectar](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port) and the [projectPiki Pikmin decompilation](https://github.com/projectPiki/pikmin). Thanks to TheLynk for permission to use the Pikmin AP world's logic and locations as a reference; this remains a separate project as requested. See the preserved [engine license](engine/LICENSE.MD) and [third-party notice](engine/LEGAL.md).
+
+Whistle controls: tap B to recall idle Pikmin without interrupting workers. Double-tap within 350 ms to recall busy Pikmin in whistle range; holding B for 0.6 seconds also recalls workers. This follows your mapped whistle action.
+
+Existing seed manifests retain the legacy pluck-only upgrade and save format. New AP/CLI collection-check seeds use Progressive Olimar Speed; the overlay shows its shared MOVE/PLUCK multiplier.

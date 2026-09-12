@@ -2,6 +2,7 @@
 #include "pc_randomizer.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_whistle.h"
+#include <chrono>
 #endif
 #include <cstdlib>
 #include <cstdio>
@@ -1687,13 +1688,16 @@ void NaviGatherState::init(Navi* navi)
 	mWhistleEffectsStopped = false;
 
 #if defined(PIKI_PC_PORT)
+	// Use the actual whistle action, so controller remapping still works.
+	const double now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+	mTapState.press(now);
 	// A short tap should recruit immediately, even before the animation loop.
 	navi->mWhistleRadiusFrac = pc_whistle_fraction(0.0f);
 	navi->mWhistleCircleMode = 2;
 	mWhistleCallRadius = (C_NAVI_PARM(navi, mWhistleMinRadius)
 	    + navi->mWhistleRadiusFrac * (C_NAVI_PARM(navi, mWhistleMaxRadius) - C_NAVI_PARM(navi, mWhistleMinRadius)))
 	    * pc_randomizer_benefit_multiplier(PC_BENEFIT_WHISTLE);
-	if (!gameflow.mPauseAll) navi->callPikis(mWhistleCallRadius, false);
+	if (!gameflow.mPauseAll) navi->callPikis(mWhistleCallRadius, mTapState.recallWorkers);
 #endif
 	rumbleMgr->start(RUMBLE_Unk3, 0, nullptr);
 }
@@ -1742,7 +1746,7 @@ void NaviGatherState::exec(Navi* navi)
 	    + navi->mWhistleRadiusFrac * (C_NAVI_PARM(navi, mWhistleMaxRadius) - C_NAVI_PARM(navi, mWhistleMinRadius)))
 	    * pc_randomizer_benefit_multiplier(PC_BENEFIT_WHISTLE);
 	if (!gameflow.mPauseAll) {
-		navi->callPikis(mWhistleCallRadius, pc_whistle_recall_workers(navi->mWhistleTimer, down));
+		navi->callPikis(mWhistleCallRadius, (down && mTapState.recallWorkers) || pc_whistle_recall_workers(navi->mWhistleTimer, down));
 	} else {
 		navi->callDebugs(mWhistleCallRadius);
 	}

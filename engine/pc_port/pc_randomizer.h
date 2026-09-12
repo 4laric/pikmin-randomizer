@@ -37,6 +37,7 @@ enum PcBenefit { PC_BENEFIT_DELIVERY, PC_BENEFIT_FLOWERS, PC_BENEFIT_HEAL, PC_BE
 bool pc_randomizer_benefit_pending(PcBenefit kind);
 bool pc_randomizer_consume_benefit(PcBenefit kind);
 float pc_randomizer_benefit_multiplier(PcBenefit kind);
+float pc_randomizer_captain_movement_multiplier();
 void pc_randomizer_observe_color_population(int color, int totalPikmin, bool gameplay);
 void pc_randomizer_observe_total_population(int totalPikmin, bool gameplay);
 void pc_randomizer_corpse_delivered(int type, int stage, bool gameplay);

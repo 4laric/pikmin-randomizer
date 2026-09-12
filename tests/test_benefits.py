@@ -67,3 +67,23 @@ class BenefitTests(unittest.TestCase):
         for value in (25, 31, True, 30.0):
             bad = copy.deepcopy(m); bad['repair_pool_count'] = value
             with self.assertRaises(ValueError): validate(bad)
+
+    def test_combined_captain_compatibility(self):
+        from randomizer.benefits import CAPTAIN, benefit_state, benefit_lines
+        for bombs in (0, 1):
+            m = generate('captain', 'ap', permanent_checks=True, combined_captain=True, bomb_rock_weight=bombs)
+            validate(m)
+            pool = Counter(item_pool(m))
+            self.assertEqual(pool[CAPTAIN], 2)
+            self.assertEqual(pool[PLUCK], 0)
+            self.assertEqual(sum(pool.values()), len(m['locations']))
+            for count in range(4):
+                inventory = {CAPTAIN: count, PLUCK: 2}
+                state = benefit_state(m, inventory).split()
+                self.assertEqual(state[5], str(min(2, count)))
+                self.assertIn(f'MOVE/PLUCK {100+25*min(2,count)}%', benefit_lines(m, inventory)[0])
+            with tempfile.TemporaryDirectory() as d:
+                run = NativeRun(Session(m, d))
+                self.assertIn(f'BENEFITS {3+bool(bombs)}\n', run.bootstrap.read_text())
+            bad = copy.deepcopy(m); bad['capabilities'].remove('combined-captain-v1')
+            with self.assertRaises(ValueError): validate(bad)

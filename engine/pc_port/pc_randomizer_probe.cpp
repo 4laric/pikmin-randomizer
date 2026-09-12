@@ -78,7 +78,9 @@ int main(int argc, char** argv) {
         if (pc_randomizer_ready()) {
             for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--retired-stick-probe")) {
                 for (const auto& obstacle : randomizerObstacles)
-                    pc_randomizer_observe_obstacle(obstacle.stage, obstacle.kind, float(obstacle.x), float(obstacle.z), true, true);
+                    for (int dx = -1; dx <= 1; ++dx)
+                        for (int dz = -1; dz <= 1; ++dz)
+                            pc_randomizer_observe_obstacle(obstacle.stage, obstacle.kind, float(obstacle.x + dx), float(obstacle.z + dz), true, true);
                 std::puts("RETIRED_STICK_PASS");
                 return 0;
             }
@@ -101,6 +103,7 @@ int main(int argc, char** argv) {
                     while (pc_randomizer_consume_benefit(static_cast<PcBenefit>(kind))) ++used;
                 while (pc_randomizer_consume_benefit(PC_BENEFIT_BOMBS)) ++used;
                 assert(!pc_randomizer_consume_benefit(PC_BENEFIT_WHISTLE));
+                std::printf("CAPTAIN_MOVE %.2f\n", pc_randomizer_captain_movement_multiplier());
                 std::printf("BENEFIT_PROBE used=%d whistle=%.2f pluck=%.2f\n", used,
                     pc_randomizer_benefit_multiplier(PC_BENEFIT_WHISTLE), pc_randomizer_benefit_multiplier(PC_BENEFIT_PLUCK));
                 for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--save-probe")) {

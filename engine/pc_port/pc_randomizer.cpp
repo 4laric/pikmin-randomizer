@@ -40,7 +40,7 @@ unsigned startingFlarlic = 2;
 bool configuredFlarlic = false, configuredStats = false, progressiveStats = false, wideStats = false, balancedStats = false, doubledStats = false;
 int baseColorStats[3][4] = {{100, 100, 100, 1}, {100, 100, 100, 1}, {100, 100, 100, 1}};
 unsigned statUpgrades[3][4] = {};
-bool benefitItems = false, bombDeliveries = false;
+bool benefitItems = false, bombDeliveries = false, combinedCaptain = false;
 unsigned benefits[6] = {}, consumedBenefits[4] = {};
 int consumedIndex(PcBenefit kind) { return kind == PC_BENEFIT_BOMBS ? 3 : int(kind); }
 std::filesystem::path benefitJournal, campaignDirectory;
@@ -215,9 +215,10 @@ bool pc_randomizer_init(int argc, char** argv) {
     }
     if (end == "BENEFITS") {
         unsigned mode;
-        if (!colorPopulation || !(input >> mode) || (mode != 1 && mode != 2)) fail("invalid benefit mode");
+        if (!colorPopulation || !(input >> mode) || (mode < 1 || mode > 4)) fail("invalid benefit mode");
         benefitItems = true;
-        bombDeliveries = mode == 2;
+        bombDeliveries = mode == 2 || mode == 4;
+        combinedCaptain = mode >= 3;
         input >> end;
     }
     if (end == "ENEMY_CAMPAIGN") {
@@ -307,6 +308,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (configuredStats) hello << (balancedStats ? " color-stats-v3" : wideStats ? " color-stats-v2" : " color-stats-v1");
     if (progressiveStats) hello << (doubledStats ? " progressive-color-stats-v2" : " progressive-color-stats-v1");
     if (benefitItems) hello << " benefit-items-v1";
+    if (combinedCaptain) hello << " combined-captain-v1";
     if (bombDeliveries) hello << " bomb-delivery-v1";
     if (slotEnemies) hello << " enemy-slots-v1";
     if (groupEnemies) hello << " enemy-groups-v1";
@@ -423,6 +425,9 @@ bool pc_randomizer_consume_benefit(PcBenefit kind) {
     ++consumedBenefits[consumedIndex(kind)];
     std::printf("[Pikmin Randomizer] BENEFIT_USED kind=%d count=%u\n", int(kind), consumedBenefits[consumedIndex(kind)]);
     return true;
+}
+float pc_randomizer_captain_movement_multiplier() {
+    return combinedCaptain ? pc_randomizer_benefit_multiplier(PC_BENEFIT_PLUCK) : 1.0f;
 }
 float pc_randomizer_benefit_multiplier(PcBenefit kind) {
     return enabled && benefitItems && (kind == PC_BENEFIT_WHISTLE || kind == PC_BENEFIT_PLUCK) ? 1.0f + 0.25f * benefits[kind] : 1.0f;
@@ -639,9 +644,14 @@ void pc_randomizer_observe_obstacle(int stage, int kind, float x, float z, bool 
     static std::set<std::tuple<int,int,int,int>> logged;
     const int px = int(std::round(x)), pz = int(std::round(z));
     if (permanentChecks && complete && !(noSticks && kind == 100)) {
+        const RandomizerObstacle* match = nullptr;
         for (const auto& obstacle : randomizerObstacles)
-            if (obstacle.stage == stage && obstacle.kind == kind && obstacle.x == px && obstacle.z == pz)
-                pc_randomizer_check(obstacle.name);
+            if (obstacle.stage == stage && obstacle.kind == kind && std::abs(obstacle.x - px) <= 1 && std::abs(obstacle.z - pz) <= 1) {
+                if (match) fail("ambiguous obstacle identity");
+                match = &obstacle;
+            }
+        // Campaign save positions truncate fractions; retain identity across a one-unit shift.
+        if (match) pc_randomizer_check(match->name);
     }
     if (logged.emplace(stage, kind, px, pz).second)
         std::printf("[Pikmin Randomizer] OBSTACLE_INSTANCE stage=%d kind=%d x=%d z=%d complete=%d\n", stage, kind, px, pz, int(complete));

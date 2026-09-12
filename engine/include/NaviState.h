@@ -6,6 +6,9 @@
 #include "Vector.h"
 #include "Win.h"
 #include "types.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_whistle.h"
+#endif
 
 class NaviState;
 
@@ -437,6 +440,9 @@ struct NaviFunbariState : public NaviState {
  * @note Size: 0x1C.
  */
 struct NaviGatherState : public NaviState {
+#if defined(PIKI_PC_PORT)
+	PcWhistleTapState mTapState;
+#endif
 	NaviGatherState();
 
 	virtual void procAnimMsg(Navi*, MsgAnim*); // _20

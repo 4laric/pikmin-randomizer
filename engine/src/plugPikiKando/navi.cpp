@@ -1929,6 +1929,9 @@ void Navi::makeVelocity(bool isSunset)
 			} else {
 				mTargetVelocity = (stickVec * NAVI_PARM(mMoveSpeed)) * drag;
 			}
+#if defined(PIKI_PC_PORT)
+            mTargetVelocity = mTargetVelocity * pc_randomizer_captain_movement_multiplier();
+#endif
 
 			if (mGroundTriangle) {
 				// ?? this does nothing.

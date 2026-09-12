@@ -544,3 +544,16 @@ Native30b4364b adds class3 for Yellow+hasBomb, retaining existing color IDs for 
 Production game/probe build passes (output/bomb67-build.log). Actual-engine selection fixture passes left/right between two yellow classes, preview persistence, simultaneous cancellation and empty bomb group (output/bomb67-live2). The first fixture run was invalidated by the red-only seed enforcing locked colors; corrected fixture sets colors/held sentinel synchronously without an AI tick. This is selection coverage, not real bomb-fuse/held-throw gameplay validation. See engine/tools/BOMB_SELECTION.md.
 
 Local turkey-finish-01/Play.cmd selects separate nectar-bomb-selection.exe, SHA2561AD88747F6C8BB51906E3A3373FC4DDD6AC91533366F723633D67A787210B46C. Includes whistle65/pluck66; previous launcher backed up. Player session and running processes unchanged. Physical bomb swapping/throw acceptance remains open.
+
+
+## Whistle, captain upgrades and saved wall identity (#88–#90)
+
+Double-tap the whistle action within 350 ms to recall busy Pikmin in range. A single tap continues to spare workers and a 0.6-second hold still recalls them. Tap history belongs to the captain's Gather state and uses monotonic time.
+
+New AP/CLI collection-check seeds replace the two pluck-only items with Progressive Olimar Speed. Each adds 25% to controlled walking/running and plucking animation speed. Existing item IDs and old manifests retain pluck-only behavior. The new combined-captain-v1 capability uses BENEFITS modes 3/4 (without/with bombs); receipt slot 4 remains the shared speed counter, preserving campaign consumption layouts.
+
+The all-five-area startup audit observed all 51 historical structures, including all five Forest Navel bomb walls. Generator::write saves position as shorts (generator.cpp), while initial data uses floats. Saved instances can therefore differ by one unit from the rounded catalog anchor. Native completion matching now accepts ±1 in x/z for the same stage and kind and rejects ambiguity. Catalog tests prove all tolerance boxes are disjoint. Existing check names, IDs and saves remain intact; completed walls can be credited when observed on revisiting their area.
+
+Validation: Python suite; compiled whistle timing boundaries; native captain protocol covering old/new modes, bomb modes, 0/1/2 upgrades and reload; all-obstacle native probe at every ±1 x/z offset (43 modern/51 legacy checks), replay and consumable checkpoint regressions. Live controller feel remains a playtest check.
+
+Native commit: `33e67a75`. Production Release build passed; 95 existing Python tests + 8 subtests and 7 focused benefit/catalog tests passed. Live whistle fixture passed 23 protected modes, idle tap/full hold/range/radius. Packaged AP validation passed 150 fills and 10 remote-Blue multiworlds. APWorld version 0.28.0. The current turkey-wide-03-fixed launcher uses nectar-qol-88-90.exe without changing its manifest or session.
