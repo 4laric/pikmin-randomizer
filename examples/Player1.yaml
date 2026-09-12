@@ -33,6 +33,7 @@ Pikmin Randomizer:
   all_areas: true
   expanded_checks: false  # Legacy toggle; modern collection checks already expand
 
+  progg_trap_weight: 0 # 0 disables; one native Smoky Progg per trap
   bomb_trap_weight: 0 # 0 disables; five lit bombs around Olimar per trap
   bomb_rock_weight: 1 # 0 disables; filler weights Pikmin:flower:bomb = 2:1:this
   campaign_enemies: true # Overrides the older modes below

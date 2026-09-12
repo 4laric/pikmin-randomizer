@@ -2,6 +2,10 @@
 
 Release notes moved from the former README, newest first. Content is preserved as written at the time; see [README.md](README.md) for current player instructions.
 
+## Smoky Progg Ambush trap (#95)
+
+Smoky Progg Ambush is an optional trap: `progg_trap_weight: 1` (CLI `--progg-trap-weight 1`) adds it to new seeds' filler pool. Range 0–10, default 0 disables. Each receipt spawns one native Smoky Progg nearby with its normal emergence and Onion-seeking AI. It waits for active gameplay, suitable ground and an Onion, and queues while any Progg is alive in the area. A minimum 30-second active-gameplay cooldown also separates spawns. The Progg adds no bestiary check or progression requirement; its ordinary behavior and lifespan apply. Runtime ambushes end with the day; existing seeds keep their current pools.
+
 ## Flower Shower nectar (#94)
 
 Flower Shower now spawns five drinkable nectar drops near Olimar. Pikmin flower through normal drinking; the reward waits for suitable dry ground during active gameplay.
