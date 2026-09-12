@@ -42,11 +42,12 @@ class SeedRandom:
         return values
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0):
     if type(bomb_rock_weight) is not int or not 0 <= bomb_rock_weight <= 10: raise ValueError("bomb_rock_weight must be 0..10")
     if type(bomb_trap_weight) is not int or not 0 <= bomb_trap_weight <= 10: raise ValueError("bomb_trap_weight must be 0..10")
     if type(progg_trap_weight) is not int or not 0 <= progg_trap_weight <= 10: raise ValueError("progg_trap_weight must be 0..10")
-    if bomb_rock_weight or bomb_trap_weight or progg_trap_weight:
+    if type(prerelease_trap_weight) is not int or not 0 <= prerelease_trap_weight <= 10: raise ValueError("prerelease_trap_weight must be 0..10")
+    if bomb_rock_weight or bomb_trap_weight or progg_trap_weight or prerelease_trap_weight:
         if legacy_checks: raise ValueError("bomb deliveries require modern checks")
         collection_checks = True
     from .stats import validate_roll_bounds, validate_upgrade_limits
@@ -148,6 +149,9 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         if progg_trap_weight:
             result['progg_trap_weight'] = progg_trap_weight
             result['capabilities'].append('progg-ambush-v1')
+        if prerelease_trap_weight:
+            result['prerelease_trap_weight'] = prerelease_trap_weight
+            result['capabilities'].append('prerelease-trap-v1')
         if per_spawn_enemies:
             from .enemy_slots import resolve_spawn_layout, spawn_sources
             result['spawn_layout'] = resolve_spawn_layout(result['seed'], slot, miniboss_enemies)
@@ -258,6 +262,10 @@ def validate(m):
         expected.add('progg_trap_weight')
         if type(m['progg_trap_weight']) is not int or not 1 <= m['progg_trap_weight'] <= 10 or not m.get('benefit_items'):
             raise ValueError('invalid progg_trap_weight')
+    if type(m) is dict and 'prerelease_trap_weight' in m:
+        expected.add('prerelease_trap_weight')
+        if type(m['prerelease_trap_weight']) is not int or not 1 <= m['prerelease_trap_weight'] <= 10 or not m.get('benefit_items'):
+            raise ValueError('invalid prerelease_trap_weight')
     if type(m) is dict and 'combined_captain' in m:
         expected.add('combined_captain')
         if m['combined_captain'] is not True or not m.get('benefit_items'): raise ValueError('invalid combined_captain')
@@ -327,6 +335,7 @@ def validate(m):
         if m.get('bomb_rock_weight'): fixed['capabilities'] += ['bomb-delivery-v1']
         if m.get('bomb_trap_weight'): fixed['capabilities'] += ['bomb-ambush-v1']
         if m.get('progg_trap_weight'): fixed['capabilities'] += ['progg-ambush-v1']
+        if m.get('prerelease_trap_weight'): fixed['capabilities'] += ['prerelease-trap-v1']
     if 'spawn_layout' in m:
         fixed['capabilities'] += ['enemy-slots-v1']
     if 'group_layout' in m:

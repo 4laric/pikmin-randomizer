@@ -535,6 +535,9 @@ void GameCoreSection::enterFreePikmins()
  */
 void GameCoreSection::cleanupDayEnd()
 {
+#if defined(PIKI_PC_PORT)
+    if (bossMgr) bossMgr->endPrereleaseTrap();
+#endif
 	finishPause();
 	clearDeadlyPikmins();
 	enterFreePikmins();
@@ -1142,6 +1145,8 @@ void GameCoreSection::initStage()
 
 	memStat->start("boss");
 	int oldB = gsys->setHeap(SYSHEAP_Teki);
+	if (pc_randomizer_prerelease_traps())
+        bossMgr->addUseCount(BOSS_Spider, bossMgr->getUseCount(BOSS_Pom) + bossMgr->getUseCount(BOSS_Geyzer));
 	bossMgr->constructBoss();
 	gsys->setHeap(oldB);
 	memStat->end("boss");
@@ -1975,6 +1980,7 @@ static void randomizerApplyBenefits(Navi* navi, MapMgr* map)
             break;
         }
     }
+    if (bossMgr && navi->getCurrState() && navi->getCurrState()->getID() == NAVISTATE_Walk) bossMgr->beginPrereleaseTrap();
     bool yellowOnField = false;
     if (pc_randomizer_benefit_pending(PC_BENEFIT_BOMBS)) {
         Iterator it(pikiMgr);
@@ -2074,6 +2080,10 @@ void GameCoreSection::updateAI()
         AICONST.mMaxPikisOnField(pc_randomizer_field_capacity());
         const bool active = !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll
             && !gameflow.mIsUIOverlayActive && mNavi && mNavi->mHealth > 0.0f;
+        if (bossMgr) {
+            if (playerState->mInDayEnd || (mNavi && mNavi->mHealth <= 0)) bossMgr->endPrereleaseTrap();
+            else if (active) bossMgr->tickPrereleaseTrap(gsys->getFrameTime());
+        }
         if (active && !playerState->mInDayEnd) {
             randomizerApplyBenefits(mNavi, mMapMgr);
             const int field = int(GameStat::formationPikis) + int(GameStat::freePikis) + int(GameStat::workPikis);

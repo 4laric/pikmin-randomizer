@@ -1,4 +1,9 @@
 #include "Boss.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_randomizer.h"
+#include <vector>
+#include <cstdio>
+#endif
 #include "CoreNucleus.h"
 #include "DebugLog.h"
 #include "Generator.h"
@@ -31,6 +36,77 @@ DEFINE_ERROR(__LINE__) // Never used in the DLL
 DEFINE_PRINT("BossMgr");
 
 BossMgr* bossMgr;
+#if defined(PIKI_PC_PORT)
+struct PrereleaseTrapState {
+    struct Entry { BossNode* original; Boss* spider; int kind; bool alive; bool atari; };
+    std::vector<Entry> entries;
+    float seconds = 0.0f;
+};
+
+float BossMgr::prereleaseSeconds() const { return mPrereleaseTrap ? mPrereleaseTrap->seconds : 0.0f; }
+
+bool BossMgr::beginPrereleaseTrap() {
+    if (!pc_randomizer_benefit_pending(PC_BENEFIT_PRERELEASE) || prereleaseSeconds() > 0.0f) return false;
+    if (!mPrereleaseTrap) mPrereleaseTrap = new PrereleaseTrapState();
+    auto& entries = mPrereleaseTrap->entries;
+    entries.clear();
+    for (int kind : {BOSS_Pom, BOSS_Geyzer}) {
+        FOREACH_NODE(BossNode, mActiveNodes[kind].mChild, node) {
+            if (node->mBoss->getStickPikiCount()) { entries.clear(); return false; }
+            entries.push_back({node, nullptr, kind, node->mBoss->isAlive(), node->mBoss->isAtari()});
+        }
+    }
+    if (entries.empty()) return false;
+    GenObjectBoss params; // No part, pellet or nectar reward on temporary Beadies.
+    for (auto& entry : entries) {
+        BirthInfo info;
+        Boss* original = entry.original->mBoss;
+        info.set(original->mSRT.t, original->mSRT.r, Vector3f(1,1,1), nullptr);
+        entry.spider = static_cast<Boss*>(create(GENBOSS_Spider, info, &params));
+        if (!entry.spider) {
+            for (auto& made : entries) if (made.spider) made.spider->kill(false);
+            entries.clear(); return false;
+        }
+        entry.spider->mGenerator = nullptr;
+    }
+    if (!pc_randomizer_consume_benefit(PC_BENEFIT_PRERELEASE)) {
+        for (auto& entry : entries) if (entry.spider) entry.spider->kill(false);
+        entries.clear(); return false;
+    }
+    for (auto& entry : entries) {
+        entry.original->mBoss->setIsAlive(false);
+        entry.original->mBoss->setIsAtari(false);
+        entry.original->del(); // Park outside update, draw and collision iteration.
+        --mActiveBossCounts[entry.kind];
+    }
+    mPrereleaseTrap->seconds = 60.0f;
+    std::printf("[Pikmin Randomizer] PRERELEASE_BEGIN replacements=%zu seconds=60\n", entries.size());
+    std::fflush(stdout);
+    return true;
+}
+
+void BossMgr::tickPrereleaseTrap(float seconds) {
+    if (prereleaseSeconds() <= 0.0f) return;
+    mPrereleaseTrap->seconds -= seconds;
+    if (mPrereleaseTrap->seconds <= 0.0f) endPrereleaseTrap();
+}
+
+void BossMgr::endPrereleaseTrap() {
+    if (!mPrereleaseTrap || mPrereleaseTrap->entries.empty()) return;
+    // Creature::kill detaches riders/stickers; Spider::doKill clears effects and
+    // BossMgr::kill nulls the pointer so a reused pool slot cannot be killed later.
+    for (auto& entry : mPrereleaseTrap->entries) {
+        if (entry.spider) entry.spider->kill(false);
+        entry.original->mBoss->setIsAlive(entry.alive);
+        entry.original->mBoss->setIsAtari(entry.atari);
+        mActiveNodes[entry.kind].add(entry.original);
+        ++mActiveBossCounts[entry.kind];
+    }
+    mPrereleaseTrap->entries.clear();
+    mPrereleaseTrap->seconds = 0.0f;
+    std::puts("[Pikmin Randomizer] PRERELEASE_END originals=restored"); std::fflush(stdout);
+}
+#endif
 
 /**
  * @todo: Documentation
@@ -761,6 +837,10 @@ Creature* BossMgr::create(int genBossID, BirthInfo& birthInfo, GenObjectBoss* ge
  */
 void BossMgr::kill(Creature* target)
 {
+#if defined(PIKI_PC_PORT)
+    if (mPrereleaseTrap) for (auto& entry : mPrereleaseTrap->entries)
+        if (entry.spider == target) entry.spider = nullptr;
+#endif
 	for (int i = BOSS_IDSTART; i < BOSS_IDCOUNT; i++) {
 		FOREACH_NODE(CoreNode, mActiveNodes[i].mChild, node)
 		{
@@ -781,6 +861,11 @@ void BossMgr::kill(Creature* target)
  */
 void BossMgr::killAll()
 {
+#if defined(PIKI_PC_PORT)
+    endPrereleaseTrap();
+    delete mPrereleaseTrap;
+    mPrereleaseTrap = nullptr;
+#endif
 	CoreNode* node;
 	CoreNode* next;
 
