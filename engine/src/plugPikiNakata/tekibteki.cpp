@@ -1282,6 +1282,11 @@ bool BTeki::attackableCreature(Creature& target)
 		return false;
 	}
 
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    bool sourceEntry=false;
+    if(pc_p2_snow_attackable(this,target,sourceEntry))return sourceEntry;
+#endif
+
 	if (!contactCreature(target)) {
 		return false;
 	}
