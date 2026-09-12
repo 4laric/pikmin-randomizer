@@ -18,7 +18,15 @@ def compose(parent,child):
 
 
 def apply(matrix,point,normal=False):
-    return tuple(sum(matrix[r][k]*point[k] for k in range(3))+(0 if normal else matrix[r][3]) for r in range(3))
+    if normal:
+        a,b,c=matrix[0][:3];d,e,f=matrix[1][:3];g,h,i=matrix[2][:3]
+        cof=((e*i-f*h,f*g-d*i,d*h-e*g),(c*h-b*i,a*i-c*g,b*g-a*h),(b*f-c*e,c*d-a*f,a*e-b*d))
+        det=a*cof[0][0]+b*cof[0][1]+c*cof[0][2]
+        if abs(det)<1e-12:raise ValueError('Singular normal transform')
+        result=tuple(sum(cof[r][k]*point[k] for k in range(3))/det for r in range(3))
+        length=math.sqrt(sum(v*v for v in result))
+        return tuple(v/length for v in result) if length else result
+    return tuple(sum(matrix[r][k]*point[k] for k in range(3))+matrix[r][3] for r in range(3))
 
 
 def joint_matrices(blocks, local_overrides=None):
@@ -43,7 +51,7 @@ def joint_matrices(blocks, local_overrides=None):
         visiting.add(index)
         remap=read(j,'I',16)[0];record=index if not remap else read(j,'H',remap+2*index)[0]
         at=read(j,'I',12)[0]+64*record
-        if read(j,'3f',at+4)!=(1.,1.,1.): raise ValueError('Scaled rigid joints not supported')
+        if local_overrides is None and read(j,'3f',at+4)!=(1.,1.,1.): raise ValueError('Scaled rigid joints not supported')
         matrix=local_matrix(read(j,'3h',at+16),read(j,'3f',at+24)) if local_overrides is None else local_overrides[index]
         if parents[index] is not None: matrix=compose(world(parents[index]),matrix)
         matrices[index]=matrix;visiting.remove(index);return matrix

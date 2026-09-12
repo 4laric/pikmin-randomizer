@@ -11,7 +11,7 @@ from experimental.pikmin2_convert import blocks,convert,u32,u16
 from experimental.pikmin2_rigid import local_matrix,joint_matrices
 
 
-def bca_pose(data,frame,expected_joints):
+def bca_pose(data,frame,expected_joints,allow_scale=False):
     # Retail archives omit the final alignment padding counted in some BCA headers.
     if len(data)<72 or data[:8]!=b'J3D1bca1' or struct.unpack_from('>I',data,8)[0]!=(len(data)+31)//32*32:
         raise ValueError('Expected framed BCA')
@@ -23,7 +23,7 @@ def bca_pose(data,frame,expected_joints):
     if table<36 or table+count*36>len(b):raise ValueError('Truncated BCA joint table')
     pose=[]
     for joint in range(count):
-        r=[];t=[]
+        r=[];t=[];scale=[]
         for axis in range(3):
             values=[]
             for component,(offset,fmt,size) in enumerate(((scales,'f',4),(rotations,'h',2),(translations,'f',4))):
@@ -33,9 +33,14 @@ def bca_pose(data,frame,expected_joints):
                 if offset<36 or offset+(index+length)*size>len(b):raise ValueError('Truncated BCA track')
                 values.append(struct.unpack_from('>'+fmt,b,offset+at*size)[0])
             if not all(math.isfinite(v) for v in values):raise ValueError('Non-finite BCA transform')
-            if abs(values[0]-1)>1e-5:raise ValueError('Scaled animation not supported')
+            if not allow_scale and abs(values[0]-1)>1e-5:raise ValueError('Scaled animation not supported')
+            if abs(values[0])<1e-8:raise ValueError('Singular animation scale')
+            scale.append(values[0])
             r.append(values[1]);t.append(values[2])
-        pose.append(local_matrix(r,t))
+        matrix=local_matrix(r,t)
+        for row in range(3):
+            for column in range(3):matrix[row][column]*=scale[column]
+        pose.append(matrix)
     return duration,pose
 
 
