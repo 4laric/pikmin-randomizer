@@ -6,7 +6,8 @@ import unittest
 
 from experimental.pikmin2_regional_audit import (
     PELLET_LIST, attach_names, bmg_index, catalog_delta, cave_file_classes,
-    digest, kfes_references, message_name, reconcile_entries, verify_ledger,
+    campaign_cave_names, digest, kfes_references, message_name, reconcile_entries,
+    stage_cave_links, verify_ledger,
 )
 
 
@@ -137,6 +138,80 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(rows[0]['classification'], 'kfes_only_reference')
         self.assertEqual(rows[1]['classification'], 'unreferenced_status_unresolved')
         with self.assertRaises(ValueError): kfes_references('2 { ' + ' '.join(row) + ' }')
+
+
+class CaveNameTests(unittest.TestCase):
+    STAGES = ('1 { name tutorial start 0 0 0 end '
+              '1 window.txt 0 9 1 0 '
+              '2 {t_01} 3 tutorial_1.txt {test} 0 caveinfo.txt 7 }')
+
+    def inventory(self):
+        return dict(surfaces=[{'id': 'tutorial'}],
+                    story_caves=[{'id': 'tutorial_1', 'source': 'user/Mukki/mapunits/caveinfo/tutorial_1.txt'}],
+                    challenge={'stages': []}, battle={'stages': []})
+
+    def test_join_uses_stage_tag_not_inventory_order_or_filename_guess(self):
+        messages = {'eng': bmg_index(bmg([(8395 << 8, b'Cave fixture')]))}
+        links = stage_cave_links(self.STAGES)
+        rows = campaign_cave_names(list(reversed(links)), self.inventory(), messages)
+        self.assertEqual(rows[0]['source_id'], 'tutorial_1')
+        self.assertEqual(rows[0]['cave_tag'], 't_01')
+        self.assertEqual(rows[0]['message_number'], 8395)
+        self.assertEqual(rows[0]['onboard_names']['eng']['text'], 'Cave fixture')
+        self.assertEqual(rows[0]['cave_table_index'], 0)
+
+    def test_malformed_stage_framing_rejected(self):
+        bad = [self.STAGES.replace('1 {', '2 {', 1), self.STAGES.replace('2 {t_01}', '3 {t_01}'),
+               self.STAGES.replace('{test}', '{t_01}'), self.STAGES.replace('end', 'missing'),
+               self.STAGES.replace('tutorial_1.txt', '../tutorial_1.txt'), self.STAGES.replace('7 }', '7 extra }')]
+        for text in bad:
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                stage_cave_links(text)
+
+    def test_missing_ambiguous_and_unmapped_campaign_links_fail(self):
+        links = stage_cave_links(self.STAGES)
+        cases = [[], links + [links[0]], [dict(links[0], cave_tag='c_00')]]
+        for candidate in cases:
+            with self.subTest(candidate=candidate), self.assertRaises(ValueError):
+                campaign_cave_names(candidate, self.inventory(), {})
+
+    def test_missing_localized_message_is_not_replaced_with_english(self):
+        rows = campaign_cave_names(stage_cave_links(self.STAGES), self.inventory(), {'jpn': {}})
+        self.assertEqual(rows[0]['onboard_names']['jpn']['status'], 'missing')
+        self.assertIsNone(rows[0]['onboard_names']['jpn']['text'])
+
+    def test_registration_outside_retail_does_not_become_campaign(self):
+        links = stage_cave_links(self.STAGES)
+        files = {r['source_path']: (0, 0) for r in links}
+        rows = cave_file_classes(files, self.inventory(), stage_links=links)
+        registered = next(r for r in rows if r['source_path'].endswith('/caveinfo.txt'))
+        self.assertEqual(registered['classification'], 'stage_registered_outside_retail_inventory')
+        self.assertEqual(registered['retail_scopes'], [])
+        self.assertEqual(registered['stage_table_references'][0]['cave_tag'], 'test')
+
+    def test_nonretail_extensionless_references_stay_literal(self):
+        links = stage_cave_links('1 {name test_map end 0 0 2 {info} 0 haru {king} 0 haru 0}')
+        self.assertEqual([r['filename'] for r in links], ['haru', 'haru'])
+        self.assertEqual([r['cave_tag'] for r in links], ['info', 'king'])
+        self.assertEqual(links[0]['source_path'], 'user/Mukki/mapunits/caveinfo/haru')
+
+    def test_cave_presentation_payload_nul_is_not_string_terminator(self):
+        raw = b'\x1a\x07\xff\x00\x01\x00\x73\x1a\x05\x03\x00\x04\x1a\x07\x03\x00\x05\x00\x69Cave fixture'
+        table = bmg_index(bmg([(8395 << 8, raw)]))
+        result = message_name(table, 8395, cave_presentation=True)
+        self.assertEqual(result['text'], 'Cave fixture')
+        self.assertEqual(result['status'], 'resolved_with_presentation_controls')
+        self.assertEqual(result['presentation_controls'],
+                         [{'tag': 0xFF0001, 'payload_hex': '0073'}, {'tag': 0x030004, 'payload_hex': ''},
+                          {'tag': 0x030005, 'payload_hex': '0069'}])
+        self.assertEqual(message_name(table, 8395)['status'], 'control_codes_unresolved')
+
+    def test_unknown_cave_control_remains_unresolved_and_bad_length_fails(self):
+        table = bmg_index(bmg([(8395 << 8, b'\x1a\x05\xfe\x00\x01Cave fixture')]))
+        self.assertEqual(message_name(table, 8395, cave_presentation=True)['status'], 'control_codes_unresolved')
+        for raw in (b'\x1a\x04\xff\x00\x01', b'\x1a\xff\xff\x00\x01'):
+            with self.subTest(raw=raw), self.assertRaises(ValueError):
+                message_name(bmg_index(bmg([(8395 << 8, raw)])), 8395, cave_presentation=True)
 
 
 if __name__ == '__main__':

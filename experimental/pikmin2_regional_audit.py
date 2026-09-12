@@ -8,6 +8,7 @@ from collections import Counter
 import hashlib
 import json
 from pathlib import Path
+import re
 import struct
 
 from experimental.pikmin2_assets import archive_files, disc_files
@@ -21,6 +22,14 @@ KINDS = ('otakara', 'item', 'carcass', 'numberpellet', 'fruit')
 PELLET_LIST = 'user/Abe/Pellet/us/pelletlist_us.szs'
 KFES_TABLE = 'user/Matoba/challenge/kfes-stages.txt'
 MAPPING_SOURCE_REVISION = '632af93787b9c95b63f0c13be32b161375ce3a96'
+# src/plugProjectOgawaU/ogObjAnaDemo.cpp:12, CaveTitleMsg.
+# Challenge entries in that table reuse a placeholder and are deliberately absent.
+CAVE_TITLE_MESSAGES = {
+    't_01': 8395, 't_02': 8399, 't_03': 8400,
+    'f_01': 8396, 'f_02': 8398, 'f_03': 8401, 'f_04': 8410,
+    'y_01': 8397, 'y_02': 8402, 'y_03': 8403, 'y_04': 8411,
+    'l_01': 8412, 'l_02': 8413, 'l_03': 8414,
+}
 
 
 def digest(data):
@@ -71,23 +80,50 @@ def bmg_index(data):
     return result
 
 
-def message_name(messages, number, variant=0):
+def message_name(messages, number, variant=0, *, cave_presentation=False):
     key = (number << 8) | variant
     result = dict(message_number=number, variant=variant, packed_id=key)
     if key not in messages:
         return dict(result, status='missing', text=None)
     data, at, encoding = messages[key]
     result['encoding'] = encoding
-    # Do not silently strip control codes: their payload can contain NUL bytes.
-    end = data.find(b'\0', at)
-    if end < 0:
-        raise ValueError('Unterminated BMG name')
-    raw = data[at:end]
+    if cave_presentation:
+        # JMessage::TProcessor::on_tag_ uses a five-byte header and total size.
+        # Only observed, source-traced cave title presentation tags:
+        # FF0001 = tagSize(u16 percent); 030004/030005 = reset/set font height.
+        literal, controls = bytearray(), []
+        while at < len(data) and data[at] != 0:
+            if data[at] != 0x1A:
+                literal.append(data[at])
+                at += 1
+                continue
+            if at + 5 > len(data):
+                raise ValueError('Truncated cave title control header')
+            size = data[at + 1]
+            if size < 5 or at + size > len(data):
+                raise ValueError('Invalid cave title control size')
+            tag = int.from_bytes(data[at + 2:at + 5], 'big')
+            if (tag, size) not in ((0xFF0001, 7), (0x030004, 5), (0x030005, 7)):
+                return dict(result, status='control_codes_unresolved', text=None)
+            controls.append(dict(tag=tag, payload_hex=data[at + 5:at + size].hex()))
+            at += size
+        if at >= len(data):
+            raise ValueError('Unterminated BMG cave name')
+        raw = bytes(literal)
+        if controls:
+            result['presentation_controls'] = controls
+    else:
+        # Do not silently strip unreviewed control codes: payloads can contain NUL.
+        end = data.find(b'\0', at)
+        if end < 0:
+            raise ValueError('Unterminated BMG name')
+        raw = data[at:end]
     if b'\x1a' in raw:
         return dict(result, status='control_codes_unresolved', text=None)
     if encoding == 1 and not raw.isascii():
         return dict(result, status='font_encoding_unresolved', text=None)
-    return dict(result, status='resolved' if raw else 'empty', text=raw.decode('shift_jis' if encoding == 3 else 'ascii'))
+    status = ('resolved_with_presentation_controls' if result.get('presentation_controls') else 'resolved') if raw else 'empty'
+    return dict(result, status=status, text=raw.decode('shift_jis' if encoding == 3 else 'ascii'))
 
 
 def catalog_delta(reference, compared):
@@ -190,20 +226,122 @@ def kfes_references(text):
     return set(paths)
 
 
-def cave_file_classes(files, inventory, demo_references=frozenset()):
+def stage_cave_links(text):
+    """Extract cave filename/tag links, not treasure counts or placement classes.
+
+    Follow the declared table framing in gameStages.cpp CourseInfo::read.
+    Keep non-retail courses and extensionless references as literal metadata.
+    """
+    nodes = tree(text)
+
+    def count(value):
+        if not isinstance(value, str) or not value.isascii() or not value.isdigit() or not 0 <= int(value) <= 10000:
+            raise ValueError('Invalid stage table count')
+        return int(value)
+
+    if not nodes or count(nodes[0]) != len(nodes) - 1:
+        raise ValueError('Stage table course count mismatch')
+    result, seen_courses = [], set()
+    for course_index, block in enumerate(nodes[1:]):
+        if not isinstance(block, list):
+            raise ValueError('Invalid stage course record')
+        fields, at = {}, 0
+        while at < len(block) and block[at] != 'end':
+            key = block[at]
+            width = 3 if key == 'start' else 1
+            if (not isinstance(key, str) or key in fields or at + width >= len(block)
+                    or any(not isinstance(v, str) for v in block[at + 1:at + width + 1])):
+                raise ValueError('Invalid stage course header')
+            fields[key] = block[at + 1:at + width + 1]
+            at += width + 1
+        if at == len(block) or 'name' not in fields:
+            raise ValueError('Missing stage course name or header terminator')
+        course = fields['name'][0]
+        if course in seen_courses:
+            raise ValueError('Duplicate stage course')
+        seen_courses.add(course)
+        at += 1
+        for _ in range(2):  # Nonloop and loop tables: filename + three window fields.
+            if at >= len(block):
+                raise ValueError('Missing stage generator table')
+            end = at + 1 + 4 * count(block[at])
+            if end > len(block) or any(not isinstance(v, str) for v in block[at + 1:end]):
+                raise ValueError('Truncated stage generator table')
+            at = end
+        if at >= len(block):
+            raise ValueError('Missing stage cave table')
+        cave_count = count(block[at])
+        at += 1
+        seen_tags = set()
+        for cave_index in range(cave_count):
+            if at + 3 > len(block):
+                raise ValueError('Truncated stage cave table')
+            tag, declared, filename = block[at:at + 3]
+            if not isinstance(tag, list) or len(tag) != 1 or not isinstance(tag[0], str) or not re.fullmatch(r'[A-Za-z0-9_]{4}', tag[0]):
+                raise ValueError('Invalid stage cave tag')
+            if count(declared) > 255:  # CaveOtakaraInfo::read reads this as a byte.
+                raise ValueError('Stage cave treasure count exceeds byte range')
+            if not isinstance(filename, str):
+                raise ValueError('Invalid stage cave filename')
+            filename = safe_name(filename)
+            # A non-retail course can register multiple tags for one filename.
+            if tag[0] in seen_tags:
+                raise ValueError('Duplicate cave tag within course')
+            seen_tags.add(tag[0])
+            result.append(dict(course_id=course, course_table_index=course_index,
+                               cave_table_index=cave_index, cave_tag=tag[0], filename=filename,
+                               source_path='user/Mukki/mapunits/caveinfo/' + filename))
+            at += 3
+        if at != len(block) - 1:
+            raise ValueError('Trailing or missing stage course data')
+        count(block[at])  # Declared surface treasure total; not used as a name ID.
+    return result
+
+
+def campaign_cave_names(links, inventory, language_tables):
+    rows = []
+    retail_courses = {s['id'] for s in inventory['surfaces']}
+    seen_sources, seen_tags = set(), set()
+    for cave in inventory['story_caves']:
+        source_id, path = cave['id'], cave['source']
+        if path in seen_sources or path != f'user/Mukki/mapunits/caveinfo/{source_id}.txt':
+            raise ValueError('Duplicate or inconsistent campaign cave source ID')
+        seen_sources.add(path)
+        found = [link for link in links if link['source_path'] == path and link['course_id'] in retail_courses]
+        if len(found) != 1:
+            raise ValueError('Missing or ambiguous campaign cave stage link: ' + source_id)
+        link = found[0]
+        tag = link['cave_tag']
+        if tag not in CAVE_TITLE_MESSAGES or tag in seen_tags:
+            raise ValueError('Missing or duplicate campaign cave title tag: ' + tag)
+        seen_tags.add(tag)
+        number = CAVE_TITLE_MESSAGES[tag]
+        rows.append(dict(link, source_id=source_id, message_number=number,
+                         onboard_names={language: message_name(table, number, cave_presentation=True)
+                                        for language, table in language_tables.items()}))
+    return rows
+
+
+def cave_file_classes(files, inventory, demo_references=frozenset(), stage_links=()):
     references = {}
     for cave in inventory['story_caves']:
         references.setdefault(cave['source'], []).append('campaign')
     for mode in ('challenge', 'battle'):
         for stage in inventory[mode]['stages']:
             references.setdefault(stage['cave_path'], []).append(mode)
+    registered = {}
+    for link in stage_links:
+        registered.setdefault(link['source_path'], []).append(link)
     missing = (references.keys() | demo_references) - files.keys()
     if missing:
         raise ValueError('Missing referenced cave files: ' + ', '.join(sorted(missing)))
     return [dict(source_path=path, retail_scopes=sorted(set(references.get(path, []))),
                  classification=('retail_referenced' if path in references else
-                                 'kfes_only_reference' if path in demo_references else 'unreferenced_status_unresolved'),
+                                 'kfes_only_reference' if path in demo_references else
+                                 'stage_registered_outside_retail_inventory' if path in registered else
+                                 'unreferenced_status_unresolved'),
                  kfes_referenced=path in demo_references,
+                 stage_table_references=registered.get(path, []),
                  filename_hint='kfes' if Path(path).name.lower().startswith('kfes_') else None)
             for path in sorted(files) if path.startswith('user/Mukki/mapunits/caveinfo/') and path.endswith('.txt')]
 
@@ -249,24 +387,32 @@ def build(iso, ledger_path, inventory_path, output):
             path = f'message/mesRes_{language}.szs'
             language_tables[language] = bmg_index(archive_files(read(path))['pikmin2.bmg'])
         attach_names(rows, catalogs['us'], language_tables)
+        stage_links = stage_cave_links(read('user/Abe/stages.txt').decode('shift_jis'))
+        named_caves = campaign_cave_names(stage_links, inventory, language_tables)
+        for link in stage_links:
+            link['source_file_present'] = link['source_path'] in files
+            link['retail_course'] = link['course_id'] in {s['id'] for s in inventory['surfaces']}
         comparisons = {region: {kind: catalog_delta(catalogs['us'][kind], catalogs[region][kind])
                                 for kind in KINDS} for region in ('jpn', 'pal')}
-        cave_files = cave_file_classes(files, inventory, kfes_references(read(KFES_TABLE).decode('shift_jis')))
+        cave_files = cave_file_classes(files, inventory, kfes_references(read(KFES_TABLE).decode('shift_jis')), stage_links)
     result = dict(schema=1, disc='GPVE01 revision 0', regional_runtime_validated=False,
                   mapping_source_revision=MAPPING_SOURCE_REVISION,
                   ledger_sha256=digest(ledger_bytes), inventory_sha256=digest(inventory_bytes),
                   source_sha256=hashes, entries=rows, onboard_catalog_differences=comparisons,
                   loose_config_differences=loose_deltas, cave_definitions=cave_files,
+                  campaign_cave_names=named_caves, stage_cave_references=stage_links,
                   summary=dict(entries=len(rows), classifications=dict(Counter(r['classification'] for r in rows)),
                                active_source_definitions=sum(len(r['active_source_definitions']) for r in rows),
                                unloaded_generator_definitions=sum(len(r['unloaded_generator_definitions']) for r in rows),
+                               campaign_cave_names=len(named_caves),
                                cave_definitions=dict(Counter(r['classification'] for r in cave_files))),
                   limitations=[
                       'Consumes #140 classifications and source definitions, not generated instances or delivery receipts.',
                       'Language archives on a US disc do not establish PAL/JPN executable or gameplay support.',
                       'Name lookups use US runtime config indexes; foreign regional runtime name joins remain unvalidated.',
                       'Unreferenced cave files and loose config differences are not automatically unused/test/demo content.',
-                      'Controlled/empty/missing message strings remain unresolved; no text is guessed.',
+                      'Stage registration alone does not establish an active cave entrance or retail playability.',
+                      'Unrecognized controls and empty/missing messages remain unresolved; known cave sizing tags are retained separately.',
                       'Full regional disc, localized UI, physical placement and save/load validation remain open.'])
     output.mkdir(parents=True, exist_ok=False)
     (output / 'regional_audit.json').write_text(json.dumps(result, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
