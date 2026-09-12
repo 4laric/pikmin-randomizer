@@ -8,13 +8,14 @@ import struct
 
 def translate_mapcode(code):
     # P2 attributes are not the P1 material enum. This audited dry concrete room
-    # uses 2 and 5; Emergence's dry rooms also use 1, 6 and 7. Their waterbox
+    # uses 2 and 5; Emergence uses 1, 6 and 7, and Hole of Beasts'
+    # cent2/cent3 rooms also use 0. These audited rooms' waterbox
     # files are empty. P2 navi.cpp uses the attribute for walking sounds;
     # P1 has no matching P2 surface palette, so these fall back to solid.
     # HoudaiShotGun.cpp also selects dry impact effects with 6, independently
     # of findWater. Exact footstep/impact effects remain unconverted.
     # Preserve slip/bald bits, but do not interpret 7 as a P1 material enum.
-    if code & 15 not in (1, 2, 5, 6, 7):
+    if code & 15 not in (0, 1, 2, 5, 6, 7):
         raise ValueError(f"Unaudited P2 material {code & 15}")
     return (((code >> 4) & 3) << 27) | ((not (code & 64)) << 25)
 
