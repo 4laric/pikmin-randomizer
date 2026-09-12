@@ -132,7 +132,7 @@ def transition(state, token, text, receipts, allowed):
     return validate(next_state)
 
 
-def content_identity(imported, pods, purple):
+def content_identity(imported, pods, purple, transitions=None):
     files = []
     for floor, unit in enumerate(('room_north_tutorial_1_snow', 'room_purple14x14_snow'), 1):
         for name in ('render.mod', 'collision.json'):
@@ -146,6 +146,8 @@ def content_identity(imported, pods, purple):
     digest = hashlib.sha256(b'P2_CAVE_LAYOUT_1:two-standalone-rooms:all-survivors:boundary-checkpoint')
     for label, path in files:
         digest.update(label.encode() + b'\0' + hashlib.sha256(path.read_bytes()).digest())
+    for floor, data in sorted((transitions or {}).items()):
+        digest.update(f'transition{floor}'.encode() + b'\0' + hashlib.sha256(data).digest())
     return digest.hexdigest()
 
 
@@ -162,8 +164,10 @@ def allowed_receipts(run, floor):
     return allowed
 
 
-def run_campaign(assets, imported, pods, purple, treasure, exe, session):
-    content = content_identity(imported, pods, purple)
+def run_campaign(assets, imported, pods, purple, treasure, exe, session, transitions=None):
+    from experimental.pikmin2_transitions import read_transitions
+    anchors = read_transitions(transitions)
+    content = content_identity(imported, pods, purple, anchors)
     with SessionLock(session):
         checkpoint = session/'checkpoint.json'
         if checkpoint.exists(): state = load(checkpoint, content)
@@ -178,10 +182,13 @@ def run_campaign(assets, imported, pods, purple, treasure, exe, session):
                           purple=purple, violet=floor == 2, squad=state['squad'])
             token = uuid.uuid4().hex
             (run/'p2-cave-entry.txt').write_text(entry_text(state, token))
+            if anchors:
+                (run/'p2-cave-transition.txt').write_bytes(anchors[floor])
             (run/'p2-economy.txt').write_text(ledger_text(state['receipts']))
             allowed = allowed_receipts(run, floor)
             print(f'Emergence Cave — floor {floor}: {len(state["squad"])} Pikmin, {sum(state["receipts"].values())} Pokos.', flush=True)
-            print('F6 near the Pod: descend/leave. Closing mid-floor restores this entry checkpoint.', flush=True)
+            target = ('marked hole' if floor == 1 else 'marked geyser') if anchors else 'Pod'
+            print(f'F6 near the {target}: descend/leave. Closing mid-floor restores this entry checkpoint.', flush=True)
             with (run/'native.log').open('w') as log:
                 result = subprocess.run([str(exe), '--experimental-pikmin2-room'], cwd=run, stdout=log, stderr=subprocess.STDOUT)
             if result.returncode != EXIT_TRANSITION:
@@ -199,6 +206,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ('assets', 'imported', 'pod1', 'pod2', 'purple', 'treasure', 'exe', 'session'):
         parser.add_argument('--' + name, type=Path, required=True)
+    parser.add_argument('--transitions', type=Path, help='Optional floor1.txt/floor2.txt world markers; requires matching native renderer hook')
     args = parser.parse_args()
     run_campaign(args.assets.resolve(), args.imported.resolve(), [args.pod1.resolve(), args.pod2.resolve()],
-                 args.purple.resolve(), args.treasure.resolve(), args.exe.resolve(), args.session.resolve())
+                 args.purple.resolve(), args.treasure.resolve(), args.exe.resolve(), args.session.resolve(),
+                 args.transitions.resolve() if args.transitions else None)
