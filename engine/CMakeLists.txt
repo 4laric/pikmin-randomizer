@@ -162,6 +162,7 @@ endif()
 
 set(PC_PORT_SOURCES
     pc_port/pc_bbft.cpp
+    pc_port/pc_p2_preview.cpp
     pc_port/pc_randomizer.cpp
     pc_port/pc_main.cpp
     pc_port/pc_window.cpp

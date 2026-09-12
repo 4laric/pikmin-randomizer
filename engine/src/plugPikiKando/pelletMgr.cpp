@@ -1,6 +1,7 @@
 #include "pc_randomizer.h"
 #include "AIPerf.h"
 #include "pc_bbft.h"
+#include "pc_p2_preview.h"
 #include "Age.h"
 #include "DebugLog.h"
 #include "EffectMgr.h"
@@ -1410,7 +1411,8 @@ void Pellet::doRender(Graphics& gfx, Matrix4f& mtx)
 	}
 
 	if (aiCullable()) {
-		mShapeObject->mShape->drawshape(gfx, *gfx.mCamera, &mAnimatedMaterials);
+		if (!pc_p2_preview_draw(this, gfx, mtx))
+			mShapeObject->mShape->drawshape(gfx, *gfx.mCamera, &mAnimatedMaterials);
 	}
 }
 

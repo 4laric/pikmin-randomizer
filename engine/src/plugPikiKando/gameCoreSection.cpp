@@ -8,6 +8,7 @@
 #include "WorkObject.h"
 #include "GameCoreSection.h"
 #include "pc_bbft.h"
+#include "pc_p2_preview.h"
 #include "pc_randomizer.h"
 #include "MapCode.h"
 #include <fstream>
@@ -1354,6 +1355,7 @@ void GameCoreSection::finalSetup()
 		workObjectMgr->finalSetup();
 	}
 
+	pc_p2_preview_setup();
 	PRINT("====================== FINAL SETUP DONE ======================\n");
 }
 

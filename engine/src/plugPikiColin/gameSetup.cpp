@@ -313,7 +313,7 @@ void GameSetupSection::update()
             gameflow.mWorldClock.mCurrentDay = 2;
             gameflow.mWorldClock.setTime(gameflow.mParameters->mStartHour());
         }
-        if (pc_pikipelago_challenge_level() >= 0) {
+        if (pc_pikipelago_challenge_level() >= 0 && !pc_pikipelago_room_preview()) {
             for(int color=0;color<3;++color) {
                 playerState->setContainer(color); playerState->setBootContainer(color);
                 pikiInfMgr.mPikiCounts[color][Leaf]=20;
@@ -321,6 +321,11 @@ void GameSetupSection::update()
             playerState->mTotalBornPikiNum=60; playerState->mLivingPikiNum=60;
             std::printf("[Pikipelago] CHALLENGE_LAYOUT_READY id=challenge-%d stage_index=%d file=%s story=1\n",
                 pc_pikipelago_challenge_level(),stage->mStageIndex,stage->mFileName); std::fflush(stdout);
+        }
+        if (pc_pikipelago_room_preview()) {
+            for (int color=0;color<3;++color)
+                for (int stage=0;stage<3;++stage) pikiInfMgr.mPikiCounts[color][stage]=0;
+            std::printf("[Pikipelago] P2_ROOM_PREVIEW room=room_4x4a_4_conc red=20 isolated=1\n"); std::fflush(stdout);
         }
         gameflow.mCurrentStageID = -1;
         if (pc_randomizer_enabled()) std::printf("[Pikmin Randomizer] START_STAGE %d day=2 color=%d stored=20\n", stage->mStageID, pc_randomizer_start_color());
