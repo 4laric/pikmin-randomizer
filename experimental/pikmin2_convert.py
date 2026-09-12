@@ -5,6 +5,7 @@ Only rigid, identity-root models are accepted; this is not a general J3D exporte
 from pathlib import Path
 import argparse
 import json
+import math
 import struct
 
 def unpack(b, fmt, at=0):
@@ -117,8 +118,10 @@ class Writer:
     def end(self):
         self.pad(); struct.pack_into('>I',self.data,self.start+4,len(self.data)-self.start-8)
 
-def convert(source, output, approximate_materials=False):
+def convert(source, output, approximate_materials=False, y_offset=0.0):
+    if not math.isfinite(y_offset): raise ValueError("Y offset must be finite")
     b,a,shapes,mats=decode(Path(source).read_bytes(), approximate_materials); w=Writer()
+    a[9]=[(x,y+y_offset,z) for x,y,z in a[9]]
     w.begin(0);w.pad();w.put('II',0,0);w.end()
     for attr,tag,fmt in ((9,16,'3f'),(10,17,'3f'),(11,19,'4B'),(13,24,'2f')):
         if attr not in a: continue
@@ -176,9 +179,9 @@ def convert(source, output, approximate_materials=False):
     for i in range(len(shapes)):w.put('HH',i,i)
     w.end();w.begin(65535);w.end()
     output=Path(output);output.parent.mkdir(parents=True,exist_ok=True);output.write_bytes(w.data)
-    report={'source':str(source),'output':str(output),'vertices':len(a[9]),'triangles':sum(map(len,shapes)),'shapes':len(shapes),'textures':texture_count,'bounds':bounds,'material_policy':'static vertex color multiplied by first texture; original TEV not reproduced'}
+    report={'source':str(source),'output':str(output),'vertices':len(a[9]),'triangles':sum(map(len,shapes)),'shapes':len(shapes),'textures':texture_count,'bounds':bounds,'y_offset':y_offset,'material_policy':'static vertex color multiplied by first texture; original TEV not reproduced'}
     output.with_suffix('.json').write_text(json.dumps(report,indent=2),encoding='utf-8');return report
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('source',type=Path);p.add_argument('output',type=Path);p.add_argument('--approximate-materials',action='store_true');args=p.parse_args()
-    print(json.dumps(convert(args.source,args.output,args.approximate_materials),indent=2))
+    p=argparse.ArgumentParser();p.add_argument('source',type=Path);p.add_argument('output',type=Path);p.add_argument('--approximate-materials',action='store_true');p.add_argument('--y-offset',type=float,default=0.0,help='Translate render vertices vertically; collision is converted separately');args=p.parse_args()
+    print(json.dumps(convert(args.source,args.output,args.approximate_materials,args.y_offset),indent=2))

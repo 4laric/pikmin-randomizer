@@ -48,3 +48,25 @@ class ConverterTests(unittest.TestCase):
         joint=at+struct.unpack_from('>I',blob,at+12)[0]
         struct.pack_into('>f',blob,joint+4,2.)
         with self.assertRaisesRegex(ValueError,'Non-identity'):decode(blob)
+
+    @unittest.skipUnless(ROOM.exists(),'Requires locally extracted user-owned asset')
+    def test_floor_alignment_translates_only_positions_and_bounds(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)
+            original=convert(ROOM,path/'original.mod')
+            shifted=convert(ROOM,path/'shifted.mod',y_offset=-1)
+            assert shifted['bounds']==[-425.,-2.,-425.,425.,64.,425.]
+            def chunks(data):
+                out={};at=0
+                while at<len(data):
+                    tag,size=struct.unpack_from('>II',data,at)
+                    out[tag]=data[at:at+8+size];at+=8+size
+                return out
+            a=chunks((path/'original.mod').read_bytes()); b=chunks((path/'shifted.mod').read_bytes())
+            for tag in a:
+                if tag not in (16,96): assert a[tag]==b[tag]
+            for i in range(original['vertices']):
+                x,y,z=struct.unpack_from('>3f',a[16],32+i*12)
+                xx,yy,zz=struct.unpack_from('>3f',b[16],32+i*12)
+                assert (xx,zz)==(x,z)
+                self.assertAlmostEqual(yy,y-1,delta=0.00001)

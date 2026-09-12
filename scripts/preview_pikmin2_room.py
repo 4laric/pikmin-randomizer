@@ -72,6 +72,39 @@ def overlay(source,dest,overrides):
         else:os.link(src,dst)
 
 
+
+def prototype_routes(source):
+    """Add two goal approaches for this standalone layout, not to the P2 graph.
+
+    P2 source points7/8 only have outgoing links. P1 assigns Onion/UFO goals
+    to their nearest waypoint, so they cannot serve as destinations unchanged.
+    Add only the two audited destination approaches from central point4;
+    do not reverse the remaining source links or alter waypoint positions.
+    """
+    text=source.decode('ascii')
+    ids=[int(v) for v in re.findall(r'\bindex\s+(\d+)',text)]
+    if sorted(ids)!=list(range(9)):
+        raise ValueError('Expected the nine original P2 room route points')
+    links={(int(a),int(b)) for a,b in re.findall(r'\blink\s*{\s*(\d+)\s+(\d+)\s*}',text)}
+    if not {(7,4),(8,4)}<=links:
+        raise ValueError('Missing audited original goal approach edges')
+    end=text.rfind('}')
+    if end<0:raise ValueError('Missing route group end')
+    extra=''.join(f' link {{ 4 {goal} }}\n' for goal in (7,8) if (4,goal) not in links)
+    return (text[:end]+extra+text[end:]).encode('ascii')
+
+
+def replace_embedded_routes(model,route):
+    cursor=0
+    while cursor+8<=len(model):
+        tag,size=struct.unpack_from('>II',model,cursor)
+        end=cursor+8+size
+        if end>len(model):raise ValueError('Truncated MOD chunk')
+        if tag==0xffff:return model[:end]+route
+        cursor=end
+    raise ValueError('Missing MOD EOF')
+
+
 def prepare(assets,converted,output):
     run=output.resolve()/uuid.uuid4().hex
     run.mkdir(parents=True)
@@ -79,10 +112,12 @@ def prepare(assets,converted,output):
     stage=re.sub(rb'(?m)^map_file[^\r\n]*',b'map_file courses/pikmin2room/room.mod',stage)
     stage=re.sub(rb'(?m)^navi_start[^\r\n]*',b'navi_start -85.0 0.0',stage)
     empty=b'1.0v'+struct.pack('>4fI',-85,0,0,45,0)
+    routes=prototype_routes((converted/'room.ini').read_bytes())
+    room_model=replace_embedded_routes((converted/'room.mod').read_bytes(),routes)
     overrides={'dataDir/stages/chal0.ini':stage,'dataDir/stages/chal0/default.gen':generator(assets),
       'dataDir/stages/chal0/plants.gen':empty,
-      'dataDir/courses/pikmin2room/room.mod':(converted/'room.mod').read_bytes(),
-      'dataDir/courses/pikmin2room/room.ini':(converted/'room.ini').read_bytes()}
+      'dataDir/courses/pikmin2room/room.mod':room_model,
+      'dataDir/courses/pikmin2room/room.ini':routes}
     overrides['dataDir/courses/pikmin2room/treasure.mod']=(converted/'treasure.mod').read_bytes()
     # Suppress any other generator sources in this private layout directory.
     for p in (assets/'dataDir/stages/chal0').glob('*.gen'):

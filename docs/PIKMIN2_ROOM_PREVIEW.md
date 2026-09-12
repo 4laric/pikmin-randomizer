@@ -10,7 +10,7 @@ Use an owned US Pikmin 2 GPVE01 revision 0 disc image and an existing extracted 
 
 ```powershell
 python -m experimental.pikmin2_assets --iso "PATH/PIKMIN2.iso" --output output/pikmin2-extract105
-python -m experimental.pikmin2_convert output/pikmin2-extract105/arc/view.bmd output/pikmin2-room105/render.mod
+python -m experimental.pikmin2_convert output/pikmin2-extract105/arc/view.bmd output/pikmin2-room105/render.mod --y-offset -1
 python -m experimental.pikmin2_convert output/pikmin2-extract105/treasure/bolt.bmd output/pikmin2-room105/treasure.mod --approximate-materials
 ```
 
@@ -43,3 +43,13 @@ Local evidence: `output/pikmin2-room-preview/25e03db572bd40bab335332dd03d212f/na
 The first visual validation exposed a converter error: a MOD matrix entry of -1 selects envelope 0, but these rigid models have no envelopes. This read past the model's animation matrices and made terrain move or disappear as other objects rendered. The exporter now writes direct joint 0, with a native-format regression assertion. Preview treasure buffers are explicitly allocated on the App heap so movie-heap resets cannot invalidate them.
 
 After the matrix correction, startup/movement/final screenshots retain the floor, geometry/display-list hashes remain identical, and the actual render matrix matches the stationary camera. Room-edge camera occlusion and the black surroundings are still prototype presentation limitations.
+
+## Carry-route and footing follow-up
+
+Player testing found that distant corpses attached but stalled, while the nearby bolt still delivered. The source cave graph's points 7 and 8 only had outgoing edges; P1 selected these as delivery destinations. The private preview now adds only the audited approaches 4-to-7 and 4-to-8 in both embedded and external routes. Every original point and edge is preserved, and the reusable P2 collision exporter retains the original graph. Every point can now reach either goal; sampled carry corridors are dry and level.
+
+The source room's visible interior floor is Y=1 while collision is Y=0. The preview room conversion uses `--y-offset -1` for render geometry only (not the treasure or collision). All 164 sampled interior points now match exactly; the original model differed by one unit at every sample. Normals, texture coordinates, topology and collision stay unchanged.
+
+The earlier native fixture assigned transport to the bolt beside the Onion, so its pass did not cover the inaccessible far side of the route graph. The follow-up fixture adds actual enemy-corpse delivery from across the room.
+
+Follow-up validation: fifteen focused converter/collision/preview tests pass. Native run `8356c998ccb240e2b2f96bf1f975cee5` exited 0: the actual Dwarf corpse moved over 360 units with carriers, entered the Onion goal state and was consumed. The fixture first tried free-AI recruitment; that did not recruit, so it explicitly assigned Transport after five seconds without moving actors. This validates the route from the user-confirmed attachment stage, not automatic recruitment. Production executable changes were unnecessary; relaunch rebuilds the private asset overlay with corrected routes and floor.

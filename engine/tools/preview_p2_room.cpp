@@ -16,6 +16,7 @@
 #include "PikiMgr.h"
 #include "PikiAI.h"
 #include "Pellet.h"
+#include "PelletState.h"
 #include "MapMgr.h"
 #include "Camera.h"
 #include "Shape.h"
@@ -87,6 +88,9 @@ static void capture(const char* path="p2-room.ppm") {
 class RoomApp : public PlugPikiApp {
     int frames=0,repairs=0;
     Teki* enemy=nullptr;
+    Pellet* corpse=nullptr;
+    Vector3f corpseOrigin;
+    bool corpseReachedGoal=false; float corpseDistance=0;
 public:
     int idle() override {
         int result=PlugPikiApp::idle();require(++frames<10000,"timeout");
@@ -135,15 +139,45 @@ public:
             std::printf("P2_FIXTURE_ATTACK_ASSIGNED count=%d\n",attackers);
         } else if(phase==4) {
             if(!enemy->isAlive()) {
+                std::puts("P2_FIXTURE_COMBAT_PASS");phase=5;ticks=0;
+            }
+            if(++ticks%300==0)std::printf("P2_COMBAT_PROGRESS health=%.2f\n",enemy->mHealth);
+            require(ticks<3000,"native combat did not kill dwarf");
+        } else if(phase==5) {
+            Iterator pellets(pelletMgr);CI_LOOP(pellets){Pellet* p=static_cast<Pellet*>(*pellets);if(p->isAlive() && p->mPelletView==static_cast<PelletView*>(enemy)){corpse=p;break;}}
+            if(corpse) {
+                corpseOrigin=corpse->mSRT.t;
+                Iterator pikis(pikiMgr);int freeCount=0;CI_LOOP(pikis){Piki* p=static_cast<Piki*>(*pikis);if(p->isAlive()){p->changeMode(PikiMode::FreeMode,n);++freeCount;}}
+                std::printf("P2_CORPSE_FREE_RECRUIT count=%d x=%.2f z=%.2f model=%08x\n",freeCount,corpseOrigin.x,corpseOrigin.z,corpse->mConfig->mModelId.mId);
+                phase=6;ticks=0;
+            }
+            require(++ticks<600,"corpse pellet did not appear after enemy death");
+        } else if(phase==6) {
+            float dx=corpse->mSRT.t.x-corpseOrigin.x,dz=corpse->mSRT.t.z-corpseOrigin.z;
+            float distance=std::sqrt(dx*dx+dz*dz);if(distance>corpseDistance)corpseDistance=distance;
+            corpseReachedGoal=corpseReachedGoal || corpse->getState()==PELSTATE_Goal;
+            if(++ticks%150==0) {
+                int transport=0,free=0;Iterator p(pikiMgr);CI_LOOP(p){Piki* v=static_cast<Piki*>(*p);if(v->mMode==PikiMode::TransportMode)++transport;if(v->mMode==PikiMode::FreeMode)++free;}
+                std::printf("P2_CORPSE_PROGRESS state=%d alive=%d x=%.2f y=%.2f z=%.2f distance=%.2f transport=%d free=%d goal=%p\n",corpse->getState(),int(corpse->isAlive()),corpse->mSRT.t.x,corpse->mSRT.t.y,corpse->mSRT.t.z,corpseDistance,transport,free,(void*)corpse->mTargetGoal);
+                capture("p2-room-corpse.ppm");
+                if(ticks==150 && transport==0) {
+                    Iterator recruits(pikiMgr);int count=0;CI_LOOP(recruits){Piki* p=static_cast<Piki*>(*recruits);if(!p->isAlive())continue;
+                        p->mActiveAction->abandon(nullptr);p->mActiveAction->mCurrActionIdx=PikiAction::Transport;
+                        p->mActiveAction->mChildActions[PikiAction::Transport].initialise(corpse);p->mMode=PikiMode::TransportMode;++count;
+                    }
+                    std::printf("P2_CORPSE_RECRUIT_FALLBACK direct transport assigned=%d; no teleport, route regression only\n",count);
+                }
+            }
+            if(!corpse->isAlive()) {
+                require(corpseReachedGoal && corpseDistance>100,"corpse disappeared without traversing room and entering Onion goal");
                 const float ground=mapMgr->getMinY(n->mSRT.t.x,n->mSRT.t.z,true);
                 std::printf("P2_FINAL_POSITION x=%.3f y=%.3f z=%.3f ground=%.3f velocity=%.3f,%.3f stick=%d,%d\n",n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z,ground,n->mVelocity.x,n->mVelocity.z,int(n->mKontroller->mMainStickX),int(n->mKontroller->mMainStickY));
                 cameraLog(n,"FINAL");capture();
                 require(std::fabs(n->mSRT.t.x)<=340 && std::fabs(n->mSRT.t.z)<=340,"captain outside capped room bounds");
                 require(std::fabs(n->mSRT.t.y-ground)<5 && std::fabs(ground)<0.05f,"captain final position not on room floor");
-                std::puts("PASS p2 room: actors, ground, controller movement, native carry delivery, unchanged repairs, native combat kill");std::fflush(stdout);std::_Exit(0);
+                std::puts("PASS p2 room: actors, ground, controller movement, native carry delivery, unchanged repairs, native combat kill, far corpse transport and delivery");std::fflush(stdout);std::_Exit(0);
             }
-            if(++ticks%300==0)std::printf("P2_COMBAT_PROGRESS health=%.2f\n",enemy->mHealth);
-            require(ticks<3000,"native combat did not kill dwarf");
+            require(ticks<1800,"far corpse carrying stalled or gave up");
         }
         std::fflush(stdout);return result;
     }
