@@ -16,3 +16,7 @@ bool pc_p2_snow_attackable(BTeki*, Creature&, bool& result);
 
 // Per-update angular response, retaining the caller's P1 arrival threshold.
 bool pc_p2_snow_turn(BTeki*, float targetAngle, float arrivalStep, bool& arrived);
+
+struct Vector3f;
+// Source chase target velocity; false leaves the native tracing path untouched.
+bool pc_p2_snow_chase(BTeki*, const Vector3f& target);

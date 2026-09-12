@@ -3,6 +3,7 @@
 #include "pc_p2_snow_policy.h"
 #include "pc_p2_snow_attack_policy.h"
 #include "pc_p2_snow_turn_policy.h"
+#include "pc_p2_snow_chase_policy.h"
 #include "TekiConditions.h"
 #include "Material.h"
 #include <chrono>
@@ -31,10 +32,24 @@ std::map<std::string,p2animation::Clip> timing;
 P2SnowHealthPolicy healthPolicy;
 P2SnowAttackPolicy attackPolicy;
 P2SnowTurnPolicy turnPolicy;
+P2SnowChasePolicy chasePolicy;
 }
 float pc_p2_snow_max_health(const BTeki* actor,float fallback) { return healthPolicy.life(actor,fallback); }
-void pc_p2_snow_reset() { clips.clear();actors.clear();timing.clear();healthPolicy.reset();attackPolicy.reset();turnPolicy.reset(); }
-void pc_p2_snow_forget(BTeki* actor) { healthPolicy.forget(actor);attackPolicy.forget(actor);turnPolicy.forget(actor);actors.erase(static_cast<PelletView*>(actor)); }
+void pc_p2_snow_reset() { clips.clear();actors.clear();timing.clear();healthPolicy.reset();attackPolicy.reset();turnPolicy.reset();chasePolicy.reset(); }
+void pc_p2_snow_forget(BTeki* actor) { healthPolicy.forget(actor);attackPolicy.forget(actor);turnPolicy.forget(actor);chasePolicy.forget(actor);actors.erase(static_cast<PelletView*>(actor)); }
+bool pc_p2_snow_chase(BTeki* actor,const Vector3f& target) {
+    if(!actor->isAlive() || !chasePolicy.contains(actor))return false;
+    const Vector3f& position=actor->getPosition();
+    if(!std::isfinite(target.x) || !std::isfinite(target.y) || !std::isfinite(target.z) ||
+       !std::isfinite(position.x) || !std::isfinite(position.y) || !std::isfinite(position.z))return true;
+    P2SnowChasePolicy::Result result;
+    chasePolicy.evaluate(actor,actor->getDirection(),actor->calcTargetDirection(target),actor->mTargetVelocity.y,result);
+    if(result.valid) {
+        actor->setDirection(result.direction);
+        actor->mTargetVelocity.set(result.x,result.y,result.z);
+    }
+    return true;
+}
 bool pc_p2_snow_turn(BTeki* actor,float targetAngle,float arrivalStep,bool& arrived) {
     if(!actor->isAlive())return false;
     P2SnowTurnPolicy::Result result;
@@ -64,6 +79,8 @@ void pc_p2_snow_setup() {
     if(attack && !attackPolicy.read(attack))std::abort();
     std::ifstream turn("p2-snow-turn.txt");
     if(turn && !turnPolicy.read(turn))std::abort();
+    std::ifstream chase("p2-snow-chase.txt");
+    if(chase && !chasePolicy.read(chase))std::abort();
     // Validate the entire bank before allocating Shapes or uploading textures.
     size_t total=0,poses=0;
     std::vector<unsigned char> reference;
@@ -133,6 +150,8 @@ void pc_p2_snow_setup() {
             actors.insert(static_cast<PelletView*>(teki));
             attackPolicy.bind(static_cast<BTeki*>(teki));
             turnPolicy.bind(static_cast<BTeki*>(teki));
+            chasePolicy.bind(static_cast<BTeki*>(teki));
+            if(chasePolicy.enabled())std::printf("P2_SNOW_CHASE generator=%u speed=50 gain=0.4 cap_degrees_per_update=10 preserve_y=1 scope=trace_target_velocity\n",teki->mGenerator->_70);
             if(turnPolicy.enabled())std::printf("P2_SNOW_TURN generator=%u gain=0.4 cap_degrees_per_update=10 arrival=P1 source_rotation_end_180=not_applied\n",teki->mGenerator->_70);
             if(attackPolicy.enabled())std::printf("P2_SNOW_ATTACK generator=%u range=30 half_angle=20 scope=entry_only source=YellowKochappy_fp20_fp21\n",teki->mGenerator->_70);
             if(healthPolicy.enabled()) {
