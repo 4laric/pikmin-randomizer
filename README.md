@@ -155,4 +155,4 @@ Seed logic, the session runner and the overlay live in `randomizer/`; the AP int
 
 ## Credits
 
-Built on [Open Nectar](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port) and the [projectPiki Pikmin decompilation](https://github.com/projectPiki/pikmin). Thanks to TheLynk for permission to use the Pikmin AP world's logic and locations as a reference; this remains a separate project as requested. See the preserved [engine license](engine/LICENSE.MD) and [third-party notice](engine/LEGAL.md).
+Built on [Open Nectar](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port) and the [projectPiki Pikmin decompilation](https://github.com/projectPiki/pikmin). Thanks to TheLynk for permission to use the Pikmin AP world's logic and locations as a reference; this remains a separate project as requested. This project's own code and documentation are public domain under [CC0 1.0](LICENSE); see [LEGAL.md](LEGAL.md). The engine keeps its own [license](engine/LICENSE.MD) and [third-party notice](engine/LEGAL.md).
