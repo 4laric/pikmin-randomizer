@@ -71,4 +71,3 @@ int main(int argc,char** argv){
  if(!pc_window_init("P2 entrance boundary fixture",960,720))return 3;
  pc_settings_init();gsys->Initialise();pc_settings_p2d_init();nodeMgr=new NodeMgr();gsys->run(new EntranceApp());return 0;
 }
-
