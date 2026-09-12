@@ -1,4 +1,7 @@
 #include "pc_p2_cave.h"
+#include "pc_p2_cave_anchor.h"
+#include "Graphics.h"
+#include "Camera.h"
 #include "pc_p2_preview.h"
 #include "pc_p2_purple.h"
 #include "pc_bbft.h"
@@ -29,6 +32,7 @@ std::string token;
 bool requested=false;
 bool completed=false;
 float titleTimer=0;
+P2CaveAnchor anchor;
 struct Survivor {int color,maturity;};
 void invalid(const char* reason){std::fprintf(stderr,"Invalid P2 cave entry: %s\n",reason);std::abort();}
 bool active(){return floorId && !completed && pc_p2_preview_ready() && naviMgr && naviMgr->getNavi() && naviMgr->getNavi()->getCurrState();}
@@ -39,7 +43,7 @@ void notice(const char* text){SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATIO
 int pc_p2_cave_floor(){return floorId;}
 std::string pc_p2_cave_receipt_prefix(){return floorId?"floor"+std::to_string(floorId)+":":"";}
 void pc_p2_cave_setup(){
-    floorId=0;token.clear();requested=false;completed=false;
+    floorId=0;token.clear();requested=false;completed=false;titleTimer=0;anchor=P2CaveAnchor{};
     if(!pc_pikipelago_room_preview())return;
     std::ifstream in("p2-cave-entry.txt");if(!in)return;
     std::string version,extra;int floor,count;float health;
@@ -60,9 +64,19 @@ void pc_p2_cave_setup(){
     Navi* n=naviMgr->getNavi();if(!n || C_NAVI_PARM(n,mHealth)<=0)invalid("captain unavailable");
     n->mHealth=C_NAVI_PARM(n,mHealth)*health;
     floorId=floor;
+    std::ifstream location("p2-cave-transition.txt");
+    if(location && !p2_cave_read_anchor(location,floor,anchor))invalid("transition anchor");
+    if(anchor.enabled)std::printf("P2_CAVE_ANCHOR kind=%s x=%.3f y=%.3f z=%.3f radius=%.3f\n",anchor.kind.c_str(),anchor.x,anchor.y,anchor.z,anchor.radius);
     std::printf("P2_CAVE_READY floor=%d survivors=%d health=%.9g\n",floor,count,health);std::fflush(stdout);
 }
 void pc_p2_cave_request(){if(active())requested=true;}
+bool pc_p2_cave_interact(float x,float y,float z){
+    if(!safeTime() || !anchor.contains(x,y,z))return false;
+    Navi* n=naviMgr->getNavi();
+    if(!anchor.contains(n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z)
+        || n->getCurrState()->getID()!=NAVISTATE_Walk)return false;
+    requested=true;return true;
+}
 bool pc_p2_cave_checkpoint(bool confirm){
     if(!safeTime())return false;
     Navi* n=naviMgr->getNavi();std::vector<Survivor> squad;
@@ -85,8 +99,9 @@ bool pc_p2_cave_checkpoint(bool confirm){
     Suckable* pod=pc_p2_preview_goal();
     if(!pod)return false;
     float dx=n->mSRT.t.x-pod->mSRT.t.x,dz=n->mSRT.t.z-pod->mSRT.t.z;
-    if(!failed && (dx*dx+dz*dz>150.f*150.f || n->getCurrState()->getID()!=NAVISTATE_Walk)){
-        if(confirm)notice("Return to the Research Pod to descend or leave the cave.");return false;
+    const bool nearExit=anchor.enabled?anchor.contains(n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z):dx*dx+dz*dz<=150.f*150.f;
+    if(!failed && (!nearExit || n->getCurrState()->getID()!=NAVISTATE_Walk)){
+        if(confirm)notice(anchor.enabled?"Stand inside the marked hole/geyser to descend or leave the cave.":"Return to the Research Pod to descend or leave the cave.");return false;
     }
     if(confirm && !failed){
         const char* action=floorId==1?"Descend":"Leave cave";
@@ -124,7 +139,42 @@ void pc_p2_cave_tick(){
         titleTimer=0;
         int count=0,purples=0;Iterator squad(pikiMgr);CI_LOOP(squad){Piki* p=static_cast<Piki*>(*squad);if(p->isAlive()){++count;if(pc_p2_is_purple(p))++purples;}}
         std::string title="Pikipelago - Emergence Cave | Floor "+std::to_string(floorId)+" | "+std::to_string(count)+" Pikmin ("+std::to_string(purples)+" Purple) | "+std::to_string(pc_p2_preview_pokos())
-            +" Pokos | F6 at Pod: "+(floorId==1?"descend":"leave cave")+" | Saves at floor boundaries";
+            +" Pokos | F6 at "+(anchor.enabled?anchor.kind:std::string("Pod"))+": "+(floorId==1?"descend":"leave cave")+" | Saves at floor boundaries";
         if(SDL_Window* w=SDL_GL_GetCurrentWindow())SDL_SetWindowTitle(w,title.c_str());
     }
+}
+
+void pc_p2_cave_draw_transition(Graphics& gfx){
+    if(!active() || !anchor.enabled || !gfx.mCamera)return;
+    static bool logged=false;
+    if(!logged){std::puts("P2_CAVE_MARKER_DRAW");logged=true;}
+    // Map post-effects may leave an orthographic projection/material active.
+    gfx.setPerspective(gfx.mCamera->mPerspectiveMatrix.mMtx,gfx.mCamera->mFov,
+        gfx.mCamera->mAspectRatio,gfx.mCamera->mNear,gfx.mCamera->mFar,1.f);
+    gfx.useMaterial(nullptr);
+    gfx.setDepth(true);
+    // Honest engineering marker, not an imported P2 actor. Ring + down/up arrow.
+    // The caller is a world-overlay boundary and resets the matrix for subsequent UI.
+    const Colour oldColour=gfx.mPrimaryColour;
+    const Colour oldAux=gfx.mAuxiliaryColour;
+    const int oldBlend=gfx.setCBlending(BLEND_Alpha);
+    Texture* oldTexture=gfx.mActiveTexture[0];
+    const bool oldLight=gfx.setLighting(false,nullptr);
+    const float oldWidth=gfx.setLineWidth(3.f);
+    gfx.useTexture(nullptr,0);gfx.useMatrix(gfx.mCamera->mLookAtMtx,0);
+    gfx.setColour(anchor.kind=="hole"?Colour(255,185,65,255):Colour(75,235,255,255),true);
+    const float y=anchor.y+4.f;
+    for(int i=0;i<32;++i){
+        const float a=i*6.28318530718f/32.f,b=(i+1)*6.28318530718f/32.f;
+        gfx.drawLine(Vector3f(anchor.x+std::cos(a)*anchor.radius,y,anchor.z+std::sin(a)*anchor.radius),
+                     Vector3f(anchor.x+std::cos(b)*anchor.radius,y,anchor.z+std::sin(b)*anchor.radius));
+    }
+    const float tip=anchor.kind=="hole"?y+8.f:y+75.f;
+    const float tail=anchor.kind=="hole"?y+75.f:y+8.f;
+    const float wing=anchor.kind=="hole"?tip+20.f:tip-20.f;
+    gfx.drawLine(Vector3f(anchor.x,tail,anchor.z),Vector3f(anchor.x,tip,anchor.z));
+    gfx.drawLine(Vector3f(anchor.x-18.f,wing,anchor.z),Vector3f(anchor.x,tip,anchor.z));
+    gfx.drawLine(Vector3f(anchor.x+18.f,wing,anchor.z),Vector3f(anchor.x,tip,anchor.z));
+    gfx.setLineWidth(oldWidth);gfx.setColour(oldColour,true);gfx.mAuxiliaryColour=oldAux;
+    gfx.setCBlending(oldBlend);gfx.useTexture(oldTexture,0);gfx.setLighting(oldLight,nullptr);
 }

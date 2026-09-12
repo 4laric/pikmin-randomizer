@@ -1,3 +1,6 @@
+#ifdef PIKI_PC_PORT
+#include "pc_p2_enemy.h"
+#endif
 #include "pc_randomizer.h"
 #include "FlowController.h"
 #include "MoviePlayer.h"
@@ -132,6 +135,9 @@ void BTeki::viewDraw(Graphics& gfx, immut Matrix4f& mat)
 	gfx.useMatrix(Matrix4f::ident, 0);
 	mTekiAnimator->updateContext();
 	mTekiShape->mShape->updateAnim(gfx, mat, nullptr, this);
+#ifdef PIKI_PC_PORT
+    if (!pc_p2_snow_draw(this, gfx, mat, true))
+#endif
 	mTekiShape->mShape->drawshape(gfx, *gfx.mCamera, nullptr);
 }
 
@@ -1997,6 +2003,9 @@ void BTeki::drawTekiShape(Graphics& gfx)
 			mAnimatedMaterials.animate(nullptr);
 		}
 
+#ifdef PIKI_PC_PORT
+        if (!pc_p2_snow_draw(this, gfx, onCamMtx))
+#endif
 		mTekiShape->mShape->drawshape(gfx, *gfx.mCamera, &mAnimatedMaterials);
 		if (lightType == 1) {
 			gfx.calcLighting(1.0f);

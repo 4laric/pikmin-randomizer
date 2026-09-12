@@ -100,3 +100,5 @@ Batch #111: [Research Pod and economy preview](PIKMIN2_RESEARCH_POD.md). Static 
 Batch #113: [Purple preview](PIKMIN2_PURPLE_PREVIEW.md). Opt-in Purple species metadata, actual source model with sampled idle/walk/attack poses, separate ten-unit carrying strength, source numeric stats and Violet conversion are implemented. The isolated Atlas scenario exercises a 101-strength load. Landing/stun, full animation coverage and ship inventory remain open; this is not the full Purple acceptance gate.
 
 Batch #112: [Cave checkpoints](PIKMIN2_CAVE_CHECKPOINTS.md). Two standalone floors are linked with F6 at the Pod, survivor/Purple/maturity/health transfer and atomic receipt checkpoints. Mid-floor closes roll the whole floor back; extinction persists failure. Surface entry/return, physical transition actors and complete authored content remain open.
+
+Combined follow-up: [Snow and transition playtest](PIKMIN2_COMBINED_PLAYTEST.md) integrates opt-in source enemy visuals and marker-based descent/exit. [Content manifest](PIKMIN2_CONTENT_MANIFEST.md) prepares all three treasures independently; native multi-treasure support remains next.

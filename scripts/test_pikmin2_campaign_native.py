@@ -11,14 +11,15 @@ import subprocess
 import uuid
 from unittest.mock import patch
 
-from experimental.pikmin2_campaign import run_campaign, load, entry_text, ledger_text
+from experimental.pikmin2_campaign import run_campaign, load, entry_text, ledger_text, install_snow
 from scripts.preview_pikmin2_emergence import prepare
 
 
 def test(args):
     args.output.mkdir(parents=True, exist_ok=False)
     session = args.output/'session'
-    end = run_campaign(args.assets, args.imported, [args.pod1, args.pod2], args.purple, args.treasure, args.exe, session)
+    options = dict(transitions=args.transitions, snow=args.snow)
+    end = run_campaign(args.assets, args.imported, [args.pod1, args.pod2], args.purple, args.treasure, args.exe, session, **options)
     assert end['status'] == 'exited' and len(end['squad']) == 19 and end['health'] == .625
     assert Counter(p['species'] for p in end['squad']) == {'red':9, 'purple':10}
     assert sum(p['maturity'] == 2 for p in end['squad']) == 1
@@ -27,7 +28,7 @@ def test(args):
     assert load(session/'checkpoint.json', end['content']) == end
     # Relaunch of an exited cave must preserve the result and create no new run.
     existing = list((session/'runs').iterdir())
-    assert run_campaign(args.assets, args.imported, [args.pod1,args.pod2], args.purple,args.treasure,args.exe,session) == end
+    assert run_campaign(args.assets, args.imported, [args.pod1,args.pod2], args.purple,args.treasure,args.exe,session, **options) == end
     assert list((session/'runs').iterdir()) == existing
     # Explicit synthetic floor-entry checkpoint verifies Purple restoration,
     # including two process restarts without changing the saved checkpoint.
@@ -35,6 +36,9 @@ def test(args):
     for _ in range(2):
         run = prepare(args.assets,args.imported,args.treasure,args.output/'reloads',floor=2,pod=args.pod2,
                       purple=args.purple,squad=state['squad'])
+        if args.transitions:
+            (run/'p2-cave-transition.txt').write_bytes((args.transitions/'floor2.txt').read_bytes())
+        if args.snow: install_snow(args.snow, run)
         (run/'p2-cave-entry.txt').write_text(entry_text(state,uuid.uuid4().hex))
         (run/'p2-economy.txt').write_text(ledger_text(state['receipts']))
         (run/'p2-cave-restore-only.txt').touch()
@@ -48,7 +52,7 @@ def test(args):
     def extinction_room(*a, **kw):
         run=prepare(*a,**kw);(run/'p2-cave-extinction.txt').touch();return run
     with patch('experimental.pikmin2_campaign.prepare',side_effect=extinction_room):
-        failed=run_campaign(args.assets,args.imported,[args.pod1,args.pod2],args.purple,args.treasure,args.exe,args.output/'extinction')
+        failed=run_campaign(args.assets,args.imported,[args.pod1,args.pod2],args.purple,args.treasure,args.exe,args.output/'extinction', **options)
     assert failed['status']=='failed' and not failed['squad'] and not failed['receipts']
     assert load(args.output/'extinction/checkpoint.json',end['content'])==failed
     print('PASS: two native floor processes, atomic 380-Poko result, 19 survivors, maturity/health, ten Purples, repeated native restoration.')
@@ -58,6 +62,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ('assets','imported','pod1','pod2','purple','treasure','exe','output'):
         parser.add_argument('--'+name,type=Path,required=True)
+    parser.add_argument('--transitions',type=Path)
+    parser.add_argument('--snow',type=Path)
     args = parser.parse_args()
-    for name,value in vars(args).items():setattr(args,name,value.resolve())
+    for name,value in vars(args).items():
+        if value is not None: setattr(args,name,value.resolve())
     test(args)

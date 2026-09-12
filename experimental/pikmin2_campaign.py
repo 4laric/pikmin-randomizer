@@ -132,7 +132,7 @@ def transition(state, token, text, receipts, allowed):
     return validate(next_state)
 
 
-def content_identity(imported, pods, purple, transitions=None):
+def content_identity(imported, pods, purple, transitions=None, snow=None):
     files = []
     for floor, unit in enumerate(('room_north_tutorial_1_snow', 'room_purple14x14_snow'), 1):
         for name in ('render.mod', 'collision.json'):
@@ -143,6 +143,9 @@ def content_identity(imported, pods, purple, transitions=None):
             files.append((f'pod{i}/{name}', pod/name))
     files.extend((f'purple/{p.name}', p) for p in sorted(purple.glob('*.mod')))
     files.append(('purple/config', purple/'p2-purple.txt'))
+    if snow:
+        files.extend((f'snow/{p.name}', p) for p in sorted(snow.glob('snow_*.mod')))
+        files.extend((f'snow/{name}', snow/name) for name in ('snow.json', 'p2-snow.txt'))
     digest = hashlib.sha256(b'P2_CAVE_LAYOUT_1:two-standalone-rooms:all-survivors:boundary-checkpoint')
     for label, path in files:
         digest.update(label.encode() + b'\0' + hashlib.sha256(path.read_bytes()).digest())
@@ -164,10 +167,10 @@ def allowed_receipts(run, floor):
     return allowed
 
 
-def run_campaign(assets, imported, pods, purple, treasure, exe, session, transitions=None):
+def run_campaign(assets, imported, pods, purple, treasure, exe, session, transitions=None, snow=None):
     from experimental.pikmin2_transitions import read_transitions
     anchors = read_transitions(transitions)
-    content = content_identity(imported, pods, purple, anchors)
+    content = content_identity(imported, pods, purple, anchors, snow)
     with SessionLock(session):
         checkpoint = session/'checkpoint.json'
         if checkpoint.exists(): state = load(checkpoint, content)
@@ -180,6 +183,8 @@ def run_campaign(assets, imported, pods, purple, treasure, exe, session, transit
             floor = state['floor']
             run = prepare(assets, imported, treasure, session/'runs', floor=floor, pod=pods[floor-1],
                           purple=purple, violet=floor == 2, squad=state['squad'])
+            if snow:
+                install_snow(snow, run)
             token = uuid.uuid4().hex
             (run/'p2-cave-entry.txt').write_text(entry_text(state, token))
             if anchors:
@@ -202,12 +207,26 @@ def run_campaign(assets, imported, pods, purple, treasure, exe, session, transit
         return state
 
 
+def install_snow(imported, run):
+    """Opt in only the current scaffold dwarf; floor 2 has no enemy yet."""
+    import struct
+    from scripts.preview_pikmin2_room import records
+    from experimental.pikmin2_enemy import install
+    ids = [struct.unpack_from('<I', row, 8)[0]
+           for row in records(run/'assets/dataDir/stages/chal0/default.gen')
+           if row[16:48].rstrip(b'\0') == b'preview dwarf bulborb']
+    if ids:
+        install(imported, run, ids)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ('assets', 'imported', 'pod1', 'pod2', 'purple', 'treasure', 'exe', 'session'):
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--transitions', type=Path, help='Optional floor1.txt/floor2.txt world markers; requires matching native renderer hook')
+    parser.add_argument('--snow', type=Path, help='Opt-in source Snow Bulborb visuals on existing scaffold enemies')
     args = parser.parse_args()
     run_campaign(args.assets.resolve(), args.imported.resolve(), [args.pod1.resolve(), args.pod2.resolve()],
                  args.purple.resolve(), args.treasure.resolve(), args.exe.resolve(), args.session.resolve(),
-                 args.transitions.resolve() if args.transitions else None)
+                 args.transitions.resolve() if args.transitions else None,
+                 args.snow.resolve() if args.snow else None)

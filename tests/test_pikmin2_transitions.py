@@ -21,6 +21,17 @@ class TransitionConfigTests(unittest.TestCase):
             moved = content_identity(root, [root,root], root, {1:b'hole at B'})
             self.assertNotEqual(baseline, marked)
             self.assertNotEqual(marked, moved)
+            snow = root/'snow'
+            snow.mkdir()
+            for name in ('snow.json', 'p2-snow.txt', 'snow_wait_00.mod'):
+                (snow/name).write_bytes(b'original')
+            enabled = content_identity(root, [root,root], root, snow=snow)
+            self.assertNotEqual(baseline, enabled)
+            for name in ('snow.json', 'p2-snow.txt', 'snow_wait_00.mod'):
+                with self.subTest(snow_asset=name):
+                    (snow/name).write_bytes(b'changed')
+                    self.assertNotEqual(enabled, content_identity(root, [root,root], root, snow=snow))
+                    (snow/name).write_bytes(b'original')
 
     def test_absent_and_frozen_configuration(self):
         self.assertEqual(read_transitions(None), {})

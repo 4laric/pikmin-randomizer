@@ -15,6 +15,7 @@
 #include "pc_p2_economy.h"
 #include "pc_p2_purple.h"
 #include "pc_p2_cave.h"
+#include "pc_p2_enemy.h"
 #include "GoalItem.h"
 #include "ItemMgr.h"
 #include "Generator.h"
@@ -96,6 +97,7 @@ void pc_p2_preview_setup() {
         std::printf("[Pikipelago] P2_POD_READY treasure=%s value=%d weight=%d capacity=%d pokos=%d\n",id,treasureValue,weight,capacity,economy.total());
         podTitle("");
     }
+    pc_p2_snow_setup();
     pc_p2_purple_setup();
     pc_p2_cave_setup();
     gsys->setHeap(previousHeap);
@@ -128,7 +130,7 @@ bool pc_p2_preview_deliver(Pellet* pellet) {
             receipt="corpse:"+pc_p2_cave_receipt_prefix()+found->second.substr(7);value=corpseValue;
         }
         bool added=economy.credit(receipt,value);
-        podTitle((pellet==previewTreasure?treasureId:"Dwarf Bulborb")+" +"+std::to_string(added?value:0));
+        podTitle((pellet==previewTreasure?treasureId:(pc_p2_enemy_name(pellet->mPelletView)?pc_p2_enemy_name(pellet->mPelletView):"Dwarf Bulborb"))+" +"+std::to_string(added?value:0));
         pc_p2_purple_status();
         std::printf("[Pikipelago] P2_POD_RECEIPT id=%s value=%d new=%d pokos=%d seeds=0\n",receipt.c_str(),value,int(added),economy.total());
         if(pellet==previewTreasure) {

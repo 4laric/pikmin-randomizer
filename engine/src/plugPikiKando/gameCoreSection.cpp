@@ -2979,6 +2979,7 @@ void GameCoreSection::draw(Graphics& gfx)
 	if (AIPerf::showRoute) {
 		routeMgr->refresh(gfx);
 	}
+	pc_p2_cave_draw_transition(gfx);
 }
 
 /**
