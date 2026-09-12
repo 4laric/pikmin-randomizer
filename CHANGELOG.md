@@ -258,3 +258,11 @@ Built on [Open Nectar](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-
 Whistle controls: tap B to recall idle Pikmin without interrupting workers. Double-tap within 350 ms to recall busy Pikmin in whistle range; holding B for 0.6 seconds also recalls workers. This follows your mapped whistle action.
 
 Existing seed manifests retain the legacy pluck-only upgrade and save format. New AP/CLI collection-check seeds use Progressive Olimar Speed; the overlay shows its shared MOVE/PLUCK multiplier.
+
+## 0.31.0-playtest.4
+
+- Create solo runs and reconnect to AP from the launcher, without console commands.
+- A bare server address automatically tries wss:// after a failed plain WebSocket handshake. Explicit schemes remain respected.
+- Remember installed assets and selected runs; show installation phases and copyable privacy-safe diagnostics.
+- Retry brief Windows locks when finalizing extracted assets; do not reuse interrupted disc decodes.
+- Native gameplay executable and AP world remain compatible with playtest.3. Visual/interactive acceptance on other Windows configurations remains part of this invited playtest.

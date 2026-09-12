@@ -183,3 +183,7 @@ After installation the launcher shows **Pikmin installed ✓**; **Change** revea
 For AP, correct the server/password and use **Reconnect** to keep the current game and seed session alive. A refused login waits for correction. A different seed or slot manifest is still rejected. Password updates travel through a private process pipe and are not saved.
 
 **Copy diagnostics** copies a small report of version, seed fingerprint, mode, setup readiness and recognized error categories/exit codes. It excludes passwords, server addresses, personal paths and raw logs. Nothing is uploaded automatically.
+
+### Finding settings and understanding speed
+
+Press **F1** while playing for game settings (graphics, audio and controls); **F8** opens the tracker. The launcher shows unusual starting-color stats before launch. In the bundled example seed, Red Pikmin start with 50% movement and 25% damage: those are randomized seed rules, not an overall game-speed setting. **New solo run** uses standard starting stats.

@@ -139,3 +139,24 @@ class APUpdateTests(unittest.IsolatedAsyncioTestCase):
         commands = connection_updates(io.StringIO('not json\n{"server":"x:1","password":42}\n{"server":"good:1234","password":"secret"}\n'))
         command = await asyncio.to_thread(commands.get, True, 2)
         self.assertEqual(command, {"server": "good:1234", "password": "secret"})
+
+    async def test_bare_address_tries_tls_after_handshake_failure(self):
+        from websockets.exceptions import InvalidMessage
+        seen = []
+        connected = asyncio.Event()
+        async def connect(session, server, password, ready):
+            seen.append(server)
+            if len(seen) == 1:
+                raise InvalidMessage("no HTTP response")
+            connected.set()
+            await asyncio.Future()
+        session = SimpleNamespace(manifest={"mode": "ap"}, goal=False)
+        run = SimpleNamespace(handshaken=True, poll=lambda: None, write_state=lambda ready: None)
+        with patch("randomizer.runner.ap_connect", side_effect=connect), redirect_stdout(io.StringIO()):
+            task = asyncio.create_task(serve(session, run, server="example.org:1234"))
+            try:
+                await asyncio.wait_for(connected.wait(), 2)
+                self.assertEqual(seen, ["example.org:1234", "wss://example.org:1234"])
+            finally:
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
