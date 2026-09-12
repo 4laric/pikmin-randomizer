@@ -87,13 +87,13 @@ void GenObjectBoss::ramSaveParameters(RandomAccessStream& output)
  */
 void GenObjectBoss::readParameters(RandomAccessStream& input)
 {
-    // File layout is fixed; host C++ bitfield allocation order is not.
-    const u32 flags = static_cast<u32>(input.readInt());
-    mBossID          = flags & 0xf;
-    mItemIndex       = (flags >> 4) & 0x3;
-    mItemColour      = (flags >> 6) & 0x3;
-    mItemCount       = (flags >> 8) & 0xf;
-    mPelletConfigIdx = static_cast<int>(flags >> 12) - 1;
+	// File layout is fixed; host C++ bitfield allocation order is not.
+	const u32 flags = static_cast<u32>(input.readInt());
+	mBossID          = flags & 0xf;
+	mItemIndex       = (flags >> 4) & 0x3;
+	mItemColour      = (flags >> 6) & 0x3;
+	mItemCount       = (flags >> 8) & 0xf;
+	mPelletConfigIdx = static_cast<int>(flags >> 12) - 1;
 }
 
 /**
@@ -101,12 +101,12 @@ void GenObjectBoss::readParameters(RandomAccessStream& input)
  */
 void GenObjectBoss::writeParameters(RandomAccessStream& output)
 {
-    const u32 flags = (static_cast<u32>(mBossID) & 0xf)
-        | ((static_cast<u32>(mItemIndex) & 0x3) << 4)
-        | ((static_cast<u32>(mItemColour) & 0x3) << 6)
-        | ((static_cast<u32>(mItemCount) & 0xf) << 8)
-        | ((static_cast<u32>(mPelletConfigIdx + 1) & 0xfffff) << 12);
-    output.writeInt(flags);
+	const u32 flags = (static_cast<u32>(mBossID) & 0xf)
+	    | ((static_cast<u32>(mItemIndex) & 0x3) << 4)
+	    | ((static_cast<u32>(mItemColour) & 0x3) << 6)
+	    | ((static_cast<u32>(mItemCount) & 0xf) << 8)
+	    | ((static_cast<u32>(mPelletConfigIdx + 1) & 0xfffff) << 12);
+	output.writeInt(flags);
 }
 
 /**

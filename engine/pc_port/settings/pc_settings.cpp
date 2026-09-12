@@ -82,6 +82,8 @@ struct PcConfig {
     // Off by default. The stock behaviour -- finish a job, walk back to the
     // squad -- is what the retail game does; this only changes it on request.
     int chainActions = 0;
+    // Hold Extract to keep plucking (0=off/faithful, 1=on). Off by default.
+    int holdToPluck = 0;
     // What the mouse wheel does: 0 = pick the Pikmin colour to throw,
     // 1 = zoom the camera. One setting rather than two toggles, so the two
     // uses cannot both be on or both be off.
@@ -124,6 +126,7 @@ struct PcConfig {
         stickInvert = 0;
         cStickInvert = 0;
         chainActions = 0;
+        holdToPluck = 0;
         mouseWheelAction = 0;
         pikiLimit = 100;
         dayMinutes = 10;
@@ -150,11 +153,31 @@ PcConfig sConfig;      // the confirmed, persisted settings
 namespace {
 int menuStickThreshold()
 {
-	// Same units the game uses: the setting counts in pad steps, the axis in
-	// SDL's 16-bit range. A zero setting would make the menu react to noise,
-	// so keep a small floor.
+	// Gameplay uses a small pad-step dead zone. The F1 list must not: DualSense
+	// rest noise and the Linux IMU device sit well above 2048 and looked like
+	// a held down. Half throw is a flick, not drift.
 	const int threshold = sConfig.stickDeadZone * 256;
-	return threshold < 2048 ? 2048 : threshold;
+	return threshold < 16384 ? 16384 : threshold;
+}
+
+bool menuStickVertical(SDL_GameController* c, int sign)
+{
+	const int x = SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTX);
+	const int y = SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTY);
+	const int t = menuStickThreshold();
+	if (std::abs(y) <= t || std::abs(y) < std::abs(x))
+		return false;
+	return sign < 0 ? y < 0 : y > 0;
+}
+
+bool menuStickHorizontal(SDL_GameController* c, int sign)
+{
+	const int x = SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTX);
+	const int y = SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTY);
+	const int t = menuStickThreshold();
+	if (std::abs(x) <= t || std::abs(x) < std::abs(y))
+		return false;
+	return sign < 0 ? x < 0 : x > 0;
 }
 } // namespace
 PcConfig sPending;     // settings staged while editing
@@ -231,6 +254,9 @@ int sResolutionIdx = 0; // se resuelve al construir la lista (ver defaultResolut
 bool sInControlsSubmenu = false;
 int sControlSelection = 0; // index into PC_KEY_ACT_COUNT
 bool sWaitingForKey = false; // true while capturing a new key
+// Enter / Space / pad A started capture while still held. Ignore them until
+// they are released, otherwise the same press is stored as the new binding.
+bool sCaptureWaitRelease = false;
 
 // Gamepad controls submenu state.
 bool sInGamepadSubmenu = false;
@@ -271,14 +297,14 @@ constexpr int kSaturationStopCount = int(sizeof(kSaturationStops) / sizeof(kSatu
 // Mods submenu state. Everything here changes how the game *plays* rather than
 // how it looks or reads input hardware, so it lives apart from the rest: a
 // player who wants the original experience only has to leave this one page
-// alone. 0=control scheme, 1=chain Pikmin actions.
+// alone.
 bool sInModsSubmenu = false;
 int sModsSelection = 0;
 #if PIKI_DEBUG_KEYS
-constexpr int kModsRowCount = 6;
+constexpr int kModsRowCount = 7;
 #else
 // The debug row is the last one, so leaving it off simply shortens the list.
-constexpr int kModsRowCount = 5;
+constexpr int kModsRowCount = 6;
 #endif
 
 // Field-limit stops. 100 is what the original game uses.
@@ -615,46 +641,75 @@ void resetToDefaults() {
 // Defined outside the anonymous namespace and deliberately self-contained: it
 // runs during static initialisation, so it cannot rely on sConfig having been
 // loaded, or even on this file's own globals having been constructed.
+//
+// PAL's GamePrefs constructor calls OSGetLanguage() before main(). On MinGW
+// that can be before ios_base::Init; std::ifstream / std::string there is a
+// crash-at-launch while the USA binary (which never asks) starts fine. Stay
+// on getenv/fopen/fgets.
 // The language in force, as an OS_LANG_* value. Seeded from the file at boot
 // and changed from the F1 menu; saved back on every write.
 static unsigned char sLanguage = 0xFF; // 0xFF = not yet seeded
 
+static unsigned char decodeLanguageCode(const char* text, unsigned char fallback)
+{
+    static const struct {
+        char a;
+        char b;
+        unsigned char value;
+    } kCodes[] = {
+        { 'e', 'n', 0 }, { 'd', 'e', 1 }, { 'f', 'r', 2 },
+        { 'e', 's', 3 }, { 'i', 't', 4 }, { 'n', 'l', 5 },
+    };
+    if (!text || !text[0] || !text[1])
+        return fallback;
+    for (unsigned i = 0; i < sizeof(kCodes) / sizeof(kCodes[0]); ++i) {
+        if (text[0] == kCodes[i].a && text[1] == kCodes[i].b)
+            return kCodes[i].value;
+    }
+    return fallback;
+}
+
+static void trimCString(char* text)
+{
+    char* start = text;
+    while (*start == ' ' || *start == '\t' || *start == '\r' || *start == '\n')
+        ++start;
+    if (start != text)
+        memmove(text, start, strlen(start) + 1);
+    size_t n = strlen(text);
+    while (n > 0 && (text[n - 1] == ' ' || text[n - 1] == '\t' || text[n - 1] == '\r' || text[n - 1] == '\n'))
+        text[--n] = '\0';
+}
+
 unsigned char pc_settings_startup_language(void) {
-    static const unsigned char language = [] {
-        static const struct { const char* code; unsigned char value; } kCodes[] = {
-            { "en", 0 }, { "de", 1 }, { "fr", 2 }, { "es", 3 }, { "it", 4 }, { "nl", 5 },
-        };
-        auto decode = [](const std::string& text, unsigned char fallback) {
-            for (const auto& entry : kCodes) {
-                if (text.compare(0, 2, entry.code) == 0) return entry.value;
-            }
-            return fallback;
-        };
-
+    static unsigned char language = 0;
+    static int seeded = 0;
+    if (!seeded) {
+        seeded = 1;
+        language = 0;
         if (const char* fromEnvironment = getenv("NECTAR_LANGUAGE")) {
-            return decode(fromEnvironment, (unsigned char)0);
+            language = decodeLanguageCode(fromEnvironment, 0);
+        } else if (FILE* in = fopen(kConfigFilename, "r")) {
+            char line[512];
+            while (fgets(line, sizeof(line), in)) {
+                char* equals = strchr(line, '=');
+                if (!equals)
+                    continue;
+                *equals = '\0';
+                char* key = line;
+                char* value = equals + 1;
+                trimCString(key);
+                trimCString(value);
+                if (strcmp(key, "language") == 0) {
+                    language = decodeLanguageCode(value, 0);
+                    break;
+                }
+            }
+            fclose(in);
         }
-
-        std::ifstream in(kConfigFilename);
-        if (!in) return (unsigned char)0;
-        std::string line;
-        while (std::getline(in, line)) {
-            const size_t equals = line.find('=');
-            if (equals == std::string::npos) continue;
-            std::string key = line.substr(0, equals);
-            std::string value = line.substr(equals + 1);
-            const auto strip = [](std::string& text) {
-                const size_t first = text.find_first_not_of(" \t\r\n");
-                const size_t last = text.find_last_not_of(" \t\r\n");
-                text = (first == std::string::npos) ? std::string() : text.substr(first, last - first + 1);
-            };
-            strip(key);
-            strip(value);
-            if (key == "language") return decode(value, (unsigned char)0);
-        }
-        return (unsigned char)0;
-    }();
-    if (sLanguage == 0xFF) sLanguage = language;
+    }
+    if (sLanguage == 0xFF)
+        sLanguage = language;
     return language;
 }
 
@@ -693,6 +748,7 @@ void saveConfig() {
     out << "renderScale = " << sConfig.renderScale << "\n";
     out << "fpsMode = " << sConfig.fpsMode << "\n";
     out << "chainActions = " << sConfig.chainActions << "\n";
+    out << "holdToPluck = " << sConfig.holdToPluck << "\n";
     out << "mouseWheelAction = " << sConfig.mouseWheelAction << "\n";
     out << "pikiLimit = " << sConfig.pikiLimit << "\n";
     out << "dayMinutes = " << sConfig.dayMinutes << "\n";
@@ -791,6 +847,9 @@ void loadConfig() {
         else if (key == "chainActions") {
             sConfig.chainActions = atoi(val.c_str()) ? 1 : 0;
         }
+        else if (key == "holdToPluck") {
+            sConfig.holdToPluck = atoi(val.c_str()) ? 1 : 0;
+        }
         else if (key == "mouseWheelAction") {
             sConfig.mouseWheelAction = atoi(val.c_str());
             if (sConfig.mouseWheelAction < 0 || sConfig.mouseWheelAction > 1) sConfig.mouseWheelAction = 0;
@@ -884,29 +943,59 @@ bool padEdge(bool pressed, int slot) { return pc_menu_edge(pressed, slot, SDL_Ge
 /// Stick threshold for menus. Follows the configured dead zone, which a fixed
 /// 8000 used to ignore -- so changing the setting appeared to do nothing.
 int menuStickThreshold();
+bool menuStickVertical(SDL_GameController* c, int sign);
+bool menuStickHorizontal(SDL_GameController* c, int sign);
 
 bool padNavUp(SDL_GameController* c)
 {
 	return padEdge(SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_DPAD_UP)
-	                   || SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTY) < -menuStickThreshold(), 0);
+	                   || menuStickVertical(c, -1), 0);
 }
 bool padNavDown(SDL_GameController* c)
 {
 	return padEdge(SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_DPAD_DOWN)
-	                   || SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTY) > menuStickThreshold(), 1);
+	                   || menuStickVertical(c, 1), 1);
 }
 bool padNavLeft(SDL_GameController* c)
 {
 	return padEdge(SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_DPAD_LEFT)
-	                   || SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTX) < -menuStickThreshold(), 2);
+	                   || menuStickHorizontal(c, -1), 2);
 }
 bool padNavRight(SDL_GameController* c)
 {
 	return padEdge(SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_DPAD_RIGHT)
-	                   || SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_LEFTX) > menuStickThreshold(), 3);
+	                   || menuStickHorizontal(c, 1), 3);
 }
 bool padNavA(SDL_GameController* c) { return padEdge(SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_A), 4); }
 bool padNavB(SDL_GameController* c) { return padEdge(SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_B), 5); }
+
+bool captureConfirmHeld(SDL_GameController* ctl)
+{
+	int numKeys = 0;
+	const Uint8* keys = SDL_GetKeyboardState(&numKeys);
+	if (SDL_SCANCODE_RETURN < numKeys && keys[SDL_SCANCODE_RETURN])
+		return true;
+	if (SDL_SCANCODE_SPACE < numKeys && keys[SDL_SCANCODE_SPACE])
+		return true;
+	return ctl && SDL_GameControllerGetButton(ctl, SDL_CONTROLLER_BUTTON_A);
+}
+
+bool anyGamepadButtonHeld(SDL_GameController* ctl)
+{
+	if (!ctl)
+		return false;
+	for (int btn = 0; btn < SDL_CONTROLLER_BUTTON_MAX; btn++) {
+		if (SDL_GameControllerGetButton(ctl, (SDL_GameControllerButton)btn))
+			return true;
+	}
+	return false;
+}
+
+bool isCaptureModifierScancode(int sc)
+{
+	return sc == SDL_SCANCODE_LCTRL || sc == SDL_SCANCODE_RCTRL || sc == SDL_SCANCODE_LSHIFT || sc == SDL_SCANCODE_RSHIFT
+	    || sc == SDL_SCANCODE_LALT || sc == SDL_SCANCODE_RALT || sc == SDL_SCANCODE_LGUI || sc == SDL_SCANCODE_RGUI;
+}
 } // namespace
 
 bool keyWentDown(SDL_Scancode sc) {
@@ -985,24 +1074,24 @@ void pollMenuInput() {
     // Controls submenu (key capture mode).
     if (sInControlsSubmenu) {
         if (sWaitingForKey) {
-            // Wait for any key press.
-            const Uint8* state = SDL_GetKeyboardState(NULL);
-            for (int sc = 0; sc < SDL_NUM_SCANCODES; sc++) {
-                if (state[sc]) {
-                    // Ignore modifier keys alone.
-                    if (sc != SDL_SCANCODE_LCTRL && sc != SDL_SCANCODE_RCTRL &&
-                        sc != SDL_SCANCODE_LSHIFT && sc != SDL_SCANCODE_RSHIFT &&
-                        sc != SDL_SCANCODE_LALT && sc != SDL_SCANCODE_RALT &&
-                        sc != SDL_SCANCODE_LGUI && sc != SDL_SCANCODE_RGUI) {
-                        sPending.keyboardBindings[sControlSelection] = sc;
-                        sWaitingForKey = false;
-                        break;
-                    }
-                }
-            }
-            // ESC cancels capture.
             if (keyWentDown(SDL_SCANCODE_ESCAPE) || (ctl && padNavB(ctl))) {
                 sWaitingForKey = false;
+                sCaptureWaitRelease = false;
+                return;
+            }
+            if (sCaptureWaitRelease) {
+                if (!captureConfirmHeld(ctl))
+                    sCaptureWaitRelease = false;
+                return;
+            }
+            for (int sc = 0; sc < SDL_NUM_SCANCODES; sc++) {
+                if (!keyWentDown(static_cast<SDL_Scancode>(sc)))
+                    continue;
+                if (isCaptureModifierScancode(sc))
+                    continue;
+                sPending.keyboardBindings[sControlSelection] = sc;
+                sWaitingForKey = false;
+                break;
             }
             return;
         }
@@ -1037,6 +1126,7 @@ void pollMenuInput() {
         }
         if (ok) {
             sWaitingForKey = true;
+            sCaptureWaitRelease = true;
             return;
         }
         if (left || right) {
@@ -1049,6 +1139,7 @@ void pollMenuInput() {
             keyWentDown(SDL_SCANCODE_B) || (ctl && padNavB(ctl))) {
             sInControlsSubmenu = false;
             sWaitingForKey = false;
+            sCaptureWaitRelease = false;
         }
         return;
     }
@@ -1056,20 +1147,34 @@ void pollMenuInput() {
     // Gamepad submenu (button capture mode).
     if (sInGamepadSubmenu) {
         if (sWaitingForButton) {
-            // Wait for any gamepad button press.
+            // B/Circle is a bindable face button. Only Esc cancels capture.
+            if (keyWentDown(SDL_SCANCODE_ESCAPE)) {
+                sWaitingForButton = false;
+                sCaptureWaitRelease = false;
+                return;
+            }
+            if (sCaptureWaitRelease) {
+                if (!captureConfirmHeld(ctl))
+                    sCaptureWaitRelease = false;
+                return;
+            }
             if (ctl) {
                 for (int btn = 0; btn < SDL_CONTROLLER_BUTTON_MAX; btn++) {
                     if (SDL_GameControllerGetButton(ctl, (SDL_GameControllerButton)btn)) {
                         sPending.gamepadBindings[sGamepadSelection] = btn;
                         sWaitingForButton = false;
+                        sCaptureWaitRelease = true;
                         break;
                     }
                 }
             }
-            // ESC cancels capture.
-            if (keyWentDown(SDL_SCANCODE_ESCAPE) || (ctl && padNavB(ctl))) {
-                sWaitingForButton = false;
-            }
+            return;
+        }
+
+        // The button just bound is still held; do not treat it as Back.
+        if (sCaptureWaitRelease) {
+            if (!anyGamepadButtonHeld(ctl) && !captureConfirmHeld(ctl))
+                sCaptureWaitRelease = false;
             return;
         }
 
@@ -1103,6 +1208,7 @@ void pollMenuInput() {
         }
         if (ok) {
             sWaitingForButton = true;
+            sCaptureWaitRelease = true;
             return;
         }
         if (left || right) {
@@ -1113,6 +1219,7 @@ void pollMenuInput() {
             keyWentDown(SDL_SCANCODE_B) || (ctl && padNavB(ctl))) {
             sInGamepadSubmenu = false;
             sWaitingForButton = false;
+            sCaptureWaitRelease = false;
         }
         return;
     }
@@ -1361,14 +1468,18 @@ void pollMenuInput() {
         else if (sModsSelection == 1) {
             if (left || right) sPending.chainActions = sPending.chainActions ? 0 : 1;
         }
-        // What the mouse wheel controls.
+        // Hold Extract to keep plucking after the first sprout.
         else if (sModsSelection == 2) {
+            if (left || right) sPending.holdToPluck = sPending.holdToPluck ? 0 : 1;
+        }
+        // What the mouse wheel controls.
+        else if (sModsSelection == 3) {
             if (left || right) sPending.mouseWheelAction = sPending.mouseWheelAction ? 0 : 1;
         }
         // Pikmin field limit. Stepped through meaningful values rather than one
         // at a time: the menu has no key repeat, so a fine slider would take
         // hundreds of presses to cross the range.
-        else if (sModsSelection == 3) {
+        else if (sModsSelection == 4) {
             int idx = 0;
             for (int i = 0; i < kPikiLimitCount; i++) {
                 if (kPikiLimits[i] == sPending.pikiLimit) { idx = i; break; }
@@ -1378,7 +1489,7 @@ void pollMenuInput() {
             sPending.pikiLimit = kPikiLimits[idx];
         }
         // Day length.
-        else if (sModsSelection == 4) {
+        else if (sModsSelection == 5) {
             int idx = 0;
             for (int i = 0; i < kDayMinutesCount; i++) {
                 if (kDayMinutes[i] == sPending.dayMinutes) { idx = i; break; }
@@ -1388,7 +1499,7 @@ void pollMenuInput() {
             sPending.dayMinutes = kDayMinutes[idx];
         }
         // Debug shortcuts.
-        else if (sModsSelection == 5) {
+        else if (sModsSelection == 6) {
             if (left || right) sPending.debugKeys = sPending.debugKeys ? 0 : 1;
         }
         return;
@@ -1530,6 +1641,7 @@ void pollMenuInput() {
             sInControlsSubmenu = true;
             sControlSelection = 0;
             sWaitingForKey = false;
+            sCaptureWaitRelease = false;
         }
         break;
     case ROW_GAMEPAD:
@@ -1537,6 +1649,7 @@ void pollMenuInput() {
             sInGamepadSubmenu = true;
             sGamepadSelection = 0;
             sWaitingForButton = false;
+            sCaptureWaitRelease = false;
         }
         break;
     case ROW_ADVANCED:
@@ -2217,7 +2330,7 @@ void pc_settings_draw(void) {
             bool waiting = sWaitingForKey && selected;
 
             const char* actionName = pc_window_get_key_action_name(i);
-            SDL_Scancode boundSc = pc_window_get_key_binding(i);
+            SDL_Scancode boundSc = static_cast<SDL_Scancode>(sPending.keyboardBindings[i]);
             const char* scName = SDL_GetScancodeName(boundSc);
 
             char value[96];
@@ -2247,8 +2360,9 @@ void pc_settings_draw(void) {
         const int subX = px1 + 18, subY = py1 + 44;
         const int subW = panelW - 36, subH = panelH - 58;
         drawSubmenuSurface(gfx, subX, subY, subW, subH, "Gamepad Controls",
-                           "Enter: capture   Left/Right: default",
-                           "Up/Down: select   Esc/B: back");
+                           sWaitingForButton ? "Press a button   Esc: cancel"
+                                            : "Enter: capture   Left/Right: default",
+                           sWaitingForButton ? "" : "Up/Down: select   Esc/B: back");
 
         const int listStartY = subY + 48;
         const int itemH = 24;
@@ -2469,6 +2583,7 @@ void pc_settings_draw(void) {
         const char* modsLabels[kModsRowCount] = {
             "Control Scheme",
             "Chain Pikmin Actions",
+            "Hold to Pluck",
             "Mouse Wheel",
             "Pikmin Limit",
             "Day Length",
@@ -2494,11 +2609,14 @@ void pc_settings_draw(void) {
                          sPending.chainActions ? "On" : "Off (original)");
             } else if (i == 2) {
                 snprintf(value, sizeof(value), "%s",
+                         sPending.holdToPluck ? "On" : "Off (original)");
+            } else if (i == 3) {
+                snprintf(value, sizeof(value), "%s",
                          sPending.mouseWheelAction ? "Camera Zoom" : "Pikmin Colour");
-            } else if (i == 5) {
+            } else if (i == 6) {
                 snprintf(value, sizeof(value), "%s",
                          sPending.debugKeys ? "On" : "Off");
-            } else if (i == 4) {
+            } else if (i == 5) {
                 if (sPending.dayMinutes == 10) {
                     snprintf(value, sizeof(value), "10 min (original)");
                 } else {
@@ -2539,6 +2657,10 @@ int pc_settings_get_fps_mode(void) {
 
 int pc_settings_get_chain_actions(void) {
     return sConfig.chainActions;
+}
+
+int pc_settings_get_hold_to_pluck(void) {
+    return sConfig.holdToPluck;
 }
 
 int pc_settings_get_mouse_wheel_action(void) {

@@ -7,9 +7,9 @@ The desktop heartbeat runs daily at 10:00 America/Toronto and stays quiet on unc
 ## Recorded state (2026-09-11)
 
 - Upstream: `SSunnKing/Open-Nectar---Pikmin-Native-PC-Port`, branch `main`.
-- Last fetched/reviewed: `f80a7246a77e3b77e96c81fd12e2d9c7814c2c8f` (new PR base; not yet integrated downstream).
-- Last integrated upstream: `398258e7d84906e4938eab076785d0b8879d4043` (health-gauge PR #2 merged).
-- Current maintained downstream native commit: `b8f1f650` (see ENGINE_SOURCE.md); per-color stats and progressive upgrades added after integration in #28/#29/#30, with permanent checks in #31 and damage-based structure work in #32, expanded bestiary/landing-only checks in #33.
+- Last fetched/reviewed: `7dc430c7` (integrated in #83).
+- Last integrated upstream: `7dc430c7` (0.4.6 fixes and accepted PRs #11–13).
+- Current maintained downstream native commit: `85a581b0` (see ENGINE_SOURCE.md); per-color stats and progressive upgrades added after integration in #28/#29/#30, with permanent checks in #31 and damage-based structure work in #32, expanded bestiary/landing-only checks in #33.
 - **Earlier integration complete:** [#26](https://github.com/4laric/pikmin-randomizer/issues/26), all 14 commits across 51 files, merged without conflicts. This historical integration does not include the newer reviewed commits above.
 - [Health gauges PR #2](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port/pull/2): MERGED at `398258e7`, 2026-09-11.
 - [Save-slot PR #3](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port/pull/3): CLOSED after maintainer manually applied the save guards on main in `4df56740`; not rejected. CI PR #7 was likewise applied manually and closed. Boss PR #4 and health-gauge PR #2 are merged.
@@ -75,3 +75,13 @@ User authorized submission of quick-grab timing, post-process color mask and hol
 - [PR #13](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port/pull/13): hold-to-continue initiated plucking, `086521ef`, tracking #73. Existing downstream live fixture rerun passes unbroken hold, release, whistle cancellation, re-press, animation-boundary release and bounded fast-pluck counter. Physical multi-sprout controller acceptance remains distinct.
 
 These reruns use the existing downstream fixture binaries, not newly built upstream binaries. All patches applied cleanly and passed diff checks. Fresh upstream CI builds were still running when submitted; do not infer a green upstream build from downstream fixture results. Upstream runs: 34648747460 / 34648752134 / 34648761610 respectively. Local evidence is under output/upstream-grab-71-recheck, output/upstream-color-mask-72-recheck and output/upstream-pluck-73-recheck. No downstream game binary, save or playable checkout was changed.
+
+## Integration and PR feedback — #83
+
+Integrated canonical 7dc430c7 via candidate merge aed49cdf, native 85a581b0. Conflicts reconciled in CI/CMake, save guards, boss decoding and pluck handling. Randomizer runs preserve hold-to-pluck; ordinary PC play uses upstream F1 optional setting. New upstream changes include menu depth-of-field exclusion, real control names in tutorials, DualSense capture fixes and PAL startup fix.
+
+PR #11 merged. PR #12 manually applied in 2fc6298d because post_apply gained allowDof. PR #13 manually applied in 7dc430c7 as an off-by-default F1 mod: maintainer considers this a gameplay change rather than a bug fix. Future gameplay proposals should follow that optional-mod convention.
+
+Validation: clean Windows production build (portable optimization, JAudio ON, test hooks OFF); 92 Python tests/eight subtests; 150 AP custom fills/10 remote-Blue multiworlds; legacy/new consumed-benefit save/reconnect probes and campaign protocol; all five live area startups with seed-matched births; four render/camera tests; real GL mask fixture; real pluck hold/release/cancel/re-press fixture. PAL runtime and physical controller/menu acceptance not claimed.
+
+Submitted bomb-warning fix as upstream PR #15 (b179e12a), tracking #84. CI pending at submission. Eight-line PC guard only; no randomizer hooks. Dynamic field-limit messaging is another candidate; Candypop timing, faster throws and other gameplay conveniences need optional-mod treatment upstream.

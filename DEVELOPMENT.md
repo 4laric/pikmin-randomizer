@@ -1,3 +1,7 @@
+## Upstream integration (#83)
+
+Native 85a581b0 integrates upstream main 7dc430c7. See UPSTREAM_SYNC.md for conflict resolutions, PR feedback and validation. Production binary: output/native-upstream-83/build-sync/bin/nectar.exe. The older native/build-stats binary predates this merge until rebuilt. Separate nectar-upstream83.exe staged in turkey-wide-02 and turkey-wide-03; next launch uses it. Seed/save and running processes unchanged.
+
 ## Effective capacity in Onion warnings (#81)
 
 Native b8f1f650 updates both squad-capacity and total-field warning messages on each Onion menu opening, using the actual withdrawal limit passed by Navi. All three colors and both text/shadow layers preserve their original asset templates, line breaks and formatting; replacing only the 100 token means later upgrades can refresh the number repeatedly. English asset inspection confirms the token in all 12 panes. No seed/save changes. Native production build and physical acceptance status recorded in issue #81.

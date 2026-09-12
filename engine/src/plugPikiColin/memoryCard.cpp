@@ -866,7 +866,7 @@ void MemoryCard::saveCurrentGame()
 	// Direct boot can reach the save UI before a physical backup slot has
 	// been selected. Index zero would write at cardData - 0x2000.
 	if (gameflow.mGamePrefs.mSpareMemCardSaveIndex < 1 || gameflow.mGamePrefs.mSpareMemCardSaveIndex > 4) {
-		mDidSaveFail = true;
+		mDidSaveFail       = true;
 		gsys->mIsCardSaving = FALSE;
 		OSReport("[PC Port] Refusing save with invalid backup slot %d\n", gameflow.mGamePrefs.mSpareMemCardSaveIndex);
 		return;

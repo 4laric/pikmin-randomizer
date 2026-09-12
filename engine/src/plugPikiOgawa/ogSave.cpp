@@ -340,7 +340,7 @@ zen::ogSaveMgr::SaveStatus zen::ogSaveMgr::update(Controller* input)
 				// Finish card preparation and slot selection before starting the
 				// save timer, including games that bypassed the title/file menu.
 				mMemCheckMgr->start();
-				mStatus = PreparingSave;
+				mStatus    = PreparingSave;
 				mAnimTimer = 0.0f;
 				break;
 			}

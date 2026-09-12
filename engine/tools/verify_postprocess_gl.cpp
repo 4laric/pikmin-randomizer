@@ -79,7 +79,7 @@ Pixel run_case(const std::array<GLboolean, 4>& mask, Pixel& input, bool& resultO
     input = read_pixel(sNativeFramebuffer, sRenderWidth / 2, sRenderHeight / 2);
     poison_post_targets();
     glColorMask(mask[0], mask[1], mask[2], mask[3]);
-    const GLuint result = post_apply();
+    const GLuint result = post_apply(true);
     glFinish();
     resultOk = result == sPostFramebuffer;
     if (!resultOk)
