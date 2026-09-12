@@ -10,7 +10,7 @@ from .core.catalog import (GAME, ITEM_IDS, LOCATION_IDS, NAMES, CHECK_AREAS,
                            active_names, item_pool, check_area, can_reach_manifest, FLARLIC, ALL_AREA_LOCATION_IDS, START_AREAS, COLLECTION_LOCATION_IDS, PERMANENT_LOCATION_IDS, MODERN_LOCATION_IDS)
 from .core.seed import generate, fingerprint
 from .core.stats import UPGRADE_ITEMS
-from .core.benefits import ALL_BENEFIT_ITEMS as BENEFIT_ITEMS
+from .core.benefits import ALL_BENEFIT_ITEMS as BENEFIT_ITEMS, TRAP
 
 
 class ExpandedChecks(Toggle):
@@ -161,6 +161,14 @@ class BombRockWeight(Range):
     default = 1
 
 
+class BombTrapWeight(Range):
+    """Filler weight for five lit bomb rocks around Olimar. Zero disables. Waits for active gameplay; queued ambushes are spaced apart. Replaces filler, never progression."""
+    display_name = "Bomb Ambush Weight"
+    range_start = 0
+    range_end = 10
+    default = 0
+
+
 class DeathLinkPikmin(Range):
     """DeathLink unit. Every N ordinary Pikmin deaths (remainder kept across days) sends one link; each received link kills up to N living field Pikmin through their normal death, never Olimar or Onion stock. Links received while the game is closed are dropped."""
     display_name = 'DeathLink Pikmin'
@@ -175,6 +183,7 @@ class PikminOptions(PerGameCommonOptions):
     death_link: DeathLink
     death_link_pikmin: DeathLinkPikmin
     bomb_rock_weight: BombRockWeight
+    bomb_trap_weight: BombTrapWeight
     random_start_areas: RandomStartAreas
     initial_damage_min: InitialStatMinimum
     initial_damage_max: InitialStatMaximum
@@ -229,7 +238,7 @@ class PikminRandomizerWorld(World):
                     region.locations.append(PikminLocation(self.player, name, self.manifest()['locations'][name], region))
 
     def create_item(self, name):
-        classification = ItemClassification.useful if name in BENEFIT_ITEMS or (name in UPGRADE_ITEMS and UPGRADE_ITEMS[name][1] != 'carry') else ItemClassification.progression
+        classification = ItemClassification.trap if name == TRAP else ItemClassification.useful if name in BENEFIT_ITEMS or (name in UPGRADE_ITEMS and UPGRADE_ITEMS[name][1] != 'carry') else ItemClassification.progression
         return PikminItem(name, classification, ITEM_IDS[name], self.player)
 
     def create_items(self):
@@ -260,8 +269,8 @@ class PikminRandomizerWorld(World):
     def manifest(self):
         if not hasattr(self, '_manifest'):
             self._manifest = generate(str(self.multiworld.seed_name), "ap", self.multiworld.player_name[self.player],
-                            combined_captain=bool(self.options.collection_checks or self.options.permanent_checks or self.options.progressive_color_stats or self.options.per_spawn_enemies or self.options.group_spawn_enemies or self.options.miniboss_enemies or self.options.campaign_enemies or self.options.goal.value), goal_mode=("repairs", "emperor_bulblax")[self.options.goal.value],
-                            expanded=bool(self.options.expanded_checks), bomb_rock_weight=self.options.bomb_rock_weight.value,
+                            combined_captain=bool(self.options.collection_checks or self.options.permanent_checks or self.options.progressive_color_stats or self.options.per_spawn_enemies or self.options.group_spawn_enemies or self.options.miniboss_enemies or self.options.campaign_enemies or self.options.bomb_rock_weight.value or self.options.bomb_trap_weight.value or self.options.goal.value), goal_mode=("repairs", "emperor_bulblax")[self.options.goal.value],
+                            expanded=bool(self.options.expanded_checks), bomb_rock_weight=self.options.bomb_rock_weight.value, bomb_trap_weight=self.options.bomb_trap_weight.value,
                             death_link=bool(self.options.death_link), death_link_pikmin=self.options.death_link_pikmin.value,
                             starting_area=('forest', 'navel', 'random', 'impact', 'spring', 'trial')[self.options.starting_area.value],
                             starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas), enemy_shuffle=bool(self.options.enemy_shuffle), collection_checks=bool(self.options.collection_checks), starting_flarlic=self.options.starting_flarlic.value, randomize_color_stats=bool(self.options.randomize_color_stats), progressive_color_stats=bool(self.options.progressive_color_stats), permanent_checks=bool(self.options.permanent_checks), per_spawn_enemies=bool(self.options.per_spawn_enemies), group_spawn_enemies=bool(self.options.group_spawn_enemies), miniboss_enemies=bool(self.options.miniboss_enemies), campaign_enemies=bool(self.options.campaign_enemies),

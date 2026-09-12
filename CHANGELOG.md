@@ -2,6 +2,14 @@
 
 Release notes moved from the former README, newest first. Content is preserved as written at the time; see [README.md](README.md) for current player instructions.
 
+## Flower Shower nectar (#94)
+
+Flower Shower now spawns five drinkable nectar drops near Olimar. Pikmin flower through normal drinking; the reward waits for suitable dry ground during active gameplay.
+
+## Bomb Ambush trap (#91)
+
+Bomb Ambush summons five lit bomb rocks in a ring around Olimar, using the native fuse (about two seconds) and explosion damage. Enable it for new seeds with `bomb_trap_weight: 1` in YAML or `--bomb-trap-weight 1` in the CLI. The weight ranges from 0–10; default 0 disables it. Traps replace filler only and are classified as Archipelago traps. They need no Yellow Pikmin, wait for active gameplay on nearby dry ground, and queued ambushes are separated by at least five seconds of active gameplay. Existing seeds are unchanged.
+
 ## Emperor Bulblax finale (#86)
 
 New AP/CLI seeds default to goal: emperor_bulblax (CLI --goal emperor_bulblax). At 25 repair rewards the Emperor can emerge normally; his completed death animation records the goal. Final Trial Access remains separate. The Secret Safe requires 25 repairs in logic to prevent placing needed repairs behind the boss gate. No new reward/check is added. goal: repairs retains immediate completion at 25; existing manifests and programmatic generate() defaults remain repair-only.
