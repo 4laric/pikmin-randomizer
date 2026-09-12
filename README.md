@@ -1,6 +1,8 @@
-# Pikmin Randomizer
+# Pikipelago
 
 Experimental standalone and Archipelago randomizer for Pikmin 1, built on the Open Nectar PC port. It randomizes the starting area and color, Pikmin stats and enemies, and turns exploration, population milestones, bestiary deliveries and structure completion into checks; new seeds contain 30 Ship Repairs, 25 of which unlock the Emperor Bulblax finale that ends the game.
+
+The project is now called **Pikipelago**. Archipelago still lists it as `Pikmin Randomizer`; use that name in YAML. Package filenames and save folders retain their existing names for compatibility.
 
 ## Status
 
