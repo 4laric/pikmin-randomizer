@@ -12,6 +12,7 @@
 #include "PlayerState.h"
 #include "Route.h"
 #include "SoundMgr.h"
+#include "pc_randomizer.h"
 
 /**
  * @todo: Documentation
@@ -99,6 +100,7 @@ void Piki::doKill()
 #endif
 		seSystem->playSoundDirect(1, SE_PIKI_DEAD, mSRT.t);
 		GameStat::deadPikis.inc(mColor);
+		pc_randomizer_observe_pikmin_death(this); // Same events as the vanilla "lost" counter.
 	}
 
 	if (mActiveAction) {

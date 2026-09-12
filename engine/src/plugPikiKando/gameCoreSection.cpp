@@ -2086,6 +2086,26 @@ void GameCoreSection::updateAI()
         }
         if (active && !playerState->mInDayEnd) {
             randomizerApplyBenefits(mNavi, mMapMgr);
+            if (const int casualties = pc_randomizer_deathlink_casualties()) {
+                // A received DeathLink takes up to one unit of living field Pikmin
+                // through the ordinary dying animation. Onion stock and Olimar are untouched.
+                int killed = 0;
+                Iterator it(pikiMgr);
+                CI_LOOP(it) {
+                    if (killed >= casualties) break;
+                    Piki* piki = static_cast<Piki*>(*it);
+                    if (!piki || !piki->isAlive() || piki->isKinoko()) continue;
+                    const int mode = piki->mMode, state = piki->getState();
+                    if (mode == PikiMode::EnterMode || mode == PikiMode::ExitMode || mode == PikiMode::KinokoMode) continue;
+                    if (state == PIKISTATE_Dying || state == PIKISTATE_Dead || state == PIKISTATE_Swallowed
+                        || state == PIKISTATE_Drown || state == PIKISTATE_Fired || state == PIKISTATE_Bubble) continue;
+                    pc_randomizer_deathlink_induce(piki);
+                    piki->changeMode(PikiMode::FreeMode, piki->mNavi);
+                    piki->mFSM->transit(piki, PIKISTATE_Dying);
+                    ++killed;
+                }
+                pc_randomizer_deathlink_consume(killed);
+            }
             const int field = int(GameStat::formationPikis) + int(GameStat::freePikis) + int(GameStat::workPikis);
             pc_randomizer_observe_population(field, true);
             pc_randomizer_observe_total_population(int(GameStat::allPikis), true);
