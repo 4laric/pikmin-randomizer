@@ -232,6 +232,10 @@ bool sHadConfigFile = false;
 bool sMenuOpen = false;
 int sSelection = ROW_DISPLAY_MODE;
 static std::vector<Uint8> gPrevKeys; // previous-frame keyboard state snapshot
+// SDL calls the Xbox Select/View button BACK.  Keep its edge independently of
+// the keyboard snapshot: settings input is polled from more than one hook per
+// frame, and a held button must not reopen the menu after a modal closes.
+bool sPrevMenuToggleHeld = false;
 
 // Video confirm/revert dialog state.
 bool sVideoConfirmActive = false;
@@ -917,7 +921,10 @@ void loadConfig() {
             int idx = atoi(key.substr(3).c_str());
             if (idx >= 0 && idx < PC_KEY_ACT_COUNT) {
                 const int button = atoi(val.c_str());
-                if (button >= -1 && button < SDL_CONTROLLER_BUTTON_MAX) {
+                const bool isButton = button >= -1 && button < SDL_CONTROLLER_BUTTON_MAX;
+                const int axis = (button - PC_GP_AXIS_BIND) / 2;
+                const bool isAxis = button >= PC_GP_AXIS_BIND && axis >= 0 && axis < SDL_CONTROLLER_AXIS_MAX;
+                if (isButton || isAxis) {
                     sConfig.gamepadBindings[idx] = button;
                 }
             }
@@ -969,6 +976,26 @@ bool padNavRight(SDL_GameController* c)
 bool padNavA(SDL_GameController* c) { return padEdge(SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_A), 4); }
 bool padNavB(SDL_GameController* c) { return padEdge(SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_B), 5); }
 
+// The new-game prompt is a game-facing dialog rather than the F1 settings
+// menu. Its accept/cancel actions follow the configured A/B bindings, which
+// may be either SDL buttons or the axis encodings used by the remapping page.
+// Keep these separate from padNavA/B: F1 navigation deliberately retains its
+// physical A/B convention.
+bool promptPadBinding(SDL_GameController* c, int action, int edgeSlot)
+{
+	return c && padEdge(pc_window_gamepad_bind_held(c, pc_window_get_gamepad_binding(action)), edgeSlot);
+}
+
+bool promptPadA(SDL_GameController* c)
+{
+	return promptPadBinding(c, PC_KEY_ACT_A, 4);
+}
+
+bool promptPadB(SDL_GameController* c)
+{
+	return promptPadBinding(c, PC_KEY_ACT_B, 5);
+}
+
 bool captureConfirmHeld(SDL_GameController* ctl)
 {
 	int numKeys = 0;
@@ -978,17 +1005,6 @@ bool captureConfirmHeld(SDL_GameController* ctl)
 	if (SDL_SCANCODE_SPACE < numKeys && keys[SDL_SCANCODE_SPACE])
 		return true;
 	return ctl && SDL_GameControllerGetButton(ctl, SDL_CONTROLLER_BUTTON_A);
-}
-
-bool anyGamepadButtonHeld(SDL_GameController* ctl)
-{
-	if (!ctl)
-		return false;
-	for (int btn = 0; btn < SDL_CONTROLLER_BUTTON_MAX; btn++) {
-		if (SDL_GameControllerGetButton(ctl, (SDL_GameControllerButton)btn))
-			return true;
-	}
-	return false;
 }
 
 bool isCaptureModifierScancode(int sc)
@@ -1019,6 +1035,15 @@ void latchKeys() {
 void pcNewGamePromptInput();
 
 void pollMenuInput() {
+    SDL_GameController* ctl = pc_window_get_controller();
+    const bool menuToggleHeld = ctl && SDL_GameControllerGetButton(
+        ctl, SDL_CONTROLLER_BUTTON_BACK) != 0;
+    const bool menuTogglePressed = menuToggleHeld && !sPrevMenuToggleHeld;
+    // Latch before every modal early return.  A Select press used while the
+    // new-game/video/capture modal owns input must not become a fresh press
+    // when that modal exits while the button is still held.
+    sPrevMenuToggleHeld = menuToggleHeld;
+
     if (pc_newgame_prompt_active()) {
         // The prompt owns input while it is up, including F1: opening the
         // settings menu over a modal that is deciding a save file's rules
@@ -1027,28 +1052,31 @@ void pollMenuInput() {
         return;
     }
 
-    // F1 toggles the menu.
+    auto openMenu = [] {
+        sPending = sConfig;
+        sPending.controlMode = pc_window_get_control_mode();
+        sMenuOpen = true;
+        pc_window_set_settings_menu_open(true);
+        sSelection = ROW_DISPLAY_MODE;
+        sVideoConfirmActive = false;
+        rebuildResolutionList();
+        const int idx = resolutionIndexFor(pc_window_get_width(), pc_window_get_height());
+        sResolutionIdx = idx >= 0 ? idx : defaultResolutionIndex();
+    };
+
+    // F1 always toggles. Select/View can open the menu while it is closed;
+    // closing is handled after video confirmation has had first refusal.
     if (keyWentDown(SDL_SCANCODE_F1)) {
-        if (sMenuOpen) {
-            closeMenu();
-        } else {
-            sPending = sConfig;
-            sPending.controlMode = pc_window_get_control_mode();
-            sMenuOpen = true;
-            pc_window_set_settings_menu_open(true);
-            sSelection = ROW_DISPLAY_MODE;
-            sVideoConfirmActive = false;
-            rebuildResolutionList();
-            const int idx = resolutionIndexFor(pc_window_get_width(), pc_window_get_height());
-            sResolutionIdx = idx >= 0 ? idx : defaultResolutionIndex();
-        }
+        if (sMenuOpen) closeMenu();
+        else openMenu();
+        return;
+    }
+    if (menuTogglePressed && !sMenuOpen) {
+        openMenu();
         return;
     }
 
     if (!sMenuOpen) return;
-
-    // Poll gamepad state for menu navigation.
-    SDL_GameController* ctl = pc_window_get_controller();
 
     // Modal video-confirm dialog.
     if (sVideoConfirmActive) {
@@ -1068,6 +1096,16 @@ void pollMenuInput() {
                    (ctl && padNavB(ctl))) {
             revertVideoSettings();
         }
+        return;
+    }
+
+    // Select/View closes the menu from ordinary pages and submenus.  Capture
+    // owns the button while waiting for a binding (including the short
+    // wait-release period after accepting one), so it can be assigned or
+    // released without toggling the menu underneath.
+    if (menuTogglePressed && !sWaitingForKey && !sWaitingForButton &&
+        !sCaptureWaitRelease) {
+        closeMenu();
         return;
     }
 
@@ -1159,13 +1197,11 @@ void pollMenuInput() {
                 return;
             }
             if (ctl) {
-                for (int btn = 0; btn < SDL_CONTROLLER_BUTTON_MAX; btn++) {
-                    if (SDL_GameControllerGetButton(ctl, (SDL_GameControllerButton)btn)) {
-                        sPending.gamepadBindings[sGamepadSelection] = btn;
-                        sWaitingForButton = false;
-                        sCaptureWaitRelease = true;
-                        break;
-                    }
+                const int bind = pc_window_gamepad_first_held_binding(ctl);
+                if (bind >= 0) {
+                    sPending.gamepadBindings[sGamepadSelection] = bind;
+                    sWaitingForButton = false;
+                    sCaptureWaitRelease = true;
                 }
             }
             return;
@@ -1173,7 +1209,7 @@ void pollMenuInput() {
 
         // The button just bound is still held; do not treat it as Back.
         if (sCaptureWaitRelease) {
-            if (!anyGamepadButtonHeld(ctl) && !captureConfirmHeld(ctl))
+            if (!pc_window_gamepad_any_held(ctl) && !captureConfirmHeld(ctl))
                 sCaptureWaitRelease = false;
             return;
         }
@@ -2053,8 +2089,8 @@ void pcNewGamePromptInput() {
     if (ctl) {
         if (padNavLeft(ctl))  left   = true;
         if (padNavRight(ctl)) right  = true;
-        if (padNavA(ctl))     accept = true;
-        if (padNavB(ctl))     cancel = true;
+        if (promptPadA(ctl))  accept = true;
+        if (promptPadB(ctl))  cancel = true;
     }
 
     if (left || right) sNewGamePromptChoice = sNewGamePromptChoice ? 0 : 1;
@@ -2360,7 +2396,7 @@ void pc_settings_draw(void) {
         const int subX = px1 + 18, subY = py1 + 44;
         const int subW = panelW - 36, subH = panelH - 58;
         drawSubmenuSurface(gfx, subX, subY, subW, subH, "Gamepad Controls",
-                           sWaitingForButton ? "Press a button   Esc: cancel"
+                           sWaitingForButton ? "Press a button, trigger or stick   Esc: cancel"
                                             : "Enter: capture   Left/Right: default",
                            sWaitingForButton ? "" : "Up/Down: select   Esc/B: back");
 
