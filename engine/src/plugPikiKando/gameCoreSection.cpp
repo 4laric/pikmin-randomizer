@@ -1900,7 +1900,18 @@ void pc_randomizer_test_color_stats()
 static void randomizerApplyBenefits(Navi* navi, MapMgr* map)
 {
     if (!pc_randomizer_ready() || !navi || !navi->isAlive() || !itemMgr || !pikiMgr) return;
-    if (map && pc_randomizer_benefit_pending(PC_BENEFIT_BOMBS)) {
+    bool yellowOnField = false;
+    if (pc_randomizer_benefit_pending(PC_BENEFIT_BOMBS)) {
+        Iterator it(pikiMgr);
+        CI_LOOP(it) {
+            Piki* piki = static_cast<Piki*>(*it);
+            if (piki && piki->isAlive() && piki->mColor == Yellow) {
+                yellowOnField = true;
+                break;
+            }
+        }
+    }
+    if (map && yellowOnField && pc_randomizer_benefit_pending(PC_BENEFIT_BOMBS)) {
         GoalItem* landing = nullptr;
         const char* names[] = {"Blue Onion", "Red Onion", "Yellow Onion"};
         for (int color = 0; color < 3 && !landing; ++color)

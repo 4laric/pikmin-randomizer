@@ -22,6 +22,7 @@
 #endif
 
 namespace {
+bool noSticks = false;
 bool enabled = false, ready = false, goalReported = false, permanentChecks = false, noExploration = false, colorPopulation = false;
 unsigned repairs = 0, unlocks = 0, flarlic = 0, schema = 1, checkCount = 30;
 int startStage = 1;
@@ -100,7 +101,16 @@ void expect(std::istream& in, const char* expected) {
     std::string word;
     if (!(in >> word) || word != expected) fail("unsupported or malformed bootstrap");
 }
-const char* checkName(unsigned i) { return compactPopulation ? (permanentChecks ? randomizerCompactPermanentNames[i] : randomizerCompactCollectionNames[i]) : colorPopulation ? (permanentChecks ? randomizerColorPermanentNames[i] : randomizerColorCollectionNames[i]) : noExploration ? (permanentChecks ? randomizerNoExplorePermanentNames[i] : randomizerNoExploreCollectionNames[i]) : schema >= 9 ? (permanentChecks ? randomizerModernPermanentNames[i] : randomizerModernCollectionNames[i]) : schema >= 8 ? randomizerPermanentNames[i] : schema >= 7 ? randomizerCollectionNames[i] : randomizerCheckNames[i]; }
+const char* baseCheckName(unsigned i) { return compactPopulation ? (permanentChecks ? randomizerCompactPermanentNames[i] : randomizerCompactCollectionNames[i]) : colorPopulation ? (permanentChecks ? randomizerColorPermanentNames[i] : randomizerColorCollectionNames[i]) : noExploration ? (permanentChecks ? randomizerNoExplorePermanentNames[i] : randomizerNoExploreCollectionNames[i]) : schema >= 9 ? (permanentChecks ? randomizerModernPermanentNames[i] : randomizerModernCollectionNames[i]) : schema >= 8 ? randomizerPermanentNames[i] : schema >= 7 ? randomizerCollectionNames[i] : randomizerCheckNames[i]; }
+const char* checkName(unsigned i) {
+    if (!noSticks) return baseCheckName(i);
+    unsigned source = 0;
+    for (;;) {
+        const char* name = baseCheckName(source++);
+        if (std::strstr(name, "Climbing Stick")) continue;
+        if (i-- == 0) return name;
+    }
+}
 int index(const char* name) {
     if (name) for (unsigned i = 0; i < checkCount; ++i) if (!std::strcmp(name, checkName(i))) return (int)i;
     return -1;
@@ -150,13 +160,20 @@ bool pc_randomizer_init(int argc, char** argv) {
     permanentChecks = schema == 8;
     if (schema >= 9) {
         expect(input, "CHECKSET"); int value;
-        if (!(input >> value) || (value < 0 || value > 15 || ((value & 4) && !(value & 2)) || ((value & 8) && !(value & 4)))) fail("invalid check set");
+        if (!(input >> value) || (value < 0 || value > 31 || ((value & 4) && !(value & 2)) || ((value & 8) && !(value & 4)))) fail("invalid check set");
+        noSticks = (value & 16) != 0;
         permanentChecks = (value & 1) != 0;
         noExploration = (value & 2) != 0;
         colorPopulation = (value & 4) != 0;
         compactPopulation = (value & 8) != 0;
         checkCount = compactPopulation ? (permanentChecks ? sizeof(randomizerCompactPermanentNames)/sizeof(*randomizerCompactPermanentNames) : sizeof(randomizerCompactCollectionNames)/sizeof(*randomizerCompactCollectionNames)) : colorPopulation ? (permanentChecks ? sizeof(randomizerColorPermanentNames)/sizeof(*randomizerColorPermanentNames) : sizeof(randomizerColorCollectionNames)/sizeof(*randomizerColorCollectionNames)) : noExploration ? (permanentChecks ? sizeof(randomizerNoExplorePermanentNames)/sizeof(*randomizerNoExplorePermanentNames) : sizeof(randomizerNoExploreCollectionNames)/sizeof(*randomizerNoExploreCollectionNames)) : permanentChecks ? sizeof(randomizerModernPermanentNames)/sizeof(*randomizerModernPermanentNames)
             : sizeof(randomizerModernCollectionNames)/sizeof(*randomizerModernCollectionNames);
+        if (noSticks) {
+            unsigned retired = 0;
+            for (unsigned i = 0; i < checkCount; ++i)
+                if (std::strstr(baseCheckName(i), "Climbing Stick")) ++retired;
+            checkCount -= retired;
+        }
     }
     if (schema >= 6) {
         expect(input, "ENEMIES");

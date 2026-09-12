@@ -1,3 +1,9 @@
+## Retired-stick protocol correction and yellow-gated bombs (#85)
+
+The previous retirement changed Python check indices without changing native selection. CHECKSET bit 16 now filters sticks from the native catalog before journal indexing, matching Python's order. Existing manifests without no_sticks retain original lists; older binaries reject the new bit instead of silently miscrediting. The prior startup tests verified rendering/births but missed location identity; compiled color population and permanent-object protocols now run against the new layout.
+
+Bomb Rock Delivery waits for a living yellow Pikmin in pikiMgr, rather than merely an unlocked Onion or stored population. Pending deliveries remain unconsumed. Miscredited turkey-wide-03 progress is retained for diagnosis; turkey-wide-03-fixed is a fresh-session copy of the same manifest, without changing original saves.
+
 ## Upstream integration (#83)
 
 Native 85a581b0 integrates upstream main 7dc430c7. See UPSTREAM_SYNC.md for conflict resolutions, PR feedback and validation. Production binary: output/native-upstream-83/build-sync/bin/nectar.exe. The older native/build-stats binary predates this merge until rebuilt. Separate nectar-upstream83.exe staged in turkey-wide-02 and turkey-wide-03; next launch uses it. Seed/save and running processes unchanged.

@@ -10,12 +10,13 @@ from randomizer.runner import NativeRun
 from randomizer.enemy_slots import verify_source_assets
 p=argparse.ArgumentParser()
 for name in ('exe','assets','output'):p.add_argument('--'+name,type=Path,required=True)
+p.add_argument('--no-yellow',action='store_true',help='Verify queued bombs do not spawn with only red Pikmin')
 p.add_argument('--campaign',action='store_true')
 p.add_argument('--groups',action='store_true')
 p.add_argument('--miniboss',action='store_true')
 a=p.parse_args();verify_source_assets(a.assets)
 for area in (('impact','forest','navel','spring','trial') if a.campaign else ('forest','spring')):
-    m=generate('slot-production-'+area,'ap',per_spawn_enemies=True,group_spawn_enemies=a.groups,miniboss_enemies=a.miniboss,starting_area=area,starting_color='yellow',starting_flarlic=1,campaign_enemies=a.campaign, bomb_rock_weight=1)
+    m=generate('slot-production-'+area,'ap',per_spawn_enemies=True,group_spawn_enemies=a.groups,miniboss_enemies=a.miniboss,starting_area=area,starting_color='red' if a.no_yellow else 'yellow',starting_flarlic=1,campaign_enemies=a.campaign, bomb_rock_weight=1)
     s=Session(m,a.output.resolve()/area);s.bind_ap('bomb-fixture',0,1);s.receive(0,[ITEM_IDS[BOMBS]]);r=NativeRun(s);r.write_state(True)
     _winapi.CreateJunction(str(a.assets.resolve()),str(r.directory/'assets'))
     env=dict(os.environ,PIKMIN_RANDOMIZER_TEST_BACKGROUND='1',SDL_AUDIODRIVER='dummy')
@@ -29,10 +30,16 @@ for area in (('impact','forest','navel','spring','trial') if a.campaign else ('f
             while process.poll() is None and time.monotonic()<deadline:
                 r.poll();r.write_state(True)
                 text=log.read_text(errors='replace')
-                if 'PIKMIN_WORLD_RENDERED' in text and 'color=2 field=10' in text and 'BOMB_DELIVERY count=3 state=unlit' in text:break
+                if a.no_yellow and 'PIKMIN_WORLD_RENDERED' in text and 'color=1 field=10' in text:
+                    time.sleep(3)
+                    assert process.poll() is None
+                    text=log.read_text(errors='replace')
+                    assert 'BOMB_DELIVERY' not in text
+                    break
+                if not a.no_yellow and 'PIKMIN_WORLD_RENDERED' in text and 'color=2 field=10' in text and 'BOMB_DELIVERY count=3 state=unlit' in text:break
                 time.sleep(.1)
             else:raise AssertionError(f'production startup failed: {log}')
-            assert text.count('BOMB_DELIVERY count=3 state=unlit') == 1
+            assert text.count('BOMB_DELIVERY count=3 state=unlit') == (0 if a.no_yellow else 1)
             choices={row['uid']:row['actual'] for row in m['campaign_layout' if a.campaign else 'spawn_layout']['assignments']}
             if a.groups and not a.campaign:choices.update((row['uid'],row['actual']) for row in m['group_layout']['assignments'])
             adults=[]; born={}
@@ -54,6 +61,6 @@ for area in (('impact','forest','navel','spring','trial') if a.campaign else ('f
                 expected={r['uid'] for r in CAMPAIGN_SLOTS if r['stage']==stage and r['first_day']==2}
                 assert expected<=set(born),(area,expected-set(born))
             print('Born species:', sorted(set(born.values())),flush=True)
-            print('PASS production',area,'active births match seed; yellow cap 10, rendered, handshake',flush=True)
+            print('PASS bomb gate', 'red-only queued' if a.no_yellow else 'yellow delivery',area,'active births match seed; field cap 10, rendered, handshake',flush=True)
         finally:
             if process.poll() is None:process.terminate();process.wait(timeout=10)
