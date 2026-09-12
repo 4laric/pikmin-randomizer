@@ -110,8 +110,22 @@ The active native tree at observed HEAD
 changed CMakeLists required regeneration. No compile command was issued. Local
 evidence: `output/p2-fixture-builds/output/reject-active-tree/provenance.json`.
 Read-only parsing of that build's commands/dependency records found 479 compiler
-objects and 1,497 distinct source/header dependencies. A positive native fixture
-compile is pending the lead's next completed compatible production build.
+objects and 1,497 distinct source/header dependencies.
+
+After the lead completed native build `606c0c1763073aa9576c08455b42fa548f59b4f7`
+and held source edits, the actual `native/tools/preview_p2_room.cpp` fixture
+compiled and linked successfully. Both Ninja checks reported no work. All 2,009
+build inputs and 573 fixture dependencies passed the before/after checks, and
+the observed Git state stayed unchanged. Existing dirty status for
+`creatureCollision.cpp`, `goalItem.cpp`, and the untracked research directory
+was recorded rather than rewritten or called clean.
+
+Evidence: `output/p2-fixture-builds/output/native-room-606c0c17/provenance.json`.
+Fixture executable SHA256:
+`3ab25db6b06ce489b9eff87c304b1f358fde48f228cb15f388a2a4d93a1e3e7b`.
+The shared source window was released immediately after those checks completed.
+This is actual native compile/link evidence; the resulting fixture was not run
+for gameplay acceptance in this batch.
 
 Keep #135 open: clean-machine extraction/build installation, packaged runtime
 dependencies, manual gameplay and full-content release acceptance remain work
