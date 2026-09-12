@@ -1,7 +1,9 @@
 import copy
 import struct
+import tempfile
+from pathlib import Path
 import unittest
-from experimental.pikmin2_beasts_floor2 import source_floor, flower_plan, decode_no_cargo, CARGO_FREE_CONFIG, POLICY
+from experimental.pikmin2_beasts_floor2 import source_floor, flower_plan, decode_no_cargo, CARGO_FREE_CONFIG, POLICY, prepare
 
 
 def catalog():
@@ -13,6 +15,12 @@ def catalog():
 
 
 class FloorTwoTests(unittest.TestCase):
+    def test_pod_input_rejected_before_stage_creation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);(root/'pod.mod').write_bytes(b'')
+            with self.assertRaises(ValueError):prepare(root,root,root/'absent',root,root/'runs',pod=root)
+            self.assertFalse((root/'runs').exists())
+
     def test_explicit_cargo_free_contract_and_version(self):
         self.assertEqual(CARGO_FREE_CONFIG,b'P2_CARGO_FREE_1\n')
         self.assertEqual(POLICY,'P2_BEASTS_FLOOR2_PREPARE_2')

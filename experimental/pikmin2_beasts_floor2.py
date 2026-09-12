@@ -75,7 +75,9 @@ def decode_no_cargo(raw):
     return dict(actors=len(entries), flowers=2, cargo=0, allowed_receipts=[])
 
 
-def prepare(assets, units, catalog_path, purple, output):
+def prepare(assets, units, catalog_path, purple, output, *, pod=None):
+    pod_model = (pod/'pod.mod').read_bytes() if pod is not None else None
+    if pod_model is not None and not pod_model: raise ValueError('Empty Research Pod model')
     catalog_raw = catalog_path.read_bytes(); catalog = json.loads(catalog_raw)
     floor = source_floor(catalog)
     imported = json.loads((units/'units.json').read_text())
@@ -122,6 +124,7 @@ def prepare(assets, units, catalog_path, purple, output):
     models = sorted(purple.glob('*.mod'))
     if not models or not (purple/'p2-purple.txt').is_file(): raise ValueError('Missing Purple bank')
     for path in models: overrides['dataDir/courses/pikmin2room/'+path.name] = path.read_bytes()
+    if pod_model is not None: overrides['dataDir/courses/pikmin2room/pod.mod'] = pod_model
     empty = b'1.0v'+struct.pack('>4fI', *positions['start'], 45, 0)
     for path in (assets/'dataDir/stages/chal0').glob('*.gen'):
         overrides.setdefault('dataDir/stages/chal0/'+path.name, empty)
@@ -129,11 +132,13 @@ def prepare(assets, units, catalog_path, purple, output):
     overlay(assets, run/'assets', overrides)
     (run/'p2-purple.txt').write_bytes((purple/'p2-purple.txt').read_bytes())
     (run/'p2-cargo-free.txt').write_bytes(CARGO_FREE_CONFIG)
+    if pod_model is not None: (run/'p2-pod.txt').write_text('P2_POD_1\ncargo_free 0 1 1\nKochappy 0\n')
     report = dict(schema=1, policy=POLICY, cave='forest_1', floor=2, native_ready=False,
         retail_generation=False, complete_roster=False, source_definition=floor,
         catalog_sha256=sha(catalog_raw), source_sha256=imported['source_sha256'], unit=metadata,
         flowers=flowers, engineering_anchors=positions, generator_audit=audit,
-        unsupported=['Egg x2 and its TamagoMushi helper/drops', 'HikariKinoko x6', 'KareOoinu_s x2', 'Descent and floor lifecycle', 'Research Pod cargo-free initialization'],
+        unsupported=['Egg x2 and its TamagoMushi helper/drops', 'HikariKinoko x6', 'KareOoinu_s x2', 'Descent and floor lifecycle', 'Source BlackPom global Purple birth suppression'],
+        pod_enabled=pod_model is not None, pod_required_for_purple=True,
         native_blocker='Requires native P2_CARGO_FREE_1 support and dedicated runtime validation; old native aborts for missing treasure. No dummy cargo permitted.',
         limitations=['One selected cent2 room with exits capped; not retail room generation.', 'Violet actors use existing P1 Pom conversion proxy, not source P2 Pom FSM/models.', 'No native launch or conversion acceptance in this batch.'],
         override_sha256={k:sha(v) for k,v in sorted(overrides.items())}, purple_config_sha256=sha((run/'p2-purple.txt').read_bytes()),
@@ -145,8 +150,9 @@ def prepare(assets, units, catalog_path, purple, output):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     for name in ('assets','units','catalog','purple','output'): p.add_argument('--'+name, type=Path, required=True)
+    p.add_argument('--pod',type=Path,help='Research Pod import required by native Purple initialization')
     a = p.parse_args()
-    print(prepare(a.assets.resolve(), a.units.resolve(), a.catalog.resolve(), a.purple.resolve(), a.output))
+    print(prepare(a.assets.resolve(), a.units.resolve(), a.catalog.resolve(), a.purple.resolve(), a.output,pod=a.pod.resolve() if a.pod else None))
 
 
 if __name__ == '__main__': main()
