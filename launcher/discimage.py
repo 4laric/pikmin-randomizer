@@ -30,9 +30,9 @@ def needs_conversion(path):
 
 def convert_image(image, install_root, on_line=None):
     """Decode an RVZ/WIA into a temporary ISO under install_root; the caller deletes it after extraction."""
-    iso_path = Path(install_root) / (Path(image).stem + ".converted.iso")
-    if iso_path.is_file():
-        return iso_path
+    import uuid
+    # Never trust a previous decode's file: interruption can leave a partial ISO.
+    iso_path = Path(install_root) / ("decode-" + uuid.uuid4().hex + ".iso")
     try:
         info = rvz.describe(image)
         if on_line:
@@ -46,8 +46,16 @@ def convert_image(image, install_root, on_line=None):
                 on_line(f"[{percent}%] decoding disc image")
         rvz.convert_to_iso(image, iso_path, progress)
     except rvz.RvzError as exc:
+        try:
+            iso_path.unlink(missing_ok=True)
+        except OSError:
+            pass
         raise ExtractError(str(exc))
     except OSError as exc:
+        try:
+            iso_path.unlink(missing_ok=True)
+        except OSError:
+            pass
         raise ExtractError(f"Could not decode {Path(image).name}: {exc}")
     return iso_path
 

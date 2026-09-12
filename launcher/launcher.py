@@ -410,5 +410,44 @@ def launch(args):
     return 0
 
 
+
+
+def run_summary(manifest, seed_path):
+    """Summarize the existing journal without creating or migrating a session."""
+    try:
+        data = json.loads((session_dir(manifest, seed_path) / "session.json").read_text(encoding="utf-8"))
+        from randomizer.seed import fingerprint
+        if data.get("fingerprint") != fingerprint(manifest):
+            return "Saved session needs attention; identity does not match."
+        checked = data.get("checked")
+        if not isinstance(checked, list):
+            return "Saved session needs attention."
+        return f"Continue existing run · {len(checked)} checks recorded. Campaign resumes from its last day-end save."
+    except FileNotFoundError:
+        return "New run · no saved progress yet."
+    except (OSError, ValueError, AttributeError):
+        return "Saved session could not be read; it will not be reset."
+
+
+def diagnostic_report(manifest, source, log_text):
+    """An allowlist report: never copy arbitrary log lines or credentials."""
+    import re
+    report = {"version": runtime_version(), "assets_ready": assets_problem(source) is None if source else False}
+    if manifest:
+        report.update(seed_fingerprint=short_fingerprint(manifest), mode=manifest["mode"],
+                      schema=manifest["schema"], starting_area=manifest["profile"])
+    categories = {
+        "handshake_failed": "AP connection handshake failed",
+        "connection_refused": "AP connection refused",
+        "credentials_refused": "PIKMIN_AP_STATUS: refused",
+        "seed_mismatch": "AP slot manifest does not match",
+        "connected": "PIKMIN_AP_STATUS: connected",
+        "install_permission_denied": "Permission denied",
+    }
+    report["events"] = [name for name, marker in categories.items() if marker in log_text]
+    report["installer_exit_codes"] = re.findall(r"installer exit (\d+)", log_text)[-5:]
+    report["runner_exit_codes"] = re.findall(r"runner exited with code (-?\d+)", log_text)[-5:]
+    return "Pikipelago diagnostic report\n" + json.dumps(report, indent=2) + "\n"
+
 if __name__ == "__main__":
     sys.exit(main())

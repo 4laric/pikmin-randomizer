@@ -68,3 +68,25 @@ def test_launcher_resolves_image_override(tmp_path, monkeypatch):
     assert calls == [str(image)] and config["image"] == str(image.resolve())
     assert launcher.load_config()["assets"] == str(tmp_path / "assets")
     assert launcher.game_data_dir() == tmp_path / "appdata" / "PikminRandomizer" / "game-data"
+
+def test_interrupted_decode_is_not_reused(tmp_path, monkeypatch):
+    old = tmp_path / "Pikmin.converted.iso"
+    old.write_bytes(b"incomplete")
+    monkeypatch.setattr(discimage.rvz, "describe", lambda image: {})
+    paths = []
+    def convert(image, path, progress):
+        paths.append(path)
+        path.write_bytes(b"complete")
+    monkeypatch.setattr(discimage.rvz, "convert_to_iso", convert)
+    result = discimage.convert_image(tmp_path / "Pikmin.rvz", tmp_path)
+    assert result != old and result.read_bytes() == b"complete"
+    assert old.read_bytes() == b"incomplete"
+    def failed(image, path, progress):
+        paths.append(path)
+        path.write_bytes(b"partial")
+        raise discimage.rvz.RvzError("decode failed")
+    monkeypatch.setattr(discimage.rvz, "convert_to_iso", failed)
+    with pytest.raises(discimage.ExtractError, match="decode failed"):
+        discimage.convert_image(tmp_path / "Pikmin.rvz", tmp_path)
+    assert not paths[-1].exists()
+    assert result.exists()  # Only the failed attempt's own file is removed.

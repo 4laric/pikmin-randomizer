@@ -94,3 +94,33 @@ def test_invalid_seed_hides_ap_connection(root, tmp_path):
     root.update()
     assert not app.ap.winfo_manager()
     assert app.manifest is None
+
+def test_installed_setup_is_collapsed_and_can_be_changed(root, tmp_path):
+    gui = load_gui()
+    assets = tmp_path / "assets"
+    (assets / "dataDir" / "stages").mkdir(parents=True)
+    gui.launcher.save_config({"assets": str(assets), "image": str(tmp_path / "missing.iso")})
+    app = gui.LauncherApp(root)
+    root.update()
+    assert app.source_var.get() == str(assets)
+    assert app.installed_row.winfo_manager() == "grid"
+    assert not app.source_status.winfo_manager()
+    app.change_setup()
+    root.update()
+    assert app.source_status.winfo_manager() == "grid"
+    assert not app.installed_row.winfo_manager()
+
+def test_reconnect_sends_credentials_only_through_pipe(root):
+    import io
+    import json
+    from types import SimpleNamespace
+    gui = load_gui()
+    app = gui.LauncherApp(root)
+    pipe = io.StringIO()
+    app.process = SimpleNamespace(stdin=pipe, poll=lambda: None)
+    app.server_var.set("localhost:38281")
+    app.password_var.set("private password")
+    app.reconnect()
+    assert json.loads(pipe.getvalue()) == {"server": "localhost:38281", "password": "private password"}
+    assert "private password" not in gui.launcher.config_path().read_text()
+    assert "private password" not in app.log.get("1.0", "end")

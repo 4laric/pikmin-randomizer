@@ -87,3 +87,55 @@ class APReconnectTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(connect.call_count, 1)
         self.assertFalse(any(states))
 
+
+class APUpdateTests(unittest.IsolatedAsyncioTestCase):
+    async def test_refused_credentials_can_be_corrected_without_restarting_session(self):
+        import queue
+        from randomizer.runner import APConnectionRefused
+        updates = queue.Queue()
+        seen = []
+        states = []
+        recovered = asyncio.Event()
+        session = SimpleNamespace(manifest={"mode": "ap"}, goal=False)
+        run = SimpleNamespace(handshaken=True, poll=lambda: None, write_state=states.append)
+
+        async def connect(active_session, server, password, ready):
+            self.assertIs(active_session, session)
+            seen.append((server, password))
+            if len(seen) == 1:
+                updates.put({"server": "correct:1234", "password": "new secret"})
+                raise APConnectionRefused("bad password")
+            self.assertFalse(ready[0])
+            ready[0] = True
+            recovered.set()
+            await asyncio.Future()
+
+        with patch("randomizer.runner.ap_connect", side_effect=connect), redirect_stdout(io.StringIO()):
+            task = asyncio.create_task(serve(session, run, server="wrong:1234", password="old secret", updates=updates))
+            try:
+                await asyncio.wait_for(recovered.wait(), 2)
+                self.assertEqual(seen, [("wrong:1234", "old secret"), ("correct:1234", "new secret")])
+                self.assertIn(False, states)
+            finally:
+                task.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await task
+        self.assertFalse(states[-1])
+
+    async def test_gui_updates_do_not_override_fatal_seed_mismatch(self):
+        import queue
+        updates = queue.Queue()
+        session = SimpleNamespace(manifest={"mode": "ap"}, goal=False)
+        run = SimpleNamespace(handshaken=True, poll=lambda: None, write_state=lambda ready: None)
+        async def connect(*args):
+            updates.put({"server": "new:1234", "password": None})
+            raise ValueError("AP slot manifest does not match this seed")
+        with patch("randomizer.runner.ap_connect", side_effect=connect):
+            with self.assertRaisesRegex(ValueError, "manifest"):
+                await asyncio.wait_for(serve(session, run, server="old:1234", updates=updates), 2)
+
+    async def test_private_pipe_ignores_invalid_commands(self):
+        from randomizer.runner import connection_updates
+        commands = connection_updates(io.StringIO('not json\n{"server":"x:1","password":42}\n{"server":"good:1234","password":"secret"}\n'))
+        command = await asyncio.to_thread(commands.get, True, 2)
+        self.assertEqual(command, {"server": "good:1234", "password": "secret"})

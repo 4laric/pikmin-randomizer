@@ -162,3 +162,11 @@ Seed logic, the session runner and the overlay live in `randomizer/`; the AP int
 ## Credits
 
 Built on [Open Nectar](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port) and the [projectPiki Pikmin decompilation](https://github.com/projectPiki/pikmin). Thanks to TheLynk for permission to use the Pikmin AP world's logic and locations as a reference; this remains a separate project as requested. This project's own code and documentation are public domain under [CC0 1.0](LICENSE); see [LEGAL.md](LEGAL.md). The engine keeps its own [license](engine/LICENSE.MD) and [third-party notice](engine/LEGAL.md).
+
+### Setup and connection controls
+
+After installation the launcher shows **Pikmin installed ✓**; **Change** reveals the source controls. The selected run shows whether it has recorded progress. **Continue solo** uses that same session; **New solo run** with a blank name creates a distinct seed. The displayed area describes the starting area, not a decoded native save location.
+
+For AP, correct the server/password and use **Reconnect** to keep the current game and seed session alive. A refused login waits for correction. A different seed or slot manifest is still rejected. Password updates travel through a private process pipe and are not saved.
+
+**Copy diagnostics** copies a small report of version, seed fingerprint, mode, setup readiness and recognized error categories/exit codes. It excludes passwords, server addresses, personal paths and raw logs. Nothing is uploaded automatically.

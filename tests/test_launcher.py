@@ -128,3 +128,21 @@ def test_server_address_accepts_game_endpoint(address):
 def test_server_address_rejects_web_pages_and_invalid_input(address):
     with pytest.raises(launcher.LaunchError):
         launcher.validate_server(address)
+
+def test_diagnostics_do_not_copy_secrets_or_raw_paths(appdata):
+    manifest = generate("secret seed name", "ap", slot="private player")
+    report = launcher.diagnostic_report(manifest, "C:/private/assets", "password=secret\nC:/Users/Private\nwss://secret@private.server:1234\nAP connection handshake failed\ninstaller exit 7")
+    for value in ("secret", "Private", "private", "password=", "wss://", "C:/"):
+        assert value not in report
+    assert "handshake_failed" in report and '"7"' in report
+
+
+def test_run_summary_does_not_create_or_reset_session(appdata, tmp_path):
+    manifest = generate("continue")
+    seed = tmp_path / "seed.json"
+    folder = launcher.session_dir(manifest, seed)
+    assert launcher.run_summary(manifest, seed).startswith("New run")
+    assert not folder.exists()
+    folder.mkdir(parents=True)
+    (folder / "session.json").write_text(json.dumps({"fingerprint": fingerprint(manifest), "checked": ["a"]}))
+    assert "1 checks recorded" in launcher.run_summary(manifest, seed)
