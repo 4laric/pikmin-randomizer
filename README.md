@@ -25,12 +25,18 @@ The project is now called **Pikipelago**. Archipelago still lists it as `Pikmin 
 1. Download the release ZIP and, for multiworld, the matching `pikmin_randomizer-<version>.apworld`.
 2. Extract the ZIP to a folder of your choice. Saves and settings live under `%APPDATA%\PikminRandomizer`, one session per seed, so the game folder can be replaced by a newer release without losing progress.
 3. Run `Play.cmd`. The Pikipelago window opens.
-4. Pick a seed (the package ships one in `seeds`), then either choose your Pikmin disc image (`.iso`, `.gcm`, `.rvz` or `.wia`; USA Rev 1 or Europe) or a folder that already contains extracted `dataDir/stages/`. The first Play extracts about 650 MB of game data from the image into `%APPDATA%\PikminRandomizer\game-data`; the image itself is only read. RVZ and WIA images are decoded to a temporary ISO first (about half a minute, 1.4 GB of temporary disk space, deleted afterwards). GCZ, CISO and NKit images must be converted with dolphin-tool.
+4. Choose **New solo run** or **Open seed** (for AP, use the `.pikmin.json` file for your slot), then either choose your Pikmin disc image (`.iso`, `.gcm`, `.rvz` or `.wia`; USA Rev 1 or Europe) or a folder that already contains extracted `dataDir/stages/`. The first Play extracts about 650 MB of game data from the image into `%APPDATA%\PikminRandomizer\game-data`; the image itself is only read. RVZ and WIA images are decoded to a temporary ISO first (about half a minute, 1.4 GB of temporary disk space, deleted afterwards). GCZ, CISO and NKit images must be converted with dolphin-tool.
 5. Play. Save at the end-of-day results screen, wait until the area map returns, then close the game. Relaunch the same `Play.cmd` to resume from that day.
 
 ## Solo play
 
-Solo seeds are generated with the `randomizer` package:
+Choose **New solo run** in the launcher. Leave the seed name blank for a fresh run, or reuse a name to return to the same seed. The starter preset uses a random starting area and color, standard stats, wall/bridge/box checks, no traps, and the Emperor Bulblax goal. Choose game data once, then click **Play solo**. Seeds and progress are stored in your user-data folder; the last selected run is restored when the launcher opens.
+
+For Archipelago, use **Open seed** to select the `.pikmin.json` from your host, enter the server address and port shown on the room page (not the page URL), and click **Connect & play**. The slot comes from the seed file; the room password is optional and is not saved. The launcher reports connection retries and successful synchronization.
+
+These launcher improvements require a build containing the installer UX changes; the existing playtest.3 download predates them.
+
+Advanced generation options remain available through the `randomizer` package:
 
 ```powershell
 python -m randomizer generate --seed <name> --output <dir>/seed.json

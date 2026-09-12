@@ -51,10 +51,12 @@ class LauncherApp:
         root.title("Pikipelago")
         root.configure(bg=SOIL)
         root.minsize(760, 600)
-        root.geometry("820x660")
+        root.geometry("900x760")
         self.style()
         self.build()
         seed = seed_arg or self.config.get("seed")
+        if not seed and (launcher.ROOT / "seeds" / "seed.json").is_file():
+            seed = str(launcher.ROOT / "seeds" / "seed.json")
         if seed and Path(seed).is_file():
             self.set_seed(seed)
         source = self.config.get("image") or self.config.get("assets")
@@ -98,16 +100,23 @@ class LauncherApp:
         header.pack(fill="x")
         header.bind("<Configure>", lambda e: self.draw_header(header))
 
-        seed = self.panel(self.root, "SEED")
+        seed = self.panel(self.root, "1. CHOOSE A RUN")
+        choices = ttk.Frame(seed, style="Panel.TFrame")
+        choices.grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 8))
+        self.new_solo_button = ttk.Button(choices, text="New solo run…", command=self.new_solo)
+        self.new_solo_button.pack(side="left")
+        ttk.Button(choices, text="Open seed…", command=self.browse_seed).pack(side="left", padx=(8, 0))
+        ttk.Label(choices, text="Solo: create here. AP: open your slot's .pikmin.json file.",
+                  style="Muted.TLabel").pack(side="left", padx=(12, 0))
         self.seed_var = tk.StringVar()
-        ttk.Label(seed, text="Seed file", style="Panel.TLabel").grid(row=1, column=0, sticky="w", padx=(0, 8))
-        ttk.Entry(seed, textvariable=self.seed_var).grid(row=1, column=1, sticky="ew")
-        ttk.Button(seed, text="Browse…", command=self.browse_seed).grid(row=1, column=2, padx=(8, 0))
+        ttk.Label(seed, text="Seed file", style="Panel.TLabel").grid(row=2, column=0, sticky="w", padx=(0, 8))
+        ttk.Entry(seed, textvariable=self.seed_var).grid(row=2, column=1, sticky="ew")
+        ttk.Button(seed, text="Browse…", command=self.browse_seed).grid(row=2, column=2, padx=(8, 0))
         self.card = tk.Canvas(seed, height=64, bg=PANEL, highlightthickness=0)
-        self.card.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(8, 0))
+        self.card.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(8, 0))
         self.seed_var.trace_add("write", lambda *a: self.on_seed_changed())
 
-        data = self.panel(self.root, "GAME DATA")
+        data = self.panel(self.root, "2. SET UP GAME DATA — ONCE")
         self.source_var = tk.StringVar()
         ttk.Label(data, text="Disc image or assets folder", style="Panel.TLabel").grid(row=1, column=0, sticky="w", padx=(0, 8))
         ttk.Entry(data, textvariable=self.source_var).grid(row=1, column=1, sticky="ew")
@@ -117,14 +126,14 @@ class LauncherApp:
         self.source_status.grid(row=2, column=0, columnspan=4, sticky="w", pady=(6, 0))
         self.source_var.trace_add("write", lambda *a: self.refresh_source_status())
 
-        self.ap = self.panel(self.root, "ARCHIPELAGO")
+        self.ap = self.panel(self.root, "3. CONNECT TO ARCHIPELAGO")
         self.server_var = tk.StringVar()
         self.password_var = tk.StringVar()
         ttk.Label(self.ap, text="Server host:port", style="Panel.TLabel").grid(row=1, column=0, sticky="w", padx=(0, 8))
         ttk.Entry(self.ap, textvariable=self.server_var).grid(row=1, column=1, sticky="ew")
         ttk.Label(self.ap, text="Room password", style="Panel.TLabel").grid(row=2, column=0, sticky="w", padx=(0, 8), pady=(6, 0))
         ttk.Entry(self.ap, textvariable=self.password_var, show="•").grid(row=2, column=1, sticky="ew", pady=(6, 0))
-        ttk.Label(self.ap, text="The password is only handed to the game runner for this launch; it is never saved.",
+        ttk.Label(self.ap, text="Use the server address and port from your room page, not the browser URL. Password is optional and never saved.", wraplength=700,
                   style="Muted.TLabel").grid(row=3, column=0, columnspan=4, sticky="w", pady=(6, 0))
         self.ap.pack_forget()
 
@@ -135,7 +144,7 @@ class LauncherApp:
         self.stop_button = ttk.Button(actions, text="Stop", command=self.stop, state="disabled")
         self.stop_button.pack(side="left", padx=(10, 0))
         self.status_var = tk.StringVar(value=f"Ready. Version {launcher.runtime_version()}.")
-        ttk.Label(actions, textvariable=self.status_var).pack(side="left", padx=(16, 0))
+        ttk.Label(actions, textvariable=self.status_var, wraplength=330).pack(side="left", padx=(16, 0))
         self.progress = ttk.Progressbar(actions, style="Leaf.Horizontal.TProgressbar", length=180, mode="determinate")
         self.progress.pack(side="right")
 
@@ -166,6 +175,25 @@ class LauncherApp:
 
     # --- Seed and source -----------------------------------------------------
 
+    def new_solo(self):
+        if self.worker and self.worker.is_alive():
+            return
+        from tkinter import simpledialog
+        name = simpledialog.askstring("New solo run",
+            "Create a solo run with a random starting area and color, standard stats, "
+            "and no traps. Goal: defeat Emperor Bulblax.\n\n"
+            "Seed name (blank makes a fresh run; repeating a name resumes that seed):", parent=self.root)
+        if name is None:
+            return
+        try:
+            path = launcher.create_solo_seed(name)
+            self.config["seed"] = str(path)
+            launcher.save_config(self.config)
+            self.set_seed(path)
+            self.status_var.set("Solo run created. Choose game data, then Play solo.")
+        except (OSError, ValueError) as exc:
+            self.append(f"Could not create the solo run: {exc}", "error")
+
     def browse_seed(self):
         from tkinter import filedialog
         chosen = filedialog.askopenfilename(title="Choose a seed", filetypes=[("Pikipelago seed", "*.json"), ("All files", "*.*")])
@@ -182,12 +210,16 @@ class LauncherApp:
             try:
                 self.manifest = launcher.load_manifest(path)
             except launcher.LaunchError as exc:
+                self.ap.pack_forget()
+                self.play_button.configure(text="PLAY")
                 self.render_card(error=str(exc))
                 return
         self.render_card()
         if self.manifest and self.manifest.get("mode") == "ap":
+            self.play_button.configure(text="Connect & play")
             self.ap.pack(fill="x", padx=16, pady=(0, 10), before=self.play_button.master)
         else:
+            self.play_button.configure(text="Play solo" if self.manifest else "PLAY")
             self.ap.pack_forget()
 
     def render_card(self, error=None):
@@ -197,7 +229,7 @@ class LauncherApp:
             card.create_text(8, 12, anchor="nw", text=error, fill=RED, font=(FONT, 9), width=680)
             return
         if not self.manifest:
-            card.create_text(8, 22, anchor="w", text="Pick a seed.json to see what it contains.", fill=MUTED, font=(FONT, 10))
+            card.create_text(8, 22, anchor="w", text="Create a solo run, or open the .pikmin.json file supplied by your AP host.", fill=MUTED, font=(FONT, 10))
             return
         m = self.manifest
         color = m.get("starting_color", "red")
@@ -255,6 +287,7 @@ class LauncherApp:
 
     def set_running(self, running):
         self.play_button.configure(state="disabled" if running else "normal")
+        self.new_solo_button.configure(state="disabled" if running else "normal")
         self.stop_button.configure(state="normal" if running else "disabled")
 
     def play(self):
@@ -263,21 +296,21 @@ class LauncherApp:
         seed = self.seed_var.get().strip()
         source = self.source_var.get().strip().strip('"')
         try:
-            if not self.exe.is_file():
-                raise launcher.LaunchError(f"The game executable is missing: {self.exe}. Re-extract the release zip.")
             if not seed or not Path(seed).is_file():
                 raise launcher.LaunchError("Choose a seed file first.")
+            if not self.exe.is_file():
+                raise launcher.LaunchError(f"The game executable is missing: {self.exe}. Re-extract the release zip.")
             manifest = launcher.load_manifest(seed)
             if not source:
                 raise launcher.LaunchError("Choose your disc image or extracted assets folder first.")
+            if discimage.is_disc_image(source) and not Path(source).is_file():
+                raise launcher.LaunchError("That disc image does not exist. Choose it again.")
             if not discimage.is_disc_image(source) and launcher.assets_problem(source):
                 raise launcher.LaunchError(launcher.assets_problem(source))
             server = None
             if manifest["mode"] == "ap":
                 launcher.check_ap_dependencies()
-                server = self.server_var.get().strip()
-                if not server:
-                    raise launcher.LaunchError("Enter the Archipelago server address (host:port) for this AP seed.")
+                server = launcher.validate_server(self.server_var.get())
         except launcher.LaunchError as exc:
             self.append(str(exc), "error")
             self.status_var.set("Fix the highlighted problem and try again.")
@@ -313,7 +346,7 @@ class LauncherApp:
             if password:
                 env["PIKMIN_AP_PASSWORD"] = password
             command = launcher.build_command(seed, session, self.exe, assets, server)
-            self.lines.put(("status", "Game running. Save at day end and wait for the area map before closing."))
+            self.lines.put(("status", "Connecting to Archipelago…" if server else "Starting solo game…"))
             self.lines.put(("progress", 100))
             self.process = subprocess.Popen(command, cwd=str(launcher.ROOT), env=env, stdout=subprocess.PIPE,
                                             stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",
@@ -322,6 +355,10 @@ class LauncherApp:
             for line in self.process.stdout:
                 captured.append(line)
                 self.lines.put(("line", line.rstrip("\n")))
+                if line.startswith("PIKMIN_AP_STATUS: connected"):
+                    self.lines.put(("status", "Connected to Archipelago. Game ready."))
+                elif line.startswith(("AP disconnected:", "AP connection handshake failed.")):
+                    self.lines.put(("status", "Connection failed — retrying. Check the room address, port and availability."))
             code = self.process.wait()
             if code:
                 self.lines.put(("error", launcher.explain_failure(code, "".join(captured), session)))
@@ -375,6 +412,10 @@ class LauncherApp:
 
 
 def main(argv=None):
+    if sys.platform == "win32":
+        # Give the launcher its own taskbar identity instead of Python/IDLE.
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Pikipelago.Launcher")
     argv = list(sys.argv[1:] if argv is None else argv)
     server = None
     if "--server" in argv:

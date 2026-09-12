@@ -114,9 +114,13 @@ async def ap_connect(session, server, password, ready):
                         if not authenticated:
                             raise ValueError("AP sent items before slot authentication")
                         session.receive(packet["index"], [item["item"] for item in packet["items"]])
+                        if not ready[0]:
+                            print("PIKMIN_AP_STATUS: connected", flush=True)
                         ready[0] = True
                     elif cmd == "Retrieved":
                         if authenticated:
+                            if not ready[0]:
+                                print("PIKMIN_AP_STATUS: connected", flush=True)
                             ready[0] = True
                     elif cmd == "Bounced" and unit and "DeathLink" in packet.get("tags", []):
                         data = packet.get("data") or {}

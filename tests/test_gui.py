@@ -66,3 +66,31 @@ def test_play_reports_missing_inputs_without_launching(root, tmp_path, monkeypat
     app.play()
     assert "Choose a seed file first" in app.log.get("1.0", "end")
     assert app.play_button.instate(["!disabled"])
+
+def test_new_solo_button_creates_and_selects_run(root, monkeypatch):
+    gui = load_gui()
+    app = gui.LauncherApp(root)
+    monkeypatch.setattr("tkinter.simpledialog.askstring", lambda *a, **kw: "")
+    app.new_solo_button.invoke()
+    root.update()
+    assert app.manifest["mode"] == "solo"
+    assert Path(app.seed_var.get()).is_file()
+    assert app.play_button.cget("text") == "Play solo"
+    assert not app.ap.winfo_manager()
+    assert gui.launcher.load_config()["seed"] == app.seed_var.get()
+
+
+def test_invalid_seed_hides_ap_connection(root, tmp_path):
+    import json
+    from randomizer.seed import generate
+    gui = load_gui()
+    seed = tmp_path / "ap.json"
+    seed.write_text(json.dumps(generate("ap", "ap")))
+    app = gui.LauncherApp(root, str(seed))
+    assert app.play_button.cget("text") == "Connect & play"
+    bad = tmp_path / "bad.json"
+    bad.write_text("broken")
+    app.set_seed(bad)
+    root.update()
+    assert not app.ap.winfo_manager()
+    assert app.manifest is None

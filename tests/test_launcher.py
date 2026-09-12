@@ -81,8 +81,8 @@ def test_explain_failure(tmp_path):
     run.mkdir(parents=True)
     (run / "native.log").write_text("boom")
     assert "Another launcher is already running" in launcher.explain_failure(1, "ValueError: another runner owns this session directory", session)
-    assert "--reset-assets" in launcher.explain_failure(1, "--assets must point to the extracted assets directory containing dataDir/stages/", session)
-    assert "websockets" in launcher.explain_failure(1, "ModuleNotFoundError: No module named 'websockets'", session)
+    assert "Choose your disc image" in launcher.explain_failure(1, "--assets must point to the extracted assets directory containing dataDir/stages/", session)
+    assert "complete Windows release ZIP" in launcher.explain_failure(1, "ModuleNotFoundError: No module named 'websockets'", session)
     native = launcher.explain_failure(1, "RuntimeError: native process exited 3; see x", session)
     assert "game exited" in native and str(run / "native.log") in native
     assert "refused" in launcher.explain_failure(1, "ValueError: AP connection refused: ['InvalidSlot']", session)
@@ -104,3 +104,27 @@ def test_choose_seed(tmp_path):
 def test_password_prompt_only_when_room_has_one():
     assert launcher.ask_password(ask=lambda p: "n", secret=lambda p: "x") is None
     assert launcher.ask_password(ask=lambda p: "y", secret=lambda p: "hunter2") == "hunter2"
+
+def test_solo_creation_is_local_unique_and_valid(appdata):
+    first = launcher.create_solo_seed()
+    second = launcher.create_solo_seed()
+    a = launcher.load_manifest(first)
+    b = launcher.load_manifest(second)
+    assert first != second and first.parent == launcher.app_dir() / "seeds"
+    assert a["mode"] == "solo" and a["goal_mode"] == "emperor_bulblax"
+    assert launcher.short_fingerprint(a) != launcher.short_fingerprint(b)
+    assert a["permanent_checks"]
+    original = first.read_bytes()
+    launcher.create_solo_seed("named run")
+    assert first.read_bytes() == original
+
+
+@pytest.mark.parametrize("address", ["archipelago.gg:38281", " wss://example.org:443 ", "ws://127.0.0.1:1234", "[::1]:1234"])
+def test_server_address_accepts_game_endpoint(address):
+    assert launcher.validate_server(address) == address.strip()
+
+
+@pytest.mark.parametrize("address", ["", "https://archipelago.gg/room/abc", "example.org", "example.org:0", "example.org:99999", "ws://user:secret@example.org:1234", "example.org:1234/path", "bad host:1234"])
+def test_server_address_rejects_web_pages_and_invalid_input(address):
+    with pytest.raises(launcher.LaunchError):
+        launcher.validate_server(address)

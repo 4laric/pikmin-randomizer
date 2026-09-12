@@ -100,8 +100,7 @@ def extract_image(image, extractor, install_root, assets_problem, on_line=None):
                 pass
     if code or not assets_ready(install_root, assets_problem):
         detail = "\n".join(tail[-6:])
-        raise ExtractError(f"Extracting {image.name} failed (installer exit {code}).\n{detail}\n"
-                           "The image must be a Pikmin USA Rev 1 (GPIE01) or Europe (GPIP01) disc.")
+        raise ExtractError(f"Extracting {image.name} failed (installer exit {code}).\n{detail}")
     return str(install_root / "assets")
 
 
