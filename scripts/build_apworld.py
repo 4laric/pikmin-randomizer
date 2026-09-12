@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def build(output):
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
-        for name in ("__init__.py", "archipelago.json"):
+        for name in ("__init__.py", "options.py", "archipelago.json"):
             archive.write(ROOT / "apworld/pikmin_randomizer" / name, "pikmin_randomizer/" + name)
         archive.writestr("pikmin_randomizer/core/__init__.py", "")
         for name in ("catalog.py", "seed.py", "stats.py", "obstacles.py", "enemies.py", "benefits.py", "enemy_slots.py", "spawn_data.py", "campaign_data.py", "campaign_enemies.py"):
