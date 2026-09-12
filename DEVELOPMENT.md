@@ -1,3 +1,7 @@
+## Retired-stick completion crash (#87)
+
+The check-list fix in #85 removed stick names, but the obstacle observer still emitted completed sticks. This terminated the adapter with unknown native collection identity; the player log shows this in Impact Site. Completion observations for kind 100 are now ignored only when noSticks is enabled. Legacy seeds still credit sticks, and unknown identities remain fatal. Compiled regression submits all 51 obstacle completions: 43 checks in modern seeds, 51 legacy, with session replay verified. Player seed/session/campaign files remain untouched; replace executable only.
+
 ## Emperor Bulblax finale (#86)
 
 New AP/CLI seeds default to goal: emperor_bulblax (CLI --goal emperor_bulblax). At 25 repair rewards the Emperor can emerge normally; his completed death animation records the goal. Final Trial Access remains separate. The Secret Safe requires 25 repairs in logic to prevent placing needed repairs behind the boss gate. No new reward/check is added. goal: repairs retains immediate completion at 25; existing manifests and programmatic generate() defaults remain repair-only.

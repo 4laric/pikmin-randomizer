@@ -638,7 +638,7 @@ void pc_randomizer_observe_obstacle(int stage, int kind, float x, float z, bool 
     if (!enabled || !ready || !gameplay || !accessibleStage(stage) || !std::isfinite(x) || !std::isfinite(z)) return;
     static std::set<std::tuple<int,int,int,int>> logged;
     const int px = int(std::round(x)), pz = int(std::round(z));
-    if (permanentChecks && complete) {
+    if (permanentChecks && complete && !(noSticks && kind == 100)) {
         for (const auto& obstacle : randomizerObstacles)
             if (obstacle.stage == stage && obstacle.kind == kind && obstacle.x == px && obstacle.z == pz)
                 pc_randomizer_check(obstacle.name);

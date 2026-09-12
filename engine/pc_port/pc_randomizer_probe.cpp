@@ -76,6 +76,12 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 100; ++i) {
         pc_randomizer_update();
         if (pc_randomizer_ready()) {
+            for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--retired-stick-probe")) {
+                for (const auto& obstacle : randomizerObstacles)
+                    pc_randomizer_observe_obstacle(obstacle.stage, obstacle.kind, float(obstacle.x), float(obstacle.z), true, true);
+                std::puts("RETIRED_STICK_PASS");
+                return 0;
+            }
             for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--emperor-probe")) {
                 const bool unlocked = pc_randomizer_repairs() == 25;
                 assert(pc_randomizer_emperor_available() == unlocked);
