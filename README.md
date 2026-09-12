@@ -1,3 +1,9 @@
+## F8 tracker (#77)
+
+While the game is focused, press **F8** to open the searchable tracker window over the game. Filter checks by area and status; inspect received items, Onion unlocks, field capacity, repairs and discovered color stats. **F8** or **Esc** closes it and returns focus to the game. The HUD displays the shortcut. This is a Windows companion window provided by the existing HUD, not a native pause menu: **the game continues running, so pause first when needed**.
+
+Check availability uses the current seed's conservative progression rules. Randomized bestiary entries show their actual source areas and scheduled days; unchecked reward placements are never shown. Existing seed/session files are read without modification. Relaunch an existing game session to load the updated HUD; no native rebuild or new seed is required.
+
 ## Repair pool default (#76)
 
 New modern seeds contain **30 Ship Repairs**, with **25 required to finish**. Five surplus repairs replace consumables without changing check count or unlocks. AP classifies the surplus as useful. Existing manifests preserve their original reward pools. Available in AP world 0.24.0; no native update needed.

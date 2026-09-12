@@ -4,6 +4,7 @@ from collections import Counter
 import ctypes as c
 from ctypes import wintypes as w
 import json
+import os
 from pathlib import Path
 import time
 import tkinter as tk
@@ -52,7 +53,7 @@ def main(manifest_path, session_path, pid):
     root.attributes('-topmost', True)
     root.attributes('-transparentcolor', '#010203')
     root.configure(bg='#010203')
-    height = 295 if ('color_stats' in manifest or manifest.get('progressive_color_stats')) else 235
+    height = 317 if ('color_stats' in manifest or manifest.get('progressive_color_stats')) else 257
     if manifest.get('benefit_items'): height += 22
     canvas = tk.Canvas(root, width=430, height=height, bg='#010203', highlightthickness=0)
     canvas.pack()
@@ -60,6 +61,38 @@ def main(manifest_path, session_path, pid):
     hwnd = user.GetParent(root.winfo_id()) or root.winfo_id()
     # Layered, click-through, tool window, never activate or take game input.
     user.SetWindowLongW(hwnd, -20, user.GetWindowLongW(hwnd, -20) | 0x80000 | 0x20 | 0x80 | 0x08000000)
+    from .tracker import TrackerWindow
+    game_hwnd = None
+    tracker_open = False
+    user.GetAsyncKeyState.argtypes = [c.c_int]
+    user.GetAsyncKeyState.restype = c.c_short
+    user.SetForegroundWindow.argtypes = [w.HWND]
+    user.SetForegroundWindow.restype = w.BOOL
+
+    def close_tracker():
+        nonlocal tracker_open
+        tracker_open = False
+        tracker.hide()
+        if game_hwnd: user.SetForegroundWindow(game_hwnd)
+
+    tracker = TrackerWindow(root, manifest, close_tracker)
+    hotkey_down = False
+
+    def poll_hotkey():
+        nonlocal hotkey_down, tracker_open, game_hwnd
+        foreground = user.GetForegroundWindow()
+        foreground_pid = w.DWORD()
+        user.GetWindowThreadProcessId(foreground, c.byref(foreground_pid))
+        down = bool(user.GetAsyncKeyState(0x77) & 0x8000)  # F8
+        if down and not hotkey_down and (foreground_pid.value == pid or tracker_open and foreground_pid.value == os.getpid()):
+            if tracker_open: close_tracker()
+            else:
+                game_hwnd = foreground
+                tracker_open = True
+                tracker.show()
+        hotkey_down = down
+        root.after(20, poll_hotkey)
+
     previous = None
     changed_at = time.monotonic()
     state = ([], 20 if manifest['schema'] >= 2 else 100, 0)
@@ -78,7 +111,9 @@ def main(manifest_path, session_path, pid):
         try:
             raw = (session_path / 'session.json').read_text(encoding='utf-8')
             if raw != cache:
-                state = snapshot(manifest, json.loads(raw))
+                data = json.loads(raw)
+                state = snapshot(manifest, data)
+                tracker.update(data)
                 cache = raw
                 if previous is not None and len(state[0]) > previous:
                     changed_at = time.monotonic()
@@ -98,6 +133,7 @@ def main(manifest_path, session_path, pid):
             root.deiconify()
             canvas.delete('all')
             events, cap, repairs = state
+            draw('F8  TRACKER', height - 21, '#bce8da', 9)
             draw(f'FIELD CAP {cap}    REPAIRS {repairs}/25', 8, '#bce8da', 12)
             owned = color_inventory(Counter(item for _, item in events), manifest)
             for index, (label, color, unlocked) in enumerate((
@@ -125,6 +161,7 @@ def main(manifest_path, session_path, pid):
 
     try:
         tick()
+        poll_hotkey()
         root.mainloop()
     finally:
         kernel.CloseHandle(process)

@@ -1,3 +1,11 @@
+## Game-linked tracker (#77)
+
+Windows Python HUD opens a focused Tk tracker on F8 (20ms edge polling, restricted to game/tracker process foreground). Escape/window-close/F8 withdraw it and request game focus. No global hotkey registration; existing native default mappings have no F8 action. The tracker is a separate companion window and does not pause native simulation. Unrelated applications do not trigger opening.
+
+Read-only model derives solo inventory from checked rewards and AP inventory only from received IDs, checks session fingerprint, keeps unknown color profiles hidden, and reports conservative reachability plus seed-resolved bestiary sources/days. Search/area/status filters and scrollable checks/items tables never expose unchecked reward assignments. Existing HUD continues updating while tracker is open. No native or manifest change.
+
+Validation: ten focused model/UI/legacy HUD tests pass, covering AP receipt semantics, solo inventory, source/area filters, hidden colors, wrong-identity rejection and actual Tk widgets refreshing/filtering. Current turkey-wide-02 session also loads into the model read-only. Physical hotkey/controller/fullscreen acceptance remains for player testing. Launchers start the updated overlay on next game launch; existing running HUD processes are not replaced.
+
 ## Repair pool surplus (#76)
 
 New modern manifests set repair_pool_count=30; the completion goal remains 25. item_pool uses the stored count, falling back to 25 for existing benefit manifests. Five consumables are replaced. Existing AP classification marks only the first 25 repairs progression, with the five extras useful. No native protocol or game change required. AP 0.24.0.
