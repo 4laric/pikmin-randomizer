@@ -243,3 +243,6 @@ Built on [Open Nectar](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-
 Whistle controls: tap B to recall idle Pikmin without interrupting workers. Double-tap within 350 ms to recall busy Pikmin in whistle range; holding B for 0.6 seconds also recalls workers. This follows your mapped whistle action.
 
 Existing seed manifests retain the legacy pluck-only upgrade and save format. New AP/CLI collection-check seeds use Progressive Olimar Speed; the overlay shows its shared MOVE/PLUCK multiplier.
+
+
+Bomb Ambush summons five lit bomb rocks in a ring around Olimar, using the native fuse (about two seconds) and explosion damage. Enable it for new seeds with `bomb_trap_weight: 1` in YAML or `--bomb-trap-weight 1` in the CLI. The weight ranges from 0–10; default 0 disables it. Traps replace filler only and are classified as Archipelago traps. They need no Yellow Pikmin, wait for active gameplay on nearby dry ground, and queued ambushes are separated by at least five seconds of active gameplay. Existing seeds are unchanged.

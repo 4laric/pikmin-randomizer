@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cmath>
+#include <algorithm>
 #endif
 #if defined(PIKI_PC_PORT)
 #include "settings/pc_settings.h"
@@ -1900,6 +1901,43 @@ void pc_randomizer_test_color_stats()
 static void randomizerApplyBenefits(Navi* navi, MapMgr* map)
 {
     if (!pc_randomizer_ready() || !navi || !navi->isAlive() || !itemMgr || !pikiMgr) return;
+    // Active gameplay time only: never empty a backlog of traps in one frame.
+    static float bombTrapCooldown = 0.0f;
+    bombTrapCooldown = std::max(0.0f, bombTrapCooldown - gsys->getFrameTime());
+    if (map && bombTrapCooldown == 0.0f && pc_randomizer_benefit_pending(PC_BENEFIT_BOMB_TRAP)) {
+        Vector3f positions[5];
+        int found = 0;
+        for (int i = 0; i < 5; ++i) {
+            const float angle = navi->mFaceDirection + i * (2.0f * PI / 5.0f);
+            Vector3f pos = navi->mSRT.t + Vector3f(65.0f * sinf(angle), 0, 65.0f * cosf(angle));
+            CollTriInfo* ground = map->getCurrTri(pos.x, pos.z, true);
+            if (!ground || MapCode::getAttribute(ground) == ATTR_Water) break;
+            pos.y = map->getMinY(pos.x, pos.z, true);
+            if (std::fabs(pos.y - navi->mSRT.t.y) > 25.0f) break;
+            pos.y += 3.0f;
+            positions[found++] = pos;
+        }
+        if (found == 5) {
+            BombItem* spawned[5] = {};
+            int count = 0;
+            for (; count < 5; ++count) {
+                spawned[count] = static_cast<BombItem*>(itemMgr->birth(OBJTYPE_Bomb));
+                if (!spawned[count]) break;
+                spawned[count]->init(positions[count]);
+                spawned[count]->startAI(0);
+            }
+            if (count == 5 && pc_randomizer_consume_benefit(PC_BENEFIT_BOMB_TRAP)) {
+                float longestFuse = 0.0f;
+                for (int i = 0; i < 5; ++i) {
+                    C_SAI(spawned[i])->start(spawned[i], BombAI::BOMB_Set);
+                    longestFuse = std::max(longestFuse, spawned[i]->mSAICtx.mCurrentItemHealth);
+                }
+                bombTrapCooldown = std::max(5.0f, longestFuse + 2.0f);
+                std::printf("[Pikmin Randomizer] BOMB_AMBUSH count=5 state=lit fuse=%.2f cooldown=%.2f\n", longestFuse, bombTrapCooldown);
+                std::fflush(stdout);
+            } else for (int i = 0; i < count; ++i) spawned[i]->kill(false);
+        }
+    }
     bool yellowOnField = false;
     if (pc_randomizer_benefit_pending(PC_BENEFIT_BOMBS)) {
         Iterator it(pikiMgr);
