@@ -1,5 +1,9 @@
 # Pikmin 2 in Open Nectar: implementation plan
 
+## Full-content backlog (2026-09-12)
+
+The [full-content roadmap and issue index](PIKMIN2_CONTENT_COVERAGE.md) now covers all four surfaces, 14 story caves / 105 floors, 102 enemy-manager IDs, 30 Challenge stages and 10 Battle layouts, plus catalogs and campaign systems. Its [machine-readable coverage inventory](PIKMIN2_CONTENT_INVENTORY.json) maps source entries to assigned issues. This is backlog coverage, not a completion claim; the Emergence surface round trip remains the first delivery gate.
+
 Date: 2026-09-12. Owner: Codex using shared GitHub account 4laric. Parent: [#109](https://github.com/4laric/pikmin-randomizer/issues/109). This is experimental work after Pikipelago v0.1, not a release dependency. Issue assignment denotes ownership, not that every batch is underway.
 
 ## Recommendation
