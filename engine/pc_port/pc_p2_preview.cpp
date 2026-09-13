@@ -10,6 +10,7 @@
 #include "pc_p2_bulblax_visual.h"
 #include "pc_p2_breadbug_actor.h"
 #include "pc_p2_batch2.h"
+#include "pc_p2_batch3.h"
 #include "pc_p2_preview.h"
 #include "pc_bbft.h"
 #include "Pellet.h"
@@ -193,6 +194,7 @@ void pc_p2_preview_setup() {
     pc_p2_tank_setup();
     pc_p2_qurione_setup();
     pc_p2_batch2_setup();
+    pc_p2_batch3_setup();
     pc_p2_purple_setup();
     pc_p2_cave_setup();
     gsys->setHeap(previousHeap);
