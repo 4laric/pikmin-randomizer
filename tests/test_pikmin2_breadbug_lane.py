@@ -171,5 +171,19 @@ class ExtractionTests(unittest.TestCase):
         self.assertFalse(self.data['native_ready'])
 
 
+@unittest.skipUnless((Path('output/p2-lifecycle-batch/breadbug-lane-03/breadbugs.json')).exists(),
+                     'lane-03 compatibility extraction not present')
+class CompatViewTests(unittest.TestCase):
+    def test_compat_view_feeds_visual_pipeline(self):
+        compat = json.loads(Path('output/p2-lifecycle-batch/breadbug-lane-03/breadbugs.json')
+                            .read_text())
+        self.assertEqual(compat['schema'], 1)
+        small = compat['species']['PanModoki']
+        self.assertEqual(len(small['clips']), 9)
+        self.assertTrue(all('sha256' in c and 'file' in c for c in small['clips']))
+        self.assertEqual(compat['species']['PanHouse']['static_pose']['file'], 'nest.mod')
+        self.assertIn('OoPanModoki', compat['species'])
+
+
 if __name__ == '__main__':
     unittest.main()
