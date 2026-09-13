@@ -76,7 +76,8 @@ state (here 6 -> 10); accumulated `stored` proves the earlier queueing.
 
 Private receivers fixture (`experimental/pikmin2_receivers_runtime.py`, built
 against the private native build). Executable SHA-256
-`028d5e00a1df7abb8d125db0f3cc48e2a7bcd3c0eb32df56c5d344a6f5b0baa6`.
+`c3aea4acedd91c16d018bb19a66396b491928f192c10182182038c98cac55758`; the in-module
+`validate()` gate reports `passed=true` on all five receiver checks.
 
 | Path | Evidence | Result |
 |---|---|---|
@@ -90,6 +91,7 @@ Evidence roots (private, assets not committed):
 - `output/tracks/p2-receivers/runs-recv/stages/83f5c1ce483d4a9181cb05540f9d43ad/`
 - `output/tracks/p2-receivers/runs-recv2/stages/0eacad0cc4284733bc1a9f0999d9a090/`
 - `output/tracks/p2-receivers/runs-recv3/stages/1e3254618bd4405f9b97bfa1a71d6568/`
+- `output/tracks/p2-receivers/runs-recv4/stages/fcd1d954cb61407caec2bf8a325cffd3/` (gated `passed=true`)
 
 ## 4. Immunity boundary and remaining receivers
 

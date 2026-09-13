@@ -141,6 +141,11 @@ def validate(text, code):
                 scope='Proxy-host receiver proof only; source P2 FSM/receivers stay BLOCKED.')
 
 
+def _base_validate(text, code, manifest, move_threshold=1.0, corpse_required=True):
+    """Adapter so base.run writes receivers evidence instead of the batch-2 gates."""
+    return validate(text, code)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
@@ -158,4 +163,5 @@ if __name__ == '__main__':
     if args.command == 'build':
         base.build(args.native, args.build_dir, args.output, args.head, args.resume)
     else:
+        base.validate = _base_validate
         base.run(args.assets, args.imported, args.family, args.output, args.exe, args.timeout)
