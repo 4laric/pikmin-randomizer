@@ -451,6 +451,7 @@ void BTeki::update()
 	Creature::update();
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
 	pc_p2_kogane_update(this);
+    pc_p2_snow_update(this,NSystem::getFrameTime());
 #endif
 	if (mDeadState == 0) {
 		updateTimers();

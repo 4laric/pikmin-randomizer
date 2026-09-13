@@ -61,9 +61,13 @@ static bool profileSnow(Navi* n){
 }
 '''
 
-def build(native,build_dir,output,head,*,probe=None):
+def build(native,build_dir,output,head,*,probe=None,hidden=False):
  output=output.resolve();output.mkdir(parents=True,exist_ok=False)
  source=lifecycle((native/'tools/preview_p2_room.cpp').read_text())
+ if hidden:
+  anchor='if(!pc_window_init("P2 room integration fixture",960,720))return 3;'
+  assert source.count(anchor)==1
+  source=source.replace(anchor,anchor+'\n    SDL_HideWindow(SDL_GL_GetCurrentWindow());')
  # Helper uses fixture-local require/capture/controller declarations.
  at=source.index('class RoomApp : public PlugPikiApp {')
  source=source[:at]+(PROBE if probe is None else probe)+source[at:]
