@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from experimental.pikmin2_bulblax_bank import (HEADER, CLIP_BYTES, TOTAL_BYTES, LIMITATIONS,
+from experimental.pikmin2_bulblax_bank import (HEADER, CLIP_BYTES, TOTAL_BYTES, LIMITATIONS, POLICIES,
                                                parse_bank, validate_files, build)
 from experimental.pikmin2_bulblax_assets import CLIPS, TEXT
 
@@ -47,9 +47,7 @@ def imported_fixture(root):
         for name in CLIPS[species]:
             raw = f'{species}:{name}'.encode()
             (folder / (name + '.bca')).write_bytes(raw)
-            clips.append({'name': name, 'source_sha256': sha(raw), 'source_frames': 12,
-                          'unsupported_reason': 'KeyError: 10'} if species == 'KingChappy' else
-                         {'name': name, 'source_sha256': sha(raw), 'source_frames': 12})
+            clips.append({'name': name, 'source_sha256': sha(raw), 'source_frames': 12})
         report_species = report_species_entry(model, clips, species)
         report.setdefault('species', {})[species] = report_species_entry(model, clips, species)
     (root / 'p2-bulblax.txt').write_text(TEXT)
@@ -133,37 +131,52 @@ class BuildTests(unittest.TestCase):
         if frame == 2:  # deterministic unsupported frame, like Queen dead 83/111/139
             raise ValueError('Singular normal transform')
         output.write_bytes(mod_blob())
-        self.tolerances_seen[output.parent.name] = (missing_normals, singular_normal)
+        return {}
 
     def run_build(self, root, output, **kw):
-        self.tolerances_seen = {}
         with patch('experimental.pikmin2_bulblax_bank.bca_pose', side_effect=self.fake_pose), \
-             patch('experimental.pikmin2_bulblax_bank._convert_pose', side_effect=self.fake_convert):
-            return build(root, output, **kw)
+             patch('experimental.pikmin2_bulblax_bank._convert_pose',
+                   side_effect=self.fake_convert) as convert:
+            result = build(root, output, **kw)
+        return result, convert
 
-    def test_build_records_unsupported_and_applies_tolerances(self):
+    def test_build_records_unsupported_and_policies(self):
         with tempfile.TemporaryDirectory() as d:
             root = imported_fixture(Path(d) / 'imported')
-            result = self.run_build(root, Path(d) / 'bank')
-            # 9 Queen + 6 Baby + 14 KingChappy clips x 6 sampled frames, frame 2 unsupported in each.
+            result, convert = self.run_build(root, Path(d) / 'bank')
+            # Frame 2 is unsupported in every clip of every species.
             self.assertEqual(len(result['unsupported']['Queen']), 9)
             self.assertEqual(len(result['unsupported']['Baby']), 6)
             self.assertEqual(len(result['unsupported']['KingChappy']), 14)
             self.assertTrue(all(u['frame'] == 2 for u in result['unsupported']['Queen']))
-            self.assertEqual(result['blocked'], {'Queen': [], 'Baby': [], 'KingChappy': []})
+            self.assertEqual(result['blocked'], {s: [] for s in CLIPS})
             self.assertEqual(result['motions']['Baby'].keys(), set(CLIPS['Baby']))
             self.assertEqual(result['motions']['KingChappy'].keys(), set(CLIPS['KingChappy']))
             self.assertEqual(result['cost']['poses'], (9 + 6 + 14) * 5)
-            # Opt-in tolerances reach the converter per species (#186).
-            self.assertEqual(self.tolerances_seen, {'Queen': ('error', 'transpose-adjugate'),
-                                                    'Baby': ('error', 'error'),
-                                                    'KingChappy': ('compute', 'error')})
             # Bank text round-trips and now carries KingChappy rows.
             text = (Path(d) / 'bank' / 'p2-bulblax-bank.txt').read_text()
             self.assertEqual(parse_bank(text)['KingChappy'].keys(), set(CLIPS['KingChappy']))
             self.assertEqual(result['reference_sha256'], sha((root / 'bulblax.json').read_bytes()))
-            self.assertTrue(any('KingChappy' in lim for lim in result['limitations']))
             self.assertEqual(result['limitations'], LIMITATIONS)
+            # Policy provenance: non-default per-species policies recorded.
+            self.assertEqual(result['normal_policy'], POLICIES)
+            self.assertEqual(result['normal_policy']['KingChappy'], {'missing_normals': 'compute'})
+            self.assertEqual(result['normal_policy']['Queen'], {'singular_normal': 'transpose-adjugate'})
+            self.assertNotIn('Baby', result['normal_policy'])
+
+    def test_convert_pose_receives_per_species_policies(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = imported_fixture(Path(d) / 'imported')
+            _, convert = self.run_build(root, Path(d) / 'bank')
+            seen = {}
+            for call in convert.call_args_list:
+                output = call.args[-1]
+                seen.setdefault(output.parent.name, set()).add(
+                    (call.kwargs.get('missing_normals', 'error'),
+                     call.kwargs.get('singular_normal', 'error')))
+            self.assertEqual(seen['Queen'], {('error', 'transpose-adjugate')})
+            self.assertEqual(seen['Baby'], {('error', 'error')})
+            self.assertEqual(seen['KingChappy'], {('compute', 'error')})
 
     def test_tampered_model_clip_and_report_fail_before_output(self):
         with tempfile.TemporaryDirectory() as d:

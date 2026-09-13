@@ -8,16 +8,20 @@ poses deterministically:
 - Queen (enemy 30, weighted EVP1): baked with explicit
   ``pikmin2_skinning.draw_matrices`` exactly like the assets module. Frames
   whose animated joint normal matrix is near-singular (``dead``/``carry``)
-  are baked with the opt-in ``singular_normal='transpose-adjugate'``
-  tolerance (unnormalized cofactor normal matrix) and the mode is recorded
-  in every pose report.
-- Baby (enemy 31, rigid EVP1 0): baked with the joint pose, all 6 clips.
+  are baked with the opt-in ``singular_normal='transpose-adjugate'`` policy
+  (docs/PIKMIN2_NORMAL_POLICY.md, #233), recorded in every pose report.
+- Baby (enemy 31, rigid EVP1 0): baked with the joint pose, all 6 clips,
+  strict converter defaults.
 - KingChappy (enemy 53): shape 0's display list omits the normal attribute
   although VTX1 carries a normal array; poses convert with the opt-in
-  ``missing_normals='compute'`` tolerance (area-weighted accumulation of
-  baked face normals), recorded in every pose report.
+  ``missing_normals='compute'`` policy (area-weighted normals from baked
+  geometry, #233), recorded in every pose report.
 
-Issue #223 (parent #172); converter tolerances from #186.
+Any frame the converter still rejects is recorded as an explicit unsupported
+entry, never approximated. Per-species normal policies are recorded in the
+bank report (non-default only).
+
+Issue #223 (parent #172); converter policies from #233, bank rebuild #234.
 """
 import argparse
 import hashlib
@@ -38,17 +42,17 @@ TOTAL_BYTES = 16 * 1024 * 1024  # whole-bank budget across all three species
 MAX_POSES = 12
 
 LIMITATIONS = ['Sampled weighted/rigid poses with approximate materials; no skeletal playback or event execution.',
-               "Queen dead/carry frames with a near-singular normal transform bake via the opt-in singular_normal='transpose-adjugate' tolerance (unnormalized cofactor normal matrix); the mode is recorded in each pose report.",
-               "KingChappy shape 0 omits the normal attribute in its display list (VTX1 normal array exists); poses convert via the opt-in missing_normals='compute' tolerance (area-weighted face-normal accumulation from baked triangle geometry), recorded in each pose report.",
+               "Queen dead/carry frames with a near-singular normal transform bake via the opt-in singular_normal='transpose-adjugate' policy (transpose-adjugate/cofactor normal matrix, #233); the policy is recorded in each pose report.",
+               "KingChappy shape 0 omits the normal attribute in its display list (VTX1 normal array exists); poses convert via the opt-in missing_normals='compute' policy (area-weighted normals derived after all position transforms, #233), recorded in each pose report.",
                'No native runtime, AI/FSM, install or arena placement is provided by this slice.']
 
-# Opt-in converter tolerances per species (#186). Queen needs the singular
-# fallback because animated dead/carry joint matrices collapse a scale axis;
-# 'compute' (not 'default') is chosen for KingChappy because its geometry is
-# intact and derived face normals shade correctly, while a flat +Y normal
-# would mislight the whole model.
-TOLERANCES = {'KingChappy': {'missing_normals': 'compute'},
-              'Queen': {'singular_normal': 'transpose-adjugate'}}
+# Opt-in converter normal policies per species (docs/PIKMIN2_NORMAL_POLICY.md,
+# #233). Queen needs the singular fallback because animated dead/carry joint
+# matrices collapse a scale axis; KingChappy's geometry is intact so 'compute'
+# (not 'default') derives correctly shaded area-weighted normals. Baby stays
+# strict. Non-default policies travel into each pose report as normal_policy.
+POLICIES = {'KingChappy': {'missing_normals': 'compute'},
+            'Queen': {'singular_normal': 'transpose-adjugate'}}
 
 
 def parse_bank(text):
@@ -137,7 +141,8 @@ def _convert_pose(model, model_blocks, envelopes, joint_count, clip, frame, outp
     decoded = decode(model, True, bake_rigid=True, draw_matrices=matrices,
                      missing_normals=missing_normals, singular_normal=singular_normal) \
         if matrices is not None else decode(model, True, bake_rigid=True, pose=pose,
-                                            missing_normals=missing_normals, singular_normal=singular_normal)
+                                            missing_normals=missing_normals,
+                                            singular_normal=singular_normal)
     conversion = write_model(decoded, output, 'enemy.bmd')
     conversion.update(source='enemy.bmd', output=output.name, weighted_pose_baked=matrices is not None)
     return conversion
@@ -188,7 +193,7 @@ def build(imported, output, pose_limit=6):
         for clip in info['clips']:
             name = clip['name']
             raw = clip_data[name]
-            tolerances = TOLERANCES.get(species, {})
+            policies = POLICIES.get(species, {})
             duration, _ = bca_pose(raw, 0, len(info['joints']), allow_scale=True)
             if duration != clip['source_frames']:
                 raise ValueError(f'{species} clip {name} duration mismatch')
@@ -200,7 +205,7 @@ def build(imported, output, pose_limit=6):
                     path = output / species / f'bulblax_{species}_{name}_{converted:02}.mod'
                     path.parent.mkdir(parents=True, exist_ok=True)
                     conversion = _convert_pose(model, model_blocks, envelopes,
-                                               len(info['joints']), raw, frame, path, **tolerances)
+                                               len(info['joints']), raw, frame, path, **policies)
                     (path.with_suffix('.json')).write_text(json.dumps(conversion, indent=2))
                     clip_bytes += path.stat().st_size
                     converted += 1
@@ -231,6 +236,7 @@ def build(imported, output, pose_limit=6):
     totals['mod_bytes'] = total
     result = {'schema': 1, 'bank': HEADER,
               'reference_sha256': hashlib.sha256(report_bytes).hexdigest(),
+              'normal_policy': {s: dict(p) for s, p in POLICIES.items()},
               'motions': motions,
               'unsupported': {s: u for s, u in unsupported.items()},
               'blocked': {s: b for s, b in blocked.items()},
