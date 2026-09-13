@@ -74,7 +74,7 @@ def diffuse_slot(m, r):
     return 0
 
 def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_matrices=None, missing_normals="error", singular_normal="error", bindings=None):
-    if missing_normals not in ("error","compute","default") or singular_normal not in ("error","transpose-adjugate"):raise ValueError("Invalid normal policy")
+    if missing_normals not in ("error","compute","default") or singular_normal not in ("error","transpose-adjugate","transpose-adjugate-zero"):raise ValueError("Invalid normal policy")
     if not bake_rigid and (missing_normals!="error" or singular_normal!="error"):raise ValueError("Normal policies require baked geometry")
     b=blocks(data); j=b['JNT1']; d=b['DRW1']
     if draw_matrices is not None:

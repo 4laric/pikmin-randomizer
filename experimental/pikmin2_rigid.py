@@ -18,7 +18,7 @@ def compose(parent,child):
 
 
 def apply(matrix,point,normal=False,singular_normal="error"):
-    if singular_normal not in ("error","transpose-adjugate"): raise ValueError("Invalid singular-normal policy")
+    if singular_normal not in ("error","transpose-adjugate","transpose-adjugate-zero"): raise ValueError("Invalid singular-normal policy")
     if normal:
         a,b,c=matrix[0][:3];d,e,f=matrix[1][:3];g,h,i=matrix[2][:3]
         cof=((e*i-f*h,f*g-d*i,d*h-e*g),(c*h-b*i,a*i-c*g,b*g-a*h),(b*f-c*e,c*d-a*f,a*e-b*d))
@@ -29,7 +29,8 @@ def apply(matrix,point,normal=False,singular_normal="error"):
         else:divisor=det
         result=tuple(sum(cof[r][k]*point[k] for k in range(3))/divisor for r in range(3))
         length=math.sqrt(sum(v*v for v in result))
-        if not length and abs(det)<1e-12:raise ValueError('Singular transform annihilates normal')
+        # Explicit collapsed-geometry policy; ordinary cofactor mode remains strict.
+        if not length and abs(det)<1e-12 and singular_normal!='transpose-adjugate-zero':raise ValueError('Singular transform annihilates normal')
         return tuple(v/length for v in result) if length else result
     return tuple(sum(matrix[r][k]*point[k] for k in range(3))+matrix[r][3] for r in range(3))
 
@@ -65,7 +66,7 @@ def joint_matrices(blocks, local_overrides=None):
 
 def bake(arrays,shapes,matrices,missing_normals='error',singular_normal='error',bindings=None):
     if missing_normals not in ('error','compute','default'):raise ValueError('Invalid missing-normal policy')
-    if singular_normal not in ('error','transpose-adjugate'):raise ValueError('Invalid singular-normal policy')
+    if singular_normal not in ('error','transpose-adjugate','transpose-adjugate-zero'):raise ValueError('Invalid singular-normal policy')
     if bindings is not None:
         bindings.update({9:[],10:[]})
     seen=set()
