@@ -76,3 +76,8 @@ The failed ordinary replay's inputs/log hashes and unchanged ledger were also
 independently reviewed. No further attempts were made. First delivery and
 same-process duplicate/reopen pass; **fresh-process rehauling remains failed**.
 The overall haul/replay milestone is not complete.
+
+Follow-up #365: the preserved blocker is diagnosed and corrected in
+[height-bounded cargo contact](PIKMIN2_BEASTS_DONUT_GROUND.md), with separate
+first/fresh-process replay and green-regression evidence. Original #361 results
+above are unchanged.
