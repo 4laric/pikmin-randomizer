@@ -1,4 +1,5 @@
 #include "pc_p2_cave.h"
+#include "pc_p2_cave_nav_diagnostics.h"
 #include "pc_p2_cave_anchor.h"
 #include "Graphics.h"
 #include "Camera.h"
@@ -35,16 +36,36 @@ bool completed=false;
 float titleTimer=0;
 P2CaveAnchor anchor;
 Shape* transitionShape=nullptr;
+P2CaveNavRate navRate;
+unsigned navDrawCalls=0;
+bool navMarkerLogged=false;
 struct Survivor {int color,maturity;};
 void invalid(const char* reason){std::fprintf(stderr,"Invalid P2 cave entry: %s\n",reason);std::abort();}
 bool active(){return floorId && !completed && pc_p2_preview_ready() && naviMgr && naviMgr->getNavi() && naviMgr->getNavi()->getCurrState();}
 bool safeTime(){return active() && !gameflow.mPauseAll && !gameflow.mIsUIOverlayActive
     && (!gameflow.mMoviePlayer || !gameflow.mMoviePlayer->mIsActive) && !playerState->mInDayEnd;}
+
+void navigationDiagnostic(){
+    if(!floorId || !navRate.due(SDL_GetTicks()))return;
+    Navi* n=naviMgr?naviMgr->getNavi():nullptr;
+    const int state=n && n->getCurrState()?n->getCurrState()->getID():-1;
+    const float x=n?n->mSRT.t.x:0,y=n?n->mSRT.t.y:0,z=n?n->mSRT.t.z:0;
+    const float dx=anchor.x-x,dz=anchor.z-z;
+    const bool inside=n && anchor.contains(x,y,z),safe=safeTime();
+    const bool movie=gameflow.mMoviePlayer && gameflow.mMoviePlayer->mIsActive;
+    const char* path=!anchor.enabled?"none":transitionShape?"model":"fallback_ring";
+    std::printf("P2_CAVE_NAV seq=%u floor=%d captain=%d x=%.3f y=%.3f z=%.3f heading_rad=%.4f anchor_x=%.3f anchor_y=%.3f anchor_z=%.3f dx=%.3f dz=%.3f horizontal=%.3f vertical=%.3f radius=%.3f inside=%d state=%d walk=%d safe=%d pause=%d ui=%d movie=%d day_end=%d completed=%d pod=%d interaction_eligible=%d marker=%s draws=%u\n",
+        navRate.count,floorId,int(n!=nullptr),x,y,z,n?n->mFaceDirection:0,anchor.x,anchor.y,anchor.z,dx,dz,std::hypot(dx,dz),std::fabs(y-anchor.y),anchor.radius,int(inside),state,int(state==NAVISTATE_Walk),int(safe),int(gameflow.mPauseAll),int(gameflow.mIsUIOverlayActive),int(movie),int(playerState && playerState->mInDayEnd),int(completed),int(pc_p2_preview_goal()!=nullptr),int(safe && inside && state==NAVISTATE_Walk),path,navDrawCalls);
+    std::fflush(stdout);
+}
+
 void notice(const char* text){SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_INFORMATION,"Emergence Cave",text,SDL_GL_GetCurrentWindow());}
 }
 int pc_p2_cave_floor(){return floorId;}
 std::string pc_p2_cave_receipt_prefix(){return floorId?"floor"+std::to_string(floorId)+":":"";}
 void pc_p2_cave_setup(){
+    const char* opt=std::getenv("PIKMIN_CAVE_NAV_DIAGNOSTICS");
+    navRate.reset(opt && opt[0]==49 && opt[1]==0);navDrawCalls=0;navMarkerLogged=false;
     floorId=0;token.clear();requested=false;completed=false;titleTimer=0;anchor=P2CaveAnchor{};transitionShape=nullptr;
     if(!pc_pikipelago_room_preview())return;
     std::ifstream in("p2-cave-entry.txt");if(!in)return;
@@ -138,6 +159,7 @@ bool pc_p2_cave_checkpoint(bool confirm){
     return true;
 }
 void pc_p2_cave_tick(){
+    navigationDiagnostic();
     if(!safeTime()){requested=false;return;}
     gameflow.mWorldClock.setTime(gameflow.mParameters->mStartHour());
     bool attempt=requested;requested=false;
@@ -160,8 +182,8 @@ void pc_p2_cave_tick(){
 
 void pc_p2_cave_draw_transition(Graphics& gfx){
     if(!active() || !anchor.enabled || !gfx.mCamera)return;
-    static bool logged=false;
-    if(!logged){std::puts("P2_CAVE_MARKER_DRAW");logged=true;}
+    if(navRate.enabled)++navDrawCalls;
+    if(!navMarkerLogged){std::puts("P2_CAVE_MARKER_DRAW");navMarkerLogged=true;}
     // Map post-effects may leave an orthographic projection/material active.
     gfx.setPerspective(gfx.mCamera->mPerspectiveMatrix.mMtx,gfx.mCamera->mFov,
         gfx.mCamera->mAspectRatio,gfx.mCamera->mNear,gfx.mCamera->mFar,1.f);
