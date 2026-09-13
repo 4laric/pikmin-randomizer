@@ -67,6 +67,10 @@ public:int idle() override {
  {std::ifstream src("king-fixture-profile.txt",std::ios::binary);std::ofstream dst("p2-king-actor.txt",std::ios::binary);dst<<src.rdbuf();dst.close();}
  const int heap=gsys->setHeap(SYSHEAP_App);pc_p2_king_setup();gsys->setHeap(heap);
  }
+ // Arm the opt-in WarCry injection sidecar for scenario 2 only (appears just
+ // before the setup at ready==500 reads it), so the WarCry astonish and
+ // cross-Emperor manager contract are exercised with two live Emperors.
+ if(ready==499){std::ofstream inj("p2-king-inject.txt");inj<<"P2_KING_INJECT_1 300 0\n";inj.close();std::puts("P2_KING_INJECT_ARMED warcry_tick=300 fixture=1");}
  // Scenario 2: two Emperors (one buried far away) + three BOMB_Wait bombs for
  // multiplied bomb damage and the cross-Emperor WarCry wake contract.
  if(ready==500){pc_p2_king_reset();{std::ifstream src("king-fixture-profile2.txt",std::ios::binary);std::ofstream dst("p2-king-actor.txt",std::ios::binary);dst<<src.rdbuf();dst.close();}const int heap=gsys->setHeap(SYSHEAP_App);pc_p2_king_setup();gsys->setHeap(heap);std::puts("P2_KING_SCENARIO2 two_emperor_bombs");}
@@ -215,11 +219,13 @@ def validate(text, code):
         big_variant=bool(re.search(r'P2_KING_READY id=230024 enemy=53 variant=force_big .* health=1800\.0 scale=1\.50 '
                                    r'speed=45\.0 floor_offset=60', text)),
         no_rewards='P2_CARGO_READY' not in text and 'P2_POD_COLLECT' not in text,
+        warcry_inject='P2_KING_INJECT_ARMED warcry_tick=300 fixture=1' in text
+                       and bool(re.search(r'P2_KING_INJECT id=\d+ tick=\d+ force=WarCry fixture=1', text)),
+        warcry_astonish='P2_KING_ASTONISH' in text,
+        cross_emperor=bool(re.search(r'P2_KING_WARCRY_REQUEST id=\d+ other=\d+ from=\d+ to=\d+', text)),
     )
     optional = dict(
         flick_trample='P2_KING_TRAMPLE' in text or 'P2_KING_FLICK id=' in text,
-        warcry_astonish='P2_KING_ASTONISH' in text,
-        cross_emperor=bool(re.search(r'P2_KING_WARCRY_REQUEST id=\d+ other=\d+ from=\d+ to=\d+', text)),
         external_quartered='P2_KING_BOMB_QUARTERED' in text,
     )
     untested = ['death to Dead (HP 1300 not exhausted in bounded run; policy-tested only)']
