@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 import subprocess
 
-from experimental.pikmin2_beasts_floor2 import prepare, decode_no_cargo
+from experimental.pikmin2_beasts_floor2 import prepare, decode_no_cargo, generation_context
 
 
 def sha(path):
@@ -16,6 +16,29 @@ def sha(path):
 
 
 def validate(log, readiness):
+    context=readiness.get('generation_context')
+    if context is not None:
+        try:expected_context=generation_context(context['global_plus_cave_purple'])
+        except (KeyError,TypeError) as error:raise ValueError('Malformed generation context') from error
+        identity=hashlib.sha256(json.dumps(expected_context,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+        if context!=expected_context or readiness.get('generation_identity')!=identity:
+            raise ValueError('Generation context identity differs')
+        if [f['generator_id'] for f in readiness['flowers']] != context['spawned_generators']:
+            raise ValueError('Staged flower selection differs from generation snapshot')
+        actual=re.findall(r'^P2_BEASTS_GENERATION purple=(\d+) flowers=(\d+)$',log,re.M)
+        if actual!=[(str(context['global_plus_cave_purple']),str(len(context['spawned_generators'])))]:
+            raise ValueError('Native generation context differs')
+        if not context['spawned_generators']:
+            milestones=['P2_ROOM_CARGO_FREE_READY cargo=0','P2_BEASTS_GENERATION purple='+str(context['global_plus_cave_purple'])+' flowers=0',
+                        'P2_BEASTS_READY reds=20 flowers=0 cargo=0',
+                        'PASS P2_BEASTS_SUPPRESSED reds=20 purple=0 sprouts=0 flowers=0 cargo=0 pokos=0 repairs_unchanged=1']
+            if any(log.count(m)!=1 for m in milestones) or [log.index(m) for m in milestones]!=sorted(log.index(m) for m in milestones):
+                raise ValueError('Missing or unordered suppression milestones')
+            if any(m in log for m in ('FAIL ','P2_POD_RECEIPT','P2_TREASURE_DELIVERED','P2_ROOM_READY treasure=',
+                                     'P2_BEASTS_FLOWER ','P2_BEASTS_THROW','P2_VIOLET_CONVERT','P2_BEASTS_APPROACH',
+                                     'P2_BEASTS_SPROUTS','P2_BEASTS_CAPTAIN_PLUCK','P2_BEASTS_FLOWER_CONVERTED','PASS P2_BEASTS_FLOOR2')):
+                raise ValueError('Suppressed floor produced unexpected actors/actions/rewards')
+            return dict(flowers=[],conversions=[],throw_attempts=0,final_population=dict(red=20,purple=0,sprouts=0),cargo=0,pokos=0)
     expected = 'PASS P2_BEASTS_FLOOR2 reds=10 purple=10 sprouts=0 cargo=0 pokos=0 repairs_unchanged=1'
     milestones = ['P2_ROOM_CARGO_FREE_READY cargo=0', 'P2_BEASTS_READY reds=20 flowers=2 cargo=0',
                   'P2_BEASTS_SPROUTS reds=10 purple=0 sprouts=10', 'P2_BEASTS_CAPTAIN_PLUCK purple=1', expected]
@@ -62,19 +85,21 @@ def validate(log, readiness):
 
 
 def run(args):
+    context=generation_context(args.global_purple_count)
     root = args.root.resolve()
     stage = prepare(args.assets.resolve(), root/'output/p2-mapcode0-batch/import',
                     root/'output/p2-cave-catalog-batch/audit-final/catalog.json',
                     root/'output/pikmin2-purple113/import-05',args.output.resolve(),
-                    pod=root/'output/pikmin2-pod111/import-02')
+                    pod=root/'output/pikmin2-pod111/import-02',global_purple_count=args.global_purple_count)
     readiness = json.loads((stage/'readiness.json').read_text())
-    decode_no_cargo((stage/'assets/dataDir/stages/chal0/default.gen').read_bytes())
-    (stage/'p2-beasts-floor2-fixture.txt').write_text('P2_BEASTS_FLOOR2_FIXTURE_1\n')
+    decode_no_cargo((stage/'assets/dataDir/stages/chal0/default.gen').read_bytes(),len(context['spawned_generators']))
+    (stage/'p2-beasts-floor2-fixture.txt').write_text(f'P2_BEASTS_FLOOR2_FIXTURE_2\n{args.global_purple_count}\n')
     exe = args.exe.resolve()
     inputs = ['readiness.json','p2-purple.txt','p2-pod.txt','p2-cargo-free.txt','p2-beasts-floor2-fixture.txt']
     inputs += ['assets/'+name for name in readiness['override_sha256']]
     hashes = {name:sha(stage/name) for name in inputs}
-    evidence = dict(schema=1,issue=263,run=str(stage),executable=str(exe),executable_sha256=sha(exe),
+    evidence = dict(schema=1,issue=269,run=str(stage),executable=str(exe),executable_sha256=sha(exe),
+                    generation_context=context,generation_identity=readiness['generation_identity'],
                     readiness_sha256=sha(stage/'readiness.json'),natural_gameplay=False,
                     scripted_native_throws=True,scripted_captain_pluck=True,remaining_plucks='InteractBikkuri',
                     source_p2_pom_fsm=False,passed=False,input_sha256=hashes)
@@ -109,4 +134,5 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ('root','assets','exe','output'):parser.add_argument('--'+name,type=Path,required=True)
     parser.add_argument('--timeout',type=int,default=240)
+    parser.add_argument('--global-purple-count',type=int,required=True,help='Declared global-plus-cave Purple population at generation; not inferred from the twenty-Red fixture')
     raise SystemExit(0 if run(parser.parse_args()) else 1)

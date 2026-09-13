@@ -2,6 +2,7 @@
 // paths; scripted action selection is not manual-play or P2 Pom FSM parity.
 #include "Generator.h"
 static bool beastsFloor2Enabled=false;
+static int beastsGlobalPurple=-1,beastsExpectedFlowers=2;
 static void beastsFloor2Fixture(Navi* n) {
     static int state=0,timer=0,thrown=0,repairs=0;
     static std::vector<Piki*> originals;
@@ -38,11 +39,12 @@ static void beastsFloor2Fixture(Navi* n) {
             const Vector3f& pos=*b->getInitPosition();
             std::printf("P2_BEASTS_FLOWER id=%u x=%.3f y=%.3f z=%.3f live_x=%.3f live_y=%.3f live_z=%.3f ground=%.3f\n",id,pos.x,pos.y,pos.z,b->mSRT.t.x,b->mSRT.t.y,b->mSRT.t.z,mapMgr->getMinY(pos.x,pos.z,true));
         }
-        require(count==2,"Beasts needs two source flowers");
+        require(count==beastsExpectedFlowers,"Beasts generation flower count differs");
         Iterator enemies(tekiMgr);CI_LOOP(enemies)require(!static_cast<Teki*>(*enemies)->isAlive(),"unexpected Beasts enemy");
         Iterator pellets(pelletMgr);CI_LOOP(pellets)require(!static_cast<Pellet*>(*pellets)->isAlive(),"hidden Beasts cargo");
-        n->mKontroller=new FixtureController();state=1;timer=0;
-        std::puts("P2_BEASTS_READY reds=20 flowers=2 cargo=0");capture("beasts-floor2-start.ppm");
+        n->mKontroller=new FixtureController();state=count?1:3;timer=0;
+        if(beastsGlobalPurple>=0)std::printf("P2_BEASTS_GENERATION purple=%d flowers=%d\n",beastsGlobalPurple,count);
+        std::printf("P2_BEASTS_READY reds=20 flowers=%d cargo=0\n",count);capture("beasts-floor2-start.ppm");
     } else if(state==1) {
         if(flowerIndex==0 && sprouts==5) {
             require(reds==15 && purples==0,"first Violet conversion body conservation");
@@ -80,6 +82,15 @@ static void beastsFloor2Fixture(Navi* n) {
             std::puts("P2_BEASTS_SPROUTS reds=10 purple=0 sprouts=10");capture("beasts-floor2-sprouts.ppm");state=2;timer=0;
         }
         require(timer<1600,"Beasts real throws did not produce ten sprouts");
+    } else if(state==3) {
+        require(reds==20 && purples==0 && sprouts==0,"suppressed Beasts population changed");
+        Iterator bosses(bossMgr);CI_LOOP(bosses)require(!static_cast<Boss*>(*bosses)->isAlive(),"suppressed flower appeared");
+        Iterator pellets(pelletMgr);CI_LOOP(pellets)require(!static_cast<Pellet*>(*pellets)->isAlive(),"suppressed stage birthed cargo");
+        if(timer>=300) {
+            require(playerState->getCurrParts()==repairs,"suppressed Beasts changed repairs");
+            capture("beasts-floor2-final.ppm");
+            std::puts("PASS P2_BEASTS_SUPPRESSED reds=20 purple=0 sprouts=0 flowers=0 cargo=0 pokos=0 repairs_unchanged=1");std::fflush(stdout);std::_Exit(0);
+        }
     } else if(state==2 && timer>90) {
         if(captainPluck && purples==1 && !captainPluckPassed) {
             captainPluckPassed=true;std::puts("P2_BEASTS_CAPTAIN_PLUCK purple=1");

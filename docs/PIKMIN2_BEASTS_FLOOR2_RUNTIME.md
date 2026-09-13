@@ -45,7 +45,8 @@ separate record certifying only that exact runtime/configuration.
 
 ## Reproduction and evidence
 
-From `C:/Users/alari/pikmin-randomizer/output/p2-cave-lane`:
+Historical #263 reproduction, using the runner at root `c7025d9`, from
+`C:/Users/alari/pikmin-randomizer/output/p2-cave-lane`:
 
 ```powershell
 python -m experimental.pikmin2_beasts_floor2_runtime --root ../.. `
@@ -53,6 +54,10 @@ python -m experimental.pikmin2_beasts_floor2_runtime --root ../.. `
   --exe output/beasts263-final/linked/fixture.exe `
   --output output/beasts263-repro
 ```
+
+The current runner requires an explicit generation population and a version-2
+fixture. See [#269 generation gate](PIKMIN2_BEASTS_GENERATION.md) for its command;
+do not pair the updated runner with the frozen #263 executable.
 
 `--root` selects read-only prepared inputs: `output/p2-mapcode0-batch/import`
 (the audited dry-attribute-0 unit import), `output/p2-cave-catalog-batch/audit-final/catalog.json`,

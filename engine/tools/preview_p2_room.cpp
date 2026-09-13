@@ -371,7 +371,15 @@ int main(int argc,char** argv) {
     SDL_setenv("SDL_AUDIODRIVER","dummy",1);
     if(FILE* marker=std::fopen("p2-beasts-floor2-fixture.txt","r")) {
         char header[64],extra;
-        require(std::fscanf(marker,"%63s",header)==1 && std::string(header)=="P2_BEASTS_FLOOR2_FIXTURE_1" && std::fscanf(marker," %c",&extra)==EOF,"invalid Beasts fixture marker");
+        require(std::fscanf(marker,"%63s",header)==1,"missing Beasts fixture marker");
+        if(std::string(header)=="P2_BEASTS_FLOOR2_FIXTURE_2") {
+            char population[32];require(std::fscanf(marker,"%31s",population)==1,"missing Beasts generation context");
+            std::string digits(population);
+            require(digits.size()<=10 && digits.find_first_not_of("0123456789")==std::string::npos,"invalid Beasts population");
+            unsigned long long count=std::strtoull(population,nullptr,10);require(count<=2147483647ULL,"Beasts population overflow");
+            beastsGlobalPurple=int(count);beastsExpectedFlowers=count<20?2:0;
+        } else require(std::string(header)=="P2_BEASTS_FLOOR2_FIXTURE_1","invalid Beasts fixture version");
+        require(std::fscanf(marker," %c",&extra)==EOF,"trailing Beasts fixture data");
         beastsFloor2Enabled=true;std::fclose(marker);
     }
     if(FILE* marker=std::fopen("p2-corpse-lifecycle.txt","r")) {
