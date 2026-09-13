@@ -1,4 +1,5 @@
 #include "pc_p2_purple.h"
+#include "pc_p2_mamuta_rules.h"
 #include "BombItem.h"
 #include "Collision.h"
 #include "Condition.h"
@@ -72,6 +73,11 @@ bool InteractBomb::actPiki(Piki* piki) immut
  */
 bool InteractBury::actPiki(Piki* piki) immut
 {
+	int mamuta = pc_p2_mamuta_bury_piki(mOwner, piki);
+	if (mamuta >= 0) {
+		return mamuta > 0;
+	}
+
 	if (!piki->isAlive()) {
 		return false;
 	}

@@ -1,3 +1,6 @@
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_demon_drop_state.h"
+#endif
 #if defined(PIKMIN_RANDOMIZER_TEST_HOOKS)
 #include "pc_randomizer_campaign_catalog.h"
 #endif
@@ -13,7 +16,10 @@
 #include "pc_p2_cave.h"
 #include "pc_p2_breadbug_visual.h"
 #include "pc_p2_giant_breadbug_visual.h"
+#include "pc_p2_giant_breadbug_actor.h"
 #include "pc_p2_bulblax_visual.h"
+#include "pc_p2_queen.h"
+#include "pc_p2_king.h"
 #include "pc_p2_tank.h"
 #include "pc_randomizer.h"
 #include "MapCode.h"
@@ -845,6 +851,9 @@ void GameCoreSection::prepareBadEnd()
  */
 void GameCoreSection::exitStage()
 {
+#if defined(PIKI_PC_PORT)
+	pc_demon_drop_scene_exit();
+#endif
 #if defined(PIKI_PC_PORT)
 	// Stale focus would keep depth of field running on the file-select and
 	// title screens: those frames have no HUD ortho, so the pass hits the UI.
@@ -1733,6 +1742,8 @@ void GameCoreSection::update()
 	zen::pGameInfo->mTotalPikiNum         = GameStat::allPikis;
 	zen::pGameInfo->mMapPikiNum           = GameStat::mapPikis;
 	zen::pGameInfo->mFormationPikiNum     = GameStat::formationPikis;
+	pc_p2_queen_update();
+	pc_p2_king_update();
 	Node::update();
 }
 
@@ -2086,6 +2097,7 @@ static void randomizerApplyBenefits(Navi* navi, MapMgr* map)
 void GameCoreSection::updateAI()
 {
     pc_p2_cave_tick();
+    pc_p2_giant_breadbug_actor_tick();
     if (pc_randomizer_expanded()) {
         AICONST.mMaxPikisOnField(pc_randomizer_field_capacity());
         const bool active = !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll
@@ -2992,6 +3004,8 @@ void GameCoreSection::draw(Graphics& gfx)
 	pc_p2_breadbug_visual_draw(gfx);
 	pc_p2_giant_breadbug_visual_draw(gfx);
 	pc_p2_bulblax_visual_draw(gfx);
+	pc_p2_queen_draw(gfx);
+	pc_p2_king_draw(gfx);
 	pc_p2_tank_draw_water(gfx);
 }
 

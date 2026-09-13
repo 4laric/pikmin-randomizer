@@ -1,6 +1,7 @@
 // Optional P2 Mamuta static anchors on exact P1 Miurin actors. Gameplay stays P1.
 #include "pc_p2_mamuta.h"
 #include "pc_p2_mamuta_policy.h"
+#include "pc_p2_mamuta_rules.h"
 #include "pc_p2_animation.h"
 #include "pc_bbft.h"
 #include "teki.h"
@@ -42,7 +43,8 @@ Shape* load(const char* clip) {
     return shape;
 }
 }
-void pc_p2_mamuta_reset() { actors.clear(); logged.clear(); for (auto& s: shapes) s=nullptr; bytesTotal=0; }
+void pc_p2_mamuta_reset() { actors.clear(); logged.clear(); for (auto& s: shapes) s=nullptr; bytesTotal=0; pc_p2_mamuta_rules_reset(); }
+bool pc_p2_mamuta_is_bound(BTeki* actor) { return actors.find(actor) != actors.end(); }
 void pc_p2_mamuta_forget(BTeki* actor) {
     actors.erase(actor);
     for (int k=0; k<3; ++k) logged.erase({actor,k});
@@ -67,6 +69,7 @@ void pc_p2_mamuta_setup() {
         actors.emplace(actor,id);
     }
     if (found!=wanted) fail();
+    pc_p2_mamuta_rules_setup();
     for (int k=0; k<3; ++k) shapes[k]=load(names[k]);
     for (const auto& e: actors) std::printf("P2_MAMUTA_READY generator=%u native_type=24 xyz=%.6f,%.6f,%.6f P1_proxy_static_anchors_no_P2_planting\n", e.second,e.first->mSRT.t.x,e.first->mSRT.t.y,e.first->mSRT.t.z);
 }
