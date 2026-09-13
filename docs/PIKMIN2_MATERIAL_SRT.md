@@ -189,3 +189,12 @@ Build provenance, native log and captures remain in private
 backends remain unverified; the multi-material transaction has compiled tests.
 Queen's omitted TEV stage and source-correct family material adoption remain
 follow-up work. No player package, save or retail asset was changed.
+
+### Queen adoption (#399)
+
+The first source-derived diffuse + animated normal/specular layer is now
+available for Queen. See [Queen specular contract and evidence](PIKMIN2_QUEEN_SPECULAR.md)
+for the UV1 bake, opt-in stage command, two-stage renderer, integration inventory
+and fidelity limits. This supersedes the older statements above that Queen
+specular adoption is entirely pending; its third source stage and source lighting
+remain future work.

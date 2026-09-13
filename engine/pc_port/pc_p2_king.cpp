@@ -828,10 +828,10 @@ void pc_p2_king_setup() {
 	// Opt-in, fail-closed fixture injection sidecar; absent in normal runs.
 	std::ifstream inject("p2-king-inject.txt");
 	if (inject) {
-		std::string magic;
+		std::string magic, extra;
 		unsigned long long tick = 0, id = 0;
 		if (!(inject >> magic >> tick >> id) || magic != "P2_KING_INJECT_1" || tick < 1 || tick > 1000000ULL
-		    || id > 0xffffffffULL)
+		    || id > 0xffffffffULL || (inject >> extra))
 			fail();
 		injectWarCryTick = (unsigned long)tick;
 		injectWarCryId = (uint32_t)id;
