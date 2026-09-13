@@ -37,6 +37,7 @@ APP = r'''class RoomApp : public PlugPikiApp {
  Vector3f start[3];
  bool moved[3]={false,false,false};
  Piki* pinned=nullptr;
+ std::map<Piki*,Vector3f> home; // deterministic home-pin cells matching the arena squad placement
  void press(Teki* actor,Navi* n){if(!actor)return;InteractPress p(n,0.0f);actor->stimulate(p);}
  int alivePikis(){int c=0;Iterator it(pikiMgr);CI_LOOP(it){Creature* p=*it;if(p&&p->isAlive())++c;}return c;}
  bool aliveTeki(unsigned id){Iterator it(tekiMgr);CI_LOOP(it){Teki* a=static_cast<Teki*>(*it);if(a&&a->mGenerator&&a->mGenerator->_70==id&&a->isAlive())return true;}return false;}
@@ -63,6 +64,10 @@ public:int idle() override {
  if(observed==60){require(alivePikis()==20,"starting squad size");}
  for(int i=0;i<3;++i)if(beetles[i]&&!aliveTeki(219001+i))beetles[i]=nullptr;
  for(int i=0;i<3;++i)if(beetles[i]&&!moved[i]&&start[i].distance(beetles[i]->getPosition())>30.0f)moved[i]=true;
+ {Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(!p||!p->isAlive())continue;
+  if(p==pinned)continue; // gas probe follows the cloud anchor instead
+  if(home.find(p)==home.end()){int idx=home.size();home[p]=Vector3f(-140.0f+8.0f*(idx%10),30.0f,1820.0f-8.0f*(idx/10));}
+  p->mSRT.t.set(home[p]);p->mVelocity.set(0,0,0);p->mTargetVelocity.set(0,0,0);}}
  if(observed==60&&!pinned){Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(p&&p->isAlive()){pinned=p;break;}}}
  if(pinned&&!alivePiki(pinned))pinned=nullptr;
  if(pinned&&beetles[2]){
@@ -78,16 +83,16 @@ public:int idle() override {
   require(alivePikis()==19,"gas kill count");
   int pellets=0,nectar=0;
   Iterator ip(pelletMgr);CI_LOOP(ip){Creature* p=*ip;if(p&&p->isAlive())++pellets;}
-  require(pellets==4,"number pellet count (incl. corpse suppression)");
   if(itemMgr){Iterator iw(itemMgr);CI_LOOP(iw){Creature* w=*iw;if(w&&w->mObjType==OBJTYPE_Water&&w->isAlive())++nectar;}}
   std::printf("P2_KOGANE_CENSUS pellets=%d nectar=%d pikis=%d\n",pellets,nectar,alivePikis());std::fflush(stdout);
-  require(nectar>=8,"nectar count"); // exact drop tables are asserted from P2_KOGANE_DROP lines; idle squad members may legitimately drink some
+  require(pellets==4,"number pellet count (incl. corpse suppression)");
+  require(nectar==14,"nectar count"); // squad is home-pinned outside the drop zones; every drop must persist
   std::puts("PASS P2_KOGANE_BEHAVIOR flips7 wander3 escapes2 gas1");std::fflush(stdout);std::_Exit(0);}
  std::fflush(stdout);return result;
 }};
 '''
 
-INCLUDES = ('#include "Demo.h"\n#include "GameStat.h"\n#include "Interactions.h"\n#include "ItemMgr.h"\n#include "ObjType.h"\n'
+INCLUDES = ('#include <map>\n#include "Demo.h"\n#include "GameStat.h"\n#include "Interactions.h"\n#include "ItemMgr.h"\n#include "ObjType.h"\n'
             '#include "Pellet.h"\n#include "Piki.h"\n#include "PikiMgr.h"\n#include "PlayerState.h"\n'
             '#include "pc_p2_kogane.h"\n')
 
@@ -154,7 +159,7 @@ def validate_behavior(text, code):
         draw='P2_KOGANE_DRAW corpse=0' in text)
     m = re.search(r'P2_KOGANE_CENSUS pellets=(\d+) nectar=(\d+) pikis=(\d+)', text)
     census = dict(pellets=int(m[1]), nectar=int(m[2]), pikis=int(m[3])) if m else None
-    checks['census'] = bool(census) and census['pellets'] == 4 and census['nectar'] >= 8 \
+    checks['census'] = bool(census) and census['pellets'] == 4 and census['nectar'] == 14 \
         and census['pikis'] == 19
     return dict(passed=all(checks.values()), checks=checks, census=census, flips=[list(f) for f in flips],
                 drops={f'{g}:{f}': list(v) for (g, f), v in sorted(drops.items())},
