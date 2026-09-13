@@ -10,15 +10,17 @@ _SAMPLE = (
     "state=10 motion=2 invincible=0 observed=201\n"
     "P2_RECV_IMMUNITY id=349006 pre_invincible=0 accepted=0 "
     "health_before=130.0 health_after=130.0\n"
+    "P2_RECV_ELEMENT red_fire=0 blue_fire=1 blue_bubble=0 red_bubble=1\n"
     "PASS P2_RECEIVERS_RUNTIME\n")
 
 
 def test_readings_parse():
-    squad, attacks, immunity = readings(_SAMPLE)
+    squad, attacks, immunity, element = readings(_SAMPLE)
     assert squad == [('20', '20')]
     assert attacks[0][:3] == ('349001', '1', '130.0')
     assert attacks[1][2] == '0.0'
     assert immunity == [('349006', '0', '0', '130.0', '130.0')]
+    assert element == [('0', '1', '0', '1')]
 
 
 def test_validate_passes_on_full_receiver_evidence():
@@ -40,6 +42,13 @@ def test_validate_flags_broken_immunity_gate():
                            'accepted=1 health_before=130.0 health_after=0.0')
     evidence = validate(text, 0)
     assert evidence['checks']['immunity_gate'] is False
+
+
+def test_validate_flags_inverted_elemental_immunity():
+    text = _SAMPLE.replace('red_fire=0 blue_fire=1 blue_bubble=0 red_bubble=1',
+                           'red_fire=1 blue_fire=0 blue_bubble=1 red_bubble=0')
+    evidence = validate(text, 0)
+    assert evidence['checks']['elemental_immunity'] is False
 
 
 def test_validate_requires_live_squad():
