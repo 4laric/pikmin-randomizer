@@ -4,6 +4,15 @@ import hashlib
 
 from experimental.pikmin2_beasts_floor2_runtime import validate
 from experimental.pikmin2_beasts_party_snapshot import party_snapshot
+from experimental.pikmin2_beasts_boundary import validate_boundary
+
+
+def bound_checkpoint_witnesses(adapter,checkpoint,log,readiness,*,refund=False):
+    adapter.validate(checkpoint)
+    validate_boundary(log,adapter.token(checkpoint))
+    result=checkpoint_witnesses(adapter,checkpoint,log,readiness,refund=refund)
+    result['native_boundary_correlated']=True
+    return result
 
 
 def checkpoint_witnesses(adapter, checkpoint, log, readiness, *, refund=False):
