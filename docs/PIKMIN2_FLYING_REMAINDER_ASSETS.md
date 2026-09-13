@@ -271,9 +271,12 @@ Module: `experimental/pikmin2_flying_arena.py` per
   `flick_shakeoff`, `death_corpse`, `day_floor_reset`, `save_load`,
   `piklopedia_observation`, `helper_group_ownership`).
 
-### Native hook request (flagged on #375 / #186, not implemented here)
+### Native registration (family-owned, not implemented in this batch)
 
-Requested for the native/integration lead. Mar (29) and Hanachirashi (55) only.
+Workflow revision 2026-09-13 ([#186](https://github.com/4laric/pikmin-randomizer/issues/186)):
+the flying family owner implements these narrow additive registration hooks.
+Mar (29) and Hanachirashi (55) only; shared-semantics edits still require
+focused review.
 
 - **Build sources:** add `native/pc_port/pc_p2_mar.cpp` and
   `pc_p2_hanachirashi.cpp` (headers `.h`) to the `pc_port` build source list

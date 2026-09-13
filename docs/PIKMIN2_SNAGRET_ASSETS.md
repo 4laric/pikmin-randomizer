@@ -311,13 +311,15 @@ original course byte-identical, zeroes the deterministic birth circle, calls
 batch-1 open item; native-dependent gates are `blocked` and the unmeasured
 runtime gates are `untested` — none are claimed as passed.
 
-### 10.3 Native hook request
+### 10.3 Native registration (family-owned)
 
-For the integration lead on [#186](https://github.com/4laric/pikmin-randomizer/issues/186);
-no shared native code is touched by this lane.
+Workflow revision 2026-09-13 ([#186](https://github.com/4laric/pikmin-randomizer/issues/186)):
+the snagret family owner implements these narrow additive registration hooks.
+No shared native code is touched in this batch; shared-semantics edits still
+require focused review.
 
 ```
-Native hook request (#376, parent #174) — for integration lead on #186
+Native registration (#376, parent #174) — family-owned under the 2026-09-13 revision; #186 review
 
 Register three P2 boss actors in the private P1 runtime. One CMake translation
 unit per species plus one shared spine unit; gate the whole set behind

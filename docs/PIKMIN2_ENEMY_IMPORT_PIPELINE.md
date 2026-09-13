@@ -28,7 +28,7 @@ Use new family-prefixed modules and tests. Separate extraction/profile, installa
 - `experimental/pikmin2_breadbug_cargo_install.py`: exact-byte, source-bound installation.
 - `experimental/pikmin2_kochappy_arena.py`: profile separate from original P1 stage placement.
 
-These are reference implementations, not permission to edit a neighbor's modules. If a common converter is missing a capability, submit a minimal reproducer and requested interface to the integration lead; continue independent source/profile work.
+These are reference implementations, not permission to edit a neighbor's modules. Under the **2026-09-13 workflow revision** ([#186](https://github.com/4laric/pikmin-randomizer/issues/186)) a family owner may add a narrow additive converter interface for its own family. For shared converter semantics or defaults, hand the integration lead a minimal reproducer plus the requested interface and continue independent source/profile work.
 
 ## 2. Establish the source contract
 
@@ -54,9 +54,11 @@ Follow [the arena contract](PIKMIN2_ENEMY_ARENA.md): original map/collision/rout
 
 Separate model-space attachments, world position and collision ground height. Verify spawn identity from native logs before interpreting combat results.
 
-## 5. Integrate native hooks serially
+## 5. Integrate native hooks (family-owned registration)
 
-Family workers supply new modules and a precise hook request. The integration lead owns CMake, shared setup/update/draw/reset, actor registries, converter changes, save/reward code and exports. Bind opt-in family profiles without changing ordinary control actors. Clear registrations and references on death/reset; never assume a pointer cannot be reused.
+**Workflow revision 2026-09-13 ([#186](https://github.com/4laric/pikmin-randomizer/issues/186)): family owners own registration.** A family owner implements its own extraction, conversion profile, native module and **narrow additive registration hooks** — build-target membership, per-family setup/update/draw/reset entry points and optional visual-bank binding — runs private builds and records runtime evidence. It no longer stops for integration permission after every batch or asset handoff.
+
+Retain focused review for changes to **shared semantics**: saves/rewards, captain state, generic damage/physics, actor lifetime, converter defaults and ID conflicts. When a family needs a shared-converter capability, add a narrow additive interface (or hand the integration lead a minimal reproducer plus the requested interface) rather than changing shared semantics silently. Bind opt-in family profiles without changing ordinary control actors. Clear registrations and references on death/reset; never assume a pointer cannot be reused.
 
 Visual timing should follow the authoritative native animation counter where mapped. Document fallback and pause/loop behavior. Do not implement stun by skipping all AI updates if that also skips damage/death. A sampled model bank does not supply P2 collision, FSM or attachment semantics automatically.
 
@@ -70,7 +72,7 @@ cmake --build native/build-randomizer --target pikmin_pc -j 6
 cmake --build native/build-randomizer --target pikmin_pc -- -n
 ```
 
-Integration lead commits native locally, runs `py -3.12 scripts/export_native_source.py`, reviews the export and pushes root source. Never push native origin. Keep fixed QA packages and player sessions unchanged.
+The maintained checkout/build/export stays serialized. A family owner commits native locally and may push complete candidate changes and source exports on a private worker branch; the integration lead runs `py -3.12 scripts/export_native_source.py`, reviews shared-semantics edits and pushes root source. Never push native origin. Keep fixed QA packages and player sessions unchanged.
 
 ## 6. Validate behavior, visuals and lifecycle separately
 
@@ -117,10 +119,10 @@ level or a requirement to finish every easier enemy before parallel research.
 | Lifecycle worker | Tank/Wtank model, motion and parameter import | #170 | #195 |
 | Enemy worker | Qurione model, motion, reward attachment contract | #166 | #196 |
 | Separate Groink task | Static arena projectile/map collision and visual acceptance | #169 | Existing handoff |
-| Integration lead | Shared review/build/export; cave diagnostics #193 | #186 | #193 |
+| Integration lead | Shared-semantics review, maintained build/export serialization; cave diagnostics #193 | #186 | #193 |
 | Kimi | Independent cave return acceptance; later immutable family bundles | #184 | #184 |
 
-These three new lanes initially own extraction/profile work only. Their first handoff determines whether the next step is a compatible P1 proxy or a new native mechanic. No shared native ID ranges or hooks are allocated by this table.
+Under the 2026-09-13 revision these lanes own end-to-end implementation (extraction → conversion → native module and narrow additive registration hooks → private build → runtime evidence), not extraction/profile only. Their first handoff still determines whether the next step is a compatible P1 proxy or a new native mechanic. No shared native ID ranges are allocated by this table; family-local additive hooks are.
 
 Remaining families are already tracked: Bulborbs #120, ground invertebrates #165, flying #166, aquatic #167, scavengers #168, projectiles #169, elemental #170, flora #171, Bulblax/larvae #172, Long Legs #173, Snagrets/Crawbster #174, Waterwraith/Titan #175. Work can split further by independent resource/FSM group once an owner claims a child issue. Do not concurrently implement variants that share the same base module. Multi-actor bosses and captors need helper/receiver lifetime contracts before gameplay integration; they can still perform isolated extraction audits in parallel.
 
@@ -136,6 +138,6 @@ This update supersedes the initial queue above. User confirmed additional Kimi s
 | Kimi | Mamuta | #214 |
 | Separate hard-enemy task | Demon/Sarai capture family | #215 |
 | Root subagents | Frog/Honeywisp material fixes; Tank movie-heap diagnosis | #207 |
-| Root integration | Shared converter/native hooks/build/export; cave diagnostics | #186, #193 |
+| Root integration | Shared-semantics review, maintained build/export serialization, cave diagnostics | #186, #193 |
 
-Groink revival is parked by user direction. Kimi issues211–214 had no completion comments at this check. Breadbug213 must reuse existing168 extraction/proxy/cargo evidence and address remaining gaps rather than duplicate the finished small-Breadbug batch. Source assets alone do not satisfy runtime checks in those issue bodies. Shared native changes still come through the integration lead. Fixed independent QA184 remains a separate unfinished acceptance scope.
+Groink revival is parked by user direction. Kimi issues211–214 had no completion comments at this check. Breadbug213 must reuse existing168 extraction/proxy/cargo evidence and address remaining gaps rather than duplicate the finished small-Breadbug batch. Source assets alone do not satisfy runtime checks in those issue bodies. Under the 2026-09-13 revision, narrow additive family registration hooks and private family builds are family-owned; shared-semantics changes still require integration review. Fixed independent QA184 remains a separate unfinished acceptance scope.
