@@ -56,3 +56,12 @@ The native small-centred-window candidate `1d5a242b` (historical root export
 in each lane executable. Importing the Python overlay does not update executables.
 Window/native reconciliation remains distinct from this converter-only merge;
 no claim that every active agent has adopted or run either fixture baseline.
+
+Broader validation: `py -3.12 -m pytest tests -q` initially reported 1381 passed,
+23 skipped, 1052 subtests passed and 19 failures. All 19 required the legacy
+`native/` path, absent in a source-only root worktree. Created a local junction
+from this isolated worktree's `native/` to its own tracked `engine/` snapshot
+(no shared native checkout or AP changes) and reran precisely those 19 tests:
+19 passed. Combined coverage: 1400 passed, 23 skipped, 1052 subtests passed.
+The initial bare `pytest -q` invocation collected command-line scripts and
+aborted; `tests/` is the suite boundary. Logs retain both attempts.
