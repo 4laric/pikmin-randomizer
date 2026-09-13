@@ -275,16 +275,20 @@ class FloraAssetsTests(unittest.TestCase):
         self.assertIn('btk_playback false', TEXT)
         self.assertIn('candypop_shared_base Pom', TEXT)
 
-    def test_pelplant_converter_tolerances_are_scoped(self):
-        # #405: Pelplant is the only flora with an opt-in singular-scale/normal
-        # policy; every other identity keeps strict converter defaults, and
-        # HikariKinoko (shape-matrix type 1) remains unconverted.
+    def test_converter_tolerances_are_scoped(self):
+        # #405/#429: Pelplant is the only flora with an opt-in singular
+        # scale/normal policy and HikariKinoko the only one with the billboard
+        # static fallback; every other identity keeps strict converter defaults.
         self.assertEqual(POSE_TOLERANCES,
                          {'Pelplant': {'singular_scale': 'allow'}})
-        self.assertEqual(TOLERANCES,
-                         {'Pelplant': {'singular_normal': 'transpose-adjugate-zero'}})
-        self.assertEqual(set(POSE_TOLERANCES), set(TOLERANCES))
-        for strict in ('HikariKinoko',) + PROP_FLORA:
+        self.assertEqual(TOLERANCES, {
+            'Pelplant': {'singular_normal': 'transpose-adjugate-zero'},
+            'HikariKinoko': {'billboard': 'static', 'missing_normals': 'compute'},
+        })
+        self.assertEqual(set(POSE_TOLERANCES), {'Pelplant'})
+        for strict in PROP_FLORA:
+            if strict == 'HikariKinoko':
+                continue
             self.assertNotIn(strict, POSE_TOLERANCES)
             self.assertNotIn(strict, TOLERANCES)
 

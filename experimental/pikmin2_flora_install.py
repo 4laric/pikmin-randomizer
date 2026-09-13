@@ -2,8 +2,9 @@
 
 Thin binding of :mod:`experimental.pikmin2_batch2_core` to the flora family
 config. Consumes the batch-1 ``flora.json`` manifest (policy ``P2_FLORA_1``).
-Pelplant and HikariKinoko have no converted poses and are excluded from the
-visual actor set. Native wiring stays with the integration lead (#186).
+Pelplant and HikariKinoko converted poses are not yet wired to native visual
+actors and are excluded from the visual actor set. Native wiring stays with the
+integration lead (#186).
 """
 import argparse
 import json
