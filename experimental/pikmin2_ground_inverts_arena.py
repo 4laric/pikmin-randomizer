@@ -11,6 +11,7 @@ from pathlib import Path
 from experimental.pikmin2_batch2_families import FAMILIES
 from experimental.pikmin2_batch2_core import prepare as _prepare
 from experimental.pikmin2_batch2_core import roster as _roster
+from experimental.pikmin2_ground_inverts_install import (install, verify_install)
 
 CFG = FAMILIES['ground']
 SPECIES = tuple(CFG['arena_species'])
@@ -27,7 +28,8 @@ def roster(assets):
 
 
 def prepare(assets, imported, output):
-    return _prepare(CFG, assets, imported, output)
+    return _prepare(CFG, assets, imported, output,
+                    installer=install, verifier=verify_install)
 
 
 if __name__ == '__main__':

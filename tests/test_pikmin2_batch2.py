@@ -285,3 +285,23 @@ def test_disc_registry_ids_unchanged():
     assert BY_NAME['flora']['species']['RandPom'] == 8
     assert BY_NAME['cannon']['species']['Kabuto'] == 75
     assert BY_NAME['ground']['species']['Armor'] == 15
+
+
+def test_bank_text_skips_gapped_and_empty_clips():
+    # The native loader indexes each clip's poses as a contiguous 0-based run, so
+    # a clip with a leading/interior gap or no sampled pose must not be banked.
+    cfg = BY_NAME['ground']
+    manifest = {'species': {
+        name: dict(enemy_id=identity, clips=[]) for name, identity in cfg['species'].items()}}
+    manifest['species']['Armor']['clips'] = [
+        dict(name='move', source_frames=20, status='converted', events=[],
+             poses=[dict(file='ginv_Armor_move_00.mod'), dict(file='ginv_Armor_move_01.mod')]),
+        dict(name='appear', source_frames=10, status='converted', events=[],
+             poses=[dict(), dict(file='ginv_Armor_appear_01.mod')]),
+        dict(name='type5', source_frames=40, status='unsupported', events=[],
+             poses=[dict(), dict()]),
+    ]
+    text = core.bank_text(cfg, manifest).decode()
+    assert 'clip Armor move 20 - poses 2 converted' in text
+    assert 'appear' not in text
+    assert 'type5' not in text
