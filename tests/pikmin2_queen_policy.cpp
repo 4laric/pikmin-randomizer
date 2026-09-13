@@ -155,10 +155,11 @@ int main() {
 	assert(threw);
 
 	// P2_QUEEN_ACTOR_1 strict config validation.
-	const std::string clips = "P2_QUEEN_ACTOR_1\n11\n"
+	const std::string clips = "P2_QUEEN_ACTOR_1\n13\n"
 	                          "30 dead 140 2 0 139\n30 sleep 210 2 0 209\n30 wait1 30 2 0 29\n30 damage 50 2 0 49\n"
 	                          "30 flick 60 2 0 59\n30 rolling_l 110 2 0 109\n30 rolling_r 110 2 0 109\n30 born 28 2 0 27\n"
-	                          "31 born 35 2 0 34\n31 move 12 2 0 11\n31 dead 100 2 0 99\n";
+	                          "31 born 35 2 0 34\n31 move 12 2 0 11\n31 attack 70 2 0 69\n31 attackfail 20 2 0 19\n"
+	                          "31 dead 100 2 0 99\n";
 	auto parse = [](const std::string& s) {
 		std::istringstream in(s);
 		return readActorConfig(in);
@@ -166,10 +167,11 @@ int main() {
 	{
 		const std::string good = clips + "2\n230010 default 1 -120 30 1800 0\n230011 f_01 0 150 30 1500 90\n";
 		const ActorConfig cfg = parse(good);
-		assert(cfg.clips.size() == 11 && cfg.placements.size() == 2);
+		assert(cfg.clips.size() == 13 && cfg.placements.size() == 2);
 		assert(cfg.placements[0].larvae && cfg.placements[0].variant == Variant::Default);
 		assert(cfg.placements[1].variant == Variant::F01 && !cfg.placements[1].larvae);
-		assert(cfg.clip(30, "rolling_l") && cfg.clip(31, "move") && !cfg.clip(31, "attack"));
+		assert(cfg.clip(30, "rolling_l") && cfg.clip(31, "move") && cfg.clip(31, "attack")
+		       && cfg.clip(31, "attackfail"));
 		assert(cfg.clip(30, "sleep")->index(118.0f) == 1);
 	}
 	auto reject = [&](const std::string& s) {

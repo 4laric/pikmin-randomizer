@@ -83,7 +83,7 @@ class ProtocolTests(unittest.TestCase):
                    for s, table in (('Queen', bb.QUEEN_CLIPS), ('Baby', bb.BABY_CLIPS))
                    for n, bb_clips in table.items()}
         clips = qa.full_clip_set(sampled)
-        self.assertEqual(len(clips), 8 + 4)  # 8 Queen + dead/deadpress/move/born Baby
+        self.assertEqual(len(clips), 8 + 6)  # 8 Queen + Baby dead/deadpress/move/attack/attackfail/born
         for c in clips:
             self.assertEqual(c['duration'], bb.SPECIES[c['species']]['clips'][c['name']]['frames'])
         # and the full set validates, including a larvae placement

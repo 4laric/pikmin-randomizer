@@ -25,7 +25,7 @@ _REFERENCE_CLIPS = {'Queen': behavior.QUEEN_CLIPS, 'Baby': behavior.BABY_CLIPS}
 # carry stays P1-authoritative; attack/attackfail/deadpress are outside the
 # minimal Baby slice implemented by the native actor.
 _NATIVE_QUEEN_CLIPS = frozenset(QUEEN_CLIPS_REQUIRED)
-_NATIVE_BABY_CLIPS = frozenset(('dead', 'deadpress', 'move', 'born'))
+_NATIVE_BABY_CLIPS = frozenset(('dead', 'deadpress', 'move', 'attack', 'attackfail', 'born'))
 
 
 def _check_name(name, allowed):

@@ -49,11 +49,12 @@ public:int idle() override {
  }
  // Scenario 2: Queen isolated from the squad so the birth cycle runs without
  // stuck Pikmin (Flick correctly outranks Born while Pikmin stay stuck).
+ if(ready==299){std::ofstream inj("p2-queen-inject.txt");inj<<"P2_QUEEN_INJECT_1 200\n";inj.close();std::puts("P2_QUEEN_INJECT_ARMED tick=200 fixture=1");}
  if(ready==300){pc_p2_queen_reset();{std::ifstream src("queen-fixture-profile2.txt",std::ios::binary);std::ofstream dst("p2-queen-actor.txt",std::ios::binary);dst<<src.rdbuf();dst.close();}const int heap=gsys->setHeap(SYSHEAP_App);pc_p2_queen_setup();gsys->setHeap(heap);std::puts("P2_QUEEN_SCENARIO2 isolated_birth_cycle");}
- if(ready==630)capture("queen-actor.ppm");
- if(ready==640){pc_p2_queen_reset();std::puts("P2_QUEEN_RESET_REQUEST");}
- if(ready==645){capture("queen-reset.ppm");const int heap=gsys->setHeap(SYSHEAP_App);pc_p2_queen_setup();gsys->setHeap(heap);std::puts("P2_QUEEN_RELOAD_REQUEST");}
- if(ready==700){capture("queen-reload.ppm");std::puts("PASS P2_QUEEN_ACTOR_RUNTIME bounded_frames");std::fflush(nullptr);if(!hold)std::_Exit(0);}
+ if(ready==1800)capture("queen-actor.ppm");
+ if(ready==1810){pc_p2_queen_reset();std::puts("P2_QUEEN_RESET_REQUEST");}
+ if(ready==1815){capture("queen-reset.ppm");const int heap=gsys->setHeap(SYSHEAP_App);pc_p2_queen_setup();gsys->setHeap(heap);std::puts("P2_QUEEN_RELOAD_REQUEST");}
+ if(ready==1900){capture("queen-reload.ppm");std::puts("PASS P2_QUEEN_ACTOR_RUNTIME bounded_frames");std::fflush(nullptr);if(!hold)std::_Exit(0);}
  std::fflush(stdout);return result;
 }};
 '''
@@ -86,7 +87,7 @@ def queen_profile(profile):
     if meta.get('kind') != 'bulblax_sampled_display':
         raise ValueError('Unsupported bank profile')
     wanted = [('Queen', n) for n in ('dead', 'sleep', 'wait1', 'damage', 'flick', 'rolling_l', 'rolling_r', 'born')]
-    wanted += [('Baby', n) for n in ('born', 'move', 'dead')]
+    wanted += [('Baby', n) for n in ('born', 'move', 'attack', 'attackfail', 'dead')]
     clips = []
     files = {}
     for species, name in wanted:
@@ -102,7 +103,7 @@ def queen_profile(profile):
             files[fname] = data
     placement = dict(placement_id=230010, variant='default', larvae=True, xyz=[34, 30, 1896], yaw=0)
     config = protocol(clips, [placement])
-    isolated = dict(placement_id=230011, variant='default', larvae=True, xyz=[34, 30, 1200], yaw=0)
+    isolated = dict(placement_id=230011, variant='default', larvae=True, xyz=[340, 30, 1890], yaw=0)
     config2 = protocol(clips, [isolated])
     return config, config2, files, [placement, isolated]
 
@@ -170,6 +171,11 @@ def validate(text, code):
         press='P2_QUEEN_PRESS id=230010' in text,
         ignore_atari='P2_QUEEN_IGNORE_ATARI id=230010' in text,
         larva_spawn=bool(re.search(r'P2_QUEEN_LARVA id=\d+ xyz=', text)),
+        larva_inject=bool(re.search(r'P2_QUEEN_INJECT_LARVA id=\d+ tick=\d+ state=4 fixture=1', text)),
+        larva_attack=bool(re.search(r'P2_QUEEN_LARVA_ATTACK id=\d+ damage=2 captain_before=[\d.]+ captain_health=[\d.]+',
+                                    text)),
+        captain_damage=any(float(b) < float(a) for a, b in re.findall(
+            r'P2_QUEEN_LARVA_ATTACK id=\d+ damage=2 captain_before=([\d.]+) captain_health=([\d.]+)', text)),
         reset=text.count('P2_QUEEN_RESET_REQUEST') == 1,
         reload=text.count('P2_QUEEN_RELOAD_REQUEST') == 1,
         no_rewards='P2_CARGO_READY' not in text and 'P2_POD_COLLECT' not in text,
@@ -194,7 +200,7 @@ def run(assets, profile, output, exe):
         process = subprocess.Popen([str(Path(exe).resolve()), '--experimental-pikmin2-room'], cwd=directory,
                                    env=env, stdout=log, stderr=subprocess.STDOUT)
         try:
-            code = process.wait(timeout=180)
+            code = process.wait(timeout=300)
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait()
