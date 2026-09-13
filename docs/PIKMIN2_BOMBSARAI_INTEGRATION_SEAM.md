@@ -42,7 +42,7 @@ The runtime probes are implemented in the private fixture: flat-floor probe (dow
 
 1. ~~Execute `p2_bombsarai_runtime` against the room preview with user assets~~ — done, PASS (see the evidence doc); visual confirmation still shows debug markers only. One follow-up from the run: the fixture's tangent-landing probe velocities were raised to 600 units/s.
 2. #128 converter inputs: the numeric inputs (bomb trace radius 15, arm-loop ticks 30, fuse health 4.5, blast radius 90, tekiDamage 500, navi/piki damage 10, gravity 18.6667/tick, hover fp01 70 override) are now taken from the retail tables. Still open: the real `kamu_jnt1` capture joint *transform* (index 14 identified in the model, transform not yet plumbed) and visual assets replacing debug spheres.
-3. Carrier FSM states (Supply/Release/Fall/TakeOff…) replacing explicit harness events; Purple-forced Fall and bitter exits through the seam.
+3. ~~Carrier FSM states replacing explicit harness events~~ — done: the lane-owned 13-state FSM policy (`pc_p2_bombsarai_fsm.*`) now drives supply/release/fall/flick decisions through the seam; Purple-forced Fall, bitter and death-drop exits covered in the standalone fixture and (Purple + death) at runtime. See `docs/PIKMIN2_BOMBSARAI_FSM.md`. Still open: retail .bca keyframe timings (harness stand-ins today), flick effect routing, horizontal `walkToTarget` movement.
 4. Multi-carrier pool behavior against the real shared Bomb manager limit, and bomb-on-bomb induction (`ip02`) routing.
 5. Save/resume and cave/day transition semantics for carried/in-flight/armed bombs (audit persistence caveat).
 6. Root-serialized steps before any shared integration: merge of the lane branch, combined build, and arena registration beyond the opt-in profile.

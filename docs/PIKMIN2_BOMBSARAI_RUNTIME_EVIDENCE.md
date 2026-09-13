@@ -140,12 +140,20 @@ triangle was recorded. This was a fixture bug, not a runtime defect; the
 floor and wall probe velocities were raised from 300 to 600 units/s (change
 confined to lane-owned `tools/p2_bombsarai_runtime.cpp`).
 
-## Remaining gaps (unchanged, still open)
+## Remaining gaps (as of the harness-event run above)
 
 - No visual assets: carrier/bomb render as debug markers only
   (`no_visual_assets=1`); extracted BMDs are not yet wired in.
-- No AI/FSM: carrier is pinned; state machine and pool-limit induction
-  (ip02 = 15) are not exercised.
 - Damage numbers are routed to instrumented receivers, not to real P1
   creatures; integration with live navi/piki/teki damage paths is pending.
 - Campaign resume / persistence for BombSarai state remains open.
+
+## Follow-up: FSM-driven run
+
+The "No AI/FSM" gap above is closed by the next slice: the lane-owned
+13-state carrier FSM now drives the seam (no harness supply/throw events),
+with three executed scenarios — approach (Release lob), Purple-forced Fall
+(skyward eject + recovery) and death-drop (zero-velocity drop with
+dead-carrier attribution fallback) — all PASS against the same retail
+assets. Full design, marker stream and the bomb-trace-radius resolution:
+`docs/PIKMIN2_BOMBSARAI_FSM.md`.
