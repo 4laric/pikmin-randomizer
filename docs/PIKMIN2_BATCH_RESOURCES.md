@@ -47,6 +47,8 @@ python -m experimental.pikmin2_<family>_arena --assets "C:\Users\alari\bbft\dist
 
 The arena writes a unique run directory containing `arena.json`, the configs, and `assets/dataDir/courses/pikmin2room/`. `--assets` must be the Pikmin 1 tree above.
 
+Every private stage produced through `preview_pikmin2_room.overlay()` is automatically seeded with a **20-red starting squad** when it has none, so a fixture never boots into the engine extinction flow (`GAMEEND_PikminExtinction` / `DEMOID_Extinction`). Stages that already carry Pikmin (e.g. Kogane/Bulblax arenas, the room preview) are unchanged. If a run window is already stuck in the extinction cutscene, rebuild its run directory and relaunch.
+
 ## 5. Run the engine
 
 Room-preview overlay (recommended; creates a fresh run dir):
