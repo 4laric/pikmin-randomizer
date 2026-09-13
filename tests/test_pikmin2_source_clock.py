@@ -16,6 +16,9 @@ class SourceClockTests(unittest.TestCase):
     def test_native_display_adapter(self):
         self.compile_probe("display")
 
+    def test_authoritative_native_counter(self):
+        self.compile_probe("native_counter")
+
     def compile_probe(self, name):
         compiler = shutil.which("g++")
         if compiler is None:
