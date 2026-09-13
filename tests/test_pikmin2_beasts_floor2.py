@@ -23,7 +23,7 @@ class FloorTwoTests(unittest.TestCase):
 
     def test_explicit_cargo_free_contract_and_version(self):
         self.assertEqual(CARGO_FREE_CONFIG,b'P2_CARGO_FREE_1\n')
-        self.assertEqual(POLICY,'P2_BEASTS_FLOOR2_PREPARE_2')
+        self.assertEqual(POLICY,'P2_BEASTS_FLOOR2_PREPARE_3')
 
     def test_source_rejects_hidden_cargo_weighted_and_changed_counts(self):
         self.assertFalse(source_floor(catalog())['treasures'])
@@ -42,6 +42,7 @@ class FloorTwoTests(unittest.TestCase):
         plan=flower_plan(room)
         self.assertEqual([p['generator_id'] for p in plan],[62000,62001])
         self.assertEqual(plan[0]['position'],[-2,0,0]);self.assertEqual(plan[0]['yaw'],45)
+        self.assertFalse(plan[0]['source_yaw_applied'])
         bad=copy.deepcopy(room);bad['spawns'][0]['position'][1]=1
         with self.assertRaises(ValueError):flower_plan(bad)
 

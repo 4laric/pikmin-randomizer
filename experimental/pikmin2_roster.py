@@ -9,8 +9,9 @@ import struct
 
 from experimental.pikmin2_collision import ground_height
 from scripts.preview_pikmin2_room import generator, records
+from experimental.pikmin2_generator_pose import write_position,validate_position
 
-POLICY = 'P2_ENGINEERING_ROSTER_2'
+POLICY = 'P2_ENGINEERING_ROSTER_3'
 
 
 def placements(room, actors, kind):
@@ -136,7 +137,8 @@ def install(content_import, run, floor, assets, imported):
         row=bytearray(treasure if cargo else dwarf)
         struct.pack_into('<I',row,8,gid)
         row[16:48]=(b'preview treasure bolt' if cargo else b'preview dwarf bulborb').ljust(32,b'\0')
-        struct.pack_into('>6f',row,48,*actor['position'],0,actor['angle'],0)
+        write_position(row,actor['position'])
+        actor['source_yaw_applied']=False
         rows.append(bytes(row))
         if cargo:
             cid=actor['catalog_id'];entry=content['treasures'][cid]
@@ -157,6 +159,7 @@ def install(content_import, run, floor, assets, imported):
     # All content and path validation precedes mutations in this disposable run.
     for path,data in models:path.write_bytes(data)
     temporary=gen.with_suffix('.roster.tmp');_private(temporary,run).write_bytes(header+b''.join(kept+rows));os.replace(temporary,gen)
+    for actor,row in zip(items+mobs,rows):validate_position(row,actor['position'])
     (run/'p2-cargo.txt').write_text(config,encoding='ascii')
     result=dict(schema=1,engineered_runtime=True,policy=POLICY,floor=floor,unit=unit,
                 actors=items+mobs,enemy_generator_ids=[a['native_generator_id'] for a in mobs],

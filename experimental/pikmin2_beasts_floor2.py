@@ -9,9 +9,10 @@ import uuid
 
 from experimental.pikmin2_collision import attach_collision, ground_height, route_ini
 from scripts.preview_pikmin2_room import generator, overlay, records
+from experimental.pikmin2_generator_pose import write_position, validate_position
 
 UNIT = 'room_cent2_4_tsuchi'
-POLICY = 'P2_BEASTS_FLOOR2_PREPARE_2'
+POLICY = 'P2_BEASTS_FLOOR2_PREPARE_3'
 CARGO_FREE_CONFIG = b'P2_CARGO_FREE_1\n'
 
 
@@ -51,7 +52,7 @@ def flower_plan(room):
         if ground is None or abs(ground-y) > .1: raise ValueError('Source flower lacks matching ground')
         result.append(dict(generator_id=62000+index, instance_id=f'forest_1:floor2:BlackPom:{index}',
                            definition_id='forest_1:definition1:enemy:0', source_slot=slot,
-                           source=s, position=[x, ground, z], yaw=s['angle'],
+                           source=s, position=[x, ground, z], yaw=s['angle'],source_yaw_applied=False,
                            implementation='Existing P1 Pom with explicit P2 Violet conversion metadata; proxy'))
     return result
 
@@ -72,6 +73,7 @@ def decode_no_cargo(raw):
         raise ValueError('Flower native identity mismatch')
     if any(e[72:80] != b'ssob\x02\x00\x00\x00' or struct.unpack_from('>I', e, 80)[0] != 69 for e in flowers):
         raise ValueError('Flower conversion metadata mismatch')
+    for e in flowers:validate_position(e,struct.unpack_from('>3f',e,48))
     return dict(actors=len(entries), flowers=2, cargo=0, allowed_receipts=[])
 
 
@@ -111,10 +113,11 @@ def prepare(assets, units, catalog_path, purple, output, *, pod=None):
     for i, flower in enumerate(flowers):
         e = bytearray(templates[0]); struct.pack_into('<I', e, 8, flower['generator_id'])
         e[16:48] = f'preview violet {i}'.encode().ljust(32, b'\0')
-        struct.pack_into('>6f', e, 48, *flower['position'], 0, flower['yaw'], 0)
+        write_position(e,flower['position'])
         struct.pack_into('>I', e, 80, 69); entries.append(e)
     actors = b'1.0v'+struct.pack('>4fI', *positions['start'], 45, len(entries))+b''.join(entries)
     audit = decode_no_cargo(actors)
+    for flower,e in zip(flowers,entries[-2:]):validate_position(e,flower['position'])
     stage = (assets/'dataDir/stages/chal0.ini').read_bytes()
     stage = re.sub(rb'(?m)^map_file[^\r\n]*', b'map_file courses/pikmin2room/room.mod', stage)
     stage = re.sub(rb'(?m)^navi_start[^\r\n]*', b'navi_start -180.0 -180.0', stage)
