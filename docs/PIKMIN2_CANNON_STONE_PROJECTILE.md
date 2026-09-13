@@ -83,8 +83,11 @@ drop-group-none case starts the visual scale at `0.0001` (`Rock.cpp:51-55`).
 then transit to `Dead` when `mHealth <= 0` or `mTimer > 15.0f`.
 
 - **Homing branch** (`Rock.cpp:370-389`): target the active Navi, else the
-  nearest Pikmin/Navi at `mSightRadius` with the `180.0f` y threshold
-  (`EnemyFunc::getNearestPikminOrNavi`, `:376`). `turnToTarget(targetPos,
+  nearest Pikmin/Navi within `mSightRadius` and a `180.0f`-degree search angle
+  (`EnemyFunc::getNearestPikminOrNavi`, `:376`; `searchAngle` is converted with
+  `TORADIANS` and tested as `|angDist| <= searchAngle`, `enemyAction.cpp:21,45`,
+  so 180 degrees is unrestricted), using the 2D x/z distance
+  (`enemyAction.cpp:47-53`). `turnToTarget(targetPos,
   mTurnSpeed, mMaxTurnAngle)` (`:386`) then `setTargetSpeed(
   C_PROPERPARMS.mSearchRumbleSpeed())` (`:388`). Without a target,
   `targetPos = mPosition + mTargetVelocity` (keep heading, `:382-384`).
@@ -146,7 +149,7 @@ Fixed by the source (compile-time constants on `P2CannonStone`):
 | `kRollScaleUpPerSecond` | 5.0 | `Rock.cpp:336-337` |
 | `kInitialScale` | 0.0001 | `Rock.cpp:53` |
 | `kAtariGraceSeconds` | 1.0 | `Rock.cpp:300` |
-| `kHomingHeightThreshold` | 180.0 | `Rock.cpp:376` |
+| `kHomingSearchAngleDegrees` | 180.0 (degrees, unrestricted) | `Rock.cpp:376` |
 | `kTekiAttackDamage` | 250.0 | `Rock.cpp:222` |
 | `kNonHomingCurrentWeight` / `TargetWeight` | 0.01 / 0.99 | `Rock.cpp:391-393` |
 
@@ -162,8 +165,8 @@ fp00, disc 99999) and `variant`. Disc values come from
 The policy never dereferences creatures, the map or the effect system:
 
 - `P2CannonStoneTarget` — the host selects the active Navi / nearest Pikmin or
-  Navi inside `mSightRadius` and the 180 y threshold; no target selection is
-  invented here.
+  Navi inside `mSightRadius` and the 180-degree search angle; no target
+  selection is invented here.
 - `P2CannonStoneTraceFn` — the host applies `targetVelocity()` with the engine
   creature physics and returns the resulting position/velocity, plus `wall` for
   `wallCallback`.
