@@ -1,3 +1,6 @@
+#include "pc_p2_frog.h"
+#include "pc_p2_tank.h"
+#include "pc_p2_qurione.h"
 #include "pc_p2_sheargrub.h"
 #include "pc_p2_kochappy.h"
 #include "pc_p2_breadbug_visual.h"
@@ -177,6 +180,9 @@ void pc_p2_preview_setup() {
     pc_p2_kochappy_setup();
     pc_p2_breadbug_visual_setup();
     pc_p2_breadbug_actor_setup();
+    pc_p2_frog_setup();
+    pc_p2_tank_setup();
+    pc_p2_qurione_setup();
     pc_p2_purple_setup();
     pc_p2_cave_setup();
     gsys->setHeap(previousHeap);

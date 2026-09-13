@@ -171,6 +171,9 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_kochappy.cpp
     pc_port/pc_p2_breadbug_visual.cpp
     pc_port/pc_p2_breadbug_actor.cpp
+    pc_port/pc_p2_frog.cpp
+    pc_port/pc_p2_tank.cpp
+    pc_port/pc_p2_qurione.cpp
     pc_port/pc_randomizer.cpp
     pc_port/pc_main.cpp
     pc_port/pc_window.cpp

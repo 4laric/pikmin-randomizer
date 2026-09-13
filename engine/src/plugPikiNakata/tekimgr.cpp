@@ -1,3 +1,6 @@
+#include "pc_p2_frog.h"
+#include "pc_p2_tank.h"
+#include "pc_p2_qurione.h"
 #ifdef PIKI_PC_PORT
 #include "pc_p2_sheargrub.h"
 #include "pc_p2_breadbug_visual.h"
@@ -113,7 +116,7 @@ int TekiMgr::typeIds[TEKI_TypeCount] = {
 void TekiMgr::initTekiMgr()
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
-	{ pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_breadbug_actor_reset(); }
+	{ pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_breadbug_actor_reset(); pc_p2_frog_reset(); pc_p2_tank_reset(); pc_p2_qurione_reset(); }
 #endif
 	tekiMgr = nullptr;
 }
@@ -140,7 +143,7 @@ TekiMgr::TekiMgr()
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
 	// Stage teardown nulls the global manager. Do not clear an unrelated live manager.
-	if (!tekiMgr) { pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_breadbug_actor_reset(); }
+	if (!tekiMgr) { pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_breadbug_actor_reset(); pc_p2_frog_reset(); pc_p2_tank_reset(); pc_p2_qurione_reset(); }
 #endif
 	PRINT_NAKATA("TekiMgr>\n");
 	memStat->start("tekiMgr");
@@ -271,7 +274,7 @@ Teki* TekiMgr::newTeki(int type)
 	}
 
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
-	pc_p2_snow_forget(teki); pc_p2_sheargrub_forget(teki); pc_p2_kochappy_forget(teki); pc_p2_breadbug_actor_forget(teki);
+	pc_p2_snow_forget(teki); pc_p2_sheargrub_forget(teki); pc_p2_kochappy_forget(teki); pc_p2_breadbug_actor_forget(teki); pc_p2_frog_forget(teki); pc_p2_tank_forget(teki); pc_p2_qurione_forget(teki);
 #endif
 	teki->init(type);
 	return teki;
@@ -283,7 +286,7 @@ Teki* TekiMgr::newTeki(int type)
 void TekiMgr::reset()
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
-	if (this == tekiMgr) { pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_breadbug_visual_reset(); pc_p2_breadbug_actor_reset(); }
+	if (this == tekiMgr) { pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_breadbug_visual_reset(); pc_p2_breadbug_actor_reset(); pc_p2_frog_reset(); pc_p2_tank_reset(); pc_p2_qurione_reset(); }
 #endif
 	PRINT_NAKATA("reset>\n");
 	Iterator iter(this);
