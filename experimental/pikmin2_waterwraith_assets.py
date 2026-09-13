@@ -338,9 +338,11 @@ def extract(iso, source, output, pose_limit=6):
                 info['clips'].append(clip)
             report['species'][species] = info
         report['limitations'] = list(LIMITATIONS)
-        report['extract_seconds'] = round(time.perf_counter() - started, 3)
+        manifest = {k: v for k, v in report.items()
+                    if k != 'extract_seconds'}
         (output / 'waterwraith.json').write_bytes(
-            (json.dumps(report, sort_keys=True, indent=2) + '\n').encode())
+            (json.dumps(manifest, sort_keys=True, indent=2) + '\n').encode())
+        report['extract_seconds'] = round(time.perf_counter() - started, 3)
         (output / 'p2-waterwraith.txt').write_text(TEXT)
         return report
 
