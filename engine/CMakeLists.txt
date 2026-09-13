@@ -179,6 +179,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_tank.cpp
     pc_port/pc_p2_qurione.cpp
  pc_port/pc_p2_batch2.cpp
+    pc_port/pc_p2_long_legs.cpp
     pc_port/pc_randomizer.cpp
     pc_port/pc_main.cpp
     pc_port/pc_window.cpp

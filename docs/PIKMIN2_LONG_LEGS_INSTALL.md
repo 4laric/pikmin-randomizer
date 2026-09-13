@@ -51,14 +51,16 @@ meshes are committed.
 - Damagumo/Beady Long Legs (56) stays owned by the demon lane and is not staged
   here.
 
-## Native registration (family-owned) — deferred
+## Native registration (family-owned)
 
-Workflow revision 2026-09-13
-([#186](https://github.com/4laric/pikmin-randomizer/issues/186)): the Long Legs
-family owner owns its narrow additive registration hooks. This pass does **not**
-register a native draw: the lane installs bind-pose meshes, not the converted
-`.mod` pose bank the shared `native/pc_port/pc_p2_batch2.cpp` unit consumes, so
-there is nothing loadable for the current visual path yet. The bind-pose meshes
-first need the #186 conversion path, after which a `TEKI_Chappy`-vehicle draw
-hook (or a native Long Legs type) can be added. See
-[Batch-2 native registration](PIKMIN2_BATCH2_NATIVE_REGISTRATION.md).
+The batch-2 pass deferred native registration because the lane installs
+bind-pose meshes, not the converted `.mod` pose bank the shared
+`native/pc_port/pc_p2_batch2.cpp` unit consumes. Batch 4 resolves this with a
+family-owned conversion plus a dedicated native draw path:
+`experimental/pikmin2_long_legs_visual.py` bakes each staged `enemy.bmd` into a
+single static shape (`longlegs_<species>_bind_00.mod`) using family opt-in
+converter tolerances, and `native/pc_port/pc_p2_long_legs.cpp` registers the
+arena's `TEKI_Chappy` vehicles and draws that bind pose. See
+[Long Legs bind-pose native draw path](PIKMIN2_LONG_LEGS_VISUAL.md). Runtime
+identity is reported as `P2_LONG_LEGS_BIND`; all source-behavior gates remain
+BLOCKED/UNTESTED.
