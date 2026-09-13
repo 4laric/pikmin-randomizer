@@ -75,8 +75,37 @@ a clean no-op when its configs are absent (ordinary play unaffected).
   `*_BIND` log line, per the pipeline rule that screenshots are not identity).
 - Pose selection / draw path: **PASS** (live `*_DRAW` frame captured once per
   run).
-- `spawn_exact_xyz`, `control_undisturbed`, `reload`: **UNTESTED** (no
-  effective-XYZ probe in this fixture).
+### Spawn identity + effective XYZ probe
+
+`experimental/pikmin2_batch2_runtime.py` builds a private instrumented
+`preview_p2_room` (same `build_pikmin2_fixture` path as the Frog probe), waits
+for `pc_p2_preview_cargo_free_ready()`, then for every arena generator asserts
+exactly one actor with the expected native type and asserts both the birth
+(`mPersonality->mPosition`) and generator position within `0.02` of the arena's
+expected XYZ before printing `P2_BATCH4_BIRTH` and `PASS P2_BATCH4_RUNTIME`.
+
+- Fixture `output/p2-batch4-probe2/baseline/fixture.exe` SHA-256
+  `f053858d8a8f25f6c586b37c51021f56183858523b7b37b6de51bf1d8dbcbfe1`
+- Runs: `output/p2-batch4-probe2/{waterwraith,flora,long-legs}/<run-uuid>/runtime-evidence.json`
+
+| Family | Births (generator, native type, registered) | Result |
+|---|---|---|
+| Waterwraith | 352001(1), 352002(1), 352003(0 control) | PASS |
+| Flora | 353001-353006 (1), 353007(0 control) | PASS |
+| Long Legs | 312001(1), 312002(1), 312003(0 control) | PASS |
+
+## Gate status
+
+- `native_identity`: **PASS** for all three families (bind confirmed from the
+  `*_BIND` log line, per the pipeline rule that screenshots are not identity).
+- Pose selection / draw path: **PASS** (live `*_DRAW` frame captured once per
+  run).
+- `spawn_exact_xyz`: **PASS** for all three families (birth and generator XYZ
+  within `0.02` of the arena's expected placement; control staged as ordinary
+  P1 Chappy).
+- `control_undisturbed`: **PASS** — the per-family control actor spawns at its
+  expected identity/type/XYZ and is not registered to the family draw path.
+- `reload`: **UNTESTED** (no re-entry pass in this fixture).
 - `natural_AI`, `combat`, `death_corpse`, `carrier_recovery` and the
   family-specific extras (`boss_phases`, `tyre_roll_crush`,
   `purple_vulnerability`, shared Pom base, pellet-to-Pom, Pelplant receptor,
@@ -86,6 +115,7 @@ a clean no-op when its configs are absent (ordinary play unaffected).
 
 ## Limitations
 
-One actor per draw line is logged (the `logged[]` latch). The fixture ran the
-default room-preview camera; effective world XYZ and camera-only observation
-are not captured. No generated assets, logs or saves are committed.
+One actor per draw line is logged (the `logged[]` latch). Draw captures use the
+default room-preview camera; camera-only visibility and corpse-pose selection
+are not asserted here. The probe validates spawn identity/placement, not source
+behavior. No generated assets, logs or saves are committed.
