@@ -8,9 +8,10 @@ from experimental.pikmin2_assets import disc_files, archive_files
 from experimental.pikmin2_animation import sample_frames
 from experimental.pikmin2_breadbug_assets import sha, parameter_blocks, collision_nodes
 from experimental.pikmin2_sheargrub_assets import animation_rows, joints
-from experimental.pikmin2_convert import blocks, convert
+from experimental.pikmin2_convert import blocks, decode, write_model
 from experimental.pikmin2_purple import bca_pose
 from experimental.pikmin2_rigid import joint_matrices
+from experimental.pikmin2_skinning import draw_matrices
 
 
 def profile(raw):
@@ -96,7 +97,10 @@ def extract(iso, output, pose_limit=3):
                     clip['muzzle_samples'].append(dict(frame=frame, **transform))
                     filename = Path(row['file']).stem+f'_{i:02}.mod'
                     try:
-                        conversion = convert(modelpath, root/filename, True, bake_rigid=True, pose=pose)
+                        matrices = draw_matrices(blocks(model), pose)
+                        decoded = decode(model, True, bake_rigid=True, draw_matrices=matrices)
+                        conversion = write_model(decoded, root/filename, 'enemy.bmd')
+                        conversion['weighted_pose_baked'] = True
                         conversion.update(source='enemy.bmd', output=filename)
                         (root/Path(filename).with_suffix('.json')).write_text(json.dumps(conversion, indent=2)+'\n', encoding='utf-8')
                         clip['poses'].append(dict(file=filename, frame=frame,
@@ -112,7 +116,8 @@ def extract(iso, output, pose_limit=3):
                       metadata_sha256=metadata, clips=clips,
                       collision=collision_nodes(params['minihoudai/enemycoll.txt'], len(names)))
     result['limitations'] = [
-        'Sampled rigid poses and approximate materials; no skeletal/event playback.',
+        'Sampled weighted poses and approximate materials; no skeletal/event playback.',
+        'Texture-matrix animation omitted; normals use inverse transpose rather than J3D scale-flag shortcuts.',
         'Muzzle transforms precede runtime aim callback and owner world transform.',
         'No native actor, map collision, damage receiver or projectile rendering installed.',
         'Stationary single-shell policy is a subset of the three-shell, six-node source system.',

@@ -3,10 +3,30 @@ from pathlib import Path
 import struct
 import unittest
 import tempfile
+from unittest.mock import patch
 from experimental.pikmin2_convert import Writer, blocks, convert, decode, pixel_state, diffuse_slot
 
 ROOM=Path(__file__).resolve().parents[1]/'output/pikmin2-content-probe/arc/view.bmd'
 class ConverterTests(unittest.TestCase):
+    def test_draw_matrix_override_is_explicit_and_validated(self):
+        drw=bytearray(24);struct.pack_into('>H',drw,8,1)
+        evp=bytearray(12);struct.pack_into('>H',evp,8,1)
+        source={'JNT1':b'', 'DRW1':drw, 'EVP1':evp}
+        identity=[[1,0,0,0],[0,1,0,0],[0,0,1,0]]
+        with patch('experimental.pikmin2_convert.blocks',return_value=source):
+            with self.assertRaisesRegex(ValueError,'Skinned envelopes'):
+                decode(b'',True,True)
+            with self.assertRaisesRegex(ValueError,'require baking'):
+                decode(b'',True,draw_matrices=[identity])
+            with self.assertRaisesRegex(ValueError,'without a joint pose'):
+                decode(b'',True,True,pose=[identity],draw_matrices=[identity])
+            for invalid in ([],[identity,identity]):
+                with self.assertRaisesRegex(ValueError,'count mismatch'):
+                    decode(b'',True,True,draw_matrices=invalid)
+            for invalid in ([[1]],[[1,0,0,float('nan')],[0,1,0,0],[0,0,1,0]]):
+                with self.assertRaisesRegex(ValueError,'Invalid explicit'):
+                    decode(b'',True,True,draw_matrices=[invalid])
+
     def test_diffuse_stage_selected_instead_of_sparkle_noise(self):
         m=bytearray(640);r=132
         for off,start in ((88,464),(92,480),(76,560),(56,580)):

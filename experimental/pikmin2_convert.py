@@ -73,18 +73,29 @@ def diffuse_slot(m, r):
         if list(m[gen:gen+3])==[1,4,60]:return slot
     return 0
 
-def decode(data, approximate_materials=False, bake_rigid=False, pose=None):
+def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_matrices=None):
     b=blocks(data); j=b['JNT1']; d=b['DRW1']
-    if u16(b['EVP1'],8)!=0: raise ValueError('Skinned envelopes not supported')
+    if draw_matrices is not None:
+        if not bake_rigid or pose is not None:
+            raise ValueError('Explicit draw matrices require baking without a joint pose')
+        if len(draw_matrices)!=u16(d,8) or not draw_matrices:
+            raise ValueError('Draw matrix count mismatch')
+        if any(len(m)!=3 or any(len(row)!=4 or not all(math.isfinite(v) for v in row) for row in m) for m in draw_matrices):
+            raise ValueError('Invalid explicit draw matrix')
+    elif u16(b['EVP1'],8)!=0: raise ValueError('Skinned envelopes not supported')
     if not bake_rigid and (u16(j,8)!=1 or u16(d,8)!=1 or d[u32(d,12)]!=0 or u16(d,u32(d,16))!=0): raise ValueError('Only one rigid joint supported')
     jo=u32(j,12)
     if not bake_rigid and (unpack(j,'3f',jo+4)!=(1.,1.,1.) or unpack(j,'3h',jo+16)!=(0,0,0) or unpack(j,'3f',jo+24)!=(0.,0.,0.)): raise ValueError('Non-identity joint transform')
     if bake_rigid:
         from experimental.pikmin2_rigid import joint_matrices
-        matrices=joint_matrices(b,pose)
-        draw_joints=[u16(d,u32(d,16)+2*i) for i in range(u16(d,8))]
-        if any(d[u32(d,12)+i]!=0 or joint>=len(matrices) for i,joint in enumerate(draw_joints)):
-            raise ValueError('Non-rigid draw matrix')
+        if draw_matrices is not None:
+            matrices=draw_matrices
+            draw_joints=list(range(len(matrices)))
+        else:
+            matrices=joint_matrices(b,pose)
+            draw_joints=[u16(d,u32(d,16)+2*i) for i in range(u16(d,8))]
+            if any(d[u32(d,12)+i]!=0 or joint>=len(matrices) for i,joint in enumerate(draw_joints)):
+                raise ValueError('Non-rigid draw matrix')
     v=b['VTX1']; formats={}; at=u32(v,8)
     while u32(v,at)!=255:
         attr,count,kind=unpack(v,'III',at); formats[attr]=(count,kind,v[at+12]); at+=16
@@ -105,14 +116,18 @@ def decode(data, approximate_materials=False, bake_rigid=False, pose=None):
             values=[tuple(z/(2**shift) if kind==3 else z for z in unpack(v,fmt,x)) for x in range(start,end-stride+1,stride)]
         arrays[attr]=values
     s=b['SHP1']; shapes=[]
+    # Weighted Groink draw packets also carry TEX2MTXIDX. Matrix-selected
+    # texture animation is omitted in the explicit material approximation.
+    texture_matrix_attrs=range(1,9) if draw_matrices is not None else (1,)
+    discarded_matrix_attrs=set()
     for si in range(u16(s,8)):
         rec=u32(s,12)+u16(s,u32(s,16)+2*si)*40
         if s[rec]!=0 and not (bake_rigid and s[rec]==3): raise ValueError('Unsupported shape matrix type')
         groups,desc,mi,di=unpack(s,'4H',rec+2); attrs=[]; at=u32(s,24)+desc
         while u32(s,at)!=255:
             attr,kind=unpack(s,'II',at); at+=8
-            if (attr not in (0,9,10,11,13) and not (approximate_materials and attr in (12,*range(14,21))) and not (bake_rigid and approximate_materials and attr==1)) or kind not in (1,2,3): raise ValueError('Unsupported display-list attribute')
-            if kind==1 and attr not in ((0,1) if bake_rigid else (0,)): raise ValueError('Direct non-matrix attribute unsupported')
+            if (attr not in (0,9,10,11,13) and not (approximate_materials and attr in (12,*range(14,21))) and not (bake_rigid and approximate_materials and attr in texture_matrix_attrs)) or kind not in (1,2,3): raise ValueError('Unsupported display-list attribute')
+            if kind==1 and attr not in ((0,*texture_matrix_attrs) if bake_rigid else (0,)): raise ValueError('Direct non-matrix attribute unsupported')
             attrs.append((attr,kind))
         triangles=[];matrix_slots={}
         for gi in range(groups):
@@ -138,8 +153,8 @@ def decode(data, approximate_materials=False, bake_rigid=False, pose=None):
                                 if value%3: raise ValueError('Invalid matrix slot')
                                 matrix_slot=value//3
                             elif value!=0: raise ValueError('Non-root matrix reference')
-                        elif attr==1 and bake_rigid:
-                            pass # texture matrix animation omitted in explicit approximation mode
+                        elif attr in texture_matrix_attrs and bake_rigid:
+                            discarded_matrix_attrs.add(attr)
                         else:
                             if value>=len(arrays[attr]): raise ValueError('Vertex index out of range')
                             vv[attr]=value
@@ -189,6 +204,8 @@ def decode(data, approximate_materials=False, bake_rigid=False, pose=None):
     for attr in arrays:
         used=[v[attr] for tris in shapes for tri in tris for v in tri if attr in v]
         arrays[attr]=arrays[attr][:max(used)+1] if used else []
+    if draw_matrices is not None:
+        b['_discarded_matrix_attributes']=sorted(discarded_matrix_attrs)
     return b,arrays,shapes,[materials[mapping[i]] for i in range(len(shapes))]
 
 class Writer:
@@ -278,6 +295,8 @@ def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
     w.end();w.begin(65535);w.end()
     output=Path(output);output.parent.mkdir(parents=True,exist_ok=True);output.write_bytes(w.data)
     report={'source':str(source),'output':str(output),'vertices':len(a[9]),'triangles':sum(map(len,shapes)),'shapes':len(shapes),'textures':texture_count,'bounds':bounds,'y_offset':y_offset,'discarded_attributes':[k for k in a if k not in (9,10,11,13)],'material_policy':'vertex color times identifiable UV0 diffuse texture (first texture fallback); original TEV not reproduced','pixel_state_policy':'source blend, alpha compare, depth test/write, draw category and hierarchy order preserved'}
+    if '_discarded_matrix_attributes' in b:
+        report['discarded_texture_matrix_attributes']=b['_discarded_matrix_attributes']
     output.with_suffix('.json').write_text(json.dumps(report,indent=2),encoding='utf-8');return report
 
 if __name__=='__main__':
