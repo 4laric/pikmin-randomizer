@@ -1,0 +1,37 @@
+From 138c6c23e9752c900ce93f1dca22b74ee701dc67 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Sun, 13 Sep 2026 12:17:50 -0400
+Subject: [PATCH 03/10] Steer walk yaw toward the goal and widen the attack
+ trigger (#289)
+
+---
+ pc_port/pc_p2_king.cpp | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/pc_port/pc_p2_king.cpp b/pc_port/pc_p2_king.cpp
+index 009ce4f5..2a69b762 100644
+--- a/pc_port/pc_p2_king.cpp
++++ b/pc_port/pc_p2_king.cpp
+@@ -34,7 +34,7 @@ constexpr float Tick = 1.0f / 30.0f; // 30 Hz bounded behavior clock
+ constexpr int StuckMax = 32;         // bounded stuck-Pikmin receiver set
+ constexpr float RootRadius = 80.0f;  // kingchappy/enemycoll.txt root
+ constexpr float KingSight = 300.0f;          // approximation (not pinned by #227)
+-constexpr float KingAttackRange = 80.0f;     // approximation: tongue reach trigger
++constexpr float KingAttackRange = 120.0f;    // approximation: tongue reach trigger
+ constexpr float KingAttackAngleDeg = 45.0f;  // approximation (checkAttack reconstructed)
+ constexpr float KingBombAttackRange = 150.0f; // approximation for beyond-80 bomb targeting
+ constexpr float HomeRadius = 25.0f;          // approximation (return-home bound)
+@@ -575,6 +575,10 @@ void tickKing(King& k) {
+ 			if (decision == p2king::TurnDecision::FinishTurn || decision == p2king::TurnDecision::Walk)
+ 				enter(k, p2king::Walk);
+ 		} else {
++			// Walk steering approximation: like the Baby move step, yaw eases
++			// toward the goal while walking so the facing converges.
++			const float step = off > TurnRateDeg ? TurnRateDeg : off < -TurnRateDeg ? -TurnRateDeg : off;
++			k.yaw += step;
+ 			const float rad = k.yaw * 0.0174532925199433f;
+ 			k.x += std::sin(rad) * k.info.speed * Tick;
+ 			k.z += std::cos(rad) * k.info.speed * Tick;
+-- 
+2.47.1.windows.1
+

@@ -1,0 +1,85 @@
+From 1e9bd35b644c7364c081e7a445d849868248e973 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Sun, 13 Sep 2026 12:11:02 -0400
+Subject: [PATCH 02/10] Sweep tongue segment for mouth slots so close targets
+ are eaten (#289)
+
+---
+ pc_port/pc_p2_king.cpp | 26 ++++++++++++++++----------
+ 1 file changed, 16 insertions(+), 10 deletions(-)
+
+diff --git a/pc_port/pc_p2_king.cpp b/pc_port/pc_p2_king.cpp
+index 891b92da..009ce4f5 100644
+--- a/pc_port/pc_p2_king.cpp
++++ b/pc_port/pc_p2_king.cpp
+@@ -334,9 +334,20 @@ void crossEmperorRequest(King& k) {
+ 
+ void eatScan(King& k) {
+ 	// Armed tongue frames: try eatBomb (key 6 armed) and eatPikmin (key 3/6).
++	// Mouth approximation: the 9 kamu slots sweep the tongue segment from the
++	// Emperor to the mouth point; anything within slot radius of that segment
++	// is in a slot (recorded approximation).
+ 	float mx, mz;
+ 	mouthPos(k, mx, mz);
+ 	const float slotRadius = p2king::MouthSlotRadius * k.info.scale;
++	auto slotDistance = [&](float px, float pz) {
++		const float sx = mx - k.x, sz = mz - k.z;
++		const float len2 = sx * sx + sz * sz;
++		float t = len2 > 1.0e-6f ? ((px - k.x) * sx + (pz - k.z) * sz) / len2 : 0.0f;
++		t = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
++		const float dx = px - (k.x + sx * t), dz = pz - (k.z + sz * t);
++		return std::sqrt(dx * dx + dz * dz);
++	};
+ 	bool pikminInRange = false, bombsInRange = false;
+ 	if (pikiMgr) {
+ 		Iterator it(pikiMgr);
+@@ -344,14 +355,12 @@ void eatScan(King& k) {
+ 			Piki* p = static_cast<Piki*>(*it);
+ 			if (!p || !p->isAlive()) continue;
+ 			const Vector3f& pos = p->getPosition();
+-			const float dx = pos.x - mx, dz = pos.z - mz;
+-			if (dx * dx + dz * dz <= slotRadius * slotRadius) pikminInRange = true;
++			if (slotDistance(pos.x, pos.z) <= slotRadius) pikminInRange = true;
+ 		}
+ 	}
+ 	for (const auto& b : bombs) {
+ 		if (b.state != 0) continue; // only BOMB_Wait is eatable
+-		const float dx = b.cfg.x - mx, dz = b.cfg.z - mz;
+-		if (dx * dx + dz * dz <= slotRadius * slotRadius) bombsInRange = true;
++		if (slotDistance(b.cfg.x, b.cfg.z) <= slotRadius) bombsInRange = true;
+ 	}
+ 	const bool slotsFree = k.mouthPikmin + k.mouthBombs < p2king::MouthSlots;
+ 	// Armed frames repeat every frame while armed (each armed frame tries).
+@@ -362,8 +371,7 @@ void eatScan(King& k) {
+ 			Piki* p = static_cast<Piki*>(*it);
+ 			if (!p || !p->isAlive()) continue;
+ 			const Vector3f& pos = p->getPosition();
+-			const float dx = pos.x - mx, dz = pos.z - mz;
+-			if (dx * dx + dz * dz > slotRadius * slotRadius) continue;
++			if (slotDistance(pos.x, pos.z) > slotRadius) continue;
+ 			if (k.mouthPikmin >= p2king::MouthSlots) break;
+ 			bool held = false;
+ 			for (int i = 0; i < k.mouthPikmin; ++i)
+@@ -377,8 +385,7 @@ void eatScan(King& k) {
+ 	if (actions & 2) {
+ 		for (auto& b : bombs) {
+ 			if (b.state != 0) continue;
+-			const float dx = b.cfg.x - mx, dz = b.cfg.z - mz;
+-			if (dx * dx + dz * dz > slotRadius * slotRadius) continue;
++			if (slotDistance(b.cfg.x, b.cfg.z) > slotRadius) continue;
+ 			if (k.mouthPikmin + k.mouthBombs >= p2king::MouthSlots) break;
+ 			b.state = 1; // eaten
+ 			++k.mouthBombs;
+@@ -390,8 +397,7 @@ void eatScan(King& k) {
+ 	if (k.attackArmed && naviMgr && naviMgr->getNavi()) {
+ 		Navi* n = naviMgr->getNavi();
+ 		const Vector3f& pos = n->getPosition();
+-		const float dx = pos.x - mx, dz = pos.z - mz;
+-		if (dx * dx + dz * dz <= slotRadius * slotRadius) {
++		if (slotDistance(pos.x, pos.z) <= slotRadius) {
+ 			InteractPress press(nullptr, p2king::AttackDamage);
+ 			n->stimulate(press);
+ 			std::printf("P2_KING_CAPTAIN_HIT id=%u damage=5 slot_radius=%.1f\n", k.cfg.id, slotRadius);
+-- 
+2.47.1.windows.1
+

@@ -1,0 +1,33 @@
+From 4f517e01c839008b3e232fe7ece0e0eec2fafbcf Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Sun, 13 Sep 2026 14:38:54 -0400
+Subject: [PATCH 10/10] Resolve a grabbed mouthful even when the lick aborts
+ (#289)
+
+An aborted lick previously dropped everything already in the mouth
+(pikmin and bombs silently lost). Anything grabbed before the abort now
+still resolves through attackEnd.
+---
+ pc_port/pc_p2_king.cpp | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/pc_port/pc_p2_king.cpp b/pc_port/pc_p2_king.cpp
+index e6a937f2..2a3780f5 100644
+--- a/pc_port/pc_p2_king.cpp
++++ b/pc_port/pc_p2_king.cpp
+@@ -734,7 +734,11 @@ void tickKing(King& k) {
+ 				// nothing (whiff or terrain abort) feeds the starvation
+ 				// streak; a connecting lick clears it.
+ 				if (k.eatsThisLick == 0) ++k.whiffStreak; else k.whiffStreak = 0;
+-				next = k.attackAborted ? p2king::Walk : p2king::attackEnd(k.mouthBombs, k.mouthPikmin);
++				// An aborted lick still resolves a non-empty mouth: anything
++				// grabbed before the abort reaches the mouth (approximation).
++				next = (k.attackAborted && k.mouthBombs == 0 && k.mouthPikmin == 0)
++				           ? p2king::Walk
++				           : p2king::attackEnd(k.mouthBombs, k.mouthPikmin);
+ 			} else if (k.state == p2king::Eat)
+ 				next = p2king::Damage;
+ 			else if (k.state == p2king::Swallow)
+-- 
+2.47.1.windows.1
+

@@ -1,0 +1,1337 @@
+From a380fea1387ffeb68749900fd2916716756045fb Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Sun, 13 Sep 2026 11:39:15 -0400
+Subject: [PATCH 01/10] Add Emperor Bulblax (KingChappy) sampled actor with
+ #227 policy mirror (#289)
+
+13-state FSM (buried HideWait start, Appear shake-off, tongue Attack with
+9-slot mouth and BOMB_Wait bomb ingestion, Flick trample, WarCry astonish
+with the two-Emperor cross contract, bomb Damage/stun, damage tiers, big
+f_03/force-big variant) behind a strict P2_KING_ACTOR_1 config. Actor-local
+receivers only; ordinary P1 actors and P2_QUEEN_ACTOR_1 untouched.
+---
+ CMakeLists.txt                        |   1 +
+ pc_port/pc_p2_king.cpp                | 800 ++++++++++++++++++++++++++
+ pc_port/pc_p2_king.h                  |   9 +
+ pc_port/pc_p2_king_policy.h           | 384 +++++++++++++
+ pc_port/pc_p2_preview.cpp             |   2 +
+ src/plugPikiKando/gameCoreSection.cpp |   3 +
+ src/plugPikiNakata/tekimgr.cpp        |   7 +-
+ 7 files changed, 1203 insertions(+), 3 deletions(-)
+ create mode 100644 pc_port/pc_p2_king.cpp
+ create mode 100644 pc_port/pc_p2_king.h
+ create mode 100644 pc_port/pc_p2_king_policy.h
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 0b27e65e..5b2ebb6d 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -173,6 +173,7 @@ set(PC_PORT_SOURCES
+     pc_port/pc_p2_giant_breadbug_visual.cpp
+     pc_port/pc_p2_bulblax_visual.cpp
+     pc_port/pc_p2_queen.cpp
++    pc_port/pc_p2_king.cpp
+     pc_port/pc_p2_breadbug_actor.cpp
+     pc_port/pc_p2_frog.cpp
+     pc_port/pc_p2_kogane.cpp
+diff --git a/pc_port/pc_p2_king.cpp b/pc_port/pc_p2_king.cpp
+new file mode 100644
+index 00000000..891b92da
+--- /dev/null
++++ b/pc_port/pc_p2_king.cpp
+@@ -0,0 +1,800 @@
++// Emperor Bulblax (KingChappy, enemy ID 53) sampled actor (#289, parent #172).
++// Extends the #234 sampled display bank with a behavior FSM mirrored from
++// experimental/pikmin2_bulblax_behavior.py (#227, KingChappy section).
++// Actor-local receivers only: generic physics/damage, captain states,
++// manager/heap lifetime and save/reward code are untouched. The decomp
++// collisionCallback no-op quirk is recorded, not "fixed".
++#include "pc_p2_king.h"
++#include "pc_p2_king_policy.h"
++#include "pc_p2_animation.h"
++#include "pc_bbft.h"
++#include "Shape.h"
++#include "Texture.h"
++#include "Graphics.h"
++#include "Camera.h"
++#include "gameflow.h"
++#include "Piki.h"
++#include "PikiMgr.h"
++#include "PikiState.h"
++#include "NaviMgr.h"
++#include "Navi.h"
++#include "Interactions.h"
++#include "MapMgr.h"
++#include <SDL.h>
++#include <map>
++#include <set>
++#include <vector>
++#include <string>
++#include <fstream>
++#include <cmath>
++#include <cstdio>
++#include <cstdlib>
++namespace {
++constexpr float Tick = 1.0f / 30.0f; // 30 Hz bounded behavior clock
++constexpr int StuckMax = 32;         // bounded stuck-Pikmin receiver set
++constexpr float RootRadius = 80.0f;  // kingchappy/enemycoll.txt root
++constexpr float KingSight = 300.0f;          // approximation (not pinned by #227)
++constexpr float KingAttackRange = 80.0f;     // approximation: tongue reach trigger
++constexpr float KingAttackAngleDeg = 45.0f;  // approximation (checkAttack reconstructed)
++constexpr float KingBombAttackRange = 150.0f; // approximation for beyond-80 bomb targeting
++constexpr float HomeRadius = 25.0f;          // approximation (return-home bound)
++constexpr float TurnRateDeg = 3.0f;          // approximation per tick
++constexpr float ExternalBlastRange = 100.0f; // approximation (fixture injection)
++p2king::ActorConfig config;
++std::map<size_t, std::vector<Shape*>> shapes; // clip index -> pose shapes
++size_t totalBytes = 0;
++
++// Actor-local BOMB_Wait stub (enemy ID 36). States mirror the #227 contract:
++// only BOMB_Wait is eatable. External blasts are fixture injections.
++struct Bomb {
++	p2king::BombPlacement cfg;
++	int state = 0; // 0 = BOMB_Wait, 1 = eaten, 2 = externally detonated
++};
++struct King {
++	p2king::Placement cfg;
++	p2king::VariantInfo info;
++	int state = p2king::HideWait;
++	float frame = 0;
++	float x = 0, y = 0, z = 0, yaw = 0;
++	float homeX = 0, homeZ = 0;
++	float health = p2king::HealthDefault;
++	uint32_t rng = 1;
++	// receivers
++	Piki* stuck[StuckMax];
++	int stuckCount = 0;
++	int blows = 0;
++	int flickTier = 0;
++	// mouth (9 slots kamu1..9)
++	Piki* mouth[p2king::MouthSlots];
++	int mouthPikmin = 0;
++	int mouthBombs = 0;
++	// timers
++	int framesWaited = 0;       // HideWait
++	int framesWithoutTarget = 0; // Walk incubation
++	int stunFrames = 0;          // Damage bomb stun
++	bool attackArmed = false;
++	bool bombArmed = false;
++	bool attackAborted = false;
++	bool damageKeyDone = false;
++	bool turnLeft = false;
++	bool loggedDead = false;
++	bool loggedDive = false;
++	float nextRoll() {
++		rng = rng * 1664525u + 1013904223u;
++		return float(rng >> 8) / 16777216.0f;
++	}
++};
++std::vector<King> kings;
++std::vector<Bomb> bombs;
++unsigned clockLast = 0;
++float clockAcc = 0;
++unsigned long behaviorTick = 0;
++
++void fail() {
++	std::fputs("P2_KING_ACTOR invalid profile/model\n", stderr);
++	std::abort();
++}
++const char* stateClip(int state, bool turnLeft) {
++	switch (state) {
++	case p2king::Walk: return "move1";
++	case p2king::Attack: return "attack";
++	case p2king::Dead: return "dead";
++	case p2king::Flick: return "flick";
++	case p2king::WarCry: return "cry";
++	case p2king::Damage: return "damage";
++	case p2king::Turn: return turnLeft ? "type1" : "type2";
++	case p2king::Eat: return "waitact2";
++	case p2king::Hide: return "dive";
++	case p2king::HideWait: return "wait2";
++	case p2king::Appear: return "type3";
++	case p2king::Caution: return "waitact1";
++	case p2king::Swallow: return "waitact1";
++	}
++	return "wait2";
++}
++Shape* load(const std::string& name, std::vector<unsigned char>& reference, size_t& clipBytes) {
++	std::ifstream in("assets/dataDir/courses/pikmin2room/" + name, std::ios::binary | std::ios::ate);
++	if (!in) fail();
++	auto size = in.tellg();
++	if (size <= 0 || size > 1024 * 1024 || clipBytes + size_t(size) > 1024 * 1024 || totalBytes + size_t(size) > 16 * 1024 * 1024)
++		fail();
++	clipBytes += size_t(size);
++	totalBytes += size_t(size);
++	in.seekg(0);
++	std::vector<unsigned char> data(size_t(size), 0), resources;
++	if (!in.read(reinterpret_cast<char*>(data.data()), size) || !p2animation::resources(data, resources)) fail();
++	if (!reference.empty() && reference != resources) fail();
++	reference = resources;
++	Shape* shape = gameflow.loadShape(("courses/pikmin2room/" + name).c_str(), true);
++	if (!shape) fail();
++	for (int i = 0; i < shape->mTexAttrCount; ++i)
++		if (shape->mTexAttrList[i].mTexture) shape->mTexAttrList[i].mTexture->attach();
++	return shape;
++}
++
++void enter(King& k, int state) {
++	k.state = state;
++	k.frame = 0;
++	if (state == p2king::HideWait) k.framesWaited = 0;
++	if (state == p2king::Attack) {
++		k.attackArmed = false;
++		k.bombArmed = false;
++		k.attackAborted = false;
++	}
++	if (state == p2king::Damage) k.damageKeyDone = false;
++}
++
++// Mouth position approximation: all 9 kamu slots sit at the mouth point in
++// front of the Emperor; slot radius 25 * scale. Recorded approximation.
++void mouthPos(const King& k, float& mx, float& mz) {
++	const float rad = k.yaw * 0.0174532925199433f;
++	const float front = 30.0f * k.info.scale;
++	mx = k.x + std::sin(rad) * front;
++	mz = k.z + std::cos(rad) * front;
++}
++float nearestTargetDistance(King& k) {
++	float best = 1.0e9f;
++	if (pikiMgr) {
++		Iterator it(pikiMgr);
++		CI_LOOP(it) {
++			Piki* p = static_cast<Piki*>(*it);
++			if (!p || !p->isAlive()) continue;
++			const Vector3f& pos = p->getPosition();
++			const float dx = pos.x - k.x, dz = pos.z - k.z;
++			const float d = std::sqrt(dx * dx + dz * dz);
++			if (d < best) best = d;
++		}
++	}
++	if (naviMgr && naviMgr->getNavi()) {
++		const Vector3f& pos = naviMgr->getNavi()->getPosition();
++		const float dx = pos.x - k.x, dz = pos.z - k.z;
++		const float d = std::sqrt(dx * dx + dz * dz);
++		if (d < best) best = d;
++	}
++	return best;
++}
++
++void receiveScan(King& k) {
++	// Actor-local Pikmin-attack receiver. Buried/hidden states keep the hard
++	// constraint on: nothing sticks. The collisionCallback no-op quirk means
++	// no extra part-specific channel is synthesized here.
++	if (!pikiMgr || k.state == p2king::Dead || k.state == p2king::HideWait || k.state == p2king::Hide) return;
++	const float root = RootRadius * k.info.scale;
++	Iterator it(pikiMgr);
++	CI_LOOP(it) {
++		Piki* p = static_cast<Piki*>(*it);
++		if (!p || !p->isAlive()) continue;
++		const Vector3f& pos = p->getPosition();
++		const float dx = pos.x - k.x, dy = pos.y - k.y, dz = pos.z - k.z;
++		if (dx * dx + dy * dy + dz * dz > root * root) continue;
++		bool known = false;
++		for (int i = 0; i < k.stuckCount; ++i)
++			if (k.stuck[i] == p) known = true;
++		if (known || k.stuckCount >= StuckMax) continue;
++		k.stuck[k.stuckCount++] = p;
++		++k.blows;
++		// Approximate per-blow Pikmin damage of 1 (part-stuck tier x1 from the
++		// policy; the P1 per-color blow strength is out of scope).
++		k.health -= 1.0f * p2king::damageTier(false, true, true, 0.0f, 0.0f);
++		if (k.health < 0.0f) k.health = 0.0f;
++	}
++	for (int i = 0; i < k.stuckCount; ++i) {
++		Piki* p = k.stuck[i];
++		if (!p || !p->isAlive()) {
++			k.stuck[i] = k.stuck[--k.stuckCount];
++			--i;
++		}
++	}
++}
++
++void shakeOff(King& k, float range, float power, const char* tag) {
++	const float rad = k.yaw * 0.0174532925199433f;
++	const float facing = std::atan2(std::sin(rad), std::cos(rad));
++	int shaken = 0;
++	if (pikiMgr) {
++		Iterator it(pikiMgr);
++		CI_LOOP(it) {
++			Piki* p = static_cast<Piki*>(*it);
++			if (!p || !p->isAlive()) continue;
++			const Vector3f& pos = p->getPosition();
++			const float dx = pos.x - k.x, dz = pos.z - k.z;
++			if (dx * dx + dz * dz > range * range) continue;
++			InteractFlick flick(nullptr, power, 0.0f, std::atan2(dx, dz));
++			p->stimulate(flick);
++			++shaken;
++		}
++	}
++	(void)facing;
++	std::printf("P2_KING_SHAKEOFF id=%u %s range=%.0f power=%.0f shaken=%d\n", k.cfg.id, tag, range, power, shaken);
++}
++
++void flickStuck(King& k) {
++	for (int i = 0; i < k.stuckCount; ++i) {
++		Piki* p = k.stuck[i];
++		if (!p || !p->isAlive()) continue;
++		const Vector3f& pos = p->getPosition();
++		InteractFlick flick(nullptr, p2king::AppearShakeOffPower, 1.0f, std::atan2(pos.x - k.x, pos.z - k.z));
++		p->stimulate(flick);
++	}
++	std::printf("P2_KING_FLICK id=%u shaken=%d shake_range=60\n", k.cfg.id, k.stuckCount);
++	k.stuckCount = 0;
++	k.blows = 0;
++	if (k.flickTier < 3) ++k.flickTier;
++}
++
++void trampleScan(King& k) {
++	// Flick key 3: press every Pikmin and captain within mTramplingRange (45) *
++	// scale of the foot position in a 30 unit height band; captains are only
++	// flicked if none was pressed. Foot position approximation: front offset.
++	const float rad = k.yaw * 0.0174532925199433f;
++	const float fx = k.x + std::sin(rad) * 20.0f * k.info.scale;
++	const float fz = k.z + std::cos(rad) * 20.0f * k.info.scale;
++	const float range = p2king::TramplingRange * k.info.scale;
++	int pressedPikmin = 0, pressedCaptains = 0;
++	if (pikiMgr) {
++		Iterator it(pikiMgr);
++		CI_LOOP(it) {
++			Piki* p = static_cast<Piki*>(*it);
++			if (!p || !p->isAlive() || p->getState() == PIKISTATE_Pressed) continue;
++			const Vector3f& pos = p->getPosition();
++			const float dx = pos.x - fx, dz = pos.z - fz;
++			if (dx * dx + dz * dz > range * range) continue;
++			if (std::fabs(pos.y - k.y) > p2king::TrampleHeightBand) continue;
++			InteractPress press(nullptr, p2king::AttackDamage);
++			p->stimulate(press);
++			++pressedPikmin;
++		}
++	}
++	if (naviMgr && naviMgr->getNavi()) {
++		Navi* n = naviMgr->getNavi();
++		const Vector3f& pos = n->getPosition();
++		const float dx = pos.x - fx, dz = pos.z - fz;
++		if (dx * dx + dz * dz <= range * range && std::fabs(pos.y - k.y) <= p2king::TrampleHeightBand) {
++			InteractPress press(nullptr, p2king::AttackDamage);
++			n->stimulate(press);
++			++pressedCaptains;
++		}
++	}
++	const p2king::FlickStep step = p2king::flickStep(pressedPikmin, pressedCaptains);
++	std::printf("P2_KING_TRAMPLE id=%u pressed_pikmin=%d pressed_captains=%d flick_captains=%d range=%.1f band=30\n",
++	            k.cfg.id, step.pressedPikmin, step.pressedCaptains, int(step.flickCaptains), range);
++	if (step.flickCaptains && naviMgr && naviMgr->getNavi()) {
++		Navi* n = naviMgr->getNavi();
++		const Vector3f& pos = n->getPosition();
++		const float dx = pos.x - k.x, dz = pos.z - k.z;
++		if (dx * dx + dz * dz <= p2king::ShakeRange * p2king::ShakeRange) {
++			InteractFlick flick(nullptr, p2king::AppearShakeOffPower, 0.0f, std::atan2(dx, dz));
++			n->stimulate(flick);
++		}
++	}
++	flickStuck(k);
++}
++
++void astonishScan(King& k) {
++	// WarCry key 4: astonish Pikmin within mRoarEffectiveRange (300 disc) and
++	// mRoarEffectiveAngleDeg (180 disc). No InteractAstonish exists in the P1
++	// runtime: approximated as a zero-damage flick, recorded approximation.
++	const float rad = k.yaw * 0.0174532925199433f;
++	int hit = 0;
++	if (pikiMgr) {
++		Iterator it(pikiMgr);
++		CI_LOOP(it) {
++			Piki* p = static_cast<Piki*>(*it);
++			if (!p || !p->isAlive()) continue;
++			const Vector3f& pos = p->getPosition();
++			const float dx = pos.x - k.x, dz = pos.z - k.z;
++			const float dist = std::sqrt(dx * dx + dz * dz);
++			if (dist > p2king::RoarEffectiveRange) continue;
++			float rel = std::atan2(dx, dz) - std::atan2(std::sin(rad), std::cos(rad));
++			while (rel > 3.14159265f) rel -= 6.2831853f;
++			while (rel < -3.14159265f) rel += 6.2831853f;
++			if (std::fabs(rel) > p2king::RoarEffectiveAngleDeg * 0.5f * 0.0174532925199433f) continue;
++			InteractFlick flick(nullptr, 100.0f, 0.0f, std::atan2(dx, dz));
++			p->stimulate(flick);
++			++hit;
++		}
++	}
++	std::printf("P2_KING_ASTONISH id=%u range=300 angle=180 affected=%d approx=flick\n", k.cfg.id, hit);
++}
++
++void crossEmperorRequest(King& k) {
++	// WarCry key 3 cross-Emperor contract (actor-family-local, two-Emperor
++	// scope): wake one buried Emperor, else make one walking Emperor roar.
++	for (auto& other : kings) {
++		if (&other == &k) continue;
++		const int target = p2king::crossEmperorTarget(other.state);
++		if (target < 0) continue;
++		std::printf("P2_KING_WARCRY_REQUEST id=%u other=%u from=%d to=%d force_transit=1\n", k.cfg.id, other.cfg.id,
++		            other.state, target);
++		enter(other, target);
++		return;
++	}
++	std::printf("P2_KING_WARCRY_REQUEST id=%u other=none\n", k.cfg.id);
++}
++
++void eatScan(King& k) {
++	// Armed tongue frames: try eatBomb (key 6 armed) and eatPikmin (key 3/6).
++	float mx, mz;
++	mouthPos(k, mx, mz);
++	const float slotRadius = p2king::MouthSlotRadius * k.info.scale;
++	bool pikminInRange = false, bombsInRange = false;
++	if (pikiMgr) {
++		Iterator it(pikiMgr);
++		CI_LOOP(it) {
++			Piki* p = static_cast<Piki*>(*it);
++			if (!p || !p->isAlive()) continue;
++			const Vector3f& pos = p->getPosition();
++			const float dx = pos.x - mx, dz = pos.z - mz;
++			if (dx * dx + dz * dz <= slotRadius * slotRadius) pikminInRange = true;
++		}
++	}
++	for (const auto& b : bombs) {
++		if (b.state != 0) continue; // only BOMB_Wait is eatable
++		const float dx = b.cfg.x - mx, dz = b.cfg.z - mz;
++		if (dx * dx + dz * dz <= slotRadius * slotRadius) bombsInRange = true;
++	}
++	const bool slotsFree = k.mouthPikmin + k.mouthBombs < p2king::MouthSlots;
++	// Armed frames repeat every frame while armed (each armed frame tries).
++	const int actions = p2king::attackStep(k.bombArmed ? 6 : k.attackArmed ? 3 : 0, slotsFree, bombsInRange, pikminInRange);
++	if ((actions & 1) && pikiMgr) {
++		Iterator it(pikiMgr);
++		CI_LOOP(it) {
++			Piki* p = static_cast<Piki*>(*it);
++			if (!p || !p->isAlive()) continue;
++			const Vector3f& pos = p->getPosition();
++			const float dx = pos.x - mx, dz = pos.z - mz;
++			if (dx * dx + dz * dz > slotRadius * slotRadius) continue;
++			if (k.mouthPikmin >= p2king::MouthSlots) break;
++			bool held = false;
++			for (int i = 0; i < k.mouthPikmin; ++i)
++				if (k.mouth[i] == p) held = true;
++			if (held) continue;
++			k.mouth[k.mouthPikmin++] = p;
++			std::printf("P2_KING_EAT id=%u piki=%p slot=%d radius=%.1f\n", k.cfg.id, (void*)p, k.mouthPikmin - 1,
++			            slotRadius);
++		}
++	}
++	if (actions & 2) {
++		for (auto& b : bombs) {
++			if (b.state != 0) continue;
++			const float dx = b.cfg.x - mx, dz = b.cfg.z - mz;
++			if (dx * dx + dz * dz > slotRadius * slotRadius) continue;
++			if (k.mouthPikmin + k.mouthBombs >= p2king::MouthSlots) break;
++			b.state = 1; // eaten
++			++k.mouthBombs;
++			std::printf("P2_KING_EAT_BOMB id=%u bomb=%u state=BOMB_Wait slot_count=%d\n", k.cfg.id, b.cfg.id,
++			            k.mouthBombs);
++		}
++	}
++	// Captains in any mouth slot take mAttackDamage (5 disc).
++	if (k.attackArmed && naviMgr && naviMgr->getNavi()) {
++		Navi* n = naviMgr->getNavi();
++		const Vector3f& pos = n->getPosition();
++		const float dx = pos.x - mx, dz = pos.z - mz;
++		if (dx * dx + dz * dz <= slotRadius * slotRadius) {
++			InteractPress press(nullptr, p2king::AttackDamage);
++			n->stimulate(press);
++			std::printf("P2_KING_CAPTAIN_HIT id=%u damage=5 slot_radius=%.1f\n", k.cfg.id, slotRadius);
++		}
++	}
++}
++
++void tongueTipScan(King& k) {
++	// Tongue tip (bero6-equivalent, radius 5) aborts the lick on floor/wall.
++	// Tip extends forward while armed; reach approximation 100 * scale.
++	if (!k.attackArmed || k.attackAborted || !mapMgr) return;
++	const float reach = 100.0f * k.info.scale;
++	const float t = (k.frame - float(p2king::AttackArmKey)) / float(86 - p2king::AttackArmKey);
++	const float dist = reach * (t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t);
++	const float rad = k.yaw * 0.0174532925199433f;
++	const float tx = k.x + std::sin(rad) * dist;
++	const float tz = k.z + std::cos(rad) * dist;
++	const float ground = mapMgr->getMinY(tx, tz, true);
++	if (ground > k.y + p2king::TongueTipRadius) { // wall or steep rise at the tip
++		k.attackAborted = true;
++		std::printf("P2_KING_TONGUE_ABORT id=%u frame=%.0f ground=%.3f y=%.3f tip_radius=5\n", k.cfg.id, k.frame, ground,
++		            k.y);
++	}
++}
++
++void damageKillKey(King& k) {
++	// Damage key 4: kills everything in the mouth, applies bombs * mBombDamage
++	// (200), then stuns for mBombDamageTime frames (180 disc).
++	int killed = 0;
++	for (int i = 0; i < k.mouthPikmin; ++i) {
++		Piki* p = k.mouth[i];
++		if (p && p->isAlive()) {
++			InteractSwallow swallow(nullptr, nullptr, 0);
++			p->stimulate(swallow);
++			++killed;
++		}
++		k.mouth[i] = nullptr;
++	}
++	k.mouthPikmin = 0;
++	const float damage = p2king::bombDamage(k.mouthBombs);
++	k.health -= damage;
++	if (k.health < 0.0f) k.health = 0.0f;
++	k.stunFrames = p2king::BombDamageTime;
++	std::printf("P2_KING_BOMB_DAMAGE id=%u bombs=%d damage=%.0f killed_mouth=%d stun_frames=180 health=%.1f\n", k.cfg.id,
++	            k.mouthBombs, damage, killed, k.health);
++	k.mouthBombs = 0;
++	k.damageKeyDone = true;
++}
++
++void swallowMouth(King& k) {
++	// Swallow entry: poison damage 300 hardcoded (the #227 finding; fp14 header
++	// 300 / disc 200 stays distinct in config). Pikmin die via InteractSwallow
++	// with no mouth part (P1 runtime kills with the eaten event).
++	int swallowed = 0;
++	for (int i = 0; i < k.mouthPikmin; ++i) {
++		Piki* p = k.mouth[i];
++		if (p && p->isAlive()) {
++			InteractSwallow swallow(nullptr, nullptr, 0);
++			p->stimulate(swallow);
++			++swallowed;
++		}
++		k.mouth[i] = nullptr;
++	}
++	std::printf("P2_KING_SWALLOW id=%u count=%d poison_damage=300 hardcoded=1 fp14_header=300 fp14_disc=200\n", k.cfg.id,
++	            swallowed);
++	k.mouthPikmin = 0;
++}
++
++void tickKing(King& k) {
++	receiveScan(k);
++	// Approximation: tiered shake-off thresholds mirror the family-wide general
++	// parms (blows 30/35/45/50, sticking 5/10/15); KingChappy-specific disc
++	// thresholds are not pinned by the #227 reference.
++	const int blowTier = k.flickTier > 3 ? 3 : k.flickTier;
++	const int stickTier = k.flickTier > 2 ? 2 : k.flickTier;
++	const int blowThresholds[4] = {30, 35, 45, 50};
++	const int stickThresholds[3] = {5, 10, 15};
++	const bool startFlick = k.blows >= blowThresholds[blowTier] || k.stuckCount >= stickThresholds[stickTier];
++
++	const char* clipName = stateClip(k.state, k.turnLeft);
++	const p2king::ActorClip* clip = config.clip(53, clipName);
++	const p2king::ClipKeys keys = p2king::clipKeys(clipName);
++	const float prev = k.frame;
++	k.frame += 1.0f;
++	for (int i = 0; i < keys.keyCount; ++i) {
++		const int key = keys.keys[i];
++		if (!(prev < float(key) && k.frame >= float(key))) continue;
++		if (k.state == p2king::Attack && key == p2king::AttackArmKey) {
++			k.attackArmed = true;
++			std::printf("P2_KING_ATTACK_ARM id=%u frame=40 key=3\n", k.cfg.id);
++		}
++		if (k.state == p2king::Attack && key == p2king::AttackBombKey) {
++			k.bombArmed = true;
++			std::printf("P2_KING_ATTACK_BOMB_ARM id=%u frame=92 key=6\n", k.cfg.id);
++		}
++		if (k.state == p2king::WarCry && key == p2king::CryCrossEmperorKey) crossEmperorRequest(k);
++		if (k.state == p2king::WarCry && key == p2king::CryAstonishKey) astonishScan(k);
++		if (k.state == p2king::Damage && key == p2king::DamageKillKey && !k.damageKeyDone) damageKillKey(k);
++		if (k.state == p2king::Appear && key == p2king::AppearShakeOffKey)
++			shakeOff(k, p2king::AppearShakeOffRange, p2king::AppearShakeOffPower, "appear");
++		if (k.state == p2king::Flick && key == p2king::FlickTrampleKey) trampleScan(k);
++		if (k.state == p2king::Hide && key >= 58 && !k.loggedDive) {
++			k.loggedDive = true;
++			std::printf("P2_KING_DIVE_EFFECTS id=%u keys=58,60,90 flags_only=1\n", k.cfg.id);
++		}
++		if (k.state == p2king::Dead && key == 185 && !k.loggedDead) {
++			k.loggedDead = true;
++			std::printf("P2_KING_DEAD_KEY id=%u frame=185 kill=1\n", k.cfg.id);
++		}
++	}
++	if (k.state == p2king::Attack) {
++		tongueTipScan(k);
++		if (k.attackArmed) eatScan(k);
++	}
++	if (k.state == p2king::HideWait) {
++		++k.framesWaited;
++		const float nearest = nearestTargetDistance(k);
++		if (p2king::hidewaitWake(nearest, k.framesWaited, k.info.scale, p2king::DistanceToSpawn,
++		                         p2king::TimeToAppearance)) {
++			std::printf("P2_KING_APPEAR_TRIGGER id=%u nearest=%.3f range=%.1f waited=%d\n", k.cfg.id, nearest,
++			            p2king::DistanceToSpawn * k.info.scale, k.framesWaited);
++			enter(k, p2king::Appear);
++		}
++	}
++	if (k.state == p2king::Walk || k.state == p2king::Turn) {
++		// Walk toward the nearest target; lose interest after the incubation
++		// period without a target, return home and Hide.
++		const float nearest = nearestTargetDistance(k);
++		float goalX = k.homeX, goalZ = k.homeZ;
++		bool hasTarget = nearest < KingSight;
++		if (hasTarget) {
++			k.framesWithoutTarget = 0;
++			// Goal = nearest creature position (nearest scan approximation).
++			float best = 1.0e9f;
++			if (pikiMgr) {
++				Iterator it(pikiMgr);
++				CI_LOOP(it) {
++					Piki* p = static_cast<Piki*>(*it);
++					if (!p || !p->isAlive()) continue;
++					const Vector3f& pos = p->getPosition();
++					const float dx = pos.x - k.x, dz = pos.z - k.z;
++					const float d = dx * dx + dz * dz;
++					if (d < best) {
++						best = d;
++						goalX = pos.x;
++						goalZ = pos.z;
++					}
++				}
++			}
++			if (naviMgr && naviMgr->getNavi()) {
++				const Vector3f& pos = naviMgr->getNavi()->getPosition();
++				const float dx = pos.x - k.x, dz = pos.z - k.z;
++				if (dx * dx + dz * dz < best) {
++					goalX = pos.x;
++					goalZ = pos.z;
++				}
++			}
++		} else {
++			++k.framesWithoutTarget;
++		}
++		const float gdx = goalX - k.x, gdz = goalZ - k.z;
++		const float goalDist = std::sqrt(gdx * gdx + gdz * gdz);
++		const float want = std::atan2(gdx, gdz) * 57.29577951308232f;
++		float off = want - k.yaw;
++		while (off > 180.0f) off -= 360.0f;
++		while (off < -180.0f) off += 360.0f;
++		const p2king::TurnDecision decision =
++		    p2king::walkTurn(off, p2king::RequiredTurningAngleDeg, p2king::TurningEndAngleDeg);
++		if (k.state == p2king::Walk && decision == p2king::TurnDecision::Turn) {
++			k.turnLeft = off > 0.0f;
++			enter(k, p2king::Turn);
++		} else if (k.state == p2king::Turn) {
++			const float step = off > TurnRateDeg ? TurnRateDeg : off < -TurnRateDeg ? -TurnRateDeg : off;
++			k.yaw += step;
++			if (decision == p2king::TurnDecision::FinishTurn || decision == p2king::TurnDecision::Walk)
++				enter(k, p2king::Walk);
++		} else {
++			const float rad = k.yaw * 0.0174532925199433f;
++			k.x += std::sin(rad) * k.info.speed * Tick;
++			k.z += std::cos(rad) * k.info.speed * Tick;
++		}
++		// Attack decision: close target in front, or an eatable bomb beyond the
++		// invisible range (80 disc) with mCanAttackBombs on (default).
++		if (k.state == p2king::Walk && hasTarget && nearest < KingAttackRange * k.info.scale
++		    && std::fabs(off) <= KingAttackAngleDeg) {
++			std::printf("P2_KING_ATTACK_TRIGGER id=%u nearest=%.1f off=%.1f\n", k.cfg.id, nearest, off);
++			enter(k, p2king::Attack);
++		} else if (k.state == p2king::Walk) {
++			for (const auto& b : bombs) {
++				if (b.state != 0) continue;
++				const float dx = b.cfg.x - k.x, dz = b.cfg.z - k.z;
++				const float d = std::sqrt(dx * dx + dz * dz);
++				if (d < KingBombAttackRange * k.info.scale && p2king::canTargetBomb(d, true)) {
++					std::printf("P2_KING_ATTACK_TRIGGER id=%u bomb=%u dist=%.1f beyond_invisible_range=80 can_attack_bombs=1\n",
++					            k.cfg.id, b.cfg.id, d);
++					enter(k, p2king::Attack);
++					break;
++				}
++			}
++		}
++		// Give up: out of interest or back home with no target -> Hide.
++		if ((k.state == p2king::Walk || k.state == p2king::Turn)
++		    && p2king::walkGiveUp(k.framesWithoutTarget, p2king::PeriodOfIncubation, false) && !hasTarget) {
++			std::printf("P2_KING_GIVE_UP id=%u frames_without_target=%d incubation=500\n", k.cfg.id,
++			            k.framesWithoutTarget);
++			enter(k, p2king::Hide);
++		}
++		if ((k.state == p2king::Walk) && !hasTarget && goalDist < HomeRadius) {
++			std::printf("P2_KING_HOME id=%u dist=%.1f home_radius=25\n", k.cfg.id, goalDist);
++			enter(k, p2king::Hide);
++		}
++		// checkFlick: WarCry with p=0.5 under half HP, else Flick.
++		if (startFlick && (k.state == p2king::Walk || k.state == p2king::Turn)) {
++			const float roll = k.nextRoll();
++			const int next = p2king::checkFlick(k.health, k.info.health, roll);
++			std::printf("P2_KING_CHECK_FLICK id=%u health=%.1f max=%.1f roll=%.3f shout_rate=0.5 next=%d\n", k.cfg.id,
++			            k.health, k.info.health, roll, next);
++			enter(k, next);
++		}
++	}
++
++	// One-shot / loop bounds per state, then deferred end transitions
++	// (KEYEVENT_END semantics on the sampled clips).
++	const int duration = clip ? clip->duration : keys.frames;
++	int loopStart = 0, loopEnd = duration;
++	bool loops = false;
++	if (k.state == p2king::Walk) {
++		loopStart = 15;
++		loopEnd = 54;
++		loops = true;
++	} else if (k.state == p2king::HideWait) {
++		loopStart = 0;
++		loopEnd = 39;
++		loops = true;
++	} else if (k.state == p2king::Damage) {
++		loopStart = p2king::DamageLoopStart;
++		loopEnd = p2king::DamageLoopEnd;
++		loops = k.stunFrames > 0;
++	}
++	if (k.state == p2king::Damage && k.damageKeyDone && k.stunFrames > 0) --k.stunFrames;
++	if (duration > 0 && k.frame >= float(loopEnd)) {
++		if (k.state == p2king::Dead) {
++			k.frame = float(duration); // stays on the last sampled pose
++		} else if (loops) {
++			k.frame = float(loopStart);
++			if (k.state == p2king::Damage && k.stunFrames <= 0) {
++				const int next = p2king::damageEnd(k.health);
++				std::printf("P2_KING_STATE id=%u from=5 to=%d health=%.1f stun_done=1\n", k.cfg.id, next, k.health);
++				enter(k, next);
++			}
++		} else {
++			int next = -1;
++			if (k.state == p2king::Appear)
++				next = p2king::Caution;
++			else if (k.state == p2king::Caution)
++				next = p2king::Walk;
++			else if (k.state == p2king::Hide) {
++				next = p2king::HideWait;
++				k.loggedDive = false;
++			} else if (k.state == p2king::Attack) {
++				next = k.attackAborted ? p2king::Walk : p2king::attackEnd(k.mouthBombs, k.mouthPikmin);
++			} else if (k.state == p2king::Eat)
++				next = p2king::Damage;
++			else if (k.state == p2king::Swallow)
++				next = p2king::Walk;
++			else if (k.state == p2king::WarCry)
++				next = k.health <= 0.0f ? p2king::Dead : p2king::Walk;
++			else if (k.state == p2king::Flick)
++				next = k.health <= 0.0f ? p2king::Dead : p2king::Walk;
++			else if (k.state == p2king::Turn)
++				next = p2king::Walk;
++			if (next >= 0 && next != k.state) {
++				std::printf("P2_KING_STATE id=%u from=%d to=%d health=%.1f\n", k.cfg.id, k.state, next, k.health);
++				if (next == p2king::Swallow) swallowMouth(k);
++				enter(k, next);
++			}
++		}
++	}
++	// checkDead: Dead (WarCry with mDeathRate, 0 by default -> never).
++	if (k.state != p2king::Dead && k.state != p2king::Damage && k.health <= 0.0f) {
++		const p2king::DeadChoice choice = p2king::checkDead(k.nextRoll(), p2king::DeathRate);
++		const int next = choice == p2king::DeadChoice::WarCry ? p2king::WarCry : p2king::Dead;
++		std::printf("P2_KING_STATE id=%u from=%d to=%d health=0 death_rate=0\n", k.cfg.id, k.state, next);
++		enter(k, next);
++	}
++}
++
++void tickBombs() {
++	// External blasts (fixture injection): detonation at the configured tick;
++	// blast damage is quartered (bombCallBack, kingChappy.cpp:873-877).
++	for (auto& b : bombs) {
++		if (b.state != 0 || b.cfg.externalBlastTick == 0 || behaviorTick < b.cfg.externalBlastTick) continue;
++		b.state = 2;
++		std::printf("P2_KING_BOMB_EXTERNAL id=%u tick=%lu injection=1\n", b.cfg.id, behaviorTick);
++		for (auto& k : kings) {
++			if (k.state == p2king::Dead || k.state == p2king::HideWait || k.state == p2king::Hide) continue;
++			const float dx = b.cfg.x - k.x, dz = b.cfg.z - k.z;
++			if (dx * dx + dz * dz > ExternalBlastRange * ExternalBlastRange) continue;
++			const float damage = p2king::bombDamage(1) * p2king::ExternalBlastFactor;
++			k.health -= damage;
++			if (k.health < 0.0f) k.health = 0.0f;
++			std::printf("P2_KING_BOMB_QUARTERED id=%u bomb=%u damage=%.1f factor=0.25 health=%.1f\n", k.cfg.id, b.cfg.id,
++			            damage, k.health);
++		}
++	}
++}
++} // namespace
++
++void pc_p2_king_reset() {
++	config = p2king::ActorConfig{};
++	shapes.clear();
++	kings.clear();
++	bombs.clear();
++	totalBytes = 0;
++	clockLast = 0;
++	clockAcc = 0;
++	behaviorTick = 0;
++}
++
++void pc_p2_king_setup() {
++	pc_p2_king_reset();
++	if (!pc_pikipelago_room_preview()) return;
++	std::ifstream in("p2-king-actor.txt");
++	if (!in) return;
++	try {
++		config = p2king::readActorConfig(in);
++	} catch (...) {
++		fail();
++	}
++	std::map<int, std::vector<unsigned char>> resources;
++	// Validate/copy the whole referenced bank before allocating Shapes; clips
++	// not selected by this profile never touch the App heap.
++	for (size_t ci = 0; ci < config.clips.size(); ++ci) {
++		const auto& clip = config.clips[ci];
++		size_t bytes = 0;
++		for (size_t i = 0; i < clip.frames.size(); ++i) {
++			char name[100];
++			std::snprintf(name, sizeof(name), "bulblax_KingChappy_%s_%02u.mod", clip.name.c_str(), unsigned(i));
++			shapes[ci].push_back(load(name, resources[clip.enemy], bytes));
++		}
++	}
++	for (const auto& p : config.placements) {
++		King k;
++		k.cfg = p;
++		k.info = p2king::variantInfo(p.variant);
++		k.health = k.info.health;
++		k.x = k.homeX = p.x;
++		k.y = p.y;
++		k.z = k.homeZ = p.z;
++		k.yaw = p.yaw;
++		k.rng = 2654435761u * (p.id + 1u);
++		enter(k, p2king::entryState());
++		std::printf("P2_KING_READY id=%u enemy=53 variant=%s xyz=%.6f,%.6f,%.6f yaw=%.3f health=%.1f scale=%.2f "
++		            "speed=%.1f floor_offset=%.0f entry_state=%d gauge_hidden=1\n",
++		            p.id, p.variant == p2king::Variant::F03 ? "f_03" : p.variant == p2king::Variant::ForceBig ? "force_big" : "default",
++		            p.x, p.y, p.z, p.yaw, k.health, k.info.scale, k.info.speed, k.info.floorOffset, k.state);
++		kings.push_back(k);
++	}
++	for (const auto& bp : config.bombs) {
++		Bomb b;
++		b.cfg = bp;
++		bombs.push_back(b);
++		std::printf("P2_KING_BOMB_READY id=%u enemy=36 state=BOMB_Wait xyz=%.6f,%.6f,%.6f external_blast_tick=%u injection=1\n",
++		            bp.id, bp.x, bp.y, bp.z, bp.externalBlastTick);
++	}
++	clockLast = SDL_GetTicks();
++}
++
++void pc_p2_king_update() {
++	if (kings.empty() && bombs.empty()) return;
++	const unsigned now = SDL_GetTicks();
++	clockAcc += float(now - clockLast) * 0.001f;
++	clockLast = now;
++	int steps = 0;
++	while (clockAcc >= Tick && steps < 4) { // bounded: never catch up more than 4 ticks
++		clockAcc -= Tick;
++		++steps;
++		++behaviorTick;
++		for (auto& k : kings) tickKing(k);
++		tickBombs();
++	}
++	if (steps == 4) clockAcc = 0; // drop backlog; 30 Hz stays bounded
++}
++
++void pc_p2_king_draw(Graphics& gfx) {
++	if (kings.empty() || !gfx.mCamera) return;
++	gfx.setPerspective(gfx.mCamera->mPerspectiveMatrix.mMtx, gfx.mCamera->mFov, gfx.mCamera->mAspectRatio,
++	                   gfx.mCamera->mNear, gfx.mCamera->mFar, 1.f);
++	gfx.useMaterial(nullptr);
++	gfx.setDepth(true);
++	for (auto& k : kings) {
++		if (k.state == p2king::HideWait) continue; // buried: gauge and model hidden
++		const char* clipName = stateClip(k.state, k.turnLeft);
++		const p2king::ActorClip* clip = config.clip(53, clipName);
++		if (!clip) continue;
++		size_t ci = size_t(clip - &config.clips[0]);
++		size_t pose = clip->index(k.frame);
++		Shape* shape = shapes.at(ci)[pose];
++		Matrix4f world, view;
++		const float s = k.info.scale;
++		world.makeSRT(Vector3f(s, s, s), Vector3f(0, k.yaw * 0.0174532925199433f, 0), Vector3f(k.x, k.y, k.z));
++		gfx.mCamera->mLookAtMtx.multiplyTo(world, view);
++		shape->updateAnim(gfx, view, nullptr, nullptr);
++		shape->drawshape(gfx, *gfx.mCamera, nullptr);
++	}
++}
+diff --git a/pc_port/pc_p2_king.h b/pc_port/pc_p2_king.h
+new file mode 100644
+index 00000000..144d83f8
+--- /dev/null
++++ b/pc_port/pc_p2_king.h
+@@ -0,0 +1,9 @@
++#pragma once
++// Emperor Bulblax (KingChappy, enemy ID 53) sampled actor (#289, parent #172).
++// Actor-local receivers only: P1 gameplay for ordinary actors stays
++// authoritative and untouched. Missing/invalid config fails closed (no actor).
++class Graphics;
++void pc_p2_king_setup();
++void pc_p2_king_reset();
++void pc_p2_king_update();
++void pc_p2_king_draw(Graphics&);
+diff --git a/pc_port/pc_p2_king_policy.h b/pc_port/pc_p2_king_policy.h
+new file mode 100644
+index 00000000..c74bdeba
+--- /dev/null
++++ b/pc_port/pc_p2_king_policy.h
+@@ -0,0 +1,384 @@
++#pragma once
++// Emperor Bulblax (KingChappy, enemy ID 53) sampled-actor policy (#289, parent
++// #172). Pure, engine-independent mirror of the KingChappy section of
++// experimental/pikmin2_bulblax_behavior.py (#227). Every constant names its
++// source; disc values stay distinct from header defaults. Keep this header
++// free of game-engine includes so the standalone policy test compiles with
++// strict MinGW flags.
++#include <cmath>
++#include <cstdint>
++#include <istream>
++#include <set>
++#include <stdexcept>
++#include <string>
++#include <utility>
++#include <vector>
++namespace p2king {
++
++// KingChappy FSM state IDs, include/Game/Entities/KingChappy.h:22-36.
++enum State : int {
++	Walk = 0, Attack = 1, Dead = 2, Flick = 3, WarCry = 4, Damage = 5, Turn = 6,
++	Eat = 7, Hide = 8, HideWait = 9, Appear = 10, Caution = 11, Swallow = 12
++};
++
++enum class Variant { Default, F03, ForceBig };
++enum class TurnDecision { Turn, FinishTurn, Walk };
++enum class DeadChoice { Dead, WarCry };
++
++// Disc key frames per clip, kingchappy/enemyanimmgr.txt via the #227
++// reference (KING_CLIPS, audit lines 225-231). Type 0/1 pairs bracket loop
++// ranges; types 2-6 are gameplay events. carry is P1-authoritative.
++struct ClipKeys {
++	int frames;
++	int keys[8];
++	int keyCount;
++};
++inline ClipKeys clipKeys(const std::string& name) {
++	if (name == "attack") return {95, {25, 40, 70, 86, 92, 0, 0, 0}, 5};
++	if (name == "cry") return {138, {33, 38, 65, 100, 103, 0, 0, 0}, 5};
++	if (name == "damage") return {135, {12, 14, 15, 46, 60, 65, 94, 0}, 7};
++	if (name == "dead") return {200, {185, 0, 0, 0, 0, 0, 0, 0}, 1};
++	if (name == "dive") return {142, {58, 60, 90, 0, 0, 0, 0, 0}, 3};
++	if (name == "flick") return {70, {30, 35, 0, 0, 0, 0, 0, 0}, 2};
++	if (name == "move1") return {80, {15, 54, 0, 0, 0, 0, 0, 0}, 2};
++	if (name == "type1") return {45, {0, 0, 0, 0, 0, 0, 0, 0}, 0};
++	if (name == "type2") return {35, {0, 0, 0, 0, 0, 0, 0, 0}, 0};
++	if (name == "type3") return {75, {3, 55, 58, 0, 0, 0, 0, 0}, 3};
++	if (name == "wait2") return {40, {0, 39, 0, 0, 0, 0, 0, 0}, 2};
++	if (name == "waitact1") return {50, {10, 33, 0, 0, 0, 0, 0, 0}, 2};
++	if (name == "waitact2") return {60, {0, 0, 0, 0, 0, 0, 0, 0}, 0};
++	return {0, {0, 0, 0, 0, 0, 0, 0, 0}, 0};
++}
++
++// Attack clip event frames (attack: 25:2 40:3 70:4 86:5 92:6).
++constexpr int AttackArmKey = 40;      // key 3 arms Pikmin eating
++constexpr int AttackBombKey = 92;     // key 6 allows bomb eating
++// WarCry clip event frames (cry: 33:2 38:3 65:4 100:5 103:6).
++constexpr int CryCrossEmperorKey = 38; // key 3 cross-Emperor manager request
++constexpr int CryAstonishKey = 65;     // key 4 astonish
++// Damage clip event frames (damage: 12:2 14:3 15:4 46:5 60:6 65:0 94:1).
++constexpr int DamageKillKey = 46;      // key 4 kills mouth contents, applies damage
++constexpr int DamageLoopStart = 65;
++constexpr int DamageLoopEnd = 94;
++// Appear clip event frames (type3: 3:2 55:3 58:4).
++constexpr int AppearShakeOffKey = 55;
++// Flick clip event frames (flick: 30:2 35:3).
++constexpr int FlickTrampleKey = 35;
++// Dive clip event frames (dive: 58:2 60:3 90:4). Effects are flags only.
++
++// Proper parameters (disc vs header), include/Game/Entities/KingChappy.h:51-74
++// + bulblax.json proper_retail (#227 KING_PROPER_PARMS).
++constexpr float RequiredTurningAngleDeg = 60.0f; // fp01 disc (header 20)
++constexpr float DistanceToSpawn = 60.0f;         // fp02 disc (header 150)
++constexpr float RoarEffectiveAngleDeg = 180.0f;  // fp03 disc (header 45)
++constexpr float RoarEffectiveRange = 300.0f;     // fp04 disc (header 100)
++constexpr float BombDamage = 200.0f;             // fp05 header == disc
++constexpr float InvisibleRange = 80.0f;          // fp06 disc (header 70)
++constexpr float TurningEndAngleDeg = 40.0f;      // fp07 disc (header 10)
++constexpr float TramplingRange = 45.0f;          // fp08 header == disc
++constexpr float AppearShakeOffRange = 100.0f;    // fp09 header == disc
++constexpr float AppearShakeOffPower = 200.0f;    // fp10 header == disc
++constexpr float DeathRate = 0.0f;                // fp12 header == disc
++constexpr float FlickShoutRate = 0.5f;           // fp13 header == disc
++// fp14 white Pikmin poison parm: header 300 / disc 200; the actual swallow
++// poison damage is a hardcoded 300 (StateSwallow::exec, the #227 finding).
++// All three stay distinct here.
++constexpr float WhitePikminParmHeader = 300.0f;
++constexpr float WhitePikminParmDisc = 200.0f;
++constexpr float SwallowPoisonDamage = 300.0f; // hardcoded
++constexpr int PeriodOfIncubation = 500;       // ip01 header == disc
++constexpr int TimeToAppearance = 0;           // ip02 disc (header 200)
++constexpr int BombDamageTime = 180;           // ip03 disc (header 10)
++
++// General parameters (disc), kingchappy/enemyparm.txt (#227 KING_GENERAL_DISC).
++constexpr float HealthDefault = 1300.0f; // fp00
++constexpr float ShakeRange = 60.0f;      // fp19
++constexpr float AttackDamage = 5.0f;     // fp24 (captain mouth-slot damage)
++
++// Big variant (f_03 or force-big), kingChappy.cpp:60-72, 148-158.
++constexpr float BigScale = 1.5f;     // fp15 disc
++constexpr float BigHealth = 1800.0f; // fp16 disc
++constexpr float BigSpeed = 45.0f;    // fp17 disc
++constexpr float BigFloorOffset = 60.0f;
++
++// Mouth: 9 slots kamu1..kamu9, radius 25 * scale; tongue tip bero6 radius 5
++// aborts the lick on floor/wall contact. kingChappy.cpp:98, 993-1003.
++constexpr int MouthSlots = 9;
++constexpr float MouthSlotRadius = 25.0f;
++constexpr float TongueTipRadius = 5.0f;
++
++// Bomb ingestion, kingChappy.cpp:1009-1043 (audit lines 201-205).
++constexpr float ExternalBlastFactor = 0.25f; // bombCallBack, :873-877
++
++// Damage tiers, kingChappy.cpp:824-856.
++constexpr float PetrifiedDamageFactor = 0.1f;
++constexpr float GroundAttackFactor = 0.2f;
++constexpr float GroundAttackRange = 40.0f;
++constexpr float GroundAttackMaxDy = 5.0f;
++
++// Flick trample height band, kingChappyState.cpp StateFlick::exec.
++constexpr float TrampleHeightBand = 30.0f;
++
++inline void finite(float value) {
++	if (!std::isfinite(value)) throw std::runtime_error("Expected finite number");
++}
++
++// Entry state: buried in HideWait. kingChappy.cpp:107.
++inline int entryState() { return HideWait; }
++
++// HideWait -> Appear when a captain or any Pikmin is within mDistanceToSpawn *
++// scale after mTimeToAppearance frames. kingChappyState.cpp:1970-2016.
++inline bool hidewaitWake(float nearestTargetDistance, int framesWaited, float scale, float distanceToSpawn,
++                         int timeToAppearance) {
++	finite(nearestTargetDistance);
++	finite(scale);
++	finite(distanceToSpawn);
++	if (framesWaited < 0 || timeToAppearance < 0) throw std::runtime_error("Expected non-negative frame count");
++	if (framesWaited <= timeToAppearance) return false;
++	return nearestTargetDistance < distanceToSpawn * scale;
++}
++
++// Walk turn decision. kingChappyState.cpp:53-117.
++inline TurnDecision walkTurn(float goalAngleOff, float requiredTurningAngle, float turningEndAngle) {
++	finite(goalAngleOff);
++	finite(requiredTurningAngle);
++	finite(turningEndAngle);
++	const float off = std::fabs(goalAngleOff);
++	if (off > requiredTurningAngle) return TurnDecision::Turn;
++	if (off <= turningEndAngle) return TurnDecision::FinishTurn;
++	return TurnDecision::Walk;
++}
++
++// Walk loses interest after mPeriodOfIncubation frames without a target or
++// when out of territory; returns home and enters Hide. kingChappyState.cpp:53-117.
++inline bool walkGiveUp(int framesWithoutTarget, int periodOfIncubation, bool outOfTerritory) {
++	if (framesWithoutTarget < 0 || periodOfIncubation < 0) throw std::runtime_error("Expected non-negative frame count");
++	return outOfTerritory || framesWithoutTarget > periodOfIncubation;
++}
++
++// checkDead: Dead, or WarCry with probability mDeathRate (0 by default).
++// kingChappyState.cpp + kingChappy.cpp checkDead.
++inline DeadChoice checkDead(float roll, float deathRate) {
++	finite(roll);
++	finite(deathRate);
++	if (roll < 0.0f || roll > 1.0f || deathRate < 0.0f || deathRate > 1.0f)
++		throw std::runtime_error("Invalid checkDead input");
++	return roll < deathRate ? DeadChoice::WarCry : DeadChoice::Dead;
++}
++
++// checkFlick once isStartFlick fires: WarCry with probability mFlickShoutRate
++// when under half health, otherwise Flick. kingChappy.cpp:2457-2474.
++inline int checkFlick(float health, float maxHealth, float roll, float flickShoutRate = FlickShoutRate) {
++	finite(health);
++	finite(maxHealth);
++	finite(roll);
++	finite(flickShoutRate);
++	if (roll < 0.0f || roll > 1.0f || maxHealth <= 0.0f) throw std::runtime_error("Invalid flick input");
++	if (health < 0.5f * maxHealth && roll < flickShoutRate) return WarCry;
++	return Flick;
++}
++
++// damageCallBack coefficient; 0.0 means ignored. kingChappy.cpp:824-856.
++// The decomp collisionCallback no-op quirk (audit line 254) is recorded, not
++// "fixed": no extra channel is synthesized here.
++inline float damageTier(bool petrified, bool hasPart, bool stuckToPart, float attackerDy, float sqrDistanceXZ) {
++	finite(attackerDy);
++	finite(sqrDistanceXZ);
++	if (petrified) return PetrifiedDamageFactor;
++	if (hasPart) return stuckToPart ? 1.0f : 0.0f;
++	if (attackerDy < GroundAttackMaxDy) return sqrDistanceXZ < GroundAttackRange * GroundAttackRange ? GroundAttackFactor : 0.0f;
++	return 0.0f;
++}
++
++// Damage key 4: kills everything in the mouth and applies bombs * mBombDamage.
++// kingChappyState.cpp StateDamage::exec.
++inline float bombDamage(int bombsEaten, float damagePerBomb = BombDamage) {
++	finite(damagePerBomb);
++	if (bombsEaten < 0) throw std::runtime_error("Expected non-negative bomb count");
++	return bombsEaten * damagePerBomb;
++}
++
++// eatBomb only accepts a Bomb (enemy ID 36) in BOMB_Wait that is not already
++// stuck to a mouth. kingChappy.cpp:1009-1043.
++inline bool eatableBomb(const std::string& bombState) { return bombState == "BOMB_Wait"; }
++
++// Big variant in forest_3 (getCaveID() == 'f_03') or with mDoForceBig.
++// kingChappy.cpp:148-158.
++inline bool isBig(Variant variant) { return variant != Variant::Default; }
++
++// Attack armed-frame contract: key 3 arms eating, key 6 allows bombs.
++// Returns bit 0 = eat Pikmin, bit 1 = eat bomb. RECONSTRUCTED
++// (StateAttack::exec / searchTarget / checkAttack, audit lines 249-251).
++inline int attackStep(int keyEvent, bool mouthSlotsFree, bool bombsInRange, bool pikminInRange) {
++	int actions = 0;
++	if (keyEvent == 6 && bombsInRange && mouthSlotsFree) actions |= 2;
++	if ((keyEvent == 3 || keyEvent == 6) && pikminInRange && mouthSlotsFree) actions |= 1;
++	return actions;
++}
++
++// checkAttack may target eatable bombs beyond mInvisibleRange (80 disc) when
++// mCanAttackBombs is set (default on). kingChappy.cpp (audit line 204).
++inline bool canTargetBomb(float distanceXZ, bool canAttackBombs = true) {
++	finite(distanceXZ);
++	return canAttackBombs && distanceXZ > InvisibleRange;
++}
++
++// Flick key 3: presses every Pikmin and captain within mTramplingRange * scale
++// of the foot in a 30 unit height band, then the standard flick shake; captains
++// are flicked only if none was pressed. RECONSTRUCTED (StateFlick::exec).
++struct FlickStep {
++	int pressedPikmin;
++	int pressedCaptains;
++	bool flickCaptains;
++};
++inline FlickStep flickStep(int pikminInTrampleRange, int captainsInTrampleRange) {
++	if (pikminInTrampleRange < 0 || captainsInTrampleRange < 0) throw std::runtime_error("Expected non-negative counts");
++	return {pikminInTrampleRange, captainsInTrampleRange, captainsInTrampleRange == 0};
++}
++
++// WarCry key 3 cross-Emperor contract: wake one buried Emperor (force transit
++// to Appear) and make one walking Emperor roar (force transit to WarCry).
++// kingChappyMgr.cpp:53-62 + kingChappy.cpp:1548. Two-Emperor scope only.
++inline int crossEmperorTarget(int otherState) {
++	if (otherState == HideWait) return Appear;
++	if (otherState == Walk) return WarCry;
++	return -1;
++}
++
++// Damage end: Dead or Walk. kingChappyState.cpp:1706-1775.
++inline int damageEnd(float health) {
++	finite(health);
++	return health <= 0.0f ? Dead : Walk;
++}
++
++// Attack end routing: bombs in mouth -> Eat; Pikmin in mouth -> Swallow;
++// otherwise Walk. kingChappyState.cpp:133-743.
++inline int attackEnd(int bombsInMouth, int pikminInMouth) {
++	if (bombsInMouth < 0 || pikminInMouth < 0) throw std::runtime_error("Expected non-negative mouth counts");
++	if (bombsInMouth > 0) return Eat;
++	if (pikminInMouth > 0) return Swallow;
++	return Walk;
++}
++
++// Variant parameter block. Normal walk speed is an approximation (the #227
++// reference only pins the big-variant speed, fp17 disc 45).
++struct VariantInfo {
++	bool big;
++	float scale;
++	float health;
++	float speed;
++	float floorOffset;
++};
++inline VariantInfo variantInfo(Variant variant) {
++	if (isBig(variant)) return {true, BigScale, BigHealth, BigSpeed, BigFloorOffset};
++	return {false, 1.0f, HealthDefault, 30.0f /* approximation */, 0.0f};
++}
++
++// ---------------------------------------------------------------------------
++// P2_KING_ACTOR_1 actor configuration (strict, fail-closed).
++// ---------------------------------------------------------------------------
++struct ActorClip {
++	int enemy = 0; // 53 KingChappy
++	std::string name;
++	int duration = 0;
++	std::vector<int> frames;
++	size_t index(float sourceFrame) const {
++		if (!std::isfinite(sourceFrame)) throw std::runtime_error("invalid frame");
++		sourceFrame = std::fmod(std::fmax(0.0f, sourceFrame), float(duration));
++		size_t best = 0;
++		for (size_t i = 1; i < frames.size(); ++i)
++			if (std::fabs(frames[i] - sourceFrame) < std::fabs(frames[best] - sourceFrame)) best = i;
++		return best;
++	}
++};
++struct Placement {
++	uint32_t id = 0;
++	Variant variant = Variant::Default;
++	float x = 0, y = 0, z = 0, yaw = 0;
++};
++// Actor-local BOMB_Wait bomb stub (enemy ID 36). externalBlastTick > 0 is a
++// fixture injection: the bomb detonates externally at that behavior tick and
++// the blast is quartered (bombCallBack, kingChappy.cpp:873-877).
++struct BombPlacement {
++	uint32_t id = 0;
++	float x = 0, y = 0, z = 0;
++	uint32_t externalBlastTick = 0;
++};
++struct ActorConfig {
++	std::vector<ActorClip> clips;
++	std::vector<Placement> placements;
++	std::vector<BombPlacement> bombs;
++	const ActorClip* clip(int enemy, const std::string& name) const {
++		for (const auto& c : clips)
++			if (c.enemy == enemy && c.name == name) return &c;
++		return nullptr;
++	}
++};
++inline bool kingClipName(const std::string& name) {
++	return clipKeys(name).frames > 0; // carry is P1-authoritative; not sampled here
++}
++inline ActorConfig readActorConfig(std::istream& in) {
++	auto fail = []() { throw std::runtime_error("invalid King actor profile"); };
++	ActorConfig cfg;
++	std::string magic;
++	int count;
++	if (!(in >> magic >> count) || magic != "P2_KING_ACTOR_1" || count < 1 || count > 16) fail();
++	std::set<std::pair<int, std::string>> seen;
++	for (int i = 0; i < count; ++i) {
++		ActorClip c;
++		int n;
++		if (!(in >> c.enemy >> c.name >> c.duration >> n)) fail();
++		const bool known = c.enemy == 53 && kingClipName(c.name);
++		if (!known || c.name.size() > 24 || c.name.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789_") != std::string::npos
++		    || !seen.insert({c.enemy, c.name}).second || c.duration < 1 || c.duration > 10000 || n < 1 || n > 12)
++			fail();
++		for (int j = 0; j < n; ++j) {
++			int f;
++			if (!(in >> f) || f < 0 || f >= c.duration || (j && f <= c.frames.back())) fail();
++			c.frames.push_back(f);
++		}
++		cfg.clips.push_back(c);
++	}
++	// The King FSM needs the full sampled state set.
++	for (const char* need : {"attack", "cry", "damage", "dead", "dive", "flick", "move1", "type1", "type2", "type3",
++	                         "wait2", "waitact1", "waitact2"})
++		if (!cfg.clip(53, need)) fail();
++	// Two-Emperor scope: at most 2 placements (kingChappyMgr cross contract).
++	if (!(in >> count) || count < 1 || count > 2) fail();
++	std::set<uint32_t> ids;
++	for (int i = 0; i < count; ++i) {
++		unsigned long long id;
++		std::string variant;
++		Placement p;
++		if (!(in >> id >> variant >> p.x >> p.y >> p.z >> p.yaw) || id > 0xffffffffULL || !ids.insert(uint32_t(id)).second
++		    || !std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z) || !std::isfinite(p.yaw)
++		    || std::fabs(p.x) > 100000 || std::fabs(p.y) > 100000 || std::fabs(p.z) > 100000 || std::fabs(p.yaw) > 360)
++			fail();
++		p.id = uint32_t(id);
++		if (variant == "default")
++			p.variant = Variant::Default;
++		else if (variant == "f_03")
++			p.variant = Variant::F03;
++		else if (variant == "force_big")
++			p.variant = Variant::ForceBig;
++		else
++			fail();
++		cfg.placements.push_back(p);
++	}
++	// Actor-local bomb stubs (fixture injection channel).
++	if (!(in >> count) || count < 0 || count > 4) fail();
++	for (int i = 0; i < count; ++i) {
++		unsigned long long id, blastTick;
++		BombPlacement b;
++		if (!(in >> id >> b.x >> b.y >> b.z >> blastTick) || id > 0xffffffffULL || blastTick > 1000000ULL
++		    || !ids.insert(uint32_t(id)).second || !std::isfinite(b.x) || !std::isfinite(b.y) || !std::isfinite(b.z)
++		    || std::fabs(b.x) > 100000 || std::fabs(b.y) > 100000 || std::fabs(b.z) > 100000)
++			fail();
++		b.id = uint32_t(id);
++		b.externalBlastTick = uint32_t(blastTick);
++		cfg.bombs.push_back(b);
++	}
++	if (in >> magic) fail();
++	return cfg;
++}
++} // namespace p2king
+diff --git a/pc_port/pc_p2_preview.cpp b/pc_port/pc_p2_preview.cpp
+index efb4918c..5443d4e1 100644
+--- a/pc_port/pc_p2_preview.cpp
++++ b/pc_port/pc_p2_preview.cpp
+@@ -10,6 +10,7 @@
+ #include "pc_p2_bulblax_visual.h"
+ #include "pc_p2_breadbug_actor.h"
+ #include "pc_p2_queen.h"
++#include "pc_p2_king.h"
+ #include "pc_p2_preview.h"
+ #include "pc_bbft.h"
+ #include "Pellet.h"
+@@ -187,6 +188,7 @@ void pc_p2_preview_setup() {
+     pc_p2_giant_breadbug_visual_setup();
+     pc_p2_bulblax_visual_setup();
+     pc_p2_queen_setup();
++    pc_p2_king_setup();
+     pc_p2_breadbug_actor_setup();
+     pc_p2_frog_setup();
+     pc_p2_kogane_setup();
+diff --git a/src/plugPikiKando/gameCoreSection.cpp b/src/plugPikiKando/gameCoreSection.cpp
+index 894bab95..06da3afd 100644
+--- a/src/plugPikiKando/gameCoreSection.cpp
++++ b/src/plugPikiKando/gameCoreSection.cpp
+@@ -14,6 +14,7 @@
+ #include "pc_p2_giant_breadbug_visual.h"
+ #include "pc_p2_bulblax_visual.h"
+ #include "pc_p2_queen.h"
++#include "pc_p2_king.h"
+ #include "pc_p2_tank.h"
+ #include "pc_randomizer.h"
+ #include "MapCode.h"
+@@ -1733,6 +1734,7 @@ void GameCoreSection::update()
+ 	zen::pGameInfo->mMapPikiNum           = GameStat::mapPikis;
+ 	zen::pGameInfo->mFormationPikiNum     = GameStat::formationPikis;
+ 	pc_p2_queen_update();
++	pc_p2_king_update();
+ 	Node::update();
+ }
+ 
+@@ -2990,6 +2992,7 @@ void GameCoreSection::draw(Graphics& gfx)
+ 	pc_p2_giant_breadbug_visual_draw(gfx);
+ 	pc_p2_bulblax_visual_draw(gfx);
+ 	pc_p2_queen_draw(gfx);
++	pc_p2_king_draw(gfx);
+ 	pc_p2_tank_draw_water(gfx);
+ }
+ 
+diff --git a/src/plugPikiNakata/tekimgr.cpp b/src/plugPikiNakata/tekimgr.cpp
+index 8784a995..61781cce 100644
+--- a/src/plugPikiNakata/tekimgr.cpp
++++ b/src/plugPikiNakata/tekimgr.cpp
+@@ -10,6 +10,7 @@
+ #include "pc_p2_bulblax_visual.h"
+ #include "pc_p2_breadbug_actor.h"
+ #include "pc_p2_queen.h"
++#include "pc_p2_king.h"
+ #endif
+ #include "DebugLog.h"
+ #include "Dolphin/os.h"
+@@ -121,7 +122,7 @@ int TekiMgr::typeIds[TEKI_TypeCount] = {
+ void TekiMgr::initTekiMgr()
+ {
+ #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+-	{ pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_breadbug_actor_reset(); pc_p2_queen_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_tank_reset(); pc_p2_qurione_reset(); }
++	{ pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_breadbug_actor_reset(); pc_p2_queen_reset(); pc_p2_king_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_tank_reset(); pc_p2_qurione_reset(); }
+ #endif
+ 	tekiMgr = nullptr;
+ }
+@@ -148,7 +149,7 @@ TekiMgr::TekiMgr()
+ {
+ #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+ 	// Stage teardown nulls the global manager. Do not clear an unrelated live manager.
+-	if (!tekiMgr) { pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_breadbug_actor_reset(); pc_p2_queen_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_tank_reset(); pc_p2_qurione_reset(); }
++	if (!tekiMgr) { pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_breadbug_actor_reset(); pc_p2_queen_reset(); pc_p2_king_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_tank_reset(); pc_p2_qurione_reset(); }
+ #endif
+ 	PRINT_NAKATA("TekiMgr>\n");
+ 	memStat->start("tekiMgr");
+@@ -291,7 +292,7 @@ Teki* TekiMgr::newTeki(int type)
+ void TekiMgr::reset()
+ {
+ #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+-	if (this == tekiMgr) { pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_breadbug_visual_reset(); pc_p2_giant_breadbug_visual_reset(); pc_p2_bulblax_visual_reset(); pc_p2_queen_reset(); pc_p2_breadbug_actor_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_tank_reset(); pc_p2_qurione_reset(); }
++	if (this == tekiMgr) { pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_breadbug_visual_reset(); pc_p2_giant_breadbug_visual_reset(); pc_p2_bulblax_visual_reset(); pc_p2_queen_reset(); pc_p2_king_reset(); pc_p2_breadbug_actor_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_tank_reset(); pc_p2_qurione_reset(); }
+ #endif
+ 	PRINT_NAKATA("reset>\n");
+ 	Iterator iter(this);
+-- 
+2.47.1.windows.1
+

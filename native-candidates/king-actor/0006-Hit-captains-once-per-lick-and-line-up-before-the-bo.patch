@@ -1,0 +1,83 @@
+From e5eb9badffe01e7bc4789d87b359d3ad6d329a5b Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Sun, 13 Sep 2026 13:12:06 -0400
+Subject: [PATCH 06/10] Hit captains once per lick and line up before the bomb
+ trigger (#289)
+
+---
+ pc_port/pc_p2_king.cpp | 26 +++++++++++++++++++-------
+ 1 file changed, 19 insertions(+), 7 deletions(-)
+
+diff --git a/pc_port/pc_p2_king.cpp b/pc_port/pc_p2_king.cpp
+index b9b1f345..6f4ddfd1 100644
+--- a/pc_port/pc_p2_king.cpp
++++ b/pc_port/pc_p2_king.cpp
+@@ -76,6 +76,7 @@ struct King {
+ 	bool bombArmed = false;
+ 	bool attackAborted = false;
+ 	bool damageKeyDone = false;
++	bool captainHitDone = false;
+ 	bool turnLeft = false;
+ 	bool loggedDead = false;
+ 	bool loggedDive = false;
+@@ -140,6 +141,7 @@ void enter(King& k, int state) {
+ 		k.attackArmed = false;
+ 		k.bombArmed = false;
+ 		k.attackAborted = false;
++		k.captainHitDone = false;
+ 	}
+ 	if (state == p2king::Damage) k.damageKeyDone = false;
+ }
+@@ -404,11 +406,12 @@ void eatScan(King& k) {
+ 			            k.mouthBombs);
+ 		}
+ 	}
+-	// Captains in any mouth slot take mAttackDamage (5 disc).
+-	if (k.attackArmed && naviMgr && naviMgr->getNavi()) {
++	// Captains in any mouth slot take mAttackDamage (5 disc), once per lick.
++	if (k.attackArmed && !k.captainHitDone && naviMgr && naviMgr->getNavi()) {
+ 		Navi* n = naviMgr->getNavi();
+ 		const Vector3f& pos = n->getPosition();
+ 		if (slotDistance(pos.x, pos.z) <= slotRadius) {
++			k.captainHitDone = true;
+ 			InteractPress press(nullptr, p2king::AttackDamage);
+ 			n->stimulate(press);
+ 			std::printf("P2_KING_CAPTAIN_HIT id=%u damage=5 slot_radius=%.1f\n", k.cfg.id, slotRadius);
+@@ -610,7 +613,9 @@ void tickKing(King& k) {
+ 			k.z += std::cos(rad) * k.info.speed * Tick;
+ 		}
+ 		// Attack decision: close target in front, or an eatable bomb beyond the
+-		// invisible range (80 disc) with mCanAttackBombs on (default).
++		// invisible range (80 disc) with mCanAttackBombs on (default). The bomb
++		// trigger requires rough facing; otherwise the bomb becomes the walk
++		// goal so the Emperor lines up first (approximation).
+ 		if (k.state == p2king::Walk && hasTarget && nearest < KingAttackRange * k.info.scale
+ 		    && std::fabs(off) <= KingAttackAngleDeg) {
+ 			std::printf("P2_KING_ATTACK_TRIGGER id=%u nearest=%.1f off=%.1f\n", k.cfg.id, nearest, off);
+@@ -620,12 +625,19 @@ void tickKing(King& k) {
+ 				if (b.state != 0) continue;
+ 				const float dx = b.cfg.x - k.x, dz = b.cfg.z - k.z;
+ 				const float d = std::sqrt(dx * dx + dz * dz);
+-				if (d < KingBombAttackRange * k.info.scale && p2king::canTargetBomb(d, true)) {
+-					std::printf("P2_KING_ATTACK_TRIGGER id=%u bomb=%u dist=%.1f beyond_invisible_range=80 can_attack_bombs=1\n",
+-					            k.cfg.id, b.cfg.id, d);
+-					enter(k, p2king::Attack);
++				if (!(d < KingBombAttackRange * k.info.scale && p2king::canTargetBomb(d, true))) continue;
++				float boff = std::atan2(dx, dz) * 57.29577951308232f - k.yaw;
++				while (boff > 180.0f) boff -= 360.0f;
++				while (boff < -180.0f) boff += 360.0f;
++				if (std::fabs(boff) > KingAttackAngleDeg) {
++					goalX = b.cfg.x;
++					goalZ = b.cfg.z;
+ 					break;
+ 				}
++				std::printf("P2_KING_ATTACK_TRIGGER id=%u bomb=%u dist=%.1f off=%.1f beyond_invisible_range=80 can_attack_bombs=1\n",
++				            k.cfg.id, b.cfg.id, d, boff);
++				enter(k, p2king::Attack);
++				break;
+ 			}
+ 		}
+ 		// Give up: out of interest or back home with no target -> Hide.
+-- 
+2.47.1.windows.1
+

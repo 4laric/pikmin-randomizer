@@ -1,0 +1,26 @@
+From e353cda7800ac5a8991ccbb640f95f7fbebdb93c Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Sun, 13 Sep 2026 12:41:58 -0400
+Subject: [PATCH 04/10] Exit the bomb-stun Damage loop at the loop boundary
+ (#289)
+
+---
+ pc_port/pc_p2_king.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/pc_port/pc_p2_king.cpp b/pc_port/pc_p2_king.cpp
+index 2a69b762..cd49cb42 100644
+--- a/pc_port/pc_p2_king.cpp
++++ b/pc_port/pc_p2_king.cpp
+@@ -639,7 +639,7 @@ void tickKing(King& k) {
+ 	} else if (k.state == p2king::Damage) {
+ 		loopStart = p2king::DamageLoopStart;
+ 		loopEnd = p2king::DamageLoopEnd;
+-		loops = k.stunFrames > 0;
++		loops = true; // stun exit is handled at the loop boundary below
+ 	}
+ 	if (k.state == p2king::Damage && k.damageKeyDone && k.stunFrames > 0) --k.stunFrames;
+ 	if (duration > 0 && k.frame >= float(loopEnd)) {
+-- 
+2.47.1.windows.1
+

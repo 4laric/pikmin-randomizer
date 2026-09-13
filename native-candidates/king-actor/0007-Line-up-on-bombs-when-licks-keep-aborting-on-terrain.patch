@@ -1,0 +1,103 @@
+From 55544326088355edc2aa2fc706fd423caa555283 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Sun, 13 Sep 2026 13:33:30 -0400
+Subject: [PATCH 07/10] Line up on bombs when licks keep aborting on terrain
+ (#289)
+
+Tongue-abort starvation guard: after three consecutive licks aborted by
+terrain the Emperor stops re-licking unreachable creatures and lines up
+on an eatable bomb instead, and the bomb lick trigger now also requires
+the tongue segment to pass within the mouth slot radius (perpendicular
+check) so a triggered lick actually connects. Recorded approximations.
+---
+ pc_port/pc_p2_king.cpp | 31 ++++++++++++++++++++++++++++---
+ 1 file changed, 28 insertions(+), 3 deletions(-)
+
+diff --git a/pc_port/pc_p2_king.cpp b/pc_port/pc_p2_king.cpp
+index 6f4ddfd1..b8a41972 100644
+--- a/pc_port/pc_p2_king.cpp
++++ b/pc_port/pc_p2_king.cpp
+@@ -75,6 +75,7 @@ struct King {
+ 	bool attackArmed = false;
+ 	bool bombArmed = false;
+ 	bool attackAborted = false;
++	int tongueAbortStreak = 0; // consecutive licks aborted by terrain
+ 	bool damageKeyDone = false;
+ 	bool captainHitDone = false;
+ 	bool turnLeft = false;
+@@ -391,8 +392,9 @@ void eatScan(King& k) {
+ 				if (k.mouth[i] == p) held = true;
+ 			if (held) continue;
+ 			k.mouth[k.mouthPikmin++] = p;
++			k.tongueAbortStreak = 0; // a connecting lick clears the streak
+ 			std::printf("P2_KING_EAT id=%u piki=%p slot=%d radius=%.1f\n", k.cfg.id, (void*)p, k.mouthPikmin - 1,
+-			            slotRadius);
++		            slotRadius);
+ 		}
+ 	}
+ 	if (actions & 2) {
+@@ -402,6 +404,7 @@ void eatScan(King& k) {
+ 			if (k.mouthPikmin + k.mouthBombs >= p2king::MouthSlots) break;
+ 			b.state = 1; // eaten
+ 			++k.mouthBombs;
++			k.tongueAbortStreak = 0; // a connecting lick clears the streak
+ 			std::printf("P2_KING_EAT_BOMB id=%u bomb=%u state=BOMB_Wait slot_count=%d\n", k.cfg.id, b.cfg.id,
+ 			            k.mouthBombs);
+ 		}
+@@ -432,6 +435,7 @@ void tongueTipScan(King& k) {
+ 	const float ground = mapMgr->getMinY(tx, tz, true);
+ 	if (ground > k.y + p2king::TongueTipRadius) { // wall or steep rise at the tip
+ 		k.attackAborted = true;
++		++k.tongueAbortStreak;
+ 		std::printf("P2_KING_TONGUE_ABORT id=%u frame=%.0f ground=%.3f y=%.3f tip_radius=5\n", k.cfg.id, k.frame, ground,
+ 		            k.y);
+ 	}
+@@ -587,6 +591,23 @@ void tickKing(King& k) {
+ 				}
+ 			}
+ 		}
++		// Tongue-abort starvation guard (approximation): after several licks
++		// aborted by terrain the Emperor stops re-licking unreachable creatures
++		// and lines up on an eatable bomb instead.
++		if (k.tongueAbortStreak >= 3) {
++			float best = KingBombAttackRange * k.info.scale;
++			for (const auto& b : bombs) {
++				if (b.state != 0) continue;
++				const float dx = b.cfg.x - k.x, dz = b.cfg.z - k.z;
++				const float d = std::sqrt(dx * dx + dz * dz);
++				if (d < best) {
++					best = d;
++					goalX = b.cfg.x;
++					goalZ = b.cfg.z;
++					hasTarget = true;
++				}
++			}
++		}
+ 		const float gdx = goalX - k.x, gdz = goalZ - k.z;
+ 		const float goalDist = std::sqrt(gdx * gdx + gdz * gdz);
+ 		const float want = std::atan2(gdx, gdz) * 57.29577951308232f;
+@@ -617,7 +638,7 @@ void tickKing(King& k) {
+ 		// trigger requires rough facing; otherwise the bomb becomes the walk
+ 		// goal so the Emperor lines up first (approximation).
+ 		if (k.state == p2king::Walk && hasTarget && nearest < KingAttackRange * k.info.scale
+-		    && std::fabs(off) <= KingAttackAngleDeg) {
++		    && std::fabs(off) <= KingAttackAngleDeg && k.tongueAbortStreak < 3) {
+ 			std::printf("P2_KING_ATTACK_TRIGGER id=%u nearest=%.1f off=%.1f\n", k.cfg.id, nearest, off);
+ 			enter(k, p2king::Attack);
+ 		} else if (k.state == p2king::Walk) {
+@@ -629,7 +650,11 @@ void tickKing(King& k) {
+ 				float boff = std::atan2(dx, dz) * 57.29577951308232f - k.yaw;
+ 				while (boff > 180.0f) boff -= 360.0f;
+ 				while (boff < -180.0f) boff += 360.0f;
+-				if (std::fabs(boff) > KingAttackAngleDeg) {
++				// Lick only when the tongue segment can actually reach the
++				// bomb: rough facing plus perpendicular distance inside the
++				// mouth slot radius; otherwise line up first (approximation).
++				const float perp = d * std::sin(std::fabs(boff) * 0.0174532925199433f);
++				if (std::fabs(boff) > KingAttackAngleDeg || perp > p2king::MouthSlotRadius * k.info.scale) {
+ 					goalX = b.cfg.x;
+ 					goalZ = b.cfg.z;
+ 					break;
+-- 
+2.47.1.windows.1
+

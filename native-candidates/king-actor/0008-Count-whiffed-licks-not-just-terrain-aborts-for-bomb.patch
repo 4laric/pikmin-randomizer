@@ -1,0 +1,100 @@
+From 3c3ea2a5d6b20a341300f659060c4f0728b35f28 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Sun, 13 Sep 2026 13:46:13 -0400
+Subject: [PATCH 08/10] Count whiffed licks, not just terrain aborts, for bomb
+ line-up (#289)
+
+A lick that connects with nothing (whiff or abort) now feeds the
+starvation streak, so an Emperor licking unreachable creatures still
+lines up on an eatable bomb after three empty licks. Connecting licks
+clear the streak.
+---
+ pc_port/pc_p2_king.cpp | 23 ++++++++++++++---------
+ 1 file changed, 14 insertions(+), 9 deletions(-)
+
+diff --git a/pc_port/pc_p2_king.cpp b/pc_port/pc_p2_king.cpp
+index b8a41972..3f6ac5fd 100644
+--- a/pc_port/pc_p2_king.cpp
++++ b/pc_port/pc_p2_king.cpp
+@@ -75,7 +75,8 @@ struct King {
+ 	bool attackArmed = false;
+ 	bool bombArmed = false;
+ 	bool attackAborted = false;
+-	int tongueAbortStreak = 0; // consecutive licks aborted by terrain
++	int whiffStreak = 0; // consecutive licks that connected with nothing (whiff or terrain abort)
++	int eatsThisLick = 0;
+ 	bool damageKeyDone = false;
+ 	bool captainHitDone = false;
+ 	bool turnLeft = false;
+@@ -142,6 +143,7 @@ void enter(King& k, int state) {
+ 		k.attackArmed = false;
+ 		k.bombArmed = false;
+ 		k.attackAborted = false;
++		k.eatsThisLick = 0;
+ 		k.captainHitDone = false;
+ 	}
+ 	if (state == p2king::Damage) k.damageKeyDone = false;
+@@ -392,7 +394,7 @@ void eatScan(King& k) {
+ 				if (k.mouth[i] == p) held = true;
+ 			if (held) continue;
+ 			k.mouth[k.mouthPikmin++] = p;
+-			k.tongueAbortStreak = 0; // a connecting lick clears the streak
++			++k.eatsThisLick;
+ 			std::printf("P2_KING_EAT id=%u piki=%p slot=%d radius=%.1f\n", k.cfg.id, (void*)p, k.mouthPikmin - 1,
+ 		            slotRadius);
+ 		}
+@@ -404,7 +406,7 @@ void eatScan(King& k) {
+ 			if (k.mouthPikmin + k.mouthBombs >= p2king::MouthSlots) break;
+ 			b.state = 1; // eaten
+ 			++k.mouthBombs;
+-			k.tongueAbortStreak = 0; // a connecting lick clears the streak
++			++k.eatsThisLick;
+ 			std::printf("P2_KING_EAT_BOMB id=%u bomb=%u state=BOMB_Wait slot_count=%d\n", k.cfg.id, b.cfg.id,
+ 			            k.mouthBombs);
+ 		}
+@@ -435,7 +437,6 @@ void tongueTipScan(King& k) {
+ 	const float ground = mapMgr->getMinY(tx, tz, true);
+ 	if (ground > k.y + p2king::TongueTipRadius) { // wall or steep rise at the tip
+ 		k.attackAborted = true;
+-		++k.tongueAbortStreak;
+ 		std::printf("P2_KING_TONGUE_ABORT id=%u frame=%.0f ground=%.3f y=%.3f tip_radius=5\n", k.cfg.id, k.frame, ground,
+ 		            k.y);
+ 	}
+@@ -591,10 +592,10 @@ void tickKing(King& k) {
+ 				}
+ 			}
+ 		}
+-		// Tongue-abort starvation guard (approximation): after several licks
+-		// aborted by terrain the Emperor stops re-licking unreachable creatures
+-		// and lines up on an eatable bomb instead.
+-		if (k.tongueAbortStreak >= 3) {
++		// Whiff starvation guard (approximation): after several licks that
++		// connected with nothing (whiff or terrain abort) the Emperor stops
++		// re-licking unreached creatures and lines up on an eatable bomb.
++		if (k.whiffStreak >= 3) {
+ 			float best = KingBombAttackRange * k.info.scale;
+ 			for (const auto& b : bombs) {
+ 				if (b.state != 0) continue;
+@@ -638,7 +639,7 @@ void tickKing(King& k) {
+ 		// trigger requires rough facing; otherwise the bomb becomes the walk
+ 		// goal so the Emperor lines up first (approximation).
+ 		if (k.state == p2king::Walk && hasTarget && nearest < KingAttackRange * k.info.scale
+-		    && std::fabs(off) <= KingAttackAngleDeg && k.tongueAbortStreak < 3) {
++		    && std::fabs(off) <= KingAttackAngleDeg && k.whiffStreak < 3) {
+ 			std::printf("P2_KING_ATTACK_TRIGGER id=%u nearest=%.1f off=%.1f\n", k.cfg.id, nearest, off);
+ 			enter(k, p2king::Attack);
+ 		} else if (k.state == p2king::Walk) {
+@@ -725,6 +726,10 @@ void tickKing(King& k) {
+ 				next = p2king::HideWait;
+ 				k.loggedDive = false;
+ 			} else if (k.state == p2king::Attack) {
++				// Whiff guard (approximation): a lick that connected with
++				// nothing (whiff or terrain abort) feeds the starvation
++				// streak; a connecting lick clears it.
++				if (k.eatsThisLick == 0) ++k.whiffStreak; else k.whiffStreak = 0;
+ 				next = k.attackAborted ? p2king::Walk : p2king::attackEnd(k.mouthBombs, k.mouthPikmin);
+ 			} else if (k.state == p2king::Eat)
+ 				next = p2king::Damage;
+-- 
+2.47.1.windows.1
+

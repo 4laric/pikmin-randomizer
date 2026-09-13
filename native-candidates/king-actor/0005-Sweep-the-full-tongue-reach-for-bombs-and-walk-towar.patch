@@ -1,0 +1,75 @@
+From 8f0b7b1070f5d95f2ed4243199d69d853e0a75ea Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Sun, 13 Sep 2026 12:57:06 -0400
+Subject: [PATCH 05/10] Sweep the full tongue reach for bombs and walk toward
+ eatable bombs (#289)
+
+---
+ pc_port/pc_p2_king.cpp | 30 ++++++++++++++++++++++++++++--
+ 1 file changed, 28 insertions(+), 2 deletions(-)
+
+diff --git a/pc_port/pc_p2_king.cpp b/pc_port/pc_p2_king.cpp
+index cd49cb42..b9b1f345 100644
+--- a/pc_port/pc_p2_king.cpp
++++ b/pc_port/pc_p2_king.cpp
+@@ -348,6 +348,17 @@ void eatScan(King& k) {
+ 		const float dx = px - (k.x + sx * t), dz = pz - (k.z + sz * t);
+ 		return std::sqrt(dx * dx + dz * dz);
+ 	};
++	// Bombs ride the retracting tongue from the bero6 tip (reach 100 * scale,
++	// approximation) back to the mouth: sweep the full tongue segment.
++	const float rad = k.yaw * 0.0174532925199433f;
++	const float tx = std::sin(rad) * 100.0f * k.info.scale, tz = std::cos(rad) * 100.0f * k.info.scale;
++	auto tongueDistance = [&](float px, float pz) {
++		const float len2 = tx * tx + tz * tz;
++		float t = len2 > 1.0e-6f ? ((px - k.x) * tx + (pz - k.z) * tz) / len2 : 0.0f;
++		t = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
++		const float dx = px - (k.x + tx * t), dz = pz - (k.z + tz * t);
++		return std::sqrt(dx * dx + dz * dz);
++	};
+ 	bool pikminInRange = false, bombsInRange = false;
+ 	if (pikiMgr) {
+ 		Iterator it(pikiMgr);
+@@ -360,7 +371,7 @@ void eatScan(King& k) {
+ 	}
+ 	for (const auto& b : bombs) {
+ 		if (b.state != 0) continue; // only BOMB_Wait is eatable
+-		if (slotDistance(b.cfg.x, b.cfg.z) <= slotRadius) bombsInRange = true;
++		if (tongueDistance(b.cfg.x, b.cfg.z) <= slotRadius) bombsInRange = true;
+ 	}
+ 	const bool slotsFree = k.mouthPikmin + k.mouthBombs < p2king::MouthSlots;
+ 	// Armed frames repeat every frame while armed (each armed frame tries).
+@@ -385,7 +396,7 @@ void eatScan(King& k) {
+ 	if (actions & 2) {
+ 		for (auto& b : bombs) {
+ 			if (b.state != 0) continue;
+-			if (slotDistance(b.cfg.x, b.cfg.z) > slotRadius) continue;
++			if (tongueDistance(b.cfg.x, b.cfg.z) > slotRadius) continue;
+ 			if (k.mouthPikmin + k.mouthBombs >= p2king::MouthSlots) break;
+ 			b.state = 1; // eaten
+ 			++k.mouthBombs;
+@@ -557,6 +568,21 @@ void tickKing(King& k) {
+ 			}
+ 		} else {
+ 			++k.framesWithoutTarget;
++			// checkAttack interest in eatable bombs (approximation): with no
++			// creature target, walk toward the nearest BOMB_Wait bomb in
++			// range so the beyond-80 bomb trigger can connect.
++			float best = KingBombAttackRange * k.info.scale;
++			for (const auto& b : bombs) {
++				if (b.state != 0) continue;
++				const float dx = b.cfg.x - k.x, dz = b.cfg.z - k.z;
++				const float d = std::sqrt(dx * dx + dz * dz);
++				if (d < best) {
++					best = d;
++					goalX = b.cfg.x;
++					goalZ = b.cfg.z;
++					hasTarget = true;
++				}
++			}
+ 		}
+ 		const float gdx = goalX - k.x, gdz = goalZ - k.z;
+ 		const float goalDist = std::sqrt(gdx * gdx + gdz * gdz);
+-- 
+2.47.1.windows.1
+

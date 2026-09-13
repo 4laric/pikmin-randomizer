@@ -1,0 +1,37 @@
+From 575a0b62e0b6e02bc45356e87b7bfbd55a78670a Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Sun, 13 Sep 2026 13:51:51 -0400
+Subject: [PATCH 09/10] Resume creature licks when no bomb remains to line up
+ on (#289)
+
+---
+ pc_port/pc_p2_king.cpp | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/pc_port/pc_p2_king.cpp b/pc_port/pc_p2_king.cpp
+index 3f6ac5fd..e6a937f2 100644
+--- a/pc_port/pc_p2_king.cpp
++++ b/pc_port/pc_p2_king.cpp
+@@ -597,6 +597,7 @@ void tickKing(King& k) {
+ 		// re-licking unreached creatures and lines up on an eatable bomb.
+ 		if (k.whiffStreak >= 3) {
+ 			float best = KingBombAttackRange * k.info.scale;
++			bool found = false;
+ 			for (const auto& b : bombs) {
+ 				if (b.state != 0) continue;
+ 				const float dx = b.cfg.x - k.x, dz = b.cfg.z - k.z;
+@@ -606,8 +607,11 @@ void tickKing(King& k) {
+ 					goalX = b.cfg.x;
+ 					goalZ = b.cfg.z;
+ 					hasTarget = true;
++					found = true;
+ 				}
+ 			}
++			// No bomb to line up on: resume normal creature licks.
++			if (!found) k.whiffStreak = 0;
+ 		}
+ 		const float gdx = goalX - k.x, gdz = goalZ - k.z;
+ 		const float goalDist = std::sqrt(gdx * gdx + gdz * gdz);
+-- 
+2.47.1.windows.1
+

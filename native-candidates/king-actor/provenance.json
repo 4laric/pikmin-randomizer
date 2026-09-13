@@ -1,0 +1,67 @@
+{
+  "issue": 289,
+  "worker": "Kimi Bulblax lane via shared 4laric account",
+  "native_repo": "output/p2-kimi-bulblax-native (private worktree)",
+  "branch": "kimi/p2-king-actor",
+  "base": "650dc165",
+  "head": "4f517e01c839008b3e232fe7ece0e0eec2fafbcf",
+  "commits": 10,
+  "changed_files": [
+    "pc_port/pc_p2_king_policy.h (new)",
+    "pc_port/pc_p2_king.h (new)",
+    "pc_port/pc_p2_king.cpp (new)",
+    "CMakeLists.txt (additive)",
+    "pc_port/pc_p2_preview.cpp (additive)",
+    "src/plugPikiKando/gameCoreSection.cpp (additive reset site)",
+    "src/plugPikiNakata/tekimgr.cpp (additive reset sites)"
+  ],
+  "shared_contract_changes": "none",
+  "queen_code_touched": false,
+  "build": {
+    "target": "pikmin_pc",
+    "result": "green (ninja)",
+    "dry_run": "ninja -n pikmin_pc: no work to do",
+    "nectar_exe_sha256": "a2455a0f99e24a7efa5594fc492e8dc52f64158d7150c28db6b160c367779193"
+  },
+  "policy_test": {
+    "command": "g++ -std=c++17 -Wall -Wextra -Werror -I pc_port tests/pikmin2_king_policy.cpp",
+    "result": "pikmin2_king_policy PASS",
+    "exe_sha256": "75881c19c869366bf39ced902bf38ac6312d19c8229d5548b01de8f2ceb750be"
+  },
+  "runtime_fixture": {
+    "fixture_exe_sha256": "84b240f27c6155a734f35236cdebd17e3231817e9ecdb8bc947d9d3d93db4637",
+    "native_head": "4f517e01c839008b3e232fe7ece0e0eec2fafbcf",
+    "pass_runs": [
+      "output/king-run/king/b8124077e7c14f14a43b6f6f2ef3cda8",
+      "output/king-run2/king/06e03bae29c7420c9d8eaf6506a33125"
+    ],
+    "result_json": ["output/king-run/result.json", "output/king-run2/result.json"],
+    "variance_note": "P1 pikmin/captain AI is nondeterministic; a third run passed all checks in the log but a lingering game process (mid-teardown after PASS) tripped the no-leftover gate. Two consecutive clean PASS runs are kept as evidence.",
+    "untested": ["death to Dead (HP 1300 not exhausted in bounded run; policy-tested only)", "warcry_astonish (flick tier never rolled WarCry in bounded runs)", "cross_emperor (second Emperor never woke in bounded runs; policy-tested)"]
+  },
+  "python_suite": {
+    "command": "python -m pytest tests -q",
+    "result": "20 failed, 1021 passed, 23 skipped, 174 subtests passed",
+    "delta": "zero new failures; all 20 failures are pre-existing native-absent lanes (snow/kochappy/uji/preview/animation), spot-verified identical on a stashed clean tree; all king tests pass"
+  },
+  "approximations": [
+    "per-blow damage 1; mouth slots sweep the tongue segment (kamu approximation)",
+    "tongue reach 100 * scale; walk speed 30 (default), steering ease, attack range 120, attack angle 45, sight 300, bomb attack range 150",
+    "astonish = zero-damage InteractFlick (P1 has no InteractAstonish)",
+    "shake-off thresholds reused from family general parms",
+    "external blast range 100 with quartered damage (kingChappy.cpp:873-877 reference)",
+    "Turn clips type1/type2; Caution/Swallow share waitact1; Eat uses waitact2",
+    "fp14 white-pikmin header 300 / disc 200 kept distinct from hardcoded 300 poison swallow damage",
+    "captain hit once per lick with mAttackDamage 5 (disc)",
+    "bomb lick trigger requires rough facing (<=45 deg) and tongue-segment perpendicular <= mouth slot radius",
+    "whiff starvation guard: three empty licks line up on an eatable bomb; streak clears on a connecting lick or when no bomb remains",
+    "an aborted lick still resolves a non-empty mouth through attackEnd",
+    "fixture injections, all labeled in-log: external blast bombs, navi sustain (HP top-up + state restore), extinction census guard (allPikis fudged off zero), bomb placements",
+    "tail fixture steps are frames-based so squad wipes cannot stall completion"
+  ],
+  "known_quirks": [
+    "collisionCallback no-op quirk recorded, not fixed",
+    "two-Emperor scope: max 2 placements in protocol",
+    "nondeterministic P1 AI makes individual checks vary run to run; required checks passed in two consecutive runs at the provenance head"
+  ]
+}
