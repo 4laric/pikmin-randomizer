@@ -1,6 +1,7 @@
 #ifdef PIKI_PC_PORT
 #include "pc_p2_enemy.h"
 #include "pc_p2_sheargrub.h"
+#include "pc_p2_breadbug_actor.h"
 #endif
 #include "pc_randomizer.h"
 #include "FlowController.h"
@@ -2015,7 +2016,7 @@ void BTeki::drawTekiShape(Graphics& gfx)
 		}
 
 #ifdef PIKI_PC_PORT
-        if (!pc_p2_kochappy_draw(this, gfx, onCamMtx) && !pc_p2_sheargrub_draw(this, gfx, onCamMtx) && !pc_p2_snow_draw(this, gfx, onCamMtx))
+        if (!pc_p2_breadbug_actor_draw(this, gfx, onCamMtx) && !pc_p2_kochappy_draw(this, gfx, onCamMtx) && !pc_p2_sheargrub_draw(this, gfx, onCamMtx) && !pc_p2_snow_draw(this, gfx, onCamMtx))
 #endif
 		mTekiShape->mShape->drawshape(gfx, *gfx.mCamera, &mAnimatedMaterials);
 		if (lightType == 1) {
