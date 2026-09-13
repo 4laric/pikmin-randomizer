@@ -23,7 +23,7 @@ Current levels are visual/display only unless noted. The dominant blocker everyw
 | Titan Dweevil lane (#246) | P2 mechanics | Motion staging 2/29, lloozy unconverted, damage receivers, FSM host, mixer performance | #246, #128 |
 | Jellyfloat (#243) | Playable proxy | Install + arena (none yet), then native registration; capture/ingest lifecycle; kurage material/opacity | #243 |
 | Bumbling Snitchbug / Demon (#215–#242) | P2 mechanics | Consolidate forced-drop/capture gates; native drop interruption + generation teardown; mouth attachment rig; captain bridge | #215–#242 |
-| Beetles / Breadbug / Mamuta (#168) | P2 mechanics | Remaining runtime gates: flip/drop/forced-escape/cave relocation (beetles); contested cargo/nest ownership + Giant Breadbug scoring (breadbug); bury/99-cap/observation (mamuta) | #219–#221 |
+| Beetles / Breadbug / Mamuta (#168) | P2 mechanics | Mamuta bury/99-cap and death/corpse runtime gates PASS ([PIKMIN2_MAMUTA_DEATH.md](PIKMIN2_MAMUTA_DEATH.md)); remaining: beetle reload/re-entry, contested cargo/nest ownership + Giant Breadbug scoring (breadbug), mamuta adversarial flick/territory + day/floor/save-load/Piklopedia | #219–#221 |
 | Snow Bulborb (#120) | P2 mechanics | Reference lane; natural combat/carry/re-entry parity for the bulborb family remains | #120 |
 
 ## Cross-cutting blockers

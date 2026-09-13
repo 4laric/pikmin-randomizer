@@ -3,8 +3,10 @@
 Instruments tools/preview_p2_room.cpp with scripts/pikmin2_mamuta_rules_fixture.inc:
 verifies the opt-in P2 Miulin bury semantics natively - forced bury converts
 Pikmin to flower-stage planted sprouts (mePikis counted), the 99-planted cap
-rejects, the captain takes exactly 5.0 damage without burial, and reset
-disables the rules. Build modeled on pikmin2_mamuta_runtime (batch 3).
+rejects, the captain takes exactly 5.0 damage without burial, a legal lethal
+attack kills the bound actor and leaves a native carryable Miurin carcass
+(death/corpse gate), and reset disables the rules. Build modeled on
+pikmin2_mamuta_runtime (batch 3).
 """
 import json, os
 from pathlib import Path
