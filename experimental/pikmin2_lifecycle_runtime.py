@@ -83,7 +83,16 @@ public:int idle() override {
    if(observed<40||observed%12==0)std::printf("P2_LIFECYCLE_ATTACK id=%u accepted=%d health=%.1f\n",target,int(hit),a->mHealth);}
  }
  if(deathFrame>=0&&reentryFrame<0&&observed<deathFrame+900){
-  if(observed==deathFrame+1){Teki* c=find(target);std::printf("P2_LIFECYCLE_CLEANUP id=%u alive=%d\n",target,int(c&&c->isAlive()));std::fflush(stdout);}
+  if(observed==deathFrame+1){
+   Teki* c=find(target);std::printf("P2_LIFECYCLE_CLEANUP id=%u alive=%d\n",target,int(c&&c->isAlive()));
+   unsigned long before=pc_p2_batch2_count()+pc_p2_long_legs_count();
+   int regBefore=int(deadPtr&&(pc_p2_batch2_registered(deadPtr)||pc_p2_long_legs_registered(deadPtr)));
+   pc_p2_batch2_forget(deadPtr);pc_p2_long_legs_forget(deadPtr);
+   unsigned long after=pc_p2_batch2_count()+pc_p2_long_legs_count();
+   int regAfter=int(deadPtr&&(pc_p2_batch2_registered(deadPtr)||pc_p2_long_legs_registered(deadPtr)));
+   std::printf("P2_LIFECYCLE_FORGET id=%u before=%lu after=%lu registered_before=%d registered_after=%d\n",
+               target,before,after,regBefore,regAfter);std::fflush(stdout);
+  }
   Teki* fresh=find(target);
   if(!fresh&&!respawnInjected&&observed>=deathFrame+120&&targetGen){targetGen->init();respawnInjected=1;
    std::printf("P2_LIFECYCLE_RESPAWN_INJECT id=%u generator=%u\n",target,targetGen->_70);std::fflush(stdout);}
@@ -240,6 +249,8 @@ def validate(text, code, manifest):
     target = re.findall(r'P2_LIFECYCLE_TARGET id=(\d+)', text)
     death = re.findall(r'P2_LIFECYCLE_DEATH id=(\d+) frame=(\d+)', text)
     cleanup = re.findall(r'P2_LIFECYCLE_CLEANUP id=(\d+) alive=(\d)', text)
+    forget = re.findall(r'P2_LIFECYCLE_FORGET id=(\d+) before=(\d+) after=(\d+) '
+                        r'registered_before=(\d) registered_after=(\d)', text)
     inject = re.findall(r'P2_LIFECYCLE_RESPAWN_INJECT id=(\d+) generator=(\d+)', text)
     reentry = re.findall(r'P2_LIFECYCLE_REENTRY id=(\d+) frame=(\d+) reused=(\d)', text)
     summary = re.findall(r'P2_LIFECYCLE_SUMMARY family=(\d+) alive=(\d+) moved=(\d+) '
@@ -256,6 +267,8 @@ def validate(text, code, manifest):
         health_reached_zero=any(float(a[2]) <= 0.0 for a in attacks),
         died=bool(death),
         cleaned_up=bool(cleanup) and cleanup[0][1] == '0',
+        forget_hook=bool(forget) and forget[0][3] == '1' and forget[0][4] == '0'
+                    and int(forget[0][2]) == int(forget[0][1]) - 1,
         respawned=bool(reentry),
         rebound=len(binds) >= 2,
         drew=bool(draws),
@@ -264,7 +277,8 @@ def validate(text, code, manifest):
     return dict(passed=all(checks.values()), checks=checks,
                 control_alive_observed=bool(life) and int(life[6]) == 1,
                 births=[list(b) for b in births], moves=moves, attacks=attacks,
-                target=target, death=death, cleanup=cleanup, respawn_inject=inject,
+                target=target, death=death, cleanup=cleanup, forget=forget,
+                respawn_inject=inject,
                 reentry=reentry, summary=life,
                 bind_lines=len(binds), draw_lines=len(draws),
                 failures=re.findall(r'FAIL p2 room: (.*)', text),
