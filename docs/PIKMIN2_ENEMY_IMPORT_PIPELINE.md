@@ -69,6 +69,12 @@ demonstrates private geometry, shared immutable resources and an unchanged P1
 gameplay clock. Its controlled performance fixture is separate from combat
 acceptance; do not treat its timings as free-roaming scene coverage.
 
+For moving mouths, muzzles and attack volumes, use the
+[shared animated attachment contract](PIKMIN2_ANIMATED_ATTACHMENTS.md). It
+provides local-joint interpolation, world transforms, generation-scoped queries
+and bounded per-attack contact filtering. Family owners still supply receiver
+behavior, attack events and source-specific joint corrections.
+
 Only one writer/build uses the maintained native build directory at a time. Private worker builds may run concurrently within host resources. Build the complete candidate and snapshot inputs before later edits; never run an executable rejected by freshness checks. Record native commit AND dirty state, executable SHA, asset/config hashes, exact command and run directory. Repeat combined checks when merges change inputs or introduce new interactions; reuse unchanged worker evidence.
 
 On this Windows checkout:
