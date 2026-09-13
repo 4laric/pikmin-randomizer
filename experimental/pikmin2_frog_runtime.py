@@ -128,4 +128,3 @@ if __name__=='__main__':
  a=p.parse_args()
  if a.command=='build':build(a.native,a.build_dir,a.output,a.head,a.resume)
  else:run(a.assets,a.bank,a.output,a.exe)
-
