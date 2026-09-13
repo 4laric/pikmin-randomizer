@@ -28,6 +28,8 @@ POLICY = 'P2_SNAGRET_1'
 POSE_PREFIX = 'snake'
 ACTORS_TXT = 'p2-snagret-actors.txt'
 ACTORS_HEADER = 'P2_SNAGRET_ACTORS_1'
+BANK_TXT = 'p2-snagret-bank.txt'
+BANK_HEADER = 'P2_SNAGRET_BANK_1'
 INSTALL_JSON = 'snagret-install.json'
 ROOM = 'assets/dataDir/courses/pikmin2room'
 DIGEST = re.compile('[0-9a-f]{64}')
@@ -45,6 +47,21 @@ def classification():
         'standalone': {s: BASE_CLASSIFICATION[s]['animator']
                        for s in sorted(SHARED_BASE) if SHARED_BASE[s] is None},
     }
+
+
+def bank_text(metadata):
+    """Canonical LF clip/frame/event/pose listing for every sourced species."""
+    rows = [BANK_HEADER]
+    for species in sorted(SPECIES):
+        info = metadata['species'][species]
+        rows.append(f'species {species} {info["enemy_id"]}')
+        for clip in info.get('clips', []):
+            events = ','.join(f'{frame}:{event}'
+                              for frame, event in clip.get('events', [])) or '-'
+            poses = sum(1 for pose in clip.get('poses', []) if 'file' in pose)
+            rows.append(f'clip {species} {clip["name"]} {clip.get("source_frames", 0)} '
+                        f'{events} poses {poses} {clip.get("status", "unknown")}')
+    return ('\n'.join(rows) + '\n').encode('ascii')
 
 
 def plan(imported, actors):
@@ -108,6 +125,7 @@ def plan(imported, actors):
                 raise ValueError('Pose hash mismatch: ' + name)
             files[name] = data
     return dict(actors_config=('\n'.join(rows) + '\n').encode('ascii'),
+                bank_config=bank_text(metadata),
                 files=files, generators=[g for g, _ in actors],
                 classification=classification(), metadata=metadata,
                 import_sha256=sha((imported / MANIFEST).read_bytes()))
@@ -121,7 +139,7 @@ def install(imported, run, actors):
     if (not room.is_dir() or room.is_symlink() or room.is_junction()
             or room.resolve() != room.absolute()):
         raise ValueError('Expected private non-junction room directory')
-    targets = [run / ACTORS_TXT, run / INSTALL_JSON]
+    targets = [run / ACTORS_TXT, run / BANK_TXT, run / INSTALL_JSON]
     targets += [room / name for name in payload['files']]
     if any(t.exists() for t in targets):
         raise ValueError('Refusing existing/conflicting snagret installation')
@@ -141,6 +159,7 @@ def install(imported, run, actors):
     for name, data in payload['files'].items():
         (room / name).write_bytes(data)
     (run / ACTORS_TXT).write_bytes(payload['actors_config'])
+    (run / BANK_TXT).write_bytes(payload['bank_config'])
     receipt = dict(
         schema=1, policy=payload['metadata'].get('policy'),
         family='Snagret shared-base pair + standalone Segmented Crawbster',
@@ -150,6 +169,7 @@ def install(imported, run, actors):
         classification=payload['classification'],
         import_sha256=payload['import_sha256'],
         actors_config_sha256=sha(payload['actors_config']),
+        bank_config_sha256=sha(payload['bank_config']),
         visuals='installed' if payload['files'] else 'absent_baseline_preserved',
         file_sha256={name: sha(data) for name, data in payload['files'].items()},
         gameplay_events_executed=False,
@@ -165,6 +185,8 @@ def verify_install(imported, run, actors):
     room = run / ROOM
     if (run / ACTORS_TXT).read_bytes() != payload['actors_config']:
         raise ValueError('Installed actor config mismatch')
+    if (run / BANK_TXT).read_bytes() != payload['bank_config']:
+        raise ValueError('Installed bank config mismatch')
     for name, data in payload['files'].items():
         target = room / name
         if not target.is_file() or target.read_bytes() != data:

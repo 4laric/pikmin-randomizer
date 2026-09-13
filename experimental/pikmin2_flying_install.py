@@ -61,13 +61,13 @@ def bank_text(metadata):
     rows = ['P2_FLYING_BANK_1']
     for name in ('Mar', 'Hanachirashi', HELPER_SPECIES_NAME):
         info = metadata['species'][name]
-        rows.append(f'species {name} clips {len(info.get("clips", []))}')
+        rows.append(f'species {name} {info["enemy_id"]}')
         for clip in info.get('clips', []):
             events = ','.join(f'{frame}:{kind}'
                               for frame, kind in clip.get('events', [])) or '-'
             poses = sum(1 for pose in clip.get('poses', []) if 'file' in pose)
             rows.append(f"clip {name} {clip['name']} {clip.get('source_frames', 0)} "
-                        f"{events} poses {poses} status {clip.get('status', '')}")
+                        f"{events} poses {poses} {clip.get('status', 'unknown')}")
     return '\n'.join(rows) + '\n'
 
 
