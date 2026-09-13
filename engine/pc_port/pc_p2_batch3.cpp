@@ -200,6 +200,10 @@ void pc_p2_batch3_forget(BTeki* actor) {
     actors.erase(actor);
 }
 
+bool pc_p2_batch3_corpse_drawn() { return logged[1]; }
+int pc_p2_batch3_actor_count() { return int(actors.size()); }
+int pc_p2_batch3_bank_count() { return int(banks.size()); }
+
 void pc_p2_batch3_setup() {
     pc_p2_batch3_reset();
     if (!pc_pikipelago_room_preview() || !tekiMgr) return;

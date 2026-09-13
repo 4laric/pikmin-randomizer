@@ -7,3 +7,6 @@ void pc_p2_batch3_setup();
 void pc_p2_batch3_reset();
 void pc_p2_batch3_forget(BTeki*);
 bool pc_p2_batch3_draw(BTeki*, Graphics&, const Matrix4f&, bool corpse = false);
+bool pc_p2_batch3_corpse_drawn();
+int pc_p2_batch3_actor_count();
+int pc_p2_batch3_bank_count();
