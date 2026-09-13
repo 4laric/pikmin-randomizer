@@ -31,3 +31,17 @@ def test_strict_trap_option_and_capability():
     bad = copy.deepcopy(m); bad['capabilities'].remove('prerelease-trap-v1')
     with pytest.raises(ValueError): validate(bad)
     assert benefit_state(m, {PRERELEASE: 3}).split() == ['BENEFITS', '0', '0', '0', '0', '0', '0', '0', '0', '3']
+
+def test_prerelease_and_deathlink_bootstrap_coexist(tmp_path):
+    from randomizer.session import Session
+    from randomizer.runner import NativeRun
+    manifest = generate('combined-main-p2', 'ap', prerelease_trap_weight=1,
+                        death_link=True, death_link_pikmin=7)
+    validate(manifest)
+    session = Session(manifest, tmp_path)
+    session.bind_ap('integration', 0, 1)
+    run = NativeRun(session)
+    bootstrap = run.bootstrap.read_text()
+    assert 'BENEFITS 17\n' in bootstrap
+    assert 'DEATHLINK 7\n' in bootstrap
+    assert {'prerelease-trap-v1', 'death-link-v1'} <= set(manifest['capabilities'])

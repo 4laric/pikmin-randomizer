@@ -1,6 +1,6 @@
 """Player-facing options for the Pikmin Randomizer world."""
 from dataclasses import dataclass
-from Options import PerGameCommonOptions, Toggle, Choice, Range, OptionSet
+from Options import PerGameCommonOptions, Toggle, Choice, Range, OptionSet, DeathLink
 
 
 class ExpandedChecks(Toggle):
@@ -175,8 +175,18 @@ class PrereleaseTrapWeight(Range):
     default = 0
 
 
+class DeathLinkPikmin(Range):
+    """DeathLink unit. Every N ordinary Pikmin deaths (remainder kept across days) sends one link; each received link kills up to N living field Pikmin through their normal death, never Olimar or Onion stock. Links received while the game is closed are dropped."""
+    display_name = 'DeathLink Pikmin'
+    range_start = 1
+    range_end = 100
+    default = 10
+
+
 @dataclass
 class PikminOptions(PerGameCommonOptions):
+    death_link: DeathLink
+    death_link_pikmin: DeathLinkPikmin
     goal: GoalMode
     bomb_rock_weight: BombRockWeight
     bomb_trap_weight: BombTrapWeight

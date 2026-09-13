@@ -13,6 +13,7 @@ from .catalog import ITEM_IDS, REPAIR, RED, YELLOW, BLUE, field_capacity, color_
 from .seed import fingerprint, solo_rewards
 from .stats import profile_lines
 from .benefits import benefit_lines
+from .session import death_link_summary
 
 
 def snapshot(manifest, data):
@@ -97,6 +98,7 @@ def main(manifest_path, session_path, pid):
     changed_at = time.monotonic()
     state = ([], 20 if manifest['schema'] >= 2 else 100, 0)
     cache = None
+    latest = {}
 
     def draw(text, y, color, size=13, x=12):
         for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
@@ -104,7 +106,7 @@ def main(manifest_path, session_path, pid):
         canvas.create_text(x, y, anchor='nw', text=text, fill=color, font=('Segoe UI', size, 'bold'))
 
     def tick():
-        nonlocal previous, changed_at, state, cache
+        nonlocal previous, changed_at, state, cache, latest
         if kernel.WaitForSingleObject(process, 0) != 258:
             root.destroy()
             return
@@ -115,6 +117,7 @@ def main(manifest_path, session_path, pid):
                 state = snapshot(manifest, data)
                 tracker.update(data)
                 cache = raw
+                latest = data
                 if previous is not None and len(state[0]) > previous:
                     changed_at = time.monotonic()
                 previous = len(state[0])
@@ -149,7 +152,8 @@ def main(manifest_path, session_path, pid):
             stat_offset = 60 if ('color_stats' in manifest or manifest.get('progressive_color_stats')) else 0
             for index, line in enumerate(profile_lines(manifest, Counter(item for _, item in events))):
                 draw(line, 78 + index*18, '#c6d5dc', 8)
-            for line in benefit_lines(manifest, Counter(item for _, item in events)):
+            extra = [death_link_summary(manifest, latest)] if manifest.get('death_link') and latest else []
+            for line in benefit_lines(manifest, Counter(item for _, item in events)) + extra:
                 draw(line, 78 + stat_offset, '#c6d5dc', 8)
                 stat_offset += 22
             draw('RECEIVED' if time.monotonic()-changed_at < 12 else 'RECENT ITEMS', 84+stat_offset, '#9dc9da', 10)

@@ -1,4 +1,5 @@
 #include "gamecube_image.h"
+#include "asset_finalize.h"
 #include "installer_ui.h"
 #include "launcher_platform.h"
 
@@ -213,9 +214,11 @@ bool installAssets(const fs::path& image, const fs::path& dataRoot, std::string&
         fs::remove_all(partialAssets, ec);
         return false;
     }
-    fs::rename(partialAssets, finalAssets, ec);
+    ec = pikmin::launcher::finalizeAssets(partialAssets, finalAssets);
     if (ec) {
-        failure = "Could not finish the installation: " + ec.message();
+        failure = "Could not finish the installation: " + ec.message()
+                + ". Extracted files remain at " + partialAssets.string()
+                + ". Close programs using the install folder and try again.";
         return false;
     }
     std::cout << "Game data installed in " << finalAssets << "\n";

@@ -25,8 +25,9 @@ class NativeRun:
                      f"PROFILE {session.manifest['profile']}\nCATALOG {session.manifest['catalog']}\nPLACEMENT identity-v1\n" +
                      ("GOAL emperor25\n" if session.manifest.get("goal_mode") == "emperor_bulblax" else "GOAL 25\n") + "DAYS repeat-day29-v1\n" +
                      (f"COLOR {session.manifest['starting_color']}\n" if session.manifest['schema'] >= 4 else '') +
-                     (f"CHECKSET {int(session.manifest['permanent_checks']) + 2 * int(session.manifest.get('no_exploration', False)) + 4 * int(session.manifest.get('color_population', False)) + 8 * int(session.manifest.get('compact_population', False)) + 16 * int(session.manifest.get('no_sticks', False))}\n" if session.manifest['schema'] >= 9 else '') + (f"ENEMIES {session.manifest['enemy_mask']}\n" if session.manifest['schema'] >= 6 else '') + (f"STARTING_FLARLIC {session.manifest['starting_flarlic']}\n" if "starting_flarlic" in session.manifest else "") + bootstrap_stats(session.manifest) + ("PROGRESSIVE_STATS " + ("2" if "progressive-color-stats-v2" in session.manifest["capabilities"] else "1") + "\n" if session.manifest.get("progressive_color_stats") else "") + (("BENEFITS " + str(1 + int(bool(session.manifest.get("bomb_rock_weight"))) + 2 * int(bool(session.manifest.get("combined_captain"))) + 4 * int(bool(session.manifest.get("bomb_trap_weight"))) + 8 * int(bool(session.manifest.get("progg_trap_weight"))) + 16 * int(bool(session.manifest.get("prerelease_trap_weight")))) + "\n") if session.manifest.get("benefit_items") else "") + bootstrap_slots(session.manifest) + "END\n")
+                     (f"CHECKSET {int(session.manifest['permanent_checks']) + 2 * int(session.manifest.get('no_exploration', False)) + 4 * int(session.manifest.get('color_population', False)) + 8 * int(session.manifest.get('compact_population', False)) + 16 * int(session.manifest.get('no_sticks', False))}\n" if session.manifest['schema'] >= 9 else '') + (f"ENEMIES {session.manifest['enemy_mask']}\n" if session.manifest['schema'] >= 6 else '') + (f"STARTING_FLARLIC {session.manifest['starting_flarlic']}\n" if "starting_flarlic" in session.manifest else "") + bootstrap_stats(session.manifest) + ("PROGRESSIVE_STATS " + ("2" if "progressive-color-stats-v2" in session.manifest["capabilities"] else "1") + "\n" if session.manifest.get("progressive_color_stats") else "") + (("BENEFITS " + str(1 + int(bool(session.manifest.get("bomb_rock_weight"))) + 2 * int(bool(session.manifest.get("combined_captain"))) + 4 * int(bool(session.manifest.get("bomb_trap_weight"))) + 8 * int(bool(session.manifest.get("progg_trap_weight"))) + 16 * int(bool(session.manifest.get("prerelease_trap_weight")))) + "\n") if session.manifest.get("benefit_items") else "") + (f"DEATHLINK {session.death_link_unit}\n" if session.death_link_unit else "") + bootstrap_slots(session.manifest) + "END\n")
         self.seen = 0
+        self.deaths_seen = 0
         self.handshaken = False
         self.write_state(False)
 
@@ -55,17 +56,61 @@ class NativeRun:
                     raise ValueError("invalid native check journal")
                 self.session.collect(self.session.names[int(line)])
                 self.seen += 1
+        deaths = self.directory / "deaths.txt"
+        if self.handshaken and self.session.death_link_unit and deaths.exists():
+            # Each line is this run's running count of ordinary Pikmin deaths.
+            data = deaths.read_bytes()
+            lines = data[:data.rfind(b"\n") + 1].splitlines()
+            if lines:
+                if not lines[-1].isdigit() or int(lines[-1]) < self.deaths_seen or len(lines) != int(lines[-1]):
+                    raise ValueError("invalid native death journal")
+                total = int(lines[-1])
+                self.session.record_deaths(total - self.deaths_seen)
+                self.deaths_seen = total
+
+
+class APConnectionRefused(ValueError):
+    """Credentials may be corrected through the launcher's private input pipe."""
+
+
+def connection_updates(stream):
+    """Read GUI reconnect requests from stdin; the daemon cannot block shutdown."""
+    import queue
+    import threading
+    updates = queue.Queue(maxsize=1)
+    def read():
+        for line in stream:
+            try:
+                command = json.loads(line)
+                if (not isinstance(command, dict) or set(command) != {"server", "password"}
+                        or not isinstance(command["server"], str) or not command["server"].strip()
+                        or command["password"] is not None and not isinstance(command["password"], str)):
+                    continue
+                try:
+                    updates.get_nowait()
+                except queue.Empty:
+                    pass
+                updates.put_nowait(command)
+            except (ValueError, queue.Full):
+                pass
+    threading.Thread(target=read, daemon=True).start()
+    return updates
 
 
 async def ap_connect(session, server, password, ready):
     import websockets
     if not server.startswith(("ws://", "wss://")):
         server = "ws://" + server
+    import time
+    unit = session.death_link_unit
     async with websockets.connect(server) as ws:
         authenticated = False
         room_seed = None
         sent = set()
         goal_sent = False
+        # Links accumulated while offline are not replayed on (re)connect.
+        links_sent = session.data["pikmin_deaths"] // unit if unit else 0
+        sent_times = set()
         while True:
             try:
                 raw = await asyncio.wait_for(ws.recv(), 0.2)
@@ -79,9 +124,9 @@ async def ap_connect(session, server, password, ready):
                         await ws.send(json.dumps([dict(cmd="Connect", game=GAME,
                             name=session.manifest["slot"], password=password,
                             uuid=session.fingerprint, version=dict(major=0, minor=6, build=0, **{"class": "Version"}),
-                            items_handling=7, tags=["AP"], slot_data=True)]))
+                            items_handling=7, tags=["AP", "DeathLink"] if unit else ["AP"], slot_data=True)]))
                     elif cmd == "ConnectionRefused":
-                        raise ValueError("AP connection refused: " + str(packet.get("errors")))
+                        raise APConnectionRefused("AP connection refused: " + str(packet.get("errors")))
                     elif cmd == "Connected":
                         data = packet.get("slot_data", {})
                         if data.get("manifest_fingerprint") != session.fingerprint or data.get("manifest") != session.manifest:
@@ -89,14 +134,35 @@ async def ap_connect(session, server, password, ready):
                         session.bind_ap(room_seed, packet["team"], packet["slot"])
                         authenticated = True
                         # Do not release the native game until the authoritative
-                        # item stream has been reconciled, including an empty stream.
-                        await ws.send(json.dumps([{"cmd": "Sync"}]))
+                        # item stream has been reconciled. A real server answers Sync
+                        # only when items exist, so the Get reply (processed in order
+                        # after any ReceivedItems) marks an empty stream as reconciled.
+                        await ws.send(json.dumps([{"cmd": "Sync"}, {"cmd": "Get", "keys": []}]))
                     elif cmd == "ReceivedItems":
                         if not authenticated:
                             raise ValueError("AP sent items before slot authentication")
                         session.receive(packet["index"], [item["item"] for item in packet["items"]])
+                        if not ready[0]:
+                            print("PIKMIN_AP_STATUS: connected", flush=True)
                         ready[0] = True
+                    elif cmd == "Retrieved":
+                        if authenticated:
+                            if not ready[0]:
+                                print("PIKMIN_AP_STATUS: connected", flush=True)
+                            ready[0] = True
+                    elif cmd == "Bounced" and unit and "DeathLink" in packet.get("tags", []):
+                        data = packet.get("data") or {}
+                        # Skip our own echoes; the server bounces to every DeathLink client.
+                        if authenticated and data.get("time") not in sent_times and data.get("source") != session.manifest["slot"]:
+                            session.receive_death_link()
+                            print(f"DeathLink received from {data.get('source')}: {data.get('cause', '')}", flush=True)
             if authenticated and ready[0]:
+                while unit and session.data["pikmin_deaths"] // unit > links_sent:
+                    links_sent += 1
+                    stamp = time.time()
+                    sent_times.add(stamp)
+                    await ws.send(json.dumps([dict(cmd="Bounce", tags=["DeathLink"], data=dict(
+                        time=stamp, source=session.manifest["slot"], cause=f"{session.manifest['slot']} lost {unit} Pikmin"))]))
                 pending = set(session.data["checked"]) - sent
                 if pending:
                     await ws.send(json.dumps([dict(cmd="LocationChecks", locations=[session.manifest["locations"][n] for n in sorted(pending)])]))
@@ -106,18 +172,37 @@ async def ap_connect(session, server, password, ready):
                     goal_sent = True
 
 
-async def serve(session, run, process=None, server=None, password=None):
+async def serve(session, run, process=None, server=None, password=None, updates=None):
     ready = [session.manifest["mode"] == "solo"]
     task = None
     if session.manifest["mode"] == "ap":
         if not server:
             raise ValueError("AP mode requires --server")
         async def reconnect():
+            nonlocal server
             import websockets
+            from websockets.exceptions import InvalidHandshake
             while True:
                 try:
                     await ap_connect(session, server, password, ready)
-                except (OSError, websockets.ConnectionClosed) as exc:
+                except APConnectionRefused:
+                    if updates is None:
+                        raise
+                    ready[0] = False
+                    print("PIKMIN_AP_STATUS: refused", flush=True)
+                    # Wait for corrected credentials; do not repeatedly submit them.
+                    await asyncio.Future()
+                except InvalidHandshake:
+                    ready[0] = False
+                    if not server.startswith(("ws://", "wss://")):
+                        server = "wss://" + server
+                        print("AP connection handshake failed. Trying a secure connection (wss://)…", flush=True)
+                        continue
+                    print("AP connection handshake failed. Check the server address and port, "
+                          "whether it requires ws:// or wss://, and that the room is running; "
+                          "retrying in 2 seconds.", flush=True)
+                    await asyncio.sleep(2)
+                except (OSError, asyncio.TimeoutError, websockets.ConnectionClosed) as exc:
                     ready[0] = False
                     print(f"AP disconnected: {exc}; retrying", flush=True)
                     await asyncio.sleep(2)
@@ -126,6 +211,23 @@ async def serve(session, run, process=None, server=None, password=None):
     previous_goal = False
     try:
         while process is None or process.poll() is None:
+            if updates is not None and task is not None:
+                import queue
+                try:
+                    command = updates.get_nowait()
+                except queue.Empty:
+                    command = None
+                if command is not None:
+                    # Preserve fatal protocol/manifest failures even if a request races them.
+                    if task.done():
+                        await task
+                    task.cancel()
+                    await asyncio.gather(task, return_exceptions=True)
+                    ready[0] = False
+                    run.write_state(False)
+                    server, password = command["server"], command["password"]
+                    print("PIKMIN_AP_STATUS: connecting", flush=True)
+                    task = asyncio.create_task(reconnect())
             if task is not None and task.done():
                 await task
             run.poll()
@@ -185,7 +287,8 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None):
             print(f'Overlay unavailable: {exc}', flush=True)
     print(f"Native bootstrap: {run.bootstrap.resolve()}", flush=True)
     try:
-        asyncio.run(serve(session, run, process, server, os.getenv("PIKMIN_AP_PASSWORD")))
+        updates = connection_updates(sys.stdin) if os.getenv("PIKMIN_AP_CONTROL") == "1" and manifest["mode"] == "ap" else None
+        asyncio.run(serve(session, run, process, server, os.getenv("PIKMIN_AP_PASSWORD"), updates))
     finally:
         if process and process.poll() is None:
             process.terminate()

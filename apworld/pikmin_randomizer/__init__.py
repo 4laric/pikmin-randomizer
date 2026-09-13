@@ -26,6 +26,13 @@ class PikminRandomizerWorld(World):
     item_name_to_id = ITEM_IDS
     location_name_to_id = {**ALL_AREA_LOCATION_IDS, **MODERN_LOCATION_IDS}
     required_client_version = (0, 6, 0)
+    # Universal Tracker: the manifest depends on the room seed, so a local
+    # regeneration must reuse the authoritative manifest from slot_data.
+    ut_can_gen_without_yaml = True
+
+    @staticmethod
+    def interpret_slot_data(slot_data):
+        return slot_data
 
     def create_regions(self):
         menu = Region("Menu", self.player, self.multiworld)
@@ -69,9 +76,17 @@ class PikminRandomizerWorld(World):
 
     def manifest(self):
         if not hasattr(self, '_manifest'):
+            passthrough = getattr(self.multiworld, 're_gen_passthrough', {}).get(GAME)
+            if passthrough:
+                manifest = passthrough['manifest']
+                if fingerprint(manifest) != passthrough.get('manifest_fingerprint'):
+                    raise ValueError('Universal Tracker slot_data manifest does not match its fingerprint')
+                self._manifest = manifest
+                return manifest
             self._manifest = generate(str(self.multiworld.seed_name), "ap", self.multiworld.player_name[self.player],
                             combined_captain=bool(self.options.collection_checks or self.options.permanent_checks or self.options.progressive_color_stats or self.options.per_spawn_enemies or self.options.group_spawn_enemies or self.options.miniboss_enemies or self.options.campaign_enemies or self.options.bomb_rock_weight.value or self.options.bomb_trap_weight.value or self.options.progg_trap_weight.value or self.options.prerelease_trap_weight.value or self.options.goal.value), goal_mode=("repairs", "emperor_bulblax")[self.options.goal.value],
                             expanded=bool(self.options.expanded_checks), bomb_rock_weight=self.options.bomb_rock_weight.value, bomb_trap_weight=self.options.bomb_trap_weight.value, progg_trap_weight=self.options.progg_trap_weight.value, prerelease_trap_weight=self.options.prerelease_trap_weight.value,
+                            death_link=bool(self.options.death_link), death_link_pikmin=self.options.death_link_pikmin.value,
                             starting_area=('forest', 'navel', 'random', 'impact', 'spring', 'trial')[self.options.starting_area.value],
                             starting_color=('red', 'yellow', 'blue', 'random')[self.options.starting_color.value], all_areas=bool(self.options.all_areas), enemy_shuffle=bool(self.options.enemy_shuffle), collection_checks=bool(self.options.collection_checks), starting_flarlic=self.options.starting_flarlic.value, randomize_color_stats=bool(self.options.randomize_color_stats), progressive_color_stats=bool(self.options.progressive_color_stats), permanent_checks=bool(self.options.permanent_checks), per_spawn_enemies=bool(self.options.per_spawn_enemies), group_spawn_enemies=bool(self.options.group_spawn_enemies), miniboss_enemies=bool(self.options.miniboss_enemies), campaign_enemies=bool(self.options.campaign_enemies),
                             random_start_areas=self.options.random_start_areas.value,
@@ -84,5 +99,6 @@ class PikminRandomizerWorld(World):
         return {"manifest": manifest, "manifest_fingerprint": fingerprint(manifest)}
 
     def generate_output(self, output_directory):
+        if getattr(self.multiworld, 'generation_is_fake', False): return
         path = Path(output_directory) / (self.multiworld.get_out_file_name_base(self.player) + ".pikmin.json")
         path.write_text(json.dumps(self.manifest(), indent=2) + "\n", encoding="utf-8")

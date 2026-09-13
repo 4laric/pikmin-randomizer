@@ -540,7 +540,10 @@ target_include_directories(installer_ui_test PRIVATE
 target_link_libraries(installer_ui_test PRIVATE ${SDL2_LIBRARIES})
 target_compile_options(installer_ui_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 
+add_executable(asset_finalize_test pc_port/launcher/asset_finalize_test.cpp)
+
 enable_testing()
+add_test(NAME asset_finalize_test COMMAND asset_finalize_test)
 add_test(NAME gamecube_image_test COMMAND gamecube_image_test)
 add_test(NAME sha256_test COMMAND sha256_test)
 add_test(NAME installer_ui_test COMMAND installer_ui_test)
