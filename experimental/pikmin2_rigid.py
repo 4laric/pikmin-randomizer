@@ -17,13 +17,23 @@ def compose(parent,child):
              for c in range(4)] for r in range(3)]
 
 
-def apply(matrix,point,normal=False):
+SINGULAR_NORMAL_MODES=('error','transpose-adjugate')
+
+def apply(matrix,point,normal=False,singular_normal='error'):
+    if singular_normal not in SINGULAR_NORMAL_MODES:
+        raise ValueError(f'Unsupported singular normal mode {singular_normal!r}')
     if normal:
         a,b,c=matrix[0][:3];d,e,f=matrix[1][:3];g,h,i=matrix[2][:3]
         cof=((e*i-f*h,f*g-d*i,d*h-e*g),(c*h-b*i,a*i-c*g,b*g-a*h),(b*f-c*e,c*d-a*f,a*e-b*d))
         det=a*cof[0][0]+b*cof[0][1]+c*cof[0][2]
-        if abs(det)<1e-12:raise ValueError('Singular normal transform')
-        result=tuple(sum(cof[r][k]*point[k] for k in range(3))/det for r in range(3))
+        if abs(det)<1e-12:
+            if singular_normal=='error':raise ValueError('Singular normal transform')
+            # Transpose-adjugate (unnormalized cofactor) generalizes the
+            # inverse-transpose to singular matrices; the result is normalized
+            # below, so the missing 1/det scale is irrelevant.
+            result=tuple(sum(cof[r][k]*point[k] for k in range(3)) for r in range(3))
+        else:
+            result=tuple(sum(cof[r][k]*point[k] for k in range(3))/det for r in range(3))
         length=math.sqrt(sum(v*v for v in result))
         return tuple(v/length for v in result) if length else result
     return tuple(sum(matrix[r][k]*point[k] for k in range(3))+matrix[r][3] for r in range(3))
@@ -58,16 +68,55 @@ def joint_matrices(blocks, local_overrides=None):
     return [world(i) for i in range(count)]
 
 
-def bake(arrays,shapes,matrices):
-    original={a:arrays[a] for a in (9,10)};converted={9:[],10:[]};cache={9:{},10:{}}
+MISSING_NORMAL_MODES=('error','compute','default')
+
+def bake(arrays,shapes,matrices,missing_normals='error',singular_normal='error'):
+    if missing_normals not in MISSING_NORMAL_MODES:
+        raise ValueError(f'Unsupported missing normals mode {missing_normals!r}')
+    if singular_normal not in SINGULAR_NORMAL_MODES:
+        raise ValueError(f'Unsupported singular normal mode {singular_normal!r}')
+    original={a:arrays.get(a,[]) for a in (9,10)};converted={9:[],10:[]};cache={9:{},10:{}}
+    missing=[]
     for shape in shapes:
         for tri in shape:
             for vertex in tri:
                 joint=vertex.pop(0)
                 for attr in (9,10):
+                    if attr==10 and attr not in vertex:
+                        if missing_normals=='error':
+                            # Strict path: surface the missing normal attribute
+                            # exactly like the original implementation.
+                            raise KeyError(10)
+                        missing.append(vertex)
+                        continue
                     key=(joint,vertex[attr])
                     if key not in cache[attr]:
                         cache[attr][key]=len(converted[attr])
-                        converted[attr].append(apply(matrices[joint],original[attr][vertex[attr]],normal=attr==10))
+                        converted[attr].append(apply(matrices[joint],original[attr][vertex[attr]],normal=attr==10,singular_normal=singular_normal))
                     vertex[attr]=cache[attr][key]
+    if missing:
+        if missing_normals=='default':
+            converted[10].append((0.,1.,0.))
+            for vertex in missing: vertex[10]=len(converted[10])-1
+        else:
+            # 'compute': area-weighted accumulation of baked face normals per
+            # baked position (unnormalized cross products weight by area).
+            sums={}
+            for shape in shapes:
+                for tri in shape:
+                    (ax,ay,az),(bx,by,bz),(cx,cy,cz)=[converted[9][v[9]] for v in tri]
+                    ux,uy,uz=bx-ax,by-ay,bz-az;vx,vy,vz=cx-ax,cy-ay,cz-az
+                    normal=(uy*vz-uz*vy,uz*vx-ux*vz,ux*vy-uy*vx)
+                    for v in tri:
+                        acc=sums.get(v[9],(0.,0.,0.))
+                        sums[v[9]]=tuple(acc[k]+normal[k] for k in range(3))
+            resolved={}
+            for vertex in missing:
+                position=vertex[9]
+                if position not in resolved:
+                    acc=sums.get(position,(0.,0.,0.))
+                    length=math.sqrt(sum(v*v for v in acc))
+                    resolved[position]=len(converted[10])
+                    converted[10].append(tuple(v/length for v in acc) if length else (0.,1.,0.))
+                vertex[10]=resolved[position]
     arrays.update(converted)

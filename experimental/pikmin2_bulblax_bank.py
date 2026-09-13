@@ -6,15 +6,18 @@ and every source clip against the recorded hashes, then re-samples and converts
 poses deterministically:
 
 - Queen (enemy 30, weighted EVP1): baked with explicit
-  ``pikmin2_skinning.draw_matrices`` exactly like the assets module. Frames the
-  converter rejects (singular normal transform on ``dead``/``carry``) are
-  skipped and recorded as unsupported entries, never approximated.
+  ``pikmin2_skinning.draw_matrices`` exactly like the assets module. Frames
+  whose animated joint normal matrix is near-singular (``dead``/``carry``)
+  are baked with the opt-in ``singular_normal='transpose-adjugate'``
+  tolerance (unnormalized cofactor normal matrix) and the mode is recorded
+  in every pose report.
 - Baby (enemy 31, rigid EVP1 0): baked with the joint pose, all 6 clips.
-- KingChappy (enemy 53): every clip is enumerated as a ``blocked`` entry
-  referencing the converter limitation (shape 0 display list omits the normal
-  attribute while VTX1 carries normals); no pose is ever fabricated.
+- KingChappy (enemy 53): shape 0's display list omits the normal attribute
+  although VTX1 carries a normal array; poses convert with the opt-in
+  ``missing_normals='compute'`` tolerance (area-weighted accumulation of
+  baked face normals), recorded in every pose report.
 
-Issue #223 (parent #172).
+Issue #223 (parent #172); converter tolerances from #186.
 """
 import argparse
 import hashlib
@@ -35,9 +38,17 @@ TOTAL_BYTES = 16 * 1024 * 1024  # whole-bank budget across all three species
 MAX_POSES = 12
 
 LIMITATIONS = ['Sampled weighted/rigid poses with approximate materials; no skeletal playback or event execution.',
-               'Queen dead/carry frames with a singular normal transform are recorded unsupported, never approximated.',
-               'All KingChappy clips are blocked: shape 0 omits the normal attribute in its display list (VTX1 normal array exists) and the existing rigid/weighted bake requires per-vertex normals; poses are never fabricated.',
+               "Queen dead/carry frames with a near-singular normal transform bake via the opt-in singular_normal='transpose-adjugate' tolerance (unnormalized cofactor normal matrix); the mode is recorded in each pose report.",
+               "KingChappy shape 0 omits the normal attribute in its display list (VTX1 normal array exists); poses convert via the opt-in missing_normals='compute' tolerance (area-weighted face-normal accumulation from baked triangle geometry), recorded in each pose report.",
                'No native runtime, AI/FSM, install or arena placement is provided by this slice.']
+
+# Opt-in converter tolerances per species (#186). Queen needs the singular
+# fallback because animated dead/carry joint matrices collapse a scale axis;
+# 'compute' (not 'default') is chosen for KingChappy because its geometry is
+# intact and derived face normals shade correctly, while a flat +Y normal
+# would mislight the whole model.
+TOLERANCES = {'KingChappy': {'missing_normals': 'compute'},
+              'Queen': {'singular_normal': 'transpose-adjugate'}}
 
 
 def parse_bank(text):
@@ -119,11 +130,14 @@ def _verified(reference):
         raise ValueError('Incomplete Bulblax reference import')
 
 
-def _convert_pose(model, model_blocks, envelopes, joint_count, clip, frame, output):
+def _convert_pose(model, model_blocks, envelopes, joint_count, clip, frame, output,
+                  missing_normals='error', singular_normal='error'):
     duration, pose = bca_pose(clip, frame, joint_count, allow_scale=True)
     matrices = draw_matrices(model_blocks, pose) if envelopes else None
-    decoded = decode(model, True, bake_rigid=True, draw_matrices=matrices) \
-        if matrices is not None else decode(model, True, bake_rigid=True, pose=pose)
+    decoded = decode(model, True, bake_rigid=True, draw_matrices=matrices,
+                     missing_normals=missing_normals, singular_normal=singular_normal) \
+        if matrices is not None else decode(model, True, bake_rigid=True, pose=pose,
+                                            missing_normals=missing_normals, singular_normal=singular_normal)
     conversion = write_model(decoded, output, 'enemy.bmd')
     conversion.update(source='enemy.bmd', output=output.name, weighted_pose_baked=matrices is not None)
     return conversion
@@ -174,13 +188,7 @@ def build(imported, output, pose_limit=6):
         for clip in info['clips']:
             name = clip['name']
             raw = clip_data[name]
-            if species == 'KingChappy':
-                # Converter limitation (shape 0 display list omits the normal
-                # attribute); enumerate, never fabricate. See LIMITATIONS.
-                blocked[species].append({'clip': name, 'source_frames': clip['source_frames'],
-                                         'reason': clip.get('unsupported_reason',
-                                                            'shape display list omits normal attribute')})
-                continue
+            tolerances = TOLERANCES.get(species, {})
             duration, _ = bca_pose(raw, 0, len(info['joints']), allow_scale=True)
             if duration != clip['source_frames']:
                 raise ValueError(f'{species} clip {name} duration mismatch')
@@ -192,7 +200,7 @@ def build(imported, output, pose_limit=6):
                     path = output / species / f'bulblax_{species}_{name}_{converted:02}.mod'
                     path.parent.mkdir(parents=True, exist_ok=True)
                     conversion = _convert_pose(model, model_blocks, envelopes,
-                                               len(info['joints']), raw, frame, path)
+                                               len(info['joints']), raw, frame, path, **tolerances)
                     (path.with_suffix('.json')).write_text(json.dumps(conversion, indent=2))
                     clip_bytes += path.stat().st_size
                     converted += 1

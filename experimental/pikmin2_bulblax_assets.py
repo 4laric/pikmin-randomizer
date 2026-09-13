@@ -129,8 +129,12 @@ LIMITATIONS = ['Sampled weighted/rigid poses with approximate materials; no skel
                'queenchappy_model.btk is hashed and byte-preserved only; no btk (texture animation) playback.',
                'No native runtime, AI/FSM, install or arena placement is provided by this slice.',
                'Baby model.szs is a self-contained 3808-byte rigid model (1 shape, 7 joints, 5 draw entries, EVP1 envelopes 0); its resources are not shared with Queen.',
-               'KingChappy shape 0 references no normal attribute (the VTX1 normal array exists but the shape display list omits it); the existing rigid/weighted bake requires per-vertex normals, so those poses are recorded unsupported rather than fabricated.',
-               'Queen dead/carry poses with a singular normal transform are recorded unsupported rather than approximated.']
+               "KingChappy shape 0 references no normal attribute (the VTX1 normal array exists but the shape display list omits it); poses convert via the opt-in missing_normals='compute' tolerance (area-weighted face-normal accumulation from baked triangle geometry), recorded in each pose report (#186).",
+               "Queen dead/carry poses with a near-singular normal transform bake via the opt-in singular_normal='transpose-adjugate' tolerance (unnormalized cofactor normal matrix), recorded in each pose report (#186)."]
+
+# Opt-in converter tolerances per species (#186); strict defaults everywhere else.
+TOLERANCES = {'KingChappy': {'missing_normals': 'compute'},
+              'Queen': {'singular_normal': 'transpose-adjugate'}}
 
 TEXT = ('P2_BULBLAX_1\n'
         'species Queen Baby KingChappy\n'
@@ -276,10 +280,11 @@ def extract(iso, source, output, pose_limit=6):
                             poses=[], status='unsupported')
                 for number, frame in enumerate(frames):
                     try:
+                        tolerances = TOLERANCES.get(species, {})
                         _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
                         matrices = draw_matrices(model_blocks, pose) if envelopes else None
-                        decoded = decode(model, True, bake_rigid=True, draw_matrices=matrices) \
-                            if matrices is not None else decode(model, True, bake_rigid=True, pose=pose)
+                        decoded = decode(model, True, bake_rigid=True, draw_matrices=matrices, **tolerances) \
+                            if matrices is not None else decode(model, True, bake_rigid=True, pose=pose, **tolerances)
                         name = f'bulblax_{species}_{clip["name"]}_{number:02}.mod'
                         conversion = write_model(decoded, root / name, 'enemy.bmd')
                         conversion.update(source='enemy.bmd', output=name,

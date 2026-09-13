@@ -128,31 +128,39 @@ class BuildTests(unittest.TestCase):
     def fake_pose(self, clip, frame, joints, allow_scale=False):
         return 12, None
 
-    def fake_convert(self, model, model_blocks, envelopes, joint_count, clip, frame, output):
+    def fake_convert(self, model, model_blocks, envelopes, joint_count, clip, frame, output,
+                     missing_normals='error', singular_normal='error'):
         if frame == 2:  # deterministic unsupported frame, like Queen dead 83/111/139
             raise ValueError('Singular normal transform')
         output.write_bytes(mod_blob())
+        self.tolerances_seen[output.parent.name] = (missing_normals, singular_normal)
 
     def run_build(self, root, output, **kw):
+        self.tolerances_seen = {}
         with patch('experimental.pikmin2_bulblax_bank.bca_pose', side_effect=self.fake_pose), \
              patch('experimental.pikmin2_bulblax_bank._convert_pose', side_effect=self.fake_convert):
             return build(root, output, **kw)
 
-    def test_build_records_unsupported_and_blocked(self):
+    def test_build_records_unsupported_and_applies_tolerances(self):
         with tempfile.TemporaryDirectory() as d:
             root = imported_fixture(Path(d) / 'imported')
             result = self.run_build(root, Path(d) / 'bank')
-            # 9 Queen + 6 Baby clips x 6 sampled frames, frame 2 unsupported in each.
+            # 9 Queen + 6 Baby + 14 KingChappy clips x 6 sampled frames, frame 2 unsupported in each.
             self.assertEqual(len(result['unsupported']['Queen']), 9)
             self.assertEqual(len(result['unsupported']['Baby']), 6)
+            self.assertEqual(len(result['unsupported']['KingChappy']), 14)
             self.assertTrue(all(u['frame'] == 2 for u in result['unsupported']['Queen']))
-            self.assertEqual(len(result['blocked']['KingChappy']), 14)
-            self.assertTrue(all(b['reason'] == 'KeyError: 10' for b in result['blocked']['KingChappy']))
+            self.assertEqual(result['blocked'], {'Queen': [], 'Baby': [], 'KingChappy': []})
             self.assertEqual(result['motions']['Baby'].keys(), set(CLIPS['Baby']))
-            self.assertEqual(result['cost']['poses'], 9 * 5 + 6 * 5)
-            # Bank text round-trips and carries no KingChappy rows.
+            self.assertEqual(result['motions']['KingChappy'].keys(), set(CLIPS['KingChappy']))
+            self.assertEqual(result['cost']['poses'], (9 + 6 + 14) * 5)
+            # Opt-in tolerances reach the converter per species (#186).
+            self.assertEqual(self.tolerances_seen, {'Queen': ('error', 'transpose-adjugate'),
+                                                    'Baby': ('error', 'error'),
+                                                    'KingChappy': ('compute', 'error')})
+            # Bank text round-trips and now carries KingChappy rows.
             text = (Path(d) / 'bank' / 'p2-bulblax-bank.txt').read_text()
-            self.assertEqual(parse_bank(text)['KingChappy'], {})
+            self.assertEqual(parse_bank(text)['KingChappy'].keys(), set(CLIPS['KingChappy']))
             self.assertEqual(result['reference_sha256'], sha((root / 'bulblax.json').read_bytes()))
             self.assertTrue(any('KingChappy' in lim for lim in result['limitations']))
             self.assertEqual(result['limitations'], LIMITATIONS)

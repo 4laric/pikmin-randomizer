@@ -73,7 +73,13 @@ def diffuse_slot(m, r):
         if list(m[gen:gen+3])==[1,4,60]:return slot
     return 0
 
-def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_matrices=None):
+def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_matrices=None,
+           missing_normals='error', singular_normal='error'):
+    from experimental.pikmin2_rigid import MISSING_NORMAL_MODES, SINGULAR_NORMAL_MODES
+    if missing_normals not in MISSING_NORMAL_MODES:
+        raise ValueError(f'Unsupported missing normals mode {missing_normals!r}')
+    if singular_normal not in SINGULAR_NORMAL_MODES:
+        raise ValueError(f'Unsupported singular normal mode {singular_normal!r}')
     b=blocks(data); j=b['JNT1']; d=b['DRW1']
     if draw_matrices is not None:
         if not bake_rigid or pose is not None:
@@ -199,7 +205,9 @@ def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_
         from experimental.pikmin2_rigid import bake
         # Primitive strips/fans share vertex dictionaries; bake each reference independently.
         shapes=[[[dict(v) for v in tri] for tri in shape] for shape in shapes]
-        bake(arrays,shapes,matrices)
+        bake(arrays,shapes,matrices,missing_normals,singular_normal)
+        b['_missing_normals']=missing_normals
+        b['_singular_normal']=singular_normal
     # Array blocks carry alignment padding; only referenced entries are vertices.
     for attr in arrays:
         used=[v[attr] for tris in shapes for tri in tris for v in tri if attr in v]
@@ -218,9 +226,11 @@ class Writer:
     def end(self):
         self.pad(); struct.pack_into('>I',self.data,self.start+4,len(self.data)-self.start-8)
 
-def convert(source, output, approximate_materials=False, y_offset=0.0, bake_rigid=False, pose=None, material_colors=None):
+def convert(source, output, approximate_materials=False, y_offset=0.0, bake_rigid=False, pose=None, material_colors=None,
+            missing_normals='error', singular_normal='error'):
     if pose is not None and not bake_rigid: raise ValueError('Animation pose requires rigid baking')
-    report=write_model(decode(Path(source).read_bytes(), approximate_materials,bake_rigid,pose),output,str(source),y_offset,material_colors)
+    report=write_model(decode(Path(source).read_bytes(), approximate_materials,bake_rigid,pose,
+                              missing_normals=missing_normals, singular_normal=singular_normal),output,str(source),y_offset,material_colors)
     report['rigid_bind_pose_baked']=bake_rigid
     Path(output).with_suffix('.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     return report
@@ -297,6 +307,12 @@ def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
     report={'source':str(source),'output':str(output),'vertices':len(a[9]),'triangles':sum(map(len,shapes)),'shapes':len(shapes),'textures':texture_count,'bounds':bounds,'y_offset':y_offset,'discarded_attributes':[k for k in a if k not in (9,10,11,13)],'material_policy':'vertex color times identifiable UV0 diffuse texture (first texture fallback); original TEV not reproduced','pixel_state_policy':'source blend, alpha compare, depth test/write, draw category and hierarchy order preserved'}
     if '_discarded_matrix_attributes' in b:
         report['discarded_texture_matrix_attributes']=b['_discarded_matrix_attributes']
+    # Opt-in normal-tolerance modes are recorded only when used, so strict
+    # conversions keep byte-identical reports.
+    if b.get('_missing_normals','error')!='error':
+        report['missing_normals']=b['_missing_normals']
+    if b.get('_singular_normal','error')!='error':
+        report['singular_normal']=b['_singular_normal']
     output.with_suffix('.json').write_text(json.dumps(report,indent=2),encoding='utf-8');return report
 
 if __name__=='__main__':
