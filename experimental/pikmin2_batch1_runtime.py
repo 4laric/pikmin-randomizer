@@ -54,7 +54,11 @@ public:int idle() override {
    Vector3f now=actor->mSRT.t;float dx=now.x-first[i].x,dz=now.z-first[i].z;float dist=std::hypot(dx,dz);
    std::printf("P2_BATCH1_MOVE id=%u dx=%.3f dz=%.3f dist=%.3f\n",ids[i],dx,dz,dist);}
  }
- if(ready>=180){std::puts("PASS P2_BATCH1_RUNTIME birth_bind_camera_framed_moved");std::fflush(stdout);std::_Exit(0);}
+ if(ready==170){
+  Teki* actor=find(ids[0]);
+  if(actor){actor->mHealth=0;std::printf("P2_BATCH1_KILL id=%u health=%.1f\n",ids[0],actor->mHealth);}
+ }
+ if(ready>=300){std::puts("PASS P2_BATCH1_RUNTIME birth_bind_camera_framed_moved");std::fflush(stdout);std::_Exit(0);}
  std::fflush(stdout);return result;
 }};
 '''
