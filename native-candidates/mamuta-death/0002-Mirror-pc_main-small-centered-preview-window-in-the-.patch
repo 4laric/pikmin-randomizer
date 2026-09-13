@@ -1,0 +1,38 @@
+From da285dbf75e7c6fbb6d19f8c399dd8f9eb306696 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Sun, 13 Sep 2026 18:35:21 -0400
+Subject: [PATCH 2/2] Mirror pc_main small centered preview window in the P2
+ room fixture (#221)
+
+---
+ tools/preview_p2_room.cpp | 16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/tools/preview_p2_room.cpp b/tools/preview_p2_room.cpp
+index 06982059..5ba45d69 100644
+--- a/tools/preview_p2_room.cpp
++++ b/tools/preview_p2_room.cpp
+@@ -298,6 +298,18 @@ int main(int argc,char** argv) {
+     }
+     SDL_SetMainReady();pc_gpu_preference_apply();_putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND","1");pc_bbft_init(argc,argv);
+     require(pc_pikipelago_room_preview(),"requires --experimental-pikmin2-room");
+-    if(!pc_window_init("P2 room integration fixture",960,720))return 3;
+-    pc_settings_init();gsys->Initialise();pc_settings_p2d_init();nodeMgr=new NodeMgr();gsys->run(new RoomApp());return 0;
++    // Custom fixture entrypoint: mirror pc_main.cpp's mandatory small centered
++    // preview window (default 960x540, overridable with PIKMIN_P2_ROOM_WINDOW=WxH).
++    int windowWidth=960,windowHeight=540;
++    if(const char* value=std::getenv("PIKMIN_P2_ROOM_WINDOW")){
++        int customWidth=0,customHeight=0;
++        if(std::sscanf(value,"%dx%d",&customWidth,&customHeight)==2&&customWidth>=320&&customHeight>=240){windowWidth=customWidth;windowHeight=customHeight;}
++    }
++    if(!pc_window_init("P2 room integration fixture",windowWidth,windowHeight))return 3;
++    pc_settings_init();
++    pc_window_set_display_mode(PC_WINDOW_FULLSCREEN_WINDOWED);
++    pc_window_set_window_size(windowWidth,windowHeight);
++    pc_window_center();
++    std::printf("[PC Port] Experimental preview window set to %dx%d windowed and centered (override with PIKMIN_P2_ROOM_WINDOW=WxH or =off).\n",windowWidth,windowHeight);std::fflush(stdout);
++    gsys->Initialise();pc_settings_p2d_init();nodeMgr=new NodeMgr();gsys->run(new RoomApp());return 0;
+ }
+-- 
+2.55.0.windows.3
+

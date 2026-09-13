@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "lane": "existing mechanics completion - Mamuta death/corpse",
+  "issue": 221,
+  "parent": 168,
+  "native_base": "1fb98b32",
+  "native_branch": "opencode/p2-mamuta-death-native",
+  "native_head": "da285dbf75e7c6fbb6d19f8c399dd8f9eb306696",
+  "native_dirty": false,
+  "native_origin_pushed": false,
+  "commits": [
+    "4e58bd2d Mamuta lane: opt-in P2 Miulin bury semantics for bound Miurin actors (cherry-pick of 9dd12181; includes the 960x540 pc_main baseline 1d5a242b in its base)",
+    "da285dbf Mirror pc_main small centered preview window in the P2 room fixture (#221)"
+  ],
+  "patches": [
+    "0001-Mamuta-lane-opt-in-P2-Miulin-bury-semantics-for-boun.patch",
+    "0002-Mirror-pc_main-small-centered-preview-window-in-the-.patch"
+  ],
+  "private_build": "output/native-mamuta-death-build",
+  "build_result": "pikmin_pc 517/517; cmake --build ... -- -n -> ninja: no work to do.",
+  "fixture_exe_sha256": "aec0d56a630ec1387771e7be99158d6217a1b4b8ccc9577d5171dd569e6da639",
+  "run_directory": "output/mamuta-death-run-final2/ea8518c993374405b6a5e2ad28555eb5",
+  "native_log_sha256": "206354ea87ec60cecd965670fd38a99fb56ce8e1770d9d5d546e92eac78700c8",
+  "arena_json_sha256": "f2fc0a659694e571cf1b2266669138d8d7b7bd33e07899ecec88920f4052fb53",
+  "gate": "death_corpse PASS",
+  "shared_fixture_note": "tools/preview_p2_room.cpp is shared by other P2 room fixtures; the 960x540 default is the fanout-mandated standard and stays overridable with PIKMIN_P2_ROOM_WINDOW=WxH or =off."
+}
