@@ -11,7 +11,11 @@ from experimental.pikmin2_convert import blocks,convert,u32,u16
 from experimental.pikmin2_rigid import local_matrix,joint_matrices
 
 
-def bca_pose(data,frame,expected_joints,allow_scale=False):
+SINGULAR_SCALE_MODES=('error','allow')
+
+def bca_pose(data,frame,expected_joints,allow_scale=False,singular_scale='error'):
+    if singular_scale not in SINGULAR_SCALE_MODES:
+        raise ValueError(f'Unsupported singular scale mode {singular_scale!r}')
     # Retail archives omit the final alignment padding counted in some BCA headers.
     if len(data)<72 or data[:8]!=b'J3D1bca1' or struct.unpack_from('>I',data,8)[0]!=(len(data)+31)//32*32:
         raise ValueError('Expected framed BCA')
@@ -34,7 +38,11 @@ def bca_pose(data,frame,expected_joints,allow_scale=False):
                 values.append(struct.unpack_from('>'+fmt,b,offset+at*size)[0])
             if not all(math.isfinite(v) for v in values):raise ValueError('Non-finite BCA transform')
             if not allow_scale and abs(values[0]-1)>1e-5:raise ValueError('Scaled animation not supported')
-            if abs(values[0])<1e-8:raise ValueError('Singular animation scale')
+            # 'allow' accepts an authored zero/annihilated axis scale (a hidden
+            # or grow-from-nothing joint). Callers must pair it with the
+            # converter's singular_normal='transpose-adjugate' decode policy,
+            # because such poses produce a singular draw matrix.
+            if abs(values[0])<1e-8 and singular_scale=='error':raise ValueError('Singular animation scale')
             scale.append(values[0])
             r.append(values[1]);t.append(values[2])
         matrix=local_matrix(r,t)
