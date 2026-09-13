@@ -11,6 +11,7 @@ The probe also counts live starting Pikmin in the real ``pikiMgr`` so the
 mandatory fixture-adoption squad check has machine-readable evidence.
 """
 import argparse
+import re
 from pathlib import Path
 
 import experimental.pikmin2_batch2_runtime as base
@@ -109,6 +110,35 @@ def instrument(source):
 
 
 base.instrument = instrument
+
+
+def readings(text):
+    """Parse the receivers probe: squad, queued attack, immunity gate."""
+    squad = re.findall(r'P2_RECV_SQUAD alive=(\d+) reds=(\d+)', text)
+    attacks = re.findall(
+        r'P2_RECV_ATTACK id=(\d+) accepted=(\d) health=(-?[\d.]+) '
+        r'stored=(-?[\d.]+) state=(-?\d+) motion=(-?\d+) invincible=(\d)', text)
+    immunity = re.findall(
+        r'P2_RECV_IMMUNITY id=(\d+) pre_invincible=(\d) accepted=(\d) '
+        r'health_before=(-?[\d.]+) health_after=(-?[\d.]+)', text)
+    return squad, attacks, immunity
+
+
+def validate(text, code):
+    """Gate the receiver paths from a private run log (see docs/PIKMIN2_RECEIVER_PATHS.md)."""
+    squad, attacks, immunity = readings(text)
+    healths = [float(a[2]) for a in attacks]
+    checks = dict(
+        completion=code == 0 and 'PASS P2_RECEIVERS_RUNTIME' in text,
+        squad_live=bool(squad) and int(squad[0][0]) > 0 and int(squad[0][1]) > 0,
+        attack_queued=any(int(a[1]) == 1 and float(a[3]) > 0 for a in attacks),
+        damage_applied=any(h <= 0.0 for h in healths),
+        immunity_gate=bool(immunity) and immunity[0][2] == '0'
+                      and float(immunity[0][3]) == float(immunity[0][4]),
+    )
+    return dict(passed=all(checks.values()), checks=checks,
+                squad=squad, attacks=attacks, immunity=immunity,
+                scope='Proxy-host receiver proof only; source P2 FSM/receivers stay BLOCKED.')
 
 
 if __name__ == '__main__':
