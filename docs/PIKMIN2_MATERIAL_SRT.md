@@ -1,5 +1,8 @@
 # Shared texture SRT animation (#391)
 
+BRK register/konst color animation is documented separately in
+[animated material colors](PIKMIN2_MATERIAL_COLORS.md) (#423).
+
 Codex implementation owner, shared account 4laric. Parent #128; coordination #186.
 This first animated-material slice imports ordinary BTK texture transforms,
 samples them at an actor-supplied source frame, and applies supported transforms
