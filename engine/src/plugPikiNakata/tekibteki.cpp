@@ -1,3 +1,13 @@
+#include "pc_p2_frog.h"
+#include "pc_p2_kogane.h"
+#include "pc_p2_mamuta.h"
+#include "pc_p2_tank.h"
+#include "pc_p2_qurione.h"
+#ifdef PIKI_PC_PORT
+#include "pc_p2_enemy.h"
+#include "pc_p2_sheargrub.h"
+#include "pc_p2_breadbug_actor.h"
+#endif
 #include "pc_randomizer.h"
 #include "FlowController.h"
 #include "MoviePlayer.h"
@@ -132,6 +142,9 @@ void BTeki::viewDraw(Graphics& gfx, immut Matrix4f& mat)
 	gfx.useMatrix(Matrix4f::ident, 0);
 	mTekiAnimator->updateContext();
 	mTekiShape->mShape->updateAnim(gfx, mat, nullptr, this);
+#ifdef PIKI_PC_PORT
+    if (!pc_p2_kogane_draw(this, gfx, mat, true) && !pc_p2_mamuta_draw(this, gfx, mat, true) && !pc_p2_frog_draw(this, gfx, mat, true) && !pc_p2_qurione_draw(this, gfx, mat, true) && !pc_p2_kochappy_draw(this, gfx, mat, true) && !pc_p2_sheargrub_draw(this, gfx, mat, true) && !pc_p2_snow_draw(this, gfx, mat, true))
+#endif
 	mTekiShape->mShape->drawshape(gfx, *gfx.mCamera, nullptr);
 }
 
@@ -1276,6 +1289,11 @@ bool BTeki::attackableCreature(Creature& target)
 		return false;
 	}
 
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    bool sourceEntry=false;
+    if(pc_p2_snow_attackable(this,target,sourceEntry))return sourceEntry;
+#endif
+
 	if (!contactCreature(target)) {
 		return false;
 	}
@@ -1314,6 +1332,11 @@ bool BTeki::moveToward(immut Vector3f& target, f32 speed)
  */
 bool BTeki::turnToward(f32 targetAngle, f32 turnSpeed)
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    bool sourceArrived=false;
+    if(pc_p2_snow_turn(this,targetAngle,turnSpeed*NSystem::getFrameTime(),sourceArrived))return sourceArrived;
+#endif
+
 	f32 faceDir   = NMathF::roundAngle(getDirection());
 	f32 nearerDir = NMathF::calcNearerDirection(faceDir, targetAngle);
 	f32 speed     = turnSpeed * NSystem::getFrameTime();
@@ -1997,6 +2020,9 @@ void BTeki::drawTekiShape(Graphics& gfx)
 			mAnimatedMaterials.animate(nullptr);
 		}
 
+#ifdef PIKI_PC_PORT
+        if (!pc_p2_kogane_draw(this, gfx, onCamMtx, false) && !pc_p2_mamuta_draw(this, gfx, onCamMtx) && !pc_p2_frog_draw(this, gfx, onCamMtx) && !pc_p2_tank_draw(this, gfx, onCamMtx) && !pc_p2_qurione_draw(this, gfx, onCamMtx, false) && !pc_p2_breadbug_actor_draw(this, gfx, onCamMtx) && !pc_p2_kochappy_draw(this, gfx, onCamMtx) && !pc_p2_sheargrub_draw(this, gfx, onCamMtx) && !pc_p2_snow_draw(this, gfx, onCamMtx))
+#endif
 		mTekiShape->mShape->drawshape(gfx, *gfx.mCamera, &mAnimatedMaterials);
 		if (lightType == 1) {
 			gfx.calcLighting(1.0f);

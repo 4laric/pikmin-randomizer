@@ -1,3 +1,4 @@
+#include "pc_p2_purple.h"
 #include "PikiState.h"
 #include "AIConstant.h"
 #include "BombItem.h"
@@ -1362,6 +1363,7 @@ void PikiFallMeckState::procBounceMsg(Piki* piki, MsgBounce*)
 			effectMgr->create(EffectMgr::EFF_SD_DirtSpray, pos, nullptr, nullptr);
 			sprout->init(pos);
 			sprout->setColor(piki->mColor);
+            sprout->mP2Purple=pc_p2_is_purple(piki);
 			f32 randAngle = 2.0f * (PI * gsys->getRand(1.0f));
 			sprout->mVelocity.set(220.0f * sinf(randAngle), 540.0f, 220.0f * cosf(randAngle));
 			sprout->startAI(0);
@@ -1950,7 +1952,7 @@ void PikiFlyingState::exec(Piki* piki)
 	f32 glideGrav          = AICONST.mGravity() * C_PIKI_PARM(piki, mFlowerGravityScale);
 	f32 gravTransitionTime = 0.15f;
 	f32 gravInterp         = startGrav * gravTransitionTime - 0.5f * 0.15f * (startGrav - glideGrav) - glideGrav * gravTransitionTime;
-	if (!mIsFlowerGliding && piki->mHappa == Flower && piki->mVelocity.y <= 0.0f) {
+	if (!pc_p2_is_purple(piki) && !mIsFlowerGliding && piki->mHappa == Flower && piki->mVelocity.y <= 0.0f) {
 		mIsFlowerGliding = true;
 		piki->startMotion(PaniMotionInfo(PIKIANIM_Hang), PaniMotionInfo(PIKIANIM_Hang));
 		f32 glideDist;
@@ -2744,6 +2746,7 @@ void PikiBuryState::exec(Piki* piki)
 		effectMgr->create(EffectMgr::EFF_SD_DirtSpray, pos, nullptr, nullptr);
 		sprout->init(pos);
 		sprout->setColor(piki->mColor);
+            sprout->mP2Purple=pc_p2_is_purple(piki);
 		f32 angle = 2.0f * (PI * gsys->getRand(1.0f));
 		sprout->mVelocity.set(220.0f * sinf(angle), 540.0f, 220.0f * cosf(angle));
 		sprout->mFlowerStage = piki->mHappa;

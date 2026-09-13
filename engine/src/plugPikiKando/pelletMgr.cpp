@@ -1,6 +1,8 @@
+#include "pc_p2_purple.h"
 #include "pc_randomizer.h"
 #include "AIPerf.h"
 #include "pc_bbft.h"
+#include "pc_p2_preview.h"
 #include "Age.h"
 #include "DebugLog.h"
 #include "EffectMgr.h"
@@ -774,7 +776,7 @@ Vector3f Pellet::getSlotGlobalPos(int slotID, f32 offset)
  */
 void Pellet::initSlotFlags()
 {
-	mSlotFlags[0] = mSlotFlags[1] = mSlotFlags[2] = 0;
+    for(int& flags:mSlotFlags)flags=0;
 }
 
 /**
@@ -914,7 +916,7 @@ void Pellet::init(immut Vector3f& pos)
 bool Pellet::isFree()
 {
 	// mSlotFlags needs to be int for resetSlotFlags, this seems to be the easier fix
-	if ((u32)(mSlotFlags[0]) == 0 && (u32)(mSlotFlags[1]) == 0 && (u32)(mSlotFlags[2]) == 0) {
+	if ((u32)(mSlotFlags[0]) == 0 && (u32)(mSlotFlags[1]) == 0 && (u32)(mSlotFlags[2]) == 0 && (u32)(mSlotFlags[3]) == 0) {
 		return true;
 	}
 	return false;
@@ -1225,7 +1227,7 @@ void Pellet::update()
 	{
 		Creature* piki = *iter;
 		if (piki && piki->isPiki()) {
-			carryCount += pc_randomizer_carry_strength(static_cast<Piki*>(piki)->mColor);
+			carryCount += pc_piki_carry_strength(static_cast<Piki*>(piki));
 		}
 	}
 
@@ -1248,7 +1250,7 @@ void Pellet::update()
 			{
 				Creature* piki = *iter2;
 				if (piki && piki->isPiki()) {
-					carryCount2 += pc_randomizer_carry_strength(static_cast<Piki*>(piki)->mColor);
+					carryCount2 += pc_piki_carry_strength(static_cast<Piki*>(piki));
 				}
 			}
 
@@ -1410,7 +1412,8 @@ void Pellet::doRender(Graphics& gfx, Matrix4f& mtx)
 	}
 
 	if (aiCullable()) {
-		mShapeObject->mShape->drawshape(gfx, *gfx.mCamera, &mAnimatedMaterials);
+		if (!pc_p2_preview_draw(this, gfx, mtx))
+			mShapeObject->mShape->drawshape(gfx, *gfx.mCamera, &mAnimatedMaterials);
 	}
 }
 

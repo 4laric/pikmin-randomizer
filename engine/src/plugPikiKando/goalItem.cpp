@@ -1,4 +1,5 @@
 #include "pc_randomizer.h"
+#include "pc_p2_preview.h"
 #include "pc_bbft.h"
 #include "GoalItem.h"
 #include "FlowController.h"
@@ -819,8 +820,9 @@ void GoalItem::refresh(Graphics& gfx)
 	mAnimatedMaterials.animate(&rate);
 	mItemShapeObject->mShape->updateAnim(gfx, mtx1, nullptr, this);
 	if (aiCullable()) {
-		mItemShapeObject->mShape->drawshape(gfx, *gfx.mCamera, &mAnimatedMaterials);
+        if(!pc_p2_preview_draw_pod(this,gfx,mtx1))mItemShapeObject->mShape->drawshape(gfx, *gfx.mCamera, &mAnimatedMaterials);
 	}
+    if(pc_p2_preview_is_pod(this))mSpotModelEff->mIsVisible=false;
 	mCollInfo->updateInfo(gfx, false);
 
 	for (int i = 0; i < 3; i++) {

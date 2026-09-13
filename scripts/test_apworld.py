@@ -18,7 +18,7 @@ def main(ap):
     from Fill import distribute_items_restrictive
     from BaseClasses import CollectionState
     from randomizer.seed import validate, fingerprint
-    from randomizer.catalog import REPAIR, UNLOCKS, LOCATION_IDS, FLARLIC
+    from randomizer.catalog import REPAIR, UNLOCKS, LOCATION_IDS, FLARLIC, active_names
     with tempfile.TemporaryDirectory() as temp:
         archive = build(Path(temp) / "pikmin_randomizer.apworld")
         sys.path.insert(0, str(archive))
@@ -27,10 +27,10 @@ def main(ap):
         configs += [(True, area, color, True) for area in (0, 1, 3, 4, 5) for color in (0, 1, 2)]
         for expanded, start, color, all_areas in configs:
           for seed in range(100):
-              mw = setup_multiworld(mod.PikminRandomizerWorld, seed=seed, options={"collection_checks": False, "expanded_checks": expanded, "starting_area": start, "starting_color": color, 'all_areas': all_areas})
+              mw = setup_multiworld(mod.PikminRandomizerWorld, seed=seed, options={"collection_checks": False, "expanded_checks": expanded, "starting_area": start, "starting_color": color, 'all_areas': all_areas, 'goal': 0})
               mw.seed_name = str(seed)
               world = mw.worlds[1]
-              assert len(mw.get_locations()) == (58 if world.manifest()['schema'] >= 5 else 55 if world.manifest()['schema'] >= 2 else 30)
+              assert len(mw.get_locations()) == len(active_names(world.manifest()))
               assert len(mw.itempool) == len(mw.get_locations())
               distribute_items_restrictive(mw)
               assert mw.can_beat_game(), seed
@@ -46,7 +46,7 @@ def main(ap):
         for seed in range(100):
             mw = setup_multiworld(mod.PikminRandomizerWorld, seed=seed,
                                  options={'collection_checks': False, 'enemy_shuffle': True, 'starting_area': 2, 'starting_color': 3})
-            assert mw.worlds[1].manifest()['schema'] == 6
+            assert mw.worlds[1].manifest()['schema'] == 9
             distribute_items_restrictive(mw)
             assert mw.can_beat_game() and not mw.get_unfilled_locations()
         for initial in (1, 2, 10):
@@ -74,7 +74,7 @@ def main(ap):
             mw = setup_multiworld(mod.PikminRandomizerWorld, seed=seed,
                                  options={'permanent_checks': True, 'progressive_color_stats': True,
                                           'randomize_color_stats': True, 'starting_area': 2, 'starting_color': 3})
-            assert len(mw.get_locations()) > 64
+            assert len(mw.get_locations()) == len(active_names(mw.worlds[1].manifest())) > 64
             distribute_items_restrictive(mw)
             assert mw.can_beat_game() and not mw.get_unfilled_locations()
         # Explicitly fill every enemy permutation across all starts/colors.
@@ -102,13 +102,16 @@ def main(ap):
         # Explicitly exercise the requested wait-for-remote-blue scenario.
         blue = next(item for item in mw.itempool if item.player == 1 and item.name == 'Blue Onion')
         mw.itempool.remove(blue)
-        remote = mw.get_location('Explore: The Forest of Hope - Land', 2)
+        remote = mw.get_location('Pikmin: Yellow Onion Discovery', 2)
         remote.place_locked_item(blue)
         initial = CollectionState(mw)
-        water = mw.get_location('Bestiary: Water Dumple', 1)
+        water = mw.get_location('Bestiary: Deliver Water Dumple', 1)
         assert not water.can_reach(initial)
         assert remote.can_reach(initial)
         initial.collect(mw.worlds[1].create_item(FLARLIC), True)
+        # Schema-9 corpse deliveries conservatively require all three Onion colors.
+        initial.collect(mw.worlds[1].create_item('Yellow Onion'), True)
+        assert not water.can_reach(initial)
         initial.collect(blue, True)
         assert water.can_reach(initial)
         distribute_items_restrictive(mw)
@@ -119,7 +122,7 @@ def main(ap):
                              options=[{'progressive_color_stats': True}, {'progressive_color_stats': True}])
         carry = next(item for item in mw.itempool if item.player == 1 and item.name == 'Progressive Red Carry Strength')
         mw.itempool.remove(carry)
-        remote = mw.get_location('Population: 20 total Red Pikmin', 2)
+        remote = mw.get_location('Population: 10 total Red Pikmin', 2)
         remote.place_locked_item(carry)
         initial = CollectionState(mw)
         initial.collect(mw.worlds[1].create_item(FLARLIC), True)
@@ -135,7 +138,7 @@ def main(ap):
         m=mw.worlds[1].manifest(); m['enemy_mask']=2; m['enemy_shuffle']='families-v1'; m['enemy_layout']=resolve_layout(2)
         access=next(item for item in mw.itempool if item.player==1 and item.name=='Pikmin: Distant Spring Access')
         mw.itempool.remove(access)
-        remote=mw.get_location('Population: 20 total Red Pikmin',2); remote.place_locked_item(access)
+        remote=mw.get_location('Population: 10 total Red Pikmin',2); remote.place_locked_item(access)
         initial=CollectionState(mw)
         for name in ('Yellow Onion','Blue Onion'): initial.collect(mw.worlds[1].create_item(name),True)
         moved=mw.get_location('Bestiary: Deliver Spotty Bulborb',1)

@@ -1,3 +1,5 @@
+Pikmin 2 development: [current parallel workflow](docs/PIKMIN2_WORKFLOW.md) and [enemy import pipeline](docs/PIKMIN2_ENEMY_IMPORT_PIPELINE.md). This experimental track remains outside the first Pikipelago release.
+
 ## Emperor Bulblax finale (#86)
 
 New AP/CLI seeds default to goal: emperor_bulblax (CLI --goal emperor_bulblax). At 25 repair rewards the Emperor can emerge normally; his completed death animation records the goal. Final Trial Access remains separate. The Secret Safe requires 25 repairs in logic to prevent placing needed repairs behind the boss gate. No new reward/check is added. goal: repairs retains immediate completion at 25; existing manifests and programmatic generate() defaults remain repair-only.
@@ -253,3 +255,9 @@ Smoky Progg Ambush is an optional trap: `progg_trap_weight: 1` (CLI `--progg-tra
 ### Faithful to Prerelease trap
 
 Set `prerelease_trap_weight: 1` (0–10, default 0) in YAML for new seeds, or pass `--prerelease-trap-weight 1` to the seed CLI. This optional filler trap replaces every active geyser and Candypop Bud in the loaded area with temporary, no-drop Beady Long Legs for 60 seconds of active gameplay. Pauses and cutscenes freeze the timer. Original fixtures return on expiry, saving, or day end, even if a temporary spider was killed. Receipts wait for an eligible area and an empty bud; additional traps queue. It does not change checks or progression requirements. Requires APWorld 0.31.0 and the matching native build.
+
+## Experimental Pikmin 2 room (outside v0.1)
+
+See [the room preview guide](docs/PIKMIN2_ROOM_PREVIEW.md) for the isolated content-conversion prototype and local-disc workflow. It runs one converted cave room in Open Nectar and does not add caves to AP seeds.
+
+The experiment now includes [Research Pod economy](docs/PIKMIN2_RESEARCH_POD.md) and an opt-in [Purple Pikmin preview](docs/PIKMIN2_PURPLE_PREVIEW.md), with Violet conversion and a heavy treasure. These disposable previews do not yet support cave descent, ship storage or squad saves.

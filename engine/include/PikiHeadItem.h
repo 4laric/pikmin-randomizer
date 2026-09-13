@@ -75,6 +75,7 @@ struct PikiHeadItem : public ItemCreature {
 	GoalItem* mParentOnion;         // _3E0
 	PermanentEffect mSparkleEffect; // _3E4
 	RippleEffect* mRippleEfx;       // _3F4
+    bool mP2Purple = false; // Experimental species metadata; not legacy seed color.
 };
 
 /**

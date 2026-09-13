@@ -1,3 +1,4 @@
+#include "pc_p2_purple.h"
 #include "NaviState.h"
 #include "pc_randomizer.h"
 #if defined(PIKI_PC_PORT)
@@ -39,6 +40,7 @@
 #include "sysNew.h"
 #include "teki.h"
 #include "zen/DrawContainer.h"
+#include "pc_p2_preview.h"
 #include "zen/ogTutorial.h"
 
 #include "CPlate.h"
@@ -598,7 +600,7 @@ void NaviWalkState::exec(Navi* navi)
 
 	for (int i = 0; i < 3; i++) {
 		GoalItem* onyon = itemMgr->getContainer(i);
-		if (!onyon) {
+		if (!onyon || pc_p2_preview_is_pod(onyon)) {
 			continue;
 		}
 		CollPart* coll = onyon->mCollInfo->getSphere('cont');
@@ -2769,6 +2771,7 @@ void NaviNukuAdjustState::exec(Navi* navi)
 			}
 			piki->init(navi);
 			piki->initColor(navi->mSproutToPluck->mSeedColor);
+            if(navi->mSproutToPluck->mP2Purple)pc_p2_make_purple(piki);
 			piki->setFlower(navi->mSproutToPluck->mFlowerStage);
 			piki->resetPosition(navi->mSproutToPluck->mSRT.t);
 

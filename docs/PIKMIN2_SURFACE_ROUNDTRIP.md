@@ -1,0 +1,15 @@
+# Native bounded entrance roundtrip (#114/#112)
+
+The new `test_pikmin2_surface_roundtrip.py` driver connects actual native processes: bounded source entrance → Emergence floor1 → floor2 → bounded source entrance again. It uses one authoritative `SurfaceLedger` and the existing `SurfaceRunner`; no alternate campaign checkpoint writer or production native code is added.
+
+`pikmin2_surface_handoff_fixture.cpp` restores native species/maturity/health using the existing cave entry hook. At the source entrance it exercises the same anchor/checkpoint guards used by F6, including pause/foreign-anchor and duplicate rejection, and emits the existing tokenized `P2_CAVE_TRANSFER_1` through the production writer. The host validates that transfer and captures the native captain position before suspending the surface snapshot. After both real cave processes finish, another bounded native process verifies returned species/maturity, captain health, native Pod receipt balance and source position. Physical key input and confirmation-dialog behavior are not tested by these fixture calls.
+
+The existing checkpoint writer requires a Pod even when an explicit entrance anchor exists. The fixture therefore adds a temporary receiver and a single bootstrap waypoint inside the dry pocket; no hauling graph is supplied and pickup is disabled by the fixture. This is not source retail actor placement. Initial receiver setup without a waypoint hit `GoalItem::startAI`'s nearest-waypoint dereference; only the private staging was corrected. No production crash fix or engine change is claimed.
+
+Validated output: `output/p2-lifecycle-batch/native-roundtrip-05/result.json`. Process exits are surface42, cave42, cave42, surface0. Returned native state:19 Pikmin including10 Purples, captain health0.625,480 Pokos. Saved source position is [-209.88089,80,1160.01184]; the ledger retains it exactly. Native collision settling after30 frames moved the captain0.130 units, below the explicit1-unit tolerance, and the actual return position is reported separately. Day/time remain host snapshot fields, not native surface-clock restoration.
+
+Both executable paths and SHA256 values are captured before execution in `provenance.json`, including failed runs. The standalone surface fixture is built against existing production objects using the private recipe in `output/p2-lifecycle-batch/surface-handoff-fixture/commands.json`; no shared build is performed. Each process has a120-second timeout and dummy audio.
+
+Validation:22 focused driver/runner/ledger tests plus6 subtests pass. Closed/final ledger resume starts no extra cave process. This remains a fixture-only proof: engineered boundary walls and all source water metadata are retained, but native surface water, full actor/storage/world restoration, controller-driven entry, user-facing return flow and campaign saves are not implemented. Do not use the fixture staging with an ordinary player executable.
+
+Run `py -3.12 -m scripts.test_pikmin2_surface_roundtrip --help` for required asset, fixture and output paths. Existing output directories are refused to protect previous runs and saves.

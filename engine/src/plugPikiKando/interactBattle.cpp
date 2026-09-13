@@ -1,3 +1,4 @@
+#include "pc_p2_purple.h"
 #include "BombItem.h"
 #include "Collision.h"
 #include "Condition.h"
@@ -194,7 +195,7 @@ bool InteractFire::actPiki(Piki* piki) immut
 	}
 
 	// red pikmin are immune to fire
-	if (piki->mColor != Red) {
+	if (piki->mColor != Red || pc_p2_is_purple(piki)) {
 		piki->startFire();
 		return true;
 	}

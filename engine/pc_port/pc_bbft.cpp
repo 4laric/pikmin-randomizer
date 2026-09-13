@@ -10,6 +10,8 @@
 #endif
 static bool enabled = false;
 static int challengeLevel = -1;
+static bool p2RoomPreview = false;
+bool pc_pikipelago_room_preview() { return p2RoomPreview; }
 int pc_pikipelago_challenge_level() { return challengeLevel; }
 static bool testBackground = false;
 void pc_bbft_milestone(const char* text) {
@@ -39,7 +41,10 @@ bool pc_bbft_take_skip() {
 }
 void pc_bbft_init(int argc, char** argv) {
     for (int i=1; i<argc; ++i) {
-        if (!std::strcmp(argv[i], "--experimental-challenge-level")) {
+        if (!std::strcmp(argv[i], "--experimental-pikmin2-room")) {
+            if (challengeLevel >= 0) { std::fprintf(stderr,"Only one experimental preview may be selected\n"); std::exit(2); }
+            p2RoomPreview = true; challengeLevel = 0;
+        } else if (!std::strcmp(argv[i], "--experimental-challenge-level")) {
             if (++i>=argc || challengeLevel>=0 || std::strlen(argv[i])!=1 || argv[i][0]<'0' || argv[i][0]>'4') {
                 std::fprintf(stderr,"--experimental-challenge-level requires one ID 0-4\n"); std::exit(2);
             }

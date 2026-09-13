@@ -1,3 +1,4 @@
+#include "pc_p2_purple.h"
 #include "pc_bbft.h"
 #include "PikiHeadItem.h"
 #include "DebugLog.h"
@@ -194,6 +195,7 @@ f32 PikiHeadItem::getiMass()
  */
 void PikiHeadItem::setColor(int color)
 {
+    mP2Purple=false;
     if (!pc_bbft_color_access(color)) color = Red;
 	mSeedColor = color;
 }
@@ -209,7 +211,7 @@ void PikiHeadItem::refresh(Graphics& gfx)
 	if (mItemShapeObject) {
 		Matrix4f mtx;
 		mWorldMtx.makeSRT(mSRT.s, mSRT.r, mSRT.t);
-		mItemShapeObject->mShape->mMaterialList->setColour(Piki::pikiColors[mSeedColor]);
+		mItemShapeObject->mShape->mMaterialList->setColour(mP2Purple?Colour(100,30,150,255):Piki::pikiColors[mSeedColor]);
 
 		if (!isCreatureFlag(CF_IsOnGround) && mVelocity.length() > 0.0f) {
 			Vector3f vel(mVelocity);
@@ -268,6 +270,7 @@ bool PikiHeadItem::interactBikkuri(immut InteractBikkuri& act)
 		Navi* navi = naviMgr->getNavi();
 		piki->init(navi);
 		piki->initColor(mSeedColor);
+        if(mP2Purple)pc_p2_make_purple(piki);
 		piki->setFlower(mFlowerStage);
 		piki->resetPosition(mSRT.t);
 
@@ -295,6 +298,7 @@ bool PikiHeadItem::interactSwallow(immut InteractSwallow& act)
 		Navi* navi = naviMgr->getNavi();
 		piki->init(navi);
 		piki->initColor(mSeedColor);
+        if(mP2Purple)pc_p2_make_purple(piki);
 		piki->setFlower(mFlowerStage);
 		piki->resetPosition(mSRT.t);
 		piki->mFSM->transit(piki, PIKISTATE_AutoNuki);

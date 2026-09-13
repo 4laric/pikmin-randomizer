@@ -8,6 +8,12 @@
 #include "WorkObject.h"
 #include "GameCoreSection.h"
 #include "pc_bbft.h"
+#include "pc_p2_preview.h"
+#include "pc_p2_cave.h"
+#include "pc_p2_breadbug_visual.h"
+#include "pc_p2_giant_breadbug_visual.h"
+#include "pc_p2_bulblax_visual.h"
+#include "pc_p2_tank.h"
 #include "pc_randomizer.h"
 #include "MapCode.h"
 #include <fstream>
@@ -1354,6 +1360,7 @@ void GameCoreSection::finalSetup()
 		workObjectMgr->finalSetup();
 	}
 
+	pc_p2_preview_setup();
 	PRINT("====================== FINAL SETUP DONE ======================\n");
 }
 
@@ -2076,6 +2083,7 @@ static void randomizerApplyBenefits(Navi* navi, MapMgr* map)
 
 void GameCoreSection::updateAI()
 {
+    pc_p2_cave_tick();
     if (pc_randomizer_expanded()) {
         AICONST.mMaxPikisOnField(pc_randomizer_field_capacity());
         const bool active = !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll
@@ -2975,6 +2983,11 @@ void GameCoreSection::draw(Graphics& gfx)
 	if (AIPerf::showRoute) {
 		routeMgr->refresh(gfx);
 	}
+	pc_p2_cave_draw_transition(gfx);
+	pc_p2_breadbug_visual_draw(gfx);
+	pc_p2_giant_breadbug_visual_draw(gfx);
+	pc_p2_bulblax_visual_draw(gfx);
+	pc_p2_tank_draw_water(gfx);
 }
 
 /**

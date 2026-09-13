@@ -1,3 +1,4 @@
+#include "pc_p2_purple.h"
 #include "Navi.h"
 #include "pc_randomizer.h"
 #include <cstdlib>
@@ -668,7 +669,7 @@ int pc_preferred_throw_color() { return sPreferredThrowColor; }
 // Selection classes retain the three color IDs; bomb yellows are class 3.
 int pc_throw_selection_class(Piki* piki)
 {
-    return piki->mColor == Yellow && piki->hasBomb() ? PikiColorCount : piki->mColor;
+    return pc_p2_is_purple(piki)?PikiColorCount+1:(piki->mColor == Yellow && piki->hasBomb() ? PikiColorCount : piki->mColor);
 }
 
 static bool pcSquadHasColor(Navi* navi, int selection)
@@ -696,9 +697,9 @@ static void pcUpdatePreferredThrowColor(Navi* navi)
 		return;
 	}
 
-	int present[PikiColorCount + 1];
+	int present[PikiColorCount + 2];
 	int presentCount = 0;
-	for (int color = 0; color < PikiColorCount + 1; color++) {
+	for (int color = 0; color < PikiColorCount + 1 + int(pc_p2_purples_enabled()); color++) {
 		if (pcSquadHasColor(navi, color)) {
 			present[presentCount++] = color;
 		}
@@ -735,8 +736,9 @@ Piki* pc_cycle_throw_color(Navi* navi, Piki* current)
 	const int direction = int(navi->mKontroller->keyClick(KBBTN_DPAD_RIGHT))
 	                    - int(navi->mKontroller->keyClick(KBBTN_DPAD_LEFT));
 	if (!direction || !current) return nullptr;
-	for (int step = 1; step < PikiColorCount + 1; ++step) {
-		const int color = (pc_throw_selection_class(current) + direction * step + PikiColorCount + 1) % (PikiColorCount + 1);
+	const int classes=PikiColorCount+1+int(pc_p2_purples_enabled());
+    for (int step = 1; step < classes; ++step) {
+		const int color = (pc_throw_selection_class(current) + direction * step + classes) % classes;
 		Piki* nearest = nullptr;
 		f32 distance = 200.0f;
 		Iterator squad(navi->mPlateMgr);
@@ -1181,7 +1183,7 @@ void Navi::callPikis(f32 radius, bool recallWorkers)
 		    && state != PIKISTATE_Nukare && state != PIKISTATE_Swallowed && state != PIKISTATE_Drown && state != PIKISTATE_Absorb
 		    && state != PIKISTATE_LookAt && state != PIKISTATE_Pressed && dist < radius) {
 			if (!piki->isDamaged() && state != PIKISTATE_Flick && state != PIKISTATE_GrowUp) {
-				if (piki->isFired() && piki->mColor != Red) {
+				if (piki->isFired() && (piki->mColor != Red || pc_p2_is_purple(piki))) {
 					piki->endFire();
 				}
 
@@ -1240,6 +1242,7 @@ void Navi::callPikis(f32 radius, bool recallWorkers)
 				if (piki) {
 					piki->init(this);
 					piki->initColor(sprout->mSeedColor);
+                    if(sprout->mP2Purple)pc_p2_make_purple(piki);
 					piki->setFlower(sprout->mFlowerStage);
 					piki->resetPosition(sprout->mSRT.t);
 					piki->mFSM->transit(piki, PIKISTATE_AutoNuki);
@@ -1354,17 +1357,20 @@ void Navi::releasePikis()
 		return;
 	}
 
-	Vector3f colorCoMs[PikiColorCount + 1]; // each color + bomb-carriers
-	int colorCounts[PikiColorCount + 1];    // each color + bomb-carriers
-	f32 colorSizes[PikiColorCount + 1];     // each color + bomb-carriers
+	Vector3f colorCoMs[PikiColorCount + 2]; // each color + bomb-carriers
+	int colorCounts[PikiColorCount + 2];    // each color + bomb-carriers
+	f32 colorSizes[PikiColorCount + 2];     // each color + bomb-carriers
 	int colorIdx1;
 
-	for (colorIdx1 = 0; colorIdx1 < PikiColorCount + 1; colorIdx1++) {
+	for (colorIdx1 = 0; colorIdx1 < PikiColorCount + 1 + int(pc_p2_purples_enabled()); colorIdx1++) {
 		colorCoMs[colorIdx1].set(0.0f, 0.0f, 0.0f);
 		colorCounts[colorIdx1] = 0;
 	}
 
-	for (colorIdx1 = 0; colorIdx1 < PikiColorCount + 1; colorIdx1++) {
+    if(pc_p2_purples_enabled()) {
+        for(int i=0;i<pikiCount;++i){int color=pc_throw_selection_class(pikiList[i]);++colorCounts[color];colorCoMs[color].add(pikiList[i]->mSRT.t);}
+    } else {
+	for (colorIdx1 = 0; colorIdx1 < PikiColorCount + 1 + int(pc_p2_purples_enabled()); colorIdx1++) {
 		for (pikiIdx = 0; pikiIdx < pikiCount; pikiIdx++) {
 			if (colorIdx1 == Blue || colorIdx1 == Red) {
 				if (pikiList[pikiIdx]->mColor == colorIdx1) {
@@ -1385,7 +1391,9 @@ void Navi::releasePikis()
 		}
 	}
 
-	for (colorIdx1 = 0; colorIdx1 < PikiColorCount + 1; colorIdx1++) {
+    }
+
+	for (colorIdx1 = 0; colorIdx1 < PikiColorCount + 1 + int(pc_p2_purples_enabled()); colorIdx1++) {
 		if (colorCounts[colorIdx1] > 0) {
 			colorCoMs[colorIdx1].multiply(1.0f / colorCounts[colorIdx1]);
 			colorSizes[colorIdx1] = (2.5f * pikiList[0]->getSize()) * sqrtf(colorCounts[colorIdx1]);
@@ -1395,7 +1403,7 @@ void Navi::releasePikis()
 	const f32 maxSepDist = 18.0f;  // 100% CONFIRMED CONST MEME!
 	
 	 // They made a new loop variable for some reason.
-	for (int colorIdx2 = 0; colorIdx2 < PikiColorCount + 1; colorIdx2++) {
+	for (int colorIdx2 = 0; colorIdx2 < PikiColorCount + 1 + int(pc_p2_purples_enabled()); colorIdx2++) {
 		if (colorCounts[colorIdx2] > 0) {
 			Vector3f sepNaviGroup = colorCoMs[colorIdx2] - mSRT.t;
 			f32 normaliseResult   = sepNaviGroup.normalise();
@@ -1408,7 +1416,7 @@ void Navi::releasePikis()
 			}
 		}
 
-		for (int nextColor = colorIdx2 + 1; nextColor < PikiColorCount + 1; nextColor++) {
+		for (int nextColor = colorIdx2 + 1; nextColor < PikiColorCount + 1 + int(pc_p2_purples_enabled()); nextColor++) {
 			if (colorCounts[colorIdx2] > 0 && colorCounts[nextColor] > 0) {
 				Vector3f colorColorSep = colorCoMs[colorIdx2] - colorCoMs[nextColor];
 				f32 normaliseResult    = colorColorSep.normalise();
@@ -1427,7 +1435,7 @@ void Navi::releasePikis()
 
 	for (pikiIdx = 0; pikiIdx < pikiCount; pikiIdx++) {
 		pikiList[pikiIdx]->changeMode(PikiMode::FreeMode, this);
-		int color = pikiList[pikiIdx]->mColor;
+        int color = pc_p2_purples_enabled()?pc_throw_selection_class(pikiList[pikiIdx]):pikiList[pikiIdx]->mColor;
 		if (pikiList[pikiIdx]->hasBomb()) {
 			color = PikiColorCount;
 		}
@@ -1614,6 +1622,7 @@ bool Navi::procActionButton()
 		if (piki) {
 			piki->init(this);
 			piki->initColor(closestSprout->mSeedColor);
+            if(closestSprout->mP2Purple)pc_p2_make_purple(piki);
 			piki->setFlower(closestSprout->mFlowerStage);
 			piki->resetPosition(closestSprout->mSRT.t);
 			piki->changeMode(PikiMode::FreeMode, this);
@@ -2004,8 +2013,14 @@ void Navi::makeVelocity(bool isSunset)
 			check = true;
 		}
 
-		// Cursor-facing logic: when cursor is moving but movement stick is small
-		if ((check || (!check && cursorStickMag > NAVI_PARM(mNeutralStickThreshold))) && cursorStickMag <= NAVI_PARM(mCursorMoveStickThreshold)) {
+		// GC uses one stick for run and cursor. A small deflection stops
+		// Olimar so he can turn toward the cursor. Mouse mode splits those:
+		// WASD is the stick, the mouse is the cursor. Treating a small mouse
+		// delta as that "look" band zeroed velocity while the player was
+		// still holding WASD (issue #17).
+		const bool moving = moveStickMag > NAVI_PARM(mNeutralStickThreshold);
+		if (!moving && (check || cursorStickMag > NAVI_PARM(mNeutralStickThreshold))
+		    && cursorStickMag <= NAVI_PARM(mCursorMoveStickThreshold)) {
 			mTargetVelocity.set(0.0f, 0.0f, 0.0f);
 			Vector3f cursorPos(mCursorPosition);
 			mFaceDirection += 0.2f * angDist(roundAng(atan2f(cursorPos.x, cursorPos.z)), mFaceDirection);
@@ -2836,6 +2851,7 @@ void Navi::throwPiki(Piki* piki, immut Vector3f& pos)
 		            + (mThrowHoldTime / NAVI_PARM(mThrowHoldMaxTime)) * (NAVI_PARM(mThrowMaxHeight) - NAVI_PARM(mThrowMinHeight));
 	}
 
+    if(pc_p2_is_purple(piki))throwHeight=pc_p2_purple_throw_height();
 	f32 vSpeed = AICONST.mGravity() * 0.5f * halfTime + (throwHeight / halfTime);
 	f32 hSpeed = throwDist / (2.0f * halfTime);
 
@@ -2878,6 +2894,7 @@ void Navi::throwLocus(immut Vector3f& pos)
 		            + (mThrowHoldTime / NAVI_PARM(mThrowHoldMaxTime)) * (NAVI_PARM(mThrowMaxHeight) - NAVI_PARM(mThrowMinHeight));
 	}
 
+    if(pc_p2_is_purple(mNextThrowPiki))throwHeight=pc_p2_purple_throw_height();
 	f32 vSpeed = AICONST.mGravity() * 0.5f * halfTime + (throwHeight / halfTime);
 	f32 hSpeed = throwDist / (2.0f * halfTime);
 

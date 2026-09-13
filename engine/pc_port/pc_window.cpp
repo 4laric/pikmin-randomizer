@@ -5,6 +5,10 @@
 #endif
 #include "pc_window.h"
 #include "pc_bbft.h"
+#include "pc_p2_cave.h"
+#ifdef __linux__
+#include "pc_gpu_preference.h"
+#endif
 #include <cstdio>
 #include <cstring>
 #include <cctype>
@@ -311,6 +315,21 @@ void pc_window_message_control_label(char tag, char* buf, unsigned bufSize)
 
 const char* pc_window_get_gamepad_button_name(int button) {
     if (button < 0) return "None";
+    if (button >= PC_GP_AXIS_BIND) {
+        const int axis = (button - PC_GP_AXIS_BIND) / 2;
+        const int positive = (button - PC_GP_AXIS_BIND) & 1;
+        static const char* axisNames[6][2] = {
+            { "L Stick Left", "L Stick Right" },
+            { "L Stick Up", "L Stick Down" },
+            { "R Stick Left", "R Stick Right" },
+            { "R Stick Up", "R Stick Down" },
+            { "L Trigger", "L Trigger" },
+            { "R Trigger", "R Trigger" },
+        };
+        if (axis >= 0 && axis < 6)
+            return axisNames[axis][positive];
+        return "Unknown";
+    }
     if (button >= SDL_CONTROLLER_BUTTON_MAX) return "Unknown";
     static const char* names[] = {
         "A", "B", "X", "Y", "Back", "Guide", "Start",
@@ -321,6 +340,55 @@ const char* pc_window_get_gamepad_button_name(int button) {
     };
     if (button < (int)(sizeof(names) / sizeof(names[0]))) return names[button];
     return "Unknown";
+}
+
+bool pc_window_gamepad_bind_held(SDL_GameController* controller, int bind)
+{
+    if (!controller || bind < 0)
+        return false;
+    if (bind < SDL_CONTROLLER_BUTTON_MAX)
+        return SDL_GameControllerGetButton(controller, static_cast<SDL_GameControllerButton>(bind)) != 0;
+    if (bind >= PC_GP_AXIS_BIND) {
+        const int axis = (bind - PC_GP_AXIS_BIND) / 2;
+        const int positive = (bind - PC_GP_AXIS_BIND) & 1;
+        if (axis < 0 || axis >= SDL_CONTROLLER_AXIS_MAX)
+            return false;
+        const int v = SDL_GameControllerGetAxis(controller, static_cast<SDL_GameControllerAxis>(axis));
+        return positive ? v > 12000 : v < -12000;
+    }
+    return false;
+}
+
+int pc_window_gamepad_first_held_binding(SDL_GameController* controller)
+{
+    if (!controller)
+        return -1;
+    for (int btn = 0; btn < SDL_CONTROLLER_BUTTON_MAX; btn++) {
+        if (btn == SDL_CONTROLLER_BUTTON_GUIDE)
+            continue;
+        if (SDL_GameControllerGetButton(controller, static_cast<SDL_GameControllerButton>(btn)))
+            return btn;
+    }
+    int bestAxis = -1;
+    int bestPos = 0;
+    int bestAbs = 16000;
+    for (int axis = 0; axis < SDL_CONTROLLER_AXIS_MAX; axis++) {
+        const int v = SDL_GameControllerGetAxis(controller, static_cast<SDL_GameControllerAxis>(axis));
+        const int a = abs(v);
+        if (a > bestAbs) {
+            bestAbs = a;
+            bestAxis = axis;
+            bestPos = v > 0 ? 1 : 0;
+        }
+    }
+    if (bestAxis >= 0)
+        return PC_GP_AXIS_BIND + bestAxis * 2 + bestPos;
+    return -1;
+}
+
+bool pc_window_gamepad_any_held(SDL_GameController* controller)
+{
+    return pc_window_gamepad_first_held_binding(controller) >= 0;
 }
 
 void pc_window_reset_key_bindings(void) {
@@ -378,26 +446,52 @@ bool pc_window_init(const char* title, int width, int height) {
     // features (GLSL 1.20 attribute/varying syntax and GL_QUADS). A Core
     // profile accepts the context but rejects every draw, producing a black
     // window without an SDL error.
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
+    auto applyGlAttrs = []() {
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
+        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+        SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
+    };
+    applyGlAttrs();
 
-    sWindow = SDL_CreateWindow(
-        title,
-        SDL_WINDOWPOS_CENTERED,
-        SDL_WINDOWPOS_CENTERED,
-        sWindowWidth,
-        sWindowHeight,
-        SDL_WINDOW_OPENGL | ((pc_randomizer_enabled() && std::getenv("PIKMIN_RANDOMIZER_TEST_BACKGROUND")
-            && !std::strcmp(std::getenv("PIKMIN_RANDOMIZER_TEST_BACKGROUND"), "1")) ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN) | SDL_WINDOW_RESIZABLE
-    );
+    bool retriedGpu = false;
+    for (;;) {
+        sWindow = SDL_CreateWindow(
+            title,
+            SDL_WINDOWPOS_CENTERED,
+            SDL_WINDOWPOS_CENTERED,
+            sWindowWidth,
+            sWindowHeight,
+            SDL_WINDOW_OPENGL | ((pc_randomizer_enabled() && std::getenv("PIKMIN_RANDOMIZER_TEST_BACKGROUND")
+                && !std::strcmp(std::getenv("PIKMIN_RANDOMIZER_TEST_BACKGROUND"), "1")) ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN) | SDL_WINDOW_RESIZABLE
+        );
+        if (sWindow) {
+            break;
+        }
 
-    if (!sWindow) {
         printf("[PC Port Error] SDL_CreateWindow failed: %s\n", SDL_GetError());
         fflush(stdout);
+#ifdef __linux__
+        if (!retriedGpu) {
+            retriedGpu = true;
+            printf("[PC Port] Retrying without NVIDIA PRIME/EGL (X11 if unset)\n");
+            fflush(stdout);
+            pc_gpu_preference_clear();
+            SDL_Quit();
+            if (!getenv("SDL_VIDEODRIVER")) {
+                setenv("SDL_VIDEODRIVER", "x11", 1);
+            }
+            if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS) < 0) {
+                printf("[PC Port Error] SDL_Init retry failed: %s\n", SDL_GetError());
+                fflush(stdout);
+                return false;
+            }
+            applyGlAttrs();
+            continue;
+        }
+#endif
         SDL_Quit();
         return false;
     }
@@ -529,6 +623,9 @@ void pc_window_poll_events(PADStatus* pad) {
                 }
                 break;
             case SDL_KEYDOWN:
+                if (event.key.keysym.scancode == SDL_SCANCODE_F6 && !event.key.repeat && !sSettingsMenuOpen) {
+                    pc_p2_cave_request();
+                }
                 if (event.key.keysym.scancode == SDL_SCANCODE_F9 && !event.key.repeat) {
                     pc_bbft_warp();
                 }
@@ -647,9 +744,7 @@ void pc_window_poll_events(PADStatus* pad) {
     // ── Gamepad Mapping (overrides / merges if controller connected) ──
     if (sController) {
         auto boundButtonPressed = [](int action) {
-            const int mapped = pc_window_get_gamepad_binding(action);
-            return mapped >= 0 && mapped < SDL_CONTROLLER_BUTTON_MAX
-                && SDL_GameControllerGetButton(sController, static_cast<SDL_GameControllerButton>(mapped));
+            return pc_window_gamepad_bind_held(sController, pc_window_get_gamepad_binding(action));
         };
         if (boundButtonPressed(PC_KEY_ACT_A)) button |= PAD_BUTTON_A;
         if (boundButtonPressed(PC_KEY_ACT_B)) button |= PAD_BUTTON_B;
