@@ -167,6 +167,7 @@ void pc_p2_snow_setup() {
         if(interpolation && clip.frames.empty())std::abort();
         size_t clipBytes=0;
         for(int i=0;i<clip.count;++i) {
+            if(skin && (clip.name!="wait1" || i!=0))continue;
             char path[160];std::snprintf(path,sizeof(path),"assets/dataDir/courses/pikmin2room/snow_%s_%02d.mod",clip.name.c_str(),i);
             std::ifstream file(path,std::ios::binary|std::ios::ate);
             if(!file)std::abort();
@@ -183,6 +184,7 @@ void pc_p2_snow_setup() {
                 topology=pose.topology;baked[clip.name].push_back(std::move(pose));}
         }
     }
+    if(skin && baked.find("wait1")==baked.end())std::abort();
     Shape* shared=nullptr;
     int attachments=0;
     timing.clear();
@@ -190,6 +192,7 @@ void pc_p2_snow_setup() {
         timing[clip.name]=clip;
         if(skeleton){int ci=skeleton->clip(clip.name);if(ci<0||skeleton->clips[ci].duration!=clip.duration)std::abort();}
         for(int i=0;i<clip.count;++i) {
+            if(skin && (clip.name!="wait1" || i!=0))continue;
             char path[128];std::snprintf(path,sizeof(path),"courses/pikmin2room/snow_%s_%02d.mod",clip.name.c_str(),i);
             Shape* shape=gameflow.loadShape(path,true);if(!shape)std::abort();
             if(!shared) {
@@ -265,14 +268,14 @@ bool pc_p2_snow_draw(BTeki* teki,Graphics& gfx,const Matrix4f& matrix,bool corps
     static bool logged[2]={false,false};
     if(!logged[corpse?1:0]){std::printf("P2_SNOW_DRAW corpse=%d\n",int(corpse));logged[corpse?1:0]=true;}
     const char* name;float phase,sourceFrame;snowClock(teki,corpse,name,phase,sourceFrame);
-    auto& bank=clips[name];
+    auto& bank=clips.at(skin?"wait1":name);
     size_t index=timing.at(name).index(phase,corpse);
-    Shape* shape=bank[index];
+    Shape* shape=bank[skin?0:index];
     if(interpolation){
         auto& instance=instances.at(static_cast<PelletView*>(teki));shape=instance.shape;
         const auto& clip=timing.at(name);const float frame=sourceFrame;
         p2pose::Interval span;if(!p2pose::bracket(clip.frames,frame,span))std::abort();
-        const auto& a=baked.at(name)[span.left].pose;const auto& b=baked.at(name)[span.right].pose;
+        const auto& a=baked.at(skin?"wait1":name)[skin?0:span.left].pose;const auto& b=baked.at(skin?"wait1":name)[skin?0:span.right].pose;
         if(skin){if(!instance.skeleton->sample(instance.token,skeleton->clip(name),frame,p2attach::Affine{},++instance.tick) ||
             !p2skin::deform(*skin,*instance.skeleton,instance.token,instance.deformed))std::abort();
             for(size_t i=0;i<instance.deformed.positions.size();++i){const auto& v=instance.deformed.positions[i];shape->mVertexList[i].set(v.x,v.y,v.z);}
