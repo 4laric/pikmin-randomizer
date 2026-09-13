@@ -108,5 +108,39 @@ Compiled tests compare phase over 10,000 millisecond updates and sampled poses
 at representative integer-source frames; they cover zero elapsed time, wrap,
 long gaps and reset. Double accumulation can differ at exact nearest-pose ties
 from the old float multiplication. No source bank/material/placement changes.
-The actual display translation unit compiles with the production Release flags;
-full relink and visible runtime acceptance remain for the combined candidate.
+The actual display translation unit compiles with the production Release flags.
+The combined native build and bounded display acceptance subsequently passed below.
+
+## Combined native validation — 2026-09-13
+
+Native `eb69578b`, including the source clock `c5f07653`, was built from the
+private native-engine-timing worktree with Release, JAUDIO enabled, IPO enabled,
+and native CPU optimization disabled. The full `pikmin_pc` target passed.
+Production executable SHA256:
+`8b2406100fd1e1999c05b43c7df22f4c602d53f891ce195c01b645fe46133624`.
+
+The existing Bulblax fixture was rebuilt against those objects with its input
+provenance and both Ninja freshness checks. Fixture SHA256:
+`7d5a1b58e914fc9dade0dfcf2d6b0d99cf07ae7c11a4de5e616a40ca1497f92a`.
+Machine-local evidence is under the engine root worktree:
+`output/timing-runtime01/build/provenance.json` and
+`output/timing-runtime01/validation/result.json`.
+
+| Mode | Clip | Result |
+|---|---|---|
+| Queen | wait1 | PASS |
+| Baby | move | PASS |
+| KingChappy | move1 | PASS |
+| Disabled | No imported display | PASS |
+
+Each enabled mode changed sampled poses, cleared/reloaded the display, preserved
+source identity/XYZ/yaw, retained the expected squad, and left actor/reward counts
+unchanged. All four matched the disabled control's GX warnings. Captures were
+inspected for each species; Queen's reset image is empty and KingChappy is visible
+after reload. Queen's black/silver material, Baby's flat bright shading and
+KingChappy's terrain intersection remain known issues from the earlier fixture.
+
+This validates the native timing consumer and display reset/reload, not boss
+combat, all clips, material fidelity, simulation pause or natural gameplay.
+Long-gap and tick-wrap behavior are covered by the compiled adapter tests; no
+49-day native run was performed. Existing fixed player/QA packages are unchanged.
