@@ -4,7 +4,9 @@ The task heartbeat now runs every15 minutes, retaining the previous daily upstre
 
 Current integration: native e704b268 adds separate Dwarf Red actor profile/health200 plus visual-only Breadbug displays, with common setup/draw/reset hooks. Python focused integration:19tests passed. The initial combined native build passed, but final freshness found the late-added Breadbug reset in tekimgr still pending; the final incremental build is recorded in `output/p2-team-batch1/families-final-build.log`. Verify that completion and a no-work dry run before authorizing private fixture snapshots.
 
-Ready lanes awaiting fresh build confirmation:
+Final incremental build passed and the follow-up dry run reported no work. All three lanes received permission to snapshot native e704b268. Keep this source stable until their snapshots finish.
+
+Ready runtime lanes:
 
 - Enemy worker: Red identity, health, rendering and lifecycle fixture. Existing imported room is a bounded receiver test; the general P1-stage arena launcher remains to be implemented.
 - Content worker: corrected grounded ten-Uji XYZ/emergence/combat/haul fixture. Earlier rejected executable must not run; its source changed during freshness validation.
