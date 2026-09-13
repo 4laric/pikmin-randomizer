@@ -42,7 +42,7 @@ redirection); the evidence JSON decodes it explicitly.
 | 2 | Autonomous movement and animation | PASS with limitation | Pelplant bank binds and loads (7 banks, `flora_Pelplant_*` MODs opened); flora draw path emits `P2_BATCH2_DRAW corpse=0 key=flora|RedPom clip=wait`. Source Pelplant is stationary: locomotion is the P1 Chappy vehicle and the growth FSM is not executed. |
 | 3 | Attacks and receivers | PASS (injected) | The proxy is non-invincible and accepts an injected `InteractAttack(...,100000)` per frame; the target reaches death. Natural P1-proxy combat is also observed (a flora corpse draw). This is a proxy receiver, not the source Pelplant "Full only" damage rule. |
 | 4 | Death and corpse | PASS (proxy) | `P2_LIFECYCLE_DEATH id=353001 frame=203`; `P2_BATCH2_DRAW corpse=1 key=flora|RedPom clip=dead`. The source Pelplant pellet corpse (PelletView release) is not produced by the proxy. |
-| 5 | Actual transport and reward | BLOCKED / source-backed N/A | Pelplant pellet capture/release and the Pod reward path are not implemented; no carry route was driven. |
+| 5 | Actual transport and reward | BLOCKED (partial) | Native attachment PASS: `P2_CARRY_ATTACH carriers=20 min=3`, and the corpse uses the flora bank (`P2_BATCH2_DRAW corpse=1 key=flora\|Pelplant clip=wait1`). Route traversal partial: the corpse advances to max XZ distance 426.87 then stalls (`state=0`); it never reaches `PELSTATE_Goal`, so there is no Onion or Pod receipt. Evidence: `output/p2-flora-carry-evidence/.../lifecycle-evidence-carry.json`, log SHA-256 `2a42e0d3…389e10`. |
 | 6 | Cleanup and re-entry | PASS | `P2_LIFECYCLE_CLEANUP live=1`, `P2_LIFECYCLE_RESPAWN_INJECT generator=353001`, `P2_LIFECYCLE_REENTRY id=353001 frame=384 reused=0`, control alive. `P2_BATCH2_MISSING family=flora found=6 wanted=7` is tolerated and the respawned `generator=353001 key=flora\|Pelplant` is re-bound by the new `pc_p2_batch2_rebind()`; the proxy is drawable again after re-entry. |
 
 `PASS P2_LIFECYCLE_RUNTIME` is present and the process exits 0.
@@ -62,8 +62,18 @@ redirection); the evidence JSON decodes it explicitly.
   unchanged. Native export and #186 shared-semantics review are still required.
 - **Identity:** the proxy is a Dwarf Bulborb vehicle, so this does not establish
   source Pelplant AI, collision or reward semantics.
-- **Gate 5** is not tested; the Pikmin squad did attack and kill a flora proxy,
-  which is why the re-bind count is 6/7.
+- **Gate 5 (transport/reward) is BLOCKED, with partial evidence.** The arena is
+  cargo-free (`pc_p2_preview_cargo_free_ready()`), so there is no Pod, and the
+  original-stage carry route does not connect the z≈1850 arena row to the Onion:
+  the proxy corpse is attached (20 carriers) and traverses 426.87 units, then
+  stalls in carry state without entering the goal, so no reward is issued.
+  Pod delivery needs the converted room assets (`room.mod`/`treasure.mod`/
+  `pod.mod`) plus `p2-pod.txt`; a Pod room was staged at
+  `output/p2-flora-deliver-evidence`, but the shared private native
+  worktree/build was under concurrent edit by another #397 agent
+  (uncommitted `pc_port/pc_p2_preview.cpp/.h`), so the Pod-delivery build was
+  stopped to avoid contention. Source Pelplant pellet release/capture is also
+  not implemented (the proxy corpse is a P1 Chappy corpse).
 
 ## Reproduction
 
