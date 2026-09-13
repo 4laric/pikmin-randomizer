@@ -1,9 +1,23 @@
 import unittest
 from unittest.mock import patch
-from experimental.pikmin2_beasts_floor3_haul import directed_route,support
+from experimental.pikmin2_beasts_floor3_haul import directed_route,support,prepare,terrain_observations
 
 
 class HaulRouteTests(unittest.TestCase):
+    def test_unknown_selection_rejected_before_io(self):
+        for value in ('radar_a','../donutswhite',None,[],1):
+            with self.subTest(value=value),self.assertRaisesRegex(ValueError,'Unknown'):
+                prepare(None,None,None,None,None,None,treasure=value)
+
+    def test_height_changes_follow_same_strip_lane_and_segment(self):
+        probes=[dict(segment=0,lateral=side,step=step,position=[side,y,step])
+                for step,y in [(0,20),(1,110),(2,0)] for side in (-25,0,25)]
+        probes += [dict(segment=1,lateral=0,step=0,position=[0,200,0])]
+        result=terrain_observations(probes)
+        self.assertEqual((result['min_height'],result['max_height']),(0,200))
+        self.assertEqual(result['largest_step'],dict(segment=0,lateral=-25,from_step=1,to_step=2,height_change=-110))
+        self.assertFalse(result['native_traversability_verified'])
+
     def test_route_preserves_direction_and_uses_shorter_source_path(self):
         routes=[dict(id=9,position=[0,0,0],links=[8,10]),
                 dict(id=8,position=[0,0,10],links=[7]),
