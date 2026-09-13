@@ -206,3 +206,110 @@ Pose extraction follows the established lane pattern: hashed disc reads, bounded
 - asset-conversion non-regression (three species model hashes, clip counts, per-clip pose budget)
 
 No native actors, P1 substitutions, shared converter edits, builds or gameplay runs were performed. All assets remain local.
+
+## Batch 2 — install + arena (#375)
+
+Follows batch 1 (#348, commit `a7c9ad7`). Adds pipeline §4 (install + arena) for
+IDs 29 Mar, 55 Hanachirashi and 77 ShijimiChou. Static/source-level evidence
+only: no shared native code, converter, build or gameplay run was touched.
+
+### Install (hash-bound)
+
+Module: `experimental/pikmin2_flying_install.py` (follows
+`pikmin2_mamuta_install.py` #221 and `pikmin2_kogane_install.py` #219; no
+shared-file edits).
+
+- `plan(imported, actors)` validates the roster **before** any manifest IO:
+  1..100 actors, unsigned-unique IDs, spawnable species only. It then binds the
+  batch-1 `flying.json`: schema 1, policy `P2_FLYING_1`, `native_ready == false`,
+  the exact species set and enemy IDs (29/55/77), and the helper classification
+  (`ShijimiChou` = helper only). Every installed pose is bound by SHA-256.
+- Actor rows are `(generator, species)` for Mar/Hanachirashi only. A
+  `ShijimiChou` actor row is rejected; the helper is instead recorded as
+  helper/reward metadata (enemy ID, clip count, group count 25, runtime owner)
+  in the receipt and profile. No ShijimiChou pose is installed and no runtime
+  ownership is claimed.
+- Exact-byte outputs into an already private, non-junction run:
+  `p2-flying-profile.txt` (species/role/helper/retail-parm tokens),
+  `p2-flying-bank.txt` (per-species clip/frame/event/pose listing),
+  `p2-flying-actors.txt` (`P2_FLYING_ACTORS_1` + generator/species rows),
+  receipt `flying-install.json`, and the optional pose bank
+  `fly_<species>_<clip>_<nn>.mod` under
+  `assets/dataDir/courses/pikmin2room/`.
+- Optional visual bank is all-or-nothing over the spawnable species: absent
+  `.mod` files (or absent bank dirs) install configs only and preserve the room
+  baseline (`visuals='absent_baseline_preserved'`); a partial bank, stray pose
+  or any hash mismatch is refused before mutation. Sibling `p2-*-actors.txt`
+  bindings are scanned for generator-ID overlap.
+- `verify_install(imported, run, actors)` reloads a layout and proves the
+  profile/bank/actors configs and every installed pose byte match the import
+  and the receipt hashes.
+
+### Arena staging
+
+Module: `experimental/pikmin2_flying_arena.py` per
+[the arena contract](PIKMIN2_ENEMY_ARENA.md).
+
+- Original Impact Site (practice) map/collision/routes preserved byte-identical
+  (per-file SHA-256 re-verified after overlay); stage slot `chal0`.
+- Roster: one explicit actor per spawnable species plus one ordinary control —
+  generators 375001 Mar / 375002 Hanachirashi / 375003 P1 Chappy control at
+  (-150,30,1850) / (-50,30,1850) / (150,30,1550). IDs are checked against the
+  actual stage records at staging time.
+- Mar and Hanachirashi stage on the P1 Puffy Blowhog proxy
+  (`tekimgr.cpp` tekiNames[16] "mar"); the control is ordinary P1 Chappy
+  (Dwarf Bulborb, type 3). Because the withering Hanachirashi variant has no P1
+  counterpart, its behavior is a proxy only.
+- Generator position + offset is translation only (zero offset, validated);
+  source yaw unapplied (`source_yaw=None`). The default scatter circle is
+  zeroed by the deterministic fixture override — an engineered choice, not
+  production placement evidence.
+- ShijimiChou is recorded as helper metadata (`spawned: false`,
+  `installed_visuals: false`) and is neither spawned nor installed.
+- `GATES`/`GATE_STATES`: every behavior gate is marked **blocked** until native
+  registration exists (`native_identity`, `natural_AI`, `wind_attack`,
+  `flick_shakeoff`, `death_corpse`, `day_floor_reset`, `save_load`,
+  `piklopedia_observation`, `helper_group_ownership`).
+
+### Native hook request (flagged on #375 / #186, not implemented here)
+
+Requested for the native/integration lead. Mar (29) and Hanachirashi (55) only.
+
+- **Build sources:** add `native/pc_port/pc_p2_mar.cpp` and
+  `pc_p2_hanachirashi.cpp` (headers `.h`) to the `pc_port` build source list
+  (`native/configure.py` / CMake), or one shared `pc_p2_flying.cpp` with a
+  species switch. No shared files are edited by this lane.
+- **setup:** `pc_p2_mar_setup()` / `pc_p2_hanachirashi_setup()` read
+  `P2_FLYING_ACTORS_1`, `p2-flying-profile.txt` and `p2-flying-bank.txt`, and
+  bind the installed pose bank (`fly_<species>_<clip>_<nn>.mod`) onto the
+  registered actor, preserving the baseline when the bank is absent (same
+  pattern as `pc_p2_kogane_setup`/`pc_p2_mamuta_setup`).
+- **update:** `pc_p2_flying_update()` ticks the per-species source FSM
+  (MarState.cpp / HanachirashiState.cpp registrations), including wind
+  activation at event 2 and Hanachirashi's Laugh transition.
+- **draw:** `bool pc_p2_<species>_draw(BTeki*, Graphics&, const Matrix4f&,
+  bool corpse=false);` replaces the P1 Puffy proxy model in the draw dispatch;
+  expose `const char* pc_p2_flying_name(PelletView*)` and
+  `int pc_p2_flying_source_id(PelletView*)` returning 29 (Mar) / 55
+  (Hanachirashi).
+- **reset:** `void pc_p2_flying_reset();` added to the `#if PIKI_PC_PORT`
+  reset lists in `TekiMgr::initTekiMgr` and `TekiMgr::TekiMgr`, and
+  `void pc_p2_flying_forget(BTeki*);` to the teardown/forget path, so both
+  species registrations clear on death/reset without stale identity reuse.
+- **Not requested / retained elsewhere:** no ShijimiChou (77) actor,
+  `ShijimiChou::Mgr` factory, colour/nectar-roll or spawn-source registration.
+  That runtime ownership stays with its family owner (Tanpopo, Ooinu_l,
+  Magaret, Damagumo, Mamuta, plant nodes); this lane binds helper/reward
+  metadata only.
+
+### Tests
+
+`python -m pytest tests/test_pikmin2_flying_install.py
+tests/test_pikmin2_flying_assets.py -q` passes. The install test covers
+pre-IO actor count/duplicate/invalid-ID rejection, schema/identity drift,
+helper-only actor exclusion, pose hash mismatch, partial-bank refusal,
+install/verify round-trip, overwrite refusal, tamper detection on installed
+pose/config, absent-bank baseline preservation, sibling generator overlap and
+non-junction room enforcement, plus arena proxy-type constants, gate coverage
+(all blocked), helper non-spawn metadata and `roster` failing on a missing
+stage.
