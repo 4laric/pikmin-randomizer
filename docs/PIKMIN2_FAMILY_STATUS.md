@@ -1,5 +1,10 @@
 # P2 enemy family — ownership and next-step status
 
+Integration #422 reconciles the pushed family candidates onto the maintained line.
+See [combined integration evidence](PIKMIN2_INTEGRATION_422.md) for current merge
+status and validation; older handoff sections below retain their historical bases.
+
+
 Live tracking: this file. Batch assignments and per-session mandates: [PIKMIN2_FAMILY_BATCHES.md](PIKMIN2_FAMILY_BATCHES.md).
 
 Coordination: [#186](https://github.com/4laric/pikmin-randomizer/issues/186). This is the single tracking view for the P2 enemy-family import pipeline. Evidence levels are defined in [PIKMIN2_ENEMY_IMPORT_PIPELINE.md](PIKMIN2_ENEMY_IMPORT_PIPELINE.md). Under the 2026-09-13 revision, family owners own extraction, conversion, native modules, narrow additive registration hooks, private builds and runtime evidence; #186 reviews shared semantics.
@@ -12,7 +17,7 @@ Shared, serialized resources (one at a time): the maintained `native/` build and
 | Flying enemies & fliers | #166 | #348 ✅ | #375 ✅ | `pc_p2_batch3` exported into `engine/` (batch 1) | Native display (identity, exact spawn XYZ, draw/pose, autonomous P1 proxy, cleanup/re-entry) | source attacks/transport mechanics (parent) | batch 1 |
 | Aquatic/hopping | #167 | #347 ✅ | #374 ✅ | `pc_p2_batch3` exported into `engine/` (batch 1) | Native display (identity, exact spawn XYZ, draw/pose, autonomous P1 proxy, cleanup/re-entry) | source attacks/transport mechanics (parent) | batch 1 |
 | Cannon larvae / projectiles | #169 | #350 ✅ | other agent (batch2) | `pc_p2_batch2` + fixture generator-ID re-find (batch 3) | Native display — spawn/draw/movement PASS; injected death PASS (130→0); corpse N/A (source-backed); cleanup/re-entry untested | source P2 semantics (projectile lifecycle/FSM) | batch 3 |
-| Blowhogs / dweevils / hazards | #170 | #349 ✅ | other agent (batch2) | `pc_p2_batch2` + fixture generator-ID re-find (batch 3) | Native display — spawn/draw/movement PASS; injected death FAIL (FireOtakara takes no damage); no corpse; cleanup/re-entry untested | dweevil damage receiver + source P2 semantics | batch 3 |
+| Blowhogs / dweevils / hazards | #170 | #349 ✅ | other agent (batch2) | `pc_p2_batch2` + fixture generator-ID re-find (batch 3) | Native display — spawn/draw/movement PASS; injected death FAIL (FireOtakara takes no damage); no corpse; cleanup/re-entry untested | #408 proxy damage diagnosed; source Dweevil FSM/receivers remain | batch 3 |
 | Flora & Candypops | #171 | #353 ✅ | batch 4 + #397 | `pc_p2_batch2` parser fix + Pelplant refresh (#405) + rebind candidate | Native display + lifecycle — Pelplant proxy: identity/XYZ, bank draw, injected death (frame 203), cleanup, generator respawn and tolerant rebind/re-entry (`reused=0`, control alive) PASS; transport/reward BLOCKED | source Pelplant FSM + pellet receptor/reward; native rebind candidate (`opencode/p2-lifecycle-native` @ `5c9492c6`) pending export/#186; HikariKinoko shape-matrix type 1 | #397 |
 | Snagrets & Segmented Crawbster | #174 | #351 ✅ | #376 ✅ | `pc_p2_batch3` exported into `engine/` (batch 1) | Native display (identity, exact spawn XYZ, draw/pose, autonomous P1 proxy, cleanup/re-entry; corpse draw proven) | source attacks/transport mechanics (parent) | batch 1 |
 | Waterwraith / rollers / Titan | #175 | #352 ✅ | batch 4 | `pc_p2_batch2` parser fix + native display (batch 4) | Native display (spawn gates PASS; cleanup/reload BLOCKED) | reload/cleanup fixture → #397 | batch 4 |

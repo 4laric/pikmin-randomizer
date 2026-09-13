@@ -22,8 +22,9 @@ acquire these changes automatically. Report adoption in the lane's child issue.
 | Native `pc_port/pc_main.cpp` | Experimental-room startup defaults to a 960×540 window and calls `pc_window_center()` after loading persisted settings | Native `1d5a242b`; root source export `541bfba` |
 
 These are minimum capability markers, not a request to reset to old commits.
-Both markers must be verified: #419 imports the overlay, while the historical
-window candidate is not automatically present in every maintained engine export.
+Both markers must be verified: #419 imports the overlay and #422 integrates
+the native window default into production and the replacement-main room fixture.
+Older executables still require a rebuild.
 Use the newest integration-approved source containing both changes and all
 current lane dependencies. Record exact root/native commits and dirty state.
 Check your own worktree, not just the maintained checkout. Preserve ongoing work
@@ -145,12 +146,15 @@ from the repository root, after creating the lane worktree:
 
 ```powershell
 $env:PATH='C:\msys64\mingw64\bin;'+$env:PATH
-cmake -S output/native-<lane> -B output/native-<lane>-build -G Ninja -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+cmake -S output/native-<lane> -B output/native-<lane>-build -G Ninja -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Release -DPIKMIN_NATIVE_JAUDIO=ON
 cmake --build output/native-<lane>-build --target pikmin_pc -j 6
 cmake --build output/native-<lane>-build --target pikmin_pc -- -n
 ```
 
-Replace placeholders. Record pinned commit, private build directory, executable
+Replace placeholders. Ensure the Python-bundled `ninja.exe` is on PATH, or pass
+its full path with `-DCMAKE_MAKE_PROGRAM=...`. The maintained Windows build uses
+`PIKMIN_NATIVE_JAUDIO=ON`; the default OFF configuration can fail to link on
+`Jac_NoteDemoSkipped`. Record pinned commit, private build directory, executable
 SHA-256 and the no-work dry-run result for each attempt. Never run two heavy jobs
 against one build directory. Coordinate real-GL/input fixture slots through the
 integration lead; private builds do not remove runtime contention.

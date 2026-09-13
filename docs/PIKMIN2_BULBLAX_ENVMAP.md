@@ -1,5 +1,11 @@
 # Bulblax Queen body environment stage (issue #416, parent #239)
 
+Integration #422 preserves this opt-in converter interface as a standalone
+capability. The maintained Queen actor already has the #399 UV1/specular/BTK
+path; do not stack this static material rewrite on that prepared bank or replace
+that renderer. Historical renderer-gap statements below describe the worker base.
+
+
 Opt-in, additive converter interface for the Empress Bulblax (Queen) body's
 second TEV stage — the normal-texgen specular/environment stage that samples
 TEX1[1] (`RGB565` 64×64 envmap) with `TEXMTX0` animated by
