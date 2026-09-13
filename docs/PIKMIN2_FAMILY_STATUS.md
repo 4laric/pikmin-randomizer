@@ -20,7 +20,7 @@ Shared, serialized resources (one at a time): the maintained `native/` build and
 | Antenna Beetle (Fuefuki) | #245 | native FSM + binding | #245 ✅ | `pc_p2_fuefuki_*` in native worktree | P2 mechanics | register in shared native → run gates | this session |
 | Titan Dweevil (BigTreasure) | #246 | native attacks + seam | #246 ✅ | `pc_p2_bigtreasure_*` in native worktree | P2 mechanics | register in shared native → run gates | this session |
 | Long Legs / Man-at-Legs | #173 | #312 ✅ | #312 ✅ | none | Converted assets | native registration | other agent |
-| Empress/Emperor Bulblax & larvae | #172 | #217 ✅ (+#120) | #389 ✅ (install + arena + 4-mode runtime fixture) | `pc_p2_bulblax_visual` (native registration; root export pending) | Native display (noninteractive display overlay; #239 material open) | #239 material fidelity; boss gameplay native (Queen/King actors) | this session (batch 5) |
+| Empress/Emperor Bulblax & larvae | #172 | #217 ✅ (+#120) | #389 ✅ install+arena+runtime; #392 ✅ material profile | `pc_p2_bulblax_visual` (native registration; root export pending) | Native display (noninteractive display overlay; #239 material profiled, host-lighting/BTK limits recorded) | boss gameplay native (Queen/King actors); #239 host lighting/BTK; root export | this session (batch 5) |
 | Jellyfloat | #243 | worktree | none | `pc_p2_jellyfloat*` worktree | Playable proxy | install + arena, then native | unclaimed |
 | Bumbling Snitchbug / Demon family | #215–#242 | many slices | partial | `pc_p2_demon*` worktrees | P2 mechanics | consolidate drop/capture gates | other agent |
 | Beetles / Breadbug / Mamuta | #168 | #212–#214 ✅ | #219–#221 ✅ | `pc_p2_kogane/mamuta/...` committed | P2 mechanics | runtime gates | other agent |
