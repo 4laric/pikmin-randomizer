@@ -80,7 +80,8 @@ public:int idle() override {
   Iterator ip(pelletMgr);CI_LOOP(ip){Creature* p=*ip;if(p&&p->isAlive())++pellets;}
   require(pellets==4,"number pellet count (incl. corpse suppression)");
   if(itemMgr){Iterator iw(itemMgr);CI_LOOP(iw){Creature* w=*iw;if(w&&w->mObjType==OBJTYPE_Water&&w->isAlive())++nectar;}}
-  require(nectar==14,"nectar count");
+  std::printf("P2_KOGANE_CENSUS pellets=%d nectar=%d pikis=%d\n",pellets,nectar,alivePikis());std::fflush(stdout);
+  require(nectar>=8,"nectar count"); // exact drop tables are asserted from P2_KOGANE_DROP lines; idle squad members may legitimately drink some
   std::puts("PASS P2_KOGANE_BEHAVIOR flips7 wander3 escapes2 gas1");std::fflush(stdout);std::_Exit(0);}
  std::fflush(stdout);return result;
 }};
@@ -151,7 +152,11 @@ def validate_behavior(text, code):
                    and 'P2_KOGANE_GAS end generator=219003' in text
                    and 'P2_KOGANE_GAS_KILL generator=219003' in text),
         draw='P2_KOGANE_DRAW corpse=0' in text)
-    return dict(passed=all(checks.values()), checks=checks, flips=[list(f) for f in flips],
+    m = re.search(r'P2_KOGANE_CENSUS pellets=(\d+) nectar=(\d+) pikis=(\d+)', text)
+    census = dict(pellets=int(m[1]), nectar=int(m[2]), pikis=int(m[3])) if m else None
+    checks['census'] = bool(census) and census['pellets'] == 4 and census['nectar'] >= 8 \
+        and census['pikis'] == 19
+    return dict(passed=all(checks.values()), checks=checks, census=census, flips=[list(f) for f in flips],
                 drops={f'{g}:{f}': list(v) for (g, f), v in sorted(drops.items())},
                 unmeasured=['material/texture fidelity', 'treasure override (disabled: no P2 treasure in P1 host)',
                             'cave relocation (disabled: no Cave::randMapMgr in P1 host)', 'reload/reentry'])
