@@ -106,10 +106,14 @@ def run(assets,profile,output,exe):
         e['gx_warnings']=[line for line in text.splitlines() if 'GX' in line and 'warning' in line.lower()]
         if e['passed']:e['placement_evidence']=placement_evidence(text,json.loads((directory/'bulblax-stage.json').read_bytes())['placements'],mode!='disabled')
         if e['passed']:
-            from PIL import Image
+            try:from PIL import Image
+            except ImportError:Image=None
             e['captures']={}
             for name in ('bulblax-pose-a','bulblax-pose-b','bulblax-reset','bulblax-reload'):
-                path=directory/(name+'.ppm');Image.open(path).save(directory/(name+'.png'));e['captures'][name]=builder.sha256(path)
+                path=directory/(name+'.ppm')
+                if Image is not None:Image.open(path).save(directory/(name+'.png'))
+                e['captures'][name]=builder.sha256(path)
+            e['capture_png']=Image is not None
         e.update(directory=str(directory),exe=builder.snapshot([exe]));report[mode]=e;(output/'result.json').write_text(json.dumps(report,indent=2));print(mode,e['passed'],directory,flush=True)
         if not e['passed']:raise RuntimeError('Bulblax runtime failed; evidence preserved')
     baseline=Counter(report['disabled']['gx_warnings'])
