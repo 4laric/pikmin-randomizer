@@ -2,9 +2,29 @@
 // paths; scripted action selection is not manual-play or P2 Pom FSM parity.
 #include "Generator.h"
 #include <fstream>
+#include "pc_p2_cave.h"
 static bool beastsFloor2Enabled=false;
 static bool beastsRefund=false;
 static bool beastsRestore=false;
+static bool beastsExit=false;
+static bool beastsReachExit(Navi* n) {
+    static int updates=0;
+    ++updates;
+    const Vector3f destination(-180,0,-180);
+    if(updates==1) {
+        require(!pc_p2_cave_interact(destination.x,destination.y,destination.z),"remote hole interaction accepted");
+        require(!pc_p2_cave_checkpoint(false),"remote hole checkpoint accepted");
+        std::puts("P2_BEASTS_EXIT_REMOTE_REJECTED");
+    }
+    combatDestination=destination;
+    const float dx=destination.x-n->mSRT.t.x,dz=destination.z-n->mSRT.t.z;
+    combatWalking=dx*dx+dz*dz>40*40;
+    require(updates<900,"Beasts hole approach stalled");
+    if(combatWalking || n->mVelocity.x*n->mVelocity.x+n->mVelocity.z*n->mVelocity.z>=1 || n->getCurrState()->getID()!=NAVISTATE_Walk)return false;
+    require(pc_p2_cave_interact(destination.x,destination.y,destination.z),"local hole interaction rejected");
+    require(pc_p2_cave_checkpoint(false),"local hole transfer rejected");
+    std::puts("P2_BEASTS_EXIT_TRANSFER_WRITTEN");return true;
+}
 static std::string beastsBoundary;
 static void beastsBoundaryEnd(){if(!beastsBoundary.empty())std::printf("P2_BEASTS_BOUNDARY_END token=%s\n",beastsBoundary.c_str());}
 static int beastsGlobalPurple=-1,beastsExpectedFlowers=2;
@@ -48,6 +68,7 @@ static void beastsFloor2Fixture(Navi* n) {
     }
     if(state==0 && timer==1){std::ifstream marker("p2-beasts-refund-fixture.txt");beastsRefund=bool(marker);}
     if(state==0 && timer==1){std::ifstream marker("p2-beasts-restore-fixture.txt");beastsRestore=bool(marker);}
+    if(state==0 && timer==1){std::ifstream marker("p2-beasts-exit-fixture.txt");beastsExit=bool(marker);}
     const int extra=beastsRefund?1:0;
     auto target=[&](int i){return i<5+extra?0:1;};
     require(pc_p2_preview_cargo_free_ready() && !pc_p2_preview_ready() && !pc_p2_preview_treasure(),"Beasts cargo-free readiness contract");
@@ -166,6 +187,7 @@ static void beastsFloor2Fixture(Navi* n) {
                 if(pc_p2_is_purple(p))require(pc_throw_selection_class(p)==4,"Beasts Purple selection identity");
             }
             require(playerState->getCurrParts()==repairs,"Beasts changed P1 repairs");
+            if(beastsExit && !beastsReachExit(n))return;
             capture("beasts-floor2-final.ppm");
             beastsPartySnapshot(n);
             beastsBoundaryEnd();

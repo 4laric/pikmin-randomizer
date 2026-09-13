@@ -135,6 +135,8 @@ def run(args):
     refund=getattr(args,'refund',False)
     restore_path=getattr(args,'restore_party',None)
     restored=restore_party(json.loads(restore_path.read_text())) if restore_path else None
+    exit_handoff=getattr(args,'exit_handoff',False)
+    if exit_handoff and (restored is not None or refund or args.global_purple_count>=20):raise ValueError('Exit handoff fixture requires ordinary conversion mode')
     if restored is not None and (refund or args.global_purple_count!=20):raise ValueError('Party restoration requires population20 suppression and no refund mode')
     if refund and not 1<=args.global_purple_count<20:raise ValueError('Refund fixture requires an incoming Purple and spawned flowers')
     root = args.root.resolve()
@@ -149,6 +151,11 @@ def run(args):
     inputs = ['readiness.json','p2-purple.txt','p2-pod.txt','p2-cargo-free.txt','p2-beasts-floor2-fixture.txt']
     (stage/'p2-beasts-boundary.txt').write_text(binding)
     inputs.append('p2-beasts-boundary.txt')
+    if exit_handoff:
+        (stage/'p2-cave-entry.txt').write_text('P2_BEASTS_ENTRY_1\n'+boundary+'\n2 1 20\n'+'1 0\n'*20)
+        (stage/'p2-cave-transition.txt').write_text('P2_CAVE_TRANSITION_1\nhole -180 0 -180 60\n')
+        (stage/'p2-beasts-exit-fixture.txt').write_text('P2_BEASTS_EXIT_1\n')
+        inputs+=['p2-cave-entry.txt','p2-cave-transition.txt','p2-beasts-exit-fixture.txt']
     if restored is not None:
         (stage/'restore-party.json').write_text(json.dumps(restored,indent=2)+'\n')
         (stage/'p2-cave-entry.txt').write_text(entry_text(restored,uuid.uuid4().hex))
@@ -166,6 +173,7 @@ def run(args):
                     source_p2_pom_fsm=False,passed=False,input_sha256=hashes)
     print(stage,flush=True)
     evidence.update(issue=294,boundary_token=boundary,boundary_policy='P2_BEASTS_BOUNDARY_1')
+    if exit_handoff:evidence.update(issue=302,exit_handoff_fixture=True)
     if restored is not None:
         evidence.update(issue=290,restore_fixture=True,scripted_native_throws=False,scripted_captain_pluck=False,remaining_plucks=None)
     env = dict(os.environ,SDL_AUDIODRIVER='dummy',PATH='C:/msys64/mingw64/bin'+os.pathsep+os.environ.get('PATH',''))
@@ -185,6 +193,14 @@ def run(args):
         else:
             evidence['observed'] = validate(text,readiness,require_witnesses=True,refund=refund)
             evidence['party_snapshot'] = party_snapshot(text,evidence['observed']['final_population'])
+        if exit_handoff:
+            from experimental.pikmin2_beasts_transfer import transfer_party
+            transfer=stage/'p2-cave-transfer.txt'
+            actual=transfer_party(transfer.read_text(),boundary)
+            if actual!=evidence['party_snapshot']:raise ValueError('Exit transfer differs from final snapshot')
+            for marker in ('P2_BEASTS_EXIT_REMOTE_REJECTED','P2_BEASTS_EXIT_TRANSFER_WRITTEN'):
+                if text.count(marker)!=1:raise ValueError('Missing hole guard evidence')
+            evidence['transfer_sha256']=sha(transfer)
         if sha(exe) != evidence['executable_sha256'] or any(sha(stage/name)!=digest for name,digest in hashes.items()):
             raise ValueError('Executable or staged input changed during run')
         for name in ('treasure-receipt.txt','p2-economy.txt','p2-cargo.txt'):
@@ -205,6 +221,7 @@ if __name__ == '__main__':
     parser.add_argument('--refund',action='store_true',help='Engineering one-Purple input followed by ten Reds; verify same-color slot refund')
     parser.add_argument('--restore-party',type=Path,help='Explicit party snapshot JSON; diagnostic restoration only, requires population20')
     parser.add_argument('--boundary-token',help='Persisted reference boundary token; defaults to a fresh diagnostic-only token')
+    parser.add_argument('--exit-handoff',action='store_true',help='Scripted native hole interaction after conversion; no floor3 launch')
     parser.add_argument('--timeout',type=int,default=240)
     parser.add_argument('--global-purple-count',type=int,required=True,help='Declared global-plus-cave Purple population at generation; not inferred from the twenty-Red fixture')
     raise SystemExit(0 if run(parser.parse_args()) else 1)
