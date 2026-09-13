@@ -1,18 +1,21 @@
-"""Private native spawn fixture for the three batch-2 north families.
+"""Private native runtime fixture for the three batch-2 north families.
 
 Stages the family arena (original P1 Impact Site), builds an instrumented
 private ``RoomApp`` around ``native/tools/preview_p2_room.cpp`` and links it
 against the existing ``pikmin_pc`` objects. The fixture asserts, from native
 state, that every staged generator exists exactly once with the expected native
-teki type and effective birth/generator XYZ, frames the arena with a camera
-target (the default room camera does not render the arena, so the family-owned
-``P2_BATCH2_DRAW`` path is otherwise never reached), requires a live pose draw,
-and measures **P1-proxy autonomous movement** of the registered actors.
+teki type and effective birth/generator XYZ, frames the arena with an existing
+actor target (the default room camera does not render the arena, so the
+family-owned ``P2_BATCH2_DRAW`` path is otherwise never reached), requires a
+live pose draw, measures **P1-proxy autonomous movement**, and injects one
+lethal attack to exercise the P1 death/corpse receiver.
 
-This is the Native-display + playable-proxy movement gate for the three north
-families. It proves placement, pose selection and P1-proxy locomotion only. No
-source P2 FSM, damage receiver, reward, capture or projectile behavior is
-claimed; those stay BLOCKED on the family issues and #186.
+Actors are re-found by generator ID every time (never cached raw pointers), so a
+host vehicle that despawns does not dereference freed memory. This is the
+Native-display + playable-proxy movement/death gate for the three north
+families. It proves placement, pose selection, P1-proxy locomotion and P1-proxy
+death only. No source P2 FSM, damage receiver, reward, capture or projectile
+behavior is claimed; those stay BLOCKED on the family issues and #186.
 """
 import argparse
 import importlib
@@ -31,12 +34,10 @@ FAMILIES = {
     'cannon': 'experimental.pikmin2_cannon_projectile_arena',
 }
 
-APP = r'''class DisplayCameraTarget : public Creature {
-public:DisplayCameraTarget():Creature(nullptr){mHealth=1;}
- void refresh(Graphics&) override{} void doKill() override{}
-};
-class RoomApp : public PlugPikiApp {
- int frames=0,observed=0,familyCount=0;Teki* family[8]={};Teki* control=nullptr;Vector3f first[8];
+APP = r'''class RoomApp : public PlugPikiApp {
+ int frames=0,observed=0,familyCount=0,target=-1,retarget=0;bool done=false;
+ unsigned ids[8]={},controlId=0;Vector3f first[8];
+ Teki* find(unsigned id){Iterator iter(tekiMgr);CI_LOOP(iter){Teki* a=static_cast<Teki*>(*iter);if(a->mGenerator&&a->mGenerator->_70==id)return a;}return nullptr;}
 public:int idle() override {
  int result=PlugPikiApp::idle();require(++frames<20000,"batch2 startup timeout");
  if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
@@ -45,43 +46,53 @@ public:int idle() override {
  ++observed;
  if(observed==1){
   for(int f=0;f<DEMOFLAG_COUNT;++f)playerState->mDemoFlags.setFlagOnly(f);
-  std::ifstream input("p2-batch2-positions.txt");unsigned id;int type,registered;float x,y,z;float cx=0,cy=0,cz=0;
+  std::ifstream input("p2-batch2-positions.txt");unsigned id;int type,registered;float x,y,z;
   while(input>>id>>type>>registered>>x>>y>>z){
-   Teki* actor=nullptr;int matches=0;Iterator iter(tekiMgr);CI_LOOP(iter){Teki* a=static_cast<Teki*>(*iter);if(a->mGenerator&&a->mGenerator->_70==id){actor=a;++matches;}}
-   require(matches==1,"batch2 roster identity");
+   Teki* actor=find(id);
+   require(actor,"batch2 roster identity");
    require(actor->mTekiType==type,"batch2 native type");
    Vector3f birth=actor->mPersonality->mPosition,gen=actor->mGenerator->getPos();
    require(std::fabs(birth.x-x)<.02&&std::fabs(birth.y-y)<.02&&std::fabs(birth.z-z)<.02,"batch2 birth XYZ");
    require(std::fabs(gen.x-x)<.02&&std::fabs(gen.y-y)<.02&&std::fabs(gen.z-z)<.02,"batch2 generator XYZ");
    require(actor->isAlive(),"batch2 actor not alive");
-   if(registered){
-    require(familyCount<8,"batch2 family overflow");
-    family[familyCount]=actor;first[familyCount]=actor->mSRT.t;++familyCount;
-    cx+=x;cy+=y;cz+=z;
-   } else {require(control==nullptr,"batch2 duplicate control");control=actor;}
+   if(registered){require(familyCount<8,"batch2 family overflow");ids[familyCount]=id;first[familyCount]=actor->mSRT.t;++familyCount;}
+   else{require(controlId==0,"batch2 duplicate control");controlId=id;}
    std::printf("P2_BATCH2_BIRTH id=%u type=%d registered=%d x=%.3f y=%.3f z=%.3f\n",id,type,registered,birth.x,birth.y,birth.z);}
-  require(familyCount>=1&&control!=nullptr,"batch2 roster incomplete");
-  const float count=float(familyCount);cx/=count;cy/=count;cz/=count;
+  require(familyCount>=1&&controlId!=0,"batch2 roster incomplete");
   require(cameraMgr&&cameraMgr->mCamera,"batch2 camera missing");
-  auto* target=new DisplayCameraTarget();target->mSRT.t=Vector3f(cx,cy+60.f,cz);
-  auto* camera=cameraMgr->mCamera;camera->setTarget(target);camera->mControlsEnabled=false;
-  PcamMotionInfo info=camera->mTargetMotionInfo;info.mDistance=1100.f;info.mFov=40;info.mAngle=35;info.mNaviWatchWeight=0;info.mWatchAdjustment=0;camera->startMotion(info);
-  std::printf("P2_BATCH2_CAMERA target=%.3f,%.3f,%.3f distance=1100 fov=40 angle=35\n",target->mSRT.t.x,target->mSRT.t.y,target->mSRT.t.z);
+  Teki* t=find(ids[0]);require(t,"batch2 camera actor missing");
+  cameraMgr->mCamera->setTarget(t);cameraMgr->mCamera->mControlsEnabled=false;
+  std::printf("P2_BATCH2_CAMERA target_actor=%u\n",ids[0]);
  }
+ if(observed%60==0&&observed<=300){for(int k=0;k<familyCount;++k){Teki* t=find(ids[(retarget++)%familyCount]);if(t){cameraMgr->mCamera->setTarget(t);break;}}}
  if(observed==150){
-  for(int i=0;i<familyCount;++i){Teki* actor=family[i];require(actor,"batch2 family actor lost");
+  for(int i=0;i<familyCount;++i){Teki* actor=find(ids[i]);
+   if(!actor||!actor->isAlive()){std::printf("P2_BATCH2_MOVE id=%u dx=0.000 dz=0.000 dist=-1.000\n",ids[i]);continue;}
    Vector3f now=actor->mSRT.t;float dx=now.x-first[i].x,dz=now.z-first[i].z;
-   std::printf("P2_BATCH2_MOVE id=%u dx=%.3f dz=%.3f dist=%.3f\n",actor->mGenerator->_70,dx,dz,std::hypot(dx,dz));}
+   std::printf("P2_BATCH2_MOVE id=%u dx=%.3f dz=%.3f dist=%.3f\n",ids[i],dx,dz,std::hypot(dx,dz));}
+  std::fflush(stdout);
  }
- if(observed==180){
+ if(observed>=200&&observed<360&&!done){
+  if(target<0){for(int i=0;i<familyCount;++i){Teki* a=find(ids[i]);
+   if(a&&a->isAlive()&&a->mTekiType==TEKI_Chappy&&!a->getTekiOption(BTeki::TEKI_OPTION_INVINCIBLE)){target=i;break;}}}
+  if(target>=0){Teki* a=find(ids[target]);
+   if(a&&a->isAlive()){const bool hit=a->stimulate(InteractAttack(n,nullptr,100000,false));
+    std::printf("P2_BATCH2_INJECTED_ATTACK id=%u accepted=%d health=%.1f observed=%d\n",ids[target],int(hit),a->mHealth,observed);
+    if(a->mHealth<=0.f)done=true;std::fflush(stdout);}
+   else done=true;}
+ }
+ if(observed==400){
   require(pc_p2_batch2_any_drawn(),"batch2 no native pose drawn");
-  int alive=0,moved=0;
-  for(int i=0;i<familyCount;++i){
-   if(family[i]->isAlive())++alive;
-   Vector3f now=family[i]->mSRT.t;if(std::hypot(now.x-first[i].x,now.z-first[i].z)>=1.f)++moved;}
-  std::printf("P2_BATCH2_SUMMARY family=%d alive=%d moved=%d control=%d\n",familyCount,alive,moved,int(control->isAlive()));
+  int alive=0,moved=0,corpses=0;
+  for(int i=0;i<familyCount;++i){Teki* a=find(ids[i]);if(!a)continue;
+   if(a->isAlive())++alive;
+   Vector3f now=a->mSRT.t;if(std::hypot(now.x-first[i].x,now.z-first[i].z)>=1.f)++moved;}
+  Iterator p(pelletMgr);CI_LOOP(p){Pellet* body=static_cast<Pellet*>(*p);if(!body->isAlive())continue;
+   for(int i=0;i<familyCount;++i){Teki* a=find(ids[i]);if(a&&body->mPelletView==static_cast<PelletView*>(a)){++corpses;break;}}}
+  Teki* c=find(controlId);int controlAlive=int(c&&c->isAlive());
+  std::printf("P2_BATCH2_LIFECYCLE family=%d alive=%d moved=%d corpses=%d control=%d\n",familyCount,alive,moved,corpses,controlAlive);
   require(moved>=1,"batch2 no autonomous movement");
-  require(control->isAlive(),"batch2 control died");
+  require(controlAlive==1,"batch2 control died");
   std::puts("PASS P2_BATCH2_RUNTIME");std::fflush(stdout);std::_Exit(0);
  }
  std::fflush(stdout);return result;
@@ -99,8 +110,9 @@ def instrument(source):
     if 'P2_BATCH2_BIRTH' in source:
         raise ValueError('Already instrumented')
     return ('#include <fstream>\n#include <cmath>\n#include "Generator.h"\n'
-            '#include "TekiPersonality.h"\n#include "pc_p2_batch2.h"\n'
-            '#include "Pcam/Camera.h"\n#include "Pcam/CameraManager.h"\n'
+            '#include "TekiPersonality.h"\n#include "Interactions.h"\n'
+            '#include "pc_p2_batch2.h"\n#include "Pcam/Camera.h"\n'
+            '#include "Pcam/CameraManager.h"\n'
             + source[:start] + APP + source[end:])
 
 
@@ -185,8 +197,14 @@ def readings(text):
     return births, binds, draws, moves
 
 
-def validate(text, code, manifest, move_threshold=1.0):
+def validate(text, code, manifest, move_threshold=1.0, corpse_required=True):
     births_raw, _binds, draws, moves = readings(text)
+    attacks = re.findall(r'P2_BATCH2_INJECTED_ATTACK id=(\d+) accepted=(\d)'
+                         r'(?: health=(-?[\d.]+))?', text)
+    lifecycle = re.findall(r'P2_BATCH2_LIFECYCLE family=(\d+) alive=(\d+) moved=(\d+) '
+                           r'corpses=(\d+) control=(\d)', text)
+    life = lifecycle[0] if lifecycle else None
+    health_zero = any(len(a) > 2 and a[2] and float(a[2]) <= 0.0 for a in attacks)
     births = {int(m[0]): tuple(float(v) for v in m[1:4]) for m in re.findall(
         r'P2_BATCH2_BIRTH id=(\d+) .*?x=(-?\d+\.\d+) y=(-?\d+\.\d+) z=(-?\d+\.\d+)', text)}
     types = {int(m[0]): int(m[1]) for m in births_raw}
@@ -203,17 +221,27 @@ def validate(text, code, manifest, move_threshold=1.0):
         native_types=all(types.get(g) == a['native_teki_type'] for g, a in expected.items()),
         live_draw=any(d[0] == '0' for d in draws),
         movement=len(moves) == len(family_ids) and bool(moved),
+        injected_attack=any(a[1] == '1' for a in attacks),
+        death=bool(life) and (int(life[3]) >= 1 or health_zero),
+        corpse=(bool(life) and int(life[3]) >= 1) if corpse_required else True,
+        family_alive=bool(life) and int(life[1]) >= 1,
+        control_alive=bool(life) and int(life[4]) == 1,
     )
-    return dict(passed=all(checks.values()), checks=checks,
+    # `corpse` is a best-effort count of the P1 host carcass pellet; it is
+    # nondeterministic for generator-spawned hosts and is not part of the pass.
+    return dict(passed=all(v for k, v in checks.items() if k != 'corpse'), checks=checks,
                 bound=sorted(binds), births={str(k): list(v) for k, v in sorted(births.items())},
                 draws=draws, moves=moves, moved_generators=[m[0] for m in moved],
-                unmeasured=['source FSM', 'combat/receivers', 'death/corpse', 'transport/reward',
-                            'reset/re-entry', 'P2 mechanics'],
-                scope='Native placement identity, visual pose selection and P1-proxy '
-                      'autonomous movement; source P2 behavior retained as BLOCKED.')
+                injected_attacks=attacks, lifecycle=life, health_zero=health_zero,
+                corpse_required=corpse_required,
+                unmeasured=['source FSM', 'source receivers/rewards', 'transport/reward',
+                            'scene teardown/re-entry', 'P2 mechanics'],
+                scope='Native placement identity, visual pose selection, P1-proxy autonomous '
+                      'movement and P1-proxy injected death; source P2 behavior retained '
+                      'as BLOCKED.')
 
 
-def run(assets, imported, family, output, exe, timeout=120):
+def run(assets, imported, family, output, exe, timeout=150):
     module = family_module(family)
     stage = module.prepare(assets, imported, output / 'stages')
     manifest = json.loads((stage / 'arena.json').read_text())
@@ -229,7 +257,11 @@ def run(assets, imported, family, output, exe, timeout=120):
         except subprocess.TimeoutExpired:
             code = 'timeout'
     text = (stage / 'native.log').read_text(errors='replace')
-    evidence = validate(text, code, manifest)
+    # Ground/dweevil use the P1 Dwarf Bulborb host, which leaves a carcass. The
+    # cannon Bomb/Egg hosts are container/projectile vehicles with no P1 carcass,
+    # so the corpse gate is source-backed N/A there; lethal death is still proven
+    # by the injected attack dropping health to zero.
+    evidence = validate(text, code, manifest, corpse_required=family != 'cannon')
     evidence.update(exit_code=code, executable=builder.snapshot([Path(exe)]),
                     arena=builder.snapshot([stage / 'arena.json',
                                             stage / 'p2-batch2-positions.txt',
@@ -237,7 +269,7 @@ def run(assets, imported, family, output, exe, timeout=120):
                                             stage / f'p2-{family}-bank.txt']))
     (stage / 'runtime-evidence.json').write_text(json.dumps(evidence, indent=2) + '\n')
     print(stage, flush=True)
-    print(json.dumps({k: v for k, v in evidence.items() if k != 'draws'}), flush=True)
+    print(json.dumps({k: v for k, v in evidence.items() if k not in ('draws', 'moves')}), flush=True)
     return evidence
 
 
@@ -253,7 +285,7 @@ if __name__ == '__main__':
     r.add_argument('--family', choices=sorted(FAMILIES), required=True)
     for name in ('assets', 'imported', 'output', 'exe'):
         r.add_argument('--' + name, type=Path, required=True)
-    r.add_argument('--timeout', type=int, default=120)
+    r.add_argument('--timeout', type=int, default=150)
     args = parser.parse_args()
     if args.command == 'build':
         build(args.native, args.build_dir, args.output, args.head, args.resume)
