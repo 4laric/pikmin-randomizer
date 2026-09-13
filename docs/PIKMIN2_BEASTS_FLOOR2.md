@@ -1,6 +1,6 @@
 # Hole of Beasts floor 2 staging
 
-This is a cargo-free, prepare-only profile, **not runtime-validated**. `experimental.pikmin2_beasts_floor2` emits `readiness.json` with `native_ready=false`; it has no launch option.
+This is a cargo-free engineering profile. `experimental.pikmin2_beasts_floor2` remains prepare-only and emits `readiness.json` with `native_ready=false`; preparation is not runtime certification. The dedicated [#263 runtime fixture](PIKMIN2_BEASTS_FLOOR2_RUNTIME.md) now provides separate executable/input-hash-bound evidence for native Violet conversion and plucking.
 
 US source `user/Mukki/mapunits/caveinfo/forest_1.txt`, definition 1, specifies two BlackPom (Violet Candypops), six HikariKinoko and two KareOoinu_s. The cap list specifies two Egg. There are no treasures, gates, geysers or clogged holes. Source dependency closure also needs the Pom parent manager and TamagoMushi egg helper. Eggs, plants, egg drops/helpers and descent remain unsupported here.
 
@@ -12,7 +12,7 @@ Native support now accepts an explicit `p2-cargo-free.txt` containing only `P2_C
 
 `pc_p2_preview_ready()` retains its old treasure-specific meaning to protect existing callers that immediately dereference the target. New `pc_p2_preview_cargo_free_ready()` becomes true only after successful cargo-free setup. The current cargo-based cave lifecycle/fixture is not automatically enabled. All treasure dereferences are confined to validated treasure branches or guarded by a nonnull actor; null draw/delivery calls return false. The opt-in flag and setup completion reset on every preview setup.
 
-A compiled policy regression exercises three valid headers, five malformed headers and all eight mode/config/actor combinations. Five Python tests including that native policy test pass. Full production compilation and native room/Purple conversion acceptance remain separate; `native_ready=false` and the no-launch interface remain until that evidence exists. No shared native build was performed in this batch.
+A compiled policy regression exercises three valid headers, five malformed headers and all eight mode/config/actor combinations. The dedicated runtime fixture now verifies room/Purple conversion in a private native build. Ordinary preparation still emits `native_ready=false`; use the separate acceptance record for the exact executable and inputs tested. No shared native build is required by the preparation CLI.
 
 CLI: `py -3.12 -m experimental.pikmin2_beasts_floor2 --assets <P1-assets> --units <selected-unit-import> --catalog <catalog.json> --purple <Purple-bank> --pod <Pod-import> --output <private-output>`.
 

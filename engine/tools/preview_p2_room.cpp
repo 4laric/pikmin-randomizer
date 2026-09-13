@@ -144,6 +144,7 @@ static void capture(const char* path="p2-room.ppm") {
     for(int y=h-1;y>=0;--y)std::fwrite(pixels.data()+size_t(y)*w*3,1,size_t(w)*3,f);std::fclose(f);
 }
 #include "preview_p2_purple.inc"
+#include "preview_p2_beasts_floor2.inc"
 #include "preview_p2_cargo.inc"
 #include "preview_p2_cave.inc"
 #include "preview_p2_snow.inc"
@@ -210,6 +211,12 @@ public:
         int result=PlugPikiApp::idle();require(++frames<10000,"timeout");
         observeCorpse();
         if(gameflow.mMoviePlayer && gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
+        if(beastsFloor2Enabled && pc_p2_preview_cargo_free_ready()) {
+            if(!naviMgr || !pikiMgr || !tekiMgr || !bossMgr || !itemMgr || !pelletMgr)return result;
+            Navi* n=naviMgr->getNavi();
+            if(n && n->getCurrState() && !gameflow.mPauseAll && !gameflow.mIsUIOverlayActive)beastsFloor2Fixture(n);
+            return result;
+        }
         if(!pc_p2_preview_ready() || !naviMgr || !pikiMgr || !tekiMgr)return result;
         Navi* n=naviMgr->getNavi();if(!n || !n->getCurrState() || (!pc_p2_purples_enabled() && phase<=1 && n->getCurrState()->getID()!=NAVISTATE_Walk) || gameflow.mPauseAll || gameflow.mIsUIOverlayActive)return result;
         static bool digitsVerified=false;
@@ -362,6 +369,11 @@ public:
 int main(int argc,char** argv) {
     // Automated fixture only: keep the real mixer/timing, never open a speaker device.
     SDL_setenv("SDL_AUDIODRIVER","dummy",1);
+    if(FILE* marker=std::fopen("p2-beasts-floor2-fixture.txt","r")) {
+        char header[64],extra;
+        require(std::fscanf(marker,"%63s",header)==1 && std::string(header)=="P2_BEASTS_FLOOR2_FIXTURE_1" && std::fscanf(marker," %c",&extra)==EOF,"invalid Beasts fixture marker");
+        beastsFloor2Enabled=true;std::fclose(marker);
+    }
     if(FILE* marker=std::fopen("p2-corpse-lifecycle.txt","r")) {
         corpseLifecycle=true;corpseApproach=std::fgetc(marker)=='1';std::fclose(marker);
     }

@@ -11,6 +11,7 @@ class PreviewPolicyTests(unittest.TestCase):
         compiler=Path('C:/msys64/mingw64/bin/g++.exe')
         if not compiler.is_file():self.skipTest('MinGW compiler unavailable')
         root=Path(__file__).resolve().parents[1]
+        native=Path(os.environ.get('PIKMIN_NATIVE_SOURCE',root/'engine'))
         source=r'''
 #include "pc_p2_preview_policy.h"
 #include <sstream>
@@ -30,7 +31,7 @@ int main() {
         with tempfile.TemporaryDirectory(prefix='p2-policy-') as tmp:
             path=Path(tmp);cpp=path/'policy.cpp';exe=path/'policy.exe';cpp.write_text(source)
             env=dict(os.environ,PATH=str(compiler.parent)+os.pathsep+os.environ.get('PATH',''))
-            subprocess.run([str(compiler),'-std=c++17','-I',str(root/'native/pc_port'),str(cpp),'-o',str(exe)],check=True,capture_output=True,env=env)
+            subprocess.run([str(compiler),'-std=c++17','-I',str(native/'pc_port'),str(cpp),'-o',str(exe)],check=True,capture_output=True,env=env)
             subprocess.run([str(exe)],check=True,capture_output=True,env=env)
 
 

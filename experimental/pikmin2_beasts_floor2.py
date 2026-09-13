@@ -1,4 +1,4 @@
-"""Cargo-free source staging only: current native preview cannot launch this profile."""
+"""Cargo-free source staging; runtime acceptance is recorded separately by #263."""
 import argparse
 import hashlib
 import json
@@ -142,8 +142,8 @@ def prepare(assets, units, catalog_path, purple, output, *, pod=None):
         flowers=flowers, engineering_anchors=positions, generator_audit=audit,
         unsupported=['Egg x2 and its TamagoMushi helper/drops', 'HikariKinoko x6', 'KareOoinu_s x2', 'Descent and floor lifecycle', 'Source BlackPom global Purple birth suppression'],
         pod_enabled=pod_model is not None, pod_required_for_purple=True,
-        native_blocker='Requires native P2_CARGO_FREE_1 support and dedicated runtime validation; old native aborts for missing treasure. No dummy cargo permitted.',
-        limitations=['One selected cent2 room with exits capped; not retail room generation.', 'Violet actors use existing P1 Pom conversion proxy, not source P2 Pom FSM/models.', 'No native launch or conversion acceptance in this batch.'],
+        native_blocker='Preparation is not runtime certification. Use a P2_CARGO_FREE_1-capable executable and the dedicated floor2 runtime validator; no dummy cargo permitted.',
+        limitations=['One selected cent2 room with exits capped; not retail room generation.', 'Violet actors use existing P1 Pom conversion proxy, not source P2 Pom FSM/models.', 'Native conversion acceptance is separate, executable/input-hash-bound evidence.'],
         override_sha256={k:sha(v) for k,v in sorted(overrides.items())}, purple_config_sha256=sha((run/'p2-purple.txt').read_bytes()),
         cargo_free_config_sha256=sha(CARGO_FREE_CONFIG))
     (run/'readiness.json').write_text(json.dumps(report, indent=2)+'\n')
