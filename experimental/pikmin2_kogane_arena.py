@@ -67,10 +67,9 @@ def roster(assets):
                                expected_xyz=list(validate_position(row, xyz)), offset=[0, 0, 0],
                                source_yaw=SOURCE_YAW, source_yaw_applied=False))
     # Starting squad (#186 follow-up, batch 4): append the audited template's
-    # red-Pikmin placements, repositioned onto the probed arena row (z=1850)
-    # west of the beetles: the template's own coordinates sit next to original
-    # Impact Site predators, and the control Chappy patrols east. Squad center
-    # (-450, 1850) is ~300 units from the nearest beetle and ~700 from control.
+    # red-Pikmin placements, repositioned onto the probed arena row: both ranks
+    # sit on the line between the probed beetle/control spawns (the template's
+    # own coordinates border original Impact Site predators and water).
     squad = 0
     for record in candidates:
         if record[72:76] != b'ikip':
@@ -79,7 +78,7 @@ def roster(assets):
         used.add(identity)
         row = bytearray(record)
         struct.pack_into('<I', row, 8, identity)
-        xyz = (-450. + (squad % 5) * 12., 30., 1850. + (squad // 5) * 12.)
+        xyz = (-146. + (squad % 10) * 10., 30., 1850. - (squad // 10) * 8.)
         write_position(row, xyz)
         entries.append(bytes(row))
         squad += 1
