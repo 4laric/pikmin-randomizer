@@ -2,7 +2,7 @@
 
 One working session per batch, three families per batch. Each session drives its three families through the import-pipeline steps ([PIKMIN2_ENEMY_IMPORT_PIPELINE.md](PIKMIN2_ENEMY_IMPORT_PIPELINE.md)) using the ownership rules of the 2026-09-13 revision (#186): family owners own extraction, conversion, native modules, narrow additive registration hooks, private builds and runtime evidence.
 
-Live tracking: [PIKMIN2_FAMILY_STATUS.md](PIKMIN2_FAMILY_STATUS.md).
+Live tracking: [PIKMIN2_FAMILY_STATUS.md](PIKMIN2_FAMILY_STATUS.md). Assets and engine runbook for every session: **[PIKMIN2_BATCH_RESOURCES.md](PIKMIN2_BATCH_RESOURCES.md)** — read it before starting (disc paths, P1 assets path, build commands, arena/preview launch, serialized-resource rules).
 
 ## Shared rules for every batch session
 
