@@ -17,7 +17,7 @@ lists the required roster, placement, asset-install, reward and persistence brid
 
 ## Historical ownership and handoff snapshot
 
-Historical tracking: this table. Batch assignments and per-session mandates: [PIKMIN2_FAMILY_BATCHES.md](PIKMIN2_FAMILY_BATCHES.md).
+Historical tracking: this table. The formerly linked PIKMIN2_FAMILY_BATCHES.md is absent from this snapshot; use current family issues and the audit above.
 
 Coordination: [#186](https://github.com/4laric/pikmin-randomizer/issues/186). Use the audit above to reconcile this historical view with the current draft. Evidence levels are defined in [PIKMIN2_ENEMY_IMPORT_PIPELINE.md](PIKMIN2_ENEMY_IMPORT_PIPELINE.md). Under the 2026-09-13 revision, family owners own extraction, conversion, native modules, narrow additive registration hooks, private builds and runtime evidence; #186 reviews shared semantics.
 
