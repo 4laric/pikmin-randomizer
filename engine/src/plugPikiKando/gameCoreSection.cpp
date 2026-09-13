@@ -11,6 +11,7 @@
 #include "pc_p2_preview.h"
 #include "pc_p2_enemy.h"
 #include "pc_p2_cave.h"
+#include "pc_p2_kurage_receiver.h"
 #include "pc_p2_breadbug_visual.h"
 #include "pc_p2_giant_breadbug_visual.h"
 #include "pc_p2_bulblax_visual.h"
@@ -849,6 +850,8 @@ void GameCoreSection::exitStage()
 	// Stale focus would keep depth of field running on the file-select and
 	// title screens: those frames have no HUD ortho, so the pass hits the UI.
 	pc_gfx_set_dof_focus(0.0f);
+	// Release while all stage creatures and managers are still valid.
+	pc_p2_kurage_receiver_reset();
 #endif
 	demoEventMgr = nullptr;
 	naviMgr      = nullptr;
