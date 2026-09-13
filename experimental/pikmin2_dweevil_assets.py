@@ -460,9 +460,11 @@ def extract(iso, source, output, pose_limit=6):
             report['hazards'][species] = classification
 
         report['limitations'] = list(LIMITATIONS)
-        report['extract_seconds'] = round(time.perf_counter() - started, 3)
+        manifest = {k: v for k, v in report.items()
+                    if k != 'extract_seconds'}
         (output / 'dweevils.json').write_bytes(
-            (json.dumps(report, sort_keys=True, indent=2) + '\n').encode())
+            (json.dumps(manifest, sort_keys=True, indent=2) + '\n').encode())
+        report['extract_seconds'] = round(time.perf_counter() - started, 3)
         (output / 'p2-dweevils.txt').write_text(TEXT)
         return report
 
