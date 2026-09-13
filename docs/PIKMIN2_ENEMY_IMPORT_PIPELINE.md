@@ -160,3 +160,7 @@ Shared engine: [opt-in skeletal playback](PIKMIN2_SKELETAL_PLAYBACK.md) now supp
 Shared weighted deformation: [weighted skinning contract](PIKMIN2_WEIGHTED_SKINNING.md).
 Groink source geometry is validated offline; each family still owns renderer
 adoption, current joint callbacks and natural gameplay/visual acceptance.
+
+[Joint-local corrections](PIKMIN2_JOINT_CORRECTIONS.md) provide a shared per-sample
+transform stage for both weighted geometry and attachments. It is available for
+family adoption; it does not itself implement source aiming callbacks.

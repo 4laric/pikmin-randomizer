@@ -87,6 +87,16 @@ inline bool checked(const Bank& bank){
             if(!p2pose::valid(t.translation)||!normalize(q)||!p2pose::valid(s)||s.x<1e-6f||s.y<1e-6f||s.z<1e-6f||s.x>1000||s.y>1000||s.z>1000)return false;}}
     return true;
 }
+// Per-sample post-local transform: sampledLocal * delta, then parent * local.
+// Descendants inherit it; siblings do not. No persistent mutation of the bank.
+struct JointCorrection { int joint=-1;Affine delta; };
+inline bool validCorrection(const Affine& a){
+    if(!valid(a))return false;
+    const double det=double(a.m[0][0])*(double(a.m[1][1])*a.m[2][2]-double(a.m[1][2])*a.m[2][1])
+        -double(a.m[0][1])*(double(a.m[1][0])*a.m[2][2]-double(a.m[1][2])*a.m[2][0])
+        +double(a.m[0][2])*(double(a.m[1][0])*a.m[2][1]-double(a.m[1][1])*a.m[2][0]);
+    return std::isfinite(det)&&std::fabs(det)>=1e-12;
+}
 class Instance {
     std::shared_ptr<const Bank> bank_;
     std::array<Affine,MaxJoints> world_{};
@@ -98,7 +108,7 @@ public:
     Instance()=default;Instance(const Instance&)=delete;Instance& operator=(const Instance&)=delete;
     void reset(){token_=0;bank_.reset();sampled_=ready_=paused_=dead_=false;clip_=-1;}
     Token bind(std::shared_ptr<const Bank> bank){reset();if(!bank||!checked(*bank))return 0;bank_=std::move(bank);token_=fresh();return token_;}
-    bool sample(Token token,int clip,float frame,const Affine& owner,uint64_t tick,bool paused=false,bool dead=false){
+    bool sample(Token token,int clip,float frame,const Affine& owner,uint64_t tick,bool paused=false,bool dead=false,const JointCorrection* corrections=nullptr,size_t correctionCount=0){
         if(!token||token!=token_)return false;
         if(dead){dead_=true;ready_=false;return true;}
         if(dead_ || (sampled_&&tick<tick_)){ready_=false;return false;}
@@ -106,10 +116,18 @@ public:
         if(clip<0||size_t(clip)>=bank_->clips.size()||!std::isfinite(frame)||!valid(owner)){ready_=false;return false;}
         const auto& c=bank_->clips[clip];p2pose::Interval span;
         if(frame<0||frame>c.duration-1||!p2pose::bracket(c.frames,frame,span)){ready_=false;return false;}
+        if(correctionCount>bank_->joints.size() || (correctionCount&&!corrections)){ready_=false;return false;}
+        std::array<int,MaxJoints> correctionIndex;correctionIndex.fill(-1);
+        for(size_t i=0;i<correctionCount;++i){const auto& v=corrections[i];
+            if(v.joint<0||size_t(v.joint)>=bank_->joints.size()||correctionIndex[v.joint]>=0||!validCorrection(v.delta)){ready_=false;return false;}
+            correctionIndex[v.joint]=int(i);
+        }
         std::array<Affine,MaxJoints> next;
         for(size_t j=0;j<bank_->joints.size();++j){const auto& a=c.samples[span.left*bank_->joints.size()+j];const auto& b=c.samples[span.right*bank_->joints.size()+j];
             TRS blended{p2pose::mix(a.translation,b.translation,span.weight),slerp(a.rotation,b.rotation,span.weight),p2pose::mix(a.scale,b.scale,span.weight)};
-            const int parent=bank_->joints[j].parent;next[j]=compose(parent<0?owner:next[parent],matrix(blended));
+            Affine local=matrix(blended);
+            if(correctionIndex[j]>=0)local=compose(local,corrections[correctionIndex[j]].delta);
+            const int parent=bank_->joints[j].parent;next[j]=compose(parent<0?owner:next[parent],local);
             if(!valid(next[j])){ready_=false;return false;}}
         world_=next;tick_=tick;sampled_=ready_=true;paused_=false;clip_=clip;frame_=frame;return true;
     }
