@@ -52,9 +52,47 @@ def generator(assets):
     return b'1.0v'+struct.pack('>4fI',-85,0,0,45,len(entries))+b''.join(entries)
 
 
+def _pikmin_template(assets):
+    blob=generator(assets)
+    starts=[i for i in range(len(blob)) if blob.startswith(b'    0.0v',i)]
+    candidates=[blob[a:(starts[n+1] if n+1<len(starts) else len(blob))] for n,a in enumerate(starts)]
+    return next((r for r in candidates if r[72:76]==b'ikip'),None)
+
+
+def ensure_pikmin_squad(assets,data):
+    """Append a red-Pikmin starting squad when a private stage has none.
+
+    A fixture that boots with zero Pikmin immediately enters the engine's
+    extinction flow (GAMEEND_PikminExtinction / DEMOID_Extinction), which the
+    unattended test fixtures never clear. Every stage handed to overlay() gets a
+    20-red squad unless it already carries an ``ikip`` generator record.
+    """
+    if data[:4]!=b'1.0v' or len(data)<24 or b'ikip' in data:return data
+    template=_pikmin_template(assets)
+    if template is None:return data
+    starts=[m.start() for m in re.finditer(b'    0.0v',data)]
+    if not starts or starts[0]!=24:return data
+    entries=[data[s:(starts[i+1] if i+1<len(starts) else len(data))] for i,s in enumerate(starts)]
+    used={struct.unpack_from('<I',r,8)[0] for r in entries}
+    extra=[]
+    for index in range(20):
+        identity=(max(used)+1) if used else 1
+        used.add(identity)
+        row=bytearray(template)
+        struct.pack_into('<I',row,8,identity)
+        row[16:48]=b'fixture starting squad'.ljust(32,b'\0')
+        x=-140.0+(index%10)*8.0;z=1820.0-(index//10)*8.0
+        struct.pack_into('>6f',row,48,x,30.0,z,0.0,0.0,0.0)
+        extra.append(bytes(row))
+    return data[:20]+struct.pack('>I',len(entries)+len(extra))+b''.join(entries)+b''.join(extra)
+
+
 def overlay(source,dest,overrides):
     """Only ancestor directories of replacements are writable; shared files never edited."""
     import _winapi
+    key='dataDir/stages/chal0/default.gen'
+    if key in overrides and (source/'dataDir/stages').is_dir():
+        overrides=dict(overrides);overrides[key]=ensure_pikmin_squad(source,overrides[key])
     dest.mkdir(parents=True,exist_ok=False)
     names={p.name for p in source.iterdir()}|{k.split('/')[0] for k in overrides}
     for name in sorted(names):
