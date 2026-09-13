@@ -1,3 +1,6 @@
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_demon_drop_state.h"
+#endif
 #include "pc_p2_purple.h"
 #include "NaviState.h"
 #include "pc_randomizer.h"
@@ -75,9 +78,20 @@ NaviState* NaviStateMachine::getNaviState(Navi* navi)
 /**
  * @todo: Documentation
  */
+#if defined(PIKI_PC_PORT)
+void NaviStateMachine::transit(Navi* navi, int next)
+{
+	pc_demon_drop_before_transition(navi, next);
+	StateMachine<Navi>::transit(navi, next);
+}
+#endif
+
 void NaviStateMachine::init(Navi* navi)
 {
 	create(NAVISTATE_Count);
+#if defined(PIKI_PC_PORT)
+	registerState(pc_demon_drop_state_create());
+#endif
 	registerState(new NaviWalkState());
 	registerState(new NaviStuckState());
 	registerState(new NaviFlickState());

@@ -161,6 +161,7 @@ if (NOT WIN32)
 endif()
 
 set(PC_PORT_SOURCES
+    pc_port/pc_p2_demon_drop_state.cpp
     pc_port/pc_bbft.cpp
     pc_port/pc_p2_preview.cpp
     pc_port/pc_p2_economy.cpp
@@ -172,10 +173,14 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_breadbug_visual.cpp
     pc_port/pc_p2_giant_breadbug_visual.cpp
     pc_port/pc_p2_bulblax_visual.cpp
+    pc_port/pc_p2_queen.cpp
+    pc_port/pc_p2_king.cpp
     pc_port/pc_p2_breadbug_actor.cpp
+    pc_port/pc_p2_giant_breadbug_actor.cpp
     pc_port/pc_p2_frog.cpp
     pc_port/pc_p2_kogane.cpp
     pc_port/pc_p2_mamuta.cpp
+    pc_port/pc_p2_mamuta_rules.cpp
     pc_port/pc_p2_tank.cpp
     pc_port/pc_p2_qurione.cpp
     pc_port/pc_p2_kurage_receiver.cpp

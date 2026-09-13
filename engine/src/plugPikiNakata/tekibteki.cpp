@@ -7,6 +7,7 @@
 #include "pc_p2_enemy.h"
 #include "pc_p2_sheargrub.h"
 #include "pc_p2_breadbug_actor.h"
+#include "pc_p2_giant_breadbug_actor.h"
 #endif
 #include "pc_randomizer.h"
 #include "FlowController.h"
@@ -445,6 +446,9 @@ void BTeki::startAI(int)
 void BTeki::update()
 {
 	Creature::update();
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	pc_p2_kogane_update(this);
+#endif
 	if (mDeadState == 0) {
 		updateTimers();
 		if (mHealth > 0.0f) {
@@ -1721,6 +1725,11 @@ int BTeki::getFlickDamageCount(int pikiCount)
  */
 void BTeki::eventPerformed(immut TekiEvent& event)
 {
+#ifdef PIKI_PC_PORT
+	if (pc_p2_giant_breadbug_actor_press(this, event)) {
+		return;
+	}
+#endif
 	TekiStrategy* tekiEvent = getStrategy();
 	tekiEvent->eventPerformed(event);
 }
@@ -2021,7 +2030,7 @@ void BTeki::drawTekiShape(Graphics& gfx)
 		}
 
 #ifdef PIKI_PC_PORT
-        if (!pc_p2_kogane_draw(this, gfx, onCamMtx, false) && !pc_p2_mamuta_draw(this, gfx, onCamMtx) && !pc_p2_frog_draw(this, gfx, onCamMtx) && !pc_p2_tank_draw(this, gfx, onCamMtx) && !pc_p2_qurione_draw(this, gfx, onCamMtx, false) && !pc_p2_breadbug_actor_draw(this, gfx, onCamMtx) && !pc_p2_kochappy_draw(this, gfx, onCamMtx) && !pc_p2_sheargrub_draw(this, gfx, onCamMtx) && !pc_p2_snow_draw(this, gfx, onCamMtx))
+        if (!pc_p2_kogane_draw(this, gfx, onCamMtx, false) && !pc_p2_mamuta_draw(this, gfx, onCamMtx) && !pc_p2_frog_draw(this, gfx, onCamMtx) && !pc_p2_tank_draw(this, gfx, onCamMtx) && !pc_p2_qurione_draw(this, gfx, onCamMtx, false) && !pc_p2_giant_breadbug_actor_draw(this, gfx, onCamMtx) && !pc_p2_breadbug_actor_draw(this, gfx, onCamMtx) && !pc_p2_kochappy_draw(this, gfx, onCamMtx) && !pc_p2_sheargrub_draw(this, gfx, onCamMtx) && !pc_p2_snow_draw(this, gfx, onCamMtx))
 #endif
 		mTekiShape->mShape->drawshape(gfx, *gfx.mCamera, &mAnimatedMaterials);
 		if (lightType == 1) {
