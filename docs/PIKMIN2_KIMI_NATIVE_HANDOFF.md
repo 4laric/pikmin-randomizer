@@ -1,5 +1,10 @@
 # Kimi native bindings handoff
 
+Ownership update, 2026-09-13: [the current workflow](PIKMIN2_WORKFLOW.md) lets
+family owners continue native mechanics in private worktrees. The remaining
+capability gaps below describe what these fixed binaries support; they are not
+a requirement to wait for root to implement the next family step.
+
 Integration commit f9f0839, native 7faa64475176658af85e2f558858c6d660cd4d20. Shared full build passed and no-work dry run confirmed freshness. Ten focused tests and nine parser subtests pass. Native runtime checks are being recorded separately below; a build alone is not visual acceptance.
 
 Fixed private executable and resolved DLL closure:
@@ -16,7 +21,7 @@ From the fresh arena directory, run the fixed executable with `--experimental-pi
 
 This unblocks binding/visual/arena tests only. Beetles still run P1 placement-vehicle AI; source FSM, drops, gas and escape are not implemented. Giant is a noninteractive display, not a boss actor. Mamuta retains P1 behavior, not P2 sprout conversion/cap semantics. Shijimi followers are not created; safe owner lifecycle remains required before enabling them. Report those as blocked, not failed or passed.
 
-Root owns remaining native mechanics. Kimi can validate installed bytes, profile refusal, identity/control, visual/counter behavior and supported reset paths once the corresponding fixed runtime gate is recorded. No complete-family closure is implied.
+Family owners may implement remaining native mechanics and validate them in new private builds. The fixed packages here support installed bytes, profile refusal, identity/control, visual/counter behavior and the recorded reset paths. No complete-family closure is implied.
 
 ## Validated local launchers
 

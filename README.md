@@ -1,4 +1,4 @@
-Pikmin 2 development: [enemy import pipeline and parallel lane handoff](docs/PIKMIN2_ENEMY_IMPORT_PIPELINE.md). This experimental track remains outside the first Pikipelago release.
+Pikmin 2 development: [current parallel workflow](docs/PIKMIN2_WORKFLOW.md) and [enemy import pipeline](docs/PIKMIN2_ENEMY_IMPORT_PIPELINE.md). This experimental track remains outside the first Pikipelago release.
 
 ## Emperor Bulblax finale (#86)
 

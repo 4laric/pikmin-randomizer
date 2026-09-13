@@ -1,5 +1,8 @@
 # Parallel Emergence Cave implementation
 
+Historical starting allocation below. [The current workflow](PIKMIN2_WORKFLOW.md)
+supersedes its ownership/review restrictions; current issue claims identify active workers.
+
 Integration owner: Codex using shared GitHub account 4laric, [#114](https://github.com/4laric/pikmin-randomizer/issues/114). All work remains experimental and outside v0.1. Starting point: root `530fd17`, native `a78ea6d6`.
 
 | Track | Issue | Branch in both repositories | Ownership |
@@ -9,7 +12,7 @@ Integration owner: Codex using shared GitHub account 4laric, [#114](https://gith
 | Content fidelity | [#110](https://github.com/4laric/pikmin-randomizer/issues/110) | `codex/p2-content` | Source roster, stable placement manifest, all three treasure assets and content tests |
 | Integration | [#114](https://github.com/4laric/pikmin-randomizer/issues/114) | `codex/pikmin2-room-preview` | Shared interfaces, conflict resolution, native snapshot export, combined validation and player bundle |
 
-Each worker has a root worktree at `output/tracks/<track>` with its own nested native worktree. Builds, extracted assets and fixtures stay inside that worktree. The maintained native build and existing player executable are not worker outputs. Native commits stay local; only the integration owner exports tracked source to `engine/` and pushes the maintained root branch. Workers do not update the snapshot independently.
+Each worker has a root worktree with its own native worktree. Builds, extracted assets and fixtures stay private. The maintained native build and existing player executable are not worker outputs. Native commits stay local; workers may export source to their own root branch using explicit paths. The integration owner updates the maintained branch and combined build.
 
 ## Shared interfaces
 

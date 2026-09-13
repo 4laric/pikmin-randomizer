@@ -1,5 +1,9 @@
 # Enemy family import pipeline
 
+[Current ownership and review policy](PIKMIN2_WORKFLOW.md): family owners deliver
+end-to-end native candidates. This supersedes the early extraction-only lane
+assignments and blanket integration-owned hooks below; evidence levels still apply.
+
 Owner and integration queue: [#186](https://github.com/4laric/pikmin-randomizer/issues/186). This is the repeatable workflow established by Snow/Dwarf Red Bulborbs, Sheargrubs and small Breadbug. It produces imported visuals and explicitly scoped gameplay slices. It is not a universal P2 AI translator or a one-command enemy port.
 
 ## Evidence levels
@@ -28,7 +32,7 @@ Use new family-prefixed modules and tests. Separate extraction/profile, installa
 - `experimental/pikmin2_breadbug_cargo_install.py`: exact-byte, source-bound installation.
 - `experimental/pikmin2_kochappy_arena.py`: profile separate from original P1 stage placement.
 
-These are reference implementations, not permission to edit a neighbor's modules. If a common converter is missing a capability, submit a minimal reproducer and requested interface to the integration lead; continue independent source/profile work.
+Coordinate edits to a neighbor's modules with that owner. If a common converter lacks a capability, supply a minimal reproducer and implement an opt-in fix in your private branch or route it to the toolchain owner. Preserve defaults and obtain focused review before shared integration; root need not implement the fix.
 
 ## 2. Establish the source contract
 
@@ -54,13 +58,13 @@ Follow [the arena contract](PIKMIN2_ENEMY_ARENA.md): original map/collision/rout
 
 Separate model-space attachments, world position and collision ground height. Verify spawn identity from native logs before interpreting combat results.
 
-## 5. Integrate native hooks serially
+## 5. Deliver complete native candidates; serialize maintained merges
 
-Family workers supply new modules and a precise hook request. The integration lead owns CMake, shared setup/update/draw/reset, actor registries, converter changes, save/reward code and exports. Bind opt-in family profiles without changing ordinary control actors. Clear registrations and references on death/reset; never assume a pointer cannot be reused.
+Family workers supply new modules and their complete additive CMake/setup/update/draw/reset hooks in private worktrees. Claim new IDs and coordinate collisions. Changes to shared semantics, such as save/reward protocols, converter defaults, captain state or actor lifetime, receive focused review from the affected engine/toolchain owner before integration. The integration lead owns the maintained merge and combined build. Bind opt-in family profiles without changing ordinary control actors. Clear registrations and references on death/reset; never assume a pointer cannot be reused.
 
 Visual timing should follow the authoritative native animation counter where mapped. Document fallback and pause/loop behavior. Do not implement stun by skipping all AI updates if that also skips damage/death. A sampled model bank does not supply P2 collision, FSM or attachment semantics automatically.
 
-Only one shared native build runs at a time. After all edits, run the full build and a no-work dry run. Workers must snapshot copied inputs before further shared edits; never run an executable rejected by freshness checks. Record native commit AND dirty state, executable SHA, asset/config hashes, exact command and run directory.
+Only one writer/build uses the maintained native build directory at a time. Private worker builds may run concurrently within host resources. Build the complete candidate and snapshot inputs before later edits; never run an executable rejected by freshness checks. Record native commit AND dirty state, executable SHA, asset/config hashes, exact command and run directory. Repeat combined checks when merges change inputs or introduce new interactions; reuse unchanged worker evidence.
 
 On this Windows checkout:
 
@@ -70,7 +74,7 @@ cmake --build native/build-randomizer --target pikmin_pc -j 6
 cmake --build native/build-randomizer --target pikmin_pc -- -n
 ```
 
-Integration lead commits native locally, runs `py -3.12 scripts/export_native_source.py`, reviews the export and pushes root source. Never push native origin. Keep fixed QA packages and player sessions unchanged.
+Workers may export private native source into their own root branch using explicit source/destination paths. Integration commits native locally, reviews the combined export and pushes the maintained root source. Never push native origin. Keep fixed QA packages and player sessions unchanged.
 
 ## 6. Validate behavior, visuals and lifecycle separately
 
@@ -91,13 +95,13 @@ Measure frame/update timing, memory and bank size with a mixed roster before sca
 Every worker delivers:
 
 1. Child/parent issue, owner, branch or isolated patch, exact base and ordered commits (if any).
-2. Owned file list and requested shared hooks; no surprise central edits.
+2. Owned file list and included shared hook hunks; identify semantic changes needing specialist review.
 3. Source IDs/revision/resource hashes, extraction command, real conversion result and resource budget.
 4. Tests and build commands/results; fixed runtime executable/config hashes where applicable.
 5. Gate table with evidence paths and explicit proxy/injection/visual limitations.
 6. Remaining blockers and next bounded slice.
 
-Root reviews and integrates completed slices without waiting for unrelated lanes. Issue progress records the integrated commit; broad parent checklists retain unfinished fidelity requirements.
+Root reviews and integrates completed milestones without waiting for unrelated lanes. Owners may continue independent steps within their claimed scope while a frozen candidate awaits review. Issue progress records the integrated commit; broad parent checklists retain unfinished fidelity requirements.
 
 ## Current parallel queue
 
@@ -120,7 +124,7 @@ level or a requirement to finish every easier enemy before parallel research.
 | Integration lead | Shared review/build/export; cave diagnostics #193 | #186 | #193 |
 | Kimi | Independent cave return acceptance; later immutable family bundles | #184 | #184 |
 
-These three new lanes initially own extraction/profile work only. Their first handoff determines whether the next step is a compatible P1 proxy or a new native mechanic. No shared native ID ranges or hooks are allocated by this table.
+This historical allocation began with extraction/profile work. Under the current workflow, owners may continue through native mechanics and private runtime evidence. No shared native ID ranges are allocated by this table; record reservations in the coordination issue.
 
 Remaining families are already tracked: Bulborbs #120, ground invertebrates #165, flying #166, aquatic #167, scavengers #168, projectiles #169, elemental #170, flora #171, Bulblax/larvae #172, Long Legs #173, Snagrets/Crawbster #174, Waterwraith/Titan #175. Work can split further by independent resource/FSM group once an owner claims a child issue. Do not concurrently implement variants that share the same base module. Multi-actor bosses and captors need helper/receiver lifetime contracts before gameplay integration; they can still perform isolated extraction audits in parallel.
 
@@ -138,4 +142,4 @@ This update supersedes the initial queue above. User confirmed additional Kimi s
 | Root subagents | Frog/Honeywisp material fixes; Tank movie-heap diagnosis | #207 |
 | Root integration | Shared converter/native hooks/build/export; cave diagnostics | #186, #193 |
 
-Groink revival is parked by user direction. Kimi issues211–214 had no completion comments at this check. Breadbug213 must reuse existing168 extraction/proxy/cargo evidence and address remaining gaps rather than duplicate the finished small-Breadbug batch. Source assets alone do not satisfy runtime checks in those issue bodies. Shared native changes still come through the integration lead. Fixed independent QA184 remains a separate unfinished acceptance scope.
+Groink revival is parked by user direction. This table is a historical claim snapshot; check current issues for delivery status. Breadbug213 must reuse existing168 extraction/proxy/cargo evidence and address remaining gaps rather than duplicate the finished small-Breadbug batch. Source assets alone do not satisfy runtime checks in those issue bodies. Family owners now supply complete private native candidates under the current workflow. Fixed independent QA184 remains a separate unfinished acceptance scope.
