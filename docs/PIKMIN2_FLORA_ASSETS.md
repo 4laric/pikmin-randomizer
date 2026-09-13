@@ -257,3 +257,27 @@ Validation (repo root): `python -m pytest tests/test_pikmin2_flora_assets.py -q`
   track.
 - Parallel flora IDs (80/81/85-92) remain with their own audit; no shared-file
   changes are required by this lane.
+
+## 11. Batch 2 — install + arena (#353)
+
+Batch 2 takes the batch-1 `flora.json` assets into the runtime through the
+shared core (`experimental/pikmin2_batch2_core.py`) bound by
+`experimental/pikmin2_flora_install.py` and `pikmin2_flora_arena.py`.
+
+- **Install**: hash-bound `plan`/`install`/`verify_install`; schema-1
+  `P2_FLORA_1` manifest, exact-byte pose binding, conflict refusal before
+  mutation, optional all-or-nothing visual bank (baseline preserved when
+  absent). Pelplant (0/10) and HikariKinoko (0/1) have no converted poses on
+  this disc and are excluded from the visual actor set.
+- **Arena**: private original Impact Site staging — the six Candypop colour buds
+  plus one ordinary P1 control, unique generator IDs 353001–353007, full
+  expected XYZ, zero offset, source yaw unapplied. Buds have no P1 counterpart,
+  so the neutral Chappy placement vehicle is used and identity is not claimed.
+- **Real-disc evidence**: install + verify round-trip against
+  `output/p2-lane-verify/flora2/flora.json` → **66 installed, 66 verified**
+  (SHA-256 bound). Generated evidence stays under private `output/`.
+- **Status**: install + arena staging level. Native gates
+  (`native_identity`, `candypop_shared_pom_base`, `pellet_to_pom_conversion`,
+  `pelplant_receptor`, `sprout_birth`, `prop_flora_scenery`) are BLOCKED pending
+  the hook request on #186. No shared/native code touched; no disc assets
+  committed.
