@@ -50,7 +50,7 @@ def economy(row):
     return dict(value=values[0], weight=values[1], slots=values[2])
 
 
-def checked_rooms(units, catalog_raw):
+def checked_rooms(units, catalog_raw, *, source_navigation=False):
     metadata = json.loads((units/'units.json').read_bytes())
     if metadata['cave_id'] != 'forest_1' or metadata['catalog_sha256'] != sha(catalog_raw):
         raise ValueError('Unit/catalog provenance mismatch')
@@ -75,18 +75,24 @@ def checked_rooms(units, catalog_raw):
             probes.append(dict(source_slot=i, source=spawn, ground=ground,
                                grounded=ground is not None and abs(ground-y) <= .1,
                                placement_selected=False))
-        result[name] = dict(record=record, probes=probes, files={
+        navigation = None
+        if source_navigation:
+            from experimental.pikmin2_beasts_navigation import interpret
+            room, navigation = interpret(room, record['definition'])
+        result[name] = dict(record=record, probes=probes, navigation=navigation, files={
             'room.mod': attach_collision(files['render.mod'], room, cap_exits=True),
             'room.ini': route_ini(room['routes']).encode('ascii'),
-            'collision.json': files['collision.json']})
+            'collision.json': (json.dumps(room, indent=2)+'\n').encode() if source_navigation else files['collision.json']})
+        if source_navigation:
+            result[name]['files']['source-collision.json'] = files['collision.json']
     return metadata, result
 
 
-def prepare(iso, catalog_path, units, output):
+def prepare(iso, catalog_path, units, output, *, source_navigation=False):
     catalog_raw = catalog_path.read_bytes()
     catalog = json.loads(catalog_raw)
     floor = source_floor(catalog)
-    imported, rooms = checked_rooms(units, catalog_raw)
+    imported, rooms = checked_rooms(units, catalog_raw, source_navigation=source_navigation)
     index = disc_files(iso)
     hashes = {}
     cargo = {}
@@ -137,6 +143,8 @@ def prepare(iso, catalog_path, units, output):
         staged[name] = dict(source=room['record'], spawn_ground_audit=room['probes'], exits_capped=True,
                            routes_connected=not any(r['unreachable_sources'] for r in room['record']['route_audit']),
                            output_sha256={f: sha(raw) for f, raw in room['files'].items()})
+        if source_navigation:
+            staged[name]['navigation'] = room['navigation']
     result = dict(schema=1, policy='P2_BEASTS_FLOOR3_PACKAGE_1', cave='forest_1', floor=3,
         catalog_sha256=sha(catalog_raw), source_sha256=hashes, source_definition=floor,
         treasures=cargo, rooms=staged, native_ready=False, retail_generation=False, complete_roster=False,
@@ -150,6 +158,9 @@ def prepare(iso, catalog_path, units, output):
                      'Source spawn probes are candidates, not selected placements or carry-route validation.',
                      'Approximate materials inherit converter policy; source texture animation is deferred.',
                      'No native launch, gameplay acceptance, session binding or floor-four descent.'])
+    if source_navigation:
+        result['policy'] = 'P2_BEASTS_FLOOR3_NAVIGATION_PACKAGE_1'
+        result['limitations'].append('Opt-in local waypoint Y grounding only; source X/Z, edges and spawn centers preserved.')
     (output/'floor3.json').write_text(json.dumps(result, indent=2)+'\n')
     return result
 
@@ -158,8 +169,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ('iso', 'catalog', 'units', 'output'):
         parser.add_argument('--'+name, type=Path, required=True)
+    parser.add_argument('--source-navigation', action='store_true', help='Opt in to source-backed local waypoint grounding and navigation audit')
     args = parser.parse_args()
-    prepare(args.iso, args.catalog, args.units, args.output)
+    prepare(args.iso, args.catalog, args.units, args.output, source_navigation=args.source_navigation)
     print(args.output/'floor3.json')
 
 

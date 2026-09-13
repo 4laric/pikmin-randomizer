@@ -1,5 +1,10 @@
 # Beasts floor 3 source package (#295)
 
+Follow-up: [navigation interpretation #300](PIKMIN2_BEASTS_NAVIGATION.md) explains
+why exact source-height mismatches are not absent ground, and why both directed
+graphs already reach every door. Its optional waypoint grounding preserves this
+historical default package.
+
 Owner: Codex using shared 4laric account. This independent floor 3 track starts
 at root `8b7d480` (#293). It imports actual source treasures and packages the two
 source room candidates for engineering work. It does not enable campaign launch.
