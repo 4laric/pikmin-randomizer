@@ -20,6 +20,7 @@
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
 #include "pc_p2_enemy.h"
 #include "pc_p2_kochappy.h"
+#include "pc_p2_kogane.h"
 #endif
 
 class CollEvent;
@@ -222,6 +223,12 @@ public:
 	virtual void reset();                                      // _170
 	virtual void startMotion(int);                             // _174
 	virtual void die();                                        // _178
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	// Family-lane escape helper (#219): finalize a death immediately. die()
+	// alone only arms mDeadState, but dieSoon() runs inside doAI's !mDeadState
+	// block, so a die() issued outside doAI would never finalize.
+	void pcEscapeNow() { die(); dieSoon(); }
+#endif
 	virtual void updateTimers();                               // _17C
 	virtual void gravitate(f32);                               // _180
 	virtual void animationKeyUpdated(immut PaniAnimKeyEvent&); // _184 (weak)
@@ -400,11 +407,19 @@ public:
 	f32 getParameterF(int idx) {
 		const f32 value=mTekiParams->getF(idx);
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
-		if(idx==TPF_Life)return pc_p2_kochappy_max_health(this,pc_p2_snow_max_health(this,value));
+		const f32 kogane=pc_p2_kogane_param_f(this,idx,value);
+		if(idx==TPF_Life)return pc_p2_kochappy_max_health(this,pc_p2_snow_max_health(this,kogane));
+		return kogane;
 #endif
 		return value;
 	} // see TekiFloatParams enum
-	int getParameterI(int idx) { return mTekiParams->getI(idx); } // see TekiIntParams enum
+	int getParameterI(int idx) {
+		const int value=mTekiParams->getI(idx);
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+		if(idx==TPI_CorpseType)return pc_p2_kogane_corpse_type(this,value);
+#endif
+		return value;
+	} // see TekiIntParams enum
 
 	void outputDirectionVector(Vector3f& outDir) { BTeki::outputDirectionVector(getDirection(), outDir); }
 

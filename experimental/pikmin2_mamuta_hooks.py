@@ -16,9 +16,17 @@ def hook_patch(engine: Path) -> str:
         'src/plugPikiNakata/tekimgr.cpp': {'#include "pc_p2_mamuta.h"': 1, 'pc_p2_mamuta_reset();': 3, 'pc_p2_mamuta_forget(teki);': 1},
     }
     sources = {path: (engine / path).read_text(encoding='utf-8') for path in specs}
-    if any('pc_p2_mamuta' in source for source in sources.values()):
+    # The later opt-in bury module is independent of these visual hooks.
+    # Recognize its one exact build entry without accepting unknown/duplicate hooks.
+    audited = dict(sources)
+    rules = '    pc_port/pc_p2_mamuta_rules.cpp\n'
+    cmake = audited['CMakeLists.txt']
+    if cmake.count('pc_p2_mamuta_rules') != cmake.count(rules) or cmake.count(rules) > 1:
+        raise ValueError('CMakeLists.txt: partial or conflicting Mamuta rules integration')
+    audited['CMakeLists.txt'] = cmake.replace(rules, '')
+    if any('pc_p2_mamuta' in source for source in audited.values()):
         for path, hooks in expected_hooks.items():
-            source = sources[path]
+            source = audited[path]
             if any(source.count(hook) != count for hook, count in hooks.items()) or source.count('pc_p2_mamuta') != sum(hooks.values()):
                 raise ValueError(f'{path}: partial or conflicting Mamuta integration')
         return ''

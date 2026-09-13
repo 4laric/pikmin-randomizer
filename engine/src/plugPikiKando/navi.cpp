@@ -1,3 +1,7 @@
+#include "pc_p2_mamuta_rules.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_demon_drop_state.h"
+#endif
 #include "pc_p2_purple.h"
 #include "Navi.h"
 #include "pc_randomizer.h"
@@ -578,6 +582,9 @@ void Navi::rideUfo()
  */
 void Navi::reset()
 {
+#if defined(PIKI_PC_PORT)
+	pc_demon_drop_reset(this);
+#endif
 	mDamageEfxA = mDamageEfxB = mDamageEfxC = nullptr;
 	mSelectedShipPart                       = nullptr;
 	mHeadYawOffsetRel                       = 0.0f;
@@ -1054,6 +1061,9 @@ void Navi::update()
 	mKontroller->update();
 	mWalkAnimPrevDir = mFaceDirection;
 	Creature::update();
+#if defined(PIKI_PC_PORT)
+	pc_demon_drop_post_physics(this);
+#endif
 
 	mapMgr->updatePos(mSRT.t.x, mSRT.t.z);
 
@@ -2530,6 +2540,11 @@ bool InteractGeyzer::actNavi(Navi* navi) immut
  */
 bool InteractBury::actNavi(Navi* navi) immut
 {
+	int mamuta = pc_p2_mamuta_bury_navi(mOwner, navi);
+	if (mamuta >= 0) {
+		return mamuta > 0;
+	}
+
 	NaviState* state = navi->mStateMachine->getNaviState(navi);
 	if (state->invincible(navi)) {
 		return false;

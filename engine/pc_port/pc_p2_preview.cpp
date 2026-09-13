@@ -9,6 +9,9 @@
 #include "pc_p2_giant_breadbug_visual.h"
 #include "pc_p2_bulblax_visual.h"
 #include "pc_p2_breadbug_actor.h"
+#include "pc_p2_giant_breadbug_actor.h"
+#include "pc_p2_queen.h"
+#include "pc_p2_king.h"
 #include "pc_p2_preview.h"
 #include "pc_bbft.h"
 #include "Pellet.h"
@@ -185,7 +188,10 @@ void pc_p2_preview_setup() {
     pc_p2_breadbug_visual_setup();
     pc_p2_giant_breadbug_visual_setup();
     pc_p2_bulblax_visual_setup();
+    pc_p2_queen_setup();
+    pc_p2_king_setup();
     pc_p2_breadbug_actor_setup();
+    pc_p2_giant_breadbug_actor_setup();
     pc_p2_frog_setup();
     pc_p2_kogane_setup();
     pc_p2_mamuta_setup();

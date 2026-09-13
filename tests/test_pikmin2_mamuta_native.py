@@ -58,6 +58,13 @@ int main() {
             patchfile=engine/'integration.patch';patchfile.write_text(patch,encoding='utf-8')
             subprocess.run(['git','apply','--unsafe-paths',str(patchfile)],cwd=engine,check=True)
             self.assertEqual(hook_patch(engine),'')
+            cmake=engine/'CMakeLists.txt'; original=cmake.read_text(encoding='utf-8')
+            rules='    pc_port/pc_p2_mamuta_rules.cpp\n'
+            cmake.write_text(original.replace(rules,'')+rules,encoding='utf-8')
+            self.assertEqual(hook_patch(engine),'')
+            cmake.write_text(original.replace(rules,'')+rules+rules,encoding='utf-8')
+            with self.assertRaisesRegex(ValueError,'conflicting'): hook_patch(engine)
+            cmake.write_text(original,encoding='utf-8')
             target=engine/'pc_port/pc_p2_preview.cpp'; source=target.read_text(encoding='utf-8')
             target.write_text(source.replace('pc_p2_mamuta_setup();',''),encoding='utf-8')
             with self.assertRaisesRegex(ValueError,'partial'): hook_patch(engine)

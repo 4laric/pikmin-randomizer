@@ -1,6 +1,8 @@
 #include "Creature.h"
 #include "Piki.h"
 #include "pc_p2_kurage_receiver.h"
+#include "pc_p2_queen.h"
+#include "pc_p2_king.h"
 #include "AIConstant.h"
 #include "AIPerf.h"
 #include "BombItem.h"
@@ -503,7 +505,12 @@ void Creature::detachGenerator()
 void Creature::kill(bool)
 {
 	// Revoke receiver pointers before stick cleanup or manager recycling.
-	if (mObjType == OBJTYPE_Piki) pc_p2_kurage_receiver_piki_invalidated(static_cast<Piki*>(this));
+	if (mObjType == OBJTYPE_Piki) {
+        auto* piki = static_cast<Piki*>(this);
+        pc_p2_kurage_receiver_piki_invalidated(piki);
+        pc_p2_queen_forget_piki(piki);
+        pc_p2_king_forget_piki(piki);
+    }
 	pc_p2_kurage_receiver_owner_invalidated(this);
 	finishWaterEffect();
 
