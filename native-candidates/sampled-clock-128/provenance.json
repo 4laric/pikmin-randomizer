@@ -1,0 +1,21 @@
+{
+  "issue": 431,
+  "parent": 128,
+  "lane": "converter/animation engine",
+  "implementation_owner": "Codex via shared account 4laric",
+  "native_branch": "opencode/p2-sampled-clock-128",
+  "native_base_commit": "f9e139d86afab0b7581599f2178ee1a95dcf33af",
+  "native_candidate_commit": "c509c71d4466c0c01e910a345edf2b82e732e051",
+  "pushed_to_native_origin": false,
+  "maintained_native_checkout_touched": false,
+  "native_build_randomizer_touched": false,
+  "compiler": "g++.exe 16.2.0 (MSYS2 mingw64)",
+  "compile_command": "g++ -std=c++17 -Wall -Wextra -Werror tools/test_p2_sampled_clock.cpp -o p2_sampled_clock.exe",
+  "probe_result": "PASS p2_sampled_clock: 46 checks",
+  "patch": "0001-pc_port-header-only-sampled-animation-clock-event-.patch",
+  "files": {
+    "pc_port/pc_p2_sampled_clock.h": "f46f7c7d074ed31a678c0670d39566d296bee7d5176af0cac9fcb59e20431631",
+    "tools/test_p2_sampled_clock.cpp": "3650bdd34b04b657df776c5e72775f337ddb02c1b9d88e46677e32d4ca11bc52"
+  },
+  "notes": "Header-only candidate; no production consumer is migrated. Depends only on the existing pc_p2_animation.h. Apply with `git am` or `git apply`."
+}
