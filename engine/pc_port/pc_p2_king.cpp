@@ -103,6 +103,9 @@ unsigned long injectKillTick = 0;
 bool injectKillDone = false;
 unsigned long injectBombTick = 0;
 bool injectBombDone = false;
+// Fixture-observation flag: set when the Dead clip reaches its frame-185 kill
+// key. Read-only fixture gate; no effect on actor behavior.
+bool deadKeySeen = false;
 
 void fail() {
 	std::fputs("P2_KING_ACTOR invalid profile/model\n", stderr);
@@ -535,6 +538,7 @@ void tickKing(King& k) {
 		}
 		if (k.state == p2king::Dead && key == 185 && !k.loggedDead) {
 			k.loggedDead = true;
+			deadKeySeen = true;
 			std::printf("P2_KING_DEAD_KEY id=%u frame=185 kill=1\n", k.cfg.id);
 		}
 	}
@@ -813,7 +817,15 @@ void pc_p2_king_reset() {
 	injectKillDone = false;
 	injectBombTick = 0;
 	injectBombDone = false;
+	deadKeySeen = false;
 }
+
+// Fixture-only read-only observation getters. They expose the actor's own
+// 30 Hz behavior clock and Dead-key completion so a host fixture can gate
+// scenario sequencing deterministically instead of guessing with idle frames.
+// No behavior change; absent an opt-in injection nothing here is exercised.
+unsigned long pc_p2_king_behavior_tick() { return behaviorTick; }
+bool pc_p2_king_dead_key_seen() { return deadKeySeen; }
 
 void pc_p2_king_setup() {
 	pc_p2_king_reset();
@@ -898,7 +910,10 @@ void pc_p2_king_update() {
 		if (injectWarCryTick && !injectWarCryDone && behaviorTick >= injectWarCryTick) {
 			for (auto& k : kings) {
 				if (injectWarCryId && k.cfg.id != injectWarCryId) continue;
-				if (k.state == p2king::HideWait || k.state == p2king::Hide) continue;
+				// Opt-in fixture injection: force WarCry even from a buried
+				// state so the scenario does not depend on the squad surviving
+				// to provide an appear target. Dead is never resurrected.
+				if (k.state == p2king::Dead) continue;
 				enter(k, p2king::WarCry);
 				injectWarCryDone = true;
 				std::printf("P2_KING_INJECT id=%u tick=%lu force=WarCry fixture=1\n", k.cfg.id, behaviorTick);
@@ -917,7 +932,10 @@ void pc_p2_king_update() {
 		if (injectBombTick && !injectBombDone && behaviorTick >= injectBombTick) {
 			for (auto& k : kings) {
 				if (injectWarCryId && k.cfg.id != injectWarCryId) continue;
-				if (k.state == p2king::Dead || k.state == p2king::HideWait || k.state == p2king::Hide) continue;
+				// Opt-in fixture injection: force the bomb line-up even from a
+				// buried state so the deterministic ingestion lane does not
+				// depend on the squad providing an appear target. Dead skipped.
+				if (k.state == p2king::Dead) continue;
 				Bomb* best = nullptr;
 				float bestDist = 0.0f;
 				for (auto& b : bombs) {

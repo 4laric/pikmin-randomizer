@@ -7,8 +7,12 @@ the 5 red / 5 blue starting squad with one fixture-placed BOMB_Wait bomb
 external (quartered) blast: the approach triggers Appear with the shake-off,
 the tongue eats squad Pikmin (Swallow) and the bomb (Eat -> Damage 200 with
 the 180-frame stun). Scenario 2 places two Emperors and three bombs for the
-cross-Emperor WarCry contract. Scenario 3 spawns the force-big variant.
-Runs self-terminate at a bounded frame.
+cross-Emperor WarCry contract and the deterministic bomb ingestion lane.
+Scenario 3 spawns the force-big variant. Scenario 4 (required) drives the
+opt-in kill injection to Dead and the frame-185 kill key. Scenario order is
+gated on the actor's own 30 Hz behavior clock (not absolute idle frames) so a
+loaded machine cannot truncate an earlier scenario's required keys.
+Runs self-terminate at a bounded behavior tick.
 """
 import argparse
 import json
@@ -35,15 +39,50 @@ class RoomApp : public PlugPikiApp {
 public:int idle() override {
  int result=PlugPikiApp::idle();require(++frames<20000||hold,"King startup timeout");
  if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
- // Tail steps are frames-based and run before the pause gate: if the squad
- // is wiped the extinction cinematic pauses gameplay (ready stalls) but
- // idle frames keep counting.
- if(frames==1500)capture("king-actor.ppm");
- if(frames==1540){pc_p2_king_reset();std::puts("P2_KING_RESET_REQUEST");}
- if(frames==1545){capture("king-reset.ppm");const int heap=gsys->setHeap(SYSHEAP_App);pc_p2_king_setup();gsys->setHeap(heap);std::puts("P2_KING_RELOAD_REQUEST");}
- // Scenario 3: force-big variant spawn identity.
- if(frames==1550){pc_p2_king_reset();{std::ifstream src("king-fixture-profile3.txt",std::ios::binary);std::ofstream dst("p2-king-actor.txt",std::ios::binary);dst<<src.rdbuf();dst.close();}const int heap=gsys->setHeap(SYSHEAP_App);pc_p2_king_setup();gsys->setHeap(heap);std::puts("P2_KING_SCENARIO3 force_big");}
- if(frames==1610){capture("king-reload.ppm");std::puts("PASS P2_KING_ACTOR_RUNTIME bounded_frames");std::fflush(nullptr);if(!hold)std::_Exit(0);}
+ // Scenario sequencing is gated on the actor's own 30 Hz behavior clock and
+ // on the Dead-key marker, never on absolute idle frames. Mixing ready-gated
+ // scenarios with frames-based tail steps truncated long scenarios under
+ // load: the behavior clock is real-time and capped at 4 catch-up ticks per
+ // frame, so a frame bound and a behavior-tick window diverge. Phase 0 waits
+ // out scenario 1, phase 1 runs scenario 2 (WarCry/bomb injection) for a full
+ // window, phase 2 is the dedicated death scenario, then reload/big.
+ static int phase=0;
+ if(phase==0&&pc_p2_king_behavior_tick()>=800){
+  {std::ofstream inj("p2-king-inject.txt");inj<<"P2_KING_INJECT_1 500 0 0 50\n";inj.close();}
+  std::puts("P2_KING_INJECT_ARMED warcry_tick=500 bomb_tick=50 fixture=1");
+  {std::ifstream src("king-fixture-profile2.txt",std::ios::binary);std::ofstream dst("p2-king-actor.txt",std::ios::binary);dst<<src.rdbuf();dst.close();}
+  const int heap=gsys->setHeap(SYSHEAP_App);pc_p2_king_setup();gsys->setHeap(heap);
+  std::puts("P2_KING_SCENARIO2 two_emperor_bombs");phase=1;
+ }
+ // Phase 1 -> 2: scenario 2's WarCry inject fires at behavior tick 500 and
+ // its attack/Swallow resolve well before 900; only then reset into the
+ // dedicated death scenario so no scenario-2 required check is truncated.
+ if(phase==1&&pc_p2_king_behavior_tick()>=900){
+  pc_p2_king_reset();std::puts("P2_KING_RESET_REQUEST");
+  {std::ifstream src("king-fixture-profile.txt",std::ios::binary);std::ofstream dst("p2-king-actor.txt",std::ios::binary);dst<<src.rdbuf();dst.close();}
+  {std::ofstream inj("p2-king-inject.txt");inj<<"P2_KING_INJECT_1 100000 230020 5 0\n";inj.close();}
+  const int heap=gsys->setHeap(SYSHEAP_App);pc_p2_king_setup();gsys->setHeap(heap);
+  std::puts("P2_KING_DEATH_ARMED kill_tick=5 fixture=1");std::puts("P2_KING_SCENARIO_DEATH kill_tick=5");phase=2;
+ }
+ // Phase 2 -> 3: wait for the Dead clip's frame-185 kill key, then the
+ // reload-cleanup scenario (injection removed so it stays inert).
+ if(phase==2&&pc_p2_king_dead_key_seen()){
+  capture("king-dead.ppm");std::remove("p2-king-inject.txt");
+  {std::ifstream src("king-fixture-profile.txt",std::ios::binary);std::ofstream dst("p2-king-actor.txt",std::ios::binary);dst<<src.rdbuf();dst.close();}
+  const int heap=gsys->setHeap(SYSHEAP_App);pc_p2_king_setup();gsys->setHeap(heap);
+  std::puts("P2_KING_RELOAD_REQUEST");phase=3;
+ }
+ // Phase 3 -> 4: force-big variant spawn identity.
+ if(phase==3){
+  capture("king-reset.ppm");pc_p2_king_reset();
+  {std::ifstream src("king-fixture-profile3.txt",std::ios::binary);std::ofstream dst("p2-king-actor.txt",std::ios::binary);dst<<src.rdbuf();dst.close();}
+  const int heap=gsys->setHeap(SYSHEAP_App);pc_p2_king_setup();gsys->setHeap(heap);
+  std::puts("P2_KING_SCENARIO3 force_big");phase=4;
+ }
+ if(phase==4&&pc_p2_king_behavior_tick()>=30){
+  capture("king-reload.ppm");std::puts("PASS P2_KING_ACTOR_RUNTIME bounded_behavior_tick");
+  std::fflush(nullptr);if(!hold)std::_Exit(0);
+ }
  if(!pc_p2_preview_cargo_free_ready()||!naviMgr||!tekiMgr||!mapMgr)return result;
  Navi* n=naviMgr->getNavi();if(!n||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;++ready;
  // Fixture injection: keep the captain alive and standing so a lick barrage
@@ -67,13 +106,6 @@ public:int idle() override {
  {std::ifstream src("king-fixture-profile.txt",std::ios::binary);std::ofstream dst("p2-king-actor.txt",std::ios::binary);dst<<src.rdbuf();dst.close();}
  const int heap=gsys->setHeap(SYSHEAP_App);pc_p2_king_setup();gsys->setHeap(heap);
  }
- // Arm the opt-in WarCry injection sidecar for scenario 2 only (appears just
- // before the setup at ready==500 reads it), so the WarCry astonish and
- // cross-Emperor manager contract are exercised with two live Emperors.
- if(ready==499){std::ofstream inj("p2-king-inject.txt");inj<<"P2_KING_INJECT_1 500 0 0 50\n";inj.close();std::puts("P2_KING_INJECT_ARMED warcry_tick=500 bomb_tick=50 fixture=1");}
- // Scenario 2: two Emperors (one buried far away) + three BOMB_Wait bombs for
- // multiplied bomb damage and the cross-Emperor WarCry wake contract.
- if(ready==500){pc_p2_king_reset();{std::ifstream src("king-fixture-profile2.txt",std::ios::binary);std::ofstream dst("p2-king-actor.txt",std::ios::binary);dst<<src.rdbuf();dst.close();}const int heap=gsys->setHeap(SYSHEAP_App);pc_p2_king_setup();gsys->setHeap(heap);std::puts("P2_KING_SCENARIO2 two_emperor_bombs");}
  std::fflush(stdout);return result;
 }};
 '''
@@ -82,7 +114,10 @@ public:int idle() override {
 def instrument(source):
     start = source.index('class RoomApp : public PlugPikiApp {')
     end = source.index('int main(', start)
-    includes = ('#include <fstream>\n#include <string>\n#include "pc_p2_king.h"\n#include "pc_p2_king_policy.h"\n'
+    includes = ('#include <cstdio>\n#include <cstdlib>\n#include <fstream>\n#include <string>\n#include "pc_p2_king.h"\n'
+                '#include "pc_p2_king_policy.h"\n'
+                'unsigned long pc_p2_king_behavior_tick();\n'
+                'bool pc_p2_king_dead_key_seen();\n'
                 '#include "Pcam/Camera.h"\n#include "Pcam/CameraManager.h"\n')
     return includes + source[:start] + APP + source[end:]
 
@@ -224,13 +259,16 @@ def validate(text, code):
         bomb_inject=bool(re.search(r'P2_KING_INJECT_BOMB id=\d+ tick=\d+ bomb=\d+ state=Attack fixture=1', text)),
         warcry_astonish='P2_KING_ASTONISH' in text,
         cross_emperor=bool(re.search(r'P2_KING_WARCRY_REQUEST id=\d+ other=\d+ from=\d+ to=\d+', text)),
+        death_inject=bool(re.search(r'P2_KING_DEATH_ARMED kill_tick=5 fixture=1', text))
+                      and bool(re.search(r'P2_KING_INJECT_KILL id=\d+ tick=\d+ health=0 fixture=1', text)),
+        death_reached=bool(re.search(r'P2_KING_STATE id=\d+ from=\d+ to=2 health=0', text)),
+        death_key=bool(re.search(r'P2_KING_DEAD_KEY id=\d+ frame=185 kill=1', text)),
     )
     optional = dict(
         flick_trample='P2_KING_TRAMPLE' in text or 'P2_KING_FLICK id=' in text,
         external_quartered='P2_KING_BOMB_QUARTERED' in text,
     )
-    untested = ['death to Dead (HP 1300 not exhausted in bounded run; policy-tested only)']
-    untested += [name for name, ok in optional.items() if not ok]
+    untested = [name for name, ok in optional.items() if not ok]
     return dict(passed=all(required.values()), checks=required, optional=optional, untested=untested,
                 transitions=sorted(transitions), exit_code=code,
                 scope='Sampled actor fixture; bomb placements and external blasts are labeled injections')
