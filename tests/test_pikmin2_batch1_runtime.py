@@ -7,8 +7,10 @@ def test_readings_parse():
         "x=-240.000 y=30.000 z=1850.000\n"
         "P2_BATCH3_BIND generator=374001 key=aquatic|Catfish "
         "visual_only=1 native_fsm=unimplemented\n"
-        "P2_BATCH3_DRAW corpse=0 key=aquatic|Catfish clip=wait1\n")
-    births, draws, binds = readings(text)
+        "P2_BATCH3_DRAW corpse=0 key=aquatic|Catfish clip=wait1\n"
+        "P2_BATCH1_MOVE id=374001 dx=12.500 dz=-3.000 dist=12.855\n")
+    births, draws, binds, moves = readings(text)
     assert births == [('374001', '30', 'Catfish', '-240.000', '30.000', '1850.000')]
     assert binds == [('374001', 'aquatic|Catfish')]
     assert draws == [('0', 'aquatic|Catfish', 'wait1')]
+    assert moves == [('374001', '12.500', '-3.000', '12.855')]
