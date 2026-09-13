@@ -63,8 +63,10 @@ public:int idle() override {
   require(a0==0&&b0==0&&a1>0&&b1>0,"cleanup/reentry counts");reentry=true;
  }
  if(ready==220){
-  Teki* actor=find(ids[0]);
-  if(actor){deadPos=actor->mSRT.t;killed=true;actor->mHealth=0;std::printf("P2_BATCH1_KILL id=%u health=%.1f\n",ids[0],actor->mHealth);}
+  Teki* actor=nullptr;
+  for(size_t i=0;i<ids.size();++i){Teki* a=find(ids[i]);if(a&&a->mTekiType==3){actor=a;break;}}
+  if(!actor)actor=find(ids[0]);
+  if(actor){deadPos=actor->mSRT.t;killed=true;actor->mHealth=0;std::printf("P2_BATCH1_KILL id=%u type=%d health=%.1f\n",actor->mGenerator->_70,actor->mTekiType,actor->mHealth);}
  }
  if(killed&&!corpseOk){
   if(camTarget)camTarget->mSRT.t=Vector3f(deadPos.x,deadPos.y+40.f,deadPos.z);
