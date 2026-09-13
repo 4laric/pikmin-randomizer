@@ -68,12 +68,16 @@ def main():
     p.add_argument('--flat', action='store_true')
     p.add_argument('--floor', type=int, choices=(1, 2), default=2)
     p.add_argument('--p1-control', action='store_true', help='P1 scaffold hauling/combat/corpse control in the concrete preview room')
+    p.add_argument('--corpse-observe-only', action='store_true', help='Trace the original distant-captain control without the controller approach')
     p.add_argument('--timeout', type=int, default=360)
     a = p.parse_args()
     if a.p1_control and (a.flat or a.floor != 2):
         p.error('--p1-control cannot be combined with --flat or --floor 1')
+    if a.corpse_observe_only and not a.p1_control:
+        p.error('--corpse-observe-only requires --p1-control')
     if a.p1_control:
         run = prepare_p1_control(a.assets.resolve(), a.root.resolve()/'output/pikmin2-room105', a.output.resolve())
+        (run/'p2-corpse-lifecycle.txt').write_text('0\n' if a.corpse_observe_only else '1\n')
     else:
         run = stage(a.root.resolve(), a.assets.resolve(), a.output.resolve(), not a.flat, a.floor)
     exe = a.exe.resolve()
@@ -82,6 +86,8 @@ def main():
                     source_position=not (a.flat or a.p1_control), floor=None if a.p1_control else a.floor,
                     synthetic_purple_identity=a.floor == 2 and not a.p1_control, p1_control=a.p1_control,
                     injected_transport_assignment=True, natural_gameplay=False)
+    if a.p1_control:
+        evidence['corpse_controller_approach'] = not a.corpse_observe_only
     print(run, flush=True)
     env = dict(os.environ, SDL_AUDIODRIVER='dummy', PATH='C:/msys64/mingw64/bin'+os.pathsep+os.environ.get('PATH', ''))
     with (run/'native.log').open('w') as log:
@@ -99,6 +105,8 @@ def main():
                 expected = 'PASS p2 room: actors, ground, controller movement, native carry delivery, unchanged repairs, native combat kill, far corpse transport and delivery'
                 if expected not in text or 'FAIL ' in text or 'P2_POD_RECEIPT' in text:
                     raise ValueError('Incomplete P1 scaffold control or unexpected Pod reward')
+                from scripts.pikmin2_corpse_evidence import validate_corpse
+                evidence['corpse_lifecycle'] = validate_corpse(text, not a.corpse_observe_only)
             else:
                 evidence['haul'] = validate(text, json.loads((run/'p2-roster.json').read_text()),
                                             (run/'p2-economy.txt').read_text())

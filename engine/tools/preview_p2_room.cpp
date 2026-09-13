@@ -43,6 +43,8 @@ static bool secondFloor=false;
 static std::vector<Vector3f> walkGoals;
 static int walkPoint=0;
 static Vector3f origin;
+static bool corpseLifecycle=false, corpseApproach=false, combatWalking=false;
+static Vector3f combatDestination;
 static void require(bool value,const char* message) { if(!value) { std::printf("FAIL p2 room: %s\n",message);std::fflush(stdout);std::_Exit(1); } }
 static void verifyCarryDigits() {
     GaugeInfo gauge;
@@ -85,6 +87,19 @@ public:
             }
         }
         mSubStickX=0; mSubStickY=0;
+        if(combatWalking && naviMgr) {
+            Navi* n=naviMgr->getNavi();
+            if(n && n->mNaviCamera) {
+                float dx=combatDestination.x-n->mSRT.t.x,dz=combatDestination.z-n->mSRT.t.z;
+                float distance=std::sqrt(dx*dx+dz*dz);
+                if(distance>1) {
+                    const Vector3f& axis=n->mNaviCamera->mViewXAxis;
+                    updateCont(KBBTN_MSTICK_RIGHT);
+                    mMainStickX=static_cast<signed char>(65*(dx*axis.x+dz*axis.z)/distance);
+                    mMainStickY=static_cast<signed char>(65*(dx*axis.z-dz*axis.x)/distance);
+                }
+            }
+        }
     }
 };
 static unsigned hashBytes(const void* data,size_t size,unsigned hash=2166136261u) {
@@ -138,9 +153,62 @@ class RoomApp : public PlugPikiApp {
     Pellet* corpse=nullptr;
     Vector3f corpseOrigin;
     bool corpseReachedGoal=false; float corpseDistance=0;
+    // Observe before fixture phase/UI gates: autonomous combat and hauling can
+    // happen while the scripted treasure phase is still in progress.
+    Teki* observedEnemy=nullptr;
+    Pellet* observedCorpse=nullptr;
+    bool observedDead=false, observedRemoved=false;
+    int observedState=-1;
+    Vector3f observedOrigin;
+    float observedDistance=0;
+    void observeCorpse() {
+        if(!corpseLifecycle || !tekiMgr || !pelletMgr || pc_p2_purples_enabled() || pc_p2_cave_floor())return;
+        if(!observedEnemy) {
+            Iterator enemies(tekiMgr);CI_LOOP(enemies) {
+                Teki* v=static_cast<Teki*>(*enemies);
+                if(v->isAlive() && v->mTekiType==TEKI_Chappy) {
+                    require(!observedEnemy,"ambiguous corpse observation enemy");observedEnemy=v;
+                    std::printf("P2_LIFECYCLE_ENEMY frame=%d phase=%d enemy=%p generator=%p x=%.2f y=%.2f z=%.2f\n",frames,phase,(void*)v,(void*)v->mGenerator,v->mSRT.t.x,v->mSRT.t.y,v->mSRT.t.z);
+                }
+            }
+        }
+        if(!observedEnemy || observedRemoved)return;
+        if(frames%150==0 && !observedCorpse) {
+            Teki* v=observedEnemy;
+            std::printf("P2_LIFECYCLE_ANIMATION frame=%d counter=%.3f grid_culled=%d frozen=%d\n",frames,v->mTekiAnimator->getCounter(),int(v->mGrid.aiCulling()),int(v->mIsFrozen));
+            std::printf("P2_LIFECYCLE_PENDING frame=%d phase=%d enemy=%p alive=%d health=%.2f dead_state=%d ai_state=%d motion=%d finished=%d speed=%.2f culled=%d updatable=%d bound=%p x=%.2f y=%.2f z=%.2f\n",frames,phase,(void*)v,int(v->isAlive()),v->mHealth,v->mDeadState,int(v->mStateID),v->mTekiAnimator->getCurrentMotionIndex(),int(v->animationFinished()),v->mAnimationSpeed,int(v->isCreatureFlag(CF_UseAICulling)),int(v->mOptUpdateContext.updatable()),(void*)v->mPellet,v->mSRT.t.x,v->mSRT.t.y,v->mSRT.t.z);
+        }
+        if(!observedDead && !observedEnemy->isAlive()) {
+            observedDead=true;
+            std::printf("P2_LIFECYCLE_DEATH frame=%d phase=%d enemy=%p health=%.2f\n",frames,phase,(void*)observedEnemy,observedEnemy->mHealth);
+        }
+        Pellet* live=nullptr;
+        Iterator pellets(pelletMgr);CI_LOOP(pellets) {
+            Pellet* p=static_cast<Pellet*>(*pellets);
+            if(p->isAlive() && p->mPelletView==static_cast<PelletView*>(observedEnemy)){require(!live,"duplicate corpse identity");live=p;}
+        }
+        if(live) {
+            require(!observedCorpse || observedCorpse==live,"corpse identity changed");
+            if(!observedCorpse) {
+                observedCorpse=live;observedOrigin=live->mSRT.t;
+                std::printf("P2_LIFECYCLE_BIRTH frame=%d phase=%d enemy=%p pellet=%p x=%.2f y=%.2f z=%.2f\n",frames,phase,(void*)observedEnemy,(void*)live,observedOrigin.x,observedOrigin.y,observedOrigin.z);
+            }
+            float dx=live->mSRT.t.x-observedOrigin.x,dz=live->mSRT.t.z-observedOrigin.z;
+            float distance=std::sqrt(dx*dx+dz*dz);if(distance>observedDistance)observedDistance=distance;
+            if(observedState!=live->getState()) {
+                observedState=live->getState();
+                std::printf("P2_LIFECYCLE_STATE frame=%d phase=%d pellet=%p state=%d distance=%.2f goal=%p x=%.2f y=%.2f z=%.2f\n",frames,phase,(void*)live,observedState,observedDistance,(void*)live->mTargetGoal,live->mSRT.t.x,live->mSRT.t.y,live->mSRT.t.z);
+            }
+        } else if(observedCorpse) {
+            observedRemoved=true;
+            std::printf("P2_LIFECYCLE_REMOVED frame=%d phase=%d pellet=%p last_state=%d distance=%.2f\n",frames,phase,(void*)observedCorpse,observedState,observedDistance);
+        }
+        std::fflush(stdout);
+    }
 public:
     int idle() override {
         int result=PlugPikiApp::idle();require(++frames<10000,"timeout");
+        observeCorpse();
         if(gameflow.mMoviePlayer && gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
         if(!pc_p2_preview_ready() || !naviMgr || !pikiMgr || !tekiMgr)return result;
         Navi* n=naviMgr->getNavi();if(!n || !n->getCurrState() || (!pc_p2_purples_enabled() && phase<=1 && n->getCurrState()->getID()!=NAVISTATE_Walk) || gameflow.mPauseAll || gameflow.mIsUIOverlayActive)return result;
@@ -155,6 +223,7 @@ public:
             for(int f=0;f<DEMOFLAG_COUNT;++f)playerState->mDemoFlags.setFlagOnly(f);
             int reds=0,dwarfs=0;Iterator p(pikiMgr);CI_LOOP(p){Piki* v=static_cast<Piki*>(*p);if(v->isAlive() && v->mColor==Red)++reds;}
             Iterator e(tekiMgr);CI_LOOP(e){Teki* v=static_cast<Teki*>(*e);if(v->isAlive() && v->mTekiType==TEKI_Chappy){++dwarfs;enemy=v;}}
+            if(corpseLifecycle)require(enemy && enemy==observedEnemy,"scripted enemy differs from lifecycle identity");
             cameraLog(n,"START");capture("p2-room-start.ppm");
             std::printf("P2_FIXTURE_COUNTS reds=%d dwarfs=%d\n",reds,dwarfs);
             require(reds==20,"expected twenty field reds");require(dwarfs==(secondFloor?0:1),"unexpected dwarf fixture count");
@@ -210,8 +279,19 @@ public:
                     std::fflush(stdout);std::_Exit(0);
                 }
                 std::puts("P2_FIXTURE_DELIVERY_PASS"); phase=3; ticks=0;
+                if(corpseApproach){combatDestination=enemy->mSRT.t;combatWalking=true;}
             }
             require(++ticks<5000,"native transport did not deliver");
+        } else if(phase==3 && corpseApproach && (combatWalking || ticks==0)) {
+            // Keep the real death animation inside the captain's active area.
+            // Do not disable culling or force corpse birth to satisfy this test.
+            combatDestination=enemy->mSRT.t;
+            float dx=combatDestination.x-n->mSRT.t.x,dz=combatDestination.z-n->mSRT.t.z;
+            combatWalking=dx*dx+dz*dz>120*120;
+            if(!combatWalking) {
+                std::printf("P2_CORPSE_CAPTAIN_APPROACH frame=%d distance=%.2f x=%.2f z=%.2f controller_only=1\n",frames,std::sqrt(dx*dx+dz*dz),n->mSRT.t.x,n->mSRT.t.z);
+                ticks=1;
+            } else require(++ticks<900,"captain combat approach stalled");
         } else if(phase==3 && ++ticks>=90) {
             Iterator p(pikiMgr);int attackers=0;CI_LOOP(p){
                 Piki* v=static_cast<Piki*>(*p);if(!v->isAlive())continue;
@@ -282,6 +362,9 @@ public:
 int main(int argc,char** argv) {
     // Automated fixture only: keep the real mixer/timing, never open a speaker device.
     SDL_setenv("SDL_AUDIODRIVER","dummy",1);
+    if(FILE* marker=std::fopen("p2-corpse-lifecycle.txt","r")) {
+        corpseLifecycle=true;corpseApproach=std::fgetc(marker)=='1';std::fclose(marker);
+    }
     for(float z:{275.f,510.f,800.f,920.f})walkGoals.push_back(Vector3f(0,0,z));
     if(FILE* marker=std::fopen("p2-assembled.txt","r")){assembled=true;std::fclose(marker);}
     if(FILE* route=std::fopen("p2-second-floor.txt","r")) {
