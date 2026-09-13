@@ -63,6 +63,16 @@ class NativeTests(unittest.TestCase):
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
             self.assertIn("PASS retail event tables", run.stdout)
             print(run.stdout.strip())
+            player = temp / "player.exe"
+            built = subprocess.run([compiler, "-std=c++17", "-Wall", "-Wextra", "-Werror",
+                                    "-I", str(ROOT / "engine/pc_port"),
+                                    str(ROOT / "engine/tools/test_p2_retail_player.cpp"), "-o", str(player)],
+                                   capture_output=True, text=True, timeout=90)
+            self.assertEqual(built.returncode, 0, built.stderr)
+            run = subprocess.run([str(player), *paths], capture_output=True, text=True, timeout=15)
+            self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+            self.assertIn("PASS retail player", run.stdout)
+            print(run.stdout.strip())
 
 
 if __name__ == "__main__": unittest.main()
