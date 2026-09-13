@@ -1,0 +1,51 @@
+{
+  "candidate": "Queen (Empress Bulblax, ID 30) sampled actor",
+  "issue": 256,
+  "parent": 172,
+  "worker": "Kimi Bulblax lane via shared 4laric account",
+  "native_base": "a4c83fe73",
+  "native_head": "650dc1657caa67633826a3fc24b0401c6d3e990d",
+  "native_branch_local": "kimi/p2-queen-actor (local only, worktree output/p2-kimi-bulblax-native; never pushed to native origin)",
+  "patches": [
+    "0001-Add-Empress-Bulblax-Queen-sampled-actor-with-227-pol.patch",
+    "0002-Bounce-rolling-passes-off-the-territory-bound-256.patch",
+    "0003-Log-rolling-pass-end-near-home-as-an-explicit-transi.patch"
+  ],
+  "changed_files": [
+    "pc_port/pc_p2_queen_policy.h (new)",
+    "pc_port/pc_p2_queen.h (new)",
+    "pc_port/pc_p2_queen.cpp (new)",
+    "CMakeLists.txt (additive)",
+    "pc_port/pc_p2_preview.cpp (additive)",
+    "src/plugPikiKando/gameCoreSection.cpp (additive)",
+    "src/plugPikiNakata/tekimgr.cpp (additive)"
+  ],
+  "build": "cmake -S . -B build-queen -G Ninja -DCMAKE_BUILD_TYPE=Release -DPIKMIN_NATIVE_JAUDIO=ON -DPIKMIN_NATIVE_OPTIMIZE=OFF -DPIKMIN_RANDOMIZER_TEST_HOOKS=OFF; cmake --build build-queen --target pikmin_pc -j 6 -> success; ninja -n -> no work",
+  "nectar_exe_sha256": "5eeb75917100101535cb984a43a1ff5c37e83882b9bae9a1b5cbc7ff713ad7c5",
+  "policy_test": "g++ -std=c++17 -Wall -Wextra -Werror -I pc_port tests/pikmin2_queen_policy.cpp -> pikmin2_queen_policy PASS",
+  "policy_test_exe_sha256": "db1413c6dc3384f032fcbc4d587d227fc8b416cb17da19f282bce543f2470606",
+  "runtime_fixture": {
+    "result": "output/queen-run/result.json (root worktree output/p2-kimi-bulblax)",
+    "passed": true,
+    "fixture_exe_sha256": "dc495bd94f37b2d7a937135a6477c7cb6eb2cfafc64b7594d6c656a5877c09e5",
+    "run_directory": "output/queen-run/queen/b58ac692cd0a469fa6965d2aaae653b3"
+  },
+  "gates": {
+    "spawn_identity_xyz": "PASS",
+    "fsm_transitions": "PASS",
+    "roll_press": "PASS",
+    "flick": "PASS",
+    "larvae_pool": "PASS",
+    "reset_reload_cleanup": "PASS",
+    "hp_to_zero_death_runtime": "UNTESTED (policy-tested only)",
+    "baby_captain_attack": "UNTESTED (deferred)"
+  },
+  "approximations": [
+    "per-blow Pikmin damage = 1 (P1 per-color strength out of scope)",
+    "stuck-joint binding from stick sector",
+    "crash = rumble/shake flags only",
+    "HoH crash rocks recorded-but-disabled",
+    "punch/quake immunity by construction (channels absent for sampled actor)"
+  ],
+  "shared_contract_changes": "none (actor-local receivers only)"
+}

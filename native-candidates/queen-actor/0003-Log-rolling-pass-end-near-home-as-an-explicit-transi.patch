@@ -1,0 +1,25 @@
+From 650dc1657caa67633826a3fc24b0401c6d3e990d Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Sun, 13 Sep 2026 10:23:54 -0400
+Subject: [PATCH 3/3] Log rolling pass end near home as an explicit transition
+ (#256)
+
+---
+ pc_port/pc_p2_queen.cpp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/pc_port/pc_p2_queen.cpp b/pc_port/pc_p2_queen.cpp
+index bb1aae97..1bdca27d 100644
+--- a/pc_port/pc_p2_queen.cpp
++++ b/pc_port/pc_p2_queen.cpp
+@@ -362,6 +362,7 @@ void tickQueen(Queen& q) {
+ 			q.originX = q.x;
+ 			q.originZ = q.z;
+ 		} else if (outcome == p2queen::RollOutcome::Wait) {
++			std::printf("P2_QUEEN_STATE id=%u from=5 to=2 roll_elapsed=%.3f near_home=1\n", q.cfg.id, q.rollElapsed);
+ 			enter(q, p2queen::Wait);
+ 		}
+ 		pressScan(q);
+-- 
+2.47.1.windows.1
+

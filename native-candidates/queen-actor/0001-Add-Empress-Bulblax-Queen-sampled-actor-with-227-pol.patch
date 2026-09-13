@@ -1,0 +1,1050 @@
+From 85376429bb20d5ce6b3ee4c863555d3a9ef1dec3 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Sun, 13 Sep 2026 10:01:12 -0400
+Subject: [PATCH 1/3] Add Empress Bulblax (Queen) sampled actor with #227
+ policy mirror (#256)
+
+FSM Dead0/Sleep1/Wait2/Damage3/Flick4/Rolling5/Born6 with deferred
+next-state at sampled clip loop end, disc key frames, rolling passes with
+territory crash + side alternation, actor-local Pikmin receivers
+(Pikmin-only damage coefficients, punch/quake immunity by construction),
+tiered flick shake-off, bounded 50-slot larva pool with 50/25 hysteresis
+and 2.0 s birth interval, f_01 variant (no larvae, HP 3300, easy first
+roll), l_02 crash rocks recorded-but-disabled. New strict P2_QUEEN_ACTOR_1
+config; P2_BULBLAX_VISUAL_1 untouched. Additive hooks only (CMake,
+preview setup, teki reset blocks, core update/draw).
+---
+ CMakeLists.txt                        |   1 +
+ pc_port/pc_p2_preview.cpp             |   2 +
+ pc_port/pc_p2_queen.cpp               | 525 ++++++++++++++++++++++++++
+ pc_port/pc_p2_queen.h                 |   9 +
+ pc_port/pc_p2_queen_policy.h          | 368 ++++++++++++++++++
+ src/plugPikiKando/gameCoreSection.cpp |   3 +
+ src/plugPikiNakata/tekimgr.cpp        |   7 +-
+ 7 files changed, 912 insertions(+), 3 deletions(-)
+ create mode 100644 pc_port/pc_p2_queen.cpp
+ create mode 100644 pc_port/pc_p2_queen.h
+ create mode 100644 pc_port/pc_p2_queen_policy.h
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 2f44126f..0b27e65e 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -172,6 +172,7 @@ set(PC_PORT_SOURCES
+     pc_port/pc_p2_breadbug_visual.cpp
+     pc_port/pc_p2_giant_breadbug_visual.cpp
+     pc_port/pc_p2_bulblax_visual.cpp
++    pc_port/pc_p2_queen.cpp
+     pc_port/pc_p2_breadbug_actor.cpp
+     pc_port/pc_p2_frog.cpp
+     pc_port/pc_p2_kogane.cpp
+diff --git a/pc_port/pc_p2_preview.cpp b/pc_port/pc_p2_preview.cpp
+index f9aeed2b..efb4918c 100644
+--- a/pc_port/pc_p2_preview.cpp
++++ b/pc_port/pc_p2_preview.cpp
+@@ -9,6 +9,7 @@
+ #include "pc_p2_giant_breadbug_visual.h"
+ #include "pc_p2_bulblax_visual.h"
+ #include "pc_p2_breadbug_actor.h"
++#include "pc_p2_queen.h"
+ #include "pc_p2_preview.h"
+ #include "pc_bbft.h"
+ #include "Pellet.h"
+@@ -185,6 +186,7 @@ void pc_p2_preview_setup() {
+     pc_p2_breadbug_visual_setup();
+     pc_p2_giant_breadbug_visual_setup();
+     pc_p2_bulblax_visual_setup();
++    pc_p2_queen_setup();
+     pc_p2_breadbug_actor_setup();
+     pc_p2_frog_setup();
+     pc_p2_kogane_setup();
+diff --git a/pc_port/pc_p2_queen.cpp b/pc_port/pc_p2_queen.cpp
+new file mode 100644
+index 00000000..26bcda9f
+--- /dev/null
++++ b/pc_port/pc_p2_queen.cpp
+@@ -0,0 +1,525 @@
++// Empress Bulblax (Queen, enemy ID 30) sampled actor (#256, parent #172).
++// Extends the #235 sampled display bank with a behavior FSM mirrored from
++// experimental/pikmin2_bulblax_behavior.py (#227). Actor-local receivers
++// only: generic physics/damage, captain states, manager/heap lifetime and
++// save/reward code are untouched. HoH crash rocks are recorded but disabled.
++#include "pc_p2_queen.h"
++#include "pc_p2_queen_policy.h"
++#include "pc_p2_animation.h"
++#include "pc_bbft.h"
++#include "Shape.h"
++#include "Texture.h"
++#include "Graphics.h"
++#include "Camera.h"
++#include "gameflow.h"
++#include "Piki.h"
++#include "PikiMgr.h"
++#include "PikiState.h"
++#include "NaviMgr.h"
++#include "Navi.h"
++#include "Interactions.h"
++#include <SDL.h>
++#include <map>
++#include <set>
++#include <vector>
++#include <string>
++#include <fstream>
++#include <cmath>
++#include <cstdio>
++#include <cstdlib>
++namespace {
++constexpr float Tick = 1.0f / 30.0f; // 30 Hz bounded behavior clock
++constexpr float QueenMoveSpeed = 125.0f; // general fp06 disc
++constexpr int StuckMax = 32;             // bounded stuck-Pikmin receiver set
++p2queen::ActorConfig config;
++std::map<size_t, std::vector<Shape*>> shapes; // clip index -> pose shapes
++size_t totalBytes = 0;
++
++struct Larva {
++	bool active = false;
++	int state = 2; // born
++	float health = p2queen::BabyHealth;
++	float x = 0, y = 0, z = 0, yaw = 0, vx = 0, vy = 0, vz = 0;
++	float frame = 0;
++	bool landed = false;
++	bool loggedDead = false;
++};
++struct Queen {
++	p2queen::Placement cfg;
++	p2queen::VariantInfo info;
++	int state = p2queen::Sleep;
++	float frame = 0;
++	float x = 0, y = 0, z = 0, yaw = 0;
++	float health = p2queen::HealthDefault;
++	// rolling
++	bool rollingLeft = false;
++	bool firstRoll = true;
++	float dirX = 0, dirZ = 1, originX = 0, originZ = 0, rollElapsed = 0;
++	// receivers
++	Piki* stuck[StuckMax];
++	int stuckCount = 0;
++	int blows = 0;
++	int flickTier = 0;
++	bool hitUp = false;
++	// timers / larvae
++	float idleSec = 0, birthTimer = 0;
++	bool roomFlag = true;
++	std::vector<Larva> larvae; // fixed-size pool, allocated once at setup
++	bool loggedState[8] = {};
++	bool loggedAtari = false;
++	bool loggedRocks = false;
++};
++std::vector<Queen> queens;
++unsigned clockLast = 0;
++float clockAcc = 0;
++
++void fail() {
++	std::fputs("P2_QUEEN_ACTOR invalid profile/model\n", stderr);
++	std::abort();
++}
++const char* stateClip(int state, bool rollingLeft) {
++	switch (state) {
++	case p2queen::Dead: return "dead";
++	case p2queen::Sleep: return "sleep";
++	case p2queen::Wait: return "wait1";
++	case p2queen::Damage: return "damage";
++	case p2queen::Flick: return "flick";
++	case p2queen::Rolling: return rollingLeft ? "rolling_l" : "rolling_r";
++	case p2queen::Born: return "born";
++	}
++	return "wait1";
++}
++Shape* load(const std::string& name, std::vector<unsigned char>& reference, size_t& clipBytes) {
++	std::ifstream in("assets/dataDir/courses/pikmin2room/" + name, std::ios::binary | std::ios::ate);
++	if (!in) fail();
++	auto size = in.tellg();
++	if (size <= 0 || size > 1024 * 1024 || clipBytes + size_t(size) > 1024 * 1024 || totalBytes + size_t(size) > 16 * 1024 * 1024)
++		fail();
++	clipBytes += size_t(size);
++	totalBytes += size_t(size);
++	in.seekg(0);
++	std::vector<unsigned char> data(size_t(size), 0), resources;
++	if (!in.read(reinterpret_cast<char*>(data.data()), size) || !p2animation::resources(data, resources)) fail();
++	if (!reference.empty() && reference != resources) fail();
++	reference = resources;
++	Shape* shape = gameflow.loadShape(("courses/pikmin2room/" + name).c_str(), true);
++	if (!shape) fail();
++	for (int i = 0; i < shape->mTexAttrCount; ++i)
++		if (shape->mTexAttrList[i].mTexture) shape->mTexAttrList[i].mTexture->attach();
++	return shape;
++}
++const char* speciesName(int enemy) { return enemy == 30 ? "Queen" : "Baby"; }
++
++void enter(Queen& q, int state) {
++	q.state = state;
++	q.frame = 0;
++	if (state == p2queen::Wait) q.idleSec = 0;
++	if (state == p2queen::Rolling) q.rollElapsed = 0;
++}
++
++void spawnLarva(Queen& q) {
++	for (auto& l : q.larvae) {
++		if (l.active) continue;
++		const float rad = q.yaw * 0.0174532925199433f;
++		const float back = -p2queen::RootRadius; // body_end-equivalent: behind the Queen
++		l = Larva{};
++		l.active = true;
++		l.x = q.x + std::sin(rad) * back;
++		l.y = q.y;
++		l.z = q.z + std::cos(rad) * back;
++		l.yaw = q.yaw + 180.0f; // facing away
++		const float lrad = l.yaw * 0.0174532925199433f;
++		l.vx = std::sin(lrad) * p2queen::LaunchSpeed;
++		l.vz = std::cos(lrad) * p2queen::LaunchSpeed;
++		l.vy = p2queen::LaunchSpeed * 0.5f;
++		std::printf("P2_QUEEN_LARVA id=%u xyz=%.6f,%.6f,%.6f yaw=%.3f launch_speed=50\n", q.cfg.id, l.x, l.y, l.z,
++		            l.yaw);
++		return;
++	}
++}
++
++void flickStuck(Queen& q) {
++	const float rad = q.yaw * 0.0174532925199433f;
++	for (int i = 0; i < q.stuckCount; ++i) {
++		Piki* p = q.stuck[i];
++		if (!p || !p->isAlive()) continue;
++		const Vector3f& pos = p->getPosition();
++		const float dx = pos.x - q.x, dz = pos.z - q.z;
++		const float facing = std::atan2(std::sin(rad), std::cos(rad));
++		float rel = std::atan2(dx, dz) - facing;
++		while (rel > 3.14159265f) rel -= 6.2831853f;
++		while (rel < -3.14159265f) rel += 6.2831853f;
++		// Approximate joint binding from the stick sector: front nose/head,
++		// rear bod5 (reversed), sides bod1. Queen.cpp:324-345.
++		const p2queen::Part part = std::fabs(rel) < 0.7853982f ? p2queen::Part::Nose
++		                       : std::fabs(rel) > 2.3561945f ? p2queen::Part::Bod5
++		                                                     : p2queen::Part::Bod1;
++		const p2queen::FlickEffect effect = p2queen::flickEffect(part);
++		float angle = std::atan2(dx, dz);
++		if (effect == p2queen::FlickEffect::FlickReversed) angle += 3.14159265f;
++		InteractFlick flick(nullptr, p2queen::ShakeKnockback, p2queen::ShakeDamage, angle);
++		p->stimulate(flick);
++	}
++	std::printf("P2_QUEEN_FLICK id=%u shaken=%d knockback=300 damage=1 joints=nose/head/bod1 bod5=reversed\n", q.cfg.id,
++	            q.stuckCount);
++	q.stuckCount = 0;
++	q.blows = 0;
++	if (q.flickTier < 3) ++q.flickTier;
++}
++
++void pressScan(Queen& q) {
++	if (!pikiMgr) return;
++	Iterator it(pikiMgr);
++	CI_LOOP(it) {
++		Piki* p = static_cast<Piki*>(*it);
++		if (!p || !p->isAlive() || p->getState() == PIKISTATE_Pressed) continue;
++		const Vector3f& pos = p->getPosition();
++		const float dx = pos.x - q.x, dz = pos.z - q.z;
++		if (std::fabs(pos.y - q.y) > p2queen::PressHeightBand) continue;
++		const float dist = std::sqrt(dx * dx + dz * dz);
++		if (dist > p2queen::AttackRadius) continue;
++		const float along = dist > 1.0e-6f ? (dx * q.dirX + dz * q.dirZ) / dist : 1.0f;
++		if (std::acos(along > 1.0f ? 1.0f : along < -1.0f ? -1.0f : along)
++		    > p2queen::AttackHitAngleDeg * 0.0174532925199433f)
++			continue;
++		InteractPress press(nullptr, p2queen::PressDamage);
++		p->stimulate(press);
++		std::printf("P2_QUEEN_PRESS id=%u damage=10 radius=150 angle=25 height_band=50\n", q.cfg.id);
++	}
++}
++
++void receiveScan(Queen& q, float dt) {
++	// Actor-local Pikmin-attack receiver: Pikmin inside the root collision
++	// sphere and height band stick and land blows. Captain punches and purple
++	// quake are never sampled: Queen is immune by construction (Queen.cpp:
++	// 184-207), so those channels do not exist here.
++	if (!pikiMgr || q.state == p2queen::Dead || q.state == p2queen::Rolling) return;
++	Iterator it(pikiMgr);
++	CI_LOOP(it) {
++		Piki* p = static_cast<Piki*>(*it);
++		if (!p || !p->isAlive()) continue;
++		const Vector3f& pos = p->getPosition();
++		const float dx = pos.x - q.x, dy = pos.y - q.y, dz = pos.z - q.z;
++		if (dx * dx + dy * dy + dz * dz > p2queen::RootRadius * p2queen::RootRadius) continue;
++		if (std::fabs(dy) > p2queen::PressHeightBand) continue;
++		bool known = false;
++		for (int i = 0; i < q.stuckCount; ++i)
++			if (q.stuck[i] == p) known = true;
++		if (known || q.stuckCount >= StuckMax) continue;
++		q.stuck[q.stuckCount++] = p;
++		++q.blows;
++		q.hitUp = true;
++		// Approximate per-blow Pikmin damage of 1 (part-only coefficient from
++		// the policy; the P1 per-color blow strength is out of scope).
++		q.health -= 1.0f * p2queen::damageFactor(q.state, p2queen::Attacker::PikminPart, false);
++		if (q.health < 0.0f) q.health = 0.0f;
++	}
++	for (int i = 0; i < q.stuckCount; ++i) {
++		Piki* p = q.stuck[i];
++		if (!p || !p->isAlive()) {
++			q.stuck[i] = q.stuck[--q.stuckCount];
++			--i;
++		}
++	}
++	(void)dt;
++}
++
++void tickLarva(Queen& q, Larva& l) {
++	l.frame += 1.0f;
++	if (l.state == 2) { // born: damp until landed, BabyState.cpp:107-127
++		l.vx *= 0.95f;
++		l.vz *= 0.95f;
++		l.vy -= 980.0f * Tick;
++		l.x += l.vx * Tick;
++		l.y += l.vy * Tick;
++		l.z += l.vz * Tick;
++		if (l.y <= q.y) {
++			l.y = q.y;
++			l.landed = true;
++		}
++		const int next = p2queen::babyBornNext(l.landed, l.health);
++		if (next >= 0) {
++			l.state = next;
++			l.frame = 0;
++		}
++	} else if (l.state == 3) { // move toward nearest target, BabyState.cpp:153-186
++		Piki* best = nullptr;
++		float bestDist = p2queen::BabySight;
++		if (pikiMgr) {
++			Iterator it(pikiMgr);
++			CI_LOOP(it) {
++				Piki* p = static_cast<Piki*>(*it);
++				if (!p || !p->isAlive()) continue;
++				const Vector3f& pos = p->getPosition();
++				const float dx = pos.x - l.x, dz = pos.z - l.z;
++				const float dist = std::sqrt(dx * dx + dz * dz);
++				if (dist < bestDist) {
++					bestDist = dist;
++					best = p;
++				}
++			}
++		}
++		if (best) {
++			const Vector3f& pos = best->getPosition();
++			const float want = std::atan2(pos.x - l.x, pos.z - l.z) * 57.29577951308232f;
++			float off = want - l.yaw;
++			while (off > 180.0f) off -= 360.0f;
++			while (off < -180.0f) off += 360.0f;
++			const float step = off > 10.0f ? 10.0f : off < -10.0f ? -10.0f : off;
++			l.yaw += step;
++			const auto move = p2queen::babyMoveStep(off, 45.0f, p2queen::BabySpeed, bestDist, 30.0f, true);
++			const float rad = l.yaw * 0.0174532925199433f;
++			l.x += std::sin(rad) * move.first * Tick;
++			l.z += std::cos(rad) * move.first * Tick;
++			// Baby attack (damage 2 to captains) is deferred: UNTESTED slice.
++		}
++		// Instant crush when pressed (a roll pass or a press): hp 5 disc.
++		if (pikiMgr) {
++			Iterator it(pikiMgr);
++			CI_LOOP(it) {
++				Piki* p = static_cast<Piki*>(*it);
++				if (!p || !p->isAlive()) continue;
++				const Vector3f& pos = p->getPosition();
++				const float dx = pos.x - l.x, dy = pos.y - l.y, dz = pos.z - l.z;
++				if (dx * dx + dy * dy + dz * dz > p2queen::BabyRootRadius * p2queen::BabyRootRadius) continue;
++				if (p2queen::babyPressKills(l.state, false)) {
++					l.health = 0;
++				} else {
++					l.health -= 1.0f;
++				}
++			}
++		}
++		if (l.health <= 0.0f) {
++			l.state = 0;
++			l.frame = 0;
++		}
++	} else if (l.state == 0 && !l.loggedDead) {
++		l.loggedDead = true;
++		std::printf("P2_QUEEN_LARVA_DEAD id=%u no_corpse=1\n", q.cfg.id);
++	}
++	if (l.state == 0) {
++		const p2queen::ActorClip* clip = config.clip(31, "dead");
++		if (clip && l.frame >= clip->duration) {
++			l.active = false; // larvae leave no corpse; slot returns to the pool
++			std::printf("P2_QUEEN_LARVA_RELEASE id=%u\n", q.cfg.id);
++		}
++	}
++}
++
++void tickQueen(Queen& q) {
++	receiveScan(q, Tick);
++	q.birthTimer += Tick;
++	int alive = 0;
++	for (const auto& l : q.larvae)
++		if (l.active) ++alive;
++	q.roomFlag = p2queen::larvaRoom(alive, q.roomFlag);
++	const bool canCreate = q.cfg.larvae && !q.info.noLarvae;
++	const bool larvaDue = p2queen::birthDue(canCreate, q.roomFlag, q.birthTimer, p2queen::BirthIntervalSec);
++	const bool startFlick = p2queen::isStartFlick(q.blows, q.stuckCount, q.flickTier);
++
++	const char* clipName = stateClip(q.state, q.rollingLeft);
++	const p2queen::ActorClip* clip = config.clip(30, clipName);
++	const p2queen::ClipKeys keys = p2queen::clipKeys(clipName);
++	const float prev = q.frame;
++	q.frame += 1.0f;
++	// Sampled key events (disc frames) crossed this tick.
++	for (int i = 0; i < keys.keyCount; ++i) {
++		const int key = keys.keys[i];
++		if (!(prev < float(key) && q.frame >= float(key))) continue;
++		if (q.state == p2queen::Flick && key == 40) flickStuck(q);
++		if (q.state == p2queen::Born && key == 24 && larvaDue) {
++			spawnLarva(q);
++			q.birthTimer = 0;
++		}
++		if (q.state == p2queen::Rolling && key == 67)
++			std::printf("P2_QUEEN_ROLL_EVENT id=%u frame=67 rumble=1 shake=1 camera_dep=0\n", q.cfg.id);
++		if (q.state == p2queen::Dead)
++			std::printf("P2_QUEEN_DEAD_KEY id=%u frame=%d\n", q.cfg.id, key);
++	}
++	if (q.state == p2queen::Rolling) {
++		if (!q.loggedAtari) {
++			q.loggedAtari = true;
++			std::printf("P2_QUEEN_IGNORE_ATARI id=%u rolling=1 captains_enemies_untouched=1\n", q.cfg.id);
++		}
++		q.rollElapsed += Tick;
++		q.x += q.dirX * QueenMoveSpeed * Tick;
++		q.z += q.dirZ * QueenMoveSpeed * Tick;
++		const float dot = (q.x - q.originX) * q.dirX + (q.z - q.originZ) * q.dirZ;
++		const p2queen::RollOutcome outcome = p2queen::rollPass(dot, q.rollElapsed, p2queen::RollingTimeSec,
++		                                                     p2queen::HomeRadius, p2queen::TerritoryRadius, q.health);
++		if (outcome == p2queen::RollOutcome::Crash) {
++			std::printf("P2_QUEEN_CRASH id=%u dot=%.3f territory=200 margin=50 rumble=1 shake=1\n", q.cfg.id, dot);
++			if (q.cfg.variant == p2queen::Variant::L02 && !q.loggedRocks) {
++				q.loggedRocks = true;
++				std::printf("P2_QUEEN_CRASH_ROCKS id=%u recorded=7 lifetime=30 disabled=1\n", q.cfg.id);
++			}
++			// Alternate side and start the next pass from the crash point.
++			q.rollingLeft = p2queen::nextRollIsLeft(q.rollingLeft ? 5 : p2queen::QueenAnimRollingR);
++			const auto dir = p2queen::rollDirection(q.yaw, q.rollingLeft);
++			q.dirX = dir.first;
++			q.dirZ = dir.second;
++			q.originX = q.x;
++			q.originZ = q.z;
++			q.rollElapsed = 0;
++			q.frame = 0;
++		} else if (outcome == p2queen::RollOutcome::Wait) {
++			enter(q, p2queen::Wait);
++		}
++		pressScan(q);
++	}
++	// Deferred next state, applied at the end of the clip loop pass
++	// (KEYEVENT_END semantics on the sampled clips). Loop ranges follow the
++	// disc key pairs: sleep 59..118, wait1 full, damage 10..29, rolling
++	// 20..69; flick/born always transition at end; dead holds its last pose.
++	const int duration = clip ? clip->duration : keys.frames;
++	int loopStart = 0, loopEnd = duration;
++	if (q.state == p2queen::Sleep) {
++		loopStart = 59;
++		loopEnd = 118;
++	} else if (q.state == p2queen::Damage) {
++		loopStart = 10;
++		loopEnd = 29;
++	} else if (q.state == p2queen::Rolling) {
++		loopStart = 20;
++		loopEnd = 69;
++	}
++	if (duration > 0 && q.frame >= float(loopEnd)) {
++		q.frame = float(loopStart);
++		int next = -1;
++		if (q.state == p2queen::Sleep)
++			next = p2queen::sleepNext(q.health, q.hitUp, larvaDue, startFlick, q.stuckCount > 0);
++		else if (q.state == p2queen::Wait)
++			next = p2queen::waitNext(larvaDue, q.idleSec, q.hitUp, startFlick, q.health);
++		else if (q.state == p2queen::Damage)
++			next = p2queen::damageNext(larvaDue, q.stuckCount > 0, startFlick, q.health);
++		else if (q.state == p2queen::Flick) {
++			const auto end = p2queen::flickEnd(q.health, q.rollingLeft);
++			next = end.first;
++			if (next == p2queen::Rolling) {
++				bool left = end.second;
++				if (q.info.easyFirstRoll && q.firstRoll && naviMgr && naviMgr->getNavi()) {
++					const Vector3f& np = naviMgr->getNavi()->getPosition();
++					left = p2queen::easyRollLeft(q.yaw, np.x - q.x, np.z - q.z);
++					std::printf("P2_QUEEN_EASY_ROLL id=%u f_01=1 away_from_captain=1 left=%d\n", q.cfg.id, int(left));
++				}
++				q.rollingLeft = left;
++				q.firstRoll = false;
++				const auto dir = p2queen::rollDirection(q.yaw, left);
++				q.dirX = dir.first;
++				q.dirZ = dir.second;
++				q.originX = q.x;
++				q.originZ = q.z;
++			}
++		} else if (q.state == p2queen::Born)
++			next = q.health <= 0.0f ? p2queen::Dead : p2queen::Wait;
++		else if (q.state == p2queen::Dead)
++			q.frame = float(duration); // stays on the last sampled pose
++		q.hitUp = false;
++		if (next >= 0 && next != q.state) {
++			std::printf("P2_QUEEN_STATE id=%u from=%d to=%d health=%.1f blows=%d stuck=%d\n", q.cfg.id, q.state, next,
++			            q.health, q.blows, q.stuckCount);
++			enter(q, next);
++		}
++	}
++	if (q.state == p2queen::Wait) q.idleSec += Tick;
++	if (q.state != p2queen::Dead && q.health <= 0.0f && q.state != p2queen::Flick) {
++		std::printf("P2_QUEEN_STATE id=%u from=%d to=0 health=0\n", q.cfg.id, q.state);
++		enter(q, p2queen::Dead);
++	}
++	for (auto& l : q.larvae)
++		if (l.active) tickLarva(q, l); // larvae persist after Queen death
++}
++} // namespace
++
++void pc_p2_queen_reset() {
++	config = p2queen::ActorConfig{};
++	shapes.clear();
++	queens.clear();
++	totalBytes = 0;
++	clockLast = 0;
++	clockAcc = 0;
++}
++
++void pc_p2_queen_setup() {
++	pc_p2_queen_reset();
++	if (!pc_pikipelago_room_preview()) return;
++	std::ifstream in("p2-queen-actor.txt");
++	if (!in) return;
++	try {
++		config = p2queen::readActorConfig(in);
++	} catch (...) {
++		fail();
++	}
++	std::map<int, std::vector<unsigned char>> resources;
++	// Validate/copy the whole referenced bank before allocating Shapes; clips
++	// not selected by this profile never touch the App heap.
++	for (size_t ci = 0; ci < config.clips.size(); ++ci) {
++		const auto& clip = config.clips[ci];
++		size_t bytes = 0;
++		for (size_t i = 0; i < clip.frames.size(); ++i) {
++			char name[100];
++			std::snprintf(name, sizeof(name), "bulblax_%s_%s_%02u.mod", speciesName(clip.enemy), clip.name.c_str(),
++			              unsigned(i));
++			shapes[ci].push_back(load(name, resources[clip.enemy], bytes));
++		}
++	}
++	for (const auto& p : config.placements) {
++		Queen q;
++		q.cfg = p;
++		q.info = p2queen::variantInfo(p.variant, false);
++		q.health = q.info.health;
++		q.x = p.x;
++		q.y = p.y;
++		q.z = p.z;
++		q.yaw = p.yaw;
++		q.larvae.resize(p2queen::LarvaPoolMax); // bounded pool, allocated once
++		enter(q, p2queen::entryState(p.larvae && !q.info.noLarvae));
++		std::printf("P2_QUEEN_READY id=%u enemy=30 variant=%s xyz=%.6f,%.6f,%.6f yaw=%.3f health=%.1f larvae=%d "
++		            "entry_state=%d pool=%d hysteresis=50/25\n",
++		            p.id, p.variant == p2queen::Variant::F01 ? "f_01" : p.variant == p2queen::Variant::L02 ? "l_02" : "default",
++		            p.x, p.y, p.z, p.yaw, q.health, int(p.larvae), q.state, p2queen::LarvaPoolMax);
++		queens.push_back(q);
++	}
++	clockLast = SDL_GetTicks();
++}
++
++void pc_p2_queen_update() {
++	if (queens.empty()) return;
++	const unsigned now = SDL_GetTicks();
++	clockAcc += float(now - clockLast) * 0.001f;
++	clockLast = now;
++	int steps = 0;
++	while (clockAcc >= Tick && steps < 4) { // bounded: never catch up more than 4 ticks
++		clockAcc -= Tick;
++		++steps;
++		for (auto& q : queens) tickQueen(q);
++	}
++	if (steps == 4) clockAcc = 0; // drop backlog; 30 Hz stays bounded
++}
++
++void pc_p2_queen_draw(Graphics& gfx) {
++	if (queens.empty() || !gfx.mCamera) return;
++	gfx.setPerspective(gfx.mCamera->mPerspectiveMatrix.mMtx, gfx.mCamera->mFov, gfx.mCamera->mAspectRatio,
++	                   gfx.mCamera->mNear, gfx.mCamera->mFar, 1.f);
++	gfx.useMaterial(nullptr);
++	gfx.setDepth(true);
++	auto drawOne = [&](int enemy, const char* clipName, float frame, float x, float y, float z, float yaw) {
++		const p2queen::ActorClip* clip = config.clip(enemy, clipName);
++		if (!clip) return;
++		size_t ci = size_t(clip - &config.clips[0]);
++		size_t pose = clip->index(frame);
++		Shape* shape = shapes.at(ci)[pose];
++		Matrix4f world, view;
++		world.makeSRT(Vector3f(1, 1, 1), Vector3f(0, yaw * 0.0174532925199433f, 0), Vector3f(x, y, z));
++		gfx.mCamera->mLookAtMtx.multiplyTo(world, view);
++		shape->updateAnim(gfx, view, nullptr, nullptr);
++		shape->drawshape(gfx, *gfx.mCamera, nullptr);
++	};
++	for (auto& q : queens) {
++		drawOne(30, stateClip(q.state, q.rollingLeft), q.frame, q.x, q.y, q.z, q.yaw);
++		for (const auto& l : q.larvae) {
++			if (!l.active) continue;
++			drawOne(31, l.state == 2 ? "born" : l.state == 3 ? "move" : "dead", l.frame, l.x, l.y, l.z, l.yaw);
++		}
++	}
++}
+diff --git a/pc_port/pc_p2_queen.h b/pc_port/pc_p2_queen.h
+new file mode 100644
+index 00000000..3a74263a
+--- /dev/null
++++ b/pc_port/pc_p2_queen.h
+@@ -0,0 +1,9 @@
++#pragma once
++// Empress Bulblax (Queen, enemy ID 30) sampled actor (#256, parent #172).
++// Actor-local receivers only: P1 gameplay for ordinary actors stays
++// authoritative and untouched. Missing/invalid config fails closed (no actor).
++class Graphics;
++void pc_p2_queen_setup();
++void pc_p2_queen_reset();
++void pc_p2_queen_update();
++void pc_p2_queen_draw(Graphics&);
+diff --git a/pc_port/pc_p2_queen_policy.h b/pc_port/pc_p2_queen_policy.h
+new file mode 100644
+index 00000000..f744264c
+--- /dev/null
++++ b/pc_port/pc_p2_queen_policy.h
+@@ -0,0 +1,368 @@
++#pragma once
++// Empress Bulblax (Queen, enemy ID 30) sampled-actor policy (#256, parent #172).
++// Pure, engine-independent mirror of experimental/pikmin2_bulblax_behavior.py
++// (#227). Every constant names its source; disc values stay distinct from
++// header defaults. Keep this header free of game-engine includes so the
++// standalone policy test compiles with strict MinGW flags.
++#include <cmath>
++#include <cstdint>
++#include <istream>
++#include <set>
++#include <stdexcept>
++#include <string>
++#include <utility>
++#include <vector>
++namespace p2queen {
++
++// Queen FSM state IDs, include/Game/Entities/Queen.h:26-34.
++enum State : int { Dead = 0, Sleep = 1, Wait = 2, Damage = 3, Flick = 4, Rolling = 5, Born = 6 };
++
++enum class Attacker { PikminPart, CaptainPunch, Earthquake };
++enum class Part { Nose, Head, Bod1, Bod5, Other };
++enum class FlickEffect { Flick, FlickReversed, ShakeOff };
++enum class RollOutcome { Crash, Wait, Continue };
++enum class Variant { Default, F01, L02 };
++
++// Disc key frames per clip, queen/enemyanimmgr.txt via the #227 reference
++// (QUEEN_CLIPS). Sleep loop is 59..118; gameplay event at 120. Rolling clips
++// loop 20..69 with the gameplay event at 67.
++struct ClipKeys {
++	int frames;
++	int keys[4];
++	int keyCount;
++};
++inline ClipKeys clipKeys(const std::string& name) {
++	if (name == "dead") return {140, {60, 73, 86, 99}, 4};
++	if (name == "sleep") return {210, {59, 118, 120, 0}, 3};
++	if (name == "wait1") return {30, {0, 29, 0, 0}, 2};
++	if (name == "damage") return {50, {10, 29, 0, 0}, 2};
++	if (name == "flick") return {60, {40, 0, 0, 0}, 1};
++	if (name == "rolling_l") return {110, {20, 67, 69, 0}, 3};
++	if (name == "rolling_r") return {110, {20, 67, 69, 0}, 3};
++	if (name == "born") return {28, {24, 0, 0, 0}, 1};
++	return {0, {0, 0, 0, 0}, 0};
++}
++
++constexpr int QueenAnimRollingR = 6; // Queen.h:202; roll side alternates off this index.
++
++// Proper parameters (disc), Queen.h:167-179 + bulblax.json proper_retail.
++constexpr float RollingTimeSec = 3.5f;   // fp01
++constexpr float BirthIntervalSec = 2.0f; // fp02
++constexpr float HealthDefault = 5000.0f; // general fp00
++constexpr float HealthF01 = 3300.0f;     // fp11 HoH/HoB override
++constexpr int MaxBirths = 50;            // ip01
++constexpr int MinBirths = 25;            // ip02
++
++// General parameters (disc), queen/enemyparm.txt.
++constexpr float TerritoryRadius = 200.0f; // fp09
++constexpr float HomeRadius = 25.0f;       // fp10
++constexpr float ShakeKnockback = 300.0f;  // fp17
++constexpr float ShakeDamage = 1.0f;       // fp18
++constexpr float AttackRadius = 150.0f;    // fp22
++constexpr float AttackHitAngleDeg = 25.0f; // fp23
++constexpr float PressDamage = 10.0f;      // fp24
++constexpr float LaunchSpeed = 50.0f;      // fp14 (larva launch)
++
++// QueenState.cpp:403-409, 154.
++constexpr float TerritoryCrashMargin = 50.0f;
++constexpr float WaitIdleSleepSec = 30.0f;
++
++// Shake-off thresholds (disc), general ip01..ip07 (audit lines 107-108).
++constexpr int ShakeBlows[4] = {30, 35, 45, 50};
++constexpr int ShakeSticking[3] = {5, 10, 15};
++
++// Damage coefficients, Queen.cpp:184-198 + audit lines 104-105.
++constexpr float SleepDamageFactor = 0.1f;
++constexpr float FlickDamageFactor = 0.2f;
++constexpr float PetrifiedDamageFactor = 0.25f;
++
++// rollingAttack geometry, Queen.cpp:287-318.
++constexpr float PressHeightBand = 50.0f;
++
++// Collision tree, queen/enemycoll.txt.
++constexpr float RootRadius = 275.0f;
++
++// Larva birth, Queen.cpp:423-479.
++constexpr int LarvaPoolMax = 50;
++
++// Baby (Bulborb Larva, enemy ID 31) minimal slice, baby/enemyparm.txt.
++constexpr float BabyHealth = 5.0f;
++constexpr float BabySpeed = 40.0f;
++constexpr float BabySight = 800.0f;
++constexpr float BabyAttackDamage = 2.0f; // captain bite; deferred (UNTESTED)
++constexpr float BabyRootRadius = 25.0f;
++
++// HoH (l_02) crash rocks: recorded, disabled in this lane (explicit limit).
++constexpr int L02CrashRocks = 7;
++constexpr float L02RockLifetimeSec = 30.0f;
++
++inline void finite(float value) {
++	if (!std::isfinite(value)) throw std::runtime_error("Expected finite number");
++}
++
++// Entry state: Wait when larvae are allowed, else Sleep. Queen.cpp:62-66.
++inline int entryState(bool canCreateLarva) { return canCreateLarva ? Wait : Sleep; }
++
++// StateSleep deferred next state at clip end; -1 keeps sleeping.
++// QueenState.cpp:89-103: motion finishes on death, hit-counter rise or a due
++// larva; then Dead > Flick > Damage (Pikmin stuck) > Wait.
++inline int sleepNext(float health, bool hitCounterUp, bool larvaDue, bool startFlick, bool stuckPikmin) {
++	finite(health);
++	if (!(health <= 0.0f || hitCounterUp || larvaDue)) return -1;
++	if (health <= 0.0f) return Dead;
++	if (startFlick) return Flick;
++	if (stuckPikmin) return Damage;
++	return Wait;
++}
++
++// StateWait deferred next state; later checks override (Sleep, Damage, Born,
++// Flick, Dead). QueenState.cpp:153-173.
++inline int waitNext(bool larvaDue, float idleSeconds, bool hitCounterUp, bool startFlick, float health) {
++	finite(idleSeconds);
++	finite(health);
++	int next = -1;
++	if (!larvaDue && idleSeconds > WaitIdleSleepSec) next = Sleep;
++	if (hitCounterUp) next = Damage;
++	if (larvaDue) next = Born;
++	if (startFlick) next = Flick;
++	if (health <= 0.0f) next = Dead;
++	return next;
++}
++
++// StateDamage deferred next state: Born, Wait when unstuck, Flick, Dead.
++// QueenState.cpp:219-237.
++inline int damageNext(bool larvaDue, bool stuckPikmin, bool startFlick, float health) {
++	finite(health);
++	int next = -1;
++	if (larvaDue) next = Born;
++	if (!stuckPikmin) next = Wait;
++	if (startFlick) next = Flick;
++	if (health <= 0.0f) next = Dead;
++	return next;
++}
++
++// StateFlick KEYEVENT_END: Dead, else Rolling with side from
++// isRollingAttackLeft. QueenState.cpp:281-293.
++inline std::pair<int, bool> flickEnd(float health, bool rollingLeft) {
++	finite(health);
++	if (health <= 0.0f) return {Dead, false};
++	return {Rolling, rollingLeft};
++}
++
++// Next Rolling pass is "left" when the current animation is rolling_r.
++// QueenState.cpp:441-447.
++inline bool nextRollIsLeft(int currentAnimIndex) { return currentAnimIndex == QueenAnimRollingR; }
++
++// Rolling pass outcome per frame. QueenState.cpp:405-433 (RECONSTRUCTED).
++inline RollOutcome rollPass(float dotAlongRoll, float rollingElapsed, float rollingTime, float homeRadius,
++                            float territoryRadius, float health) {
++	finite(dotAlongRoll);
++	finite(rollingElapsed);
++	finite(rollingTime);
++	finite(homeRadius);
++	finite(territoryRadius);
++	finite(health);
++	if (dotAlongRoll > territoryRadius - TerritoryCrashMargin) return RollOutcome::Crash;
++	if (rollingElapsed > rollingTime && dotAlongRoll > -(50.0f + homeRadius) && dotAlongRoll < 50.0f)
++		return RollOutcome::Wait;
++	return RollOutcome::Continue;
++}
++
++// Room-flag hysteresis on the larva pool. Queen.cpp:469-479.
++inline bool larvaRoom(int aliveLarvae, bool roomFlag, int maxBirths = MaxBirths, int minBirths = MinBirths) {
++	if (aliveLarvae < 0) throw std::runtime_error("Expected non-negative larva count");
++	if (aliveLarvae >= maxBirths) return false;
++	if (aliveLarvae <= minBirths) return true;
++	return roomFlag;
++}
++
++// Birth due: larvae allowed, room, timer past interval. Queen.cpp:469-479.
++inline bool birthDue(bool canCreateLarva, bool roomFlag, float birthTimer, float birthInterval) {
++	finite(birthTimer);
++	finite(birthInterval);
++	return canCreateLarva && roomFlag && birthTimer > birthInterval;
++}
++
++// Damage coefficient; 0.0 means ignored. Only Pikmin hitting a collision part
++// count (Queen.cpp:184-198); captain punches and earthquake do nothing.
++inline float damageFactor(int state, Attacker attacker, bool petrified = false) {
++	if (attacker == Attacker::Earthquake) return 0.0f;
++	if (petrified) return PetrifiedDamageFactor;
++	if (attacker == Attacker::CaptainPunch) return 0.0f;
++	if (state == Sleep) return SleepDamageFactor;
++	if (state == Flick) return FlickDamageFactor;
++	return 1.0f;
++}
++
++// flickPikmin joint routing, Queen.cpp:324-345.
++inline FlickEffect flickEffect(Part part) {
++	if (part == Part::Nose || part == Part::Head || part == Part::Bod1) return FlickEffect::Flick;
++	if (part == Part::Bod5) return FlickEffect::FlickReversed;
++	return FlickEffect::ShakeOff;
++}
++
++// isStartFlick: tiered shake-off thresholds (blows 30/35/45/50, sticking
++// 5/10/15); tier clamps at the top row. Audit lines 107-108.
++inline bool isStartFlick(int blows, int sticking, int tier) {
++	if (blows < 0 || sticking < 0 || tier < 0) throw std::runtime_error("Expected non-negative counters");
++	const int blowTier = tier > 3 ? 3 : tier;
++	const int stickTier = tier > 2 ? 2 : tier;
++	return blows >= ShakeBlows[blowTier] || sticking >= ShakeSticking[stickTier];
++}
++
++// Variant overrides, Queen.cpp:85-105, 355-410. zukan/piklopedia mode maps to
++// no larvae. l_02 crash rocks are recorded but disabled in this lane.
++struct VariantInfo {
++	bool noLarvae;
++	bool easyFirstRoll;
++	float health;
++	int crashRocks;
++	float rockLifetimeSec;
++};
++inline VariantInfo variantInfo(Variant variant, bool zukanMode = false) {
++	if (zukanMode) return {true, false, HealthDefault, 0, 0.0f};
++	if (variant == Variant::F01) return {true, true, HealthF01, 0, 0.0f};
++	if (variant == Variant::L02) return {false, false, HealthDefault, L02CrashRocks, L02RockLifetimeSec};
++	return {false, false, HealthDefault, 0, 0.0f};
++}
++
++// Baby press crush: any press while past Born and not petrified.
++// Baby.cpp:114-137 (state IDs: dead 0, press 1, born 2, move 3, attack 4).
++inline bool babyPressKills(int stateId, bool petrified) {
++	if (stateId < 0) throw std::runtime_error("Expected state ID");
++	return !petrified && stateId > 2;
++}
++
++// Baby StateMove step (RECONSTRUCTED), BabyState.cpp:153-186. Returns
++// (targetSpeed, attack?).
++inline std::pair<float, bool> babyMoveStep(float angleDist, float maxAttackAngle, float moveSpeed,
++                                           float targetDistance, float maxAttackRange, bool hasTarget) {
++	finite(angleDist);
++	finite(maxAttackAngle);
++	finite(moveSpeed);
++	finite(targetDistance);
++	finite(maxAttackRange);
++	if (!hasTarget) return {0.0f, false};
++	const float speed = std::fabs(angleDist) <= std::fabs(maxAttackAngle) ? moveSpeed : 0.25f * moveSpeed;
++	const bool attack = targetDistance <= maxAttackRange && std::fabs(angleDist) <= std::fabs(maxAttackAngle);
++	return {speed, attack};
++}
++
++// Baby StateBorn: damp until landed, then Move or Dead. BabyState.cpp:107-127.
++inline int babyBornNext(bool landed, float health) {
++	finite(health);
++	if (!landed) return -1;
++	return health <= 0.0f ? 0 : 3;
++}
++
++// Sideways roll direction: yaw +/- 90 degrees. Returns (dx, dz) unit vector.
++inline std::pair<float, float> rollDirection(float yawDeg, bool left) {
++	finite(yawDeg);
++	const float rad = (yawDeg + (left ? 90.0f : -90.0f)) * 0.0174532925199433f;
++	return {std::sin(rad), std::cos(rad)};
++}
++
++// f_01 easy first roll: pick the side whose roll direction points away from
++// the captain. Queen.cpp:355-380.
++inline bool easyRollLeft(float yawDeg, float toCaptainDx, float toCaptainDz) {
++	finite(yawDeg);
++	finite(toCaptainDx);
++	finite(toCaptainDz);
++	const auto l = rollDirection(yawDeg, true);
++	return l.first * toCaptainDx + l.second * toCaptainDz < 0.0f;
++}
++
++// ---------------------------------------------------------------------------
++// P2_QUEEN_ACTOR_1 actor configuration (strict, fail-closed).
++// ---------------------------------------------------------------------------
++struct ActorClip {
++	int enemy = 0; // 30 Queen, 31 Baby
++	std::string name;
++	int duration = 0;
++	std::vector<int> frames;
++	size_t index(float sourceFrame) const {
++		if (!std::isfinite(sourceFrame)) throw std::runtime_error("invalid frame");
++		sourceFrame = std::fmod(std::fmax(0.0f, sourceFrame), float(duration));
++		size_t best = 0;
++		for (size_t i = 1; i < frames.size(); ++i)
++			if (std::fabs(frames[i] - sourceFrame) < std::fabs(frames[best] - sourceFrame)) best = i;
++		return best;
++	}
++};
++struct Placement {
++	uint32_t id = 0;
++	Variant variant = Variant::Default;
++	bool larvae = false;
++	float x = 0, y = 0, z = 0, yaw = 0;
++};
++struct ActorConfig {
++	std::vector<ActorClip> clips;
++	std::vector<Placement> placements;
++	const ActorClip* clip(int enemy, const std::string& name) const {
++		for (const auto& c : clips)
++			if (c.enemy == enemy && c.name == name) return &c;
++		return nullptr;
++	}
++};
++inline bool queenClipName(const std::string& name) {
++	return clipKeys(name).frames > 0; // carry is P1-authoritative; not sampled here
++}
++inline bool babyClipName(const std::string& name) {
++	const std::string names = " dead deadpress move born ";
++	return names.find(" " + name + " ") != std::string::npos;
++}
++inline ActorConfig readActorConfig(std::istream& in) {
++	auto fail = []() { throw std::runtime_error("invalid Queen actor profile"); };
++	ActorConfig cfg;
++	std::string magic;
++	int count;
++	if (!(in >> magic >> count) || magic != "P2_QUEEN_ACTOR_1" || count < 1 || count > 16) fail();
++	std::set<std::pair<int, std::string>> seen;
++	for (int i = 0; i < count; ++i) {
++		ActorClip c;
++		int n;
++		if (!(in >> c.enemy >> c.name >> c.duration >> n)) fail();
++		const bool known = c.enemy == 30 ? queenClipName(c.name) : c.enemy == 31 ? babyClipName(c.name) : false;
++		if (!known || c.name.size() > 24 || c.name.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789_") != std::string::npos
++		    || !seen.insert({c.enemy, c.name}).second || c.duration < 1 || c.duration > 10000 || n < 1 || n > 12)
++			fail();
++		for (int j = 0; j < n; ++j) {
++			int f;
++			if (!(in >> f) || f < 0 || f >= c.duration || (j && f <= c.frames.back())) fail();
++			c.frames.push_back(f);
++		}
++		cfg.clips.push_back(c);
++	}
++	// The Queen FSM needs the full sampled state set.
++	for (const char* need : {"dead", "sleep", "wait1", "damage", "flick", "rolling_l", "rolling_r", "born"})
++		if (!cfg.clip(30, need)) fail();
++	if (!(in >> count) || count < 1 || count > 4) fail();
++	std::set<uint32_t> ids;
++	for (int i = 0; i < count; ++i) {
++		unsigned long long id;
++		std::string variant;
++		int larvae;
++		Placement p;
++		if (!(in >> id >> variant >> larvae >> p.x >> p.y >> p.z >> p.yaw) || id > 0xffffffffULL
++		    || !ids.insert(uint32_t(id)).second || (larvae != 0 && larvae != 1) || !std::isfinite(p.x) || !std::isfinite(p.y)
++		    || !std::isfinite(p.z) || !std::isfinite(p.yaw) || std::fabs(p.x) > 100000 || std::fabs(p.y) > 100000
++		    || std::fabs(p.z) > 100000 || std::fabs(p.yaw) > 360)
++			fail();
++		p.id = uint32_t(id);
++		p.larvae = larvae != 0;
++		if (variant == "default")
++			p.variant = Variant::Default;
++		else if (variant == "f_01")
++			p.variant = Variant::F01;
++		else if (variant == "l_02")
++			p.variant = Variant::L02;
++		else
++			fail();
++		if (p.variant == Variant::F01 && p.larvae) fail(); // HoB disables larvae, Queen.cpp:95-100
++		if (p.larvae && (!cfg.clip(31, "born") || !cfg.clip(31, "move") || !cfg.clip(31, "dead"))) fail();
++		cfg.placements.push_back(p);
++	}
++	if (in >> magic) fail();
++	return cfg;
++}
++} // namespace p2queen
+diff --git a/src/plugPikiKando/gameCoreSection.cpp b/src/plugPikiKando/gameCoreSection.cpp
+index 8bb8aaed..894bab95 100644
+--- a/src/plugPikiKando/gameCoreSection.cpp
++++ b/src/plugPikiKando/gameCoreSection.cpp
+@@ -13,6 +13,7 @@
+ #include "pc_p2_breadbug_visual.h"
+ #include "pc_p2_giant_breadbug_visual.h"
+ #include "pc_p2_bulblax_visual.h"
++#include "pc_p2_queen.h"
+ #include "pc_p2_tank.h"
+ #include "pc_randomizer.h"
+ #include "MapCode.h"
+@@ -1731,6 +1732,7 @@ void GameCoreSection::update()
+ 	zen::pGameInfo->mTotalPikiNum         = GameStat::allPikis;
+ 	zen::pGameInfo->mMapPikiNum           = GameStat::mapPikis;
+ 	zen::pGameInfo->mFormationPikiNum     = GameStat::formationPikis;
++	pc_p2_queen_update();
+ 	Node::update();
+ }
+ 
+@@ -2987,6 +2989,7 @@ void GameCoreSection::draw(Graphics& gfx)
+ 	pc_p2_breadbug_visual_draw(gfx);
+ 	pc_p2_giant_breadbug_visual_draw(gfx);
+ 	pc_p2_bulblax_visual_draw(gfx);
++	pc_p2_queen_draw(gfx);
+ 	pc_p2_tank_draw_water(gfx);
+ }
+ 
+diff --git a/src/plugPikiNakata/tekimgr.cpp b/src/plugPikiNakata/tekimgr.cpp
+index 681328cb..8784a995 100644
+--- a/src/plugPikiNakata/tekimgr.cpp
++++ b/src/plugPikiNakata/tekimgr.cpp
+@@ -9,6 +9,7 @@
+ #include "pc_p2_giant_breadbug_visual.h"
+ #include "pc_p2_bulblax_visual.h"
+ #include "pc_p2_breadbug_actor.h"
++#include "pc_p2_queen.h"
+ #endif
+ #include "DebugLog.h"
+ #include "Dolphin/os.h"
+@@ -120,7 +121,7 @@ int TekiMgr::typeIds[TEKI_TypeCount] = {
+ void TekiMgr::initTekiMgr()
+ {
+ #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+-	{ pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_breadbug_actor_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_tank_reset(); pc_p2_qurione_reset(); }
++	{ pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_breadbug_actor_reset(); pc_p2_queen_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_tank_reset(); pc_p2_qurione_reset(); }
+ #endif
+ 	tekiMgr = nullptr;
+ }
+@@ -147,7 +148,7 @@ TekiMgr::TekiMgr()
+ {
+ #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+ 	// Stage teardown nulls the global manager. Do not clear an unrelated live manager.
+-	if (!tekiMgr) { pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_breadbug_actor_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_tank_reset(); pc_p2_qurione_reset(); }
++	if (!tekiMgr) { pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_breadbug_actor_reset(); pc_p2_queen_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_tank_reset(); pc_p2_qurione_reset(); }
+ #endif
+ 	PRINT_NAKATA("TekiMgr>\n");
+ 	memStat->start("tekiMgr");
+@@ -290,7 +291,7 @@ Teki* TekiMgr::newTeki(int type)
+ void TekiMgr::reset()
+ {
+ #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+-	if (this == tekiMgr) { pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_breadbug_visual_reset(); pc_p2_giant_breadbug_visual_reset(); pc_p2_bulblax_visual_reset(); pc_p2_breadbug_actor_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_tank_reset(); pc_p2_qurione_reset(); }
++	if (this == tekiMgr) { pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_breadbug_visual_reset(); pc_p2_giant_breadbug_visual_reset(); pc_p2_bulblax_visual_reset(); pc_p2_queen_reset(); pc_p2_breadbug_actor_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_tank_reset(); pc_p2_qurione_reset(); }
+ #endif
+ 	PRINT_NAKATA("reset>\n");
+ 	Iterator iter(this);
+-- 
+2.47.1.windows.1
+

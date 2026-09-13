@@ -1,0 +1,40 @@
+From 8c10780936e965a572b6c1361398931f9f828eec Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Sun, 13 Sep 2026 10:15:10 -0400
+Subject: [PATCH 2/3] Bounce rolling passes off the territory bound (#256)
+
+Crash now reverses travel, alternates the sampled side and keeps the
+roll clock running, so the timed pass end near home (3.5 s, |dot|<50)
+stays reachable; runtime fixture showed endless crash loops otherwise.
+---
+ pc_port/pc_p2_queen.cpp | 11 +++++------
+ 1 file changed, 5 insertions(+), 6 deletions(-)
+
+diff --git a/pc_port/pc_p2_queen.cpp b/pc_port/pc_p2_queen.cpp
+index 26bcda9f..bb1aae97 100644
+--- a/pc_port/pc_p2_queen.cpp
++++ b/pc_port/pc_p2_queen.cpp
+@@ -353,15 +353,14 @@ void tickQueen(Queen& q) {
+ 				q.loggedRocks = true;
+ 				std::printf("P2_QUEEN_CRASH_ROCKS id=%u recorded=7 lifetime=30 disabled=1\n", q.cfg.id);
+ 			}
+-			// Alternate side and start the next pass from the crash point.
++			// Bounce back off the territory bound: reverse travel, alternate
++			// the sampled side (rolling_r -> next left) and keep the roll
++			// clock running so the timed pass end near home stays reachable.
++			q.dirX = -q.dirX;
++			q.dirZ = -q.dirZ;
+ 			q.rollingLeft = p2queen::nextRollIsLeft(q.rollingLeft ? 5 : p2queen::QueenAnimRollingR);
+-			const auto dir = p2queen::rollDirection(q.yaw, q.rollingLeft);
+-			q.dirX = dir.first;
+-			q.dirZ = dir.second;
+ 			q.originX = q.x;
+ 			q.originZ = q.z;
+-			q.rollElapsed = 0;
+-			q.frame = 0;
+ 		} else if (outcome == p2queen::RollOutcome::Wait) {
+ 			enter(q, p2queen::Wait);
+ 		}
+-- 
+2.47.1.windows.1
+
