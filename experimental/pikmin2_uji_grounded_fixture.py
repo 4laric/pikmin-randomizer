@@ -15,6 +15,7 @@ HOOK=r'''
 #include "pc_p2_sheargrub.h"
 #include "Interactions.h"
 #include "Generator.h"
+#include "TekiPersonality.h"
 static bool ujiGroundedFixture(Navi* n){
  static int ticks=0,step=0,repairs=0;static Teki* bugs[10]={};static Pellet* bodies[10]={};static bool hit[10]={},crossed[10]={};
  require(++ticks<10000,"grounded Uji timeout");n->mNeutralTime=0;
@@ -25,12 +26,13 @@ static bool ujiGroundedFixture(Navi* n){
   walkGoals.clear();for(float x:{200.f,425.f,595.f,820.f,1020.f})walkGoals.push_back(Vector3f(x,0,0));
   bool xyzValid=true;
   for(int i=0;i<10;++i){int id;float x,y,z;require(bool(poses>>id>>x>>y>>z)&&id==61000+i,"pose identity");auto* t=bugs[i];
-   Vector3f generated=t->mGenerator->getPos();
+   Vector3f generated=t->mGenerator->getPos();Vector3f born=t->mPersonality->mPosition;
+   std::printf("P2_UJI_BIRTH id=%d xyz=%.2f,%.2f,%.2f physics_drift=%.3f,%.3f,%.3f\n",id,born.x,born.y,born.z,t->mSRT.t.x-born.x,t->mSRT.t.y-born.y,t->mSRT.t.z-born.z);
    std::printf("P2_UJI_GROUNDED id=%d xyz=%.2f,%.2f,%.2f expected=%.2f,%.2f,%.2f generator=%.2f,%.2f,%.2f state=%d\n",id,t->mSRT.t.x,t->mSRT.t.y,t->mSRT.t.z,x,y,z,generated.x,generated.y,generated.z,t->mStateID);
-   xyzValid=xyzValid&&(std::fabs(t->mSRT.t.x-x)<.1&&std::fabs(t->mSRT.t.y-y)<.1&&std::fabs(t->mSRT.t.z-z)<.1);
+   xyzValid=xyzValid&&(std::fabs(born.x-x)<.1&&std::fabs(born.y-y)<.1&&std::fabs(born.z-z)<.1&&std::fabs(generated.x-x)<.1&&std::fabs(generated.y-y)<.1&&std::fabs(generated.z-z)<.1);
    walkGoals.push_back(Vector3f(1020,0,0));walkGoals.push_back(Vector3f(x,0,z));
   }
-  require(!(poses>>header),"trailing poses");require(xyzValid,"native effective XYZ mismatch");
+  require(!(poses>>header),"trailing poses");require(xyzValid,"native birth XYZ mismatch");
   for(auto* t:bugs){float health=t->mHealth;require(t->getTekiOption(BTeki::TEKI_OPTION_INVINCIBLE),"initial actor not buried");require(!t->stimulate(InteractAttack(n,nullptr,10000,false))&&t->mHealth==health&&t->mStoredDamage==0,"buried attack accepted");}
   walkGoals.push_back(Vector3f(1020,0,0));secondFloor=true;walkPoint=0;phase=1;n->mKontroller=new FixtureController();capture("uji-grounded-start.ppm");step=1;ticks=0;
  }else if(step==1){
@@ -58,7 +60,7 @@ def instrument(source):
 def validate(log):
     expected={str(i):2 if i<61004 else 1 for i in range(61000,61010)}
     if 'PASS grounded Uji:' not in log:raise ValueError('Incomplete grounded acceptance')
-    for marker in ('P2_UJI_GROUNDED id=','P2_UJI_GROUNDED_HIT id=','P2_UJI_GROUNDED_CROSS id='):
+    for marker in ('P2_UJI_BIRTH id=','P2_UJI_GROUNDED id=','P2_UJI_GROUNDED_HIT id=','P2_UJI_GROUNDED_CROSS id='):
         if set(re.findall(re.escape(marker)+r'(\d+)',log))!=set(expected):raise ValueError('Incomplete source identities')
     rows=re.findall(r'P2_POD_RECEIPT id=corpse:[^ ]*uji:(\d+) value=([12]) new=1',log)
     if len(rows)!=10 or {i:int(v) for i,v in rows}!=expected:raise ValueError('Incorrect source corpse credits')
