@@ -1,4 +1,5 @@
 #include "pc_p2_purple.h"
+#include "pc_p2_white.h"
 #include "DebugLog.h"
 #include "EffectMgr.h"
 #include "Interactions.h"
@@ -323,6 +324,10 @@ int PomAi::killStickPiki()
  */
 void PomAi::createPikiHead()
 {
+    // The source-authored Pom cycle count owns capacity; White does not copy
+    // the preview's former fixed Violet allowance.
+    int whiteConverted=pc_p2_convert_ivory(mPom,mMaxSeedCount-mReleasedSeedCount);
+    if(whiteConverted>=0){mReleasedSeedCount+=whiteConverted;playSound(3);return;}
     int converted=pc_p2_convert_violet(mPom,5-mReleasedSeedCount);
     if(converted>=0){mReleasedSeedCount+=converted;playSound(3);return;}
 	int seedCount = killStickPiki();

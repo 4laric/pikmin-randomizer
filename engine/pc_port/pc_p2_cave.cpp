@@ -6,6 +6,8 @@
 #include "Shape.h"
 #include "pc_p2_preview.h"
 #include "pc_p2_purple.h"
+#include "pc_p2_white.h"
+#include "pc_p2_species.h"
 #include "pc_bbft.h"
 #include "Piki.h"
 #include "PikiMgr.h"
@@ -30,6 +32,7 @@
 
 namespace {
 int floorId=0;
+int checkpointSchema=1;
 std::string token;
 bool requested=false;
 bool completed=false;
@@ -66,22 +69,27 @@ std::string pc_p2_cave_receipt_prefix(){return floorId?"floor"+std::to_string(fl
 void pc_p2_cave_setup(){
     const char* opt=std::getenv("PIKMIN_CAVE_NAV_DIAGNOSTICS");
     navRate.reset(opt && opt[0]==49 && opt[1]==0);navDrawCalls=0;navMarkerLogged=false;
-    floorId=0;token.clear();requested=false;completed=false;titleTimer=0;anchor=P2CaveAnchor{};transitionShape=nullptr;
+    floorId=0;checkpointSchema=1;token.clear();requested=false;completed=false;titleTimer=0;anchor=P2CaveAnchor{};transitionShape=nullptr;
     if(!pc_pikipelago_room_preview())return;
     std::ifstream in("p2-cave-entry.txt");if(!in)return;
     std::string version,extra;int floor,count;float health;
-    if(!(in>>version>>token>>floor>>health>>count) || version!="P2_CAVE_ENTRY_1"
+    if(!(in>>version>>token>>floor>>health>>count) || (version!="P2_CAVE_ENTRY_1" && version!="P2_CAVE_ENTRY_2")
         || token.size()!=32 || token.find_first_not_of("0123456789abcdef")!=std::string::npos
         || (floor!=1 && floor!=2) || !std::isfinite(health) || health<=0 || health>1 || count<1 || count>100)
         invalid("header");
     std::vector<Survivor> squad;
-    for(int i=0;i<count;++i){Survivor s;if(!(in>>s.color>>s.maturity) || s.color<0 || s.color>3 || s.maturity<0 || s.maturity>2)invalid("Pikmin");squad.push_back(s);}
+    checkpointSchema=version=="P2_CAVE_ENTRY_2"?2:1;
+    for(int i=0;i<count;++i){Survivor s;if(!(in>>s.color>>s.maturity) || s.color<0 || s.color>(checkpointSchema==2?4:3) || s.maturity<0 || s.maturity>2)invalid("Pikmin");squad.push_back(s);}
     if(in>>extra || !in.eof())invalid("trailing data");
     std::vector<Piki*> spawned;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(p->isAlive())spawned.push_back(p);}
     if(spawned.size()!=squad.size())invalid("spawn count differs from checkpoint");
     for(size_t i=0;i<squad.size();++i){
-        Piki* p=spawned[i];p->setColor(squad[i].color==3?Red:squad[i].color);p->mHappa=squad[i].maturity;
-        if(squad[i].color==3){if(!pc_p2_purples_enabled())invalid("Purple assets unavailable");pc_p2_make_purple(p);}
+        Piki* p=spawned[i];p->mHappa=squad[i].maturity;
+        if(squad[i].color==3 && !pc_p2_purples_enabled())invalid("Purple assets unavailable");
+        if(squad[i].color==4 && !pc_p2_whites_enabled())invalid("White assets unavailable");
+        if(!pc_p2_set_species(p,squad[i].color))invalid("Pikmin species");
+        if(squad[i].color==3)pc_p2_make_purple(p);
+        if(squad[i].color==4)pc_p2_make_white(p);
         std::printf("P2_CAVE_RESTORE species=%d maturity=%d\n",squad[i].color,squad[i].maturity);
     }
     Navi* n=naviMgr->getNavi();if(!n || C_NAVI_PARM(n,mHealth)<=0)invalid("captain unavailable");
@@ -123,7 +131,8 @@ bool pc_p2_cave_checkpoint(bool confirm){
         // Do not preserve an actor half-swallowed, converting or becoming a sprout.
         if(state==PIKISTATE_Swallowed || state==PIKISTATE_Bury || state==PIKISTATE_Grow
             || (p->getStickObject() && p->getStickObject()->mObjType!=OBJTYPE_Pellet))busy=true;
-        squad.push_back({pc_p2_is_purple(p)?3:p->mColor,p->mHappa});
+        const int species=pc_p2_species(p);if(species<0 || species>(checkpointSchema==2?4:3))invalid("runtime Pikmin species");
+        squad.push_back({species,p->mHappa});
     }
     Iterator heads(itemMgr->getPikiHeadMgr());CI_LOOP(heads){if(static_cast<PikiHeadItem*>(*heads)->isAlive())busy=true;}
     if(busy && n->mHealth>1){if(confirm)notice("Pluck all sprouts and whistle Pikmin out of flowers or combat before leaving.");return false;}
@@ -147,7 +156,7 @@ bool pc_p2_cave_checkpoint(bool confirm){
         if(SDL_ShowMessageBox(&data,&choice)!=0 || choice!=1)return false;
     }
     std::ostringstream out;out.precision(9);
-    out<<"P2_CAVE_TRANSFER_1\n"<<token<<'\n'<<floorId<<' '<<health<<' '<<squad.size()<<'\n';
+    out<<"P2_CAVE_TRANSFER_"<<checkpointSchema<<'\n'<<token<<'\n'<<floorId<<' '<<health<<' '<<squad.size()<<'\n';
     for(const auto& s:squad)out<<s.color<<' '<<s.maturity<<'\n';
     std::string text=out.str();FILE* file=std::fopen("p2-cave-transfer.tmp","wb");
     if(!file)return false;
@@ -173,8 +182,8 @@ void pc_p2_cave_tick(){
     titleTimer+=gsys->getFrameTime();
     if(titleTimer>=1.f){
         titleTimer=0;
-        int count=0,purples=0;Iterator squad(pikiMgr);CI_LOOP(squad){Piki* p=static_cast<Piki*>(*squad);if(p->isAlive()){++count;if(pc_p2_is_purple(p))++purples;}}
-        std::string title="Pikipelago - Emergence Cave | Floor "+std::to_string(floorId)+" | "+std::to_string(count)+" Pikmin ("+std::to_string(purples)+" Purple) | "+std::to_string(pc_p2_preview_pokos())
+        int count=0,purples=0,whites=0;Iterator squad(pikiMgr);CI_LOOP(squad){Piki* p=static_cast<Piki*>(*squad);if(p->isAlive()){++count;if(pc_p2_is_purple(p))++purples;if(pc_p2_is_white(p))++whites;}}
+        std::string title="Pikipelago - Emergence Cave | Floor "+std::to_string(floorId)+" | "+std::to_string(count)+" Pikmin ("+std::to_string(purples)+" Purple, "+std::to_string(whites)+" White) | "+std::to_string(pc_p2_preview_pokos())
             +" Pokos | F6 at "+(anchor.enabled?anchor.kind:std::string("Pod"))+": "+(floorId==1?"descend":"leave cave")+" | Saves at floor boundaries";
         if(SDL_Window* w=SDL_GL_GetCurrentWindow())SDL_SetWindowTitle(w,title.c_str());
     }

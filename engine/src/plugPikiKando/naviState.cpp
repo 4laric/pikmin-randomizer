@@ -1,4 +1,5 @@
 #include "pc_p2_purple.h"
+#include "pc_p2_white.h"
 #include "NaviState.h"
 #include "pc_randomizer.h"
 #if defined(PIKI_PC_PORT)
@@ -2772,6 +2773,7 @@ void NaviNukuAdjustState::exec(Navi* navi)
 			piki->init(navi);
 			piki->initColor(navi->mSproutToPluck->mSeedColor);
             if(navi->mSproutToPluck->mP2Purple)pc_p2_make_purple(piki);
+            if(navi->mSproutToPluck->mP2White)pc_p2_make_white(piki);
 			piki->setFlower(navi->mSproutToPluck->mFlowerStage);
 			piki->resetPosition(navi->mSproutToPluck->mSRT.t);
 

@@ -129,6 +129,8 @@ static void capture(const char* path="p2-room.ppm") {
     for(int y=h-1;y>=0;--y)std::fwrite(pixels.data()+size_t(y)*w*3,1,size_t(w)*3,f);std::fclose(f);
 }
 #include "preview_p2_purple.inc"
+#include "preview_p2_purple_impact.inc"
+#include "preview_p2_white.inc"
 #include "preview_p2_cargo.inc"
 #include "preview_p2_cave.inc"
 #include "preview_p2_snow.inc"
@@ -149,6 +151,8 @@ public:
         if(cargoCarryFixture(n))return result;
         if(snowRenderFixture(n))return result;
         if(pc_p2_cave_floor()){caveFixture(n);std::fflush(stdout);return result;}
+        if(pc_p2_whites_enabled()){whiteFixture(n);std::fflush(stdout);return result;}
+        if(pc_p2_purple_impact_enabled()){purpleImpactFixture(n);std::fflush(stdout);return result;}
         if(pc_p2_purples_enabled()){purpleFixture(n);std::fflush(stdout);return result;}
         if(phase==0) {
             if(++ticks<60)return result;

@@ -1,5 +1,5 @@
-// Family-owned batch-2 P2 visual registration: dweevil (#349), flora (#353),
-// ground invertebrates (#346), cannon/projectile (#350) and waterwraith (#352).
+// Family-owned batch-3 P2 visual registration: aquatic (#374), flying (#375)
+// and snagret (#376).
 //
 // Visual-only P1 proxy anchors. Each family's private arena run writes
 // `p2-<family>-actors.txt` (P2_<FAMILY>_ACTORS_1, `<generator> <Species>`) and
@@ -9,7 +9,7 @@
 // verifies the expected native teki type before drawing. No source P2 FSM,
 // damage receiver, reward or collision semantics are implemented here; those
 // stay tracked on the family issues and #186.
-#include "pc_p2_batch2.h"
+#include "pc_p2_batch3.h"
 #include "pc_p2_animation.h"
 #include "pc_bbft.h"
 #include "teki.h"
@@ -35,14 +35,12 @@ struct FamilyDef {
     const char* actors;
     const char* bank;
 };
-// Pose-bank families only. Long Legs (#312) installs bind-pose meshes, not a
-// converted .mod pose bank, so it has no native draw path yet.
+// Pose-bank families only. Prefix is the pose-file prefix from the install
+// module: aquatic_/fly_/snake_<Species>_<clip>_NN.mod.
 const FamilyDef FAMILIES[] = {
-    {"dweevil", "ota", "p2-dweevil-actors.txt", "p2-dweevil-bank.txt"},
-    {"flora", "flora", "p2-flora-actors.txt", "p2-flora-bank.txt"},
-    {"ground", "ginv", "p2-ground-actors.txt", "p2-ground-bank.txt"},
-    {"cannon", "cannon", "p2-cannon-actors.txt", "p2-cannon-bank.txt"},
-    {"waterwraith", "ww", "p2-waterwraith-actors.txt", "p2-waterwraith-bank.txt"},
+    {"aquatic", "aquatic", "p2-aquatic-actors.txt", "p2-aquatic-bank.txt"},
+    {"flying", "fly", "p2-flying-actors.txt", "p2-flying-bank.txt"},
+    {"snagret", "snake", "p2-snagret-actors.txt", "p2-snagret-bank.txt"},
 };
 constexpr size_t ClipBytes = 512 * 1024;         // per clip
 constexpr size_t TotalBytes = 48 * 1024 * 1024;  // per setup
@@ -57,16 +55,19 @@ size_t bytesTotal = 0;
 bool logged[2] = {false, false};
 
 [[noreturn]] void fail(const char* what) {
-    std::fprintf(stderr, "P2_BATCH2 %s\n", what);
+    std::fprintf(stderr, "P2_BATCH3 %s\n", what);
     std::abort();
 }
 
 int expectedType(const std::string& family, const std::string& species) {
-    if (family == "cannon") {
-        if (species == "Kabuto" || species == "Rkabuto" || species == "Fkabuto") return TEKI_Beatle;
-        if (species == "Rock" || species == "Stone") return TEKI_Iwagon;
+    if (family == "aquatic") {
+        if (species == "Catfish") return TEKI_Namazu;   // P1 Water Dumple ancestor
+        if (species == "Tadpole") return TEKI_Otama;    // P1 Wogpole ancestor
     }
-    return TEKI_Chappy;
+    if (family == "flying") {
+        if (species == "Mar" || species == "Hanachirashi") return TEKI_Mar;  // P1 Puffy Blowhog
+    }
+    return TEKI_Chappy;  // Jigumo/UmiMushi/snagrets: no P1 counterpart, placement vehicle only
 }
 
 const char* firstClip(const Bank& bank, const char* const* names, int count) {
@@ -188,19 +189,23 @@ Bank loadBank(const FamilyDef& family, const std::string& species,
 }
 }
 
-void pc_p2_batch2_reset() {
+void pc_p2_batch3_reset() {
     banks.clear();
     actors.clear();
     bytesTotal = 0;
     logged[0] = logged[1] = false;
 }
 
-void pc_p2_batch2_forget(BTeki* actor) {
+void pc_p2_batch3_forget(BTeki* actor) {
     actors.erase(actor);
 }
 
-void pc_p2_batch2_setup() {
-    pc_p2_batch2_reset();
+bool pc_p2_batch3_corpse_drawn() { return logged[1]; }
+int pc_p2_batch3_actor_count() { return int(actors.size()); }
+int pc_p2_batch3_bank_count() { return int(banks.size()); }
+
+void pc_p2_batch3_setup() {
+    pc_p2_batch3_reset();
     if (!pc_pikipelago_room_preview() || !tekiMgr) return;
     for (const FamilyDef& family : FAMILIES) {
         std::map<unsigned, std::string> wanted;
@@ -231,22 +236,23 @@ void pc_p2_batch2_setup() {
         }
     }
     for (const auto& entry : actors)
-        std::printf("P2_BATCH2_BIND generator=%u key=%s visual_only=1 native_fsm=unimplemented\n",
+        std::printf("P2_BATCH3_BIND generator=%u key=%s visual_only=1 native_fsm=unimplemented\n",
                     entry.first->mGenerator ? entry.first->mGenerator->_70 : 0, entry.second.c_str());
-    std::printf("P2_BATCH2_BANK total_mod_bytes=%zu species=%zu\n", bytesTotal, banks.size());
+    std::printf("P2_BATCH3_BANK total_mod_bytes=%zu species=%zu\n", bytesTotal, banks.size());
 }
 
-bool pc_p2_batch2_draw(BTeki* actor, Graphics& gfx, const Matrix4f& matrix, bool corpse) {
+bool pc_p2_batch3_draw(BTeki* actor, Graphics& gfx, const Matrix4f& matrix, bool corpse) {
     auto entry = actors.find(actor);
     if (entry == actors.end() || !gfx.mCamera || !actor->mTekiAnimator) return false;
     auto bankIt = banks.find(entry->second);
     if (bankIt == banks.end()) return false;
     const Bank& bank = bankIt->second;
     static const char* const deadClips[] = {"dead", "dead1", "pdead1", "kagebozu_dead"};
-    static const char* const attackClips[] = {"attack1", "attack", "attack2", "charge",
+    static const char* const attackClips[] = {"attack1", "attack", "attack2", "attack_2",
+                                              "sattack1", "hit", "hit_near", "hit_far", "charge",
                                               "hit_start", "kagebozu_flick", "kagebozu_flick2"};
-    static const char* const moveClips[] = {"move1", "move", "move2", "run1", "walk",
-                                            "tyre_move", "kagebozu_move", "kagebozu_walk", "kagebozu_run"};
+    static const char* const moveClips[] = {"move1", "move", "move2", "run1", "walk", "walk1",
+                                            "wrun1", "tyre_move", "kagebozu_move", "kagebozu_walk", "kagebozu_run"};
     static const char* const waitClips[] = {"wait1", "wait", "wait2", "kagebozu_wait", "kagebozu_wait2"};
     const int motion = actor->mTekiAnimator->getCurrentMotionIndex();
     const char* name = nullptr;
@@ -271,14 +277,10 @@ bool pc_p2_batch2_draw(BTeki* actor, Graphics& gfx, const Matrix4f& matrix, bool
     const size_t index = timing.index(phase, corpse);
     Shape* shape = poses.at(index < poses.size() ? index : poses.size() - 1);
     if (!logged[corpse ? 1 : 0]) {
-        std::printf("P2_BATCH2_DRAW corpse=%d key=%s clip=%s\n", int(corpse), entry->second.c_str(), name);
+        std::printf("P2_BATCH3_DRAW corpse=%d key=%s clip=%s\n", int(corpse), entry->second.c_str(), name);
         logged[corpse ? 1 : 0] = true;
     }
     shape->updateAnim(gfx, matrix, nullptr, actor);
     shape->drawshape(gfx, *gfx.mCamera, nullptr);
     return true;
-}
-
-bool pc_p2_batch2_any_drawn() {
-    return logged[0] || logged[1];
 }

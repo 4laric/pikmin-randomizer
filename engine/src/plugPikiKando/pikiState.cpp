@@ -1,4 +1,6 @@
 #include "pc_p2_purple.h"
+#include "pc_p2_purple_impact.h"
+#include "pc_p2_white.h"
 #include "PikiState.h"
 #include "AIConstant.h"
 #include "BombItem.h"
@@ -1364,6 +1366,7 @@ void PikiFallMeckState::procBounceMsg(Piki* piki, MsgBounce*)
 			sprout->init(pos);
 			sprout->setColor(piki->mColor);
             sprout->mP2Purple=pc_p2_is_purple(piki);
+            sprout->mP2White=pc_p2_is_white(piki);
 			f32 randAngle = 2.0f * (PI * gsys->getRand(1.0f));
 			sprout->mVelocity.set(220.0f * sinf(randAngle), 540.0f, 220.0f * cosf(randAngle));
 			sprout->startAI(0);
@@ -2025,6 +2028,7 @@ void PikiFlyingState::cleanup(Piki* piki)
 	mSparkleEffect.kill();
 	piki->restartAI();
 	piki->mWantToStick = false;
+	pc_p2_purple_impact_forget(piki);
 }
 
 /**
@@ -2096,6 +2100,9 @@ void PikiFlyingState::procCollideMsg(Piki* piki, MsgCollide* msg)
 	}
 
 	if (colliderType == OBJTYPE_Teki || collider->isBoss()) {
+		if (piki->mVelocity.y < 0.0f) {
+			pc_p2_purple_impact_emit(piki, "enemy_collision");
+		}
 		Vector3f effPos = collider->mSRT.t - piki->mSRT.t;
 		effPos.normalise();
 		Vector3f effDir(effPos);
@@ -2208,6 +2215,7 @@ void PikiFlyingState::procStickMsg(Piki*, MsgStick*)
  */
 void PikiFlyingState::procBounceMsg(Piki* piki, MsgBounce*)
 {
+	pc_p2_purple_impact_emit(piki, "ground_bounce");
 	if (mHasBounced) {
 		piki->restartAI();
 		transit(piki, PIKISTATE_Normal);
@@ -2747,6 +2755,7 @@ void PikiBuryState::exec(Piki* piki)
 		sprout->init(pos);
 		sprout->setColor(piki->mColor);
             sprout->mP2Purple=pc_p2_is_purple(piki);
+            sprout->mP2White=pc_p2_is_white(piki);
 		f32 angle = 2.0f * (PI * gsys->getRand(1.0f));
 		sprout->mVelocity.set(220.0f * sinf(angle), 540.0f, 220.0f * cosf(angle));
 		sprout->mFlowerStage = piki->mHappa;

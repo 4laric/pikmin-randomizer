@@ -7,3 +7,5 @@ void pc_p2_batch2_setup();
 void pc_p2_batch2_reset();
 void pc_p2_batch2_forget(BTeki*);
 bool pc_p2_batch2_draw(BTeki*, Graphics&, const Matrix4f&, bool corpse = false);
+// Runtime evidence helper: true once any live or corpse pose has been drawn.
+bool pc_p2_batch2_any_drawn();
