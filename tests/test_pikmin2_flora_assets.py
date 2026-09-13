@@ -6,12 +6,13 @@ from unittest.mock import patch
 from experimental.pikmin2_flora_assets import (CLIPS, COMMON_NAME, DISC_PARMS,
                                                ENEMY_FLORA, EXPECTED_EVENTS,
                                                POM_BASE_ID, POM_SPECIES,
+                                               POSE_TOLERANCES,
                                                PROPER_PARM_DEFAULTS,
                                                PROPER_RETAIL_ONLY, PROP_FLORA,
                                                SHARED_BASE, SPECIES, STATE_IDS,
-                                               TEXT, VARIANT_GROUPS, extract,
-                                               flora_animation_rows, profile,
-                                               reference_conversion,
+                                               TEXT, TOLERANCES, VARIANT_GROUPS,
+                                               extract, flora_animation_rows,
+                                               profile, reference_conversion,
                                                resource_id)
 
 
@@ -273,6 +274,19 @@ class FloraAssetsTests(unittest.TestCase):
         self.assertIn('gameplay_events_executed false', TEXT)
         self.assertIn('btk_playback false', TEXT)
         self.assertIn('candypop_shared_base Pom', TEXT)
+
+    def test_pelplant_converter_tolerances_are_scoped(self):
+        # #405: Pelplant is the only flora with an opt-in singular-scale/normal
+        # policy; every other identity keeps strict converter defaults, and
+        # HikariKinoko (shape-matrix type 1) remains unconverted.
+        self.assertEqual(POSE_TOLERANCES,
+                         {'Pelplant': {'singular_scale': 'allow'}})
+        self.assertEqual(TOLERANCES,
+                         {'Pelplant': {'singular_normal': 'transpose-adjugate'}})
+        self.assertEqual(set(POSE_TOLERANCES), set(TOLERANCES))
+        for strict in ('HikariKinoko',) + PROP_FLORA:
+            self.assertNotIn(strict, POSE_TOLERANCES)
+            self.assertNotIn(strict, TOLERANCES)
 
     def test_refuse_overwrite_before_source_access(self):
         with tempfile.TemporaryDirectory() as d:
