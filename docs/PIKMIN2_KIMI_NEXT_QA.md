@@ -14,3 +14,11 @@ Priority acceptance is real F6 confirmation/cancellation, settings-open F6 suppr
 A useful independent read-only alternative is to audit the floor-2 partial evidence at `output/p2-floor2-runtime/validation05/partial-evidence.json` against native logs and `docs/PIKMIN2_FLOOR2_FIXTURE.md`. Confirm the report distinguishes successful startup/config rejection from the incomplete second Violet conversion. Report discrepancies on #154; the implementation worker owns the stall diagnostic. Do not edit the live fixture, source or evidence in that lane.
 
 Keep #184 open until its manual gates are actually satisfied. Record new defects separately with exact build hashes and reproducible steps.
+
+## Run 4 handoff
+
+Kimi reports two independent resumes restore the committed floor-entry state: 19 red leaf Pikmin, health 0.899999976, zero receipts. The unsaved late casualty rolls back as intended. Floor-2 egress remains blocked after bounded navigation; do not repeat blind sweeps. Preserve manual-qa-02 and ledger revision 2.
+
+Implementation follow-up #193 owns opt-in position diagnostics and marker audit. The native renderer can draw an imported transition model instead of the cyan fallback ring, so detector absence alone is not a defect. Wait for a concrete navigation handoff or separately versioned diagnostic package; never replace the fixed binary in place.
+
+After egress, verify boundary party/health, completed-trip re-entry refusal and post-return restart preservation. Duplicate-reward coverage requires a nonzero collected receipt and remains UNTESTED.
