@@ -35,7 +35,10 @@ receipt/save/reload protocol and DeathLink pass; catalog check and UT regenerati
 Two old probe assumptions were corrected: the single-write DeathLink harness
 must cross MinGW's one-second timestamp resolution; the startup harness must use
 the current goal marker and per-color population catalog. Failed attempts remain
-in local output logs. Native startup results and packaged fill results follow.
+in local output logs. Native startup passes as recorded below. Packaged AP validation also passes:
+2100 single-slot fills, 60 starting-Flarlic, 100 color-stat, 100 progressive-stat,
+100 permanent-check and 120 enemy-layout fills, plus remote-Blue, remote-Carry
+and remote-enemy-area two-slot fills.
 
 Startup follow-up: production build PASS in a fresh private session, Forest of
 Hope, 20 red Pikmin, other Onion grants exactly once, area gates, completion,
