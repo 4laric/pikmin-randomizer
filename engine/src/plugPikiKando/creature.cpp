@@ -22,6 +22,8 @@
 #include "sysNew.h"
 #include "timers.h"
 #include <math.h>
+#include "pc_p2_preview.h"
+#include "pc_p2_purple.h"
 
 static CollTriInfo* triList[0x200];
 
@@ -762,7 +764,18 @@ void Creature::update()
 	MATCHING_START_TIMER("MOVENEW", true);
 	Vector3f originalVel(mVelocity);
 	mVelocity = mVolatileVelocity;
-	moveNew(deltaTime);
+	// The temporary pass must still resolve impulses and contacts, but applying
+	// gravity again here pushes a slow supported P2 load downhill before its
+	// actual carry movement. The normal pass below still applies gravity.
+	bool supportedCargo = false;
+	if (pc_p2_purples_enabled() && mObjType == OBJTYPE_Pellet
+	    && mGroundTriangle && !mCollPlatform && mCurrCollisionModel == mapMgr->mMapModel) {
+		Pellet* cargo = static_cast<Pellet*>(this);
+		supportedCargo = pc_p2_preview_cargo_shape(cargo) && cargo->mPikiCarrier
+		    && cargo->mPikiCarrier->isPiki() && cargo->getPickOffset() != 0.0f
+		    && cargo->mCarrierCounter >= cargo->mConfig->mCarryMinPikis();
+	}
+	moveNew(deltaTime, !supportedCargo);
 
 	// Handle fixed position on non-slippery surfaces, with a slope < 60 degrees
 	if (mVolatileVelocity.length() > 0.0f && isCreatureFlag(CF_AllowFixPosition) && isCreatureFlag(CF_IsPositionFixed) && mGroundTriangle
