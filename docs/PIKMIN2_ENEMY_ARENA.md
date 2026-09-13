@@ -2,7 +2,12 @@
 
 Integration ownership and acceptance: [#186](https://github.com/4laric/pikmin-randomizer/issues/186). Codex uses the shared 4laric account; the issue comments identify the actual worker. This contract is the next implementation boundary, not a claim that a general arena launcher already exists.
 
-## Lanes
+The current workflow, handoff template and active lane assignments are in
+[Enemy family import pipeline](PIKMIN2_ENEMY_IMPORT_PIPELINE.md). The first three
+playable proxy batches are complete; their parent family issues retain fidelity
+and remaining validation work. The table below records the original batch.
+
+## Initial lanes (completed batch)
 
 | Owner | Current bounded work |
 |---|---|
