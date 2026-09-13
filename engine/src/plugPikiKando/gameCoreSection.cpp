@@ -9,6 +9,7 @@
 #include "GameCoreSection.h"
 #include "pc_bbft.h"
 #include "pc_p2_preview.h"
+#include "pc_p2_enemy.h"
 #include "pc_p2_cave.h"
 #include "pc_p2_breadbug_visual.h"
 #include "pc_p2_giant_breadbug_visual.h"
@@ -1361,6 +1362,7 @@ void GameCoreSection::finalSetup()
 	}
 
 	pc_p2_preview_setup();
+	pc_p2_snow_campaign_setup();
 	PRINT("====================== FINAL SETUP DONE ======================\n");
 }
 

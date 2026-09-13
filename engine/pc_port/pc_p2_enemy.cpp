@@ -34,6 +34,7 @@ std::map<std::string,std::vector<Shape*>> clips;
 std::set<PelletView*> actors;
 std::map<std::string,p2animation::Clip> timing;
 bool interpolation=false;
+bool campaignMode=false;
 std::map<std::string,std::vector<p2pose::Baked>> baked;
 struct Mutable { Shape* shape=nullptr;std::string clip;float frame=0;bool corpse=false;unsigned generator=0; };
 std::map<PelletView*,Mutable> instances;
@@ -43,7 +44,7 @@ P2SnowTurnPolicy turnPolicy;
 P2SnowChasePolicy chasePolicy;
 }
 float pc_p2_snow_max_health(const BTeki* actor,float fallback) { return healthPolicy.life(actor,fallback); }
-void pc_p2_snow_reset() { interpolation=false;baked.clear();instances.clear(); clips.clear();actors.clear();timing.clear();healthPolicy.reset();attackPolicy.reset();turnPolicy.reset();chasePolicy.reset(); }
+void pc_p2_snow_reset() { interpolation=false;campaignMode=false;baked.clear();instances.clear(); clips.clear();actors.clear();timing.clear();healthPolicy.reset();attackPolicy.reset();turnPolicy.reset();chasePolicy.reset(); }
 void pc_p2_snow_forget(BTeki* actor) { instances.erase(static_cast<PelletView*>(actor)); healthPolicy.forget(actor);attackPolicy.forget(actor);turnPolicy.forget(actor);chasePolicy.forget(actor);actors.erase(static_cast<PelletView*>(actor)); }
 bool pc_p2_snow_chase(BTeki* actor,const Vector3f& target) {
     if(!actor->isAlive() || !chasePolicy.contains(actor))return false;
@@ -74,16 +75,67 @@ bool pc_p2_snow_attackable(BTeki* actor,Creature& target,bool& result) {
                                  actor->calcTargetAngle(target.getPosition()),recognition.satisfy(&target),result);
 }
 const char* pc_p2_enemy_name(PelletView* view) { if(const char* name=pc_p2_kochappy_name(view))return name;return actors.count(view)?"Snow Bulborb":nullptr; }
+namespace {
+void bindSnow(Teki* teki) {
+    if(actors.count(static_cast<PelletView*>(teki)))return;
+    if(teki->mTekiType!=TEKI_Chappy || pc_p2_kochappy_name(teki))std::abort();
+    const unsigned identity=campaignMode?0:teki->mGenerator->_70;
+    Shape* shared=clips.begin()->second.front();
+    const int previousHeap=gsys->setHeap(SYSHEAP_App);
+            actors.insert(static_cast<PelletView*>(teki));
+            if(interpolation){
+                const char* path="courses/pikmin2room/snow_wait1_00.mod";
+                Shape* model=gsys->getShape(path,path,nullptr,true);const auto& base=baked.at("wait1").front().pose;
+                if(!model || model->mJointCount!=1 || model->mVertexCount!=int(base.positions.size()) || model->mNormalCount!=int(base.normals.size()))std::abort();
+                // Point the private geometry's material bindings at the immutable bank resources.
+                for(int j=0;j<model->mTotalMatpolyCount;++j){auto* poly=model->mMatpolyList[j];if(!poly || !poly->mMaterial)continue;
+                    int material=-1;for(int m=0;m<model->mMaterialCount;++m)if(poly->mMaterial==&model->mMaterialList[m])material=m;
+                    if(material<0 || material>=shared->mMaterialCount)std::abort();poly->mMaterial=&shared->mMaterialList[material];}
+                model->mMaterialList=shared->mMaterialList;model->mTexAttrList=shared->mTexAttrList;model->mTevInfoList=shared->mTevInfoList;
+                for(const auto& other:instances)if(other.second.shape->mVertexList==model->mVertexList || other.second.shape->mNormalList==model->mNormalList)std::abort();
+                instances.emplace(static_cast<PelletView*>(teki),Mutable{model,"",0,false,identity});
+                std::printf("P2_SNOW_INTERPOLATION_READY generator=%u positions=%d normals=%d private_geometry=1 gameplay_clock=P1\n",identity,model->mVertexCount,model->mNormalCount);
+            }
+            attackPolicy.bind(static_cast<BTeki*>(teki));
+            turnPolicy.bind(static_cast<BTeki*>(teki));
+            chasePolicy.bind(static_cast<BTeki*>(teki));
+            if(chasePolicy.enabled())std::printf("P2_SNOW_CHASE generator=%u speed=50 gain=0.4 cap_degrees_per_update=10 preserve_y=1 scope=trace_target_velocity\n",identity);
+            if(turnPolicy.enabled())std::printf("P2_SNOW_TURN generator=%u gain=0.4 cap_degrees_per_update=10 arrival=P1 source_rotation_end_180=not_applied\n",identity);
+            if(attackPolicy.enabled())std::printf("P2_SNOW_ATTACK generator=%u range=30 half_angle=20 scope=entry_only source=YellowKochappy_fp20_fp21\n",identity);
+            if(healthPolicy.enabled()) {
+                const float oldHealth=teki->mHealth;
+                healthPolicy.bind(static_cast<BTeki*>(teki));
+                teki->mHealth=teki->getParameterF(TPF_Life);
+                std::printf("P2_SNOW_POLICY generator=%u health=%.1f max_health=%.1f previous=%.1f source=YellowKochappy_fp00\n",
+                            identity,teki->mHealth,teki->getParameterF(TPF_Life),oldHealth);
+            }
+            std::printf("P2_ENEMY_READY species=YellowKochappy native_family=Chappy generator=%u behavior=P1\n",identity);
+    gsys->setHeap(previousHeap);
+}
+}
+void pc_p2_snow_campaign_bind(Teki* teki) {
+    if(campaignMode && teki && teki->mTekiType==TEKI_Chappy)bindSnow(teki);
+}
+void pc_p2_snow_campaign_setup() {
+    if(pc_pikipelago_room_preview() || !std::ifstream("assets/p2-snow-all-dwarfs.txt"))return;
+    const int previousHeap=gsys->setHeap(SYSHEAP_App);
+    pc_p2_snow_setup();
+    gsys->setHeap(previousHeap);
+}
+
 void pc_p2_snow_setup() {
     pc_p2_snow_reset();
-    if(!pc_pikipelago_room_preview())return;
-    std::ifstream in("p2-snow.txt");if(!in)return;
+    std::ifstream campaign("assets/p2-snow-all-dwarfs.txt");
+    if(campaign){std::string magic,extra;if(!(campaign>>magic)||magic!="P2_SNOW_ALL_DWARFS_1"||(campaign>>extra)||pc_pikipelago_room_preview())std::abort();campaignMode=true;}
+    if(!pc_pikipelago_room_preview() && !campaignMode)return;
+    std::ifstream in(campaignMode?"assets/p2-snow.txt":"p2-snow.txt");if(!in){if(campaignMode)std::abort();return;}
     const auto started=std::chrono::steady_clock::now();
-    std::ifstream blendOption("p2-snow-interpolation.txt");
+    std::ifstream blendOption(campaignMode?"assets/p2-snow-interpolation.txt":"p2-snow-interpolation.txt");
     if(blendOption){std::string magic,extra;if(!(blendOption>>magic)||magic!="P2_SNOW_INTERPOLATION_1"||(blendOption>>extra))std::abort();interpolation=true;}
     std::vector<unsigned char> topology;
     std::vector<p2animation::Clip> manifest;
-    if(!p2animation::parse(in,manifest) || !pc_p2_preview_goal())std::abort();
+    if(!p2animation::parse(in,manifest) || (!campaignMode && !pc_p2_preview_goal()))std::abort();
+    if(!campaignMode) {
     std::ifstream policy("p2-snow-policy.txt");
     if(policy && !healthPolicy.read(policy))std::abort();
     std::ifstream attack("p2-snow-attack.txt");
@@ -92,6 +144,7 @@ void pc_p2_snow_setup() {
     if(turn && !turnPolicy.read(turn))std::abort();
     std::ifstream chase("p2-snow-chase.txt");
     if(chase && !chasePolicy.read(chase))std::abort();
+    }
     // Validate the entire bank before allocating Shapes or uploading textures.
     size_t total=0,poses=0;
     std::vector<unsigned char> reference;
@@ -152,6 +205,8 @@ void pc_p2_snow_setup() {
     const double seconds=std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count();
     std::printf("P2_SNOW_BANK poses=%zu mod_bytes=%zu texture_attach_calls=%d load_seconds=%.3f load_budget_seconds=5 budget_exceeded=%d\n",
                 poses,total,attachments,seconds,int(seconds>5));
+    if(campaignMode){int count=0;Iterator all(tekiMgr);CI_LOOP(all){auto* actor=static_cast<Teki*>(*all);if(actor->mTekiType==TEKI_Chappy){bindSnow(actor);++count;}}
+        std::printf("P2_SNOW_CAMPAIGN_READY dwarfs=%d interpolation=%d native_rewards=1\n",count,int(interpolation));return;}
     std::string word;
     std::ifstream placements("p2-snow-actors.txt");int count;
     if(!(placements>>word>>count) || word!="P2_SNOW_ACTORS_1" || count<1 || count>100)std::abort();
@@ -162,34 +217,7 @@ void pc_p2_snow_setup() {
         Teki* teki=static_cast<Teki*>(*it);
         if(teki && teki->mGenerator && wanted.erase(teki->mGenerator->_70)) {
             if(teki->mTekiType!=TEKI_Chappy || pc_p2_kochappy_name(teki))std::abort();
-            actors.insert(static_cast<PelletView*>(teki));
-            if(interpolation){
-                const char* path="courses/pikmin2room/snow_wait1_00.mod";
-                Shape* model=gsys->getShape(path,path,nullptr,true);const auto& base=baked.at("wait1").front().pose;
-                if(!model || model->mJointCount!=1 || model->mVertexCount!=int(base.positions.size()) || model->mNormalCount!=int(base.normals.size()))std::abort();
-                // Point the private geometry's material bindings at the immutable bank resources.
-                for(int j=0;j<model->mTotalMatpolyCount;++j){auto* poly=model->mMatpolyList[j];if(!poly || !poly->mMaterial)continue;
-                    int material=-1;for(int m=0;m<model->mMaterialCount;++m)if(poly->mMaterial==&model->mMaterialList[m])material=m;
-                    if(material<0 || material>=shared->mMaterialCount)std::abort();poly->mMaterial=&shared->mMaterialList[material];}
-                model->mMaterialList=shared->mMaterialList;model->mTexAttrList=shared->mTexAttrList;model->mTevInfoList=shared->mTevInfoList;
-                for(const auto& other:instances)if(other.second.shape->mVertexList==model->mVertexList || other.second.shape->mNormalList==model->mNormalList)std::abort();
-                instances.emplace(static_cast<PelletView*>(teki),Mutable{model,"",0,false,teki->mGenerator->_70});
-                std::printf("P2_SNOW_INTERPOLATION_READY generator=%u positions=%d normals=%d private_geometry=1 gameplay_clock=P1\n",teki->mGenerator->_70,model->mVertexCount,model->mNormalCount);
-            }
-            attackPolicy.bind(static_cast<BTeki*>(teki));
-            turnPolicy.bind(static_cast<BTeki*>(teki));
-            chasePolicy.bind(static_cast<BTeki*>(teki));
-            if(chasePolicy.enabled())std::printf("P2_SNOW_CHASE generator=%u speed=50 gain=0.4 cap_degrees_per_update=10 preserve_y=1 scope=trace_target_velocity\n",teki->mGenerator->_70);
-            if(turnPolicy.enabled())std::printf("P2_SNOW_TURN generator=%u gain=0.4 cap_degrees_per_update=10 arrival=P1 source_rotation_end_180=not_applied\n",teki->mGenerator->_70);
-            if(attackPolicy.enabled())std::printf("P2_SNOW_ATTACK generator=%u range=30 half_angle=20 scope=entry_only source=YellowKochappy_fp20_fp21\n",teki->mGenerator->_70);
-            if(healthPolicy.enabled()) {
-                const float oldHealth=teki->mHealth;
-                healthPolicy.bind(static_cast<BTeki*>(teki));
-                teki->mHealth=teki->getParameterF(TPF_Life);
-                std::printf("P2_SNOW_POLICY generator=%u health=%.1f max_health=%.1f previous=%.1f source=YellowKochappy_fp00\n",
-                            teki->mGenerator->_70,teki->mHealth,teki->getParameterF(TPF_Life),oldHealth);
-            }
-            std::printf("P2_ENEMY_READY species=YellowKochappy native_family=Chappy generator=%u behavior=P1\n",teki->mGenerator->_70);
+            bindSnow(teki);
         }
     }
     if(!wanted.empty())std::abort();

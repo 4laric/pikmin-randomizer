@@ -25,3 +25,8 @@ bool pc_p2_snow_chase(BTeki*, const Vector3f& target);
 namespace p2pose { struct Pose; }
 // Diagnostic copy of the last drawn geometry, absent for disabled/forgotten actors.
 bool pc_p2_snow_geometry(BTeki*,p2pose::Pose&,std::string& clip,float& frame,bool& corpse);
+
+class Teki;
+// Private normal-campaign opt-in; retains all P1 gameplay and reward identities.
+void pc_p2_snow_campaign_setup();
+void pc_p2_snow_campaign_bind(Teki*);

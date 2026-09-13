@@ -281,6 +281,9 @@ Teki* TekiMgr::newTeki(int type)
 	pc_p2_snow_forget(teki); pc_p2_sheargrub_forget(teki); pc_p2_kochappy_forget(teki); pc_p2_breadbug_actor_forget(teki); pc_p2_frog_forget(teki); pc_p2_kogane_forget(teki); pc_p2_mamuta_forget(teki); pc_p2_tank_forget(teki); pc_p2_qurione_forget(teki);
 #endif
 	teki->init(type);
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	pc_p2_snow_campaign_bind(teki);
+#endif
 	return teki;
 }
 
