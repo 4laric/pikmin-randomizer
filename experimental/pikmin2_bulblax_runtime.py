@@ -56,7 +56,12 @@ def build(native,build_dir,output,head):
     return builder.build_fixture(build_dir,native,room,output/'build',head)
 
 
-def stage(assets,profile,output,mode):
+def stage(assets,profile,output,mode,retail_sources=None):
+    retail_data=None
+    if retail_sources is not None:
+        from experimental.pikmin2_motion_events import encode
+        retail_species='Queen' if mode=='disabled' else mode
+        retail_data=encode(Path(retail_sources)/retail_species)
     assets=assets.resolve();source=assets/'dataDir/stages/practice/default.gen';data=source.read_bytes();entries=records(source)
     raw=generator(assets);starts=[m.start() for m in re.finditer(b'    0.0v',raw)];rows=[raw[a:(starts[i+1] if i+1<len(starts) else len(raw))] for i,a in enumerate(starts)]
     template=next(r for r in rows if r[72:76]==b'ikip')
@@ -72,6 +77,9 @@ def stage(assets,profile,output,mode):
     for rel,digest in original.items():
         if builder.sha256(run/'assets'/rel)!=digest:raise ValueError('Course changed')
     result.update(scene='original P1 Impact Site',noninteractive=True,mode=mode,starting_squad={'red':5,'blue':5},added_teki=0,course_sha256=original)
+    if retail_data is not None:
+        path=run/f'p2-bulblax-retail-{retail_species}.txt';path.write_bytes(retail_data)
+        result['retail_table']={'file':path.name,'sha256':builder.sha256(path)}
     (run/'bulblax-stage.json').write_bytes((json.dumps(result,indent=2)+'\n').encode());return run
 
 
@@ -95,14 +103,35 @@ def placement_evidence(text,placements,enabled):
     return dict(exact_source_identity_xyz_yaw=True,ready_rows=rows)
 
 
-def run(assets,profile,output,exe):
+def retail_evidence(text, mode, clips, source):
+    from experimental.pikmin2_motion_events import registry
+    expected_id={'Queen':30,'Baby':31,'KingChappy':53,'disabled':30}[mode]
+    rows=re.findall(r'P2_BULBLAX_RETAIL_EVENT enemy=(\d+) clip=(\w+) frame=(\d+) type=(\d+)',text)
+    allowed={}
+    if mode!='disabled':
+        authored=dict(registry((Path(source)/mode/'enemyanimmgr.txt').read_bytes()))
+        for clip in clips:
+            if clip['species']==mode:
+                allowed[clip['name']]=set(authored[clip['name']+'.bca'])|{(clip['duration'],1000)}
+    return dict(retail_setup=text.count('P2_BULBLAX_RETAIL_READY ')==(0 if mode=='disabled' else 2),
+                retail_events=bool(rows)==(mode!='disabled'),
+                retail_source_events=all(int(enemy)==expected_id and (int(frame),int(kind)) in allowed.get(name,set()) for enemy,name,frame,kind in rows),
+                retail_reload_events=('P2_BULBLAX_RETAIL_EVENT ' in text.split('P2_BULBLAX_RELOAD_REQUEST')[-1])==(mode!='disabled'))
+
+
+def run(assets,profile,output,exe,retail_sources=None):
     output.mkdir(parents=True,exist_ok=False);report={};env=dict(os.environ,PATH='C:/msys64/mingw64/bin;'+os.environ.get('PATH',''),SDL_AUDIODRIVER='dummy')
     for mode in ('Queen','Baby','KingChappy','disabled'):
-        directory=stage(assets,profile,output/mode,mode)
+        directory=stage(assets,profile,output/mode,mode,retail_sources)
         with (directory/'native.log').open('w') as log:
             try:code=subprocess.run([str(exe.resolve()),'--experimental-pikmin2-room'],cwd=directory,env=env,stdout=log,stderr=subprocess.STDOUT,timeout=180).returncode
             except subprocess.TimeoutExpired:code='timeout'
         text=(directory/'native.log').read_text(errors='replace');e=validate(text,code,mode)
+        if retail_sources is not None:
+            staged=json.loads((directory/'bulblax-stage.json').read_bytes())
+            e['checks'].update(retail_evidence(text,mode,staged['clips'],retail_sources))
+            e['retail_table']=staged['retail_table']
+            e['passed']=all(e['checks'].values())
         e['gx_warnings']=[line for line in text.splitlines() if 'GX' in line and 'warning' in line.lower()]
         if e['passed']:e['placement_evidence']=placement_evidence(text,json.loads((directory/'bulblax-stage.json').read_bytes())['placements'],mode!='disabled')
         if e['passed']:
@@ -132,7 +161,8 @@ if __name__=='__main__':
     b.add_argument('--head',required=True)
     for parser in (r,live):
         for key in ('assets','profile','output','exe'):parser.add_argument('--'+key,type=Path,required=True)
+    r.add_argument('--retail-sources',type=Path)
     live.add_argument('--mode',choices=('Queen','Baby','KingChappy'),default='Queen');a=p.parse_args()
     if a.command=='build':build(a.native.resolve(),a.build_dir.resolve(),a.output,a.head)
-    elif a.command=='run':run(a.assets,a.profile,a.output,a.exe)
+    elif a.command=='run':run(a.assets,a.profile,a.output,a.exe,a.retail_sources)
     else:raise SystemExit(play(a.assets,a.profile,a.output,a.exe,a.mode))
