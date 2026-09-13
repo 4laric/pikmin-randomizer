@@ -169,3 +169,6 @@ family adoption; it does not itself implement source aiming callbacks.
 source-frame sampling and scoped single-matrix material application. Family
 owners must explicitly bind retained material names/slots and validate rendering;
 Queen's missing specular TEV layer and BRK/BTP remain separate work.
+Generation-bound binding sets now apply multiple material tracks in one draw,
+with transactional restoration and shared-storage checks. The UV0 path has a
+real OpenGL texture-phase/replay fixture using Snow's retained model.

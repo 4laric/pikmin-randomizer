@@ -57,8 +57,52 @@ The family must first resolve the bank's material name and texture slot against
 its converted model. This adapter handles only the single texture matrix at
 slot zero; do not bind a nonzero source slot to it. It cannot infer whether a
 converter retained the intended material/stage. A family with several animated
-materials needs an explicit combined scope before drawing; do not call `draw`
-once per track because that would draw the entire shape repeatedly.
+materials should use the binding-set API below; do not call `draw` once per
+track because that would draw the entire shape repeatedly.
+
+## Binding sets (#396)
+
+`pc_p2_material_binding.h` adds `p2material::Binding` and explicit `Target`
+records `{sourceMaterialName, sourceTextureSlot, hostMaterialIndex}`. A bank
+track may map to several converted materials, but every bank track must have
+a destination. Empty or oversized mappings (over 128 targets), unknown names,
+nonzero texture slots, duplicate host indices and shared writable texture-data
+or texgen-array pointers are rejected. Unbound materials are also checked for
+these storage aliases because drawing the whole shape visits them too.
+
+```cpp
+p2material::Binding binding;
+std::vector<p2material::Target> targets = {
+    {"source_body", 0, bodyMaterialIndex},
+    {"source_body", 0, secondBodyMaterialIndex},
+    {"source_trim", 0, trimMaterialIndex},
+};
+bool ready = binding.bind(bank, shape, targets, sceneGeneration);
+// After shape.updateAnim(...), on the draw thread:
+bool drawn = binding.draw(bank, shape, graphics, actorSourceFrame, sceneGeneration);
+// Before tearing down/replacing the bank or model:
+binding.reset();
+```
+
+Use a nonzero generation owned by the scene/actor lifecycle, and advance it
+before addresses can be reused. The binding checks the exact bank, shape,
+material array/count, target storage pointers and generation. It does not own
+those objects or generate lifecycle tokens. Keep the bank/model storage alive
+and immutable for the binding's lifetime. A failed `bind` clears an older
+binding; `reset` is idempotent. No callback is registered automatically.
+
+Every sample is computed before material mutation. Targets are then scoped
+together, the model is drawn once, and all values are restored. A later target
+refusal rolls back earlier scopes without drawing. Draw exceptions also clear
+the material cache and restore the scopes. Different actors can use independent
+frames against one shared model. Draw uses bounded stack storage rather than
+allocating one scope per material on the heap. Unsupported future samples (for
+example nonzero rotation on the limited envmap path) still return false; the
+family must handle that diagnostic explicitly.
+
+The binding is explicit runtime glue, not an inferred converter mapping or a
+package authenticator. Family owners must validate that the converted model
+retained each intended source material and matrix slot.
 
 `draw` requires a camera, valid host PVW material index, exactly one texture-data
 entry and one texture generator of type 1 at coordinate zero, with no competing native texture
@@ -117,3 +161,31 @@ Remaining #128 work: explicit family binding and live animated-material fixtures
 Queen's converted model currently omits the animated specular TEV layer;
 multiple texture generators/stages, Maya/post matrices, BRK color animation,
 BTP texture swaps and backend visual acceptance remain outside this slice.
+
+### Binding-set validation
+
+Native candidate `8ea6bde3` builds with the production Windows target; executable
+SHA256 `120ad9592687638dc1c55164200a34efe39d017f352e6bce8167d3f8e9c7ed65`.
+Compiled production tests cover two source tracks driving three host materials,
+two actor phases, transactional refusal, draw exceptions, missing/duplicate/
+aliased destinations, changed storage, generation mismatch and reset.
+Full suite: 1364 passed, 23 skipped, 1047 subtests passed (same local asset and
+symlink-privilege skips). Focused suite: 5 passed, 377 subtests passed.
+
+`scripts/pikmin2_material_binding_fixture.cpp` is a separate test executable
+built with `scripts.build_pikmin2_fixture`; it is not shipped as the player game.
+In a private room stage retaining `snow_wait1_00.mod`, it creates a synthetic
+single UV0 translation track and performs three draws within one frame: source
+frames 0, 10, 0. Current OpenGL rendering produced 277233 visible color channels;
+146107 channels changed at frame 10; the two frame-zero images were byte-equal.
+Binding reset refused a subsequent draw. Captures were inspected and visibly
+show the changed texture mapping. This is a renderer transform test, not a
+claim that Snow has a source BTK animation or that its displayed pose is final.
+
+Fixture SHA256:
+`6a4723b1f43688bad6d55c0dd1af640c6be4c8933a287fed41a6f4cc02c2cc7d`.
+Build provenance, native log and captures remain in private
+`output/material396/`. Live multi-material/marked-envmap animation and other
+backends remain unverified; the multi-material transaction has compiled tests.
+Queen's omitted TEV stage and source-correct family material adoption remain
+follow-up work. No player package, save or retail asset was changed.
