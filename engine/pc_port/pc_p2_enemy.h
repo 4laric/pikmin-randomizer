@@ -30,3 +30,6 @@ class Teki;
 // Private normal-campaign opt-in; retains all P1 gameplay and reward identities.
 void pc_p2_snow_campaign_setup();
 void pc_p2_snow_campaign_bind(Teki*);
+
+// Authoritative current clock, independent of whether this actor was rendered.
+bool pc_p2_snow_clock(BTeki*, const char*& clip, float& sourceFrame, bool corpse=false);

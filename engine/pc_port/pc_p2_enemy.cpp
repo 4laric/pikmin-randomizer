@@ -222,22 +222,35 @@ void pc_p2_snow_setup() {
     }
     if(!wanted.empty())std::abort();
 }
+namespace {
+void snowClock(BTeki* teki,bool corpse,const char*& name,float& phase,float& sourceFrame) {
+    int motion=teki->mTekiAnimator->getCurrentMotionIndex();
+    name=corpse || motion==TekiMotion::Dead?"dead":motion==TekiMotion::Attack?"attack":motion==TekiMotion::Flick?"flick":
+        (teki->mVelocity.x*teki->mVelocity.x+teki->mVelocity.z*teki->mVelocity.z>1?"move1":"wait1");
+    // Source poses follow normalized P1 motion progress; P1 events stay authoritative.
+    int frames=teki->mTekiAnimator->getFrameCount();
+    phase=frames>1?teki->mTekiAnimator->getCounter()/(frames-1):0;
+
+    const auto& clip=timing.at(name);
+    sourceFrame=corpse?float(clip.frames.empty()?clip.duration-1:clip.frames.back()):std::max(0.f,std::min(1.f,phase))*float(clip.duration-1);
+}
+}
+bool pc_p2_snow_clock(BTeki* teki,const char*& name,float& frame,bool corpse){
+    if(!actors.count(static_cast<PelletView*>(teki)))return false;
+    float phase;snowClock(teki,corpse,name,phase,frame);return std::isfinite(frame);
+}
+
 bool pc_p2_snow_draw(BTeki* teki,Graphics& gfx,const Matrix4f& matrix,bool corpse) {
     if(!actors.count(static_cast<PelletView*>(teki)))return false;
     static bool logged[2]={false,false};
     if(!logged[corpse?1:0]){std::printf("P2_SNOW_DRAW corpse=%d\n",int(corpse));logged[corpse?1:0]=true;}
-    int motion=teki->mTekiAnimator->getCurrentMotionIndex();
-    const char* name=corpse || motion==TekiMotion::Dead?"dead":motion==TekiMotion::Attack?"attack":motion==TekiMotion::Flick?"flick":
-        (teki->mVelocity.x*teki->mVelocity.x+teki->mVelocity.z*teki->mVelocity.z>1?"move1":"wait1");
+    const char* name;float phase,sourceFrame;snowClock(teki,corpse,name,phase,sourceFrame);
     auto& bank=clips[name];
-    // Source poses follow normalized P1 motion progress; P1 events stay authoritative.
-    int frames=teki->mTekiAnimator->getFrameCount();
-    float phase=frames>1?teki->mTekiAnimator->getCounter()/(frames-1):0;
     size_t index=timing.at(name).index(phase,corpse);
     Shape* shape=bank[index];
     if(interpolation){
         auto& instance=instances.at(static_cast<PelletView*>(teki));shape=instance.shape;
-        const auto& clip=timing.at(name);const float frame=corpse?float(clip.frames.back()):std::max(0.f,std::min(1.f,phase))*float(clip.duration-1);
+        const auto& clip=timing.at(name);const float frame=sourceFrame;
         p2pose::Interval span;if(!p2pose::bracket(clip.frames,frame,span))std::abort();
         const auto& a=baked.at(name)[span.left].pose;const auto& b=baked.at(name)[span.right].pose;
         for(size_t i=0;i<a.positions.size();++i){auto v=p2pose::mix(a.positions[i],b.positions[i],span.weight);shape->mVertexList[i].set(v.x,v.y,v.z);}
