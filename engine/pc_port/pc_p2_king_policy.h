@@ -15,6 +15,33 @@
 #include <vector>
 namespace p2king {
 
+// Fixture-only sidecar: preserve the legacy pair and permit up to three ticks.
+struct Injection { unsigned long warcryTick=0; uint32_t id=0; unsigned long killTick=0,bombTick=0,tongueTick=0; };
+inline Injection readInjection(std::istream& in) {
+ std::string token;
+ if(!(in>>token)||token!="P2_KING_INJECT_1")throw std::runtime_error("Invalid King injection version");
+ std::vector<unsigned long long> values;
+ while(in>>token){
+  if(values.size()>=5)throw std::runtime_error("Extra King injection field");
+  const unsigned long long limit=values.size()==1?0xffffffffULL:1000000ULL;
+  unsigned long long value=0;
+  for(char c:token){
+   if(c<'0'||c>'9')throw std::runtime_error("Invalid King injection number");
+   const unsigned digit=unsigned(c-'0');
+   if(value>(limit-digit)/10)throw std::runtime_error("King injection out of range");
+   value=value*10+digit;
+  }
+  values.push_back(value);
+ }
+ if(in.bad()||values.size()<2||!values[0])throw std::runtime_error("Incomplete King injection");
+ Injection result;result.warcryTick=(unsigned long)values[0];result.id=(uint32_t)values[1];
+ if(values.size()>2)result.killTick=(unsigned long)values[2];
+ if(values.size()>3)result.bombTick=(unsigned long)values[3];
+ if(values.size()>4)result.tongueTick=(unsigned long)values[4];
+ return result;
+}
+
+
 // KingChappy FSM state IDs, include/Game/Entities/KingChappy.h:22-36.
 enum State : int {
 	Walk = 0, Attack = 1, Dead = 2, Flick = 3, WarCry = 4, Damage = 5, Turn = 6,

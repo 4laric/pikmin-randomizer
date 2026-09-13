@@ -852,29 +852,13 @@ void pc_p2_king_setup() {
 	// Opt-in, fail-closed fixture injection sidecar; absent in normal runs.
 	std::ifstream inject("p2-king-inject.txt");
 	if (inject) {
-		std::string magic, extra;
-		unsigned long long tick = 0, id = 0;
-		if (!(inject >> magic >> tick >> id) || magic != "P2_KING_INJECT_1" || tick < 1 || tick > 1000000ULL
-		    || id > 0xffffffffULL || (inject >> extra))
-			fail();
-		injectWarCryTick = (unsigned long)tick;
-		injectWarCryId = (uint32_t)id;
-		unsigned long long kill = 0; // optional 4th token: force death at tick
-		inject >> kill;
-		if (kill > 1000000ULL)
-			fail();
-		injectKillTick = (unsigned long)kill;
-		unsigned long long bomb = 0; // optional 5th token: force bomb line-up
-		inject >> bomb;
-		if (bomb > 1000000ULL)
-			fail();
-		injectBombTick = (unsigned long)bomb;
-		unsigned long long tongue = 0; // optional 6th token: force a normal tongue lick
-		inject >> tongue;
-		if (tongue > 1000000ULL)
-			fail();
-		injectTongueTick = (unsigned long)tongue;
-	}
+        try {
+            const auto value=p2king::readInjection(inject);
+            injectWarCryTick=value.warcryTick;injectWarCryId=value.id;
+            injectKillTick=value.killTick;injectBombTick=value.bombTick;injectTongueTick=value.tongueTick;
+        } catch (...) { fail(); }
+    }
+
 	std::map<int, std::vector<unsigned char>> resources;
 	// Validate/copy the whole referenced bank before allocating Shapes; clips
 	// not selected by this profile never touch the App heap.
