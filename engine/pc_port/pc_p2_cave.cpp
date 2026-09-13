@@ -2,6 +2,7 @@
 #include "pc_p2_cave_nav_diagnostics.h"
 #include "pc_p2_cave_anchor.h"
 #include "pc_p2_cave_entry_policy.h"
+#include "pc_p2_cave_readiness_policy.h"
 #include "pc_p2_beasts_failure_policy.h"
 #include "Graphics.h"
 #include "Camera.h"
@@ -33,6 +34,7 @@
 namespace {
 int floorId=0;
 bool beasts=false;
+bool cargoTerminal=false;
 std::string token;
 bool requested=false;
 bool completed=false;
@@ -44,7 +46,7 @@ unsigned navDrawCalls=0;
 bool navMarkerLogged=false;
 struct Survivor {int color,maturity;};
 void invalid(const char* reason){std::fprintf(stderr,"Invalid P2 cave entry: %s\n",reason);std::abort();}
-bool active(){return floorId && !completed && (beasts?pc_p2_preview_cargo_free_ready():pc_p2_preview_ready()) && naviMgr && naviMgr->getNavi() && naviMgr->getNavi()->getCurrState();}
+bool active(){return floorId && !completed && p2CavePreviewReady(beasts,floorId,pc_p2_preview_cargo_free_ready(),pc_p2_preview_ready(),pc_p2_preview_goal()!=nullptr,pc_p2_preview_cargo_count(),pc_p2_preview_pokos(),cargoTerminal) && naviMgr && naviMgr->getNavi() && naviMgr->getNavi()->getCurrState();}
 bool safeTime(){return active() && !gameflow.mPauseAll && !gameflow.mIsUIOverlayActive
     && (!gameflow.mMoviePlayer || !gameflow.mMoviePlayer->mIsActive) && !playerState->mInDayEnd;}
 
@@ -79,7 +81,7 @@ std::string pc_p2_cave_receipt_prefix(){return floorId?"floor"+std::to_string(fl
 void pc_p2_cave_setup(){
     const char* opt=std::getenv("PIKMIN_CAVE_NAV_DIAGNOSTICS");
     navRate.reset(opt && opt[0]==49 && opt[1]==0);navDrawCalls=0;navMarkerLogged=false;
-    floorId=0;beasts=false;token.clear();requested=false;completed=false;titleTimer=0;anchor=P2CaveAnchor{};transitionShape=nullptr;
+    floorId=0;beasts=false;cargoTerminal=false;token.clear();requested=false;completed=false;titleTimer=0;anchor=P2CaveAnchor{};transitionShape=nullptr;
     if(!pc_pikipelago_room_preview())return;
     std::ifstream in("p2-cave-entry.txt");if(!in)return;
     std::string version,extra;int floor,count;float health;
@@ -101,6 +103,13 @@ void pc_p2_cave_setup(){
     Navi* n=naviMgr->getNavi();if(!n || C_NAVI_PARM(n,mHealth)<=0)invalid("captain unavailable");
     n->mHealth=C_NAVI_PARM(n,mHealth)*health;
     floorId=floor;
+    std::ifstream terminal("p2-beasts-cargo-terminal.txt");
+    if(terminal){
+        if(!p2CargoTerminalOptIn(terminal,beasts,floor,token) || !pc_p2_preview_ready() || !pc_p2_preview_goal() || pc_p2_preview_cargo_count()!=1 || pc_p2_preview_pokos()!=0)
+            invalid("pre-receipt cargo terminal opt-in");
+        cargoTerminal=true;
+        std::printf("P2_BEASTS_CARGO_TERMINAL_READY floor=3 token=%s cargo=1 pokos=0 diagnostic=1\n",token.c_str());
+    }
     std::ifstream location("p2-cave-transition.txt");
     if(beasts && floor==2 && !location)invalid("Beasts floor2 requires a hole anchor");
     if(beasts && floor>=3 && location)invalid("Beasts next-floor descent is unavailable");
