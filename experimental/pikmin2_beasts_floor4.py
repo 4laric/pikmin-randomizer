@@ -49,5 +49,7 @@ def fixture(source,output):
     raw=output.read_text();replacement='static const float goals[12][2]={'+','.join('{'+str(x)+','+str(z)+'}' for x,z in GOALS)+'};'
     raw,count=re.subn(r'static const float goals\[12\]\[2\]=\{.*?\};',replacement,raw,flags=re.S)
     if count!=1:raise ValueError('Survey goal declaration changed')
-    output.write_text(raw.replace('P2_FLOOR3','P2_FLOOR4').replace('floor3','floor4'))
+    native_check='pc_p2_cave_floor()==3 && pc_p2_cave_is_beasts()'
+    if raw.count(native_check)!=1:raise ValueError('Native profile check anchor changed')
+    output.write_text(raw.replace(native_check,'pc_p2_cave_floor()==4 && pc_p2_cave_is_beasts()').replace('P2_FLOOR3','P2_FLOOR4').replace('floor3','floor4'))
     return output

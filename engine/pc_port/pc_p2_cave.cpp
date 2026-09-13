@@ -85,7 +85,7 @@ void pc_p2_cave_setup(){
     std::string version,extra;int floor,count;float health;
     if(!(in>>version>>token>>floor>>health>>count))invalid("header");
     const P2CaveEntryProfile profile=p2_cave_entry_profile(version,floor,token);
-    beasts=profile==P2CaveEntryProfile::BeastsFloor2 || profile==P2CaveEntryProfile::BeastsFloor3;
+    beasts=profile==P2CaveEntryProfile::BeastsFloor2 || profile==P2CaveEntryProfile::BeastsFloor3 || profile==P2CaveEntryProfile::BeastsFloor4;
     if(profile==P2CaveEntryProfile::Invalid || !std::isfinite(health) || health<=0 || health>1 || count<1 || count>100)
         invalid("header");
     std::vector<Survivor> squad;
@@ -103,7 +103,7 @@ void pc_p2_cave_setup(){
     floorId=floor;
     std::ifstream location("p2-cave-transition.txt");
     if(beasts && floor==2 && !location)invalid("Beasts floor2 requires a hole anchor");
-    if(beasts && floor==3 && location)invalid("Beasts floor4 descent is unavailable");
+    if(beasts && floor>=3 && location)invalid("Beasts next-floor descent is unavailable");
     // Reuse the hole geometry validator; this does not change source floorId.
     if(location && !p2_cave_read_anchor(location,beasts?1:floor,anchor))invalid("transition anchor");
     if(anchor.enabled)std::printf("P2_CAVE_ANCHOR kind=%s x=%.3f y=%.3f z=%.3f radius=%.3f\n",anchor.kind.c_str(),anchor.x,anchor.y,anchor.z,anchor.radius);
@@ -120,11 +120,11 @@ void pc_p2_cave_setup(){
         std::printf("P2_CAVE_VISUAL_READY kind=%s vertices=%d\n",kind.c_str(),transitionShape->mVertexCount);
     }
     std::printf("P2_CAVE_READY floor=%d survivors=%d health=%.9g\n",floor,count,health);std::fflush(stdout);
-    if(beasts && floor==3){std::printf("P2_BEASTS_ENTRY_READY floor=3 token=%s descent=disabled\n",token.c_str());std::fflush(stdout);}
+    if(beasts && floor>=3){std::printf("P2_BEASTS_ENTRY_READY floor=%d token=%s descent=disabled\n",floor,token.c_str());std::fflush(stdout);}
 }
-void pc_p2_cave_request(){if(active() && !(beasts && floorId==3))requested=true;}
+void pc_p2_cave_request(){if(active() && !(beasts && floorId>=3))requested=true;}
 bool pc_p2_cave_interact(float x,float y,float z){
-    if(beasts && floorId==3)return false;
+    if(beasts && floorId>=3)return false;
     if(!safeTime() || !anchor.contains(x,y,z))return false;
     Navi* n=naviMgr->getNavi();
     if(!anchor.contains(n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z)
@@ -132,6 +132,7 @@ bool pc_p2_cave_interact(float x,float y,float z){
     requested=true;return true;
 }
 bool pc_p2_cave_checkpoint(bool confirm){
+    if(beasts && floorId==4)return false; // Both terminal persistence and floor5 descent are unavailable.
     if(!safeTime())return false;
     if(beasts && floorId==3){
         bool livingPikmin=false,livingSprouts=false;
@@ -206,7 +207,7 @@ void pc_p2_cave_tick(){
     if(titleTimer>=1.f){
         titleTimer=0;
         int count=0,purples=0;Iterator squad(pikiMgr);CI_LOOP(squad){Piki* p=static_cast<Piki*>(*squad);if(p->isAlive()){++count;if(pc_p2_is_purple(p))++purples;}}
-        const std::string transition=beasts && floorId==3?" | Floor 4 descent unavailable":
+        const std::string transition=beasts && floorId>=3?" | Floor "+std::to_string(floorId+1)+" descent unavailable":
             " | F6 at "+(anchor.enabled?anchor.kind:std::string("Pod"))+": "+((beasts || floorId==1)?"descend":"leave cave")+" | Saves at floor boundaries";
         std::string title=std::string("Pikipelago - ")+caveName()+" | Floor "+std::to_string(floorId)+" | "+std::to_string(count)+" Pikmin ("+std::to_string(purples)+" Purple) | "+std::to_string(pc_p2_preview_pokos())+" Pokos"+transition;
         if(SDL_Window* w=SDL_GL_GetCurrentWindow())SDL_SetWindowTitle(w,title.c_str());
