@@ -12,3 +12,9 @@ Next runtime gates:
 - Kimi: finish floor-2 return on preserved manual-qa-02, background input only. Zero receipts cannot establish reward duplication coverage.
 
 Red original-map combat, transport and manager-subset re-entry passed; this is not full scene teardown. P2 appearances still use P1 proxy behavior except explicitly implemented profiles. Do not claim complete P2 AI parity.
+
+## Native display batch dispatched (2026-09-12 local)
+
+Source imports #194/#195/#196 are integrated in 65ad102 and closed. Successor issues #201 Frog/MaroFrog, #202 Tank/Wtank and #203 Honeywisp are assigned and running on the three existing workers. They own new family files and isolated native patches only; root reviews shared hooks and builds later. Water Blowhog requires a Bubble receiver before water gameplay can be claimed; Honeywisp has a separate P2 Egg reward boundary. Kimi owns dwarf variants #200; preserve that work. Hard lane continues Groink #199 independently. Native remains unchanged while these handoffs are prepared.
+
+Cave #193 patch is still unapplied. Before integrating, normalize its generated line endings and adapt the patch-generator test so it does not instrument already-instrumented native source. Fixed QA package remains untouched. Upstream ledger records the completed September 12 local-day sync; no repeat integration is due within that day.
