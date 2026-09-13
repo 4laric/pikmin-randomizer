@@ -161,6 +161,7 @@ if (NOT WIN32)
 endif()
 
 set(PC_PORT_SOURCES
+    pc_port/pc_p2_material_scope.cpp
     pc_port/pc_p2_demon_drop_state.cpp
     pc_port/pc_bbft.cpp
     pc_port/pc_p2_preview.cpp

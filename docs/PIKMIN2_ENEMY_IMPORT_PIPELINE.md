@@ -164,3 +164,8 @@ adoption, current joint callbacks and natural gameplay/visual acceptance.
 [Joint-local corrections](PIKMIN2_JOINT_CORRECTIONS.md) provide a shared per-sample
 transform stage for both weighted geometry and attachments. It is available for
 family adoption; it does not itself implement source aiming callbacks.
+
+[Texture SRT animation](PIKMIN2_MATERIAL_SRT.md) provides bounded BTK import,
+source-frame sampling and scoped single-matrix material application. Family
+owners must explicitly bind retained material names/slots and validate rendering;
+Queen's missing specular TEV layer and BRK/BTP remain separate work.
