@@ -76,6 +76,19 @@ class BeastsSurfaceLedger(SurfaceLedger):
         if state['schema']!=2:raise ValueError('No Beasts trip')
         return self.adapter.launch_requirement(state['trip']['checkpoint'])
 
+    def fail_beasts_floor3(self,expected_revision,token,reason):
+        if not _hex(token,64) or reason not in ('extinction','knockout'):
+            raise ValueError('Invalid floor3 failure boundary/reason')
+        def apply(state):
+            trip=state['trip']
+            if state['schema']!=2 or state['phase']!='cave' or trip['token']!=token:
+                raise ValueError('Wrong or terminal Beasts boundary')
+            trip['checkpoint']=self.adapter.fail_floor3(trip['checkpoint'],token,reason)
+            trip['token']=None
+            state['phase']='failed'
+        return self._change(expected_revision,f'floor:{token}',
+            dict(policy='P2_BEASTS_FAILURE_1',reason=reason),apply)
+
     def enter_cave(self,*args,**kwargs):
         raise ValueError('Use enter_beasts; tutorial entry is unsupported by this writer')
 
