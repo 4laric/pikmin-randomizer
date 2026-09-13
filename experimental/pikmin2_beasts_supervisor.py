@@ -35,7 +35,7 @@ def _receive(ledger, request):
         return dict(status='pending_or_uncertain', native_relaunched=False,
                     stage=stage, state=ledger.read())
     state = receive_exit(ledger, request['launch_state'], stage)
-    return dict(status='floor3_stopped', native_relaunched=False,
+    return dict(status='failed' if state['phase']=='failed' else 'floor3_stopped', native_relaunched=False,
                 stage=stage, state=state, native_floor3_ready=False)
 
 

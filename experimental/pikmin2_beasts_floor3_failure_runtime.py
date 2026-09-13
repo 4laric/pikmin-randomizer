@@ -82,6 +82,7 @@ def run(exe,directory,timeout=90):
             raise ValueError('Native terminal inputs/executable changed')
         evidence['passed']=True
     except (ValueError,OSError) as error:evidence['error']=str(error)
-    (directory/'acceptance.json').write_text(json.dumps(evidence,indent=2)+'\n')
+    from randomizer.session import atomic_write
+    atomic_write(directory/'acceptance.json',json.dumps(evidence,indent=2)+'\n')
     if not evidence['passed']:raise ValueError(evidence['error'])
     return evidence
