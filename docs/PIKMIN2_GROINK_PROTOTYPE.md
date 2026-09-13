@@ -1,0 +1,65 @@
+# Gatling Groink stationary prototype
+
+Implementation owner: Codex using shared account 4laric; issues #169 and #186.
+This is an isolated source-data and firing-policy milestone, not a playable enemy.
+
+## Source and extraction
+
+Behavior references use projectPiki/pikmin2 revision
+`632af93787b9c95b63f0c13be32b161375ce3a96`. Assets are extracted locally from
+the user's GPVE01 revision 0 disc; no original assets are committed.
+
+```powershell
+py -3.12 -m experimental.pikmin2_groink_assets --iso <local.iso> --output <fresh-output>
+py -3.12 -m unittest tests.test_pikmin2_groink_assets
+```
+
+MiniHoudai (78) and FminiHoudai (97) share the MiniHoudai model/animations
+(`MiniHoudaiMgr.cpp:24,54`). The fixed variant has its own parameter file.
+The extractor preserves each parameter block separately: identically named
+fields in general and creature-specific blocks must not overwrite each other.
+
+The retail resources contain 18 joints, eight animation registrations and eight
+collision nodes. Both variants have search distance 250, attack radius 15,
+attack hit angle 65 and attack damage 10; health is 1200 roaming and 700 fixed.
+The `kuti` joint is index 13. Its model-space matrix and normalized column-zero
+direction are sampled independently of visual conversion. The muzzle origin is
+joint translation plus 25 times that direction. These transforms still require
+the runtime vertical callback and owner transform before firing in world space.
+
+Two fresh extractions produced 15 identical files and 24 muzzle samples.
+The model contains skinned envelopes, which the current rigid-only converter
+rejects. Consequently there are **zero converted visual poses**, and the manifest
+records the reason rather than claiming a usable model. All eight source BCAs,
+their event registrations, collision metadata and model remain available locally.
+
+## Source behavior and host contract
+
+`MiniHoudaiShotGun.cpp:1794` derives elevation and shell speed from horizontal
+target distance and source delta time, then advances elevation by at most 0.1
+radians per update. `angDist(a,b)` is wrapped `a-b`; the lock threshold uses the
+error before that update. The vertical callback normalizes the joint basis,
+right-multiplies a local Z rotation and restores its scale (`:2071`).
+
+Emission (`:1345`) uses the aimed joint's column zero, a 25-unit muzzle offset,
+independent spread in [-0.1,0.1] on each component, renormalization and the
+computed shell speed. The retail implementation emits three shells and owns six
+pooled nodes; the first policy deliberately models one shell.
+
+Movement (`:86`) traces a radius-10 sphere using the velocity and source delta,
+then subtracts 20 from vertical velocity **per update**. A floor/wall collision
+or an axis-wise distance greater than 1000 from the owner terminates the shell.
+Retail creature-hit processing still occurs during a terminal step; host damage
+integration must retain that final sweep, not discard it when recycling.
+
+The integration lead owns shared CMake, renderer, preview and actor registry.
+Required integration inputs are an owner position, source target, freshly
+evaluated head matrix, source-rate ticks, explicit attack emission events and a
+map sphere-trace adapter. Projectile visualization and receiver damage must be
+added explicitly. Muzzle samples alone do not implement target acquisition,
+body yaw, animation-event playback or the full attack state machine.
+
+Walking, burst/pool behavior, damage receivers, effects, carcass delivery and
+replacement-object revival are outside this first milestone. The independent
+policy does not substitute any Pikmin 1 enemy AI. The speedup playtest and enemy
+integration baseline remain separate.
