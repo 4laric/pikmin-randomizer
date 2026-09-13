@@ -210,3 +210,102 @@ python -m pytest tests/test_pikmin2_aquatic_assets.py -q
   sign-off remain unstarted and are explicit handoff work.
 - Parallel lanes (Sheargrub/Shearwig, Beetle, Bulblax, Breadbug, Mamuta,
   flying remainder) untouched; no shared-file changes required by this lane.
+
+## Batch 2 — install + arena (#374)
+
+Implementation owner: opencode through shared `4laric`. Pipeline §4 for the
+aquatic remainder lane; batch 1 is #347 (commit `a7c9ad7`). New modules only; no
+neighbor lane or shared native file is edited here.
+
+### Install contract
+
+`experimental/pikmin2_aquatic_install.py` binds the batch-1 `aquatic.json`
+(schema 1, policy `P2_AQUATIC_IMPORT_1`, disc GPVE01 rev 0, species IDs
+26/27/63/71) and requires a live/idle, attack and death anchor clip per spawned
+species (`Catfish` wait1/attack/dead, `Tadpole` wait1/move1/dead, `Jigumo`
+wait1/attack1/dead1, `UmiMushi` run1/attack1/dead1). Every pose carrying a `file`
+is bound by SHA-256; the optional sampled visual bank is all-or-nothing, so a
+partial bank, a stray `.mod`, a hash mismatch, an unsafe filename or an existing
+target is refused **before** any write. Absent pose files install configs only
+and return `visuals='absent_baseline_preserved'`, leaving the room baseline
+untouched. Into a private run it writes `p2-aquatic-profile.txt` (per-species
+general/proper parms), `p2-aquatic-bank.txt` (clip/frame/event/pose listing),
+`p2-aquatic-actors.txt` (`P2_AQUATIC_ACTORS_1` + generator/species bindings),
+the receipt `aquatic-install.json` (manifest/config/pose SHA-256, generators,
+visuals, `native_ready=False`) and the requested
+`aquatic_<species>_<clip>_<nn>.mod` poses under
+`assets/dataDir/courses/pikmin2room/`. `plan`, `install` and `verify_install`
+(round-trip) share one validation path; sibling `p2-*-actors.txt` bindings are
+scanned for generator-ID overlap. Real batch-1 manifest smoke run: 79 poses /
+1,973,024 bytes installed and re-verified (`installed == generated`).
+
+### Arena contract
+
+`experimental/pikmin2_aquatic_arena.py` follows
+[docs/PIKMIN2_ENEMY_ARENA.md](PIKMIN2_ENEMY_ARENA.md). `roster(assets)` appends
+five actors to the original practice stage: 374001 Catfish (`TEKI_Namazu` 30, P1
+Water Dumple ancestor), 374002 Tadpole (`TEKI_Otama` 25, P1 Wogpole ancestor),
+374003 Jigumo and 374004 UmiMushi (both have **no** P1 counterpart and use
+`TEKI_Chappy` 3 as a placement vehicle only), plus 374005 ordinary P1 Chappy
+control. Position + offset is translation only (zero offset, validated); full
+expected XYZ is recorded; source yaw is `None`, recorded unapplied; IDs are
+checked against the stage's existing placements at staging time. `prepare(assets,
+imported, output)` overlays a private run, zeroes the default generator scatter
+circle via the deterministic fixture override (engineered choice, not production
+placement evidence), calls `install`/`verify_install`, re-hashes the preserved
+original course and writes `arena.json`. `GATES` covers the common acceptance
+gates plus the batch-1 open items; identity, FSM, proxy, combat, death and carry
+gates are marked **blocked**, spawn/control are untested.
+
+### Native hook request
+
+Root/integration track (#186) owns CMake and shared setup/update/draw/reset. The
+following is requested from this lane; no shared file is touched here.
+
+- **Build**: add `pc_port/pc_p2_aquatic.cpp` (+`pc_p2_aquatic.h`,
+  `pc_p2_aquatic_policy.h`) to the `pikmin_pc` source list following the
+  `pc_p2_kochappy.cpp` family registration; no new third-party dependencies.
+- **Setup** (`pc_p2_aquatic_setup()`, called once after generators exist,
+  alongside the other family setup): parse `P2_AQUATIC_ACTORS_1`
+  (`<generator> <Species>`), reset first, treat an absent config as a no-op P1
+  fallback, and reject duplicate/unknown generator IDs and unknown species.
+  Build one visual bank per species from `aquatic_<species>_*.mod`, bind the
+  `p2-aquatic-profile.txt` parms and `p2-aquatic-bank.txt` clip/event data, and
+  register **Catfish 26** (`PC_P2_CATFISH`, KochappyBase FSM host + shadow
+  joint), **Tadpole 27** (`PC_P2_TADPOLE`, water-box leap/Escape gate),
+  **Jigumo 63** (`PC_P2_JIGUMO`, owns the `PanHouse`/`JigumoNest` child with
+  nest persistence and limits) and **UmiMushi 71** (`PC_P2_UMIMUSHI_OBJ`).
+- **Update**: Catfish/Tadpole/Jigumo advance their source state machine on the
+  authoritative native animation counter; until that lands, the P1 ancestor
+  proxies keep host AI. No actor update may skip damage/death receivers.
+- **Draw**: add `pc_p2_aquatic_draw` to both the live and corpse fallback chains
+  in `tekibteki.cpp`, selecting by typed actor ID; ordinary P1 controls and
+  actors without an installed bank keep the existing fallback.
+- **Reset/teardown**: call `pc_p2_aquatic_reset()` at every family
+  reset/teardown/cave-reentry point in `tekimgr.cpp` and on actor reuse; clear
+  per-actor banks, model/shape references and the Jigumo PanHouse child link
+  before heap reuse (never assume a pointer is not recycled).
+- **Shared `UmiMushi::Mgr` boss/helper**: instantiate the shared manager once and
+  tag objects per ID. Base 100 `UmiMushiBase` stays **non-spawnable/excluded**
+  (no spawn flag); ordinary 71 and Blind 101 are spawnable children sharing the
+  same `"UmiMushi"` bank. Blind uses its own parms (`fp12` blind health 800,
+  `fp13`/`fp14` 200, `ip01` 0). The boss weak-point collision (`weak` joint 24,
+  `st__`), `eat`/`flick` receivers and shared reset belong in the same
+  registration pass. `JigumoNest` 64 and `UmiMushiBase` 100 are **not**
+  independent shuffle entries.
+
+### Tests
+
+`tests/test_pikmin2_aquatic_install.py` (synthetic schema-1 import, real bytes
+and recorded hashes): actor-count/duplicate/invalid-ID rejection before IO;
+schema/policy/disc/species/enemy-ID rejection; missing-anchor and pose-hash
+mismatch rejection; install + verify round-trip (installed == generated);
+overwrite refusal; tamper detection on an installed pose and on the actor config;
+absent-bank baseline preservation; partial-bank and sibling-overlap refusal;
+non-junction room refusal; arena proxy-type constants, gate coverage,
+`roster`-on-missing-path and translation-only five-actor contract. Run from the
+repo root:
+
+```
+python -m pytest tests/test_pikmin2_aquatic_install.py tests/test_pikmin2_aquatic_assets.py -q
+```

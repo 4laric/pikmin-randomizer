@@ -253,3 +253,124 @@ test layout with synthetic parameter blocks and a mocked disc:
   only.
 - Parallel lanes (other #174 batches, Long Legs #173, Waterwraith/Titan #175)
   untouched; no shared-file changes required by this lane.
+
+## 10. Batch 2 — install + arena (#376)
+
+Issue: [#376](https://github.com/4laric/pikmin-randomizer/issues/376) (parent
+[#174](https://github.com/4laric/pikmin-randomizer/issues/174)), following batch
+1 [#351](https://github.com/4laric/pikmin-randomizer/issues/351) (commit
+`a7c9ad7`). Pipeline stage 4: audited assets into a private run and a private P1
+arena.
+
+### 10.1 Install contract
+
+Module `experimental/pikmin2_snagret_install.py`. Consumes the batch-1
+`snagret.json` schema 1 (policy `P2_SNAGRET_1`) and requires the non-claims
+`native_ready=false`, `gameplay_events_executed=false`, `btk_playback=false`;
+it refuses a manifest that claims otherwise. The three species identity pair
+must match `SPECIES` (SnakeCrow 34, SnakeWhole 70, DangoMushi 94).
+
+- `plan(imported, actors)` validates `1..100` unique unsigned generator IDs and
+  the actor species **before any import IO**, then validates schema/policy/
+  non-claims/identity, then binds every converted pose by SHA-256 from
+  `<import>/<species>/snake_<species>_<clip>_<nn>.mod`. It never writes.
+- `install(imported, run, actors)` requires an already-private, non-junction
+  `<run>/assets/dataDir/courses/pikmin2room`, refuses any existing target
+  (actor config, receipt, installed pose) and any generator-ID overlap with
+  sibling `p2-*-actors.txt`/`p2-sheargrub.txt` bindings, then writes exact
+  bytes. Output: `p2-snagret-actors.txt` (`P2_SNAGRET_ACTORS_1`, count, then
+  `generator species` rows), the optional pose bank, and
+  `snagret-install.json` receipt.
+- `verify_install(imported, run, actors)` re-derives the plan, compares the
+  installed actor config and every installed pose byte-for-byte, and re-checks
+  the receipt's `actors_config_sha256`.
+- The pose bank is optional and all-or-nothing: any presence requires the full
+  expected set with matching hashes (partial or stray `.mod` refused); zero
+  presence installs the actor config only, records
+  `visuals='absent_baseline_preserved'`, and leaves the room untouched.
+- The receipt keeps the batch-1 reclassification explicit and distinct:
+  `classification.shared_base = {SnakeCrow: SnakeJointMgr, SnakeWhole:
+  SnakeJointMgr}` and `classification.standalone = {DangoMushi:
+  EnemyBlendAnimatorBase::ProperAnimator}`. No flattened "family base".
+
+### 10.2 Arena contract
+
+Module `experimental/pikmin2_snagret_arena.py`, per
+[the arena contract](PIKMIN2_ENEMY_ARENA.md). `roster(assets)` appends a
+four-actor roster to the original practice stage records: one explicit actor per
+species (SnakeCrow, SnakeWhole, DangoMushi) plus one ordinary P1 Chappy control,
+with unique generator IDs checked against the stage's existing placements, full
+expected XYZ, zero generator offset (translation-only `write_position`), and
+`source_yaw=None` recorded as explicitly unapplied. SnakeCrow/SnakeWhole and
+DangoMushi stay distinct in the placement records. Each P2 actor uses the
+audited one-actor enemy template as a placement vehicle (no P1 counterpart, no
+proxy species decided); the control is pinned to `P1_CHAPPY_TYPE=3`.
+`prepare(assets, imported, output)` overlays a private run, preserves the
+original course byte-identical, zeroes the deterministic birth circle, calls
+`install` + `verify_install`, and writes `arena.json`. `GATES` names every
+batch-1 open item; native-dependent gates are `blocked` and the unmeasured
+runtime gates are `untested` — none are claimed as passed.
+
+### 10.3 Native hook request
+
+For the integration lead on [#186](https://github.com/4laric/pikmin-randomizer/issues/186);
+no shared native code is touched by this lane.
+
+```
+Native hook request (#376, parent #174) — for integration lead on #186
+
+Register three P2 boss actors in the private P1 runtime. One CMake translation
+unit per species plus one shared spine unit; gate the whole set behind
+PC_P2_ROOM_SNAGRET. Do not rewire shared engine code without an #186 review.
+
+1) SnakeCrow (enemy ID 34) and SnakeWhole (enemy ID 70) — shared base
+   - CMake: add snagret_common.cpp (Game::SnakeJointMgr equivalent) plus
+     snakecrow.cpp and snakewhole.cpp to the experimental P2 target.
+   - setup: both actors call snakeJointMgrInit(obj, model, anim, 6) to build the
+     bodyjnt3..bodyjnt8 chain exactly once per instance; both register
+     EnemyAnimatorBase::ProperAnimator with the same 0x8034B63C thunk pair
+     against their own per-species AnimID bank (SnakeCrow 13 slots; SnakeWhole
+     14, run1 inserted at slot 12) and their own parm bank (SnakeCrow proper
+     fp31 mWFGHealth=2500; SnakeWhole has no fp31).
+   - update: drive the shared spine from each actor's own FSM. Shared base means
+     shared code and joint-chain type, not a shared mutable animator/state.
+   - draw: attach the installed snake_SnakeCrow_*.mod / snake_SnakeWhole_*.mod
+     pose bank through the draw-matrix path (setTexMtxLoadType(0x2000)); do not
+     bypass EnemyAnimatorBase.
+   - reset: on day/stage reset destroy both SnakeJointMgr instances and re-create
+     them on respawn; never leave stale joint pointers.
+
+2) DangoMushi (enemy ID 94) — standalone
+   - CMake: add dangomushi.cpp as a direct EnemyBase actor; do NOT link it
+     against snagret_common.cpp or the SnakeJointMgr unit.
+   - setup: use EnemyBlendAnimatorBase::ProperAnimator and load the installed
+     dangomushi.brk material bank (Mgr::loadTexData); rebuild the body material
+     display list as on disc.
+   - update: advance the segmented blended body via animate() and
+     mMatLoopAnimator->animate(30.0f); roll/turn crash is P2 FSM, not part of
+     the shared spine.
+   - draw: consume the snake_DangoMushi_*.mod pose bank and the brk loop.
+   - reset: tear down the blend animator/brk loop, the falling Rock/Egg helper
+     allocation path and any roll state, then re-init cleanly on respawn.
+
+3) Generators (all three)
+   - Read p2-snagret-actors.txt (P2_SNAGRET_ACTORS_1) from the private run; map
+     each generator ID to its species and confirm native identity plus effective
+     XYZ before observing behavior.
+   - Spawn visuals from <run>/assets/dataDir/courses/pikmin2room/snake_<species>_*.mod
+     when present; absent must preserve the baseline (no visual override).
+   - No shared save/reward/registry edits; no P2 FSM behavior is claimed until
+     these hooks exist.
+```
+
+### 10.4 Tests
+
+`tests/test_pikmin2_snagret_install.py` — synthetic schema-1 import with real
+bytes and recorded hashes. Covers actor count/duplicate/invalid-ID rejection
+before IO; schema/policy/non-claim/identity rejection; pose hash mismatch;
+partial-bank rejection; install + `verify_install` round-trip; overwrite and
+sibling generator-overlap refusal; tamper detection on an installed pose and on
+the actor config; missing-receipt detection; the shared-base vs standalone
+receipt split; absent-bank baseline preservation; and arena contract checks
+(`P1_CHAPPY_TYPE=3`, gate coverage, `roster` on a missing path raises).
+
