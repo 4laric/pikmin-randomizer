@@ -209,3 +209,65 @@ byte-budget and resource-mismatch rejection in `validate_files`, exact-byte
 config writes (no CRLF translation), build-time source mismatch (model/clip
 hash, wrong species) and refusal to write into pre-existing/invalid state.
 Full pikmin2 suite: 654 passed, 2 skipped (pre-existing platform skips).
+
+## 8. Batch 2 (#211): hash-bound installation + arena staging
+
+Evidence level: pipeline section 4 (installation + arena staging readiness).
+Native integration is NOT implemented here; it belongs to the integration lead
+(#186, hook request posted from #211).
+
+**Installation** (`experimental/pikmin2_dwarf_orange_install.py`,
+`experimental/pikmin2_dwarf_bear_install.py`):
+
+- Binds bank/profile hashes to the same source import: the bank manifest's
+  `reference_sha256` must equal the SHA-256 of the profile JSON from the batch-1
+  extraction; any different/changed source is refused before any mutation.
+- Exact-byte canonical LF config writes (`write_bytes`) for
+  `p2-dwarf-{orange,bear}-{profile,bank,actors}.txt`; Windows CRLF sources are
+  accepted only after full token/parse validation and normalized to canonical
+  LF before hashing and writing.
+- Conflicting installations (existing configs/models/receipt, generator-ID
+  overlap with sibling `P2_*_ACTORS_1` bindings) are refused before any write.
+- The sampled pose bank is an optional visual bank: all-or-nothing. When the
+  `.mod` files are absent, installation proceeds with configs only and the
+  room's baseline visuals are preserved untouched
+  (`visuals='absent_baseline_preserved'`).
+- Real-bank evidence (private, untracked): `output/p2-dwarf-batch2/*/run/`
+  plus `install-evidence.json` — 64 pose models installed per species with
+  per-file SHA-256 receipts; refusal re-check on the same run passes.
+
+**Arena staging** (`experimental/pikmin2_dwarf_orange_arena.py`,
+`experimental/pikmin2_dwarf_bear_arena.py`), per docs/PIKMIN2_ENEMY_ARENA.md:
+
+- Original Impact Site map/collision/routes preserved byte-identical
+  (per-file SHA-256 verified after overlay); stage slot `chal0`.
+- Roster: one explicit family actor plus one ordinary P1 Chappy control.
+  Generator IDs 211001/211002 (Dwarf Orange) and 211101/211102 (Dwarf Bulbear)
+  — unique against every existing arena allocation (60000–61009 sheargrub/uji,
+  186001/186002 kochappy, 186081/186082 breadbug, 186151–186153 tank) and
+  checked against the actual stage records at staging time.
+- Full expected XYZ recorded per actor ((-150, 30, 1850) family /
+  (150, 30, 1550) control); generator position + offset is translation only
+  (zero offset, validated); source yaw recorded as explicitly unapplied
+  metadata (`source_yaw=None`, `source_yaw_applied=False`).
+- Default generator scatter circle zeroed via the existing deterministic
+  fixture override (`PRIVATE_CIRCLE_RADIUS_ZERO_1`), explicitly marked as an
+  engineered choice, not production placement evidence.
+- Dwarf Bulbear parent-following (`ChappyRelation` → `KumaChappy` EnemyID 35,
+  WalkPath state) is NOT staged: Spotty Bulbear is not yet imported; the
+  arena stages a standalone visual placement only and defers the relation to
+  the #186 hook request.
+- Full `prepare()` execution remains BLOCKED in this session: no private P1
+  asset copy is available in this workspace. Roster/contract logic is covered
+  by tests; gates recorded as untested.
+
+**Tests** (`tests/test_pikmin2_dwarf_orange_install.py`,
+`tests/test_pikmin2_dwarf_bear_install.py`,
+`tests/test_pikmin2_dwarf_orange_arena.py`,
+`tests/test_pikmin2_dwarf_bear_arena.py`): 30 new tests — exact-byte config
+writes, conflict refusal before mutation, changed-source refusal, tampered /
+partial visual bank refusal, baseline preservation when the visual bank is
+absent, sibling generator-ID overlap refusal, identity/newline drift refusal,
+CRLF normalization, invalid generator-ID refusal, arena roster uniqueness,
+generator-ID collision detection, expected-XYZ translation-only validation and
+nonfinite-position rejection. Full suite: 836 passed, 2 skipped.
