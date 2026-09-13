@@ -32,6 +32,8 @@ The shared `native/` checkout normally carries a recorded dirty baseline from ot
 - The maintained export runs from the integration line after its fast-forward/merge and copies the recorded working-tree state as-is:
   ```powershell
   py -3.12 scripts/export_native_source.py
+  # or export directly from a private native worktree, never touching the shared checkout:
+  py -3.12 scripts/export_native_source.py --source output/native-<lane>
   ```
 - Only the integration lead runs the maintained export; lanes keep their own uncommitted work out of the shared checkout by using private `native/` worktrees (§Build isolation) and commit native changes on their own branch.
 - Record the native commit **and** dirty state with any export evidence. Never push native origin.
