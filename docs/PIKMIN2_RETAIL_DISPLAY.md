@@ -11,8 +11,11 @@ fail explicitly. No table retains the existing looping display clock.
 
 The renderer selects the nearest sampled pose using the retail player's source
 frame. Authored loops and one-shot completion now control that frame, rather
-than always looping the entire clip. This diagnostic display continues to use
-30 source frames per wall-clock second; it is not a gameplay simulation clock.
+than always looping the entire clip. Since #272, retail playback uses 30 source
+frames per active simulation second. The GameCore update hook shares the Teki
+update's pause, UI, movie and inPause gates. Drawing does not advance retail
+players, so paused wall time is not accumulated and replayed on resume. Legacy
+displays without retail tables retain their decorative wall-clock behavior.
 Events are logged, never sent to actors or reward logic. Logging is capped at
 64 events per loaded clip per setup. Reset clears all players and log counters;
 reload starts them fresh. Materials, transforms and mesh loading are unchanged.
@@ -39,6 +42,12 @@ This is native renderer integration of timing with existing sampled meshes.
 Boss AI, combat receivers, interpolated skeletal animation and mesh blending
 remain outside this batch.
 
+The read-only `pc_p2_bulblax_visual_frame(displayId, frame)` query returns false
+for absent, legacy or reset displays. `pc_p2_bulblax_visual_update(seconds)` is
+called once from the active GameCore path; callers must not also tick it from
+draw or a second actor hook. It does not dispatch gameplay effects. Displays
+using the same clip still share its player; this is not yet per-actor playback.
+
 Validation at native c541b0ff: production Release build and private fixture
 build passed; 15 focused test methods passed. Queen, Baby, KingChappy and the
 disabled control all passed the native fixture, including source-event matching
@@ -53,3 +62,16 @@ Local evidence (private engine root worktree):
 `output/retail-display268/build/provenance.json`.
 Fixture SHA-256:
 `07c0631a2f78d710861343fbf55c882735a4f77012a1f0f73ab11ee788c78934`.
+
+Simulation follow-up #272 at native f2173b51: production and fixture builds
+passed, as did 15 focused test methods. Queen, Baby and KingChappy each passed
+real-engine pause-all and UI-overlay freeze checks across multiple idle/draw
+cycles, followed by resumed position movement. All existing retail event,
+reset/reload and unchanged actor/reward checks passed. Disabled and separate
+legacy Queen controls passed; no additional GX warnings were recorded. Movie
+and inPause suppression are covered by placement under the existing update
+gates, not by a synthetic movie runtime test. No gameplay parity is claimed.
+
+Evidence: `output/simulation272/validation/result.json`,
+`output/simulation272/legacy-result.json`, and
+`output/simulation272/build/provenance.json` in the private engine root worktree.

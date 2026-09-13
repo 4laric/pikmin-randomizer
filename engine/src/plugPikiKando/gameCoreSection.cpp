@@ -2829,6 +2829,9 @@ void GameCoreSection::updateAI()
 				plantMgr->update();
 				gsys->mTimer->start("teki", true);
 				if (tekiMgr && !gameflow.mMoviePlayer->mIsActive) {
+#if defined(PIKI_PC_PORT)
+					pc_p2_bulblax_visual_update(gsys->getFrameTime());
+#endif
 					tekiMgr->update();
 				}
 				gsys->mTimer->stop("teki");
