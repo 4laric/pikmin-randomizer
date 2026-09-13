@@ -105,6 +105,15 @@ class MaterialNativeTests(unittest.TestCase):
             result = subprocess.run([str(output), str(build/'bank.txt')], check=True, capture_output=True,
                                     text=True, env=env, timeout=15)
             self.assertIn('PASS', result.stdout)
+            binding = build/'binding.exe'
+            subprocess.run([compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                            '-I', str(root/'engine/tools/material_srt_stubs'), '-I', str(root/'engine/pc_port'),
+                            str(root/'engine/tools/test_p2_material_binding.cpp'),
+                            str(root/'engine/pc_port/pc_p2_material_binding.cpp'), '-o', str(binding)],
+                           check=True, capture_output=True, env=env, timeout=60)
+            bound = subprocess.run([str(binding), str(build/'bank.txt')], check=True, capture_output=True,
+                                   text=True, env=env, timeout=15)
+            self.assertIn('PASS transactional', bound.stdout)
             probe = build/'sample.exe'
             subprocess.run([compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror',
                             '-I', str(root/'engine/pc_port'), str(root/'engine/tools/sample_p2_material_srt.cpp'),
