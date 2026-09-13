@@ -1358,6 +1358,7 @@ static const char* vShaderSrc =
     "    int mode = uTcMode[slot];\n"
     "    if (mode == 0) return uvIn;\n"
     "    vec4 src = (mode == 1) ? viewPos\n"
+    "             : (mode == 20) ? vec4(aNormal, 1.0)\n"
     "             : (mode == 2) ? vec4(nrm, 1.0)\n"
     "             : (mode >= 11) ? vec4((mode == 11) ? tc0 : (mode == 12) ? tc1 : (mode == 13) ? tc2 : tc3, 0.0, 1.0)\n"
     "             : vec4(rawTc(mode - 3), 0.0, 1.0);\n"
@@ -6142,7 +6143,9 @@ void pc_gfx_end(void) {
         int mode = 0;
         if (slot < 8 && sTexCoordGen[slot].active) {
             GXTexGenSrc src = static_cast<GXTexGenSrc>(sTexCoordGen[slot].src);
-            if (src == GX_TG_POS) mode = 1;
+            // Private P2 mode6 export marker: matrix already includes view/model.
+            if (int(src) == 0xE6) mode = 20;
+            else if (src == GX_TG_POS) mode = 1;
             else if (src == GX_TG_NRM) mode = 2;
             else if (src >= GX_TG_TEX0 && src <= GX_TG_TEX7)
                 mode = 3 + int(src - GX_TG_TEX0);

@@ -14,12 +14,17 @@ public:DisplayCameraTarget():Creature(nullptr){mHealth=1;}
 };
 class RoomApp : public PlugPikiApp {
  int frames=0,ready=0,actors=0,repairs=0;bool enabled=false,hold=false;int enemy=0;std::string mode;
+ int pauseTicks=0;std::uint32_t displayId=0,secondId=0;float pausedFrame=0;bool testedPause=false;
  int actorCount(){int count=0;Iterator i(tekiMgr);CI_LOOP(i){if(*i)++count;}return count;}
  void unchanged(){require(actorCount()==actors,"Bulblax display changed Teki count");require(playerState->getCurrParts()==repairs,"Bulblax display changed repairs");require(pc_p2_preview_cargo_count()==0&&!pc_p2_preview_treasure(),"Bulblax display created cargo");}
  void load(){const int heap=gsys->setHeap(SYSHEAP_App);pc_p2_bulblax_visual_setup();gsys->setHeap(heap);unchanged();}
 public:int idle() override {
  int result=PlugPikiApp::idle();require(++frames<20000||hold,"Bulblax startup timeout");
  if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
+ if(pauseTicks){float frame=-1;require(pc_p2_bulblax_visual_frame(displayId,frame)&&frame==pausedFrame,"retail advanced while paused");
+  if(++pauseTicks==10){gameflow.mPauseAll=false;gameflow.mIsUIOverlayActive=true;std::puts("P2_BULBLAX_SIM_PAUSE_ALL_PASS");}
+  if(pauseTicks==20){gameflow.mIsUIOverlayActive=false;pauseTicks=0;testedPause=true;std::puts("P2_BULBLAX_SIM_UI_PAUSE_PASS");}else return result;
+ }
  if(!pc_p2_preview_cargo_free_ready()||!naviMgr||!tekiMgr||!mapMgr)return result;
  Navi* n=naviMgr->getNavi();if(!n||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;++ready;
  if(ready==1){actors=actorCount();repairs=playerState->getCurrParts();n->mKontroller=new FixtureController();for(int i=0;i<DEMOFLAG_COUNT;++i)playerState->mDemoFlags.setFlagOnly(i);
@@ -28,14 +33,24 @@ public:int idle() override {
  SDL_SetWindowTitle(SDL_GL_GetCurrentWindow(),"Bulblax family - NONINTERACTIVE SAMPLED DISPLAY (#235)");std::printf("P2_BULBLAX_BASELINE actors=%d cargo=0 repairs=%d red=%d blue=%d\n",actors,repairs,red,blue);
  }
  if(ready==30){
- std::ifstream raw("bulblax-fixture-profile.txt");auto p=p2bulblax::read(raw);require(p.displays.size()==1,"Bulblax single display fixture");auto d=p.displays[0];auto c=p.clips[d.clip];enemy=c.enemy;
+ std::ifstream raw("bulblax-fixture-profile.txt");auto p=p2bulblax::read(raw);require(p.displays.size()==1||p.displays.size()==2,"Bulblax display fixture count");auto d=p.displays[0];displayId=d.id;if(p.displays.size()==2)secondId=p.displays[1].id;auto c=p.clips[d.clip];enemy=c.enemy;
  float ground=mapMgr->getMinY(d.x,d.z,true);require(std::isfinite(ground)&&std::fabs(ground-d.y)<40,"Bulblax display ground divergence");std::printf("P2_BULBLAX_GROUND id=%u enemy=%d x=%.6f y=%.6f z=%.6f ground=%.6f yaw=%.3f scale=1\n",d.id,enemy,d.x,d.y,d.z,ground,d.yaw);
  require(cameraMgr&&cameraMgr->mCamera,"Bulblax camera missing");auto* target=new DisplayCameraTarget();float height=enemy==30?85.f:enemy==53?50.f:8.f;target->mSRT.t=Vector3f(d.x,d.y+height,d.z);auto* camera=cameraMgr->mCamera;camera->setTarget(target);camera->mControlsEnabled=false;
  PcamMotionInfo info=camera->mTargetMotionInfo;info.mDistance=enemy==30?1100.f:enemy==53?450.f:180.f;info.mFov=40;info.mAngle=35;info.mNaviWatchWeight=0;info.mWatchAdjustment=0;camera->startMotion(info);
  std::printf("P2_BULBLAX_CAMERA target=%.6f,%.6f,%.6f requested_distance=%.1f fov=40 angle=35 camera_only_unregistered=1\n",target->mSRT.t.x,target->mSRT.t.y,target->mSRT.t.z,info.mDistance);
  if(enabled){std::ifstream src("bulblax-fixture-profile.txt",std::ios::binary);std::ofstream dst("p2-bulblax-visual.txt",std::ios::binary);dst<<src.rdbuf();dst.close();}load();}
+ if(ready==60&&secondId&&enabled){float first=-1,second=-1,after=-1;
+  require(pc_p2_bulblax_visual_frame(displayId,first)&&pc_p2_bulblax_visual_frame(secondId,second),"independent player query");
+  const float destination=second==0?1.f:0.f;
+  require(pc_p2_bulblax_visual_seek(secondId,destination)&&pc_p2_bulblax_visual_frame(displayId,after)&&after==first,"seek changed sibling player");
+  require(pc_p2_bulblax_visual_frame(secondId,after)&&after==destination,"instance seek failed");
+  require(!pc_p2_bulblax_visual_seek(secondId,-1)&&!pc_p2_bulblax_visual_seek(0xffffffffU,0),"invalid seek accepted");
+  std::puts("P2_BULBLAX_INDEPENDENT_PLAYERS_PASS");
+ }
+ if(ready==80&&pc_p2_bulblax_visual_frame(displayId,pausedFrame)){gameflow.mPauseAll=true;pauseTicks=1;}
+ if(ready==82&&testedPause){float frame=-1;require(pc_p2_bulblax_visual_frame(displayId,frame)&&frame!=pausedFrame,"retail did not resume");std::puts("P2_BULBLAX_SIM_RESUME_PASS");}
  if(ready==120)capture("bulblax-pose-a.ppm");
- if(ready==140){capture("bulblax-pose-b.ppm");unchanged();pc_p2_bulblax_visual_reset();std::puts("P2_BULBLAX_RESET_REQUEST");}
+ if(ready==140){capture("bulblax-pose-b.ppm");unchanged();pc_p2_bulblax_visual_reset();float frame=-1;require(!pc_p2_bulblax_visual_frame(displayId,frame)&&!pc_p2_bulblax_visual_seek(displayId,0),"retail survived reset");std::puts("P2_BULBLAX_RESET_REQUEST");}
  if(ready==145){capture("bulblax-reset.ppm");unchanged();load();std::puts("P2_BULBLAX_RELOAD_REQUEST");}
  if(ready==200){capture("bulblax-reload.ppm");unchanged();std::puts("PASS P2_BULBLAX_DISPLAY_RUNTIME noninteractive unchanged_actors_cargo_repairs");std::fflush(nullptr);if(!hold)std::_Exit(0);}
  std::fflush(stdout);return result;
@@ -56,7 +71,12 @@ def build(native,build_dir,output,head):
     return builder.build_fixture(build_dir,native,room,output/'build',head)
 
 
-def stage(assets,profile,output,mode):
+def stage(assets,profile,output,mode,retail_sources=None):
+    retail_data=None
+    if retail_sources is not None:
+        from experimental.pikmin2_motion_events import encode
+        retail_species='Queen' if mode=='disabled' else mode
+        retail_data=encode(Path(retail_sources)/retail_species)
     assets=assets.resolve();source=assets/'dataDir/stages/practice/default.gen';data=source.read_bytes();entries=records(source)
     raw=generator(assets);starts=[m.start() for m in re.finditer(b'    0.0v',raw)];rows=[raw[a:(starts[i+1] if i+1<len(starts) else len(raw))] for i,a in enumerate(starts)]
     template=next(r for r in rows if r[72:76]==b'ikip')
@@ -67,19 +87,31 @@ def stage(assets,profile,output,mode):
     overrides={'dataDir/stages/chal0.ini':(assets/'dataDir/stages/practice.ini').read_bytes(),'dataDir/stages/chal0/default.gen':data,'dataDir/courses/pikmin2room/private-bulblax.txt':b'Noninteractive Bulblax display\n'}
     for p in (assets/'dataDir/stages/chal0').glob('*.gen'):overrides.setdefault('dataDir/stages/chal0/'+p.name,empty)
     overlay(assets,run/'assets',overrides);result=install(profile,run,species='Queen' if mode=='disabled' else mode)
+    if retail_data is not None:
+        from experimental.pikmin2_bulblax_visual import protocol
+        original=result['placements'][0]
+        duplicate=dict(original,placement_id=original['placement_id']+1000000,
+                       xyz=[original['xyz'][0]+80,*original['xyz'][1:]])
+        result['placements']=[original,duplicate]
+        result['instance_probe']='Synthetic second display: same clip, new ID, x+80; no new mesh bank'
+        (run/CONFIG).write_bytes(protocol(result['clips'],result['placements']))
+        result['config_sha256']=builder.sha256(run/CONFIG)
     (run/CONFIG).rename(run/'bulblax-fixture-profile.txt');(run/'bulblax-runtime-mode.txt').write_bytes((mode+'\n').encode());(run/'p2-cargo-free.txt').write_bytes(b'P2_CARGO_FREE_1\n')
     original={str(p.relative_to(assets)):builder.sha256(p) for p in (assets/'dataDir/courses/practice').rglob('*') if p.is_file()}
     for rel,digest in original.items():
         if builder.sha256(run/'assets'/rel)!=digest:raise ValueError('Course changed')
     result.update(scene='original P1 Impact Site',noninteractive=True,mode=mode,starting_squad={'red':5,'blue':5},added_teki=0,course_sha256=original)
+    if retail_data is not None:
+        path=run/f'p2-bulblax-retail-{retail_species}.txt';path.write_bytes(retail_data)
+        result['retail_table']={'file':path.name,'sha256':builder.sha256(path)}
     (run/'bulblax-stage.json').write_bytes((json.dumps(result,indent=2)+'\n').encode());return run
 
 
-def validate(text,code,mode):
+def validate(text,code,mode,display_count=1):
     enabled=mode!='disabled';expected={'Queen':30,'Baby':31,'KingChappy':53,'disabled':30}[mode]
     rows=re.findall(r'P2_BULBLAX_VISUAL_DRAW enemy=(\d+) clip=(\w+) pose=(\d+) source_frame=(\d+)',text)
     ready=re.findall(r'P2_BULBLAX_VISUAL_READY id=(\d+) enemy=(\d+) species=(\w+) clip=(\w+) xyz=([^ ]+)',text)
-    checks=dict(completion=code==0 and 'PASS P2_BULBLAX_DISPLAY_RUNTIME ' in text,setup=len(ready)==(2 if enabled else 0),draw=bool(rows)==enabled,species=all(int(r[0])==expected for r in rows),sample_changes=(len({r[2] for r in rows})>=2 if enabled else True),reset=text.count('P2_BULBLAX_RESET_REQUEST')==1,reload=text.count('P2_BULBLAX_RELOAD_REQUEST')==1,baseline='red=5 blue=5' in text,ground=text.count('P2_BULBLAX_GROUND ')==1,no_rewards='P2_CARGO_READY' not in text and 'P2_POD_COLLECT' not in text)
+    checks=dict(completion=code==0 and 'PASS P2_BULBLAX_DISPLAY_RUNTIME ' in text,setup=len(ready)==(2*display_count if enabled else 0),draw=bool(rows)==enabled,species=all(int(r[0])==expected for r in rows),sample_changes=(len({r[2] for r in rows})>=2 if enabled else True),reset=text.count('P2_BULBLAX_RESET_REQUEST')==1,reload=text.count('P2_BULBLAX_RELOAD_REQUEST')==1,baseline='red=5 blue=5' in text,ground=text.count('P2_BULBLAX_GROUND ')==1,no_rewards='P2_CARGO_READY' not in text and 'P2_POD_COLLECT' not in text)
     return dict(passed=all(checks.values()),checks=checks,draws=rows,ready=ready,exit_code=code,scope='Display only; no boss actor/gameplay acceptance')
 
 
@@ -95,14 +127,37 @@ def placement_evidence(text,placements,enabled):
     return dict(exact_source_identity_xyz_yaw=True,ready_rows=rows)
 
 
-def run(assets,profile,output,exe):
+def retail_evidence(text, mode, clips, source,display_count=1):
+    from experimental.pikmin2_motion_events import registry
+    expected_id={'Queen':30,'Baby':31,'KingChappy':53,'disabled':30}[mode]
+    rows=re.findall(r'P2_BULBLAX_RETAIL_EVENT enemy=(\d+) clip=(\w+) frame=(\d+) type=(\d+)',text)
+    allowed={}
+    if mode!='disabled':
+        authored=dict(registry((Path(source)/mode/'enemyanimmgr.txt').read_bytes()))
+        for clip in clips:
+            if clip['species']==mode:
+                allowed[clip['name']]=set(authored[clip['name']+'.bca'])|{(clip['duration'],1000)}
+    return dict(retail_setup=text.count('P2_BULBLAX_RETAIL_READY ')==(0 if mode=='disabled' else 2*display_count),
+                retail_events=bool(rows)==(mode!='disabled'),
+                retail_source_events=all(int(enemy)==expected_id and (int(frame),int(kind)) in allowed.get(name,set()) for enemy,name,frame,kind in rows),
+                retail_reload_events=('P2_BULBLAX_RETAIL_EVENT ' in text.split('P2_BULBLAX_RELOAD_REQUEST')[-1])==(mode!='disabled'))
+
+
+def run(assets,profile,output,exe,retail_sources=None):
     output.mkdir(parents=True,exist_ok=False);report={};env=dict(os.environ,PATH='C:/msys64/mingw64/bin;'+os.environ.get('PATH',''),SDL_AUDIODRIVER='dummy')
     for mode in ('Queen','Baby','KingChappy','disabled'):
-        directory=stage(assets,profile,output/mode,mode)
+        directory=stage(assets,profile,output/mode,mode,retail_sources)
         with (directory/'native.log').open('w') as log:
             try:code=subprocess.run([str(exe.resolve()),'--experimental-pikmin2-room'],cwd=directory,env=env,stdout=log,stderr=subprocess.STDOUT,timeout=180).returncode
             except subprocess.TimeoutExpired:code='timeout'
-        text=(directory/'native.log').read_text(errors='replace');e=validate(text,code,mode)
+        text=(directory/'native.log').read_text(errors='replace');e=validate(text,code,mode,2 if retail_sources is not None else 1)
+        if retail_sources is not None:
+            staged=json.loads((directory/'bulblax-stage.json').read_bytes())
+            e['checks'].update(retail_evidence(text,mode,staged['clips'],retail_sources,2))
+            e['checks']['independent_players']=('P2_BULBLAX_INDEPENDENT_PLAYERS_PASS' in text)==(mode!='disabled')
+            e['checks']['simulation_pause']=all((marker in text)==(mode!='disabled') for marker in ('P2_BULBLAX_SIM_PAUSE_ALL_PASS','P2_BULBLAX_SIM_UI_PAUSE_PASS','P2_BULBLAX_SIM_RESUME_PASS'))
+            e['retail_table']=staged['retail_table']
+            e['passed']=all(e['checks'].values())
         e['gx_warnings']=[line for line in text.splitlines() if 'GX' in line and 'warning' in line.lower()]
         if e['passed']:e['placement_evidence']=placement_evidence(text,json.loads((directory/'bulblax-stage.json').read_bytes())['placements'],mode!='disabled')
         if e['passed']:
@@ -132,7 +187,8 @@ if __name__=='__main__':
     b.add_argument('--head',required=True)
     for parser in (r,live):
         for key in ('assets','profile','output','exe'):parser.add_argument('--'+key,type=Path,required=True)
+    r.add_argument('--retail-sources',type=Path)
     live.add_argument('--mode',choices=('Queen','Baby','KingChappy'),default='Queen');a=p.parse_args()
     if a.command=='build':build(a.native.resolve(),a.build_dir.resolve(),a.output,a.head)
-    elif a.command=='run':run(a.assets,a.profile,a.output,a.exe)
+    elif a.command=='run':run(a.assets,a.profile,a.output,a.exe,a.retail_sources)
     else:raise SystemExit(play(a.assets,a.profile,a.output,a.exe,a.mode))
