@@ -58,7 +58,7 @@ def prepare(imported,output,placements,pose_limit=8):
             files[name]=sha((models/name).read_bytes())
         clips.append(dict(name=label,source_duration=duration,frames=frames))
     (models/'breadbug_nest.mod').write_bytes(nestdata);files['breadbug_nest.mod']=sha(nestdata)
-    config.extend([str(len(rows)),*rows]);text='\n'.join(config)+'\n';(output/'p2-breadbug-visual.txt').write_text(text)
+    config.extend([str(len(rows)),*rows]);text='\n'.join(config)+'\n';(output/'p2-breadbug-visual.txt').write_bytes(text.encode())
     result=dict(schema=1,source_import_sha256=sha(raw),family='PanModoki',behavior='visual_only_no_gameplay_actor',
                 native_validated=False,clips=clips,files=files,placements=placements,config_sha256=sha(text.encode()))
     (output/'breadbug-visual.json').write_text(json.dumps(result,indent=2));return result
