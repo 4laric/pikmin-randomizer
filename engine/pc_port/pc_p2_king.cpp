@@ -99,6 +99,8 @@ unsigned long behaviorTick = 0;
 uint32_t injectWarCryId = 0;
 unsigned long injectWarCryTick = 0;
 bool injectWarCryDone = false;
+unsigned long injectKillTick = 0;
+bool injectKillDone = false;
 
 void fail() {
 	std::fputs("P2_KING_ACTOR invalid profile/model\n", stderr);
@@ -805,6 +807,8 @@ void pc_p2_king_reset() {
 	injectWarCryId = 0;
 	injectWarCryTick = 0;
 	injectWarCryDone = false;
+	injectKillTick = 0;
+	injectKillDone = false;
 }
 
 void pc_p2_king_setup() {
@@ -827,6 +831,11 @@ void pc_p2_king_setup() {
 			fail();
 		injectWarCryTick = (unsigned long)tick;
 		injectWarCryId = (uint32_t)id;
+		unsigned long long kill = 0; // optional 4th token: force death at tick
+		inject >> kill;
+		if (kill > 1000000ULL)
+			fail();
+		injectKillTick = (unsigned long)kill;
 	}
 	std::map<int, std::vector<unsigned char>> resources;
 	// Validate/copy the whole referenced bank before allocating Shapes; clips
@@ -884,6 +893,15 @@ void pc_p2_king_update() {
 				enter(k, p2king::WarCry);
 				injectWarCryDone = true;
 				std::printf("P2_KING_INJECT id=%u tick=%lu force=WarCry fixture=1\n", k.cfg.id, behaviorTick);
+				break;
+			}
+		}
+		if (injectKillTick && !injectKillDone && behaviorTick >= injectKillTick) {
+			for (auto& k : kings) {
+				if (injectWarCryId && k.cfg.id != injectWarCryId) continue;
+				k.health = 0.0f;
+				injectKillDone = true;
+				std::printf("P2_KING_INJECT_KILL id=%u tick=%lu health=0 fixture=1\n", k.cfg.id, behaviorTick);
 				break;
 			}
 		}
