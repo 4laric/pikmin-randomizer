@@ -28,6 +28,29 @@ int main(int argc,char** argv){
  check(player.advance(-1,receive)==Update::Invalid);
  check(player.advance(std::numeric_limits<float>::infinity(),receive)==Update::Invalid);
  check(player.advance(1000001,receive)==Update::Invalid);
+ // Fractional positioning retains keys at floor(destination), skipping earlier keys.
+ check(player.seek(3.75f));ids.clear();
+ player.advance(0,receive);check(ids.empty());
+ player.advance(.25f,receive);check(ids==std::vector<int>{2});
+ player.advance(1,receive);check(ids==std::vector<int>({2,1})&&player.frame()==0);
+ // Seek clears finish-motion: reaching loop-end must rewind again.
+ player.finishMotion();check(player.seekKey(1));ids.clear();
+ player.advance(1,receive);check(ids==std::vector<int>{1}&&player.frame()==0);
+ check(player.seekKey(1000));check(player.frame()==9);ids.clear();
+ player.advance(1,receive);check(ids==std::vector<int>({4,1000})&&player.completed());
+ check(player.seekLastFrame()&&!player.completed());ids.clear();
+ player.advance(1,receive);check(ids==std::vector<int>({4,1000}));
+ old=player.generation();const auto before=player.frame();
+ check(!player.seek(-1)&&!player.seek(10)&&!player.seek(std::numeric_limits<float>::quiet_NaN()));
+ check(!player.seekKey(999)&&player.generation()==old&&player.frame()==before&&player.completed());
+ check(player.start(motion));ids.clear();
+ check(player.advance(10,[&](const Event& e){receive(e);check(player.seekKey(3));})==Update::Replaced);
+ check(ids==std::vector<int>{0}&&player.frame()==8);ids.clear();
+ player.advance(1,receive);check(ids==std::vector<int>{3});
+ Motion duplicate{"duplicate.bca","",10,2,{{2,2},{2,3},{6,2}}};
+ check(player.start(duplicate)&&player.seekKey(2)&&player.frame()==2);ids.clear();
+ player.advance(1,receive);check(ids==std::vector<int>({2,3}));
+ player.cancel();check(!player.seek(0)&&!player.seekLastFrame()&&!player.seekKey(2));
  unsigned clips=0;
  for(int arg=1;arg<argc;++arg){std::ifstream file(argv[arg]);auto table=read(file);
   for(const auto& clip:table.motions){
@@ -35,7 +58,18 @@ int main(int argc,char** argv){
    check(player.advance(float(clip.duration),[&](const Event& e){events.push_back(e);})==Update::Ok);
    check(events.size()==clip.events.size()+1);
    for(std::size_t i=0;i<clip.events.size();++i)check(events[i].frame==clip.events[i].frame&&events[i].type==clip.events[i].type);
-   check(events.back().type==1000&&events.back().frame==clip.duration&&player.completed());++clips;
+   check(events.back().type==1000&&events.back().frame==clip.duration&&player.completed());
+   // Every authored key can be an entry point without replaying its prefix.
+   for(const auto& key:clip.events){
+    check(player.seek(float(key.frame)));player.finishMotion();events.clear();
+    player.advance(float(clip.duration),[&](const Event& e){events.push_back(e);});
+    std::size_t cursor=0;
+    for(const auto& expected:clip.events)if(expected.frame>=key.frame){
+     check(cursor<events.size()&&events[cursor].frame==expected.frame&&events[cursor].type==expected.type);++cursor;
+    }
+    check(events.size()==cursor+1&&events.back().type==1000&&player.completed());
+   }
+   ++clips;
   }
  }
  std::cout<<"PASS retail player: "<<checks<<" checks, "<<clips<<" real clips\n";

@@ -40,3 +40,32 @@ py -3.12 -m unittest tests.test_pikmin2_motion_events
 
 This batch provides the tested shared mechanism. Live family adoption and
 gameplay sign-off remain separate work.
+
+## Frame positioning (#262)
+
+`seek(frame)` follows SysShape `setCurrFrame`: select the first authored key
+at or after the integer destination and clear both completed and finish-motion
+flags. It emits nothing immediately. For example, seeking to 3.75 retains a key
+at frame 3; that key fires when a subsequent advance reaches 4. Earlier keys are
+not replayed. Equal-frame keys retain their authored order.
+
+`seekKey(type)` selects the first occurrence of an authored type; type 1000
+selects the last frame, as does `seekLastFrame()`. A missing key leaves state
+unchanged. Seeking after completion rearms END. Unlike the original unchecked
+API, this interface refuses negative, nonfinite and out-of-clip destinations
+(`frame >= duration`), and refuses seeks while inactive.
+
+A successful seek increments generation, including same-frame seeks. A seek
+from a receiver therefore returns Replaced from the old advance rather than
+continuing its stale event sequence. The next host update uses the new position.
+This is intentional callback safety; do not depend on the original animator's
+mutable linked-list continuation within a callback. The receiver lifetime and
+nonthrowing requirements above still apply.
+
+Validation: 480 compiled checks across synthetic cases and the same 29 real
+clips. Every one of their 61 authored keys is also tested as a seek destination,
+comparing the complete remaining event suffix and implicit END. Seven focused
+Python test methods pass, including generic clock and native-counter regression
+coverage. This header-only change has no production consumer yet, so validation
+compiles the actual header/probe with warnings-as-errors; no game rebuild or
+natural gameplay claim is attached to this batch.

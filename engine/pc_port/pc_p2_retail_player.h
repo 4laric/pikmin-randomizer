@@ -22,6 +22,23 @@ public:
     }
     void cancel(){active_=false;}
     void finishMotion(bool finish=true){finishing_=finish;}
+    // SysShape::setCurrFrame: reposition keys and clear completion/finish flags.
+    // Unlike the original unchecked API, reject out-of-clip and nonfinite input.
+    bool seek(float frame){
+        if(!active_ || !std::isfinite(frame) || frame<0 || frame>=motion_.duration ||
+           generation_==std::numeric_limits<std::uint64_t>::max()) return false;
+        ++generation_; timer_=frame; cursor_=0;
+        while(cursor_<motion_.events.size() && motion_.events[cursor_].frame<int(frame)) ++cursor_;
+        completed_=false; finishing_=false; return true;
+    }
+    bool seekLastFrame(){return active_ && seek(float(motion_.duration-1));}
+    bool seekKey(int type){
+        if(!active_) return false;
+        if(type==1000) return seekLastFrame();
+        for(const auto& event:motion_.events)
+            if(event.type==type) return seek(float(event.frame));
+        return false;
+    }
     float frame() const{return timer_;}
     int poseFrame() const{return int(timer_);}
     bool completed() const{return completed_;}
