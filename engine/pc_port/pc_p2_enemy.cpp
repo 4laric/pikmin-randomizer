@@ -14,6 +14,9 @@
 #include "teki.h"
 #include "Generator.h"
 #include "Shape.h"
+#include "System.h"
+#include "Joint.h"
+#include "pc_p2_pose_bank.h"
 #include "Texture.h"
 #include "gameflow.h"
 #include "Graphics.h"
@@ -30,14 +33,18 @@ namespace {
 std::map<std::string,std::vector<Shape*>> clips;
 std::set<PelletView*> actors;
 std::map<std::string,p2animation::Clip> timing;
+bool interpolation=false;
+std::map<std::string,std::vector<p2pose::Baked>> baked;
+struct Mutable { Shape* shape=nullptr;std::string clip;float frame=0;bool corpse=false;unsigned generator=0; };
+std::map<PelletView*,Mutable> instances;
 P2SnowHealthPolicy healthPolicy;
 P2SnowAttackPolicy attackPolicy;
 P2SnowTurnPolicy turnPolicy;
 P2SnowChasePolicy chasePolicy;
 }
 float pc_p2_snow_max_health(const BTeki* actor,float fallback) { return healthPolicy.life(actor,fallback); }
-void pc_p2_snow_reset() { clips.clear();actors.clear();timing.clear();healthPolicy.reset();attackPolicy.reset();turnPolicy.reset();chasePolicy.reset(); }
-void pc_p2_snow_forget(BTeki* actor) { healthPolicy.forget(actor);attackPolicy.forget(actor);turnPolicy.forget(actor);chasePolicy.forget(actor);actors.erase(static_cast<PelletView*>(actor)); }
+void pc_p2_snow_reset() { interpolation=false;baked.clear();instances.clear(); clips.clear();actors.clear();timing.clear();healthPolicy.reset();attackPolicy.reset();turnPolicy.reset();chasePolicy.reset(); }
+void pc_p2_snow_forget(BTeki* actor) { instances.erase(static_cast<PelletView*>(actor)); healthPolicy.forget(actor);attackPolicy.forget(actor);turnPolicy.forget(actor);chasePolicy.forget(actor);actors.erase(static_cast<PelletView*>(actor)); }
 bool pc_p2_snow_chase(BTeki* actor,const Vector3f& target) {
     if(!actor->isAlive() || !chasePolicy.contains(actor))return false;
     const Vector3f& position=actor->getPosition();
@@ -72,6 +79,9 @@ void pc_p2_snow_setup() {
     if(!pc_pikipelago_room_preview())return;
     std::ifstream in("p2-snow.txt");if(!in)return;
     const auto started=std::chrono::steady_clock::now();
+    std::ifstream blendOption("p2-snow-interpolation.txt");
+    if(blendOption){std::string magic,extra;if(!(blendOption>>magic)||magic!="P2_SNOW_INTERPOLATION_1"||(blendOption>>extra))std::abort();interpolation=true;}
+    std::vector<unsigned char> topology;
     std::vector<p2animation::Clip> manifest;
     if(!p2animation::parse(in,manifest) || !pc_p2_preview_goal())std::abort();
     std::ifstream policy("p2-snow-policy.txt");
@@ -86,6 +96,7 @@ void pc_p2_snow_setup() {
     size_t total=0,poses=0;
     std::vector<unsigned char> reference;
     for(const auto& clip:manifest) {
+        if(interpolation && clip.frames.empty())std::abort();
         size_t clipBytes=0;
         for(int i=0;i<clip.count;++i) {
             char path[160];std::snprintf(path,sizeof(path),"assets/dataDir/courses/pikmin2room/snow_%s_%02d.mod",clip.name.c_str(),i);
@@ -99,6 +110,9 @@ void pc_p2_snow_setup() {
             if(!file.read(reinterpret_cast<char*>(data.data()),bytes) || !p2animation::resources(data,resources))std::abort();
             if(!reference.empty() && reference!=resources)std::abort();
             reference=resources;
+            if(interpolation){p2pose::Baked pose;
+                if(!p2pose::decodeBaked(data,pose) || (!topology.empty() && topology!=pose.topology))std::abort();
+                topology=pose.topology;baked[clip.name].push_back(std::move(pose));}
         }
     }
     Shape* shared=nullptr;
@@ -149,6 +163,19 @@ void pc_p2_snow_setup() {
         if(teki && teki->mGenerator && wanted.erase(teki->mGenerator->_70)) {
             if(teki->mTekiType!=TEKI_Chappy || pc_p2_kochappy_name(teki))std::abort();
             actors.insert(static_cast<PelletView*>(teki));
+            if(interpolation){
+                const char* path="courses/pikmin2room/snow_wait1_00.mod";
+                Shape* model=gsys->getShape(path,path,nullptr,true);const auto& base=baked.at("wait1").front().pose;
+                if(!model || model->mJointCount!=1 || model->mVertexCount!=int(base.positions.size()) || model->mNormalCount!=int(base.normals.size()))std::abort();
+                // Point the private geometry's material bindings at the immutable bank resources.
+                for(int j=0;j<model->mTotalMatpolyCount;++j){auto* poly=model->mMatpolyList[j];if(!poly || !poly->mMaterial)continue;
+                    int material=-1;for(int m=0;m<model->mMaterialCount;++m)if(poly->mMaterial==&model->mMaterialList[m])material=m;
+                    if(material<0 || material>=shared->mMaterialCount)std::abort();poly->mMaterial=&shared->mMaterialList[material];}
+                model->mMaterialList=shared->mMaterialList;model->mTexAttrList=shared->mTexAttrList;model->mTevInfoList=shared->mTevInfoList;
+                for(const auto& other:instances)if(other.second.shape->mVertexList==model->mVertexList || other.second.shape->mNormalList==model->mNormalList)std::abort();
+                instances.emplace(static_cast<PelletView*>(teki),Mutable{model,"",0,false,teki->mGenerator->_70});
+                std::printf("P2_SNOW_INTERPOLATION_READY generator=%u positions=%d normals=%d private_geometry=1 gameplay_clock=P1\n",teki->mGenerator->_70,model->mVertexCount,model->mNormalCount);
+            }
             attackPolicy.bind(static_cast<BTeki*>(teki));
             turnPolicy.bind(static_cast<BTeki*>(teki));
             chasePolicy.bind(static_cast<BTeki*>(teki));
@@ -179,6 +206,27 @@ bool pc_p2_snow_draw(BTeki* teki,Graphics& gfx,const Matrix4f& matrix,bool corps
     int frames=teki->mTekiAnimator->getFrameCount();
     float phase=frames>1?teki->mTekiAnimator->getCounter()/(frames-1):0;
     size_t index=timing.at(name).index(phase,corpse);
-    bank[index]->updateAnim(gfx,matrix,nullptr,teki);
-    bank[index]->drawshape(gfx,*gfx.mCamera,nullptr);return true;
+    Shape* shape=bank[index];
+    if(interpolation){
+        auto& instance=instances.at(static_cast<PelletView*>(teki));shape=instance.shape;
+        const auto& clip=timing.at(name);const float frame=corpse?float(clip.frames.back()):std::max(0.f,std::min(1.f,phase))*float(clip.duration-1);
+        p2pose::Interval span;if(!p2pose::bracket(clip.frames,frame,span))std::abort();
+        const auto& a=baked.at(name)[span.left].pose;const auto& b=baked.at(name)[span.right].pose;
+        for(size_t i=0;i<a.positions.size();++i){auto v=p2pose::mix(a.positions[i],b.positions[i],span.weight);shape->mVertexList[i].set(v.x,v.y,v.z);}
+        for(size_t i=0;i<a.normals.size();++i){p2pose::Vec v;if(!p2pose::unit(p2pose::mix(a.normals[i],b.normals[i],span.weight),v))v=span.weight<=.5f?a.normals[i]:b.normals[i];shape->mNormalList[i].set(v.x,v.y,v.z);}
+        BoundBox bounds(shape->mVertexList[0],shape->mVertexList[0]);for(int i=1;i<shape->mVertexCount;++i)bounds.expandBound(shape->mVertexList[i]);
+        shape->mCourseExtents=bounds;shape->mJointList[0].mBounds=bounds;
+        if(instance.clip!=name || instance.corpse!=corpse)std::printf("P2_SNOW_BLEND generator=%u clip=%s corpse=%d source_frame=%.5f\n",instance.generator,name,int(corpse),frame);
+        instance.clip=name;instance.frame=frame;instance.corpse=corpse;
+    }
+    shape->updateAnim(gfx,matrix,nullptr,teki);
+    shape->drawshape(gfx,*gfx.mCamera,nullptr);return true;
+}
+
+bool pc_p2_snow_geometry(BTeki* actor,p2pose::Pose& out,std::string& clip,float& frame,bool& corpse){
+    auto it=instances.find(static_cast<PelletView*>(actor));if(it==instances.end() || it->second.clip.empty())return false;
+    const auto& state=it->second;const auto& shape=*state.shape;p2pose::Pose next;
+    for(int i=0;i<shape.mVertexCount;++i){const auto& v=shape.mVertexList[i];next.positions.push_back({v.x,v.y,v.z});}
+    for(int i=0;i<shape.mNormalCount;++i){const auto& v=shape.mNormalList[i];next.normals.push_back({v.x,v.y,v.z});}
+    out=std::move(next);clip=state.clip;frame=state.frame;corpse=state.corpse;return true;
 }

@@ -20,3 +20,8 @@ bool pc_p2_snow_turn(BTeki*, float targetAngle, float arrivalStep, bool& arrived
 struct Vector3f;
 // Source chase target velocity; false leaves the native tracing path untouched.
 bool pc_p2_snow_chase(BTeki*, const Vector3f& target);
+
+#include <string>
+namespace p2pose { struct Pose; }
+// Diagnostic copy of the last drawn geometry, absent for disabled/forgotten actors.
+bool pc_p2_snow_geometry(BTeki*,p2pose::Pose&,std::string& clip,float& frame,bool& corpse);

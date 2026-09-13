@@ -64,6 +64,11 @@ Family workers supply new modules and their complete additive CMake/setup/update
 
 Visual timing should follow the authoritative native animation counter where mapped. Document fallback and pause/loop behavior. Do not implement stun by skipping all AI updates if that also skips damage/death. A sampled model bank does not supply P2 collision, FSM or attachment semantics automatically.
 
+For compatible baked banks, the opt-in [Snow actor interpolation path](PIKMIN2_SNOW_INTERPOLATION.md)
+demonstrates private geometry, shared immutable resources and an unchanged P1
+gameplay clock. Its controlled performance fixture is separate from combat
+acceptance; do not treat its timings as free-roaming scene coverage.
+
 Only one writer/build uses the maintained native build directory at a time. Private worker builds may run concurrently within host resources. Build the complete candidate and snapshot inputs before later edits; never run an executable rejected by freshness checks. Record native commit AND dirty state, executable SHA, asset/config hashes, exact command and run directory. Repeat combined checks when merges change inputs or introduce new interactions; reuse unchanged worker evidence.
 
 On this Windows checkout:
