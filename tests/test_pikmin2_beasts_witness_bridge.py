@@ -6,6 +6,7 @@ from experimental.pikmin2_beasts_checkpoint_reference import BeastsReferenceAdap
 from tests.test_pikmin2_beasts_checkpoint_reference import audit, party, context
 from tests.test_pikmin2_beasts_generation import plan, suppressed
 from tests.test_pikmin2_beasts_floor2_runtime import trace
+from tests.test_pikmin2_beasts_party_snapshot import with_party
 
 
 def native_trace():
@@ -14,7 +15,7 @@ def native_trace():
         target=f'P2_VIOLET_CONVERT count=5\nP2_BEASTS_FLOWER_CONVERTED id={generator}'
         records=''.join(f'P2_VIOLET_WITNESS sequence={index*5+i+1} generator={generator} input=red\n' for i in range(5))
         log=log.replace(target,records+target)
-    return log
+    return with_party(log)
 
 
 class BridgeTests(unittest.TestCase):
@@ -28,9 +29,10 @@ class BridgeTests(unittest.TestCase):
         result=checkpoint_witnesses(self.adapter,self.second,native_trace(),plan(19))
         self.assertFalse(result['native_ready']);self.assertFalse(result['native_handoff_authenticated'])
         self.assertEqual(len(result['events']),10)
-        third=self.adapter.apply(self.second,result['token'],party(10,10),.75,{},result['events'],{})
+        snapshot=result['party_snapshot']
+        third=self.adapter.apply(self.second,result['token'],snapshot['squad'],snapshot['health'],{},result['events'],{})
         self.assertEqual(third['floor'],3)
-        self.assertEqual(self.adapter.apply(third,result['token'],party(10,10),.75,{},result['events'],{}),third)
+        self.assertEqual(self.adapter.apply(third,result['token'],snapshot['squad'],snapshot['health'],{},result['events'],{}),third)
         self.assertEqual(self.second,original)
         with self.assertRaises(ValueError):self.adapter.launch_requirement(third)
 
@@ -44,7 +46,7 @@ class BridgeTests(unittest.TestCase):
 
     def test_suppressed_generation_has_no_events(self):
         second=self.adapter.apply(self.first,self.adapter.token(self.first),party(),1,{},[],context(20))
-        result=checkpoint_witnesses(self.adapter,second,suppressed(),plan(20))
+        result=checkpoint_witnesses(self.adapter,second,with_party(suppressed(),20,0),plan(20))
         self.assertEqual(result['events'],[])
         third=self.adapter.apply(second,result['token'],party(),1,{},[],{})
         self.assertEqual(third['floor'],3)

@@ -9,6 +9,7 @@ import re
 import subprocess
 
 from experimental.pikmin2_beasts_floor2 import prepare, decode_no_cargo, generation_context
+from experimental.pikmin2_beasts_party_snapshot import party_snapshot
 
 
 def sha(path):
@@ -143,7 +144,7 @@ def run(args):
         inputs.append('p2-beasts-refund-fixture.txt')
     inputs += ['assets/'+name for name in readiness['override_sha256']]
     hashes = {name:sha(stage/name) for name in inputs}
-    evidence = dict(schema=1,issue=279 if refund else 276,refund_fixture=refund,witness_policy='P2_VIOLET_DIAGNOSTIC_1',run=str(stage),executable=str(exe),executable_sha256=sha(exe),
+    evidence = dict(schema=1,issue=287,party_policy='P2_BEASTS_PARTY_1',refund_fixture=refund,witness_policy='P2_VIOLET_DIAGNOSTIC_1',run=str(stage),executable=str(exe),executable_sha256=sha(exe),
                     generation_context=context,generation_identity=readiness['generation_identity'],
                     readiness_sha256=sha(stage/'readiness.json'),natural_gameplay=False,
                     scripted_native_throws=True,scripted_captain_pluck=True,remaining_plucks='InteractBikkuri',
@@ -161,6 +162,7 @@ def run(args):
     try:
         if evidence.get('returncode') != 0:raise ValueError('Native fixture did not exit successfully')
         evidence['observed'] = validate(text,readiness,require_witnesses=True,refund=refund)
+        evidence['party_snapshot'] = party_snapshot(text,evidence['observed']['final_population'])
         if sha(exe) != evidence['executable_sha256'] or any(sha(stage/name)!=digest for name,digest in hashes.items()):
             raise ValueError('Executable or staged input changed during run')
         for name in ('treasure-receipt.txt','p2-economy.txt','p2-cargo.txt'):

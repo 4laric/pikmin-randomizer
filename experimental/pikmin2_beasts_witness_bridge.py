@@ -3,13 +3,14 @@ from collections import Counter
 import hashlib
 
 from experimental.pikmin2_beasts_floor2_runtime import validate
+from experimental.pikmin2_beasts_party_snapshot import party_snapshot
 
 
 def checkpoint_witnesses(adapter, checkpoint, log, readiness, *, refund=False):
     """Return boundary-scoped events after verifying a complete fixture trace.
 
-    The caller must obtain health, maturity and survivors separately. Logs are
-    untrusted diagnostics, not an authenticated campaign handoff channel.
+    Health, maturity and survivors come from the completed native fixture.
+    Logs remain diagnostics, not an authenticated campaign handoff channel.
     """
     adapter.validate(checkpoint)
     if checkpoint['floor'] != 2 or checkpoint['status'] != 'active':
@@ -18,6 +19,7 @@ def checkpoint_witnesses(adapter, checkpoint, log, readiness, *, refund=False):
     if not isinstance(context, dict):
         raise ValueError('Explicit generation snapshot required')
     observed = validate(log, readiness, require_witnesses=True, refund=refund)
+    party = party_snapshot(log,observed['final_population'])
     flower_ids = {62000: 'forest_1:floor2:BlackPom:0',
                   62001: 'forest_1:floor2:BlackPom:1'}
     expected_context = dict(
@@ -35,4 +37,5 @@ def checkpoint_witnesses(adapter, checkpoint, log, readiness, *, refund=False):
     return dict(schema='P2_BEASTS_DIAGNOSTIC_BRIDGE_1', token=token,
                 log_text_sha256=hashlib.sha256(log.encode('utf-8')).hexdigest(),
                 events=events, observed_population=observed['final_population'],
+                party_snapshot=party,
                 native_handoff_authenticated=False, native_ready=False)

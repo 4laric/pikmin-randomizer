@@ -18,11 +18,12 @@ This is a diagnostic bridge, not authentication. A caller can forge logs; the
 native process does not attest the reference token. The report explicitly sets
 `native_handoff_authenticated=false` and `native_ready=false`. Its text hash
 covers the supplied UTF-8 text, which may have normalized newlines, rather than
-claiming to hash original log bytes. Health, maturity and individual survivor
-identity are not supplied by these diagnostics and must come from a future
-native handoff. No inferred squad or health is returned as authoritative state.
+claiming to hash original log bytes. The [#287 snapshot extension](PIKMIN2_BEASTS_PARTY_SNAPSHOT.md)
+now requires native health and survivor species/maturity records and returns
+them in `party_snapshot`. Individual survivor identity and authenticated session
+binding remain absent; this is still not an authoritative save channel.
 
-Local replay evidence: `output/beasts283-bridge/replay.json`. The ordinary and
+Historical #283 replay evidence: `output/beasts283-bridge/replay.json`. The ordinary and
 refund native logs from #279 yielded ten and eleven events respectively. Both
 advanced the reference to floor3 and replayed without another transition.
 The replay used explicitly synthetic health/maturity inputs and the fixture's

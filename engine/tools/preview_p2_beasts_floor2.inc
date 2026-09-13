@@ -5,6 +5,26 @@
 static bool beastsFloor2Enabled=false;
 static bool beastsRefund=false;
 static int beastsGlobalPurple=-1,beastsExpectedFlowers=2;
+static void beastsPartySnapshot(Navi* n) {
+    const float maximum=C_NAVI_PARM(n,mHealth);
+    require(std::isfinite(maximum) && maximum>0 && std::isfinite(n->mHealth),"invalid snapshot captain health");
+    const float health=n->mHealth/maximum;
+    require(health>0 && health<=1,"snapshot captain is not a living survivor");
+    std::vector<Piki*> survivors;Iterator it(pikiMgr);CI_LOOP(it) {
+        Piki* p=static_cast<Piki*>(*it);if(!p->isAlive())continue;
+        require(p->mHappa>=0 && p->mHappa<=2,"invalid survivor maturity");
+        require(!p->getStickObject(),"snapshot survivor still attached");
+        survivors.push_back(p);
+    }
+    require(survivors.size()==20,"snapshot survivor count");
+    std::printf("P2_BEASTS_PARTY health=%.9g count=%zu\n",health,survivors.size());
+    for(size_t i=0;i<survivors.size();++i) {
+        Piki* p=survivors[i];
+        const char* species=pc_p2_is_purple(p)?"purple":p->mColor==Red?"red":p->mColor==Blue?"blue":p->mColor==Yellow?"yellow":"unknown";
+        std::printf("P2_BEASTS_SURVIVOR index=%zu species=%s maturity=%d\n",i,species,p->mHappa);
+    }
+    std::puts("P2_BEASTS_PARTY_END");
+}
 static void beastsFloor2Fixture(Navi* n) {
     static int state=0,timer=0,thrown=0,repairs=0;
     static std::vector<Piki*> originals;
@@ -96,6 +116,7 @@ static void beastsFloor2Fixture(Navi* n) {
         if(timer>=300) {
             require(playerState->getCurrParts()==repairs,"suppressed Beasts changed repairs");
             capture("beasts-floor2-final.ppm");
+            beastsPartySnapshot(n);
             std::puts("PASS P2_BEASTS_SUPPRESSED reds=20 purple=0 sprouts=0 flowers=0 cargo=0 pokos=0 repairs_unchanged=1");std::fflush(stdout);std::_Exit(0);
         }
     } else if(state==2 && timer>90) {
@@ -119,6 +140,7 @@ static void beastsFloor2Fixture(Navi* n) {
             }
             require(playerState->getCurrParts()==repairs,"Beasts changed P1 repairs");
             capture("beasts-floor2-final.ppm");
+            beastsPartySnapshot(n);
             std::printf("PASS P2_BEASTS_FLOOR2 reds=%d purple=%d sprouts=0 cargo=0 pokos=0 repairs_unchanged=1\n",10-extra,10+extra);std::fflush(stdout);std::_Exit(0);
         }
         require(timer<1200,"Beasts native plucking stalled");
