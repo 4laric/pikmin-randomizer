@@ -9,12 +9,12 @@ Shared, serialized resources (one at a time): the maintained `native/` build and
 | Family | Parent | Source contract | Install + arena | Native registration | Evidence level | Next step | Owner |
 |---|---|---|---|---|---|---|---|
 | Ground invertebrates & disguises | #165 | #346 ✅ | other agent (batch2) | `pc_p2_batch2` committed | Converted assets | export + spawn fixture → Native display | other agent |
-| Flying enemies & fliers | #166 | #348 ✅ | #375 ✅ | `pc_p2_batch3` committed (`eb422e9`) | **Native display** | playable-proxy movement/corpse gates | this session |
-| Aquatic/hopping | #167 | #347 ✅ | #374 ✅ | `pc_p2_batch3` committed (`eb422e9`) | **Native display** | playable-proxy movement/corpse gates | this session |
+| Flying enemies & fliers | #166 | #348 ✅ | #375 ✅ | `pc_p2_batch3` committed (`eb422e9`) | **Native display** | P1-proxy movement+cleanup PASS; corpse snagret-only; combat/transport BLOCKED | this session |
+| Aquatic/hopping | #167 | #347 ✅ | #374 ✅ | `pc_p2_batch3` committed (`eb422e9`) | **Native display** | P1-proxy movement+cleanup PASS; corpse snagret-only; combat/transport BLOCKED | this session |
 | Cannon larvae / projectiles | #169 | #350 ✅ | other agent (batch2) | `pc_p2_batch2` committed | Converted assets | export + spawn fixture | other agent |
 | Blowhogs / dweevils / hazards | #170 | #349 ✅ | other agent (batch2) | `pc_p2_batch2` committed | Converted assets | export + spawn fixture | other agent |
 | Flora & Candypops | #171 | #353 ✅ | other agent (batch2) | `pc_p2_batch2` committed | Converted assets | export + spawn fixture | other agent |
-| Snagrets & Segmented Crawbster | #174 | #351 ✅ | #376 ✅ | `pc_p2_batch3` committed (`eb422e9`) | **Native display** | playable-proxy movement/corpse gates | this session |
+| Snagrets & Segmented Crawbster | #174 | #351 ✅ | #376 ✅ | `pc_p2_batch3` committed (`eb422e9`) | **Native display** | P1-proxy movement+cleanup PASS; corpse snagret-only; combat/transport BLOCKED | this session |
 | Waterwraith / rollers / Titan | #175 | #352 ✅ | other agent (batch2) | `pc_p2_batch2` committed | Converted assets | export + spawn fixture | other agent |
 | Careening Dirigibug (BombSarai) | #244 | native policy + probes | #244 ✅ | `pc_p2_bombsarai_*` in native worktree | P2 mechanics | register in shared native → run gates | this session |
 | Antenna Beetle (Fuefuki) | #245 | native FSM + binding | #245 ✅ | `pc_p2_fuefuki_*` in native worktree | P2 mechanics | register in shared native → run gates | this session |
