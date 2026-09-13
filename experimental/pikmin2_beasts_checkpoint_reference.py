@@ -47,6 +47,7 @@ class BeastsReferenceAdapter:
         return digest(dict(profile=self.identity,trip=state['trip'],floor=state['floor'],revision=state['revision']))
 
     def context(self,floor,context,squad):
+        if not isinstance(context,dict):raise ValueError('Invalid generation context')
         if floor!=2:
             if context!={}:raise ValueError('Unexpected destination context')
             return {},{}
@@ -66,7 +67,7 @@ class BeastsReferenceAdapter:
                     squad=deepcopy(squad),health=health,receipts=dict(receipts),context={},budgets={},events={},conversions={})
 
     def validate(self,state):
-        if set(state)!={'schema','profile','trip','revision','floor','status','squad','health','receipts','context','budgets','events','conversions'}:
+        if not isinstance(state,dict) or set(state)!={'schema','profile','trip','revision','floor','status','squad','health','receipts','context','budgets','events','conversions'}:
             raise ValueError('Invalid checkpoint fields')
         if state['schema']!=SCHEMA or state['profile']!=self.identity:raise ValueError('Checkpoint profile changed')
         if not isinstance(state['trip'],str) or not re.fullmatch('[A-Za-z0-9_-]{1,64}',state['trip']):raise ValueError('Invalid checkpoint trip')
@@ -80,9 +81,27 @@ class BeastsReferenceAdapter:
         if not isinstance(state['events'],dict) or len(state['events'])!=state['revision']:raise ValueError('Missing boundary event')
         if any(not isinstance(k,str) or not isinstance(v,str) or not re.fullmatch('[0-9a-f]{64}',k) or not re.fullmatch('[0-9a-f]{64}',v) for k,v in state['events'].items()):raise ValueError('Invalid boundary fingerprint')
         if not isinstance(state['conversions'],dict):raise ValueError('Invalid conversion history')
+        used=Counter()
+        flowers=budgets(5,0)
+        for identifier,event in state['conversions'].items():
+            if (not isinstance(identifier,str) or not re.fullmatch(r'[A-Za-z0-9_:/-]{1,100}',identifier)
+                    or not isinstance(event,dict) or set(event)!={'id','flower','input','floor'}
+                    or event['id']!=identifier or type(event['floor']) is not int or event['floor']!=2
+                    or not isinstance(event['flower'],str) or event['flower'] not in flowers
+                    or event['input'] not in ('red','blue','yellow','purple')):
+                raise ValueError('Invalid conversion history record')
+            # Witnesses are committed at a boundary, never during an active floor.
+            if state['floor']<2 or (state['floor']==2 and state['status']!='failed'):
+                raise ValueError('Conversion history precedes its boundary')
+            if event['input']!='purple':
+                used[event['flower']]+=1
+                if used[event['flower']]>flowers[event['flower']]:raise ValueError('Conversion history exceeds Violet capacity')
+        if len(state['conversions'])>1000:raise ValueError('Conversion history too large')
         # Generation snapshot is historical: later conversions may exceed its Purple count.
         _,expected=self.context(state['floor'],state['context'],[])
         if state['budgets']!=expected:raise ValueError('Conversion budget changed')
+        if state['floor']==2 and any(event['flower'] not in expected for event in state['conversions'].values()):
+            raise ValueError('Conversion history uses suppressed Violet')
         return state
 
     def launch_requirement(self,state):

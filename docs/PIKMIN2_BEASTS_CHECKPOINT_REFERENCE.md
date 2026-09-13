@@ -69,3 +69,21 @@ transition, conflicting payload, stale token/profile, invalid health, terminal
 failure, casualties and receipt stability. Combined with source-reference,
 tutorial campaign, surface-ledger and runner tests:37 tests and8 subtests pass.
 No native launch or shared build was performed.
+
+Issue #274 also validates stored conversion records when loading a checkpoint:
+the dictionary key must match the witness identity, the source must be a known
+floor2 Violet, and non-Purple inputs must fit its five-slot capacity. History
+can first appear after committing the floor2 boundary, including terminal
+failure on that floor. Failed-floor history must agree with the retained birth
+snapshot. Same-color refunds remain valid.
+
+This is structural validation, not authentication of gameplay. Floor3 does not
+retain the previous floor's generation snapshot or original party, so standalone
+validation cannot reconstruct those facts. The transition still checks them
+against its input checkpoint. Authoritative persistence and native witnesses
+remain required before campaign use.
+
+Validation for #274: checkpoint, lifecycle, generation and floor2 runtime suites
+passed 24 tests and 58 subtests, including JSON round trips, malformed records,
+over-capacity history, premature history and failed-floor replay. Native sources
+and shared save semantics are unchanged.
