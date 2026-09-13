@@ -24,3 +24,14 @@ Work in this directory's native/ and bbft/ repositories. Original BBFT and decom
 - Record build evidence per attempt: pinned commit, private build dir, executable SHA-256, and the `ninja -n` dry-run result.
 
 Keep private build dirs, builds, saves, generated seeds, logs and runtime state under ignored `output/`. Never push native origin.
+
+## Export does not wait on a clean shared `native/`
+
+The shared `native/` checkout normally carries a recorded dirty baseline from other lanes (for example `src/plugPikiKando/creatureCollision.cpp` and `goalItem.cpp`, plus occasional transient merge/untracked files from parallel workers). That baseline is expected and is part of the exported source. Do **not** block on, wait for, or attempt to clean the shared checkout before exporting, and do not treat its dirty state as a precondition for integration.
+
+- The maintained export runs from the integration line after its fast-forward/merge and copies the recorded working-tree state as-is:
+  ```powershell
+  py -3.12 scripts/export_native_source.py
+  ```
+- Only the integration lead runs the maintained export; lanes keep their own uncommitted work out of the shared checkout by using private `native/` worktrees (§Build isolation) and commit native changes on their own branch.
+- Record the native commit **and** dirty state with any export evidence. Never push native origin.
