@@ -67,29 +67,28 @@ Selection mirrors `Obj::updateMoveVelocity` (`Rock.cpp:368-388`):
 
 1. **Active Navi first, unconditionally.** The source takes
    `naviMgr->getActiveNavi()` with no range check (`:372-374`). A supplied active
-   Navi is used even when outside sight radius and the y window. A non-finite
-   active-Navi position is ignored and selection falls through.
-2. **Else nearest live candidate** within `sightRadius` and the y window. The
-   distance metric is 2D squared distance in x/z, matching
-   `getNearestNavi`/`getNearestPikmin` (`enemyAction.cpp:47-53,393-399`).
-   Equal distances keep list order (deterministic). Dead and non-finite
-   candidates are skipped. `sightRadius < 0` means unlimited, matching the
-   source `searchRadius < 0 -> FLT_MAX` (`:23-27`); a non-finite radius yields
-   no target.
+   Navi is used even when outside sight radius. A non-finite active-Navi
+   position is ignored and selection falls through.
+2. **Else nearest live candidate** within `sightRadius`. The distance metric is
+   2D squared distance in x/z, matching `getNearestNavi`/`getNearestPikmin`
+   (`enemyAction.cpp:47-53,393-399`). Equal distances keep list order
+   (deterministic). Dead and non-finite candidates are skipped.
+   `sightRadius < 0` means unlimited, matching the source
+   `searchRadius < 0 -> FLT_MAX` (`:23-27`); a non-finite radius yields no
+   target.
 3. **Else no target** (`P2CannonStoneTarget::hasTarget = false`), which the pure
    policy turns into "keep the current heading"
    (`targetPos = mPosition + mTargetVelocity`, `Rock.cpp:382-384`).
 
-The y window is the committed policy constant
-`P2CannonStone::kHomingHeightThreshold` (180.0). The source call site passes
-`180.0f` as the `searchAngle` argument to
-`EnemyFunc::getNearestPikminOrNavi` (`Rock.cpp:376`); in the decompiled helper
-that argument is a horizontal full-circle tolerance (`enemyAction.cpp:21,45`),
-so no horizontal facing is filtered here either. The lane reads the committed
-180 as a **±180 world-unit y window** (`|candidate.y - origin.y| <= 180`) and
-this adapter implements that reading explicitly rather than silently claiming
-source parity. The threshold is fixed by the committed policy; the adapter does
-not invent a different value.
+The source call site passes `180.0f` as the `searchAngle` argument to
+`EnemyFunc::getNearestPikminOrNavi` (`Rock.cpp:376`), exposed as
+`P2CannonStone::kHomingSearchAngleDegrees`. The helper converts it with
+`TORADIANS` and admits a candidate when `|angDist| <= searchAngle`
+(`enemyAction.cpp:21,45-46,393-399`), so 180 is PI radians and passes every
+horizontal angle. There is **no y constraint** in the source and none is
+applied here. A future caller wanting a narrower FOV can add a facing-relative
+angle filter against `kHomingSearchAngleDegrees`; this slice only implements the
+actual 180-degree call site.
 
 ### 1.2 Terrain-trace provider
 
@@ -167,8 +166,9 @@ is unconfirmed (`false`), matching the BombSarai no-callback fallback.
 - **Horizontal angle.** `roundAng(atan2(dx, dz))`, per `trig.h:91-94`, matching
   `Creature::getAngDist` (`Creature.h:386-395`). The adapter does not compute
   angles itself; it selects the target position and the policy steers.
-- **Y window.** See §1.1: the committed `kHomingHeightThreshold` is read as a
-  ±180 world-unit y window.
+- **No y constraint.** The source passes a 180-degree `searchAngle`
+  (`kHomingSearchAngleDegrees`) and filters only on 2D x/z distance; vertical
+  separation never removes a candidate. See §1.1.
 
 ### 2.1 Trace-space convention (explicitly not the Groink/P1 convention)
 
@@ -251,15 +251,15 @@ fixture exits 0.
 Fixture coverage (`tools/p2_projectile_host_test.cpp`, asserts active):
 
 - **Active-Navi precedence:** active Navi beats a nearer candidate and is used
-  even when far outside sight radius / y window; a non-finite active-Navi
-  position falls through to the candidate list.
+  even when far outside sight radius; a non-finite active-Navi position falls
+  through to the candidate list.
 - **Nearest-candidate selection:** nearest by 2D distance wins; dead candidates
   are skipped; equal distances keep list order; null/empty snapshot yields no
   target.
 - **Sight-radius filtering:** outside filtered, exactly-at-radius included,
   `sightRadius < 0` unlimited, non-finite radius yields no target.
-- **180 y-threshold filtering:** exactly ±180 included, just outside filtered;
-  the window is relative to the Stone's own y.
+- **No y filter:** a candidate 5000 units above is still selected when nearest
+  in x/z, and the 2D radius alone includes/excludes it.
 - **No-target fallback:** empty selection leaves the born heading and
   target-speed unchanged; after a turn, losing the target keeps the new heading.
 - **Trace floor/wall mapping:** center/radius passthrough in center space;
