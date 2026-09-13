@@ -26,6 +26,7 @@ import json
 import os
 import re
 import subprocess
+import uuid
 from pathlib import Path
 
 from scripts import build_pikmin2_fixture as builder
@@ -164,13 +165,46 @@ def _arena(name, assets, imported, output):
     raise ValueError('Unknown lifecycle family: ' + name)
 
 
-def run(name, assets, imported, output, exe, timeout=300):
-    run_dir = _arena(name, assets, imported, output)
-    if name == 'long-legs':
-        from experimental.pikmin2_long_legs_visual import convert, verify
-        room = run_dir / 'assets/dataDir/courses/pikmin2room'
-        convert(room)
-        verify(room)
+def adopt_existing(assets, run_dir, output):
+    """Re-stage an already-installed private arena through the current overlay.
+
+    Installed banks are preserved byte-for-byte; only the stage records are
+    rebuilt so the current ``ensure_pikmin_squad`` starting squad is applied.
+    This lets a lifecycle re-run avoid repeating disc extraction.
+    """
+    from scripts.preview_pikmin2_room import overlay
+    assets = Path(assets).resolve()
+    run_dir = Path(run_dir).resolve()
+    src = run_dir / 'assets' / 'dataDir'
+    overrides = {}
+    for rel in ('stages/chal0.ini', 'stages/chal0/default.gen'):
+        path = src / rel
+        if not path.is_file():
+            raise ValueError('Existing arena missing ' + rel)
+        overrides['dataDir/' + rel] = path.read_bytes()
+    for path in sorted((src / 'courses/pikmin2room').glob('*.mod')):
+        overrides['dataDir/courses/pikmin2room/' + path.name] = path.read_bytes()
+    new = output.resolve() / uuid.uuid4().hex
+    new.mkdir(parents=True)
+    overlay(assets, new / 'assets', overrides)
+    for path in run_dir.glob('*.txt'):
+        (new / path.name).write_bytes(path.read_bytes())
+    if (run_dir / 'arena.json').is_file():
+        (new / 'arena.json').write_bytes((run_dir / 'arena.json').read_bytes())
+    (new / 'p2-cargo-free.txt').write_text('P2_CARGO_FREE_1\n')
+    return new
+
+
+def run(name, assets, imported, output, exe, timeout=300, existing=None):
+    if existing is not None:
+        run_dir = adopt_existing(assets, existing, output)
+    else:
+        run_dir = _arena(name, assets, imported, output)
+        if name == 'long-legs':
+            from experimental.pikmin2_long_legs_visual import convert, verify
+            room = run_dir / 'assets/dataDir/courses/pikmin2room'
+            convert(room)
+            verify(room)
     manifest = json.loads((run_dir / 'arena.json').read_text())
     control = manifest['control']
     rows = [f"{a['generator']} {a['native_teki_type']} {int(a['species'] != control)} "
@@ -248,12 +282,16 @@ if __name__ == '__main__':
         b.add_argument('--' + name, type=Path, required=True)
     b.add_argument('--head', required=True)
     r = sub.add_parser('run')
-    for name in ('assets', 'imported', 'output', 'exe'):
+    for name in ('assets', 'output', 'exe'):
         r.add_argument('--' + name, type=Path, required=True)
+    r.add_argument('--imported', type=Path)
+    r.add_argument('--existing', type=Path)
     r.add_argument('--family', choices=FAMILIES, required=True)
     r.add_argument('--timeout', type=int, default=300)
     args = parser.parse_args()
     if args.command == 'build':
         build(args.native, args.build_dir, args.output, args.head)
     else:
-        run(args.family, args.assets, args.imported, args.output, args.exe, args.timeout)
+        if args.existing is None and args.imported is None:
+            parser.error('run requires --imported (fresh arena) or --existing (re-stage)')
+        run(args.family, args.assets, args.imported, args.output, args.exe, args.timeout, args.existing)
