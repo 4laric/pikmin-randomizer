@@ -281,3 +281,15 @@ shared core (`experimental/pikmin2_batch2_core.py`) bound by
   `pelplant_receptor`, `sprout_birth`, `prop_flora_scenery`) are BLOCKED pending
   the hook request on #186. No shared/native code touched; no disc assets
   committed.
+
+### Native registration (family-owned)
+
+Workflow revision 2026-09-13 ([#186](https://github.com/4laric/pikmin-randomizer/issues/186)):
+the flora family owner implements narrow additive registration hooks.
+Implemented in this pass by the shared `native/pc_port/pc_p2_batch2.cpp` unit,
+wired through `pc_p2_batch2_setup/draw/reset/forget`; the six Candypop colour
+buds bind as `TEKI_Chappy` placement vehicles from `p2-flora-actors.txt` /
+`p2-flora-bank.txt` and the `flora_*` pose bank. See
+[Batch-2 native registration](PIKMIN2_BATCH2_NATIVE_REGISTRATION.md). Visual-only
+P1 proxy; all runtime gates remain BLOCKED/UNTESTED pending a supplied-asset
+runtime pass.

@@ -223,3 +223,15 @@ shared core (`experimental/pikmin2_batch2_core.py`) bound by
   `natural_AI`, `combat`, `death_corpse`, `boss_phases`, `tyre_roll_crush`,
   `purple_vulnerability`, `boss_corpse`) are BLOCKED pending the hook request on
   #186. No shared/native code touched; no disc assets committed.
+
+### Native registration (family-owned)
+
+Workflow revision 2026-09-13 ([#186](https://github.com/4laric/pikmin-randomizer/issues/186)):
+the Waterwraith family owner implements narrow additive registration hooks.
+Implemented in this pass by the shared `native/pc_port/pc_p2_batch2.cpp` unit,
+wired through `pc_p2_batch2_setup/draw/reset/forget`; BlackMan and Tyre bind as
+`TEKI_Chappy` placement vehicles from `p2-waterwraith-actors.txt` /
+`p2-waterwraith-bank.txt` and the `ww_*` pose bank. See
+[Batch-2 native registration](PIKMIN2_BATCH2_NATIVE_REGISTRATION.md). Visual-only
+P1 proxy; all runtime gates remain BLOCKED/UNTESTED pending a supplied-asset
+runtime pass.

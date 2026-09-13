@@ -50,3 +50,15 @@ meshes are committed.
   crush/press and Man-at-Legs gun callbacks remain lane work under #173.
 - Damagumo/Beady Long Legs (56) stays owned by the demon lane and is not staged
   here.
+
+## Native registration (family-owned) — deferred
+
+Workflow revision 2026-09-13
+([#186](https://github.com/4laric/pikmin-randomizer/issues/186)): the Long Legs
+family owner owns its narrow additive registration hooks. This pass does **not**
+register a native draw: the lane installs bind-pose meshes, not the converted
+`.mod` pose bank the shared `native/pc_port/pc_p2_batch2.cpp` unit consumes, so
+there is nothing loadable for the current visual path yet. The bind-pose meshes
+first need the #186 conversion path, after which a `TEKI_Chappy`-vehicle draw
+hook (or a native Long Legs type) can be added. See
+[Batch-2 native registration](PIKMIN2_BATCH2_NATIVE_REGISTRATION.md).
