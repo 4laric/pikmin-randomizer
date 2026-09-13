@@ -63,3 +63,27 @@ Walking, burst/pool behavior, damage receivers, effects, carcass delivery and
 replacement-object revival are outside this first milestone. The independent
 policy does not substitute any Pikmin 1 enemy AI. The speedup playtest and enemy
 integration baseline remain separate.
+
+## Standalone policy validation
+
+The independent native files are `pc_port/pc_p2_groink.h/.cpp` and
+`tools/p2_groink_test.cpp`, based on native `d7ff676b`. They add no shared hooks.
+The host trace returns both position and velocity, plus ground height for a
+collision. The policy preserves terminal sweep endpoints after recycling;
+invalid steps are flagged unusable for damage. Host `std::atan2` follows the
+source argument order but is an approximation to the original lookup table.
+
+```powershell
+g++ -std=gnu++17 -Wall -Wextra -Werror -Ipc_port tools/p2_groink_test.cpp pc_port/pc_p2_groink.cpp -o <private-test.exe>
+```
+
+Compiled and executed successfully with local MinGW. Tests cover numeric near
+and far aim results, pre-update lock behavior, local scaled-basis rotation,
+muzzle offset, source gravity, trace correction, terminal sweep retention,
+exact versus over-1000 range, wall/floor termination and invalid inputs.
+This is a standalone policy test, not a native arena or gameplay test.
+
+The skinning audit found eight real envelopes with 18 influences, including
+nontrivial weights, and 16 weighted entries in the 30-entry draw table.
+The next visual task is a sampled-pose skinning adapter with weight/matrix
+validation; deleting the envelope guard would produce incorrect geometry.
