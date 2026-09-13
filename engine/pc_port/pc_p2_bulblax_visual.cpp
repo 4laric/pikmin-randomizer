@@ -1,4 +1,5 @@
 #include "pc_p2_bulblax_visual.h"
+#include "pc_p2_btk.h"
 #include "pc_p2_bulblax_visual_policy.h"
 #include "pc_p2_animation.h"
 #include "pc_p2_display_clock.h"
@@ -18,6 +19,7 @@
 #include <cstdio>
 #include <cstdlib>
 namespace {
+p2btk::Animation btk;bool btkReady=false;int btkMatrix=0;bool btkLogged=false;
 p2bulblax::Profile profile;std::map<size_t,std::vector<Shape*>> shapes;std::map<size_t,p2display::Clock> clocks;size_t total=0;std::set<std::pair<size_t,size_t>> logged;
 struct Retail {p2retail::Player player;size_t clip=0;unsigned events=0;};
 std::map<std::uint32_t,Retail> retail;
@@ -41,11 +43,23 @@ Shape* load(const std::string& name,std::vector<unsigned char>& reference,size_t
  for(int i=0;i<shape->mTexAttrCount;++i)if(shape->mTexAttrList[i].mTexture)shape->mTexAttrList[i].mTexture->attach();return shape;
 }
 }
-void pc_p2_bulblax_visual_reset(){profile={};shapes.clear();clocks.clear();retail.clear();total=0;logged.clear();mutableShapes.clear();baked.clear();interpolate=false;}
+void pc_p2_bulblax_visual_reset(){btk={};btkReady=false;btkMatrix=0;btkLogged=false;profile={};shapes.clear();clocks.clear();retail.clear();total=0;logged.clear();mutableShapes.clear();baked.clear();interpolate=false;}
 void pc_p2_bulblax_visual_setup(){
  pc_p2_bulblax_visual_reset();if(!pc_pikipelago_room_preview())return;
  std::ifstream in("p2-bulblax-visual.txt");if(!in)return;
  try{profile=p2bulblax::read(in);}catch(...){fail();}
+ // Optional source BTK diagnostic. Preserve the authoritative renderer/material path.
+ std::ifstream btkIn("p2-bulblax-btk.txt");
+ if(btkIn){std::string magic,file,extra;int matrix=0;
+  if(!(btkIn>>magic>>file>>matrix)||magic!="P2_BULBLAX_BTK_1"||matrix<0||matrix>7||
+     file.find("..")!=std::string::npos||file.find('/')!=std::string::npos||file.find('\\')!=std::string::npos||file.find(':')!=std::string::npos||(btkIn>>extra))fail();
+  std::ifstream bin("assets/dataDir/courses/pikmin2room/"+file,std::ios::binary|std::ios::ate);
+  if(!bin)fail();auto size=bin.tellg();if(size<=0||size>64*1024)fail();
+  std::vector<unsigned char> data((size_t)size);bin.seekg(0);
+  if(!bin.read(reinterpret_cast<char*>(data.data()),size)||!p2btk::parse(data.data(),data.size(),btk))fail();
+  btkReady=true;btkMatrix=matrix;
+ }
+
  std::ifstream option("p2-bulblax-interpolation.txt");
  if(option){std::string magic,extra;if(!(option>>magic)||magic!="P2_BULBLAX_INTERPOLATION_1"||(option>>extra))fail();interpolate=true;}
  std::map<int,std::vector<unsigned char>> resources;
@@ -103,6 +117,13 @@ void pc_p2_bulblax_visual_draw(Graphics& gfx){
  const auto tick=SDL_GetTicks();
  for(auto& item:clocks){const auto status=item.second.update(tick);if(status==p2display::Advance::Invalid)fail();if(status==p2display::Advance::RecoveredGap)std::printf("P2_BULBLAX_CLOCK visual_gap_seek clip=%u\n",unsigned(item.first));}
  for(const auto& d:profile.displays){const auto& c=profile.clips[d.clip];auto r=retail.find(d.id);size_t pose=c.index(r==retail.end()?float(clocks.at(d.clip).frame()):r->second.player.frame());Shape* shape=shapes.at(d.clip)[pose];
+  if(btkReady&&!btkLogged){float bs[3],br[3],bt[3];
+   const float frame=r==retail.end()?float(clocks.at(d.clip).frame()):r->second.player.frame();
+   const float bf=btk.duration>0?std::fmod(frame,float(btk.duration)):frame;
+   if(!p2btk::sample(btk,btkMatrix,bf,bs,br,bt))fail();
+   btkLogged=true;std::printf("P2_BULBLAX_BTK matrix=%d source_frame=%.3f scale=%.4f,%.4f,%.4f rot=%.4f,%.4f,%.4f trans=%.4f,%.4f,%.4f\n",btkMatrix,bf,bs[0],bs[1],bs[2],br[0],br[1],br[2],bt[0],bt[1],bt[2]);
+  }
+
  if(interpolate){
   p2pose::Interval interval;if(!p2pose::bracket(c.frames,r->second.player.frame(),interval))fail();
   const auto& bank=baked.at(d.clip);const auto& a=bank[interval.left].pose;const auto& b=bank[interval.right].pose;

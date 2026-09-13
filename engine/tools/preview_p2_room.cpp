@@ -399,6 +399,21 @@ int main(int argc,char** argv) {
     }
     SDL_SetMainReady();pc_gpu_preference_apply();_putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND","1");pc_bbft_init(argc,argv);
     require(pc_pikipelago_room_preview(),"requires --experimental-pikmin2-room");
-    if(!pc_window_init("P2 room integration fixture",960,720))return 3;
-    pc_settings_init();gsys->Initialise();pc_settings_p2d_init();nodeMgr=new NodeMgr();gsys->run(new RoomApp());return 0;
+    // Custom fixture entrypoint: mirror pc_main.cpp's mandatory small centered
+    // preview window (default 960x540, overridable with PIKMIN_P2_ROOM_WINDOW=WxH).
+    int windowWidth=960,windowHeight=540;bool smallWindow=true;
+    if(const char* value=std::getenv("PIKMIN_P2_ROOM_WINDOW")){
+        if(!std::strcmp(value,"off")||!std::strcmp(value,"0"))smallWindow=false;
+        int customWidth=0,customHeight=0;
+        if(std::sscanf(value,"%dx%d",&customWidth,&customHeight)==2&&customWidth>=320&&customHeight>=240){windowWidth=customWidth;windowHeight=customHeight;}
+    }
+    if(!pc_window_init("P2 room integration fixture",windowWidth,windowHeight))return 3;
+    pc_settings_init();
+    if(smallWindow){
+    pc_window_set_display_mode(PC_WINDOW_FULLSCREEN_WINDOWED);
+    pc_window_set_window_size(windowWidth,windowHeight);
+    pc_window_center();
+    std::printf("[PC Port] Experimental preview window set to %dx%d windowed and centered (override with PIKMIN_P2_ROOM_WINDOW=WxH or =off).\n",windowWidth,windowHeight);std::fflush(stdout);
+    }
+    gsys->Initialise();pc_settings_p2d_init();nodeMgr=new NodeMgr();gsys->run(new RoomApp());return 0;
 }
