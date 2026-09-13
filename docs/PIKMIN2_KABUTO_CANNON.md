@@ -40,8 +40,10 @@ No edit to the Stone/Egg/Rock/host/seam modules or their CMake wiring.
 | Attack clips | `attack` (`KEYEVENT_2` at frame 50), `K_attack` (`KEYEVENT_2` at frame 55) | PIKMIN2_CANNON_PROJECTILE_ASSETS.md §3 |
 
 Phases modeled: `Wait`, `Turn`, `Attack`, `FixAttack`, `Flick`, `FixWait`,
-`FixTurn`, `FixHide`, `Dead`, `Killed`. `FixStay`/`FixAppear` (buried spawn
-emergence) and `Move`/`FixTurn` locomotion are host/future scope.
+`FixTurn`, `FixHide`, `FixStay`, `FixAppear`, `Dead`, `Killed`. Surface `Move`
+locomotion and buried emergence animation/effects/shake are host-owned; the
+emergence transition graph is modeled. Fkabuto `onInit` starts in `FixStay`
+(`Kabuto.cpp:48-54`).
 
 ## 2. Firing — `createStoneAttack`
 
@@ -92,6 +94,18 @@ The policy returns the matching `P2KabutoAction::To*` and moves its own phase.
 - Death gate (`:350-353`, `:92-95`, `:142-145`, `:715-718`): `health <= 0` in
   any live state -> `Dead`. `Dead` END -> `kill(nullptr)` -> `Killed`
   (`:55-59`); the host owns the corpse/carry path.
+
+## 4a. Buried emergence (Fkabuto)
+
+Modeled from `KabutoState.cpp:391-690`. `FixStay` is invulnerable, hidden and
+consumes no animation events: a searched target transits to `FixAppear`
+(`:411-421`). `FixAppear` END checks health first (-> `Dead`), then flick
+(-> `Flick`), attackable (-> `FixAttack`), a target within `mMaxAttackAngle`
+(-> `FixWait`, else `FixTurn`), otherwise `FixHide` (`:473-506`). `FixHide` END
+returns to `FixStay` (`:545-553`). `FixWait` END (`:584-616`) and `FixTurn` END
+(`:644-681`) select `FixAttack` / `FixWait` / `FixTurn` / `FixHide`; `FixTurn`
+with an out-of-angle target keeps turning. The policy adds
+`P2KabutoAction::ToFixStay` / `ToFixAppear` and the species-aware `start()`.
 
 ## 5. Host contract
 
@@ -155,5 +169,5 @@ No executable, arena or save was launched.
 - Wire `P2KabutoCannon` into the #413 seam so the host spawns the Stone from
   the FSM event stream and a real mouth joint (gate 1).
 - Host target enumeration matching `getViewAngle`/`isAttackableTarget`.
-- Buried `FixStay`/`FixAppear`/`FixHide` emergence states and locomotion.
+- Surface `Move` locomotion and buried emergence animation/effects/shake.
 - Receiver routing / target-health mutation (#186 shared-semantics review).
