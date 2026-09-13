@@ -1,13 +1,15 @@
-# Batch-2 north native spawn fixtures — ground #346, dweevil #349, cannon #350
+# Batch-2 north runtime — ground #346, dweevil #349, cannon #350
 
-Runtime evidence for the three batch-2 ("batch-2 visuals north") families, produced
-on the 2026-09-13 Batch 3 session (issue #388, parent #186). It moves these
-families from **Converted assets** to **Native display**: exact generator/native
-identity, effective XYZ and a real native pose draw, with the ordinary P1 control
-actor untouched.
+Runtime evidence for the three batch-2 ("batch-2 visuals north") families,
+produced on the 2026-09-13 Batch 3 session (issue #388, parent #186). It moves
+these families from **Converted assets** to **Native display** (exact
+generator/native identity, effective XYZ and a real native pose draw) and adds
+the **playable-proxy movement gate** (P1-proxy autonomous locomotion), with the
+ordinary P1 control actor untouched.
 
-This is a **visual anchor only**. No source P2 FSM, damage/elemental receiver,
-reward, capture or projectile behavior is implemented or claimed.
+This is a **visual anchor + P1 host proxy only**. No source P2 FSM,
+damage/elemental receiver, reward, capture or projectile behavior is implemented
+or claimed.
 
 ## Registration
 
@@ -33,12 +35,17 @@ pose at slot 1) and `type5` (unsupported). Dweevil and cannon have no such clips
 Impact Site, `pikmin2_batch2_core.prepare`), writes the expected
 `<generator> <native_type> <registered> <x> <y> <z>` rows, then builds and runs a
 private instrumented `RoomApp` (`native/tools/preview_p2_room.cpp`) linked against
-the existing `pikmin_pc` objects. The fixture asserts from native state:
+the existing `pikmin_pc` objects. Following the batch-session runbook, the fixture
+frames the arena with a `DisplayCameraTarget` (the default room camera does not
+render the arena, so `pc_p2_batch2_draw` would otherwise never be reached) and
+asserts from native state:
 
 - every staged generator exists exactly once, with the expected native teki type
   and effective birth and generator XYZ;
 - only the family generators are registered (`P2_BATCH2_BIND`), not the control;
-- the camera is driven onto the family actors until `pc_p2_batch2_any_drawn()`;
+- a live pose draw occurred (`pc_p2_batch2_any_drawn()`);
+- at least one registered actor moved autonomously (`P2_BATCH2_MOVE` displacement
+  over 150 ready frames, threshold 1.0 world unit);
 - the ordinary P1 control actor is still alive at exit.
 
 Build (private, no maintained checkout touched):
@@ -52,12 +59,13 @@ py -3.12 -m experimental.pikmin2_batch2_runtime build `
 ```
 
 Run (per family; the fixture binary is family-agnostic and reads the positions
-file written by `run`):
+file written by `run`; assets are the runbook's P1 tree):
 
 ```powershell
 py -3.12 -m experimental.pikmin2_batch2_runtime run --family ground `
-  --assets <P1 extracted assets> --imported output/p2-lane-verify/ground `
-  --output output/p2-batch3-runtime/runs3/ground `
+  --assets "C:\Users\alari\bbft\dist\cohesion\pikmin\assets" `
+  --imported output/p2-lane-verify/ground `
+  --output output/p2-batch3-runtime/runs4/ground `
   --exe output/p2-batch3-runtime/fixtures/ground/fixture.exe --timeout 150
 ```
 
@@ -67,23 +75,32 @@ Native source / private build (not committed):
 - `output/tracks/p2-batch2-reg/native/build-randomizer/bin/nectar.exe`
   SHA-256 `51120ce30bc5b34a40a193117b7d79f69f71ab42ea0914b0b31963a35ab3db81`
 - fixture `output/p2-batch3-runtime/fixtures/ground/fixture.exe`
-  SHA-256 `1789884796b3e57b9e5c1b0ec87f8d91dfd6ded4f4d56f3f8717464ed4a3bde6`
+  SHA-256 `6274c2dec28166f00e652a93fc37cf026c8b59cdd2fa7783de66ee1fcf672670`
 
 ## Results
 
 All three families PASS the fixture (`exit 0`, `PASS P2_BATCH2_RUNTIME`).
 
-| Family | Generators bound | Effective XYZ | Native type | Live draw | Control |
-|---|---|---|---|---|---|
-| Ground #346 | 346001..346006 (6) | `(-300..300, 30, 1850)`; control `(240,30,1500)` | 3 (Chappy) | `P2_BATCH2_DRAW` `ElecBug clip=wait` | alive |
-| Dweevil #349 | 349001..349005 (5) | `(-240..240, 30, 1850)`; control `(240,30,1500)` | 3 (Chappy) | `P2_BATCH2_DRAW` `WaterOtakara clip=wait1` | alive |
-| Cannon #350 | 350001..350006 (6) | `(-300..300, 30, 1850)`; control `(240,30,1500)` | 17/17/17/2/3/3 (Beatle/Iwagon/Chappy) | `P2_BATCH2_DRAW` `Kabuto clip=wait` | alive |
+| Family | Generators bound | Effective XYZ | Type | Live draw | Moved (P1 proxy) | Control |
+|---|---|---|---|---|---|---|
+| Ground #346 | 346001..346006 (6) | `(-300..300, 30, 1850)`; control `(240,30,1500)` | 3 (Chappy) | `ElecBug clip=wait` | 3/6 (up to 68.2) | alive |
+| Dweevil #349 | 349001..349005 (5) | `(-240..240, 30, 1850)`; control `(240,30,1500)` | 3 (Chappy) | `WaterOtakara clip=wait1` | 3/5 (up to 44.9) | alive |
+| Cannon #350 | 350001..350006 (6) | `(-300..300, 30, 1850)`; control `(240,30,1500)` | 17/17/17/2/3/3 | `Kabuto clip=wait` | 5/6 (up to 67.6) | alive |
+
+`P2_BATCH2_MOVE` per actor (world units over ~150 ready frames):
+
+- ground: Armor 0.0, ElecBug 0.0, Imomushi 25.2, TamagoMushi 68.2, Sokkuri 27.5, Hana 0.0
+- dweevil: FireOtakara 0.0, WaterOtakara 0.0, GasOtakara 27.6, ElecOtakara 44.9, BombOtakara 21.5
+- cannon: Kabuto 18.4, Rkabuto 11.4, Fkabuto 67.6, Rock 26.0, Bomb 28.4, Egg 0.0
+
+Stationary rows are P1 host idle/sleep states, not registration failures; the gate
+requires at least one registered actor to move.
 
 Private evidence roots (assets not committed):
 
-- `output/p2-batch3-runtime/runs3/ground/stages/6f4ca7e8509a43afa82358b5424ed6aa/`
-- `output/p2-batch3-runtime/runs3/dweevil/stages/d8b3de0f8fe44e6cbf5bd14769601e2f/`
-- `output/p2-batch3-runtime/runs3/cannon/stages/4c55fda8efad45b08b45f4bb164b9aca/`
+- `output/p2-batch3-runtime/runs4/ground/stages/0334e68708e34d8ab714eeaf528615dd/`
+- `output/p2-batch3-runtime/runs4/dweevil/stages/72928811786e42aa86334dfbf05bf421/`
+- `output/p2-batch3-runtime/runs4/cannon/stages/a4d00ecc800c4be393b0370e704095f6/`
 
 Each stage has `native.log`, `runtime-evidence.json` and the staged `arena.json`.
 
@@ -105,7 +122,7 @@ Six arena gates (pipeline §6), per family:
 | Gate | Ground | Dweevil | Cannon |
 |---|---|---|---|
 | exact spawn | PASS | PASS | PASS |
-| autonomous movement/animation | UNTESTED (P1 host AI; visual pose selection only) | UNTESTED | UNTESTED |
+| autonomous movement/animation | PASS (P1 host proxy; 3/6) | PASS (P1 host proxy; 3/5) | PASS (P1 host proxy; 5/6) |
 | attacks/receivers | BLOCKED (source not registered) | BLOCKED (elemental receivers) | BLOCKED (projectile/damage) |
 | death/corpse | BLOCKED | BLOCKED | BLOCKED |
 | transport/reward | source-backed N/A (no carry in lane) | BLOCKED (treasure theft) | source-backed N/A |
@@ -118,12 +135,19 @@ Family extras remain as recorded in `experimental/pikmin2_batch2_families.py`
 `cannon_projectile_pool`, `rock_roll`, `bomb_lifecycle`, `egg_drop`,
 `buried_emerge`, `muzzle_alignment`) — all BLOCKED.
 
+## Tests
+
+`py -3.12 -m pytest tests/test_pikmin2_batch2.py tests/test_pikmin2_batch2_runtime.py -q`
+→ **87 passed**.
+
 ## Limitations
 
 - The sampled pose bank proves pose selection and draw, not source behavior.
+- Movement is P1 host AI on the placement vehicle (`Chappy`/`Beatle`/`Iwagon`),
+  not source P2 locomotion. Stationary family rows are P1 idle states.
 - Ground invertebrates, dweevils and Bomb/Egg have no audited P1 counterpart; the
   Chappy placement vehicle stages the visuals and does not claim identity.
 - Materials are approximate; no skeletal playback or P2 event execution.
-- In the cannon run one family actor (a P1 host vehicle) despawned before exit
-  (`P2_BATCH2_ALIVE family=5/6`); that is P1 host AI, not a registration failure.
+- In the cannon run one family actor (a P1 host vehicle) despawned before exit in
+  an earlier pass; the movement run reported `moved=5`, all families alive.
 - No disc assets, generated models, executables or saves are committed.

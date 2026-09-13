@@ -4,13 +4,15 @@ Stages the family arena (original P1 Impact Site), builds an instrumented
 private ``RoomApp`` around ``native/tools/preview_p2_room.cpp`` and links it
 against the existing ``pikmin_pc`` objects. The fixture asserts, from native
 state, that every staged generator exists exactly once with the expected native
-teki type and effective birth/generator XYZ, then drives the camera onto the
-family actors so ``pc_p2_batch2_draw`` runs, and requires that a live pose was
-drawn before exiting.
+teki type and effective birth/generator XYZ, frames the arena with a camera
+target (the default room camera does not render the arena, so the family-owned
+``P2_BATCH2_DRAW`` path is otherwise never reached), requires a live pose draw,
+and measures **P1-proxy autonomous movement** of the registered actors.
 
-It proves placement and pose selection only. No source P2 FSM, damage receiver,
-reward, capture or projectile behavior is claimed; those stay BLOCKED on the
-family issues and #186.
+This is the Native-display + playable-proxy movement gate for the three north
+families. It proves placement, pose selection and P1-proxy locomotion only. No
+source P2 FSM, damage receiver, reward, capture or projectile behavior is
+claimed; those stay BLOCKED on the family issues and #186.
 """
 import argparse
 import importlib
@@ -29,17 +31,21 @@ FAMILIES = {
     'cannon': 'experimental.pikmin2_cannon_projectile_arena',
 }
 
-APP = r'''class RoomApp : public PlugPikiApp {
- int frames=0,observed=0,familyCount=0;Teki* family[8]={};Teki* control=nullptr;
+APP = r'''class DisplayCameraTarget : public Creature {
+public:DisplayCameraTarget():Creature(nullptr){mHealth=1;}
+ void refresh(Graphics&) override{} void doKill() override{}
+};
+class RoomApp : public PlugPikiApp {
+ int frames=0,observed=0,familyCount=0;Teki* family[8]={};Teki* control=nullptr;Vector3f first[8];
 public:int idle() override {
- int result=PlugPikiApp::idle();require(++frames<15000,"batch2 startup timeout");
+ int result=PlugPikiApp::idle();require(++frames<20000,"batch2 startup timeout");
  if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
- if(!pc_p2_preview_cargo_free_ready()||!naviMgr||!tekiMgr)return result;
+ if(!pc_p2_preview_cargo_free_ready()||!naviMgr||!tekiMgr||!mapMgr)return result;
  Navi* n=naviMgr->getNavi();if(!n||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;
  ++observed;
  if(observed==1){
   for(int f=0;f<DEMOFLAG_COUNT;++f)playerState->mDemoFlags.setFlagOnly(f);
-  std::ifstream input("p2-batch2-positions.txt");unsigned id;int type,registered;float x,y,z;
+  std::ifstream input("p2-batch2-positions.txt");unsigned id;int type,registered;float x,y,z;float cx=0,cy=0,cz=0;
   while(input>>id>>type>>registered>>x>>y>>z){
    Teki* actor=nullptr;int matches=0;Iterator iter(tekiMgr);CI_LOOP(iter){Teki* a=static_cast<Teki*>(*iter);if(a->mGenerator&&a->mGenerator->_70==id){actor=a;++matches;}}
    require(matches==1,"batch2 roster identity");
@@ -48,20 +54,33 @@ public:int idle() override {
    require(std::fabs(birth.x-x)<.02&&std::fabs(birth.y-y)<.02&&std::fabs(birth.z-z)<.02,"batch2 birth XYZ");
    require(std::fabs(gen.x-x)<.02&&std::fabs(gen.y-y)<.02&&std::fabs(gen.z-z)<.02,"batch2 generator XYZ");
    require(actor->isAlive(),"batch2 actor not alive");
-   if(registered){require(familyCount<8,"batch2 family overflow");family[familyCount++]=actor;}
-   else{require(control==nullptr,"batch2 duplicate control");control=actor;}
+   if(registered){
+    require(familyCount<8,"batch2 family overflow");
+    family[familyCount]=actor;first[familyCount]=actor->mSRT.t;++familyCount;
+    cx+=x;cy+=y;cz+=z;
+   } else {require(control==nullptr,"batch2 duplicate control");control=actor;}
    std::printf("P2_BATCH2_BIRTH id=%u type=%d registered=%d x=%.3f y=%.3f z=%.3f\n",id,type,registered,birth.x,birth.y,birth.z);}
   require(familyCount>=1&&control!=nullptr,"batch2 roster incomplete");
+  const float count=float(familyCount);cx/=count;cy/=count;cz/=count;
   require(cameraMgr&&cameraMgr->mCamera,"batch2 camera missing");
-  cameraMgr->mCamera->setTarget(family[0]);
+  auto* target=new DisplayCameraTarget();target->mSRT.t=Vector3f(cx,cy+60.f,cz);
+  auto* camera=cameraMgr->mCamera;camera->setTarget(target);camera->mControlsEnabled=false;
+  PcamMotionInfo info=camera->mTargetMotionInfo;info.mDistance=1100.f;info.mFov=40;info.mAngle=35;info.mNaviWatchWeight=0;info.mWatchAdjustment=0;camera->startMotion(info);
+  std::printf("P2_BATCH2_CAMERA target=%.3f,%.3f,%.3f distance=1100 fov=40 angle=35\n",target->mSRT.t.x,target->mSRT.t.y,target->mSRT.t.z);
  }
- if(observed%60==0&&observed<=300)cameraMgr->mCamera->setTarget(family[(observed/60)%familyCount]);
- if(observed==120)capture("batch2-pose-a.ppm");
- if(observed==240)capture("batch2-pose-b.ppm");
- if(observed==360){
+ if(observed==150){
+  for(int i=0;i<familyCount;++i){Teki* actor=family[i];require(actor,"batch2 family actor lost");
+   Vector3f now=actor->mSRT.t;float dx=now.x-first[i].x,dz=now.z-first[i].z;
+   std::printf("P2_BATCH2_MOVE id=%u dx=%.3f dz=%.3f dist=%.3f\n",actor->mGenerator->_70,dx,dz,std::hypot(dx,dz));}
+ }
+ if(observed==180){
   require(pc_p2_batch2_any_drawn(),"batch2 no native pose drawn");
-  int alive=0;for(int i=0;i<familyCount;++i)if(family[i]->isAlive())++alive;
-  std::printf("P2_BATCH2_ALIVE family=%d/%d control=%d\n",alive,familyCount,int(control->isAlive()));
+  int alive=0,moved=0;
+  for(int i=0;i<familyCount;++i){
+   if(family[i]->isAlive())++alive;
+   Vector3f now=family[i]->mSRT.t;if(std::hypot(now.x-first[i].x,now.z-first[i].z)>=1.f)++moved;}
+  std::printf("P2_BATCH2_SUMMARY family=%d alive=%d moved=%d control=%d\n",familyCount,alive,moved,int(control->isAlive()));
+  require(moved>=1,"batch2 no autonomous movement");
   require(control->isAlive(),"batch2 control died");
   std::puts("PASS P2_BATCH2_RUNTIME");std::fflush(stdout);std::_Exit(0);
  }
@@ -79,9 +98,10 @@ def instrument(source):
     end = source.index('int main(', start)
     if 'P2_BATCH2_BIRTH' in source:
         raise ValueError('Already instrumented')
-    return ('#include <fstream>\n#include "Generator.h"\n#include "TekiPersonality.h"\n'
-            '#include "pc_p2_batch2.h"\n#include "Pcam/Camera.h"\n'
-            '#include "Pcam/CameraManager.h"\n' + source[:start] + APP + source[end:])
+    return ('#include <fstream>\n#include <cmath>\n#include "Generator.h"\n'
+            '#include "TekiPersonality.h"\n#include "pc_p2_batch2.h"\n'
+            '#include "Pcam/Camera.h"\n#include "Pcam/CameraManager.h"\n'
+            + source[:start] + APP + source[end:])
 
 
 def build(native, build_dir, output, head, resume=False):
@@ -156,16 +176,25 @@ def write_positions(stage, manifest):
                 for a in manifest['actors']).encode('ascii'))
 
 
-def validate(text, code, manifest):
-    binds = {int(g) for g in re.findall(r'P2_BATCH2_BIND generator=(\d+)', text)}
+def readings(text):
+    births = re.findall(r'P2_BATCH2_BIRTH id=(\d+) type=(\d+) registered=(\d)', text)
+    binds = re.findall(r'P2_BATCH2_BIND generator=(\d+) key=(\S+)', text)
+    draws = re.findall(r'P2_BATCH2_DRAW corpse=(\d) key=(\S+) clip=(\S+)', text)
+    moves = re.findall(r'P2_BATCH2_MOVE id=(\d+) dx=(-?\d+\.\d+) dz=(-?\d+\.\d+) '
+                       r'dist=(-?\d+\.\d+)', text)
+    return births, binds, draws, moves
+
+
+def validate(text, code, manifest, move_threshold=1.0):
+    births_raw, _binds, draws, moves = readings(text)
     births = {int(m[0]): tuple(float(v) for v in m[1:4]) for m in re.findall(
         r'P2_BATCH2_BIRTH id=(\d+) .*?x=(-?\d+\.\d+) y=(-?\d+\.\d+) z=(-?\d+\.\d+)', text)}
-    types = {int(m[0]): int(m[1]) for m in re.findall(
-        r'P2_BATCH2_BIRTH id=(\d+) type=(\d+)', text)}
-    draws = re.findall(r'P2_BATCH2_DRAW corpse=(\d) key=(\S+) clip=(\S+)', text)
+    types = {int(m[0]): int(m[1]) for m in births_raw}
+    binds = {int(b[0]) for b in _binds}
     expected = {a['generator']: a for a in manifest['actors']}
     family_ids = {g for g, a in expected.items() if _registered(manifest, a)}
     control_ids = set(expected) - family_ids
+    moved = [m for m in moves if float(m[3]) >= move_threshold]
     checks = dict(
         completion=code == 0 and 'PASS P2_BATCH2_RUNTIME' in text,
         all_bound=family_ids <= binds and not (binds & control_ids),
@@ -173,13 +202,15 @@ def validate(text, code, manifest):
         exact_xyz=all(births.get(g) == tuple(a['expected_xyz']) for g, a in expected.items()),
         native_types=all(types.get(g) == a['native_teki_type'] for g, a in expected.items()),
         live_draw=any(d[0] == '0' for d in draws),
+        movement=len(moves) == len(family_ids) and bool(moved),
     )
     return dict(passed=all(checks.values()), checks=checks,
                 bound=sorted(binds), births={str(k): list(v) for k, v in sorted(births.items())},
-                draws=draws,
+                draws=draws, moves=moves, moved_generators=[m[0] for m in moved],
                 unmeasured=['source FSM', 'combat/receivers', 'death/corpse', 'transport/reward',
                             'reset/re-entry', 'P2 mechanics'],
-                scope='Native placement identity and visual pose selection; P1 host AI retained.')
+                scope='Native placement identity, visual pose selection and P1-proxy '
+                      'autonomous movement; source P2 behavior retained as BLOCKED.')
 
 
 def run(assets, imported, family, output, exe, timeout=120):
