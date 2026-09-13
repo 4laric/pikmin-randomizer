@@ -12,6 +12,8 @@
 #include "pc_p2_batch2.h"
 #include "pc_p2_batch3.h"
 #include "pc_p2_long_legs.h"
+#include "pc_p2_white_poison.h"
+#include "pc_p2_purple_direct.h"
 #endif
 #include "DebugLog.h"
 #include "Dolphin/os.h"
@@ -281,7 +283,7 @@ Teki* TekiMgr::newTeki(int type)
 	}
 
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
-	pc_p2_snow_forget(teki); pc_p2_sheargrub_forget(teki); pc_p2_kochappy_forget(teki); pc_p2_breadbug_actor_forget(teki); pc_p2_frog_forget(teki); pc_p2_kogane_forget(teki); pc_p2_mamuta_forget(teki); pc_p2_tank_forget(teki); pc_p2_qurione_forget(teki); pc_p2_batch2_forget(teki); pc_p2_batch3_forget(teki); pc_p2_long_legs_forget(teki);
+	pc_p2_snow_forget(teki); pc_p2_sheargrub_forget(teki); pc_p2_kochappy_forget(teki); pc_p2_purple_direct_forget(teki); pc_p2_breadbug_actor_forget(teki); pc_p2_frog_forget(teki); pc_p2_kogane_forget(teki); pc_p2_mamuta_forget(teki); pc_p2_tank_forget(teki); pc_p2_qurione_forget(teki); pc_p2_batch2_forget(teki); pc_p2_batch3_forget(teki); pc_p2_long_legs_forget(teki); pc_p2_white_poison_forget(teki);
 #endif
 	teki->init(type);
 	return teki;

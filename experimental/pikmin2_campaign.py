@@ -11,16 +11,27 @@ import uuid
 from randomizer.session import SessionLock, atomic_write
 from scripts.preview_pikmin2_emergence import prepare
 
-SPECIES = ('blue', 'red', 'yellow', 'purple')
+SPECIES_V1 = ('blue', 'red', 'yellow', 'purple')
+SPECIES_V2 = SPECIES_V1 + ('white',)
+# Current callers retain the legacy name while schema-aware boundaries use
+# species_for_schema().
+SPECIES = SPECIES_V1
 EXIT_TRANSITION = 42
 
 
-def squad_valid(squad):
+def species_for_schema(schema):
+    if schema == 1: return SPECIES_V1
+    if schema == 2: return SPECIES_V2
+    raise ValueError('Unsupported cave checkpoint')
+
+
+def squad_valid(squad, schema=1):
+    species = species_for_schema(schema)
     if not isinstance(squad, list) or len(squad) > 100:
         raise ValueError('Invalid cave squad')
     for p in squad:
         if (not isinstance(p, dict) or set(p) != {'species', 'maturity'}
-                or p['species'] not in SPECIES or type(p['maturity']) is not int
+                or p['species'] not in species or type(p['maturity']) is not int
                 or not 0 <= p['maturity'] <= 2):
             raise ValueError('Invalid cave Pikmin')
 
@@ -28,7 +39,7 @@ def squad_valid(squad):
 def validate(state):
     if not isinstance(state, dict) or set(state) != {'schema', 'content', 'revision', 'status', 'floor', 'squad', 'health', 'receipts'}:
         raise ValueError('Invalid cave checkpoint fields')
-    if state['schema'] != 1 or type(state['schema']) is not int:
+    if type(state['schema']) is not int or state['schema'] not in (1, 2):
         raise ValueError('Unsupported cave checkpoint')
     if not isinstance(state['content'], str) or len(state['content']) != 64 or any(c not in '0123456789abcdef' for c in state['content']):
         raise ValueError('Invalid cave content identity')
@@ -36,7 +47,7 @@ def validate(state):
         raise ValueError('Invalid cave revision')
     if type(state['floor']) is not int or state['floor'] not in (1, 2) or state['status'] not in ('active', 'exited', 'failed'):
         raise ValueError('Invalid cave destination')
-    squad_valid(state['squad'])
+    squad_valid(state['squad'], state['schema'])
     if type(state['health']) not in (int, float) or not math.isfinite(state['health']) or not 0 <= state['health'] <= 1:
         raise ValueError('Invalid captain health')
     if state['status'] != 'failed' and (not state['squad'] or state['health'] <= 0):
@@ -93,8 +104,9 @@ def read_ledger(path):
 
 def entry_text(state, token):
     validate(state)
-    return (f'P2_CAVE_ENTRY_1\n{token}\n{state["floor"]} {state["health"]:.9g} {len(state["squad"])}\n'
-            + ''.join(f'{SPECIES.index(p["species"])} {p["maturity"]}\n' for p in state['squad']))
+    species = species_for_schema(state['schema'])
+    return (f'P2_CAVE_ENTRY_{state["schema"]}\n{token}\n{state["floor"]} {state["health"]:.9g} {len(state["squad"])}\n'
+            + ''.join(f'{species.index(p["species"])} {p["maturity"]}\n' for p in state['squad']))
 
 
 def transition(state, token, text, receipts, allowed):
@@ -102,7 +114,7 @@ def transition(state, token, text, receipts, allowed):
     validate(state)
     if state['status'] != 'active': raise ValueError('Cave already ended')
     lines = text.splitlines()
-    if len(lines) < 3 or lines[0] != 'P2_CAVE_TRANSFER_1' or lines[1] != token:
+    if len(lines) < 3 or lines[0] != f'P2_CAVE_TRANSFER_{state["schema"]}' or lines[1] != token:
         raise ValueError('Stale or incomplete cave transfer')
     words = lines[2].split()
     if len(words) != 3: raise ValueError('Invalid transfer header')
@@ -110,12 +122,13 @@ def transition(state, token, text, receipts, allowed):
     if floor != state['floor'] or not 0 <= count <= len(state['squad']) or len(lines) != 3 + count:
         raise ValueError('Invalid transfer floor/population')
     squad = []
+    species = species_for_schema(state['schema'])
     for line in lines[3:]:
         words = line.split()
         if len(words) != 2: raise ValueError('Invalid transfer Pikmin')
         color, maturity = map(int, words)
-        if color not in range(len(SPECIES)): raise ValueError('Invalid transfer species')
-        squad.append(dict(species=SPECIES[color], maturity=maturity))
+        if color not in range(len(species)): raise ValueError('Invalid transfer species')
+        squad.append(dict(species=species[color], maturity=maturity))
     for key, value in state['receipts'].items():
         if receipts.get(key) != value: raise ValueError('Cave receipts regressed')
     for key, value in receipts.items():
@@ -123,8 +136,15 @@ def transition(state, token, text, receipts, allowed):
             raise ValueError('Unexpected cave receipt/value')
     before = Counter(p['species'] for p in state['squad'])
     after = Counter(p['species'] for p in squad)
-    if any(after[c] > before[c] for c in SPECIES[:3]) or after['purple'] > before['purple'] + (10 if floor == 2 else 0):
-        raise ValueError('Unexpected cave species increase')
+    if state['schema'] == 1:
+        if any(after[c] > before[c] for c in SPECIES_V1[:3]) or after['purple'] > before['purple'] + (10 if floor == 2 else 0):
+            raise ValueError('Unexpected cave species increase')
+    else:
+        # V2 can restore all five identities, but until stable source-instance
+        # budgets are part of the checkpoint it is restoration-only. Runtime
+        # conversion therefore cannot be committed by forging a species swap.
+        if any(after[c] > before[c] for c in SPECIES_V2):
+            raise ValueError('Unexpected cave species increase')
     status = 'failed' if not squad or health <= 0 else 'active' if floor == 1 else 'exited'
     if status == 'failed': squad = []
     next_state = dict(state, revision=state['revision'] + 1, status=status,

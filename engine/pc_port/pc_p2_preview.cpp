@@ -29,7 +29,10 @@
 #include "system.h"
 #include "pc_p2_economy.h"
 #include "pc_p2_purple.h"
+#include "pc_p2_purple_flight.h"
+#include "pc_p2_purple_motion.h"
 #include "pc_p2_white.h"
+#include "pc_p2_white_poison.h"
 #include "pc_p2_cave.h"
 #include "pc_p2_enemy.h"
 #include "pc_p2_cargo.h"
@@ -201,7 +204,10 @@ void pc_p2_preview_setup() {
     pc_p2_batch3_setup();
     pc_p2_long_legs_setup();
     pc_p2_purple_setup();
+    pc_p2_purple_flight_setup();
+    pc_p2_purple_motion_setup();
     pc_p2_white_setup();
+    pc_p2_white_poison_setup();
     pc_p2_cave_setup();
     gsys->setHeap(previousHeap);
     const float points[][2]={{-85,0},{-175,-100},{185,-180},{-220,-180}};

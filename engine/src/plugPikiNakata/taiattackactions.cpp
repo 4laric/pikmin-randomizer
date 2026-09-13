@@ -1,4 +1,5 @@
 #include "DebugLog.h"
+#include "pc_p2_white_poison.h"
 #include "Dolphin/os.h"
 #include "Interactions.h"
 #include "NaviMgr.h"
@@ -180,7 +181,9 @@ bool TaiAnimationSwallowingAction::act(Teki& teki)
 
 			if (stuck->isStickToMouth()) {
 				PRINT_NAKATA("TaiAnimationSwallowingAction::act:ACTION_1:kill:%08x:%08x\n", &teki, stuck);
-				stuck->stimulate(InteractKill(&teki, 0));
+				bool whitePoison = pc_p2_white_poison_prepare(&teki, stuck);
+				bool consumed    = stuck->stimulate(InteractKill(&teki, 0));
+				if (whitePoison) pc_p2_white_poison_finish(&teki, stuck, consumed);
 				iter.dec();
 			}
 		}

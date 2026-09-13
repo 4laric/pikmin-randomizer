@@ -8,13 +8,23 @@ import subprocess
 import uuid
 
 from experimental.pikmin2_collision import attach_collision, ground_height, route_ini
+from experimental.pikmin2_purple_motion import CLIPS, validate_profile
 from scripts.preview_pikmin2_room import generator, overlay, records
 
 UNIT = 'room_north_tutorial_1_snow'
 
 
-def prepare(assets, imported, treasure, output, assembled=None, floor=1, pod=None, purple=None, violet=True, squad=None):
-    if purple and not pod:raise ValueError('Purple preview requires Research Pod')
+def _purple_motion_files(directory):
+    profile=validate_profile((directory/'p2-purple-motion.txt').read_text())
+    expected={f'purple_{name}_{index:02}.mod' for name,count in CLIPS for index in range(count)}
+    actual={path.name for path in directory.glob('purple_*.mod') if path.name.startswith(('purple_rolljmp_','purple_fall_'))}
+    if actual!=expected:raise ValueError('Purple motion bank must contain exactly 34 source poses')
+    return profile,{name:(directory/name).read_bytes() for name in sorted(expected)}
+
+def prepare(assets, imported, treasure, output, assembled=None, floor=1, pod=None, purple=None, violet=True, squad=None, white=None, purple_motion=None):
+    if (purple or white) and not pod:raise ValueError('Sequel Pikmin preview requires Research Pod')
+    if purple_motion and (not purple or not pod):raise ValueError('Purple motion preview requires Purple bank and Research Pod')
+    if purple and white:raise ValueError('Use separate bounded Purple and White preview runs')
     if floor not in (1,2) or (floor==2 and assembled):
         raise ValueError('Choose floor 1 assembly or standalone floor 2')
     manifest=json.loads((imported/'manifest.json').read_text())
@@ -88,6 +98,18 @@ def prepare(assets, imported, treasure, output, assembled=None, floor=1, pod=Non
             struct.pack_into('>I',flower,80,5|(1<<6)) # Pom, Red legacy storage color; explicit P2 Violet metadata.
             actors.extend(flower)
         struct.pack_into('>I',actors,20,count+len(positions))
+    if white:
+        template=next(r for r in records(assets/'dataDir/stages/chal0/default.gen') if r[72:76]==b'ssob' and r[76:80]==b'\x02\x00\x00\x00')
+        count=struct.unpack_from('>I',actors,20)[0];generator_id=count+1
+        configured=(white/'p2-white.txt').read_text().splitlines()
+        binding=next((line for line in configured if line.startswith('ivory_generators ')),None)
+        if binding != f'ivory_generators 1 {generator_id}':raise ValueError('White bank is not bound to this preview Ivory generator')
+        x,z=(-140,60) if floor==1 else (-600,350);y=ground_height(room['vertices'],room['triangles'],x,z)
+        if y is None:raise ValueError('Ivory flower has no ground')
+        # Generator::readID consumes the on-disk ID in big-endian order.
+        flower=bytearray(template);struct.pack_into('>I',flower,8,generator_id);flower[16:48]=b'preview ivory'.ljust(32,b'\0')
+        struct.pack_into('>6f',flower,48,x,y,z,0,0,0);struct.pack_into('>I',flower,80,5|(1<<6));actors.extend(flower)
+        struct.pack_into('>I',actors,20,count+1)
     if squad is not None:
         if not 1 <= len(squad) <= 100: raise ValueError('Cave entry requires 1-100 survivors')
         starts=[match.start() for match in re.finditer(b'    0.0v',actors)]+[len(actors)]
@@ -109,12 +131,25 @@ def prepare(assets, imported, treasure, output, assembled=None, floor=1, pod=Non
         overrides['dataDir/courses/pikmin2room/treasure.mod']=(pod/'treasure.mod').read_bytes()
     if purple:
         for path in purple.glob('*.mod'):overrides['dataDir/courses/pikmin2room/'+path.name]=path.read_bytes()
+    motion_profile=None
+    if purple_motion:
+        motion_profile,motion_files=_purple_motion_files(purple_motion)
+        for motion_name,data in motion_files.items():overrides['dataDir/courses/pikmin2room/'+motion_name]=data
+    if white:
+        for path in white.glob('*.mod'):overrides['dataDir/courses/pikmin2room/'+path.name]=path.read_bytes()
     for path in (assets/'dataDir/stages/chal0').glob('*.gen'):
         overrides.setdefault('dataDir/stages/chal0/'+path.name,empty)
     run=output.resolve()/uuid.uuid4().hex
     run.mkdir(parents=True)
     if pod: (run/'p2-pod.txt').write_bytes((pod/'p2-pod.txt').read_bytes())
-    if purple: (run/'p2-purple.txt').write_bytes((purple/'p2-purple.txt').read_bytes())
+    if purple:
+        purple_config=(purple/'p2-purple.txt').read_text()
+        if purple_motion and 'impact red_earthquake_v1' not in purple_config.splitlines():purple_config=purple_config.rstrip()+'\nimpact red_earthquake_v1\n'
+        (run/'p2-purple.txt').write_text(purple_config)
+    if purple_motion:
+        (run/'p2-purple-motion.txt').write_text(motion_profile)
+        (run/'p2-purple-flight.txt').write_text('P2_PURPLE_FLIGHT_1\n')
+    if white: (run/'p2-white.txt').write_bytes((white/'p2-white.txt').read_bytes())
     probes=[(-680,500),(-680,595),(475,-425),(660,0)] if floor==2 else [(-85,0),(-175,-100),(185,-180),(-220,-180)]
     heights=[ground_height(room['vertices'],room['triangles'],x,z) for x,z in probes]
     if any(y is None for y in heights):
@@ -126,7 +161,7 @@ def prepare(assets, imported, treasure, output, assembled=None, floor=1, pod=Non
         (run/'p2-second-floor.txt').write_text(str(len(walk))+'\n'+'\n'.join(f'{x} {z}' for x,z in walk))
     overlay(assets,run/'assets',overrides)
     (run/'preview.json').write_text(json.dumps(dict(unit=name,floor=floor,experimental=True,ap=False,save_resume=squad is not None,
-        assembled_geometry=bool(assembled),pod=bool(pod),purple=bool(purple),complete_floor=False,
+        assembled_geometry=bool(assembled),pod=bool(pod),purple=bool(purple),purple_motion=bool(purple_motion),white=bool(white),complete_floor=False,
         actors=(f'{len(squad)} transferred survivors; source-configured treasure' if squad is not None else
                 '20 Reds and source-configured treasure; Dwarf corpse on floor 1' if pod else '20 Reds, bolt and temporary Onion; Dwarf on floor 1'),
         limitations=('Floor boundaries are saved by the campaign runner; no mid-floor save, surface map or full cave roster.' if squad is not None else
@@ -145,8 +180,10 @@ if __name__=='__main__':
     parser.add_argument('--floor',type=int,choices=(1,2),default=1)
     parser.add_argument('--pod',type=Path,help='Opt-in Research Pod assets and source economy config')
     parser.add_argument('--purple',type=Path,help='Experimental Purple pose bank and two Violet conversion flowers')
+    parser.add_argument('--purple-motion',type=Path,help='Opt-in retail Purple throw/fall motion bank and flight presentation')
+    parser.add_argument('--white',type=Path,help='Experimental White pose bank and one explicitly bound Ivory conversion flower')
     args=parser.parse_args()
-    run=prepare(args.assets.resolve(),args.imported.resolve(),args.treasure.resolve(),args.output,args.assembled.resolve() if args.assembled else None,args.floor,args.pod.resolve() if args.pod else None,args.purple.resolve() if args.purple else None)
+    run=prepare(args.assets.resolve(),args.imported.resolve(),args.treasure.resolve(),args.output,args.assembled.resolve() if args.assembled else None,args.floor,args.pod.resolve() if args.pod else None,args.purple.resolve() if args.purple else None,white=args.white.resolve() if args.white else None,purple_motion=args.purple_motion.resolve() if args.purple_motion else None)
     print(run,flush=True)
     if args.exe:
         with (run/'native.log').open('w',encoding='utf-8') as log:

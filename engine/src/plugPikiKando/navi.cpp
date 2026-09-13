@@ -1,5 +1,6 @@
 #include "pc_p2_purple.h"
 #include "pc_p2_purple_impact.h"
+#include "pc_p2_purple_flight.h"
 #include "pc_p2_white.h"
 #include "pc_p2_species.h"
 #include "Navi.h"
@@ -2866,6 +2867,7 @@ void Navi::throwPiki(Piki* piki, immut Vector3f& pos)
 	piki->mTargetVelocity = piki->mVelocity;
 	piki->mVolatileVelocity.set(0.0f, 0.0f, 0.0f);
 	pc_p2_purple_impact_arm(piki);
+	pc_p2_purple_flight_arm(piki);
 }
 
 /**

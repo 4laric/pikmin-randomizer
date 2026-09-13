@@ -1,4 +1,6 @@
 #include "pc_p2_purple.h"
+#include "pc_p2_purple_flight.h"
+#include "pc_p2_purple_impact.h"
 #include "pc_p2_white.h"
 #include "pc_p2_species.h"
 #include "pc_p2_purple.h"
@@ -2353,6 +2355,8 @@ void Piki::resetPosition(immut Vector3f& pos)
  */
 void Piki::init(Navi* navi)
 {
+	pc_p2_purple_flight_cancel(this);
+	pc_p2_purple_impact_forget(this);
 	mHorizontalRotation = 0.0f;
 	mVerticalRotation   = 0.0f;
 	mSRT.s.set(1.0f, 1.0f, 1.0f);

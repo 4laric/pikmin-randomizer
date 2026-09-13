@@ -40,6 +40,7 @@ struct SourceState {
     Token token = 0;
     bool armed = false;
     bool emitted = false;
+    bool directDispatched = false;
 };
 
 class Sources {
@@ -51,7 +52,18 @@ public:
         state.token = ++mNextToken;
         state.armed = true;
         state.emitted = false;
+        state.directDispatched = false;
         return { state.lifetime, state.token, x, y, z };
+    }
+
+    bool claimDirect(const void* actor)
+    {
+        auto found = mStates.find(actor);
+        if (found == mStates.end() || !found->second.armed || found->second.directDispatched) {
+            return false;
+        }
+        found->second.directDispatched = true;
+        return true;
     }
 
     bool consume(const void* actor, Event& event, float x, float y, float z)
