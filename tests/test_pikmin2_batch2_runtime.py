@@ -36,6 +36,8 @@ def _log(dist):
         "P2_BATCH2_DRAW corpse=0 key=ground|Armor clip=wait\n"
         f"P2_BATCH2_MOVE id=346001 dx=0.000 dz=0.000 dist=0.000\n"
         f"P2_BATCH2_MOVE id=346002 dx={dist:.3f} dz=0.000 dist={dist:.3f}\n"
+        "P2_BATCH2_INJECTED_ATTACK id=346001 accepted=1\n"
+        "P2_BATCH2_LIFECYCLE family=2 alive=1 moved=1 corpses=1 control=1\n"
         "PASS P2_BATCH2_RUNTIME\n")
 
 
