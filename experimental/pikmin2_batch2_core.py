@@ -72,8 +72,14 @@ def bank_text(cfg, manifest):
         info = manifest['species'][species]
         rows.append(f'species {species} {info["enemy_id"]}')
         for clip in info.get('clips', []):
+            pose_list = clip.get('poses', [])
+            poses = sum(1 for pose in pose_list if 'file' in pose)
+            # The native bank loads pose `NN` by contiguous 0-based index, so a
+            # clip is banked only when its first `poses` slots are all sampled
+            # (no leading/interior gap); unsupported or gapped clips are skipped.
+            if poses == 0 or any('file' not in pose for pose in pose_list[:poses]):
+                continue
             events = ','.join(f'{frame}:{event}' for frame, event in clip.get('events', []))
-            poses = sum(1 for pose in clip.get('poses', []) if 'file' in pose)
             rows.append(f'clip {species} {clip["name"]} {clip.get("source_frames", 0)} '
                         f'{events or "-"} poses {poses} {clip.get("status", "unknown")}')
     return ('\n'.join(rows) + '\n').encode('ascii')
