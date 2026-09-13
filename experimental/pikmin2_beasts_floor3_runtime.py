@@ -22,10 +22,10 @@ GOALS = [(-85,-280),(-85,-390),(-85,-470),(-85,-580),(-85,-735),(-85,-1000),
 def sha(raw): return hashlib.sha256(raw).hexdigest()
 
 
-def stage(assets, assembly, purple, pod, output, party):
+def stage(assets, assembly, purple, pod, output, party, *, floor=3, goals=GOALS, anchor_positions=None):
     party=restore_party(party)
     report=json.loads((assembly/'assembly.json').read_bytes())
-    if report['policy']!='P2_BEASTS_FLOOR3_ASSEMBLY_1' or report['floor']!=3:
+    if floor not in (3,4,5) or report['policy']!=f'P2_BEASTS_FLOOR{floor}_ASSEMBLY_1' or report['floor']!=floor:
         raise ValueError('Expected audited floor-three assembly')
     for name,digest in report['output_sha256'].items():
         if sha((assembly/name).read_bytes())!=digest:raise ValueError('Assembly changed: '+name)
@@ -34,15 +34,17 @@ def stage(assets, assembly, purple, pod, output, party):
         y=ground_height(room['vertices'],room['triangles'],x,z)
         if y is None:raise ValueError('Engineering anchor lacks ground')
         return [x,y,z]
-    anchors=dict(start=grounded(-85,-120),pod=grounded(-200,65),ship=grounded(85,240))
-    for x,z in GOALS:grounded(x,z)
+    selected=anchor_positions or dict(start=(-85,-120),pod=(-200,65),ship=(85,240))
+    anchors={name:grounded(*position) for name,position in selected.items()}
+    if set(anchors)!={'start','pod','ship'} or len(goals)!=12:raise ValueError('Expected engineering anchors and12 survey goals')
+    for x,z in goals:grounded(x,z)
     raw=generator(assets);starts=[m.start() for m in re.finditer(b'    0.0v',raw)]+[len(raw)]
     entries=[];count=0
     for a,b in zip(starts,starts[1:]):
         entry=bytearray(raw[a:b]);label=bytes(entry[16:48]).rstrip(b'\0')
         if label in (b'preview treasure bolt',b'preview dwarf bulborb'):continue
         if label==b'preview red pikmin':
-            position=grounded(-110+(count%5)*12,-210+(count//5)*12);count+=1
+            position=grounded(anchors['start'][0]-25+(count%5)*12,anchors['start'][2]-90+(count//5)*12);count+=1
         else:
             key={b'preview red onion':'pod',b'preview ship':'ship'}.get(label)
             if key is None:raise ValueError('Unexpected scaffold actor')
@@ -52,7 +54,7 @@ def stage(assets, assembly, purple, pod, output, party):
     decode_no_cargo(actors,0)
     ini=(assets/'dataDir/stages/chal0.ini').read_bytes()
     ini=re.sub(rb'(?m)^map_file[^\r\n]*',b'map_file courses/pikmin2room/room.mod',ini)
-    ini=re.sub(rb'(?m)^navi_start[^\r\n]*',b'navi_start -85.0 -120.0',ini)
+    ini=re.sub(rb'(?m)^navi_start[^\r\n]*',f'navi_start {float(anchors["start"][0])} {float(anchors["start"][2])}'.encode(),ini)
     overrides={'dataDir/stages/chal0.ini':ini,'dataDir/stages/chal0/default.gen':actors,
         'dataDir/courses/pikmin2room/room.mod':(assembly/'room.mod').read_bytes(),
         'dataDir/courses/pikmin2room/room.ini':(assembly/'room.ini').read_bytes(),
@@ -69,7 +71,7 @@ def stage(assets, assembly, purple, pod, output, party):
              'p2-purple.txt':(purple/'p2-purple.txt').read_bytes(),
              'p2-cave-entry.txt':entry_text(party,uuid.uuid4().hex).encode()}
     for name,data in configs.items():(run/name).write_bytes(data)
-    readiness=dict(schema=1,policy='P2_BEASTS_FLOOR3_SURVEY_1',floor=3,party=party,anchors=anchors,goals=GOALS,
+    readiness=dict(schema=1,policy=f'P2_BEASTS_FLOOR{floor}_SURVEY_1',floor=floor,party=party,anchors=anchors,goals=goals,
         native_ready=False,campaign_entry=False,party_restore_protocol_floor=2,
         assembly_sha256=sha((assembly/'assembly.json').read_bytes()),
         input_sha256={**{'assets/'+name:sha(data) for name,data in overrides.items()},**{name:sha(data) for name,data in configs.items()}},
@@ -95,17 +97,18 @@ def fixture(source, output):
     return output
 
 
-def validate(log, party, *, boundary_token=None):
+def validate(log, party, *, boundary_token=None, goals=GOALS, native_floor=3):
     party=restore_party(party)
     if any(s in log for s in ('FAIL ','P2_POD_RECEIPT','P2_TREASURE_DELIVERED','P2_VIOLET_')):
         raise ValueError('Native failure or unexpected action')
-    native_entries=re.findall(r'^P2_BEASTS_ENTRY_READY floor=3 token=([0-9a-f]{64}) descent=disabled$',log,re.M)
+    native_entries=re.findall(rf'^P2_BEASTS_ENTRY_READY floor={native_floor} token=([0-9a-f]{{64}}) descent=disabled$',log,re.M)
     verified=re.findall(r'^P2_FLOOR3_BOUNDARY_VERIFIED token=([0-9a-f]{64}) descent=disabled$',log,re.M)
     if boundary_token is not None:
+        if native_floor not in (3,4):raise ValueError('Unsupported native entry floor')
         if not isinstance(boundary_token,str) or not re.fullmatch('[0-9a-f]{64}',boundary_token):raise ValueError('Invalid expected boundary')
-        if native_entries!=[boundary_token] or verified!=[boundary_token] or log.count('P2_CAVE_READY floor=3 ')!=1:
+        if native_entries!=[boundary_token] or verified!=[boundary_token] or log.count(f'P2_CAVE_READY floor={native_floor} ')!=1:
             raise ValueError('Native floor3 boundary binding differs')
-        if re.findall(r'^P2_CAVE_READY floor=(\d+) ',log,re.M)!=['3'] or not log.index('P2_BEASTS_ENTRY_READY')<log.index('P2_FLOOR3_BOUNDARY_VERIFIED')<log.index('P2_FLOOR3_SURVEY_READY'):
+        if re.findall(r'^P2_CAVE_READY floor=(\d+) ',log,re.M)!=[str(native_floor)] or not log.index('P2_BEASTS_ENTRY_READY')<log.index('P2_FLOOR3_BOUNDARY_VERIFIED')<log.index('P2_FLOOR3_SURVEY_READY'):
             raise ValueError('Native entry phases differ')
         if 'P2_CAVE_TRANSFER' in log:raise ValueError('Unexpected floor4 handoff')
     elif native_entries or verified:raise ValueError('Unexpected native boundary')
@@ -114,11 +117,11 @@ def validate(log, party, *, boundary_token=None):
     if log.count('P2_ROOM_CARGO_FREE_READY cargo=0')!=1 or log.count('PASS P2_FLOOR3_SURVEY goals=12 cargo=0 pokos=0 repairs_unchanged=1')!=1:
         raise ValueError('Missing survey readiness or completion')
     points=re.findall(r'^P2_FLOOR3_POINT index=(\d+) x=([-\d.]+) y=([-\d.]+) z=([-\d.]+) ground=([-\d.]+)$',log,re.M)
-    if len(points)!=len(GOALS) or sum(l.startswith('P2_FLOOR3_POINT') for l in log.splitlines())!=len(points):
+    if len(points)!=len(goals) or sum(l.startswith('P2_FLOOR3_POINT') for l in log.splitlines())!=len(points):
         raise ValueError('Malformed survey points')
     for expected,(index,x,y,z,ground) in enumerate(points):
         x,y,z,ground=map(float,(x,y,z,ground))
-        if int(index)!=expected or math.hypot(x-GOALS[expected][0],z-GOALS[expected][1])>20 or abs(y-ground)>5:
+        if int(index)!=expected or math.hypot(x-goals[expected][0],z-goals[expected][1])>20 or abs(y-ground)>5:
             raise ValueError('Survey point is unordered, distant or ungrounded')
     from experimental.pikmin2_beasts_party_snapshot import party_snapshot
     from collections import Counter
@@ -143,13 +146,23 @@ def run(exe, directory, timeout=120):
         if sha((directory/name).read_bytes())!=digest:raise ValueError('Stage changed before launch')
     env=dict(os.environ,SDL_AUDIODRIVER='dummy',PATH='C:/msys64/mingw64/bin'+os.pathsep+os.environ.get('PATH',''))
     evidence=dict(schema=1,issue=317 if report.get('boundary_token') else 311,passed=False,exe=str(exe),executable_sha256=executable_hash,input_sha256=paths)
-    if report.get('boundary_token'):evidence.update(native_floor=3,native_profile='forest_1',boundary_token=report['boundary_token'])
+    if report.get('boundary_token'):evidence.update(native_floor=report['floor'],native_profile='forest_1',boundary_token=report['boundary_token'])
     with (directory/'native.log').open('w') as log:
         try:evidence['returncode']=subprocess.run([str(exe),'--experimental-pikmin2-room'],cwd=directory,env=env,stdout=log,stderr=subprocess.STDOUT,timeout=timeout).returncode
         except subprocess.TimeoutExpired:evidence['timeout']=True
     try:
         if evidence.get('returncode')!=0:raise ValueError('Native process failed or timed out')
-        evidence['survey']=validate((directory/'native.log').read_text(errors='replace'),report['party'],boundary_token=report.get('boundary_token'))
+        log_text=(directory/'native.log').read_text(errors='replace')
+        if report['floor']==4:
+            if 'P2_FLOOR3' in log_text or (report.get('boundary_token') and (report.get('party_restore_protocol_floor')!=4 or report.get('native_profile')!='forest_1')):raise ValueError('Wrong floor4 survey profile')
+            log_text=log_text.replace('P2_FLOOR4','P2_FLOOR3')
+            evidence['issue']=334 if report.get('boundary_token') else 330
+        elif report['floor']==5:
+            if 'P2_FLOOR3' in log_text or report.get('boundary_token'):raise ValueError('Wrong engineering survey profile')
+            log_text=log_text.replace('P2_FLOOR5','P2_FLOOR3')
+            evidence['issue']=333
+        evidence['survey']=validate(log_text,report['party'],boundary_token=report.get('boundary_token'),goals=report['goals'],native_floor=report['floor'])
+
         if (directory/'p2-cave-transfer.txt').exists() or (directory/'p2-cave-transfer.tmp').exists():raise ValueError('Unexpected floor transfer file')
         if any(sha((directory/name).read_bytes())!=digest for name,digest in paths.items()) or sha(exe.read_bytes())!=executable_hash:
             raise ValueError('Inputs or executable changed')

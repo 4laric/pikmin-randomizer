@@ -1,5 +1,9 @@
 # Token-bound native Beasts floor 3 entry (#317)
 
+Follow-up: [#324 terminal handoff](PIKMIN2_BEASTS_FLOOR3_FAILURE_NATIVE.md) enables
+extinction/knockout publication and exit42. The disabled-terminal statements below
+describe the frozen #317 entry milestone; successful floor4 descent stays disabled.
+
 Owner: Codex using shared 4laric account. Root base: frozen #315,
 `8ce3fe9e1bd6dc5e15723ab0625cf62858927587`. Native base:
 `e23986231d81b6f275d9fd900610c1bd82105b31`; native candidate:
