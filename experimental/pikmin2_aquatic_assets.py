@@ -355,8 +355,10 @@ def extract(iso, source, output, pose_limit=6):
                 info['clips'].append(clip)
             report['species'][species] = info
         report['limitations'] = list(LIMITATIONS)
+        manifest = {k: v for k, v in report.items()
+                    if k != 'extract_seconds'}
+        (output / 'aquatic.json').write_bytes((json.dumps(manifest, sort_keys=True, indent=2) + '\n').encode())
         report['extract_seconds'] = round(time.perf_counter() - started, 3)
-        (output / 'aquatic.json').write_bytes((json.dumps(report, sort_keys=True, indent=2) + '\n').encode())
         (output / 'p2-aquatic.txt').write_text(TEXT)
         return report
 
