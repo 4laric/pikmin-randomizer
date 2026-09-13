@@ -64,6 +64,7 @@ class GenerationTests(unittest.TestCase):
 
     def test_suppressed_stage_rejects_events_rewards_and_duplicates(self):
         for suffix in ('P2_BEASTS_FLOWER id=62000','P2_BEASTS_THROW original=0',
+                       'P2_VIOLET_WITNESS sequence=1 generator=62000 input=red',
                        'P2_VIOLET_CONVERT count=1','P2_POD_RECEIPT id=unexpected','FAIL hidden cargo',
                        'P2_BEASTS_GENERATION purple=20 flowers=0'):
             with self.subTest(suffix=suffix),self.assertRaises(ValueError):validate(suppressed()+suffix+'\n',plan(20))

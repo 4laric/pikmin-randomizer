@@ -109,3 +109,8 @@ Real generation/save context, durable conversion witnesses, floor descent,
 Egg/plant content, source yaw application, retail room generation and full P2
 Candypop behavior remain open. This is a source-backed host generation policy
 with native actor validation, not a complete cave or population/save system.
+# Native witness follow-up
+
+The current runtime CLI additionally requires [per-conversion native diagnostics](PIKMIN2_VIOLET_WITNESSES.md)
+from #276. Use its executable for new acceptance runs; earlier #269 evidence
+remains tied to the executable and runner revision recorded below.

@@ -8,6 +8,7 @@
 #include "PikiHeadItem.h"
 #include "Pellet.h"
 #include "Pom.h"
+#include "Generator.h"
 #include "ItemMgr.h"
 #include "NaviMgr.h"
 #include "Navi.h"
@@ -28,6 +29,7 @@
 #include <cstdlib>
 namespace {
 bool enabled=false;
+unsigned long long conversionSequence=0;
 float stats[9]={};
 struct Clip {float seconds=1;std::vector<Shape*> shapes;std::vector<Matrix4f> happa;std::vector<bool> seen;};
 std::map<std::string,Clip> clips;
@@ -107,6 +109,7 @@ int pc_p2_convert_violet(Pom* pom, int remaining) {
     CI_LOOP(it) {
         Creature* creature=*it;if(!creature || !creature->isAlive() || !creature->isPiki())continue;
         Piki* p=static_cast<Piki*>(creature);
+        const char* input=pc_p2_is_purple(p)?"purple":p->mColor==Red?"red":p->mColor==Blue?"blue":p->mColor==Yellow?"yellow":"unknown";
         if(converted>=remaining){p->endStickObject();p->mFSM->transit(p,PIKISTATE_Normal);p->changeMode(PikiMode::FreeMode,naviMgr->getNavi());it.dec();continue;}
         PikiHeadItem* sprout=static_cast<PikiHeadItem*>(itemMgr->birth(OBJTYPE_Pikihead));
         if(!sprout){p->endStickObject();p->mFSM->transit(p,PIKISTATE_Normal);p->changeMode(PikiMode::FreeMode,naviMgr->getNavi());it.dec();continue;}
@@ -114,6 +117,9 @@ int pc_p2_convert_violet(Pom* pom, int remaining) {
         float angle=converted*1.256637f;sprout->mVelocity.set(120*std::sin(angle),500,120*std::cos(angle));
         sprout->startAI(0);C_SAI(sprout)->start(sprout,PikiHeadAI::PIKIHEAD_Flying);
         p->setEraseKill();p->kill(false);it.dec();++converted;
+        // Diagnostic only: sequence is process-local, not a durable Pikmin identity.
+        std::printf("P2_VIOLET_WITNESS sequence=%llu generator=%u input=%s\n",++conversionSequence,
+                    pom->mGenerator?static_cast<unsigned>(pom->mGenerator->_70):0u,input);
     }
     std::printf("P2_VIOLET_CONVERT count=%d\n",converted);pc_p2_purple_status();return converted;
 }

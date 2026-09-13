@@ -25,6 +25,22 @@ def trace():
 
 
 class BeastsRuntimeTests(unittest.TestCase):
+    def test_native_witnesses_required_and_tamper_rejected(self):
+        log=trace()
+        for index,generator in enumerate((62000,62001)):
+            batch='\n'.join(f'P2_VIOLET_WITNESS sequence={index*5+i+1} generator={generator} input=red' for i in range(5))
+            target=f'P2_VIOLET_CONVERT count=5\nP2_BEASTS_FLOWER_CONVERTED id={generator}'
+            log=log.replace(target,batch+'\n'+target)
+        self.assertEqual(len(validate(log,PLAN,require_witnesses=True)['witnesses']),10)
+        with self.assertRaises(ValueError):validate(trace(),PLAN,require_witnesses=True)
+        for old,new in [('sequence=2','sequence=1'),('generator=62001','generator=62000'),
+                        ('input=red','input=purple'),('input=red','input=unknown'),
+                        ('sequence=10','sequence=11'),('sequence=1 ','sequence=01 ')]:
+            with self.subTest(old=old,new=new),self.assertRaises(ValueError):validate(log.replace(old,new),PLAN,require_witnesses=True)
+        witness=next(line for line in log.splitlines() if line.startswith('P2_VIOLET_WITNESS'))
+        for bad in (log+witness+'\n',log.replace(witness+'\n',''),witness+'\n'+log.replace(witness+'\n','')):
+            with self.subTest(log=bad),self.assertRaises(ValueError):validate(bad,PLAN,require_witnesses=True)
+
     def test_complete_trace(self):
         result = validate(trace(),PLAN)
         self.assertEqual(result['final_population'],dict(red=10,purple=10,sprouts=0))

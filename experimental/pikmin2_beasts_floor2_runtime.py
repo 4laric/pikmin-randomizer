@@ -15,7 +15,35 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def validate(log, readiness):
+def conversion_witnesses(log, generators):
+    """Validate diagnostics for this twenty-Red fixture, not campaign handoffs."""
+    records=[]
+    for line in log.splitlines():
+        if not line.startswith('P2_VIOLET_WITNESS'):continue
+        match=re.fullmatch(r'P2_VIOLET_WITNESS sequence=([1-9][0-9]*) generator=([0-9]+) input=(red|blue|yellow|purple)',line)
+        if match is None:raise ValueError('Malformed conversion witness')
+        sequence,generator,color=match.groups()
+        records.append(dict(sequence=int(sequence),generator=int(generator),input=color))
+    expected=[generator for generator in generators for _ in range(5)]
+    if ([r['sequence'] for r in records]!=list(range(1,len(expected)+1))
+            or [r['generator'] for r in records]!=expected or any(r['input']!='red' for r in records)):
+        raise ValueError('Conversion witness sequence/source/input differs')
+    if records:
+        ready=log.index('P2_BEASTS_READY ');sprouts=log.index('P2_BEASTS_SPROUTS ')
+        positions=[m.start() for m in re.finditer(r'^P2_VIOLET_WITNESS',log,re.M)]
+        if not all(ready<position<sprouts for position in positions):raise ValueError('Conversion witness outside conversion phase')
+        # Every successful batch must account for exactly its preceding witnesses.
+        pending=0
+        for line in log.splitlines():
+            if line.startswith('P2_VIOLET_WITNESS'):pending+=1
+            elif line.startswith('P2_VIOLET_CONVERT'):
+                if line!=f'P2_VIOLET_CONVERT count={pending}':raise ValueError('Conversion witness batch differs')
+                pending=0
+        if pending:raise ValueError('Uncommitted conversion witness batch')
+    return records
+
+
+def validate(log, readiness, *, require_witnesses=False):
     context=readiness.get('generation_context')
     if context is not None:
         try:expected_context=generation_context(context['global_plus_cave_purple'])
@@ -35,7 +63,7 @@ def validate(log, readiness):
             if any(log.count(m)!=1 for m in milestones) or [log.index(m) for m in milestones]!=sorted(log.index(m) for m in milestones):
                 raise ValueError('Missing or unordered suppression milestones')
             if any(m in log for m in ('FAIL ','P2_POD_RECEIPT','P2_TREASURE_DELIVERED','P2_ROOM_READY treasure=',
-                                     'P2_BEASTS_FLOWER ','P2_BEASTS_THROW','P2_VIOLET_CONVERT','P2_BEASTS_APPROACH',
+                                     'P2_BEASTS_FLOWER ','P2_BEASTS_THROW','P2_VIOLET_CONVERT','P2_VIOLET_WITNESS','P2_BEASTS_APPROACH',
                                      'P2_BEASTS_SPROUTS','P2_BEASTS_CAPTAIN_PLUCK','P2_BEASTS_FLOWER_CONVERTED','PASS P2_BEASTS_FLOOR2')):
                 raise ValueError('Suppressed floor produced unexpected actors/actions/rewards')
             return dict(flowers=[],conversions=[],throw_attempts=0,final_population=dict(red=20,purple=0,sprouts=0),cargo=0,pokos=0)
@@ -80,7 +108,8 @@ def validate(log, readiness):
     approaches = re.findall(r'^P2_BEASTS_APPROACH flower=(\d+) distance=([\d.]+)$',log,re.M)
     if [i for i,_ in approaches] != ['62000','62001'] or any(not 0 <= float(d) <= 80 for _,d in approaches):
         raise ValueError('Both flowers need controller approach evidence')
-    return dict(flowers=flowers, conversions=conversions, throw_attempts=len(throws),
+    witnesses=conversion_witnesses(log,sorted(planned)) if require_witnesses or 'P2_VIOLET_WITNESS' in log else None
+    return dict(flowers=flowers, conversions=conversions, witnesses=witnesses, throw_attempts=len(throws),
                 final_population=dict(red=10,purple=10,sprouts=0),cargo=0,pokos=0)
 
 
@@ -98,7 +127,7 @@ def run(args):
     inputs = ['readiness.json','p2-purple.txt','p2-pod.txt','p2-cargo-free.txt','p2-beasts-floor2-fixture.txt']
     inputs += ['assets/'+name for name in readiness['override_sha256']]
     hashes = {name:sha(stage/name) for name in inputs}
-    evidence = dict(schema=1,issue=269,run=str(stage),executable=str(exe),executable_sha256=sha(exe),
+    evidence = dict(schema=1,issue=276,witness_policy='P2_VIOLET_DIAGNOSTIC_1',run=str(stage),executable=str(exe),executable_sha256=sha(exe),
                     generation_context=context,generation_identity=readiness['generation_identity'],
                     readiness_sha256=sha(stage/'readiness.json'),natural_gameplay=False,
                     scripted_native_throws=True,scripted_captain_pluck=True,remaining_plucks='InteractBikkuri',
@@ -115,7 +144,7 @@ def run(args):
     text = (stage/'native.log').read_text(errors='replace')
     try:
         if evidence.get('returncode') != 0:raise ValueError('Native fixture did not exit successfully')
-        evidence['observed'] = validate(text,readiness)
+        evidence['observed'] = validate(text,readiness,require_witnesses=True)
         if sha(exe) != evidence['executable_sha256'] or any(sha(stage/name)!=digest for name,digest in hashes.items()):
             raise ValueError('Executable or staged input changed during run')
         for name in ('treasure-receipt.txt','p2-economy.txt','p2-cargo.txt'):
