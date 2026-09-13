@@ -82,7 +82,7 @@ def _vtx1(positions, normals, uvs):
     return _block(b'VTX1', body)
 
 
-def _shp1(vertex_count, with_normals, display_indices=None):
+def _shp1(vertex_count, with_normals, display_indices=None, matrix_type=0):
     attrs = [(0, 2), (9, 2)] + ([(10, 2)] if with_normals else []) + [(13, 2)]
     descriptor = b''.join(struct.pack('>II', a, k) for a, k in attrs) + struct.pack('>II', 255, 0)
     indices = display_indices if display_indices is not None else list(range(vertex_count))
@@ -94,6 +94,7 @@ def _shp1(vertex_count, with_normals, display_indices=None):
             dl += bytes([0])  # normal index 0
         dl += bytes([i if i < 3 else 0])  # uv index
     record = bytearray(40)
+    record[0] = matrix_type  # SHP1 shape matrix type (0 Base, 1 BBoard, ...)
     struct.pack_into('>4H', record, 2, 1, 0, 0, 0)  # groups=1, desc=0, mi=0, di=0
     body = bytearray(48)
     struct.pack_into('>H', body, 8, 1)      # one shape
@@ -143,11 +144,14 @@ def _tex1():
     return _block(b'TEX1', body)  # zero textures (u16 at 8 defaults to 0)
 
 
-def build_model(positions, normals, uvs, display_indices=None, display_normals=True):
+def build_model(positions, normals, uvs, display_indices=None, display_normals=True,
+                matrix_type=0):
     """One-shape rigid model. ``normals`` populates the VTX1 normal array;
     ``display_normals=False`` drops the normal attribute from the shape
-    display list (the KingChappy pattern)."""
-    parts = [_inf1(), _vtx1(positions, normals, uvs), _shp1(len(positions), display_normals, display_indices),
+    display list (the KingChappy pattern). ``matrix_type`` selects the SHP1
+    shape matrix type (0 Base, 1 BBoard, ...)."""
+    parts = [_inf1(), _vtx1(positions, normals, uvs), _shp1(len(positions), display_normals, display_indices,
+             matrix_type),
              _jnt1(), _drw1(), _evp1(), _mat3(), _tex1()]
     data = bytearray(32)
     data[:8] = b'J3D2bmd3'

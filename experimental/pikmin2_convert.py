@@ -73,13 +73,22 @@ def diffuse_slot(m, r):
         if list(m[gen:gen+3])==[1,4,60]:return slot
     return 0
 
+# J3D SHP1 shape matrix types: 0 Base, 1 BBoard, 2 Y-BBoard, 3 Multi (skin).
+# Type 1 is a camera-facing billboard; the static MOD format has no view-time
+# matrix, so the default keeps rejecting it. 'static' is an explicit, recorded
+# fallback that bakes the authored billboard geometry through its rigid joint
+# draw matrix without pretending to reproduce the camera-facing orientation.
+BILLBOARD_MODES=('error','static')
+
 def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_matrices=None,
-           missing_normals='error', singular_normal='error'):
+           missing_normals='error', singular_normal='error', billboard='error'):
     from experimental.pikmin2_rigid import MISSING_NORMAL_MODES, SINGULAR_NORMAL_MODES
     if missing_normals not in MISSING_NORMAL_MODES:
         raise ValueError(f'Unsupported missing normals mode {missing_normals!r}')
     if singular_normal not in SINGULAR_NORMAL_MODES:
         raise ValueError(f'Unsupported singular normal mode {singular_normal!r}')
+    if billboard not in BILLBOARD_MODES:
+        raise ValueError(f'Unsupported billboard mode {billboard!r}')
     b=blocks(data); j=b['JNT1']; d=b['DRW1']
     if draw_matrices is not None:
         if not bake_rigid or pose is not None:
@@ -126,9 +135,16 @@ def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_
     # texture animation is omitted in the explicit material approximation.
     texture_matrix_attrs=range(1,9) if draw_matrices is not None else (1,)
     discarded_matrix_attrs=set()
+    billboard_shapes=[]
     for si in range(u16(s,8)):
         rec=u32(s,12)+u16(s,u32(s,16)+2*si)*40
-        if s[rec]!=0 and not (bake_rigid and s[rec]==3): raise ValueError('Unsupported shape matrix type')
+        shape_type=s[rec]
+        if shape_type==1:
+            if not (bake_rigid and billboard=='static'):
+                raise ValueError('Unsupported shape matrix type')
+            billboard_shapes.append(si)
+        elif shape_type!=0 and not (bake_rigid and shape_type==3):
+            raise ValueError('Unsupported shape matrix type')
         groups,desc,mi,di=unpack(s,'4H',rec+2); attrs=[]; at=u32(s,24)+desc
         while u32(s,at)!=255:
             attr,kind=unpack(s,'II',at); at+=8
@@ -201,6 +217,10 @@ def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_
         materials.append(tex)
         states.append(pixel_state(m,r))
     b['_render_states']=[states[mapping[i]] for i in range(len(shapes))]
+    if billboard_shapes:
+        b['_billboard_policy']=billboard
+        b['_billboard_shapes']=list(billboard_shapes)
+        b['_billboard_materials']=[mapping[i] for i in billboard_shapes]
     if bake_rigid:
         from experimental.pikmin2_rigid import bake
         # Primitive strips/fans share vertex dictionaries; bake each reference independently.
@@ -227,10 +247,11 @@ class Writer:
         self.pad(); struct.pack_into('>I',self.data,self.start+4,len(self.data)-self.start-8)
 
 def convert(source, output, approximate_materials=False, y_offset=0.0, bake_rigid=False, pose=None, material_colors=None,
-            missing_normals='error', singular_normal='error'):
+            missing_normals='error', singular_normal='error', billboard='error'):
     if pose is not None and not bake_rigid: raise ValueError('Animation pose requires rigid baking')
     report=write_model(decode(Path(source).read_bytes(), approximate_materials,bake_rigid,pose,
-                              missing_normals=missing_normals, singular_normal=singular_normal),output,str(source),y_offset,material_colors)
+                              missing_normals=missing_normals, singular_normal=singular_normal,
+                              billboard=billboard),output,str(source),y_offset,material_colors)
     report['rigid_bind_pose_baked']=bake_rigid
     Path(output).with_suffix('.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     return report
@@ -313,6 +334,15 @@ def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
         report['missing_normals']=b['_missing_normals']
     if b.get('_singular_normal','error')!='error':
         report['singular_normal']=b['_singular_normal']
+    # Billboard fallback is recorded only when a type-1 shape was actually
+    # baked, so strict/unaffected conversions keep byte-identical reports.
+    if '_billboard_policy' in b:
+        report['billboard_policy']=b['_billboard_policy']
+        report['billboard_shapes']=b['_billboard_shapes']
+        report['billboard_materials']=b['_billboard_materials']
+        report['billboard_note']=('Shape matrix type 1 (billboard) statically baked '
+                                  'through its rigid joint draw matrix; camera-facing '
+                                  'orientation is not reproduced by the static MOD format.')
     output.with_suffix('.json').write_text(json.dumps(report,indent=2),encoding='utf-8');return report
 
 if __name__=='__main__':
