@@ -123,3 +123,19 @@ level or a requirement to finish every easier enemy before parallel research.
 These three new lanes initially own extraction/profile work only. Their first handoff determines whether the next step is a compatible P1 proxy or a new native mechanic. No shared native ID ranges or hooks are allocated by this table.
 
 Remaining families are already tracked: Bulborbs #120, ground invertebrates #165, flying #166, aquatic #167, scavengers #168, projectiles #169, elemental #170, flora #171, Bulblax/larvae #172, Long Legs #173, Snagrets/Crawbster #174, Waterwraith/Titan #175. Work can split further by independent resource/FSM group once an owner claims a child issue. Do not concurrently implement variants that share the same base module. Multi-actor bosses and captors need helper/receiver lifetime contracts before gameplay integration; they can still perform isolated extraction audits in parallel.
+
+## Confirmed ownership update — September 13
+
+This update supersedes the initial queue above. User confirmed additional Kimi sessions; GitHub account assignment alone does not identify the worker.
+
+| Owner | Reserved scope | Issue |
+|---|---|---|
+| Kimi | Dwarf Orange/Dwarf Bulbear installation and arenas, following completed200 | #211 |
+| Kimi | Flint Beetle, Glint Beetle, Doodlebug | #212 |
+| Kimi | Breadbug, nests and Giant Breadbug continuation | #213 |
+| Kimi | Mamuta | #214 |
+| Separate hard-enemy task | Demon/Sarai capture family | #215 |
+| Root subagents | Frog/Honeywisp material fixes; Tank movie-heap diagnosis | #207 |
+| Root integration | Shared converter/native hooks/build/export; cave diagnostics | #186, #193 |
+
+Groink revival is parked by user direction. Kimi issues211–214 had no completion comments at this check. Breadbug213 must reuse existing168 extraction/proxy/cargo evidence and address remaining gaps rather than duplicate the finished small-Breadbug batch. Source assets alone do not satisfy runtime checks in those issue bodies. Shared native changes still come through the integration lead. Fixed independent QA184 remains a separate unfinished acceptance scope.
