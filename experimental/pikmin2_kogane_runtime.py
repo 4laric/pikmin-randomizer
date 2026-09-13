@@ -10,7 +10,7 @@ with a private instrumented RoomApp and verifies ONLY:
   - installed artifact hashes readable from the run directory.
 Flip/drop, Fart gas, forced escape and cave relocation remain BLOCKED gates.
 """
-import argparse, json, os, re, subprocess
+import argparse, hashlib, json, os, re, subprocess
 from pathlib import Path
 from scripts import build_pikmin2_fixture as builder
 from experimental.pikmin2_kogane_arena import prepare
@@ -142,6 +142,71 @@ def run(assets, bank, output, exe):
     (stage / 'runtime-evidence.json').write_text(json.dumps(evidence, indent=2))
     print(stage, flush=True)
     print(json.dumps(evidence), flush=True)
+
+
+BINDING_IDS = {219001: 9, 219002: 10, 219003: 11, 219004: -1}
+
+
+def validate_binding(text, code):
+    """Validate a native binding-check log (root #228 BindingCheck.exe output).
+
+    Verifies the typed source-ID mapping (9/10/11 for the three beetle actors,
+    -1/control for 219004), exact birth XYZ against the arena roster, a native
+    draw invocation and the PASS marker. P1 host AI remains; no source-FSM,
+    drop or gas claim is made here.
+    """
+    ids = {int(i): (int(s), int(c)) for i, s, c in
+           re.findall(r'P2_KOGANE_ID id=(\d+) source_id=(-?\d+) control=(\d)', text)}
+    births = {int(m[0]): (float(m[2]), float(m[3]), float(m[4])) for m in
+              re.findall(r'P2_KOGANE_BIRTH id=(\d+) type=(\d+) x=(-?\d+\.\d+) y=(-?\d+\.\d+) z=(-?\d+\.\d+)', text)}
+    from experimental.pikmin2_kogane_arena import IDS, POSITIONS
+    expected = dict(zip(IDS, POSITIONS))
+    checks = dict(
+        completion=code == 0 and 'PASS P2_KOGANE_RUNTIME ' in text,
+        typed_mapping={i: ids.get(i, (None,))[0] for i in BINDING_IDS} ==
+                      {i: s for i, s in BINDING_IDS.items()},
+        control_flag=ids.get(219004, (None, None))[1] == 1 and
+                     all(ids.get(i, (None, 1))[1] == 0 for i in (219001, 219002, 219003)),
+        exact_xyz=all(births.get(i) == tuple(p) for i, p in expected.items()),
+        draw='P2_KOGANE_DRAW corpse=0' in text,
+        host_ai_disclaimed='behavior=P1_visual_binding_source_FSM_pending' in text)
+    return dict(passed=all(checks.values()), checks=checks,
+                typed={str(k): v for k, v in sorted(ids.items())},
+                births={str(k): list(v) for k, v in sorted(births.items())},
+                unmeasured=['source FSM', 'flips/drops/gas', 'material/texture fidelity', 'manager reset/reentry'],
+                scope='Native source-ID registration and visual binding; P1 host AI retained')
+
+
+def verify_fixed_run(stage, install_receipt=None):
+    """Host-side verification of a fixed binding run bundle (Check.cmd directory).
+
+    Re-hashes every file listed in fixed-manifest.json, requires the recorded
+    evidence to have passed, and — when given this lane's install receipt —
+    proves the binding consumed the lane's installed configs unchanged.
+    """
+    stage = Path(stage)
+    manifest = json.loads((stage / 'fixed-manifest.json').read_text())
+    if manifest.get('schema') != 1:
+        raise ValueError('Unsupported fixed manifest schema')
+    mismatched = [name for name, digest in manifest.get('files', {}).items()
+                  if not (stage / name).is_file()
+                  or hashlib.sha256((stage / name).read_bytes()).hexdigest() != digest]
+    evidence = manifest.get('evidence', {})
+    checks = dict(files_intact=not mismatched,
+                  evidence_passed=evidence.get('passed') is True,
+                  command_recorded=bool(manifest.get('command')) and bool(manifest.get('native_head')))
+    result = dict(passed=all(checks.values()), checks=checks, mismatched=mismatched,
+                  native_head=manifest.get('native_head'))
+    if install_receipt is not None:
+        receipt = json.loads(Path(install_receipt).read_text())
+        lane = dict(profile=receipt['profile_config_sha256'], bank=receipt['bank_config_sha256'],
+                    actors=receipt['actors_config_sha256'])
+        bound = dict(profile=manifest['files'].get('p2-kogane-profile.txt'),
+                     bank=manifest['files'].get('p2-kogane-bank.txt'),
+                     actors=manifest['files'].get('p2-kogane-actors.txt'))
+        result['lane_configs_consumed_unchanged'] = lane == bound
+        result['passed'] = result['passed'] and result['lane_configs_consumed_unchanged']
+    return result
 
 
 if __name__ == '__main__':
