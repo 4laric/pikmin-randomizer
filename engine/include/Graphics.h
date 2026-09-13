@@ -306,6 +306,10 @@ struct DGXGraphics : public Graphics {
 	VIRetraceCallback mRetraceCallback;  // _620
 	OSMessageQueue mPostRetraceMsgQueue; // _624
 	OSMessage mPostRetraceMsgBuffer;     // _644
+#if defined(PIKI_PC_PORT)
+	bool mP2Envmap = false;
+	float mP2EnvSRT[2][3] = {};
+#endif
 };
 
 extern DGXGraphics* gfx;

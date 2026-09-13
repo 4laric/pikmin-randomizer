@@ -43,3 +43,5 @@ its texture matrices, source lighting and complete retail material appearance
 are not implemented here. OniKurage's descriptor is tested but it has no runtime
 capture in this batch. The earlier green/purple whole-frame capture did not
 reproduce in the fresh baseline, so this patch does not claim to fix it.
+
+Follow-up: [explicit two-stage environment export](PIKMIN2_ENVMAP.md) documents #286 and its separate native requirement. The limits above describe this first-stage-only tool.
