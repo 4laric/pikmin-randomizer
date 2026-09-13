@@ -105,3 +105,13 @@ inspected. Fixture SHA-256:
 The first attempt correctly found no visible animation on Snow's unmodified
 combiner; it did not consume the selected register. Only the diagnostic fixture
 was changed to consume C0, not any production family material.
+
+After importing maintained converter integration #420, 52 combined tests passed
+(3 expected skips, 377 subtests). The fixture adopted the current squad overlay
+and an equivalent explicit SDL startup after settings: hidden 960×540, centered.
+Fresh `run03` observed 20 living Pikmin, active gameplay and window position
+(373,263), with runtime size/centering assertions. Rendered acceptance passed
+again: 71,040 changed channels and exact replay/restoration. Final fixture SHA-256:
+`f48cdca903b3dfd42169114d434c61125cba27d65886ccf4c45a0d7afeac381f`.
+This replacement-main fixture does not rely on production `pc_main.cpp` to apply
+the window policy. Render evidence is OpenGL; other-backend parity is unclaimed.

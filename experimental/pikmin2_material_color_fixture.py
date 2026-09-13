@@ -32,6 +32,10 @@ public:
  }
  void draw(Graphics& gfx)override{
   PlugPikiApp::draw(gfx);if(ready<120||!model)return;require(gfx.mCamera,"camera");
+  int live=0;Iterator pikmin(pikiMgr);CI_LOOP(pikmin){if(static_cast<Piki*>(*pikmin)->isAlive())++live;}require(live>=20,"starting squad");
+  auto* window=SDL_GL_GetCurrentWindow();int w,h,x,y;SDL_GetWindowSize(window,&w,&h);SDL_GetWindowPosition(window,&x,&y);SDL_Rect display;require(SDL_GetDisplayBounds(SDL_GetWindowDisplayIndex(window),&display)==0,"display");
+  require(w==960&&h==540&&std::abs(x-(display.x+(display.w-w)/2))<=2&&std::abs(y-(display.y+(display.h-h)/2))<=2,"window baseline");
+  std::printf("FIXTURE_BASELINE live_pikmin=%d active=1 width=%d height=%d x=%d y=%d centered=1 hidden=1\n",live,w,h,x,y);
   gfx.setPerspective(gfx.mCamera->mPerspectiveMatrix.mMtx,gfx.mCamera->mFov,gfx.mCamera->mAspectRatio,gfx.mCamera->mNear,gfx.mCamera->mFar,1.f);gfx.setDepth(true);gfx.useMaterial(nullptr);
   Matrix4f world,view;world.makeSRT(Vector3f(5,5,5),Vector3f(0,0,0),naviMgr->getNavi()->mSRT.t+Vector3f(0,20,0));gfx.mCamera->mLookAtMtx.multiplyTo(world,view);
   auto state=[&](){std::vector<int> out;for(int i=0;i<model->mMaterialCount;++i){auto* tev=model->mMaterialList[i].mTevInfo;if(!tev)continue;
@@ -54,13 +58,18 @@ def build(native,build_dir,output,head):
     output=output.resolve();output.mkdir(parents=True,exist_ok=False)
     source=(Path(__file__).resolve().parents[1]/'scripts/pikmin2_material_binding_fixture.cpp').read_text()
     start=source.index('class MaterialApp final:');end=source.index('int main(',start)
-    source='#include "pc_p2_color_binding.h"\n#include <fstream>\n'+source[:start]+APP+source[end:]
+    source='#include "pc_p2_color_binding.h"\n#include "PikiMgr.h"\n#include "Piki.h"\n#include <fstream>\n'+source[:start]+APP+source[end:]
+    source=source.replace('960,720','960,540')
+    anchor='pc_settings_p2d_init();'
+    assert source.count(anchor)==1
+    source=source.replace(anchor,anchor+'''auto* window=SDL_GL_GetCurrentWindow();SDL_SetWindowSize(window,960,540);SDL_Rect bounds;require(SDL_GetDisplayBounds(SDL_GetWindowDisplayIndex(window),&bounds)==0,"display bounds");SDL_SetWindowPosition(window,bounds.x+(bounds.w-960)/2,bounds.y+(bounds.h-540)/2);''')
     (output/'fixture.cpp').write_text(source)
     return build_fixture(build_dir,native,output/'fixture.cpp',output/'build',head)
 
 def stage(source,bank,output):
     source=source.resolve();output=output.resolve();output.mkdir(parents=True,exist_ok=False)
-    overlay(source/'assets',output/'assets',{})
+    gen='dataDir/stages/chal0/default.gen'
+    overlay(source/'assets',output/'assets',{gen:(source/'assets'/gen).read_bytes()})
     shutil.copyfile(source/'p2-pod.txt',output/'p2-pod.txt')
     shutil.copyfile(bank/'material-color.txt',output/'material-color.txt')
     return output
