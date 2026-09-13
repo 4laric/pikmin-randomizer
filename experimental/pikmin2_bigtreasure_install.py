@@ -28,6 +28,19 @@ SEAM_BINDINGS = ('map_trace', 'ground_query', 'host_profile', 'tick_entry',
 EXTERNAL_DEPS = ('models_motions:#128', 'pellet_configs:disc_data',
                  'mpellet_drop_code:disc_data')
 
+# Disc-verified pellet configurations (#128 extraction,
+# docs/PIKMIN2_ENGINE_DISC_PARMS.md): carry min/max, poko value, treasure
+# dictionary ID, collision radius/height. loozy money 10 is verbatim.
+# mPelletDropCode is null in story mode: the finale treasure is the loozy
+# pellet itself (releaseItemLoozy, dead.bca KEYEVENT_100 frame 320).
+PELLET_CONFIGS = {
+    'elec':  {'carry_min': 30, 'carry_max': 40, 'pokos': 1000, 'dictionary': 197, 'radius': 35, 'height': 50},
+    'fire':  {'carry_min': 30, 'carry_max': 40, 'pokos': 1000, 'dictionary': 198, 'radius': 35, 'height': 52},
+    'gas':   {'carry_min': 30, 'carry_max': 40, 'pokos': 1000, 'dictionary': 199, 'radius': 37, 'height': 20},
+    'water': {'carry_min': 30, 'carry_max': 40, 'pokos': 1000, 'dictionary': 200, 'radius': 35, 'height': 51},
+    'loozy': {'carry_min': 1,  'carry_max': 5,  'pokos': 10,   'dictionary': 201, 'radius': 12, 'height': 10},
+}
+
 
 def sha(data):
     return hashlib.sha256(data).hexdigest()
@@ -46,6 +59,13 @@ def profile_text():
                 'weapon_hp 6000 body_damage_zero_weapons_only')
     rows.append('teardown pools_first water_bubbles_force_recycled '
                 'weapon_pop_y_100 louie_pop_y_150')
+    for name in ('elec', 'fire', 'gas', 'water', 'loozy'):
+        cfg = PELLET_CONFIGS[name]
+        rows.append(f'pellet {name} carry {cfg["carry_min"]} {cfg["carry_max"]} '
+                    f'pokos {cfg["pokos"]} dict {cfg["dictionary"]} '
+                    f'radius {cfg["radius"]} height {cfg["height"]}')
+    rows.append('finale mpellet_drop_code_null_story loozy_pellet_via_releaseItemLoozy '
+                'dead_bca_keyevent_100_frame_320')
     for name in SEAM_BINDINGS:
         rows.append(f'binding {name} lane_owned')
     for dep in EXTERNAL_DEPS:
@@ -72,6 +92,7 @@ def install(run_dir):
     target.write_bytes(data)
     payload = {'status': 'installed', 'seam': SEAM_VERSION, 'enemy_id': ENEMY_ID,
                'profile_sha256': digest, 'bindings': list(SEAM_BINDINGS),
+               'pellet_configs': PELLET_CONFIGS,
                'external_dependencies': list(EXTERNAL_DEPS)}
     receipt.write_text(json.dumps(payload, indent=2) + '\n', encoding='utf-8')
     return payload

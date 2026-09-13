@@ -48,6 +48,19 @@ class BigTreasureInstallTest(unittest.TestCase):
         self.assertIn('pools_first', text)
         self.assertIn('mpellet_drop_code:disc_data', text)
 
+    def test_pellet_configs_recorded(self):
+        text = install_mod.profile_text()
+        self.assertIn('pellet elec carry 30 40 pokos 1000 dict 197 radius 35 height 50', text)
+        self.assertIn('pellet fire carry 30 40 pokos 1000 dict 198 radius 35 height 52', text)
+        self.assertIn('pellet gas carry 30 40 pokos 1000 dict 199 radius 37 height 20', text)
+        self.assertIn('pellet water carry 30 40 pokos 1000 dict 200 radius 35 height 51', text)
+        self.assertIn('pellet loozy carry 1 5 pokos 10 dict 201 radius 12 height 10', text)
+        self.assertIn('mpellet_drop_code_null_story', text)
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = install_mod.install(tmp)
+            self.assertEqual(payload['pellet_configs']['loozy']['pokos'], 10)
+            self.assertEqual(payload['pellet_configs']['water']['dictionary'], 200)
+
 
 if __name__ == '__main__':
     unittest.main()
