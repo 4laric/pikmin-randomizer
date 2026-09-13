@@ -17,6 +17,7 @@
 #include "System.h"
 #include "Joint.h"
 #include "pc_p2_pose_bank.h"
+#include "pc_p2_skin.h"
 #include "Texture.h"
 #include "gameflow.h"
 #include "Graphics.h"
@@ -35,8 +36,11 @@ std::set<PelletView*> actors;
 std::map<std::string,p2animation::Clip> timing;
 bool interpolation=false;
 bool campaignMode=false;
+std::shared_ptr<const p2skin::Mesh> skin;
+std::shared_ptr<const p2attach::Bank> skeleton;
 std::map<std::string,std::vector<p2pose::Baked>> baked;
-struct Mutable { Shape* shape=nullptr;std::string clip;float frame=0;bool corpse=false;unsigned generator=0; };
+struct Mutable { Shape* shape=nullptr;std::string clip;float frame=0;bool corpse=false;unsigned generator=0;
+    std::unique_ptr<p2attach::Instance> skeleton;uint64_t token=0,tick=0;p2pose::Pose deformed; };
 std::map<PelletView*,Mutable> instances;
 P2SnowHealthPolicy healthPolicy;
 P2SnowAttackPolicy attackPolicy;
@@ -44,7 +48,7 @@ P2SnowTurnPolicy turnPolicy;
 P2SnowChasePolicy chasePolicy;
 }
 float pc_p2_snow_max_health(const BTeki* actor,float fallback) { return healthPolicy.life(actor,fallback); }
-void pc_p2_snow_reset() { interpolation=false;campaignMode=false;baked.clear();instances.clear(); clips.clear();actors.clear();timing.clear();healthPolicy.reset();attackPolicy.reset();turnPolicy.reset();chasePolicy.reset(); }
+void pc_p2_snow_reset() { interpolation=false;campaignMode=false;skin.reset();skeleton.reset();baked.clear();instances.clear(); clips.clear();actors.clear();timing.clear();healthPolicy.reset();attackPolicy.reset();turnPolicy.reset();chasePolicy.reset(); }
 void pc_p2_snow_forget(BTeki* actor) { instances.erase(static_cast<PelletView*>(actor)); healthPolicy.forget(actor);attackPolicy.forget(actor);turnPolicy.forget(actor);chasePolicy.forget(actor);actors.erase(static_cast<PelletView*>(actor)); }
 bool pc_p2_snow_chase(BTeki* actor,const Vector3f& target) {
     if(!actor->isAlive() || !chasePolicy.contains(actor))return false;
@@ -94,6 +98,11 @@ void bindSnow(Teki* teki) {
                 model->mMaterialList=shared->mMaterialList;model->mTexAttrList=shared->mTexAttrList;model->mTevInfoList=shared->mTevInfoList;
                 for(const auto& other:instances)if(other.second.shape->mVertexList==model->mVertexList || other.second.shape->mNormalList==model->mNormalList)std::abort();
                 instances.emplace(static_cast<PelletView*>(teki),Mutable{model,"",0,false,identity});
+                if(skin){auto& state=instances.at(static_cast<PelletView*>(teki));
+                    state.skeleton=std::make_unique<p2attach::Instance>();state.token=state.skeleton->bind(skeleton);
+                    if(!state.token || skin->positions.size()!=base.positions.size() || skin->normals.size()!=base.normals.size())std::abort();
+                    state.deformed.positions.resize(skin->positions.size());state.deformed.normals.resize(skin->normals.size());
+                    std::printf("P2_SNOW_SKELETAL_READY joints=%zu positions=%zu normals=%zu\n",skin->joints,skin->positions.size(),skin->normals.size());}
                 std::printf("P2_SNOW_INTERPOLATION_READY generator=%u positions=%d normals=%d private_geometry=1 gameplay_clock=P1\n",identity,model->mVertexCount,model->mNormalCount);
             }
             attackPolicy.bind(static_cast<BTeki*>(teki));
@@ -132,6 +141,12 @@ void pc_p2_snow_setup() {
     const auto started=std::chrono::steady_clock::now();
     std::ifstream blendOption(campaignMode?"assets/p2-snow-interpolation.txt":"p2-snow-interpolation.txt");
     if(blendOption){std::string magic,extra;if(!(blendOption>>magic)||magic!="P2_SNOW_INTERPOLATION_1"||(blendOption>>extra))std::abort();interpolation=true;}
+    std::ifstream skinOption(campaignMode?"assets/p2-snow-skeletal.txt":"p2-snow-skeletal.txt");
+    if(skinOption){std::string magic,extra;if(!(skinOption>>magic)||magic!="P2_SNOW_SKELETAL_1"||(skinOption>>extra)||!interpolation)std::abort();
+        std::ifstream mesh(campaignMode?"assets/p2-snow-skin.txt":"p2-snow-skin.txt");
+        std::ifstream joints(campaignMode?"assets/p2-snow-joints.txt":"p2-snow-joints.txt");
+        skin=p2skin::read(mesh);skeleton=p2attach::read(joints);
+        if(!skin||!skeleton||skin->joints!=skeleton->joints.size())std::abort();}
     std::vector<unsigned char> topology;
     std::vector<p2animation::Clip> manifest;
     if(!p2animation::parse(in,manifest) || (!campaignMode && !pc_p2_preview_goal()))std::abort();
@@ -173,6 +188,7 @@ void pc_p2_snow_setup() {
     timing.clear();
     for(const auto& clip:manifest) {
         timing[clip.name]=clip;
+        if(skeleton){int ci=skeleton->clip(clip.name);if(ci<0||skeleton->clips[ci].duration!=clip.duration)std::abort();}
         for(int i=0;i<clip.count;++i) {
             char path[128];std::snprintf(path,sizeof(path),"courses/pikmin2room/snow_%s_%02d.mod",clip.name.c_str(),i);
             Shape* shape=gameflow.loadShape(path,true);if(!shape)std::abort();
@@ -257,8 +273,14 @@ bool pc_p2_snow_draw(BTeki* teki,Graphics& gfx,const Matrix4f& matrix,bool corps
         const auto& clip=timing.at(name);const float frame=sourceFrame;
         p2pose::Interval span;if(!p2pose::bracket(clip.frames,frame,span))std::abort();
         const auto& a=baked.at(name)[span.left].pose;const auto& b=baked.at(name)[span.right].pose;
+        if(skin){if(!instance.skeleton->sample(instance.token,skeleton->clip(name),frame,p2attach::Affine{},++instance.tick) ||
+            !p2skin::deform(*skin,*instance.skeleton,instance.token,instance.deformed))std::abort();
+            for(size_t i=0;i<instance.deformed.positions.size();++i){const auto& v=instance.deformed.positions[i];shape->mVertexList[i].set(v.x,v.y,v.z);}
+            for(size_t i=0;i<instance.deformed.normals.size();++i){const auto& v=instance.deformed.normals[i];shape->mNormalList[i].set(v.x,v.y,v.z);}
+        }else{
         for(size_t i=0;i<a.positions.size();++i){auto v=p2pose::mix(a.positions[i],b.positions[i],span.weight);shape->mVertexList[i].set(v.x,v.y,v.z);}
         for(size_t i=0;i<a.normals.size();++i){p2pose::Vec v;if(!p2pose::unit(p2pose::mix(a.normals[i],b.normals[i],span.weight),v))v=span.weight<=.5f?a.normals[i]:b.normals[i];shape->mNormalList[i].set(v.x,v.y,v.z);}
+        }
         BoundBox bounds(shape->mVertexList[0],shape->mVertexList[0]);for(int i=1;i<shape->mVertexCount;++i)bounds.expandBound(shape->mVertexList[i]);
         shape->mCourseExtents=bounds;shape->mJointList[0].mBounds=bounds;
         if(instance.clip!=name || instance.corpse!=corpse)std::printf("P2_SNOW_BLEND generator=%u clip=%s corpse=%d source_frame=%.5f\n",instance.generator,name,int(corpse),frame);
