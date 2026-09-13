@@ -10,6 +10,15 @@
 using namespace p2king;
 
 int main() {
+
+    for(const char* text : {"P2_KING_INJECT_1 1 0", "P2_KING_INJECT_1 1 0 5", "P2_KING_INJECT_1 1 0 5 6", "P2_KING_INJECT_1 1 0 5 6 80"}) {
+        std::istringstream input(text);auto value=readInjection(input);assert(value.warcryTick==1&&value.id==0);
+    }
+    {std::istringstream input("P2_KING_INJECT_1 1000000 4294967295 0 1000000 80");auto value=readInjection(input);assert(value.id==0xffffffffu&&value.bombTick==1000000&&value.tongueTick==80);}
+    for(const char* text : {"", "P2_KING_INJECT_2 1 0", "P2_KING_INJECT_1 1", "P2_KING_INJECT_1 0 0", "P2_KING_INJECT_1 -1 0", "P2_KING_INJECT_1 1 4294967296", "P2_KING_INJECT_1 1 0 bad", "P2_KING_INJECT_1 1 0 1000001", "P2_KING_INJECT_1 1 0 0 0 0 0", "P2_KING_INJECT_1 1 0 18446744073709551615"}) {
+        bool failed=false;try{std::istringstream input(text);readInjection(input);}catch(...){failed=true;}assert(failed);
+    }
+
 	// State IDs, KingChappy.h:22-36.
 	static_assert(Walk == 0 && Attack == 1 && Dead == 2 && Flick == 3 && WarCry == 4 && Damage == 5 && Turn == 6
 	              && Eat == 7 && Hide == 8 && HideWait == 9 && Appear == 10 && Caution == 11 && Swallow == 12,
