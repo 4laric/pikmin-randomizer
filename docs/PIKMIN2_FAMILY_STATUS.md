@@ -1,13 +1,25 @@
 # P2 enemy family — ownership and next-step status
 
-Integration #422 reconciles the pushed family candidates onto the maintained line.
-See [combined integration evidence](PIKMIN2_INTEGRATION_422.md) for current merge
-status and validation; older handoff sections below retain their historical bases.
+## Current audit notice — #434
 
+Read [the refreshed full-implementation/randomizer audit](PIKMIN2_FULL_IMPL_BLOCKERS.md)
+for current readiness. The table and handoffs below are a historical lane snapshot,
+not proof of registration in draft #432. In particular, the hard-lane export
+`87204df` is present on worker branches but absent from the audited draft; its
+BombSarai/Fuefuki/Titan seam still needs reconciliation. Newer ground-six,
+Mar/Tadpole, cannon and lifecycle/reward candidates also need integration review.
+King's #422 fixture gates and Pelplant's integrated rebind are no longer pending.
+The newer Jellyfloat lane has an arena, but natural flight/suction remains open.
 
-Live tracking: this file. Batch assignments and per-session mandates: [PIKMIN2_FAMILY_BATCHES.md](PIKMIN2_FAMILY_BATCHES.md).
+Ordinary seed generation still uses P1 pools. Family mechanics acceptance and
+production P2 randomizer eligibility must be tracked separately. The linked audit
+lists the required roster, placement, asset-install, reward and persistence bridge.
 
-Coordination: [#186](https://github.com/4laric/pikmin-randomizer/issues/186). This is the single tracking view for the P2 enemy-family import pipeline. Evidence levels are defined in [PIKMIN2_ENEMY_IMPORT_PIPELINE.md](PIKMIN2_ENEMY_IMPORT_PIPELINE.md). Under the 2026-09-13 revision, family owners own extraction, conversion, native modules, narrow additive registration hooks, private builds and runtime evidence; #186 reviews shared semantics.
+## Historical ownership and handoff snapshot
+
+Historical tracking: this table. Batch assignments and per-session mandates: [PIKMIN2_FAMILY_BATCHES.md](PIKMIN2_FAMILY_BATCHES.md).
+
+Coordination: [#186](https://github.com/4laric/pikmin-randomizer/issues/186). Use the audit above to reconcile this historical view with the current draft. Evidence levels are defined in [PIKMIN2_ENEMY_IMPORT_PIPELINE.md](PIKMIN2_ENEMY_IMPORT_PIPELINE.md). Under the 2026-09-13 revision, family owners own extraction, conversion, native modules, narrow additive registration hooks, private builds and runtime evidence; #186 reviews shared semantics.
 
 Shared, serialized resources (one at a time): the maintained `native/` build and any real-GL runtime fixture. The ISO is `output/pikmin2-runtime/pikmin2-source-test.iso` (GPVE01 rev 0, private). Native origin is never pushed.
 

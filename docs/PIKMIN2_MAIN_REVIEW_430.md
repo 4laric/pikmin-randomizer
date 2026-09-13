@@ -74,3 +74,11 @@ Draft #432 now also includes Open Nectar main `511f22fe`. See
 [the upstream ledger](../UPSTREAM_SYNC.md) for the new private native build,
 conflict resolutions, validation and remaining visual/save acceptance limits.
 This supersedes the earlier statement that engine gameplay source was unchanged.
+
+## Completeness correction from audit #434
+
+The draft consolidates the maintained P2 branch, not every pushed worker branch.
+Direct source inspection found hard-lane export `87204df` absent despite historical
+status text. Newer species, cannon, lifecycle and converter candidates also remain
+outside the pinned snapshot. See [the refreshed blockers](PIKMIN2_FULL_IMPL_BLOCKERS.md)
+for exact distinctions and the separate production seed/placement/install gap.
