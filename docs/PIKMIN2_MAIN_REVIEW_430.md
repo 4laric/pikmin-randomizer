@@ -59,3 +59,11 @@ squad exists; both entrypoints use a centred 960x540 preview window by default.
 [Family blockers](PIKMIN2_FULL_IMPL_BLOCKERS.md) remain authoritative. Source
 FSM/receivers, natural combat, corpse/reward delivery, cleanup, mixed-scene
 performance and full campaign acceptance vary by family and remain incomplete.
+
+## Final review result
+
+Full suite with the matching native checkout and MinGW runtime on PATH:
+**1627 passed, 24 skipped, 1052 subtests passed** (120.87 seconds).
+Draft PR #432 targets main and is mergeable. No merge into main was performed.
+Diff whitespace inspection reports five inherited extra blank lines at EOF in
+P2 source/tests; no unresolved conflict markers or integration whitespace errors.
