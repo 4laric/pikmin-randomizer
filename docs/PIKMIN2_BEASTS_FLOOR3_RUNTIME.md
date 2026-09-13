@@ -1,5 +1,9 @@
 # Native floor 3 engineering survey (#311)
 
+Historical #311 reproduction below targets frozen root `8ce3fe9`. The current
+survey helper requires the [#317 native entry APIs](PIKMIN2_BEASTS_FLOOR3_ENTRY.md);
+use that follow-up's private native build when generating the current helper.
+
 Owner: Codex using shared 4laric account. Root base: frozen #309,
 `b472aef777f13b51aec4b501a6caddff72dadfac`. This validates native captain movement
 through the five-unit engineering assembly. It does not enable floor-three

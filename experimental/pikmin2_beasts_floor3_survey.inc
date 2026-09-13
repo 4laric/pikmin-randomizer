@@ -10,6 +10,16 @@ static void floorThreeSurvey(Navi* n) {
     require(pc_p2_purples_enabled() && pc_p2_preview_goal(),"floor3 Purple/Pod support missing");
     require(pc_p2_preview_pokos()==0 && !pc_p2_preview_treasure(),"floor3 unexpected cargo or reward");
     if(updates==90){
+        if(FILE* entry=std::fopen("p2-floor3-boundary.txt","r")){
+            char expected[65],extra;
+            require(std::fscanf(entry,"%64s",expected)==1 && std::fscanf(entry," %c",&extra)==EOF,"invalid floor3 expected token");std::fclose(entry);
+            require(pc_p2_cave_floor()==3 && pc_p2_cave_is_beasts(),"native floor3 profile missing");
+            require(pc_p2_cave_boundary_token()==expected,"native floor3 boundary differs");
+            require(!pc_p2_cave_checkpoint(false) && !pc_p2_cave_exit_after_checkpoint(),"floor4 transfer unexpectedly enabled");
+            require(!pc_p2_cave_interact(n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z),"floor4 interaction enabled");
+            pc_p2_cave_request();
+            std::printf("P2_FLOOR3_BOUNDARY_VERIFIED token=%s descent=disabled\n",expected);
+        }else require(pc_p2_cave_floor()==2 && !pc_p2_cave_is_beasts(),"legacy party restore profile changed");
         repairs=playerState->getCurrParts();health=n->mHealth;
         n->mKontroller=new FixtureController();
         for(int id:{7,16,17,18,24,25,34,36,38,39,42,45,53,58,59,60,61,65,82,83,84,85,86,87,88,89,90,91,92,93})playerState->mDemoFlags.setFlagOnly(id);
@@ -25,6 +35,7 @@ static void floorThreeSurvey(Navi* n) {
         std::printf("P2_FLOOR3_POINT index=%d x=%.3f y=%.3f z=%.3f ground=%.3f\n",point,n->mSRT.t.x,n->mSRT.t.y,n->mSRT.t.z,ground);
         ++point;
         if(point==12){
+            FILE* transfer=std::fopen("p2-cave-transfer.txt","r");require(!transfer,"unexpected floor4 transfer file");
             beastsPartySnapshot(n);capture("floor3-survey.ppm");
             std::puts("PASS P2_FLOOR3_SURVEY goals=12 cargo=0 pokos=0 repairs_unchanged=1");std::fflush(stdout);std::_Exit(0);
         }

@@ -95,10 +95,22 @@ def fixture(source, output):
     return output
 
 
-def validate(log, party):
+def validate(log, party, *, boundary_token=None):
     party=restore_party(party)
     if any(s in log for s in ('FAIL ','P2_POD_RECEIPT','P2_TREASURE_DELIVERED','P2_VIOLET_')):
         raise ValueError('Native failure or unexpected action')
+    native_entries=re.findall(r'^P2_BEASTS_ENTRY_READY floor=3 token=([0-9a-f]{64}) descent=disabled$',log,re.M)
+    verified=re.findall(r'^P2_FLOOR3_BOUNDARY_VERIFIED token=([0-9a-f]{64}) descent=disabled$',log,re.M)
+    if boundary_token is not None:
+        if not isinstance(boundary_token,str) or not re.fullmatch('[0-9a-f]{64}',boundary_token):raise ValueError('Invalid expected boundary')
+        if native_entries!=[boundary_token] or verified!=[boundary_token] or log.count('P2_CAVE_READY floor=3 ')!=1:
+            raise ValueError('Native floor3 boundary binding differs')
+        if re.findall(r'^P2_CAVE_READY floor=(\d+) ',log,re.M)!=['3'] or not log.index('P2_BEASTS_ENTRY_READY')<log.index('P2_FLOOR3_BOUNDARY_VERIFIED')<log.index('P2_FLOOR3_SURVEY_READY'):
+            raise ValueError('Native entry phases differ')
+        if 'P2_CAVE_TRANSFER' in log:raise ValueError('Unexpected floor4 handoff')
+    elif native_entries or verified:raise ValueError('Unexpected native boundary')
+    if len(native_entries)!=sum(l.startswith('P2_BEASTS_ENTRY_READY') for l in log.splitlines()) or len(verified)!=sum(l.startswith('P2_FLOOR3_BOUNDARY_VERIFIED') for l in log.splitlines()):
+        raise ValueError('Malformed native entry evidence')
     if log.count('P2_ROOM_CARGO_FREE_READY cargo=0')!=1 or log.count('PASS P2_FLOOR3_SURVEY goals=12 cargo=0 pokos=0 repairs_unchanged=1')!=1:
         raise ValueError('Missing survey readiness or completion')
     points=re.findall(r'^P2_FLOOR3_POINT index=(\d+) x=([-\d.]+) y=([-\d.]+) z=([-\d.]+) ground=([-\d.]+)$',log,re.M)
@@ -130,13 +142,15 @@ def run(exe, directory, timeout=120):
     for name,digest in paths.items():
         if sha((directory/name).read_bytes())!=digest:raise ValueError('Stage changed before launch')
     env=dict(os.environ,SDL_AUDIODRIVER='dummy',PATH='C:/msys64/mingw64/bin'+os.pathsep+os.environ.get('PATH',''))
-    evidence=dict(schema=1,issue=311,passed=False,exe=str(exe),executable_sha256=executable_hash,input_sha256=paths)
+    evidence=dict(schema=1,issue=317 if report.get('boundary_token') else 311,passed=False,exe=str(exe),executable_sha256=executable_hash,input_sha256=paths)
+    if report.get('boundary_token'):evidence.update(native_floor=3,native_profile='forest_1',boundary_token=report['boundary_token'])
     with (directory/'native.log').open('w') as log:
         try:evidence['returncode']=subprocess.run([str(exe),'--experimental-pikmin2-room'],cwd=directory,env=env,stdout=log,stderr=subprocess.STDOUT,timeout=timeout).returncode
         except subprocess.TimeoutExpired:evidence['timeout']=True
     try:
         if evidence.get('returncode')!=0:raise ValueError('Native process failed or timed out')
-        evidence['survey']=validate((directory/'native.log').read_text(errors='replace'),report['party'])
+        evidence['survey']=validate((directory/'native.log').read_text(errors='replace'),report['party'],boundary_token=report.get('boundary_token'))
+        if (directory/'p2-cave-transfer.txt').exists() or (directory/'p2-cave-transfer.tmp').exists():raise ValueError('Unexpected floor transfer file')
         if any(sha((directory/name).read_bytes())!=digest for name,digest in paths.items()) or sha(exe.read_bytes())!=executable_hash:
             raise ValueError('Inputs or executable changed')
         evidence['passed']=True
