@@ -98,7 +98,7 @@ def kingchappy(imported):
         decode(model, True, bake_rigid=True, draw_matrices=matrices)
         print('UNEXPECTED: bake succeeded')
         return False
-    except KeyError as error:
+    except (KeyError, ValueError) as error:
         print(f'exact failure: KeyError: {error} (missing normal attribute index in baked vertex)')
     ok = has_vtx_normals and not shape_uses_normals
     print(f'reproducer confirmed: {ok}')

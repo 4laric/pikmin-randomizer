@@ -73,7 +73,9 @@ def diffuse_slot(m, r):
         if list(m[gen:gen+3])==[1,4,60]:return slot
     return 0
 
-def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_matrices=None):
+def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_matrices=None, missing_normals="error", singular_normal="error"):
+    if missing_normals not in ("error","compute","default") or singular_normal not in ("error","transpose-adjugate"):raise ValueError("Invalid normal policy")
+    if not bake_rigid and (missing_normals!="error" or singular_normal!="error"):raise ValueError("Normal policies require baked geometry")
     b=blocks(data); j=b['JNT1']; d=b['DRW1']
     if draw_matrices is not None:
         if not bake_rigid or pose is not None:
@@ -199,13 +201,15 @@ def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_
         from experimental.pikmin2_rigid import bake
         # Primitive strips/fans share vertex dictionaries; bake each reference independently.
         shapes=[[[dict(v) for v in tri] for tri in shape] for shape in shapes]
-        bake(arrays,shapes,matrices)
+        bake(arrays,shapes,matrices,missing_normals=missing_normals,singular_normal=singular_normal)
     # Array blocks carry alignment padding; only referenced entries are vertices.
     for attr in arrays:
         used=[v[attr] for tris in shapes for tri in tris for v in tri if attr in v]
         arrays[attr]=arrays[attr][:max(used)+1] if used else []
     if draw_matrices is not None:
         b['_discarded_matrix_attributes']=sorted(discarded_matrix_attrs)
+    if missing_normals!='error' or singular_normal!='error':
+        b['_normal_policy']={'missing_normals':missing_normals,'singular_normal':singular_normal,'computed_normal_scope':'baked area-weighted geometry with shape/UV/color seams','degenerate_policy':'error; explicit default mode uses +Y'}
     return b,arrays,shapes,[materials[mapping[i]] for i in range(len(shapes))]
 
 class Writer:
@@ -218,9 +222,9 @@ class Writer:
     def end(self):
         self.pad(); struct.pack_into('>I',self.data,self.start+4,len(self.data)-self.start-8)
 
-def convert(source, output, approximate_materials=False, y_offset=0.0, bake_rigid=False, pose=None, material_colors=None):
+def convert(source, output, approximate_materials=False, y_offset=0.0, bake_rigid=False, pose=None, material_colors=None, missing_normals="error", singular_normal="error"):
     if pose is not None and not bake_rigid: raise ValueError('Animation pose requires rigid baking')
-    report=write_model(decode(Path(source).read_bytes(), approximate_materials,bake_rigid,pose),output,str(source),y_offset,material_colors)
+    report=write_model(decode(Path(source).read_bytes(), approximate_materials,bake_rigid,pose,missing_normals=missing_normals,singular_normal=singular_normal),output,str(source),y_offset,material_colors)
     report['rigid_bind_pose_baked']=bake_rigid
     Path(output).with_suffix('.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     return report
@@ -297,6 +301,7 @@ def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
     report={'source':str(source),'output':str(output),'vertices':len(a[9]),'triangles':sum(map(len,shapes)),'shapes':len(shapes),'textures':texture_count,'bounds':bounds,'y_offset':y_offset,'discarded_attributes':[k for k in a if k not in (9,10,11,13)],'material_policy':'vertex color times identifiable UV0 diffuse texture (first texture fallback); original TEV not reproduced','pixel_state_policy':'source blend, alpha compare, depth test/write, draw category and hierarchy order preserved'}
     if '_discarded_matrix_attributes' in b:
         report['discarded_texture_matrix_attributes']=b['_discarded_matrix_attributes']
+    if '_normal_policy' in b:report['normal_policy']=b['_normal_policy']
     output.with_suffix('.json').write_text(json.dumps(report,indent=2),encoding='utf-8');return report
 
 if __name__=='__main__':
