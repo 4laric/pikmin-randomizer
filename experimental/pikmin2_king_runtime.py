@@ -103,6 +103,12 @@ public:int idle() override {
  require(cameraMgr&&cameraMgr->mCamera,"King camera missing");auto* target=new KingCameraTarget();target->mSRT.t=Vector3f(d.x,d.y+60.f,d.z);auto* camera=cameraMgr->mCamera;camera->setTarget(target);camera->mControlsEnabled=false;
  PcamMotionInfo info=camera->mTargetMotionInfo;info.mDistance=1100;info.mFov=40;info.mAngle=35;info.mNaviWatchWeight=0;info.mWatchAdjustment=0;camera->startMotion(info);
  std::printf("P2_KING_CAMERA target=%.6f,%.6f,%.6f\n",target->mSRT.t.x,target->mSRT.t.y,target->mSRT.t.z);
+ // Arm the opt-in tongue injection for scenario 1: it fires at behavior tick
+ // 80 (after the appear shake-off at key 55) while the full 10-Pikmin squad is
+ // still alive, so ATTACK_ARM / EAT / Swallow / 1->12 are deterministic and
+ // cannot be lost to a checkFlick roll on a loaded host.
+ {std::ofstream inj("p2-king-inject.txt");inj<<"P2_KING_INJECT_1 100000 230020 0 0 80\n";inj.close();}
+ std::puts("P2_KING_TONGUE_ARMED tick=80 fixture=1");
  {std::ifstream src("king-fixture-profile.txt",std::ios::binary);std::ofstream dst("p2-king-actor.txt",std::ios::binary);dst<<src.rdbuf();dst.close();}
  const int heap=gsys->setHeap(SYSHEAP_App);pc_p2_king_setup();gsys->setHeap(heap);
  }
@@ -269,7 +275,8 @@ def validate(text, code):
         external_quartered='P2_KING_BOMB_QUARTERED' in text,
     )
     untested = [name for name, ok in optional.items() if not ok]
-    return dict(passed=all(required.values()), checks=required, optional=optional, untested=untested,
+    failed = sorted(name for name, ok in required.items() if not ok)
+    return dict(passed=not failed, failed=failed, checks=required, optional=optional, untested=untested,
                 transitions=sorted(transitions), exit_code=code,
                 scope='Sampled actor fixture; bomb placements and external blasts are labeled injections')
 
