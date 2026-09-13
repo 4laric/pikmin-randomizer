@@ -68,8 +68,9 @@ construction. Runtime material animation and Groink aim callbacks are not added
 by this patch. No live weighted Groink drawing, attack or visual-fidelity claim
 is made by the command-line CPU probe.
 
-Removing redundant sampled meshes and enabling weighted playback for individual
-actors remain separate follow-ups. Existing Snow opt-ins and defaults are kept.
+Compact Snow model loading is covered by [#373](PIKMIN2_COMPACT_SKELETAL.md).
+Enabling weighted playback for individual actors remains a separate follow-up.
+Existing player defaults are kept.
 
 ## Evidence
 

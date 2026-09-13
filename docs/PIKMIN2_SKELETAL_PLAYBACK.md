@@ -50,11 +50,10 @@ implemented by this format. The importer rejects envelopes. Quaternion
 interpolation is an explicit interpolation contract; it does not claim exact
 J3D Euler-channel interpolation at fractional frames.
 
-This first opt-in still loads the old pose bank for topology/resource validation
-and A/B comparison, so total package/load memory is not reduced yet. The new
-representation makes that follow-up possible; removing the reference bank is a
-separate migration. Existing player executables and seed/session state are not
-modified by this batch.
+The initial milestone retained the old pose bank for A/B comparison. The
+[compact loader follow-up](PIKMIN2_COMPACT_SKELETAL.md) now requires only one
+base mesh in skeletal mode. Sampled mode still uses its full bank. Existing
+player executables and seed/session state are not modified by either batch.
 
 ## Validation (2026-09-13)
 

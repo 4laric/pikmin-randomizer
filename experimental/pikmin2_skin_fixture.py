@@ -11,7 +11,7 @@ def build(native,build_dir,output,head):
   require(instance.sample(token,bank->clip(clip),frame,p2attach::Affine{},1)&&p2skin::deform(*mesh,instance,token,expected),"probe deformation");
  }else{'''+old+'\n }'
     assert reference.PROBE.count(old)==1
-    probe='#include "pc_p2_skin.h"\n'+reference.PROBE.replace(old,new)
+    probe='#include "pc_p2_skin.h"\n'+reference.PROBE.replace(old,new).replace('if(probeBank.empty()){','if(probeBank.empty() && !std::ifstream("p2-snow-skeletal.txt")){')
     return reference.build(native,build_dir,output,head,probe=probe)
 
 def enable(bank,snow,run):
@@ -23,6 +23,15 @@ def enable(bank,snow,run):
     shutil.copyfile(bank/'skin.txt',run/'p2-snow-skin.txt');shutil.copyfile(bank/'attachments.txt',run/'p2-snow-joints.txt')
     (run/'p2-snow-interpolation.txt').write_text('P2_SNOW_INTERPOLATION_1\n')
     (run/'p2-snow-skeletal.txt').write_text('P2_SNOW_SKELETAL_1\n')
+    # Only remove generated pose copies inside this fresh private stage.
+    directory=run/'assets/dataDir/courses/pikmin2room'
+    removed=[]
+    for path in directory.glob('snow_*.mod'):
+        if path.name=='snow_wait1_00.mod':continue
+        if not path.resolve().is_relative_to(run.resolve()):raise ValueError('Pose outside private stage')
+        removed.append(dict(name=path.name,bytes=path.stat().st_size));path.unlink()
+    (run/'skeletal-models.json').write_text(json.dumps(dict(removed=removed,base_bytes=(directory/'snow_wait1_00.mod').stat().st_size),indent=2))
+
 
 if __name__=='__main__':
     import argparse
