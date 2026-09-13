@@ -285,3 +285,21 @@ def test_disc_registry_ids_unchanged():
     assert BY_NAME['flora']['species']['RandPom'] == 8
     assert BY_NAME['cannon']['species']['Kabuto'] == 75
     assert BY_NAME['ground']['species']['Armor'] == 15
+
+
+def test_flora_stages_refreshed_pelplant_on_retail_vehicle():
+    # #405/#397: Pelplant now converts (10/10) and is staged as the first flora
+    # actor on the neutral Chappy vehicle. The arena id/provider sets grow with
+    # it, and the receptor/reward behavior stays explicitly blocked.
+    flora = BY_NAME['flora']
+    assert flora['actors'][0] == 'Pelplant'
+    assert flora['anchors']['Pelplant'] == (
+        'wait1', 'wait2', 'wait3', 'grow1', 'grow2', 'damage3', 'dead3',
+        'bgrow1', 'bdamage1', 'bdead1')
+    assert flora['arena_ids'][0] == 353001
+    assert len(flora['arena_ids']) == len(flora['arena_species'])
+    assert flora['arena_positions'][-1] == (240.0, 30.0, 1500.0)
+    assert flora['arena_proxy']['Pelplant'] == core.P1_CHAPPY_TYPE
+    assert 'pelplant_receptor' in flora['blocked']
+    assert '10/10' in flora['blocked']['pelplant_receptor']
+
