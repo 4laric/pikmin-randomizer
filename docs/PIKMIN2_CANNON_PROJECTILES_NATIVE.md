@@ -89,8 +89,10 @@ top of the live engine:
   the BombSarai (#244) adapter. `wallCallback` → policy `traced.wall` →
   `ROCK_Move → ROCK_Dead`.
 - **Homing target snapshot**: when `homing=1`, the host snapshots the active
-  `naviMgr->getNavi()`, else the nearest live Pikmin within `sightRadius` and
-  the source `180` y threshold; no target is invented by the policy.
+  `naviMgr->getNavi()`, else the nearest live Pikmin within `sightRadius` by 2D
+  x/z distance. The source call passes a 180-degree `searchAngle`
+  (`kHomingSearchAngleDegrees`, unrestricted), so there is no y or facing
+  filter; no target is invented by the policy.
 - **Contact / strike logging**: after each Stone tick the host proximity-tests
   the Navi, every Piki and every Teki inside `collisionRadius + 12`, classifies
   the target, and calls the policy `contact(kind, onFloor, …)` once per token.
