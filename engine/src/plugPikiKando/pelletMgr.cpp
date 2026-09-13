@@ -1,4 +1,5 @@
 #include "pc_p2_purple.h"
+#include "pc_p2_cargo_ground.h"
 #include "pc_randomizer.h"
 #include "AIPerf.h"
 #include "pc_bbft.h"
@@ -1279,6 +1280,14 @@ void Pellet::update()
 			mVelocity.x = mCarryDirection.x;
 			mVelocity.z = mCarryDirection.z;
 			mVelocity.y += mCarryDirection.y;
+			if (pc_p2_purples_enabled() && pc_p2_preview_cargo_shape(this)
+			    && mPikiCarrier->isPiki() && getPickOffset() != 0.0f
+			    && mCarrierCounter >= mConfig->mCarryMinPikis()
+			    && mGroundTriangle && !mCollPlatform && mCurrCollisionModel == mapMgr->mMapModel) {
+				const Vector3f& normal = mGroundTriangle->mTriangle.mNormal;
+				mVelocity.y = pc_p2_cargo_uphill_velocity(mVelocity.x, mVelocity.z, mVelocity.y,
+				                                             normal.x, normal.y, normal.z);
+			}
 		}
 
 		if (mapMgr->getMinY(mSRT.t.x, mSRT.t.z, true) > mSRT.t.y) {
