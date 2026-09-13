@@ -92,35 +92,6 @@ def validate_squad(record):
                 position=list(validate_position(bytearray(record), SQUAD_POSITION)))
 
 
-def add_squad(assets, run):
-    """Append the squad generator to a staged arena run and refresh arena.json."""
-    record = squad_record(assets)
-    gen = run / 'assets/dataDir/stages/chal0/default.gen'
-    data = bytearray(gen.read_bytes())
-    count = struct.unpack_from('>I', data, 20)[0]
-    if any(struct.unpack_from('<I', r, 8)[0] == SQUAD_GENERATOR
-           for r in _records_of(bytes(data))):
-        raise ValueError('Squad generator ID collision')
-    struct.pack_into('>I', data, 20, count + 1)
-    data += record
-    gen.write_bytes(bytes(data))
-    placement = validate_squad(record)
-    info = json.loads((run / 'arena.json').read_text())
-    info['actors'].append(placement)
-    info['squad'] = placement
-    info['rules'] = stage_rules(run)
-    info['gates']['starting_squad'] = 'staged'
-    (run / 'arena.json').write_text(json.dumps(info, indent=2) + '\n')
-    return placement
-
-
-def _records_of(gen_bytes):
-    count = struct.unpack_from('>I', gen_bytes, 20)[0]
-    starts = [i for i in range(24, len(gen_bytes)) if gen_bytes.startswith(b'    0.0v', i)]
-    return [gen_bytes[a:(starts[n + 1] if n + 1 < len(starts) else len(gen_bytes))]
-            for n, a in enumerate(starts[:count])]
-
-
 def parse_plant_events(log_text):
     """Parse native rules markers from a session log for fixture verification.
 
@@ -168,9 +139,22 @@ def validate_plant_events(events, min_plants=1):
 
 
 def prepare(assets, imported, output):
-    """Batch-2 arena plus rules marker plus the starting squad."""
-    run = arena.prepare(assets, imported, output)
-    add_squad(Path(assets).resolve(), run)
+    """Batch-2 arena plus rules marker plus the explicit 10-red starting squad.
+
+    The squad record is staged through ``arena.prepare``'s overlay override so
+    the mandatory ``ensure_pikmin_squad()`` helper sees the existing 'ikip'
+    record and preserves this lane's squad instead of adding the default
+    20-red squad.
+    """
+    assets = Path(assets).resolve()
+    record = squad_record(assets)
+    placement = validate_squad(record)
+    run = arena.prepare(assets, imported, output, extra_record=record, extra_actor=placement)
+    info = json.loads((run / 'arena.json').read_text())
+    info['squad'] = placement
+    info['rules'] = stage_rules(run)
+    info['gates']['starting_squad'] = 'staged (explicit 10-red lane squad; overlay preserved)'
+    (run / 'arena.json').write_text(json.dumps(info, indent=2) + '\n')
     return run
 
 

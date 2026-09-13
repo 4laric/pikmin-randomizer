@@ -53,7 +53,7 @@ zero errors before manual termination. Evidence in the run's `native.log`
 | bury_attack | UNTESTED — needs interactive play or fixture hook; P1 proxy bury is in-place flowering with no 99 cap, so a proxy pass does not accept P2 semantics |
 | flick_collateral | UNTESTED |
 | territory_watchdog | UNTESTED |
-| death_corpse | UNTESTED |
+| death_corpse | PASS (P2-rules fixture batch 5: legal lethal hit, natural death, native `tkmu` carcass; see [PIKMIN2_MAMUTA_DEATH.md](PIKMIN2_MAMUTA_DEATH.md)) |
 | day_floor_reset | UNTESTED |
 | save_load | UNTESTED |
 | piklopedia_observation | UNTESTED |
