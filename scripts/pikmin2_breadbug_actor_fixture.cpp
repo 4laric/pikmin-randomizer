@@ -8,7 +8,7 @@ public:
   int result=PlugPikiApp::idle();require(++frames<2400,"Breadbug actor timeout");
   if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
   if(!pc_p2_preview_cargo_free_ready()||!naviMgr||!tekiMgr)return result;
-  Navi* n=naviMgr->getNavi();if(!n)return result;++ready;
+  Navi* n=naviMgr->getNavi();if(!n||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;++ready;
   if(ready==1){
    Iterator it(tekiMgr);CI_LOOP(it){Teki* t=static_cast<Teki*>(*it);if(t&&t->mGenerator){if(t->mGenerator->_70==186081)actor=t;if(t->mGenerator->_70==186082)control=t;}}
    require(actor&&control&&actor!=control&&actor->mTekiType==TEKI_Collec&&control->mTekiType==TEKI_Collec,"Breadbug proxy/control identity");
