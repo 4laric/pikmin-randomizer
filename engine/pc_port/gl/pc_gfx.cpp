@@ -1315,7 +1315,7 @@ static const char* vShaderSrc =
     "uniform vec4 uAmbColor;\n"
     "uniform int uChan0En;\n"
     "uniform int uChan1En;\n"
-    "uniform int uChan0AttnFn;\n"  // 0=NONE,1=SPOT,2=SPEC
+    "uniform int uChan0AttnFn;\n"  // GXAttnFn: 0=SPEC, 1=SPOT, 2=NONE
     "uniform int uChan1AttnFn;\n"
     "uniform int uNumLights1;\n"
     "uniform vec4 uLightPos1[4];\n"
@@ -1354,6 +1354,12 @@ static const char* vShaderSrc =
     "    if (index == 3) return aTexCoord3;\n"
     "    return aTexCoord3;\n"
     "}\n"
+    // nrm is the OBJECT-space normal, not the lit one. GX feeds texgen from the
+    // raw vertex attribute, and the texgen matrix the game loads for the
+    // environment map already carries the modelview rotation (dgxGraphics
+    // useMatrixQuick). Passing the transformed normal rotates it twice and
+    // pushes the sphere-map coordinates off the useful range, which is what
+    // made the gloss on Olimar, the pellets and the ship disappear.
     "vec2 genTc(int slot, vec4 viewPos, vec3 nrm, vec2 uvIn, vec2 tc0, vec2 tc1, vec2 tc2, vec2 tc3) {\n"
     "    int mode = uTcMode[slot];\n"
     "    if (mode == 0) return uvIn;\n"
@@ -1370,16 +1376,25 @@ static const char* vShaderSrc =
     "    vec3 N = normalize(uNrmMtx * aNormal);\n"
     "    vec3 lit0 = uAmbColor.rgb + doLights(N, worldPos, uNumLights, uLightPos, uLightColor, uLightK);\n"
     "    vec3 spec1 = vec3(0.0);\n"
-    "    if (uChan1AttnFn == 2 && uNumLights1 > 0) {\n"
-    "        // GX hardware specular: att = clamp(a0 + a1*cosT + a2*cosT^2)\n"
+    // GX_AF_SPEC is 0; 2 is GX_AF_NONE. Testing for 2 meant the specular
+    // branch never ran on a specular channel, and the diffuse branch ran
+    // instead on a light whose dir field holds a half-vector, not a position.
+    // The misleading comment on uChan0AttnFn above is where that came from.
+    "    if (uChan1AttnFn == 0 && uNumLights1 > 0) {\n"
+    "        // GX evaluates specular as a ratio of two quadratics in N.H: the\n"
+    "        // angle coefficients over the distance ones. The numerator alone\n"
+    "        // gives a far broader, flatter highlight than the hardware.\n"
     "        float cosT = max(dot(N, normalize(uSpecHalf1.xyz)), 0.0);\n"
-    "        float att = clamp(uSpecAttn1.x + uSpecAttn1.y * cosT + uSpecAttn1.z * cosT * cosT, 0.0, 1.0);\n"
+    "        vec3 quad = vec3(1.0, cosT, cosT * cosT);\n"
+    "        float num = max(0.0, dot(uSpecAttn1.xyz, quad));\n"
+    "        float den = dot(uLightK1[0].xyz, quad);\n"
+    "        float att = (den > 1e-5) ? clamp(num / den, 0.0, 1.0) : 0.0;\n"
     "        spec1 = att * uLightColor1[0].rgb;\n"
     "    }\n"
     "    // GX_AF_SPEC uses the channel's attenuation function to produce the\n"
     "    // specular term.  Feeding the same light through the diffuse path as\n"
     "    // well double-counts COLOR1 and saturates specular materials white.\n"
-    "    vec3 diffuse1 = (uChan1AttnFn == 2)\n"
+    "    vec3 diffuse1 = (uChan1AttnFn == 0)\n"
     "        ? vec3(0.0)\n"
     "        : doLights(N, worldPos, uNumLights1, uLightPos1, uLightColor1, uLightK1);\n"
     "    vec3 lit1 = uAmbColor1.rgb + diffuse1 + spec1;\n"
@@ -1389,10 +1404,10 @@ static const char* vShaderSrc =
     // GX permits later texgens to use the output of an earlier texgen as
     // their source (GX_TG_TEXCOORD0..6). Evaluate in hardware order instead
     // of falling back to the usually absent raw attribute for that slot.
-    "    vec2 tc0 = genTc(0, worldPos, N, aTexCoord0, vec2(0.0), vec2(0.0), vec2(0.0), vec2(0.0));\n"
-    "    vec2 tc1 = genTc(1, worldPos, N, aTexCoord1, tc0, vec2(0.0), vec2(0.0), vec2(0.0));\n"
-    "    vec2 tc2 = genTc(2, worldPos, N, aTexCoord2, tc0, tc1, vec2(0.0), vec2(0.0));\n"
-    "    vec2 tc3 = genTc(3, worldPos, N, aTexCoord3, tc0, tc1, tc2, vec2(0.0));\n"
+    "    vec2 tc0 = genTc(0, worldPos, aNormal, aTexCoord0, vec2(0.0), vec2(0.0), vec2(0.0), vec2(0.0));\n"
+    "    vec2 tc1 = genTc(1, worldPos, aNormal, aTexCoord1, tc0, vec2(0.0), vec2(0.0), vec2(0.0));\n"
+    "    vec2 tc2 = genTc(2, worldPos, aNormal, aTexCoord2, tc0, tc1, vec2(0.0), vec2(0.0));\n"
+    "    vec2 tc3 = genTc(3, worldPos, aNormal, aTexCoord3, tc0, tc1, tc2, vec2(0.0));\n"
     "    vTexCoord0 = tc0;\n"
     "    vTexCoord1 = tc1;\n"
     "    vTexCoord2 = tc2;\n"
@@ -1869,6 +1884,16 @@ void pc_gfx_init(void) {
     printf("[PC Port] GPU: %s -- %s\n",
            glVendor ? reinterpret_cast<const char*>(glVendor) : "unknown",
            glRenderer ? reinterpret_cast<const char*>(glRenderer) : "unknown");
+    if (glRenderer) {
+        const char* renderer = reinterpret_cast<const char*>(glRenderer);
+        const bool integrated = std::strstr(renderer, "Intel") || std::strstr(renderer, "llvmpipe")
+                             || std::strstr(renderer, "Softpipe") || std::strstr(renderer, "SVGA3D");
+        if (integrated && std::getenv("__NV_PRIME_RENDER_OFFLOAD")) {
+            printf("[PC Port] WARNING: requested NVIDIA PRIME but the context is %s. "
+                   "Menus will sit around 30 fps. On Wayland use: prime-run ./build/bin/nectar\n",
+                   renderer);
+        }
+    }
     if (const char* value = std::getenv("PIKMIN_TEV_SPECIALIZE")) {
         sSpecialiseShaders = value[0] != '0';
     }
@@ -3762,8 +3787,33 @@ void pc_gfx_init_light_attn_k(void* ltObj, f32 k0, f32 k1, f32 k2) {
 void pc_gfx_init_specular_dir(void* ltObj, f32 x, f32 y, f32 z) {
     if (!ltObj) return;
     u8* raw = static_cast<u8*>(ltObj);
+    // This was a copy of pc_gfx_init_light_dir: it stored the raw direction
+    // and left the position alone. A specular light is not shaped like that.
+    // GXInitSpecularDir puts the half-angle vector between the reversed light
+    // direction and the eye (0,0,1) into ldir, and encodes the direction
+    // itself into lpos scaled by 1024*1024. Storing the plain direction gave a
+    // half-vector with negative Z -- pointing away from the camera -- so the
+    // highlight always landed on the far side of the model and never showed.
+    // The Onions were the obvious casualty.
+    f32 vx = -x;
+    f32 vy = -y;
+    f32 vz = -z + 1.0f;
+    const f32 mag = std::sqrt(vx * vx + vy * vy + vz * vz);
+    if (mag > 1e-6f) {
+        const f32 inv = 1.0f / mag;
+        vx *= inv; vy *= inv; vz *= inv;
+    } else {
+        // The light points straight at the eye and the half-vector degenerates.
+        vx = 0.0f; vy = 0.0f; vz = 1.0f;
+    }
     f32* ldir = reinterpret_cast<f32*>(raw + 0x34);
-    ldir[0] = x; ldir[1] = y; ldir[2] = z;
+    ldir[0] = vx; ldir[1] = vy; ldir[2] = vz;
+
+    const f32 kSpecularPosScale = 1024.0f * 1024.0f;
+    f32* lpos = reinterpret_cast<f32*>(raw + 0x28);
+    lpos[0] = -x * kSpecularPosScale;
+    lpos[1] = -y * kSpecularPosScale;
+    lpos[2] = -z * kSpecularPosScale;
 }
 void pc_gfx_load_light(void* ltObj, u32 lightMask) {
     if (!ltObj) return;
@@ -4540,10 +4590,14 @@ static Vertex sFifoVertex = {};
 
 static bool vtx_desc_uses_fifo()
 {
-    for (int a = GX_VA_PNMTXIDX; a <= GX_VA_TEX7; ++a) {
+    // Matrix-index DIRECT is the normal GX default. Treating it as a FIFO
+    // stream made every UI and world draw parse vertices a byte at a time.
+    // Only indexed arrays, or packed non-float immediates (GXTexCoord2u8),
+    // need the byte parser.
+    for (int a = GX_VA_POS; a <= GX_VA_TEX7; ++a) {
         const GXAttrType d = sVtxDesc[a];
         if (d == GX_INDEX8 || d == GX_INDEX16) return true;
-        if (a <= GX_VA_TEX7MTXIDX && d == GX_DIRECT) return true;
+        if (d == GX_DIRECT && sVtxFormats[sImmVtxFmt][a].type != GX_F32) return true;
     }
     return false;
 }

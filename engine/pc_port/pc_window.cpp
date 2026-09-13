@@ -8,6 +8,7 @@
 #include "pc_p2_cave.h"
 #ifdef __linux__
 #include "pc_gpu_preference.h"
+#include <X11/Xlib.h>
 #endif
 #include <cstdio>
 #include <cstring>
@@ -436,6 +437,13 @@ bool pc_window_init(const char* title, int width, int height) {
     sWindowHeight = height;
     sShouldClose = false;
 
+#ifdef __linux__
+    // NVIDIA GLX on Xwayland raises BadValue from X_GLXCreateContext and the
+    // default handler aborts before SDL can return an error. Swallow it so we
+    // can drop the vendor and try again.
+    XSetErrorHandler([](Display*, XErrorEvent*) -> int { return 0; });
+#endif
+
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS) < 0) {
         printf("[PC Port Error] SDL_Init failed: %s\n", SDL_GetError());
         fflush(stdout);
@@ -476,15 +484,13 @@ bool pc_window_init(const char* title, int width, int height) {
 #ifdef __linux__
         if (!retriedGpu) {
             retriedGpu = true;
-            printf("[PC Port] Retrying without NVIDIA PRIME/EGL (X11 if unset)\n");
+            printf("[PC Port] Retrying without NVIDIA EGL/GLX pins\n");
             fflush(stdout);
             pc_gpu_preference_clear();
-            SDL_Quit();
-            if (!getenv("SDL_VIDEODRIVER")) {
-                setenv("SDL_VIDEODRIVER", "x11", 1);
-            }
-            if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER | SDL_INIT_EVENTS) < 0) {
-                printf("[PC Port Error] SDL_Init retry failed: %s\n", SDL_GetError());
+            SDL_QuitSubSystem(SDL_INIT_VIDEO);
+            unsetenv("SDL_VIDEODRIVER");
+            if (SDL_InitSubSystem(SDL_INIT_VIDEO) < 0) {
+                printf("[PC Port Error] SDL_Init VIDEO retry failed: %s\n", SDL_GetError());
                 fflush(stdout);
                 return false;
             }
@@ -514,6 +520,7 @@ bool pc_window_init(const char* title, int width, int height) {
     }
 
     SDL_GL_MakeCurrent(sWindow, sGLContext);
+
     // Frame pacing is handled below against the GameCube VI clock. Combining
     // driver VSync with that limiter caused some compositor/Mesa paths to wait
     // two or three refreshes (the world map spent ~51 ms in swap alone).

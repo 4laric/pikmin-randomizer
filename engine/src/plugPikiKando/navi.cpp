@@ -11,8 +11,12 @@
 #include <cstdlib>
 #if defined(PIKI_PC_PORT)
 #include "GameStat.h"
+#include "pc_permadeath.h"
 #include "pc_window.h"
 #include "settings/pc_settings.h"
+static f32 pcNaviHurt(f32 damage) { return pc_hardmode_navi_damage(damage); }
+#else
+static f32 pcNaviHurt(f32 damage) { return damage; }
 #endif
 #include "AIConstant.h"
 #include "BombItem.h"
@@ -2557,7 +2561,7 @@ bool InteractBury::actNavi(Navi* navi) immut
 
 	navi->mStateMachine->transit(navi, NAVISTATE_Bury);
 	rumbleMgr->start(RUMBLE_Unk1, 0, nullptr);
-	navi->mHealth -= mDamage;
+	navi->mHealth -= pcNaviHurt(mDamage);
 	navi->startDamageEffect();
 	navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
 	if (navi->mHealth <= 1.0f) {
@@ -2605,7 +2609,7 @@ bool InteractSuck::actNavi(Navi* navi) immut
 	}
 
 	BUGPRINT("invicible check false");
-	navi->mHealth -= mDamage;
+	navi->mHealth -= pcNaviHurt(mDamage);
 	BUGPRINT("life = %.1f", navi->mHealth);
 
 	navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
@@ -2638,7 +2642,7 @@ bool InteractAttack::actNavi(Navi* navi) immut
 
 	rumbleMgr->start(RUMBLE_Unk1, 0, nullptr);
 	SeSystem::playPlayerSe(SE_DAMAGED);
-	navi->mHealth -= mDamage;
+	navi->mHealth -= pcNaviHurt(mDamage);
 	navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
 	if (navi->mHealth <= 1.0f) {
 		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
@@ -2666,7 +2670,7 @@ bool InteractPress::actNavi(Navi* navi) immut
 	}
 
 	rumbleMgr->start(RUMBLE_Unk1, 0, nullptr);
-	navi->mHealth -= mDamage;
+	navi->mHealth -= pcNaviHurt(mDamage);
 	navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
 	navi->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
 	if (navi->mHealth <= 1.0f) {
@@ -2694,7 +2698,7 @@ bool InteractSwallow::actNavi(Navi* navi) immut
 	}
 
 	rumbleMgr->start(RUMBLE_Unk1, 0, nullptr);
-	navi->mHealth -= 10.0f;
+	navi->mHealth -= pcNaviHurt(10.0f);
 	SeSystem::playPlayerSe(SE_DAMAGED);
 	navi->startDamageEffect();
 	if (navi->mHealth <= 1.0f) {
@@ -2724,7 +2728,7 @@ bool InteractBomb::actNavi(Navi* navi) immut
 
 	rumbleMgr->start(RUMBLE_Unk1, 0, nullptr);
 	SeSystem::playPlayerSe(SE_DAMAGED);
-	navi->mHealth -= mDamage;
+	navi->mHealth -= pcNaviHurt(mDamage);
 	navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
 	navi->startDamageEffect();
 	navi->mFlickIntensity = 100.0f;
@@ -2768,7 +2772,7 @@ bool InteractFlick::actNavi(Navi* navi) immut
 	}
 
 	SeSystem::playPlayerSe(SE_DAMAGED);
-	navi->mHealth -= mDamage;
+	navi->mHealth -= pcNaviHurt(mDamage);
 	navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
 	navi->mFlickIntensity = mIntensity;
 	if (navi->mHealth <= 1.0f) {
@@ -2791,7 +2795,7 @@ bool InteractBubble::actNavi(Navi* navi) immut
 		return false;
 	}
 
-	navi->mHealth -= mDamage;
+	navi->mHealth -= pcNaviHurt(mDamage);
 	navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
 	rumbleMgr->start(RUMBLE_Unk1, 0, nullptr);
 	SeSystem::playPlayerSe(SE_FIRED);
@@ -2813,7 +2817,7 @@ bool InteractFire::actNavi(Navi* navi) immut
 		return false;
 	}
 
-	navi->mHealth -= mDamage;
+	navi->mHealth -= pcNaviHurt(mDamage);
 	navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
 	navi->startDamageEffect();
 	rumbleMgr->start(RUMBLE_Unk1, 0, nullptr);

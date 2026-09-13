@@ -310,7 +310,7 @@ void BTeki::reset()
 	mReturnStateID    = 0;
 	mActionStateId    = 0;
 	mCurrentQueueId   = 0;
-	mHealth           = getParameterF(TPF_Life);
+	mHealth           = getMaxLife();
 	mStoredDamage     = 0.0f;
 	mDamageCount      = 0.0f;
 	_344              = -1;
@@ -460,7 +460,7 @@ void BTeki::update()
 	if (mDeadState == 0) {
 		updateTimers();
 		if (mHealth > 0.0f) {
-			f32 max = getParameterF(TPF_Life);
+			f32 max = getMaxLife();
 			f32 inc = getParameterF(TPF_LifeRecoverRate);
 			mHealth += NSystem::getFrameTime() * (max * inc);
 
@@ -1939,7 +1939,7 @@ WayPoint* BTeki::getRouteWayPoint(int idx)
  */
 void BTeki::updateLifeGauge()
 {
-	mLifeGauge.updValue(mHealth, getParameterF(TPF_Life));
+	mLifeGauge.updValue(mHealth, getMaxLife());
 }
 
 /**

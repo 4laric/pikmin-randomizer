@@ -25,6 +25,10 @@
 #include "pc_p2_armor.h"
 #endif
 
+#if defined(PIKI_PC_PORT)
+f32 pc_hardmode_teki_life(f32 base);
+#endif
+
 class CollEvent;
 class Colour;
 struct CreaturePlatMgr;
@@ -422,6 +426,15 @@ public:
 #endif
 		return value;
 	} // see TekiIntParams enum
+	// Hard scales only this, not every AI parameter read.
+	f32 getMaxLife()
+	{
+#if defined(PIKI_PC_PORT)
+		return pc_hardmode_teki_life(getParameterF(TPF_Life));
+#else
+		return getParameterF(TPF_Life);
+#endif
+	}
 
 	void outputDirectionVector(Vector3f& outDir) { BTeki::outputDirectionVector(getDirection(), outDir); }
 

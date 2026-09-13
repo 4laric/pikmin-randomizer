@@ -459,7 +459,7 @@ if (WIN32)
     # SDL_main sin definir en todos los ejecutables.
     target_link_libraries(pikmin_pc PRIVATE ${SDL2_LIBRARIES} opengl32)
 else()
-    target_link_libraries(pikmin_pc PRIVATE m ${SDL2_LIBRARIES} OpenGL::GL)
+    target_link_libraries(pikmin_pc PRIVATE m ${SDL2_LIBRARIES} OpenGL::GL X11)
 endif()
 # Export symbol names so the diagnostic backtrace in pc_gfx.cpp prints function
 # names rather than bare addresses. Costs nothing at runtime.
@@ -506,12 +506,13 @@ else()
     set(LAUNCHER_PLATFORM_SOURCE pc_port/launcher/launcher_platform_posix.cpp)
 endif()
 
+find_package(Threads REQUIRED)
 add_executable(pikmin_launcher
     pc_port/launcher/launcher_main.cpp
     pc_port/launcher/installer_ui.cpp
     ${LAUNCHER_PLATFORM_SOURCE})
 target_include_directories(pikmin_launcher PRIVATE ${SDL2_INCLUDE_DIRS})
-target_link_libraries(pikmin_launcher PRIVATE pikmin_disc_image ${SDL2_LIBRARIES})
+target_link_libraries(pikmin_launcher PRIVATE pikmin_disc_image ${SDL2_LIBRARIES} Threads::Threads)
 if (WIN32)
     # Diálogo de archivo clásico, selector de carpeta del shell y COM.
     target_link_libraries(pikmin_launcher PRIVATE comdlg32 ole32 shell32 uuid)
@@ -540,13 +541,23 @@ target_include_directories(installer_ui_test PRIVATE
 target_link_libraries(installer_ui_test PRIVATE ${SDL2_LIBRARIES})
 target_compile_options(installer_ui_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 
-add_executable(asset_finalize_test pc_port/launcher/asset_finalize_test.cpp)
 
 enable_testing()
-add_test(NAME asset_finalize_test COMMAND asset_finalize_test)
 add_test(NAME gamecube_image_test COMMAND gamecube_image_test)
 add_test(NAME sha256_test COMMAND sha256_test)
 add_test(NAME installer_ui_test COMMAND installer_ui_test)
+
+add_executable(asset_finalize_test pc_port/launcher/asset_finalize_test.cpp)
+target_link_libraries(asset_finalize_test PRIVATE Threads::Threads)
+target_compile_options(asset_finalize_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME asset_finalize_test COMMAND asset_finalize_test)
+
+add_executable(prepared_image_test pc_port/launcher/prepared_image_test.cpp ${LAUNCHER_PLATFORM_SOURCE})
+target_compile_options(prepared_image_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+if (WIN32)
+    target_link_libraries(prepared_image_test PRIVATE comdlg32 ole32 shell32 uuid)
+endif()
+add_test(NAME prepared_image_test COMMAND prepared_image_test)
 
 add_executable(pc_generator_cache_validation_test
     pc_port/save/pc_generator_cache_validation_test.cpp)

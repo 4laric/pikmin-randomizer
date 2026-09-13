@@ -90,6 +90,16 @@ void pc_gpu_preference_apply(void);
 /// creation fails so a second SDL_Init can talk to the compositor again.
 void pc_gpu_preference_clear(void);
 
+/// Non-zero if the NVIDIA kernel module is loaded.
+int pc_gpu_preference_nvidia_present(void);
+
+/// Non-zero if this process is on a Wayland session (Xwayland included).
+int pc_gpu_preference_session_is_wayland(void);
+
+/// Put GLX offload and SDL on X11. Used when the first context landed on the
+/// iGPU: Wayland EGL ignores the GLX vendor, so the window has to be remade.
+void pc_gpu_preference_force_x11_glx(void);
+
 #ifdef __cplusplus
 }
 #endif

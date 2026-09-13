@@ -1600,7 +1600,9 @@ GameCoreSection::GameCoreSection(Controller* controller, MapMgr* mgr, Camera& ca
  * F5 stocks 20 red Pikmin in the Onion, up to the configured limit: reaching a
  * few hundred the honest way takes far too long to iterate on. F6 pushes the
  * clock on by an in-game hour, so a change to the day length can be judged
- * without sitting through it.
+ * without sitting through it. F7 ends the day with the Main Engine recovered
+ * and 20 Pikmin banked, so testing anything past the first level does not mean
+ * playing the first level again.
  */
 static void pcDebugKeys()
 {
@@ -1664,6 +1666,51 @@ static void pcDebugKeys()
 		fflush(stderr);
 	}
 	hourWasDown = hourDown;
+
+	// F7 finishes the day outright: the Main Engine counted as recovered and
+	// the Onion topped up to 20 red Pikmin. Only the trigger is set here --
+	// NewPikiGameModeState picks it up and runs the real end-of-day path, so
+	// the cutscene, the results screen and the save prompt all behave as if
+	// the day had ended on its own.
+	static bool skipWasDown = false;
+	const bool skipDown     = keys != nullptr && keys[SDL_SCANCODE_F7] != 0;
+	if (skipDown && !skipWasDown) {
+		if (gameflow.mIsDayEndActive || gameflow.mIsDayEndTriggered) {
+			fprintf(stderr, "[DEBUG] the day is already ending\n");
+		} else {
+			// Keyed by model ID, and PlayerState refuses a duplicate itself.
+			// "Invisible" because the part is granted rather than carried in,
+			// which is also what keeps this quiet in stages that have no
+			// Main Engine pellet to register.
+			if (!playerState->hasUfoParts(UFOID_MainEngine)) {
+				playerState->getUfoParts(UFOID_MainEngine, true);
+			}
+
+			// The same three places F5 touches, for the same reasons.
+			GoalItem* onion = itemMgr ? itemMgr->getContainer(Red) : nullptr;
+			if (onion == nullptr) {
+				fprintf(stderr, "[DEBUG] no red Onion here; ending the day without stocking\n");
+			} else {
+				const int limit   = pc_settings_get_piki_limit();
+				const int already = int(GameStat::allPikis);
+				int added         = 20 - already; // top up to 20, do not add 20
+				if (already + added > limit) {
+					added = limit - already;
+				}
+				if (added > 0) {
+					pikiInfMgr.mPikiCounts[Red][Leaf] += added;
+					onion->mHeldPikis[Leaf] += added;
+					GameStat::containerPikis.add(Red, added);
+					GameStat::update();
+				}
+			}
+
+			gameflow.mIsDayEndTriggered = TRUE;
+			fprintf(stderr, "[DEBUG] tutorial skipped: Main Engine recovered, ending the day\n");
+		}
+		fflush(stderr);
+	}
+	skipWasDown = skipDown;
 }
 #endif
 

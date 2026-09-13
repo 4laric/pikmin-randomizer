@@ -4,7 +4,44 @@ Tracking issue: [#25](https://github.com/4laric/pikmin-randomizer/issues/25).
 User authorized periodic upstream pulls and tested integration on 2026-09-11.
 The desktop heartbeat runs daily at 10:00 America/Toronto and stays quiet on unchanged state.
 
-## Recorded state (2026-09-12)
+## Draft integration #433 (2026-09-13)
+
+Upstream main `511f22fe` (12 commits after `f88c7810`) is integrated into
+private native `9735870cea769169446c524b6ae0cbdb07ed920e` for draft PR #432.
+This supersedes the historical state below for the draft only.
+
+Includes portable/legacy card discovery and PAL matching, per-save Hard mode,
+object-space normal texgen/specular fixes, DIRECT matrix handling, Wayland GPU
+selection, installer recovery/progress and the opt-in F7 debug shortcut.
+
+Conflict decisions: explicit randomizer/BBFT session card roots retain priority;
+ordinary game launches use upstream card discovery. Hard-mode max life uses
+P2-aware parameter lookup. Expanded randomizer allocation retains its maximum
+reservation before ordinary Hard-mode limits. Preserve broader transient rename
+retry handling and upstream installer UX. Remove duplicate CMake test entries.
+
+Private Release/MinGW/Ninja build with JAudio ON, randomizer test hooks OFF:
+`output/p2-upstream433-build`, targets `pikmin_pc` and `pc_randomizer_probe` PASS;
+dry run: `ninja: no work to do.` Executable SHA256:
+`15439A5FE924CF4BE282EA582EA06FBDB455FC4EF3ED180A04CD87192BA62277`.
+First configure exposed duplicate asset-finalize targets; corrected before build.
+
+Full suite: **1627 passed, 24 skipped, 1052 subtests passed**. Seven native tests
+pass: installer UI, asset finalization, prepared image, Hard mode, GPU preference,
+TEV shader and render packets. Native IPC, campaign assignments, prerelease
+receipt/save/reload protocol and DeathLink pass; catalog check and UT regeneration
+(12 slots/48 reachability comparisons plus fills) pass.
+
+Two old probe assumptions were corrected: the single-write DeathLink harness
+must cross MinGW's one-second timestamp resolution; the startup harness must use
+the current goal marker and per-color population catalog. Failed attempts remain
+in local output logs. Native startup results and packaged fill results follow.
+
+No native-origin push, live save migration or main-branch merge. PAL save UI,
+ordinary-game legacy card migration, Hard-mode gameplay and P2 specular visual
+fidelity are not established by these automated gates.
+
+## Historical recorded state (2026-09-12)
 
 - Upstream: `SSunnKing/Open-Nectar---Pikmin-Native-PC-Port`, branch `main`.
 - Last fetched/reviewed: `f88c7810` (integration tracked in #107).
@@ -114,3 +151,8 @@ Native `85074274` adds the downstream PC carry-counter expansion and P2 render/c
 ## Daily check — 2026-09-13 00:35 America/Toronto
 
 Fetched canonical upstream; main remains f88c7810787d4dd8cb5e14785a5b73cd790a5946 and HEAD..upstream/main is empty. No candidate integration or rebuild required. Open PR25 (installer UX) and PR26 (F10 fast-forward) have no review comments/reviews and both Linux build/smoke checks succeed. They remain open, not merged. Existing validated upstream integration is unchanged; no external review replies sent.
+
+Startup follow-up: production build PASS in a fresh private session, Forest of
+Hope, 20 red Pikmin, other Onion grants exactly once, area gates, completion,
+current population checks and world rendering. CARDInit confirms the session's
+`campaign/card/card0` root. Source export parity: all 1593 tracked text files.

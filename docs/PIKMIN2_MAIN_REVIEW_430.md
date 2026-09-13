@@ -67,3 +67,10 @@ Full suite with the matching native checkout and MinGW runtime on PATH:
 Draft PR #432 targets main and is mergeable. No merge into main was performed.
 Diff whitespace inspection reports five inherited extra blank lines at EOF in
 P2 source/tests; no unresolved conflict markers or integration whitespace errors.
+
+## Upstream follow-up #433
+
+Draft #432 now also includes Open Nectar main `511f22fe`. See
+[the upstream ledger](../UPSTREAM_SYNC.md) for the new private native build,
+conflict resolutions, validation and remaining visual/save acceptance limits.
+This supersedes the earlier statement that engine gameplay source was unchanged.
