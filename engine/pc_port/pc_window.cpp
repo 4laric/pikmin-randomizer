@@ -1066,6 +1066,11 @@ void pc_window_set_window_size(int w, int h) {
     sWindowHeight = h;
 }
 
+void pc_window_center(void) {
+    if (!sWindow) return;
+    SDL_SetWindowPosition(sWindow, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+}
+
 void pc_window_set_refresh_rate(double hz) {
     if (hz >= 20.0 && hz <= 1000.0) sTargetRefreshRate = hz;
 }

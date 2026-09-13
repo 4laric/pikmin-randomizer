@@ -64,6 +64,8 @@ $env:PATH='C:\Users\alari\pikmin-randomizer\native\build-randomizer\bin;'+$env:P
 & "C:\Users\alari\pikmin-randomizer\native\build-randomizer\bin\nectar.exe" --experimental-pikmin2-room
 ```
 
+The experimental-room window opens **small (960x540), windowed and centered** by default so a wall of test runs stays out of the way. Override with `PIKMIN_P2_ROOM_WINDOW=WxH` (e.g. `1280x720`) or `PIKMIN_P2_ROOM_WINDOW=off` to keep the persisted/desktop size (e.g. for full-size visual evidence).
+
 Private fixture build (only run an executable whose `provenance.json` status is `built`):
 
 ```powershell

@@ -51,6 +51,36 @@ __declspec(dllexport) int           AmdPowerXpressRequestHighPerformance = 1;
 #include "settings/pc_settings.h"
 #include "settings/pc_settings_p2d.h"
 
+namespace {
+// Small, centered window for the experimental P2 room preview so a wall of test
+// runs stays readable and out of the way. Overridable with
+// PIKMIN_P2_ROOM_WINDOW=WxH, or =off to keep the persisted/desktop size.
+bool pc_test_window_size(int& width, int& height) {
+    const char* value = std::getenv("PIKMIN_P2_ROOM_WINDOW");
+    if (value && (!std::strcmp(value, "0") || !std::strcmp(value, "off"))) return false;
+    if (value) {
+        int customWidth = 0, customHeight = 0;
+        if (std::sscanf(value, "%dx%d", &customWidth, &customHeight) == 2
+                && customWidth >= 320 && customHeight >= 240) {
+            width = customWidth;
+            height = customHeight;
+            return true;
+        }
+        if (!std::strcmp(value, "1") || !std::strcmp(value, "small")) {
+            width = 960;
+            height = 540;
+            return true;
+        }
+    }
+    if (pc_pikipelago_room_preview()) {
+        width = 960;
+        height = 540;
+        return true;
+    }
+    return false;
+}
+}
+
 int main(int argc, char* argv[])
 {
     // Disable stdout buffering so we see logs immediately before any crash
@@ -83,7 +113,9 @@ int main(int argc, char* argv[])
     // Initialize SDL2 Window and OpenGL Context FIRST
     printf("[PC Port] Initializing SDL2 Window and OpenGL...\n");
     fflush(stdout);
-    if (!pc_window_init("Open Nectar", 1280, 720)) {
+    int windowWidth = 1280, windowHeight = 720;
+    const bool smallTestWindow = pc_test_window_size(windowWidth, windowHeight);
+    if (!pc_window_init("Open Nectar", windowWidth, windowHeight)) {
         printf("[PC Port Fatal Error] Could not initialize window/OpenGL!\n");
         fflush(stdout);
         return 1;
@@ -92,6 +124,14 @@ int main(int argc, char* argv[])
     printf("[PC Port] Loading persisted settings...\n");
     fflush(stdout);
     pc_settings_init();
+    if (smallTestWindow) {
+        pc_window_set_display_mode(PC_WINDOW_FULLSCREEN_WINDOWED);
+        pc_window_set_window_size(windowWidth, windowHeight);
+        pc_window_center();
+        printf("[PC Port] Experimental preview window set to %dx%d windowed and centered "
+               "(override with PIKMIN_P2_ROOM_WINDOW=WxH or =off).\n", windowWidth, windowHeight);
+        fflush(stdout);
+    }
 
     printf("[PC Port] Initializing game system...\n");
     fflush(stdout);

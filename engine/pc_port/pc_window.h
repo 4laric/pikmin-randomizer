@@ -98,6 +98,7 @@ void pc_window_message_control_label(char tag, char* buf, unsigned bufSize);
 void pc_window_set_display_mode(int mode);        // PC_WINDOW_FULLSCREEN_*
 int  pc_window_get_display_mode(void);
 void pc_window_set_window_size(int w, int h);     // windowed resolution
+void pc_window_center(void);                      // recenter on the current display
 // Index of the display the window currently sits on, for enumerating that
 // monitor's video modes. Returns 0 when there is no window yet.
 int  pc_window_get_display_index(void);
