@@ -1,0 +1,128 @@
+# P2 attack, immunity and death receiver paths (receivers lane, #408)
+
+Receivers lane of [PIKMIN2_IMPLEMENTATION_FANOUT.md](PIKMIN2_IMPLEMENTATION_FANOUT.md),
+parent [#170](https://github.com/4laric/pikmin-randomizer/issues/170), child
+[#408](https://github.com/4laric/pikmin-randomizer/issues/408). This document
+resolves the recorded batch-3 result "FireOtakara host accepts the injected
+`InteractAttack` but takes no damage" and records the runtime proof of the
+damage, immunity and death paths on this port.
+
+Base: root `1feade3` (integration-approved engine export; contains the
+starting-squad overlay `a51b301` and native export `541bfba`) plus the batch-3
+north runtime commits (`47af621`, `10d6f73`, `c396caa`). Native
+`opencode/p2-batches134-native` @ `356e9c08ad5c681be0d00232cd31d0409fee50ea`
+(contains window change `1d5a242b` and the `_ACTORS_1` parse fix). No source
+behavior, family FSM or shared semantics were changed.
+
+## 1. Attack resolution is queue-then-apply
+
+An `InteractAttack` does **not** reduce health synchronously. The chain is:
+
+| Step | Anchor |
+|---|---|
+| `BTeki::stimulate` requires `InteractAttack::actCommon` (visible) | `src/plugPikiNakata/tekibteki.cpp:757`; `src/plugPikiKando/interactBattle.cpp:360` |
+| `InteractAttack::actTeki` → `teki->interact(Attack)` | `src/plugPikiNakata/tekiinteraction.cpp:31` |
+| `BTeki::interact` → strategy `interact` | `src/plugPikiNakata/tekibteki.cpp:1777` |
+| `TekiStrategy::interact` → `interactDefault` | `src/plugPikiNakata/tekistrategy.cpp:72` |
+| `BTeki::interactDefault`: invincible early-return, else `mStoredDamage += attack->mDamage`, return true | `src/plugPikiNakata/tekibteki.cpp:1786-1802` |
+| `BTeki::makeDamaged`: `mHealth -= mStoredDamage; mStoredDamage = 0` | `src/plugPikiNakata/tekibteki.cpp:788-796` |
+
+`mStoredDamage` is explicitly "damage waiting to be applied on next makeDamaged
+call" (`include/teki.h:510`). `makeDamaged` is only called from TAI reaction
+actions, e.g. `TaiSimultaneousDamageAction::act`
+(`src/plugPikiNakata/taireactionactions.cpp:142-151`),
+`TaiCounterattackSimultaneousDamageAction::act` (`:156-170`) and
+`TaiDamagingAction` (`:175-191`). Those actions exist only in some states of the
+actor's strategy (`TaiChappyStrategy` state table,
+`src/plugPikiNakata/taichappy.cpp:327-595`).
+
+Consequences:
+
+- `stimulate(...) == true` ("accepted") only means the damage was queued.
+- Health moves only when the current TAI state runs a reaction action. A host
+  whose AI stays in a state without one keeps `mStoredDamage` accumulating and
+  `mHealth` unchanged.
+- Death follows from `makeDamaged` driving `mHealth <= 0` into the dead/dying
+  states (`TaiDeadAction` / `TaiDyingAction` / `TaiDyeAction`,
+  `taireactionactions.cpp:24-101`).
+
+## 2. The FireOtakara result
+
+The batch-3 fixture injected `InteractAttack(n, nullptr, 100000, false)` on a
+`TEKI_Chappy` **placement vehicle**, not a source `OtakaraBase` actor;
+`pc_p2_batch2` is visual-only (`P2_BATCH2_BIND ... native_fsm=unimplemented`).
+The recorded outcome therefore reflects P1 Chappy AI state at injection time,
+not a P2 dweevil receiver or immunity:
+
+- `output/p2-batch3-runtime/runs10/dweevil-a1..a3`: `accepted=1`, `health=130`
+  for 160 injected frames — the proxy stayed in a no-reaction state.
+- `output/p2-batch3-runtime/runs7/dweevil`: the same FireOtakara reached
+  `health=0.0` at `observed=202`.
+- Receivers diagnostic on the corrected base (#408): `accepted=1`, health
+  `130 -> 0` in 1-2 frames when the state ran a reaction action (below).
+
+State-level diagnostic (`P2_RECV_ATTACK`, receivers fixture):
+
+```text
+P2_RECV_ATTACK id=349001 accepted=1 health=130.0 stored=100000.0 state=6 motion=2 invincible=0 observed=200
+P2_RECV_ATTACK id=349001 accepted=1 health=0.0   stored=100000.0 state=10 motion=2 invincible=0 observed=201
+P2_RECV_ATTACK id=349001 accepted=1 health=0.0   stored=200000.0 state=0  motion=2 invincible=0 observed=202
+```
+
+The queued damage is applied on the frame the Chappy TAI enters a reaction
+state (here 6 -> 10); accumulated `stored` proves the earlier queueing.
+
+## 3. Runtime proof
+
+Private receivers fixture (`experimental/pikmin2_receivers_runtime.py`, built
+against the private native build). Executable SHA-256
+`028d5e00a1df7abb8d125db0f3cc48e2a7bcd3c0eb32df56c5d344a6f5b0baa6`.
+
+| Path | Evidence | Result |
+|---|---|---|
+| live starting squad | `P2_RECV_SQUAD alive=20 reds=20` | PASS (20 reds, valid) |
+| valid damage | `accepted=1`, `stored` rises, `health 130 -> 0` | PASS |
+| invincibility gate (immunity) | `P2_RECV_IMMUNITY id=349006 pre_invincible=0 accepted=0 health_before=130.0 health_after=130.0` | PASS: with `TEKI_OPTION_INVINCIBLE` set, `interactDefault` rejects the attack and no damage is applied |
+| death path | health 0 enters `state=0` / `motion=Dead`; `P2_BATCH2_LIFECYCLE` reports dead family actors and the surviving control | PASS |
+
+Evidence roots (private, assets not committed):
+
+- `output/tracks/p2-receivers/runs-recv/stages/83f5c1ce483d4a9181cb05540f9d43ad/`
+- `output/tracks/p2-receivers/runs-recv2/stages/0eacad0cc4284733bc1a9f0999d9a090/`
+- `output/tracks/p2-receivers/runs-recv3/stages/1e3254618bd4405f9b97bfa1a71d6568/`
+
+## 4. Immunity boundary and remaining receivers
+
+- **Runtime-proven here:** the generic invincibility gate in `interactDefault`
+  (`tekibteki.cpp:1791-1793`) rejects attacks; `InteractAttack::actCommon`
+  additionally gates on `isVisible()`.
+- **Source-anchored, not yet ported:** P2 elemental immunities live on the
+  Pikmin receiver side in the decompilation
+  (`src/plugProjectKandoU/interactPiki.cpp`: `InteractDenki` 334,
+  `InteractFire` 445, `InteractBubble` 503, `InteractGas` 531 excludes White
+  and checks `gasInvicible`). The port's P1 `InteractAttack::actPiki`
+  (`interactBattle.cpp:371-406`) is the analogue actually exercised. See
+  [PIKMIN2_ELEMENTAL_ENEMY_AUDIT.md](PIKMIN2_ELEMENTAL_ENEMY_AUDIT.md).
+- **Blocked, family-lane:** dweevil elemental discharge receivers, treasure
+  damage/forced-drop and BombOtakara payload ownership are not implemented
+  (`experimental/pikmin2_batch2_families.py`, dweevil `blocked` map). Source
+  `interactCreature` stimuli (Fire/Bubble/Gas/Denki) and reward/drop behavior
+  remain owned by the dweevil implementation lane.
+
+No generic routing change was required; this slice adds no shared-semantics
+edits and needs no new actor IDs.
+
+## 5. Gates and limitations
+
+| Gate | Result |
+|---|---|
+| exact spawn | PASS (batch-3 fixture, `349001..349005` at recorded XYZ) |
+| autonomous movement/animation | PASS (P1 Chappy proxy) |
+| attacks/receivers | damage + invincibility gate PASS; source elemental receivers BLOCKED |
+| death/corpse | death PASS; corpse pellet nondeterministic on proxy hosts |
+| transport/reward | source-backed BLOCKED (dweevil family lane) |
+| cleanup/re-entry | UNTESTED |
+
+Limitations: the subject is the P1 Chappy placement vehicle, not source
+`OtakaraBase` behavior; the invincibility probe is an explicit injected
+intervention; and the elemental receiver boundary is source evidence only.
