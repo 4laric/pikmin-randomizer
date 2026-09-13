@@ -22,8 +22,8 @@ def sha(raw):
     return hashlib.sha256(raw).hexdigest()
 
 
-def layout(units, rooms):
-    instances = [(BLOCK, 0, [0,0,0])]
+def layout(units, rooms, *, block=BLOCK, north=NORTH, way=WAY, cap=CAP):
+    instances = [(block, 0, [0,0,0])]
     seams = []
 
     def attach(parent, door_id, name, child_id):
@@ -41,11 +41,11 @@ def layout(units, rooms):
         instances.append((name,rotation,position))
         return index
 
-    corridor = attach(0, 0, WAY, 1)
-    attach(corridor, 0, NORTH, 0)
-    for door in units[BLOCK]['doors']:
+    corridor = attach(0, 0, way, 1)
+    attach(corridor, 0, north, 0)
+    for door in units[block]['doors']:
         if door['id'] != 0:
-            attach(0, door['id'], CAP, 0)
+            attach(0, door['id'], cap, 0)
     return instances, seams
 
 
@@ -61,16 +61,23 @@ def return_audit(room, target):
                 source_route_audit=rows, all_pairs_connected=not any(r['unreachable_sources'] for r in rows))
 
 
-def build(iso, catalog_path, imported, output):
+def build(iso, catalog_path, imported, output, *, floor=3, room_names=ROOMS, pool=POOL, cap=CAP):
     catalog_raw = catalog_path.read_bytes()
     catalog = json.loads(catalog_raw)
-    source_floor(catalog)
+    if floor==3:
+        if tuple(room_names)!=ROOMS or pool!=POOL or cap!=CAP:raise ValueError('Unexpected floor3 assembly selection')
+        source_floor(catalog)
+    elif floor!=4:raise ValueError('Unsupported engineering assembly floor')
+    elif tuple(room_names)!=('room_mid1_6_tsuchi','room_north3_1_tsuchi') or pool!='2_ABE_mid1_nor3_tsuchi.txt' or cap!='item_cap_tsuchi':
+        raise ValueError('Unexpected floor4 assembly selection')
+    block,north=room_names
+    names=(block,WAY,north,cap)
     manifest_raw = (imported/'units.json').read_bytes()
     manifest = json.loads(manifest_raw)
     if manifest['cave_id'] != 'forest_1' or manifest['catalog_sha256'] != sha(catalog_raw):
         raise ValueError('Catalog/unit provenance mismatch')
-    definitions = {u['name']:u for u in catalog['unit_pools'][POOL]['units']}
-    if not set(NAMES) <= set(definitions):
+    definitions = {u['name']:u for u in catalog['unit_pools'][pool]['units']}
+    if not set(names) <= set(definitions):
         raise ValueError('Assembly candidate absent from floor-three source pool')
     units, rooms, sources, navigation, source_hashes = {}, {}, {}, {}, {}
     index = disc_files(iso)
@@ -85,7 +92,7 @@ def build(iso, catalog_path, imported, output):
             return raw
         for name, expected in catalog['source_sha256'].items():
             read(name, expected)
-        for name in NAMES:
+        for name in names:
             record = manifest['units'][name]
             if record['definition'] != definitions[name] or not record['assembly_ready']:
                 raise ValueError('Unsupported source room: '+name)
@@ -101,29 +108,29 @@ def build(iso, catalog_path, imported, output):
             if 'view.bmd' not in members:
                 raise ValueError('Missing source room model')
             sources[name] = members['view.bmd']
-    instances, seams = layout(units, rooms)
+    instances, seams = layout(units, rooms,block=block,north=north,cap=cap)
     footprints = cell_audit(instances, units)
     merged = merge_rooms([(rooms[n],units[n],turn,offset) for n,turn,offset in instances], seams)
     # The block north door is the engineering return target. No actor is spawned.
-    target_door = next(d for d in units[BLOCK]['doors'] if d['id'] == 0)
-    target = next(p['position'] for p in rooms[BLOCK]['routes'] if p['id'] == target_door['waypoint'])
+    target_door = next(d for d in units[block]['doors'] if d['id'] == 0)
+    target = next(p['position'] for p in rooms[block]['routes'] if p['id'] == target_door['waypoint'])
     navigation_audit = return_audit(merged, target)
     ground = seam_audit(merged, instances, seams, units, rooms)
     output.mkdir(parents=True, exist_ok=False)
     report = write_model(merged_model([(sources[n],turn,offset) for n,turn,offset in instances]),
-                         output/'render.mod', 'Beasts floor 3 engineering assembly')
+                         output/'render.mod', f'Beasts floor {floor} engineering assembly')
     (output/'room.mod').write_bytes(attach_collision((output/'render.mod').read_bytes(), merged))
     (output/'room.ini').write_text(route_ini(merged['routes']))
     (output/'collision.json').write_text(json.dumps(merged, indent=2)+'\n')
     report = {k:v for k,v in report.items() if k not in ('source','output')}
     (output/'render.json').write_text(json.dumps(report, indent=2)+'\n')
-    result = dict(schema=1, policy='P2_BEASTS_FLOOR3_ASSEMBLY_1', cave='forest_1', floor=3,
+    result = dict(schema=1, policy=f'P2_BEASTS_FLOOR{floor}_ASSEMBLY_1', cave='forest_1', floor=floor,
         layout=instances, seams=seams, footprints=footprints, seam_audit=ground,
         navigation=navigation_audit, unit_navigation=navigation, render=report,
         source_sha256=source_hashes, catalog_sha256=sha(catalog_raw), import_sha256=sha(manifest_raw),
         output_sha256={name:sha((output/name).read_bytes()) for name in ('render.mod','room.mod','room.ini','collision.json')},
         assembled=True, native_validated=False, native_ready=False, retail_generation=False,
-        limitations=['Authored two source rooms, one straight corridor and two caps; not retail map generation.',
+        limitations=[f'Authored two source rooms, one straight corridor and {"two" if len(instances)==5 else "five"} caps; not retail map generation.',
                      'Directed source links preserved; only coincident seam waypoints are merged.',
                      'Engineering return waypoint is not a selected Pod, captain spawn or cave exit.',
                      'Seam-width offline probes and graph paths do not certify native carrying, scenery footprint or camera.',

@@ -21,6 +21,7 @@
 #include "timers.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_bbft.h"
+#include "pc_p2_cargo_ground.h"
 #endif
 
 //////////////////////////////////////////////////////
@@ -1965,6 +1966,28 @@ f32 MapMgr::getMinY(f32 x, f32 z, bool includePlatColl)
  * @param includePlatColl Whether to consider platform collision as valid "ground" to return.
  * @return Minimum Y value found, or 0.0f if none.
  */
+#if defined(PIKI_PC_PORT)
+// Height and normal come from the same positive-Y static triangle. No candidate
+// means no floor contact; unlike getMinY this never invents ground at zero.
+CollTriInfo* MapMgr::getStaticGroundBelow(f32 x, f32 z, f32 ceiling, f32& height)
+{
+    if (!std::isfinite(x) || !std::isfinite(z) || !std::isfinite(ceiling)) return nullptr;
+    CollTriInfo* result=nullptr;
+    for (CollGroup* group=getCollGroupList(x,z,false);group;group=group->mNextCollGroup) {
+        const int count=getGroundQueryTriCount(group);
+        for(int i=0;i<count;i++) {
+            CollTriInfo* tri=group->mTriangleList[i];
+            Vector3f point(x,0.f,z);
+            const Vector3f& n=tri->mTriangle.mNormal;
+            if (n.y>0.f && tri->inTriClampTo(point)
+                && pc_p2_cargo_ground_candidate(point.y,ceiling,n.x,n.y,n.z)
+                && (!result || point.y>height)) {result=tri;height=point.y;}
+        }
+    }
+    return result;
+}
+#endif
+
 f32 MapMgr::getMaxY(f32 x, f32 z, bool includePlatColl)
 {
 	// track how many times we call this each frame for some reason
