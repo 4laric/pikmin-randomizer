@@ -14,7 +14,7 @@ import argparse
 import re
 from pathlib import Path
 
-import experimental.pikmin2_batch2_runtime as base
+import experimental.pikmin2_north_runtime as base
 
 APP = r'''class RoomApp : public PlugPikiApp {
  int frames=0,observed=0,familyCount=0,target=-1,retarget=0;bool done=false;
@@ -124,7 +124,6 @@ def instrument(source):
             + source[:start] + APP + source[end:])
 
 
-base.instrument = instrument
 
 
 def readings(text):
@@ -180,6 +179,7 @@ if __name__ == '__main__':
         r.add_argument('--' + name, type=Path, required=True)
     r.add_argument('--timeout', type=int, default=150)
     args = parser.parse_args()
+    base.instrument = instrument
     if args.command == 'build':
         base.build(args.native, args.build_dir, args.output, args.head, args.resume)
     else:

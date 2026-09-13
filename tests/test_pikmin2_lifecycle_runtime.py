@@ -66,3 +66,15 @@ def test_validate_requires_death_cleanup_and_reentry():
     # Missing death must fail even when the run otherwise completes.
     degraded = text.replace('P2_LIFECYCLE_DEATH id=1 frame=240\n', '')
     assert not lifecycle.validate(degraded, 0, manifest)['passed']
+
+
+def test_current_native_window_entrypoint_is_preserved():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    path = root / 'native/tools/preview_p2_room.cpp'
+    if not path.exists(): path = root / 'engine/tools/preview_p2_room.cpp'
+    source = path.read_text(encoding='utf-8')
+    result = lifecycle.instrument(source)
+    assert result.count('pc_window_center();') == source.count('pc_window_center();')
+    assert 'pc_p2_batch2_rebind();' in result
+    assert 'P2_LIFECYCLE_SQUAD alive=' in result

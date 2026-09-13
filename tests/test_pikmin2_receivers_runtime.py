@@ -66,3 +66,14 @@ def test_engine_queue_then_apply_anchors_present():
     assert 'mHealth -= mStoredDamage' in apply
     teki_h = (src.parents[1] / 'include/teki.h').read_text(errors='replace')
     assert 'damage waiting to be applied' in teki_h
+
+
+def test_import_does_not_replace_other_fixture_instrumentation():
+    import importlib
+    from experimental import pikmin2_batch2_runtime as south
+    from experimental import pikmin2_north_runtime as north
+    from experimental import pikmin2_receivers_runtime as receiver
+    original_south, original_north = south.instrument, north.instrument
+    importlib.reload(receiver)
+    assert south.instrument is original_south
+    assert north.instrument is original_north

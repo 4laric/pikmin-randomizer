@@ -64,6 +64,9 @@ public:int idle() override {
    else{require(controlId==0,"lifecycle duplicate control");controlId=id;}
   }
   require(familyCount>=1&&controlId!=0,"lifecycle roster incomplete");
+  int livePikis=0;Iterator pi(pikiMgr);CI_LOOP(pi){Piki* p=static_cast<Piki*>(*pi);if(p&&p->isAlive())++livePikis;}
+  require(livePikis>0,"lifecycle starting squad missing");
+  std::printf("P2_LIFECYCLE_SQUAD alive=%d\n",livePikis);
   for(int i=0;i<familyCount;++i){Teki* a=find(ids[i]);if(a&&a->isAlive()&&!a->getTekiOption(BTeki::TEKI_OPTION_INVINCIBLE)){target=ids[i];break;}}
   require(target!=0,"lifecycle no mortal non-invincible target");
   {Teki* t=find(target);require(t,"lifecycle target missing");targetGen=t->mGenerator;frameOn(t);}
@@ -98,7 +101,7 @@ public:int idle() override {
    std::printf("P2_LIFECYCLE_RESPAWN_INJECT id=%u generator=%u\n",target,targetGen->_70);std::fflush(stdout);}
   if(fresh&&fresh->isAlive()){
    frameOn(fresh);
-   pc_p2_batch2_setup();pc_p2_long_legs_setup();
+   pc_p2_batch2_rebind();pc_p2_long_legs_setup();
    reentryFrame=observed;reuseSlot=int(fresh==deadPtr);
    std::printf("P2_LIFECYCLE_REENTRY id=%u frame=%d reused=%d\n",target,observed,reuseSlot);std::fflush(stdout);
   }
@@ -124,7 +127,7 @@ public:int idle() override {
 def instrument(source):
     start = source.index('class RoomApp : public PlugPikiApp {')
     end = source.index('int main(', start)
-    if 'P2_LIFECYCLE_BIRTH' in source:
+    if 'PASS P2_LIFECYCLE_RUNTIME' in source:
         raise ValueError('Already instrumented')
     head = ('#include <fstream>\n#include <cmath>\n#include <cstring>\n#include "Generator.h"\n'
             '#include "TekiPersonality.h"\n#include "Interactions.h"\n'
@@ -137,6 +140,8 @@ def instrument(source):
     # the same log marker so adoption evidence is comparable.
     anchor = 'if(!pc_window_init("P2 room integration fixture",960,720))return 3;'
     if anchor not in text:
+        if 'pc_window_init("P2 room integration fixture",windowWidth,windowHeight)' in text and 'pc_window_center();' in text and 'Experimental preview window set to' in text:
+            return text  # Current native replacement-main already supplies the policy.
         raise ValueError('missing fixture window-init anchor')
     window = (anchor + '\n{int laneW=960,laneH=540;const char* laneRoomWin=std::getenv("PIKMIN_P2_ROOM_WINDOW");'
               'bool laneSmall=true;'
