@@ -63,9 +63,11 @@ def joint_matrices(blocks, local_overrides=None):
     return [world(i) for i in range(count)]
 
 
-def bake(arrays,shapes,matrices,missing_normals='error',singular_normal='error'):
+def bake(arrays,shapes,matrices,missing_normals='error',singular_normal='error',bindings=None):
     if missing_normals not in ('error','compute','default'):raise ValueError('Invalid missing-normal policy')
     if singular_normal not in ('error','transpose-adjugate'):raise ValueError('Invalid singular-normal policy')
+    if bindings is not None:
+        bindings.update({9:[],10:[]})
     seen=set()
     for shape in shapes:
         for tri in shape:
@@ -87,6 +89,7 @@ def bake(arrays,shapes,matrices,missing_normals='error',singular_normal='error')
                     key=(joint,vertex[attr])
                     if key not in cache[attr]:
                         cache[attr][key]=len(converted[attr])
+                        if bindings is not None:bindings[attr].append((joint,original[attr][vertex[attr]]))
                         converted[attr].append(apply(matrices[joint],original[attr][vertex[attr]],normal=attr==10,singular_normal=singular_normal))
                     vertex[attr]=cache[attr][key]
                 corners.append((vertex,topology,missing))

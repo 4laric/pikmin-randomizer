@@ -61,12 +61,12 @@ static bool profileSnow(Navi* n){
 }
 '''
 
-def build(native,build_dir,output,head):
+def build(native,build_dir,output,head,*,probe=None):
  output=output.resolve();output.mkdir(parents=True,exist_ok=False)
  source=lifecycle((native/'tools/preview_p2_room.cpp').read_text())
  # Helper uses fixture-local require/capture/controller declarations.
  at=source.index('class RoomApp : public PlugPikiApp {')
- source=source[:at]+PROBE+source[at:]
+ source=source[:at]+(PROBE if probe is None else probe)+source[at:]
  source=source.replace('int result=PlugPikiApp::idle();require(++frames', 'auto idleStart=std::chrono::steady_clock::now();int result=PlugPikiApp::idle();lastIdleMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-idleStart).count();require(++frames')
  source=source.replace('Navi* n=naviMgr->getNavi();if(!n ||', 'Navi* n=naviMgr->getNavi();if(n && profileSnow(n))return result;if(!n ||')
  source=source.replace('if(snowRenderFixture(n))return result;', 'if(enemy && phase>=3 && phase<=6 && ticks%15==0)verifySnow(enemy);\n        if(snowRenderFixture(n))return result;')

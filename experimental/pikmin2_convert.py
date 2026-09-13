@@ -73,7 +73,7 @@ def diffuse_slot(m, r):
         if list(m[gen:gen+3])==[1,4,60]:return slot
     return 0
 
-def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_matrices=None, missing_normals="error", singular_normal="error"):
+def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_matrices=None, missing_normals="error", singular_normal="error", bindings=None):
     if missing_normals not in ("error","compute","default") or singular_normal not in ("error","transpose-adjugate"):raise ValueError("Invalid normal policy")
     if not bake_rigid and (missing_normals!="error" or singular_normal!="error"):raise ValueError("Normal policies require baked geometry")
     b=blocks(data); j=b['JNT1']; d=b['DRW1']
@@ -201,7 +201,7 @@ def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_
         from experimental.pikmin2_rigid import bake
         # Primitive strips/fans share vertex dictionaries; bake each reference independently.
         shapes=[[[dict(v) for v in tri] for tri in shape] for shape in shapes]
-        bake(arrays,shapes,matrices,missing_normals=missing_normals,singular_normal=singular_normal)
+        bake(arrays,shapes,matrices,missing_normals=missing_normals,singular_normal=singular_normal,bindings=bindings)
     # Array blocks carry alignment padding; only referenced entries are vertices.
     for attr in arrays:
         used=[v[attr] for tris in shapes for tri in tris for v in tri if attr in v]
