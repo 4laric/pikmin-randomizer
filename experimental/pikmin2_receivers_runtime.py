@@ -79,6 +79,21 @@ public:int idle() override {
    std::fflush(stdout);
   }
  }
+ if(observed==390){
+  Piki* first=nullptr;Piki* second=nullptr;
+  Iterator p(pikiMgr);CI_LOOP(p){Piki* v=static_cast<Piki*>(*p);if(!v->isAlive())continue;if(!first)first=v;else if(!second){second=v;break;}}
+  if(first&&second){
+   const int colorWas=second->mColor;second->mColor=Blue;
+   const bool redFire=first->stimulate(InteractFire(n,10.0f));
+   const bool blueFire=second->stimulate(InteractFire(n,10.0f));
+   const bool blueBubble=second->stimulate(InteractBubble(n,10.0f));
+   const bool redBubble=first->stimulate(InteractBubble(n,10.0f));
+   second->mColor=colorWas;
+   std::printf("P2_RECV_ELEMENT red_fire=%d blue_fire=%d blue_bubble=%d red_bubble=%d\n",
+               int(redFire),int(blueFire),int(blueBubble),int(redBubble));
+   std::fflush(stdout);
+  }
+ }
  if(observed==400){
   int alive=0,moved=0,corpses=0;
   for(int i=0;i<familyCount;++i){Teki* a=find(ids[i]);if(!a)continue;
@@ -121,13 +136,16 @@ def readings(text):
     immunity = re.findall(
         r'P2_RECV_IMMUNITY id=(\d+) pre_invincible=(\d) accepted=(\d) '
         r'health_before=(-?[\d.]+) health_after=(-?[\d.]+)', text)
-    return squad, attacks, immunity
+    element = re.findall(
+        r'P2_RECV_ELEMENT red_fire=(\d) blue_fire=(\d) blue_bubble=(\d) red_bubble=(\d)', text)
+    return squad, attacks, immunity, element
 
 
 def validate(text, code):
     """Gate the receiver paths from a private run log (see docs/PIKMIN2_RECEIVER_PATHS.md)."""
-    squad, attacks, immunity = readings(text)
+    squad, attacks, immunity, element = readings(text)
     healths = [float(a[2]) for a in attacks]
+    e = element[0] if element else None
     checks = dict(
         completion=code == 0 and 'PASS P2_RECEIVERS_RUNTIME' in text,
         squad_live=bool(squad) and int(squad[0][0]) > 0 and int(squad[0][1]) > 0,
@@ -135,9 +153,11 @@ def validate(text, code):
         damage_applied=any(h <= 0.0 for h in healths),
         immunity_gate=bool(immunity) and immunity[0][2] == '0'
                       and float(immunity[0][3]) == float(immunity[0][4]),
+        elemental_immunity=bool(e) and e[0] == '0' and e[1] != '0'
+                           and e[2] == '0' and e[3] != '0',
     )
     return dict(passed=all(checks.values()), checks=checks,
-                squad=squad, attacks=attacks, immunity=immunity,
+                squad=squad, attacks=attacks, immunity=immunity, element=element,
                 scope='Proxy-host receiver proof only; source P2 FSM/receivers stay BLOCKED.')
 
 

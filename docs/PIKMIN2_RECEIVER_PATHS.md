@@ -76,14 +76,15 @@ state (here 6 -> 10); accumulated `stored` proves the earlier queueing.
 
 Private receivers fixture (`experimental/pikmin2_receivers_runtime.py`, built
 against the private native build). Executable SHA-256
-`c3aea4acedd91c16d018bb19a66396b491928f192c10182182038c98cac55758`; the in-module
-`validate()` gate reports `passed=true` on all five receiver checks.
+`d414b6e99d8459a78130c4403a748501913707d213e4764a5897811b661f03ee`; the in-module
+`validate()` gate reports `passed=true` on all six receiver checks.
 
 | Path | Evidence | Result |
 |---|---|---|
 | live starting squad | `P2_RECV_SQUAD alive=20 reds=20` | PASS (20 reds, valid) |
 | valid damage | `accepted=1`, `stored` rises, `health 130 -> 0` | PASS |
 | invincibility gate (immunity) | `P2_RECV_IMMUNITY id=349006 pre_invincible=0 accepted=0 health_before=130.0 health_after=130.0` | PASS: with `TEKI_OPTION_INVINCIBLE` set, `interactDefault` rejects the attack and no damage is applied |
+| elemental immunity | `P2_RECV_ELEMENT red_fire=0 blue_fire=1 blue_bubble=0 red_bubble=1` | PASS: Red rejects `InteractFire`, Blue rejects `InteractBubble`; the opposite colour accepts |
 | death path | health 0 enters `state=0` / `motion=Dead`; `P2_BATCH2_LIFECYCLE` reports dead family actors and the surviving control | PASS |
 
 Evidence roots (private, assets not committed):
@@ -92,14 +93,19 @@ Evidence roots (private, assets not committed):
 - `output/tracks/p2-receivers/runs-recv2/stages/0eacad0cc4284733bc1a9f0999d9a090/`
 - `output/tracks/p2-receivers/runs-recv3/stages/1e3254618bd4405f9b97bfa1a71d6568/`
 - `output/tracks/p2-receivers/runs-recv4/stages/fcd1d954cb61407caec2bf8a325cffd3/` (gated `passed=true`)
+- `output/tracks/p2-receivers/runs-recv5/stages/3a75b9a365fb4db58dbdcc61dee18d20/` (gated `passed=true`, incl. elemental immunity)
 
 ## 4. Immunity boundary and remaining receivers
 
 - **Runtime-proven here:** the generic invincibility gate in `interactDefault`
   (`tekibteki.cpp:1791-1793`) rejects attacks; `InteractAttack::actCommon`
-  additionally gates on `isVisible()`.
-- **Source-anchored, not yet ported:** P2 elemental immunities live on the
-  Pikmin receiver side in the decompilation
+  additionally gates on `isVisible()`. The port's elemental Pikmin receivers
+  also execute: `InteractFire::actPiki` (`interactBattle.cpp:192-206`) rejects
+  fire-immune colours and `InteractBubble::actPiki` (`:168-187`) rejects Blue,
+  with the opposite colour accepting in the probe. The Navi analogues gate on
+  the navi-state `invincible()` (`navi.cpp:2773-2811`).
+- **Source-anchored, not yet ported (P2 Gas/Denki and enemy-side):** P2
+  elemental immunities live on the Pikmin receiver side in the decompilation
   (`src/plugProjectKandoU/interactPiki.cpp`: `InteractDenki` 334,
   `InteractFire` 445, `InteractBubble` 503, `InteractGas` 531 excludes White
   and checks `gasInvicible`). The port's P1 `InteractAttack::actPiki`
