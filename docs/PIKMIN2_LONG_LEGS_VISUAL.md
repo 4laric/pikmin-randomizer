@@ -92,5 +92,8 @@ Long Legs (56) stays with the demon lane.
 - `pc_p2_long_legs.cpp`, `pc_p2_preview.cpp`, `tekibteki.cpp`, `tekimgr.cpp`
   compiled `-fsyntax-only` exit 0 with the exact `pikmin_pc` translation-unit
   flags (Ninja Release, `PIKMIN_NATIVE_JAUDIO=ON`).
-- Private full `pikmin_pc` build in the isolated batch-4 worktree (recorded in
-  the session issue update).
+- Private full `pikmin_pc` build in the isolated batch-4 worktree
+  (`output/tracks/p2-batch4-root`, nested `native` on `219f7abc`): Ninja
+  Release, `PIKMIN_NATIVE_JAUDIO=ON`, **495/495 steps, link exit 0**; no-work
+  dry run `ninja: no work to do`. Built `bin/nectar.exe` 6288951 B, SHA-256
+  `921DADDE7EE3B9AB46A428B270D1064A3EDE6EEBA3D903436649F992FC409AD4`.
