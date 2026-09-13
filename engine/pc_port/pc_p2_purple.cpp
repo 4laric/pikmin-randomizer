@@ -47,7 +47,7 @@ bool pc_p2_purples_enabled(){return pc_pikipelago_room_preview() && enabled;}
 bool pc_p2_is_purple(const Piki* p){return pc_p2_purples_enabled() && p && p->mP2Purple;}
 void pc_p2_make_purple(Piki* p) {
     if(!pc_p2_purples_enabled())std::abort();
-    p->mP2Purple=true;p->mP2AnimationTime=0;
+    p->mP2White=false;p->mP2Purple=true;p->mP2AnimationTime=0;
     p->mCurrentColour=p->mDefaultColour=p->mStartBlendColour=p->mTargetBlendColour=Colour(100,30,150,255);
     pc_p2_purple_status();
 }

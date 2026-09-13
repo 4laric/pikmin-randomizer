@@ -89,7 +89,7 @@ void pc_p2_cave_setup(){
     std::ifstream in("p2-cave-entry.txt");if(!in)return;
     std::string version,extra;int floor,count;float health;
     if(!(in>>version>>token>>floor>>health>>count))invalid("header");
-    const P2CaveEntryProfile profile=p2_cave_entry_profile(version=="P2_CAVE_ENTRY_2"?"P2_CAVE_ENTRY_1":version,floor,token);
+    const P2CaveEntryProfile profile=p2_cave_entry_profile(version,floor,token);
     beasts=profile==P2CaveEntryProfile::BeastsFloor2 || profile==P2CaveEntryProfile::BeastsFloor3 || profile==P2CaveEntryProfile::BeastsFloor4;
     if(profile==P2CaveEntryProfile::Invalid || !std::isfinite(health) || health<=0 || health>1 || count<1 || count>100)
         invalid("header");
