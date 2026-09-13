@@ -257,10 +257,12 @@ original course and writes `arena.json`. `GATES` covers the common acceptance
 gates plus the batch-1 open items; identity, FSM, proxy, combat, death and carry
 gates are marked **blocked**, spawn/control are untested.
 
-### Native hook request
+### Native registration (family-owned)
 
-Root/integration track (#186) owns CMake and shared setup/update/draw/reset. The
-following is requested from this lane; no shared file is touched here.
+Workflow revision 2026-09-13 ([#186](https://github.com/4laric/pikmin-randomizer/issues/186)):
+the aquatic family owner implements these narrow additive registration hooks. The
+entry points below are recorded for #186 coordination and acceptance; edits to
+shared semantics still require focused review. None is implemented in this batch.
 
 - **Build**: add `pc_port/pc_p2_aquatic.cpp` (+`pc_p2_aquatic.h`,
   `pc_p2_aquatic_policy.h`) to the `pikmin_pc` source list following the

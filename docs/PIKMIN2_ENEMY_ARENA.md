@@ -1,6 +1,6 @@
 # Parallel enemy families and P1 arena contract
 
-Integration ownership and acceptance: [#186](https://github.com/4laric/pikmin-randomizer/issues/186). Codex uses the shared 4laric account; the issue comments identify the actual worker. This contract is the next implementation boundary, not a claim that a general arena launcher already exists.
+Coordination and acceptance: [#186](https://github.com/4laric/pikmin-randomizer/issues/186). Codex uses the shared 4laric account; the issue comments identify the actual worker. **Workflow revision 2026-09-13:** family owners own end-to-end implementation — extraction, conversion profile, native module, narrow additive registration hooks, private builds and runtime evidence — while #186 retains shared-semantics review, the serialized maintained build/export and acceptance. This contract is the next implementation boundary, not a claim that a general arena launcher already exists.
 
 The current workflow, handoff template and active lane assignments are in
 [Enemy family import pipeline](PIKMIN2_ENEMY_IMPORT_PIPELINE.md). The first three
@@ -14,10 +14,10 @@ and remaining validation work. The table below records the original batch.
 | Enemy worker | Bulborb family: source Kochappy variant extraction and profile, reusing the Snow integration pattern |
 | Content worker | Correct generator position-offset packing, then Sheargrub family placement and lifecycle |
 | Lifecycle worker | Breadbug asset, animation and collision extraction using completed family audits |
-| Integration lead | Common arena staging, native registration/hooks, combined builds and source export |
+| Integration lead | Shared-semantics review, maintained build/export serialization, acceptance coordination |
 | Kimi | Independent fixed-build acceptance and evidence review |
 
-Family workers own separate new modules and profiles. They request central hook changes before editing shared native setup, renderer, registry, save or reward code. Private fixtures use frozen copied build inputs. A shared rebuild starts only after any dependent worker has captured its inputs.
+Family workers own separate new modules, profiles and **narrow additive registration hooks** for their family, including the family's setup/update/draw/reset entry points and optional visual-bank binding. Changes to shared semantics — saves/rewards, captain state, generic damage/physics, actor lifetime, converter defaults or ID conflicts — still require focused review from #186. Private fixtures use frozen copied build inputs; the maintained shared rebuild stays serialized and starts only after any dependent worker has captured its inputs.
 
 ## First P1 arena boundary
 
