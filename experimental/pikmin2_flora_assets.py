@@ -247,11 +247,16 @@ LIMITATIONS = [
 
 # Opt-in converter tolerances per species (#186); strict defaults everywhere else.
 # Pelplant authors zero/annihilated joint scales for hidden and grow-from-nothing
-# segments, so its rigid bakes need the singular_normal fallback; HikariKinoko
-# keeps strict defaults (its shape-matrix type 1 is still unsupported). See
-# docs/PIKMIN2_SINGULAR_SCALE.md (#405).
+# segments, so its rigid bakes need the singular_normal fallback. HikariKinoko
+# ships a shape-matrix type 1 (billboard) quad: 'billboard': 'static' bakes it
+# through its rigid joint matrix (camera-facing orientation is not reproduced)
+# and 'missing_normals': 'compute' derives the quad's normal from its own baked
+# geometry because the source billboard shape carries no normal attribute.
+# See docs/PIKMIN2_SINGULAR_SCALE.md (#405) and
+# docs/PIKMIN2_BILLBOARD_FALLBACK.md (#429).
 TOLERANCES = {
     'Pelplant': {'singular_normal': 'transpose-adjugate-zero'},
+    'HikariKinoko': {'billboard': 'static', 'missing_normals': 'compute'},
 }
 # Opt-in BCA pose (scale) tolerances. 'singular_scale': 'allow' accepts an
 # authored zero axis scale and must be paired with the matching

@@ -69,10 +69,12 @@ No other species' output changes. The six Candypop colour buds
 (BluePom..RandPom), Tanpopo, Clover, Ooinu_s/Ooinu_l and Wakame_s/Wakame_l were
 already converted and remain byte-identical.
 
-**Not unlocked:** HikariKinoko (Common Glowcap) still fails with
-`Unsupported shape matrix type`. Its `enemy.bmd` mixes shape matrix type 1
-(billboard) with type 3 (skin); billboard semantics are a native/renderer
-capability, not a static-converter tolerance, so it stays blocked here.
+**Later unlocked (separate slice):** HikariKinoko (Common Glowcap) failed here
+with `Unsupported shape matrix type` because its `enemy.bmd` mixes shape matrix
+type 1 (billboard) with type 3 (skin). Billboard semantics are a render-time
+capability, so #429 added a separate, explicitly recorded, opt-in static
+fallback (`billboard='static'`) rather than a scale/normal tolerance. See
+[the billboard fallback note](PIKMIN2_BILLBOARD_FALLBACK.md) (#429).
 
 ## Evidence
 
