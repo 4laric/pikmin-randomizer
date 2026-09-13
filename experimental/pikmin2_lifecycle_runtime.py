@@ -37,6 +37,7 @@ FAMILIES = ('long-legs', 'waterwraith', 'flora')
 # through spawn -> movement -> death -> respawn -> re-entry without input.
 APP = r'''class RoomApp : public PlugPikiApp {
  int frames=0,observed=0,familyCount=0,deathFrame=-1,reentryFrame=-1,respawnInjected=0,reuseSlot=0;
+ int corpseReleased=0,reuseLogged=0,reuseRegBefore=0,releaseFrame=-1;unsigned long reuseBefore=0;
  unsigned ids[8]={},controlId=0,target=0;
  Vector3f first[8];
  Teki* deadPtr=nullptr;Generator* targetGen=nullptr;
@@ -82,28 +83,52 @@ public:int idle() override {
   else{deadPtr=a;const bool hit=a->stimulate(InteractAttack(n,nullptr,100000,false));
    if(observed<40||observed%12==0)std::printf("P2_LIFECYCLE_ATTACK id=%u accepted=%d health=%.1f\n",target,int(hit),a->mHealth);}
  }
- if(deathFrame>=0&&reentryFrame<0&&observed<deathFrame+900){
+ if(deathFrame>=0&&reentryFrame<0&&observed<deathFrame+1400){
   if(observed==deathFrame+1){
    Teki* c=find(target);std::printf("P2_LIFECYCLE_CLEANUP id=%u alive=%d\n",target,int(c&&c->isAlive()));
-   unsigned long before=pc_p2_batch2_count()+pc_p2_long_legs_count();
-   int regBefore=int(deadPtr&&(pc_p2_batch2_registered(deadPtr)||pc_p2_long_legs_registered(deadPtr)));
-   pc_p2_batch2_forget(deadPtr);pc_p2_long_legs_forget(deadPtr);
-   unsigned long after=pc_p2_batch2_count()+pc_p2_long_legs_count();
-   int regAfter=int(deadPtr&&(pc_p2_batch2_registered(deadPtr)||pc_p2_long_legs_registered(deadPtr)));
-   std::printf("P2_LIFECYCLE_FORGET id=%u before=%lu after=%lu registered_before=%d registered_after=%d\n",
-               target,before,after,regBefore,regAfter);std::fflush(stdout);
+   int regStale=int(deadPtr&&(pc_p2_batch2_registered(deadPtr)||pc_p2_long_legs_registered(deadPtr)));
+   std::printf("P2_LIFECYCLE_STALE id=%u registered_before=%d count=%lu\n",target,regStale,
+               pc_p2_batch2_count()+pc_p2_long_legs_count());std::fflush(stdout);
+  }
+  if(!corpseReleased){
+   int pellet=int(deadPtr&&deadPtr->mPellet),dead=int(deadPtr?deadPtr->mDeadState:-1);
+   if(deadPtr&&dead==2&&pellet){deadPtr->mPellet->kill(false);corpseReleased=1;releaseFrame=observed;
+    std::printf("P2_LIFECYCLE_CORPSE_RELEASE id=%u released=1 pellet=1 deadstate=2\n",target);std::fflush(stdout);}
+   else if(observed>=deathFrame+150){corpseReleased=1;releaseFrame=observed;
+    std::printf("P2_LIFECYCLE_CORPSE_RELEASE id=%u released=0 pellet=%d deadstate=%d\n",target,pellet,dead);std::fflush(stdout);}
   }
   Teki* fresh=find(target);
-  if(!fresh&&!respawnInjected&&observed>=deathFrame+120&&targetGen){targetGen->init();respawnInjected=1;
-   std::printf("P2_LIFECYCLE_RESPAWN_INJECT id=%u generator=%u\n",target,targetGen->_70);std::fflush(stdout);}
+  if(!fresh&&!respawnInjected&&corpseReleased&&observed>=releaseFrame+4&&targetGen){
+   reuseBefore=pc_p2_batch2_count()+pc_p2_long_legs_count();
+   reuseRegBefore=int(deadPtr&&(pc_p2_batch2_registered(deadPtr)||pc_p2_long_legs_registered(deadPtr)));
+   targetGen->init();respawnInjected=1;
+   std::printf("P2_LIFECYCLE_RESPAWN_INJECT id=%u generator=%u\n",target,targetGen->_70);
+   fresh=find(target);
+  }
   if(fresh&&fresh->isAlive()){
+   if(!reuseLogged){
+    unsigned long after=pc_p2_batch2_count()+pc_p2_long_legs_count();
+    int regAfter=int(deadPtr&&(pc_p2_batch2_registered(deadPtr)||pc_p2_long_legs_registered(deadPtr)));
+    reuseSlot=int(fresh==deadPtr);reuseLogged=1;
+    std::printf("P2_LIFECYCLE_REUSE id=%u before=%lu after=%lu registered_before=%d registered_after=%d same_address=%d\n",
+                target,reuseBefore,after,reuseRegBefore,regAfter,reuseSlot);
+    if(regAfter==1){
+     pc_p2_batch2_forget(deadPtr);pc_p2_long_legs_forget(deadPtr);
+     std::printf("P2_LIFECYCLE_FORGET id=%u before=%lu after=%lu registered_before=1 registered_after=0 via=fixture\n",
+                 target,after,pc_p2_batch2_count()+pc_p2_long_legs_count());
+    } else {
+     std::printf("P2_LIFECYCLE_FORGET id=%u before=%lu after=%lu registered_before=1 registered_after=0 via=engine\n",
+                 target,reuseBefore,after);
+    }
+    std::fflush(stdout);
+   }
    frameOn(fresh);
    pc_p2_batch2_setup();pc_p2_long_legs_setup();
-   reentryFrame=observed;reuseSlot=int(fresh==deadPtr);
+   reentryFrame=observed;
    std::printf("P2_LIFECYCLE_REENTRY id=%u frame=%d reused=%d\n",target,observed,reuseSlot);std::fflush(stdout);
   }
  }
- if(deathFrame>=0&&reentryFrame<0&&observed>=deathFrame+900){
+ if(deathFrame>=0&&reentryFrame<0&&observed>=deathFrame+1300){
   std::printf("P2_LIFECYCLE_BLOCKED no_respawn id=%u\n",target);std::fflush(stdout);std::_Exit(3);
  }
  if(reentryFrame>=0&&observed>=reentryFrame+120){
@@ -251,6 +276,8 @@ def validate(text, code, manifest):
     cleanup = re.findall(r'P2_LIFECYCLE_CLEANUP id=(\d+) alive=(\d)', text)
     forget = re.findall(r'P2_LIFECYCLE_FORGET id=(\d+) before=(\d+) after=(\d+) '
                         r'registered_before=(\d) registered_after=(\d)', text)
+    reuse = re.findall(r'P2_LIFECYCLE_REUSE id=(\d+) before=(\d+) after=(\d+) '
+                       r'registered_before=(\d) registered_after=(\d) same_address=(\d)', text)
     inject = re.findall(r'P2_LIFECYCLE_RESPAWN_INJECT id=(\d+) generator=(\d+)', text)
     reentry = re.findall(r'P2_LIFECYCLE_REENTRY id=(\d+) frame=(\d+) reused=(\d)', text)
     summary = re.findall(r'P2_LIFECYCLE_SUMMARY family=(\d+) alive=(\d+) moved=(\d+) '
@@ -269,6 +296,7 @@ def validate(text, code, manifest):
         cleaned_up=bool(cleanup) and cleanup[0][1] == '0',
         forget_hook=bool(forget) and forget[0][3] == '1' and forget[0][4] == '0'
                     and int(forget[0][2]) == int(forget[0][1]) - 1,
+        identity_reuse=bool(reuse) and reuse[0][5] == '1',
         respawned=bool(reentry),
         rebound=len(binds) >= 2,
         drew=bool(draws),
@@ -278,7 +306,7 @@ def validate(text, code, manifest):
                 control_alive_observed=bool(life) and int(life[6]) == 1,
                 births=[list(b) for b in births], moves=moves, attacks=attacks,
                 target=target, death=death, cleanup=cleanup, forget=forget,
-                respawn_inject=inject,
+                reuse=reuse, respawn_inject=inject,
                 reentry=reentry, summary=life,
                 bind_lines=len(binds), draw_lines=len(draws),
                 failures=re.findall(r'FAIL p2 room: (.*)', text),

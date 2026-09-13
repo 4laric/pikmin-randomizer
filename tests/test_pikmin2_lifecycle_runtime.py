@@ -51,6 +51,7 @@ def test_validate_requires_death_cleanup_and_reentry():
         'P2_LIFECYCLE_DEATH id=1 frame=240\n'
         'P2_LIFECYCLE_CLEANUP id=1 alive=0\n'
         'P2_LIFECYCLE_FORGET id=1 before=2 after=1 registered_before=1 registered_after=0\n'
+        'P2_LIFECYCLE_REUSE id=1 before=1 after=0 registered_before=1 registered_after=0 same_address=1\n'
         'P2_LIFECYCLE_RESPAWN_INJECT id=1 generator=1\n'
         'P2_LIFECYCLE_REENTRY id=1 frame=500 reused=1\n'
         'P2_LONG_LEGS_BIND generator=1 species=Houdai pose=bind\n'
