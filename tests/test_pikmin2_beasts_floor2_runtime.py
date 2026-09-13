@@ -25,6 +25,28 @@ def trace():
 
 
 class BeastsRuntimeTests(unittest.TestCase):
+    def test_same_color_refund_trace(self):
+        lines=['P2_ROOM_CARGO_FREE_READY cargo=0 repairs=1','P2_BEASTS_REFUND_INITIAL reds=19 purple=1']
+        lines.extend(line for line in trace().splitlines() if line.startswith('P2_BEASTS_FLOWER '))
+        lines.append('P2_BEASTS_READY reds=19 flowers=2 cargo=0')
+        for flower,indices in ((62000,range(6)),(62001,range(6,11))):
+            lines.append(f'P2_BEASTS_APPROACH flower={flower} distance=73.3')
+            for i in indices:
+                lines.extend([f'P2_BEASTS_THROW original={i} flower={flower}',
+                              f'P2_VIOLET_WITNESS sequence={i+1} generator={flower} input={"purple" if i==0 else "red"}'])
+                if i==0:lines.append('P2_VIOLET_CONVERT count=1')
+            lines.extend(['P2_VIOLET_CONVERT count=5',f'P2_BEASTS_FLOWER_CONVERTED id={flower} count={6 if flower==62000 else 5}'])
+        lines.extend(['P2_BEASTS_SPROUTS reds=9 purple=0 sprouts=11','P2_BEASTS_CAPTAIN_PLUCK purple=1',
+                      'PASS P2_BEASTS_FLOOR2 reds=9 purple=11 sprouts=0 cargo=0 pokos=0 repairs_unchanged=1'])
+        log='\n'.join(lines)+'\n'
+        self.assertEqual(len(validate(log,PLAN,refund=True)['witnesses']),11)
+        with self.assertRaises(ValueError):validate(log,PLAN)
+        for old,new in [('input=purple','input=red'),('sequence=11','sequence=10'),
+                        ('count=6','count=5'),('reds=9 purple=11','reds=10 purple=10'),
+                        ('original=5 flower=62000','original=5 flower=62001'),
+                        ('P2_VIOLET_CONVERT count=1','P2_VIOLET_CONVERT count=0')]:
+            with self.subTest(old=old),self.assertRaises(ValueError):validate(log.replace(old,new),PLAN,refund=True)
+
     def test_native_witnesses_required_and_tamper_rejected(self):
         log=trace()
         for index,generator in enumerate((62000,62001)):

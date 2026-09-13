@@ -75,7 +75,7 @@ void PomAi::initAI(Pom* pom)
         props->mPomProps.mMaxPikiPerCycle.mValue=5;
         props->mPomProps.mCloseWaitTime.mValue=5.f;
         props->mPomProps.mDoKillSameColorPiki.mValue=FALSE;
-        mMaxSeedCount=5; // In this preview count converted Pikmin, not cycles.
+        mMaxSeedCount=5; // Violet counts non-Purple inputs; same-color slots refund.
     }
 }
 
@@ -323,8 +323,8 @@ int PomAi::killStickPiki()
  */
 void PomAi::createPikiHead()
 {
-    int converted=pc_p2_convert_violet(mPom,5-mReleasedSeedCount);
-    if(converted>=0){mReleasedSeedCount+=converted;playSound(3);return;}
+    int used=pc_p2_convert_violet(mPom,5-mReleasedSeedCount);
+    if(used>=0){mReleasedSeedCount+=used;playSound(3);return;}
 	int seedCount = killStickPiki();
 	Navi* player  = naviMgr->getNavi();
 	f32 baseAngle = atan2f(mPom->mSRT.t.x - player->mSRT.t.x, mPom->mSRT.t.z - player->mSRT.t.z);

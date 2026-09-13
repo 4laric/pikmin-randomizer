@@ -28,7 +28,8 @@ campaign events. They do not establish which original individual was consumed,
 bind a session token, survive restart, or certify the later sprout's survival.
 The existing fixture separately checks original deaths, sprout totals and final
 plucked population. Native same-color slot refunds and the full P2 Pom state
-machine remain outside this batch.
+machine remain outside this batch. The subsequent [#279 refund candidate](PIKMIN2_VIOLET_REFUND.md)
+implements and exercises same-color slot accounting.
 
 Native candidate: `2f1451ccceb124676350f24cd5e842b4f4335834`.
 Private Release build completed; fixture provenance records no pending native

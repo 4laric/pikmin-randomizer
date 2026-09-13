@@ -1,7 +1,9 @@
 // Opt-in, cargo-free engineering fixture. Uses native throw/conversion/pluck
 // paths; scripted action selection is not manual-play or P2 Pom FSM parity.
 #include "Generator.h"
+#include <fstream>
 static bool beastsFloor2Enabled=false;
+static bool beastsRefund=false;
 static int beastsGlobalPurple=-1,beastsExpectedFlowers=2;
 static void beastsFloor2Fixture(Navi* n) {
     static int state=0,timer=0,thrown=0,repairs=0;
@@ -11,6 +13,9 @@ static void beastsFloor2Fixture(Navi* n) {
     static int flowerIndex=0,retry=0;
     static bool approached=false;
     ++timer;n->mNeutralTime=0;
+    if(state==0 && timer==1){std::ifstream marker("p2-beasts-refund-fixture.txt");beastsRefund=bool(marker);}
+    const int extra=beastsRefund?1:0;
+    auto target=[&](int i){return i<5+extra?0:1;};
     require(pc_p2_preview_cargo_free_ready() && !pc_p2_preview_ready() && !pc_p2_preview_treasure(),"Beasts cargo-free readiness contract");
     require(pc_p2_purples_enabled() && pc_p2_preview_goal(),"Beasts Purple and Pod initialization");
     require(pc_p2_preview_pokos()==0,"cargo-free Beasts credited a reward");
@@ -29,6 +34,7 @@ static void beastsFloor2Fixture(Navi* n) {
         repairs=playerState->getCurrParts();
         require(reds==20 && purples==0 && sprouts==0,"Beasts initial population");
         Iterator initial(pikiMgr);CI_LOOP(initial){Piki* p=static_cast<Piki*>(*initial);if(p->isAlive())originals.push_back(p);}
+        if(beastsRefund){pc_p2_make_purple(originals[0]);std::puts("P2_BEASTS_REFUND_INITIAL reds=19 purple=1");}
         int count=0;Iterator bosses(bossMgr);CI_LOOP(bosses) {
             Boss* b=static_cast<Boss*>(*bosses);if(!b->isAlive())continue;
             require(b->mObjType==OBJTYPE_Pom && b->mGenerator,"unexpected Beasts boss");
@@ -44,12 +50,12 @@ static void beastsFloor2Fixture(Navi* n) {
         Iterator pellets(pelletMgr);CI_LOOP(pellets)require(!static_cast<Pellet*>(*pellets)->isAlive(),"hidden Beasts cargo");
         n->mKontroller=new FixtureController();state=count?1:3;timer=0;
         if(beastsGlobalPurple>=0)std::printf("P2_BEASTS_GENERATION purple=%d flowers=%d\n",beastsGlobalPurple,count);
-        std::printf("P2_BEASTS_READY reds=20 flowers=%d cargo=0\n",count);capture("beasts-floor2-start.ppm");
+        std::printf("P2_BEASTS_READY reds=%d flowers=%d cargo=0\n",20-extra,count);capture("beasts-floor2-start.ppm");
     } else if(state==1) {
-        if(flowerIndex==0 && sprouts==5) {
-            require(reds==15 && purples==0,"first Violet conversion body conservation");
-            for(int i=0;i<5;++i)require(!originals[i]->isAlive(),"first flower did not consume its original Reds");
-            std::puts("P2_BEASTS_FLOWER_CONVERTED id=62000 count=5");flowerIndex=1;approached=false;
+        if(flowerIndex==0 && sprouts==5+extra) {
+            require(reds==15-extra && purples==0,"first Violet conversion body conservation");
+            for(int i=0;i<5+extra;++i)require(!originals[i]->isAlive(),"first flower did not consume its original Reds");
+            std::printf("P2_BEASTS_FLOWER_CONVERTED id=62000 count=%d\n",5+extra);flowerIndex=1;approached=false;
         }
         if(!approached) {
             combatDestination=flowers[flowerIndex]->mSRT.t;
@@ -64,22 +70,23 @@ static void beastsFloor2Fixture(Navi* n) {
         }
         auto toss=[&](int i) {
             Piki* p=originals[i];p->changeMode(PikiMode::FreeMode,n);p->mFSM->transit(p,PIKISTATE_Flying);
-            n->throwPiki(p,flowers[i/5]->mSRT.t);
-            std::printf("P2_BEASTS_THROW original=%d flower=%d\n",i,62000+i/5);
+            n->throwPiki(p,flowers[target(i)]->mSRT.t);
+            std::printf("P2_BEASTS_THROW original=%d flower=%d\n",i,62000+target(i));
         };
-        if(thrown<(flowerIndex+1)*5 && timer%20==0)toss(thrown++);
-        if(thrown==(flowerIndex+1)*5 && timer%60==0) {
-            for(int j=0;j<5;++j) {
-                int i=flowerIndex*5+(retry+j)%5;
-                Piki* p=originals[i];Pom* flower=flowers[i/5];
+        if(thrown<(flowerIndex+1)*5+extra && (!beastsRefund || thrown!=1 || sprouts==1) && timer%20==0)toss(thrown++);
+        if((thrown==(flowerIndex+1)*5+extra || (beastsRefund && thrown==1 && sprouts==0)) && timer%60==0) {
+            for(int j=0;j<(flowerIndex==0?5+extra:5);++j) {
+                int i=flowerIndex==0?(retry+j)%(5+extra):5+extra+(retry+j)%5;
+                if(i>=thrown)continue;
+                Piki* p=originals[i];Pom* flower=flowers[target(i)];
                 if(p->isAlive() && !p->getStickObject() && p->getState()==PIKISTATE_Normal && flower->isAlive() && flower->getCurrentState()==2){retry=(i%5+1)%5;toss(i);break;}
             }
         }
-        if(sprouts==10) {
-            require(reds==10 && purples==0,"Beasts conversion body conservation");
-            for(int i=0;i<10;++i)require(!originals[i]->isAlive(),"conversion retained an original Red");
+        if(sprouts==10+extra) {
+            require(reds==10-extra && purples==0,"Beasts conversion body conservation");
+            for(int i=0;i<10+extra;++i)require(!originals[i]->isAlive(),"conversion retained an original Red");
             std::puts("P2_BEASTS_FLOWER_CONVERTED id=62001 count=5");
-            std::puts("P2_BEASTS_SPROUTS reds=10 purple=0 sprouts=10");capture("beasts-floor2-sprouts.ppm");state=2;timer=0;
+            std::printf("P2_BEASTS_SPROUTS reds=%d purple=0 sprouts=%d\n",10-extra,10+extra);capture("beasts-floor2-sprouts.ppm");state=2;timer=0;
         }
         require(timer<1600,"Beasts real throws did not produce ten sprouts");
     } else if(state==3) {
@@ -103,7 +110,7 @@ static void beastsFloor2Fixture(Navi* n) {
             }
             if(captainPluckPassed)h->interactBikkuri(pluck);
         }
-        if(reds==10 && purples==10 && sprouts==0) {
+        if(reds==10-extra && purples==10+extra && sprouts==0) {
             require(captainPluckPassed,"missing captain pluck");
             Iterator final(pikiMgr);CI_LOOP(final) {
                 Piki* p=static_cast<Piki*>(*final);if(!p->isAlive())continue;
@@ -112,7 +119,7 @@ static void beastsFloor2Fixture(Navi* n) {
             }
             require(playerState->getCurrParts()==repairs,"Beasts changed P1 repairs");
             capture("beasts-floor2-final.ppm");
-            std::puts("PASS P2_BEASTS_FLOOR2 reds=10 purple=10 sprouts=0 cargo=0 pokos=0 repairs_unchanged=1");std::fflush(stdout);std::_Exit(0);
+            std::printf("PASS P2_BEASTS_FLOOR2 reds=%d purple=%d sprouts=0 cargo=0 pokos=0 repairs_unchanged=1\n",10-extra,10+extra);std::fflush(stdout);std::_Exit(0);
         }
         require(timer<1200,"Beasts native plucking stalled");
     }

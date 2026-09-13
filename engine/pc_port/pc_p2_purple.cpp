@@ -105,23 +105,25 @@ bool pc_p2_violet(const Pom* pom){
 int pc_p2_convert_violet(Pom* pom, int remaining) {
     if(!pc_p2_violet(pom))return -1;
     // Allocate each replacement first: capacity failure must never eat a Pikmin.
-    Stickers stickers(pom);Iterator it(&stickers);int converted=0;
+    Stickers stickers(pom);Iterator it(&stickers);int converted=0,used=0;
     CI_LOOP(it) {
         Creature* creature=*it;if(!creature || !creature->isAlive() || !creature->isPiki())continue;
         Piki* p=static_cast<Piki*>(creature);
         const char* input=pc_p2_is_purple(p)?"purple":p->mColor==Red?"red":p->mColor==Blue?"blue":p->mColor==Yellow?"yellow":"unknown";
-        if(converted>=remaining){p->endStickObject();p->mFSM->transit(p,PIKISTATE_Normal);p->changeMode(PikiMode::FreeMode,naviMgr->getNavi());it.dec();continue;}
+        bool sameColor=pc_p2_is_purple(p);
+        if(used>=remaining && !sameColor){p->endStickObject();p->mFSM->transit(p,PIKISTATE_Normal);p->changeMode(PikiMode::FreeMode,naviMgr->getNavi());it.dec();continue;}
         PikiHeadItem* sprout=static_cast<PikiHeadItem*>(itemMgr->birth(OBJTYPE_Pikihead));
         if(!sprout){p->endStickObject();p->mFSM->transit(p,PIKISTATE_Normal);p->changeMode(PikiMode::FreeMode,naviMgr->getNavi());it.dec();continue;}
         Vector3f position=pom->mSRT.t;position.y+=50;sprout->init(position);sprout->setColor(Red);sprout->mP2Purple=true;
         float angle=converted*1.256637f;sprout->mVelocity.set(120*std::sin(angle),500,120*std::cos(angle));
         sprout->startAI(0);C_SAI(sprout)->start(sprout,PikiHeadAI::PIKIHEAD_Flying);
         p->setEraseKill();p->kill(false);it.dec();++converted;
+        if(!sameColor)++used;
         // Diagnostic only: sequence is process-local, not a durable Pikmin identity.
         std::printf("P2_VIOLET_WITNESS sequence=%llu generator=%u input=%s\n",++conversionSequence,
                     pom->mGenerator?static_cast<unsigned>(pom->mGenerator->_70):0u,input);
     }
-    std::printf("P2_VIOLET_CONVERT count=%d\n",converted);pc_p2_purple_status();return converted;
+    std::printf("P2_VIOLET_CONVERT count=%d\n",converted);pc_p2_purple_status();return used;
 }
 void pc_p2_purple_status() {
     if(!pc_p2_purples_enabled())return;
