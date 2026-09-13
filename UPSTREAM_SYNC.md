@@ -37,6 +37,11 @@ must cross MinGW's one-second timestamp resolution; the startup harness must use
 the current goal marker and per-color population catalog. Failed attempts remain
 in local output logs. Native startup results and packaged fill results follow.
 
+Startup follow-up: production build PASS in a fresh private session, Forest of
+Hope, 20 red Pikmin, other Onion grants exactly once, area gates, completion,
+current population checks and world rendering. CARDInit confirms the session's
+`campaign/card/card0` root. Source export parity: all 1593 tracked text files.
+
 No native-origin push, live save migration or main-branch merge. PAL save UI,
 ordinary-game legacy card migration, Hard-mode gameplay and P2 specular visual
 fidelity are not established by these automated gates.
@@ -151,8 +156,3 @@ Native `85074274` adds the downstream PC carry-counter expansion and P2 render/c
 ## Daily check — 2026-09-13 00:35 America/Toronto
 
 Fetched canonical upstream; main remains f88c7810787d4dd8cb5e14785a5b73cd790a5946 and HEAD..upstream/main is empty. No candidate integration or rebuild required. Open PR25 (installer UX) and PR26 (F10 fast-forward) have no review comments/reviews and both Linux build/smoke checks succeed. They remain open, not merged. Existing validated upstream integration is unchanged; no external review replies sent.
-
-Startup follow-up: production build PASS in a fresh private session, Forest of
-Hope, 20 red Pikmin, other Onion grants exactly once, area gates, completion,
-current population checks and world rendering. CARDInit confirms the session's
-`campaign/card/card0` root. Source export parity: all 1593 tracked text files.
