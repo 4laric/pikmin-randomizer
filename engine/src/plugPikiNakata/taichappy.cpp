@@ -1,4 +1,5 @@
 #include "TAI/Chappy.h"
+#include "pc_p2_kochappy_stun.h"
 
 #include "DebugLog.h"
 #include "MapMgr.h"
@@ -70,6 +71,22 @@ struct TaiChappyLegEffectAction : public TaiJointEffectAction {
 	// _04     = VTBL
 	// _00-_08 = TaiJointEffectAction?
 	// TODO: members
+};
+
+struct TaiChappyPurpleImpactAction : public TaiAction {
+	TaiChappyPurpleImpactAction(int nextState)
+	    : TaiAction(nextState)
+	{
+	}
+
+	virtual bool act(Teki& teki)
+	{
+		const float roll = pc_p2_kochappy_stun_needs_fit_roll(&teki) ? NSystem::random() : 1.0f;
+		return pc_p2_kochappy_stun_step(&teki, NSystem::getFrameTime(), roll);
+	}
+	virtual void start(Teki& teki) { teki.startMotion(TekiMotion::Wait1); }
+
+	virtual void finish(Teki& teki) { pc_p2_kochappy_stun_interrupt(&teki); }
 };
 
 /**
@@ -562,6 +579,19 @@ TaiChappyStrategy::TaiChappyStrategy(TekiParameters* params)
 	state->setAction(j++, insideTerritory);
 	state->setAction(j++, legEffect);
 	setState(CHAPPYSTATE_Unk12, state);
+
+	TaiChappyPurpleImpactAction* purpleImpact = new TaiChappyPurpleImpactAction(TAI_RETURN_TRANSIT);
+	// Dedicated Purple receiver: normal queued damage and lethal transition run
+	// before bounce/Fit progression. Press/smash events retain native priority.
+	state = new TaiState(6);
+	j     = 0;
+	state->setAction(j++, stopMove);
+	state->setAction(j++, simDamage);
+	state->setAction(j++, dead1);
+	state->setAction(j++, pressed);
+	state->setAction(j++, chappySmashed);
+	state->setAction(j++, purpleImpact);
+	setState(CHAPPYSTATE_P2PurpleImpact, state);
 }
 
 /**

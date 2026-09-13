@@ -169,6 +169,10 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_preview.cpp
     pc_port/pc_p2_economy.cpp
     pc_port/pc_p2_purple.cpp
+    pc_port/pc_p2_purple_impact.cpp
+    pc_port/pc_p2_kochappy_stun.cpp
+    pc_port/pc_p2_species.cpp
+    pc_port/pc_p2_white.cpp
     pc_port/pc_p2_cave.cpp
     pc_port/pc_p2_enemy.cpp
     pc_port/pc_p2_sheargrub.cpp
@@ -187,6 +191,9 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_tank.cpp
     pc_port/pc_p2_qurione.cpp
     pc_port/pc_p2_kurage_receiver.cpp
+    pc_port/pc_p2_batch2.cpp
+    pc_port/pc_p2_batch3.cpp
+    pc_port/pc_p2_long_legs.cpp
     pc_port/pc_randomizer.cpp
     pc_port/pc_main.cpp
     pc_port/pc_window.cpp
