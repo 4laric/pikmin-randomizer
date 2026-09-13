@@ -4,7 +4,7 @@ import math
 import re
 
 
-def party_snapshot(log, population):
+def party_snapshot(log, population, *, restored=False):
     lines=log.splitlines()
     starts=[i for i,line in enumerate(lines) if line.startswith('P2_BEASTS_PARTY') and line!='P2_BEASTS_PARTY_END']
     ends=[i for i,line in enumerate(lines) if line=='P2_BEASTS_PARTY_END']
@@ -30,6 +30,6 @@ def party_snapshot(log, population):
     if len(ready)!=1 or len(passed)!=1 or not ready[0]<start<end<passed[0]:
         raise ValueError('Party snapshot outside completion phase')
     pluck=[i for i,line in enumerate(lines) if line.startswith('P2_BEASTS_CAPTAIN_PLUCK ')]
-    if population['purple'] and (len(pluck)!=1 or pluck[0]>=start):
+    if not restored and population['purple'] and (len(pluck)!=1 or pluck[0]>=start):
         raise ValueError('Party snapshot precedes plucking')
     return dict(squad=squad,health=health)

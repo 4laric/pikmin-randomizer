@@ -4,6 +4,7 @@
 #include <fstream>
 static bool beastsFloor2Enabled=false;
 static bool beastsRefund=false;
+static bool beastsRestore=false;
 static int beastsGlobalPurple=-1,beastsExpectedFlowers=2;
 static void beastsPartySnapshot(Navi* n) {
     const float maximum=C_NAVI_PARM(n,mHealth);
@@ -34,6 +35,7 @@ static void beastsFloor2Fixture(Navi* n) {
     static bool approached=false;
     ++timer;n->mNeutralTime=0;
     if(state==0 && timer==1){std::ifstream marker("p2-beasts-refund-fixture.txt");beastsRefund=bool(marker);}
+    if(state==0 && timer==1){std::ifstream marker("p2-beasts-restore-fixture.txt");beastsRestore=bool(marker);}
     const int extra=beastsRefund?1:0;
     auto target=[&](int i){return i<5+extra?0:1;};
     require(pc_p2_preview_cargo_free_ready() && !pc_p2_preview_ready() && !pc_p2_preview_treasure(),"Beasts cargo-free readiness contract");
@@ -47,6 +49,18 @@ static void beastsFloor2Fixture(Navi* n) {
     Iterator heads(itemMgr->getPikiHeadMgr());CI_LOOP(heads) {
         PikiHeadItem* h=static_cast<PikiHeadItem*>(*heads);if(!h->isAlive())continue;
         require(h->mP2Purple,"unexpected ordinary sprout");++sprouts;
+    }
+    if(beastsRestore) {
+        require(!beastsRefund && beastsExpectedFlowers==0,"restore fixture requires suppression");
+        require(reds+purples==20 && sprouts==0,"restored party population changed");
+        Iterator bosses(bossMgr);CI_LOOP(bosses)require(!static_cast<Boss*>(*bosses)->isAlive(),"restore fixture spawned a flower");
+        if(timer==1){repairs=playerState->getCurrParts();std::printf("P2_BEASTS_READY reds=%d flowers=0 cargo=0\n",reds);}
+        if(timer>=300) {
+            require(playerState->getCurrParts()==repairs,"restoration changed repairs");
+            beastsPartySnapshot(n);capture("beasts-floor2-final.ppm");
+            std::puts("PASS P2_BEASTS_RESTORE updates=300 cargo=0 pokos=0 repairs_unchanged=1");std::fflush(stdout);std::_Exit(0);
+        }
+        return;
     }
     if(timer%150==0)std::printf("P2_BEASTS_PROGRESS phase=%d red=%d purple=%d sprouts=%d thrown=%d\n",state,reds,purples,sprouts,thrown);
     if(state==0 && timer>=90) {

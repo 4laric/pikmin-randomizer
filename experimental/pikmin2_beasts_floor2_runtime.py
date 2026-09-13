@@ -7,9 +7,11 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import uuid
 
 from experimental.pikmin2_beasts_floor2 import prepare, decode_no_cargo, generation_context
 from experimental.pikmin2_beasts_party_snapshot import party_snapshot
+from experimental.pikmin2_beasts_party_restore import restore_party, entry_text, validate_restore
 
 
 def sha(path):
@@ -128,6 +130,9 @@ def validate(log, readiness, *, require_witnesses=False, refund=False):
 def run(args):
     context=generation_context(args.global_purple_count)
     refund=getattr(args,'refund',False)
+    restore_path=getattr(args,'restore_party',None)
+    restored=restore_party(json.loads(restore_path.read_text())) if restore_path else None
+    if restored is not None and (refund or args.global_purple_count!=20):raise ValueError('Party restoration requires population20 suppression and no refund mode')
     if refund and not 1<=args.global_purple_count<20:raise ValueError('Refund fixture requires an incoming Purple and spawned flowers')
     root = args.root.resolve()
     stage = prepare(args.assets.resolve(), root/'output/p2-mapcode0-batch/import',
@@ -139,6 +144,11 @@ def run(args):
     (stage/'p2-beasts-floor2-fixture.txt').write_text(f'P2_BEASTS_FLOOR2_FIXTURE_2\n{args.global_purple_count}\n')
     exe = args.exe.resolve()
     inputs = ['readiness.json','p2-purple.txt','p2-pod.txt','p2-cargo-free.txt','p2-beasts-floor2-fixture.txt']
+    if restored is not None:
+        (stage/'restore-party.json').write_text(json.dumps(restored,indent=2)+'\n')
+        (stage/'p2-cave-entry.txt').write_text(entry_text(restored,uuid.uuid4().hex))
+        (stage/'p2-beasts-restore-fixture.txt').write_text('P2_BEASTS_RESTORE_1\n')
+        inputs+=['restore-party.json','p2-cave-entry.txt','p2-beasts-restore-fixture.txt']
     if refund:
         (stage/'p2-beasts-refund-fixture.txt').write_text('P2_BEASTS_REFUND_1\n')
         inputs.append('p2-beasts-refund-fixture.txt')
@@ -150,6 +160,8 @@ def run(args):
                     scripted_native_throws=True,scripted_captain_pluck=True,remaining_plucks='InteractBikkuri',
                     source_p2_pom_fsm=False,passed=False,input_sha256=hashes)
     print(stage,flush=True)
+    if restored is not None:
+        evidence.update(issue=290,restore_fixture=True,scripted_native_throws=False,scripted_captain_pluck=False,remaining_plucks=None)
     env = dict(os.environ,SDL_AUDIODRIVER='dummy',PATH='C:/msys64/mingw64/bin'+os.pathsep+os.environ.get('PATH',''))
     with (stage/'native.log').open('w') as log:
         try:
@@ -161,8 +173,11 @@ def run(args):
     text = (stage/'native.log').read_text(errors='replace')
     try:
         if evidence.get('returncode') != 0:raise ValueError('Native fixture did not exit successfully')
-        evidence['observed'] = validate(text,readiness,require_witnesses=True,refund=refund)
-        evidence['party_snapshot'] = party_snapshot(text,evidence['observed']['final_population'])
+        if restored is not None:
+            evidence['party_snapshot']=validate_restore(text,restored)
+        else:
+            evidence['observed'] = validate(text,readiness,require_witnesses=True,refund=refund)
+            evidence['party_snapshot'] = party_snapshot(text,evidence['observed']['final_population'])
         if sha(exe) != evidence['executable_sha256'] or any(sha(stage/name)!=digest for name,digest in hashes.items()):
             raise ValueError('Executable or staged input changed during run')
         for name in ('treasure-receipt.txt','p2-economy.txt','p2-cargo.txt'):
@@ -181,6 +196,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ('root','assets','exe','output'):parser.add_argument('--'+name,type=Path,required=True)
     parser.add_argument('--refund',action='store_true',help='Engineering one-Purple input followed by ten Reds; verify same-color slot refund')
+    parser.add_argument('--restore-party',type=Path,help='Explicit party snapshot JSON; diagnostic restoration only, requires population20')
     parser.add_argument('--timeout',type=int,default=240)
     parser.add_argument('--global-purple-count',type=int,required=True,help='Declared global-plus-cave Purple population at generation; not inferred from the twenty-Red fixture')
     raise SystemExit(0 if run(parser.parse_args()) else 1)
