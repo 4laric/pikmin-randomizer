@@ -1,0 +1,11 @@
+# Grounded Sheargrub acceptance
+
+This fixture revisits the ten-Uji Beasts profile after the generator position-offset correction. It validates all native X/Y/Z coordinates against a per-run manifest-derived pose file, covering four UjiB and six UjiA IDs61000–61009. Unlike the old ten-actor fixture, it never assigns health zero or invokes direct corpse conversion.
+
+Buried actors must reject an injected `InteractAttack` without health or stored-damage changes. The captain then walks across the connector and through room-center/source-position waypoints using the ordinary controller. The driver submits lethal attacks only when each actor becomes vulnerable. The native death path must produce ten corpses. Twenty Pikmin receive transport actions; movement, attachment and return across the connector are native. Ten corpse receipts must total14 Pokos, with the source juji_key_fc100-Poko treasure accounted separately and repairs unchanged.
+
+This is developer-injected attack and transport input, not manual combat or a full P2 AI implementation. Actors retain the documented P1 male/female Sheargrub proxy AI with source P2 static pose visuals and identities. Source yaw remains explicitly unapplied; generic generator offsets are zero. Source positions are never changed in play.
+
+Use `experimental.pikmin2_uji_grounded_fixture build` with `--native`, `--build`, `--output`, `--expected-head`; it snapshots a completed native build privately. `run` takes `--assets`, `--assembly`, `--pod`, `--content`, `--uji`, `--output`, `--exe`. Each run prepares a fresh corrected profile and writes a strict `uji-positions.txt`. `acceptance.json` is emitted only after all gates pass. Two focused tests reject direct-death/position writes and incomplete identity/credit evidence.
+
+Current status: two focused tests pass and a fresh corrected profile is prepared at output/p2-uji-grounded/prepared/runs/61a604739a60422db2cf2483b54fe07d. Private fixture01 compile/link completed, but the final freshness guard rejected it because native/include/teki.h changed during the build (83 pending Ninja targets). That executable was not run. A coordinated fresh native build is required before runtime acceptance; no grounded combat/haul result is claimed yet.

@@ -1,4 +1,6 @@
 #include "pc_p2_sheargrub.h"
+#include "pc_p2_kochappy.h"
+#include "pc_p2_breadbug_visual.h"
 #include "pc_p2_preview.h"
 #include "pc_bbft.h"
 #include "Pellet.h"
@@ -171,6 +173,8 @@ void pc_p2_preview_setup() {
     }
     pc_p2_snow_setup();
     pc_p2_sheargrub_setup();
+    pc_p2_kochappy_setup();
+    pc_p2_breadbug_visual_setup();
     pc_p2_purple_setup();
     pc_p2_cave_setup();
     gsys->setHeap(previousHeap);

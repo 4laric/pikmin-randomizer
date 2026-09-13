@@ -1,4 +1,5 @@
 #include "pc_p2_enemy.h"
+#include "pc_p2_kochappy.h"
 #include "pc_p2_animation.h"
 #include "pc_p2_snow_policy.h"
 #include "pc_p2_snow_attack_policy.h"
@@ -65,7 +66,7 @@ bool pc_p2_snow_attackable(BTeki* actor,Creature& target,bool& result) {
     return attackPolicy.evaluate(actor,delta.x*delta.x+delta.y*delta.y+delta.z*delta.z,
                                  actor->calcTargetAngle(target.getPosition()),recognition.satisfy(&target),result);
 }
-const char* pc_p2_enemy_name(PelletView* view) { return actors.count(view)?"Snow Bulborb":nullptr; }
+const char* pc_p2_enemy_name(PelletView* view) { if(const char* name=pc_p2_kochappy_name(view))return name;return actors.count(view)?"Snow Bulborb":nullptr; }
 void pc_p2_snow_setup() {
     pc_p2_snow_reset();
     if(!pc_pikipelago_room_preview())return;
@@ -146,7 +147,7 @@ void pc_p2_snow_setup() {
     Iterator it(tekiMgr);CI_LOOP(it) {
         Teki* teki=static_cast<Teki*>(*it);
         if(teki && teki->mGenerator && wanted.erase(teki->mGenerator->_70)) {
-            if(teki->mTekiType!=TEKI_Chappy)std::abort();
+            if(teki->mTekiType!=TEKI_Chappy || pc_p2_kochappy_name(teki))std::abort();
             actors.insert(static_cast<PelletView*>(teki));
             attackPolicy.bind(static_cast<BTeki*>(teki));
             turnPolicy.bind(static_cast<BTeki*>(teki));

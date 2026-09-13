@@ -19,6 +19,7 @@
 #include "zen/CallBack.h"
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
 #include "pc_p2_enemy.h"
+#include "pc_p2_kochappy.h"
 #endif
 
 class CollEvent;
@@ -399,7 +400,7 @@ public:
 	f32 getParameterF(int idx) {
 		const f32 value=mTekiParams->getF(idx);
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
-		if(idx==TPF_Life)return pc_p2_snow_max_health(this,value);
+		if(idx==TPF_Life)return pc_p2_kochappy_max_health(this,pc_p2_snow_max_health(this,value));
 #endif
 		return value;
 	} // see TekiFloatParams enum

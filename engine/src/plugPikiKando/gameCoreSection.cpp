@@ -10,6 +10,7 @@
 #include "pc_bbft.h"
 #include "pc_p2_preview.h"
 #include "pc_p2_cave.h"
+#include "pc_p2_breadbug_visual.h"
 #include "pc_randomizer.h"
 #include "MapCode.h"
 #include <fstream>
@@ -2980,6 +2981,7 @@ void GameCoreSection::draw(Graphics& gfx)
 		routeMgr->refresh(gfx);
 	}
 	pc_p2_cave_draw_transition(gfx);
+	pc_p2_breadbug_visual_draw(gfx);
 }
 
 /**
