@@ -129,8 +129,12 @@ LIMITATIONS = ['Sampled weighted/rigid poses with approximate materials; no skel
                'queenchappy_model.btk is hashed and byte-preserved only; no btk (texture animation) playback.',
                'No native runtime, AI/FSM, install or arena placement is provided by this slice.',
                'Baby model.szs is a self-contained 3808-byte rigid model (1 shape, 7 joints, 5 draw entries, EVP1 envelopes 0); its resources are not shared with Queen.',
-               'KingChappy shape 0 references no normal attribute (the VTX1 normal array exists but the shape display list omits it); the existing rigid/weighted bake requires per-vertex normals, so those poses are recorded unsupported rather than fabricated.',
-               'Queen dead/carry poses with a singular normal transform are recorded unsupported rather than approximated.']
+               "KingChappy shape 0 references no normal attribute (the VTX1 normal array exists but the shape display list omits it); poses convert via the opt-in missing_normals='compute' policy (area-weighted normals derived after all position transforms, docs/PIKMIN2_NORMAL_POLICY.md #233), recorded in each pose report.",
+               "Queen dead/carry poses with a near-singular normal transform bake via the opt-in singular_normal='transpose-adjugate' policy (transpose-adjugate/cofactor normal matrix, #233), recorded in each pose report."]
+
+# Opt-in converter normal policies per species (#233); strict defaults elsewhere.
+POLICIES = {'KingChappy': {'missing_normals': 'compute'},
+            'Queen': {'singular_normal': 'transpose-adjugate'}}
 
 TEXT = ('P2_BULBLAX_1\n'
         'species Queen Baby KingChappy\n'
@@ -262,6 +266,8 @@ def extract(iso, source, output, pose_limit=6):
                                       self_contained_resources=draws > 0),
                         collision=collision_nodes(params[species.lower() + '/enemycoll.txt'], len(names)),
                         extra_files=extra, clips=[])
+            if species in POLICIES:  # non-default converter normal policy provenance (#233)
+                info['normal_policy'] = dict(POLICIES[species])
             reference = None
             for row in rows:
                 raw = motions[row['file']]
@@ -276,10 +282,11 @@ def extract(iso, source, output, pose_limit=6):
                             poses=[], status='unsupported')
                 for number, frame in enumerate(frames):
                     try:
+                        policies = POLICIES.get(species, {})
                         _, pose = bca_pose(raw, frame, len(names), allow_scale=True)
                         matrices = draw_matrices(model_blocks, pose) if envelopes else None
-                        decoded = decode(model, True, bake_rigid=True, draw_matrices=matrices) \
-                            if matrices is not None else decode(model, True, bake_rigid=True, pose=pose)
+                        decoded = decode(model, True, bake_rigid=True, draw_matrices=matrices, **policies) \
+                            if matrices is not None else decode(model, True, bake_rigid=True, pose=pose, **policies)
                         name = f'bulblax_{species}_{clip["name"]}_{number:02}.mod'
                         conversion = write_model(decoded, root / name, 'enemy.bmd')
                         conversion.update(source='enemy.bmd', output=name,
