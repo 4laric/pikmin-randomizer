@@ -229,25 +229,35 @@ def validate(text, code):
                 scope='Sampled actor fixture; bomb placements and external blasts are labeled injections')
 
 
+def pid_running(pid):
+    """True when this exact PID still exists (tasklist by PID, not by name)."""
+    out = subprocess.run(['tasklist', '/FI', 'PID eq %d' % pid, '/FO', 'CSV', '/NH'],
+                         capture_output=True, text=True).stdout
+    return str(pid) in out
+
+
 def run(assets, bank, output, exe):
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     directory = stage(assets, bank, output / 'king')
     env = dict(os.environ, PATH='C:/msys64/mingw64/bin;' + os.environ.get('PATH', ''), SDL_AUDIODRIVER='dummy')
     with (directory / 'native.log').open('w') as log:
+        process = subprocess.Popen([str(Path(exe).resolve()), '--experimental-pikmin2-room'], cwd=directory,
+                                   env=env, stdout=log, stderr=subprocess.STDOUT)
         try:
-            code = subprocess.run([str(Path(exe).resolve()), '--experimental-pikmin2-room'], cwd=directory,
-                                  env=env, stdout=log, stderr=subprocess.STDOUT, timeout=180).returncode
+            code = process.wait(timeout=180)
         except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
             code = 'timeout'
-    # No game process may remain.
-    leftovers = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq %s' % Path(exe).name], capture_output=True,
-                               text=True).stdout
+    # Only the exact PID this run launched is our responsibility; a sibling
+    # worker's same-named fixture must not flip a green gate to failed.
     text = (directory / 'native.log').read_text(errors='replace')
     evidence = validate(text, code)
     evidence['directory'] = str(directory)
     evidence['exe'] = builder.snapshot([Path(exe)])
-    evidence['no_leftover_process'] = Path(exe).name not in leftovers
+    evidence['leftover_pid'] = process.pid if pid_running(process.pid) else None
+    evidence['no_leftover_process'] = evidence['leftover_pid'] is None
     evidence['passed'] = evidence['passed'] and evidence['no_leftover_process']
     (output / 'result.json').write_text(json.dumps(evidence, indent=2))
     print('king', evidence['passed'], directory, flush=True)
