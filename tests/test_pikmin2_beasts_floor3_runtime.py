@@ -1,8 +1,11 @@
 import tempfile
+import json
+import subprocess
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
-from experimental.pikmin2_beasts_floor3_runtime import GOALS, fixture, validate
+from experimental.pikmin2_beasts_floor3_runtime import GOALS, fixture, validate, run
 
 
 def party():
@@ -19,6 +22,45 @@ def evidence():
 
 
 class FloorThreeRuntimeTests(unittest.TestCase):
+    def test_merged_floor_profiles_through_runner(self):
+        # Synthetic process output tests the merged dispatcher, not native play.
+        for floor, bound, correct_profile, accepted in (
+            (4, False, True, True), (4, True, True, True),
+            (4, True, False, False), (5, False, True, True),
+            (5, True, True, False),
+        ):
+            with self.subTest(floor=floor, bound=bound, profile=correct_profile), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                exe = root / 'fixture.exe'
+                exe.write_bytes(b'not an executable: process is mocked')
+                report = dict(floor=floor, party=party(), goals=GOALS, input_sha256={})
+                log = evidence()
+                if bound:
+                    token = 'd' * 64
+                    report.update(boundary_token=token, native_profile='forest_1',
+                                  party_restore_protocol_floor=floor if correct_profile else 3)
+                    log = (f'P2_CAVE_READY floor={floor} survivors=20 health=0.625\n'
+                           f'P2_BEASTS_ENTRY_READY floor={floor} token={token} descent=disabled\n') + log
+                    log = log.replace('P2_FLOOR3_SURVEY_READY',
+                                      f'P2_FLOOR3_BOUNDARY_VERIFIED token={token} descent=disabled\nP2_FLOOR3_SURVEY_READY')
+                log = log.replace('P2_FLOOR3', f'P2_FLOOR{floor}')
+                (root / 'survey.json').write_text(json.dumps(report))
+
+                def process(args, **kwargs):
+                    kwargs['stdout'].write(log)
+                    return subprocess.CompletedProcess(args, 0)
+
+                with patch('experimental.pikmin2_beasts_floor3_runtime.subprocess.run', side_effect=process):
+                    if accepted:
+                        result = run(exe, root)
+                        self.assertTrue(result['passed'])
+                        self.assertEqual(result['survey']['points'], 12)
+                        self.assertEqual(result['issue'], 333 if floor == 5 else 334 if bound else 330)
+                    else:
+                        with self.assertRaises(ValueError):
+                            run(exe, root)
+                        self.assertFalse(json.loads((root / 'acceptance.json').read_text())['passed'])
+
     def test_native_evidence_requires_order_ground_and_party(self):
         log=evidence();self.assertEqual(validate(log,party())['points'],12)
         for bad in [log.replace('index=5 x=','index=4 x='),
