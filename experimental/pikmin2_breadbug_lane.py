@@ -251,6 +251,19 @@ def extract(iso, output, pose_limit=3):
     ]
     (output / 'breadbug-lane.json').write_text(json.dumps(result, indent=2) + '\n',
                                                encoding='utf-8')
+    # Schema-1 compatibility view so the established visual/cargo profile
+    # pipeline (pikmin2_breadbug_visual/cargo_bank) can consume this import.
+    compat = dict(schema=1, native_ready=False, source_sha256=hashes,
+                  species={name: dict(model_sha256=entry['model_sha256'],
+                                      joints=entry['joints'], clips=entry['clips'],
+                                      static_pose=entry['static_pose'],
+                                      metadata_sha256=entry['metadata_sha256'],
+                                      parameter_blocks=entry['parameter_blocks'],
+                                      collision=entry['collision'])
+                           for name, entry in result['species'].items()},
+                  limitations=result['limitations'])
+    (output / 'breadbugs.json').write_text(json.dumps(compat, indent=2) + '\n',
+                                           encoding='utf-8')
     return result
 
 
