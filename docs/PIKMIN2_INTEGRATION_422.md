@@ -70,7 +70,7 @@ Fixture provenance status is `built` for each executable used below.
 | Flora, native `7309e689` | PASS death frame5, explicit forget, generator respawn, re-entry frame126 (`reused=0`), control alive; 20 starting Pikmin and small centred-window marker |
 | Mamuta, native `7309e689` | PASS 10-red explicit squad, three flower sprouts, cap99 rejection, captain damage5, death tick151, native corpse and reset |
 | Queen envmap conversion | Real profiled bank converts successfully in a new private directory; no new renderer-fidelity claim |
-| King | Initial run captured the optional-field rejection above; corrected exact-build rerun recorded below |
+| King, native `02279aea` | Corrected run PASS all required gates: tongue/swallow, bomb damage, WarCry/cross-Emperor, death key, reset/reload; clean exit and no leftover process. Optional flick/trample remains untested |
 
 Lifecycle fixture SHA256:
 `aa83e2e87ff9ffc899053b4c31f4ecf9ade1b2bc7b3663b7dc9fbce42a8dc320`.
@@ -88,3 +88,24 @@ campaign resume, transport/rewards or mixed-scene performance. Armor's source
 part receiver/bridge behavior, Sokkuri water behavior, Pelplant source growth and
 pellet delivery, and remaining Bulblax fidelity gates remain open. Receiver
 observations distinguish queued P1-proxy damage from source Dweevil semantics.
+
+## Final merge validation
+
+PR #428 also incorporates maintained root `b4d57e9` material-color foundation.
+Final native commit: `0ab3ea1219298235f8a1f4804c82cee2570b062c` (clean).
+Build attempt 4 in `output/p2-family-native-build`: PASS; dry run reports
+`ninja: no work to do.` Production executable SHA256:
+`8B9CCAFEE79BFFDD8961FAF2E06814D484067B632A8117510B5A19179962A61A`.
+All 1589 exported source files match this native checkout. Final affected suite:
+**163 passed**, including the newly incorporated material-color tests.
+Runtime evidence above is pinned to its stated pre-color native commits.
+
+Corrected King fixture SHA256:
+`b332bb1a5de1b4c5d644fc5c33c65be9c8d061349f6ac9a69b456e6f728a27df`.
+Result: `king-runtime2/result.json`, all required checks true, exit 0.
+The initial parser-failure evidence remains retained locally.
+
+Agents should refresh from the maintained branch after PR #428 and follow
+[the shared fan-out guide](PIKMIN2_IMPLEMENTATION_FANOUT.md), rebuilding their
+fixture from their pinned native commit. Existing fixture executables do not
+acquire the default squad or centred 960x540 window by fetching source alone.
