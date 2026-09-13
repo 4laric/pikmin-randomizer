@@ -1,15 +1,14 @@
 # AFK implementation handoff
 
-The task heartbeat now runs every15 minutes, retaining the previous daily upstream-sync duty. It advances issue-scoped source batches, coordinates private snapshots, tests and integrates root source only. Kimi remains independent QA. Do not publish releases or game assets.
+Continue issue-scoped P2 batches; the 15-minute heartbeat retains daily upstream sync. Push root source only, never native origin or game assets. Preserve unrelated files and fixed Kimi QA sessions.
 
-Current integration: native e704b268 adds separate Dwarf Red actor profile/health200 plus visual-only Breadbug displays, with common setup/draw/reset hooks. Python focused integration:19tests passed. The initial combined native build passed, but final freshness found the late-added Breadbug reset in tekimgr still pending; the final incremental build is recorded in `output/p2-team-batch1/families-final-build.log`. Verify that completion and a no-work dry run before authorizing private fixture snapshots.
+Native 7a4cca762b626cac4807b1ed0cc22987bed3de43 adds optional Breadbug Back/Hide visuals driven by native animation counters. Full build log: output/p2-team-batch1/breadbug-cargo-build.log. Check completed build and a no-work CMake dry run before private snapshots. Root owns shared hooks, builds and export.
 
-Final incremental build passed and the follow-up dry run reported no work. All three lanes received permission to snapshot native e704b268. Keep this source stable until their snapshots finish.
+Next runtime gates:
+- Content: Sheargrub male natural bite/eat behavior passed static and animated runs; observer-camera visual coverage remains pending. Do not run the earlier freshness-rejected executable.
+- Lifecycle: repeat natural Breadbug pellet grab/haul/hide with optional cargo animation, compare baseline, verify pause and visible alignment.
+- Enemies: Purple stun and earthquake source contracts are audited; native implementation still requires eligibility and damage-preserving hooks. Retail earthquake radius is 60; direct pound damage is 20, separate from earthquake.
+- Groink: separate task owns isolated map-trace adapter and stationary fixture. Its module handoff is not yet integrated; central hooks require review. Keep speedup separate.
+- Kimi: finish floor-2 return on preserved manual-qa-02, background input only. Zero receipts cannot establish reward duplication coverage.
 
-Ready runtime lanes:
-
-- Enemy worker: Red identity, health, rendering and lifecycle fixture. Existing imported room is a bounded receiver test; the general P1-stage arena launcher remains to be implemented.
-- Content worker: corrected grounded ten-Uji XYZ/emergence/combat/haul fixture. Earlier rejected executable must not run; its source changed during freshness validation.
-- Lifecycle worker: Breadbug visual rendering/pose/nest/reset fixture. It has no actor, collision, AI or reward behavior.
-
-Keep native source and build inputs stable while workers snapshot. The integration lead owns shared CMake, setup/draw/reset hooks and export. Native origin is never a push target. Preserve all unrelated archives and worktrees in root status.
+Red original-map combat, transport and manager-subset re-entry passed; this is not full scene teardown. P2 appearances still use P1 proxy behavior except explicitly implemented profiles. Do not claim complete P2 AI parity.
