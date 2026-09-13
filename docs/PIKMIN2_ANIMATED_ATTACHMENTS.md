@@ -125,3 +125,7 @@ Rejected local live01/live02 runs compared the post-draw advanced counter with
 the preceding draw. Their logs are retained; live03 verifies the actual update
 ordering instead. The original bank output used platform newline conversion;
 bank02 uses explicit ASCII bytes so the recorded hash matches the written file.
+
+Shared correction stage: [joint-local corrections](PIKMIN2_JOINT_CORRECTIONS.md)
+can now be supplied to the attachment player before hierarchy composition.
+Family source callback semantics still require an explicit audit.

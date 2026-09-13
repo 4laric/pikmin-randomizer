@@ -87,3 +87,7 @@ An assert-checked CPU microprobe evaluated 10,000 sample/deformation calls in
 49.0972 ms on this Core Ultra 9 275HX system. This optimized standalone loop has
 no rendering, actor AI, GPU work or full-squad load; it does not establish native
 frame-time improvement or replace an in-game performance gate.
+
+Use the [shared joint-correction stage](PIKMIN2_JOINT_CORRECTIONS.md) for audited
+post-local transforms before constructing draw palettes; source callback parity
+and space conversion remain the family's responsibility.
