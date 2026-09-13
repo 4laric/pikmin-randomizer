@@ -246,7 +246,19 @@ LIMITATIONS = [
 ]
 
 # Opt-in converter tolerances per species (#186); strict defaults everywhere else.
-TOLERANCES = {}
+# Pelplant authors zero/annihilated joint scales for hidden and grow-from-nothing
+# segments, so its rigid bakes need the singular_normal fallback; HikariKinoko
+# keeps strict defaults (its shape-matrix type 1 is still unsupported). See
+# docs/PIKMIN2_SINGULAR_SCALE.md (#405).
+TOLERANCES = {
+    'Pelplant': {'singular_normal': 'transpose-adjugate'},
+}
+# Opt-in BCA pose (scale) tolerances. 'singular_scale': 'allow' accepts an
+# authored zero axis scale and must be paired with the matching
+# singular_normal decode policy in TOLERANCES above.
+POSE_TOLERANCES = {
+    'Pelplant': {'singular_scale': 'allow'},
+}
 
 TEXT = (
     'P2_FLORA_1\n'
@@ -499,18 +511,25 @@ def extract(iso, source, output, pose_limit=6):
                             loop_semantics=LOOPS.get(raw[40]),
                             event_loop_boundaries=[r for r in row['events']
                                                    if r[1] in (0, 1)],
+                            pose_conversion_policy=dict(
+                                POSE_TOLERANCES.get(species, {})),
+                            decode_conversion_policy=dict(
+                                TOLERANCES.get(species, {})),
                             poses=[], status='unsupported')
                 try:
                     if raw[40] not in LOOPS:
                         raise ValueError('Unsupported source loop attribute')
-                    duration, _ = bca_pose(raw, 0, len(names), allow_scale=True)
+                    pose_tolerances = POSE_TOLERANCES.get(species, {})
+                    duration, _ = bca_pose(raw, 0, len(names), allow_scale=True,
+                                           **pose_tolerances)
                     clip['source_frames'] = duration
                     frames = sample_frames(duration, pose_limit)
                     for number, frame in enumerate(frames):
                         try:
                             tolerances = TOLERANCES.get(species, {})
                             _, pose = bca_pose(raw, frame, len(names),
-                                               allow_scale=True)
+                                               allow_scale=True,
+                                               **pose_tolerances)
                             matrices = draw_matrices(model_blocks, pose)
                             decoded = decode(model, True, bake_rigid=True,
                                              draw_matrices=matrices,
