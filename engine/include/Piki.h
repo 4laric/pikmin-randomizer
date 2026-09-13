@@ -334,6 +334,7 @@ public:
 	bool mEraseOnKill;                    // _584
     // Experimental sequel identity, never an index into legacy three-color arrays.
     bool mP2Purple = false;
+    bool mP2White = false;
     float mP2AnimationTime = 0;
 };
 

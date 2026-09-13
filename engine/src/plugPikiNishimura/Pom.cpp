@@ -1,4 +1,5 @@
 #include "pc_p2_purple.h"
+#include "pc_p2_white.h"
 #include "Pom.h"
 #include "Collision.h"
 #include "DebugLog.h"
@@ -128,8 +129,9 @@ void Pom::drawShape(Graphics& gfx)
 {
 	if (isAlive()) {
 		gfx.useMatrix(Matrix4f::ident, 0);
-        if(pc_p2_violet(this))for(int i=0;i<mShapeObject->mShape->mMaterialCount;++i)mShapeObject->mShape->mMaterialList[i].setColour(Colour(130,50,190,255));
-		mShapeObject->mShape->drawshape(gfx, *gfx.mCamera, pc_p2_violet(this)?nullptr:&mAnimatedMaterials);
+        if(pc_p2_ivory(this))for(int i=0;i<mShapeObject->mShape->mMaterialCount;++i)mShapeObject->mShape->mMaterialList[i].setColour(Colour(235,235,215,255));
+        else if(pc_p2_violet(this))for(int i=0;i<mShapeObject->mShape->mMaterialCount;++i)mShapeObject->mShape->mMaterialList[i].setColour(Colour(130,50,190,255));
+		mShapeObject->mShape->drawshape(gfx, *gfx.mCamera, (pc_p2_ivory(this)||pc_p2_violet(this))?nullptr:&mAnimatedMaterials);
 	}
 
 #if defined(DEVELOP) || defined(WIN32)

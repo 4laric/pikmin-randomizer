@@ -12,6 +12,9 @@
 #include "pc_p2_giant_breadbug_actor.h"
 #include "pc_p2_queen.h"
 #include "pc_p2_king.h"
+#include "pc_p2_batch2.h"
+#include "pc_p2_batch3.h"
+#include "pc_p2_long_legs.h"
 #include "pc_p2_preview.h"
 #include "pc_bbft.h"
 #include "Pellet.h"
@@ -28,6 +31,7 @@
 #include "system.h"
 #include "pc_p2_economy.h"
 #include "pc_p2_purple.h"
+#include "pc_p2_white.h"
 #include "pc_p2_cave.h"
 #include "pc_p2_enemy.h"
 #include "pc_p2_cargo.h"
@@ -197,7 +201,11 @@ void pc_p2_preview_setup() {
     pc_p2_mamuta_setup();
     pc_p2_tank_setup();
     pc_p2_qurione_setup();
+    pc_p2_batch2_setup();
+    pc_p2_batch3_setup();
+    pc_p2_long_legs_setup();
     pc_p2_purple_setup();
+    pc_p2_white_setup();
     pc_p2_cave_setup();
     gsys->setHeap(previousHeap);
     const float points[][2]={{-85,0},{-175,-100},{185,-180},{-220,-180}};

@@ -1,4 +1,6 @@
 #include "pc_p2_purple.h"
+#include "pc_p2_purple_impact.h"
+#include "pc_p2_white.h"
 #include "pc_p2_preview.h"
 #include "pc_bbft.h"
 #include "pc_randomizer.h"
@@ -49,19 +51,20 @@ void pc_p2_make_purple(Piki* p) {
     p->mCurrentColour=p->mDefaultColour=p->mStartBlendColour=p->mTargetBlendColour=Colour(100,30,150,255);
     pc_p2_purple_status();
 }
-int pc_piki_carry_strength(const Piki* p){return pc_p2_is_purple(p)?10:pc_randomizer_carry_strength(p->mColor);}
-float pc_piki_carry_power(const Piki* p){return pc_p2_is_purple(p)?stats[1]+(p->mHappa==Flower?stats[8]:p->mHappa==Bud?stats[7]:0):(1.f+0.5f*p->mHappa)*pc_randomizer_carry_strength(p->mColor);}
+int pc_piki_carry_strength(const Piki* p){return pc_p2_is_white(p)?1:pc_p2_is_purple(p)?10:pc_randomizer_carry_strength(p->mColor);}
+float pc_piki_carry_power(const Piki* p){return pc_p2_is_white(p)?pc_p2_white_carry_power(p->mHappa):pc_p2_is_purple(p)?stats[1]+(p->mHappa==Flower?stats[8]:p->mHappa==Bud?stats[7]:0):(1.f+0.5f*p->mHappa)*pc_randomizer_carry_strength(p->mColor);}
 float pc_p2_move_multiplier(const Piki* p){return pc_p2_is_purple(p)?stats[0]:1.f;}
 float pc_p2_purple_attack(){return stats[2];}
 float pc_p2_purple_throw_height(){return stats[3];}
 float pc_p2_transport_speed(Pellet* pellet,float fallback) {
-    if(!pc_p2_purples_enabled())return fallback;
+    if(!pc_p2_purples_enabled() && !pc_p2_whites_enabled())return fallback;
     float power=0;Stickers stickers(pellet);Iterator it(&stickers);CI_LOOP(it){Creature* p=*it;if(p && p->isPiki())power+=pc_piki_carry_power(static_cast<Piki*>(p));}
-    float low=stats[4]*stats[6],high=stats[4]*stats[5];
+    float low=pc_p2_purples_enabled()?stats[4]*stats[6]:pc_p2_white_carry_min_factor();
+    float high=pc_p2_purples_enabled()?stats[4]*stats[5]:pc_p2_white_carry_max_factor();
     return low+(1+power-pellet->mConfig->mCarryMinPikis())/pellet->mConfig->mCarryMaxPikis()*(high-low);
 }
 void pc_p2_purple_setup() {
-    enabled=false;clips.clear();
+    enabled=false;clips.clear();pc_p2_purple_impact_reset();
     if(!pc_pikipelago_room_preview())return;
     std::ifstream in("p2-purple.txt");if(!in)return;
     std::string word;in>>word;if(word!="P2_PURPLE_1" || !pc_p2_preview_goal())std::abort();
@@ -73,7 +76,13 @@ void pc_p2_purple_setup() {
         Clip& clip=clips[word];clip.seconds=seconds;clip.happa.resize(count);clip.seen.resize(count,false);
         for(int i=0;i<count;++i){char suffix[8];std::snprintf(suffix,sizeof(suffix),"_%02d",i);clip.shapes.push_back(shape("purple_"+word+suffix));}
     }
+    bool impact=false;
     while(in>>word) {
+        if(word=="impact") {
+            std::string version;
+            if(impact || !(in>>version) || version!="red_earthquake_v1")std::abort();
+            impact=true;continue;
+        }
         std::string name;int index;
         if(word!="happa" || !(in>>name>>index) || !clips.count(name) || index<0 || index>=int(clips[name].happa.size()))std::abort();
         if(clips[name].seen[index])std::abort();clips[name].seen[index]=true;
@@ -83,7 +92,8 @@ void pc_p2_purple_setup() {
     for(const auto& pair:clips)for(bool seen:pair.second.seen)if(!seen)std::abort();
     for(int i=0;i<3;++i)growth[i]=shape("purple_happa_"+std::to_string(i));
     enabled=true;
-    std::printf("P2_PURPLE_READY actual model; sampled source poses; weight=10 movement=%.2f carry_power=%.2f attack=%.2f throw=%.2f\n",stats[0],stats[1],stats[2],stats[3]);
+    pc_p2_purple_impact_set_enabled(impact);
+    std::printf("P2_PURPLE_READY actual model; sampled source poses; weight=10 movement=%.2f carry_power=%.2f attack=%.2f throw=%.2f impact=%s\n",stats[0],stats[1],stats[2],stats[3],impact?"red_earthquake_v1":"disabled");
 }
 bool pc_p2_draw_purple(Piki* p,Graphics& gfx) {
     if(!pc_p2_is_purple(p))return false;

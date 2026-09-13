@@ -3,6 +3,9 @@
 #include "pc_p2_demon_drop_state.h"
 #endif
 #include "pc_p2_purple.h"
+#include "pc_p2_purple_impact.h"
+#include "pc_p2_white.h"
+#include "pc_p2_species.h"
 #include "Navi.h"
 #include "pc_randomizer.h"
 #include <cstdlib>
@@ -676,7 +679,7 @@ int pc_preferred_throw_color() { return sPreferredThrowColor; }
 // Selection classes retain the three color IDs; bomb yellows are class 3.
 int pc_throw_selection_class(Piki* piki)
 {
-    return pc_p2_is_purple(piki)?PikiColorCount+1:(piki->mColor == Yellow && piki->hasBomb() ? PikiColorCount : piki->mColor);
+    return pc_p2_is_white(piki)?PikiColorCount+2:(pc_p2_is_purple(piki)?PikiColorCount+1:(piki->mColor == Yellow && piki->hasBomb() ? PikiColorCount : piki->mColor));
 }
 
 static bool pcSquadHasColor(Navi* navi, int selection)
@@ -704,9 +707,9 @@ static void pcUpdatePreferredThrowColor(Navi* navi)
 		return;
 	}
 
-	int present[PikiColorCount + 2];
+	int present[PikiColorCount + 3];
 	int presentCount = 0;
-	for (int color = 0; color < PikiColorCount + 1 + int(pc_p2_purples_enabled()); color++) {
+	for (int color = 0; color < PikiColorCount + 3; color++) {
 		if (pcSquadHasColor(navi, color)) {
 			present[presentCount++] = color;
 		}
@@ -743,7 +746,7 @@ Piki* pc_cycle_throw_color(Navi* navi, Piki* current)
 	const int direction = int(navi->mKontroller->keyClick(KBBTN_DPAD_RIGHT))
 	                    - int(navi->mKontroller->keyClick(KBBTN_DPAD_LEFT));
 	if (!direction || !current) return nullptr;
-	const int classes=PikiColorCount+1+int(pc_p2_purples_enabled());
+	const int classes=PikiColorCount+3;
     for (int step = 1; step < classes; ++step) {
 		const int color = (pc_throw_selection_class(current) + direction * step + classes) % classes;
 		Piki* nearest = nullptr;
@@ -1193,7 +1196,7 @@ void Navi::callPikis(f32 radius, bool recallWorkers)
 		    && state != PIKISTATE_Nukare && state != PIKISTATE_Swallowed && state != PIKISTATE_Drown && state != PIKISTATE_Absorb
 		    && state != PIKISTATE_LookAt && state != PIKISTATE_Pressed && dist < radius) {
 			if (!piki->isDamaged() && state != PIKISTATE_Flick && state != PIKISTATE_GrowUp) {
-				if (piki->isFired() && (piki->mColor != Red || pc_p2_is_purple(piki))) {
+				if (piki->isFired() && !pc_p2_has_red_immunity(piki)) {
 					piki->endFire();
 				}
 
@@ -1253,6 +1256,7 @@ void Navi::callPikis(f32 radius, bool recallWorkers)
 					piki->init(this);
 					piki->initColor(sprout->mSeedColor);
                     if(sprout->mP2Purple)pc_p2_make_purple(piki);
+                    if(sprout->mP2White)pc_p2_make_white(piki);
 					piki->setFlower(sprout->mFlowerStage);
 					piki->resetPosition(sprout->mSRT.t);
 					piki->mFSM->transit(piki, PIKISTATE_AutoNuki);
@@ -1633,6 +1637,7 @@ bool Navi::procActionButton()
 			piki->init(this);
 			piki->initColor(closestSprout->mSeedColor);
             if(closestSprout->mP2Purple)pc_p2_make_purple(piki);
+            if(closestSprout->mP2White)pc_p2_make_white(piki);
 			piki->setFlower(closestSprout->mFlowerStage);
 			piki->resetPosition(closestSprout->mSRT.t);
 			piki->changeMode(PikiMode::FreeMode, this);
@@ -2875,6 +2880,7 @@ void Navi::throwPiki(Piki* piki, immut Vector3f& pos)
 	piki->mVelocity       = piki->mVelocity + mVelocity;
 	piki->mTargetVelocity = piki->mVelocity;
 	piki->mVolatileVelocity.set(0.0f, 0.0f, 0.0f);
+	pc_p2_purple_impact_arm(piki);
 }
 
 /**
