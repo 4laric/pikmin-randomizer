@@ -165,6 +165,10 @@ bool pc_p2_cave_checkpoint(bool confirm){
     std::printf("P2_CAVE_TRANSFER floor=%d survivors=%zu health=%.9g failed=%d\n",floorId,squad.size(),health,int(failed));std::fflush(stdout);
     return true;
 }
+bool pc_p2_cave_exit_after_checkpoint(){
+    if(!completed)return false;
+    std::fflush(nullptr);std::_Exit(42);
+}
 void pc_p2_cave_tick(){
     navigationDiagnostic();
     if(!safeTime()){requested=false;return;}
@@ -176,7 +180,7 @@ void pc_p2_cave_tick(){
     if(!any || naviMgr->getNavi()->mHealth<=1)attempt=true;
     // The supervisor owns the next process and the atomic campaign commit.
     // Exit after closing the transfer file; do not run P1 day-end/save teardown.
-    if(attempt && pc_p2_cave_checkpoint(true)){std::fflush(nullptr);std::_Exit(42);}
+    if(attempt && pc_p2_cave_checkpoint(true))pc_p2_cave_exit_after_checkpoint();
     titleTimer+=gsys->getFrameTime();
     if(titleTimer>=1.f){
         titleTimer=0;

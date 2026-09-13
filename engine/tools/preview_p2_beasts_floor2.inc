@@ -12,6 +12,7 @@ static bool beastsReachExit(Navi* n) {
     ++updates;
     const Vector3f destination(-180,0,-180);
     if(updates==1) {
+        require(!pc_p2_cave_exit_after_checkpoint(),"premature native exit accepted");
         require(!pc_p2_cave_interact(destination.x,destination.y,destination.z),"remote hole interaction accepted");
         require(!pc_p2_cave_checkpoint(false),"remote hole checkpoint accepted");
         std::puts("P2_BEASTS_EXIT_REMOTE_REJECTED");
@@ -191,7 +192,9 @@ static void beastsFloor2Fixture(Navi* n) {
             capture("beasts-floor2-final.ppm");
             beastsPartySnapshot(n);
             beastsBoundaryEnd();
-            std::printf("PASS P2_BEASTS_FLOOR2 reds=%d purple=%d sprouts=0 cargo=0 pokos=0 repairs_unchanged=1\n",10-extra,10+extra);std::fflush(stdout);std::_Exit(0);
+            std::printf("PASS P2_BEASTS_FLOOR2 reds=%d purple=%d sprouts=0 cargo=0 pokos=0 repairs_unchanged=1\n",10-extra,10+extra);std::fflush(stdout);
+            if(beastsExit){pc_p2_cave_exit_after_checkpoint();require(false,"completed native handoff did not exit");}
+            std::_Exit(0);
         }
         require(timer<1200,"Beasts native plucking stalled");
     }

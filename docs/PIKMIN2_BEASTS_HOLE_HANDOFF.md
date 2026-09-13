@@ -1,5 +1,9 @@
 # Opt-in native Beasts floor2 hole handoff (#302)
 
+Historical #302 runtime commands use root commit `2be3763`. The subsequent
+[#307 receiver](PIKMIN2_BEASTS_EXIT_RECEIVER.md) uses native exit42 and its matching
+fixture; the current runner requires that newer executable for handoff mode.
+
 Owner: Codex using shared 4laric account. New shared cave semantics require
 focused engine/save review before integration. The earlier review through #293
 does not cover this extension.

@@ -173,7 +173,7 @@ def run(args):
                     source_p2_pom_fsm=False,passed=False,input_sha256=hashes)
     print(stage,flush=True)
     evidence.update(issue=294,boundary_token=boundary,boundary_policy='P2_BEASTS_BOUNDARY_1')
-    if exit_handoff:evidence.update(issue=302,exit_handoff_fixture=True)
+    if exit_handoff:evidence.update(issue=307,exit_handoff_fixture=True)
     if restored is not None:
         evidence.update(issue=290,restore_fixture=True,scripted_native_throws=False,scripted_captain_pluck=False,remaining_plucks=None)
     env = dict(os.environ,SDL_AUDIODRIVER='dummy',PATH='C:/msys64/mingw64/bin'+os.pathsep+os.environ.get('PATH',''))
@@ -186,7 +186,7 @@ def run(args):
             evidence['timeout'] = True
     text = (stage/'native.log').read_text(errors='replace')
     try:
-        if evidence.get('returncode') != 0:raise ValueError('Native fixture did not exit successfully')
+        if evidence.get('returncode') != (42 if exit_handoff else 0):raise ValueError('Native fixture did not exit successfully')
         validate_boundary(text,boundary)
         if restored is not None:
             evidence['party_snapshot']=validate_restore(text,restored)
