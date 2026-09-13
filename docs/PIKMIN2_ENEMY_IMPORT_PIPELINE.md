@@ -156,3 +156,7 @@ This update supersedes the initial queue above. User confirmed additional Kimi s
 Groink revival is parked by user direction. This table is a historical claim snapshot; check current issues for delivery status. Breadbug213 must reuse existing168 extraction/proxy/cargo evidence and address remaining gaps rather than duplicate the finished small-Breadbug batch. Source assets alone do not satisfy runtime checks in those issue bodies. Family owners now supply complete private native candidates under the current workflow. Fixed independent QA184 remains a separate unfinished acceptance scope.
 
 Shared engine: [opt-in skeletal playback](PIKMIN2_SKELETAL_PLAYBACK.md) now supports Snow rigid joint-bound geometry through the attachment player. Weighted envelopes remain unsupported; do not substitute rigid bindings for them.
+
+Shared weighted deformation: [weighted skinning contract](PIKMIN2_WEIGHTED_SKINNING.md).
+Groink source geometry is validated offline; each family still owns renderer
+adoption, current joint callbacks and natural gameplay/visual acceptance.

@@ -90,3 +90,7 @@ these whole-process observations do not establish an animation memory saving.
 The timings likewise do not establish a speedup. Evidence is under
 `output/skin367/profile-reference` and `output/skin367/profile-skeletal`.
 The renderer stays opt-in; neither public defaults nor the player's package changed.
+
+Weighted palette support is now documented in
+[PIKMIN2_WEIGHTED_SKINNING.md](PIKMIN2_WEIGHTED_SKINNING.md). The Snow-specific
+export remains rigid; Groink provides the separate weighted source reference.
