@@ -45,8 +45,16 @@ remain outside this batch.
 The read-only `pc_p2_bulblax_visual_frame(displayId, frame)` query returns false
 for absent, legacy or reset displays. `pc_p2_bulblax_visual_update(seconds)` is
 called once from the active GameCore path; callers must not also tick it from
-draw or a second actor hook. It does not dispatch gameplay effects. Displays
-using the same clip still share its player; this is not yet per-actor playback.
+draw or a second actor hook. It does not dispatch gameplay effects. Since #277,
+each retail display has its own player and event log budget keyed by display
+ID; displays share only loaded pose meshes. `pc_p2_bulblax_visual_seek(id, frame)`
+changes one instance, returning false for missing/reset IDs or invalid frames.
+Event diagnostics include the display ID. Legacy decorative clocks stay shared.
+
+The retail fixture now adds a synthetic second display of the same clip, with
+a new ID and x+80 offset. It seeks that instance and verifies the sibling frame
+is unchanged, while continuing pause/resume and reset tests. This duplicate is
+fixture content, not a new source placement or enemy actor.
 
 Validation at native c541b0ff: production Release build and private fixture
 build passed; 15 focused test methods passed. Queen, Baby, KingChappy and the
@@ -75,3 +83,13 @@ gates, not by a synthetic movie runtime test. No gameplay parity is claimed.
 Evidence: `output/simulation272/validation/result.json`,
 `output/simulation272/legacy-result.json`, and
 `output/simulation272/build/provenance.json` in the private engine root worktree.
+
+Instance follow-up #277 at native bef5232e: production and fixture builds
+passed; 15 focused tests passed. Queen, Baby and KingChappy each passed the
+two-display independent-seek assertion, pause/resume, source events and
+reset/reload. Disabled and legacy Queen controls passed. The duplicate shares
+the existing per-clip mesh cache; no additional bank load path was introduced.
+The fixture asserts playback independence and unchanged gameplay counts, not
+enemy AI or physical collision independence. Evidence is under
+`output/instance277/validation/result.json`, `output/instance277/legacy-result.json`
+and `output/instance277/build/provenance.json` in the private engine root.
