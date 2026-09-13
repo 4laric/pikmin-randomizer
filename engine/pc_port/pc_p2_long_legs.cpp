@@ -63,7 +63,7 @@ bool parseActors(const std::string& path, std::map<unsigned, std::string>& out) 
     int count = 0;
     if (!(in >> header >> count) || header.size() < 11
             || header.compare(0, 3, "P2_") != 0
-            || header.compare(header.size() - 8, 8, "_ACTORS_1") != 0
+            || header.compare(header.size() - 9, 9, "_ACTORS_1") != 0
             || count < 1 || count > 100) fail("invalid actor config");
     for (int i = 0; i < count; ++i) {
         unsigned long long generator = 0;
