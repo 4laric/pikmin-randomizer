@@ -40,7 +40,7 @@ def bca_pose(data,frame,expected_joints,allow_scale=False,singular_scale='error'
             if not allow_scale and abs(values[0]-1)>1e-5:raise ValueError('Scaled animation not supported')
             # 'allow' accepts an authored zero/annihilated axis scale (a hidden
             # or grow-from-nothing joint). Callers must pair it with the
-            # converter's singular_normal='transpose-adjugate' decode policy,
+            # converter's explicit collapsed-normal decode policy when needed,
             # because such poses produce a singular draw matrix.
             if abs(values[0])<1e-8 and singular_scale=='error':raise ValueError('Singular animation scale')
             scale.append(values[0])

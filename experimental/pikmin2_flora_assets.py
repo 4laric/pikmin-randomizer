@@ -251,7 +251,7 @@ LIMITATIONS = [
 # keeps strict defaults (its shape-matrix type 1 is still unsupported). See
 # docs/PIKMIN2_SINGULAR_SCALE.md (#405).
 TOLERANCES = {
-    'Pelplant': {'singular_normal': 'transpose-adjugate'},
+    'Pelplant': {'singular_normal': 'transpose-adjugate-zero'},
 }
 # Opt-in BCA pose (scale) tolerances. 'singular_scale': 'allow' accepts an
 # authored zero axis scale and must be paired with the matching

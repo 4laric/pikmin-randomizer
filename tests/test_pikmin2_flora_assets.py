@@ -282,7 +282,7 @@ class FloraAssetsTests(unittest.TestCase):
         self.assertEqual(POSE_TOLERANCES,
                          {'Pelplant': {'singular_scale': 'allow'}})
         self.assertEqual(TOLERANCES,
-                         {'Pelplant': {'singular_normal': 'transpose-adjugate'}})
+                         {'Pelplant': {'singular_normal': 'transpose-adjugate-zero'}})
         self.assertEqual(set(POSE_TOLERANCES), set(TOLERANCES))
         for strict in ('HikariKinoko',) + PROP_FLORA:
             self.assertNotIn(strict, POSE_TOLERANCES)

@@ -43,9 +43,11 @@ Two opt-in knobs, both defaulting to the strict behavior:
   `Scaled animation not supported`. Any other mode value is rejected. The
   default `'error'` is unchanged, and `'allow'` leaves the authored zero in the
   local matrix rather than fabricating a clamped value.
-- `experimental.pikmin2_convert.decode(..., singular_normal='transpose-adjugate')`
-  (from #233) bakes normals through the unnormalized cofactor, which is the
-  documented generalization of the inverse-transpose for singular matrices.
+- `experimental.pikmin2_convert.decode(..., singular_normal='transpose-adjugate-zero')`
+  (#419 integration) retains the cofactor transform, but explicitly emits a zero
+  normal when a singular transform annihilates the direction. This is a collapsed
+  geometry approximation, not a source lighting-parity claim. The existing
+  `transpose-adjugate` policy still rejects annihilated directions.
 
 `singular_scale='allow'` must be paired with a compatible `singular_normal`
 policy; a zero-scale pose baked with the strict default normal check still
@@ -94,3 +96,18 @@ billboard rendering, BTK/material playback, or runtime/visual/gameplay
 acceptance. Collapsed segments bake to a point and their normals follow the
 cofactor fallback; no claim is made that the sampled result matches every
 rendered source frame.
+
+## Maintained-line integration (#419)
+
+The worker base accepted zero normals implicitly. On maintained base `50332f9`,
+cherry-picking #405 alone yielded only 3/10 Pelplant clips (14 poses): 46 poses
+failed with `Singular transform annihilates normal`. Integration therefore adds
+`transpose-adjugate-zero` as a separate opt-in normal policy. Strict defaults,
+existing cofactor semantics, determinant-sign handling, skeletal bindings and
+seam-aware computed normals remain intact. Only Pelplant selects the new mode.
+The maintained deterministic manifest omits extraction timing and is preserved.
+
+Integrated extraction evidence: `output/p2-converter-integration-evidence/`.
+`run1` is the failed pre-reconciliation extraction; `run2` and `run3` exercise
+the explicit policy. Runtime adoption requires a newly generated and hash-bound
+bank; earlier worker runtime evidence does not certify this combined build.

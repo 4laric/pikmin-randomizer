@@ -7,7 +7,7 @@ account `4laric`; assignment alone does not identify a lane or activate work.
 Read this before claiming or resuming a P2 implementation slice. Follow
 [AGENTS.md](../AGENTS.md), [the import pipeline](PIKMIN2_ENEMY_IMPORT_PIPELINE.md),
 [blockers](PIKMIN2_FULL_IMPL_BLOCKERS.md), and
-[family status](PIKMIN2_FAMILY_STATUS.md). This guide defines dispatch and fixture
+[family issue coordination](https://github.com/4laric/pikmin-randomizer/issues/186). This guide defines dispatch and fixture
 requirements; it does not reassign existing owners or authorize duplicate work.
 
 ## Mandatory first action: adopt the current test fixture
@@ -22,6 +22,8 @@ acquire these changes automatically. Report adoption in the lane's child issue.
 | Native `pc_port/pc_main.cpp` | Experimental-room startup defaults to a 960×540 window and calls `pc_window_center()` after loading persisted settings | Native `1d5a242b`; root source export `541bfba` |
 
 These are minimum capability markers, not a request to reset to old commits.
+Both markers must be verified: #419 imports the overlay, while the historical
+window candidate is not automatically present in every maintained engine export.
 Use the newest integration-approved source containing both changes and all
 current lane dependencies. Record exact root/native commits and dirty state.
 Check your own worktree, not just the maintained checkout. Preserve ongoing work
