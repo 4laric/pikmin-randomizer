@@ -110,3 +110,7 @@ The older `scripts/test_native_startup.py` reached native completion but timed o
 Candidate build/evidence remains under ignored `output/upstream-sync-sep12-purple*`. Source snapshot was refreshed, but existing playtest executables, game assets, Purple launcher, sessions and saves were preserved. The candidate binary is `output/upstream-sync-sep12-purple-build/bin/nectar.exe`. Physical controller/menu acceptance, PAL runtime, full campaigns and the separate #116 audio investigation are not claimed by this integration. No new upstream PRs or external review replies were sent.
 
 Native `85074274` adds the downstream PC carry-counter expansion and P2 render/counter fixture diagnostics (#119). Upstream integration remains through `f88c7810`; no additional upstream PR is included.
+
+## Daily check — 2026-09-13 00:35 America/Toronto
+
+Fetched canonical upstream; main remains f88c7810787d4dd8cb5e14785a5b73cd790a5946 and HEAD..upstream/main is empty. No candidate integration or rebuild required. Open PR25 (installer UX) and PR26 (F10 fast-forward) have no review comments/reviews and both Linux build/smoke checks succeed. They remain open, not merged. Existing validated upstream integration is unchanged; no external review replies sent.

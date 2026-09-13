@@ -22,3 +22,7 @@ Cave #193 patch is still unapplied. Before integrating, normalize its generated 
 ## Combined visual integration 95be51e
 
 Native b602d8c43dc6a1132821f787b99a28097c3c7521 integrates Frog, Tank and Qurione setup/draw/reset/forget hooks. Full final build passed, then no-work dry run; output/p2-team-batch1/frog-tank-qurione-final-build.log is authoritative (earlier partial build superseded). Combined29Python tests passed. Workers201/202/203 are snapshotting this build for private runtime gates. Hold shared native stable until snapshots complete. All runtime gates still pending; water is noninteractive display and Honeywisp retains host nectar. No name/reward central dispatch added.
+
+## Runtime evidence batch and visual follow-up
+
+Frog201 exact birth/controls/animations and injected-attack corpses passed; natural combat/carry/re-entry remain open. Tank202 exact birth/movement/counters/control/reset and noninteractive water visibility passed; attack-run GX warnings require diagnosis. Honeywisp203 exact birth/draw and injected-attack host nectar passed; P2 Egg absent, material silhouette unresolved. Integrated evidence distinguishes these gates. New issue207 owns separate family visual diagnoses, delegated to existing workers with no shared writes. Shared native b602 remains unchanged. September13 local upstream check: no new upstream commits; PR25/26 green and no reviews.
