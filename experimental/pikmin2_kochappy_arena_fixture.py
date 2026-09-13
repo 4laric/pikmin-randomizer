@@ -48,6 +48,14 @@ def instrument(source):
     return '#include <fstream>\n#include "Generator.h"\n#include "pc_p2_kochappy.h"\n'+source[:start]+APP+source[end:]
 
 
+def instrument_tutorial(source):
+    create='static void createTutorialWindow(int textID, int ufoPartID, bool hasAudio)\n{'
+    update='static void handleTutorialWindow(u32& result, Controller* controller)\n{'
+    if source.count(create)!=1 or source.count(update)!=1:raise ValueError('Unexpected tutorial source')
+    source=source.replace(create,create+'\n std::printf("P2_ARENA_TUTORIAL id=%d part=%d audio=%d\\n",textID,ufoPartID,int(hasAudio));std::fflush(stdout);')
+    return '#include <cstdio>\n'+source.replace(update,update+'\n if(tutorialWindow){static unsigned pulse=0;controller->updateCont((++pulse%30)==0?KBBTN_A:0);if(pulse%30==0){std::puts("P2_ARENA_TUTORIAL_INPUT A");std::fflush(stdout);}}')
+
+
 def positions(stage):
     manifest=json.loads((stage/'arena.json').read_text())
     if len(manifest['actors'])!=2:raise ValueError('Expected two actors')
@@ -61,7 +69,8 @@ def evidence(log,code):
     checks['sequence']=all([r.get('tick') for r in rows if r.get('id')==i]==list(range(1,241)) for i in (186001,186002))
     checks['animation']=all(len({r.get('frame') for r in rows if r.get('id')==i})>2 for i in (186001,186002))
     gates=[line for line in log.splitlines() if line.startswith('P2_RED_ARENA_GATE ')]
-    return dict(startup_gates=gates,passed=code==0 and all(checks.values()),checks=checks,exit_code=code,observations=rows,scope='Unforced P1 proxy updates and animation; targeting/movement observed, not required or injected.',unmeasured=['combat','corpse delivery','reload','P2 FSM parity'])
+    tutorial_ids=[int(v) for v in re.findall(r'P2_ARENA_TUTORIAL id=(\d+)',log)]
+    return dict(tutorial_ids=tutorial_ids,startup_gates=gates,passed=code==0 and all(checks.values()),checks=checks,exit_code=code,observations=rows,scope='Unforced P1 proxy updates and animation; targeting/movement observed, not required or injected.',unmeasured=['combat','corpse delivery','reload','P2 FSM parity'])
 
 
 def run(stage,exe,output,seconds=90):
