@@ -14,6 +14,21 @@ public:DisplayCameraTarget():Creature(nullptr){mHealth=1;}
 };
 class RoomApp : public PlugPikiApp {
  int frames=0,ready=0,actors=0,repairs=0;bool enabled=false,hold=false;int enemy=0;std::string mode;
+ int blendProbe=0;bool blending=false;p2bulblax::Profile blendProfile;
+ void checkBlend(std::uint32_t id,float frame){
+  const auto& clip=blendProfile.clips[blendProfile.displays[0].clip];std::vector<p2pose::Baked> bank;
+  for(size_t i=0;i<clip.frames.size();++i){char name[160];std::snprintf(name,sizeof(name),"courses/pikmin2room/bulblax_%s_%s_%02u.mod",p2bulblax::species(clip.enemy),clip.name.c_str(),unsigned(i));
+   std::ifstream in(std::string("assets/dataDir/")+name,std::ios::binary);std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(in)),{});p2pose::Baked decoded;require(p2pose::decodeBaked(bytes,decoded),"fixture pose decode");
+   Shape* source=gameflow.loadShape(name,true);require(source&&source->mVertexCount==int(decoded.pose.positions.size()),"source pose shape");
+   for(int j=0;j<source->mVertexCount;++j){const auto& v=decoded.pose.positions[j];const auto& actual=source->mVertexList[j];require(v.x==actual.x&&v.y==actual.y&&v.z==actual.z,"source pose mutated");}
+   bank.push_back(std::move(decoded));
+  }
+  p2pose::Interval span;require(p2pose::bracket(clip.frames,frame,span),"fixture bracket");p2pose::Pose expected,actual;
+  require(p2pose::blend(bank[span.left].pose,bank[span.right].pose,span.weight,expected)&&pc_p2_bulblax_visual_geometry(id,actual),"private geometry/bounds query");
+  require(expected.positions.size()==actual.positions.size()&&expected.normals.size()==actual.normals.size(),"geometry size");
+  for(bool normals:{false,true}){const auto& e=normals?expected.normals:expected.positions;const auto& a=normals?actual.normals:actual.positions;
+   for(size_t i=0;i<e.size();++i)require(std::fabs(e[i].x-a[i].x)<.0001f&&std::fabs(e[i].y-a[i].y)<.0001f&&std::fabs(e[i].z-a[i].z)<.0001f,"rendered interpolation mismatch");}
+ }
  int pauseTicks=0;std::uint32_t displayId=0,secondId=0;float pausedFrame=0;bool testedPause=false;
  int actorCount(){int count=0;Iterator i(tekiMgr);CI_LOOP(i){if(*i)++count;}return count;}
  void unchanged(){require(actorCount()==actors,"Bulblax display changed Teki count");require(playerState->getCurrParts()==repairs,"Bulblax display changed repairs");require(pc_p2_preview_cargo_count()==0&&!pc_p2_preview_treasure(),"Bulblax display created cargo");}
@@ -21,6 +36,12 @@ class RoomApp : public PlugPikiApp {
 public:int idle() override {
  int result=PlugPikiApp::idle();require(++frames<20000||hold,"Bulblax startup timeout");
  if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
+ if(blendProbe){const auto& clip=blendProfile.clips[blendProfile.displays[0].clip];const float middle=(clip.frames[0]+clip.frames[1])*.5f,last=clip.frames.back();
+  checkBlend(displayId,blendProbe==1?0:blendProbe==2?middle:last);checkBlend(secondId,last);
+  if(blendProbe<=3){const char* files[]={"","blend-left.ppm","blend-middle.ppm","blend-right.ppm"};capture(files[blendProbe]);}
+  if(blendProbe<4){require(pc_p2_bulblax_visual_seek(displayId,blendProbe==1?middle:last),"blend seek");++blendProbe;return result;}
+  blendProbe=0;gameflow.mPauseAll=false;std::puts("P2_BULBLAX_INTERPOLATION_PASS endpoints_midpoint_hold_independent_sources_bounds");
+ }
  if(pauseTicks){float frame=-1;require(pc_p2_bulblax_visual_frame(displayId,frame)&&frame==pausedFrame,"retail advanced while paused");
   if(++pauseTicks==10){gameflow.mPauseAll=false;gameflow.mIsUIOverlayActive=true;std::puts("P2_BULBLAX_SIM_PAUSE_ALL_PASS");}
   if(pauseTicks==20){gameflow.mIsUIOverlayActive=false;pauseTicks=0;testedPause=true;std::puts("P2_BULBLAX_SIM_UI_PAUSE_PASS");}else return result;
@@ -33,7 +54,7 @@ public:int idle() override {
  SDL_SetWindowTitle(SDL_GL_GetCurrentWindow(),"Bulblax family - NONINTERACTIVE SAMPLED DISPLAY (#235)");std::printf("P2_BULBLAX_BASELINE actors=%d cargo=0 repairs=%d red=%d blue=%d\n",actors,repairs,red,blue);
  }
  if(ready==30){
- std::ifstream raw("bulblax-fixture-profile.txt");auto p=p2bulblax::read(raw);require(p.displays.size()==1||p.displays.size()==2,"Bulblax display fixture count");auto d=p.displays[0];displayId=d.id;if(p.displays.size()==2)secondId=p.displays[1].id;auto c=p.clips[d.clip];enemy=c.enemy;
+ std::ifstream raw("bulblax-fixture-profile.txt");auto p=p2bulblax::read(raw);blendProfile=p;blending=bool(std::ifstream("p2-bulblax-interpolation.txt"));require(p.displays.size()==1||p.displays.size()==2,"Bulblax display fixture count");auto d=p.displays[0];displayId=d.id;if(p.displays.size()==2)secondId=p.displays[1].id;auto c=p.clips[d.clip];enemy=c.enemy;
  float ground=mapMgr->getMinY(d.x,d.z,true);require(std::isfinite(ground)&&std::fabs(ground-d.y)<40,"Bulblax display ground divergence");std::printf("P2_BULBLAX_GROUND id=%u enemy=%d x=%.6f y=%.6f z=%.6f ground=%.6f yaw=%.3f scale=1\n",d.id,enemy,d.x,d.y,d.z,ground,d.yaw);
  require(cameraMgr&&cameraMgr->mCamera,"Bulblax camera missing");auto* target=new DisplayCameraTarget();float height=enemy==30?85.f:enemy==53?50.f:8.f;target->mSRT.t=Vector3f(d.x,d.y+height,d.z);auto* camera=cameraMgr->mCamera;camera->setTarget(target);camera->mControlsEnabled=false;
  PcamMotionInfo info=camera->mTargetMotionInfo;info.mDistance=enemy==30?1100.f:enemy==53?450.f:180.f;info.mFov=40;info.mAngle=35;info.mNaviWatchWeight=0;info.mWatchAdjustment=0;camera->startMotion(info);
@@ -49,8 +70,10 @@ public:int idle() override {
  }
  if(ready==80&&pc_p2_bulblax_visual_frame(displayId,pausedFrame)){gameflow.mPauseAll=true;pauseTicks=1;}
  if(ready==82&&testedPause){float frame=-1;require(pc_p2_bulblax_visual_frame(displayId,frame)&&frame!=pausedFrame,"retail did not resume");std::puts("P2_BULBLAX_SIM_RESUME_PASS");}
+ if(ready==90&&blending&&enabled){require(secondId&&blendProfile.clips[blendProfile.displays[0].clip].frames.size()>1,"blend fixture needs two displays and poses");
+  require(pc_p2_bulblax_visual_seek(displayId,0)&&pc_p2_bulblax_visual_seek(secondId,blendProfile.clips[blendProfile.displays[0].clip].frames.back()),"blend endpoints seek");gameflow.mPauseAll=true;blendProbe=1;}
  if(ready==120)capture("bulblax-pose-a.ppm");
- if(ready==140){capture("bulblax-pose-b.ppm");unchanged();pc_p2_bulblax_visual_reset();float frame=-1;require(!pc_p2_bulblax_visual_frame(displayId,frame)&&!pc_p2_bulblax_visual_seek(displayId,0),"retail survived reset");std::puts("P2_BULBLAX_RESET_REQUEST");}
+ if(ready==140){capture("bulblax-pose-b.ppm");unchanged();pc_p2_bulblax_visual_reset();float frame=-1;require(!pc_p2_bulblax_visual_frame(displayId,frame)&&!pc_p2_bulblax_visual_seek(displayId,0),"retail survived reset");p2pose::Pose absent;require(!pc_p2_bulblax_visual_geometry(displayId,absent),"geometry survived reset");std::puts("P2_BULBLAX_RESET_REQUEST");}
  if(ready==145){capture("bulblax-reset.ppm");unchanged();load();std::puts("P2_BULBLAX_RELOAD_REQUEST");}
  if(ready==200){capture("bulblax-reload.ppm");unchanged();std::puts("PASS P2_BULBLAX_DISPLAY_RUNTIME noninteractive unchanged_actors_cargo_repairs");std::fflush(nullptr);if(!hold)std::_Exit(0);}
  std::fflush(stdout);return result;
@@ -60,7 +83,7 @@ public:int idle() override {
 
 def instrument(source):
     start=source.index('class RoomApp : public PlugPikiApp {');end=source.index('int main(',start)
-    includes='#include <fstream>\n#include <string>\n#include "pc_p2_bulblax_visual.h"\n#include "pc_p2_bulblax_visual_policy.h"\n#include "Pcam/Camera.h"\n#include "Pcam/CameraManager.h"\n'
+    includes='#include <fstream>\n#include <string>\n#include "pc_p2_bulblax_visual.h"\n#include "pc_p2_pose_bank.h"\n#include "pc_p2_bulblax_visual_policy.h"\n#include "Pcam/Camera.h"\n#include "Pcam/CameraManager.h"\n'
     return includes+source[:start]+APP+source[end:]
 
 
@@ -143,10 +166,12 @@ def retail_evidence(text, mode, clips, source,display_count=1):
                 retail_reload_events=('P2_BULBLAX_RETAIL_EVENT ' in text.split('P2_BULBLAX_RELOAD_REQUEST')[-1])==(mode!='disabled'))
 
 
-def run(assets,profile,output,exe,retail_sources=None):
+def run(assets,profile,output,exe,retail_sources=None,interpolate=False):
+    if interpolate and retail_sources is None:raise ValueError("Interpolation requires retail clocks")
     output.mkdir(parents=True,exist_ok=False);report={};env=dict(os.environ,PATH='C:/msys64/mingw64/bin;'+os.environ.get('PATH',''),SDL_AUDIODRIVER='dummy')
     for mode in ('Queen','Baby','KingChappy','disabled'):
         directory=stage(assets,profile,output/mode,mode,retail_sources)
+        if interpolate:(directory/"p2-bulblax-interpolation.txt").write_text("P2_BULBLAX_INTERPOLATION_1\n")
         with (directory/'native.log').open('w') as log:
             try:code=subprocess.run([str(exe.resolve()),'--experimental-pikmin2-room'],cwd=directory,env=env,stdout=log,stderr=subprocess.STDOUT,timeout=180).returncode
             except subprocess.TimeoutExpired:code='timeout'
@@ -158,12 +183,15 @@ def run(assets,profile,output,exe,retail_sources=None):
             e['checks']['simulation_pause']=all((marker in text)==(mode!='disabled') for marker in ('P2_BULBLAX_SIM_PAUSE_ALL_PASS','P2_BULBLAX_SIM_UI_PAUSE_PASS','P2_BULBLAX_SIM_RESUME_PASS'))
             e['retail_table']=staged['retail_table']
             e['passed']=all(e['checks'].values())
+        if interpolate:
+            e['checks']['interpolation']=('P2_BULBLAX_INTERPOLATION_PASS' in text)==(mode!='disabled')
+            e['passed']=all(e['checks'].values())
         e['gx_warnings']=[line for line in text.splitlines() if 'GX' in line and 'warning' in line.lower()]
         if e['passed']:e['placement_evidence']=placement_evidence(text,json.loads((directory/'bulblax-stage.json').read_bytes())['placements'],mode!='disabled')
         if e['passed']:
             from PIL import Image
             e['captures']={}
-            for name in ('bulblax-pose-a','bulblax-pose-b','bulblax-reset','bulblax-reload'):
+            for name in ('bulblax-pose-a','bulblax-pose-b','bulblax-reset','bulblax-reload') + (('blend-left','blend-middle','blend-right') if interpolate and mode!='disabled' else ()):
                 path=directory/(name+'.ppm');Image.open(path).save(directory/(name+'.png'));e['captures'][name]=builder.sha256(path)
         e.update(directory=str(directory),exe=builder.snapshot([exe]));report[mode]=e;(output/'result.json').write_text(json.dumps(report,indent=2));print(mode,e['passed'],directory,flush=True)
         if not e['passed']:raise RuntimeError('Bulblax runtime failed; evidence preserved')
@@ -187,8 +215,8 @@ if __name__=='__main__':
     b.add_argument('--head',required=True)
     for parser in (r,live):
         for key in ('assets','profile','output','exe'):parser.add_argument('--'+key,type=Path,required=True)
-    r.add_argument('--retail-sources',type=Path)
+    r.add_argument('--retail-sources',type=Path);r.add_argument('--interpolate',action='store_true')
     live.add_argument('--mode',choices=('Queen','Baby','KingChappy'),default='Queen');a=p.parse_args()
     if a.command=='build':build(a.native.resolve(),a.build_dir.resolve(),a.output,a.head)
-    elif a.command=='run':run(a.assets,a.profile,a.output,a.exe,a.retail_sources)
+    elif a.command=='run':run(a.assets,a.profile,a.output,a.exe,a.retail_sources,a.interpolate)
     else:raise SystemExit(play(a.assets,a.profile,a.output,a.exe,a.mode))

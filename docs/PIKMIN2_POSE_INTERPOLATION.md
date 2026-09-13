@@ -82,3 +82,5 @@ instances, pauses and endpoint holds in native captures before enabling it for
 actors. Keep collision and attachment timing explicit; visual interpolation alone
 must not advertise interpolated hitboxes. No production executable rebuild or new
 native gameplay acceptance is claimed by this header-only foundation.
+
+The opt-in noninteractive display consumer is documented in [rendered interpolation](PIKMIN2_DISPLAY_INTERPOLATION.md) (#313). Actor adoption remains separate.
