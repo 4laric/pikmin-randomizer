@@ -128,7 +128,7 @@ def validate(log, readiness, *, require_witnesses=False, refund=False):
                 final_population=dict(red=10-extra,purple=10+extra,sprouts=0),cargo=0,pokos=0)
 
 
-def run(args):
+def run(args, *, prepared=None):
     context=generation_context(args.global_purple_count)
     boundary=getattr(args,'boundary_token',None) or uuid.uuid4().hex+uuid.uuid4().hex
     binding=boundary_text(boundary)
@@ -176,6 +176,8 @@ def run(args):
     if exit_handoff:evidence.update(issue=307,exit_handoff_fixture=True)
     if restored is not None:
         evidence.update(issue=290,restore_fixture=True,scripted_native_throws=False,scripted_captain_pluck=False,remaining_plucks=None)
+    # A supervisor durably records this exact stage before any native process starts.
+    if prepared is not None:prepared(stage)
     env = dict(os.environ,SDL_AUDIODRIVER='dummy',PATH='C:/msys64/mingw64/bin'+os.pathsep+os.environ.get('PATH',''))
     with (stage/'native.log').open('w') as log:
         try:
@@ -210,7 +212,8 @@ def run(args):
         evidence['validation_error'] = str(error)
     evidence['log_sha256'] = sha(stage/'native.log')
     evidence['captures'] = {p.name:sha(p) for p in stage.glob('beasts-floor2-*.ppm')}
-    (stage/'acceptance.json').write_text(json.dumps(evidence,indent=2)+'\n')
+    from randomizer.session import atomic_write
+    atomic_write(stage/'acceptance.json',json.dumps(evidence,indent=2)+'\n')
     print(json.dumps(evidence),flush=True)
     return evidence['passed']
 
