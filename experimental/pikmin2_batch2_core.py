@@ -304,8 +304,8 @@ def prepare(cfg, assets, imported, output, installer=None, verifier=None):
     ``installer``/``verifier`` default to this module's generic operations; a
     family with a bespoke install schema (Long Legs, #312) passes its own.
     """
-    installer = installer or install
-    verifier = verifier or verify_install
+    installer = installer or (lambda imported, run, actors: install(cfg, imported, run, actors))
+    verifier = verifier or (lambda imported, run, actors: verify_install(cfg, imported, run, actors))
     assets = assets.resolve()
     imported = imported.resolve()
     data, actors = roster(cfg, assets)

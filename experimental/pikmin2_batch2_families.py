@@ -88,15 +88,17 @@ FLORA = _cfg(
     {'Pelplant': 0, 'BluePom': 3, 'RedPom': 4, 'YellowPom': 5, 'BlackPom': 6,
      'WhitePom': 7, 'RandPom': 8, 'Tanpopo': 46, 'Clover': 47, 'HikariKinoko': 48,
      'Ooinu_s': 49, 'Ooinu_l': 50, 'Wakame_s': 51, 'Wakame_l': 52},
-    {'BluePom': ('wait', 'dead', 'type1'), 'RedPom': ('wait', 'dead', 'type1'),
+    {'Pelplant': ('wait1', 'wait2', 'wait3', 'grow1', 'grow2', 'damage3',
+                  'dead3', 'bgrow1', 'bdamage1', 'bdead1'),
+     'BluePom': ('wait', 'dead', 'type1'), 'RedPom': ('wait', 'dead', 'type1'),
      'YellowPom': ('wait', 'dead', 'type1'), 'BlackPom': ('wait', 'dead', 'type1'),
      'WhitePom': ('wait', 'dead', 'type1'), 'RandPom': ('wait', 'dead', 'type1'),
      'Tanpopo': ('tanpopo',), 'Clover': ('clover',), 'Ooinu_s': ('ooinu_s',),
      'Ooinu_l': ('ooinu_l',), 'Wakame_s': ('wakame_s',), 'Wakame_l': ('wakame_l',)},
-    ('BluePom', 'RedPom', 'YellowPom', 'BlackPom', 'WhitePom', 'RandPom'),
-    (353001, 353002, 353003, 353004, 353005, 353006, 353007),
+    ('Pelplant', 'BluePom', 'RedPom', 'YellowPom', 'BlackPom', 'WhitePom', 'RandPom'),
+    (353001, 353002, 353003, 353004, 353005, 353006, 353007, 353008),
     {s: P1_CHAPPY_TYPE for s in
-     ('BluePom', 'RedPom', 'YellowPom', 'BlackPom', 'WhitePom', 'RandPom')},
+     ('Pelplant', 'BluePom', 'RedPom', 'YellowPom', 'BlackPom', 'WhitePom', 'RandPom')},
     _CHAPPY_FAMILY,
     ('native_identity', 'spawn_exact_xyz', 'control_undisturbed', 'natural_AI',
      'combat', 'death_corpse', 'carrier_recovery', 'reload',
@@ -110,14 +112,15 @@ FLORA = _cfg(
                                  '(enemyInfo.cpp); per-colour identity is not staged',
      'pellet_to_pom_conversion': 'blocked: pellet-to-Pom conversion math is a reference '
                                  'predicate only',
-     'pelplant_receptor': 'blocked: Pelplant has no converted poses on this disc '
-                          '(converter gap owned by #186)',
+     'pelplant_receptor': 'blocked: Pelplant poses now convert (10/10, #405) but the pellet '
+                          'capture/release receptor is not registered',
      'sprout_birth': 'blocked: sprout/seed production is engine-side, not an imported pose',
      'prop_flora_scenery': 'blocked: Tanpopo/Clover/Glowcap/Figwort/Shoot are scenery props, '
                            'not Piklopedia enemies'},
     ['Reference/import artifacts only; Pellet-to-Pom conversion is a reference predicate.',
-     'Pelplant (0/10) and HikariKinoko (0/1) have no converted poses on this disc; recorded '
-     'unsupported by the batch-1 lane and excluded from the visual actor set.',
+     'Pelplant poses convert (10/10 clips, #405) and stage on the neutral Chappy placement '
+     'vehicle; identity is NOT claimed and source Pelplant FSM/pellet behavior is not ported. '
+     'HikariKinoko (0/1) still has no converted poses (shape-matrix type 1 billboard).',
      'All six Candypop buds alias one shared Pom bank; per-colour identity is not staged.'])
 
 GROUND = _cfg(
