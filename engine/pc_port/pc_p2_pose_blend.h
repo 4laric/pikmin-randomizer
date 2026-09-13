@@ -42,6 +42,18 @@ inline bool unit(Vec v, Vec& out) {
 inline Vec mix(Vec a, Vec b, float t) {
     return {float((1.-t)*a.x+t*b.x),float((1.-t)*a.y+t*b.y),float((1.-t)*a.z+t*b.z)};
 }
+// Validate before writing caller-owned storage. Endpoint vectors are unchanged.
+inline bool blendInto(const Pose& a,const Pose& b,float t,Pose& out){
+    if(!std::isfinite(t)||t<0||t>1||a.positions.empty()||a.normals.empty()||a.positions.size()>MaxVectors||a.normals.size()>MaxVectors||
+       a.positions.size()!=b.positions.size()||a.normals.size()!=b.normals.size()||out.positions.size()!=a.positions.size()||out.normals.size()!=a.normals.size())return false;
+    for(size_t i=0;i<a.positions.size();++i)if(!valid(a.positions[i])||!valid(b.positions[i]))return false;
+    for(size_t i=0;i<a.normals.size();++i){Vec x,y;if(!unit(a.normals[i],x)||!unit(b.normals[i],y))return false;}
+    for(size_t i=0;i<a.positions.size();++i)out.positions[i]=t==0?a.positions[i]:t==1?b.positions[i]:mix(a.positions[i],b.positions[i],t);
+    for(size_t i=0;i<a.normals.size();++i){Vec x{},y{},n{};unit(a.normals[i],x);unit(b.normals[i],y);
+        if(!unit(mix(x,y,t),n))n=t<=.5f?x:y;
+        out.normals[i]=t==0?a.normals[i]:t==1?b.normals[i]:n;}
+    return true;
+}
 // Compatibility (including vertex ordering) is the caller's precondition.
 // Allocation is bounded, all validation precedes the sole output replacement.
 inline bool blend(const Pose& a, const Pose& b, float t, Pose& out) {
