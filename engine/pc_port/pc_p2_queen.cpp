@@ -4,6 +4,7 @@
 // only: generic physics/damage, captain states, manager/heap lifetime and
 // save/reward code are untouched. HoH crash rocks are recorded but disabled.
 #include "pc_p2_queen.h"
+#include "pc_p2_actor_slots.h"
 #include "pc_p2_queen_policy.h"
 #include "pc_p2_animation.h"
 #include "pc_bbft.h"
@@ -56,7 +57,7 @@ struct Queen {
 	bool firstRoll = true;
 	float dirX = 0, dirZ = 1, originX = 0, originZ = 0, rollElapsed = 0;
 	// receivers
-	Piki* stuck[StuckMax];
+	Piki* stuck[StuckMax] = {};
 	int stuckCount = 0;
 	int blows = 0;
 	int flickTier = 0;
@@ -430,6 +431,12 @@ void tickQueen(Queen& q) {
 		if (l.active) tickLarva(q, l); // larvae persist after Queen death
 }
 } // namespace
+
+void pc_p2_queen_forget_piki(Piki* piki) {
+    for (auto& actor : queens) {
+        p2ActorForgetSlots(actor.stuck, actor.stuckCount, piki);
+    }
+}
 
 void pc_p2_queen_reset() {
 	config = p2queen::ActorConfig{};

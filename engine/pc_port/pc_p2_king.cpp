@@ -5,6 +5,7 @@
 // manager/heap lifetime and save/reward code are untouched. The decomp
 // collisionCallback no-op quirk is recorded, not "fixed".
 #include "pc_p2_king.h"
+#include "pc_p2_actor_slots.h"
 #include "pc_p2_king_policy.h"
 #include "pc_p2_animation.h"
 #include "pc_bbft.h"
@@ -60,12 +61,12 @@ struct King {
 	float health = p2king::HealthDefault;
 	uint32_t rng = 1;
 	// receivers
-	Piki* stuck[StuckMax];
+	Piki* stuck[StuckMax] = {};
 	int stuckCount = 0;
 	int blows = 0;
 	int flickTier = 0;
 	// mouth (9 slots kamu1..9)
-	Piki* mouth[p2king::MouthSlots];
+	Piki* mouth[p2king::MouthSlots] = {};
 	int mouthPikmin = 0;
 	int mouthBombs = 0;
 	// timers
@@ -785,6 +786,13 @@ void tickBombs() {
 	}
 }
 } // namespace
+
+void pc_p2_king_forget_piki(Piki* piki) {
+    for (auto& actor : kings) {
+        p2ActorForgetSlots(actor.stuck, actor.stuckCount, piki);
+        p2ActorForgetSlots(actor.mouth, actor.mouthPikmin, piki);
+    }
+}
 
 void pc_p2_king_reset() {
 	config = p2king::ActorConfig{};

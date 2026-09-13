@@ -42,7 +42,7 @@ void pc_p2_mamuta_rules_setup() {
 }
 
 int pc_p2_mamuta_bury_piki(Creature* owner, Piki* piki) {
-    if (!enabled || !owner || !piki || !pc_p2_mamuta_is_bound(static_cast<BTeki*>(owner))) return -1;
+    if (!enabled || !owner || !owner->isTeki() || !piki || !pc_p2_mamuta_is_bound(static_cast<BTeki*>(owner))) return -1;
     // P2 rejection order (interactPiki.cpp:377-389): invincible-state approximation first.
     if (!piki->isAlive()) return 0;
     int state = piki->getCurrState() ? piki->getCurrState()->getID() : PIKISTATE_Normal;
@@ -67,7 +67,7 @@ int pc_p2_mamuta_bury_piki(Creature* owner, Piki* piki) {
 }
 
 int pc_p2_mamuta_bury_navi(Creature* owner, Navi* navi) {
-    if (!enabled || !owner || !navi || !pc_p2_mamuta_is_bound(static_cast<BTeki*>(owner))) return -1;
+    if (!enabled || !owner || !owner->isTeki() || !navi || !pc_p2_mamuta_is_bound(static_cast<BTeki*>(owner))) return -1;
     // P2 actNavi: invincible rejection, then damage only - no captain burial.
     NaviState* state = navi->mStateMachine->getNaviState(navi);
     if (state->invincible(navi)) return 0;

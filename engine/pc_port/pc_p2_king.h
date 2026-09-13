@@ -7,3 +7,6 @@ void pc_p2_king_setup();
 void pc_p2_king_reset();
 void pc_p2_king_update();
 void pc_p2_king_draw(Graphics&);
+
+class Piki;
+void pc_p2_king_forget_piki(Piki*); // Before manager recycling.
