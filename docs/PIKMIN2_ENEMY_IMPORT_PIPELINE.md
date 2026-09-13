@@ -172,3 +172,10 @@ Queen's missing specular TEV layer and BRK/BTP remain separate work.
 Generation-bound binding sets now apply multiple material tracks in one draw,
 with transactional restoration and shared-storage checks. The UV0 path has a
 real OpenGL texture-phase/replay fixture using Snow's retained model.
+
+### Source-derived animated specular example
+
+[Queen specular (#399)](PIKMIN2_QUEEN_SPECULAR.md) demonstrates an opt-in UV1
+bake plus shared BTK-driven, normal-derived additive highlight. Reuse the audit,
+verified staging and same-frame diffuse/animated/replay fixture pattern; do not
+assume another family has Queen's material indices, TEV equation or lighting.

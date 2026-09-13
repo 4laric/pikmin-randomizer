@@ -114,6 +114,13 @@ class MaterialNativeTests(unittest.TestCase):
             bound = subprocess.run([str(binding), str(build/'bank.txt')], check=True, capture_output=True,
                                    text=True, env=env, timeout=15)
             self.assertIn('PASS transactional', bound.stdout)
+            specular=build/'specular.exe'
+            subprocess.run([compiler,'-std=c++17','-Wall','-Wextra','-Werror',
+                            '-I',str(root/'engine/tools/material_srt_stubs'),'-I',str(root/'engine/pc_port'),
+                            str(root/'engine/tools/test_p2_specular_layer.cpp'),str(root/'engine/pc_port/pc_p2_specular_layer.cpp'),
+                            '-o',str(specular)],check=True,capture_output=True,env=env,timeout=60)
+            checked=subprocess.run([str(specular)],check=True,capture_output=True,text=True,env=env,timeout=15)
+            self.assertIn('PASS specular',checked.stdout)
             probe = build/'sample.exe'
             subprocess.run([compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror',
                             '-I', str(root/'engine/pc_port'), str(root/'engine/tools/sample_p2_material_srt.cpp'),

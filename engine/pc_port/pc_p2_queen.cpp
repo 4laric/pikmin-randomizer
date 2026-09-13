@@ -7,12 +7,14 @@
 #include "pc_p2_actor_slots.h"
 #include "pc_p2_queen_policy.h"
 #include "pc_p2_animation.h"
+#include "pc_p2_specular_layer.h"
 #include "pc_bbft.h"
 #include "Shape.h"
 #include "Texture.h"
 #include "Graphics.h"
 #include "Camera.h"
 #include "gameflow.h"
+#include "MoviePlayer.h"
 #include "Piki.h"
 #include "PikiMgr.h"
 #include "PikiState.h"
@@ -35,6 +37,8 @@ constexpr int StuckMax = 32;             // bounded stuck-Pikmin receiver set
 p2queen::ActorConfig config;
 std::map<size_t, std::vector<Shape*>> shapes; // clip index -> pose shapes
 size_t totalBytes = 0;
+p2material::Bank materialBank;
+bool materialEnabled=false;
 
 struct Larva {
 	bool active = false;
@@ -50,6 +54,7 @@ struct Queen {
 	p2queen::VariantInfo info;
 	int state = p2queen::Sleep;
 	float frame = 0;
+	float materialFrame = 0; // Source MatLoopAnimator runs independently at 30 fps while alive.
 	float x = 0, y = 0, z = 0, yaw = 0;
 	float health = p2queen::HealthDefault;
 	// rolling
@@ -439,6 +444,7 @@ void pc_p2_queen_forget_piki(Piki* piki) {
 }
 
 void pc_p2_queen_reset() {
+	materialEnabled=false;materialBank=p2material::Bank{};
 	config = p2queen::ActorConfig{};
 	shapes.clear();
 	queens.clear();
@@ -457,6 +463,15 @@ void pc_p2_queen_setup() {
 	} catch (...) {
 		fail();
 	}
+	std::ifstream material("p2-queen-specular.txt");
+	if(material){
+		try{materialBank=p2material::read(material);}catch(...){fail();}
+		if(materialBank.source!="af0dde017624a5b30459b8ba55ed70a1d70de14f841ed58802b3b07565ef4eae"||
+		   materialBank.duration!=30||materialBank.attribute!=2||materialBank.shift!=1||materialBank.tracks.size()!=1||
+		   materialBank.tracks[0].material!="mat_queen_body"||materialBank.tracks[0].slot!=0)fail();
+		materialEnabled=true;
+		std::puts("P2_QUEEN_SPECULAR_READY diffuse=UV1 specular=normal_btk source_lighting=host third_stage=omitted");
+	}
 	std::map<int, std::vector<unsigned char>> resources;
 	// Validate/copy the whole referenced bank before allocating Shapes; clips
 	// not selected by this profile never touch the App heap.
@@ -468,6 +483,12 @@ void pc_p2_queen_setup() {
 			std::snprintf(name, sizeof(name), "bulblax_%s_%s_%02u.mod", speciesName(clip.enemy), clip.name.c_str(),
 			              unsigned(i));
 			shapes[ci].push_back(load(name, resources[clip.enemy], bytes));
+			if(materialEnabled&&clip.enemy==30){
+				Shape* shape=shapes[ci].back();
+				if(shape->mMaterialCount!=2||shape->mTexAttrCount<3||
+				   shape->mMaterialList[1].mTextureInfo.mTextureDataCount!=1||
+				   shape->mMaterialList[1].mTextureInfo.mTextureData[0].mTexture!=shape->mTexAttrList[2].mTexture)fail();
+			}
 		}
 	}
 	for (const auto& p : config.placements) {
@@ -499,7 +520,11 @@ void pc_p2_queen_update() {
 	while (clockAcc >= Tick && steps < 4) { // bounded: never catch up more than 4 ticks
 		clockAcc -= Tick;
 		++steps;
-		for (auto& q : queens) tickQueen(q);
+		for (auto& q : queens) {
+			if(materialEnabled&&q.health>0&&q.state!=p2queen::Dead&&!gameflow.mPauseAll&&!gameflow.mIsUIOverlayActive&&
+			   !(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive))q.materialFrame=std::fmod(q.materialFrame+1.f,30.f);
+			tickQueen(q);
+		}
 	}
 	if (steps == 4) clockAcc = 0; // drop backlog; 30 Hz stays bounded
 }
@@ -510,7 +535,7 @@ void pc_p2_queen_draw(Graphics& gfx) {
 	                   gfx.mCamera->mNear, gfx.mCamera->mFar, 1.f);
 	gfx.useMaterial(nullptr);
 	gfx.setDepth(true);
-	auto drawOne = [&](int enemy, const char* clipName, float frame, float x, float y, float z, float yaw) {
+	auto drawOne = [&](int enemy, const char* clipName, float frame, float x, float y, float z, float yaw,float materialFrame) {
 		const p2queen::ActorClip* clip = config.clip(enemy, clipName);
 		if (!clip) return;
 		size_t ci = size_t(clip - &config.clips[0]);
@@ -520,13 +545,17 @@ void pc_p2_queen_draw(Graphics& gfx) {
 		world.makeSRT(Vector3f(1, 1, 1), Vector3f(0, yaw * 0.0174532925199433f, 0), Vector3f(x, y, z));
 		gfx.mCamera->mLookAtMtx.multiplyTo(world, view);
 		shape->updateAnim(gfx, view, nullptr, nullptr);
-		shape->drawshape(gfx, *gfx.mCamera, nullptr);
+		if(materialEnabled&&enemy==30){
+			p2material::Sample sample;
+			if(!p2material::sample(materialBank,0,materialFrame,sample)||
+			   !p2material::drawSpecular(*shape,gfx,1,1,sample))fail();
+		}else shape->drawshape(gfx, *gfx.mCamera, nullptr);
 	};
 	for (auto& q : queens) {
-		drawOne(30, stateClip(q.state, q.rollingLeft), q.frame, q.x, q.y, q.z, q.yaw);
+		drawOne(30, stateClip(q.state, q.rollingLeft), q.frame, q.x, q.y, q.z, q.yaw,q.materialFrame);
 		for (const auto& l : q.larvae) {
 			if (!l.active) continue;
-			drawOne(31, l.state == 2 ? "born" : l.state == 3 ? "move" : "dead", l.frame, l.x, l.y, l.z, l.yaw);
+			drawOne(31, l.state == 2 ? "born" : l.state == 3 ? "move" : "dead", l.frame, l.x, l.y, l.z, l.yaw,0);
 		}
 	}
 }

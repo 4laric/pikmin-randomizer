@@ -93,6 +93,13 @@ std::vector<Bomb> bombs;
 unsigned clockLast = 0;
 float clockAcc = 0;
 unsigned long behaviorTick = 0;
+// Opt-in fixture-only injection (inactive without p2-king-inject.txt): force
+// one Emperor into WarCry at a behavior tick so the WarCry astonish and the
+// cross-Emperor manager contract can be exercised deterministically. Default
+// 0 disables it; nothing here runs for a normal profile.
+uint32_t injectWarCryId = 0;
+unsigned long injectWarCryTick = 0;
+bool injectWarCryDone = false;
 
 void fail() {
 	std::fputs("P2_KING_ACTOR invalid profile/model\n", stderr);
@@ -803,6 +810,9 @@ void pc_p2_king_reset() {
 	clockLast = 0;
 	clockAcc = 0;
 	behaviorTick = 0;
+	injectWarCryId = 0;
+	injectWarCryTick = 0;
+	injectWarCryDone = false;
 }
 
 void pc_p2_king_setup() {
@@ -814,6 +824,17 @@ void pc_p2_king_setup() {
 		config = p2king::readActorConfig(in);
 	} catch (...) {
 		fail();
+	}
+	// Opt-in, fail-closed fixture injection sidecar; absent in normal runs.
+	std::ifstream inject("p2-king-inject.txt");
+	if (inject) {
+		std::string magic, extra;
+		unsigned long long tick = 0, id = 0;
+		if (!(inject >> magic >> tick >> id) || magic != "P2_KING_INJECT_1" || tick < 1 || tick > 1000000ULL
+		    || id > 0xffffffffULL || (inject >> extra))
+			fail();
+		injectWarCryTick = (unsigned long)tick;
+		injectWarCryId = (uint32_t)id;
 	}
 	std::map<int, std::vector<unsigned char>> resources;
 	// Validate/copy the whole referenced bank before allocating Shapes; clips
@@ -864,6 +885,16 @@ void pc_p2_king_update() {
 		clockAcc -= Tick;
 		++steps;
 		++behaviorTick;
+		if (injectWarCryTick && !injectWarCryDone && behaviorTick >= injectWarCryTick) {
+			for (auto& k : kings) {
+				if (injectWarCryId && k.cfg.id != injectWarCryId) continue;
+				if (k.state == p2king::HideWait || k.state == p2king::Hide) continue;
+				enter(k, p2king::WarCry);
+				injectWarCryDone = true;
+				std::printf("P2_KING_INJECT id=%u tick=%lu force=WarCry fixture=1\n", k.cfg.id, behaviorTick);
+				break;
+			}
+		}
 		for (auto& k : kings) tickKing(k);
 		tickBombs();
 	}
