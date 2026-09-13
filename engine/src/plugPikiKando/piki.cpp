@@ -3,6 +3,7 @@
 #include "pc_randomizer.h"
 #include "pc_bbft.h"
 #include "Piki.h"
+#include "pc_p2_kurage_receiver.h"
 #include "AIConstant.h"
 #include "AIPerf.h"
 #include "Boss.h"
@@ -2752,6 +2753,12 @@ immut char* Piki::getCurrentMotionName()
  */
 void Piki::doAI()
 {
+	// Yield only while the receiver still owns this live attachment/travel.
+	if (pc_p2_kurage_receiver_controls(this)) {
+		_500.clear();
+		return;
+	}
+
 	int state = getState();
 	if (state == PIKISTATE_Unk34) {
 		mFaceDirection += 1.2f * (HALF_PI * gsys->getFrameTime());
