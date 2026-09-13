@@ -162,8 +162,12 @@ Include (exact):
 - `pc_port/pc_p2_queen_policy.h`
 
 Exclude:
-- **Unmerged other-worker file** `tools/preview_p2_purple_direct.inc` (native
-  index stage `u UU`). A full `git ls-files` export would copy conflict markers.
+- **Other-worker dirty/transient paths in the maintained checkout.** During
+  analysis the native porcelain-v2 status showed an unmerged, other-lane file
+  `tools/preview_p2_purple_direct.inc` (`u UU`); another worker resolved it
+  mid-session, so the shared checkout is actively changing. A full
+  `git ls-files` export at any moment could sweep a conflict-marker or
+  half-applied file. Exclude every non-family path.
 - **CRLF-only dirty tracked files** `src/plugPikiKando/creatureCollision.cpp`
   and `src/plugPikiKando/goalItem.cpp` (native `core.autocrlf=true`; no logical
   diff, but the export reads working-tree raw bytes and would write CRLF into
@@ -182,9 +186,13 @@ Exclude:
 
 ## 8. Blockers
 
-1. Maintained `native/` checkout is not export-safe: it has an unresolved
-   merge on `tools/preview_p2_purple_direct.inc` and CRLF-modified tracked
-   files. Do not run the full export from it.
+1. Maintained `native/` checkout is not export-safe and is volatile: other
+   workers are actively editing it. Porcelain v2 showed an unmerged path
+   (`tools/preview_p2_purple_direct.inc`) that was resolved by another worker
+   mid-session, and CRLF-only modified tracked files
+   (`src/plugPikiKando/creatureCollision.cpp`, `goalItem.cpp`) persist. Re-check
+   `git -C native status --porcelain` immediately before any export; do not run
+   the full export from it while non-family paths are dirty.
 2. `pc_p2_bulblax_visual.cpp` must be resolved by hand (or via the prepared
    patch) before it can land on integration-six; the root branch's existing
    `engine/pc_port` copy is pre-integration and would regress the interpolation
