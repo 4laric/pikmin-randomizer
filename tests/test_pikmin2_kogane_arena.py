@@ -22,7 +22,7 @@ def staged(tmp_path, existing=None, template=None):
     source.write_bytes(b'1.0v' + struct.pack('>4fI', 47, 30, 1919, 180, 1))
     with patch.object(arena, 'records', return_value=existing or [entry(b'goal')]), \
             patch.object(arena, 'generator', return_value=b'x' * 24 + (template or entry())):
-        return arena.roster(tmp_path)
+        return arena.roster(tmp_path)[:2]
 
 
 def test_roster_three_species_plus_control(tmp_path):

@@ -66,13 +66,25 @@ def roster(assets):
                                native_family='template P1 dwarf bulborb (placement vehicle only)',
                                expected_xyz=list(validate_position(row, xyz)), offset=[0, 0, 0],
                                source_yaw=SOURCE_YAW, source_yaw_applied=False))
-    return header[:20] + struct.pack('>I', len(entries)) + b''.join(entries), placements
+    # Starting squad (#186 follow-up, batch 4): append the audited template's
+    # red-Pikmin placements so behavior acceptance runs against real targets.
+    squad = 0
+    for record in candidates:
+        if record[72:76] != b'ikip':
+            continue
+        identity = max(used) + 1
+        used.add(identity)
+        row = bytearray(record)
+        struct.pack_into('<I', row, 8, identity)
+        entries.append(bytes(row))
+        squad += 1
+    return header[:20] + struct.pack('>I', len(entries)) + b''.join(entries), placements, squad
 
 
 def prepare(assets, bank, output):
     """Build a private arena run directory with the beetle visual bank installed."""
     assets = assets.resolve()
-    data, actors = roster(assets)
+    data, actors, squad = roster(assets)
     stage = assets / 'dataDir/stages/practice.ini'
     course = assets / 'dataDir/courses/practice'
     preserved = {str(p.relative_to(assets)).replace('\\', '/'): digest(p)
@@ -96,7 +108,8 @@ def prepare(assets, bank, output):
         if digest(run / 'assets' / name) != value:
             raise ValueError('Original course changed')
     result = dict(schema=1, scene='P1 Impact Site', stage_slot='chal0', actors=actors,
-                  enemy_count=4, source_stage_sha256=digest(stage),
+                  enemy_count=4, starting_squad=dict(red_pikmin=squad),
+                  source_stage_sha256=digest(stage),
                   preserved_course_sha256=preserved,
                   install=receipt, birth_policy=birth,
                   scatter='Default generator scatter circle zeroed by deterministic fixture override '
