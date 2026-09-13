@@ -161,3 +161,13 @@ bool pc_p2_long_legs_draw(BTeki* actor, Graphics& gfx, const Matrix4f& matrix, b
     shape->drawshape(gfx, *gfx.mCamera, nullptr);
     return true;
 }
+
+// Fixture observability (#397): behavior-neutral read-only accessors so the
+// lifecycle fixture can prove pc_p2_long_legs_forget() clears a registration.
+unsigned long pc_p2_long_legs_count() {
+    return (unsigned long)actors.size();
+}
+
+bool pc_p2_long_legs_registered(BTeki* actor) {
+    return actors.count(actor) != 0;
+}

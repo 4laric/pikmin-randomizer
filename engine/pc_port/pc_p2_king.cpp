@@ -100,6 +100,15 @@ unsigned long behaviorTick = 0;
 uint32_t injectWarCryId = 0;
 unsigned long injectWarCryTick = 0;
 bool injectWarCryDone = false;
+unsigned long injectKillTick = 0;
+bool injectKillDone = false;
+unsigned long injectBombTick = 0;
+bool injectBombDone = false;
+unsigned long injectTongueTick = 0;
+bool injectTongueDone = false;
+// Fixture-observation flag: set when the Dead clip reaches its frame-185 kill
+// key. Read-only fixture gate; no effect on actor behavior.
+bool deadKeySeen = false;
 
 void fail() {
 	std::fputs("P2_KING_ACTOR invalid profile/model\n", stderr);
@@ -532,6 +541,7 @@ void tickKing(King& k) {
 		}
 		if (k.state == p2king::Dead && key == 185 && !k.loggedDead) {
 			k.loggedDead = true;
+			deadKeySeen = true;
 			std::printf("P2_KING_DEAD_KEY id=%u frame=185 kill=1\n", k.cfg.id);
 		}
 	}
@@ -813,7 +823,21 @@ void pc_p2_king_reset() {
 	injectWarCryId = 0;
 	injectWarCryTick = 0;
 	injectWarCryDone = false;
+	injectKillTick = 0;
+	injectKillDone = false;
+	injectBombTick = 0;
+	injectBombDone = false;
+	injectTongueTick = 0;
+	injectTongueDone = false;
+	deadKeySeen = false;
 }
+
+// Fixture-only read-only observation getters. They expose the actor's own
+// 30 Hz behavior clock and Dead-key completion so a host fixture can gate
+// scenario sequencing deterministically instead of guessing with idle frames.
+// No behavior change; absent an opt-in injection nothing here is exercised.
+unsigned long pc_p2_king_behavior_tick() { return behaviorTick; }
+bool pc_p2_king_dead_key_seen() { return deadKeySeen; }
 
 void pc_p2_king_setup() {
 	pc_p2_king_reset();
@@ -835,6 +859,21 @@ void pc_p2_king_setup() {
 			fail();
 		injectWarCryTick = (unsigned long)tick;
 		injectWarCryId = (uint32_t)id;
+		unsigned long long kill = 0; // optional 4th token: force death at tick
+		inject >> kill;
+		if (kill > 1000000ULL)
+			fail();
+		injectKillTick = (unsigned long)kill;
+		unsigned long long bomb = 0; // optional 5th token: force bomb line-up
+		inject >> bomb;
+		if (bomb > 1000000ULL)
+			fail();
+		injectBombTick = (unsigned long)bomb;
+		unsigned long long tongue = 0; // optional 6th token: force a normal tongue lick
+		inject >> tongue;
+		if (tongue > 1000000ULL)
+			fail();
+		injectTongueTick = (unsigned long)tongue;
 	}
 	std::map<int, std::vector<unsigned char>> resources;
 	// Validate/copy the whole referenced bank before allocating Shapes; clips
@@ -888,10 +927,90 @@ void pc_p2_king_update() {
 		if (injectWarCryTick && !injectWarCryDone && behaviorTick >= injectWarCryTick) {
 			for (auto& k : kings) {
 				if (injectWarCryId && k.cfg.id != injectWarCryId) continue;
-				if (k.state == p2king::HideWait || k.state == p2king::Hide) continue;
+				// Opt-in fixture injection: force WarCry even from a buried
+				// state so the scenario does not depend on the squad surviving
+				// to provide an appear target. Dead is never resurrected.
+				if (k.state == p2king::Dead) continue;
 				enter(k, p2king::WarCry);
 				injectWarCryDone = true;
 				std::printf("P2_KING_INJECT id=%u tick=%lu force=WarCry fixture=1\n", k.cfg.id, behaviorTick);
+				break;
+			}
+		}
+		if (injectKillTick && !injectKillDone && behaviorTick >= injectKillTick) {
+			for (auto& k : kings) {
+				if (injectWarCryId && k.cfg.id != injectWarCryId) continue;
+				k.health = 0.0f;
+				injectKillDone = true;
+				std::printf("P2_KING_INJECT_KILL id=%u tick=%lu health=0 fixture=1\n", k.cfg.id, behaviorTick);
+				break;
+			}
+		}
+		if (injectTongueTick && !injectTongueDone && behaviorTick >= injectTongueTick) {
+			for (auto& k : kings) {
+				if (injectWarCryId && k.cfg.id != injectWarCryId) continue;
+				if (k.state == p2king::Dead) continue;
+				// Opt-in fixture injection: place the Emperor behind the nearest
+				// live Pikmin facing it and enter a normal Attack before the arm
+				// key, so the key-40 tongue arm, Pikmin ingestion and the
+				// Attack->Swallow transition are observed deterministically even
+				// when the live squad would otherwise trigger a flick.
+				Piki* best = nullptr;
+				float bestSq = 0.0f;
+				if (pikiMgr) {
+					Iterator it(pikiMgr);
+					CI_LOOP(it) {
+						Piki* p = static_cast<Piki*>(*it);
+						if (!p || !p->isAlive()) continue;
+						const Vector3f& pos = p->getPosition();
+						const float dx = pos.x - k.x, dz = pos.z - k.z;
+						const float d = dx * dx + dz * dz;
+						if (!best || d < bestSq) {
+							best = p;
+							bestSq = d;
+						}
+					}
+				}
+				if (!best) continue; // no live Pikmin yet: retry next tick
+				const Vector3f& pos = best->getPosition();
+				k.x = pos.x;
+				k.z = pos.z - 50.0f * k.info.scale;
+				k.yaw = 0.0f;
+				enter(k, p2king::Attack);
+				k.frame = float(p2king::AttackArmKey) - 1.0f;
+				k.attackArmed = false;
+				k.bombArmed = false;
+				injectTongueDone = true;
+				std::printf("P2_KING_INJECT_TONGUE id=%u tick=%lu state=Attack fixture=1\n", k.cfg.id, behaviorTick);
+				break;
+			}
+		}
+		if (injectBombTick && !injectBombDone && behaviorTick >= injectBombTick) {
+			for (auto& k : kings) {
+				if (injectWarCryId && k.cfg.id != injectWarCryId) continue;
+				// Opt-in fixture injection: force the bomb line-up even from a
+				// buried state so the deterministic ingestion lane does not
+				// depend on the squad providing an appear target. Dead skipped.
+				if (k.state == p2king::Dead) continue;				Bomb* best = nullptr;
+				float bestDist = 0.0f;
+				for (auto& b : bombs) {
+					if (b.state != 0) continue;
+					const float dx = b.cfg.x - k.x, dz = b.cfg.z - k.z;
+					const float d = std::sqrt(dx * dx + dz * dz);
+					if (!best || d < bestDist) { best = &b; bestDist = d; }
+				}
+				if (!best) continue;
+				// Place the Emperor 60*scale behind the bomb facing it so the bomb
+				// lies on the tongue segment, then arm the bomb key deterministically.
+				k.x = best->cfg.x;
+				k.z = best->cfg.z - 60.0f * k.info.scale;
+				k.yaw = 0.0f;
+				enter(k, p2king::Attack);
+				k.frame = float(p2king::AttackBombKey) - 1.0f;
+				k.attackArmed = true;
+				k.bombArmed = true;
+				injectBombDone = true;
+				std::printf("P2_KING_INJECT_BOMB id=%u tick=%lu bomb=%u state=Attack fixture=1\n", k.cfg.id, behaviorTick, best->cfg.id);
 				break;
 			}
 		}

@@ -7,3 +7,6 @@ void pc_p2_long_legs_setup();
 void pc_p2_long_legs_reset();
 void pc_p2_long_legs_forget(BTeki*);
 bool pc_p2_long_legs_draw(BTeki*, Graphics&, const Matrix4f&, bool corpse = false);
+// Fixture observability (#397): read-only registration count / membership.
+unsigned long pc_p2_long_legs_count();
+bool pc_p2_long_legs_registered(BTeki*);

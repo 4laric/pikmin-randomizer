@@ -308,7 +308,7 @@ inline bool queenClipName(const std::string& name) {
 	return clipKeys(name).frames > 0; // carry is P1-authoritative; not sampled here
 }
 inline bool babyClipName(const std::string& name) {
-	const std::string names = " dead deadpress move born ";
+	const std::string names = " dead deadpress move attack attackfail born ";
 	return names.find(" " + name + " ") != std::string::npos;
 }
 inline ActorConfig readActorConfig(std::istream& in) {

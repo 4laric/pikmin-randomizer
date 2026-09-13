@@ -9,6 +9,8 @@
 #include "pc_p2_breadbug_actor.h"
 #include "pc_p2_giant_breadbug_actor.h"
 #include "pc_p2_batch2.h"
+#include "pc_p2_sokkuri.h"
+#include "pc_p2_armor.h"
 #include "pc_p2_batch3.h"
 #include "pc_p2_long_legs.h"
 #endif
@@ -450,6 +452,8 @@ void BTeki::update()
 {
 	Creature::update();
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	pc_p2_sokkuri_update(this);
+	pc_p2_armor_update(this);
 	pc_p2_kogane_update(this);
     pc_p2_snow_update(this,NSystem::getFrameTime());
 #endif

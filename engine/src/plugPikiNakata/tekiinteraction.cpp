@@ -2,6 +2,9 @@
 #include "Interactions.h"
 #include "sysNew.h"
 #include "teki.h"
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+#include "pc_p2_sokkuri.h"
+#endif
 
 /**
  * @todo: Documentation
@@ -70,6 +73,7 @@ bool InteractSwallow::actTeki(Teki*) immut
 bool InteractPress::actTeki(Teki* teki) immut
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	if (pc_p2_sokkuri_pressed(teki, mOwner)) return true;
 	if (pc_p2_kogane_pressed(teki, mOwner)) {
 		return true; // registered beetles flip instead of the host pressed state
 	}

@@ -191,6 +191,8 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_tank.cpp
     pc_port/pc_p2_qurione.cpp
     pc_port/pc_p2_kurage_receiver.cpp
+    pc_port/pc_p2_sokkuri.cpp
+    pc_port/pc_p2_armor.cpp
     pc_port/pc_p2_batch2.cpp
     pc_port/pc_p2_batch3.cpp
     pc_port/pc_p2_long_legs.cpp
