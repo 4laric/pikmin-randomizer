@@ -86,6 +86,27 @@ py -3.12 -m unittest tests.test_pikmin2_source_clock
 ```
 
 This batch provides the reusable component and compiled consumer examples.
-Existing live actors and the Bulblax wall-clock display have not been migrated.
-Family owners can adopt it within their native milestones. Full skeletal
+Existing live actors have not been migrated. Family owners can adopt it within their native milestones. Full skeletal
 skinning, blending, BTK playback and live receiver acceptance remain separate.
+
+## Native display adoption (#249)
+
+The dependent display batch adds `pc_p2_display_clock.h` and wires it into
+`pc_p2_bulblax_visual.cpp`. Each selected clip owns a clock; all displays of that
+clip share its time. Setup starts clocks after loading, reset clears them, and
+draw updates clocks once from a common SDL timestamp before choosing poses.
+
+The adapter preserves the noninteractive viewer's 30 source frames/second wall
+time, including continued playback during a game pause. It is deliberately not
+a gameplay adapter and accepts no event metadata. Unsigned millisecond deltas
+handle SDL tick wrap when successive updates are less than one complete uint32
+tick period apart (about 49.7 days). Larger intervals cannot be distinguished.
+If a gap exceeds the source-clock wrap budget, this event-free adapter explicitly
+seeks to the modulo phase and logs `P2_BULBLAX_CLOCK visual_gap_seek`.
+
+Compiled tests compare phase over 10,000 millisecond updates and sampled poses
+at representative integer-source frames; they cover zero elapsed time, wrap,
+long gaps and reset. Double accumulation can differ at exact nearest-pose ties
+from the old float multiplication. No source bank/material/placement changes.
+The actual display translation unit compiles with the production Release flags;
+full relink and visible runtime acceptance remain for the combined candidate.
