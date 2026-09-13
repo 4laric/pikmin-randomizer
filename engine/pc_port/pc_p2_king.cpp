@@ -101,6 +101,8 @@ unsigned long injectWarCryTick = 0;
 bool injectWarCryDone = false;
 unsigned long injectKillTick = 0;
 bool injectKillDone = false;
+unsigned long injectBombTick = 0;
+bool injectBombDone = false;
 
 void fail() {
 	std::fputs("P2_KING_ACTOR invalid profile/model\n", stderr);
@@ -809,6 +811,8 @@ void pc_p2_king_reset() {
 	injectWarCryDone = false;
 	injectKillTick = 0;
 	injectKillDone = false;
+	injectBombTick = 0;
+	injectBombDone = false;
 }
 
 void pc_p2_king_setup() {
@@ -836,6 +840,11 @@ void pc_p2_king_setup() {
 		if (kill > 1000000ULL)
 			fail();
 		injectKillTick = (unsigned long)kill;
+		unsigned long long bomb = 0; // optional 5th token: force bomb line-up
+		inject >> bomb;
+		if (bomb > 1000000ULL)
+			fail();
+		injectBombTick = (unsigned long)bomb;
 	}
 	std::map<int, std::vector<unsigned char>> resources;
 	// Validate/copy the whole referenced bank before allocating Shapes; clips
@@ -902,6 +911,33 @@ void pc_p2_king_update() {
 				k.health = 0.0f;
 				injectKillDone = true;
 				std::printf("P2_KING_INJECT_KILL id=%u tick=%lu health=0 fixture=1\n", k.cfg.id, behaviorTick);
+				break;
+			}
+		}
+		if (injectBombTick && !injectBombDone && behaviorTick >= injectBombTick) {
+			for (auto& k : kings) {
+				if (injectWarCryId && k.cfg.id != injectWarCryId) continue;
+				if (k.state == p2king::Dead || k.state == p2king::HideWait || k.state == p2king::Hide) continue;
+				Bomb* best = nullptr;
+				float bestDist = 0.0f;
+				for (auto& b : bombs) {
+					if (b.state != 0) continue;
+					const float dx = b.cfg.x - k.x, dz = b.cfg.z - k.z;
+					const float d = std::sqrt(dx * dx + dz * dz);
+					if (!best || d < bestDist) { best = &b; bestDist = d; }
+				}
+				if (!best) continue;
+				// Place the Emperor 60*scale behind the bomb facing it so the bomb
+				// lies on the tongue segment, then arm the bomb key deterministically.
+				k.x = best->cfg.x;
+				k.z = best->cfg.z - 60.0f * k.info.scale;
+				k.yaw = 0.0f;
+				enter(k, p2king::Attack);
+				k.frame = float(p2king::AttackBombKey) - 1.0f;
+				k.attackArmed = true;
+				k.bombArmed = true;
+				injectBombDone = true;
+				std::printf("P2_KING_INJECT_BOMB id=%u tick=%lu bomb=%u state=Attack fixture=1\n", k.cfg.id, behaviorTick, best->cfg.id);
 				break;
 			}
 		}
