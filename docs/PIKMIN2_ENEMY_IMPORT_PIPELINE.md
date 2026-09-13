@@ -101,6 +101,16 @@ Root reviews and integrates completed slices without waiting for unrelated lanes
 
 ## Current parallel queue
 
+The user-approved eight-tier difficulty table and scheduling dependencies are
+tracked in [#197](https://github.com/4laric/pikmin-randomizer/issues/197).
+The Groink-derived path for enemies without a P1 counterpart is tracked in
+[#198](https://github.com/4laric/pikmin-randomizer/issues/198): isolate source
+policies from host services, explicitly translate events/receivers, and validate
+actual runtime contacts separately from adapter probes. Its isolated terrain
+and shell evidence is a reusable starting point; shared integration and complete
+Groink behavior remain open. Difficulty is a planning estimate, not an acceptance
+level or a requirement to finish every easier enemy before parallel research.
+
 | Lane | First bounded slice | Parent | Child |
 |---|---|---|---|
 | Content worker | Frog/MaroFrog model, motion and parameter import | #167 | #194 |
