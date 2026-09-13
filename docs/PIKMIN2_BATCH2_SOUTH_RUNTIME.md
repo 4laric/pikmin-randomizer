@@ -105,7 +105,12 @@ expected XYZ before printing `P2_BATCH4_BIRTH` and `PASS P2_BATCH4_RUNTIME`.
   P1 Chappy).
 - `control_undisturbed`: **PASS** — the per-family control actor spawns at its
   expected identity/type/XYZ and is not registered to the family draw path.
-- `reload`: **UNTESTED** (no re-entry pass in this fixture).
+- `reload` / cleanup: **BLOCKED**. A controlled lethal `stimulate(InteractAttack)`
+  (10000) was accepted by every registered proxy, but all three families'
+  actors were still alive 180 frames later and the control survived, so no
+  death/`forget` cleanup or re-entry could be observed. The staged P1 Chappy
+  proxies are effectively invincible in this fixture; this is not a claim that
+  source death/corpse behavior is absent.
 - `natural_AI`, `combat`, `death_corpse`, `carrier_recovery` and the
   family-specific extras (`boss_phases`, `tyre_roll_crush`,
   `purple_vulnerability`, shared Pom base, pellet-to-Pom, Pelplant receptor,
