@@ -100,19 +100,29 @@ inline bool validCorrection(const Affine& a){
 class Instance {
     std::shared_ptr<const Bank> bank_;
     std::array<Affine,MaxJoints> world_{};
+    std::array<TRS,MaxJoints> local_{};
     Token token_=0;uint64_t tick_=0;bool sampled_=false,ready_=false,paused_=false,dead_=false;
     int clip_=-1;float frame_=0;
     static Token fresh(){static std::atomic<Token> next{1};Token n=next.load();
         do{if(n==UINT64_MAX)return 0;}while(!next.compare_exchange_weak(n,n+1));return n;}
 public:
+    // Frozen pre-correction local pose. Only its originating binding may reuse it.
+    struct Pose { Token owner=0;size_t count=0;std::array<TRS,MaxJoints> joints{}; };
+    bool capture(Token token,Pose& out)const{
+        if(!token||token!=token_||!ready_||dead_)return false;
+        out.owner=token;out.count=bank_->joints.size();out.joints=local_;return true;
+    }
     Instance()=default;Instance(const Instance&)=delete;Instance& operator=(const Instance&)=delete;
     void reset(){token_=0;bank_.reset();sampled_=ready_=paused_=dead_=false;clip_=-1;}
     Token bind(std::shared_ptr<const Bank> bank){reset();if(!bank||!checked(*bank))return 0;bank_=std::move(bank);token_=fresh();return token_;}
-    bool sample(Token token,int clip,float frame,const Affine& owner,uint64_t tick,bool paused=false,bool dead=false,const JointCorrection* corrections=nullptr,size_t correctionCount=0){
+    bool sample(Token token,int clip,float frame,const Affine& owner,uint64_t tick,bool paused=false,bool dead=false,const JointCorrection* corrections=nullptr,size_t correctionCount=0,const Pose* from=nullptr,float weight=1){
         if(!token||token!=token_)return false;
         if(dead){dead_=true;ready_=false;return true;}
         if(dead_ || (sampled_&&tick<tick_)){ready_=false;return false;}
         if(paused){paused_=true;return ready_;}
+        if(!std::isfinite(weight)||weight<0||weight>1||(from&&(from->owner!=token||from->count!=bank_->joints.size()))){ready_=false;return false;}
+        if(from)for(size_t j=0;j<from->count;++j){const auto& t=from->joints[j];auto q=t.rotation;const auto s=t.scale;
+            if(!p2pose::valid(t.translation)||!normalize(q)||!p2pose::valid(s)||s.x<1e-6f||s.y<1e-6f||s.z<1e-6f||s.x>1000||s.y>1000||s.z>1000){ready_=false;return false;}}
         if(clip<0||size_t(clip)>=bank_->clips.size()||!std::isfinite(frame)||!valid(owner)){ready_=false;return false;}
         const auto& c=bank_->clips[clip];p2pose::Interval span;
         if(frame<0||frame>c.duration-1||!p2pose::bracket(c.frames,frame,span)){ready_=false;return false;}
@@ -122,14 +132,17 @@ public:
             if(v.joint<0||size_t(v.joint)>=bank_->joints.size()||correctionIndex[v.joint]>=0||!validCorrection(v.delta)){ready_=false;return false;}
             correctionIndex[v.joint]=int(i);
         }
-        std::array<Affine,MaxJoints> next;
+        std::array<Affine,MaxJoints> next{};std::array<TRS,MaxJoints> locals{};
         for(size_t j=0;j<bank_->joints.size();++j){const auto& a=c.samples[span.left*bank_->joints.size()+j];const auto& b=c.samples[span.right*bank_->joints.size()+j];
             TRS blended{p2pose::mix(a.translation,b.translation,span.weight),slerp(a.rotation,b.rotation,span.weight),p2pose::mix(a.scale,b.scale,span.weight)};
+            if(from&&weight<1){const auto& source=from->joints[j];
+                blended=weight==0?source:TRS{p2pose::mix(source.translation,blended.translation,weight),slerp(source.rotation,blended.rotation,weight),p2pose::mix(source.scale,blended.scale,weight)};}
+            locals[j]=blended;
             Affine local=matrix(blended);
             if(correctionIndex[j]>=0)local=compose(local,corrections[correctionIndex[j]].delta);
             const int parent=bank_->joints[j].parent;next[j]=compose(parent<0?owner:next[parent],local);
             if(!valid(next[j])){ready_=false;return false;}}
-        world_=next;tick_=tick;sampled_=ready_=true;paused_=false;clip_=clip;frame_=frame;return true;
+        world_=next;local_=locals;tick_=tick;sampled_=ready_=true;paused_=false;clip_=clip;frame_=frame;return true;
     }
     bool socket(Token token,int joint,Affine& out)const{if(!token||token!=token_||!ready_||joint<0||size_t(joint)>=bank_->joints.size())return false;out=world_[joint];return true;}
     bool active(Token token)const{return token&&token==token_&&ready_&&!paused_&&!dead_;}

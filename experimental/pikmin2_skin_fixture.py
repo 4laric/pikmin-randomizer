@@ -3,7 +3,7 @@ from pathlib import Path
 import hashlib,json,shutil
 from experimental import pikmin2_snow_interpolation as reference
 
-def build(native,build_dir,output,head):
+def build(native,build_dir,output,head,*,crossfade=False):
     old=' require(p2pose::blend(probeBank[clip][span.left].pose,probeBank[clip][span.right].pose,span.weight,expected),"probe blend");'
     new=''' if(std::ifstream("p2-snow-skeletal.txt")){
   std::ifstream jf("p2-snow-joints.txt"),mf("p2-snow-skin.txt");auto bank=p2attach::read(jf);auto mesh=p2skin::read(mf);require(bank&&mesh,"probe skeleton");
@@ -12,7 +12,13 @@ def build(native,build_dir,output,head):
  }else{'''+old+'\n }'
     assert reference.PROBE.count(old)==1
     probe='#include "pc_p2_skin.h"\n'+reference.PROBE.replace(old,new).replace('if(probeBank.empty()){','if(probeBank.empty() && !std::ifstream("p2-snow-skeletal.txt")){')
-    return reference.build(native,build_dir,output,head,probe=probe)
+    if crossfade:
+        # Dedicated renderer fixture checks blended poses. This lifecycle probe
+        # checks the exact unblended death/corpse path while real combat runs.
+        anchor='if(!pc_p2_snow_geometry(enemy,actual,clip,frame,corpse))return;'
+        assert probe.count(anchor)==1
+        probe=probe.replace(anchor,anchor+'\n if(std::ifstream("p2-snow-crossfade.txt") && clip!="dead" && clip!="flick")return;')
+    return reference.build(native,build_dir,output,head,probe=probe,hidden=crossfade)
 
 def enable(bank,snow,run):
     report=json.loads((bank/'skin.json').read_text())

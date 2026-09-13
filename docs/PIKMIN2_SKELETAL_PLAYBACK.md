@@ -1,5 +1,8 @@
 # Opt-in Snow skeletal deformation (#367)
 
+Cross-clip transitions are available through the opt-in
+[shared skeletal crossfade](PIKMIN2_SKELETAL_CROSSFADE.md) (#409).
+
 Implementation owner: Codex through shared account 4laric. Native rendering can
 now deform Snow vertices from the shared local-TRS joint player. This uses all
 390 integer BCA frames across five clips, with shortest-path quaternion, linear
