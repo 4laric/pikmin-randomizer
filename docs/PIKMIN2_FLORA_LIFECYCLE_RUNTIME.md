@@ -26,6 +26,8 @@ clips) and the mandatory 960x540 centred fixture baseline.
 | Arena SHA-256 | `d40442be7e63980bc49e503ce579dca34f8993fc9736e6ece3cba532497cd4bb0` |
 | Native log SHA-256 | `79ceeef4868ff77b55096e22432f138c4c8075060c3879de193d561485ed23a6` |
 | Evidence JSON | `output/p2-flora-397-evidence/.../lifecycle-evidence-rebind.json` (SHA-256 `87ab400f1e42e33426d419bfbd88d873f109542e72dc3892e792f1464b3c5571`) |
+| Gate-5 delivery: native / fixture | `fb6389ce2968ae4c6da4563580f5ce672a9e32f7` / `output/p2-flora-deliver-fixture/fixture.exe` (SHA-256 `2be01c43afcaac15657a2ecf0c66e8123029efeb6ba80db263642b43e0d62b43`, provenance `built`) |
+| Gate-5 delivery run | `output/p2-flora-deliver-evidence/a34e00c954ca4ea79ab977d3dd0e927e` (converted Pod room; log SHA-256 `ec4c77cca31d4d9a8d2d7bce622980dcab26f1c638dca6b1b22f7833f4b6d2b9`; `lifecycle-evidence-deliver.json`) |
 
 The fixture is a replacement main (`preview_p2_room.cpp` pattern). Because it
 does not run the production `pc_main.cpp` path, it performs its own
@@ -42,7 +44,7 @@ redirection); the evidence JSON decodes it explicitly.
 | 2 | Autonomous movement and animation | PASS with limitation | Pelplant bank binds and loads (7 banks, `flora_Pelplant_*` MODs opened); flora draw path emits `P2_BATCH2_DRAW corpse=0 key=flora|RedPom clip=wait`. Source Pelplant is stationary: locomotion is the P1 Chappy vehicle and the growth FSM is not executed. |
 | 3 | Attacks and receivers | PASS (injected) | The proxy is non-invincible and accepts an injected `InteractAttack(...,100000)` per frame; the target reaches death. Natural P1-proxy combat is also observed (a flora corpse draw). This is a proxy receiver, not the source Pelplant "Full only" damage rule. |
 | 4 | Death and corpse | PASS (proxy) | `P2_LIFECYCLE_DEATH id=353001 frame=203`; `P2_BATCH2_DRAW corpse=1 key=flora|RedPom clip=dead`. The source Pelplant pellet corpse (PelletView release) is not produced by the proxy. |
-| 5 | Actual transport and reward | BLOCKED (partial) | Native attachment PASS: `P2_CARRY_ATTACH carriers=20 min=3`, corpse uses the flora bank (`P2_BATCH2_DRAW corpse=1 key=flora\|Pelplant clip=wait1`). Cargo-free arena: corpse traverses to max XZ distance 426.87 then stalls (`state=0`). Pod-room attempt (native `fb6389ce`, staged converted room + `p2-pod.txt`): `P2_POD_READY treasure=map01 value=200 weight=3 capacity=20`, Pelplant bound and corpse attached at x=-701 z=578, but the corpse never moves (`distance=0.00` for 25 samples) and the route times out — no `P2_POD_RECEIPT`. Evidence: `lifecycle-evidence-carry.json` (carry log SHA-256 `2a42e0d3…389e10`; Pod log SHA-256 `03af2203…ecece94`). |
+| 5 | Actual transport and reward | PASS (P1-proxy reward) | Converted Pod room, native `fb6389ce`: `P2_POD_READY`, 20 carriers attach, corpse traverses 93.68→129.97 and enters the goal, then `P2_POD_RECEIPT id=corpse:353001 value=2 new=1 pokos=2 seeds=0` — exactly-once (`new=1`), no seeds, repairs unchanged (`P2_DELIVER_RECEIPT delta=2 repairs=1`). The corpse uses the flora bank (`P2_BATCH2_DRAW corpse=1 key=flora\|Pelplant`). Source Pelplant pellet→seed reward is N/A to the proxy. Log SHA-256 `ec4c77cc…3f4b6d2b9`. |
 | 6 | Cleanup and re-entry | PASS | `P2_LIFECYCLE_CLEANUP live=1`, `P2_LIFECYCLE_RESPAWN_INJECT generator=353001`, `P2_LIFECYCLE_REENTRY id=353001 frame=384 reused=0`, control alive. `P2_BATCH2_MISSING family=flora found=6 wanted=7` is tolerated and the respawned `generator=353001 key=flora\|Pelplant` is re-bound by the new `pc_p2_batch2_rebind()`; the proxy is drawable again after re-entry. |
 
 `PASS P2_LIFECYCLE_RUNTIME` is present and the process exits 0.
@@ -62,21 +64,14 @@ redirection); the evidence JSON decodes it explicitly.
   unchanged. Native export and #186 shared-semantics review are still required.
 - **Identity:** the proxy is a Dwarf Bulborb vehicle, so this does not establish
   source Pelplant AI, collision or reward semantics.
-- **Gate 5 (transport/reward) is BLOCKED, with partial evidence.** The arena is
-  cargo-free (`pc_p2_preview_cargo_free_ready()`), so there is no Pod, and the
-  original-stage carry route does not connect the z≈1850 arena row to the Onion:
-  the proxy corpse is attached (20 carriers) and traverses 426.87 units, then
-  stalls in carry state without entering the goal, so no reward is issued.
-  A converted Pod room was then staged at `output/p2-flora-deliver-evidence`
-  (`room.mod`/`treasure.mod`/`pod.mod` + `p2-pod.txt`); against native
-  `fb6389ce` the run reaches `P2_POD_READY` and binds/attaches the Pelplant
-  proxy corpse at `x=-701 z=578`, but the corpse **does not move**
-  (`distance=0.00` over 25 samples) and the route times out, so no
-  `P2_POD_RECEIPT` is produced. Source Pelplant pellet release/capture is also
-  not implemented (the proxy corpse is a P1 Chappy corpse). Gate 5 is handed to
-  the active #397 native reward-lifecycle work (the shared branch already
-  carries `fb6389ce` "additive corpse-registry rebind for the reward lifecycle
-  fixture").
+- **Gate 5 is PASS at the P1-proxy reward level, not the source reward.** On the
+  converted Pod room the proxy corpse is attached (20 carriers), traverses
+  ~134 units, enters the goal and produces exactly one Pod receipt
+  (`corpse:353001`, 2 Pokos, `new=1`, `seeds=0`, repairs unchanged). The source
+  Pelplant pellet release/capture and Onion seed reward are **not** implemented:
+  the corpse is a P1 Chappy corpse drawn with the flora bank. The earlier
+  cargo-free arena stalls mid-route and is not the gate-5 fixture. Run evidence:
+  `output/p2-flora-deliver-evidence/a34e00c9…/lifecycle-evidence-deliver.json`.
 
 ## Reproduction
 
