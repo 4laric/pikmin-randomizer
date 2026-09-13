@@ -1014,6 +1014,11 @@ void DGXGraphics::setMatMatrices(Material* mat, int p2)
 			mP2EnvSRT[1][0] = 0.0f; mP2EnvSRT[1][1] = data.mScaleY;
 			mP2EnvSRT[0][2] = (1.0f-data.mScaleX)*data.mPivotX+data.mTranslationX;
 			mP2EnvSRT[1][2] = (1.0f-data.mScaleY)*data.mPivotY+data.mTranslationY;
+			// Opt-in animated source (BTK TEXMTX0) supplied by the family display.
+			if (mP2EnvSrtOverride) {
+				for (int r = 0; r < 2; ++r)
+					for (int c = 0; c < 3; ++c) mP2EnvSRT[r][c] = mP2EnvSrtOverrideVal[r][c];
+			}
 		}
 #endif
 		if (animFactor != 0xFF) {

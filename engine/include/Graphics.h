@@ -199,6 +199,12 @@ public:
 #if defined(WIN32)
 	virtual void genAge(AgeServer&) { }
 #endif
+#if defined(PIKI_PC_PORT)
+	// Opt-in per-frame envmap SRT override (#239): set by the Bulblax display
+	// from the BTK TEXMTX0 sample so a marked static envmap stage can animate.
+	bool mP2EnvSrtOverride = false;
+	float mP2EnvSrtOverrideVal[2][3] = {};
+#endif
 };
 
 /**
