@@ -23,6 +23,16 @@ class NormalTests(unittest.TestCase):
   with self.assertRaises(ValueError):apply(m,(0,0,1),True)
   self.assertEqual(apply(m,(0,0,1),True,singular_normal='transpose-adjugate'),(0,0,1))
   with self.assertRaisesRegex(ValueError,'annihilates'):apply(m,(1,0,0),True,singular_normal='transpose-adjugate')
+ def test_explicit_collapsed_normal_policy(self):
+  collapsed=[[0,0,0,0],[0,0,0,0],[0,0,0,0]]
+  with self.assertRaisesRegex(ValueError,'annihilates'):
+   apply(collapsed,(0,1,0),True,singular_normal='transpose-adjugate')
+  self.assertEqual(apply(collapsed,(0,1,0),True,singular_normal='transpose-adjugate-zero'),(0,0,0))
+  self.assertEqual(apply(I,(0,1,0),True,singular_normal='transpose-adjugate-zero'),(0,1,0))
+  a={9:[(0,0,0),(1,0,0),(0,1,0)],10:[(0,1,0)]}
+  s=[[[{0:0,9:i,10:0} for i in range(3)]]]
+  bake(a,s,[collapsed],singular_normal='transpose-adjugate-zero')
+  self.assertEqual(a[10],[(0,0,0)])
  def test_policy_validation(self):
   with self.assertRaises(ValueError):decode(b'',missing_normals='compute')
   with self.assertRaises(ValueError):decode(b'',bake_rigid=True,missing_normals='guess')

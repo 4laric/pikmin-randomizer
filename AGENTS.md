@@ -1,6 +1,7 @@
 # Pikmin Randomizer track
 
 For P2 parallel work, follow [the current workflow](docs/PIKMIN2_WORKFLOW.md). Family owners implement and validate end-to-end in private worktrees, including routine additive native hooks and private builds. Earlier blanket requirements to stop for integration permission after each batch are superseded. Coordinate changes to shared semantics with the affected owner; serialize only maintained checkout/build/export writes and final integration.
+P2 implementation agents must read [the fan-out and mandatory fixture baseline guide](docs/PIKMIN2_IMPLEMENTATION_FANOUT.md) before claiming or resuming work. Before the next runtime acceptance run, adopt the current starting-Pikmin overlay and 960×540 centred-window native startup, regenerate stale arenas, and record per-lane adoption evidence as required there. Existing active lanes are included.
 
 Before starting any implementation, ensure its scope and acceptance criteria are written in a GitHub issue in 4laric/pikmin-randomizer and assign that issue to the authenticated account (currently 4laric). Record Codex as the implementation owner when using that shared account; do not imply a separate Codex GitHub identity. Update the issue with progress, commits, validation evidence and remaining work. Assignment indicates ownership, not that every backlog item is actively underway. This issue-first requirement also applies to work inside native/ and bbft/.
 
