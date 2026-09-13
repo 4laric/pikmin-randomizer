@@ -1,5 +1,7 @@
 # P2 batch sessions — assets and engine runbook
 
+**Required for every new and resumed lane:** read [the implementation fan-out guide](PIKMIN2_IMPLEMENTATION_FANOUT.md) and complete its fixture-baseline adoption record before the next runtime acceptance run. Refresh both the starting-Pikmin overlay and small centred-window executable; regenerate old arenas. Follow its private-build commands instead of the maintained-build examples below unless you are the integration lead.
+
 Every batch session reads this before starting. Paths are for this Windows checkout (`C:\Users\alari\pikmin-randomizer`). Batch mandates: [PIKMIN2_FAMILY_BATCHES.md](PIKMIN2_FAMILY_BATCHES.md). Live status: [PIKMIN2_FAMILY_STATUS.md](PIKMIN2_FAMILY_STATUS.md).
 
 ## 1. Game assets
