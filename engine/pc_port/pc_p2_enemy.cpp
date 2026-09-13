@@ -225,8 +225,12 @@ void pc_p2_snow_setup() {
 namespace {
 void snowClock(BTeki* teki,bool corpse,const char*& name,float& phase,float& sourceFrame) {
     int motion=teki->mTekiAnimator->getCurrentMotionIndex();
-    name=corpse || motion==TekiMotion::Dead?"dead":motion==TekiMotion::Attack?"attack":motion==TekiMotion::Flick?"flick":
-        (teki->mVelocity.x*teki->mVelocity.x+teki->mVelocity.z*teki->mVelocity.z>1?"move1":"wait1");
+    // Chappy Type1 is the lethal squash path (TaiDyingAction), not idle.
+    // Requested/residual velocity can remain nonzero during wait/turn states;
+    // visual locomotion must follow the animator, just like attack and death.
+    name=corpse || motion==TekiMotion::Dead || motion==TekiMotion::Type1?"dead":
+        motion==TekiMotion::Attack?"attack":motion==TekiMotion::Flick?"flick":
+        motion==TekiMotion::Move1 || motion==TekiMotion::Move2?"move1":"wait1";
     // Source poses follow normalized P1 motion progress; P1 events stay authoritative.
     int frames=teki->mTekiAnimator->getFrameCount();
     phase=frames>1?teki->mTekiAnimator->getCounter()/(frames-1):0;

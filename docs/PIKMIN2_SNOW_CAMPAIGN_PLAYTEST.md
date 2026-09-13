@@ -59,3 +59,19 @@ The real combat/corpse/Pod interpolation acceptance from #327 remains separate
 from this normal-area smoke test. Full campaign travel, native Onion delivery
 and day-end save/reload with this opt-in remain player acceptance items; no
 new save protocol or checkpoint format is introduced.
+
+## Campaign motion correction (#364)
+
+Snow clip selection follows Chappy animation IDs rather than horizontal velocity.
+Native Wait/WaitAct states can retain requested or residual velocity; that does
+not make them walking animations. Move1/Move2 select move1, attack and flick keep
+their existing mappings, and all remaining living idle/reaction states fall back
+to wait1. Both Dead and Type1 select dead: Chappy uses Type1 for its lethal squash
+TaiDyingAction. Corpse rendering continues to hold the final death pose.
+
+This preserves native state transitions, damage, animation events and corpse
+creation timing. It does not add distinct source squash, turn or damage clips;
+the squash path uses the available ordinary Snow death animation. The native
+campaign fixture checks both death clocks progress, stationary/turn motions
+remain idle despite nonzero velocity, and the corpse uses the death clip. These
+are controlled animator inputs, not a claim of end-to-end natural squash combat.
