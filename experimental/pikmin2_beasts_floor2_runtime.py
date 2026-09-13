@@ -12,6 +12,7 @@ import uuid
 from experimental.pikmin2_beasts_floor2 import prepare, decode_no_cargo, generation_context
 from experimental.pikmin2_beasts_party_snapshot import party_snapshot
 from experimental.pikmin2_beasts_party_restore import restore_party, entry_text, validate_restore
+from experimental.pikmin2_beasts_boundary import boundary_text, validate_boundary
 
 
 def sha(path):
@@ -129,6 +130,8 @@ def validate(log, readiness, *, require_witnesses=False, refund=False):
 
 def run(args):
     context=generation_context(args.global_purple_count)
+    boundary=getattr(args,'boundary_token',None) or uuid.uuid4().hex+uuid.uuid4().hex
+    binding=boundary_text(boundary)
     refund=getattr(args,'refund',False)
     restore_path=getattr(args,'restore_party',None)
     restored=restore_party(json.loads(restore_path.read_text())) if restore_path else None
@@ -144,6 +147,8 @@ def run(args):
     (stage/'p2-beasts-floor2-fixture.txt').write_text(f'P2_BEASTS_FLOOR2_FIXTURE_2\n{args.global_purple_count}\n')
     exe = args.exe.resolve()
     inputs = ['readiness.json','p2-purple.txt','p2-pod.txt','p2-cargo-free.txt','p2-beasts-floor2-fixture.txt']
+    (stage/'p2-beasts-boundary.txt').write_text(binding)
+    inputs.append('p2-beasts-boundary.txt')
     if restored is not None:
         (stage/'restore-party.json').write_text(json.dumps(restored,indent=2)+'\n')
         (stage/'p2-cave-entry.txt').write_text(entry_text(restored,uuid.uuid4().hex))
@@ -160,6 +165,7 @@ def run(args):
                     scripted_native_throws=True,scripted_captain_pluck=True,remaining_plucks='InteractBikkuri',
                     source_p2_pom_fsm=False,passed=False,input_sha256=hashes)
     print(stage,flush=True)
+    evidence.update(issue=294,boundary_token=boundary,boundary_policy='P2_BEASTS_BOUNDARY_1')
     if restored is not None:
         evidence.update(issue=290,restore_fixture=True,scripted_native_throws=False,scripted_captain_pluck=False,remaining_plucks=None)
     env = dict(os.environ,SDL_AUDIODRIVER='dummy',PATH='C:/msys64/mingw64/bin'+os.pathsep+os.environ.get('PATH',''))
@@ -173,6 +179,7 @@ def run(args):
     text = (stage/'native.log').read_text(errors='replace')
     try:
         if evidence.get('returncode') != 0:raise ValueError('Native fixture did not exit successfully')
+        validate_boundary(text,boundary)
         if restored is not None:
             evidence['party_snapshot']=validate_restore(text,restored)
         else:
@@ -197,6 +204,7 @@ if __name__ == '__main__':
     for name in ('root','assets','exe','output'):parser.add_argument('--'+name,type=Path,required=True)
     parser.add_argument('--refund',action='store_true',help='Engineering one-Purple input followed by ten Reds; verify same-color slot refund')
     parser.add_argument('--restore-party',type=Path,help='Explicit party snapshot JSON; diagnostic restoration only, requires population20')
+    parser.add_argument('--boundary-token',help='Persisted reference boundary token; defaults to a fresh diagnostic-only token')
     parser.add_argument('--timeout',type=int,default=240)
     parser.add_argument('--global-purple-count',type=int,required=True,help='Declared global-plus-cave Purple population at generation; not inferred from the twenty-Red fixture')
     raise SystemExit(0 if run(parser.parse_args()) else 1)

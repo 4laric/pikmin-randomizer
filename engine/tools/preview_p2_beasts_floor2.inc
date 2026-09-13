@@ -5,6 +5,8 @@
 static bool beastsFloor2Enabled=false;
 static bool beastsRefund=false;
 static bool beastsRestore=false;
+static std::string beastsBoundary;
+static void beastsBoundaryEnd(){if(!beastsBoundary.empty())std::printf("P2_BEASTS_BOUNDARY_END token=%s\n",beastsBoundary.c_str());}
 static int beastsGlobalPurple=-1,beastsExpectedFlowers=2;
 static void beastsPartySnapshot(Navi* n) {
     const float maximum=C_NAVI_PARM(n,mHealth);
@@ -34,6 +36,16 @@ static void beastsFloor2Fixture(Navi* n) {
     static int flowerIndex=0,retry=0;
     static bool approached=false;
     ++timer;n->mNeutralTime=0;
+    if(state==0 && timer==1) {
+        std::ifstream in("p2-beasts-boundary.txt");
+        if(in) {
+            std::string header,extra;
+            require(bool(in>>header>>beastsBoundary) && header=="P2_BEASTS_BOUNDARY_1"
+                && beastsBoundary.size()==64 && beastsBoundary.find_first_not_of("0123456789abcdef")==std::string::npos
+                && !(in>>extra) && in.eof(),"invalid Beasts boundary input");
+            std::printf("P2_BEASTS_BOUNDARY_BEGIN token=%s\n",beastsBoundary.c_str());
+        }
+    }
     if(state==0 && timer==1){std::ifstream marker("p2-beasts-refund-fixture.txt");beastsRefund=bool(marker);}
     if(state==0 && timer==1){std::ifstream marker("p2-beasts-restore-fixture.txt");beastsRestore=bool(marker);}
     const int extra=beastsRefund?1:0;
@@ -57,7 +69,7 @@ static void beastsFloor2Fixture(Navi* n) {
         if(timer==1){repairs=playerState->getCurrParts();std::printf("P2_BEASTS_READY reds=%d flowers=0 cargo=0\n",reds);}
         if(timer>=300) {
             require(playerState->getCurrParts()==repairs,"restoration changed repairs");
-            beastsPartySnapshot(n);capture("beasts-floor2-final.ppm");
+            beastsPartySnapshot(n);capture("beasts-floor2-final.ppm");beastsBoundaryEnd();
             std::puts("PASS P2_BEASTS_RESTORE updates=300 cargo=0 pokos=0 repairs_unchanged=1");std::fflush(stdout);std::_Exit(0);
         }
         return;
@@ -131,6 +143,7 @@ static void beastsFloor2Fixture(Navi* n) {
             require(playerState->getCurrParts()==repairs,"suppressed Beasts changed repairs");
             capture("beasts-floor2-final.ppm");
             beastsPartySnapshot(n);
+            beastsBoundaryEnd();
             std::puts("PASS P2_BEASTS_SUPPRESSED reds=20 purple=0 sprouts=0 flowers=0 cargo=0 pokos=0 repairs_unchanged=1");std::fflush(stdout);std::_Exit(0);
         }
     } else if(state==2 && timer>90) {
@@ -155,6 +168,7 @@ static void beastsFloor2Fixture(Navi* n) {
             require(playerState->getCurrParts()==repairs,"Beasts changed P1 repairs");
             capture("beasts-floor2-final.ppm");
             beastsPartySnapshot(n);
+            beastsBoundaryEnd();
             std::printf("PASS P2_BEASTS_FLOOR2 reds=%d purple=%d sprouts=0 cargo=0 pokos=0 repairs_unchanged=1\n",10-extra,10+extra);std::fflush(stdout);std::_Exit(0);
         }
         require(timer<1200,"Beasts native plucking stalled");
