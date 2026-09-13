@@ -25,7 +25,7 @@ def sha(raw): return hashlib.sha256(raw).hexdigest()
 def stage(assets, assembly, purple, pod, output, party, *, floor=3, goals=GOALS, anchor_positions=None):
     party=restore_party(party)
     report=json.loads((assembly/'assembly.json').read_bytes())
-    if floor not in (3,4) or report['policy']!=f'P2_BEASTS_FLOOR{floor}_ASSEMBLY_1' or report['floor']!=floor:
+    if floor not in (3,4,5) or report['policy']!=f'P2_BEASTS_FLOOR{floor}_ASSEMBLY_1' or report['floor']!=floor:
         raise ValueError('Expected audited floor-three assembly')
     for name,digest in report['output_sha256'].items():
         if sha((assembly/name).read_bytes())!=digest:raise ValueError('Assembly changed: '+name)
@@ -152,10 +152,10 @@ def run(exe, directory, timeout=120):
     try:
         if evidence.get('returncode')!=0:raise ValueError('Native process failed or timed out')
         log_text=(directory/'native.log').read_text(errors='replace')
-        if report['floor']==4:
-            if 'P2_FLOOR3' in log_text or report.get('boundary_token'):raise ValueError('Wrong floor4 survey profile')
-            log_text=log_text.replace('P2_FLOOR4','P2_FLOOR3')
-            evidence['issue']=330
+        if report['floor'] in (4,5):
+            if 'P2_FLOOR3' in log_text or report.get('boundary_token'):raise ValueError('Wrong engineering survey profile')
+            log_text=log_text.replace(f'P2_FLOOR{report["floor"]}','P2_FLOOR3')
+            evidence['issue']=330 if report['floor']==4 else 333
         evidence['survey']=validate(log_text,report['party'],boundary_token=report.get('boundary_token'),goals=report['goals'])
         if (directory/'p2-cave-transfer.txt').exists() or (directory/'p2-cave-transfer.tmp').exists():raise ValueError('Unexpected floor transfer file')
         if any(sha((directory/name).read_bytes())!=digest for name,digest in paths.items()) or sha(exe.read_bytes())!=executable_hash:
