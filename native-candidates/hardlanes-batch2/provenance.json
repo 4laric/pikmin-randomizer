@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "batch": 2,
+  "issues": ["#244", "#245", "#246"],
+  "native": {
+    "branch": "opencode/p2-hardlanes-native",
+    "worktree": "output/integration-hardlanes",
+    "head": "086ed858",
+    "base": "codex/p2-bigtreasure d51d2916",
+    "merged": {
+      "codex/p2-bigtreasure": "d51d2916",
+      "codex/p2-fuefuki": "e82fdc48",
+      "codex/p2-bombsarai-policy": "045b872b"
+    },
+    "incremental_commits": ["c47c6120", "9407175a", "a3dc1297", "2501c853", "086ed858"],
+    "executable_sha256": "5968BAEB1092246D5104E7A94C5A7A7B691C87F870B264245985523BAFC0F36C",
+    "build": "output/integration-hardlanes/build-hardlanes",
+    "origin_pushed": false
+  },
+  "runtime_fixtures": {
+    "bombsarai": {"run": "output/bombsarai-arena-preview2/975d69cd4f7f412db73599ad67f20dc6", "marker": "PASS BOMBSARAI_RUNTIME"},
+    "fuefuki": {"run": "output/fuefuki-arena-preview2/065f477cbe594cd79aec31bade596e7e", "marker": "PASS FUEFUKI_RUNTIME"},
+    "bigtreasure": {"run": "output/bigtreasure-runtime-sessions3/8ac519d9086a4116801c301f1f9103e8", "marker": "PASS BIGTREASURE_RUNTIME"}
+  },
+  "patches": {
+    "incremental_dir": "native-candidates/hardlanes-batch2/patches",
+    "full_diff": "native-candidates/hardlanes-batch2/hardlanes-batch2-full.patch"
+  },
+  "blocked_gaps": [
+    "BombSarai visual bank and kamu_jnt1 capture joint (#128)",
+    "Fuefuki source keyEvent/animation bank (#128)",
+    "BigTreasure motion staging 2/29 clips, lloozy model, damage receivers"
+  ]
+}

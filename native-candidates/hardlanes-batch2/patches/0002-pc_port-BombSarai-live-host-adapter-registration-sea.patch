@@ -1,0 +1,178 @@
+From 9407175a1f9d1f752f37df7a254c6fd23bbd6bb4 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Sun, 13 Sep 2026 16:16:18 -0400
+Subject: [PATCH 2/5] pc_port: BombSarai live host-adapter registration seam
+ (#244)
+
+---
+ CMakeLists.txt                        |  1 +
+ pc_port/pc_p2_hardlanes.cpp           | 76 +++++++++++++++++++++++++++
+ pc_port/pc_p2_hardlanes.h             | 11 ++++
+ pc_port/pc_p2_preview.cpp             |  2 +
+ src/plugPikiKando/gameCoreSection.cpp |  3 ++
+ 5 files changed, 93 insertions(+)
+ create mode 100644 pc_port/pc_p2_hardlanes.cpp
+ create mode 100644 pc_port/pc_p2_hardlanes.h
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 13a088fa..36c1bdb6 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -178,6 +178,7 @@ set(PC_PORT_SOURCES
+     pc_port/pc_p2_mamuta.cpp
+     pc_port/pc_p2_tank.cpp
+     pc_port/pc_p2_qurione.cpp
++ pc_port/pc_p2_hardlanes.cpp
+  pc_port/pc_p2_bombsarai_arena.cpp
+  pc_port/pc_p2_bombsarai_blast.cpp
+  pc_port/pc_p2_bombsarai_bomb.cpp
+diff --git a/pc_port/pc_p2_hardlanes.cpp b/pc_port/pc_p2_hardlanes.cpp
+new file mode 100644
+index 00000000..1bf51975
+--- /dev/null
++++ b/pc_port/pc_p2_hardlanes.cpp
+@@ -0,0 +1,76 @@
++// Hard-lane shared registration seam (#244, #245, #246).
++//
++// Batch 2 step 1: wire the isolated hard-lane policy/arena modules into the
++// shared game target with live host adapters. BombSarai is registered first: its
++// carrier arena is bound to the live P1 static map through the lane's
++// P2BombSaraiMapBinding terrain adapter and advanced on the authoritative frame
++// delta via the lane's source clock. It only runs inside the private room
++// preview and only when the opt-in `p2-bombsarai-arena.txt` profile is present,
++// so ordinary P1 play is unaffected. Fuefuki/BigTreasure host adapters land in
++// later slices.
++//
++// No shared semantics are changed: this module owns no saves, rewards, damage
++// or actor lifetime. It is a debug/arena registration for runtime evidence.
++#include "pc_p2_hardlanes.h"
++#include "pc_p2_bombsarai_arena.h"
++#include "pc_p2_bombsarai_bomb.h"
++#include "pc_p2_bombsarai_clock.h"
++#include "pc_p2_bombsarai_map_trace.h"
++#include "pc_p2_bombsarai_terrain.h"
++#include "pc_bbft.h"
++#include "gameflow.h"
++#include "MoviePlayer.h"
++#include "Graphics.h"
++#include "MapMgr.h"
++#include "system.h"
++#include <cstdint>
++#include <cstdio>
++
++namespace {
++P2BombSaraiMapBinding* sBinding = nullptr;
++P2BombSaraiTerrainAdapter* sAdapter = nullptr;
++P2BombSaraiSourceClock* sClock = nullptr;
++bool sReady = false;
++
++bool sCarrierAlive(void*, std::uint64_t) { return true; }
++}
++
++void pc_p2_hardlanes_reset()
++{
++    pc_p2_bombsarai_arena_reset();
++    if (sClock) sClock->reset();
++    sReady = false;
++}
++
++void pc_p2_hardlanes_setup()
++{
++    pc_p2_hardlanes_reset();
++    if (!pc_pikipelago_room_preview() || !mapMgr) return;
++    if (!sBinding) sBinding = new P2BombSaraiMapBinding();
++    if (!sAdapter) sAdapter = new P2BombSaraiTerrainAdapter();
++    if (!sClock) sClock = new P2BombSaraiSourceClock();
++    if (!pc_p2_bombsarai_arena_setup("p2-bombsarai-arena.txt")) return;
++    sBinding->reset(mapMgr);
++    sAdapter->reset(P2BombSaraiMapBinding::traceMove, sBinding,
++                    P2BombSaraiMapBinding::getMinY, sBinding);
++    sReady = true;
++    std::printf("P2_HARDLANES_READY family=BombSarai arena=1\n");
++}
++
++void pc_p2_hardlanes_update()
++{
++    if (!sReady || !gsys) return;
++    const bool active = !gameflow.mPauseAll && !gameflow.mIsUIOverlayActive
++        && !(gameflow.mMoviePlayer && gameflow.mMoviePlayer->mIsActive);
++    const int ticks = sClock->step(gsys->getFrameTime(), active);
++    for (int i = 0; i < ticks; ++i)
++        pc_p2_bombsarai_arena_update(P2BombSaraiBomb::kSourceDelta,
++                                     P2BombSaraiTerrainAdapter::trace, sAdapter,
++                                     sCarrierAlive, nullptr);
++}
++
++void pc_p2_hardlanes_draw(Graphics& gfx)
++{
++    if (!sReady) return;
++    pc_p2_bombsarai_arena_draw(gfx);
++}
+diff --git a/pc_port/pc_p2_hardlanes.h b/pc_port/pc_p2_hardlanes.h
+new file mode 100644
+index 00000000..b2cc3f93
+--- /dev/null
++++ b/pc_port/pc_p2_hardlanes.h
+@@ -0,0 +1,11 @@
++#pragma once
++class Graphics;
++
++// Hard-lane shared registration seam (#244 BombSarai, #245 Fuefuki, #246
++// BigTreasure). Opt-in: only active inside the Pikipelago private room preview
++// with a lane profile present; otherwise every entry point is a no-op and
++// ordinary P1 play is untouched.
++void pc_p2_hardlanes_setup();
++void pc_p2_hardlanes_update();
++void pc_p2_hardlanes_draw(Graphics&);
++void pc_p2_hardlanes_reset();
+diff --git a/pc_port/pc_p2_preview.cpp b/pc_port/pc_p2_preview.cpp
+index f9aeed2b..47d24e75 100644
+--- a/pc_port/pc_p2_preview.cpp
++++ b/pc_port/pc_p2_preview.cpp
+@@ -9,6 +9,7 @@
+ #include "pc_p2_giant_breadbug_visual.h"
+ #include "pc_p2_bulblax_visual.h"
+ #include "pc_p2_breadbug_actor.h"
++#include "pc_p2_hardlanes.h"
+ #include "pc_p2_preview.h"
+ #include "pc_bbft.h"
+ #include "Pellet.h"
+@@ -191,6 +192,7 @@ void pc_p2_preview_setup() {
+     pc_p2_mamuta_setup();
+     pc_p2_tank_setup();
+     pc_p2_qurione_setup();
++    pc_p2_hardlanes_setup();
+     pc_p2_purple_setup();
+     pc_p2_cave_setup();
+     gsys->setHeap(previousHeap);
+diff --git a/src/plugPikiKando/gameCoreSection.cpp b/src/plugPikiKando/gameCoreSection.cpp
+index 8bb8aaed..63d7c24e 100644
+--- a/src/plugPikiKando/gameCoreSection.cpp
++++ b/src/plugPikiKando/gameCoreSection.cpp
+@@ -14,6 +14,7 @@
+ #include "pc_p2_giant_breadbug_visual.h"
+ #include "pc_p2_bulblax_visual.h"
+ #include "pc_p2_tank.h"
++#include "pc_p2_hardlanes.h"
+ #include "pc_randomizer.h"
+ #include "MapCode.h"
+ #include <fstream>
+@@ -1680,6 +1681,7 @@ void GameCoreSection::update()
+ 		bugPrintBuffer->update();
+ #endif
+ 	}
++	pc_p2_hardlanes_update();
+ 
+ 	if (GameStat::allPikis == 0 && GameStat::maxPikis > 0) {
+ 		Navi* navi = mNavi;
+@@ -2890,6 +2892,7 @@ void GameCoreSection::draw(Graphics& gfx)
+ 
+ 	gfx.useMatrix(Matrix4f::ident, 0);
+ 	gfx.calcLighting(1.0f);
++	pc_p2_hardlanes_draw(gfx);
+ 	if (mDrawHideType != 8) {
+ 		mMapMgr->refresh(gfx);
+ 	}
+-- 
+2.55.0.windows.3
+

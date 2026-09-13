@@ -1,0 +1,110 @@
+From 2501c853b54d3d80e87b2a1a71c2651452e2d37d Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Sun, 13 Sep 2026 16:21:51 -0400
+Subject: [PATCH 4/5] pc_port: BigTreasure host seam and sampled visual
+ registration (#246)
+
+---
+ pc_port/pc_p2_hardlanes.cpp | 56 +++++++++++++++++++++++++++++++++++--
+ 1 file changed, 54 insertions(+), 2 deletions(-)
+
+diff --git a/pc_port/pc_p2_hardlanes.cpp b/pc_port/pc_p2_hardlanes.cpp
+index e0e158d2..c093d9fe 100644
+--- a/pc_port/pc_p2_hardlanes.cpp
++++ b/pc_port/pc_p2_hardlanes.cpp
+@@ -25,6 +25,9 @@
+ #include "pc_p2_bombsarai_map_trace.h"
+ #include "pc_p2_bombsarai_terrain.h"
+ #include "pc_p2_fuefuki_binding.h"
++#include "pc_p2_bigtreasure_host.h"
++#include "pc_p2_bigtreasure_visual.h"
++#include "Matrix4f.h"
+ #include "pc_bbft.h"
+ #include "gameflow.h"
+ #include "MoviePlayer.h"
+@@ -170,6 +173,15 @@ P2FuefukiFsmParms fuefukiParms()
+     p.attackRadius = 130.0f;         // retail whistle ring radius
+     return p;
+ }
++
++// ---------------------------------------------------------------------------
++// BigTreasure (#246)
++constexpr float kBigTreasureSourceDelta = 1.0f / 30.0f;
++P2BigTreasureHostSeam sBigTreasure;
++bool sBigTreasureReady = false;
++bool sBigTreasureVisualReady = false;
++float sBigTreasureGround = 0.0f;
++double sBigTreasureDebt = 0.0;
+ }
+ 
+ void pc_p2_hardlanes_reset()
+@@ -183,6 +195,12 @@ void pc_p2_hardlanes_reset()
+     sFuefukiPiki.clear();
+     sFuefukiHeld.clear();
+     sFuefukiNextId = 1;
++    p2_bigtreasure_host_reset(sBigTreasure);
++    pc_p2_bigtreasure_visual_reset();
++    sBigTreasureReady = false;
++    sBigTreasureVisualReady = false;
++    sBigTreasureGround = 0.0f;
++    sBigTreasureDebt = 0.0;
+ }
+ 
+ void pc_p2_hardlanes_setup()
+@@ -226,6 +244,20 @@ void pc_p2_hardlanes_setup()
+             std::printf("P2_HARDLANES_READY family=Fuefuki vehicle=Napkid follow_locomotion=policy_only\n");
+         }
+     }
++
++    // BigTreasure (#246): fixed-placement host seam + sampled visual bank.
++    if (p2_bigtreasure_host_setup("p2-bigtreasure-host.txt", sBigTreasure)) {
++        sBigTreasureReady = true;
++        sBigTreasureGround = mapMgr->getMinY(0.0f, 0.0f, false);
++        std::printf("P2_HARDLANES_READY family=BigTreasure host=1 captures=5\n");
++    }
++    if (pc_p2_bigtreasure_visual_setup("p2-bigtreasure-visual.txt")) {
++        sBigTreasureVisualReady = true;
++        pc_p2_bigtreasure_visual_clip("wait1");
++        std::printf("P2_HARDLANES_READY family=BigTreasure visual=1 clips=%d debug=%d\n",
++                    pc_p2_bigtreasure_visual_pellet_count(),
++                    pc_p2_bigtreasure_visual_debug_count());
++    }
+ }
+ 
+ void pc_p2_hardlanes_update()
+@@ -259,10 +291,30 @@ void pc_p2_hardlanes_update()
+             sFuefuki->tick(tick);
+         }
+     }
++
++    if (sBigTreasureReady || sBigTreasureVisualReady) {
++        sBigTreasureDebt += gsys->getFrameTime();
++        int ticks = static_cast<int>(sBigTreasureDebt / kBigTreasureSourceDelta);
++        if (ticks > 4) ticks = 4;
++        sBigTreasureDebt -= ticks * static_cast<double>(kBigTreasureSourceDelta);
++        for (int i = 0; i < ticks; ++i) {
++            if (sBigTreasureReady)
++                p2_bigtreasure_host_tick_entry(sBigTreasure, kBigTreasureSourceDelta, false, 0.0f);
++            if (sBigTreasureVisualReady) {
++                if (pc_p2_bigtreasure_visual_completed()) pc_p2_bigtreasure_visual_clip("wait1");
++                pc_p2_bigtreasure_visual_update(1.0f);
++            }
++        }
++    }
+ }
+ 
+ void pc_p2_hardlanes_draw(Graphics& gfx)
+ {
+-    if (!sBombSaraiReady) return;
+-    pc_p2_bombsarai_arena_draw(gfx);
++    if (sBombSaraiReady) pc_p2_bombsarai_arena_draw(gfx);
++    if (sBigTreasureVisualReady) {
++        Matrix4f owner;
++        owner.makeSRT(Vector3f(1.0f, 1.0f, 1.0f), Vector3f(0.0f, 0.0f, 0.0f),
++                      Vector3f(0.0f, sBigTreasureGround, 0.0f));
++        pc_p2_bigtreasure_visual_draw(gfx, owner);
++    }
+ }
+-- 
+2.55.0.windows.3
+

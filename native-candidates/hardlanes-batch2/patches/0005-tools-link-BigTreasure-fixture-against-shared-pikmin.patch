@@ -1,0 +1,35 @@
+From 086ed858c2693d9259679177e0eca00a80f57fbf Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Sun, 13 Sep 2026 16:38:58 -0400
+Subject: [PATCH 5/5] tools: link BigTreasure fixture against shared pikmin_pc
+ modules (#246)
+
+---
+ tools/p2_bigtreasure_runtime.cpp | 11 +++--------
+ 1 file changed, 3 insertions(+), 8 deletions(-)
+
+diff --git a/tools/p2_bigtreasure_runtime.cpp b/tools/p2_bigtreasure_runtime.cpp
+index 10278995..4dd48864 100644
+--- a/tools/p2_bigtreasure_runtime.cpp
++++ b/tools/p2_bigtreasure_runtime.cpp
+@@ -36,14 +36,9 @@
+ #include "pc_p2_bigtreasure_map_trace.h"
+ #include "pc_p2_bigtreasure_visual.h"
+ 
+-// Private one-TU fixture build snapshots these lane implementations as
+-// dependencies (same pattern as the Groink volley fixture).
+-#include "../pc_port/pc_p2_bigtreasure.cpp"
+-#include "../pc_port/pc_p2_bigtreasure_attacks.cpp"
+-#include "../pc_port/pc_p2_bigtreasure_host.cpp"
+-#include "../pc_port/pc_p2_bigtreasure_map_trace.cpp"
+-#include "../pc_port/pc_p2_bigtreasure_motion.cpp"
+-#include "../pc_port/pc_p2_bigtreasure_visual.cpp"
++// Batch 2: the lane implementations are part of the shared pikmin_pc target,
++// so the fixture links against the build objects instead of compiling them into
++// this translation unit (avoids duplicate symbols).
+ 
+ namespace {
+ constexpr float kDt = 1.0f / 30.0f;
+-- 
+2.55.0.windows.3
+
