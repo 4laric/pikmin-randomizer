@@ -1,0 +1,40 @@
+{
+  "lane": "19",
+  "issues": ["168", "221"],
+  "native_branch": "opencode/p2-mamuta-pod",
+  "native_base": "f14c6851473ac1161be56c8b98f4f905232f3635",
+  "native_head": "a54f4af24286e264b1baf00ca80509f7ec6814ac",
+  "native_pushed": false,
+  "native_worktree": "output/native-mamuta-pod",
+  "ordered_commits": [
+    "a54f4af2 family Pod receipt for the Mamuta carcass"
+  ],
+  "patch_series": [
+    "0001-Lane-19-221-family-Pod-receipt-for-the-Mamuta-carcas.patch"
+  ],
+  "scope": {
+    "adds": ["pc_p2_mamuta_receipt(PelletView*, unsigned& generator)"],
+    "modifies": ["pc_port/pc_p2_mamuta.{h,cpp}", "pc_port/pc_p2_preview.cpp (deliver routing)"],
+    "consumes": ["existing preview Pod economy path + pc_p2_sheargrub_receipt pattern"],
+    "no_shared_semantics": "Only adds a family corpse route before the corpse-registry fallback; Chappy and treasure receipts are unchanged."
+  },
+  "blocker_analysis": {
+    "cargo_free_arena": "experimental/pikmin2_mamuta_arena.py writes p2-cargo-free.txt unconditionally, so the lane arena has no Pod",
+    "chappy_only_receipts": "pc_p2_preview_rebind_corpses registers TEKI_Chappy only; pc_p2_preview_deliver aborts on unregistered pellets",
+    "treasure_required": "p2ValidatePreviewCargo throws when !cargoFree && !hasTreasure, so a Pod arena needs a pr05 treasure actor"
+  },
+  "native_build": {
+    "dir": "output/native-mamuta-pod-build",
+    "generator": "Ninja Release/MinGW, JAudio ON",
+    "target": "pikmin_pc",
+    "exe": "bin/nectar.exe",
+    "exe_sha256": "6C49DC33591C13F279014D49098651875CC116F9805E1E59321C8E116461515D",
+    "no_work_dry_run": "ninja: no work to do."
+  },
+  "not_claimed": [
+    "cargo-enabled Mamuta arena staging (p2-pod.txt + treasure + no cargo-free)",
+    "natural or assisted carcass carry run to the Pod",
+    "runtime GL acceptance (no run performed)",
+    "day/floor reset, save-load, Piklopedia"
+  ]
+}
