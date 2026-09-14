@@ -208,6 +208,7 @@ public:
                             auto* p=static_cast<Piki*>(*scan); if(!p->isAlive()) continue;
                             ++field; if(p->mMode==PikiMode::BreakwallMode) ++workers;
                             if(p->mMode==PikiMode::FreeMode) ++free;
+                            if(field==1) std::printf("P2_ROUTE_WORKER frame=%u motion=%d state=%d pos=%.3f,%.3f,%.3f attack=%.3f walk_motion=%d job_motion=%d cling_motion=%d\n",frames,p->mPikiAnimMgr.getUpperAnimator().getCurrentMotionIndex(),p->getState(),p->mSRT.t.x,p->mSRT.t.y,p->mSRT.t.z,p->getAttackPower(),PIKIANIM_Walk,PIKIANIM_Job2,PIKIANIM_Kuttuku);
                         }
                         std::printf("P2_ROUTE_GATE_WAIT frame=%u field=%d working=%d free=%d open=%d\n",frames,field,workers,free,int(gatePoint->mIsOpen));
                         if (observedGate) std::printf("P2_ROUTE_GATE_HEALTH frame=%u health=%.4f max=%.4f captain=%.1f\n",frames,observedGate->mHealth,observedGate->mMaxHealth,n->mHealth);
@@ -231,12 +232,14 @@ public:
                         CI_LOOP(workers) {
                             auto* p=static_cast<Piki*>(*workers); if(!p->isAlive()) continue;
                             CollPart* part=flag->getChildAt(count%flag->getChildCount());
+                            if(count==0) std::printf("P2_ROUTE_WORK_PART pos=%.3f,%.3f,%.3f radius=%.3f id=%08x\n",part->mCentre.x,part->mCentre.y,part->mCentre.z,part->mRadius,part->getID());
                             p->resetPosition(part->mCentre+Vector3f(0,0,10));
                             p->changeMode(PikiMode::FreeMode,n); ++count;
                         }
                         GoalItem* safeOnion=itemMgr->getContainer(Red);
                         require(safeOnion!=nullptr,"landing Onion for captain staging");
                         n->resetPosition(safeOnion->mSRT.t+Vector3f(100,0,0));
+                        if (std::getenv("PIKMIN_ROUTE_CAPTAIN_NEAR")) n->resetPosition(gate->mSRT.t+Vector3f(-100,0,0));
                         gateSquadStaged=true;
                         std::printf("P2_ROUTE_GATE_SETUP waypoint=92 workers=%d type=%d pos=%.3f,%.3f,%.3f health=%.1f forced_damage=0\n",count,gate->mObjType,gate->mSRT.t.x,gate->mSRT.t.y,gate->mSRT.t.z,gate->mHealth);
                         std::fflush(stdout);
