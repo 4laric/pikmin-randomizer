@@ -14,9 +14,9 @@ interference stay BLOCKED pending native actor registration (#186). The estate
 profile from ``pikmin2_fuefuki_install.py`` is the only asset this arena ships;
 no motion bank, no shared/native edits. Gate statuses are recorded honestly from
 the real-GL runtime evidence in ``native/tools/P2_FUEFUKI_RUNTIME_EVIDENCE.md``:
-the whistle-theft, interference, reclaim and carry paths passed against retail
-assets; follow locomotion, panic staging, brain fallback, claim persistence and
-native identity remain blocked; physical spawn is untested.
+the whistle-theft, interference, reclaim, carry and pinned-spawn paths passed
+against retail assets; follow locomotion, panic staging, brain fallback, claim
+persistence and native identity remain blocked.
 """
 import argparse
 import hashlib
@@ -45,8 +45,8 @@ FAMILY = {P1_NAPKID_TYPE: 'Napkid (P1 Swooping Snitchbug)',
           P1_CHAPPY_TYPE: 'Chappy (P1 Dwarf Bulborb)'}
 
 # Lane acceptance gates. PASS/BLOCKED strings quote the real-GL evidence in
-# native/tools/P2_FUEFUKI_RUNTIME_EVIDENCE.md; 'spawn' was never staged and stays
-# untested. Nothing here claims gameplay acceptance.
+# native/tools/P2_FUEFUKI_RUNTIME_EVIDENCE.md. Nothing here claims gameplay
+# acceptance.
 GATES = ('native_identity', 'spawn', 'whistle_theft', 'interference', 'reclaim',
          'carry', 'follow_locomotion', 'panic_staging', 'brain_fallback',
          'claim_persistence')
@@ -55,6 +55,7 @@ PASSED = {
     'interference': 'pass: real-GL run refused captain whistle/switch/combine on held Pikmin with zero ownership writes (P2_FUEFUKI_RT_NONROUTE)',
     'reclaim': 'pass: real Navi::callPikis reclaim, PIKISTATE_LookAt then real FormationMode join (P2_FUEFUKI_RT_RECLAIM, P2_FUEFUKI_RT_FORMJOIN)',
     'carry': 'pass: dead-anim END delivered kill with carry_anim carcass flag (P2_FUEFUKI_RT_KILL)',
+    'spawn': 'pass: both pinned actors birthed through the real generator path at exact XYZ, generator_delta=0.000 born_delta=0.000 (P2_FUEFUKI_ARENA_SPAWN); placement vehicle only, native identity still blocked',
 }
 BLOCKED = {
     'native_identity': 'blocked: no native Fuefuki (41) registration; Napkid 11 is a placement vehicle only (#186)',

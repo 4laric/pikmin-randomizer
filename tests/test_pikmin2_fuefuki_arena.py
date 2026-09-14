@@ -49,7 +49,7 @@ def test_proxy_types_match_native_registry():
 
 
 def test_gate_status_matches_real_gl_evidence():
-    for gate in ('whistle_theft', 'interference', 'reclaim', 'carry'):
+    for gate in ('whistle_theft', 'interference', 'reclaim', 'carry', 'spawn'):
         assert gate in GATES
         assert STATUS[gate] == PASSED[gate]
         assert STATUS[gate].startswith('pass')
@@ -58,7 +58,6 @@ def test_gate_status_matches_real_gl_evidence():
         assert gate in GATES
         assert STATUS[gate] == BLOCKED[gate]
         assert STATUS[gate].startswith('blocked')
-    assert STATUS['spawn'] == 'untested'
     assert set(STATUS) == set(GATES)
 
 
