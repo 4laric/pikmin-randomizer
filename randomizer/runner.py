@@ -246,29 +246,28 @@ async def serve(session, run, process=None, server=None, password=None, updates=
                 await asyncio.gather(task, return_exceptions=True)
 
 
-def launch(manifest, session_dir, exe=None, assets=None, server=None,
-           content_manifest=None, content_cache=None):
+def launch(manifest, session_dir, exe=None, assets=None, server=None, content_manifest=None):
     with SessionLock(session_dir):
-        return _launch(manifest, session_dir, exe, assets, server, content_manifest, content_cache)
+        return _launch(manifest, session_dir, exe, assets, server, content_manifest)
 
 
-def _launch(manifest, session_dir, exe=None, assets=None, server=None,
-            content_manifest=None, content_cache=None):
+def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_manifest=None):
     if manifest["mode"] == "ap" and not server:
         raise ValueError("AP mode requires --server")
     session = Session(manifest, session_dir)
     run = NativeRun(session)
     if content_manifest is not None:
-        # Stage the generated session's content before any native process starts;
-        # a missing/wrong source or corrupt cache raises and nothing is launched.
-        # The tree lands in the run directory the game is launched from, and the
-        # receipt binds it to the seed's P2 source identities.
+        # Build the run's private native asset tree with the session content applied,
+        # so native asset lookup reads the content. Staging runs before any native
+        # process starts; a missing/wrong source or uncovered identity raises and
+        # nothing launches, and the receipt records the seed's P2 identities.
+        if not assets or not (Path(assets) / "dataDir" / "stages").is_dir():
+            raise ValueError("--assets must point to the extracted assets directory containing dataDir/stages/")
         from experimental.pikmin2_staging import stage_session_content
         identities = [binding["source_id"]
                       for binding in session.manifest.get("p2_layout", {}).get("bindings", [])]
-        receipt = stage_session_content(content_manifest, run.directory,
-                                        cache_dir=content_cache or (session.directory / "content-cache"),
-                                        identities=identities)
+        receipt = stage_session_content(content_manifest, run.directory / "assets",
+                                        required_identities=identities, retail_assets=Path(assets))
         print(f"PIKMIN_CONTENT_STAGED: {receipt['summary']} identities={receipt['identities']}", flush=True)
     process = None
     overlay = None
@@ -278,10 +277,10 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None,
         if not assets or not (Path(assets) / "dataDir" / "stages").is_dir():
             raise ValueError("--assets must point to the extracted assets directory containing dataDir/stages/")
         if 'spawn_layout' in manifest or 'campaign_layout' in manifest: verify_source_assets(assets)
-        # Windows directory junction, only into the new private runtime directory.
-        target = run.directory / "assets"
-        import _winapi
-        _winapi.CreateJunction(str(Path(assets).resolve()), str(target.resolve()))
+        if content_manifest is None:
+            # Windows directory junction, only into the new private runtime directory.
+            import _winapi
+            _winapi.CreateJunction(str(Path(assets).resolve()), str((run.directory / "assets").resolve()))
         env = dict(os.environ)
         env.pop("BBFT_PORT", None)
         log = (run.directory / "native.log").open("w", encoding="utf-8")
