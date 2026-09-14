@@ -131,4 +131,12 @@ exit 0; executable SHA-256
 `4E05EAC4637AF7D31E73EFA361BC40B568CE8D58999B56EDAAF5676541BF4A53`),
 `p2_long_legs_fsm_test` and `p2_dangomushi_hazard_test` 2/2 PASS.
 
+The tranche also carries the lane-26 FSM host: `pc_port/pc_p2_long_legs.cpp` now
+ticks `pc_p2_long_legs_fsm` from the draw path. Rebuild evidence: `pikmin_pc`
+relink exit 0; executable SHA-256
+`10281B11606AC0D04E09CDFCAA49FBDC7B04FEF78FE9FD145231B7BEF12A8B26`; `ninja -n`
+no work. Runtime state evidence for the host is recorded on
+`opencode/p2-longlegs-fsm-root` (`docs/PIKMIN2_LONG_LEGS_RUNTIME.md`).
+
+
 
