@@ -54,3 +54,43 @@ separate gate: the current renderer still selects only wait/move samples.
 
 Both new parser tests pass; the actual private fixture compiled, linked and
 exited 0. No production hook was required for this increment.
+
+## Runnable proxy cargo arena (lane 18, 2026-09-14)
+
+`experimental/pikmin2_breadbug_proxy_cargo.py` is the committed runnable path
+that turns the observation above into a build/run/validate workflow on the
+maintained line. It builds the unchanged private fixture
+`scripts/pikmin2_breadbug_cargo_fixture.cpp` (now on the standard env-driven
+960x540 centred window) from a fresh native build via
+`scripts.build_pikmin2_fixture`, stages the existing proxy arena through
+`experimental.pikmin2_breadbug_arena.prepare`, drives ordinary P1 AI, and parses
+the host log through `experimental.pikmin2_breadbug_contest_observation`. The
+arena's existing byte-verify step keeps the original course bytes preserved.
+
+Exact commands (coordinator's serialized GL slot; never run two at once):
+
+```powershell
+# 1. build (reuses a fresh native build; never rebuilds production)
+py -3.12 -m experimental.pikmin2_breadbug_proxy_cargo build `
+  --native native --build-dir output/<lane>-build --head <40-hex> `
+  --prefix output/p2-lifecycle-batch/breadbug-actor-runtime-build/room-prefix.inc `
+  --output output/<lane>-proxy-cargo-build
+# 2. run (stages the arena and writes result.json)
+py -3.12 -m experimental.pikmin2_breadbug_proxy_cargo run `
+  --assets <assets> --profile <breadbug-visual-profile> `
+  --exe output/<lane>-proxy-cargo-build/fixture.exe `
+  --output output/<lane>-proxy-cargo-run
+# 3. validate a captured log
+py -3.12 -m experimental.pikmin2_breadbug_proxy_cargo validate --log <staged>/host.log
+```
+
+- `validate()` delegates birth/result/strength parsing to `observe()` and adds
+  the live-visual and standard-window gates; `complete` requires grab + release
+  + live visual, so a clean exit with no grab stays incomplete.
+- Tests `tests/test_pikmin2_breadbug_proxy_cargo.py` cover the builder path and
+  synthetic grab/release/unobserved logs without any native build or GL run:
+  `py -3.12 -m pytest -q tests/test_pikmin2_breadbug_proxy_cargo.py`.
+- It observes the P1 host's grab/drag/release of a real number pellet and the
+  two strength scales separately (`native_offset_power=2.0`,
+  `source_strength=1.5`). It cannot observe a P2 pull channel or P2 carriers;
+  `p2_contest_semantics` stays `False`.
