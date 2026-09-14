@@ -14,6 +14,8 @@ import tempfile
 from pathlib import Path
 
 TESTS = {
+    "p2_receipt_test": [],
+    "p2_cargo_contest_test": [],
     "p2_waterwraith_test": ["pc_port/pc_p2_waterwraith.cpp"],
     "p2_waterwraith_actor_test": ["pc_port/pc_p2_waterwraith.cpp", "pc_port/pc_p2_waterwraith_actor.cpp"],
     "test_p2_kurage": ["pc_port/pc_p2_kurage.cpp"],
@@ -80,7 +82,10 @@ def main() -> int:
             failures.append(f"{name}: compile failed")
             print(f"FAIL {name}: compile failed\n{build.stderr[-400:]}")
             continue
-        run = subprocess.run([str(exe)], capture_output=True, text=True)
+        run_args = [str(exe)]
+        if name == "p2_receipt_test":
+            run_args.append(str(out / "receipt-state"))
+        run = subprocess.run(run_args, capture_output=True, text=True)
         status = "PASS" if run.returncode == 0 else "FAIL"
         if run.returncode != 0:
             failures.append(f"{name}: exit {run.returncode}")
