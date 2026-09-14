@@ -76,7 +76,7 @@ def diffuse_slot(m, r):
 def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_matrices=None, missing_normals="error", singular_normal="error", bindings=None, billboard="error"):
     if missing_normals not in ("error","compute","default") or singular_normal not in ("error","transpose-adjugate","transpose-adjugate-zero"):raise ValueError("Invalid normal policy")
     if not bake_rigid and (missing_normals!="error" or singular_normal!="error"):raise ValueError("Normal policies require baked geometry")
-    if billboard not in ("error", "static"): raise ValueError("Unsupported billboard mode")
+    if billboard not in ("error", "static", "native"): raise ValueError("Unsupported billboard mode")
     b=blocks(data); j=b['JNT1']; d=b['DRW1']
     if draw_matrices is not None:
         if not bake_rigid or pose is not None:
@@ -124,11 +124,13 @@ def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_
     texture_matrix_attrs=range(1,9) if draw_matrices is not None else (1,)
     discarded_matrix_attrs=set()
     billboard_shapes=[]
+    billboard_pivot=None
+    billboard_scale=None
     for si in range(u16(s,8)):
         rec=u32(s,12)+u16(s,u32(s,16)+2*si)*40
         shape_type=s[rec]
         if shape_type==1:
-            if not (bake_rigid and billboard=='static'):
+            if not (bake_rigid and billboard in ("static", "native")):
                 raise ValueError('Unsupported shape matrix type')
             billboard_shapes.append(si)
         elif shape_type!=0 and not (bake_rigid and shape_type==3):
@@ -182,6 +184,20 @@ def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_
                     triangles.extend([verts[i+(i%2)],verts[i+1-(i%2)],verts[i+2]] for i in range(count-2))
                 else: triangles.extend([verts[0],verts[i],verts[i+1]] for i in range(1,count-1))
             if at!=end: raise ValueError('Primitive packet overrun')
+        if billboard=='native' and si in billboard_shapes:
+            if len(billboard_shapes)>1:
+                raise ValueError('Native billboard supports a single shape')
+            if not matrix_slots:
+                raise ValueError('Native billboard shape has no rigid matrix')
+            joint=next(iter(matrix_slots.values()))
+            m=matrices[joint]
+            if any(abs(m[i][j])>1e-6 for i in range(3) for j in range(3) if i!=j):
+                raise ValueError('Native billboard requires an axis-aligned rigid joint')
+            sx,sy,sz=m[0][0],m[1][1],m[2][2]
+            if sx<=0.0 or sy<=0.0 or sz<=0.0 or abs(sx-sy)>1e-6 or abs(sy-sz)>1e-6:
+                raise ValueError('Native billboard requires a uniform positive joint scale')
+            billboard_pivot=(m[0][3],m[1][3],m[2][3])
+            billboard_scale=sx
         shapes.append(triangles)
     hierarchy=b['INF1']; at=u32(hierarchy,20); mat=0; mapping={}; order=[]
     while True:
@@ -209,11 +225,23 @@ def decode(data, approximate_materials=False, bake_rigid=False, pose=None, draw_
         b['_billboard_policy']=billboard
         b['_billboard_shapes']=list(billboard_shapes)
         b['_billboard_materials']=[mapping[i] for i in billboard_shapes]
+        if billboard=='native':
+            if billboard_pivot is None or billboard_scale is None:
+                raise ValueError('Native billboard pivot missing')
+            b['_billboard_native_pivot']=tuple(billboard_pivot)
+            b['_billboard_native_scale']=billboard_scale
     if bake_rigid:
         from experimental.pikmin2_rigid import bake
         # Primitive strips/fans share vertex dictionaries; bake each reference independently.
         shapes=[[[dict(v) for v in tri] for tri in shape] for shape in shapes]
         bake(arrays,shapes,matrices,missing_normals=missing_normals,singular_normal=singular_normal,bindings=bindings)
+    if billboard=='native':
+        # Camera-facing billboard: store geometry in the joint's pivot-relative,
+        # unit-scale local frame; the native renderer rebuilds placement from the
+        # joint (scale + translation) and replaces rotation with the view basis.
+        px,py,pz=billboard_pivot
+        s=billboard_scale
+        arrays[9]=[((x-px)/s,(y-py)/s,(z-pz)/s) for x,y,z in arrays[9]]
     # Array blocks carry alignment padding; only referenced entries are vertices.
     for attr in arrays:
         used=[v[attr] for tris in shapes for tri in tris for v in tri if attr in v]
@@ -254,6 +282,8 @@ def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
     if len(colors)!=len(shapes) or any(len(c)!=4 or any(type(v)!=int or not 0<=v<=255 for v in c) for c in colors):
         raise ValueError('Expected one RGBA8 material color per shape')
     a[9]=[(x,y+y_offset,z) for x,y,z in a[9]]
+    billboard_pivot=b.get('_billboard_native_pivot')
+    billboard_scale=b.get('_billboard_native_scale')
     w.begin(0);w.pad();w.put('II',0,0);w.end()
     for attr,tag,fmt in ((9,16,'3f'),(10,17,'3f'),(11,19,'4B'),(13,24,'2f')):
         if attr not in a: continue
@@ -295,8 +325,11 @@ def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
             w.put('IHH4BIIf7fIII',tex,0,0,0,0,0,0,255,0,0.,1.,1.,0.,0.,0.,0.,0.,0,0,0)
     w.end();w.begin(64,1);w.pad();w.put('h',0);w.end()  # Direct joint 0; negative entries select envelopes.
     w.begin(80,len(shapes));w.pad()
-    for tris in shapes:
+    billboard_shape_set=set(b.get('_billboard_shapes',()))
+    for si,tris in enumerate(shapes):
         hascolor=11 in tris[0][0]; hasuv=13 in tris[0][0]; flags=1|(4 if hascolor else 0)|(8 if hasuv else 0)
+        if billboard_pivot is not None and si in billboard_shape_set:
+            flags|=1<<17  # Mesh::FeatureFlags::Billboard (camera-facing)
         dl=bytearray(pack('BH',0x90,len(tris)*3))
         for tri in tris:
             for v in tri:
@@ -307,7 +340,13 @@ def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
         w.put('4Ih4I',0,flags,1,1,0,1,0,len(tris),len(dl));w.pad();w.data+=dl
     w.end();w.begin(96,1);w.pad()
     bounds=[min(v[k] for v in a[9]) for k in range(3)]+[max(v[k] for v in a[9]) for k in range(3)]
-    w.put('iI6ff9fI',-1,0,*bounds,0.,1.,1.,1.,0.,0.,0.,0.,0.,0.,len(shapes))
+    if billboard_pivot is not None:
+        joint_scale=(billboard_scale,billboard_scale,billboard_scale)
+        joint_translation=billboard_pivot
+    else:
+        joint_scale=(1.,1.,1.)
+        joint_translation=(0.,0.,0.)
+    w.put('iI6ff9fI',-1,0,*bounds,0.,*joint_scale,0.,0.,0.,*joint_translation,len(shapes))
     # Native material traversal walks the joint list backwards within each pass.
     # J3D hierarchy order matters for depth-write-disabled terrain overlays.
     for i in reversed(b['_draw_order']):w.put('HH',i,i)
@@ -323,9 +362,17 @@ def write_model(decoded, output, source, y_offset=0.0, material_colors=None):
         report['billboard_policy']=b['_billboard_policy']
         report['billboard_shapes']=b['_billboard_shapes']
         report['billboard_materials']=b['_billboard_materials']
-        report['billboard_note']=('Shape matrix type 1 (billboard) statically baked '
-                                  'through its rigid joint draw matrix; camera-facing '
-                                  'orientation is not reproduced by the static MOD format.')
+        if b['_billboard_policy']=='native':
+            report['billboard_pivot']=list(b['_billboard_native_pivot'])
+            report['billboard_scale']=b['_billboard_native_scale']
+            report['billboard_note']=('Shape matrix type 1 (billboard) emitted pivot-relative '
+                                      'with the camera-facing Billboard feature flag; the native '
+                                      'renderer orients it from the view matrix at draw time, so '
+                                      'the joint/mesh rotation is not statically baked.')
+        else:
+            report['billboard_note']=('Shape matrix type 1 (billboard) statically baked '
+                                      'through its rigid joint draw matrix; camera-facing '
+                                      'orientation is not reproduced by the static MOD format.')
     output.with_suffix('.json').write_text(json.dumps(report,indent=2),encoding='utf-8');return report
 
 if __name__=='__main__':
