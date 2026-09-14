@@ -6,26 +6,31 @@
 // 632af93787b9c95b63f0c13be32b161375ce3a96
 // (include/Game/Entities/KochappyBase.h, src/plugProjectYamashitaU/kochappyState.cpp).
 //
-// Source states covered: Wait(0), Walk(3), Attack(4), Flick(5), Dead(1).
-// Intentionally partial (documented in docs/PIKMIN2_KOCHAPPY_FSM.md):
-//   * Turn/TurnToHome/GoHome are collapsed into the Walk home-return branch
-//     (territory fp09=500, home radius fp10=80); the source Turn clip
-//     (waitact1) is not played.
-//   * Press(8) squash death is not entered here; the host corpse handoff owns
-//     the carrier motion. Demo(9) kill(nullptr) is not reached because this
-//     module calls the host actor->die() at the dead-animation end.
+// Source states covered: Wait(0), Dead(1), Turn(2), Walk(3), Attack(4),
+// Flick(5), TurnToHome(6), GoHome(7), Press(8). Demo(9) is the source
+// kill(nullptr) terminal; on the host the Dead end finalizes with
+// actor->pcEscapeNow() (die + dieSoon), so Demo is folded into Dead.
+//
+// Recorded port adaptations / partials (docs/PIKMIN2_KOCHAPPY_FSM.md):
+//   * The P1 host applies accumulated Pikmin damage in a TAI damage reaction
+//     inside doAI; because the FSM suppresses doAI it calls actor->makeDamaged()
+//     itself so real Pikmin hits still reach mHealth (no damage is injected).
+//   * EnemyFunc::isStartFlick (a Pikmin actually stuck to the body) is
+//     approximated by a contact-radius test; attack posture takes precedence.
+//   * Attack applies one InteractAttack at source frame 8 (attack hit radius
+//     fp22 = 35, damage fp24 = 10). eatPikmin/flickStickPikmin and the frame-88
+//     swallow / white-Pikmin poison are not modelled.
+//   * `isTargetOutOfRange` is approximated by distance > sight fp12 = 95.
+//   * Press is implemented as a state and a `pc_p2_kochappy_fsm_press` trigger
+//     (source Press: health 0, type1 anim, then Dead). The P1 Chappy vehicle
+//     exposes no press callback for this P2 actor, so no in-engine trigger is
+//     wired; it is UNTESTED at runtime.
 //   * The Wait notice cry (PSSE_EN_KOCHAPPY_NOTICE, wait1 frame 61) and the
 //     wait1 frame-60 random-frame latch have no host sound/anim equivalent.
-//   * Attack applies one InteractAttack at source frame 8 (attack radius fp22
-//     = 35, damage fp24 = 10). eatPikmin/flickStickPikmin and the frame-88
-//     swallow/white-pikmin poison are not modelled. Flick applies
-//     InteractFlick at source frame 31 (shake range fp19 = 17, knockback
-//     fp17 = 50) to Pikmin in range; the stuck-pikmin latch
-//     (EnemyFunc::isStartFlick) is approximated by a contact-radius test.
 // Movement uses the source fp06 = 60 speed; turn rate 2.0 rad/s is a recorded
-// port adaptation because the host drive API takes a rate, not the source
-// per-frame turn speed fp08. Every hook is a no-op for unregistered actors and
-// for the default-OFF path.
+// adaptation because the host drive API takes a rate, not the source per-frame
+// turn speed fp08. Every hook is a no-op for unregistered actors and for the
+// default-OFF path.
 #include "pc_p2_kochappy_fsm.h"
 #include "pc_p2_kochappy_fsm_policy.h"
 #include "pc_p2_dwarf_orange.h"
@@ -49,9 +54,11 @@ using p2kochappyfsm::State;
 
 // Source frames (kochappy/enemyanimmgr.txt, docs/PIKMIN2_DWARF_VARIANTS.md §3)
 // at the engine's fixed 30 fps.
+constexpr float TURN_DURATION    = 25.0f / 30.0f;  // waitact1
 constexpr float ATTACK_DURATION  = 90.0f / 30.0f;
 constexpr float FLICK_DURATION   = 80.0f / 30.0f;
 constexpr float DEAD_DURATION    = 90.0f / 30.0f;
+constexpr float PRESS_DURATION   = 105.0f / 30.0f; // type1
 constexpr float ATTACK_EVENT_FRAME = 8.0f;
 constexpr float FLICK_EVENT_FRAME  = 31.0f;
 constexpr float NOTICE_DELAY       = 0.5f;  // port adaptation: source animation end
@@ -62,6 +69,7 @@ constexpr float SHAKE_KNOCKBACK    = 50.0f;   // general fp17
 
 struct FsmActor {
 	State state           = p2kochappyfsm::STATE_WAIT;
+	State returnState     = p2kochappyfsm::STATE_WAIT;
 	float stateTime       = 0.0f;
 	float heading         = 0.0f;
 	Vector3f home;
@@ -141,12 +149,30 @@ void stop(BTeki* actor)
 	actor->mVelocity.z = 0.0f;
 }
 
+// Source turnToTarget / turnToTargetPos: rotate in place toward a point. Returns
+// true once the facing is inside the given tolerance (radians).
+bool turnTo(BTeki* actor, FsmActor& state, const Vector3f& target, float dt, float tolerance)
+{
+	const Vector3f pos  = actor->getPosition();
+	const float desired = std::atan2(target.x - pos.x, target.z - pos.z);
+	const float diff    = wrapPi(desired - state.heading);
+	const float maxTurn = TURN_RATE * dt;
+	float step          = diff;
+	if (step > maxTurn) step = maxTurn;
+	if (step < -maxTurn) step = -maxTurn;
+	state.heading = wrapPi(state.heading + step);
+	actor->setDirection(state.heading);
+	return std::fabs(wrapPi(desired - state.heading)) <= tolerance;
+}
+
+// Source EnemyFunc::walkToTarget: turn toward the point while driving forward at
+// the source move speed.
 void walkTo(BTeki* actor, FsmActor& state, const Vector3f& target, float dt)
 {
-	const Vector3f pos    = actor->getPosition();
-	const float desired   = std::atan2(target.x - pos.x, target.z - pos.z);
-	const float maxTurn   = TURN_RATE * dt;
-	float diff            = wrapPi(desired - state.heading);
+	const Vector3f pos  = actor->getPosition();
+	const float desired = std::atan2(target.x - pos.x, target.z - pos.z);
+	const float maxTurn = TURN_RATE * dt;
+	float diff          = wrapPi(desired - state.heading);
 	if (diff > maxTurn) diff = maxTurn;
 	if (diff < -maxTurn) diff = -maxTurn;
 	state.heading = wrapPi(state.heading + diff);
@@ -170,6 +196,11 @@ void doFlick(BTeki* actor)
 	}
 }
 
+float attackAngleRadians()
+{
+	return params.attackAngle * PI / 180.0f;
+}
+
 // Source CG_GENERALPARMS attack gate (fp20/fp21). The host has no true
 // stuck-Pikmin latch, so the attack posture is checked before the flick
 // approximation; this is a recorded port adaptation.
@@ -178,15 +209,19 @@ bool attackReady(const Vector3f& pos, float heading, const Creature* target)
 	const Vector3f targetPos = target->getPosition();
 	if (distXZ(targetPos, pos) > params.attackRange) return false;
 	const float angle = std::fabs(wrapPi(std::atan2(targetPos.x - pos.x, targetPos.z - pos.z) - heading));
-	return angle <= params.attackAngle * PI / 180.0f;
+	return angle <= attackAngleRadians();
 }
 
 int motionFor(State state)
 {
 	switch (state) {
-	case p2kochappyfsm::STATE_WALK: return TekiMotion::Move1;
+	case p2kochappyfsm::STATE_WALK:
+	case p2kochappyfsm::STATE_GO_HOME: return TekiMotion::Move1;
+	case p2kochappyfsm::STATE_TURN:
+	case p2kochappyfsm::STATE_TURN_TO_HOME: return TekiMotion::WaitAct1;
 	case p2kochappyfsm::STATE_ATTACK: return TekiMotion::Attack;
 	case p2kochappyfsm::STATE_FLICK: return TekiMotion::Flick;
+	case p2kochappyfsm::STATE_PRESS: return TekiMotion::Type1;
 	case p2kochappyfsm::STATE_DEAD: return TekiMotion::Dead;
 	default: return TekiMotion::Wait1;
 	}
@@ -246,11 +281,11 @@ void pc_p2_kochappy_fsm_setup()
 		return;
 	}
 	for (Teki* actor : selected) {
-		FsmActor& state   = actors[static_cast<PelletView*>(actor)];
-		state.home     = actor->getPosition();
-		state.heading  = actor->getDirection();
-		state.logTimer = 0.0f;
-		actor->mHealth = params.health;
+		FsmActor& state = actors[static_cast<PelletView*>(actor)];
+		state.home      = actor->getPosition();
+		state.heading   = actor->getDirection();
+		state.logTimer  = 0.0f;
+		actor->mHealth  = params.health;
 		const Vector3f pos = actor->getPosition();
 		const unsigned generator = actor->mGenerator->_70;
 		std::printf("P2_ENEMY_READY species=BlueKochappy source_id=44 native_family=Chappy generator=%u "
@@ -269,6 +304,18 @@ bool pc_p2_kochappy_fsm_suppress_ai(const BTeki* actor)
 	return ready && actors.count(static_cast<PelletView*>(const_cast<BTeki*>(actor))) != 0;
 }
 
+// Source Obj::pressCallBack transitions to Press (health 0, type1 anim, then
+// the terminal Demo kill). No in-engine P1 Chappy press callback is wired to
+// this P2 actor, so callers that own a bounded squash event may invoke this.
+void pc_p2_kochappy_fsm_press(BTeki* actor)
+{
+	if (!ready || !actor) return;
+	auto found = actors.find(static_cast<PelletView*>(actor));
+	if (found == actors.end()) return;
+	actor->mHealth = 0.0f;
+	enter(actor, found->second, p2kochappyfsm::STATE_PRESS);
+}
+
 void pc_p2_kochappy_fsm_update(BTeki* actor)
 {
 	if (!ready) return;
@@ -280,7 +327,15 @@ void pc_p2_kochappy_fsm_update(BTeki* actor)
 	const unsigned generator = actor->mGenerator ? actor->mGenerator->_70 : 0u;
 	const Vector3f pos = actor->getPosition();
 
-	if (actor->mHealth <= 0.0f && state.state != p2kochappyfsm::STATE_DEAD) {
+	// The P1 host applies accumulated Pikmin damage through a TAI damage
+	// reaction that lives in the suppressed strategy (doAI). Apply the queued
+	// damage here so real Pikmin hits reach mHealth; no damage is injected.
+	if (actor->mStoredDamage > 0.0f) {
+		actor->makeDamaged();
+	}
+
+	if (actor->mHealth <= 0.0f && state.state != p2kochappyfsm::STATE_DEAD
+	    && state.state != p2kochappyfsm::STATE_PRESS) {
 		enter(actor, state, p2kochappyfsm::STATE_DEAD);
 	}
 	state.stateTime += dt;
@@ -294,6 +349,8 @@ void pc_p2_kochappy_fsm_update(BTeki* actor)
 	} else {
 		actor->clearCreaturePointer(0);
 	}
+	const bool engaged = target && distXZ(target->getPosition(), pos) <= params.attackRange;
+	const bool flickWanted = !engaged && nearestPiki(pos, FLICK_CONTACT_RADIUS) != nullptr;
 
 	switch (state.state) {
 	case p2kochappyfsm::STATE_WAIT: {
@@ -302,12 +359,33 @@ void pc_p2_kochappy_fsm_update(BTeki* actor)
 			enter(actor, state, p2kochappyfsm::STATE_ATTACK);
 			break;
 		}
-		const bool engaged = target && distXZ(target->getPosition(), pos) <= params.attackRange;
-		if (!engaged && nearestPiki(pos, FLICK_CONTACT_RADIUS)) {
+		if (flickWanted) {
+			state.returnState = p2kochappyfsm::STATE_WAIT;
 			enter(actor, state, p2kochappyfsm::STATE_FLICK);
 			break;
 		}
 		if (target && state.stateTime > NOTICE_DELAY) {
+			enter(actor, state, p2kochappyfsm::STATE_TURN);
+		}
+		break;
+	}
+	case p2kochappyfsm::STATE_TURN: {
+		stop(actor);
+		if (target && attackReady(pos, state.heading, target)) {
+			enter(actor, state, p2kochappyfsm::STATE_ATTACK);
+			break;
+		}
+		if (!target || distXZ(target->getPosition(), pos) > params.sight) {
+			enter(actor, state, p2kochappyfsm::STATE_TURN_TO_HOME);
+			break;
+		}
+		if (flickWanted) {
+			state.returnState = p2kochappyfsm::STATE_TURN;
+			enter(actor, state, p2kochappyfsm::STATE_FLICK);
+			break;
+		}
+		if (turnTo(actor, state, target->getPosition(), dt, attackAngleRadians())
+		    || state.stateTime >= TURN_DURATION) {
 			enter(actor, state, p2kochappyfsm::STATE_WALK);
 		}
 		break;
@@ -317,44 +395,84 @@ void pc_p2_kochappy_fsm_update(BTeki* actor)
 			enter(actor, state, p2kochappyfsm::STATE_ATTACK);
 			break;
 		}
-		const Vector3f targetPos = target ? target->getPosition() : pos;
-		const bool engaged     = target && distXZ(targetPos, pos) <= params.attackRange;
-		if (!engaged && nearestPiki(pos, FLICK_CONTACT_RADIUS)) {
+		if (!target || distXZ(target->getPosition(), pos) > params.sight) {
+			enter(actor, state, p2kochappyfsm::STATE_TURN_TO_HOME);
+			break;
+		}
+		if (flickWanted) {
+			state.returnState = p2kochappyfsm::STATE_WALK;
 			enter(actor, state, p2kochappyfsm::STATE_FLICK);
 			break;
 		}
-		if (!target) {
-			if (distXZ(pos, state.home) > params.homeRadius) {
-				walkTo(actor, state, state.home, dt);
-			} else {
-				enter(actor, state, p2kochappyfsm::STATE_WAIT);
-			}
-			break;
-		}
 		if (distXZ(pos, state.home) > params.territory) {
-			walkTo(actor, state, state.home, dt);
-			if (distXZ(pos, state.home) <= params.homeRadius) {
-				enter(actor, state, p2kochappyfsm::STATE_WAIT);
-			}
+			enter(actor, state, p2kochappyfsm::STATE_TURN_TO_HOME);
 			break;
 		}
-		walkTo(actor, state, targetPos, dt);
+		walkTo(actor, state, target->getPosition(), dt);
+		break;
+	}
+	case p2kochappyfsm::STATE_TURN_TO_HOME: {
+		stop(actor);
+		if (distXZ(pos, state.home) < params.homeRadius) {
+			enter(actor, state, p2kochappyfsm::STATE_WAIT);
+			break;
+		}
+		if (target && attackReady(pos, state.heading, target)) {
+			enter(actor, state, p2kochappyfsm::STATE_ATTACK);
+			break;
+		}
+		if (flickWanted) {
+			state.returnState = p2kochappyfsm::STATE_TURN_TO_HOME;
+			enter(actor, state, p2kochappyfsm::STATE_FLICK);
+			break;
+		}
+		if (turnTo(actor, state, state.home, dt, attackAngleRadians())
+		    || state.stateTime >= TURN_DURATION) {
+			enter(actor, state, p2kochappyfsm::STATE_GO_HOME);
+		}
+		break;
+	}
+	case p2kochappyfsm::STATE_GO_HOME: {
+		if (distXZ(pos, state.home) < params.homeRadius) {
+			enter(actor, state, p2kochappyfsm::STATE_WAIT);
+			break;
+		}
+		if (target && attackReady(pos, state.heading, target)) {
+			enter(actor, state, p2kochappyfsm::STATE_ATTACK);
+			break;
+		}
+		if (flickWanted) {
+			state.returnState = p2kochappyfsm::STATE_GO_HOME;
+			enter(actor, state, p2kochappyfsm::STATE_FLICK);
+			break;
+		}
+		if (target) {
+			enter(actor, state, p2kochappyfsm::STATE_WALK);
+			break;
+		}
+		walkTo(actor, state, state.home, dt);
 		break;
 	}
 	case p2kochappyfsm::STATE_ATTACK: {
 		stop(actor);
 		if (!state.attackFired && state.stateTime * 30.0f >= ATTACK_EVENT_FRAME) {
 			state.attackFired = true;
-			Creature* target  = nearestCreature(pos, params.attackHitRange);
-			if (target) {
-				target->stimulate(InteractAttack(actor, nullptr, params.attackDamage, false));
+			Creature* hit     = nearestCreature(pos, params.attackHitRange);
+			if (hit) {
+				hit->stimulate(InteractAttack(actor, nullptr, params.attackDamage, false));
 				std::printf("P2_KOCHAPPY_ATTACK generator=%u frame=%.0f damage=%.0f\n", generator,
 				            ATTACK_EVENT_FRAME, params.attackDamage);
 				std::fflush(stdout);
 			}
 		}
 		if (state.stateTime >= ATTACK_DURATION) {
-			enter(actor, state, p2kochappyfsm::STATE_WALK);
+			if (!target) {
+				enter(actor, state, p2kochappyfsm::STATE_TURN_TO_HOME);
+			} else if (attackReady(pos, state.heading, target)) {
+				enter(actor, state, p2kochappyfsm::STATE_ATTACK);
+			} else {
+				enter(actor, state, p2kochappyfsm::STATE_TURN);
+			}
 		}
 		break;
 	}
@@ -367,7 +485,14 @@ void pc_p2_kochappy_fsm_update(BTeki* actor)
 			std::fflush(stdout);
 		}
 		if (state.stateTime >= FLICK_DURATION) {
-			enter(actor, state, p2kochappyfsm::STATE_WAIT);
+			enter(actor, state, state.returnState);
+		}
+		break;
+	}
+	case p2kochappyfsm::STATE_PRESS: {
+		stop(actor);
+		if (state.stateTime >= PRESS_DURATION) {
+			enter(actor, state, p2kochappyfsm::STATE_DEAD);
 		}
 		break;
 	}
@@ -375,14 +500,17 @@ void pc_p2_kochappy_fsm_update(BTeki* actor)
 		stop(actor);
 		if (!state.deadLogged) {
 			state.deadLogged = true;
-			std::printf("P2_KOCHAPPY_DEAD generator=%u source_id=44 health=0\n", generator);
+			std::printf("P2_KOCHAPPY_DEAD generator=%u source_id=44 health=%.1f\n", generator, actor->mHealth);
 			std::fflush(stdout);
 		}
 		if (!state.died && state.stateTime >= DEAD_DURATION) {
 			state.died = true;
-			std::printf("P2_KOCHAPPY_CORPSE generator=%u source_id=44 native=host_die\n", generator);
+			std::printf("P2_KOCHAPPY_CORPSE generator=%u source_id=44 native=host_escape_now\n", generator);
 			std::fflush(stdout);
-			actor->die();
+			// die() alone only arms mDeadState; dieSoon() normally runs inside
+			// doAI, which this module suppresses. pcEscapeNow() finalizes the
+			// death (carcass birth) outside doAI (teki.h family-lane helper #219).
+			actor->pcEscapeNow();
 		}
 		break;
 	}

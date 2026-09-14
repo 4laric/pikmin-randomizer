@@ -13,10 +13,11 @@ namespace {
 Shape* sWait = nullptr;
 Shape* sAttack = nullptr;
 bool sReady = false;
-// Converted per-motion poses.  Each is one static source pose; the host selects
-// by the current FSM state so the drawn pose follows the source motion rather
-// than only wait/attack.
-std::map<std::string, Shape*> sShapes;
+// Converted per-motion poses per variant: [0] Lesser (Kurage), [1] Greater
+// (OniKurage).  Each is one static source pose; the host selects by the current
+// FSM state so the drawn pose follows the source motion.
+std::map<std::string, Shape*> sShapes[2];
+int sOptionalLoaded[2] = { 0, 0 };
 Shape* load(const char* path)
 {
     if (!std::filesystem::exists(std::filesystem::path("assets/dataDir") / path)) return nullptr;
@@ -37,17 +38,21 @@ bool pc_p2_kurage_visual_setup()
     if (!wait || !attack) return false;
     sWait = wait;
     sAttack = attack;
-    sShapes["wait"] = wait;
-    sShapes["attack"] = attack;
+    sShapes[0]["wait"] = wait;
+    sShapes[0]["attack"] = attack;
+    if (Shape* gwait = load("courses/pikmin2room/onikurage_wait.mod")) sShapes[1]["wait"] = gwait;
+    if (Shape* gattack = load("courses/pikmin2room/onikurage_attack.mod")) sShapes[1]["attack"] = gattack;
     // Optional source poses; a missing file simply keeps the wait/attack pair.
     static const char* const optional[] = { "move1", "move2", "type1", "type2",
         "flick1", "flick2", "dead1", "dead2" };
-    int loaded = 0;
     for (const char* name : optional) {
-        std::string path = std::string("courses/pikmin2room/kurage_") + name + ".mod";
-        if (Shape* shape = load(path.c_str())) { sShapes[name] = shape; ++loaded; }
+        std::string lesser = std::string("courses/pikmin2room/kurage_") + name + ".mod";
+        if (Shape* shape = load(lesser.c_str())) { sShapes[0][name] = shape; ++sOptionalLoaded[0]; }
+        std::string greater = std::string("courses/pikmin2room/onikurage_") + name + ".mod";
+        if (Shape* shape = load(greater.c_str())) { sShapes[1][name] = shape; ++sOptionalLoaded[1]; }
     }
-    std::printf("P2_KURAGE_VISUAL_POSES optional_loaded=%d/%d\n", loaded, 8);
+    std::printf("P2_KURAGE_VISUAL_POSES lesser_optional=%d/8 greater_optional=%d/8\n",
+        sOptionalLoaded[0], sOptionalLoaded[1]);
     std::fflush(stdout);
     sReady = true;
     return true;
@@ -57,15 +62,26 @@ void pc_p2_kurage_visual_reset()
     sWait = nullptr;
     sAttack = nullptr;
     sReady = false;
-    sShapes.clear();
+    sShapes[0].clear();
+    sShapes[1].clear();
+    sOptionalLoaded[0] = sOptionalLoaded[1] = 0;
 }
 Shape* pc_p2_kurage_visual_wait_shape() { return sWait; }
 Shape* pc_p2_kurage_visual_attack_shape() { return sAttack; }
 Shape* pc_p2_kurage_visual_shape(const char* motionBase)
 {
     if (!motionBase || !*motionBase) return nullptr;
-    auto it = sShapes.find(motionBase);
-    return it == sShapes.end() ? nullptr : it->second;
+    auto it = sShapes[0].find(motionBase);
+    return it == sShapes[0].end() ? nullptr : it->second;
+}
+Shape* pc_p2_kurage_visual_shape_variant(const char* motionBase, bool greater)
+{
+    if (!motionBase || !*motionBase) return nullptr;
+    if (greater) {
+        auto it = sShapes[1].find(motionBase);
+        if (it != sShapes[1].end()) return it->second;
+    }
+    return pc_p2_kurage_visual_shape(motionBase);
 }
 // p2kurage::State: Dead=0, Wait=1, Move=2, Chase=3, Attack=4, Fall=5, Land=6,
 // Ground=7, TakeOff=8, FlyFlick=9, GroundFlick=10, Drop=11.

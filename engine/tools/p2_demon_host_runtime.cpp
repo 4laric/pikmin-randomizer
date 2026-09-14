@@ -14,6 +14,7 @@
 #include "settings/pc_settings_p2d.h"
 #include "pc_p2_demon_host.h"
 #include "pc_p2_demon_bridge.h"
+#include "pc_p2_demon_identity.h"
 #include "pc_p2_demon_escape_state.h"
 #include "teki.h"
 #include "Generator.h"
@@ -110,7 +111,10 @@ public:
     int idle() override {
         int result = PlugPikiApp::idle();
         const bool naturalMode = isNaturalMode(mode);
-        const bool ordinaryMode = !std::strcmp(mode, "ordinary");
+        const bool ordinaryClassic = !std::strcmp(mode, "ordinary");
+        const bool ordinaryDedicated = !std::strcmp(mode, "ordinary_dedicated");
+        const bool ordinaryLegacy = !std::strcmp(mode, "ordinary_legacy");
+        const bool ordinaryMode = ordinaryClassic || ordinaryDedicated || ordinaryLegacy;
         require(++ticks < ((naturalMode || ordinaryMode) ? 20000 : 600), "timeout");
         if (gameflow.mMoviePlayer && gameflow.mMoviePlayer->mIsActive) { gameflow.mMoviePlayer->requestSkip(); return result; }
         if (!pc_p2_preview_ready() || !naviMgr || !naviMgr->getNavi()) return result;
@@ -121,12 +125,38 @@ public:
             // natural front end, so this fixture only observes the manager. The
             // captain is left at its arena start; only its idle state is held.
             if (!ready) {
-                BTeki* actor = findActor(385875968u, 3);
+                BTeki* actor = nullptr;
+                if (ordinaryClassic) {
+                    actor = findActor(385875968u, 3);
+                } else {
+                    // Identity-agnostic discovery: the production manager already
+                    // selected and bound exactly one spawned arena actor, so the
+                    // fixture only has to observe that binding. This keeps the
+                    // dedicated (TEKI_P2Demon) and legacy placeholder runs on the
+                    // same observation path without hard-coding an identity.
+                    Iterator actors(tekiMgr); CI_LOOP(actors) {
+                        BTeki* candidate = static_cast<BTeki*>(*actors);
+                        if (candidate && pc_p2_demon_manager_is_bound(candidate)) {
+                            require(actor == nullptr, "single ordinary manager binding");
+                            actor = candidate;
+                        }
+                    }
+                }
                 require(actor != nullptr, "ordinary spawned anchor actor");
                 require(pc_p2_demon_manager_binding_count() == 1, "ordinary manager binding discovered");
                 require(pc_p2_demon_manager_natural_binding_count() == 1, "ordinary natural host enabled");
                 require(pc_p2_demon_manager_is_bound(actor), "ordinary manager identity validated");
-                bindingActor = actor; bindingGenerator = 385875968u; bindingType = 3;
+                bindingActor = actor; bindingGenerator = actor->mGenerator->_70; bindingType = actor->mTekiType;
+                if (ordinaryDedicated) {
+                    require(bindingType == TEKI_P2Demon, "dedicated TEKI_P2Demon anchor spawned");
+                    require(p2demonid::isDedicatedCaptorIdentity(bindingGenerator, bindingType),
+                        "dedicated captor identity predicate");
+                } else if (ordinaryLegacy) {
+                    require(p2demonid::isLegacyPlaceholderIdentity(bindingGenerator, bindingType),
+                        "legacy placeholder identity predicate");
+                } else {
+                    require(bindingGenerator == 385875968u && bindingType == 3, "explicit ordinary identity");
+                }
                 startingHealth = n->mHealth;
                 const Vector3f p = actor->getPosition();
                 std::printf("DEMON_ORDINARY_BIND generator=%u type=%d anchor=(%.2f,%.2f,%.2f) captain=(%.2f,%.2f,%.2f)\n",
@@ -702,10 +732,24 @@ int main(int argc, char** argv) {
         _putenv_s("PIKMIN_DEMON_ORDINARY", "1");
         _putenv_s("PIKMIN_DEMON_ORDINARY_GENERATOR", "385875968");
         _putenv_s("PIKMIN_DEMON_ORDINARY_TYPE", "3");
+    } else if (!std::strcmp(mode, "ordinary_dedicated")) {
+        // Dedicated lane-30 captor identity: enable the ordinary path with no
+        // explicit generator/type so the production manager has to select the
+        // spawned TEKI_P2Demon anchor by itself (dedicated=1). No shared code
+        // path is enabled here that the normal build does not already have.
+        _putenv_s("PIKMIN_DEMON_ORDINARY", "1");
+    } else if (!std::strcmp(mode, "ordinary_legacy")) {
+        // Legacy Dwarf Bulborb placeholder regression: same opt-in path with the
+        // explicit legacy fallback the pre-identity converted room relied on.
+        _putenv_s("PIKMIN_DEMON_ORDINARY", "1");
+        _putenv_s("PIKMIN_DEMON_ORDINARY_LEGACY_PLACEHOLDER", "1");
     }
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1); SDL_SetMainReady(); pc_gpu_preference_apply();
     _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1"); pc_bbft_init(argc, argv);
     require(pc_pikipelago_room_preview(), "room"); require(pc_window_init("Demon host fixture", 960, 540), "window");
+    pc_settings_init();
+    pc_window_set_display_mode(0);
+    pc_window_set_window_size(960, 540);
     pc_window_center();
     {
         SDL_Window* window = SDL_GL_GetCurrentWindow();
@@ -718,7 +762,7 @@ int main(int argc, char** argv) {
             width, height, x, y, bounds.w, bounds.h, int(centered));
         std::fflush(stdout);
     }
-    pc_settings_init(); gsys->Initialise(); pc_settings_p2d_init(); nodeMgr = new NodeMgr();
+    gsys->Initialise(); pc_settings_p2d_init(); nodeMgr = new NodeMgr();
     gsys->run(new DemonHostApp());
     return 0;
 }

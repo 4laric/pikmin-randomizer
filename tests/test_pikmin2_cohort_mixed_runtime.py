@@ -27,7 +27,7 @@ def drop(fragment):
 
 class CohortMixedTests(unittest.TestCase):
     def test_all_pass(self):
-        result = mixed.evidence(GOOD_LOG, 1)
+        result = mixed.evidence(GOOD_LOG, 1, timed_out=True)
         self.assertTrue(result['passed'])
         self.assertTrue(all(result['checks'].values()))
 
@@ -47,3 +47,8 @@ class CohortMixedTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def test_unexpected_exit_cannot_pass_after_draw_markers():
+    assert not mixed.evidence(GOOD_LOG, 1)['passed']
+    assert not mixed.evidence(GOOD_LOG, 0xC0000005)['passed']

@@ -7,6 +7,7 @@
 #include "pc_p2_elecbug.h"
 #include "pc_p2_armor.h"
 #include "pc_p2_hana.h"
+#include "pc_p2_dangomushi.h"
 #endif
 
 /**
@@ -45,6 +46,9 @@ bool InteractAttack::actTeki(Teki* teki) immut
 	if (pc_p2_armor_receiver_rejects(teki, this)) {
 		return false; // registered Armor rejects non-'dmg1'/non-bittered damage
 	}
+	if (pc_p2_dangomushi_invulnerable(teki)) {
+		return true; // registered Crawbster is invulnerable outside the flip window
+	}
 #endif
 	return teki->interact(TekiInteractionKey(TekiInteractType::Attack, this));
 }
@@ -63,6 +67,9 @@ bool InteractBomb::actTeki(Teki* teki) immut
 	InteractAttack attack(mOwner, nullptr, mDamage * bombFactor, false);
 	if (pc_p2_armor_receiver_rejects(teki, &attack)) {
 		return false;
+	}
+	if (pc_p2_dangomushi_invulnerable(teki)) {
+		return true; // registered Crawbster is invulnerable outside the flip window
 	}
 	return teki->interact(
 	    TekiInteractionKey(TekiInteractType::Attack, stack_new(InteractAttack)(mOwner, nullptr, mDamage * bombFactor, false)));

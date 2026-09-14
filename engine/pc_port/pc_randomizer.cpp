@@ -505,13 +505,23 @@ bool pc_randomizer_p2_bound(unsigned source_id) {
     for (const auto& binding : p2Bindings) if (binding.second == source_id) return true;
     return false;
 }
+unsigned pc_randomizer_p2_bound_source(const void* generator) {
+    if (!enabled || !p2EnemyBridge || !generator) return 0;
+    const unsigned uid = pc_randomizer_generator_id(generator);
+    if (!uid) return 0;
+    const auto it = p2Bindings.find(std::to_string(uid));
+    return it == p2Bindings.end() ? 0 : it->second;
+}
+void pc_randomizer_bad_p2_host() { fail("P2 binding has no supported native actor host"); }
 unsigned pc_randomizer_generator_id(const void* generator) {
     auto it = generatorIds.find(generator);
     return it == generatorIds.end() ? 0 : it->second;
 }
 void pc_randomizer_set_generator_id(const void* generator, unsigned uid) {
     if (!uid) { generatorIds.erase(generator); return; }
-    if (!pc_randomizer_spawn_slots()) return;
+    // Ordinary slot layouts and the generated P2 bridge both key a live generator
+    // by its spawn-catalog uid; the P2 bridge has no ENEMY_SLOTS line of its own.
+    if (!pc_randomizer_spawn_slots() && !pc_randomizer_p2_bridge()) return;
     for (const auto& row : randomizerSpawnSlots) if (row.uid == uid) {
         generatorIds[generator] = uid; return;
     }
@@ -519,7 +529,7 @@ void pc_randomizer_set_generator_id(const void* generator, unsigned uid) {
 }
 void pc_randomizer_bind_generator(const void* generator, int stage, const char* file, int offset) {
     pc_randomizer_set_generator_id(generator, 0);
-    if (!pc_randomizer_spawn_slots() || !file) return;
+    if ((!pc_randomizer_spawn_slots() && !pc_randomizer_p2_bridge()) || !file) return;
     for (const auto& row : randomizerSpawnSlots)
         if (row.stage == stage && row.offset == offset && !std::strcmp(row.file, file)) {
             pc_randomizer_set_generator_id(generator, row.uid); return;

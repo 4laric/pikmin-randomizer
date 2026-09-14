@@ -48,6 +48,15 @@ int main(int argc, char** argv) {
         assert(!pc_randomizer_p2_bound(0));
         assert(pc_randomizer_p2_source("no-such-target") == 0);
         assert(pc_randomizer_p2_source(nullptr) == 0);
+        // Generated spawn connection: a live generator bound to a real spawn
+        // catalog uid must resolve to the same source id as the bootstrap target.
+        for (int i = 1; i + 2 < argc; ++i) if (!std::strcmp(argv[i], "--enemy-p2-resolve")) {
+            const unsigned uid = static_cast<unsigned>(std::strtoul(argv[i + 1], nullptr, 10));
+            const unsigned source = static_cast<unsigned>(std::strtoul(argv[i + 2], nullptr, 10));
+            int object; pc_randomizer_set_generator_id(&object, uid);
+            assert(pc_randomizer_p2_bound_source(&object) == source);
+            std::printf("ENEMY_P2_RESOLVE uid=%u source=%u\n", uid, source);
+        }
         std::puts("ENEMY_P2_PASS"); return 0;
     }
     for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--group-probe")) {

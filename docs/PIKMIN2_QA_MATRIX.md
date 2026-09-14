@@ -64,6 +64,15 @@ If any pinned record for a cell is `FAIL`, the cell is `FAIL`. A `PASS`
 attempt with inadmissible evidence or incomplete provenance resolves to
 `BLOCKED`, with the reason recorded.
 
+### Pinned-baseline enforcement
+
+`report` accepts the pinned baseline under test via `--root-commit`,
+`--native-commit` and `--build-sha256`. When a pin is supplied, a record must
+match it to pass: a record from a different root/native commit or executable
+hash is resolved to `BLOCKED` (`... does not match the pinned baseline`), never
+green. This keeps evidence from an older or unrelated artifact from satisfying a
+cell on the current build. An empty pin disables the check (diagnostic use).
+
 ## Record schema
 
 A record is a JSON object (or a list, or `{"records": [...]}`):
@@ -110,16 +119,38 @@ The `report` command writes `qa-matrix.json` (machine-readable) and
 
 ## Current baseline status
 
-Lane 01 has not yet published an approved immutable root/native pair, and #434
-records that the production bridge (ordinary campaign seed generation,
-versioned seed/native binding, placement, reward/logic, staged install) is not
-implemented. The first admitted cohort therefore does not exist yet, so every
-matrix cell is `UNTESTED` against the pinned audited baseline
-(`root 06cae25` on `codex/p2-main-review`, `native 9735870c`, per the fan-out
-guide). Private fixture evidence may satisfy the boundary/negative cells as it
-is produced; those records must carry `kind: fixture` and full provenance. This
-lane will reproduce the cohort end to end as soon as lane 01 supplies the
-immutable build and the family lanes supply their evidence.
+The reproducible generated-session runner is
+[`experimental.pikmin2_generated_session_acceptance`](PIKMIN2_GENERATED_SESSION_ACCEPTANCE.md).
+It drives the real product generator with the live lane 02 admission set,
+verifies a pinned combined build before anything runs, and emits records for
+this matrix. It never monkeypatches admission and never labels a fixture run as
+natural.
+
+Pinned pair under test: **root `4fccf41`** (`origin/codex/p2-main-review`) and
+**native `b805d9c6`** (approved native baseline, clean). Lane 01 has not yet
+published an integrated executable for this pair and the live lane 02 admission
+set is empty, so the generated-session chain cannot start and the runner reports
+`BLOCKED: generate: no admitted P2 identities` — the correct fail-closed result.
+
+There is still no admitted cohort, so every matrix cell is `UNTESTED` against
+the pinned baseline. Private fixture evidence may satisfy the boundary/negative
+cells as it is produced; those records must carry `kind: fixture` and full
+provenance. This lane will reproduce the cohort end to end as soon as lane 01
+supplies the immutable build and lane 02 admits the first identity.
+
+As of 2026-09-14 the ordinary generated-spawn binding is not on the maintained
+line either: the current integration binary (`output/native-sweep437-build`,
+native `1531c0ba`) parses `ENEMY_P2` but has no `pc_p2_generated_bind`, which
+lives only on the assignment-1 private branch `opencode/p2-asg1-native` @
+`5a7329c5`. So the chain has two independent blockers: admission and the
+integrated binding.
+
+The `frame_budget` and `memory_budget` cells additionally require an **accepted**
+budget policy. `experimental.pikmin2_performance_budget` resolves them from a
+measured mixed-scene manifest, but the existing `PROPOSED_BUDGETS` are
+`proposed_not_accepted`, so any evaluation (and record) is `BLOCKED` until the
+user/integration accepts a policy. See
+[the generated-session acceptance runbook](PIKMIN2_GENERATED_SESSION_ACCEPTANCE.md).
 
 ## Tests
 
@@ -131,3 +162,5 @@ loading, markdown output and the CLI. Run:
 ```powershell
 py -3.12 -m pytest tests/test_pikmin2_qa_matrix.py -q
 ```
+
+Integration correction (#437): the historical unpublished/missing-binding probe above is superseded by the current `PIKMIN2_SWEEP_COHORT_437.md` handoff. Fetch the downstream draft branch before reporting a missing baseline.

@@ -2,7 +2,7 @@ import unittest
 from scripts.test_pikmin2_mamuta_native import validate
 
 GOOD='''P2_MAMUTA_FIXTURE_BIRTH id=221001 type=24 xyz=-150.000,30.000,1850.000 control=221002
-P2_MAMUTA_DRAW generator=221001 anchor=wait poses=3 animated=1
+P2_MAMUTA_DRAW generator=221001 anchor=wait poses=3 animated=1 src_frame=0.0 sample=0 events=0
 PASS P2_MAMUTA_RUNTIME identity control reset P1_proxy_static_anchors
 '''
 class MamutaRuntimeTests(unittest.TestCase):

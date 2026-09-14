@@ -89,8 +89,10 @@ generated `TEKI_Frog`; that replacement is tracked separately.
   slot policy (`capture`, `advanceDefaultOffset`, `isNaviSuck`) drives the FSM
   `naviSucked`/`naviSuckFinished`, so a real capture (not the earlier seam)
   routes Attack END -> `Drop`.
-- Release on leaving `Drop` or on owner death calls
-  `releaseCaptured` + `onDeath`, so the captain is never lost or duplicated.
+- Source-faithful release: the captain stays held through `Drop` -> `Land` ->
+  `Ground`, and `GroundFlick`'s KEY3 `flickNearby` (real `flick2.bca`) releases
+  it with the source `sep *= 50` knockback (`releaseCaptured` + `onDeath`), so
+  the captain is never lost or duplicated.  Owner death and `kill` still release.
 - Probes: `pc_p2_kurage_arena_captain_occupied/captured`.
 - The isolated room has one real `Navi` mapped to captain A; captain B is a
   nominal present slot so the source zero-control guard is satisfied.  This is
@@ -129,10 +131,22 @@ wait/attack:
 - Both hosts draw the pose for the current FSM state (arena host and the
   ordinary sidecar-bound actor), so the actor no longer shows only wait/attack.
   Missing pose files keep the wait/attack fallback.
-- `P2_KURAGE_VISUAL_POSES optional_loaded=N/8` reports how many optional poses
-  shipped; `P2_KURAGE_POSE motion=<name> available=1` logs each drawn state.
-- `tools/run_kurage_flight_fsm.py`: `--models <dir>` copies `<motion>.mod` as
-  `kurage_<motion>.mod` into the run's room assets.
+- `P2_KURAGE_VISUAL_POSES lesser_optional=N/8 greater_optional=N/8` reports how
+  many optional poses shipped per variant; `P2_KURAGE_POSE motion=<name>
+  variant=<Lesser|Greater> available=1` logs each drawn state.
+- `tools/run_kurage_flight_fsm.py`: `--models <dir>` copies the Lesser poses as
+  `kurage_<motion>.mod`; `--greater-models <dir>` copies the OniKurage poses as
+  `onikurage_<motion>.mod`.  Both accept the flat `<motion>.mod` converted
+  layout or the `<motion>/patched.mod` material layout.  The Greater host draws
+  the OniKurage pose when present and falls back to the Lesser pose.
+- The material layout is lane 09's opt-in two-stage export
+  (`experimental.pikmin2_kurage_envmap`, #286; it composes the #282 base-opacity
+  fix and adds the NORMAL-generated environment stage with the `_UNUSED10=0xE6`
+  marker consumed by the integrated `pc_p2_envmap` bridge):
+  `py -3.12 -m experimental.pikmin2_kurage_envmap --model <enemy.bmd> --mod <converted pose.mod> --output <fresh>/<motion>`.
+  Run `output/p2-lane29-envmap-01`: shipped `kurage_wait.mod` SHA-256
+  `721A3316…b8e0` (the export's `after` hash), frame captured to
+  `kurage-host-flight.ppm`.
 
 This still does not animate within a pose (each converted MOD is a single static
 pose); it selects the correct static source pose per state.
@@ -174,6 +188,14 @@ Pikmin, marks itself dead and leaves the field.
   set owner health 0, let the source `dead1.bca` clock run to its KEY3
   procedure, and verify the END releases the Pikmin with restored scale.
 
+## Suction-candidate stability
+
+The admission scenarios intermittently timed out because `Piki::mayIstick()`
+rejects `PIKISTATE_LookAt`/`Flick`, which the live Piki AI can enter while
+approaching a flying actor.  The fixture now re-asserts `PIKISTATE_Normal` when
+it places the candidate (`placeCandidate`), so it stays stick-eligible.  Ordinary
+admission 5/5 and arena admission 4/4 after the change (previously intermittent).
+
 ## Fixture stabilization
 
 The private fixture birthed a Piki with only `init()` + a direct `mMode`
@@ -188,12 +210,22 @@ admission/death/greater/greater-drop/ingestion/kill/transfer/stageexit).
 Private build `output/native-lane29-build` (Ninja Release/MinGW gcc 16.2.0,
 JAudio ON, test hooks OFF), `ninja -n pikmin_pc`: no work to do.
 `bin/nectar.exe` SHA-256
-`E9A9ACF2975A0BBF6B07C4F8C0E8529D18C1D1B95FC522F42CED946C635736E1`.
+`1BB6EAF75001C714A6E8856FB1344069F6D8C3F6AF1F54426D85B2E190701CCA`.
 
-Fixture `output/p2-lane29-move-fixture-01` (provenance `status=built`);
+Fixture `output/p2-lane29-onikurage-fixture-01` (provenance `status=built`);
 `fixture.exe` SHA-256
-`1D5A1A493F6FAA7B82054E30788B32290EC98A3F9797A250C3249B6ECF91196A`.  All runs
+`BEB02FCE581226E5F8298E7FC859EF19AC312671905B8BD35DB7D61A074EA852`.  All runs
 use `PIKMIN_P2_ROOM_WINDOW=960x540` (centred `373,263`) and a 20-red squad.
+
+Greater captain route held through to GroundFlick (real `flick2.bca` KEY3):
+
+```
+P2_KURAGE_CAPTAIN_CAPTURED captain=0 epoch=1
+state=11 (Drop) -> state=6 (Land) -> state=7 (Ground) -> state=10 (GroundFlick)
+P2_KURAGE_FLICK_NEARBY
+P2_KURAGE_CAPTAIN_RELEASED captain=0 state=10
+PASS KURAGE_RUNTIME flight_fsm_greater_captain
+```
 
 Ordinary actor flies under FSM control:
 
@@ -222,13 +254,13 @@ P2_KURAGE_DEATH_CYCLE_PASS killed=1 recv=0 piki_alive=1 scale_restored=1
 PASS KURAGE_RUNTIME flight_fsm_death_cycle
 ```
 
-Per-state converted poses (10 mods shipped):
+Per-state converted poses, Lesser + Greater (10 + 10 mods shipped):
 
 ```
-P2_KURAGE_VISUAL_POSES optional_loaded=8/8
-P2_KURAGE_POSE motion=wait available=1
-P2_KURAGE_POSE motion=attack available=1
-P2_KURAGE_POSE motion=flick1 available=1
+P2_KURAGE_VISUAL_POSES lesser_optional=8/8 greater_optional=8/8
+P2_KURAGE_POSE motion=wait variant=Greater available=1
+P2_KURAGE_POSE motion=attack variant=Greater available=1
+P2_KURAGE_POSE motion=type1 variant=Greater available=1
 ```
 
 Stuck -> flick -> eject (real `flick1.bca` KEY2):

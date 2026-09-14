@@ -5,25 +5,37 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from experimental.pikmin2_mamuta_install import (CONFIG_NAME, install, plan, verify_install)
+from experimental.pikmin2_mamuta_install import (BANK_NAME, CONFIG_NAME, install, plan,
+                                                 verify_install)
 from experimental.pikmin2_mamuta_arena import GATES, P1_CHAPPY_TYPE, P1_MIURIN_TYPE, roster
 
+CLIPS = ('wait', 'waitact', 'move', 'attack0', 'attack1', 'attack4', 'flick', 'dead', 'type5')
 
-def fake_imported(root):
-    """Synthetic schema-1 Mamuta import: real bytes, recorded hashes."""
+
+def _entry(species, clip, frames):
+    poses = []
+    for i, frame in enumerate(frames):
+        name = f'{clip}_{i:02d}.mod'
+        data = (clip + '/' + str(frame)).encode()
+        (species / name).write_bytes(data)
+        poses.append({'file': name, 'frame': frame,
+                      'sha256': hashlib.sha256(data).hexdigest()})
+    entry = {'file': clip + '.bca', 'status': 'converted', 'poses': poses}
+    source = frames[-1] + 1
+    events = {'attack1': ((0, 2), (4, 3)), 'flick': ((15, 2), (25, 3))}.get(clip, ())
+    entry['events'] = [{'frame': f, 'type': t} for f, t in events if f < source]
+    return entry
+
+
+def fake_imported(root, attack_frames=(0,)):
+    """Synthetic schema-1 Mamuta import: real bytes, recorded hashes/frames."""
     species = root / 'Miulin'
     species.mkdir(parents=True)
-    poses = {'wait_00.mod': b'WAIT', 'dead_02.mod': b'DEAD', 'attack1_00.mod': b'ATTACK'}
-    for name, data in poses.items():
-        (species / name).write_bytes(data)
     clips = []
-    for clip, name in (('wait.bca', 'wait_00.mod'), ('dead.bca', 'dead_02.mod'),
-                       ('attack1.bca', 'attack1_00.mod')):
-        clips.append({'file': clip, 'status': 'converted',
-                      'poses': [{'file': name,
-                                 'sha256': hashlib.sha256(poses[name]).hexdigest()}]})
-    meta = {'schema': 1, 'species': 'Miulin', 'enemy_id': 54, 'clips': clips}
-    (root / 'mamuta.json').write_text(json.dumps(meta))
+    for clip in CLIPS:
+        clips.append(_entry(species, clip, attack_frames if clip == 'attack1' else (0,)))
+    (root / 'mamuta.json').write_text(json.dumps(
+        {'schema': 1, 'species': 'Miulin', 'enemy_id': 54, 'clips': clips}))
     return root
 
 
@@ -72,37 +84,31 @@ class InstallTests(unittest.TestCase):
             imported = fake_imported(Path(tmp) / 'imported')
             run = self.make_run(Path(tmp))
             result = install(imported, run, [(221001, 'Miulin')])
-            self.assertEqual(result['files'], ['miulin_attack1_00.mod', 'miulin_dead_00.mod',
-                                               'miulin_wait_00.mod'])
+            self.assertIn(BANK_NAME, result['files'])
+            self.assertEqual(len(result['files']), len(CLIPS) + 1)
+            self.assertEqual(result['files'], sorted(result['files']))
             verified = verify_install(imported, run, [(221001, 'Miulin')])
             self.assertEqual(verified['verified'], result['files'])
             config = (run / CONFIG_NAME).read_text()
             self.assertEqual(config.split(), ['P2_MAMUTA_ACTORS_1', '1', '221001', 'Miulin'])
+            bank = (run / BANK_NAME).read_text().splitlines()
+            self.assertEqual(bank[0].split(), ['P2_MAMUTA_BANK_1', str(len(CLIPS))])
+            attack = [line for line in bank if line.startswith('clip attack1 ')]
+            self.assertEqual(attack, ['clip attack1 1 1 1'])
+            self.assertIn('events 0', bank)
 
     def test_installs_full_attack_bank(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            imported = root / 'imported'
-            species = imported / 'Miulin'
-            species.mkdir(parents=True)
-            poses = {f'attack1_{i:02d}.mod': bytes([65 + i]) for i in range(3)}
-            poses['wait_00.mod'] = b'W'
-            poses['dead_00.mod'] = b'D'
-            for name, data in poses.items():
-                (species / name).write_bytes(data)
-            clips = []
-            for clip in ('wait', 'dead', 'attack1'):
-                names = sorted(n for n in poses if n.startswith(clip + '_'))
-                clips.append({'file': clip + '.bca', 'status': 'converted',
-                              'poses': [{'file': n, 'sha256': hashlib.sha256(poses[n]).hexdigest()}
-                                        for n in names]})
-            (imported / 'mamuta.json').write_text(json.dumps(
-                {'schema': 1, 'species': 'Miulin', 'enemy_id': 54, 'clips': clips}))
-            run = self.make_run(root)
+            imported = fake_imported(Path(tmp) / 'imported', attack_frames=(0, 18, 37))
+            run = self.make_run(Path(tmp))
             result = install(imported, run, [(1, 'Miulin')])
             attack = sorted(n for n in result['files'] if n.startswith('miulin_attack1'))
             self.assertEqual(attack, ['miulin_attack1_00.mod', 'miulin_attack1_01.mod',
                                       'miulin_attack1_02.mod'])
+            bank = (run / BANK_NAME).read_text().splitlines()
+            self.assertEqual([line for line in bank if line.startswith('clip attack1 ')],
+                             ['clip attack1 38 3 2'])
+            self.assertIn('frames 0 18 37', bank)
             verify_install(imported, run, [(1, 'Miulin')])
 
     def test_install_refuses_overwrite(self):

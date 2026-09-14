@@ -58,7 +58,7 @@ informational for that reason).
 |---|---|---|
 | 1. Exact identity and spawn | PASS | existing fixture markers |
 | 2. Autonomous movement and animation | PASS | existing FSM states |
-| 3. Attacks and receivers | PARTIAL | roll contact as before; window now observed (not applied) |
+| 3. Attacks and receivers | PARTIAL | roll contact as before; window now applied by the follow-up damage gate ([vuln-apply slice](PIKMIN2_DANGOMUSHI_VULN_APPLY.md)) |
 | 4. Death and corpse | UNTESTED | unchanged |
 | 5. Actual transport and reward | source-backed generic | unchanged |
 | 6. Cleanup and re-entry | UNTESTED | unchanged |
@@ -68,8 +68,9 @@ Rock/Egg birth.
 
 ## Remaining
 
-1. The P1 proxy host has no `EB_Invulnerable` path; applying the stickable window
-   needs a host flag seam.
+1. The P1 proxy host had no `EB_Invulnerable` path; the follow-up slice applies
+   the stickable window through `pc_p2_dangomushi_invulnerable`
+   ([vuln-apply slice](PIKMIN2_DANGOMUSHI_VULN_APPLY.md)), pending a real-GL run.
 2. Real Rock/Egg births need lane 20 primitives.
 3. True `InteractPress` roll crush, `wallCallback` crash trigger and
    `dangomushi.brk` remain.
