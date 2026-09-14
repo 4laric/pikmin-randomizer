@@ -126,17 +126,24 @@ verifies a pinned combined build before anything runs, and emits records for
 this matrix. It never monkeypatches admission and never labels a fixture run as
 natural.
 
-Pinned pair under test: **root `4fccf41`** (`origin/codex/p2-main-review`) and
-**native `b805d9c6`** (approved native baseline, clean). Lane 01 has not yet
-published an integrated executable for this pair and the live lane 02 admission
-set is empty, so the generated-session chain cannot start and the runner reports
-`BLOCKED: generate: no admitted P2 identities` — the correct fail-closed result.
+Pinned pair under test: **root `569c5e2`** (`origin/codex/p2-main-review`,
+"Publish validated P2 cohort baseline and runtime acceptance") and combined
+**native `1531c0ba`** (clean), production executable SHA-256
+`11311EE536C7438B0B68BA5A0C469C8A7DEAA547B57CF7C3C75504E5E6A3F324`. The live
+lane 02 admission set is empty, so the generated-session chain cannot start and
+the runner reports `BLOCKED: generate: no admitted P2 identities` - the correct
+fail-closed result.
 
 There is still no admitted cohort, so every matrix cell is `UNTESTED` against
 the pinned baseline. Private fixture evidence may satisfy the boundary/negative
 cells as it is produced; those records must carry `kind: fixture` and full
-provenance. This lane will reproduce the cohort end to end as soon as lane 01
-supplies the immutable build and lane 02 admits the first identity.
+provenance.
+
+The `frame_budget` and `memory_budget` cells additionally require an **accepted**
+budget policy. `experimental.pikmin2_performance_budget` resolves them from a
+measured mixed-scene manifest, but the existing `PROPOSED_BUDGETS` are
+`proposed_not_accepted`, so any evaluation (and record) is `BLOCKED` until the
+user/integration accepts a policy.
 
 ## Tests
 
