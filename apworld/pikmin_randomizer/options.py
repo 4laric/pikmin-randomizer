@@ -43,6 +43,12 @@ class CampaignEnemies(Toggle):
     default = 0
 
 
+class P2EnemyRandomizer(Toggle):
+    """Experimental: seed Pikmin 2 source identities through the versioned admission bridge. Off by default. Requires a lane 04 placement/encounter document (legal targets) and at least one lane 02-admitted identity; generation fails closed with a clear error until both exist, and never substitutes a P1 enemy."""
+    display_name = 'Pikmin 2 Enemy Bridge (experimental)'
+    default = 0
+
+
 class GroupSpawnEnemies(Toggle):
     """Experimental: one seeded species per fixed-count dwarf/Sheargrub generator. Preserves counts and schedules; implies per-spawn adult mode. Physical route acceptance pending."""
     display_name = 'Grouped Family Enemies'
@@ -204,6 +210,7 @@ class PikminOptions(PerGameCommonOptions):
     attack_rate_upgrades: AttackRateUpgrades
     carry_upgrades: CarryUpgrades
     campaign_enemies: CampaignEnemies
+    p2_enemy_randomizer: P2EnemyRandomizer
     group_spawn_enemies: GroupSpawnEnemies
     miniboss_enemies: MinibossEnemies
     per_spawn_enemies: PerSpawnEnemies
