@@ -29,6 +29,7 @@ GOOD_LOG = '\n'.join([
     'P2_LIFECYCLE_INJECT species=Sokkuri,Armor injected_health=0 source=fixture '
     'not_natural_combat=1',
     'P2_SOKKURI_DEAD generator=346005 source_id=79 health=0',
+    'P2_SOKKURI_NATURAL_DEATH generator=346005 source_id=79 natural=0',
     'P2_ARMOR_DEAD generator=346001 source_id=15 health=0',
     'P2_LIFECYCLE_DEADCLIP species=Sokkuri source_id=79 clip=dead1',
     'P2_LIFECYCLE_DEADCLIP species=Armor source_id=15 clip=dead',
@@ -52,6 +53,7 @@ REQUIRED_MARKERS = {
     'inject': 'P2_LIFECYCLE_INJECT species=Sokkuri,Armor injected_health=0 source=fixture '
               'not_natural_combat=1',
     'death': 'P2_ARMOR_DEAD generator=346001 source_id=15 health=0',
+    'natural_label': 'P2_SOKKURI_NATURAL_DEATH generator=346005 source_id=79 natural=0',
     'deadclip': 'P2_LIFECYCLE_DEADCLIP species=Armor source_id=15 clip=dead',
     'corpse': 'P2_LIFECYCLE_CORPSE species=Armor pellet=1 generator=346001',
     'corpse_draw': 'P2_BATCH2_DRAW corpse=1 key=ground|Sokkuri clip=dead1',
@@ -106,19 +108,67 @@ def test_delivery_reward_is_honestly_untested_not_n_a():
     assert 'not a source-backed N/A' in result['delivery_reward_reason']
 
 
-LANE_FIXTURE = Path('output/native-species-groundlife/tools/preview_p2_room.cpp')
-FALLBACK_FIXTURE = Path('native/tools/preview_p2_room.cpp')
+NATURAL_DEATH = GOOD_LOG.replace(
+    'P2_SOKKURI_NATURAL_DEATH generator=346005 source_id=79 natural=0',
+    'P2_SOKKURI_DAMAGE generator=346005 source_id=79 health=80.0\n'
+    'P2_SOKKURI_NATURAL_DEATH generator=346005 source_id=79 natural=1')
+
+
+def test_injected_death_is_labelled_natural_zero():
+    result = validate(GOOD_LOG, code=0)
+    # The injected fixture must report natural=0 (no incremental damage seen).
+    assert result['checks']['natural_label']
+    assert not result['checks']['natural_damage_seen']
+
+
+def test_natural_combat_damage_is_separately_observable():
+    real = validate(NATURAL_DEATH, code=0)
+    # A natural path emits an incremental P2_SOKKURI_DAMAGE marker and natural=1,
+    # then the injected-only validator rejects it as "not the injected run".
+    assert real['checks']['natural_damage_seen']
+    assert not real['checks']['natural_label']
+
+
+def test_missing_natural_label_fails_injected_run():
+    spoof = GOOD_LOG.replace(
+        'P2_SOKKURI_NATURAL_DEATH generator=346005 source_id=79 natural=0', '')
+    result = validate(spoof, code=0)
+    assert not result['checks']['natural_label']
+    assert not result['passed']
+
+
+def _native_roots():
+    """Candidate native repo roots for the private fixture builder.
+
+    The lane worktree keeps the native repo as the sibling ``native-l14`` of the
+    root worktree; the historical ``native/`` subdir layout is also honored.
+    """
+    here = Path(__file__).resolve()
+    return [here.parents[2] / 'native-l14',
+            here.parents[1] / 'native',
+            Path('native')]
+
+
+def _native_fixture_source():
+    for root in _native_roots():
+        fixture = root / 'tools/preview_p2_room.cpp'
+        if fixture.is_file():
+            return root, fixture
+    return None, None
 
 
 def _fixture_source():
-    path = LANE_FIXTURE if LANE_FIXTURE.is_file() else FALLBACK_FIXTURE
-    return path.read_text(), path
+    root, fixture = _native_fixture_source()
+    if root is None:
+        pytest.skip('private native fixture worktree not present')
+    return fixture.read_text(), fixture
 
 
 def test_lane_fixture_honors_960x540_window():
-    if not LANE_FIXTURE.is_file():
+    root, fixture = _native_fixture_source()
+    if root is None:
         pytest.skip('lane fixture worktree not present')
-    text = LANE_FIXTURE.read_text()
+    text = fixture.read_text()
     assert 'PIKMIN_P2_ROOM_WINDOW' in text and 'pc_window_center()' in text
 
 
@@ -142,7 +192,10 @@ def test_instrument_is_gl_free_builder_smoke():
 
 
 def test_build_orchestration_rewrites_fixture_objects_gl_free(tmp_path):
-    native = Path('native').resolve()
+    native_root, _ = _native_fixture_source()
+    if native_root is None:
+        pytest.skip('private native fixture worktree not present')
+    native = native_root.resolve()
     build = tmp_path / 'build'
     output = tmp_path / 'fixture-output'
     build.mkdir()

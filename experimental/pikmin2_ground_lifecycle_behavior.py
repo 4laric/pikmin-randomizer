@@ -272,6 +272,10 @@ def validate(text, code=0):
     squad = int(ready.group(1)) if ready else 0
     death = (bool(re.search(r'P2_SOKKURI_DEAD generator=346005 source_id=79', text))
              and bool(re.search(r'P2_ARMOR_DEAD generator=346001 source_id=15', text)))
+    natural_label = bool(re.search(r'P2_SOKKURI_NATURAL_DEATH generator=346005 source_id=79 '
+                                   r'natural=0', text))
+    natural_damage_seen = bool(re.search(r'P2_SOKKURI_DAMAGE generator=346005 source_id=79 '
+                                         r'health=\d+\.\d+', text))
     deadclips = (bool(re.search(r'P2_LIFECYCLE_DEADCLIP species=Sokkuri source_id=79 clip=dead1', text))
                  and bool(re.search(r'P2_LIFECYCLE_DEADCLIP species=Armor source_id=15 clip=dead', text)))
     corpse = (bool(re.search(r'P2_LIFECYCLE_CORPSE species=Sokkuri pellet=1 generator=346005', text))
@@ -290,6 +294,8 @@ def validate(text, code=0):
         live_squad=squad >= 1,
         injected_damage=injected,
         death=death,
+        natural_label=natural_label,
+        natural_damage_seen=natural_damage_seen,
         dead_clip=deadclips,
         corpse=corpse,
         cleanup=cleanup,
@@ -305,8 +311,9 @@ def validate(text, code=0):
         cleanup='pass' if cleanup else 'fail',
         reentry='pass' if reentry else 'fail',
     )
-    required = ('identity', 'window', 'live_squad', 'injected_damage', 'death', 'dead_clip',
-                'corpse', 'cleanup', 'reentry', 'no_duplicate_reward', 'completion', 'no_extinction')
+    required = ('identity', 'window', 'live_squad', 'injected_damage', 'death', 'natural_label',
+                'dead_clip', 'corpse', 'cleanup', 'reentry', 'no_duplicate_reward', 'completion',
+                'no_extinction')
     return dict(passed=code == 0 and all(checks[name] for name in required),
                 checks=checks, gates=gates, squad=squad, exit_code=code,
                 delivery_reward_reason='The ground arena is a cargo-free private arena with no Pod '
