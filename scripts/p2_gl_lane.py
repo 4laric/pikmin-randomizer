@@ -154,13 +154,32 @@ def run(spec_path, lane):
                 process.wait()
             result['finished'] = time.time()
             record.write_text(json.dumps(result, indent=2))
-            print(json.dumps(result), flush=True)
+            print(json.dumps({key: result[key] for key in ('lane', 'status', 'logs', 'exit_code')}), flush=True)
         return result['exit_code']
+
+
+def status():
+    directory = shared_output() / 'gl-lanes'
+    result = {}
+    for lane in ('A', 'B'):
+        try:
+            with leases(directory, [lane]):
+                result[lane] = 'free'
+        except RuntimeError:
+            result[lane] = 'busy'
+    print(json.dumps(dict(lanes=result, shared_directory=str(directory),
+                         note='Cooperative leases only; check for legacy unleased runs too.')))
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--lane', choices=['A', 'B', 'exclusive'], required=True)
-    parser.add_argument('--spec', type=Path, required=True)
+    parser.add_argument('--status', action='store_true')
+    parser.add_argument('--lane', choices=['A', 'B', 'exclusive'])
+    parser.add_argument('--spec', type=Path)
     args = parser.parse_args()
+    if args.status:
+        status()
+        raise SystemExit(0)
+    if not args.lane or not args.spec:
+        parser.error('--lane and --spec are required for a run')
     raise SystemExit(run(args.spec, args.lane))

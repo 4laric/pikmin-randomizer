@@ -6,6 +6,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+extern "C" {
+__declspec(dllexport) DWORD NvOptimusEnablement = 1;
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+}
 int main(int argc, char** argv) {
     bool hidden = argc > 1 && !std::strcmp(argv[1], "hidden");
     int seconds = argc > 2 ? std::atoi(argv[2]) : 4;
