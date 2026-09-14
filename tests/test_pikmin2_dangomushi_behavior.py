@@ -23,6 +23,10 @@ GOOD_LOG = '\n'.join([
     'P2_DANGOMUSHI_HAZARD generator=376003 rocks=10 lifetime=30.0 egg=1',
     'P2_DANGOMUSHI_DAMAGE_REJECTED generator=376003 stickable=0 invulnerable=1 state=attack',
     'P2_DANGOMUSHI_DAMAGE_ACCEPTED generator=376003 stickable=1 state=turn',
+    'P2_DANGOMUSHI_ROCK_BIRTH generator=376003 requested=10 real=10 lifetime=30.0',
+    'P2_DANGOMUSHI_ROCK_STRIKE generator=376003 kind=Press damage=10.0 target=1234',
+    'P2_DANGOMUSHI_EGG_BIRTH generator=376003 real=1 x=50.0 y=30.0 z=1850.0 health=50.0',
+    'P2_DANGOMUSHI_EGG_ITEM generator=376003 index=0 kind=2 real=1 fallback=0 item=nectar',
     'P2_DANGOMUSHI_STATE generator=376003 state=recover',
     'P2_DANGOMUSHI_STATE generator=376003 state=flick',
     'P2_DANGOMUSHI_STATE generator=376003 state=wait',
@@ -66,6 +70,10 @@ class DangoMushiBehaviorTests(unittest.TestCase):
         self.assertTrue(result['checks']['damage_rejected'])
         self.assertTrue(result['checks']['damage_accepted'])
         self.assertTrue(result['checks']['window_applied'])
+        self.assertTrue(result['checks']['rock_birth'])
+        self.assertTrue(result['checks']['egg_birth'])
+        self.assertTrue(result['checks']['egg_item_birth'])
+        self.assertTrue(result['checks']['rock_strike'])
         self.assertTrue(result['checks']['hazard_rain'])
         self.assertTrue(result['checks']['hazard_egg'])
         self.assertGreater(result['motion_spread'], 5.0)
@@ -76,6 +84,15 @@ class DangoMushiBehaviorTests(unittest.TestCase):
             'state=attack\n', '')
         result = validate(stripped, code=0)
         self.assertFalse(result['checks']['window_applied'])
+        self.assertFalse(result['passed'])
+
+    def test_hazard_without_real_birth_fails(self):
+        # 'Hazard markers without births do not pass'.
+        stripped = GOOD_LOG.replace(
+            'P2_DANGOMUSHI_ROCK_BIRTH generator=376003 requested=10 real=10 '
+            'lifetime=30.0\n', '')
+        result = validate(stripped, code=0)
+        self.assertFalse(result['checks']['rock_birth'])
         self.assertFalse(result['passed'])
 
     def test_damage_accepted_is_informational(self):

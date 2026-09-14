@@ -163,6 +163,18 @@ def validate(text, code=0):
         r'P2_DANGOMUSHI_DAMAGE_REJECTED generator=376003 stickable=0 invulnerable=1', text)
     accepts = re.findall(
         r'P2_DANGOMUSHI_DAMAGE_ACCEPTED generator=376003 stickable=1', text)
+    # Realized children (#174/#376): the hazard rain hosts the lane-20 Rock/Egg
+    # policies, so a decision now produces a real falling Rock and a real Egg
+    # whose break births real P1 pellets/nectar.
+    rock_births = [(int(r), int(real)) for r, real in re.findall(
+        r'P2_DANGOMUSHI_ROCK_BIRTH generator=376003 requested=(\d+) real=(\d+)', text)]
+    egg_births = [int(real) for real in re.findall(
+        r'P2_DANGOMUSHI_EGG_BIRTH generator=376003 real=(\d)', text)]
+    egg_items = [(int(kind), int(real), item) for kind, real, item in re.findall(
+        r'P2_DANGOMUSHI_EGG_ITEM generator=376003 index=\d+ kind=(\d+) real=(\d) '
+        r'fallback=\d item=(\w+)', text)]
+    rock_strikes = re.findall(r'P2_DANGOMUSHI_ROCK_STRIKE generator=376003', text)
+    rock_birth = bool(rock_births) and any(real > 0 for _, real in rock_births)
     hazard_rain = bool(hazards) and all(1 <= r <= 10 for r, _, _ in hazards) \
         and all(28.0 <= l <= 32.0 for _, l, _ in hazards)
     # The source roll window: the attack clip KEYEVENT_4 roll gate is frame 23 and
@@ -203,6 +215,11 @@ def validate(text, code=0):
         damage_rejected=bool(rejects),
         damage_accepted=bool(accepts),
         window_applied=bool(rejects),
+        rock_birth=rock_birth,
+        egg_birth=bool(egg_births) and any(real > 0 for real in egg_births),
+        egg_item_birth=(not egg_items) or any(real > 0 and item in ('pellet', 'nectar')
+                                              for _, real, item in egg_items),
+        rock_strike=bool(rock_strikes),
         hazard_rain=hazard_rain,
         hazard_egg=(any(e == 1 for _, _, e in hazards) if hazards else False),
         autonomous_motion=spread > 5.0,
@@ -210,7 +227,8 @@ def validate(text, code=0):
     )
     return dict(passed=all(v for k, v in checks.items()
                            if k not in ('roll_frames', 'hit_pikmin', 'hazard_egg',
-                                        'damage_accepted')),
+                                        'damage_accepted', 'egg_birth', 'egg_item_birth',
+                                        'rock_strike')),
                 checks=checks, motion_spread=spread, exit_code=code,
                 unmeasured=['dangomushi.brk material loop',
                             'P2 InteractPress roll crush (mapped to InteractFlick)',
@@ -226,8 +244,13 @@ def validate(text, code=0):
                              'InteractBomb) rejects attack/bomb damage outside the window and '
                              'admits it inside. Acceptance still needs a real run showing '
                              'DAMAGE_REJECTED and, when an attack lands in-window, DAMAGE_ACCEPTED.',
-                             'Rock/Egg are spawn decisions; real births still need the lane-20 '
-                             'host primitives to be requested from the DangoMushi hazard output.'])
+                             'The Rock/Egg rain is now hosted lane-side using the lane-20 '
+                             'P2RockHazard / P2Egg policies: a decision births real falling '
+                             'Rocks that apply real InteractPress/InteractAttack, and a real Egg '
+                             'whose break births real P1 pellets/nectar. Rock fall/scale values '
+                             'are the documented fixture host parms; the Egg drop table uses the '
+                             'disc chances. Runtime observation of the births and strikes is still '
+                             'required.'])
 
 
 if __name__ == '__main__':

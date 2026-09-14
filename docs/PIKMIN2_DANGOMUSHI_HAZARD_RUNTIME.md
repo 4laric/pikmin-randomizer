@@ -71,7 +71,9 @@ Rock/Egg birth.
 1. The P1 proxy host had no `EB_Invulnerable` path; the follow-up slice applies
    the stickable window through `pc_p2_dangomushi_invulnerable`
    ([vuln-apply slice](PIKMIN2_DANGOMUSHI_VULN_APPLY.md)), pending a real-GL run.
-2. Real Rock/Egg births need lane 20 primitives.
+2. Real Rock/Egg births are hosted lane-side from the lane-20 P2RockHazard/P2Egg
+   policies ([vuln-apply + birth slice](PIKMIN2_DANGOMUSHI_VULN_APPLY.md));
+   runtime observation remains.
 3. True `InteractPress` roll crush, `wallCallback` crash trigger and
    `dangomushi.brk` remain.
 4. Death/corpse/cleanup (#397).
