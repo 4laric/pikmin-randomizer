@@ -1,0 +1,524 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 6beb36f3..6f2ba02a 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -223,6 +223,7 @@ set(PC_PORT_SOURCES
+     pc_port/pc_p2_bigtreasure_map_trace.cpp
+     pc_port/pc_p2_bigtreasure_motion.cpp
+     pc_port/pc_p2_bigtreasure_visual.cpp
++    pc_port/pc_p2_bigtreasure_ordinary.cpp
+     pc_port/pc_randomizer.cpp
+     pc_port/pc_p2_kurage.cpp
+     pc_port/pc_p2_kurage_arena.cpp
+diff --git a/pc_port/pc_p2_bigtreasure_ordinary.cpp b/pc_port/pc_p2_bigtreasure_ordinary.cpp
+new file mode 100644
+index 00000000..3491e7f8
+--- /dev/null
++++ b/pc_port/pc_p2_bigtreasure_ordinary.cpp
+@@ -0,0 +1,79 @@
++#include "pc_p2_bigtreasure_ordinary.h"
++
++#include <cmath>
++
++void P2BigTreasureOrdinary::reset(const P2BigTreasureFsmParms& parms)
++{
++    mHost.reset(parms);
++    mHead = 0;
++    mCount = 0;
++}
++
++bool P2BigTreasureOrdinary::postHit(const P2BigTreasureOrdinaryHit& hit)
++{
++    if (!std::isfinite(hit.damage) || hit.damage <= 0.0f) {
++        return false;
++    }
++    if (hit.weapon < -1 || hit.weapon >= P2BTWEAPON_Count) {
++        return false;
++    }
++    if (mCount >= kHitQueueCapacity) {
++        return false;
++    }
++    mHits[(mHead + mCount) % kHitQueueCapacity] = hit;
++    ++mCount;
++    return true;
++}
++
++bool P2BigTreasureOrdinary::pop(P2BigTreasureOrdinaryHit& out)
++{
++    if (mCount <= 0) {
++        return false;
++    }
++    out = mHits[mHead];
++    mHead = (mHead + 1) % kHitQueueCapacity;
++    --mCount;
++    return true;
++}
++
++void P2BigTreasureOrdinary::tick(P2BigTreasureHostSeam& seam,
++                                 const P2BigTreasureOrdinaryFacts& facts,
++                                 P2BigTreasureFsmHostOutput& out)
++{
++    out = P2BigTreasureFsmHostOutput{};
++    if (!seam.active) {
++        return;
++    }
++
++    P2BigTreasureFsmHostInput in;
++    in.hasTarget = facts.hasTarget;
++    in.bootDemoPlayed = facts.bootDemoPlayed;
++    in.animEnd = facts.animEnd;
++    in.keyEvent2 = facts.keyEvent2;
++    in.keyEvent100 = facts.keyEvent100;
++    in.flickTrigger = facts.flickTrigger;
++    in.shouldFinishMotion = facts.shouldFinishMotion;
++    in.finishIKMotion = facts.finishIKMotion;
++    in.itemWalkSwapped = facts.itemWalkSwapped;
++    in.killed = facts.killed;
++    in.pickThreshold = facts.pickThreshold;
++    in.bossHealth = facts.bossHealth;
++
++    // Source isAttackLimitTime(): the pacing timer gates the ItemWalk / ItemWait
++    // -> PreAttack transition. It accrues here, exactly once per source tick,
++    // and the policy resets it (resetAttackLimitTimer action) on PreAttack.
++    in.attackLimitTime = seam.director.pacer.tick(
++        facts.delta, seam.ownership.weaponCount(), facts.targetInBox,
++        facts.unstuckOutsiderNearby);
++
++    // Natural-hit ingress: at most one damage callback per source tick, in
++    // arrival order.
++    P2BigTreasureOrdinaryHit hit;
++    if (pop(hit)) {
++        in.damage = hit.damage;
++        in.damageWeapon = hit.weapon;
++        in.damageBittered = hit.bittered;
++    }
++
++    mHost.tick(seam, in, out);
++}
+diff --git a/pc_port/pc_p2_bigtreasure_ordinary.h b/pc_port/pc_p2_bigtreasure_ordinary.h
+new file mode 100644
+index 00000000..46af527e
+--- /dev/null
++++ b/pc_port/pc_p2_bigtreasure_ordinary.h
+@@ -0,0 +1,88 @@
++#pragma once
++
++#include "pc_p2_bigtreasure_fsmhost.h"
++
++// Lane-owned ordinary-update drive for the BigTreasure (Titan Dweevil, enemy
++// ID 73) FSM host, issue #246. The integrated host seam already runs from
++// pc_p2_hardlanes_update, but it drives the injected attack shortcut
++// (p2_bigtreasure_host_tick_entry: pacer -> pick -> start) directly and never
++// steps the 12-state policy. This module closes that gap:
++//
++//  - it owns one P2BigTreasureFsmHost and a bounded natural-hit queue,
++//  - it derives the source isAttackLimitTime() input from the lane's attack
++//    pacer (4 + 2 * liveWeapons seconds, 3x accrual while an unstuck outsider
++//    is nearby), and
++//  - it steps the policy once per 30 Hz source tick from the ordinary update.
++//
++// Damage enters through postHit(). That is the single ingress a natural Pikmin
++// attack volume (lane 10 receiver) or a collision proxy calls; it is
++// deliberately not a second receiver framework and it holds at most one
++// damage callback per source tick, matching the injected fixture.
++//
++// Engine-free by construction: every animation/target/kill input is a host
++// fact the caller derives from live engine state (and, once the motion assets
++// are staged, the BigTreasure visual bank's key events). The animation
++// keyframe source and the real attack-volume receiver are the named remaining
++// providers; see docs/PIKMIN2_BIGTREASURE_ORDINARY.md.
++
++// One natural hit delivered to a weapon coll part, or to the body when the
++// boss has no weapons left (`weapon == -1`). Mirrors the ownership
++// damageCallBack inputs.
++struct P2BigTreasureOrdinaryHit {
++    int weapon = -1;      // P2BigTreasureWeapon coll part, or -1 for the body
++    float damage = 0.0f;  // Pikmin-source damage magnitude
++    bool bittered = false;
++};
++
++// Per-tick host facts. All are supplied by the caller, so fixtures stay
++// deterministic and the policy owns no engine state.
++struct P2BigTreasureOrdinaryFacts {
++    float delta = 1.0f / 30.0f;
++    bool targetInBox = false;           // live Navi/Pikmin in the 225-unit XZ box
++    bool hasTarget = false;             // target within the private sensing radius
++    bool unstuckOutsiderNearby = false; // 3x pacer accrual
++    bool bootDemoPlayed = false;
++    bool animEnd = false;
++    bool keyEvent2 = false;
++    bool keyEvent100 = false;
++    bool flickTrigger = false;
++    bool shouldFinishMotion = false;
++    bool finishIKMotion = false;
++    bool itemWalkSwapped = false;
++    bool killed = false;
++    float pickThreshold = 0.0f; // host randWeightFloat input for pickWeapon
++    float bossHealth = 1.0f;    // body HP; <= 0 kills via the animEnd path
++};
++
++class P2BigTreasureOrdinary {
++public:
++    static constexpr int kHitQueueCapacity = 16;
++
++    void reset(const P2BigTreasureFsmParms& parms);
++
++    // Queues one natural hit for the next source tick. Returns false when the
++    // queue is full (the hit is dropped, never silently merged) or the hit is
++    // invalid (non-finite/non-positive damage or an out-of-range weapon).
++    bool postHit(const P2BigTreasureOrdinaryHit& hit);
++
++    int pendingHits() const { return mCount; }
++
++    // Advances one 30 Hz tick: derives attackLimitTime from the seam pacer,
++    // applies at most one queued natural hit, then steps the FSM policy.
++    // Safe on an inactive seam (outputs stay default).
++    void tick(P2BigTreasureHostSeam& seam, const P2BigTreasureOrdinaryFacts& facts,
++              P2BigTreasureFsmHostOutput& out);
++
++    P2BigTreasurePhase phase() const { return mHost.phase(); }
++    int chosenWeapon() const { return mHost.chosenWeapon(); }
++    std::uint64_t knockOffs() const { return mHost.knockOffs(); }
++    float bossHealth() const { return mHost.bossHealth(); }
++
++private:
++    bool pop(P2BigTreasureOrdinaryHit& out);
++
++    P2BigTreasureFsmHost mHost;
++    P2BigTreasureOrdinaryHit mHits[kHitQueueCapacity];
++    int mHead = 0;
++    int mCount = 0;
++};
+diff --git a/pc_port/pc_p2_hardlanes.cpp b/pc_port/pc_p2_hardlanes.cpp
+index c093d9fe..47bd9786 100644
+--- a/pc_port/pc_p2_hardlanes.cpp
++++ b/pc_port/pc_p2_hardlanes.cpp
+@@ -26,6 +26,7 @@
+ #include "pc_p2_bombsarai_terrain.h"
+ #include "pc_p2_fuefuki_binding.h"
+ #include "pc_p2_bigtreasure_host.h"
++#include "pc_p2_bigtreasure_ordinary.h"
+ #include "pc_p2_bigtreasure_visual.h"
+ #include "Matrix4f.h"
+ #include "pc_bbft.h"
+@@ -43,6 +44,7 @@
+ #include "teki.h"
+ #include <cstdint>
+ #include <cstdio>
++#include <cmath>
+ #include <map>
+ 
+ namespace {
+@@ -178,10 +180,34 @@ P2FuefukiFsmParms fuefukiParms()
+ // BigTreasure (#246)
+ constexpr float kBigTreasureSourceDelta = 1.0f / 30.0f;
+ P2BigTreasureHostSeam sBigTreasure;
++P2BigTreasureOrdinary sBigTreasureOrdinary;
+ bool sBigTreasureReady = false;
+ bool sBigTreasureVisualReady = false;
+ float sBigTreasureGround = 0.0f;
+ double sBigTreasureDebt = 0.0;
++P2BigTreasurePhase sBigTreasurePhase = P2BT_Dead;
++
++// Source isAttackLimitTime box test: a live Navi/Pikmin inside the 225-unit XZ
++// box around the fixed placement. The ordinary FSM drive consumes the result
++// as `targetInBox`; the policy's pacer owns the timer accrual and threshold.
++bool bigTreasureTargetInBox()
++{
++    if (!sBigTreasure.active) return false;
++    const float bx = sBigTreasure.placement.owner.x;
++    const float bz = sBigTreasure.placement.owner.z;
++    const float box = P2BigTreasureAttackPacer::kBoxHalfExtent;
++    auto inside = [&](float x, float z) {
++        return std::fabs(x - bx) <= box && std::fabs(z - bz) <= box;
++    };
++    Navi* navi = naviMgr ? naviMgr->getNavi() : nullptr;
++    if (navi && inside(navi->mSRT.t.x, navi->mSRT.t.z)) return true;
++    Iterator it(pikiMgr);
++    CI_LOOP(it) {
++        Piki* piki = static_cast<Piki*>(*it);
++        if (piki && piki->isAlive() && inside(piki->mSRT.t.x, piki->mSRT.t.z)) return true;
++    }
++    return false;
++}
+ }
+ 
+ void pc_p2_hardlanes_reset()
+@@ -196,11 +222,22 @@ void pc_p2_hardlanes_reset()
+     sFuefukiHeld.clear();
+     sFuefukiNextId = 1;
+     p2_bigtreasure_host_reset(sBigTreasure);
++    sBigTreasureOrdinary.reset(P2BigTreasureFsmParms());
+     pc_p2_bigtreasure_visual_reset();
+     sBigTreasureReady = false;
+     sBigTreasureVisualReady = false;
+     sBigTreasureGround = 0.0f;
+     sBigTreasureDebt = 0.0;
++    sBigTreasurePhase = P2BT_Dead;
++}
++
++bool pc_p2_hardlanes_bigtreasure_hit(int weapon, float damage, bool bittered)
++{
++    P2BigTreasureOrdinaryHit hit;
++    hit.weapon = weapon;
++    hit.damage = damage;
++    hit.bittered = bittered;
++    return sBigTreasureOrdinary.postHit(hit);
+ }
+ 
+ void pc_p2_hardlanes_setup()
+@@ -248,6 +285,7 @@ void pc_p2_hardlanes_setup()
+     // BigTreasure (#246): fixed-placement host seam + sampled visual bank.
+     if (p2_bigtreasure_host_setup("p2-bigtreasure-host.txt", sBigTreasure)) {
+         sBigTreasureReady = true;
++        sBigTreasureOrdinary.reset(P2BigTreasureFsmParms());
+         sBigTreasureGround = mapMgr->getMinY(0.0f, 0.0f, false);
+         std::printf("P2_HARDLANES_READY family=BigTreasure host=1 captures=5\n");
+     }
+@@ -298,8 +336,26 @@ void pc_p2_hardlanes_update()
+         if (ticks > 4) ticks = 4;
+         sBigTreasureDebt -= ticks * static_cast<double>(kBigTreasureSourceDelta);
+         for (int i = 0; i < ticks; ++i) {
+-            if (sBigTreasureReady)
+-                p2_bigtreasure_host_tick_entry(sBigTreasure, kBigTreasureSourceDelta, false, 0.0f);
++            if (sBigTreasureReady) {
++                // Ordinary update: step the 12-state policy (not the injected
++                // attack shortcut) and let the lane-10 hit ingress drive weapon
++                // knock-off. Animation keyframe pulses are host facts; the
++                // motion-staging provider supplies them (#128), so until then
++                // the policy parks in Land and the pacer gate stays closed.
++                P2BigTreasureOrdinaryFacts facts;
++                facts.delta = kBigTreasureSourceDelta;
++                facts.targetInBox = bigTreasureTargetInBox();
++                facts.hasTarget = facts.targetInBox;
++                P2BigTreasureFsmHostOutput fsmOut;
++                sBigTreasureOrdinary.tick(sBigTreasure, facts, fsmOut);
++                const P2BigTreasurePhase phase = sBigTreasureOrdinary.phase();
++                if (phase != sBigTreasurePhase) {
++                    sBigTreasurePhase = phase;
++                    std::printf("P2_BIGTREASURE_FSM phase=%s weapons=%d\n",
++                                P2BigTreasureFsm::stateName(phase),
++                                sBigTreasure.ownership.weaponCount());
++                }
++            }
+             if (sBigTreasureVisualReady) {
+                 if (pc_p2_bigtreasure_visual_completed()) pc_p2_bigtreasure_visual_clip("wait1");
+                 pc_p2_bigtreasure_visual_update(1.0f);
+diff --git a/pc_port/pc_p2_hardlanes.h b/pc_port/pc_p2_hardlanes.h
+index b2cc3f93..5666488b 100644
+--- a/pc_port/pc_p2_hardlanes.h
++++ b/pc_port/pc_p2_hardlanes.h
+@@ -9,3 +9,10 @@ void pc_p2_hardlanes_setup();
+ void pc_p2_hardlanes_update();
+ void pc_p2_hardlanes_draw(Graphics&);
+ void pc_p2_hardlanes_reset();
++
++// Natural-hit ingress (#246): post one Pikmin-source hit against a BigTreasure
++// weapon coll part (`weapon` in [0,3], or -1 for the body) into the ordinary
++// FSM host drive. The lane-10 receiver / collision proxy is the intended
++// caller. Returns false when the seam is inactive or the bounded queue rejects
++// the hit (full, non-finite/non-positive damage or an out-of-range weapon).
++bool pc_p2_hardlanes_bigtreasure_hit(int weapon, float damage, bool bittered);
+diff --git a/tools/p2_bigtreasure_ordinary_test.cpp b/tools/p2_bigtreasure_ordinary_test.cpp
+new file mode 100644
+index 00000000..319e5f53
+--- /dev/null
++++ b/tools/p2_bigtreasure_ordinary_test.cpp
+@@ -0,0 +1,197 @@
++// Standalone engine-free fixture for the BigTreasure ordinary-update drive
++// (pc_port/pc_p2_bigtreasure_ordinary.h/.cpp), issue #246. Proves that the
++// 12-state policy is stepped from the ordinary update with an
++// isAttackLimitTime() input derived from the lane's attack pacer, that a
++// natural hit posted through the lane ingress drives the knock-off phase
++// transition, and that the hit queue is bounded and fail-closed. Build
++// (MinGW):
++//   g++ -std=gnu++17 -Wall -Wextra -Werror -Ipc_port tools/p2_bigtreasure_ordinary_test.cpp pc_port/pc_p2_bigtreasure_ordinary.cpp pc_port/pc_p2_bigtreasure_fsmhost.cpp pc_port/pc_p2_bigtreasure_host.cpp pc_port/pc_p2_bigtreasure_fsm.cpp pc_port/pc_p2_bigtreasure.cpp pc_port/pc_p2_bigtreasure_attacks.cpp -o <private-output>/p2_bigtreasure_ordinary_test.exe
++
++#include "pc_p2_bigtreasure_ordinary.h"
++
++#include <cassert>
++#include <cstdio>
++#include <fstream>
++#include <limits>
++
++namespace {
++const char* kProfilePath = "p2_bigtreasure_ordinary_test_profile.txt";
++
++void writeProfile(const char* body)
++{
++    std::ofstream out(kProfilePath, std::ios::binary | std::ios::trunc);
++    out << body;
++}
++
++struct Rig {
++    P2BigTreasureHostSeam seam;
++    P2BigTreasureOrdinary ord;
++    P2BigTreasureFsmHostOutput out;
++
++    Rig()
++    {
++        writeProfile("P2_BIGTREASURE_HOST_1\n"
++                     "placement 0 0 0 0\n"
++                     "target 0 0 100\n"
++                     "timer 0\n"
++                     "discharge 8\n");
++        assert(p2_bigtreasure_host_setup(kProfilePath, seam));
++        P2BigTreasureFsmParms parms;
++        ord.reset(parms);
++    }
++
++    void tick(const P2BigTreasureOrdinaryFacts& facts) { ord.tick(seam, facts, out); }
++};
++
++P2BigTreasureOrdinaryFacts facts(bool targetInBox, bool finishIK)
++{
++    P2BigTreasureOrdinaryFacts f;
++    f.hasTarget = true;
++    f.targetInBox = targetInBox;
++    f.finishIKMotion = finishIK;
++    return f;
++}
++
++// Stays -> Land -> ItemWalk, then waits on the pacer-derived attack gate
++// (4 + 2 * liveWeapons seconds of in-box time) to reach PreAttack -> Attack and
++// start the first (elec) pool.
++void advanceToAttack(Rig& rig)
++{
++    P2BigTreasureOrdinaryFacts f;
++    f.hasTarget = true;
++    int guard = 0;
++    while (rig.ord.phase() != P2BT_Land && guard++ < 400) {
++        rig.tick(f);
++    }
++    assert(rig.ord.phase() == P2BT_Land);
++
++    f = P2BigTreasureOrdinaryFacts{};
++    f.hasTarget = true;
++    f.animEnd = true;
++    rig.tick(f);
++    assert(rig.ord.phase() == P2BT_ItemWalk);
++
++    f = facts(/*targetInBox=*/true, /*finishIK=*/true);
++    guard = 0;
++    while (rig.ord.phase() != P2BT_PreAttack && guard++ < 2000) {
++        rig.tick(f);
++    }
++    assert(rig.ord.phase() == P2BT_PreAttack);
++    assert(rig.ord.chosenWeapon() == P2BTWEAPON_Elec); // threshold 0 picks elec
++
++    f = P2BigTreasureOrdinaryFacts{};
++    f.animEnd = true;
++    rig.tick(f);
++    assert(rig.ord.phase() == P2BT_Attack);
++
++    f = P2BigTreasureOrdinaryFacts{};
++    f.keyEvent2 = true;
++    rig.tick(f);
++    assert(rig.out.fsm.startAttack);
++    assert(rig.seam.director.pools.isStarted(P2BTWEAPON_Elec));
++    assert(rig.seam.attacksStarted == 1);
++}
++
++void testPacerDrivenAttack()
++{
++    Rig rig;
++    advanceToAttack(rig);
++    std::puts("PASS ordinary_pacer_attack");
++}
++
++void testNaturalHitKnockoff()
++{
++    Rig rig;
++    advanceToAttack(rig);
++
++    assert(rig.ord.postHit({P2BTWEAPON_Elec, P2BigTreasureOwnership::kWeaponMaxHealth, false}));
++    P2BigTreasureOrdinaryFacts f;
++    rig.tick(f);
++
++    assert(rig.out.damageResult == P2BTDMG_Weapon);
++    assert(rig.out.knockedOff == 1);
++    assert(rig.seam.ownership.weaponCount() == 3);
++    assert(!rig.seam.ownership.isWeaponAttached(P2BTWEAPON_Elec));
++    // Same-tick re-pick from the remaining band (fire next).
++    assert(rig.ord.phase() == P2BT_PreAttack);
++    assert(rig.ord.chosenWeapon() == P2BTWEAPON_Fire);
++    std::puts("PASS ordinary_natural_knockoff");
++}
++
++void testHitQueueBoundsAndValidation()
++{
++    Rig rig;
++    const float nan = std::numeric_limits<float>::quiet_NaN();
++    assert(!rig.ord.postHit({0, 0.0f, false}));
++    assert(!rig.ord.postHit({0, -5.0f, false}));
++    assert(!rig.ord.postHit({0, nan, false}));
++    assert(!rig.ord.postHit({-2, 10.0f, false}));
++    assert(!rig.ord.postHit({P2BTWEAPON_Count, 10.0f, false}));
++
++    for (int i = 0; i < P2BigTreasureOrdinary::kHitQueueCapacity; ++i) {
++        assert(rig.ord.postHit({P2BTWEAPON_Elec, 1.0f, false}));
++    }
++    assert(rig.ord.pendingHits() == P2BigTreasureOrdinary::kHitQueueCapacity);
++    assert(!rig.ord.postHit({P2BTWEAPON_Elec, 1.0f, false})); // full: dropped
++
++    P2BigTreasureOrdinaryFacts f;
++    P2BigTreasureFsmHostOutput out;
++    rig.ord.tick(rig.seam, f, out);
++    assert(rig.ord.pendingHits() == P2BigTreasureOrdinary::kHitQueueCapacity - 1);
++    std::puts("PASS ordinary_hit_queue");
++}
++
++void testBodyExposureAndKill()
++{
++    Rig rig;
++    advanceToAttack(rig);
++
++    P2BigTreasureOrdinaryFacts f;
++    for (int weapon = 0; weapon < P2BTWEAPON_Count; ++weapon) {
++        assert(rig.ord.postHit({weapon, P2BigTreasureOwnership::kWeaponMaxHealth, false}));
++        rig.tick(f);
++        assert(rig.out.damageResult == P2BTDMG_Weapon);
++    }
++    assert(rig.seam.ownership.weaponCount() == 0);
++    assert(rig.seam.ownership.isBodyExposed());
++
++    assert(rig.ord.postHit({-1, 250.0f, false}));
++    rig.tick(f);
++    assert(rig.out.damageResult == P2BTDMG_Body);
++    assert(rig.out.liveWeapons == 0);
++
++    f.killed = true;
++    rig.tick(f);
++    assert(rig.ord.phase() == P2BT_Dead);
++    std::puts("PASS ordinary_body_and_kill");
++}
++
++void testInactiveSeamNoOp()
++{
++    P2BigTreasureHostSeam seam;
++    P2BigTreasureOrdinary ord;
++    P2BigTreasureFsmParms parms;
++    ord.reset(parms);
++    P2BigTreasureOrdinaryFacts f;
++    P2BigTreasureFsmHostOutput out;
++    assert(ord.postHit({0, 100.0f, false}));
++    ord.tick(seam, f, out);
++    assert(out.damageResult == P2BTDMG_Ignored);
++    assert(out.knockedOff == 0);
++    assert(ord.phase() == P2BT_Stay);
++    assert(ord.pendingHits() == 1); // seam inactive: hit not consumed
++    std::puts("PASS ordinary_inactive");
++}
++} // namespace
++
++int main()
++{
++    testPacerDrivenAttack();
++    testNaturalHitKnockoff();
++    testHitQueueBoundsAndValidation();
++    testBodyExposureAndKill();
++    testInactiveSeamNoOp();
++    std::remove(kProfilePath);
++    std::puts("PASS BIGTREASURE_ORDINARY");
++    return 0;
++}

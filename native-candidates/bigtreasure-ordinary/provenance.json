@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "lane": 32,
+  "issue": 246,
+  "parent_issue": 175,
+  "title": "BigTreasure ordinary-update FSM host drive + natural-hit ingress",
+  "kind": "integration-ready",
+  "native": {
+    "base": "f14c6851473ac1161be56c8b98f4f905232f3635",
+    "base_branch": "codex/p2-main-review-native",
+    "head": "3b16683652a42f1e14eaa1e1d6b07043b8adf8c4",
+    "local_branch": "opencode/p2-lane32-ordinary",
+    "pushed": false,
+    "dirty_state": "clean",
+    "note": "Lane-owned files plus the existing hardlanes registration seam and one additive CMake TU line. Native origin/upstream not pushed."
+  },
+  "root": {
+    "base": "3851d4b",
+    "local_branch": "opencode/p2-lane32-ordinary-root",
+    "pushed": false
+  },
+  "files": [
+    "pc_port/pc_p2_bigtreasure_ordinary.h",
+    "pc_port/pc_p2_bigtreasure_ordinary.cpp",
+    "pc_port/pc_p2_hardlanes.h",
+    "pc_port/pc_p2_hardlanes.cpp",
+    "CMakeLists.txt",
+    "tools/p2_bigtreasure_ordinary_test.cpp"
+  ],
+  "patches": {
+    "full": {
+      "path": "native-candidates/bigtreasure-ordinary/bigtreasure-ordinary-full.patch",
+      "sha256": "CAF18DE42CAA3E68699E849AE5FFF5E07D2E87852E36BB503E38FBD22C47456C"
+    },
+    "series": [
+      {
+        "path": "native-candidates/bigtreasure-ordinary/patches/0001-BigTreasure-246-drive-FSM-host-from-ordinary-update-.patch",
+        "sha256": "8F098765A70612B77B61885020C428327CA897C793B8F4D611A1E63C45B46691"
+      }
+    ]
+  },
+  "standalone": {
+    "compiler": "MinGW64 GCC 16.2.0",
+    "flags": "-std=gnu++17 -Wall -Wextra -Werror",
+    "test": "PASS BIGTREASURE_ORDINARY",
+    "groups": [
+      "ordinary_pacer_attack",
+      "ordinary_natural_knockoff",
+      "ordinary_hit_queue",
+      "ordinary_body_and_kill",
+      "ordinary_inactive"
+    ],
+    "executable_sha256": "0C80FEA74689FAF3E967D749622E20909DC7735F56E8D32E78ED9FCD8EA71350",
+    "regression": "PASS BIGTREASURE_FSMHOST (8/8)"
+  },
+  "build": {
+    "private_build_dir": "output/native-lane32-ordinary-build",
+    "generator": "Ninja",
+    "build_type": "Release",
+    "jAudio": "ON",
+    "optimize": "OFF",
+    "test_hooks": "OFF",
+    "result": "[545/545] Linking CXX executable bin\\nectar.exe",
+    "ninja_dry_run": "ninja: no work to do.",
+    "production_executable_sha256": "17543372A89FCBC719C94E593A20DB909801A628F9DDE5D45B5B889124CC02EC"
+  },
+  "runtime": {
+    "real_gl_run": false,
+    "reason": "No P2 disc image or staged assets in this environment."
+  },
+  "limitations": [
+    "Animation keyframe source (#128) is the gate to full natural attack in ordinary play: only 2/29 clips are staged on the approved baseline and no state->clip key-event map exists, so the policy parks in Land (the non-source injected attack shortcut is retired).",
+    "Natural attack-volume receiver routing is lane 10; the ingress pc_p2_hardlanes_bigtreasure_hit is ready but has no integrated caller.",
+    "No real-GL natural arena acceptance in this pass."
+  ]
+}
