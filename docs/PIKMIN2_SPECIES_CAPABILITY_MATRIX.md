@@ -76,12 +76,20 @@ still have no port receiver, so those columns are definition-only until
 
 ## Versioned species / compartment schema
 
-`native/pc_port/pc_p2_species_schema.h` satisfies the #395 storage requirement:
-v1 = Blue/Red/Yellow, v2 = + Purple/White, v3 = + Bulbmin
-(`p2_schema_max_species`, `p2_schema_supports`, `p2_schema_validate`,
-`p2_schema_total`). An unknown version is rejected, a nonzero count of a species
-newer than the reader version is rejected, and negative counts are rejected, so
-`pc_p2_cave.cpp` should move from widening schema 2 to a schema-3 branch rather
-than reinterpret IDs. Test: `tools/test_p2_species_schema.cpp` ->
-`PASS P2_SPECIES_SCHEMA`. Coordinate the exact wire format with #131/#132 before
-changing either endpoint.
+`native/pc_port/pc_p2_species_schema.h` satisfies the #395 storage requirement
+and matches the cave wire numbering: v1 = Blue/Red/Yellow/Purple, v2 = + White,
+v3 = + Bulbmin (`p2_schema_max_species`, `p2_schema_required_for_species`,
+`p2_schema_supports`, `p2_schema_validate`, `p2_schema_total`). An unknown
+version is rejected, a nonzero count of a species newer than the reader version
+is rejected, and negative counts are rejected.
+
+`pc_p2_cave.cpp` is wired to it: it accepts `P2_CAVE_ENTRY_3`, validates restore
+and runtime species through `p2_schema_supports(checkpointSchema, ...)`, restores
+Bulbmin with `pc_p2_make_bulbmin`, and the writer emits
+`max(checkpointSchema, p2_schema_required_for_species(...))` so it never labels a
+payload with a schema that cannot carry its species. Existing schema 1/2
+behavior is unchanged (schema 1 already allowed Purple). Private build:
+`[2/2] Linking CXX executable bin\nectar.exe` (exit 0), `nectar.exe` SHA-256
+`57FFA6844D4B237DAA49FBC0529976C21657EDFE9387F2F4EF893249C741BB1C`;
+`tools/test_p2_species_schema.cpp` -> `PASS P2_SPECIES_SCHEMA`. The exact
+compartment wire format is still to be agreed with #131/#132.

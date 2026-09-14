@@ -90,3 +90,29 @@ def test_elemental_receivers_consult_species_capability_matrix():
     assert any('p2_species_immune(pc_p2_species(piki), P2HazardWater)' in p.read_text(errors='replace')
                for p in candidates)
 
+
+def _cave_candidates():
+    found = []
+    for base in (ROOT, *ROOT.parents):
+        for rel in (base / 'engine/pc_port/pc_p2_cave.cpp',
+                    base / 'native/pc_port/pc_p2_cave.cpp',
+                    base / 'output/native-lanes-1012/pc_port/pc_p2_cave.cpp'):
+            if rel.is_file() and rel not in found:
+                found.append(rel)
+    return found
+
+
+def test_cave_checkpoint_uses_versioned_schema():
+    candidates = _cave_candidates()
+    if not candidates:
+        pytest.skip('native cave source not present')
+    texts = [p.read_text(errors='replace') for p in candidates]
+
+    def any_has(anchor):
+        return any(anchor in t for t in texts)
+
+    assert any_has('P2_CAVE_ENTRY_3')
+    assert any_has('p2_schema_supports(checkpointSchema,')
+    assert any_has('p2_schema_required_for_species')
+
+
