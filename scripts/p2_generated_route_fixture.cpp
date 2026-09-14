@@ -17,6 +17,7 @@
 #include "GameStat.h"
 #include "Pellet.h"
 #include "Interactions.h"
+#include "Collision.h"
 #include "Route.h"
 #include "GameCoreSection.h"
 #include "pc_p2_dwarf_orange.h"
@@ -66,6 +67,8 @@ class OrdinaryApp : public PlugPikiApp {
     unsigned deliveredFrames = 0;
     unsigned resetCount = 0;
     int expectedRebound = 1;
+    bool gateSquadStaged = false;
+    bool gateOpened = false;
 
     unsigned frames = 0;
     int phase = 0, waited = 0;
@@ -172,7 +175,6 @@ public:
                 // The production day-end path persists one-shot generators before
                 // exitStage. Without this, limit-file flags survive but actors do not.
                 core->cleanupDayEnd();
-                core->exitDayEnd();
                 core->exitStage();
                 require(!pc_p2_dwarf_orange_registered(target), "old checkpoint registry cleared");
                 target=nullptr; corpse=nullptr; reloading=true;
@@ -189,6 +191,42 @@ public:
                 std::printf("P2_ORD_MUSTER frame=%u pikis=%d alive=%d pulled=%d\n", frames, total, alive, musterPulled);
             const bool ready = alive >= 20 && frames > 180;
             if (!ready) return result;
+            if (!gateOpened) {
+                WayPoint* gatePoint = routeMgr ? routeMgr->getWayPoint('test', 92) : nullptr;
+                require(gatePoint != nullptr, "route waypoint92 exists");
+                if (gatePoint->mIsOpen) {
+                    gateOpened=true;
+                    std::printf("P2_ROUTE_GATE_OPEN waypoint=92 staged_squad=%d frame=%u\n",int(gateSquadStaged),frames);
+                } else {
+                    if (!gateSquadStaged) {
+                        Creature* gate=nullptr; float best=400.f;
+                        Iterator walls(itemMgr->getMeltingPotMgr());
+                        CI_LOOP(walls) {
+                            Creature* obj=*walls;
+                            if (!obj->isSluice() || !obj->isAlive() || !obj->mCollInfo) continue;
+                            Vector3f delta=obj->mSRT.t-gatePoint->mPosition;
+                            float distance=std::sqrt(delta.x*delta.x+delta.z*delta.z);
+                            if (distance<best) { best=distance; gate=obj; }
+                        }
+                        require(gate!=nullptr,"workable gate near waypoint92");
+                        CollPart* flag=gate->mCollInfo->getSphere('flag');
+                        require(flag && flag->getChildCount()>0,"gate work collision parts");
+                        int count=0; Iterator workers(pikiMgr);
+                        CI_LOOP(workers) {
+                            auto* p=static_cast<Piki*>(*workers); if(!p->isAlive()) continue;
+                            CollPart* part=flag->getChildAt(count%flag->getChildCount());
+                            p->resetPosition(part->mCentre+Vector3f(0,0,10));
+                            p->changeMode(PikiMode::FreeMode,n); ++count;
+                        }
+                        n->resetPosition(gate->mSRT.t+Vector3f(250,0,250));
+                        gateSquadStaged=true;
+                        std::printf("P2_ROUTE_GATE_SETUP waypoint=92 workers=%d type=%d pos=%.3f,%.3f,%.3f health=%.1f forced_damage=0\n",count,gate->mObjType,gate->mSRT.t.x,gate->mSRT.t.y,gate->mSRT.t.z,gate->mHealth);
+                        std::fflush(stdout);
+                    }
+                    require(frames<9000,"native gate work timeout");
+                    return result;
+                }
+            }
             genPos = target->mGenerator ? target->mGenerator->mGenPosition : target->mSRT.t;
             actorSpawn = target->mSRT.t;
             n->resetPosition(actorSpawn + Vector3f(40, 0, 40));
@@ -297,7 +335,6 @@ public:
                 auto* core=findCore(gameflow.mGameSection); require(core!=nullptr,"game core");
                 expectedRebound=0; // A delivered actor must not respawn before its rebirth interval.
                 core->cleanupDayEnd();
-                core->exitDayEnd();
                 core->exitStage();
                 require(!pc_p2_dwarf_orange_registered(target), "old registry cleared at stage exit");
                 target=nullptr; corpse=nullptr; reloading=true;
