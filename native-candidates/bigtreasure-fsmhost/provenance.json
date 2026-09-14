@@ -3,30 +3,57 @@
   "lane": 32,
   "issue": 246,
   "parent_issue": 175,
-  "title": "BigTreasure FSM host binding — real weapon damage and knock-off phase transition",
+  "title": "BigTreasure FSM host binding — real weapon damage, knock-off phase transition, real-GL fixture",
   "native": {
     "base": "086ed858c2693d9259679177e0eca00a80f57fbf",
     "base_branch": "opencode/p2-hardlanes-native",
-    "head": "2826d61c7997585d52b55e6dea43e1a38b3790c2",
+    "head": "c4c4095420a355f3da51e6ce78c348b0fbdee153",
     "local_branch": "opencode/p2-lane32-fsmhost",
     "pushed": false,
+    "dirty_state": "clean",
+    "picked": {
+      "source": "1d5a242bd4043604ce3911b225c36fa3d2a22a87",
+      "subject": "pc_port: open experimental-room windows small and centered by default",
+      "reason": "mandatory fan-out fixture baseline (960x540 centered experimental-room window); not an ancestor of the 086ed858 base, adopted by cherry-pick per docs/PIKMIN2_IMPLEMENTATION_FANOUT.md"
+    },
     "note": "Native origin is the parallel decomp checkout and upstream is Open Nectar; neither was pushed. These patches capture the local native branch."
   },
+  "commits": [
+    "2826d61c7997585d52b55e6dea43e1a38b3790c2",
+    "6391a5a791586ef61023fc3b9af0426c96515db1",
+    "a82e0f4427c9c7ce9cf2c9c6f88eede3997ab3d3",
+    "c4c4095420a355f3da51e6ce78c348b0fbdee153"
+  ],
   "files": [
     "pc_port/pc_p2_bigtreasure_fsmhost.h",
     "pc_port/pc_p2_bigtreasure_fsmhost.cpp",
-    "tools/p2_bigtreasure_fsmhost_test.cpp"
+    "tools/p2_bigtreasure_fsmhost_test.cpp",
+    "CMakeLists.txt",
+    "tools/p2_bigtreasure_runtime.cpp",
+    "tools/p2_bigtreasure_runtime_run.py"
   ],
   "patches": {
     "full": {
       "path": "native-candidates/bigtreasure-fsmhost/bigtreasure-fsmhost-full.patch",
-      "size": 15585,
-      "sha256": "0ae128849d75866fc68077c6c1ff07e8836b5d2a521214c834c025af1b29e064"
+      "size": 26430,
+      "sha256": "30438512db4971387368317958197e6e566f6afd5bbd5235d5eff53537c816a0"
     },
     "series": [
       {
         "path": "native-candidates/bigtreasure-fsmhost/patches/0001-BigTreasure-FSM-host-binding-with-real-weapon-damage.patch",
-        "sha256": "617dd113805406642876958f0bc521fc55f37c726d906827930dbce2c3ba45fe"
+        "sha256": "9c67036664edc4f395378dd11f005d7a27d431ecb4e2f22cc6df748ec5dcb18a"
+      },
+      {
+        "path": "native-candidates/bigtreasure-fsmhost/patches/0002-BigTreasure-real-GL-FSM-host-fixture-phase-960x540-w.patch",
+        "sha256": "bf556954522b030e701124fc450b1c88f65bb4c4accad47505f7d10c80780d34"
+      },
+      {
+        "path": "native-candidates/bigtreasure-fsmhost/patches/0003-pc_port-open-experimental-room-windows-small-and-cen.patch",
+        "sha256": "212613ee2bced81b96d0ddc5a02c08285bab32fcc4717d231e5fce36cd6dfe1c"
+      },
+      {
+        "path": "native-candidates/bigtreasure-fsmhost/patches/0004-BigTreasure-adopt-mandatory-960x540-centered-experim.patch",
+        "sha256": "861027653a184dcd2ef7cd486788a3c25971c61fe5deca33a894e00b9f9cc6f8"
       }
     ]
   },
@@ -35,11 +62,33 @@
     "sha256": "fd821792183c9d75de114208038b844da6e5e9e9ecd51388a43fa02adc5af86d",
     "size": 117142,
     "compiler": "MinGW64 g++ 16.2.0 (-std=gnu++17 -Wall -Wextra -Werror)",
-    "command": "g++ -std=gnu++17 -Wall -Wextra -Werror -Ipc_port tools/p2_bigtreasure_fsmhost_test.cpp pc_port/pc_p2_bigtreasure_fsmhost.cpp pc_port/pc_p2_bigtreasure_host.cpp pc_port/pc_p2_bigtreasure_fsm.cpp pc_port/pc_p2_bigtreasure.cpp pc_port/pc_p2_bigtreasure_attacks.cpp -o output/p2_bigtreasure_fsmhost_test.exe",
     "result": "PASS BIGTREASURE_FSMHOST (exit 0)"
   },
+  "rtx": {
+    "private_build": "output/native-lane32-build",
+    "configuration": "Ninja, Release, PIKMIN_NATIVE_JAUDIO=ON, PIKMIN_NATIVE_OPTIMIZE=OFF, PIKMIN_RANDOMIZER_TEST_HOOKS=OFF",
+    "production_executable": "output/native-lane32-build/bin/nectar.exe",
+    "production_executable_sha256": "ca8af151c633ae6138c8d13ed59584c56b2d679adcf858c3e73468cced9a45cf",
+    "ninja_dry_run": "ninja: no work to do.",
+    "fixture_dir": "output/lane32-fsmhost-fixture-02",
+    "fixture_executable_sha256": "f75b5e34735eaf98b7e9cd87d7cf55e59d3f6c0d5e648666f41db2e702c51d4d",
+    "run_dir": "output/lane32-fsmhost-runtime3/3fa5cb8f34024f5f876fea5359b8a477",
+    "status": "passed",
+    "window": "size=960x540 pos=373,263",
+    "markers": [
+      "P2_BIGTREASURE_FLOOR_PROBE ground=-0.000000 center=20.000000 floor=1",
+      "P2_BIGTREASURE_WALL_PROBE wall=1 groundY=-0.000000",
+      "P2_BIGTREASURE_ELEC_PROBE_PASS bounces=10 traces=3000 floors=2720",
+      "P2_BIGTREASURE_WATER_PROBE_PASS ticks=59 hits=1 ground=-0.000000",
+      "P2_BIGTREASURE_HOST_SEAM_PASS ticks=361 attacks=1 events=5",
+      "P2_BIGTREASURE_WINDOW size=960x540 pos=373,263",
+      "P2_BIGTREASURE_FSMHOST_PASS ticks=1 knockoffs=1 weapons=3 phase=PreAttack",
+      "PASS BIGTREASURE_RUNTIME"
+    ],
+    "captures": ["bigtreasure-wait1.ppm", "bigtreasure-dead.ppm"]
+  },
   "integration_request": {
-    "cmake": "add pc_port/pc_p2_bigtreasure_fsmhost.cpp to the pikmin_pc BigTreasure translation-unit list (lane 01 reconciles the shared CMake).",
-    "runtime": "extend tools/p2_bigtreasure_runtime.cpp with a runFsmHost() phase after the existing seam probes for real-GL evidence; requires the CMake hook and a private fixture rebuild."
+    "cmake": "the bundle includes the additive pikmin_pc translation-unit line for pc_port/pc_p2_bigtreasure_fsmhost.cpp and the mandatory pc_window_center() baseline; lane 01 reconciles against the current engine.",
+    "runtime": "the fixture phase and runner validation are lane-owned tool changes; the real-GL run above is the ordinary-runtime evidence for this slice."
   }
 }

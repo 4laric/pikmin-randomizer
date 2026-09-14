@@ -1,0 +1,163 @@
+From 6391a5a791586ef61023fc3b9af0426c96515db1 Mon Sep 17 00:00:00 2001
+From: 4laric <4laric@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 02:26:14 -0400
+Subject: [PATCH 2/4] BigTreasure: real-GL FSM host fixture phase, 960x540
+ window and CMake hook (#246)
+
+---
+ CMakeLists.txt                      |  5 +-
+ tools/p2_bigtreasure_runtime.cpp    | 72 ++++++++++++++++++++++++++++-
+ tools/p2_bigtreasure_runtime_run.py | 10 ++++
+ 3 files changed, 84 insertions(+), 3 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 36c1bdb6..7762edb8 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -189,8 +189,9 @@ set(PC_PORT_SOURCES
+  pc_port/pc_p2_bigtreasure.cpp
+  pc_port/pc_p2_bigtreasure_attacks.cpp
+  pc_port/pc_p2_bigtreasure_fsm.cpp
+- pc_port/pc_p2_bigtreasure_host.cpp
+- pc_port/pc_p2_bigtreasure_map_trace.cpp
++    pc_port/pc_p2_bigtreasure_host.cpp
++    pc_port/pc_p2_bigtreasure_fsmhost.cpp
++    pc_port/pc_p2_bigtreasure_map_trace.cpp
+  pc_port/pc_p2_bigtreasure_motion.cpp
+  pc_port/pc_p2_bigtreasure_visual.cpp
+     pc_port/pc_randomizer.cpp
+diff --git a/tools/p2_bigtreasure_runtime.cpp b/tools/p2_bigtreasure_runtime.cpp
+index 4dd48864..9931dfe0 100644
+--- a/tools/p2_bigtreasure_runtime.cpp
++++ b/tools/p2_bigtreasure_runtime.cpp
+@@ -33,6 +33,7 @@
+ #include <vector>
+ 
+ #include "pc_p2_bigtreasure_host.h"
++#include "pc_p2_bigtreasure_fsmhost.h"
+ #include "pc_p2_bigtreasure_map_trace.h"
+ #include "pc_p2_bigtreasure_visual.h"
+ 
+@@ -118,6 +119,14 @@ public:
+             require(p2_bigtreasure_host_setup("p2-bigtreasure-host.txt", seam), "host setup");
+             std::puts("P2_BIGTREASURE_HOST_READY profile=p2-bigtreasure-host.txt placement=fixed "
+                       "captures=5 no_ai=1 no_damage=1");
++            SDL_Window* window = SDL_GL_GetCurrentWindow();
++            require(window != nullptr, "window");
++            int windowWidth = 0, windowHeight = 0, windowX = 0, windowY = 0;
++            SDL_GetWindowSize(window, &windowWidth, &windowHeight);
++            SDL_GetWindowPosition(window, &windowX, &windowY);
++            require(windowWidth == 960 && windowHeight == 540, "window size 960x540");
++            std::printf("P2_BIGTREASURE_WINDOW size=%dx%d pos=%d,%d\n", windowWidth, windowHeight,
++                        windowX, windowY);
+             setup = true;
+         }
+         switch (phase) {
+@@ -126,6 +135,7 @@ public:
+             runElecProbe();
+             runWaterProbe();
+             runHostSeam();
++            runFsmHost();
+             startVisual();
+             phase = 1;
+             break;
+@@ -329,6 +339,63 @@ private:
+                     (unsigned long long)seam.defeatEvents);
+     }
+ 
++    void runFsmHost()
++    {
++        // FSM host binding on the real map: drive the 12-state policy to an
++        // attack, apply real weapon damage and observe the knock-off phase
++        // transition (live weapon count drops and the policy re-enters
++        // PreAttack in the same tick). Re-installs the seam after the defeat
++        // probe above.
++        require(p2_bigtreasure_host_setup("p2-bigtreasure-host.txt", seam), "fsmhost setup");
++        P2BigTreasureFsmHost fsmHost;
++        P2BigTreasureFsmParms parms;
++        fsmHost.reset(parms);
++        P2BigTreasureFsmHostInput in;
++        P2BigTreasureFsmHostOutput out;
++
++        in.hasTarget = true;
++        int guard = 0;
++        while (fsmHost.phase() != P2BT_Land && guard++ < 400) {
++            fsmHost.tick(seam, in, out);
++        }
++        require(fsmHost.phase() == P2BT_Land, "fsmhost Stay->Land");
++        in.animEnd = true;
++        fsmHost.tick(seam, in, out);
++        require(fsmHost.phase() == P2BT_ItemWalk, "fsmhost Land->ItemWalk");
++        in = P2BigTreasureFsmHostInput{};
++        in.hasTarget = true;
++        in.attackLimitTime = true;
++        fsmHost.tick(seam, in, out);
++        in = P2BigTreasureFsmHostInput{};
++        in.hasTarget = true;
++        in.finishIKMotion = true;
++        fsmHost.tick(seam, in, out);
++        require(fsmHost.phase() == P2BT_PreAttack, "fsmhost ItemWalk->PreAttack");
++        in = P2BigTreasureFsmHostInput{};
++        in.animEnd = true;
++        fsmHost.tick(seam, in, out);
++        require(fsmHost.phase() == P2BT_Attack, "fsmhost PreAttack->Attack");
++        in = P2BigTreasureFsmHostInput{};
++        in.keyEvent2 = true;
++        fsmHost.tick(seam, in, out);
++        const int chosen = fsmHost.chosenWeapon();
++        require(chosen == P2BTWEAPON_Elec && seam.director.pools.isStarted(chosen),
++                "fsmhost attack start");
++
++        in = P2BigTreasureFsmHostInput{};
++        in.damage = P2BigTreasureOwnership::kWeaponMaxHealth;
++        in.damageWeapon = chosen;
++        fsmHost.tick(seam, in, out);
++        require(out.damageResult == P2BTDMG_Weapon, "fsmhost damage routing");
++        require(out.knockedOff == 1 && seam.ownership.weaponCount() == P2BTWEAPON_Count - 1,
++                "fsmhost knock-off");
++        require(fsmHost.phase() == P2BT_PreAttack && fsmHost.chosenWeapon() != chosen,
++                "fsmhost phase transition");
++        std::printf("P2_BIGTREASURE_FSMHOST_PASS ticks=1 knockoffs=%llu weapons=%d phase=%s\n",
++                    (unsigned long long)fsmHost.knockOffs(), seam.ownership.weaponCount(),
++                    P2BigTreasureFsm::stateName(fsmHost.phase()));
++    }
++
+     void startVisual()
+     {
+         require(pc_p2_bigtreasure_visual_setup("p2-bigtreasure-visual.txt"), "visual setup");
+@@ -407,7 +474,10 @@ int main(int argc, char** argv)
+     _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1");
+     pc_bbft_init(argc, argv);
+     require(pc_pikipelago_room_preview(), "requires --experimental-pikmin2-room");
+-    require(pc_window_init("BigTreasure host-seam runtime fixture", 960, 720), "window init");
++    require(pc_window_init("BigTreasure host-seam runtime fixture", 960, 540), "window init");
++    if (SDL_Window* window = SDL_GL_GetCurrentWindow()) {
++        SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
++    }
+     pc_settings_init();
+     gsys->Initialise();
+     pc_settings_p2d_init();
+diff --git a/tools/p2_bigtreasure_runtime_run.py b/tools/p2_bigtreasure_runtime_run.py
+index c114293b..95d85630 100644
+--- a/tools/p2_bigtreasure_runtime_run.py
++++ b/tools/p2_bigtreasure_runtime_run.py
+@@ -94,6 +94,16 @@ def verify_log(text):
+                      r"events=(\d+)\s*$", text, flags=re.MULTILINE)
+     if seam and int(seam.group(3)) != 5:
+         errors.append(f"seam defeat did not release 5 captures: {seam.groups()}")
++    if not re.search(r"^P2_BIGTREASURE_WINDOW\s+size=960x540\s+pos=-?\d+,-?\d+\s*$", text,
++                     flags=re.MULTILINE):
++        errors.append("missing 960x540 window marker")
++    fsmhost = re.search(r"^P2_BIGTREASURE_FSMHOST_PASS\s+ticks=(\d+)\s+knockoffs=(\d+)\s+"
++                        r"weapons=(\d+)\s+phase=(\w+)\s*$", text, flags=re.MULTILINE)
++    if not fsmhost:
++        errors.append("missing fsmhost PASS marker")
++    elif (int(fsmhost.group(2)) != 1 or int(fsmhost.group(3)) != 3
++          or fsmhost.group(4) != "PreAttack"):
++        errors.append(f"fsmhost knock-off phase transition not observed: {fsmhost.groups()}")
+     visual = re.search(r"^P2_BIGTREASURE_VISUAL_READY\s+clips=(\d+)\s+pellets=(\d+)\s+"
+                        r"pellet_debug=(\d+)\s*$", text, flags=re.MULTILINE)
+     if not visual:
+-- 
+2.55.0.windows.3
+
