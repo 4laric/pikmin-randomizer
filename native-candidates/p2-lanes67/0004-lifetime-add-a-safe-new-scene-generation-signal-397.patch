@@ -1,7 +1,7 @@
 From a4ffa05bd94bef032fb3d954abf6ab5a82ef5d3d Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 11:21:38 -0400
-Subject: [PATCH 4/4] lifetime: add a safe new-scene generation signal (#397)
+Subject: [PATCH 4/5] lifetime: add a safe new-scene generation signal (#397)
 
 GameCoreSection::finalSetup calls pc_p2_scene_begin(), incrementing a
 monotonic counter exposed by pc_p2_scene_generation(). A stage transition frees
