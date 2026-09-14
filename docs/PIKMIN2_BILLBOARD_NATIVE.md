@@ -72,20 +72,40 @@ bases are rejected.
 Strict defaults: `tests/test_pikmin2_convert_billboard.py` and the wider
 converter/flora/material suites stay green (98 passed, 1 skipped focused).
 
+Real-source check (private, no disc assets committed): the extracted
+`output/p2-converter-evidence/run1/HikariKinoko` model converts all six sampled
+poses with `billboard='native'`:
+
+```text
+frame 0  pivot (-4.00, 46.00,  0.00) scale 0.8 shapes [0] materials [0]
+frame 14 pivot (-4.30, 45.68, -1.13) scale 0.8
+frame 28 pivot (-6.29, 45.69, -2.93) scale 0.8
+frame 41 pivot (-2.40, 46.13,  2.12) scale 0.8
+frame 55 pivot (-3.94, 46.01, -0.24) scale 0.8
+frame 69 pivot (-4.00, 46.00,  0.00) scale 0.8
+converted=True poses=6
+```
+
+The pivot and scale match the audited source anchor (translation `(-4, 46, 0)`,
+scale `0.8`), and every sampled pose satisfies the axis-aligned/uniform
+precondition, so the converter path works on the real HikariKinoko geometry.
+Candidate native bank: `output/tracks/p2-lanes89-next/hikari-native-01`.
+
 ## Remaining dependency
 
-The **real-GL visual gate is UNTESTED**. It needs a generated HikariKinoko bank
-converted with `billboard='native'` and a reserved real-GL slot. Two items must
-be confirmed at that gate, and are recorded rather than assumed:
+The **real-GL visual gate is UNTESTED**. It needs this native bank rendered in a
+camera-framed fixture through a reserved real-GL slot. Two items are recorded
+rather than assumed:
 
 1. HikariKinoko's flora conversion uses BCA-derived `draw_matrices`; the native
    path requires the billboard joint to be axis-aligned and uniformly scaled at
-   each sampled pose. If a pose violates that, the conversion fails loudly and a
-   rotation-aware variant is needed.
+   each sampled pose. The six-pose real-source check above passes; a wider
+   `pose_limit` should be re-checked when the bank is staged.
 2. `gfx.mLastModelMatrix` must be the active actor model matrix at draw time for
    the flagged mesh; if a caller path renders a shape without it, the flag falls
    back to the plain joint matrix.
 
 The default flora tolerance for HikariKinoko therefore stays `'static'`
-(approximation explicitly counted) until that GL pass lands; this slice adds the
-capability and tests, not a silent default switch.
+(approximation explicitly counted). Flipping it to `'native'` is a one-line
+`TOLERANCES` change in `experimental/pikmin2_flora_assets.py`; it is held until
+the GL pass confirms the camera-facing output.
