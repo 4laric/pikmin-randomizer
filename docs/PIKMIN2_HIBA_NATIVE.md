@@ -161,3 +161,32 @@ base). The redirect says to distinguish predicted log gates from observed
 runtime passes: the Hiba fire receiver is an observed engine receiver pass; the
 Gas/Denki policy decisions are predicted/blocked, not applied. No natural
 gameplay acceptance is claimed.
+
+## 8. Rebased delta on the approved native baseline (f14c6851)
+
+Per `PIKMIN2_PREWAVE_REVIEW_437.md` §2, the exact native Hiba delta now sits on
+the approved native baseline `f14c6851473ac1161be56c8b98f4f905232f3635` (which
+already carries the current Jellyfloat receiver work), so the integrated root
+harness can actually run its actor:
+
+- Branch `opencode/p2-lane22-hiba-f14c` @
+  `f139d2645ce10243feb8084a2df3c53c29dcb255` (base `f14c6851`; never pushed).
+- Files: `pc_port/pc_p2_hiba.{h,cpp}`, `pc_port/pc_p2_hiba_policy.h`,
+  `pc_port/pc_p2_dweevil_policy.h` (shared pure policy header; the dweevil
+  runtime cpp is **not** included), plus additive registration in
+  `CMakeLists.txt`, `pc_port/pc_p2_preview.cpp`,
+  `src/plugPikiKando/gameCoreSection.cpp` and
+  `src/plugPikiNakata/tekimgr.cpp` (3 teardown paths).
+- Private build `output/p2-lane22-hiba-f14c-build`, Ninja Release, JAudio ON;
+  full 545/545 link, `ninja -n pikmin_pc` no work.
+- Fixture `output/p2-lane22-root/output/p2-lane22-hiba-f14c-fixture-01/build/fixture.exe`
+  SHA-256 `8155eacc31caa09636fd6bd5fb729af5c57e1066ddd3dfa27097609037c74142`,
+  `provenance.json` status `built`, expected native head `f139d264`.
+- GL run `output/p2-lane22-root/output/p2-lane22-hiba-f14c-runtime-01/hiba/d01036c96d2149629f99b737689018e7`,
+  validator all-true (`completion`, `baseline`, `window`, `scenario`, `ready`,
+  `activate_hiba/gas/elec`, `emit_hiba/gas/elec`, `vulnerable_hit`,
+  `immune_pass`, `gas_blocked`, `cleanup`, `cleanup_dead`, `no_timeout`).
+
+This clears the integration blocker for the Hiba fixture. The remaining lane-22
+gaps (dweevil engine actor binding, BombOtakara shared blast, visuals/effects)
+are unchanged.
