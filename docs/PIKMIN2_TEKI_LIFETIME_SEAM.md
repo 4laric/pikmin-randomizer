@@ -155,6 +155,13 @@ destroyed `TekiMgr`; now the stage boundary clears all of them. Exe SHA-256
 `output/lane67-teardown-run/53ed039e5cb0403bafe4dd33cc7ff002/native-teardown-probe.log`
 sha256 `FBBA7012A33A7DEFEC6EA2DFDCC7D0AAF7FF7DD5AF0BAB6744EBA1BFC8585881`.
 
+The full lifecycle fixture was also re-run on the `87740f5d` head (same PASS:
+`passed=true`, `summary=7,6,5,5,126,0,1`, `control=1`; run
+`output/lane67-root/output/lane67-lifecycle-run2/ee469afe0830480081f9e95cb302f048`,
+log sha256 `29DB549F86933D4E09FBD07B7CF01E888482B48CEF9C00EF5C4F875B078F9A59`), so
+the lane-07 runtime evidence is single-head. Native candidate bundle for lane 01:
+`native-candidates/p2-lanes67/`.
+
 ### Gates closed / still open
 
 - **Closed (runtime):** natural death funnel, engine-driven `pc_p2_forget_teki`
