@@ -99,3 +99,23 @@ its existing public API.
 - **Still lane-06/engine-gated**: P2 contested cargo, nest treasure storage and
   exactly-once AP receipt. Interface request posted on #441; this lane will not
   fork the Giant module's contest logic.
+
+## Reward receipts — lane-06 consumer (lane 18, 2026-09-14)
+
+`experimental/pikmin2_breadbug_rewards.py` builds the breadbug reward
+descriptors on lane 06's shared `experimental.pikmin2_receipts` schema and
+proves exactly-once grant + restart persistence for the family. Root-only; no
+native change, no save mutation.
+
+- Descriptors: `enemy:38` PanModoki → `pellet` on the Onion ledger; `enemy:40`
+  OoPanModoki → `corpse` on the AP ledger. Helpers/aliases `alias:39`
+  (PanModokiNest) and `helper:83` (PanHouse) deliberately have no descriptor and
+  are rejected by `grant_defeat`.
+- `resolve_encounters` grants each `(identity, actor, encounter)` once; a revisit
+  of the same actor/encounter in one seed adds no second reward.
+- `reconcile_runs` delegates coverage/leak checks to lane 06's `reconcile`, so
+  missing sources and Pod-only leaks behave identically to other lanes.
+- Evidence: `py -3.12 -m pytest tests/test_pikmin2_breadbug_rewards.py -q` →
+  10 passed (with lane 06's `test_pikmin2_receipts.py`: 42 passed, 19 subtests).
+- This closes the "rewards once" consumer half. The native contested-cargo half
+  is still gated on lane 06's native contest surface (#441).
