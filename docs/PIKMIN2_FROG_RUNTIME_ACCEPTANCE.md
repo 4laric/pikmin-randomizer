@@ -160,7 +160,7 @@ param chain; unregistered controls are untouched.
 | Landing press / retarget | PASS (host model) | native receiver not yet asserted |
 | Jump attack resolution | PASS (host model) | source event execution still P1 |
 | Death/corpse (D) | PASS with injected attack | natural damage parity untested |
-| Transport/reward (D) | UNTESTED | carry-observation fixture implemented; no run yet, no native receipt |
+| Transport/reward (D) | UNTESTED | carry-observation fixture grounded + transported assist; native run still pending the GL slot, no native receipt |
 | Cleanup/re-entry (E) | PASS (manager reset/re-entry) | full scene/day reload untested |
 
 ### Natural combat observation (lane 16, 2026-09-14)
@@ -205,22 +205,36 @@ lethal `InteractAttack(navi,nullptr,10000,false)` calls as the runtime fixture.
 It then watches the ordinary P1 carry path rather than a fabricated reward:
 
 - the dead actor's `Pellet` is located by `mPelletView` in `pelletMgr`
-  (`P2_FROG_CORPSE`);
+  (`P2_FROG_CORPSE`), then snapped from a stray y=0 onto the real
+  `mapMgr->getMinY(x,z,true)` floor and logged (`P2_FROG_CORPSE_GROUND`,
+  including the config's `mCarryMinPikis`), never an XZ teleport;
 - carry is the real native attachment of a live Pikmin to that pellet
   (`getStickObject`/`mPikiCarrier`/`mCarrierCount`), logged as
-  `P2_FROG_CARRY id=... carried=1`, with bounded route ticks;
-- delivery is the pellet leaving the live set at absorption
-  (`P2_FROG_DELIVER id=... delivered=1`).
+  `P2_FROG_CARRY id=... carried=1`, with bounded route ticks and max XZ route
+  distance;
+- delivery is the pellet reaching `PELSTATE_Goal` and then leaving the live set
+  at Onion absorption (`Pellet::isAlive` flips false), logged as
+  `P2_FROG_DELIVER id=... delivered=1 goal=1`.
 
+Two bounded, labelled inputs mirror the accepted original-map delivery fixture
+(`experimental.pikmin2_kochappy_arena_delivery`). After both corpses exist the
+fixture repositions the surviving squad adjacent to the first corpse and, if
+free recruitment still leaves no carriers, assigns the native
+`PikiAction::Transport` task to the surviving Pikmin (`P2_FROG_CARRY_ASSIST`,
+repeated at most 4 times, 180 frames apart, only while fewer than the corpse's
+`mCarryMinPikis` carriers are attached). It never fabricates a delivery and never
+writes enemy state/health.
 No native hook is required: these are existing public `Pellet`/`Creature`/
-`Piki` members, so `native/pc_port/pc_p2_frog.cpp` is unchanged. If P1 does not
-auto-carry within a bounded window the fixture moves the surviving squad next to
-the corpse once, logging `P2_FROG_CARRY_ASSIST`, and never fabricates the
-delivery. The result is honest: `validate()` returns `passed` only when both
-corpses exist and at least one carry **and** delivery is observed; otherwise it
-exits with `UNOBSERVED P2_FROG_CARRY ... unobserved=1`.
-`tests/test_pikmin2_frog_carry.py` (7 tests) accepts a complete observation and
-rejects a non-zero exit, a missing carry, a missing delivery, an injected-only
-corpse log, a missing corpse and a missing registered birth. The native run is
-pending the coordinated GL slot; native Onion/receipt delivery and save
-persistence remain open.
+`Piki` members, so `native/pc_port/pc_p2_frog.cpp` is unchanged. The result is
+honest: `validate()` returns `passed` only when both corpses exist and at least
+one carry **and** delivery is observed; otherwise it exits `UNOBSERVED
+P2_FROG_CARRY ... unobserved=1`, and a wall-clock guard forces that honest exit
+before the 180 s subprocess budget. `tests/test_pikmin2_frog_carry.py` (8 tests)
+accepts a complete observation and rejects a non-zero exit, a missing carry, a
+missing delivery, a delivery without a carry, an injected-only corpse log, a
+missing corpse and a missing registered birth. The native run is pending the
+coordinated GL slot; native Onion/receipt delivery and save persistence remain
+open. Residual risk: the frog corpse config may require more carriers than the
+surviving squad after the landing press; if fewer than `mCarryMinPikis` Pikmin
+remain the transport task still cannot lift the corpse and the run honestly
+reports `unobserved`.

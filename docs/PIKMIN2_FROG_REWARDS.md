@@ -45,7 +45,12 @@ ordinary JSON document, not a memory card.
   native run is pending the coordinated GL slot. It needs no native hook: it
   reads existing public `Pellet::mPelletView`/`mPikiCarrier`/`mCarrierCount`,
   `Creature::getStickObject` and `Pellet::isAlive`, so `pc_p2_frog.cpp` is
-  unchanged. A missing carry is reported as unobserved, never as a delivery.
+  unchanged. Because a frog corpse out-prices the survivors' free recruitment,
+  the fixture snaps the corpse onto `mapMgr->getMinY(x,z,true)` and, if fewer
+  than the config's `mCarryMinPikis` carriers attach, assigns the native
+  `PikiAction::Transport` task to the surviving squad — the same labelled
+  original-map recipe as `pikmin2_kochappy_arena_delivery`. A missing carry or
+  delivery is reported as unobserved, never as a delivery.
 - `P2_FROG_PRESS` is family-local instrumentation emitted from the existing
   `pc_p2_frog_draw` path when a registered frog's P1-proxy `TekiMotion::Attack`
   is active. It is edge-triggered, a no-op for unregistered actors and cleared
