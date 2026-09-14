@@ -272,6 +272,16 @@ void pc_p2_sokkuri_forget(BTeki* actor) {
     actors.erase(static_cast<PelletView*>(actor));
 }
 
+// Fixture observability (#165/#407 lifecycle gates): read-only registration
+// count / membership. Never mutates state and is safe for any actor pointer.
+unsigned long pc_p2_sokkuri_count() {
+    return (unsigned long)actors.size();
+}
+
+bool pc_p2_sokkuri_registered(BTeki* actor) {
+    return actors.count(static_cast<PelletView*>(actor)) != 0;
+}
+
 float pc_p2_sokkuri_param_f(const BTeki* actor, int idx, float fallback) {
     if (!ready || !actors.count(static_cast<PelletView*>(const_cast<BTeki*>(actor)))) return fallback;
     if (idx == TPF_Life) return LIFE;
@@ -534,7 +544,13 @@ void pc_p2_sokkuri_update(BTeki* actor) {
         actor->inputDrive(Vector3f(0.0f, 0.0f, 0.0f));
         actor->mVelocity.x = 0.0f;
         actor->mVelocity.z = 0.0f;
-        if (s.stateTime >= clipDuration("dead1")) actor->die();
+        // Host death handoff: the P1 strategy reacts to mHealth<=0 inside
+        // BTeki::doAI(), calls die() there and then dieSoon()->becomePellet() in
+        // the same doAI() pass. Calling BTeki::die() from this update-phase hook
+        // would set mDeadState before the next doAI() and permanently block
+        // dieSoon(), leaving a dead-but-present actor with no corpse. The module
+        // therefore only drives the source dead clip and lets the host complete
+        // teardown/corpse. (The SOKKURI_PRESS crush path is unchanged.)
         break;
     case SOKKURI_PRESS:
         if (s.stateTime >= clipDuration("pdead1")) actor->die();

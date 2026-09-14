@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <unordered_map>
@@ -127,6 +128,15 @@ public:
             if (entry.second == captain) ++n;
         return n;
     }
+    // Actors owned by `captain`, ascending by id so a split is deterministic
+    // across runs regardless of hash-table iteration order.
+    std::vector<std::uint32_t> actorsOwnedBy(int captain) const {
+        std::vector<std::uint32_t> out;
+        for (const auto& entry : owner)
+            if (entry.second == captain) out.push_back(entry.first);
+        std::sort(out.begin(), out.end());
+        return out;
+    }
 
     static bool isCaptain(int captain) {
         return captain == P2CaptainA || captain == P2CaptainB;
@@ -215,6 +225,18 @@ public:
         return P2CaptainOwnershipTable::isCaptain(captain) ? slots[captain].health : 0.0f;
     }
     bool controllable(int captain) const { return aliveIdle(captain); }
+
+    // Raw health override for the engine-facing host adapter
+    // (pc_p2_captain.h), which is authoritative for the live Navi value. This
+    // does not change phase: use damage() for knockout and revive() for
+    // coming back. Refuses absent slots and non-finite/negative values.
+    bool setHealth(int captain, float health) {
+        if (!bound() || !P2CaptainOwnershipTable::isCaptain(captain)
+            || !slots[captain].present || !std::isfinite(health) || health < 0.0f)
+            return false;
+        slots[captain].health = health;
+        return true;
+    }
 
     // Source NaviMgr::getActiveNavi switch. Refuses a captain that is absent,
     // captured or down. Owned actors stay with their owners; no transfer and
@@ -319,6 +341,49 @@ public:
     }
     void abandon(int captain, std::uint32_t actor) {
         if (bound()) table->release(actor, captain);
+    }
+
+    // --- Per-captain squad split (lane 12 two-captain follow-up) ---
+
+    // Move up to `count` of `from`'s actors to `to`, in ascending actor-id order
+    // so a split is deterministic. Both captains must be controllable (present,
+    // not captured/down) and distinct. Returns the moved actor ids; a `to`
+    // captain with no room for a given actor leaves it with `from`.
+    std::vector<std::uint32_t> splitSquad(int from, int to, std::size_t count) {
+        std::vector<std::uint32_t> moved;
+        if (!bound() || from == to || !aliveIdle(from) || !aliveIdle(to))
+            return moved;
+        std::vector<std::uint32_t> owned = table->actorsOwnedBy(from);
+        if (count > owned.size()) count = owned.size();
+        moved.reserve(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            table->release(owned[i], from);
+            if (table->tryClaim(owned[i], to)) {
+                moved.push_back(owned[i]);
+            } else {
+                table->tryClaim(owned[i], from); // restore on refusal
+            }
+        }
+        return moved;
+    }
+
+    // Move exactly the named actors from `from` to `to` when `from` owns them.
+    // Refused for the same reasons as splitSquad(). Returns the moved count.
+    std::size_t transferSquad(int from, int to, const std::uint32_t* actors,
+                              std::size_t count) {
+        if (!bound() || from == to || !aliveIdle(from) || !aliveIdle(to) || !actors)
+            return 0;
+        std::size_t moved = 0;
+        for (std::size_t i = 0; i < count; ++i) {
+            if (table->ownerOf(actors[i]) != from) continue;
+            table->release(actors[i], from);
+            if (table->tryClaim(actors[i], to)) {
+                ++moved;
+            } else {
+                table->tryClaim(actors[i], from); // restore on refusal
+            }
+        }
+        return moved;
     }
 
     // --- Captor-held actors (families 29/30; captor FSM stays family-owned) ---

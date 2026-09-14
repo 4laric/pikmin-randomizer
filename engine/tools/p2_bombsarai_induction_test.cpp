@@ -1,5 +1,10 @@
 #include "pc_p2_bombsarai_bomb.h"
 
+// This fixture performs state transitions inside assert() expressions (for
+// example throwBomb()/update() side effects). Release builds pass -DNDEBUG, so
+// assert() would be compiled out and the transitions would never run, leaving
+// the induce() loop below unbounded. Force assertions on for the test unit.
+#undef NDEBUG
 #include <cassert>
 #include <cstdio>
 
@@ -136,7 +141,8 @@ int main()
                             liveCarrier, nullptr));
         assert(bomb->phase() == P2BombSaraiBombPhase::ArmedLoop);
         assert(pool.activeCount() == 1);
-        while (!bomb->induce(liveCarrier, nullptr)) {}
+        for (int guard = 0; guard < 1000 && !bomb->induce(liveCarrier, nullptr); ++guard) {}
+        assert(bomb->phase() == P2BombSaraiBombPhase::Despawned);
         assert(pool.activeCount() == 0); // despawned slot no longer live
         P2BombSaraiBomb* fresh = pool.supply(77, { 5.0f, 70.0f, 0.0f }, config(ip02));
         assert(fresh);

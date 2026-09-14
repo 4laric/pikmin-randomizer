@@ -168,16 +168,21 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_demon_drop_state.cpp
     pc_port/pc_bbft.cpp
     pc_port/pc_p2_preview.cpp
+    pc_port/pc_p2_captain.cpp
+    pc_port/pc_p2_second_captain.cpp
     pc_port/pc_p2_economy.cpp
+    pc_port/pc_p2_teki_lifetime.cpp
     pc_port/pc_p2_purple.cpp
     pc_port/pc_p2_purple_impact.cpp
     pc_port/pc_p2_kochappy_stun.cpp
     pc_port/pc_p2_species.cpp
+    pc_port/pc_p2_bulbmin.cpp
     pc_port/pc_p2_white.cpp
     pc_port/pc_p2_cave.cpp
     pc_port/pc_p2_enemy.cpp
     pc_port/pc_p2_sheargrub.cpp
     pc_port/pc_p2_kochappy.cpp
+    pc_port/pc_p2_dwarf_orange.cpp
     pc_port/pc_p2_breadbug_visual.cpp
     pc_port/pc_p2_giant_breadbug_visual.cpp
     pc_port/pc_p2_bulblax_visual.cpp
@@ -191,10 +196,32 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_mamuta_rules.cpp
     pc_port/pc_p2_tank.cpp
     pc_port/pc_p2_hiba.cpp
+    pc_port/pc_p2_flora_actor.cpp
+    pc_port/pc_p2_pom.cpp
+    pc_port/pc_p2_plant.cpp
+    pc_port/pc_p2_waterwraith_visual.cpp
+    pc_port/pc_p2_waterwraith_host.cpp
+    pc_port/pc_p2_waterwraith_register.cpp
+    pc_port/pc_p2_waterwraith_encounter.cpp
+    pc_port/pc_p2_dweevil.cpp
+    pc_port/pc_p2_bombotakara.cpp
     pc_port/pc_p2_qurione.cpp
+    pc_port/pc_p2_shijimi.cpp
     pc_port/pc_p2_kurage_receiver.cpp
     pc_port/pc_p2_sokkuri.cpp
     pc_port/pc_p2_armor.cpp
+    pc_port/pc_p2_elecbug.cpp
+    pc_port/pc_p2_tamago.cpp
+    pc_port/pc_p2_imomushi.cpp
+    pc_port/pc_p2_hana.cpp
+    pc_port/pc_p2_tadpole.cpp
+    pc_port/pc_p2_mar.cpp
+    pc_port/pc_p2_catfish.cpp
+    pc_port/pc_p2_hanachirashi.cpp
+    pc_port/pc_p2_dangomushi.cpp
+    pc_port/pc_p2_snakejoint.cpp
+    pc_port/pc_p2_jigumo.cpp
+    pc_port/pc_p2_umimushi.cpp
     pc_port/pc_p2_batch2.cpp
     pc_port/pc_p2_batch3.cpp
     pc_port/pc_p2_snagret_fsm.cpp
@@ -207,6 +234,8 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_projectile_host.cpp
     pc_port/pc_p2_rock_hazard.cpp
     pc_port/pc_p2_projectile_receiver.cpp
+    pc_port/pc_p2_groink_hit.cpp
+    pc_port/pc_p2_groink_strike.cpp
     pc_port/pc_p2_projectiles.cpp
     pc_port/pc_p2_hardlanes.cpp
     pc_port/pc_p2_bombsarai_arena.cpp
@@ -224,6 +253,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_bigtreasure_map_trace.cpp
     pc_port/pc_p2_bigtreasure_motion.cpp
     pc_port/pc_p2_bigtreasure_visual.cpp
+    pc_port/pc_p2_bigtreasure_save.cpp
     pc_port/pc_randomizer.cpp
     pc_port/pc_p2_waterwraith.cpp
     pc_port/pc_p2_waterwraith_actor.cpp
@@ -697,6 +727,177 @@ target_include_directories(p2_dangomushi_hazard_test PRIVATE pc_port)
 target_compile_options(p2_dangomushi_hazard_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_dangomushi_hazard_test COMMAND p2_dangomushi_hazard_test)
 
+add_executable(p2_long_legs_fsm_test
+    tools/p2_long_legs_fsm_test.cpp
+    pc_port/pc_p2_long_legs_fsm.cpp)
+target_include_directories(p2_long_legs_fsm_test PRIVATE pc_port)
+target_compile_options(p2_long_legs_fsm_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_long_legs_fsm_test COMMAND p2_long_legs_fsm_test)
+
+add_executable(p2_snagret_fsm_test
+    tools/p2_snagret_fsm_test.cpp
+    pc_port/pc_p2_snagret_fsm.cpp)
+target_include_directories(p2_snagret_fsm_test PRIVATE pc_port)
+target_compile_options(p2_snagret_fsm_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_snagret_fsm_test COMMAND p2_snagret_fsm_test)
+
+# Lane 27 BombSarai (Careening Dirigibug) engine-free source-policy gates. The
+# sources shipped on the approved line without ctest registration.
+add_executable(p2_bombsarai_fsm_test
+    tools/p2_bombsarai_fsm_test.cpp
+    pc_port/pc_p2_bombsarai_fsm.cpp)
+target_include_directories(p2_bombsarai_fsm_test PRIVATE pc_port)
+target_compile_options(p2_bombsarai_fsm_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_bombsarai_fsm_test COMMAND p2_bombsarai_fsm_test)
+
+add_executable(p2_bombsarai_bomb_test
+    tools/p2_bombsarai_bomb_test.cpp
+    pc_port/pc_p2_bombsarai_bomb.cpp)
+target_include_directories(p2_bombsarai_bomb_test PRIVATE pc_port)
+target_compile_options(p2_bombsarai_bomb_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_bombsarai_bomb_test COMMAND p2_bombsarai_bomb_test)
+
+add_executable(p2_bombsarai_blast_test
+    tools/p2_bombsarai_blast_test.cpp
+    pc_port/pc_p2_bombsarai_blast.cpp)
+target_include_directories(p2_bombsarai_blast_test PRIVATE pc_port)
+target_compile_options(p2_bombsarai_blast_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_bombsarai_blast_test COMMAND p2_bombsarai_blast_test)
+
+add_executable(p2_bombsarai_clock_test
+    tools/p2_bombsarai_clock_test.cpp)
+target_include_directories(p2_bombsarai_clock_test PRIVATE pc_port)
+target_compile_options(p2_bombsarai_clock_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_bombsarai_clock_test COMMAND p2_bombsarai_clock_test)
+
+add_executable(p2_bombsarai_hover_test
+    tools/p2_bombsarai_hover_test.cpp
+    pc_port/pc_p2_bombsarai_hover.cpp)
+target_include_directories(p2_bombsarai_hover_test PRIVATE pc_port)
+target_compile_options(p2_bombsarai_hover_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_bombsarai_hover_test COMMAND p2_bombsarai_hover_test)
+
+add_executable(p2_bombsarai_terrain_test
+    tools/p2_bombsarai_terrain_test.cpp
+    pc_port/pc_p2_bombsarai_terrain.cpp
+    pc_port/pc_p2_bombsarai_bomb.cpp)
+target_include_directories(p2_bombsarai_terrain_test PRIVATE pc_port)
+target_compile_options(p2_bombsarai_terrain_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_bombsarai_terrain_test COMMAND p2_bombsarai_terrain_test)
+
+add_executable(p2_bombsarai_induction_test
+    tools/p2_bombsarai_induction_test.cpp
+    pc_port/pc_p2_bombsarai_bomb.cpp)
+target_include_directories(p2_bombsarai_induction_test PRIVATE pc_port)
+target_compile_options(p2_bombsarai_induction_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_bombsarai_induction_test COMMAND p2_bombsarai_induction_test)
+
+# Lane 27 Fuefuki hard-lane header-only policy gates (unwired on the approved line).
+add_executable(p2_fuefuki_binding_test tools/p2_fuefuki_binding_test.cpp)
+target_include_directories(p2_fuefuki_binding_test PRIVATE pc_port)
+target_compile_options(p2_fuefuki_binding_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_fuefuki_binding_test COMMAND p2_fuefuki_binding_test)
+
+add_executable(p2_fuefuki_fsm_test tools/p2_fuefuki_fsm_test.cpp)
+target_include_directories(p2_fuefuki_fsm_test PRIVATE pc_port)
+target_compile_options(p2_fuefuki_fsm_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_fuefuki_fsm_test COMMAND p2_fuefuki_fsm_test)
+
+add_executable(p2_fuefuki_interference_policy_test tools/p2_fuefuki_interference_policy_test.cpp)
+target_include_directories(p2_fuefuki_interference_policy_test PRIVATE pc_port)
+target_compile_options(p2_fuefuki_interference_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_fuefuki_interference_policy_test COMMAND p2_fuefuki_interference_policy_test)
+
+add_executable(p2_fuefuki_suspend_fallback_test tools/p2_fuefuki_suspend_fallback_test.cpp)
+target_include_directories(p2_fuefuki_suspend_fallback_test PRIVATE pc_port)
+target_compile_options(p2_fuefuki_suspend_fallback_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_fuefuki_suspend_fallback_test COMMAND p2_fuefuki_suspend_fallback_test)
+
+# Lane 27 BigTreasure policy gates (unwired on the approved line).
+add_executable(p2_bigtreasure_test
+    tools/p2_bigtreasure_test.cpp
+    pc_port/pc_p2_bigtreasure.cpp)
+target_include_directories(p2_bigtreasure_test PRIVATE pc_port)
+target_compile_options(p2_bigtreasure_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_bigtreasure_test COMMAND p2_bigtreasure_test)
+
+add_executable(p2_bigtreasure_fsm_test
+    tools/p2_bigtreasure_fsm_test.cpp
+    pc_port/pc_p2_bigtreasure_fsm.cpp)
+target_include_directories(p2_bigtreasure_fsm_test PRIVATE pc_port)
+target_compile_options(p2_bigtreasure_fsm_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_bigtreasure_fsm_test COMMAND p2_bigtreasure_fsm_test)
+
+add_executable(p2_bigtreasure_attacks_test
+    tools/p2_bigtreasure_attacks_test.cpp
+    pc_port/pc_p2_bigtreasure_attacks.cpp
+    pc_port/pc_p2_bigtreasure.cpp)
+target_include_directories(p2_bigtreasure_attacks_test PRIVATE pc_port)
+target_compile_options(p2_bigtreasure_attacks_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_bigtreasure_attacks_test COMMAND p2_bigtreasure_attacks_test)
+
+set(P2_BIGTREASURE_TEST_DEPS
+    pc_port/pc_p2_bigtreasure.cpp
+    pc_port/pc_p2_bigtreasure_fsm.cpp
+    pc_port/pc_p2_bigtreasure_attacks.cpp
+    pc_port/pc_p2_bigtreasure_host.cpp
+    pc_port/pc_p2_bigtreasure_fsmhost.cpp
+    pc_port/pc_p2_bigtreasure_motion.cpp)
+
+add_executable(p2_bigtreasure_fsmhost_test
+    tools/p2_bigtreasure_fsmhost_test.cpp
+    ${P2_BIGTREASURE_TEST_DEPS})
+target_include_directories(p2_bigtreasure_fsmhost_test PRIVATE pc_port)
+target_compile_options(p2_bigtreasure_fsmhost_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_bigtreasure_fsmhost_test COMMAND p2_bigtreasure_fsmhost_test)
+
+add_executable(p2_bigtreasure_host_test
+    tools/p2_bigtreasure_host_test.cpp
+    ${P2_BIGTREASURE_TEST_DEPS})
+target_include_directories(p2_bigtreasure_host_test PRIVATE pc_port)
+target_compile_options(p2_bigtreasure_host_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_bigtreasure_host_test COMMAND p2_bigtreasure_host_test)
+
+add_executable(p2_bigtreasure_motion_test
+    tools/p2_bigtreasure_motion_test.cpp
+    ${P2_BIGTREASURE_TEST_DEPS})
+target_include_directories(p2_bigtreasure_motion_test PRIVATE pc_port)
+target_compile_options(p2_bigtreasure_motion_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_bigtreasure_motion_test COMMAND p2_bigtreasure_motion_test)
+# Lane 31 (#443 / #175) engine-free Waterwraith/Tyre tests. -UNDEBUG keeps the
+# assert-based fixtures active in the Release native gate.
+add_executable(p2_waterwraith_policy_test
+    tools/p2_waterwraith_test.cpp
+    pc_port/pc_p2_waterwraith.cpp)
+target_include_directories(p2_waterwraith_policy_test PRIVATE pc_port)
+target_compile_options(p2_waterwraith_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_waterwraith_policy_test COMMAND p2_waterwraith_policy_test)
+
+add_executable(p2_waterwraith_actor_test
+    tools/p2_waterwraith_actor_test.cpp
+    pc_port/pc_p2_waterwraith_actor.cpp
+    pc_port/pc_p2_waterwraith.cpp)
+target_include_directories(p2_waterwraith_actor_test PRIVATE pc_port)
+target_compile_options(p2_waterwraith_actor_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_waterwraith_actor_test COMMAND p2_waterwraith_actor_test)
+
+add_executable(p2_waterwraith_attack_policy_test
+    tools/p2_waterwraith_attack_policy_test.cpp)
+target_include_directories(p2_waterwraith_attack_policy_test PRIVATE pc_port)
+target_compile_options(p2_waterwraith_attack_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_waterwraith_attack_policy_test COMMAND p2_waterwraith_attack_policy_test)
+add_executable(p2_armor_events_test
+    tools/test_p2_armor_events.cpp)
+target_include_directories(p2_armor_events_test PRIVATE pc_port)
+target_compile_options(p2_armor_events_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_armor_events_test COMMAND p2_armor_events_test)
+
+add_executable(p2_billboard_test
+    tools/test_p2_billboard.cpp)
+target_include_directories(p2_billboard_test PRIVATE pc_port)
+target_compile_options(p2_billboard_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_billboard_test COMMAND p2_billboard_test)
+
 add_executable(pc_render_phase_test
     pc_port/timing/pc_render_phase_test.cpp
     pc_port/timing/pc_render_phase.cpp)
@@ -780,3 +981,20 @@ if(PIKMIN_RANDOMIZER_TEST_HOOKS)
     set_property(SOURCE src/plugPikiKando/gameCoreSection.cpp APPEND PROPERTY
         COMPILE_DEFINITIONS PIKMIN_RANDOMIZER_TEST_HOOKS=1)
 endif()
+
+# Integration gates: keep assertions active for these engine-free contracts.
+foreach(policy IN ITEMS species_schema hazard_reaction hazard_emitter cave_transfer captain_roster squad_policy)
+    add_executable(p2_${policy}_test tools/test_p2_${policy}.cpp)
+    target_include_directories(p2_${policy}_test PRIVATE pc_port)
+    target_compile_options(p2_${policy}_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+    add_test(NAME p2_${policy}_test COMMAND p2_${policy}_test)
+endforeach()
+add_executable(p2_groink_strike_test tools/p2_groink_strike_test.cpp
+    pc_port/pc_p2_groink_strike.cpp pc_port/pc_p2_groink_hit.cpp pc_port/pc_p2_projectile_receiver.cpp)
+target_include_directories(p2_groink_strike_test PRIVATE pc_port)
+target_compile_options(p2_groink_strike_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_groink_strike_test COMMAND p2_groink_strike_test)
+add_executable(p2_bigtreasure_save_test tools/p2_bigtreasure_save_test.cpp pc_port/pc_p2_bigtreasure_save.cpp ${P2_BIGTREASURE_TEST_DEPS})
+target_include_directories(p2_bigtreasure_save_test PRIVATE pc_port)
+target_compile_options(p2_bigtreasure_save_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_bigtreasure_save_test COMMAND p2_bigtreasure_save_test)

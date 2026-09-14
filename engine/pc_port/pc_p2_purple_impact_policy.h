@@ -116,7 +116,7 @@ inline bool updateBounce(ReceiverState& state, bool onGround, float fitRoll)
     return false;
 }
 
-inline bool updateFit(ReceiverState& state, float deltaTime, bool interrupted)
+inline bool updateFit(ReceiverState& state, float deltaTime, bool interrupted, float fitDuration)
 {
     if (state.phase != Phase::Fit) {
         return false;
@@ -126,7 +126,7 @@ inline bool updateFit(ReceiverState& state, float deltaTime, bool interrupted)
         return false;
     }
     state.fitElapsed += deltaTime;
-    if (state.fitElapsed > RedFitDuration) {
+    if (state.fitElapsed > fitDuration) {
         state.phase = Phase::None;
         state.fitElapsed = 0.0f;
         return false;

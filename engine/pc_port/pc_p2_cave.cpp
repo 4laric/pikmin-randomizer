@@ -11,6 +11,8 @@
 #include "pc_p2_purple.h"
 #include "pc_p2_white.h"
 #include "pc_p2_species.h"
+#include "pc_p2_species_schema.h"
+#include "pc_p2_cave_transfer.h"
 #include "pc_bbft.h"
 #include "Piki.h"
 #include "PikiMgr.h"
@@ -47,7 +49,7 @@ Shape* transitionShape=nullptr;
 P2CaveNavRate navRate;
 unsigned navDrawCalls=0;
 bool navMarkerLogged=false;
-struct Survivor {int color,maturity;};
+using Survivor = P2CaveSurvivor;
 void invalid(const char* reason){std::fprintf(stderr,"Invalid P2 cave entry: %s\n",reason);std::abort();}
 bool active(){return floorId && !completed && p2CavePreviewReady(beasts,floorId,pc_p2_preview_cargo_free_ready(),pc_p2_preview_ready(),pc_p2_preview_goal()!=nullptr,pc_p2_preview_cargo_count(),pc_p2_preview_pokos(),cargoTerminal) && naviMgr && naviMgr->getNavi() && naviMgr->getNavi()->getCurrState();}
 bool safeTime(){return active() && !gameflow.mPauseAll && !gameflow.mIsUIOverlayActive
@@ -94,19 +96,20 @@ void pc_p2_cave_setup(){
     if(profile==P2CaveEntryProfile::Invalid || !std::isfinite(health) || health<=0 || health>1 || count<1 || count>100)
         invalid("header");
     std::vector<Survivor> squad;
-    checkpointSchema=version=="P2_CAVE_ENTRY_2"?2:1;
-    for(int i=0;i<count;++i){Survivor s;if(!(in>>s.color>>s.maturity) || s.color<0 || s.color>(checkpointSchema==2?4:3) || s.maturity<0 || s.maturity>2)invalid("Pikmin");squad.push_back(s);}
+    checkpointSchema=version=="P2_CAVE_ENTRY_3"?3:(version=="P2_CAVE_ENTRY_2"?2:1);
+    for(int i=0;i<count;++i){Survivor s;if(!(in>>s.species>>s.maturity) || !p2_schema_supports(checkpointSchema,s.species) || s.maturity<0 || s.maturity>2)invalid("Pikmin");squad.push_back(s);}
     if(in>>extra || !in.eof())invalid("trailing data");
     std::vector<Piki*> spawned;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(p->isAlive())spawned.push_back(p);}
     if(spawned.size()!=squad.size())invalid("spawn count differs from checkpoint");
     for(size_t i=0;i<squad.size();++i){
         Piki* p=spawned[i];p->mHappa=squad[i].maturity;
-        if(squad[i].color==3 && !pc_p2_purples_enabled())invalid("Purple assets unavailable");
-        if(squad[i].color==4 && !pc_p2_whites_enabled())invalid("White assets unavailable");
-        if(!pc_p2_set_species(p,squad[i].color))invalid("Pikmin species");
-        if(squad[i].color==3)pc_p2_make_purple(p);
-        if(squad[i].color==4)pc_p2_make_white(p);
-        std::printf("P2_CAVE_RESTORE species=%d maturity=%d\n",squad[i].color,squad[i].maturity);
+        if(squad[i].species==3 && !pc_p2_purples_enabled())invalid("Purple assets unavailable");
+        if(squad[i].species==4 && !pc_p2_whites_enabled())invalid("White assets unavailable");
+        if(!pc_p2_set_species(p,squad[i].species))invalid("Pikmin species");
+        if(squad[i].species==3)pc_p2_make_purple(p);
+        if(squad[i].species==4)pc_p2_make_white(p);
+        if(squad[i].species==5)pc_p2_make_bulbmin(p);
+        std::printf("P2_CAVE_RESTORE species=%d maturity=%d\n",squad[i].species,squad[i].maturity);
     }
     Navi* n=naviMgr->getNavi();if(!n || C_NAVI_PARM(n,mHealth)<=0)invalid("captain unavailable");
     n->mHealth=C_NAVI_PARM(n,mHealth)*health;
@@ -172,7 +175,7 @@ bool pc_p2_cave_checkpoint(bool confirm){
         // Do not preserve an actor half-swallowed, converting or becoming a sprout.
         if(state==PIKISTATE_Swallowed || state==PIKISTATE_Bury || state==PIKISTATE_Grow
             || (p->getStickObject() && p->getStickObject()->mObjType!=OBJTYPE_Pellet))busy=true;
-        const int species=pc_p2_species(p);if(species<0 || species>(checkpointSchema==2?4:3))invalid("runtime Pikmin species");
+        const int species=pc_p2_species(p);if(species<0 || !p2_schema_supports(checkpointSchema,species))invalid("runtime Pikmin species");
         squad.push_back({species,p->mHappa});
     }
     Iterator heads(itemMgr->getPikiHeadMgr());CI_LOOP(heads){if(static_cast<PikiHeadItem*>(*heads)->isAlive())busy=true;}
@@ -196,10 +199,12 @@ bool pc_p2_cave_checkpoint(bool confirm){
         SDL_MessageBoxData data={SDL_MESSAGEBOX_INFORMATION,SDL_GL_GetCurrentWindow(),caveName(),message.c_str(),2,buttons,nullptr};int choice=0;
         if(SDL_ShowMessageBox(&data,&choice)!=0 || choice!=1)return false;
     }
+    int writeSchema=checkpointSchema;
+    for(const auto& s:squad){const int required=p2_schema_required_for_species(s.species);if(required>writeSchema)writeSchema=required;}
     std::ostringstream out;out.precision(9);
     if(beasts)out<<"P2_BEASTS_TRANSFER_1\n"<<token<<"\n2 3 "<<health<<' '<<squad.size()<<'\n';
-    else out<<"P2_CAVE_TRANSFER_"<<checkpointSchema<<'\n'<<token<<'\n'<<floorId<<' '<<health<<' '<<squad.size()<<'\n';
-    for(const auto& s:squad)out<<s.color<<' '<<s.maturity<<'\n';
+    else out<<"P2_CAVE_TRANSFER_"<<writeSchema<<'\n'<<token<<'\n'<<floorId<<' '<<health<<' '<<squad.size()<<'\n';
+    for(const auto& s:squad)out<<s.species<<' '<<s.maturity<<'\n';
     if(!writeTransfer(out.str())){if(confirm)notice("Could not prepare the checkpoint. Stay on this floor and retry.");return false;}
     completed=true;
     std::printf("P2_CAVE_TRANSFER floor=%d survivors=%zu health=%.9g failed=%d\n",floorId,squad.size(),health,int(failed));std::fflush(stdout);

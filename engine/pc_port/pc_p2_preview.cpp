@@ -3,10 +3,14 @@
 #include "pc_p2_mamuta.h"
 #include "pc_p2_tank.h"
 #include "pc_p2_hiba.h"
+#include "pc_p2_dweevil.h"
+#include "pc_p2_bombotakara.h"
 #include "pc_p2_qurione.h"
+#include "pc_p2_shijimi.h"
 #include "pc_p2_kurage_teki.h"
 #include "pc_p2_sheargrub.h"
 #include "pc_p2_kochappy.h"
+#include "pc_p2_dwarf_orange.h"
 #include "pc_p2_breadbug_visual.h"
 #include "pc_p2_giant_breadbug_visual.h"
 #include "pc_p2_bulblax_visual.h"
@@ -14,9 +18,24 @@
 #include "pc_p2_giant_breadbug_actor.h"
 #include "pc_p2_queen.h"
 #include "pc_p2_king.h"
+#include "pc_p2_flora_actor.h"
+#include "pc_p2_pom.h"
+#include "pc_p2_plant.h"
 #include "pc_p2_batch2.h"
 #include "pc_p2_sokkuri.h"
 #include "pc_p2_armor.h"
+#include "pc_p2_elecbug.h"
+#include "pc_p2_tamago.h"
+#include "pc_p2_umimushi.h"
+#include "pc_p2_jigumo.h"
+#include "pc_p2_snakejoint.h"
+#include "pc_p2_dangomushi.h"
+#include "pc_p2_catfish.h"
+#include "pc_p2_mar.h"
+#include "pc_p2_hanachirashi.h"
+#include "pc_p2_tadpole.h"
+#include "pc_p2_hana.h"
+#include "pc_p2_imomushi.h"
 #include "pc_p2_batch3.h"
 #include "pc_p2_long_legs.h"
 #include "pc_p2_projectiles.h"
@@ -38,6 +57,7 @@
 #include "pc_p2_economy.h"
 #include "pc_p2_purple.h"
 #include "pc_p2_white.h"
+#include "pc_p2_bulbmin.h"
 #include "pc_p2_cave.h"
 #include "pc_p2_enemy.h"
 #include "pc_p2_cargo.h"
@@ -209,6 +229,7 @@ void pc_p2_preview_setup() {
     pc_p2_snow_setup();
     pc_p2_sheargrub_setup();
     pc_p2_kochappy_setup();
+    pc_p2_dwarf_orange_setup();
     pc_p2_breadbug_visual_setup();
     pc_p2_giant_breadbug_visual_setup();
     pc_p2_bulblax_visual_setup();
@@ -221,16 +242,43 @@ void pc_p2_preview_setup() {
     pc_p2_mamuta_setup();
     pc_p2_tank_setup();
     pc_p2_hiba_setup();
+    pc_p2_flora_setup();
+    pc_p2_pom_setup();
+    pc_p2_plant_setup();
+    pc_p2_dweevil_setup();
+    pc_p2_bombotakara_setup();
     pc_p2_qurione_setup();
+    pc_p2_shijimi_setup();
     pc_p2_batch2_setup();
     pc_p2_sokkuri_setup();
     pc_p2_armor_setup();
+    pc_p2_elecbug_setup();
+    pc_p2_tamago_setup();
+    pc_p2_umimushi_setup();
+    pc_p2_jigumo_setup();
+    pc_p2_snakejoint_setup();
+    pc_p2_dangomushi_setup();
+    pc_p2_catfish_setup();
+    pc_p2_mar_setup();
+    pc_p2_hanachirashi_setup();
+    pc_p2_tadpole_setup();
+    pc_p2_hana_setup();
+    pc_p2_imomushi_setup();
     pc_p2_batch3_setup();
     pc_p2_long_legs_setup();
     pc_p2_projectiles_setup();
     pc_p2_hardlanes_setup();
     pc_p2_purple_setup();
     pc_p2_white_setup();
+    pc_p2_bulbmin_setup();
+    // Lane-11 opt-in driver: use the existing Chappy-family registration as the
+    // Mother Bulbmin stand-in (no-op unless PIKMIN_P2_BULBMIN/p2-bulbmin.txt is
+    // set and a Kochappy actor is registered).
+    pc_p2_bulbmin_attach_mother(static_cast<Creature*>(pc_p2_kochappy_first_registered()));
+    // Lane-11 dedicated mother path: register the same proxy under an explicit
+    // label from PIKMIN_P2_BULBMIN_MOTHER (no-op unless the env value is set).
+    // Still a labeled Chappy-family proxy: no LeafChappy model exists.
+    pc_p2_bulbmin_attach_dedicated_mother();
     pc_p2_cave_setup();
     gsys->setHeap(previousHeap);
     const float points[][2]={{-85,0},{-175,-100},{185,-180},{-220,-180}};
@@ -258,6 +306,11 @@ bool pc_p2_preview_deliver(Pellet* pellet) {
         // the Pod must finish the normal wake-up path, never create money/seeds.
         if(naviMgr && pellet->mConfig->mModelId.mId=='navi' && pellet->mPelletView==static_cast<PelletView*>(naviMgr->getNavi())) {
             std::puts("[Pikipelago] P2_POD_CAPTAIN_RETURN pokos_unchanged=1 seeds=0");return true;
+        }
+        // P2 Pellet Posy capture receptor: the released pellet was observed and
+        // claimed by the flora module; the Onion-side seed receipt stays open.
+        if(pc_p2_flora_receipt(pellet)) {
+            std::printf("[Pikipelago] P2_FLORA_DELIVER seeds=0 onion_slice_unimplemented=1\n");std::fflush(stdout);return true;
         }
         if(cargoFree){std::fprintf(stderr,"Cargo-free P2 Pod refuses cargo rewards and seed side effects\n");std::abort();}
         std::string receipt;int value=0;Cargo* c=cargoFor(pellet);

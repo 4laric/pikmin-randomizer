@@ -2,6 +2,7 @@
 #include "pc_p2_purple_impact_policy.h"
 #include "pc_p2_kochappy_stun.h"
 #include "pc_p2_kochappy.h"
+#include "pc_p2_dwarf_orange.h"
 #include "pc_p2_purple.h"
 #include "Piki.h"
 #include "teki.h"
@@ -42,7 +43,7 @@ bool pc_p2_purple_impact_emit(Piki* piki, const char* cause)
         CI_LOOP(iterator) {
             BTeki* target = static_cast<BTeki*>(*iterator);
             if (!target || !visited.insert(target).second) continue;
-            if (!pc_p2_kochappy_registered(target)) continue;
+            if (!pc_p2_kochappy_registered(target) && !pc_p2_dwarf_orange_registered(target)) continue;
             const Vector3f& position = target->mSRT.t;
             if (!p2purpleimpact::inRange(event, position.x, position.z, target->mCollisionRadius)) continue;
             if (pc_p2_kochappy_stun_receive(target, event, gsys->getRand(1.0f))) ++accepted;

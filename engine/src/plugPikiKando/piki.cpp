@@ -1270,7 +1270,7 @@ int Piki::graspSituation(Creature** outTarget)
  */
 void Piki::initColor(int color)
 {
-    mP2Purple=false;mP2White=false;mP2AnimationTime=0;
+    mP2Purple=false;mP2White=false;mP2Bulbmin=false;mP2AnimationTime=0;
     if (!pc_bbft_color_access(color)) color = Red;
 	mColor = color;
 	if (flowCont.mIsVersusMode == TRUE) {

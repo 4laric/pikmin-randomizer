@@ -24,3 +24,9 @@ float pc_p2_sokkuri_param_f(const BTeki*, int idx, float fallback);
 // normalized [0,1] phase for the current FSM state and returns true. The batch-2
 // draw path consults this before its generic motion/velocity selection.
 bool pc_p2_sokkuri_clip(const BTeki*, const char*& name, float& phase);
+
+// Fixture observability: behavior-neutral, read-only registration queries so the
+// lifecycle fixture can prove pc_p2_sokkuri_forget() clears a stale binding
+// (count returns to zero). Additive; no runtime behavior changes.
+unsigned long pc_p2_sokkuri_count();
+bool pc_p2_sokkuri_registered(BTeki*);

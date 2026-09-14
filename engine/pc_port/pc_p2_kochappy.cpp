@@ -3,6 +3,7 @@
 #include "pc_p2_kochappy_stun.h"
 #include "pc_p2_pose_bank.h"
 #include "pc_p2_pose_shape.h"
+#include "pc_p2_bulbmin.h"
 #include "pc_p2_enemy.h"
 #include "pc_p2_sheargrub.h"
 #include "teki.h"
@@ -30,10 +31,11 @@ struct Mutable {Shape* shape=nullptr;p2pose::Pose scratch;std::string clip;float
 std::map<PelletView*,Mutable> instances;
 }
 void pc_p2_kochappy_reset(){instances.clear();baked.clear();interpolation=false;clips.clear();timing.clear();actors.clear();health.reset();pc_p2_kochappy_stun_reset();logged[0]=logged[1]=false;}
-void pc_p2_kochappy_forget(BTeki* actor){instances.erase(static_cast<PelletView*>(actor));actors.erase(static_cast<PelletView*>(actor));health.forget(actor);pc_p2_kochappy_stun_forget(actor);}
+void pc_p2_kochappy_forget(BTeki* actor){pc_p2_bulbmin_proxy_forget(actor);instances.erase(static_cast<PelletView*>(actor));actors.erase(static_cast<PelletView*>(actor));health.forget(actor);pc_p2_kochappy_stun_forget(actor);}
 float pc_p2_kochappy_max_health(const BTeki* actor,float fallback){return health.life(actor,fallback);}
 const char* pc_p2_kochappy_name(PelletView* actor){return actors.count(actor)?"Dwarf Red Bulborb":nullptr;}
 bool pc_p2_kochappy_registered(const BTeki* actor){return actors.count(const_cast<BTeki*>(actor))!=0;}
+BTeki* pc_p2_kochappy_first_registered(){return actors.empty()?nullptr:static_cast<BTeki*>(*actors.begin());}
 void pc_p2_kochappy_setup(){
     pc_p2_kochappy_reset();
     std::ifstream option("p2-kochappy-interpolation.txt");
@@ -95,7 +97,7 @@ void pc_p2_kochappy_setup(){
         }
         if(!health.bind(static_cast<BTeki*>(actor)))std::abort();actors.insert(actor);actor->mHealth=actor->getParameterF(TPF_Life);
         const auto& pos=actor->getPosition();
-        pc_p2_kochappy_stun_register(actor);
+        pc_p2_kochappy_stun_register(actor,10.0f);
         std::printf("P2_ENEMY_READY species=Kochappy source_id=1 native_family=Chappy generator=%u x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=P1 purple_stun=red_earthquake_v1\n",actor->mGenerator->_70,pos.x,pos.y,pos.z,actor->mHealth,actor->getParameterF(TPF_Life));
     }
     std::printf("P2_KOCHAPPY_BANK poses=%zu mod_bytes=%zu texture_attach_calls=%d load_seconds=%.3f\n",poses,total,attachments,std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count());

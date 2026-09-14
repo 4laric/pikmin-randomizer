@@ -196,7 +196,7 @@ f32 PikiHeadItem::getiMass()
  */
 void PikiHeadItem::setColor(int color)
 {
-    mP2Purple=false;mP2White=false;
+    mP2Purple=false;mP2White=false;mP2Bulbmin=false;
     if (!pc_bbft_color_access(color)) color = Red;
 	mSeedColor = color;
 }

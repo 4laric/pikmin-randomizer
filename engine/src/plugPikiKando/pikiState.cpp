@@ -171,6 +171,8 @@ void PikiStateMachine::init(Piki* piki)
 	registerState(new PikiAbsorbState());
 	registerState(new PikiDyingState());
 	registerState(new PikiDeadState());
+	registerState(new PikiDenkiDyingState());
+	registerState(new PikiPanicState());
 	registerState(new PikiKinokoState());
 	registerState(new PikiDrownState());
 	registerState(new PikiEmotionState());
@@ -3177,6 +3179,109 @@ void PikiDeadState::exec(Piki* piki)
 void PikiDeadState::cleanup(Piki* piki)
 {
 	piki->mSRT.s.set(0.0f, 0.0f, 0.0f);
+}
+
+/**
+ * @brief Constructs the P2 electric-shock death state.
+ */
+PikiDenkiDyingState::PikiDenkiDyingState()
+    : PikiState(PIKISTATE_DenkiDying, "DENKI_DYING")
+{
+}
+
+/**
+ * @brief Freezes the Piki, plays the death animation and sets the electric wait.
+ */
+void PikiDenkiDyingState::init(Piki* piki)
+{
+	piki->mActiveAction->abandon(nullptr);
+	piki->startMotion(PaniMotionInfo(PIKIANIM_Dead), PaniMotionInfo(PIKIANIM_Dead));
+	piki->mVelocity.set(0.0f, 0.0f, 0.0f);
+	piki->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
+	mWaitTime = 0.3f;
+}
+
+/**
+ * @brief Holds the Piki still, then hands off to the ordinary death pipeline.
+ *
+ * Source `PikiDenkiDyingState::exec` (`pikiState.cpp:1268`) emits the electric
+ * effect and kills after `mWaitTime`; this port has no electric effect, so it
+ * transitions into `PIKISTATE_Dead`, which shrinks and kills the Piki.
+ */
+void PikiDenkiDyingState::exec(Piki* piki)
+{
+	piki->mVelocity.set(0.0f, 0.0f, 0.0f);
+	piki->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
+	mWaitTime -= gsys->getFrameTime();
+	if (mWaitTime <= 0.0f) {
+		transit(piki, PIKISTATE_Dead);
+	}
+}
+
+/**
+ * @brief No explicit cleanup.
+ */
+void PikiDenkiDyingState::cleanup(Piki* piki)
+{
+}
+
+/**
+ * @brief Constructs the P2 gas panic state.
+ */
+PikiPanicState::PikiPanicState()
+    : PikiState(PIKISTATE_Panic, "PANIC")
+{
+}
+
+/**
+ * @brief Enters panic movement and raises the narrow gas gate.
+ *
+ * Mirrors the source `PIKIPANIC_Gas` init (`pikiState.cpp:839`): panic-run
+ * movement and the panic effect, then death when the poison timer expires. The
+ * source `gasInvicible` flag is modelled by `Piki::setGasInvincible`.
+ */
+void PikiPanicState::init(Piki* piki)
+{
+	piki->changeMode(PikiMode::FreeMode, piki->mNavi);
+	piki->startMotion(PaniMotionInfo(PIKIANIM_Moeru), PaniMotionInfo(PIKIANIM_Moeru));
+	piki->enableMotionBlend();
+	mSurvivalTimer = C_PIKI_PARM(piki, mPanicTime);
+	mSurvivalTimer *= (0.1f * gsys->getRand(1.0f)) + 1.0f;
+	mChangeDirectionTimer = 0.1f;
+	mMoveDirection        = piki->mFaceDirection;
+	mSpeedRatio           = 1.0f;
+	piki->setGasInvincible(1);
+	piki->mIsPanicked = true;
+}
+
+/**
+ * @brief Runs panicked movement until the poison timer expires, then dies.
+ */
+void PikiPanicState::exec(Piki* piki)
+{
+	piki->setSpeed(mSpeedRatio, mMoveDirection);
+	mSurvivalTimer -= gsys->getFrameTime();
+	mChangeDirectionTimer -= gsys->getFrameTime();
+	if (mSurvivalTimer < 0.0f) {
+		transit(piki, PIKISTATE_Dying);
+		return;
+	}
+
+	if (mChangeDirectionTimer < 0.0f) {
+		mChangeDirectionTimer = (0.2f * gsys->getRand(1.0f)) + 0.2f;
+		mMoveDirection += (45.0f * gsys->getRand(1.0f)) / 180.0f * PI;
+		mMoveDirection = roundAng(mMoveDirection);
+		mSpeedRatio *= 0.99f;
+	}
+}
+
+/**
+ * @brief Clears the gas gate and panic flag when the state is left.
+ */
+void PikiPanicState::cleanup(Piki* piki)
+{
+	piki->setGasInvincible(0);
+	piki->mIsPanicked = false;
 }
 
 /**

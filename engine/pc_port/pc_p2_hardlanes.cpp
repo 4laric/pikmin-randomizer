@@ -27,6 +27,7 @@
 #include "pc_p2_fuefuki_binding.h"
 #include "pc_p2_bigtreasure_host.h"
 #include "pc_p2_bigtreasure_visual.h"
+#include "pc_p2_waterwraith_register.h"
 #include "Matrix4f.h"
 #include "pc_bbft.h"
 #include "gameflow.h"
@@ -180,8 +181,18 @@ constexpr float kBigTreasureSourceDelta = 1.0f / 30.0f;
 P2BigTreasureHostSeam sBigTreasure;
 bool sBigTreasureReady = false;
 bool sBigTreasureVisualReady = false;
+bool sBigTreasureVisualDriven = true;
 float sBigTreasureGround = 0.0f;
 double sBigTreasureDebt = 0.0;
+
+// ---------------------------------------------------------------------------
+// Waterwraith (#443 / #175) - lane 31 additive hook
+float sWaterwraithGround = 0.0f;
+}
+
+void pc_p2_hardlanes_set_bigtreasure_visual_driven(bool driven)
+{
+    sBigTreasureVisualDriven = driven;
 }
 
 void pc_p2_hardlanes_reset()
@@ -199,8 +210,12 @@ void pc_p2_hardlanes_reset()
     pc_p2_bigtreasure_visual_reset();
     sBigTreasureReady = false;
     sBigTreasureVisualReady = false;
+    sBigTreasureVisualDriven = true;
     sBigTreasureGround = 0.0f;
     sBigTreasureDebt = 0.0;
+    // Waterwraith (#443 / #175) - lane 31 additive hook.
+    pc_p2_waterwraith_register_reset();
+    sWaterwraithGround = 0.0f;
 }
 
 void pc_p2_hardlanes_setup()
@@ -258,6 +273,14 @@ void pc_p2_hardlanes_setup()
                     pc_p2_bigtreasure_visual_pellet_count(),
                     pc_p2_bigtreasure_visual_debug_count());
     }
+
+    // Waterwraith (#443 / #175) - lane 31 additive hook. Opt-in: the caller is
+    // already inside the experimental room preview, and setup is a no-op unless
+    // `p2-waterwraith-actor.txt` is present. Fixed placement first.
+    if (pc_p2_waterwraith_register_setup("p2-waterwraith-actor.txt")) {
+        sWaterwraithGround = mapMgr->getMinY(0.0f, 0.0f, false);
+        std::printf("P2_HARDLANES_READY family=Waterwraith register=1 placement=fixed\n");
+    }
 }
 
 void pc_p2_hardlanes_update()
@@ -300,11 +323,17 @@ void pc_p2_hardlanes_update()
         for (int i = 0; i < ticks; ++i) {
             if (sBigTreasureReady)
                 p2_bigtreasure_host_tick_entry(sBigTreasure, kBigTreasureSourceDelta, false, 0.0f);
-            if (sBigTreasureVisualReady) {
+            if (sBigTreasureVisualReady && sBigTreasureVisualDriven) {
                 if (pc_p2_bigtreasure_visual_completed()) pc_p2_bigtreasure_visual_clip("wait1");
                 pc_p2_bigtreasure_visual_update(1.0f);
             }
         }
+    }
+
+    // Waterwraith (#443 / #175) - lane 31 additive hook. Source-clocks the
+    // registered actor on the authoritative frame delta.
+    if (pc_p2_waterwraith_register_ready()) {
+        pc_p2_waterwraith_register_tick(gsys->getFrameTime());
     }
 }
 
@@ -316,5 +345,12 @@ void pc_p2_hardlanes_draw(Graphics& gfx)
         owner.makeSRT(Vector3f(1.0f, 1.0f, 1.0f), Vector3f(0.0f, 0.0f, 0.0f),
                       Vector3f(0.0f, sBigTreasureGround, 0.0f));
         pc_p2_bigtreasure_visual_draw(gfx, owner);
+    }
+    // Waterwraith (#443 / #175) - lane 31 additive hook.
+    if (pc_p2_waterwraith_register_ready()) {
+        Matrix4f owner;
+        owner.makeSRT(Vector3f(1.0f, 1.0f, 1.0f), Vector3f(0.0f, 0.0f, 0.0f),
+                      Vector3f(0.0f, sWaterwraithGround, 0.0f));
+        pc_p2_waterwraith_register_draw(gfx, owner);
     }
 }

@@ -1,4 +1,5 @@
 #include "pc_p2_kurage_visual.h"
+#include "pc_p2_teki_lifetime.h"
 #include "pc_p2_kurage_teki.h"
 #include "pc_p2_onikurage_teki.h"
 #if defined(PIKI_PC_PORT)
@@ -18,14 +19,20 @@
 #include "pc_p2_enemy.h"
 #include "pc_p2_cave.h"
 #include "pc_p2_kurage_receiver.h"
+#include "pc_p2_second_captain.h"
 #include "pc_p2_breadbug_visual.h"
 #include "pc_p2_giant_breadbug_visual.h"
 #include "pc_p2_giant_breadbug_actor.h"
 #include "pc_p2_bulblax_visual.h"
 #include "pc_p2_queen.h"
 #include "pc_p2_king.h"
+#include "pc_p2_dweevil.h"
+#include "pc_p2_bombotakara.h"
 #include "pc_p2_tank.h"
 #include "pc_p2_hiba.h"
+#include "pc_p2_flora_actor.h"
+#include "pc_p2_pom.h"
+#include "pc_p2_plant.h"
 #include "pc_p2_hardlanes.h"
 #include "pc_p2_projectiles.h"
 #include "pc_randomizer.h"
@@ -870,6 +877,11 @@ void GameCoreSection::exitStage()
 	pc_p2_kurage_teki_reset();
 	pc_p2_onikurage_teki_reset();
 	pc_p2_kurage_visual_reset();
+	// Actor-lifetime seam (#397/#186): clear every remaining P2 family
+	// registration map so a finished stage cannot retain a stale BTeki* key
+	// pointing into the TekiMgr that is about to be destroyed. Previously only
+	// the kurage families were released here.
+	pc_p2_reset_all_teki();
 #endif
 	demoEventMgr = nullptr;
 	naviMgr      = nullptr;
@@ -1386,6 +1398,8 @@ void GameCoreSection::finalSetup()
 	pc_p2_onikurage_teki_setup();
 	pc_p2_preview_setup();
 	pc_p2_snow_campaign_setup();
+	// Actor-lifetime (#397): mark the new scene ready for lifecycle fixtures.
+	pc_p2_scene_begin();
 	PRINT("====================== FINAL SETUP DONE ======================\n");
 }
 
@@ -1514,8 +1528,17 @@ GameCoreSection::GameCoreSection(Controller* controller, MapMgr* mgr, Camera& ca
 	PRINT("================== NAVI ===================\n");
 	memStat->start("navi");
 	naviMgr = new NaviMgr();
-	naviMgr->create(1);
+	// Lane 12 (#130): strictly opt-in second captain. navi_capacity() is 1
+	// unless PIKMIN_P2_SECOND_CAPTAIN is set AND the live gate allows it; the
+	// gate is deliberately closed until follow-AI/camera/controls/game-over are
+	// ported, so this is inert in normal single-captain play.
+	int naviCapacity = pc_p2_captain::navi_capacity();
+	if (naviCapacity > 1 && !pc_p2_captain::prepare_second_captain_assets(naviMgr)) {
+		naviCapacity = 1;
+	}
+	naviMgr->create(naviCapacity);
 	mNavi = static_cast<Navi*>(naviMgr->birth());
+	if (naviCapacity > 1) pc_p2_captain::birth_second_captain(naviMgr);
 	PRINT("********* navi ==== %x\n", mNavi);
 	gameflow.addGenNode("naviMgr", naviMgr);
 	memStat->end("navi");
@@ -1808,6 +1831,8 @@ void GameCoreSection::update()
 	pc_p2_queen_update();
 	pc_p2_king_update();
 	pc_p2_hiba_update();
+	pc_p2_dweevil_update();
+	pc_p2_bombotakara_update();
 	Node::update();
 }
 
@@ -2914,6 +2939,9 @@ void GameCoreSection::updateAI()
 				}
 				gsys->mTimer->stop("teki");
 				pelletMgr->update();
+				pc_p2_flora_tick();
+				pc_p2_pom_tick();
+				pc_p2_plant_tick();
 			}
 		}
 	}

@@ -9,6 +9,7 @@
 #include "pc_window.h"
 #include "pc_gfx.h"
 #include "pc_p2_envmap.h"
+#include "pc_p2_billboard_draw.h"
 #include <cstdlib>
 #endif
 
@@ -1392,6 +1393,7 @@ void DGXGraphics::drawSingleMatpoly(Shape* model, Joint::MatPoly* matPoly)
 {
 	Mesh& mesh    = model->mMeshList[matPoly->mMeshIndex];
 	Material& mat = model->mMaterialList[matPoly->mIndex];
+	Matrix4f billboardMatrices[10]; // Per-dep camera-facing replacements (#429).
 
 	if (!mesh.mJointList || mat.mFlags & MATFLAG_Skip) {
 		return;
@@ -1408,6 +1410,7 @@ void DGXGraphics::drawSingleMatpoly(Shape* model, Joint::MatPoly* matPoly)
 	mMtxDepIdx = mesh.mMtxDepIdx;
 	useMaterial(&mat);
 	setupVtxDesc(model, &mat, &mesh);
+	immut Matrix4f* viewMtx = mActiveMatrix;
 
 	for (int mtxGroupIdx = 0; mtxGroupIdx < mesh.mMtxGroupCount; mtxGroupIdx++) {
 		MtxGroup& group = mesh.mMtxGroupList[mtxGroupIdx];
@@ -1426,6 +1429,35 @@ void DGXGraphics::drawSingleMatpoly(Shape* model, Joint::MatPoly* matPoly)
 				}
 			} else {
 				useMatrixQuick(model->mJointList[vtxMtx.mIndex].mAnimMatrix, depListIdx);
+			}
+		}
+
+		// Opt-in camera-facing billboard (#429): re-upload the draw matrix as the
+		// pivot-preserving, screen-aligned matrix for flagged meshes.
+		if ((mesh.mFeatureFlags & Mesh::FeatureFlags::Billboard) && viewMtx) {
+			for (int depListIdx = 0; depListIdx < group.mDepLength && depListIdx < 10; ++depListIdx) {
+				int depMtxIdx = group.mDepList[depListIdx];
+				if (depMtxIdx == -1) {
+					continue;
+				}
+				VtxMatrix& vtxMtx = model->mVtxMatrixList[depMtxIdx];
+				immut Matrix4f* joint = nullptr;
+				if (model->mCurrentAnimation->mData) {
+					joint = vtxMtx.mHasPartialWeights
+					            ? &model->getAnimMatrix(vtxMtx.mIndex)
+					            : &model->getAnimMatrix(model->mJointCount + vtxMtx.mIndex);
+				} else {
+					joint = &model->mJointList[vtxMtx.mIndex].mAnimMatrix;
+				}
+				if (p2billboard::billboardFromJoint(billboardMatrices[depListIdx], *joint, *viewMtx)) {
+					useMatrixQuick(billboardMatrices[depListIdx], depListIdx);
+					const float off = p2billboard::offDiagonal(*viewMtx, billboardMatrices[depListIdx]);
+					p2billboard::Stats& stats = p2billboard::stats();
+					++stats.draws;
+					if (off > stats.max_offdiagonal) {
+						stats.max_offdiagonal = off;
+					}
+				}
 			}
 		}
 

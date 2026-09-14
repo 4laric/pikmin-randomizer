@@ -125,6 +125,13 @@ public:
 	AState<Navi>* getCurrState() { return mCurrState; }
 	void setCurrState(AState<Navi>* state) { mCurrState = state; }
 
+	// Lane 12 second-captain primitives (#130). Additive accessors only; the
+	// engine already stores the spawn index in `mNaviID` (_92C) and NaviMgr
+	// already keeps `mNaviShapeObject[2]`. `getOtherNaviIndex` is the
+	// GET_OTHER_NAVI equivalent (source: `1 - mNaviIndex`).
+	int getNaviIndex() const { return mNaviID; }
+	int getOtherNaviIndex() const { return mNaviID == 0 ? 1 : (mNaviID == 1 ? 0 : -1); }
+
 	void setPellet(bool isPellet) { mIsPellet = isPellet; }
 
 	bool isPellet() { return mIsPellet; }

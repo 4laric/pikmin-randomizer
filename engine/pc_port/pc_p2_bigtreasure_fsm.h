@@ -77,6 +77,10 @@ public:
     static const char* stateName(P2BigTreasurePhase state);
 
 private:
+    // Lane 32 persistence proposal (#246): engine-free serialization access
+    // defined in pc_p2_bigtreasure_save.cpp. Not wired into the game save path.
+    friend struct P2BigTreasureSaveAccess;
+
     void enter(P2BigTreasurePhase next, P2BigTreasureFsmOutput& out);
 
     void execDead(const P2BigTreasureFsmInput& in, P2BigTreasureFsmOutput& out);

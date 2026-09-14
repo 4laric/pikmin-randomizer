@@ -37,8 +37,17 @@ int main()
     assert(!updateBounce(receiver, true, 0.299f));
     assert(!updateBounce(receiver, true, 0.299f));
     assert(updateBounce(receiver, true, 0.299f));
-    assert(updateFit(receiver, 10.0f, false));
-    assert(!updateFit(receiver, 0.001f, false));
+    assert(updateFit(receiver, 10.0f, false, RedFitDuration));
+    assert(!updateFit(receiver, 0.001f, false, RedFitDuration));
+
+    // Source variant fit duration: BlueKochappy (Dwarf Orange Bulborb) fp38 = 5 s.
+    ReceiverState orange;
+    receive(orange, 12);
+    assert(orange.phase == Phase::Bounce);
+    for (int i = 0; i < 3; ++i) assert(!updateBounce(orange, true, 0.1f));
+    assert(updateBounce(orange, true, 0.1f));
+    assert(updateFit(orange, 4.9f, false, 5.0f));
+    assert(!updateFit(orange, 0.2f, false, 5.0f));
 
     receive(receiver, 7);
     receiver.fitElapsed = 4.0f;
@@ -56,7 +65,7 @@ int main()
     receive(airborne, 9);
     for (int i = 0; i < 10; ++i) assert(!updateBounce(airborne, false, 0.0f));
     assert(updateBounce(airborne, true, 0.0f));
-    assert(!updateFit(airborne, 0.1f, true));
+    assert(!updateFit(airborne, 0.1f, true, RedFitDuration));
 
     ReceiverState reused;
     receive(reused, 10);

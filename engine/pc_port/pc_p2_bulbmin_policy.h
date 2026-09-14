@@ -102,6 +102,14 @@ public:
         members[bulbmin] = Record{leaderEpoch, P2BulbminWild};
         return true;
     }
+    // Drop a single body, e.g. when the host destroys its live Piki. Epoch
+    // qualified so an unrelated occupant of a recycled id is never removed.
+    bool remove(std::uint32_t bulbmin, std::uint64_t leaderEpoch) {
+        auto it = members.find(bulbmin);
+        if (it == members.end() || it->second.leaderEpoch != leaderEpoch) return false;
+        members.erase(it);
+        return true;
+    }
     bool recruit(std::uint32_t bulbmin, std::uint64_t leaderEpoch) {
         auto it = members.find(bulbmin);
         if (it == members.end() || it->second.leaderEpoch != leaderEpoch

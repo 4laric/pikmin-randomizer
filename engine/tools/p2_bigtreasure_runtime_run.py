@@ -19,6 +19,13 @@ import subprocess
 import traceback
 
 
+# Harness watchdog only; the fixture's own 3600-frame idle cap (~120 s at
+# 30 Hz) remains the real limiter. The full 29-clip motion phase runs source
+# clips 1:1 with the fixture in exclusive control, so the whole session needs
+# ~83 s of wall clock.
+FIXTURE_TIMEOUT_SECONDS = 240
+
+
 def sha256(path):
     digest = hashlib.sha256()
     with path.open("rb") as source:
@@ -104,6 +111,13 @@ def verify_log(text):
     elif (int(fsmhost.group(1)) != 4 or int(fsmhost.group(2)) != 0
           or fsmhost.group(3) != "DropItem" or int(fsmhost.group(4)) != 4):
         errors.append(f"fsmhost four-weapon phase progression not observed: {fsmhost.groups()}")
+    encounter = re.search(r"^P2_BIGTREASURE_ENCOUNTER_PASS\s+knockoffs=(\d+)\s+hits=(\d+)\s+"
+                          r"phase=(\w+)\s+events=(\d+)\s*$", text, flags=re.MULTILINE)
+    if not encounter:
+        errors.append("missing encounter PASS marker")
+    elif (int(encounter.group(1)) != 4 or int(encounter.group(2)) < 4
+          or encounter.group(3) != "Dead" or int(encounter.group(4)) < 4):
+        errors.append(f"encounter did not complete the full boss fight: {encounter.groups()}")
     visual = re.search(r"^P2_BIGTREASURE_VISUAL_READY\s+clips=(\d+)\s+pellets=(\d+)\s+"
                        r"pellet_debug=(\d+)\s*$", text, flags=re.MULTILINE)
     if not visual:
@@ -126,6 +140,26 @@ def verify_log(text):
         errors.append("missing dead playback marker")
     elif int(dead.group(2)) != 12 or int(dead.group(3)) != 320:
         errors.append(f"dead playback did not fire all authored events: {dead.groups()}")
+    motion = re.search(r"^P2_BIGTREASURE_MOTION_PASS\s+clips=(\d+)\s+events=(\d+)\s*$", text,
+                       flags=re.MULTILINE)
+    if not motion:
+        errors.append("missing extra-clip motion playback marker")
+    elif int(motion.group(1)) < 3:
+        errors.append(f"motion playback advanced fewer than 3 staged clips: {motion.groups()}")
+    motion_full = re.search(r"^P2_BIGTREASURE_MOTION_FULL_PASS\s+clips=(\d+)\s+events=(\d+)\s+"
+                            r"advanced=(\d+)\s*$", text, flags=re.MULTILINE)
+    if not motion_full:
+        errors.append("missing full motion staging marker")
+    else:
+        clips, events, advanced = map(int, motion_full.groups())
+        if clips < 16:
+            errors.append(f"full motion staging covered fewer than 16 clips: {motion_full.groups()}")
+        if advanced != clips:
+            errors.append(f"full motion staging did not advance every staged clip: "
+                          f"{motion_full.groups()}")
+        if events < clips:
+            errors.append(f"full motion staging dispatched fewer events than clips: "
+                          f"{motion_full.groups()}")
     if "PASS BIGTREASURE_RUNTIME" not in text:
         errors.append("missing runtime PASS marker")
     return errors
@@ -196,12 +230,14 @@ def main():
         command = [str(executable), "--experimental-pikmin2-room"]
         record["command"] = command
         # Inherit the caller's PATH and all other environment values unchanged.
-        result = subprocess.run(command, cwd=run, env=dict(os.environ), timeout=75,
+        result = subprocess.run(command, cwd=run, env=dict(os.environ),
+                                timeout=FIXTURE_TIMEOUT_SECONDS,
                                 text=True, encoding="utf-8", errors="replace",
                                 capture_output=True)
         (run / "stdout.log").write_text(result.stdout, encoding="utf-8")
         (run / "stderr.log").write_text(result.stderr, encoding="utf-8")
-        record["subprocess"] = {"returncode": result.returncode, "timeout_seconds": 75,
+        record["subprocess"] = {"returncode": result.returncode,
+                                "timeout_seconds": FIXTURE_TIMEOUT_SECONDS,
                                 "stdout": file_record(run / "stdout.log"),
                                 "stderr": file_record(run / "stderr.log")}
         errors = verify_log(result.stdout + "\n" + result.stderr)
@@ -222,7 +258,8 @@ def main():
         if not errors:
             record["status"] = "passed"
     except subprocess.TimeoutExpired as error:
-        record["errors"].append("fixture timed out after 75 seconds")
+        record["errors"].append(
+            f"fixture timed out after {FIXTURE_TIMEOUT_SECONDS} seconds")
         if run is not None:
             for name, value in (("stdout.log", error.stdout), ("stderr.log", error.stderr)):
                 if isinstance(value, bytes):

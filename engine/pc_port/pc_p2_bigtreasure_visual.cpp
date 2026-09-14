@@ -253,6 +253,11 @@ bool pc_p2_bigtreasure_visual_setup(const char* profilePath)
     sVisual.ready      = true;
     std::printf("P2_BIGTREASURE_VISUAL_READY clips=%d pellets=%d pellet_debug=%d\n",
                 sVisual.clipCount, sVisual.pelletCount, sVisual.debugCount);
+    // Additive (#246 motion staging): record the App-heap headroom left after
+    // loading the staged pose bank. The full 29-clip/171-pose stage does not
+    // fit the room-preview App heap, so the stage subset is chosen against it.
+    std::printf("P2_BIGTREASURE_VISUAL_HEAP free_kb=%d\n",
+                gsys->getHeap(SYSHEAP_App)->getFree() / 1024);
     return true;
 }
 
@@ -309,6 +314,28 @@ const P2BigTreasureVisualEvent* pc_p2_bigtreasure_visual_events(int* count)
 const char* pc_p2_bigtreasure_visual_active_clip()
 {
     return sVisual.active ? sVisual.active->name.c_str() : nullptr;
+}
+
+int pc_p2_bigtreasure_visual_clip_count()
+{
+    return sVisual.ready ? sVisual.clipCount : 0;
+}
+
+const char* pc_p2_bigtreasure_visual_clip_name(int index)
+{
+    if (index < 0 || index >= sVisual.clipCount) {
+        return nullptr;
+    }
+    return sVisual.clips[index].name.c_str();
+}
+
+const p2retail::Motion* pc_p2_bigtreasure_visual_clip_motion(const char* name)
+{
+    if (!sVisual.ready || !name) {
+        return nullptr;
+    }
+    const ClipBank* clip = findClip(name);
+    return clip ? clip->motion : nullptr;
 }
 
 int pc_p2_bigtreasure_visual_pose_index()

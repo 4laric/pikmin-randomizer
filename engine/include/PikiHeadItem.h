@@ -77,6 +77,7 @@ struct PikiHeadItem : public ItemCreature {
 	RippleEffect* mRippleEfx;       // _3F4
     bool mP2Purple = false; // Experimental species metadata; not legacy seed color.
     bool mP2White = false;
+    bool mP2Bulbmin = false;
 };
 
 /**
