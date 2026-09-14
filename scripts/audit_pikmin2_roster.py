@@ -18,7 +18,9 @@ sys.path.insert(0, str(ROOT))
 from experimental.pikmin2_enemy_roster import (  # noqa: E402
     GATE_IDS,
     ROSTER_PATH,
+    candidate_review,
     entries_from_payload,
+    inventory_encounters,
     load_roster,
     parse_enum_header,
     parse_info_table,
@@ -31,10 +33,13 @@ INVENTORY = ROOT / "docs/PIKMIN2_CONTENT_INVENTORY.json"
 ENGINE_PORT = ROOT / "engine/pc_port"
 
 
-def inventory_identities(path: Path) -> set[str]:
+def load_inventory(path: Path) -> dict:
     if not path.is_file():
-        return set()
-    payload = json.loads(path.read_text(encoding="utf-8"))
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def inventory_identities(payload: dict) -> set[str]:
     names: set[str] = set()
     for cave in payload.get("story_caves", []):
         for floor in cave.get("floors", []):
@@ -106,10 +111,14 @@ def verify_source_parity(roster, source: Path) -> list[str]:
     return problems
 
 
-def build_report(roster, inventory: set[str], modules: set[str], parity: list[str]) -> dict:
+def build_report(roster, inventory: set[str], modules: set[str], parity: list[str],
+                 encounters: dict | None = None) -> dict:
     summary = summarize(roster)
     enum_names = {e.enum_name for e in roster}
     categories = categorize_inventory_tokens(inventory, enum_names)
+    review = candidate_review(roster, encounters or {})
+    missing_modules = sorted({row["native_module"] for row in review
+                              if row["native_module"] and row["native_module"] not in modules})
     enemies_not_in_inventory = sorted(
         e.enum_name for e in roster
         if e.is_randomizable_candidate and e.enum_name not in categories["exact"]
@@ -127,6 +136,8 @@ def build_report(roster, inventory: set[str], modules: set[str], parity: list[st
             for e in roster if e.eligibility != "denied"
         },
         "native_modules_available": sorted(modules),
+        "native_modules_missing": missing_modules,
+        "candidate_review": review,
         "coverage": {
             "inventory_identities": len(inventory),
             "inventory_exact_identities": len(categories["exact"]),
@@ -148,12 +159,16 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--strict", action="store_true",
                         help="fail on source parity problems or unclassified identities")
+    parser.add_argument("--review", action="store_true",
+                        help="print the per-candidate readiness rows")
     args = parser.parse_args()
 
     roster = load_roster()
     validate_roster(roster)
+    payload = load_inventory(INVENTORY)
     parity = verify_source_parity(roster, args.source) if args.source else []
-    report = build_report(roster, inventory_identities(INVENTORY), native_modules(ENGINE_PORT), parity)
+    report = build_report(roster, inventory_identities(payload), native_modules(ENGINE_PORT), parity,
+                          inventory_encounters(payload, roster))
 
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -172,9 +187,21 @@ def main() -> int:
           f"carriers {sum(len(v) for v in coverage['inventory_treasure_carriers'].values())}, "
           f"unrecognized {len(coverage['inventory_unrecognized_tokens'])})")
     print(f"identities without info-table row: {len(coverage['identities_without_info_table_row'])}")
+    review = report["candidate_review"]
+    print(f"candidates with inventory encounters: "
+          f"{sum(1 for row in review if row['encounters'])}/{len(review)}")
+    if report["native_modules_missing"]:
+        print(f"declared native modules missing from engine/pc_port: {report['native_modules_missing']}")
     print(f"source parity problems: {len(parity)}")
     for problem in parity[:10]:
         print("  -", problem)
+    if args.review:
+        for row in review:
+            if row["eligibility"] == "denied" and not row["encounters"]:
+                continue
+            print(f"  [{row['eligibility']}] {row['source_id']:>3} {row['enum_name']:<14} "
+                  f"role={row['role']:<8} lane={row['owner_lane']} module={row['native_module']} "
+                  f"encounters={len(row['encounters'])} missing={','.join(row['missing_gates'])}")
 
     if args.strict and (parity or coverage["unclassified_identities"]):
         print("STRICT FAIL", file=sys.stderr)

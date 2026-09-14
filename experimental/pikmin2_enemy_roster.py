@@ -495,6 +495,53 @@ def resolve_alias(token: str, roster: list[RosterEntry]) -> tuple[str, RosterEnt
     return "treasure_carrier", entry
 
 
+def inventory_encounters(payload: dict, roster: list[RosterEntry]) -> dict[str, list[dict]]:
+    """Map each identity's enum name to its source-backable cave-floor appearances.
+
+    Reads ``docs/PIKMIN2_CONTENT_INVENTORY.json`` ``story_caves[].floors[].enemy_ids``
+    tokens and resolves them through :func:`resolve_alias`, so treasure-carrier and
+    ``$N`` generator aliases are attributed to their real identity instead of being
+    invented as new source IDs. This is inventory evidence, not placement approval
+    (lane 04 owns legal slots).
+    """
+    encounters: dict[str, list[dict]] = {}
+    for cave in payload.get("story_caves", []):
+        cave_id = cave.get("id")
+        for floor in cave.get("floors", []):
+            row = {"cave": cave_id, "first": floor.get("first"), "last": floor.get("last")}
+            for token in floor.get("enemy_ids", []):
+                _, entry = resolve_alias(token, roster)
+                if entry is None:
+                    continue
+                rows = encounters.setdefault(entry.enum_name, [])
+                if row not in rows:
+                    rows.append(row)
+    return encounters
+
+
+def candidate_review(roster: list[RosterEntry], encounters: dict | None = None) -> list[dict]:
+    """Per-candidate readiness rows: role, owner, native module and missing gates."""
+    encounters = encounters or {}
+    rows = []
+    for entry in sorted(roster, key=lambda item: item.source_id):
+        if not entry.is_randomizable_candidate:
+            continue
+        rows.append({
+            "source_id": entry.source_id,
+            "enum_name": entry.enum_name,
+            "common_name": entry.common_name,
+            "classification": entry.classification,
+            "role": identity_role(entry),
+            "owner_lane": entry.owner_lane,
+            "native_module": entry.native_module,
+            "gates": dict(entry.gates),
+            "missing_gates": [g for g in GATE_IDS if entry.gates.get(g) not in ("PASS", "N/A")],
+            "eligibility": entry.eligibility,
+            "encounters": encounters.get(entry.enum_name, []),
+        })
+    return rows
+
+
 @dataclass(frozen=True)
 class AdmissionSet:
     """The explicit, deny-by-default seedable identity set for this roster."""
