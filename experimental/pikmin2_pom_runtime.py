@@ -297,6 +297,11 @@ def validate(text, code):
                      and bool(re.search(r'P2_POM_SPROUT generator=%d species=RedPom count=2 colour=1 body=1 ' % REDPOM, text)),
         sprout_retry=bool(re.search(r'P2_POM_SPROUT_RETRY generator=%d species=RandPom .*item_capacity=1 forced=1' % RANDPOM, text)),
         sprout_settled=bool(re.search(r'P2_POM_SPROUT_SETTLED generator=%d species=RandPom requested=9 born=9 conservation=1' % RANDPOM, text)),
+        state_walk=all(re.search(r'P2_POM_STATE generator=%d species=RandPom from=\w+ to=%s' % (RANDPOM, s), text)
+                       for s in ('open', 'swing', 'close', 'shot', 'dead')),
+        dead=bool(re.search(r'P2_POM_DEAD generator=%d species=RandPom used=1 refunds=0 corpse=0 budget=1' % RANDPOM, text)),
+        conservation=bool(re.search(r'P2_POM_CONSERVATION generator=%d species=RandPom used=1 refunds=0 requested=9 born=9 '
+                                    r'dead_pikis=\d+ loss_counted=0' % RANDPOM, text)),
         invulnerable=text.count('P2_POM_INVULNERABLE ') >= 2,
         no_rewards='P2_CARGO_READY' not in text and 'P2_POD_RECEIPT' not in text,
     )

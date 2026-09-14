@@ -63,7 +63,11 @@ P2_POM_CLOSE generator=<id> species=<name> outcome=<shot|reopen> used=<n> budget
 P2_POM_SPROUT generator=<id> species=<name> count=<n> colour=<src> body=<p1> leaf=1
 P2_POM_SPROUT_RETRY generator=<id> species=<name> owed_remaining=<n> requested=<n> born=<n> item_capacity=1 forced=<0|1>
 P2_POM_SPROUT_SETTLED generator=<id> species=<name> requested=<n> born=<n> conservation=1
-P2_POM_DONE generator=<id> species=<name> used=<n> refunds=<n>
+P2_POM_STATE generator=<id> species=<name> from=<s> to=<s>
+P2_POM_DEAD generator=<id> species=<name> used=<n> refunds=<n> corpse=0 budget=<n>
+P2_POM_CONSERVATION generator=<id> species=<name> used=<n> refunds=<n> requested=<n> born=<n> dead_pikis=<n> loss_counted=<0|1>
+
+Review note: `loss_counted` is a delta on the global `GameStat::deadPikis`, so any unrelated Pikmin death in the scene flips it to 1 (false positive). The conservation ledger instruments the pre-existing erase-kill path (`pikidoKill.cpp` skips the increment when `mEraseOnKill`, which the base module already set); it is not a new mechanic.
 ```
 
 `colour` is the source-selected colour (the Queen's cycling colour, no longer the
@@ -222,3 +226,36 @@ Rebased onto the current maintained native (`codex/p2-main-review-native` head
   `P2_POM_SPROUT ... count=9 colour=0 body=0`, `P2_POM_SPROUT_RETRY ... item_capacity=1`,
   `P2_POM_SPROUT_SETTLED ... requested=9 born=9 conservation=1`, RedPom
   `requested=2 born=2`, `PASS P2_POM_NATIVE accept_refund_close_sprout`.
+
+## DeepSeek #448 follow-on slice: source six-state FSM, budget-only death, conservation ledger
+
+Lane 23 (DeepSeek session) adds the source state machine and the budget-only
+death/cleanup path that the earlier module left implicit, plus a
+population-conservation proof. New observables (native `pc_port/pc_p2_pom.cpp`,
+mirrored policy `pc_port/pc_p2_pom_policy.h` and the root
+`native-patches/pom` copy, `experimental/pikmin2_flora_behavior.py`,
+`experimental/pikmin2_pom_runtime.py`, tests):
+
+- **Six-state FSM.** The source state set (enemy/Entities/Pom.h:153-161)
+  `wait/dead/open/close/shot/swing` is now tracked per bound bud and emitted as
+  `P2_POM_STATE ... from=<s> to=<s>`. The Queen walks
+  `wait -> open -> swing -> close -> shot -> dead`; a colour bud reopens
+  (`shot -> wait`) while its lifetime budget (`ip01` = 5) remains.
+- **Budget-only death.** `candypop_dead`/`p2pom::dead(budgetSpent, owed)` encode
+  the audit's "death only from an exhausted budget": a bud reaches `dead` only
+  when its budget is spent **and** sprout conservation has settled (`owed == 0`).
+  The terminal log is `P2_POM_DEAD ... corpse=0 budget=<n>` (source-correct: no
+  corpse). Conservation settlement still precedes death, so a consumed Pikmin's
+  sprouts are never discarded by the death.
+- **Population conservation ledger.** The module records `GameStat::deadPikis`
+  once after binding (`deadPikisBaseline`) and again at death as
+  `P2_POM_CONSERVATION ... used=<n> refunds=<n> requested=<n> born=<n>
+  dead_pikis=<n> loss_counted=<0|1>`. Every consumed Pikmin is erase-killed
+  (`Piki::setEraseKill()`), so `deadPikis` must not advance and `loss_counted`
+  is `0`: conversion consumes Pikmin without counting them as deaths/losses.
+
+The fixture validator now requires the state walk, `P2_POM_DEAD` and
+`P2_POM_CONSERVATION` (with `loss_counted=0`) in addition to the prior
+accept/refund/close/sprout/settled gates; a run that never dies, or that counts
+a loss, fails closed. The module remains sidecar-gated, fail-closed, and inert
+without `p2-pom.txt`.

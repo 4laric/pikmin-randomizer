@@ -118,6 +118,17 @@ int main()
 	assert(threw([] { spawnAllowed(Species::RedPom, 0, "x", 0x7u, 0); }));
 	assert(threw([] { speciesFromName("Nope"); }));
 
+	// Source six-state FSM (Pom.h:153-161): wait/dead/open/close/shot/swing.
+	static_assert(int(State::Wait) == 0 && int(State::Dead) == 1 && int(State::Open) == 2 && int(State::Close) == 3
+	                  && int(State::Shot) == 4 && int(State::Swing) == 5,
+	              "pom state ids");
+	assert(std::string(stateName(State::Wait)) == "wait" && std::string(stateName(State::Dead)) == "dead"
+	       && std::string(stateName(State::Open)) == "open" && std::string(stateName(State::Close)) == "close"
+	       && std::string(stateName(State::Shot)) == "shot" && std::string(stateName(State::Swing)) == "swing");
+	// Death only from an exhausted budget with conservation settled; no corpse.
+	assert(dead(true, 0) && !dead(false, 0) && !dead(true, 1) && !dead(false, 1));
+	assert(threw([] { dead(true, -1); }));
+
 	std::puts("pikmin2_pom_policy PASS");
 	return 0;
 }
