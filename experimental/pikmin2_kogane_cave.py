@@ -10,7 +10,8 @@ Host-side model of the source cave behavior around the audited drop tables in
   260-265), after which the beetle burrows away instead of dropping again.
 - An unflipped cave beetle (``mHitCount == 0``) that reaches Disappear
   re-registers through ``Cave::randMapMgr`` and resurfaces (Kogane.cpp:250-262)
-  instead of dying.
+  instead of dying; :func:`relocation_outcome` classifies that relocation
+  against the final death.
 
 This module never duplicates the drop table: every table resolution goes through
 ``drop_for``. See ``docs/PIKMIN2_KOGANE_REWARDS.md``.
@@ -18,12 +19,20 @@ This module never duplicates the drop table: every table resolution goes through
 from experimental.pikmin2_kogane_assets import DROP_TABLES, MAX_FLIPS, drop_for
 
 UNFLIPPED = 0
+RELOCATION = 'relocate'
+DEATH = 'death'
 
 
 def _species(species):
     if species not in DROP_TABLES:
         raise ValueError('Unknown beetle species: ' + repr(species))
     return species
+
+
+def _flag(name, value):
+    if type(value) is not bool:
+        raise ValueError('Invalid %s flag: %r' % (name, value))
+    return value
 
 
 def treasure_override(species, flip, carried_treasure):
@@ -48,7 +57,21 @@ def relocates(flip_count, in_cave):
     """
     if type(flip_count) is not int or flip_count < 0:
         raise ValueError('Invalid flip count: ' + repr(flip_count))
-    return bool(in_cave) and flip_count == UNFLIPPED
+    _flag('cave', in_cave)
+    return in_cave and flip_count == UNFLIPPED
+
+
+def relocation_outcome(flip_count, in_cave):
+    """Classify a beetle reaching Disappear as a relocation or a final death.
+
+    Only an unflipped cave beetle relocates (``Cave::randMapMgr`` re-register,
+    Kogane.cpp:250-262); every other beetle burrows away for good. Returns a
+    structured ``{'flip': flip_count, 'relocate': bool, 'outcome':
+    'relocate'|'death'}`` so callers do not re-derive the rule.
+    """
+    relocate = relocates(flip_count, in_cave)
+    return {'flip': flip_count, 'relocate': relocate,
+            'outcome': RELOCATION if relocate else DEATH}
 
 
 def resolve_flip(species, flip, in_cave=False, demo_flag=False, carried_treasure=None):
@@ -64,6 +87,8 @@ def resolve_flip(species, flip, in_cave=False, demo_flag=False, carried_treasure
     _species(species)
     if type(flip) is not int or not 0 <= flip <= MAX_FLIPS:
         raise ValueError('Flip out of range: ' + repr(flip))
+    _flag('cave', in_cave)
+    _flag('demo', demo_flag)
     treasure = treasure_override(species, flip, carried_treasure) if flip else None
     drop = None if flip == UNFLIPPED or treasure is not None else drop_for(species, flip - 1, in_cave, demo_flag)
     return {

@@ -6,6 +6,22 @@
 #include "Controller.h"
 #include "PikiState.h"
 #include <fstream>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+// Standard experimental-room window: honour PIKMIN_P2_ROOM_WINDOW, default
+// 960x540. Mirrors pc_main.cpp's pc_test_window_size so the persisted size
+// cannot override the standard preview window.
+static bool giant_window_size(int& width,int& height){
+ const char* value=std::getenv("PIKMIN_P2_ROOM_WINDOW");
+ if(value&&(!std::strcmp(value,"0")||!std::strcmp(value,"off")))return false;
+ if(value){
+  int customWidth=0,customHeight=0;
+  if(std::sscanf(value,"%dx%d",&customWidth,&customHeight)==2&&customWidth>=320&&customHeight>=240){width=customWidth;height=customHeight;return true;}
+  if(!std::strcmp(value,"1")||!std::strcmp(value,"small")){width=960;height=540;return true;}
+ }
+ width=960;height=540;return true;
+}
 // Giant Breadbug actor arena (#220 batch 4): spawn identity, P2 params,
 // Purple-only press, PelletCarry contest, hide-digest heal, defeat throw-up,
 // owner-linked nest birth/death. P1 FSM drives locomotion/cargo.
@@ -147,4 +163,4 @@ public:
   return result;
  }
 };
-int main(int argc,char** argv){SDL_setenv("SDL_AUDIODRIVER","dummy",1);std::setvbuf(stdout,nullptr,_IONBF,0);SDL_SetMainReady();pc_gpu_preference_apply();_putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND","1");pc_bbft_init(argc,argv);require(pc_pikipelago_room_preview(),"preview flag");if(!pc_window_init("Giant Breadbug actor arena",960,720))return 3;pc_settings_init();gsys->Initialise();pc_settings_p2d_init();nodeMgr=new NodeMgr();gsys->run(new GiantActorFixture());return 0;}
+int main(int argc,char** argv){SDL_setenv("SDL_AUDIODRIVER","dummy",1);std::setvbuf(stdout,nullptr,_IONBF,0);SDL_SetMainReady();pc_gpu_preference_apply();_putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND","1");pc_bbft_init(argc,argv);require(pc_pikipelago_room_preview(),"preview flag");int windowWidth=960,windowHeight=540;const bool standardWindow=giant_window_size(windowWidth,windowHeight);if(!pc_window_init("Giant Breadbug actor arena",windowWidth,windowHeight))return 3;pc_settings_init();if(standardWindow){pc_window_set_display_mode(PC_WINDOW_FULLSCREEN_WINDOWED);pc_window_set_window_size(windowWidth,windowHeight);pc_window_center();std::printf("Experimental preview window set to %dx%d windowed and centered\n",windowWidth,windowHeight);std::fflush(stdout);}gsys->Initialise();pc_settings_p2d_init();nodeMgr=new NodeMgr();gsys->run(new GiantActorFixture());return 0;}
