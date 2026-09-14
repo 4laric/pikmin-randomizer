@@ -120,7 +120,7 @@ tests skip only when the local user assets/import are absent.
 
 ```powershell
 # natural (unassisted) Pod observation:
-py -3.12 scripts/pikmin2_mamuta_pod_native.py --assets <assets> --imported <imported> `
+py -3.12 -m scripts.pikmin2_mamuta_pod_native --assets <assets> --imported <imported> `
   --exe output/mamuta-pod-fixture-natural-01/fixture.exe `
   --output output/mamuta-pod-accept-natural --pod-package output/pikmin2-pod111/import-01
 
@@ -134,7 +134,7 @@ py -3.12 scripts/pikmin2_mamuta_pod_native.py --assets <assets> --imported <impo
 Assisted (must be labelled assisted, never natural):
 
 ```powershell
-py -3.12 scripts/pikmin2_mamuta_pod_native.py --assets <assets> --imported <imported> `
+py -3.12 -m scripts.pikmin2_mamuta_pod_native --assets <assets> --imported <imported> `
   --exe output/mamuta-pod-fixture-assisted-01/fixture.exe `
   --output output/mamuta-pod-accept-assisted --pod-package output/pikmin2-pod111/import-01 `
   --assisted
