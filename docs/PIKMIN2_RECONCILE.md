@@ -61,7 +61,18 @@ Full file lists and sample absent paths: `docs/PIKMIN2_RECONCILE_LEDGER.json`.
 
 ## Status
 
-No merge, build, export or runtime acceptance has been performed. This is the
-lane 01 first bounded deliverable (reconciliation evidence); the merges above are
-the next batches and require a private native worktree, build capacity and the
-real-GL slot.
+Batch A (hard lanes) is executed; batches B–E remain.
+
+### Batch A result — hard lanes merged, built, exported, unit-gated
+
+- Private native worktree `output/lane01-native` branch `opencode/p2-lane01-hardlanes`.
+- Merged `opencode/p2-hardlanes-native` (`6ea7eff8`) into native base `9735870c`. 57 files, +11244 lines; 7 conflicts all additive (CMakeLists, `pc_p2_preview.cpp`) or newer hard-lane versions of an earlier policy already in base (`pc_p2_fuefuki_interference_policy.h`, Fuefuki docs/tests) plus one HEAD-only addition (`pc_p2_retail_player.h`). Merge commit `d56e6c2b`; worktree clean.
+- Build: private `output/lane01-native-build`, Ninja/Release, `PIKMIN_NATIVE_JAUDIO=ON`, `[527/527] Linking CXX executable bin\nectar.exe`; `ninja -n` → no work. Executable SHA-256 `7FFEE3C7CE2696A3E2A01F0765BD69D9D31974BA5EA760F4BB7BA9EC64DE8272`.
+- Export: `py -3.12 scripts/export_native_source.py` (via `export(source='../lane01-native', destination='engine')`) → 63 engine files, +11370/-14; root branch commit `22064f8`.
+- Affected-gate repeat: `py -3.12 scripts/run_p2_hardlane_tests.py --native output/lane01-native` → **16/16 PASS** (BombSarai 7, BigTreasure 5, Fuefuki 4).
+- Not yet done: real-GL runtime fixtures for #244/#245/#246 (arena capture) and integration of `22064f8` into the maintained line. No gameplay PASS is claimed from the unit/build evidence.
+
+### Remaining batches
+
+- B species deltas (#407), C cannon/projectiles (#406/#424/#425), D lifecycle/reward (#397), E converter/clock (#429/#431).
+- Each: private native merge → build + `ninja -n` → export → repeat affected gates. Real-GL fixtures require the reserved slot.
