@@ -21,12 +21,13 @@ def _port_candidates():
     yield ROOT / 'engine' / 'pc_port'
     yield ROOT / 'native' / 'pc_port'
     for base in (ROOT, *ROOT.parents):
-        for worktree in ('native-lanes-1012', 'native-sub-elements'):
+        for worktree in ('native-sub2-captains', 'native-lanes-1012', 'native-sub-elements'):
             yield base / 'output' / worktree / 'pc_port'
 
 
 _CASES = (
     ('test_p2_captain_policy.cpp', 'PASS P2_CAPTAIN_POLICY'),
+    ('test_p2_captain_roster.cpp', 'PASS P2_CAPTAIN_ROSTER'),
     ('test_p2_bulbmin_policy.cpp', 'PASS P2_BULBMIN_POLICY'),
     ('test_p2_species_policy.cpp', 'PASS P2_SPECIES_POLICY'),
     ('test_p2_species_schema.cpp', 'PASS P2_SPECIES_SCHEMA'),
