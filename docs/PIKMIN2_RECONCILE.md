@@ -61,7 +61,7 @@ Full file lists and sample absent paths: `docs/PIKMIN2_RECONCILE_LEDGER.json`.
 
 ## Status
 
-Batches A (hard lanes), B (species root slice), C (cannon/projectiles) and D (lifecycle/reward) are executed; batch E remains.
+All lane-01 reconciliation batches A–E are executed.
 
 ### Batch A result — hard lanes merged, built, exported, unit-gated
 
@@ -98,8 +98,18 @@ Batches A (hard lanes), B (species root slice), C (cannon/projectiles) and D (li
 - Export: root `engine/` 2 files (`pc_p2_preview.cpp`, `pc_p2_preview.h`).
 - `9280a2f`'s economy code was already identical in base; no duplicate-reward logic change. Real-GL duplicate-reward/revisit runtime remains untested.
 
-### Remaining batches
+### Batch E result — converter billboard fallback + sampled clock/event contract
 
-- E converter/clock (#429/#431).
+- Clock (#431): root `experimental/pikmin2_animation_clock.py` + tests + `docs/PIKMIN2_SAMPLED_CLOCK_EVENTS.md` + the `native-candidates/sampled-clock-128/` handoff bundle → **24 passed**. Native `pc_p2_sampled_clock.h` (header-only) + `tools/test_p2_sampled_clock.cpp` added at `07f173ae`; `ninja -n` no work (no compiled consumer yet).
+- Converter (#429): cherry-picked `33c5cac`. Conflicts resolved conservatively:
+  - `pikmin2_convert.py` `decode`/`convert` keep the newer base signature (`bindings`, `transpose-adjugate-zero`, `_normal_policy` report) and add only the opt-in `billboard='error'|'static'` path.
+  - `pikmin2_flora_assets.py` `TOLERANCES` unions base's `Pelplant: transpose-adjugate-zero` with the new `HikariKinoko: {billboard: static, missing_normals: compute}`.
+  - `tests/test_pikmin2_convert_normals.py` (base-deleted; its stale report-schema assertions fail against the newer converter) was not restored. Its synthetic-model builders moved to `tests/p2_convert_model_helpers.py`, which the billboard test imports.
+- Converter/flora/clock tests: **57 passed, 3 skipped**.
+- Export: root `engine/` 2 files (`pc_p2_sampled_clock.h`, `test_p2_sampled_clock.cpp`).
+
+### Remaining work
+
 - Native species modules: per-family merges (`opencode/p2-species-*`) rather than the 62-commit umbrella branch.
-- Real-GL fixtures require the reserved slot.
+- Real-GL runtime fixtures for hard lanes, cannon, lifecycle and the seeded P2 bridge require the reserved GL slot.
+- Integrate `opencode/p2-lane01-reconcile` (engine deltas) into the maintained line after review.
