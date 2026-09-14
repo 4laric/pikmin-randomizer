@@ -5,17 +5,18 @@ three-identity scene run. Probe only; not a generated-session admission.
 
 ## 1. Combined native candidate
 
-- Native branch `opencode/p2-lane13-15-combined-native` @ `27c560e6` (private,
+- Native branch `opencode/p2-lane13-15-combined-native` @ `099b022c` (private,
   **not** pushed), base approved native `f14c6851`. Merges the lane-13 Dwarf
-  Orange candidate (`opencode/p2-lane13-orange-native`) into the lane-15
-  combined candidate (`opencode/p2-lane15-combined-native`: Qurione + Shijimi).
+  Orange candidate (`opencode/p2-lane13-orange-native`), the lane-15 combined
+  candidate (`opencode/p2-lane15-combined-native`: Qurione + Shijimi), and the
+  opt-in Dwarf Orange `pc_p2_kochappy_fsm` source FSM (default OFF).
 - Conflicts in `include/teki.h`, `tekibteki.cpp` and `tekimgr.cpp` resolved
   additively: the `TPF_Life` chain is now
   `pc_p2_dwarf_orange_max_health(pc_p2_kochappy_max_health(pc_p2_snow_max_health(pc_p2_qurione_param_f(…Kogane/Sokkuri/Armor/shijimi…))))`;
   all three `draw`/`update`/`suppress_ai`/`reset`/`forget` hooks coexist.
-- Build `output/native-lane15-qurione-r2-build`, `[107/107]` relink, `ninja -n`
-  no work. `nectar.exe` SHA-256
-  `2656A875584798203C1409814D40AB5BFCCE233CA057D9BD6251155EFBC3BF97`.
+- Build `output/native-lane15-qurione-r2-build`, Ninja/MinGW Release, JAudio ON;
+  `ninja -n` no work. `nectar.exe` SHA-256
+  `2005BB81FD6D88816EBA2722560956A44DB6FDDB8B8E389C0AA0B513154D4588`.
 
 This is the single artifact to hand to lane 01 for the lane-13/15 cohort; it
 supersedes the three separate candidates listed in
@@ -23,7 +24,7 @@ supersedes the three separate candidates listed in
 
 ## 2. Three-identity scene
 
-`output/p2-lane1315-mixed-arena/bdea1ad3bd21473ab8d555c535abc4f1/mixed3/`
+`output/p2-lane1315-mixed-arena/bdea1ad3bd21473ab8d555c535abc4f1/mixed4/`
 (centred 960x540, 20-red squad, one timer-terminated direct run):
 
 ```text
@@ -46,6 +47,7 @@ All checks PASS (`tests/test_pikmin2_lane1315_mixed_runtime.py`); no extinction.
 - Combined performance budget UNTESTED (no `[PC tick]` budget recorded).
 - Generated-session admission BLOCKED (lane 02/03/05); rewards/transport and
   cleanup/re-entry BLOCKED (lane 06 / #397).
-- Dwarf Orange behavior is still the host P1 AI (`behavior=P1`); the source
-  `KochappyBase` FSM is not ported.
+- Dwarf Orange behavior is still the host P1 AI (`behavior=P1`) by default; the
+  opt-in `pc_p2_kochappy_fsm` source FSM is included and defaults OFF
+  (`docs/PIKMIN2_KOCHAPPY_FSM.md`).
 - Private fixture arena, not a randomized session; lane 01 owns export.
