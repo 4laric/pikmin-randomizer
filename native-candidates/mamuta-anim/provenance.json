@@ -33,11 +33,13 @@
   },
   "runtime": {
     "window": "960x540 windowed",
-    "run_dir": "output/mamuta-anim-run-01/a5e27f7796fc40ccb26e7992efafd2f5",
     "fixture_exe_sha256": "6DEE805B93553810170C91EF70AE824250D1FE27FCE12A32D51C32E151739143",
     "markers": ["P2_MAMUTA_READY ... P1_proxy_source_pose_banks_no_P2_planting", "P2_MAMUTA_DRAW generator=221001 anchor=attack1 poses=3 animated=1"],
     "staged_banks": ["miulin_attack1_00/01/02.mod", "miulin_dead_00/01/02.mod", "miulin_wait_00/01/02.mod"],
-    "result": "animated attack1 bank drawn; this run did not reach a natural kill (variance)"
+    "runs": [
+      {"run_dir": "output/mamuta-anim-run-01/a5e27f7796fc40ccb26e7992efafd2f5", "result": "animated attack1 bank drawn; no kill this run (variance)"},
+      {"run_dir": "output/mamuta-anim-run-02/9290f791b2104178b640a292bf35f4bd", "result": "full natural chain with animated attack1 + dead banks; P2_POD_RECEIPT id=corpse:mamuta:221001 value=2 pokos=2; died_tick=469"}
+    ]
   },
   "tests": "tests/test_pikmin2_mamuta_{install,runtime,natural,pod,cargo}.py -> 36 passed, 9 subtests",
   "not_claimed": [

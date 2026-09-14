@@ -36,6 +36,16 @@ P2_MAMUTA_READY generator=221001 native_type=24 xyz=-150.000000,30.000000,1850.0
 P2_MAMUTA_DRAW generator=221001 anchor=attack1 poses=3 animated=1 P1_gameplay_unchanged
 ```
 
+A second run `output/mamuta-anim-run-02/9290f791b2104178b640a292bf35f4bd`
+reached the full chain with the animation active:
+
+```
+P2_MAMUTA_DRAW generator=221001 anchor=attack1 poses=3 animated=1 P1_gameplay_unchanged
+P2_MAMUTA_DRAW generator=221001 anchor=dead    poses=3 animated=1 P1_gameplay_unchanged
+[Pikipelago] P2_POD_RECEIPT id=corpse:mamuta:221001 value=2 new=1 pokos=2 seeds=0
+P2_MAMUTA_POD_RESULT died=1 died_tick=469 corpse=1 carried=1 goal=1 pokos=2 control_alive=1 squad=9
+```
+
 Staged room carries `miulin_attack1_00/01/02.mod`, `miulin_dead_00/01/02.mod`,
 `miulin_wait_00/01/02.mod`. Tests:
 `tests/test_pikmin2_mamuta_install.py`, `test_pikmin2_mamuta_runtime.py`,
@@ -49,9 +59,10 @@ Staged room carries `miulin_attack1_00/01/02.mod`, `miulin_dead_00/01/02.mod`,
   38-frame `attack1`.
 - The pose index is driven by the **P1 Miurin animator** frame count, a proxy
   timing, not P2 `miulinState` frame parity.
-- The acceptance run drew the animated `attack1` bank but this particular run
-  did not reach a natural kill (run-to-run variance); the animation path is
-  observed, not a full strike-to-corpse chain in this log.
+- The first run (`mamuta-anim-run-01`) drew the animated `attack1` bank but did
+  not reach a kill (run variance); `mamuta-anim-run-02` reaches the full natural
+  chain (kill/corpse/carry/Pod receipt) with the animated `attack1` and `dead`
+  banks observed.
 
 ## Provenance
 
