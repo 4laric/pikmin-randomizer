@@ -238,6 +238,37 @@ class PlanTests(unittest.TestCase):
         self.assertIn("pin", report["blocked_by"])
 
 
+class WitnessProfileTests(unittest.TestCase):
+    def test_known_profiles_expose_documented_markers(self):
+        snow = gs.witness_profile("snow")
+        self.assertIn(gs.INSTALL_WITNESS, snow["install"])
+        self.assertIn("P2_ENEMY_READY", snow["natural_fight"])
+        orange = gs.witness_profile("dwarf_orange")
+        self.assertIn("DONE P2_DWARF_ORANGE_COMBAT", orange["natural_fight"])
+        self.assertIn("P2_DWARF_ORANGE_P1_HAUL", orange["reward"])
+
+    def test_unknown_profile_rejected(self):
+        with self.assertRaises(gs.AcceptanceError):
+            gs.witness_profile("nope")
+
+    def test_profiles_merge_without_duplicates(self):
+        merged = gs.witness_markers("snow", "dwarf_orange")
+        self.assertEqual(merged["natural_fight"].count("P2_ENEMY_READY"), 1)
+        self.assertIn("P2_DWARF_ORANGE_DRAW corpse=0", merged["natural_fight"])
+
+    def test_observe_cli_accepts_profile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "native.log"
+            log.write_text("P2_ENEMY_READY x\nP2_SNOW_DRAW corpse=0\nP2_SNOW_DRAW corpse=1\n"
+                           "PIKMIN_CONTENT_STAGED ok\n", encoding="utf-8")
+            out = Path(tmp) / "obs.json"
+            self.assertEqual(gs.main(["observe", "--log", str(log), "--profile", "snow",
+                                      "--output", str(out)]), 0)
+            data = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual(data["natural_fight"]["status"], qa.PASS)
+            self.assertEqual(data["install"]["status"], qa.PASS)
+
+
 class CliTests(unittest.TestCase):
     def test_verify_pin_cli(self):
         with tempfile.TemporaryDirectory() as tmp:

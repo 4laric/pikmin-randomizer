@@ -64,6 +64,15 @@ If any pinned record for a cell is `FAIL`, the cell is `FAIL`. A `PASS`
 attempt with inadmissible evidence or incomplete provenance resolves to
 `BLOCKED`, with the reason recorded.
 
+### Pinned-baseline enforcement
+
+`report` accepts the pinned baseline under test via `--root-commit`,
+`--native-commit` and `--build-sha256`. When a pin is supplied, a record must
+match it to pass: a record from a different root/native commit or executable
+hash is resolved to `BLOCKED` (`... does not match the pinned baseline`), never
+green. This keeps evidence from an older or unrelated artifact from satisfying a
+cell on the current build. An empty pin disables the check (diagnostic use).
+
 ## Record schema
 
 A record is a JSON object (or a list, or `{"records": [...]}`):
