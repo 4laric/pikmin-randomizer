@@ -217,3 +217,72 @@ only Chappy-family registration is Kochappy
 (`pc_p2_species.cpp:59-68`). Rendering is intentionally not faked and no
 invincibility was added; the driver is proven by an engine-double harness, not a
 rendered arena run.
+
+## Dedicated Mother Bulbmin registration (sub-slice 3, #131)
+
+Native branch `opencode/p2-sub3-mother` @ `43d891f7`, base `95bfa756`,
+worktree `output/native-sub3-mother`, executing session: opencode subagent
+(`opencode-go/deepseek-v4.1-flash`). This slice keeps the mother opt-in and
+default-off while turning the mother identity into an explicit, labeled
+registration separate from the Kochappy auto-attach.
+
+### Asset / actor audit (closest available "mother" path)
+
+| Candidate | Registration / path | Verdict |
+|---|---|---|
+| Kochappy (`pc_p2_kochappy.cpp:31,42-47,79-83`) | `TEKI_Chappy` selection, `pc_p2_kochappy_first_registered()` at `pc_p2_kochappy.cpp:32`; scene selection `pc_p2_preview.cpp:173`; textured bank `kochappy_<clip>_<NN>.mod` (`pc_p2_kochappy.cpp:52,65`) | **Closest available.** The Chappy-family visual bank is the labeled proxy. |
+| `LeafChappy` / `KumaChappy` (Mother Bulbmin) | research-only: `include/Game/Entities/LeafChappy.h:7`, `LeafChappy.cpp:131-152` | No port actor, generator or `piki_kochappy` model anywhere. |
+| `KingChappy` (Bulblax) bank | `output/bulblax-arena-profile-01/models/bulblax_KingChappy_*.mod` | A boss, not the Mother Bulbmin; not used. |
+| `piki_kochappy` model | none | `pc_p2_make_bulbmin` writes colour only (`pc_p2_species.cpp:59-68`). |
+
+Any `.mod` bank under the local `output/` assets is a converted visual bank; the
+repository has no LeafChappy/KumaChappy bank, and none was fabricated.
+
+### What this slice adds
+
+- `P2BulbminMotherActor` registry in `pc_p2_bulbmin.h`: one labeled mother host
+  per bridge (`registerMother`, `motherIs`, `motherActorInfo`, `motherDied`,
+  `clearMother`). `proxy` is true while no LeafChappy model exists.
+- Config gains an optional proxy label: `P2_BULBMIN_1 <epoch> <dependents>
+  [mother_model]` (default `kochappy_proxy`) and `P2_BULBMIN_2 <epoch>
+  <dependents> <mother_model>` (label required). Malformed labels and trailing
+  data are rejected.
+- Engine entrypoints `pc_p2_bulbmin_attach_mother_ex(Creature*, model, proxy)`,
+  `pc_p2_bulbmin_attach_dedicated_mother()` (env `PIKMIN_P2_BULBMIN_MOTHER`),
+  `pc_p2_bulbmin_mother_model()`, `pc_p2_bulbmin_has_mother()`.
+- `pc_p2_bulbmin_attach_mother()` remains the Kochappy auto-attach and now
+  delegates to `..._ex`; `pc_p2_bulbmin_proxy_forget()` releases through
+  `motherDied`, so slot reuse releases only this mother's wild dependents.
+- `pc_p2_preview.cpp` keeps the existing auto-attach and adds the env-gated
+  dedicated call. Both are no-ops with no config.
+
+Every entrypoint still guards on `pc_p2_bulbmin_active()`: with no
+`p2-bulbmin.txt` and no `PIKMIN_P2_BULBMIN` the engine behavior is unchanged.
+
+### Evidence
+
+```text
+g++ -std=c++17 -Wall -Wextra -Werror -I pc_port tools/test_p2_bulbmin_mother.cpp -o test_p2_bulbmin_mother.exe
+PASS P2_BULBMIN_MOTHER
+g++ -std=c++17 -Wall -Wextra -Werror -I pc_port tools/test_p2_bulbmin_bridge.cpp -o test_p2_bulbmin_bridge.exe
+PASS P2_BULBMIN_BRIDGE
+```
+
+The mother harness proves: labeled registration (one mother, same-host relabel,
+different-host refusal), the source ten-body `birthChildren` flock, whistle
+recruitment into `P2CaptainOwnershipTable` (`P2CaptainA`), mother death
+releasing only the nine wild dependents while the whistled body survives, and
+the cave filter (descent keeps only recruited, exit drops all).
+
+Private build `output/native-sub3-mother-build` (Ninja, Release, JAudio ON)
+linked `[68/68] Linking CXX executable bin\nectar.exe`; `ninja -n pikmin_pc` ->
+`no work to do`; `nectar.exe` SHA-256
+`0DC6D4A970324CDD532905552E21B82B4815D6BFEEE70EA63263DC0C3C3434DE`. Patch
+bundle: `native-candidates/p2-sub3-mother/0001-*.patch`.
+
+**Proxy labeling:** the registered mother is the Chappy-family Kochappy visual
+bank under an explicit label; the logs report `proxy=1 live_leafchappy=0`. No
+live Mother Bulbmin actor was spawned and no rendered run is claimed. The
+`LeafChappy`/`KumaChappy` actor, its generator/`enemyInfo` registration and the
+`piki_kochappy` model remain the open blocker, together with the schema-3 cave
+checkpoint carrying Bulbmin through a real floor transition.
