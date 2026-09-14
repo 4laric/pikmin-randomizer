@@ -1,0 +1,111 @@
+{
+  "schema": 1,
+  "lane": "21",
+  "issues": ["204", "205", "208"],
+  "summary": "Runtime consumer for the already-integrated Groink shell-strike bridge: port the parked Groink policy/arena/target/volley stack into the current draft, build it into pikmin_pc, and demonstrate shell -> proxy-receiver hits/death in real GL through p2_groink_apply_strike with the capacity-correct tracker.",
+  "native_branch": "opencode/p2-groink-burst",
+  "native_base": "5f33a9e6e8f618394c5d78cfb1cc1201a754c1b6",
+  "native_head": "1a7702fbfb165203667bc4f7bc0e79c98e970287",
+  "native_pushed": false,
+  "native_worktree": "output/native-groink-burst",
+  "ordered_commits": [
+    "d4fe5f98813acdb57f10a1a0a1f7d8c07ead67b2 compile the Groink policy/arena/target/volley stack into pikmin_pc",
+    "1a7702fbfb165203667bc4f7bc0e79c98e970287 honour PIKMIN_P2_ROOM_WINDOW in the Groink runtime fixture"
+  ],
+  "patch_series": [
+    "native-candidates/groink-burst/0001-Lane-21-208-compile-the-Groink-policy-arena-target-v.patch",
+    "native-candidates/groink-burst/0002-Lane-21-208-honour-PIKMIN_P2_ROOM_WINDOW-in-the-Groi.patch"
+  ],
+  "preserved_integrated_bridge": {
+    "note": "pc_port/pc_p2_groink_hit.{h,cpp} and pc_port/pc_p2_groink_strike.{h,cpp} are unchanged from the base and byte-identical to the draft 5f33a9e6 working copies; the capacity-correct P2GroinkStrikeTracker (Apply/AlreadyHit/RejectedAtCapacity, kMaxTracked=64) is preserved.",
+    "strike_cpp_sha256": "D261E2C2CDAAFF0177F37AC9069F3BF584EB5391C07C379932D2AFB19A692725"
+  },
+  "ported_from_parked_candidate": {
+    "source_branch": "opencode/p2-groink-strike @ 1ae14480",
+    "source_worktree": "output/native-groink-strike",
+    "files": [
+      "pc_port/pc_p2_groink.cpp",
+      "pc_port/pc_p2_groink_arena.h",
+      "pc_port/pc_p2_groink_arena.cpp",
+      "pc_port/pc_p2_groink_attack.h",
+      "pc_port/pc_p2_groink_attack.cpp",
+      "pc_port/pc_p2_groink_clock.h",
+      "pc_port/pc_p2_groink_events.h",
+      "pc_port/pc_p2_groink_map_trace.h",
+      "pc_port/pc_p2_groink_map_trace.cpp",
+      "pc_port/pc_p2_groink_target.h",
+      "pc_port/pc_p2_groink_target.cpp",
+      "pc_port/pc_p2_groink_volley.h",
+      "pc_port/pc_p2_groink_volley.cpp"
+    ],
+    "note": "All 13 files are byte-identical to the earlier draft integration-lead working copies; no source edits were required to compile against 5f33a9e6."
+  },
+  "reconciliation": {
+    "cmake": "Added pc_p2_groink.cpp, arena, attack, map_trace, target and volley to PC_PORT_SOURCES and registered the seven standalone pure-policy CTests (p2_groink_test, _attack, _clock, _events, _target, _volley, _hit).",
+    "fixture_consumer": "tools/p2_groink_target_runtime.cpp no longer #includes pc_p2_groink_volley/attack/target/hit/strike and pc_p2_projectile_receiver .cpp; it includes only their headers and resolves the implementations from the linked pikmin_pc objects, removing duplicate-definition risk now that the stack is in the product.",
+    "window_override": "The fixture main now parses PIKMIN_P2_ROOM_WINDOW=WxH and passes it to pc_window_init (pc_window_init itself does not consult the variable)."
+  },
+  "standalone_tests": {
+    "compile": "g++ -std=c++17 -Wall -Wextra -Werror -Ipc_port <test> <deps>",
+    "result": "all eight compile and exit 0: p2_groink_test (no output), p2_groink_attack_test PASS, p2_groink_clock_test PASS, p2_groink_events_test PASS, p2_groink_target_test PASS, p2_groink_volley_test PASS, p2_groink_hit_test PASS, p2_groink_strike_test PASS (capacity-correct tracker regression included)"
+  },
+  "product_build": {
+    "dir": "output/native-groink-burst-build",
+    "generator": "Ninja Release/MinGW, JAudio ON",
+    "target": "pikmin_pc",
+    "exe": "bin/nectar.exe",
+    "exe_sha256": "2B3359977C720BD2B7C03FF6913426D7B967488F8A3A24049A3635794E3B5047",
+    "no_work_dry_run": "ninja: no work to do.",
+    "note": "The larger current draft makes CMake/Ninja link pikmin_pc through CMakeFiles/pikmin_pc.rsp; the fixture links through a rewritten response file."
+  },
+  "fixture_build": {
+    "builder": "output/groink-burst-fixture-build.py (private; the maintained scripts/build_pikmin2_fixture.py rejects @response-file link commands)",
+    "dir": "output/groink-burst-fixture-02",
+    "source": "tools/p2_groink_target_runtime.cpp",
+    "expected_native_head": "1a7702fbfb165203667bc4f7bc0e79c98e970287",
+    "fixture_exe_sha256": "511B410E572E7AFB7CD58D8AB012415BF7455AAACE76657CB770B06A3179343C",
+    "fixture_obj_sha256": "0f53e1a81ba22e3951ca6ade45d040f7215a9edab161fe3165fc39d804df2a33",
+    "status": "built"
+  },
+  "real_gl_evidence": {
+    "run_dir": "output/groink-burst-run-01",
+    "session_copy": "output/groink-burst-session-01",
+    "window": "960x540 (PIKMIN_P2_ROOM_WINDOW=960x540, SDL_AUDIODRIVER=dummy, window hidden via PIKMIN_RANDOMIZER_TEST_BACKGROUND=1)",
+    "room": "room_4x4a_4_conc",
+    "assets_save": "directory junctions to output/groink-runtime-sessions/0d2aa8c8fb084839b6616aef201fa614",
+    "stdout_sha256": "438CD921656615913F78F4D44F018093D67B0E549F218AF8D854546597432FAB",
+    "stderr_sha256": "ECCEC60B93168E2EFF78CF55A1BC566C0F430D03E2DD8831AB09397B5E426E09",
+    "exit": "fixture std::_Exit(0) after PASS GROINK_VOLLEY_RUNTIME",
+    "receiver_hits": 6,
+    "receiver_deaths": 1,
+    "proxy_health_start": 25.0,
+    "proxy_health_end": 0.0,
+    "flight_sweep_steps": 90,
+    "flight_sweep_hits": 0,
+    "flight_sweep_wind": 0,
+    "placement": "fixture_pinned terminal_sweep_midpoint",
+    "markers": [
+      "P2_GROINK_ARENA_READY model=groink_attack.mod visual_muzzle_alignment=unvalidated shellmarker=debug fixed_heading=owner_yaw_only no_ai=1 no_damage=1",
+      "P2_GROINK_ATTACK_FIRE tick=42 frame=26.0 cycle=0 emitted=3",
+      "P2_GROINK_STRIKE_PLACEMENT fixture_pinned=1 reason=terminal_sweep_midpoint",
+      "P2_GROINK_RECEIVER_HIT token=2385837346720 kind=Bomb damage=10.000 health=15.000",
+      "P2_GROINK_RECEIVER_HIT token=2385837346720 kind=Bomb damage=10.000 health=5.000",
+      "P2_GROINK_RECEIVER_HIT token=2385837346720 kind=Bomb damage=10.000 health=0.000",
+      "P2_GROINK_RECEIVER_DEAD token=2385837346720",
+      "P2_GROINK_FLIGHT_SWEEP_PASS steps=90 hits=0 wind=0",
+      "P2_GROINK_STRIKE_PASS hits=6 deaths=1 health_start=25.000 health_end=0.000 placement=fixture_pinned",
+      "PASS GROINK_VOLLEY_RUNTIME"
+    ],
+    "captures": {
+      "groink-volley-flight.ppm": "504DAAC299C3CFA1B7A6B927FC517DB31D62B56CF522FDB4BFCF957870996864",
+      "groink-volley-terminal.ppm": "0CFD0695ED108DC4340E11C3FE035F7E463328CDB6CC80FF499CFEBD706C1344"
+    }
+  },
+  "honest_limits": [
+    "The strikes that reach the receiver use a fixture-pinned Navi placement at the terminal sweep midpoint (P2_GROINK_STRIKE_PLACEMENT fixture_pinned=1), not natural pursuit; the moving in-flight sweep executes every tick (90 steps) but produced no natural moving hit (hits=0 wind=0).",
+    "Real MiniHoudai actor registration/locomotion remains blocked on the shared teki.h / tekimgr.cpp / gameCoreSection.cpp hook; this is still a host-owned proxy with a wildcard sink.",
+    "The proxy receiver marker strings are P2_GROINK_RECEIVER_HIT / P2_GROINK_RECEIVER_DEAD; the seam's P2_PROJECTILE_RECEIVER_HIT / P2_PROJECTILE_RECEIVER_DEAD strings are emitted only by the projectiles-arena consumer, not this Groink fixture.",
+    "Wind impulse is carried in the bridge result and logged in the standalone/unit paths but lane 20's receiver still has no impulse/knockback representation.",
+    "No maintained checkout or shared build was modified; native origin/upstream not pushed."
+  ]
+}

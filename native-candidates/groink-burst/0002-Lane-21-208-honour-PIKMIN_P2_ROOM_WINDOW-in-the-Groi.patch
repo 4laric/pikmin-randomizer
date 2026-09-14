@@ -1,0 +1,34 @@
+From 1a7702fbfb165203667bc4f7bc0e79c98e970287 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 13:05:15 -0400
+Subject: [PATCH 2/2] Lane 21 (#208): honour PIKMIN_P2_ROOM_WINDOW in the
+ Groink runtime fixture
+
+---
+ tools/p2_groink_target_runtime.cpp | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/tools/p2_groink_target_runtime.cpp b/tools/p2_groink_target_runtime.cpp
+index f912dca8..48a70d5e 100644
+--- a/tools/p2_groink_target_runtime.cpp
++++ b/tools/p2_groink_target_runtime.cpp
+@@ -399,7 +399,15 @@ int main(int argc, char** argv) {
+     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1); SDL_SetMainReady(); pc_gpu_preference_apply();
+     _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1"); pc_bbft_init(argc, argv);
+     require(pc_pikipelago_room_preview(), "requires --experimental-pikmin2-room");
+-    require(pc_window_init("Groink attack-event runtime fixture", 960, 720), "window init");
++    // Honour the shared room-window override used by the other P2 GL fixtures.
++    int windowWidth = 960, windowHeight = 720;
++    if (const char* value = std::getenv("PIKMIN_P2_ROOM_WINDOW")) {
++        int width = 0, height = 0;
++        if (std::sscanf(value, "%dx%d", &width, &height) == 2 && width > 0 && height > 0) {
++            windowWidth = width; windowHeight = height;
++        }
++    }
++    require(pc_window_init("Groink attack-event runtime fixture", windowWidth, windowHeight), "window init");
+     pc_settings_init(); gsys->Initialise(); pc_settings_p2d_init(); nodeMgr = new NodeMgr();
+     gsys->run(new GroinkAttackApp()); return 0;
+ }
+-- 
+2.55.0.windows.3
+
