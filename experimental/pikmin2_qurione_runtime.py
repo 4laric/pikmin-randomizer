@@ -21,10 +21,16 @@ def evidence(log, exit_code):
     import re
     rows=[dict((k,float(v)) for k,v in re.findall(r'(\w+)=([-+\d.eE]+)',line)) for line in log.splitlines() if line.startswith('P2_QURIONE_ARENA_TICK ')]
     births=[line for line in log.splitlines() if line.startswith('P2_QURIONE_ARENA_BIRTH ')]
+    egg_real_born='born=1 drop_group=0' in log
+    egg_real_released='released=1' in log
+    egg_break='P2_QURIONE_EGG_BREAK ' in log
+    egg_item='P2_QURIONE_EGG_ITEM ' in log
     return dict(exit_code=exit_code,completed=exit_code==0 and 'PASS P2_QURIONE_ARENA observation' in log,
         births=len(births),registered_draw='P2_QURIONE_DRAW corpse=0' in log,
         counter_values={str(i):len({r['frame'] for r in rows if r.get('id')==i}) for i in (203001,203002)},
         attack_accepted='injected_attack_receiver=1 accepted=1' in log,
         nectar_pointer=any('nectar=1' in line for line in log.splitlines() if line.startswith('P2_QURIONE_REWARD ')),
-        material_fidelity='unaccepted: first capture white silhouette',P2_Egg='unimplemented',
+        material_fidelity='unaccepted: first capture white silhouette',
+        egg_real_born=egg_real_born,egg_real_released=egg_real_released,
+        egg_break=egg_break,egg_item=egg_item,
         stimulus='Injected InteractAttack receiver; not player throw collision')

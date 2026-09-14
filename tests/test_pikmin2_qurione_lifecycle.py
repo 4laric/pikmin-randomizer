@@ -26,6 +26,18 @@ def drop(fragment):
     return '\n'.join(line for line in GOOD_LOG.splitlines() if fragment not in line)
 
 
+REAL_LOG = (GOOD_LOG
+            .replace('P2_QURIONE_EGG generator=160001 action=attach',
+                     'P2_QURIONE_EGG generator=160001 action=attach\n'
+                     'P2_QURIONE_EGG_REAL generator=160001 born=1 drop_group=0')
+            .replace('P2_QURIONE_EGG generator=160001 action=drop',
+                     'P2_QURIONE_EGG generator=160001 action=drop\n'
+                     'P2_QURIONE_EGG_REAL generator=160001 released=1\n'
+                     'P2_QURIONE_EGG_BREAK generator=160001 type=2 items=1 real=1\n'
+                     'P2_QURIONE_EGG_ITEM generator=160001 index=0 kind=2 real=1 '
+                     'fallback=0 item=nectar x=0.0 y=30.0 z=0.0'))
+
+
 class QurioneLifecycleTests(unittest.TestCase):
     def test_schema_and_identity(self):
         self.assertEqual(SCHEMA, 'p2-qurione-lifecycle-v1')
@@ -53,7 +65,9 @@ class QurioneLifecycleTests(unittest.TestCase):
         self.assertEqual(REWARD['kind'], 'Egg')
         self.assertEqual(REWARD['source_id'], 37)
         self.assertEqual(REWARD['attach_joint'], 'water')
-        self.assertIn('P2_Egg=unimplemented', REWARD['proxy_marker'])
+        self.assertIn('P2Egg policy', REWARD['real'])
+        self.assertIn('P2_QURIONE_EGG_BREAK', REWARD['markers'])
+        self.assertIn('P2_QURIONE_EGG_ITEM', REWARD['markers'])
 
     def test_sequences(self):
         self.assertEqual(life.lifecycle_sequence(),
@@ -76,6 +90,20 @@ class QurioneLifecycleTests(unittest.TestCase):
         self.assertTrue(result['checks']['source_cycle'])
         self.assertTrue(result['checks']['drop_path'])
         self.assertTrue(result['checks']['exactly_one_drop'])
+
+    def test_validate_detects_real_egg_reward(self):
+        result = life.validate_lifecycle(REAL_LOG)
+        self.assertTrue(result['passed'], result['checks'])
+        rr = result['checks']['reward_real']
+        self.assertTrue(rr['born'], rr)
+        self.assertTrue(rr['released'], rr)
+        self.assertTrue(rr['break_'], rr)
+        self.assertTrue(rr['item'], rr)
+        self.assertTrue(rr['nectar'], rr)
+
+    def test_validate_reward_real_absent_in_proxy_log(self):
+        result = life.validate_lifecycle(GOOD_LOG)
+        self.assertFalse(any(result['checks']['reward_real'].values()))
 
     def test_validate_rejects_missing_cycle_state(self):
         bad = drop('state=disappear')

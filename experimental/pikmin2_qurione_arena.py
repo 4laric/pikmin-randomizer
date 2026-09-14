@@ -56,7 +56,7 @@ def prepare(assets,bank,output,expected_source_sha256):
     (run/'p2-cargo-free.txt').write_text('P2_CARGO_FREE_1\n')
     for name,value in preserved.items():
         if digest(run/'assets'/name)!=value:raise ValueError('Original course changed')
-    result=dict(schema=1,scene='P1 Impact Site',stage_slot='chal0',actors=actors,enemy_count=2,source_stage_sha256=digest(stage),preserved_course_sha256=preserved,installation=installation,profile_sha256=digest(bank/'qurione.json'),birth_policy=birth,command=['nectar.exe','--experimental-pikmin2-room'],placement_choice='Engineered arena coordinates; terrain/physical spawn acceptance unmeasured',gates={key:'untested' for key in ('native_identity','natural_AI','combat','death','delivery','reload')},limitations=['Host P1 nectar reward retained; P2 attached Egg NOT implemented','No source yaw applied','Source Honeywisp visuals only; P1 AI, life and nectar unchanged'])
+    result=dict(schema=1,scene='P1 Impact Site',stage_slot='chal0',actors=actors,enemy_count=2,source_stage_sha256=digest(stage),preserved_course_sha256=preserved,installation=installation,profile_sha256=digest(bank/'qurione.json'),birth_policy=birth,command=['nectar.exe','--experimental-pikmin2-room'],placement_choice='Engineered arena coordinates; terrain/physical spawn acceptance unmeasured',gates={key:'untested' for key in ('native_identity','natural_AI','combat','death','delivery','reload')},limitations=['Released Egg falls and breaks via bounded host gravity (lane-20 P2Egg policy object); no physical P1 Egg creature','No source yaw applied','Source Honeywisp visuals only; P1 AI, life and nectar unchanged'])
     (run/'arena.json').write_text(json.dumps(result,indent=2))
     return run
 
