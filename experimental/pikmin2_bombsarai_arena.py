@@ -56,6 +56,63 @@ GATES = ('native_identity', 'terrain_floor_probe', 'terrain_wall_probe',
          'pool_exhaustion', 'visual_assets', 'walk_to_target',
          'flick_effect_routing', 'retail_keyframe_timings',
          'multi_carrier_pool', 'induction_ip02', 'save_resume')
+# The fixture reads one arena profile per scenario from its cwd (see
+# ``output/lane01-native/tools/p2_bombsarai_runtime.cpp`` kScenarios and the
+# ``P2_BOMBSARAI_ARENA_1`` parser in ``pc_p2_bombsarai_arena.cpp``). Content is
+# the audited retail-asset profile: pinned carrier/token, kamu_jnt1 stand-in
+# joint, hover and bomb values from the retail tables, and the four static
+# receivers; the purple/death scenarios add the tick-indexed host-event script.
+# These are emitted into the run directory so the fixture's cwd is complete.
+SCENARIO_FILES = ('p2-bombsarai-arena.txt', 'p2-bombsarai-arena-purple.txt',
+                  'p2-bombsarai-arena-death.txt')
+SCENARIO_LINES = {
+    'p2-bombsarai-arena.txt': (
+        'P2_BOMBSARAI_ARENA_1',
+        'carrier 0 120 0 0 9001',
+        'joint 0 55 0',
+        'hover 70 2.5 20 1.5 1.0',
+        'bomb 18.666667 4.5 30 15 90 50 500 10',
+        'receivers 4',
+        'receiver 501 teki 20 15 0 1 0',
+        'receiver 502 navi 30 15 0 1 0',
+        'receiver 503 piki 0 15 -40 1 0',
+        'receiver 504 teki 10 15 0 0 1'),
+    'p2-bombsarai-arena-purple.txt': (
+        'P2_BOMBSARAI_ARENA_1',
+        'carrier 0 120 0 0 9001',
+        'joint 0 55 0',
+        'hover 70 2.5 20 1.5 1.0',
+        'bomb 18.666667 4.5 30 15 90 50 500 10',
+        'receivers 4',
+        'receiver 501 teki 20 15 119 1 0',
+        'receiver 502 navi 30 15 119 1 0',
+        'receiver 503 piki 0 15 150 1 0',
+        'receiver 504 teki 10 15 119 0 1',
+        'events 2',
+        'event 50 stuck 0 1',
+        'event 90 stuck 0 0'),
+    'p2-bombsarai-arena-death.txt': (
+        'P2_BOMBSARAI_ARENA_1',
+        'carrier 0 120 0 0 9001',
+        'joint 0 55 0',
+        'hover 70 2.5 20 1.5 1.0',
+        'bomb 18.666667 4.5 30 15 90 50 500 10',
+        'receivers 4',
+        'receiver 501 teki 20 15 0 1 0',
+        'receiver 502 navi 30 15 0 1 0',
+        'receiver 503 piki 0 15 -40 1 0',
+        'receiver 504 teki 10 15 0 0 1',
+        'events 1',
+        'event 45 kill'),
+}
+
+
+def scenario_payloads():
+    """Return scenario-filename -> exact fixture profile bytes (CRLF, as shipped)."""
+    return {name: ('\r\n'.join(SCENARIO_LINES[name]) + '\r\n').encode('ascii')
+            for name in SCENARIO_FILES}
+
+
 GATE_STATES = {
     'native_identity': 'blocked: no BombSarai/Bomb native registration (integration lead #186; flagged on #244)',
     'terrain_floor_probe': 'pass: P2_BOMBSARAI_FLOOR_PROBE floor=1 (runtime evidence)',
@@ -153,11 +210,17 @@ def prepare(assets, imported, output):
             raise ValueError('Original course changed')
     if set(GATES) != set(GATE_STATES):
         raise ValueError('Gate contract mismatch')
+    scenarios = scenario_payloads()
+    for name, payload in scenarios.items():
+        (run / name).write_bytes(payload)
     result = dict(schema=1, scene='P1 Impact Site', stage_slot='chal0', actors=actors,
                   enemy_count=len(registered), control='P1 Chappy',
                   source_stage_sha256=digest(stage), preserved_course_sha256=preserved,
                   bombsarai_manifest_sha256=digest(imported / 'bombsarai.json'),
                   install=receipt, install_verified=verified, birth_policy=birth,
+                  scenarios={name: {'sha256': hashlib.sha256(payload).hexdigest(),
+                                    'bytes': len(payload)}
+                             for name, payload in sorted(scenarios.items())},
                   scatter='Default generator scatter circle zeroed by deterministic fixture '
                           'override (PRIVATE_CIRCLE_RADIUS_ZERO_1); engineered choice, not '
                           'production placement evidence',
