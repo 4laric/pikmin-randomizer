@@ -49,12 +49,12 @@ def test_proxy_types_match_native_registry():
 
 
 def test_gate_status_matches_real_gl_evidence():
-    for gate in ('whistle_theft', 'interference', 'reclaim', 'carry'):
+    for gate in ('whistle_theft', 'interference', 'reclaim', 'carry', 'brain_fallback'):
         assert gate in GATES
         assert STATUS[gate] == PASSED[gate]
         assert STATUS[gate].startswith('pass')
-    for gate in ('follow_locomotion', 'panic_staging', 'brain_fallback',
-                 'claim_persistence', 'native_identity'):
+    for gate in ('follow_locomotion', 'panic_staging', 'claim_persistence',
+                 'native_identity', 'press_combat'):
         assert gate in GATES
         assert STATUS[gate] == BLOCKED[gate]
         assert STATUS[gate].startswith('blocked')

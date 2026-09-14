@@ -45,23 +45,26 @@ FAMILY = {P1_NAPKID_TYPE: 'Napkid (P1 Swooping Snitchbug)',
           P1_CHAPPY_TYPE: 'Chappy (P1 Dwarf Bulborb)'}
 
 # Lane acceptance gates. PASS/BLOCKED strings quote the real-GL evidence in
-# native/tools/P2_FUEFUKI_RUNTIME_EVIDENCE.md; 'spawn' was never staged and stays
+# native/tools/P2_FUEFUKI_RUNTIME_EVIDENCE.md (binding), P2_FUEFUKI_FOLLOW_RUNTIME_EVIDENCE.md
+# (follow), P2_FUEFUKI_VEHICLE_RUNTIME_EVIDENCE.md (real vehicle) and
+# P2_FUEFUKI_COMBAT.md (natural combat); 'spawn' was never staged and stays
 # untested. Nothing here claims gameplay acceptance.
 GATES = ('native_identity', 'spawn', 'whistle_theft', 'interference', 'reclaim',
          'carry', 'follow_locomotion', 'panic_staging', 'brain_fallback',
-         'claim_persistence')
+         'claim_persistence', 'press_combat')
 PASSED = {
     'whistle_theft': 'pass: real-GL run claimed exactly the 3 in-ring of 6 real pikiMgr Pikmin, none outside (P2_FUEFUKI_RT_SCAN)',
     'interference': 'pass: real-GL run refused captain whistle/switch/combine on held Pikmin with zero ownership writes (P2_FUEFUKI_RT_NONROUTE)',
     'reclaim': 'pass: real Navi::callPikis reclaim, PIKISTATE_LookAt then real FormationMode join (P2_FUEFUKI_RT_RECLAIM, P2_FUEFUKI_RT_FORMJOIN)',
     'carry': 'pass: dead-anim END delivered kill with carry_anim carcass flag (P2_FUEFUKI_RT_KILL)',
+    'brain_fallback': 'pass: suspend destination resolved to Free (ActTeki::getNextAIType()==ACT_Free; suspend-fallback slice)',
 }
 BLOCKED = {
     'native_identity': 'blocked: no native Fuefuki (41) registration; Napkid 11 is a placement vehicle only (#186)',
-    'follow_locomotion': 'blocked: P1 has no follow-teki action; follow movement stays policy-fixture-only',
+    'follow_locomotion': 'blocked: labelled mVolatileVelocity approximation drives real motion; no dedicated P1 follow-teki action until provider 12',
     'panic_staging': 'blocked: P1 has no verified panic state; released followers stay PIKISTATE_Normal',
-    'brain_fallback': 'blocked: suspend destination (Formation rejoin vs Free) untraced in source',
     'claim_persistence': 'blocked: claim persistence across day/cave transitions undefined',
+    'press_combat': 'blocked: press/hipdrop receiver and stuck-attacker/health feed wired; real-GL press-to-Struggle run pending',
 }
 STATUS = {key: PASSED.get(key, BLOCKED.get(key, 'untested')) for key in GATES}
 
