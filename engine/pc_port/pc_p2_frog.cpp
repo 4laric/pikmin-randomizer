@@ -23,24 +23,37 @@ const char* ids[]={"Frog","MaroFrog"};
 std::map<std::string,std::vector<Shape*>> animated[2];
 std::map<std::string,p2animation::Clip> timing[2];
 std::set<PelletView*> pressing,bitteredFrogs;
+// Family-local bitter resolution. The real host candidate is the engine's
+// per-creature freeze bit Creature::mIsFrozen, which this family reads; the
+// family-local override pc_p2_frog_set_bittered stays for fixture testing. No
+// provider in this tree writes mIsFrozen yet (see the acceptance note), so the
+// host branch is only reachable once an engine-level bitter/stone provider
+// lands; until then it is the same not-bittered behaviour.
+bool isHostBittered(BTeki* actor){return actor->mIsFrozen!=0;}
+bool isBittered(BTeki* actor){return bitteredFrogs.count(static_cast<PelletView*>(actor))!=0||isHostBittered(actor);}
+const char* bitterOrigin(BTeki* actor){
+    if(bitteredFrogs.count(static_cast<PelletView*>(actor))!=0)return "override";
+    if(isHostBittered(actor))return "host";
+    return "none";
+}
 // Family-local instrumentation only: records the P1-proxy Attack motion of a
-// registered frog; it does not assert the source landing press.
+// registered frog and flags the source bittered precondition; it does not
+// assert the source landing press.
 bool logPress(BTeki* actor,int kind){
     auto* view=static_cast<PelletView*>(actor);
     bool active=actor->mTekiAnimator&&actor->mTekiAnimator->getCurrentMotionIndex()==TekiMotion::Attack;
-    if(active){if(pressing.insert(view).second){std::printf("P2_FROG_PRESS species=%s attack=1 behavior=P1_proxy\n",ids[kind]);return true;}return false;}
+    if(active){if(pressing.insert(view).second){bool bittered=isBittered(actor);std::printf("P2_FROG_PRESS species=%s attack=1 bittered=%d pressed=%d behavior=P1_proxy origin=%s\n",ids[kind],int(bittered),int(!bittered),bitterOrigin(actor));return true;}return false;}
     pressing.erase(view);return false;
 }
-bool isBittered(PelletView* view){return bitteredFrogs.count(view)!=0;}
 // Family-local landing-press attribution (#167/#201). Edge-triggered from the
 // P1-proxy Attack motion, the host's landing/attack key. It counts grounded
 // Pikmin/Navi inside the source head radius and reports only: it never presses,
 // damages or moves any actor, so unregistered controls are untouched and press
 // behavior is unchanged (the P1 host already presses). The source not-bittered
-// precondition is honoured through pc_p2_frog_set_bittered; no P1 bitter
-// provider exists yet, so native always reports the not-bittered case.
+// precondition is resolved from Creature::mIsFrozen plus the family override; a
+// bittered frog reports the suppressed attribution instead of a press.
 void logLand(BTeki* actor,int kind){
-    if(isBittered(static_cast<PelletView*>(actor)))return;
+    bool bittered=isBittered(actor);
     const float radius=p2frog::headRadius(kind);const Vector3f& at=actor->getPosition();
     const float r2=radius*radius;int pikmin=0,navi=0;
     if(pikiMgr){Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);
@@ -50,7 +63,7 @@ void logLand(BTeki* actor,int kind){
         if(!n||!n->isAlive()||n->isFlying())continue;const Vector3f& pos=n->getPosition();
         const float dx=pos.x-at.x,dz=pos.z-at.z;if(dx*dx+dz*dz<=r2)++navi;}}
     if(pikmin+navi<=0)return;
-    std::printf("P2_FROG_LAND species=%s radius=%.1f bittered=0 pikmin=%d navi=%d behavior=P1_proxy\n",ids[kind],radius,pikmin,navi);
+    std::printf("P2_FROG_LAND species=%s radius=%.1f bittered=%d pikmin=%d navi=%d behavior=P1_proxy pressed=%d origin=%s host_frozen=%u\n",ids[kind],radius,int(bittered),pikmin,navi,int(!bittered),bitterOrigin(actor),unsigned(actor->mIsFrozen));
 }
 void loadAnimation(std::vector<p2animation::Clip> (&banks)[2]){
     size_t total=0;
@@ -87,7 +100,18 @@ void loadAnimation(std::vector<p2animation::Clip> (&banks)[2]){
 }
 void pc_p2_frog_reset(){actors.clear();pressing.clear();bitteredFrogs.clear();for(auto& b:animated)b.clear();for(auto& b:timing)b.clear();}
 void pc_p2_frog_forget(BTeki* actor){actors.erase(static_cast<PelletView*>(actor));pressing.erase(static_cast<PelletView*>(actor));bitteredFrogs.erase(static_cast<PelletView*>(actor));}
-void pc_p2_frog_set_bittered(BTeki* actor,bool bittered){auto* view=static_cast<PelletView*>(actor);if(!actors.count(view))return;if(bittered)bitteredFrogs.insert(view);else bitteredFrogs.erase(view);}
+void pc_p2_frog_set_bittered(BTeki* actor,bool bittered){
+    auto* view=static_cast<PelletView*>(actor);if(!actors.count(view))return;
+    if(bittered)bitteredFrogs.insert(view);else bitteredFrogs.erase(view);
+    std::printf("P2_FROG_BITTER species=%s override=%d host_frozen=%u effective=%d origin=%s\n",ids[actors[view]],int(bittered),unsigned(actor->mIsFrozen),int(isBittered(actor)),bitterOrigin(actor));
+}
+// Family-local accessor for tests/instrumentation: the effective source
+// not-bittered precondition for a registered frog (host field OR override).
+bool pc_p2_frog_bittered(const BTeki* actor){
+    if(!actor)return false;
+    if(!actors.count(static_cast<PelletView*>(const_cast<BTeki*>(actor))))return false;
+    return isBittered(const_cast<BTeki*>(actor));
+}
 const char* pc_p2_frog_name(PelletView* view){auto i=actors.find(view);return i==actors.end()?nullptr:ids[i->second];}
 // Source parameters replace the shared P1 host values for registered frogs only;
 // unregistered controls keep native values. Reads stay non-mutating.

@@ -26,27 +26,35 @@ struct Params {
 	float privateRadius  = 70.0f;  // general fp11
 };
 
-// Source KochappyBase::StateID is Wait(0), Dead(1), Turn(2), Walk(3),
-// Attack(4), Flick(5), TurnToHome(6), GoHome(7), Press(8), Demo(9). This
-// opt-in module implements the five covered states and leaves Turn/TurnToHome/
-// GoHome/Press/Demo partial (documented in docs/PIKMIN2_KOCHAPPY_FSM.md).
+// Source KochappyBase::StateID order: Wait(0), Dead(1), Turn(2), Walk(3),
+// Attack(4), Flick(5), TurnToHome(6), GoHome(7), Press(8), Demo(9). Demo is the
+// source kill(nullptr) terminal; the host equivalent is actor->die() at the
+// Dead end, so Demo is not a separate host state here.
 enum State {
-	STATE_WAIT   = 0,
-	STATE_WALK   = 1,
-	STATE_ATTACK = 2,
-	STATE_FLICK  = 3,
-	STATE_DEAD   = 4,
-	STATE_COUNT  = 5,
+	STATE_WAIT         = 0,
+	STATE_DEAD         = 1,
+	STATE_TURN         = 2,
+	STATE_WALK         = 3,
+	STATE_ATTACK       = 4,
+	STATE_FLICK        = 5,
+	STATE_TURN_TO_HOME = 6,
+	STATE_GO_HOME      = 7,
+	STATE_PRESS        = 8,
+	STATE_COUNT        = 9,
 };
 
 inline const char* stateName(State state)
 {
 	switch (state) {
 	case STATE_WAIT: return "wait";
+	case STATE_DEAD: return "dead";
+	case STATE_TURN: return "turn";
 	case STATE_WALK: return "walk";
 	case STATE_ATTACK: return "attack";
 	case STATE_FLICK: return "flick";
-	case STATE_DEAD: return "dead";
+	case STATE_TURN_TO_HOME: return "turn_to_home";
+	case STATE_GO_HOME: return "go_home";
+	case STATE_PRESS: return "press";
 	default: return "null";
 	}
 }
