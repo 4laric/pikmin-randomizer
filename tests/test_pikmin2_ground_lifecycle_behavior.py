@@ -28,8 +28,7 @@ GOOD_LOG = '\n'.join([
     'P2_LIFECYCLE_READY squad=20 sokkuri_gen=346005 armor_gen=346001 sokkuri_reg=1 armor_reg=1',
     'P2_LIFECYCLE_INJECT species=Sokkuri,Armor injected_health=0 source=fixture '
     'not_natural_combat=1',
-    'P2_SOKKURI_DEAD generator=346005 source_id=79 health=0',
-    'P2_SOKKURI_NATURAL_DEATH generator=346005 source_id=79 natural=0',
+    'P2_SOKKURI_DEAD generator=346005 source_id=79 health=0 prior_health=0.0',
     'P2_ARMOR_DEAD generator=346001 source_id=15 health=0',
     'P2_LIFECYCLE_DEADCLIP species=Sokkuri source_id=79 clip=dead1',
     'P2_LIFECYCLE_DEADCLIP species=Armor source_id=15 clip=dead',
@@ -53,7 +52,6 @@ REQUIRED_MARKERS = {
     'inject': 'P2_LIFECYCLE_INJECT species=Sokkuri,Armor injected_health=0 source=fixture '
               'not_natural_combat=1',
     'death': 'P2_ARMOR_DEAD generator=346001 source_id=15 health=0',
-    'natural_label': 'P2_SOKKURI_NATURAL_DEATH generator=346005 source_id=79 natural=0',
     'deadclip': 'P2_LIFECYCLE_DEADCLIP species=Armor source_id=15 clip=dead',
     'corpse': 'P2_LIFECYCLE_CORPSE species=Armor pellet=1 generator=346001',
     'corpse_draw': 'P2_BATCH2_DRAW corpse=1 key=ground|Sokkuri clip=dead1',
@@ -80,7 +78,8 @@ def test_validate_passes_on_complete_lifecycle_log():
     assert result['squad'] == 20
     assert result['gates'] == {'death': 'pass', 'corpse': 'pass',
                                'delivery_reward': 'untested',
-                               'cleanup': 'pass', 'reentry': 'pass'}
+                               'cleanup': 'pass', 'reentry': 'pass',
+                               'combat_damage': 'unmeasured'}
 
 
 @pytest.mark.parametrize('name', sorted(REQUIRED_MARKERS))
@@ -108,33 +107,28 @@ def test_delivery_reward_is_honestly_untested_not_n_a():
     assert 'not a source-backed N/A' in result['delivery_reward_reason']
 
 
-NATURAL_DEATH = GOOD_LOG.replace(
-    'P2_SOKKURI_NATURAL_DEATH generator=346005 source_id=79 natural=0',
+NATURAL_DAMAGE = GOOD_LOG.replace(
+    'P2_SOKKURI_DEAD generator=346005 source_id=79 health=0 prior_health=0.0',
     'P2_SOKKURI_DAMAGE generator=346005 source_id=79 health=80.0\n'
-    'P2_SOKKURI_NATURAL_DEATH generator=346005 source_id=79 natural=1')
+    'P2_SOKKURI_DEAD generator=346005 source_id=79 health=0 prior_health=105.0')
 
 
-def test_injected_death_is_labelled_natural_zero():
-    result = validate(GOOD_LOG, code=0)
-    # The injected fixture must report natural=0 (no incremental damage seen).
-    assert result['checks']['natural_label']
-    assert not result['checks']['natural_damage_seen']
+def test_combat_damage_is_observable_separately_from_death():
+    plain = validate(GOOD_LOG, code=0)
+    assert plain['checks']['death']
+    assert not plain['checks']['natural_damage_seen']
+    assert plain['gates']['combat_damage'] == 'unmeasured'
+    with_damage = validate(NATURAL_DAMAGE, code=0)
+    assert with_damage['checks']['natural_damage_seen']
+    assert with_damage['gates']['combat_damage'] == 'pass'
+    # Death still passes; the injected lethal step is recorded separately.
+    assert with_damage['gates']['death'] == 'pass'
 
 
-def test_natural_combat_damage_is_separately_observable():
-    real = validate(NATURAL_DEATH, code=0)
-    # A natural path emits an incremental P2_SOKKURI_DAMAGE marker and natural=1,
-    # then the injected-only validator rejects it as "not the injected run".
-    assert real['checks']['natural_damage_seen']
-    assert not real['checks']['natural_label']
-
-
-def test_missing_natural_label_fails_injected_run():
-    spoof = GOOD_LOG.replace(
-        'P2_SOKKURI_NATURAL_DEATH generator=346005 source_id=79 natural=0', '')
-    result = validate(spoof, code=0)
-    assert not result['checks']['natural_label']
-    assert not result['passed']
+def test_death_prior_health_is_reported():
+    result = validate(NATURAL_DAMAGE, code=0)
+    assert 'P2_SOKKURI_DEAD generator=346005 source_id=79 health=0 prior_health=105.0' in \
+        NATURAL_DAMAGE
 
 
 def _native_roots():
