@@ -232,7 +232,7 @@ public:
                         CI_LOOP(workers) {
                             auto* p=static_cast<Piki*>(*workers); if(!p->isAlive()) continue;
                             CollPart* part=flag->getChildAt(count%flag->getChildCount());
-                            if(count==0) std::printf("P2_ROUTE_WORK_PART pos=%.3f,%.3f,%.3f radius=%.3f id=%08x\n",part->mCentre.x,part->mCentre.y,part->mCentre.z,part->mRadius,part->getID());
+                            if(count==0) std::printf("P2_ROUTE_WORK_PART pos=%.3f,%.3f,%.3f radius=%.3f id=%08x\n",part->mCentre.x,part->mCentre.y,part->mCentre.z,part->mRadius,part->getID().mId);
                             p->resetPosition(part->mCentre+Vector3f(0,0,10));
                             p->changeMode(PikiMode::FreeMode,n); ++count;
                         }
@@ -390,4 +390,5 @@ int main(int argc, char** argv)
     gsys->Initialise(); pc_settings_p2d_init();
     nodeMgr = new NodeMgr(); gsys->run(new OrdinaryApp()); return 0;
 }
+
 
