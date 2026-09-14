@@ -594,11 +594,12 @@ def admission_set(roster: list[RosterEntry]) -> AdmissionSet:
 def admitted_ids(roster: list[RosterEntry]) -> list[int]:
     """Ordered source IDs a consumer may seed; empty while nothing is admitted."""
     ids = list(admission_set(roster).admitted)
-    override = os.environ.get("PIKMIN_P2_ADMITTED_IDS")
-    if override:
-        # Private diagnostic scopes (candidate session run) admit extra identities
-        # for this process tree only; the product path never sets this.
-        for part in override.split(","):
+    # Candidate-only admission override. The ids list is honoured only when the
+    # process is explicitly marked as a candidate scope by the private diagnostic
+    # CLI, so a stray PIKMIN_P2_ADMITTED_IDS value can never broaden the product
+    # (default-deny) admission set. The product path sets neither variable.
+    if os.environ.get("PIKMIN_P2_CANDIDATE_SCOPE") and os.environ.get("PIKMIN_P2_ADMITTED_IDS"):
+        for part in os.environ["PIKMIN_P2_ADMITTED_IDS"].split(","):
             part = part.strip()
             if not part:
                 continue

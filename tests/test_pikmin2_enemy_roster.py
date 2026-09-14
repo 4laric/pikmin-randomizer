@@ -170,6 +170,25 @@ def test_admission_defaults_deny_and_is_empty():
         require_admitted(roster, 79)
 
 
+def test_stray_admitted_ids_env_is_inert_without_candidate_scope(monkeypatch):
+    # A leaked PIKMIN_P2_ADMITTED_IDS value must never broaden the product
+    # (default-deny) admission set; only an explicit candidate-scope marker,
+    # which only the private candidate CLI sets, activates the override.
+    roster = load_and_validate()
+    monkeypatch.delenv("PIKMIN_P2_CANDIDATE_SCOPE", raising=False)
+    monkeypatch.setenv("PIKMIN_P2_ADMITTED_IDS", "45")
+    assert admitted_ids(roster) == []
+
+
+def test_candidate_scope_marker_activates_admitted_ids_override(monkeypatch):
+    roster = load_and_validate()
+    monkeypatch.setenv("PIKMIN_P2_CANDIDATE_SCOPE", "private-snow-candidate-v1")
+    monkeypatch.setenv("PIKMIN_P2_ADMITTED_IDS", "45")
+    assert admitted_ids(roster) == [45]
+    monkeypatch.setenv("PIKMIN_P2_ADMITTED_IDS", "44")
+    assert admitted_ids(roster) == [44]
+
+
 def test_admission_set_admits_only_seedable_randomizable():
     payload = synthetic_payload()
     full = {g: "PASS" for g in GATE_IDS}

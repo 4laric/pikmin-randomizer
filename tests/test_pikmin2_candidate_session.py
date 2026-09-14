@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -68,7 +69,15 @@ def test_product_records_reject_candidate(tmp_path):
                  "--kind", "natural", "--output", str(tmp_path / "records")])
 
 
-def test_run_reconstructs_launcher_and_restores_override(tmp_path):
+@pytest.mark.parametrize("prior", [None, "outer-value"])
+@pytest.mark.parametrize("fails", [False, True])
+def test_run_reconstructs_launcher_and_restores_override(tmp_path, monkeypatch, prior, fails):
+    keys = ("PIKMIN_P2_ADMITTED_IDS", "PIKMIN_P2_CANDIDATE_SCOPE")
+    for key in keys:
+        if prior is None:
+            monkeypatch.delenv(key, raising=False)
+        else:
+            monkeypatch.setenv(key, prior)
     pin = pin_for(tmp_path)
     with candidate.candidate_scope():
         manifest = qa.generate_pinned_session("candidate", placement())
@@ -82,10 +91,20 @@ def test_run_reconstructs_launcher_and_restores_override(tmp_path):
         assert sys.argv[1] == "run"
         assert "--content-manifest" in sys.argv
         validate(manifest)
+        assert os.environ["PIKMIN_P2_CANDIDATE_SCOPE"] == candidate.SCOPE
+        assert os.environ["PIKMIN_P2_ADMITTED_IDS"] == "45"
+        if fails:
+            raise RuntimeError("launch failed")
     original = bridge.admitted_ids
     with patch("randomizer.__main__.main", launch):
-        candidate.main(["run", "--prepared", str(report)])
+        if fails:
+            with pytest.raises(RuntimeError, match="launch failed"):
+                candidate.main(["run", "--prepared", str(report)])
+        else:
+            candidate.main(["run", "--prepared", str(report)])
     assert bridge.admitted_ids is original
+    for key in keys:
+        assert os.environ.get(key) == prior
 
 
 def test_prepare_writes_reusable_candidate_runbook(tmp_path):

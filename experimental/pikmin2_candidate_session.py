@@ -74,7 +74,9 @@ def main(argv=None):
                                     report["content_manifest_path"])
         from randomizer.__main__ import main as launch
         previous = os.environ.get("PIKMIN_P2_ADMITTED_IDS")
+        was_candidate = os.environ.get("PIKMIN_P2_CANDIDATE_SCOPE")
         os.environ["PIKMIN_P2_ADMITTED_IDS"] = str(args.source)
+        os.environ["PIKMIN_P2_CANDIDATE_SCOPE"] = scope
         try:
             with candidate_scope(args.source), patch.object(sys, "argv", ["randomizer", *command[3:]]):
                 return launch()
@@ -83,6 +85,10 @@ def main(argv=None):
                 os.environ.pop("PIKMIN_P2_ADMITTED_IDS", None)
             else:
                 os.environ["PIKMIN_P2_ADMITTED_IDS"] = previous
+            if was_candidate is None:
+                os.environ.pop("PIKMIN_P2_CANDIDATE_SCOPE", None)
+            else:
+                os.environ["PIKMIN_P2_CANDIDATE_SCOPE"] = was_candidate
     pin = qa._pin_from_args(args)
     pin.verify()
     placement = qa.load_json(args.placement)
