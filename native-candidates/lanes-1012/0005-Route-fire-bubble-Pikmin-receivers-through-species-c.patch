@@ -1,7 +1,7 @@
 From d28ff29ceeefb4978aaf6ce8c61bac637776f2de Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 02:34:19 -0400
-Subject: [PATCH 5/5] Route fire/bubble Pikmin receivers through species
+Subject: [PATCH 5/6] Route fire/bubble Pikmin receivers through species
  capability matrix (lanes 10-11)
 
 ---

@@ -73,3 +73,15 @@ The generic Pikmin fire/bubble receivers consume this matrix
 [PIKMIN2_RECEIVER_PATHS.md](PIKMIN2_RECEIVER_PATHS.md) §6. Electricity and gas
 still have no port receiver, so those columns are definition-only until
 `InteractDenki`/`InteractGas` land (#170).
+
+## Versioned species / compartment schema
+
+`native/pc_port/pc_p2_species_schema.h` satisfies the #395 storage requirement:
+v1 = Blue/Red/Yellow, v2 = + Purple/White, v3 = + Bulbmin
+(`p2_schema_max_species`, `p2_schema_supports`, `p2_schema_validate`,
+`p2_schema_total`). An unknown version is rejected, a nonzero count of a species
+newer than the reader version is rejected, and negative counts are rejected, so
+`pc_p2_cave.cpp` should move from widening schema 2 to a schema-3 branch rather
+than reinterpret IDs. Test: `tools/test_p2_species_schema.cpp` ->
+`PASS P2_SPECIES_SCHEMA`. Coordinate the exact wire format with #131/#132 before
+changing either endpoint.
