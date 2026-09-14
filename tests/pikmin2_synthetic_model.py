@@ -32,12 +32,13 @@ def _inf1():
     return _block(b'INF1', body)
 
 
-def _jnt1():
+def _jnt1(scale=(1.0, 1.0, 1.0), translation=(0.0, 0.0, 0.0)):
     body = bytearray(88)
     struct.pack_into('>H', body, 8, 1)      # one joint
     struct.pack_into('>II', body, 12, 24, 0)  # record at 24, no remap
-    struct.pack_into('>3f', body, 24 + 4, 1.0, 1.0, 1.0)  # scale
-    # rotation (24+16, 3h) and translation (24+24, 3f) stay zero
+    struct.pack_into('>3f', body, 24 + 4, *scale)  # scale
+    # rotation (24+16, 3h) stays zero
+    struct.pack_into('>3f', body, 24 + 24, *translation)  # translation
     return _block(b'JNT1', body)
 
 
@@ -145,14 +146,15 @@ def _tex1():
 
 
 def build_model(positions, normals, uvs, display_indices=None, display_normals=True,
-                matrix_type=0):
+                matrix_type=0, joint_scale=(1.0, 1.0, 1.0), joint_translation=(0.0, 0.0, 0.0)):
     """One-shape rigid model. ``normals`` populates the VTX1 normal array;
     ``display_normals=False`` drops the normal attribute from the shape
     display list (the KingChappy pattern). ``matrix_type`` selects the SHP1
-    shape matrix type (0 Base, 1 BBoard, ...)."""
+    shape matrix type (0 Base, 1 BBoard, ...). ``joint_scale``/``joint_translation``
+    place the single rigid joint."""
     parts = [_inf1(), _vtx1(positions, normals, uvs), _shp1(len(positions), display_normals, display_indices,
              matrix_type),
-             _jnt1(), _drw1(), _evp1(), _mat3(), _tex1()]
+             _jnt1(joint_scale, joint_translation), _drw1(), _evp1(), _mat3(), _tex1()]
     data = bytearray(32)
     data[:8] = b'J3D2bmd3'
     struct.pack_into('>I', data, 12, len(parts))
