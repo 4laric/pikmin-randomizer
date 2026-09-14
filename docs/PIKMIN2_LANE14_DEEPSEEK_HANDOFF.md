@@ -124,3 +124,76 @@ py -3.12 -m experimental.pikmin2_ground_lifecycle_behavior run `
 (Prerequisite, already done once: extract `ground` bank
 `py -3.12 -m experimental.pikmin2_ground_inverts_assets --iso "<P2 disc>" --source "<pikmin2-research checkout>" --output ...`;
 build `fixture.exe` via `... build --native .../native-l14 --build-dir .../native-l14-build --head 3370950c54caf9995d8580af18c4d8c729d6cda9`.)
+
+## Slice 2
+
+**Source ID:** Sokkuri 79. **Slice:** natural lethal death — the live 20-red
+squad fully drains Sokkuri's 120 HP through the real `InteractAttack` receiver
+with **no injected health**, then corpse → cleanup → re-entry.
+
+### Commit (root)
+
+- `e8a7d6b` lane14: Sokkuri natural lethal-death runtime (no injected health) (#165)
+  — `experimental/pikmin2_sokkuri_natural_runtime.py`,
+  `tests/test_pikmin2_sokkuri_natural_runtime.py`.
+- Native: no change this slice (unchanged at `3370950c`); the slice-1
+  `P2_SOKKURI_DAMAGE`/`prior_health` markers are consumed directly.
+
+### What was investigated / fixed
+
+- Why the slice-1 run stalled at 105 HP: the fixture injected at `observed>=30`
+  (≈1 s) — it never gave the squad time; a single `P2_SOKKURI_DAMAGE` (120→105)
+  was the only combat damage before injection.
+- Fix (arena/fixture, no enemy stat change, extinction untouched): a
+  Sokkuri-only ground roster (`p2-ground-actors.txt` = only `346005 Sokkuri`) so
+  the hostile Armor/ElecBug neighbours can't eat/scatter the squad, free-mode
+  deploy (`changeMode(PikiMode::FreeMode)`) of the 20 reds in a 16-unit ring
+  around the Sokkuri, and #128 `normalize_pose_names` applied to the Sokkuri-only
+  bank (`appear1` pose `_01`→`_00`).
+
+### Natural lethal-death evidence (run `l14-out/natural-run2/afcc5104...`)
+
+`P2_SOKKURI_DAMAGE` 90.0 → 75.0 → 60.0 → 45.0 → 30.0 → 15.0, then
+`P2_SOKKURI_DEAD ... prior_health=15.0` (6 combat hits, small prior, no
+`not_natural_combat` marker), `P2_SOKKURI_NATURAL_CORPSE pellet=1`,
+`P2_SOKKURI_NATURAL_FORGET count=0`, `P2_SOKKURI_NATURAL_REENTRY stale=0 fresh=1
+count=1`, `PASS P2_SOKKURI_NATURAL_RUNTIME ... injected=0`. Exit 0, elapsed 10.3s.
+The flick knockback fires repeatedly (frame 18) but free-mode Pikmin re-engage and
+drain; blocking mechanism not triggered.
+
+### Gates (slice 2)
+
+| Gate | Result |
+|---|---|
+| 3. Attacks/receivers | natural PASS (`P2_SOKKURI_DAMAGE` sequence) |
+| 4. Death + corpse | natural PASS (`prior_health=15.0`, corpse pellet) |
+| 6. Cleanup + re-entry | PASS (`forget count=0`, fresh re-bind `stale=0`) |
+
+`no_inject` check confirms no `mHealth` write anywhere (`mHealth=0.0f` absent from
+the instrumented source).
+
+### Exact reproduction (slice 2)
+
+```powershell
+$env:PYTHONUTF8='1'
+py -3.12 -m experimental.pikmin2_sokkuri_natural_runtime run `
+  --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets `
+  --imported C:/Users/alari/pikmin-randomizer/output/dsw/l14-out/ground `
+  --output C:/Users/alari/pikmin-randomizer/output/dsw/l14-out/natural-run-final `
+  --exe C:/Users/alari/pikmin-randomizer/output/dsw/l14-out/natural-fixture/fixture.exe `
+  --seconds 150
+```
+
+### Tests
+
+`PIKMIN_NATIVE_ROOT=C:/Users/alari/pikmin-randomizer/output/dsw/native-l14`
+family suite → **119 passed** (7 new natural-runtime tests).
+`fixture.exe` SHA `466ca847b95e07ee37aac487129be88740d470a29fd4212882b10d7304a47959`.
+
+### Remaining
+
+- True natural re-entry without the fixture's `mGenType->init` remains a
+  lifetime-lane (#397) concern; the slice proves fresh re-bind after a natural
+  death.
+- Reward/transport still UNTESTED (cargo-free arena, #397).
+- ElecBug pair discharge + TamagoMushi group births remain for later slices.
