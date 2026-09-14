@@ -325,6 +325,77 @@ def boss_profiles():
     return profiles
 
 
+def candidate_source_ids():
+    """Map lane-04 candidate identities to their lane-02 source ids."""
+    mapping = {identity: source_id for source_id, identity, *_ in CANDIDATE_SPECS}
+    mapping.update({identity: source_id for source_id, identity, *_ in BOSS_COHORT})
+    return mapping
+
+
+def targets_by_identity(document=None):
+    """Return constraint-compatible slot targets per identity as uid tokens.
+
+    A target token is the slot's integer `uid` rendered as a string, matching the
+    existing native `ENEMY_CAMPAIGN` generator keying. Lane 03 consumes these
+    tokens as its flat binding-target list.
+    """
+    document = document if document is not None else build_document()
+    encounters = {encounter['id']: encounter for encounter in document['encounters']}
+    result = {}
+    for profile in document['profiles']:
+        targets = [str(slot['uid']) for slot in document['slots']
+                   if not _placement.compatibility(slot, profile, encounters)]
+        result[profile['identity']] = sorted(targets, key=int)
+    return result
+
+
+def binding_targets(identities, document=None, targets=None):
+    """Return the ordered uid targets legal for *every* identity in `identities`.
+
+    Because lane 03 binds a flat target list to a cohort, a target is only safe
+    when every cohort member accepts it: this is the intersection of the members'
+    compatible targets. An empty result means the cohort is not homogeneous enough
+    for the flat contract and needs per-identity targets instead.
+    """
+    by_identity = targets if targets is not None else targets_by_identity(document)
+    names = list(identities)
+    if not names:
+        raise ValueError('cohort is empty')
+    unknown = [name for name in names if name not in by_identity]
+    if unknown:
+        raise ValueError(f'unknown candidate identities: {", ".join(unknown)}')
+    common = set.intersection(*(set(by_identity[name]) for name in names))
+    return sorted(common, key=int)
+
+
+def binding_targets_for_sources(source_ids, document=None):
+    """Return binding targets for a lane-02 source-id cohort (non-boss)."""
+    by_source = {source_id: identity for identity, source_id in candidate_source_ids().items()}
+    identities = []
+    for source_id in source_ids:
+        identity = by_source.get(source_id)
+        if identity is None or identity not in {name for _, name, *_ in CANDIDATE_SPECS}:
+            raise ValueError(f'source id {source_id} is not a non-boss lane-04 candidate')
+        identities.append(identity)
+    return binding_targets(identities, document=document)
+
+
+def binding_target_groups(document=None):
+    """Group candidate identities by placement cohort and intersect their targets."""
+    document = document if document is not None else build_document()
+    by_identity = targets_by_identity(document)
+    groups = {}
+    for profile in document['profiles']:
+        groups.setdefault(profile['cohort'] or 'open', []).append(profile['identity'])
+    report = {}
+    for key, identities in groups.items():
+        report[key] = {
+            'identities': sorted(identities),
+            'targets': binding_targets(identities, targets=by_identity),
+        }
+    return {'by_identity': by_identity, 'groups': report, 'source_ids': candidate_source_ids()}
+
+
 def build_document(slots=None, profiles=None, include_bosses=False):
     """Return a validated `p2-placement-v1` document for the candidate cohort.
 
@@ -357,10 +428,15 @@ def main(argv=None):
                         help='write the compatibility report JSON to this path')
     parser.add_argument('--boss-descriptors', action='store_true',
                         help='print the lane-16 boss encounter descriptors and exit')
+    parser.add_argument('--targets', action='store_true',
+                        help='print lane-03 binding targets per identity and placement cohort')
     args = parser.parse_args(argv)
 
     if args.boss_descriptors:
         print(json.dumps(boss_encounters(), indent=2))
+        return 0
+    if args.targets:
+        print(json.dumps(binding_target_groups(), indent=2))
         return 0
 
     document = build_document()

@@ -462,5 +462,54 @@ class CoverageReportTests(unittest.TestCase):
         self.assertEqual(report['identity_coverage']['EmpressBulblax']['admitted_slots'], 1)
 
 
+class BindingTargetTests(unittest.TestCase):
+    def test_targets_by_identity_match_compatibility(self):
+        document = catalog.build_document()
+        targets = catalog.targets_by_identity(document)
+        self.assertEqual(len(targets['Catfish']), 10)
+        self.assertEqual(len(targets['Chappy']), 33)
+        self.assertEqual(targets['Jigumo'], [])
+        campaign_uids = {str(s['uid']) for s in document['slots']}
+        self.assertTrue(set(targets['Catfish']) <= campaign_uids)
+
+    def test_binding_targets_are_the_cohort_intersection(self):
+        # Sokkuri (open ground) accepts every ground slot Chappy accepts.
+        self.assertEqual(catalog.binding_targets(['Chappy', 'Sokkuri']),
+                         catalog.binding_targets(['Chappy']))
+        self.assertEqual(len(catalog.binding_targets(['Catfish', 'Tadpole'])), 10)
+        # A ground and an aquatic identity share no legal flat target.
+        self.assertEqual(catalog.binding_targets(['Chappy', 'Catfish']), [])
+        with self.assertRaises(ValueError):
+            catalog.binding_targets([])
+        with self.assertRaises(ValueError):
+            catalog.binding_targets(['NoSuchIdentity'])
+
+    def test_binding_targets_for_sources_maps_and_rejects_bosses(self):
+        self.assertEqual(catalog.binding_targets_for_sources([26, 27]),
+                         catalog.binding_targets(['Catfish', 'Tadpole']))
+        with self.assertRaises(ValueError):
+            catalog.binding_targets_for_sources([71])  # UmiMushi is a boss cohort entry
+
+    def test_targets_compose_with_lane03_seed_bridge(self):
+        from experimental.pikmin2_seed_bridge import (
+            resolve_layout, validate_layout, validate_targets,
+        )
+        targets = catalog.binding_targets_for_sources([26, 27])
+        self.assertEqual(validate_targets(targets), targets)
+        layout = resolve_layout('placement-contract', 'Player1', targets, [26, 27])
+        validate_layout(layout)
+        bound = {b['enum_name'] for b in layout['bindings']}
+        self.assertTrue(bound <= {'Catfish', 'Tadpole'})
+        self.assertTrue({b['target'] for b in layout['bindings']} <= set(targets))
+
+    def test_target_groups_are_deterministic(self):
+        groups = catalog.binding_target_groups()
+        self.assertEqual(sorted(groups['groups']),
+                         ['aquatic', 'dwarf', 'frog', 'ground', 'grub', 'open'])
+        self.assertEqual(groups['source_ids']['Catfish'], 26)
+        self.assertEqual(groups['groups']['aquatic']['targets'],
+                         catalog.binding_targets(['Catfish', 'Tadpole']))
+
+
 if __name__ == '__main__':
     unittest.main()
