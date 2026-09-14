@@ -218,8 +218,8 @@ void P2LongLegsFsm::update(const P2LongLegsFsmInput& input, P2LongLegsFsmOutput&
             if (mBurstTimer >= mParms.burstOnSeconds) {
                 mBurstOn = false;
                 mBurstTimer = 0.0f;
-            } else if (input.shotLoop) {
-                output.fireShell = true; // one shell per attack loop, from the muzzle
+            } else if (input.shotLoop && input.shellsInFlight < mParms.shellPool) {
+                output.fireShell = true; // one shell per loop, bounded by the source pool of 10
             }
         } else if (mBurstTimer >= mParms.burstOffSeconds) {
             mBurstOn = true;

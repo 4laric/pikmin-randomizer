@@ -118,3 +118,17 @@ Rebuild evidence in the same reconstructed tree: `pikmin_pc` relinked
 `p2_dangomushi_hazard_test` PASS. Runtime host wiring for the window/hazard
 still belongs to the #407 Crawbster FSM and lane 20 Rock/Egg primitives.
 
+## Lane 26 follow-up included (Man-at-Legs shell pool)
+
+This tranche also carries the lane-26 shell-pool budget:
+
+- `engine/pc_port/pc_p2_long_legs_fsm.{h,cpp}`: `shellsInFlight` input gates the
+  `shotLoop` shell request against the source pool of 10.
+- `engine/tools/p2_long_legs_fsm_test.cpp` plus ctest `p2_long_legs_fsm_test`.
+
+Rebuild evidence in the same reconstructed tree: `pikmin_pc` relink (`[5/5]`,
+exit 0; executable SHA-256
+`4E05EAC4637AF7D31E73EFA361BC40B568CE8D58999B56EDAAF5676541BF4A53`),
+`p2_long_legs_fsm_test` and `p2_dangomushi_hazard_test` 2/2 PASS.
+
+

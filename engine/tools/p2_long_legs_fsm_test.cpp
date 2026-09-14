@@ -199,6 +199,30 @@ int main()
         assert(out.entered && fsm.state() == S::Wait);
     }
 
+    // Shell pool: the source caps ten shells in flight; a full pool suppresses
+    // the loop-boundary request even while the burst is on.
+    {
+        P2LongLegsFsm fsm;
+        fsm.reset(p2LongLegsParmsFor(Species::Houdai));
+        P2LongLegsFsmInput in = baseInput();
+        P2LongLegsFsmOutput out;
+        in.wakeTargetNearby = true; fsm.update(in, out); // Land
+        in.wakeTargetNearby = false; in.animEnd = true; fsm.update(in, out); // Wait
+        in.animEnd = false;
+        in.pikminAccumulating = true; fsm.update(in, out); // Flick
+        in.pikminAccumulating = false;
+        in.animEnd = true; fsm.update(in, out); // Flick END -> Shot
+        assert(fsm.state() == S::Shot);
+        in.animEnd = false;
+        in.shotLoop = true;
+        in.shellsInFlight = 10;
+        fsm.update(in, out);
+        assert(!out.fireShell); // pool full
+        in.shellsInFlight = 9;
+        fsm.update(in, out);
+        assert(out.fireShell); // one slot free
+    }
+
     // Houdai Shot also opens from Wait when the burst cooldown reaches the
     // reused mSearchHeight (50 s), and taking damage resets that cooldown.
     {

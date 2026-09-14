@@ -680,6 +680,13 @@ target_include_directories(p2_dangomushi_hazard_test PRIVATE pc_port)
 target_compile_options(p2_dangomushi_hazard_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_dangomushi_hazard_test COMMAND p2_dangomushi_hazard_test)
 
+add_executable(p2_long_legs_fsm_test
+    tools/p2_long_legs_fsm_test.cpp
+    pc_port/pc_p2_long_legs_fsm.cpp)
+target_include_directories(p2_long_legs_fsm_test PRIVATE pc_port)
+target_compile_options(p2_long_legs_fsm_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_long_legs_fsm_test COMMAND p2_long_legs_fsm_test)
+
 add_executable(pc_render_phase_test
     pc_port/timing/pc_render_phase_test.cpp
     pc_port/timing/pc_render_phase.cpp)
