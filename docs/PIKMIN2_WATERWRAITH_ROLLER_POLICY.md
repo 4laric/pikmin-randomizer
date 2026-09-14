@@ -237,6 +237,28 @@ hook hunk; the register hook is reused. The crush uses `InteractFlick` with the
 captain as the acting owner (documented adaptation) and the treasure release is
 logged only (lane 06 owns the durable reward path).
 
+## Approved-base candidate (rebased onto `f14c6851`)
+
+The full lane was replayed onto the approved native pair, clean, with no
+conflicts: `opencode/p2-lane31-approved` @
+`923b9443b438c7af3b3a87df7e43d530b6590474` (base
+`f14c6851473ac1161be56c8b98f4f905232f3635`). It builds (`output/native-lane31-approved-build`,
+`ninja -n pikmin_pc` no work, exe `e3702bbc…`), the engine-free policy test
+passes (`7797290f…`), and the encounter runtime re-run reproduces the same
+result on this base in
+`output/lane31-approved-encounter-runtime-01/dcf3c11092d445f5917704463013dd4b`
+(fixture `b482aa97…`, capture `ae3263ee…`).
+
+One integration-shape change was required: adding the six `pc_p2_waterwraith_*`
+TUs directly to `PC_PORT_SOURCES` pushes the `pikmin_pc` link over the Windows
+command-line threshold, so CMake emits `@CMakeFiles/pikmin_pc.rsp`, which
+`scripts/build_pikmin2_fixture.py` fails closed on. The lane therefore builds
+them into `libp2_waterwraith_lane31.a` (linked before `pikmin_legacy`), keeping
+the executable link inline. If lane 01 prefers the TUs inline, the fixture
+builder must gain response-file support instead.
+
+Bundle `native-candidates/waterwraith-approved/` (9-commit series).
+
 ## Remaining / next slice
 
 - **Locomotion and route pathfinding are not implemented.** The wraith walk

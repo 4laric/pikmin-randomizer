@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "lane": 31,
+  "issue": 443,
+  "parent_issue": 175,
+  "title": "Waterwraith/Tyre complete lane on the approved native line (visual, policy, actor, register, combat, cleanup)",
+  "kind": "integration-ready",
+  "native": {
+    "base": "f14c6851473ac1161be56c8b98f4f905232f3635",
+    "base_branch": "approved native line (#456)",
+    "head": "923b9443b438c7af3b3a87df7e43d530b6590474",
+    "local_branch": "opencode/p2-lane31-approved",
+    "pushed": false,
+    "dirty_state": "clean",
+    "note": "The 9 lane-31 commits replayed from the old Batch-E base (07f173ae) onto approved f14c6851, clean, no conflicts. Native origin/upstream not pushed."
+  },
+  "commits": [
+    "2690b901c3985912d2d32ccb8ad4401aeffc66cd",
+    "a0e63b124a7d70b9924d87f0c6c22922c0cf40a1",
+    "ef0e2f65d3550f797dddf8a8a20bd03ae3a9283f",
+    "141db152302ce790ec221e47972753d93ac79440",
+    "ac442633c5e1445fa45bddffcb6c21b053947069",
+    "fc8055408932ad76760f9c523230dc2b54088475",
+    "bd8a7200dafeb8cf0b4429b23a49f08c5a726d75",
+    "0d8a8c452c2df32fd54ef73f0c10c3202bae4e1a",
+    "923b9443b438c7af3b3a87df7e43d530b6590474"
+  ],
+  "files": [
+    "CMakeLists.txt",
+    "pc_port/pc_p2_hardlanes.cpp",
+    "pc_port/pc_p2_waterwraith.cpp",
+    "pc_port/pc_p2_waterwraith.h",
+    "pc_port/pc_p2_waterwraith_actor.cpp",
+    "pc_port/pc_p2_waterwraith_actor.h",
+    "pc_port/pc_p2_waterwraith_attack_policy.h",
+    "pc_port/pc_p2_waterwraith_encounter.cpp",
+    "pc_port/pc_p2_waterwraith_encounter.h",
+    "pc_port/pc_p2_waterwraith_host.cpp",
+    "pc_port/pc_p2_waterwraith_host.h",
+    "pc_port/pc_p2_waterwraith_register.cpp",
+    "pc_port/pc_p2_waterwraith_register.h",
+    "pc_port/pc_p2_waterwraith_visual.cpp",
+    "pc_port/pc_p2_waterwraith_visual.h",
+    "tools/p2_waterwraith_runtime.cpp",
+    "tools/p2_waterwraith_runtime_run.py",
+    "tools/p2_waterwraith_test.cpp",
+    "tools/p2_waterwraith_actor_test.cpp",
+    "tools/p2_waterwraith_actor_runtime.cpp",
+    "tools/p2_waterwraith_actor_runtime_run.py",
+    "tools/p2_waterwraith_register_runtime.cpp",
+    "tools/p2_waterwraith_register_runtime_run.py",
+    "tools/p2_waterwraith_attack_policy_test.cpp",
+    "tools/p2_waterwraith_encounter_runtime.cpp",
+    "tools/p2_waterwraith_encounter_runtime_run.py"
+  ],
+  "patches": {
+    "full": {
+      "path": "native-candidates/waterwraith-approved/waterwraith-approved-full.patch",
+      "size": 185215,
+      "sha256": "bf1bde2b032c9bb1f23c9799b2992759bf79b6a602e96e7ed5b173d1a0f80063"
+    },
+    "series_count": 9,
+    "series_dir": "native-candidates/waterwraith-approved/patches"
+  },
+  "shared_hooks_for_lane_01": [
+    "CMakeLists.txt: the 6 pc_p2_waterwraith_* TUs build into a new STATIC library libp2_waterwraith_lane31.a, linked before pikmin_legacy. Reason: adding them directly to PC_PORT_SOURCES pushes the pikmin_pc link over the Windows command-line threshold, so CMake emits @CMakeFiles/pikmin_pc.rsp, which scripts/build_pikmin2_fixture.py fails closed on. If lane 01 prefers inline TUs, the fixture builder must gain response-file support.",
+    "pc_port/pc_p2_hardlanes.cpp: opt-in register seam hooks (include, reset/setup/update/draw), tagged 'Waterwraith (#443 / #175) - lane 31 additive hook'. No-op unless p2-waterwraith-actor.txt is present.",
+    "The register seam calls the family combat consumer and resets it on teardown."
+  ],
+  "standalone_fixture": {
+    "executable": "output/lane31-approved-standalone-01/p2_waterwraith_attack_policy_test.exe",
+    "sha256": "7797290fdb3567f103387c33f01e7518ff9e21b2ff0b637be5f779cf6060c4b",
+    "result": "PASS WATERWRAITH_ATTACK_POLICY (8 groups, exit 0), warning-clean -Wall -Wextra -Werror"
+  },
+  "runtime": {
+    "private_build": "output/native-lane31-approved-build",
+    "production_executable_sha256": "e3702bbc7c4d06fc8ccfbdcae0b1915c632a6ce98460236634ad82ac89b79744",
+    "ninja_dry_run": "ninja: no work to do.",
+    "fixture_dir": "output/lane31-approved-encounter-fixture-04",
+    "fixture_executable_sha256": "b482aa970b24413abe6edeed1e66202222c68232ad45f933ae841e7006712621",
+    "run_dir": "output/lane31-approved-encounter-runtime-01/dcf3c11092d445f5917704463013dd4b",
+    "status": "passed",
+    "markers": [
+      "P2_WATERWRAITH_ENCOUNTER_WINDOW size=960x540",
+      "P2_WATERWRAITH_ENCOUNTER_READY",
+      "P2_WATERWRAITH_ENCOUNTER_STAGE_A crushes=20 damage=0.0",
+      "P2_WATERWRAITH_STUN tick=43 rollerHealth=1800.0",
+      "P2_WATERWRAITH_ROLLER_ZERO tick=53",
+      "P2_WATERWRAITH_TYRE_REMOVED tick=56",
+      "P2_WATERWRAITH_ENCOUNTER_REENTRY ready=1 attached=1",
+      "P2_WATERWRAITH_ENCOUNTER_PASS stuns=1 hits=39 crushes=20 damage=2340.0 zeroed=1 child_removed=1",
+      "PASS WATERWRAITH_ENCOUNTER_RUNTIME"
+    ],
+    "captures": ["waterwraith-encounter.ppm sha256=ae3263eee600267f30e7095d9573161cb890ff5fcb91b74e19a39b361db234d6"]
+  },
+  "limitations": [
+    "The roller crush uses InteractFlick with the resident captain as the acting owner: the source attribution creature is absent on this host actor (retained-assembly Waterwraith attack callback out of scope). Tyre fp24 damage 10 and the radii are lane adaptations.",
+    "The host death script (dismount -> tyre_getoff -> child removal) and the body Dead key sequence are driven by encounter inputs; the retained-assembly pathfinder is not ported.",
+    "Purple Pikmin are real squad members converted with pc_p2_make_purple from the staged P2_PURPLE_1 profile (impact disabled) and positioned near the actor by the fixture; this is a live-squad arena, not a natural cave encounter.",
+    "Treasure released on Dead KEYEVENT_5 is logged only; durable reward/Onion is lane 06. The shared lane 10/11 receiver remains the production combat route."
+  ]
+}
