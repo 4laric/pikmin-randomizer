@@ -49,21 +49,25 @@ Decompilation revision `632af93787b9c95b63f0c13be32b161375ce3a96`
 Payload ID 36 (`EnemyID_Bomb`) is the separate child, not a duplicate
 spawnable (`docs/PIKMIN2_DWEEVIL_ASSETS.md` section 1).
 
-## 3. Shared blast status — BLOCKED
+## 3. Shared blast status — wired on the maintained line (#447, approved-base rebase)
 
-At this base there is **no** `pc_port/pc_p2_bombsarai_bomb.*`,
-`pc_p2_bombsarai_blast.*` or `pc_p2_projectiles*` module, and no Bomb teki: the
-P1 engine only has the Pikmin-thrown bomb-rock item (`include/BombItem.h`) and
-the King actor's labeled actor-local bomb stub. There is therefore no shared
-blast/explosion interface to consume. Per the lane instruction the runtime does
-**not** implement a duplicate blast: each detonation emits
+The shared Bomb/BlastSarai primitive now exists on the maintained line
+(`pc_port/pc_p2_bombsarai_blast.{h,cpp}`, projectiles/BombSarai lane #169). The
+rebased BombOtakara module consumes it instead of emitting a blocked marker:
 
-```text
-P2_BOMBOTAKARA_BLAST_BLOCKED generator=<id> payload=<id> reason=no_shared_blast
-```
+- each detonation builds a `P2BombSaraiBlastEvent`
+  (`center = payload xyz`, retail Bomb parms `radius 90` fp22, `halfHeight 50`
+  fp02, `tekiDamage 500` fp01, `naviPikiDamage 10` fp24 — the pinned values from
+  the lane-20 tests),
+- enumerates live Pikmin and the captain, calls `p2_bombsarai_route_blast`, and
+  applies the source Bomb's `InteractBomb` to each routed hit,
+- a carrierless BombOtakara blast is attributed to the bomb itself, so a
+  stateless module-local `Creature` positioned at the blast center is the
+  `InteractBomb` owner (the receiver dereferences `mOwner->mSRT.t`,
+  `interactBattle.cpp:63`).
 
-and the actual area-blast application stays **BLOCKED** pending the projectiles
-lane contract. Generic damage/physics is untouched.
+No duplicate blast is implemented; generic damage/physics is otherwise
+untouched.
 
 ## 4. Sidecar contract
 
@@ -90,8 +94,8 @@ accrues at 30 Hz and at 1.5 s logs `P2_BOMBOTAKARA_ARM`. A trigger calls
 `detonate(payloadPresent, alreadyDetonated)`:
 
 - first trigger -> `P2_BOMBOTAKARA_DETONATE ... detonated=1 exactly_once=1
-  total_detonations=1`, followed by `P2_BOMBOTAKARA_BLAST_BLOCKED
-  reason=no_shared_blast`;
+  total_detonations=1`, followed by `P2_BOMBOTAKARA_BLAST ... shared_primitive=1`
+  (routed hits applied through `InteractBomb`);
 - any later trigger -> `P2_BOMBOTAKARA_DETONATE_SUPPRESSED ... detonated=0
   already_detonated=1`.
 
@@ -115,7 +119,7 @@ Carrier 30 is triggered by contact (ticks 75, 105), carrier 31 by death
 | arm | `P2_BOMBOTAKARA_ARM arm_seconds=1.50` x2 | **PASS** |
 | detonate | `P2_BOMBOTAKARA_DETONATE` contact x1 + death x1, `detonated=1 exactly_once=1` | **PASS** |
 | exactly-once | `P2_BOMBOTAKARA_DETONATE_SUPPRESSED already_detonated=1` x2 | **PASS** |
-| shared-blast | `P2_BOMBOTAKARA_BLAST_BLOCKED reason=no_shared_blast` x2 | **BLOCKED** |
+| shared-blast | `P2_BOMBOTAKARA_BLAST ... shared_primitive=1` x2, `pikmin_hits>=1` | **PASS** |
 
 The fixture self-terminates on gate satisfaction or a bounded behavior-tick
 timeout with `P2_BOMBOTAKARA_BLOCKED gates reason=timeout`. This worker only
@@ -123,8 +127,10 @@ built the fixture; the coordinator owns the serialized GL run.
 
 ## 7. Remaining work / BLOCKED
 
-- **Shared blast application** — BLOCKED; wire to the projectiles-lane (#169)
-  bomb/blast primitive when it lands. Do not fork it here.
+- **Shared blast application** — **wired** on the maintained line via
+  `pc_p2_bombsarai_blast.h` (projectiles lane #169); the detached Bomb enemy
+  binding and a real payload `EnemyID_Bomb` actor (for a non-synthetic
+  `InteractBomb` owner) remain open.
 - **Real Bomb enemy binding** — the payload is a sidecar stub; binding a real
   `EnemyID_Bomb` teki/creature and its `mCarrier` linkage is open.
 - **Visuals/effects/collision** — no BombOtakara or Bomb model, fuse effect or
@@ -157,3 +163,30 @@ PASS P2_BOMBOTAKARA_RUNTIME gates_ready
 The bomb stub, placements and contact/death triggers are labeled injections;
 the shared blast application remains BLOCKED (no shared interface at this
 base). No natural gameplay acceptance is claimed.
+
+## 9. Approved-base rebase: shared blast wired (maintained line)
+
+Rebased onto the current maintained native (`codex/p2-main-review-native` head
+`c223f442`), which now carries the shared BombSarai blast:
+
+- Native `opencode/p2-lane22-blast` @ `0d29450363da77ebb9d36119c75d8badbe029509`
+  (base `c223f442`; never pushed). Module files `pc_p2_bombotakara.{h,cpp}` and
+  `pc_p2_bombotakara_policy.h` plus additive hooks; private build
+  `output/p2-lane22-blast-build`, 548/548 link, `ninja -n pikmin_pc` no work.
+- Fixture `output/p2-lane22-root/output/p2-lane22-blast-fixture-01/build/fixture.exe`,
+  provenance status `built`, expected native head `0d294503`.
+- GL run `output/p2-lane22-root/output/p2-lane22-blast-runtime-02/bombotakara/d17ab182d2b6464f854b1a7d1cc413af`
+  PASS:
+
+```text
+P2_BOMBOTAKARA_DETONATE generator=30 ... trigger=contact detonated=1 exactly_once=1 total_detonations=1
+P2_BOMBOTAKARA_BLAST generator=30 ... radius=90.0 receivers=11 hits=10 pikmin_hits=10 teki_damage=500.0 navi_piki_damage=10.0 shared_primitive=1
+P2_BOMBOTAKARA_BLAST generator=31 ... radius=90.0 receivers=11 hits=10 pikmin_hits=10 teki_damage=500.0 navi_piki_damage=10.0 shared_primitive=1
+PASS P2_BOMBOTAKARA_RUNTIME gates_ready
+```
+
+The two blasts route through the shared primitive and apply `InteractBomb` to 10
+live Pikmin each (observed engine damage, not a predicted log). The blast owner
+is a labeled module-local bomb-position `Creature` because the module has no
+payload `EnemyID_Bomb` actor yet. The response-file fixture-builder fix
+(`scripts/build_pikmin2_fixture.py`) is shared with the lane-23 handoff.

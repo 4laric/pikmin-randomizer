@@ -80,9 +80,9 @@ class SyntheticLogTests(unittest.TestCase):
         'P2_BOMBOTAKARA_ARM generator=30 payload=40 arm_seconds=1.50 source=stimulateBomb\n'
         'P2_BOMBOTAKARA_ARM generator=31 payload=41 arm_seconds=1.50 source=stimulateBomb\n'
         'P2_BOMBOTAKARA_DETONATE generator=30 payload=40 trigger=contact detonated=1 exactly_once=1 total_detonations=1\n'
-        'P2_BOMBOTAKARA_BLAST_BLOCKED generator=30 payload=40 reason=no_shared_blast\n'
+        'P2_BOMBOTAKARA_BLAST generator=30 payload=40 center=44.000,30.000,1906.000 radius=90.0 receivers=11 hits=10 pikmin_hits=10 teki_damage=500.0 navi_piki_damage=10.0 shared_primitive=1\n'
         'P2_BOMBOTAKARA_DETONATE generator=31 payload=41 trigger=death detonated=1 exactly_once=1 total_detonations=1\n'
-        'P2_BOMBOTAKARA_BLAST_BLOCKED generator=31 payload=41 reason=no_shared_blast\n'
+        'P2_BOMBOTAKARA_BLAST generator=31 payload=41 center=50.000,30.000,1912.000 radius=90.0 receivers=11 hits=10 pikmin_hits=10 teki_damage=500.0 navi_piki_damage=10.0 shared_primitive=1\n'
         'P2_BOMBOTAKARA_DETONATE_SUPPRESSED generator=30 payload=40 trigger=contact detonated=0 already_detonated=1\n'
         'P2_BOMBOTAKARA_DETONATE_SUPPRESSED generator=31 payload=41 trigger=death detonated=0 already_detonated=1\n'
         'P2_BOMBOTAKARA_BASELINE red=5 blue=5\n'
@@ -121,11 +121,17 @@ class SyntheticLogTests(unittest.TestCase):
         for name in ('suppressed_death', 'exactly_two_suppressed'):
             self.assertIn(name, evidence['failed'])
 
-    def test_missing_blast_blocked_fails(self):
-        text = self.GOOD.replace('P2_BOMBOTAKARA_BLAST_BLOCKED generator=31 payload=41 reason=no_shared_blast\n', '')
+    def test_missing_blast_fails(self):
+        text = self.GOOD.replace('P2_BOMBOTAKARA_BLAST generator=31 payload=41 center=50.000,30.000,1912.000 radius=90.0 receivers=11 hits=10 pikmin_hits=10 teki_damage=500.0 navi_piki_damage=10.0 shared_primitive=1\n', '')
         evidence = br.validate(text, 0)
         self.assertFalse(evidence['passed'])
-        self.assertIn('blast_blocked', evidence['failed'])
+        self.assertIn('blast', evidence['failed'])
+
+    def test_no_pikmin_hits_fails(self):
+        text = self.GOOD.replace('pikmin_hits=10', 'pikmin_hits=0')
+        evidence = br.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('blast_pikmin_hits', evidence['failed'])
 
     def test_blocked_timeout_fails(self):
         text = self.GOOD.replace('PASS P2_BOMBOTAKARA_RUNTIME gates_ready\n',
