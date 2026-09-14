@@ -165,3 +165,30 @@ Findings posted to #424/#448. Earlier Titan/rain holds on #246/#174 remain.
 
 All33 representative issues were queried OPEN this sweep: **33 open lanes,
 change0;21 primarily implementation,11 primarily acceptance,+integration**.
+
+
+## Queued runtime acceptance completed (heartbeat, 2026-09-14)
+
+No new root/native handoffs were present. The gameplay slot was free; integration
+reserved it through #186 and ran the queued fixtures serially. Earlier pending
+statements for these two runs are now superseded.
+
+Sarai at pinned native2432ce99: all six modes exit0/PASS. Voluntary escape:
+253ticks/50 synthesized D-pad edges; interruption201ticks; grounded teardown199;
+Walk capture/drop664ticks with407carryticks; Idle674/411; pose/mouth-follow/teardown
+PASS. Both drops end at captain HP90. Fixture SHA-256
+`18952892798c1e3865eddf5021376a6944112f0994f4d376f27ca449ae110856`.
+Evidence: `output/p2-sweep437-sarai-lifecycle-stage/result.json` and mode logs.
+This is the already-built2432ce99 fixture, not relabeled as a5b446a64 runtime.
+
+Greater Jellyfloat at native5b446a64: exit0, `P2_KURAGE_BITTER_DEATH`,
+`P2_KURAGE_GREATER_BITTER_PASS captured=1 bitter_death=1 released=1 occupied=0`,
+and `PASS KURAGE_RUNTIME flight_fsm_greater_bitter`.
+Fixture SHA-256 `344bc10245e9a621f389680209d80ccbe063e0253c6bfbb4e5ad673814530c6f`.
+Evidence: `output/p2-sweep437-kurage-bitter-run/flight-fsm-greater-bitter.json`
+and corresponding log.
+
+Both use refreshed20-red stages without inherited saves and log actual960x540
+centered startup after settings. Controlled capture/input/bitter state fixtures
+prove these receiver/lifecycle contracts, not autonomous campaign admission or
+performance. No roster identity was admitted; **33 open lanes, change0**.
