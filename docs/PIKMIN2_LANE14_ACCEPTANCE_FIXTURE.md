@@ -14,10 +14,10 @@ Machine-readable companion: `docs/p2_lane14_acceptance_fixture.json`
 
 | Field | Value |
 |---|---|
-| Native branch / commit | `opencode/p2-lane14-native` @ `1531c0baa5f1830637bd2c7abd1bbdcc1a40b542` (based on `codex/p2-sweep437`) |
+| Native branch / commit | `opencode/p2-lane14-native` @ `2432ce99da4dbcb8b819319d16a84a244cf17be0` (based on `codex/p2-sweep437`) |
 | Native worktree / build | `output/native-lane14` / `output/native-lane14-build` |
 | Executable | `output/native-lane14-build/bin/nectar.exe` (target `pikmin_pc`, `OUTPUT_NAME nectar`) |
-| Executable SHA-256 / size | `BBF22D28A86B2067297DEFEF9C47F0CD88F381DFAFE633685AB57D69C01E9841` / 7,633,898 bytes |
+| Executable SHA-256 / size | `D67E7A91B9929F412F1D9DDFA145833D3CB278845BE0142E17A84EB74B262C8A` / 7,647,651 bytes |
 | Flags | Ninja, gcc 16.2.0, `Release`, `PIKMIN_NATIVE_JAUDIO=ON`, `PIKMIN_ENABLE_IPO=ON`, `PIKMIN_GAME_VERSION=VERSION_GPIE01_01`, `PIKMIN_NATIVE_OPTIMIZE=OFF`, `PIKMIN_RANDOMIZER_TEST_HOOKS=OFF`; `ninja -n` → no work |
 | GL slot | reserved (queued) in #186; **run only after lane 01 releases** |
 
@@ -74,8 +74,8 @@ native worktree/build, then run instead of `nectar.exe`.
 Build (once per fixture, after the native build is fresh):
 
 ```powershell
-py -3.12 -m experimental.pikmin2_ground_combat_behavior build --native output/native-lane14 --build-dir output/native-lane14-build --output output/lane14-accept/combat-fixture --head 1531c0baa5f1830637bd2c7abd1bbdcc1a40b542
-py -3.12 -m experimental.pikmin2_ground_lifecycle_behavior build --native output/native-lane14 --build-dir output/native-lane14-build --output output/lane14-accept/lifecycle-fixture --head 1531c0baa5f1830637bd2c7abd1bbdcc1a40b542
+py -3.12 -m experimental.pikmin2_ground_combat_behavior build --native output/native-lane14 --build-dir output/native-lane14-build --output output/lane14-accept/combat-fixture --head 2432ce99da4dbcb8b819319d16a84a244cf17be0
+py -3.12 -m experimental.pikmin2_ground_lifecycle_behavior build --native output/native-lane14 --build-dir output/native-lane14-build --output output/lane14-accept/lifecycle-fixture --head 2432ce99da4dbcb8b819319d16a84a244cf17be0
 ```
 
 | Run | Identity (ID) | Module | Seconds | Kind | Notes |

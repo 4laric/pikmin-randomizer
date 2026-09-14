@@ -8,13 +8,13 @@
   "slot_reservation": "https://github.com/4laric/pikmin-randomizer/issues/186#issuecomment-5668337210",
   "build": {
     "native_branch": "opencode/p2-lane14-native",
-    "native_commit": "1531c0baa5f1830637bd2c7abd1bbdcc1a40b542",
-    "native_base": "codex/p2-sweep437",
+    "native_commit": "2432ce99da4dbcb8b819319d16a84a244cf17be0",
+    "native_base": "codex/p2-sweep437 (fast-forward to 2432ce99)",
     "worktree": "output/native-lane14",
     "build_dir": "output/native-lane14-build",
     "executable": "output/native-lane14-build/bin/nectar.exe",
-    "executable_sha256": "BBF22D28A86B2067297DEFEF9C47F0CD88F381DFAFE633685AB57D69C01E9841",
-    "executable_bytes": 7633898,
+    "executable_sha256": "D67E7A91B9929F412F1D9DDFA145833D3CB278845BE0142E17A84EB74B262C8A",
+    "executable_bytes": 7647651,
     "window": "960x540"
   },
   "inputs": {
