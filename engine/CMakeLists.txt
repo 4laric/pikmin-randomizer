@@ -265,6 +265,9 @@ pc_port/pc_p2_projectile_host.cpp
     pc_port/pc_p2_bigtreasure_motion.cpp
     pc_port/pc_p2_bigtreasure_visual.cpp
     pc_port/pc_p2_bigtreasure_save.cpp
+    pc_port/pc_p2_bigtreasure_ordinary.cpp
+    pc_port/pc_p2_bigtreasure_animclock.cpp
+    pc_port/pc_p2_bigtreasure_elements.cpp
     pc_port/pc_randomizer.cpp
     pc_port/pc_p2_waterwraith.cpp
     pc_port/pc_p2_waterwraith_actor.cpp
@@ -1028,6 +1031,15 @@ add_test(NAME p2_fuefuki_motion_test COMMAND p2_fuefuki_motion_test)
 set(P2_KABUTO_TEST_DEPS pc_port/pc_p2_kabuto_binding.cpp pc_port/pc_p2_kabuto_events.cpp pc_port/pc_p2_kabuto_muzzle.cpp pc_port/pc_p2_kabuto_cannon.cpp pc_port/pc_p2_cannon_stone.cpp)
 foreach(policy IN ITEMS kabuto_muzzle kabuto_chain kabuto_binding)
     add_executable(p2_${policy}_test tools/p2_${policy}_test.cpp ${P2_KABUTO_TEST_DEPS})
+    target_include_directories(p2_${policy}_test PRIVATE pc_port)
+    target_compile_options(p2_${policy}_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+    add_test(NAME p2_${policy}_test COMMAND p2_${policy}_test)
+endforeach()
+
+foreach(policy IN ITEMS bigtreasure_ordinary bigtreasure_animclock bigtreasure_natural bigtreasure_elements)
+    add_executable(p2_${policy}_test tools/p2_${policy}_test.cpp ${P2_BIGTREASURE_TEST_DEPS}
+        pc_port/pc_p2_bigtreasure_ordinary.cpp pc_port/pc_p2_bigtreasure_animclock.cpp
+        pc_port/pc_p2_bigtreasure_motion.cpp pc_port/pc_p2_bigtreasure_elements.cpp)
     target_include_directories(p2_${policy}_test PRIVATE pc_port)
     target_compile_options(p2_${policy}_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
     add_test(NAME p2_${policy}_test COMMAND p2_${policy}_test)

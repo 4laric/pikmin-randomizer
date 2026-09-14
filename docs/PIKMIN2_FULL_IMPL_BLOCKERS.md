@@ -1,5 +1,7 @@
 # P2 enemies: full implementation and randomizer blockers
 
+Latest integrated baseline and acceptance: [native handoff integration continuation](PIKMIN2_NATIVE_HANDOFF_INTEGRATION_437.md). Older queue entries below are historical and must be checked against this continuation.
+
 Current integration baseline: [full integration pass #437](PIKMIN2_FULL_INTEGRATION_437.md). Its combined source and remaining-work ledger supersede historical pending-merge statements below.
 
 Next-wave dispatch: [playable encounters and first cohort](PIKMIN2_NEXT_WAVE.md). Keep existing lane numbers; use this guide for current priorities and acceptance.

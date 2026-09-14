@@ -1,5 +1,7 @@
 # P2 enemy family — ownership and next-step status
 
+Latest integrated baseline and acceptance: [native handoff integration continuation](PIKMIN2_NATIVE_HANDOFF_INTEGRATION_437.md). Older queue entries below are historical and must be checked against this continuation.
+
 Current integration baseline: [full integration pass #437](PIKMIN2_FULL_INTEGRATION_437.md). Its combined source and remaining-work ledger supersede historical pending-merge statements below.
 
 Current integration disposition: [integration sweep #456](PIKMIN2_INTEGRATION_456.md).

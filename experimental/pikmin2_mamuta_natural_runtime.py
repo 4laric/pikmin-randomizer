@@ -60,16 +60,14 @@ def build(native, build_dir, output, head, root, resume=False, fixture=FIXTURE):
     tutorial_compile = [str(tutorial_private) if a == str(room) else a for a in compile_cmd]
     tutorial_compile[builder.option_index(tutorial_compile, '-o')] = str(output / 'tutorial.obj')
     tutorial_compile[builder.option_index(tutorial_compile, '-MF')] = str(output / 'tutorial.d')
-    targets = [i for i, a in enumerate(link) if a.endswith('-libpikmin_legacy.a')]
-    if len(targets) != 1:
-        raise ValueError('Expected one private legacy archive')
-    link.insert(targets[0], str(output / 'tutorial.obj'))
+    from experimental.pikmin2_elecbug_immunity_behavior import replace_tutorial_input
+    link = replace_tutorial_input(link, output / 'tutorial.obj')
     env = dict(os.environ, PATH='C:/msys64/mingw64/bin;' + os.environ.get('PATH', ''))
     audit = dict(original_fixture=builder.snapshot([native / 'tools/preview_p2_room.cpp', tutorial]),
                  instrumented=builder.snapshot([room, tutorial_private]),
                  commands=[compile_cmd, tutorial_compile, link], freshness_checks=[])
     for name, command in [('room-compile', compile_cmd), ('tutorial-compile', tutorial_compile), ('room-link', link)]:
-        code, text = builder.run(command, build_dir, env)
+        code, text = builder.run_command(command, build_dir, env, output, name)
         (output / (name + '.log')).write_text(text)
         if code:
             raise RuntimeError(name + ' failed')

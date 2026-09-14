@@ -345,3 +345,16 @@ conflicts require #186 review. Only integration builds `native/build-randomizer`
 after integration and runs `scripts/export_native_source.py`. Never push native
 origin. Keep assets, builds, logs, saves and runtime state local under `output/`;
 do not modify the parallel original BBFT or decomp/research checkouts or relink AP.
+
+## Integration sweep inventory (lane 01)
+
+A root push is not the complete handoff inventory. Read each current lane issue's
+latest delivery comments and resolve the native branch/commit and any local root
+branch they name. Native origin is deliberately never pushed, so a completed
+native handoff may exist only in the shared local Git object database. Record the
+accepted root/native pair separately, including standalone native dependencies
+of root fixtures. Compare source or patch equivalence where cherry-picking makes
+ancestry differ; do not reapply superseded exports. Review shared hooks, build,
+export and run the supplied consumer fixture rather than treating a merged root
+document as native integration. Record explicitly any held dependency and why.
+See [the continuation audit](PIKMIN2_NATIVE_HANDOFF_INTEGRATION_437.md).

@@ -37,6 +37,12 @@ def hook_patch(engine: Path) -> str:
     if cmake.count('pc_p2_mamuta_rules') != cmake.count(rules) or cmake.count(rules) > 1:
         raise ValueError('CMakeLists.txt: partial or conflicting Mamuta rules integration')
     audited['CMakeLists.txt'] = cmake.replace(rules, '')
+    # The later Pod receipt consumer is independent of visual setup hooks.
+    preview = 'pc_port/pc_p2_preview.cpp'
+    receipt = 'pc_p2_mamuta_receipt('
+    if audited[preview].count(receipt) > 1:
+        raise ValueError('pc_port/pc_p2_preview.cpp: conflicting Mamuta receipt hooks')
+    audited[preview] = audited[preview].replace(receipt, 'family_receipt(')
     if any('pc_p2_mamuta' in source for source in audited.values()):
         for path, hooks in expected_hooks.items():
             source = audited[path]

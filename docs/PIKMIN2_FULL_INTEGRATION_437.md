@@ -1,5 +1,7 @@
 # Full P2 integration pass (#437)
 
+Latest integrated baseline and acceptance: [native handoff integration continuation](PIKMIN2_NATIVE_HANDOFF_INTEGRATION_437.md). Older queue entries below are historical and must be checked against this continuation.
+
 Implementation owner: Codex through shared account 4laric. Review destination: draft [#432](https://github.com/4laric/pikmin-randomizer/pull/432), `codex/p2-main-review` into this repository's `main`. No upstream issue/PR is created, no main merge is performed, and native origin is not pushed.
 
 ## Integrated batch

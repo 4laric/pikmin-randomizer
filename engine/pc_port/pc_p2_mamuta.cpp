@@ -45,6 +45,13 @@ Shape* load(const char* clip) {
 }
 void pc_p2_mamuta_reset() { actors.clear(); logged.clear(); for (auto& s: shapes) s=nullptr; bytesTotal=0; pc_p2_mamuta_rules_reset(); }
 bool pc_p2_mamuta_is_bound(BTeki* actor) { return actors.find(actor) != actors.end(); }
+bool pc_p2_mamuta_receipt(PelletView* view, unsigned& generator) {
+    if (!view) return false;
+    auto it = actors.find(static_cast<BTeki*>(view));
+    if (it == actors.end()) return false;
+    generator = it->second;
+    return true;
+}
 void pc_p2_mamuta_forget(BTeki* actor) {
     actors.erase(actor);
     for (int k=0; k<3; ++k) logged.erase({actor,k});

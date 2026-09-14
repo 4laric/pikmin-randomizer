@@ -32,6 +32,10 @@
 #include "pc_p2_fuefuki_visual.h"
 #include "pc_p2_retail_player.h"
 #include "pc_p2_bigtreasure_host.h"
+#include "pc_p2_bigtreasure_ordinary.h"
+#include "pc_p2_bigtreasure_animclock.h"
+#include "pc_p2_bigtreasure_elements.h"
+#include "pc_p2_bigtreasure_map_trace.h"
 #include "pc_p2_bigtreasure_visual.h"
 #include "pc_p2_waterwraith_register.h"
 #include "Matrix4f.h"
@@ -50,6 +54,7 @@
 #include "teki.h"
 #include <cstdint>
 #include <cstdio>
+#include <cmath>
 #include <map>
 #include <string>
 
@@ -235,15 +240,52 @@ P2FuefukiFsmParms fuefukiParms()
 // BigTreasure (#246)
 constexpr float kBigTreasureSourceDelta = 1.0f / 30.0f;
 P2BigTreasureHostSeam sBigTreasure;
+P2BigTreasureOrdinary sBigTreasureOrdinary;
+P2BigTreasureAnimClock sBigTreasureClock;
+P2BigTreasureElementRuntime sBigTreasureElements;
+P2BigTreasureMapTrace sBigTreasureTrace;
+bool sBigTreasureAttackLogged = false;
+bool sBigTreasureHitLogged = false;
 bool sBigTreasureReady = false;
 bool sBigTreasureVisualReady = false;
 bool sBigTreasureVisualDriven = true;
 float sBigTreasureGround = 0.0f;
 double sBigTreasureDebt = 0.0;
-
-// ---------------------------------------------------------------------------
-// Waterwraith (#443 / #175) - lane 31 additive hook
 float sWaterwraithGround = 0.0f;
+P2BigTreasurePhase sBigTreasurePhase = P2BT_Dead;
+
+const char* bigTreasureWeaponName(int weapon)
+{
+    switch (weapon) {
+    case P2BTWEAPON_Elec: return "elec";
+    case P2BTWEAPON_Fire: return "fire";
+    case P2BTWEAPON_Gas: return "gas";
+    case P2BTWEAPON_Water: return "water";
+    default: return "?";
+    }
+}
+
+// Source isAttackLimitTime box test: a live Navi/Pikmin inside the 225-unit XZ
+// box around the fixed placement. The ordinary FSM drive consumes the result
+// as `targetInBox`; the policy's pacer owns the timer accrual and threshold.
+bool bigTreasureTargetInBox()
+{
+    if (!sBigTreasure.active) return false;
+    const float bx = sBigTreasure.placement.owner.x;
+    const float bz = sBigTreasure.placement.owner.z;
+    const float box = P2BigTreasureAttackPacer::kBoxHalfExtent;
+    auto inside = [&](float x, float z) {
+        return std::fabs(x - bx) <= box && std::fabs(z - bz) <= box;
+    };
+    Navi* navi = naviMgr ? naviMgr->getNavi() : nullptr;
+    if (navi && inside(navi->mSRT.t.x, navi->mSRT.t.z)) return true;
+    Iterator it(pikiMgr);
+    CI_LOOP(it) {
+        Piki* piki = static_cast<Piki*>(*it);
+        if (piki && piki->isAlive() && inside(piki->mSRT.t.x, piki->mSRT.t.z)) return true;
+    }
+    return false;
+}
 }
 
 void pc_p2_hardlanes_set_bigtreasure_visual_driven(bool driven)
@@ -271,6 +313,11 @@ void pc_p2_hardlanes_reset()
     sFuefukiMotionReady = false;
     sFuefukiMotionState = -1;
     p2_bigtreasure_host_reset(sBigTreasure);
+    sBigTreasureOrdinary.reset(P2BigTreasureFsmParms());
+    sBigTreasureClock.reset();
+    sBigTreasureElements.defeat();
+    sBigTreasureAttackLogged = false;
+    sBigTreasureHitLogged = false;
     pc_p2_bigtreasure_visual_reset();
     sBigTreasureReady = false;
     sBigTreasureVisualReady = false;
@@ -280,6 +327,16 @@ void pc_p2_hardlanes_reset()
     // Waterwraith (#443 / #175) - lane 31 additive hook.
     pc_p2_waterwraith_register_reset();
     sWaterwraithGround = 0.0f;
+    sBigTreasurePhase = P2BT_Dead;
+}
+
+bool pc_p2_hardlanes_bigtreasure_hit(int weapon, float damage, bool bittered)
+{
+    P2BigTreasureOrdinaryHit hit;
+    hit.weapon = weapon;
+    hit.damage = damage;
+    hit.bittered = bittered;
+    return sBigTreasureOrdinary.postHit(hit);
 }
 
 void pc_p2_hardlanes_setup()
@@ -378,6 +435,14 @@ void pc_p2_hardlanes_setup()
     // BigTreasure (#246): fixed-placement host seam + sampled visual bank.
     if (p2_bigtreasure_host_setup("p2-bigtreasure-host.txt", sBigTreasure)) {
         sBigTreasureReady = true;
+        sBigTreasureOrdinary.reset(P2BigTreasureFsmParms());
+        // Animation keyframe source: the lane's own motion-table player, so the
+        // policy can leave Land even when the shared visual bank only stages a
+        // subset. Absent table leaves the clock inactive (policy parks in Land).
+        if (sBigTreasureClock.load("p2_bigtreasure_events.txt")) {
+            std::printf("P2_HARDLANES_READY family=BigTreasure keyframes=1\n");
+        }
+        sBigTreasureTrace.reset(mapMgr);
         sBigTreasureGround = mapMgr->getMinY(0.0f, 0.0f, false);
         std::printf("P2_HARDLANES_READY family=BigTreasure host=1 captures=5\n");
     }
@@ -483,8 +548,105 @@ void pc_p2_hardlanes_update()
         if (ticks > 4) ticks = 4;
         sBigTreasureDebt -= ticks * static_cast<double>(kBigTreasureSourceDelta);
         for (int i = 0; i < ticks; ++i) {
-            if (sBigTreasureReady)
-                p2_bigtreasure_host_tick_entry(sBigTreasure, kBigTreasureSourceDelta, false, 0.0f);
+            if (sBigTreasureReady) {
+                // Ordinary update: step the 12-state policy (not the injected
+                // attack shortcut). The animation keyframe source runs the
+                // mapped source clip through the lane's own motion player, so
+                // the policy advances Land -> ItemWalk -> ... -> Attack as the
+                // clips dispatch their authored events. Natural hits enter via
+                // pc_p2_hardlanes_bigtreasure_hit.
+                P2BigTreasureAnimPulses pulses;
+                sBigTreasureClock.tick(sBigTreasureOrdinary.phase(),
+                                       sBigTreasureOrdinary.chosenWeapon(), pulses);
+                P2BigTreasureOrdinaryFacts facts;
+                facts.delta = kBigTreasureSourceDelta;
+                facts.targetInBox = bigTreasureTargetInBox();
+                facts.hasTarget = facts.targetInBox;
+                facts.animEnd = pulses.animEnd;
+                facts.keyEvent2 = pulses.keyEvent2;
+                facts.keyEvent100 = pulses.keyEvent100;
+                // No IK-system bridge yet: treat the IK motion as finished so
+                // the walk gates resolve, mirroring the fixture inputs.
+                facts.finishIKMotion = true;
+                P2BigTreasureFsmHostOutput fsmOut;
+                sBigTreasureOrdinary.tick(sBigTreasure, facts, fsmOut);
+                const P2BigTreasurePhase phase = sBigTreasureOrdinary.phase();
+                if (phase != sBigTreasurePhase) {
+                    sBigTreasurePhase = phase;
+                    char clip[40] = "-";
+                    p2_bigtreasure_anim_clip(phase, sBigTreasureOrdinary.chosenWeapon(),
+                                             clip, sizeof(clip));
+                    std::printf("P2_BIGTREASURE_FSM phase=%s weapons=%d clip=%s\n",
+                                P2BigTreasureFsm::stateName(phase),
+                                sBigTreasure.ownership.weaponCount(), clip);
+                }
+                // Element runtime: start the source controller the FSM just
+                // started through the pools, and step it against the lane map
+                // trace so a live attack actually emits/moves. The Pikmin
+                // damage receiver stays lane 10's boundary.
+                if (fsmOut.fsm.startAttack) {
+                    const int weapon = sBigTreasureOrdinary.chosenWeapon();
+                    const P2BigTreasureVec3 origin{ sBigTreasure.placement.owner.x,
+                                                    sBigTreasureGround,
+                                                    sBigTreasure.placement.owner.z };
+                    if (sBigTreasureElements.start(
+                            weapon, origin, sBigTreasureGround,
+                            sBigTreasure.ownership.weaponHealth(weapon), 0.25f, 0.25f)) {
+                        sBigTreasureAttackLogged = false;
+                        sBigTreasureHitLogged = false;
+                        std::printf("P2_BIGTREASURE_ATTACK_START weapon=%s\n",
+                                    bigTreasureWeaponName(weapon));
+                    }
+                }
+                if (fsmOut.fsm.finishAttack) {
+                    sBigTreasureElements.finish();
+                }
+                if (sBigTreasureElements.active()) {
+                    P2BigTreasureElementHost elementHost;
+                    elementHost.context = &sBigTreasureTrace;
+                    elementHost.trace = P2BigTreasureMapTrace::trace;
+                    elementHost.ground = P2BigTreasureMapTrace::ground;
+                    P2BigTreasureElementStats elementStats;
+                    sBigTreasureElements.tick(kBigTreasureSourceDelta, elementHost, elementStats);
+                    if (!sBigTreasureAttackLogged && elementStats.nodes > 0) {
+                        sBigTreasureAttackLogged = true;
+                        std::printf("P2_BIGTREASURE_ATTACK_EMIT weapon=%s nodes=%d\n",
+                                    bigTreasureWeaponName(sBigTreasureElements.activeWeapon()),
+                                    elementStats.nodes);
+                    }
+                    // Detection only: report once when the running element's
+                    // source hit geometry intersects a live Navi/Pikmin. Damage
+                    // application is the lane-10 receiver.
+                    if (!sBigTreasureHitLogged && elementStats.nodes > 0) {
+                        bool hit = false;
+                        Navi* liveNavi = naviMgr ? naviMgr->getNavi() : nullptr;
+                        if (liveNavi
+                            && sBigTreasureElements.queryHit(P2BigTreasureVec3{
+                                   liveNavi->mSRT.t.x, liveNavi->mSRT.t.y,
+                                   liveNavi->mSRT.t.z })) {
+                            hit = true;
+                        }
+                        if (!hit) {
+                            Iterator pikiIt(pikiMgr);
+                            CI_LOOP(pikiIt) {
+                                Piki* piki = static_cast<Piki*>(*pikiIt);
+                                if (!piki || !piki->isAlive()) continue;
+                                if (sBigTreasureElements.queryHit(P2BigTreasureVec3{
+                                        piki->mSRT.t.x, piki->mSRT.t.y, piki->mSRT.t.z })) {
+                                    hit = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (hit) {
+                            sBigTreasureHitLogged = true;
+                            std::printf("P2_BIGTREASURE_ATTACK_HIT weapon=%s target=live\n",
+                                        bigTreasureWeaponName(
+                                            sBigTreasureElements.activeWeapon()));
+                        }
+                    }
+                }
+            }
             if (sBigTreasureVisualReady && sBigTreasureVisualDriven) {
                 if (pc_p2_bigtreasure_visual_completed()) pc_p2_bigtreasure_visual_clip("wait1");
                 pc_p2_bigtreasure_visual_update(1.0f);

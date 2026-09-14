@@ -23,3 +23,9 @@ int pc_p2_hardlanes_fuefuki_state();   // P2FuefukiFsmState, or -1
 int pc_p2_hardlanes_fuefuki_held_count();
 Piki* pc_p2_hardlanes_fuefuki_held(int index); // k-th held Pikmin, or null
 bool pc_p2_hardlanes_fuefuki_vehicle_position(float& x, float& y, float& z);
+// Natural-hit ingress (#246): post one Pikmin-source hit against a BigTreasure
+// weapon coll part (`weapon` in [0,3], or -1 for the body) into the ordinary
+// FSM host drive. The lane-10 receiver / collision proxy is the intended
+// caller. Returns false when the seam is inactive or the bounded queue rejects
+// the hit (full, non-finite/non-positive damage or an out-of-range weapon).
+bool pc_p2_hardlanes_bigtreasure_hit(int weapon, float damage, bool bittered);
