@@ -114,7 +114,7 @@ class ConsistencyTests(unittest.TestCase):
         include = next((c for c in candidates if (c / 'pc_p2_pom_policy.h').is_file()), None)
         compiler = Path('C:/msys64/mingw64/bin/g++.exe')
         if include is None or not compiler.is_file():
-            return
+            self.skipTest('Candypop policy header/compiler unavailable')
         source = ROOT / 'tests' / 'pikmin2_pom_policy.cpp'
         with tempfile.TemporaryDirectory(prefix='p2-pom-policy-') as tmp:
             exe = Path(tmp) / 'pom_policy.exe'

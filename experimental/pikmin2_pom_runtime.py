@@ -284,7 +284,7 @@ def run(assets, output, exe):
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
     directory = stage(assets, output / 'pom')
-    env = dict(os.environ, PATH='C:/msys64/mingw64/bin;' + os.environ.get('PATH', ''), SDL_AUDIODRIVER='dummy')
+    env = dict(os.environ, PATH='C:/msys64/mingw64/bin;' + os.environ.get('PATH', ''), SDL_AUDIODRIVER='dummy', PIKMIN_P2_ROOM_WINDOW='960x540')
     with (directory / 'native.log').open('w') as log:
         process = subprocess.Popen([str(Path(exe).resolve()), '--experimental-pikmin2-room'], cwd=directory,
                                    env=env, stdout=log, stderr=subprocess.STDOUT)
@@ -310,7 +310,7 @@ def play(assets, output, exe):
     directory = stage(assets, output)
     (directory / 'pom-keep-open.txt').write_bytes(b'Candypop fixture; close window to exit.\n')
     print('Candypop fixture.\n' + str(directory), flush=True)
-    env = dict(os.environ, PATH='C:/msys64/mingw64/bin;' + os.environ.get('PATH', ''), SDL_AUDIODRIVER='dummy')
+    env = dict(os.environ, PATH='C:/msys64/mingw64/bin;' + os.environ.get('PATH', ''), SDL_AUDIODRIVER='dummy', PIKMIN_P2_ROOM_WINDOW='960x540')
     with (directory / 'native.log').open('w') as log:
         return subprocess.run([str(Path(exe).resolve()), '--experimental-pikmin2-room'], cwd=directory, env=env,
                               stdout=log, stderr=subprocess.STDOUT).returncode

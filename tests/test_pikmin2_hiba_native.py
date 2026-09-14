@@ -148,11 +148,11 @@ class NativePolicyTests(unittest.TestCase):
         if os.environ.get('P2_NATIVE_PC_PORT'):
             candidates.append(Path(os.environ['P2_NATIVE_PC_PORT']))
         candidates.append(ROOT / 'native' / 'pc_port')
-        candidates.append(ROOT.parent.parent / 'native' / 'output' / 'p2-lane22-native' / 'pc_port')
+        candidates.append(ROOT / 'engine' / 'pc_port')
         include = next((c for c in candidates if (c / 'pc_p2_hiba_policy.h').is_file()), None)
         compiler = Path('C:/msys64/mingw64/bin/g++.exe')
         if include is None or not compiler.is_file():
-            return  # Python consistency checks above still guard the contract
+            self.skipTest('Hiba policy header/compiler unavailable in selected checkout')
         source = ROOT / 'tests' / 'pikmin2_hiba_policy.cpp'
         with tempfile.TemporaryDirectory(prefix='p2-hiba-policy-') as tmp:
             exe = Path(tmp) / 'hiba_policy.exe'

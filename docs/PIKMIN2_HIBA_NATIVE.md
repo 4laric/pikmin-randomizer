@@ -1,5 +1,7 @@
 # Lane 22 fixed-hazard native slice
 
+> Integration disposition: diagnostic tooling only in draft #432; the native actor described below is a worker candidate, not integrated gameplay. See [pre-wave review](PIKMIN2_PREWAVE_REVIEW_437.md) for blockers and validation limits.
+
 Issue [#170](https://github.com/4laric/pikmin-randomizer/issues/170), child
 #447. Root behavior model: `experimental/pikmin2_elemental_behavior.py`
 (branch `opencode/p2-lane22-elemental`). This slice adds the three fixed

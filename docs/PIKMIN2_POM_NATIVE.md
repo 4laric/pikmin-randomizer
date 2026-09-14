@@ -1,5 +1,7 @@
 # P2 Candypop Bud native policy actor (lane 23, #171 / #448)
 
+> Integration disposition: diagnostic tooling only in draft #432; the native actor described below is a worker candidate, not integrated gameplay. See [pre-wave review](PIKMIN2_PREWAVE_REVIEW_437.md) for blockers and validation limits.
+
 ## Scope
 
 This is lane 23's **native Candypop Bud** slice on top of the delivered pure

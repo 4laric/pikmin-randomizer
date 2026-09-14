@@ -2,7 +2,7 @@
 
 Dispatch guide, 2026-09-14. Tracking #454; coordination #186. Implementation owner for this document: Codex through shared account 4laric. This is a work plan, not a gameplay acceptance report or a reassignment of active owners.
 
-Start from draft #432 at root `ead0b62330eb2965dbd558163da91c86c73237f6`, native `3213dd590de474331f67c2b65437e62d3c1b8236`, or a later integration-approved pair. [Sweep #453](PIKMIN2_INTEGRATION_453.md) is the latest disposition at publication. Read later sweep records before resuming. Never overwrite the current engine with an older worker export.
+Start from the latest `origin/codex/p2-main-review` (draft #432). Current approved native baseline is `f14c6851473ac1161be56c8b98f4f905232f3635`, clean. Read [the pre-wave review](PIKMIN2_PREWAVE_REVIEW_437.md) and [staging disposition](PIKMIN2_INTEGRATION_STAGING_437.md) for integrated tooling, blocked actors and the next queue; production evidence is pinned in [sweep #456](PIKMIN2_INTEGRATION_456.md). Record the exact root HEAD you use. Never overwrite the current engine with an older worker export.
 
 This guide sets next-wave priorities. Keep the existing **01–33 lane numbers** and owners from [the fan-out guide](PIKMIN2_IMPLEMENTATION_FANOUT.md). Its build isolation, ownership and fixture rules still apply. Earlier lists telling agents to recover already-integrated hardlane/projectile/clock modules are historical; inspect the actual source first.
 
