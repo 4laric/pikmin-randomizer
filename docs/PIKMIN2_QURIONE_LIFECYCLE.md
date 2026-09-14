@@ -64,10 +64,10 @@ loads the converted Qurione bank and draws poses but prints
 
 | Gate | Status |
 |---|---|
-| 1 identity/spawn | pass — integrated proxy: `source_id=16`, birth XYZ matched |
-| 2 movement/animation | **blocked** — source Stay/Appear/Move/Disappear cycle not implemented |
-| 3 attacks/receivers | pass_injected (P1 `InteractAttack` → nectar); natural Piki collision untested |
-| 4 death/corpse | run gate — `dead` is a fly-away (no carcass); `isFlyKill` kill untested |
+| 1 identity/spawn | PASS — native FSM: `source_id=16`, birth XYZ matched |
+| 2 movement/animation | PASS — native FSM: `stay/appear/move` + source flight bob (disappear return not yet reached) |
+| 3 attacks/receivers | source-backed N/A (no attack); Piki-contact `drop` path not yet reached |
+| 4 death/corpse | run gate — `dead` is a fly-away (no carcass); `drop -> dead` not yet reached |
 | 5 transport/reward | **blocked** — P2 Egg attach/drop unimplemented (P1 nectar proxy only) |
 | 6 cleanup/re-entry | untested — spawn-index flip + manager recreate |
 
@@ -93,30 +93,51 @@ Shared receiver/wind semantics stay out of this lane; no shared file is edited.
 Implemented on a private native worktree, since the maintained line is
 integration-owned:
 
-- Branch `opencode/p2-lane15-native` @ `99dfd755` (base native
+- Branch `opencode/p2-lane15-native` @ `c54bc601` (base native
   `codex/pikmin2-room-preview` `f9e139d8`), worktree `output/native-lane15`,
-  private build `output/native-lane15-build`.
-- Files: `pc_port/pc_p2_qurione.cpp` + `.h` (source FSM; setup/update/draw/
-  param_f), `include/teki.h` (additive param chain), and
-  `src/plugPikiNakata/tekibteki.cpp` (`pc_p2_qurione_update(this)` from
-  `BTeki::update`). Every hook is a no-op for unregistered actors.
+  private build `output/native-lane15-build`. Commits: `a0030ee7` (FSM),
+  `99dfd755` (marker flush), `c54bc601` (host-AI suppression + flight bob).
+- Files: `pc_port/pc_p2_qurione.cpp` + `.h`; `include/teki.h` (additive param
+  chain); `src/plugPikiNakata/tekibteki.cpp` (`pc_p2_qurione_update` from
+  `BTeki::update`, `pc_p2_qurione_suppress_ai` from `BTeki::doAI`). Every hook
+  is a no-op for unregistered actors.
 - Build: Release, `PIKMIN_NATIVE_JAUDIO=ON`, Ninja `-j 6`; dry run
   `ninja: no work to do`. Executable SHA-256
-  `1d7ebb089812d41a9b0a5b3be15d22c5064b4c00805d09dedd133c8bb7766a44`.
-- Runtime (`nectar.exe --experimental-pikmin2-room`,
-  `PIKMIN_P2_ROOM_WINDOW=960x540`): observed a centred 960x540 window,
-  `P2_QURIONE_BIND generator=203001 source_id=16 visual_only=0`,
+  `3b72497fcb60855c7cd68659c5428cf338124a47949f32fbff2119216a6e783d`.
+
+### Runtime (green)
+
+Launched `nectar.exe --experimental-pikmin2-room` with
+`PIKMIN_P2_ROOM_WINDOW=960x540` in a working direct-boot arena:
+
+- Centred 960x540 window; `[Pikipelago] P2_ROOM_PREVIEW ... red=20`;
+  `[BBFT] Direct boot: Forest of Hope day 2, 20 reds`; no extinction.
+- `P2_QURIONE_BIND generator=203001 source_id=16 visual_only=0`;
   `P2_ENEMY_READY species=Qurione ... behavior=native source_FSM=implemented
-  reward=P2_Egg`, `P2_QURIONE_EGG ... action=attach`, `P2_QURIONE_BANK`, and
-  `P2_QURIONE_DRAW corpse=0`. The update hook was confirmed reached with the
-  actor bound (private diagnostic showed `ready=1 actors=1`).
-- **BLOCKED: full transition observation.** The staged `output/p2-qurione207`
-  arena predates the BBFT direct-boot fixture and never enters active gameplay.
-  Injecting the actor into a working species arena (generator 346005 →
-  `Qurione` 203001) enters gameplay and loads/binds the actor, but the process
-  exits before transitions **even with the FSM module disabled**, so the exit is
-  attributable to the Qurione host in the preview path, not the FSM. Next step:
-  a preview/fixture that boots the room with a supported Qurione host.
+  reward=P2_Egg`; `P2_QURIONE_EGG ... action=attach`; `P2_QURIONE_BANK`.
+- **State transitions observed:** `stay -> appear -> move` with 22
+  `P2_QURIONE_POS` samples. `move` maintains source flight height
+  (`y ≈ mapMinY + fp01 ± fp03`; observed 29 → 85) and travels along the face
+  direction to the room edge (x,z from `(-149, 1849)` to `(-147, 2049)`).
+- **Gate 1 (identity/spawn) PASS; gate 2 (movement/animation) PASS.**
+
+### Host-AI fix (required to run at all)
+
+The integrated Qurione host runs invalid P1 Chappy AI for the actor; gdb on the
+un-suppressed build showed a SIGSEGV in
+`TaiWatchOffTerritoryCenterAction::act(Teki&)` (`getNestPosition` path) before
+the adapter update. `pc_p2_qurione_suppress_ai()` now short-circuits
+`BTeki::doAI()` for owned actors, so the FSM drives them. This was invisible to
+the old proxy because its arena never entered active gameplay.
+
+### Not yet observed at runtime
+
+- `disappear -> stay` return cycle: the wisp needs >`flyDist` (200) from its
+  spawn, but the practice room blocks it at 199.7 (it stalls at the map edge).
+  Needs a larger arena or a repositioned spawn/heading.
+- `drop -> dead` and the Egg release: needs a Piki contact on the flight path
+  (the fixture squad does not cross it).
+- Cleanup/re-entry (#397).
 
 Recorded port adaptations: the carried Egg is reported through markers (lane 20
 owns the primitive); Drop fires at half the damage clip (no KEYEVENT frames in
@@ -124,7 +145,7 @@ the bank); sight is a distance test; scale/glow/hit effects are not ported.
 
 ## 6b. Blockers
 
-1. **Qurione host in the preview path** — see the blocked runtime above.
+1. **Flight-room size / squad placement** — for the disappear and drop gates.
 2. **Egg helper ownership** — `EnemyID_Egg` 37 is a shared projectile/reward
    primitive (lane 20 cannon/projectiles owns `Egg` primitives). The carried
    Honeywisp Egg reuses that primitive rather than forking it.
