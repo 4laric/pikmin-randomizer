@@ -57,8 +57,12 @@ beneficiary.
     `test_pikmin2_frog_material_profile.py`,
     `test_pikmin2_qurione_material_audit.py`,
     `test_pikmin2_qurione_material_patch.py` -> **26 passed**.
-- Visual/GL validation against a real P2 material is **UNTESTED** pending the
-  real-GL/input slot. Repro (Queen two-stage path from #399):
+- Real-GL smoke (flora lifecycle arena, adapter `Intel(R) Graphics`, GL 3.3,
+  `TEV specialisation: on`): the engine carrying both specular fixes rendered a
+  960x540 scene to `PASS P2_LIFECYCLE_RUNTIME`, exit 0, with no GL error. This
+  proves the fixed renderer runs, **not** that a specular highlight changed.
+  Measuring the specular contribution on a real P2 material is **UNTESTED**
+  pending the Queen two-stage fixture. Repro (from #399):
 
   ```powershell
   py -3.12 -m experimental.pikmin2_queen_specular --imported <import-root> `
@@ -67,6 +71,7 @@ beneficiary.
       --assets <private-room-assets> --output <fresh-run> --xyz 300 25 0
   # then launch the fixture built from scripts/pikmin2_queen_specular_fixture.cpp
   ```
+
 
 ## Remaining real-bank failures
 

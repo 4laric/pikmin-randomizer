@@ -70,11 +70,22 @@ The same four steps apply to `pc_p2_batch3`, `pc_p2_hardlanes`/
 - Production build `output/tracks/p2-lanes789/native-build`: `[7/7] Linking
   CXX executable bin\nectar.exe`; `ninja -n` -> `no work to do`.
 
-## Runtime status
+## Runtime status (PASS, proxy arena)
 
-Live scene event delivery is logged (`P2_BATCH2_EVENT`) and counted; the batch-2
-real-GL arena run to capture those lines is **UNTESTED** pending the GL slot.
-No family damage/capture/drop receiver consumes the events yet.
+Fresh flora lifecycle arena `output/tracks/p2-lanes789/flora-arena-02/…` on the
+adopted baseline, fixture built against native `b185ff89`: the rebuilt
+`pc_p2_batch2_draw` delivered authored events from the bank's `frame:event` token
+(`clip Pelplant wait1 30 0:0,29:1`):
+
+```
+P2_BATCH2_EVENT key=flora|Pelplant clip=wait1 frame=0 event=0 cycle=0
+```
+
+Frame-0 events fire on each new cycle (entry semantics), exactly once. The run
+reached `PASS P2_LIFECYCLE_RUNTIME`, exit 0. `pc_p2_batch2_event_count()` is the
+programmatic count for other fixtures. No family damage/capture/drop receiver
+consumes the events yet; this proves the clock/event wiring, not gameplay
+effects.
 
 ## Non-claims
 
