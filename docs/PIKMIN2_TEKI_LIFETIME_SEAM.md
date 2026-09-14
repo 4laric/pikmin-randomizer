@@ -57,35 +57,81 @@ no-op and calls for unregistered/derived actors are harmless.
 - CTest `p2_receipt_test` and `p2_cargo_contest_test` pass; the #397 lifecycle
   fixture API is unchanged and was not modified here.
 
-## Runtime adoption (BLOCKED in this environment)
+## Runtime adoption (reconciled candidate)
 
-This host has no local P1 assets / disc image and no real-GL slot available to
-this session, so the natural-death forget/re-entry observation could not be
-re-run. It is **BLOCKED**, not re-asserted from the earlier worker build. The
-prior lane-07 runtime adoption (`output/tracks/p2-lanes789/*`) is pinned to that
-worker's executable and remains valid for its line only.
+Re-run on a freshly re-staged arena against this reconciled native candidate. The
+#397 non-invincible lifecycle fixture and the isolated marker-gated forget probe
+were both rebuilt with [the provenance builder](PIKMIN2_FIXTURE_BUILDS.md) from
+the same private build.
 
-Exact reproducer once a GL host and assets are available:
-
-```powershell
-py -3.12 -m experimental.pikmin2_lifecycle_runtime build --native output/lane67-native \
-  --build-dir output/lane67-native-build --output output/lane67-lifecycle-fixture --head <native-head>
-py -3.12 -m experimental.pikmin2_lifecycle_runtime run --family long-legs \
-  --assets <P1 assets> --existing output/tracks/p2-lanes789/flora-arena-05 \
-  --output output/lane67-lifecycle-run --exe output/lane67-lifecycle-fixture/baseline/fixture.exe
+```text
+Fixture baseline adoption
+Child issue / lane / implementation owner: #397 / lane 07 / Codex via shared 4laric
+Root commit + dirty state / overlay source: opencode/p2-lanes67-next @ d250e08 (clean);
+  scripts/preview_pikmin2_room.py overlay() -> ensure_pikmin_squad (20 reds)
+Native commit + dirty state / worktree / private build directory: 4c3b32e6 (clean) /
+  output/lane67-native / output/lane67-native-build (Ninja/Release/MinGW, JAudio ON)
+Squad change present / window change present (ancestry or source evidence): yes / yes
+Fresh arena command / run directory / asset and config hashes: re-staged from
+  output/tracks/p2-lanes789/flora-arena-05 via experimental.pikmin2_lifecycle_runtime
+  --existing; probe run output/lane67-forget-run/cd88653162324602b73ef3a477bc0bf1;
+  lifecycle run output/lane67-root/output/lane67-lifecycle-run/49c6a69d96e0431ea167eae13a31ccd6;
+  default.gen sha256 8f0fc1cd69f011b941c37936c9ac96f44c9009f85f826fa51b994c912b5230bf
+  (20 ikip); arena.json sha256 f5b88b0ac7ee03e910ba8156d82da47944f53d438c261baff942cf4315bb09ea
+Executable SHA-256 / fixture provenance status: engine-forget probe
+  8AD020C06FC33B8B2474D59AE800CC6CB4F9D3A3C7464E5B0151B9044AC524B1 (status built);
+  lifecycle fixture FF16D2C2F8161BA94F7E9C55928DCD7F03CB320C2DDFFF6EC5D1C89B61098173
+Window setting / observed size and centring evidence: lifecycle log
+  "Experimental preview window set to 960x540 windowed and centered"; probe window
+  "SDL2 Window & OpenGL Context initialized successfully (960x540)" + pc_window_center()
+Live starting Pikmin / active gameplay / no immediate extinction evidence: 20 reds
+  (`P2_LIFECYCLE_SQUAD alive=20`); active gameplay reached; no extinction screen
+PASS, FAIL, or BLOCKED; remaining work: PASS (engine-forget + full lifecycle)
 ```
 
-Gate status: compile + no-work dry run PASS; runtime forget/re-entry observation
-**BLOCKED** (no assets/GL host here), shared-semantics review pending #186.
+### Results
 
-## Next slice
+Engine-forget probe (isolated, `deadPtr->kill(false)` -> `BTeki::doKill`):
 
-Close the remaining next-wave acceptance on a GL host: natural death with the
-engine-driven `pc_p2_forget_teki`, **late birth**, engine pool **address reuse**,
-**full scene teardown / new scene** (not manager reset alone) and a hard
-**control-actor-unaffected** gate. The host fixture already records
-`P2_LIFECYCLE_FORGET`/`REENTRY`/`same_address` and a control survivorship line;
-extending it needs the real-GL slot.
+```text
+P2_LIFECYCLE_CLEANUP id=353001 live=1 registered=1     # corpse retains registration
+P2_FORGET_PROBE before=1
+P2_FORGET_PROBE after_engine_dokill=0                  # pc_p2_forget_teki ran
+PASS P2_FORGET_PROBE
+```
+
+Full lifecycle fixture (`PASS P2_LIFECYCLE_RUNTIME`, exit 0):
+
+```text
+P2_LIFECYCLE_BIRTH 353001..353007 registered=1 invincible=0; 353008 (control) registered=0
+P2_LIFECYCLE_TARGET id=353001
+P2_LIFECYCLE_DEATH id=353001 frame=5
+P2_LIFECYCLE_FORGET id=353001 before=7 after=6 registered_before=1 registered_after=0
+P2_LIFECYCLE_RESPAWN_INJECT id=353001 generator=353001
+P2_LIFECYCLE_REENTRY id=353001 frame=126 reused=0     # late birth + clean re-registration
+P2_LIFECYCLE_SUMMARY family=7 alive=6 moved=5 death=5 reentry=126 reused=0 control=1
+```
+
+Logs: `output/lane67-forget-run/.../native-forget-probe.log` sha256
+`A970EC51F895957878A63F37423329E61804C8E06BB9253F9C9EFDF043E4627B`;
+`output/lane67-root/output/lane67-lifecycle-run/.../native.log` sha256
+`E192222B5EA3B4D9A1114DAB67F8C4BCC4B0DC53EA8347706B1CA3DAA3FA4D4C`.
+
+### Gates closed / still open
+
+- **Closed (runtime):** natural death funnel, engine-driven `pc_p2_forget_teki`
+  (no fixture `_forget` call), late birth (respawned actor re-registered after
+  start), control actor unaffected (`control=1`), window/squad baseline.
+- **Still open:** engine pool **address reuse** (`reused=0`; the retained corpse
+  keeps the slot, so `newTeki` does not hand the address back in this scenario)
+  and **full scene/day teardown** (the manager `reset()` path is narrower
+  evidence). Both need the corpse-release/hard-teardown probe on a GL host.
+
+Two-line divergence note: the approved native baseline `f14c6851` still differs
+from the maintained room-preview native tip; lane 01 owns reconciling the
+material/queen paths. This candidate is pinned to the approved baseline.
+
+## Non-claims
 
 ## Non-claims
 
