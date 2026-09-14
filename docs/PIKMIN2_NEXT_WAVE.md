@@ -1,3 +1,5 @@
+> Replacement startup-tested pin: root `3bacebc29da8fc19955a416e112f5f8f7a0d9550`, native `08bae2517b77ed809a75d085afb83ee532f7b92a`. See [init-order fix and fresh Snow runtime](PIKMIN2_INIT_ORDER_FIX_437.md). This supersedes the crashing 9b15d371 binary below.
+
 > Current combined QA source: root `99ca118733b6919548565af538971ff284df7daf`, native `9b15d371cc63e7b0154bfc3dfc2cf5be9874c754`. See [combined QA pin](PIKMIN2_COMBINED_QA_PIN_437.md) for the executable hash and scope. This supersedes older source/build pins below. `output/p2-main-review` at `ef1cace` is an old dirty worktree, not the maintained remote head. `output/native-sweep437` remains assignment-5 WIP, not an export source.
 
 # P2 next wave: Snow first, Dwarf Orange second
