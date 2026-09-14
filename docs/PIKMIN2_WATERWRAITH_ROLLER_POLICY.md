@@ -106,6 +106,30 @@ blocked the arena CLI; it was fixed here identically to the known batch-4 fix
 (`opencode/p2-batch4-root` @ `f59a076`, flagged for lane 01) so the family
 CLIs work.
 
+## Visual stage preview (root-side)
+
+`experimental/pikmin2_waterwraith_stage.py` stages the converted sampled poses
+for a future native visual consumer, mirroring
+`experimental/pikmin2_bigtreasure_stage.py`:
+
+```
+py -3.12 -m experimental.pikmin2_waterwraith_stage \
+    --imported C:/Users/alari/pikmin-randomizer/output/p2-lane-verify/waterwraith \
+    --output C:/Users/alari/pikmin-randomizer/output/lane31-waterwraith-visual-stage-01
+```
+
+Real run: **16 clips / 30 poses** (BlackMan 14, Tyre 2). Profile
+`p2-waterwraith-visual.txt` (`P2_WATERWRAITH_VISUAL_1`) SHA-256
+`7c3b803cfd6097410704a8bcdece55c3f6a5ded2ad996181b6a0008d0740ceac` (680 bytes,
+30 `.mod` files copied); `stage.json` SHA-256
+`114da8e025e2493862b8e3781756513952b8d39dbf1b27a28b887707fa9c8fda`.
+`tests/test_pikmin2_waterwraith_stage.py` -> **8 passed** (policy/format/hash/
+subset/budget/output-refusal checks).
+
+The profile grammar (`species <name> <id>` then
+`clip <species> <clip> <poses> <sourceFrames> <frames...>`) is staging data
+only; the native loader and fixture are the next slice.
+
 ## Remaining / next slice
 
 - **Locomotion and route pathfinding are not implemented.** The wraith walk
