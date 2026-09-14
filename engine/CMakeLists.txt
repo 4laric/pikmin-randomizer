@@ -166,6 +166,9 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_color_binding.cpp
     pc_port/pc_p2_specular_layer.cpp
     pc_port/pc_p2_demon_drop_state.cpp
+    pc_port/pc_p2_demon_escape_state.cpp
+    pc_port/pc_p2_demon_bridge.cpp
+    pc_port/pc_p2_demon_host.cpp
     pc_port/pc_bbft.cpp
     pc_port/pc_p2_preview.cpp
     pc_port/pc_p2_captain.cpp
@@ -199,6 +202,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_tank.cpp
     pc_port/pc_p2_hiba.cpp
     pc_port/pc_p2_flora_actor.cpp
+    pc_port/pc_p2_receipt_host.cpp
     pc_port/pc_p2_pom.cpp
     pc_port/pc_p2_plant.cpp
     pc_port/pc_p2_waterwraith_visual.cpp
@@ -232,14 +236,19 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_long_legs.cpp
     pc_port/pc_p2_cannon_stone.cpp
     pc_port/pc_p2_egg_hazard.cpp
-    pc_port/pc_p2_kabuto_cannon.cpp
-    pc_port/pc_p2_projectile_host.cpp
+pc_port/pc_p2_kabuto_cannon.cpp
+pc_port/pc_p2_kabuto_events.cpp
+pc_port/pc_p2_kabuto_muzzle.cpp
+pc_port/pc_p2_kabuto_binding.cpp
+pc_port/pc_p2_projectile_host.cpp
     pc_port/pc_p2_rock_hazard.cpp
     pc_port/pc_p2_projectile_receiver.cpp
     pc_port/pc_p2_groink_hit.cpp
     pc_port/pc_p2_groink_strike.cpp
     pc_port/pc_p2_projectiles.cpp
     pc_port/pc_p2_hardlanes.cpp
+    pc_port/pc_p2_fuefuki_visual.cpp
+    pc_port/pc_p2_fuefuki_motion.cpp
     pc_port/pc_p2_bombsarai_arena.cpp
     pc_port/pc_p2_bombsarai_blast.cpp
     pc_port/pc_p2_bombsarai_bomb.cpp
@@ -1000,3 +1009,26 @@ add_executable(p2_bigtreasure_save_test tools/p2_bigtreasure_save_test.cpp pc_po
 target_include_directories(p2_bigtreasure_save_test PRIVATE pc_port)
 target_compile_options(p2_bigtreasure_save_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME p2_bigtreasure_save_test COMMAND p2_bigtreasure_save_test)
+
+add_executable(p2_receipt_host_test tools/p2_receipt_host_test.cpp pc_port/pc_p2_receipt_host.cpp)
+target_include_directories(p2_receipt_host_test PRIVATE pc_port)
+target_compile_options(p2_receipt_host_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_receipt_host_test COMMAND p2_receipt_host_test)
+
+foreach(policy IN ITEMS demon_captor demon_escape demon_pose sarai_fsm sarai_policy fuefuki_follow fuefuki_follow_binding)
+    add_executable(p2_${policy}_test tools/p2_${policy}_test.cpp)
+    target_include_directories(p2_${policy}_test PRIVATE pc_port)
+    target_compile_options(p2_${policy}_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+    add_test(NAME p2_${policy}_test COMMAND p2_${policy}_test)
+endforeach()
+add_executable(p2_fuefuki_motion_test tools/p2_fuefuki_motion_test.cpp pc_port/pc_p2_fuefuki_motion.cpp)
+target_include_directories(p2_fuefuki_motion_test PRIVATE pc_port)
+target_compile_options(p2_fuefuki_motion_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_fuefuki_motion_test COMMAND p2_fuefuki_motion_test)
+set(P2_KABUTO_TEST_DEPS pc_port/pc_p2_kabuto_binding.cpp pc_port/pc_p2_kabuto_events.cpp pc_port/pc_p2_kabuto_muzzle.cpp pc_port/pc_p2_kabuto_cannon.cpp pc_port/pc_p2_cannon_stone.cpp)
+foreach(policy IN ITEMS kabuto_muzzle kabuto_chain kabuto_binding)
+    add_executable(p2_${policy}_test tools/p2_${policy}_test.cpp ${P2_KABUTO_TEST_DEPS})
+    target_include_directories(p2_${policy}_test PRIVATE pc_port)
+    target_compile_options(p2_${policy}_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+    add_test(NAME p2_${policy}_test COMMAND p2_${policy}_test)
+endforeach()

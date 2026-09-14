@@ -1,6 +1,7 @@
 #include "pc_p2_mamuta_rules.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_p2_demon_drop_state.h"
+#include "pc_p2_demon_bridge.h"
 #endif
 #include "pc_p2_purple.h"
 #include "pc_p2_purple_impact.h"
@@ -591,6 +592,7 @@ void Navi::rideUfo()
 void Navi::reset()
 {
 #if defined(PIKI_PC_PORT)
+	pc_demon_reset(this);
 	pc_demon_drop_reset(this);
 #endif
 	mDamageEfxA = mDamageEfxB = mDamageEfxC = nullptr;
@@ -1071,6 +1073,7 @@ void Navi::update()
 	Creature::update();
 #if defined(PIKI_PC_PORT)
 	pc_demon_drop_post_physics(this);
+	pc_demon_follow_mouth(this);
 #endif
 
 	mapMgr->updatePos(mSRT.t.x, mSRT.t.z);
@@ -1480,6 +1483,15 @@ void Navi::releasePikis()
  */
 void Navi::doAI()
 {
+	if (pc_demon_bound(this)) {
+		// P2 Sarai samples a directional down edge once per state update. The
+		// existing Kontroller click edge supplies that cadence; the bridge only
+		// consumes the engine RNG when its six-input source window permits it.
+		const bool directional = mKontroller->keyClick(KBBTN_DPAD_LEFT) || mKontroller->keyClick(KBBTN_DPAD_RIGHT)
+		                       || mKontroller->keyClick(KBBTN_DPAD_UP) || mKontroller->keyClick(KBBTN_DPAD_DOWN);
+		pc_demon_escape_tick(this, directional, [](void*) { return gsys->getRand(1.0f); }, nullptr);
+		return;
+	}
 	if (gameflow.mDemoFlags & CinePlayerFlags::NaviNoAI) {
 		return;
 	}
@@ -1712,6 +1724,9 @@ void Navi::jumpCallback()
  */
 bool Navi::isAtari()
 {
+	if (pc_demon_suppress_atari(this)) {
+		return false;
+	}
 	int state = mStateMachine->getCurrID(this);
 	return state != NAVISTATE_Pressed && state != NAVISTATE_Bury && state != NAVISTATE_Container;
 }
@@ -2406,6 +2421,11 @@ void Navi::draw(Graphics& gfx)
 		mSRT.s.set(scale, scale, scale);
 	}
 
+#if defined(PIKI_PC_PORT)
+    if (pc_demon_capture_matrix(this, mWorldMtx)) {
+        // Preserve full source joint basis instead of rebuilding upright SRT.
+    } else
+#endif
 	if (mRope) {
 		mWorldMtx = mConstrainedMoveMtx;
 		mWorldMtx.setTranslation(mSRT.t.x, mSRT.t.y, mSRT.t.z);

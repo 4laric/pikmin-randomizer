@@ -94,6 +94,19 @@ def main():
             assert fresh["cached"] is False and cached["cached"] is True
             assert (session.directory / "content" / "tree" / "asset0.bin").read_bytes() == b"blob-0"
 
+            # A separately valid P1 layout must not become accepted merely by
+            # following a valid P2 block (the native parser reads sequentially).
+            legacy_manifest = generate("legacy-mix", collection_checks=True, per_spawn_enemies=True)
+            legacy_run = NativeRun(Session(legacy_manifest, tmp / "legacy"))
+            legacy_text = legacy_run.bootstrap.read_text(encoding="ascii")
+            legacy_layout = legacy_text[legacy_text.index("ENEMY_SLOTS"):]
+            mixed_run = NativeRun(Session(manifest, session.directory))
+            mixed_text = mixed_run.bootstrap.read_text(encoding="ascii")
+            mixed_run.bootstrap.write_text(mixed_text.rsplit("END", 1)[0] + legacy_layout, encoding="ascii")
+            mixed = run_probe(exe, mixed_run.bootstrap)
+            assert mixed.returncode == 2 and "cannot mix" in mixed.stderr, (mixed.stdout, mixed.stderr)
+            assert not (mixed_run.directory / "hello.txt").exists()
+
             first, second = manifest["p2_layout"]["bindings"]
             revision = manifest["p2_layout"]["roster_revision"]
             cases = {
@@ -113,7 +126,7 @@ def main():
     finally:
         bridge.admitted_ids = original_admitted
     print("P2 generated-session path passed: real bootstrap ENEMY_P2, native parse/bind, "
-          "content stage+cache, and 4 rejection cases")
+          "content stage+cache, and 5 rejection cases")
 
 
 if __name__ == "__main__":

@@ -115,9 +115,14 @@ and the captain-whistle reclaim through the REAL `Navi::callPikis`
 (LookAt transit, then real `FormationMode` join 20 frames later). The
 gaps below remain open.
 
-- Actual follow **action** (locomotion) has no P1 follow-teki equivalent;
-  follow movement stays policy-fixture-only. traceMove/map probes beyond
-  the flat-room distance checks are also still mock-side.
+- Actual follow **action** (locomotion): the ActTeki decision policy and the
+  live host drive are now implemented — see `P2_FUEFUKI_FOLLOW.md` (optional
+  `followerSample`/`followDrive` callbacks, `pc_p2_fuefuki_follow.h`). P1 still
+  has no follow-teki action, so `pc_p2_hardlanes.cpp` realizes motion through a
+  labeled `mVolatileVelocity` approximation until provider lane 12 supplies the
+  real action; a real-GL run of the approximation is still open.
+  traceMove/map probes beyond the flat-room distance checks are also still
+  mock-side.
 - Arena staging under #186 with the install profile, physical placement
   and rendered whistle ring requires the #128 motion bank and converted
   parms; fixture parms are shortened.

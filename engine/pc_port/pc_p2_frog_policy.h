@@ -2,6 +2,14 @@
 #include "pc_p2_animation.h"
 #include <map>
 namespace p2frog {
+// Audited source parameters (#194): health, sight radius, maximum attack range,
+// attack damage, air time, jump speed, jump-failure probability, fall speed and
+// corpse Pokos. Frog is kind 0, MaroFrog is kind 1.
+struct Params{float health,sight,attackRange,attackDamage,airTime,jumpSpeed,jumpFail,fallSpeed,corpsePokos;};
+inline const Params& params(int kind){
+ static const Params table[2]={{800.0f,360.0f,200.0f,10.0f,1.0f,320.0f,0.2f,300.0f,5.0f},
+                               {1100.0f,360.0f,250.0f,20.0f,1.0f,350.0f,0.1f,330.0f,7.0f}};
+ return table[kind?1:0];}
 inline const char* motionClip(int m){
 // PaniAnimator enum and TaiOtimoti actions; Flick is jump wind-up; unmatched motions use static fallback.
 switch(m){case 0:return "dead";case 1:return "damage";case 2:return "wait1";

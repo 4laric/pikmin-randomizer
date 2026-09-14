@@ -6,9 +6,9 @@ p2-flora-pelplant.txt sidecar, drives a full posy to its fell path with real
 Pikmin attacks, and observes the dead-state pellet release and the Pikmin
 capture. It builds, stages, runs and validates; it never edits production input.
 
-The scenario is deliberately bounded: the release and capture receptor are
-native, but the Onion-side seed receipt is left to the P1 receiver path and is
-recorded as remaining work, so this fixture does not claim it.
+The scenario is bounded: release/capture and a durable receipt are exercised;
+delivery is injected through the preview endpoint. This is not proof of natural
+Onion transport, actual seed birth, AP delivery or campaign persistence.
 """
 import argparse
 import json

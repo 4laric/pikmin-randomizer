@@ -1,4 +1,5 @@
 #include "pc_p2_demon_drop_state.h"
+#include "pc_p2_demon_admission.h"
 #include "NaviState.h"
 #include "NaviMgr.h"
 #include "Interactions.h"
@@ -98,7 +99,7 @@ DropState* registered(Navi* n) {
 NaviState* pc_demon_drop_state_create() { return new DropState(); }
 bool pc_demon_drop_begin(Navi* n,std::uint64_t g,float damage,float speed) {
     auto* s=registered(n);
-    if(!s||s->retired||!n->isAlive()||n->mHealth<=1||n->getCurrState()->getID()!=NAVISTATE_Walk||n->mRope||n->isStickTo()||
+    if(!s||s->retired||!n->isAlive()||n->mHealth<=1||!pc_demon_captain_admission_eligible(n)||n->mRope||n->isStickTo()||
        damage<0||!std::isfinite(n->mSRT.t.x)||!std::isfinite(n->mSRT.t.y)||!std::isfinite(n->mSRT.t.z)||
        n->isCreatureFlag(CF_DisableMovement|CF_IgnoreGravity|CF_IsFlying)||s->listeners.size()>4093) return false;
     auto c=s->policy.begin(g,damage,speed); if(!c.accepted) return false;

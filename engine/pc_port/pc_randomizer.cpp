@@ -2,6 +2,7 @@
 #include "pc_randomizer_catalog.h"
 #include "pc_randomizer_spawn_catalog.h"
 #include "pc_randomizer_campaign_catalog.h"
+#include "pc_randomizer_p2_roster.h"
 #include <unordered_map>
 #include <cstdint>
 #include <cmath>
@@ -31,6 +32,10 @@ unsigned enemyMask = 0;
 bool compactPopulation = false;
 bool minibossEnemies = false;
 bool slotEnemies = false, campaignEnemies = false;
+// P2 enemy bridge: a versioned roster revision with target->source_id bindings.
+// Lane 02 enforces admission; the native side only validates identity and revision.
+bool p2EnemyBridge = false;
+std::unordered_map<std::string, unsigned> p2Bindings;
 unsigned campaignAssignments[72] = {};
 bool groupEnemies = false;
 unsigned groupAssignments[12] = {};
@@ -233,6 +238,23 @@ bool pc_randomizer_init(int argc, char** argv) {
         if (schema != 9 || !(input >> deathLinkUnit) || deathLinkUnit < 1 || deathLinkUnit > 100) fail("invalid DeathLink unit");
         input >> end;
     }
+    if (end == "ENEMY_P2") {
+        unsigned protocol, count; std::string revision;
+        if (schema != 9 || enemyMask || slotEnemies || campaignEnemies || groupEnemies)
+            fail("P2 enemy bridge cannot mix other enemy layouts");
+        if (!(input >> protocol >> revision >> count) || protocol != 1
+            || revision != randomizerP2RosterRevision || count == 0 || count > 64)
+            fail("incompatible P2 enemy roster or protocol version");
+        for (unsigned i = 0; i < count; ++i) {
+            std::string target; unsigned sourceId;
+            if (!(input >> target >> sourceId) || target.empty() || target.size() > 64
+                || !randomizerP2IsBindable(sourceId) || !p2Bindings.emplace(target, sourceId).second)
+                fail("invalid P2 enemy binding");
+        }
+        p2EnemyBridge = true;
+        input >> end;
+        if (end != "END") fail("P2 enemy bridge cannot mix other enemy layouts");
+    }
     if (end == "ENEMY_CAMPAIGN") {
         unsigned version, count, miniboss; std::string catalog;
         if (schema != 9 || enemyMask || !(input >> version >> catalog >> count >> miniboss)
@@ -331,6 +353,7 @@ bool pc_randomizer_init(int argc, char** argv) {
     if (minibossEnemies) hello << " miniboss-slots-v1";
     if (emperorGoal) hello << " emperor-goal-v1";
     if (deathLinkUnit) hello << " death-link-v1";
+    if (p2EnemyBridge) hello << " p2-enemy-bridge-v1";
     hello << " END\n";
     hello.close();
     if (!hello) fail("cannot write native handshake");
@@ -468,6 +491,20 @@ int pc_randomizer_start_stage() { return startStage; }
 int pc_randomizer_start_color() { return startColor; }
 bool pc_randomizer_spawn_slots() { return enabled && (slotEnemies || campaignEnemies); }
 bool pc_randomizer_group_slots() { return enabled && groupEnemies; }
+bool pc_randomizer_p2_bridge() { return enabled && p2EnemyBridge; }
+unsigned pc_randomizer_p2_source(const char* target) {
+    if (!enabled || !p2EnemyBridge || !target) return 0;
+    const auto it = p2Bindings.find(target);
+    return it == p2Bindings.end() ? 0 : it->second;
+}
+unsigned pc_randomizer_p2_binding_count() {
+    return enabled && p2EnemyBridge ? static_cast<unsigned>(p2Bindings.size()) : 0;
+}
+bool pc_randomizer_p2_bound(unsigned source_id) {
+    if (!enabled || !p2EnemyBridge || !source_id) return false;
+    for (const auto& binding : p2Bindings) if (binding.second == source_id) return true;
+    return false;
+}
 unsigned pc_randomizer_generator_id(const void* generator) {
     auto it = generatorIds.find(generator);
     return it == generatorIds.end() ? 0 : it->second;

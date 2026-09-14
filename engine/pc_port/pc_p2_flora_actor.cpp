@@ -12,9 +12,10 @@
 //     Pikmin capture is observable,
 //   * no regrowth: the P1 Palm has no regrowth timer, matching the audit.
 //
-// The Onion-side seed receipt is NOT implemented here: a captured pellet that
-// reaches a receiver is reported with seeds=0 and onion_slice_unimplemented=1.
-// Absent p2-flora-pelplant.txt the module is inert; a malformed sidecar aborts
+// A delivered pellet is recorded as an exactly-once ordinary Onion receipt
+// through the shared pc_p2_receipt.h provider (Ledger::Onion, drop=pellet);
+// durable state lives in p2-flora-receipts.txt in the run directory. Absent
+// p2-flora-pelplant.txt the module is inert; a malformed sidecar aborts
 // (fail-closed) rather than silently falling back to P1 behaviour.
 //
 // Binding is two-phase: the sidecar is parsed and kept as pending specs, and a
@@ -24,6 +25,7 @@
 // never resolves simply never emits its READY/observation lines.
 #include "pc_p2_flora_actor.h"
 #include "pc_p2_flora_policy.h"
+#include "pc_p2_receipt_host.h"
 #include "pc_bbft.h"
 #include "Generator.h"
 #include "Pellet.h"
@@ -35,6 +37,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <memory>
+#include <string>
 #include <vector>
 
 namespace {
@@ -61,6 +65,13 @@ std::vector<Bound> posies;
 std::vector<Pellet*> knownPellets;   // present before any posy fell
 std::vector<Pellet*> trackedPellets; // claimed from a fell posy
 bool scannedActors = false;          // one-shot binding diagnostic
+
+// Ordinary Onion receipt ledger (shared provider, isolated host bridge).
+// Durable across process restart via an ordinary sidecar file; never the
+// Pikmin save layout.
+std::string receiptSeed = "local";
+int onionReceipts = 0;
+int onionDuplicates = 0;
 
 void fail()
 {
@@ -189,13 +200,21 @@ void pc_p2_flora_reset()
 	knownPellets.clear();
 	trackedPellets.clear();
 	scannedActors = false;
+	pc_p2_receipt_host_close();
+	receiptSeed = "local";
+	onionReceipts = 0;
+	onionDuplicates = 0;
 }
 
 void pc_p2_flora_forget(BTeki* actor)
 {
 	for (auto it = posies.begin(); it != posies.end(); ++it) {
 		if (it->actor == actor) {
-			posies.erase(it);
+			// Palm spawns its pellet immediately before doKill. Keep only the
+			// value-owned drop/receipt record; the actor address must not survive
+			// the central death funnel or alias a recycled Teki slot.
+			if (it->fell) it->actor = nullptr;
+			else posies.erase(it);
 			return;
 		}
 	}
@@ -215,6 +234,18 @@ void pc_p2_flora_setup()
 		pending = p2flora::readPelplants(in);
 	} catch (const std::exception&) {
 		fail();
+	}
+
+	// Ordinary Onion receipt ledger. The seed coordinate is the product seed
+	// when the host provides one, else a stable local token.
+	if (const char* seed = std::getenv("PIKMIN_P2_SEED")) {
+		if (pc_p2_receipt_host_valid(seed)) {
+			receiptSeed = seed;
+		}
+	}
+	if (!pc_p2_receipt_host_open("p2-flora-receipts.txt")) {
+		std::fputs("P2_FLORA_PELPLANT invalid receipt state\n", stderr);
+		std::abort();
 	}
 
 	bindPending();
@@ -270,7 +301,7 @@ void pc_p2_flora_tick()
 	// Claim the pellet a fell posy dropped (P1 spawnItems performs the actual
 	// release; we only bind the new number pellet for observation).
 	for (Bound& bound : posies) {
-		if (!bound.fell || bound.releaseLogged || !bound.actor) {
+		if (!bound.fell || bound.releaseLogged) {
 			continue;
 		}
 		for (Pellet* pellet : current) {
@@ -316,11 +347,31 @@ bool pc_p2_flora_receipt(Pellet* pellet)
 			continue;
 		}
 		if (!bound.receiptLogged) {
+			const int seeds = pellet->mConfig ? int(pellet->mConfig->mPelletType()) : int(bound.spec.pellet);
+			const std::string identity = "flora-pelplant:" + std::to_string(bound.generator());
+			const auto result
+			    = pc_p2_receipt_host_grant(receiptSeed.c_str(), identity.c_str(), std::to_string(bound.generator()).c_str(),
+			                               "onion");
+			if (result == P2ReceiptHostResult::Error) {
+				std::fputs("P2_FLORA_PELPLANT receipt persistence failed\n", stderr);
+				std::abort();
+			}
 			bound.receiptLogged = true;
-			std::printf("P2_FLORA_ONION_RECEIPT generator=%u pellet=%d pokos=0 seeds=0 onion_slice_unimplemented=1\n",
-			            bound.generator(), bound.spec.pellet);
+			const bool granted = result == P2ReceiptHostResult::Granted;
+			if (granted) {
+				++onionReceipts;
+			} else {
+				++onionDuplicates;
+			}
+			std::printf("P2_FLORA_ONION_RECEIPT generator=%u pellet=%d pokos=0 seeds=%d granted=%d duplicate=%d "
+			            "ledger=onion seed=%s\n",
+			            bound.generator(), bound.spec.pellet, seeds, int(granted), int(!granted),
+			            receiptSeed.c_str());
 		}
 		return true;
 	}
 	return false;
 }
+
+int pc_p2_flora_onion_receipts() { return onionReceipts; }
+int pc_p2_flora_onion_duplicates() { return onionDuplicates; }

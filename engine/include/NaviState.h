@@ -55,8 +55,9 @@ enum NaviStateID {
 	NAVISTATE_IroIro      = 35,
 #if defined(PIKI_PC_PORT)
 	NAVISTATE_DemonDrop = 36,
+	NAVISTATE_DemonEscape = 37,
 #endif
-	NAVISTATE_Count, // PC 37; retail 36
+	NAVISTATE_Count, // PC 38; retail 36
 };
 
 /**

@@ -1,3 +1,4 @@
+#include "pc_p2_demon_host.h"
 #include "pc_p2_teki_lifetime.h"
 
 #include "pc_p2_armor.h"
@@ -52,6 +53,7 @@ void pc_p2_forget_teki(BTeki* actor)
 		return;
 	}
 
+	pc_p2_demon_manager_forget(actor);
 	pc_p2_snow_forget(actor);
 	pc_p2_sheargrub_forget(actor);
 	pc_p2_kochappy_forget(actor);
@@ -95,6 +97,7 @@ void pc_p2_forget_teki(BTeki* actor)
 // the existing exitStage steps is not significant.
 void pc_p2_reset_all_teki()
 {
+	pc_p2_demon_manager_reset();
 	pc_p2_snow_reset();
 	pc_p2_sheargrub_reset();
 	pc_p2_kochappy_reset();

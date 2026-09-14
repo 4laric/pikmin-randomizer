@@ -11,9 +11,12 @@
 // * Fuefuki (#245): the lane-owned P2FuefukiBinding is bound to a live host
 //   adapter over the real squad, with the beetle vehicle anchored on a staged
 //   TEKI_Napkid proxy actor. Whistle-theft/reclaim policy runs against real
-//   Pikmin; follow locomotion remains policy/fixture-only because P1 has no
-//   follow-teki action. Runs only inside the private room preview when a Napkid
-//   vehicle exists, so ordinary P1 play is unaffected.
+//   Pikmin. The ActTeki follow-locomotion policy (pc_p2_fuefuki_follow.h)
+//   drives each held Pikmin: the faithful Piki::setSpeed drive plus a labeled
+//   volatile-velocity approximation, because P1 has no follow-teki action and
+//   ActFree overwrites mTargetVelocity before moveVelocity each frame. Runs
+//   only inside the private room preview when a Napkid vehicle exists, so
+//   ordinary P1 play is unaffected.
 //
 // No shared semantics are changed: this module owns no saves, rewards, generic
 // damage or actor lifetime. It is a debug/arena registration for runtime
@@ -25,6 +28,9 @@
 #include "pc_p2_bombsarai_map_trace.h"
 #include "pc_p2_bombsarai_terrain.h"
 #include "pc_p2_fuefuki_binding.h"
+#include "pc_p2_fuefuki_motion.h"
+#include "pc_p2_fuefuki_visual.h"
+#include "pc_p2_retail_player.h"
 #include "pc_p2_bigtreasure_host.h"
 #include "pc_p2_bigtreasure_visual.h"
 #include "pc_p2_waterwraith_register.h"
@@ -45,6 +51,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <map>
+#include <string>
 
 namespace {
 // ---------------------------------------------------------------------------
@@ -66,6 +73,13 @@ std::map<std::uint32_t, Piki*> sFuefukiPiki;
 std::map<std::uint32_t, bool> sFuefukiHeld;
 std::uint32_t sFuefukiNextId = 1;
 double sFuefukiDebt = 0.0;
+bool sFuefukiVisualReady = false;
+double sFuefukiVisualDebt = 0.0;
+int sFuefukiLastState = -1;
+P2FuefukiMotionBank sFuefukiMotions;
+p2retail::Player sFuefukiMotionPlayer;
+bool sFuefukiMotionReady = false;
+int sFuefukiMotionState = -1;
 
 std::uint32_t fuefukiId(Piki* piki)
 {
@@ -94,6 +108,9 @@ void fuefukiProbe(void*, P2FuefukiProbeResult& out)
     const Vector3f anchor = sFuefukiVehicle->getPosition();
     out.x = anchor.x;
     out.z = anchor.z;
+    const Vector3f velocity = sFuefukiVehicle->getVelocity();
+    out.vx = velocity.x;
+    out.vz = velocity.z;
     Navi* navi = naviMgr ? naviMgr->getNavi() : nullptr;
     if (navi && fuefukiXzSq(navi->mSRT.t, anchor) < 3600.0f) out.intruder = true;
     Iterator it(pikiMgr);
@@ -164,6 +181,45 @@ void fuefukiOwnershipWrite(void*, std::uint32_t id, std::uint32_t)
 // No P1 Beetle actor exists yet, so kill delivery is recorded only.
 void fuefukiKill(void*, bool) {}
 
+// (g) ActTeki follow locomotion host side. The sample returns the real P1
+// Pikmin position; the drive applies the policy command to the real actor.
+bool fuefukiFollowerSample(void*, std::uint32_t id, float& x, float& z)
+{
+    auto it = sFuefukiPiki.find(id);
+    if (it == sFuefukiPiki.end() || !it->second->isAlive()) return false;
+    x = it->second->mSRT.t.x;
+    z = it->second->mSRT.t.z;
+    return true;
+}
+
+void fuefukiFollowDrive(void*, std::uint32_t id, const P2FuefukiFollowMove& move)
+{
+    auto it = sFuefukiPiki.find(id);
+    if (it == sFuefukiPiki.end() || !it->second->isAlive()) return;
+    Piki* piki = it->second;
+    if (move.stop) {
+        piki->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
+        piki->mVolatileVelocity.set(0.0f, 0.0f, 0.0f);
+        return;
+    }
+    // Faithful source drive (ActTeki::test_0 -> Piki::setSpeed).
+    Vector3f dir(move.dirX, 0.0f, move.dirZ);
+    piki->setSpeed(move.speed, dir);
+    // Labeled approximation: P1 has no follow-teki action, so the Pikmin's
+    // ActFree overwrites mTargetVelocity before Creature::moveVelocity each
+    // frame. Seed the volatile impulse channel (already used by flicks) so
+    // the follow motion is actually realized until a real follow action lands
+    // (provider lane 12). Remove once that action exists.
+    piki->mVolatileVelocity.set(move.dirX * piki->mMoveSpeed, 0.0f, move.dirZ * piki->mMoveSpeed);
+}
+
+P2FuefukiFollowParms fuefukiFollowParms()
+{
+    P2FuefukiFollowParms p;
+    p.followDistance = 100.0f; // source FOLLOW_DISTANCE
+    return p;
+}
+
 P2FuefukiFsmParms fuefukiParms()
 {
     P2FuefukiFsmParms p;
@@ -206,6 +262,14 @@ void pc_p2_hardlanes_reset()
     sFuefukiPiki.clear();
     sFuefukiHeld.clear();
     sFuefukiNextId = 1;
+    if (sFuefuki) sFuefuki->follow().reset();
+    pc_p2_fuefuki_visual_reset();
+    sFuefukiVisualReady = false;
+    sFuefukiVisualDebt = 0.0;
+    sFuefukiLastState = -1;
+    sFuefukiMotions = P2FuefukiMotionBank();
+    sFuefukiMotionReady = false;
+    sFuefukiMotionState = -1;
     p2_bigtreasure_host_reset(sBigTreasure);
     pc_p2_bigtreasure_visual_reset();
     sBigTreasureReady = false;
@@ -235,13 +299,37 @@ void pc_p2_hardlanes_setup()
         std::printf("P2_HARDLANES_READY family=BombSarai arena=1\n");
     }
 
-    // Fuefuki (#245): bind to a staged TEKI_Napkid placement vehicle.
+    // Fuefuki (#245): bind to a staged placement vehicle. An optional
+    // `p2-fuefuki-teki.txt` scopes the binding to one generator (private
+    // adapter pattern, Kurage/Onikurage); absent, the first Napkid is used.
+    unsigned wantedGenerator = 0;
+    int wantedType = TEKI_Napkid;
+    if (FILE* config = std::fopen("p2-fuefuki-teki.txt", "r")) {
+        char version[32];
+        unsigned generator = 0;
+        int type = 0;
+        const bool valid = std::fscanf(config, "%31s %u %d", version, &generator, &type) == 3;
+        std::fclose(config);
+        if (!valid || std::string(version) != "P2_FUEFUKI_TEKI_1") {
+            std::printf("P2_HARDLANES_ERROR family=Fuefuki invalid p2-fuefuki-teki.txt\n");
+            return;
+        }
+        wantedGenerator = generator;
+        wantedType = type;
+    }
     if (tekiMgr) {
         Iterator it(tekiMgr);
         CI_LOOP(it) {
             Teki* teki = static_cast<Teki*>(*it);
-            if (teki && teki->mTekiType == TEKI_Napkid) { sFuefukiVehicle = teki; break; }
+            if (!teki || teki->mTekiType != wantedType) continue;
+            if (wantedGenerator && (!teki->mGenerator || teki->mGenerator->_70 != wantedGenerator)) continue;
+            sFuefukiVehicle = teki;
+            break;
         }
+    }
+    if (wantedGenerator && !sFuefukiVehicle) {
+        std::printf("P2_HARDLANES_ERROR family=Fuefuki generator=%u type=%d not found\n",
+                    wantedGenerator, wantedType);
     }
     if (sFuefukiVehicle) {
         if (!sFuefuki) sFuefuki = new P2FuefukiBinding();
@@ -254,10 +342,37 @@ void pc_p2_hardlanes_setup()
         host.pingCollect = fuefukiPingCollect;
         host.ownershipWrite = fuefukiOwnershipWrite;
         host.kill = fuefukiKill;
-        if (sFuefuki->bind(host, fuefukiParms(), nullptr)) {
+        host.followerSample = fuefukiFollowerSample;
+        host.followDrive = fuefukiFollowDrive;
+        host.randFloat = nullptr; // deterministic lane LCG fallback
+        if (sFuefuki->bind(host, fuefukiParms(), nullptr, fuefukiFollowParms())) {
             sFuefuki->spawn(1);
-            std::printf("P2_HARDLANES_READY family=Fuefuki vehicle=Napkid follow_locomotion=policy_only\n");
+            const unsigned generator = sFuefukiVehicle->mGenerator ? sFuefukiVehicle->mGenerator->_70 : 0u;
+            std::printf("P2_HARDLANES_READY family=Fuefuki vehicle=Napkid gen=%u type=%d follow_locomotion=actteki_volatile_approx\n",
+                        generator, static_cast<int>(sFuefukiVehicle->mTekiType));
         }
+    }
+
+    // Fuefuki (#245): opt-in converted visual bank (#128 pose import).
+    if (pc_p2_fuefuki_visual_setup("p2-fuefuki-visual.txt")) {
+        sFuefukiVisualReady = true;
+        pc_p2_fuefuki_visual_clip("wait");
+        if (sFuefukiVehicle) {
+            const Vector3f anchor = sFuefukiVehicle->getPosition();
+            pc_p2_fuefuki_visual_set_position(anchor.x, anchor.y, anchor.z);
+        } else {
+            const float ground = mapMgr->getMinY(0.0f, 0.0f, false);
+            pc_p2_fuefuki_visual_set_position(0.0f, ground, 0.0f);
+        }
+        std::printf("P2_HARDLANES_READY family=Fuefuki visual=1 clips=%d\n",
+                    pc_p2_fuefuki_visual_clip_count());
+    }
+
+    // Fuefuki (#245): opt-in converted motion event table for the lane FSM.
+    if (p2_fuefuki_motion_load("p2-fuefuki-motion.txt", sFuefukiMotions)) {
+        sFuefukiMotionReady = true;
+        std::printf("P2_HARDLANES_READY family=Fuefuki motion=1 clips=%d\n",
+                    static_cast<int>(sFuefukiMotions.table.motions.size()));
     }
 
     // BigTreasure (#246): fixed-placement host seam + sampled visual bank.
@@ -299,6 +414,8 @@ void pc_p2_hardlanes_update()
     }
 
     if (sFuefuki && sFuefukiVehicle) {
+        const Vector3f anchor = sFuefukiVehicle->getPosition();
+        pc_p2_fuefuki_visual_set_position(anchor.x, anchor.y, anchor.z);
         sFuefukiDebt += gsys->getFrameTime();
         int ticks = static_cast<int>(sFuefukiDebt / kFuefukiSourceDelta);
         if (ticks > 4) ticks = 4;
@@ -307,11 +424,56 @@ void pc_p2_hardlanes_update()
             P2FuefukiBindTick tick;
             tick.delta = kFuefukiSourceDelta;
             tick.health = sFuefukiVehicle->mHealth;
-            tick.animPlaying = true;   // no source Beetle animation bank yet (#128)
-            tick.keyEvent = 0;
-            tick.motionFinished = false;
             tick.turnComplete = true;
-            sFuefuki->tick(tick);
+            if (sFuefukiMotionReady) {
+                // Drive the FSM from the converted clip bank: start the clip
+                // for the current state and feed its KEYEVENT_2/3 and END.
+                const int state = static_cast<int>(sFuefuki->getFsm().getState());
+                if (state != sFuefukiMotionState) {
+                    sFuefukiMotionState = state;
+                    const p2retail::Motion* motion = p2_fuefuki_motion_find(
+                        sFuefukiMotions, p2_fuefuki_motion_clip_for_state(state));
+                    if (motion) sFuefukiMotionPlayer.start(*motion);
+                }
+                int key = 0;
+                sFuefukiMotionPlayer.advance(1.0f, [&key](const p2retail::Event& event) {
+                    if (event.type == 2) key = 2;
+                    else if (event.type == 3) key = 3;
+                    else if (event.type >= 1000) key = 4;
+                });
+                tick.animPlaying = true;
+                tick.keyEvent = key;
+                tick.motionFinished = sFuefukiMotionPlayer.completed();
+            } else {
+                tick.animPlaying = true; // no source Beetle animation bank yet (#128)
+                tick.keyEvent = 0;
+                tick.motionFinished = false;
+            }
+            P2FuefukiBindOut out = sFuefuki->tick(tick);
+            if (sFuefukiMotionReady && out.fsm.requestFinishMotion) {
+                // The transition waits for the finish motion's END; let the
+                // active (possibly looping) clip run to completion.
+                sFuefukiMotionPlayer.finishMotion(true);
+            }
+        }
+    }
+
+    if (sFuefukiVisualReady) {
+        sFuefukiVisualDebt += gsys->getFrameTime();
+        int ticks = static_cast<int>(sFuefukiVisualDebt / kFuefukiSourceDelta);
+        if (ticks > 4) ticks = 4;
+        sFuefukiVisualDebt -= ticks * static_cast<double>(kFuefukiSourceDelta);
+        for (int i = 0; i < ticks; ++i) {
+            if (sFuefuki) {
+                const int state = static_cast<int>(sFuefuki->getFsm().getState());
+                if (state != sFuefukiLastState) {
+                    sFuefukiLastState = state;
+                    const char* clip = pc_p2_fuefuki_visual_clip_for_state(state);
+                    pc_p2_fuefuki_visual_clip(clip);
+                    std::printf("P2_FUEFUKI_FSM state=%d clip=%s\n", state, clip);
+                }
+            }
+            pc_p2_fuefuki_visual_update(1.0f);
         }
     }
 
@@ -340,6 +502,7 @@ void pc_p2_hardlanes_update()
 void pc_p2_hardlanes_draw(Graphics& gfx)
 {
     if (sBombSaraiReady) pc_p2_bombsarai_arena_draw(gfx);
+    if (sFuefukiVisualReady) pc_p2_fuefuki_visual_draw(gfx);
     if (sBigTreasureVisualReady) {
         Matrix4f owner;
         owner.makeSRT(Vector3f(1.0f, 1.0f, 1.0f), Vector3f(0.0f, 0.0f, 0.0f),
@@ -353,4 +516,47 @@ void pc_p2_hardlanes_draw(Graphics& gfx)
                       Vector3f(0.0f, sWaterwraithGround, 0.0f));
         pc_p2_waterwraith_register_draw(gfx, owner);
     }
+}
+
+bool pc_p2_hardlanes_fuefuki_ready()
+{
+    return sFuefuki != nullptr && sFuefukiVehicle != nullptr;
+}
+
+int pc_p2_hardlanes_fuefuki_state()
+{
+    return sFuefuki ? static_cast<int>(sFuefuki->getFsm().getState()) : -1;
+}
+
+int pc_p2_hardlanes_fuefuki_held_count()
+{
+    int count = 0;
+    for (const auto& entry : sFuefukiHeld) {
+        if (entry.second) ++count;
+    }
+    return count;
+}
+
+Piki* pc_p2_hardlanes_fuefuki_held(int index)
+{
+    if (index < 0) return nullptr;
+    int seen = 0;
+    for (const auto& entry : sFuefukiHeld) {
+        if (!entry.second) continue;
+        if (seen++ == index) {
+            auto it = sFuefukiPiki.find(entry.first);
+            return it == sFuefukiPiki.end() ? nullptr : it->second;
+        }
+    }
+    return nullptr;
+}
+
+bool pc_p2_hardlanes_fuefuki_vehicle_position(float& x, float& y, float& z)
+{
+    if (!sFuefukiVehicle) return false;
+    const Vector3f position = sFuefukiVehicle->getPosition();
+    x = position.x;
+    y = position.y;
+    z = position.z;
+    return true;
 }

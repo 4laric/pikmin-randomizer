@@ -25,6 +25,12 @@ bool pc_randomizer_enemy_shuffle();
 int pc_randomizer_enemy_type(int original, bool protectedSpawn);
 bool pc_randomizer_spawn_slots();
 bool pc_randomizer_group_slots();
+// P2 enemy bridge: versioned roster bindings parsed from ENEMY_P2. The target
+// token comes from lane 04 placement; 0 means the target is not bound.
+bool pc_randomizer_p2_bridge();
+unsigned pc_randomizer_p2_source(const char* target);
+unsigned pc_randomizer_p2_binding_count();
+bool pc_randomizer_p2_bound(unsigned source_id);
 unsigned pc_randomizer_generator_id(const void* generator);
 void pc_randomizer_set_generator_id(const void* generator, unsigned uid);
 void pc_randomizer_bind_generator(const void* generator, int stage, const char* file, int offset);

@@ -4,6 +4,7 @@
 #include "pc_p2_onikurage_teki.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_p2_demon_drop_state.h"
+#include "pc_p2_demon_bridge.h"
 #endif
 #if defined(PIKMIN_RANDOMIZER_TEST_HOOKS)
 #include "pc_randomizer_campaign_catalog.h"
@@ -17,6 +18,7 @@
 #include "pc_bbft.h"
 #include "pc_p2_preview.h"
 #include "pc_p2_enemy.h"
+#include "pc_p2_demon_host.h"
 #include "pc_p2_cave.h"
 #include "pc_p2_kurage_receiver.h"
 #include "pc_p2_second_captain.h"
@@ -867,6 +869,7 @@ void GameCoreSection::exitStage()
 {
 #if defined(PIKI_PC_PORT)
 	pc_demon_drop_scene_exit();
+	pc_demon_scene_exit();
 #endif
 #if defined(PIKI_PC_PORT)
 	// Stale focus would keep depth of field running on the file-select and
@@ -1396,6 +1399,7 @@ void GameCoreSection::finalSetup()
 
 	pc_p2_kurage_teki_setup();
 	pc_p2_onikurage_teki_setup();
+	pc_p2_demon_manager_setup();
 	pc_p2_preview_setup();
 	pc_p2_snow_campaign_setup();
 	// Actor-lifetime (#397): mark the new scene ready for lifecycle fixtures.

@@ -1,4 +1,5 @@
 #pragma once
+#include "pc_p2_fuefuki_follow.h"
 #include "pc_p2_fuefuki_fsm.h"
 #include <cmath>
 #include <cstdint>
@@ -40,6 +41,7 @@
 // without mutation.
 struct P2FuefukiProbeResult {
     float x = 0.0f, z = 0.0f;     // beetle position (host-owned)
+    float vx = 0.0f, vz = 0.0f;   // beetle velocity (source getVelocity; follow blend)
     bool intruder = false;        // Navi / non-owned non-stuck Pikmin inside mPrivateRadius
     bool arriveTarget = false;    // wall triangle or XZ dist^2 < 625 to the walk target
     bool water = false;           // mWaterBox present (ripple effects)
@@ -90,6 +92,14 @@ typedef void (*P2FuefukiOwnershipWriteFn)(void* context, std::uint32_t pikmin, s
 // source startCarcassMotion -> FUEFUKIANIM_Carry carcass.
 typedef void (*P2FuefukiKillFn)(void* context, bool carcassCarryAnim);
 
+// (g) Follow locomotion (source PikiAI::ActTeki, aiTeki.cpp) — optional.
+// When both followerSample and followDrive are present the binder drives the
+// lane's P2FuefukiFollowController and emits one velocity command per held
+// Pikmin per tick; the host applies it (P1 Piki::setSpeed / mTargetVelocity).
+// Without them the binder keeps claim/release bookkeeping only (legacy).
+typedef bool (*P2FuefukiFollowerSampleFn)(void* context, std::uint32_t pikmin, float& x, float& z);
+typedef void (*P2FuefukiFollowDriveFn)(void* context, std::uint32_t pikmin, const P2FuefukiFollowMove& move);
+
 struct P2FuefukiHost {
     void* context = nullptr;
     P2FuefukiProbeFn probe = nullptr;
@@ -99,6 +109,9 @@ struct P2FuefukiHost {
     P2FuefukiPingCollectFn pingCollect = nullptr;
     P2FuefukiOwnershipWriteFn ownershipWrite = nullptr;
     P2FuefukiKillFn kill = nullptr;
+    P2FuefukiFollowerSampleFn followerSample = nullptr;
+    P2FuefukiFollowDriveFn followDrive = nullptr;
+    P2FuefukiRandFn randFloat = nullptr;
 };
 
 // ---------------------------------------------------------------------------
@@ -123,6 +136,8 @@ struct P2FuefukiBindOut {
     float whistleRadius = 0.0f;
     int claimed = 0, endedSuspend = 0, endedPanic = 0;
     int followErrors = 0; // host followStart rejections (contract errors)
+    int followMoves = 0, followStops = 0; // locomotion commands emitted this tick
+    bool followActive = false;            // locomotion seam bound
     bool kill = false, carcassCarryAnim = false;
     P2FuefukiSuspendFallback suspendFallback = P2FUEFUKI_SUSPEND_FALLBACK_FREE;
     P2FuefukiFsmOut fsm;
@@ -134,14 +149,20 @@ class P2FuefukiBinding {
     P2FuefukiOwnershipTable* table = nullptr;
     P2FuefukiFsmParms parms;
     P2FuefukiFsm fsm;
+    P2FuefukiFollowController followController;
     P2FuefukiHost host;
     bool bound = false;
+    bool followBound = false;
 
 public:
     // Bind a host adapter and parms. A null sharedTable uses the binder's
     // own ownership table; multiple beetles in one area MUST share one
-    // table so single-controller exclusivity holds across instances.
-    bool bind(const P2FuefukiHost& adapter, const P2FuefukiFsmParms& p, P2FuefukiOwnershipTable* sharedTable)
+    // table so single-controller exclusivity holds across instances. The
+    // optional follow parms configure the ActTeki locomotion policy; the
+    // locomotion seam is active only when the host supplies both
+    // followerSample and followDrive.
+    bool bind(const P2FuefukiHost& adapter, const P2FuefukiFsmParms& p, P2FuefukiOwnershipTable* sharedTable,
+              const P2FuefukiFollowParms& fp = P2FuefukiFollowParms())
     {
         if (bound || !adapter.probe || !adapter.enumerate || !adapter.followStart || !adapter.followEnd
             || !adapter.pingCollect || !adapter.ownershipWrite || !adapter.kill)
@@ -150,6 +171,8 @@ public:
         parms = p;
         fsm   = P2FuefukiFsm(p);
         table = sharedTable ? sharedTable : &ownedTable;
+        followBound = adapter.followerSample && adapter.followDrive;
+        followController.setParms(fp);
         bound = true;
         return true;
     }
@@ -158,6 +181,7 @@ public:
     {
         P2FuefukiBindOut out;
         if (!bound) return out;
+        followController.reset();
         P2FuefukiFsmOut s = fsm.spawn(*table, epoch);
         if (!s.accepted) return out;
         out.accepted = true;
@@ -223,24 +247,51 @@ public:
         P2FuefukiFsmOut fout = fsm.tick(fin);
         if (!fout.accepted) return out;
 
+        // (g) source updateFootmarks runs every beetle update, before the
+        // follower actions it feeds; record the trail at this tick's anchor.
+        followController.beetleTick(probe.x, probe.z, in.delta);
+
         // (b)/(d) dispatch. For panic releases the ownership-table release
         // was committed inside fsm.tick before these callbacks run.
         for (std::uint32_t id : fout.claimed) {
             if (!host.followStart(host.context, id)) out.followErrors++;
+            followController.claim(id);
             out.claimed++;
         }
         for (std::uint32_t id : fout.releasedSuspend) {
             host.followEnd(host.context, id, P2FUEFUKI_END_SUSPEND);
+            followController.release(id);
             out.endedSuspend++;
         }
         for (std::uint32_t id : fout.releasedPanic) {
             host.followEnd(host.context, id, P2FUEFUKI_END_PANIC);
+            followController.release(id);
             out.endedPanic++;
         }
         if (fout.kill) {
             host.kill(host.context, fout.carcassCarryAnim);
+            followController.releaseAll();
             out.kill             = true;
             out.carcassCarryAnim = fout.carcassCarryAnim;
+        }
+
+        // (g) drive each held follower along the trail (source ActTeki
+        // exec -> test_0). The host applies the emitted velocity command.
+        out.followActive = followBound;
+        if (followBound) {
+            for (int i = 0; i < followController.followerCount(); i++) {
+                const std::uint32_t id = followController.followerAt(i);
+                float px = 0.0f, pz = 0.0f;
+                if (!host.followerSample(host.context, id, px, pz)) continue;
+                P2FuefukiFollowMove move = followController.followerTick(
+                    id, px, pz, probe.x, probe.z, probe.vx, probe.vz, in.delta, host.randFloat, host.context);
+                if (!move.hasMove) continue;
+                host.followDrive(host.context, id, move);
+                if (move.stop)
+                    out.followStops++;
+                else
+                    out.followMoves++;
+            }
         }
 
         out.accepted      = true;
@@ -278,4 +329,6 @@ public:
     }
 
     P2FuefukiFsm& getFsm() { return fsm; }
+    P2FuefukiFollowController& follow() { return followController; }
+    const P2FuefukiFollowController& follow() const { return followController; }
 };

@@ -56,3 +56,15 @@ class CaveRestartRuntimeTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def test_tutorial_replacement_supports_current_object_graph():
+    from experimental.pikmin2_elecbug_immunity_behavior import replace_tutorial_input
+    original = ['g++', 'private/17-newPikiGame.cpp.obj', 'private/18-teki.cpp.obj', '-lSDL2']
+    assert replace_tutorial_input(original, 'tutorial.obj') == ['g++', 'tutorial.obj', 'private/18-teki.cpp.obj', '-lSDL2']
+    assert original[1] == 'private/17-newPikiGame.cpp.obj'
+    assert replace_tutorial_input(['g++', 'private/1-libpikmin_legacy.a'], 'tutorial.obj') == ['g++', 'tutorial.obj', 'private/1-libpikmin_legacy.a']
+    import pytest
+    for bad in (['g++'], ['a-newPikiGame.cpp.obj', 'b-newPikiGame.cpp.obj'], ['a-newPikiGame.cpp.obj', 'a-libpikmin_legacy.a']):
+        with pytest.raises(ValueError):
+            replace_tutorial_input(bad, 'tutorial.obj')

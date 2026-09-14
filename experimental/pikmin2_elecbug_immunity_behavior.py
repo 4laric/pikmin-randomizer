@@ -144,6 +144,20 @@ def instrument(source, app=APP):
             + source[:start] + app + source[end:])
 
 
+def replace_tutorial_input(link, replacement):
+    """Replace the copied object, or override its member in the legacy archive."""
+    result = list(link)
+    objects = [i for i, arg in enumerate(result) if arg.endswith('-newPikiGame.cpp.obj')]
+    archives = [i for i, arg in enumerate(result) if arg.endswith('-libpikmin_legacy.a')]
+    if len(objects) == 1 and not archives:
+        result[objects[0]] = str(replacement)
+    elif len(archives) == 1 and not objects:
+        result.insert(archives[0], str(replacement))
+    else:
+        raise ValueError('Expected one unambiguous private tutorial object or legacy archive')
+    return result
+
+
 def build(native, build_dir, output, head, resume=False, app=None):
     """Build the private instrumented replacement-main fixture (never a run)."""
     from scripts import build_pikmin2_fixture as builder
@@ -182,16 +196,13 @@ def build(native, build_dir, output, head, resume=False, app=None):
     tutorial_compile = [str(tutorial_private) if a == str(room) else a for a in compile_cmd]
     tutorial_compile[builder.option_index(tutorial_compile, '-o')] = str(output / 'tutorial.obj')
     tutorial_compile[builder.option_index(tutorial_compile, '-MF')] = str(output / 'tutorial.d')
-    targets = [i for i, a in enumerate(link) if a.endswith('-libpikmin_legacy.a')]
-    if len(targets) != 1:
-        raise ValueError('Expected one private legacy archive')
-    link.insert(targets[0], str(output / 'tutorial.obj'))
+    link = replace_tutorial_input(link, output / 'tutorial.obj')
     env = dict(os.environ, PATH='C:/msys64/mingw64/bin;' + os.environ.get('PATH', ''))
     audit = dict(original_fixture=builder.snapshot([native / 'tools/preview_p2_room.cpp', tutorial]),
                  instrumented=builder.snapshot([room, tutorial_private]),
                  commands=[compile_cmd, tutorial_compile, link], freshness_checks=[])
     for name, command in [('room-compile', compile_cmd), ('tutorial-compile', tutorial_compile), ('room-link', link)]:
-        code, text = builder.run(command, build_dir, env)
+        code, text = builder.run_command(command, build_dir, env, output, name)
         (output / (name + '.log')).write_text(text)
         if code:
             raise RuntimeError(name + ' failed')

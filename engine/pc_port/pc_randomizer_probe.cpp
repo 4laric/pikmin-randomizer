@@ -1,5 +1,6 @@
 #include "pc_randomizer.h"
 #include "pc_randomizer_catalog.h"
+#include <cstdlib>
 #include <chrono>
 #include <cstdio>
 #include <thread>
@@ -33,6 +34,21 @@ int main(int argc, char** argv) {
     for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--capacity-probe")) {
         std::printf("CAPACITY_PROBE %d\n", pc_randomizer_field_capacity());
         return 0;
+    }
+    for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--enemy-p2-probe")) {
+        assert(pc_randomizer_p2_bridge());
+        // Target tokens and order are placement-owned; assert the bound identity
+        // set supplied by the caller instead of hard-coding targets.
+        unsigned expected = 0;
+        for (int i = 1; i + 1 < argc; ++i) if (!std::strcmp(argv[i], "--enemy-p2-expect")) {
+            assert(pc_randomizer_p2_bound(static_cast<unsigned>(std::strtoul(argv[i + 1], nullptr, 10))));
+            ++expected;
+        }
+        assert(expected > 0 && pc_randomizer_p2_binding_count() == expected);
+        assert(!pc_randomizer_p2_bound(0));
+        assert(pc_randomizer_p2_source("no-such-target") == 0);
+        assert(pc_randomizer_p2_source(nullptr) == 0);
+        std::puts("ENEMY_P2_PASS"); return 0;
     }
     for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--group-probe")) {
         assert(pc_randomizer_group_slots());

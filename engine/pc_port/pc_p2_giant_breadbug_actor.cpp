@@ -93,6 +93,12 @@ bool pc_p2_giant_breadbug_actor_press(BTeki* actor,const TekiEvent& event){
  Piki* piki=static_cast<Piki*>(presser);
  if(pc_p2_is_purple(piki)){
   actor->mHealth-=GIANT_PRESS_DAMAGE;actor->mVelocity=Vector3f(0,0,0);
+  Pellet* held=actor->getCreaturePointer(2)&&actor->getCreaturePointer(2)->isObjType(OBJTYPE_Pellet)?static_cast<Pellet*>(actor->getCreaturePointer(2)):nullptr;
+  if(held){ // source Damage::init giveup(2): a valid press releases the held cargo in place
+   held->endStickTeki(actor);actor->clearCreaturePointer(2);actor->stopParticleGenerator(2);
+   found->second.cargo=nullptr;
+   std::printf("P2_GIANT_INTERRUPT generator=%u reason=press released=1\n",found->second.id);
+  }
   std::printf("P2_GIANT_PRESS generator=%u purple=1 damage=100 health=%.1f\n",found->second.id,actor->mHealth);
   if(actor->mHealth<=0.0f)defeat(actor,found->second); // lethal press: throw back digested treasure immediately (updateAI may pause once the death sequence starts)
  } else {

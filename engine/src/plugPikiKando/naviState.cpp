@@ -1,5 +1,7 @@
 #if defined(PIKI_PC_PORT)
 #include "pc_p2_demon_drop_state.h"
+#include "pc_p2_demon_escape_state.h"
+#include "pc_p2_demon_bridge.h"
 #endif
 #include "pc_p2_purple.h"
 #include "pc_p2_white.h"
@@ -82,6 +84,7 @@ NaviState* NaviStateMachine::getNaviState(Navi* navi)
 #if defined(PIKI_PC_PORT)
 void NaviStateMachine::transit(Navi* navi, int next)
 {
+	pc_demon_before_transition(navi, next);
 	pc_demon_drop_before_transition(navi, next);
 	StateMachine<Navi>::transit(navi, next);
 }
@@ -92,6 +95,7 @@ void NaviStateMachine::init(Navi* navi)
 	create(NAVISTATE_Count);
 #if defined(PIKI_PC_PORT)
 	registerState(pc_demon_drop_state_create());
+	registerState(pc_demon_escape_state_create());
 #endif
 	registerState(new NaviWalkState());
 	registerState(new NaviStuckState());
