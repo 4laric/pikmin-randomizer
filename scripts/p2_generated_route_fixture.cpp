@@ -228,16 +228,25 @@ public:
                         observedGate=gate;
                         CollPart* flag=gate->mCollInfo->getSphere('flag');
                         require(flag && flag->getChildCount()>0,"gate work collision parts");
+                        GoalItem* safeOnion=itemMgr->getContainer(Red);
+                        require(safeOnion!=nullptr,"landing Onion for captain staging");
+                        Vector3f approach=safeOnion->mSRT.t-gate->mSRT.t;
+                        approach.y=0; approach.normalise();
+                        Vector3f tangent(-approach.z,0,approach.x);
+                        CollPart* physicalGate=gate->mCollInfo->getSphere('gate');
+                        std::printf("P2_ROUTE_GATE_CONTACT_PART present=%d flag_children=%d\n",int(physicalGate!=nullptr),flag->getChildCount());
                         int count=0; Iterator workers(pikiMgr);
                         CI_LOOP(workers) {
                             auto* p=static_cast<Piki*>(*workers); if(!p->isAlive()) continue;
                             CollPart* part=flag->getChildAt(count%flag->getChildCount());
                             if(count==0) std::printf("P2_ROUTE_WORK_PART pos=%.3f,%.3f,%.3f radius=%.3f id=%08x\n",part->mCentre.x,part->mCentre.y,part->mCentre.z,part->mRadius,part->getID().mId);
-                            p->resetPosition(part->mCentre+Vector3f(0,0,10));
+                            // Start outside the work sphere so normal approach and
+                            // collision can run; do not embed all workers in the wall.
+                            Vector3f start=part->mCentre+approach*(part->mRadius+25.f)+tangent*(float(count%5)-2.f)*10.f;
+                            start.y=gate->mSRT.t.y;
+                            p->resetPosition(start);
                             p->changeMode(PikiMode::FreeMode,n); ++count;
                         }
-                        GoalItem* safeOnion=itemMgr->getContainer(Red);
-                        require(safeOnion!=nullptr,"landing Onion for captain staging");
                         n->resetPosition(safeOnion->mSRT.t+Vector3f(100,0,0));
                         if (std::getenv("PIKMIN_ROUTE_CAPTAIN_NEAR")) n->resetPosition(gate->mSRT.t+Vector3f(-100,0,0));
                         gateSquadStaged=true;
