@@ -1,5 +1,7 @@
 # Lane 13 — Dwarf Orange Bulborb (BlueKochappy 44) native candidate
 
+> Integration: root diagnostics and candidate evidence are in draft #432; this sweep does not integrate the native actor or promote its worker runtime results to combined acceptance.
+
 Fan-out lane 13 (`#120`/`#197`), parent `#186`. This is the "one exact variant"
 natural-chain slice: source identity, native registration, source health, a real
 natural fight → death → corpse → render path, and a bounded arena fixture.

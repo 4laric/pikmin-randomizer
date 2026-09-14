@@ -24,6 +24,39 @@ The exit condition is at least one admitted identity completing the generated-se
 4. Adopt the current fixture. Regenerate the arena in a new private output directory using the current overlay, which adds **20 red Pikmin when no Pikmin generator exists**. Existing squads are preserved, not topped up. Verify live valid spawns; document species-specific squad overrides.
 5. Use **960×540, windowed and centred after persisted settings load**. Set `PIKMIN_P2_ROOM_WINDOW=960x540`. Replacement-main fixtures must implement and log equivalent startup themselves; an environment variable cannot fix an old binary. Observe gameplay without immediate extinction. Do not disable extinction globally.
 
+
+## Local P1/P2 assets: verified paths for every lane
+
+Verified on this Windows host during the asset-unblocking sweep (#437). Private worktrees do **not** inherit ignored assets from the main checkout. A missing `output/...` under your worktree is not evidence that assets are unavailable. Use these absolute inputs, read-only; write generated content into your own new private output directory.
+
+| Input | Verified absolute location | Use |
+|---|---|---|
+| P1 extracted asset root | `C:/Users/alari/bbft/dist/cohesion/pikmin/assets` | Pass as `--assets` to room/family arena staging. Contains `dataDir/stages/practice/default.gen` and `dataDir/stages/chal0/default.gen`. This is an input asset tree; do not edit the original BBFT checkout. |
+| P1 disc, if extraction is needed | `C:/Users/alari/pikmin-local/Pikmin.iso` | Header `GPIE01`, revision 1; 1,459,978,240 bytes. Usually use the extracted tree above. |
+| P2 source disc | `C:/Users/alari/Downloads/PIKMIN2 for GAMECUBE.iso` | Header `GPVE01`, revision 0; 995,557,376 bytes. Pass to family extractors using their documented `--iso` or `--source` option. |
+| P2 local disc copy | `C:/Users/alari/pikmin-randomizer/assets/disc/PIKMIN2 for GAMECUBE.iso` | Present, same header and byte length as Downloads; byte identity not established by this sweep. |
+| Historical P2 test image | `C:/Users/alari/pikmin-randomizer/output/pikmin2-runtime/pikmin2-source-test.iso` | Present, `GPVE01` revision 0, 1,000,762,688 bytes. Different length: do not silently substitute it for a pinned source. |
+| Converted P2 room inputs | `C:/Users/alari/pikmin-randomizer/output/pikmin2-room105` | Contains `room.mod`, `room.ini`, `treasure.mod`; pass as `--converted` to the current room stager. Old executables in this folder are not the current fixture baseline. |
+| Partial extracted P2 inputs | `C:/Users/alari/pikmin-randomizer/output/pikmin2-extract105` | Contains `arc`, `texts`, `treasure`; not a universal family import or P1 asset root. |
+| BombSarai extracted inputs | `C:/Users/alari/pikmin-randomizer/output/pikmin2-extract-bombsarai` | Family-specific input for `experimental.pikmin2_bombsarai_assets --source`; not interchangeable with a converted install bank. |
+
+From your current root worktree, stage a **fresh** generic room without launching it:
+
+```powershell
+$laneP1 = 'C:/Users/alari/bbft/dist/cohesion/pikmin/assets'
+$laneP2 = 'C:/Users/alari/Downloads/PIKMIN2 for GAMECUBE.iso'
+$laneRoom = 'C:/Users/alari/pikmin-randomizer/output/pikmin2-room105'
+$env:PYTHONUTF8 = '1'
+$env:PIKMIN_P2_ROOM_WINDOW = '960x540'
+py -3.12 scripts/preview_pikmin2_room.py --assets "$laneP1" --converted "$laneRoom" --output output/your-lane-room-runs
+```
+
+The stager creates a new run subdirectory and applies the current starting-Pikmin overlay. Use the appropriate family stager to add that family's actors/configuration; the generic room alone does not install enemy assets. Check the family module's `--help` before running it: extractor flags differ. For example, BombSarai accepts `--source "$laneP2"`, whereas many other extractors accept `--iso "$laneP2"`. Choose a NEW lane-owned output directory; do not overwrite shared banks or old evidence.
+
+Existing banks to inspect include absolute main-output subdirectories `bigtreasure-import-01`, `groink-weighted-assets-09`, `p2-jellyfloat-assets-01`, `p2-frog-import`, and `pikmin2-kogane-assets`. These are caches, not universally approved inputs: inspect their manifests, source hashes and required format before reuse. Regenerate when stale or incompatible. Pin the actual ISO/resource hashes in lane evidence; header verification alone does not prove source content identity.
+
+Before reporting an asset block, test the absolute paths above and report the exact missing file, command and error. Distinguish a missing disc/tree from an unsupported conversion, missing family bank, bad manifest or stale fixture. Do not ask for another asset upload merely because your worktree's relative path is empty. Keep original assets read-only, do not relink Archipelago, and never commit assets. Runtime acceptance still requires the fresh arena, current privately built executable and observed live squad/centred-window evidence described above.
+
 ## Dispatch priorities and parallel width
 
 First occupy the dependency spine: 01, 02, 03, 05, 06, 07, 10 and 33. Pair 10 with 11 when species routing is required. Assign 04 to the actual candidate slots. Then staff independent family owners, with 08/09/12 activated against named consumer gaps. Existing active lanes continue; this is sequencing for spare sessions, not a stop instruction.

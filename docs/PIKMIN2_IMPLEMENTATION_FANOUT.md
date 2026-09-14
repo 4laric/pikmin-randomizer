@@ -2,6 +2,8 @@
 
 Next-wave dispatch: [playable encounters and first cohort](PIKMIN2_NEXT_WAVE.md). Keep existing lane numbers; use this guide for current priorities and acceptance.
 
+Asset lookup: [verified local P1/P2 inputs and staging commands](PIKMIN2_NEXT_WAVE.md#local-p1p2-assets-verified-paths-for-every-lane). Private worktrees do not inherit the main checkout's ignored asset directories.
+
 Agent entrypoint, 2026-09-13. Documentation tracking: #404. Coordination and
 shared-semantics review: #186. Implementation owner: Codex through shared GitHub
 account `4laric`; assignment alone does not identify a lane or activate work.
