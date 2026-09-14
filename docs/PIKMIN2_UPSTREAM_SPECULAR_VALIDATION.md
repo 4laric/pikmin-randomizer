@@ -63,52 +63,49 @@ beneficiary.
   `TEV specialisation: on`): the engine carrying both specular fixes rendered a
   960x540 scene to `PASS P2_LIFECYCLE_RUNTIME`, exit 0, with no GL error. This
   proves the fixed renderer runs, **not** that a specular highlight changed.
-- **BLOCKED for the actual specular contribution.** The fixed branch can only be
-  measured on a material that emits a specular COLOR1 channel. That is the
-  #399 Empress Bulblax two-stage path, which needs its prepared bank and
-  sidecar. On this host the available Queen artifacts are the display bank
-  (`output/bulblax-bank2-run2/Queen`, `output/bulblax-arena-profile-01`) and the
-  source BTK (`output/bulblax-run1/Queen/queenchappy_model.btk`); the enabling
-  `p2-queen-specular.txt` sidecar / UV1-patched bank and the
-  `scripts/pikmin2_queen_specular_fixture.cpp` are not staged. Required input:
-  the #399 stage tool (`experimental/pikmin2_queen_specular*` on
-  `codex/p2-queen-specular`) plus a hash-verified Bulblax import root. Repro:
+- **PASS — measured on the real Queen material (A/B).** The two upstream
+  commits were applied to the #422 integration native line, which already
+  carries the P2 material/queen modules, and the #399 fixture was run against
+  the same staged assets and camera on both renderers.
+
+  | Run | Native | `visible` | `animated` | `specular` |
+  |---|---|---:|---:|---:|
+  | BASE (pre-fix) | `0ab3ea12` | 694380 | 336266 | 242347 |
+  | FIXED | `0ab3ea12` + `01b15dea` + `413f9251` | 695384 | 320703 | 260655 |
+
+  Both `PASS QUEEN_SPECULAR_RENDER` with `replay_equal=1`; the only changed
+  input is the upstream GL specular code, so the specular contribution and the
+  animated-channel delta are attributable to it (a stronger highlight and a
+  smaller broad wash, matching the ratio-lobe correction).
+
+  Setup:
+  - Native branches `opencode/p2-lanes789-queen-native` @ `d4bc8dbc`
+    (fixed; `bin\nectar.exe` `255E0C7D…`) and `queen-native-base` @ `0ab3ea12`
+    (`C1B95F06…`); fixtures `C58B44A0…` / `9BFEC5B8…`.
+  - Bank prepared from the real source (`output/bulblax-run1` +
+    `output/bulblax-bank2-run2`; source hashes `e4904b22…`/`af0dde01…`);
+    `p2-queen-specular.txt` SHA-256
+    `8AE29E3E2FB23098021DA5719A22E14116EE3AF469F515655B5E8ACFAC32AC0C` matches
+    the #399 doc exactly.
+  - Room assets are the room-preview overlay specified by
+    `docs/PIKMIN2_ROOM_PREVIEW.md`:
+    `output/pikmin2-room-preview/25e03db572bd40bab335332dd03d212f/assets`
+    (its `default.gen` carries the `50rp` treasure so `pc_p2_preview_ready()`
+    stabilises; the family-arena assets use `p2-cargo-free.txt` and do not).
+  - Run `output/tracks/p2-lanes789/queen-specular-run-03`, 960x540
+    (`[PC Port] SDL2 Window & OpenGL Context initialized successfully (960x540)`),
+    logs `native-fixed.log` / `native-base.log`, both exit 0.
+
+  Repro (the stage's `--assets` is an existing room-preview `assets` dir, not a
+  family arena):
 
   ```powershell
-  py -3.12 -m experimental.pikmin2_queen_specular --imported <import-root> `
-      --bank <sampled-bank> --output <fresh-specular-bank>
+  py -3.12 -m experimental.pikmin2_queen_specular --imported output/bulblax-run1 `
+      --bank output/bulblax-bank2-run2 --output <fresh-specular-bank>
   py -3.12 -m experimental.pikmin2_queen_specular_stage --bank <fresh-specular-bank> `
-      --assets <private-room-assets> --output <fresh-run> --xyz 300 25 0
+      --assets output/pikmin2-room-preview/<run>/assets --output <fresh-run> --xyz 300 25 0
   # then launch the fixture built from scripts/pikmin2_queen_specular_fixture.cpp
   ```
-
-### Partial advance toward the measurement (#399)
-
-The upstream specular commits were also applied to the **#422 integration native
-line**, which already carries the P2 material/queen modules:
-
-- Branch `opencode/p2-lanes789-queen-native` @ `d4bc8dbc` (base `0ab3ea12`);
-  `pc_port/pc_p2_specular_layer.{h,cpp}` and `pc_p2_queen.cpp` present.
-- Production build `output/tracks/p2-lanes789/queen-native-build`,
-  `bin\nectar.exe` SHA-256
-  `255E0C7D63EA6BF584A715BC7CDBA60D96608F04B7A61B87FB45C54C88FF65B9`.
-- The #399 specular bank was prepared from the real source
-  (`output/bulblax-run1` + `output/bulblax-bank2-run2`, source hashes
-  `e4904b22…`/`af0dde01…` verified): `p2-queen-specular.txt` SHA-256
-  `8AE29E3E2FB23098021DA5719A22E14116EE3AF469F515655B5E8ACFAC32AC0C`, which
-  matches the #399 doc exactly.
-- The rebuilt fixture loaded the model and bank and printed
-  `P2_QUEEN_SPECULAR_READY diffuse=UV1 specular=normal_btk source_lighting=host
-  third_stage=omitted`, then hit `FAIL QUEEN_SPECULAR startup timeout`.
-
-The timeout is a **room-fixture readiness**, not a renderer failure:
-`pc_p2_preview_ready()` requires `previewShape && previewTreasure`, and the
-available flora/bulblax arena assets have no boss-room `pr05` treasure and no
-`p2-cargo.txt` profile (only `p2-cargo-free.txt`), so readiness never stabilises
-for 120 frames. Measuring the specular channels therefore needs the original
-#399 **private room-preview assets** for that Queen room. The bank, native line
-and fixture are all prepared and recorded above.
-
 
 ## Remaining real-bank failures
 
