@@ -63,8 +63,7 @@ def main():
     snow_import = args.snow_import.resolve(strict=True)
     output = args.output.resolve()
     if output.exists():
-        import shutil
-        shutil.rmtree(output)
+        raise FileExistsError(f"Use a fresh private output directory: {output}")
 
     original = bridge.admitted_ids
     bridge.admitted_ids = lambda roster: [SNOW_SOURCE_ID]
@@ -93,6 +92,7 @@ def main():
         process = subprocess.Popen([str(exe), "--randomizer-seed", str(run.bootstrap.resolve())],
                                    cwd=run.directory, env=env, stdout=stream,
                                    stderr=subprocess.STDOUT, startupinfo=startup)
+        terminated_by_harness = False
         try:
             deadline = time.monotonic() + args.seconds
             while process.poll() is None and time.monotonic() < deadline:
@@ -103,12 +103,18 @@ def main():
                 time.sleep(0.2)
         finally:
             if process.poll() is None:
+                terminated_by_harness = True
                 process.terminate()
                 try:
                     process.wait(timeout=10)
                 except subprocess.TimeoutExpired:
                     process.kill()
+                    process.wait(timeout=10)
+    if process.returncode != 0 and not (terminated_by_harness and process.returncode == 1):
+        raise RuntimeError(f"Unexpected native exit: {process.returncode}")
     log = log_path.read_text(encoding="utf-8", errors="replace")
+    for required in MARKERS:
+        assert required in log, f"missing {required}"
     for marker in ("abort", "Assertion failed"):
         assert marker.lower() not in log.lower(), f"native failure: {marker}"
 
@@ -121,7 +127,9 @@ def main():
     assert "species=YellowKochappy" in ready, ready
     assert f"generator={binding['target']}" in ready, ready
     assert any(line.startswith("START_COLOR_READY") or "START_COLOR_READY" in line for line in lines)
-    report = {"binding": binding, "receipt_identities": receipt["identities"],
+    report = {"candidate_scope": "private-snow-launch", "product_admission": False,
+              "placement_evidence": "synthetic diagnostic selection; not audited placement acceptance",
+              "binding": binding, "receipt_identities": receipt["identities"],
               "bank": bank, "enemy_ready": ready, "generated_ready": generated,
               "log": str(log_path)}
     (run.directory / "generated-snow-launch.json").write_text(json.dumps(report, indent=2))

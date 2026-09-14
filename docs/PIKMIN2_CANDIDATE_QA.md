@@ -5,10 +5,11 @@ admission-before-QA circular dependency. Assignment 4 should gather private
 candidate encounter evidence now; lane 02 admits only after review. It must not
 wait for admission to begin that work.
 
-The native Snow binding is already published: root `b7ec784`, native
-`2432ce99da4dbcb8b819319d16a84a244cf17be0`, clean. Its executable is
-`C:/Users/alari/pikmin-randomizer/output/native-sweep437-build/bin/nectar.exe`,
-SHA-256 `392f0a8fba51bad40e980a6c54eb578b62386bce0d6dfd79039daa2d90797f71`.
+The native Snow binding was first published at root `b7ec784`. Current QA snapshot: native
+`5b446a64156b338628c6d636cab3dc76f5a9d224`, clean. Its executable is
+`C:/Users/alari/pikmin-randomizer/output/p2-integration-5b446a64/nectar.exe`,
+SHA-256 `4abdd82ada810088e95a41ded05c7e959f4aeb44d16207743a41cee65c9240a6`.
+This commit-specific executable copy stays fixed across later integration builds.
 Fetch `origin/codex/p2-main-review` for the new Python-only candidate helper.
 Record the actual root commit after updating; no native rebuild is required.
 Do not use the historical occupied `output/p2-main-review/native` checkout.
@@ -30,9 +31,9 @@ do not invent placement acceptance or use synthetic unit-test slots.
 ```powershell
 $qaRoot = git rev-parse HEAD
 $qaPin = @('--root-commit', $qaRoot,
-  '--native-commit', '2432ce99da4dbcb8b819319d16a84a244cf17be0',
-  '--executable', 'C:/Users/alari/pikmin-randomizer/output/native-sweep437-build/bin/nectar.exe',
-  '--executable-sha256', '392f0a8fba51bad40e980a6c54eb578b62386bce0d6dfd79039daa2d90797f71',
+  '--native-commit', '5b446a64156b338628c6d636cab3dc76f5a9d224',
+  '--executable', 'C:/Users/alari/pikmin-randomizer/output/p2-integration-5b446a64/nectar.exe',
+  '--executable-sha256', '4abdd82ada810088e95a41ded05c7e959f4aeb44d16207743a41cee65c9240a6',
   '--assets', 'C:/Users/alari/bbft/dist/cohesion/pikmin/assets')
 # Set these to the actual assignment handoffs:
 # $qaPlacement = 'absolute/path/to/reviewed-placement.json'

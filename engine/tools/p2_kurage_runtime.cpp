@@ -35,7 +35,7 @@
 #include <string>
 
 namespace {
-bool sKillScenario = false, sTransferScenario = false, sStageExitScenario = false, sAdmissionScenario = false, sAutomaticBindingScenario = false, sOniKurageScenario = false, sIngestionScenario = false, sFlightFsmScenario = false, sFlightFsmDeathScenario = false, sFlightFsmGreaterScenario = false, sFlightFsmGreaterDropScenario = false, sAutoFsmScenario = false, sFlightFsmGreaterCaptainScenario = false, sFlightFsmStuckFlickScenario = false, sFlightFsmDeathCycleScenario = false, sFlightFsmPatrolScenario = false, sAutoFsmMoveScenario = false;
+bool sKillScenario = false, sTransferScenario = false, sStageExitScenario = false, sAdmissionScenario = false, sAutomaticBindingScenario = false, sOniKurageScenario = false, sIngestionScenario = false, sFlightFsmScenario = false, sFlightFsmDeathScenario = false, sFlightFsmGreaterScenario = false, sFlightFsmGreaterDropScenario = false, sAutoFsmScenario = false, sFlightFsmGreaterCaptainScenario = false, sFlightFsmStuckFlickScenario = false, sFlightFsmDeathCycleScenario = false, sFlightFsmPatrolScenario = false, sAutoFsmMoveScenario = false, sFlightFsmGreaterBitterScenario = false;
 void require(bool value, const char* message)
 {
     if (!value) { std::printf("FAIL KURAGE_RUNTIME %s\n", message); std::fflush(stdout); std::_Exit(1); }
@@ -116,7 +116,7 @@ class KurageApp final : public PlugPikiApp {
 public:
     int idle() override {
         int result = PlugPikiApp::idle();
-        require(++frames < (sFlightFsmGreaterCaptainScenario ? 3600
+        require(++frames < ((sFlightFsmGreaterCaptainScenario || sFlightFsmGreaterBitterScenario) ? 3600
             : (sAutoFsmScenario || sFlightFsmStuckFlickScenario) ? 2400 : 900), "timeout");
         if (gameflow.mMoviePlayer && gameflow.mMoviePlayer->mIsActive) { gameflow.mMoviePlayer->requestSkip(); return result; }
         if (sAutomaticBindingScenario) {
@@ -274,7 +274,8 @@ public:
             if (sFlightFsmScenario || sFlightFsmDeathScenario
                 || sFlightFsmGreaterScenario || sFlightFsmGreaterDropScenario
                 || sFlightFsmGreaterCaptainScenario || sFlightFsmStuckFlickScenario
-                || sFlightFsmDeathCycleScenario || sFlightFsmPatrolScenario) {
+                || sFlightFsmDeathCycleScenario || sFlightFsmPatrolScenario
+                || sFlightFsmGreaterBitterScenario) {
                 // Source flight lifecycle drives the host; the candidate sits
                 // inside the source suction window until the Attack state's
                 // autonomous admission scan claims it.
@@ -282,9 +283,9 @@ public:
                 piki->mMode = PikiMode::AttackMode;
                 fsmPiki = piki;
                 if (sFlightFsmGreaterScenario || sFlightFsmGreaterDropScenario
-                    || sFlightFsmGreaterCaptainScenario)
+                    || sFlightFsmGreaterCaptainScenario || sFlightFsmGreaterBitterScenario)
                     pc_p2_kurage_arena_set_greater(true);
-                if (sFlightFsmGreaterCaptainScenario) {
+                if (sFlightFsmGreaterCaptainScenario || sFlightFsmGreaterBitterScenario) {
                     if (!captainBound) captainBound = captainPolicy.bind(&captainTable);
                     captainPolicy.configure(P2CaptainA, 100.0f, true);
                     captainPolicy.configure(P2CaptainB, 100.0f, true);
@@ -461,6 +462,36 @@ public:
                 std::fflush(stdout); std::_Exit(0);
             }
             require(fsmTicks < 1500, "stuck flick timeout");
+            return result;
+        }
+        if (sFlightFsmGreaterBitterScenario) {
+            ++fsmTicks;
+            Creature* host = pc_p2_kurage_arena_owner();
+            Navi* captainNavi = naviMgr->getNavi();
+            if (captainNavi && host && !pc_p2_kurage_arena_captain_captured())
+                captainNavi->resetPosition(Vector3f(host->mSRT.t.x, host->mSRT.t.y - 20.0f, host->mSRT.t.z));
+            require(pc_p2_kurage_arena_update(1.0f / 60.0f, true), "greater bitter host update");
+            if (fsmStage == 0) {
+                if (captainPolicy.phase(P2CaptainA) == P2CaptainPhase::Captured) fsmStage = 1;
+                else require(fsmTicks < 1800, "greater bitter capture timeout");
+                return result;
+            }
+            if (fsmStage == 1) {
+                // Bittered while a captain is held: the source escapeCheckNavi
+                // zeroes the enemy health.
+                pc_p2_kurage_arena_set_owner_facts(true, true);
+                fsmStage = 2;
+                return result;
+            }
+            if (pc_p2_kurage_arena_killed()) {
+                require(captainPolicy.phase(P2CaptainA) == P2CaptainPhase::Idle,
+                    "bitter death releases the captain");
+                std::printf("P2_KURAGE_GREATER_BITTER_PASS captured=1 bitter_death=1 released=1 occupied=%d\n",
+                    pc_p2_kurage_arena_captain_occupied());
+                std::puts("PASS KURAGE_RUNTIME flight_fsm_greater_bitter");
+                std::fflush(stdout); std::_Exit(0);
+            }
+            require(fsmTicks < 2400, "greater bitter death timeout");
             return result;
         }
         if (sFlightFsmGreaterCaptainScenario) {
@@ -666,6 +697,7 @@ int main(int argc, char** argv)
         if (std::string(argv[i]) == "--receiver-auto-fsm") { sAutomaticBindingScenario = true; sAutoFsmScenario = true; }
         if (std::string(argv[i]) == "--receiver-auto-fsm-move") { sAutomaticBindingScenario = true; sAutoFsmScenario = true; sAutoFsmMoveScenario = true; }
         if (std::string(argv[i]) == "--flight-fsm-greater-captain") sFlightFsmGreaterCaptainScenario = true;
+        if (std::string(argv[i]) == "--flight-fsm-greater-bitter") sFlightFsmGreaterBitterScenario = true;
         if (std::string(argv[i]) == "--flight-fsm-stuck-flick") sFlightFsmStuckFlickScenario = true;
         if (std::string(argv[i]) == "--flight-fsm-death-cycle") sFlightFsmDeathCycleScenario = true;
         if (std::string(argv[i]) == "--flight-fsm-patrol") sFlightFsmPatrolScenario = true;

@@ -88,20 +88,15 @@ def _interact_battle_candidates():
 
 
 def test_elemental_receivers_consult_species_capability_matrix():
-    candidates = _interact_battle_candidates()
-    if not candidates:
-        pytest.skip('native receiver source not present')
-    # Fire and bubble reject their immune species through the lane-11 matrix, so
-    # P2 Bulbmin (all-hazard immune) is covered without a new receiver.
-    assert any('p2_species_immune(pc_p2_species(piki), P2HazardFire)' in p.read_text(errors='replace')
-               for p in candidates)
-    assert any('p2_species_immune(pc_p2_species(piki), P2HazardWater)' in p.read_text(errors='replace')
-               for p in candidates)
-    # Electric/gas receivers (#170/#408) use the same matrix.
-    assert any('p2_species_immune(pc_p2_species(piki), P2HazardElectric)' in p.read_text(errors='replace')
-               for p in candidates)
-    assert any('p2_species_immune(pc_p2_species(piki), P2HazardGas)' in p.read_text(errors='replace')
-               for p in candidates)
+    # Validate this exported build, never accept a match in another worker tree.
+    source = (ROOT / 'engine/src/plugPikiKando/interactBattle.cpp').read_text(encoding='utf-8')
+    policy = (ROOT / 'engine/pc_port/pc_p2_hazard_reaction.h').read_text(encoding='utf-8')
+    for hazard in ('Fire', 'Water'):
+        assert f'p2_species_immune(pc_p2_species(piki), P2Hazard{hazard})' in source
+    for hazard, reaction in (('Electric', 'DenkiDying'), ('Gas', 'GasPanic')):
+        assert (f'p2_hazard_reaction(pc_p2_species(piki), P2Hazard{hazard}, '
+                f'piki->gasInvicible()) != P2HazardReaction{reaction}') in source
+    assert 'p2_species_immune(' in policy
 
 
 def _interactions_header_candidates():

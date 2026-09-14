@@ -26,7 +26,13 @@ bool logged[2]={false,false};
 constexpr float PurpleFitDuration = 5.0f;
 }
 void pc_p2_dwarf_orange_reset(){clips.clear();timing.clear();actors.clear();health.reset();logged[0]=logged[1]=false;}
-void pc_p2_dwarf_orange_forget(BTeki* actor){actors.erase(static_cast<PelletView*>(actor));health.forget(actor);pc_p2_kochappy_stun_forget(actor);}
+void pc_p2_dwarf_orange_forget(BTeki* actor){
+    const bool wasRegistered=actors.erase(static_cast<PelletView*>(actor))!=0;
+    // The generator is already detached by dieSoon(), so identity is not
+    // available here; the registration transition is the cleanup signal.
+    if(wasRegistered)std::printf("P2_DWARF_ORANGE_FORGET registered=1\n");
+    health.forget(actor);pc_p2_kochappy_stun_forget(actor);
+}
 float pc_p2_dwarf_orange_max_health(const BTeki* actor,float fallback){return health.life(actor,fallback);}
 const char* pc_p2_dwarf_orange_name(PelletView* actor){return actors.count(actor)?"Dwarf Orange Bulborb":nullptr;}
 bool pc_p2_dwarf_orange_registered(const BTeki* actor){return actors.count(const_cast<BTeki*>(actor))!=0;}

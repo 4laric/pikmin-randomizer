@@ -475,6 +475,15 @@ bool pc_p2_kurage_arena_update(float delta, bool ownerAlive)
                 target.y += held.offset.y;
                 target.z += held.offset.z;
                 if (valid(target)) sHost.captainNavi->resetPosition(target);
+                if (sHost.ownerBittered) {
+                    // OniKurage::escapeCheckNavi: a bittered captive escapes and
+                    // zeroes the enemy health (EnemyDied), routing to Dead.
+                    if (sHost.captainSlots.escapeCheck(0, false, true) == p2onikurage::Event::EnemyDied) {
+                        sHost.fsmHealth = 0.0f;
+                        sHost.ownerHasHealth = false;
+                        std::printf("P2_KURAGE_BITTER_DEATH\n");
+                    }
+                }
             }
         }
         if (out.flickStick) {

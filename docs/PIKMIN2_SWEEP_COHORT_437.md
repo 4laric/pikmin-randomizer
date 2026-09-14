@@ -120,3 +120,48 @@ The stage reuses the current 20-red overlay without saves; the fixture applies
 pending the single-GL slot**, occupied by assignment 3 at publication. Its
 standalone lifecycle assertions passed; worker GL evidence and the earlier
 combined Sarai capture run are not relabeled as this final-head runtime.
+
+
+## Follow-up sweep: Orange cleanup and acceptance fixtures
+
+Native `5b446a64156b338628c6d636cab3dc76f5a9d224`, clean. Production build and no-work check passed;
+89 C++ tests passed, one asset-dependent audio skip. Immutable QA executable:
+`C:/Users/alari/pikmin-randomizer/output/p2-integration-5b446a64/nectar.exe`,
+SHA-256 `4abdd82ada810088e95a41ded05c7e959f4aeb44d16207743a41cee65c9240a6`. Use this copy rather than the mutable build output.
+Candidate QA runbook pins were refreshed; source45 remains candidate-only.
+
+Integrated: Orange natural-death cleanup native d847df2d and root e51ed7c/091e5e3;
+Mamuta dense banks31dc95f2; Greater Jellyfloat bittered-captive escape ee889d29;
+Snow launch harness fdfe8a4; ground combat fixture f96dba1/860d841 plus its missing
+descriptor test from the worker branch. Budget resubmission2f68594 duplicates
+already-integrated evaluator code; current missing-exit/nonfinite guards remain.
+
+Integration corrections: Orange cleanup_reentry stays BLOCKED because the source44
+re-entry run was not performed; natural-death cleanup evidence remains recorded.
+The Snow diagnostic launcher rejects existing output directories, checks all its
+witness markers and distinguishes harness termination from unexpected exits.
+Its synthesized placement flags are explicitly diagnostic, not placement acceptance.
+Existing-output preservation was checked without launching native gameplay.
+
+Full Python suite: 2762 passed,59 skipped,1139 subtests, one stale source assertion
+failed. It searched other worker checkouts for the former direct elemental immunity
+call. The corrected test checks this exported source and its shared reaction policy;
+all61 affected tests plus28 subtests passed afterward. No production receiver change
+was needed. Logs: `output/p2-sweep437-wave2-pytest.log`,
+`p2-sweep437-wave2-targeted.log`, `p2-sweep437-wave2-build.log`,
+`p2-sweep437-wave2-ctest.log`. Skips are not gameplay acceptance.
+
+Greater bitter fixture built at this native head:
+`output/p2-sweep437-kurage-bitter-fixture/fixture.exe`, SHA-256
+`344bc10245e9a621f389680209d80ccbe063e0253c6bfbb4e5ad673814530c6f`.
+New bitter and previously staged Sarai lifecycle GL reruns remain queued behind
+active Assignment3/Snow fixtures; neither is claimed as final-head runtime PASS.
+
+New reviewed holds: Kabuto b22503a6 mixes host reset into Snow setup, erasing
+Kabuto bindings in mixed scenes, and forget relies on a generator already detached
+by natural death. Candypop7bb324d8/de476ea3 permits position fallback despite a
+mismatching generator and needs property-isolation proof for unbound P1 controls.
+Findings posted to #424/#448. Earlier Titan/rain holds on #246/#174 remain.
+
+All33 representative issues were queried OPEN this sweep: **33 open lanes,
+change0;21 primarily implementation,11 primarily acceptance,+integration**.

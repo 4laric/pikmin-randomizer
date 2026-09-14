@@ -176,6 +176,14 @@ behavior:
   `distToTargetXZ` back to the FSM.  Binding-only consumers are unchanged.
 - `tools/run_kurage_automatic_binding.py --scenario auto-fsm-move`.
 
+## Bittered captive death
+
+While a captain is held, `set_owner_facts(hasHealth=true, bittered=true)` now
+runs the OniKurage `escapeCheckNavi` escalation through the mouth policy:
+`MouthSlots::escapeCheck(slot, occupied=false, bittered=true)` returns
+`EnemyDied`, the host zeroes its health, and the source Dead state kills it and
+releases the captain.  `--flight-fsm-greater-bitter`.
+
 ## Natural death cycle
 
 The arena host consumes the FSM death outputs: `out.deathProcedure`/`bodyBomb`
@@ -210,12 +218,22 @@ admission/death/greater/greater-drop/ingestion/kill/transfer/stageexit).
 Private build `output/native-lane29-build` (Ninja Release/MinGW gcc 16.2.0,
 JAudio ON, test hooks OFF), `ninja -n pikmin_pc`: no work to do.
 `bin/nectar.exe` SHA-256
-`1BB6EAF75001C714A6E8856FB1344069F6D8C3F6AF1F54426D85B2E190701CCA`.
+`67891B0BD2C30E0CC6137DA228BDF8859F39E0D0294DB4E37E7E800AF03911E8`.
 
-Fixture `output/p2-lane29-onikurage-fixture-01` (provenance `status=built`);
+Fixture `output/p2-lane29-bitter-fixture-02` (provenance `status=built`);
 `fixture.exe` SHA-256
-`BEB02FCE581226E5F8298E7FC859EF19AC312671905B8BD35DB7D61A074EA852`.  All runs
+`757F4360A235BBEE58BA4ED63A8641011417A1B3B090C5F1E411A0B0ADCEBF4B`.  All runs
 use `PIKMIN_P2_ROOM_WINDOW=960x540` (centred `373,263`) and a 20-red squad.
+
+Bittered captive death (OniKurage `escapeCheckNavi` -> EnemyDied):
+
+```
+P2_KURAGE_CAPTAIN_CAPTURED captain=0 epoch=1
+P2_KURAGE_BITTER_DEATH
+state=0 (Dead) -> P2_KURAGE_KILL
+P2_KURAGE_GREATER_BITTER_PASS captured=1 bitter_death=1 released=1 occupied=0
+PASS KURAGE_RUNTIME flight_fsm_greater_bitter
+```
 
 Greater captain route held through to GroundFlick (real `flick2.bca` KEY3):
 
@@ -321,7 +339,7 @@ checks=35`.
 |---|---|---|
 | A Identity/content | PARTIAL | Kurage (57) and OniKurage (72) variants run; the generated `TEKI_Frog` ordinary actor runs the Kurage FSM when the sidecar opts in. Visuals remain the private adapter. |
 | B Source behavior | PARTIAL | FSM flight for both variants on the arena host and ordinary actor; real per-state source animation event/duration clocks; the converted per-state source pose is drawn for each FSM state. No within-pose skeletal playback, and states without an imported clip still use the bounded motion-END. |
-| C Combat/receivers | PASS (bounded host + ordinary actor) | Ordinary Attack suction autonomously admits and attaches a live Pikmin in both hosts; Greater captures and releases a live captain through lane 12's policy. |
+| C Combat/receivers | PASS (bounded host + ordinary actor) | Ordinary Attack suction autonomously admits and attaches a live Pikmin in both hosts; Greater captures a live captain through lane 12's policy, releases it at GroundFlick flickNearby, and dies to the bittered-captive escape. |
 | D Death/drop/transport | PARTIAL | Natural FSM death releases owned Pikmin/captain and the host leaves the field; no corpse/pellet/Onion transport yet, and OniKurage `Drop` is not the Pikmin cargo path. |
 | E Lifetime | PARTIAL | FSM-death and owner-death release restore scale; late birth/recycled address not exercised. |
 | F Persistence | UNTESTED | No restart/save path in this slice. |

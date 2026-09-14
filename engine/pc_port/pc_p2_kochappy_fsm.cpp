@@ -249,7 +249,10 @@ void pc_p2_kochappy_fsm_reset()
 
 void pc_p2_kochappy_fsm_forget(BTeki* actor)
 {
-	actors.erase(static_cast<PelletView*>(actor));
+	if (actors.erase(static_cast<PelletView*>(actor)) != 0) {
+		std::printf("P2_KOCHAPPY_FSM_FORGET registered=1\n");
+		std::fflush(stdout);
+	}
 }
 
 bool pc_p2_kochappy_fsm_enabled()

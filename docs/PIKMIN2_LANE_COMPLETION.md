@@ -10,7 +10,7 @@ Use [cohort preparation integration](PIKMIN2_SWEEP_COHORT_437.md) for accepted c
 |---|---|---|---|
 | 01 | [#437](https://github.com/4laric/pikmin-randomizer/issues/437) | Integration | Groink and omitted root helpers reconciled; Purple/White, late Jellyfloat/Sarai and lanes 16–18 dependencies integrated. See the dependency reconciliation ledger for pinned validation. |
 | 02 | [#438](https://github.com/4laric/pikmin-randomizer/issues/438) | Implementation | Admission list remains empty until one identity passes the generated-session chain. |
-| 03 | [#439](https://github.com/4laric/pikmin-randomizer/issues/439) | Implementation | Native ENEMY_P2 parsing/query and Python seed/bootstrap pass together; ordinary target-to-live-actor spawn binding remains. |
+| 03 | [#439](https://github.com/4laric/pikmin-randomizer/issues/439) | Implementation | Generated Snow source45 target-to-live-actor binding and content staging are integrated; candidate QA is available before admission. Other identities and ordinary encounter acceptance remain. |
 | 04 | [#440](https://github.com/4laric/pikmin-randomizer/issues/440) | Implementation | Accepted native terrain and carry-route evidence for generated placements. |
 | 05 | [#442](https://github.com/4laric/pikmin-randomizer/issues/442) | Implementation | Complete family adapters and identity-to-runtime binding for ordinary generated sessions; staging/launcher consumer is integrated. |
 | 06 | [#441](https://github.com/4laric/pikmin-randomizer/issues/441) | Acceptance | Validate P2 rewards at actual endpoints across restart; ordinary P1 endpoint evidence is retained. |

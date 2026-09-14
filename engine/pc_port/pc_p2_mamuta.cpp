@@ -26,7 +26,7 @@ namespace {
 const char* names[] = {"wait", "waitact", "move", "attack0", "attack1", "attack4",
                        "flick", "dead", "type5"};
 constexpr int kClips = 9;
-constexpr int kMaxPoses = 8;       // recorded import banks hold three sampled poses
+constexpr int kMaxPoses = 16;      // dense import banks (even + event frames)
 std::vector<Shape*> banks[kClips];
 bool animated[kClips] = {};
 int sourceFrames[kClips] = {};     // clip length in source frames, 0 = unknown
