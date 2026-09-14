@@ -1,7 +1,19 @@
-"""Private original Impact Site arena: Frog/MaroFrog source visuals and two matching P1 controls."""
+"""Private original Impact Site arena: Frog/MaroFrog source visuals and two matching P1 controls.
+
+The default arena places the two registered frogs at the audited ``z~1850``
+bench, far from the original red goal/Onion at ``(-498.186, 1454.469)``. The
+carry fixture needs the registered corpses produced near the Onion, because a
+full ~520-unit haul stalls inside the original terrain before absorption. Passing
+``near_onion=True`` reads the red goal record from the same original
+``practice/default.gen`` and stages the two registered frogs about 120 units
+from it. This is an engineered placement choice (like every coordinate in this
+arena) recorded in ``frog-arena.json``; the original course bytes, generator
+counts and unique IDs are preserved exactly as in the default variant.
+"""
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 import struct
 import uuid
@@ -15,7 +27,21 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def roster(assets):
+def onion_position(practice):
+    """Return the original Impact Site red Onion entry point from its goal record.
+
+    The red goal record is the same byte-framed generator the engine uses; reading
+    it (rather than hard-coding a coordinate) keeps the near-Onion placement bound
+    to the original course and fails closed if the record framing changes.
+    """
+    goal=next((r for r in practice if r[16:48].rstrip(b'\0')==b'red goal'),None)
+    if goal is None:raise ValueError('Original red goal record missing')
+    x,y,z=struct.unpack_from('>3f',goal,48)
+    if not all(math.isfinite(v) for v in (x,y,z)):raise ValueError('Original red goal position invalid')
+    return (x,y,z)
+
+
+def roster(assets,near_onion=False):
     source=assets/'dataDir/stages/practice/default.gen'
     header=source.read_bytes()[:24]
     practice=records(source)
@@ -27,7 +53,12 @@ def roster(assets):
     used={struct.unpack_from('<I',r,8)[0] for r in practice}
     entries=list(practice)
     placements=[]
-    for identity,kind,teki,xyz in [(201001,'Frog',0,(-150.,30.,1850.)),(201002,'MaroFrog',33,(150.,30.,1850.)),(201003,'P1 Frog',0,(-150.,30.,1550.)),(201004,'P1 Frow',33,(150.,30.,1550.))]:
+    if near_onion:
+        ox,_,oz=onion_position(practice)
+        registered=[(ox-40.,30.,oz+115.),(ox+40.,30.,oz+115.)]
+    else:
+        registered=[(-150.,30.,1850.),(150.,30.,1850.)]
+    for identity,kind,teki,xyz in [(201001,'Frog',0,registered[0]),(201002,'MaroFrog',33,registered[1]),(201003,'P1 Frog',0,(-150.,30.,1550.)),(201004,'P1 Frow',33,(150.,30.,1550.))]:
         if identity in used:raise ValueError('Arena generator ID collision')
         used.add(identity)
         row=bytearray(enemy);struct.pack_into('<I',row,8,identity)
@@ -39,9 +70,9 @@ def roster(assets):
     return header[:20]+struct.pack('>I',len(entries))+b''.join(entries),placements
 
 
-def prepare(assets,bank,output):
+def prepare(assets,bank,output,near_onion=False):
     assets=assets.resolve();bank=bank.resolve()
-    data,actors=roster(assets)
+    data,actors=roster(assets,near_onion=near_onion)
     registered=[(a['generator'],a['species']) for a in actors[:2]]
     plan(bank,registered) # Validate every source byte before any output mutation.
     stage=assets/'dataDir/stages/practice.ini'
@@ -59,7 +90,7 @@ def prepare(assets,bank,output):
     (run/'p2-cargo-free.txt').write_bytes(b'P2_CARGO_FREE_1\n')
     for name,value in preserved.items():
         if digest(run/'assets'/name)!=value:raise ValueError('Original course changed')
-    result=dict(schema=1,scene='P1 Impact Site',stage_slot='chal0',actors=actors,added_enemy_count=4,source_stage_sha256=digest(stage),preserved_course_sha256=preserved,profile_sha256=digest(bank/'frogs.json'),birth_policy=birth,command=['nectar.exe','--experimental-pikmin2-room'],placement_choice='Engineered arena coordinates; terrain/physical spawn acceptance unmeasured',gates={key:'untested' for key in ('native_identity','natural_AI','combat','death','delivery','reload')},limitations=['No Pod reward binding; native P1 corpse behavior retained','No source yaw applied','Source Frog/MaroFrog sampled visuals only; P1 AI, health, collision and rewards unchanged'])
+    result=dict(schema=1,scene='P1 Impact Site',stage_slot='chal0',actors=actors,added_enemy_count=4,source_stage_sha256=digest(stage),preserved_course_sha256=preserved,profile_sha256=digest(bank/'frogs.json'),birth_policy=birth,command=['nectar.exe','--experimental-pikmin2-room'],near_onion=bool(near_onion),placement_choice=('Registered corpses staged ~120 units from the original red goal/Onion (near_onion) to bound the corpse carry route; engineered coordinates, terrain/physical spawn acceptance unmeasured' if near_onion else 'Engineered arena coordinates; terrain/physical spawn acceptance unmeasured'),gates={key:'untested' for key in ('native_identity','natural_AI','combat','death','delivery','reload')},limitations=['No Pod reward binding; native P1 corpse behavior retained','No source yaw applied','Source Frog/MaroFrog sampled visuals only; P1 AI, health, collision and rewards unchanged'])
     (run/'frog-arena.json').write_bytes((json.dumps(result,sort_keys=True,indent=2)+'\n').encode())
     return run
 
@@ -67,4 +98,5 @@ def prepare(assets,bank,output):
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__)
     for name in ('assets','bank','output'):p.add_argument('--'+name,type=Path,required=True)
-    a=p.parse_args();print(prepare(a.assets,a.bank,a.output))
+    p.add_argument('--near-onion',action='store_true',help='stage the registered frogs near the original red goal/Onion')
+    a=p.parse_args();print(prepare(a.assets,a.bank,a.output,near_onion=a.near_onion))

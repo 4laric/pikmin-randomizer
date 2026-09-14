@@ -216,10 +216,26 @@ It then watches the ordinary P1 carry path rather than a fabricated reward:
   at Onion absorption (`Pellet::isAlive` flips false), logged as
   `P2_FROG_DELIVER id=... delivered=1 goal=1`.
 
+The arena is now built with the documented `near_onion=True` placement variant
+(`experimental/pikmin2_frog_arena.onion_position`): the registered Frog/MaroFrog
+generators are staged about 120 units from the original red goal/Onion record
+read from the same `practice/default.gen`, instead of the distant `z~1850` bench.
+This is an engineered coordinate choice like every other placement in the arena;
+the original course bytes, generator count and unique IDs are preserved and
+still hash-checked, and the recorded `frog-arena.json` names the variant. The
+run that motivated it (`output/lane16-frog-runtime/run_carry2/stages/
+30c37dd6849940ddbb780e6d49c4c909`) carried the first corpse 519.8 units,
+stalled 79 units short of the Onion with its carriers detached by the
+fixture's own squad teleport, then entered an unskippable demo sequence. The
+short route plus moving **only unattached** Pikmin in `moveSquad()` removes both
+fixture-side causes; no delivery is fabricated and no enemy/pellet state is
+written.
+
 Two bounded, labelled inputs mirror the accepted original-map delivery fixture
 (`experimental.pikmin2_kochappy_arena_delivery`). After both corpses exist the
-fixture repositions the surviving squad adjacent to the first corpse and, if
-free recruitment still leaves no carriers, assigns the native
+fixture repositions the unattached surviving squad adjacent to the first corpse
+(attached carriers are left alone so an in-progress native carry is not broken)
+and, if free recruitment still leaves no carriers, assigns the native
 `PikiAction::Transport` task to the surviving Pikmin (`P2_FROG_CARRY_ASSIST`,
 repeated at most 4 times, 180 frames apart, only while fewer than the corpse's
 `mCarryMinPikis` carriers are attached). It never fabricates a delivery and never
@@ -229,12 +245,17 @@ No native hook is required: these are existing public `Pellet`/`Creature`/
 honest: `validate()` returns `passed` only when both corpses exist and at least
 one carry **and** delivery is observed; otherwise it exits `UNOBSERVED
 P2_FROG_CARRY ... unobserved=1`, and a wall-clock guard forces that honest exit
-before the 180 s subprocess budget. `tests/test_pikmin2_frog_carry.py` (8 tests)
-accepts a complete observation and rejects a non-zero exit, a missing carry, a
-missing delivery, a delivery without a carry, an injected-only corpse log, a
-missing corpse and a missing registered birth. The native run is pending the
-coordinated GL slot; native Onion/receipt delivery and save persistence remain
-open. Residual risk: the frog corpse config may require more carriers than the
-surviving squad after the landing press; if fewer than `mCarryMinPikis` Pikmin
-remain the transport task still cannot lift the corpse and the run honestly
-reports `unobserved`.
+before the 180 s subprocess budget. `tests/test_pikmin2_frog_carry.py` (9 tests,
+including one that pins `run()` to the `near_onion=True` arena) accepts a
+complete observation and rejects a non-zero exit, a missing carry, a missing
+delivery, a delivery without a carry, an injected-only corpse log, a missing
+corpse and a missing registered birth; `tests/test_pikmin2_frog_arena.py` (5
+tests) pins the red-goal read, default placement and near-Onion placement. The
+native run is pending the coordinated GL slot; native Onion/receipt delivery and
+save persistence remain open. Residual risk: the frog corpse config may require
+more carriers than the surviving squad after the landing press; if fewer than
+`mCarryMinPikis` Pikmin remain the transport task still cannot lift the corpse
+and the run honestly reports `unobserved`. The near-Onion placement shortens the
+route but native terrain/physical spawn acceptance at that bench is still
+unmeasured, and the engine's unskippable demo sequence can still pre-empt a long
+run.

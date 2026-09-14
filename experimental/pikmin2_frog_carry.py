@@ -10,13 +10,17 @@ path: the dead view's ``Pellet`` in ``pelletMgr``, the Pikmin that stick to it
 Onion (``Pellet::isAlive`` flips false at absorption, after ``PELSTATE_Goal``).
 
 Two bounded, labelled placements mirror the original-map delivery fixture
-(``experimental.pikmin2_kochappy_arena_delivery``): the first corpse is snapped
-onto ``mapMgr->getMinY(x,z,true)`` instead of a stray y=0, and the surviving
-squad is repositioned adjacent to it. If native free recruitment still leaves
-too few carriers the fixture assigns the native ``PikiAction::Transport`` task
-to the surviving Pikmin (``P2_FROG_CARRY_ASSIST``), exactly the audited
-original-map recipe, and never fabricates a delivery. No carry is reported as
-``UNOBSERVED`` rather than PASS. See ``docs/PIKMIN2_FROG_RUNTIME_ACCEPTANCE.md``.
+(``experimental.pikmin2_kochappy_arena_delivery``): the arena is built with the
+documented ``near_onion=True`` variant so the registered corpses spawn about 120
+units from the original red goal/Onion instead of the distant ``z~1850`` bench,
+and the first corpse is snapped onto ``mapMgr->getMinY(x,z,true)`` instead of a
+stray y=0. The surviving squad is repositioned adjacent to it, but only the
+Pikmin that are not already attached to an object, so an in-progress native carry
+is not disturbed. If native free recruitment still leaves too few carriers the
+fixture assigns the native ``PikiAction::Transport`` task to the surviving Pikmin
+(``P2_FROG_CARRY_ASSIST``), exactly the audited original-map recipe, and never
+fabricates a delivery. No carry is reported as ``UNOBSERVED`` rather than PASS.
+See ``docs/PIKMIN2_FROG_RUNTIME_ACCEPTANCE.md``.
 """
 import re
 
@@ -56,7 +60,7 @@ class RoomApp : public PlugPikiApp {
   int min=p->mConfig?p->mConfig->mCarryMinPikis():-1;
   std::printf("P2_FROG_CORPSE_GROUND id=%d ground=%.3f snapped=1 min_carriers=%d\n",201001+i,ground,min);std::fflush(stdout);}
  void moveSquad(){Creature* near=corpse[0]?static_cast<Creature*>(corpse[0]):static_cast<Creature*>(frogs[0]);if(!near)return;
-  Vector3f t=near->getPosition();int idx=0;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(!p->isAlive())continue;
+  Vector3f t=near->getPosition();int idx=0;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(!p->isAlive()||p->getStickObject()!=nullptr)continue;
    const float a=6.28318530718f*float(idx)/10.0f;const float r=18.0f+4.0f*float(idx/10);
    Vector3f pos(t.x+r*std::cos(a),t.y,t.z+r*std::sin(a));pos.y=mapMgr->getMinY(pos.x,pos.z,true);
    p->resetPosition(pos);p->mVelocity.set(0,0,0);p->mTargetVelocity.set(0,0,0);++idx;}}
@@ -132,7 +136,7 @@ def build(native, build_dir, output, head, resume=False):
 
 
 def run(assets, bank, output, exe):
-    return _run(assets, bank, output, exe, validator=validate)
+    return _run(assets, bank, output, exe, validator=validate, near_onion=True)
 
 
 def validate(text, code):

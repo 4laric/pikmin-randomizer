@@ -1,20 +1,21 @@
 """Lane 16 Frog/MaroFrog corpse carry/delivery fixture tests (#167/#201)."""
 import unittest
+from unittest.mock import patch
 
-from experimental.pikmin2_frog_carry import validate
+from experimental.pikmin2_frog_carry import run, validate
 
 
 class FrogCarryTests(unittest.TestCase):
     def sample(self):
         return (
-            'P2_FROG_CARRY_BIRTH id=201001 type=0 registered=1 x=-150.000 y=30.000 z=1850.000\n'
-            'P2_FROG_CARRY_BIRTH id=201002 type=33 registered=1 x=150.000 y=30.000 z=1850.000\n'
+            'P2_FROG_CARRY_BIRTH id=201001 type=0 registered=1 x=-538.186 y=30.000 z=1569.469\n'
+            'P2_FROG_CARRY_BIRTH id=201002 type=33 registered=1 x=-458.186 y=30.000 z=1569.469\n'
             'P2_FROG_CARRY_BIRTH id=201003 type=0 registered=0 x=-150.000 y=30.000 z=1550.000\n'
             'P2_FROG_CARRY_BIRTH id=201004 type=33 registered=0 x=150.000 y=30.000 z=1550.000\n'
             'P2_FROG_INJECTED_ATTACK id=201001 accepted=1\n'
             'P2_FROG_INJECTED_ATTACK id=201002 accepted=1\n'
-            'P2_FROG_CORPSE id=201001 found=1 alive=1 state=0 x=-150.000 y=30.000 z=1850.000\n'
-            'P2_FROG_CORPSE id=201002 found=1 alive=1 state=0 x=150.000 y=30.000 z=1850.000\n'
+            'P2_FROG_CORPSE id=201001 found=1 alive=1 state=0 x=-538.186 y=30.000 z=1569.469\n'
+            'P2_FROG_CORPSE id=201002 found=1 alive=1 state=0 x=-458.186 y=30.000 z=1569.469\n'
             'P2_FROG_CORPSE_GROUND id=201001 ground=-0.680 snapped=1 min_carriers=7\n'
             'P2_FROG_CARRY_ASSIST moved=1 around=201001 assigned=18 attempt=1 pikis=18\n'
             'P2_FROG_CARRY id=201001 carried=1 carriers=3 strength=3 state=0\n'
@@ -60,14 +61,14 @@ class FrogCarryTests(unittest.TestCase):
 
     def test_injected_only_without_carry_is_unobserved(self):
         text = (
-            'P2_FROG_CARRY_BIRTH id=201001 type=0 registered=1 x=-150.000 y=30.000 z=1850.000\n'
-            'P2_FROG_CARRY_BIRTH id=201002 type=33 registered=1 x=150.000 y=30.000 z=1850.000\n'
+            'P2_FROG_CARRY_BIRTH id=201001 type=0 registered=1 x=-538.186 y=30.000 z=1569.469\n'
+            'P2_FROG_CARRY_BIRTH id=201002 type=33 registered=1 x=-458.186 y=30.000 z=1569.469\n'
             'P2_FROG_CARRY_BIRTH id=201003 type=0 registered=0 x=-150.000 y=30.000 z=1550.000\n'
             'P2_FROG_CARRY_BIRTH id=201004 type=33 registered=0 x=150.000 y=30.000 z=1550.000\n'
             'P2_FROG_INJECTED_ATTACK id=201001 accepted=1\n'
             'P2_FROG_INJECTED_ATTACK id=201002 accepted=1\n'
-            'P2_FROG_CORPSE id=201001 found=1 alive=1 state=0 x=-150.000 y=30.000 z=1850.000\n'
-            'P2_FROG_CORPSE id=201002 found=1 alive=1 state=0 x=150.000 y=30.000 z=1850.000\n'
+            'P2_FROG_CORPSE id=201001 found=1 alive=1 state=0 x=-538.186 y=30.000 z=1569.469\n'
+            'P2_FROG_CORPSE id=201002 found=1 alive=1 state=0 x=-458.186 y=30.000 z=1569.469\n'
             'P2_FROG_CARRY_RESULT reason=budget corpses=2 carry=0 deliver=0 assisted=0\n'
             'UNOBSERVED P2_FROG_CARRY corpses=2 carry=0 deliver=0 assisted=0\n')
         result = validate(text, 0)
@@ -77,12 +78,18 @@ class FrogCarryTests(unittest.TestCase):
         self.assertTrue(result['unobserved'])
 
     def test_missing_corpse_rejected(self):
-        text = self.sample().replace('P2_FROG_CORPSE id=201002 found=1 alive=1 state=0 x=150.000 y=30.000 z=1850.000\n', '')
+        text = self.sample().replace('P2_FROG_CORPSE id=201002 found=1 alive=1 state=0 x=-458.186 y=30.000 z=1569.469\n', '')
         self.assertFalse(validate(text, 0)['passed'])
 
     def test_missing_registered_birth_rejected(self):
-        text = self.sample().replace('P2_FROG_CARRY_BIRTH id=201002 type=33 registered=1 x=150.000 y=30.000 z=1850.000\n', '')
+        text = self.sample().replace('P2_FROG_CARRY_BIRTH id=201002 type=33 registered=1 x=-458.186 y=30.000 z=1569.469\n', '')
         self.assertFalse(validate(text, 0)['passed'])
+
+
+    def test_run_uses_near_onion_arena(self):
+        with patch('experimental.pikmin2_frog_carry._run') as runner:
+            run('assets', 'bank', 'output', 'exe')
+        runner.assert_called_once_with('assets', 'bank', 'output', 'exe', validator=validate, near_onion=True)
 
 
 if __name__ == '__main__':

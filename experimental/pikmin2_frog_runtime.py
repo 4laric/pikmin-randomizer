@@ -123,8 +123,8 @@ def validate(text,code):
  return dict(passed=all(checks.values()),checks=checks,draws=draws,natural_deaths=[int(i) for i in re.findall(r'P2_FROG_NATURAL_DEATH id=(\d+)',text)],unmeasured=['natural combat','transport/rewards','full scene/day reload (manager reset/re-entry covered by cleanup_reentry)','P2 mechanics'])
 
 
-def run(assets,bank,output,exe,validator=None):
- stage=prepare(assets,bank,output/'stages');manifest=json.loads((stage/'frog-arena.json').read_text())
+def run(assets,bank,output,exe,validator=None,near_onion=False):
+ stage=prepare(assets,bank,output/'stages',near_onion=near_onion);manifest=json.loads((stage/'frog-arena.json').read_text())
  (stage/'frog-positions.txt').write_bytes(''.join(f"{a['generator']} {a['native_type']} {int(i<2)} "+' '.join(map(str,a['position']))+'\n' for i,a in enumerate(manifest['actors'])).encode())
  env=dict(os.environ,PATH='C:/msys64/mingw64/bin;'+os.environ.get('PATH',''),SDL_AUDIODRIVER='dummy')
  with (stage/'native.log').open('w') as log:
