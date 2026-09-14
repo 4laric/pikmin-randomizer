@@ -29,6 +29,7 @@ def validate(text):
     if 'P2_BREADBUG_ACTOR_DRAW' not in text or 'PASS P2_BREADBUG_ACTOR_ARENA' not in text:raise ValueError('Missing live visual/movement/reset evidence')
     if 'P2_BREADBUG_ACTOR_REENTRY' not in text:raise ValueError('Missing manager re-entry evidence')
     if 'P2_BREADBUG_ACTOR_KILL' not in text or 'P2_BREADBUG_ACTOR_DEATH ' not in text:raise ValueError('Missing injected death/cleanup evidence')
+    if 'Experimental preview window set to 960x540 windowed and centered' not in text:raise ValueError('Missing 960x540 centred window evidence')
     movement=re.findall(r'P2_BREADBUG_ARENA_MOVE frame=(\d+) displacement=([\d.]+) moving=(\d+)',text)
     if not movement or max(float(r[1]) for r in movement)<=15 or max(int(r[2]) for r in movement)<15:raise ValueError('Insufficient natural movement')
     corpse=int(re.search(r'P2_BREADBUG_ACTOR_DEATH corpse=(\d+)',text).group(1))
@@ -40,7 +41,7 @@ def run(args):
     else:
         exe=args.exe;identity=executable_identity(args.exe)
     directory=prepare(args.assets,args.profile,args.output)
-    env=dict(os.environ,SDL_AUDIODRIVER='dummy');env['PATH']='C:/msys64/mingw64/bin;'+env['PATH']
+    env=dict(os.environ,SDL_AUDIODRIVER='dummy',PIKMIN_P2_ROOM_WINDOW='960x540');env['PATH']='C:/msys64/mingw64/bin;'+env['PATH']
     with (directory/'host.log').open('w') as out:
         result=subprocess.run([str(exe),'--experimental-pikmin2-room'],cwd=directory,env=env,stdout=out,stderr=subprocess.STDOUT,timeout=args.timeout)
     if result.returncode:raise RuntimeError(f'Native arena exit{result.returncode}: {directory}')
