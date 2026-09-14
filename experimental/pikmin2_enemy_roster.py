@@ -604,6 +604,54 @@ def require_admitted(roster: list[RosterEntry], source_id: int) -> RosterEntry:
     return entry
 
 
+def require_opt_in(roster: list[RosterEntry], source_id: int) -> RosterEntry:
+    """Fail-closed check for a *private* opt-in candidate validation run.
+
+    Unlike :func:`require_admitted`, this does not require the identity to be in
+    the global admission set (which stays empty until lane 01 accepts a generated
+    session). It only accepts identities that are explicitly reviewed
+    (``candidate`` or ``admitted``) and have a seedable role
+    (``source``/``variant``). A denied, excluded, unknown, helper, plant,
+    hazard, projectile, nest or manager-base identity is rejected, so the
+    validation path can never opt a previously un-reviewed identity into a run.
+    """
+    entry = by_id(roster).get(source_id)
+    if entry is None:
+        raise RosterError(f"unknown P2 source id {source_id}")
+    if entry.eligibility not in ("candidate", "admitted"):
+        raise RosterError(
+            f"{entry.enum_name} ({source_id}) has no reviewed eligibility "
+            f"({entry.eligibility}); refusing opt-in validation"
+        )
+    role = identity_role(entry)
+    if role not in ("source", "variant"):
+        raise RosterError(f"{entry.enum_name} ({source_id}) is a {role}, not an opt-in seedable identity")
+    return entry
+
+
+def opt_in_validation_cohort(roster: list[RosterEntry], source_ids) -> list[int]:
+    """Ordered allowlist for a *private* opt-in candidate validation run.
+
+    This is the fail-closed candidate-validation path required by the next-wave
+    guide: a caller (e.g. the Snow/Dwarf Orange cohort) may exercise the full
+    generated-session chain against explicitly reviewed candidates without those
+    identities being admitted by the global :func:`admission_set`. The global
+    pool stays deny-by-default, so :func:`admitted_ids` remains empty and normal
+    seed generation is unaffected. Returns the validated ordered source IDs; it
+    never mutates the roster or the admission set.
+    """
+    ids = list(source_ids)
+    if not ids:
+        raise RosterError("opt-in validation cohort is empty")
+    if any(type(source_id) is not int for source_id in ids):
+        raise RosterError("opt-in validation source ids must be integers")
+    if len(ids) != len(set(ids)):
+        raise RosterError("opt-in validation cohort contains duplicate source ids")
+    for source_id in ids:
+        require_opt_in(roster, source_id)
+    return [int(source_id) for source_id in ids]
+
+
 def summarize(roster: list[RosterEntry]) -> dict:
     counts: dict[str, int] = {}
     for entry in roster:

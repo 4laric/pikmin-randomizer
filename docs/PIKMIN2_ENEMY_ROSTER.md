@@ -116,6 +116,24 @@ until a family supplies complete six-gate evidence, which is the correct startin
 state — native module presence, source facts and taxonomy membership are not
 eligibility.
 
+### Private candidate validation path (opt-in, deny by default)
+
+Lane 03's ordinary product entry point seeds only `admitted_ids(roster)` and
+fails closed while that set is empty. For the Snow/Dwarf Orange cohort, a caller
+may run a *private* validation of the generated-session chain through
+`opt_in_validation_cohort(roster, source_ids)` — an ordered allowlist that only
+accepts explicitly reviewed identities (`candidate`/`admitted`) whose role is
+`source`/`variant`. Denied, excluded, unknown, helper, plant, hazard, projectile,
+nest and manager-base IDs are rejected, so the path can never opt a previously
+un-reviewed identity into a run.
+
+`require_opt_in(roster, source_id)` is the per-identity fail-closed check. Neither
+function mutates the roster or the admission set: `admitted_ids(roster)` stays
+empty, `require_admitted` still raises, and normal seed generation is unaffected.
+The Snow (`YellowKochappy` 45) and Dwarf Orange (`BlueKochappy` 44) siblings are
+distinct *source* identities (never helpers or aliases); each is reviewed
+independently, and neither is admitted by this document.
+
 ## Current coverage
 
 Generated from source revision `632af93787b9c95b63f0c13be32b161375ce3a96`:
@@ -159,9 +177,9 @@ any `native_module` declared in the overlay that is absent from
 
 The first reviewed cohort (overlay `candidate`, not admitted) records the reported
 evidence and named blockers for Sokkuri (79), Armor (15), Red Bulborb (2), Snow
-Bulborb (45), Wollywog (17) and Mamuta/Miulin (54). No gate is marked PASS without
-pinned root/native/executable, inputs and observed result, so the seedable
-admission set remains empty.
+Bulborb (45), Dwarf Orange Bulborb (44), Wollywog (17) and Mamuta/Miulin (54). No
+gate is marked PASS without pinned root/native/executable, inputs and observed
+result, so the seedable admission set remains empty.
 
 ## Ownership
 
