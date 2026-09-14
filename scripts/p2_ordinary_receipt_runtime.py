@@ -232,11 +232,11 @@ def main():
         'ordinary_ledger': True,
         'pod_ledger': False,
     }
-    (args.output / 'placement-evidence.json').write_text(json.dumps(placement, indent=2) + '\n')
-    if delivered:
+    from randomizer.p2_placement_evidence import publish_evidence
+    if publish_evidence(args.output / 'placement-evidence.json', placement):
         print('PLACEMENT_EVIDENCE_TRUSTED:', placement['stage'])
     else:
-        print('PLACEMENT_EVIDENCE_UNTRUSTED: no natural terminal delivery')
+        print('PLACEMENT_EVIDENCE_UNTRUSTED: missing or invalid natural delivery evidence')
     print('EXACTLY_ONCE_ACROSS_RESTART:', ok)
     print('run1', run1)
     print('run2', run2)

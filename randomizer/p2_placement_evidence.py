@@ -169,15 +169,19 @@ def apply_evidence(document, evidence, identities, gates=DEFAULT_GATES, campaign
     slot = next((s for s in document['slots'] if s['uid'] == row['uid']), None)
     if slot is None:
         raise ValueError('observed campaign slot is not in the placement document')
-    for key in EVIDENCE_KEYS:
-        slot['evidence'][key] = True
-    approved = []
+    profiles = []
     for identity in identities:
         profile = next((p for p in document['profiles'] if p['identity'] == identity), None)
         if profile is None:
             raise ValueError(f'unknown placement identity: {identity}')
+        profiles.append(profile)
+    # Validate the entire request before changing any approval state.
+    for key in EVIDENCE_KEYS:
+        slot['evidence'][key] = True
+    approved = []
+    for profile in profiles:
         profile['accepted_gates'] = list(gates)
-        approved.append(identity)
+        approved.append(profile['identity'])
     return {
         'slot_uid': row['uid'],
         'slot_label': row.get('label', str(row['uid'])),
@@ -192,6 +196,16 @@ def apply_evidence(document, evidence, identities, gates=DEFAULT_GATES, campaign
         'identities': approved,
         'gates': list(gates),
     }
+
+
+def publish_evidence(path, evidence):
+    """Publish only validated delivery evidence; remove stale prior approvals."""
+    path = Path(path)
+    if not is_trustworthy(evidence):
+        path.unlink(missing_ok=True)
+        return False
+    path.write_text(json.dumps(evidence, indent=2, allow_nan=False) + '\n', encoding='utf-8')
+    return True
 
 
 def main(argv=None):

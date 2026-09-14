@@ -160,3 +160,25 @@ def test_match_slot_requires_stage_and_distance():
     assert distance == pytest.approx(0.0)
     with pytest.raises(ValueError):
         evidence_mod.match_slot([row['position'][0] + 10000.0, 0, 0], row['stage'])
+
+
+def test_rejected_identity_does_not_partially_approve():
+    import copy
+    row = _ground_unprotected_row()
+    document = catalog.build_document()
+    before = copy.deepcopy(document)
+    with pytest.raises(ValueError):
+        evidence_mod.apply_evidence(document, _evidence(row['position'], stage=row['stage']),
+                                    ['YellowKochappy', 'NotAnIdentity'])
+    assert document == before
+
+
+def test_publish_rejects_incomplete_delivery_and_removes_stale_approval(tmp_path):
+    path = tmp_path / 'placement-evidence.json'
+    good = _evidence([0.0, 0.0, 0.0])
+    assert evidence_mod.publish_evidence(path, good)
+    assert evidence_mod.load(path) == good
+    for field, value in [('delivered', False), ('onion', None), ('control_others', None)]:
+        assert evidence_mod.publish_evidence(path, good)
+        assert not evidence_mod.publish_evidence(path, dict(good, **{field: value}))
+        assert not path.exists()
