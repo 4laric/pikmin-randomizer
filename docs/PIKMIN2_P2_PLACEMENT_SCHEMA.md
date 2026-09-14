@@ -152,6 +152,13 @@ At the current source revision the 72 known-terrain slots yield: 33 `ground`,
 candidates without a P1 equivalent match all 49 walkable slots (the three ground
 classes); candidates with an equivalent are restricted to their own cohort.
 
+Homes and routes come from the lane-02 roster: every cohort identity drops a
+carryable corpse, so all profiles set `requires_corpse_route`, and `Jigumo`
+(Hermit Crawmad) additionally sets `requires_home` because its roster child is
+`PanHouse`. Submerged slots expose a corpse route (Blue Pikmin carry through
+water) but no campaign slot exposes a nest anchor, so `Jigumo` is reported as
+`unplaceable` — a concrete placement gap, not an evidence gap.
+
 ## Coverage report
 
 `randomizer.p2_placement.coverage_report()` returns a deterministic,

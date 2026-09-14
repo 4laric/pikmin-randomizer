@@ -50,7 +50,9 @@ COHORT_TERRAIN = {
 
 # terrain class -> slot capability defaults used by the lane-04 adapters.
 GROUND_TERRAINS = ('ground', 'mixed')
-WALKABLE_TERRAINS = ('ground', 'mixed')
+# Blue Pikmin can carry a corpse back through water, so submerged slots also
+# expose a corpse return route; only airborne slots do not.
+CORPSE_TERRAINS = ('ground', 'mixed', 'water')
 
 # Lane 02 source_id -> candidate placement profile for the initial cohort.
 # `p1_equivalent` is the P1 catalog id whose campaign pool already routes to
@@ -69,35 +71,40 @@ P1_COHORT = {
     0: 'frog', 33: 'frog',
 }
 
+# `requires_home` is source-backed by the lane-02 roster child reference: a
+# non-null `child_name` of PanHouse/JigumoNest means the identity is anchored to
+# a nest, not a free spawn. Only Jigumo (Hermit Crawmad) qualifies in this cohort.
+# Every cohort entry drops a carryable corpse (BDT_Weak..BDT_Strong), so all of
+# them require a corpse return route.
 CANDIDATE_SPECS = (
     # Lane 13 - Bulborbs, dwarfs and Sheargrubs.
-    (1, 'Kochappy', 13, ['ground'], 3),
-    (2, 'Chappy', 13, ['ground'], 4),
-    (12, 'UjiA', 13, ['ground'], 18),
-    (13, 'UjiB', 13, ['ground'], 19),
-    (14, 'Tobi', 13, ['ground'], 20),
-    (33, 'FireChappy', 13, ['ground'], None),
-    (35, 'KumaChappy', 13, ['ground'], 32),
-    (42, 'BlueChappy', 13, ['ground'], None),
-    (43, 'YellowChappy', 13, ['ground'], None),
-    (44, 'BlueKochappy', 13, ['ground'], None),
-    (45, 'YellowKochappy', 13, ['ground'], None),
-    (76, 'KumaKochappy', 13, ['ground'], 31),
+    (1, 'Kochappy', 13, ['ground'], 3, False),
+    (2, 'Chappy', 13, ['ground'], 4, False),
+    (12, 'UjiA', 13, ['ground'], 18, False),
+    (13, 'UjiB', 13, ['ground'], 19, False),
+    (14, 'Tobi', 13, ['ground'], 20, False),
+    (33, 'FireChappy', 13, ['ground'], None, False),
+    (35, 'KumaChappy', 13, ['ground'], 32, False),
+    (42, 'BlueChappy', 13, ['ground'], None, False),
+    (43, 'YellowChappy', 13, ['ground'], None, False),
+    (44, 'BlueKochappy', 13, ['ground'], None, False),
+    (45, 'YellowKochappy', 13, ['ground'], None, False),
+    (76, 'KumaKochappy', 13, ['ground'], 31, False),
     # Lane 14 - Ground invertebrates.
-    (15, 'Armor', 14, ['ground'], None),
-    (28, 'ElecBug', 14, ['ground'], None),
-    (65, 'Imomushi', 14, ['ground'], None),
-    (68, 'TamagoMushi', 14, ['ground'], None),
-    (79, 'Sokkuri', 14, ['ground'], None),
-    (84, 'Hana', 14, ['ground'], None),
+    (15, 'Armor', 14, ['ground'], None, False),
+    (28, 'ElecBug', 14, ['ground'], None, False),
+    (65, 'Imomushi', 14, ['ground'], None, False),
+    (68, 'TamagoMushi', 14, ['ground'], None, False),
+    (79, 'Sokkuri', 14, ['ground'], None, False),
+    (84, 'Hana', 14, ['ground'], None, False),
     # Lane 16 - Frogs and aquatic enemies (bosses excluded; see BOSS_COHORT).
-    (17, 'Frog', 16, ['mixed', 'ground'], 0),
-    (18, 'MaroFrog', 16, ['mixed', 'ground'], 33),
-    (26, 'Catfish', 16, ['water'], 30),
-    (27, 'Tadpole', 16, ['water'], 25),
-    (63, 'Jigumo', 16, ['water'], None),
+    (17, 'Frog', 16, ['mixed', 'ground'], 0, False),
+    (18, 'MaroFrog', 16, ['mixed', 'ground'], 33, False),
+    (26, 'Catfish', 16, ['water'], 30, False),
+    (27, 'Tadpole', 16, ['water'], 25, False),
+    (63, 'Jigumo', 16, ['water'], None, True),
     # Lane 19 - Mamuta.
-    (54, 'Miulin', 19, ['ground'], 24),
+    (54, 'Miulin', 19, ['ground'], 24, False),
 )
 
 # Candidate source_ids that are bosses and therefore require a lane-04 encounter
@@ -133,7 +140,7 @@ def slots_from_campaign(campaign_slots=CAMPAIGN_SLOTS, campaign_sources=CAMPAIGN
             'radius': DEFAULT_RADIUS,
             'flight_space': terrain == 'air',
             'burrow_ground': terrain in GROUND_TERRAINS,
-            'corpse_route': terrain in WALKABLE_TERRAINS,
+            'corpse_route': terrain in CORPSE_TERRAINS,
             'protected': bool(source.get('protected', False)),
             'first_day': row.get('first_day', 1),
             'respawn_days': row.get('respawn_days', 0),
@@ -163,7 +170,7 @@ def _slot_from_legacy_row(row, terrain, source_identity, evidence):
         'radius': radius,
         'flight_space': terrain == 'air',
         'burrow_ground': terrain in GROUND_TERRAINS,
-        'corpse_route': terrain in WALKABLE_TERRAINS,
+        'corpse_route': terrain in CORPSE_TERRAINS,
         'first_day': row.get('first_day', 1),
         'respawn_days': row.get('respawn_days', 0),
         'source_identity': source_identity,
@@ -239,7 +246,7 @@ def all_slots(campaign_slots=CAMPAIGN_SLOTS, campaign_sources=CAMPAIGN_SOURCES,
 def candidate_profiles():
     """Return default-deny placement profiles for the non-boss candidate cohort."""
     profiles = []
-    for source_id, identity, lane, terrains, p1_equivalent in CANDIDATE_SPECS:
+    for source_id, identity, lane, terrains, p1_equivalent, requires_home in CANDIDATE_SPECS:
         equivalent = 'none' if p1_equivalent is None else str(p1_equivalent)
         cohort = P1_COHORT.get(p1_equivalent)
         profiles.append(_placement.normalize_profile({
@@ -247,10 +254,13 @@ def candidate_profiles():
             'terrains': list(terrains),
             'family_lane': lane,
             'cohort': cohort,
+            'requires_home': requires_home,
+            'requires_corpse_route': True,
             'accepted_gates': [],
             'notes': (f"P2 source_id {source_id}; lane-04 constraint seed; "
                       f"p1_equivalent {equivalent}; placement cohort {cohort}; "
-                      f"native placement gate pending family lane {lane}."),
+                      f"requires_home {requires_home}; native placement gate "
+                      f"pending family lane {lane}."),
         }))
     return profiles
 
