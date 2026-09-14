@@ -64,14 +64,25 @@ Performed:
 - Copied files are byte copies of the maintained native line that currently
   builds a full `pikmin_pc` in private worktree `output/native-lane26`
   (`[523/523]`, exe SHA-256 `83B319A1…`).
+- **Combined build of this candidate.** The candidate `engine/` snapshot was
+  reconstructed into a clean native build tree (`output/p2-lane27-build-src`,
+  1666 files) and configured at `output/p2-lane27-build`
+  (Ninja/Release/MinGW, `PIKMIN_NATIVE_JAUDIO=ON`) with the baseline
+  `CMakeLists.txt`. `cmake --build . --target pikmin_pc -j 6` →
+  `[529/529] Linking CXX executable bin\nectar.exe` (exit 0). `ninja -n` →
+  `no work to do.` Production executable SHA-256
+  `66CCDF87B15F79504371EAEC1688A4419A177226F86628DAFF83793F7A338630`. All 15
+  hard-lane translation units compiled (objects present: hardlanes, 7 bombsarai,
+  7 bigtreasure).
 
-Not performed:
+Limits:
 
-- **No combined build of this root candidate.** The root `engine/` snapshot has
-  no independent build here; combined-build and suite verification must run on
-  the maintained native line after lane 01 ingests this batch. In particular the
-  hard-lane sources call into `pc_p2_batch2`/family hooks whose baseline versions
-  were reconciled by #446, so a compile check is required before merge.
+- The rebuild reconstructs the root snapshot in a clean tree; it is not the
+  maintained native build and does not run any runtime/GL arena gate. The #128
+  visual/material gaps below are unchanged.
+- This verifies compilation and linking only. The hard-lane call sites still
+  interact with the #446-reconciled `pc_p2_batch2`/family hooks at runtime, so
+  lane 01 should still run the affected suite on the maintained native line.
 
 ## Known lane-27/runtime gaps (not closed by this candidate)
 
