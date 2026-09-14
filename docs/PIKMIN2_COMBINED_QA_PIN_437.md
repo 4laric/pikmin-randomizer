@@ -1,14 +1,14 @@
-> Admission-boundary correction: root `b18781aac82df648de1cca17bfcbb6d73e7020d1` supersedes ff838a2. The old pin.json is retained only as historical evidence; use pin-placement-fixed.json. Native commit and binary hash are unchanged.
+> Admission-boundary correction: root `99ca118733b6919548565af538971ff284df7daf` supersedes ff838a2. The old pin.json is retained only as historical evidence; use pin-slot-coverage.json. Native commit and binary hash are unchanged.
 
 # Integration-approved combined QA pin (#437)
 
 Approved for candidate runtime testing by Codex through shared account 4laric on 2026-09-14. This approval means a combined, built and reproducible QA baseline; it does not admit either identity or certify natural gameplay acceptance.
 
-- Root source: `b18781aac82df648de1cca17bfcbb6d73e7020d1` (clean at source commit; later pin-document commit changes docs only).
+- Root source: `99ca118733b6919548565af538971ff284df7daf` (clean at source commit; later pin-document commit changes docs only).
 - Native: `9b15d371cc63e7b0154bfc3dfc2cf5be9874c754` (clean).
 - Executable: `C:\Users\alari\pikmin-randomizer\output\p2-integration-9b15d371\nectar.exe`.
 - SHA-256: `6a0b31f2adafcdcf54af1766991e2bd7cf6a078ed5d0ce3c3fc5cbedc29252d5`.
-- Machine-readable pin: `C:/Users/alari/pikmin-randomizer/output/p2-integration-9b15d371/pin-placement-fixed.json`.
+- Machine-readable pin: `C:/Users/alari/pikmin-randomizer/output/p2-integration-9b15d371/pin-slot-coverage.json`.
 - Assets: `C:/Users/alari/bbft/dist/cohesion/pikmin/assets` (read-only input; normal candidate content staging still required).
 - Root integration tree: `C:/Users/alari/pikmin-randomizer/output/nectar-qol`; native: `C:/Users/alari/pikmin-randomizer/output/native-nectar-qol`.
 
@@ -41,3 +41,7 @@ The worker three-file hardening was applied once from output/p2-sweep437-root wi
 Worker679498b is integrated as0d682b6, separately from admission-override hardening. Follow-up b18781a makes evidence publication conditional on all validation fields, removes stale approval output on failure, and validates identities before mutating any approval state. Fresh targeted suite:128 tests/36 subtests PASS; revised C++ fixture syntax check PASS against native9b15d371. No fixture runtime or full replacement-fixture link is claimed. Native production executable remains unchanged.
 
 Placement module and receipt harness are now present on the maintained line. No real slot is approved by this merge: tests use synthetic evidence. A finite coordinate/delivery schema is not independent proof of a real delivery; review the referenced native log and exact generator before approving a slot. The 250-unit nearest-slot heuristic and caller-declared identities remain limitations; do not treat them as an exact generator witness or whole-family eligibility. Squad positioning in this fixture is an injected setup stimulus, even though combat/delivery are intended to proceed through the engine. The stalled natural route remains unresolved.
+
+## Lane 03/04 slot coverage follow-up
+
+Resolver and regression integrated together after coordination on #440 and #186. Missing identity coverage after target assignment now raises rather than silently dropping an admitted identity. Two identities sharing only one slot fail; two shared slots cover both deterministically. Fresh focused checks: 136 tests and 17 subtests PASS. Native executable unchanged. This is a fail-closed postcondition, not a replacement of the existing greedy allocator with a complete matching algorithm; constrained layouts may still reject a seed when another assignment could cover the cohort. No real slot or species is admitted by this change.
