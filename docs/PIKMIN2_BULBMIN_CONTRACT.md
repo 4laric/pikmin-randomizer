@@ -159,6 +159,61 @@ audit below).
 - The recruited dependent must be handed to the captain/ownership table
   (see [PIKMIN2_CAPTAIN_SQUAD_CONTRACT.md](PIKMIN2_CAPTAIN_SQUAD_CONTRACT.md))
   and the mother's bullet-lifecycle cleanup to lane 07.
-- Live Mother Bulbmin actor registration, `piki_kochappy` model binding, birth
-  and whistle hooks, and an arena run remain unscheduled family work (LeafChappy
-  is a KumaChappy descendant).
+- A live Mother Bulbmin actor still needs a LeafChappy/KumaChappy port module,
+  its generator/`enemyInfo` registration and the `piki_kochappy` model binding
+  (LeafChappy is a KumaChappy descendant). The driver below uses an existing
+  Chappy-family actor as an engine double in the meantime.
+
+## Opt-in driver (lane 11, #131)
+
+Native branch `opencode/p2-sub2-bulbmin` @ `1d16e381`, base `4f7485d5`. The
+prior slice left `pc_p2_bulbmin_birth_dependent()` compile-backed but uncalled;
+this slice gives the bridge a driver while staying inert by default:
+
+- Birth. `pc_p2_bulbmin_drive_birth()` runs the source
+  `LeafChappy::birthChildren()` ten-body loop
+  (`LeafChappy.cpp:138-151`) through `pikiMgr->birth()` and the bridge ledger.
+  `pc_p2_bulbmin_attach_mother()` is its caller: the existing Chappy-family
+  Kochappy registration supplies the mother stand-in, wired in
+  `pc_p2_preview.cpp` via `pc_p2_kochappy_first_registered()`
+  (`pc_p2_kochappy.cpp`). The engine-free `P2BulbminDriver` mirrors the loop so
+  the limit, cap and refusal behavior are testable without a scene.
+- Whistle. The real `Navi::callPikis` path
+  (`src/plugPikiKando/navi.cpp`) now calls `pc_p2_bulbmin_call_pikis()`, which
+  converts each wild dependent in radius in place and, when the lane-12 adapter
+  is live, claims it in the shared `P2CaptainOwnershipTable`
+  (`pc_p2_bulbmin.cpp`, `P2CaptainAdapter::ownershipTable()` in
+  `pc_p2_captain.h`). With no captain/NaviMgr it still converts the body.
+- Death/forget. `pc_p2_bulbmin_proxy_forget()` is called from
+  `pc_p2_kochappy_forget()` (Teki slot reuse/death) and releases only wild
+  dependents; `PikiMgr::birth()` calls `pc_p2_bulbmin_forget()` so a recycled
+  Piki slot cannot inherit a stale dependent id/leader.
+- Cave filter. `pc_p2_bulbmin_transition()` keeps only recruited Bulbmin on a
+  floor descent and removes all on a cave exit. It is proven at the driver
+  level; the live `pc_p2_cave.cpp` save path still writes species 0-4, so
+  carrying Bulbmin through a real checkpoint needs the schema-3 bump.
+
+Every entrypoint guards on `pc_p2_bulbmin_active()`; with no `p2-bulbmin.txt`
+and no `PIKMIN_P2_BULBMIN` value the engine behavior is unchanged.
+
+Evidence:
+
+```text
+g++ -std=c++17 -Wall -Wextra -Werror -I pc_port tools/test_p2_bulbmin_bridge.cpp -o test_p2_bulbmin_bridge.exe
+PASS P2_BULBMIN_BRIDGE   # parser, ledger, driver (10 cap, whistle, death, cave filter)
+```
+
+Private build `output/native-sub2-bulbmin-build` (Ninja, Release, JAudio ON)
+linked `[522/522] Linking CXX executable bin\nectar.exe`; `ninja -n pikmin_pc`
+-> `no work to do`; `nectar.exe` SHA-256
+`67D39E318D48446663803E00B14138067BDBC963AA9AA489DE55BB6884D878C1`. Patch
+bundle: `native-candidates/p2-sub2-bulbmin/`.
+
+**No live Bulbmin actor was spawned or observed.** The exact asset/actor blocker
+is the missing `LeafChappy`/`KumaChappy` module and `piki_kochappy` model: the
+only Chappy-family registration is Kochappy
+(`pc_p2_kochappy.cpp:31`, `TEKI_Chappy` selection at `pc_p2_kochappy.cpp:42`;
+`pc_p2_preview.cpp:173`), and `pc_p2_make_bulbmin` writes colour only
+(`pc_p2_species.cpp:59-68`). Rendering is intentionally not faked and no
+invincibility was added; the driver is proven by an engine-double harness, not a
+rendered arena run.
