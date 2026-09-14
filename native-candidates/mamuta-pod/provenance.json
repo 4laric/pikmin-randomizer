@@ -70,10 +70,12 @@
     "native_head": "a54f4af2",
     "fixture_exe_sha256": "2F53A233CDAB8BDDEE323E862F6457BCF07D56390D5735F11341D89B43F0DC8B",
     "runs": [
-      {"run": "output/mamuta-pod-accept-natural-02/44d88eb444ac4bfca909a0d46ac96217", "died_tick": 472, "carried": 1, "goal": 1, "receipt": "corpse:mamuta:221001", "value": 2, "pokos": 2},
-      {"run": "output/mamuta-pod-accept-natural-03/1a5f6fffdd5549948b4a2bfa07f21309", "died_tick": 500, "carried": 1, "goal": 1, "receipt": "corpse:mamuta:221001", "value": 2, "pokos": 2}
+      {"run": "output/mamuta-pod-accept-natural-02/44d88eb444ac4bfca909a0d46ac96217", "died_tick": 472, "carried": 1, "goal": 1, "receipt": "corpse:mamuta:221001", "value": 2, "pokos": 2, "class": "natural"},
+      {"run": "output/mamuta-pod-accept-natural-03/1a5f6fffdd5549948b4a2bfa07f21309", "died_tick": 500, "carried": 1, "goal": 1, "receipt": "corpse:mamuta:221001", "value": 2, "pokos": 2, "class": "natural"},
+      {"run": "output/mamuta-pod-accept-natural-04/1dee7ce8db174f85a13ee29753c814ec", "died_tick": 466, "carried": 1, "goal": 1, "receipt": "corpse:mamuta:221001", "value": 2, "pokos": 2, "class": "natural"},
+      {"run": "output/mamuta-pod-accept-assisted-02/57980bd6be8240468773c907fb9bcb4f", "died_tick": 553, "carried": 1, "goal": 1, "receipt": "corpse:mamuta:221001", "value": 2, "pokos": 2, "class": "assisted"}
     ],
-    "classify": "natural_kill/natural_corpse/natural_carry/pod_receipt = PASS (2/2 runs)",
+    "classify": "natural_kill/natural_corpse/natural_carry/pod_receipt = PASS (3/3 natural runs); assisted_carry/pod_receipt = PASS (1/1, natural_carry UNPROVEN)",
     "validator_fix": "validate() no longer anchors the P2_POD_RECEIPT regex to line start; native prefixes it with '[Pikipelago] '"
   },
   "not_claimed": [

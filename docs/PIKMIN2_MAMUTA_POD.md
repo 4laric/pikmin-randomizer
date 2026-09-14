@@ -101,26 +101,31 @@ no native code added by this batch).
 
 ## Accepted runtime runs (2026-09-14, real GL, 960x540 windowed)
 
-Two consecutive **natural** Pod runs PASS gate 5 on the approved native head
+Three consecutive **natural** Pod runs PASS gate 5 on the approved native head
 `a54f4af2` (fixture `output/mamuta-pod-fixture-natural-02`, exe sha256
-`2F53A233CDAB8BDDEE323E862F6457BCF07D56390D5735F11341D89B43F0DC8B`). The fixture
-pins the captain to the south approach with `resetPosition` at start: the approved
-baseline spawns it far east, so the squad engaged the Mamuta alone and was buried.
-The pickup, carry and Pod credit themselves are natural (no `Transport` action is
-assigned).
+`2F53A233CDAB8BDDEE323E862F6457BCF07D56390D5735F11341D89B43F0DC8B`), plus one
+**assisted** run (fixture `mamuta-pod-fixture-assisted-02`, exe
+`0A1BDB95...`). The fixture pins the captain to the south approach with
+`resetPosition` at start: the approved baseline spawns it far east, so the squad
+engaged the Mamuta alone and was buried. The pickup, carry and Pod credit
+themselves are natural in the unassisted runs (no `Transport` action is assigned).
 
-| run | stage | died | corpse | carried | goal | receipt | pokos |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| natural-02 | `output/mamuta-pod-accept-natural-02/44d88eb444ac4bfca909a0d46ac96217` | 472 | 1 | 1 | 1 | `corpse:mamuta:221001` value 2 | 2 |
-| natural-03 | `output/mamuta-pod-accept-natural-03/1a5f6fffdd5549948b4a2bfa07f21309` | 500 | 1 | 1 | 1 | `corpse:mamuta:221001` value 2 | 2 |
+| run | stage | died | corpse | carried | goal | receipt | pokos | class |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| natural-02 | `output/mamuta-pod-accept-natural-02/44d88eb444ac4bfca909a0d46ac96217` | 472 | 1 | 1 | 1 | `corpse:mamuta:221001` value 2 | 2 | natural |
+| natural-03 | `output/mamuta-pod-accept-natural-03/1a5f6fffdd5549948b4a2bfa07f21309` | 500 | 1 | 1 | 1 | `corpse:mamuta:221001` value 2 | 2 | natural |
+| natural-04 | `output/mamuta-pod-accept-natural-04/1dee7ce8db174f85a13ee29753c814ec` | 466 | 1 | 1 | 1 | `corpse:mamuta:221001` value 2 | 2 | natural |
+| assisted-02 | `output/mamuta-pod-accept-assisted-02/57980bd6be8240468773c907fb9bcb4f` | 553 | 1 | 1 | 1 | `corpse:mamuta:221001` value 2 | 2 | assisted |
 
-Observed (both): `[Pikipelago] P2_POD_READY treasure=dia_a_red value=180 weight=15
+Observed (all): `[Pikipelago] P2_POD_READY treasure=dia_a_red value=180 weight=15
 capacity=25`; `P2_MAMUTA_POD_DIED`; `P2_MAMUTA_POD_CORPSE`; carry grows to
 `transport=9` then `state=1 goal=1`; `[Pikipelago] P2_POD_RECEIPT
 id=corpse:mamuta:221001 value=2 new=1 pokos=2 seeds=0`; `P2_MAMUTA_POD_RESULT
 died=1 corpse=1 carried=1 goal=1 pokos=2 control_alive=1`; exit 0; no
-`[PC GX] DESYNC`. Classification: `natural_kill`/`natural_corpse`/
-`natural_carry`/`pod_receipt` = PASS.
+`[PC GX] DESYNC`. Classification: natural runs
+`natural_kill`/`natural_corpse`/`natural_carry`/`pod_receipt` = PASS (3/3); the
+assisted run `assisted_carry`/`pod_receipt` = PASS with `natural_carry` UNPROVEN
+(1/1). The `mamuta:221001` receipt was never duplicated.
 
 The validator previously missed this receipt because the native line is prefixed
 `[Pikipelago] `; `scripts/pikmin2_mamuta_pod_native.validate` no longer anchors to
