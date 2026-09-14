@@ -61,7 +61,7 @@ Full file lists and sample absent paths: `docs/PIKMIN2_RECONCILE_LEDGER.json`.
 
 ## Status
 
-Batches A (hard lanes), B (species root slice) and C (cannon/projectiles) are executed; batches D–E remain.
+Batches A (hard lanes), B (species root slice), C (cannon/projectiles) and D (lifecycle/reward) are executed; batch E remains.
 
 ### Batch A result — hard lanes merged, built, exported, unit-gated
 
@@ -90,8 +90,16 @@ Batches A (hard lanes), B (species root slice) and C (cannon/projectiles) are ex
 - Export: root `engine/` 21 files (4 modified hooks + 17 new). Affected-gate repeat: `run_p2_hardlane_tests.py` → **21/21 PASS** (16 hard-lane + 5 projectile).
 - Not done: real-GL cannon runtime and receiver/target-health mutation (the #425 handoff lists that as a shared-semantics follow-up). No gameplay PASS claimed.
 
+### Batch D result — lifecycle/reward reconciled
+
+- Root: integrated `9280a2f` (`experimental/pikmin2_reward_lifecycle.py`, `tests/test_pikmin2_reward_lifecycle.py`) → **8 passed**.
+- Native: the tolerant `pc_p2_batch2_rebind` and the read-only registration accessors from `opencode/p2-lifecycle-native` were **already present** in the review base (`9735870c`) — those two commits resolved empty and were skipped. Only `fb6389ce` (additive corpse-registry rebind: `pc_p2_preview_rebind_corpses` + `pc_p2_preview_corpse_count`) was new, applied as `90d87f53`.
+- Build `[17/17]` relink; `ninja -n` no work; exe SHA-256 `C7FA1F622972A83921CB1194BA9794F9F842B4D7787B904D09DB24FABD8DA21A`.
+- Export: root `engine/` 2 files (`pc_p2_preview.cpp`, `pc_p2_preview.h`).
+- `9280a2f`'s economy code was already identical in base; no duplicate-reward logic change. Real-GL duplicate-reward/revisit runtime remains untested.
+
 ### Remaining batches
 
-- D lifecycle/reward (#397), E converter/clock (#429/#431).
+- E converter/clock (#429/#431).
 - Native species modules: per-family merges (`opencode/p2-species-*`) rather than the 62-commit umbrella branch.
 - Real-GL fixtures require the reserved slot.

@@ -71,6 +71,24 @@ static Cargo* cargoFor(Pellet* p){for(auto& c:cargo)if(c.actor==p)return &c;retu
 int pc_p2_preview_cargo_count(){return int(cargo.size());}
 Pellet* pc_p2_preview_cargo_at(int index){return index>=0&&index<int(cargo.size())?cargo[index].actor:nullptr;}
 Shape* pc_p2_preview_cargo_shape(Pellet* p){Cargo* c=cargoFor(p);return c?c->shape:nullptr;}
+// Lifecycle (#397): re-scan live Chappy actors into the corpse receipt registry
+// without touching the economy or loaded shapes. Existing entries (including a
+// corpse already in flight) are preserved, so a second delivery after a respawn
+// resolves to the same generator-keyed receipt. Additive and behavior-neutral
+// for any caller that never invokes it.
+void pc_p2_preview_rebind_corpses() {
+    if(!pc_pikipelago_room_preview() || !podAnchor) return;
+    const size_t before=corpses.size();
+    Iterator enemies(tekiMgr);
+    CI_LOOP(enemies) {
+        Teki* enemy=static_cast<Teki*>(*enemies);
+        if(enemy && enemy->mTekiType==TEKI_Chappy && enemy->mGenerator)
+            corpses[static_cast<PelletView*>(enemy)]="corpse:"+std::to_string(enemy->mGenerator->_70);
+    }
+    std::printf("[Pikipelago] P2_POD_CORPSES_REBOUND before=%zu after=%zu\n",before,corpses.size());
+    std::fflush(stdout);
+}
+int pc_p2_preview_corpse_count(){return int(corpses.size());}
 // Build a fresh Parameters chain and CoreNode; never copy their intrusive links.
 // Values/immutable source name are copied individually. Configs live on App heap,
 // like the actors, for this one-floor process. They are not deleted on collection.
@@ -170,11 +188,7 @@ void pc_p2_preview_setup() {
         podShape=gameflow.loadShape("courses/pikmin2room/pod.mod",true);
         if(!podShape){std::fprintf(stderr,"P2 pod shape missing\n");std::abort();}
         for(int i=0;i<podShape->mTexAttrCount;++i)if(podShape->mTexAttrList[i].mTexture)podShape->mTexAttrList[i].mTexture->attach();
-        Iterator enemies(tekiMgr);CI_LOOP(enemies) {
-            Teki* enemy=static_cast<Teki*>(*enemies);
-            if(enemy && enemy->mTekiType==TEKI_Chappy && enemy->mGenerator)
-                corpses[static_cast<PelletView*>(enemy)]="corpse:"+std::to_string(enemy->mGenerator->_70);
-        }
+        pc_p2_preview_rebind_corpses();
         std::printf("[Pikipelago] P2_POD_READY treasure=%s value=%d weight=%d capacity=%d pokos=%d\n",id,treasureValue,weight,capacity,economy.total());
         podTitle("");
     }
