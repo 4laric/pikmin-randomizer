@@ -33,8 +33,11 @@ shared `4laric`.
 - Roll activation uses the source fp20=300 attack range without the narrow
   fp21=15° cone, because the P1 host has no wall-route roll and wandering rarely
   aligns the cone; the roll then steers at the target.
-- Turn LOOP_START invulnerability, the falling Rock/Egg child spawner and the
-  `dangomushi.brk` material loop are not reproduced.
+- Turn LOOP_START invulnerability is now applied through
+  `pc_p2_dangomushi_invulnerable` (wired into `InteractAttack`/`InteractBomb`;
+  see [the vulnerability-window slice](PIKMIN2_DANGOMUSHI_VULN_APPLY.md)); the
+  falling Rock/Egg child spawner and the `dangomushi.brk` material loop are not
+  reproduced.
 
 ## Files
 
@@ -68,6 +71,7 @@ shared `4laric`.
 
 ## Remaining work
 
-- Turn LOOP_START invulnerability, Rock/Egg child spawner, `.brk` material loop,
-  true `InteractPress` roll crush and `wallCallback` crash trigger.
+- Rock/Egg child spawner, `.brk` material loop, true `InteractPress` roll crush
+  and `wallCallback` crash trigger. The Turn invulnerability window is applied in
+  [the vulnerability-window slice](PIKMIN2_DANGOMUSHI_VULN_APPLY.md).
 - Death/corpse/cleanup (#397).

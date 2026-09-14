@@ -156,6 +156,13 @@ def validate(text, code=0):
         r'egg=(\d)', text)]
     window_open = any(s == 1 and i == 0 and 31.0 <= f <= 35.0 for f, s, i in windows)
     window_close = any(s == 0 and i == 1 and 106.0 <= f <= 112.0 for f, s, i in windows)
+    # Applied damage gate (#174/#376): pc_p2_dangomushi_invulnerable rejects an
+    # attack/bomb outside the stickable window and admits it inside. A rejected
+    # line proves the window is applied, not merely observed.
+    rejects = re.findall(
+        r'P2_DANGOMUSHI_DAMAGE_REJECTED generator=376003 stickable=0 invulnerable=1', text)
+    accepts = re.findall(
+        r'P2_DANGOMUSHI_DAMAGE_ACCEPTED generator=376003 stickable=1', text)
     hazard_rain = bool(hazards) and all(1 <= r <= 10 for r, _, _ in hazards) \
         and all(28.0 <= l <= 32.0 for _, l, _ in hazards)
     # The source roll window: the attack clip KEYEVENT_4 roll gate is frame 23 and
@@ -193,13 +200,17 @@ def validate(text, code=0):
         hit_bounded=0 < len(hits) <= max(1, len(rolls)),
         hit_in_roll_window=hit_in_roll,
         turn_window=window_open and window_close,
+        damage_rejected=bool(rejects),
+        damage_accepted=bool(accepts),
+        window_applied=bool(rejects),
         hazard_rain=hazard_rain,
         hazard_egg=(any(e == 1 for _, _, e in hazards) if hazards else False),
         autonomous_motion=spread > 5.0,
         no_extinction=not re.search(r'Extinction', text, re.IGNORECASE),
     )
     return dict(passed=all(v for k, v in checks.items()
-                           if k not in ('roll_frames', 'hit_pikmin', 'hazard_egg')),
+                           if k not in ('roll_frames', 'hit_pikmin', 'hazard_egg',
+                                        'damage_accepted')),
                 checks=checks, motion_spread=spread, exit_code=code,
                 unmeasured=['dangomushi.brk material loop',
                             'P2 InteractPress roll crush (mapped to InteractFlick)',
@@ -210,9 +221,13 @@ def validate(text, code=0):
                              'Roll contact is a single InteractFlick knockback+damage at the '
                              'first receiver inside the source fp22=100 hit radius, once per roll; '
                              'the P1 engine has no InteractPress collision callback.',
-                             'The Turn stickable window is observed from the hazard policy; the '
-                             'P1 host has no EB_Invulnerable flag, so it is not yet applied. '
-                             'Rock/Egg are spawn decisions; real births need lane 20 primitives.'])
+                             'The Turn stickable window is now applied: the host damage gate '
+                             '(pc_p2_dangomushi_invulnerable, wired through InteractAttack and '
+                             'InteractBomb) rejects attack/bomb damage outside the window and '
+                             'admits it inside. Acceptance still needs a real run showing '
+                             'DAMAGE_REJECTED and, when an attack lands in-window, DAMAGE_ACCEPTED.',
+                             'Rock/Egg are spawn decisions; real births still need the lane-20 '
+                             'host primitives to be requested from the DangoMushi hazard output.'])
 
 
 if __name__ == '__main__':
