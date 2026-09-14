@@ -1,0 +1,229 @@
+From 5a0cb4ee94c58aaefd3ce0b31d6cd845098bfe7b Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 02:40:55 -0400
+Subject: [PATCH 07/11] Add schema-3 cave checkpoint branch and correct schema
+ numbering (lane 11)
+
+---
+ pc_port/pc_p2_cave.cpp           | 14 +++++---
+ pc_port/pc_p2_species_schema.h   | 43 ++++++++++++++---------
+ tools/test_p2_species_schema.cpp | 58 ++++++++++++++++++--------------
+ 3 files changed, 69 insertions(+), 46 deletions(-)
+
+diff --git a/pc_port/pc_p2_cave.cpp b/pc_port/pc_p2_cave.cpp
+index ff070904..2fcc99ee 100644
+--- a/pc_port/pc_p2_cave.cpp
++++ b/pc_port/pc_p2_cave.cpp
+@@ -8,6 +8,7 @@
+ #include "pc_p2_purple.h"
+ #include "pc_p2_white.h"
+ #include "pc_p2_species.h"
++#include "pc_p2_species_schema.h"
+ #include "pc_bbft.h"
+ #include "Piki.h"
+ #include "PikiMgr.h"
+@@ -73,13 +74,13 @@ void pc_p2_cave_setup(){
+     if(!pc_pikipelago_room_preview())return;
+     std::ifstream in("p2-cave-entry.txt");if(!in)return;
+     std::string version,extra;int floor,count;float health;
+-    if(!(in>>version>>token>>floor>>health>>count) || (version!="P2_CAVE_ENTRY_1" && version!="P2_CAVE_ENTRY_2")
++    if(!(in>>version>>token>>floor>>health>>count) || (version!="P2_CAVE_ENTRY_1" && version!="P2_CAVE_ENTRY_2" && version!="P2_CAVE_ENTRY_3")
+         || token.size()!=32 || token.find_first_not_of("0123456789abcdef")!=std::string::npos
+         || (floor!=1 && floor!=2) || !std::isfinite(health) || health<=0 || health>1 || count<1 || count>100)
+         invalid("header");
+     std::vector<Survivor> squad;
+-    checkpointSchema=version=="P2_CAVE_ENTRY_2"?2:1;
+-    for(int i=0;i<count;++i){Survivor s;if(!(in>>s.color>>s.maturity) || s.color<0 || s.color>(checkpointSchema==2?4:3) || s.maturity<0 || s.maturity>2)invalid("Pikmin");squad.push_back(s);}
++    checkpointSchema=version=="P2_CAVE_ENTRY_3"?3:(version=="P2_CAVE_ENTRY_2"?2:1);
++    for(int i=0;i<count;++i){Survivor s;if(!(in>>s.color>>s.maturity) || !p2_schema_supports(checkpointSchema,s.color) || s.maturity<0 || s.maturity>2)invalid("Pikmin");squad.push_back(s);}
+     if(in>>extra || !in.eof())invalid("trailing data");
+     std::vector<Piki*> spawned;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(p->isAlive())spawned.push_back(p);}
+     if(spawned.size()!=squad.size())invalid("spawn count differs from checkpoint");
+@@ -90,6 +91,7 @@ void pc_p2_cave_setup(){
+         if(!pc_p2_set_species(p,squad[i].color))invalid("Pikmin species");
+         if(squad[i].color==3)pc_p2_make_purple(p);
+         if(squad[i].color==4)pc_p2_make_white(p);
++        if(squad[i].color==5)pc_p2_make_bulbmin(p);
+         std::printf("P2_CAVE_RESTORE species=%d maturity=%d\n",squad[i].color,squad[i].maturity);
+     }
+     Navi* n=naviMgr->getNavi();if(!n || C_NAVI_PARM(n,mHealth)<=0)invalid("captain unavailable");
+@@ -131,7 +133,7 @@ bool pc_p2_cave_checkpoint(bool confirm){
+         // Do not preserve an actor half-swallowed, converting or becoming a sprout.
+         if(state==PIKISTATE_Swallowed || state==PIKISTATE_Bury || state==PIKISTATE_Grow
+             || (p->getStickObject() && p->getStickObject()->mObjType!=OBJTYPE_Pellet))busy=true;
+-        const int species=pc_p2_species(p);if(species<0 || species>(checkpointSchema==2?4:3))invalid("runtime Pikmin species");
++        const int species=pc_p2_species(p);if(species<0 || !p2_schema_supports(checkpointSchema,species))invalid("runtime Pikmin species");
+         squad.push_back({species,p->mHappa});
+     }
+     Iterator heads(itemMgr->getPikiHeadMgr());CI_LOOP(heads){if(static_cast<PikiHeadItem*>(*heads)->isAlive())busy=true;}
+@@ -155,8 +157,10 @@ bool pc_p2_cave_checkpoint(bool confirm){
+         SDL_MessageBoxData data={SDL_MESSAGEBOX_INFORMATION,SDL_GL_GetCurrentWindow(),"Emergence Cave",message.c_str(),2,buttons,nullptr};int choice=0;
+         if(SDL_ShowMessageBox(&data,&choice)!=0 || choice!=1)return false;
+     }
++    int writeSchema=checkpointSchema;
++    for(const auto& s:squad){const int required=p2_schema_required_for_species(s.color);if(required>writeSchema)writeSchema=required;}
+     std::ostringstream out;out.precision(9);
+-    out<<"P2_CAVE_TRANSFER_"<<checkpointSchema<<'\n'<<token<<'\n'<<floorId<<' '<<health<<' '<<squad.size()<<'\n';
++    out<<"P2_CAVE_TRANSFER_"<<writeSchema<<'\n'<<token<<'\n'<<floorId<<' '<<health<<' '<<squad.size()<<'\n';
+     for(const auto& s:squad)out<<s.color<<' '<<s.maturity<<'\n';
+     std::string text=out.str();FILE* file=std::fopen("p2-cave-transfer.tmp","wb");
+     if(!file)return false;
+diff --git a/pc_port/pc_p2_species_schema.h b/pc_port/pc_p2_species_schema.h
+index 1cffa657..f733a7be 100644
+--- a/pc_port/pc_p2_species_schema.h
++++ b/pc_port/pc_p2_species_schema.h
+@@ -5,17 +5,16 @@
+ // storage, lane 11 (#131/#395). Coordinate the exact wire schema with #131 and
+ // the seed/manifest bridge (#132) before either endpoint changes.
+ //
+-// Requirement (docs/PIKMIN2_WHITE_SPEC.md / #395): define a versioned
+-// capability schema, retain old schema behavior, and reject unsupported or new
+-// species explicitly in old readers. Current campaign code accepts four
+-// species and `pc_p2_cave.cpp` accepts colors 0-3 under schema 1 / 0-4 under
+-// schema 2; Bulbmin needs schema 3 rather than widening schema 2, so an old
+-// reader never silently reinterprets an ID.
++// The numbering matches the existing cave wire format (`pc_p2_cave.cpp`
++// `P2_CAVE_ENTRY_1/2`, `P2_CAVE_TRANSFER_n`); schema 1 already carried Purple.
+ //
+-// Versions:
+-//   v1 (Legacy) : Blue, Red, Yellow
+-//   v2 (P2)     : + Purple, White
+-//   v3 (Bulbmin): + Bulbmin
++//   v1: Blue, Red, Yellow, Purple
++//   v2: + White
++//   v3: + Bulbmin
++//
++// Requirement (#395): retain old schema behavior and reject unsupported or new
++// species explicitly in old readers, so Bulbmin needs schema 3 rather than
++// widening schema 2 (which would let an old reader silently reinterpret an ID).
+ //
+ // Invariants enforced by the policy test:
+ //   1. An unknown version is rejected, never treated as the latest.
+@@ -24,9 +23,9 @@
+ //   4. Total population is the exact sum of its compartments.
+ 
+ enum P2SpeciesSchema {
+-    P2SpeciesSchemaLegacy = 1,
+-    P2SpeciesSchemaP2 = 2,
+-    P2SpeciesSchemaBulbmin = 3,
++    P2SpeciesSchemaPurple = 1,   // Blue, Red, Yellow, Purple
++    P2SpeciesSchemaWhite = 2,    // + White
++    P2SpeciesSchemaBulbmin = 3,  // + Bulbmin
+     P2SpeciesSchemaLatest = P2SpeciesSchemaBulbmin,
+ };
+ 
+@@ -34,13 +33,27 @@ enum P2SpeciesSchema {
+ // version itself is unknown.
+ inline int p2_schema_max_species(int version) {
+     switch (version) {
+-    case P2SpeciesSchemaLegacy: return P2SpeciesYellow;
+-    case P2SpeciesSchemaP2: return P2SpeciesWhite;
++    case P2SpeciesSchemaPurple: return P2SpeciesPurple;
++    case P2SpeciesSchemaWhite: return P2SpeciesWhite;
+     case P2SpeciesSchemaBulbmin: return P2SpeciesBulbmin;
+     default: return -1;
+     }
+ }
+ 
++// Minimum schema version that can carry `species`; -1 if the species is
++// unknown.
++inline int p2_schema_required_for_species(int species) {
++    switch (species) {
++    case P2SpeciesBlue:
++    case P2SpeciesRed:
++    case P2SpeciesYellow:
++    case P2SpeciesPurple: return P2SpeciesSchemaPurple;
++    case P2SpeciesWhite: return P2SpeciesSchemaWhite;
++    case P2SpeciesBulbmin: return P2SpeciesSchemaBulbmin;
++    default: return -1;
++    }
++}
++
+ inline bool p2_schema_valid(int version) {
+     return p2_schema_max_species(version) >= 0;
+ }
+diff --git a/tools/test_p2_species_schema.cpp b/tools/test_p2_species_schema.cpp
+index bb3b6464..6572edf5 100644
+--- a/tools/test_p2_species_schema.cpp
++++ b/tools/test_p2_species_schema.cpp
+@@ -2,45 +2,51 @@
+ #include <cassert>
+ #include <cstdio>
+ 
+-// Lane 11 policy test: versioned species/compartment schema must reject unknown
+-// versions and new species in old readers, and must conserve totals.
++// Lane 11 policy test: the versioned species/compartment schema must match the
++// cave wire numbering (v1 already carried Purple), reject unknown versions and
++// new species in old readers, and conserve totals.
+ int main() {
+-    assert(p2_schema_valid(P2SpeciesSchemaLegacy));
+-    assert(p2_schema_valid(P2SpeciesSchemaP2));
++    assert(p2_schema_valid(P2SpeciesSchemaPurple));
++    assert(p2_schema_valid(P2SpeciesSchemaWhite));
+     assert(p2_schema_valid(P2SpeciesSchemaBulbmin));
+     assert(!p2_schema_valid(0) && !p2_schema_valid(4) && !p2_schema_valid(-1));
+ 
+-    assert(p2_schema_max_species(P2SpeciesSchemaLegacy) == P2SpeciesYellow);
+-    assert(p2_schema_max_species(P2SpeciesSchemaP2) == P2SpeciesWhite);
++    assert(p2_schema_max_species(P2SpeciesSchemaPurple) == P2SpeciesPurple);
++    assert(p2_schema_max_species(P2SpeciesSchemaWhite) == P2SpeciesWhite);
+     assert(p2_schema_max_species(P2SpeciesSchemaBulbmin) == P2SpeciesBulbmin);
+     assert(p2_schema_max_species(99) == -1);
+ 
++    // Minimum version that can carry each species (used by the cave writer).
++    assert(p2_schema_required_for_species(P2SpeciesBlue) == 1);
++    assert(p2_schema_required_for_species(P2SpeciesPurple) == 1);
++    assert(p2_schema_required_for_species(P2SpeciesWhite) == 2);
++    assert(p2_schema_required_for_species(P2SpeciesBulbmin) == 3);
++    assert(p2_schema_required_for_species(99) == -1);
++
+     // Each version admits only its own species and older ones.
+-    assert(p2_schema_supports(P2SpeciesSchemaLegacy, P2SpeciesBlue));
+-    assert(p2_schema_supports(P2SpeciesSchemaLegacy, P2SpeciesYellow));
+-    assert(!p2_schema_supports(P2SpeciesSchemaLegacy, P2SpeciesPurple));
+-    assert(!p2_schema_supports(P2SpeciesSchemaLegacy, P2SpeciesBulbmin));
+-    assert(p2_schema_supports(P2SpeciesSchemaP2, P2SpeciesPurple));
+-    assert(p2_schema_supports(P2SpeciesSchemaP2, P2SpeciesWhite));
+-    assert(!p2_schema_supports(P2SpeciesSchemaP2, P2SpeciesBulbmin));
++    assert(p2_schema_supports(P2SpeciesSchemaPurple, P2SpeciesPurple));
++    assert(!p2_schema_supports(P2SpeciesSchemaPurple, P2SpeciesWhite));
++    assert(!p2_schema_supports(P2SpeciesSchemaPurple, P2SpeciesBulbmin));
++    assert(p2_schema_supports(P2SpeciesSchemaWhite, P2SpeciesWhite));
++    assert(!p2_schema_supports(P2SpeciesSchemaWhite, P2SpeciesBulbmin));
+     assert(p2_schema_supports(P2SpeciesSchemaBulbmin, P2SpeciesBulbmin));
+     assert(!p2_schema_supports(99, P2SpeciesBlue));
+ 
+     // Old readers keep working and reject a newer species explicitly.
+-    P2SpeciesCounts legacy;
+-    legacy.count[P2SpeciesBlue] = 7;
+-    legacy.count[P2SpeciesYellow] = 3;
+-    assert(p2_schema_validate(P2SpeciesSchemaLegacy, legacy));
+-    assert(p2_schema_total(legacy) == 10);
+-
+-    P2SpeciesCounts withPurple = legacy;
+-    withPurple.count[P2SpeciesPurple] = 1;
+-    assert(!p2_schema_validate(P2SpeciesSchemaLegacy, withPurple)); // v1 cannot carry Purple
+-    assert(p2_schema_validate(P2SpeciesSchemaP2, withPurple));
+-
+-    P2SpeciesCounts withBulbmin = withPurple;
++    P2SpeciesCounts v1;
++    v1.count[P2SpeciesBlue] = 7;
++    v1.count[P2SpeciesPurple] = 3;
++    assert(p2_schema_validate(P2SpeciesSchemaPurple, v1));
++    assert(p2_schema_total(v1) == 10);
++
++    P2SpeciesCounts withWhite = v1;
++    withWhite.count[P2SpeciesWhite] = 1;
++    assert(!p2_schema_validate(P2SpeciesSchemaPurple, withWhite)); // v1 cannot carry White
++    assert(p2_schema_validate(P2SpeciesSchemaWhite, withWhite));
++
++    P2SpeciesCounts withBulbmin = withWhite;
+     withBulbmin.count[P2SpeciesBulbmin] = 2;
+-    assert(!p2_schema_validate(P2SpeciesSchemaP2, withBulbmin)); // v2 cannot carry Bulbmin
++    assert(!p2_schema_validate(P2SpeciesSchemaWhite, withBulbmin)); // v2 cannot carry Bulbmin
+     assert(p2_schema_validate(P2SpeciesSchemaBulbmin, withBulbmin));
+     assert(p2_schema_total(withBulbmin) == 13);
+ 
+-- 
+2.55.0.windows.3
+

@@ -1,0 +1,265 @@
+From 7e2ab032ff350fb344094ebcbb43ff7111decf68 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 02:55:09 -0400
+Subject: [PATCH 08/11] Add P2 electric/gas Pikmin receivers via species
+ capability matrix (lane 10)
+
+---
+ include/Interactions.h                | 52 +++++++++++++++++++++
+ src/plugPikiKando/interactBattle.cpp  | 67 +++++++++++++++++++++++++++
+ src/plugPikiKando/navi.cpp            | 28 +++++++++++
+ tools/test_p2_elemental_receivers.cpp | 55 ++++++++++++++++++++++
+ 4 files changed, 202 insertions(+)
+ create mode 100644 tools/test_p2_elemental_receivers.cpp
+
+diff --git a/include/Interactions.h b/include/Interactions.h
+index ec752c13..ea188025 100644
+--- a/include/Interactions.h
++++ b/include/Interactions.h
+@@ -222,6 +222,33 @@ struct InteractChangeHappa : public Interaction {
+ 	int mHappa; // _08, flower stage to change to
+ };
+ 
++/**
++ * @brief P2 electric-shock receiver.
++ *
++ * Source: `InteractDenki : public InteractWind` (`include/Game/Interaction.h`),
++ * `actPiki` rejects Yellow/Bulbmin and requests `PIKISTATE_DenkiDying`
++ * (`native/pikmin2-research/src/plugProjectKandoU/interactPiki.cpp:334,347`).
++ * This P1-derived port has no `PIKISTATE_Denki*` state, so the receiver routes
++ * non-immune Piki to the closest existing death path and records the missing
++ * P2 state (#170/#408, see docs/PIKMIN2_RECEIVER_PATHS.md).
++ */
++struct InteractDenki : public Interaction {
++	InteractDenki(Creature* owner, f32 force, Vector3f* direction)
++	    : Interaction(owner)
++	    , mDamage(force)
++	    , mDirection(*direction)
++	{
++	}
++
++	virtual bool actPiki(Piki*) immut; // _0C
++	virtual bool actNavi(Navi*) immut; // _14
++
++	// _00     = VTBL
++	// _00-_08 = Interaction
++	f32 mDamage;         // _08
++	Vector3f mDirection; // _0C
++};
++
+ /**
+  * @brief TODO
+  */
+@@ -283,6 +310,31 @@ struct InteractFlute : public Interaction {
+ 	// TODO: members
+ };
+ 
++/**
++ * @brief P2 gas receiver.
++ *
++ * Source: `InteractGas` (`include/Game/Interaction.h`), `actPiki` checks
++ * `Piki::gasInvicible()` and rejects White/Bulbmin, otherwise requesting
++ * `PIKISTATE_Panic` with `PIKIPANIC_Gas`
++ * (`native/pikmin2-research/src/plugProjectKandoU/interactPiki.cpp:531,543`).
++ * This P1-derived port has no panic/gas state or `gasInvicible` timer, so the
++ * receiver routes non-immune Piki to the closest existing panic-style path and
++ * records the missing inputs (#170/#408, see docs/PIKMIN2_RECEIVER_PATHS.md).
++ */
++struct InteractGas : public Interaction {
++	inline InteractGas(Creature* owner, f32 damage)
++	    : Interaction(owner)
++	{
++		mDamage = damage;
++	}
++
++	virtual bool actPiki(Piki*) immut; // _0C
++
++	// _00     = VTBL
++	// _00-_08 = Interaction
++	f32 mDamage; // _08
++};
++
+ /**
+  * @brief TODO
+  */
+diff --git a/src/plugPikiKando/interactBattle.cpp b/src/plugPikiKando/interactBattle.cpp
+index 356943f2..14475f4a 100644
+--- a/src/plugPikiKando/interactBattle.cpp
++++ b/src/plugPikiKando/interactBattle.cpp
+@@ -206,6 +206,73 @@ bool InteractFire::actPiki(Piki* piki) immut
+ 	return false;
+ }
+ 
++/**
++ * @todo: Documentation
++ *
++ * P2 electric receiver (#170/#408). Source `InteractDenki::actPiki`
++ * (native/pikmin2-research/src/plugProjectKandoU/interactPiki.cpp:334) rejects
++ * Yellow and Bulbmin and otherwise transits to `PIKISTATE_DenkiDying`. This
++ * port has no `PIKISTATE_Denki*` state: non-immune Piki take the closest
++ * existing lethal path (`PIKISTATE_Dying`) and the missing P2 state is logged
++ * and recorded as the blocker. The routing is matrix-driven, so P2 Bulbmin is
++ * covered without a separate colour test.
++ */
++bool InteractDenki::actPiki(Piki* piki) immut
++{
++	if (!piki->isAlive()) {
++		return false;
++	}
++
++	int state = piki->getState();
++	if (state == PIKISTATE_Dying || state == PIKISTATE_Dead) {
++		return false;
++	}
++
++	if (p2_species_immune(pc_p2_species(piki), P2HazardElectric)) {
++		return false;
++	}
++
++	PRINT("P2_RECV_DENKI species=%d accepted=1 p2_state=PIKISTATE_DenkiDying missing using=PIKISTATE_Dying\n",
++	      pc_p2_species(piki));
++	piki->mFSM->transit(piki, PIKISTATE_Dying);
++	return true;
++}
++
++/**
++ * @todo: Documentation
++ *
++ * P2 gas receiver (#170/#408). Source `InteractGas::actPiki`
++ * (native/pikmin2-research/src/plugProjectKandoU/interactPiki.cpp:531) checks
++ * `Piki::gasInvicible()` and rejects White and Bulbmin, otherwise requesting
++ * `PIKISTATE_Panic` with `PIKIPANIC_Gas`. This port has neither a panic/gas
++ * state nor a gas-invincibility timer: non-immune Piki take the closest
++ * existing panic-style path (`PIKISTATE_Fired`) and both missing inputs are
++ * logged and recorded as the blocker. Routing stays matrix-driven so P2
++ * Bulbmin is covered.
++ */
++bool InteractGas::actPiki(Piki* piki) immut
++{
++	if (!piki->isAlive()) {
++		return false;
++	}
++
++	int state = piki->getState();
++	if (state == PIKISTATE_Dying || state == PIKISTATE_Dead || state == PIKISTATE_Fired) {
++		return false;
++	}
++
++	if (p2_species_immune(pc_p2_species(piki), P2HazardGas)) {
++		return false;
++	}
++
++	PRINT("P2_RECV_GAS species=%d accepted=1 p2_state=PIKISTATE_Panic(gas) missing using=PIKISTATE_Fired "
++	      "gasInvicible=missing\n",
++	      pc_p2_species(piki));
++	piki->changeMode(0, piki->mNavi);
++	piki->mFSM->transit(piki, PIKISTATE_Fired);
++	return true;
++}
++
+ /**
+  * @todo: Documentation
+  */
+diff --git a/src/plugPikiKando/navi.cpp b/src/plugPikiKando/navi.cpp
+index f30c0071..88d8bf87 100644
+--- a/src/plugPikiKando/navi.cpp
++++ b/src/plugPikiKando/navi.cpp
+@@ -2569,6 +2569,34 @@ bool InteractWind::actNavi(Navi* navi) immut
+ 	return true;
+ }
+ 
++/**
++ * @todo: Documentation
++ *
++ * P2 electric Navi receiver (#408). Source `InteractDenki::actNavi`
++ * (native/pikmin2-research/src/plugProjectKandoU/interactNavi.cpp:85) flicks
++ * the captain with the source force/direction unless Olimar has the Dream
++ * Material. The port has no Dream Material gate, so this mirrors the existing
++ * `InteractFire::actNavi`/`InteractBubble::actNavi` flick behavior.
++ */
++bool InteractDenki::actNavi(Navi* navi) immut
++{
++	if (navi->mStateMachine->getNaviState(navi)->invincible(navi)) {
++		return false;
++	}
++
++	navi->mHealth -= mDamage;
++	navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
++	navi->startDamageEffect();
++	rumbleMgr->start(RUMBLE_Unk1, 0, nullptr);
++	SeSystem::playPlayerSe(SE_FIRED);
++	if (navi->mHealth <= 1.0f) {
++		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
++	}
++	navi->mFlickIntensity = 2.0f;
++	navi->mStateMachine->transit(navi, NAVISTATE_Flick);
++	return true;
++}
++
+ /**
+  * @todo: Documentation
+  */
+diff --git a/tools/test_p2_elemental_receivers.cpp b/tools/test_p2_elemental_receivers.cpp
+new file mode 100644
+index 00000000..e9bd8935
+--- /dev/null
++++ b/tools/test_p2_elemental_receivers.cpp
+@@ -0,0 +1,55 @@
++#include "pc_p2_species_policy.h"
++#include <cassert>
++#include <cstdio>
++
++// Lane 10 electric/gas receiver test (#170/#408). The new P2 receivers route
++// immunity through the lane-11 matrix exactly like the existing Fire/Bubble
++// receivers:
++//   InteractDenki::actPiki -> p2_species_immune(..., P2HazardElectric)
++//   InteractGas::actPiki   -> p2_species_immune(..., P2HazardGas)
++// A true `*_immune` result is the receiver returning false (rejecting the
++// stimulus); false means it applies the shock/gas reaction.
++// Source basis (native/pikmin2-research/src/plugProjectKandoU/interactPiki.cpp):
++//   InteractDenki::actPiki :334 rejects unless Yellow or Bulbmin    (:347)
++//   InteractGas::actPiki   :531 rejects unless White or Bulbmin     (:543)
++// This is an engine-double test: it pins the receiver decision table without
++// linking the engine (the receiver itself is compiled by the pikmin_pc build).
++static bool denki_immune(int species) { return p2_species_immune(species, P2HazardElectric); }
++static bool gas_immune(int species) { return p2_species_immune(species, P2HazardGas); }
++
++int main() {
++    // Electric: only Yellow and Bulbmin are immune (receiver returns false);
++    // every other species is accepted.
++    assert(denki_immune(P2SpeciesYellow));
++    assert(denki_immune(P2SpeciesBulbmin));
++    assert(!denki_immune(P2SpeciesRed));
++    assert(!denki_immune(P2SpeciesBlue));
++    assert(!denki_immune(P2SpeciesPurple));
++    assert(!denki_immune(P2SpeciesWhite));
++
++    // Gas: only White and Bulbmin are immune.
++    assert(gas_immune(P2SpeciesWhite));
++    assert(gas_immune(P2SpeciesBulbmin));
++    assert(!gas_immune(P2SpeciesRed));
++    assert(!gas_immune(P2SpeciesBlue));
++    assert(!gas_immune(P2SpeciesYellow));
++    assert(!gas_immune(P2SpeciesPurple));
++
++    // Full table keyed by P2PikminSpecies order (Blue, Red, Yellow, Purple,
++    // White, Bulbmin): the immune sets must not leak to other species.
++    static const bool electricImmune[] = { false, false, true, false, false, true };
++    static const bool gasImmune[]      = { false, false, false, false, true, true };
++    for (int s = P2SpeciesBlue; s <= P2SpeciesBulbmin; ++s) {
++        assert(denki_immune(s) == electricImmune[s]);
++        assert(gas_immune(s) == gasImmune[s]);
++    }
++
++    // Unknown species are never treated as immune, so the receiver accepts.
++    assert(!denki_immune(-1));
++    assert(!denki_immune(99));
++    assert(!gas_immune(-1));
++    assert(!gas_immune(99));
++
++    std::puts("PASS P2_ELEMENTAL_RECEIVERS");
++    return 0;
++}
+-- 
+2.55.0.windows.3
+
