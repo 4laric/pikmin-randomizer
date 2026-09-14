@@ -64,14 +64,41 @@ P2_CAVE_READY floor=2 survivors=19 health=0.625
 Log: `output/p2-lanes1011-restore-01/native-restore.log`. No `Invalid P2 cave
 entry` abort and no extinction.
 
+## Automated two-process restart
+
+`experimental/pikmin2_cave_restart_runtime.py` builds a private replacement-main
+fixture (`cc4a8acd...`) that drives the real boundary without a human F6: after
+the preview is ready and the captain is in `NAVISTATE_Walk`, it stands the
+captain at the Research Pod and calls `pc_p2_cave_checkpoint(false)`. Process 1
+writes the transfer and exits 42; the campaign supervisor validates it and
+re-serializes the entry; process 2 restores it. `validate()` gate reports
+`passed=true` on all ten checks (`output/p2-lanes1011-cave-restart-run-02/`).
+
+```text
+# process 1 (write), 960x540
+P2_LANE11_SQUAD red=16 yellow=1 purple=1 bulbmin=1
+P2_CAVE_TRANSFER floor=2 survivors=19 health=0.625 failed=0
+P2_LANE11_WRITE ok=1
+# p2-cave-transfer.txt
+P2_CAVE_TRANSFER_3
+...
+2 0.625 19
+16 lines of "1 0", then "2 1", "3 2", "5 0"
+# process 2 (read), 960x540
+P2_CAVE_RESTORE species=5 maturity=0
+P2_LANE11_READ bulbmin=1 observed=60
+PASS P2_LANE11_RESTORE
+```
+
+The only deviation is the skipped F6 confirmation dialog (`confirm=false`); the
+guarded checkpoint handoff and restore are the engine's. Unit tests:
+`tests/test_pikmin2_cave_restart_runtime.py`.
+
 ## Provenance and remaining
 
 - Native `opencode/p2-lanes1011-elecbug` @ `416ccb49` (patches
   `native-candidates/p2-lanes1011-elecbug/0001..0005`).
 - Root doc and tests on `opencode/p2-lanes1011-root`.
-- The **write** half is proven by the gated wire encoder (the engine's own
-  function) and the campaign serializer tests. A fully automated live
-  **two-process** run (write in process 1, restore in process 2) needs the
-  lifecycle fixture/campaign to drive the F6 boundary; the fixture source is not
-  retained in the repo, and input injection is not automated. That is the named
-  remaining dependency for a supervisor-driven end-to-end restart.
+- Remaining is breadth, not this path: production cave placement, the full
+  authored floor/treasure roster and the surface roundtrip (#114) stay with the
+  cave lane.
