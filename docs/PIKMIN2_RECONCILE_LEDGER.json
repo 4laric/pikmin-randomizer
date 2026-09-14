@@ -1,0 +1,189 @@
+{
+  "schema": "p2-candidate-reconcile-1",
+  "base": "origin/codex/p2-main-review",
+  "base_subject": "e514e6d Document 33 numbered P2 lanes and DeepSeek dispatch contracts (#435)",
+  "candidate_count": 8,
+  "not_ancestor_of_base": [
+    "hard-lanes",
+    "species-ground-six",
+    "cannon",
+    "lifecycle-forget",
+    "lifecycle-reward",
+    "hikari-48",
+    "anim-clock"
+  ],
+  "expected_modules_absent_from_base": [
+    "hard-lanes:engine/pc_port/pc_p2_hardlanes.cpp",
+    "anim-clock:experimental/pikmin2_animation_clock.py"
+  ],
+  "candidates": [
+    {
+      "name": "hard-lanes",
+      "revision": "87204df",
+      "issues": "#244/#245/#246",
+      "expected_modules": {
+        "engine/pc_port/pc_p2_hardlanes.cpp": "absent-from-base",
+        "engine/pc_port/pc_p2_bombsarai.cpp": "not-in-candidate"
+      },
+      "exists": true,
+      "subject": "87204df 2026-09-13 engine: export maintained native line with hard-lanes (#244/#245/#246) unified with batch-2 visuals",
+      "ancestor_of_base": false,
+      "changed_file_count": 90,
+      "files_present_identical": 15,
+      "files_absent_from_base": 56,
+      "files_differ": 19,
+      "absent_examples": [
+        "engine/pc_port/pc_p2_bigtreasure_attacks.cpp",
+        "engine/pc_port/pc_p2_bigtreasure_attacks.h",
+        "engine/pc_port/pc_p2_bigtreasure_fsm.cpp",
+        "engine/pc_port/pc_p2_bigtreasure_fsm.h",
+        "engine/pc_port/pc_p2_bigtreasure_host.cpp",
+        "engine/pc_port/pc_p2_bigtreasure_host.h",
+        "engine/pc_port/pc_p2_bigtreasure_map_trace.cpp",
+        "engine/pc_port/pc_p2_bigtreasure_map_trace.h",
+        "engine/pc_port/pc_p2_bigtreasure_motion.cpp",
+        "engine/pc_port/pc_p2_bigtreasure_motion.h",
+        "engine/pc_port/pc_p2_bigtreasure_visual.cpp",
+        "engine/pc_port/pc_p2_bigtreasure_visual.h",
+        "engine/pc_port/pc_p2_bombsarai_arena.cpp",
+        "engine/pc_port/pc_p2_bombsarai_arena.h",
+        "engine/pc_port/pc_p2_bombsarai_blast.cpp"
+      ]
+    },
+    {
+      "name": "species-ground-six",
+      "revision": "86aa159",
+      "issues": "#407 #165",
+      "expected_modules": {
+        "engine/pc_port/pc_p2_sokkuri.cpp": "not-in-candidate",
+        "experimental/pikmin2_sokkuri_behavior.py": "identical-in-base"
+      },
+      "exists": true,
+      "subject": "86aa159 2026-09-13 species: Mar (flying) + Tadpole (aquatic) source slices, harness/tests/docs (#407, #166, #167)",
+      "ancestor_of_base": false,
+      "changed_file_count": 8,
+      "files_present_identical": 0,
+      "files_absent_from_base": 6,
+      "files_differ": 2,
+      "absent_examples": [
+        "docs/PIKMIN2_MAR_NATIVE.md",
+        "docs/PIKMIN2_TADPOLE_NATIVE.md",
+        "experimental/pikmin2_mar_behavior.py",
+        "experimental/pikmin2_tadpole_behavior.py",
+        "tests/test_pikmin2_mar_behavior.py",
+        "tests/test_pikmin2_tadpole_behavior.py"
+      ]
+    },
+    {
+      "name": "cannon",
+      "revision": "656c556",
+      "issues": "#406 #424 #425",
+      "expected_modules": {
+        "engine/pc_port/pc_p2_cannon.cpp": "not-in-candidate",
+        "experimental/pikmin2_cannon_projectile.py": "not-in-candidate"
+      },
+      "exists": true,
+      "subject": "656c556 2026-09-13 merge: Fkabuto buried emergence docs (#427)",
+      "ancestor_of_base": false,
+      "changed_file_count": 1,
+      "files_present_identical": 0,
+      "files_absent_from_base": 1,
+      "files_differ": 0,
+      "absent_examples": [
+        "docs/PIKMIN2_KABUTO_CANNON.md"
+      ]
+    },
+    {
+      "name": "lifecycle-forget",
+      "revision": "6b71b14",
+      "issues": "#397",
+      "expected_modules": {
+        "engine/pc_port/pc_p2_batch2.cpp": "differs-in-base"
+      },
+      "exists": true,
+      "subject": "6b71b14 2026-09-13 pikmin2: release corpse to exercise forget-on-reuse and identity reuse (#397)",
+      "ancestor_of_base": false,
+      "changed_file_count": 2,
+      "files_present_identical": 0,
+      "files_absent_from_base": 0,
+      "files_differ": 2,
+      "absent_examples": []
+    },
+    {
+      "name": "lifecycle-reward",
+      "revision": "9280a2f",
+      "issues": "#397",
+      "expected_modules": {
+        "engine/pc_port/pc_p2_economy.cpp": "identical-in-base"
+      },
+      "exists": true,
+      "subject": "9280a2f 2026-09-13 pikmin2: live duplicate-reward lifecycle test for the Pod economy (#397)",
+      "ancestor_of_base": false,
+      "changed_file_count": 2,
+      "files_present_identical": 0,
+      "files_absent_from_base": 2,
+      "files_differ": 0,
+      "absent_examples": [
+        "experimental/pikmin2_reward_lifecycle.py",
+        "tests/test_pikmin2_reward_lifecycle.py"
+      ]
+    },
+    {
+      "name": "lifecycle-native",
+      "revision": "fb6389ce",
+      "issues": "#397",
+      "expected_modules": {
+        "engine/pc_port/pc_p2_batch2.cpp": "unknown"
+      },
+      "exists": false,
+      "note": "commit not in this repository (likely native-only)"
+    },
+    {
+      "name": "hikari-48",
+      "revision": "33c5cac",
+      "issues": "#429",
+      "expected_modules": {
+        "experimental/pikmin2_convert.py": "differs-in-base"
+      },
+      "exists": true,
+      "subject": "33c5cac 2026-09-13 converter: opt-in static fallback for J3D billboard shapes (#429)",
+      "ancestor_of_base": false,
+      "changed_file_count": 8,
+      "files_present_identical": 0,
+      "files_absent_from_base": 3,
+      "files_differ": 5,
+      "absent_examples": [
+        "docs/PIKMIN2_BILLBOARD_FALLBACK.md",
+        "tests/test_pikmin2_convert_billboard.py",
+        "tests/test_pikmin2_convert_normals.py"
+      ]
+    },
+    {
+      "name": "anim-clock",
+      "revision": "cb253f5",
+      "issues": "#431",
+      "expected_modules": {
+        "engine/pc_port/pc_p2_animation.h": "identical-in-base",
+        "experimental/pikmin2_animation_clock.py": "absent-from-base"
+      },
+      "exists": true,
+      "subject": "cb253f5 2026-09-13 engine: bounded sampled-animation clock/event contract + native handoff (#431, #128)",
+      "ancestor_of_base": false,
+      "changed_file_count": 8,
+      "files_present_identical": 0,
+      "files_absent_from_base": 8,
+      "files_differ": 0,
+      "absent_examples": [
+        "docs/PIKMIN2_SAMPLED_CLOCK_EVENTS.md",
+        "experimental/pikmin2_animation_clock.py",
+        "native-candidates/sampled-clock-128/0001-pc_port-header-only-sampled-animation-clock-event-.patch",
+        "native-candidates/sampled-clock-128/README.md",
+        "native-candidates/sampled-clock-128/pc_p2_sampled_clock.h",
+        "native-candidates/sampled-clock-128/provenance.json",
+        "native-candidates/sampled-clock-128/test_p2_sampled_clock.cpp",
+        "tests/test_pikmin2_animation_clock.py"
+      ]
+    }
+  ],
+  "note": "Read-only audit. Confirms candidate presence/ancestry; does not merge, build or export."
+}
