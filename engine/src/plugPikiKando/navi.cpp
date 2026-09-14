@@ -1215,6 +1215,7 @@ void Navi::callPikis(f32 radius, bool recallWorkers)
 			piki->getState();
 		}
 
+#if !defined(PIKI_PC_PORT)
 		if (AICONST.mDoPluckWithCursor() && (mNaviID == piki->mPlayerId || piki->mPlayerId == -1) && piki->isBuried()
 		    && piki->getState() == PIKISTATE_Bury && dist < radius) {
 			piki->mNavi = this;
@@ -1222,8 +1223,11 @@ void Navi::callPikis(f32 radius, bool recallWorkers)
 			// Why would you put an `ERROR` here?  Just don't enable it??
 			TERNARY_BUILD_MATCHING(ERROR, PRINT)("cursor nuki!\n");
 		}
+#endif
 	}
 
+#if !defined(PIKI_PC_PORT)
+	// PC whistle plucking uses the optional, staggered Gather-state helper.
 	Iterator iterSprout(itemMgr->getPikiHeadMgr());
 	CI_LOOP(iterSprout)
 	{
@@ -1256,6 +1260,7 @@ void Navi::callPikis(f32 radius, bool recallWorkers)
 			}
 		}
 	}
+#endif
 
 	if (!tekiMgr) {
 		return;

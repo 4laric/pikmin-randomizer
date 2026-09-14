@@ -442,6 +442,7 @@ struct NaviFunbariState : public NaviState {
 struct NaviGatherState : public NaviState {
 #if defined(PIKI_PC_PORT)
 	PcWhistleTapState mTapState;
+    float mNextWhistlePluckTime = 0.0f;
 #endif
 	NaviGatherState();
 

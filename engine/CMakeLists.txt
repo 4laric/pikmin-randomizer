@@ -168,6 +168,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_purple_motion.cpp
     pc_port/pc_p2_purple_impact.cpp
     pc_port/pc_p2_purple_direct.cpp
+    pc_port/pc_whistle_pluck.cpp
     pc_port/pc_p2_purple_flight.cpp
     pc_port/pc_p2_purple_feedback.cpp
     pc_port/pc_p2_kochappy_stun.cpp

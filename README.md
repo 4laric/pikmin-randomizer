@@ -1,5 +1,9 @@
 Pikmin 2 development: [enemy import pipeline and parallel lane handoff](docs/PIKMIN2_ENEMY_IMPORT_PIPELINE.md). This experimental track remains outside the first Pikipelago release.
 
+## Optional Whistle Pluck (#452)
+
+Enable **F1 → Mods → Whistle Pluck**, then return and select **Save**. Off by default. A whistle plucks nearby grounded sprouts with the native self-unbury animation; holding brings them up at least 80 ms apart, and releasing stops further plucks. Color, maturity and experimental Purple/White identity are preserved, with normal squad joining and population limits. See [behavior and verification](docs/WHISTLE_PLUCK.md). Requires the updated native executable; no seed or save migration.
+
 ## Emperor Bulblax finale (#86)
 
 New AP/CLI seeds default to goal: emperor_bulblax (CLI --goal emperor_bulblax). At 25 repair rewards the Emperor can emerge normally; his completed death animation records the goal. Final Trial Access remains separate. The Secret Safe requires 25 repairs in logic to prevent placing needed repairs behind the boss gate. No new reward/check is added. goal: repairs retains immediate completion at 25; existing manifests and programmatic generate() defaults remain repair-only.

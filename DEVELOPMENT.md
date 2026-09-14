@@ -591,3 +591,20 @@ Validation: Release game/probe build; 102 Python tests + 8 subtests; compiled Pr
 APWorld 0.31.0 adds `prerelease_trap_weight` (0–10, disabled by default). Native benefit mode bit 16 and `prerelease-trap-v1` negotiate the ninth benefit counter and seventh consumable counter; campaign metadata version 5 is used only for enabled seeds. Legacy modes remain unchanged. BossMgr reserves extra spiders per area, parks original Pom/Geyzer nodes, and restores the same actors after 60 active seconds or before save/day-end/teardown. Empty areas and occupied buds defer activation. Temporary spiders have no generator or rewards.
 
 Validation: Release native/probe build; 104 pytest tests and 8 subtests; all modes 17–32 receipt/reconnect/checkpoint/retraction tests; legacy benefits and Progg persistence probes; 30 packaged AP restrictive fills. Real-engine fixture exercises paused receipt, paused timer and full 60-second expiry/restoration. Run `scripts/test_prerelease_native.py` against `tools/preview_prerelease.cpp` built by `tools/verify_prerelease_windows.py`. Manual gameplay coverage of killing temporary spiders, occupied buds and saving during the effect remains useful before release.
+
+## Optional Whistle Pluck (#452)
+
+Native a95040b6 adds an off-by-default F1 Mods option, persisted as whistlePluck.
+The actual Gather state plucks the nearest eligible sprout immediately, then
+at least 80 ms apart while held. Native AutoNuki owns animation/effects and
+formation completion. Sprout identity/maturity and population accounting are
+preserved, including experimental Purple and White. Failed allocation retains
+the sprout. No randomizer item, receipt or campaign-save schema was added.
+
+Private/maintained Release builds and no-work dry runs passed. Three fresh
+960x540 centered fixtures with 20 starting Reds passed disabled input, safety
+and range gates, population-limit conversion/failure, stagger, release, native
+animation completion, formation, species/maturity and constant population.
+Compiled whistle-tap regression and nine Python tests passed. Audio was dummy;
+manual controller/menu feel and full campaign acceptance remain untested.
+Detailed hashes and adoption evidence: docs/WHISTLE_PLUCK.md and #452.
