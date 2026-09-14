@@ -101,3 +101,20 @@ Limits:
 2. If `pc_p2_batch2`/shared hooks conflict, prefer the baseline (#446) versions
    and adapt the hard-lane call sites rather than reverting baseline modules.
 3. Publish the pinned native commit and update the family status tables.
+
+## Lane 25 slice 2 included (Crawbster hazard)
+
+This tranche also lands the queued lane-25 `pc_p2_dangomushi_hazard` policy
+(engine-free Turn vulnerability window + Rock/Egg spawner decisions), mirroring
+the #446 pure-policy integrations:
+
+- `engine/pc_port/pc_p2_dangomushi_hazard.{h,cpp}`
+- `engine/tools/p2_dangomushi_hazard_test.cpp`
+- `CMakeLists.txt`: `PC_PORT_SOURCES` entry plus `p2_dangomushi_hazard_test`
+
+Rebuild evidence in the same reconstructed tree: `pikmin_pc` relinked
+(`[5/5]`, exit 0; executable SHA-256
+`86CADA5C46370E6FC1B1423C0126A4F8540172EA42ACB5B32672F90B177C55FC`),
+`p2_dangomushi_hazard_test` PASS. Runtime host wiring for the window/hazard
+still belongs to the #407 Crawbster FSM and lane 20 Rock/Egg primitives.
+

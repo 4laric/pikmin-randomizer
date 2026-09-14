@@ -213,6 +213,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_bigtreasure_visual.cpp
     pc_port/pc_p2_snagret_fsm.cpp
     pc_port/pc_p2_long_legs_fsm.cpp
+    pc_port/pc_p2_dangomushi_hazard.cpp
     pc_port/pc_p2_long_legs.cpp
     pc_port/pc_randomizer.cpp
     pc_port/pc_main.cpp
@@ -671,6 +672,13 @@ add_executable(pc_frame_scheduler_test
     pc_port/timing/pc_frame_scheduler.cpp)
 target_compile_options(pc_frame_scheduler_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME pc_frame_scheduler_test COMMAND pc_frame_scheduler_test)
+
+add_executable(p2_dangomushi_hazard_test
+    tools/p2_dangomushi_hazard_test.cpp
+    pc_port/pc_p2_dangomushi_hazard.cpp)
+target_include_directories(p2_dangomushi_hazard_test PRIVATE pc_port)
+target_compile_options(p2_dangomushi_hazard_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_dangomushi_hazard_test COMMAND p2_dangomushi_hazard_test)
 
 add_executable(pc_render_phase_test
     pc_port/timing/pc_render_phase_test.cpp
