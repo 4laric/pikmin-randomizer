@@ -159,18 +159,20 @@ defaults to the manifest file's directory).
 
 ## Generated-session launcher/cache integration
 
-`stage_session_content(manifest, session_dir, base=None, cache_dir=None)` is the
-launcher-facing entry point. Content is installed under
-`<session_dir>/content`, so a revisit or process restart reuses it without a
-manual copy step. Staging runs before any native process starts: a missing/wrong
-source, unsafe destination or corrupt cache raises `StagingError` and nothing
-launches.
+`stage_session_content(manifest, destination, base=None, cache_dir=None, identities=None)`
+is the launcher-facing entry point. Content is installed under
+`<destination>/content`. `randomizer.runner._launch` passes the native **run
+directory** as the destination, so the staged tree sits inside the tree the game
+is launched from, and passes `identities` = the seed's `p2_layout` source IDs so
+the receipt records which P2 identities the content is bound to. With a cache
+(defaults to `<session-dir>/content-cache` when `--content-cache` is omitted) a
+revisit or process restart materializes from the cache without a manual copy.
 
-With `cache_dir`, the verified tree is kept under
-`<cache_dir>/<version>-<staged_digest>/`, with its receipt as the completeness
-marker. A later session whose manifest has the same version/content digest
-materializes from the cache without reading the sources again; a corrupt cached
-entry fails closed instead of installing bad bytes.
+Staging runs before any native process starts, so a missing/wrong source, unsafe
+destination or corrupt cache raises `StagingError` and nothing launches.
+Materialization is per-file atomic — no half-written file — but a mid-run failure
+can leave a resumable partial tree whose already-correct entries are reused on
+the next call; it is not whole-tree transactional.
 
 The launcher consumes it through the ordinary session command:
 
@@ -179,9 +181,9 @@ py -3.12 -m randomizer run MANIFEST --session-dir DIR --exe EXE --assets ASSETS 
     --content-manifest content-manifest.json [--content-cache CACHE]
 ```
 
-`randomizer.runner._launch` invokes `stage_session_content` before `Popen`; the
-`--content-cache` path is optional and off for legacy runs. Family extractors
-still produce the manifest; the launcher only installs verified bytes.
+Family extractors still produce the manifest; the launcher only installs verified
+bytes. The native side does not yet read `<run>/content` for asset lookup — that
+engine hook is the remaining lane 01/09 consumer connection.
 
 ## Validation
 
@@ -222,7 +224,7 @@ sources are synthetic temp files.
 - The orchestrator does not extract, convert or validate asset contents; it only
   verifies hashes and installs bytes. Family extractors and lane 09's converter
   remain the producers.
-- The session destination (`<session_dir>/content`) is installed and receipted,
-  but no native overlay consumer reads it yet; layered native consumption is a
-  lane 01/09 integration boundary. No family extractor is wired into the launcher
-  in this slice.
+- The run-local destination (`<run>/content`) is installed, receipted and bound to
+  the seed's P2 identities, but no native overlay consumer reads it yet; layered
+  native consumption is the remaining lane 01/09 integration boundary. No family
+  extractor is wired into the launcher in this slice.

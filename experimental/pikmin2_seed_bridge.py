@@ -198,7 +198,12 @@ def resolve_layout(seed, slot, targets, cohort, roster: list[RosterEntry] | None
     }
 
 
-def validate_layout(layout: dict, roster: list[RosterEntry] | None = None) -> None:
+def validate_layout(layout: dict, roster: list[RosterEntry] | None = None, *, admitted=None) -> None:
+    """Validate a layout structurally, and optionally against the current admission set.
+
+    ``admitted`` is supplied by the product manifest path so a loaded seed whose
+    bound identity is no longer admitted is rejected; diagnostic callers omit it.
+    """
     roster = roster if roster is not None else load_roster()
     if layout.get("version") != LAYOUT_VERSION:
         raise SeedBridgeError(f"unsupported P2 layout version: {layout.get('version')!r}")
@@ -221,6 +226,11 @@ def validate_layout(layout: dict, roster: list[RosterEntry] | None = None) -> No
         entry = eligible_identity(roster, source_id)
         if binding.get("enum_name") != entry.enum_name:
             raise SeedBridgeError(f"binding {target} enum mismatch: {binding.get('enum_name')!r} != {entry.enum_name!r}")
+    if admitted is not None:
+        allowed = set(admitted)
+        unadmitted = sorted({binding["source_id"] for binding in bindings if binding["source_id"] not in allowed})
+        if unadmitted:
+            raise SeedBridgeError(f"P2 layout binds unadmitted source ids: {unadmitted}")
 
 
 def build_bootstrap(layout: dict, roster: list[RosterEntry] | None = None) -> str:

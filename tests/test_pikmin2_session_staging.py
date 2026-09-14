@@ -48,6 +48,13 @@ def test_fresh_session_stages_content(tmp_path):
     assert all(entry["status"] in ("staged", "cached") for entry in receipt["entries"])
 
 
+def test_stage_binds_seed_identities(tmp_path):
+    manifest_path, source = make_manifest(tmp_path)
+    receipt = stage_session_content(manifest_path, tmp_path / "sess", identities=[79, 30])
+    assert receipt["identities"] == ["30", "79"]
+    assert stage_session_content(manifest_path, tmp_path / "sess2")["identities"] == []
+
+
 def test_cached_launch_reuses_source_free_cache(tmp_path):
     manifest_path, source = make_manifest(tmp_path)
     cache = tmp_path / "cache"
@@ -97,7 +104,8 @@ def test_launch_stages_content_before_native(tmp_path, monkeypatch):
     runner.launch(launch, tmp_path / "sess", content_manifest=manifest_path,
                   content_cache=tmp_path / "cache")
     assert called == [True]
-    assert (tmp_path / "sess" / "content" / "tree" / "asset0.bin").is_file()
+    run_content = list((tmp_path / "sess" / "runs").glob("*/content/tree/asset0.bin"))
+    assert len(run_content) == 1 and run_content[0].is_file()
     assert list((tmp_path / "cache").glob("*/cache-receipt.json"))
 
 
