@@ -190,6 +190,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_mamuta.cpp
     pc_port/pc_p2_mamuta_rules.cpp
     pc_port/pc_p2_tank.cpp
+    pc_port/pc_p2_hiba.cpp
     pc_port/pc_p2_qurione.cpp
     pc_port/pc_p2_kurage_receiver.cpp
     pc_port/pc_p2_sokkuri.cpp

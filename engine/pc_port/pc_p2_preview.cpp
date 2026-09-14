@@ -2,6 +2,7 @@
 #include "pc_p2_kogane.h"
 #include "pc_p2_mamuta.h"
 #include "pc_p2_tank.h"
+#include "pc_p2_hiba.h"
 #include "pc_p2_qurione.h"
 #include "pc_p2_kurage_teki.h"
 #include "pc_p2_sheargrub.h"
@@ -219,6 +220,7 @@ void pc_p2_preview_setup() {
     pc_p2_kogane_setup();
     pc_p2_mamuta_setup();
     pc_p2_tank_setup();
+    pc_p2_hiba_setup();
     pc_p2_qurione_setup();
     pc_p2_batch2_setup();
     pc_p2_sokkuri_setup();

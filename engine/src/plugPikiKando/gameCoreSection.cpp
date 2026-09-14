@@ -25,6 +25,7 @@
 #include "pc_p2_queen.h"
 #include "pc_p2_king.h"
 #include "pc_p2_tank.h"
+#include "pc_p2_hiba.h"
 #include "pc_p2_hardlanes.h"
 #include "pc_p2_projectiles.h"
 #include "pc_randomizer.h"
@@ -1806,6 +1807,7 @@ void GameCoreSection::update()
 	zen::pGameInfo->mFormationPikiNum     = GameStat::formationPikis;
 	pc_p2_queen_update();
 	pc_p2_king_update();
+	pc_p2_hiba_update();
 	Node::update();
 }
 
