@@ -55,6 +55,24 @@ Persisted state is `{"version": "p2-receipt-ledger-v1", "receipts": [[seed,
 identity, slot_or_actor, encounter], ...]}`. Unknown versions, missing fields,
 non-string receipts and duplicates are rejected with `ValueError`.
 
+## Durable host-side adapter
+
+`JsonReceiptPersistence(path)` implements the same `ReceiptPersistence` protocol
+as the in-memory fake but round-trips the ledger to an ordinary JSON document:
+
+- It loads existing state on construction (a missing file starts empty).
+- `store(...)` writes atomically: a temp sibling `<name>.tmp` in the same
+  directory is written, flushed and `os.replace`d into place. An interrupted
+  write leaves the previous good file untouched and at most a stale `.tmp`, which
+  load ignores.
+- The on-disk document is `{"schema": "p2-receipts-v1", "version":
+  "p2-receipt-ledger-v1", "receipts": [...]}`. Unknown `schema` versions, a wrong
+  ledger version, missing/extra fields and corrupt JSON are rejected with
+  `ValueError` rather than silently resetting state.
+- `ReceiptLedger.restart()` (and the `reload()` alias) builds a fresh ledger from
+  the same persistence, modelling a process restart: prior receipts are not
+  re-granted while a genuinely new event still is.
+
 ## Reconciliation
 
 `reconcile(reward_descriptors, expected_checks, refuse_pod_leaks=True)` returns:
@@ -69,12 +87,27 @@ non-string receipts and duplicates are rejected with `ValueError`.
 
 Required checks are therefore never lost and no new checks are invented.
 
+## Reward registry
+
+`RewardRegistry` holds validated descriptors keyed by identity:
+
+- `add(descriptor)` validates and stores one descriptor; a duplicate identity is
+  a `ValueError`.
+- `get(identity)` returns a copy or `None`; `descriptors` returns copies in
+  insertion order.
+- `reconcile_all(expected_checks, refuse_pod_leaks=True)` delegates to
+  `reconcile`, so an ordinary `ap`/`onion` check with no source is reported in
+  `missing_sources` and a `pod`-only source covering an ordinary check is refused
+  by default.
+
 ## Malformed input
 
 `validate_descriptor`/`validate_descriptors` raise `ValueError` for an unknown
 version, duplicate identity, invalid drop kind, negative/non-integer counts,
 unknown ledger tag, missing/unknown fields, or a malformed identity/family.
-`ReceiptLedger` rejects a malformed or wrong-version persistence state.
+`ReceiptLedger` rejects a malformed or wrong-version persistence state, and
+`JsonReceiptPersistence` rejects corrupt JSON, unknown `schema`/`version` values
+and invalid receipt rows.
 
 ## Limitations
 
@@ -83,8 +116,11 @@ unknown ledger tag, missing/unknown fields, or a malformed identity/family.
   family-owned work (#397, lane 23). A proxy Chappy corpse is not source Pelplant
   and must not be counted as one. This slice only defines and reconciles the
   descriptor/receipt contract.
-- No native save is read or written; persistence is an in-memory fake. Real save
-  mutation, binary layout and lane 01 coordination are untouched.
+- **This is not the native save path.** `JsonReceiptPersistence` is a host-side
+  fake that writes a plain JSON file; it is not a Pikmin 2 save/memory-card
+  layout. It must never be pointed at a real save. Native save mutation, binary
+  layout and lane 01 coordination are untouched.
+- `InMemoryPersistence` remains the default deterministic fake for tests.
 - No retail assets are consumed, and no family drop value is asserted as source
   truth here.
 - Coverage is a host-side bookkeeping check, not a runtime or AP-logic proof.

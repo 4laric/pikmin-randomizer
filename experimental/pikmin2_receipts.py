@@ -4,13 +4,19 @@ Lane 06 defines the shared host-side contract for P2 rewards, cargo and save
 receipts. This is a schema/reconciliation slice: it mutates no native save, reads
 no retail asset and implements no source family drop behavior. Ordinary
 Onion/AP rewards are explicitly kept in a separate ledger from the experimental
-Research Pod/Poko economy. See ``docs/PIKMIN2_REWARD_RECEIPTS.md``.
+Research Pod/Poko economy. Persistence ships with an in-memory fake and a
+host-side JSON adapter; neither is the native save file, so native save mutation
+stays coordinated with lane 01. See ``docs/PIKMIN2_REWARD_RECEIPTS.md``.
 """
 import copy
+import json
+import os
 import re
+from pathlib import Path
 
 SCHEMA_VERSION = 'p2-reward-descriptor-v1'
 LEDGER_VERSION = 'p2-receipt-ledger-v1'
+RECEIPTS_STATE_VERSION = 'p2-receipts-v1'
 
 # Source drop semantics stay with the family lanes; this is the shared vocabulary.
 DROP_KINDS = ('corpse', 'pellet', 'treasure', 'none')
@@ -127,6 +133,62 @@ class InMemoryPersistence(ReceiptPersistence):
         self.writes += 1
 
 
+def _atomic_write(path, text):
+    """Write ``text`` to a temp sibling then ``os.replace`` it into place.
+
+    An interrupted write leaves the previous file untouched and at most a stale
+    ``<name>.tmp`` behind; the writer never truncates the live state first.
+    """
+    temporary = path.with_name(path.name + '.tmp')
+    with temporary.open('w', encoding='utf-8', newline='\n') as handle:
+        handle.write(text)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, path)
+
+
+class JsonReceiptPersistence(ReceiptPersistence):
+    """Host-side JSON fake for the receipt state; **not** the native save file.
+
+    This adapter persists the lane 06 receipt ledger to an ordinary JSON document
+    for host tests and previews. It must never be pointed at a Pikmin 2 save or
+    memory card: native save mutation stays coordinated with lane 01. The file is
+    written atomically (temp sibling plus ``os.replace``) so an interrupted write
+    cannot corrupt the last good state, and any leftover ``<name>.tmp`` is
+    ignored on load. Malformed or unknown-version documents raise ``ValueError``.
+    """
+
+    def __init__(self, path):
+        self.path = Path(path)
+        self.state = self._read()
+
+    def _read(self):
+        if not self.path.exists():
+            return None
+        try:
+            document = json.loads(self.path.read_text(encoding='utf-8'))
+        except (OSError, ValueError) as exc:
+            raise ValueError('Corrupt receipt state file') from exc
+        if not isinstance(document, dict) or set(document) != {'schema', 'version', 'receipts'}:
+            raise ValueError('Invalid receipt state fields')
+        if document['schema'] != RECEIPTS_STATE_VERSION:
+            raise ValueError('Unknown receipt state version')
+        state = {'version': document['version'], 'receipts': document['receipts']}
+        _decode_state(state)
+        return state
+
+    def load(self):
+        return copy.deepcopy(self.state)
+
+    def store(self, state):
+        _decode_state(state)
+        document = {'schema': RECEIPTS_STATE_VERSION, 'version': state['version'],
+                    'receipts': state['receipts']}
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write(self.path, json.dumps(document, sort_keys=True) + '\n')
+        self.state = copy.deepcopy(state)
+
+
 def _decode_state(state):
     if state is None:
         return set()
@@ -179,9 +241,17 @@ class ReceiptLedger:
         self._persist()
         return True
 
-    def reload(self):
-        """Reopen from persistence; a fresh ledger must not re-grant."""
+    def restart(self):
+        """Rebuild a fresh ledger over the same persistence (process restart).
+
+        The reopened ledger sees the persisted receipts, so a prior grant is not
+        repeated while a genuinely new event is still granted.
+        """
         return ReceiptLedger(self._persistence)
+
+    def reload(self):
+        """Alias for ``restart`` kept for callers that reopen in-process."""
+        return self.restart()
 
     def _persist(self):
         self._persistence.store({'version': LEDGER_VERSION,
@@ -229,3 +299,39 @@ def reconcile(reward_descriptors, expected_checks, *, refuse_pod_leaks=True):
             'missing_sources': missing_sources,
             'pod_leaks': pod_leaks,
             'unexpected_sources': unexpected_sources}
+
+
+class RewardRegistry:
+    """Validated reward descriptors keyed by identity, with coverage checks.
+
+    Holds the layered, versioned descriptors a seed may emit and delegates
+    coverage reconciliation to :func:`reconcile`, so callers get identical
+    missing-source, pod-leak and invented-check semantics.
+    """
+
+    def __init__(self, descriptors=()):
+        self._descriptors = {}
+        for descriptor in descriptors:
+            self.add(descriptor)
+
+    def add(self, descriptor):
+        """Validate and store one descriptor; reject a duplicate identity."""
+        normalized = validate_descriptor(descriptor)
+        identity = normalized['identity']
+        if identity in self._descriptors:
+            raise ValueError('Duplicate reward identity: ' + identity)
+        self._descriptors[identity] = normalized
+        return normalized
+
+    def get(self, identity):
+        """Return a copy of the descriptor for ``identity`` or ``None``."""
+        descriptor = self._descriptors.get(identity)
+        return copy.deepcopy(descriptor) if descriptor is not None else None
+
+    @property
+    def descriptors(self):
+        return [copy.deepcopy(descriptor) for descriptor in self._descriptors.values()]
+
+    def reconcile_all(self, expected_checks, refuse_pod_leaks=True):
+        """Reconcile every registered descriptor against ``expected_checks``."""
+        return reconcile(self.descriptors, expected_checks, refuse_pod_leaks=refuse_pod_leaks)

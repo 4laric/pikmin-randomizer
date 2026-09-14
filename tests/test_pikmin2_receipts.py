@@ -1,9 +1,14 @@
 """Reward descriptor validation and exactly-once receipt ledger contract."""
+import json
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
-from experimental.pikmin2_receipts import (SCHEMA_VERSION, LEDGER_VERSION, ReceiptLedger, InMemoryPersistence,
-                                           validate_descriptor, validate_descriptors, receipt_key, grant_events,
-                                           reconcile)
+from experimental.pikmin2_receipts import (SCHEMA_VERSION, LEDGER_VERSION, RECEIPTS_STATE_VERSION,
+                                           ReceiptLedger, InMemoryPersistence, JsonReceiptPersistence,
+                                           RewardRegistry, validate_descriptor, validate_descriptors,
+                                           receipt_key, grant_events, reconcile)
 
 
 def descriptor(identity='corpse:floor1:5000', **overrides):
@@ -148,6 +153,108 @@ class ReconcileTests(unittest.TestCase):
     def test_duplicate_expected_check_rejected(self):
         with self.assertRaises(ValueError):
             reconcile([descriptor()], ['corpse:5000', 'corpse:5000'])
+
+
+class JsonPersistenceTests(unittest.TestCase):
+    def test_json_round_trip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'nested' / 'receipts.json'
+            first = ('seed-a', 'corpse:5000', 7, 'tutorial_1:floor1')
+            second = ('seed-a', 'treasure:dia_a_red', 'pod-1', 'tutorial_1:floor1')
+            ledger = ReceiptLedger(JsonReceiptPersistence(path))
+            self.assertEqual(grant_events(ledger, [first, second]), (True, True))
+            reopened = ReceiptLedger(JsonReceiptPersistence(path))
+            self.assertEqual(reopened.receipts, ledger.receipts)
+            self.assertEqual(json.loads(path.read_text())['version'], LEDGER_VERSION)
+
+    def test_restart_does_not_regrant_and_grants_new(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'receipts.json'
+            ledger = ReceiptLedger(JsonReceiptPersistence(path))
+            prior = ('seed-a', 'corpse:5000', 7, 'tutorial_1:floor1')
+            self.assertTrue(ledger.grant(*prior))
+            restarted = ledger.restart()
+            self.assertTrue(restarted.has(*prior))
+            self.assertFalse(restarted.grant(*prior))
+            self.assertTrue(restarted.grant('seed-a', 'corpse:5000', 8, 'tutorial_1:floor1'))
+            self.assertEqual(len(restarted), 2)
+
+    def test_interrupted_write_keeps_last_good_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'receipts.json'
+            ledger = ReceiptLedger(JsonReceiptPersistence(path))
+            prior = ('seed-a', 'corpse:5000', 7, 'tutorial_1:floor1')
+            self.assertTrue(ledger.grant(*prior))
+            with patch('experimental.pikmin2_receipts.os.replace', side_effect=OSError('interrupted')):
+                with self.assertRaises(OSError):
+                    ledger.grant('seed-a', 'corpse:5000', 8, 'tutorial_1:floor1')
+            self.assertTrue(path.with_name(path.name + '.tmp').exists())
+            reopened = ReceiptLedger(JsonReceiptPersistence(path))
+            self.assertEqual(len(reopened), 1)
+            self.assertTrue(reopened.has(*prior))
+
+    def test_stale_tmp_file_does_not_corrupt_load(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'receipts.json'
+            ledger = ReceiptLedger(JsonReceiptPersistence(path))
+            event = ('seed-a', 'corpse:5000', 7, 'tutorial_1:floor1')
+            self.assertTrue(ledger.grant(*event))
+            path.with_name(path.name + '.tmp').write_text('{ not json')
+            reopened = ReceiptLedger(JsonReceiptPersistence(path))
+            self.assertTrue(reopened.has(*event))
+            self.assertEqual(len(reopened), 1)
+
+    def test_corrupt_and_unknown_version_rejected(self):
+        valid = {'schema': RECEIPTS_STATE_VERSION, 'version': LEDGER_VERSION, 'receipts': []}
+        documents = ['not json', '[]', '{}',
+                     json.dumps({'schema': RECEIPTS_STATE_VERSION, 'version': LEDGER_VERSION}),
+                     json.dumps({**valid, 'schema': 'p2-receipts-v2'}),
+                     json.dumps({**valid, 'version': 'p2-receipt-ledger-v2'}),
+                     json.dumps({**valid, 'receipts': [['a', 'b', 'c']]})]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'receipts.json'
+            for document in documents:
+                with self.subTest(document=document):
+                    path.write_text(document)
+                    with self.assertRaises(ValueError):
+                        JsonReceiptPersistence(path)
+
+
+class RewardRegistryTests(unittest.TestCase):
+    def test_add_get_and_descriptors(self):
+        registry = RewardRegistry()
+        added = registry.add(descriptor(identity='corpse:5000'))
+        self.assertEqual(added['identity'], 'corpse:5000')
+        self.assertEqual(registry.get('corpse:5000')['drop'], 'corpse')
+        self.assertIsNone(registry.get('missing'))
+        self.assertEqual([row['identity'] for row in registry.descriptors], ['corpse:5000'])
+
+    def test_duplicate_identity_rejected(self):
+        registry = RewardRegistry([descriptor(identity='corpse:5000')])
+        with self.assertRaises(ValueError):
+            registry.add(descriptor(identity='corpse:5000'))
+
+    def test_reconcile_all_ok(self):
+        registry = RewardRegistry([
+            descriptor(identity='corpse:5000'),
+            descriptor(identity='treasure:dia_a_red', family='lane-23-flora', drop='treasure', ledger='ap',
+                       value=180)])
+        report = registry.reconcile_all(['corpse:5000', 'treasure:dia_a_red'])
+        self.assertTrue(report['ok'])
+        self.assertEqual(report['missing_sources'], [])
+
+    def test_reconcile_all_refuses_pod_leak(self):
+        registry = RewardRegistry([
+            descriptor(identity='treasure:dia_a_red', family='lane-23-flora', drop='treasure', ledger='pod',
+                       value=180)])
+        with self.assertRaises(ValueError):
+            registry.reconcile_all(['treasure:dia_a_red'])
+
+    def test_reconcile_all_reports_missing_ap_source(self):
+        registry = RewardRegistry([descriptor(identity='corpse:5000')])
+        report = registry.reconcile_all(['corpse:5000', 'treasure:dia_a_red'])
+        self.assertFalse(report['ok'])
+        self.assertEqual(report['missing_sources'], ['treasure:dia_a_red'])
 
 
 if __name__ == '__main__':
