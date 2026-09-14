@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "lane": 31,
+  "issue": 443,
+  "parent_issue": 175,
+  "title": "Waterwraith/Tyre source-correct actor phase machine + real-GL actor runtime",
+  "kind": "integration-ready",
+  "native": {
+    "base": "5d38a9184644f53f080dfbce317cd7ac518e5f9d",
+    "base_branch": "opencode/p2-lane31-integ",
+    "head": "e8da82aa938c33d9d5564bfdc75bc9c5fd150a8c",
+    "local_branch": "opencode/p2-lane31-actor",
+    "pushed": false,
+    "dirty_state": "clean",
+    "note": "Built on the lane-31 visual/policy host line (lane-01 Batch E base). Native origin/upstream not pushed; branch is local to the shared native repo."
+  },
+  "commits": ["45a509b906fa1e97e9efbd3876887b37afeba5b4", "e8da82aa938c33d9d5564bfdc75bc9c5fd150a8c"],
+  "files": [
+    "pc_port/pc_p2_waterwraith_actor.h",
+    "pc_port/pc_p2_waterwraith_actor.cpp",
+    "tools/p2_waterwraith_actor_test.cpp",
+    "tools/p2_waterwraith_actor_runtime.cpp",
+    "tools/p2_waterwraith_actor_runtime_run.py",
+    "CMakeLists.txt"
+  ],
+  "patches": {
+    "full": {
+      "path": "native-candidates/waterwraith-actor/waterwraith-actor-full.patch",
+      "size": 59179,
+      "sha256": "ad46e9908ff3a076e0644252f4517b2d269bf0f390602dfed68c3ace1ff060fa"
+    },
+    "series": [
+      {
+        "path": "native-candidates/waterwraith-actor/patches/0001-Waterwraith-source-correct-BlackMan-phase-machine-an.patch",
+        "sha256": "a5b716bdc15b24125f825812fee5d17f743ae4b28d650100b43dd9b65e7e2888"
+      },
+      {
+        "path": "native-candidates/waterwraith-actor/patches/0002-Waterwraith-real-GL-actor-runtime-fixture-and-runner.patch",
+        "sha256": "c61d34320fa0b9d405fa3e3a894aa5fdee1aed4b6ae4d41be7528238d047d802"
+      }
+    ]
+  },
+  "standalone_fixture": {
+    "executable": "output/native-lane31-actor/output/p2_waterwraith_actor_test.exe",
+    "sha256": "8ddc0c5eb6dd2aef4ad8b5c77afb6b0c9b80f1485954dd123f8d8441aa76aa20",
+    "result": "PASS WATERWRAITH_ACTOR (12 groups, exit 0), warning-clean -Wall -Wextra -Werror"
+  },
+  "runtime": {
+    "private_build": "output/native-lane31-actor-build",
+    "production_executable_sha256": "3f2abf65e4618f3d5e83ddac9c5e1140030f554d387e74d57ee5425a53da39df",
+    "fixture_dir": "output/lane31-waterwraith-actor-fixture-01",
+    "fixture_executable_sha256": "8d7b032f2297d76a840b6e3335681299bca417a84ba10ec98c3aa381172aea95",
+    "run_dir": "output/lane31-waterwraith-actor-runtime-01/29771a321454432d95c7813934d2c50d",
+    "status": "passed",
+    "markers": [
+      "P2_WATERWRAITH_ACTOR_WINDOW size=960x540 pos=373,263",
+      "P2_WATERWRAITH_VISUAL_READY species=2 clips=16",
+      "P2_WATERWRAITH_ACTOR_PASS ticks=90 distance=345.667 roll=62.5165 phase=walk",
+      "PASS WATERWRAITH_ACTOR_RUNTIME"
+    ],
+    "captures": ["waterwraith-actor.ppm sha256=40057b35f3bb2c564fc5af4b503119631031682e1ffc2d20a4d872adfd6185b7"]
+  },
+  "limitations": [
+    "Locomotion is host-driven route waypoints, not the retained-assembly walkFunc/findNextRoutePoint pathfinder.",
+    "Animation timing/effects are host-fed pulses; timer-expiry branches complete in-tick as a deterministic simplification.",
+    "No source actor/Map/receiver registration; the GL slice binds the phase machine to the display bank. Purple vulnerability is structural (rig gate), not a receiver adapter."
+  ]
+}
