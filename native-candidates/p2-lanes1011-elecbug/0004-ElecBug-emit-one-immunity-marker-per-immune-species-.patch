@@ -1,7 +1,7 @@
 From eddbf832e0f24f24266c05a1e1af919bcc3636ad Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 09:39:12 -0400
-Subject: [PATCH 4/4] ElecBug: emit one immunity marker per immune species in
+Subject: [PATCH 4/5] ElecBug: emit one immunity marker per immune species in
  the sweep
 
 ---

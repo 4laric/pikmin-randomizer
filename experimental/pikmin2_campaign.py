@@ -11,7 +11,11 @@ import uuid
 from randomizer.session import SessionLock, atomic_write
 from scripts.preview_pikmin2_emergence import prepare
 
-SPECIES = ('blue', 'red', 'yellow', 'purple')
+SPECIES = ('blue', 'red', 'yellow', 'purple', 'white', 'bulbmin')
+# Wire schema that first carries each species (native pc_p2_species_schema.h):
+# v1 Blue/Red/Yellow/Purple, v2 + White, v3 + Bulbmin.
+SPECIES_SCHEMA = {'blue': 1, 'red': 1, 'yellow': 1, 'purple': 1, 'white': 2, 'bulbmin': 3}
+TRANSFER_PREFIX = 'P2_CAVE_TRANSFER_'
 EXIT_TRANSITION = 42
 
 
@@ -91,10 +95,26 @@ def read_ledger(path):
     return result
 
 
+def entry_schema(squad):
+    """Earliest wire schema that can carry the whole squad (matches the native)."""
+    return max([1] + [SPECIES_SCHEMA[p['species']] for p in squad])
+
+
 def entry_text(state, token):
     validate(state)
-    return (f'P2_CAVE_ENTRY_1\n{token}\n{state["floor"]} {state["health"]:.9g} {len(state["squad"])}\n'
+    schema = entry_schema(state['squad'])
+    return (f'P2_CAVE_ENTRY_{schema}\n{token}\n{state["floor"]} {state["health"]:.9g} {len(state["squad"])}\n'
             + ''.join(f'{SPECIES.index(p["species"])} {p["maturity"]}\n' for p in state['squad']))
+
+
+def transfer_schema(header):
+    """Parse the P2_CAVE_TRANSFER_<schema> header the native wrote."""
+    if not header.startswith(TRANSFER_PREFIX):
+        raise ValueError('Stale or incomplete cave transfer')
+    digits = header[len(TRANSFER_PREFIX):]
+    if digits not in ('1', '2', '3'):
+        raise ValueError('Unsupported cave transfer schema')
+    return int(digits)
 
 
 def transition(state, token, text, receipts, allowed):
@@ -102,8 +122,9 @@ def transition(state, token, text, receipts, allowed):
     validate(state)
     if state['status'] != 'active': raise ValueError('Cave already ended')
     lines = text.splitlines()
-    if len(lines) < 3 or lines[0] != 'P2_CAVE_TRANSFER_1' or lines[1] != token:
+    if len(lines) < 3 or lines[1] != token:
         raise ValueError('Stale or incomplete cave transfer')
+    schema = transfer_schema(lines[0])
     words = lines[2].split()
     if len(words) != 3: raise ValueError('Invalid transfer header')
     floor, health, count = int(words[0]), float(words[1]), int(words[2])
@@ -115,6 +136,8 @@ def transition(state, token, text, receipts, allowed):
         if len(words) != 2: raise ValueError('Invalid transfer Pikmin')
         color, maturity = map(int, words)
         if color not in range(len(SPECIES)): raise ValueError('Invalid transfer species')
+        if SPECIES_SCHEMA[SPECIES[color]] > schema:
+            raise ValueError('Cave transfer schema too old for species')
         squad.append(dict(species=SPECIES[color], maturity=maturity))
     for key, value in state['receipts'].items():
         if receipts.get(key) != value: raise ValueError('Cave receipts regressed')
