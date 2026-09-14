@@ -110,16 +110,24 @@ The `report` command writes `qa-matrix.json` (machine-readable) and
 
 ## Current baseline status
 
-Lane 01 has not yet published an approved immutable root/native pair, and #434
-records that the production bridge (ordinary campaign seed generation,
-versioned seed/native binding, placement, reward/logic, staged install) is not
-implemented. The first admitted cohort therefore does not exist yet, so every
-matrix cell is `UNTESTED` against the pinned audited baseline
-(`root 06cae25` on `codex/p2-main-review`, `native 9735870c`, per the fan-out
-guide). Private fixture evidence may satisfy the boundary/negative cells as it
-is produced; those records must carry `kind: fixture` and full provenance. This
-lane will reproduce the cohort end to end as soon as lane 01 supplies the
-immutable build and the family lanes supply their evidence.
+The reproducible generated-session runner is
+[`experimental.pikmin2_generated_session_acceptance`](PIKMIN2_GENERATED_SESSION_ACCEPTANCE.md).
+It drives the real product generator with the live lane 02 admission set,
+verifies a pinned combined build before anything runs, and emits records for
+this matrix. It never monkeypatches admission and never labels a fixture run as
+natural.
+
+Pinned pair under test: **root `4fccf41`** (`origin/codex/p2-main-review`) and
+**native `b805d9c6`** (approved native baseline, clean). Lane 01 has not yet
+published an integrated executable for this pair and the live lane 02 admission
+set is empty, so the generated-session chain cannot start and the runner reports
+`BLOCKED: generate: no admitted P2 identities` — the correct fail-closed result.
+
+There is still no admitted cohort, so every matrix cell is `UNTESTED` against
+the pinned baseline. Private fixture evidence may satisfy the boundary/negative
+cells as it is produced; those records must carry `kind: fixture` and full
+provenance. This lane will reproduce the cohort end to end as soon as lane 01
+supplies the immutable build and lane 02 admits the first identity.
 
 ## Tests
 
