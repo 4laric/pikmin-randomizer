@@ -1,7 +1,7 @@
 From b667eec922bcd76e736b39b74cf91ccc448d8fa5 Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 09:18:42 -0400
-Subject: [PATCH 2/2] lane09: opt-in camera-facing billboard mesh flag and
+Subject: [PATCH 2/3] lane09: opt-in camera-facing billboard mesh flag and
  view-matrix draw (#429, #128)
 
 ---

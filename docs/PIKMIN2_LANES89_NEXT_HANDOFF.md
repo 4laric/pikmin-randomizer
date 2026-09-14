@@ -10,8 +10,8 @@ Concrete IDs: Armor (EnemyID 15, Cloaking Burrow-nit) event migration;
               HikariKinoko (id 48) camera-facing billboard.
 Root base: 3851d4b (codex/p2-main-review); native base: f14c6851 (clean).
 Root branch opencode/p2-lanes89-root-v2 @ da6d20a;
-Native branch opencode/p2-lanes89-native-v2 @ b667eec9 (c2ce9216 lane08,
-b667eec9 lane09).
+Native branch opencode/p2-lanes89-native-v2 @ e6d55224 (c2ce9216 lane08,
+b667eec9 lane09, e6d55224 lane09 probe).
 Private build: output/tracks/p2-lanes89-next/native-build
                (Ninja, Release, MinGW gcc 16.2.0, PIKMIN_NATIVE_JAUDIO=ON).
 Native exe SHA-256: F52A6435A788A032C1800DD3F086017B0E86E969DC775E3778F305272DB28C0F

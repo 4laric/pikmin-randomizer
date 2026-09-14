@@ -66,8 +66,9 @@ g++ -std=c++17 -Wall -Wextra -Werror tools/test_p2_billboard.cpp -o p2_billboard
 ```
 
 Registered as CTest `p2_billboard_test`. Proves `view*model*facing` is
-rotation-free, the facing basis is orthonormal for scaled models, and degenerate
-bases are rejected.
+rotation-free, the facing basis is orthonormal for scaled models, degenerate
+bases are rejected, and the full 4x4 composition `view*model*(joint*facing)` is
+screen-aligned with the joint scale while placing the pivot at `(view*model)*p`.
 
 Strict defaults: `tests/test_pikmin2_convert_billboard.py` and the wider
 converter/flora/material suites stay green (98 passed, 1 skipped focused).
