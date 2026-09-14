@@ -185,6 +185,22 @@ phase=walk`, exe `3f2abf65…`, fixture `8d7b032f…`; capture
 Limits: host-driven route (not the retained-asm pathfinder), host-fed animation
 pulses, no source actor/Map/receiver registration.
 
+## Engine-driven actor registration
+
+`pc_port/pc_p2_waterwraith_register.{h,cpp}` registers the actor through the
+real room-preview tick/draw (opt-in `P2_WATERWRAITH_ACTOR_1` profile; no-op when
+absent), mirroring the BigTreasure host seam. The fixture never calls the
+register API: the engine drives the actor.
+
+Branch `opencode/p2-lane31-register` @ `a4526e6a5cb96d1d89e8687fcdd777845de9aa92`
+(base `opencode/p2-lane31-actor` @ `e8da82aa`, clean). Real-GL run
+`output/lane31-register-runtime-01/65c2a272e7704db0838146aafce10b3a` status
+`passed`: `P2_HARDLANES_READY family=Waterwraith register=1 placement=fixed`,
+`P2_WATERWRAITH_REGISTER_PASS ticks=90 distance=349.667 roll=63.2400`,
+`PASS WATERWRAITH_REGISTER_RUNTIME`; exe `3c5434b9…`, fixture `d76c5246…`.
+Additive hooks live in `pc_port/pc_p2_hardlanes.cpp` (tagged for lane 01).
+Bundle `native-candidates/waterwraith-register/`.
+
 ## Remaining / next slice
 
 - **Locomotion and route pathfinding are not implemented.** The wraith walk
