@@ -1,112 +1,85 @@
 # Native camera-facing billboard for type-1 MOD meshes (#429, parent #128)
 
-Lane 09, Codex through shared account `4laric`. Closes the renderer half of the
-HikariKinoko (enemy id 48, Common Glowcap) shape-matrix type 1 (BBoard) failure
-that the static fallback left as a labelled approximation.
-
-## Previous state
-
-`docs/PIKMIN2_BILLBOARD_FALLBACK.md` records the bounded `billboard='static'`
-converter path: 1/1 clips convert, but the baked quad is fixed in the model's
-authored plane and does not turn to face the camera. The requested native
-interface was a `Mesh::FeatureFlags::Billboard` bit, a MOD shape matrix type, and
-a view-matrix billboard matrix in the draw path.
+Lane 09, Codex through shared account `4laric`. Closes the HikariKinoko
+(enemy id 48, Common Glowcap) shape-matrix type 1 (BBoard) failure end to end:
+conversion, renderer and a real-GL acceptance.
 
 ## What changed
 
 **Native** (branch `opencode/p2-lanes89-native-v2`):
 
-- `include/Mesh.h`: new `Billboard = (1 << 17)` feature flag. It lives in the
-  already-read `mFeatureFlags` word, so no MOD layout changes and existing MODs
-  are byte- and behaviour-identical (the bit is 0).
-- `pc_port/pc_p2_billboard.h`: engine-independent 3x3 helper
-  `facingRotation(out, model, view)` = normalised `(view * model).rotation`
-  transposed. Unit columns preserve any model/joint scale; a degenerate basis
-  returns false and the caller keeps the plain joint matrix.
-- `src/sysCommon/shapeBase.cpp` (`Joint::render`, PC-port only): for a mesh with
-  the flag, each draw matrix becomes `joint * facingRotation`, where
-  `facingRotation` cancels the combined model/model-view rotation. Because the
-  billboard geometry is pivot-centred around its joint translation (below),
-  concatenation re-places the quad at its joint while making it screen-facing.
-  The bounding-box debug branch and the GameCube match build are untouched.
+- `include/Mesh.h`: new `Billboard = (1 << 17)` feature flag in the existing
+  `mFeatureFlags` word — no MOD layout change, so strict MODs and every
+  non-billboard identity stay byte- and behaviour-identical.
+- `pc_port/pc_p2_billboard.h`: engine-independent `screenRotation(out, active,
+  scale)` = `scale * normalised(active.rotation)^T`, rejecting a degenerate
+  basis.
+- `pc_port/pc_p2_billboard_draw.h`: `billboardFromJoint(out, joint, active)`
+  keeps the joint's pivot translation and uniform scale but replaces its 3x3
+  with `screenRotation`. `offDiagonal` and a small `Stats` counter feed the GL
+  fixture.
+- `src/sysCore/oglGraphics.cpp` and `src/sysDolphin/dgxGraphics.cpp`
+  (`drawSingleMatpoly`): for a flagged mesh, each per-dependency draw matrix is
+  replaced by `billboardFromJoint(joint, active)`.
+
+The important correction found during GL bring-up: **`Joint::render` is dead on
+the PC port**. The real draw is the OGL/DGX `drawSingleMatpoly`, and callers use
+two composition conventions (some bake `lookAt*model` into the joint matrices and
+use an identity active matrix; others keep model-space joints and apply
+`lookAt*model` on the GPU). The renderer therefore keys off the **active GPU
+matrix** alone: it forces `active * mesh` to be screen-aligned while preserving
+the joint pivot, which is correct under both conventions.
 
 **Converter** (`experimental/pikmin2_convert.py`):
 
 - `decode`/`convert` accept `billboard='native'` (default stays `'error'`,
   `'static'` stays the recorded fallback). Native requires `bake_rigid`, a single
-  billboard shape, and an **axis-aligned, uniform positive** rigid joint; other
-  cases raise explicit errors rather than silently mis-orienting.
+  billboard shape, and an axis-aligned, uniformly scaled rigid joint; otherwise
+  it raises an explicit error.
 - The billboard shape's baked geometry is re-expressed in the joint's
-  pivot-relative, unit-scale local frame (`(v - p) / s`). The emitted MOD joint
-  carries `scale = s` and `translation = p`, so non-billboard shapes are restored
-  exactly and the flagged mesh is re-placed by the same joint at draw time.
-- The billboard shape's MOD mesh flags get `1 << 17`.
-- The report records `billboard_policy='native'`, `billboard_shapes`,
-  `billboard_materials`, `billboard_pivot`, `billboard_scale` and a note stating
-  that the renderer orients it from the view matrix.
+  pivot-relative, unit-scale local frame `(v - p) / s`; the MOD joint carries
+  `scale = s` and `translation = p`, so non-billboard shapes are restored
+  exactly and the flagged mesh is re-placed by that joint at draw time.
+- `experimental/pikmin2_flora_assets.TOLERANCES['HikariKinoko']` is now
+  `{'billboard': 'native', 'missing_normals': 'compute'}`: the default flora
+  extraction emits the camera-facing bank.
 
 ## Evidence
 
-Converter (offline, synthetic J3D2bmd3, no disc assets):
+Converter (offline, synthetic J3D2bmd3): `tests/test_pikmin2_convert_billboard.py`
+— 16 passed (flag/pivot round-trip, pivot-relative geometry, uniform-scale
+division, rotated/non-uniform rejection, `'static'` never flags).
 
-```powershell
-py -3.12 -m pytest tests/test_pikmin2_convert_billboard.py -q   # 16 passed
-```
+Real source (private, no disc assets committed): all six sampled HikariKinoko
+poses convert with `billboard='native'`; pivot/scale match the audited
+`(-4,46,0)` / `0.8`, and every pose satisfies the axis-aligned/uniform
+precondition. Candidate bank `output/tracks/p2-lanes89-next/hikari-native-01`.
 
-Covers: the flag is set and the joint carries the pivot/scale; geometry is the
-static bake shifted/scaled into the local frame; uniform scale is divided out;
-rotated and non-uniform joints are rejected; strict and `'static'` output never
-sets the flag.
+Native math probe: `tools/test_p2_billboard.cpp` (CTest `p2_billboard_test`) —
+`PASS p2_billboard`, proving `active * billboard` is screen-aligned with the
+joint scale, the pivot is placed by the active matrix, and degenerate bases are
+rejected.
 
-Native math probe:
-
-```powershell
-g++ -std=c++17 -Wall -Wextra -Werror tools/test_p2_billboard.cpp -o p2_billboard.exe
-./p2_billboard.exe   # PASS p2_billboard
-```
-
-Registered as CTest `p2_billboard_test`. Proves `view*model*facing` is
-rotation-free, the facing basis is orthonormal for scaled models, degenerate
-bases are rejected, and the full 4x4 composition `view*model*(joint*facing)` is
-screen-aligned with the joint scale while placing the pivot at `(view*model)*p`.
-
-Strict defaults: `tests/test_pikmin2_convert_billboard.py` and the wider
-converter/flora/material suites stay green (98 passed, 1 skipped focused).
-
-Real-source check (private, no disc assets committed): the extracted
-`output/p2-converter-evidence/run1/HikariKinoko` model converts all six sampled
-poses with `billboard='native'`:
+**Real-GL acceptance** (`experimental/pikmin2_hikari_billboard_fixture.py`): a
+replacement-main fixture loads the native Hikari MOD, renders it at two world
+yaws with the preview camera, and reads the backend `Stats`:
 
 ```text
-frame 0  pivot (-4.00, 46.00,  0.00) scale 0.8 shapes [0] materials [0]
-frame 14 pivot (-4.30, 45.68, -1.13) scale 0.8
-frame 28 pivot (-6.29, 45.69, -2.93) scale 0.8
-frame 41 pivot (-2.40, 46.13,  2.12) scale 0.8
-frame 55 pivot (-3.94, 46.01, -0.24) scale 0.8
-frame 69 pivot (-4.00, 46.00,  0.00) scale 0.8
-converted=True poses=6
+HIKARI_MODEL meshes=2 materials=2
+PASS HIKARI_BILLBOARD draws=2 max_offdiagonal=0.000000 visible=2364
 ```
 
-The pivot and scale match the audited source anchor (translation `(-4, 46, 0)`,
-scale `0.8`), and every sampled pose satisfies the axis-aligned/uniform
-precondition, so the converter path works on the real HikariKinoko geometry.
-Candidate native bank: `output/tracks/p2-lanes89-next/hikari-native-01`.
+`draws=2` (one per yaw) proves the OGL backend took the billboard path;
+`max_offdiagonal=0.000000` proves the composed draw matrix is screen-aligned
+under the active matrix. Run `output/tracks/p2-lanes89-next/hikari-gl-run-02`,
+native.log SHA-256 `95EE2D4487DED8DE6070EAA6A6961E2CB0EC115EDB3402AA7F7BB14B89EA401E`.
 
-## Remaining dependency
+## Remaining / notes
 
-The **real-GL visual gate is UNTESTED**. It needs this native bank rendered in a
-camera-framed fixture through a reserved real-GL slot. Two items are recorded
-rather than assumed:
-
-1. HikariKinoko's flora conversion uses BCA-derived `draw_matrices`; the native
-   path requires the billboard joint to be axis-aligned and uniformly scaled at
-   each sampled pose. The six-pose real-source check above passes; a wider
-   `pose_limit` should be re-checked when the bank is staged.
-2. `gfx.mLastModelMatrix` must be the active actor model matrix at draw time for
-   the flagged mesh; if a caller path renders a shape without it, the flag falls
-   back to the plain joint matrix.
-
-The default flora tolerance for HikariKinoko therefore stays `'static'`
-(approximation explicitly counted). Flipping it to `'native'` is a one-line
-`TOLERANCES` change in `experimental/pikmin2_flora_assets.py`; it is held until
-the GL pass confirms the camera-facing output.
+- The converter requires an axis-aligned, uniformly scaled billboard joint. The
+  six sampled Hikari poses satisfy it; a wider `pose_limit` re-check is cheap
+  (the converter fails loudly otherwise). Handling a rotated billboard joint
+  (baking `R^-1` out of the local frame) is future work if a source needs it.
+- The GL fixture uses a manually staged native bank; the flora extract now emits
+  that bank by default, so a full flora-install arena run is the natural next
+  integration gate.

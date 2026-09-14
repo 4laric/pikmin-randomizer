@@ -1,7 +1,7 @@
 From e6d55224b3d5db3415e8dccb21ef7b275faae142 Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 09:43:06 -0400
-Subject: [PATCH 3/3] lane09: prove full pivot+facing 4x4 composition in the
+Subject: [PATCH 3/5] lane09: prove full pivot+facing 4x4 composition in the
  billboard probe (#429)
 
 ---

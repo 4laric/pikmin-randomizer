@@ -1,0 +1,310 @@
+From d5aa3afb85867439d831095bc1f1634e25a72739 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 10:10:04 -0400
+Subject: [PATCH 4/5] lane09: apply billboard draw in the OGL/DGX backends;
+ Joint::render is dead on PC (#429)
+
+---
+ pc_port/pc_p2_billboard_draw.h | 81 ++++++++++++++++++++++++++++++++++
+ src/sysCommon/shapeBase.cpp    | 57 ------------------------
+ src/sysCore/oglGraphics.cpp    | 25 +++++++++++
+ src/sysDolphin/dgxGraphics.cpp | 35 +++++++++++++++
+ 4 files changed, 141 insertions(+), 57 deletions(-)
+ create mode 100644 pc_port/pc_p2_billboard_draw.h
+
+diff --git a/pc_port/pc_p2_billboard_draw.h b/pc_port/pc_p2_billboard_draw.h
+new file mode 100644
+index 00000000..6bfab602
+--- /dev/null
++++ b/pc_port/pc_p2_billboard_draw.h
+@@ -0,0 +1,81 @@
++#pragma once
++// Engine-side billboard draw helpers (#429, parent #128).
++//
++// The PC port renders shapes through the OGL/DGX draw backends, not
++// Joint::render. A flagged mesh's per-dependency draw matrix is replaced by
++// `joint * facing` where `facing` cancels the combined model*view rotation, so
++// the pivot-centred billboard geometry faces the camera. The alignment helpers
++// also feed a small counter the private GL fixture reads to prove the path ran.
++#include "Matrix4f.h"
++#include "pc_p2_billboard.h"
++
++#include <cmath>
++
++namespace p2billboard {
++
++// out = joint * normalized((model*view).rotation)^T. False leaves `out`
++// untouched and the caller keeps the plain joint matrix.
++inline bool facingMatrix(Matrix4f& out, const Matrix4f& joint, const Matrix4f& model,
++                         const Matrix4f& view) {
++    float m3[3][3];
++    float v3[3][3];
++    float r3[3][3];
++    for (int i = 0; i < 3; ++i) {
++        for (int j = 0; j < 3; ++j) {
++            m3[i][j] = model.mMtx[i][j];
++            v3[i][j] = view.mMtx[i][j];
++        }
++    }
++    if (!facingRotation(r3, m3, v3)) {
++        return false;
++    }
++    Matrix4f rot;
++    rot.makeIdentity();
++    for (int i = 0; i < 3; ++i) {
++        for (int j = 0; j < 3; ++j) {
++            rot.mMtx[i][j] = r3[i][j];
++        }
++    }
++    joint.multiplyTo(rot, out);
++    return true;
++}
++
++// Max off-diagonal magnitude of the column-normalised rotation of `view*mesh`.
++// ~0 means the mesh is screen-aligned; used as the GL-fixture assertion.
++inline float offDiagonal(const Matrix4f& view, const Matrix4f& mesh) {
++    Matrix4f final;
++    view.multiplyTo(mesh, final);
++    float column[3][3];
++    for (int j = 0; j < 3; ++j) {
++        const float norm = std::sqrt(final.mMtx[0][j] * final.mMtx[0][j]
++                                     + final.mMtx[1][j] * final.mMtx[1][j]
++                                     + final.mMtx[2][j] * final.mMtx[2][j]);
++        if (norm < 1e-9f) {
++            return 1e9f;
++        }
++        for (int i = 0; i < 3; ++i) {
++            column[i][j] = final.mMtx[i][j] / norm;
++        }
++    }
++    float worst = 0.f;
++    for (int i = 0; i < 3; ++i) {
++        for (int j = 0; j < 3; ++j) {
++            if (i != j && std::fabs(column[i][j]) > worst) {
++                worst = std::fabs(column[i][j]);
++            }
++        }
++    }
++    return worst;
++}
++
++struct Stats {
++    unsigned long long draws = 0;
++    float max_offdiagonal = 0.f;
++};
++
++inline Stats& stats() {
++    static Stats value;
++    return value;
++}
++
++}  // namespace p2billboard
+diff --git a/src/sysCommon/shapeBase.cpp b/src/sysCommon/shapeBase.cpp
+index 704da9f8..4a6c0983 100644
+--- a/src/sysCommon/shapeBase.cpp
++++ b/src/sysCommon/shapeBase.cpp
+@@ -17,7 +17,6 @@
+ #include "PVW.h"
+ #include "Texture.h"
+ #include "Vector.h"
+-#include "pc_p2_billboard.h"
+ #include "sysNew.h"
+ #include "system.h"
+ #include "timers.h"
+@@ -251,44 +250,6 @@ void Joint::write(RandomAccessStream& stream)
+  * @todo: Documentation
+  * @note UNUSED Size: 00043C (Matching by size)
+  */
+-#if defined(PIKI_PC_PORT)
+-/**
+- * @brief Camera-facing rotation for a billboard mesh (#429).
+- *
+- * Returns the inverse of the combined model*view rotation so that a mesh whose
+- * geometry is pivot-centred around its joint translation faces the camera once
+- * the joint matrix is concatenated with it. False keeps the plain joint matrix
+- * when the camera or model basis is unavailable/degenerate.
+- */
+-static bool billboardRotation(Matrix4f& rot, Graphics& gfx)
+-{
+-	if (!gfx.mCamera || !gfx.mLastModelMatrix) {
+-		return false;
+-	}
+-	const Matrix4f& model = *gfx.mLastModelMatrix;
+-	const Matrix4f& view  = gfx.mCamera->mLookAtMtx;
+-	float m3[3][3];
+-	float v3[3][3];
+-	float r3[3][3];
+-	for (int i = 0; i < 3; ++i) {
+-		for (int j = 0; j < 3; ++j) {
+-			m3[i][j] = model.mMtx[i][j];
+-			v3[i][j] = view.mMtx[i][j];
+-		}
+-	}
+-	if (!p2billboard::facingRotation(r3, m3, v3)) {
+-		return false;
+-	}
+-	rot.makeIdentity();
+-	for (int i = 0; i < 3; ++i) {
+-		for (int j = 0; j < 3; ++j) {
+-			rot.mMtx[i][j] = r3[i][j];
+-		}
+-	}
+-	return true;
+-}
+-#endif
+-
+ /**
+  * @todo: Documentation
+  */
+@@ -326,9 +287,6 @@ void Joint::render(Graphics& gfx)
+ 	}
+ 
+ 	immut Matrix4f* animMatrices[10];
+-#if defined(PIKI_PC_PORT)
+-	Matrix4f billboardMtx[10]; // Per-dep camera-facing replacements for flagged meshes.
+-#endif
+ 	int matPolyCount = 0; // Counted but never used.
+ 
+ 	FOREACH_NODE(MatPoly, mMatPoly.mChild, matPoly)
+@@ -368,21 +326,6 @@ void Joint::render(Graphics& gfx)
+ 				}
+ 			}
+ 
+-#if defined(PIKI_PC_PORT)
+-			if (mesh->mFeatureFlags & Mesh::FeatureFlags::Billboard) {
+-				Matrix4f rot;
+-				if (billboardRotation(rot, gfx)) {
+-					const int depCount = mtxGroup->mDepLength ? mtxGroup->mDepLength : 1;
+-					for (int k = 0; k < depCount && k < 10; ++k) {
+-						if (animMatrices[k]) {
+-							animMatrices[k]->multiplyTo(rot, billboardMtx[k]);
+-							animMatrices[k] = &billboardMtx[k];
+-						}
+-					}
+-				}
+-			}
+-#endif
+-
+ 			Vector3f* shapeVertices  = mParentShape->mVertexList;
+ 			Vector2f* shapeTexCoords = mParentShape->mTexCoordList[0];
+ 			Vector3f* shapeNormals   = (mesh->mFeatureFlags & Mesh::FeatureFlags::VtxNBT)
+diff --git a/src/sysCore/oglGraphics.cpp b/src/sysCore/oglGraphics.cpp
+index f24c1ab3..614d87ce 100644
+--- a/src/sysCore/oglGraphics.cpp
++++ b/src/sysCore/oglGraphics.cpp
+@@ -16,6 +16,7 @@
+ #include "Mesh.h"
+ #include "Shape.h"
+ #include "Vector.h"
++#include "pc_p2_billboard_draw.h"
+ 
+ DEFINE_ERROR(__LINE__);
+ DEFINE_PRINT("OGLGraphics")
+@@ -653,6 +654,7 @@ void OGLGraphics::initMesh(Shape* model)
+ void OGLGraphics::drawSingleMatpoly(Shape* model, Joint::MatPoly* matPoly)
+ {
+ 	immut Matrix4f* animMatrices[10];
++	Matrix4f billboardMatrices[10]; // Per-dep camera-facing replacements (#429).
+ 
+ 	Mesh& mesh    = model->mMeshList[matPoly->mMeshIndex];
+ 	Material& mat = model->mMaterialList[matPoly->mIndex];
+@@ -692,6 +694,29 @@ void OGLGraphics::drawSingleMatpoly(Shape* model, Joint::MatPoly* matPoly)
+ 			}
+ 		}
+ 
++		// Opt-in camera-facing billboard (#429): replace the mesh's draw matrix
++		// with joint * inverse(model*view rotation). Geometry is pivot-centred so
++		// concatenation keeps the authored placement.
++		if ((mesh.mFeatureFlags & Mesh::FeatureFlags::Billboard) && mLastModelMatrix && mCamera) {
++			for (int depListIdx = 0; depListIdx < mtxGroup.mDepLength && depListIdx < 10; ++depListIdx) {
++				if (!animMatrices[depListIdx]) {
++					continue;
++				}
++				if (p2billboard::facingMatrix(billboardMatrices[depListIdx], *animMatrices[depListIdx],
++				                              *mLastModelMatrix, mCamera->mLookAtMtx)) {
++					if (mActiveMatrix) {
++						const float off = p2billboard::offDiagonal(*mActiveMatrix, billboardMatrices[depListIdx]);
++						p2billboard::Stats& stats = p2billboard::stats();
++						++stats.draws;
++						if (off > stats.max_offdiagonal) {
++							stats.max_offdiagonal = off;
++						}
++					}
++					animMatrices[depListIdx] = &billboardMatrices[depListIdx];
++				}
++			}
++		}
++
+ 		Vector3f* shapeVtxPositions = model->mVertexList;
+ 		Colour* shapeVtxColors      = model->mVtxColorList;
+ 		Vector3f* shapeNormals
+diff --git a/src/sysDolphin/dgxGraphics.cpp b/src/sysDolphin/dgxGraphics.cpp
+index b07ac078..3d964f01 100644
+--- a/src/sysDolphin/dgxGraphics.cpp
++++ b/src/sysDolphin/dgxGraphics.cpp
+@@ -9,6 +9,7 @@
+ #include "pc_window.h"
+ #include "pc_gfx.h"
+ #include "pc_p2_envmap.h"
++#include "pc_p2_billboard_draw.h"
+ #include <cstdlib>
+ #endif
+ 
+@@ -1392,6 +1393,7 @@ void DGXGraphics::drawSingleMatpoly(Shape* model, Joint::MatPoly* matPoly)
+ {
+ 	Mesh& mesh    = model->mMeshList[matPoly->mMeshIndex];
+ 	Material& mat = model->mMaterialList[matPoly->mIndex];
++	Matrix4f billboardMatrices[10]; // Per-dep camera-facing replacements (#429).
+ 
+ 	if (!mesh.mJointList || mat.mFlags & MATFLAG_Skip) {
+ 		return;
+@@ -1408,6 +1410,7 @@ void DGXGraphics::drawSingleMatpoly(Shape* model, Joint::MatPoly* matPoly)
+ 	mMtxDepIdx = mesh.mMtxDepIdx;
+ 	useMaterial(&mat);
+ 	setupVtxDesc(model, &mat, &mesh);
++	immut Matrix4f* viewMtx = mActiveMatrix;
+ 
+ 	for (int mtxGroupIdx = 0; mtxGroupIdx < mesh.mMtxGroupCount; mtxGroupIdx++) {
+ 		MtxGroup& group = mesh.mMtxGroupList[mtxGroupIdx];
+@@ -1429,6 +1432,38 @@ void DGXGraphics::drawSingleMatpoly(Shape* model, Joint::MatPoly* matPoly)
+ 			}
+ 		}
+ 
++		// Opt-in camera-facing billboard (#429): re-upload the draw matrix as
++		// joint * inverse(model*view rotation) for flagged meshes.
++		if ((mesh.mFeatureFlags & Mesh::FeatureFlags::Billboard) && mLastModelMatrix && mCamera) {
++			for (int depListIdx = 0; depListIdx < group.mDepLength && depListIdx < 10; ++depListIdx) {
++				int depMtxIdx = group.mDepList[depListIdx];
++				if (depMtxIdx == -1) {
++					continue;
++				}
++				VtxMatrix& vtxMtx = model->mVtxMatrixList[depMtxIdx];
++				immut Matrix4f* joint = nullptr;
++				if (model->mCurrentAnimation->mData) {
++					joint = vtxMtx.mHasPartialWeights
++					            ? &model->getAnimMatrix(vtxMtx.mIndex)
++					            : &model->getAnimMatrix(model->mJointCount + vtxMtx.mIndex);
++				} else {
++					joint = &model->mJointList[vtxMtx.mIndex].mAnimMatrix;
++				}
++				if (p2billboard::facingMatrix(billboardMatrices[depListIdx], *joint, *mLastModelMatrix,
++				                              mCamera->mLookAtMtx)) {
++					useMatrixQuick(billboardMatrices[depListIdx], depListIdx);
++					if (viewMtx) {
++						const float off = p2billboard::offDiagonal(*viewMtx, billboardMatrices[depListIdx]);
++						p2billboard::Stats& stats = p2billboard::stats();
++						++stats.draws;
++						if (off > stats.max_offdiagonal) {
++							stats.max_offdiagonal = off;
++						}
++					}
++				}
++			}
++		}
++
+ 		for (int dispListIdx = 0; dispListIdx < group.mDispLength; dispListIdx++) {
+ 			DispList& list = group.mDispList[dispListIdx];
+ 			setCullFront((list.mFlags & 3) ^ mCullFlip);
+-- 
+2.55.0.windows.3
+

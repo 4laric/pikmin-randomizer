@@ -137,8 +137,9 @@ model), plus `tests/test_pikmin2_convert_normals.py` and
 
 ## Native camera-facing follow-up
 
-The bounded static fallback above now has an opt-in camera-facing path:
+The bounded static fallback above now has a camera-facing path:
 `billboard='native'` emits the Billboard feature flag with pivot-relative
-geometry and the renderer orients it from the view matrix at draw time. See
-[docs/PIKMIN2_BILLBOARD_NATIVE.md](PIKMIN2_BILLBOARD_NATIVE.md). The visual GL
-gate remains UNTESTED and the default Hikari tolerance stays static.
+geometry and the renderer orients it from the active GPU matrix at draw time.
+It is validated on the real HikariKinoko source and accepted by a replacement-main
+GL fixture, and the default Hikari tolerance is now `'native'`. See
+[docs/PIKMIN2_BILLBOARD_NATIVE.md](PIKMIN2_BILLBOARD_NATIVE.md).
