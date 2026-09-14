@@ -118,3 +118,91 @@ def test_read_receipts_fails_safe_on_missing_or_malformed_files(tmp_path):
     good = tmp_path / rewards.RECEIPTS_FILENAME
     good.write_text('P2_KOGANE_RECEIPTS_1\n219002 1\n219001 3\n')
     assert rewards.read_receipts(good) == {219001: 3, 219002: 1}
+
+
+# Native sidecar -> lane-06 ledger bridge (#168/#219/#441).
+SIDECAR = 'P2_KOGANE_RECEIPTS_1\n219001 3\n219002 1\n'
+
+
+def test_reconcile_native_grants_each_sidecar_flip_once():
+    account = ledger()
+    result = rewards.reconcile_native(SIDECAR, account, 'seed-a')
+    assert set(result['granted']) == {
+        ('seed-a', 'enemy:9', '219001', 'flip1'),
+        ('seed-a', 'enemy:9', '219001', 'flip2'),
+        ('seed-a', 'enemy:9', '219001', 'flip3'),
+        ('seed-a', 'enemy:10', '219002', 'flip1')}
+    assert result['summary'] == {'rows': 2, 'generators': ['219001', '219002'],
+                                 'receipts': 4, 'granted': 4, 'already_present': 0}
+    assert len(account) == 4
+
+
+def test_reconcile_native_reopen_does_not_double_grant(tmp_path):
+    path = tmp_path / 'kogane-receipts.json'
+    first = receipts.ReceiptLedger(receipts.JsonReceiptPersistence(path))
+    assert rewards.reconcile_native(SIDECAR, first, 'seed-a')['summary']['granted'] == 4
+    reopened = receipts.ReceiptLedger(receipts.JsonReceiptPersistence(path))
+    again = rewards.reconcile_native(SIDECAR, reopened, 'seed-a')
+    assert again['granted'] == ()
+    assert again['summary']['already_present'] == 4
+    assert len(reopened) == 4
+
+
+def test_reconcile_native_a_different_seed_grants_again():
+    account = ledger()
+    rewards.reconcile_native(SIDECAR, account, 'seed-a')
+    again = rewards.reconcile_native(SIDECAR, account, 'seed-b')
+    assert again['summary']['granted'] == 4
+    assert len(account) == 8
+
+
+def test_reconcile_native_rejects_a_malformed_sidecar(tmp_path):
+    for text in ('P2_KOGANE_RECEIPTS_2\n219001 3\n',
+                 'P2_KOGANE_RECEIPTS_1\n219001 9\n',
+                 'P2_KOGANE_RECEIPTS_1\n219001 2\n219001 1\n'):
+        with pytest.raises(ValueError):
+            rewards.reconcile_native(text, ledger(), 'seed-a')
+    malformed = tmp_path / 'bad.txt'
+    malformed.write_text('219001 3\n')
+    with pytest.raises(ValueError, match='header'):
+        rewards.reconcile_native(malformed, ledger(), 'seed-a')
+
+
+def test_reconcile_native_missing_file_grants_nothing(tmp_path):
+    result = rewards.reconcile_native(tmp_path / 'absent.txt', ledger(), 'seed-a')
+    assert result == {'granted': (), 'summary': {'rows': 0, 'generators': [],
+                                                 'receipts': 0, 'granted': 0,
+                                                 'already_present': 0}}
+
+
+def test_reconcile_native_handles_an_unknown_generator_explicitly():
+    text = 'P2_KOGANE_RECEIPTS_1\n219099 2\n'
+    with pytest.raises(ValueError, match='Unknown reward beetle generator: 219099'):
+        rewards.reconcile_native(text, ledger(), 'seed-a')
+    account = ledger()
+    mapped = rewards.reconcile_native(text, account, 'seed-a', generator_to_enemy={219099: 9})
+    assert mapped['summary']['granted'] == 2
+    with pytest.raises(ValueError, match='Unknown reward beetle id'):
+        rewards.reconcile_native(text, ledger(), 'seed-a', generator_to_enemy={219099: 12})
+
+
+def test_sync_receipts_round_trips_without_regranting(tmp_path):
+    path = tmp_path / rewards.RECEIPTS_FILENAME
+    account = ledger()
+    rewards.reconcile_native(SIDECAR, account, 'seed-a')
+    assert rewards.sync_receipts(path, account, 'seed-a') == {219001: 3, 219002: 1}
+    assert rewards.read_receipts(path) == {219001: 3, 219002: 1}
+    again = rewards.reconcile_native(path, account, 'seed-a')
+    assert again['granted'] == ()
+    assert again['summary']['already_present'] == 4
+
+
+def test_write_receipts_matches_the_native_format_and_validates_rows(tmp_path):
+    path = tmp_path / 'out.txt'
+    text = rewards.write_receipts(path, {219002: 1, 219001: 3})
+    assert text == 'P2_KOGANE_RECEIPTS_1\n219001 3\n219002 1\n'
+    assert path.read_text() == text
+    with pytest.raises(ValueError, match='flip count'):
+        rewards.write_receipts(path, {219001: MAX_FLIPS + 1})
+    with pytest.raises(ValueError, match='generator id'):
+        rewards.write_receipts(path, {0: 1})

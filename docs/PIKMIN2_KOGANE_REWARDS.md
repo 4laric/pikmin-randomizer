@@ -2,7 +2,7 @@
 
 Lane 17 consumer of the lane-06 reward/receipt contract (#441). New host module
 `experimental/pikmin2_kogane_rewards.py` with `tests/test_pikmin2_kogane_rewards.py`
-(8 passing), the cave model `experimental/pikmin2_kogane_cave.py` with
+(19 passing), the cave model `experimental/pikmin2_kogane_cave.py` with
 `tests/test_pikmin2_kogane_cave.py`, the re-entry fixture
 `experimental/pikmin2_kogane_reentry.py` with `tests/test_pikmin2_kogane_reentry.py`,
 and an additive native re-entry dedupe plus an on-disk flip-receipt sidecar in
@@ -106,10 +106,32 @@ the flips, then a **second process on the same run directory** selected by the
 spent escape and the partial survivor, resume the survivor to the cap and log
 `P2_KOGANE_RECEIPTS loaded=2` (`validate_cross_process`).
 
+**Host ledger bridge.** `reconcile_native(sidecar_path_or_text, ledger, seed,
+generator_to_enemy=None)` reconciles the native sidecar rows into a lane-06
+`ReceiptLedger` exactly once. Each `<generator> <flips>` row expands to
+`flip1..flipN` grants keyed by `(seed, 'enemy:<species-id>', '<generator>',
+'flipN')` through the standard `ReceiptLedger.grant`, reusing the lane-06 schema
+rather than forking it. The native rows carry only the spawn generator id
+(`Generator::_70`), so the bridge recovers the `enemy:<species-id>` identity from
+a `{generator: source_id}` map: `generator_to_enemy` when given, otherwise the
+lane 17 arena fixture roster (`DEFAULT_GENERATOR_TO_ENEMY`, `219001/219002/219003`
+= Kogane/Wealthy/Doodlebug). An unknown generator or a malformed sidecar raises
+`ValueError` before anything is granted; a missing path is treated as a fresh run
+(no rows). It returns the newly granted keys plus a `summary`
+(`rows`/`generators`/`receipts`/`granted`/`already_present`). Re-reconciling the
+same sidecar — including over a reopened `JsonReceiptPersistence` — grants nothing
+and reports every receipt as `already_present`, while a different `seed` grants
+again. `write_receipts(path, rows)` and `sync_receipts(path, ledger, seed, ...)`
+write the exact native format (header, sorted rows, atomic temp-sibling replace)
+back out, so the host copy and the native sidecar stay in sync. See
+`tests/test_pikmin2_kogane_rewards.py`.
+
 Still open: a native P2-save bridge (durable flips/treasure in the P2 save, lane
 01/06), plus native treasure override and cave relocation execution. The sidecar
 is run-directory local, so a fresh run directory or a moved/renamed run starts the
-beetles at zero flips; it is not a save-game contract.
+beetles at zero flips; it is not a save-game contract. The `enemy:<species-id>`
+map likewise has to travel with the run — a real product run must pass the
+generator roster instead of the fixture default.
 
 ## Gates
 
@@ -124,5 +146,6 @@ beetles at zero flips; it is not a save-game contract.
 | In-process native re-entry dedupe | IMPLEMENTED (source only) | `restoredFlips` in `native/pc_port/pc_p2_kogane.cpp`; not rebuilt/run in this slice |
 | In-process restored escape | IMPLEMENTED (source only) | `P2_KOGANE_RESTORED_ESCAPE` + `pcEscapeNow()` on `restored->second >= MAX_FLIPS`; `pikmin2_kogane_reentry` validator tests |
 | Cross-process sidecar receipts | IMPLEMENTED (source only) | `p2-kogane-receipts.txt` atomic write/load + `P2_KOGANE_RECEIPTS loaded=<n>`; host `parse_receipts`/`read_receipts` and `validate_cross_process` tests |
+| Native-sidecar -> lane-06 ledger bridge | PASS (host) | `reconcile_native` idempotent across reopen, per-seed, strict on malformed/unknown; `sync_receipts`/`write_receipts` round-trip; `tests/test_pikmin2_kogane_rewards.py` |
 | Native treasure override / cave relocation | UNIMPLEMENTED | no P2 cave in the P1 host |
 | Native P2-save persistence | UNIMPLEMENTED | sidecar is run-directory local, not the lane 01/06 save |
