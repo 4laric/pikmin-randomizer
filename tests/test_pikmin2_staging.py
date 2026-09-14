@@ -7,7 +7,8 @@ import unittest
 from pathlib import Path
 
 from experimental.pikmin2_staging import (
-    KINDS, SCHEMA, StagingError, load_manifest, stage, validate_manifest)
+    KINDS, SCHEMA, TEMP_SUFFIX, StagingError, build_manifest, dump_manifest,
+    load_manifest, plan, stage, validate_manifest, verify_manifest)
 
 
 def sha(data):
@@ -160,6 +161,128 @@ class ManifestTests(unittest.TestCase):
             manifest['entries'][0]['destination'] = 'tree\\nested\\file.bin'
             self.assertEqual(validate_manifest(manifest)['entries'][0]['destination'],
                              'tree/nested/file.bin')
+
+
+class VerifyManifestTests(unittest.TestCase):
+    def test_verify_all_ok_without_touching_destination(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            manifest, base, _ = scenario(tmp)
+            report = verify_manifest(manifest, base=base)
+            self.assertTrue(report['ok'])
+            self.assertEqual(report['summary'],
+                             dict(entries=3, ok=3, missing_source=0, hash_mismatch=0))
+            self.assertTrue(all(row['status'] == 'ok' for row in report['entries']))
+            self.assertEqual(report['entries'][0]['found_sha256'],
+                             manifest['entries'][0]['sha256'])
+            self.assertEqual(sorted(p.name for p in tmp.iterdir()), ['source'])
+
+    def test_verify_missing_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            manifest, base, _ = scenario(tmp)
+            manifest['entries'][1]['source'] = 'absent.bin'
+            report = verify_manifest(manifest, base=base)
+            self.assertFalse(report['ok'])
+            self.assertEqual(report['summary']['missing_source'], 1)
+            self.assertEqual(report['entries'][1]['status'], 'missing_source')
+            self.assertIsNone(report['entries'][1]['found_sha256'])
+
+    def test_verify_hash_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            manifest, base, blobs = scenario(tmp)
+            manifest['entries'][0]['sha256'] = '0' * 64
+            report = verify_manifest(manifest, base=base)
+            self.assertFalse(report['ok'])
+            self.assertEqual(report['summary']['hash_mismatch'], 1)
+            row = report['entries'][0]
+            self.assertEqual(row['status'], 'hash_mismatch')
+            self.assertEqual(row['found_sha256'], sha(blobs['src0.bin']))
+
+
+class PlanTests(unittest.TestCase):
+    def test_plan_stage_skip_conflict(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            manifest, base, _ = scenario(tmp)
+            run = tmp / 'run'
+            empty = plan(manifest, run, base=base)
+            self.assertFalse(run.exists())
+            self.assertTrue(all(row['action'] == 'stage' for row in empty['entries']))
+            self.assertEqual(empty['summary']['stage'], 3)
+            self.assertTrue(empty['ok'])
+            stage(manifest, run, base=base)
+            (run / manifest['entries'][0]['destination']).unlink()
+            (run / manifest['entries'][1]['destination']).write_bytes(b'corrupt')
+            report = plan(manifest, run, base=base)
+            self.assertEqual([row['action'] for row in report['entries']],
+                             ['stage', 'conflict', 'skip'])
+            self.assertEqual(report['summary']['stage'], 1)
+            self.assertEqual(report['summary']['conflict'], 1)
+            self.assertEqual(report['summary']['skip'], 1)
+            self.assertFalse(report['ok'])
+
+    def test_plan_reports_temp_and_is_read_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            manifest, base, _ = scenario(tmp)
+            run = tmp / 'run'
+            stage(manifest, run, base=base)
+            target = run / manifest['entries'][0]['destination']
+            stale = target.parent / f'{target.name}.leftover{TEMP_SUFFIX}'
+            stale.write_bytes(b'partial')
+            snapshots = {p: (p.stat().st_mtime_ns, p.read_bytes())
+                         for p in run.rglob('*') if p.is_file()}
+            report = plan(manifest, run, base=base)
+            row = report['entries'][0]
+            self.assertTrue(row['interrupted_temp'])
+            self.assertIn(stale.name, row['interrupted_temps'])
+            self.assertTrue(row['planned_temp'].startswith(target.name))
+            self.assertTrue(row['planned_temp'].endswith(TEMP_SUFFIX))
+            self.assertEqual(report['summary']['interrupted'], 1)
+            for path, (stamp, data) in snapshots.items():
+                self.assertEqual(path.stat().st_mtime_ns, stamp)
+                self.assertEqual(path.read_bytes(), data)
+
+
+class ManifestIoTests(unittest.TestCase):
+    def test_dump_load_round_trip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            manifest, _, _ = scenario(tmp)
+            manifest['notes'] = 'lane 05 install'
+            path = tmp / 'manifests' / 'content.json'
+            validated = validate_manifest(manifest)
+            self.assertEqual(dump_manifest(manifest, path), validated)
+            self.assertEqual(load_manifest(path), validated)
+            self.assertEqual(load_manifest(path)['notes'], 'lane 05 install')
+            self.assertEqual(json.loads(path.read_text(encoding='utf-8')), validated)
+
+    def test_build_manifest_normalizes_entries(self):
+        data = b'payload'
+        manifest = build_manifest(
+            4,
+            [dict(id='a', kind='model', source='s.mod',
+                  destination='tree\\a.mod', sha256=sha(data))],
+            notes='built')
+        self.assertEqual(manifest['schema'], SCHEMA)
+        self.assertEqual(manifest['version'], 4)
+        self.assertEqual(manifest['notes'], 'built')
+        self.assertEqual(manifest['entries'][0]['destination'], 'tree/a.mod')
+
+    def test_build_manifest_rejects_duplicates_and_malformed(self):
+        good = dict(id='a', kind='model', source='s', destination='d', sha256='a' * 64)
+        with self.assertRaises(ValueError):
+            build_manifest(1, [good, dict(good, destination='e')])
+        with self.assertRaises(ValueError):
+            build_manifest(1, [good, dict(good, id='b')])
+        with self.assertRaises(ValueError):
+            build_manifest(1, [dict(good, kind='mesh')])
+        with self.assertRaises(ValueError):
+            build_manifest(1, {'not': 'a list'})
+        with self.assertRaises(ValueError):
+            build_manifest(1, [good], notes=7)
 
 
 if __name__ == '__main__':
