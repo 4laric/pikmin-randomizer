@@ -121,7 +121,7 @@ py -3.12 -m experimental.pikmin2_plant_runtime run --assets C:\Users\alari\bbft\
 ## Validation
 
 ```text
-py -3.12 -m pytest tests/test_pikmin2_plant_runtime.py -q   # 7 passed
+py -3.12 -m pytest tests/test_pikmin2_plant_runtime.py -q   # 6 passed
 py -3.12 -m pytest tests/ -q -k plant                       # 38 passed
 g++ -std=c++17 -Wall -Wextra -Werror -I native-patches/plant tests/pikmin2_plant_policy.cpp
 ```
