@@ -279,6 +279,37 @@ class PlacementCatalogTests(unittest.TestCase):
         self.assertFalse(by_identity['Tadpole']['requires_home'])
         self.assertTrue(all(p['requires_corpse_route'] for p in profiles))
 
+    def test_boss_descriptors_and_profiles_are_default_deny(self):
+        descriptors = catalog.boss_encounters()
+        self.assertEqual({d['id'] for d in descriptors},
+                         {'umi_mushi_arena', 'umi_mushi_blind_arena'})
+        self.assertTrue(all(d['arena_slots'] == {'min': 1, 'max': 1} for d in descriptors))
+        profiles = catalog.boss_profiles()
+        self.assertTrue(all(p['is_boss'] for p in profiles))
+        self.assertTrue(all(p['accepted_gates'] == [] for p in profiles))
+
+    def test_boss_document_needs_a_boss_arena_slot(self):
+        # Default campaign document excludes bosses and their descriptors.
+        plain = catalog.build_document()
+        self.assertEqual(plain['encounters'], [])
+        self.assertNotIn('UmiMushi', {p['identity'] for p in plain['profiles']})
+        # A caller-supplied water boss arena validates and is constraint-compatible.
+        water = normalize_slot(dict(
+            next(s for s in catalog.slots_from_campaign() if s['terrain'] == 'water'), boss_slot=True))
+        document = catalog.build_document(slots=[water], include_bosses=True)
+        identities = {p['identity'] for p in document['profiles']}
+        self.assertTrue({'UmiMushi', 'UmiMushiBlind'} <= identities)
+        boss = normalize_profile(catalog.boss_profiles()[0])
+        encounters = {e['id']: e for e in document['encounters']}
+        self.assertEqual(compatibility(water, boss, encounters), [])
+        # Still denied: no accepted gate and no native evidence.
+        self.assertEqual(audit(document)['admitted'], {})
+        # A ground slot cannot host a water boss.
+        ground = normalize_slot(dict(
+            next(s for s in catalog.slots_from_campaign() if s['terrain'] == 'ground'), boss_slot=True))
+        blocked = compatibility(ground, boss, encounters)
+        self.assertIn("terrain ground not in ['water']", blocked)
+
     def test_built_document_validates_and_rejects_foreign_cohorts(self):
         document = catalog.build_document()
         report = compatibility_report(document)

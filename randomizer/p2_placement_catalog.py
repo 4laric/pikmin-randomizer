@@ -115,6 +115,28 @@ BOSS_COHORT = (
     (101, 'UmiMushiBlind', 16, ['water']),
 )
 
+# Encounter descriptors for the lane-16 aquatic bosses. A boss may only be
+# placed through one of these, and the campaign table contains no boss arena
+# slot, so a caller must supply boss slots explicitly. `footprint_radius` is 0
+# because no source arena size is extracted yet; `required_gates` are
+# requirements, not native proof.
+ENCOUNTER_SPECS = (
+    {
+        'id': 'umi_mushi_arena', 'identity': 'UmiMushi', 'source_id': 71, 'lane': 16,
+        'terrains': ['water'], 'helper_budget': 0, 'arena_slots': {'min': 1, 'max': 1},
+        'phases': 1, 'protected_drops': [],
+        'required_gates': ['arena', 'attack', 'suction', 'death', 'reward'],
+        'notes': 'Ranging Bloyster arena; no helper spawns; footprint unmeasured.',
+    },
+    {
+        'id': 'umi_mushi_blind_arena', 'identity': 'UmiMushiBlind', 'source_id': 101, 'lane': 16,
+        'terrains': ['water'], 'helper_budget': 0, 'arena_slots': {'min': 1, 'max': 1},
+        'phases': 1, 'protected_drops': [],
+        'required_gates': ['arena', 'attack', 'suction', 'death', 'reward'],
+        'notes': 'Toady Bloyster arena; no helper spawns; footprint unmeasured.',
+    },
+)
+
 
 def _campaign_index(campaign_sources):
     index = {}
@@ -265,18 +287,65 @@ def candidate_profiles():
     return profiles
 
 
-def build_document(slots=None, profiles=None):
-    """Return a validated `p2-placement-v1` document for the candidate cohort."""
+def boss_encounters():
+    """Return validated encounter descriptors for the lane-16 aquatic bosses."""
+    return [_placement.normalize_encounter_descriptor({
+        'id': spec['id'],
+        'identity': spec['identity'],
+        'terrains': list(spec['terrains']),
+        'footprint_radius': 0,
+        'helper_budget': spec['helper_budget'],
+        'arena_slots': dict(spec['arena_slots']),
+        'phases': spec['phases'],
+        'protected_drops': list(spec['protected_drops']),
+        'required_gates': list(spec['required_gates']),
+        'notes': spec['notes'],
+    }) for spec in ENCOUNTER_SPECS]
+
+
+def boss_profiles():
+    """Return default-deny boss profiles bound to the encounter descriptors.
+
+    These are only meaningful against caller-supplied boss arena slots; the
+    campaign table exposes none, so `build_document()` excludes them by default.
+    """
+    profiles = []
+    for spec in ENCOUNTER_SPECS:
+        profiles.append(_placement.normalize_profile({
+            'identity': spec['identity'],
+            'terrains': list(spec['terrains']),
+            'family_lane': spec['lane'],
+            'is_boss': True,
+            'encounter_descriptor': spec['id'],
+            'accepted_gates': [],
+            'notes': (f"P2 source_id {spec['source_id']}; lane-04 boss constraint; "
+                      f"requires encounter descriptor {spec['id']}; arena slot "
+                      f"not present in the campaign table."),
+        }))
+    return profiles
+
+
+def build_document(slots=None, profiles=None, include_bosses=False):
+    """Return a validated `p2-placement-v1` document for the candidate cohort.
+
+    ``include_bosses`` adds the lane-16 boss profiles and their encounter
+    descriptors. Only pass it with caller-supplied boss arena slots; the default
+    campaign slots are not boss arenas.
+    """
     if slots is None:
         slots = all_slots()
     if profiles is None:
         profiles = candidate_profiles()
-    return _placement.validate_document({
+    document = {
         'schema': SCHEMA,
         'slots': list(slots),
         'profiles': list(profiles),
-        'notes': 'Lane-04 concrete candidate slots (campaign + adult/group + generator) and P2 candidate profiles; default deny.',
-    })
+        'notes': 'Lane-04 concrete candidate slots (campaign + adult/group) and P2 candidate profiles; default deny.',
+    }
+    if include_bosses:
+        document['profiles'] = list(profiles) + boss_profiles()
+        document['encounters'] = boss_encounters()
+    return _placement.validate_document(document)
 
 
 def main(argv=None):
@@ -286,7 +355,13 @@ def main(argv=None):
     parser.add_argument('--summary', action='store_true', help='print per-identity compatibility counts')
     parser.add_argument('--report', type=Path, default=None,
                         help='write the compatibility report JSON to this path')
+    parser.add_argument('--boss-descriptors', action='store_true',
+                        help='print the lane-16 boss encounter descriptors and exit')
     args = parser.parse_args(argv)
+
+    if args.boss_descriptors:
+        print(json.dumps(boss_encounters(), indent=2))
+        return 0
 
     document = build_document()
     report = _placement.compatibility_report(document)
