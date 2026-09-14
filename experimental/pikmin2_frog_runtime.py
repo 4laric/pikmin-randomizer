@@ -3,6 +3,7 @@ import argparse,json,os,re,subprocess
 from pathlib import Path
 from scripts import build_pikmin2_fixture as builder
 from experimental.pikmin2_frog_arena import prepare
+from experimental.pikmin2_elecbug_immunity_behavior import replace_tutorial_input
 from experimental.pikmin2_kochappy_arena_fixture import instrument_tutorial
 
 APP=r'''class RoomApp : public PlugPikiApp {
@@ -92,15 +93,11 @@ def build(native,build_dir,output,head,resume=False,app=None):
     tutorial=native/'src/plugPikiColin/newPikiGame.cpp';tutorial_private=output/'tutorial.cpp';tutorial_private.write_text(instrument_tutorial(tutorial.read_text()))
     tutorial_compile=[str(tutorial_private) if a==str(private) else a for a in compile]
     tutorial_compile[builder.option_index(tutorial_compile,'-o')]=str(output/'tutorial.obj');tutorial_compile[builder.option_index(tutorial_compile,'-MF')]=str(output/'tutorial.d')
-    targets=[i for i,a in enumerate(link) if a.endswith('-libpikmin_legacy.a')]
-    if len(targets)!=1:raise ValueError('Expected one private legacy archive')
-    # The original tutorial translation unit lives in the archive. Supplying its
-    # complete replacement first prevents the linker extracting that member.
-    link.insert(targets[0],str(output/'tutorial.obj'))
+    link=replace_tutorial_input(link,output/'tutorial.obj')
     env=dict(os.environ,PATH='C:/msys64/mingw64/bin;'+os.environ.get('PATH',''))
     audit=dict(original_family=builder.snapshot([family,tutorial]),instrumented=builder.snapshot([private,tutorial_private]),commands=[compile,tutorial_compile,link],freshness_checks=[])
     for name,command in [('family-compile',compile),('tutorial-compile',tutorial_compile),('family-link',link)]:
-        code,text=builder.run(command,build_dir,env);(output/(name+'.log')).write_text(text)
+        code,text=builder.run_command(command,build_dir,env,output,name);(output/(name+'.log')).write_text(text)
         if code:raise RuntimeError(name+' failed')
     builder.require_fresh(Path(record['toolchain']['ninja']['path']),build_dir,audit['freshness_checks'])
     builder.check_snapshot(record['inputs']);builder.check_snapshot(record['fixture_inputs']);builder.check_snapshot(record['configuration_inputs']);builder.check_snapshot(audit['original_family']);builder.check_snapshot(audit['instrumented'])

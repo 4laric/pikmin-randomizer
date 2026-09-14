@@ -72,7 +72,7 @@ def test_build_copies_fixture_and_prefix_then_links(tmp_path):
     record = {'commands': [['g++', '-c', 'x.cpp', '-o', 'x.o'],
                            ['g++', '-o', 'baseline.exe', 'x.o']]}
     with patch.object(proxy.builder, 'build_fixture', return_value=record) as build_fixture, \
-         patch.object(proxy.builder, 'run', return_value=(0, 'linked')) as link, \
+         patch.object(proxy.builder, 'run_command', return_value=(0, 'linked')) as link, \
          patch.object(proxy.builder, 'snapshot', return_value={'exe': {'sha256': 'abc'}}):
         exe, identity = proxy.build(native, build_dir, output, 'a' * 40, prefix)
     build_fixture.assert_called_once()
@@ -95,6 +95,6 @@ def test_build_propagates_link_failure(tmp_path):
     prefix.write_text('// prefix\n')
     record = {'commands': [['g++', '-o', 'baseline.exe', 'x.o']]}
     with patch.object(proxy.builder, 'build_fixture', return_value=record), \
-         patch.object(proxy.builder, 'run', return_value=(1, 'boom')):
+         patch.object(proxy.builder, 'run_command', return_value=(1, 'boom')):
         with pytest.raises(RuntimeError, match='fixture link failed'):
             proxy.build(native, build_dir, tmp_path / 'out', 'a' * 40, prefix)

@@ -34,7 +34,7 @@ from scripts.test_pikmin2_surface_native import executable_identity
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURE = ROOT / 'scripts/pikmin2_breadbug_cargo_fixture.cpp'
-PREFIX = ROOT / 'output/p2-lifecycle-batch/breadbug-actor-runtime-build/room-prefix.inc'
+PREFIX = None  # Derive from the pinned native source unless explicitly supplied.
 WINDOW_LINE = 'Experimental preview window set to 960x540 windowed and centered'
 
 SCOPE = ('P1 TEKI_Collec proxy cargo observation; the proxy owns no P2 pull '
@@ -82,12 +82,19 @@ def build(native, build_dir, output, head, prefix=PREFIX):
     output.mkdir(parents=True, exist_ok=False)
     fixture = output / 'fixture.cpp'
     fixture.write_text(fixture_source())
-    shutil.copy2(prefix, output / 'room-prefix.inc')
+    if prefix is None:
+        source = (native / 'tools/preview_p2_room.cpp').read_text()
+        anchor = 'class RoomApp : public PlugPikiApp {'
+        if source.count(anchor) != 1:
+            raise ValueError('Room fixture prefix boundary changed')
+        (output / 'room-prefix.inc').write_text(source[:source.index(anchor)])
+    else:
+        shutil.copy2(prefix, output / 'room-prefix.inc')
     record = builder.build_fixture(build_dir, native, fixture, output / 'baseline', head)
     link = list(record['commands'][-1])
     link[builder.option_index(link, '-o')] = str(output / 'fixture.exe')
     env = dict(os.environ, PATH='C:/msys64/mingw64/bin;' + os.environ.get('PATH', ''))
-    code, text = builder.run(link, build_dir, env)
+    code, text = builder.run_command(link, build_dir, env, output, 'fixture-link')
     (output / 'fixture-link.log').write_text(text)
     if code:
         raise RuntimeError('fixture link failed')

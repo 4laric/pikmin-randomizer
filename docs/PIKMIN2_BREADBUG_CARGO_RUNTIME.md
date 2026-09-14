@@ -73,7 +73,6 @@ Exact commands (coordinator's serialized GL slot; never run two at once):
 # 1. build (reuses a fresh native build; never rebuilds production)
 py -3.12 -m experimental.pikmin2_breadbug_proxy_cargo build `
   --native native --build-dir output/<lane>-build --head <40-hex> `
-  --prefix output/p2-lifecycle-batch/breadbug-actor-runtime-build/room-prefix.inc `
   --output output/<lane>-proxy-cargo-build
 # 2. run (stages the arena and writes result.json)
 py -3.12 -m experimental.pikmin2_breadbug_proxy_cargo run `
@@ -94,3 +93,5 @@ py -3.12 -m experimental.pikmin2_breadbug_proxy_cargo validate --log <staged>/ho
   two strength scales separately (`native_offset_power=2.0`,
   `source_strength=1.5`). It cannot observe a P2 pull channel or P2 carriers;
   `p2_contest_semantics` stays `False`.
+
+Integration #437: the runner now derives its prefix from the pinned native `tools/preview_p2_room.cpp`. No other lane output is required. An explicit `--prefix` remains available for a recorded custom fixture. Long link commands use response files.
