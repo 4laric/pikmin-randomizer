@@ -247,18 +247,21 @@ async def serve(session, run, process=None, server=None, password=None, updates=
 
 
 def launch(manifest, session_dir, exe=None, assets=None, server=None, content_manifest=None,
-           family_install=None, family_source=None, family_actors=None):
+           family_install=None, family_source=None, family_actors=None,
+           p2_content=None, p2_actors=None):
     with SessionLock(session_dir):
         return _launch(manifest, session_dir, exe, assets, server, content_manifest,
-                       family_install, family_source, family_actors)
+                       family_install, family_source, family_actors, p2_content, p2_actors)
 
 
 def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_manifest=None,
-            family_install=None, family_source=None, family_actors=None):
+            family_install=None, family_source=None, family_actors=None,
+            p2_content=None, p2_actors=None):
     if manifest["mode"] == "ap" and not server:
         raise ValueError("AP mode requires --server")
-    if family_install is not None and content_manifest is not None:
-        raise ValueError("--family-install and --content-manifest use different overlay owners; run separately")
+    staged_paths = [path for path in (content_manifest, family_install, p2_content) if path is not None]
+    if len(staged_paths) > 1:
+        raise ValueError("--content-manifest, --family-install and --p2-content own the private asset tree; use exactly one")
     session = Session(manifest, session_dir)
     run = NativeRun(session)
     if family_install is not None:
@@ -284,6 +287,21 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_m
         receipt = stage_session_content(content_manifest, run.directory / "assets",
                                         required_identities=identities, retail_assets=Path(assets))
         print(f"PIKMIN_CONTENT_STAGED: {receipt['summary']} identities={receipt['identities']}", flush=True)
+    if p2_content is not None:
+        # Identity-to-runtime binding: stage each p2_layout binding's family content
+        # keyed by source id / enum name, so a generated session launches without
+        # per-family manual sidecar copying. Runs before any native process, so an
+        # unknown identity, missing/wrong source or missing actor binding raises and
+        # nothing launches.
+        if not assets or not (Path(assets) / "dataDir" / "stages").is_dir():
+            raise ValueError("--assets must point to the extracted assets directory containing dataDir/stages/")
+        layout = manifest.get("p2_layout")
+        if not layout:
+            raise ValueError("--p2-content requires a seed with a p2_layout (generate with --p2-enemies)")
+        from experimental.pikmin2_family_install import install_layout
+        receipt = install_layout(run.directory, layout, Path(p2_content),
+                                 actor_bindings=p2_actors, retail_assets=Path(assets))
+        print(f"PIKMIN_P2_BOUND: {len(receipt['bindings'])} identities {receipt['receipts']}", flush=True)
     process = None
     overlay = None
     log = None
@@ -292,7 +310,7 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_m
         if not assets or not (Path(assets) / "dataDir" / "stages").is_dir():
             raise ValueError("--assets must point to the extracted assets directory containing dataDir/stages/")
         if 'spawn_layout' in manifest or 'campaign_layout' in manifest: verify_source_assets(assets)
-        if content_manifest is None and family_install is None:
+        if content_manifest is None and family_install is None and p2_content is None:
             # Windows directory junction, only into the new private runtime directory.
             import _winapi
             _winapi.CreateJunction(str(Path(assets).resolve()), str((run.directory / "assets").resolve()))
