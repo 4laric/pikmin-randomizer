@@ -1,0 +1,348 @@
+From b667eec922bcd76e736b39b74cf91ccc448d8fa5 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 09:18:42 -0400
+Subject: [PATCH 2/2] lane09: opt-in camera-facing billboard mesh flag and
+ view-matrix draw (#429, #128)
+
+---
+ CMakeLists.txt              |  12 ++++
+ include/Mesh.h              |   1 +
+ pc_port/pc_p2_billboard.h   |  55 +++++++++++++++
+ src/sysCommon/shapeBase.cpp |  60 ++++++++++++++++
+ tools/test_p2_billboard.cpp | 135 ++++++++++++++++++++++++++++++++++++
+ 5 files changed, 263 insertions(+)
+ create mode 100644 pc_port/pc_p2_billboard.h
+ create mode 100644 tools/test_p2_billboard.cpp
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 6beb36f3..aa014a81 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -694,6 +694,18 @@ target_include_directories(p2_dangomushi_hazard_test PRIVATE pc_port)
+ target_compile_options(p2_dangomushi_hazard_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+ add_test(NAME p2_dangomushi_hazard_test COMMAND p2_dangomushi_hazard_test)
+ 
++add_executable(p2_armor_events_test
++    tools/test_p2_armor_events.cpp)
++target_include_directories(p2_armor_events_test PRIVATE pc_port)
++target_compile_options(p2_armor_events_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
++add_test(NAME p2_armor_events_test COMMAND p2_armor_events_test)
++
++add_executable(p2_billboard_test
++    tools/test_p2_billboard.cpp)
++target_include_directories(p2_billboard_test PRIVATE pc_port)
++target_compile_options(p2_billboard_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
++add_test(NAME p2_billboard_test COMMAND p2_billboard_test)
++
+ add_executable(pc_render_phase_test
+     pc_port/timing/pc_render_phase_test.cpp
+     pc_port/timing/pc_render_phase.cpp)
+diff --git a/include/Mesh.h b/include/Mesh.h
+index 349e8dd1..062c0c77 100644
+--- a/include/Mesh.h
++++ b/include/Mesh.h
+@@ -25,6 +25,7 @@ public:
+ 		Tex6       = (1 << 9),  // 0x00200 - Texture coordinates 6
+ 		Tex7       = (1 << 10), // 0x00400 - Texture coordinates 7
+ 		VtxNBT     = (1 << 16), // 0x10000 - Vertex normal, binormal, and tangent vectors (replaces typical vertex normals)
++		Billboard  = (1 << 17), // 0x20000 - Opt-in camera-facing billboard; geometry is pivot-centred (J3D shape matrix type 1)
+ 	} END_ENUM_TYPE;
+ 
+ 	Mesh()
+diff --git a/pc_port/pc_p2_billboard.h b/pc_port/pc_p2_billboard.h
+new file mode 100644
+index 00000000..301be83c
+--- /dev/null
++++ b/pc_port/pc_p2_billboard.h
+@@ -0,0 +1,55 @@
++#pragma once
++// Camera-facing billboard rotation for flagged MOD meshes (#429, parent #128).
++//
++// The converted MOD format bakes all geometry through its joints, so a
++// billboard shape is emitted pivot-centred and re-placed by the joint's
++// translation. At draw time the draw matrix for a flagged mesh keeps the
++// joint's translation/scale but replaces its rotation with the inverse of the
++// combined model*view rotation, so the mesh faces the camera in view space.
++//
++// This header is engine-independent (plain 3x3 floats) so the standalone probe
++// shares the exact same math as the renderer.
++#include <cmath>
++
++namespace p2billboard {
++
++// out = normalized((model * view).rotation)^T.
++//
++// `model` and `view` are row-major 3x3 rotation extracts of the active model
++// matrix and the camera view matrix. Returns false (leaving `out` untouched)
++// when a basis column degenerates, in which case the caller keeps the plain
++// joint matrix.
++inline bool facingRotation(float out[3][3], const float model[3][3], const float view[3][3]) {
++    // combined = view * model
++    float combined[3][3];
++    for (int i = 0; i < 3; ++i) {
++        for (int j = 0; j < 3; ++j) {
++            combined[i][j] = view[i][0] * model[0][j]
++                           + view[i][1] * model[1][j]
++                           + view[i][2] * model[2][j];
++        }
++    }
++    // Normalize each basis column so any model/joint scale survives while the
++    // orientation is orthonormalised.
++    for (int j = 0; j < 3; ++j) {
++        const float norm = combined[0][j] * combined[0][j]
++                         + combined[1][j] * combined[1][j]
++                         + combined[2][j] * combined[2][j];
++        if (norm < 1e-12f) {
++            return false;
++        }
++        const float inv = 1.0f / std::sqrt(norm);
++        for (int i = 0; i < 3; ++i) {
++            combined[i][j] *= inv;
++        }
++    }
++    // Inverse of an orthonormal rotation is its transpose.
++    for (int i = 0; i < 3; ++i) {
++        for (int j = 0; j < 3; ++j) {
++            out[i][j] = combined[j][i];
++        }
++    }
++    return true;
++}
++
++}  // namespace p2billboard
+diff --git a/src/sysCommon/shapeBase.cpp b/src/sysCommon/shapeBase.cpp
+index 41a7c61c..704da9f8 100644
+--- a/src/sysCommon/shapeBase.cpp
++++ b/src/sysCommon/shapeBase.cpp
+@@ -17,6 +17,7 @@
+ #include "PVW.h"
+ #include "Texture.h"
+ #include "Vector.h"
++#include "pc_p2_billboard.h"
+ #include "sysNew.h"
+ #include "system.h"
+ #include "timers.h"
+@@ -250,6 +251,47 @@ void Joint::write(RandomAccessStream& stream)
+  * @todo: Documentation
+  * @note UNUSED Size: 00043C (Matching by size)
+  */
++#if defined(PIKI_PC_PORT)
++/**
++ * @brief Camera-facing rotation for a billboard mesh (#429).
++ *
++ * Returns the inverse of the combined model*view rotation so that a mesh whose
++ * geometry is pivot-centred around its joint translation faces the camera once
++ * the joint matrix is concatenated with it. False keeps the plain joint matrix
++ * when the camera or model basis is unavailable/degenerate.
++ */
++static bool billboardRotation(Matrix4f& rot, Graphics& gfx)
++{
++	if (!gfx.mCamera || !gfx.mLastModelMatrix) {
++		return false;
++	}
++	const Matrix4f& model = *gfx.mLastModelMatrix;
++	const Matrix4f& view  = gfx.mCamera->mLookAtMtx;
++	float m3[3][3];
++	float v3[3][3];
++	float r3[3][3];
++	for (int i = 0; i < 3; ++i) {
++		for (int j = 0; j < 3; ++j) {
++			m3[i][j] = model.mMtx[i][j];
++			v3[i][j] = view.mMtx[i][j];
++		}
++	}
++	if (!p2billboard::facingRotation(r3, m3, v3)) {
++		return false;
++	}
++	rot.makeIdentity();
++	for (int i = 0; i < 3; ++i) {
++		for (int j = 0; j < 3; ++j) {
++			rot.mMtx[i][j] = r3[i][j];
++		}
++	}
++	return true;
++}
++#endif
++
++/**
++ * @todo: Documentation
++ */
+ void Joint::render(Graphics& gfx)
+ {
+ 	if (!JOINT_IS_VISIBLE(*this)) {
+@@ -284,6 +326,9 @@ void Joint::render(Graphics& gfx)
+ 	}
+ 
+ 	immut Matrix4f* animMatrices[10];
++#if defined(PIKI_PC_PORT)
++	Matrix4f billboardMtx[10]; // Per-dep camera-facing replacements for flagged meshes.
++#endif
+ 	int matPolyCount = 0; // Counted but never used.
+ 
+ 	FOREACH_NODE(MatPoly, mMatPoly.mChild, matPoly)
+@@ -323,6 +368,21 @@ void Joint::render(Graphics& gfx)
+ 				}
+ 			}
+ 
++#if defined(PIKI_PC_PORT)
++			if (mesh->mFeatureFlags & Mesh::FeatureFlags::Billboard) {
++				Matrix4f rot;
++				if (billboardRotation(rot, gfx)) {
++					const int depCount = mtxGroup->mDepLength ? mtxGroup->mDepLength : 1;
++					for (int k = 0; k < depCount && k < 10; ++k) {
++						if (animMatrices[k]) {
++							animMatrices[k]->multiplyTo(rot, billboardMtx[k]);
++							animMatrices[k] = &billboardMtx[k];
++						}
++					}
++				}
++			}
++#endif
++
+ 			Vector3f* shapeVertices  = mParentShape->mVertexList;
+ 			Vector2f* shapeTexCoords = mParentShape->mTexCoordList[0];
+ 			Vector3f* shapeNormals   = (mesh->mFeatureFlags & Mesh::FeatureFlags::VtxNBT)
+diff --git a/tools/test_p2_billboard.cpp b/tools/test_p2_billboard.cpp
+new file mode 100644
+index 00000000..6fa3e8e0
+--- /dev/null
++++ b/tools/test_p2_billboard.cpp
+@@ -0,0 +1,135 @@
++// Standalone probe for the camera-facing billboard rotation (#429, parent #128).
++//
++// Build: g++ -std=c++17 -Wall -Wextra -Werror tools/test_p2_billboard.cpp -o p2_billboard.exe
++//
++// The renderer builds a flagged mesh's draw matrix as joint * rot where
++// rot = normalized(view*model)^T. This proves that concatenation makes the
++// flagged mesh screen-aligned in view space while preserving scale, and that
++// degenerate bases are rejected instead of producing NaNs.
++#include "../pc_port/pc_p2_billboard.h"
++
++#include <cmath>
++#include <cstdio>
++
++namespace {
++
++int failures = 0;
++
++bool check(bool ok, const char* what) {
++    if (!ok) {
++        std::fprintf(stderr, "FAIL %s\n", what);
++        ++failures;
++    }
++    return ok;
++}
++
++bool near(float a, float b) { return std::fabs(a - b) < 1e-5f; }
++
++void matmul(float out[3][3], const float a[3][3], const float b[3][3]) {
++    for (int i = 0; i < 3; ++i) {
++        for (int j = 0; j < 3; ++j) {
++            out[i][j] = a[i][0] * b[0][j] + a[i][1] * b[1][j] + a[i][2] * b[2][j];
++        }
++    }
++}
++
++void ident(float m[3][3]) {
++    for (int i = 0; i < 3; ++i) {
++        for (int j = 0; j < 3; ++j) {
++            m[i][j] = (i == j) ? 1.f : 0.f;
++        }
++    }
++}
++
++void rotY(float m[3][3], float a) {
++    ident(m);
++    m[0][0] = std::cos(a);
++    m[0][2] = std::sin(a);
++    m[2][0] = -std::sin(a);
++    m[2][2] = std::cos(a);
++}
++
++bool isIdentity(const float m[3][3]) {
++    for (int i = 0; i < 3; ++i) {
++        for (int j = 0; j < 3; ++j) {
++            if (!near(m[i][j], (i == j) ? 1.f : 0.f)) {
++                return false;
++            }
++        }
++    }
++    return true;
++}
++
++void testIdentityModelView() {
++    float model[3][3], view[3][3], out[3][3];
++    ident(model);
++    ident(view);
++    check(p2billboard::facingRotation(out, model, view), "identity accepted");
++    check(isIdentity(out), "identity model/view -> identity facing");
++}
++
++void testRotationCancelled() {
++    float model[3][3], view[3][3], out[3][3], combined[3][3], product[3][3];
++    float yaw[3][3], pitch[3][3];
++    // model = yaw(0.7)
++    rotY(model, 0.7f);
++    // view = pitch(0.4) * yaw(-0.3)
++    rotY(yaw, -0.3f);
++    ident(pitch);
++    pitch[1][1] = std::cos(0.4f);
++    pitch[1][2] = -std::sin(0.4f);
++    pitch[2][1] = std::sin(0.4f);
++    pitch[2][2] = std::cos(0.4f);
++    matmul(view, pitch, yaw);
++
++    check(p2billboard::facingRotation(out, model, view), "rotated basis accepted");
++
++    matmul(combined, view, model);
++    matmul(product, combined, out);
++    check(isIdentity(product), "view*model*facing is rotation-free");
++}
++
++void testScalePreserved() {
++    float model[3][3], view[3][3], out[3][3];
++    ident(model);
++    rotY(model, 0.9f);
++    // Uniform scale commutes with the rotation and must survive.
++    for (int i = 0; i < 3; ++i) {
++        for (int j = 0; j < 3; ++j) {
++            model[i][j] *= 2.5f;
++        }
++    }
++    ident(view);
++    check(p2billboard::facingRotation(out, model, view), "scaled basis accepted");
++    // out is orthonormal (unit columns) so the draw keeps the model's scale.
++    for (int j = 0; j < 3; ++j) {
++        const float n = std::sqrt(out[0][j] * out[0][j] + out[1][j] * out[1][j]
++                                  + out[2][j] * out[2][j]);
++        check(near(n, 1.f), "facing columns are unit length");
++    }
++}
++
++void testDegenerateRejected() {
++    float model[3][3], view[3][3], out[3][3];
++    ident(model);
++    ident(view);
++    model[0][1] = model[1][1] = model[2][1] = 0.f;  // collapse a model column
++    // Zero the combined column by zeroing the corresponding view column too.
++    view[0][1] = view[1][1] = view[2][1] = 0.f;
++    check(!p2billboard::facingRotation(out, model, view), "degenerate basis rejected");
++}
++
++}  // namespace
++
++int main() {
++    testIdentityModelView();
++    testRotationCancelled();
++    testScalePreserved();
++    testDegenerateRejected();
++    if (failures == 0) {
++        std::printf("PASS p2_billboard\n");
++        return 0;
++    }
++    std::fprintf(stderr, "FAIL p2_billboard: %d failures\n", failures);
++    return 1;
++}
+-- 
+2.55.0.windows.3
+
