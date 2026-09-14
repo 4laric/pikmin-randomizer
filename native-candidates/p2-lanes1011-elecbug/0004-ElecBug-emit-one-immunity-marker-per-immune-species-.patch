@@ -1,0 +1,81 @@
+From eddbf832e0f24f24266c05a1e1af919bcc3636ad Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 09:39:12 -0400
+Subject: [PATCH 4/4] ElecBug: emit one immunity marker per immune species in
+ the sweep
+
+---
+ pc_port/pc_p2_elecbug.cpp | 44 ++++++++++++++++++++++-----------------
+ 1 file changed, 25 insertions(+), 19 deletions(-)
+
+diff --git a/pc_port/pc_p2_elecbug.cpp b/pc_port/pc_p2_elecbug.cpp
+index 5ec2d5f2..721644aa 100644
+--- a/pc_port/pc_p2_elecbug.cpp
++++ b/pc_port/pc_p2_elecbug.cpp
+@@ -202,20 +202,32 @@ const char* colorName(unsigned color) {
+     }
+ }
+ // Source InteractDenki::actPiki excludes Yellow/Bulbmin from the discharge. The
+-// receiver and the emitter both consult the lane-11 matrix, so this probe only
+-// reports which immune species is inside the sweep and was deliberately
+-// rejected, for the immunity evidence marker. Returns -1 when none is in range.
+-int anyElecImmuneInRange(const Vector3f& pos, float radius) {
+-    if (!pikiMgr) return -1;
++// receiver and the emitter both consult the lane-11 matrix, so this probe
++// reports every immune species inside the sweep that was deliberately rejected,
++// emitting one immunity marker per species. Returns true when any was in range.
++bool logElecImmuneInRange(unsigned generator, const Vector3f& pos, float radius) {
++    if (!pikiMgr) return false;
++    bool sawYellow = false, sawBulbmin = false;
+     Iterator it(pikiMgr);
+     CI_LOOP(it) {
+         Piki* p = static_cast<Piki*>(*it);
+         if (!p || !p->isAlive()) continue;
+         const int species = pc_p2_species(p);
+         if (!p2_species_immune(species, P2HazardElectric)) continue;
+-        if (distXZ(p->getPosition(), pos) < radius) return species;
++        if (distXZ(p->getPosition(), pos) >= radius) continue;
++        if (species == P2SpeciesBulbmin) sawBulbmin = true;
++        else if (species == P2SpeciesYellow) sawYellow = true;
+     }
+-    return -1;
++    if (sawYellow) {
++        std::printf("P2_ELECBUG_IMMUNE generator=%u source_id=28 pikmin=yellow species=2\n",
++                    generator);
++    }
++    if (sawBulbmin) {
++        std::printf("P2_ELECBUG_IMMUNE generator=%u source_id=28 pikmin=bulbmin species=5\n",
++                    generator);
++    }
++    std::fflush(stdout);
++    return sawYellow || sawBulbmin;
+ }
+ void enter(ElecBug& s, State state, const char* clip) {
+     s.state = state;
+@@ -626,20 +638,14 @@ void pc_p2_elecbug_update(BTeki* actor) {
+                 std::fflush(stdout);
+             }
+         }
+-        // Emit the immunity marker when an electric-immune Pikmin is inside the
+-        // sweep but is deliberately rejected by the source Yellow/Bulbmin gate.
++        // Emit one immunity marker per immune species inside the sweep that the
++        // source Yellow/Bulbmin gate deliberately rejected.
+         if (!s.immuneLogged) {
+-            int immuneSpecies = anyElecImmuneInRange(pos, ELEC_RADIUS);
+-            if (immuneSpecies < 0 && s.partner) {
+-                immuneSpecies = anyElecImmuneInRange(s.partner->getPosition(), ELEC_RADIUS);
+-            }
+-            if (immuneSpecies >= 0) {
+-                s.immuneLogged = true;
+-                std::printf("P2_ELECBUG_IMMUNE generator=%u source_id=28 pikmin=%s species=%d\n",
+-                            generator, immuneSpecies == P2SpeciesBulbmin ? "bulbmin" : "yellow",
+-                            immuneSpecies);
+-                std::fflush(stdout);
++            bool found = logElecImmuneInRange(generator, pos, ELEC_RADIUS);
++            if (!found && s.partner) {
++                found = logElecImmuneInRange(generator, s.partner->getPosition(), ELEC_RADIUS);
+             }
++            if (found) s.immuneLogged = true;
+         }
+         if (s.stateTime >= DISCHARGE_TIME) {
+             breakLink(actor, s);
