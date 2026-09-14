@@ -1,3 +1,5 @@
+> Current result: [gate work, natural delivery, deceased-actor reentry and process restart PASS on nativeae00c510](PIKMIN2_DWARF_ORANGE_ROUTE_ACCEPTANCE_440.md). Earlier gate blockers below are superseded; their logs remain historical evidence.
+
 # Dwarf Orange generated natural-run evidence (#461)
 
 Integration review 2026-09-14, owner Codex through shared account 4laric. Source: issue461 comment5671006650 and `C:\Users\alari\pikmin-randomizer\output\qa-dwarf-orange\evidence-asg5fix.json`. Executable hash independently verified; native log inspected. This records historical runtime evidence on the exact tested pair, not a fresh run on the latest pin.
