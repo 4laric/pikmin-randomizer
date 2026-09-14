@@ -26,6 +26,7 @@ import re
 from experimental.pikmin2_enemy_roster import (
     SCHEMA as ROSTER_SCHEMA,
     RosterEntry,
+    admitted_ids,
     by_id,
     load_roster,
 )
@@ -85,12 +86,40 @@ def validate_targets(targets) -> list[str]:
     return values
 
 
-def resolve_layout(seed, slot, targets, cohort, roster: list[RosterEntry] | None = None) -> dict:
-    """Deterministically bind each target to an admitted identity."""
+def resolve_admitted_layout(seed, slot, targets, roster: list[RosterEntry] | None = None) -> dict:
+    """Bind the lane 02 admitted cohort; fail closed when nothing is admitted.
+
+    This is the product entry point. It never accepts an explicit cohort, so a
+    caller cannot seed an identity that lane 02 has not admitted.
+    """
+    roster = roster if roster is not None else load_roster()
+    cohort = admitted_ids(roster)
+    if not cohort:
+        raise SeedBridgeError(
+            "no admitted P2 identities; refusing to seed an unadmitted pool (lane 02 admission set is empty)"
+        )
+    return resolve_layout(seed, slot, targets, cohort, roster, admitted=cohort)
+
+
+def resolve_layout(seed, slot, targets, cohort, roster: list[RosterEntry] | None = None, *,
+                   admitted=None) -> dict:
+    """Deterministically bind each target to an identity from ``cohort``.
+
+    ``admitted`` is an optional allowlist; when supplied every cohort id must be
+    in it. The product path supplies lane 02's admission set through
+    :func:`resolve_admitted_layout`; tests and lane 04 placement may pass an
+    explicit cohort.
+    """
     roster = roster if roster is not None else load_roster()
     revision = roster_revision(roster)
     target_ids = validate_targets(targets)
     cohort_ids = validate_cohort(roster, cohort)
+
+    if admitted is not None:
+        allowed = set(admitted)
+        unadmitted = sorted({source_id for source_id in cohort_ids if source_id not in allowed})
+        if unadmitted:
+            raise SeedBridgeError(f"cohort contains unadmitted source ids: {unadmitted}")
 
     if len(target_ids) < len(cohort_ids):
         raise SeedBridgeError("not enough binding targets to cover the admitted cohort")
