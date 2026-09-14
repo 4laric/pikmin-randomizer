@@ -8,11 +8,14 @@ scripts/build_pikmin2_fixture.py, and drives the pc_port/pc_p2_hiba.cpp sidecar.
 The single scenario stages Hiba (fire), GasHiba (gas) and ElecHiba (denki) on
 the live-Pikmin centroid so one run proves: activation, emission, a vulnerable
 colour hit (Hiba/Blue via the engine InteractFire receiver) and an immune colour
-pass (Hiba/Red). Gas/denki have no engine interaction class in this P1 base, so
-their vulnerable targets are logged APPLY_BLOCKED (labeled). The fixture
-self-terminates on the gates or on a bounded behavior-tick timeout with an
-explicit BLOCKED marker; it never hangs. This module does not launch the
-fixture (the coordinator owns the serialized GL slot).
+pass (Hiba/Red), plus the lane-10 gas/electric receivers driven by a natural
+emitter (GasHiba -> InteractGas -> PIKISTATE_Panic, ElecHiba -> InteractDenki ->
+PIKISTATE_DenkiDying) with White/Yellow immunity rejection and a lethal outcome.
+The fixture recolours one Blue to White and one Blue to Yellow to expose the
+elemental immunity boundary. It self-terminates on the gates or on a bounded
+behavior-tick timeout with an explicit BLOCKED marker; it never hangs. This
+module does not launch the fixture (the coordinator owns the serialized GL
+slot).
 """
 import argparse
 import json
@@ -98,14 +101,24 @@ public:int idle() override {
  if(!pc_p2_preview_cargo_free_ready()||!naviMgr||!tekiMgr||!mapMgr)return result;
  Navi* n=naviMgr->getNavi();if(!n||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;++ready;
  {static bool guardLogged=false;if((int)GameStat::allPikis==0){GameStat::allPikis.set(1,Red);if(!guardLogged){guardLogged=true;std::puts("P2_HIBA_FIXTURE_GUARD_PIKMIN injection=1");}}}
- if(ready==1){
-  n->mKontroller=new FixtureController();for(int i=0;i<DEMOFLAG_COUNT;++i)playerState->mDemoFlags.setFlagOnly(i);
-  int red=0,blue=0,other=0;Iterator p(pikiMgr);CI_LOOP(p){Piki* a=static_cast<Piki*>(*p);if(a->isAlive()){if(a->mColor==Red)++red;else if(a->mColor==Blue)++blue;else++other;}}
-  require(red==5&&blue==5&&other==0,"Hiba starting5red5blue");
-  std::ifstream holding("hiba-keep-open.txt");hold=bool(holding);
-  SDL_SetWindowTitle(SDL_GL_GetCurrentWindow(),"Fixed hazard sidecar (#447)");
-  std::printf("P2_HIBA_BASELINE red=%d blue=%d\n",red,blue);
- }
+  if(ready==1){
+   n->mKontroller=new FixtureController();for(int i=0;i<DEMOFLAG_COUNT;++i)playerState->mDemoFlags.setFlagOnly(i);
+   int red=0,blue=0,other=0;Iterator p(pikiMgr);CI_LOOP(p){Piki* a=static_cast<Piki*>(*p);if(a->isAlive()){if(a->mColor==Red)++red;else if(a->mColor==Blue)++blue;else++other;}}
+   require(red==5&&blue==5&&other==0,"Hiba starting5red5blue");
+   std::ifstream holding("hiba-keep-open.txt");hold=bool(holding);
+   SDL_SetWindowTitle(SDL_GL_GetCurrentWindow(),"Fixed hazard sidecar (#447)");
+   std::printf("P2_HIBA_BASELINE red=%d blue=%d\n",red,blue);
+   // Labeled squad recolour: one Blue -> White (gas-immune, denki-vulnerable)
+   // and one Blue -> Yellow (gas-vulnerable, denki-immune) so the elemental
+   // immunity and receiver gates can be observed on the natural emitters.
+   Piki* whiteTarget=nullptr;Piki* yellowTarget=nullptr;
+   {Iterator q(pikiMgr);CI_LOOP(q){Piki* a=static_cast<Piki*>(*q);if(!a||!a->isAlive())continue;if(a->mColor!=Blue)continue;
+     if(!whiteTarget)whiteTarget=a;else if(!yellowTarget)yellowTarget=a;else break;}}
+   require(whiteTarget&&yellowTarget,"Hiba recolour blue targets");
+   pc_p2_set_species(whiteTarget,P2SpeciesWhite);
+   pc_p2_set_species(yellowTarget,P2SpeciesYellow);
+   std::printf("P2_HIBA_RECOLOUR white=1 yellow=1\n");
+  }
  if(ready==30&&!armed){
   // Labeled placement: put the hazards on the live-Pikmin centroid so the
   // vulnerable/immune receivers are deterministic and never chase a wanderer.
@@ -144,7 +157,7 @@ def instrument(source):
     start = source.index('class RoomApp : public PlugPikiApp {')
     end = source.index('int main(', start)
     includes = ('#include <cstdio>\n#include <cstdlib>\n#include <fstream>\n#include <string>\n'
-                '#include "pc_p2_hiba.h"\n')
+                '#include "pc_p2_hiba.h"\n#include "pc_p2_species.h"\n')
     return includes + source[:start] + APP + source[end:]
 
 
@@ -214,8 +227,16 @@ def validate(text, code):
                                       r'colour=Blue immune=0 applied=1', text)),
         immune_pass=bool(re.search(r'P2_HIBA_PASS generator=\d+ hazard=Hiba stimulus=InteractFire '
                                    r'colour=Red immune=1 applied=0', text)),
-        gas_blocked=bool(re.search(r'P2_HIBA_APPLY_BLOCKED generator=\d+ hazard=GasHiba stimulus=InteractGas '
-                                   r'.*reason=no_engine_interaction', text)),
+        gas_hit=bool(re.search(r'P2_HIBA_GAS_HIT generator=\d+ hazard=GasHiba species=\d+ state=36 applied=1', text)),
+        gas_pass=bool(re.search(r'P2_HIBA_GAS_PASS generator=\d+ hazard=GasHiba species=4 immune=1', text)),
+        denki_hit=bool(re.search(r'P2_HIBA_DENKI_HIT generator=\d+ hazard=ElecHiba species=\d+ state=35 applied=1',
+                                 text)),
+        denki_pass=bool(re.search(r'P2_HIBA_DENKI_PASS generator=\d+ hazard=ElecHiba species=2 immune=1', text)),
+        gas_lethal='P2_HIBA_GAS_LETHAL dead=1' in text,
+        denki_lethal='P2_HIBA_DENKI_LETHAL dead=1' in text,
+        recolour='P2_HIBA_RECOLOUR white=1 yellow=1' in text,
+        no_gas_blocked=not bool(re.search(r'P2_HIBA_APPLY_BLOCKED generator=\d+ hazard=GasHiba stimulus=InteractGas ',
+                                          text)),
         cleanup='P2_HIBA_CLEANUP kill_all=1' in text,
         cleanup_dead=text.count('P2_HIBA_DEAD') >= 3,
         no_timeout='P2_HIBA_BLOCKED' not in text,

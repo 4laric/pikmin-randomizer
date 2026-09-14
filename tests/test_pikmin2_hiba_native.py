@@ -95,10 +95,15 @@ class SyntheticLogTests(unittest.TestCase):
         'P2_HIBA_PASS generator=20 hazard=Hiba stimulus=InteractFire colour=Red immune=1 applied=0\n'
         'P2_HIBA_ACTIVATE generator=21 hazard=GasHiba from=wait to=attack\n'
         'P2_HIBA_EMIT generator=21 hazard=GasHiba stimulus=InteractGas\n'
-        'P2_HIBA_APPLY_BLOCKED generator=21 hazard=GasHiba stimulus=InteractGas colour=Blue immune=0 applied=0 reason=no_engine_interaction\n'
+        'P2_HIBA_GAS_PASS generator=21 hazard=GasHiba species=4 immune=1 applied=0\n'
+        'P2_HIBA_GAS_HIT generator=21 hazard=GasHiba species=1 state=36 applied=1\n'
         'P2_HIBA_ACTIVATE generator=22 hazard=ElecHiba from=sign to=attack\n'
         'P2_HIBA_EMIT generator=22 hazard=ElecHiba stimulus=InteractDenki\n'
-        'P2_HIBA_APPLY_BLOCKED generator=22 hazard=ElecHiba stimulus=InteractDenki colour=Red immune=0 applied=0 reason=no_engine_interaction\n'
+        'P2_HIBA_DENKI_PASS generator=22 hazard=ElecHiba species=2 immune=1 applied=0\n'
+        'P2_HIBA_DENKI_HIT generator=22 hazard=ElecHiba species=1 state=35 applied=1\n'
+        'P2_HIBA_GAS_LETHAL dead=1\n'
+        'P2_HIBA_DENKI_LETHAL dead=1\n'
+        'P2_HIBA_RECOLOUR white=1 yellow=1\n'
         'P2_HIBA_CLEANUP kill_all=1\n'
         'P2_HIBA_DEAD generator=20 hazard=Hiba\n'
         'P2_HIBA_DEAD generator=21 hazard=GasHiba\n'
@@ -124,6 +129,39 @@ class SyntheticLogTests(unittest.TestCase):
         self.assertFalse(evidence['passed'])
         self.assertIn('immune_pass', evidence['failed'])
 
+    def test_missing_gas_hit_fails(self):
+        text = self.GOOD.replace('P2_HIBA_GAS_HIT generator=21 hazard=GasHiba species=1 state=36 applied=1\n', '')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('gas_hit', evidence['failed'])
+
+    def test_missing_gas_pass_fails(self):
+        text = self.GOOD.replace('P2_HIBA_GAS_PASS generator=21 hazard=GasHiba species=4 immune=1 applied=0\n', '')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('gas_pass', evidence['failed'])
+
+    def test_missing_denki_hit_fails(self):
+        text = self.GOOD.replace('P2_HIBA_DENKI_HIT generator=22 hazard=ElecHiba species=1 state=35 applied=1\n', '')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('denki_hit', evidence['failed'])
+
+    def test_missing_denki_pass_fails(self):
+        text = self.GOOD.replace('P2_HIBA_DENKI_PASS generator=22 hazard=ElecHiba species=2 immune=1 applied=0\n', '')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('denki_pass', evidence['failed'])
+
+    def test_gas_blocked_reintroduced_fails(self):
+        text = self.GOOD.replace('P2_HIBA_GAS_HIT generator=21 hazard=GasHiba species=1 state=36 applied=1\n',
+                                 'P2_HIBA_APPLY_BLOCKED generator=21 hazard=GasHiba stimulus=InteractGas '
+                                 'colour=Blue immune=0 applied=0 reason=no_engine_interaction\n'
+                                 'P2_HIBA_GAS_HIT generator=21 hazard=GasHiba species=1 state=36 applied=1\n')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('no_gas_blocked', evidence['failed'])
+
     def test_missing_elec_activation_fails(self):
         text = self.GOOD.replace('P2_HIBA_ACTIVATE generator=22 hazard=ElecHiba from=sign to=attack\n', '')
         evidence = hr.validate(text, 0)
@@ -140,6 +178,28 @@ class SyntheticLogTests(unittest.TestCase):
 
     def test_nonzero_exit_fails(self):
         self.assertFalse(hr.validate(self.GOOD, 1)['passed'])
+
+
+class GasReceiverNativeTests(unittest.TestCase):
+    GOOD = SyntheticLogTests.GOOD
+
+    def test_missing_gas_lethal_fails(self):
+        text = self.GOOD.replace('P2_HIBA_GAS_LETHAL dead=1\n', '')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('gas_lethal', evidence['failed'])
+
+    def test_missing_denki_lethal_fails(self):
+        text = self.GOOD.replace('P2_HIBA_DENKI_LETHAL dead=1\n', '')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('denki_lethal', evidence['failed'])
+
+    def test_missing_recolour_fails(self):
+        text = self.GOOD.replace('P2_HIBA_RECOLOUR white=1 yellow=1\n', '')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('recolour', evidence['failed'])
 
 
 class NativePolicyTests(unittest.TestCase):
