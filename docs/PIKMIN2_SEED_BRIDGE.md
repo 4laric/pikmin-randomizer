@@ -91,11 +91,11 @@ the seed fails closed.
 - `p2_layout` is an additive schema-9 field (no schema bump); `validate` accepts
   exactly one enemy layout and revalidates the P2 layout.
 
-Still proposed / remaining:
-
-- New AP option `P2EnemyRandomizer` (Toggle, default off), mutually exclusive with
-  the P1 `campaign_enemies`/`per_spawn_enemies`/`group_spawn_enemies` layouts. It
-  will need lane 04 legal targets before it can generate.
+- AP option `P2EnemyRandomizer` (Toggle, default off) is registered and passed to
+  `generate(p2_enemies=...)`. It has no legal targets yet, so enabling it raises
+  the same fail-closed error as the CLI; it never substitutes a P1 enemy. Wiring a
+  bundled lane 04 placement document into the AP world is the remaining AP step
+  and needs an AP test harness (not present in this environment).
 - Only a seed whose `p2_layout` validates generates a session; otherwise
   generation fails with the offending target/source identified (no silent P1
   substitute). This is implemented for the CLI path.
