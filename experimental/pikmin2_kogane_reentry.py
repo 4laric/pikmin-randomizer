@@ -24,6 +24,13 @@ sidecar written by pass 1 and must report ``P2_KOGANE_RECEIPTS loaded=2`` plus t
 same restored rows before resuming the survivor to the cap. This module never
 runs the desktop/GL slot; ``validate``/``validate_cross_process`` check the
 captured logs. See ``docs/PIKMIN2_KOGANE_REWARDS.md``.
+
+The ``treasure=True`` option opts one beetle into the native first-flip treasure
+stand-in (#168/#219). Wealthy (219002) carries a single 5-pellet stand-in instead
+of its audited first-flip table row (three 5-pellets); ``validate_treasure``
+requires the ``P2_KOGANE_TREASURE generator=219002 value=5`` marker plus the
+single stand-in pellet, and rejects the untouched table row. The P1 host has no
+P2 treasure object, so this is a labelled number pellet, not the source treasure.
 """
 import argparse
 import json
@@ -34,7 +41,7 @@ from pathlib import Path
 
 from experimental.pikmin2_kogane_arena import prepare
 from experimental.pikmin2_kogane_assets import MAX_FLIPS
-from experimental.pikmin2_kogane_behavior import native_sidecar
+from experimental.pikmin2_kogane_behavior import EXPECTED_DROPS, native_sidecar
 from experimental.pikmin2_kogane_runtime import build as build_fixture_base
 from experimental.pikmin2_kogane_runtime import instrument as instrument_base
 from experimental.pikmin2_kogane_runtime import run as run_fixture_base
@@ -44,6 +51,10 @@ IDS = (219001, 219002, 219003)
 SPENT = 219001     # reaches the flip cap in the first pass; restored escaped
 SURVIVOR = 219002  # partial flips; restored at its count
 UNTOUCHED = 219003 # never flipped; must not emit a restore line
+# First-flip treasure stand-in (#168/#219): Wealthy's audited table first flip is
+# three 5-pellets, so one configured 5-pellet stand-in is observably distinct.
+TREASURE = 219002
+TREASURE_VALUE = 5
 
 APP = r'''class RoomApp : public PlugPikiApp {
  int observed=0,frames=0,pass=0;
@@ -112,9 +123,43 @@ APP = r'''class RoomApp : public PlugPikiApp {
  }};
 '''
 
+APP_TREASURE = r'''class RoomApp : public PlugPikiApp {
+ int observed=0,frames=0;
+ Teki* beetles[3]={nullptr,nullptr,nullptr};
+ int alivePellets(){int c=0;Iterator it(pelletMgr);CI_LOOP(it){Creature* p=*it;if(p&&p->isAlive())++c;}return c;}
+ void press(Teki* actor,Navi* n){if(!actor)return;InteractPress p(n,0.0f);actor->stimulate(p);}
+ public:int idle() override {
+  int result=PlugPikiApp::idle();require(++frames<20000,"beetle treasure timeout");
+  if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
+  if(!pc_p2_preview_cargo_free_ready()||!naviMgr||!tekiMgr)return result;
+  Navi* n=naviMgr->getNavi();if(!n||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;
+  ++observed;
+  if(observed==1){
+   for(int i=0;i<DEMOFLAG_COUNT;++i)playerState->mDemoFlags.setFlagOnly(i); // suppress one-shot discovery cutscenes
+   for(int i=0;i<3;++i){Teki* actor=nullptr;int matches=0;Iterator iter(tekiMgr);CI_LOOP(iter){Teki* a=static_cast<Teki*>(*iter);if(a->mGenerator&&a->mGenerator->_70==219001+i){actor=a;++matches;}}
+    require(matches==1,"beetle roster identity");beetles[i]=actor;Vector3f p=actor->getPosition();
+    std::printf("P2_KOGANE_BIRTH id=%u type=%d x=%.3f y=%.3f z=%.3f\n",219001+i,actor->mTekiType,p.x,p.y,p.z);}
+  }
+  // One press on the configured Wealthy. The audited table first flip is three
+  // 5-pellets, so a single stand-in 5-pellet plus the P2_KOGANE_TREASURE marker
+  // (emitted by the native override) is the observable difference. Exit as soon
+  // as the stand-in pellet exists, before the squad can collect it.
+  if(observed==90)press(beetles[1],n);
+  if(observed>90&&alivePellets()>=1){
+   int pellets=alivePellets();
+   std::printf("P2_KOGANE_CENSUS pellets=%d\n",pellets);std::fflush(stdout);
+   require(pellets==1,"treasure stand-in pellet count");
+   std::puts("PASS P2_KOGANE_TREASURE standin1 value5");std::fflush(stdout);std::_Exit(0);}
+  std::fflush(stdout);return result;
+ }};
+'''
+
 INCLUDES = ('#include <map>\n#include "Demo.h"\n#include "Interactions.h"\n'
             '#include "PelletView.h"\n#include "PlayerState.h"\n'
             '#include "pc_p2_kogane.h"\n')
+
+# The treasure app counts live number pellets, so it needs the pellet manager.
+TREASURE_INCLUDES = INCLUDES + '#include "Pellet.h"\n'
 
 
 def validate(text, code):
@@ -146,6 +191,46 @@ def validate(text, code):
                             'native treasure override / cave relocation (disabled: P1 host)',
                             'cross-process save bridge (lane 01/06)',
                             'cross-process sidecar restart (see validate_cross_process)'])
+
+
+def validate_treasure(text, code):
+    """Validate the first-flip treasure override run (#168/#219).
+
+    Requires the configured Wealthy actor's single first flip to log the
+    ``P2_KOGANE_TREASURE generator=219002 value=5`` marker (emitted by the native
+    stand-in) and to drop exactly one stand-in 5-pellet. The audited table row
+    for that flip (three 5-pellets) is rejected, so a run that left the table in
+    place cannot pass even if a marker were forged. This is a P1 number-pellet
+    approximation, not the source treasure object.
+    """
+    births = [int(b) for b in re.findall(r'P2_KOGANE_BIRTH id=(\d+)', text)]
+    flips = sorted((int(g), int(f)) for g, f in re.findall(
+        r'P2_KOGANE_FLIP generator=(\d+) source_id=\d+ flip=(\d)', text))
+    drops = {(int(g), int(f)): (int(pv), int(pc), int(nc)) for g, f, pv, pc, nc in
+             re.findall(r'P2_KOGANE_DROP generator=(\d+) source_id=\d+ flip=(\d) '
+                        r'pellet(\d+)=(\d+) nectar=(\d+)', text)}
+    treasures = sorted((int(g), int(v)) for g, v in re.findall(
+        r'P2_KOGANE_TREASURE generator=(\d+) value=(\d+)', text))
+    m = re.search(r'P2_KOGANE_CENSUS pellets=(\d+)', text)
+    census = int(m[1]) if m else None
+    table = EXPECTED_DROPS[(TREASURE, 1)]
+    standin = (TREASURE_VALUE, 1, 0)
+    observed = drops.get((TREASURE, 1))
+    checks = dict(
+        completion=code == 0 and 'PASS P2_KOGANE_TREASURE standin1 value5' in text,
+        births=births == list(IDS) + [219004],
+        flips=flips == [(TREASURE, 1)],
+        marker=treasures == [(TREASURE, TREASURE_VALUE)],
+        standin=observed == standin,
+        override_vs_table=observed == standin and standin != table,
+        census=census == 1)
+    return dict(passed=all(checks.values()), checks=checks,
+                treasures={str(g): v for g, v in treasures},
+                drop={f'{g}:{f}': list(v) for (g, f), v in sorted(drops.items())},
+                census=census,
+                unmeasured=['real P2 treasure item (labelled P1 number-pellet stand-in)',
+                            'cave relocation and carry-to-Onion (no P2 cave in the P1 host)',
+                            'other actors/flips keep the audited table (host model only)'])
 
 
 def validate_pass1(text, code):
@@ -217,13 +302,25 @@ def validate_cross_process(first_text, first_code, second_text, second_code):
                             'P2 save bridge (family-local sidecar, not the lane 01/06 save)'])
 
 
-def build(native, build_dir, output, head, resume=False):
-    return build_fixture_base(native, build_dir, output, head, resume, app=INCLUDES + APP)
+def treasure_sidecar(bank):
+    """Sidecar for the treasure fixture: Wealthy's first flip carries one 5-pellet.
+
+    The audited table first flip for Wealthy is three 5-pellets, so the single
+    stand-in is observably distinct from the normal table.
+    """
+    return native_sidecar(bank, treasures={TREASURE: TREASURE_VALUE})
 
 
-def run(assets, bank, output, exe):
+def build(native, build_dir, output, head, resume=False, treasure=False):
+    app = TREASURE_INCLUDES + APP_TREASURE if treasure else INCLUDES + APP
+    return build_fixture_base(native, build_dir, output, head, resume, app=app)
+
+
+def run(assets, bank, output, exe, treasure=False):
+    sidecar = treasure_sidecar(bank) if treasure else native_sidecar(bank)
+    validator = validate_treasure if treasure else validate
     return run_fixture_base(assets, bank, output, exe,
-                            sidecar=native_sidecar(bank), validator=validate)
+                            sidecar=sidecar, validator=validator)
 
 
 def run_cross_process(assets, bank, output, exe):
@@ -266,8 +363,9 @@ def run_cross_process(assets, bank, output, exe):
     return stage
 
 
-def instrument(source):
-    return instrument_base(source, INCLUDES + APP)
+def instrument(source, treasure=False):
+    app = TREASURE_INCLUDES + APP_TREASURE if treasure else INCLUDES + APP
+    return instrument_base(source, app)
 
 
 if __name__ == '__main__':
@@ -280,14 +378,16 @@ if __name__ == '__main__':
         b.add_argument('--' + n, type=Path, required=True)
     b.add_argument('--head', required=True)
     b.add_argument('--resume', action='store_true')
+    b.add_argument('--treasure', action='store_true')
     for n in ('assets', 'bank', 'output', 'exe'):
         r.add_argument('--' + n, type=Path, required=True)
+    r.add_argument('--treasure', action='store_true')
     for n in ('assets', 'bank', 'output', 'exe'):
         rc.add_argument('--' + n, type=Path, required=True)
     a = p.parse_args()
     if a.command == 'build':
-        build(a.native, a.build_dir, a.output, a.head, a.resume)
+        build(a.native, a.build_dir, a.output, a.head, a.resume, a.treasure)
     elif a.command == 'run':
-        run(a.assets, a.bank, a.output, a.exe)
+        run(a.assets, a.bank, a.output, a.exe, a.treasure)
     else:
         run_cross_process(a.assets, a.bank, a.output, a.exe)
