@@ -6,10 +6,15 @@ parent [#109](https://github.com/4laric/pikmin-randomizer/issues/109), child
 owner: Codex through the shared `4laric` account; executing session: opencode
 (`opencode-go/deepseek-v4.1-flash`), recorded separately per AGENTS.md.
 
-Native candidate: branch `opencode/p2-lanes-1012` @ `8219bf17`, base
-`f9e139d8` (`codex/pikmin2-room-preview`). Header-only contract, no engine
+Native candidate (contract): branch `opencode/p2-lanes-1012` @ `8219bf17`,
+base `f9e139d8` (`codex/pikmin2-room-preview`). Header-only contract, no engine
 behavior changed, no shared checkout touched. Patch bundle:
 `native-candidates/lanes-1012/`.
+
+Native candidate (slot-0 engine adapter): branch `opencode/p2-sub-captains` @
+`fd40992c`, base `5a0cb4ee`. Patch bundle: `native-candidates/p2-sub-captains/`.
+Single-captain binding only; see "Single-captain audit" and "Two-captain
+blocker" below.
 
 ## Why this slice first
 
@@ -62,6 +67,24 @@ a Pikmin or carried item, always with a nonzero captor epoch. A stale epoch
 (previous occupant of a recycled slot) can never release another captor's
 capture.
 
+`native/pc_port/pc_p2_captain.h` + `pc_p2_captain.cpp` (the engine-facing host
+adapter, added this slice):
+
+- `P2CaptainHostOps` is the engine-free callback seam (captain handle, health
+  get/set, Piki actor id, `Piki::mNavi` owner slot get/set, squad enumeration).
+  `pc_p2_captain.cpp` implements it against the live P1 `naviMgr`/`pikiMgr`;
+  the standalone test binds doubles.
+- `P2CaptainAdapter` owns the ownership table and policy, `setup()` configures
+  present captains and adopts the live squad, and captain capture / captor-held
+  actor operations mirror `Piki::mNavi` back into the engine. Plus
+  `syncOwnership`, `health`/`setHealth`/`refresh`, `switchActive`,
+  `captureCaptain`/`releaseCaptain`, `captureActor`/`releaseActor`/
+  `dropAllCaptured`, `reload`, `teardown`.
+- `namespace pc_p2_captain` exposes opt-in glue used by future captor families:
+  `setup_from_navi_mgr`, `health`, `set_health`, `capture_captain`,
+  `release_captain`, `switch_active`, `reload`, `adopt_squad`, `capture_actor`,
+  `release_actor`, `drop_captured`, `teardown`. Nothing runs unless called.
+
 ## Invariants (enforced by the policy test)
 
 1. Exactly one Active captain whenever any present captain is controllable.
@@ -78,23 +101,66 @@ capture.
 ## Evidence
 
 ```text
+# policy contract (unchanged, engine-double)
 g++ -std=c++17 -Wall -Wextra -I pc_port tools/test_p2_captain_policy.cpp -o test_p2_captain_policy.exe
 PASS P2_CAPTAIN_POLICY
+
+# engine-facing adapter (engine-double host; not a live Navi runtime)
+g++ -std=c++17 -Wall -Wextra -Werror -I pc_port tools/test_p2_captain_adapter.cpp -o test_p2_captain_adapter.exe
+PASS P2_CAPTAIN_ADAPTER
+
+# private engine build (native base 5a0cb4ee + fd40992c)
+cmake -S output/native-sub-captains -B output/native-sub-captains-build -G Ninja \
+  -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Release -DPIKMIN_NATIVE_JAUDIO=ON
+cmake --build output/native-sub-captains-build --target pikmin_pc -j 4
+ninja -C output/native-sub-captains-build -n pikmin_pc   # ninja: no work to do.
 ```
 
-Native commit `14e8fb92`; executable SHA-256
-`DCDAAE668FC8DDFB951C6FAB83CB65E9BCB9E1D13F5D2FFEA98B9BCACED57A25`.
-This is a policy/contract test (engine-double), not a live `Navi` runtime run.
+- Policy contract: native commit `14e8fb92`; executable SHA-256
+  `DCDAAE668FC8DDFB951C6FAB83CB65E9BCB9E1D13F5D2FFEA98B9BCACED57A25`.
+- Adapter + engine build: native commit `fd40992c` (base `5a0cb4ee`),
+  `output/native-sub-captains-build/bin/nectar.exe` SHA-256
+  `9DED5D4E0390B3FAF87608F7FB7C3B1C05FA69D4441936A3EBCE392F8998F976`,
+  `ninja -n` reports no work to do. The adapter test and the policy test are
+  engine-double/contract tests; neither claims a live `Navi` runtime.
+
+## Single-captain audit (what a second captain would require)
+
+The port is a Pikmin-1 engine with one captain. Anchors:
+
+| Assumption | Anchor | Consequence |
+|---|---|---|
+| No second-captain index | `include/Navi.h` has no `mNaviIndex`; only `int mNaviID` at `Navi.h:248` (`_92C`), assigned by `NaviMgr::createObject()` (`naviMgr.cpp:65-69`) from the spawn counter `NaviMgr::mNaviID` (`NaviMgr.h:195`). | No `GET_OTHER_NAVI`; slot mapping is by spawn order only. |
+| One Navi object | `NaviMgr::getNavi()` returns the first object (`naviMgr.cpp:83-88`); `getNavi(int)` exists (`naviMgr.cpp:93-102`) and is used with `0`/`1` only by latent P1 2-player naming (`piki.cpp:2928,2984`). Every gameplay consumer calls the no-arg `getNavi()`. | The engine only ever creates/updates one Navi for the campaign. |
+| No manager knockout API | `NaviMgr.h:169-197` has no `getActiveNavi`/`getAliveOrima`/`getDeadOrima`/`informOrimaDead`, no `mDeadNavis`/`mNaviDeadFlags[2]`. `NaviMgr` is a plain `MonoObjectMgr`. | Active/knockout state must be tracked outside the manager (the policy does). |
+| Health is inherited | `Navi` has no own health member; it uses `Creature::mHealth` (`Creature.h:388`, `_58`). `Navi::Navi` seeds it from `NaviProp::Parms::mHealth` (`navi.cpp:497`, `NaviMgr.h:143`); damage paths subtract from `navi->mHealth` (`navi.cpp:2757,2780,2802`); knockout is `NAVISTATE_Dead` via `finishDamage`/`NaviDeadState` (`navi.cpp:428-445`, `naviState.cpp:3188-3190`). | A second captain needs separate health storage; `NaviMgr::mNaviParms` is shared. |
+| One shape slot | `NaviMgr::mNaviShapeObject[2]` exists (`NaviMgr.h:193`) but only `[0]` is created (`naviMgr.cpp:43-47`) and `Navi::mNaviShapeObject = naviMgr->mNaviShapeObject[mNaviID]` (`navi.cpp:490`). | A second captain would index `[1]` and needs `mNaviID == 1` from `createObject()`. |
+| Squad ownership is per-Piki | `Piki::mNavi` (`Piki.h:318`, `_504`); set in `Piki::init` (`piki.cpp:2404`), read for id/name (`piki.cpp:837`, `2928`). Generator spawns Pikmin with `naviMgr->getNavi()` (`generator.cpp:1193,1197,1199`). | Ownership can already be remapped; the adapter mirrors `mNavi` through the ownership table. |
+| Game-over is global | `GAMEEND_NaviDown` (`FlowController.h:25`); `GameStat::orimaDead` (`gameStat.cpp:22`, `NaviDeadState::init`, `naviState.cpp:3190`). `gameCoreSection.cpp` reads `mNavi->mHealth` for game over (`:2092-2094`). | Real 2-captain needs per-captain dead flags and a survivor check before game over. |
+
+To add a real second captain the engine needs, at minimum:
+`NaviMgr::getNavi(1)` creation with `mNaviID`/`mNaviShapeObject[1]`; a
+`Navi::mNaviIndex`/`GET_OTHER_NAVI` equivalent; per-captain active/dead tracking
+(`getActiveNavi`/`getAliveOrima`/`getDeadOrima`, dead flags); a survivor-gated
+`GAMEEND_NaviDown`; and control routing (`Kontroller`, camera, whistle) per
+active captain. Until then this lane is **slot 0 only**, and the adapter refuses
+`switchActive(1)` / `captureCaptain(0, …)` exactly as the contract requires.
 
 ## Limits and next slices
 
-- Not yet wired to the live `Navi` / `NaviMgr` objects; the host adapter that
-  maps `mNaviIndex`, `mHealth` and `Piki::mNavi` onto this policy is the next
-  lane-12 slice and requires a private native build plus an arena run.
+- Live binding is slot 0 only. `pc_p2_captain.cpp` maps `naviMgr->getNavi(0)`
+  (`Navi::mNaviID == 0`); slot 1 is always absent. There is no live
+  two-captain runtime and this slice does not claim one.
+- The adapter's actor ids come from a pointer-keyed registry in
+  `pc_p2_captain.cpp`. A freed-then-reused `Piki*` within one scene can inherit
+  an id; captor families must release a captive before its actor is destroyed
+  (same lifetime rule as the source captor FSMs). `teardown()` clears it.
+- No caller wires `pc_p2_captain.cpp` yet; it is additive and inert until
+  `pc_p2_captain` functions are invoked from a captor family.
 - Held bombs and task ownership are represented only through the generic
   ownership table; dedicated held-item semantics remain to be audited.
 - Two-player mode and President substitution are modeled as `present` slots but
-  have no runtime acceptance yet.
+  have no runtime acceptance.
 
 Consumers (29/30/16) can implement against this interface now; a fake adapter
 alone is not end-to-end acceptance.
