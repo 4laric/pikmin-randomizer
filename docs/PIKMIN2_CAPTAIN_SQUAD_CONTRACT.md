@@ -52,10 +52,15 @@ capture/release boundary so those families do not each invent one.
     hands control to the survivor
   - `capture(captain, captorEpoch)` / `releaseCaptured(captain, captorEpoch)`
   - `revive(captain, health)`, `reload()`, `cancel()`
+  - captor-held actors: `captureActor(captorEpoch, actor)`,
+    `releaseActor(captorEpoch, actor, toCaptain)`,
+    `dropAllCaptured(captorEpoch)`, `isCaptive`, `captiveCount`
 
-Captor families own their FSM and their `mSuckedNavis` mapping; they call
-`capture`/`releaseCaptured` with a nonzero captor epoch. A stale epoch (previous
-occupant of a recycled slot) can never release another captor's capture.
+Captor families own their FSM and their `mSuckedNavis` / grab mapping; they call
+`capture`/`releaseCaptured` for a captain and `captureActor`/`releaseActor` for
+a Pikmin or carried item, always with a nonzero captor epoch. A stale epoch
+(previous occupant of a recycled slot) can never release another captor's
+capture.
 
 ## Invariants (enforced by the policy test)
 
@@ -66,6 +71,9 @@ occupant of a recycled slot) can never release another captor's capture.
    freed.
 4. Capture is epoch-qualified; stale captors are rejected.
 5. A capture that would leave the player with zero control is refused.
+6. A Pikmin/carried actor is either captain-owned or captor-held, never both.
+   Captor death frees held actors (whistle-reclaimable, not deleted) and a
+   reload restores them to their previous captain, so nothing is lost.
 
 ## Evidence
 
@@ -74,8 +82,8 @@ g++ -std=c++17 -Wall -Wextra -I pc_port tools/test_p2_captain_policy.cpp -o test
 PASS P2_CAPTAIN_POLICY
 ```
 
-Native commit `8219bf17`; executable SHA-256
-`189BC50A20441C8D9763ECA025801F32B2146FE66088841ACEC8F12E570A049D`.
+Native commit `14e8fb92`; executable SHA-256
+`DCDAAE668FC8DDFB951C6FAB83CB65E9BCB9E1D13F5D2FFEA98B9BCACED57A25`.
 This is a policy/contract test (engine-double), not a live `Navi` runtime run.
 
 ## Limits and next slices

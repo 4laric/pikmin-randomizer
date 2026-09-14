@@ -62,9 +62,17 @@ g++ -std=c++17 -Wall -Wextra -I pc_port tools/test_p2_bulbmin_policy.cpp -o test
 PASS P2_BULBMIN_POLICY
 ```
 
-Native commit `8219bf17`; executable SHA-256
-`9A301432117241FD0E0164CF52E23BD96AD8679E04B98A8AB2B15AC2449B4E21`.
+Native commit `14e8fb92`; executable SHA-256
+`9818AF2F5B7CC06DE59504DAFE2571DC0CAF74EA34E1A7D5FFD6F40852A6361A`.
 Policy/contract test (engine-double), not a live arena run.
+
+## Companion slice: species hazard capability matrix
+
+`native/pc_port/pc_p2_species_policy.h` (same branch) exposes the receiving
+lane-10 capability table for Blue/Red/Yellow/Purple/White/Bulbmin plus the
+species-only Purple impact and White poison attacks, source-anchored in
+`interactPiki.cpp` (`Denki :347`, `Fire :453`, `Bubble :511`, `Gas :543`). See
+[PIKMIN2_SPECIES_CAPABILITY_MATRIX.md](PIKMIN2_SPECIES_CAPABILITY_MATRIX.md).
 
 ## Integration and remaining work
 

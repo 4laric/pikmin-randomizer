@@ -1,0 +1,167 @@
+From 84b44fb800d96366245e994909ed70c25517ae40 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 02:18:28 -0400
+Subject: [PATCH 2/3] Add P2 species hazard capability matrix (lane 11)
+
+---
+ pc_port/pc_p2_species.h          |  1 +
+ pc_port/pc_p2_species_policy.h   | 71 ++++++++++++++++++++++++++++++++
+ tools/test_p2_species_policy.cpp | 56 +++++++++++++++++++++++++
+ 3 files changed, 128 insertions(+)
+ create mode 100644 pc_port/pc_p2_species_policy.h
+ create mode 100644 tools/test_p2_species_policy.cpp
+
+diff --git a/pc_port/pc_p2_species.h b/pc_port/pc_p2_species.h
+index 42a721d7..dfa2b930 100644
+--- a/pc_port/pc_p2_species.h
++++ b/pc_port/pc_p2_species.h
+@@ -9,6 +9,7 @@ enum P2PikminSpecies {
+     P2SpeciesYellow = 2,
+     P2SpeciesPurple = 3,
+     P2SpeciesWhite = 4,
++    P2SpeciesBulbmin = 5, // source Piki.h Bulbmin = 5; no base-color mapping
+ };
+ 
+ int pc_p2_species(const Piki* piki);
+diff --git a/pc_port/pc_p2_species_policy.h b/pc_port/pc_p2_species_policy.h
+new file mode 100644
+index 00000000..5b658067
+--- /dev/null
++++ b/pc_port/pc_p2_species_policy.h
+@@ -0,0 +1,71 @@
++#pragma once
++#include "pc_p2_species.h"
++
++// P2 species hazard capability matrix, lane 11 of
++// docs/PIKMIN2_IMPLEMENTATION_FANOUT.md. This is the enemy-facing capability
++// definition lane 10 (receivers) consumes: which hazards each Pikmin species
++// rejects at its `actPiki` receiver, plus the species-only attack capabilities
++// (Purple impact, White poison).
++//
++// Source basis (native/pikmin2-research, US GPVE01 revision 0,
++// src/plugProjectKandoU/interactPiki.cpp):
++//   InteractDenki::actPiki   :334, reject unless Yellow or Bulbmin      (:347)
++//   InteractFire::actPiki    :445, reject unless Red or Bulbmin         (:453)
++//   InteractBubble::actPiki  :503, reject unless Blue or Bulbmin        (:511)
++//   InteractGas::actPiki     :531, reject unless White or Bulbmin       (:543)
++// Purple has no elemental immunity; its damage is the impact attack (#393).
++// A source-backed N/A is recorded rather than borrowing a similarly named
++// P1 field.
++
++enum P2HazardKind {
++    P2HazardFire = 0,
++    P2HazardWater = 1, // InteractBubble
++    P2HazardElectric = 2, // InteractDenki
++    P2HazardGas = 3, // InteractGas
++    P2HazardCount = 4,
++};
++
++struct P2SpeciesCapability {
++    int species;
++    bool immune[P2HazardCount];
++    bool poisonAttack; // poisoning a predator that swallows it (White only)
++    bool impactAttack; // hipdrop/earthquake on landing (Purple only)
++    bool valid;
++};
++
++inline P2SpeciesCapability p2_species_capability(int species) {
++    P2SpeciesCapability c{};
++    c.species = species;
++    c.valid = true;
++    switch (species) {
++    case P2SpeciesBlue:
++        c.immune[P2HazardWater] = true;
++        break;
++    case P2SpeciesRed:
++        c.immune[P2HazardFire] = true;
++        break;
++    case P2SpeciesYellow:
++        c.immune[P2HazardElectric] = true;
++        break;
++    case P2SpeciesPurple:
++        c.impactAttack = true;
++        break;
++    case P2SpeciesWhite:
++        c.immune[P2HazardGas] = true;
++        c.poisonAttack = true;
++        break;
++    case P2SpeciesBulbmin:
++        for (int h = 0; h < P2HazardCount; ++h) c.immune[h] = true;
++        break;
++    default:
++        c.valid = false;
++        break;
++    }
++    return c;
++}
++
++inline bool p2_species_immune(int species, int hazard) {
++    if (hazard < 0 || hazard >= P2HazardCount) return false;
++    P2SpeciesCapability c = p2_species_capability(species);
++    return c.valid && c.immune[hazard];
++}
+diff --git a/tools/test_p2_species_policy.cpp b/tools/test_p2_species_policy.cpp
+new file mode 100644
+index 00000000..c496b32d
+--- /dev/null
++++ b/tools/test_p2_species_policy.cpp
+@@ -0,0 +1,56 @@
++#include "pc_p2_species_policy.h"
++#include <cassert>
++#include <cstdio>
++
++// Lane 11 policy test: the per-species hazard receiver matrix must match the
++// source `interactPiki.cpp` actPiki rejections exactly, and the species-only
++// attack capabilities must not leak to other colors.
++int main() {
++    // Base colors: exactly one elemental immunity each.
++    assert(p2_species_immune(P2SpeciesRed, P2HazardFire));
++    assert(!p2_species_immune(P2SpeciesRed, P2HazardWater));
++    assert(!p2_species_immune(P2SpeciesRed, P2HazardElectric));
++    assert(!p2_species_immune(P2SpeciesRed, P2HazardGas));
++
++    assert(p2_species_immune(P2SpeciesBlue, P2HazardWater));
++    assert(!p2_species_immune(P2SpeciesBlue, P2HazardFire));
++
++    assert(p2_species_immune(P2SpeciesYellow, P2HazardElectric));
++    assert(!p2_species_immune(P2SpeciesYellow, P2HazardFire));
++
++    // White: gas only, plus predator poisoning. No fire/water/electric.
++    P2SpeciesCapability white = p2_species_capability(P2SpeciesWhite);
++    assert(white.valid && white.poisonAttack);
++    assert(white.immune[P2HazardGas]);
++    assert(!white.immune[P2HazardFire] && !white.immune[P2HazardWater]
++           && !white.immune[P2HazardElectric]);
++    assert(!white.impactAttack);
++
++    // Purple: no elemental immunity; impact attack only.
++    P2SpeciesCapability purple = p2_species_capability(P2SpeciesPurple);
++    assert(purple.valid && purple.impactAttack && !purple.poisonAttack);
++    for (int h = 0; h < P2HazardCount; ++h) assert(!purple.immune[h]);
++
++    // Bulbmin: immune to every hazard, no special attack.
++    P2SpeciesCapability bulbmin = p2_species_capability(P2SpeciesBulbmin);
++    assert(bulbmin.valid);
++    for (int h = 0; h < P2HazardCount; ++h) assert(bulbmin.immune[h]);
++    assert(!bulbmin.poisonAttack && !bulbmin.impactAttack);
++
++    // Only White poisons and only Purple impacts.
++    for (int s = 0; s <= P2SpeciesBulbmin; ++s) {
++        P2SpeciesCapability c = p2_species_capability(s);
++        if (s != P2SpeciesWhite) assert(!c.poisonAttack);
++        if (s != P2SpeciesPurple) assert(!c.impactAttack);
++    }
++
++    // Unknown species and out-of-range hazard are rejected, never defaulted to
++    // an immunity.
++    assert(!p2_species_capability(99).valid);
++    assert(!p2_species_immune(99, P2HazardFire));
++    assert(!p2_species_immune(P2SpeciesRed, -1));
++    assert(!p2_species_immune(P2SpeciesRed, P2HazardCount));
++
++    std::puts("PASS P2_SPECIES_POLICY");
++    return 0;
++}
+-- 
+2.55.0.windows.3
+
