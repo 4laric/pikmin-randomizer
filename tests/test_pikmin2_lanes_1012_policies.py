@@ -28,6 +28,7 @@ _CASES = (
     ('test_p2_captain_policy.cpp', 'PASS P2_CAPTAIN_POLICY'),
     ('test_p2_bulbmin_policy.cpp', 'PASS P2_BULBMIN_POLICY'),
     ('test_p2_species_policy.cpp', 'PASS P2_SPECIES_POLICY'),
+    ('test_p2_species_schema.cpp', 'PASS P2_SPECIES_SCHEMA'),
 )
 
 
