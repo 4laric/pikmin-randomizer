@@ -164,7 +164,7 @@ public:
             int alive = 0, total = countPiki(&alive);
             if (frames % 120 == 0)
                 std::printf("P2_ORD_MUSTER frame=%u pikis=%d alive=%d pulled=%d\n", frames, total, alive, musterPulled);
-            const bool ready = alive >= 5 || frames > 2400;
+            const bool ready = alive >= 20 && frames > 180;
             if (!ready) return result;
             genPos = target->mGenerator ? target->mGenerator->mGenPosition : target->mSRT.t;
             actorSpawn = target->mSRT.t;
@@ -292,3 +292,4 @@ int main(int argc, char** argv)
     gsys->Initialise(); pc_settings_p2d_init();
     nodeMgr = new NodeMgr(); gsys->run(new OrdinaryApp()); return 0;
 }
+
