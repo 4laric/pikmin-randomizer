@@ -21,7 +21,7 @@ Current levels are visual/display only unless noted. The dominant blocker everyw
 | Dirigibug (BombSarai) (#244) | P2 mechanics | Visual bank + `kamu_jnt1` capture-joint transform (#128 converter); multi-carrier pool/induction; persistence | #244, #128 |
 | Antenna Beetle (Fuefuki) (#245) | P2 mechanics | Source `keyEvent`/animation bank (#128); follow-locomotion; true panic staging; claim persistence across day/cave | #245, #128 |
 | Titan Dweevil lane (#246) | P2 mechanics | Motion staging 2/29, lloozy unconverted, damage receivers, FSM host, mixer performance | #246, #128 |
-| Jellyfloat (#243) | Playable proxy | Install + arena (none yet), then native registration; capture/ingest lifecycle; kurage material/opacity | #243 |
+| Jellyfloat (#243) | Native source FSM + flight/suction policy + bounded receiver; binding runtime PASS | OniKurage (Greater, shared base) FSM; full ingestion/digestion lifecycle and stomach-timer captain-release paths; moving suction joint + animated collision tree; `kurage` material/opacity; #186 review of the shared `creature.cpp`/`piki.cpp`/`gameCoreSection.cpp`/`pc_window.*` edits | #243, #186 |
 | Bumbling Snitchbug / Demon (#215–#242) | P2 mechanics | Consolidate forced-drop/capture gates; native drop interruption + generation teardown; mouth attachment rig; captain bridge | #215–#242 |
 | Beetles / Breadbug / Mamuta (#168) | P2 mechanics | Remaining runtime gates: flip/drop/forced-escape/cave relocation (beetles); contested cargo/nest ownership + Giant Breadbug scoring (breadbug); bury/99-cap/observation (mamuta) | #219–#221 |
 | Snow Bulborb (#120) | P2 mechanics | Reference lane; natural combat/carry/re-entry parity for the bulborb family remains | #120 |
