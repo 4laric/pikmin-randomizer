@@ -107,6 +107,45 @@ CANDIDATE_SPECS = (
     (54, 'Miulin', 19, ['ground'], 24, False),
 )
 
+# Lane-14 ground-invertebrate source facts (docs/PIKMIN2_GROUND_PLACEMENT_FACTS.md,
+# docs/p2_ground_placement_facts.json). These are the terrain/space/water/home/
+# helper facts only; lane 04 keeps identity, cohort, family_lane, notes and
+# accepted_gates, so no entry here sets a cohort. `footprint_radius` is the
+# source root collision sphere and `helper_budget` is the manager group cap
+# (TamagoMushi: 10 surface / 30 cave; a 0-capacity slot cannot host the group).
+GROUND_INVERT_FACTS = {
+    'Armor': {
+        'terrains': ['ground'], 'footprint_radius': 40, 'min_water_depth': 0,
+        'requires_burrow_ground': True, 'requires_home': False,
+        'helper_budget': 0, 'requires_corpse_route': True,
+    },
+    'ElecBug': {
+        'terrains': ['ground'], 'footprint_radius': 32.5, 'min_water_depth': 0,
+        'requires_burrow_ground': False, 'requires_home': False,
+        'helper_budget': 0, 'requires_corpse_route': True,
+    },
+    'Imomushi': {
+        'terrains': ['ground'], 'footprint_radius': 17.5, 'min_water_depth': 0,
+        'requires_burrow_ground': True, 'requires_home': False,
+        'helper_budget': 0, 'requires_corpse_route': True,
+    },
+    'TamagoMushi': {
+        'terrains': ['ground', 'underground'], 'footprint_radius': 18, 'min_water_depth': 0,
+        'requires_burrow_ground': True, 'requires_home': False,
+        'helper_budget': 10, 'requires_corpse_route': True,
+    },
+    'Sokkuri': {
+        'terrains': ['ground', 'mixed', 'water'], 'footprint_radius': 25, 'min_water_depth': 0,
+        'requires_burrow_ground': False, 'requires_home': False,
+        'helper_budget': 0, 'requires_corpse_route': True,
+    },
+    'Hana': {
+        'terrains': ['ground'], 'footprint_radius': 75, 'min_water_depth': 0,
+        'requires_burrow_ground': True, 'requires_home': False,
+        'helper_budget': 0, 'requires_corpse_route': True,
+    },
+}
+
 # Candidate source_ids that are bosses and therefore require a lane-04 encounter
 # descriptor instead of a universal replacement profile. Tracked here so the
 # cohort is complete without silently admitting them.
@@ -271,19 +310,24 @@ def candidate_profiles():
     for source_id, identity, lane, terrains, p1_equivalent, requires_home in CANDIDATE_SPECS:
         equivalent = 'none' if p1_equivalent is None else str(p1_equivalent)
         cohort = P1_COHORT.get(p1_equivalent)
-        profiles.append(_placement.normalize_profile({
+        facts = GROUND_INVERT_FACTS.get(identity, {})
+        record = {
             'identity': identity,
-            'terrains': list(terrains),
+            'terrains': list(facts.get('terrains', terrains)),
             'family_lane': lane,
             'cohort': cohort,
-            'requires_home': requires_home,
-            'requires_corpse_route': True,
+            'requires_home': facts.get('requires_home', requires_home),
+            'requires_corpse_route': facts.get('requires_corpse_route', True),
             'accepted_gates': [],
             'notes': (f"P2 source_id {source_id}; lane-04 constraint seed; "
                       f"p1_equivalent {equivalent}; placement cohort {cohort}; "
-                      f"requires_home {requires_home}; native placement gate "
-                      f"pending family lane {lane}."),
-        }))
+                      f"requires_home {facts.get('requires_home', requires_home)}; "
+                      f"native placement gate pending family lane {lane}."),
+        }
+        for key in ('footprint_radius', 'min_water_depth', 'requires_burrow_ground', 'helper_budget'):
+            if key in facts:
+                record[key] = facts[key]
+        profiles.append(_placement.normalize_profile(record))
     return profiles
 
 
