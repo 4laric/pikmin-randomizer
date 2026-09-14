@@ -1,7 +1,7 @@
 From 4c3b32e6e3bc5a7ba1fbda4a841f58c209e5cdb9 Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 08:58:18 -0400
-Subject: [PATCH 2/3] rewards: native exactly-once receipt + cargo-contest
+Subject: [PATCH 2/4] rewards: native exactly-once receipt + cargo-contest
  provider surface (#441)
 
 Add the engine-free provider surface requested by lane 18 (#441/#220):
