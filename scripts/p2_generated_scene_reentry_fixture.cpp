@@ -158,6 +158,21 @@ public:
                 else ++others;
             }
             if (!target) return result;
+            const char* checkpoint = std::getenv("PIKMIN_P2_REENTRY_CHECKPOINT");
+            if (checkpoint && !std::strcmp(checkpoint, "1")) {
+                int live=0; countPiki(&live);
+                if (frames<180 || live<20) return result;
+                require(pc_randomizer_checked(TARGET), "checkpoint requires existing earned reward");
+                oldGeneration=pc_p2_scene_generation();
+                auto* core=findCore(gameflow.mGameSection); require(core!=nullptr,"game core");
+                core->exitStage();
+                require(!pc_p2_dwarf_orange_registered(target), "old checkpoint registry cleared");
+                target=nullptr; corpse=nullptr; reloading=true;
+                gameflow.mNextOnePlayerSectionID=ONEPLAYER_NewPikiGame;
+                gsys->softReset();
+                std::printf("P2_GENERATED_SCENE_EXIT generation=%lu historical_checkpoint=1 fresh_delivery=0\n", oldGeneration);
+                std::fflush(nullptr); return result;
+            }
             otherEnemies = others;
             // Mustering: pluck Onion sprouts so the real squad is on the field.
             if (frames > 60 && musterPulled < 40) musterPulled += pluckSprouts(n);
