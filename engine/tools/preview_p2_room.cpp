@@ -146,6 +146,9 @@ static void capture(const char* path="p2-room.ppm") {
 #include "preview_p2_purple.inc"
 #include "preview_p2_beasts_floor2.inc"
 #include "preview_p2_purple_impact.inc"
+#include "preview_p2_white_poison.inc"
+#include "preview_p2_purple_direct.inc"
+#include "preview_p2_purple_flight.inc"
 #include "preview_p2_white.inc"
 #include "preview_p2_cargo.inc"
 #include "preview_p2_cave.inc"
@@ -226,7 +229,10 @@ public:
         if(cargoCarryFixture(n))return result;
         if(snowRenderFixture(n))return result;
         if(pc_p2_cave_floor()){caveFixture(n);std::fflush(stdout);return result;}
+        if(FILE* poison=std::fopen("p2-white-poison.txt","r")){std::fclose(poison);whitePoisonFixture(n);std::fflush(stdout);return result;}
         if(pc_p2_whites_enabled()){whiteFixture(n);std::fflush(stdout);return result;}
+        if(pc_p2_purple_flight_enabled()){purpleFlightFixture(n);std::fflush(stdout);return result;}
+        if(pc_p2_purple_direct_enabled()){purpleDirectFixture(n);std::fflush(stdout);return result;}
         if(pc_p2_purple_impact_enabled()){purpleImpactFixture(n);std::fflush(stdout);return result;}
         if(pc_p2_purples_enabled()){purpleFixture(n);std::fflush(stdout);return result;}
         if(phase==0) {

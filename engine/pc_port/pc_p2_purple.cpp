@@ -1,5 +1,8 @@
 #include "pc_p2_purple.h"
 #include "pc_p2_purple_impact.h"
+#include "pc_p2_purple_direct.h"
+#include "pc_p2_purple_flight.h"
+#include "pc_p2_purple_motion.h"
 #include "pc_p2_white.h"
 #include "pc_p2_preview.h"
 #include "pc_bbft.h"
@@ -64,7 +67,7 @@ float pc_p2_transport_speed(Pellet* pellet,float fallback) {
     return low+(1+power-pellet->mConfig->mCarryMinPikis())/pellet->mConfig->mCarryMaxPikis()*(high-low);
 }
 void pc_p2_purple_setup() {
-    enabled=false;clips.clear();pc_p2_purple_impact_reset();
+    enabled=false;clips.clear();pc_p2_purple_impact_reset();pc_p2_purple_direct_reset();
     if(!pc_pikipelago_room_preview())return;
     std::ifstream in("p2-purple.txt");if(!in)return;
     std::string word;in>>word;if(word!="P2_PURPLE_1" || !pc_p2_preview_goal())std::abort();
@@ -93,10 +96,17 @@ void pc_p2_purple_setup() {
     for(int i=0;i<3;++i)growth[i]=shape("purple_happa_"+std::to_string(i));
     enabled=true;
     pc_p2_purple_impact_set_enabled(impact);
+    if(impact)pc_p2_purple_direct_setup();
     std::printf("P2_PURPLE_READY actual model; sampled source poses; weight=10 movement=%.2f carry_power=%.2f attack=%.2f throw=%.2f impact=%s\n",stats[0],stats[1],stats[2],stats[3],impact?"red_earthquake_v1":"disabled");
 }
 bool pc_p2_draw_purple(Piki* p,Graphics& gfx) {
     if(!pc_p2_is_purple(p))return false;
+    PcP2PurpleFlightSample flight=pc_p2_purple_flight_sample(p);
+    if(flight.phase!=PcP2PurpleFlightPhase::None && pc_p2_purple_motion_enabled()) {
+        PcP2PurpleMotionClip clip=(flight.phase==PcP2PurpleFlightPhase::Ascent||flight.phase==PcP2PurpleFlightPhase::EntryPause)
+            ? PcP2PurpleMotionClip::RollJump : PcP2PurpleMotionClip::Fall;
+        return pc_p2_draw_purple_motion(p,gfx,clip,flight.motionElapsed);
+    }
     std::string motion=p->mMode==PikiMode::AttackMode?"attack1":(p->mVelocity.x*p->mVelocity.x+p->mVelocity.z*p->mVelocity.z>16?"walk":"wait");
     Clip& clip=clips[motion];int index=int(std::fmod(p->mP2AnimationTime,clip.seconds)/clip.seconds*clip.shapes.size());
     if(index<0 || index>=int(clip.shapes.size()))index=0;

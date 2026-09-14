@@ -19,11 +19,14 @@ int main()
     Sources sources;
     Event first = sources.arm(&purple);
     Event emitted;
+    assert(sources.claimDirect(&purple));
+    assert(!sources.claimDirect(&purple));
     assert(sources.consume(&purple, emitted, 1.0f, 2.0f, 3.0f));
     assert(emitted.sourceLifetime == first.sourceLifetime);
     assert(emitted.attackToken == first.attackToken);
     assert(!sources.consume(&purple, emitted, 4.0f, 5.0f, 6.0f));
     Event second = sources.arm(&purple);
+    assert(sources.claimDirect(&purple));
     assert(second.sourceLifetime != first.sourceLifetime);
     assert(second.attackToken != first.attackToken);
     assert(sources.consume(&purple, emitted, 4.0f, 5.0f, 6.0f));

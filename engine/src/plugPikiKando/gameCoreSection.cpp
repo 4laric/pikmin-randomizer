@@ -1,3 +1,4 @@
+#include "pc_p2_purple_flight.h"
 #include "pc_p2_kurage_visual.h"
 #include "pc_p2_teki_lifetime.h"
 #include "pc_p2_kurage_teki.h"
@@ -25,6 +26,7 @@
 #include "pc_p2_breadbug_visual.h"
 #include "pc_p2_giant_breadbug_visual.h"
 #include "pc_p2_giant_breadbug_actor.h"
+#include "pc_p2_breadbug_actor.h"
 #include "pc_p2_bulblax_visual.h"
 #include "pc_p2_queen.h"
 #include "pc_p2_king.h"
@@ -884,6 +886,7 @@ void GameCoreSection::exitStage()
 	// registration map so a finished stage cannot retain a stale BTeki* key
 	// pointing into the TekiMgr that is about to be destroyed. Previously only
 	// the kurage families were released here.
+	pc_p2_purple_flight_reset(); // Restore live Pikmin flags before the stage heap is released.
 	pc_p2_reset_all_teki();
 #endif
 	demoEventMgr = nullptr;
@@ -2191,6 +2194,7 @@ void GameCoreSection::updateAI()
 {
     pc_p2_cave_tick();
     pc_p2_giant_breadbug_actor_tick();
+    pc_p2_breadbug_actor_tick();
     if (pc_randomizer_expanded()) {
         AICONST.mMaxPikisOnField(pc_randomizer_field_capacity());
         const bool active = !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll

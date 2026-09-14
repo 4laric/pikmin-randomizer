@@ -1,5 +1,7 @@
 # Native handoff integration continuation (#437)
 
+Superseded baseline: see [the dependency reconciliation](PIKMIN2_DEPENDENCY_RECONCILIATION_437.md) for the next integrated pair and validation.
+
 Owner: Codex through shared account 4laric. Review branch: `codex/p2-main-review`, draft #432. This continues root `1513698` / native `1d0adc67`.
 
 ## Audit correction and integrated work

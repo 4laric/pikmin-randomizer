@@ -19,6 +19,10 @@ bool enabled = false;
 void pc_p2_purple_impact_reset() { sources.reset(); enabled = false; }
 void pc_p2_purple_impact_set_enabled(bool value) { enabled = value; }
 bool pc_p2_purple_impact_enabled() { return enabled; }
+bool pc_p2_purple_impact_claim_direct(Piki* piki)
+{
+    return enabled && pc_p2_is_purple(piki) && piki && piki->isAlive() && sources.claimDirect(piki);
+}
 
 void pc_p2_purple_impact_arm(Piki* piki)
 {

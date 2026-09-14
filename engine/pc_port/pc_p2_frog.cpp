@@ -9,6 +9,10 @@
 #include "Graphics.h"
 #include "Camera.h"
 #include "gameflow.h"
+#include "Piki.h"
+#include "PikiMgr.h"
+#include "Navi.h"
+#include "NaviMgr.h"
 #include <fstream>
 #include <set>
 #include <cstdlib>
@@ -18,14 +22,35 @@ std::map<PelletView*,int> actors;
 const char* ids[]={"Frog","MaroFrog"};
 std::map<std::string,std::vector<Shape*>> animated[2];
 std::map<std::string,p2animation::Clip> timing[2];
-std::set<PelletView*> pressing;
+std::set<PelletView*> pressing,bitteredFrogs;
 // Family-local instrumentation only: records the P1-proxy Attack motion of a
 // registered frog; it does not assert the source landing press.
-void logPress(BTeki* actor,int kind){
+bool logPress(BTeki* actor,int kind){
     auto* view=static_cast<PelletView*>(actor);
     bool active=actor->mTekiAnimator&&actor->mTekiAnimator->getCurrentMotionIndex()==TekiMotion::Attack;
-    if(active){if(pressing.insert(view).second)std::printf("P2_FROG_PRESS species=%s attack=1 behavior=P1_proxy\n",ids[kind]);}
-    else pressing.erase(view);
+    if(active){if(pressing.insert(view).second){std::printf("P2_FROG_PRESS species=%s attack=1 behavior=P1_proxy\n",ids[kind]);return true;}return false;}
+    pressing.erase(view);return false;
+}
+bool isBittered(PelletView* view){return bitteredFrogs.count(view)!=0;}
+// Family-local landing-press attribution (#167/#201). Edge-triggered from the
+// P1-proxy Attack motion, the host's landing/attack key. It counts grounded
+// Pikmin/Navi inside the source head radius and reports only: it never presses,
+// damages or moves any actor, so unregistered controls are untouched and press
+// behavior is unchanged (the P1 host already presses). The source not-bittered
+// precondition is honoured through pc_p2_frog_set_bittered; no P1 bitter
+// provider exists yet, so native always reports the not-bittered case.
+void logLand(BTeki* actor,int kind){
+    if(isBittered(static_cast<PelletView*>(actor)))return;
+    const float radius=p2frog::headRadius(kind);const Vector3f& at=actor->getPosition();
+    const float r2=radius*radius;int pikmin=0,navi=0;
+    if(pikiMgr){Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);
+        if(!p||!p->isAlive()||p->isFlying())continue;const Vector3f& pos=p->getPosition();
+        const float dx=pos.x-at.x,dz=pos.z-at.z;if(dx*dx+dz*dz<=r2)++pikmin;}}
+    if(naviMgr){Iterator it(naviMgr);CI_LOOP(it){Navi* n=static_cast<Navi*>(*it);
+        if(!n||!n->isAlive()||n->isFlying())continue;const Vector3f& pos=n->getPosition();
+        const float dx=pos.x-at.x,dz=pos.z-at.z;if(dx*dx+dz*dz<=r2)++navi;}}
+    if(pikmin+navi<=0)return;
+    std::printf("P2_FROG_LAND species=%s radius=%.1f bittered=0 pikmin=%d navi=%d behavior=P1_proxy\n",ids[kind],radius,pikmin,navi);
 }
 void loadAnimation(std::vector<p2animation::Clip> (&banks)[2]){
     size_t total=0;
@@ -60,8 +85,9 @@ void loadAnimation(std::vector<p2animation::Clip> (&banks)[2]){
     std::printf("P2_FROG_BANK_READY mod_bytes=%zu gameplay=P1_unchanged\n",total);
 }
 }
-void pc_p2_frog_reset(){actors.clear();pressing.clear();for(auto& b:animated)b.clear();for(auto& b:timing)b.clear();}
-void pc_p2_frog_forget(BTeki* actor){actors.erase(static_cast<PelletView*>(actor));pressing.erase(static_cast<PelletView*>(actor));}
+void pc_p2_frog_reset(){actors.clear();pressing.clear();bitteredFrogs.clear();for(auto& b:animated)b.clear();for(auto& b:timing)b.clear();}
+void pc_p2_frog_forget(BTeki* actor){actors.erase(static_cast<PelletView*>(actor));pressing.erase(static_cast<PelletView*>(actor));bitteredFrogs.erase(static_cast<PelletView*>(actor));}
+void pc_p2_frog_set_bittered(BTeki* actor,bool bittered){auto* view=static_cast<PelletView*>(actor);if(!actors.count(view))return;if(bittered)bitteredFrogs.insert(view);else bitteredFrogs.erase(view);}
 const char* pc_p2_frog_name(PelletView* view){auto i=actors.find(view);return i==actors.end()?nullptr:ids[i->second];}
 // Source parameters replace the shared P1 host values for registered frogs only;
 // unregistered controls keep native values. Reads stay non-mutating.
@@ -93,7 +119,7 @@ void pc_p2_frog_setup(){
 }
 bool pc_p2_frog_draw(BTeki* actor,Graphics& gfx,const Matrix4f& matrix,bool corpse){
     auto it=actors.find(static_cast<PelletView*>(actor));if(it==actors.end())return false;
-    int kind=it->second;if(!corpse)logPress(actor,kind);int motion=actor->mTekiAnimator->getCurrentMotionIndex();
+    int kind=it->second;if(!corpse&&logPress(actor,kind))logLand(actor,kind);int motion=actor->mTekiAnimator->getCurrentMotionIndex();
     const char* name=corpse?"dead":p2frog::motionClip(motion);
     Shape* shape=animated[kind].at("wait1").front();
     if(name){int frames=actor->mTekiAnimator->getFrameCount();float phase=frames>1?actor->mTekiAnimator->getCounter()/(frames-1):0;

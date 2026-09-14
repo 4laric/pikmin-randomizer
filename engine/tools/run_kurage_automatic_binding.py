@@ -24,6 +24,7 @@ import subprocess
 SCENARIOS = {
     "binding": ("--receiver-automatic-binding", "automatic-binding"),
     "auto-fsm": ("--receiver-auto-fsm", "auto-fsm"),
+    "auto-fsm-move": ("--receiver-auto-fsm-move", "auto-fsm-move"),
 }
 
 

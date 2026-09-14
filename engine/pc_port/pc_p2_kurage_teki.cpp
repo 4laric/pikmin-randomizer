@@ -14,6 +14,7 @@
 #include "PikiMgr.h"
 #include "system.h"
 #include "teki.h"
+#include <cmath>
 #include <cstdio>
 #include <fstream>
 #include <map>
@@ -34,6 +35,12 @@ struct Binding {
     int motionTimer = 0;
     int autoAdmissions = 0;
     int fsmTicks = 0;
+    // Host walkToTarget (Move patrol / Chase pursuit) for the ordinary actor.
+    Vector3f spawnPos;
+    Vector3f patrolTarget;
+    bool hasPatrol = false;
+    unsigned patrolState = 0x9e3779b9u;
+    float lastDistToGoal = 1e9f;
 };
 std::map<BTeki*, Binding> s;
 int gTickCalls = 0;
@@ -44,6 +51,8 @@ constexpr int kFsmMotionFrames = 30;
 // Kurage.h mAttackRadius (asset ProperParms value not yet imported) and ip11.
 constexpr float kSourceAttackRadius = 35.0f;
 constexpr int kMaxAutoAdmissions = 10;
+constexpr float kPatrolSpeed = 60.0f;
+constexpr float kPatrolRadius = 150.0f;
 // Retail Kurage attack.bca event table (enemyanimmgr.txt): 37=KEYEVENT_2 suck
 // start, 60=loop, 67=KEYEVENT_1 suck end.
 const p2retail::Motion kAttackMotion{
@@ -84,6 +93,18 @@ Piki* findSuctionTarget(BTeki* t)
         return piki;
     }
     return nullptr;
+}
+
+void pickPatrol(Binding& b)
+{
+    b.patrolState = b.patrolState * 1664525u + 1013904223u;
+    const float u = float((b.patrolState >> 8) & 0xFFFFu) / 65535.0f;
+    b.patrolState = b.patrolState * 1664525u + 1013904223u;
+    const float v = float((b.patrolState >> 8) & 0xFFFFu) / 65535.0f;
+    const float angle = u * 6.2831853f;
+    const float dist = 40.0f + v * kPatrolRadius;
+    b.patrolTarget.set(b.spawnPos.x + std::cos(angle) * dist, 0.0f,
+        b.spawnPos.z + std::sin(angle) * dist);
 }
 
 void tickAttack(Binding& b, float dt)
@@ -131,6 +152,7 @@ void pc_p2_kurage_teki_setup()
         if (!pc_p2_kurage_visual_setup()) std::abort();
         auto inserted = s.emplace(static_cast<BTeki*>(t), Binding{ gen, type, {} });
         Binding& b = inserted.first->second;
+        b.spawnPos = t->mSRT.t;
         refresh(t, b);
         if (!pc_p2_kurage_receiver_setup(t, &b.mouth)) std::abort();
         std::printf("P2_KURAGE_TEKI_READY generator=%u type=%d binding=private_adapter\n", gen, type);
@@ -161,6 +183,7 @@ void pc_p2_kurage_teki_tick(BTeki* t)
     in.isFlying = true;
     in.mapY = mapMgr ? mapMgr->getMinY(t->mSRT.t.x, t->mSRT.t.z, false) : 0.0f;
     in.positionY = t->mSRT.t.y;
+    in.distToTargetXZ = b.lastDistToGoal;
     in.targetFound = findSuctionTarget(t) != nullptr || pc_p2_kurage_receiver_count() > 0;
     in.suckTarget = in.targetFound;
     in.suckAny = in.targetFound;
@@ -175,6 +198,35 @@ void pc_p2_kurage_teki_tick(BTeki* t)
     const p2kurage::Out out = b.fsm.tick(in);
     ++b.fsmTicks;
     t->mSRT.t.y += out.heightVelocity * dt;
+    // Host walkToTarget: the ordinary actor flies Move patrol / Chase pursuit.
+    {
+        Vector3f goal;
+        bool haveGoal = false;
+        if (out.state == p2kurage::State::Move) {
+            if (!b.hasPatrol) { pickPatrol(b); b.hasPatrol = true; }
+            goal = b.patrolTarget;
+            haveGoal = true;
+        } else if (out.state == p2kurage::State::Chase) {
+            Piki* chase = findSuctionTarget(t);
+            if (chase) { goal = chase->mSRT.t; haveGoal = true; }
+        } else {
+            b.hasPatrol = false;
+        }
+        if (haveGoal) {
+            const float dx = goal.x - t->mSRT.t.x;
+            const float dz = goal.z - t->mSRT.t.z;
+            const float dist = std::sqrt(dx * dx + dz * dz);
+            b.lastDistToGoal = dist;
+            if (dist > 1.0f && std::isfinite(dt) && dt > 0.0f) {
+                float step = kPatrolSpeed * dt;
+                if (step > dist) step = dist;
+                t->mSRT.t.x += dx / dist * step;
+                t->mSRT.t.z += dz / dist * step;
+            }
+        } else {
+            b.lastDistToGoal = 1e9f;
+        }
+    }
     if (out.state == p2kurage::State::Attack && out.motionChanged && !b.attackPlaying) {
         if (b.attackPlayer.start(kAttackMotion)) {
             b.attackPlaying = true;

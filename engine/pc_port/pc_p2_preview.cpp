@@ -57,8 +57,11 @@
 #include "system.h"
 #include "pc_p2_economy.h"
 #include "pc_p2_purple.h"
+#include "pc_p2_purple_flight.h"
+#include "pc_p2_purple_motion.h"
 #include "pc_p2_white.h"
 #include "pc_p2_bulbmin.h"
+#include "pc_p2_white_poison.h"
 #include "pc_p2_cave.h"
 #include "pc_p2_enemy.h"
 #include "pc_p2_cargo.h"
@@ -271,6 +274,8 @@ void pc_p2_preview_setup() {
     pc_p2_projectiles_setup();
     pc_p2_hardlanes_setup();
     pc_p2_purple_setup();
+    pc_p2_purple_flight_setup();
+    pc_p2_purple_motion_setup();
     pc_p2_white_setup();
     pc_p2_bulbmin_setup();
     // Lane-11 opt-in driver: use the existing Chappy-family registration as the
@@ -281,6 +286,7 @@ void pc_p2_preview_setup() {
     // label from PIKMIN_P2_BULBMIN_MOTHER (no-op unless the env value is set).
     // Still a labeled Chappy-family proxy: no LeafChappy model exists.
     pc_p2_bulbmin_attach_dedicated_mother();
+    pc_p2_white_poison_setup();
     pc_p2_cave_setup();
     gsys->setHeap(previousHeap);
     const float points[][2]={{-85,0},{-175,-100},{185,-180},{-220,-180}};

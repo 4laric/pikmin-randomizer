@@ -1,5 +1,7 @@
 #include "pc_p2_purple.h"
 #include "pc_p2_purple_impact.h"
+#include "pc_p2_purple_direct.h"
+#include "pc_p2_purple_flight.h"
 #include "pc_p2_white.h"
 #include "PikiState.h"
 #include "AIConstant.h"
@@ -1937,6 +1939,26 @@ void PikiFlyingState::init(Piki* piki)
  */
 void PikiFlyingState::exec(Piki* piki)
 {
+	PcP2PurpleFlightSample previousPurpleFlight = pc_p2_purple_flight_sample(piki);
+	if (pc_p2_purple_flight_update(piki, gsys->getFrameTime(), AICONST.mGravity())) {
+		pc_p2_purple_flight_cancel(piki);
+		piki->restartAI();
+		transit(piki, PIKISTATE_Normal);
+		seSystem->playPikiSound(SEF_PIKI_LAND, piki->mSRT.t);
+		piki->actOnSituaton();
+		return;
+	}
+	PcP2PurpleFlightSample purpleFlight = pc_p2_purple_flight_sample(piki);
+	if (previousPurpleFlight.phase == PcP2PurpleFlightPhase::Ascent
+	    && purpleFlight.phase == PcP2PurpleFlightPhase::EntryPause) {
+		mSparkleEffect.kill();
+	}
+	if (purpleFlight.phase == PcP2PurpleFlightPhase::EntryPause) return;
+	if (purpleFlight.phase == PcP2PurpleFlightPhase::Descent && purpleFlight.phaseElapsed == 0.0f) {
+		piki->startMotion(PaniMotionInfo(PIKIANIM_Fall), PaniMotionInfo(PIKIANIM_Fall));
+	}
+	if (purpleFlight.phase == PcP2PurpleFlightPhase::Descent) return;
+	if (purpleFlight.phase == PcP2PurpleFlightPhase::Recovery) return;
 	if (piki->isCreatureFlag(CF_IsOnGround)) {
 		mGroundTouchFrames++;
 		if (mGroundTouchFrames >= 10) {
@@ -2031,6 +2053,7 @@ void PikiFlyingState::cleanup(Piki* piki)
 	piki->restartAI();
 	piki->mWantToStick = false;
 	pc_p2_purple_impact_forget(piki);
+	pc_p2_purple_flight_cancel(piki);
 }
 
 /**
@@ -2058,6 +2081,18 @@ void PikiFlyingState::procCollideMsg(Piki* piki, MsgCollide* msg)
 	}
 
 	if (piki->isHolding()) {
+		return;
+	}
+	PcP2PurpleFlightSample collisionFlight = pc_p2_purple_flight_sample(piki);
+	if (collisionFlight.phase == PcP2PurpleFlightPhase::Recovery) return;
+	const bool specialFlightContact = collisionFlight.phase == PcP2PurpleFlightPhase::EntryPause
+	                               || collisionFlight.phase == PcP2PurpleFlightPhase::Descent;
+	if (specialFlightContact && colliderType == OBJTYPE_Piki) return;
+	CollPart* flightPart = msg->mEvent.mColliderPart;
+	if (specialFlightContact && colliderType != OBJTYPE_Teki && !collider->isBoss()
+	    && flightPart && flightPart->isPlatformType()
+	    && pc_p2_purple_flight_land(piki, false)) {
+		pc_p2_purple_impact_emit(piki, "platform_collision");
 		return;
 	}
 
@@ -2100,10 +2135,15 @@ void PikiFlyingState::procCollideMsg(Piki* piki, MsgCollide* msg)
 	if (colliderType != OBJTYPE_Plant) {
 		SeSystem::playPlayerSe(SE_THROWHIT);
 	}
-
 	if (colliderType == OBJTYPE_Teki || collider->isBoss()) {
-		if (piki->mVelocity.y < 0.0f) {
+		PcP2PurpleDirectHit direct;
+		if ((!pc_p2_purple_flight_active(piki) || specialFlightContact) && piki->mVelocity.y < 0.0f) {
+			direct = pc_p2_purple_direct_begin(piki, collider, msg->mEvent.mColliderPart);
+			if (specialFlightContact && direct.handled) {
+				pc_p2_purple_flight_contact(piki, true);
+			}
 			pc_p2_purple_impact_emit(piki, "enemy_collision");
+			pc_p2_purple_direct_finish(piki, collider, msg->mEvent.mColliderPart, direct);
 		}
 		Vector3f effPos = collider->mSRT.t - piki->mSRT.t;
 		effPos.normalise();
@@ -2112,6 +2152,31 @@ void PikiFlyingState::procCollideMsg(Piki* piki, MsgCollide* msg)
 		effPos.add(piki->mSRT.t);
 		InteractHitEffect hit(piki, effPos, effDir, msg->mEvent.mColliderPart);
 		collider->stimulate(hit);
+		if (direct.handled) {
+			CollPart* part = msg->mEvent.mColliderPart;
+			if (!direct.accepted && part && collider->isAlive()) {
+				bool attached = false;
+				if (part->isPlatformType() && (part->isStickable() || part->isClimbable())) {
+					piki->startStick(collider, part);
+					attached = true;
+				} else if ((part->isCollisionType() || part->isTubeType()) && part->isStickable()) {
+					piki->startStickObject(collider, part, -1, 0.0f);
+					attached = true;
+				}
+				if (attached) SeSystem::playPlayerSe(SE_PIKI_ATTACHENEMY);
+			}
+			if (piki->getState() == PIKISTATE_Flying) {
+				transit(piki, PIKISTATE_Normal);
+				piki->restartAI();
+			}
+			return;
+		}
+	}
+	if (specialFlightContact) {
+		pc_p2_purple_flight_contact(piki, colliderType == OBJTYPE_Teki || collider->isBoss());
+		transit(piki, PIKISTATE_Normal);
+		piki->restartAI();
+		return;
 	}
 
 	CollPart* part = msg->mEvent.mColliderPart;
@@ -2217,7 +2282,15 @@ void PikiFlyingState::procStickMsg(Piki*, MsgStick*)
  */
 void PikiFlyingState::procBounceMsg(Piki* piki, MsgBounce*)
 {
-	pc_p2_purple_impact_emit(piki, "ground_bounce");
+	PcP2PurpleFlightSample flight = pc_p2_purple_flight_sample(piki);
+	if (flight.phase == PcP2PurpleFlightPhase::Recovery) return;
+	if (pc_p2_purple_flight_land(piki, false)) {
+		pc_p2_purple_impact_emit(piki, "ground_bounce");
+		return;
+	}
+	if (flight.phase != PcP2PurpleFlightPhase::Ascent) {
+		pc_p2_purple_impact_emit(piki, "ground_bounce");
+	}
 	if (mHasBounced) {
 		piki->restartAI();
 		transit(piki, PIKISTATE_Normal);

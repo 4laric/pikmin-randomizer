@@ -10,6 +10,10 @@ inline const Params& params(int kind){
  static const Params table[2]={{800.0f,360.0f,200.0f,10.0f,1.0f,320.0f,0.2f,300.0f,5.0f},
                                {1100.0f,360.0f,250.0f,20.0f,1.0f,350.0f,0.1f,330.0f,7.0f}};
  return table[kind?1:0];}
+// Source collision head radius from the audited model data (#167): Frog head
+// joint radius 23, MaroFrog 21. The landing press uses this radius around the
+// actor; the head joint offset itself is under 1.5 units in XZ.
+inline float headRadius(int kind){return kind?21.0f:23.0f;}
 inline const char* motionClip(int m){
 // PaniAnimator enum and TaiOtimoti actions; Flick is jump wind-up; unmatched motions use static fallback.
 switch(m){case 0:return "dead";case 1:return "damage";case 2:return "wait1";

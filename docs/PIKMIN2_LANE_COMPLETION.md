@@ -8,7 +8,7 @@ Use [native handoff integration continuation](PIKMIN2_NATIVE_HANDOFF_INTEGRATION
 
 | Lane | Tracking issue | Primary next action | Remaining work |
 |---|---|---|---|
-| 01 | [#437](https://github.com/4laric/pikmin-randomizer/issues/437) | Integration | Reviewed handoff batch merged, validated and exported; continue integration of new deliveries. |
+| 01 | [#437](https://github.com/4laric/pikmin-randomizer/issues/437) | Integration | Groink and omitted root helpers reconciled; Purple/White, late Jellyfloat/Sarai and lanes 16–18 dependencies integrated. See the dependency reconciliation ledger for pinned validation. |
 | 02 | [#438](https://github.com/4laric/pikmin-randomizer/issues/438) | Implementation | Admission list remains empty until one identity passes the generated-session chain. |
 | 03 | [#439](https://github.com/4laric/pikmin-randomizer/issues/439) | Implementation | Native ENEMY_P2 parsing/query and Python seed/bootstrap pass together; ordinary target-to-live-actor spawn binding remains. |
 | 04 | [#440](https://github.com/4laric/pikmin-randomizer/issues/440) | Implementation | Accepted native terrain and carry-route evidence for generated placements. |
@@ -37,7 +37,7 @@ Use [native handoff integration continuation](PIKMIN2_NATIVE_HANDOFF_INTEGRATION
 | 27 | [#244](https://github.com/4laric/pikmin-randomizer/issues/244) | Implementation | Complete natural BombSarai child/receiver/lifecycle chain. |
 | 28 | [#245](https://github.com/4laric/pikmin-randomizer/issues/245) | Implementation | Vehicle follow/motion/visual and owner-death release handoff integrated; remaining actual actor parity, natural campaign ownership and reward integration. |
 | 29 | [#243](https://github.com/4laric/pikmin-randomizer/issues/243) | Acceptance | Combined acceptance of ordinary suction, Greater captain capture, sampled events and per-state poses; rewards and re-entry. |
-| 30 | [#242](https://github.com/4laric/pikmin-randomizer/issues/242) | Implementation | Demon host/escape, ordinary sidecar binding and Walk/Idle admission integrated; remaining source actor parity, Sarai host and generated placement. |
+| 30 | [#242](https://github.com/4laric/pikmin-randomizer/issues/242) | Implementation | Demon host/escape, ordinary sidecar binding and Walk/Idle admission integrated; Sarai two-mouth visual host integrated; remaining Sarai capture FSM, source actor parity and generated placement. |
 | 31 | [#443](https://github.com/4laric/pikmin-randomizer/issues/443) | Implementation | Waterwraith natural navigation/encounter and complete lifetime behavior beyond registered actor/roller gates. |
 | 32 | [#246](https://github.com/4laric/pikmin-randomizer/issues/246) | Implementation | Titan ordinary FSM, authored clock and live element detection integrated; actual elemental damage receiver and campaign save/reward ownership remain. |
 | 33 | [#444](https://github.com/4laric/pikmin-randomizer/issues/444) | Acceptance | Whole-cohort mixed-scene performance, re-entry and restart on the final integrated pair. |

@@ -4,6 +4,11 @@
 #include "pc_p2_breadbug_cargo_phase.h"
 #include "pc_bbft.h"
 #include "teki.h"
+#include "Teki.h"
+#include "Pellet.h"
+#include "Piki.h"
+#include "Stickers.h"
+#include "ObjType.h"
 #include "Generator.h"
 #include "Shape.h"
 #include "Texture.h"
@@ -20,11 +25,18 @@
 #include <cstdlib>
 #include <cstdio>
 namespace {
+// P1 TEKI_Collec host carry power (taicollec.cpp:509): the proxy drags cargo at
+// 2.0, while the P2 PanModokiBase contest strength for the same pellet is
+// (min+max)/2. The two scales are reported separately, never conflated.
+const float PROXY_CARRY_POWER=2.0f;
 struct Motion {int duration=0;std::vector<int> frames;std::vector<Shape*> shapes;};
-struct BreadbugProxyActor {unsigned id;unsigned started;int lastMotion=-1;bool logged=false;int loggedCargo=-99;};
+struct BreadbugProxyActor {unsigned id;unsigned started;int lastMotion=-1;bool logged=false;int loggedCargo=-99;bool lastHeld=false;int lastCarriers=-1;};
 std::map<BTeki*,BreadbugProxyActor> actors;Motion motions[2];
 Motion cargoMotions[2];bool cargoEnabled=false;
 void fail(){std::fputs("P2_BREADBUG_ACTOR invalid P1 proxy profile\n",stderr);std::abort();}
+int carriers(Pellet* pellet){
+ Stickers stuckList(pellet);Iterator it(&stuckList);int count=0;CI_LOOP(it){if((*it)->isPiki())++count;}return count;
+}
 Shape* load(const std::string& name){
  std::ifstream in("assets/dataDir/courses/pikmin2room/"+name,std::ios::binary|std::ios::ate);if(!in)fail();auto size=in.tellg();if(size<=0||size>16*1024*1024)fail();in.seekg(0);
  std::vector<unsigned char> bytes(size_t(size),0),resources;if(!in.read(reinterpret_cast<char*>(bytes.data()),size)||!p2animation::resources(bytes,resources))fail();
@@ -61,6 +73,19 @@ void pc_p2_breadbug_actor_setup(){
   if(bank>>word)fail();
   for(int k=0;k<2;++k)for(size_t i=0;i<cargoMotions[k].frames.size();++i){char name[80];std::snprintf(name,sizeof(name),"breadbug_cargo_%s_%02u.mod",k?"hide":"back",unsigned(i));cargoMotions[k].shapes.push_back(load(name));}
   cargoEnabled=true;
+ }
+}
+void pc_p2_breadbug_actor_tick(){
+ if(actors.empty())return;
+ for(auto& entry:actors){
+  BTeki* actor=entry.first;auto& state=entry.second;
+  Pellet* held=actor->getCreaturePointer(2)&&actor->getCreaturePointer(2)->isObjType(OBJTYPE_Pellet)?static_cast<Pellet*>(actor->getCreaturePointer(2)):nullptr;
+  if(!held){state.lastHeld=false;continue;} // read-only: the P1 host owns the cargo, the proxy only observes it
+  const int n=carriers(held);
+  if(!state.lastHeld||n!=state.lastCarriers){
+   state.lastHeld=true;state.lastCarriers=n;
+   std::printf("P2_BREADBUG_CONTEST generator=%u native_power=%g carriers=%d\n",state.id,PROXY_CARRY_POWER,n);
+  }
  }
 }
 bool pc_p2_breadbug_actor_draw(BTeki* actor,Graphics& gfx,const Matrix4f& view){

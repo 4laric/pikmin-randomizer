@@ -45,6 +45,7 @@ struct Beetle {
     std::map<Piki*,float> gasExposure; // sustained-exposure seconds per piki (P1-host InteractGas approximation)
     unsigned rng=1;          // deterministic per-actor LCG
     unsigned generator=0;    // spawn generator id, keys the in-process flip dedupe
+    int treasure=0;          // configured first-flip stand-in pellet value (0 = none)
 };
 std::map<PelletView*,Beetle> beetles;
 
@@ -101,6 +102,10 @@ float sourceLife(int id){return id==9?1000.0f:id==10?1200.0f:1500.0f;}
 // Source drop tables, P1-host resolution: HONEY_Y maps to native nectar
 // (OBJTYPE_Water); HONEY_R/HONEY_B spray branches use their documented
 // no-demo-flag fallback (HONEY_Y x3) because P1 has no spray items.
+// P1 fallback for the cave treasure: the host has no P2 treasure item, so a
+// configured `treasure <generator> <pellet_value>` sidecar row substitutes one
+// stand-in number pellet on that actor's first flip (see doDrop), not the real
+// createTreasureItem treasure (Kogane.cpp:386-414).
 void dropFor(int id,int hit,int& pelletValue,int& pellets,int& nectar){
     pelletValue=0;pellets=0;nectar=0;
     if(id==9){if(hit==0){pelletValue=1;pellets=1;}else if(hit==1){nectar=2;}else{nectar=3;}}
@@ -112,7 +117,16 @@ unsigned nextRand(Beetle& b){b.rng=b.rng*1664525u+1013904223u;return b.rng>>8;}
 float randRange(Beetle& b,float lo,float hi){return lo+(hi-lo)*float(nextRand(b)&0xffff)/65535.0f;}
 
 void doDrop(BTeki* actor,int id,Beetle& b){
-    int pelletValue,pellets,nectar;dropFor(id,b.flips-1,pelletValue,pellets,nectar);
+    int pelletValue,pellets,nectar;
+    if(b.flips==1&&b.treasure>0){
+        // First flip only: a configured cave treasure substitutes one stand-in
+        // number pellet for the audited row. The host has no P2 treasure item, so
+        // this is a labelled P1 stand-in, never the source treasure object.
+        pelletValue=b.treasure;pellets=1;nectar=0;
+        std::printf("P2_KOGANE_TREASURE generator=%u value=%d\n",
+            actor->mGenerator?actor->mGenerator->_70:0u,pelletValue);
+        std::fflush(stdout);
+    }else dropFor(id,b.flips-1,pelletValue,pellets,nectar);
     Vector3f base=actor->getPosition();
     for(int i=0;i<pellets;++i){
         if(!pelletMgr)break;
@@ -197,6 +211,8 @@ void pc_p2_kogane_setup(){
         Beetle& b=beetles[actor];
         b.rng=(actor->mGenerator->_70*2654435761u)|1u;
         b.generator=actor->mGenerator->_70;
+        auto treasure=config.treasures.find(b.generator);
+        if(treasure!=config.treasures.end())b.treasure=treasure->second;
         b.heading=actor->getDirection();
         b.phaseTimer=randRange(b,1.0f,2.0f); // source starts waiting, then wanders
         auto restored=restoredFlips.find(b.generator);
@@ -217,7 +233,7 @@ void pc_p2_kogane_setup(){
         actor->mHealth=actor->getParameterF(TPF_Life);
         std::printf("P2_KOGANE_BIND generator=%u source_id=%d karada_k0=%d visual_only=0\n",actor->mGenerator->_70,id,p2kogane::karada(id));
         const auto& pos=actor->getPosition();
-        std::printf("P2_ENEMY_READY species=Kogane_family native_family=Chappy generator=%u x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=native source_FSM=implemented drops=native gas=native_P1_approx escape=native treasure=disabled cave=disabled\n",actor->mGenerator->_70,pos.x,pos.y,pos.z,actor->mHealth,actor->getParameterF(TPF_Life));
+        std::printf("P2_ENEMY_READY species=Kogane_family native_family=Chappy generator=%u x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=native source_FSM=implemented drops=native gas=native_P1_approx escape=native treasure=%s cave=disabled\n",actor->mGenerator->_70,pos.x,pos.y,pos.z,actor->mHealth,actor->getParameterF(TPF_Life),b.treasure>0?"standin":"disabled");
     }
     std::printf("P2_KOGANE_BANK poses=%zu mod_bytes=%zu texture_attach_calls=%d load_seconds=%.3f\n",poses,total,attachments,std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count());
 }

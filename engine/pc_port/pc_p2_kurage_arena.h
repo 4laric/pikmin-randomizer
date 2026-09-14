@@ -47,3 +47,5 @@ class Navi;
 void pc_p2_kurage_arena_set_captain_target(P2CaptainPolicy* policy, int captain, Navi* navi);
 int pc_p2_kurage_arena_captain_occupied();
 bool pc_p2_kurage_arena_captain_captured();
+// True once the source Dead END killed the host (owner released the field).
+bool pc_p2_kurage_arena_killed();
