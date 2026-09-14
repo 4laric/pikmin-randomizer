@@ -59,22 +59,23 @@ Private build `output/native-lane13-orange-fsm2-build`, Ninja / MinGW
 SHA-256 `1BEA8E95BB1AAC301A8E5991C5048C717656B1EAC0BF501D20FC8FB63C25EC85`.
 
 Cleanup fixture `output/p2-lane13-orange-fsm2-cleanup-fixture/baseline/fixture.exe`,
-built by `scripts/build_pikmin2_fixture.py` from the same private build
+built by `scripts/build_pikmin2_fixture.py` from the same private build against
+the clean native head `d847df2d81f61f316c5fafec48027439aa4896fe`
 (`status=built`, `ninja: no work to do` freshness checks), SHA-256
-`E88725A049ECB649ADFAC9399BF4B939EAA0B813867D8D52137B39C5437E724A`.
+`4C7C7332BBC7C5CA8BEA85F1FACCDA0A6610FB70BA36A065CF4B1C6B5D22C499`.
 
 ## 3. Runtime evidence (960x540 centred window)
 
 Arena: a private copy of the FSM-on Dwarf Orange arena
 (`output/p2-lane13-orange-fsm-run-on/bd2b9fff954a474b88a7f6e467314cfc`, which
 already carries `p2-dwarf-orange-fsm.txt` and the converted `dwarf_orange` bank),
-staged into `output/p2-lane13-orange-fsm2-cleanup-arena5`. One source actor
+staged into `output/p2-lane13-orange-fsm2-cleanup-arena6`. One source actor
 (`211001`), one P1 Chappy control (`211002`), 20 free reds.
 
-Report `output/p2-lane13-orange-fsm2-cleanup-final/evidence.json`: `passed=true`,
+Report `output/p2-lane13-orange-fsm2-cleanup-final2/evidence.json`: `passed=true`,
 `exit_code=0`, all eight checks true. Log
-`output/p2-lane13-orange-fsm2-cleanup-final/native.log` sha256
-`80EC2F09FF3A2B204DAAFF055CDFFF742B20B23A3608726B22FC68377E6D805E`.
+`output/p2-lane13-orange-fsm2-cleanup-final2/native.log` sha256
+`47B498B254758F75331DBBD8B519922F1D5F8FD8A2BE0ECB12E5E9838D68E589`.
 
 Witness lines:
 
@@ -90,11 +91,11 @@ P2_KOCHAPPY_STATE generator=211001 state=attack
 P2_KOCHAPPY_STATE generator=211001 state=dead
 P2_KOCHAPPY_DEAD generator=211001 source_id=44 health=0.0
 P2_KOCHAPPY_CORPSE generator=211001 source_id=44 native=host_escape_now
-P2_DWARF_ORANGE_P1_HAUL tick=600 state=1 alive=1 distance=544.7413 transport=0 goal=1
+P2_DWARF_ORANGE_P1_HAUL tick=600 state=1 alive=1 distance=561.6133 transport=0 goal=1
 P2_DWARF_ORANGE_FORGET registered=1
 P2_KOCHAPPY_FSM_FORGET registered=1
-P2_DWARF_ORANGE_P1_REMOVED distance=544.4386
-PASS P2_DWARF_ORANGE_P1_CLEANUP distance=544.4386 reached=1
+P2_DWARF_ORANGE_P1_REMOVED distance=561.6133
+PASS P2_DWARF_ORANGE_P1_CLEANUP distance=561.6133 reached=1
 ```
 
 Combat is natural (real accumulated Pikmin damage reaches `mHealth`; the FSM
