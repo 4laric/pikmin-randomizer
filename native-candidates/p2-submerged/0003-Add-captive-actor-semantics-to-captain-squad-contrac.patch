@@ -1,7 +1,7 @@
 From 14e8fb927b2a2f38fe599bbc8386f4756dc01286 Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 02:18:29 -0400
-Subject: [PATCH 03/13] Add captive-actor semantics to captain/squad contract
+Subject: [PATCH 03/17] Add captive-actor semantics to captain/squad contract
  (lane 12)
 
 ---

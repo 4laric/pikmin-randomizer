@@ -1,0 +1,604 @@
+From d22bc547681de1b77abdebf7556ac54655461a25 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 06:02:08 -0400
+Subject: [PATCH 16/17] Add lane-12 per-captain squad split and follow policy
+ (#130)
+
+Engine-free slice toward two-captain play: P2SquadFollowPolicy (the
+inactive captain's follow bands, thresholds and speed curve from
+NaviFollowState::exec), whistle/dismiss priority decisions, and
+P2CaptainPolicy::splitSquad/transferSquad with deterministic actor
+ordering. P2CaptainAdapter::splitSquad mirrors Piki::mNavi through the
+live host callbacks. Adds tools/test_p2_squad_policy.cpp and extends the
+adapter engine-double test. No engine behavior changes; second-captain
+live gate stays closed.
+---
+ pc_port/pc_p2_captain.cpp         |  51 +++++++++++
+ pc_port/pc_p2_captain.h           |  40 +++++++++
+ pc_port/pc_p2_captain_policy.h    |  53 ++++++++++++
+ pc_port/pc_p2_second_captain.cpp  |  19 +++--
+ pc_port/pc_p2_squad_policy.h      | 134 +++++++++++++++++++++++++++++
+ tools/test_p2_captain_adapter.cpp |  36 ++++++++
+ tools/test_p2_squad_policy.cpp    | 136 ++++++++++++++++++++++++++++++
+ 7 files changed, 463 insertions(+), 6 deletions(-)
+ create mode 100644 pc_port/pc_p2_squad_policy.h
+ create mode 100644 tools/test_p2_squad_policy.cpp
+
+diff --git a/pc_port/pc_p2_captain.cpp b/pc_port/pc_p2_captain.cpp
+index 298df41b..e310723e 100644
+--- a/pc_port/pc_p2_captain.cpp
++++ b/pc_port/pc_p2_captain.cpp
+@@ -125,6 +125,11 @@ P2CaptainAdapter& live_adapter()
+     return instance;
+ }
+ 
++// Inactive-captain follow state. Engine-free policy; this file only feeds it
++// the live distance and applies the decision. Persistent across frames.
++P2SquadFollowPolicy g_secondCaptainFollow;
++P2FollowPhase g_secondCaptainFollowPhase = P2FollowPhase::Idle;
++
+ } // namespace
+ 
+ namespace pc_p2_captain {
+@@ -187,6 +192,52 @@ std::vector<std::uint32_t> drop_captured(std::uint64_t captorEpoch)
+     return live_adapter().dropAllCaptured(captorEpoch);
+ }
+ 
++std::vector<std::uint32_t> split_squad(int from, int to, std::size_t count)
++{
++    return live_adapter().splitSquad(from, to, count);
++}
++
++void update_inactive_captain_follow()
++{
++    // Narrow hook: inert unless a real second Navi exists. On the default
++    // single-captain port hasSecondNavi() is false, so this never runs and
++    // default play is byte-identical.
++    if (!naviMgr || !naviMgr->hasSecondNavi()) {
++        return;
++    }
++
++    Navi* active = naviMgr->getActiveNavi();
++    Navi* inactive = active ? naviMgr->getOtherNavi(active) : nullptr;
++    if (!active || !inactive || !inactive->isAlive()) {
++        return;
++    }
++
++    Vector3f delta = active->getPosition() - inactive->getPosition();
++    delta.y = 0.0f;
++    f32 distance = delta.length();
++    const bool leaderMoving = active->mVelocity.length() > 20.0f;
++
++    P2FollowPhase phase = g_secondCaptainFollow.update(distance, leaderMoving);
++    g_secondCaptainFollowPhase = phase;
++
++    // Approximate NaviFollowState::exec (source naviState.cpp:1501-1551): walk
++    // toward the controlled captain, halt inside the stop radius. Full
++    // state-machine parity (idle goofs, autopluck, push-away) remains open.
++    if (phase == P2FollowPhase::Follow && distance > 0.0001f) {
++        delta.normalise();
++        f32 speed = P2SquadFollowPolicy::followSpeed(distance, C_NAVI_PARM(inactive, mMoveSpeed));
++        inactive->mTargetVelocity = delta * speed;
++        inactive->mFaceDirection = atan2f(delta.x, delta.z);
++    } else if (phase == P2FollowPhase::Idle) {
++        inactive->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
++    }
++}
++
++P2FollowPhase inactive_captain_follow_phase()
++{
++    return g_secondCaptainFollowPhase;
++}
++
+ bool has_second_captain()
+ {
+     return naviMgr && naviMgr->hasSecondNavi();
+diff --git a/pc_port/pc_p2_captain.h b/pc_port/pc_p2_captain.h
+index a6e145cf..cb0c98d3 100644
+--- a/pc_port/pc_p2_captain.h
++++ b/pc_port/pc_p2_captain.h
+@@ -1,5 +1,6 @@
+ #pragma once
+ #include "pc_p2_captain_policy.h"
++#include "pc_p2_squad_policy.h"
+ #include <cmath>
+ #include <cstdint>
+ 
+@@ -248,6 +249,29 @@ public:
+         return true;
+     }
+ 
++    // --- Per-captain squad split (lane 12 two-captain follow-up) ---
++
++    // Move up to `count` of `from`'s adopted actors to `to` and mirror the new
++    // owner into the engine (Piki::mNavi). Returns the moved actor ids.
++    std::vector<std::uint32_t> splitSquad(int from, int to, std::size_t count)
++    {
++        std::vector<std::uint32_t> moved;
++        if (!mBound) return moved;
++        moved = mPolicy.splitSquad(from, to, count);
++        if (!moved.empty()) syncOwnership();
++        return moved;
++    }
++
++    // Move exactly the named adopted actors; mirrors ownership into the engine.
++    std::size_t transferSquad(int from, int to, const std::uint32_t* actors,
++                              std::size_t count)
++    {
++        if (!mBound) return 0;
++        std::size_t moved = mPolicy.transferSquad(from, to, actors, count);
++        if (moved) syncOwnership();
++        return moved;
++    }
++
+     // --- Captor-held actors (Pikmin / carried items) ---
+ 
+     bool captureActor(std::uint64_t captorEpoch, P2PikiHandle actor)
+@@ -346,4 +370,20 @@ bool capture_actor(std::uint64_t captorEpoch, P2PikiHandle piki);
+ bool release_actor(std::uint64_t captorEpoch, P2PikiHandle piki, int toCaptain);
+ std::vector<std::uint32_t> drop_captured(std::uint64_t captorEpoch);
+ 
++// Lane 12 two-captain follow-up (#130): move up to `count` adopted Pikmin from
++// `from` to `to`, mirroring Piki::mNavi. Returns the moved actor ids. With one
++// captain the policy refuses the split, so this is a no-op in default play.
++std::vector<std::uint32_t> split_squad(int from, int to, std::size_t count);
++
++// Drive the inactive captain's follow state from the live Navi positions. This
++// is the narrow engine hook called each frame by NaviMgr::update(); it returns
++// immediately unless a real second Navi already exists, so single-captain play
++// is byte-identical. The decision itself is engine-free (P2SquadFollowPolicy);
++// this only marshals positions/velocity into the inactive Navi.
++void update_inactive_captain_follow();
++
++// Last phase produced by update_inactive_captain_follow(), for diagnostics and
++// the standalone gate. Idle while no second captain exists.
++P2FollowPhase inactive_captain_follow_phase();
++
+ } // namespace pc_p2_captain
+diff --git a/pc_port/pc_p2_captain_policy.h b/pc_port/pc_p2_captain_policy.h
+index a40c7489..5f52ab39 100644
+--- a/pc_port/pc_p2_captain_policy.h
++++ b/pc_port/pc_p2_captain_policy.h
+@@ -1,4 +1,5 @@
+ #pragma once
++#include <algorithm>
+ #include <cmath>
+ #include <cstdint>
+ #include <unordered_map>
+@@ -127,6 +128,15 @@ public:
+             if (entry.second == captain) ++n;
+         return n;
+     }
++    // Actors owned by `captain`, ascending by id so a split is deterministic
++    // across runs regardless of hash-table iteration order.
++    std::vector<std::uint32_t> actorsOwnedBy(int captain) const {
++        std::vector<std::uint32_t> out;
++        for (const auto& entry : owner)
++            if (entry.second == captain) out.push_back(entry.first);
++        std::sort(out.begin(), out.end());
++        return out;
++    }
+ 
+     static bool isCaptain(int captain) {
+         return captain == P2CaptainA || captain == P2CaptainB;
+@@ -333,6 +343,49 @@ public:
+         if (bound()) table->release(actor, captain);
+     }
+ 
++    // --- Per-captain squad split (lane 12 two-captain follow-up) ---
++
++    // Move up to `count` of `from`'s actors to `to`, in ascending actor-id order
++    // so a split is deterministic. Both captains must be controllable (present,
++    // not captured/down) and distinct. Returns the moved actor ids; a `to`
++    // captain with no room for a given actor leaves it with `from`.
++    std::vector<std::uint32_t> splitSquad(int from, int to, std::size_t count) {
++        std::vector<std::uint32_t> moved;
++        if (!bound() || from == to || !aliveIdle(from) || !aliveIdle(to))
++            return moved;
++        std::vector<std::uint32_t> owned = table->actorsOwnedBy(from);
++        if (count > owned.size()) count = owned.size();
++        moved.reserve(count);
++        for (std::size_t i = 0; i < count; ++i) {
++            table->release(owned[i], from);
++            if (table->tryClaim(owned[i], to)) {
++                moved.push_back(owned[i]);
++            } else {
++                table->tryClaim(owned[i], from); // restore on refusal
++            }
++        }
++        return moved;
++    }
++
++    // Move exactly the named actors from `from` to `to` when `from` owns them.
++    // Refused for the same reasons as splitSquad(). Returns the moved count.
++    std::size_t transferSquad(int from, int to, const std::uint32_t* actors,
++                              std::size_t count) {
++        if (!bound() || from == to || !aliveIdle(from) || !aliveIdle(to) || !actors)
++            return 0;
++        std::size_t moved = 0;
++        for (std::size_t i = 0; i < count; ++i) {
++            if (table->ownerOf(actors[i]) != from) continue;
++            table->release(actors[i], from);
++            if (table->tryClaim(actors[i], to)) {
++                ++moved;
++            } else {
++                table->tryClaim(actors[i], from); // restore on refusal
++            }
++        }
++        return moved;
++    }
++
+     // --- Captor-held actors (families 29/30; captor FSM stays family-owned) ---
+ 
+     // A captor grabs an actor (Pikmin or carried item) under a nonzero captor
+diff --git a/pc_port/pc_p2_second_captain.cpp b/pc_port/pc_p2_second_captain.cpp
+index f2e7fddc..1495568b 100644
+--- a/pc_port/pc_p2_second_captain.cpp
++++ b/pc_port/pc_p2_second_captain.cpp
+@@ -20,14 +20,21 @@ bool second_captain_requested()
+ 
+ bool second_captain_live_allowed()
+ {
+-    // Closed on purpose. A live second Navi requires, at minimum:
+-    //   * per-captain follow/whistle AI and split-squad control routing,
++    // Closed on purpose. The engine-free follow state, split-squad ownership
++    // policy and the NaviMgr::update() follow hook are now in place (see
++    // pc_p2_squad_policy.h and P2CaptainAdapter::splitSquad). A live second Navi
++    // still requires, at minimum:
+     //   * a per-captain camera and Kontroller binding (Navi ctor already makes
+     //     Kontroller(naviID + 1); P2 input mapping is not ported),
+-    //   * survivor-gated GAMEEND_NaviDown (naviState.cpp:3190 sets a global),
+-    //   * HUD/AI consumers to use getActiveNavi() instead of getNavi().
+-    // Shipping the additive helpers and closed spawn path keeps default play
+-    // byte-identical while a later slice ports those systems.
++    //   * active-captain control routing for a second pad,
++    //   * HUD/cursor/whistle consumers to use getActiveNavi() instead of
++    //     getNavi() (drawGameInfo.cpp, playerState.cpp),
++    //   * survivor-gated game over. naviState.cpp:3190 sets a global
++    //     GameStat::orimaDead and newPikiGame.cpp:2779 raises GAMEEND_NaviDown;
++    //     both must become "only when every present captain is down" via
++    //     NaviMgr::getAliveOrima()/isNaviDead().
++    // The follow hook is guarded so it never runs with one Navi, keeping
++    // default play byte-identical while a later slice ports those systems.
+     return false;
+ }
+ 
+diff --git a/pc_port/pc_p2_squad_policy.h b/pc_port/pc_p2_squad_policy.h
+new file mode 100644
+index 00000000..ec2596a7
+--- /dev/null
++++ b/pc_port/pc_p2_squad_policy.h
+@@ -0,0 +1,134 @@
++#pragma once
++#include "pc_p2_captain_policy.h"
++
++#include <cstddef>
++#include <cstdint>
++
++// Lane 12 per-captain squad split + inactive-captain follow + dismiss/whistle
++// priority policy (#130), engine-free.
++//
++// pc_p2_captain_policy.h owns captain identity, health/knockout, captor
++// ownership and capture/release. This header owns the derived squad decisions a
++// second captain needs and that can be decided without the engine, so the
++// standalone policy test can exercise them under g++ and pc_p2_captain.cpp only
++// has to marshal positions:
++//
++//   * P2SquadFollowPolicy mirrors NaviFollowState::exec for the *inactive*
++//     captain (source: native/pikmin2-research
++//     src/plugProjectKandoU/naviState.cpp:1361-1552). The inactive captain
++//     walks toward the controlled captain, halts inside 30 units
++//     (naviState.cpp:1531-1534), averages velocities inside 60
++//     (naviState.cpp:1538-1541), idles/goofs after 90 still frames
++//     (naviState.cpp:1453-1499) and leaves the party beyond 430
++//     (naviState.cpp:1543-1547).
++//   * P2WhistleClaim mirrors the mNavi ownership check in the P1 port's
++//     Navi::callPikis: a captain whistles free Pikmin and its own Pikmin,
++//     never the other captain's (src/plugPikiKando/navi.cpp:1186).
++//   * P2DismissPlan mirrors Navi::releasePikis (source navi.cpp:4070-4104):
++//     dismissing the controlled captain's squad also dismisses the inactive
++//     captain only while that captain is in the follow state.
++
++// ---------------------------------------------------------------------------
++// Whistle priority
++// ---------------------------------------------------------------------------
++
++// A free (unowned) actor or an actor already owned by the whistler is
++// claimable; an actor owned by the other captain is refused.
++enum class P2WhistleClaim {
++    Refuse, // owned by the other captain
++    Claim,  // free, or already owned by the whistler
++};
++
++inline P2WhistleClaim p2_whistle_claim(int whistler, int actorOwner)
++{
++    if (!p2_is_captain(whistler)) return P2WhistleClaim::Refuse;
++    if (actorOwner == P2CaptainInvalid) return P2WhistleClaim::Claim; // free
++    if (actorOwner == whistler) return P2WhistleClaim::Claim;        // own
++    return P2WhistleClaim::Refuse;                                   // other's
++}
++
++// ---------------------------------------------------------------------------
++// Dismiss priority
++// ---------------------------------------------------------------------------
++
++// Dismiss always releases the caller's own plate; the inactive captain is only
++// sent walking (InteractKaisan) when it is currently following.
++struct P2DismissPlan {
++    bool releaseSelf      = true;
++    bool releaseInactive  = false;
++};
++
++inline P2DismissPlan p2_dismiss_plan(bool inactiveFollowing)
++{
++    P2DismissPlan plan;
++    plan.releaseSelf     = true;
++    plan.releaseInactive = inactiveFollowing;
++    return plan;
++}
++
++// ---------------------------------------------------------------------------
++// Inactive-captain follow state
++// ---------------------------------------------------------------------------
++
++enum class P2FollowPhase {
++    Idle,    // within the stop radius: stand still (source targetDist < 30)
++    Follow,  // move toward the controlled captain
++    TooFar,  // beyond the leash: leave the party (source targetDist > 430)
++};
++
++class P2SquadFollowPolicy {
++public:
++    // Source thresholds (naviState.cpp:1531-1547).
++    static constexpr float kStopDistance  = 30.0f;
++    static constexpr float kBlendDistance = 60.0f;
++    static constexpr float kLeashDistance = 430.0f;
++    static constexpr int kIdleGoofFrames  = 90;
++
++    void reset()
++    {
++        mPhase      = P2FollowPhase::Idle;
++        mIdleFrames = 0;
++    }
++
++    P2FollowPhase phase() const { return mPhase; }
++    int idleFrames() const { return mIdleFrames; }
++
++    // Advance from the horizontal leader/inactive distance. `leaderMoving` is
++    // the source `leaderSpeed > 20.0f` test. Pure apart from the idle counter.
++    P2FollowPhase update(float distance, bool leaderMoving)
++    {
++        if (!(distance >= 0.0f)) distance = 0.0f; // NaN / negative target guard
++        if (distance > kLeashDistance) {
++            mPhase      = P2FollowPhase::TooFar;
++            mIdleFrames = 0;
++            return mPhase;
++        }
++        if (distance <= kStopDistance) {
++            mPhase = P2FollowPhase::Idle;
++            if (leaderMoving) {
++                mIdleFrames = 0;
++            } else if (mIdleFrames < kIdleGoofFrames) {
++                ++mIdleFrames;
++            }
++            return mPhase;
++        }
++        mPhase      = P2FollowPhase::Follow;
++        mIdleFrames = 0;
++        return mPhase;
++    }
++
++    // Source follow speed (naviState.cpp:1523-1541): full move speed, halted
++    // inside the stop radius, half-blended with the leader inside the blend
++    // band. Returns 0 for a non-positive speed or a distance inside the stop
++    // radius.
++    static float followSpeed(float distance, float moveSpeed)
++    {
++        if (!(moveSpeed > 0.0f) || !(distance > kStopDistance)) return 0.0f;
++        if (distance < kBlendDistance) return moveSpeed * 0.5f;
++        return moveSpeed;
++    }
++
++private:
++    P2FollowPhase mPhase = P2FollowPhase::Idle;
++    int mIdleFrames      = 0;
++};
+diff --git a/tools/test_p2_captain_adapter.cpp b/tools/test_p2_captain_adapter.cpp
+index a051113b..f9d53df0 100644
+--- a/tools/test_p2_captain_adapter.cpp
++++ b/tools/test_p2_captain_adapter.cpp
+@@ -187,6 +187,33 @@ void test_single_captain_slot0(FakeScene& scene)
+     assert(adapter.setup());
+ }
+ 
++// Splitting an adopted squad between two captains mirrors Piki::mNavi through
++// the engine callbacks. Engine double, not live two-captain runtime.
++void test_two_captain_split_double(FakeScene& scene)
++{
++    P2CaptainAdapter adapter;
++    assert(adapter.bind(fake_ops(scene)));
++    assert(adapter.setup());
++    assert(adapter.activeCaptain() == P2CaptainA);
++    assert(adapter.ownerOfActor(101) == P2CaptainA);
++    assert(adapter.ownerOfActor(102) == P2CaptainA);
++
++    std::vector<std::uint32_t> moved = adapter.splitSquad(P2CaptainA, P2CaptainB, 1);
++    assert(moved.size() == 1 && moved[0] == 101);
++    assert(adapter.ownerOfActor(101) == P2CaptainB);
++    assert(scene.pikiA.ownerSlot == P2CaptainB); // mirrored into the engine
++    assert(adapter.ownerOfActor(102) == P2CaptainA);
++    assert(scene.pikiB.ownerSlot == P2CaptainA);
++
++    const std::uint32_t named[1] = { 102 };
++    assert(adapter.transferSquad(P2CaptainA, P2CaptainB, named, 1) == 1);
++    assert(adapter.ownerOfActor(102) == P2CaptainB);
++    assert(scene.pikiB.ownerSlot == P2CaptainB);
++
++    // Splitting an absent slot is refused.
++    assert(adapter.splitSquad(P2CaptainA, P2CaptainA, 1).empty());
++}
++
+ // The adapter is engine-generic: a host that exposes a second captain exercises
+ // the capture/transfer path that the single-captain port cannot reach. This is
+ // still an engine double, not live two-captain runtime.
+@@ -252,6 +279,15 @@ int main()
+         scene.pikiB = FakePiki{102, P2CaptainA};
+         test_two_captain_transfer_double(scene);
+     }
++    {
++        FakeScene scene;
++        scene.navi0.health = 100.0f;
++        scene.navi1.health = 100.0f;
++        scene.twoCaptains = true;
++        scene.pikiA = FakePiki{101, P2CaptainA};
++        scene.pikiB = FakePiki{102, P2CaptainA};
++        test_two_captain_split_double(scene);
++    }
+ 
+     std::puts("PASS P2_CAPTAIN_ADAPTER");
+     return 0;
+diff --git a/tools/test_p2_squad_policy.cpp b/tools/test_p2_squad_policy.cpp
+new file mode 100644
+index 00000000..e81a403b
+--- /dev/null
++++ b/tools/test_p2_squad_policy.cpp
+@@ -0,0 +1,136 @@
++#include "pc_p2_captain_policy.h"
++#include "pc_p2_squad_policy.h"
++
++#include <cassert>
++#include <cstdint>
++#include <cstdio>
++#include <vector>
++
++// Lane 12 per-captain squad split + inactive-captain follow + dismiss/whistle
++// priority test (#130). Engine-free: no Navi/Piki object is constructed. The
++// same policy the live pc_p2_captain.cpp drives is exercised here.
++
++namespace {
++
++bool same(const std::vector<std::uint32_t>& a, const std::vector<std::uint32_t>& b)
++{
++    return a == b;
++}
++
++void test_follow_policy()
++{
++    P2SquadFollowPolicy follow;
++    follow.reset();
++    assert(follow.phase() == P2FollowPhase::Idle);
++
++    // Band mapping mirrors NaviFollowState::exec thresholds.
++    assert(follow.update(20.0f, true) == P2FollowPhase::Idle);
++    assert(follow.update(29.9f, true) == P2FollowPhase::Idle);
++    assert(follow.update(30.5f, true) == P2FollowPhase::Follow);
++    assert(follow.update(60.0f, true) == P2FollowPhase::Follow);
++    assert(follow.update(400.0f, true) == P2FollowPhase::Follow);
++    assert(follow.update(431.0f, true) == P2FollowPhase::TooFar);
++
++    // The idle counter only advances while the leader stands still, and clamps
++    // at the source goof threshold.
++    follow.reset();
++    assert(follow.update(10.0f, false) == P2FollowPhase::Idle);
++    assert(follow.idleFrames() == 1);
++    assert(follow.update(10.0f, true) == P2FollowPhase::Idle);
++    assert(follow.idleFrames() == 0); // leader moved: reset
++    for (int i = 0; i < 200; ++i) follow.update(10.0f, false);
++    assert(follow.idleFrames() == P2SquadFollowPolicy::kIdleGoofFrames);
++    // Leaving the idle band clears the counter.
++    assert(follow.update(200.0f, false) == P2FollowPhase::Follow);
++    assert(follow.idleFrames() == 0);
++
++    // Non-finite/negative distances are treated as zero, not UB.
++    follow.reset();
++    assert(follow.update(-5.0f, false) == P2FollowPhase::Idle);
++
++    // Source speed curve: halted inside the stop radius, half speed inside the
++    // blend band, full speed beyond it.
++    assert(P2SquadFollowPolicy::followSpeed(20.0f, 170.0f) == 0.0f);
++    assert(P2SquadFollowPolicy::followSpeed(45.0f, 170.0f) == 85.0f);
++    assert(P2SquadFollowPolicy::followSpeed(100.0f, 170.0f) == 170.0f);
++    assert(P2SquadFollowPolicy::followSpeed(100.0f, -1.0f) == 0.0f);
++}
++
++void test_whistle_and_dismiss()
++{
++    // A whistle claims free Pikmin and the whistler's own, never the other's.
++    assert(p2_whistle_claim(P2CaptainA, P2CaptainInvalid) == P2WhistleClaim::Claim);
++    assert(p2_whistle_claim(P2CaptainA, P2CaptainA) == P2WhistleClaim::Claim);
++    assert(p2_whistle_claim(P2CaptainA, P2CaptainB) == P2WhistleClaim::Refuse);
++    assert(p2_whistle_claim(P2CaptainB, P2CaptainA) == P2WhistleClaim::Refuse);
++    assert(p2_whistle_claim(P2CaptainInvalid, P2CaptainInvalid) == P2WhistleClaim::Refuse);
++
++    // Dismiss always releases the caller; the inactive follower is dismissed
++    // only while it is following.
++    P2DismissPlan standing = p2_dismiss_plan(false);
++    assert(standing.releaseSelf && !standing.releaseInactive);
++    P2DismissPlan following = p2_dismiss_plan(true);
++    assert(following.releaseSelf && following.releaseInactive);
++}
++
++void test_squad_split()
++{
++    P2CaptainOwnershipTable table;
++    P2CaptainPolicy policy;
++    assert(policy.bind(&table));
++    assert(policy.configure(P2CaptainA, 100.0f, true));
++    assert(policy.configure(P2CaptainB, 100.0f, true));
++    assert(policy.activeCaptain() == P2CaptainA);
++
++    for (std::uint32_t id = 10; id < 15; ++id) {
++        assert(policy.claim(P2CaptainA, id));
++    }
++    assert(table.ownedBy(P2CaptainA) == 5);
++
++    // Claims out of order still split in ascending id order.
++    assert(policy.claim(P2CaptainA, 3));
++    assert(table.actorsOwnedBy(P2CaptainA) == std::vector<std::uint32_t>({3, 10, 11, 12, 13, 14}));
++
++    std::vector<std::uint32_t> moved = policy.splitSquad(P2CaptainA, P2CaptainB, 2);
++    assert(same(moved, {3, 10}));
++    assert(table.ownerOf(3) == P2CaptainB && table.ownerOf(10) == P2CaptainB);
++    assert(table.ownedBy(P2CaptainA) == 4 && table.ownedBy(P2CaptainB) == 2);
++    // No actor is lost or duplicated by the split.
++    assert(table.ownedCount() == 6);
++
++    // Over-count clamps to what is owned; moving from A to A is refused.
++    std::vector<std::uint32_t> rest = policy.splitSquad(P2CaptainA, P2CaptainB, 99);
++    assert(rest.size() == 4);
++    assert(table.ownedBy(P2CaptainA) == 0 && table.ownedBy(P2CaptainB) == 6);
++    assert(policy.splitSquad(P2CaptainA, P2CaptainA, 1).empty());
++    assert(policy.splitSquad(P2CaptainA, P2CaptainB, 1).empty()); // nothing left
++
++    // Named transfer moves exactly the requested actors.
++    std::size_t n = policy.transferSquad(P2CaptainB, P2CaptainA,
++                                         std::vector<std::uint32_t>({3, 14, 999}).data(), 3);
++    assert(n == 2);
++    assert(table.ownerOf(3) == P2CaptainA && table.ownerOf(14) == P2CaptainA);
++    assert(table.ownerOf(999) == P2CaptainInvalid);
++    assert(table.ownedCount() == 6);
++
++    // A Down or absent target cannot receive a split.
++    P2CaptainOwnershipTable table2;
++    P2CaptainPolicy policy2;
++    assert(policy2.bind(&table2));
++    assert(policy2.configure(P2CaptainA, 100.0f, true));
++    assert(policy2.configure(P2CaptainB, 100.0f, false)); // absent
++    assert(policy2.claim(P2CaptainA, 7));
++    assert(policy2.splitSquad(P2CaptainA, P2CaptainB, 1).empty());
++    assert(table2.ownerOf(7) == P2CaptainA);
++}
++
++} // namespace
++
++int main()
++{
++    test_follow_policy();
++    test_whistle_and_dismiss();
++    test_squad_split();
++    std::puts("PASS P2_SQUAD_POLICY");
++    return 0;
++}
+-- 
+2.55.0.windows.3
+

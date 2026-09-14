@@ -1,7 +1,7 @@
 From fd40992c390b9e96e4f7a8f2b92019ac4eee3efc Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 02:58:09 -0400
-Subject: [PATCH 10/13] Add lane-12 slot-0 captain/squad engine host adapter
+Subject: [PATCH 10/17] Add lane-12 slot-0 captain/squad engine host adapter
  (#130)
 
 ---
