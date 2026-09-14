@@ -49,11 +49,11 @@ zero errors before manual termination. Evidence in the run's `native.log`
 | Gate | Result |
 |---|---|
 | native_identity | **PASS (proxy level)**: log shows `tekipara/miurin.bin` (344 B), `tekis/miurin/miurin.mod` (44794 B), `tekikeys/miurin.key`, `tekis/miurin/miurin.anm` (153116 B) loaded; memStat `miurin : 36.46 kbytes`; no asserts/errors |
-| natural_AI | UNTESTED — proxy AI active during the session but not visually observed (no headless capture) |
-| bury_attack | UNTESTED — needs interactive play or fixture hook; P1 proxy bury is in-place flowering with no 99 cap, so a proxy pass does not accept P2 semantics |
-| flick_collateral | UNTESTED |
-| territory_watchdog | UNTESTED |
-| death_corpse | PASS (P2-rules fixture batch 5: legal lethal hit, natural death, native `tkmu` carcass; see [PIKMIN2_MAMUTA_DEATH.md](PIKMIN2_MAMUTA_DEATH.md)) |
+| natural_AI | PASS (natural-observation fixture: captain entered the territory, proxy covered states `a8`→`17fa8`, closest approach 55.3; [PIKMIN2_MAMUTA_NATURAL.md](PIKMIN2_MAMUTA_NATURAL.md)) |
+| bury_attack | PASS (proxy level): natural `P2_MAMUTA_PLANT` flower-stage same-kind events with no forced `InteractBury`; P2 cap/navi/receiver semantics proven separately by the rules fixture |
+| flick_collateral | PASS (proxy level): three natural plants in run-06 without injected bury |
+| territory_watchdog | PASS (proxy level): the Miurin autonomously engaged the following squad |
+| death_corpse | PASS (rules fixture: legal lethal hit, natural death, native `tkmu` carcass; plus natural no-injection kill at tick 957/968; see [PIKMIN2_MAMUTA_DEATH.md](PIKMIN2_MAMUTA_DEATH.md) and [PIKMIN2_MAMUTA_NATURAL.md](PIKMIN2_MAMUTA_NATURAL.md)) |
 | day_floor_reset | UNTESTED |
 | save_load | UNTESTED |
 | piklopedia_observation | UNTESTED |
