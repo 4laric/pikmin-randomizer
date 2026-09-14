@@ -1,7 +1,7 @@
 From 05ee72d750340dc5cbe7a44bfff115c2d4e3f1fc Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 02:59:24 -0400
-Subject: [PATCH 11/11] Keep P2 electric/gas receivers through LTO until
+Subject: [PATCH 11/13] Keep P2 electric/gas receivers through LTO until
  emitters reference them
 
 ---

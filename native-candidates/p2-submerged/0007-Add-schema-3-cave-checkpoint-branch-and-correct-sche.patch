@@ -1,7 +1,7 @@
 From 5a0cb4ee94c58aaefd3ce0b31d6cd845098bfe7b Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 02:40:55 -0400
-Subject: [PATCH 07/11] Add schema-3 cave checkpoint branch and correct schema
+Subject: [PATCH 07/13] Add schema-3 cave checkpoint branch and correct schema
  numbering (lane 11)
 
 ---
