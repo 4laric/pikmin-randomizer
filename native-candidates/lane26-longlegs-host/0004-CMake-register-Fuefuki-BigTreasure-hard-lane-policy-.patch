@@ -1,0 +1,236 @@
+From 6610a9dcc1aa8357ff7ee7c4fa7182ff3e4a460a Mon Sep 17 00:00:00 2001
+From: opencode <opencode@local>
+Date: Mon, 14 Sep 2026 09:06:24 -0400
+Subject: [PATCH 4/7] CMake: register Fuefuki/BigTreasure hard-lane policy
+ ctest gates (#244, #246)
+
+---
+ CMakeLists.txt                                | 73 +++++++++++++++++++
+ tools/p2_bigtreasure_attacks_test.cpp         |  3 +
+ tools/p2_bigtreasure_fsm_test.cpp             |  3 +
+ tools/p2_bigtreasure_fsmhost_test.cpp         |  3 +
+ tools/p2_bigtreasure_host_test.cpp            |  3 +
+ tools/p2_bigtreasure_motion_test.cpp          |  3 +
+ tools/p2_bigtreasure_test.cpp                 |  3 +
+ tools/p2_fuefuki_binding_test.cpp             |  3 +
+ tools/p2_fuefuki_fsm_test.cpp                 |  3 +
+ tools/p2_fuefuki_interference_policy_test.cpp |  3 +
+ tools/p2_fuefuki_suspend_fallback_test.cpp    |  3 +
+ 11 files changed, 103 insertions(+)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index f0aaae41..f601204f 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -759,6 +759,79 @@ target_include_directories(p2_bombsarai_induction_test PRIVATE pc_port)
+ target_compile_options(p2_bombsarai_induction_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+ add_test(NAME p2_bombsarai_induction_test COMMAND p2_bombsarai_induction_test)
+ 
++# Lane 27 Fuefuki hard-lane header-only policy gates (unwired on the approved line).
++add_executable(p2_fuefuki_binding_test tools/p2_fuefuki_binding_test.cpp)
++target_include_directories(p2_fuefuki_binding_test PRIVATE pc_port)
++target_compile_options(p2_fuefuki_binding_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
++add_test(NAME p2_fuefuki_binding_test COMMAND p2_fuefuki_binding_test)
++
++add_executable(p2_fuefuki_fsm_test tools/p2_fuefuki_fsm_test.cpp)
++target_include_directories(p2_fuefuki_fsm_test PRIVATE pc_port)
++target_compile_options(p2_fuefuki_fsm_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
++add_test(NAME p2_fuefuki_fsm_test COMMAND p2_fuefuki_fsm_test)
++
++add_executable(p2_fuefuki_interference_policy_test tools/p2_fuefuki_interference_policy_test.cpp)
++target_include_directories(p2_fuefuki_interference_policy_test PRIVATE pc_port)
++target_compile_options(p2_fuefuki_interference_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
++add_test(NAME p2_fuefuki_interference_policy_test COMMAND p2_fuefuki_interference_policy_test)
++
++add_executable(p2_fuefuki_suspend_fallback_test tools/p2_fuefuki_suspend_fallback_test.cpp)
++target_include_directories(p2_fuefuki_suspend_fallback_test PRIVATE pc_port)
++target_compile_options(p2_fuefuki_suspend_fallback_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
++add_test(NAME p2_fuefuki_suspend_fallback_test COMMAND p2_fuefuki_suspend_fallback_test)
++
++# Lane 27 BigTreasure policy gates (unwired on the approved line).
++add_executable(p2_bigtreasure_test
++    tools/p2_bigtreasure_test.cpp
++    pc_port/pc_p2_bigtreasure.cpp)
++target_include_directories(p2_bigtreasure_test PRIVATE pc_port)
++target_compile_options(p2_bigtreasure_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
++add_test(NAME p2_bigtreasure_test COMMAND p2_bigtreasure_test)
++
++add_executable(p2_bigtreasure_fsm_test
++    tools/p2_bigtreasure_fsm_test.cpp
++    pc_port/pc_p2_bigtreasure_fsm.cpp)
++target_include_directories(p2_bigtreasure_fsm_test PRIVATE pc_port)
++target_compile_options(p2_bigtreasure_fsm_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
++add_test(NAME p2_bigtreasure_fsm_test COMMAND p2_bigtreasure_fsm_test)
++
++add_executable(p2_bigtreasure_attacks_test
++    tools/p2_bigtreasure_attacks_test.cpp
++    pc_port/pc_p2_bigtreasure_attacks.cpp
++    pc_port/pc_p2_bigtreasure.cpp)
++target_include_directories(p2_bigtreasure_attacks_test PRIVATE pc_port)
++target_compile_options(p2_bigtreasure_attacks_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
++add_test(NAME p2_bigtreasure_attacks_test COMMAND p2_bigtreasure_attacks_test)
++
++set(P2_BIGTREASURE_TEST_DEPS
++    pc_port/pc_p2_bigtreasure.cpp
++    pc_port/pc_p2_bigtreasure_fsm.cpp
++    pc_port/pc_p2_bigtreasure_attacks.cpp
++    pc_port/pc_p2_bigtreasure_host.cpp
++    pc_port/pc_p2_bigtreasure_fsmhost.cpp
++    pc_port/pc_p2_bigtreasure_motion.cpp)
++
++add_executable(p2_bigtreasure_fsmhost_test
++    tools/p2_bigtreasure_fsmhost_test.cpp
++    ${P2_BIGTREASURE_TEST_DEPS})
++target_include_directories(p2_bigtreasure_fsmhost_test PRIVATE pc_port)
++target_compile_options(p2_bigtreasure_fsmhost_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
++add_test(NAME p2_bigtreasure_fsmhost_test COMMAND p2_bigtreasure_fsmhost_test)
++
++add_executable(p2_bigtreasure_host_test
++    tools/p2_bigtreasure_host_test.cpp
++    ${P2_BIGTREASURE_TEST_DEPS})
++target_include_directories(p2_bigtreasure_host_test PRIVATE pc_port)
++target_compile_options(p2_bigtreasure_host_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
++add_test(NAME p2_bigtreasure_host_test COMMAND p2_bigtreasure_host_test)
++
++add_executable(p2_bigtreasure_motion_test
++    tools/p2_bigtreasure_motion_test.cpp
++    ${P2_BIGTREASURE_TEST_DEPS})
++target_include_directories(p2_bigtreasure_motion_test PRIVATE pc_port)
++target_compile_options(p2_bigtreasure_motion_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
++add_test(NAME p2_bigtreasure_motion_test COMMAND p2_bigtreasure_motion_test)
++
+ add_executable(pc_render_phase_test
+     pc_port/timing/pc_render_phase_test.cpp
+     pc_port/timing/pc_render_phase.cpp)
+diff --git a/tools/p2_bigtreasure_attacks_test.cpp b/tools/p2_bigtreasure_attacks_test.cpp
+index 669d302d..54d1857a 100644
+--- a/tools/p2_bigtreasure_attacks_test.cpp
++++ b/tools/p2_bigtreasure_attacks_test.cpp
+@@ -1,5 +1,8 @@
+ #include "pc_p2_bigtreasure_attacks.h"
+ 
++// Release builds pass -DNDEBUG; force assertions (and their embedded
++// side effects) on so this engine-free gate is not vacuous under ctest.
++#undef NDEBUG
+ #include <cassert>
+ #include <cmath>
+ #include <cstdio>
+diff --git a/tools/p2_bigtreasure_fsm_test.cpp b/tools/p2_bigtreasure_fsm_test.cpp
+index 0df80108..4c4dfc53 100644
+--- a/tools/p2_bigtreasure_fsm_test.cpp
++++ b/tools/p2_bigtreasure_fsm_test.cpp
+@@ -1,5 +1,8 @@
+ #include "pc_p2_bigtreasure_fsm.h"
+ 
++// Release builds pass -DNDEBUG; force assertions (and their embedded
++// side effects) on so this engine-free gate is not vacuous under ctest.
++#undef NDEBUG
+ #include <cassert>
+ #include <cstdio>
+ 
+diff --git a/tools/p2_bigtreasure_fsmhost_test.cpp b/tools/p2_bigtreasure_fsmhost_test.cpp
+index 16c1653f..0b98c8fb 100644
+--- a/tools/p2_bigtreasure_fsmhost_test.cpp
++++ b/tools/p2_bigtreasure_fsmhost_test.cpp
+@@ -8,6 +8,9 @@
+ 
+ #include "pc_p2_bigtreasure_fsmhost.h"
+ 
++// Release builds pass -DNDEBUG; force assertions (and their embedded
++// side effects) on so this engine-free gate is not vacuous under ctest.
++#undef NDEBUG
+ #include <cassert>
+ #include <cmath>
+ #include <cstdio>
+diff --git a/tools/p2_bigtreasure_host_test.cpp b/tools/p2_bigtreasure_host_test.cpp
+index 46b19476..15f54d76 100644
+--- a/tools/p2_bigtreasure_host_test.cpp
++++ b/tools/p2_bigtreasure_host_test.cpp
+@@ -7,6 +7,9 @@
+ 
+ #include "pc_p2_bigtreasure_host.h"
+ 
++// Release builds pass -DNDEBUG; force assertions (and their embedded
++// side effects) on so this engine-free gate is not vacuous under ctest.
++#undef NDEBUG
+ #include <cassert>
+ #include <cmath>
+ #include <cstdio>
+diff --git a/tools/p2_bigtreasure_motion_test.cpp b/tools/p2_bigtreasure_motion_test.cpp
+index aff712a9..23f3e4aa 100644
+--- a/tools/p2_bigtreasure_motion_test.cpp
++++ b/tools/p2_bigtreasure_motion_test.cpp
+@@ -6,6 +6,9 @@
+ #include "pc_p2_bigtreasure_motion.h"
+ #include "pc_p2_retail_player.h"
+ 
++// Release builds pass -DNDEBUG; force assertions (and their embedded
++// side effects) on so this engine-free gate is not vacuous under ctest.
++#undef NDEBUG
+ #include <cassert>
+ #include <cstdio>
+ #include <fstream>
+diff --git a/tools/p2_bigtreasure_test.cpp b/tools/p2_bigtreasure_test.cpp
+index 4bb7d256..7c317b9b 100644
+--- a/tools/p2_bigtreasure_test.cpp
++++ b/tools/p2_bigtreasure_test.cpp
+@@ -1,5 +1,8 @@
+ #include "pc_p2_bigtreasure.h"
+ 
++// Release builds pass -DNDEBUG; force assertions (and their embedded
++// side effects) on so this engine-free gate is not vacuous under ctest.
++#undef NDEBUG
+ #include <cassert>
+ #include <cmath>
+ #include <cstdio>
+diff --git a/tools/p2_fuefuki_binding_test.cpp b/tools/p2_fuefuki_binding_test.cpp
+index 34d9d1df..4818e4f3 100644
+--- a/tools/p2_fuefuki_binding_test.cpp
++++ b/tools/p2_fuefuki_binding_test.cpp
+@@ -1,4 +1,7 @@
+ #include "pc_p2_fuefuki_binding.h"
++// Release builds pass -DNDEBUG; force assertions (and their embedded
++// side effects) on so this engine-free gate is not vacuous under ctest.
++#undef NDEBUG
+ #include <cassert>
+ #include <cstdio>
+ #include <cstring>
+diff --git a/tools/p2_fuefuki_fsm_test.cpp b/tools/p2_fuefuki_fsm_test.cpp
+index 884ce4b2..a24157d4 100644
+--- a/tools/p2_fuefuki_fsm_test.cpp
++++ b/tools/p2_fuefuki_fsm_test.cpp
+@@ -1,4 +1,7 @@
+ #include "pc_p2_fuefuki_fsm.h"
++// Release builds pass -DNDEBUG; force assertions (and their embedded
++// side effects) on so this engine-free gate is not vacuous under ctest.
++#undef NDEBUG
+ #include <cassert>
+ #include <cstdio>
+ #include <limits>
+diff --git a/tools/p2_fuefuki_interference_policy_test.cpp b/tools/p2_fuefuki_interference_policy_test.cpp
+index debcf772..8e74cce1 100644
+--- a/tools/p2_fuefuki_interference_policy_test.cpp
++++ b/tools/p2_fuefuki_interference_policy_test.cpp
+@@ -1,4 +1,7 @@
+ #include "pc_p2_fuefuki_interference_policy.h"
++// Release builds pass -DNDEBUG; force assertions (and their embedded
++// side effects) on so this engine-free gate is not vacuous under ctest.
++#undef NDEBUG
+ #include <cassert>
+ #include <cstdio>
+ #include <limits>
+diff --git a/tools/p2_fuefuki_suspend_fallback_test.cpp b/tools/p2_fuefuki_suspend_fallback_test.cpp
+index 83184248..7b67a5d5 100644
+--- a/tools/p2_fuefuki_suspend_fallback_test.cpp
++++ b/tools/p2_fuefuki_suspend_fallback_test.cpp
+@@ -1,4 +1,7 @@
+ #include "pc_p2_fuefuki_binding.h"
++// Release builds pass -DNDEBUG; force assertions (and their embedded
++// side effects) on so this engine-free gate is not vacuous under ctest.
++#undef NDEBUG
+ #include <cassert>
+ #include <cstdio>
+ #include <algorithm>
+-- 
+2.55.0.windows.3
+
