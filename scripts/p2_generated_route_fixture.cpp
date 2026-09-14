@@ -69,6 +69,7 @@ class OrdinaryApp : public PlugPikiApp {
     int expectedRebound = 1;
     bool gateSquadStaged = false;
     bool gateOpened = false;
+    Creature* observedGate = nullptr;
 
     unsigned frames = 0;
     int phase = 0, waited = 0;
@@ -209,6 +210,7 @@ public:
                             if(p->mMode==PikiMode::FreeMode) ++free;
                         }
                         std::printf("P2_ROUTE_GATE_WAIT frame=%u field=%d working=%d free=%d open=%d\n",frames,field,workers,free,int(gatePoint->mIsOpen));
+                        if (observedGate) std::printf("P2_ROUTE_GATE_HEALTH frame=%u health=%.4f max=%.4f captain=%.1f\n",frames,observedGate->mHealth,observedGate->mMaxHealth,n->mHealth);
                         std::fflush(stdout);
                     }
                     if (!gateSquadStaged) {
@@ -222,6 +224,7 @@ public:
                             if (distance<best) { best=distance; gate=obj; }
                         }
                         require(gate!=nullptr,"workable gate near waypoint92");
+                        observedGate=gate;
                         CollPart* flag=gate->mCollInfo->getSphere('flag');
                         require(flag && flag->getChildCount()>0,"gate work collision parts");
                         int count=0; Iterator workers(pikiMgr);
