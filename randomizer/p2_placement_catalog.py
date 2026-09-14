@@ -350,9 +350,10 @@ def targets_by_identity(document=None):
 
 
 def binding_targets(identities, document=None, targets=None):
-    """Return the ordered uid targets legal for *every* identity in `identities`.
+    """Return constraint-compatible uid targets for *every* identity in `identities`.
 
-    Because lane 03 binds a flat target list to a cohort, a target is only safe
+    This does not enforce accepted placement evidence.
+    Because lane 03 binds a flat target list to a cohort, a target is compatible
     when every cohort member accepts it: this is the intersection of the members'
     compatible targets. An empty result means the cohort is not homogeneous enough
     for the flat contract and needs per-identity targets instead.

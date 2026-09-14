@@ -6,6 +6,10 @@ Start from the latest `origin/codex/p2-main-review` (draft #432). Current approv
 
 This guide sets next-wave priorities. Keep the existing **01–33 lane numbers** and owners from [the fan-out guide](PIKMIN2_IMPLEMENTATION_FANOUT.md). Its build isolation, ownership and fixture rules still apply. Earlier lists telling agents to recover already-integrated hardlane/projectile/clock modules are historical; inspect the actual source first.
 
+## Sweep reporting: remaining lanes
+
+Every integration sweep must finish with the remaining **numbered-lane** count and change since the previous sweep. Maintain [the lane completion ledger](PIKMIN2_LANE_COMPLETION.md), separating full-lane completion from worker-finished/pushed slices. Current tracker baseline: **33 open (32 implementation/QA + integration), 0 full lanes recorded complete**. This is not a running-session count. Refresh tracking issues and acceptance evidence before decrementing it.
+
 ## Outcome for this wave
 
 Deliver a small evidence-selected P2 cohort through:
