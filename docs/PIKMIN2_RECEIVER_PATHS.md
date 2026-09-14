@@ -177,15 +177,19 @@ Implementations: `src/plugPikiKando/interactBattle.cpp` (`actPiki`) and
 `src/plugPikiKando/navi.cpp` (`InteractDenki::actNavi`). Additive only; the
 existing fire/bubble interactions are unchanged.
 
-**Missing-state blocker (honest, not faked).** The port has no P2 electric or
-gas state, so non-immune Piki take the closest existing P1 path and the exact
-P2 target is logged via `P2_RECV_DENKI` / `P2_RECV_GAS`:
+**Missing-state blocker at this point (since resolved, see §9).** At the time of
+§7 the port had no P2 electric or gas state, so non-immune Piki took the closest
+existing P1 path and the exact P2 target was logged via `P2_RECV_DENKI` /
+`P2_RECV_GAS`:
 
-| Source target | Port status | Used instead |
+| Source target | Port status at §7 | Used instead then |
 |---|---|---|
-| `PIKISTATE_DenkiDying` (`interactPiki.cpp:348-349`) | absent from `include/PikiState.h:15-52` enum | `PIKISTATE_Dying` |
+| `PIKISTATE_DenkiDying` (`interactPiki.cpp:348-349`) | absent from `include/PikiState.h` enum | `PIKISTATE_Dying` |
 | `PIKISTATE_Panic` + `PIKIPANIC_Gas` (`interactPiki.cpp:542,550-552`) | absent; no generic panic state | `PIKISTATE_Fired` (panic run) |
 | `Piki::gasInvicible()` / `mGasInvincible` (`include/Game/Piki.h:198,282`) | absent from `include/Piki.h` | no gas-invincibility gate |
+
+§9 added all three. The rest of §7 still describes the receiver routing and LTO
+retention, which §9 preserves.
 
 This is a Pikmin-side receiver gate, not a natural hazard encounter: no
 `GasHiba`/`ElecHiba`/gas/denki dweevil emitter spawns yet. The receivers are
@@ -251,10 +255,59 @@ Evidence:
   `[PC Port] SDL2 Window & OpenGL Context initialized successfully (960x540)`,
   `Experimental preview window set to 960x540 windowed and centered`.
 
-**Remaining blocker (unchanged):** the non-immune path still has no P2
-`PIKISTATE_DenkiDying`/`PIKISTATE_Panic`/`gasInvicible` target, so it uses the
-closest P1 state (`PIKISTATE_Dying`/`PIKISTATE_Fired`) and logs the gap; no
+**Remaining blocker at §8 (state part since resolved, see §9):** no
 `ElecHiba`/`GasHiba`/`ElecOtakara`/`GasOtakara` emitter exists to drive the
-receiver naturally. The enemy-side emitters and dweevil discharge/FSM remain
-family-lane BLOCKED. This section proves the Pikmin-side immunity gate only.
+receiver naturally, so §8 exercised the receivers by direct native injection.
+The enemy-side emitters and dweevil discharge/FSM remain family-lane BLOCKED.
+This section proves the Pikmin-side immunity gate only.
+
+## 9. P2 electric/gas Pikmin reaction states (lane 10, #170/#408)
+
+§7/§8 left the non-immune receiver path substituting the closest P1 state. This
+slice adds the missing P2 states additively and routes the non-immune paths into
+them; existing states are unchanged.
+
+| Source | Port (native `2a4521da`) | Behaviour |
+|---|---|---|
+| `PikiDenkiDyingState` (`include/Game/PikiState.h:236`) | `PikiDenkiDyingState` / `PIKISTATE_DenkiDying` (`PikiState.h`, `pikiState.cpp`) | freezes velocities, plays `PIKIANIM_Dead`, waits 0.3s, then `PIKISTATE_Dead` (the port's kill pipeline; no electric effect/anim exists) |
+| `PikiPanicState` + `PIKIPANIC_Gas` (`include/Game/PikiState.h:717`) | `PikiPanicState` / `PIKISTATE_Panic` (`pikiState.cpp`) | gas flavour: panic-run movement (`PIKIANIM_Moeru`), poison timer, then `PIKISTATE_Dying`; raises the gas gate |
+| `Piki::gasInvicible()` (`piki.cpp:832`) | `Piki::gasInvicible()` / `setGasInvincible()` / `mGasInvincible` (`Piki.h`) | narrow gate; set while in gas panic, cleared on cleanup |
+
+Both states are registered in `PikiStateMachine::init` (`registerState(new
+PikiDenkiDyingState())`, `registerState(new PikiPanicState())`) so transit can
+reach them. The receivers consult the new header-only
+`pc_port/pc_p2_hazard_reaction.h` (`p2_hazard_reaction`), which keeps the lane-11
+`p2_species_immune` matrix and the gas gate in one testable place:
+
+- `InteractDenki::actPiki` -> non-immune, not already dying/dead -> `PIKISTATE_DenkiDying`
+- `InteractGas::actPiki` -> not gas-invincible, non-immune -> `PIKISTATE_Panic`
+
+The `P2_RECV_DENKI` / `P2_RECV_GAS` `__attribute__((used))` retention is kept.
+
+Build evidence (private):
+
+```text
+cmake --build output/native-sub3-states-build --target pikmin_pc -j 3
+# [523/523] Linking CXX executable bin\nectar.exe   (exit 0)
+ninja -C output/native-sub3-states-build -n pikmin_pc -> ninja: no work to do.
+nectar.exe SHA-256 936E6B5B289B2F3D0F2A7ADFBDB2AD2AADD9AA4BF5D58C7AC6BDD0252572E490
+```
+
+`nm -C nectar.exe` shows `T PikiDenkiDyingState::{init,exec,cleanup}`,
+`T PikiPanicState::{init,exec,cleanup}`, `T InteractDenki::actPiki`,
+`T InteractGas::actPiki`; `strings` retains both `P2_RECV_*` logs and
+`DENKI_DYING`. Standalone test `tools/test_p2_hazard_reaction.cpp` ->
+`PASS P2_HAZARD_REACTION`. Root anchors: `tests/test_pikmin2_lanes_1012_policies.py`
+(`test_p2_hazard_reaction.cpp` gate, plus `test_pikmin_reaction_states_declared_and_registered`,
+`test_denki_gas_receivers_route_to_p2_states`, `test_piki_exposes_gas_invincible_gate`)
+-> suite 24 passed.
+
+**Still missing (not claimed):** no electricity/gas emitter exists, so no live
+encounter was run; these states were exercised only through the reaction table,
+the compile/link of `nectar.exe`, and source anchors. `clearDeadlyPikmins`
+(`gameCoreSection.cpp:459`) and the death-link exclusion list (`:2120`) do not
+yet include `PIKISTATE_DenkiDying`; it is short-lived and self-terminates into
+`PIKISTATE_Dead`, but an emitter-backed slice should add it. The panic state is
+the gas flavour only; a `StateArg` channel for other panic types is still absent.
+
 

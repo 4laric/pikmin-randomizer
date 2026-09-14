@@ -21,7 +21,7 @@ def _port_candidates():
     yield ROOT / 'engine' / 'pc_port'
     yield ROOT / 'native' / 'pc_port'
     for base in (ROOT, *ROOT.parents):
-        for worktree in ('native-sub2-captains', 'native-lanes-1012', 'native-sub-elements'):
+        for worktree in ('native-sub2-captains', 'native-lanes-1012', 'native-sub-elements', 'native-sub3-states'):
             yield base / 'output' / worktree / 'pc_port'
 
 
@@ -32,6 +32,7 @@ _CASES = (
     ('test_p2_species_policy.cpp', 'PASS P2_SPECIES_POLICY'),
     ('test_p2_species_schema.cpp', 'PASS P2_SPECIES_SCHEMA'),
     ('test_p2_elemental_receivers.cpp', 'PASS P2_ELEMENTAL_RECEIVERS'),
+    ('test_p2_hazard_reaction.cpp', 'PASS P2_HAZARD_REACTION'),
 )
 
 
@@ -79,7 +80,8 @@ def _interact_battle_candidates():
         for rel in (base / 'engine/src/plugPikiKando/interactBattle.cpp',
                     base / 'native/src/plugPikiKando/interactBattle.cpp',
                     base / 'output/native-lanes-1012/src/plugPikiKando/interactBattle.cpp',
-                    base / 'output/native-sub-elements/src/plugPikiKando/interactBattle.cpp'):
+                    base / 'output/native-sub-elements/src/plugPikiKando/interactBattle.cpp',
+                    base / 'output/native-sub3-states/src/plugPikiKando/interactBattle.cpp'):
             if rel.is_file() and rel not in found:
                 found.append(rel)
     return found
@@ -108,7 +110,8 @@ def _interactions_header_candidates():
         for rel in (base / 'engine/include/Interactions.h',
                     base / 'native/include/Interactions.h',
                     base / 'output/native-lanes-1012/include/Interactions.h',
-                    base / 'output/native-sub-elements/include/Interactions.h'):
+                    base / 'output/native-sub-elements/include/Interactions.h',
+                    base / 'output/native-sub3-states/include/Interactions.h'):
             if rel.is_file() and rel not in found:
                 found.append(rel)
     return found
@@ -153,5 +156,80 @@ def test_cave_checkpoint_uses_versioned_schema():
     assert any_has('P2_CAVE_ENTRY_3')
     assert any_has('p2_schema_supports(checkpointSchema,')
     assert any_has('p2_schema_required_for_species')
+
+
+def _native_candidates(*rels):
+    found = []
+    for base in (ROOT, *ROOT.parents):
+        for rel in rels:
+            p = base / rel
+            if p.is_file() and p not in found:
+                found.append(p)
+    return found
+
+
+def test_pikmin_reaction_states_declared_and_registered():
+    """#170/#408: the P2 electric/gas Pikmin states exist and are reachable."""
+    headers = _native_candidates('engine/include/PikiState.h',
+                                 'native/include/PikiState.h',
+                                 'output/native-sub3-states/include/PikiState.h')
+    sources = _native_candidates('engine/src/plugPikiKando/pikiState.cpp',
+                                 'native/src/plugPikiKando/pikiState.cpp',
+                                 'output/native-sub3-states/src/plugPikiKando/pikiState.cpp')
+    if not headers or not sources:
+        pytest.skip('native PikiState sources not present')
+    texts = [p.read_text(errors='replace') for p in headers]
+    code = [p.read_text(errors='replace') for p in sources]
+
+    def any_has(pool, anchor):
+        return any(anchor in t for t in pool)
+
+    # Source-mirroring enum entries, additive before PIKISTATE_Count.
+    assert any_has(texts, 'PIKISTATE_DenkiDying')
+    assert any_has(texts, 'PIKISTATE_Panic')
+    assert any_has(texts, 'struct PikiDenkiDyingState')
+    assert any_has(texts, 'struct PikiPanicState')
+    # Registered in PikiStateMachine::init so transit() can reach them.
+    assert any_has(code, 'registerState(new PikiDenkiDyingState())')
+    assert any_has(code, 'registerState(new PikiPanicState())')
+    # The gas state plays the existing death pipeline when the poison expires.
+    assert any_has(code, 'PIKISTATE_DenkiDying, "DENKI_DYING"')
+    assert any_has(code, 'PIKISTATE_Panic, "PANIC"')
+
+
+def test_denki_gas_receivers_route_to_p2_states():
+    """#170/#408: non-immune receivers use the P2 states, not the P1 proxies."""
+    battles = _interact_battle_candidates()
+    if not battles:
+        pytest.skip('native interactBattle not present')
+    texts = [p.read_text(errors='replace') for p in battles]
+
+    def any_has(anchor):
+        return any(anchor in t for t in texts)
+
+    # Immunity is still consulted through the lane-11 matrix plus the gas gate.
+    assert any_has('p2_hazard_reaction(pc_p2_species(piki), P2HazardElectric')
+    assert any_has('p2_hazard_reaction(pc_p2_species(piki), P2HazardGas')
+    # The non-immune paths transit to the new P2 states.
+    assert any_has('transit(piki, PIKISTATE_DenkiDying)')
+    assert any_has('transit(piki, PIKISTATE_Panic)')
+    assert any_has('piki->gasInvicible()')
+
+
+def test_piki_exposes_gas_invincible_gate():
+    """#170/#408: the narrow gas gate mirrors source Piki::gasInvicible."""
+    pikis = _native_candidates('engine/include/Piki.h',
+                               'native/include/Piki.h',
+                               'output/native-sub3-states/include/Piki.h')
+    if not pikis:
+        pytest.skip('native Piki.h not present')
+    texts = [p.read_text(errors='replace') for p in pikis]
+
+    def any_has(anchor):
+        return any(anchor in t for t in texts)
+
+    assert any_has('bool gasInvicible()')
+    assert any_has('setGasInvincible')
+
 
 
