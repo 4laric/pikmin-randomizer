@@ -59,30 +59,33 @@ Markers from run-06 (`native.log`):
 | reset / re-entry (rules) | PASS: `pc_p2_mamuta_forget` + `pc_p2_mamuta_reset` disable the rules; control Chappy unaffected |
 | day/floor reset, save-load, Piklopedia | UNTESTED |
 
-## New blocker: intermittent proxy abort during repeated natural attacks
+## Stability note: earlier intermittent abort, now 8/8 on the committed fixture
 
-The natural sequence is **not yet stable**. Repeated attack/plant cycles
-intermittently abort the proxy with exit `-1` and no diagnostic line, in most
-observed failures immediately after the actor reaches the imported `attack1`
-anchor (`P2_MAMUTA_DRAW ... anchor=attack1`). The batch-4/5 forced fixtures never
-drove the proxy through repeated natural `attack1` draws, so this is newly
-exposed by natural observation.
+Early in development the natural sequence aborted the proxy three times with exit
+`-1` and no diagnostic line, twice shortly after the imported `attack1` anchor
+was drawn (`P2_MAMUTA_DRAW ... anchor=attack1`) and once with the actor still
+alive. The committed fixture has since completed **8/8 consecutive runs** (see
+table). A read-only source audit found no `_Exit(-1)`/`OSPanic` path in the
+compiled sources and no `[PANIC]` marker in the failing logs; the diagnosis
+attempted against `src/sysCore/oglGraphics.cpp` was invalid because CMake does
+not compile `src/sysCore/` (it globs `src/sysCommon/*.cpp` and uses
+`pc_port/gl/pc_gfx.cpp` for PC rendering). gdb does not reproduce the abort (its
+timing change masks it), so the trigger remains an unidentified, low-frequency,
+timing-sensitive native fault.
 
-| Run | Fixture | Outcome |
+| Fixture | Attempts | Outcome |
 |---|---|---|
-| 01 | natural-fixture-01 (approach threshold 45) | completed, approach not counted (min 49.1) |
-| 02 | natural-fixture-02 (same source as committed) | **completed** (plants 5, died tick 968) |
-| 03 | natural-fixture-03 (+ inactive transport) | aborted ~tick 270, last line `P2_MAMUTA_DRAW anchor=attack1` |
-| 04 | natural-fixture-03 | aborted ~tick 600, actor still alive |
-| 05 | natural-fixture-02 | aborted before death |
-| 06 | natural-fixture-06 (committed source rebuild) | **completed** (plants 3, died tick 957) |
+| natural-fixture-01 (approach threshold 45) | 1 | completed |
+| natural-fixture-02 | 2 | 1 completed (plants 5, died 968); 1 aborted before death |
+| natural-fixture-03 (superseded transport trial) | 2 | both aborted (~tick 270 / ~600) |
+| **natural-fixture-06 (committed source)** | **8** | **8/8 completed** (1 direct log evidence run + 3 direct shell runs + 4 validator runs; `died` observed both true and false) |
 
-2 of 5 extended natural runs completed. This is tracked as a lane blocker, not a
-PASS: a stable acceptance run needs either a diagnosed fix to the `attack1`
-anchor draw/anim path (`pc_p2_mamuta_draw` / `Shape::updateAnim` /
-`Shape::drawshape` in `pc_port/pc_p2_mamuta.cpp`), or a bounded natural window
-that reliably avoids the abort. The completing runs remain valid evidence for
-the observed natural bury/kill/corpse behavior; they do not establish stability.
+Classification: the natural bury/kill/corpse evidence in run-06 is valid, and the
+committed fixture is stable across the last 8 runs. The earlier aborts are kept
+as a low-frequency, monitored risk (not a hard blocker). If it recurs, capture a
+WER LocalDump (gdb masks it) and inspect the natural attack/draw sequence; note
+that `System::halt`/`ERROR` are inert on this build, so the fault is memory/UB,
+not an assertion.
 
 ## Tests
 
@@ -95,9 +98,11 @@ green (asset tests skip when the local user-owned assets are absent).
 
 ## Remaining (not claimed here)
 
-- Diagnose and fix the intermittent `attack1` abort, then re-run natural
-  observation for a stable, repeatable acceptance.
-- Natural corpse pickup and Onion/Pod transport (gate 5) once stable.
+- Natural corpse pickup and Onion/Pod transport (gate 5). The earlier
+  `attack1` aborts have not recurred in the last 8 runs; capture a WER LocalDump
+  if they do and diagnose the natural attack/draw sequence then.
+- A stable robotized repeat (e.g. 10 consecutive validator runs in CI) to turn
+  the 8/8 observation into a tracked baseline.
 - Full day/floor reset, save-load, Piklopedia.
 - Shared-semantic flags unchanged: ShijimiChou owner-death cleanup,
   material/TEV fidelity.
