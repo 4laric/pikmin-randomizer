@@ -76,9 +76,20 @@ not be reported as playable or as family complete.
 5. **Death children.** ShijimiChou and Mitites births depend on the flying lane
    (15) and ground lane (14) managers.
 
+## Shell pool budget (follow-up, native `a75734d9`)
+
+Man-at-Legs shell emission is now bounded by the source in-flight pool of 10:
+the host reports `shellsInFlight` and the policy suppresses a `shotLoop` request
+while the pool is full (`pc_p2_long_legs_fsm.cpp`). This is the lane's
+"projectile/helper budget" boundary; the actual shell object and lifetime remain
+lane 20. Patch `native-candidates/long-legs-policy/0002-*.patch`; standalone and
+ctest `PASS LONG_LEGS_FSM`.
+
 ## Integration
 
 The maintained integration lead should apply
 `native-candidates/long-legs-policy/0001-*.patch` (native base
-`f9e139d8`) and keep the module additive. The host wiring (IK, animation
-events, projectile consumption) is a later, separately reviewed slice.
+`f9e139d8`) and then `0002-*.patch` on top (they apply to the #446-integrated
+policy, whose file content is identical), and keep the module additive. The host
+wiring (IK, animation events, projectile consumption) is a later, separately
+reviewed slice.

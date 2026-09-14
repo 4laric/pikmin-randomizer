@@ -35,5 +35,12 @@
     "ctest": "p2_long_legs_fsm_test / p2_snagret_fsm_test / p2_dangomushi_hazard_test: 100% (3/3) passed"
   },
   "runtime": "not run: engine-free source-policy slice. No assets, GL window or arena were used, so no six-gate runtime claim is made for this commit.",
-  "integration": "Apply native patch 0001 on the maintained native line after lane 01 pins it; the module is additive and engine-free until a host wires it to IKSystemMgr/animation events."
+  "follow_up_0002": {
+    "native_head": "a75734d97a0ffa8160bb0e312e5bbde4d41bbd56",
+    "change": "Bound Man-at-Legs shell emission to the in-flight pool (shellPool=10): shotLoop requests are suppressed while shellsInFlight >= pool.",
+    "patch": "0002-pc_p2_long_legs_fsm-shell-pool.patch",
+    "test": "PASS LONG_LEGS_FSM standalone and ctest p2_long_legs_fsm_test; exe SHA-256 F1838E88C0CBE9E838191889ABDB809419C18668B2BF358143143A48E65556AE",
+    "note": "Applies on top of the #446-integrated policy; the touched file content is identical in the review baseline."
+  },
+  "integration": "Apply native patch 0001 (and 0002 on top) on the maintained native line after lane 01 pins it; the module is additive and engine-free until a host wires it to IKSystemMgr/animation events."
 }
