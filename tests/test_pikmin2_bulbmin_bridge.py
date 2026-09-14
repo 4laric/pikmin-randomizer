@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def _port_candidates():
     yield ROOT / 'engine' / 'pc_port'
     yield ROOT / 'native' / 'pc_port'
-    for lane in ('native-sub-bulbmin', 'native-sub2-bulbmin'):
+    for lane in ('native-sub3-mother', 'native-sub-bulbmin', 'native-sub2-bulbmin'):
         for base in (ROOT, *ROOT.parents):
             yield base / 'output' / lane / 'pc_port'
 
