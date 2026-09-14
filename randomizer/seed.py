@@ -42,7 +42,7 @@ class SeedRandom:
         return values
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_targets=None):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_targets=None, p2_placement=None):
     if type(bomb_rock_weight) is not int or not 0 <= bomb_rock_weight <= 10: raise ValueError("bomb_rock_weight must be 0..10")
     if type(bomb_trap_weight) is not int or not 0 <= bomb_trap_weight <= 10: raise ValueError("bomb_trap_weight must be 0..10")
     if type(progg_trap_weight) is not int or not 0 <= progg_trap_weight <= 10: raise ValueError("progg_trap_weight must be 0..10")
@@ -77,6 +77,8 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
     if p2_targets is not None:
         if not isinstance(p2_targets, (list, tuple)) or any(not isinstance(t, str) for t in p2_targets):
             raise ValueError("p2_targets must be a sequence of binding target strings")
+    if p2_placement is not None and type(p2_placement) is not dict:
+        raise ValueError("p2_placement must be a placement document mapping")
     if p2_enemies:
         if legacy_checks: raise ValueError("P2 enemies require modern checks")
         if enemy_shuffle or per_spawn_enemies or group_spawn_enemies or miniboss_enemies or campaign_enemies:
@@ -200,12 +202,16 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         # admitted. Kept behind a lazy import so ordinary seeds never load the
         # experimental roster.
         from experimental.pikmin2_enemy_roster import load_and_validate
-        from experimental.pikmin2_seed_bridge import resolve_admitted_layout
+        from experimental.pikmin2_seed_bridge import resolve_admitted_layout, resolve_placement_layout
         if result['schema'] != 9:
             raise ValueError("P2 enemies require the modern schema-9 catalog")
-        if p2_targets is None:
-            raise ValueError("P2 enemies require lane 04 binding targets")
-        result['p2_layout'] = resolve_admitted_layout(result['seed'], slot, p2_targets, load_and_validate())
+        roster = load_and_validate()
+        if p2_targets is not None:
+            result['p2_layout'] = resolve_admitted_layout(result['seed'], slot, p2_targets, roster)
+        elif p2_placement is not None:
+            result['p2_layout'] = resolve_placement_layout(result['seed'], slot, p2_placement, roster)
+        else:
+            raise ValueError("P2 enemies require lane 04 binding targets or a placement document")
         result['capabilities'].append('p2-enemy-bridge-v1')
     validate(result)
     return result
