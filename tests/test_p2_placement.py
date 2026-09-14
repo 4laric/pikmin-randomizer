@@ -5,8 +5,9 @@ import unittest
 from pathlib import Path
 
 from randomizer.p2_placement import (
-    SCHEMA, audit, evaluate, load_document, normalize_profile, normalize_slot,
-    slot_from_spawn_row, validate_document,
+    ENCOUNTER_SCHEMA, SCHEMA, audit, coverage_report, evaluate, load_document,
+    normalize_encounter_descriptor, normalize_profile, normalize_slot,
+    slot_from_spawn_row, validate_document, validate_encounter_descriptor,
 )
 from randomizer.spawn_data import ADULT_SLOTS
 
@@ -36,8 +37,27 @@ def profile(**overrides):
     return base
 
 
-def document(slots, profiles):
-    return {'schema': SCHEMA, 'slots': slots, 'profiles': profiles}
+def document(slots, profiles, encounters=None):
+    record = {'schema': SCHEMA, 'slots': slots, 'profiles': profiles}
+    if encounters is not None:
+        record['encounters'] = encounters
+    return record
+
+
+def descriptor(**overrides):
+    base = {
+        'id': 'empress_arena', 'identity': 'EmpressBulblax', 'terrains': ['ground'],
+        'footprint_radius': 30, 'helper_budget': 0, 'arena_slots': {'min': 1, 'max': 1},
+        'phases': 2, 'protected_drops': [], 'required_gates': ['arena'],
+    }
+    base.update(overrides)
+    return base
+
+
+def boss(**overrides):
+    base = profile(identity='EmpressBulblax', is_boss=True, encounter_descriptor='empress_arena')
+    base.update(overrides)
+    return base
 
 
 class PlacementSchemaTests(unittest.TestCase):
@@ -182,6 +202,138 @@ class PlacementAuditTests(unittest.TestCase):
         self.assertEqual(evaluate(adapted, legal_profile)['status'], 'legal')
         unproven = slot_from_spawn_row(ADULT_SLOTS[0], evidence={})
         self.assertEqual(evaluate(unproven, legal_profile)['status'], 'denied')
+
+
+class EncounterDescriptorTests(unittest.TestCase):
+    def test_normalizes_required_fields_and_optional_notes(self):
+        normalized = normalize_encounter_descriptor(descriptor())
+        self.assertEqual(normalized['notes'], '')
+        self.assertEqual(normalized['arena_slots'], {'min': 1, 'max': 1})
+        self.assertEqual(normalized['phases'], 2)
+        with self.assertRaises(ValueError):
+            normalize_encounter_descriptor({'id': 'x'})
+
+    def test_malformed_descriptors_rejected(self):
+        cases = [
+            {'id': ''},
+            {'identity': ''},
+            {'terrains': []},
+            {'terrains': ['lava']},
+            {'footprint_radius': -1},
+            {'helper_budget': -1},
+            {'helper_budget': 1.5},
+            {'phases': 0},
+            {'phases': 1.5},
+            {'protected_drops': [1]},
+            {'required_gates': 'arena'},
+            {'arena_slots': {'min': 2, 'max': 1}},
+            {'arena_slots': {'min': -1, 'max': 1}},
+            {'arena_slots': {'min': 1, 'max': 1, 'extra': 0}},
+            {'arena_slots': {'min': 1}},
+            {'arena_slots': 'wide'},
+            {'notes': 7},
+        ]
+        for overrides in cases:
+            with self.subTest(overrides=overrides):
+                with self.assertRaises(ValueError):
+                    normalize_encounter_descriptor(descriptor(**overrides))
+                malformed = normalize_encounter_descriptor(descriptor())
+                malformed.update(overrides)
+                with self.assertRaises(ValueError):
+                    validate_encounter_descriptor(malformed)
+
+    def test_document_validates_encounters(self):
+        normalized = validate_document(document([slot()], [profile()], [descriptor()]))
+        self.assertEqual(normalized['encounters'][0]['id'], 'empress_arena')
+
+    def test_duplicate_descriptor_ids_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'duplicate encounter descriptor ids'):
+            validate_document(document([slot()], [profile()], [descriptor(), descriptor()]))
+
+    def test_unknown_descriptor_fields_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'unknown field'):
+            validate_document(document([slot()], [profile()], [descriptor(no_such_field=1)]))
+
+    def test_boss_profile_requires_existing_descriptor(self):
+        with self.assertRaisesRegex(ValueError, 'requires an encounter_descriptor'):
+            validate_document(document([slot()], [boss(encounter_descriptor=None)], []))
+        with self.assertRaisesRegex(ValueError, 'references unknown encounter descriptor'):
+            validate_document(document([slot()], [boss(encounter_descriptor='missing')], [descriptor()]))
+
+
+class BossDescriptorEvaluationTests(unittest.TestCase):
+    def descriptors(self, *records):
+        return {record['id']: normalize_encounter_descriptor(record) for record in records}
+
+    def test_boss_with_matching_descriptor_is_legal(self):
+        result = evaluate(normalize_slot(slot()), normalize_profile(boss()), self.descriptors(descriptor()))
+        self.assertEqual(result, {'status': 'legal', 'reasons': []})
+
+    def test_boss_without_descriptor_context_is_denied(self):
+        result = evaluate(normalize_slot(slot()), normalize_profile(boss()), self.descriptors())
+        self.assertIn("no encounter descriptor 'empress_arena' defined", result['reasons'])
+
+    def test_boss_identity_mismatch_denied(self):
+        result = evaluate(normalize_slot(slot()), normalize_profile(boss()),
+                          self.descriptors(descriptor(identity='OtherBoss')))
+        self.assertEqual(result['status'], 'denied')
+        self.assertIn('encounter identity OtherBoss does not match profile identity EmpressBulblax', result['reasons'])
+
+    def test_boss_constraint_mismatch_denied(self):
+        result = evaluate(
+            normalize_slot(slot(radius=20, helper_capacity=1)),
+            normalize_profile(boss()),
+            self.descriptors(descriptor(terrains=['water'], footprint_radius=40, helper_budget=3,
+                                        arena_slots={'min': 2, 'max': 3})))
+        self.assertEqual(result['status'], 'denied')
+        for reason in ('terrain ground not in encounter terrains [\'water\']',
+                       'encounter footprint 40 exceeds slot radius 20',
+                       'encounter helper budget 3 exceeds slot capacity 1',
+                       'slot cannot host exactly one boss arena'):
+            self.assertIn(reason, result['reasons'])
+
+    def test_non_boss_evaluation_ignores_descriptor_context(self):
+        result = evaluate(normalize_slot(slot()), normalize_profile(profile()), self.descriptors(descriptor()))
+        self.assertEqual(result['status'], 'legal')
+
+
+class CoverageReportTests(unittest.TestCase):
+    def test_counts_and_top_denials(self):
+        slots = [slot(uid=1, label='a'), slot(uid=2, label='b', terrain='water', water_depth=3)]
+        profiles = [
+            profile(identity='YellowKochappy', terrains=['ground']),
+            profile(identity='Tadpole', terrains=['water'], min_water_depth=1),
+            profile(identity='Unproven', terrains=['ground'], accepted_gates=[]),
+        ]
+        report = coverage_report(document(slots, profiles))
+        self.assertEqual(report['encounter_schema'], ENCOUNTER_SCHEMA)
+        self.assertEqual(report['identity_coverage']['YellowKochappy']['admitted_slots'], 1)
+        self.assertEqual(report['identity_coverage']['YellowKochappy']['admitted_slot_uids'], [1])
+        self.assertEqual(report['identity_coverage']['Tadpole']['admitted_slot_uids'], [2])
+        self.assertEqual(report['identity_coverage']['Unproven']['admitted_slots'], 0)
+        unproven_reasons = [row['reason'] for row in report['identity_coverage']['Unproven']['top_denial_reasons']]
+        self.assertIn('no accepted placement evidence', unproven_reasons)
+        self.assertEqual(report['slot_coverage'][1]['admitted_identities'], 1)
+        self.assertEqual(report['slot_coverage'][1]['admitted_identity_list'], ['YellowKochappy'])
+        self.assertEqual(report['slot_coverage'][2]['admitted_identities'], 1)
+        self.assertEqual(report['unresolved_bosses'], [])
+
+    def test_coverage_is_deterministic(self):
+        slots = [slot(uid=2, label='b'), slot(uid=1, label='a')]
+        profiles = [profile(identity='B'), profile(identity='A')]
+        report = coverage_report(document(slots, profiles))
+        self.assertEqual(list(report['identity_coverage']), ['A', 'B'])
+        self.assertEqual(list(report['slot_coverage']), [1, 2])
+
+    def test_unresolved_boss_identity_mismatch(self):
+        report = coverage_report(document([slot()], [boss()], [descriptor(identity='OtherBoss')]))
+        self.assertEqual(report['unresolved_bosses'], ['EmpressBulblax'])
+        self.assertFalse(report['identity_coverage']['EmpressBulblax']['has_valid_descriptor'])
+
+    def test_resolved_boss_admitted(self):
+        report = coverage_report(document([slot()], [boss()], [descriptor()]))
+        self.assertEqual(report['unresolved_bosses'], [])
+        self.assertEqual(report['identity_coverage']['EmpressBulblax']['admitted_slots'], 1)
 
 
 if __name__ == '__main__':

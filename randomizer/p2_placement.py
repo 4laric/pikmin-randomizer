@@ -22,15 +22,24 @@ import sys
 from pathlib import Path
 
 SCHEMA = 'p2-placement-v1'
+ENCOUNTER_SCHEMA = 'p2-encounter-v1'
 TERRAIN_CLASSES = ('ground', 'water', 'air', 'underground', 'mixed')
 EVIDENCE_KEYS = ('xyz', 'terrain', 'route')
 SLOT_REQUIRED = ('uid', 'label', 'stage', 'terrain', 'radius')
 PROFILE_REQUIRED = ('identity', 'terrains')
+ENCOUNTER_REQUIRED = ('id', 'identity', 'terrains', 'footprint_radius', 'helper_budget',
+                      'arena_slots', 'phases', 'protected_drops', 'required_gates')
+ENCOUNTER_ALLOWED = ENCOUNTER_REQUIRED + ('notes',)
+ARENA_SLOT_KEYS = ('min', 'max')
 DOCUMENT_REQUIRED = ('schema', 'slots', 'profiles')
 
 
 def _fail(message):
     raise ValueError(message)
+
+
+def _copy_list(value):
+    return list(value) if isinstance(value, list) else value
 
 
 def _is_bool(value):
@@ -182,30 +191,125 @@ def validate_profile(profile):
     return profile
 
 
+def normalize_encounter_descriptor(data):
+    _check_keys('encounter descriptor', data, ENCOUNTER_REQUIRED, ENCOUNTER_ALLOWED)
+    descriptor = {
+        'id': data['id'],
+        'identity': data['identity'],
+        'terrains': _copy_list(data['terrains']),
+        'footprint_radius': data['footprint_radius'],
+        'helper_budget': data['helper_budget'],
+        'arena_slots': dict(data['arena_slots']) if isinstance(data['arena_slots'], dict) else data['arena_slots'],
+        'phases': data['phases'],
+        'protected_drops': _copy_list(data['protected_drops']),
+        'required_gates': _copy_list(data['required_gates']),
+        'notes': data.get('notes', ''),
+    }
+    return validate_encounter_descriptor(descriptor)
+
+
+def validate_encounter_descriptor(descriptor):
+    if not isinstance(descriptor['id'], str) or not descriptor['id']:
+        _fail('encounter descriptor id must be a non-empty string')
+    if not isinstance(descriptor['identity'], str) or not descriptor['identity']:
+        _fail('encounter descriptor identity must be a non-empty string')
+    if not isinstance(descriptor['terrains'], list) or not descriptor['terrains']:
+        _fail('encounter descriptor terrains must be a non-empty list')
+    for terrain in descriptor['terrains']:
+        if terrain not in TERRAIN_CLASSES:
+            _fail(f'encounter descriptor terrain must be one of {TERRAIN_CLASSES}')
+    if not _is_number(descriptor['footprint_radius']) or descriptor['footprint_radius'] < 0:
+        _fail('encounter descriptor footprint_radius must be a non-negative number')
+    if not isinstance(descriptor['helper_budget'], int) or isinstance(descriptor['helper_budget'], bool) or descriptor['helper_budget'] < 0:
+        _fail('encounter descriptor helper_budget must be a non-negative integer')
+    if not isinstance(descriptor['phases'], int) or isinstance(descriptor['phases'], bool) or descriptor['phases'] < 1:
+        _fail('encounter descriptor phases must be a positive integer')
+    for key in ('protected_drops', 'required_gates'):
+        if not isinstance(descriptor[key], list) or any(not isinstance(item, str) for item in descriptor[key]):
+            _fail(f'encounter descriptor {key} must be a list of strings')
+    if not isinstance(descriptor['notes'], str):
+        _fail('encounter descriptor notes must be a string')
+    arena = descriptor['arena_slots']
+    if not isinstance(arena, dict):
+        _fail('encounter descriptor arena_slots must be an object')
+    unknown = [key for key in arena if key not in ARENA_SLOT_KEYS]
+    if unknown:
+        _fail(f'encounter descriptor arena_slots has unknown field(s): {", ".join(sorted(unknown))}')
+    for key in ARENA_SLOT_KEYS:
+        if key not in arena:
+            _fail(f'encounter descriptor arena_slots missing {key}')
+        if not isinstance(arena[key], int) or isinstance(arena[key], bool) or arena[key] < 0:
+            _fail(f'encounter descriptor arena_slots.{key} must be a non-negative integer')
+    if arena['min'] > arena['max']:
+        _fail('encounter descriptor arena_slots.min must not exceed max')
+    return descriptor
+
+
 def validate_document(document):
-    _check_keys('document', document, DOCUMENT_REQUIRED, DOCUMENT_REQUIRED + ('notes',))
+    _check_keys('document', document, DOCUMENT_REQUIRED, DOCUMENT_REQUIRED + ('notes', 'encounters'))
     if document['schema'] != SCHEMA:
         _fail(f'document schema must be {SCHEMA}')
     if not isinstance(document['slots'], list) or not isinstance(document['profiles'], list):
         _fail('document slots and profiles must be lists')
     slots = [normalize_slot(slot) for slot in document['slots']]
     profiles = [normalize_profile(profile) for profile in document['profiles']]
+    encounters_raw = document.get('encounters', [])
+    if not isinstance(encounters_raw, list):
+        _fail('document encounters must be a list')
+    encounters = [normalize_encounter_descriptor(encounter) for encounter in encounters_raw]
     uids = [slot['uid'] for slot in slots]
     if len(set(uids)) != len(uids):
         _fail('document has duplicate slot uids')
     identities = [profile['identity'] for profile in profiles]
     if len(set(identities)) != len(identities):
         _fail('document has duplicate profile identities')
+    descriptor_ids = [encounter['id'] for encounter in encounters]
+    if len(set(descriptor_ids)) != len(descriptor_ids):
+        _fail('document has duplicate encounter descriptor ids')
+    descriptors_by_id = {encounter['id']: encounter for encounter in encounters}
+    for profile in profiles:
+        if not profile['is_boss']:
+            continue
+        reference = profile['encounter_descriptor']
+        if not reference:
+            _fail(f"boss profile {profile['identity']} requires an encounter_descriptor")
+        if reference not in descriptors_by_id:
+            _fail(f"boss profile {profile['identity']} references unknown encounter descriptor {reference}")
     return {'schema': SCHEMA, 'slots': slots, 'profiles': profiles,
-            'notes': document.get('notes', '')}
+            'encounters': encounters, 'notes': document.get('notes', '')}
 
 
 def load_document(path):
     return validate_document(json.loads(Path(path).read_text()))
 
 
-def evaluate(slot, profile):
-    """Return {'status': 'legal'|'denied', 'reasons': [...]} with deny default."""
+def _encounter_reasons(slot, profile, descriptor):
+    """Return descriptor constraint failures for a boss pair."""
+    reasons = []
+    if descriptor['identity'] != profile['identity']:
+        reasons.append(
+            f"encounter identity {descriptor['identity']} does not match profile identity {profile['identity']}")
+    if slot['terrain'] not in descriptor['terrains']:
+        reasons.append(f"terrain {slot['terrain']} not in encounter terrains {descriptor['terrains']}")
+    if descriptor['footprint_radius'] > slot['radius']:
+        reasons.append(
+            f"encounter footprint {descriptor['footprint_radius']} exceeds slot radius {slot['radius']}")
+    if descriptor['helper_budget'] > slot['helper_capacity']:
+        reasons.append(
+            f"encounter helper budget {descriptor['helper_budget']} exceeds slot capacity {slot['helper_capacity']}")
+    arena = descriptor['arena_slots']
+    if not arena['min'] <= 1 <= arena['max']:
+        reasons.append('slot cannot host exactly one boss arena')
+    return reasons
+
+
+def evaluate(slot, profile, encounters=None):
+    """Return {'status': 'legal'|'denied', 'reasons': [...]} with deny default.
+
+    When `encounters` (an id->descriptor mapping) is supplied, a boss must be
+    backed by a matching descriptor; otherwise the legacy descriptor-name check
+    is the only boss gate.
+    """
     reasons = []
     if not profile['accepted_gates']:
         reasons.append('no accepted placement evidence')
@@ -239,12 +343,20 @@ def evaluate(slot, profile):
         reasons.append('slot is one-shot, not renewable')
     if slot['first_day'] < profile['min_first_day']:
         reasons.append(f"slot first day {slot['first_day']} before required {profile['min_first_day']}")
+    if profile['is_boss'] and encounters is not None:
+        reference = profile['encounter_descriptor']
+        descriptor = encounters.get(reference) if reference else None
+        if descriptor is None:
+            reasons.append(f"no encounter descriptor {reference!r} defined")
+        else:
+            reasons.extend(_encounter_reasons(slot, profile, descriptor))
     return {'status': 'denied' if reasons else 'legal', 'reasons': sorted(reasons)}
 
 
 def audit(document, slot_uids=None, identities=None):
     """Evaluate candidate pairs and return a deterministic machine-readable report."""
     document = validate_document(document)
+    encounters = {encounter['id']: encounter for encounter in document['encounters']}
     slots = [s for s in document['slots'] if slot_uids is None or s['uid'] in slot_uids]
     profiles = [p for p in document['profiles'] if identities is None or p['identity'] in identities]
     decisions = []
@@ -253,7 +365,7 @@ def audit(document, slot_uids=None, identities=None):
     reasons = {}
     for slot in sorted(slots, key=lambda s: s['uid']):
         for profile in sorted(profiles, key=lambda p: p['identity']):
-            result = evaluate(slot, profile)
+            result = evaluate(slot, profile, encounters)
             row = {'slot_uid': slot['uid'], 'slot_label': slot['label'], 'identity': profile['identity'], **result}
             decisions.append(row)
             if result['status'] == 'legal':
@@ -273,6 +385,62 @@ def audit(document, slot_uids=None, identities=None):
         'unplaced_identities': sorted(p['identity'] for p in profiles if not admitted[p['identity']]),
         'boss_slots': sorted(s['uid'] for s in slots if s['boss_slot']),
     }
+
+
+def coverage_report(document, top_reasons=3):
+    """Return a deterministic per-identity/per-slot coverage summary."""
+    document = validate_document(document)
+    encounters = {encounter['id']: encounter for encounter in document['encounters']}
+    slots = sorted(document['slots'], key=lambda s: s['uid'])
+    profiles = sorted(document['profiles'], key=lambda p: p['identity'])
+    identity_coverage = {}
+    slot_coverage = {}
+    for slot in slots:
+        slot_coverage[slot['uid']] = {
+            'uid': slot['uid'],
+            'label': slot['label'],
+            'boss_slot': slot['boss_slot'],
+            'admitted_identities': 0,
+            'admitted_identity_list': [],
+        }
+    unresolved_bosses = []
+    for profile in profiles:
+        identity = profile['identity']
+        reference = profile['encounter_descriptor']
+        descriptor = encounters.get(reference) if reference else None
+        has_valid_descriptor = descriptor is not None and descriptor['identity'] == identity
+        if profile['is_boss'] and not has_valid_descriptor:
+            unresolved_bosses.append(identity)
+        reasons = {}
+        admitted_uids = []
+        for slot in slots:
+            result = evaluate(slot, profile, encounters)
+            if result['status'] == 'legal':
+                admitted_uids.append(slot['uid'])
+                slot_coverage[slot['uid']]['admitted_identities'] += 1
+                slot_coverage[slot['uid']]['admitted_identity_list'].append(identity)
+            else:
+                for reason in result['reasons']:
+                    reasons[reason] = reasons.get(reason, 0) + 1
+        ordered = sorted(reasons.items(), key=lambda item: (-item[1], item[0]))
+        identity_coverage[identity] = {
+            'identity': identity,
+            'is_boss': profile['is_boss'],
+            'has_valid_descriptor': has_valid_descriptor,
+            'admitted_slots': len(admitted_uids),
+            'admitted_slot_uids': admitted_uids,
+            'top_denial_reasons': [{'reason': reason, 'count': count} for reason, count in ordered[:top_reasons]],
+        }
+    return {
+        'schema': SCHEMA,
+        'encounter_schema': ENCOUNTER_SCHEMA,
+        'slots_evaluated': len(slots),
+        'identities_evaluated': len(profiles),
+        'identity_coverage': identity_coverage,
+        'slot_coverage': slot_coverage,
+        'unresolved_bosses': unresolved_bosses,
+    }
+
 
 
 def slot_from_spawn_row(row, terrain='ground', evidence=None):
