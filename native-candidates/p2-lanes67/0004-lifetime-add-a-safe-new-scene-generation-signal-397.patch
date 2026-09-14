@@ -1,0 +1,69 @@
+From a4ffa05bd94bef032fb3d954abf6ab5a82ef5d3d Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 11:21:38 -0400
+Subject: [PATCH 4/4] lifetime: add a safe new-scene generation signal (#397)
+
+GameCoreSection::finalSetup calls pc_p2_scene_begin(), incrementing a
+monotonic counter exposed by pc_p2_scene_generation(). A stage transition frees
+the previous TekiMgr, so fixtures must not touch TekiMgr/P2 family state until
+this advances. Additive and behavior-neutral; used by the lane-07 new-scene
+probe.
+---
+ pc_port/pc_p2_teki_lifetime.cpp       | 14 ++++++++++++++
+ pc_port/pc_p2_teki_lifetime.h         |  7 +++++++
+ src/plugPikiKando/gameCoreSection.cpp |  2 ++
+ 3 files changed, 23 insertions(+)
+
+diff --git a/pc_port/pc_p2_teki_lifetime.cpp b/pc_port/pc_p2_teki_lifetime.cpp
+index 22606eb6..35fbe113 100644
+--- a/pc_port/pc_p2_teki_lifetime.cpp
++++ b/pc_port/pc_p2_teki_lifetime.cpp
+@@ -85,3 +85,17 @@ void pc_p2_reset_all_teki()
+ 	pc_p2_batch3_reset();
+ 	pc_p2_long_legs_reset();
+ }
++
++namespace {
++unsigned long sSceneGeneration = 0;
++}
++
++void pc_p2_scene_begin()
++{
++	++sSceneGeneration;
++}
++
++unsigned long pc_p2_scene_generation()
++{
++	return sSceneGeneration;
++}
+diff --git a/pc_port/pc_p2_teki_lifetime.h b/pc_port/pc_p2_teki_lifetime.h
+index affa5cfd..ad86b2c3 100644
+--- a/pc_port/pc_p2_teki_lifetime.h
++++ b/pc_port/pc_p2_teki_lifetime.h
+@@ -23,3 +23,10 @@ void pc_p2_forget_teki(BTeki* actor);
+ // (stage exit only reset the kurage families before this). Safe to call while
+ // the stage creatures and managers are still valid.
+ void pc_p2_reset_all_teki();
++
++// Safe new-scene signal for lifecycle fixtures: called once from
++// GameCoreSection::finalSetup for every loaded stage. Fixtures must not touch
++// TekiMgr/P2 family state across a stage transition until this has advanced, as
++// the transition frees the previous TekiMgr.
++void pc_p2_scene_begin();
++unsigned long pc_p2_scene_generation();
+diff --git a/src/plugPikiKando/gameCoreSection.cpp b/src/plugPikiKando/gameCoreSection.cpp
+index b728a173..69d7215b 100644
+--- a/src/plugPikiKando/gameCoreSection.cpp
++++ b/src/plugPikiKando/gameCoreSection.cpp
+@@ -1391,6 +1391,8 @@ void GameCoreSection::finalSetup()
+ 	pc_p2_onikurage_teki_setup();
+ 	pc_p2_preview_setup();
+ 	pc_p2_snow_campaign_setup();
++	// Actor-lifetime (#397): mark the new scene ready for lifecycle fixtures.
++	pc_p2_scene_begin();
+ 	PRINT("====================== FINAL SETUP DONE ======================\n");
+ }
+ 
+-- 
+2.55.0.windows.3
+

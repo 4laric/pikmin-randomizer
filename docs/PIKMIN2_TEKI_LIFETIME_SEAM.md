@@ -178,10 +178,14 @@ the lane-07 runtime evidence is single-head. Native candidate bundle for lane 01
   boundary. Driving MapSelect to load an area in-process crashed (access
   violation) because the day transition tears down `tekiMgr` while the probe's
   `countBound()` iteration still held a stale manager pointer; the transition
-  therefore needs a dedicated menu-automation harness with a safe new-scene
-  signal, not a lane-07 fixture. The invariant is nevertheless held by the
-  stage-exit teardown proof plus the address-reuse proof: any new scene starts
-  from emptied family maps, and a reused address is cleared before use.
+  therefore needs a dedicated menu-automation harness. The safe new-scene
+  signal now exists: `pc_p2_scene_begin()`/`pc_p2_scene_generation()`
+  (patch 0004), incremented in `GameCoreSection::finalSetup`, so a probe can wait
+  for the transition to complete before touching `TekiMgr` (this removed the
+  crash; the remaining gap is map-select automation that actually loads an
+  area). The invariant is nevertheless held by the stage-exit teardown proof plus
+  the address-reuse proof: any new scene starts from emptied family maps, and a
+  reused address is cleared before use.
 - **Still open:** an in-process/menu-driven new **gameplay** scene re-entry run,
   and the #186 shared-semantics review + lane 01 export of this candidate.
 

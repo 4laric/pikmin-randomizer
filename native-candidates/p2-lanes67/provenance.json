@@ -7,14 +7,15 @@
   "executing_session": "opencode (deepseek-v4.1-flash), 2026-09-14",
   "native_repository": "pikmin-randomizer/native (never pushed to native origin)",
   "native_base": "f14c6851473ac1161be56c8b98f4f905232f3635",
-  "native_head": "87740f5def6265b1b4fbb864907f97d21f6a921e",
+  "native_head": "a4ffa05bd94bef032fb3d954abf6ab5a82ef5d3d",
   "native_worktree": "output/lane67-native",
   "native_branch": "opencode/p2-lanes67-native",
   "dirty_state": "clean",
   "patch_series": [
     "0001-lifetime-centralize-Teki-family-forget-on-death-and-.patch",
     "0002-rewards-native-exactly-once-receipt-cargo-contest-pr.patch",
-    "0003-lifetime-clear-all-P2-family-registrations-at-stage-.patch"
+    "0003-lifetime-clear-all-P2-family-registrations-at-stage-.patch",
+    "0004-lifetime-add-a-safe-new-scene-generation-signal-397.patch"
   ],
   "files": [
     "pc_port/pc_p2_teki_lifetime.h",
@@ -31,7 +32,7 @@
   "build": {
     "cmake": "cmake -S output/lane67-native -B output/lane67-native-build -G Ninja -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Release -DPIKMIN_NATIVE_JAUDIO=ON",
     "result": "[545/545] Linking CXX executable bin\\nectar.exe (exit 0); ninja -n -> no work to do",
-    "executable_sha256": "52806082D6A73BADD77AEB72C5632BD74F4C99EA0E4DFDCB53C6D78E5023112C"
+    "executable_sha256": "302ECDA034D11713F5C188246388E8D8AF1300C68E1875DD16DBECFDB948B231"
   },
   "tests": {
     "ctest": "ctest -R \"p2_receipt_test|p2_cargo_contest_test\" -> 2/2 PASS",
@@ -43,6 +44,7 @@
     "lifecycle": "PASS P2_LIFECYCLE_RUNTIME; squad alive=20; family=7 alive=6 moved=5 death=5 reentry=126 reused=0 control=1; exe FF16D2C2F8161BA94F7E9C55928DCD7F03CB320C2DDFFF6EC5D1C89B61098173",
     "address_reuse": "P2_REUSE_PROBE same_address=1 registered_before_rebind=0 rebound_registered=1; PASS P2_REUSE_PROBE; exe BAC36DC86B81367FCB8909A6FB342F38592D742DB0421A4013E24FEDE95B4B9C",
     "stage_exit_teardown": "P2_TEARDOWN_PROBE before=6 after=0; PASS P2_TEARDOWN_PROBE; exe BF911739DEF17FB6511F10FD0CC4AEDFC17E19558AD9EAA816D805D9313E1E81",
+    "new_scene_signal": "Snow-campaign day transition: save phase P2_SNOW_CAMPAIGN_READY dwarfs=11, day end->results->save->MapSelect (PASS). In-process area reload from MapSelect needs menu automation; pc_p2_scene_generation() (patch 0004) is the safe new-scene signal so a probe cannot touch the freed TekiMgr during the transition.",
     "pod_reward_regression": "P2_POD_RECEIPT new=1 then new=0, one ledger row; passed=true ledger_exact=true; re-run on 87740f5d also passed=true ledger_exact=true; exe 85EB567D946303391F3DEAA2AF7F9195A3AC3E42898C6EECA8BFFC4E70E1303B",
     "ordinary_endpoint": "real campaign stage, randomizer ready (schema 9): real Dwarf Bulborb kill -> real corpse -> GoalItem::suckMe -> pc_randomizer_corpse_delivered -> pc_randomizer_check -> CHECK 30 'Bestiary: Deliver Dwarf Bulborb' in checks.txt (50 30 51); a fresh process on the same session re-invoked the endpoint and granted no duplicate (checks.txt empty). Fixture scripts/p2_ordinary_receipt_fixture.cpp, runner scripts/p2_ordinary_receipt_runtime.py; carry step injected (natural_carry=0).",
     "arena": "P1 assets %APPDATA%\\PikminRandomizer\\game-data\\assets; re-staged flora arena via current 20-red overlay; 960x540 centred; default.gen sha256 8f0fc1cd69f011b941c37936c9ac96f44c9009f85f826fa51b994c912b5230bf"
@@ -50,7 +52,7 @@
   "integration": "Apply the three patches on the approved native line (or a later lane-01 line that already contains the f14c6851 family hooks). Shared-semantics items needing #186 review: pc_p2_forget_teki on BTeki::doKill, the TekiMgr::newTeki de-duplication, and pc_p2_reset_all_teki in GameCoreSection::exitStage. Lane-06 headers are engine-free until a family drop endpoint consumes pc_p2_cargo_contest.h.",
   "open": [
     "Lane 06: natural Pikmin carry for the ordinary endpoint (real kill/drop/endpoint/receipt are done; the carry step is injected - lane 04 transport).",
-    "Lane 07: in-process re-entry into a fresh gameplay scene after stage-exit teardown (needs a P2-populated campaign/multi-day harness).",
+    "Lane 07: in-process re-entry into a fresh gameplay scene after stage-exit teardown (needs map-select menu automation; pc_p2_scene_generation() signals readiness safely).",
     "Two-line native divergence flagged for lane 01 (material/queen paths)."
   ]
 }

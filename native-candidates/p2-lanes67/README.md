@@ -9,6 +9,7 @@ Ordered additive patches on the approved native baseline
 | 0001 | 07 | Centralized `pc_p2_forget_teki(BTeki*)` called from `BTeki::doKill` and reused by `TekiMgr::newTeki` |
 | 0002 | 06 | Engine-free `pc_p2_receipt.h` + `pc_p2_cargo_contest.h` provider surface + standalone tests |
 | 0003 | 07 | `pc_p2_reset_all_teki()` called from `GameCoreSection::exitStage` (full stage-exit teardown) |
+| 0004 | 07 | `pc_p2_scene_begin()`/`pc_p2_scene_generation()` from `GameCoreSection::finalSetup` (safe new-scene signal) |
 
 Apply with `git am native-candidates/p2-lanes67/00*.patch` on the maintained native
 line. See `provenance.json` for build/test/runtime hashes.
@@ -29,4 +30,7 @@ line. See `provenance.json` for build/test/runtime hashes.
   `Bestiary: Deliver Dwarf Bulborb` exactly once, refused on a fresh process.
   Only the Pikmin carry step is injected (lane 04 transport).
 - Lane 07 still open: in-process re-entry into a fresh gameplay scene after
-  stage-exit teardown (needs a P2-populated campaign/multi-day harness).
+  stage-exit teardown. The Snow-campaign day transition reaches MapSelect and
+  saves; loading a fresh in-process gameplay area needs map-select menu
+  automation. `pc_p2_scene_generation()` is the safe readiness signal (the
+  transition frees the previous `TekiMgr`).

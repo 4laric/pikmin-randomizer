@@ -1,7 +1,7 @@
 From 87740f5def6265b1b4fbb864907f97d21f6a921e Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 09:28:17 -0400
-Subject: [PATCH 3/3] lifetime: clear all P2 family registrations at stage exit
+Subject: [PATCH 3/4] lifetime: clear all P2 family registrations at stage exit
  (#397, #186)
 
 GameCoreSection::exitStage only reset the four kurage families; TekiMgr::reset()
