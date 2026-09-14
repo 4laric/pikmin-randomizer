@@ -123,10 +123,38 @@ def main():
                 result = run_probe(exe, fresh_run.bootstrap)
                 assert result.returncode == 2, (name, result.returncode, result.stdout, result.stderr)
                 assert not (fresh_run.directory / "hello.txt").exists(), name
+
+            # Generated spawn connection: the placement target is the real spawn
+            # catalog uid the native generator is keyed by, so a live generator
+            # must resolve to the bound identity, not merely a parser query.
+            from randomizer import p2_placement as placement
+            from randomizer.p2_placement_catalog import build_document
+            bridge.admitted_ids = lambda roster: [79]
+            full = build_document()
+            sokkuri = next(p for p in full["profiles"] if p["identity"] == "Sokkuri")
+            slot = next(s for s in full["slots"] if not placement.compatibility(s, sokkuri, {}))
+            slot["evidence"] = {"xyz": True, "terrain": True, "route": True}
+            sokkuri["accepted_gates"] = ["xyz"]
+            real_manifest = generate("p2-native-real", collection_checks=True, p2_enemies=True,
+                                     p2_placement={"schema": full["schema"], "slots": [slot],
+                                                   "profiles": [sokkuri]})
+            real_run = NativeRun(Session(real_manifest, tmp / "real"))
+            bound = real_manifest["p2_layout"]["bindings"][0]
+            resolved = run_probe(exe, real_run.bootstrap, "--enemy-p2-probe",
+                                 "--enemy-p2-expect", str(bound["source_id"]),
+                                 "--enemy-p2-resolve", bound["target"], str(bound["source_id"]))
+            assert resolved.returncode == 0 and "ENEMY_P2_PASS" in resolved.stdout, (resolved.stdout, resolved.stderr)
+            assert f"ENEMY_P2_RESOLVE uid={bound['target']} source={bound['source_id']}" in resolved.stdout
+            other = next(s["uid"] for s in full["slots"] if s["uid"] != int(bound["target"]))
+            unbound_run = NativeRun(Session(real_manifest, tmp / "real-unbound"))
+            unbound = run_probe(exe, unbound_run.bootstrap, "--enemy-p2-probe",
+                                "--enemy-p2-expect", str(bound["source_id"]),
+                                "--enemy-p2-resolve", str(other), "0")
+            assert unbound.returncode == 0 and "ENEMY_P2_PASS" in unbound.stdout, (unbound.stdout, unbound.stderr)
     finally:
         bridge.admitted_ids = original_admitted
     print("P2 generated-session path passed: real bootstrap ENEMY_P2, native parse/bind, "
-          "content stage+cache, and 5 rejection cases")
+          "content stage+cache, 5 rejection cases, and live-generator target resolution")
 
 
 if __name__ == "__main__":

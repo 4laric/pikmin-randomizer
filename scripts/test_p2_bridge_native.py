@@ -9,6 +9,7 @@ Rejected variants must exit 2 without creating a handshake, mirroring
     py -3.12 scripts/test_p2_bridge_native.py <build>/pc_randomizer_probe.exe
 """
 import argparse
+import os
 import subprocess
 import sys
 import tempfile
@@ -35,6 +36,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("exe", type=Path)
     exe = parser.parse_args().exe.resolve(strict=True)
+    env = dict(os.environ)
+    mingw = Path(r"C:\msys64\mingw64\bin")
+    if mingw.is_dir():  # MinGW runtime DLLs for the private probe build.
+        env["PATH"] = str(mingw) + os.pathsep + env.get("PATH", "")
     manifest = generate("p2-native", collection_checks=True)
     layout = resolve_layout("p2-native", "Player1", ("gen-001", "gen-002"), (79, 30))
     first, second = layout["bindings"]
@@ -47,8 +52,10 @@ def main():
     }
     with tempfile.TemporaryDirectory() as tmp:
         run = bootstrap_with_p2(manifest, layout, Path(tmp) / "valid")
-        probe = subprocess.run([str(exe), "--randomizer-seed", str(run.bootstrap), "--enemy-p2-probe"],
-                               capture_output=True, text=True, timeout=30)
+        probe = subprocess.run([str(exe), "--randomizer-seed", str(run.bootstrap), "--enemy-p2-probe",
+                                "--enemy-p2-expect", str(first["source_id"]),
+                                "--enemy-p2-expect", str(second["source_id"])],
+                               capture_output=True, text=True, timeout=30, env=env)
         assert probe.returncode == 0 and "ENEMY_P2_PASS" in probe.stdout, (probe.stdout, probe.stderr)
         for name, (old, new) in cases.items():
             fresh = bootstrap_with_p2(manifest, layout, Path(tmp) / name)
@@ -56,7 +63,7 @@ def main():
             assert old in text, (name, old)
             fresh.bootstrap.write_text(text.replace(old, new, 1), encoding="ascii")
             result = subprocess.run([str(exe), "--randomizer-seed", str(fresh.bootstrap)],
-                                    capture_output=True, text=True, timeout=30)
+                                    capture_output=True, text=True, timeout=30, env=env)
             assert result.returncode == 2, (name, result.returncode, result.stdout, result.stderr)
             assert not (fresh.directory / "hello.txt").exists(), name
     print("Native P2 bridge passed: parse/bind, unknown id, wrong revision, duplicate target, bad count")
