@@ -28,7 +28,7 @@ read-only decomp checkout `native/pikmin2-research` (`Game/enemyInfo.h`,
 | 35 | `KumaChappy` | Spotty Bulbear | KumaChappy | adult | missing | `P2_KUMACHAPPY_*` |
 | 42 | `BlueChappy` | Orange Bulborb | ChappyBase | adult | missing | `P2_BLUECHAPPY_*` |
 | 43 | `YellowChappy` | Hairy Bulborb | ChappyBase | adult | missing | `P2_YELLOWCHAPPY_*` |
-| 44 | `BlueKochappy` | Dwarf Orange Bulborb | KochappyBase | dwarf | staged | `P2_BLUEKOCHAPPY_*` |
+| 44 | `BlueKochappy` | Dwarf Orange Bulborb | KochappyBase | dwarf | native candidate | `P2_DWARF_ORANGE_*` |
 | 45 | `YellowKochappy` | Snow Bulborb | KochappyBase | dwarf | implemented | `P2_SNOW_*` |
 | 76 | `KumaKochappy` | Dwarf Bulbear | KumaChappy | dwarf | staged | `P2_KUMAKOCHAPPY_*` |
 
@@ -95,7 +95,7 @@ Source: `KumaChappy.h`, `KumaKochappyState.cpp`, `Game/ChappyRelation.h`.
 | `FireChappy` | BLOCKED assets | BLOCKED | BLOCKED (lane 10 receivers) | BLOCKED assets | UNTESTED | UNTESTED |
 | `KumaChappy` | BLOCKED assets | BLOCKED | UNTESTED | UNTESTED | UNTESTED | BLOCKED revival lifecycle |
 | `KumaKochappy` | STAGED (standalone) | UNTESTED | UNTESTED | UNTESTED | UNTESTED | UNTESTED |
-| `BlueKochappy` | STAGED | UNTESTED | UNTESTED | UNTESTED | UNTESTED | UNTESTED |
+| `BlueKochappy` | PASS native candidate (health 250, XYZ) | PASS P1-proxy (+source parms) | PASS natural P1-proxy combat + 5 s purple stun | PASS corpse render | UNTESTED transport/reward | UNTESTED scene/save re-entry |
 | `Chappy`/`BlueChappy`/`YellowChappy` | UNTESTED | UNTESTED | UNTESTED | UNTESTED | UNTESTED | UNTESTED |
 
 Existing PASS rows reuse the integrated Snow (`pc_p2_enemy`), Dwarf Red
@@ -128,9 +128,12 @@ No shared semantics are edited by this lane; these are hook requests for lane 01
    Content identity/staging is lane 05.
 2. **Elemental receivers** for `InteractFire` and water extinguish are lane 10.
 3. **Revival/lifecycle** for the Bulbear carcass is lane 06/07 plus #397.
-4. **Dwarf Orange/Bulbear native registration** remains unintegrated; batch-2
-   install/arena staging exists but `prepare()` was recorded blocked on a private
-   P1 asset copy, and the parent Spotty Bulbear is not imported.
+4. **Dwarf Orange native registration** now has a private native candidate
+   (`docs/PIKMIN2_DWARF_ORANGE_NATIVE.md`, module `pc_p2_dwarf_orange`,
+   generator 211001) with natural P1-proxy combat/corpse PASS, but it is not on
+   the maintained line. **Dwarf Bulbear** (`KumaKochappy`) remains unintegrated:
+   its parent Spotty Bulbear (`KumaChappy` #35) is not imported and the
+   `ChappyRelation`/`WalkPath` relation is not staged.
 5. **Sheargrub ownership ambiguity:** the fan-out assigns Sheargrubs to lane 13
    while the repo tracks Uji under Ground `#165`/lane 14. Reconcile before either
    lane claims final sign-off.
