@@ -43,19 +43,19 @@ public:int idle() override {
 '''
 
 
-def instrument(source):
+def instrument(source, app=APP):
     start = source.index('class RoomApp : public PlugPikiApp {')
     end = source.index('int main(', start)
     return ('#include <fstream>\n#include "Generator.h"\n#include "TekiPersonality.h"\n'
-            + source[:start] + APP + source[end:])
+            + source[:start] + app + source[end:])
 
 
-def build(native, build_dir, output, head, resume=False):
+def build(native, build_dir, output, head, resume=False, app=None):
     native = native.resolve()
     build_dir = build_dir.resolve()
     output = output.resolve()
     room = output / 'room.cpp'
-    source = instrument((native / 'tools/preview_p2_room.cpp').read_text())
+    source = instrument((native / 'tools/preview_p2_room.cpp').read_text(), app or APP)
     if resume:
         if (output / 'instrumentation.json').exists() or room.read_text() != source:
             raise ValueError('Cannot resume completed or changed fixture')
@@ -122,12 +122,17 @@ def validate(text, code):
                 blocked_gates='no pc_p2_kogane native registration; flagged on #219 for the native track')
 
 
-def run(assets, bank, output, exe):
+def run(assets, bank, output, exe, sidecar=None, validator=None):
     stage = prepare(assets, bank, output / 'stages')
     manifest = json.loads((stage / 'arena.json').read_text())
     (stage / 'kogane-positions.txt').write_bytes(
         ''.join(f"{a['generator']} " + ' '.join(map(str, a['expected_xyz'])) + '\n'
                 for a in manifest['actors']).encode())
+    arena_files = [stage / 'arena.json', stage / 'kogane-positions.txt',
+                   stage / 'p2-kogane-actors.txt', stage / 'kogane-install.json']
+    if sidecar is not None:
+        (stage / 'p2-kogane-native.txt').write_text(sidecar)
+        arena_files.append(stage / 'p2-kogane-native.txt')
     env = dict(os.environ, PATH='C:/msys64/mingw64/bin;' + os.environ.get('PATH', ''), SDL_AUDIODRIVER='dummy')
     with (stage / 'native.log').open('w') as log:
         try:
@@ -135,10 +140,9 @@ def run(assets, bank, output, exe):
                                   cwd=stage, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=180).returncode
         except subprocess.TimeoutExpired:
             code = 'timeout'
-    evidence = validate((stage / 'native.log').read_text(errors='replace'), code)
+    evidence = (validator or validate)((stage / 'native.log').read_text(errors='replace'), code)
     evidence.update(exit_code=code, executable=builder.snapshot([exe]),
-                    arena=builder.snapshot([stage / 'arena.json', stage / 'kogane-positions.txt',
-                                            stage / 'p2-kogane-actors.txt', stage / 'kogane-install.json']))
+                    arena=builder.snapshot(arena_files))
     (stage / 'runtime-evidence.json').write_text(json.dumps(evidence, indent=2))
     print(stage, flush=True)
     print(json.dumps(evidence), flush=True)
