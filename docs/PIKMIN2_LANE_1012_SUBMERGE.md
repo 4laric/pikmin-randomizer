@@ -96,8 +96,34 @@ exit 0 `passed=true`, window 960x540 centred, `P2_RECV_SQUAD alive=20 reds=20`,
 (Yellow immune to electricity, White immune to gas, Bulbmin immune to both, Red
 affected by both). Fixture provenance `status=built`.
 
-Still blocked, not faked: real two-captain play (follow/split-squad AI, camera,
-controls, HUD, survivor-gated game over — `file:line` in the captain contract);
-a Mother Bulbmin actor/model and live spawn; `PIKISTATE_Denki`/`Panic`/gas
-states and enemy-side emitters. `PIKMIN_P2_SECOND_CAPTAIN` remains inert.
+## Wave 3 — lane 12 inactive follow / split slice
+
+Native `opencode/p2-sub3-follow` @ `1347260f` (base `95bfa756`); root
+`opencode/p2-sub3-follow`. Patch bundle
+`native-candidates/p2-sub3-follow/0001-*.patch`, `0002-*.patch`. Adds the
+engine-free `P2SquadFollowPolicy` (inactive-captain follow bands, whistle and
+dismiss priority), deterministic `P2CaptainPolicy::splitSquad`/`transferSquad`,
+`P2CaptainAdapter::splitSquad`, and a `NaviMgr::update()` hook that runs only
+when `mNumObjects > 1`. The live spawn gate stays closed.
+
+```text
+cmake -S output/native-sub3-follow -B output/native-sub3-follow-build -G Ninja \
+  -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Release -DPIKMIN_NATIVE_JAUDIO=ON
+cmake --build output/native-sub3-follow-build --target pikmin_pc -j 3
+# [523/523] Linking CXX executable bin\nectar.exe   (exit 0)
+# ninja -C output/native-sub3-follow-build -n pikmin_pc -> no work to do
+```
+
+`nectar.exe` SHA-256
+`0DCC2567AC863D37533B854584CE840758D39BA09C38A05B1049511735E609D0`.
+Root pytest `tests/test_pikmin2_captain_squad_split.py
+tests/test_pikmin2_captain_adapter.py tests/test_pikmin2_lanes_1012_policies.py
+-q` -> **12 passed** (adds `PASS P2_SQUAD_POLICY`). Engine-double/contract only;
+no live two-captain runtime.
+
+Still blocked, not faked: real two-captain play (full follow-state parity,
+camera, controls, HUD, survivor-gated game over — `file:line` in the captain
+contract); a Mother Bulbmin actor/model and live spawn;
+`PIKISTATE_Denki`/`Panic`/gas states and enemy-side emitters.
+`PIKMIN_P2_SECOND_CAPTAIN` remains inert.
 

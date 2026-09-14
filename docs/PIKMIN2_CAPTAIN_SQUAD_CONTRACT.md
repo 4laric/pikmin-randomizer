@@ -22,6 +22,14 @@ Native candidate (second-captain scaffolding): branch `opencode/p2-sub2-captains
 primitives, slot-1 binding and a strictly opt-in creation path that is inert
 while the live gate is closed; see "Second-captain scaffolding slice" below.
 
+Native candidate (squad split + inactive follow): branch
+`opencode/p2-sub3-follow` @ `1347260f`, base `95bfa756`. Patch bundle:
+`native-candidates/p2-sub3-follow/0001-*.patch`, `0002-*.patch`. Adds the
+engine-free `P2SquadFollowPolicy` / whistle / dismiss decisions, deterministic
+`P2CaptainPolicy::splitSquad`, `P2CaptainAdapter::splitSquad` and the
+`NaviMgr::update()` follow hook, all inert while `hasSecondNavi()` is false; see
+"Per-captain squad split + inactive-captain follow slice" below.
+
 ## Why this slice first
 
 Captor and squad consumers are blocked on a stable captain/captive boundary:
@@ -119,6 +127,10 @@ PASS P2_CAPTAIN_ADAPTER
 g++ -std=c++17 -Wall -Wextra -Werror -I pc_port tools/test_p2_captain_roster.cpp -o test_p2_captain_roster.exe
 PASS P2_CAPTAIN_ROSTER
 
+# per-captain squad split + inactive follow + whistle/dismiss (engine-free)
+g++ -std=c++17 -Wall -Wextra -Werror -I pc_port tools/test_p2_squad_policy.cpp -o test_p2_squad_policy.exe
+PASS P2_SQUAD_POLICY
+
 # private engine build (native base 5a0cb4ee + fd40992c)
 cmake -S output/native-sub-captains -B output/native-sub-captains-build -G Ninja \
   -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Release -DPIKMIN_NATIVE_JAUDIO=ON
@@ -141,6 +153,16 @@ ninja -C output/native-sub-captains-build -n pikmin_pc   # ninja: no work to do.
   `pytest tests/test_pikmin2_captain_adapter.py tests/test_pikmin2_lanes_1012_policies.py -q`
   -> **10 passed** (includes `PASS P2_CAPTAIN_ROSTER`). All are
   compile/engine-double/contract tests; none claims a live two-captain runtime.
+- Squad split + inactive follow (#130, wave 3): native commits `d22bc547`,
+  `1347260f` (base `95bfa756`). Private build
+  `output/native-sub3-follow-build` -> `[523/523] Linking CXX executable
+  bin\nectar.exe`, `ninja -C output/native-sub3-follow-build -n pikmin_pc` ->
+  `ninja: no work to do`. `nectar.exe` SHA-256
+  `0DCC2567AC863D37533B854584CE840758D39BA09C38A05B1049511735E609D0`. Root gate
+  `pytest tests/test_pikmin2_captain_squad_split.py
+  tests/test_pikmin2_captain_adapter.py tests/test_pikmin2_lanes_1012_policies.py -q`
+  -> **12 passed** (adds `PASS P2_SQUAD_POLICY`). Still compile/engine-double
+  tests; the follow hook is inert with one Navi and is not a live runtime claim.
 
 ## Single-captain audit (what a second captain would require)
 
@@ -194,39 +216,92 @@ returns false, so `navi_capacity()` is 1 even with the env var set: no second
 Navi is constructed, no asset is prepared, and single-captain play is
 byte-identical. Porting the missing systems first is the next slice.
 
+## Per-captain squad split + inactive-captain follow slice (wave 3)
+
+Native `1347260f` (base `95bfa756`) adds the default-off policy/hook layer a
+second captain needs, without spawning one:
+
+- `pc_port/pc_p2_squad_policy.h` (engine-free): `P2SquadFollowPolicy` mirrors
+  the inactive captain's `NaviFollowState::exec` bands — follow outside 30
+  units, half-speed blend inside 60, `TooFar` beyond the 430 unit leash, and
+  the 90-still-frame idle counter (source `naviState.cpp:1361-1552`). It also
+  owns the whistle claim rule (a captain whistles free Pikmin or its own, never
+  the other's; the port's own-owner check is `navi.cpp:1186`) and the dismiss
+  plan (dismiss releases the caller and additionally sends a *following*
+  inactive captain walking; source `Navi::releasePikis`
+  `navi.cpp:4070-4104`).
+- `P2CaptainOwnershipTable::actorsOwnedBy` and
+  `P2CaptainPolicy::splitSquad` / `transferSquad` move a deterministic
+  (ascending actor id) subset of one captain's squad to the other and refuse a
+  captured/down/absent target. `P2CaptainAdapter::splitSquad` /
+  `transferSquad` mirror the new owner through `Piki::mNavi` via
+  `syncOwnership()`.
+- `pc_port/pc_p2_captain.cpp` implements
+  `pc_p2_captain::update_inactive_captain_follow()`, and `NaviMgr::update()`
+  (`src/plugPikiKando/naviMgr.cpp:78-89`) calls it **only when
+  `mNumObjects > 1`**. The hook returns immediately unless a real second Navi
+  exists, so it never runs in the single-captain path.
+- `second_captain_live_allowed()` stays false: the follow state is a bounded
+  approximation (no idle-goof animation, autopluck, camera switch or control
+  routing yet; source `naviState.cpp:1501-1551`).
+
+**No second Navi is created and this slice does not claim live two-captain
+gameplay.** The engine hook is reachable only if a later slice opens the gate.
+
 ## Remaining work for real two-captain play (`file:line`)
 
-1. **Per-captain follow/whistle AI and split squad.** `Navi::callPikis` /
-   `letPikiWork` / `reviseController` and the `CPlate` party
-   (`navi.cpp:612`, `navi.cpp:175-251`) assume one captain; squad assignment
-   uses `naviMgr->getNavi()` (`generator.cpp:1193,1197,1199`). Each Piki already
-   stores `Piki::mNavi` (`Piki.h:318`), so the follow-up is to route
-   `getActiveNavi()`/captain-aware follow targets instead of the first Navi.
+Corrected against the native port (`output/native-sub3-follow`, a P1 engine) and
+the P2 source (`native/pikmin2-research`). Wave 3 completed the policy half of
+item 1 and added a follow hook; the rest is unchanged.
+
+1. **Per-captain follow/idle and split squad.**
+   - Done: the engine-free `P2SquadFollowPolicy`, whistle/dismiss decisions,
+     and `P2CaptainAdapter::splitSquad`/`transferSquad` ownership split.
+   - Open: `Navi::update`/`Navi::doAI` (`navi.cpp:960`, `:1468`),
+     `Navi::reviseController` (`navi.cpp:1858`), `Navi::makeVelocity`
+     (`navi.cpp:1899`) and the `CPlate` party (`navi.cpp:613`) still assume one
+     captain. `Navi::callPikis` (`navi.cpp:1146`) and generator spawns
+     (`generator.cpp:1193,1197,1199`) use the first Navi
+     (`naviMgr->getNavi()`), not `getActiveNavi()`. Idle-goof and follower
+     autopluck are P2-only
+     (`native/pikmin2-research/src/plugProjectKandoU/naviState.cpp:1453`,
+     `:311`).
 2. **Split camera.** Startup binds one camera to the first Navi
    (`gameCoreSection.cpp:1214 cameraMgr->startCamera(naviMgr->getNavi())`;
-   `pcamcameramanager.cpp:163 naviMgr->getNavi(0)`), and `Navi::mNaviCamera`
-   is copied from the first captain (`genNavi.cpp:68`, `navi.cpp:160`). Needs a
-   per-captain camera or an active-captain camera switch.
+   `pcamcameramanager.cpp:163 naviMgr->getNavi(0)`), and `Navi::mNaviCamera` is
+   copied from the first captain (`genNavi.cpp:68`; the first captain's own
+   assignment is `gameCoreSection.cpp:1577`). Needs a per-captain camera or an
+   active-captain camera switch.
 3. **Controls / Kontroller.** `Navi::Navi` builds `new Kontroller(naviID + 1)`
-   (`navi.cpp:513`) and only captain 0's controller is started
+   (`navi.cpp:514`) and only captain 0's controller is started
    (`gameCoreSection.cpp:1277 naviMgr->getNavi(0)->startKontroller()`). P2
-   second-pad / split control mapping is not ported.
+   second-pad / split control mapping is not ported (`mController1`/`mController2`,
+   P2 `include/Game/Navi.h:265-266`).
 4. **Whistle/cursor and HUD.** Cursor and whistle state live on each `Navi`
-   (`Navi::mCursorPosition`, `mWhistle*`, `navi.cpp`); HUD reads
+   (`Navi::mCursorPosition`, `mWhistle*`, `Navi.h`); HUD reads
    `naviMgr->getNavi(0)` (`drawGameInfo.cpp:195,282,317`) and the player-state
    model uses `naviMgr->mNaviShapeObject[0]` (`playerState.cpp:821`). Needs
-   active-captain routing.
-5. **Survivor-gated game over.** `NaviDeadState::init` sets the global
-   `GameStat::orimaDead` (`naviState.cpp:3190`), `gameCoreSection.cpp:2092`
-   keys off `mNavi->mHealth`, and `newPikiGame.cpp:2779` sets
-   `GAMEEND_NaviDown`. Must become "game over only when every present captain
-   is down", using `NaviMgr::getAliveOrima()` / `isNaviDead()`.
+   active-captain routing; the ownership rule is now codified
+   (`p2_whistle_claim`).
+5. **Survivor-gated game over.** The port still ends on the first captain:
+   `NaviDeadState::init` sets the global `GameStat::orimaDead`
+   (`naviState.cpp:3190`; `gameStat.cpp:22,59`), `newPikiGame.cpp:2779` raises
+   `GAMEEND_NaviDown`, and `gameCoreSection.cpp:2102,2104` keys the active
+   check off the single `mNavi`. Must become "game over only when every present
+   captain is down", using `NaviMgr::getAliveOrima()`/`isNaviDead()`; the P2
+   reference is survivor hand-off at `singleGS_MainGame.cpp:914-928`
+   (`mDeadNavis != 2`) and `naviMgr.cpp:330-367`.
 6. **Knockout integration.** Replace direct `NaviState` transitions to
    `NAVISTATE_Dead` (`navi.cpp:434`, `naviState.cpp:1511,2852`) with a call that
    also invokes `NaviMgr::informOrimaDead` and `P2CaptainPolicy::damage` so
    policy and engine stay in sync. `P2CaptainAdapter::damageCaptain` is the
-   seam.
-7. **Death/corpse, drop and reward** remain family/test-owned as before.
+   seam; P2 calls `informOrimaDead` from `Navi::setDeadLaydown`
+   (`native/pikmin2-research/src/plugProjectKandoU/navi.cpp:2485,2510`).
+7. **Follow-state parity.** Wave 3 covers the distance bands, speed curve and
+   idle counter; the FSM's idle-goof animations, follower autopluck
+   (`naviState.cpp:311-345`), the throw/punch push-away (`naviState.cpp:1505-1514`)
+   and the `isStickTo()` hand-off (`naviState.cpp:1380`) remain.
+8. **Death/corpse, drop and reward** remain family/test-owned as before.
 
 Until all of the above exist, the gate in `second_captain_live_allowed()`
 stays closed and this lane still does **not** claim live two-captain gameplay.
@@ -236,7 +311,8 @@ stays closed and this lane still does **not** claim live two-captain gameplay.
 - Live binding is slot 0 only by default. `pc_p2_captain.cpp` maps slot N to
   `naviMgr->getNavi(N)`, but no second Navi is created unless the closed live
   gate is opened. There is no live two-captain runtime and this slice does not
-  claim one.
+  claim one. The `NaviMgr::update()` follow hook and the split-squad adapter
+  exist but are unreachable while `hasSecondNavi()` is false.
 - The adapter's actor ids come from a pointer-keyed registry in
   `pc_p2_captain.cpp`. A freed-then-reused `Piki*` within one scene can inherit
   an id; captor families must release a captive before its actor is destroyed
