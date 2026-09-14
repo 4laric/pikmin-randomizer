@@ -10,6 +10,16 @@ from scripts import build_pikmin2_fixture as tool
 
 
 class CommandTests(unittest.TestCase):
+    def test_ninja_owns_response_expansion_and_link_order(self):
+        raw = dict(file='a.obj', output='x.exe', command='g++.exe @x.rsp -o x.exe')
+        expanded = dict(raw, command='g++.exe z.obj a.obj libz.a liba.a -o x.exe')
+        with patch.object(tool, 'run', side_effect=[(0, json.dumps([raw])), (0, json.dumps([expanded]))]):
+            self.assertEqual(tool.expand_response_files(raw['command'], 'ninja', Path('.')), expanded['command'])
+        changed = dict(expanded, output='different.exe')
+        with patch.object(tool, 'run', side_effect=[(0, json.dumps([raw])), (0, json.dumps([changed]))]):
+            with self.assertRaises(tool.BuildRejected):
+                tool.expand_response_files(raw['command'], 'ninja', Path('.'))
+
     def test_windows_paths_spaces_and_backslashes_roundtrip(self):
         args = [r'C:\Program Files\toolchain\g++.exe', '-I' + r'C:\source folder\include',
                 '-DNAME="example"', 'C:\\trailing\\', '', '-flto=4']

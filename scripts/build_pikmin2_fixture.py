@@ -108,6 +108,38 @@ def absolute(value, root):
     return (path if path.is_absolute() else root / path).resolve()
 
 
+def expand_response_files(text, ninja, build):
+    """Ask Ninja to expand its own response content, preserving link order."""
+    if not any('@' in line and '.rsp' in line for line in text.splitlines()):
+        return text
+    databases = []
+    for options in ([], ['-x']):
+        code, data = run([str(ninja), '-t', 'compdb', *options], build)
+        if code:
+            raise BuildRejected('Ninja cannot expand response files through compdb')
+        try:
+            databases.append(json.loads(data))
+        except (ValueError, TypeError) as error:
+            raise BuildRejected('Invalid Ninja compilation database') from error
+    raw, expanded = databases
+    if len(raw) != len(expanded):
+        raise BuildRejected('Ninja graph changed during response expansion')
+    replacements = {}
+    for before, after in zip(raw, expanded):
+        if (before['file'], before['output']) != (after['file'], after['output']):
+            raise BuildRejected('Ninja graph changed during response expansion')
+        replacements[before['command']] = after['command']
+    lines = []
+    for line in text.splitlines():
+        if '@' in line and '.rsp' in line:
+            replacement = replacements.get(line)
+            if replacement is None or ('@' in replacement and '.rsp' in replacement):
+                raise BuildRejected('Ninja response command is missing or unexpanded')
+            line = replacement
+        lines.append(line)
+    return '\n'.join(lines)
+
+
 def select_commands(commands, source, build):
     main = (source / 'pc_port/pc_main.cpp').resolve()
     compiles, links, objects = [], [], set()
@@ -350,6 +382,8 @@ def build_fixture(build, source, fixture, output, expected_head, check_only=Fals
         if code:
             raise BuildRejected('Cannot obtain Ninja commands')
         (output / 'native-commands.txt').write_text(text, encoding='utf-8')
+        text = expand_response_files(text, ninja, build)
+        (output / 'native-commands-expanded.txt').write_text(text, encoding='utf-8')
         compile_args, link_args, main_object, objects = select_commands(text.splitlines(), source, build)
         if absolute(compile_args[0], build) != compiler:
             raise BuildRejected('Ninja compiler differs from CMake cache')
