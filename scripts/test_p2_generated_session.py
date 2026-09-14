@@ -25,8 +25,27 @@ from randomizer.runner import NativeRun  # noqa: E402
 from randomizer.seed import generate  # noqa: E402
 from randomizer.session import Session  # noqa: E402
 
-COHORT = (79, 30)
-TARGETS = ("gen-001", "gen-002")
+COHORT = (79, 30)  # Sokkuri (source) + Queen (boss)
+
+
+def placement_document():
+    """Minimal lane 04 document: one ground slot each for Sokkuri and Queen."""
+    def slot(uid, label, capacity=0, boss=False):
+        return {"uid": uid, "label": label, "stage": 1, "terrain": "ground", "radius": 300.0,
+                "helper_capacity": capacity, "boss_slot": boss,
+                "evidence": {"xyz": True, "terrain": True, "route": True}}
+    return {
+        "schema": "p2-placement-v1",
+        "slots": [slot(401, "sokkuri-slot"), slot(402, "queen-arena", 50, boss=True)],
+        "profiles": [
+            {"identity": "Sokkuri", "terrains": ["ground"], "accepted_gates": ["xyz"]},
+            {"identity": "Queen", "terrains": ["ground"], "accepted_gates": ["xyz"],
+             "is_boss": True, "encounter_descriptor": "queen-arena"},
+        ],
+        "encounters": [{"id": "queen-arena", "identity": "Queen", "terrains": ["ground"],
+                        "footprint_radius": 250, "helper_budget": 50, "arena_slots": {"min": 1, "max": 1},
+                        "phases": 1, "protected_drops": [], "required_gates": ["xyz"]}],
+    }
 
 
 def write_content_manifest(tmp):
@@ -64,7 +83,7 @@ def main():
         with tempfile.TemporaryDirectory() as raw:
             tmp = Path(raw)
             manifest = generate("p2-native", collection_checks=True,
-                                p2_enemies=True, p2_targets=list(TARGETS))
+                                p2_enemies=True, p2_placement=placement_document())
             session = Session(manifest, tmp / "sess")
             run = NativeRun(session)
             bootstrap = run.bootstrap.read_text(encoding="ascii")

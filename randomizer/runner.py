@@ -261,9 +261,15 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None,
     if content_manifest is not None:
         # Stage the generated session's content before any native process starts;
         # a missing/wrong source or corrupt cache raises and nothing is launched.
+        # The tree lands in the run directory the game is launched from, and the
+        # receipt binds it to the seed's P2 source identities.
         from experimental.pikmin2_staging import stage_session_content
-        receipt = stage_session_content(content_manifest, session.directory, cache_dir=content_cache)
-        print(f"PIKMIN_CONTENT_STAGED: {receipt['summary']}", flush=True)
+        identities = [binding["source_id"]
+                      for binding in session.manifest.get("p2_layout", {}).get("bindings", [])]
+        receipt = stage_session_content(content_manifest, run.directory,
+                                        cache_dir=content_cache or (session.directory / "content-cache"),
+                                        identities=identities)
+        print(f"PIKMIN_CONTENT_STAGED: {receipt['summary']} identities={receipt['identities']}", flush=True)
     process = None
     overlay = None
     log = None
