@@ -1,0 +1,32 @@
+{
+  "lane": "27 Careening Dirigibug (hard-lane batch runtime)",
+  "parent_issue": 244,
+  "integration_issue": 446,
+  "implementation_owner": "Codex via shared account 4laric",
+  "executing_session": "opencode (deepseek-v4.1-flash), 2026-09-13",
+  "candidate_branch": "opencode/p2-lane27-reconcile",
+  "native_branch": "opencode/p2-longlegs-fsm",
+  "native_base": "f9e139d86afab0b7581599f2178ee1a95dcf33af",
+  "native_head": "5853bce4d0b445d1608203d091dc08a7973020dc",
+  "native_repository": "pikmin-randomizer/native (never pushed to native origin)",
+  "production_build": "output/native-lane26-build-abs",
+  "production_executable_sha256": "83b319a15a619d351a830f5ba847e6bcdb98efa3e35284d5c3e41806fd2b0cef",
+  "fixture_build_tool": "scripts/build_pikmin2_fixture.py (status built)",
+  "fixture_executable_sha256": "75272228c5d0fba60c141857be3be8ea7c07aa7595d8701bfa8d2620650afdc2",
+  "runtime_log_sha256": "905FEE42DE1D937E47461108D7D5A94C8CA18159433720F00242A610F0B4E2F9",
+  "scenarios": {
+    "approach": "PASS (Release tick 46; blast hits=3)",
+    "purple": "PASS (Fall tick 55; blast hits=3)",
+    "death": "PASS (Death tick 45; carrier_dead=1)"
+  },
+  "room_host_markers": [
+    "Experimental preview window set to 960x540 windowed and centered",
+    "P2_BOMBSARAI_ARENA_READY pinned=1 fsm=1 no_ai=1 no_visual_assets=1 receivers=4 pool=2 events=0",
+    "P2_HARDLANES_READY family=BombSarai arena=1"
+  ],
+  "limitations": [
+    "Replacement-main harness, not an ordinary spawned actor.",
+    "no_visual_assets=1: BombSarai visual bank / kamu_jnt1 remains #128-gated.",
+    "The room host validates registration only; behavior markers come from the fixture."
+  ]
+}
