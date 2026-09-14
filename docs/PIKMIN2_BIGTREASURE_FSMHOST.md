@@ -155,6 +155,35 @@ and re-verified, so it is ready to integrate without re-resolving shared files:
   phase=DropItem transitions=4`, `P2_BIGTREASURE_WINDOW size=960x540`, and
   `PASS BIGTREASURE_RUNTIME`.
 
+## Full encounter and wider motion staging
+
+Two additive real-GL slices are merged on
+`opencode/p2-lane32-merged` @ `343c1bab531a22cff73adac0a6a4e1729419903b`
+(base `opencode/p2-lane32-integ` @ `d288dd7b`, clean; conflict-free merge of
+`opencode/p2-lane32-encounter` @ `eb658d23` and
+`opencode/p2-bigtreasure-motion` @ `73b07690`):
+
+- **Full encounter** (`tools/p2_bigtreasure_runtime.cpp`): for each weapon the
+  FSM is driven to Attack, the real element policy runs (elec/water through
+  `P2BigTreasureMapTrace`), a hit is registered on a host-side health sink, the
+  weapon is knocked off; after four knock-offs the boss dies
+  (`killed` -> `keyEvent100` throwupItem+releaseLoozy -> `animEnd`) and
+  `p2_bigtreasure_host_defeat` runs. New marker
+  `P2_BIGTREASURE_ENCOUNTER_PASS knockoffs=4 hits=4 phase=Dead events=5`.
+- **Wider motion staging**: 10 clips staged (`wait1`, `dead` + 8), 8 advanced
+  with the vendored retail player; new marker
+  `P2_BIGTREASURE_MOTION_PASS clips=8 events=146`.
+- Private build `output/native-lane32-merged-build` (`ninja -n` = no work, exe
+  `c94252a8…`); fixture `output/lane32-merged-fixture-01` (`3132d200…`); run
+  `output/lane32-merged-runtime-01/c452924b369c4892b7af09089f6bd8f3` status
+  `passed` with all earlier markers intact. Bundle
+  `native-candidates/bigtreasure-encounter-motion/`.
+
+Limits: fire/gas anchors are placed via `getMinY` (their source tick carries no
+map trace); encounter hits use a host sink standing in for the lane-10
+receiver; motion is bounded by the per-clip source-length cap, not the stage
+budget.
+
 ## Remaining gaps
 
 - **Receiver routing from a real Pikmin attack volume is lane 10.** The damage
