@@ -5,15 +5,16 @@ Reviewable native patches for lane 01, extracted from the private worktree
 Native origin was not pushed.
 
 - Base: `f14c6851473ac1161be56c8b98f4f905232f3635` (clean)
-- Head: `b667eec9`
+- Head: `e6d55224`
   - `0001` = `c2ce9216` lane08 Armor sampled-clock event migration (#431)
   - `0002` = `b667eec9` lane09 camera-facing billboard flag + draw (#429)
+  - `0003` = `e6d55224` lane09 full 4x4 pivot+facing composition probe (#429)
 
-Apply on the maintained native pair; both touch shared renderer/event semantics
+Apply on the maintained native pair; all touch shared renderer/event semantics
 and need #186 review before export.
 
 ```powershell
-git am native-candidates/lanes89-next/0001-*.patch native-candidates/lanes89-next/0002-*.patch
+git am native-candidates/lanes89-next/0001-*.patch native-candidates/lanes89-next/0002-*.patch native-candidates/lanes89-next/0003-*.patch
 ```
 
 Private build evidence (not committed):
