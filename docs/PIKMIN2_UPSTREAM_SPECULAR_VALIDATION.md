@@ -16,8 +16,10 @@ cherry-picked onto the lane branch `opencode/p2-lanes789-native`:
 | `01b15dea` | `gl: GX_AF_SPEC es 0, no 2, y el especular es un cociente` | `pc_port/gl/pc_gfx.cpp` |
 | `413f9251` | `gl: implementar GXInitSpecularDir de verdad` | `pc_port/gl/pc_gfx.cpp` |
 
-Candidate lane HEAD `eb7c911a`; base `f9e139d8`. Integration of GL/shared
-renderer changes is owned by lane 01 and needs #186 review.
+Candidate lane HEAD for these two commits `eb7c911a`; base `f9e139d8` (the
+lane branch later carries the #397 rebind candidates to `b185ff89`).
+Integration of GL/shared renderer changes is owned by lane 01 and needs #186
+review.
 
 ### What the fixes correct
 
@@ -61,8 +63,16 @@ beneficiary.
   `TEV specialisation: on`): the engine carrying both specular fixes rendered a
   960x540 scene to `PASS P2_LIFECYCLE_RUNTIME`, exit 0, with no GL error. This
   proves the fixed renderer runs, **not** that a specular highlight changed.
-  Measuring the specular contribution on a real P2 material is **UNTESTED**
-  pending the Queen two-stage fixture. Repro (from #399):
+- **BLOCKED for the actual specular contribution.** The fixed branch can only be
+  measured on a material that emits a specular COLOR1 channel. That is the
+  #399 Empress Bulblax two-stage path, which needs its prepared bank and
+  sidecar. On this host the available Queen artifacts are the display bank
+  (`output/bulblax-bank2-run2/Queen`, `output/bulblax-arena-profile-01`) and the
+  source BTK (`output/bulblax-run1/Queen/queenchappy_model.btk`); the enabling
+  `p2-queen-specular.txt` sidecar / UV1-patched bank and the
+  `scripts/pikmin2_queen_specular_fixture.cpp` are not staged. Required input:
+  the #399 stage tool (`experimental/pikmin2_queen_specular*` on
+  `codex/p2-queen-specular`) plus a hash-verified Bulblax import root. Repro:
 
   ```powershell
   py -3.12 -m experimental.pikmin2_queen_specular --imported <import-root> `
