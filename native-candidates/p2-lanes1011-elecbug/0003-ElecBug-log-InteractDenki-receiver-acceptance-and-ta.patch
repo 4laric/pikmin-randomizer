@@ -1,0 +1,53 @@
+From d345b108da58bb8501290068dd327574f9bdcae6 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 09:27:16 -0400
+Subject: [PATCH 3/4] ElecBug: log InteractDenki receiver acceptance and target
+ reaction state
+
+---
+ pc_port/pc_p2_elecbug.cpp | 18 ++++++++++++------
+ 1 file changed, 12 insertions(+), 6 deletions(-)
+
+diff --git a/pc_port/pc_p2_elecbug.cpp b/pc_port/pc_p2_elecbug.cpp
+index 47cc38f6..5ec2d5f2 100644
+--- a/pc_port/pc_p2_elecbug.cpp
++++ b/pc_port/pc_p2_elecbug.cpp
+@@ -34,6 +34,7 @@
+ #include "teki.h"
+ #include "Interactions.h"
+ #include "Piki.h"
++#include "PikiState.h"
+ #include "PikiMgr.h"
+ #include "Navi.h"
+ #include "NaviMgr.h"
+@@ -369,9 +370,11 @@ bool pc_p2_elecbug_pressed(BTeki* teki, Creature* presser) {
+             } else {
+                 Vector3f dir(piki->getPosition().x - teki->getPosition().x, 0.0f,
+                              piki->getPosition().z - teki->getPosition().z);
+-                piki->stimulate(InteractDenki(teki, 1.0f, &dir));
+-                std::printf("P2_ELECBUG_PRESS_DENKI generator=%u source_id=28 pikmin=1 target=%d\n",
+-                            genOf(teki), species);
++                const bool accepted = piki->stimulate(InteractDenki(teki, 1.0f, &dir));
++                std::printf("P2_ELECBUG_PRESS_DENKI generator=%u source_id=28 pikmin=1 target=%d accepted=%d "
++                            "target_state=%d(%s)\n",
++                            genOf(teki), species, int(accepted), piki->getState(),
++                            piki->getState() == PIKISTATE_DenkiDying ? "DenkiDying" : "other");
+                 std::printf("P2_ELECBUG_PRESS_SHOCK generator=%u source_id=28 pikmin=1 color=%s\n",
+                             genOf(teki), colorName(piki->mColor));
+             }
+@@ -612,9 +615,12 @@ void pc_p2_elecbug_update(BTeki* actor) {
+                 s.shockedThisDischarge = true;
+                 const Vector3f target = piki->getPosition();
+                 Vector3f dir(target.x - pos.x, 0.0f, target.z - pos.z);
+-                piki->stimulate(InteractDenki(actor, 1.0f, &dir));
+-                std::printf("P2_ELECBUG_DENKI generator=%u source_id=28 emitter=sweep target=%d shockable=1\n",
+-                            generator, pc_p2_species(piki));
++                const bool accepted = piki->stimulate(InteractDenki(actor, 1.0f, &dir));
++                const int targetState = piki->getState();
++                std::printf("P2_ELECBUG_DENKI generator=%u source_id=28 emitter=sweep target=%d "
++                            "accepted=%d target_state=%d(%s)\n",
++                            generator, pc_p2_species(piki), int(accepted), targetState,
++                            targetState == PIKISTATE_DenkiDying ? "DenkiDying" : "other");
+                 std::printf("P2_ELECBUG_SHOCK generator=%u pikmin=1 color=%s\n", generator,
+                             colorName(piki->mColor));
+                 std::fflush(stdout);

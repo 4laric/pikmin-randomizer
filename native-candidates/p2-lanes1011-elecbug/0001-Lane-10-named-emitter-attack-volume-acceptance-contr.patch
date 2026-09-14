@@ -1,0 +1,82 @@
+From 058b67fc09c888b6b2d7b292cbb6f4ad2cbb6fa0 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 09:09:17 -0400
+Subject: [PATCH 1/4] Lane 10: named emitter/attack-volume acceptance contract
+ + gate (#170/#408)
+
+---
+ pc_port/pc_p2_hazard_emitter.h   | 19 ++++++++++++++++
+ tools/test_p2_hazard_emitter.cpp | 38 ++++++++++++++++++++++++++++++++
+ 2 files changed, 57 insertions(+)
+ create mode 100644 pc_port/pc_p2_hazard_emitter.h
+ create mode 100644 tools/test_p2_hazard_emitter.cpp
+
+diff --git a/pc_port/pc_p2_hazard_emitter.h b/pc_port/pc_p2_hazard_emitter.h
+new file mode 100644
+index 00000000..53cdd581
+--- /dev/null
++++ b/pc_port/pc_p2_hazard_emitter.h
+@@ -0,0 +1,19 @@
++#pragma once
++#include "pc_p2_hazard_reaction.h"
++
++// Lane 10 (receivers) emitter / attack-volume decision contract (#170/#408).
++//
++// A family emitter (the ElecBug discharge sweep, a dweevil discharge, a gas
++// pipe) declares the element it delivers and asks this helper whether a
++// candidate Pikmin would be affected. The helper is the *same* table the Pikmin
++// receiver consults, so an emitter and its receiver cannot disagree about
++// immunity. `false` means the emitter must not deliver the interaction
++// (immune); `true` means the receiver will transit the named reaction state.
++//
++// Only the P2 electric/gas elements are routed through this table; fire and
++// water emitters keep their own P1 receivers and do not use this helper.
++// `gasInvincible` is the narrow `Piki::gasInvicible()` gate and is ignored for
++// the electric element.
++inline bool p2_emitter_accepts(int species, int hazard, bool gasInvincible) {
++    return p2_hazard_reaction(species, hazard, gasInvincible) != P2HazardReactionNone;
++}
+diff --git a/tools/test_p2_hazard_emitter.cpp b/tools/test_p2_hazard_emitter.cpp
+new file mode 100644
+index 00000000..fe922473
+--- /dev/null
++++ b/tools/test_p2_hazard_emitter.cpp
+@@ -0,0 +1,38 @@
++// Lane 10 emitter/attack-volume acceptance table (#170/#408).
++//
++// Pins that the emitter target decision is the receiver decision: an emitter
++// must reject exactly the species `InteractDenki`/`InteractGas` reject, so a
++// family emitter cannot disagree with the lane-10 receiver about immunity.
++// Header-only, following tools/test_p2_hazard_reaction.cpp.
++#include "pc_p2_hazard_emitter.h"
++
++#include <cassert>
++#include <cstdio>
++
++int main() {
++    // Electric (InteractDenki): source rejects only Yellow and Bulbmin.
++    assert(!p2_emitter_accepts(P2SpeciesYellow, P2HazardElectric, false));
++    assert(!p2_emitter_accepts(P2SpeciesBulbmin, P2HazardElectric, false));
++    assert(p2_emitter_accepts(P2SpeciesBlue, P2HazardElectric, false));
++    assert(p2_emitter_accepts(P2SpeciesRed, P2HazardElectric, false));
++    assert(p2_emitter_accepts(P2SpeciesPurple, P2HazardElectric, false));
++    assert(p2_emitter_accepts(P2SpeciesWhite, P2HazardElectric, false));
++    // The gas gate is irrelevant to the electric element.
++    assert(!p2_emitter_accepts(P2SpeciesYellow, P2HazardElectric, true));
++
++    // Gas (InteractGas): source rejects White and Bulbmin, and a gas-invincible
++    // Piki is rejected before the species gate.
++    assert(!p2_emitter_accepts(P2SpeciesWhite, P2HazardGas, false));
++    assert(!p2_emitter_accepts(P2SpeciesBulbmin, P2HazardGas, false));
++    assert(p2_emitter_accepts(P2SpeciesRed, P2HazardGas, false));
++    assert(p2_emitter_accepts(P2SpeciesYellow, P2HazardGas, false));
++    assert(!p2_emitter_accepts(P2SpeciesRed, P2HazardGas, true));
++
++    // An unmapped species id falls through to the reaction exactly as the
++    // receiver does (only a valid immune capability rejects), so the emitter
++    // and receiver stay in lockstep. See test_p2_hazard_reaction.cpp.
++    assert(p2_emitter_accepts(99, P2HazardElectric, false));
++
++    std::puts("PASS P2_HAZARD_EMITTER");
++    return 0;
++}

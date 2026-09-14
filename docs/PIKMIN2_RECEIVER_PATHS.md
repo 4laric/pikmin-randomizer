@@ -135,6 +135,17 @@ Limitations: the subject is the P1 Chappy placement vehicle, not source
 `OtakaraBase` behavior; the invincibility probe is an explicit injected
 intervention; and the elemental receiver boundary is source evidence only.
 
+## 6. Natural emitter follow-up (lane 10 + 11 + lane 14 ElecBug)
+
+The proofs above deliver `InteractDenki`/`InteractGas` from the fixture. The
+next-wave gate requires the interaction to come from an actual family emitter.
+`pc_port/pc_p2_hazard_emitter.h` now names the shared emitter/attack-volume
+decision (`p2_emitter_accepts`, the same `p2_hazard_reaction` table the receiver
+uses), and the ElecBug Discharge/ChildDischarge sweep consumes it instead of
+`InteractKill`. The natural runtime chain — emitter -> real receiver ->
+`PIKISTATE_DenkiDying` -> death, with Yellow/Bulbmin rejected — is recorded in
+[PIKMIN2_ELECBUG_DENKI_RUNTIME.md](PIKMIN2_ELECBUG_DENKI_RUNTIME.md).
+
 ## 6. Capability-matrix routing (lanes 10/11 follow-up)
 
 The Pikmin fire/bubble receivers now reject an immune species through the
