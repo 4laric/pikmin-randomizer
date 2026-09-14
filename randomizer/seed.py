@@ -42,7 +42,7 @@ class SeedRandom:
         return values
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_targets=None):
     if type(bomb_rock_weight) is not int or not 0 <= bomb_rock_weight <= 10: raise ValueError("bomb_rock_weight must be 0..10")
     if type(bomb_trap_weight) is not int or not 0 <= bomb_trap_weight <= 10: raise ValueError("bomb_trap_weight must be 0..10")
     if type(progg_trap_weight) is not int or not 0 <= progg_trap_weight <= 10: raise ValueError("progg_trap_weight must be 0..10")
@@ -73,6 +73,15 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         collection_checks = miniboss_enemies = True
     if type(combined_captain) is not bool: raise ValueError("invalid combined_captain")
     if combined_captain: collection_checks = True
+    if type(p2_enemies) is not bool: raise ValueError("invalid p2_enemies")
+    if p2_targets is not None:
+        if not isinstance(p2_targets, (list, tuple)) or any(not isinstance(t, str) for t in p2_targets):
+            raise ValueError("p2_targets must be a sequence of binding target strings")
+    if p2_enemies:
+        if legacy_checks: raise ValueError("P2 enemies require modern checks")
+        if enemy_shuffle or per_spawn_enemies or group_spawn_enemies or miniboss_enemies or campaign_enemies:
+            raise ValueError("P2 enemies are mutually exclusive with P1 enemy layouts")
+        collection_checks = True
     if goal_mode not in ("repairs", "emperor_bulblax"): raise ValueError("invalid goal_mode")
     if goal_mode == "emperor_bulblax": collection_checks = True
     if progressive_color_stats: permanent_checks = True  # 36 upgrades need the larger check pool.
@@ -185,6 +194,19 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         result["death_link"] = True
         result["death_link_pikmin"] = death_link_pikmin
         result["capabilities"].append("death-link-v1")
+    if p2_enemies:
+        # Opt-in experimental bridge: the admitted cohort comes from lane 02, the
+        # ordered binding targets from lane 04. Fail closed while nothing is
+        # admitted. Kept behind a lazy import so ordinary seeds never load the
+        # experimental roster.
+        from experimental.pikmin2_enemy_roster import load_and_validate
+        from experimental.pikmin2_seed_bridge import resolve_admitted_layout
+        if result['schema'] != 9:
+            raise ValueError("P2 enemies require the modern schema-9 catalog")
+        if p2_targets is None:
+            raise ValueError("P2 enemies require lane 04 binding targets")
+        result['p2_layout'] = resolve_admitted_layout(result['seed'], slot, p2_targets, load_and_validate())
+        result['capabilities'].append('p2-enemy-bridge-v1')
     validate(result)
     return result
 
@@ -301,6 +323,19 @@ def validate(m):
         validate_upgrade_limits(m['stat_upgrade_counts'])
         if not m.get('progressive_color_stats') or 'progressive-color-stats-v2' not in m.get('capabilities', []):
             raise ValueError('custom upgrade counts require progressive stats v2')
+    if type(m) is dict and 'p2_layout' in m:
+        expected.add('p2_layout')
+        from experimental.pikmin2_enemy_roster import load_and_validate
+        from experimental.pikmin2_seed_bridge import SeedBridgeError, validate_layout as validate_p2_layout
+        if (m.get('schema') != 9 or m.get('enemy_mask') != 0
+                or any(key in m for key in ('spawn_layout', 'group_layout', 'campaign_layout'))):
+            raise ValueError('p2_layout is mutually exclusive with P1 enemy layouts and requires schema 9')
+        if 'p2-enemy-bridge-v1' not in m.get('capabilities', []):
+            raise ValueError('p2_layout requires the p2-enemy-bridge-v1 capability')
+        try:
+            validate_p2_layout(m['p2_layout'], load_and_validate())
+        except SeedBridgeError as exc:
+            raise ValueError(f'invalid p2_layout: {exc}')
     if type(m) is not dict or set(m) != expected:
         raise ValueError("manifest fields do not match schema 1")
     if type(m["schema"]) is not int or m["schema"] not in (1, 2, 3, 4, 5, 6, 7, 8, 9):
@@ -361,6 +396,7 @@ def validate(m):
         fixed['capabilities'] += ['miniboss-slots-v1']
     if m.get("goal_mode") == "emperor_bulblax": fixed["capabilities"].append("emperor-goal-v1")
     if m.get("death_link"): fixed["capabilities"].append("death-link-v1")
+    if m.get('p2_layout'): fixed['capabilities'].append('p2-enemy-bridge-v1')
     for key, value in fixed.items():
         if type(m[key]) is not type(value) or m[key] != value:
             raise ValueError(f"unsupported {key}: {m[key]!r}")
