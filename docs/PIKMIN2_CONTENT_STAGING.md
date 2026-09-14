@@ -6,6 +6,10 @@ consumer of family extractors, not a replacement for them: family owners keep
 their extractors, and lane 09 owns generic conversion. No network and no retail
 assets are used or committed.
 
+Lane 05 second slice adds an offline preflight (`verify_manifest`) and a
+read-only dry-run (`plan`) plus strict manifest I/O/construction helpers, so a
+caller can validate and plan an install before any destination is created.
+
 Module: `experimental/pikmin2_staging.py`
 Tests: `tests/test_pikmin2_staging.py`
 
@@ -43,6 +47,62 @@ and validates JSON; `validate_manifest(mapping)` normalizes a mapping in place-f
 fashion (returns a fresh dict). Unknown schema, bad version, bad shape, unsupported
 kind, bad digest and unsafe destinations raise `ValueError` with the offending id
 or value.
+
+An optional string `notes` field is preserved by validation when present.
+
+## Manifest I/O and construction
+
+- `load_manifest(path)` reads strict JSON and validates it; malformed JSON raises
+  `ValueError`.
+- `dump_manifest(manifest, path)` validates, then writes canonical
+  (2-space indented, LF-terminated) JSON and returns the validated mapping. It
+  creates the parent directory but never touches a destination tree.
+- `build_manifest(version, entries, notes='')` wraps an explicit list of entry
+  dicts into a validated manifest. The filesystem is never scanned for assets;
+  callers supply every entry. Duplicate ids/destinations, unsupported kinds,
+  malformed entries and non-string notes are rejected by `validate_manifest`.
+
+`load_manifest(dump_manifest(m, p)) == validate_manifest(m)` is a strict
+round-trip.
+
+## Preflight and dry-run
+
+`verify_manifest(manifest, base=None) -> report`
+
+Offline preflight. Validates the manifest (malformed input still raises
+`ValueError`), then checks that every source exists and its bytes hash to the
+declared `sha256`. It reads only sources and never consults or creates any
+destination. The report is deterministic:
+
+```json
+{
+  "schema": 1,
+  "version": 3,
+  "ok": true,
+  "entries": [
+    {"id": "...", "destination": "...", "source": "...",
+     "sha256": "...", "found_sha256": "..." | null,
+     "status": "ok|missing_source|hash_mismatch"}
+  ],
+  "summary": {"entries": 1, "ok": 1, "missing_source": 0, "hash_mismatch": 0}
+}
+```
+
+`plan(manifest, destination, base=None) -> report`
+
+Read-only dry-run against `destination`. For each entry it reports the action
+staging would take:
+
+- `stage` — no destination file present.
+- `skip` — an identical destination (same `sha256`) already exists.
+- `conflict` — a destination exists with a different hash or is not a regular
+  file.
+
+Each row also carries `planned_temp` (the temp name the atomic write will use,
+`<name>.<pid>.<index>.staging`) and `interrupted_temp`/`interrupted_temps` for any
+leftover `*.staging` temp matching the target. The report includes the full
+`interrupted` list under the destination and `ok` is true only when no entry
+conflicts. `plan` never creates, rewrites or removes anything.
 
 ## Staging behavior
 
@@ -82,6 +142,21 @@ file's directory for a path input, otherwise the current directory.
 `staged_digest` is deterministic for a manifest regardless of run or cache state.
 The receipt is machine-readable and is not part of the staged set.
 
+## Command line
+
+The module exposes a small argparse entry point over a manifest path and an
+optional destination:
+
+```powershell
+py -3.12 -m experimental.pikmin2_staging verify MANIFEST [--base DIR]
+py -3.12 -m experimental.pikmin2_staging plan   MANIFEST DESTINATION [--base DIR]
+py -3.12 -m experimental.pikmin2_staging stage  MANIFEST DESTINATION [--base DIR] [--receipt PATH]
+```
+
+`verify` and `plan` print the JSON report and exit non-zero when `ok` is false;
+`stage` prints the receipt. `--base` overrides the source base directory (it
+defaults to the manifest file's directory).
+
 ## Validation
 
 ```powershell
@@ -90,13 +165,24 @@ py -3.12 -m pytest tests/test_pikmin2_staging.py -q
 
 Covers happy-path staging plus receipt, cached replay no-op, missing source, wrong
 source hash, interrupted-staging detection/repair, path traversal, duplicate
-id/destination, malformed schema/manifest and deterministic receipt/digest. All
+id/destination, malformed schema/manifest and deterministic receipt/digest. The
+second slice adds verify success/missing-source/hash-mismatch, plan
+stage/skip/conflict, plan read-only-ness and interrupted-temp reporting, manifest
+JSON round-trip and `build_manifest` construction/duplicate rejection. All
 sources are synthetic temp files.
 
 ## Limitations
 
 - One source per entry; `sha256` is both source and destination digest. Multi-file
   merge records would need a schema bump.
+- `verify_manifest` and `plan` are point-in-time: a source or destination can
+  change between a successful preflight and the actual `stage`. `stage` re-checks
+  every source hash before writing, so a later mismatch still fails closed.
+- `planned_temp` reports the naming scheme with the current process id and entry
+  index; `stage` uses a monotonic counter for the sequence component, so the exact
+  name may differ while sharing the prefix/suffix.
+- `verify_manifest` reports at the manifest level only; it does not enforce a
+  destination base or any run-tree boundary.
 - Staging is fail-fast per manifest but not transactional across entries; on a
   mid-run source change it stops without corrupting any completed destination.
 - Destination is not enforced to live under `output/`; callers select the ignored
