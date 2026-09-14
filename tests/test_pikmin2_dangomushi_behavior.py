@@ -21,6 +21,8 @@ GOOD_LOG = '\n'.join([
     'P2_DANGOMUSHI_TURN_WINDOW generator=376003 frame=32.4 stickable=1 invulnerable=0',
     'P2_DANGOMUSHI_TURN_WINDOW generator=376003 frame=108.9 stickable=0 invulnerable=1',
     'P2_DANGOMUSHI_HAZARD generator=376003 rocks=10 lifetime=30.0 egg=1',
+    'P2_DANGOMUSHI_DAMAGE_REJECTED generator=376003 stickable=0 invulnerable=1 state=attack',
+    'P2_DANGOMUSHI_DAMAGE_ACCEPTED generator=376003 stickable=1 state=turn',
     'P2_DANGOMUSHI_STATE generator=376003 state=recover',
     'P2_DANGOMUSHI_STATE generator=376003 state=flick',
     'P2_DANGOMUSHI_STATE generator=376003 state=wait',
@@ -61,9 +63,28 @@ class DangoMushiBehaviorTests(unittest.TestCase):
         self.assertTrue(result['checks']['hit_in_roll_window'])
         self.assertEqual(result['checks']['hit_pikmin'], 1)
         self.assertTrue(result['checks']['turn_window'])
+        self.assertTrue(result['checks']['damage_rejected'])
+        self.assertTrue(result['checks']['damage_accepted'])
+        self.assertTrue(result['checks']['window_applied'])
         self.assertTrue(result['checks']['hazard_rain'])
         self.assertTrue(result['checks']['hazard_egg'])
         self.assertGreater(result['motion_spread'], 5.0)
+
+    def test_missing_damage_gate_fails(self):
+        stripped = GOOD_LOG.replace(
+            'P2_DANGOMUSHI_DAMAGE_REJECTED generator=376003 stickable=0 invulnerable=1 '
+            'state=attack\n', '')
+        result = validate(stripped, code=0)
+        self.assertFalse(result['checks']['window_applied'])
+        self.assertFalse(result['passed'])
+
+    def test_damage_accepted_is_informational(self):
+        # DAMAGE_ACCEPTED is not required: a run may not land an in-window attack.
+        stripped = GOOD_LOG.replace(
+            'P2_DANGOMUSHI_DAMAGE_ACCEPTED generator=376003 stickable=1 state=turn\n', '')
+        result = validate(stripped, code=0)
+        self.assertFalse(result['checks']['damage_accepted'])
+        self.assertTrue(result['passed'])
 
     def test_missing_turn_window_fails(self):
         stripped = GOOD_LOG.replace(
