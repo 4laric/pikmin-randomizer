@@ -205,3 +205,18 @@ class CliTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IntegrationBudgetGuards(unittest.TestCase):
+    def test_missing_exit_cannot_pass(self):
+        self.assertEqual(pb.evaluate(manifest(capture={}), budgets())["status"], qa.FAIL)
+
+    def test_invalid_measurements_cannot_pass(self):
+        for value in (float("nan"), float("inf"), -1, True, "12"):
+            with self.subTest(value=value):
+                self.assertEqual(pb.evaluate(manifest(mean=value), budgets())["status"], qa.FAIL)
+
+    def test_nonfinite_budgets_rejected(self):
+        for value in (float("nan"), float("inf")):
+            with self.assertRaises(pb.AcceptanceError):
+                pb.validate_budgets(budgets(target_mean_frame_ms_max=value))

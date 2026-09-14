@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -71,7 +72,7 @@ def validate_budgets(data):
                   "revision": str(data.get("revision", ""))}
     for key in BUDGET_KEYS:
         value = data.get(key)
-        if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
+        if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value) or value <= 0:
             raise AcceptanceError(f"budget {key} must be a positive number")
         normalized[key] = value
     if ACTOR_BUDGET_KEY in data:
@@ -129,7 +130,7 @@ def evaluate(manifest, budgets):
     budgets = validate_budgets(budgets)
     measured = measurements_from_manifest(manifest)
     capture = manifest.get("capture") or {}
-    capture_invalid = (capture.get("exit_code") not in (0, None)
+    capture_invalid = (type(capture.get("exit_code")) is not int or capture.get("exit_code") != 0
                        or bool(capture.get("timed_out")))
 
     def resolve(name, value, budget):
@@ -137,6 +138,9 @@ def evaluate(manifest, budgets):
             return _metric(name, value, budget, qa.FAIL, "capture did not complete cleanly")
         if value is None:
             return _metric(name, None, budget, qa.BLOCKED, "measurement was not recorded")
+        if (not isinstance(value, (int, float)) or isinstance(value, bool)
+                or not math.isfinite(value) or value < 0):
+            return _metric(name, value, budget, qa.FAIL, "invalid measurement")
         if value > budget:
             return _metric(name, value, budget, qa.FAIL, f"{value} exceeds budget {budget}")
         return _metric(name, value, budget, qa.PASS, f"{value} within budget {budget}")
