@@ -277,13 +277,13 @@ class FloraAssetsTests(unittest.TestCase):
 
     def test_converter_tolerances_are_scoped(self):
         # #405/#429: Pelplant is the only flora with an opt-in singular
-        # scale/normal policy and HikariKinoko the only one with the billboard
-        # static fallback; every other identity keeps strict converter defaults.
+        # scale/normal policy and HikariKinoko the only one with the camera-facing
+        # billboard path; every other identity keeps strict converter defaults.
         self.assertEqual(POSE_TOLERANCES,
                          {'Pelplant': {'singular_scale': 'allow'}})
         self.assertEqual(TOLERANCES, {
             'Pelplant': {'singular_normal': 'transpose-adjugate-zero'},
-            'HikariKinoko': {'billboard': 'static', 'missing_normals': 'compute'},
+            'HikariKinoko': {'billboard': 'native', 'missing_normals': 'compute'},
         })
         self.assertEqual(set(POSE_TOLERANCES), {'Pelplant'})
         for strict in PROP_FLORA:
