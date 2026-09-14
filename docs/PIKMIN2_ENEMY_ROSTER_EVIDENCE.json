@@ -1,0 +1,13 @@
+{
+  "schema": "p2-enemy-roster-1-evidence",
+  "note": "Eligibility overlay for the canonical P2 roster. One key per source ID. Defaults to denied when absent; raise eligibility only with reviewed six-gate evidence. See docs/PIKMIN2_ENEMY_ROSTER.md.",
+  "fields": {
+    "native_module": "engine/pc_port module implementing the identity, or null",
+    "owner_lane": "family/shared lane that owns the identity",
+    "gates": "map of the six gate IDs to PASS/FAIL/BLOCKED/UNTESTED/N/A",
+    "eligibility": "denied | candidate | admitted | excluded",
+    "eligibility_reason": "short justification",
+    "notes": "free-form review notes"
+  },
+  "entries": {}
+}

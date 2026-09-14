@@ -1,0 +1,119 @@
+# Canonical P2 enemy roster and eligibility ledger (lane 02, #438)
+
+This is the per-source-ID ledger frozen by the [fan-out guide](PIKMIN2_IMPLEMENTATION_FANOUT.md)
+lane 02. Lanes 03 (seed/native bridge), 04 (placement), 05 (content install) and
+06 (rewards) consume this schema; family lanes attach gate evidence to it. This
+document is the agreed interface; do not fork a competing representation.
+
+## Provenance and regeneration
+
+Numeric identities and per-enemy facts come from the projectPiki/pikmin2
+decompilation, inspected read-only:
+
+- `include/Game/enemyInfo.h` → `EnemyTypeID::EEnemyTypeID` (IDs 0–101, common names)
+- `src/plugProjectYamashitaU/enemyInfo.cpp` → `Game::gEnemyInfo[]` (parent, flags,
+  resource names, child birth dependency, bitter drop type)
+
+The committed snapshot `docs/PIKMIN2_ENEMY_ROSTER.json` is **generated**; never
+hand-edit it. Regenerate after the source revision changes and commit the diff:
+
+```powershell
+py -3.12 scripts/generate_pikmin2_enemy_roster.py
+py -3.12 scripts/generate_pikmin2_enemy_roster.py --enemyinfo-h <path> --enemyinfo-cpp <path> --source-revision <rev>
+```
+
+The audit verifies the committed snapshot against a live checkout, cross-checks
+`docs/PIKMIN2_CONTENT_INVENTORY.json` and the native modules, and can write a
+machine-readable report:
+
+```powershell
+py -3.12 scripts/audit_pikmin2_roster.py --source native/pikmin2-research --output output/lane02/roster-audit.json
+py -3.12 -m pytest tests/test_pikmin2_enemy_roster.py -q
+```
+
+## Snapshot schema (`p2-enemy-roster-1`)
+
+One record per source ID, including aliases, helpers and non-spawnable bases:
+
+| Field | Meaning |
+|---|---|
+| `source_id` | decomp `EnemyTypeID` (stable, 0–101) |
+| `enum_name` | decomp enum suffix, e.g. `Sokkuri`, `Rkabuto` |
+| `common_name` | retail English name from the header comment |
+| `parent_name`/`parent_id` | manager/base identity this ID shares a bank with, or null |
+| `spawnable` | `EFlag_CanBeSpawned` |
+| `use_own_id` | `EFlag_UseOwnID` (distinct manager ID rather than the parent) |
+| `has_no_info` | `EFlag_HasNoInfo` (not tracked in Piklopedia/bestiary) |
+| `day_end_max` | day-end takeoff cap (1/2/4), else null |
+| `drop_type` | `BDT_*` bitter drop tier |
+| `child_name`/`child_id`/`child_count` | dependent birth (e.g. Queen→Baby×50, Kabuto→Stone×5) |
+| `assets` | `model`/`anim`/`anim_mgr`/`texture`/`param`/`collision`/`stone` resource names |
+| `in_info_table` | whether `gEnemyInfo[]` has a row (2 enum IDs do not) |
+
+Classification is **computed on load**, not stored, so regeneration cannot drift:
+`enemy`, `boss`, `boss_helper`, `plant`, `hazard`, `projectile`, `nest`,
+`manager_base`, `non_spawnable`.
+
+## Eligibility overlay (`p2-enemy-roster-1-evidence`)
+
+`docs/PIKMIN2_ENEMY_ROSTER_EVIDENCE.json` holds one key per source ID. Absent
+identities are **denied** by default — source facts never imply gameplay PASS.
+
+```json
+{
+  "schema": "p2-enemy-roster-1-evidence",
+  "entries": {
+    "79": {
+      "native_module": "pc_p2_sokkuri",
+      "owner_lane": "14",
+      "gates": {"identity_spawn": "PASS", "movement_animation": "PASS", "attacks_receivers": "UNTESTED", "death_corpse": "BLOCKED", "transport_reward": "BLOCKED", "cleanup_reentry": "UNTESTED"},
+      "eligibility": "candidate",
+      "eligibility_reason": "native FSM present; lifecycle gates open"
+    }
+  }
+}
+```
+
+Rules enforced by `validate_roster()`:
+
+- `eligibility` ∈ `denied | candidate | admitted | excluded`.
+- Gate keys are exactly the six arena gates; statuses ∈ `PASS | FAIL | BLOCKED | UNTESTED | N/A`.
+- `admitted` requires a non-`FAIL`/non-`BLOCKED`/non-`UNTESTED` status for **all six** gates.
+- Parent/child references must resolve; IDs and enum names are unique.
+
+The six gates are `identity_spawn`, `movement_animation`, `attacks_receivers`,
+`death_corpse`, `transport_reward`, `cleanup_reentry`. Family-complete and
+production-eligible remain separate columns: an identity can be mechanically
+complete but still `denied` for the randomizer pool until placement/content/reward
+contracts (lanes 04/05/06) are satisfied.
+
+## Current coverage
+
+Generated from source revision `632af93787b9c95b63f0c13be32b161375ce3a96`:
+
+- **102 identities**, **64 randomizable candidates** (51 `enemy`, 13 `boss`).
+- Non-candidates: 24 `plant`, 2 `boss_helper` (Baby, Tyre), 3 `nest`, 3 `hazard`,
+  4 `projectile`, 2 `manager_base` (Pom, UmiMushiBase), 2 enum-only (`JigumoNest`,
+  `PanModokiNest` have no `gEnemyInfo[]` row).
+- `docs/PIKMIN2_CONTENT_INVENTORY.json` yields 149 `enemy_ids` tokens; the audit
+  resolves every one — 77 exact IDs, 9 `$N` generator variants, 58 treasure-carrier
+  aliases (`Enum_suffix`) — and 0 unrecognized tokens.
+
+## Consumer contract
+
+- **03 (seed/native bridge)** keys saved choices on `source_id` and stores the
+  roster schema/revision with the seed; unknown or `manager_base`/`non_spawnable`
+  IDs are rejected, never silently substituted.
+- **04 (placement)** records legal slots/terrain per `source_id` and may only emit
+  IDs whose `classification` is `enemy` or `boss`.
+- **05 (install)** stages assets by `enum_name`/`source_id` and must not stage
+  `manager_base`/`non_spawnable` identities as independent actors.
+- **06 (rewards)** reads `drop_type`/`child_*` rather than hard-coding corpses.
+
+## Ownership
+
+- Schema, generator, audit and tests: lane 02 (#438).
+- Evidence overlay rows: the owning family/shared lane updates only its own IDs and
+  requests review for any shared-semantics change; lane 01 reconciles.
+- Regeneration is lane 02's; other lanes may open a PR but must not hand-edit the
+  snapshot.
