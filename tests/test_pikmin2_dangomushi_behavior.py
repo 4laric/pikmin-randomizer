@@ -18,6 +18,9 @@ GOOD_LOG = '\n'.join([
     'P2_DANGOMUSHI_ROLL generator=376003 frame=23.0',
     'P2_DANGOMUSHI_HIT generator=376003 pikmin=1',
     'P2_DANGOMUSHI_STATE generator=376003 state=turn',
+    'P2_DANGOMUSHI_TURN_WINDOW generator=376003 frame=32.4 stickable=1 invulnerable=0',
+    'P2_DANGOMUSHI_TURN_WINDOW generator=376003 frame=108.9 stickable=0 invulnerable=1',
+    'P2_DANGOMUSHI_HAZARD generator=376003 rocks=10 lifetime=30.0 egg=1',
     'P2_DANGOMUSHI_STATE generator=376003 state=recover',
     'P2_DANGOMUSHI_STATE generator=376003 state=flick',
     'P2_DANGOMUSHI_STATE generator=376003 state=wait',
@@ -57,7 +60,25 @@ class DangoMushiBehaviorTests(unittest.TestCase):
         self.assertEqual(result['checks']['roll_frames'], [23.0])
         self.assertTrue(result['checks']['hit_in_roll_window'])
         self.assertEqual(result['checks']['hit_pikmin'], 1)
+        self.assertTrue(result['checks']['turn_window'])
+        self.assertTrue(result['checks']['hazard_rain'])
+        self.assertTrue(result['checks']['hazard_egg'])
         self.assertGreater(result['motion_spread'], 5.0)
+
+    def test_missing_turn_window_fails(self):
+        stripped = GOOD_LOG.replace(
+            'P2_DANGOMUSHI_TURN_WINDOW generator=376003 frame=32.4 stickable=1 invulnerable=0\n', ''
+        ).replace(
+            'P2_DANGOMUSHI_TURN_WINDOW generator=376003 frame=108.9 stickable=0 invulnerable=1\n', '')
+        result = validate(stripped, code=0)
+        self.assertFalse(result['checks']['turn_window'])
+        self.assertFalse(result['passed'])
+
+    def test_hazard_over_budget_fails(self):
+        over = GOOD_LOG.replace('rocks=10', 'rocks=11')
+        result = validate(over, code=0)
+        self.assertFalse(result['checks']['hazard_rain'])
+        self.assertFalse(result['passed'])
 
     def test_hit_outside_roll_fails(self):
         outside = GOOD_LOG.replace(

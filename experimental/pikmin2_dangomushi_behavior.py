@@ -145,6 +145,19 @@ def validate(text, code=0):
     if len(positions) >= 2:
         x0, z0 = positions[0]
         spread = max(abs(x - x0) + abs(z - z0) for x, z in positions)
+    # Lane-25 hazard policy markers (#376): the Turn stickable window and the
+    # Rock/Egg rain decisions. Frame 32 is the turn clip loop-start key and 108
+    # is key 3 (docs/PIKMIN2_SNAGRET_CRAWBSTER_AUDIT.md).
+    windows = [(float(f), int(s), int(i)) for f, s, i in re.findall(
+        r'P2_DANGOMUSHI_TURN_WINDOW generator=376003 frame=([\d.]+) '
+        r'stickable=(\d) invulnerable=(\d)', text)]
+    hazards = [(int(r), float(l), int(e)) for r, l, e in re.findall(
+        r'P2_DANGOMUSHI_HAZARD generator=376003 rocks=(\d+) lifetime=([\d.]+) '
+        r'egg=(\d)', text)]
+    window_open = any(s == 1 and i == 0 and 31.0 <= f <= 35.0 for f, s, i in windows)
+    window_close = any(s == 0 and i == 1 and 106.0 <= f <= 112.0 for f, s, i in windows)
+    hazard_rain = bool(hazards) and all(1 <= r <= 10 for r, _, _ in hazards) \
+        and all(28.0 <= l <= 32.0 for _, l, _ in hazards)
     # The source roll window: the attack clip KEYEVENT_4 roll gate is frame 23 and
     # a HIT is only valid while the ball roll is active.
     roll_in_window = bool(rolls) and all(
@@ -179,15 +192,16 @@ def validate(text, code=0):
         hit_pikmin=(hits[0] if hits else 0),
         hit_bounded=0 < len(hits) <= max(1, len(rolls)),
         hit_in_roll_window=hit_in_roll,
+        turn_window=window_open and window_close,
+        hazard_rain=hazard_rain,
+        hazard_egg=(any(e == 1 for _, _, e in hazards) if hazards else False),
         autonomous_motion=spread > 5.0,
         no_extinction=not re.search(r'Extinction', text, re.IGNORECASE),
     )
     return dict(passed=all(v for k, v in checks.items()
-                           if k not in ('roll_frames', 'hit_pikmin')),
+                           if k not in ('roll_frames', 'hit_pikmin', 'hazard_egg')),
                 checks=checks, motion_spread=spread, exit_code=code,
-                unmeasured=['P2 Turn LOOP_START invulnerability window and crash effects',
-                            'falling Rock/Egg child spawner',
-                            'dangomushi.brk material loop',
+                unmeasured=['dangomushi.brk material loop',
                             'P2 InteractPress roll crush (mapped to InteractFlick)',
                             'source wallCallback crash trigger (mapped to territory/crash)',
                             'full action animation bank', 'cleanup/re-entry'],
@@ -195,7 +209,10 @@ def validate(text, code=0):
                              'not production placement evidence.',
                              'Roll contact is a single InteractFlick knockback+damage at the '
                              'first receiver inside the source fp22=100 hit radius, once per roll; '
-                             'the P1 engine has no InteractPress collision callback.'])
+                             'the P1 engine has no InteractPress collision callback.',
+                             'The Turn stickable window is observed from the hazard policy; the '
+                             'P1 host has no EB_Invulnerable flag, so it is not yet applied. '
+                             'Rock/Egg are spawn decisions; real births need lane 20 primitives.'])
 
 
 if __name__ == '__main__':
