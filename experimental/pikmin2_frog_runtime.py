@@ -27,7 +27,7 @@ public:int idle() override {
  float raw_health=actor->mTekiParams->getF(TPF_Life),want_health=registered?pc_p2_frog_param_f(actor,TPF_Life,raw_health):raw_health;
  require(actor->getParameterF(TPF_Life)==want_health,"frog health mismatch (source for registered, P1 for controls)");
  frogs[id-201001]=actor;++count;
- std::printf("P2_FROG_BIRTH id=%u type=%d registered=%d x=%.3f y=%.3f z=%.3f\n",id,type,registered,birth.x,birth.y,birth.z);}
+ std::printf("P2_FROG_BIRTH id=%u type=%d registered=%d life=%.1f visible=%.1f atkrange=%.1f atk=%.1f x=%.3f y=%.3f z=%.3f\n",id,type,registered,actor->getParameterF(TPF_Life),actor->getParameterF(TPF_VisibleRange),actor->getParameterF(TPF_AttackableRange),actor->getParameterF(TPF_AttackPower),birth.x,birth.y,birth.z);}
  require(count==4,"frog roster missing");require(cameraMgr&&cameraMgr->mCamera,"frog camera missing");cameraMgr->mCamera->setTarget(frogs[0]);
  }
  if(observed==80){
@@ -43,8 +43,8 @@ public:int idle() override {
   std::printf("P2_FROG_CLEANUP registered_before=%d cleared=%d reentry=%d\n",before,cleared,reentry);std::fflush(stdout);}
  if(observed==180)cameraMgr->mCamera->setTarget(frogs[1]);
  if(observed==120)capture("frog-live.ppm");if(observed==300)capture("marofrog-live.ppm");
- for(int i=0;i<4;++i){auto* a=frogs[i];if(observed<=360)require(a->isAlive(),"frog unexpectedly died before attack");
- if(observed%15==0&&observed<=360){auto p=a->getPosition();std::printf("P2_FROG_TICK id=%d motion=%d counter=%.4f x=%.4f y=%.4f z=%.4f\n",201001+i,a->mTekiAnimator->getCurrentMotionIndex(),a->mTekiAnimator->getCounter(),p.x,p.y,p.z);}}
+ for(int i=0;i<4;++i){auto* a=frogs[i];if(observed<=360&&!a->isAlive())std::printf("P2_FROG_DIED id=%d health=%.1f\n",201001+i,a->mHealth);if(observed<=360)require(a->isAlive(),"frog unexpectedly died before attack");
+ if(observed%15==0&&observed<=360){auto p=a->getPosition();std::printf("P2_FROG_TICK id=%d motion=%d counter=%.4f health=%.1f x=%.4f y=%.4f z=%.4f\n",201001+i,a->mTekiAnimator->getCurrentMotionIndex(),a->mTekiAnimator->getCounter(),a->mHealth,p.x,p.y,p.z);}}
  if(observed>=360){for(int i=0;i<2;++i)if(!hit[i]&&frogs[i]->isAlive()&&!frogs[i]->getTekiOption(BTeki::TEKI_OPTION_INVINCIBLE)){
  hit[i]=frogs[i]->stimulate(InteractAttack(n,nullptr,10000,false));std::printf("P2_FROG_INJECTED_ATTACK id=%d accepted=%d\n",201001+i,int(hit[i]));}}
  if(observed==450)cameraMgr->mCamera->setTarget(frogs[0]);
@@ -112,9 +112,12 @@ def build(native,build_dir,output,head,resume=False):
 
 def validate(text,code):
  births=re.findall(r'P2_FROG_BIRTH id=(\d+) type=(\d+) registered=(\d+)',text)
+ params=re.findall(r'P2_FROG_BIRTH id=(\d+) type=\d+ registered=(\d+) life=([\d.]+) visible=([\d.]+) atkrange=([\d.]+) atk=([\d.]+)',text)
  draws=re.findall(r'P2_FROG_DRAW species=(Frog|MaroFrog) corpse=([01]) clip=(\w+) pose=(\d+)',text)
  natural=re.findall(r'P2_FROG_DRAW species=(Frog|MaroFrog) corpse=([01]) clip=(\w+) pose=(\d+)',text.split('P2_FROG_INJECTED_ATTACK')[0])
  checks=dict(completion=code==0 and 'PASS P2_FROG_RUNTIME ' in text,births=births==[('201001','0','1'),('201002','33','1'),('201003','0','0'),('201004','33','0')],cleanup_reentry='P2_FROG_CLEANUP registered_before=4 cleared=4 reentry=4' in text)
+ want_params={'201001':'800.0','201002':'1100.0'}
+ checks['source_params']=all(r[2]==want_params[r[0]] for r in params if r[1]=='1') and all(r[2] not in ('800.0','1100.0') for r in params if r[1]=='0')
  for species in ('Frog','MaroFrog'):
   own=[d for d in draws if d[0]==species];checks[species+'_live']=any(d[1]=='0' for d in own);checks[species+'_corpse']=any(d[1]=='1' and d[2]=='dead' for d in own);checks[species+'_poses']=len({(d[2],d[3]) for d in natural if d[0]==species and d[1]=='0'})>=2
  return dict(passed=all(checks.values()),checks=checks,draws=draws,unmeasured=['natural combat','transport/rewards','full scene/day reload (manager reset/re-entry covered by cleanup_reentry)','P2 mechanics'])

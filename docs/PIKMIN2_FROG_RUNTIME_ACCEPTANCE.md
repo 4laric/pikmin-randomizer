@@ -122,16 +122,39 @@ param chain; unregistered controls are untouched.
   rows for source health. Tests: `tests/test_pikmin2_frog_behavior.py` (8 passing).
 - Fixture: `pikmin2_frog_runtime.py` now expects source health for registered
   actors and P1 health for controls, instead of requiring P1 health for all four.
-- **Not run here.** No native build or real-GL acceptance was performed; the
-  source parameter change is additive and the fixture assertion was updated to
-  match, but a fresh private build/run (960x540 centred, 20-red squad) is still
-  required before promoting gate C. Natural jump/crush receiver parity,
-  transport/rewards and full scene/day reload remain open.
+- Fixture baseline adopted: `PIKMIN_P2_ROOM_WINDOW=960x540`; observed log line
+  `Experimental preview window set to 960x540 windowed and centered`; 20-red
+  `ensure_pikmin_squad` overlay; live squad, no extinction screen.
+
+### Observed native run (private build, 2026-09-14)
+
+- Native `opencode/p2-lanes16-18-native` @ `5d0923c2f876c7218550d0fdda369e7d549e13e5`
+  (base `f14c6851`), private build `output/lanes16-18-native-build`
+  (`ninja -n pikmin_pc`: no work), `pikmin_pc` executable SHA-256
+  `D47B8BADD19500E152C3182658CEB8A4329E8BB366532FFAEAC57359AA74B9DF`.
+- Fixture `output/lane16-frog-runtime/fixture_diag/fixture.exe` SHA-256
+  `9ea61e2bfeef44e8e34b03720e6448abe759545f277dcba8a2f873e4c5d991ad`,
+  provenance `built`, expected native head matches.
+- Run `output/lane16-frog-runtime/run_diag/stages/f3dffd57461a47c19e33b0f693ef9cab`:
+  PASS, exit 0; window 960x540 centred; `p2-frog.txt` SHA-256
+  `0c929f7b0ac5c7375d0df2c277f8a574c71e61b9dcd9eaac4e0f1148071065ec`.
+  `P2_FROG_BIRTH` params: registered `201001` life=800.0 visible=360.0
+  atkrange=200.0 atk=10.0 and `201002` life=1100.0 visible=360.0 atkrange=250.0
+  atk=20.0; controls `201003`/`201004` keep P1 values (life 2000.0/1800.0,
+  atkrange 240.0, atk 30.0). Both registered species show live and corpse poses;
+  `P2_FROG_CLEANUP registered_before=4 cleared=4 reentry=4`.
+- Stability note: an earlier attempt at the same change aborted once with
+  `FAIL ... frog unexpectedly died before attack` (all four alive at observed
+  330, one gone before 345) and did not reproduce on the diagnostic rerun. The
+  fixture's pre-attack alive assertion is sensitive to the live 20-red squad
+  reaching a frog, so this needs a short repeat-stability pass; the PASS above
+  is one clean run, not a certified deterministic gate.
 
 | Gate | Result | Limit |
 |---|---|---|
-| Source identity/params (A/B) | PASS (source + host tests) | native build/run pending |
+| Source identity/params (A/B) | PASS (native run) | one run; unchanged controls |
 | Landing press / retarget | PASS (host model) | native receiver not yet asserted |
 | Jump attack resolution | PASS (host model) | source event execution still P1 |
-| Death/corpse/transport (D) | UNTESTED | injected attack only |
-| Cleanup/re-entry (E) | PASS (prior manager reset/re-entry) | full scene/day reload untested |
+| Death/corpse (D) | PASS with injected attack | natural damage parity untested |
+| Transport/reward (D) | UNTESTED | P1 pellet fallback only |
+| Cleanup/re-entry (E) | PASS (manager reset/re-entry) | full scene/day reload untested |
