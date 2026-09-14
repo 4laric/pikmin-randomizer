@@ -1,4 +1,4 @@
-# P2 next wave: complete playable encounters and admit the first cohort
+# P2 next wave: Snow first, Dwarf Orange second
 
 Latest integrated baseline and acceptance: [dependency reconciliation](PIKMIN2_DEPENDENCY_RECONCILIATION_437.md). Older queue entries below are historical and must be checked against this continuation.
 
@@ -14,15 +14,31 @@ This guide sets next-wave priorities. Keep the existing **01–33 lane numbers**
 
 Every integration sweep must finish with the remaining **numbered-lane** count and change since the previous sweep. Maintain [the lane completion ledger](PIKMIN2_LANE_COMPLETION.md), separating full-lane completion from worker-finished/pushed slices. Current tracker baseline: **33 open (32 implementation/QA + integration), 0 full lanes recorded complete**. This is not a running-session count. Refresh tracking issues and acceptance evidence before decrementing it.
 
-## Outcome for this wave
+## Current dispatch: five focused assignments
 
-Deliver a small evidence-selected P2 cohort through:
+User-approved focus, 2026-09-14: complete **opt-in Snow Bulborb first**, then **Dwarf Orange Bulborb**, through a real generated run. Documented P1-derived behavior is acceptable for this experimental milestone. Full P2 source fidelity remains a separate milestone; no identity is admitted by this document.
 
-**generate seed → automatic content staging → ordinary native spawn → natural interaction/combat → death/drop → actual transport/reward → revisit → process restart.**
+These five assignment numbers are dispatch slots, **not replacements for the existing 01–33 lane IDs**. The five currently active agents keep their current claims and finish their slices. Assign new or freed sessions to the work below; do not start duplicate owners. Codex remains lane 01 integration in addition to these five assignments. Record each session's assignment number, existing lane IDs, scoped issue and owned files before work begins.
 
-Start with one concrete source identity, then add a second independently implemented identity and test them together. Choose from the strongest existing family evidence, not perceived simplicity or a promised species count. Initial candidates to assess are lanes 13, 14, 16 and 19; none is pre-approved. A harmless species has source-backed interaction gates instead of invented attacks. Boss, captor and elemental owners continue in parallel.
+| Assignment | Existing lanes / ownership | Concrete deliverable and acceptance |
+|---|---|---|
+| **1. Generated spawn connection** | 02/03/05; one accountable owner across the generator, roster and installation boundary | Carry Snow's exact roster identity from opt-in seed generation through validated fresh/cached content staging into an ordinary live native actor. Preserve legacy seeds and reject missing/wrong content. Deliver the live binding, not only parser/query markers or a receipt echo. Coordinate approved slots with assignment 3. |
+| **2. Snow encounter completion** | 13, consuming 07/08/10; Snow-local modules | Pin the exact Snow source ID and asset bank; state which behavior is P1-derived. Prove autonomous interaction, real damage and lethal combat, corpse and physical carrying, plus clean actor teardown. Reproduce historical lifecycle evidence on the current pair and connect to assignment 1's ordinary spawn. Do not use forced health/death or fixture-only registration as final acceptance. |
+| **3. Placement, rewards and persistence** | 04/06/07, coordinated with 03; one owner for this cohort's lifecycle | Approve a small explicit set of Snow-compatible slots using observed terrain, space and carry routes. Connect actual reward delivery to the supported campaign endpoint; prove revisit and process restart preserve identity and neither duplicate nor lose rewards. Include natural cleanup, address reuse and unaffected P1 controls. Keep Pod/Poko evidence separate from ordinary Onion/AP evidence. |
+| **4. Independent acceptance** | 33; lane 01 supplies the integrated build | Prepare the reproducible generated-session test while implementation proceeds. On the pinned combined build, exercise generation, automatic staging, ordinary spawn, natural combat, delivery, revisit and restart. Test opt-in off/P1 controls and mixed P1/P2 scenes. After Dwarf Orange passes independently, test both P2 identities together with recorded frame-time, memory and actor budgets. Report failures without simultaneously changing production code. |
+| **5. Dwarf Orange follow-on** | 13, consuming 07/08/10; variant-local work separate from assignment 2 | Prepare the second exact identity using the same spawn, staging and reward interfaces. Finish or explicitly document partial KochappyBase/P1-derived behavior; prove natural combat, death, carrying and cleanup. Existing bind/draw smoke is insufficient. Prepare in parallel, but admit only after its own full product-chain acceptance. |
 
-The exit condition is at least one admitted identity completing the generated-session chain, followed by a two-identity mixed scene with agreed budgets. Do not wait for every family to finish before proving the product path. Do not silently enable unfinished identities to fill the cohort.
+Assignments 2 and 5 share family lane 13: reserve distinct files and have one named owner for shared KochappyBase edits. If an active owner already covers either species or a shared provider, extend that claim or take a non-overlapping slice; do not fork a competing implementation. Assignments 1 and 3 agree manifest identity, slot selection, actor lifetime and reward/save contracts before changing their shared interfaces. Routine family-local implementation and private builds remain autonomous.
+
+### Outcome and acceptance scope
+
+**Generate seed → automatic content staging → ordinary native spawn → natural interaction/combat → death/drop → actual transport/reward → revisit → process restart.**
+
+First deliver this chain for Snow in a restricted, explicitly opt-in pool. Then repeat it for Dwarf Orange and test both together. Snow success does not admit other Bulborbs. Yellow Wollywog is a reserve candidate; Mamuta, Groink and other families continue under existing claims and are not dependencies of the first cohort.
+
+Experimental admission may retain declared P1-derived AI, timing or animation approximations. It still requires working combat/receivers, legal placement, correct supported rewards, cleanup and persistence. Record the chosen behavior and known deviations beside the evidence and expose the experimental scope to the user. Do not label proxy acceptance as full P2 fidelity or whole-family completion. Any required roster/schema support for this distinction belongs to assignment 1; preserve existing validation and default-deny behavior until reviewed evidence supports explicit opt-in admission. A private candidate validation path must not enable unaccepted identities in normal generation.
+
+Historical Snow evidence includes physical Pod delivery with a P1 host; it does not prove the current generated campaign path. Dwarf Orange has combined bind/draw evidence and partial behavior, not accepted natural delivery. At this dispatch revision the admitted enemy roster is still empty.
 
 ## Mandatory first actions for every session
 
@@ -65,13 +81,11 @@ Existing banks to inspect include absolute main-output subdirectories `bigtreasu
 
 Before reporting an asset block, test the absolute paths above and report the exact missing file, command and error. Distinguish a missing disc/tree from an unsupported conversion, missing family bank, bad manifest or stale fixture. Do not ask for another asset upload merely because your worktree's relative path is empty. Keep original assets read-only, do not relink Archipelago, and never commit assets. Runtime acceptance still requires the fresh arena, current privately built executable and observed live squad/centred-window evidence described above.
 
-## Dispatch priorities and parallel width
+## Previous broad dispatch: superseded for new assignments
 
-First occupy the dependency spine: 01, 02, 03, 05, 06, 07, 10 and 33. Pair 10 with 11 when species routing is required. Assign 04 to the actual candidate slots. Then staff independent family owners, with 08/09/12 activated against named consumer gaps. Existing active lanes continue; this is sequencing for spare sessions, not a stop instruction.
+The five focused assignments above replace the earlier instruction to staff the full shared dependency spine and all family lanes. The tables below remain lane ownership and backlog references, not a request for another 33-session wave. Existing active owners continue their claimed work. Activate additional shared work only for a named blocker in the first cohort; preserve useful family handoffs without making every family a prerequisite.
 
-All 33 lanes can perform useful source review, private implementation and tests concurrently. Heavy builds are limited by measured host capacity, not session count: each worker has a private build and at most one heavy job; reduce job counts when RAM/link pressure rises. One real-GL/input acceptance run at a time on this host, reserved and released in #186. Integration alone writes the maintained build/export and draft branch.
-
-Do not split one shared file across multiple new sessions. A family owner may divide disjoint species modules after identifying file ownership and interfaces. Each session holds one active slice and at most one ready handoff; while waiting, resolve its named dependencies or improve its natural acceptance evidence.
+Private builds remain parallel, bounded by host RAM/link capacity, with at most one heavy job per worker. Reserve one real-GL/input acceptance run at a time on this host in #186 and release it afterward. Integration alone writes the maintained build/export and draft branch. Keep shared-file ownership explicit.
 
 ## Shared lanes: each provider must ship a working consumer
 
@@ -101,12 +115,13 @@ but no candidate can be admitted yet:
 - `Jigumo` (Hermit Crawmad) is `unplaceable`: the campaign table exposes no
   nest-anchor slot for its `PanHouse` child.
 - Lanes 13/14/16/19 must confirm the per-identity space/water/home/helper facts,
-  lane 02's roster evidence overlay is still empty, and lanes 02/03/05 must agree
-  the optional `cohort` field before any consumer depends on it.
+  lane 02's evidence overlay contains candidates but no admitted identities.
+  Assignment 1 must inspect the integrated manifest/schema support before adding
+  cohort metadata; do not treat historical interface proposals as missing code.
 
 ## Family lanes: finish a concrete identity before expanding variants
 
-Each row is an independently assignable lane. Owners implement family-local FSM/events/receivers/assets and additive hooks in private worktrees. Shared changes remain with the provider above. Reuse current native modules and candidate series; first inspect what is already integrated.
+These rows retain existing family ownership and backlog scope; new dispatch follows the five assignments above. Owners implement family-local FSM/events/receivers/assets and additive hooks in private worktrees. Shared changes remain with the provider above. Reuse current native modules and candidate series; first inspect what is already integrated.
 
 | Lane | Next end-to-end slice | Providers / boundary |
 |---|---|---|
@@ -138,7 +153,7 @@ Use PASS / FAIL / BLOCKED / UNTESTED / source-backed N/A per concrete ID. Every 
 | Gate | Required observation |
 |---|---|
 | A Identity/content | Exact source ID/variant/helpers at ordinary spawn, validated assets, no silent P1 fallback. |
-| B Source behavior | Autonomous states, animation/event ordering and source-correct interactions; resource approximations stated. |
+| B Declared behavior | For this opt-in experimental cohort: autonomous, playable behavior with P1-derived AI/timing/animation deviations explicitly recorded and tested. Full P2 fidelity separately requires source-correct states, events and interactions; experimental PASS does not satisfy that milestone. |
 | C Combat/receivers | Natural attack/admission, vulnerability and immunity, interruption and lethal path where applicable. |
 | D Death/drop/transport | Correct corpse/pellet/treasure/no-drop rule; real transport/collection where applicable; required checks preserved. |
 | E Lifetime | Natural death cleanup, recycled address, late birth, scene exit/re-entry and helper ownership; no stale reference or control contamination. |
@@ -170,4 +185,6 @@ Builds, fixtures, logs, saves, extracted assets and seeds stay under ignored out
 
 ## Copy/paste session assignment
 
-> Read AGENTS.md, docs/PIKMIN2_NEXT_WAVE.md and the latest integration sweep. Resume lane NN under its existing owner/issue; do not duplicate active work. Pin the latest approved root/native pair and identify one concrete source ID and missing natural/product gate. Reuse integrated code and agree shared interfaces with the named providers. Deliver the family-local implementation and additive hooks in a private worktree, using live starting Pikmin and the centred 960x540 fixture. Validate natural behavior, death/reward, cleanup and restart as applicable; clearly label injected evidence. Return ordered commits, exact build/run provenance, gates A-G and remaining dependencies. Do not stop at another standalone policy or staging document when the required provider is available. Do not modify main, push native origin or write to upstream GitHub.
+Choose assignment 1–5 above and fill in its existing lane IDs and concrete scope. Preserve any active owner claim.
+
+> Take focused assignment N (existing lanes NN; exact identity and file scope: FILL IN). Target opt-in Snow first and Dwarf Orange second. Documented P1-derived behavior is acceptable for experimental acceptance; combat, placement, actual rewards, cleanup and persistence must work. Read AGENTS.md, docs/PIKMIN2_NEXT_WAVE.md and the latest integration sweep. Resume lane NN under its existing owner/issue; do not duplicate active work. Pin the latest approved root/native pair and identify one concrete source ID and missing natural/product gate. Reuse integrated code and agree shared interfaces with the named providers. Deliver the family-local implementation and additive hooks in a private worktree, using live starting Pikmin and the centred 960x540 fixture. Validate natural behavior, death/reward, cleanup and restart as applicable; clearly label injected evidence. Return ordered commits, exact build/run provenance, gates A-G and remaining dependencies. Do not stop at another standalone policy or staging document when the required provider is available. Do not modify main, push native origin or write to upstream GitHub.
