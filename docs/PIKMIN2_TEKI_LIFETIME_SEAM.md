@@ -117,15 +117,33 @@ Logs: `output/lane67-forget-run/.../native-forget-probe.log` sha256
 `output/lane67-root/output/lane67-lifecycle-run/.../native.log` sha256
 `E192222B5EA3B4D9A1114DAB67F8C4BCC4B0DC53EA8347706B1CA3DAA3FA4D4C`.
 
+Address-reuse probe (`deadPtr->kill(false)` frees the pool slot, then the staged
+generator re-births; `PASS P2_REUSE_PROBE`, exit 0):
+
+```text
+P2_FORGET_PROBE before=1
+P2_FORGET_PROBE after_engine_dokill=0
+P2_REUSE_RESPAWN generator=353001
+P2_REUSE_PROBE generator=353001 same_address=1 registered_before_rebind=0
+P2_REUSE_PROBE rebound_registered=1 alive=1
+```
+
+The re-birth reused the exact freed `BTeki*` address while the stale family
+registration was already cleared by the engine (no fixture `_forget` call), then
+re-registered cleanly. Exe SHA-256
+`BAC36DC86B81367FCB8909A6FB342F38592D742DB0421A4013E24FEDE95B4B9C`; log
+`output/lane67-reuse-run/dd728cd8dde54762aea19d7a397d361e/native-reuse-probe.log`
+sha256 `348B0FE80B344350B8F51B03A640BAB109DD32A391CDBDBABA7C99E1D3FFFD08`.
+
 ### Gates closed / still open
 
 - **Closed (runtime):** natural death funnel, engine-driven `pc_p2_forget_teki`
-  (no fixture `_forget` call), late birth (respawned actor re-registered after
-  start), control actor unaffected (`control=1`), window/squad baseline.
-- **Still open:** engine pool **address reuse** (`reused=0`; the retained corpse
-  keeps the slot, so `newTeki` does not hand the address back in this scenario)
-  and **full scene/day teardown** (the manager `reset()` path is narrower
-  evidence). Both need the corpse-release/hard-teardown probe on a GL host.
+  (no fixture `_forget` call), engine pool **address reuse** on the freed slot,
+  late birth (respawned actor re-registered after start), control actor
+  unaffected (`control=1`), window/squad baseline.
+- **Still open:** **full scene/day teardown** (the manager `reset()` path is
+  narrower evidence than a scene exit/new-scene boundary). Needs a hard
+  teardown/new-scene probe on a GL host.
 
 Two-line divergence note: the approved native baseline `f14c6851` still differs
 from the maintained room-preview native tip; lane 01 owns reconciling the
