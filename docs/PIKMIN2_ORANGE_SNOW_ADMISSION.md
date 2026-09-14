@@ -30,3 +30,20 @@ Runtime setup staged captain/free-squad positions and invoked normal day-end lif
 ## Validation
 
 Focused roster, placement, evidence-ingestion, generation, candidate-session, generated-acceptance and seed-bridge suite: **163 passed, 17 subtests passed**. Coverage includes exact pair acceptance, malformed/empty approval rejection, ordinary generation for four seeds without candidate scope, round-trip manifest validation, deterministic layouts, lost-slot denial, and unchanged non-P2 generation.
+
+## Combined admitted runtime
+
+On root `11f1f095cb032e6de76f51ce1949e201b61b8c32` (clean) and the same clean native ae00c510, ordinary `randomizer.seed.generate` created both approved bindings with no candidate environment variables. All187 combined content entries verified and staged successfully. The ordinary `python -m randomizer run` launcher spawned one Snow and one Orange in the same stage.
+
+Combined run `36a9fac863725ed896058d0e635c268e95aef3d679739219a743a1ffb4b9cc93`, exit0: native gate work, Snow death/corpse/carry/one delivery, then deceased-Snow scene reconstruction passed while Orange remained the live control. Log SHA-256 `e74e479c5c64097533d41da75f615ea17230f6e13f13c4e1db6453a2616ba053`. Evidence: `output/qa-snow-natural/admitted-combined-v1/evidence.json`; GL result `output/gl-lanes/run-1789427591177910500/result.json`.
+
+Same-session restart `9c7d3b20e62218cb29e2fffa4404ae0a7f14622a95bc63bdfca4ec0219b32131`, exit0, no new delivery check, live Snow rebound1, stored35 after earned benefits. Log SHA-256 `058b662506e2afe08761717d90c23ecccc0a724e6e200bba969332aed9cc7e1f`. Evidence: `restart-evidence.json` and `restart-session.json` alongside the combined report; GL result `output/gl-lanes/run-1789427693221582000/result.json`. This restart emits `START_STAGE ... stored=20` instead of first-start `START_READY`; the fixture's live>=20 guard was satisfied before checkpoint teardown. The initial marker-only parser miss is preserved in `restart-marker-audit.json`; no runtime failure was suppressed.
+
+CLI generation and validation also passed with no candidate overrides:
+
+```powershell
+py -3.12 -m randomizer generate --seed orange-snow-admitted-cli --p2-enemies --p2-placement docs/PIKMIN2_ADMITTED_PLACEMENT.json --output ../qa-snow-natural/admitted-combined-v1/cli-manifest.json
+py -3.12 -m randomizer validate ../qa-snow-natural/admitted-combined-v1/cli-manifest.json
+```
+
+This validates the ordinary generation and launch paths using a replacement-main gameplay fixture. The fixture supplies the staged positions described above. Native production source was unchanged; no export or native-origin push was needed. Both GL lanes free; no lingering fixture/native process.
