@@ -103,6 +103,13 @@ def validate_manifest(manifest):
         if not isinstance(notes, str):
             raise ValueError(f'Invalid manifest notes: {notes!r}')
         result['notes'] = notes
+    if 'identities' in data:
+        identities = data['identities']
+        if (not isinstance(identities, list) or not identities
+                or any(type(v) is not int or isinstance(v, bool) or v < 0 for v in identities)
+                or len(set(identities)) != len(identities)):
+            raise ValueError(f'Invalid manifest identities: {identities!r}')
+        result['identities'] = sorted(identities)
     return result
 
 
@@ -125,16 +132,19 @@ def dump_manifest(manifest, path):
     return validated
 
 
-def build_manifest(version, entries, notes=''):
+def build_manifest(version, entries, notes='', identities=None):
     """Normalize an explicit entry list into a validated manifest.
 
     Callers supply entries; the filesystem is never scanned for assets. Duplicate
     ids/destinations and malformed entries are rejected by ``validate_manifest``.
+    ``identities`` declares the P2 source IDs the content serves.
     """
     if not isinstance(entries, list):
         raise ValueError('entries must be a list')
     manifest = dict(schema=SCHEMA, version=version, notes=notes,
                     entries=copy.deepcopy(entries))
+    if identities is not None:
+        manifest['identities'] = list(identities)
     return validate_manifest(manifest)
 
 
@@ -364,24 +374,65 @@ def _materialize(tree, destination, manifest):
     return rows
 
 
-def stage_session_content(manifest, destination, base=None, cache_dir=None, identities=None):
+def _stage_asset_overlay(manifest, retail, destination, base, bound):
+    """Build the run's private native asset tree with the content applied.
+
+    Mirrors the room-overlay scheme: untouched directories stay junctions to the
+    retail root, untouched files are hardlinked, and only the manifest files are
+    materialized. Sources are verified before any destination is created, so a
+    missing/wrong source leaves nothing behind. This is the connection that lets
+    native asset lookup read the staged content tree.
+    """
+    from scripts.preview_pikmin2_room import overlay
+    overrides = {}
+    for entry in manifest['entries']:
+        source = _source_path(entry, base)
+        if not source.is_file():
+            raise StagingError(f'Missing source for entry {entry["id"]}: {entry["source"]}')
+        if sha256_file(source) != entry['sha256']:
+            raise StagingError(f'Source hash mismatch for entry {entry["id"]}')
+        overrides[entry['destination']] = source.read_bytes()
+    if not Path(retail).is_dir():
+        raise StagingError(f'Retail assets root is not a directory: {retail}')
+    if destination.exists():
+        raise StagingError(f'Content overlay destination already exists: {destination}')
+    overlay(Path(retail), destination, overrides)
+    receipt = dict(schema=SCHEMA, manifest_version=manifest['version'], mode='asset-overlay',
+                   staged_digest=staged_digest(manifest['entries']), destination=str(destination),
+                   identities=bound,
+                   entries=[dict(id=e['id'], destination=e['destination'], status='staged')
+                            for e in manifest['entries']],
+                   summary=dict(entries=len(manifest['entries']), staged=len(manifest['entries']),
+                                cached=0, repaired=0, cleaned_temp=0))
+    receipt_path = destination.parent / (destination.name + '-content-receipt.json')
+    receipt_path.write_text(json.dumps(receipt, indent=2) + '\n', encoding='utf-8')
+    return receipt
+
+
+def stage_session_content(manifest, destination, base=None, cache_dir=None,
+                          required_identities=None, retail_assets=None):
     """Stage a session's declared content automatically, with an optional cache.
 
-    ``manifest`` is a lane 05 content manifest mapping or path. Content is
-    installed under ``<destination>/content``; the launcher passes the native run
-    directory so the staged tree sits inside the tree the game is launched from,
-    and ``identities`` binds the staged content to the seed's P2 source IDs in the
-    receipt. A missing/wrong source, unsafe destination or corrupt cache raises
-    ``StagingError`` before the caller launches anything. Materialization is
-    per-file atomic (no half-written file), but a mid-run failure can leave a
-    resumable partial tree: already-correct entries are reused on the next call.
-    With ``cache_dir`` the verified tree is kept under
-    ``<cache_dir>/<version>-<staged_digest>/`` and later runs materialize from the
-    cache without reading sources again.
+    ``manifest`` is a lane 05 content manifest mapping or path. ``required_identities``
+    are the seed's P2 source IDs: the manifest must declare an ``identities`` list
+    that covers them, or ``StagingError`` is raised, so content is validated
+    against the identities it serves. With ``retail_assets`` the destination is the
+    run's native asset tree and the content is applied as a room overlay (junctions
+    to retail, staged files materialized) so native lookup reads it. Otherwise
+    content is installed under ``<destination>/content`` with an optional cache:
+    sources are verified before anything is written, per-file atomic (no
+    half-written file), and a mid-run failure can leave a resumable partial tree.
     """
     manifest, base = _resolve(manifest, base)
+    declared = set(manifest.get('identities', []))
+    required = set(required_identities or [])
+    if required and not required <= declared:
+        raise StagingError(
+            f"content manifest does not cover required P2 identities: {sorted(required - declared)}")
+    bound = sorted(str(value) for value in (declared or required))
+    if retail_assets is not None:
+        return _stage_asset_overlay(manifest, Path(retail_assets), Path(destination), base, bound)
     destination = Path(destination) / SESSION_CONTENT_DIR
-    bound = sorted(str(value) for value in (identities or []))
     if cache_dir is None:
         receipt = stage(manifest, destination, base=base)
         return dict(receipt, cached=False, destination=str(destination), identities=bound)

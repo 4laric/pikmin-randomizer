@@ -48,7 +48,10 @@ fashion (returns a fresh dict). Unknown schema, bad version, bad shape, unsuppor
 kind, bad digest and unsafe destinations raise `ValueError` with the offending id
 or value.
 
-An optional string `notes` field is preserved by validation when present.
+An optional string `notes` field is preserved by validation when present. An
+optional `identities` field is a non-empty, unique list of lane-02 P2 source IDs
+that the content serves; the launcher requires it to cover the seed's bound
+identities before staging.
 
 ## Manifest I/O and construction
 
@@ -159,31 +162,39 @@ defaults to the manifest file's directory).
 
 ## Generated-session launcher/cache integration
 
-`stage_session_content(manifest, destination, base=None, cache_dir=None, identities=None)`
-is the launcher-facing entry point. Content is installed under
-`<destination>/content`. `randomizer.runner._launch` passes the native **run
-directory** as the destination, so the staged tree sits inside the tree the game
-is launched from, and passes `identities` = the seed's `p2_layout` source IDs so
-the receipt records which P2 identities the content is bound to. With a cache
-(defaults to `<session-dir>/content-cache` when `--content-cache` is omitted) a
-revisit or process restart materializes from the cache without a manual copy.
+`stage_session_content(manifest, destination, base=None, cache_dir=None,
+required_identities=None, retail_assets=None)` is the launcher-facing entry point.
 
-Staging runs before any native process starts, so a missing/wrong source, unsafe
-destination or corrupt cache raises `StagingError` and nothing launches.
-Materialization is per-file atomic — no half-written file — but a mid-run failure
-can leave a resumable partial tree whose already-correct entries are reused on
-the next call; it is not whole-tree transactional.
+- **Identity validation:** `required_identities` are the seed's `p2_layout` source
+  IDs; the manifest must declare an `identities` list covering them or staging
+  raises `StagingError`. Content is thus validated against the identities it serves.
+- **Native asset connection:** with `retail_assets`, the destination is the run's
+  private asset tree (`<run>/assets`) and the content is applied as a room overlay
+  — untouched directories stay junctions to the retail root, untouched files are
+  hardlinked, and only the manifest files are materialized — so native asset
+  lookup reads the content tree. `randomizer.runner._launch` uses this path and
+  skips the plain retail junction.
+- **Content cache:** without `retail_assets` (or via the module API) content is
+  installed under `<destination>/content` with an optional `cache_dir`, and later
+  runs materialize from the cache without reading sources again.
+
+Staging runs before any native process starts, so a missing/wrong source, an
+uncovered identity or a corrupt cache raises `StagingError` and nothing launches.
+The cache path is per-file atomic (no half-written file) with a resumable partial
+tree; the overlay path refuses an existing destination and verifies every source
+first.
 
 The launcher consumes it through the ordinary session command:
 
 ```powershell
 py -3.12 -m randomizer run MANIFEST --session-dir DIR --exe EXE --assets ASSETS \
-    --content-manifest content-manifest.json [--content-cache CACHE]
+    --content-manifest content-manifest.json
 ```
 
 Family extractors still produce the manifest; the launcher only installs verified
-bytes. The native side does not yet read `<run>/content` for asset lookup — that
-engine hook is the remaining lane 01/09 consumer connection.
+bytes. This is a launcher-level connection proven with synthetic retail inputs;
+ordinary in-game acceptance still requires a real content manifest and a native
+gameplay run.
 
 ## Validation
 
