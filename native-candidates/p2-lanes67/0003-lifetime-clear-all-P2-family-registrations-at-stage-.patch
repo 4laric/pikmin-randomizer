@@ -1,0 +1,121 @@
+From 87740f5def6265b1b4fbb864907f97d21f6a921e Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 09:28:17 -0400
+Subject: [PATCH 3/3] lifetime: clear all P2 family registrations at stage exit
+ (#397, #186)
+
+GameCoreSection::exitStage only reset the four kurage families; TekiMgr::reset()
+(the full-family list) has no runtime caller on this line, so every other
+family's BTeki* registration map survived into the destroyed TekiMgr and the
+next stage. Add pc_p2_reset_all_teki() (same family set as TekiMgr::reset) and
+call it from exitStage while managers are still valid, so a finished stage
+cannot retain a stale actor/helper reference.
+---
+ pc_port/pc_p2_teki_lifetime.cpp       | 37 +++++++++++++++++++++++++++
+ pc_port/pc_p2_teki_lifetime.h         |  8 ++++++
+ src/plugPikiKando/gameCoreSection.cpp |  6 +++++
+ 3 files changed, 51 insertions(+)
+
+diff --git a/pc_port/pc_p2_teki_lifetime.cpp b/pc_port/pc_p2_teki_lifetime.cpp
+index 819644da..22606eb6 100644
+--- a/pc_port/pc_p2_teki_lifetime.cpp
++++ b/pc_port/pc_p2_teki_lifetime.cpp
+@@ -4,9 +4,13 @@
+ #include "pc_p2_batch2.h"
+ #include "pc_p2_batch3.h"
+ #include "pc_p2_breadbug_actor.h"
++#include "pc_p2_breadbug_visual.h"
++#include "pc_p2_bulblax_visual.h"
+ #include "pc_p2_enemy.h"
+ #include "pc_p2_frog.h"
+ #include "pc_p2_giant_breadbug_actor.h"
++#include "pc_p2_giant_breadbug_visual.h"
++#include "pc_p2_king.h"
+ #include "pc_p2_kochappy.h"
+ #include "pc_p2_kogane.h"
+ #include "pc_p2_kurage_teki.h"
+@@ -14,6 +18,7 @@
+ #include "pc_p2_mamuta.h"
+ #include "pc_p2_onikurage_teki.h"
+ #include "pc_p2_projectiles.h"
++#include "pc_p2_queen.h"
+ #include "pc_p2_qurione.h"
+ #include "pc_p2_sheargrub.h"
+ #include "pc_p2_sokkuri.h"
+@@ -48,3 +53,35 @@ void pc_p2_forget_teki(BTeki* actor)
+ 	pc_p2_batch3_forget(actor);
+ 	pc_p2_long_legs_forget(actor);
+ }
++
++// Stage-boundary teardown. The family set mirrors TekiMgr::reset() exactly; the
++// four kurage resets that GameCoreSection::exitStage already performed are a
++// subset, so this is additive for the remaining families and idempotent for
++// kurage. Every *_reset() only clears private family state, so ordering against
++// the existing exitStage steps is not significant.
++void pc_p2_reset_all_teki()
++{
++	pc_p2_snow_reset();
++	pc_p2_sheargrub_reset();
++	pc_p2_kochappy_reset();
++	pc_p2_breadbug_visual_reset();
++	pc_p2_giant_breadbug_visual_reset();
++	pc_p2_bulblax_visual_reset();
++	pc_p2_giant_breadbug_actor_reset();
++	pc_p2_breadbug_actor_reset();
++	pc_p2_queen_reset();
++	pc_p2_king_reset();
++	pc_p2_frog_reset();
++	pc_p2_kogane_reset();
++	pc_p2_mamuta_reset();
++	pc_p2_tank_reset();
++	pc_p2_qurione_reset();
++	pc_p2_kurage_teki_reset();
++	pc_p2_onikurage_teki_reset();
++	pc_p2_batch2_reset();
++	pc_p2_projectiles_reset();
++	pc_p2_sokkuri_reset();
++	pc_p2_armor_reset();
++	pc_p2_batch3_reset();
++	pc_p2_long_legs_reset();
++}
+diff --git a/pc_port/pc_p2_teki_lifetime.h b/pc_port/pc_p2_teki_lifetime.h
+index b82d3ac3..affa5cfd 100644
+--- a/pc_port/pc_p2_teki_lifetime.h
++++ b/pc_port/pc_p2_teki_lifetime.h
+@@ -15,3 +15,11 @@ class BTeki;
+ // The family list lives only in pc_p2_teki_lifetime.cpp. Add a family there, not
+ // at the call sites, so the death funnel and slot reuse stay in sync.
+ void pc_p2_forget_teki(BTeki* actor);
++
++// Clears every P2 family's registration/visual state at a stage boundary. Used
++// from GameCoreSection::exitStage so a finished stage cannot leave a stale
++// BTeki* key pointing into the about-to-be-destroyed TekiMgr. Mirrors the
++// family set in TekiMgr::reset(), which the engine never reaches on this line
++// (stage exit only reset the kurage families before this). Safe to call while
++// the stage creatures and managers are still valid.
++void pc_p2_reset_all_teki();
+diff --git a/src/plugPikiKando/gameCoreSection.cpp b/src/plugPikiKando/gameCoreSection.cpp
+index 47dd5e16..b728a173 100644
+--- a/src/plugPikiKando/gameCoreSection.cpp
++++ b/src/plugPikiKando/gameCoreSection.cpp
+@@ -1,4 +1,5 @@
+ #include "pc_p2_kurage_visual.h"
++#include "pc_p2_teki_lifetime.h"
+ #include "pc_p2_kurage_teki.h"
+ #include "pc_p2_onikurage_teki.h"
+ #if defined(PIKI_PC_PORT)
+@@ -869,6 +870,11 @@ void GameCoreSection::exitStage()
+ 	pc_p2_kurage_teki_reset();
+ 	pc_p2_onikurage_teki_reset();
+ 	pc_p2_kurage_visual_reset();
++	// Actor-lifetime seam (#397/#186): clear every remaining P2 family
++	// registration map so a finished stage cannot retain a stale BTeki* key
++	// pointing into the TekiMgr that is about to be destroyed. Previously only
++	// the kurage families were released here.
++	pc_p2_reset_all_teki();
+ #endif
+ 	demoEventMgr = nullptr;
+ 	naviMgr      = nullptr;
+-- 
+2.55.0.windows.3
+
