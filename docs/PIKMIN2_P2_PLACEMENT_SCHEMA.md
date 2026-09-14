@@ -27,11 +27,15 @@ Encounter descriptors use the companion schema `p2-encounter-v1`.
 Required: `uid`, `label`, `stage`, `terrain`, `radius`.
 Optional: `water_depth`, `flight_space`, `burrow_ground`, `home`,
 `helper_capacity`, `projectile_corridor`, `corpse_route`, `protected`,
-`boss_slot`, `first_day`, `respawn_days`, `source_identity`, `evidence`.
+`boss_slot`, `first_day`, `respawn_days`, `source_identity`, `cohort`,
+`evidence`.
 
 `terrain` is one of `ground`, `water`, `air`, `underground`, `mixed`.
 `evidence` carries the accepted native placement facts and defaults to
-`{xyz: false, terrain: false, route: false}`.
+`{xyz: false, terrain: false, route: false}`. `cohort` is an optional
+placement-compatibility class (e.g. `ground`, `dwarf`, `grub`, `frog`,
+`aquatic`, `flying`); a profile with a cohort may only occupy a slot with the
+same cohort, or any slot when either side leaves `cohort` null.
 
 ## Profile record
 
@@ -40,7 +44,7 @@ Optional: `family_lane`, `footprint_radius`, `min_water_depth`,
 `requires_flight_space`, `requires_burrow_ground`, `requires_home`,
 `helper_budget`, `requires_projectile_corridor`, `requires_corpse_route`,
 `is_boss`, `encounter_descriptor`, `accepted_gates`, `allow_protected`,
-`requires_renewable_slot`, `min_first_day`, `notes`.
+`requires_renewable_slot`, `min_first_day`, `cohort`, `notes`.
 
 `accepted_gates` defaults to empty. An empty list denies every slot for that
 identity: eligibility is denied until placement evidence exists.
@@ -82,7 +86,8 @@ machine-readable reasons.
    the profile identity, its `terrains`/`footprint_radius`/`helper_budget` fit the
    slot and `arena_slots.min <= 1 <= arena_slots.max`.
 5. Terrain, water depth, flight space, burrow ground, home/nest anchor,
-   projectile corridor and corpse return route must all be satisfied.
+   projectile corridor, corpse return route and placement cohort must all be
+   satisfied.
 6. Helper budget must fit the slot's `helper_capacity`; footprint must fit
    `radius`.
 7. Renewable/scheduled requirements and `min_first_day` must hold.
@@ -101,6 +106,52 @@ py -3.12 -m randomizer.p2_placement --document placement.json --summary
 (`randomizer.spawn_data`) into default-deny slot records so the audit can run
 against the current slot table before native evidence lands.
 
+## Compatibility report
+
+`randomizer.p2_placement.compatibility_report()` separates hard incompatibilities
+from evidence gaps. It runs the same constraint checks as `evaluate` but ignores
+the admission/evidence defaults, so a slot that no constraint rejects counts as
+*compatible* while the pair is still *denied* for missing gates and native
+evidence:
+
+- `identity_compatibility`: per identity, compatible/incompatible slot counts and
+  uids and the top constraint violations (`top_reasons`, default 3).
+- `slot_compatibility`: per slot, how many candidate identities could ever fit.
+- `unplaceable_identities`: candidate identities with no constraint-compatible
+  slot anywhere, i.e. a real placement gap rather than an evidence gap.
+
+## Concrete candidate inventory (lane 04)
+
+`randomizer.p2_placement_catalog` turns the real slot tables into a validated
+`p2-placement-v1` document for the initial candidate cohort (fan-out lanes 13,
+14, 16 and 19):
+
+- `slots_from_campaign()` reads the 72 production `CAMPAIGN_SLOTS` generators,
+  classifies terrain from `cohort`, copies the source `protected` flag and marks
+  `evidence.xyz` when an extracted position exists.
+- `slots_from_adult_group()` reads `ADULT_SLOTS`/`GROUP_SLOTS` (ground adults and
+  dwarf/grub groups) with `radius` decoded from `radius_hex`.
+- `slots_from_generators()` reads the 690 raw teki/boss generators. These are
+  excluded from `all_slots()` by default because they have no extracted XYZ or
+  terrain; pass `include_generators=True` only for inventory inspection.
+- `candidate_profiles()` emits default-deny profiles for the P2 source ids owned
+  by lanes 13/14/16/19, keyed on the lane-02 roster enum names. A candidate with a
+  P1 catalog equivalent inherits that production `cohort`; the two aquatic bosses
+  (`UmiMushi`, `UmiMushiBlind`) stay in `BOSS_COHORT` and require a lane-04
+  encounter descriptor before they can appear as profiles.
+
+```
+py -3.12 -m randomizer.p2_placement_catalog --summary
+py -3.12 -m randomizer.p2_placement_catalog \
+    --document output/lane04/p2_placement_document.json \
+    --report output/lane04/p2_placement_compatibility.json
+```
+
+At the current source revision the 72 known-terrain slots yield: 33 `ground`,
+10 `grub`, 6 `dwarf`, 7 `frog`, 10 `aquatic` and 6 `flying`. Ground-terrain
+candidates without a P1 equivalent match all 49 walkable slots (the three ground
+classes); candidates with an equivalent are restricted to their own cohort.
+
 ## Coverage report
 
 `randomizer.p2_placement.coverage_report()` returns a deterministic,
@@ -118,11 +169,19 @@ machine-readable summary of the same default-deny evaluation:
 ## Current status and limitations
 
 - Schema, normalization, strict validation, encounter-descriptor validation,
-  evaluation, audit and coverage reporting are implemented and tested
-  (`tests/test_p2_placement.py`).
-- No retail P2 identity is admitted here yet: candidate profiles still need
-  lane 02 identity keys and family-supplied terrain/space/helper facts plus
-  accepted native XYZ/terrain/route evidence. Boss descriptors are constraints
-  only; `required_gates` are not proof that native encounter behavior exists.
+  evaluation, audit, coverage and compatibility reporting are implemented and
+  tested (`tests/test_p2_placement.py`).
+- The lane-04 candidate inventory classifies concrete slots and rejects foreign
+  cohorts, but no retail P2 identity is admitted: every candidate profile ships
+  `accepted_gates: []` and every slot leaves `evidence.terrain`/`evidence.route`
+  false. Terrain is derived from the campaign cohort, not a native terrain probe.
+- Candidate profiles are a lane-04 constraint seed. Family lanes still own and
+  must confirm the per-identity terrain/space/helper facts; lane 02 keys the
+  identity list; lanes 03/05 consume the admitted identities. New P2 species with
+  no P1 equivalent (`Sokkuri`, `Armor`, `ElecBug`, `FireChappy`, ...) currently
+  carry `cohort: null`, so they match every walkable slot until a source pool or
+  terrain evidence constrains them.
+- `UmiMushi`/`UmiMushiBlind` are bosses: they need an encounter descriptor and
+  remain in `BOSS_COHORT`, outside the non-boss document.
 - A `legal` decision is a placement constraint result, not a gameplay or
-  six-gate acceptance.
+  six-gate acceptance. Constraint-compatible is not accepted.
