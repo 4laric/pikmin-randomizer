@@ -39,7 +39,13 @@ ordinary JSON document, not a memory card.
 - The registered frog is still a P1-proxy body: no native corpse carry, pickup
   or Onion/receipt wiring exists, so gates D (transport/reward) and F
   (persistence) remain UNTESTED natively. Only the injected-death PelletView
-  corpse and the P1 pellet fallback have been observed.
+  corpse and the P1 pellet fallback have been observed. The bounded
+  carry-observation fixture `experimental/pikmin2_frog_carry.py` now exists to
+  watch the ordinary P1 carry path (attach, route, Onion absorption) but its
+  native run is pending the coordinated GL slot. It needs no native hook: it
+  reads existing public `Pellet::mPelletView`/`mPikiCarrier`/`mCarrierCount`,
+  `Creature::getStickObject` and `Pellet::isAlive`, so `pc_p2_frog.cpp` is
+  unchanged. A missing carry is reported as unobserved, never as a delivery.
 - `P2_FROG_PRESS` is family-local instrumentation emitted from the existing
   `pc_p2_frog_draw` path when a registered frog's P1-proxy `TekiMotion::Attack`
   is active. It is edge-triggered, a no-op for unregistered actors and cleared
@@ -53,7 +59,7 @@ ordinary JSON document, not a memory card.
 
 ## Verification
 
-`py -3.12 -m pytest -q tests/test_pikmin2_frog_rewards.py tests/test_pikmin2_frog_behavior.py tests/test_pikmin2_frog_runtime.py`
+`py -3.12 -m pytest -q tests/test_pikmin2_frog_rewards.py tests/test_pikmin2_frog_behavior.py tests/test_pikmin2_frog_runtime.py tests/test_pikmin2_frog_carry.py`
 
 Remaining consumer work belongs to lanes 03/06/07 and the native corpse/Onion
 integration: bind the two descriptors to a real carried corpse and prove no

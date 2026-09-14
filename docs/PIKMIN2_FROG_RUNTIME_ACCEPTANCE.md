@@ -160,7 +160,7 @@ param chain; unregistered controls are untouched.
 | Landing press / retarget | PASS (host model) | native receiver not yet asserted |
 | Jump attack resolution | PASS (host model) | source event execution still P1 |
 | Death/corpse (D) | PASS with injected attack | natural damage parity untested |
-| Transport/reward (D) | UNTESTED | P1 pellet fallback only |
+| Transport/reward (D) | UNTESTED | carry-observation fixture implemented; no run yet, no native receipt |
 | Cleanup/re-entry (E) | PASS (manager reset/re-entry) | full scene/day reload untested |
 
 ### Natural combat observation (lane 16, 2026-09-14)
@@ -194,3 +194,33 @@ unwired, so the Transport/reward (D) and native reward-persistence (F) gates
 stay UNTESTED. A new family-local `P2_FROG_PRESS` marker in `pc_p2_frog.cpp` is
 unbuilt instrumentation for the P1-proxy Attack motion, not press proof. See
 [the reward consumer note](PIKMIN2_FROG_REWARDS.md).
+
+### Corpse carry/delivery observation fixture (lane 16, 2026-09-14)
+
+New private fixture `experimental/pikmin2_frog_carry.py` reuses
+`experimental.pikmin2_frog_runtime.build`/`run`. After preview readiness it reads
+`frog-positions.txt`, verifies the registered Frog `201001`/MaroFrog `201002`
+birth rows, observes an initial window and then injects the same two legal
+lethal `InteractAttack(navi,nullptr,10000,false)` calls as the runtime fixture.
+It then watches the ordinary P1 carry path rather than a fabricated reward:
+
+- the dead actor's `Pellet` is located by `mPelletView` in `pelletMgr`
+  (`P2_FROG_CORPSE`);
+- carry is the real native attachment of a live Pikmin to that pellet
+  (`getStickObject`/`mPikiCarrier`/`mCarrierCount`), logged as
+  `P2_FROG_CARRY id=... carried=1`, with bounded route ticks;
+- delivery is the pellet leaving the live set at absorption
+  (`P2_FROG_DELIVER id=... delivered=1`).
+
+No native hook is required: these are existing public `Pellet`/`Creature`/
+`Piki` members, so `native/pc_port/pc_p2_frog.cpp` is unchanged. If P1 does not
+auto-carry within a bounded window the fixture moves the surviving squad next to
+the corpse once, logging `P2_FROG_CARRY_ASSIST`, and never fabricates the
+delivery. The result is honest: `validate()` returns `passed` only when both
+corpses exist and at least one carry **and** delivery is observed; otherwise it
+exits with `UNOBSERVED P2_FROG_CARRY ... unobserved=1`.
+`tests/test_pikmin2_frog_carry.py` (7 tests) accepts a complete observation and
+rejects a non-zero exit, a missing carry, a missing delivery, an injected-only
+corpse log, a missing corpse and a missing registered birth. The native run is
+pending the coordinated GL slot; native Onion/receipt delivery and save
+persistence remain open.
