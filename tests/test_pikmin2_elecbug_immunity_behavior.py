@@ -49,11 +49,12 @@ class ElecBugImmunityBehaviorTests(unittest.TestCase):
         self.assertTrue(result['passed'], result['checks'])
         self.assertEqual(result['shocks'], [('346002', 'blue')])
 
-    def test_missing_recover_fails_flip_path(self):
+    def test_missing_recover_no_longer_fails_flip_path(self):
+        # RECOVER is unit-covered only; the fixture exits before the 5 s flip
+        # timer, so the runtime flip path requires FLIP -> reverse state.
         bad = GOOD_LOG.replace('P2_ELECBUG_RECOVER generator=346002 source_id=28', '')
         result = validate(bad, code=0)
-        self.assertFalse(result['checks']['flip_path'])
-        self.assertFalse(result['passed'])
+        self.assertTrue(result['checks']['flip_path'])
 
     def test_missing_reverse_state_fails(self):
         bad = GOOD_LOG.replace('P2_ELECBUG_STATE generator=346002 state=reverse\n', '')
