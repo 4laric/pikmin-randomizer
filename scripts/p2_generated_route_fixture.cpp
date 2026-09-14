@@ -175,6 +175,7 @@ public:
                 // The production day-end path persists one-shot generators before
                 // exitStage. Without this, limit-file flags survive but actors do not.
                 core->cleanupDayEnd();
+                core->exitDayEnd();
                 core->exitStage();
                 require(!pc_p2_dwarf_orange_registered(target), "old checkpoint registry cleared");
                 target=nullptr; corpse=nullptr; reloading=true;
@@ -198,6 +199,16 @@ public:
                     gateOpened=true;
                     std::printf("P2_ROUTE_GATE_OPEN waypoint=92 staged_squad=%d frame=%u\n",int(gateSquadStaged),frames);
                 } else {
+                    if (frames%120==0) {
+                        int workers=0, free=0, field=0;
+                        Iterator scan(pikiMgr); CI_LOOP(scan) {
+                            auto* p=static_cast<Piki*>(*scan); if(!p->isAlive()) continue;
+                            ++field; if(p->mMode==PikiMode::BreakwallMode) ++workers;
+                            if(p->mMode==PikiMode::FreeMode) ++free;
+                        }
+                        std::printf("P2_ROUTE_GATE_WAIT frame=%u field=%d working=%d free=%d open=%d\n",frames,field,workers,free,int(gatePoint->mIsOpen));
+                        std::fflush(stdout);
+                    }
                     if (!gateSquadStaged) {
                         Creature* gate=nullptr; float best=400.f;
                         Iterator walls(itemMgr->getMeltingPotMgr());
@@ -335,6 +346,7 @@ public:
                 auto* core=findCore(gameflow.mGameSection); require(core!=nullptr,"game core");
                 expectedRebound=0; // A delivered actor must not respawn before its rebirth interval.
                 core->cleanupDayEnd();
+                core->exitDayEnd();
                 core->exitStage();
                 require(!pc_p2_dwarf_orange_registered(target), "old registry cleared at stage exit");
                 target=nullptr; corpse=nullptr; reloading=true;
