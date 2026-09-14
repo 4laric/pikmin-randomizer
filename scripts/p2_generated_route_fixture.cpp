@@ -190,7 +190,9 @@ public:
             int alive = 0, total = countPiki(&alive);
             if (frames % 120 == 0)
                 std::printf("P2_ORD_MUSTER frame=%u pikis=%d alive=%d pulled=%d\n", frames, total, alive, musterPulled);
-            const bool ready = alive >= 20 && frames > 180;
+            // Require the complete baseline only at deployment; casualties must
+            // not suppress progress logging or prevent observing a cleared gate.
+            const bool ready = gateSquadStaged || (alive >= 20 && frames > 180);
             if (!ready) return result;
             if (!gateOpened) {
                 WayPoint* gatePoint = routeMgr ? routeMgr->getWayPoint('test', 92) : nullptr;
