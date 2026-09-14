@@ -74,12 +74,14 @@ native worktree/build, then run instead of `nectar.exe`.
 Build (once per fixture, after the native build is fresh):
 
 ```powershell
+py -3.12 -m experimental.pikmin2_ground_combat_behavior build --native output/native-lane14 --build-dir output/native-lane14-build --output output/lane14-accept/combat-fixture --head 1531c0baa5f1830637bd2c7abd1bbdcc1a40b542
 py -3.12 -m experimental.pikmin2_ground_lifecycle_behavior build --native output/native-lane14 --build-dir output/native-lane14-build --output output/lane14-accept/lifecycle-fixture --head 1531c0baa5f1830637bd2c7abd1bbdcc1a40b542
 ```
 
 | Run | Identity (ID) | Module | Seconds | Kind | Notes |
 |---|---|---|---|---|---|
 | `elecbug_immunity` | ElecBug (28) | `experimental.pikmin2_elecbug_immunity_behavior` | 90 | **natural** emitter -> immunity/lethal | lane 10/11 electric path; own `build` |
+| `ground_combat` | Sokkuri (79) + Armor (15) | `experimental.pikmin2_ground_combat_behavior` | 180 | **natural** combat | redeploys the live squad in FreeMode; never writes health; fails `no_natural_damage` if the host damage path rejects Pikmin attacks |
 | `lifecycle` | Sokkuri (79) + Armor (15) | `experimental.pikmin2_ground_lifecycle_behavior` | 150 | **injected** death | `P2_LIFECYCLE_INJECT ... not_natural_combat=1`; corpse/cleanup/re-entry |
 
 ## Gate mapping (expected, to be recorded after the run)
@@ -88,32 +90,30 @@ py -3.12 -m experimental.pikmin2_ground_lifecycle_behavior build --native output
 |---|---|---|
 | A Identity/content | all behavior runs | expected PASS (`P2_*_BIND ... source_id`) |
 | B Declared behavior (experimental P1-derived) | Sokkuri, Armor, ElecBug, Imomushi, TamagoMushi, Hana | natural FSM observed; deviations recorded per module |
-| C Combat/receivers | ElecBug emitter+immunity; Sokkuri flick; Armor bite | natural for ElecBug/flick/bite; **natural lethal player combat unproven** |
-| D Death/drop/transport | lifecycle (corpse) | corpse PASS but **injected**; natural death + carry/reward **untested** |
-| E Lifetime | lifecycle (cleanup/re-entry) | PASS but injected; not full scene/heap teardown |
+| C Combat/receivers | ElecBug emitter+immunity; Sokkuri flick; Armor bite; `ground_combat` natural lethal path | natural for ElecBug/flick/bite; **natural lethal combat pending `ground_combat`** |
+| D Death/drop/transport | `ground_combat` natural corpse + lifecycle corpse | natural corpse pending `ground_combat`; carry/reward untested |
+| E Lifetime | `ground_combat` natural cleanup/re-entry + lifecycle | natural pending; not full scene/heap teardown |
 | F Persistence | none | **untested** here; #397 owns reward/restart |
 | G Product/mixed scene | none | **untested** here |
 
 ## Remaining gap the run will not close
 
-No existing non-injecting fixture drives Pikmin combat to a **natural** ground
-invertebrate death, and the ground arena is cargo-free with no Pod
-(`pikmin2_batch2_core`), so reward/delivery is absent by construction:
+`ground_combat` now drives a **natural** fight (no health writes), so gates C/D
+can be claimed natural for Sokkuri/Armor if it passes. Two limits remain:
 
-- **Natural death from player combat** must be observed; the lifecycle fixture
-  injects `mHealth=0` and is labelled diagnostic.
+- If the host damage path rejects Pikmin attacks, `ground_combat` fails
+  `no_natural_damage`; that is the finding to act on (connect the host damage
+  receiver), not a result to paper over with the injected lifecycle run.
 - **Reward/delivery/receipt** is owned by the lifecycle/reward lane (#397) and
-  the Onion/AP endpoint, not this arena.
+  the Onion/AP endpoint, not this arena (cargo-free, no Pod).
 
-This descriptor freezes the runnable set; a natural-combat fixture (wait for the
-live squad to kill the actor, then observe corpse/carry) is the follow-on code
-slice before gate C/D can be claimed natural. Record that limitation on the
-same row as the injected result; do not promote it.
+Record the natural result and any failure on the same row as the injected
+diagnostic; do not promote an injected PASS to natural.
 
 ## Release procedure (after lane 01 releases the slot)
 
 1. Confirm no concurrent GL run and that #186 shows the slot released.
-2. Build the two instrumented fixtures; run the natural-behavior set
+2. Build the instrumented fixtures; run the natural-behavior set
    sequentially, then the instrumented set.
 3. Record: root/native pins, exe SHA-256, per-run output dir, `native.log` hash,
    natural vs injected, and gates A-G.

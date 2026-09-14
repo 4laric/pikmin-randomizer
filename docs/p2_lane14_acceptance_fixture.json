@@ -36,6 +36,7 @@
     {"id": "hana", "module": "experimental.pikmin2_hana_behavior", "identity": "Hana", "source_id": 84, "seconds": 30, "kind": "natural", "requires_fixture_build": false},
     {"id": "hana_residual", "module": "experimental.pikmin2_hana_residual_behavior", "identity": "Hana", "source_id": 84, "seconds": 30, "kind": "natural", "requires_fixture_build": false},
     {"id": "elecbug_immunity", "module": "experimental.pikmin2_elecbug_immunity_behavior", "identity": "ElecBug", "source_id": 28, "seconds": 90, "kind": "natural-fixture", "requires_fixture_build": true, "expected_marker": "P2_ELECBUG_IMMUNITY_RUNTIME"},
+    {"id": "ground_combat", "module": "experimental.pikmin2_ground_combat_behavior", "identity": "Sokkuri,Armor", "source_id": "79,15", "seconds": 180, "kind": "natural-fixture", "requires_fixture_build": true, "expected_marker": "PASS P2_GROUND_COMBAT", "natural_combat": "free-squad FreeMode deployment; the fixture never writes health or forces a death"},
     {"id": "lifecycle", "module": "experimental.pikmin2_ground_lifecycle_behavior", "identity": "Sokkuri,Armor", "source_id": "79,15", "seconds": 150, "kind": "injected", "requires_fixture_build": true, "expected_marker": "PASS P2_GROUND_LIFECYCLE", "injection_marker": "P2_LIFECYCLE_INJECT species=Sokkuri,Armor injected_health=0 source=fixture not_natural_combat=1"}
   ],
   "gates": {
@@ -48,8 +49,8 @@
     "G_product_mixed_scene": "untested here"
   },
   "open_gap": {
-    "natural_death": "No existing non-injecting fixture drives Pikmin combat to a natural ground-invertebrate death; the lifecycle fixture injects mHealth=0.",
+    "natural_death": "The new experimental.pikmin2_ground_combat_behavior fixture drives the fight naturally (no health writes); if the host damage path rejects Pikmin attacks the run fails no_natural_damage, which is itself the finding.",
     "reward_delivery": "Ground arena is cargo-free with no Pod (pikmin2_batch2_core); reward/receipt is owned by the lifecycle/reward lane (#397).",
-    "follow_on": "A natural-combat fixture that waits for the live squad to kill the actor before observing corpse/carry is required before gate C/D may be claimed natural."
+    "follow_on": "Run ground_combat on the private build when the GL slot frees; if it fails no_natural_damage, connect the host damage receiver before claiming natural gate C/D."
   }
 }
