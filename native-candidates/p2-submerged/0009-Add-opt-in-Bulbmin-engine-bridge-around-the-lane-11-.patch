@@ -1,7 +1,7 @@
 From 9f9d0783c029edade41b3aa3992a2a8e2e33d8f8 Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 02:56:06 -0400
-Subject: [PATCH 09/11] Add opt-in Bulbmin engine bridge around the lane-11
+Subject: [PATCH 09/13] Add opt-in Bulbmin engine bridge around the lane-11
  policy
 
 pc_p2_bulbmin.{h,cpp} parses P2_BULBMIN_1 / PIKMIN_P2_BULBMIN, binds one

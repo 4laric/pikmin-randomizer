@@ -65,3 +65,39 @@ tests/test_pikmin2_captain_adapter.py tests/test_pikmin2_bulbmin_bridge.py -q`
 Shared-semantics edits in this candidate (`Piki.h`, `interactBattle.cpp`,
 `navi.cpp`, `Interactions.h`, `pc_p2_cave.cpp`, `pc_p2_preview.cpp`, captain
 adapter, CMake) require #186 review before lane 01 integrates.
+
+## Wave 2 — engine-prerequisite layer
+
+Native `opencode/p2-submerged-native` @ `95bfa756`; root
+`opencode/p2-submerged-root` updated. Series `native-candidates/p2-submerged/`
+now 13 patches (from `f9e139d8`).
+
+| Slice | Native commit | Result |
+|---|---|---|
+| L12 opt-in second-captain primitives + slot-1 binding | `8352ef91` | helpers `Navi::getNaviIndex/getOtherNaviIndex`, `NaviMgr::getOtherNavi/getActiveNavi/getAliveOrima/getDeadOrima/...`; slot-1 binding; live spawn gated OFF (`second_captain_live_allowed()` false). `PASS P2_CAPTAIN_ROSTER/ADAPTER/POLICY`. |
+| L11 Bulbmin driver from the Chappy registration | `1d16e381` | `pc_p2_kochappy` path drives the bridge: 10-body `birthChildren`, whistle claim into the captain ownership table, death/forget; inert without config. `PASS P2_BULBMIN_BRIDGE/POLICY/ADAPTER`. |
+| L10 electric/gas **runtime** proof | base unchanged | Extended `experimental/pikmin2_receivers_runtime.py` probe injects `InteractDenki`/`InteractGas`; engine-double + **real GL run** `passed=true`. |
+
+Combined build: `[149/150] Linking CXX executable bin\nectar.exe` (exit 0),
+`ninja -n pikmin_pc` no work; `nectar.exe` SHA-256
+`B007710788E0283EF48EB4E797CA0B4B6D9EDFD1706F69F2BFAF59AFE19067A0`.
+
+Combined policy tests (8): `PASS P2_CAPTAIN_POLICY`, `P2_CAPTAIN_ADAPTER`,
+`P2_CAPTAIN_ROSTER`, `P2_BULBMIN_POLICY`, `P2_BULBMIN_BRIDGE`,
+`P2_SPECIES_POLICY`, `P2_SPECIES_SCHEMA`, `P2_ELEMENTAL_RECEIVERS`.
+Root pytest `tests/test_pikmin2_lanes_1012_policies.py
+tests/test_pikmin2_captain_adapter.py tests/test_pikmin2_bulbmin_bridge.py
+tests/test_pikmin2_receivers_runtime.py -q` -> **24 passed**.
+
+L10 runtime evidence (private): run
+`output/tracks/p2-receivers-sub2/runs-recv/stages/bc3940c92ffa4d05bb237c4388751538`,
+exit 0 `passed=true`, window 960x540 centred, `P2_RECV_SQUAD alive=20 reds=20`,
+`P2_RECV_ELEMENT_EXT yellow_denki=0 white_gas=0 bulbmin_denki=0 bulbmin_gas=0 red_denki=1 red_gas=1`
+(Yellow immune to electricity, White immune to gas, Bulbmin immune to both, Red
+affected by both). Fixture provenance `status=built`.
+
+Still blocked, not faked: real two-captain play (follow/split-squad AI, camera,
+controls, HUD, survivor-gated game over — `file:line` in the captain contract);
+a Mother Bulbmin actor/model and live spawn; `PIKISTATE_Denki`/`Panic`/gas
+states and enemy-side emitters. `PIKMIN_P2_SECOND_CAPTAIN` remains inert.
+
