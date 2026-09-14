@@ -72,8 +72,9 @@ The same four steps apply to `pc_p2_batch3`, `pc_p2_hardlanes`/
 
 ## Runtime status
 
-Live scene event delivery is logged (`P2_BATCH2_EVENT`) and counted; the batch-2
-real-GL arena run to capture those lines is **UNTESTED** pending the GL slot.
+Integration #446 observes `P2_BATCH2_EVENT` in an exact-build Flora lifecycle
+run; see [combined evidence](PIKMIN2_INTEGRATION_446.md). This confirms diagnostic
+event observation, not a simulation-owned gameplay dispatch path.
 No family damage/capture/drop receiver consumes the events yet.
 
 ## Non-claims

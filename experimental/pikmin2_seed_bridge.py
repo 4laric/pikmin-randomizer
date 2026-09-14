@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 
 from experimental.pikmin2_enemy_roster import (
     SCHEMA as ROSTER_SCHEMA,
@@ -61,7 +62,9 @@ def eligible_identity(roster: list[RosterEntry], source_id: int) -> RosterEntry:
 
 
 def validate_cohort(roster: list[RosterEntry], cohort) -> list[int]:
-    ids = [int(source_id) for source_id in cohort]
+    ids = list(cohort)
+    if any(type(source_id) is not int for source_id in ids):
+        raise SeedBridgeError("source ids must be integers")
     if not ids:
         raise SeedBridgeError("admitted cohort is empty; lane 03 cannot seed an unadmitted pool")
     if len(ids) != len(set(ids)):
@@ -72,7 +75,9 @@ def validate_cohort(roster: list[RosterEntry], cohort) -> list[int]:
 
 
 def validate_targets(targets) -> list[str]:
-    values = [str(target) for target in targets]
+    values = list(targets)
+    if any(not isinstance(target, str) or not re.fullmatch(r"[A-Za-z0-9_.:/-]+", target) for target in values):
+        raise SeedBridgeError("binding targets must be nonempty protocol tokens")
     if not values:
         raise SeedBridgeError("binding targets are empty")
     if len(values) != len(set(values)):
@@ -86,6 +91,9 @@ def resolve_layout(seed, slot, targets, cohort, roster: list[RosterEntry] | None
     revision = roster_revision(roster)
     target_ids = validate_targets(targets)
     cohort_ids = validate_cohort(roster, cohort)
+
+    if len(target_ids) < len(cohort_ids):
+        raise SeedBridgeError("not enough binding targets to cover the admitted cohort")
 
     rng = SeedRandom(f"{seed}/p2-enemy-layout-v1/{slot}")
     values = list(cohort_ids)
@@ -119,7 +127,7 @@ def validate_layout(layout: dict, roster: list[RosterEntry] | None = None) -> No
     for binding in bindings:
         target = binding.get("target")
         source_id = binding.get("source_id")
-        if not isinstance(target, str) or target in seen:
+        if not isinstance(target, str) or not re.fullmatch(r"[A-Za-z0-9_.:/-]+", target) or target in seen:
             raise SeedBridgeError(f"invalid or duplicate P2 binding target: {target!r}")
         seen.add(target)
         if not isinstance(source_id, int) or isinstance(source_id, bool):

@@ -13,6 +13,7 @@
 #include "pc_p2_animation.h"
 #include "pc_p2_sokkuri.h"
 #include "pc_p2_armor.h"
+#include "pc_p2_batch2_clock.h"
 #include "pc_bbft.h"
 #include "teki.h"
 #include "Generator.h"
@@ -51,12 +52,18 @@ constexpr size_t TotalBytes = 48 * 1024 * 1024;  // per setup
 
 struct Bank {
     std::map<std::string, std::vector<Shape*>> clips;
-    std::map<std::string, p2animation::Clip> timing;
+    std::map<std::string, p2sampled::Clip> clock;
+};
+struct ActorClock {
+    p2batch2clock::Cursor cursor;
+    std::string clip;
 };
 std::map<std::string, Bank> banks;             // key "family|species"
 std::map<BTeki*, std::string> actors;          // actor -> key
+std::map<BTeki*, ActorClock> clocks;           // actor -> sampled clock state
 size_t bytesTotal = 0;
 bool logged[2] = {false, false};
+unsigned long long eventCount = 0;
 
 [[noreturn]] void fail(const char* what) {
     std::fprintf(stderr, "P2_BATCH2 %s\n", what);
@@ -123,7 +130,7 @@ bool parseActors(const std::string& path, std::map<unsigned, std::string>& out) 
 }
 
 bool parseBank(const std::string& path,
-               std::map<std::string, std::vector<std::pair<std::string, int>>>& out) {
+               std::map<std::string, std::vector<p2batch2clock::Row>>& out) {
     std::ifstream in(path);
     if (!in) return false;
     std::string word;
@@ -134,14 +141,19 @@ bool parseBank(const std::string& path,
             std::string species;
             unsigned long long id = 0;
             if (!(in >> species >> id)) fail("invalid bank species row");
-            out.emplace(species, std::vector<std::pair<std::string, int>>());
+            out.emplace(species, std::vector<p2batch2clock::Row>());
         } else if (word == "clip") {
             std::string species, name, events, status, marker;
             int frames = 0, poses = 0;
             if (!(in >> species >> name >> frames >> events >> marker >> poses >> status)
-                    || marker != "poses" || poses < 0 || poses > 64
+                    || marker != "poses" || frames < 0 || poses < 0 || poses > 64
                     || !out.count(species)) fail("invalid bank clip row");
-            out[species].emplace_back(name, poses);
+            p2batch2clock::Row row;
+            row.name = name;
+            row.sourceFrames = frames;
+            row.poseCount = poses;
+            if (!p2batch2clock::parseEvents(events, row.events)) fail("invalid bank event token");
+            out[species].push_back(std::move(row));
         } else {
             fail("invalid bank token");
         }
@@ -150,18 +162,17 @@ bool parseBank(const std::string& path,
 }
 
 Bank loadBank(const FamilyDef& family, const std::string& species,
-              const std::vector<std::pair<std::string, int>>& rows) {
+              const std::vector<p2batch2clock::Row>& rows) {
     Bank bank;
     std::vector<unsigned char> reference;
     Shape* shared = nullptr;
-    for (const auto& clip : rows) {
+    for (const auto& row : rows) {
         size_t clipBytes = 0;
-        p2animation::Clip timing;
-        timing.name = clip.first;
-        timing.count = clip.second;
-        bank.timing[clip.first] = timing;
-        for (int i = 0; i < clip.second; ++i) {
-            Shape* shape = loadPose(family.prefix, species, clip.first, i, reference, clipBytes);
+        p2sampled::Clip clock = p2batch2clock::makeClip(row);
+        if (!clock.valid()) fail("invalid sampled clock clip");
+        bank.clock[row.name] = clock;
+        for (int i = 0; i < row.poseCount; ++i) {
+            Shape* shape = loadPose(family.prefix, species, row.name, i, reference, clipBytes);
             if (!shared) {
                 shared = shape;
                 for (int t = 0; t < shape->mTexAttrCount; ++t)
@@ -183,7 +194,7 @@ Bank loadBank(const FamilyDef& family, const std::string& species,
                 shape->mTexAttrList = shared->mTexAttrList;
                 shape->mTevInfoList = shared->mTevInfoList;
             }
-            bank.clips[clip.first].push_back(shape);
+            bank.clips[row.name].push_back(shape);
         }
     }
     return bank;
@@ -193,12 +204,15 @@ Bank loadBank(const FamilyDef& family, const std::string& species,
 void pc_p2_batch2_reset() {
     banks.clear();
     actors.clear();
+    clocks.clear();
     bytesTotal = 0;
+    eventCount = 0;
     logged[0] = logged[1] = false;
 }
 
 void pc_p2_batch2_forget(BTeki* actor) {
     actors.erase(actor);
+    clocks.erase(actor);
 }
 
 // Scan the scene and bind present arena actors. ``strict`` is the startup
@@ -209,7 +223,7 @@ static void bindFamilies(bool strict) {
     for (const FamilyDef& family : FAMILIES) {
         std::map<unsigned, std::string> wanted;
         if (!parseActors(family.actors, wanted)) continue;
-        std::map<std::string, std::vector<std::pair<std::string, int>>> rows;
+        std::map<std::string, std::vector<p2batch2clock::Row>> rows;
         if (!parseBank(family.bank, rows)) fail("missing bank for present actor config");
 
         std::set<unsigned> found;
@@ -308,9 +322,26 @@ bool pc_p2_batch2_draw(BTeki* actor, Graphics& gfx, const Matrix4f& matrix, bool
     const int frames = actor->mTekiAnimator->getFrameCount();
     const float phase = forcedPhase >= 0.0f ? forcedPhase
         : (frames > 1 ? actor->mTekiAnimator->getCounter() / (frames - 1) : 0.f);
-    const p2animation::Clip& timing = bank.timing.at(name);
-    const size_t index = timing.index(phase, corpse);
-    Shape* shape = poses.at(index < poses.size() ? index : poses.size() - 1);
+    const p2sampled::Clip& clock = bank.clock.at(name);
+    ActorClock& state = clocks[actor];
+    if (state.clip != name) {
+        if (!state.cursor.start(clock)) return false;
+        state.clip = name;
+    }
+    const double sourceFrame = double(phase) * double(clock.poses.duration - 1);
+    p2batch2clock::Step step = state.cursor.stepTo(sourceFrame);
+    if (!step.ok) return false;
+    for (const p2sampled::Occurrence& event : step.events) {
+        ++eventCount;
+        if (eventCount <= 16u) {
+            std::printf("P2_BATCH2_EVENT key=%s clip=%s frame=%d event=%s cycle=%llu\n",
+                        entry->second.c_str(), name, event.frame, event.key.c_str(),
+                        static_cast<unsigned long long>(event.cycle));
+        }
+    }
+    const size_t index = corpse ? poses.size() - 1
+                               : (step.pose < poses.size() ? step.pose : poses.size() - 1);
+    Shape* shape = poses.at(index);
     if (!logged[corpse ? 1 : 0]) {
         std::printf("P2_BATCH2_DRAW corpse=%d key=%s clip=%s\n", int(corpse), entry->second.c_str(), name);
         logged[corpse ? 1 : 0] = true;
@@ -326,3 +357,6 @@ bool pc_p2_batch2_any_drawn() {
 
 unsigned long pc_p2_batch2_count() { return (unsigned long)actors.size(); }
 bool pc_p2_batch2_registered(BTeki* actor) { return actors.count(actor) != 0; }
+unsigned long long pc_p2_batch2_event_count() {
+    return eventCount;
+}

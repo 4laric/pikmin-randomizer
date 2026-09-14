@@ -46,7 +46,7 @@ def _destination(value):
     if _ABSOLUTE.match(normalized):
         raise ValueError(f'Absolute destination rejected: {value!r}')
     parts = PurePosixPath(normalized).parts
-    if not parts or any(part == '..' for part in parts):
+    if not parts or any(part == '..' or ":" in part or part.rstrip(" .") != part for part in parts):
         raise ValueError(f'Unsafe destination rejected: {value!r}')
     if parts[-1].endswith(TEMP_SUFFIX):
         raise ValueError(f'Destination may not be a staging temp name: {value!r}')
@@ -129,6 +129,8 @@ def staged_digest(entries):
 def _clean_temps(destination):
     removed = 0
     for temp in sorted(destination.rglob('*' + TEMP_SUFFIX)):
+        if not temp.resolve().is_relative_to(destination.resolve()):
+            raise StagingError(f'Temporary path escapes staging directory: {temp}')
         if temp.is_file():
             temp.unlink()
             removed += 1
@@ -186,6 +188,13 @@ def stage(manifest, destination, base=None, receipt_path=None):
     destination.mkdir(parents=True, exist_ok=True)
     if not destination.is_dir():
         raise StagingError(f'Destination is not a directory: {destination}')
+    # Preflight resolved paths before cleanup or writes: generated names can
+    # encounter user-created symlinks/junctions in an existing run tree.
+    root = destination.resolve()
+    for entry in manifest['entries']:
+        target = destination.joinpath(*PurePosixPath(entry['destination']).parts)
+        if not target.resolve().is_relative_to(root):
+            raise StagingError(f'Destination escapes staging directory: {entry["destination"]}')
     cleaned = _clean_temps(destination)
     rows = []
     tally = dict(staged=0, cached=0, repaired=0)

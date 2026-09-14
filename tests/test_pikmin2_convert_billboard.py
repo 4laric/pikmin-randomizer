@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 
 from experimental.pikmin2_convert import convert, decode, write_model
-from test_pikmin2_convert_normals import TRIANGLE, UVS, build_model, normal_model
+from pikmin2_synthetic_model import TRIANGLE, UVS, build_model, normal_model
 
 
 def billboard_model():

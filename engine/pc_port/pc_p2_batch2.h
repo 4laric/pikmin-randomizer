@@ -16,3 +16,6 @@ bool pc_p2_batch2_any_drawn();
 // Fixture observability (#397): read-only registration count / membership.
 unsigned long pc_p2_batch2_count();
 bool pc_p2_batch2_registered(BTeki*);
+// Runtime evidence helper: count of authored clock events delivered exactly once
+// by the sampled clock (#431). Does not execute damage/capture/drops.
+unsigned long long pc_p2_batch2_event_count();

@@ -1,5 +1,8 @@
 # Shared Teki actor-lifetime seam (#397, #186)
 
+Current integration disposition: [numbered-lane pass #446](PIKMIN2_INTEGRATION_446.md).
+Read this before interpreting historical integrated/candidate claims below.
+
 Engine/toolchain lane (07), Codex through shared account `4laric`. This closes
 the #186 finding *"family registration maps are never cleared on Teki death"*:
 

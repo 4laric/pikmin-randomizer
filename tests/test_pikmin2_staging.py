@@ -164,3 +164,21 @@ class ManifestTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def test_staging_rejects_junction_escape(tmp_path):
+    import os
+    import pytest
+    manifest, source, _ = scenario(tmp_path, 1)
+    run = tmp_path / 'run'
+    run.mkdir()
+    outside = tmp_path / 'outside'
+    outside.mkdir()
+    if os.name == 'nt':
+        import _winapi
+        _winapi.CreateJunction(str(outside), str(run / 'tree'))
+    else:
+        (run / 'tree').symlink_to(outside, target_is_directory=True)
+    with pytest.raises(StagingError, match='escapes'):
+        stage(manifest, run, base=source)
+    assert not list(outside.iterdir())

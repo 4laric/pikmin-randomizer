@@ -9,6 +9,7 @@ enum P2PikminSpecies {
     P2SpeciesYellow = 2,
     P2SpeciesPurple = 3,
     P2SpeciesWhite = 4,
+    P2SpeciesBulbmin = 5, // source Piki.h Bulbmin = 5; no base-color mapping
 };
 
 int pc_p2_species(const Piki* piki);

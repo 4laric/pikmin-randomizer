@@ -1,5 +1,8 @@
 # P2 enemies: full implementation and randomizer blockers
 
+Current integration disposition: [numbered-lane pass #446](PIKMIN2_INTEGRATION_446.md).
+Read this before interpreting historical integrated/candidate claims below.
+
 Audit #434, 2026-09-13. Implementation owner: Codex via shared account `4laric`.
 Reviewed draft #432 at `92c926e` (native `9735870c`, upstream `511f22fe`),
 maintained P2 `ffe6316`, fetched worker branches and current issue comments.

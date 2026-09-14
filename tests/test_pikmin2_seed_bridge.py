@@ -111,3 +111,19 @@ def test_legacy_manifest_has_no_p2_line():
 def test_roster_revision_is_stable():
     assert roster_revision() == roster_revision()
     assert len(roster_revision()) == 64
+
+@pytest.mark.parametrize('cohort', [[True], ['79'], [79.5]])
+def test_rejects_coerced_source_ids(cohort):
+    with pytest.raises(SeedBridgeError):
+        resolve_layout('seed', 'slot', TARGETS, cohort)
+
+
+@pytest.mark.parametrize('target', ['', 'has space', 'line\nbreak', None, 7])
+def test_rejects_invalid_protocol_targets(target):
+    with pytest.raises(SeedBridgeError):
+        resolve_layout('seed', 'slot', [target], [SOKKURI])
+
+
+def test_cohort_coverage_cannot_silently_drop_species():
+    with pytest.raises(SeedBridgeError):
+        resolve_layout('seed', 'slot', ['one'], [SOKKURI, FROG])

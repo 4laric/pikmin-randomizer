@@ -1,5 +1,8 @@
 # P2 enemy family — ownership and next-step status
 
+Current integration disposition: [numbered-lane pass #446](PIKMIN2_INTEGRATION_446.md).
+Read this before interpreting historical integrated/candidate claims below.
+
 ## Current audit notice — #434
 
 Read [the refreshed full-implementation/randomizer audit](PIKMIN2_FULL_IMPL_BLOCKERS.md)
