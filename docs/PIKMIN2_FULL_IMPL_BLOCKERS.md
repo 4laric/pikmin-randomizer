@@ -136,6 +136,14 @@ No row is a blanket Family-complete acceptance.
   Pikmin and centred 960x540 window. Record explicit interventions and distinguish
   source-backed N/A, untested and passed. See the mandatory fixture guide.
 
+## Numbered parallel dispatch
+
+Use [the 33 numbered lanes and copy/paste worker prompt](PIKMIN2_IMPLEMENTATION_FANOUT.md#numbered-parallel-lanes--deepseek-dispatch-435).
+Lanes 01–12 own integration and shared/product systems, 13–32 own independent
+family groups, and 33 owns independent seeded-run/mixed-scene QA. The guide defines
+ownership, candidate reuse, dependencies, acceptance and capacity limits; this
+blocker list remains the evidence baseline. Existing owners retain their lanes.
+
 ## Recommended next delivery sequence
 
 1. **Reconcile candidates and roster first.** Integrate missing hard-lane wiring,
