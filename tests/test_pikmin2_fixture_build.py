@@ -20,6 +20,23 @@ class CommandTests(unittest.TestCase):
             with self.assertRaises(tool.BuildRejected):
                 tool.expand_response_files(raw['command'], 'ninja', Path('.'))
 
+    def test_link_and_archive_response_files_expand_from_disk(self):
+        # compdb only covers compilations; CMake/Ninja link and archive commands
+        # carry a literal @<file>.rsp that must be read from the build tree.
+        with tempfile.TemporaryDirectory() as temp:
+            build = Path(temp)
+            (build / 'CMakeFiles').mkdir()
+            (build / 'CMakeFiles/pikmin_pc.rsp').write_text(
+                'a.obj b.obj libz.a -lfoo\n', encoding='utf-8')
+            line = r'g++.exe -mconsole @CMakeFiles\pikmin_pc.rsp -o bin\nectar.exe'
+            with patch.object(tool, 'run', side_effect=[(0, '[]'), (0, '[]')]):
+                text = tool.expand_response_files(line, 'ninja', build)
+            self.assertNotIn('@', text)
+            self.assertIn('a.obj b.obj libz.a -lfoo', text)
+            with patch.object(tool, 'run', side_effect=[(0, '[]'), (0, '[]')]):
+                with self.assertRaises(tool.BuildRejected):
+                    tool.expand_response_files('g++.exe @CMakeFiles/missing.rsp -o x', 'ninja', build)
+
     def test_windows_paths_spaces_and_backslashes_roundtrip(self):
         args = [r'C:\Program Files\toolchain\g++.exe', '-I' + r'C:\source folder\include',
                 '-DNAME="example"', 'C:\\trailing\\', '', '-flto=4']

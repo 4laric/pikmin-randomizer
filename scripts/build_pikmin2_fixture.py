@@ -108,6 +108,23 @@ def absolute(value, root):
     return (path if path.is_absolute() else root / path).resolve()
 
 
+def expand_response_line(line, build):
+    """Splice the on-disk content of any @response file in a Ninja command line.
+
+    `ninja -t commands` emits CMake/Ninja link and archive commands with a
+    literal `@<file>.rsp`; those rules are not in the compilation database, so
+    the file must be read directly. The build already wrote it.
+    """
+    def replace(match):
+        path = match.group(1) or match.group(2)
+        resolved = absolute(path, build)
+        if not resolved.is_file():
+            raise BuildRejected('Missing Ninja response file: ' + path)
+        return resolved.read_text(encoding='utf-8', errors='replace').strip()
+
+    return re.sub(r'@"([^"]+)"|@([^\s"@]+\.rsp)', replace, line)
+
+
 def expand_response_files(text, ninja, build):
     """Ask Ninja to expand its own response content, preserving link order."""
     if not any('@' in line and '.rsp' in line for line in text.splitlines()):
@@ -133,9 +150,12 @@ def expand_response_files(text, ninja, build):
     for line in text.splitlines():
         if '@' in line and '.rsp' in line:
             replacement = replacements.get(line)
-            if replacement is None or ('@' in replacement and '.rsp' in replacement):
+            if replacement is not None and not ('@' in replacement and '.rsp' in replacement):
+                line = replacement
+            else:
+                line = expand_response_line(line, build)
+            if '@' in line and '.rsp' in line:
                 raise BuildRejected('Ninja response command is missing or unexpanded')
-            line = replacement
         lines.append(line)
     return '\n'.join(lines)
 
