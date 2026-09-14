@@ -110,3 +110,24 @@ def test_launch_rejects_family_and_content_together(tmp_path, monkeypatch):
     with pytest.raises(ValueError):
         runner.launch(generate("seed-a"), tmp_path / "sess", assets=retail,
                       content_manifest=tmp_path / "x.json", family_install="frog")
+
+
+def test_family_overlay_survives_native_launch(tmp_path, monkeypatch):
+    import randomizer.runner as runner
+    from randomizer.seed import generate
+    bank = seed_bank(tmp_path)
+    retail = make_retail(tmp_path)
+    exe = tmp_path / "fixture.exe"
+    exe.write_bytes(b"stub")
+    class ReachedNativeLaunch(Exception):
+        pass
+    def start_native(*args, **kwargs):
+        run = kwargs["cwd"]
+        assert (run / "p2-frog.txt").is_file()
+        assert list((run / "assets" / "dataDir" / "courses" / "pikmin2room").rglob("*.mod"))
+        raise ReachedNativeLaunch
+    monkeypatch.setattr(runner.subprocess, "Popen", start_native)
+    with pytest.raises(ReachedNativeLaunch):
+        runner.launch(generate("seed-a"), tmp_path / "sess", exe=exe, assets=retail,
+                      family_install="frog", family_source=bank,
+                      family_actors=[(201001, "Frog")])

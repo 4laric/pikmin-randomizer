@@ -292,7 +292,7 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_m
         if not assets or not (Path(assets) / "dataDir" / "stages").is_dir():
             raise ValueError("--assets must point to the extracted assets directory containing dataDir/stages/")
         if 'spawn_layout' in manifest or 'campaign_layout' in manifest: verify_source_assets(assets)
-        if content_manifest is None:
+        if content_manifest is None and family_install is None:
             # Windows directory junction, only into the new private runtime directory.
             import _winapi
             _winapi.CreateJunction(str(Path(assets).resolve()), str((run.directory / "assets").resolve()))
