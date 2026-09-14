@@ -178,8 +178,9 @@ attribution and does not change behavior.
   actor, so press behavior is unchanged. It is a no-op for unregistered controls:
   `pc_p2_frog_draw` returns before the marker for actors absent from the
   registration map. The source not-bittered precondition is honoured through a
-  family-local `pc_p2_frog_set_bittered` hook; no P1 bitter provider exists, so a
-  run currently always reports `bittered=0`. Intended build command:
+  family-local `pc_p2_frog_set_bittered` hook; see
+  [host bittered state resolution](#host-bittered-state-resolution-lane-16-2026-09-14)
+  for the real host field that is now read. Intended build command:
   `cmake --build output/lanes16-18-native-build --target pikmin_pc -j 6` from the
   lane native worktree (do not build the shared `native/build-randomizer`). The
   marker was **not built or run** in this slice.
@@ -198,6 +199,49 @@ attribution and does not change behavior.
 Remaining gap: the native landing attribution is unbuilt and unobserved, the
 native bitter provider is unwired, and the host model still does not reproduce the
 source one-press-per-frame collision loop against live actor positions.
+
+### Host bittered state resolution (lane 16, 2026-09-14)
+
+This slice wires the source *unless bittered* rule to the one real host state that
+exists in this tree and documents the missing shared provider. It is additive and
+family-local; no shared framework is invented.
+
+- Search result: the only creature-level ("host") freeze/stone candidate is
+  `Creature::mIsFrozen` (`include/Creature.h:446`, read in `Creature::update`,
+  `src/plugPikiKando/creature.cpp:695`). It is **never written** anywhere in this
+  tree (only initialised to 0 in `creature.cpp:641`); there is no Ultra-Bitter
+  Spray, stone/petrify or `EB_Bittered` provider on the host. Every P2 family
+  keeps a *private* `bittered` bool in its own policy/FSM (e.g.
+  `pc_p2_fuefuki_fsm.h:72`, `pc_p2_bombsarai_fsm.h:58`), and `pc_p2_purple`/
+  `pc_p2_kochappy_stun` is a Chappy-only earthquake stun, not a frog bitter state.
+- Native `pc_p2_frog.cpp` now resolves the effective bit as
+  `bitteredFrogs.count(view) || actor->mIsFrozen` and reports its origin
+  (`none`/`host`/`override`). `pc_p2_frog_set_bittered` remains the fixture
+  override and now logs `P2_FROG_BITTER species=... override=... host_frozen=...
+  effective=... origin=...`; `P2_FROG_PRESS` and `P2_FROG_LAND` also carry
+  `bittered`/`pressed`/`origin`/`host_frozen`, so a fixture can toggle and observe
+  both branches. A bittered frog reports the suppressed attribution
+  (`bittered=1 pressed=0`) instead of the press. The new read-only
+  `bool pc_p2_frog_bittered(const BTeki*)` accessor is exported for fixtures.
+- Because no provider writes `mIsFrozen`, a real run still observes
+  `bittered=0 origin=none`; the rule is the same not-bittered behaviour until that
+  provider lands. The family override is what makes the bittered branch a
+  host-tested path.
+- Host `experimental/pikmin2_frog_behavior.py` adds `BITTER_HOST_FIELD`,
+  `BITTER_SOURCES` and `effective_bittered(host_frozen, override)`, returning the
+  resolved `bittered`/`origin`/`host_frozen`; `landing_press_receiver(...)` now
+  also reports `origin`. `experimental/pikmin2_frog_combat.py` parses the richer
+  `P2_FROG_LAND` fields plus `P2_FROG_BITTER` toggles into `bitter_markers` and
+  updated `land_attribution` (still reported instrumentation, not a hard pass).
+  Tests: `tests/test_pikmin2_frog_behavior.py` (13) and
+  `tests/test_pikmin2_frog_combat.py` (8).
+- **Missing shared capability (documented, not invented):** an engine-level
+  bitter/stone provider that sets a creature flag (ideally `Creature::mIsFrozen`)
+  for the frog actor, with its per-tick stone duration/behaviour. Until another
+  lane provides it, the frog rule reads the field but cannot observe it. The
+  marker was **not built or run** in this slice; intended build command:
+  `cmake --build output/lanes16-18-native-build --target pikmin_pc -j 6` from the
+  lane native worktree (do not build the shared `native/build-randomizer`).
 
 ### Natural combat observation (lane 16, 2026-09-14)
 

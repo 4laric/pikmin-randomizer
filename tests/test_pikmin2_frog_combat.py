@@ -36,16 +36,49 @@ class FrogCombatTests(unittest.TestCase):
         self.assertEqual(validate(self.sample(), 0)['press_markers'], {'Frog': 1, 'MaroFrog': 0})
         self.assertEqual(validate(self.sample(), 0)['land_markers'], {'Frog': 0, 'MaroFrog': 0})
         self.assertEqual(validate(self.sample(), 0)['land_attribution'], [])
+        self.assertEqual(validate(self.sample(), 0)['bitter_markers'], [])
 
     def test_land_markers_are_reported_without_becoming_a_hard_pass(self):
-        row = 'P2_FROG_LAND species=Frog radius=23.0 bittered=0 pikmin=2 navi=1 behavior=P1_proxy\n'
+        row = ('P2_FROG_LAND species=Frog radius=23.0 bittered=0 pikmin=2 navi=1 '
+               'behavior=P1_proxy pressed=1 origin=none host_frozen=0\n')
         report = validate(self.sample() + row, 0)
         self.assertTrue(report['passed'])
         self.assertEqual(report['land_markers'], {'Frog': 1, 'MaroFrog': 0})
         self.assertEqual(report['land_attribution'],
                          [{'species': 'Frog', 'radius': 23.0, 'bittered': False,
-                           'pikmin': 2, 'navi': 1}])
+                           'pikmin': 2, 'navi': 1, 'pressed': 1, 'origin': 'none',
+                           'host_frozen': 0}])
         self.assertFalse(validate(self.sample().replace('controls=1', 'controls=0') + row, 0)['passed'])
+
+    def test_bittered_land_row_is_reported_and_not_a_hard_pass(self):
+        row = ('P2_FROG_LAND species=Frog radius=23.0 bittered=1 pikmin=2 navi=1 '
+               'behavior=P1_proxy pressed=0 origin=override host_frozen=0\n')
+        report = validate(self.sample() + row, 0)
+        self.assertTrue(report['passed'])
+        self.assertEqual(report['land_attribution'],
+                         [{'species': 'Frog', 'radius': 23.0, 'bittered': True,
+                           'pikmin': 2, 'navi': 1, 'pressed': 0, 'origin': 'override',
+                           'host_frozen': 0}])
+
+    def test_legacy_land_row_without_branch_fields_still_parses(self):
+        row = 'P2_FROG_LAND species=MaroFrog radius=21.0 bittered=0 pikmin=1 navi=0 behavior=P1_proxy\n'
+        report = validate(self.sample() + row, 0)
+        self.assertTrue(report['passed'])
+        self.assertEqual(report['land_attribution'],
+                         [{'species': 'MaroFrog', 'radius': 21.0, 'bittered': False,
+                           'pikmin': 1, 'navi': 0, 'pressed': 1, 'origin': 'unknown',
+                           'host_frozen': 0}])
+
+    def test_bitter_toggle_markers_are_reported(self):
+        toggles = ('P2_FROG_BITTER species=Frog override=1 host_frozen=0 effective=1 origin=override\n'
+                   'P2_FROG_BITTER species=Frog override=0 host_frozen=0 effective=0 origin=none\n')
+        report = validate(self.sample() + toggles, 0)
+        self.assertTrue(report['passed'])
+        self.assertEqual(report['bitter_markers'],
+                         [{'species': 'Frog', 'override': True, 'host_frozen': 0,
+                           'effective': True, 'origin': 'override'},
+                          {'species': 'Frog', 'override': False, 'host_frozen': 0,
+                           'effective': False, 'origin': 'none'}])
 
 
 if __name__ == '__main__':

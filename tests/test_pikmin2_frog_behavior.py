@@ -47,6 +47,16 @@ def test_landing_press_is_blocked_only_while_bittered():
     assert frog.landing_press('Frog', bittered=True) is False
 
 
+def test_effective_bittered_resolves_host_and_override_origins():
+    assert frog.effective_bittered() == {'bittered': False, 'origin': 'none', 'host_frozen': False}
+    assert frog.effective_bittered(host_frozen=True) == {'bittered': True, 'origin': 'host', 'host_frozen': True}
+    assert frog.effective_bittered(override=True) == {'bittered': True, 'origin': 'override', 'host_frozen': False}
+    both = frog.effective_bittered(host_frozen=True, override=True)
+    assert both['bittered'] is True and both['origin'] == 'override'
+    assert frog.BITTER_HOST_FIELD == 'Creature::mIsFrozen'
+    assert set(frog.BITTER_SOURCES) == {'none', 'host', 'override'}
+
+
 def test_landing_press_victims_hits_every_grounded_victim_unless_bittered():
     pressed = frog.landing_press_victims(False, ['piki1', 'piki2'], ['navi0'])
     assert pressed['pressed'] == 3
@@ -78,6 +88,10 @@ def test_landing_press_receiver_returns_outcome_and_radius_used():
     assert default['radius_used'] == 21.0 and default['radius_matches_source'] is True
     blocked = frog.landing_press_receiver('Frog', ['piki1'], ['navi0'], True, 23.0)
     assert blocked['outcome'] == 'bittered' and blocked['pressed'] == 0
+    assert blocked['origin'] == 'unknown'
+    blocked_override = frog.landing_press_receiver('Frog', ['piki1'], ['navi0'], True, 23.0,
+                                                   origin='override')
+    assert blocked_override['outcome'] == 'bittered' and blocked_override['origin'] == 'override'
     empty = frog.landing_press_receiver('Frog', [], [], False, 23.0)
     assert empty['outcome'] == 'no_receiver' and empty['pressed'] == 0
     with pytest.raises(ValueError, match='radius must be positive'):
