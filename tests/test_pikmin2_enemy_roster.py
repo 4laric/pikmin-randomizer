@@ -80,7 +80,7 @@ def test_known_identities_and_relationships():
 def test_eligibility_defaults_denied_except_reviewed_candidates():
     roster = load_and_validate()
     candidates = {entry.source_id for entry in roster if entry.eligibility == "candidate"}
-    assert candidates == {2, 15, 17, 45, 54, 79}
+    assert candidates == {2, 15, 17, 44, 45, 54, 79}
     assert all(entry.eligibility == "denied" for entry in roster if entry.source_id not in candidates)
 
 
@@ -164,7 +164,7 @@ def test_admission_defaults_deny_and_is_empty():
     admission = admission_set(roster)
     assert admission.admitted == ()
     assert admitted_ids(roster) == []
-    assert set(admission.candidates) == {2, 15, 17, 45, 54, 79}
+    assert set(admission.candidates) == {2, 15, 17, 44, 45, 54, 79}
     assert sum(admission.by_role.values()) == len(roster)
     with pytest.raises(RosterError):
         require_admitted(roster, 79)
