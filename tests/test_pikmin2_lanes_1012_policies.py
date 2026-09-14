@@ -21,7 +21,8 @@ def _port_candidates():
     yield ROOT / 'engine' / 'pc_port'
     yield ROOT / 'native' / 'pc_port'
     for base in (ROOT, *ROOT.parents):
-        yield base / 'output' / 'native-lanes-1012' / 'pc_port'
+        for worktree in ('native-lanes-1012', 'native-sub-elements'):
+            yield base / 'output' / worktree / 'pc_port'
 
 
 _CASES = (
@@ -29,6 +30,7 @@ _CASES = (
     ('test_p2_bulbmin_policy.cpp', 'PASS P2_BULBMIN_POLICY'),
     ('test_p2_species_policy.cpp', 'PASS P2_SPECIES_POLICY'),
     ('test_p2_species_schema.cpp', 'PASS P2_SPECIES_SCHEMA'),
+    ('test_p2_elemental_receivers.cpp', 'PASS P2_ELEMENTAL_RECEIVERS'),
 )
 
 
@@ -40,19 +42,21 @@ def _compiler():
     return str(fallback) if fallback.is_file() else None
 
 
-def _source_root():
+def _source_root(name):
+    # Resolve per test file: a lane worktree may carry only a subset of the
+    # policy tests, so prefer the first candidate that actually has this one.
     for port in _port_candidates():
         if (port / 'pc_p2_captain_policy.h').is_file():
             # tools/ sits next to pc_port/ in the native tree.
             tools = port.parent / 'tools'
-            if (tools / 'test_p2_captain_policy.cpp').is_file():
+            if (tools / name).is_file():
                 return port, tools
     return None, None
 
 
 @pytest.mark.parametrize('name,banner', _CASES)
 def test_lane_policy_contract(name, banner, tmp_path):
-    port, tools = _source_root()
+    port, tools = _source_root(name)
     if port is None:
         pytest.skip('native lane 11/12 policy headers not present')
     compiler = _compiler()
@@ -73,7 +77,8 @@ def _interact_battle_candidates():
     for base in (ROOT, *ROOT.parents):
         for rel in (base / 'engine/src/plugPikiKando/interactBattle.cpp',
                     base / 'native/src/plugPikiKando/interactBattle.cpp',
-                    base / 'output/native-lanes-1012/src/plugPikiKando/interactBattle.cpp'):
+                    base / 'output/native-lanes-1012/src/plugPikiKando/interactBattle.cpp',
+                    base / 'output/native-sub-elements/src/plugPikiKando/interactBattle.cpp'):
             if rel.is_file() and rel not in found:
                 found.append(rel)
     return found
@@ -89,6 +94,39 @@ def test_elemental_receivers_consult_species_capability_matrix():
                for p in candidates)
     assert any('p2_species_immune(pc_p2_species(piki), P2HazardWater)' in p.read_text(errors='replace')
                for p in candidates)
+    # Electric/gas receivers (#170/#408) use the same matrix.
+    assert any('p2_species_immune(pc_p2_species(piki), P2HazardElectric)' in p.read_text(errors='replace')
+               for p in candidates)
+    assert any('p2_species_immune(pc_p2_species(piki), P2HazardGas)' in p.read_text(errors='replace')
+               for p in candidates)
+
+
+def _interactions_header_candidates():
+    found = []
+    for base in (ROOT, *ROOT.parents):
+        for rel in (base / 'engine/include/Interactions.h',
+                    base / 'native/include/Interactions.h',
+                    base / 'output/native-lanes-1012/include/Interactions.h',
+                    base / 'output/native-sub-elements/include/Interactions.h'):
+            if rel.is_file() and rel not in found:
+                found.append(rel)
+    return found
+
+
+def test_denki_gas_receiver_classes_present():
+    headers = _interactions_header_candidates()
+    if not headers:
+        pytest.skip('native Interactions.h not present')
+    texts = [p.read_text(errors='replace') for p in headers]
+
+    def any_has(anchor):
+        return any(anchor in t for t in texts)
+
+    # Classes exist with the source constructor signatures.
+    assert any_has('struct InteractDenki : public Interaction')
+    assert any_has('struct InteractGas : public Interaction')
+    assert any_has('InteractDenki(Creature* owner, f32 force, Vector3f* direction)')
+    assert any_has('InteractGas(Creature* owner, f32 damage)')
 
 
 def _cave_candidates():
