@@ -12,4 +12,4 @@ Observed: centred 960x540 startup log; P2_ENEMY_READY species=YellowKochappy gen
 
 Remaining: natural combat/death/physical delivery/revisit/restart, input-driving fixture, and independent QA on this replacement pin. Orange source44 startup was not tested by this Snow run. The original five-finding QA report remains unchanged as historical failed-pin evidence. No identity is admitted.
 
-Completed bounded cleanup: GL runner exit124/timeout at75seconds, process tree terminated and GL-A lease released. Machine-readable startup evidence: output/p2-init-order-snow-smoke/startup-evidence.json.
+Completed bounded cleanup: GL runner exit124/timeout at75seconds, GL-A lease released; the native child remained alive and was explicitly stopped after verifying its exact executable and smoke-session command. Machine-readable startup evidence: output/p2-init-order-snow-smoke/startup-evidence.json.
