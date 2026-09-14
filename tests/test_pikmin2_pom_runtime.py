@@ -40,6 +40,19 @@ class ProtocolTests(unittest.TestCase):
         reject([dict(SPECS[0], x=float('nan'))])                              # non-finite position
         reject([dict(SPECS[0], z=100001)])                                    # position bound
 
+    def test_inject_round_trip_and_rejections(self):
+        text = pr.pom_inject([dict(generator=240012, fail_births=2)]).decode('ascii')
+        self.assertEqual(text, 'P2_POM_INJECT_1 1\n240012 2\n')
+        self.assertEqual(pr.pom_inject([]).decode('ascii'), 'P2_POM_INJECT_1 0\n')
+
+        def reject(entries):
+            with self.assertRaises(ValueError):
+                pr.pom_inject(entries)
+        reject([dict(generator=240012, fail_births=2), dict(generator=240012, fail_births=1)])  # duplicate
+        reject([dict(generator=1 << 32, fail_births=1)])                                       # id overflow
+        reject([dict(generator=240012, fail_births=-1)])                                       # negative failures
+        reject([dict(generator=240012, fail_births=100001)])                                   # bound
+
     def test_validate_pass_and_fail(self):
         text = (
             'P2_POM_READY generator=240011 species=RedPom source_id=4 colour=1 budget=5 queen=0 x=0.00 y=30.00 z=1850.00\n'
@@ -52,7 +65,10 @@ class ProtocolTests(unittest.TestCase):
             'P2_POM_ACCEPT generator=240012 species=RandPom thrown_colour=2 used=1 budget=1\n'
             'P2_POM_CLOSE generator=240011 species=RedPom outcome=shot used=1 budget=5 swallowed=2\n'
             'P2_POM_CLOSE generator=240012 species=RandPom outcome=shot used=1 budget=1 swallowed=1\n'
-            'P2_POM_SPROUT generator=240012 species=RandPom count=9 colour=-1 leaf=1\n'
+            'P2_POM_SPROUT generator=240011 species=RedPom count=2 colour=1 body=1 leaf=1\n'
+            'P2_POM_SPROUT generator=240012 species=RandPom count=9 colour=0 body=0 leaf=1\n'
+            'P2_POM_SPROUT_RETRY generator=240012 species=RandPom owed_remaining=9 requested=9 born=0 item_capacity=1 forced=1\n'
+            'P2_POM_SPROUT_SETTLED generator=240012 species=RandPom requested=9 born=9 conservation=1\n'
             'PASS P2_POM_NATIVE accept_refund_close_sprout\n'
         )
         good = pr.validate(text, 0)
@@ -61,6 +77,13 @@ class ProtocolTests(unittest.TestCase):
         bad = pr.validate(missing, 0)
         self.assertFalse(bad['passed'])
         self.assertIn('refund', bad['failed'])
+        # A Queen that still falls back to the -1 sentinel colour must fail.
+        legacy = text.replace('P2_POM_SPROUT generator=240012 species=RandPom count=9 colour=0 body=0 leaf=1',
+                              'P2_POM_SPROUT generator=240012 species=RandPom count=9 colour=-1 leaf=1')
+        self.assertFalse(pr.validate(legacy, 0)['passed'])
+        # A silently dropped birth (no settled conservation) must fail.
+        dropped = text.replace('P2_POM_SPROUT_SETTLED generator=240012 species=RandPom requested=9 born=9 conservation=1\n', '')
+        self.assertFalse(pr.validate(dropped, 0)['passed'])
 
     def test_instrument_replaces_room_app(self):
         source = 'prefix\nclass RoomApp : public PlugPikiApp {\n int idle() override { return 0; }\n};\nint main(int, char**) { return 0; }\n'

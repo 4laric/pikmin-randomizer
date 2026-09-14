@@ -195,6 +195,31 @@ def pom_sidecar(specs):
     return ('\n'.join(lines) + '\n').encode('ascii')
 
 
+def pom_inject(entries):
+    """Labeled P2_POM_INJECT_1 capacity-pressure fixture channel.
+
+    Each row forces the module's next `fail_births` itemMgr sprout births for
+    that generator to fail, proving the retry/conservation path. Never present
+    in a normal run.
+    """
+    if not isinstance(entries, (list, tuple)) or not 0 <= len(entries) <= 64:
+        raise ValueError('Invalid Candypop injection count')
+    lines = ['P2_POM_INJECT_1 %d' % len(entries)]
+    seen = set()
+    for entry in entries:
+        generator_id = entry['generator']
+        if not isinstance(generator_id, int) or not 0 <= generator_id <= 0xffffffff:
+            raise ValueError('Invalid injection generator')
+        if generator_id in seen:
+            raise ValueError('Duplicate injection generator')
+        seen.add(generator_id)
+        fails = entry['fail_births']
+        if not isinstance(fails, int) or not 0 <= fails <= 100000:
+            raise ValueError('Invalid injection failure count')
+        lines.append('%d %d' % (generator_id, fails))
+    return ('\n'.join(lines) + '\n').encode('ascii')
+
+
 def build(native, build_dir, output, head):
     output = output.resolve()
     output.mkdir(parents=True, exist_ok=False)
@@ -240,12 +265,16 @@ def stage(assets, output):
         dict(generator=BASEPOM, species='Pom', x=60.0, y=30.0, z=1850.0),
     ])
     (run / 'p2-pom.txt').write_bytes(sidecar)
+    (run / 'p2-pom-inject.txt').write_bytes(pom_inject([dict(generator=RANDPOM, fail_births=2)]))
     (run / 'pom-stage.json').write_bytes((json.dumps(
         dict(scene='module-local P2 Candypop policy', redpom=REDPOM, randpom=RANDPOM, basepom=BASEPOM,
-             sidecar='p2-pom.txt', sidecar_sha256=builder.sha256(run / 'p2-pom.txt')), indent=2) + '\n').encode())
+             sidecar='p2-pom.txt', sidecar_sha256=builder.sha256(run / 'p2-pom.txt'),
+             inject='p2-pom-inject.txt', inject_sha256=builder.sha256(run / 'p2-pom-inject.txt'),
+             inject_note='labeled capacity-exhaustion probe for the Queen'), indent=2) + '\n').encode())
 
-    required = {run / 'p2-pom.txt', run / 'p2-cargo-free.txt', run / 'assets/dataDir/stages/chal0.ini',
-                run / 'assets/dataDir/stages/chal0/default.gen', run / 'assets/dataDir/courses/practice/practice.mod'}
+    required = {run / 'p2-pom.txt', run / 'p2-pom-inject.txt', run / 'p2-cargo-free.txt',
+                run / 'assets/dataDir/stages/chal0.ini', run / 'assets/dataDir/stages/chal0/default.gen',
+                run / 'assets/dataDir/courses/practice/practice.mod'}
     missing = sorted(str(p) for p in required if not p.is_file())
     if missing:
         raise ValueError('Pom staging incomplete; missing: ' + ', '.join(missing))
@@ -264,6 +293,10 @@ def validate(text, code):
         close=bool(re.search(r'P2_POM_CLOSE generator=%d .*outcome=shot' % REDPOM, text))
               and bool(re.search(r'P2_POM_CLOSE generator=%d .*outcome=shot' % RANDPOM, text)),
         sprout=bool(re.search(r'P2_POM_SPROUT generator=%d species=RandPom count=9 .*leaf=1' % RANDPOM, text)),
+        sprout_colour=bool(re.search(r'P2_POM_SPROUT generator=%d species=RandPom count=9 colour=[012] body=[012] ' % RANDPOM, text))
+                     and bool(re.search(r'P2_POM_SPROUT generator=%d species=RedPom count=2 colour=1 body=1 ' % REDPOM, text)),
+        sprout_retry=bool(re.search(r'P2_POM_SPROUT_RETRY generator=%d species=RandPom .*item_capacity=1 forced=1' % RANDPOM, text)),
+        sprout_settled=bool(re.search(r'P2_POM_SPROUT_SETTLED generator=%d species=RandPom requested=9 born=9 conservation=1' % RANDPOM, text)),
         invulnerable=text.count('P2_POM_INVULNERABLE ') >= 2,
         no_rewards='P2_CARGO_READY' not in text and 'P2_POD_RECEIPT' not in text,
     )
@@ -271,7 +304,7 @@ def validate(text, code):
     blocked = sorted(name for name in ('ready', 'accept', 'refund', 'close', 'sprout')
                      if ('P2_POM_RUNTIME_BLOCKED %s' % name) in text)
     return dict(passed=not failed, failed=failed, checks=required, blocked=blocked, exit_code=code,
-                scope='module-local Candypop policy actor; base Pom rejection is a labeled sidecar probe')
+                scope='module-local Candypop policy actor; base Pom rejection and capacity-pressure inject are labeled probes')
 
 
 def pid_running(pid):
