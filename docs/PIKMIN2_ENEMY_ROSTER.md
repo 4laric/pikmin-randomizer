@@ -139,6 +139,30 @@ Generated from source revision `632af93787b9c95b63f0c13be32b161375ce3a96`:
   `manager_base`/`non_spawnable` identities as independent actors.
 - **06 (rewards)** reads `drop_type`/`child_*` rather than hard-coding corpses.
 
+## Candidate review and source-backed encounters
+
+`inventory_encounters(payload, roster)` resolves every identity across
+`docs/PIKMIN2_CONTENT_INVENTORY.json` `story_caves`/floors through `resolve_alias`,
+so aliases are attributed to their real identity (62/64 candidates have at least
+one cave-floor encounter). This is inventory evidence, not placement approval —
+lane 04 still owns legal slots/terrain. `candidate_review(roster, encounters)`
+emits one readiness row per randomizable candidate:
+
+```
+source_id, enum_name, common_name, classification, role, owner_lane,
+native_module, gates, missing_gates, eligibility, encounters
+```
+
+`scripts/audit_pikmin2_roster.py --review` prints those rows, and the report flags
+any `native_module` declared in the overlay that is absent from
+`engine/pc_port`.
+
+The first reviewed cohort (overlay `candidate`, not admitted) records the reported
+evidence and named blockers for Sokkuri (79), Armor (15), Red Bulborb (2), Snow
+Bulborb (45), Wollywog (17) and Mamuta/Miulin (54). No gate is marked PASS without
+pinned root/native/executable, inputs and observed result, so the seedable
+admission set remains empty.
+
 ## Ownership
 
 - Schema, generator, audit and tests: lane 02 (#438).

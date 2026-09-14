@@ -1,13 +1,74 @@
 {
   "schema": "p2-enemy-roster-1-evidence",
-  "note": "Eligibility overlay for the canonical P2 roster. One key per source ID. Defaults to denied when absent; raise eligibility only with reviewed six-gate evidence. See docs/PIKMIN2_ENEMY_ROSTER.md.",
+  "note": "Eligibility overlay for the canonical P2 roster. One key per source ID. Defaults to denied when absent; raise eligibility only with reviewed six-gate evidence pinned to the accepted root/native pair. Candidate rows record the reported evidence and named blockers; they are not an admission PASS. See docs/PIKMIN2_ENEMY_ROSTER.md.",
   "fields": {
     "native_module": "engine/pc_port module implementing the identity, or null",
     "owner_lane": "family/shared lane that owns the identity",
-    "gates": "map of the six gate IDs to PASS/FAIL/BLOCKED/UNTESTED/N/A",
+    "gates": "map of the six gate IDs to PASS/FAIL/BLOCKED/UNTESTED/N/A; a PASS needs root/native/exe pins, inputs and observed result",
     "eligibility": "denied | candidate | admitted | excluded",
     "eligibility_reason": "short justification",
     "notes": "free-form review notes"
   },
-  "entries": {}
+  "entries": {
+    "79": {
+      "native_module": "pc_p2_sokkuri",
+      "owner_lane": "14",
+      "eligibility": "candidate",
+      "eligibility_reason": "native source FSM + flick/press receivers present; lifecycle and reward gates unverified on the pinned pair",
+      "notes": [
+        "Reported combined-integration mechanics PASS (#456, PIKMIN2_FULL_IMPL_BLOCKERS.md); no per-gate pins recorded in this ledger pass.",
+        "Open: water/press/death, transport/reward, cleanup/re-entry (#165/#407)."
+      ]
+    },
+    "15": {
+      "native_module": "pc_p2_armor",
+      "owner_lane": "14",
+      "eligibility": "candidate",
+      "eligibility_reason": "native combat FSM + animation-event bite receiver present; weak-point/captain and lifecycle gates open",
+      "notes": [
+        "Reported combined-integration mechanics PASS (#456, PIKMIN2_FULL_IMPL_BLOCKERS.md); source-inapplicable bridge states need explicit N/A.",
+        "Open: weak-point/captain interaction, death/corpse, transport/reward, cleanup/re-entry (#407)."
+      ]
+    },
+    "2": {
+      "native_module": "pc_p2_batch2",
+      "owner_lane": "13",
+      "eligibility": "candidate",
+      "eligibility_reason": "visual/mechanics foundations present on the neutral batch-2 vehicle; per-variant behavior and natural death/carry unverified",
+      "notes": [
+        "Red Bulborb (Chappy); batch-2 display path, not a complete source FSM.",
+        "Open: per-variant receiver/event mapping, natural death/carry/revisit (#120/#197)."
+      ]
+    },
+    "45": {
+      "native_module": "pc_p2_batch2",
+      "owner_lane": "13",
+      "eligibility": "candidate",
+      "eligibility_reason": "Snow Bulborb shares the batch-2 vehicle; not an admission of the whole Bulborb family",
+      "notes": [
+        "Snow success does not admit all Bulborbs; report revival/elemental variants separately (#120).",
+        "Open: natural death/carry/revisit and variant rules."
+      ]
+    },
+    "17": {
+      "native_module": "pc_p2_frog",
+      "owner_lane": "16",
+      "eligibility": "candidate",
+      "eligibility_reason": "display/landing foundations present; source combat and escape/death chains unverified",
+      "notes": [
+        "Yellow Wollywog; water and land variants remain separate (#167).",
+        "Open: landing/crush/receivers, death/re-entry, transport or source N/A (#194/#201)."
+      ]
+    },
+    "54": {
+      "native_module": "pc_p2_mamuta",
+      "owner_lane": "19",
+      "eligibility": "candidate",
+      "eligibility_reason": "death/corpse and natural territory/flick reported; ordinary transport/reward and revisit unverified on the pinned pair",
+      "notes": [
+        "Miulin (Mamuta); reported death/corpse combined-integration PASS (#456, PIKMIN2_MAMUTA_DEATH.md) and worker natural-flick evidence (PIKMIN2_MAMUTA_NATURAL.md).",
+        "Worker evidence is not an integrated-build natural run; open transport/reward, revisit and attack1-draw abort (#221)."
+      ]
+    }
+  }
 }
