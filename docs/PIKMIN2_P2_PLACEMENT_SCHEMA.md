@@ -136,9 +136,12 @@ evidence:
   terrain; pass `include_generators=True` only for inventory inspection.
 - `candidate_profiles()` emits default-deny profiles for the P2 source ids owned
   by lanes 13/14/16/19, keyed on the lane-02 roster enum names. A candidate with a
-  P1 catalog equivalent inherits that production `cohort`; the two aquatic bosses
-  (`UmiMushi`, `UmiMushiBlind`) stay in `BOSS_COHORT` and require a lane-04
-  encounter descriptor before they can appear as profiles.
+  P1 catalog equivalent inherits that production `cohort`.
+- `boss_encounters()` / `boss_profiles()` provide the two aquatic bosses
+  (`UmiMushi`, `UmiMushiBlind`) via `p2-encounter-v1` descriptors. They stay out
+  of the default document because the campaign table exposes no boss arena slot;
+  `build_document(include_bosses=True)` only makes sense with caller-supplied boss
+  slots. Inspect the descriptors with `--boss-descriptors`.
 
 ```
 py -3.12 -m randomizer.p2_placement_catalog --summary
