@@ -1,7 +1,7 @@
 From 67298b078cb437fb2074c9e8a5c5a127daf0ee88 Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 03:28:47 -0400
-Subject: [PATCH] Lane 21 (#204/#205/#208): Groink shell strike -> proxy
+Subject: [PATCH 1/2] Lane 21 (#204/#205/#208): Groink shell strike -> proxy
  receiver health/death + standalone tests
 
 ---

@@ -63,6 +63,37 @@ The existing terrain/volley/live-target gates still pass in the same run
 (`P2_GROINK_FLIGHT_PASS`, `P2_GROINK_VOLLEY_PASS`, `P2_GROINK_ATTACK_CYCLES_PASS`,
 `P2_GROINK_LIVE_TARGET_PASS`, `PASS GROINK_VOLLEY_RUNTIME`).
 
+## In-flight moving-sweep follow-up (commit 2)
+
+The source processes creature hits on each moving shell step, not only on
+termination. `P2GroinkStrikeTracker` now dedups **(shellSlot, targetToken)** so
+one shell damages a given candidate at most once per flight while different
+shells may each hit it; `clearSlot` forgets a shell on pool recycle. The
+live-target fixture snapshots each active shell before `volley.update` and
+classifies the previous→current segment through the bridge with `terminal=false`,
+sharing the tracker with the terminal path so a duplicate position cannot apply
+twice. New markers: `P2_GROINK_FLIGHT_HIT` (Bomb/Wind), `P2_GROINK_FLIGHT_IMPULSE`
+(Wind), and `P2_GROINK_FLIGHT_SWEEP_PASS steps=<n> hits=<h> wind=<w>`.
+
+Evidence (native `1ae14480`, fixture `output/groink-flight-strike-fixture-01`,
+real GL 960x540, session `output/groink-flight-strike-session-01`, log sha
+`c65fe883…1c549`, exit 0):
+
+```
+P2_GROINK_RECEIVER_HIT … kind=Bomb damage=10.000 health=15.000 / 5.000 / 0.000
+P2_GROINK_RECEIVER_DEAD …                 (exactly once)
+P2_GROINK_FLIGHT_SWEEP_PASS steps=90 hits=0 wind=0
+P2_GROINK_STRIKE_PASS hits=6 deaths=1 health_start=25.000 health_end=0.000 placement=fixture_pinned
+PASS GROINK_VOLLEY_RUNTIME
+```
+
+**Honest limit:** the moving-sweep path executes every tick (90 steps) but the
+stationary fixture produces **no natural moving hit** (`hits=0 wind=0`); the
+trajectory reaches the floor before the pinned Navi, and the terminal pinned
+sweep remains the health/death evidence. Moving-step application and the Wind
+impulse path are proven in the standalone test, not naturally in this fixture.
+A natural moving hit needs a mid-flight Navi placement or a real pursuing actor.
+
 ## Fixture baseline note
 
 This is the lane's stationary custom harness (synthetic owner point + baked
@@ -80,10 +111,12 @@ lane acceptance once the real actor path lands.
   angle-aware bake or retained skeletal geometry (#128).
 - **Real Groink actor** (MiniHoudai 78 / FminiHoudai 97) registration, locomotion,
   natural pursuit; this remains a host-owned proxy with a wildcard sink.
-- **In-flight sweep application** — the fixture only feeds terminal sweeps; the
-  standalone test covers the non-terminal half.
-- **Wind impulse** has no representation in lane 20's receiver (carried in the
-  bridge result only).
+- **In-flight sweep application** — implemented with per-shell dedup and executes
+  every tick, but the stationary fixture produces no natural moving hit; the
+  standalone test covers the semantics, and a real pursuing actor is needed for
+  natural moving hits.
+- **Wind impulse** is carried in the bridge result and logged, but lane 20's
+  receiver still has no impulse/knockback representation.
 - **Corpse/revival** (#209/#210) and engine receiver wiring (#186) remain open.
 
 ## Provenance
