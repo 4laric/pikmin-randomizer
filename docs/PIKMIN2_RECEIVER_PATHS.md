@@ -187,15 +187,15 @@ P2 target is logged via `P2_RECV_DENKI` / `P2_RECV_GAS`:
 | `PIKISTATE_Panic` + `PIKIPANIC_Gas` (`interactPiki.cpp:542,550-552`) | absent; no generic panic state | `PIKISTATE_Fired` (panic run) |
 | `Piki::gasInvicible()` / `mGasInvincible` (`include/Game/Piki.h:198,282`) | absent from `include/Piki.h` | no gas-invincibility gate |
 
-This is a build/policy gate, not a live encounter: no `GasHiba`/`ElecHiba`/
-gas/denki dweevil emitter spawns yet, so electricity and gas cannot be exercised
-at runtime on this port. Because no emitter references the new receivers yet,
-LTO dead-strips them (and their `P2_RECV_*` logs) from the link; the three
-definitions are marked `__attribute__((used))` to keep them compiled into
-`nectar.exe` until an emitter references them. `nm -C nectar.exe` then shows
-`T InteractDenki::actPiki`, `T InteractGas::actPiki`, `T InteractDenki::actNavi`
-with real addresses, and both `P2_RECV_DENKI`/`P2_RECV_GAS` literals are present
-in the image.
+This is a Pikmin-side receiver gate, not a natural hazard encounter: no
+`GasHiba`/`ElecHiba`/gas/denki dweevil emitter spawns yet. The receivers are
+exercised directly from native state by the receivers fixture (§8). Because no
+emitter references the new receivers yet, LTO would dead-strip them (and their
+`P2_RECV_*` logs) from the link; the three definitions are marked
+`__attribute__((used))` to keep them compiled into `nectar.exe` until an emitter
+references them. `nm -C nectar.exe` then shows `T InteractDenki::actPiki`,
+`T InteractGas::actPiki`, `T InteractDenki::actNavi` with real addresses, and
+both `P2_RECV_DENKI`/`P2_RECV_GAS` literals are present in the image.
 
 Private build: `[520/520] Linking CXX executable bin\nectar.exe` (exit 0),
 `nectar.exe` SHA-256
@@ -203,4 +203,58 @@ Private build: `[520/520] Linking CXX executable bin\nectar.exe` (exit 0),
 `ninja -n pikmin_pc` -> `ninja: no work to do.`. Standalone matrix test
 `tools/test_p2_elemental_receivers.cpp` -> `PASS P2_ELEMENTAL_RECEIVERS`
 (SHA-256 `E535BC0A661D00FF56A73FFD7EE8C244DBB0CC983C7FBECF78D3020CF3508F3F`).
+
+## 8. Electric and gas Pikmin receivers runtime-proven (lane 10 follow-up)
+
+The §7 receivers are now executed from native state without inventing a
+`PIKISTATE_Denki`/`Panic`/`gasInvicible` (none exist on this port). The receivers
+fixture picks live squad Piki, assigns identity through the native adapter
+(`pc_p2_set_species`, which sets the `mP2*` flags), and injects the two new
+interactions directly:
+
+- `pick->stimulate(InteractDenki(n, 10.0f, &dir))`
+- `pick->stimulate(InteractGas(n, 10.0f))`
+
+Real run (`output/tracks/p2-receivers-sub2/runs-recv/stages/bc3940c92ffa4d05bb237c4388751538`):
+
+```text
+P2_RECV_ELEMENT_EXT yellow_species=2 white_species=4 bulbmin_species=5 red_species=1 bulbmin=1 yellow_denki=0 white_gas=0 bulbmin_denki=0 bulbmin_gas=0 red_denki=1 red_gas=1
+```
+
+| Field | Meaning | Result |
+|---|---|---|
+| `yellow_denki=0` | Yellow (2) `InteractDenki::actPiki` rejects -> immune | PASS |
+| `white_gas=0` | White (4) `InteractGas::actPiki` rejects -> immune | PASS |
+| `bulbmin_denki=0`, `bulbmin_gas=0` | Bulbmin (5) is immune to both | PASS |
+| `red_denki=1`, `red_gas=1` | opposite species Red (1) is affected by both | PASS |
+
+The existing fire/bubble `P2_RECV_ELEMENT` check is retained in the same run.
+The in-module `validate()` gate now requires `elemental_immunity_ext` (and the
+conditional `bulbmin_immunity`) alongside the six original checks; `readings()`
+parses the new line. `tests/test_pikmin2_receivers_runtime.py` covers the new
+required checks (11 passed).
+
+Evidence:
+
+- Fixture provenance: `scripts/build_pikmin2_fixture.py` against native
+  `4f7485d5d5fcfff28fa0f30b63fc2bfe30f48d00` and private build
+  `output/native-sub2-elements-build`; `baseline/provenance.json` status `built`.
+- Fixture `fixture.exe` SHA-256
+  `B74EAEB71D28BE0084C41CBE5D87E121B735ADD23B32ED0BE5D5533890994CFB`.
+- Private production build: `[522/522] Linking CXX executable bin\nectar.exe`
+  (exit 0), `nectar.exe` SHA-256
+  `10C1DC71CDD1482591F9D82F915556F986CB0087CCC2954CBA5439E62DAE5735`;
+  `ninja -n pikmin_pc` -> `ninja: no work to do.`.
+- Runtime: `exit_code=0`, `PASS P2_RECEIVERS_RUNTIME`, in-module `validate()`
+  `passed=true` with `elemental_immunity_ext=true`, `bulbmin_immunity=true`,
+  `bulbmin_present=true`. Window/GL:
+  `[PC Port] SDL2 Window & OpenGL Context initialized successfully (960x540)`,
+  `Experimental preview window set to 960x540 windowed and centered`.
+
+**Remaining blocker (unchanged):** the non-immune path still has no P2
+`PIKISTATE_DenkiDying`/`PIKISTATE_Panic`/`gasInvicible` target, so it uses the
+closest P1 state (`PIKISTATE_Dying`/`PIKISTATE_Fired`) and logs the gap; no
+`ElecHiba`/`GasHiba`/`ElecOtakara`/`GasOtakara` emitter exists to drive the
+receiver naturally. The enemy-side emitters and dweevil discharge/FSM remain
+family-lane BLOCKED. This section proves the Pikmin-side immunity gate only.
 

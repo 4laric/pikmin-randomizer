@@ -94,6 +94,35 @@ public:int idle() override {
    std::fflush(stdout);
   }
  }
+ if(observed==395){
+  Piki* pick[5]={nullptr,nullptr,nullptr,nullptr,nullptr};int got=0;
+  Iterator p(pikiMgr);CI_LOOP(p){Piki* v=static_cast<Piki*>(*p);if(!v->isAlive())continue;
+   const int st=v->getState();
+   if(st==PIKISTATE_Dying||st==PIKISTATE_Dead||st==PIKISTATE_Fired||st==PIKISTATE_Bubble)continue;
+   if(got<5)pick[got++]=v;else break;}
+  if(got>=5){
+   pc_p2_set_species(pick[0],P2SpeciesYellow);
+   pc_p2_set_species(pick[1],P2SpeciesWhite);
+   pc_p2_set_species(pick[2],P2SpeciesBulbmin);
+   pc_p2_set_species(pick[3],P2SpeciesRed);
+   pc_p2_set_species(pick[4],P2SpeciesRed);
+   Vector3f denkiDir(0.0f,0.0f,1.0f);
+   const int yellowDenki=int(pick[0]->stimulate(InteractDenki(n,10.0f,&denkiDir)));
+   const int whiteGas=int(pick[1]->stimulate(InteractGas(n,10.0f)));
+   const int bulbminDenki=int(pick[2]->stimulate(InteractDenki(n,10.0f,&denkiDir)));
+   const int bulbminGas=int(pick[2]->stimulate(InteractGas(n,10.0f)));
+   const int redDenki=int(pick[3]->stimulate(InteractDenki(n,10.0f,&denkiDir)));
+   const int redGas=int(pick[4]->stimulate(InteractGas(n,10.0f)));
+   std::printf("P2_RECV_ELEMENT_EXT yellow_species=%d white_species=%d bulbmin_species=%d red_species=%d bulbmin=1 "
+               "yellow_denki=%d white_gas=%d bulbmin_denki=%d bulbmin_gas=%d red_denki=%d red_gas=%d\n",
+               pc_p2_species(pick[0]),pc_p2_species(pick[1]),pc_p2_species(pick[2]),pc_p2_species(pick[3]),
+               yellowDenki,whiteGas,bulbminDenki,bulbminGas,redDenki,redGas);
+   std::fflush(stdout);
+  }else{
+   std::printf("P2_RECV_ELEMENT_EXT available=%d\n",got);
+   std::fflush(stdout);
+  }
+ }
  if(observed==400){
   int alive=0,moved=0,corpses=0;
   for(int i=0;i<familyCount;++i){Teki* a=find(ids[i]);if(!a)continue;
@@ -119,6 +148,7 @@ def instrument(source):
         raise ValueError('Already instrumented')
     return ('#include <fstream>\n#include <cmath>\n#include "Generator.h"\n'
             '#include "TekiPersonality.h"\n#include "Interactions.h"\n'
+            '#include "Piki.h"\n#include "PikiState.h"\n#include "pc_p2_species.h"\n'
             '#include "pc_p2_batch2.h"\n#include "Pcam/Camera.h"\n'
             '#include "Pcam/CameraManager.h"\n'
             + source[:start] + APP + source[end:])
@@ -127,7 +157,7 @@ def instrument(source):
 
 
 def readings(text):
-    """Parse the receivers probe: squad, queued attack, immunity gate."""
+    """Parse the receivers probe: squad, queued attack, immunity, element hazard."""
     squad = re.findall(r'P2_RECV_SQUAD alive=(\d+) reds=(\d+)', text)
     attacks = re.findall(
         r'P2_RECV_ATTACK id=(\d+) accepted=(\d) health=(-?[\d.]+) '
@@ -137,14 +167,27 @@ def readings(text):
         r'health_before=(-?[\d.]+) health_after=(-?[\d.]+)', text)
     element = re.findall(
         r'P2_RECV_ELEMENT red_fire=(\d) blue_fire=(\d) blue_bubble=(\d) red_bubble=(\d)', text)
-    return squad, attacks, immunity, element
+    element_ext = re.findall(
+        r'P2_RECV_ELEMENT_EXT yellow_species=(-?\d+) white_species=(-?\d+) '
+        r'bulbmin_species=(-?\d+) red_species=(-?\d+) bulbmin=(\d) '
+        r'yellow_denki=(\d) white_gas=(\d) bulbmin_denki=(\d) bulbmin_gas=(\d) '
+        r'red_denki=(\d) red_gas=(\d)', text)
+    return squad, attacks, immunity, element, element_ext
 
 
 def validate(text, code):
     """Gate the receiver paths from a private run log (see docs/PIKMIN2_RECEIVER_PATHS.md)."""
-    squad, attacks, immunity, element = readings(text)
+    squad, attacks, immunity, element, element_ext = readings(text)
     healths = [float(a[2]) for a in attacks]
     e = element[0] if element else None
+    be = element_ext[0] if element_ext else None
+    # Yellow (2) is immune to electric, White (4) is immune to gas, Bulbmin (5)
+    # is immune to both; the opposite species Red (1) is affected by each.
+    ext_core = (bool(be) and be[0] == '2' and be[1] == '4' and be[3] == '1'
+                and be[5] == '0' and be[6] == '0' and be[9] == '1' and be[10] == '1')
+    bulbmin_present = bool(be) and be[4] == '1'
+    bulbmin_immunity = bool(be) and (not bulbmin_present
+                                     or (be[2] == '5' and be[7] == '0' and be[8] == '0'))
     checks = dict(
         completion=code == 0 and 'PASS P2_RECEIVERS_RUNTIME' in text,
         squad_live=bool(squad) and int(squad[0][0]) > 0 and int(squad[0][1]) > 0,
@@ -154,9 +197,12 @@ def validate(text, code):
                       and float(immunity[0][3]) == float(immunity[0][4]),
         elemental_immunity=bool(e) and e[0] == '0' and e[1] != '0'
                            and e[2] == '0' and e[3] != '0',
+        elemental_immunity_ext=ext_core and bulbmin_immunity,
+        bulbmin_immunity=bulbmin_immunity,
     )
     return dict(passed=all(checks.values()), checks=checks,
                 squad=squad, attacks=attacks, immunity=immunity, element=element,
+                element_ext=element_ext, bulbmin_present=bulbmin_present,
                 scope='Proxy-host receiver proof only; source P2 FSM/receivers stay BLOCKED.')
 
 
