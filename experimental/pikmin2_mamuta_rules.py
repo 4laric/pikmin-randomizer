@@ -15,6 +15,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import re
 import struct
 
 from scripts.preview_pikmin2_room import generator
@@ -29,6 +30,15 @@ SQUAD_COUNT = 10
 SQUAD_COLOR = 1  # native Red
 SQUAD_FORMATION = 2  # free formation, not a buried sprout
 SQUAD_POSITION = (-150., 30., 1900.)  # 50 units south of the Mamuta at (-150, 30, 1850)
+
+# Pod-cargo staging: a cargo-enabled Mamuta arena needs a single ``pr05``
+# treasure actor (native policy refuses a non-cargo-free preview without one)
+# plus the converted ``treasure.mod``/``pod.mod`` pair the native preview loads.
+# Generator 221004 is reserved for this lane alongside 221001..221003.
+POD_TREASURE_GENERATOR = 221004
+POD_TREASURE_NAME = 'P2 Mamuta pod cargo'
+POD_TREASURE_POSITION = (-150., 30., 1750.)  # 100 units north of the Mamuta
+POD_PACKAGE_FILES = ('p2-pod.txt', 'pod.mod', 'treasure.mod')
 
 P2_REFERENCE = dict(piki_damage=0.0, navi_damage=5.0, planted_cap_us=99,
                     vertical_band=20.0, kill_flag='CKILL_DontCountAsDeath')
@@ -159,32 +169,165 @@ def cargo_profile(treasure, money, weight, capacity, corpse_value):
     return f'P2_POD_1\n{treasure} {money} {weight} {capacity}\nKochappy {corpse_value}\n'
 
 
+def parse_cargo_profile(text):
+    """Parse/canonicalise a staged ``p2-pod.txt`` profile, rejecting anything odd."""
+    parts = text.split()
+    if len(parts) != 7 or parts[0] != 'P2_POD_1' or parts[5] != 'Kochappy':
+        raise ValueError('Invalid pod profile')
+    try:
+        money, weight, capacity, corpse_value = (int(parts[2]), int(parts[3]),
+                                                 int(parts[4]), int(parts[6]))
+    except ValueError as error:
+        raise ValueError('Invalid pod economy') from error
+    canonical = cargo_profile(parts[1], money, weight, capacity, corpse_value)
+    return dict(treasure=parts[1], money=money, weight=weight, capacity=capacity,
+                corpse_value=corpse_value, profile=canonical)
+
+
+def load_pod_package(package):
+    """Load a reusable converted Pod package (pod.mod/treasure.mod/p2-pod.txt).
+
+    The package is the disc-derived asset trio produced once by
+    ``experimental.pikmin2_pod.extract`` (or ``pikmin2_beasts_content``) and
+    cached under ``output/``; it is deliberately not committed. Fails closed on
+    any missing/empty member so the native preview never aborts mid-run.
+    """
+    path = Path(package)
+    missing = [name for name in POD_PACKAGE_FILES if not (path / name).is_file()]
+    if missing:
+        raise FileNotFoundError(
+            f'Pod asset package incomplete at {path}: missing {", ".join(missing)}')
+    profile = parse_cargo_profile((path / 'p2-pod.txt').read_text())
+    treasure_model = (path / 'treasure.mod').read_bytes()
+    pod_model = (path / 'pod.mod').read_bytes()
+    if not treasure_model or not pod_model:
+        raise ValueError('Pod asset package contains empty models')
+    return dict(path=str(path), treasure_model=treasure_model, pod_model=pod_model,
+                treasure_model_sha256=hashlib.sha256(treasure_model).hexdigest(),
+                pod_model_sha256=hashlib.sha256(pod_model).hexdigest(), **profile)
+
+
+def find_pod_package(candidates):
+    """Return the first loadable Pod package among ``candidates`` or fail closed."""
+    tried = []
+    for candidate in candidates:
+        path = Path(candidate)
+        if all((path / name).is_file() for name in POD_PACKAGE_FILES):
+            return load_pod_package(path)
+        tried.append(str(path))
+    raise FileNotFoundError('No reusable Pod asset package found among: ' + ', '.join(tried))
+
+
+def _treasure_record_from_source(source, position):
+    record = bytearray(source)
+    struct.pack_into('<I', record, 8, POD_TREASURE_GENERATOR)
+    record[16:48] = POD_TREASURE_NAME.encode('ascii').ljust(32, b'\0')
+    write_position(record, position)
+    return bytes(record)
+
+
+def treasure_record(assets, position=POD_TREASURE_POSITION):
+    """Build the single ``pr05`` treasure generator record for the Pod arena."""
+    blob = generator(assets)
+    starts = [i for i in range(len(blob)) if blob.startswith(b'    0.0v', i)]
+    candidates = [blob[a:(starts[n + 1] if n + 1 < len(starts) else len(blob))]
+                  for n, a in enumerate(starts)]
+    source = next((r for r in candidates
+                   if r[16:48].rstrip(b'\0') == b'preview treasure bolt'), None)
+    if source is None or source[80:84] != b'50rp':
+        raise ValueError('Source pr05 treasure template unavailable')
+    return _treasure_record_from_source(source, position)
+
+
+def validate_treasure_record(record, position=POD_TREASURE_POSITION):
+    """Re-parse a staged Pod treasure record and prove the intended fields survived."""
+    if len(record) < 96 or record[80:84] != b'50rp':
+        raise ValueError('Pod treasure record is not pr05')
+    if struct.unpack_from('<I', record, 8)[0] != POD_TREASURE_GENERATOR:
+        raise ValueError('Pod treasure generator ID mismatch')
+    if record[16:48].rstrip(b'\0').decode('ascii') != POD_TREASURE_NAME:
+        raise ValueError('Pod treasure name mismatch')
+    return dict(generator=POD_TREASURE_GENERATOR, species=POD_TREASURE_NAME,
+                native_family='Pellet', model_id='pr05',
+                position=list(validate_position(bytearray(record), position)))
+
+
+def append_treasure_record(run, record):
+    """Append a built treasure record to a staged arena gen; refuse a second pr05."""
+    gen = run / 'assets/dataDir/stages/chal0/default.gen'
+    data = gen.read_bytes()
+    if data[:4] != b'1.0v' or len(data) < 24:
+        raise ValueError('Unsupported stage generator')
+    starts = [m.start() for m in re.finditer(b'    0.0v', data)]
+    count = struct.unpack_from('>I', data, 20)[0]
+    if not starts or starts[0] != 24 or len(starts) != count:
+        raise ValueError('Stage generator record framing mismatch')
+    entries = [data[s:(starts[i + 1] if i + 1 < len(starts) else len(data))]
+               for i, s in enumerate(starts)]
+    if any(struct.unpack_from('<I', e, 8)[0] == POD_TREASURE_GENERATOR for e in entries):
+        raise ValueError('Pod treasure generator already staged')
+    if any(e[80:84] == b'50rp' for e in entries):
+        raise ValueError('A pr05 treasure actor is already staged')
+    gen.write_bytes(data[:20] + struct.pack('>I', count + 1) + b''.join(entries) + record)
+    return validate_treasure_record(record)
+
+
 def enable_cargo(run, *, treasure, money, weight, capacity, corpse_value,
-                 treasure_model_sha256):
+                 treasure_model_sha256, pod_model_sha256):
     """Switch a cargo-free staged arena to a Pod without changing its actors.
 
     ``arena.prepare`` stages ``p2-cargo-free.txt``; the native preview refuses
     cargo while that file exists, which is why the Mamuta carcass could never be
     delivered (see docs/PIKMIN2_MAMUTA_POD.md). This removes it and writes the
     Pod config, but requires the caller to have already staged
-    ``assets/dataDir/courses/pikmin2room/treasure.mod`` (hashed here) and a
-    ``pr05`` treasure actor in the stage; otherwise the native preview aborts
-    with 'treasure generator missing' or 'converted treasure missing'.
+    ``assets/dataDir/courses/pikmin2room/treasure.mod`` and ``pod.mod`` (both
+    hashed here) and a ``pr05`` treasure actor; otherwise the native preview
+    aborts with 'treasure generator missing', 'converted treasure missing' or
+    'P2 pod shape missing'. :func:`stage_cargo` performs that staging.
     """
     cargo_free = run / 'p2-cargo-free.txt'
     if not cargo_free.exists():
         raise ValueError('Arena is not cargo-free; refusing to change cargo mode')
-    pod = run / 'p2-pod.txt'
-    if pod.exists():
+    config = run / 'p2-pod.txt'
+    if config.exists():
         raise ValueError('Refusing existing pod config')
     model = run / 'assets/dataDir/courses/pikmin2room/treasure.mod'
     if not model.exists() or _sha(model) != treasure_model_sha256:
         raise ValueError('Staged treasure model missing or mismatched')
-    pod.write_text(cargo_profile(treasure, money, weight, capacity, corpse_value))
+    pod_model = run / 'assets/dataDir/courses/pikmin2room/pod.mod'
+    if not pod_model.exists() or _sha(pod_model) != pod_model_sha256:
+        raise ValueError('Staged pod model missing or mismatched')
+    config.write_text(cargo_profile(treasure, money, weight, capacity, corpse_value))
     cargo_free.unlink()
-    return dict(file=pod.name, treasure=treasure, money=money, weight=weight,
+    return dict(file=config.name, treasure=treasure, money=money, weight=weight,
                 capacity=capacity, corpse_value=corpse_value,
-                treasure_model_sha256=treasure_model_sha256)
+                treasure_model_sha256=treasure_model_sha256,
+                pod_model_sha256=pod_model_sha256)
+
+
+def stage_cargo(run, assets, package, position=POD_TREASURE_POSITION, record=None):
+    """Stage the Pod cargo end-to-end on a cargo-free arena, then enable it.
+
+    Writes the converted ``treasure.mod``/``pod.mod`` pair, appends the ``pr05``
+    treasure actor to the stage generator, and calls :func:`enable_cargo`. The
+    package may be a :func:`load_pod_package` dict or a path to a package dir.
+    Callers may pass a prebuilt ``record`` so an unavailable template fails
+    before the arena is mutated.
+    """
+    resolved = package if isinstance(package, dict) else load_pod_package(package)
+    room = run / 'assets/dataDir/courses/pikmin2room'
+    room.mkdir(parents=True, exist_ok=True)
+    (room / 'treasure.mod').write_bytes(resolved['treasure_model'])
+    (room / 'pod.mod').write_bytes(resolved['pod_model'])
+    actor = append_treasure_record(run, record if record is not None else treasure_record(assets, position))
+    info = enable_cargo(run, treasure=resolved['treasure'], money=resolved['money'],
+                        weight=resolved['weight'], capacity=resolved['capacity'],
+                        corpse_value=resolved['corpse_value'],
+                        treasure_model_sha256=resolved['treasure_model_sha256'],
+                        pod_model_sha256=resolved['pod_model_sha256'])
+    info['actor'] = actor
+    info['package'] = resolved['path']
+    return info
 
 
 def prepare(assets, imported, output, cargo=None):
@@ -195,19 +338,36 @@ def prepare(assets, imported, output, cargo=None):
     record and preserves this lane's squad instead of adding the default
     20-red squad.
 
-    Passing ``cargo`` (keyword args for :func:`enable_cargo`) switches the run
-    from the default cargo-free arena to a Pod so the Mamuta carcass can be
-    credited.
+    Passing ``cargo`` as ``dict(pod_package=<dir>, position=<xyz>)`` switches the
+    run from the default cargo-free arena to a Pod: :func:`stage_cargo` writes
+    the converted models, appends the ``pr05`` treasure actor and enables the
+    Pod config so the Mamuta carcass can be credited. Omitting/pointing at an
+    unavailable package fails closed before any file is written.
     """
     assets = Path(assets).resolve()
+    cargo_package = cargo_record = None
+    if cargo is not None:
+        cargo = dict(cargo)
+        package = cargo.pop('pod_package', None)
+        position = cargo.pop('position', POD_TREASURE_POSITION)
+        if package is None:
+            raise ValueError('Cargo staging requires pod_package')
+        if cargo:
+            raise ValueError('Unknown cargo options: ' + ', '.join(sorted(cargo)))
+        # Resolve/hash the package and the source template before any mutation so
+        # an unavailable asset fails closed without writing a partial arena.
+        cargo_package = load_pod_package(package)
+        cargo_record = treasure_record(assets, position)
     record = squad_record(assets)
     placement = validate_squad(record)
     run = arena.prepare(assets, imported, output, extra_record=record, extra_actor=placement)
     info = json.loads((run / 'arena.json').read_text())
     info['squad'] = placement
     info['rules'] = stage_rules(run)
-    if cargo is not None:
-        info['cargo'] = enable_cargo(run, **cargo)
+    if cargo_package is not None:
+        info['cargo'] = stage_cargo(run, assets, cargo_package, record=cargo_record)
+        info['gates']['pod_cargo'] = ('staged (pr05 treasure actor + converted '
+                                      'treasure.mod/pod.mod; Pod receipt path)')
     info['gates']['starting_squad'] = 'staged (explicit 10-red lane squad; overlay preserved)'
     (run / 'arena.json').write_text(json.dumps(info, indent=2) + '\n')
     return run

@@ -18,19 +18,19 @@ INCLUDES = ('#include "Generator.h"\n#include "TekiPersonality.h"\n'
 FIXTURE = 'scripts/pikmin2_mamuta_natural_fixture.inc'
 
 
-def instrument(source, root):
+def instrument(source, root, fixture=FIXTURE):
     start = source.index('class RoomApp : public PlugPikiApp {')
     end = source.index('int main(', start)
-    app = (root / FIXTURE).read_text()
+    app = (root / fixture).read_text()
     return INCLUDES + source[:start] + app + source[end:]
 
 
-def build(native, build_dir, output, head, root, resume=False):
+def build(native, build_dir, output, head, root, resume=False, fixture=FIXTURE):
     native = native.resolve()
     build_dir = build_dir.resolve()
     output = output.resolve()
     room = output / 'room.cpp'
-    source = instrument((native / 'tools/preview_p2_room.cpp').read_text(), root.resolve())
+    source = instrument((native / 'tools/preview_p2_room.cpp').read_text(), root.resolve(), fixture)
     if resume:
         if (output / 'instrumentation.json').exists() or room.read_text() != source:
             raise ValueError('Cannot resume completed or changed fixture')

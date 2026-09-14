@@ -6,6 +6,7 @@
   "native_head": "a54f4af24286e264b1baf00ca80509f7ec6814ac",
   "native_pushed": false,
   "native_worktree": "output/native-mamuta-pod",
+  "root_worktree": "output/mamuta-pod-root",
   "ordered_commits": [
     "a54f4af2 family Pod receipt for the Mamuta carcass"
   ],
@@ -21,7 +22,8 @@
   "blocker_analysis": {
     "cargo_free_arena": "experimental/pikmin2_mamuta_arena.py writes p2-cargo-free.txt unconditionally, so the lane arena has no Pod",
     "chappy_only_receipts": "pc_p2_preview_rebind_corpses registers TEKI_Chappy only; pc_p2_preview_deliver aborts on unregistered pellets",
-    "treasure_required": "p2ValidatePreviewCargo throws when !cargoFree && !hasTreasure, so a Pod arena needs a pr05 treasure actor"
+    "treasure_required": "p2ValidatePreviewCargo throws when !cargoFree && !hasTreasure, so a Pod arena needs a pr05 treasure actor",
+    "pod_shape_required": "pc_p2_preview_setup loads courses/pikmin2room/pod.mod whenever p2-pod.txt opens, so a Pod needs both treasure.mod and pod.mod"
   },
   "native_build": {
     "dir": "output/native-mamuta-pod-build",
@@ -33,14 +35,41 @@
   },
   "root_staging": {
     "module": "experimental/pikmin2_mamuta_rules.py",
-    "adds": ["cargo_profile(...)", "enable_cargo(run, ...)", "prepare(..., cargo=...)"],
-    "tests": "tests/test_pikmin2_mamuta_cargo.py (5 passed); lane suite test_pikmin2_mamuta_{natural,rules,cargo}.py 20 passed",
-    "requires": "a staged assets/dataDir/courses/pikmin2room/treasure.mod and a pr05 treasure actor in the stage gen"
+    "adds": [
+      "POD_TREASURE_GENERATOR=221004 / POD_TREASURE_POSITION / POD_PACKAGE_FILES",
+      "parse_cargo_profile / load_pod_package / find_pod_package",
+      "treasure_record / validate_treasure_record / append_treasure_record",
+      "enable_cargo(run, ..., pod_model_sha256) now also verifies pod.mod",
+      "stage_cargo(run, assets, package) stages treasure.mod+pod.mod+pr05 actor then enable_cargo",
+      "prepare(..., cargo=dict(pod_package=<dir>[, position=<xyz>]))"
+    ],
+    "reusable_pod_package": "output/pikmin2-pod111/import-01 (pod.mod A603A6DE..., treasure.mod E40EF235..., p2-pod.txt dia_a_red 180 15 25 / Kochappy 2); disc-derived, not committed",
+    "fail_closed": "load_pod_package raises FileNotFoundError on a missing member; enable_cargo raises on a missing/mismatched model; append_treasure_record refuses a second pr05",
+    "staging_smoke": "output/mamuta-pod-stage-smoke-01/<run>: p2-pod.txt written, p2-cargo-free.txt removed, gen has 8 records with pr05 generator 221004, arena.json gates.pod_cargo=staged",
+    "tests": "tests/test_pikmin2_mamuta_cargo.py (14) and tests/test_pikmin2_mamuta_pod.py (5); lane suite 65 passed + 24 subtests"
+  },
+  "fixture_builds": {
+    "builder": "experimental/pikmin2_mamuta_natural_runtime.build(fixture=...)",
+    "natural": {
+      "fixture": "scripts/pikmin2_mamuta_pod_fixture.inc",
+      "dir": "output/mamuta-pod-fixture-natural-01",
+      "exe_sha256": "30C36E92882C8B154605D7AAE9147812EFFA9D1BB3CB5C1582E1BA411453A1F4",
+      "ninja_n": "ninja: no work to do."
+    },
+    "assisted": {
+      "fixture": "scripts/pikmin2_mamuta_pod_assisted_fixture.inc",
+      "dir": "output/mamuta-pod-fixture-assisted-01",
+      "exe_sha256": "90D18D244BC31FA2FF2ACDB0BF6037C104531E727BA46AD681FA69F291BED0F7",
+      "ninja_n": "ninja: no work to do.",
+      "label": "assisted=1 direct native Transport assignment; never natural pickup"
+    },
+    "runner": "scripts/pikmin2_mamuta_pod_native.py (validate() classifies pod_ready/kill/corpse/carry/pod_receipt; natural vs assisted)",
+    "runtime_status": "compiled/linked only; no GL run (headless)"
   },
   "not_claimed": [
-    "staging the pr05 treasure actor / converted treasure model for the lane arena",
-    "natural or assisted carcass carry run to the Pod",
-    "runtime GL acceptance (no run performed)",
+    "runtime GL acceptance (no display; no run performed)",
+    "natural pickup of the tkmu carcass by idle P1-proxy Pikmin in the Pod arena (unmeasured)",
+    "assisted transport actually reaching the Pod / P2_POD_RECEIPT at runtime (compile-only)",
     "day/floor reset, save-load, Piklopedia"
   ]
 }
