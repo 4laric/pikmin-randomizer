@@ -77,6 +77,7 @@ def validate(text, code):
         vulnerability=bool(ticks) and start is not None and min(ticks) < start,
         frog_attack=bool(squad) and min(squad) < initial,
         controls_alive=bool(result) and result[4] == '1',
+        frog_press=bool(re.search(r'P2_FROG_PRESS species=Frog attack=1', text)),
         outcome=bool(result) and (result[1] == '0' or int(result[2]) >= 1))
     return dict(passed=all(checks.values()), checks=checks, ticks=ticks, squad=squad,
                 frog_dead=result[1] if result else None, corpse=result[2] if result else None,
