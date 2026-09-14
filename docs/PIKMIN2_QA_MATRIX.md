@@ -89,10 +89,21 @@ A record is a JSON object (or a list, or `{"records": [...]}`):
 
 ```powershell
 py -3.12 -m experimental.pikmin2_qa_matrix validate --records output/lane33-records
+py -3.12 -m experimental.pikmin2_qa_matrix import-run --manifest <verification.json> `
+    --id bt-run-01 --stage install --scenario missing_assets --kind fixture `
+    --root-commit <root head> --out output/lane33-records/bt-run-01.json
 py -3.12 -m experimental.pikmin2_qa_matrix report --records output/lane33-records `
     --output output/lane33-qa-baseline `
     --root-commit <root head> --native-commit <native head>
 ```
+
+`import-run` converts a run manifest (`verification.json`, `arena.json`, ...) into
+a validated record. The operator supplies the stage/scenario/kind classification;
+the tool extracts the manifest status, the fixture executable hash and the
+evidence path, and refuses an invalid classification. A private fixture record
+satisfies a boundary cell but the report still resolves a natural-required cell
+to `BLOCKED` with `fixture evidence cannot satisfy this cell` — the guardrail
+that keeps a harness run from being reported as a real seed.
 
 The `report` command writes `qa-matrix.json` (machine-readable) and
 `qa-matrix.md` (human table) and exits non-zero on any invalid record.
