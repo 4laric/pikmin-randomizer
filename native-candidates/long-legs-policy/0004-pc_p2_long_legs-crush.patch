@@ -1,0 +1,74 @@
+From dbff3a4bb76078dd20b34b98ba98a5c6e7450e21 Mon Sep 17 00:00:00 2001
+From: Codex <4laric@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 05:56:33 -0400
+Subject: [PATCH] pc_p2_long_legs: apply landing foot-crush as a real
+ InteractFlick to nearby Pikmin (#173, #312)
+
+---
+ pc_port/pc_p2_long_legs.cpp | 34 +++++++++++++++++++++++++++++++++-
+ 1 file changed, 33 insertions(+), 1 deletion(-)
+
+diff --git a/pc_port/pc_p2_long_legs.cpp b/pc_port/pc_p2_long_legs.cpp
+index 474353df..e158901b 100644
+--- a/pc_port/pc_p2_long_legs.cpp
++++ b/pc_port/pc_p2_long_legs.cpp
+@@ -17,6 +17,7 @@
+ #include "pc_p2_animation.h"
+ #include "pc_bbft.h"
+ #include "teki.h"
++#include "Interactions.h"
+ #include "Generator.h"
+ #include "Shape.h"
+ #include "Texture.h"
+@@ -132,6 +133,33 @@ int countPikiWithin(const Vector3f& pos, float radius) {
+     return count;
+ }
+ 
++// Port substitution: the P1 engine has no InteractPress callback, so the
++// landing key-2 "all four feet" press is applied as a single InteractFlick
++// (knockback + source press damage) to grounded Pikmin within the foot radius.
++// The source foot sphere radius is not in the audit; 60 units is the documented
++// port value and applies only on the landing-key-2 event.
++void applyFootCrush(BTeki* actor, const Vector3f& pos, const std::string& species,
++                    unsigned generator, float damage, float radius) {
++    if (!pikiMgr || damage <= 0.0f) return;
++    int hit = 0;
++    Iterator it(pikiMgr);
++    CI_LOOP(it) {
++        Piki* p = static_cast<Piki*>(*it);
++        if (!p || !p->isAlive()) continue;
++        const Vector3f q = p->getPosition();
++        const float dx = q.x - pos.x, dz = q.z - pos.z;
++        if (dx * dx + dz * dz >= radius * radius) continue;
++        const float angle = std::atan2(q.x - pos.x, q.z - pos.z);
++        p->stimulate(InteractFlick(actor, 100.0f, damage, angle));
++        ++hit;
++    }
++    if (hit > 0) {
++        std::printf("P2_LONG_LEGS_CRUSH species=%s generator=%u pikmin=%d\n",
++                    species.c_str(), generator, hit);
++        std::fflush(stdout);
++    }
++}
++
+ bool parseActors(const std::string& path, std::map<unsigned, std::string>& out) {
+     std::ifstream in(path);
+     if (!in) return false;  // absent config -> P1 fallback
+@@ -265,9 +293,13 @@ bool pc_p2_long_legs_draw(BTeki* actor, Graphics& gfx, const Matrix4f& matrix, b
+         } else {
+             state.animSeconds += dt;
+         }
+-        if (out.footCrush)
++        if (out.footCrush) {
+             std::printf("P2_LONG_LEGS_FOOT species=%s generator=%u\n", state.species.c_str(),
+                         state.generator);
++            std::fflush(stdout);
++            applyFootCrush(actor, pos, state.species, state.generator,
++                           state.parms.pressDamage, 60.0f);
++        }
+         if (out.fireShell)
+             std::printf("P2_LONG_LEGS_SHELL species=%s generator=%u\n", state.species.c_str(),
+                         state.generator);
+-- 
+2.55.0.windows.3
+

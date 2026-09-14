@@ -49,5 +49,11 @@
     "patch": "0003-pc_p2_long_legs-host.patch",
     "runtime": "PASS; run output/p2-lane26-longlegs-run/capture; states Land/Wait/Flick/Walk/Shot observed, one BigFoot P2_LONG_LEGS_FOOT; window 960x540 + red=20 overlay squad; exe SHA 0F95D19E31793E6B85EE393E82125CFC058919FBFA51CB27EFB7E0C9F21A8E0C; native.log SHA 4BCE31E7114BA11D014FA2A64080E2C88122A1451421B8B7B70E4AD3E7F3E8E5",
     "limits": "No IK movement, no real foot-press collision, shells/effects not applied; fixture key-edge timing is synthesized from audit key frames."
+  },
+  "follow_up_0004": {
+    "native_head": "dbff3a4bb76078dd20b34b98ba98a5c6e7450e21",
+    "change": "Apply the landing foot-crush intent as a real InteractFlick to grounded Pikmin within a 60-unit foot radius (InteractPress substitute).",
+    "patch": "0004-pc_p2_long_legs-crush.patch",
+    "runtime": "FOOT intent fired 1x (BigFoot); CRUSH hits 0 because the fixture squad spawned ~190 units from BigFoot. exe SHA E45BCC8D39AB702ABB029691FE541BE6DD8F7AC46CD700356F38D358567AEA4E; native.log SHA 5A8E0DF239A9583C9000D6153966A8C33A746096CE0A4228A59C6420F5EDB0E6"
   }
 }

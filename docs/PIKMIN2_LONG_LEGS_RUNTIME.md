@@ -35,11 +35,11 @@ movement, real foot-press collision, shell objects) are not applied.
 |---|---|
 | Root/native revision | native `opencode/p2-longlegs-fsm` @ `ad4dcd6e` (base `f9e139d8`) |
 | Private build | `output/native-lane26/build-fsm`, `pikmin_pc` relink exit 0 |
-| Executable SHA-256 | `0F95D19E31793E6B85EE393E82125CFC058919FBFA51CB27EFB7E0C9F21A8E0C` |
+| Executable SHA-256 | `E45BCC8D39AB702ABB029691FE541BE6DD8F7AC46CD700356F38D358567AEA4E` |
 | Window | 960×540; log line `Experimental preview window set to 960x540 windowed and centered` |
 | Squad | shared overlay: `P2_ROOM_PREVIEW room=room_4x4a_4_conc red=20 isolated=1` |
 | Run directory | `output/p2-lane26-longlegs-run/capture` |
-| `native.log` SHA-256 | `4BCE31E7114BA11D014FA2A64080E2C88122A1451421B8B7B70E4AD3E7F3E8E5` |
+| `native.log` SHA-256 | `5A8E0DF239A9583C9000D6153966A8C33A746096CE0A4228A59C6420F5EDB0E6` |
 
 ## Observed markers
 
@@ -56,7 +56,16 @@ P2_LONG_LEGS_FOOT species=BigFoot generator=312002
 ```
 
 33 state transitions were observed; Man-at-Legs entered `Shot` after a `Flick`
-(source: always after a Flick), and BigFoot logged one foot-crush intent.
+(source: always after a Flick), and BigFoot logged one foot-crush intent
+(`P2_LONG_LEGS_FOOT`).
+
+The landing key-2 foot press is then applied for real: `applyFootCrush` issues a
+single `InteractFlick(actor, 100, pressDamage, angle)` to grounded Pikmin within
+a 60-unit foot radius (the port has no `InteractPress`, so this is the documented
+substitution, matching the Crawbster roll contact). In this fixture the squad
+spawns ~190 units from BigFoot, so the intent fired but no Pikmin were under the
+foot (`P2_LONG_LEGS_CRUSH` count 0). The application path is compiled and ready
+for a placement where Pikmin are under a foot.
 
 ## Six-gate status
 
