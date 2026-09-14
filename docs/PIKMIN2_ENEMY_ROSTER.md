@@ -87,6 +87,35 @@ production-eligible remain separate columns: an identity can be mechanically
 complete but still `denied` for the randomizer pool until placement/content/reward
 contracts (lanes 04/05/06) are satisfied.
 
+## Identity roles and aliases
+
+`identity_role(entry)` derives, never stores, how an identity may participate:
+
+| Role | Meaning |
+|---|---|
+| `source` | standalone randomizable enemy/boss with its own manager |
+| `variant` | randomizable identity sharing a parent manager/base (`UmiMushi`, `UmiMushiBlind`) |
+| `helper` | boss helper or dependent birth; never seeded independently (`Baby`, `Tyre`) |
+| `plant`/`hazard`/`projectile`/`nest`/`manager_base`/`non_spawnable` | non-actor classification |
+
+`resolve_alias(token, roster)` classifies a content-inventory `enemy_ids` token as
+`exact`, `generator_variant` (`$N`-prefixed), `treasure_carrier`
+(`Enum_suffix` carrier) or `unknown`, returning the resolved identity. A carrier
+alias never becomes a new source ID.
+
+## Admission set (deny by default)
+
+`admission_set(roster)` materializes the explicit seedable pool referenced by the
+gate ledger. An identity enters `admitted` only when the overlay sets
+`eligibility: admitted` **and** its role is `source`/`variant`; a helper, plant,
+hazard, projectile, nest, manager base or non-seedable alias is rejected even if
+marked admitted. Everything else remains in `candidate`, `excluded` or `denied`.
+`admitted_ids(roster)` is the ordered allowlist lane 03 consumes;
+`require_admitted(roster, source_id)` is the fail-closed check. The pool is empty
+until a family supplies complete six-gate evidence, which is the correct starting
+state — native module presence, source facts and taxonomy membership are not
+eligibility.
+
 ## Current coverage
 
 Generated from source revision `632af93787b9c95b63f0c13be32b161375ce3a96`:
