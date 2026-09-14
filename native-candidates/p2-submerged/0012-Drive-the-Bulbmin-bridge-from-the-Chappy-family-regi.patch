@@ -1,7 +1,7 @@
 From 1d16e381c351057c6c94147a75a0133df5f8b7c3 Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 03:20:05 -0400
-Subject: [PATCH 12/13] Drive the Bulbmin bridge from the Chappy-family
+Subject: [PATCH 12/17] Drive the Bulbmin bridge from the Chappy-family
  registration (#131)
 
 Lane 11 turned the inert Bulbmin ledger into an opt-in driver:

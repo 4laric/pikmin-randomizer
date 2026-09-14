@@ -1,7 +1,7 @@
 From 8352ef91bc9e32184f35a1345661673c637f7288 Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 03:21:16 -0400
-Subject: [PATCH 13/13] Add opt-in second-captain engine primitives and slot-1
+Subject: [PATCH 13/17] Add opt-in second-captain engine primitives and slot-1
  binding (#130)
 
 Lane 12 scaffolding for a second captain, default off. Adds additive

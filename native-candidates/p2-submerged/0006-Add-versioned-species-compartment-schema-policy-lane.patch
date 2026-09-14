@@ -1,7 +1,7 @@
 From a21e12b5a49e11dcbf60b64d77f4f10b71b08b88 Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 02:35:32 -0400
-Subject: [PATCH 06/13] Add versioned species/compartment schema policy (lane
+Subject: [PATCH 06/17] Add versioned species/compartment schema policy (lane
  11)
 
 ---
