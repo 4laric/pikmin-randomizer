@@ -39,6 +39,9 @@ public:
    assembled=true;phase=1;ticks=0;walkGoals.clear();
    walkGoals.push_back(Vector3f(actor->mSRT.t.x,0,actor->mSRT.t.z+20));walkPoint=0;
    n->mKontroller=new FixtureController();
+   // Controlled start: pin the captain to the south approach (fixture placement)
+   // so the squad is not buried while the baseline-far captain walks over.
+   {Vector3f near(actor->mSRT.t.x,0,actor->mSRT.t.z+50);near.y=mapMgr->getMinY(near.x,near.z,true);n->resetPosition(near);}
    std::printf("P2_MAMUTA_POD_READY generator=221004 model=pr05 pokos=%d\n",initialPokos);
    std::printf("P2_MAMUTA_POD_BIRTH id=221001 type=24 squad=%d color=red\n",squad);
    std::printf("P2_MAMUTA_POD_APPROACH target=%.1f,%.1f actor=%.1f,%.1f\n",walkGoals[0].x,walkGoals[0].z,actor->mSRT.t.x,actor->mSRT.t.z);

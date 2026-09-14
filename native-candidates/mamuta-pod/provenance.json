@@ -52,24 +52,32 @@
     "builder": "experimental/pikmin2_mamuta_natural_runtime.build(fixture=...)",
     "natural": {
       "fixture": "scripts/pikmin2_mamuta_pod_fixture.inc",
-      "dir": "output/mamuta-pod-fixture-natural-01",
-      "exe_sha256": "30C36E92882C8B154605D7AAE9147812EFFA9D1BB3CB5C1582E1BA411453A1F4",
-      "ninja_n": "ninja: no work to do."
+      "dir": "output/mamuta-pod-fixture-natural-02",
+      "exe_sha256": "2F53A233CDAB8BDDEE323E862F6457BCF07D56390D5735F11341D89B43F0DC8B",
+      "controlled_start": "resetPosition captain to (actor.x, ground, actor.z+50) at start",
+      "note": "the -01 builds lacked the controlled start and were superseded"
     },
     "assisted": {
       "fixture": "scripts/pikmin2_mamuta_pod_assisted_fixture.inc",
-      "dir": "output/mamuta-pod-fixture-assisted-01",
-      "exe_sha256": "90D18D244BC31FA2FF2ACDB0BF6037C104531E727BA46AD681FA69F291BED0F7",
-      "ninja_n": "ninja: no work to do.",
+      "dir": "output/mamuta-pod-fixture-assisted-02",
+      "exe_sha256": "0A1BDB954044568A2CE927EF432250BDF5EC1CDAF7F5C2AB004D7D2AB3204247",
       "label": "assisted=1 direct native Transport assignment; never natural pickup"
     },
-    "runner": "scripts/pikmin2_mamuta_pod_native.py (validate() classifies pod_ready/kill/corpse/carry/pod_receipt; natural vs assisted)",
-    "runtime_status": "compiled/linked only; no GL run (headless)"
+    "runner": "scripts/pikmin2_mamuta_pod_native.py (validate() classifies pod_ready/kill/corpse/carry/pod_receipt; natural vs assisted)"
+  },
+  "runtime": {
+    "window": "960x540 windowed",
+    "native_head": "a54f4af2",
+    "fixture_exe_sha256": "2F53A233CDAB8BDDEE323E862F6457BCF07D56390D5735F11341D89B43F0DC8B",
+    "runs": [
+      {"run": "output/mamuta-pod-accept-natural-02/44d88eb444ac4bfca909a0d46ac96217", "died_tick": 472, "carried": 1, "goal": 1, "receipt": "corpse:mamuta:221001", "value": 2, "pokos": 2},
+      {"run": "output/mamuta-pod-accept-natural-03/1a5f6fffdd5549948b4a2bfa07f21309", "died_tick": 500, "carried": 1, "goal": 1, "receipt": "corpse:mamuta:221001", "value": 2, "pokos": 2}
+    ],
+    "classify": "natural_kill/natural_corpse/natural_carry/pod_receipt = PASS (2/2 runs)",
+    "validator_fix": "validate() no longer anchors the P2_POD_RECEIPT regex to line start; native prefixes it with '[Pikipelago] '"
   },
   "not_claimed": [
-    "runtime GL acceptance (no display; no run performed)",
-    "natural pickup of the tkmu carcass by idle P1-proxy Pikmin in the Pod arena (unmeasured)",
-    "assisted transport actually reaching the Pod / P2_POD_RECEIPT at runtime (compile-only)",
+    "free-walk natural approach (captain was fixture-placed via resetPosition)",
     "day/floor reset, save-load, Piklopedia"
   ]
 }

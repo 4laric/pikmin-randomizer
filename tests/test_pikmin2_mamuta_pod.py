@@ -53,6 +53,19 @@ def test_pod_validate_accepts_natural_receipt():
     assert evidence['assisted'] is False
 
 
+def test_pod_validate_parses_native_prefixed_receipt():
+    # Native emits the receipt through pc_p2_preview as "[Pikipelago] P2_POD_RECEIPT
+    # id=corpse:mamuta:<gen> ..." (no cave prefix). The parser must not require a
+    # line start, or a real natural run is misclassified UNPROVEN.
+    from scripts.pikmin2_mamuta_pod_native import validate
+    log = _pod_log().replace(
+        'P2_POD_RECEIPT id=corpse:ujino:mamuta:221001 value=2 new=1 pokos=182 seeds=0',
+        '[Pikipelago] P2_POD_RECEIPT id=corpse:mamuta:221001 value=2 new=1 pokos=2 seeds=0')
+    evidence = validate(log)
+    assert evidence['classify']['pod_receipt'] == 'PASS'
+    assert evidence['mamuta_receipt'][:2] == ('221001', '2')
+
+
 def test_pod_validate_labels_assisted_transport():
     from scripts.pikmin2_mamuta_pod_native import validate
     evidence = validate(_pod_log(assisted=True, pokos=182), assisted=True)

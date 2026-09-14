@@ -89,59 +89,72 @@ head `a54f4af2` (no GL run):
 
 | fixture | dir | fixture.exe sha256 |
 | --- | --- | --- |
-| unassisted | `output/mamuta-pod-fixture-natural-01` | `30C36E92882C8B154605D7AAE9147812EFFA9D1BB3CB5C1582E1BA411453A1F4` |
-| assisted | `output/mamuta-pod-fixture-assisted-01` | `90D18D244BC31FA2FF2ACDB0BF6037C104531E727BA46AD681FA69F291BED0F7` |
+| unassisted | `output/mamuta-pod-fixture-natural-02` | `2F53A233CDAB8BDDEE323E862F6457BCF07D56390D5735F11341D89B43F0DC8B` |
+| assisted | `output/mamuta-pod-fixture-assisted-02` | `0A1BDB954044568A2CE927EF432250BDF5EC1CDAF7F5C2AB004D7D2AB3204247` |
+
+(The earlier `-01` builds lacked the controlled captain start and were superseded.)
 
 `ninja -n` on `output/native-mamuta-pod-build` -> `ninja: no work to do.`;
 `pikmin_pc` = `bin/nectar.exe` sha256
 `6C49DC33591C13F279014D49098651875CC116F9805E1E59321C8E116461515D` (unchanged,
 no native code added by this batch).
 
+## Accepted runtime runs (2026-09-14, real GL, 960x540 windowed)
+
+Two consecutive **natural** Pod runs PASS gate 5 on the approved native head
+`a54f4af2` (fixture `output/mamuta-pod-fixture-natural-02`, exe sha256
+`2F53A233CDAB8BDDEE323E862F6457BCF07D56390D5735F11341D89B43F0DC8B`). The fixture
+pins the captain to the south approach with `resetPosition` at start: the approved
+baseline spawns it far east, so the squad engaged the Mamuta alone and was buried.
+The pickup, carry and Pod credit themselves are natural (no `Transport` action is
+assigned).
+
+| run | stage | died | corpse | carried | goal | receipt | pokos |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| natural-02 | `output/mamuta-pod-accept-natural-02/44d88eb444ac4bfca909a0d46ac96217` | 472 | 1 | 1 | 1 | `corpse:mamuta:221001` value 2 | 2 |
+| natural-03 | `output/mamuta-pod-accept-natural-03/1a5f6fffdd5549948b4a2bfa07f21309` | 500 | 1 | 1 | 1 | `corpse:mamuta:221001` value 2 | 2 |
+
+Observed (both): `[Pikipelago] P2_POD_READY treasure=dia_a_red value=180 weight=15
+capacity=25`; `P2_MAMUTA_POD_DIED`; `P2_MAMUTA_POD_CORPSE`; carry grows to
+`transport=9` then `state=1 goal=1`; `[Pikipelago] P2_POD_RECEIPT
+id=corpse:mamuta:221001 value=2 new=1 pokos=2 seeds=0`; `P2_MAMUTA_POD_RESULT
+died=1 corpse=1 carried=1 goal=1 pokos=2 control_alive=1`; exit 0; no
+`[PC GX] DESYNC`. Classification: `natural_kill`/`natural_corpse`/
+`natural_carry`/`pod_receipt` = PASS.
+
+The validator previously missed this receipt because the native line is prefixed
+`[Pikipelago] `; `scripts/pikmin2_mamuta_pod_native.validate` no longer anchors to
+line start, and a regression test covers it.
+
 ## Tests
 
 `py -3.12 -m pytest tests/test_pikmin2_mamuta_cargo.py
 tests/test_pikmin2_mamuta_natural.py tests/test_pikmin2_mamuta_rules.py
-tests/test_pikmin2_mamuta_pod.py -q` -> 32 passed; the wider lane family
+tests/test_pikmin2_mamuta_pod.py -q` -> 33 passed; the wider lane family
 (`..._assets/_install/_runtime/_native`) -> 65 passed + 24 subtests. The Pod
 staging tests are asset-independent and skip nothing; `prepare`-with-assets
 tests skip only when the local user assets/import are absent.
 
 ## Remaining (not claimed here)
 
-- **Runtime GL acceptance.** No display is available; nothing above is a
-  runtime PASS. The fixtures compile/link and the staging is proven, but the
-  Pod receipt has not been observed in the engine.
-- **Natural vs assisted carry.** Whether idle P1-proxy Pikmin pick up the `tkmu`
-  carcass unaided in a Pod arena is unmeasured; the assisted variant exists and
-  is labelled.
+- **Free-walk natural approach.** The approach was reached by a fixture
+  `resetPosition` because the approved baseline spawns the captain far from the
+  Mamuta; a free-walk approach that survives is still open.
 - **Day/floor reset, save-load, Piklopedia** remain open from the natural doc.
+- The assisted variant is available and labelled but was not needed here.
 
-## Exact human GL acceptance commands (not run here)
-
-```powershell
-# natural (unassisted) Pod observation:
-py -3.12 -m scripts.pikmin2_mamuta_pod_native --assets <assets> --imported <imported> `
-  --exe output/mamuta-pod-fixture-natural-01/fixture.exe `
-  --output output/mamuta-pod-accept-natural --pod-package output/pikmin2-pod111/import-01
-
-# observed log must contain:
-#   P2_POD_READY treasure=dia_a_red ...
-#   P2_MAMUTA_POD_RESULT ...
-#   P2_POD_RECEIPT id=corpse:...mamuta:221001 value=2 ...   <-- gate 5
-#   PASS P2_MAMUTA_POD_RUNTIME observe approach receipt reset
-```
-
-Assisted (must be labelled assisted, never natural):
+## Reproduce
 
 ```powershell
-py -3.12 -m scripts.pikmin2_mamuta_pod_native --assets <assets> --imported <imported> `
-  --exe output/mamuta-pod-fixture-assisted-01/fixture.exe `
-  --output output/mamuta-pod-accept-assisted --pod-package output/pikmin2-pod111/import-01 `
-  --assisted
+py -3.12 -m scripts.pikmin2_mamuta_pod_native `
+  --assets C:\Users\alari\pikmin-local\game\assets `
+  --imported output/mamuta-first/imported `
+  --exe output/mamuta-pod-fixture-natural-02/fixture.exe `
+  --output output/mamuta-pod-accept-natural-04 `
+  --pod-package output/pikmin2-pod111/import-01
+# expect: P2_POD_READY ..., died=1 corpse=1 carried=1 goal=1 pokos=2,
+#         [Pikipelago] P2_POD_RECEIPT id=corpse:mamuta:221001 value=2 ... seeds=0
 ```
-
-Gate 5 closes only when the natural run emits the `mamuta:221001` receipt (or
-the assisted run does, reported as assisted).
 
 ## Provenance
 

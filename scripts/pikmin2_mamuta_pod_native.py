@@ -59,8 +59,10 @@ def validate(text, assisted=False):
         raise ValueError('Missing reset evidence')
     if '[PC GX] DESYNC' in text:
         raise ValueError('GX display list desync')
+    # Native emits this receipt through pc_p2_preview as "[Pikipelago] P2_POD_RECEIPT ...",
+    # so do not anchor to the line start.
     receipt = re.findall(
-        r'^P2_POD_RECEIPT id=corpse:\S*?mamuta:(\d+) value=(\d+) new=(\d+) pokos=(\d+)', text, re.M)
+        r'P2_POD_RECEIPT id=corpse:\S*?mamuta:(\d+) value=(\d+) new=(\d+) pokos=(\d+)', text)
     mamuta = [row for row in receipt if row[0] == '221001']
     if len(mamuta) != 1:
         mamuta = []
