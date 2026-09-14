@@ -61,7 +61,7 @@ Full file lists and sample absent paths: `docs/PIKMIN2_RECONCILE_LEDGER.json`.
 
 ## Status
 
-Batch A (hard lanes) is executed; batches B–E remain.
+Batch A (hard lanes) and Batch B (species root slice) are executed; batches C–E remain.
 
 ### Batch A result — hard lanes merged, built, exported, unit-gated
 
@@ -72,7 +72,18 @@ Batch A (hard lanes) is executed; batches B–E remain.
 - Affected-gate repeat: `py -3.12 scripts/run_p2_hardlane_tests.py --native output/lane01-native` → **16/16 PASS** (BombSarai 7, BigTreasure 5, Fuefuki 4).
 - Not yet done: real-GL runtime fixtures for #244/#245/#246 (arena capture) and integration of `22064f8` into the maintained line. No gameplay PASS is claimed from the unit/build evidence.
 
+### Batch B result — species root slice integrated; native candidate needs a dedicated pass
+
+- Integrated the root half of `86aa159` (the candidate lane 01 is named to reconcile): `experimental/pikmin2_mar_behavior.py`, `experimental/pikmin2_tadpole_behavior.py`, `tests/test_pikmin2_mar_behavior.py`, `tests/test_pikmin2_tadpole_behavior.py`, `docs/PIKMIN2_{MAR,TADPOLE}_NATIVE.md`. `pytest` → **10 passed**.
+- **Native species candidate deferred.** Merging `opencode/p2-species-native` (`f9e56420`, 62 commits since `9735870c`) into the Batch A line produced **45 conflict blocks across 18 files**, including add/add divergence in `pc_p2_batch2/3.cpp`, `pc_p2_cave.cpp`, `pc_p2_long_legs.*`, `pc_p2_armor.*`, `pc_p2_kochappy.*` where the review base already carries independently-integrated versions. Resolving that blind risks reverting newer base work, so the merge was aborted (no partial state) and the branch is left for a per-family pass:
+  - ground: `pc_p2_elecbug/tamagomushi/imomushi/hana`
+  - aquatic: `pc_p2_catfish/tadpole/jigumo/umimushi`
+  - flying: `pc_p2_mar/hanachirashi/shijimi`
+  - snagret: `pc_p2_snakejoint/dangomushi`
+  Each family sub-branch (`opencode/p2-species-*`) is a smaller merge that lanes 14–16 already own; integrating them one at a time keeps shared-file conflicts additive and reviewable.
+
 ### Remaining batches
 
-- B species deltas (#407), C cannon/projectiles (#406/#424/#425), D lifecycle/reward (#397), E converter/clock (#429/#431).
-- Each: private native merge → build + `ninja -n` → export → repeat affected gates. Real-GL fixtures require the reserved slot.
+- C cannon/projectiles (#406/#424/#425), D lifecycle/reward (#397), E converter/clock (#429/#431).
+- Native species modules: per-family merges (`opencode/p2-species-*`) rather than the 62-commit umbrella branch.
+- Real-GL fixtures require the reserved slot.
