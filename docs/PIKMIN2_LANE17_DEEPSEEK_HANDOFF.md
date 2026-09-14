@@ -18,6 +18,7 @@ Full detail: `docs/PIKMIN2_KOGANE_NATURAL.md`.
 ## Ordered commits
 
 Root (`deepseek/p2-l17`, base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`):
+- `944cb6d` lane17: DeepSeek handoff (#219)
 - `3a018b0` lane17: natural press receiver — real Pikmin attacks flip the reward beetle (ID 9) with finite drops and escape (#219)
 
 Dirty state: clean (`git status` clean) after commit.
@@ -77,14 +78,14 @@ Fixture: `output/dsw/l17-out/natural-fixture` `status: built`,
 |---|---|---|
 | 1. Exact identity and spawn | PASS | `P2_KOGANE_BIRTH` ×4 exact stored XYZ; `P2_KOGANE_BIND source_id=9` karada 60 |
 | 2. Autonomous movement/animation | PASS | wander/draw already accepted; unchanged |
-| 3. Attacks and receivers | **PASS (natural)** | `P2_KOGANE_NATURAL_ATTACK` ×3 on 219001 from real Pikmin attacks; no injected stimulus |
+| 3. Attacks and receivers | **PASS (natural)** | `P2_KOGANE_NATURAL_ATTACK` ×3 on 219001 from real Pikmin attacks; no injected stimulus. Review note: flips 1–2 at ticks ~80–120, flip 3 only at tick 2640; the intervening ~2500 ticks the attackers retargeted onto Wealthy 219002 (3 flips + escape), so the `pellets=4 nectar=9` census counts both beetles' drops. The claim that the injected batch-4 fixtures stay green is by cadence analysis (100-tick press spacing > 1.67 s recoverTimer), not re-run. |
 | 4. Death and corpse | PASS (corpse source-backed N/A) | 3rd flip → `P2_KOGANE_ESCAPE`; burrow, no corpse pellet |
 | 5. Actual transport and reward | UNTESTED (drop spawns proven) | `P2_KOGANE_DROP` exact tables + census; carry-to-Onion not driven |
 | 6. Cleanup and re-entry | PASS | reset/re-entry + on-disk receipts (prior lane16–18 work); full scene/day reload uncovered |
 
 Injections, all labelled: the RoomApp pins the observing squad clear of the drop zone
 and co-locates up to five attackers near the wandering beetle / re-issues the C-stick
-attack command (no teleport, never mid-drink). It never calls `stimulate` or
+attack command (one initial teleport of five attackers at tick 80; requeue never moves them; never mid-drink). It never calls `stimulate` or
 `eventPerformed`; the first old-attempt `mizunomi err!` panic was removed by guarding
 `PIKISTATE_Absorb` in the re-queue.
 

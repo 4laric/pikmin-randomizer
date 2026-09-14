@@ -13,8 +13,9 @@ exactly what ``piki.cpp`` does when the player releases a Pikmin at a target. Fr
 there the Pikmin approach, attack-animation timing and the ``InteractAttack``
 stimulus are the Pikmin's own AI; the beetle's flip, frame-7 drop, finite cap and
 escape are all native. To keep the wandering beetle under a landing the fixture
-re-co-locates up to four squad Pikmin next to it (equivalent to repeated successful
-C-stick throws) and re-issues the attack command whenever one falls out of
+performs one initial teleport of five squad Pikmin beside it at tick 80 (equivalent to
+successful C-stick throws) and afterwards only re-issues the attack command, without
+moving them, whenever one falls out of
 ``AttackMode``; that is the only intervention and it is labelled, never an injected
 health/interaction write.
 

@@ -61,7 +61,7 @@ fixture never calls `stimulate`/`eventPerformed`, verified by
 
 Intervention (labelled, not an injected interaction): the observing squad is pinned
 clear of the drop zone so drops persist for the census, and up to five attackers are
-co-located near the wandering beetle and re-queued (no teleport) when one falls out of
+co-located near the wandering beetle and re-queued (initial one-shot teleport of five attackers at tick 80; requeue never moves them) when one falls out of
 `AttackMode`, guarded so a drinking Pikmin (`PIKISTATE_Absorb` / `mCurrNectar`) is
 never interrupted (this was the cause of an earlier `mizunomi err!` panic in the
 first attempt). The beetle, drops and escape path are all driven natively.
