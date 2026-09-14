@@ -274,13 +274,20 @@ class PlacementCatalogTests(unittest.TestCase):
         self.assertEqual(by_identity['Chappy']['cohort'], 'ground')
         self.assertEqual(by_identity['UjiA']['cohort'], 'grub')
         self.assertEqual(by_identity['Sokkuri']['cohort'], None)
+        # Source-backed nest anchor: Hermit Crawmad references PanHouse.
+        self.assertTrue(by_identity['Jigumo']['requires_home'])
+        self.assertFalse(by_identity['Tadpole']['requires_home'])
+        self.assertTrue(all(p['requires_corpse_route'] for p in profiles))
 
     def test_built_document_validates_and_rejects_foreign_cohorts(self):
         document = catalog.build_document()
         report = compatibility_report(document)
         compatibility_by_id = report['identity_compatibility']
         self.assertEqual(report['slots_evaluated'], len(catalog.CAMPAIGN_SLOTS))
-        self.assertEqual(report['unplaceable_identities'], [])
+        # Jigumo needs a nest anchor the campaign table does not expose.
+        self.assertEqual(report['unplaceable_identities'], ['Jigumo'])
+        jigumo_reasons = [row['reason'] for row in compatibility_by_id['Jigumo']['top_incompatible_reasons']]
+        self.assertIn('slot lacks a home/nest anchor', jigumo_reasons)
         # A grub identity cannot land in the ground or aquatic cohorts.
         self.assertEqual(compatibility_by_id['UjiA']['compatible_slots'], 10)
         self.assertEqual(compatibility_by_id['Chappy']['compatible_slots'], 33)
