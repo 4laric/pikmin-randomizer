@@ -1,0 +1,32 @@
+{
+  "lane": "25 Snagrets and Crawbster",
+  "parent_issue": 174,
+  "child_issue": 376,
+  "related_issue": 407,
+  "implementation_owner": "Codex via shared account 4laric",
+  "executing_session": "opencode (deepseek-v4.1-flash), 2026-09-13",
+  "native_repository": "pikmin-randomizer/native (never pushed to native origin)",
+  "native_base_branch": "codex/pikmin2-room-preview",
+  "native_base": "f9e139d86afab0b7581599f2178ee1a95dcf33af",
+  "native_head": "e94e521ed969552f42b53e36b9816f574d6463b1",
+  "native_worktree": "output/native-lane26",
+  "native_branch": "opencode/p2-longlegs-fsm",
+  "dirty_state": "baseline maintained dirty files preserved; commit adds only lane files; build-fsm/ and compiled test .exe are untracked and not committed",
+  "files": [
+    "pc_port/pc_p2_dangomushi_hazard.h",
+    "pc_port/pc_p2_dangomushi_hazard.cpp",
+    "tools/p2_dangomushi_hazard_test.cpp",
+    "CMakeLists.txt"
+  ],
+  "source": "docs/PIKMIN2_SNAGRET_CRAWBSTER_AUDIT.md (US GPVE01 rev 0); DangoMushiState.cpp Turn / createCrashEnemy; generalEnemyMgr.cpp reserved budgets",
+  "verification": {
+    "standalone_command": "g++ -std=c++17 -O2 -Wall -Wextra -Ipc_port tools/p2_dangomushi_hazard_test.cpp pc_port/pc_p2_dangomushi_hazard.cpp -o tools/p2_dangomushi_hazard_test.exe",
+    "standalone_result": "PASS DANGOMUSHI_HAZARD (exit 0)",
+    "cmake_target": "p2_dangomushi_hazard_test",
+    "cmake_result": "PASS DANGOMUSHI_HAZARD (exit 0)",
+    "cmake_exe_sha256": "DE776E1168F6B6365AD9BE49E3480507780ABE37B38C3764D0C8FEE8B4C7C0C4"
+  },
+  "scope": "Engine-free decisions for the two behaviors the #407 native DangoMushi FSM documented as not reproduced: the Turn LOOP_START..key-3 stickable/vulnerability window and the Rock (10 per turn, 30 s) + Egg (group-share probability) flip hazard within the reserved 30 Rock / 10 Egg budgets. Host consumes intents; Rock/Egg primitives are lane 20.",
+  "runtime": "not run: engine-free decision slice. The existing #407 candidate FSM still owns the runtime Crawbster; this module does not replace it and has no host wiring yet.",
+  "integration": "Apply native patch 0001 alongside the #407 candidate. The module is additive and engine-free until the host calls it from the DangoMushi Turn state and lane 20 supplies Rock/Egg spawning."
+}
