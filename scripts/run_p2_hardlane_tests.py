@@ -14,6 +14,14 @@ import tempfile
 from pathlib import Path
 
 TESTS = {
+    "test_p2_kurage": ["pc_port/pc_p2_kurage.cpp"],
+    "test_p2_kurage_ingestion": [],
+    "p2_kurage_flight_policy_test": [],
+    "p2_kurage_fsm_test": [],
+    "test_p2_kurage_teki_policy": [],
+    "p2_onikurage_fsm_test": [],
+    "test_p2_onikurage_mouth": ["pc_port/pc_p2_onikurage_mouth.cpp"],
+    "test_p2_onikurage_teki_policy": [],
     "p2_projectile_receiver_test": ["pc_port/pc_p2_projectile_receiver.cpp", "pc_port/pc_p2_cannon_stone.cpp", "pc_port/pc_p2_rock_hazard.cpp"],
     "p2_long_legs_fsm_test": ["pc_port/pc_p2_long_legs_fsm.cpp"],
     "p2_fuefuki_binding_test": [],

@@ -2,7 +2,7 @@
 
 Next-wave dispatch: [playable encounters and first cohort](PIKMIN2_NEXT_WAVE.md). Keep existing lane numbers; use this guide for current priorities and acceptance.
 
-Current integration disposition: [integration sweep #455](PIKMIN2_INTEGRATION_455.md).
+Current integration disposition: [integration sweep #456](PIKMIN2_INTEGRATION_456.md).
 Read this before interpreting historical integrated/candidate claims below.
 
 Audit #434, 2026-09-13. Implementation owner: Codex via shared account `4laric`.

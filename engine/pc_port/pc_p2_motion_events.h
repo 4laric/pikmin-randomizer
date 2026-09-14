@@ -1,4 +1,7 @@
 #pragma once
+// Provenance: approved bounded retail-motion reader copied from
+// output/native-demon-host-clock for the Kurage host clock; kept local so this
+// private fixture does not modify the shared checkout.
 #include <cmath>
 #include <cstdint>
 #include <istream>

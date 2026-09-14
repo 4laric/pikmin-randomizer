@@ -1,4 +1,6 @@
 #pragma once
+// Provenance: approved bounded retail Player copied from
+// output/native-demon-host-clock for the Kurage host clock.
 #include "pc_p2_motion_events.h"
 #include <limits>
 

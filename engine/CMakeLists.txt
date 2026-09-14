@@ -224,6 +224,12 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_bigtreasure_motion.cpp
     pc_port/pc_p2_bigtreasure_visual.cpp
     pc_port/pc_randomizer.cpp
+    pc_port/pc_p2_kurage.cpp
+    pc_port/pc_p2_kurage_arena.cpp
+    pc_port/pc_p2_kurage_visual.cpp
+    pc_port/pc_p2_kurage_teki.cpp
+    pc_port/pc_p2_onikurage_mouth.cpp
+    pc_port/pc_p2_onikurage_teki.cpp
     pc_port/pc_main.cpp
     pc_port/pc_window.cpp
     pc_port/pc_pad_axis.cpp

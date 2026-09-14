@@ -1,5 +1,5 @@
 #include "pc_p2_kurage_receiver.h"
-#include "pc_p2_kurage_digestion.h"
+#include "pc_p2_kurage_ingestion.h"
 
 #include "Creature.h"
 #include "NaviMgr.h"
@@ -19,7 +19,7 @@ struct Entry {
     Creature* owner = nullptr;
     CollPart* mouth = nullptr;
     Vector3f capturedScale;
-    P2KurageDigestion digestion;
+    P2KurageIngestion ingestion;
     unsigned long long generation = 0;
     Phase phase = Phase::Stomach;
 };
@@ -92,6 +92,7 @@ bool reserve(Piki* piki, Entry::Phase phase)
     for (const Entry& e : sEntries) if (e.piki == piki) return false;
     for (Entry& e : sEntries) {
         if (e.piki) continue;
+        if (!e.ingestion.admit(false, false, true)) return false;
         e.piki = piki;
         e.owner = sOwner;
         e.mouth = sMouth;
@@ -111,7 +112,7 @@ bool enterStomach(Entry& e)
         return false;
     piki->startStickObject(e.owner, e.mouth, -1, 0.0f);
     const bool linked = piki->getStickObject() == e.owner && piki->getStickPart() == e.mouth;
-    if (!linked || !e.digestion.begin()) {
+    if (!linked || !e.ingestion.capture()) {
         if (linked && piki->isAlive()) piki->endStickObject();
         return false;
     }
@@ -228,12 +229,12 @@ void pc_p2_kurage_receiver_update(float delta, bool ownerAlive, bool ownerHasHea
         // Admission is currently the private receiver capture hook, an
         // approximation of source stomach entry.  From that point, retain the
         // retail 16 s stomach interval and separate 0.5 s shrink interval.
-        const auto event = e.digestion.update(delta, ownerAlive, ownerHasHealth, bittered, stomachLinked);
-        if (event == P2KurageDigestion::Event::Killed) { release(i, true); continue; }
-        if (event == P2KurageDigestion::Event::Released) { release(i, false); continue; }
+        const auto event = e.ingestion.update(delta, ownerAlive, ownerHasHealth, bittered, stomachLinked);
+        if (event == P2KurageIngestion::Event::Killed) { release(i, true); continue; }
+        if (event == P2KurageIngestion::Event::Released || event == P2KurageIngestion::Event::Ejected) { release(i, false); continue; }
         if (piki && piki->isAlive() && piki->getStickObject() == e.owner
             && piki->getStickPart() == e.mouth) {
-            const float scale = e.digestion.scale();
+            const float scale = e.ingestion.scale();
             piki->mSRT.s.set(e.capturedScale.x * scale, e.capturedScale.y * scale,
                 e.capturedScale.z * scale);
         }

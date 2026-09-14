@@ -1,3 +1,6 @@
+#include "pc_p2_kurage_visual.h"
+#include "pc_p2_kurage_teki.h"
+#include "pc_p2_onikurage_teki.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_p2_demon_drop_state.h"
 #endif
@@ -863,6 +866,9 @@ void GameCoreSection::exitStage()
 	pc_gfx_set_dof_focus(0.0f);
 	// Release while all stage creatures and managers are still valid.
 	pc_p2_kurage_receiver_reset();
+	pc_p2_kurage_teki_reset();
+	pc_p2_onikurage_teki_reset();
+	pc_p2_kurage_visual_reset();
 #endif
 	demoEventMgr = nullptr;
 	naviMgr      = nullptr;
@@ -1375,6 +1381,8 @@ void GameCoreSection::finalSetup()
 		workObjectMgr->finalSetup();
 	}
 
+	pc_p2_kurage_teki_setup();
+	pc_p2_onikurage_teki_setup();
 	pc_p2_preview_setup();
 	pc_p2_snow_campaign_setup();
 	PRINT("====================== FINAL SETUP DONE ======================\n");

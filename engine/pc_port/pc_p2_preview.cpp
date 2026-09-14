@@ -3,6 +3,7 @@
 #include "pc_p2_mamuta.h"
 #include "pc_p2_tank.h"
 #include "pc_p2_qurione.h"
+#include "pc_p2_kurage_teki.h"
 #include "pc_p2_sheargrub.h"
 #include "pc_p2_kochappy.h"
 #include "pc_p2_breadbug_visual.h"
