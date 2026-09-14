@@ -29,6 +29,17 @@ public:int idle() override {
  std::printf("P2_FROG_BIRTH id=%u type=%d registered=%d x=%.3f y=%.3f z=%.3f\n",id,type,registered,birth.x,birth.y,birth.z);}
  require(count==4,"frog roster missing");require(cameraMgr&&cameraMgr->mCamera,"frog camera missing");cameraMgr->mCamera->setTarget(frogs[0]);
  }
+ if(observed==80){
+  const bool want[4]={true,true,false,false};int before=0;
+  for(int i=0;i<4;++i)if(bool(pc_p2_frog_name(static_cast<PelletView*>(frogs[i])))==want[i])++before;
+  require(before==4,"pre-cleanup registration");
+  pc_p2_frog_reset();
+  int cleared=0;for(int i=0;i<4;++i)if(!pc_p2_frog_name(static_cast<PelletView*>(frogs[i])))++cleared;
+  require(cleared==4,"stale registration rejected after reset");
+  pc_p2_frog_setup();
+  int reentry=0;for(int i=0;i<4;++i)if(bool(pc_p2_frog_name(static_cast<PelletView*>(frogs[i])))==want[i])++reentry;
+  require(reentry==4,"re-entry registration rebuilt");
+  std::printf("P2_FROG_CLEANUP registered_before=%d cleared=%d reentry=%d\n",before,cleared,reentry);std::fflush(stdout);}
  if(observed==180)cameraMgr->mCamera->setTarget(frogs[1]);
  if(observed==120)capture("frog-live.ppm");if(observed==300)capture("marofrog-live.ppm");
  for(int i=0;i<4;++i){auto* a=frogs[i];if(observed<=360)require(a->isAlive(),"frog unexpectedly died before attack");
@@ -102,10 +113,10 @@ def validate(text,code):
  births=re.findall(r'P2_FROG_BIRTH id=(\d+) type=(\d+) registered=(\d+)',text)
  draws=re.findall(r'P2_FROG_DRAW species=(Frog|MaroFrog) corpse=([01]) clip=(\w+) pose=(\d+)',text)
  natural=re.findall(r'P2_FROG_DRAW species=(Frog|MaroFrog) corpse=([01]) clip=(\w+) pose=(\d+)',text.split('P2_FROG_INJECTED_ATTACK')[0])
- checks=dict(completion=code==0 and 'PASS P2_FROG_RUNTIME ' in text,births=births==[('201001','0','1'),('201002','33','1'),('201003','0','0'),('201004','33','0')])
+ checks=dict(completion=code==0 and 'PASS P2_FROG_RUNTIME ' in text,births=births==[('201001','0','1'),('201002','33','1'),('201003','0','0'),('201004','33','0')],cleanup_reentry='P2_FROG_CLEANUP registered_before=4 cleared=4 reentry=4' in text)
  for species in ('Frog','MaroFrog'):
   own=[d for d in draws if d[0]==species];checks[species+'_live']=any(d[1]=='0' for d in own);checks[species+'_corpse']=any(d[1]=='1' and d[2]=='dead' for d in own);checks[species+'_poses']=len({(d[2],d[3]) for d in natural if d[0]==species and d[1]=='0'})>=2
- return dict(passed=all(checks.values()),checks=checks,draws=draws,unmeasured=['natural combat','transport/rewards','reset/re-entry','P2 mechanics'])
+ return dict(passed=all(checks.values()),checks=checks,draws=draws,unmeasured=['natural combat','transport/rewards','full scene/day reload (manager reset/re-entry covered by cleanup_reentry)','P2 mechanics'])
 
 
 def run(assets,bank,output,exe):
