@@ -1,6 +1,6 @@
 """Admission-gated P2 seed generation wiring (lane 03, #439).
 
-The real lane 02 roster admits nothing yet, so these tests inject a minimal
+The real lane 02 roster admits Orange and Snow; these tests also inject a minimal
 admitted cohort (Sokkuri=79) and a minimal lane 04 placement document to exercise
 the product path, and separately prove the default docile/fail-closed behavior.
 """
@@ -29,8 +29,8 @@ def one_admitted(monkeypatch):
     monkeypatch.setattr(bridge, "admitted_ids", lambda roster: [SOKKURI])
 
 
-def test_p2_generation_fails_closed_while_nothing_admitted():
-    assert load_and_validate()  # real roster loads, nothing admitted
+def test_p2_generation_fails_closed_for_unadmitted_placement():
+    assert load_and_validate()  # real roster loads; Sokkuri remains unadmitted
     with pytest.raises(ValueError):
         generate("seed-a", p2_enemies=True, p2_placement=placement_document())
 

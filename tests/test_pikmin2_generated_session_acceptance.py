@@ -89,12 +89,12 @@ class PinTests(unittest.TestCase):
 
 
 class GenerationTests(unittest.TestCase):
-    def test_real_admission_set_blocks_generation(self):
-        # The live lane 02 admission set is empty; the harness must not inject one.
+    def test_real_admission_set_requires_matching_placement(self):
+        # Orange and Snow are admitted; this unrelated placement must remain blocked.
         with self.assertRaises(gs.AcceptanceBlocked) as caught:
             gs.generate_pinned_session("p2-native", placement_document())
         self.assertEqual(caught.exception.stage, "generate")
-        self.assertIn("lane 02", caught.exception.dependency)
+        self.assertIn("lane 04", caught.exception.dependency)
 
     def test_missing_placement_document_blocks(self):
         with self.assertRaises(gs.AcceptanceBlocked) as caught:
@@ -230,7 +230,7 @@ class PlanTests(unittest.TestCase):
             pin = pin_for(tmp)
             report = gs.plan_report(pin, "p2-native", placement_document())
             self.assertEqual(report["status"], qa.BLOCKED)
-            self.assertIn("lane 02", report["blocked_by"])
+            self.assertIn("placement", report["blocked_by"])
 
     def test_plan_reports_bad_pin(self):
         report = gs.plan_report(gs.Pin(root_commit="a", native_commit="b"), "s", {})

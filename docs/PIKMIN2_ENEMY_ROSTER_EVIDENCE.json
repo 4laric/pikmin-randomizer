@@ -43,12 +43,24 @@
     "45": {
       "native_module": "pc_p2_snow",
       "owner_lane": "13",
-      "eligibility": "candidate",
-      "eligibility_reason": "Snow-specific native module present; not an admission of the whole Bulborb family",
+      "eligibility": "admitted",
+      "eligibility_reason": "Integration-reviewed natural generated combat, corpse, Onion delivery, scene reentry and exactly-once restart on native ae00c510; admitted for reviewed placement pairs.",
       "notes": [
-        "Snow success does not admit all Bulborbs; report revival/elemental variants separately (#120).",
-        "Open: natural death/carry/revisit and variant rules."
-      ]
+        "Snow uses P1 proxy behavior; this admission does not claim P2 FSM parity.",
+        "Integration owner Codex through shared account 4laric; user authorized admission after natural gameplay review (#438/#440).",
+        "Natural-chain pins and observed evidence: docs/PIKMIN2_SNOW_NATURAL_ROUTE_ACCEPTANCE_120.md; docs/PIKMIN2_ORANGE_SNOW_ADMISSION.md records second-slot acceptance and final generation validation.",
+        "Use docs/PIKMIN2_ADMITTED_PLACEMENT.json: normal opening of stage1 soft gate at waypoint92 is required for the demonstrated carry routes.",
+        "Staged captain/free-squad positions; no forced health/state, transport, reward or route flags. Full player-input and memory-card campaign save acceptance remain outside this admission.",
+        "Native ae00c510f7f1dca6c26f49c00a6f6f96e9e52fe2; full six-gate evidence includes the earlier documented family movement/receiver work plus current generated natural chain."
+      ],
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
+      }
     },
     "44": {
       "native_module": "pc_p2_dwarf_orange + pc_p2_kochappy_fsm",
@@ -58,19 +70,18 @@
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
         "death_corpse": "PASS",
-        "transport_reward": "BLOCKED",
-        "cleanup_reentry": "BLOCKED"
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
-      "eligibility": "candidate",
-      "eligibility_reason": "opt-in source KochappyBase FSM with natural combat/death/carry and natural-death cleanup observed; generated-session bind/staging/candidate scope wired (#461); P2 reward and real-GL generated acceptance open",
+      "eligibility": "admitted",
+      "eligibility_reason": "Integration-reviewed natural generated combat, corpse, Onion delivery, scene reentry and exactly-once restart on native ae00c510; admitted for reviewed placement pairs.",
       "notes": [
-        "Dwarf Orange Bulborb (BlueKochappy 44): full source-state FSM (Wait/Turn/Walk/Attack/Flick/TurnToHome/GoHome/Press/Dead) on the maintained native line; opt-in via assets/p2-dwarf-orange-fsm.txt (generated) or CWD p2-dwarf-orange-fsm.txt (arena).",
-        "Gates A-D and cleanup PASS at the documented P1-proxy/experimental scope on native b805d9c6 + lane-13 FSM; evidence in docs/PIKMIN2_DWARF_ORANGE_CLEANUP.md, docs/PIKMIN2_KOCHAPPY_FSM.md and docs/PIKMIN2_DWARF_ORANGE_NATIVE.md.",
-        "#461 sweep: 44 is routed through pc_p2_generated_bind (source_id -> TEKI_Chappy, pc_p2_dwarf_orange_bind, gated by the dwarf-orange generated marker), the Kochappy FSM auto-opts in for the bound spawn, and the content manifest (experimental/pikmin2_dwarf_orange_content.py, identity 44) + private candidate scope (experimental/pikmin2_candidate_session.py --source 44) are built and tested off-line.",
-        "cleanup_reentry PASS covers natural-death cleanup (engine doKill funnel clears both family maps); scene re-entry relies on the shared #397 stage-teardown reset and was not separately re-run for 44.",
-        "transport_reward BLOCKED: ordinary P1 corpse transport only; P2 reward/once-credit is lane 06. Product spawn/staging/reward wiring is assignment 1/3.",
-        "Not admitted: this row records candidate evidence and named blockers, not a randomizer admission PASS (#120/#186).",
-        "Integration correction: natural-death cleanup is witnessed; complete cleanup_reentry remains BLOCKED until actual scene re-entry is exercised for source 44."
+        "Opt-in KochappyBase source FSM; receiver scope remains as documented in PIKMIN2_KOCHAPPY_FSM.md.",
+        "Integration owner Codex through shared account 4laric; user authorized admission after natural gameplay review (#438/#440).",
+        "Natural-chain pins and observed evidence: docs/PIKMIN2_DWARF_ORANGE_ROUTE_ACCEPTANCE_440.md; docs/PIKMIN2_ORANGE_SNOW_ADMISSION.md records second-slot acceptance and final generation validation.",
+        "Use docs/PIKMIN2_ADMITTED_PLACEMENT.json: normal opening of stage1 soft gate at waypoint92 is required for the demonstrated carry routes.",
+        "Staged captain/free-squad positions; no forced health/state, transport, reward or route flags. Full player-input and memory-card campaign save acceptance remain outside this admission.",
+        "Native ae00c510f7f1dca6c26f49c00a6f6f96e9e52fe2; full six-gate evidence includes the earlier documented family movement/receiver work plus current generated natural chain."
       ]
     },
     "17": {

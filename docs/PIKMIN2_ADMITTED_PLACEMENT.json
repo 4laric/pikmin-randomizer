@@ -1,0 +1,121 @@
+{
+  "schema": "p2-placement-v1",
+  "slots": [
+    {
+      "uid": 1849273021,
+      "label": "hope_0-29_4189",
+      "stage": 1,
+      "terrain": "ground",
+      "radius": 100.0,
+      "water_depth": 0,
+      "flight_space": false,
+      "burrow_ground": true,
+      "home": false,
+      "helper_capacity": 0,
+      "projectile_corridor": false,
+      "corpse_route": true,
+      "protected": false,
+      "boss_slot": false,
+      "first_day": 2,
+      "respawn_days": 4,
+      "source_identity": "campaign:dwarf:3",
+      "cohort": "dwarf",
+      "evidence": {
+        "xyz": true,
+        "terrain": true,
+        "route": true
+      }
+    },
+    {
+      "uid": 2049888785,
+      "label": "hope_0-29_3592",
+      "stage": 1,
+      "terrain": "ground",
+      "radius": 100.0,
+      "water_depth": 0,
+      "flight_space": false,
+      "burrow_ground": true,
+      "home": false,
+      "helper_capacity": 0,
+      "projectile_corridor": false,
+      "corpse_route": true,
+      "protected": false,
+      "boss_slot": false,
+      "first_day": 2,
+      "respawn_days": 4,
+      "source_identity": "campaign:dwarf:3",
+      "cohort": "dwarf",
+      "evidence": {
+        "xyz": true,
+        "terrain": true,
+        "route": true
+      }
+    }
+  ],
+  "profiles": [
+    {
+      "identity": "BlueKochappy",
+      "terrains": [
+        "ground"
+      ],
+      "family_lane": 13,
+      "footprint_radius": 0,
+      "min_water_depth": 0,
+      "requires_flight_space": false,
+      "requires_burrow_ground": false,
+      "requires_home": false,
+      "helper_budget": 0,
+      "requires_projectile_corridor": false,
+      "requires_corpse_route": true,
+      "is_boss": false,
+      "encounter_descriptor": null,
+      "accepted_gates": [
+        "placement.xyz",
+        "placement.terrain",
+        "placement.route",
+        "reward.onion"
+      ],
+      "allow_protected": false,
+      "requires_renewable_slot": false,
+      "min_first_day": 0,
+      "notes": "Reviewed generated natural route; requires ordinary opening of stage1 soft gate at waypoint92. See PIKMIN2_ORANGE_SNOW_ADMISSION.md for pins and scope.",
+      "cohort": "dwarf",
+      "accepted_slot_uids": [
+        1849273021
+      ]
+    },
+    {
+      "identity": "YellowKochappy",
+      "terrains": [
+        "ground"
+      ],
+      "family_lane": 13,
+      "footprint_radius": 0,
+      "min_water_depth": 0,
+      "requires_flight_space": false,
+      "requires_burrow_ground": false,
+      "requires_home": false,
+      "helper_budget": 0,
+      "requires_projectile_corridor": false,
+      "requires_corpse_route": true,
+      "is_boss": false,
+      "encounter_descriptor": null,
+      "accepted_gates": [
+        "placement.xyz",
+        "placement.terrain",
+        "placement.route",
+        "reward.onion"
+      ],
+      "allow_protected": false,
+      "requires_renewable_slot": false,
+      "min_first_day": 0,
+      "notes": "Reviewed generated natural route; requires ordinary opening of stage1 soft gate at waypoint92. See PIKMIN2_ORANGE_SNOW_ADMISSION.md for pins and scope.",
+      "cohort": "dwarf",
+      "accepted_slot_uids": [
+        2049888785
+      ]
+    }
+  ],
+  "encounters": [],
+  "notes": "Lane-04 concrete candidate slots (campaign + adult/group) and P2 candidate profiles; default deny."
+}

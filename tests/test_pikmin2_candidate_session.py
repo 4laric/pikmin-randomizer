@@ -21,15 +21,14 @@ def placement():
                           "accepted_gates": ["xyz"]}]}
 
 
-def test_candidate_is_scoped_and_normal_loading_stays_closed():
+def test_candidate_scope_restores_product_pool_and_admitted_seed_loads():
     original = bridge.admitted_ids
     with candidate.candidate_scope():
         manifest = qa.generate_pinned_session("candidate", placement())
         candidate.validate_candidate(manifest)
         validate(manifest)
     assert bridge.admitted_ids is original
-    with pytest.raises(ValueError):
-        validate(manifest)
+    validate(manifest)  # Snow is now admitted; its historical candidate seed loads.
     with pytest.raises(qa.AcceptanceBlocked):
         qa.generate_pinned_session("normal", placement())
 
@@ -130,8 +129,7 @@ def test_prepare_writes_reusable_candidate_runbook(tmp_path):
     assert data["launch"][2] == "experimental.pikmin2_candidate_session"
     assert data["content_manifest_path"] == str(content.resolve())
     assert "ENEMY_P2" in Path(data["bootstrap"]).read_text()
-    with pytest.raises(ValueError):
-        validate(json.loads(Path(data["manifest"]).read_text()))
+    validate(json.loads(Path(data["manifest"]).read_text()))
 
 
 def test_p2_layout_journal_reloads_after_a_previous_run(tmp_path):

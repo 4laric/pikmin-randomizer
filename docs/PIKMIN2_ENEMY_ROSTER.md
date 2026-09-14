@@ -10,8 +10,8 @@ document is the agreed interface; do not fork a competing representation.
 Numeric identities and per-enemy facts come from the projectPiki/pikmin2
 decompilation, inspected read-only:
 
-- `include/Game/enemyInfo.h` → `EnemyTypeID::EEnemyTypeID` (IDs 0–101, common names)
-- `src/plugProjectYamashitaU/enemyInfo.cpp` → `Game::gEnemyInfo[]` (parent, flags,
+- `include/Game/enemyInfo.h` â†’ `EnemyTypeID::EEnemyTypeID` (IDs 0â€“101, common names)
+- `src/plugProjectYamashitaU/enemyInfo.cpp` â†’ `Game::gEnemyInfo[]` (parent, flags,
   resource names, child birth dependency, bitter drop type)
 
 The committed snapshot `docs/PIKMIN2_ENEMY_ROSTER.json` is **generated**; never
@@ -37,7 +37,7 @@ One record per source ID, including aliases, helpers and non-spawnable bases:
 
 | Field | Meaning |
 |---|---|
-| `source_id` | decomp `EnemyTypeID` (stable, 0–101) |
+| `source_id` | decomp `EnemyTypeID` (stable, 0â€“101) |
 | `enum_name` | decomp enum suffix, e.g. `Sokkuri`, `Rkabuto` |
 | `common_name` | retail English name from the header comment |
 | `parent_name`/`parent_id` | manager/base identity this ID shares a bank with, or null |
@@ -46,7 +46,7 @@ One record per source ID, including aliases, helpers and non-spawnable bases:
 | `has_no_info` | `EFlag_HasNoInfo` (not tracked in Piklopedia/bestiary) |
 | `day_end_max` | day-end takeoff cap (1/2/4), else null |
 | `drop_type` | `BDT_*` bitter drop tier |
-| `child_name`/`child_id`/`child_count` | dependent birth (e.g. Queen→Baby×50, Kabuto→Stone×5) |
+| `child_name`/`child_id`/`child_count` | dependent birth (e.g. Queenâ†’BabyÃ—50, Kabutoâ†’StoneÃ—5) |
 | `assets` | `model`/`anim`/`anim_mgr`/`texture`/`param`/`collision`/`stone` resource names |
 | `in_info_table` | whether `gEnemyInfo[]` has a row (2 enum IDs do not) |
 
@@ -57,7 +57,7 @@ Classification is **computed on load**, not stored, so regeneration cannot drift
 ## Eligibility overlay (`p2-enemy-roster-1-evidence`)
 
 `docs/PIKMIN2_ENEMY_ROSTER_EVIDENCE.json` holds one key per source ID. Absent
-identities are **denied** by default — source facts never imply gameplay PASS.
+identities are **denied** by default â€” source facts never imply gameplay PASS.
 
 ```json
 {
@@ -76,8 +76,8 @@ identities are **denied** by default — source facts never imply gameplay PASS.
 
 Rules enforced by `validate_roster()`:
 
-- `eligibility` ∈ `denied | candidate | admitted | excluded`.
-- Gate keys are exactly the six arena gates; statuses ∈ `PASS | FAIL | BLOCKED | UNTESTED | N/A`.
+- `eligibility` âˆˆ `denied | candidate | admitted | excluded`.
+- Gate keys are exactly the six arena gates; statuses âˆˆ `PASS | FAIL | BLOCKED | UNTESTED | N/A`.
 - `admitted` requires a non-`FAIL`/non-`BLOCKED`/non-`UNTESTED` status for **all six** gates.
 - Parent/child references must resolve; IDs and enum names are unique.
 
@@ -113,7 +113,7 @@ marked admitted. Everything else remains in `candidate`, `excluded` or `denied`.
 `admitted_ids(roster)` is the ordered allowlist lane 03 consumes;
 `require_admitted(roster, source_id)` is the fail-closed check. The pool is empty
 until a family supplies complete six-gate evidence, which is the correct starting
-state — native module presence, source facts and taxonomy membership are not
+state â€” native module presence, source facts and taxonomy membership are not
 eligibility.
 
 ## Current coverage
@@ -125,8 +125,8 @@ Generated from source revision `632af93787b9c95b63f0c13be32b161375ce3a96`:
   4 `projectile`, 2 `manager_base` (Pom, UmiMushiBase), 2 enum-only (`JigumoNest`,
   `PanModokiNest` have no `gEnemyInfo[]` row).
 - `docs/PIKMIN2_CONTENT_INVENTORY.json` yields 149 `enemy_ids` tokens; the audit
-  resolves every one — 77 exact IDs, 9 `$N` generator variants, 58 treasure-carrier
-  aliases (`Enum_suffix`) — and 0 unrecognized tokens.
+  resolves every one â€” 77 exact IDs, 9 `$N` generator variants, 58 treasure-carrier
+  aliases (`Enum_suffix`) â€” and 0 unrecognized tokens.
 
 ## Consumer contract
 
@@ -144,7 +144,7 @@ Generated from source revision `632af93787b9c95b63f0c13be32b161375ce3a96`:
 `inventory_encounters(payload, roster)` resolves every identity across
 `docs/PIKMIN2_CONTENT_INVENTORY.json` `story_caves`/floors through `resolve_alias`,
 so aliases are attributed to their real identity (62/64 candidates have at least
-one cave-floor encounter). This is inventory evidence, not placement approval —
+one cave-floor encounter). This is inventory evidence, not placement approval â€”
 lane 04 still owns legal slots/terrain. `candidate_review(roster, encounters)`
 emits one readiness row per randomizable candidate:
 
@@ -170,3 +170,12 @@ admission set remains empty.
   requests review for any shared-semantics change; lane 01 reconciles.
 - Regeneration is lane 02's; other lanes may open a PR but must not hand-edit the
   snapshot.
+
+### Exact placement pairs
+
+Placement profiles may provide `accepted_slot_uids`, a list of distinct integer
+slot IDs. When present, only those slots can pass placement acceptance for that
+identity; an empty list denies all pairs. Omission preserves the existing
+profile-wide approval semantics. Physical compatibility alone never bypasses
+this evidence restriction. The admitted document uses exact pair lists to avoid
+extrapolating either natural run to a different slot.

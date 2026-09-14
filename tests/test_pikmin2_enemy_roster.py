@@ -80,8 +80,8 @@ def test_known_identities_and_relationships():
 def test_eligibility_defaults_denied_except_reviewed_candidates():
     roster = load_and_validate()
     candidates = {entry.source_id for entry in roster if entry.eligibility == "candidate"}
-    assert candidates == {2, 15, 17, 44, 45, 54, 79}
-    assert all(entry.eligibility == "denied" for entry in roster if entry.source_id not in candidates)
+    assert candidates == {2, 15, 17, 54, 79}
+    assert all(entry.eligibility == "denied" for entry in roster if entry.source_id not in candidates | {44, 45})
 
 
 def test_synthetic_pipeline_round_trips():
@@ -159,12 +159,12 @@ def test_identity_roles_real_roster():
     assert all(identity_role(entry) in ROLES for entry in roster.values())
 
 
-def test_admission_defaults_deny_and_is_empty():
+def test_admission_defaults_deny_except_reviewed_pair():
     roster = load_and_validate()
     admission = admission_set(roster)
-    assert admission.admitted == ()
-    assert admitted_ids(roster) == []
-    assert set(admission.candidates) == {2, 15, 17, 44, 45, 54, 79}
+    assert admission.admitted == (44, 45)
+    assert admitted_ids(roster) == [44, 45]
+    assert set(admission.candidates) == {2, 15, 17, 54, 79}
     assert sum(admission.by_role.values()) == len(roster)
     with pytest.raises(RosterError):
         require_admitted(roster, 79)
@@ -176,17 +176,17 @@ def test_stray_admitted_ids_env_is_inert_without_candidate_scope(monkeypatch):
     # which only the private candidate CLI sets, activates the override.
     roster = load_and_validate()
     monkeypatch.delenv("PIKMIN_P2_CANDIDATE_SCOPE", raising=False)
-    monkeypatch.setenv("PIKMIN_P2_ADMITTED_IDS", "45")
-    assert admitted_ids(roster) == []
+    monkeypatch.setenv("PIKMIN_P2_ADMITTED_IDS", "79")
+    assert admitted_ids(roster) == [44, 45]
 
 
 def test_candidate_scope_marker_activates_admitted_ids_override(monkeypatch):
     roster = load_and_validate()
     monkeypatch.setenv("PIKMIN_P2_CANDIDATE_SCOPE", "private-snow-candidate-v1")
     monkeypatch.setenv("PIKMIN_P2_ADMITTED_IDS", "45")
-    assert admitted_ids(roster) == [45]
+    assert admitted_ids(roster) == [44, 45]
     monkeypatch.setenv("PIKMIN_P2_ADMITTED_IDS", "44")
-    assert admitted_ids(roster) == [44]
+    assert admitted_ids(roster) == [44, 45]
 
 
 def test_admission_set_admits_only_seedable_randomizable():
@@ -241,4 +241,4 @@ def test_committed_overlay_reviewed_cohort_and_native_modules():
     roster = by_id(load_and_validate())
     assert roster[79].eligibility == "candidate" and roster[79].native_module == "pc_p2_sokkuri"
     assert roster[54].owner_lane == "19" and roster[45].owner_lane == "13"
-    assert admitted_ids(load_and_validate()) == []
+    assert admitted_ids(load_and_validate()) == [44, 45]
