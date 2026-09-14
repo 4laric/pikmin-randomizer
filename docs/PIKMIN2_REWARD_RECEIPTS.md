@@ -180,6 +180,39 @@ This is the **experimental `pod`** ledger reached by **injected Pod delivery**
 (labelled intervention), i.e. regression evidence, not the ordinary Onion/AP
 endpoint acceptance the next wave requires.
 
+### Runtime evidence — ordinary Onion endpoint (exactly-once across restart)
+
+A private fixture (`lane06_ordinary_room`, native `opencode/p2-lanes67-native` @
+`87740f5d`) boots an ordinary campaign stage with the **real native randomizer
+ready** (schema 9, `gameplay-checks-v9`, staged from `randomizer.seed.generate`
+with `collection_checks=True`). It kills a real Dwarf Bulborb, then drives the
+real corpse through the real Onion absorption endpoint
+(`GoalItem::suckMe` -> `pc_randomizer_corpse_delivered` -> `pc_randomizer_check`)
+and reads the durable `checks.txt` journal.
+
+```text
+run1  [Pikmin Randomizer] CHECK 30 Bestiary: Deliver Dwarf Bulborb
+      checks.txt: 50 30 51
+run2  (same session, new process; state.txt already carries the check)
+      target CHECK lines: 0      checks.txt: (empty)
+EXACTLY_ONCE_ACROSS_RESTART: True
+```
+
+- Fixture SHA-256 `42A487E94D74F71665F6927BC9AD3B6BA38E6D14B967C36CF9EA0387BE515D83`.
+- Run1 `output/lane67-ordinary-run2/session-32986a81/runs/7237a1ff1828…`
+  (log SHA-256 `DA278DEBFEC11B08F7E03FC447CD6ED2E73B8171458388ABA50B2CE44E1D2CBF`).
+- Run2 `output/lane67-ordinary-run2/session-32986a81/runs/c72e85290cc1…`
+  (log SHA-256 `CA36C6D43C5273567C0739D89133E4FE322A439C60319862673277DC38E4A8D1`).
+- Window `960x540` windowed/centred.
+
+Labelled limits: the Pikmin **carry** step is injected — the fixture's natural
+carry did not move the corpse (`natural_carry=0`), so it calls the same public
+Onion endpoint (`onion->suckMe(corpse)`) directly with the real corpse pellet.
+The family drop (real kill -> real corpse), the endpoint, and the durable
+ordinary receipt across a fresh process are all real; natural transport remains
+lane-04 ownership. This is the ordinary Onion/AP ledger, explicitly not the
+experimental Pod path.
+
 ### Still open
 
 This surface is not yet wired into a real family transport endpoint in the
