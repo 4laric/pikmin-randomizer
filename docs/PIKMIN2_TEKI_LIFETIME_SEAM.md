@@ -169,9 +169,18 @@ the lane-07 runtime evidence is single-head. Native candidate bundle for lane 01
   late birth (respawned actor re-registered after start), **full stage-exit
   teardown** (all family maps cleared), control actor unaffected (`control=1`),
   window/squad baseline.
-- **Still open:** re-entry into a *new* gameplay scene after teardown (this probe
-  ends at the stage boundary; a next-day/new-stage re-entry run is the remaining
-  item), and the #186 shared-semantics review + lane 01 export.
+- **New-scene attempt:** a Snow-campaign day-transition probe reached the save
+  boundary on the supported path — `P2_SNOW_CAMPAIGN_READY dwarfs=11
+  interpolation=1`, `P2_NEWSCENE_BEFORE day=2 bound=11`, day end -> results ->
+  save -> MapSelect. In the resume phase the campaign restored state
+  (`CAMPAIGN_RESUMED day=8`) but the engine never created a gameplay stage
+  (`tekiMgr` stayed null) — the supported resume stops at the setup/map-select
+  boundary, so a fresh **gameplay** scene requires map-select navigation the
+  current test surface does not provide. The invariant is nevertheless held by
+  the stage-exit teardown proof plus the address-reuse proof: any new scene
+  starts from emptied family maps, and a reused address is cleared before use.
+- **Still open:** an in-process/menu-driven new **gameplay** scene re-entry run,
+  and the #186 shared-semantics review + lane 01 export of this candidate.
 
 Two-line divergence note: the approved native baseline `f14c6851` still differs
 from the maintained room-preview native tip; lane 01 owns reconciling the
