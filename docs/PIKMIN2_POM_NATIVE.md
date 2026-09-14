@@ -66,6 +66,8 @@ P2_POM_SPROUT_SETTLED generator=<id> species=<name> requested=<n> born=<n> conse
 P2_POM_STATE generator=<id> species=<name> from=<s> to=<s>
 P2_POM_DEAD generator=<id> species=<name> used=<n> refunds=<n> corpse=0 budget=<n>
 P2_POM_CONSERVATION generator=<id> species=<name> used=<n> refunds=<n> requested=<n> born=<n> dead_pikis=<n> loss_counted=<0|1>
+
+Review note: `loss_counted` is a delta on the global `GameStat::deadPikis`, so any unrelated Pikmin death in the scene flips it to 1 (false positive). The conservation ledger instruments the pre-existing erase-kill path (`pikidoKill.cpp` skips the increment when `mEraseOnKill`, which the base module already set); it is not a new mechanic.
 ```
 
 `colour` is the source-selected colour (the Queen's cycling colour, no longer the

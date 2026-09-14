@@ -147,7 +147,9 @@ inline bool queen(Species species)
 // six buds: Wait arms to Open at the open clip's key 2; a touch starts Swing;
 // Close after fp01 or a spent budget routes to Shot when Pikmin are inside (or
 // reopens); Shot spits leaf sprouts; Dead is reached only from an exhausted
-// lifetime budget (audit lines 60-73, 79-82).
+// lifetime budget (audit lines 60-73, 79-82). Note: this module has no clip
+// playback, so the logged walk collapses the source's transient Swing->Open
+// return into open -> swing -> close.
 enum class State {
 	Wait   = 0,
 	Dead   = 1,

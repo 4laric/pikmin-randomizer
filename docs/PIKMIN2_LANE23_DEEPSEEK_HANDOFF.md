@@ -27,7 +27,7 @@ this slice; all hooks the module uses were already integrated in the base.
 Root branch `deepseek/p2-l23` (base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`):
 
 1. `6e92541` — `lane23: Candypop FSM/death/conservation model, harness, tests and policy mirror (#448)`
-2. (docs) — `lane23: Candypop handoff and POM_NATIVE log-contract refresh (#448)` (this commit)
+2. `43c9e4d` — `lane23: Candypop handoff and POM_NATIVE log-contract refresh (#448)` (this commit)
 
 Native branch `deepseek/p2-l23-native` (base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`):
 
