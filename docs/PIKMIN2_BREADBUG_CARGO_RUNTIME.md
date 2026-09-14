@@ -91,6 +91,8 @@ py -3.12 -m experimental.pikmin2_breadbug_proxy_cargo validate --log <staged>/ho
   synthetic grab/release/unobserved logs without any native build or GL run:
   `py -3.12 -m pytest -q tests/test_pikmin2_breadbug_proxy_cargo.py`.
 - It observes the P1 host's grab/drag/release of a real number pellet and the
-  two strength scales separately (`native_offset_power=2.0`,
-  `source_strength=1.5`). It cannot observe a P2 pull channel or P2 carriers;
+  two strength scales separately (`native_offset_power=2.0` vs
+  `source_strength=1.5`), plus the read-only native carrier count from the
+  family-local `P2_BREADBUG_CONTEST` tick hook (`native_carriers`,
+  `native_hook`). It still does not observe a P2 pull channel and
   `p2_contest_semantics` stays `False`.
