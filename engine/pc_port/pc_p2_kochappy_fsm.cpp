@@ -34,6 +34,7 @@
 #include "pc_p2_kochappy_fsm.h"
 #include "pc_p2_kochappy_fsm_policy.h"
 #include "pc_p2_dwarf_orange.h"
+#include "pc_randomizer.h"
 #include "teki.h"
 #include "Interactions.h"
 #include "Piki.h"
@@ -239,6 +240,25 @@ void enter(BTeki* actor, FsmActor& state, State next)
 	            p2kochappyfsm::stateName(next));
 	std::fflush(stdout);
 }
+
+bool adopt_actor(Teki* actor)
+{
+	FsmActor& state = actors[static_cast<PelletView*>(actor)];
+	state.home      = actor->getPosition();
+	state.heading   = actor->getDirection();
+	state.logTimer  = 0.0f;
+	actor->mHealth  = params.health;
+	const unsigned generator = actor->mGenerator ? actor->mGenerator->_70 : 0u;
+	const Vector3f pos = actor->getPosition();
+	std::printf("P2_ENEMY_READY species=BlueKochappy source_id=44 native_family=Chappy generator=%u "
+	            "x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=native source_FSM=implemented "
+	            "move_speed=%.0f sight=%.0f attack_range=%.0f attack_angle=%.0f\n",
+	            generator, pos.x, pos.y, pos.z, actor->mHealth, params.health,
+	            params.moveSpeed, params.sight, params.attackRange, params.attackAngle);
+	std::fflush(stdout);
+	enter(actor, state, p2kochappyfsm::STATE_WAIT);
+	return true;
+}
 } // namespace
 
 void pc_p2_kochappy_fsm_reset()
@@ -264,11 +284,25 @@ void pc_p2_kochappy_fsm_setup()
 {
 	pc_p2_kochappy_fsm_reset();
 	if (!tekiMgr) return;
-	std::ifstream config("p2-dwarf-orange-fsm.txt");
-	if (!config) return; // default OFF: no host-path change, no markers
-	if (!p2kochappyfsm::parseConfig(config, params)) {
-		std::fprintf(stderr, "Invalid p2-dwarf-orange-fsm.txt\n");
-		std::abort();
+	const bool generated = pc_randomizer_p2_bridge() && pc_randomizer_p2_bound(44);
+	if (generated) {
+		// Generated sessions with a bound source-44 identity opt the FSM in
+		// regardless of the arena file; an override staged as
+		// assets/p2-dwarf-orange-fsm.txt is honored, otherwise the audited
+		// defaults retained by Params apply.
+		std::ifstream config("assets/p2-dwarf-orange-fsm.txt");
+		if (config && !p2kochappyfsm::parseConfig(config, params)) {
+			std::fprintf(stderr, "Invalid assets/p2-dwarf-orange-fsm.txt\n");
+			std::abort();
+		}
+		ready = true;
+	} else {
+		std::ifstream config("p2-dwarf-orange-fsm.txt");
+		if (!config) return; // default OFF: no host-path change, no markers
+		if (!p2kochappyfsm::parseConfig(config, params)) {
+			std::fprintf(stderr, "Invalid p2-dwarf-orange-fsm.txt\n");
+			std::abort();
+		}
 	}
 	// Own only the actors the Dwarf Orange module already registered; do not
 	// duplicate identity resolution or bank loading here.
@@ -279,27 +313,21 @@ void pc_p2_kochappy_fsm_setup()
 		if (!actor || !actor->mGenerator || !pc_p2_dwarf_orange_registered(actor)) continue;
 		selected.push_back(actor);
 	}
-	if (selected.empty()) {
+	if (!generated && selected.empty()) {
 		std::fprintf(stderr, "p2-dwarf-orange-fsm.txt present but no Dwarf Orange actor\n");
-		return;
+		return; // keeps ready=false for the arena path
 	}
 	for (Teki* actor : selected) {
-		FsmActor& state = actors[static_cast<PelletView*>(actor)];
-		state.home      = actor->getPosition();
-		state.heading   = actor->getDirection();
-		state.logTimer  = 0.0f;
-		actor->mHealth  = params.health;
-		const Vector3f pos = actor->getPosition();
-		const unsigned generator = actor->mGenerator->_70;
-		std::printf("P2_ENEMY_READY species=BlueKochappy source_id=44 native_family=Chappy generator=%u "
-		            "x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=native source_FSM=implemented "
-		            "move_speed=%.0f sight=%.0f attack_range=%.0f attack_angle=%.0f\n",
-		            generator, pos.x, pos.y, pos.z, actor->mHealth, params.health,
-		            params.moveSpeed, params.sight, params.attackRange, params.attackAngle);
-		std::fflush(stdout);
-		enter(actor, state, p2kochappyfsm::STATE_WAIT);
+		adopt_actor(actor);
 	}
-	ready = true;
+}
+
+void pc_p2_kochappy_fsm_adopt(BTeki* actor)
+{
+	if (!ready || !actor) return;
+	if (!pc_p2_dwarf_orange_registered(actor)) return; // own Dwarf Orange actors only
+	if (actors.count(static_cast<PelletView*>(actor))) return; // idempotent
+	adopt_actor(static_cast<Teki*>(actor));
 }
 
 bool pc_p2_kochappy_fsm_suppress_ai(const BTeki* actor)

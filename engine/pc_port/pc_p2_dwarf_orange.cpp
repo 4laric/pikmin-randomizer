@@ -3,6 +3,9 @@
 #include "pc_p2_kochappy_stun.h"
 #include "pc_p2_enemy.h"
 #include "pc_p2_sheargrub.h"
+#include "pc_p2_kochappy_fsm.h"
+#include "pc_bbft.h"
+#include "pc_randomizer.h"
 #include "teki.h"
 #include "Generator.h"
 #include "Shape.h"
@@ -11,6 +14,7 @@
 #include "gameflow.h"
 #include "Graphics.h"
 #include "Camera.h"
+#include "system.h"
 #include <map>
 #include <fstream>
 #include <chrono>
@@ -22,10 +26,21 @@ std::map<std::string,p2animation::Clip> timing;
 std::set<PelletView*> actors;
 p2dwarforange::Health health;
 bool logged[2]={false,false};
+bool generated=false;
 // Source BlueKochappy purple-pikmin stun: fp38 = 5 s (KochappyBase flick/press).
 constexpr float PurpleFitDuration = 5.0f;
+bool dwarf_bind_actor(Teki* actor){
+    if(!health.bind(static_cast<BTeki*>(actor)))return false;
+    actors.insert(actor);
+    actor->mHealth=actor->getParameterF(TPF_Life);
+    const auto& pos=actor->getPosition();
+    pc_p2_kochappy_stun_register(actor,PurpleFitDuration);
+    std::printf("P2_ENEMY_READY species=BlueKochappy source_id=44 native_family=Chappy generator=%u x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=%s purple_stun=bluekochappy_5s\n",actor->mGenerator?actor->mGenerator->_70:0u,pos.x,pos.y,pos.z,actor->mHealth,actor->getParameterF(TPF_Life),generated?"generated":"P1");
+    std::fflush(stdout);
+    return true;
 }
-void pc_p2_dwarf_orange_reset(){clips.clear();timing.clear();actors.clear();health.reset();logged[0]=logged[1]=false;}
+}
+void pc_p2_dwarf_orange_reset(){clips.clear();timing.clear();actors.clear();health.reset();logged[0]=logged[1]=false;generated=false;}
 void pc_p2_dwarf_orange_forget(BTeki* actor){
     const bool wasRegistered=actors.erase(static_cast<PelletView*>(actor))!=0;
     // The generator is already detached by dieSoon(), so identity is not
@@ -38,19 +53,39 @@ const char* pc_p2_dwarf_orange_name(PelletView* actor){return actors.count(actor
 bool pc_p2_dwarf_orange_registered(const BTeki* actor){return actors.count(const_cast<BTeki*>(actor))!=0;}
 void pc_p2_dwarf_orange_setup(){
     pc_p2_dwarf_orange_reset();
-    std::ifstream profile("p2-dwarf-orange-profile.txt"),bank("p2-dwarf-orange-bank.txt"),bindings("p2-dwarf-orange-actors.txt");
-    if(!profile && !bank && !bindings)return;
+    if(!tekiMgr)return;
+    generated=pc_randomizer_p2_bridge() && pc_randomizer_p2_bound(44);
+    const char* prefix=generated?"assets/":"";
+    char pathBuffer[176];
+    auto assetPath=[&](const char* name){std::snprintf(pathBuffer,sizeof(pathBuffer),"%s%s",prefix,name);return pathBuffer;};
+    std::ifstream profile(assetPath("p2-dwarf-orange-profile.txt")),bank(assetPath("p2-dwarf-orange-bank.txt"));
+    if(!profile && !bank)return;
     std::vector<p2animation::Clip> manifest;std::set<std::uint32_t> wanted;
-    if(!profile || !bank || !bindings || !tekiMgr || !health.read(profile) || !p2dwarforange::bank(bank,manifest) || !p2dwarforange::bindings(bindings,wanted))std::abort();
+    if(!profile || !bank || !health.read(profile) || !p2dwarforange::bank(bank,manifest))std::abort();
     // Reject identity overlap and unresolved/duplicate generator IDs before loading.
     std::vector<Teki*> selected;std::set<std::uint32_t> seen;
-    Iterator it(tekiMgr);CI_LOOP(it){
-        Teki* actor=static_cast<Teki*>(*it);
-        if(!actor || !actor->mGenerator || !wanted.count(actor->mGenerator->_70))continue;
-        if(!seen.insert(actor->mGenerator->_70).second || actor->mTekiType!=TEKI_Chappy || pc_p2_enemy_name(actor) || pc_p2_sheargrub_name(actor) || pc_p2_kochappy_name(actor))std::abort();
-        selected.push_back(actor);
+    if(generated){
+        // Generated sessions resolve hosts by identity: place every live
+        // TEKI_Chappy whose generator is bound to source 44 on this bank,
+        // mirroring the fail-closed pc_p2_generated_bind policy.
+        Iterator it(tekiMgr);CI_LOOP(it){
+            Teki* actor=static_cast<Teki*>(*it);
+            if(!actor || !actor->mGenerator)continue;
+            if(pc_randomizer_p2_bound_source(actor->mGenerator)!=44)continue;
+            if(!seen.insert(actor->mGenerator->_70).second || actor->mTekiType!=TEKI_Chappy || pc_p2_enemy_name(actor) || pc_p2_sheargrub_name(actor) || pc_p2_kochappy_name(actor))std::abort();
+            selected.push_back(actor);
+        }
+    }else{
+        std::ifstream bindings("p2-dwarf-orange-actors.txt");
+        if(!bindings || !p2dwarforange::bindings(bindings,wanted))std::abort();
+        Iterator it(tekiMgr);CI_LOOP(it){
+            Teki* actor=static_cast<Teki*>(*it);
+            if(!actor || !actor->mGenerator || !wanted.count(actor->mGenerator->_70))continue;
+            if(!seen.insert(actor->mGenerator->_70).second || actor->mTekiType!=TEKI_Chappy || pc_p2_enemy_name(actor) || pc_p2_sheargrub_name(actor) || pc_p2_kochappy_name(actor))std::abort();
+            selected.push_back(actor);
+        }
+        if(seen!=wanted)std::abort();
     }
-    if(seen!=wanted)std::abort();
     size_t total=0,poses=0;std::vector<unsigned char> reference;
     for(const auto& clip:manifest){
         size_t clipBytes=0;
@@ -81,13 +116,27 @@ void pc_p2_dwarf_orange_setup(){
             clips[clip.name].push_back(shape);++poses;
         }
     }
-    for(Teki* actor:selected){
-        if(!health.bind(static_cast<BTeki*>(actor)))std::abort();actors.insert(actor);actor->mHealth=actor->getParameterF(TPF_Life);
-        const auto& pos=actor->getPosition();
-        pc_p2_kochappy_stun_register(actor,PurpleFitDuration);
-        std::printf("P2_ENEMY_READY species=BlueKochappy source_id=44 native_family=Chappy generator=%u x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=P1 purple_stun=bluekochappy_5s\n",actor->mGenerator->_70,pos.x,pos.y,pos.z,actor->mHealth,actor->getParameterF(TPF_Life));
-    }
+    for(Teki* actor:selected)if(!dwarf_bind_actor(actor))std::abort();
     std::printf("P2_DWARF_ORANGE_BANK poses=%zu mod_bytes=%zu texture_attach_calls=%d load_seconds=%.3f\n",poses,total,attachments,std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count());
+    if(generated)std::printf("P2_DWARF_ORANGE_GENERATED_READY dwarfs=%zu bridge=1\n",selected.size());
+}
+bool pc_p2_dwarf_orange_generated(){return generated;}
+void pc_p2_dwarf_orange_campaign_setup(){
+    if(pc_pikipelago_room_preview())return;
+    if(!pc_randomizer_p2_bridge() || !pc_randomizer_p2_bound(44))return;
+    const int previousHeap=gsys->setHeap(SYSHEAP_App);
+    pc_p2_dwarf_orange_setup();
+    pc_p2_kochappy_fsm_setup();
+    gsys->setHeap(previousHeap);
+}
+void pc_p2_dwarf_orange_bind(Teki* actor,unsigned identity){
+    if(!actor)return;
+    if(!generated)std::abort(); // only the generated bridge binds a source-44 host
+    if(actors.count(static_cast<PelletView*>(actor)))return; // idempotent
+    if(actor->mTekiType!=TEKI_Chappy || pc_p2_enemy_name(actor) || pc_p2_sheargrub_name(actor) || pc_p2_kochappy_name(actor))std::abort();
+    (void)identity; // identity was already resolved to source 44 by the caller
+    if(!dwarf_bind_actor(actor))std::abort();
+    pc_p2_kochappy_fsm_adopt(actor);
 }
 bool pc_p2_dwarf_orange_draw(BTeki* actor,Graphics& gfx,const Matrix4f& matrix,bool corpse){
     if(!actors.count(static_cast<PelletView*>(actor)))return false;

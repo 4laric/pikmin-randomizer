@@ -1,5 +1,6 @@
 #include "pc_p2_enemy.h"
 #include "pc_p2_kochappy.h"
+#include "pc_p2_dwarf_orange.h"
 #include "pc_p2_animation.h"
 #include "pc_p2_snow_policy.h"
 #include "pc_p2_snow_attack_policy.h"
@@ -134,12 +135,17 @@ void pc_p2_snow_campaign_bind(Teki* teki) {
     if(campaignMode && teki && teki->mTekiType==TEKI_Chappy)bindSnow(teki,0);
 }
 void pc_p2_generated_bind(Teki* teki,const void* generator) {
-    if(!generatedMode || !teki || !generator)return;
+    if(!teki || !generator)return;
     const unsigned source=pc_randomizer_p2_bound_source(generator);
     if(!source)return;
     if(source==45) {
-        if(teki->mTekiType!=TEKI_Chappy)std::abort();
+        if(!generatedMode || teki->mTekiType!=TEKI_Chappy)std::abort();
         bindSnow(teki,pc_randomizer_generator_id(generator));
+        return;
+    }
+    if(source==44) {
+        if(!pc_p2_dwarf_orange_generated() || teki->mTekiType!=TEKI_Chappy)std::abort();
+        pc_p2_dwarf_orange_bind(teki,pc_randomizer_generator_id(generator));
         return;
     }
     // A bound identity the generated bridge cannot host must fail closed rather

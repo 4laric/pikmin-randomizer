@@ -19,6 +19,7 @@ static bool randomizerProtected(TekiPersonality* personality) {
 // permutation. Unsupported bound identities fail closed.
 static bool p2NativeHost(unsigned source, int& type) {
     if (source == 45) { type = TEKI_Chappy; return true; } // Snow Bulborb (YellowKochappy)
+    if (source == 44) { type = TEKI_Chappy; return true; } // Dwarf Orange (BlueKochappy)
     return false;
 }
 
