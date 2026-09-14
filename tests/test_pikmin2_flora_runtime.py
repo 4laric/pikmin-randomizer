@@ -50,7 +50,11 @@ class ProtocolTests(unittest.TestCase):
             'P2_FLORA_PELLET_RELEASED generator=240001 pellet=5 colour=0 capture_receptor=1\n'
             'P2_FLORA_PELLET_CAPTURED generator=240001 carriers=1 carrier=0x1\n'
             'P2_FLORA_FIXTURE_CAPTURED carriers=1 pellet=70723030\n'
-            'PASS P2_FLORA_PELPLANT_RUNTIME release_and_capture\n'
+            'P2_FLORA_FIXTURE_DELIVER_ENDPOINT injection=1 natural_carry=0\n'
+            'P2_FLORA_ONION_RECEIPT generator=240001 pellet=5 pokos=0 seeds=5 granted=1 duplicate=0 ledger=onion seed=local\n'
+            '[Pikipelago] P2_FLORA_DELIVER onion_receipt=1\n'
+            'P2_FLORA_FIXTURE_DELIVERED receipts=1 duplicates=0\n'
+            'PASS P2_FLORA_PELPLANT_RUNTIME release_capture_deliver\n'
         )
         good = fr.validate(text, 0)
         self.assertTrue(good['passed'], good['failed'])
@@ -59,6 +63,9 @@ class ProtocolTests(unittest.TestCase):
         bad = fr.validate(missing, 0)
         self.assertFalse(bad['passed'])
         self.assertIn('captured', bad['failed'])
+        # A first-run duplicate (no grant) must fail the receipt gate.
+        dup = text.replace('granted=1 duplicate=0', 'granted=0 duplicate=1')
+        self.assertIn('onion_receipt', fr.validate(dup, 0)['failed'])
 
     def test_generator_uid_is_little_endian(self):
         # Generator::_70 is the little-endian view of record[8:12]; big-endian

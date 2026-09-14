@@ -211,3 +211,37 @@ Rebased onto the current maintained native (`codex/p2-main-review-native` head
 - The shared `scripts/build_pikmin2_fixture.py` now expands Ninja response files
   (root `321db4e`) so approved-base targets whose link command exceeds the
   Windows limit can be fixture-linked; this is the blocker lane 31 reported.
+
+## Onion receipt — exactly-once across process restart (maintained line)
+
+The delivered Pelplant pellet now records an ordinary Onion/AP receipt through
+the shared `pc_port/pc_p2_receipt.h` provider (Ledger::Onion, drop=pellet). The
+provider's `<windows.h>` include conflicts with the engine's `HWND` typedef, so
+it is isolated behind `pc_port/pc_p2_receipt_host.{h,cpp}` (engine-free bridge);
+`pc_p2_flora_actor.cpp` consumes only the bridge. A delivered pellet grants
+`(seed, flora-pelplant:<generator>, <generator>, "onion")` once; durable state
+lives in `p2-flora-receipts.txt` in the run directory and is re-read on the next
+process.
+
+- Native `opencode/p2-lane23-r2` @ `60ed73e8e4cf76ffa9b90128b9dc9b91ede473e1`
+  (base `41304fd7`; never pushed).
+- Fixture stands up a Pod: `stage()` copies a converted `pod.mod` (supplied via
+  `--pod-mod`) and writes a minimal `p2-pod.txt`, so `podAnchor` exists and
+  `pc_p2_preview_deliver` reaches the flora receipt hook. Natural carry does not
+  complete in this port (as lane 06 also found), so after a short natural window
+  the fixture calls the same public delivery endpoint the engine uses
+  (`P2_FLORA_FIXTURE_DELIVER_ENDPOINT injection=1 natural_carry=0`); the receipt,
+  durable state and restart dedupe are the real module behaviour. The natural
+  carry/transport gate stays open.
+- GL run `output/p2-lane23-receipt-runtime-04/flora/de3289de8a044f06a797ae1abf2e13fd`
+  PASS, `exactly_once_across_restart=True`:
+
+```text
+run1    P2_FLORA_ONION_RECEIPT generator=240001 pellet=1 pokos=0 seeds=1 granted=1 duplicate=0 ledger=onion seed=local
+        [Pikipelago] P2_FLORA_DELIVER onion_receipt=1
+        PASS P2_FLORA_PELPLANT_RUNTIME release_capture_deliver
+run2    P2_FLORA_ONION_RECEIPT generator=240001 pellet=1 pokos=0 seeds=1 granted=0 duplicate=1 ledger=onion seed=local
+        PASS P2_FLORA_PELPLANT_RUNTIME release_capture_deliver
+```
+
+`pytest -k flora` -> 74 passed.
