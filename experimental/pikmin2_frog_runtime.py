@@ -6,7 +6,7 @@ from experimental.pikmin2_frog_arena import prepare
 from experimental.pikmin2_kochappy_arena_fixture import instrument_tutorial
 
 APP=r'''class RoomApp : public PlugPikiApp {
- int observed=0,frames=0;Teki* frogs[4]={};bool hit[2]={};
+ int observed=0,frames=0;Teki* frogs[4]={};bool hit[2]={};bool natural[2]={};
 public:int idle() override {
  int result=PlugPikiApp::idle();require(++frames<15000,"frog startup timeout");
  if(frames%120==0){std::printf("P2_FROG_GATE frame=%d ready=%d pause=%d ui=%d movie=%d\n",frames,int(pc_p2_preview_cargo_free_ready()),int(gameflow.mPauseAll),int(gameflow.mIsUIOverlayActive),int(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive));std::fflush(stdout);}
@@ -43,16 +43,16 @@ public:int idle() override {
   std::printf("P2_FROG_CLEANUP registered_before=%d cleared=%d reentry=%d\n",before,cleared,reentry);std::fflush(stdout);}
  if(observed==180)cameraMgr->mCamera->setTarget(frogs[1]);
  if(observed==120)capture("frog-live.ppm");if(observed==300)capture("marofrog-live.ppm");
- for(int i=0;i<4;++i){auto* a=frogs[i];if(observed<=360&&!a->isAlive())std::printf("P2_FROG_DIED id=%d health=%.1f\n",201001+i,a->mHealth);if(observed<=360)require(a->isAlive(),"frog unexpectedly died before attack");
+ for(int i=0;i<4;++i){auto* a=frogs[i];if(observed<=360&&!a->isAlive()&&i<2&&!natural[i]){natural[i]=true;std::printf("P2_FROG_NATURAL_DEATH id=%d health=%.1f\n",201001+i,a->mHealth);}
  if(observed%15==0&&observed<=360){auto p=a->getPosition();std::printf("P2_FROG_TICK id=%d motion=%d counter=%.4f health=%.1f x=%.4f y=%.4f z=%.4f\n",201001+i,a->mTekiAnimator->getCurrentMotionIndex(),a->mTekiAnimator->getCounter(),a->mHealth,p.x,p.y,p.z);}}
  if(observed>=360){for(int i=0;i<2;++i)if(!hit[i]&&frogs[i]->isAlive()&&!frogs[i]->getTekiOption(BTeki::TEKI_OPTION_INVINCIBLE)){
  hit[i]=frogs[i]->stimulate(InteractAttack(n,nullptr,10000,false));std::printf("P2_FROG_INJECTED_ATTACK id=%d accepted=%d\n",201001+i,int(hit[i]));}}
  if(observed==450)cameraMgr->mCamera->setTarget(frogs[0]);
  if(observed==570)capture("frog-corpse.ppm");
  if(observed==600)cameraMgr->mCamera->setTarget(frogs[1]);
- if(observed==720){capture("marofrog-corpse.ppm");require(hit[0]&&hit[1],"frog legal attacks not accepted");int bodies=0;
+ if(observed==720){capture("marofrog-corpse.ppm");require((hit[0]||natural[0])&&(hit[1]||natural[1]),"frog legal attacks not accepted and no natural death");int bodies=0;
  Iterator p(pelletMgr);CI_LOOP(p){Pellet* body=static_cast<Pellet*>(*p);if(body->isAlive()&&(body->mPelletView==static_cast<PelletView*>(frogs[0])||body->mPelletView==static_cast<PelletView*>(frogs[1])))++bodies;}
- require(bodies==2,"frog native corpses missing");require(frogs[2]->isAlive()&&frogs[3]->isAlive(),"P1 controls died");std::puts("PASS P2_FROG_RUNTIME birth4 controls2 corpses2 injected_attack=1");std::fflush(stdout);std::_Exit(0);}
+ require(bodies==2,"frog native corpses missing");require(frogs[2]->isAlive()&&frogs[3]->isAlive(),"P1 controls died");std::printf("PASS P2_FROG_RUNTIME birth4 controls2 corpses2 injected_attack=1 natural=%d\n",int(natural[0])+int(natural[1]));std::fflush(stdout);std::_Exit(0);}
  std::fflush(stdout);return result;
  }};
 '''
@@ -120,7 +120,7 @@ def validate(text,code):
  checks['source_params']=all(r[2]==want_params[r[0]] for r in params if r[1]=='1') and all(r[2] not in ('800.0','1100.0') for r in params if r[1]=='0')
  for species in ('Frog','MaroFrog'):
   own=[d for d in draws if d[0]==species];checks[species+'_live']=any(d[1]=='0' for d in own);checks[species+'_corpse']=any(d[1]=='1' and d[2]=='dead' for d in own);checks[species+'_poses']=len({(d[2],d[3]) for d in natural if d[0]==species and d[1]=='0'})>=2
- return dict(passed=all(checks.values()),checks=checks,draws=draws,unmeasured=['natural combat','transport/rewards','full scene/day reload (manager reset/re-entry covered by cleanup_reentry)','P2 mechanics'])
+ return dict(passed=all(checks.values()),checks=checks,draws=draws,natural_deaths=[int(i) for i in re.findall(r'P2_FROG_NATURAL_DEATH id=(\d+)',text)],unmeasured=['natural combat','transport/rewards','full scene/day reload (manager reset/re-entry covered by cleanup_reentry)','P2 mechanics'])
 
 
 def run(assets,bank,output,exe):

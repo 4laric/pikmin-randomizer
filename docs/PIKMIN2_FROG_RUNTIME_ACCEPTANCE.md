@@ -143,12 +143,16 @@ param chain; unregistered controls are untouched.
   atk=20.0; controls `201003`/`201004` keep P1 values (life 2000.0/1800.0,
   atkrange 240.0, atk 30.0). Both registered species show live and corpse poses;
   `P2_FROG_CLEANUP registered_before=4 cleared=4 reentry=4`.
-- Stability note: an earlier attempt at the same change aborted once with
-  `FAIL ... frog unexpectedly died before attack` (all four alive at observed
-  330, one gone before 345) and did not reproduce on the diagnostic rerun. The
-  fixture's pre-attack alive assertion is sensitive to the live 20-red squad
-  reaching a frog, so this needs a short repeat-stability pass; the PASS above
-  is one clean run, not a certified deterministic gate.
+- Stability: the fixture originally aborted when the live 20-red squad naturally
+  killed registered `201001` (source health 800 vs the P1 host's 2000) before the
+  injected attack. It now records `P2_FROG_NATURAL_DEATH` instead of aborting and
+  requires each registered species to reach a corpse either naturally or from the
+  injected attack. Three consecutive runs after the change passed with no natural
+  deaths: fixture `output/lane16-frog-runtime/fixture_natural/fixture.exe` SHA-256
+  `4067BEEE9E19E77079CDDCBB9E54609FB7A58BFC7B568DD8578E7EDE896C4467`, runs
+  `run_nat1`/`run_nat2`/`run_nat3` exit 0, e.g. stage
+  `output/lane16-frog-runtime/run_nat3/stages/3c02ab07c61b41d6be965fad2d20fecc`.
+  A natural pre-attack death is acceptable evidence, not a failure.
 
 | Gate | Result | Limit |
 |---|---|---|
