@@ -434,6 +434,34 @@ def candypop_spawn_allowed(*, species, floor, cave, met_colours, player_count):
     return True
 
 
+def candypop_state_name(state_id):
+    """Name (``wait|dead|open|close|shot|swing``) for a P2 source state index.
+
+    ``POM_STATES`` indexes the six ``Game::Pom::Obj`` state IDs
+    (Pom.h:153-161); the native module observably walks
+    ``wait -> open -> swing -> close -> shot -> (dead | wait)``.
+    """
+    if type(state_id) is not int:
+        raise ValueError('Expected an integer state id')
+    for name, ident in POM_STATES.items():
+        if ident == state_id:
+            return name
+    raise ValueError('Unknown Candypop state id')
+
+
+def candypop_dead(*, budget_spent, sprout_pending):
+    """True only on an exhausted lifetime budget with no pending sprouts.
+
+    Death is budget-only (audit lines 79-82): no combat path and no corpse.
+    ``sprout_pending`` is the outstanding sprout demand; the bud must settle
+    conservation before it may die so a consumed Pikmin's sprouts are never
+    silently discarded.
+    """
+    if type(sprout_pending) is not int or sprout_pending < 0:
+        raise ValueError('Expected non-negative pending sprout count')
+    return bool(budget_spent) and sprout_pending == 0
+
+
 # ---------------------------------------------------------------------------
 # Enemy-manager plants (seventeen IDs, 46-52 and 80/81/85-92)
 # ---------------------------------------------------------------------------

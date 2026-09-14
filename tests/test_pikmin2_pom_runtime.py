@@ -69,6 +69,13 @@ class ProtocolTests(unittest.TestCase):
             'P2_POM_SPROUT generator=240012 species=RandPom count=9 colour=0 body=0 leaf=1\n'
             'P2_POM_SPROUT_RETRY generator=240012 species=RandPom owed_remaining=9 requested=9 born=0 item_capacity=1 forced=1\n'
             'P2_POM_SPROUT_SETTLED generator=240012 species=RandPom requested=9 born=9 conservation=1\n'
+            'P2_POM_STATE generator=240012 species=RandPom from=wait to=open\n'
+            'P2_POM_STATE generator=240012 species=RandPom from=open to=swing\n'
+            'P2_POM_STATE generator=240012 species=RandPom from=swing to=close\n'
+            'P2_POM_STATE generator=240012 species=RandPom from=close to=shot\n'
+            'P2_POM_STATE generator=240012 species=RandPom from=shot to=dead\n'
+            'P2_POM_DEAD generator=240012 species=RandPom used=1 refunds=0 corpse=0 budget=1\n'
+            'P2_POM_CONSERVATION generator=240012 species=RandPom used=1 refunds=0 requested=9 born=9 dead_pikis=0 loss_counted=0\n'
             'PASS P2_POM_NATIVE accept_refund_close_sprout\n'
         )
         good = pr.validate(text, 0)
@@ -84,6 +91,12 @@ class ProtocolTests(unittest.TestCase):
         # A silently dropped birth (no settled conservation) must fail.
         dropped = text.replace('P2_POM_SPROUT_SETTLED generator=240012 species=RandPom requested=9 born=9 conservation=1\n', '')
         self.assertFalse(pr.validate(dropped, 0)['passed'])
+        # A budget-exhausted death that never happens must fail.
+        nodead = text.replace('P2_POM_DEAD generator=240012 species=RandPom used=1 refunds=0 corpse=0 budget=1\n', '')
+        self.assertFalse(pr.validate(nodead, 0)['passed'])
+        # A conversion that wrongly counted a loss must fail.
+        loss = text.replace('loss_counted=0', 'loss_counted=1')
+        self.assertFalse(pr.validate(loss, 0)['passed'])
 
     def test_instrument_replaces_room_app(self):
         source = 'prefix\nclass RoomApp : public PlugPikiApp {\n int idle() override { return 0; }\n};\nint main(int, char**) { return 0; }\n'
@@ -129,6 +142,17 @@ class ConsistencyTests(unittest.TestCase):
         self.assertEqual(fb.candypop_queen_colour(elapsed_seconds=2.6, met_colours=('blue', 'red', 'yellow')), 'red')
         self.assertFalse(fb.candypop_spawn_allowed(species='BlackPom', floor=1, cave='Emergence Cave',
                                                    met_colours=(), player_count=20))
+        # Source six-state FSM and budget-only death.
+        self.assertEqual(fb.candypop_state_name(0), 'wait')
+        self.assertEqual(fb.candypop_state_name(1), 'dead')
+        self.assertEqual(fb.candypop_state_name(5), 'swing')
+        self.assertTrue(fb.candypop_dead(budget_spent=True, sprout_pending=0))
+        self.assertFalse(fb.candypop_dead(budget_spent=False, sprout_pending=0))
+        self.assertFalse(fb.candypop_dead(budget_spent=True, sprout_pending=1))
+        with self.assertRaises(ValueError):
+            fb.candypop_state_name(6)
+        with self.assertRaises(ValueError):
+            fb.candypop_dead(budget_spent=True, sprout_pending=-1)
 
     def test_native_policy_executable(self):
         candidates = [ROOT / 'native-patches' / 'pom']
