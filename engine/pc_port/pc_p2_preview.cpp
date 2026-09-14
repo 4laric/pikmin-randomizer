@@ -17,6 +17,7 @@
 #include "pc_p2_armor.h"
 #include "pc_p2_batch3.h"
 #include "pc_p2_long_legs.h"
+#include "pc_p2_hardlanes.h"
 #include "pc_p2_preview.h"
 #include "pc_bbft.h"
 #include "Pellet.h"
@@ -208,6 +209,7 @@ void pc_p2_preview_setup() {
     pc_p2_armor_setup();
     pc_p2_batch3_setup();
     pc_p2_long_legs_setup();
+    pc_p2_hardlanes_setup();
     pc_p2_purple_setup();
     pc_p2_white_setup();
     pc_p2_cave_setup();

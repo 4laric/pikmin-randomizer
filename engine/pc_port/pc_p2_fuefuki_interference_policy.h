@@ -28,6 +28,38 @@ struct P2FuefukiCommand {
     float radiusModifier = 0.0f; // whistle ring growth 0..1
 };
 
+// Suspend-release brain destination (issue #245 open item "suspend brain-
+// fallback (Formation vs Free)" -- traced, resolved to Free).
+//
+// Source basis (projectPiki/pikmin2 632af937, read-only under
+// pikmin2-research): ActTeki::getNextAIType() returns ACT_Free
+// (include/PikiAI.h:1254), so when the flying/bittered exit returns
+// ACTEXEC_Success the brain's fallback switch runs
+// start(ACT_Free, nullptr) (src/plugProjectKandoU/aiAction.cpp:108-110);
+// the ACT_Formation/searchOrima() branch is never reached for a Fuefuki
+// follower. The stored piki->mNavi is NOT consulted, and ActFree::init
+// clears it (src/plugProjectKandoU/aiFree.cpp:33). A suspended follower
+// therefore detaches from every captain and re-attaches only through a
+// future captain touch or whistle path -- never automatically.
+//
+// Ordering caveat: the source force-invokes its situation scan BEFORE the
+// fallback (Brain::exec, aiAction.cpp:92-95); a released Pikmin may be
+// re-tasked there (notably ACT_Attack on a grounded, bittered beetle that
+// just released it, which passes graspSituation_Fast's alive+grounded+
+// living-thing test inside mEnemySearchRange). That is a world-side gate
+// the lane cannot see engine-free; the lane contract guarantees the
+// ownership release and the Free fallback decision, and the host owns the
+// pre-fallback situation-scan re-task.
+enum P2FuefukiSuspendFallback {
+    P2FUEFUKI_SUSPEND_FALLBACK_FREE = 0, // start(ACT_Free)
+};
+
+struct P2FuefukiSuspendOut {
+    bool accepted = false;
+    std::vector<std::uint32_t> released; // claims freed this exit
+    P2FuefukiSuspendFallback fallback = P2FUEFUKI_SUSPEND_FALLBACK_FREE;
+};
+
 // Shared callback domain: pikmin -> holding owner epoch; 0 = free.
 // One table serves every beetle instance so two beetles can never both
 // hold the same Pikmin. Invalidate the entire domain before any manager
@@ -143,6 +175,19 @@ public:
         return out;
     }
 
+    // End the whistle cast after the source's fixed cast duration
+    // (source finishWhisle / StateWhisle cleanup) while claims persist:
+    // followers remain ACT_Teki-owned and keep pinging. The ring resets.
+    P2FuefukiCommand endCast(std::uint64_t id)
+    {
+        P2FuefukiCommand out;
+        if (!current(id) || phase != P2FuefukiPhase::Casting) return out;
+        phase          = P2FuefukiPhase::Idle;
+        radiusModifier = 0.0f;
+        out.accepted   = true;
+        return out;
+    }
+
     // Each active follower pings its owner once per exec tick (source
     // InteractFuefukiTimerReset sets 5.0). Host cadence decision: the
     // timer is an integer count of fixed simulation ticks, decremented
@@ -171,16 +216,23 @@ public:
         return out;
     }
 
-    // Owner flying or bittered (source ActTeki ACTEXEC_Success branches):
-    // followers end the follow action with the emote exit. No captain
-    // ownership is written; the Pikmin's stored mNavi decides rejoining.
-    std::vector<std::uint32_t> suspend(std::uint64_t id)
+    // Owner flying or bittered (source ActTeki ACTEXEC_Success branches,
+    // aiTeki.cpp:83-94 -- both set mToEmote and return Success): followers
+    // end the follow action with the emote exit. The release picks the
+    // source brain destination -- Free, never Formation (see
+    // P2FuefukiSuspendFallback). No captain ownership is written; the
+    // Pikmin's mNavi is not consulted and is cleared by ActFree::init.
+    P2FuefukiSuspendOut suspend(std::uint64_t id)
     {
-        if (!current(id)) return {};
+        P2FuefukiSuspendOut out;
+        if (!current(id)) return out;
         phase          = P2FuefukiPhase::Idle;
         radiusModifier = 0.0f;
         squadTimer     = 0;
-        return table->releaseAll(epoch);
+        out.accepted   = true;
+        out.released   = table->releaseAll(epoch);
+        out.fallback   = P2FUEFUKI_SUSPEND_FALLBACK_FREE;
+        return out;
     }
 
     // Owner defeat mid-effect (source ActTeki owner-death branch): every
