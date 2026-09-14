@@ -231,7 +231,9 @@ public:
                             p->resetPosition(part->mCentre+Vector3f(0,0,10));
                             p->changeMode(PikiMode::FreeMode,n); ++count;
                         }
-                        n->resetPosition(gate->mSRT.t+Vector3f(250,0,250));
+                        GoalItem* safeOnion=itemMgr->getContainer(Red);
+                        require(safeOnion!=nullptr,"landing Onion for captain staging");
+                        n->resetPosition(safeOnion->mSRT.t+Vector3f(100,0,0));
                         gateSquadStaged=true;
                         std::printf("P2_ROUTE_GATE_SETUP waypoint=92 workers=%d type=%d pos=%.3f,%.3f,%.3f health=%.1f forced_damage=0\n",count,gate->mObjType,gate->mSRT.t.x,gate->mSRT.t.y,gate->mSRT.t.z,gate->mHealth);
                         std::fflush(stdout);
