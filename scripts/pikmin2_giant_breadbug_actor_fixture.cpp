@@ -27,9 +27,9 @@ static bool giant_window_size(int& width,int& height){
 // owner-linked nest birth/death. P1 FSM drives locomotion/cargo.
 class GiantActorFixture:public PlugPikiApp {
  int frames=0,tick=0,phase=0,phaseTick=0,pressCount=0,sub=0;
- Teki* giant=nullptr;Teki* nestTeki=nullptr;Pellet* cargoA=nullptr;Pellet* cargoB=nullptr;
+ Teki* giant=nullptr;Teki* nestTeki=nullptr;Teki* small=nullptr;Pellet* cargoA=nullptr;Pellet* cargoB=nullptr;
  Vector3f nestPos;std::vector<Piki*> squad;Piki* purple=nullptr;Piki* carriers[2]={nullptr,nullptr};
- unsigned giantId=0,nestId=0;Vector3f giantXyz,nestXyz;
+ unsigned giantId=0,nestId=0,smallId=0;Vector3f giantXyz,nestXyz,smallXyz;bool observeSmall=false;
 public:
  int idle() override {
   int result=PlugPikiApp::idle();require(++frames<12000,"Giant actor arena timeout");
@@ -42,10 +42,18 @@ public:
    std::ifstream in("giant-arena.txt");require(bool(in>>giantId>>nestId),"arena ids");
    require(bool(in>>giantXyz.x>>giantXyz.y>>giantXyz.z),"giant xyz");
    require(bool(in>>nestXyz.x>>nestXyz.y>>nestXyz.z),"nest xyz");
+   observeSmall=bool(in>>smallId>>smallXyz.x>>smallXyz.y>>smallXyz.z); // optional coexistence line: smallId + XYZ
    std::puts("P2_GIANT_STEP config");std::fflush(stdout);
-   Iterator it(tekiMgr);CI_LOOP(it){Teki* t=static_cast<Teki*>(*it);if(t&&t->mGenerator){if(t->mGenerator->_70==giantId)giant=t;if(t->mGenerator->_70==nestId)nestTeki=t;}}
+   Iterator it(tekiMgr);CI_LOOP(it){Teki* t=static_cast<Teki*>(*it);if(t&&t->mGenerator){if(t->mGenerator->_70==giantId)giant=t;if(t->mGenerator->_70==nestId)nestTeki=t;if(observeSmall&&t->mGenerator->_70==smallId)small=t;}}
    require(giant&&nestTeki&&giant!=nestTeki,"giant/nest identity");
    require(giant->mTekiType==TEKI_Collec&&nestTeki->mTekiType==TEKI_Hollec,"giant/nest native types");
+   if(observeSmall){ // small PanModoki proxy must stay a separate, disjoint TEKI_Collec actor
+    require(small&&small->mTekiType==TEKI_Collec&&small!=giant&&small!=nestTeki&&smallId!=giantId&&smallId!=nestId,"coexisting small identity");
+    Vector3f sbirth=small->mPersonality->mPosition;
+    require(std::fabs(sbirth.x-smallXyz.x)<.02&&std::fabs(sbirth.y-smallXyz.y)<.02&&std::fabs(sbirth.z-smallXyz.z)<.02,"small birth XYZ");
+    small->setCreatureFlag(CF_AIAlwaysActive);
+    std::printf("P2_GIANT_COEXIST_BIRTH small=%u giant=%u nest=%u xyz=%.3f,%.3f,%.3f\n",smallId,giantId,nestId,sbirth.x,sbirth.y,sbirth.z);
+   }
    std::puts("P2_GIANT_STEP identity");std::fflush(stdout);
    Vector3f birth=giant->mPersonality->mPosition,nbirth=nestTeki->mPersonality->mPosition;
    require(std::fabs(birth.x-giantXyz.x)<.02&&std::fabs(birth.y-giantXyz.y)<.02&&std::fabs(birth.z-giantXyz.z)<.02,"giant birth XYZ");
@@ -69,6 +77,7 @@ public:
    phase=1;phaseTick=0;return result;
   }
   require(giant->isAlive()||phase>=5,"giant died outside defeat phase");
+  if(observeSmall)require(small&&small->isAlive()&&small->mGenerator&&small->mGenerator->_70==smallId&&small!=giant&&small!=nestTeki,"coexisting small lost or entangled");
   switch(phase){
   case 1:{ // Purple-only press: non-purple resisted, purple applies exactly 100.
    require(phaseTick<60,"press phase stall");
@@ -157,6 +166,7 @@ public:
    return result;}
   case 6:{
    if(phaseTick>=30){capture("giant-actor-final.ppm");
+    if(observeSmall)std::printf("P2_GIANT_COEXIST small=%u giant=%u nest=%u small_alive=1 giant_alive=1 independent=1\n",smallId,giantId,nestId);
     std::puts("PASS P2_GIANT_BREADBUG_ARENA spawn_identity press contest digest_heal defeat_throwup nest_linked");std::fflush(nullptr);std::_Exit(0);}
    return result;}
   }

@@ -164,6 +164,49 @@ starts the beetles at zero flips; it is not a save-game contract. The
 `enemy:<species-id>` map likewise has to travel with the run — a real product run
 must pass the generator roster instead of the fixture default.
 
+## Runtime fixture: first-flip treasure override (#168/#219)
+
+`experimental/pikmin2_kogane_reentry.py` has a `treasure=True` path (CLI
+`--treasure`) that opts one beetle into the native stand-in. It builds the same
+parameterized arena as the re-entry fixture but writes
+`native_sidecar(bank, treasures={219002: 5})`, so Wealthy's audited first-flip
+table row (three 5-pellets) is replaced by a single labelled 5-pellet. The
+instrumented `RoomApp` presses Wealthy once and exits as soon as the stand-in
+pellet exists. The separate `validate_treasure` (never
+`pikmin2_kogane_behavior.validate_behavior`) requires all of:
+
+- `P2_KOGANE_TREASURE generator=219002 value=5` in the native log,
+- `P2_KOGANE_DROP generator=219002 source_id=10 flip=1 pellet5=1 nectar=0`
+  (one stand-in pellet, not the table's three),
+- `P2_KOGANE_CENSUS pellets=1` and the completion marker
+  `PASS P2_KOGANE_TREASURE standin1 value5`,
+- exactly one flip, on 219002 only.
+
+An untouched-table run (marker absent and/or `pellet5=3`) fails
+`validate_treasure`, distinguishing the override from the normal table.
+
+Exact commands (private build; the run needs the single GL slot and is not
+launched by this slice):
+
+```powershell
+py -3.12 -m experimental.pikmin2_kogane_reentry build `
+  --native native --build-dir output/l17x-treasure-build `
+  --output output/l17x-treasure-fixture --head <native-head> --treasure
+py -3.12 -m experimental.pikmin2_kogane_reentry run `
+  --assets <P1 assets> --bank <validated beetle bank> `
+  --output output/l17x-treasure-run `
+  --exe output/l17x-treasure-fixture/fixture.exe --treasure
+```
+
+`tests/test_pikmin2_kogane_treasure.py` covers the validator
+(marker present+value, missing marker, wrong value, override-vs-table) and the
+sidecar/instrument emission. The build itself is not run in this slice.
+
+**Export gap.** `engine/pc_port/pc_p2_kogane.cpp` (the exported engine copy)
+still needs the normal integration export of the native first-flip override
+(`native/pc_port/pc_p2_kogane.cpp` at `opencode/p2-l17x-native`, commit
+`6ab7b200`); this host-only slice did not run a native build or export.
+
 ## Gates
 
 | Gate | Result | Evidence / limit |
@@ -178,5 +221,5 @@ must pass the generator roster instead of the fixture default.
 | In-process restored escape | IMPLEMENTED (source only) | `P2_KOGANE_RESTORED_ESCAPE` + `pcEscapeNow()` on `restored->second >= MAX_FLIPS`; `pikmin2_kogane_reentry` validator tests |
 | Cross-process sidecar receipts | IMPLEMENTED (source only) | `p2-kogane-receipts.txt` atomic write/load + `P2_KOGANE_RECEIPTS loaded=<n>`; host `parse_receipts`/`read_receipts` and `validate_cross_process` tests |
 | Native-sidecar -> lane-06 ledger bridge | PASS (host) | `reconcile_native` idempotent across reopen, per-seed, strict on malformed/unknown; `sync_receipts`/`write_receipts` round-trip; `tests/test_pikmin2_kogane_rewards.py` |
-| Native treasure override / cave relocation | PARTIAL | first-flip override is a labelled P1 number-pellet stand-in (`P2_KOGANE_TREASURE`, optional `treasure` sidecar row); real P2 treasure item and cave relocation still UNIMPLEMENTED (no P2 cave in the P1 host) |
+| Native treasure override / cave relocation | PARTIAL | first-flip override is a labelled P1 number-pellet stand-in (`P2_KOGANE_TREASURE`, optional `treasure` sidecar row); `pikmin2_kogane_reentry --treasure` fixture + `validate_treasure` (`tests/test_pikmin2_kogane_treasure.py`); run not launched in this slice; real P2 treasure item and cave relocation still UNIMPLEMENTED (no P2 cave in the P1 host) |
 | Native P2-save persistence | UNIMPLEMENTED | sidecar is run-directory local, not the lane 01/06 save |

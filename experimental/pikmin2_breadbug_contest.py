@@ -3,8 +3,9 @@
 Host-side model of the source ``PanModokiBase`` cargo rules used by the small
 Breadbug (38) and Giant Breadbug (40): eligibility, single-channel contest
 strength, interruption (``Damage``/``giveup``) release, death throw-up recovery
-and the 15-slot treasure cap. It records what the family must prove natively and
-does not itself mutate a save or an actor. See
+and the 15-slot treasure cap. It also encodes the identity invariants for a
+combined Giant/small/nest arena (``coexistence_ok``). It records what the family
+must prove natively and does not itself mutate a save or an actor. See
 ``docs/PIKMIN2_BREADBUG_ACTOR_RUNTIME.md``.
 """
 import math
@@ -20,6 +21,14 @@ THROW_UP_RING_RADIUS = 40.0
 NEST_JIGUMO = 0                     # enemyNest.cpp:60-67 crawmad nest model (Jigumo 64)
 NEST_BREADBUG = 1                   # both Breadbug species map here
 NEST_DEATH_FADE_FRAMES = 80         # enemyNestMgr.cpp:143-152
+
+# Giant/small coexistence roles. A combined arena declares each generator role
+# separately; the invariants below are identity-disjointness only and do not
+# imply shared cargo or P2 contest ownership.
+ROLE_GIANT = 'giant'
+ROLE_SMALL = 'small'
+ROLE_NEST = 'nest'
+MAX_GENERATOR_ID = 0xffffffff
 
 DRAG = 'drag'                       # Breadbug wins the contest (Back)
 PULLED = 'pulled'                   # Pikmin win the contest (Pulled)
@@ -246,3 +255,75 @@ def nest_collision_after_death(frames_since_kill):
     if type(frames_since_kill) is not int or frames_since_kill < 0:
         raise ValueError('Invalid frames-since-kill')
     return frames_since_kill < NEST_DEATH_FADE_FRAMES
+
+
+def _coexistence_ids(ids, role):
+    if not isinstance(ids, (list, tuple)) or isinstance(ids, (str, bytes)):
+        raise ValueError('Coexistence ids for %s must be a list or tuple' % role)
+    result = []
+    for identity in ids:
+        if type(identity) is not int:
+            raise ValueError('Coexistence generator id for %s must be an int' % role)
+        if not 0 <= identity <= MAX_GENERATOR_ID:
+            raise ValueError('Coexistence generator id for %s is out of range' % role)
+        result.append(identity)
+    if len(set(result)) != len(result):
+        raise ValueError('Duplicate generator id within the %s role' % role)
+    return result
+
+
+def coexistence_report(giant_ids, small_ids, nest_ids):
+    """Identity invariants a Giant/small Breadbug coexistence arena must satisfy.
+
+    A combined arena declares three disjoint generator roles: the Giant actors,
+    the small Breadbug actors and the nests. This is identity bookkeeping only and
+    never models shared cargo or P2 contest ownership. Violations are reported
+    (rather than raised) so callers can surface the exact reason:
+
+    * at least one Giant actor is declared;
+    * exactly one nest per Giant actor (``len(nest_ids) == len(giant_ids)``);
+    * the Giant, small and nest generator id sets are pairwise disjoint, so no
+      actor is reused across roles and no small actor is claimed as a nest.
+    """
+    giants = _coexistence_ids(giant_ids, ROLE_GIANT)
+    smalls = _coexistence_ids(small_ids, ROLE_SMALL)
+    nests = _coexistence_ids(nest_ids, ROLE_NEST)
+    violations = []
+    if not giants:
+        violations.append('no giant actors declared')
+    if len(nests) != len(giants):
+        violations.append('expected one nest per giant (%d giants, %d nests)'
+                          % (len(giants), len(nests)))
+    giant_set, small_set, nest_set = set(giants), set(smalls), set(nests)
+    for left, right, left_name, right_name in (
+            (giant_set, small_set, ROLE_GIANT, ROLE_SMALL),
+            (giant_set, nest_set, ROLE_GIANT, ROLE_NEST),
+            (small_set, nest_set, ROLE_SMALL, ROLE_NEST)):
+        shared = sorted(left & right)
+        if shared:
+            violations.append('%s and %s share generator ids: %s'
+                              % (left_name, right_name,
+                                 ', '.join(str(i) for i in shared)))
+    return {
+        'ok': not violations,
+        'giant_ids': giants,
+        'small_ids': smalls,
+        'nest_ids': nests,
+        'giant_count': len(giants),
+        'small_count': len(smalls),
+        'nest_count': len(nests),
+        'pairs': [{'giant': giant, 'nest': nest}
+                  for giant, nest in zip(giants, nests)],
+        'small_actors_independent': not (small_set & (giant_set | nest_set)),
+        'violations': violations,
+    }
+
+
+def coexistence_ok(giant_ids, small_ids, nest_ids):
+    """True when the declared Giant/small/nest generator roles are disjoint.
+
+    Requires at least one Giant, exactly one nest per Giant, and pairwise
+    disjoint Giant/small/nest generator ids. Malformed containers or ids raise
+    ``ValueError``; a well-formed but invalid arrangement returns ``False``.
+    """
+    return coexistence_report(giant_ids, small_ids, nest_ids)['ok']
