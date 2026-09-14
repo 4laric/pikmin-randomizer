@@ -24,7 +24,8 @@ public:int idle() override {
  require(std::fabs(birth.x-x)<.02&&std::fabs(birth.y-y)<.02&&std::fabs(birth.z-z)<.02,"frog birth XYZ");
  require(std::fabs(gen.x-x)<.02&&std::fabs(gen.y-y)<.02&&std::fabs(gen.z-z)<.02,"frog generator XYZ");
  require(bool(pc_p2_frog_name(actor))==bool(registered),"frog registration/control");
- require(actor->getParameterF(TPF_Life)==actor->mTekiParams->getF(TPF_Life),"frog P1 health changed");
+ float raw_health=actor->mTekiParams->getF(TPF_Life),want_health=registered?pc_p2_frog_param_f(actor,TPF_Life,raw_health):raw_health;
+ require(actor->getParameterF(TPF_Life)==want_health,"frog health mismatch (source for registered, P1 for controls)");
  frogs[id-201001]=actor;++count;
  std::printf("P2_FROG_BIRTH id=%u type=%d registered=%d x=%.3f y=%.3f z=%.3f\n",id,type,registered,birth.x,birth.y,birth.z);}
  require(count==4,"frog roster missing");require(cameraMgr&&cameraMgr->mCamera,"frog camera missing");cameraMgr->mCamera->setTarget(frogs[0]);

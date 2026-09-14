@@ -98,3 +98,40 @@ owned by the active species lane #407 and is not touched here.
   (matches the documented final import04 bank).
 - Remaining: natural combat parity, transport/rewards, P2 mechanics, absent
   profile launch and full scene/day reload.
+
+## Source combat parameters and identity health (lane 16, 2026-09-14)
+
+The maintained frog body is visual-only with P1 proxy gameplay, so registered
+actors still used P1 health/attack values. This slice binds the audited source
+parameter set to the two registered species and exposes it through the shared
+param chain; unregistered controls are untouched.
+
+- Native: `pc_port/pc_p2_frog_policy.h` now carries the source `Params` table
+  (health 800/1100, sight 360, max attack range 200/250, attack damage 10/20,
+  air time 1, jump speed 320/350, jump-failure 0.2/0.1, fall speed 300/330,
+  corpse Pokos 5/7). `pc_port/pc_p2_frog.cpp` adds `pc_p2_frog_param_f`, wired in
+  `include/teki.h` alongside the kogane/armor/sokkuri hooks, and `pc_p2_frog_setup`
+  sets each registered actor's `mHealth` to the source value and logs
+  `P2_FROG_READY ... health=... max_health=...`. The control keeps P1 values
+  because the hook falls back to the raw P1 param for unregistered actors.
+- Host model: `experimental/pikmin2_frog_behavior.py` encodes the source FSM and
+  motion mapping (Jump=type1, Fall=type2, Fail=damage, Carry=type5), jump
+  resolution (displacement / air time + jump speed, per-species failure), the
+  landing press (blocked only while bittered), MaroFrog captain retargeting and
+  the corpse/carry contract. `validate_ready()` machine-checks the native READY
+  rows for source health. Tests: `tests/test_pikmin2_frog_behavior.py` (8 passing).
+- Fixture: `pikmin2_frog_runtime.py` now expects source health for registered
+  actors and P1 health for controls, instead of requiring P1 health for all four.
+- **Not run here.** No native build or real-GL acceptance was performed; the
+  source parameter change is additive and the fixture assertion was updated to
+  match, but a fresh private build/run (960x540 centred, 20-red squad) is still
+  required before promoting gate C. Natural jump/crush receiver parity,
+  transport/rewards and full scene/day reload remain open.
+
+| Gate | Result | Limit |
+|---|---|---|
+| Source identity/params (A/B) | PASS (source + host tests) | native build/run pending |
+| Landing press / retarget | PASS (host model) | native receiver not yet asserted |
+| Jump attack resolution | PASS (host model) | source event execution still P1 |
+| Death/corpse/transport (D) | UNTESTED | injected attack only |
+| Cleanup/re-entry (E) | PASS (prior manager reset/re-entry) | full scene/day reload untested |
