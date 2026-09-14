@@ -157,10 +157,36 @@ py -3.12 -m experimental.pikmin2_staging stage  MANIFEST DESTINATION [--base DIR
 `stage` prints the receipt. `--base` overrides the source base directory (it
 defaults to the manifest file's directory).
 
+## Generated-session launcher/cache integration
+
+`stage_session_content(manifest, session_dir, base=None, cache_dir=None)` is the
+launcher-facing entry point. Content is installed under
+`<session_dir>/content`, so a revisit or process restart reuses it without a
+manual copy step. Staging runs before any native process starts: a missing/wrong
+source, unsafe destination or corrupt cache raises `StagingError` and nothing
+launches.
+
+With `cache_dir`, the verified tree is kept under
+`<cache_dir>/<version>-<staged_digest>/`, with its receipt as the completeness
+marker. A later session whose manifest has the same version/content digest
+materializes from the cache without reading the sources again; a corrupt cached
+entry fails closed instead of installing bad bytes.
+
+The launcher consumes it through the ordinary session command:
+
+```powershell
+py -3.12 -m randomizer run MANIFEST --session-dir DIR --exe EXE --assets ASSETS \
+    --content-manifest content-manifest.json [--content-cache CACHE]
+```
+
+`randomizer.runner._launch` invokes `stage_session_content` before `Popen`; the
+`--content-cache` path is optional and off for legacy runs. Family extractors
+still produce the manifest; the launcher only installs verified bytes.
+
 ## Validation
 
 ```powershell
-py -3.12 -m pytest tests/test_pikmin2_staging.py -q
+py -3.12 -m pytest tests/test_pikmin2_staging.py tests/test_pikmin2_session_staging.py -q   # 26 passed
 ```
 
 Covers happy-path staging plus receipt, cached replay no-op, missing source, wrong
@@ -190,3 +216,7 @@ sources are synthetic temp files.
 - The orchestrator does not extract, convert or validate asset contents; it only
   verifies hashes and installs bytes. Family extractors and lane 09's converter
   remain the producers.
+- The session destination (`<session_dir>/content`) is installed and receipted,
+  but no native overlay consumer reads it yet; layered native consumption is a
+  lane 01/09 integration boundary. No family extractor is wired into the launcher
+  in this slice.
