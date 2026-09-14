@@ -17,12 +17,20 @@ Do not use the historical occupied `output/p2-main-review/native` checkout.
 ## Runnable entrypoint
 
 `experimental.pikmin2_candidate_session` is a separate diagnostic process that
-scopes the existing admission function to Snow source **45 only**, then uses the
-existing generator, manifest validation and launcher. The normal CLI and roster
-are unchanged. Candidate manifests remain rejected by the normal loader while
-Snow is unadmitted. The override is restored on errors and process exit.
+scopes the existing admission function to a private source (Snow **45** by
+default, Dwarf Orange **44** via `--source 44`), then uses the existing
+generator, manifest validation and launcher. The normal CLI and roster are
+unchanged. Candidate manifests remain rejected by the normal loader while the
+identity is unadmitted. The override is restored on errors and process exit.
 Placement compatibility, content hashes/identity and executable pin checks remain
 in force. No source changes or per-agent monkeypatch script are needed.
+
+The 45 path runs on the already-integrated native Snow binding. The 44 path
+requires the private native worktree carrying the #461 dwarf-orange bind (source
+44 routed through `pc_p2_generated_bind` to `TEKI_Chappy`), an identity-44
+content manifest from `experimental.pikmin2_dwarf_orange_content.py`, and a
+placement document whose profile lists `BlueKochappy`; it has not shipped to the
+maintained build yet.
 
 From your updated private root worktree, use the assignment-3 placement document
 and assignment-1 Snow content manifest. These must be real handed-off inputs;

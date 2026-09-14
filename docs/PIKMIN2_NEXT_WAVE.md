@@ -40,6 +40,8 @@ Experimental admission may retain declared P1-derived AI, timing or animation ap
 
 Historical Snow evidence includes physical Pod delivery with a P1 host; it does not prove the current generated campaign path. Dwarf Orange has combined bind/draw evidence and partial behavior, not accepted natural delivery. At this dispatch revision the admitted enemy roster is still empty.
 
+Dispatch progress (2026-09-14): assignment 5 (Dwarf Orange, source 44) wired the generated bind path in a private native worktree on the maintained baseline container where Snow (source 45) generated binds — `pc_p2_generated_bind` now dispatches 44 to `TEKI_Chappy` via `pc_p2_dwarf_orange_bind` gated by the dwarf-orange generated marker, with the Kochappy FSM auto-opting in for the bound spawn and an optional `assets/p2-dwarf-orange-fsm.txt` override. Private build `output/native-sweep437-build` links clean (ninja: no work to do). Root side: `experimental/pikmin2_dwarf_orange_content.py` emits the identity-44 content manifest (15 models + bank/profile config, hash-verified) and `experimental/pikmin2_candidate_session.py --source 44` provides the private pre-admission candidate scope; 11 new focused tests pass and the candidate/staging/install/enemy/placement suites stay green (118 tests + 17 subtests). Remaining for assignment 5: real-GL generated acceptance (spawn → combat → death → carry → reward → revisit → restart) and `cleanup_reentry` re-exercise on the pinned pair before admission; `transport_reward` stays lane 06. No identity is admitted by these changes.
+
 ## Assignment 4 does not wait for admission
 
 Use [the private Snow candidate QA runbook](PIKMIN2_CANDIDATE_QA.md) to gather

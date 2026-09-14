@@ -62,10 +62,11 @@
         "cleanup_reentry": "BLOCKED"
       },
       "eligibility": "candidate",
-      "eligibility_reason": "opt-in source KochappyBase FSM with natural combat/death/carry and natural-death cleanup observed; P2 reward and generated-session scope open",
+      "eligibility_reason": "opt-in source KochappyBase FSM with natural combat/death/carry and natural-death cleanup observed; generated-session bind/staging/candidate scope wired (#461); P2 reward and real-GL generated acceptance open",
       "notes": [
-        "Dwarf Orange Bulborb (BlueKochappy 44): full source-state FSM (Wait/Turn/Walk/Attack/Flick/TurnToHome/GoHome/Press/Dead) on the maintained native line; opt-in via p2-dwarf-orange-fsm.txt.",
+        "Dwarf Orange Bulborb (BlueKochappy 44): full source-state FSM (Wait/Turn/Walk/Attack/Flick/TurnToHome/GoHome/Press/Dead) on the maintained native line; opt-in via assets/p2-dwarf-orange-fsm.txt (generated) or CWD p2-dwarf-orange-fsm.txt (arena).",
         "Gates A-D and cleanup PASS at the documented P1-proxy/experimental scope on native b805d9c6 + lane-13 FSM; evidence in docs/PIKMIN2_DWARF_ORANGE_CLEANUP.md, docs/PIKMIN2_KOCHAPPY_FSM.md and docs/PIKMIN2_DWARF_ORANGE_NATIVE.md.",
+        "#461 sweep: 44 is routed through pc_p2_generated_bind (source_id -> TEKI_Chappy, pc_p2_dwarf_orange_bind, gated by the dwarf-orange generated marker), the Kochappy FSM auto-opts in for the bound spawn, and the content manifest (experimental/pikmin2_dwarf_orange_content.py, identity 44) + private candidate scope (experimental/pikmin2_candidate_session.py --source 44) are built and tested off-line.",
         "cleanup_reentry PASS covers natural-death cleanup (engine doKill funnel clears both family maps); scene re-entry relies on the shared #397 stage-teardown reset and was not separately re-run for 44.",
         "transport_reward BLOCKED: ordinary P1 corpse transport only; P2 reward/once-credit is lane 06. Product spawn/staging/reward wiring is assignment 1/3.",
         "Not admitted: this row records candidate evidence and named blockers, not a randomizer admission PASS (#120/#186).",
