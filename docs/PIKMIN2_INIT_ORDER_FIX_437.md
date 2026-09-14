@@ -1,3 +1,5 @@
+> Current candidate pin: [native ae00c510 with P2 cache identity fix](PIKMIN2_CACHE_IDENTITY_FIX_437.md). Evidence below retains its historical pin.
+
 # Generated bank initialization fix (#437 / QA-45-437-01)
 
 Owner Codex through shared account 4laric. Root 3bacebc29da8fc19955a416e112f5f8f7a0d9550; clean native 08bae2517b77ed809a 75d085afb83ee532f7b92a. Includes worker a2f4b9dc (Orange post-reset setup) plus 08bae251 (Snow at the same point). Native origin not pushed.

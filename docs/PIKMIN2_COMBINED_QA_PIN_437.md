@@ -1,3 +1,5 @@
+> Current candidate pin: [native ae00c510 with P2 cache identity fix](PIKMIN2_CACHE_IDENTITY_FIX_437.md). Evidence below retains its historical pin.
+
 > Superseded: native 9b15d371 fails generated Snow startup. Use [replacement pin and runtime evidence](PIKMIN2_INIT_ORDER_FIX_437.md), native08bae251, instead. Prior results below are historical.
 
 > Admission-boundary correction: root `99ca118733b6919548565af538971ff284df7daf` supersedes ff838a2. The old pin.json is retained only as historical evidence; use pin-slot-coverage.json. Native commit and binary hash are unchanged.
