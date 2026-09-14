@@ -5,15 +5,21 @@ Consumes the lane 02 roster (#438). Placement belongs to lane 04, content stagin
 to lane 05, reward semantics to lane 06. This lane owns shared seed/options and
 the protocol adapter.
 
-Status: **design slice + tested adapter**. Runtime acceptance needs lanes 02/04/05
-and at least one eligible family; no gameplay PASS is claimed here. Ordinary P1
-seed generation and legacy seeds are unchanged.
+Status: **adapter + wired opt-in generator**. The seed bridge is now reachable
+from the real generator (`randomizer.seed.generate` / CLI) and manifests, gated by
+lane 02's deny-by-default admission set. Runtime/native acceptance still needs
+lanes 04/05 and at least one admitted family; no gameplay PASS is claimed here.
+Ordinary P1 seed generation and legacy seeds are unchanged.
 
 ## Module
 
 `experimental/pikmin2_seed_bridge.py`
 
-- `resolve_layout(seed, slot, targets, cohort, roster=None)` → deterministic layout.
+- `resolve_admitted_layout(seed, slot, targets, roster=None)` → product entry
+  point; derives the cohort from lane 02's admission set and fails closed when it
+  is empty.
+- `resolve_layout(seed, slot, targets, cohort, roster=None, *, admitted=None)` →
+  deterministic layout; an optional allowlist rejects any unadmitted cohort id.
 - `validate_layout(layout, roster=None)` → raises `SeedBridgeError` on any mismatch.
 - `build_bootstrap(layout)` / `parse_bootstrap(text)` → emit/parse the native line.
 - `bootstrap_for_manifest(manifest)` → the line for a manifest, or `""` for legacy.
@@ -99,6 +105,30 @@ py -3.12 -m pytest tests/test_pikmin2_seed_bridge.py -q   # 10 passed
 Covered: determinism across seed/slot, cohort coverage, rejection of
 non-bindable/unknown/duplicate IDs, stale-revision rejection, bootstrap
 round-trip, malformed-line rejection, and legacy manifests emitting no line.
+
+## Product wiring (schema 9, opt-in)
+
+The bridge is no longer preview-only. With `p2_enemies` set, the ordinary
+generator writes a `p2_layout` field onto a schema-9 manifest:
+
+- `randomizer.seed.generate(..., p2_enemies=True, p2_targets=[...])` resolves the
+  admitted cohort, stores `p2_layout`, and adds the `p2-enemy-bridge-v1`
+  capability. It raises a clear `ValueError` when nothing is admitted or when no
+  lane 04 targets are supplied.
+- CLI: `--p2-enemies --p2-targets gen-001,gen-002`.
+- `validate()` accepts `p2_layout` only on schema 9 with `enemy_mask == 0`, no
+  P1 `spawn_layout`/`group_layout`/`campaign_layout`, the matching capability, and
+  a layout that revalidates against the current roster.
+- `randomizer.enemy_slots.bootstrap_slots(manifest)` emits the `ENEMY_P2` line for
+  a `p2_layout` manifest, so the ordinary `NativeRun` bootstrap carries it.
+- Legacy seeds carry no `p2_layout` and emit no line.
+
+The admission set is empty today, so `--p2-enemies` correctly fails closed. Tests
+inject a single admitted cohort (Sokkuri=79) to exercise generation, the
+capability, determinism across restart and the bootstrap round trip.
+
+The native parser (schema ≥ 10, compiling the same roster revision) remains the
+lane 01 integration seam; the emitted line is not yet consumed by the C++ reader.
 
 ## Remaining work
 
