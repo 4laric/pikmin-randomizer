@@ -26,6 +26,13 @@
     "cmake_exe_sha256": "8A261C98CD607DD1D5177BCDCB1883D09795E7E68B7550CF8892858FE95FD2A7"
   },
   "scope": "Engine-free policy for the shared Snagret burrow cycle, appear1/2 choice, five peck boxes and strike points, re-peck on a free mouth slot, latched-Pikmin Struggle, shake dive, SnakeWhole Walk/Home hop gating, surfacing heal, and death drop/corpse. DangoMushi (Crawbster) source FSM already exists at native 8ae1e5b4 and is not duplicated here.",
+  "production_build": {
+    "target": "pikmin_pc",
+    "result": "[523/523] Linking CXX executable bin/nectar.exe (exit 0)",
+    "ninja_dry_run": "ninja: no work to do.",
+    "executable_sha256": "83B319A15A619D351A830F5BA847E6BCDB98EFA3E35284D5C3E41806FD2B0CEF",
+    "ctest": "p2_long_legs_fsm_test / p2_snagret_fsm_test / p2_dangomushi_hazard_test: 100% (3/3) passed"
+  },
   "runtime": "not run: engine-free source-policy slice. No assets, GL window or arena were used, so no six-gate runtime claim is made for this commit.",
   "note": "The native head hash is recorded from the private worktree; confirm it against the exported patch before integration.",
   "integration": "Apply native patch 0001 after lane 01 reconciles the #407 species candidates; the module is additive and engine-free until a host wires it to the actor, mouth slots and SnakeJointMgr."

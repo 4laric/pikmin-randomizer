@@ -27,6 +27,13 @@
     "cmake_exe_sha256": "DE776E1168F6B6365AD9BE49E3480507780ABE37B38C3764D0C8FEE8B4C7C0C4"
   },
   "scope": "Engine-free decisions for the two behaviors the #407 native DangoMushi FSM documented as not reproduced: the Turn LOOP_START..key-3 stickable/vulnerability window and the Rock (10 per turn, 30 s) + Egg (group-share probability) flip hazard within the reserved 30 Rock / 10 Egg budgets. Host consumes intents; Rock/Egg primitives are lane 20.",
+  "production_build": {
+    "target": "pikmin_pc",
+    "result": "[523/523] Linking CXX executable bin/nectar.exe (exit 0)",
+    "ninja_dry_run": "ninja: no work to do.",
+    "executable_sha256": "83B319A15A619D351A830F5BA847E6BCDB98EFA3E35284D5C3E41806FD2B0CEF",
+    "ctest": "p2_long_legs_fsm_test / p2_snagret_fsm_test / p2_dangomushi_hazard_test: 100% (3/3) passed"
+  },
   "runtime": "not run: engine-free decision slice. The existing #407 candidate FSM still owns the runtime Crawbster; this module does not replace it and has no host wiring yet.",
   "integration": "Apply native patch 0001 alongside the #407 candidate. The module is additive and engine-free until the host calls it from the DangoMushi Turn state and lane 20 supplies Rock/Egg spawning."
 }
