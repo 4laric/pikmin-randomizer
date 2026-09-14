@@ -82,3 +82,9 @@ No family damage/capture/drop receiver consumes the events yet.
 Not skeletal playback/blending/BTK. Does not change the `P2_*_BANK_1` writers or
 `p2animation::Clip`. Does not add a second wall clock. Creating events does not
 execute gameplay.
+
+## Second consumer (lane 08 next wave)
+
+`pc_port/pc_p2_armor.cpp` now drives its bite/eat/flick effects from the
+sampled clock instead of `stateTime * 30`, with an exactly-once probe. See
+[docs/PIKMIN2_ARMOR_EVENT_CLOCK.md](PIKMIN2_ARMOR_EVENT_CLOCK.md).
