@@ -9,7 +9,9 @@ the tongue eats squad Pikmin (Swallow) and the bomb (Eat -> Damage 200 with
 the 180-frame stun). Scenario 2 places two Emperors and three bombs for the
 cross-Emperor WarCry contract and the deterministic bomb ingestion lane.
 Scenario 3 spawns the force-big variant. Scenario 4 (required) drives the
-opt-in kill injection to Dead and the frame-185 kill key. Scenario order is
+opt-in kill injection to Dead and the frame-185 kill key. Scenario 5 (required)
+drives the opt-in Flick injection to the key-35 trample so the press/flick
+receivers are observed deterministically. Scenario order is
 gated on the actor's own 30 Hz behavior clock (not absolute idle frames) so a
 loaded machine cannot truncate an earlier scenario's required keys.
 Runs self-terminate at a bounded behavior tick.
@@ -80,7 +82,14 @@ public:int idle() override {
   std::puts("P2_KING_SCENARIO3 force_big");phase=4;
  }
  if(phase==4&&pc_p2_king_behavior_tick()>=30){
-  capture("king-reload.ppm");std::puts("PASS P2_KING_ACTOR_RUNTIME bounded_behavior_tick");
+  capture("king-reload.ppm");pc_p2_king_reset();
+  {std::ifstream src("king-fixture-profile.txt",std::ios::binary);std::ofstream dst("p2-king-actor.txt",std::ios::binary);dst<<src.rdbuf();dst.close();}
+  {std::ofstream inj("p2-king-inject.txt");inj<<"P2_KING_INJECT_1 100000 230020 0 0 0 20\n";inj.close();}
+  const int heap=gsys->setHeap(SYSHEAP_App);pc_p2_king_setup();gsys->setHeap(heap);
+  std::puts("P2_KING_FLICK_ARMED flick_tick=20 fixture=1");std::puts("P2_KING_SCENARIO_FLICK");phase=5;
+ }
+ if(phase==5&&pc_p2_king_behavior_tick()>=160){
+  std::puts("PASS P2_KING_ACTOR_RUNTIME bounded_behavior_tick");
   std::fflush(nullptr);if(!hold)std::_Exit(0);
  }
  if(!pc_p2_preview_cargo_free_ready()||!naviMgr||!tekiMgr||!mapMgr)return result;
@@ -269,9 +278,11 @@ def validate(text, code):
                       and bool(re.search(r'P2_KING_INJECT_KILL id=\d+ tick=\d+ health=0 fixture=1', text)),
         death_reached=bool(re.search(r'P2_KING_STATE id=\d+ from=\d+ to=2 health=0', text)),
         death_key=bool(re.search(r'P2_KING_DEAD_KEY id=\d+ frame=185 kill=1', text)),
+        flick_trample=bool(re.search(r'P2_KING_INJECT_FLICK id=\d+ tick=\d+ state=Flick fixture=1', text))
+                      and any(int(a) + int(b) >= 1 for a, b in re.findall(
+                          r'P2_KING_TRAMPLE id=\d+ pressed_pikmin=(\d+) pressed_captains=(\d+)', text)),
     )
     optional = dict(
-        flick_trample='P2_KING_TRAMPLE' in text or 'P2_KING_FLICK id=' in text,
         external_quartered='P2_KING_BOMB_QUARTERED' in text,
     )
     untested = [name for name, ok in optional.items() if not ok]
