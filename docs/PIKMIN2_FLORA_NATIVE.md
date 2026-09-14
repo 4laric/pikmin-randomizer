@@ -76,10 +76,16 @@ Non-full posies are kept invincible; full posies are cleared to vulnerable.
 ```text
 P2_FLORA_PELPLANT_READY generator=<id> stage=<stage> pellet=<n> colour=<c> ...
 P2_FLORA_PELPLANT_FELL generator=<id> stage=full instant_fell_head=<0|1> ... regrowth=0
-P2_FLORA_PELLET_RELEASED generator=<id> pellet=<n> colour=<c> capture_receptor=1
+P2_FLORA_PELLET_RELEASED generator=<id> pellet=<actual> colour=<actual> declared_pellet=<n> declared_colour=<c> declared_match=<0|1> capture_receptor=1
 P2_FLORA_PELLET_CAPTURED generator=<id> carriers=<n> carrier=<ptr>
 P2_FLORA_ONION_RECEIPT generator=<id> pellet=<n> pokos=0 seeds=0 onion_slice_unimplemented=1
 ```
+
+The fixture self-terminates on a wall-clock ceiling (110 s) and prints
+`P2_FLORA_RUNTIME_BLOCKED <gate> reason=<reason>` (`ready` / `fell` /
+`captured`) instead of hanging; `completion` requires the explicit
+`PASS P2_FLORA_PELPLANT_RUNTIME release_and_capture` line, so a blocked run can
+never be read as a pass.
 
 ## Implemented vs BLOCKED
 
@@ -91,7 +97,14 @@ P2_FLORA_ONION_RECEIPT generator=<id> pellet=<n> pokos=0 seeds=0 onion_slice_uni
 - Instant fell on the head: observed and logged (`instant_fell_head=1`); the
   fell itself is the existing P1 Palm flower-damage route.
 - Dead-state pellet release: the configured number pellet is dropped by the
-  existing P1 Palm `spawnItems`; the module claims and logs it.
+  existing P1 Palm `spawnItems`; the module claims the new number pellet and
+  logs `P2_FLORA_PELLET_RELEASED` with the **actual** dropped type/colour and a
+  `declared_match` flag against the sidecar's declared identity. The module
+  deliberately does **not** rewrite the proxy's `mPelletKind`/`mPelletColor`:
+  the P1 arena only loads the pellet configs the stage references, so forcing a
+  different kind makes `newNumberPellet` return null and `spawnPellets` drops
+  nothing. The sidecar's `pellet`/`colour` are therefore a declared expectation,
+  recorded and compared, not force-applied.
 - Capture receptor: the module observes a Pikmin pick up the released pellet
   (`mCarrierCount >= 1`) and, if it reaches the Pod delivery path, reports
   `P2_FLORA_ONION_RECEIPT ... seeds=0`.
@@ -133,11 +146,11 @@ P2_FLORA_ONION_RECEIPT generator=<id> pellet=<n> pokos=0 seeds=0 onion_slice_uni
 ## Build and fixture provenance
 
 - Native branch `opencode/p2-lane23-native`, commit
-  `383ad24d7a21d023d6767cb1903cef8d2e0f230f` (base `57bb1a4e`), clean.
+  `39217be67342829a4daa4c6e8682d1f0ee201ba6` (base `57bb1a4e`), clean.
 - Private build `output/p2-lane23-native-build`, Ninja; dry run
   `ninja: no work to do.`
-- Fixture `output/p2-lane23-flora-fixture-4/build/fixture.exe`
-  SHA-256 `13b70f5d9efa381609743edb3252d9dc37a8381448c3a54036a70e25a89c62f1`,
+- Fixture `output/p2-lane23-flora-fixture-5/build/fixture.exe`
+  SHA-256 `1548edcf876403d93c76c199caf779a9261f44c043620234c4bfb83c26ef231d`,
   `provenance.json` status `built`, expected native head matches.
 - GL fixture runs are serialized and owned by the coordinator. This lane built
   only; no runtime/gameplay acceptance is claimed.
@@ -160,7 +173,7 @@ The private chal0 slot reuses the byte-preserved practice course, so no
 - every existing `dataDir/stages/chal0/*.gen` overridden to an empty stage,
 - `p2-cargo-free.txt` (`P2_CARGO_FREE_1`) so the preview skips the missing
   `courses/pikmin2room/treasure.mod`,
-- `p2-flora-pelplant.txt` (`P2_FLORA_PELPLANT_1` / `240001 full 5 blue`).
+- `p2-flora-pelplant.txt` (`P2_FLORA_PELPLANT_1` / `240001 full 1 red`).
 
 `stage()` asserts each of these files exists before launch and raises a clear
 error otherwise; the fixture does not fall back to a partial asset tree.
@@ -169,7 +182,7 @@ Exact GL run command (from `output/p2-lane23-root`):
 
 ```powershell
 $env:PIKMIN_P2_ROOM_WINDOW='960x540'
-py -3.12 -m experimental.pikmin2_flora_runtime run --assets C:\Users\alari\bbft\dist\cohesion\pikmin\assets --output output/p2-lane23-flora-runtime-03 --exe C:\Users\alari\pikmin-randomizer\output\p2-lane23-flora-fixture-4\build\fixture.exe
+py -3.12 -m experimental.pikmin2_flora_runtime run --assets C:\Users\alari\bbft\dist\cohesion\pikmin\assets --output output/p2-lane23-flora-runtime-04 --exe C:\Users\alari\pikmin-randomizer\output\p2-lane23-flora-fixture-5\build\fixture.exe
 ```
 
 ## Validation

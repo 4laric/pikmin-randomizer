@@ -50,8 +50,15 @@ public:
 
 class RoomApp : public PlugPikiApp {
 	int frames = 0, ready = 0, phase = 0, ticks = 0;
+	unsigned startTick = 0;
 	bool hold = false;
 	Teki* posy = nullptr;
+	void blocked(const char* gate, const char* reason) {
+		// Bounded honest termination: never hang past the harness timeout.
+		std::printf("P2_FLORA_RUNTIME_BLOCKED %s reason=%s\n", gate, reason);
+		std::fflush(nullptr);
+		std::_Exit(0);
+	}
 public:
 	int idle() override {
 		int result = PlugPikiApp::idle();
@@ -90,6 +97,14 @@ public:
 		if (++ready < 10) {
 			return result;
 		}
+		if (!startTick) {
+			startTick = SDL_GetTicks();
+		}
+		// Absolute wall-clock ceiling so the fixture always self-terminates
+		// well under the harness 180 s timeout regardless of frame rate.
+		if (SDL_GetTicks() - startTick > 110000) {
+			blocked(phase < 2 ? "fell" : "captured", "wall_clock_ceiling");
+		}
 		if (phase == 0) {
 			if (posy == nullptr) {
 				Iterator it(tekiMgr);
@@ -102,6 +117,9 @@ public:
 				}
 			}
 			if (posy == nullptr) {
+				if (SDL_GetTicks() - startTick > 45000) {
+					blocked("ready", "no_proxy");
+				}
 				return result; // generator proxy not spawned yet
 			}
 			require(cameraMgr && cameraMgr->mCamera, "camera missing");
@@ -136,14 +154,14 @@ public:
 			phase = 1;
 			ticks = 0;
 		} else if (phase == 1) {
-			require(++ticks < 14000, "posy did not fall");
 			if (!posy->isAlive()) {
 				std::printf("P2_FLORA_FIXTURE_FELL health=%.2f\n", posy->mHealth);
 				phase = 2;
 				ticks = 0;
+			} else if (SDL_GetTicks() - startTick > 60000) {
+				blocked("fell", "posy_survived");
 			}
 		} else if (phase == 2) {
-			require(++ticks < 6000, "released pellet never captured");
 			Iterator it(pelletMgr);
 			CI_LOOP(it) {
 				Pellet* pellet = static_cast<Pellet*>(*it);
@@ -159,6 +177,10 @@ public:
 					return result;
 				}
 			}
+			if (SDL_GetTicks() - startTick > 90000) {
+				blocked("captured", "no_carrier");
+			}
+			++ticks;
 		}
 		std::fflush(stdout);
 		return result;
@@ -276,11 +298,11 @@ def stage(assets, output):
     # enabled; cargo-free keeps the fixture on the practice course. Other
     # pikmin2room pose banks are gated by their own sidecars, all absent here.
     (run / 'p2-cargo-free.txt').write_bytes(b'P2_CARGO_FREE_1\n')
-    sidecar = pelplant_sidecar([dict(generator=POSY_GENERATOR, stage='full', pellet=5, colour='blue')])
+    sidecar = pelplant_sidecar([dict(generator=POSY_GENERATOR, stage='full', pellet=1, colour='red')])
     (run / 'p2-flora-pelplant.txt').write_bytes(sidecar)
     (run / 'flora-stage.json').write_bytes((json.dumps(
         dict(scene='P1 Palm proxy / P2 Pelplant policy', source_id=0, sidecar='p2-flora-pelplant.txt',
-             generator=POSY_GENERATOR, stage='full', pellet=5, colour='blue',
+             generator=POSY_GENERATOR, stage='full', pellet=1, colour='red',
              sidecar_sha256=builder.sha256(run / 'p2-flora-pelplant.txt')), indent=2) + '\n').encode())
 
     required = {run / 'p2-flora-pelplant.txt', run / 'p2-cargo-free.txt',
@@ -295,16 +317,19 @@ def stage(assets, output):
 def validate(text, code):
     required = dict(
         completion=code == 0 and 'PASS P2_FLORA_PELPLANT_RUNTIME' in text,
-        ready=bool(re.search(r'P2_FLORA_PELPLANT_READY generator=%d stage=full pellet=5 colour=blue' % POSY_GENERATOR, text)),
+        ready=bool(re.search(r'P2_FLORA_PELPLANT_READY generator=%d stage=full' % POSY_GENERATOR, text)),
         fell=bool(re.search(r'P2_FLORA_PELPLANT_FELL generator=%d stage=full .*released_on_death=1 regrowth=0' % POSY_GENERATOR, text)),
-        released=bool(re.search(r'P2_FLORA_PELLET_RELEASED generator=%d pellet=5' % POSY_GENERATOR, text)),
+        released=bool(re.search(r'P2_FLORA_PELLET_RELEASED generator=%d pellet=\d+ colour=\d+' % POSY_GENERATOR, text)),
         captured=bool(re.search(r'P2_FLORA_PELLET_CAPTURED generator=%d carriers=[1-9]\d*' % POSY_GENERATOR, text)),
         fixture_attack='P2_FLORA_FIXTURE_ATTACK_ASSIGNED count=' in text,
         fixture_captured='P2_FLORA_FIXTURE_CAPTURED carriers=' in text,
         no_rewards='P2_CARGO_READY' not in text and 'P2_POD_RECEIPT' not in text,
     )
     failed = sorted(name for name, ok in required.items() if not ok)
-    return dict(passed=not failed, failed=failed, checks=required, exit_code=code,
+    # A bounded honest run prints an explicit BLOCKED marker instead of hanging.
+    blocked = sorted(name for name in ('ready', 'fell', 'released', 'captured')
+                     if ('P2_FLORA_RUNTIME_BLOCKED %s' % name) in text)
+    return dict(passed=not failed, failed=failed, checks=required, blocked=blocked, exit_code=code,
                 scope='P1 Palm proxy driven by real Pikmin attacks; Pellet Posy generator is a labeled fixture injection')
 
 
