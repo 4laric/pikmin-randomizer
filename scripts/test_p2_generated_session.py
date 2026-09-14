@@ -25,26 +25,21 @@ from randomizer.runner import NativeRun  # noqa: E402
 from randomizer.seed import generate  # noqa: E402
 from randomizer.session import Session  # noqa: E402
 
-COHORT = (79, 30)  # Sokkuri (source) + Queen (boss)
+COHORT = (79, 15)  # Sokkuri + Armor (lane 14 ground candidates)
 
 
 def placement_document():
-    """Minimal lane 04 document: one ground slot each for Sokkuri and Queen."""
-    def slot(uid, label, capacity=0, boss=False):
+    """Minimal lane 04 document accepting one ground slot each for two identities."""
+    def slot(uid, label):
         return {"uid": uid, "label": label, "stage": 1, "terrain": "ground", "radius": 300.0,
-                "helper_capacity": capacity, "boss_slot": boss,
                 "evidence": {"xyz": True, "terrain": True, "route": True}}
     return {
         "schema": "p2-placement-v1",
-        "slots": [slot(401, "sokkuri-slot"), slot(402, "queen-arena", 50, boss=True)],
+        "slots": [slot(401, "sokkuri-slot"), slot(402, "armor-slot")],
         "profiles": [
             {"identity": "Sokkuri", "terrains": ["ground"], "accepted_gates": ["xyz"]},
-            {"identity": "Queen", "terrains": ["ground"], "accepted_gates": ["xyz"],
-             "is_boss": True, "encounter_descriptor": "queen-arena"},
+            {"identity": "Armor", "terrains": ["ground"], "accepted_gates": ["xyz"]},
         ],
-        "encounters": [{"id": "queen-arena", "identity": "Queen", "terrains": ["ground"],
-                        "footprint_radius": 250, "helper_budget": 50, "arena_slots": {"min": 1, "max": 1},
-                        "phases": 1, "protected_drops": [], "required_gates": ["xyz"]}],
     }
 
 
@@ -89,7 +84,8 @@ def main():
             bootstrap = run.bootstrap.read_text(encoding="ascii")
             assert f"ENEMY_P2 1 {manifest['p2_layout']['roster_revision']} 2 " in bootstrap
 
-            probe = run_probe(exe, run.bootstrap, "--enemy-p2-probe")
+            probe = run_probe(exe, run.bootstrap, "--enemy-p2-probe",
+                              "--enemy-p2-expect", "79", "--enemy-p2-expect", "15")
             assert probe.returncode == 0 and "ENEMY_P2_PASS" in probe.stdout, (probe.stdout, probe.stderr)
 
             content = write_content_manifest(tmp)
