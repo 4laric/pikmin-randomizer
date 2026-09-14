@@ -85,7 +85,7 @@ struct PcConfig {
     int chainActions = 0;
     // Hold Extract to keep plucking (0=off/faithful, 1=on). Off by default.
     int holdToPluck = 0;
-    int disableTutorials = 0;
+    int disableTutorials = 1;
     // What the mouse wheel does: 0 = pick the Pikmin colour to throw,
     // 1 = zoom the camera. One setting rather than two toggles, so the two
     // uses cannot both be on or both be off.
@@ -129,7 +129,7 @@ struct PcConfig {
         cStickInvert = 0;
         chainActions = 0;
         holdToPluck = 0;
-        disableTutorials = 0;
+        disableTutorials = 1;
         mouseWheelAction = 0;
         pikiLimit = 100;
         dayMinutes = 10;
