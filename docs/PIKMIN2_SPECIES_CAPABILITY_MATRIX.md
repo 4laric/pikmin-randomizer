@@ -63,3 +63,13 @@ Policy test (engine-double).
   `pc_p2_make_bulbmin`), but nothing spawns Bulbmin yet, so the matrix is
   compile-backed rather than runtime-proven. Cave persistence needs a versioned
   schema bump (see [PIKMIN2_BULBMIN_CONTRACT.md](PIKMIN2_BULBMIN_CONTRACT.md)).
+
+## Receiver integration
+
+The generic Pikmin fire/bubble receivers consume this matrix
+(`src/plugPikiKando/interactBattle.cpp`): `InteractFire::actPiki` and
+`InteractBubble::actPiki` call
+`p2_species_immune(pc_p2_species(piki), P2HazardFire/P2HazardWater)`. See
+[PIKMIN2_RECEIVER_PATHS.md](PIKMIN2_RECEIVER_PATHS.md) §6. Electricity and gas
+still have no port receiver, so those columns are definition-only until
+`InteractDenki`/`InteractGas` land (#170).

@@ -134,3 +134,21 @@ edits and needs no new actor IDs.
 Limitations: the subject is the P1 Chappy placement vehicle, not source
 `OtakaraBase` behavior; the invincibility probe is an explicit injected
 intervention; and the elemental receiver boundary is source evidence only.
+
+## 6. Capability-matrix routing (lanes 10/11 follow-up)
+
+The Pikmin fire/bubble receivers now reject an immune species through the
+lane-11 capability matrix (`native/pc_port/pc_p2_species_policy.h`) instead of a
+raw P1 colour test, so the same generic routing also covers P2 Bulbmin:
+
+- `InteractFire::actPiki` -> `p2_species_immune(pc_p2_species(piki), P2HazardFire)`
+- `InteractBubble::actPiki` -> `p2_species_immune(pc_p2_species(piki), P2HazardWater)`
+
+For Blue/Red/Yellow this is behavior-preserving (matrix gives the same single
+immunity). It additionally makes Bulbmin fire- and bubble-immune, matching
+`interactPiki.cpp`. The change is in
+`src/plugPikiKando/interactBattle.cpp`; private build `[3/3] Linking CXX
+executable bin\nectar.exe` (exit 0), `nectar.exe` SHA-256
+`2AED74FDB0FAD324D268E10D0D517217B1892CAD5F6473BC879AE2413ED803FE`. It is a
+build gate; the new immunity is not yet exercised in a rendered run because no
+Bulbmin actor spawns.
