@@ -56,9 +56,11 @@ Policy test (engine-double).
 ## Limits
 
 - This is the receiver-side immunity definition, not the enemy-side hazard
-  emitter or its damage routing (lane 10, #170). The port still lacks
-  `InteractDenki`/`InteractGas` classes, so electricity and gas cannot yet be
-  exercised at runtime.
+  emitter or its damage routing (lane 10, #170). `InteractDenki`/`InteractGas`
+  receiver classes now exist on the port (see
+  [PIKMIN2_RECEIVER_PATHS.md](PIKMIN2_RECEIVER_PATHS.md) §7); the gas/denki
+  enemy emitters (`GasHiba`, `ElecHiba`, `GasOtakara`, `ElecOtakara`) remain
+  family-lane work, so electricity/gas are compile-backed, not runtime-proven.
 - Live Bulbmin identity is wired (`Piki::mP2Bulbmin`, `pc_p2_species`/
   `pc_p2_make_bulbmin`), but nothing spawns Bulbmin yet, so the matrix is
   compile-backed rather than runtime-proven. Cave persistence needs a versioned

@@ -152,3 +152,49 @@ executable bin\nectar.exe` (exit 0), `nectar.exe` SHA-256
 `2AED74FDB0FAD324D268E10D0D517217B1892CAD5F6473BC879AE2413ED803FE`. It is a
 build gate; the new immunity is not yet exercised in a rendered run because no
 Bulbmin actor spawns.
+
+## 7. Electric and gas receivers (#170/#408, lane 10)
+
+The port gained the two missing P2 Pikmin hazard receivers, each matching the
+source constructor signature and delegating immunity to the same lane-11
+matrix:
+
+- `InteractDenki : public Interaction` (`include/Interactions.h`),
+  `InteractDenki(Creature*, f32 force, Vector3f* direction)`;
+  `actPiki` -> `p2_species_immune(pc_p2_species(piki), P2HazardElectric)`
+  (rejects Yellow/Bulbmin). Source `InteractDenki::actPiki`
+  (`native/pikmin2-research/src/plugProjectKandoU/interactPiki.cpp:334,347`)
+  derives from source `InteractWind`; this port's `InteractWind` has a different
+  constructor, so the receiver derives from `Interaction` and carries
+  `mDamage`/`mDirection`. A `actNavi` analogue mirrors `InteractFire::actNavi`
+  (source `interactNavi.cpp:85`).
+- `InteractGas : public Interaction` (`include/Interactions.h`),
+  `InteractGas(Creature*, f32 damage)`; `actPiki` ->
+  `p2_species_immune(pc_p2_species(piki), P2HazardGas)` (rejects White/Bulbmin).
+  Source `InteractGas::actPiki` (`interactPiki.cpp:531,543`).
+
+Implementations: `src/plugPikiKando/interactBattle.cpp` (`actPiki`) and
+`src/plugPikiKando/navi.cpp` (`InteractDenki::actNavi`). Additive only; the
+existing fire/bubble interactions are unchanged.
+
+**Missing-state blocker (honest, not faked).** The port has no P2 electric or
+gas state, so non-immune Piki take the closest existing P1 path and the exact
+P2 target is logged via `P2_RECV_DENKI` / `P2_RECV_GAS`:
+
+| Source target | Port status | Used instead |
+|---|---|---|
+| `PIKISTATE_DenkiDying` (`interactPiki.cpp:348-349`) | absent from `include/PikiState.h:15-52` enum | `PIKISTATE_Dying` |
+| `PIKISTATE_Panic` + `PIKIPANIC_Gas` (`interactPiki.cpp:542,550-552`) | absent; no generic panic state | `PIKISTATE_Fired` (panic run) |
+| `Piki::gasInvicible()` / `mGasInvincible` (`include/Game/Piki.h:198,282`) | absent from `include/Piki.h` | no gas-invincibility gate |
+
+This is a build/policy gate, not a live encounter: no `GasHiba`/`ElecHiba`/
+gas/denki dweevil emitter spawns yet, so electricity and gas cannot be exercised
+at runtime on this port.
+
+Private build: `[520/520] Linking CXX executable bin\nectar.exe` (exit 0),
+`nectar.exe` SHA-256
+`D25FFA15E1E895D0C20AA0B2754224CE5382B08A326AE3508A5BC4C9E17F5A1A`;
+`ninja -n pikmin_pc` -> `ninja: no work to do.`. Standalone matrix test
+`tools/test_p2_elemental_receivers.cpp` -> `PASS P2_ELEMENTAL_RECEIVERS`
+(SHA-256 `E535BC0A661D00FF56A73FFD7EE8C244DBB0CC983C7FBECF78D3020CF3508F3F`).
+
