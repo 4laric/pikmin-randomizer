@@ -1,7 +1,7 @@
 From a82e0f4427c9c7ce9cf2c9c6f88eede3997ab3d3 Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Sun, 13 Sep 2026 16:33:44 -0400
-Subject: [PATCH 3/4] pc_port: open experimental-room windows small and
+Subject: [PATCH 3/5] pc_port: open experimental-room windows small and
  centered by default
 
 ---
