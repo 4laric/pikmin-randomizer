@@ -44,12 +44,13 @@
     "address_reuse": "P2_REUSE_PROBE same_address=1 registered_before_rebind=0 rebound_registered=1; PASS P2_REUSE_PROBE; exe BAC36DC86B81367FCB8909A6FB342F38592D742DB0421A4013E24FEDE95B4B9C",
     "stage_exit_teardown": "P2_TEARDOWN_PROBE before=6 after=0; PASS P2_TEARDOWN_PROBE; exe BF911739DEF17FB6511F10FD0CC4AEDFC17E19558AD9EAA816D805D9313E1E81",
     "pod_reward_regression": "P2_POD_RECEIPT new=1 then new=0, one ledger row; passed=true ledger_exact=true; re-run on 87740f5d also passed=true ledger_exact=true; exe 85EB567D946303391F3DEAA2AF7F9195A3AC3E42898C6EECA8BFFC4E70E1303B",
+    "ordinary_endpoint": "real campaign stage, randomizer ready (schema 9): real Dwarf Bulborb kill -> real corpse -> GoalItem::suckMe -> pc_randomizer_corpse_delivered -> pc_randomizer_check -> CHECK 30 'Bestiary: Deliver Dwarf Bulborb' in checks.txt (50 30 51); a fresh process on the same session re-invoked the endpoint and granted no duplicate (checks.txt empty). Fixture scripts/p2_ordinary_receipt_fixture.cpp, runner scripts/p2_ordinary_receipt_runtime.py; carry step injected (natural_carry=0).",
     "arena": "P1 assets %APPDATA%\\PikminRandomizer\\game-data\\assets; re-staged flora arena via current 20-red overlay; 960x540 centred; default.gen sha256 8f0fc1cd69f011b941c37936c9ac96f44c9009f85f826fa51b994c912b5230bf"
   },
   "integration": "Apply the three patches on the approved native line (or a later lane-01 line that already contains the f14c6851 family hooks). Shared-semantics items needing #186 review: pc_p2_forget_teki on BTeki::doKill, the TekiMgr::newTeki de-duplication, and pc_p2_reset_all_teki in GameCoreSection::exitStage. Lane-06 headers are engine-free until a family drop endpoint consumes pc_p2_cargo_contest.h.",
   "open": [
-    "Lane 06: wire one real family drop/transport through GoalItem::suckMe -> pc_randomizer_corpse_delivered and prove exactly-once on a generated session (needs lane 01 + lane 03).",
-    "Lane 07: re-entry into a fresh gameplay scene after stage-exit teardown.",
+    "Lane 06: natural Pikmin carry for the ordinary endpoint (real kill/drop/endpoint/receipt are done; the carry step is injected - lane 04 transport).",
+    "Lane 07: in-process re-entry into a fresh gameplay scene after stage-exit teardown (needs a P2-populated campaign/multi-day harness).",
     "Two-line native divergence flagged for lane 01 (material/queen paths)."
   ]
 }
