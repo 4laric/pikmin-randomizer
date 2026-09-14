@@ -1,8 +1,8 @@
 From 3b16683652a42f1e14eaa1e1d6b07043b8adf8c4 Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 08:51:07 -0400
-Subject: [PATCH] BigTreasure #246: drive FSM host from ordinary update with
- natural-hit ingress
+Subject: [PATCH 1/2] BigTreasure #246: drive FSM host from ordinary update
+ with natural-hit ingress
 
 ---
  CMakeLists.txt                         |   1 +

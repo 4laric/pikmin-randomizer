@@ -3,16 +3,16 @@
   "lane": 32,
   "issue": 246,
   "parent_issue": 175,
-  "title": "BigTreasure ordinary-update FSM host drive + natural-hit ingress",
+  "title": "BigTreasure ordinary-update FSM host drive + animation keyframe source + natural-hit ingress",
   "kind": "integration-ready",
   "native": {
     "base": "f14c6851473ac1161be56c8b98f4f905232f3635",
     "base_branch": "codex/p2-main-review-native",
-    "head": "3b16683652a42f1e14eaa1e1d6b07043b8adf8c4",
+    "head": "cb8e6d451173eccd7e948cf5d4599048776aea0c",
     "local_branch": "opencode/p2-lane32-ordinary",
     "pushed": false,
     "dirty_state": "clean",
-    "note": "Lane-owned files plus the existing hardlanes registration seam and one additive CMake TU line. Native origin/upstream not pushed."
+    "note": "Lane-owned files plus the existing hardlanes registration seam and two additive CMake TU lines. Native origin/upstream not pushed."
   },
   "root": {
     "base": "3851d4b",
@@ -22,35 +22,51 @@
   "files": [
     "pc_port/pc_p2_bigtreasure_ordinary.h",
     "pc_port/pc_p2_bigtreasure_ordinary.cpp",
+    "pc_port/pc_p2_bigtreasure_animclock.h",
+    "pc_port/pc_p2_bigtreasure_animclock.cpp",
     "pc_port/pc_p2_hardlanes.h",
     "pc_port/pc_p2_hardlanes.cpp",
     "CMakeLists.txt",
-    "tools/p2_bigtreasure_ordinary_test.cpp"
+    "tools/p2_bigtreasure_ordinary_test.cpp",
+    "tools/p2_bigtreasure_animclock_test.cpp",
+    "tools/p2_bigtreasure_natural_test.cpp"
   ],
   "patches": {
     "full": {
       "path": "native-candidates/bigtreasure-ordinary/bigtreasure-ordinary-full.patch",
-      "sha256": "CAF18DE42CAA3E68699E849AE5FFF5E07D2E87852E36BB503E38FBD22C47456C"
+      "sha256": "A19A4958E9BD9E37D6F2E3CA91AFDAE71FCFF1F69A99405B08E62122A1AAC672"
     },
     "series": [
       {
         "path": "native-candidates/bigtreasure-ordinary/patches/0001-BigTreasure-246-drive-FSM-host-from-ordinary-update-.patch",
-        "sha256": "8F098765A70612B77B61885020C428327CA897C793B8F4D611A1E63C45B46691"
+        "sha256": "D96873D73D3A326BB361B3E2F4FBB55E601B1A47CD222BB88E2C3622A4082159"
+      },
+      {
+        "path": "native-candidates/bigtreasure-ordinary/patches/0002-BigTreasure-246-animation-keyframe-source-drives-FSM.patch",
+        "sha256": "D369F8689A0FC8590D791A8EFAE43306F1D2424B4AA15E81792B841C988816F1"
       }
     ]
   },
   "standalone": {
     "compiler": "MinGW64 GCC 16.2.0",
     "flags": "-std=gnu++17 -Wall -Wextra -Werror",
-    "test": "PASS BIGTREASURE_ORDINARY",
-    "groups": [
-      "ordinary_pacer_attack",
-      "ordinary_natural_knockoff",
-      "ordinary_hit_queue",
-      "ordinary_body_and_kill",
-      "ordinary_inactive"
+    "tests": [
+      {
+        "name": "BIGTREASURE_ORDINARY",
+        "groups": ["ordinary_pacer_attack", "ordinary_natural_knockoff", "ordinary_hit_queue", "ordinary_body_and_kill", "ordinary_inactive"],
+        "executable_sha256": "8D8CE5E2371B0C6FC9C841507A9FBE8832435F80FC07C177A13EDD723C22B998"
+      },
+      {
+        "name": "BIGTREASURE_ANIMCLOCK",
+        "groups": ["animclock_mapping", "animclock_translate", "animclock_progression", "animclock_inactive_restart"],
+        "executable_sha256": "A4A2B4D443F26613E5E0432444C3C1C426BFD10F345601562FB9CAD5813A2376"
+      },
+      {
+        "name": "BIGTREASURE_NATURAL",
+        "groups": ["natural_attack_start", "natural_knockoff_finale"],
+        "executable_sha256": "C1F6D512BAD6F8D67A4EA67FB5B448CD1065962386793E16499C2CEF42AA0C23"
+      }
     ],
-    "executable_sha256": "0C80FEA74689FAF3E967D749622E20909DC7735F56E8D32E78ED9FCD8EA71350",
     "regression": "PASS BIGTREASURE_FSMHOST (8/8)"
   },
   "build": {
@@ -62,33 +78,38 @@
     "test_hooks": "OFF",
     "result": "[545/545] Linking CXX executable bin\\nectar.exe",
     "ninja_dry_run": "ninja: no work to do.",
-    "production_executable_sha256": "57BAB171461C30B86575E9B0D8C54E27036F70BDC7E8DFA1A26D63AAC65A3C3E"
+    "production_executable_sha256": "91AF796FC3C991CAFEEFF51DFBE5B608C7B22633ADC5818585A43A6553F86631"
   },
   "runtime": {
     "real_gl_run": true,
-    "fixture_dir": "output/lane32-ordinary-fixture-01",
-    "fixture_executable_sha256": "5293bbcfe092b634f2c4672211177f93bb73d84d1cdac8942a881d4043772cab",
-    "run_dir": "output/lane32-ordinary-runtime-01/ac20df3b58d246098f79fae526addc93",
+    "fixture_dir": "output/lane32-anim-fixture-02",
+    "fixture_executable_sha256": "9410FFA00625B8501914FA79787EDA1333DA7975C2F5DF750E91D6205CBBF3A6",
+    "run_dir": "output/lane32-anim-runtime-02/437cf39ce8544bb0be9cf467757f02d6",
     "status": "passed",
-    "stdout_sha256": "228ac3a2f5dfba8b758bcea22fcbdd2eb4d0c3bfc1873b69a772623b6a4d3ee3",
+    "stdout_sha256": "AAABF4A9799FDB7D2569B7009FA46AB71E58B09B6C8AF5D231B374A6E63CEE16",
     "inputs": {
       "assets": "C:/Users/alari/pikmin-local/game/assets",
       "room": "output/pikmin2-room105",
       "host_stage": "output/bigtreasure-host-stage-01",
-      "visual_stage": "output/bigtreasure-visual-stage-02"
+      "visual_stage": "output/bigtreasure-visual-stage-04"
     },
     "markers": [
-      "P2_BIGTREASURE_FSM phase=Stay weapons=4",
-      "P2_BIGTREASURE_FSM phase=Land weapons=4",
+      "P2_HARDLANES_READY family=BigTreasure keyframes=1",
+      "P2_BIGTREASURE_VISUAL_READY clips=29 pellets=4 pellet_debug=1",
+      "P2_BIGTREASURE_FSM phase=Stay weapons=4 clip=appear",
+      "P2_BIGTREASURE_FSM phase=Land weapons=4 clip=appear2",
+      "P2_BIGTREASURE_FSM phase=ItemWalk weapons=4 clip=move1",
+      "P2_BIGTREASURE_FSM phase=ItemWait weapons=4 clip=wait1",
       "P2_BIGTREASURE_WINDOW size=960x540 pos=373,263",
       "P2_BIGTREASURE_FSMHOST_FULL_PASS knockoffs=4 weapons=0 phase=DropItem transitions=4",
       "PASS BIGTREASURE_RUNTIME"
     ],
-    "note": "Ordinary drive stepped the policy in the live game loop (pc_p2_hardlanes_update); the four-weapon injected fixture markers stayed green (no regression). Policy parks in Land pending the animation keyframe source."
+    "note": "Ordinary keyframe drive stepped the policy through four animation-driven states in the live game loop over the full 29-clip stage; the four-weapon injected fixture markers stayed green (no regression). The live run reached ItemWait; PreAttack/Attack/startAttack and knock-off/finale are proven in BIGTREASURE_NATURAL."
   },
   "limitations": [
-    "Animation keyframe source (#128) is the gate to full natural attack in ordinary play: only 2/29 clips are staged on the approved baseline and no state->clip key-event map exists, so the policy parks in Land (the non-source injected attack shortcut is retired).",
-    "Natural attack-volume receiver routing is lane 10; the ingress pc_p2_hardlanes_bigtreasure_hit is ready but has no integrated caller.",
-    "Real-GL run used the four-weapon injected fixture plus the live ordinary drive; a full natural knock-off chain with a real attack volume was not observed."
+    "Natural attack-volume receiver routing is lane 10; the hit ingress is ready and the downstream knock-off/finale is proven standalone, but the live caller is not integrated.",
+    "finishIKMotion is fed as always-true (no IK-system bridge); fire uses the forward animation variant (no target-angle direction selection).",
+    "The shared visual bank still plays its own clip; the lane keyframe clock is the FSM source. Unifying them is future work.",
+    "Unconverted loozy model, skeletal playback, material fidelity and finale mPelletDropCode/pellet configs remain open."
   ]
 }
