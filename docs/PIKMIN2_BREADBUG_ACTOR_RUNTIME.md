@@ -124,3 +124,31 @@ native change, no save mutation.
   10 passed (with lane 06's `test_pikmin2_receipts.py`: 42 passed, 19 subtests).
 - This closes the "rewards once" consumer half. The native contested-cargo half
   is still gated on lane 06's native contest surface (#441).
+
+## Contested cargo, interruption and release model (lane 18, 2026-09-14)
+
+`experimental/pikmin2_breadbug_contest.py` models the source `PanModokiBase`
+cargo rules that the arena gates must observe, plus the release outcomes. Root
+tests: `tests/test_pikmin2_breadbug_contest.py` (7 passing).
+
+- **Eligibility:** `targetable()` encodes the source variant split — small (38)
+  targets strictly lighter cargo, Giant (40) targets at-or-above (ip01=1) — and
+  rejects a stuck passenger, non-carryable cargo or a full 15-slot treasure hold.
+- **Contest strength:** `carry_strength()` is `(min+max)/2`; `carriers_win()`
+  reflects the audited 1-pellet case (1.5 beats one carrier, loses to two).
+- **Release outcomes:** `release_plan()` distinguishes `eat` (slot 0 kept in the
+  nest), interruption `drop` (`giveup`), contest `recover` and `digest`; the
+  death throw-up geometry returns every held slot at nest +10y on a `TAU*i/n`
+  ring (skipped for a single slot), and `reconcile_death()` proves none are
+  created or duplicated.
+
+Native change: `native/pc_port/pc_p2_giant_breadbug_actor.cpp`
+`pc_p2_giant_breadbug_actor_press` now releases the held cargo in place on a valid
+Purple press (source `Damage::init` `giveup(2)`), logging
+`P2_GIANT_INTERRUPT generator=... reason=press released=1`. This is the missing
+interruption-release half of the "contested cargo / interruption / death release"
+slice; the existing contest-lost and death throw-up paths are unchanged.
+
+Remaining: the same interruption is not wired for the small Breadbug proxy
+(P1 `TEKI_Collec`), and native exactly-once receipt persistence still needs the
+lane 01/06 native save bridge. Both remain open on #168/#220/#441.
