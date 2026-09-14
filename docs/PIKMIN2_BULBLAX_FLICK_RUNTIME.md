@@ -70,6 +70,38 @@ Live starting Pikmin / active gameplay / no immediate extinction evidence: P2_KI
 PASS, FAIL, or BLOCKED; remaining work: PASS for the bounded flick/trample gate. Natural (un-injected) Flick accumulation from live Pikmin blows, full material/BTK fidelity, mixed-scene performance and campaign re-entry remain open (#239/#128).
 ```
 
+## Natural (un-injected) Flick/trample gate
+
+The bounded gate above used the opt-in Flick injection. The remaining natural
+path is now demonstrated by `experimental/pikmin2_king_natural_flick_runtime.py`:
+the intact 5-red/5-blue squad is staged around the buried Emperor and **no**
+`p2-king-inject.txt` is present (the harness removes it and aborts if it
+reappears). The actor's own `receiveScan` accumulates stuck Pikmin, its natural
+`checkFlick` selects `Flick` at full health, and the key-35 `trampleScan` presses
+live Pikmin. The only staging is the labeled per-tick re-pin of the live squad
+into a ring around the spawn; there are no bombs (the harness rewrites the
+profile bomb-free) and no Flick/kill injection.
+
+Run `output/p2-lane24-natural-runtime-03/king/1e370da8c1fd4cfeadee7e1f0d194c34`
+(fixture SHA-256 `8dea2537fc22a0f85ef7ecd9675fdf0234f669043ed47a519b7f9f06a942ab7e`,
+provenance status `built`, expected native head `57bb1a4e`), validator all-true
+(`completion`, `baseline`, `ready`, `no_injection`, `natural_check_flick`,
+`natural_trample`, `natural_flick_state`, `no_rewards`):
+
+```text
+P2_KING_NATURAL_ARMED no_injection=1
+P2_KING_APPEAR_TRIGGER id=230020 nearest=30.000 range=60.0 waited=1
+P2_KING_CHECK_FLICK id=230020 health=1290.0 max=1300.0 roll=0.778 shout_rate=0.5 next=3
+P2_KING_TRAMPLE id=230020 pressed_pikmin=7 pressed_captains=0 flick_captains=1 range=45.0 band=30
+P2_KING_STATE id=230020 from=3 to=0 health=1280.0
+PASS P2_KING_NATURAL_RUNTIME natural_flick_trample
+```
+
+`next=3` is the natural Flick selection; the trample then presses 7 live Pikmin.
+This closes the "natural un-injected Flick accumulation from live Pikmin blows"
+item for the bounded fixture; material/TEV/BTK fidelity (#239/#128) and campaign
+lifecycle remain open.
+
 ## Scope boundary
 
 The injection is a fixture channel, labeled in every log line, and does not run
