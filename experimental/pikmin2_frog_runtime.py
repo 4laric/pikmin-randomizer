@@ -6,7 +6,7 @@ from experimental.pikmin2_frog_arena import prepare
 from experimental.pikmin2_kochappy_arena_fixture import instrument_tutorial
 
 APP=r'''class RoomApp : public PlugPikiApp {
- int observed=0,frames=0;Teki* frogs[4]={};bool hit[2]={};
+ int observed=0,frames=0;Teki* frogs[4]={};bool hit[2]={};bool natural[2]={};
 public:int idle() override {
  int result=PlugPikiApp::idle();require(++frames<15000,"frog startup timeout");
  if(frames%120==0){std::printf("P2_FROG_GATE frame=%d ready=%d pause=%d ui=%d movie=%d\n",frames,int(pc_p2_preview_cargo_free_ready()),int(gameflow.mPauseAll),int(gameflow.mIsUIOverlayActive),int(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive));std::fflush(stdout);}
@@ -24,9 +24,10 @@ public:int idle() override {
  require(std::fabs(birth.x-x)<.02&&std::fabs(birth.y-y)<.02&&std::fabs(birth.z-z)<.02,"frog birth XYZ");
  require(std::fabs(gen.x-x)<.02&&std::fabs(gen.y-y)<.02&&std::fabs(gen.z-z)<.02,"frog generator XYZ");
  require(bool(pc_p2_frog_name(actor))==bool(registered),"frog registration/control");
- require(actor->getParameterF(TPF_Life)==actor->mTekiParams->getF(TPF_Life),"frog P1 health changed");
+ float raw_health=actor->mTekiParams->getF(TPF_Life),want_health=registered?pc_p2_frog_param_f(actor,TPF_Life,raw_health):raw_health;
+ require(actor->getParameterF(TPF_Life)==want_health,"frog health mismatch (source for registered, P1 for controls)");
  frogs[id-201001]=actor;++count;
- std::printf("P2_FROG_BIRTH id=%u type=%d registered=%d x=%.3f y=%.3f z=%.3f\n",id,type,registered,birth.x,birth.y,birth.z);}
+ std::printf("P2_FROG_BIRTH id=%u type=%d registered=%d life=%.1f visible=%.1f atkrange=%.1f atk=%.1f x=%.3f y=%.3f z=%.3f\n",id,type,registered,actor->getParameterF(TPF_Life),actor->getParameterF(TPF_VisibleRange),actor->getParameterF(TPF_AttackableRange),actor->getParameterF(TPF_AttackPower),birth.x,birth.y,birth.z);}
  require(count==4,"frog roster missing");require(cameraMgr&&cameraMgr->mCamera,"frog camera missing");cameraMgr->mCamera->setTarget(frogs[0]);
  }
  if(observed==80){
@@ -42,23 +43,23 @@ public:int idle() override {
   std::printf("P2_FROG_CLEANUP registered_before=%d cleared=%d reentry=%d\n",before,cleared,reentry);std::fflush(stdout);}
  if(observed==180)cameraMgr->mCamera->setTarget(frogs[1]);
  if(observed==120)capture("frog-live.ppm");if(observed==300)capture("marofrog-live.ppm");
- for(int i=0;i<4;++i){auto* a=frogs[i];if(observed<=360)require(a->isAlive(),"frog unexpectedly died before attack");
- if(observed%15==0&&observed<=360){auto p=a->getPosition();std::printf("P2_FROG_TICK id=%d motion=%d counter=%.4f x=%.4f y=%.4f z=%.4f\n",201001+i,a->mTekiAnimator->getCurrentMotionIndex(),a->mTekiAnimator->getCounter(),p.x,p.y,p.z);}}
+ for(int i=0;i<4;++i){auto* a=frogs[i];if(observed<=360&&!a->isAlive()&&i<2&&!natural[i]){natural[i]=true;std::printf("P2_FROG_NATURAL_DEATH id=%d health=%.1f\n",201001+i,a->mHealth);}
+ if(observed%15==0&&observed<=360){auto p=a->getPosition();std::printf("P2_FROG_TICK id=%d motion=%d counter=%.4f health=%.1f x=%.4f y=%.4f z=%.4f\n",201001+i,a->mTekiAnimator->getCurrentMotionIndex(),a->mTekiAnimator->getCounter(),a->mHealth,p.x,p.y,p.z);}}
  if(observed>=360){for(int i=0;i<2;++i)if(!hit[i]&&frogs[i]->isAlive()&&!frogs[i]->getTekiOption(BTeki::TEKI_OPTION_INVINCIBLE)){
  hit[i]=frogs[i]->stimulate(InteractAttack(n,nullptr,10000,false));std::printf("P2_FROG_INJECTED_ATTACK id=%d accepted=%d\n",201001+i,int(hit[i]));}}
  if(observed==450)cameraMgr->mCamera->setTarget(frogs[0]);
  if(observed==570)capture("frog-corpse.ppm");
  if(observed==600)cameraMgr->mCamera->setTarget(frogs[1]);
- if(observed==720){capture("marofrog-corpse.ppm");require(hit[0]&&hit[1],"frog legal attacks not accepted");int bodies=0;
+ if(observed==720){capture("marofrog-corpse.ppm");require((hit[0]||natural[0])&&(hit[1]||natural[1]),"frog legal attacks not accepted and no natural death");int bodies=0;
  Iterator p(pelletMgr);CI_LOOP(p){Pellet* body=static_cast<Pellet*>(*p);if(body->isAlive()&&(body->mPelletView==static_cast<PelletView*>(frogs[0])||body->mPelletView==static_cast<PelletView*>(frogs[1])))++bodies;}
- require(bodies==2,"frog native corpses missing");require(frogs[2]->isAlive()&&frogs[3]->isAlive(),"P1 controls died");std::puts("PASS P2_FROG_RUNTIME birth4 controls2 corpses2 injected_attack=1");std::fflush(stdout);std::_Exit(0);}
+ require(bodies==2,"frog native corpses missing");require(frogs[2]->isAlive()&&frogs[3]->isAlive(),"P1 controls died");std::printf("PASS P2_FROG_RUNTIME birth4 controls2 corpses2 injected_attack=1 natural=%d\n",int(natural[0])+int(natural[1]));std::fflush(stdout);std::_Exit(0);}
  std::fflush(stdout);return result;
  }};
 '''
 
-def instrument(source):
+def instrument(source,app=None):
  start=source.index('class RoomApp : public PlugPikiApp {');end=source.index('int main(',start)
- return '#include <fstream>\n#include "Generator.h"\n#include "TekiPersonality.h"\n#include "Interactions.h"\n#include "pc_p2_frog.h"\n#include "Pcam/Camera.h"\n#include "Pcam/CameraManager.h"\n'+source[:start]+APP+source[end:]
+ return '#include <fstream>\n#include "Generator.h"\n#include "TekiPersonality.h"\n#include "Interactions.h"\n#include "pc_p2_frog.h"\n#include "Pcam/Camera.h"\n#include "Pcam/CameraManager.h"\n'+source[:start]+(app or APP)+source[end:]
 
 
 def instrument_family(source):
@@ -69,9 +70,9 @@ def instrument_family(source):
  if(seen.insert(key).second)std::printf("P2_FROG_DRAW species=%s corpse=%d clip=%s pose=%d\\n",ids[kind],int(corpse),name?name:"static",pose);
  '''+anchor)
 
-def build(native,build_dir,output,head,resume=False):
+def build(native,build_dir,output,head,resume=False,app=None):
     native=native.resolve();build_dir=build_dir.resolve();output=output.resolve()
-    room=output/'room.cpp';source=instrument((native/'tools/preview_p2_room.cpp').read_text())
+    room=output/'room.cpp';source=instrument((native/'tools/preview_p2_room.cpp').read_text(),app)
     if resume:
         if (output/'instrumentation.json').exists() or room.read_text()!=source:raise ValueError('Cannot resume completed or changed fixture')
         record=json.loads((output/'baseline/provenance.json').read_text())
@@ -111,22 +112,25 @@ def build(native,build_dir,output,head,resume=False):
 
 def validate(text,code):
  births=re.findall(r'P2_FROG_BIRTH id=(\d+) type=(\d+) registered=(\d+)',text)
+ params=re.findall(r'P2_FROG_BIRTH id=(\d+) type=\d+ registered=(\d+) life=([\d.]+) visible=([\d.]+) atkrange=([\d.]+) atk=([\d.]+)',text)
  draws=re.findall(r'P2_FROG_DRAW species=(Frog|MaroFrog) corpse=([01]) clip=(\w+) pose=(\d+)',text)
  natural=re.findall(r'P2_FROG_DRAW species=(Frog|MaroFrog) corpse=([01]) clip=(\w+) pose=(\d+)',text.split('P2_FROG_INJECTED_ATTACK')[0])
  checks=dict(completion=code==0 and 'PASS P2_FROG_RUNTIME ' in text,births=births==[('201001','0','1'),('201002','33','1'),('201003','0','0'),('201004','33','0')],cleanup_reentry='P2_FROG_CLEANUP registered_before=4 cleared=4 reentry=4' in text)
+ want_params={'201001':'800.0','201002':'1100.0'}
+ checks['source_params']=all(r[2]==want_params[r[0]] for r in params if r[1]=='1') and all(r[2] not in ('800.0','1100.0') for r in params if r[1]=='0')
  for species in ('Frog','MaroFrog'):
   own=[d for d in draws if d[0]==species];checks[species+'_live']=any(d[1]=='0' for d in own);checks[species+'_corpse']=any(d[1]=='1' and d[2]=='dead' for d in own);checks[species+'_poses']=len({(d[2],d[3]) for d in natural if d[0]==species and d[1]=='0'})>=2
- return dict(passed=all(checks.values()),checks=checks,draws=draws,unmeasured=['natural combat','transport/rewards','full scene/day reload (manager reset/re-entry covered by cleanup_reentry)','P2 mechanics'])
+ return dict(passed=all(checks.values()),checks=checks,draws=draws,natural_deaths=[int(i) for i in re.findall(r'P2_FROG_NATURAL_DEATH id=(\d+)',text)],unmeasured=['natural combat','transport/rewards','full scene/day reload (manager reset/re-entry covered by cleanup_reentry)','P2 mechanics'])
 
 
-def run(assets,bank,output,exe):
- stage=prepare(assets,bank,output/'stages');manifest=json.loads((stage/'frog-arena.json').read_text())
+def run(assets,bank,output,exe,validator=None,near_onion=False):
+ stage=prepare(assets,bank,output/'stages',near_onion=near_onion);manifest=json.loads((stage/'frog-arena.json').read_text())
  (stage/'frog-positions.txt').write_bytes(''.join(f"{a['generator']} {a['native_type']} {int(i<2)} "+' '.join(map(str,a['position']))+'\n' for i,a in enumerate(manifest['actors'])).encode())
  env=dict(os.environ,PATH='C:/msys64/mingw64/bin;'+os.environ.get('PATH',''),SDL_AUDIODRIVER='dummy')
  with (stage/'native.log').open('w') as log:
   try:code=subprocess.run([str(exe.resolve()),'--experimental-pikmin2-room'],cwd=stage,env=env,stdout=log,stderr=subprocess.STDOUT,timeout=180).returncode
   except subprocess.TimeoutExpired:code='timeout'
- evidence=validate((stage/'native.log').read_text(errors='replace'),code)
+ evidence=(validator or validate)((stage/'native.log').read_text(errors='replace'),code)
  evidence.update(exit_code=code,executable=builder.snapshot([exe]),arena=builder.snapshot([stage/'frog-arena.json',stage/'frog-positions.txt',stage/'p2-frog.txt']))
  (stage/'runtime-evidence.json').write_text(json.dumps(evidence,indent=2));print(stage,flush=True);print(json.dumps(evidence),flush=True)
 

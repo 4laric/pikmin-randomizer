@@ -124,3 +124,199 @@ native change, no save mutation.
   10 passed (with lane 06's `test_pikmin2_receipts.py`: 42 passed, 19 subtests).
 - This closes the "rewards once" consumer half. The native contested-cargo half
   is still gated on lane 06's native contest surface (#441).
+
+## Contested cargo, interruption and release model (lane 18, 2026-09-14)
+
+`experimental/pikmin2_breadbug_contest.py` models the source `PanModokiBase`
+cargo rules that the arena gates must observe, plus the release outcomes. Root
+tests: `tests/test_pikmin2_breadbug_contest.py` (7 passing).
+
+- **Eligibility:** `targetable()` encodes the source variant split — small (38)
+  targets strictly lighter cargo, Giant (40) targets at-or-above (ip01=1) — and
+  rejects a stuck passenger, non-carryable cargo or a full 15-slot treasure hold.
+- **Contest strength:** `carry_strength()` is `(min+max)/2`; `carriers_win()`
+  reflects the audited 1-pellet case (1.5 beats one carrier, loses to two).
+- **Release outcomes:** `release_plan()` distinguishes `eat` (slot 0 kept in the
+  nest), interruption `drop` (`giveup`), contest `recover` and `digest`; the
+  death throw-up geometry returns every held slot at nest +10y on a `TAU*i/n`
+  ring (skipped for a single slot), and `reconcile_death()` proves none are
+  created or duplicated.
+
+Native change: `native/pc_port/pc_p2_giant_breadbug_actor.cpp`
+`pc_p2_giant_breadbug_actor_press` now releases the held cargo in place on a valid
+Purple press (source `Damage::init` `giveup(2)`), logging
+`P2_GIANT_INTERRUPT generator=... reason=press released=1`. This is the missing
+interruption-release half of the "contested cargo / interruption / death release"
+slice; the existing contest-lost and death throw-up paths are unchanged.
+
+Remaining: the same interruption is not wired for the small Breadbug proxy
+(P1 `TEKI_Collec`), and native exactly-once receipt persistence still needs the
+lane 01/06 native save bridge. Both remain open on #168/#220/#441.
+
+`pikmin2_breadbug_rewards.resolve_contest()` ties the contest model to the
+lane-06 ledger: only a death grants the family reward (once), and it returns the
+thrown-back held treasure; `eat`/`drop`/`recover`/`digest` grant nothing. Four
+tests cover interruption/digest non-grants, exactly-once death grant, an unknown
+outcome and a helper identity. The rewards suite is now 14 tests.
+
+## Small-vs-Giant arbitration and nest ownership (lane 18, 2026-09-14)
+
+`experimental/pikmin2_breadbug_contest.py` now carries the audited variant table,
+the single-channel arbitration and the parent-bound nest lifetime. Root tests:
+`tests/test_pikmin2_breadbug_contest.py` (14 passing) plus the rewards consumer
+suite (16 passing).
+
+- **Variant parameters:** `variant_params('small'|'giant')` returns a copy of
+  `VARIANT_PARAMS` — health 1100/2000, weight threshold ip01 11/1, carry speed
+  fp03 35/45, press damage fp06 200/100, nest scale 1.0/2.0, and
+  `purple_only_press` False/True. Both species set
+  `nest_house_type = NEST_BREADBUG (1)`.
+- **Arbitration:** `arbitrate(claim_strength, challenger_strength)` implements
+  the source `PelletCarry::pullable`/`pull` rule. An idle or same-channel
+  challenge is accepted with no stall; a cross-channel challenge wins only with
+  strictly greater strength and then stalls the pellet `TAKEOVER_STALL_SECONDS`
+  (0.5 s, 15 frames). Defaults model the Breadbug `PCS_Unk2` drag against the
+  Pikmin `PCS_Carry` channel.
+- **Frame sequence:** `contest_frames(breadbug_strength, carrier_power_by_frame)`
+  returns `DRAG` (Back) while the Breadbug holds and `PULLED` once the carriers
+  strictly out-pull it, reusing `arbitrate` per frame.
+- **Nest ownership:** `nest_ownership(owner_alive, house_type)` reports the
+  parent-bound nest state (`NEST_BREADBUG=1` for both Breadbug species,
+  `NEST_JIGUMO=0` for the Jigumo crawmad, `enemyNest.cpp:60-67`).
+  `nest_collision_after_death(frames_since_kill)` keeps collision for 79 frames
+  and drops it at/after `NEST_DEATH_FADE_FRAMES=80` (`enemyNestMgr.cpp:143-152`).
+- **Purple-only press:** `press_damage(variant, purple=...)` returns 0.0 for a
+  non-Purple Giant press (`panModoki.cpp:1738-1744`) and 100.0 for a Purple one;
+  the small Breadbug accepts either (200.0). `pikmin2_breadbug_rewards.resolve_press`
+  applies that gate before the ledger: a resisted press neither drops cargo nor
+  grants; an accepted press is a `drop` interruption and still grants nothing.
+
+## Small-Breadbug proxy contested-cargo observation (lane 18, 2026-09-14)
+
+`experimental/pikmin2_breadbug_contest_observation.py` is the private validator
+for the small PanModoki (source 38) P1 `TEKI_Collec` proxy. It stages the existing
+private proxy arena, feeds one real red level-0 number pellet through the
+unchanged `scripts/pikmin2_breadbug_cargo_fixture`, and parses the host log into
+the P1 grab/drag/release timeline. It reports the two strength scales
+**separately** and never claims P2 contest semantics:
+
+- `native_offset_power = 2.0` is the P1 `TEKI_Collec` host carry power that
+  actually drags the pellet (`taicollec.cpp:509`).
+- `source_strength = (pelletMin + pelletMax) / 2` is the P2 `PanModokiBase`
+  contest strength for the same pellet; the staged red 1..2 number pellet gives
+  `1.5`.
+- The two are unequal (`2.0` vs `1.5`) and every observation records
+  `p2_contest_semantics=False` / `native_hook=False`; if a future family-local
+  hook emits `P2_BREADBUG_CONTEST native_power=... source_strength=...` the
+  validator parses it and sets `native_hook=True` without changing the claim.
+- `observe()` raises when the birth marker is missing/mismatched or the log does
+  not hold exactly one completed `P2_BREADBUG_CARGO_RESULT`, so a clean process
+  exit is never mistaken for a completed observation. `run()` stages the arena
+  and writes `result.json` for the coordinator's serialized GL slot.
+
+**No native change was made.** The small proxy has no bounded family-local hook
+that can expose the P1 proxy's *P2 pull channel or carriers*: it owns no cargo,
+and `getCreaturePointer(2)` / the `PelletCarry` stickers are shared P1 cargo
+state. Exposing a "current pull/carriers" view would mean reading or mutating the
+shared cargo channel (lane 06 reward/transport endpoint) or the shared
+forget/rebind lifetime ownership (lane 07), which is explicitly out of lane for
+this validator. Copying the Giant module's family-local contest would fork the
+very shared semantics the wave guide keeps with those providers, so it was not
+done. Native `pc_p2_breadbug_actor.cpp` is unchanged.
+
+The `P2_BREADBUG_CARGO_VISUAL`/`P2_BREADBUG_CARGO_RESULT` markers already prove
+grab/drag/release through the existing family draw path; this validator only adds
+the source-vs-native strength split and honest `p2_contest_semantics=False`.
+Tests: `tests/test_pikmin2_breadbug_contest_observation.py` (6 tests; with the
+contest and reward suites, `py -3.12 -m pytest` → 38 passed).
+
+## What remains (lane 18)
+
+- **Small-Breadbug interruption is a real gap, not an omission.** The small
+  proxy `native/pc_port/pc_p2_breadbug_actor.cpp` has **no cargo owner to
+  release**: it holds only `BreadbugProxyActor{id, started, lastMotion}` and the
+  read-only cargo visual bank (`pc_p2_breadbug_cargo_phase.h`); cargo is the P1
+  `TEKI_Collec` host's own `getCreaturePointer(2)` state, which the proxy does
+  not own or mutate. Adding a release log here would fabricate ownership, so no
+  native change was made. The interruption model above stays host-side until the
+  P2 FSM/cargo port gives the small actor ownership (or the giant module's
+  `endStickTeki`/`clearCreaturePointer` release path is reused under an agreed
+  lane-07 lifetime owner).
+- **Small-Breadbug P2 contest is shared-semantics-gated.** The proxy observation
+  validator above separates the P1 carry power (2) from the source strength
+  (1.5) but cannot observe a P2 pull channel or carriers: those need the shared
+  cargo/reward endpoint (lane 06) or the centralized forget/rebind lifetime
+  owner (lane 07). A true contested-cargo run stays open until one of those
+  surfaces exists; no native change is claimed.
+- **Giant cargo/press runtime fixture:** the release path
+  (`pc_p2_giant_breadbug_actor_press`) still needs an ordinary-arena run that
+  observes a Purple press releasing held cargo and a non-Purple press being
+  resisted, plus the contest-lost and death throw-up paths. Existing evidence is
+  code-only.
+- **Native receipt persistence:** exactly-once family reward persistence across
+  process restart still needs the lane 01/06 native save bridge; the Python
+  ledger/receipt work is a host-side contract, not a save mutation.
+- Open on #168/#220/#441.
+
+## Giant actor arena runtime � combined build (lane 18, 2026-09-14)
+
+The prior private Giant actor fixture (`giant-actor-build-02/fixture.cpp`, native
+`e91bb22b`) was rebuilt against the combined lanes 16-18 native build and re-run
+on its staged arena. It now also probes the interruption release added in this
+wave (a valid Purple press must release held cargo in place).
+
+- Fixture source committed as `scripts/pikmin2_giant_breadbug_actor_fixture.cpp`;
+  arena reused from `output/p2-lifecycle-batch/giant-actor-native-14/stages/...`.
+- Native `opencode/p2-lanes16-18-native` @ `d37d000718cdd98dcac8bbd688f1fd673a2e3e17`,
+  build `output/lanes16-18-native-build` (exe `ABB537EB...`). Fixture built via
+  `scripts/build_pikmin2_fixture.py`.
+- Run `output/lane18-giant-arena-c/run1` (copied stage), exit 0:
+  `P2_GIANT_ARENA_PRESS non_purple=resisted purple_damage=100 health=1900.0`,
+  `P2_GIANT_ARENA_INTERRUPT natural=1 released=1 health=1800.0` (the Giant grabs
+  the bait pellet through its own FSM, then a Purple press releases it in place),
+  `P2_GIANT_ARENA_CONTEST released=1 tick=122 strength=1.5 carriers=2`,
+  `P2_GIANT_ARENA_DIGEST healed=1 health=2000.0`, `P2_GIANT_DEFEATED thrown_back=2`,
+  `P2_GIANT_THROWUP pellets=2 nest=...`,
+  `PASS P2_GIANT_BREADBUG_ARENA spawn_identity press contest digest_heal
+  defeat_throwup nest_linked`.
+- This is the first runtime confirmation of the interruption (`giveup`) release,
+  now with natural cargo acquisition (no `setCreaturePointer`/`startStickTeki`
+  invite for the held state). The small Breadbug proxy still has no cargo owner,
+  so its interruption path remains unimplemented.
+
+### Standard 960x540 preview window (lane 18, 2026-09-14)
+
+`scripts/pikmin2_giant_breadbug_actor_fixture.cpp` no longer hardcodes a
+960x720 window. Its `main` mirrors `pc_main.cpp`'s `pc_test_window_size` sequence:
+it reads `PIKMIN_P2_ROOM_WINDOW` (default 960x540, `WxH` override, `=off` keeps the
+persisted size), calls `pc_window_init` at that size, then — after
+`pc_settings_init()` — applies `pc_window_set_display_mode(...WINDOWED)`,
+`pc_window_set_window_size(...)` and `pc_window_center()`, and logs
+`Experimental preview window set to 960x540 windowed and centered`. The arena logic
+above is unchanged; only startup window handling moved to the maintained standard.
+
+### Exactly-once Giant press/contest/defeat receipt bridge (lane 18, 2026-09-14)
+
+`experimental/pikmin2_breadbug_rewards.py` adds `resolve_giant_step` and
+`resolve_giant_sequence` on top of the existing `resolve_press` / `resolve_contest`
+/ `grant_defeat` helpers. A sequence is an ordered list of
+`{'kind': 'press'|'contest'|'defeat', ...}` steps: a press carries `purple` (and
+optional `held_slots`), a contest carries a `reason`, a defeat carries optional
+`held_slots`. Semantics:
+
+- A **resisted** press (non-Purple Giant) never releases and never grants.
+- A **Purple press** that only releases cargo (`drop`) is an interruption: it
+  returns the held cargo and never grants.
+- A **contest loss** (`recover`) returns cargo to the carriers and never grants.
+- Only the **defeat** grants, exactly once, and returns every held treasure.
+- Because the grant goes through lane 06's `ReceiptLedger`, replaying the same
+  ordered sequence after a `restart()` (or through a fresh
+  `JsonReceiptPersistence`) grants nothing again, while a genuinely new
+  actor/encounter still grants.
+
+Tests: `tests/test_pikmin2_breadbug_rewards.py` adds a full ordered
+press/contest/defeat sequence and a `JsonReceiptPersistence` restart replay.
+
+- Remaining: the small Breadbug proxy still has no cargo owner, and native
+  exactly-once receipt persistence across process restart still needs the lane
+  01/06 native save bridge. Both remain open on #168/#220/#441.

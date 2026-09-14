@@ -9,8 +9,10 @@ contested-cargo behavior (that remains the lane-06/engine-gated next slice) and
 never reads or mutates a Pikmin 2 save. See ``docs/PIKMIN2_BREADBUG_ACTOR_RUNTIME.md``.
 """
 from experimental import pikmin2_receipts as receipts
+from experimental import pikmin2_breadbug_contest as contest
 
 FAMILY = 'breadbug'
+DEATH = 'death'
 SMALL = 'enemy:38'          # PanModoki (small Breadbug)
 GIANT = 'enemy:40'          # OoPanModoki (Giant Breadbug, source boss)
 NEST_ALIAS = 'alias:39'     # PanModokiNest alias (non-spawnable)
@@ -73,3 +75,89 @@ def resolve_encounters(ledger, seed, encounters):
 def reconcile_runs(expected_checks):
     """Reconcile the family descriptors against the expected ordinary checks."""
     return registry().reconcile_all(expected_checks)
+
+
+def resolve_contest(ledger, seed, identity, actor, encounter, reason, *, held_slots=0):
+    """Resolve one contested-cargo event against the exactly-once ledger.
+
+    Only a defeat (``reason == 'death'``) grants the family reward, and it does so
+    exactly once; an interruption ``drop``, contest ``recover``, ``eat`` or
+    ``digest`` never grants a check. Held treasure is returned only on death.
+    """
+    if reason not in contest.RELEASE_REASONS + (DEATH,):
+        raise ValueError('Unknown cargo outcome: ' + repr(reason))
+    if reason != DEATH:
+        contest.release_plan(reason, held_slots=held_slots)
+        return {'granted': False, 'reason': reason, 'held': held_slots, 'returned': 0}
+    positions = contest.throw_up_positions(0.0, 0.0, 0.0, held_slots)
+    granted = grant_defeat(ledger, seed, identity, actor, encounter)
+    return {'granted': granted, 'reason': DEATH, 'held': held_slots,
+            'returned': len(positions)}
+
+
+def resolve_press(ledger, seed, identity, actor, encounter, *, variant, purple,
+                  held_slots=0):
+    """Resolve a Pikmin press interruption against the ledger.
+
+    A press only releases cargo when the variant accepts it: the Giant Breadbug
+    rejects non-Purple pressers (``panModoki.cpp:1738-1744``), so a resisted
+    press neither drops the cargo nor grants a reward. An accepted press is an
+    interruption ``drop``: it releases in place and never grants a check.
+    """
+    damage = contest.press_damage(variant, purple=purple)
+    if damage <= 0.0:
+        return {'granted': False, 'reason': 'resisted', 'damage': 0.0,
+                'released': False, 'held': held_slots, 'returned': 0}
+    outcome = resolve_contest(ledger, seed, identity, actor, encounter,
+                              contest.DROP, held_slots=held_slots)
+    outcome['damage'] = damage
+    outcome['released'] = True
+    return outcome
+
+
+STEP_PRESS = 'press'
+STEP_CONTEST = 'contest'
+STEP_DEFEAT = 'defeat'
+
+
+def resolve_giant_step(ledger, seed, actor, encounter, step, *, identity=GIANT):
+    """Resolve one ordered Giant press/contest/defeat step against the ledger.
+
+    ``step`` is a mapping with ``kind`` in ``{'press', 'contest', 'defeat'}``:
+    a press carries ``purple`` (and optional ``held_slots``), a contest carries a
+    ``reason`` from :data:`contest.RELEASE_REASONS`, and a defeat carries optional
+    ``held_slots``. Delegates to :func:`resolve_press` / :func:`resolve_contest`,
+    so a resisted press and a Purple press that only releases cargo never grant;
+    only the defeat can grant, exactly once.
+    """
+    kind = step['kind']
+    held = step.get('held_slots', 0)
+    if kind == STEP_PRESS:
+        result = resolve_press(ledger, seed, identity, actor, encounter,
+                               variant='giant', purple=bool(step['purple']),
+                               held_slots=held)
+    elif kind == STEP_CONTEST:
+        result = resolve_contest(ledger, seed, identity, actor, encounter,
+                                 step['reason'], held_slots=held)
+    elif kind == STEP_DEFEAT:
+        result = resolve_contest(ledger, seed, identity, actor, encounter,
+                                 DEATH, held_slots=held)
+    else:
+        raise ValueError('Unknown Giant sequence step: ' + repr(kind))
+    return dict(result, kind=kind)
+
+
+def resolve_giant_sequence(ledger, seed, actor, encounter, steps, *, identity=GIANT):
+    """Replay an ordered Giant press/contest/defeat sequence exactly once.
+
+    Each step is resolved by :func:`resolve_giant_step`. Returns
+    ``{'granted': int, 'events': [...], 'returned': int}``: the number of new
+    grants (0 or 1), the per-step outcomes in order, and the total treasure
+    returned by the defeat. A second replay after a restart grants nothing while
+    the persisted defeat receipt remains.
+    """
+    events = [resolve_giant_step(ledger, seed, actor, encounter, step, identity=identity)
+              for step in steps]
+    return {'granted': sum(1 for event in events if event['granted']),
+            'events': events,
+            'returned': sum(event['returned'] for event in events)}

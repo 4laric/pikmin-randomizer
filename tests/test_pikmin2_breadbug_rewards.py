@@ -2,6 +2,7 @@
 import pytest
 
 from experimental import pikmin2_breadbug_rewards as rewards
+from experimental import pikmin2_breadbug_contest as contest
 from experimental import pikmin2_receipts as receipts
 
 
@@ -79,3 +80,105 @@ def test_reconcile_refuses_a_pod_leak_for_an_ordinary_check():
               'family': 'breadbug', 'drop': 'treasure', 'ledger': receipts.LEDGER_POD,
               'value': 1, 'count': 1}],
             [rewards.GIANT])
+
+
+def test_interruption_and_digest_never_grant_a_reward():
+    ledger = receipts.ReceiptLedger(receipts.InMemoryPersistence())
+    for reason in (contest.DROP, contest.RECOVER, contest.DIGEST, contest.EAT):
+        result = rewards.resolve_contest(ledger, 'seed-a', rewards.GIANT, '187001',
+                                         'floor1', reason, held_slots=1)
+        assert result['granted'] is False and result['returned'] == 0
+    assert len(ledger) == 0
+
+
+def test_death_recovery_grants_once_and_returns_held_treasure():
+    ledger = receipts.ReceiptLedger(receipts.InMemoryPersistence())
+    first = rewards.resolve_contest(ledger, 'seed-a', rewards.GIANT, '187001',
+                                    'floor1', rewards.DEATH, held_slots=3)
+    assert first['granted'] is True and first['returned'] == 3
+    assert first['held'] == 3
+    second = rewards.resolve_contest(ledger, 'seed-a', rewards.GIANT, '187001',
+                                     'floor1', rewards.DEATH, held_slots=3)
+    assert second['granted'] is False
+    assert len(ledger) == 1
+
+
+def test_unknown_cargo_outcome_is_rejected():
+    ledger = receipts.ReceiptLedger(receipts.InMemoryPersistence())
+    with pytest.raises(ValueError, match='Unknown cargo outcome'):
+        rewards.resolve_contest(ledger, 'seed-a', rewards.GIANT, '187001', 'floor1', 'explode')
+
+
+def test_helpers_never_earn_a_reward_on_death():
+    ledger = receipts.ReceiptLedger(receipts.InMemoryPersistence())
+    with pytest.raises(ValueError, match='never earn'):
+        rewards.resolve_contest(ledger, 'seed-a', rewards.PANHOUSE, '187002',
+                                'floor1', rewards.DEATH)
+
+
+def test_giant_press_is_purple_only_and_never_grants():
+    ledger = receipts.ReceiptLedger(receipts.InMemoryPersistence())
+    resisted = rewards.resolve_press(ledger, 'seed-a', rewards.GIANT, '187001',
+                                     'floor1', variant='giant', purple=False,
+                                     held_slots=2)
+    assert resisted == {'granted': False, 'reason': 'resisted', 'damage': 0.0,
+                        'released': False, 'held': 2, 'returned': 0}
+    pressed = rewards.resolve_press(ledger, 'seed-a', rewards.GIANT, '187001',
+                                    'floor1', variant='giant', purple=True,
+                                    held_slots=2)
+    assert pressed['granted'] is False and pressed['released'] is True
+    assert pressed['reason'] == contest.DROP and pressed['damage'] == 100.0
+    assert pressed['returned'] == 0
+    assert len(ledger) == 0
+
+
+def test_contest_loss_recovers_cargo_without_granting():
+    ledger = receipts.ReceiptLedger(receipts.InMemoryPersistence())
+    # Two carriers out-pull the 1/2-pellet Breadbug (strength 1.5): the source
+    # contest returns the cargo (RECOVER) and no family check is earned.
+    outcome = contest.arbitrate(contest.carry_strength(1, 2), 2)
+    assert outcome['winner'] == 'challenger'
+    result = rewards.resolve_contest(ledger, 'seed-a', rewards.SMALL, '186081',
+                                     'floor2', contest.RECOVER, held_slots=1)
+    assert result['granted'] is False and result['returned'] == 0
+    assert len(ledger) == 0
+
+
+def test_giant_press_contest_defeat_sequence_grants_only_on_defeat():
+    ledger = receipts.ReceiptLedger(receipts.InMemoryPersistence())
+    steps = [
+        {'kind': rewards.STEP_PRESS, 'purple': False, 'held_slots': 2},  # resisted
+        {'kind': rewards.STEP_PRESS, 'purple': True, 'held_slots': 2},   # releases only
+        {'kind': rewards.STEP_CONTEST, 'reason': contest.RECOVER, 'held_slots': 1},
+        {'kind': rewards.STEP_DEFEAT, 'held_slots': 2},
+    ]
+    result = rewards.resolve_giant_sequence(ledger, 'seed-a', '187001', 'floor1', steps)
+    assert result['granted'] == 1
+    assert result['returned'] == 2
+    assert [event['kind'] for event in result['events']] == [
+        rewards.STEP_PRESS, rewards.STEP_PRESS, rewards.STEP_CONTEST, rewards.STEP_DEFEAT]
+    resisted, pressed, recovered, defeat = result['events']
+    assert resisted['granted'] is False and resisted['released'] is False
+    assert pressed['granted'] is False and pressed['released'] is True
+    assert recovered['granted'] is False
+    assert defeat['granted'] is True
+    assert len(ledger) == 1
+
+
+def test_giant_sequence_defeat_survives_restart_via_json_persistence(tmp_path):
+    path = tmp_path / 'giant-receipts.json'
+    ledger = receipts.ReceiptLedger(receipts.JsonReceiptPersistence(path))
+    steps = [
+        {'kind': rewards.STEP_PRESS, 'purple': True, 'held_slots': 1},
+        {'kind': rewards.STEP_DEFEAT, 'held_slots': 1},
+    ]
+    assert rewards.resolve_giant_sequence(ledger, 'seed-a', '187001', 'floor1', steps)['granted'] == 1
+    restarted = ledger.restart()
+    replay = rewards.resolve_giant_sequence(restarted, 'seed-a', '187001', 'floor1', steps)
+    assert replay['granted'] == 0  # persisted defeat receipt is not granted again
+    assert replay['returned'] == 1  # the death still throws the cargo back
+    assert len(restarted) == 1
+    # A genuinely new actor/encounter is still granted after the restart.
+    assert rewards.resolve_giant_sequence(
+        restarted, 'seed-a', '187002', 'floor1', steps)['granted'] == 1
+    assert len(restarted) == 2

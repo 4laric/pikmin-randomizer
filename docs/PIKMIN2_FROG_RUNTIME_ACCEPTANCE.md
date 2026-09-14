@@ -98,3 +98,164 @@ owned by the active species lane #407 and is not touched here.
   (matches the documented final import04 bank).
 - Remaining: natural combat parity, transport/rewards, P2 mechanics, absent
   profile launch and full scene/day reload.
+
+## Source combat parameters and identity health (lane 16, 2026-09-14)
+
+The maintained frog body is visual-only with P1 proxy gameplay, so registered
+actors still used P1 health/attack values. This slice binds the audited source
+parameter set to the two registered species and exposes it through the shared
+param chain; unregistered controls are untouched.
+
+- Native: `pc_port/pc_p2_frog_policy.h` now carries the source `Params` table
+  (health 800/1100, sight 360, max attack range 200/250, attack damage 10/20,
+  air time 1, jump speed 320/350, jump-failure 0.2/0.1, fall speed 300/330,
+  corpse Pokos 5/7). `pc_port/pc_p2_frog.cpp` adds `pc_p2_frog_param_f`, wired in
+  `include/teki.h` alongside the kogane/armor/sokkuri hooks, and `pc_p2_frog_setup`
+  sets each registered actor's `mHealth` to the source value and logs
+  `P2_FROG_READY ... health=... max_health=...`. The control keeps P1 values
+  because the hook falls back to the raw P1 param for unregistered actors.
+- Host model: `experimental/pikmin2_frog_behavior.py` encodes the source FSM and
+  motion mapping (Jump=type1, Fall=type2, Fail=damage, Carry=type5), jump
+  resolution (displacement / air time + jump speed, per-species failure), the
+  landing press (blocked only while bittered), MaroFrog captain retargeting and
+  the corpse/carry contract. `validate_ready()` machine-checks the native READY
+  rows for source health. Tests: `tests/test_pikmin2_frog_behavior.py` (8 passing).
+- Fixture: `pikmin2_frog_runtime.py` now expects source health for registered
+  actors and P1 health for controls, instead of requiring P1 health for all four.
+- Fixture baseline adopted: `PIKMIN_P2_ROOM_WINDOW=960x540`; observed log line
+  `Experimental preview window set to 960x540 windowed and centered`; 20-red
+  `ensure_pikmin_squad` overlay; live squad, no extinction screen.
+
+### Observed native run (private build, 2026-09-14)
+
+- Native `opencode/p2-lanes16-18-native` @ `5d0923c2f876c7218550d0fdda369e7d549e13e5`
+  (base `f14c6851`), private build `output/lanes16-18-native-build`
+  (`ninja -n pikmin_pc`: no work), `pikmin_pc` executable SHA-256
+  `D47B8BADD19500E152C3182658CEB8A4329E8BB366532FFAEAC57359AA74B9DF`.
+- Fixture `output/lane16-frog-runtime/fixture_diag/fixture.exe` SHA-256
+  `9ea61e2bfeef44e8e34b03720e6448abe759545f277dcba8a2f873e4c5d991ad`,
+  provenance `built`, expected native head matches.
+- Run `output/lane16-frog-runtime/run_diag/stages/f3dffd57461a47c19e33b0f693ef9cab`:
+  PASS, exit 0; window 960x540 centred; `p2-frog.txt` SHA-256
+  `0c929f7b0ac5c7375d0df2c277f8a574c71e61b9dcd9eaac4e0f1148071065ec`.
+  `P2_FROG_BIRTH` params: registered `201001` life=800.0 visible=360.0
+  atkrange=200.0 atk=10.0 and `201002` life=1100.0 visible=360.0 atkrange=250.0
+  atk=20.0; controls `201003`/`201004` keep P1 values (life 2000.0/1800.0,
+  atkrange 240.0, atk 30.0). Both registered species show live and corpse poses;
+  `P2_FROG_CLEANUP registered_before=4 cleared=4 reentry=4`.
+- Stability: the fixture originally aborted when the live 20-red squad naturally
+  killed registered `201001` (source health 800 vs the P1 host's 2000) before the
+  injected attack. It now records `P2_FROG_NATURAL_DEATH` instead of aborting and
+  requires each registered species to reach a corpse either naturally or from the
+  injected attack. Three consecutive runs after the change passed with no natural
+  deaths: fixture `output/lane16-frog-runtime/fixture_natural/fixture.exe` SHA-256
+  `4067BEEE9E19E77079CDDCBB9E54609FB7A58BFC7B568DD8578E7EDE896C4467`, runs
+  `run_nat1`/`run_nat2`/`run_nat3` exit 0, e.g. stage
+  `output/lane16-frog-runtime/run_nat3/stages/3c02ab07c61b41d6be965fad2d20fecc`.
+  A natural pre-attack death is acceptable evidence, not a failure.
+
+| Gate | Result | Limit |
+|---|---|---|
+| Source identity/params (A/B) | PASS (native run) | one run; unchanged controls |
+| Landing press / retarget | PASS (host model) | native receiver not yet asserted |
+| Jump attack resolution | PASS (host model) | source event execution still P1 |
+| Death/corpse (D) | PASS with injected attack | natural damage parity untested |
+| Transport/reward (D) | UNTESTED | carry-observation fixture grounded + transported assist; native run still pending the GL slot, no native receipt |
+| Cleanup/re-entry (E) | PASS (manager reset/re-entry) | full scene/day reload untested |
+
+### Natural combat observation (lane 16, 2026-09-14)
+
+New private fixture `experimental/pikmin2_frog_combat.py` pins the 20-red starting
+squad in contact with registered Frog `201001` and observes P1's ordinary combat
+exchange with **no injected damage** over a fixed 1200-observation window.
+
+- Fixture `output/lane16-frog-runtime/fixture_combat3/fixture.exe` SHA-256
+  `6761ebd6...`; run `output/lane16-frog-runtime/run_combat3/stages/0627ff039c404bad914bc82f4eb7c433`:
+  PASS, exit 0, 960x540 centred.
+- Observed: the registered Frog's health falls from 800 to a 530 minimum under
+  natural Pikmin attacks (vulnerability), while the frog's landing press reduces
+  the squad from 20 to 1 (frog attack). Unregistered controls `201003`/`201004`
+  stay alive; no injected attack is used.
+- The 20-red default squad is not enough to kill the source-800 frog within the
+  window, so the frog's lethal path is still the injected-death fixture above; the
+  natural exchange itself is now observed.
+- Validator `tests/test_pikmin2_frog_combat.py` (3 tests) rejects a missing begin,
+  no vulnerability, no squad loss, a control loss, and a death without a corpse.
+
+### Corpse transport/reward consumer (lane 16, 2026-09-14)
+
+Host-side reward bookkeeping for `enemy:17`/`enemy:18` now exists in
+`experimental/pikmin2_frog_rewards.py` on the lane-06 receipt schema, with
+`landing_press_victims`/`carry_route` added to the behavior model. It models the
+audited source corpus drop (Onion ledger, corpse Pokos 5/7, count 1) and proves
+exactly-once pickup across revisit and JSON-persistence restart; it reads and
+mutates no save. Native corpse carry, Onion deposit and receipt delivery remain
+unwired, so the Transport/reward (D) and native reward-persistence (F) gates
+stay UNTESTED. A new family-local `P2_FROG_PRESS` marker in `pc_p2_frog.cpp` is
+unbuilt instrumentation for the P1-proxy Attack motion, not press proof. See
+[the reward consumer note](PIKMIN2_FROG_REWARDS.md).
+
+### Corpse carry/delivery observation fixture (lane 16, 2026-09-14)
+
+New private fixture `experimental/pikmin2_frog_carry.py` reuses
+`experimental.pikmin2_frog_runtime.build`/`run`. After preview readiness it reads
+`frog-positions.txt`, verifies the registered Frog `201001`/MaroFrog `201002`
+birth rows, observes an initial window and then injects the same two legal
+lethal `InteractAttack(navi,nullptr,10000,false)` calls as the runtime fixture.
+It then watches the ordinary P1 carry path rather than a fabricated reward:
+
+- the dead actor's `Pellet` is located by `mPelletView` in `pelletMgr`
+  (`P2_FROG_CORPSE`), then snapped from a stray y=0 onto the real
+  `mapMgr->getMinY(x,z,true)` floor and logged (`P2_FROG_CORPSE_GROUND`,
+  including the config's `mCarryMinPikis`), never an XZ teleport;
+- carry is the real native attachment of a live Pikmin to that pellet
+  (`getStickObject`/`mPikiCarrier`/`mCarrierCount`), logged as
+  `P2_FROG_CARRY id=... carried=1`, with bounded route ticks and max XZ route
+  distance;
+- delivery is the pellet reaching `PELSTATE_Goal` and then leaving the live set
+  at Onion absorption (`Pellet::isAlive` flips false), logged as
+  `P2_FROG_DELIVER id=... delivered=1 goal=1`.
+
+The arena is now built with the documented `near_onion=True` placement variant
+(`experimental/pikmin2_frog_arena.onion_position`): the registered Frog/MaroFrog
+generators are staged about 120 units from the original red goal/Onion record
+read from the same `practice/default.gen`, instead of the distant `z~1850` bench.
+This is an engineered coordinate choice like every other placement in the arena;
+the original course bytes, generator count and unique IDs are preserved and
+still hash-checked, and the recorded `frog-arena.json` names the variant. The
+run that motivated it (`output/lane16-frog-runtime/run_carry2/stages/
+30c37dd6849940ddbb780e6d49c4c909`) carried the first corpse 519.8 units,
+stalled 79 units short of the Onion with its carriers detached by the
+fixture's own squad teleport, then entered an unskippable demo sequence. The
+short route plus moving **only unattached** Pikmin in `moveSquad()` removes both
+fixture-side causes; no delivery is fabricated and no enemy/pellet state is
+written.
+
+Two bounded, labelled inputs mirror the accepted original-map delivery fixture
+(`experimental.pikmin2_kochappy_arena_delivery`). After both corpses exist the
+fixture repositions the unattached surviving squad adjacent to the first corpse
+(attached carriers are left alone so an in-progress native carry is not broken)
+and, if free recruitment still leaves no carriers, assigns the native
+`PikiAction::Transport` task to the surviving Pikmin (`P2_FROG_CARRY_ASSIST`,
+repeated at most 4 times, 180 frames apart, only while fewer than the corpse's
+`mCarryMinPikis` carriers are attached). It never fabricates a delivery and never
+writes enemy state/health.
+No native hook is required: these are existing public `Pellet`/`Creature`/
+`Piki` members, so `native/pc_port/pc_p2_frog.cpp` is unchanged. The result is
+honest: `validate()` returns `passed` only when both corpses exist and at least
+one carry **and** delivery is observed; otherwise it exits `UNOBSERVED
+P2_FROG_CARRY ... unobserved=1`, and a wall-clock guard forces that honest exit
+before the 180 s subprocess budget. `tests/test_pikmin2_frog_carry.py` (9 tests,
+including one that pins `run()` to the `near_onion=True` arena) accepts a
+complete observation and rejects a non-zero exit, a missing carry, a missing
+delivery, a delivery without a carry, an injected-only corpse log, a missing
+corpse and a missing registered birth; `tests/test_pikmin2_frog_arena.py` (5
+tests) pins the red-goal read, default placement and near-Onion placement. The
+native run is pending the coordinated GL slot; native Onion/receipt delivery and
+save persistence remain open. Residual risk: the frog corpse config may require
+more carriers than the surviving squad after the landing press; if fewer than
+`mCarryMinPikis` Pikmin remain the transport task still cannot lift the corpse
+and the run honestly reports `unobserved`. The near-Onion placement shortens the
+route but native terrain/physical spawn acceptance at that bench is still
+unmeasured, and the engine's unskippable demo sequence can still pre-empt a long
+run.

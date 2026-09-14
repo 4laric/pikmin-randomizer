@@ -13,4 +13,6 @@ int main(int argc,char** argv){
  std::istringstream in(text);std::map<unsigned,int> actors;std::vector<p2animation::Clip> banks[2];assert(p2frog::parse(in,actors,banks));assert(actors.size()==2&&actors.at(201001)==0&&actors.at(201002)==1);
  for(auto& bank:banks){assert(bank.size()==11);for(auto& c:bank){assert(c.index(0)==0);assert(c.index(1)==size_t(c.count-1));assert(c.index(0,true)==size_t(c.count-1));assert(c.index(std::numeric_limits<float>::quiet_NaN())==0);assert(c.index(.5f)==c.index(.5f));}}
  assert(std::string(p2frog::motionClip(9))=="type1");assert(std::string(p2frog::motionClip(10))=="type2");assert(std::string(p2frog::motionClip(8))=="attack");assert(!p2frog::motionClip(7));assert(!p2frog::motionClip(999));
+ assert(p2frog::params(0).health==800.0f&&p2frog::params(0).attackDamage==10.0f&&p2frog::params(0).jumpFail==0.2f);
+ assert(p2frog::params(1).health==1100.0f&&p2frog::params(1).attackRange==250.0f&&p2frog::params(1).jumpFail==0.1f);
 }
