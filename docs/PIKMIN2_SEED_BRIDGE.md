@@ -122,7 +122,14 @@ generator writes a `p2_layout` field onto a schema-9 manifest:
   admitted cohort, stores `p2_layout`, and adds the `p2-enemy-bridge-v1`
   capability. It raises a clear `ValueError` when nothing is admitted or when no
   lane 04 targets are supplied.
-- CLI: `--p2-enemies --p2-targets gen-001,gen-002`.
+- `generate(..., p2_placement=document)` instead derives targets from a lane 04
+  placement/encounter document through `randomizer.p2_placement.audit`:
+  `binding_targets_from_placement()` lists legal target tokens and
+  `resolve_placement_layout()` binds each target to an identity that is both
+  admitted and placement-legal for it, so no identity lands in an illegal slot.
+  Passed via `--p2-placement`. Default-deny is preserved: an unadmitted or
+  placement-illegal identity yields no binding.
+- CLI: `--p2-enemies --p2-targets gen-001,gen-002` or `--p2-enemies --p2-placement PLACEMENT.json`.
 - `validate()` accepts `p2_layout` only on schema 9 with `enemy_mask == 0`, no
   P1 `spawn_layout`/`group_layout`/`campaign_layout`, the matching capability, and
   a layout that revalidates against the current roster.

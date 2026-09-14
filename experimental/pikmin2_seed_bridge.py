@@ -101,6 +101,63 @@ def resolve_admitted_layout(seed, slot, targets, roster: list[RosterEntry] | Non
     return resolve_layout(seed, slot, targets, cohort, roster, admitted=cohort)
 
 
+def _placement_eligibility(document, roster: list[RosterEntry]) -> dict[str, list[int]]:
+    """Map each legal placement target token to its admitted source IDs.
+
+    Consumes lane 04's placement document through ``randomizer.p2_placement.audit``
+    without changing its deny-by-default semantics; only identities in lane 02's
+    admission set survive.
+    """
+    from randomizer.p2_placement import audit
+    admitted = set(admitted_ids(roster))
+    if not admitted:
+        raise SeedBridgeError(
+            "no admitted P2 identities; refusing to seed an unadmitted pool (lane 02 admission set is empty)"
+        )
+    by_enum = {entry.enum_name: entry for entry in roster}
+    eligible: dict[str, list[int]] = {}
+    for identity, uids in audit(document).get("admitted", {}).items():
+        entry = by_enum.get(identity)
+        if entry is None or entry.source_id not in admitted:
+            continue
+        for uid in uids:
+            eligible.setdefault(str(uid), []).append(entry.source_id)
+    return {target: sorted(set(source_ids)) for target, source_ids in eligible.items()}
+
+
+def binding_targets_from_placement(document, roster: list[RosterEntry] | None = None) -> list[str]:
+    """Ordered legal placement targets that at least one admitted identity may hold."""
+    roster = roster if roster is not None else load_roster()
+    targets = _placement_eligibility(document, roster)
+    if not targets:
+        raise SeedBridgeError("placement document has no legal admitted target")
+    return sorted(targets, key=lambda target: (len(target), target))
+
+
+def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | None = None) -> dict:
+    """Bind each legal placement target to one admitted identity that may hold it.
+
+    Unlike :func:`resolve_admitted_layout`, the identity is chosen from each
+    target's lane 04 legal set, so no identity is bound to a slot it is not
+    admitted and placement-legal for. Fails closed when the admission set is empty
+    or no pair is legal.
+    """
+    roster = roster if roster is not None else load_roster()
+    eligible = _placement_eligibility(document, roster)
+    if not eligible:
+        raise SeedBridgeError("placement document has no legal admitted target")
+    revision = roster_revision(roster)
+    by_source = by_id(roster)
+    rng = SeedRandom(f"{seed}/p2-placement-layout-v1/{slot}")
+    bindings = []
+    for target in sorted(eligible, key=lambda item: (len(item), item)):
+        source_id = rng.shuffle(eligible[target])[0]
+        bindings.append({"target": target, "source_id": source_id,
+                         "enum_name": by_source[source_id].enum_name})
+    return {"version": LAYOUT_VERSION, "roster_schema": ROSTER_SCHEMA,
+            "roster_revision": revision, "bindings": bindings}
+
+
 def resolve_layout(seed, slot, targets, cohort, roster: list[RosterEntry] | None = None, *,
                    admitted=None) -> dict:
     """Deterministically bind each target to an identity from ``cohort``.
