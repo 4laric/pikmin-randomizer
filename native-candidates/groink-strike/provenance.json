@@ -1,0 +1,37 @@
+{
+  "lane": "21",
+  "issues": ["198", "204", "205", "206", "208", "209", "210"],
+  "native_branch": "opencode/p2-groink-strike",
+  "native_base": "6202d852",
+  "native_head": "67298b078cb437fb2074c9e8a5c5a127daf0ee88",
+  "native_pushed": false,
+  "native_worktree": "output/native-groink-strike",
+  "patch_series": ["0001-Lane-21-204-205-208-Groink-shell-strike-proxy-receiv.patch"],
+  "vendored_dependency": {
+    "source_branch": "opencode/p2-projectiles-integration",
+    "source_commit": "be8037af5e1d50dcd0d96333d48761cf52e27f84",
+    "files": ["pc_port/pc_p2_projectile_receiver.h", "pc_port/pc_p2_projectile_receiver.cpp", "pc_port/pc_p2_cannon_stone.h", "pc_port/pc_p2_rock_hazard.h"]
+  },
+  "standalone_test": {
+    "source": "tools/p2_groink_strike_test.cpp",
+    "exe_sha256": "C99997C7BD3231D6BE43651A21E270E2DECB947143A73DE769600CC874BF232D",
+    "compile": "g++ -std=c++17 -Wall -Wextra -Werror -Ipc_port tools/p2_groink_strike_test.cpp pc_port/pc_p2_groink_strike.cpp pc_port/pc_p2_groink_hit.cpp pc_port/pc_p2_projectile_receiver.cpp -o <out>",
+    "exit": 0
+  },
+  "fixture": {
+    "dir": "output/groink-strike-runtime-fixture-01",
+    "exe_sha256": "07d64b239a3d4d3eb338a5cc176019bc08d106951cd9cf3fc084091dd122f4c6",
+    "provenance_status": "built",
+    "expected_native_head": "756515d57088f7ea7241c451e2e5b968bf9c7c6d"
+  },
+  "runtime": {
+    "run_dir": "output/groink-runtime-sessions/0d2aa8c8fb084839b6616aef201fa614",
+    "session_copy": "output/groink-strike-session-01",
+    "log_sha256": "d1a990bc7346e3f2bdd36d8466b3e8e8551fc2bd935f7a8edbec78ff9e1a7fd6",
+    "arena_sha256": "659ca393dc442c3fca724c87c7f2e9e92b37b6069c14bb8266cb75d482648552",
+    "window": "960x540",
+    "receiver_hits": 6,
+    "receiver_deaths": 1,
+    "placement": "fixture_pinned terminal_sweep_midpoint"
+  }
+}
