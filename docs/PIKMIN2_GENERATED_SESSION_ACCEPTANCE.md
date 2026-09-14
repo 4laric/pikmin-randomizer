@@ -63,22 +63,14 @@ A run produces one JSON document per step:
 - `observations.json` — per-stage PASS/FAIL/BLOCKED against declared markers.
 - `lane33-<stage>-<scenario>.json` — QA-matrix records for `report`.
 
-Witness markers are operator-supplied because family marker vocabulary differs
-(`P2_ENEMY_READY`, `P2_DWARF_ORANGE_DRAW`, family `DONE ...` lines, reward
-receipts). Turnkey profiles for the first cohort are built in and can be
-extended without changing code:
+Built-in `snow` and `dwarf_orange` profiles witness automatic installation with
+`PIKMIN_CONTENT_STAGED` only. They leave natural fight, reward, revisit and
+restart BLOCKED. Draw/corpse/haul markers also occur in controlled fixtures and
+cannot prove those gameplay stages. Supply reviewed witnesses from the actual
+generated-session path, including identity and intervention checks, before
+classifying a natural result.
 
-- `snow` — `install`: `PIKMIN_CONTENT_STAGED`; `natural_fight`:
-  `P2_ENEMY_READY`, `P2_SNOW_DRAW corpse=0`, `P2_SNOW_DRAW corpse=1`.
-- `dwarf_orange` — the above plus `P2_DWARF_ORANGE_DRAW corpse=0/1` and
-  `DONE P2_DWARF_ORANGE_COMBAT`; `reward`: `P2_DWARF_ORANGE_P1_HAUL`.
-
-These are derived from the documented family evidence (`PIKMIN2_SNOW_BULBORB.md`,
-`PIKMIN2_DWARF_ORANGE_NATIVE.md`) and must be confirmed on the first pinned
-generated-session run. Stages with no distinct documented generated-session
-witness stay unmapped and report `BLOCKED`.
-
-An explicit marker file overrides/extends a profile:
+An explicit marker file extends a profile:
 
 ```json
 {

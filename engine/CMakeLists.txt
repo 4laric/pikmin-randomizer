@@ -926,7 +926,7 @@ add_test(NAME p2_billboard_test COMMAND p2_billboard_test)
 
 add_executable(p2_sarai_captor_test tools/p2_sarai_captor_test.cpp)
 target_include_directories(p2_sarai_captor_test PRIVATE pc_port)
-target_compile_options(p2_sarai_captor_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+target_compile_options(p2_sarai_captor_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME p2_sarai_captor_test COMMAND p2_sarai_captor_test)
 
 # Lane 30 (#242) dedicated captor spawn-identity test. Engine-free: it asserts
@@ -934,7 +934,7 @@ add_test(NAME p2_sarai_captor_test COMMAND p2_sarai_captor_test)
 # TEKI_P2Demon in the engine build (pc_port/pc_p2_demon_host.cpp).
 add_executable(p2_demon_identity_test tools/p2_demon_identity_test.cpp)
 target_include_directories(p2_demon_identity_test PRIVATE pc_port)
-target_compile_options(p2_demon_identity_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+target_compile_options(p2_demon_identity_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME p2_demon_identity_test COMMAND p2_demon_identity_test)
 
 

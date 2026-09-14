@@ -21,8 +21,31 @@ An intermediate CMake conflict was accidentally committed in `aaaa0a9c` after a 
 
 ## Acceptance and outstanding work
 
-Validation is recorded below when the combined build and runtime checks complete. Use this ledger for combined evidence; worker logs retain their stated provenance and interventions.
+Combined native `1531c0baa5f1830637bd2c7abd1bbdcc1a40b542`, clean. Private Ninja/MinGW Release/JAudio build passed; final dry run reports `ninja: no work to do.` Production executable SHA-256 `11311ee536c7438b0b68ba5a0c469c8a7deaa547b57cf7c3c75504e5e6a3f324`. CTest: **88 passed,1 asset-dependent JAudio skip**; new Sarai/captor identity assertions are explicitly enabled in Release and were also run standalone. Logs: `output/p2-sweep437-final-build.log`, `p2-sweep437-assert-build.log`, `p2-sweep437-final-ctest.log`.
+
+Root regression: **2705 passed,38 skipped,1101 subtests passed** (`output/p2-sweep437-final-tests.xml`). Final mixed-scene unexpected-exit guard and fixture builder:21 passed,9 subtests. Earlier12 compiler-launch failures were due to the integration test shell omitting the MinGW runtime path; all22 affected checks passed after correcting that environment, followed by the green full suite. Export: **1992 text files,zero byte mismatches**. Test skips reflect optional local assets/fixtures and platform support, not enemy admission.
+
+Fresh Sarai runtime at that native head: Walk capture680ticks, Idle capture677ticks, each415carryticks and captain health100→90; both full capture/carry/drop chains and pose/mouth-follow/teardown mode passed with exit0. Fixture SHA-256 `69ab406280877f8b490c7c523eb79dd22802183a9427e836937411cf8ba4dfc0`; `output/p2-sweep437-sarai-stage/result.json`. The copied asset bank was restaged without saves and refreshed through the current20-red helper. Actual window logged960x540 and centered after settings. The fixture positions the actors and holds captain Walk/Idle states; no claim of ordinary Sarai/Pikmin capture or retail encounter parity.
+
+Dedicated Demon spawn runtime passed at the same native head: `type=35 dedicated=1 legacy=0 explicit=0`, capture/drop complete at865ticks. The explicit legacy opt-in regression (`type=3 legacy=1`) passed at904ticks. Both exit0 and actual centered960x540; fresh standard room stager supplies20reds. Fixture SHA-256 `e642ede43128ec383f943b6b7a391cc5f53b16b7d2f9d446a28c49428ab35745`; `output/p2-sweep437-demon-result.json` and `output/p2-sweep437-demon-stages.json`. The dedicated stage is privately post-processed; this proves native ordinary generator spawning/selection, not the randomizer manifest path. Other workers launched GL processes during this run despite the reservation, so no exclusive-host timing/performance claim is made.
+
+Runtime root was `2ca5a18` with pending guide/ledger and exported CMake assertion changes; native source remained clean and pinned. These documentation/test-registration changes do not change the fixture executable. Worker evidence is kept separate from these combined runs.
 
 The five focused assignments in [the next-wave guide](PIKMIN2_NEXT_WAVE.md) remain authoritative: Snow first, Dwarf Orange second, documented P1-derived experimental behavior permitted with working placement, combat, rewards and persistence. The admitted enemy roster remains empty. Active unfinished assignment changes are not silently included in this published checkpoint.
 
-All33 representative numbered-lane issues remain open (queried this sweep): **33 open, change0; 21 primarily implementation,11 primarily acceptance,+lane01 integration**. Worker-finished slices and active session counts are different units.
+All 33 representative numbered-lane issues remain open (queried this sweep): **33 open, change 0; 21 primarily implementation, 11 primarily acceptance, + lane 01 integration**. Worker-finished slices and active session counts are different units.
+
+
+Combined Greater Jellyfloat captain-release runtime also passed at native1531c0ba:
+`P2_KURAGE_CAPTAIN_RELEASED captain=0 state=10` and
+`PASS KURAGE_RUNTIME flight_fsm_greater_captain`, exit0. Both variants'10
+material-patched pose files were staged. Fixture SHA-256
+`e2a298e7556aa9df9b32aef909d490107371f9d0ea43f97828ef37f70f7b490d`;
+`output/p2-sweep437-kurage-captain/flight-fsm-greater-captain.json` and log.
+Fresh20-red base and post-settings centered960x540 startup; the capture is a
+controlled policy/receiver fixture, not campaign admission. New worker GL
+processes appeared during acceptance, so no performance budget is claimed.
+
+This first published checkpoint completes the batch through Jellyfloat aaac3612.
+Later Titan/Crawbster/Mamuta/Sarai submissions are under review in the ongoing
+sweep; this checkpoint does not claim those newer submissions integrated.
