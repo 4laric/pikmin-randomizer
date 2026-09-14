@@ -57,23 +57,13 @@ GAME_STAGES = ("install", "natural_fight", "reward", "revisit", "restart")
 # The launcher prints this after lane 05 stages session content automatically.
 INSTALL_WITNESS = "PIKMIN_CONTENT_STAGED"
 
-# Turnkey witness-marker sets derived from the documented family evidence
-# (Snow: docs/PIKMIN2_SNOW_BULBORB.md; Dwarf Orange:
-# docs/PIKMIN2_DWARF_ORANGE_NATIVE.md). They are the markers the family lanes
-# already emit; confirm them on the first pinned generated-session run. Stages
-# with no distinct documented generated-session witness are left unmapped, so
-# they report BLOCKED rather than a silent pass.
+# Built-in profiles can witness automatic staging only. Draw/corpse markers
+# also occur in injected fixtures, and haul markers do not prove a durable
+# reward endpoint. Natural fight/reward/revisit/restart need reviewed markers
+# from the actual generated-session path supplied through --markers.
 WITNESS_PROFILES = {
-    "snow": {
-        "install": [INSTALL_WITNESS],
-        "natural_fight": ["P2_ENEMY_READY", "P2_SNOW_DRAW corpse=0", "P2_SNOW_DRAW corpse=1"],
-    },
-    "dwarf_orange": {
-        "install": [INSTALL_WITNESS],
-        "natural_fight": ["P2_ENEMY_READY", "P2_DWARF_ORANGE_DRAW corpse=0",
-                          "P2_DWARF_ORANGE_DRAW corpse=1", "DONE P2_DWARF_ORANGE_COMBAT"],
-        "reward": ["P2_DWARF_ORANGE_P1_HAUL"],
-    },
+    "snow": {"install": [INSTALL_WITNESS]},
+    "dwarf_orange": {"install": [INSTALL_WITNESS]},
 }
 
 

@@ -150,3 +150,11 @@ cell) and the CLI.
 ```powershell
 py -3.12 -m pytest tests/test_pikmin2_generated_session_acceptance.py tests/test_pikmin2_qa_matrix.py -q
 ```
+
+## Integration correction (#437)
+
+Built-in Snow and Dwarf Orange profiles witness automatic staging only. Draw,
+corpse and haul markers do not prove natural combat or durable reward delivery;
+those stages remain BLOCKED until reviewed generated-session markers are supplied.
+A native commit pin also rejects evidence with a missing native commit. Earlier
+profile descriptions listing fight/reward markers are superseded by this rule.

@@ -240,3 +240,10 @@ class ImportTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_missing_native_commit_cannot_satisfy_pinned_report():
+    rec = record()
+    rec.pop("native_commit", None)
+    problems = qa._provenance_problems(rec, {"native_commit": "a" * 40})
+    assert any("native commit" in reason for reason in problems)

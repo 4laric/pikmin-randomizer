@@ -220,7 +220,7 @@ def _provenance_problems(record, pin=None):
     pin_build = str(pin.get("build_sha256", pin.get("executable_sha256", ""))).strip()
     if pin_root and root_commit and root_commit != pin_root:
         problems.append(f"root commit {root_commit[:12]} does not match the pinned baseline {pin_root[:12]}")
-    if pin_native and native_commit and native_commit != pin_native:
+    if pin_native and native_commit != pin_native:
         problems.append(f"native commit {native_commit[:12]} does not match the pinned baseline {pin_native[:12]}")
     if pin_build and build_hash and build_hash.lower() != pin_build.lower():
         problems.append("executable hash does not match the pinned baseline")
