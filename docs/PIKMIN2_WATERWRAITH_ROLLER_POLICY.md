@@ -165,6 +165,26 @@ approximate materials, no skeletal playback, no retail events, no source
 actor/AI/receivers. Bundle: `native-candidates/waterwraith-visual/`
 (`...-full.patch`, `patches/0001..0004`, `provenance.json`).
 
+## Source-correct actor phase machine
+
+`pc_port/pc_p2_waterwraith_actor.{h,cpp}` adds the nine-phase BlackMan machine
+(walk/dead/freeze/bend/escape/fall/flick/recover/tired) with host-fed triggers,
+host-driven route locomotion (fp05 120, ip01 two-step timer), a
+`P2WaterwraithRig`-owned Tyre child, and a `p2_waterwraith_actor_apply_damage`
+hook gated on the rig's `damageable()` state (Purple-only structurally).
+
+Branch `opencode/p2-lane31-actor` @ `e8da82aa938c33d9d5564bfdc75bc9c5fd150a8c`
+(base `opencode/p2-lane31-integ` @ `5d38a918`, clean). Standalone fixture
+(12 groups) `PASS WATERWRAITH_ACTOR`, exe SHA-256
+`8ddc0c5eb6dd2aef4ad8b5c77afb6b0c9b80f1485954dd123f8d8441aa76aa20`. Real-GL
+actor run `output/lane31-waterwraith-actor-runtime-01/29771a321454432d95c7813934d2c50d`
+status `passed`, `P2_WATERWRAITH_ACTOR_PASS ticks=90 distance=345.667 roll=62.5165
+phase=walk`, exe `3f2abf65…`, fixture `8d7b032f…`; capture
+`waterwraith-actor.ppm`. Bundle `native-candidates/waterwraith-actor/`.
+
+Limits: host-driven route (not the retained-asm pathfinder), host-fed animation
+pulses, no source actor/Map/receiver registration.
+
 ## Remaining / next slice
 
 - **Locomotion and route pathfinding are not implemented.** The wraith walk
