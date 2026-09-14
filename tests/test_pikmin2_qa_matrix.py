@@ -155,5 +155,57 @@ class ReportTests(unittest.TestCase):
             self.assertEqual(qa.main(["validate", "--records", str(records)]), 1)
 
 
+class ImportTests(unittest.TestCase):
+    def test_manifest_status_mapping(self):
+        self.assertEqual(qa.manifest_status({"status": "passed"}), qa.PASS)
+        self.assertEqual(qa.manifest_status({"status": "FAILED"}), qa.FAIL)
+        self.assertEqual(qa.manifest_status({"status": "error"}), qa.FAIL)
+        self.assertEqual(qa.manifest_status({"status": "blocked"}), qa.BLOCKED)
+        self.assertEqual(qa.manifest_status({}), qa.BLOCKED)
+
+    def test_record_from_manifest_extracts_fixture_hash(self):
+        manifest = {"status": "passed",
+                    "fixture": {"executable": {"sha256": "c" * 64}}}
+        rec = qa.record_from_manifest(manifest, "output/run/verification.json",
+                                      record_id="bt-run", stage="natural_fight",
+                                      scenario="baseline_cohort", kind=qa.KIND_FIXTURE,
+                                      root_commit="d" * 40)
+        self.assertEqual(rec["status"], qa.PASS)
+        self.assertEqual(rec["build_sha256"], "c" * 64)
+        self.assertEqual(rec["evidence_paths"], ["output/run/verification.json"])
+        self.assertEqual(qa.validate_record(rec), [])
+
+    def test_record_from_manifest_rejects_bad_classification(self):
+        with self.assertRaises(ValueError):
+            qa.record_from_manifest({"status": "passed"}, "m.json", record_id="x",
+                                    stage="nope", scenario="nope", kind="magic")
+
+    def test_cli_import_then_report_guardrail(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = root / "verification.json"
+            manifest.write_text(json.dumps(
+                {"status": "passed", "fixture": {"executable": {"sha256": "e" * 64}}}),
+                encoding="utf-8")
+            boundary = root / "records" / "boundary.json"
+            natural = root / "records" / "natural.json"
+            common = ["--manifest", str(manifest), "--root-commit", "f" * 40]
+            self.assertEqual(qa.main(["import-run", *common, "--id", "b",
+                                      "--stage", "install", "--scenario", "missing_assets",
+                                      "--kind", "fixture", "--out", str(boundary)]), 0)
+            self.assertEqual(qa.main(["import-run", *common, "--id", "n",
+                                      "--stage", "natural_fight", "--scenario",
+                                      "baseline_cohort", "--kind", "fixture",
+                                      "--out", str(natural)]), 0)
+            out = root / "report"
+            self.assertEqual(qa.main(["report", "--records", str(root / "records"),
+                                      "--output", str(out)]), 0)
+            report = json.loads((out / "qa-matrix.json").read_text(encoding="utf-8"))
+            cells = {(c["stage"], c["scenario"]): c["status"] for c in report["cells"]}
+            # A private fixture may satisfy a boundary cell but never a natural one.
+            self.assertEqual(cells[("install", "missing_assets")], qa.PASS)
+            self.assertEqual(cells[("natural_fight", "baseline_cohort")], qa.BLOCKED)
+
+
 if __name__ == "__main__":
     unittest.main()

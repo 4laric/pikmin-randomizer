@@ -356,6 +356,55 @@ def _write_outputs(report, output):
     return output
 
 
+MANIFEST_STATUS = {
+    "passed": PASS,
+    "pass": PASS,
+    "failed": FAIL,
+    "fail": FAIL,
+    "error": FAIL,
+    "blocked": BLOCKED,
+}
+
+
+def manifest_status(manifest, default=BLOCKED):
+    return MANIFEST_STATUS.get(str(manifest.get("status", "")).lower(), default)
+
+
+def record_from_manifest(manifest, manifest_path, *, record_id, stage, scenario, kind,
+                         root_commit="", native_commit="", build_sha256="", notes=""):
+    """Convert a run manifest (verification.json etc.) into a validated record.
+
+    The operator supplies the stage/scenario/kind classification; this helper
+    only extracts the status and the fixture executable hash and points the
+    evidence path at the manifest. The result is validated before returning.
+    """
+    if not isinstance(manifest, dict):
+        raise ValueError("manifest must be a JSON object")
+    sha = build_sha256
+    if not sha:
+        fixture = manifest.get("fixture")
+        if isinstance(fixture, dict):
+            executable = fixture.get("executable")
+            if isinstance(executable, dict):
+                sha = str(executable.get("sha256", ""))
+    record = {
+        "id": record_id,
+        "stage": stage,
+        "scenario": scenario,
+        "kind": kind,
+        "status": manifest_status(manifest),
+        "root_commit": root_commit,
+        "native_commit": native_commit,
+        "build_sha256": sha,
+        "evidence_paths": [str(manifest_path)],
+        "notes": notes or f"imported from {manifest_path}",
+    }
+    problems = validate_record(record)
+    if problems:
+        raise ValueError("; ".join(problems))
+    return record
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -371,7 +420,35 @@ def main(argv=None):
     validate_parser = sub.add_parser("validate", help="validate record files")
     validate_parser.add_argument("--records", action="append", default=[])
 
+    import_parser = sub.add_parser("import-run",
+                                   help="convert a run manifest into an evidence record")
+    import_parser.add_argument("--manifest", type=Path, required=True)
+    import_parser.add_argument("--id", required=True)
+    import_parser.add_argument("--stage", required=True, choices=stage_keys())
+    import_parser.add_argument("--scenario", required=True, choices=sorted(SCENARIOS))
+    import_parser.add_argument("--kind", required=True, choices=list(EVIDENCE_KINDS))
+    import_parser.add_argument("--root-commit", default="")
+    import_parser.add_argument("--native-commit", default="")
+    import_parser.add_argument("--build-sha256", default="")
+    import_parser.add_argument("--notes", default="")
+    import_parser.add_argument("--out", type=Path, required=True)
+
     args = parser.parse_args(argv)
+
+    if args.command == "import-run":
+        manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+        record = record_from_manifest(manifest, args.manifest, record_id=args.id,
+                                      stage=args.stage, scenario=args.scenario, kind=args.kind,
+                                      root_commit=args.root_commit,
+                                      native_commit=args.native_commit,
+                                      build_sha256=args.build_sha256, notes=args.notes)
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(record, sort_keys=True, indent=2) + "\n",
+                            encoding="utf-8")
+        print(f"record id={record['id']} stage={record['stage']} "
+              f"scenario={record['scenario']} kind={record['kind']} status={record['status']}")
+        print(f"wrote {args.out}")
+        return 0
 
     if args.command == "validate":
         records = []
