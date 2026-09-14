@@ -10,7 +10,7 @@ Two carriers are born holding a sidecar-staged Bomb stub (labeled injection).
 Carrier 30 is detonated by contact, carrier 31 by death; each is triggered twice
 so the second trigger emits P2_BOMBOTAKARA_DETONATE_SUPPRESSED (exactly-once).
 There is no shared blast/projectile contract at this base, so every detonation
-emits P2_BOMBOTAKARA_BLAST_BLOCKED reason=no_shared_blast instead of a duplicate
+emits P2_BOMBOTAKARA_BLAST and applies the shared BombSarai blast primitive
 blast. The fixture self-terminates on the gates or on a bounded behavior-tick
 timeout with an explicit BLOCKED marker; it never hangs. This module does not
 launch the fixture (the coordinator owns the serialized GL slot).
@@ -138,7 +138,7 @@ public:int idle() override {
    std::printf("P2_BOMBOTAKARA_BLOCKED gates reason=timeout carry=%d armed=%d detonated=%d suppressed=%d blast=%d\n",
                pc_p2_bombotakara_carry_count(),pc_p2_bombotakara_armed_count(),
                pc_p2_bombotakara_detonated_count(),pc_p2_bombotakara_suppressed_count(),
-               pc_p2_bombotakara_blast_blocked_count());
+               pc_p2_bombotakara_blast_count());
    finished=true;std::fflush(nullptr);if(!hold)std::_Exit(0);
   }
  }
@@ -158,12 +158,8 @@ def instrument(source):
 def build(native, build_dir, output, head):
     output = output.resolve()
     output.mkdir(parents=True, exist_ok=False)
-    (output / 'tutorial-private.inc').write_text(
-        instrument_tutorial((native / 'src/plugPikiColin/newPikiGame.cpp').read_text(encoding='utf-8')),
-        encoding='utf-8')
     room = output / 'room.cpp'
-    room.write_text(instrument((native / 'tools/preview_p2_room.cpp').read_text(encoding='utf-8'))
-                    + '\n#include "tutorial-private.inc"\n', encoding='utf-8')
+    room.write_text(instrument((native / 'tools/preview_p2_room.cpp').read_text(encoding='utf-8')), encoding='utf-8')
     return builder.build_fixture(build_dir, native, room, output / 'build', head)
 
 
@@ -224,8 +220,8 @@ def validate(text, code):
         suppressed_death=bool(re.search(r'P2_BOMBOTAKARA_DETONATE_SUPPRESSED generator=31 payload=41 '
                                         r'trigger=death detonated=0 already_detonated=1', text)),
         exactly_two_suppressed=text.count('P2_BOMBOTAKARA_DETONATE_SUPPRESSED') == 2,
-        blast_blocked=text.count('P2_BOMBOTAKARA_BLAST_BLOCKED') == 2
-                      and 'reason=no_shared_blast' in text,
+        blast=text.count('P2_BOMBOTAKARA_BLAST ') >= 2 and 'shared_primitive=1' in text,
+        blast_pikmin_hits=bool(re.search(r'P2_BOMBOTAKARA_BLAST .* pikmin_hits=[1-9]\d* ', text)),
         cleanup='P2_BOMBOTAKARA_CLEANUP kill_all=1' in text,
         no_timeout='P2_BOMBOTAKARA_BLOCKED' not in text,
         no_rewards='P2_CARGO_READY' not in text and 'P2_POD_RECEIPT' not in text,
@@ -233,7 +229,7 @@ def validate(text, code):
     failed = sorted(name for name, ok in required.items() if not ok)
     return dict(passed=not failed, failed=failed, checks=required, exit_code=code,
                 scope='Actor-local payload policy fixture; bomb stub and triggers are labeled injections; '
-                      'shared blast BLOCKED (no shared interface at this base)')
+                      'detonation consumes the shared BombSarai blast and applies InteractBomb')
 
 
 def pid_running(pid):
