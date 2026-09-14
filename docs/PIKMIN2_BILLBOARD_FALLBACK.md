@@ -134,3 +134,11 @@ Private, uncommitted, under `output/`:
 Focused tests: `tests/test_pikmin2_convert_billboard.py` (synthetic type-1
 model), plus `tests/test_pikmin2_convert_normals.py` and
 `tests/test_pikmin2_flora_assets.py`.
+
+## Native camera-facing follow-up
+
+The bounded static fallback above now has an opt-in camera-facing path:
+`billboard='native'` emits the Billboard feature flag with pivot-relative
+geometry and the renderer orients it from the view matrix at draw time. See
+[docs/PIKMIN2_BILLBOARD_NATIVE.md](PIKMIN2_BILLBOARD_NATIVE.md). The visual GL
+gate remains UNTESTED and the default Hikari tolerance stays static.
