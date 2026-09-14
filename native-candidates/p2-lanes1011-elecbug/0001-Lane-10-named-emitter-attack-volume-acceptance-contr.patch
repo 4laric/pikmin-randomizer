@@ -1,7 +1,7 @@
 From 058b67fc09c888b6b2d7b292cbb6f4ad2cbb6fa0 Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 09:09:17 -0400
-Subject: [PATCH 1/4] Lane 10: named emitter/attack-volume acceptance contract
+Subject: [PATCH 1/5] Lane 10: named emitter/attack-volume acceptance contract
  + gate (#170/#408)
 
 ---

@@ -19,6 +19,7 @@ Focused commits (this series):
 2. `c94cd610` ElecBug: deliver real `InteractDenki` emitter and lane-11 immunity
 3. `d345b108` ElecBug: log receiver acceptance and target reaction state
 4. `eddbf832` ElecBug: emit one immunity marker per immune species in the sweep
+5. `416ccb49` lane 11: extract cave checkpoint wire format + schema-3 gate
 
-Full branch head `eddbf832e0f24f24266c05a1e1af919bcc3636ad`. Apply with
-`git am 0001..0004` on top of the merge, or review the branch directly.
+Full branch head `416ccb49`. Apply with `git am 0001..0005` on top of the merge,
+or review the branch directly.

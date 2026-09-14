@@ -1,7 +1,7 @@
 From d345b108da58bb8501290068dd327574f9bdcae6 Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 09:27:16 -0400
-Subject: [PATCH 3/4] ElecBug: log InteractDenki receiver acceptance and target
+Subject: [PATCH 3/5] ElecBug: log InteractDenki receiver acceptance and target
  reaction state
 
 ---
