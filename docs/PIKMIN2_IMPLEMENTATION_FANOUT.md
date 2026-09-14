@@ -1,5 +1,7 @@
 # P2 implementation fan-out and mandatory fixture baseline
 
+Next-wave dispatch: [playable encounters and first cohort](PIKMIN2_NEXT_WAVE.md). Keep existing lane numbers; use this guide for current priorities and acceptance.
+
 Agent entrypoint, 2026-09-13. Documentation tracking: #404. Coordination and
 shared-semantics review: #186. Implementation owner: Codex through shared GitHub
 account `4laric`; assignment alone does not identify a lane or activate work.

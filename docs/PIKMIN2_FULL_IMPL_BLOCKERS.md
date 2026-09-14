@@ -1,5 +1,7 @@
 # P2 enemies: full implementation and randomizer blockers
 
+Next-wave dispatch: [playable encounters and first cohort](PIKMIN2_NEXT_WAVE.md). Keep existing lane numbers; use this guide for current priorities and acceptance.
+
 Current integration disposition: [integration sweep #453](PIKMIN2_INTEGRATION_453.md).
 Read this before interpreting historical integrated/candidate claims below.
 
