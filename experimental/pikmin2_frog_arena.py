@@ -34,7 +34,7 @@ def onion_position(practice):
     it (rather than hard-coding a coordinate) keeps the near-Onion placement bound
     to the original course and fails closed if the record framing changes.
     """
-    goal=next((r for r in practice if r[16:48].rstrip(b'\0')==b'red goal'),None)
+    goal=next((r for r in practice if r[16:48].split(b'\0',1)[0]==b'red goal'),None)
     if goal is None:raise ValueError('Original red goal record missing')
     x,y,z=struct.unpack_from('>3f',goal,48)
     if not all(math.isfinite(v) for v in (x,y,z)):raise ValueError('Original red goal position invalid')
