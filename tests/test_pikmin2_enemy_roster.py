@@ -13,9 +13,11 @@ from experimental.pikmin2_enemy_roster import (
     admitted_ids,
     build_entries,
     by_id,
+    candidate_review,
     classify,
     entries_from_payload,
     identity_role,
+    inventory_encounters,
     load_and_validate,
     parse_enum_header,
     parse_info_table,
@@ -75,9 +77,11 @@ def test_known_identities_and_relationships():
     assert roster[75].child_id == 74 and roster[75].child_count == 5
 
 
-def test_eligibility_defaults_denied():
+def test_eligibility_defaults_denied_except_reviewed_candidates():
     roster = load_and_validate()
-    assert all(entry.eligibility == "denied" for entry in roster)
+    candidates = {entry.source_id for entry in roster if entry.eligibility == "candidate"}
+    assert candidates == {2, 15, 17, 45, 54, 79}
+    assert all(entry.eligibility == "denied" for entry in roster if entry.source_id not in candidates)
 
 
 def test_synthetic_pipeline_round_trips():
@@ -159,8 +163,8 @@ def test_admission_defaults_deny_and_is_empty():
     roster = load_and_validate()
     admission = admission_set(roster)
     assert admission.admitted == ()
-    assert admission.candidates == ()
     assert admitted_ids(roster) == []
+    assert set(admission.candidates) == {2, 15, 17, 45, 54, 79}
     assert sum(admission.by_role.values()) == len(roster)
     with pytest.raises(RosterError):
         require_admitted(roster, 79)
@@ -185,3 +189,37 @@ def test_resolve_alias_distinguishes_tokens():
     assert resolve_alias("$1Rkabuto", roster)[0] == "generator_variant"
     assert resolve_alias("Chappy_donutsichigo_s", roster)[0] == "treasure_carrier"
     assert resolve_alias("NotAThing", roster) == ("unknown", None)
+
+
+def synthetic_inventory():
+    return {"story_caves": [{"id": "cave-a", "floors": [
+        {"first": 1, "last": 2, "enemy_ids": ["Frog", "$1Egg"]},
+        {"first": 3, "last": 3, "enemy_ids": ["Egg", "NotAThing"]},
+    ]}]}
+
+
+def test_inventory_encounters_maps_aliases():
+    roster = entries_from_payload(synthetic_payload())
+    encounters = inventory_encounters(synthetic_inventory(), roster)
+    assert encounters["Frog"] == [{"cave": "cave-a", "first": 1, "last": 2}]
+    assert len(encounters["Egg"]) == 2
+    assert "NotAThing" not in encounters
+
+
+def test_candidate_review_reports_role_and_missing_gates():
+    full = {g: "PASS" for g in GATE_IDS}
+    roster = entries_from_payload(synthetic_payload(), {"17": {
+        "eligibility": "candidate", "gates": full,
+        "native_module": "pc_p2_frog", "owner_lane": "16"}})
+    rows = candidate_review(roster, inventory_encounters(synthetic_inventory(), roster))
+    frog = next(row for row in rows if row["source_id"] == 17)
+    assert frog["role"] == "source" and frog["owner_lane"] == "16"
+    assert frog["missing_gates"] == [] and frog["encounters"]
+    assert {row["source_id"] for row in rows} == {17}
+
+
+def test_committed_overlay_reviewed_cohort_and_native_modules():
+    roster = by_id(load_and_validate())
+    assert roster[79].eligibility == "candidate" and roster[79].native_module == "pc_p2_sokkuri"
+    assert roster[54].owner_lane == "19" and roster[45].owner_lane == "13"
+    assert admitted_ids(load_and_validate()) == []
