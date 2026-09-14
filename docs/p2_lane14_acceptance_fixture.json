@@ -1,0 +1,55 @@
+{
+  "schema": "p2-lane14-acceptance-fixture-v1",
+  "lane": 14,
+  "tracking_issue": 165,
+  "coordination_issue": 186,
+  "placement_issue": 440,
+  "generated": "2026-09-14",
+  "slot_reservation": "https://github.com/4laric/pikmin-randomizer/issues/186#issuecomment-5668337210",
+  "build": {
+    "native_branch": "opencode/p2-lane14-native",
+    "native_commit": "1531c0baa5f1830637bd2c7abd1bbdcc1a40b542",
+    "native_base": "codex/p2-sweep437",
+    "worktree": "output/native-lane14",
+    "build_dir": "output/native-lane14-build",
+    "executable": "output/native-lane14-build/bin/nectar.exe",
+    "executable_sha256": "BBF22D28A86B2067297DEFEF9C47F0CD88F381DFAFE633685AB57D69C01E9841",
+    "executable_bytes": 7633898,
+    "window": "960x540"
+  },
+  "inputs": {
+    "p1_assets": "C:/Users/alari/bbft/dist/cohesion/pikmin/assets",
+    "p2_iso": "C:/Users/alari/Downloads/PIKMIN2 for GAMECUBE.iso",
+    "imported_bank": "output/lane14-accept/assets",
+    "imported_bank_fallback": "output/p2-lane-verify/ground",
+    "regen_module": "experimental.pikmin2_ground_inverts_assets",
+    "output_root": "output/lane14-accept"
+  },
+  "runs": [
+    {"id": "sokkuri", "module": "experimental.pikmin2_sokkuri_behavior", "identity": "Sokkuri", "source_id": 79, "seconds": 25, "kind": "natural", "requires_fixture_build": false},
+    {"id": "armor", "module": "experimental.pikmin2_armor_behavior", "identity": "Armor", "source_id": 15, "seconds": 30, "kind": "natural", "requires_fixture_build": false},
+    {"id": "elecbug", "module": "experimental.pikmin2_elecbug_behavior", "identity": "ElecBug", "source_id": 28, "seconds": 30, "kind": "natural", "requires_fixture_build": false},
+    {"id": "elecbug_pair", "module": "experimental.pikmin2_elecbug_pair_behavior", "identity": "ElecBug", "source_id": 28, "seconds": 40, "kind": "natural", "requires_fixture_build": false},
+    {"id": "imomushi", "module": "experimental.pikmin2_imomushi_behavior", "identity": "Imomushi", "source_id": 65, "seconds": 30, "kind": "natural", "requires_fixture_build": false},
+    {"id": "tamago", "module": "experimental.pikmin2_tamago_behavior", "identity": "TamagoMushi", "source_id": 68, "seconds": 30, "kind": "natural", "requires_fixture_build": false},
+    {"id": "tamago_group", "module": "experimental.pikmin2_tamago_group_behavior", "identity": "TamagoMushi", "source_id": 68, "seconds": 30, "kind": "natural", "requires_fixture_build": false},
+    {"id": "hana", "module": "experimental.pikmin2_hana_behavior", "identity": "Hana", "source_id": 84, "seconds": 30, "kind": "natural", "requires_fixture_build": false},
+    {"id": "hana_residual", "module": "experimental.pikmin2_hana_residual_behavior", "identity": "Hana", "source_id": 84, "seconds": 30, "kind": "natural", "requires_fixture_build": false},
+    {"id": "elecbug_immunity", "module": "experimental.pikmin2_elecbug_immunity_behavior", "identity": "ElecBug", "source_id": 28, "seconds": 90, "kind": "natural-fixture", "requires_fixture_build": true, "expected_marker": "P2_ELECBUG_IMMUNITY_RUNTIME"},
+    {"id": "lifecycle", "module": "experimental.pikmin2_ground_lifecycle_behavior", "identity": "Sokkuri,Armor", "source_id": "79,15", "seconds": 150, "kind": "injected", "requires_fixture_build": true, "expected_marker": "PASS P2_GROUND_LIFECYCLE", "injection_marker": "P2_LIFECYCLE_INJECT species=Sokkuri,Armor injected_health=0 source=fixture not_natural_combat=1"}
+  ],
+  "gates": {
+    "A_identity": "expected pass (natural behavior runs)",
+    "B_behavior": "expected pass experimental P1-derived (module-recorded deviations)",
+    "C_combat_receivers": "natural for ElecBug emitter/immunity, Sokkuri flick, Armor bite; natural lethal player combat unproven",
+    "D_death_drop_transport": "corpse pass but injected; natural death and carry/reward untested",
+    "E_lifetime": "cleanup/re-entry pass but injected; not full scene/heap teardown",
+    "F_persistence": "untested here; owned by #397",
+    "G_product_mixed_scene": "untested here"
+  },
+  "open_gap": {
+    "natural_death": "No existing non-injecting fixture drives Pikmin combat to a natural ground-invertebrate death; the lifecycle fixture injects mHealth=0.",
+    "reward_delivery": "Ground arena is cargo-free with no Pod (pikmin2_batch2_core); reward/receipt is owned by the lifecycle/reward lane (#397).",
+    "follow_on": "A natural-combat fixture that waits for the live squad to kill the actor before observing corpse/carry is required before gate C/D may be claimed natural."
+  }
+}
