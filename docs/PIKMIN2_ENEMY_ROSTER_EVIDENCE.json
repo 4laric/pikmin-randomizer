@@ -16,7 +16,7 @@
       "eligibility": "candidate",
       "eligibility_reason": "native source FSM + flick/press receivers present; lifecycle and reward gates unverified on the pinned pair",
       "notes": [
-        "Reported combined-integration mechanics PASS (#456, PIKMIN2_FULL_IMPL_BLOCKERS.md); no per-gate pins recorded in this ledger pass.",
+        "Candidate mechanics require per-gate evidence pinned to the accepted root/native pair; this ledger does not assert a combined runtime PASS.",
         "Open: water/press/death, transport/reward, cleanup/re-entry (#165/#407)."
       ]
     },
@@ -26,7 +26,7 @@
       "eligibility": "candidate",
       "eligibility_reason": "native combat FSM + animation-event bite receiver present; weak-point/captain and lifecycle gates open",
       "notes": [
-        "Reported combined-integration mechanics PASS (#456, PIKMIN2_FULL_IMPL_BLOCKERS.md); source-inapplicable bridge states need explicit N/A.",
+        "Candidate mechanics require per-gate evidence pinned to the accepted root/native pair; this ledger does not assert a combined runtime PASS.",
         "Open: weak-point/captain interaction, death/corpse, transport/reward, cleanup/re-entry (#407)."
       ]
     },
@@ -41,10 +41,10 @@
       ]
     },
     "45": {
-      "native_module": "pc_p2_batch2",
+      "native_module": "pc_p2_snow",
       "owner_lane": "13",
       "eligibility": "candidate",
-      "eligibility_reason": "Snow Bulborb shares the batch-2 vehicle; not an admission of the whole Bulborb family",
+      "eligibility_reason": "Snow-specific native module present; not an admission of the whole Bulborb family",
       "notes": [
         "Snow success does not admit all Bulborbs; report revival/elemental variants separately (#120).",
         "Open: natural death/carry/revisit and variant rules."
@@ -66,7 +66,7 @@
       "eligibility": "candidate",
       "eligibility_reason": "death/corpse and natural territory/flick reported; ordinary transport/reward and revisit unverified on the pinned pair",
       "notes": [
-        "Miulin (Mamuta); reported death/corpse combined-integration PASS (#456, PIKMIN2_MAMUTA_DEATH.md) and worker natural-flick evidence (PIKMIN2_MAMUTA_NATURAL.md).",
+        "Miulin (Mamuta): historical corpse and worker natural-flick evidence is recorded in PIKMIN2_MAMUTA_DEATH.md and PIKMIN2_MAMUTA_NATURAL.md; current-pair runtime acceptance must be repeated.",
         "Worker evidence is not an integrated-build natural run; open transport/reward, revisit and attack1-draw abort (#221)."
       ]
     }

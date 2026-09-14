@@ -47,3 +47,5 @@ Lane 30 has multiple captain/captor issues; #242 is an open representative, not 
 Integrated lane-04 target intersection 36ceac6 as 6032863. 82 placement/roster/seed-bridge tests and 17 subtests passed. The target API derives constraint compatibility only, not accepted native terrain/route evidence; product consumers must still enforce admission and accepted placement. Native remains 41304fd7, unchanged; no build/export/runtime acceptance this sweep. New generated-session probe 7eb2c75 is queued with the earlier seed/staging consumer requirements.
 
 Every future sweep must end with this count, report the change from the preceding sweep, and state any uncertainty about worker-finished sessions separately. Refresh issue states and completed acceptance evidence; do not infer completion from a branch name or a PASS marker.
+
+Latest refresh: roster-readiness sweep, 33 open (change 0); see PIKMIN2_ROSTER_READINESS_SWEEP_437.md.
