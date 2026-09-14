@@ -162,3 +162,22 @@ param chain; unregistered controls are untouched.
 | Death/corpse (D) | PASS with injected attack | natural damage parity untested |
 | Transport/reward (D) | UNTESTED | P1 pellet fallback only |
 | Cleanup/re-entry (E) | PASS (manager reset/re-entry) | full scene/day reload untested |
+
+### Natural combat observation (lane 16, 2026-09-14)
+
+New private fixture `experimental/pikmin2_frog_combat.py` pins the 20-red starting
+squad in contact with registered Frog `201001` and observes P1's ordinary combat
+exchange with **no injected damage** over a fixed 1200-observation window.
+
+- Fixture `output/lane16-frog-runtime/fixture_combat3/fixture.exe` SHA-256
+  `6761ebd6...`; run `output/lane16-frog-runtime/run_combat3/stages/0627ff039c404bad914bc82f4eb7c433`:
+  PASS, exit 0, 960x540 centred.
+- Observed: the registered Frog's health falls from 800 to a 530 minimum under
+  natural Pikmin attacks (vulnerability), while the frog's landing press reduces
+  the squad from 20 to 1 (frog attack). Unregistered controls `201003`/`201004`
+  stay alive; no injected attack is used.
+- The 20-red default squad is not enough to kill the source-800 frog within the
+  window, so the frog's lethal path is still the injected-death fixture above; the
+  natural exchange itself is now observed.
+- Validator `tests/test_pikmin2_frog_combat.py` (3 tests) rejects a missing begin,
+  no vulnerability, no squad loss, a control loss, and a death without a corpse.

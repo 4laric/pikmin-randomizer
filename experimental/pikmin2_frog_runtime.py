@@ -57,9 +57,9 @@ public:int idle() override {
  }};
 '''
 
-def instrument(source):
+def instrument(source,app=None):
  start=source.index('class RoomApp : public PlugPikiApp {');end=source.index('int main(',start)
- return '#include <fstream>\n#include "Generator.h"\n#include "TekiPersonality.h"\n#include "Interactions.h"\n#include "pc_p2_frog.h"\n#include "Pcam/Camera.h"\n#include "Pcam/CameraManager.h"\n'+source[:start]+APP+source[end:]
+ return '#include <fstream>\n#include "Generator.h"\n#include "TekiPersonality.h"\n#include "Interactions.h"\n#include "pc_p2_frog.h"\n#include "Pcam/Camera.h"\n#include "Pcam/CameraManager.h"\n'+source[:start]+(app or APP)+source[end:]
 
 
 def instrument_family(source):
@@ -70,9 +70,9 @@ def instrument_family(source):
  if(seen.insert(key).second)std::printf("P2_FROG_DRAW species=%s corpse=%d clip=%s pose=%d\\n",ids[kind],int(corpse),name?name:"static",pose);
  '''+anchor)
 
-def build(native,build_dir,output,head,resume=False):
+def build(native,build_dir,output,head,resume=False,app=None):
     native=native.resolve();build_dir=build_dir.resolve();output=output.resolve()
-    room=output/'room.cpp';source=instrument((native/'tools/preview_p2_room.cpp').read_text())
+    room=output/'room.cpp';source=instrument((native/'tools/preview_p2_room.cpp').read_text(),app)
     if resume:
         if (output/'instrumentation.json').exists() or room.read_text()!=source:raise ValueError('Cannot resume completed or changed fixture')
         record=json.loads((output/'baseline/provenance.json').read_text())
@@ -123,14 +123,14 @@ def validate(text,code):
  return dict(passed=all(checks.values()),checks=checks,draws=draws,natural_deaths=[int(i) for i in re.findall(r'P2_FROG_NATURAL_DEATH id=(\d+)',text)],unmeasured=['natural combat','transport/rewards','full scene/day reload (manager reset/re-entry covered by cleanup_reentry)','P2 mechanics'])
 
 
-def run(assets,bank,output,exe):
+def run(assets,bank,output,exe,validator=None):
  stage=prepare(assets,bank,output/'stages');manifest=json.loads((stage/'frog-arena.json').read_text())
  (stage/'frog-positions.txt').write_bytes(''.join(f"{a['generator']} {a['native_type']} {int(i<2)} "+' '.join(map(str,a['position']))+'\n' for i,a in enumerate(manifest['actors'])).encode())
  env=dict(os.environ,PATH='C:/msys64/mingw64/bin;'+os.environ.get('PATH',''),SDL_AUDIODRIVER='dummy')
  with (stage/'native.log').open('w') as log:
   try:code=subprocess.run([str(exe.resolve()),'--experimental-pikmin2-room'],cwd=stage,env=env,stdout=log,stderr=subprocess.STDOUT,timeout=180).returncode
   except subprocess.TimeoutExpired:code='timeout'
- evidence=validate((stage/'native.log').read_text(errors='replace'),code)
+ evidence=(validator or validate)((stage/'native.log').read_text(errors='replace'),code)
  evidence.update(exit_code=code,executable=builder.snapshot([exe]),arena=builder.snapshot([stage/'frog-arena.json',stage/'frog-positions.txt',stage/'p2-frog.txt']))
  (stage/'runtime-evidence.json').write_text(json.dumps(evidence,indent=2));print(stage,flush=True);print(json.dumps(evidence),flush=True)
 
