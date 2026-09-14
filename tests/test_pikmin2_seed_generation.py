@@ -109,3 +109,41 @@ def test_diagnostic_explicit_cohort_stays_available():
     """Explicit-cohort binding is a bridge diagnostic, independent of product admission."""
     layout = bridge.resolve_layout("seed", "Player1", ["gen-001"], [SOKKURI])
     assert layout["bindings"] == [{"target": "gen-001", "source_id": SOKKURI, "enum_name": "Sokkuri"}]
+
+
+def test_shared_host_slot_must_not_silently_drop_an_admitted_identity(monkeypatch):
+    """A slot contract must fail closed when two admitted identities share only
+    one accepted host slot. Snow (45) and Dwarf Orange (44) reuse the same P1
+    Dwarf-Bulborb host slot, so a single accepted slot cannot cover both: the
+    resolver must raise rather than emit a binding set missing an admitted
+    identity.
+    """
+    doc = {
+        "schema": "p2-placement-v1",
+        "slots": [{"uid": 401, "label": "shared-host-slot", "stage": 1, "terrain": "ground",
+                   "radius": 300.0, "evidence": {"xyz": True, "terrain": True, "route": True}}],
+        "profiles": [
+            {"identity": "YellowKochappy", "terrains": ["ground"], "accepted_gates": ["xyz"]},
+            {"identity": "BlueKochappy", "terrains": ["ground"], "accepted_gates": ["xyz"]},
+        ],
+    }
+    monkeypatch.setattr(bridge, "admitted_ids", lambda roster: [45, 44])
+    with pytest.raises(ValueError, match="accepted placement target|binding"):
+        bridge.resolve_placement_layout("seed-a", "Player1", doc)
+
+
+@pytest.mark.parametrize("seed", ["seed-a", "seed-b", "seed-c"])
+def test_shared_host_slots_cover_both_identities_when_capacity_exists(monkeypatch, seed):
+    doc = {
+        "schema": "p2-placement-v1",
+        "slots": [{"uid": uid, "label": "shared-host-slot", "stage": 1, "terrain": "ground",
+                   "radius": 300.0, "evidence": {"xyz": True, "terrain": True, "route": True}}
+                  for uid in [401, 402]],
+        "profiles": [{"identity": identity, "terrains": ["ground"], "accepted_gates": ["xyz"]}
+                     for identity in ["YellowKochappy", "BlueKochappy"]],
+    }
+    monkeypatch.setattr(bridge, "admitted_ids", lambda roster: [45, 44])
+    result = bridge.resolve_placement_layout(seed, "Player1", doc)
+    assert {row["source_id"] for row in result["bindings"]} == {44, 45}
+    assert len({row["target"] for row in result["bindings"]}) == 2
+    assert bridge.resolve_placement_layout(seed, "Player1", doc) == result
