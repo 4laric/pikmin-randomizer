@@ -114,3 +114,37 @@ on #219 / integration #186.
   identity per species) unverified in-scene; needs native visual binding first.
 - Parallel lanes (#220 Breadbug, #221 Mamuta) untouched; no shared-file needs
   arose in this batch.
+
+## Maintained-line fixture adoption + cleanup/re-entry (lane 17, 2026-09-14)
+
+The batch-4 behavior fixture was previously only on the lane branch; the
+maintained root (`codex/p2-main-review`) carried the older placement-only
+`experimental/pikmin2_kogane_runtime.py` plus the split
+`pikmin2_kogane_binding_runtime.py`. This slice ports the parameterized runtime
+and behavior module onto the maintained line and adds the reload gate.
+
+- `pc_port/pc_p2_kogane.cpp`/`.h` at native maintained `9735870c` are
+  byte-identical to the `kogane-b4@fe780120` candidate; **no native change** was
+  needed for this slice.
+- Ported: `pikmin2_kogane_runtime.py` `instrument(source, app=APP)`,
+  `build(..., app=None)`, `run(..., sidecar=None, validator=None)`;
+  `experimental/pikmin2_kogane_behavior.py`; `tests/test_pikmin2_kogane_behavior.py`.
+- **Cleanup/re-entry gate**: at observation 50 the fixture calls the public
+  `pc_p2_kogane_reset()` and checks `pc_p2_kogane_source_id()` returns -1 for
+  all three actors (stale registration rejected), then calls
+  `pc_p2_kogane_setup()` and checks the three bindings rebuild.
+  Marker: `P2_KOGANE_CLEANUP registered_before=3 cleared=3 reentry=3`.
+- Fixture baseline adopted: `ensure_pikmin_squad` 20-red overlay, 960x540
+  centred window log line present, live squad, no extinction screen.
+
+### Acceptance (private build, fresh integration baseline)
+
+- Native source/HEAD: `output/p2-main-review/native` @
+  `9735870cea769169446c524b6ae0cbdb07ed920e` (clean); build
+  `output/p2-upstream433-build` (`ninja -n pikmin_pc`: no work to do).
+- Fixture `output/lane17-kogane-behavior/fixture2/fixture.exe` SHA-256
+  `9216f82254171c52d5164dd24ef4922bd891e974361da426e72f16f089e17dba`.
+- Run `output/lane17-kogane-behavior/run2/stages/108e9f0f503c440297426a47d62977c6`:
+  **PASS** (11/11 checks; census pellets=4 nectar=14 pikis=19).
+- Remaining gaps: material/texture fidelity, treasure override, cave
+  relocation, and full scene/day reload (only manager reset/re-entry is covered).
