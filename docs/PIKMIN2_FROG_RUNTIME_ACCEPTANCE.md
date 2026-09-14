@@ -40,7 +40,9 @@ expected head and unchanged fixture source; it refuses completed evidence.
 | Corpse lifecycle/render | PASS with injected stimulus | Two accepted `InteractAttack(navi,nullptr,10000,false)` calls; native death animation and two live PelletView corpses, both source final-dead poses observed |
 | Natural combat parity | UNTESTED | Ordinary jumping/attacks and captain damage visible, but no source-P2 mechanics/contact assertions |
 | Carry/rewards | UNTESTED | No transport assigned or Pod credit claimed; P1 pellet drops visible |
-| Reset/re-entry and absent-profile launch | UNTESTED | Controls show per-actor fallback only; no full teardown/reload |
+| Reset/re-entry | PASS (new) | `P2_FROG_CLEANUP registered_before=4 cleared=4 reentry=4`; `pc_p2_frog_reset()` rejects stale registrations, `pc_p2_frog_setup()` rebuilds them; controls stay unregistered |
+| Absent-profile launch | UNTESTED | no absent-profile run in this slice |
+| Full scene/day reload | UNTESTED | manager reset/re-entry covered; full scene/save transition not |
 
 Before attacks, both imports have 24 sampled native motion observations and
 nontrivial XYZ movement. Frog Y spans0–136.7171; MaroFrog30–135.7601. These are
@@ -76,3 +78,23 @@ carried-corpse alignment still need dedicated evidence.
 Four focused evidence-parser tests pass, including rejecting missing corpses,
 duplicate birth rows and animation seen only after injected attacks. No player
 save, shared build, native export, commit or QA bundle was modified.
+
+## Maintained-line reset/re-entry adoption (lane 16 Frog/MaroFrog, 2026-09-14)
+
+This slice ports the frog runtime fixture to the maintained pair and adds the
+manager reset/re-entry gate; required `Tadpole`/`Catfish` species-FSM work is
+owned by the active species lane #407 and is not touched here.
+
+- Fixture baseline adopted: 20-red `ensure_pikmin_squad` overlay, live squad,
+  960x540 centred window log line present, no extinction screen.
+- Fixture `output/lane16-frog-runtime/fixture/fixture.exe` SHA-256
+  `7a483a7987216eef997425f0b1fcaaf7666e85a44e1881e2d4ad831a7796ddaf`
+  (`instrumentation` status built) against native maintained
+  `9735870cea769169446c524b6ae0cbdb07ed920e` and fresh integration build
+  `output/p2-upstream433-build`.
+- Run `output/lane16-frog-runtime/run1/stages/4e105fdf4c604feb8241639348d8bd7c`:
+  PASS, exit 0; `p2-frog.txt` config SHA-256
+  `0c929f7b0ac5c7375d0df2c277f8a574c71e61b9dcd9eaac4e0f1148071065ec`
+  (matches the documented final import04 bank).
+- Remaining: natural combat parity, transport/rewards, P2 mechanics, absent
+  profile launch and full scene/day reload.
