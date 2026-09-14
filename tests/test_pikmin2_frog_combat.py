@@ -34,6 +34,18 @@ class FrogCombatTests(unittest.TestCase):
 
     def test_press_markers_are_reported(self):
         self.assertEqual(validate(self.sample(), 0)['press_markers'], {'Frog': 1, 'MaroFrog': 0})
+        self.assertEqual(validate(self.sample(), 0)['land_markers'], {'Frog': 0, 'MaroFrog': 0})
+        self.assertEqual(validate(self.sample(), 0)['land_attribution'], [])
+
+    def test_land_markers_are_reported_without_becoming_a_hard_pass(self):
+        row = 'P2_FROG_LAND species=Frog radius=23.0 bittered=0 pikmin=2 navi=1 behavior=P1_proxy\n'
+        report = validate(self.sample() + row, 0)
+        self.assertTrue(report['passed'])
+        self.assertEqual(report['land_markers'], {'Frog': 1, 'MaroFrog': 0})
+        self.assertEqual(report['land_attribution'],
+                         [{'species': 'Frog', 'radius': 23.0, 'bittered': False,
+                           'pikmin': 2, 'navi': 1}])
+        self.assertFalse(validate(self.sample().replace('controls=1', 'controls=0') + row, 0)['passed'])
 
 
 if __name__ == '__main__':

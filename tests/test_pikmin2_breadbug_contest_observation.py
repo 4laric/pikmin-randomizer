@@ -39,12 +39,38 @@ def test_native_offset_and_source_strength_are_reported_separately():
     assert report['native_hook'] is False
 
 
-def test_native_contest_marker_is_recorded_when_present():
-    report = observation.observe(ROW + '\n' + observation.native_marker())
+def test_native_contest_marker_reports_carriers_next_to_source_strength():
+    marker = observation.native_marker(generator=186081, carriers=2)
+    report = observation.observe(ROW + '\n' + marker)
     assert report['native_hook'] is True
     assert report['native_offset_power'] == 2.0
+    assert report['native_power'] == 2.0
+    assert report['native_carriers'] == 2
+    assert report['native_generator'] == 186081
     assert report['source_strength'] == 1.5
+    # The read-only native carrier count is not the P2 contest strength.
+    assert report['native_carriers'] != report['source_strength']
     assert report['p2_contest_semantics'] is False
+
+
+def test_absent_native_marker_leaves_carriers_unknown():
+    report = observation.observe(ROW)
+    assert report['native_hook'] is False
+    assert report['native_carriers'] is None
+    assert report['native_generator'] is None
+    assert report['native_offset_power'] == 2.0
+
+
+def test_latest_carrier_marker_wins_and_legacy_marker_still_parses():
+    changed = '\n'.join((ROW,
+                         'P2_BREADBUG_CONTEST generator=186081 native_power=2 carriers=0',
+                         'P2_BREADBUG_CONTEST generator=186081 native_power=2 carriers=2'))
+    assert observation.observe(changed)['native_carriers'] == 2
+    legacy = observation.observe(
+        ROW + '\nP2_BREADBUG_CONTEST native_power=2 source_strength=1.5')
+    assert legacy['native_hook'] is True
+    assert legacy['native_carriers'] is None
+    assert legacy['native_offset_power'] == 2.0
 
 
 def test_source_strength_uses_the_pellet_bounds():

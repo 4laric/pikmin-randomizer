@@ -31,6 +31,18 @@ def test_sidecar_matches_native_parser_contract(tmp_path):
     assert text.endswith('\n') and not text.endswith('\n\n')
 
 
+def test_sidecar_emits_optional_treasure_standins(tmp_path):
+    text = behavior.native_sidecar(bank(tmp_path), treasures={219001: 1, 219002: 5})
+    lines = text.split('\n')
+    assert lines[3:6] == ['219001 9', '219002 10', '219003 11']
+    assert lines[6:8] == ['treasure 219001 1', 'treasure 219002 5']
+    assert lines[8] == 'move 3 15 0 7 14'
+    with pytest.raises(ValueError, match='1 or 5'):
+        behavior.native_sidecar(bank(tmp_path), treasures={219001: 3})
+    with pytest.raises(ValueError, match='registered actor'):
+        behavior.native_sidecar(bank(tmp_path), treasures={219099: 1})
+
+
 def test_sidecar_rejects_noncanonical_mapping(tmp_path):
     with pytest.raises(ValueError, match='exactly'):
         behavior.native_sidecar(bank(tmp_path), {219001: 9, 219002: 10, 219003: 9})

@@ -28,6 +28,10 @@ PARAMS = {
     },
 }
 
+# Audited source collision head radii (#167): Frog 23, MaroFrog 21. The landing
+# press is centred on the actor; the head joint XZ offset is under 1.5 units.
+HEAD_RADIUS = {'Frog': 23.0, 'MaroFrog': 21.0}
+
 FSM_STATES = ('Dead', 'Wait', 'Turn', 'Jump', 'JumpWait', 'Fall', 'Attack',
               'Fail', 'TurnToHome', 'GoHome')
 
@@ -88,6 +92,35 @@ def landing_press_victims(bittered, grounded_pikmin, grounded_navi):
                 'pressed': 0}
     return {'bittered': False, 'pressed_pikmin': pikmin, 'pressed_navi': navi,
             'pressed': len(pikmin) + len(navi)}
+
+
+def head_radius(kind):
+    """Return the audited source head collision radius for one species."""
+    name, _ = _params(kind)
+    return HEAD_RADIUS[name]
+
+
+def landing_press_receiver(species, grounded_pikmin, grounded_navi, bittered, radius):
+    """Resolve a source landing press and the radius used.
+
+    ``radius`` is the observed landing/receiver radius for this event. The
+    returned ``radius_used`` is the audited source head radius for ``species``
+    and ``radius_matches_source`` attributes whether the observed radius agrees,
+    so a native ``P2_FROG_LAND`` row can be judged without asserting it. The
+    source rule presses every grounded Pikmin/Navi on contact unless the frog is
+    bittered; ``outcome`` is ``'pressed'``, ``'bittered'`` or ``'no_receiver'``.
+    """
+    name, _ = _params(species)
+    if radius is not None and (not isinstance(radius, (int, float)) or radius <= 0):
+        raise ValueError('Landing radius must be positive')
+    used = HEAD_RADIUS[name] if radius is None else float(radius)
+    victims = landing_press_victims(bittered, grounded_pikmin, grounded_navi)
+    outcome = 'bittered' if bittered else ('pressed' if victims['pressed'] else 'no_receiver')
+    return {'species': name, 'source_radius': HEAD_RADIUS[name], 'radius_used': used,
+            'radius_matches_source': used == HEAD_RADIUS[name],
+            'bittered': bool(bittered), 'outcome': outcome,
+            'pressed_pikmin': victims['pressed_pikmin'], 'pressed_navi': victims['pressed_navi'],
+            'pressed': victims['pressed']}
 
 
 def retargets_captains(kind):

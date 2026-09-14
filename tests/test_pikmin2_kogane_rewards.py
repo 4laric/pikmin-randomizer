@@ -22,6 +22,23 @@ def test_source_drop_table_matches_the_audited_flip_rows():
     assert rewards.flip_drop(11, 3, demo_flag=False) == ('doping', 'HONEY_Y', 3)
 
 
+def test_carried_treasure_standin_overrides_only_the_first_flip():
+    # The native host has no P2 treasure item, so a configured number-pellet value
+    # stands in for the cave first-flip treasure (createTreasureItem).
+    assert rewards.flip_drop(9, 1, carried_treasure=5) == 5
+    assert rewards.flip_drop(10, 1, carried_treasure=1) == 1
+    assert rewards.flip_drop(9, 2, carried_treasure=5) == rewards.flip_drop(9, 2)
+    assert rewards.flip_drop(11, 3, carried_treasure=1) == rewards.flip_drop(11, 3)
+
+
+def test_register_carried_treasure_suppresses_the_table_on_the_first_flip():
+    account = rewards.BeetleFlips(ledger())
+    first = account.register('seed-a', 9, '219001', 1, carried_treasure=5)
+    assert first['granted'] is True and first['drop'] == 5
+    second = account.register('seed-a', 9, '219001', 2, carried_treasure=5)
+    assert second['granted'] is True and second['drop'] == rewards.flip_drop(9, 2)
+
+
 def test_unknown_ids_and_out_of_range_flips_are_rejected():
     with pytest.raises(ValueError, match='Unknown reward beetle id'):
         rewards.flip_drop(12, 1)
