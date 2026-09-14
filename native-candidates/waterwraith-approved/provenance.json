@@ -8,7 +8,7 @@
   "native": {
     "base": "f14c6851473ac1161be56c8b98f4f905232f3635",
     "base_branch": "approved native line (#456)",
-    "head": "923b9443b438c7af3b3a87df7e43d530b6590474",
+    "head": "6e34bd4b7ea05f8a9a173faed609b885415630af",
     "local_branch": "opencode/p2-lane31-approved",
     "pushed": false,
     "dirty_state": "clean",
@@ -23,7 +23,8 @@
     "fc8055408932ad76760f9c523230dc2b54088475",
     "bd8a7200dafeb8cf0b4429b23a49f08c5a726d75",
     "0d8a8c452c2df32fd54ef73f0c10c3202bae4e1a",
-    "923b9443b438c7af3b3a87df7e43d530b6590474"
+    "923b9443b438c7af3b3a87df7e43d530b6590474",
+    "6e34bd4b7ea05f8a9a173faed609b885415630af"
   ],
   "files": [
     "CMakeLists.txt",
@@ -56,11 +57,16 @@
   "patches": {
     "full": {
       "path": "native-candidates/waterwraith-approved/waterwraith-approved-full.patch",
-      "size": 185215,
-      "sha256": "bf1bde2b032c9bb1f23c9799b2992759bf79b6a602e96e7ed5b173d1a0f80063"
+      "size": 186871,
+      "sha256": "1700387816e25f4532e3b922f4e4f6d8c563dd38fbf20526c672d20b83d2625c"
     },
-    "series_count": 9,
+    "series_count": 10,
     "series_dir": "native-candidates/waterwraith-approved/patches"
+  },
+  "native_tests": {
+    "targets": ["p2_waterwraith_policy_test", "p2_waterwraith_actor_test", "p2_waterwraith_attack_policy_test"],
+    "result": "ctest -R waterwraith: 3/3 passed (assert-based fixtures kept active with -UNDEBUG in the Release gate)",
+    "note": "Registered by commit 6e34bd4b; does not change the pikmin_pc game target."
   },
   "shared_hooks_for_lane_01": [
     "CMakeLists.txt: the 6 pc_p2_waterwraith_* TUs build into a new STATIC library libp2_waterwraith_lane31.a, linked before pikmin_legacy. Reason: adding them directly to PC_PORT_SOURCES pushes the pikmin_pc link over the Windows command-line threshold, so CMake emits @CMakeFiles/pikmin_pc.rsp, which scripts/build_pikmin2_fixture.py fails closed on. If lane 01 prefers inline TUs, the fixture builder must gain response-file support.",
@@ -74,6 +80,7 @@
   },
   "runtime": {
     "private_build": "output/native-lane31-approved-build",
+    "fixture_pinned_native_head": "923b9443b438c7af3b3a87df7e43d530b6590474",
     "production_executable_sha256": "e3702bbc7c4d06fc8ccfbdcae0b1915c632a6ce98460236634ad82ac89b79744",
     "ninja_dry_run": "ninja: no work to do.",
     "fixture_dir": "output/lane31-approved-encounter-fixture-04",

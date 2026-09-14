@@ -1,8 +1,8 @@
 From ef0e2f65d3550f797dddf8a8a20bd03ae3a9283f Mon Sep 17 00:00:00 2001
 From: 4laric <4laric@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 02:20:00 -0400
-Subject: [PATCH 3/9] Waterwraith: BlackMan/Tyre dependent-roller ownership and
- vulnerability policy (#175)
+Subject: [PATCH 03/10] Waterwraith: BlackMan/Tyre dependent-roller ownership
+ and vulnerability policy (#175)
 
 ---
  pc_port/pc_p2_waterwraith.cpp | 165 ++++++++++++++++++++++++++++++++++

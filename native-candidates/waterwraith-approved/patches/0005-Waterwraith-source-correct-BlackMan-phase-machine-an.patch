@@ -1,7 +1,7 @@
 From ac442633c5e1445fa45bddffcb6c21b053947069 Mon Sep 17 00:00:00 2001
 From: 4laric <4laric@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 03:34:57 -0400
-Subject: [PATCH 5/9] Waterwraith: source-correct BlackMan phase machine and
+Subject: [PATCH 05/10] Waterwraith: source-correct BlackMan phase machine and
  host-driven locomotion (#443)
 
 ---

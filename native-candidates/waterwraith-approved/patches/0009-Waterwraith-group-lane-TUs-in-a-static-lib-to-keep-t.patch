@@ -1,7 +1,7 @@
 From 923b9443b438c7af3b3a87df7e43d530b6590474 Mon Sep 17 00:00:00 2001
 From: 4laric <4laric@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 09:41:38 -0400
-Subject: [PATCH 9/9] Waterwraith: group lane TUs in a static lib to keep the
+Subject: [PATCH 09/10] Waterwraith: group lane TUs in a static lib to keep the
  fixture link inline (#443)
 
 ---
