@@ -66,12 +66,23 @@ explicit:
 - `P2_LIFECYCLE_REENTRY id=353001 frame=384 reused=0` after
   `pc_p2_batch2_rebind()`; control alive.
 
-So the death funnel is exercised end-to-end (death → corpse → respawn →
-re-entry, no pointer reuse), but this fixture cannot isolate "engine cleared the
-registration before the fixture's rebind": the corpse legitimately keeps its
-entry, and the re-entry path resets the maps anyway. An isolated engine-forget
-observation needs a non-corpse death, or a probe issued after the corpse pellet
-is removed and before any rebind. Recorded **PARTIAL / not isolated**, not FAIL.
+So a passive probe cannot isolate the seam: the corpse legitimately keeps its
+entry and the re-entry path resets the maps. A marker-gated direct probe in the
+same fixture therefore drives the death funnel explicitly and measures the
+registration immediately:
+
+```
+P2_LIFECYCLE_CLEANUP id=353001 live=1 registered=1   # corpse still present
+P2_FORGET_PROBE before=1
+P2_FORGET_PROBE after_engine_dokill=0                # pc_p2_forget_teki ran
+PASS P2_FORGET_PROBE
+```
+
+`BTeki::doKill` -> `pc_p2_forget_teki` clears the stale key (before 1 -> after
+0) with no fixture call to `*_forget`. Run directory
+`output/tracks/p2-lanes789/flora-arena-04/84b24e6a1378437f86892b2fb6bf2bfe`,
+exit 0; the marker `p2-forget-probe.txt` is absent for the ordinary lifecycle
+run, which stays at `PASS P2_LIFECYCLE_RUNTIME`.
 
 The tolerant `pc_p2_batch2_rebind()`, registration queries
 (`pc_p2_batch2_count`/`_registered`, `pc_p2_long_legs_*`) and corpse-registry
