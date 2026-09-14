@@ -60,7 +60,10 @@ Policy test (engine-double).
   receiver classes now exist on the port (see
   [PIKMIN2_RECEIVER_PATHS.md](PIKMIN2_RECEIVER_PATHS.md) §7); the gas/denki
   enemy emitters (`GasHiba`, `ElecHiba`, `GasOtakara`, `ElecOtakara`) remain
-  family-lane work, so electricity/gas are compile-backed, not runtime-proven.
+  family-lane work, so the receivers are not driven by a natural hazard; the
+  Pikmin-side electric/gas immunity gate itself is now runtime-proven by the
+  receivers fixture (see [PIKMIN2_RECEIVER_PATHS.md](PIKMIN2_RECEIVER_PATHS.md)
+  §8).
 - Live Bulbmin identity is wired (`Piki::mP2Bulbmin`, `pc_p2_species`/
   `pc_p2_make_bulbmin`), but nothing spawns Bulbmin yet, so the matrix is
   compile-backed rather than runtime-proven. Cave persistence needs a versioned
