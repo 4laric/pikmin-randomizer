@@ -74,3 +74,28 @@ stage reload and full P2 behavior remain untested.
 Validation: 13 Python tests and 4 subtests passed across the actor runtime,
 actor installer, visual installer and asset extractor suites. Private fixture
 compilation/link and the actual native process exited successfully.
+
+## Maintained-line reset/re-entry + injected death cleanup (lane 18, 2026-09-14)
+
+Extends the small PanModoki (`TEKI_Collec`) proxy fixture with the two gates
+left `UNTESTED` above. No native change; `pc_p2_breadbug_actor` is used through
+its existing public API.
+
+- Driver `scripts/test_pikmin2_breadbug_actor_native.py` now builds the fixture
+  from `--native/--build-dir/--head` (with `--prefix room-prefix.inc`) or runs a
+  prebuilt `--exe`.
+- Fixture `scripts/pikmin2_breadbug_actor_fixture.cpp`:
+  - at frame 300 `pc_p2_breadbug_actor_reset()` (proxy draw declines),
+  - then `pc_p2_breadbug_actor_setup()` re-registers (second `P2_BREADBUG_ACTOR_READY`),
+  - then injected death `actor->mHealth=0`, and the proxy draw declines once dead.
+- Evidence: run `output/lane18-breadbug-runtime2/92e45733ab604788841e9ca75e9cc3cf`
+  (fixture SHA-256 `261bf516167001c66f6f85151e836892596aa3d953ca18dc4594d735f679b6b2`):
+  birth `-150,30,1850`, max displacement 469.16 over 300 moving frames,
+  `P2_BREADBUG_ACTOR_REENTRY`, `P2_BREADBUG_ACTOR_KILL frame=306`,
+  `P2_BREADBUG_ACTOR_DEATH corpse=0`, PASS.
+- **Corpse finding**: on injected death the P1 `TEKI_Collec` host leaves **no
+  PelletView corpse** (`corpse=0`). Cleanup/unmapping passes; the P2 corpse
+  carry/reward is still unimplemented and is not claimed.
+- **Still lane-06/engine-gated**: P2 contested cargo, nest treasure storage and
+  exactly-once AP receipt. Interface request posted on #441; this lane will not
+  fork the Giant module's contest logic.
