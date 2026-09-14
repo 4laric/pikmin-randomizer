@@ -44,10 +44,10 @@
       "native_module": "pc_p2_dwarf_orange",
       "owner_lane": "13",
       "eligibility": "candidate",
-      "eligibility_reason": "Dwarf Orange (BlueKochappy) native module + opt-in source FSM present; generated-session chain and natural placement/reward admission remain",
+      "eligibility_reason": "Dwarf Orange (BlueKochappy) native module present; behavior is P1-host AI (gate B PARTIAL); generated-session chain and natural placement/reward admission remain",
       "notes": [
         "Sibling of Snow (YellowKochappy 45); both share the KochappyBase source family but are distinct source identities. A dwarf variant is a source identity, never a helper or alias.",
-        "Worker evidence is a private fixture PASS, not an admission: gates B-D are P1-proxy, E (lifetime) and G (product/mixed scene) remain open (PIKMIN2_DWARF_ORANGE_NATIVE.md).",
+        "Worker evidence is a private fixture PASS, not an admission: gate B PARTIAL, C/D P1-proxy PASS, E (lifetime) and G (product/mixed scene) BLOCKED (PIKMIN2_DWARF_ORANGE_NATIVE.md). Facts transcribed by lane 02 from that doc; pending lane 13 confirmation.",
         "Admission requires the generated-session acceptance chain; this row keeps the admitted roster empty."
       ]
     },

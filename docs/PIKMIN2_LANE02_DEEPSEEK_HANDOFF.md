@@ -35,6 +35,8 @@ Ordered commits (root only):
 
 ```
 5e9d674 lane02: candidate opt-in validation path + Dwarf Orange cohort row (#438)
+eb04222 lane02: DeepSeek handoff (#438)
+(review fix commit follows: evidence-ledger wording, consumer labelled test-only)
 ```
 
 No native commit: this slice is entirely root-side (roster/schema/evidence/test).
@@ -134,6 +136,7 @@ py -3.12 scripts/generate_pikmin2_roster_revision.py --check \
   classification or source IDs, so the roster revision and native header are
   unchanged; no native commit is warranted and none was made (empty commits
   avoided).
+- Review note: `require_opt_in`/`opt_in_validation_cohort` currently have no non-test caller; the consumer is test-only until lane 03 wires `resolve_opt_in_layout`.
 - "One real consumer" is the seed bridge's explicit-cohort path fed by
   `opt_in_validation_cohort`, demonstrating end-to-end that a private validation
   run is possible while `resolve_admitted_layout` stays fail-closed.
