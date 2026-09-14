@@ -196,6 +196,29 @@ bytes. This is a launcher-level connection proven with synthetic retail inputs;
 ordinary in-game acceptance still requires a real content manifest and a native
 gameplay run.
 
+## Consuming existing family installers
+
+`experimental.pikmin2_family_install` is the lane 05 consumer of family-owned
+installers. `FAMILY_MODULES` registers the families whose installer already has
+the shared `install(source, run, actors) -> receipt` shape (aquatic, bombsarai,
+cannon_projectile, dweevil, flora, flying, frog, ground_inverts, long_legs,
+mamuta, sheargrub, snagret, waterwraith); bespoke-signature families need an
+adapter. It does not convert or extract assets.
+
+`install_family(name, source, run, actors, retail_assets=None)` prepares the run's
+private model destination (`<run>/assets/dataDir/courses/pikmin2room`) via the same
+overlay scheme, calls the family installer, and writes a lane 05 receipt. The
+launcher consumes it:
+
+```powershell
+py -3.12 -m randomizer run MANIFEST --session-dir DIR --assets ASSETS \
+    --family-install frog --family-source BANK --family-actor 201001:Frog
+```
+
+`--family-install` and `--content-manifest` are mutually exclusive for now because
+each owns the private asset tree. Family conversion/registration stays with the
+family lanes and lane 01; this module only sequences installers.
+
 ## Validation
 
 ```powershell

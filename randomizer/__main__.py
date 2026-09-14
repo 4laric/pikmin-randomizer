@@ -47,6 +47,9 @@ def main():
     run.add_argument("--assets", type=Path)
     run.add_argument("--server")
     run.add_argument("--content-manifest", type=Path, help="Lane 05 content manifest; staged into the run's private asset tree before launch")
+    run.add_argument("--family-install", help="Lane 05 family installer name (an existing family installer to consume)")
+    run.add_argument("--family-source", type=Path, help="Family bank/imported source directory for --family-install")
+    run.add_argument("--family-actor", action="append", default=[], metavar="ID:SPECIES", help="generator_id:Species for --family-install (repeatable)")
     status = sub.add_parser("status", help="Show collected checks and the bestiary")
     status.add_argument("manifest", type=Path)
     status.add_argument("--session-dir", type=Path, required=True)
@@ -114,8 +117,10 @@ def main():
                 else:
                     print(text)
         else:
+            family_actors = [(int(value.split(':', 1)[0]), value.split(':', 1)[1])
+                             for value in args.family_actor]
             launch(manifest, args.session_dir.resolve(), args.exe, args.assets, args.server,
-                   args.content_manifest)
+                   args.content_manifest, args.family_install, args.family_source, family_actors)
 
 
 if __name__ == "__main__":
