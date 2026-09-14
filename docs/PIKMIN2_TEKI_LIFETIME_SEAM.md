@@ -39,6 +39,12 @@ from both the death funnel and slot reuse:
   helper instead of its inline 18-call list. Adding a family is a one-line change
   in `pc_p2_teki_lifetime.cpp`.
 - `CMakeLists.txt` adds `pc_port/pc_p2_teki_lifetime.cpp` to `PC_PORT_SOURCES`.
+- `GameCoreSection::exitStage` (`native/src/plugPikiKando/gameCoreSection.cpp`)
+  now calls the new `pc_p2_reset_all_teki()` while all creatures/managers are
+  still valid. Before this, `exitStage` released only the four kurage families,
+  and `TekiMgr::reset()` (the full-family list) has no runtime caller on this
+  line, so every other family's `BTeki*` registration map survived into the
+  destroyed `TekiMgr` and the next stage.
 
 Per-family `_reset()` stays for stage teardown; this only changes the death
 funnel. `_forget` remains an idempotent `map::erase`, so double-clearing is a
@@ -48,12 +54,12 @@ no-op and calls for unregistered/derived actors are harmless.
 
 - Root branch `opencode/p2-lanes67-next`, base `codex/p2-main-review` @ `3851d4b`.
 - Native branch `opencode/p2-lanes67-native`, base (approved) `f14c6851`, ordered
-  commits `ec6e1448` (lifetime seam), `4c3b32e6` (lane-06 receipt surface).
-  Private worktree `output/lane67-native`.
+  commits `ec6e1448` (lifetime seam), `4c3b32e6` (lane-06 receipt surface),
+  `87740f5d` (stage-exit full reset). Private worktree `output/lane67-native`.
 - Private build `output/lane67-native-build` (Ninja/Release/MinGW,
   `PIKMIN_NATIVE_JAUDIO=ON`): `[545/545] Linking CXX executable bin\nectar.exe`,
   exit 0; `ninja -n` -> `no work to do`. `nectar.exe` SHA-256
-  `F0356477373EF45BAAA0F5975A107D4BEA1CC0D9B81866A050F5B3FF56831E4F`.
+  `52806082D6A73BADD77AEB72C5632BD74F4C99EA0E4DFDCB53C6D78E5023112C`.
 - CTest `p2_receipt_test` and `p2_cargo_contest_test` pass; the #397 lifecycle
   fixture API is unchanged and was not modified here.
 
@@ -135,15 +141,30 @@ re-registered cleanly. Exe SHA-256
 `output/lane67-reuse-run/dd728cd8dde54762aea19d7a397d361e/native-reuse-probe.log`
 sha256 `348B0FE80B344350B8F51B03A640BAB109DD32A391CDBDBABA7C99E1D3FFFD08`.
 
+Stage-exit teardown probe (native `87740f5d`, the `pc_p2_reset_all_teki` fix;
+`core->exitStage()`; `PASS P2_TEARDOWN_PROBE`, exit 0):
+
+```text
+P2_REUSE_PROBE rebound_registered=1 alive=1
+P2_TEARDOWN_PROBE before=6 after=0     # full stage exit cleared every family map
+```
+
+Before the fix, six family registrations survived `exitStage()` into the
+destroyed `TekiMgr`; now the stage boundary clears all of them. Exe SHA-256
+`BF911739DEF17FB6511F10FD0CC4AEDFC17E19558AD9EAA816D805D9313E1E81`; log
+`output/lane67-teardown-run/53ed039e5cb0403bafe4dd33cc7ff002/native-teardown-probe.log`
+sha256 `FBBA7012A33A7DEFEC6EA2DFDCC7D0AAF7FF7DD5AF0BAB6744EBA1BFC8585881`.
+
 ### Gates closed / still open
 
 - **Closed (runtime):** natural death funnel, engine-driven `pc_p2_forget_teki`
   (no fixture `_forget` call), engine pool **address reuse** on the freed slot,
-  late birth (respawned actor re-registered after start), control actor
-  unaffected (`control=1`), window/squad baseline.
-- **Still open:** **full scene/day teardown** (the manager `reset()` path is
-  narrower evidence than a scene exit/new-scene boundary). Needs a hard
-  teardown/new-scene probe on a GL host.
+  late birth (respawned actor re-registered after start), **full stage-exit
+  teardown** (all family maps cleared), control actor unaffected (`control=1`),
+  window/squad baseline.
+- **Still open:** re-entry into a *new* gameplay scene after teardown (this probe
+  ends at the stage boundary; a next-day/new-stage re-entry run is the remaining
+  item), and the #186 shared-semantics review + lane 01 export.
 
 Two-line divergence note: the approved native baseline `f14c6851` still differs
 from the maintained room-preview native tip; lane 01 owns reconciling the
@@ -151,8 +172,8 @@ material/queen paths. This candidate is pinned to the approved baseline.
 
 ## Non-claims
 
-## Non-claims
+No gameplay/reward semantics change. No corpse-path change. The stage-exit reset
+only clears private family state; it does not alter Teki/Piki ownership or the
+save. The runtime fixtures here are P1-proxy placements, not source P2 FSM/drop
+parity.
 
-No gameplay/reward semantics change. No corpse-path change. This does not make a
-stale key impossible to *read* by a future iteration; it makes the documented
-contract true. Does not add new family registrations.
