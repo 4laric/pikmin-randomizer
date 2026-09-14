@@ -11,6 +11,18 @@
 #include "pc_p2_batch2.h"
 #include "pc_p2_sokkuri.h"
 #include "pc_p2_armor.h"
+#include "pc_p2_elecbug.h"
+#include "pc_p2_tamago.h"
+#include "pc_p2_imomushi.h"
+#include "pc_p2_hana.h"
+#include "pc_p2_mar.h"
+#include "pc_p2_hanachirashi.h"
+#include "pc_p2_tadpole.h"
+#include "pc_p2_catfish.h"
+#include "pc_p2_dangomushi.h"
+#include "pc_p2_jigumo.h"
+#include "pc_p2_umimushi.h"
+#include "pc_p2_snakejoint.h"
 #include "pc_p2_batch3.h"
 #include "pc_p2_long_legs.h"
 #endif
@@ -455,6 +467,18 @@ void BTeki::update()
 	pc_p2_sokkuri_update(this);
 	pc_p2_armor_update(this);
 	pc_p2_kogane_update(this);
+	pc_p2_elecbug_update(this);
+	pc_p2_tamago_update(this);
+	pc_p2_imomushi_update(this);
+	pc_p2_hana_update(this);
+	pc_p2_mar_update(this);
+	pc_p2_hanachirashi_update(this);
+	pc_p2_tadpole_update(this);
+	pc_p2_catfish_update(this);
+	pc_p2_dangomushi_update(this);
+	pc_p2_jigumo_update(this);
+	pc_p2_umimushi_update(this);
+	pc_p2_snakejoint_update(this);
     pc_p2_snow_update(this,NSystem::getFrameTime());
 #endif
 	if (mDeadState == 0) {

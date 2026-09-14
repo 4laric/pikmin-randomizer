@@ -23,6 +23,18 @@
 #include "pc_p2_kogane.h"
 #include "pc_p2_sokkuri.h"
 #include "pc_p2_armor.h"
+#include "pc_p2_elecbug.h"
+#include "pc_p2_tamago.h"
+#include "pc_p2_imomushi.h"
+#include "pc_p2_hana.h"
+#include "pc_p2_mar.h"
+#include "pc_p2_hanachirashi.h"
+#include "pc_p2_tadpole.h"
+#include "pc_p2_catfish.h"
+#include "pc_p2_dangomushi.h"
+#include "pc_p2_jigumo.h"
+#include "pc_p2_umimushi.h"
+#include "pc_p2_snakejoint.h"
 #endif
 
 #if defined(PIKI_PC_PORT)
@@ -413,16 +425,30 @@ public:
 	f32 getParameterF(int idx) {
 		const f32 value=mTekiParams->getF(idx);
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
-		const f32 kogane=pc_p2_armor_param_f(this,idx,pc_p2_sokkuri_param_f(this,idx,pc_p2_kogane_param_f(this,idx,value)));
-		if(idx==TPF_Life)return pc_p2_kochappy_max_health(this,pc_p2_snow_max_health(this,kogane));
-		return kogane;
+		const f32 kogane=pc_p2_kogane_param_f(this,idx,value);
+		const f32 sokkuri=pc_p2_sokkuri_param_f(this,idx,kogane);
+		const f32 armor=pc_p2_armor_param_f(this,idx,sokkuri);
+		const f32 elecbug=pc_p2_elecbug_param_f(this,idx,armor);
+		const f32 tamago=pc_p2_tamago_param_f(this,idx,elecbug);
+		const f32 imomushi=pc_p2_imomushi_param_f(this,idx,tamago);
+		const f32 hana=pc_p2_hana_param_f(this,idx,imomushi);
+		const f32 mar=pc_p2_mar_param_f(this,idx,hana);
+		const f32 hanachirashi=pc_p2_hanachirashi_param_f(this,idx,mar);
+		const f32 tadpole=pc_p2_tadpole_param_f(this,idx,hanachirashi);
+		const f32 catfish=pc_p2_catfish_param_f(this,idx,tadpole);
+		const f32 dangomushi=pc_p2_dangomushi_param_f(this,idx,catfish);
+		const f32 jigumo=pc_p2_jigumo_param_f(this,idx,dangomushi);
+		const f32 umimushi=pc_p2_umimushi_param_f(this,idx,jigumo);
+		const f32 snakejoint=pc_p2_snakejoint_param_f(this,idx,umimushi);
+		if(idx==TPF_Life)return pc_p2_kochappy_max_health(this,pc_p2_snow_max_health(this,snakejoint));
+		return snakejoint;
 #endif
 		return value;
 	} // see TekiFloatParams enum
 	int getParameterI(int idx) {
 		const int value=mTekiParams->getI(idx);
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
-		if(idx==TPI_CorpseType)return pc_p2_kogane_corpse_type(this,value);
+		if(idx==TPI_CorpseType)return pc_p2_tamago_corpse_type(this,pc_p2_kogane_corpse_type(this,value));
 #endif
 		return value;
 	} // see TekiIntParams enum

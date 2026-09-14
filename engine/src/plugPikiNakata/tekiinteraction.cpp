@@ -4,6 +4,7 @@
 #include "teki.h"
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
 #include "pc_p2_sokkuri.h"
+#include "pc_p2_elecbug.h"
 #endif
 
 /**
@@ -36,6 +37,9 @@ bool InteractAttack::actTeki(Teki* teki) immut
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
 	if (pc_p2_kogane_attacked(teki)) {
 		return true; // registered beetles take no attack damage (P2: only flips)
+	}
+	if (pc_p2_elecbug_attacked(teki)) {
+		return true; // registered Anode Beetles are invulnerable until flipped
 	}
 #endif
 	return teki->interact(TekiInteractionKey(TekiInteractType::Attack, this));
@@ -73,7 +77,12 @@ bool InteractSwallow::actTeki(Teki*) immut
 bool InteractPress::actTeki(Teki* teki) immut
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
-	if (pc_p2_sokkuri_pressed(teki, mOwner)) return true;
+	if (pc_p2_sokkuri_pressed(teki, mOwner)) {
+		return true; // registered Skitter Leaves are crushed into their source Press state
+	}
+	if (pc_p2_elecbug_pressed(teki, mOwner)) {
+		return true; // registered Anode Beetles flip into their source Reverse state
+	}
 	if (pc_p2_kogane_pressed(teki, mOwner)) {
 		return true; // registered beetles flip instead of the host pressed state
 	}

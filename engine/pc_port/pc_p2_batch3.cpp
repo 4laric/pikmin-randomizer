@@ -11,6 +11,14 @@
 // stay tracked on the family issues and #186.
 #include "pc_p2_batch3.h"
 #include "pc_p2_animation.h"
+#include "pc_p2_mar.h"
+#include "pc_p2_hanachirashi.h"
+#include "pc_p2_tadpole.h"
+#include "pc_p2_catfish.h"
+#include "pc_p2_dangomushi.h"
+#include "pc_p2_jigumo.h"
+#include "pc_p2_umimushi.h"
+#include "pc_p2_snakejoint.h"
 #include "pc_bbft.h"
 #include "teki.h"
 #include "Generator.h"
@@ -63,6 +71,7 @@ int expectedType(const std::string& family, const std::string& species) {
     if (family == "aquatic") {
         if (species == "Catfish") return TEKI_Namazu;   // P1 Water Dumple ancestor
         if (species == "Tadpole") return TEKI_Otama;    // P1 Wogpole ancestor
+        if (species == "Jigumo") return TEKI_Chappy;    // Hermit Crawmad: no P1 counterpart, placement vehicle only
     }
     if (family == "flying") {
         if (species == "Mar" || species == "Hanachirashi") return TEKI_Mar;  // P1 Puffy Blowhog
@@ -130,16 +139,30 @@ bool parseBank(const std::string& path,
             || word.compare(word.size() - 7, 7, "_BANK_1") != 0) fail("invalid bank header");
     while (in >> word) {
         if (word == "species") {
-            std::string species;
-            unsigned long long id = 0;
-            if (!(in >> species >> id)) fail("invalid bank species row");
+            std::string species, identity;
+            if (!(in >> species >> identity)) fail("invalid bank species row");
+            // Batch-3 families currently differ: aquatic/snagret write the
+            // numeric enemy id, the flying install writes `clips <count>`.
+            if (identity == "clips") {
+                int clips = 0;
+                if (!(in >> clips) || clips < 0) fail("invalid bank species row");
+            } else {
+                char* end = nullptr;
+                std::strtoull(identity.c_str(), &end, 10);
+                if (end == identity.c_str() || *end != '\0') fail("invalid bank species row");
+            }
             out.emplace(species, std::vector<std::pair<std::string, int>>());
         } else if (word == "clip") {
-            std::string species, name, events, status, marker;
+            std::string species, name, events, status, marker, value;
             int frames = 0, poses = 0;
-            if (!(in >> species >> name >> frames >> events >> marker >> poses >> status)
+            if (!(in >> species >> name >> frames >> events >> marker >> poses)
                     || marker != "poses" || poses < 0 || poses > 64
                     || !out.count(species)) fail("invalid bank clip row");
+            // The flying install writes a literal `status` token before the
+            // value; aquatic/snagret write the value directly.
+            if (!(in >> value)) fail("invalid bank clip row");
+            if (value != "status") status = value;
+            else if (!(in >> status)) fail("invalid bank clip row");
             out[species].emplace_back(name, poses);
         } else {
             fail("invalid bank token");
@@ -235,9 +258,18 @@ void pc_p2_batch3_setup() {
                 loadBank(family, species, clipRows->second);
         }
     }
-    for (const auto& entry : actors)
-        std::printf("P2_BATCH3_BIND generator=%u key=%s visual_only=1 native_fsm=unimplemented\n",
-                    entry.first->mGenerator ? entry.first->mGenerator->_70 : 0, entry.second.c_str());
+    for (const auto& entry : actors) {
+        if (entry.second == "flying|Mar" || entry.second == "flying|Hanachirashi"
+                || entry.second == "aquatic|Tadpole" || entry.second == "aquatic|Catfish"
+                || entry.second == "aquatic|Jigumo" || entry.second == "aquatic|UmiMushi"
+                || entry.second == "snagret|DangoMushi" || entry.second == "snagret|SnakeCrow"
+                || entry.second == "snagret|SnakeWhole")
+            std::printf("P2_BATCH3_BIND generator=%u key=%s visual_only=0 native_fsm=implemented\n",
+                        entry.first->mGenerator ? entry.first->mGenerator->_70 : 0, entry.second.c_str());
+        else
+            std::printf("P2_BATCH3_BIND generator=%u key=%s visual_only=1 native_fsm=unimplemented\n",
+                        entry.first->mGenerator ? entry.first->mGenerator->_70 : 0, entry.second.c_str());
+    }
     std::printf("P2_BATCH3_BANK total_mod_bytes=%zu species=%zu\n", bytesTotal, banks.size());
 }
 
@@ -256,9 +288,24 @@ bool pc_p2_batch3_draw(BTeki* actor, Graphics& gfx, const Matrix4f& matrix, bool
     static const char* const waitClips[] = {"wait1", "wait", "wait2", "kagebozu_wait", "kagebozu_wait2"};
     const int motion = actor->mTekiAnimator->getCurrentMotionIndex();
     const char* name = nullptr;
+    float forcedPhase = -1.0f;
+    // Family-owned source behavior: a registered Mar or Tadpole forces the exact
+    // source clip/phase for its FSM state instead of the generic P1-velocity pick.
+    if (!corpse) {
+        const char* forced = nullptr;
+        float phase = 0.0f;
+        if ((pc_p2_mar_clip(actor, forced, phase) || pc_p2_hanachirashi_clip(actor, forced, phase)
+                || pc_p2_tadpole_clip(actor, forced, phase) || pc_p2_catfish_clip(actor, forced, phase)
+                || pc_p2_dangomushi_clip(actor, forced, phase) || pc_p2_jigumo_clip(actor, forced, phase)
+                || pc_p2_umimushi_clip(actor, forced, phase) || pc_p2_snakejoint_clip(actor, forced, phase))
+                && bank.clips.count(forced)) {
+            name = forced;
+            forcedPhase = phase;
+        }
+    }
     if (corpse) {
         name = firstClip(bank, deadClips, int(sizeof(deadClips) / sizeof(deadClips[0])));
-    } else if (motion == TekiMotion::Damage || motion >= TekiMotion::Type1) {
+    } else if (!name && (motion == TekiMotion::Damage || motion >= TekiMotion::Type1)) {
         name = firstClip(bank, attackClips, int(sizeof(attackClips) / sizeof(attackClips[0])));
     }
     if (!name) {
@@ -272,7 +319,8 @@ bool pc_p2_batch3_draw(BTeki* actor, Graphics& gfx, const Matrix4f& matrix, bool
     const auto& poses = bank.clips.at(name);
     if (poses.empty()) return false;
     const int frames = actor->mTekiAnimator->getFrameCount();
-    const float phase = frames > 1 ? actor->mTekiAnimator->getCounter() / (frames - 1) : 0.f;
+    const float phase = forcedPhase >= 0.0f ? forcedPhase
+        : (frames > 1 ? actor->mTekiAnimator->getCounter() / (frames - 1) : 0.f);
     const p2animation::Clip& timing = bank.timing.at(name);
     const size_t index = timing.index(phase, corpse);
     Shape* shape = poses.at(index < poses.size() ? index : poses.size() - 1);

@@ -203,6 +203,18 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_projectile_host.cpp
     pc_port/pc_p2_rock_hazard.cpp
     pc_port/pc_p2_projectiles.cpp
+    pc_port/pc_p2_elecbug.cpp
+    pc_port/pc_p2_tamago.cpp
+    pc_port/pc_p2_imomushi.cpp
+    pc_port/pc_p2_hana.cpp
+    pc_port/pc_p2_mar.cpp
+    pc_port/pc_p2_hanachirashi.cpp
+    pc_port/pc_p2_tadpole.cpp
+    pc_port/pc_p2_catfish.cpp
+    pc_port/pc_p2_dangomushi.cpp
+    pc_port/pc_p2_jigumo.cpp
+    pc_port/pc_p2_umimushi.cpp
+    pc_port/pc_p2_snakejoint.cpp
     pc_port/pc_p2_hardlanes.cpp
     pc_port/pc_p2_bombsarai_arena.cpp
     pc_port/pc_p2_bombsarai_blast.cpp

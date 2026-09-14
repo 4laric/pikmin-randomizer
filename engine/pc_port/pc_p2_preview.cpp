@@ -15,10 +15,22 @@
 #include "pc_p2_batch2.h"
 #include "pc_p2_sokkuri.h"
 #include "pc_p2_armor.h"
-#include "pc_p2_batch3.h"
-#include "pc_p2_long_legs.h"
+#include "pc_p2_elecbug.h"
+#include "pc_p2_tamago.h"
+#include "pc_p2_imomushi.h"
+#include "pc_p2_hana.h"
+#include "pc_p2_mar.h"
+#include "pc_p2_hanachirashi.h"
+#include "pc_p2_tadpole.h"
+#include "pc_p2_catfish.h"
+#include "pc_p2_dangomushi.h"
+#include "pc_p2_jigumo.h"
+#include "pc_p2_umimushi.h"
+#include "pc_p2_snakejoint.h"
 #include "pc_p2_projectiles.h"
 #include "pc_p2_hardlanes.h"
+#include "pc_p2_batch3.h"
+#include "pc_p2_long_legs.h"
 #include "pc_p2_preview.h"
 #include "pc_bbft.h"
 #include "Pellet.h"
@@ -222,10 +234,22 @@ void pc_p2_preview_setup() {
     pc_p2_batch2_setup();
     pc_p2_sokkuri_setup();
     pc_p2_armor_setup();
+    pc_p2_projectiles_setup();
+    pc_p2_elecbug_setup();
+    pc_p2_tamago_setup();
+    pc_p2_imomushi_setup();
+    pc_p2_hana_setup();
+    pc_p2_mar_setup();
+    pc_p2_hanachirashi_setup();
+    pc_p2_tadpole_setup();
+    pc_p2_catfish_setup();
+    pc_p2_dangomushi_setup();
+    pc_p2_jigumo_setup();
+    pc_p2_umimushi_setup();
+    pc_p2_snakejoint_setup();
+    pc_p2_hardlanes_setup();
     pc_p2_batch3_setup();
     pc_p2_long_legs_setup();
-    pc_p2_projectiles_setup();
-    pc_p2_hardlanes_setup();
     pc_p2_purple_setup();
     pc_p2_white_setup();
     pc_p2_cave_setup();
