@@ -502,6 +502,8 @@ def main(argv=None):
 
     if args.command == "records":
         prepared = load_json(args.prepared)
+        if prepared.get("candidate_scope"):
+            raise AcceptanceError("candidate evidence is pre-admission only; use a candidate report, not product acceptance records")
         stage_results = {"generate": {"status": qa.PASS, "reason": "real product generation"}}
         stage_results.update(load_json(args.observations))
         path = Path(args.prepared)

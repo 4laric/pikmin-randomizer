@@ -40,6 +40,13 @@ Experimental admission may retain declared P1-derived AI, timing or animation ap
 
 Historical Snow evidence includes physical Pod delivery with a P1 host; it does not prove the current generated campaign path. Dwarf Orange has combined bind/draw evidence and partial behavior, not accepted natural delivery. At this dispatch revision the admitted enemy roster is still empty.
 
+## Assignment 4 does not wait for admission
+
+Use [the private Snow candidate QA runbook](PIKMIN2_CANDIDATE_QA.md) to gather
+pre-admission evidence on the published combined native build. Normal generation
+remains gated. The native generated binding is already integrated; waiting for
+lane 02 to admit Snow before testing it creates a circular dependency.
+
 ## Mandatory first actions for every session
 
 1. Read AGENTS.md, this guide, the latest integration sweep, your parent issue and current #186 claims. Reuse your existing scoped issue; update its acceptance criteria and assign it to the authenticated account. Record the actual executing agent/session and implementation owner accurately.
