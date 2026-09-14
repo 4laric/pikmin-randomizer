@@ -17,6 +17,7 @@
 #include "pc_p2_animation.h"
 #include "pc_bbft.h"
 #include "teki.h"
+#include "Interactions.h"
 #include "Generator.h"
 #include "Shape.h"
 #include "Texture.h"
@@ -130,6 +131,33 @@ int countPikiWithin(const Vector3f& pos, float radius) {
         if (dx * dx + dz * dz <= rSq) ++count;
     }
     return count;
+}
+
+// Port substitution: the P1 engine has no InteractPress callback, so the
+// landing key-2 "all four feet" press is applied as a single InteractFlick
+// (knockback + source press damage) to grounded Pikmin within the foot radius.
+// The source foot sphere radius is not in the audit; 60 units is the documented
+// port value and applies only on the landing-key-2 event.
+void applyFootCrush(BTeki* actor, const Vector3f& pos, const std::string& species,
+                    unsigned generator, float damage, float radius) {
+    if (!pikiMgr || damage <= 0.0f) return;
+    int hit = 0;
+    Iterator it(pikiMgr);
+    CI_LOOP(it) {
+        Piki* p = static_cast<Piki*>(*it);
+        if (!p || !p->isAlive()) continue;
+        const Vector3f q = p->getPosition();
+        const float dx = q.x - pos.x, dz = q.z - pos.z;
+        if (dx * dx + dz * dz >= radius * radius) continue;
+        const float angle = std::atan2(q.x - pos.x, q.z - pos.z);
+        p->stimulate(InteractFlick(actor, 100.0f, damage, angle));
+        ++hit;
+    }
+    if (hit > 0) {
+        std::printf("P2_LONG_LEGS_CRUSH species=%s generator=%u pikmin=%d\n",
+                    species.c_str(), generator, hit);
+        std::fflush(stdout);
+    }
 }
 
 bool parseActors(const std::string& path, std::map<unsigned, std::string>& out) {
@@ -265,9 +293,13 @@ bool pc_p2_long_legs_draw(BTeki* actor, Graphics& gfx, const Matrix4f& matrix, b
         } else {
             state.animSeconds += dt;
         }
-        if (out.footCrush)
+        if (out.footCrush) {
             std::printf("P2_LONG_LEGS_FOOT species=%s generator=%u\n", state.species.c_str(),
                         state.generator);
+            std::fflush(stdout);
+            applyFootCrush(actor, pos, state.species, state.generator,
+                           state.parms.pressDamage, 60.0f);
+        }
         if (out.fireShell)
             std::printf("P2_LONG_LEGS_SHELL species=%s generator=%u\n", state.species.c_str(),
                         state.generator);
