@@ -162,3 +162,29 @@ birth invariants (invulnerable, no carcass, two spawn points, 0.05 scale step),
 carried-Egg reward boundary, lifecycle/drop sequences, gate coverage,
 acceptance-contract markers, and the log validator (cycle, drop path, exactly
 one Egg drop, wrong ID, extinction, non-text).
+
+## 8. Ported onto the approved baseline (r2)
+
+The lane-15 candidate was originally based on `f9e139d8`. It is now ported onto
+the current approved native baseline `f14c6851` so lane 01 can integrate it
+without an older-base merge:
+
+- Native branch `opencode/p2-lane15-qurione-r2` @ `7a6e7885` (private, **not**
+  pushed), base `f14c6851`. The three Qurione commits were cherry-picked;
+  conflicts in `include/teki.h` and `tekibteki.cpp` (Jellyfloat/Kogane/Sokkuri
+  hooks) were resolved additively: the Qurione `param_f` wraps the existing
+  parameter chain and `pc_p2_qurione_update` joins the maintained `#if
+  PIKI_PC_PORT` update block.
+- Private build `output/native-lane15-qurione-r2-build`, Ninja/MinGW Release,
+  JAudio ON; `[544/544]` link; `ninja -n` no work. `nectar.exe` SHA-256
+  `C370D61B147D82CFAFDD53FC6784F4904D02F254BBD9D0561566D07504E1234C`.
+- Runtime (`output/p2-qurione-lane15/r2-run/`, centred 960x540, spawned via the
+  existing lane-15 arena): `P2_QURIONE_BIND generator=203001 source_id=16`,
+  `P2_ENEMY_READY species=Qurione … behavior=native source_FSM=implemented
+  reward=P2_Egg`, `P2_QURIONE_EGG action=attach`, `P2_QURIONE_BANK poses=21`,
+  states `appear → move → drop → dead` with `P2_QURIONE_EGG action=drop`.
+  The appear/return (`disappear → stay`) cycle was previously observed on the
+  older candidate; this short direct run (timeout-killed, exit 1) did not
+  re-reach it, and the drop path was reached here.
+- Gates unchanged: 1/2 PASS; 3 source-backed N/A; 4 PASS at source level; 5
+  marker-level (physical Egg is lane 20); 6 blocked (#397).
