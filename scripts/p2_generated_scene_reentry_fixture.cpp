@@ -139,6 +139,7 @@ public:
                 if (actor->mGenerator && pc_randomizer_p2_bound_source(actor->mGenerator)==44) ++bound;
             }
             countPiki(&live);
+            if (!postReloadFrames) std::printf("P2_REENTRY_COUNTS registered=%d bound=%d live=%d\n", registered, bound, live);
             require(registered==1 && bound==1, "exactly one rebound source44 actor");
             require(live>0, "live reentry squad");
             if (++postReloadFrames==90) {
@@ -165,6 +166,9 @@ public:
                 require(pc_randomizer_checked(TARGET), "checkpoint requires existing earned reward");
                 oldGeneration=pc_p2_scene_generation();
                 auto* core=findCore(gameflow.mGameSection); require(core!=nullptr,"game core");
+                // The production day-end path persists one-shot generators before
+                // exitStage. Without this, limit-file flags survive but actors do not.
+                core->cleanupDayEnd();
                 core->exitStage();
                 require(!pc_p2_dwarf_orange_registered(target), "old checkpoint registry cleared");
                 target=nullptr; corpse=nullptr; reloading=true;
