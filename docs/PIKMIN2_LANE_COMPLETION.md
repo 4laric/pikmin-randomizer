@@ -43,3 +43,7 @@ Use [cohort preparation integration](PIKMIN2_SWEEP_COHORT_437.md) for accepted c
 | 33 | [#444](https://github.com/4laric/pikmin-randomizer/issues/444) | Acceptance | Whole-cohort mixed-scene performance, re-entry and restart on the final integrated pair. |
 
 Every sweep must report newly integrated handoffs, unresolved merge blockers separately from implementation/acceptance, and the full-lane count with its change. Never decrement the count from a worker-finished message or an isolated PASS marker.
+
+## Source 44 candidate progress (2026-09-14)
+
+[Dwarf Orange generated run](PIKMIN2_DWARF_ORANGE_NATURAL_RUN_461.md) records natural engine death, corpse delivery/check and cleanup on native a2f4b9dc after staged squad deployment. Revisit/restart, player-input sign-off and early binding review remain open; no roster admission or full-lane completion.
