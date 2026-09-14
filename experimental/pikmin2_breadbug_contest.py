@@ -9,11 +9,20 @@ does not itself mutate a save or an actor. See
 """
 import math
 
-CARRY_CHANNEL = 'PCS_Unk2'
+CARRY_CHANNEL = 'PCS_Unk2'          # Breadbug drag channel (PCS_Unk2)
+PIKMIN_CHANNEL = 'PCS_Carry'        # Ordinary Pikmin carry channel
+PCS_IDLE = 0xFFFF
 MAX_TREASURE_SLOTS = 15
 TAKEOVER_STALL_SECONDS = 0.5
 NEST_DROP_HEIGHT = 10.0
 THROW_UP_RING_RADIUS = 40.0
+
+NEST_JIGUMO = 0                     # enemyNest.cpp:60-67 crawmad nest model (Jigumo 64)
+NEST_BREADBUG = 1                   # both Breadbug species map here
+NEST_DEATH_FADE_FRAMES = 80         # enemyNestMgr.cpp:143-152
+
+DRAG = 'drag'                       # Breadbug wins the contest (Back)
+PULLED = 'pulled'                   # Pikmin win the contest (Pulled)
 
 EAT = 'eat'
 DROP = 'drop'
@@ -21,6 +30,21 @@ RECOVER = 'recover'
 DIGEST = 'digest'
 
 RELEASE_REASONS = (EAT, DROP, RECOVER, DIGEST)
+
+# Audited per-variant source parameters. Anchors: retail enemyparm.txt proper
+# block 2 (fp03 carry speed, fp06 press damage), general block 1 (fp00 health),
+# PanModoki.h/OoPanModoki.h weight thresholds (ip01 11/1), panModoki.cpp
+# :1738-1744 Giant Purple-only press, and fp00 nest scale.
+VARIANT_PARAMS = {
+    'small': {'id': 38, 'name': 'PanModoki', 'health': 1100.0,
+              'weight_threshold': 11, 'carry_speed': 35.0, 'press_damage': 200.0,
+              'nest_scale': 1.0, 'purple_only_press': False,
+              'nest_house_type': NEST_BREADBUG},
+    'giant': {'id': 40, 'name': 'OoPanModoki', 'health': 2000.0,
+              'weight_threshold': 1, 'carry_speed': 45.0, 'press_damage': 100.0,
+              'nest_scale': 2.0, 'purple_only_press': True,
+              'nest_house_type': NEST_BREADBUG},
+}
 
 
 def carry_strength(min_pikis, max_pikis):
@@ -111,3 +135,114 @@ def reconcile_death(held_slots, released):
     return {'held': held_slots, 'returned': released,
             'lost': held_slots - released if released <= held_slots else 0,
             'duplicated': released > held_slots}
+
+
+def _strength(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError('Invalid contest strength')
+    if not math.isfinite(value) or value < 0:
+        raise ValueError('Invalid contest strength')
+    return float(value)
+
+
+def variant_params(variant):
+    """Return a copy of the audited small (38) / giant (40) source parameters.
+
+    ``small``: health 1100, weight threshold ip01=11, carry speed fp03=35,
+    press damage fp06=200, nest scale 1.0 and an ordinary (non-Purple) press.
+    ``giant``: health 2000, threshold ip01=1, carry speed 45, press damage 100,
+    nest scale 2.0 and a Purple-only press. Both map to ``NEST_BREADBUG``.
+    """
+    if variant not in VARIANT_PARAMS:
+        raise ValueError('Unknown breadbug variant: ' + repr(variant))
+    return dict(VARIANT_PARAMS[variant])
+
+
+def press_damage(variant, *, purple):
+    """Source press damage, or 0.0 when the variant rejects the press.
+
+    The Giant Breadbug rejects any non-Purple Pikmin press
+    (``panModoki.cpp:1738-1744``); the small Breadbug accepts every press.
+    """
+    if type(purple) is not bool:
+        raise ValueError('purple must be a bool')
+    params = variant_params(variant)
+    if params['purple_only_press'] and not purple:
+        return 0.0
+    return params['press_damage']
+
+
+def arbitrate(claim_strength, challenger_strength,
+              claim_channel=CARRY_CHANNEL, challenger_channel=PIKMIN_CHANNEL):
+    """Single-channel contest arbitration (``PelletCarry::pullable``).
+
+    The current holder claims on ``claim_channel`` with ``claim_strength``; the
+    incoming pull uses ``challenger_channel`` with ``challenger_strength``.
+    An idle claim (``claim_channel is None``) or a same-channel challenge is
+    accepted: the challenger wins without a stall. A cross-channel challenge
+    needs a *strictly greater* strength; on success it takes over with a 0.5 s
+    pellet stall (``TAKEOVER_STALL_SECONDS``), otherwise the claim defends.
+
+    Returns ``{'winner', 'reason', 'cross_channel', 'stall_seconds', ...}``
+    where ``winner`` is ``'claim'`` or ``'challenger'``.
+    """
+    claim = _strength(claim_strength)
+    challenger = _strength(challenger_strength)
+    if claim_channel is None:
+        return {'winner': 'challenger', 'reason': 'idle', 'cross_channel': False,
+                'stall_seconds': 0.0, 'claim_strength': claim,
+                'challenger_strength': challenger}
+    if claim_channel == challenger_channel:
+        return {'winner': 'challenger', 'reason': 'same_channel',
+                'cross_channel': False, 'stall_seconds': 0.0,
+                'claim_strength': claim, 'challenger_strength': challenger}
+    if challenger > claim:
+        return {'winner': 'challenger', 'reason': 'stronger', 'cross_channel': True,
+                'stall_seconds': TAKEOVER_STALL_SECONDS, 'claim_strength': claim,
+                'challenger_strength': challenger}
+    return {'winner': 'claim', 'reason': 'defended', 'cross_channel': True,
+            'stall_seconds': 0.0, 'claim_strength': claim,
+            'challenger_strength': challenger}
+
+
+def contest_frames(breadbug_strength, carrier_power_by_frame):
+    """Per-frame winner sequence for a Breadbug dragging contested cargo.
+
+    ``carrier_power_by_frame`` is the Pikmin carrier strength for each frame
+    (each ordinary carrier contributes 1). While the Breadbug holds the channel
+    it drags (``DRAG``/Back); once the carriers strictly out-pull it, it is
+    dragged (``PULLED``). Cross-channel takeover is judged each frame.
+    """
+    breadbug = _strength(breadbug_strength)
+    frames = []
+    for power in carrier_power_by_frame:
+        result = arbitrate(breadbug, _strength(power))
+        frames.append(PULLED if result['winner'] == 'challenger' else DRAG)
+    return tuple(frames)
+
+
+def nest_ownership(owner_alive, house_type):
+    """Parent-bound nest ownership/lifetime state.
+
+    Both Breadbug species assign ``NEST_BREADBUG=1``; only the Jigumo crawmad
+    maps to ``NEST_JIGUMO=0`` (``enemyNest.cpp:60-67``). The nest exists only
+    while its owner lives and is never autonomous.
+    """
+    if type(owner_alive) is not bool:
+        raise ValueError('owner_alive must be a bool')
+    if house_type not in (NEST_JIGUMO, NEST_BREADBUG):
+        raise ValueError('Unknown nest house type')
+    return {'owner_alive': owner_alive, 'house_type': house_type,
+            'owner': 'breadbug' if house_type == NEST_BREADBUG else 'jigumo',
+            'parent_bound': True, 'active': owner_alive}
+
+
+def nest_collision_after_death(frames_since_kill):
+    """True while the dead nest still has collision.
+
+    ``killNest`` sets ``mDeathTimer=1``; collision stays up for 80 frames and is
+    then dropped (``enemyNestMgr.cpp:143-152``).
+    """
+    if type(frames_since_kill) is not int or frames_since_kill < 0:
+        raise ValueError('Invalid frames-since-kill')
+    return frames_since_kill < NEST_DEATH_FADE_FRAMES

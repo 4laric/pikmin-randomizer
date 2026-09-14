@@ -93,3 +93,23 @@ def resolve_contest(ledger, seed, identity, actor, encounter, reason, *, held_sl
     granted = grant_defeat(ledger, seed, identity, actor, encounter)
     return {'granted': granted, 'reason': DEATH, 'held': held_slots,
             'returned': len(positions)}
+
+
+def resolve_press(ledger, seed, identity, actor, encounter, *, variant, purple,
+                  held_slots=0):
+    """Resolve a Pikmin press interruption against the ledger.
+
+    A press only releases cargo when the variant accepts it: the Giant Breadbug
+    rejects non-Purple pressers (``panModoki.cpp:1738-1744``), so a resisted
+    press neither drops the cargo nor grants a reward. An accepted press is an
+    interruption ``drop``: it releases in place and never grants a check.
+    """
+    damage = contest.press_damage(variant, purple=purple)
+    if damage <= 0.0:
+        return {'granted': False, 'reason': 'resisted', 'damage': 0.0,
+                'released': False, 'held': held_slots, 'returned': 0}
+    outcome = resolve_contest(ledger, seed, identity, actor, encounter,
+                              contest.DROP, held_slots=held_slots)
+    outcome['damage'] = damage
+    outcome['released'] = True
+    return outcome

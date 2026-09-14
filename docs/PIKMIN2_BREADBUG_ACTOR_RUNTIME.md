@@ -158,3 +158,57 @@ lane-06 ledger: only a death grants the family reward (once), and it returns the
 thrown-back held treasure; `eat`/`drop`/`recover`/`digest` grant nothing. Four
 tests cover interruption/digest non-grants, exactly-once death grant, an unknown
 outcome and a helper identity. The rewards suite is now 14 tests.
+
+## Small-vs-Giant arbitration and nest ownership (lane 18, 2026-09-14)
+
+`experimental/pikmin2_breadbug_contest.py` now carries the audited variant table,
+the single-channel arbitration and the parent-bound nest lifetime. Root tests:
+`tests/test_pikmin2_breadbug_contest.py` (14 passing) plus the rewards consumer
+suite (16 passing).
+
+- **Variant parameters:** `variant_params('small'|'giant')` returns a copy of
+  `VARIANT_PARAMS` — health 1100/2000, weight threshold ip01 11/1, carry speed
+  fp03 35/45, press damage fp06 200/100, nest scale 1.0/2.0, and
+  `purple_only_press` False/True. Both species set
+  `nest_house_type = NEST_BREADBUG (1)`.
+- **Arbitration:** `arbitrate(claim_strength, challenger_strength)` implements
+  the source `PelletCarry::pullable`/`pull` rule. An idle or same-channel
+  challenge is accepted with no stall; a cross-channel challenge wins only with
+  strictly greater strength and then stalls the pellet `TAKEOVER_STALL_SECONDS`
+  (0.5 s, 15 frames). Defaults model the Breadbug `PCS_Unk2` drag against the
+  Pikmin `PCS_Carry` channel.
+- **Frame sequence:** `contest_frames(breadbug_strength, carrier_power_by_frame)`
+  returns `DRAG` (Back) while the Breadbug holds and `PULLED` once the carriers
+  strictly out-pull it, reusing `arbitrate` per frame.
+- **Nest ownership:** `nest_ownership(owner_alive, house_type)` reports the
+  parent-bound nest state (`NEST_BREADBUG=1` for both Breadbug species,
+  `NEST_JIGUMO=0` for the Jigumo crawmad, `enemyNest.cpp:60-67`).
+  `nest_collision_after_death(frames_since_kill)` keeps collision for 79 frames
+  and drops it at/after `NEST_DEATH_FADE_FRAMES=80` (`enemyNestMgr.cpp:143-152`).
+- **Purple-only press:** `press_damage(variant, purple=...)` returns 0.0 for a
+  non-Purple Giant press (`panModoki.cpp:1738-1744`) and 100.0 for a Purple one;
+  the small Breadbug accepts either (200.0). `pikmin2_breadbug_rewards.resolve_press`
+  applies that gate before the ledger: a resisted press neither drops cargo nor
+  grants; an accepted press is a `drop` interruption and still grants nothing.
+
+## What remains (lane 18)
+
+- **Small-Breadbug interruption is a real gap, not an omission.** The small
+  proxy `native/pc_port/pc_p2_breadbug_actor.cpp` has **no cargo owner to
+  release**: it holds only `BreadbugProxyActor{id, started, lastMotion}` and the
+  read-only cargo visual bank (`pc_p2_breadbug_cargo_phase.h`); cargo is the P1
+  `TEKI_Collec` host's own `getCreaturePointer(2)` state, which the proxy does
+  not own or mutate. Adding a release log here would fabricate ownership, so no
+  native change was made. The interruption model above stays host-side until the
+  P2 FSM/cargo port gives the small actor ownership (or the giant module's
+  `endStickTeki`/`clearCreaturePointer` release path is reused under an agreed
+  lane-07 lifetime owner).
+- **Giant cargo/press runtime fixture:** the release path
+  (`pc_p2_giant_breadbug_actor_press`) still needs an ordinary-arena run that
+  observes a Purple press releasing held cargo and a non-Purple press being
+  resisted, plus the contest-lost and death throw-up paths. Existing evidence is
+  code-only.
+- **Native receipt persistence:** exactly-once family reward persistence across
+  process restart still needs the lane 01/06 native save bridge; the Python
+  ledger/receipt work is a host-side contract, not a save mutation.
+- Open on #168/#220/#441.
