@@ -159,6 +159,27 @@ Tests: `native/tools/p2_receipt_test.cpp`,
 `tests/test_pikmin2_receipt_native.py` which compiles the headers against the
 resolved native source.
 
+### Runtime regression (experimental Pod ledger)
+
+The `pikmin2_reward_lifecycle` fixture was rebuilt with the provenance builder
+against the reconciled native candidate (`opencode/p2-lanes67-native` @
+`4c3b32e6`, private build `output/lane67-native-build`; fixture SHA-256
+`85EB567D946303391F3DEAA2AF7F9195A3AC3E42898C6EECA8BFFC4E70E1303B`) and run on
+the real Snow-Chappy + Research-Pod room with a 960x540 centred window.
+
+```text
+P2_POD_RECEIPT id=corpse:385875968 value=2 new=1 pokos=2 seeds=0
+P2_POD_RECEIPT id=corpse:385875968 value=2 new=0 pokos=2 seeds=0   # exactly-once
+P2_REWARD_SUMMARY generator=385875968 deliver1=1 deliver2=1 pokos=2 corpses=1
+```
+
+`reward-evidence.json`: `passed=true`, `ledger_exact=true`, one ledger row.
+Run `output/lane67-root/output/lane67-reward-run/2d34475d222347728f11014131e2d3b9`;
+log SHA-256 `C46D38D93A3EEA9A76299E0C18D1B8C8A656FFB79F008B8CDDEE4118F3A832BF`.
+This is the **experimental `pod`** ledger reached by **injected Pod delivery**
+(labelled intervention), i.e. regression evidence, not the ordinary Onion/AP
+endpoint acceptance the next wave requires.
+
 ### Still open
 
 This surface is not yet wired into a real family transport endpoint in the
