@@ -74,6 +74,62 @@ freeze applies damage; zero HP without dismount does not kill), dismount + death
 sequence, roll angle (44π distance with fp01=1 -> 1 rad; frozen push ignored),
 ride regen, and shadow ramp/clamp.
 
+## Fresh arena staging (mandatory baseline adoption)
+
+The converted lane assets were located on this host at
+`output/p2-lane-verify/waterwraith/` (BlackMan + Tyre, 16/16 clips + per-pose
+`.mod`, manifest policy `P2_WATERWRAITH_1`). A fresh private arena was staged
+with the current overlay using the existing batch-2 arena CLI:
+
+```
+py -3.12 -m experimental.pikmin2_waterwraith_arena \
+    --assets C:/Users/alari/pikmin-local/game/assets \
+    --imported C:/Users/alari/pikmin-randomizer/output/p2-lane-verify/waterwraith \
+    --output C:/Users/alari/pikmin-randomizer/output/lane31-waterwraith-arena-01
+```
+
+Run directory `output/lane31-waterwraith-arena-01/9d9af4131b6e4973a93dbd75127a1304`:
+
+- BlackMan `352001` at `(-60,30,1850)`, Tyre `352002` at `(60,30,1850)`,
+  P1 Chappy control `352003` at `(240,30,1500)`; `enemy_count=2`.
+- The mandatory starting-squad overlay is present: the staged
+  `assets/dataDir/stages/chal0/default.gen` carries **20 `fixture starting
+  squad` `ikip` records** (27 generators total), SHA-256
+  `534381d41dfca21c4c3e62cb653f182d423b761831fc5200a101249a4c326cff`.
+- `arena.json` SHA-256 `20f36bb7fe2d8d4d73a93c0458ad0e989d33943dea98225224dbcd0291a756e9`;
+  imported manifest SHA-256 `8bf85791db25c8f09ff67265abf3a6b16221d85abbacb309bbd23e4d0f562b7d`.
+
+This is Python staging only; no source actor is registered, so it does not
+claim gameplay. The batch-2 `experimental/pikmin2_batch2_core.py prepare()`
+default-installer argument bug (three-arg call to the four-parameter `install`)
+blocked the arena CLI; it was fixed here identically to the known batch-4 fix
+(`opencode/p2-batch4-root` @ `f59a076`, flagged for lane 01) so the family
+CLIs work.
+
+## Visual stage preview (root-side)
+
+`experimental/pikmin2_waterwraith_stage.py` stages the converted sampled poses
+for a future native visual consumer, mirroring
+`experimental/pikmin2_bigtreasure_stage.py`:
+
+```
+py -3.12 -m experimental.pikmin2_waterwraith_stage \
+    --imported C:/Users/alari/pikmin-randomizer/output/p2-lane-verify/waterwraith \
+    --output C:/Users/alari/pikmin-randomizer/output/lane31-waterwraith-visual-stage-01
+```
+
+Real run: **16 clips / 30 poses** (BlackMan 14, Tyre 2). Profile
+`p2-waterwraith-visual.txt` (`P2_WATERWRAITH_VISUAL_1`) SHA-256
+`7c3b803cfd6097410704a8bcdece55c3f6a5ded2ad996181b6a0008d0740ceac` (680 bytes,
+30 `.mod` files copied); `stage.json` SHA-256
+`114da8e025e2493862b8e3781756513952b8d39dbf1b27a28b887707fa9c8fda`.
+`tests/test_pikmin2_waterwraith_stage.py` -> **8 passed** (policy/format/hash/
+subset/budget/output-refusal checks).
+
+The profile grammar (`species <name> <id>` then
+`clip <species> <clip> <poses> <sourceFrames> <frames...>`) is staging data
+only; the native loader and fixture are the next slice.
+
 ## Remaining / next slice
 
 - **Locomotion and route pathfinding are not implemented.** The wraith walk
