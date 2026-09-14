@@ -17,8 +17,9 @@ ROOT = Path(__file__).resolve().parents[1]
 def _port_candidates():
     yield ROOT / 'engine' / 'pc_port'
     yield ROOT / 'native' / 'pc_port'
-    for base in (ROOT, *ROOT.parents):
-        yield base / 'output' / 'native-sub-bulbmin' / 'pc_port'
+    for lane in ('native-sub-bulbmin', 'native-sub2-bulbmin'):
+        for base in (ROOT, *ROOT.parents):
+            yield base / 'output' / lane / 'pc_port'
 
 
 def _compiler():
@@ -76,3 +77,38 @@ def test_bulbmin_bridge_is_registered_additively():
 
     assert any('pc_port/pc_p2_bulbmin.cpp' in cmake for cmake, _ in sources)
     assert any('pc_p2_bulbmin_setup();' in preview for _, preview in sources)
+
+
+def _lane_files():
+    """(bulbmin.cpp, preview.cpp, navi.cpp, pikiMgr.cpp, kochappy.cpp)."""
+    for base in (ROOT, *ROOT.parents):
+        root = base / 'output' / 'native-sub2-bulbmin'
+        bulbmin = root / 'pc_port' / 'pc_p2_bulbmin.cpp'
+        if not bulbmin.is_file():
+            continue
+        yield (
+            bulbmin.read_text(errors='replace'),
+            (root / 'pc_port' / 'pc_p2_preview.cpp').read_text(errors='replace'),
+            (root / 'src' / 'plugPikiKando' / 'navi.cpp').read_text(errors='replace'),
+            (root / 'src' / 'plugPikiKando' / 'pikiMgr.cpp').read_text(errors='replace'),
+            (root / 'pc_port' / 'pc_p2_kochappy.cpp').read_text(errors='replace'),
+        )
+
+
+def test_bulbmin_driver_is_wired_additively():
+    files = list(_lane_files())
+    if not files:
+        pytest.skip('native lane-11 Bulbmin driver sources not present')
+    assert any('pc_p2_bulbmin_drive_birth' in bulbmin
+               and 'pc_p2_bulbmin_attach_mother' in bulbmin
+               for bulbmin, _, _, _, _ in files)
+    # The birth hook is called from the existing Chappy/Kochappy registration.
+    assert any('pc_p2_bulbmin_attach_mother' in preview
+               and 'pc_p2_kochappy_first_registered' in preview
+               for _, preview, _, _, _ in files)
+    # The real whistle path and the dependent-forget lifecycle are hooked.
+    assert any('pc_p2_bulbmin_call_pikis' in navi for _, _, navi, _, _ in files)
+    assert any('pc_p2_bulbmin_forget' in pikimgr for _, _, _, pikimgr, _ in files)
+    assert any('pc_p2_bulbmin_proxy_forget' in kochappy
+               and 'pc_p2_kochappy_first_registered' in kochappy
+               for _, _, _, _, kochappy in files)
