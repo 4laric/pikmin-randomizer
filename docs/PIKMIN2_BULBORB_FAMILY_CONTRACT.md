@@ -95,7 +95,7 @@ Source: `KumaChappy.h`, `KumaKochappyState.cpp`, `Game/ChappyRelation.h`.
 | `FireChappy` | BLOCKED assets | BLOCKED | BLOCKED (lane 10 receivers) | BLOCKED assets | UNTESTED | UNTESTED |
 | `KumaChappy` | BLOCKED assets | BLOCKED | UNTESTED | UNTESTED | UNTESTED | BLOCKED revival lifecycle |
 | `KumaKochappy` | STAGED (standalone) | UNTESTED | UNTESTED | UNTESTED | UNTESTED | UNTESTED |
-| `BlueKochappy` | PASS native candidate (health 250, XYZ) | PASS P1-proxy (+source parms) | PASS natural P1-proxy combat + 5 s purple stun | PASS corpse render | UNTESTED transport/reward | UNTESTED scene/save re-entry |
+| `BlueKochappy` | PASS native candidate (health 250, XYZ) | PASS P1-proxy (+source parms) | PASS natural P1-proxy combat + 5 s purple stun | PASS corpse render | PASS P1-proxy corpse carry (P2 reward untested) | BLOCKED actor dies to overlay squad before manager swap |
 | `Chappy`/`BlueChappy`/`YellowChappy` | UNTESTED | UNTESTED | UNTESTED | UNTESTED | UNTESTED | UNTESTED |
 
 Existing PASS rows reuse the integrated Snow (`pc_p2_enemy`), Dwarf Red

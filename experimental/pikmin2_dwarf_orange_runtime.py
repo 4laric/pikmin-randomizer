@@ -33,29 +33,39 @@ HEALTH = 250
 POSITIONS_FILE = 'dwarf-orange-arena-positions.txt'
 
 
+def orange(text):
+    """Rewrite a Red-dwarf observer/delivery/reentry source for BlueKochappy."""
+    text = text.replace('pc_p2_kochappy', 'pc_p2_dwarf_orange')
+    text = text.replace('P2_RED', 'P2_DWARF_ORANGE')
+    text = text.replace('red-arena', 'dwarf-orange-arena')
+    text = text.replace('red-combat', 'dwarf-orange-combat')
+    text = text.replace('red-p1', 'dwarf-orange-p1')
+    text = text.replace('186001', str(ID_SOURCE)).replace('186002', str(ID_CONTROL))
+    text = text.replace('==200', '==250').replace('<200', '<250')
+    return text
+
+
 def instrument(source):
     """Transform the Red-dwarf combat observer into the Dwarf Orange observer."""
-    s = red_combat(source)
-    s = s.replace('pc_p2_kochappy', 'pc_p2_dwarf_orange')
-    s = s.replace('P2_RED', 'P2_DWARF_ORANGE')
-    s = s.replace('red-arena', 'dwarf-orange-arena')
-    s = s.replace('red-combat', 'dwarf-orange-combat')
-    s = s.replace('186001', str(ID_SOURCE)).replace('186002', str(ID_CONTROL))
-    s = s.replace('==200', '==250').replace('<200', '<250')
+    s = orange(red_combat(source))
     if '==250' not in s or 'pc_p2_dwarf_orange.h' not in s:
         raise ValueError('Observer transform lost the Dwarf Orange identity')
     return s
 
 
-def build(native, build_dir, output, head):
+def build_fixture_for(instrument_fn, native, build_dir, output, head):
     native, build_dir, output = (Path(p).resolve() for p in (native, build_dir, output))
     output.mkdir(parents=True, exist_ok=False)
     room = output / 'room.cpp'
-    room.write_text(instrument((native / 'tools/preview_p2_room.cpp').read_text()))
+    room.write_text(instrument_fn((native / 'tools/preview_p2_room.cpp').read_text()))
     record = builder.build_fixture(build_dir, native, room, output / 'baseline', head)
     exe = output / 'baseline' / 'fixture.exe'
     print(exe)
     return exe, record
+
+
+def build(native, build_dir, output, head):
+    return build_fixture_for(instrument, native, build_dir, output, head)
 
 
 def prepare(assets, bank, profile, output):
@@ -71,7 +81,9 @@ def prepare(assets, bank, profile, output):
     template = next(r for r in records(temporary) if r[72:76] == b'ikip')
     entries = records(path)
     used = {struct.unpack_from('<I', r, 8)[0] for r in entries}
-    for i in range(20):
+    existing = sum(1 for r in entries if r[72:76] == b'ikip')
+    needed = max(0, 20 - existing)
+    for i in range(needed):
         identity = 187000 + i
         if identity in used:
             raise ValueError('Squad ID collision')
@@ -82,8 +94,9 @@ def prepare(assets, bank, profile, output):
         entries.append(bytes(row))
     path.write_bytes(path.read_bytes()[:20] + struct.pack('>I', len(entries)) + b''.join(entries))
     (stage / 'combat-stimuli.json').write_text(json.dumps(dict(
-        field_pikmin=20, spawn='free at parked position', captain_reposition_ticks=[1, 120],
-        free_squad_deployment_tick=240, enemy_state_health_writes=False), indent=2))
+        field_pikmin=existing + needed, spawn='free at parked position',
+        captain_reposition_ticks=[1, 120], free_squad_deployment_tick=240,
+        enemy_state_health_writes=False, overlay_squad=existing, appended=needed), indent=2))
     return stage
 
 

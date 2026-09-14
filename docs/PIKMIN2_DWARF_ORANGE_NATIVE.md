@@ -103,13 +103,31 @@ health samples include 250→0; `state=11` chase with `target=1`; exit code 0.
 | A Identity/content | PASS (candidate) | `P2_ENEMY_READY source_id=44`, birth XYZ, converted `dwarf_orange` bank (64 poses) |
 | B Source behavior | PARTIAL — host P1 AI; source health 250 and 5 s purple stun applied | ready marker + `P2_PURPLE_QUAKE` receiver path |
 | C Combat/receivers | PASS at P1-proxy level | natural target/damage to 0 with a real squad; source-backed N/A for any P2-only attack |
-| D Death/drop/transport | PARTIAL | corpse spawned and drawn; P1 corpse carry retained, required P2 reward/transport untested |
-| E Lifetime | UNTESTED | no manager replacement / scene re-entry in this run (#397) |
+| D Death/drop/transport | PASS at P1-proxy level | corpse spawned/drawn, then carried by the real squad to a goal (distance 341.2, `goal=1`); P2 reward untested |
+| E Lifetime | BLOCKED | manager-swap precondition not met: the source actor is naturally killed by the overlay squad before the swap tick; needs a squad-free non-extinct baseline (#397) |
 | F Persistence | UNTESTED | no process-restart identity/reward check |
 | G Product/mixed scene | BLOCKED | native candidate not integrated; no generated-session launch or mixed scene |
 
-Injected evidence is absent: the only interventions are captain/squad
-placement; enemy health/state/animation are untouched.
+Injected evidence is absent in gates C and D: the only interventions are
+captain/squad placement (combat) and the P1 carry task (delivery); enemy
+health/state/animation are untouched.
+
+### 3b. Delivery (gate D) and re-entry (gate E) probes
+
+- `experimental/pikmin2_dwarf_orange_delivery.py` — transforms the proven Red
+  P1-corpse delivery observer. Run
+  `output/p2-lane13-orange-arena2/bd2b9fff954a474b88a7f6e467314cfc/deliver/`
+  → PASS: `P2_DWARF_ORANGE_P1_HAUL` shows real TransportMode Pikmin carrying the
+  corpse from `distance 59.2` to `341.2` with `goal=1`, then
+  `PASS P2_DWARF_ORANGE_P1_DELIVERY … p2_receipts=not_applicable`. No carry task
+  was injected (`transport_task_injected=false`).
+- `experimental/pikmin2_dwarf_orange_reentry.py` — transforms the Red manager
+  replacement observer. BLOCKED, reproducibly: in the plain arena the source
+  actor engages and is killed by the overlay starting squad around tick 60, so
+  the `observed==120` swap cannot preserve `oldRed`; stderr shows
+  `FAIL p2 room: arena actor not live/unfrozen`. A squad-free, non-extinct
+  baseline is a shared fixture gap (#397). Recorded, not worked around by
+  injecting enemy state or disabling extinction.
 
 ## 5. Limits and next consumer
 
@@ -128,6 +146,8 @@ placement; enemy health/state/animation are untouched.
 - `tests/test_pikmin2_dwarf_orange_runtime.py` — observer transform (no Red
   identity/health left), all-pass witness, wrong-species/missing-corpse/
   extinction rejection, positions roster validation.
+- `tests/test_pikmin2_dwarf_orange_chain.py` — delivery/re-entry transforms and
+  evidence validation (including the blocked re-entry case).
 - Native policy test `tools/p2_purple_impact_policy_test.cpp` adds the 5 s
   BlueKochappy fit case and the new `updateFit` signature (runs when lane 01
   exports the native line; the maintained `engine/` copy is untouched here).
