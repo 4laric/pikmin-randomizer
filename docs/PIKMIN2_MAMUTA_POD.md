@@ -35,12 +35,28 @@ Private Ninja Release/MinGW JAudio-ON build `output/native-mamuta-pod-build`:
 `6C49DC33591C13F279014D49098651875CC116F9805E1E59321C8E116461515D`; `ninja -n`
 -> no work to do.
 
+## Cargo staging helper (root)
+
+`experimental/pikmin2_mamuta_rules.py` gains `cargo_profile(...)` (the exact
+`p2-pod.txt` text the native reader parses) and `enable_cargo(run, ...)`, which
+switches a cargo-free staged arena to a Pod: it requires the arena to still be
+cargo-free and a matching staged
+`assets/dataDir/courses/pikmin2room/treasure.mod`, writes `p2-pod.txt`, and
+removes `p2-cargo-free.txt`. `prepare(..., cargo=...)` calls it and records the
+result in `arena.json`. Bad ids/economy, a missing/mismatched treasure model, an
+already-converted arena or an existing Pod config all fail closed.
+
+Tests `tests/test_pikmin2_mamuta_cargo.py` cover the profile text and every
+guard (5 passed); the lane suite `test_pikmin2_mamuta_{natural,rules,cargo}.py`
+is green (20 passed).
+
 ## Remaining (not claimed here)
 
-- **Cargo-enabled Mamuta arena.** The lane staging must drop `p2-cargo-free.txt`,
-  provide a `pr05` treasure actor (the preview requires a treasure when not
-  cargo-free) and a `p2-pod.txt`, then observe the carcass carried to the Pod and
-  credited (`corpse:...:mamuta:<gen>`). No such run has been performed.
+- **Treasure actor + converted model.** `enable_cargo` needs a staged
+  `treasure.mod` and a `pr05` treasure actor in the stage gen (the preview
+  aborts with 'treasure generator missing'/'converted treasure missing'
+  otherwise, and `p2ValidatePreviewCargo` requires a treasure when not
+  cargo-free). No such actor is staged by the lane yet.
 - **Natural vs assisted carry.** Whether idle P1 Pikmin pick up the `tkmu`
   carcass unaided in a Pod arena is unmeasured; an assisted-transport variant may
   be required.

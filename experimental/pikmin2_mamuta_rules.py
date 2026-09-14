@@ -12,6 +12,7 @@ miulinState.cpp:264-330): flower-stage same-kind planted sprout, 99-planted
 cap (US), non-bald safe ground, +-20 vertical band, captain 5.0 damage only.
 """
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import struct
@@ -138,13 +139,65 @@ def validate_plant_events(events, min_plants=1):
     return True
 
 
-def prepare(assets, imported, output):
+def _sha(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def cargo_profile(treasure, money, weight, capacity, corpse_value):
+    """Exact ``p2-pod.txt`` text the native preview parses (P2_POD_1 header).
+
+    The native reader expects the version token, a treasure row
+    ``<id> <money> <weight> <capacity>``, and a ``Kochappy <value>`` corpse row;
+    the same ranges are enforced there.
+    """
+    if not (isinstance(treasure, str) and treasure and treasure.isascii()
+            and not any(c.isspace() for c in treasure) and len(treasure) < 64):
+        raise ValueError('Invalid pod treasure id')
+    if not (0 <= money <= 1000000 and 1 <= weight <= 1000 and 1 <= capacity <= 128
+            and 0 <= corpse_value <= 1000000):
+        raise ValueError('Invalid pod economy')
+    return f'P2_POD_1\n{treasure} {money} {weight} {capacity}\nKochappy {corpse_value}\n'
+
+
+def enable_cargo(run, *, treasure, money, weight, capacity, corpse_value,
+                 treasure_model_sha256):
+    """Switch a cargo-free staged arena to a Pod without changing its actors.
+
+    ``arena.prepare`` stages ``p2-cargo-free.txt``; the native preview refuses
+    cargo while that file exists, which is why the Mamuta carcass could never be
+    delivered (see docs/PIKMIN2_MAMUTA_POD.md). This removes it and writes the
+    Pod config, but requires the caller to have already staged
+    ``assets/dataDir/courses/pikmin2room/treasure.mod`` (hashed here) and a
+    ``pr05`` treasure actor in the stage; otherwise the native preview aborts
+    with 'treasure generator missing' or 'converted treasure missing'.
+    """
+    cargo_free = run / 'p2-cargo-free.txt'
+    if not cargo_free.exists():
+        raise ValueError('Arena is not cargo-free; refusing to change cargo mode')
+    pod = run / 'p2-pod.txt'
+    if pod.exists():
+        raise ValueError('Refusing existing pod config')
+    model = run / 'assets/dataDir/courses/pikmin2room/treasure.mod'
+    if not model.exists() or _sha(model) != treasure_model_sha256:
+        raise ValueError('Staged treasure model missing or mismatched')
+    pod.write_text(cargo_profile(treasure, money, weight, capacity, corpse_value))
+    cargo_free.unlink()
+    return dict(file=pod.name, treasure=treasure, money=money, weight=weight,
+                capacity=capacity, corpse_value=corpse_value,
+                treasure_model_sha256=treasure_model_sha256)
+
+
+def prepare(assets, imported, output, cargo=None):
     """Batch-2 arena plus rules marker plus the explicit 10-red starting squad.
 
     The squad record is staged through ``arena.prepare``'s overlay override so
     the mandatory ``ensure_pikmin_squad()`` helper sees the existing 'ikip'
     record and preserves this lane's squad instead of adding the default
     20-red squad.
+
+    Passing ``cargo`` (keyword args for :func:`enable_cargo`) switches the run
+    from the default cargo-free arena to a Pod so the Mamuta carcass can be
+    credited.
     """
     assets = Path(assets).resolve()
     record = squad_record(assets)
@@ -153,6 +206,8 @@ def prepare(assets, imported, output):
     info = json.loads((run / 'arena.json').read_text())
     info['squad'] = placement
     info['rules'] = stage_rules(run)
+    if cargo is not None:
+        info['cargo'] = enable_cargo(run, **cargo)
     info['gates']['starting_squad'] = 'staged (explicit 10-red lane squad; overlay preserved)'
     (run / 'arena.json').write_text(json.dumps(info, indent=2) + '\n')
     return run

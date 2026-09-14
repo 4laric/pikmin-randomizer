@@ -31,8 +31,14 @@
     "exe_sha256": "6C49DC33591C13F279014D49098651875CC116F9805E1E59321C8E116461515D",
     "no_work_dry_run": "ninja: no work to do."
   },
+  "root_staging": {
+    "module": "experimental/pikmin2_mamuta_rules.py",
+    "adds": ["cargo_profile(...)", "enable_cargo(run, ...)", "prepare(..., cargo=...)"],
+    "tests": "tests/test_pikmin2_mamuta_cargo.py (5 passed); lane suite test_pikmin2_mamuta_{natural,rules,cargo}.py 20 passed",
+    "requires": "a staged assets/dataDir/courses/pikmin2room/treasure.mod and a pr05 treasure actor in the stage gen"
+  },
   "not_claimed": [
-    "cargo-enabled Mamuta arena staging (p2-pod.txt + treasure + no cargo-free)",
+    "staging the pr05 treasure actor / converted treasure model for the lane arena",
     "natural or assisted carcass carry run to the Pod",
     "runtime GL acceptance (no run performed)",
     "day/floor reset, save-load, Piklopedia"
