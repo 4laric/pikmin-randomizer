@@ -64,14 +64,14 @@ def _check_keys(kind, data, required, allowed):
 SLOT_ALLOWED = SLOT_REQUIRED + (
     'water_depth', 'flight_space', 'burrow_ground', 'home', 'helper_capacity',
     'projectile_corridor', 'corpse_route', 'protected', 'boss_slot',
-    'first_day', 'respawn_days', 'evidence', 'source_identity',
+    'first_day', 'respawn_days', 'evidence', 'source_identity', 'cohort',
 )
 PROFILE_ALLOWED = PROFILE_REQUIRED + (
     'family_lane', 'footprint_radius', 'min_water_depth', 'requires_flight_space',
     'requires_burrow_ground', 'requires_home', 'helper_budget',
     'requires_projectile_corridor', 'requires_corpse_route', 'is_boss',
     'encounter_descriptor', 'accepted_gates', 'allow_protected',
-    'requires_renewable_slot', 'min_first_day', 'notes',
+    'requires_renewable_slot', 'min_first_day', 'notes', 'cohort',
 )
 
 
@@ -95,6 +95,7 @@ def normalize_slot(data):
         'first_day': data.get('first_day', 1),
         'respawn_days': data.get('respawn_days', 0),
         'source_identity': data.get('source_identity'),
+        'cohort': data.get('cohort'),
         'evidence': {
             key: bool(data.get('evidence', {}).get(key, False)) for key in EVIDENCE_KEYS
         },
@@ -126,6 +127,8 @@ def validate_slot(slot):
             _fail(f'slot {key} must be a boolean')
     if slot['source_identity'] is not None and not isinstance(slot['source_identity'], str):
         _fail('slot source_identity must be a string or null')
+    if slot['cohort'] is not None and not isinstance(slot['cohort'], str):
+        _fail('slot cohort must be a string or null')
     if not isinstance(slot['evidence'], dict):
         _fail('slot evidence must be an object')
     for key in EVIDENCE_KEYS:
@@ -155,6 +158,7 @@ def normalize_profile(data):
         'requires_renewable_slot': data.get('requires_renewable_slot', False),
         'min_first_day': data.get('min_first_day', 0),
         'notes': data.get('notes', ''),
+        'cohort': data.get('cohort'),
     }
     return validate_profile(profile)
 
@@ -188,6 +192,8 @@ def validate_profile(profile):
         _fail('profile min_first_day must be a non-negative integer')
     if not isinstance(profile['notes'], str):
         _fail('profile notes must be a string')
+    if profile['cohort'] is not None and not isinstance(profile['cohort'], str):
+        _fail('profile cohort must be a string or null')
     return profile
 
 
@@ -303,24 +309,18 @@ def _encounter_reasons(slot, profile, descriptor):
     return reasons
 
 
-def evaluate(slot, profile, encounters=None):
-    """Return {'status': 'legal'|'denied', 'reasons': [...]} with deny default.
+def _constraint_reasons(slot, profile, descriptor=None):
+    """Hard placement incompatibilities, independent of evidence/gate status.
 
-    When `encounters` (an id->descriptor mapping) is supplied, a boss must be
-    backed by a matching descriptor; otherwise the legacy descriptor-name check
-    is the only boss gate.
+    These are the reasons a concrete slot cannot host the identity even if all
+    native evidence and admission gates were satisfied. They are what lane 04
+    uses to reject incompatible slots before family/QA evidence lands.
     """
     reasons = []
-    if not profile['accepted_gates']:
-        reasons.append('no accepted placement evidence')
-    if not all(slot['evidence'].get(key, False) for key in EVIDENCE_KEYS):
-        reasons.append('slot lacks accepted native placement evidence')
     if slot['protected'] and not profile['allow_protected']:
         reasons.append('slot drop is protected')
-    if profile['is_boss'] and not profile['encounter_descriptor']:
-        reasons.append('boss requires an encounter descriptor')
-    if slot['boss_slot'] and not profile['encounter_descriptor']:
-        reasons.append('boss slot requires an encounter descriptor')
+    if profile['cohort'] and slot['cohort'] and profile['cohort'] != slot['cohort']:
+        reasons.append(f"cohort {profile['cohort']} not allowed in slot cohort {slot['cohort']}")
     if slot['terrain'] not in profile['terrains']:
         reasons.append(f"terrain {slot['terrain']} not in {profile['terrains']}")
     if slot['water_depth'] < profile['min_water_depth']:
@@ -343,14 +343,52 @@ def evaluate(slot, profile, encounters=None):
         reasons.append('slot is one-shot, not renewable')
     if slot['first_day'] < profile['min_first_day']:
         reasons.append(f"slot first day {slot['first_day']} before required {profile['min_first_day']}")
+    if profile['is_boss'] and descriptor is not None:
+        reasons.extend(_encounter_reasons(slot, profile, descriptor))
+    return reasons
+
+
+def compatibility(slot, profile, encounters=None):
+    """Return hard incompatibility reasons only, or [] when constraint-compatible.
+
+    Unlike `evaluate`, this does not require accepted gates or native slot
+    evidence: it answers whether the concrete slot *could* host the identity.
+    A boss with no resolvable descriptor is reported as an evidence gap by
+    `evaluate`, not as an incompatibility here.
+    """
+    descriptor = None
     if profile['is_boss'] and encounters is not None:
         reference = profile['encounter_descriptor']
-        descriptor = encounters.get(reference) if reference else None
-        if descriptor is None:
-            reasons.append(f"no encounter descriptor {reference!r} defined")
-        else:
-            reasons.extend(_encounter_reasons(slot, profile, descriptor))
-    return {'status': 'denied' if reasons else 'legal', 'reasons': sorted(reasons)}
+        if reference:
+            descriptor = encounters.get(reference)
+    return sorted(set(_constraint_reasons(slot, profile, descriptor)))
+
+
+def evaluate(slot, profile, encounters=None):
+    """Return {'status': 'legal'|'denied', 'reasons': [...]} with deny default.
+
+    When `encounters` (an id->descriptor mapping) is supplied, a boss must be
+    backed by a matching descriptor; otherwise the legacy descriptor-name check
+    is the only boss gate.
+    """
+    reasons = []
+    if not profile['accepted_gates']:
+        reasons.append('no accepted placement evidence')
+    if not all(slot['evidence'].get(key, False) for key in EVIDENCE_KEYS):
+        reasons.append('slot lacks accepted native placement evidence')
+    if profile['is_boss'] and not profile['encounter_descriptor']:
+        reasons.append('boss requires an encounter descriptor')
+    if slot['boss_slot'] and not profile['encounter_descriptor']:
+        reasons.append('boss slot requires an encounter descriptor')
+    descriptor = None
+    if profile['is_boss']:
+        if encounters is not None:
+            reference = profile['encounter_descriptor']
+            descriptor = encounters.get(reference) if reference else None
+            if descriptor is None:
+                reasons.append(f"no encounter descriptor {reference!r} defined")
+    reasons.extend(_constraint_reasons(slot, profile, descriptor))
+    return {'status': 'denied' if reasons else 'legal', 'reasons': sorted(set(reasons))}
 
 
 def audit(document, slot_uids=None, identities=None):
@@ -441,6 +479,59 @@ def coverage_report(document, top_reasons=3):
         'unresolved_bosses': unresolved_bosses,
     }
 
+
+
+def compatibility_report(document, encounters=None, top_reasons=3):
+    """Return per-identity/per-slot hard-compatibility without evidence gates.
+
+    This separates "cannot ever fit this concrete slot" from "not yet accepted":
+    a slot counts as compatible when no placement constraint is violated, even
+    while `evaluate` still denies it for missing gates/evidence.
+    """
+    document = validate_document(document)
+    if encounters is None:
+        encounters = {encounter['id']: encounter for encounter in document['encounters']}
+    slots = sorted(document['slots'], key=lambda s: s['uid'])
+    profiles = sorted(document['profiles'], key=lambda p: p['identity'])
+    identity_compatibility = {}
+    slot_compatibility = {
+        slot['uid']: {'uid': slot['uid'], 'label': slot['label'], 'boss_slot': slot['boss_slot'],
+                      'compatible_identities': 0, 'compatible_identity_list': []}
+        for slot in slots
+    }
+    for profile in profiles:
+        compatible = []
+        incompatible = []
+        reasons = {}
+        for slot in slots:
+            violations = compatibility(slot, profile, encounters)
+            if violations:
+                incompatible.append(slot['uid'])
+                for reason in violations:
+                    reasons[reason] = reasons.get(reason, 0) + 1
+            else:
+                compatible.append(slot['uid'])
+                slot_compatibility[slot['uid']]['compatible_identities'] += 1
+                slot_compatibility[slot['uid']]['compatible_identity_list'].append(profile['identity'])
+        ordered = sorted(reasons.items(), key=lambda item: (-item[1], item[0]))
+        identity_compatibility[profile['identity']] = {
+            'identity': profile['identity'],
+            'is_boss': profile['is_boss'],
+            'compatible_slots': len(compatible),
+            'compatible_slot_uids': compatible,
+            'incompatible_slots': len(incompatible),
+            'top_incompatible_reasons': [{'reason': reason, 'count': count} for reason, count in ordered[:top_reasons]],
+        }
+    return {
+        'schema': SCHEMA,
+        'slots_evaluated': len(slots),
+        'identities_evaluated': len(profiles),
+        'identity_compatibility': identity_compatibility,
+        'slot_compatibility': slot_compatibility,
+        'unplaceable_identities': sorted(
+            profile['identity'] for profile in profiles
+            if not identity_compatibility[profile['identity']]['compatible_slots']),
+    }
 
 
 def slot_from_spawn_row(row, terrain='ground', evidence=None):

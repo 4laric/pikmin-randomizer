@@ -5,10 +5,12 @@ import unittest
 from pathlib import Path
 
 from randomizer.p2_placement import (
-    ENCOUNTER_SCHEMA, SCHEMA, audit, coverage_report, evaluate, load_document,
-    normalize_encounter_descriptor, normalize_profile, normalize_slot,
-    slot_from_spawn_row, validate_document, validate_encounter_descriptor,
+    ENCOUNTER_SCHEMA, SCHEMA, audit, compatibility, compatibility_report,
+    coverage_report, evaluate, load_document, normalize_encounter_descriptor,
+    normalize_profile, normalize_slot, slot_from_spawn_row, validate_document,
+    validate_encounter_descriptor,
 )
+from randomizer import p2_placement_catalog as catalog
 from randomizer.spawn_data import ADULT_SLOTS
 
 
@@ -202,6 +204,92 @@ class PlacementAuditTests(unittest.TestCase):
         self.assertEqual(evaluate(adapted, legal_profile)['status'], 'legal')
         unproven = slot_from_spawn_row(ADULT_SLOTS[0], evidence={})
         self.assertEqual(evaluate(unproven, legal_profile)['status'], 'denied')
+
+
+class CompatibilityReportTests(unittest.TestCase):
+    def test_cohort_mismatch_is_a_hard_incompatibility(self):
+        result = compatibility(normalize_slot(slot(cohort='aquatic')),
+                               normalize_profile(profile(terrains=['ground'], cohort='grub')))
+        self.assertEqual(result, ['cohort grub not allowed in slot cohort aquatic'])
+
+    def test_missing_evidence_is_not_an_incompatibility(self):
+        # No accepted gate and no slot evidence still counts as compatible.
+        result = compatibility(normalize_slot(slot(evidence={})),
+                               normalize_profile(profile(accepted_gates=[])))
+        self.assertEqual(result, [])
+
+    def test_report_separates_compatible_from_incompatible(self):
+        slots = [slot(uid=1, label='a', cohort='ground'),
+                 slot(uid=2, label='b', terrain='water', cohort='aquatic')]
+        profiles = [profile(identity='Ground', terrains=['ground'], cohort='ground'),
+                    profile(identity='Water', terrains=['water'], cohort='aquatic')]
+        report = compatibility_report(document(slots, profiles))
+        self.assertEqual(report['identity_compatibility']['Ground']['compatible_slot_uids'], [1])
+        self.assertEqual(report['identity_compatibility']['Ground']['incompatible_slots'], 1)
+        self.assertEqual(report['identity_compatibility']['Water']['compatible_slot_uids'], [2])
+        self.assertEqual(report['slot_compatibility'][1]['compatible_identity_list'], ['Ground'])
+        self.assertEqual(report['unplaceable_identities'], [])
+
+    def test_report_flags_unplaceable_identity(self):
+        report = compatibility_report(document([slot(terrain='ground', cohort='ground')],
+                                               [profile(identity='Fish', terrains=['water'])]))
+        self.assertEqual(report['unplaceable_identities'], ['Fish'])
+
+
+class PlacementCatalogTests(unittest.TestCase):
+    def test_campaign_slots_are_default_deny_with_cohort_terrain(self):
+        slots = catalog.slots_from_campaign()
+        self.assertEqual(len(slots), len(catalog.CAMPAIGN_SLOTS))
+        by_uid = {s['uid']: s for s in slots}
+        sample = next(s for s in slots if s['cohort'] == 'aquatic')
+        self.assertEqual(sample['terrain'], 'water')
+        self.assertTrue(sample['evidence']['xyz'])
+        self.assertFalse(sample['evidence']['terrain'])
+        self.assertFalse(sample['evidence']['route'])
+        self.assertEqual(by_uid[sample['uid']]['cohort'], 'aquatic')
+
+    def test_generator_slots_mark_boss_and_deny_evidence(self):
+        slots = catalog.slots_from_generators()
+        self.assertTrue(any(s.get('boss_slot') for s in slots))
+        self.assertTrue(all(not s['evidence']['xyz'] for s in slots))
+        boss = next(s for s in slots if s.get('boss_slot'))
+        self.assertEqual(boss['terrain'], 'mixed')
+
+    def test_all_slots_excludes_terrain_unknown_generators_by_default(self):
+        known = catalog.all_slots()
+        self.assertEqual(len(known), len(catalog.CAMPAIGN_SLOTS))
+        expanded = catalog.all_slots(include_generators=True)
+        self.assertGreater(len(expanded), len(known))
+
+    def test_candidate_profiles_are_valid_and_default_deny(self):
+        profiles = catalog.candidate_profiles()
+        identities = {p['identity'] for p in profiles}
+        self.assertIn('Chappy', identities)
+        self.assertIn('Miulin', identities)
+        self.assertNotIn('UmiMushi', identities)  # boss not in the non-boss cohort
+        for p in profiles:
+            self.assertEqual(p['accepted_gates'], [])
+            self.assertFalse(p['is_boss'])
+        by_identity = {p['identity']: p for p in profiles}
+        self.assertEqual(by_identity['Chappy']['cohort'], 'ground')
+        self.assertEqual(by_identity['UjiA']['cohort'], 'grub')
+        self.assertEqual(by_identity['Sokkuri']['cohort'], None)
+
+    def test_built_document_validates_and_rejects_foreign_cohorts(self):
+        document = catalog.build_document()
+        report = compatibility_report(document)
+        compatibility_by_id = report['identity_compatibility']
+        self.assertEqual(report['slots_evaluated'], len(catalog.CAMPAIGN_SLOTS))
+        self.assertEqual(report['unplaceable_identities'], [])
+        # A grub identity cannot land in the ground or aquatic cohorts.
+        self.assertEqual(compatibility_by_id['UjiA']['compatible_slots'], 10)
+        self.assertEqual(compatibility_by_id['Chappy']['compatible_slots'], 33)
+        self.assertEqual(compatibility_by_id['Tadpole']['compatible_slots'], 10)
+        self.assertEqual(compatibility_by_id['Frog']['compatible_slots'], 7)
+        # Every pair is still denied for missing gates/evidence.
+        audit_report = audit(document)
+        self.assertEqual(audit_report['admitted'], {})
+        self.assertTrue(all(d['status'] == 'denied' for d in audit_report['decisions']))
 
 
 class EncounterDescriptorTests(unittest.TestCase):
