@@ -37,7 +37,7 @@ class NativeIntegrationTests(unittest.TestCase):
 #include <cassert>
 int main() {
  const std::string shortToken(32,'a'), longToken(64,'a');
- for (auto version : {"P2_CAVE_ENTRY_1", "P2_CAVE_ENTRY_2"}) {
+ for (auto version : {"P2_CAVE_ENTRY_1", "P2_CAVE_ENTRY_2", "P2_CAVE_ENTRY_3"}) {
   for (int floor : {1,2}) assert(p2_cave_entry_profile(version,floor,shortToken)==P2CaveEntryProfile::Tutorial);
   assert(p2_cave_entry_profile(version,3,shortToken)==P2CaveEntryProfile::Invalid);
   assert(p2_cave_entry_profile(version,2,longToken)==P2CaveEntryProfile::Invalid);
@@ -46,7 +46,7 @@ int main() {
  assert(p2_cave_entry_profile("P2_BEASTS_FLOOR3_ENTRY_1",3,longToken)==P2CaveEntryProfile::BeastsFloor3);
  assert(p2_cave_entry_profile("P2_BEASTS_FLOOR4_ENTRY_1",4,longToken)==P2CaveEntryProfile::BeastsFloor4);
  assert(p2_cave_entry_profile("P2_BEASTS_ENTRY_1",2,shortToken)==P2CaveEntryProfile::Invalid);
- assert(p2_cave_entry_profile("P2_CAVE_ENTRY_3",1,shortToken)==P2CaveEntryProfile::Invalid);
+ assert(p2_cave_entry_profile("P2_CAVE_ENTRY_4",1,shortToken)==P2CaveEntryProfile::Invalid);
  assert(p2_cave_entry_profile("P2_CAVE_ENTRY_2",1,std::string(32,'z'))==P2CaveEntryProfile::Invalid);
 }
 '''

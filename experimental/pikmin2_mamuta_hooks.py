@@ -15,6 +15,19 @@ def hook_patch(engine: Path) -> str:
         'src/plugPikiNakata/tekibteki.cpp': {'#include "pc_p2_mamuta.h"': 1, '!pc_p2_mamuta_draw(this, gfx, mat, true)': 1, '!pc_p2_mamuta_draw(this, gfx, onCamMtx)': 1},
         'src/plugPikiNakata/tekimgr.cpp': {'#include "pc_p2_mamuta.h"': 1, 'pc_p2_mamuta_reset();': 3, 'pc_p2_mamuta_forget(teki);': 1},
     }
+    manager = 'src/plugPikiNakata/tekimgr.cpp'
+    lifetime = 'pc_port/pc_p2_teki_lifetime.cpp'
+    if 'pc_p2_forget_teki(teki);' in (engine / manager).read_text(encoding='utf-8'):
+        specs[manager] = [pair for pair in specs[manager] if 'forget' not in pair[0]]
+        del expected_hooks[manager]['pc_p2_mamuta_forget(teki);']
+        specs[lifetime] = [
+            ('#include "pc_p2_tank.h"', '#include "pc_p2_mamuta.h"\n#include "pc_p2_tank.h"'),
+            ('pc_p2_tank_forget(actor);', 'pc_p2_mamuta_forget(actor);\n\tpc_p2_tank_forget(actor);'),
+            ('pc_p2_tank_reset();', 'pc_p2_mamuta_reset();\n\tpc_p2_tank_reset();'),
+        ]
+        expected_hooks[lifetime] = {'#include "pc_p2_mamuta.h"': 1,
+                                    'pc_p2_mamuta_forget(actor);': 1,
+                                    'pc_p2_mamuta_reset();': 1}
     sources = {path: (engine / path).read_text(encoding='utf-8') for path in specs}
     # The later opt-in bury module is independent of these visual hooks.
     # Recognize its one exact build entry without accepting unknown/duplicate hooks.

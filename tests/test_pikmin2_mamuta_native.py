@@ -44,7 +44,7 @@ int main() {
         self.assertIn('found!=wanted',module)
 
     def test_integrated_partial_and_duplicate_hooks(self):
-        files = ['CMakeLists.txt','pc_port/pc_p2_preview.cpp','src/plugPikiNakata/tekibteki.cpp','src/plugPikiNakata/tekimgr.cpp']
+        files = ['CMakeLists.txt','pc_port/pc_p2_preview.cpp','src/plugPikiNakata/tekibteki.cpp','src/plugPikiNakata/tekimgr.cpp','pc_port/pc_p2_teki_lifetime.cpp']
         with tempfile.TemporaryDirectory() as tmp:
             engine=Path(tmp)
             for name in files:
@@ -52,6 +52,7 @@ int main() {
                 source=(ROOT/'engine'/name).read_text(encoding='utf-8')
                 # Normalize to a pre-integration fixture without touching shared files.
                 source=source.replace('#include "pc_p2_mamuta.h"\n','').replace('    pc_port/pc_p2_mamuta.cpp\n','').replace('    pc_p2_mamuta_setup();\n','').replace('pc_p2_mamuta_reset(); ','').replace('pc_p2_mamuta_forget(teki); ','').replace('!pc_p2_mamuta_draw(this, gfx, mat, true) && ','').replace('!pc_p2_mamuta_draw(this, gfx, onCamMtx) && ','')
+                source=source.replace('\tpc_p2_mamuta_forget(actor);\n','').replace('\tpc_p2_mamuta_reset();\n','')
                 target.write_text(source,encoding='utf-8')
             patch=hook_patch(engine)
             self.assertTrue(patch)
