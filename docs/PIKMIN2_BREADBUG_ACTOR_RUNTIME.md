@@ -191,6 +191,45 @@ suite (16 passing).
   applies that gate before the ledger: a resisted press neither drops cargo nor
   grants; an accepted press is a `drop` interruption and still grants nothing.
 
+## Small-Breadbug proxy contested-cargo observation (lane 18, 2026-09-14)
+
+`experimental/pikmin2_breadbug_contest_observation.py` is the private validator
+for the small PanModoki (source 38) P1 `TEKI_Collec` proxy. It stages the existing
+private proxy arena, feeds one real red level-0 number pellet through the
+unchanged `scripts/pikmin2_breadbug_cargo_fixture`, and parses the host log into
+the P1 grab/drag/release timeline. It reports the two strength scales
+**separately** and never claims P2 contest semantics:
+
+- `native_offset_power = 2.0` is the P1 `TEKI_Collec` host carry power that
+  actually drags the pellet (`taicollec.cpp:509`).
+- `source_strength = (pelletMin + pelletMax) / 2` is the P2 `PanModokiBase`
+  contest strength for the same pellet; the staged red 1..2 number pellet gives
+  `1.5`.
+- The two are unequal (`2.0` vs `1.5`) and every observation records
+  `p2_contest_semantics=False` / `native_hook=False`; if a future family-local
+  hook emits `P2_BREADBUG_CONTEST native_power=... source_strength=...` the
+  validator parses it and sets `native_hook=True` without changing the claim.
+- `observe()` raises when the birth marker is missing/mismatched or the log does
+  not hold exactly one completed `P2_BREADBUG_CARGO_RESULT`, so a clean process
+  exit is never mistaken for a completed observation. `run()` stages the arena
+  and writes `result.json` for the coordinator's serialized GL slot.
+
+**No native change was made.** The small proxy has no bounded family-local hook
+that can expose the P1 proxy's *P2 pull channel or carriers*: it owns no cargo,
+and `getCreaturePointer(2)` / the `PelletCarry` stickers are shared P1 cargo
+state. Exposing a "current pull/carriers" view would mean reading or mutating the
+shared cargo channel (lane 06 reward/transport endpoint) or the shared
+forget/rebind lifetime ownership (lane 07), which is explicitly out of lane for
+this validator. Copying the Giant module's family-local contest would fork the
+very shared semantics the wave guide keeps with those providers, so it was not
+done. Native `pc_p2_breadbug_actor.cpp` is unchanged.
+
+The `P2_BREADBUG_CARGO_VISUAL`/`P2_BREADBUG_CARGO_RESULT` markers already prove
+grab/drag/release through the existing family draw path; this validator only adds
+the source-vs-native strength split and honest `p2_contest_semantics=False`.
+Tests: `tests/test_pikmin2_breadbug_contest_observation.py` (6 tests; with the
+contest and reward suites, `py -3.12 -m pytest` → 38 passed).
+
 ## What remains (lane 18)
 
 - **Small-Breadbug interruption is a real gap, not an omission.** The small
@@ -203,6 +242,12 @@ suite (16 passing).
   P2 FSM/cargo port gives the small actor ownership (or the giant module's
   `endStickTeki`/`clearCreaturePointer` release path is reused under an agreed
   lane-07 lifetime owner).
+- **Small-Breadbug P2 contest is shared-semantics-gated.** The proxy observation
+  validator above separates the P1 carry power (2) from the source strength
+  (1.5) but cannot observe a P2 pull channel or carriers: those need the shared
+  cargo/reward endpoint (lane 06) or the centralized forget/rebind lifetime
+  owner (lane 07). A true contested-cargo run stays open until one of those
+  surfaces exists; no native change is claimed.
 - **Giant cargo/press runtime fixture:** the release path
   (`pc_p2_giant_breadbug_actor_press`) still needs an ordinary-arena run that
   observes a Purple press releasing held cargo and a non-Purple press being
