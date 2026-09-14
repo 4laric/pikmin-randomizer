@@ -47,6 +47,18 @@ def test_landing_press_is_blocked_only_while_bittered():
     assert frog.landing_press('Frog', bittered=True) is False
 
 
+def test_landing_press_victims_hits_every_grounded_victim_unless_bittered():
+    pressed = frog.landing_press_victims(False, ['piki1', 'piki2'], ['navi0'])
+    assert pressed['pressed'] == 3
+    assert pressed['pressed_pikmin'] == ['piki1', 'piki2']
+    assert pressed['pressed_navi'] == ['navi0']
+    assert pressed['bittered'] is False
+    blocked = frog.landing_press_victims(True, ['piki1', 'piki2'], ['navi0'])
+    assert blocked['pressed'] == 0 and blocked['pressed_pikmin'] == [] and blocked['pressed_navi'] == []
+    assert frog.landing_press_victims(False, [], [])['pressed'] == 0
+    assert frog.landing_press_victims(False, None, None)['pressed'] == 0
+
+
 def test_only_marofrog_retargets_living_captains():
     assert frog.retargets_captains('MaroFrog') is True
     assert frog.retargets_captains('Frog') is False
@@ -57,6 +69,18 @@ def test_corpse_contract_matches_source_carry_and_reward():
     assert frog.corpse('MaroFrog')['pokos'] == 7
     assert frog.corpse('Frog')['carry'] == (7, 14)
     assert frog.corpse('MaroFrog')['pickup_offset'] == (-0.6, 0.0, -34.0)
+
+
+def test_carry_route_matches_source_transport_and_accepts_source_ids():
+    route = frog.carry_route('Frog')
+    assert route['species'] == 'Frog' and route['pokos'] == 5
+    assert route['carry'] == (7, 14) and route['onion'] == (8, 8)
+    assert route['pickup_radius'] == 22.0 and route['pickup_height'] == 14.0
+    assert route['pickup_offset'] == (-27.3, 0.0, 12.3)
+    assert frog.carry_route(1)['species'] == 'MaroFrog'
+    assert frog.carry_route('MaroFrog')['pokos'] == 7
+    with pytest.raises(ValueError, match='Unknown frog species'):
+        frog.carry_route('Toady')
 
 
 def test_validate_ready_accepts_source_health_and_rejects_p1_values():

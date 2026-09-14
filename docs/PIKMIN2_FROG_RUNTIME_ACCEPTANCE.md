@@ -181,3 +181,16 @@ exchange with **no injected damage** over a fixed 1200-observation window.
   natural exchange itself is now observed.
 - Validator `tests/test_pikmin2_frog_combat.py` (3 tests) rejects a missing begin,
   no vulnerability, no squad loss, a control loss, and a death without a corpse.
+
+### Corpse transport/reward consumer (lane 16, 2026-09-14)
+
+Host-side reward bookkeeping for `enemy:17`/`enemy:18` now exists in
+`experimental/pikmin2_frog_rewards.py` on the lane-06 receipt schema, with
+`landing_press_victims`/`carry_route` added to the behavior model. It models the
+audited source corpus drop (Onion ledger, corpse Pokos 5/7, count 1) and proves
+exactly-once pickup across revisit and JSON-persistence restart; it reads and
+mutates no save. Native corpse carry, Onion deposit and receipt delivery remain
+unwired, so the Transport/reward (D) and native reward-persistence (F) gates
+stay UNTESTED. A new family-local `P2_FROG_PRESS` marker in `pc_p2_frog.cpp` is
+unbuilt instrumentation for the P1-proxy Attack motion, not press proof. See
+[the reward consumer note](PIKMIN2_FROG_REWARDS.md).

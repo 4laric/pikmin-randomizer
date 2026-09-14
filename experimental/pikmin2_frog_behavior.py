@@ -72,6 +72,24 @@ def landing_press(kind, bittered):
     return not bittered
 
 
+def landing_press_victims(bittered, grounded_pikmin, grounded_navi):
+    """Resolve which grounded actors a falling frog presses.
+
+    The source rule (Frog.cpp:174) presses every grounded Pikmin and Navi on
+    contact; a Bittered victim is skipped. ``grounded_pikmin``/``grounded_navi``
+    are iterables of already-grounded actor tokens, so airborne actors stay the
+    caller's concern. The returned counts match the source one-press-per-victim
+    behavior.
+    """
+    pikmin = [] if grounded_pikmin is None else list(grounded_pikmin)
+    navi = [] if grounded_navi is None else list(grounded_navi)
+    if bittered:
+        return {'bittered': True, 'pressed_pikmin': [], 'pressed_navi': [],
+                'pressed': 0}
+    return {'bittered': False, 'pressed_pikmin': pikmin, 'pressed_navi': navi,
+            'pressed': len(pikmin) + len(navi)}
+
+
 def retargets_captains(kind):
     """MaroFrog overrides ``attackNaviPosition`` to chase a living captain."""
     name, _ = _params(kind)
@@ -84,6 +102,15 @@ def corpse(kind):
     return {'pokos': params['corpse_pokos'], 'carry': params['carry'],
             'onion': params['onion'], 'pickup_radius': params['pickup_radius'],
             'pickup_height': params['pickup_height'], 'pickup_offset': params['pickup_offset']}
+
+
+def carry_route(kind):
+    """Return the source corpse -> carry -> Onion transport fields for one species."""
+    name, params = _params(kind)
+    contract = corpse(name)
+    return {'species': name, 'pokos': contract['pokos'], 'carry': params['carry'],
+            'onion': params['onion'], 'pickup_radius': contract['pickup_radius'],
+            'pickup_height': contract['pickup_height'], 'pickup_offset': contract['pickup_offset']}
 
 
 def validate_ready(text):
