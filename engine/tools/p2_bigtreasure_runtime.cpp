@@ -33,6 +33,7 @@
 #include <vector>
 
 #include "pc_p2_bigtreasure_host.h"
+#include "pc_p2_bigtreasure_fsmhost.h"
 #include "pc_p2_bigtreasure_map_trace.h"
 #include "pc_p2_bigtreasure_visual.h"
 
@@ -118,6 +119,14 @@ public:
             require(p2_bigtreasure_host_setup("p2-bigtreasure-host.txt", seam), "host setup");
             std::puts("P2_BIGTREASURE_HOST_READY profile=p2-bigtreasure-host.txt placement=fixed "
                       "captures=5 no_ai=1 no_damage=1");
+            SDL_Window* window = SDL_GL_GetCurrentWindow();
+            require(window != nullptr, "window");
+            int windowWidth = 0, windowHeight = 0, windowX = 0, windowY = 0;
+            SDL_GetWindowSize(window, &windowWidth, &windowHeight);
+            SDL_GetWindowPosition(window, &windowX, &windowY);
+            require(windowWidth == 960 && windowHeight == 540, "window size 960x540");
+            std::printf("P2_BIGTREASURE_WINDOW size=%dx%d pos=%d,%d\n", windowWidth, windowHeight,
+                        windowX, windowY);
             setup = true;
         }
         switch (phase) {
@@ -126,6 +135,7 @@ public:
             runElecProbe();
             runWaterProbe();
             runHostSeam();
+            runFsmHost();
             startVisual();
             phase = 1;
             break;
@@ -329,6 +339,97 @@ private:
                     (unsigned long long)seam.defeatEvents);
     }
 
+    void runFsmHost()
+    {
+        // FSM host binding on the real map: drive the 12-state policy to an
+        // attack, apply real weapon damage and observe the knock-off phase
+        // transition (live weapon count drops and the policy re-enters
+        // PreAttack in the same tick). Re-installs the seam after the defeat
+        // probe above.
+        require(p2_bigtreasure_host_setup("p2-bigtreasure-host.txt", seam), "fsmhost setup");
+        P2BigTreasureFsmHost fsmHost;
+        P2BigTreasureFsmParms parms;
+        fsmHost.reset(parms);
+        P2BigTreasureFsmHostInput in;
+        P2BigTreasureFsmHostOutput out;
+
+        in.hasTarget = true;
+        int guard = 0;
+        while (fsmHost.phase() != P2BT_Land && guard++ < 400) {
+            fsmHost.tick(seam, in, out);
+        }
+        require(fsmHost.phase() == P2BT_Land, "fsmhost Stay->Land");
+        in.animEnd = true;
+        fsmHost.tick(seam, in, out);
+        require(fsmHost.phase() == P2BT_ItemWalk, "fsmhost Land->ItemWalk");
+        in = P2BigTreasureFsmHostInput{};
+        in.hasTarget = true;
+        in.attackLimitTime = true;
+        fsmHost.tick(seam, in, out);
+        in = P2BigTreasureFsmHostInput{};
+        in.hasTarget = true;
+        in.finishIKMotion = true;
+        fsmHost.tick(seam, in, out);
+        require(fsmHost.phase() == P2BT_PreAttack, "fsmhost ItemWalk->PreAttack");
+        in = P2BigTreasureFsmHostInput{};
+        in.animEnd = true;
+        fsmHost.tick(seam, in, out);
+        require(fsmHost.phase() == P2BT_Attack, "fsmhost PreAttack->Attack");
+        in = P2BigTreasureFsmHostInput{};
+        in.keyEvent2 = true;
+        fsmHost.tick(seam, in, out);
+        require(fsmHost.chosenWeapon() == P2BTWEAPON_Elec
+                    && seam.director.pools.isStarted(fsmHost.chosenWeapon()),
+                "fsmhost attack start");
+
+        // Full four-weapon knock-off sequence: each weapon is damaged to zero
+        // on the real map, the roller drops, and the policy re-picks (or drops
+        // to DropItem when the last one goes). This is the weapon-count phase
+        // progression the audit calls the real per-weapon escalation.
+        int transitions = 0;
+        for (int remaining = P2BTWEAPON_Count; remaining >= 1; --remaining) {
+            const int weapon = fsmHost.chosenWeapon();
+            require(weapon >= 0 && seam.ownership.isWeaponAttached(weapon),
+                    "fsmhost chosen weapon attached");
+            P2BigTreasureFsmHostInput damage;
+            damage.damage = P2BigTreasureOwnership::kWeaponMaxHealth;
+            damage.damageWeapon = weapon;
+            fsmHost.tick(seam, damage, out);
+            require(out.damageResult == P2BTDMG_Weapon, "fsmhost damage routing");
+            require(out.knockedOff == 1 && seam.ownership.weaponCount() == remaining - 1,
+                    "fsmhost knock-off sequence");
+            require(!seam.ownership.isWeaponAttached(weapon), "fsmhost weapon released");
+            if (remaining > 1) {
+                require(fsmHost.phase() == P2BT_PreAttack, "fsmhost re-pick phase");
+                P2BigTreasureFsmHostInput advance;
+                advance.animEnd = true;
+                fsmHost.tick(seam, advance, out);
+                require(fsmHost.phase() == P2BT_Attack, "fsmhost attack after re-pick");
+                P2BigTreasureFsmHostInput restart;
+                restart.keyEvent2 = true;
+                fsmHost.tick(seam, restart, out);
+                require(fsmHost.chosenWeapon() != weapon
+                            && seam.director.pools.isStarted(fsmHost.chosenWeapon()),
+                        "fsmhost next attack started");
+            }
+            ++transitions;
+        }
+        require(transitions == P2BTWEAPON_Count, "fsmhost transition count");
+        require(seam.ownership.isBodyExposed(), "fsmhost body exposed");
+        require(fsmHost.phase() == P2BT_DropItem, "fsmhost DropItem with no weapons");
+
+        // With every weapon gone the body is damageable and routes to boss HP.
+        P2BigTreasureFsmHostInput body;
+        body.damage = 250.0f;
+        body.damageWeapon = -1;
+        fsmHost.tick(seam, body, out);
+        require(out.damageResult == P2BTDMG_Body && out.liveWeapons == 0, "fsmhost body damage");
+        std::printf("P2_BIGTREASURE_FSMHOST_FULL_PASS knockoffs=%llu weapons=%d phase=%s "
+                    "transitions=%d\n",
+                    (unsigned long long)fsmHost.knockOffs(), seam.ownership.weaponCount(),
+                    P2BigTreasureFsm::stateName(fsmHost.phase()), transitions);
+    }
+
     void startVisual()
     {
         require(pc_p2_bigtreasure_visual_setup("p2-bigtreasure-visual.txt"), "visual setup");
@@ -407,8 +508,11 @@ int main(int argc, char** argv)
     _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1");
     pc_bbft_init(argc, argv);
     require(pc_pikipelago_room_preview(), "requires --experimental-pikmin2-room");
-    require(pc_window_init("BigTreasure host-seam runtime fixture", 960, 720), "window init");
+    require(pc_window_init("BigTreasure host-seam runtime fixture", 960, 540), "window init");
     pc_settings_init();
+    pc_window_set_display_mode(PC_WINDOW_FULLSCREEN_WINDOWED);
+    pc_window_set_window_size(960, 540);
+    pc_window_center();
     gsys->Initialise();
     pc_settings_p2d_init();
     nodeMgr = new NodeMgr();

@@ -140,5 +140,4 @@ for the record.
   and material fidelity** remain #128-gated and unchanged by this slice.
 - **Finale treasure (`mPelletDropCode`) and pellet configs** remain disc-data
   unknowns; `throwupItem` is surfaced but not yet bound to a concrete drop.
-- **Production wiring** is captured as a patch (additive CMake line + window
-  baseline); lane 01 reconciles it against the current engine.
+- **Integration #450:** CMake registration, the existing window baseline and the updated replacement-main fixture are integrated. The normal hardlane update still does not call the FSM host; natural attack and reward adapters remain open.

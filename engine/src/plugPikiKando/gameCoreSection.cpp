@@ -23,6 +23,7 @@
 #include "pc_p2_king.h"
 #include "pc_p2_tank.h"
 #include "pc_p2_hardlanes.h"
+#include "pc_p2_projectiles.h"
 #include "pc_randomizer.h"
 #include "MapCode.h"
 #include <fstream>
@@ -1743,6 +1744,7 @@ void GameCoreSection::update()
 #endif
 	}
 	pc_p2_hardlanes_update();
+	pc_p2_projectiles_update();
 
 	if (GameStat::allPikis == 0 && GameStat::maxPikis > 0) {
 		Navi* navi = mNavi;

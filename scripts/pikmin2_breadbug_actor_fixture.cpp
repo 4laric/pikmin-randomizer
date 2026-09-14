@@ -1,5 +1,6 @@
 #include "room-prefix.inc"
 #include "PelletView.h"
+#include "pc_window.h"
 #include "pc_p2_breadbug_actor.h"
 #include "Generator.h"
 class BreadbugActorFixture:public PlugPikiApp {
@@ -19,7 +20,7 @@ public:
    std::printf("P2_BREADBUG_ARENA_ACTORS proxy=%u control=%u initial=%.6f,%.6f,%.6f\n",actor->mGenerator->_70,control->mGenerator->_70,origin.x,origin.y,origin.z);
    Vector3f near=origin+Vector3f(0,0,100);near.y=mapMgr->getMinY(near.x,near.z,true);n->resetPosition(near);
   }
-  require(actor->isAlive()&&control->isAlive(),"proxy/control died during movement smoke");
+  require(control->isAlive()&&(killed||actor->isAlive()),"proxy/control died before injected death");
   float dx=actor->mSRT.t.x-origin.x,dz=actor->mSRT.t.z-origin.z;farthest=std::max(farthest,std::sqrt(dx*dx+dz*dz));
   if(actor->mVelocity.x*actor->mVelocity.x+actor->mVelocity.z*actor->mVelocity.z>1)++moving;
   if(ready==60)capture("breadbug-actor-start.ppm");
@@ -53,4 +54,4 @@ public:
   }
  }
 };
-int main(int argc,char** argv){SDL_setenv("SDL_AUDIODRIVER","dummy",1);SDL_SetMainReady();pc_gpu_preference_apply();_putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND","1");pc_bbft_init(argc,argv);require(pc_pikipelago_room_preview(),"preview flag");if(!pc_window_init("Breadbug actor arena",960,720))return 3;pc_settings_init();gsys->Initialise();pc_settings_p2d_init();nodeMgr=new NodeMgr();gsys->run(new BreadbugActorFixture());return 0;}
+int main(int argc,char** argv){SDL_setenv("SDL_AUDIODRIVER","dummy",1);SDL_SetMainReady();pc_gpu_preference_apply();_putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND","1");pc_bbft_init(argc,argv);require(pc_pikipelago_room_preview(),"preview flag");if(!pc_window_init("Breadbug actor arena",960,540))return 3;pc_settings_init();pc_window_set_display_mode(PC_WINDOW_FULLSCREEN_WINDOWED);pc_window_set_window_size(960,540);pc_window_center();std::puts("P2_BREADBUG_WINDOW size=960x540 centered=1");gsys->Initialise();pc_settings_p2d_init();nodeMgr=new NodeMgr();gsys->run(new BreadbugActorFixture());return 0;}

@@ -1,6 +1,6 @@
 # P2 enemy family — ownership and next-step status
 
-Current integration disposition: [integration sweep #449](PIKMIN2_INTEGRATION_449.md).
+Current integration disposition: [integration sweep #450](PIKMIN2_INTEGRATION_450.md).
 Read this before interpreting historical integrated/candidate claims below.
 
 ## Current audit notice — #434
