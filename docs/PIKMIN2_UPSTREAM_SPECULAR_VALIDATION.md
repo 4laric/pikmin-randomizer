@@ -82,6 +82,33 @@ beneficiary.
   # then launch the fixture built from scripts/pikmin2_queen_specular_fixture.cpp
   ```
 
+### Partial advance toward the measurement (#399)
+
+The upstream specular commits were also applied to the **#422 integration native
+line**, which already carries the P2 material/queen modules:
+
+- Branch `opencode/p2-lanes789-queen-native` @ `d4bc8dbc` (base `0ab3ea12`);
+  `pc_port/pc_p2_specular_layer.{h,cpp}` and `pc_p2_queen.cpp` present.
+- Production build `output/tracks/p2-lanes789/queen-native-build`,
+  `bin\nectar.exe` SHA-256
+  `255E0C7D63EA6BF584A715BC7CDBA60D96608F04B7A61B87FB45C54C88FF65B9`.
+- The #399 specular bank was prepared from the real source
+  (`output/bulblax-run1` + `output/bulblax-bank2-run2`, source hashes
+  `e4904b22…`/`af0dde01…` verified): `p2-queen-specular.txt` SHA-256
+  `8AE29E3E2FB23098021DA5719A22E14116EE3AF469F515655B5E8ACFAC32AC0C`, which
+  matches the #399 doc exactly.
+- The rebuilt fixture loaded the model and bank and printed
+  `P2_QUEEN_SPECULAR_READY diffuse=UV1 specular=normal_btk source_lighting=host
+  third_stage=omitted`, then hit `FAIL QUEEN_SPECULAR startup timeout`.
+
+The timeout is a **room-fixture readiness**, not a renderer failure:
+`pc_p2_preview_ready()` requires `previewShape && previewTreasure`, and the
+available flora/bulblax arena assets have no boss-room `pr05` treasure and no
+`p2-cargo.txt` profile (only `p2-cargo-free.txt`), so readiness never stabilises
+for 120 frames. Measuring the specular channels therefore needs the original
+#399 **private room-preview assets** for that Queen room. The bank, native line
+and fixture are all prepared and recorded above.
+
 
 ## Remaining real-bank failures
 
