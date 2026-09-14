@@ -198,6 +198,19 @@ public:
             if (target && target->mPellet && target->mDeadState == 2) {
                 corpse = target->mPellet;
                 corpseStart = corpse->mSRT.t;
+                // Fixture staging only: let ordinary AI choose and carry the corpse.
+                n->resetPosition(corpseStart + Vector3f(250, 0, 250));
+                int carrySquad = 0;
+                Iterator helpers(pikiMgr);
+                CI_LOOP(helpers) {
+                    auto* p = static_cast<Piki*>(*helpers);
+                    if (!p->isAlive()) continue;
+                    float angle = float(carrySquad) * 6.2831853f / 20.f;
+                    p->resetPosition(corpseStart + Vector3f(18*std::sin(angle), 0, 18*std::cos(angle)));
+                    p->changeMode(PikiMode::FreeMode, n);
+                    ++carrySquad;
+                }
+                std::printf("P2_REENTRY_CARRY_SETUP staged_positions=1 forced_transport=0 live=%d\n", carrySquad);
                 for (int c = 0; c < 3 && onionPos.y == 0.0f; ++c) {
                     GoalItem* onion = itemMgr->getContainer(c);
                     if (onion) onionPos = onion->mSRT.t;
