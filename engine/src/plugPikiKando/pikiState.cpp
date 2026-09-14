@@ -2405,8 +2405,10 @@ void PikiGrowupState::procAnimMsg(Piki* piki, MsgAnim* msg)
 		seSystem->playPikiSound(SEF_PIKI_GROW4, piki->mSRT.t);
 		piki->setFlower(Flower);
 		playerState->mResultFlags.setOn(zen::RESFLAG_PikminSeeds);
-		// QoL: nectar upgrades never interrupt gameplay with the flower tutorial.
-		playerState->mDemoFlags.setFlagOnly(DEMOFLAG_FirstNectar);
+		if (!playerState->mDemoFlags.isFlag(DEMOFLAG_FirstNectar) && !gameflow.mMoviePlayer->mIsActive && piki->aiCullable()) {
+			playerState->mDemoFlags.setFlagOnly(DEMOFLAG_FirstNectar);
+			gameflow.mGameInterface->message(MOVIECMD_TextDemo, zen::ogScrTutorialMgr::TUT_Mitu);
+		}
 		if (piki->mMode == PikiMode::FormationMode) {
 			piki->mNavi->mPlateMgr->changeFlower(piki);
 		}
