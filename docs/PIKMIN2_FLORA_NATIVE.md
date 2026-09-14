@@ -193,3 +193,21 @@ g++ -std=c++17 -Wall -Wextra -Werror -I native-patches/flora tests/pikmin2_flora
 ```
 
 No runtime/native gameplay acceptance is claimed by this lane.
+
+## Approved-base rebase (maintained line)
+
+Rebased onto the current maintained native (`codex/p2-main-review-native` head
+`c223f442`) after lane 01's pass:
+
+- Native `opencode/p2-lane23-approved` @ `5478384fbb9370a9b7f33a17caf15f167101cca5`
+  (base `c223f442`; never pushed); private build
+  `output/p2-lane23-approved-build`, 550/550 link, `ninja -n pikmin_pc` no work.
+- Fixture `output/p2-lane23-approved-fixture-flora/build/fixture.exe` SHA-256
+  `444b466025599b8563af737a337be6a757cfd5bdca6a38884dec4970dfb88087`, provenance
+  status `built`, expected native head `5478384f`.
+- GL run `output/p2-lane23-approved-runtime-flora/flora/44318030a55047f7856fd99e32a183b7`
+  PASS: `P2_FLORA_PELLET_RELEASED ... declared_match=1`,
+  `P2_FLORA_PELLET_CAPTURED carriers=2`, `PASS P2_FLORA_PELPLANT_RUNTIME release_and_capture`.
+- The shared `scripts/build_pikmin2_fixture.py` now expands Ninja response files
+  (root `321db4e`) so approved-base targets whose link command exceeds the
+  Windows limit can be fixture-linked; this is the blocker lane 31 reported.

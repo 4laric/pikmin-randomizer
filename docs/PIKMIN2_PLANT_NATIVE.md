@@ -127,3 +127,18 @@ g++ -std=c++17 -Wall -Wextra -Werror -I native-patches/plant tests/pikmin2_plant
 ```
 
 No runtime/native gameplay acceptance is claimed by this lane.
+
+## Approved-base rebase (maintained line)
+
+Rebased onto the current maintained native (`codex/p2-main-review-native` head
+`c223f442`) after lane 01's pass:
+
+- Native `opencode/p2-lane23-approved` @ `5478384fbb9370a9b7f33a17caf15f167101cca5`
+  (base `c223f442`; never pushed); private build `output/p2-lane23-approved-build`,
+  550/550 link, `ninja -n pikmin_pc` no work.
+- Fixture `output/p2-lane23-approved-fixture-plant/build/fixture.exe` SHA-256
+  `06092882189c04903ac345ac62bf2b8360ce6f69140118fafb75906628cedd90`, provenance
+  status `built`, expected native head `5478384f`.
+- GL run `output/p2-lane23-approved-runtime-plant/plant/8e54bd79970448a1a482961bfe3801ec`
+  PASS: `P2_PLANT_SENTINEL_ARMED ... per_touch=5`, `P2_PLANT_SENTINEL_BLOCKED reason=no_qurione_seam`,
+  `P2_PLANT_SENTINEL_SUPPRESSED ... no_reserved_slot`, `PASS P2_PLANT_NATIVE lod_sentinel_slot_rule`.
