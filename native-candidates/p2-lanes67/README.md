@@ -22,5 +22,11 @@ line. See `provenance.json` for build/test/runtime hashes.
   de-duplication, and the `exitStage` full reset. `TekiMgr::reset()` had no
   runtime caller, so the stage-exit reset is a genuine teardown fix.
 - Runtime evidence is on P1-proxy placements (flora/Chappy vehicles), not source
-  P2 FSM/drop parity. Lane 06's ordinary endpoint wiring and lane 07's
-  new-scene re-entry remain open.
+  P2 FSM/drop parity.
+- Lane 06 ordinary endpoint is now demonstrated end to end: a real Dwarf Bulborb
+  kill drives a real corpse through `GoalItem::suckMe` ->
+  `pc_randomizer_corpse_delivered` -> `pc_randomizer_check` and grants
+  `Bestiary: Deliver Dwarf Bulborb` exactly once, refused on a fresh process.
+  Only the Pikmin carry step is injected (lane 04 transport).
+- Lane 07 still open: in-process re-entry into a fresh gameplay scene after
+  stage-exit teardown (needs a P2-populated campaign/multi-day harness).
