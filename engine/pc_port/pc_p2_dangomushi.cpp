@@ -40,6 +40,7 @@
 // No other lane's module is modified; every hook is a no-op for unregistered
 // actors.
 #include "pc_p2_dangomushi.h"
+#include "pc_p2_dangomushi_hazard.h"
 #include "teki.h"
 #include "Interactions.h"
 #include "Piki.h"
@@ -48,6 +49,7 @@
 #include "NaviMgr.h"
 #include "Generator.h"
 #include "gameflow.h"
+#include "GameStat.h"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -138,6 +140,11 @@ struct Dango {
     float phase = 0.0f;
     bool deadLogged = false;
     float logTimer = 0.0f;
+    // Lane-25 hazard policy (#376): Turn vulnerability window + Rock/Egg rain.
+    P2DangoMushiHazardPolicy hazard;
+    bool turnJustEntered = false;
+    bool hazardWindowLogged = false;
+    int hazardRocks = 0;
 };
 
 std::map<PelletView*, Dango> actors;
@@ -244,6 +251,7 @@ bool canAttack(const Vector3f& pos, const Dango& s, Creature* target) {
 void enter(Dango& s, State state, const char* clip) {
     s.state = state;
     s.stateTime = 0.0f;
+    s.turnJustEntered = state == DANGO_TURN;
     s.firedEvents.clear();
     s.rolling = false;
     s.rollHit = false;
@@ -445,6 +453,7 @@ void pc_p2_dangomushi_setup() {
             std::abort();
         }
         Dango& s = actors[static_cast<PelletView*>(actor)];
+        s.hazard.reset(P2DangoMushiHazardParms{});
         s.home = actor->getPosition();
         s.heading = actor->getDirection();
         s.moveTarget = s.home;
@@ -563,12 +572,44 @@ void pc_p2_dangomushi_update(BTeki* actor) {
         }
         break;
     }
-    case DANGO_TURN:
+    case DANGO_TURN: {
         stop(actor);
+        // Lane-25 hazard policy: the source stickable window and the Rock/Egg
+        // rain decisions. The P1 host has no EB_Invulnerable flag, so the window
+        // is observed/decided here and applied by a future host seam.
+        const float share = GameStat::allPikis > 0
+            ? float(GameStat::formationPikis) / float(GameStat::allPikis) : 0.0f;
+        P2DangoMushiHazardInput hz;
+        hz.turnEntered = s.turnJustEntered;
+        hz.turnFrame = s.stateTime * 30.0f;
+        hz.activeCaptainGroupShare = share;
+        hz.eggRoll = gsys->getRand(1.0f);
+        P2DangoMushiHazardOutput hzo;
+        s.hazard.update(hz, hzo);
+        if (hzo.rocksToSpawn > 0) {
+            s.hazardRocks += hzo.rocksToSpawn;
+            std::printf("P2_DANGOMUSHI_HAZARD generator=%u rocks=%d lifetime=%.1f egg=%d\n",
+                        generator, hzo.rocksToSpawn, hzo.rockLifetime,
+                        int(hzo.eggRequested));
+            std::fflush(stdout);
+        }
+        if (hzo.stickable != s.hazardWindowLogged) {
+            s.hazardWindowLogged = hzo.stickable;
+            std::printf("P2_DANGOMUSHI_TURN_WINDOW generator=%u frame=%.1f stickable=%d "
+                        "invulnerable=%d\n", generator, s.stateTime * 30.0f,
+                        int(hzo.stickable), int(hzo.invulnerable));
+            std::fflush(stdout);
+        }
+        s.turnJustEntered = false;
         if (s.stateTime >= FLIP_TIME || s.stateTime >= clipDuration("turn")) {
+            P2DangoMushiHazardInput exitInput;
+            exitInput.turnExited = true;
+            P2DangoMushiHazardOutput exitOutput;
+            s.hazard.update(exitInput, exitOutput);
             setState(actor, s, DANGO_RECOVER, "recover");
         }
         break;
+    }
     case DANGO_RECOVER:
         stop(actor);
         if (s.stateTime >= clipDuration("recover")) {
