@@ -20,7 +20,7 @@ import uuid
 from pathlib import Path
 
 from scripts import build_pikmin2_fixture as builder
-from scripts.preview_pikmin2_room import generator, overlay
+from scripts.preview_pikmin2_room import generator, overlay, records
 from experimental.pikmin2_generator_pose import write_position
 
 STAGES = ('small', 'middle', 'full')
@@ -60,7 +60,7 @@ public:
 			gameflow.mMoviePlayer->requestSkip();
 			return result;
 		}
-		if (!pc_p2_preview_ready() || !naviMgr || !pikiMgr || !tekiMgr || !pelletMgr || !mapMgr) {
+		if (!pc_p2_preview_cargo_free_ready() || !naviMgr || !pikiMgr || !tekiMgr || !pelletMgr || !mapMgr) {
 			return result;
 		}
 		Navi* n = naviMgr->getNavi();
@@ -91,15 +91,19 @@ public:
 			return result;
 		}
 		if (phase == 0) {
-			Iterator it(tekiMgr);
-			CI_LOOP(it) {
-				Teki* teki = static_cast<Teki*>(*it);
-				if (teki && teki->isAlive() && teki->mTekiType == TEKI_Palm) {
-					posy = teki;
-					break;
+			if (posy == nullptr) {
+				Iterator it(tekiMgr);
+				CI_LOOP(it) {
+					Teki* teki = static_cast<Teki*>(*it);
+					if (teki && teki->isAlive() && teki->mTekiType == TEKI_Palm) {
+						posy = teki;
+						break;
+					}
 				}
 			}
-			require(posy != nullptr, "Pellet Posy proxy not present");
+			if (posy == nullptr) {
+				return result; // generator proxy not spawned yet
+			}
 			require(cameraMgr && cameraMgr->mCamera, "camera missing");
 			FloraCameraTarget* target = new FloraCameraTarget();
 			target->mSRT.t = Vector3f(posy->mSRT.t.x, posy->mSRT.t.y + 40.0f, posy->mSRT.t.z);
@@ -205,23 +209,44 @@ def build(native, build_dir, output, head):
 
 
 def stage(assets, output):
+    """Stage the practice course plus a squad and one injected Pellet Posy.
+
+    Mirrors experimental/pikmin2_king_runtime.py: the private chal0 slot reuses
+    the byte-preserved practice stage (no pikmin2room course asset is needed) and
+    p2-cargo-free.txt keeps pc_p2_preview from loading courses/pikmin2room/*.mod.
+    """
     assets = Path(assets).resolve()
-    blob = generator(assets)
-    starts = [m.start() for m in re.finditer(b'    0.0v', blob)]
-    if not starts or starts[0] != 24:
-        raise ValueError('Unsupported generated room framing')
-    entries = [blob[s:(starts[i + 1] if i + 1 < len(starts) else len(blob))] for i, s in enumerate(starts)]
-    enemy = next((r for r in entries if len(r) > 80 and r[80] == 3), None)
-    if enemy is None:
-        raise ValueError('Missing P1 enemy generator template')
+    source = assets / 'dataDir/stages/practice/default.gen'
+    data = source.read_bytes()
+    entries = records(source)
+
+    raw = generator(assets)
+    starts = [m.start() for m in re.finditer(b'    0.0v', raw)]
+    rows = [raw[a:(starts[i + 1] if i + 1 < len(starts) else len(raw))] for i, a in enumerate(starts)]
+    piki = next((r for r in rows if r[72:76] == b'ikip'), None)
+    enemy = next((r for r in rows if len(r) > 80 and r[80] == 3), None)
+    if piki is None or enemy is None:
+        raise ValueError('Missing P1 Pikmin/enemy generator template')
+
+    # Starting squad (injection; the practice stage carries no Pikmin here).
+    for i in range(10):
+        row = bytearray(piki)
+        struct.pack_into('>I', row, 8, 235200 + i)
+        row[16:48] = b'flora squad'.ljust(32, b'\0')
+        write_position(row, [10 + i % 5 * 12, 30, 1890 + i // 5 * 12])
+        struct.pack_into('>I', row, 92, 1)  # native Red
+        entries.append(bytes(row))
+
+    # One full Pellet Posy (TEKI_Palm) among the squad (labeled injection; the
+    # source position is authored, not copied from source placement data).
     posy = bytearray(enemy)
     posy[80] = 7  # TEKI_Palm, Pellet Posy
     struct.pack_into('>I', posy, 8, POSY_GENERATOR)
     posy[16:48] = b'flora pellet posy fixture'.ljust(32, b'\0')
-    write_position(posy, [60.0, 0.0, -40.0])
-    struct.pack_into('>I', posy, 92, 0)
+    write_position(posy, [34, 30, 1896])
     entries.append(bytes(posy))
-    data = blob[:20] + struct.pack('>I', len(entries)) + b''.join(entries)
+
+    data = data[:20] + struct.pack('>I', len(entries)) + b''.join(entries)
 
     run = Path(output).resolve() / uuid.uuid4().hex
     run.mkdir(parents=True)
@@ -231,12 +256,23 @@ def stage(assets, output):
     for p in (assets / 'dataDir/stages/chal0').glob('*.gen'):
         overrides.setdefault('dataDir/stages/chal0/' + p.name, empty)
     overlay(assets, run / 'assets', overrides)
+    # The preview only tries courses/pikmin2room/treasure.mod when cargo is
+    # enabled; cargo-free keeps the fixture on the practice course. Other
+    # pikmin2room pose banks are gated by their own sidecars, all absent here.
+    (run / 'p2-cargo-free.txt').write_bytes(b'P2_CARGO_FREE_1\n')
     sidecar = pelplant_sidecar([dict(generator=POSY_GENERATOR, stage='full', pellet=5, colour='blue')])
     (run / 'p2-flora-pelplant.txt').write_bytes(sidecar)
     (run / 'flora-stage.json').write_bytes((json.dumps(
         dict(scene='P1 Palm proxy / P2 Pelplant policy', source_id=0, sidecar='p2-flora-pelplant.txt',
              generator=POSY_GENERATOR, stage='full', pellet=5, colour='blue',
              sidecar_sha256=builder.sha256(run / 'p2-flora-pelplant.txt')), indent=2) + '\n').encode())
+
+    required = {run / 'p2-flora-pelplant.txt', run / 'p2-cargo-free.txt',
+                run / 'assets/dataDir/stages/chal0.ini', run / 'assets/dataDir/stages/chal0/default.gen',
+                run / 'assets/dataDir/courses/practice/practice.mod'}
+    missing = sorted(str(p) for p in required if not p.is_file())
+    if missing:
+        raise ValueError('Flora staging incomplete; missing: ' + ', '.join(missing))
     return run
 
 

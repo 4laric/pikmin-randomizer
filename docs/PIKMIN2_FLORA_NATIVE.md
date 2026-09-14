@@ -96,6 +96,10 @@ P2_FLORA_ONION_RECEIPT generator=<id> pellet=<n> pokos=0 seeds=0 onion_slice_uni
   (`mCarrierCount >= 1`) and, if it reaches the Pod delivery path, reports
   `P2_FLORA_ONION_RECEIPT ... seeds=0`.
 - No regrowth: no posy regrowth timer is added; the P1 Palm has none.
+- Two-phase binding: the sidecar is parsed into pending specs and a proxy may
+  resolve on any later frame, because generator actors can spawn after
+  `GameCoreSection::finalSetup`. A spec that never resolves simply never emits
+  its observation lines (the validator then fails closed).
 
 **BLOCKED / remaining**
 
@@ -127,22 +131,39 @@ P2_FLORA_ONION_RECEIPT generator=<id> pellet=<n> pokos=0 seeds=0 onion_slice_uni
 ## Build and fixture provenance
 
 - Native branch `opencode/p2-lane23-native`, commit
-  `54442a535ff395f9e9f80c9f3e916ffed4511f9f` (base `57bb1a4e`), clean.
+  `8f0574e923d7508dc170362d52badcd2537a2601` (base `57bb1a4e`), clean.
 - Private build `output/p2-lane23-native-build`, Ninja; dry run
   `ninja: no work to do.`
-- Fixture `output/p2-lane23-flora-fixture-1/build/fixture.exe`
-  SHA-256 `4dbc7480a85f0cc07b43f8bf62c04774ead954fdd799841010ec6bab0c745940`,
+- Fixture `output/p2-lane23-flora-fixture-3/build/fixture.exe`
+  SHA-256 `7a6c6dbcb6e194a03bca387897ed06339ae76a623e8b80a913155af48113944a`,
   `provenance.json` status `built`, expected native head matches.
 - GL fixture runs are serialized and owned by the coordinator. This lane built
   only; no runtime/gameplay acceptance is claimed.
 
+### Staged assets (`pikmin2_flora_runtime.stage`)
+
+The private chal0 slot reuses the byte-preserved practice course, so no
+`courses/pikmin2room/*.mod` asset is required and `pc_p2_preview` never tries
+`treasure.mod`:
+
+- `dataDir/stages/chal0.ini` = `dataDir/stages/practice.ini` (map is
+  `courses/practice/practice.mod`),
+- `dataDir/stages/chal0/default.gen` = the practice `default.gen` records plus
+  10 Red Pikmin (injected squad) and one `TEKI_Palm` Pellet Posy generator
+  (`_70 = 240001`, authored at `(34, 30, 1896)`; labeled fixture injection),
+- every existing `dataDir/stages/chal0/*.gen` overridden to an empty stage,
+- `p2-cargo-free.txt` (`P2_CARGO_FREE_1`) so the preview skips the missing
+  `courses/pikmin2room/treasure.mod`,
+- `p2-flora-pelplant.txt` (`P2_FLORA_PELPLANT_1` / `240001 full 5 blue`).
+
+`stage()` asserts each of these files exists before launch and raises a clear
+error otherwise; the fixture does not fall back to a partial asset tree.
+
 Exact GL run command (from `output/p2-lane23-root`):
 
 ```powershell
-py -3.12 -m experimental.pikmin2_flora_runtime run ^
-  --assets C:\Users\alari\bbft\dist\cohesion\pikmin\assets ^
-  --output output/p2-lane23-flora-runtime-01 ^
-  --exe C:\Users\alari\pikmin-randomizer\output\p2-lane23-flora-fixture-1\build\fixture.exe
+$env:PIKMIN_P2_ROOM_WINDOW='960x540'
+py -3.12 -m experimental.pikmin2_flora_runtime run --assets C:\Users\alari\bbft\dist\cohesion\pikmin\assets --output output/p2-lane23-flora-runtime-02 --exe C:\Users\alari\pikmin-randomizer\output\p2-lane23-flora-fixture-3\build\fixture.exe
 ```
 
 ## Validation
