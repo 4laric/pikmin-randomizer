@@ -113,3 +113,51 @@ def resolve_press(ledger, seed, identity, actor, encounter, *, variant, purple,
     outcome['damage'] = damage
     outcome['released'] = True
     return outcome
+
+
+STEP_PRESS = 'press'
+STEP_CONTEST = 'contest'
+STEP_DEFEAT = 'defeat'
+
+
+def resolve_giant_step(ledger, seed, actor, encounter, step, *, identity=GIANT):
+    """Resolve one ordered Giant press/contest/defeat step against the ledger.
+
+    ``step`` is a mapping with ``kind`` in ``{'press', 'contest', 'defeat'}``:
+    a press carries ``purple`` (and optional ``held_slots``), a contest carries a
+    ``reason`` from :data:`contest.RELEASE_REASONS`, and a defeat carries optional
+    ``held_slots``. Delegates to :func:`resolve_press` / :func:`resolve_contest`,
+    so a resisted press and a Purple press that only releases cargo never grant;
+    only the defeat can grant, exactly once.
+    """
+    kind = step['kind']
+    held = step.get('held_slots', 0)
+    if kind == STEP_PRESS:
+        result = resolve_press(ledger, seed, identity, actor, encounter,
+                               variant='giant', purple=bool(step['purple']),
+                               held_slots=held)
+    elif kind == STEP_CONTEST:
+        result = resolve_contest(ledger, seed, identity, actor, encounter,
+                                 step['reason'], held_slots=held)
+    elif kind == STEP_DEFEAT:
+        result = resolve_contest(ledger, seed, identity, actor, encounter,
+                                 DEATH, held_slots=held)
+    else:
+        raise ValueError('Unknown Giant sequence step: ' + repr(kind))
+    return dict(result, kind=kind)
+
+
+def resolve_giant_sequence(ledger, seed, actor, encounter, steps, *, identity=GIANT):
+    """Replay an ordered Giant press/contest/defeat sequence exactly once.
+
+    Each step is resolved by :func:`resolve_giant_step`. Returns
+    ``{'granted': int, 'events': [...], 'returned': int}``: the number of new
+    grants (0 or 1), the per-step outcomes in order, and the total treasure
+    returned by the defeat. A second replay after a restart grants nothing while
+    the persisted defeat receipt remains.
+    """
+    events = [resolve_giant_step(ledger, seed, actor, encounter, step, identity=identity)
+              for step in steps]
+    return {'granted': sum(1 for event in events if event['granted']),
+            'events': events,
+            'returned': sum(event['returned'] for event in events)}

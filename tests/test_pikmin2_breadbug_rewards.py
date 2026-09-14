@@ -142,3 +142,43 @@ def test_contest_loss_recovers_cargo_without_granting():
                                      'floor2', contest.RECOVER, held_slots=1)
     assert result['granted'] is False and result['returned'] == 0
     assert len(ledger) == 0
+
+
+def test_giant_press_contest_defeat_sequence_grants_only_on_defeat():
+    ledger = receipts.ReceiptLedger(receipts.InMemoryPersistence())
+    steps = [
+        {'kind': rewards.STEP_PRESS, 'purple': False, 'held_slots': 2},  # resisted
+        {'kind': rewards.STEP_PRESS, 'purple': True, 'held_slots': 2},   # releases only
+        {'kind': rewards.STEP_CONTEST, 'reason': contest.RECOVER, 'held_slots': 1},
+        {'kind': rewards.STEP_DEFEAT, 'held_slots': 2},
+    ]
+    result = rewards.resolve_giant_sequence(ledger, 'seed-a', '187001', 'floor1', steps)
+    assert result['granted'] == 1
+    assert result['returned'] == 2
+    assert [event['kind'] for event in result['events']] == [
+        rewards.STEP_PRESS, rewards.STEP_PRESS, rewards.STEP_CONTEST, rewards.STEP_DEFEAT]
+    resisted, pressed, recovered, defeat = result['events']
+    assert resisted['granted'] is False and resisted['released'] is False
+    assert pressed['granted'] is False and pressed['released'] is True
+    assert recovered['granted'] is False
+    assert defeat['granted'] is True
+    assert len(ledger) == 1
+
+
+def test_giant_sequence_defeat_survives_restart_via_json_persistence(tmp_path):
+    path = tmp_path / 'giant-receipts.json'
+    ledger = receipts.ReceiptLedger(receipts.JsonReceiptPersistence(path))
+    steps = [
+        {'kind': rewards.STEP_PRESS, 'purple': True, 'held_slots': 1},
+        {'kind': rewards.STEP_DEFEAT, 'held_slots': 1},
+    ]
+    assert rewards.resolve_giant_sequence(ledger, 'seed-a', '187001', 'floor1', steps)['granted'] == 1
+    restarted = ledger.restart()
+    replay = rewards.resolve_giant_sequence(restarted, 'seed-a', '187001', 'floor1', steps)
+    assert replay['granted'] == 0  # persisted defeat receipt is not granted again
+    assert replay['returned'] == 1  # the death still throws the cargo back
+    assert len(restarted) == 1
+    # A genuinely new actor/encounter is still granted after the restart.
+    assert rewards.resolve_giant_sequence(
+        restarted, 'seed-a', '187002', 'floor1', steps)['granted'] == 1
+    assert len(restarted) == 2

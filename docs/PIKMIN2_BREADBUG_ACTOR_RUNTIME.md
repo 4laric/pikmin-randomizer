@@ -236,6 +236,42 @@ wave (a valid Purple press must release held cargo in place).
   defeat_throwup nest_linked`.
 - This is the first runtime confirmation of the interruption (`giveup`) release,
   now with natural cargo acquisition (no `setCreaturePointer`/`startStickTeki`
-  invite for the held state). Caveat: the fixture hardcodes a 960x720 window
-  rather than the standard 960x540, and the small Breadbug proxy still has no
-  cargo owner, so its interruption path remains unimplemented.
+  invite for the held state). The small Breadbug proxy still has no cargo owner,
+  so its interruption path remains unimplemented.
+
+### Standard 960x540 preview window (lane 18, 2026-09-14)
+
+`scripts/pikmin2_giant_breadbug_actor_fixture.cpp` no longer hardcodes a
+960x720 window. Its `main` mirrors `pc_main.cpp`'s `pc_test_window_size` sequence:
+it reads `PIKMIN_P2_ROOM_WINDOW` (default 960x540, `WxH` override, `=off` keeps the
+persisted size), calls `pc_window_init` at that size, then — after
+`pc_settings_init()` — applies `pc_window_set_display_mode(...WINDOWED)`,
+`pc_window_set_window_size(...)` and `pc_window_center()`, and logs
+`Experimental preview window set to 960x540 windowed and centered`. The arena logic
+above is unchanged; only startup window handling moved to the maintained standard.
+
+### Exactly-once Giant press/contest/defeat receipt bridge (lane 18, 2026-09-14)
+
+`experimental/pikmin2_breadbug_rewards.py` adds `resolve_giant_step` and
+`resolve_giant_sequence` on top of the existing `resolve_press` / `resolve_contest`
+/ `grant_defeat` helpers. A sequence is an ordered list of
+`{'kind': 'press'|'contest'|'defeat', ...}` steps: a press carries `purple` (and
+optional `held_slots`), a contest carries a `reason`, a defeat carries optional
+`held_slots`. Semantics:
+
+- A **resisted** press (non-Purple Giant) never releases and never grants.
+- A **Purple press** that only releases cargo (`drop`) is an interruption: it
+  returns the held cargo and never grants.
+- A **contest loss** (`recover`) returns cargo to the carriers and never grants.
+- Only the **defeat** grants, exactly once, and returns every held treasure.
+- Because the grant goes through lane 06's `ReceiptLedger`, replaying the same
+  ordered sequence after a `restart()` (or through a fresh
+  `JsonReceiptPersistence`) grants nothing again, while a genuinely new
+  actor/encounter still grants.
+
+Tests: `tests/test_pikmin2_breadbug_rewards.py` adds a full ordered
+press/contest/defeat sequence and a `JsonReceiptPersistence` restart replay.
+
+- Remaining: the small Breadbug proxy still has no cargo owner, and native
+  exactly-once receipt persistence across process restart still needs the lane
+  01/06 native save bridge. Both remain open on #168/#220/#441.
