@@ -8,13 +8,13 @@ Use [the full integration ledger](PIKMIN2_FULL_INTEGRATION_437.md) for accepted 
 
 | Lane | Tracking issue | Primary next action | Remaining work |
 |---|---|---|---|
-| 01 | [#437](https://github.com/4laric/pikmin-randomizer/issues/437) | Integration | Current handoff batch merged; validation/publication tracked below. |
+| 01 | [#437](https://github.com/4laric/pikmin-randomizer/issues/437) | Integration | Reviewed handoff batch merged, validated and exported; continue integration of new deliveries. |
 | 02 | [#438](https://github.com/4laric/pikmin-randomizer/issues/438) | Implementation | Admission list remains empty until one identity passes the generated-session chain. |
 | 03 | [#439](https://github.com/4laric/pikmin-randomizer/issues/439) | Implementation | Native ENEMY_P2 parsing and ordinary spawn binding remain; the Python seed/bootstrap path is integrated. |
 | 04 | [#440](https://github.com/4laric/pikmin-randomizer/issues/440) | Implementation | Accepted native terrain and carry-route evidence for generated placements. |
 | 05 | [#442](https://github.com/4laric/pikmin-randomizer/issues/442) | Implementation | Complete family adapters and identity-to-runtime binding for ordinary generated sessions; staging/launcher consumer is integrated. |
 | 06 | [#441](https://github.com/4laric/pikmin-randomizer/issues/441) | Acceptance | Validate P2 rewards at actual endpoints across restart; ordinary P1 endpoint evidence is retained. |
-| 07 | [#397](https://github.com/4laric/pikmin-randomizer/issues/397) | Acceptance | Worker new-scene gate passed; repeat on the combined pair and broader family coverage. Scripted pad and scene signal are integrated. |
+| 07 | [#397](https://github.com/4laric/pikmin-randomizer/issues/397) | Acceptance | Combined new-scene gate passed (generation 1 to 2, 11 rebound actors); broader family lifetime/re-entry coverage remains. |
 | 08 | [#431](https://github.com/4laric/pikmin-randomizer/issues/431) | Implementation | Adopt sampled animation events across remaining family consumers; Armor migration is integrated. |
 | 09 | [#429](https://github.com/4laric/pikmin-randomizer/issues/429) | Implementation | Remaining conversion/material gaps and per-family visual fidelity; native billboard path is integrated. |
 | 10 | [#408](https://github.com/4laric/pikmin-randomizer/issues/408) | Implementation | Remaining family emitters and physical elemental receivers; ElecBug electric path is integrated. |
