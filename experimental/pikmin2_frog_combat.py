@@ -5,8 +5,10 @@ P1's ordinary combat exchange with no injected damage: the frog must take natura
 Pikmin damage (vulnerability) and the squad must lose members to the frog's
 landing press (attack), ending in the frog's natural death with a corpse, a
 depleted squad, or the observation window. Unregistered control frogs stay alive.
-The `P2_FROG_PRESS` marker is reported as instrumentation, not proof of the
-source landing press. See ``docs/PIKMIN2_FROG_RUNTIME_ACCEPTANCE.md``.
+The `P2_FROG_PRESS` and `P2_FROG_LAND` markers are reported as instrumentation,
+not proof of the source landing press: `P2_FROG_LAND` attributes grounded
+receivers inside the source head radius but is not made a hard pass condition.
+See ``docs/PIKMIN2_FROG_RUNTIME_ACCEPTANCE.md``.
 """
 import re
 
@@ -83,13 +85,20 @@ def validate(text, code):
         frog_attack=bool(squad) and min(squad) < initial,
         controls_alive=bool(result) and result[5] == '1',
         outcome=bool(result) and (result[2] == '0' or int(result[3]) >= 1))
+    land = re.findall(r'P2_FROG_LAND species=(\w+) radius=([\d.]+) bittered=(\d) '
+                      r'pikmin=(\d+) navi=(\d+) behavior=P1_proxy', text)
     return dict(passed=all(checks.values()), checks=checks, ticks=ticks, squad=squad,
                 reason=result[1] if result else None, frog_dead=result[2] if result else None,
                 corpse=result[3] if result else None,
                 press_markers={'Frog': len(re.findall(r'P2_FROG_PRESS species=Frog ', text)),
                                'MaroFrog': len(re.findall(r'P2_FROG_PRESS species=MaroFrog ', text))},
+                land_markers={'Frog': len(re.findall(r'P2_FROG_LAND species=Frog ', text)),
+                              'MaroFrog': len(re.findall(r'P2_FROG_LAND species=MaroFrog ', text))},
+                land_attribution=[{'species': s, 'radius': float(r), 'bittered': b == '1',
+                                   'pikmin': int(p), 'navi': int(n)} for s, r, b, p, n in land],
                 unmeasured=['transport/rewards', 'full scene/day reload',
-                            'source landing-press receiver attribution (P2_FROG_PRESS is Attack-motion instrumentation)'])
+                            'native source landing-press receiver (P2_FROG_LAND is reported '
+                            'head-radius attribution; no native bitter provider yet)'])
 
 
 if __name__ == '__main__':

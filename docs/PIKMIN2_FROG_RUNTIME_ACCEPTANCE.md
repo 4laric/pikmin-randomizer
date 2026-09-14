@@ -157,11 +157,47 @@ param chain; unregistered controls are untouched.
 | Gate | Result | Limit |
 |---|---|---|
 | Source identity/params (A/B) | PASS (native run) | one run; unchanged controls |
-| Landing press / retarget | PASS (host model) | native receiver not yet asserted |
+| Landing press / retarget | PASS (host model) + native attribution | `P2_FROG_LAND` head-radius attribution not yet built/run; press still P1 |
 | Jump attack resolution | PASS (host model) | source event execution still P1 |
 | Death/corpse (D) | PASS with injected attack | natural damage parity untested |
 | Transport/reward (D) | UNTESTED | carry-observation fixture grounded + transported assist; native run still pending the GL slot, no native receipt |
 | Cleanup/re-entry (E) | PASS (manager reset/re-entry) | full scene/day reload untested |
+
+### Source landing-press receiver attribution (lane 16, 2026-09-14)
+
+The source contract is a *landing* collision: a falling, non-bittered Frog
+presses every grounded Navi/Pikmin on contact (`Frog.cpp:177`, `StateAttack::init`
+calls `pressOnGround`). The P1-proxy host already presses, so this slice only adds
+attribution and does not change behavior.
+
+- Native `pc_port/pc_p2_frog.cpp` now emits `P2_FROG_LAND` on the rising edge of a
+  registered frog's P1-proxy `Attack` motion (the host landing/attack key) when at
+  least one grounded (`!Creature::isFlying()`), living Pikmin or Navi lies within
+  the audited source head radius (`pc_p2_frog_policy.h` `headRadius`: Frog 23,
+  MaroFrog 21). It reports only counts and never presses, damages or moves any
+  actor, so press behavior is unchanged. It is a no-op for unregistered controls:
+  `pc_p2_frog_draw` returns before the marker for actors absent from the
+  registration map. The source not-bittered precondition is honoured through a
+  family-local `pc_p2_frog_set_bittered` hook; no P1 bitter provider exists, so a
+  run currently always reports `bittered=0`. Intended build command:
+  `cmake --build output/lanes16-18-native-build --target pikmin_pc -j 6` from the
+  lane native worktree (do not build the shared `native/build-randomizer`). The
+  marker was **not built or run** in this slice.
+- Host `experimental/pikmin2_frog_behavior.py` adds `HEAD_RADIUS`, `head_radius()`
+  and `landing_press_receiver(species, grounded_pikmin, grounded_navi, bittered,
+  radius)`, returning the source `outcome` (`'pressed'`/`'bittered'`/
+  `'no_receiver'`), the pressed victim tokens and the `radius_used`/
+  `radius_matches_source` attribution.
+- `experimental/pikmin2_frog_combat.py` parses `P2_FROG_LAND` rows into
+  `land_markers`/`land_attribution` as **reported instrumentation**, not a hard
+  pass condition, because the native marker is not yet observed in a run.
+  `tests/test_pikmin2_frog_behavior.py` (12) and
+  `tests/test_pikmin2_frog_combat.py` (5) cover the receiver and the reported
+  markers.
+
+Remaining gap: the native landing attribution is unbuilt and unobserved, the
+native bitter provider is unwired, and the host model still does not reproduce the
+source one-press-per-frame collision loop against live actor positions.
 
 ### Natural combat observation (lane 16, 2026-09-14)
 

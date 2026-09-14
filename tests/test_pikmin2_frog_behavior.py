@@ -59,6 +59,33 @@ def test_landing_press_victims_hits_every_grounded_victim_unless_bittered():
     assert frog.landing_press_victims(False, None, None)['pressed'] == 0
 
 
+def test_head_radius_matches_the_source_collision_data():
+    assert frog.head_radius('Frog') == 23.0
+    assert frog.head_radius('MaroFrog') == 21.0
+    assert frog.head_radius(0) == 23.0 and frog.head_radius(1) == 21.0
+    with pytest.raises(ValueError, match='Unknown frog species'):
+        frog.head_radius('Toady')
+
+
+def test_landing_press_receiver_returns_outcome_and_radius_used():
+    pressed = frog.landing_press_receiver('Frog', ['piki1', 'piki2'], ['navi0'], False, 23.0)
+    assert pressed['outcome'] == 'pressed' and pressed['pressed'] == 3
+    assert pressed['radius_used'] == 23.0 and pressed['radius_matches_source'] is True
+    assert pressed['source_radius'] == 23.0
+    observed = frog.landing_press_receiver('MaroFrog', ['piki1'], [], False, 30.0)
+    assert observed['radius_used'] == 30.0 and observed['radius_matches_source'] is False
+    default = frog.landing_press_receiver('MaroFrog', ['piki1'], [], False, None)
+    assert default['radius_used'] == 21.0 and default['radius_matches_source'] is True
+    blocked = frog.landing_press_receiver('Frog', ['piki1'], ['navi0'], True, 23.0)
+    assert blocked['outcome'] == 'bittered' and blocked['pressed'] == 0
+    empty = frog.landing_press_receiver('Frog', [], [], False, 23.0)
+    assert empty['outcome'] == 'no_receiver' and empty['pressed'] == 0
+    with pytest.raises(ValueError, match='radius must be positive'):
+        frog.landing_press_receiver('Frog', [], [], False, 0)
+    with pytest.raises(ValueError, match='Unknown frog species'):
+        frog.landing_press_receiver('Toady', [], [], False, 23.0)
+
+
 def test_only_marofrog_retargets_living_captains():
     assert frog.retargets_captains('MaroFrog') is True
     assert frog.retargets_captains('Frog') is False
