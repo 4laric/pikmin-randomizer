@@ -172,5 +172,3 @@ def normalless_model():
 
 def normal_model():
     return build_model(TRIANGLE, [(0., 1., 0.)], UVS)
-
-
