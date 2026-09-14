@@ -134,30 +134,36 @@ only; the native loader and fixture are the next slice.
 
 The native display consumer now exists, built on the lane-01 reconciled line:
 
-- Native branch `opencode/p2-lane31-integ` @ `d1c15ff18e53c5674ee011ba01cf50a6166e41a8`,
-  base `opencode/p2-lane01-hardlanes` @ `07f173ae` (Batch E), clean. New
+- Native branch `opencode/p2-lane31-integ` @ `5d38a9184644f53f080dfbce317cd7ac518e5f9d`,
+  base `opencode/p2-lane01-hardlanes` @ `07f173ae` (Batch E), clean. Commits:
+  `d1c15ff1` (visual module + fixture), `a2156640` (host seam + per-species
+  draw), `f5274522` (policy cherry-pick), `5d38a918` (CMake TU lines). New
   `pc_port/pc_p2_waterwraith_visual.{h,cpp}` (two-species
-  `P2_WATERWRAITH_VISUAL_1` profile loader + sampled-pose draw), plus
-  `tools/p2_waterwraith_runtime.cpp` and
-  `tools/p2_waterwraith_runtime_run.py`. Only shared edit is the additive
-  `CMakeLists.txt` TU line.
-- Private build `output/native-lane31-integ-build` (452/452), `ninja -n` = no
-  work, exe SHA-256
-  `7cb8239c42164548697c6c37db39d8257b4a43cd164dc04cbe3f5efe995741ca`.
-- Fixture `output/lane31-waterwraith-fixture-01` SHA-256
-  `8c77f276baea13f4ade69df77bb477fa06a52289b49ee9b37b73ce33db809bc0`; run
-  `output/lane31-waterwraith-runtime-01/43d7b203193448a6978e2609d528196a`
+  `P2_WATERWRAITH_VISUAL_1` loader/draw), `pc_port/pc_p2_waterwraith_host.{h,cpp}`
+  (fixed-route wraith drives the rig), plus `tools/p2_waterwraith_runtime.cpp`
+  and `tools/p2_waterwraith_runtime_run.py`.
+- Private build `output/native-lane31-integ-build`, `ninja -n` = no work, exe
+  SHA-256
+  `c580fa59375d46c9c1d904bf36ee00d9ff6f97a4d367bbae678b261d5b2b88b6`.
+- Fixture `output/lane31-waterwraith-fixture-02` SHA-256
+  `940bcdaaaeb005123d59a5c5b74b41a1f950e4c24a2ad80648c378e46523e8f0`; run
+  `output/lane31-waterwraith-runtime-02/f11baf5861c247ec82916ec29f50452c`
   status `passed`, exit 0:
   - `P2_WATERWRAITH_VISUAL_READY species=2 clips=16`
   - `P2_WATERWRAITH_WINDOW size=960x540 pos=373,263`
   - `P2_WATERWRAITH_VISUAL_PLAY BlackMan=kagebozu_walk Tyre=tyre_move`
-  - `P2_WATERWRAITH_VISUAL_DRAW species=2`
-  - `PASS WATERWRAITH_RUNTIME`, capture `waterwraith-visual.ppm` (1.5 MB).
+  - `P2_WATERWRAITH_VISUAL_DRAW species=1`
+  - `P2_WATERWRAITH_HOST_PASS ticks=90 distance=240.000 roll=43.4059 phase=Move`
+  - `PASS WATERWRAITH_RUNTIME`, capture `waterwraith-visual.ppm`.
 
-This is a display slice: baked sampled poses with approximate materials, no
-skeletal playback, no retail event execution, and no source actor/AI/ownership.
-Bundle: `native-candidates/waterwraith-visual/` (`...-full.patch`,
-`patches/0001-...`, `provenance.json`).
+The host seam births the single Tyre child, drives the wraith along a straight
+route (fp05 retail speed 120), and the rig derives the roll from planar
+distance; after the first floor contact the roller freezes and then restarts
+into `move`, so the drawn Tyre travels 240 units and rolls 43.4 rad over 90
+ticks. This is a display + policy-binding slice: baked sampled poses with
+approximate materials, no skeletal playback, no retail events, no source
+actor/AI/receivers. Bundle: `native-candidates/waterwraith-visual/`
+(`...-full.patch`, `patches/0001..0004`, `provenance.json`).
 
 ## Remaining / next slice
 
