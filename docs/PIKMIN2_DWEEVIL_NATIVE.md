@@ -99,8 +99,21 @@ attempt for the same capture logs
 recovery-cannot-be-duplicated evidence the source audit calls for
 (`fallTreasure` on death/stone/earthquake, item-drop event type 2 once).
 
-The harness asserts exactly two real drops across its two scenarios (death and
-interruption), one carry per scenario, and at least one suppressed replay.
+Two invariants keep the run deterministic:
+
+1. A death drop leaves the unit in the `Dead` state; the drop path never
+   rewrites state to `item_drop`, so a dead dweevil cannot resume stealing.
+2. A dropped treasure is marked `resolved` and excluded from further theft for
+   the bounded run, so a second kill/replay of the same capture cannot produce
+   a fresh capture and a fresh drop.
+
+The startup `p2-dweevil-native.txt` profile is intentionally inert (its
+treasure is not pickable); the fixture installs the pickable scenario profiles
+only after the squad/window baseline is observed. The harness therefore asserts
+exactly two captures, two carries, exactly two real drops (death and
+interruption, each `total_drops=1`), and exactly two `DROP_SUPPRESSED` markers
+(the death replay and the post-interruption kill). A third drop or an extra
+capture fails the gate.
 
 ## 5. Fixture baseline
 

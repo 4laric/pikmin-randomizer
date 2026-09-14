@@ -81,20 +81,27 @@ class ReferenceTests(unittest.TestCase):
 class SyntheticLogTests(unittest.TestCase):
     GOOD = (
         'P2_DWEEVIL_READY generator=235300 species=FireOtakara xyz=34.000,30.000,1896.000 yaw=0.000 otakara_life=80.0 policy=dweevil_source_1\n'
+        'P2_DWEEVIL_TREASURE id=900000 xyz=30.000,30.000,1880.000 alive=1 pickable=0 captured=0\n'
+        'P2_DWEEVIL_BASELINE red=5 blue=5\n'
+        'P2_DWEEVIL_READY generator=235300 species=FireOtakara xyz=34.000,30.000,1896.000 yaw=0.000 otakara_life=80.0 policy=dweevil_source_1\n'
         'P2_DWEEVIL_TREASURE id=900001 xyz=30.000,30.000,1880.000 alive=1 pickable=1 captured=0\n'
+        'P2_DWEEVIL_SCENARIO1 death_drop_replay\n'
         'P2_DWEEVIL_CAPTURE generator=235300 species=FireOtakara treasure=900001 otakara_life=80.0 health=80.0\n'
         'P2_DWEEVIL_CARRY generator=235300 treasure=900001 state=item_move otakara_health=80.0\n'
+        'P2_DWEEVIL_DEATH generator=235300 tick=40 fixture=1\n'
         'P2_DWEEVIL_DROP generator=235300 treasure=900001 reason=death dropped=1 exactly_once=1 total_drops=1\n'
+        'P2_DWEEVIL_REPLAY generator=235300 tick=100 fixture=1\n'
         'P2_DWEEVIL_DROP_SUPPRESSED generator=235300 treasure=900001 reason=death dropped=0 already_dropped=1\n'
         'P2_DWEEVIL_RESET_REQUEST\n'
         'P2_DWEEVIL_READY generator=235300 species=FireOtakara xyz=34.000,30.000,1896.000 yaw=0.000 otakara_life=80.0 policy=dweevil_source_1\n'
+        'P2_DWEEVIL_TREASURE id=900002 xyz=30.000,30.000,1880.000 alive=1 pickable=1 captured=0\n'
+        'P2_DWEEVIL_SCENARIO2 interrupt_drop\n'
         'P2_DWEEVIL_CAPTURE generator=235300 species=FireOtakara treasure=900002 otakara_life=80.0 health=80.0\n'
         'P2_DWEEVIL_CARRY generator=235300 treasure=900002 state=item_move otakara_health=80.0\n'
+        'P2_DWEEVIL_INTERRUPT generator=235300 tick=40 fixture=1\n'
         'P2_DWEEVIL_DROP generator=235300 treasure=900002 reason=interruption dropped=1 exactly_once=1 total_drops=1\n'
+        'P2_DWEEVIL_DEATH generator=235300 tick=100 fixture=1\n'
         'P2_DWEEVIL_DROP_SUPPRESSED generator=235300 treasure=900002 reason=death dropped=0 already_dropped=1\n'
-        'P2_DWEEVIL_SCENARIO1 death_drop_replay\n'
-        'P2_DWEEVIL_SCENARIO2 interrupt_drop\n'
-        'P2_DWEEVIL_BASELINE red=5 blue=5\n'
         'Experimental preview window set to 960x540 windowed and centered\n'
         'PASS P2_DWEEVIL_RUNTIME bounded_behavior_tick\n'
     )
@@ -105,16 +112,34 @@ class SyntheticLogTests(unittest.TestCase):
         self.assertEqual(evidence['failed'], [])
 
     def test_missing_drop_fails(self):
-        evidence = dr.validate(self.GOOD.replace('reason=death dropped=1 exactly_once=1', 'reason=death dropped=0'), 0)
+        text = self.GOOD.replace(
+            'P2_DWEEVIL_DROP generator=235300 treasure=900001 reason=death dropped=1 exactly_once=1 total_drops=1\n', '')
+        evidence = dr.validate(text, 0)
         self.assertFalse(evidence['passed'])
         for name in ('death_drop', 'exactly_two_drops'):
             self.assertIn(name, evidence['failed'])
 
     def test_duplicate_drop_fails(self):
-        doubled = self.GOOD + 'P2_DWEEVIL_DROP generator=235300 treasure=900001 reason=death dropped=1 exactly_once=1 total_drops=2\n'
+        doubled = self.GOOD + ('P2_DWEEVIL_DROP generator=235300 treasure=900001 reason=death '
+                               'dropped=1 exactly_once=1 total_drops=2\n')
         evidence = dr.validate(doubled, 0)
         self.assertFalse(evidence['passed'])
         self.assertIn('exactly_two_drops', evidence['failed'])
+
+    def test_missing_suppression_fails(self):
+        text = self.GOOD.replace(
+            'P2_DWEEVIL_DROP_SUPPRESSED generator=235300 treasure=900002 reason=death dropped=0 already_dropped=1\n', '')
+        evidence = dr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        for name in ('suppressed_interrupt', 'exactly_two_suppressed'):
+            self.assertIn(name, evidence['failed'])
+
+    def test_extra_capture_fails(self):
+        text = self.GOOD + ('P2_DWEEVIL_CAPTURE generator=235300 species=FireOtakara treasure=900001 '
+                            'otakara_life=80.0 health=80.0\n')
+        evidence = dr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('captures', evidence['failed'])
 
     def test_nonzero_exit_fails(self):
         self.assertFalse(dr.validate(self.GOOD, 1)['passed'])

@@ -35,6 +35,7 @@ SPECIES = (59, 60, 61, 62, 93)
 INJECT_MAGIC = 'P2_DWEEVIL_INJECT_1'
 
 UNIT_ID = 235300
+TREASURE_IDLE = 900000
 TREASURE_A = 900001
 TREASURE_B = 900002
 
@@ -96,6 +97,13 @@ def _unit(generator, species, xyz, life):
 
 def _treasure(identity, xyz):
     return dict(id=identity, xyz=list(xyz), alive=True, pickable=True, captured=False)
+
+
+def scenario_idle():
+    """Startup profile: the treasure is not pickable, so no startup capture."""
+    return protocol([_unit(UNIT_ID, 59, (34, 30, 1896), 80.0)],
+                    [dict(id=TREASURE_IDLE, xyz=[30, 30, 1880], alive=True,
+                          pickable=False, captured=False)])
 
 
 def scenario_a():
@@ -205,7 +213,9 @@ def stage(assets, output):
     config_b = scenario_b()
     (run / 'dweevil-fixture-a.txt').write_bytes(config_a)
     (run / 'dweevil-fixture-b.txt').write_bytes(config_b)
-    (run / 'p2-dweevil-native.txt').write_bytes(config_a)
+    # Startup profile stays inert (not pickable): the deterministic capture only
+    # happens after ready==30 installs dweevil-fixture-a.txt.
+    (run / 'p2-dweevil-native.txt').write_bytes(scenario_idle())
     (run / 'p2-cargo-free.txt').write_bytes(b'P2_CARGO_FREE_1\n')
     (run / 'dweevil-stage.json').write_bytes((json.dumps(
         dict(scene='original P1 practice course', interactive=True, window='960x540',
@@ -214,6 +224,7 @@ def stage(assets, output):
                              injections=['40 kill', '100 replay']),
                         dict(name='interruption', unit=UNIT_ID, treasure=TREASURE_B,
                              injections=['40 interrupt', '100 kill'])],
+             config_startup_sha256=builder.sha256(run / 'p2-dweevil-native.txt'),
              config_a_sha256=builder.sha256(run / 'dweevil-fixture-a.txt'),
              config_b_sha256=builder.sha256(run / 'dweevil-fixture-b.txt'),
              injections_labeled=True),
@@ -230,15 +241,22 @@ def validate(text, code):
         scenario2='P2_DWEEVIL_SCENARIO2 interrupt_drop' in text,
         reset=text.count('P2_DWEEVIL_RESET_REQUEST') == 1,
         ready=text.count('P2_DWEEVIL_READY generator=235300 species=FireOtakara') >= 2,
+        idle_no_capture='P2_DWEEVIL_TREASURE id=900000' in text
+                        and 'treasure=900000' not in text,
         captures=text.count('P2_DWEEVIL_CAPTURE generator=235300 species=FireOtakara') == 2,
         carries=text.count('P2_DWEEVIL_CARRY generator=235300') == 2,
+        capture_a='P2_DWEEVIL_CAPTURE generator=235300 species=FireOtakara treasure=900001' in text,
+        capture_b='P2_DWEEVIL_CAPTURE generator=235300 species=FireOtakara treasure=900002' in text,
         death_drop=bool(re.search(r'P2_DWEEVIL_DROP generator=235300 treasure=900001 reason=death '
-                                  r'dropped=1 exactly_once=1', text)),
-        interrupt_drop=bool(re.search(r'P2_DWEEVIL_DROP generator=235300 treasure=900002 reason=interruption '
-                                      r'dropped=1 exactly_once=1', text)),
-        suppressed=bool(re.search(r'P2_DWEEVIL_DROP_SUPPRESSED generator=235300 treasure=900001 '
-                                  r'reason=death dropped=0 already_dropped=1', text)),
+                                  r'dropped=1 exactly_once=1 total_drops=1', text)),
+        interrupt_drop=bool(re.search(r'P2_DWEEVIL_DROP generator=235300 treasure=900002 '
+                                      r'reason=interruption dropped=1 exactly_once=1 total_drops=1', text)),
+        suppressed_death=bool(re.search(r'P2_DWEEVIL_DROP_SUPPRESSED generator=235300 treasure=900001 '
+                                        r'reason=death dropped=0 already_dropped=1', text)),
+        suppressed_interrupt=bool(re.search(r'P2_DWEEVIL_DROP_SUPPRESSED generator=235300 treasure=900002 '
+                                            r'reason=death dropped=0 already_dropped=1', text)),
         exactly_two_drops=text.count('dropped=1 exactly_once=1') == 2,
+        exactly_two_suppressed=text.count('P2_DWEEVIL_DROP_SUPPRESSED') == 2,
         no_rewards='P2_CARGO_READY' not in text and 'P2_POD_RECEIPT' not in text,
     )
     failed = sorted(name for name, ok in required.items() if not ok)
