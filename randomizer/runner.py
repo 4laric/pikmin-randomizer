@@ -246,16 +246,31 @@ async def serve(session, run, process=None, server=None, password=None, updates=
                 await asyncio.gather(task, return_exceptions=True)
 
 
-def launch(manifest, session_dir, exe=None, assets=None, server=None, content_manifest=None):
+def launch(manifest, session_dir, exe=None, assets=None, server=None, content_manifest=None,
+           family_install=None, family_source=None, family_actors=None):
     with SessionLock(session_dir):
-        return _launch(manifest, session_dir, exe, assets, server, content_manifest)
+        return _launch(manifest, session_dir, exe, assets, server, content_manifest,
+                       family_install, family_source, family_actors)
 
 
-def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_manifest=None):
+def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_manifest=None,
+            family_install=None, family_source=None, family_actors=None):
     if manifest["mode"] == "ap" and not server:
         raise ValueError("AP mode requires --server")
+    if family_install is not None and content_manifest is not None:
+        raise ValueError("--family-install and --content-manifest use different overlay owners; run separately")
     session = Session(manifest, session_dir)
     run = NativeRun(session)
+    if family_install is not None:
+        # Consume a family-owned installer into the run's private model destination.
+        if not assets or not (Path(assets) / "dataDir" / "stages").is_dir():
+            raise ValueError("--assets must point to the extracted assets directory containing dataDir/stages/")
+        if family_source is None:
+            raise ValueError("--family-install requires --family-source")
+        from experimental.pikmin2_family_install import install_family
+        receipt = install_family(family_install, Path(family_source), run.directory,
+                                 list(family_actors or []), retail_assets=Path(assets))
+        print(f"PIKMIN_FAMILY_INSTALLED: {family_install} {receipt}", flush=True)
     if content_manifest is not None:
         # Build the run's private native asset tree with the session content applied,
         # so native asset lookup reads the content. Staging runs before any native
