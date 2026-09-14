@@ -205,3 +205,20 @@ g++ -std=c++17 -Wall -Wextra -Werror -I native-patches/pom tests/pikmin2_pom_pol
 The bounded injected GL gate passes; natural engine-Pom-FSM gameplay, bud
 visuals, Onion seed receipt, plant placement/Spectralid and Hikari #429 remain
 open.
+
+## Approved-base rebase (maintained line)
+
+Rebased onto the current maintained native (`codex/p2-main-review-native` head
+`c223f442`) after lane 01's pass:
+
+- Native `opencode/p2-lane23-approved` @ `5478384fbb9370a9b7f33a17caf15f167101cca5`
+  (base `c223f442`; never pushed); private build `output/p2-lane23-approved-build`,
+  550/550 link, `ninja -n pikmin_pc` no work.
+- Fixture `output/p2-lane23-approved-fixture-pom/build/fixture.exe` SHA-256
+  `7dead3c093730604175ab471f9b20161ca57c960db99dac82ac380d3a6dfa59e`, provenance
+  status `built`, expected native head `5478384f`.
+- GL run `output/p2-lane23-approved-runtime-pom/pom/167c105a9b8648f9ba41e08b546f10d1`
+  PASS, carrying the #448 fix on the maintained base: Queen
+  `P2_POM_SPROUT ... count=9 colour=0 body=0`, `P2_POM_SPROUT_RETRY ... item_capacity=1`,
+  `P2_POM_SPROUT_SETTLED ... requested=9 born=9 conservation=1`, RedPom
+  `requested=2 born=2`, `PASS P2_POM_NATIVE accept_refund_close_sprout`.
