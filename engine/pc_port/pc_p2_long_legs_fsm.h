@@ -84,6 +84,7 @@ struct P2LongLegsFsmInput {
     float ikMoveRatio = 1.0f;        // IK leg move ratio for the crush gate
     bool footDescendingOrPlanting = false; // a foot is descending/planting
     bool shotLoop = false;           // Attack animation loop boundary (fire one)
+    int shellsInFlight = 0;          // host shell-pool occupancy (mSearchAngle pool of 10)
     float roll = 0.0f;               // host uniform [0,1) for duration selection
 };
 

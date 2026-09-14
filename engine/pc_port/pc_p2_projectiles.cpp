@@ -9,15 +9,17 @@
 // hard-lane update seam, and it is opt-in (`p2-projectiles.txt`); absent config
 // is a no-op so ordinary P1 play and unconfigured rooms are untouched.
 //
-// No shared semantics are owned or changed: target health is never mutated,
-// drops are reported rather than birthed, and no save/reward/captain/actor
-// lifetime state is touched. See pc_p2_projectiles.h for the terrain
-// center/base convention.
+// No shared semantics are owned or changed: engine target health is never
+// mutated (strikes go to a private host-owned proxy receiver, see
+// pc_p2_projectile_receiver.*), drops are reported rather than birthed, and no
+// save/reward/captain/actor lifetime state is touched. See pc_p2_projectiles.h
+// for the terrain center/base convention.
 #include "pc_p2_projectiles.h"
 #include "pc_p2_cannon_stone.h"
 #include "pc_p2_egg_hazard.h"
 #include "pc_p2_kabuto_cannon.h"
 #include "pc_p2_projectile_host.h"
+#include "pc_p2_projectile_receiver.h"
 #include "pc_p2_rock_hazard.h"
 #include "pc_bbft.h"
 #include "Creature.h"
@@ -275,6 +277,10 @@ struct Host {
     double rockDeadTimer = 0.0;
     std::set<std::uint64_t> rockContacts;
 
+    // Private proxy receivers (#169 lane 20): strikes are applied here, never to
+    // an engine Creature. Populated from `receiver <token> <maxHealth>` rows.
+    P2ProjectileReceiverRegistry receivers;
+
     ScriptRng rng;
     double debt = 0.0;
 };
@@ -406,6 +412,30 @@ void parseConfig(const char* path)
             gHost.eggCfg = config;
             gHost.eggDropGroup = (dropGroup == 1.0f);
             gHost.haveEggCfg = true;
+        } else if (word == "receiver") {
+            // Proxy receiver row: `receiver <token> <maxHealth>` or the
+            // `receiver any <maxHealth>` wildcard sink. The wildcard exists
+            // because engine creature tokens are runtime pointers an arena
+            // config cannot name; multiple exact rows are allowed.
+            std::string selector;
+            if (!(in >> selector)) {
+                fail("invalid receiver row");
+            }
+            const bool any = (selector == "any");
+            std::uint64_t token = 0;
+            if (!any) {
+                char* end = nullptr;
+                token = std::strtoull(selector.c_str(), &end, 10);
+                if (end == selector.c_str() || *end != '\0' || token == 0) {
+                    fail("invalid receiver row");
+                }
+            }
+            float maxHealth = 0.0f;
+            if (!(in >> maxHealth) || !finite(maxHealth) || maxHealth <= 0.0f
+                || (any ? !gHost.receivers.addAny(maxHealth)
+                        : !gHost.receivers.add(token, maxHealth))) {
+                fail("invalid receiver row");
+            }
         } else {
             fail("invalid config token");
         }
@@ -554,6 +584,24 @@ void logStoneStrike(const P2CannonStoneContactResult& result)
                 int(result.strike.attributedToSource), int(result.healthZeroed));
 }
 
+// Proxy-receiver markers. `damage` is the amount actually applied (clamped by
+// the receiver), and DEAD is emitted exactly once through the hit's died flag.
+void logReceiverStrike(const P2ProjectileReceiverHit& hit)
+{
+    if (!hit.known || !hit.applied) {
+        return;
+    }
+    std::printf("P2_PROJECTILE_RECEIVER_HIT token=%llu kind=%s damage=%.1f health=%.1f "
+                "attributed=%llu\n",
+                static_cast<unsigned long long>(hit.targetToken),
+                p2ProjectileReceiverStrikeKindName(hit.kind), hit.appliedDamage, hit.health,
+                static_cast<unsigned long long>(hit.attributedToken));
+    if (hit.died) {
+        std::printf("P2_PROJECTILE_RECEIVER_DEAD token=%llu\n",
+                    static_cast<unsigned long long>(hit.targetToken));
+    }
+}
+
 void detectStoneContacts()
 {
     if (!gHost.stoneActive || !gHost.stone.isAlive()) {
@@ -584,6 +632,7 @@ void detectStoneContacts()
         }
         if (result.strikeEmitted) {
             logStoneStrike(result);
+            logReceiverStrike(gHost.receivers.applyStrike(result));
         }
         if (result.healthZeroed) {
             std::printf("P2_PROJECTILE_STONE_CONTACT target=%llu kind=%d health_zeroed=1\n",
@@ -855,6 +904,7 @@ void detectRockContacts()
                         static_cast<unsigned long long>(result.strike.targetToken),
                         static_cast<unsigned long long>(result.strike.attributedToken),
                         int(result.strike.attributedToSource), int(result.healthZeroed));
+            logReceiverStrike(gHost.receivers.applyStrike(result));
         }
         if (result.healthZeroed) {
             std::printf("P2_PROJECTILE_ROCK_HEALTH_ZERO kind=%s target=%llu\n",
@@ -955,6 +1005,7 @@ void pc_p2_projectiles_reset()
     gHost.rockPending = false;
     gHost.rockDeadTimer = 0.0;
     gHost.rockContacts.clear();
+    gHost.receivers.reset();
     gHost.rng.state = 1u;
     gHost.debt = 0.0;
     if (gHost.binding) {

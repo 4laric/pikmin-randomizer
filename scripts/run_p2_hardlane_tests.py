@@ -14,6 +14,8 @@ import tempfile
 from pathlib import Path
 
 TESTS = {
+    "p2_projectile_receiver_test": ["pc_port/pc_p2_projectile_receiver.cpp", "pc_port/pc_p2_cannon_stone.cpp", "pc_port/pc_p2_rock_hazard.cpp"],
+    "p2_long_legs_fsm_test": ["pc_port/pc_p2_long_legs_fsm.cpp"],
     "p2_fuefuki_binding_test": [],
     "p2_fuefuki_fsm_test": [],
     "p2_fuefuki_interference_policy_test": [],

@@ -21,10 +21,12 @@ class BTeki;
 //
 // This seam changes no shared semantics. It owns no saves, rewards, captain
 // state, generic damage or actor lifetime: contacts are classified and logged,
-// never applied to target health, and Egg drops are reported, never birthed.
-// The Kabuto/Rkabuto fire FSM is host-driven through the committed policy with a
-// configured mouth joint; the real per-species mouth matrix, animation bank and
-// actor registration remain unimplemented and are reported as blockers.
+// and Egg drops are reported, never birthed. Emitted strikes are applied only to
+// a private host-owned proxy receiver (`pc_p2_projectile_receiver.*`) that owns
+// its own health, so engine actor health is never mutated. The Kabuto/Rkabuto
+// fire FSM is host-driven through the committed policy with a configured mouth
+// joint; the real per-species mouth matrix, animation bank and actor
+// registration remain unimplemented and are reported as blockers.
 void pc_p2_projectiles_setup();
 void pc_p2_projectiles_update();
 void pc_p2_projectiles_reset();

@@ -205,6 +205,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_kabuto_cannon.cpp
     pc_port/pc_p2_projectile_host.cpp
     pc_port/pc_p2_rock_hazard.cpp
+    pc_port/pc_p2_projectile_receiver.cpp
     pc_port/pc_p2_projectiles.cpp
     pc_port/pc_p2_hardlanes.cpp
     pc_port/pc_p2_bombsarai_arena.cpp
