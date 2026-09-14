@@ -65,7 +65,20 @@ A run produces one JSON document per step:
 
 Witness markers are operator-supplied because family marker vocabulary differs
 (`P2_ENEMY_READY`, `P2_DWARF_ORANGE_DRAW`, family `DONE ...` lines, reward
-receipts). Suggested baseline markers:
+receipts). Turnkey profiles for the first cohort are built in and can be
+extended without changing code:
+
+- `snow` — `install`: `PIKMIN_CONTENT_STAGED`; `natural_fight`:
+  `P2_ENEMY_READY`, `P2_SNOW_DRAW corpse=0`, `P2_SNOW_DRAW corpse=1`.
+- `dwarf_orange` — the above plus `P2_DWARF_ORANGE_DRAW corpse=0/1` and
+  `DONE P2_DWARF_ORANGE_COMBAT`; `reward`: `P2_DWARF_ORANGE_P1_HAUL`.
+
+These are derived from the documented family evidence (`PIKMIN2_SNOW_BULBORB.md`,
+`PIKMIN2_DWARF_ORANGE_NATIVE.md`) and must be confirmed on the first pinned
+generated-session run. Stages with no distinct documented generated-session
+witness stay unmapped and report `BLOCKED`.
+
+An explicit marker file overrides/extends a profile:
 
 ```json
 {
@@ -95,7 +108,8 @@ py -3.12 -m experimental.pikmin2_generated_session_acceptance prepare `
 
 # Operator launches the prepared session with the printed command, then:
 py -3.12 -m experimental.pikmin2_generated_session_acceptance observe `
-    --log <run>/runs/<token>/native.log --markers markers.json --output <run>/observations.json
+    --log <run>/runs/<token>/native.log --profile snow `
+    --output <run>/observations.json
 
 py -3.12 -m experimental.pikmin2_generated_session_acceptance records `
     ... --prepared <run>/prepared.json --observations <run>/observations.json `

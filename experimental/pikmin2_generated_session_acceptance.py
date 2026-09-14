@@ -31,7 +31,7 @@ Usage::
         --session-dir output/lane33-run --content-manifest content.json \
         --output output/lane33-run/prepared.json
     py -3.12 -m experimental.pikmin2_generated_session_acceptance observe \
-        --log output/lane33-run/runs/<token>/native.log --markers markers.json \
+        --log output/lane33-run/runs/<token>/native.log --profile snow \
         --output output/lane33-run/observations.json
     py -3.12 -m experimental.pikmin2_generated_session_acceptance records \
         --pin pin.json --prepared output/lane33-run/prepared.json \
@@ -56,6 +56,45 @@ GAME_STAGES = ("install", "natural_fight", "reward", "revisit", "restart")
 
 # The launcher prints this after lane 05 stages session content automatically.
 INSTALL_WITNESS = "PIKMIN_CONTENT_STAGED"
+
+# Turnkey witness-marker sets derived from the documented family evidence
+# (Snow: docs/PIKMIN2_SNOW_BULBORB.md; Dwarf Orange:
+# docs/PIKMIN2_DWARF_ORANGE_NATIVE.md). They are the markers the family lanes
+# already emit; confirm them on the first pinned generated-session run. Stages
+# with no distinct documented generated-session witness are left unmapped, so
+# they report BLOCKED rather than a silent pass.
+WITNESS_PROFILES = {
+    "snow": {
+        "install": [INSTALL_WITNESS],
+        "natural_fight": ["P2_ENEMY_READY", "P2_SNOW_DRAW corpse=0", "P2_SNOW_DRAW corpse=1"],
+    },
+    "dwarf_orange": {
+        "install": [INSTALL_WITNESS],
+        "natural_fight": ["P2_ENEMY_READY", "P2_DWARF_ORANGE_DRAW corpse=0",
+                          "P2_DWARF_ORANGE_DRAW corpse=1", "DONE P2_DWARF_ORANGE_COMBAT"],
+        "reward": ["P2_DWARF_ORANGE_P1_HAUL"],
+    },
+}
+
+
+def witness_profile(name):
+    """Return a copy of a named marker set, rejecting unknown profiles."""
+    if name not in WITNESS_PROFILES:
+        raise AcceptanceError(
+            f"unknown witness profile {name!r}; known: {sorted(WITNESS_PROFILES)}")
+    return {stage: list(markers) for stage, markers in WITNESS_PROFILES[name].items()}
+
+
+def witness_markers(*names):
+    """Merge named marker sets, preserving order and dropping duplicates."""
+    merged = {}
+    for name in names:
+        for stage, markers in witness_profile(name).items():
+            bucket = merged.setdefault(stage, [])
+            for marker in markers:
+                if marker not in bucket:
+                    bucket.append(marker)
+    return merged
 
 
 class AcceptanceError(ValueError):
@@ -408,7 +447,11 @@ def main(argv=None):
 
     observe = sub.add_parser("observe", help="classify a captured log against witness markers")
     observe.add_argument("--log", type=Path, required=True)
-    observe.add_argument("--markers", type=Path, required=True)
+    observe.add_argument("--markers", type=Path,
+                         help="JSON mapping of stage -> required substrings (optional)")
+    observe.add_argument("--profile", action="append", default=[],
+                         choices=sorted(WITNESS_PROFILES),
+                         help="named marker set, e.g. snow or dwarf_orange (repeatable)")
     observe.add_argument("--output", type=Path, required=True)
 
     records = sub.add_parser("records", help="emit QA-matrix records from prepared+observed data")
@@ -450,8 +493,16 @@ def main(argv=None):
         return 0
 
     if args.command == "observe":
-        observations = observe_log(args.log.read_text(encoding="utf-8", errors="replace"),
-                                   load_json(args.markers))
+        markers = witness_markers(*args.profile) if args.profile else {}
+        if args.markers:
+            for stage, required in load_json(args.markers).items():
+                bucket = markers.setdefault(stage, [])
+                for marker in required:
+                    if marker not in bucket:
+                        bucket.append(marker)
+        if not markers:
+            parser.error("observe requires --markers or --profile")
+        observations = observe_log(args.log.read_text(encoding="utf-8", errors="replace"), markers)
         write_json(args.output, observations)
         counts = {}
         for result in observations.values():
