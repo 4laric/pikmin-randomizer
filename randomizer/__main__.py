@@ -47,6 +47,8 @@ def main():
     run.add_argument("--exe", type=Path)
     run.add_argument("--assets", type=Path)
     run.add_argument("--server")
+    run.add_argument("--content-manifest", type=Path, help="Lane 05 content manifest to stage into the session automatically")
+    run.add_argument("--content-cache", type=Path, help="Optional shared content cache directory for cached launches")
     status = sub.add_parser("status", help="Show collected checks and the bestiary")
     status.add_argument("manifest", type=Path)
     status.add_argument("--session-dir", type=Path, required=True)
@@ -114,7 +116,8 @@ def main():
                 else:
                     print(text)
         else:
-            launch(manifest, args.session_dir.resolve(), args.exe, args.assets, args.server)
+            launch(manifest, args.session_dir.resolve(), args.exe, args.assets, args.server,
+                   args.content_manifest, args.content_cache)
 
 
 if __name__ == "__main__":

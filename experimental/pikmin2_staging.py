@@ -12,6 +12,7 @@ import itertools
 import json
 import os
 import re
+import shutil
 import sys
 from collections.abc import Mapping
 from pathlib import Path, PurePosixPath
@@ -325,6 +326,76 @@ def stage(manifest, destination, base=None, receipt_path=None):
         receipt_path.parent.mkdir(parents=True, exist_ok=True)
         receipt_path.write_text(json.dumps(receipt, indent=2) + '\n', encoding='utf-8')
     return receipt
+
+
+SESSION_CONTENT_DIR = 'content'
+CACHE_RECEIPT = 'cache-receipt.json'
+
+
+def cache_key(manifest):
+    """Stable cache directory name for a validated manifest (version + content)."""
+    manifest = validate_manifest(manifest)
+    return f"v{manifest['version']}-{staged_digest(manifest['entries'])}"
+
+
+def _materialize(tree, destination, manifest):
+    """Copy a verified cache tree into the session destination; report statuses."""
+    root = destination.resolve()
+    rows = []
+    for entry in manifest['entries']:
+        source = tree.joinpath(*PurePosixPath(entry['destination']).parts)
+        target = destination.joinpath(*PurePosixPath(entry['destination']).parts)
+        if not target.resolve().is_relative_to(root):
+            raise StagingError(f'Destination escapes staging directory: {entry["destination"]}')
+        if not source.is_file() or sha256_file(source) != entry['sha256']:
+            raise StagingError(f'Content cache is missing or corrupt for entry {entry["id"]}; clear it and restage')
+        if target.is_file() and sha256_file(target) == entry['sha256']:
+            rows.append(dict(id=entry['id'], destination=entry['destination'], status='cached'))
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temp = target.parent / f'{target.name}.{os.getpid()}.{next(_TEMP)}{TEMP_SUFFIX}'
+        try:
+            shutil.copyfile(source, temp)
+            os.replace(temp, target)
+        finally:
+            if temp.exists():
+                temp.unlink()
+        rows.append(dict(id=entry['id'], destination=entry['destination'], status='materialized'))
+    return rows
+
+
+def stage_session_content(manifest, session_dir, base=None, cache_dir=None):
+    """Stage a session's declared content automatically, with an optional cache.
+
+    ``manifest`` is a lane 05 content manifest mapping or path. Content is
+    installed under ``<session_dir>/content`` so a revisit or process restart
+    reuses it. A missing/wrong source, unsafe destination or corrupt cache raises
+    ``StagingError`` before the caller launches anything; the session is never
+    left with a half-written tree. With ``cache_dir`` the verified tree is kept
+    under ``<cache_dir>/<version>-<staged_digest>/`` and later sessions materialize
+    from the cache without reading sources again.
+    """
+    manifest, base = _resolve(manifest, base)
+    destination = Path(session_dir) / SESSION_CONTENT_DIR
+    if cache_dir is None:
+        receipt = stage(manifest, destination, base=base)
+        return dict(receipt, cached=False, destination=str(destination))
+    key = cache_key(manifest)
+    cache_root = Path(cache_dir) / key
+    tree = cache_root / 'tree'
+    marker = cache_root / CACHE_RECEIPT
+    if marker.is_file():
+        cached = True
+        receipt = json.loads(marker.read_text(encoding='utf-8'))
+    else:
+        cached = False
+        receipt = stage(manifest, tree, base=base, receipt_path=marker)
+    rows = _materialize(tree, destination, manifest)
+    summary = dict(receipt.get('summary', {}))
+    summary.update(materialized=sum(1 for r in rows if r['status'] == 'materialized'),
+                   reused=sum(1 for r in rows if r['status'] == 'cached'))
+    return dict(receipt, cached=cached, destination=str(destination),
+                entries=rows, summary=summary)
 
 
 def _report(report):
