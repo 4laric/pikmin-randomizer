@@ -1,8 +1,8 @@
 From 7e2ab032ff350fb344094ebcbb43ff7111decf68 Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 02:55:09 -0400
-Subject: [PATCH] Add P2 electric/gas Pikmin receivers via species capability
- matrix (lane 10)
+Subject: [PATCH 1/2] Add P2 electric/gas Pikmin receivers via species
+ capability matrix (lane 10)
 
 ---
  include/Interactions.h                | 52 +++++++++++++++++++++

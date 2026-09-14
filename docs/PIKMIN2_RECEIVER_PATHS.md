@@ -189,11 +189,17 @@ P2 target is logged via `P2_RECV_DENKI` / `P2_RECV_GAS`:
 
 This is a build/policy gate, not a live encounter: no `GasHiba`/`ElecHiba`/
 gas/denki dweevil emitter spawns yet, so electricity and gas cannot be exercised
-at runtime on this port.
+at runtime on this port. Because no emitter references the new receivers yet,
+LTO dead-strips them (and their `P2_RECV_*` logs) from the link; the three
+definitions are marked `__attribute__((used))` to keep them compiled into
+`nectar.exe` until an emitter references them. `nm -C nectar.exe` then shows
+`T InteractDenki::actPiki`, `T InteractGas::actPiki`, `T InteractDenki::actNavi`
+with real addresses, and both `P2_RECV_DENKI`/`P2_RECV_GAS` literals are present
+in the image.
 
 Private build: `[520/520] Linking CXX executable bin\nectar.exe` (exit 0),
 `nectar.exe` SHA-256
-`D25FFA15E1E895D0C20AA0B2754224CE5382B08A326AE3508A5BC4C9E17F5A1A`;
+`6C8DFB43812F1E899547D4BFB0F77EF090C66D4051BFB5D7C4C6717537AF3163`;
 `ninja -n pikmin_pc` -> `ninja: no work to do.`. Standalone matrix test
 `tools/test_p2_elemental_receivers.cpp` -> `PASS P2_ELEMENTAL_RECEIVERS`
 (SHA-256 `E535BC0A661D00FF56A73FFD7EE8C244DBB0CC983C7FBECF78D3020CF3508F3F`).
