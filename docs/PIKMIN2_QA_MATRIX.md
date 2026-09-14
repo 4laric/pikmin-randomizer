@@ -110,16 +110,25 @@ The `report` command writes `qa-matrix.json` (machine-readable) and
 
 ## Current baseline status
 
-Lane 01 has not yet published an approved immutable root/native pair, and #434
-records that the production bridge (ordinary campaign seed generation,
-versioned seed/native binding, placement, reward/logic, staged install) is not
-implemented. The first admitted cohort therefore does not exist yet, so every
-matrix cell is `UNTESTED` against the pinned audited baseline
-(`root 06cae25` on `codex/p2-main-review`, `native 9735870c`, per the fan-out
-guide). Private fixture evidence may satisfy the boundary/negative cells as it
-is produced; those records must carry `kind: fixture` and full provenance. This
-lane will reproduce the cohort end to end as soon as lane 01 supplies the
-immutable build and the family lanes supply their evidence.
+Lane 01 has published reconciliation batches A-D on
+`opencode/p2-lane01-reconcile` (root head `0d6521b`, native
+`opencode/p2-lane01-hardlanes` head `90d87f53`). Those are **candidates**, not
+yet merged into the maintained line, and #434 still records the production
+bridge (ordinary campaign seed generation, versioned seed/native binding,
+placement, reward/logic, staged install) as absent. The first admitted cohort
+therefore does not exist yet, so every matrix cell is `UNTESTED` against the
+candidate baseline. Private fixture evidence may populate the
+boundary/negative cells as it is produced (with `kind: fixture` and full
+provenance); natural-required cells stay `BLOCKED` until a real seeded run.
+This lane will reproduce the cohort end to end as soon as lane 01 marks a pair
+approved/immutable and the family lanes supply their evidence.
+
+Regenerate the pinned report with:
+
+```powershell
+py -3.12 -m experimental.pikmin2_qa_matrix report --output output/lane33-qa-baseline `
+    --root-commit 0d6521b --native-commit 90d87f53
+```
 
 ## Tests
 
