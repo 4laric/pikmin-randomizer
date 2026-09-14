@@ -1,0 +1,78 @@
+# P2 Bulbmin leader/dependent contract (lane 11, #131)
+
+Lane 11 of [PIKMIN2_IMPLEMENTATION_FANOUT.md](PIKMIN2_IMPLEMENTATION_FANOUT.md),
+parent [#131](https://github.com/4laric/pikmin-randomizer/issues/131) (with
+Purple #113/#393 and White #395). Implementation owner: Codex through the shared
+`4laric` account; executing session: opencode
+(`opencode-go/deepseek-v4.1-flash`), recorded separately per AGENTS.md.
+
+Native candidate: branch `opencode/p2-lanes-1012` @ `8219bf17`, base
+`f9e139d8`. Header-only contract, no engine behavior changed, no shared checkout
+touched. Patch bundle: `native-candidates/lanes-1012/`.
+
+## Why this slice
+
+Purple (`pc_p2_purple*`) and White (`pc_p2_white*`, `pc_p2_white_poison*`)
+already exist, and the white/poison/purple policy tests pass (26 passed). The
+remaining five-species gap in this lane was Bulbmin: there was no module for its
+leader/dependent ownership or cave-only lifecycle. `Piki.h` reserves species
+`Bulbmin = 5`, which the current `pc_p2_species` adapter cannot represent.
+
+## Source basis
+
+`native/pikmin2-research` (US GPVE01 revision 0):
+
+| Concern | Anchor |
+|---|---|
+| species id | `include/Game/Piki.h:54` `Bulbmin = 5` |
+| mother Bulbmin | `include/Game/Entities/LeafChappy.h:7` "(Mother) Bulbmin (LeafChappy)" |
+| dependent births | `LeafChappy.cpp:131–152` `birthChildren()`: 10 `pikiMgr->birth()`, `initArg.mLeader = this` |
+| wild flag / model | `piki.cpp:155–156` `changeShape(Bulbmin)` + `FPFLAGS_IsWildBulbmin` |
+| not a Pikmin | `piki.cpp:231,250–251,788–789`; `pikiMgr.cpp:134` `isTekiFollowAI()` |
+| whistle recruitment | `interactPiki.cpp:178–179` resets `IsWildBulbmin` |
+| elemental immunity | `interactPiki.cpp:347,453,511,543` (Denki/Fire/Bubble/Gas) |
+| cave persistence | `pikiMgr.cpp:722–723,762` exit drops all; descend keeps only `isPikmin()` |
+
+## Interface
+
+`native/pc_port/pc_p2_bulbmin_policy.h` (header-only, no engine includes):
+
+- `P2BulbminFlock` — shared scene ledger `bulbmin id -> {mother epoch, phase}`,
+  wild/recruited counts, `releaseWild`, `applyTransition`.
+- `P2BulbminLeader` — one per LeafChappy mother:
+  - `birth(motherEpoch, id)` — source ten-dependent bound, no duplicates
+  - `whistle(motherEpoch, id)` — wild -> recruited in place, `detachFromLeader`
+  - `leaderDied(motherEpoch)` — releases only wild dependents
+  - `cancel()` — teardown release
+- `p2_bulbmin_hazard_immune()` — true in both phases.
+
+## Invariants (enforced by the policy test)
+
+1. One mother owns a dependent; a dependent is never born twice.
+2. Recruitment converts one body in place; no duplication or destruction.
+3. Mother death releases wild dependents; whistled team members keep their
+   captain ownership and survive.
+4. Floor descent keeps only whistled Bulbmin; cave exit removes them all.
+5. Wild Bulbmin never count toward the Pikmin total.
+
+## Evidence
+
+```text
+g++ -std=c++17 -Wall -Wextra -I pc_port tools/test_p2_bulbmin_policy.cpp -o test_p2_bulbmin_policy.exe
+PASS P2_BULBMIN_POLICY
+```
+
+Native commit `8219bf17`; executable SHA-256
+`9A301432117241FD0E0164CF52E23BD96AD8679E04B98A8AB2B15AC2449B4E21`.
+Policy/contract test (engine-double), not a live arena run.
+
+## Integration and remaining work
+
+- `pc_p2_species` must learn `P2SpeciesBulbmin = 5` so the species adapter and
+  the cave checkpoint schema (`pc_p2_cave.cpp` currently accepts 0–4) can carry
+  it; that is a lane-11 follow-up and touches #131 storage.
+- The recruited dependent must be handed to the captain/ownership table
+  (see [PIKMIN2_CAPTAIN_SQUAD_CONTRACT.md](PIKMIN2_CAPTAIN_SQUAD_CONTRACT.md))
+  and the mother's bullet-lifecycle cleanup to lane 07.
+- Live Mother Bulbmin actor registration, model and arena run remain unscheduled
+  family work (LeafChappy is a KumaChappy descendant).
