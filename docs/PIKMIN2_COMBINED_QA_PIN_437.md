@@ -1,12 +1,14 @@
+> Admission-boundary correction: root `87ad8e659a5434782377b50b5292baa4b2ddefff` supersedes ff838a2. The old pin.json is retained only as historical evidence; use pin-boundary-fixed.json. Native commit and binary hash are unchanged.
+
 # Integration-approved combined QA pin (#437)
 
 Approved for candidate runtime testing by Codex through shared account 4laric on 2026-09-14. This approval means a combined, built and reproducible QA baseline; it does not admit either identity or certify natural gameplay acceptance.
 
-- Root source: `ff838a2cccfd384d8793578d1a1b81bdab1011ae` (clean at source commit; later pin-document commit changes docs only).
+- Root source: `87ad8e659a5434782377b50b5292baa4b2ddefff` (clean at source commit; later pin-document commit changes docs only).
 - Native: `9b15d371cc63e7b0154bfc3dfc2cf5be9874c754` (clean).
 - Executable: `C:\Users\alari\pikmin-randomizer\output\p2-integration-9b15d371\nectar.exe`.
 - SHA-256: `6a0b31f2adafcdcf54af1766991e2bd7cf6a078ed5d0ce3c3fc5cbedc29252d5`.
-- Machine-readable pin: `C:/Users/alari/pikmin-randomizer/output/p2-integration-9b15d371/pin.json`.
+- Machine-readable pin: `C:/Users/alari/pikmin-randomizer/output/p2-integration-9b15d371/pin-boundary-fixed.json`.
 - Assets: `C:/Users/alari/bbft/dist/cohesion/pikmin/assets` (read-only input; normal candidate content staging still required).
 - Root integration tree: `C:/Users/alari/pikmin-randomizer/output/nectar-qol`; native: `C:/Users/alari/pikmin-randomizer/output/native-nectar-qol`.
 
@@ -29,3 +31,7 @@ Create a new isolated root worktree from the root source SHA above (or the docum
 Source includes ensure_pikmin_squad and the centred 960x540 startup. Each runtime owner must regenerate a fresh arena and observe live starting Pikmin/window adoption; source inspection is not runtime evidence. Cooperative GL locks do not account for old unleased fixtures: recheck processes before launching. Use GL-A for ordinary interactive runs; GL-B only for reviewed hidden no-input fixtures.
 
 The checkout output/p2-main-review at ef1cace is historical and dirty; it is not the current remote maintained line. Do not reset or export it. output/p2-sweep437-root and output/native-sweep437 remain worker recovery trees. This pin and the latest maintained remote supersede their stale pin instructions.
+
+## Boundary follow-up validation
+
+The worker three-file hardening was applied once from output/p2-sweep437-root without modifying that worktree. Admission IDs are ignored unless PIKMIN_P2_CANDIDATE_SCOPE is present. Candidate CLI sets and restores both variables, including exceptions and pre-existing values. Fresh combined focused run: 152 tests and 17 subtests PASS. The two-variable marker is an explicit diagnostic opt-in, not a security boundary against a user deliberately setting both. No native rebuild required for this Python-only correction.

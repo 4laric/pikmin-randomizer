@@ -1,4 +1,4 @@
-> Current combined QA source: root `ff838a2cccfd384d8793578d1a1b81bdab1011ae`, native `9b15d371cc63e7b0154bfc3dfc2cf5be9874c754`. See [combined QA pin](PIKMIN2_COMBINED_QA_PIN_437.md) for the executable hash and scope. This supersedes older source/build pins below. `output/p2-main-review` at `ef1cace` is an old dirty worktree, not the maintained remote head. `output/native-sweep437` remains assignment-5 WIP, not an export source.
+> Current combined QA source: root `87ad8e659a5434782377b50b5292baa4b2ddefff`, native `9b15d371cc63e7b0154bfc3dfc2cf5be9874c754`. See [combined QA pin](PIKMIN2_COMBINED_QA_PIN_437.md) for the executable hash and scope. This supersedes older source/build pins below. `output/p2-main-review` at `ef1cace` is an old dirty worktree, not the maintained remote head. `output/native-sweep437` remains assignment-5 WIP, not an export source.
 
 # P2 next wave: Snow first, Dwarf Orange second
 
