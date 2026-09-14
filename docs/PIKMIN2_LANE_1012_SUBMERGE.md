@@ -58,8 +58,10 @@ tests/test_pikmin2_captain_adapter.py tests/test_pikmin2_bulbmin_bridge.py -q`
   `mNaviShapeObject[0]` built. Adapter binds slot 0 only.
 - L11: no LeafChappy/KumaChappy mother actor, no spawner, no `piki_kochappy`
   model; bridge is inert without config.
-- L10: no `PIKISTATE_Denki`/`Panic`/`gasInvicible` and no electricity/gas
-  emitter; non-immune path logs the gap and uses the closest P1 state.
+- L10: `PIKISTATE_DenkiDying`/`PIKISTATE_Panic` and the `gasInvicible` gate are
+  now added and the non-immune receivers route into them (see
+  `PIKMIN2_RECEIVER_PATHS.md` §9); no electricity/gas emitter exists yet, so no
+  live hazard encounter is claimed.
 - Cave schema 3 is validation/build-backed; no Bulbmin spawns.
 
 Shared-semantics edits in this candidate (`Piki.h`, `interactBattle.cpp`,
@@ -98,6 +100,7 @@ affected by both). Fixture provenance `status=built`.
 
 Still blocked, not faked: real two-captain play (follow/split-squad AI, camera,
 controls, HUD, survivor-gated game over — `file:line` in the captain contract);
-a Mother Bulbmin actor/model and live spawn; `PIKISTATE_Denki`/`Panic`/gas
-states and enemy-side emitters. `PIKMIN_P2_SECOND_CAPTAIN` remains inert.
+a Mother Bulbmin actor/model and live spawn; enemy-side electricity/gas
+emitters (the Pikmin-side `PIKISTATE_DenkiDying`/`PIKISTATE_Panic`/gas gate are
+now present, native `2a4521da`). `PIKMIN_P2_SECOND_CAPTAIN` remains inert.
 
