@@ -105,7 +105,7 @@ health samples include 250→0; `state=11` chase with `target=1`; exit code 0.
 | C Combat/receivers | PASS at P1-proxy level | natural target/damage to 0 with a real squad; source-backed N/A for any P2-only attack |
 | D Death/drop/transport | PASS at P1-proxy level | corpse spawned/drawn, then carried by the real squad to a goal (distance 341.2, `goal=1`); P2 reward untested |
 | E Lifetime | BLOCKED | manager-swap precondition not met: the source actor is naturally killed by the overlay squad before the swap tick; needs a squad-free non-extinct baseline (#397) |
-| F Persistence | UNTESTED | no process-restart identity/reward check |
+| F Persistence | PASS (identity/content across process restart) | two independent sequential runs publish identical `P2_ENEMY_READY source_id=44 health=250.0 max_health=250.0`, `P2_DWARF_ORANGE_BANK poses=64` and birth health/XYZ for 211001/211002; no save file changed; P2 reward duplication N/A (lane 06). `docs/PIKMIN2_DWARF_ORANGE_RESTART.md`, `output/p2-lane13-dwarf-orange-restart/restart.json` |
 | G Product/mixed scene | BLOCKED | native candidate not integrated; no generated-session launch or mixed scene |
 
 Injected evidence is absent in gates C and D: the only interventions are
