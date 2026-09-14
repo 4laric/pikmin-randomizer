@@ -114,3 +114,31 @@ def test_helpers_never_earn_a_reward_on_death():
     with pytest.raises(ValueError, match='never earn'):
         rewards.resolve_contest(ledger, 'seed-a', rewards.PANHOUSE, '187002',
                                 'floor1', rewards.DEATH)
+
+
+def test_giant_press_is_purple_only_and_never_grants():
+    ledger = receipts.ReceiptLedger(receipts.InMemoryPersistence())
+    resisted = rewards.resolve_press(ledger, 'seed-a', rewards.GIANT, '187001',
+                                     'floor1', variant='giant', purple=False,
+                                     held_slots=2)
+    assert resisted == {'granted': False, 'reason': 'resisted', 'damage': 0.0,
+                        'released': False, 'held': 2, 'returned': 0}
+    pressed = rewards.resolve_press(ledger, 'seed-a', rewards.GIANT, '187001',
+                                    'floor1', variant='giant', purple=True,
+                                    held_slots=2)
+    assert pressed['granted'] is False and pressed['released'] is True
+    assert pressed['reason'] == contest.DROP and pressed['damage'] == 100.0
+    assert pressed['returned'] == 0
+    assert len(ledger) == 0
+
+
+def test_contest_loss_recovers_cargo_without_granting():
+    ledger = receipts.ReceiptLedger(receipts.InMemoryPersistence())
+    # Two carriers out-pull the 1/2-pellet Breadbug (strength 1.5): the source
+    # contest returns the cargo (RECOVER) and no family check is earned.
+    outcome = contest.arbitrate(contest.carry_strength(1, 2), 2)
+    assert outcome['winner'] == 'challenger'
+    result = rewards.resolve_contest(ledger, 'seed-a', rewards.SMALL, '186081',
+                                     'floor2', contest.RECOVER, held_slots=1)
+    assert result['granted'] is False and result['returned'] == 0
+    assert len(ledger) == 0

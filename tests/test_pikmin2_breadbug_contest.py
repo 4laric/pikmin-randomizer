@@ -68,3 +68,87 @@ def test_death_recovery_returns_every_held_slot_exactly_once():
     assert contest.reconcile_death(3, 4)['duplicated'] is True
     with pytest.raises(ValueError, match='Invalid held-slot count'):
         contest.reconcile_death(contest.MAX_TREASURE_SLOTS + 1, 0)
+
+
+def test_variant_params_match_the_audited_source_values():
+    small = contest.variant_params('small')
+    giant = contest.variant_params('giant')
+    assert (small['health'], giant['health']) == (1100.0, 2000.0)
+    assert (small['weight_threshold'], giant['weight_threshold']) == (11, 1)
+    assert (small['carry_speed'], giant['carry_speed']) == (35.0, 45.0)
+    assert (small['press_damage'], giant['press_damage']) == (200.0, 100.0)
+    assert (small['nest_scale'], giant['nest_scale']) == (1.0, 2.0)
+    assert giant['purple_only_press'] and not small['purple_only_press']
+    # Both Breadbug species share the nest_house_type.
+    assert small['nest_house_type'] == giant['nest_house_type'] == contest.NEST_BREADBUG
+    # A copy is returned so callers cannot mutate the audited table.
+    small['health'] = 0.0
+    assert contest.variant_params('small')['health'] == 1100.0
+    with pytest.raises(ValueError, match='Unknown breadbug variant'):
+        contest.variant_params('medium')
+
+
+def test_giant_press_is_purple_only():
+    assert contest.press_damage('giant', purple=False) == 0.0
+    assert contest.press_damage('giant', purple=True) == 100.0
+    assert contest.press_damage('small', purple=False) == 200.0
+    with pytest.raises(ValueError, match='purple must be a bool'):
+        contest.press_damage('giant', purple=1)
+
+
+def test_arbitration_same_channel_and_idle_accept_the_challenger():
+    idle = contest.arbitrate(0.0, 1.5, claim_channel=None)
+    assert idle['winner'] == 'challenger' and idle['reason'] == 'idle'
+    assert idle['cross_channel'] is False and idle['stall_seconds'] == 0.0
+    same = contest.arbitrate(9.0, 1.5, claim_channel=contest.CARRY_CHANNEL,
+                             challenger_channel=contest.CARRY_CHANNEL)
+    assert same['winner'] == 'challenger' and same['reason'] == 'same_channel'
+    assert same['cross_channel'] is False and same['stall_seconds'] == 0.0
+
+
+def test_arbitration_cross_channel_requires_strictly_greater():
+    # Default channels model the Breadbug drag versus the Pikmin carry channel.
+    defended = contest.arbitrate(15.0, 14.0)
+    assert defended['winner'] == 'claim' and defended['reason'] == 'defended'
+    assert defended['cross_channel'] is True and defended['stall_seconds'] == 0.0
+    equal = contest.arbitrate(1.5, 1.5)
+    assert equal['winner'] == 'claim'  # strictly greater is required
+    takeover = contest.arbitrate(1.5, 2.0)
+    assert takeover['winner'] == 'challenger' and takeover['reason'] == 'stronger'
+    assert takeover['cross_channel'] is True
+    assert takeover['stall_seconds'] == contest.TAKEOVER_STALL_SECONDS
+    with pytest.raises(ValueError, match='Invalid contest strength'):
+        contest.arbitrate(-1.0, 1.0)
+
+
+def test_contest_frames_transition_from_drag_to_pulled():
+    # A 1/2 pellet gives the Breadbug 1.5: one carrier is not enough, two win.
+    frames = contest.contest_frames(1.5, [1, 1, 2, 2, 1])
+    assert frames == (contest.DRAG, contest.DRAG, contest.PULLED,
+                      contest.PULLED, contest.DRAG)
+    assert contest.contest_frames(15.0, [14, 15, 16]) == (
+        contest.DRAG, contest.DRAG, contest.PULLED)
+    with pytest.raises(ValueError, match='Invalid contest strength'):
+        contest.contest_frames(1.5, [1, float('nan')])
+
+
+def test_nest_ownership_is_parent_bound_breadbug_by_default():
+    owned = contest.nest_ownership(True, contest.NEST_BREADBUG)
+    assert owned == {'owner_alive': True, 'house_type': contest.NEST_BREADBUG,
+                     'owner': 'breadbug', 'parent_bound': True, 'active': True}
+    dead = contest.nest_ownership(False, contest.NEST_BREADBUG)
+    assert dead['active'] is False and dead['parent_bound'] is True
+    assert contest.nest_ownership(True, contest.NEST_JIGUMO)['owner'] == 'jigumo'
+    with pytest.raises(ValueError, match='owner_alive must be a bool'):
+        contest.nest_ownership(1, contest.NEST_BREADBUG)
+    with pytest.raises(ValueError, match='Unknown nest house type'):
+        contest.nest_ownership(True, 2)
+
+
+def test_nest_collision_drops_after_eighty_frames():
+    assert contest.nest_collision_after_death(0) is True
+    assert contest.nest_collision_after_death(79) is True
+    assert contest.nest_collision_after_death(80) is False
+    assert contest.nest_collision_after_death(1000) is False
+    with pytest.raises(ValueError, match='Invalid frames-since-kill'):
+        contest.nest_collision_after_death(-1)
