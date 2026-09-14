@@ -1,7 +1,7 @@
 From 1cb9f697573cdd50baebcc8fdb56be3bb5303460 Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 09:50:41 -0400
-Subject: [PATCH 4/4] BigTreasure #246: treat the authored loop marker as the
+Subject: [PATCH 4/5] BigTreasure #246: treat the authored loop marker as the
  host cycle end
 
 ---

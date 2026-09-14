@@ -52,8 +52,10 @@ New lane-owned native files:
   translation, and its own `P2BigTreasureMotionBank` + `p2retail::Player`.
 - `pc_port/pc_p2_bigtreasure_elements.h/.cpp` — engine-free
   `P2BigTreasureElementRuntime`: owns the fire/gas/water/elec policies, starts
-  the controller the FSM started, and steps it against an injected trace/ground
-  host.
+  the controller the FSM started, steps it against an injected trace/ground
+  host, and exposes `queryHit(target)` (detection only) so an ordinary-update
+  consumer can observe whether an emitted node intersects a live target.
+  Also adds an additive gas `nodeRatio` accessor needed for the query.
 - `tools/p2_bigtreasure_ordinary_test.cpp` (5 groups),
   `tools/p2_bigtreasure_animclock_test.cpp` (4 groups),
   `tools/p2_bigtreasure_natural_test.cpp` (end-to-end chain to attack),
@@ -129,15 +131,15 @@ target angle (host work). Event types map `1000 -> animEnd`, `2 -> keyEvent2`,
 `PIKMIN_NATIVE_OPTIMIZE=OFF`, test hooks OFF, MinGW GCC 16.2.0.
 `[545/545] Linking CXX executable bin\nectar.exe`, exit 0;
 `ninja -n pikmin_pc` = `no work to do`. Executable SHA-256
-`A019E17B4A3CECED74397F2CFC5D2B6B0600E0AE1B2B7BDC2BFC9EB61CF814A2`.
+`A17F0A633C6221A4020464428A7E559D97792970B0192556E1224E4CCF277494`.
 
-**Real-GL runtime (this pass).** Fixture `output/lane32-anim-fixture-02`
-built from native `cb8e6d45` (fixture.exe SHA-256
-`9410FFA00625B8501914FA79787EDA1333DA7975C2F5DF750E91D6205CBBF3A6`). Run
-`output/lane32-anim-runtime-02/437cf39ce8544bb0be9cf467757f02d6`,
+**Real-GL runtime (this pass).** Fixture `output/lane32-hit-fixture-01`
+built from native `639499bd` (fixture.exe SHA-256
+`F6E373BBA751BC3EEAFC6A52E0782E766B951D3250F1C1241AE212F6BBD1D29E`). Run
+`output/lane32-hit-runtime-01/f207ed1b835947189afe4f3c378b6ca3`,
 `status=passed`, exit 0, stdout SHA-256
-`AAABF4A9799FDB7D2569B7009FA46AB71E58B09B6C8AF5D231B374A6E63CEE16`; inputs
-`pikmin2-room105` + `bigtreasure-host-stage-01` + `bigtreasure-visual-stage-04`
+`A07260062668C892B563D0329C083B5AF9EFDB89E1F911679DE96D28F5C7AF2B`; inputs
+`pikmin2-room105` + `bigtreasure-host-stage-02` + `bigtreasure-visual-stage-04`
 (full 29-clip stage) on the `pikmin-local` game assets; two PPM captures.
 
 The ordinary keyframe drive ran in the live game loop and advanced the policy
@@ -163,10 +165,10 @@ no regression on the four-weapon injected fixture. The live run reached
 deterministic `BIGTREASURE_NATURAL` fixture above.
 
 **Live ordinary cycle (this pass).** With the finite fixture run bounded, the
-same private `nectar.exe` build was run unattended for 55 s in the prepared
-overlay (`output/lane32-elements-runtime-02/dd55d28e…`, log
-`native-live2.log`, SHA-256
-`05B85A8B4D44481B5704FD222985295487C78A6147B858E63454EC1598EBF7D4`). The
+same private `nectar.exe` build was run unattended for 60 s in the prepared
+overlay (log `native-live3.log` in
+`output/lane32-elements-runtime-02/dd55d28e…`, SHA-256
+`20FC74C2B8C79E33E17AA8A707DA818E0E3A6E11A6B562EF37C976308B7D6AE6`). The
 ordinary loop ran the full repeated lifecycle and emitted real attack nodes:
 
 ```text
@@ -179,7 +181,11 @@ P2_BIGTREASURE_FSM phase=PreAttack weapons=4 clip=preattacke
 ```
 
 The attack repeats (PreAttack -> Attack -> PutItem -> ItemWalk -> PreAttack).
-No Pikmin health change is claimed: the damage receiver is lane 10.
+The element runtime's hit detection ran against live Navi/Pikmin every active
+tick but reported **no intersection** at the fixed `(0,0,0)` placement (the
+scattered elec chains did not reach the squad), so no live Pikmin damage is
+claimed; the damage receiver remains lane 10. Detection is unit-tested
+(`elements_query_hit`).
 
 ## Clip availability audit (lane 32 next-wave row)
 
@@ -220,20 +226,22 @@ Concrete source ID and missing gate addressed: 73 BigTreasure (Titan
 Dweevil) — FSM host -> ordinary update, animation keyframe source, persistent
 element runtime, natural-hit ingress. Natural Pikmin->weapon knock-off in the
 live arena still gated on the lane-10 receiver.
-Root base/head: 3851d4b; native f14c6851; native head 1cb9f697.
+Root base/head: 3851d4b; native f14c6851; native head 639499bd.
 Owned files: pc_port/pc_p2_bigtreasure_ordinary.{h,cpp};
   pc_port/pc_p2_bigtreasure_animclock.{h,cpp};
   pc_port/pc_p2_bigtreasure_elements.{h,cpp};
+  pc_port/pc_p2_bigtreasure_attacks.{h,cpp} (additive gas nodeRatio);
   pc_port/pc_p2_hardlanes.{h,cpp} (additive); CMakeLists.txt (+3 TU);
   tools/p2_bigtreasure_{ordinary,animclock,natural,elements}_test.cpp.
 Private build: output/native-lane32-ordinary-build (Ninja/Release/JAudio ON/
-  optimize OFF/hooks OFF); exe SHA-256 A019E17B...F814A2; ninja -n no work.
+  optimize OFF/hooks OFF); exe SHA-256 A17F0A63...F277494; ninja -n no work.
 Fixture: PASS BIGTREASURE_{ORDINARY,ANIMCLOCK,NATURAL,ELEMENTS}.
 Natural vs injected: keyframes and element motion from the lane's own modules;
   hits enter by pc_p2_hardlanes_bigtreasure_hit (lane-10 boundary). Real-GL:
-  fixture run lane32-elements-runtime-02/dd55d28e... passed (29-clip stage); live
-  55 s run native-live2.log shows the full repeated Attack cycle with elec nodes
-  emitted; four-weapon fixture markers unchanged.
+  fixture run lane32-hit-runtime-01/f207ed1b... passed (29-clip stage); live
+  60 s run native-live3.log shows the full repeated Attack cycle with elec nodes
+  emitted, and hit detection against live Navi/Pikmin (no intersection at the
+  fixed placement); four-weapon fixture markers unchanged.
 Combined-scene impact: none measured; additive lane-owned TUs only.
 Next consumer: lane 10 receiver -> pc_p2_hardlanes_bigtreasure_hit.
 ```

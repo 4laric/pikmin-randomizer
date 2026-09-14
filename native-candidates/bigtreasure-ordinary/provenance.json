@@ -3,16 +3,16 @@
   "lane": 32,
   "issue": 246,
   "parent_issue": 175,
-  "title": "BigTreasure ordinary-update FSM host drive + animation keyframe source + persistent element runtime + natural-hit ingress",
+  "title": "BigTreasure ordinary-update FSM host + keyframe source + element runtime + live hit detection + natural-hit ingress",
   "kind": "integration-ready",
   "native": {
     "base": "f14c6851473ac1161be56c8b98f4f905232f3635",
     "base_branch": "codex/p2-main-review-native",
-    "head": "1cb9f697573cdd50baebcc8fdb56be3bb5303460",
+    "head": "639499bd5a28fb6c73a3fadbdd2933e4fc60440e",
     "local_branch": "opencode/p2-lane32-ordinary",
     "pushed": false,
     "dirty_state": "clean",
-    "note": "Lane-owned files plus the existing hardlanes registration seam and three additive CMake TU lines. Native origin/upstream not pushed."
+    "note": "Lane-owned files plus the existing hardlanes registration seam, three additive CMake TU lines, and an additive gas nodeRatio accessor. Native origin/upstream not pushed."
   },
   "root": {
     "base": "3851d4b",
@@ -26,6 +26,8 @@
     "pc_port/pc_p2_bigtreasure_animclock.cpp",
     "pc_port/pc_p2_bigtreasure_elements.h",
     "pc_port/pc_p2_bigtreasure_elements.cpp",
+    "pc_port/pc_p2_bigtreasure_attacks.h",
+    "pc_port/pc_p2_bigtreasure_attacks.cpp",
     "pc_port/pc_p2_hardlanes.h",
     "pc_port/pc_p2_hardlanes.cpp",
     "CMakeLists.txt",
@@ -37,25 +39,14 @@
   "patches": {
     "full": {
       "path": "native-candidates/bigtreasure-ordinary/bigtreasure-ordinary-full.patch",
-      "sha256": "024DB166E64AC19EA6F1DB418140637CECC900B85938D4BFCBC8282311F58125"
+      "sha256": "796FF7558C9AD5F4A885909A2021246E55015E70F53472FD09831D78AA857E5D"
     },
     "series": [
-      {
-        "path": "native-candidates/bigtreasure-ordinary/patches/0001-BigTreasure-246-drive-FSM-host-from-ordinary-update-.patch",
-        "sha256": "BBBB005C33784DBE10A87F2C41D024983FC4AD1CAF2EE65BCD2CAC25FEE5115F"
-      },
-      {
-        "path": "native-candidates/bigtreasure-ordinary/patches/0002-BigTreasure-246-animation-keyframe-source-drives-FSM.patch",
-        "sha256": "887A7A6CDE46F262CBC097E79FF7346AAAF8E532ADE2D0AF473C713C39D86FDC"
-      },
-      {
-        "path": "native-candidates/bigtreasure-ordinary/patches/0003-BigTreasure-246-persistent-element-runtime-in-ordina.patch",
-        "sha256": "268D61642DEB2AF72CB7C9F58706002750BC808C9C0059FA98859BAC0B3A79FA"
-      },
-      {
-        "path": "native-candidates/bigtreasure-ordinary/patches/0004-BigTreasure-246-treat-the-authored-loop-marker-as-th.patch",
-        "sha256": "69B18123D22C83B8E09C2F3D2624185B6FEA3E7884C201D9D4DC80F8A11F9E44"
-      }
+      { "path": "native-candidates/bigtreasure-ordinary/patches/0001-BigTreasure-246-drive-FSM-host-from-ordinary-update-.patch", "sha256": "B3FE99A0B56ECB140C5F133F7153D0E817F3B509524D17DC9C37F191815C82C0" },
+      { "path": "native-candidates/bigtreasure-ordinary/patches/0002-BigTreasure-246-animation-keyframe-source-drives-FSM.patch", "sha256": "2B1ADC3BCD406DD90EC267AA2C8B465A914B3B1E6DCB6108E0877E7E73264776" },
+      { "path": "native-candidates/bigtreasure-ordinary/patches/0003-BigTreasure-246-persistent-element-runtime-in-ordina.patch", "sha256": "3F0485E046AB955A63BAF5E7CEB5AE0204EA6D2C915DA81B9715708C5C3CF06F" },
+      { "path": "native-candidates/bigtreasure-ordinary/patches/0004-BigTreasure-246-treat-the-authored-loop-marker-as-th.patch", "sha256": "D9A04335A219057CCB1F5DAA0CE847B5765536A11795D50225A0EDF483372D5E" },
+      { "path": "native-candidates/bigtreasure-ordinary/patches/0005-BigTreasure-246-element-hit-detection-against-live-t.patch", "sha256": "3735252F54233B1DB259401A02D38D1FA84BE24A2AFCA29A9CDF55D45526CA64" }
     ]
   },
   "standalone": {
@@ -65,7 +56,7 @@
       { "name": "BIGTREASURE_ORDINARY", "groups": ["ordinary_pacer_attack", "ordinary_natural_knockoff", "ordinary_hit_queue", "ordinary_body_and_kill", "ordinary_inactive"] },
       { "name": "BIGTREASURE_ANIMCLOCK", "groups": ["animclock_mapping", "animclock_translate", "animclock_progression", "animclock_inactive_restart"] },
       { "name": "BIGTREASURE_NATURAL", "groups": ["natural_attack_start", "natural_knockoff_finale"] },
-      { "name": "BIGTREASURE_ELEMENTS", "groups": ["elements_fire_gas", "elements_water_ground", "elements_elec_bounce", "elements_invalid"] }
+      { "name": "BIGTREASURE_ELEMENTS", "groups": ["elements_fire_gas", "elements_water_ground", "elements_elec_bounce", "elements_invalid", "elements_query_hit"] }
     ],
     "regression": "PASS BIGTREASURE_FSMHOST (8/8)"
   },
@@ -78,14 +69,15 @@
     "test_hooks": "OFF",
     "result": "[545/545] Linking CXX executable bin\\nectar.exe",
     "ninja_dry_run": "ninja: no work to do.",
-    "production_executable_sha256": "A019E17B4A3CECED74397F2CFC5D2B6B0600E0AE1B2B7BDC2BFC9EB61CF814A2"
+    "production_executable_sha256": "A17F0A633C6221A4020464428A7E559D97792970B0192556E1224E4CCF277494"
   },
   "runtime": {
     "fixture_run": {
-      "fixture_dir": "output/lane32-elements-fixture-02",
-      "fixture_executable_sha256": "659CAE9AC7D6962966514CAB07DAFD1B2B1C6325C27A73479BDF767B29D7EC32",
-      "run_dir": "output/lane32-elements-runtime-02/dd55d28e90874377abe1cdbbad3cb008",
+      "fixture_dir": "output/lane32-hit-fixture-01",
+      "fixture_executable_sha256": "F6E373BBA751BC3EEAFC6A52E0782E766B951D3250F1C1241AE212F6BBD1D29E",
+      "run_dir": "output/lane32-hit-runtime-01/f207ed1b835947189afe4f3c378b6ca3",
       "status": "passed",
+      "stdout_sha256": "A07260062668C892B563D0329C083B5AF9EFDB89E1F911679DE96D28F5C7AF2B",
       "inputs": {
         "assets": "C:/Users/alari/pikmin-local/game/assets",
         "room": "output/pikmin2-room105",
@@ -102,10 +94,10 @@
     "live_run": {
       "executable": "output/native-lane32-ordinary-build/bin/nectar.exe",
       "working_dir": "output/lane32-elements-runtime-02/dd55d28e90874377abe1cdbbad3cb008",
-      "log": "native-live2.log",
-      "log_sha256": "05B85A8B4D44481B5704FD222985295487C78A6147B858E63454EC1598EBF7D4",
+      "log": "native-live3.log",
+      "log_sha256": "20FC74C2B8C79E33E17AA8A707DA818E0E3A6E11A6B562EF37C976308B7D6AE6",
       "status": "observed",
-      "note": "Unattended 55 s live run (windowed, red=20). Full repeated lifecycle in the ordinary loop: Stay->Land->ItemWalk->PreAttack->Attack(startAttack, elec nodes=11 emitted)->PutItem->ItemWalk->PreAttack->Attack... The Pikmin damage receiver is still lane 10; no Pikmin health change is claimed.",
+      "note": "Unattended 60 s live run. Full repeated lifecycle in the ordinary loop with element nodes emitted (elec nodes=11). Hit detection ran against live Navi/Pikmin every active tick but reported no intersection at the fixed (0,0,0) placement (the scattered elec chains did not reach the squad), so no ATTACK_HIT marker is claimed. Damage application remains lane 10.",
       "markers": [
         "P2_BIGTREASURE_FSM phase=Attack weapons=4 clip=attacke",
         "P2_BIGTREASURE_ATTACK_START weapon=elec",
@@ -115,8 +107,8 @@
     }
   },
   "limitations": [
-    "Lane-10 real Pikmin attack-volume receiver is not integrated: the natural-hit ingress is ready and the downstream knock-off/finale is proven standalone, and the element runtime emits/moves, but no live Pikmin damage is applied.",
-    "finishIKMotion is fed as always-true (no IK-system bridge); the authored loop marker is treated as the host cycle end (documented approximation for per-weapon time-max gating); fire uses the forward animation variant.",
+    "Lane-10 real Pikmin-damage receiver is not integrated: hit detection is log-only and the fixed (0,0,0) placement did not intersect the squad in the live run; the downstream knock-off/finale is proven standalone.",
+    "finishIKMotion is fed as always-true; the authored loop marker is treated as the host cycle end (stand-in for getPreAttackTimeMax gating); fire uses the forward animation variant and the element hit detection uses an approximate target geometry.",
     "The shared visual bank still plays its own clip; the lane keyframe clock is the FSM source. Unifying them is future work.",
     "Unconverted loozy model, skeletal playback, material fidelity and finale mPelletDropCode/pellet configs remain open."
   ]

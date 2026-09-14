@@ -1,7 +1,7 @@
 From e01913d1c49f0ea2a07976a110b20ab3971e31ab Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 09:43:45 -0400
-Subject: [PATCH 3/4] BigTreasure #246: persistent element runtime in ordinary
+Subject: [PATCH 3/5] BigTreasure #246: persistent element runtime in ordinary
  play
 
 ---
