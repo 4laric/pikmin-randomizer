@@ -11,6 +11,7 @@ the restricted converter (currently loozy, shape matrix type 1) are declared
 import argparse
 import hashlib
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -49,6 +50,8 @@ def build(imported, output, only_clips=None):
 
     def place(source, name):
         nonlocal total
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", name) or name in (".", ".."):
+            raise ValueError("Unsafe staged filename")
         data = Path(source).read_bytes()
         total += len(data)
         if total > MAX_STAGE_BYTES:

@@ -38,6 +38,20 @@ def tiny_species():
 
 
 class BuildTests(unittest.TestCase):
+    def test_path_escape_is_rejected_before_staging(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            imported = root / 'imported'
+            imported.mkdir()
+            write_import(imported, tiny_species())
+            path = imported / 'waterwraith.json'
+            report = json.loads(path.read_text())
+            report['species']['BlackMan']['clips'][0]['poses'][0]['file'] = '../escape.mod'
+            path.write_text(json.dumps(report))
+            with self.assertRaisesRegex(ValueError, 'Unsafe pose filename'):
+                stage.build(imported, root / 'stage', ['kagebozu_walk'])
+            self.assertFalse((root / 'stage').exists())
+
     def test_profile_and_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

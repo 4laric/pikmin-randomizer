@@ -17,6 +17,7 @@ Profile row grammar (pending native consumer):
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 
 HEADER = 'P2_WATERWRAITH_VISUAL_1'
@@ -46,6 +47,13 @@ def build(imported, output, only_clips=None):
     report = json.loads((imported / 'waterwraith.json').read_bytes())
     if report.get('policy') != 'P2_WATERWRAITH_1':
         raise ValueError('Expected a Waterwraith import report')
+    for species, entry in report["species"].items():
+        if species not in ("BlackMan", "Tyre"):
+            raise ValueError("Unknown Waterwraith species")
+        for clip in entry["clips"]:
+            for pose in clip.get("poses", []):
+                if "file" in pose and not re.fullmatch(r"[A-Za-z0-9_-]+\.mod", pose["file"]):
+                    raise ValueError("Unsafe pose filename")
     clips = converted_clips(report)
     names = [name for _species, _id, clip in clips for name in [clip['name']]]
     if only_clips is not None:
