@@ -1,7 +1,7 @@
 From 84b44fb800d96366245e994909ed70c25517ae40 Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 02:18:28 -0400
-Subject: [PATCH 2/3] Add P2 species hazard capability matrix (lane 11)
+Subject: [PATCH 2/4] Add P2 species hazard capability matrix (lane 11)
 
 ---
  pc_port/pc_p2_species.h          |  1 +

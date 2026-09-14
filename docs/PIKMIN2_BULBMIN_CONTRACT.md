@@ -76,11 +76,21 @@ species-only Purple impact and White poison attacks, source-anchored in
 
 ## Integration and remaining work
 
-- `pc_p2_species` must learn `P2SpeciesBulbmin = 5` so the species adapter and
-  the cave checkpoint schema (`pc_p2_cave.cpp` currently accepts 0–4) can carry
-  it; that is a lane-11 follow-up and touches #131 storage.
+- Identity wiring landed on the same branch (commit `0a735f7e`): `Piki` and
+  `PikiHeadItem` carry `mP2Bulbmin`, `pc_p2_species` recognizes it (rejecting a
+  doubly-flagged Piki), `pc_p2_set_species` accepts species 5, and
+  `pc_p2_make_bulbmin` / `pc_p2_is_bulbmin` are available. Build evidence:
+  private `output/native-lanes-1012-build` (Ninja, Release, JAudio ON) linked
+  `[520/520] bin/nectar.exe`; `ninja -n pikmin_pc` -> "no work to do";
+  `nectar.exe` SHA-256 `7AB7305B6B36C35C4F34E53CCD110FCE391815488FC287797E5F44FFB4C99115`.
+  This is a build/compile gate, not a runtime gate — nothing spawns Bulbmin
+  yet.
+- `pc_p2_cave.cpp` still accepts species 0-4. Carrying Bulbmin through a cave
+  checkpoint needs a versioned schema bump (schema 3), not a widened schema 2,
+  so old readers do not silently reinterpret IDs.
 - The recruited dependent must be handed to the captain/ownership table
   (see [PIKMIN2_CAPTAIN_SQUAD_CONTRACT.md](PIKMIN2_CAPTAIN_SQUAD_CONTRACT.md))
   and the mother's bullet-lifecycle cleanup to lane 07.
-- Live Mother Bulbmin actor registration, model and arena run remain unscheduled
-  family work (LeafChappy is a KumaChappy descendant).
+- Live Mother Bulbmin actor registration, `piki_kochappy` model binding, birth
+  and whistle hooks, and an arena run remain unscheduled family work (LeafChappy
+  is a KumaChappy descendant).
