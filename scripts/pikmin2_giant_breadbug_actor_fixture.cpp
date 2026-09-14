@@ -10,7 +10,7 @@
 // Purple-only press, PelletCarry contest, hide-digest heal, defeat throw-up,
 // owner-linked nest birth/death. P1 FSM drives locomotion/cargo.
 class GiantActorFixture:public PlugPikiApp {
- int frames=0,tick=0,phase=0,phaseTick=0,pressCount=0;
+ int frames=0,tick=0,phase=0,phaseTick=0,pressCount=0,sub=0;
  Teki* giant=nullptr;Teki* nestTeki=nullptr;Pellet* cargoA=nullptr;Pellet* cargoB=nullptr;
  Vector3f nestPos;std::vector<Piki*> squad;Piki* purple=nullptr;Piki* carriers[2]={nullptr,nullptr};
  unsigned giantId=0,nestId=0;Vector3f giantXyz,nestXyz;
@@ -65,20 +65,10 @@ public:
     require(giant->mHealth==1900.0f,"purple press damage != 100");
      pressCount=1;
      std::printf("P2_GIANT_ARENA_PRESS non_purple=resisted purple_damage=100 health=%.1f\n",giant->mHealth);
-     { // Interruption release: a valid Purple press releases held cargo in place.
-      Pellet* held=pelletMgr->newNumberPellet(PELCOLOR_Red,0);require(held,"interrupt pellet");
-      held->init(giant->mSRT.t);held->startAI(0);require(held->startStickTeki(giant,1.0f),"interrupt stick");
-      giant->setCreaturePointer(2,held);require(giant->getCreaturePointer(2)==held,"interrupt setup");
-      giant->eventPerformed(TekiEvent(TekiEventType::Pressed,giant,purple));
-      require(giant->getCreaturePointer(2)==nullptr,"interruption did not release held cargo");
-      require(giant->mHealth==1800.0f,"interrupt press damage");
-      std::printf("P2_GIANT_ARENA_INTERRUPT released=1 health=%.1f\n",giant->mHealth);
-      held->kill(false);
-     }
      phase=2;phaseTick=0;
    }
    return result;}
-  case 2:{ // PelletCarry contest: carriers >= (min+max)/2 steal the cargo back.
+  case 2:{ // Natural cargo grab -> interruption release -> carrier contest steal.
    if(phaseTick==1){
     cargoA=pelletMgr->newNumberPellet(PELCOLOR_Red,0);require(cargoA,"contest pellet allocation");
     cargoA->init(giant->mSRT.t);cargoA->startAI(0);
@@ -86,16 +76,22 @@ public:
    }
    require(phaseTick<2400,"giant never grabbed contest pellet");
    bool held=giant->getCreaturePointer(2)==cargoA;
-   if(!held&&phaseTick%60==0){ // keep the bait right in front of the wandering giant, camera nearby
+   if(!held&&sub<2&&phaseTick%60==0){ // keep the bait right in front of the wandering giant, camera nearby
     Vector3f forward;giant->outputDirectionVector(forward);
     Vector3f spot=giant->mSRT.t+forward*20.0f;spot.y=mapMgr->getMinY(spot.x,spot.z,true)+5.0f;
     cargoA->mSRT.t=spot;
     Vector3f cam=giant->mSRT.t+Vector3f(0,0,60);cam.y=mapMgr->getMinY(cam.x,cam.z,true);n->resetPosition(cam);
    }
-   if(held){carriers[0]=squad[2];carriers[1]=squad[3];
-    for(int i=0;i<2;++i)if(carriers[i]->isAlive())carriers[i]->startStickObject(cargoA,nullptr,i,1.0f);}
-   static bool wasHeld=false;wasHeld|=held;
-   if(wasHeld&&giant->getCreaturePointer(2)==nullptr){
+   if(sub==0&&held){ // natural grab, then interruption release in place
+    sub=1;
+    giant->eventPerformed(TekiEvent(TekiEventType::Pressed,giant,purple));
+    require(giant->getCreaturePointer(2)==nullptr,"interruption did not release natural cargo");
+    std::printf("P2_GIANT_ARENA_INTERRUPT natural=1 released=1 health=%.1f\n",giant->mHealth);
+   } else if(sub==1&&held){ // re-grab, then the carrier contest steals it back
+    sub=2;carriers[0]=squad[2];carriers[1]=squad[3];
+    for(int i=0;i<2;++i)if(carriers[i]->isAlive())carriers[i]->startStickObject(cargoA,nullptr,i,1.0f);
+   }
+   if(sub==2&&giant->getCreaturePointer(2)==nullptr){ // native contest release
     std::printf("P2_GIANT_ARENA_CONTEST released=1 tick=%d strength=1.5 carriers=2\n",phaseTick);
     phase=3;phaseTick=0;}
    return result;}

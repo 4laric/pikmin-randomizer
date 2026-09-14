@@ -213,7 +213,7 @@ suite (16 passing).
   ledger/receipt work is a host-side contract, not a save mutation.
 - Open on #168/#220/#441.
 
-## Giant actor arena runtime — combined build (lane 18, 2026-09-14)
+## Giant actor arena runtime ï¿½ combined build (lane 18, 2026-09-14)
 
 The prior private Giant actor fixture (`giant-actor-build-02/fixture.cpp`, native
 `e91bb22b`) was rebuilt against the combined lanes 16-18 native build and re-run
@@ -225,14 +225,17 @@ wave (a valid Purple press must release held cargo in place).
 - Native `opencode/p2-lanes16-18-native` @ `d37d000718cdd98dcac8bbd688f1fd673a2e3e17`,
   build `output/lanes16-18-native-build` (exe `ABB537EB...`). Fixture built via
   `scripts/build_pikmin2_fixture.py`.
-- Run `output/lane18-giant-arena-b/run1` (copied stage), exit 0:
+- Run `output/lane18-giant-arena-c/run1` (copied stage), exit 0:
   `P2_GIANT_ARENA_PRESS non_purple=resisted purple_damage=100 health=1900.0`,
-  `P2_GIANT_ARENA_INTERRUPT released=1 health=1800.0`,
-  `P2_GIANT_DEFEATED thrown_back=2`, `P2_GIANT_THROWUP pellets=2 nest=...`,
+  `P2_GIANT_ARENA_INTERRUPT natural=1 released=1 health=1800.0` (the Giant grabs
+  the bait pellet through its own FSM, then a Purple press releases it in place),
+  `P2_GIANT_ARENA_CONTEST released=1 tick=122 strength=1.5 carriers=2`,
+  `P2_GIANT_ARENA_DIGEST healed=1 health=2000.0`, `P2_GIANT_DEFEATED thrown_back=2`,
+  `P2_GIANT_THROWUP pellets=2 nest=...`,
   `PASS P2_GIANT_BREADBUG_ARENA spawn_identity press contest digest_heal
   defeat_throwup nest_linked`.
-- This is the first runtime confirmation of the interruption (`giveup`) release.
-  Caveat: the fixture hardcodes a 960x720 window (not the standard 960x540) and
-  uses explicit invites (`eventPerformed`, `startStickTeki`) rather than fully
-  natural cargo acquisition for the interruption probe; natural contested drag
-  remains the small-proxy gap.
+- This is the first runtime confirmation of the interruption (`giveup`) release,
+  now with natural cargo acquisition (no `setCreaturePointer`/`startStickTeki`
+  invite for the held state). Caveat: the fixture hardcodes a 960x720 window
+  rather than the standard 960x540, and the small Breadbug proxy still has no
+  cargo owner, so its interruption path remains unimplemented.
