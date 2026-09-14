@@ -1,0 +1,44 @@
+From 6fcfaa116c2c8824c5c9293df8b53fd17bf46ba1 Mon Sep 17 00:00:00 2001
+From: opencode <opencode@local>
+Date: Mon, 14 Sep 2026 10:14:11 -0400
+Subject: [PATCH 7/7] pc_p2_long_legs: feed the source damage edge to the
+ Houdai shot cooldown (#173, #312)
+
+---
+ pc_port/pc_p2_long_legs.cpp | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/pc_port/pc_p2_long_legs.cpp b/pc_port/pc_p2_long_legs.cpp
+index c0b8e552..c28d825f 100644
+--- a/pc_port/pc_p2_long_legs.cpp
++++ b/pc_port/pc_p2_long_legs.cpp
+@@ -57,6 +57,7 @@ struct ActorState {
+     P2LongLegsFsm fsm;
+     float animSeconds = 0.0f;   // time in the current state (source-key edges)
+     bool key2Fired = false;
++    float lastHealth = 0.0f;    // host damage edge for the Houdai shot cooldown
+     P2LongLegsState lastState = P2LongLegsState::Stay;
+     bool stateLogged = false;
+ };
+@@ -237,6 +238,7 @@ void pc_p2_long_legs_setup() {
+         state.generator = generator;
+         state.parms = p2LongLegsParmsFor(speciesEnum(match->second));
+         state.fsm.reset(state.parms);
++        state.lastHealth = teki->mHealth;
+         speciesUsed.insert(match->second);
+     }
+     if (found.size() != wanted.size()) fail("arena actor not present in scene");
+@@ -300,6 +302,10 @@ void pc_p2_long_legs_update(BTeki* actor) {
+ 
+     P2LongLegsFsmInput in;
+     in.health = actor->mHealth;
++    // A health decrease this tick is the source damage edge; it postpones the
++    // Houdai gun by resetting the shot cooldown (Houdai.cpp).
++    in.damageTaken = actor->mHealth < state.lastHealth;
++    state.lastHealth = actor->mHealth;
+     in.roll = gsys->getRand(1.0f);
+     in.wakeTargetNearby = nearestTarget(pos, state.parms.privateRadius) != nullptr;
+     in.pikminAccumulating = countPikiWithin(pos, AccumulateRadius) > 0;
+-- 
+2.55.0.windows.3
+
