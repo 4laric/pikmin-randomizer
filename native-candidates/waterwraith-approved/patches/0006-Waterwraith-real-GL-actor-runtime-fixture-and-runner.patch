@@ -1,7 +1,7 @@
 From fc8055408932ad76760f9c523230dc2b54088475 Mon Sep 17 00:00:00 2001
 From: 4laric <4laric@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 03:38:29 -0400
-Subject: [PATCH 6/9] Waterwraith: real-GL actor runtime fixture and runner
+Subject: [PATCH 06/10] Waterwraith: real-GL actor runtime fixture and runner
  (#443)
 
 ---

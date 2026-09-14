@@ -1,7 +1,7 @@
 From 141db152302ce790ec221e47972753d93ac79440 Mon Sep 17 00:00:00 2001
 From: 4laric <4laric@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 03:14:49 -0400
-Subject: [PATCH 4/9] Waterwraith: add policy TU to the shared target (#175)
+Subject: [PATCH 04/10] Waterwraith: add policy TU to the shared target (#175)
 
 ---
  CMakeLists.txt | 1 +

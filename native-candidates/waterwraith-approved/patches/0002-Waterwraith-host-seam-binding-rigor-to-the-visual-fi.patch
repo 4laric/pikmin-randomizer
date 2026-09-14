@@ -1,7 +1,7 @@
 From a0e63b124a7d70b9924d87f0c6c22922c0cf40a1 Mon Sep 17 00:00:00 2001
 From: 4laric <4laric@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 03:12:24 -0400
-Subject: [PATCH 2/9] Waterwraith: host seam binding rigor to the visual
+Subject: [PATCH 02/10] Waterwraith: host seam binding rigor to the visual
  fixture (#175)
 
 ---

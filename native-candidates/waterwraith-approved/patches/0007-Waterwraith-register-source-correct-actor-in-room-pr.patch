@@ -1,7 +1,7 @@
 From bd8a7200dafeb8cf0b4429b23a49f08c5a726d75 Mon Sep 17 00:00:00 2001
 From: 4laric <4laric@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 05:58:09 -0400
-Subject: [PATCH 7/9] Waterwraith: register source-correct actor in
+Subject: [PATCH 07/10] Waterwraith: register source-correct actor in
  room-preview tick/draw (#443)
 
 ---

@@ -257,7 +257,13 @@ them into `libp2_waterwraith_lane31.a` (linked before `pikmin_legacy`), keeping
 the executable link inline. If lane 01 prefers the TUs inline, the fixture
 builder must gain response-file support instead.
 
-Bundle `native-candidates/waterwraith-approved/` (9-commit series).
+The lane's engine-free fixtures are also registered in the native ctest gate
+(`p2_waterwraith_policy_test`, `p2_waterwraith_actor_test`,
+`p2_waterwraith_attack_policy_test`; `-UNDEBUG` keeps the assert-based checks
+active in Release). `ctest -R waterwraith` = 3/3 passed. This does not change
+the `pikmin_pc` game target.
+
+Bundle `native-candidates/waterwraith-approved/` (10-commit series).
 
 ## Remaining / next slice
 
