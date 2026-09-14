@@ -182,13 +182,14 @@ endpoint acceptance the next wave requires.
 
 ### Runtime evidence — ordinary Onion endpoint (exactly-once across restart)
 
-A private fixture (`lane06_ordinary_room`, native `opencode/p2-lanes67-native` @
-`87740f5d`) boots an ordinary campaign stage with the **real native randomizer
-ready** (schema 9, `gameplay-checks-v9`, staged from `randomizer.seed.generate`
-with `collection_checks=True`). It kills a real Dwarf Bulborb, then drives the
-real corpse through the real Onion absorption endpoint
+A private fixture (`scripts/p2_ordinary_receipt_fixture.cpp`, native
+`opencode/p2-lanes67-native` @ `87740f5d`) boots an ordinary campaign stage with
+the **real native randomizer ready** (schema 9, `gameplay-checks-v9`, staged from
+`randomizer.seed.generate` with `collection_checks=True`). It kills a real Dwarf
+Bulborb, then drives the real corpse through the real Onion absorption endpoint
 (`GoalItem::suckMe` -> `pc_randomizer_corpse_delivered` -> `pc_randomizer_check`)
-and reads the durable `checks.txt` journal.
+and reads the durable `checks.txt` journal. Reproducer:
+`scripts/p2_ordinary_receipt_runtime.py --exe <fixture.exe> --output <new dir>`.
 
 ```text
 run1  [Pikmin Randomizer] CHECK 30 Bestiary: Deliver Dwarf Bulborb
