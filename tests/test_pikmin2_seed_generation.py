@@ -15,6 +15,16 @@ SOKKURI = 79
 TARGETS = ["gen-001", "gen-002"]
 
 
+def placement_document():
+    """Minimal lane 04 document granting Sokkuri one legal ground slot."""
+    return {
+        "schema": "p2-placement-v1",
+        "slots": [{"uid": 401, "label": "sokkuri-slot", "stage": 1, "terrain": "ground",
+                   "radius": 300.0, "evidence": {"xyz": True, "terrain": True, "route": True}}],
+        "profiles": [{"identity": "Sokkuri", "terrains": ["ground"], "accepted_gates": ["xyz"]}],
+    }
+
+
 @pytest.fixture
 def one_admitted(monkeypatch):
     monkeypatch.setattr(bridge, "admitted_ids", lambda roster: [SOKKURI])
@@ -70,3 +80,27 @@ def test_p2_rejects_mixing_p1_layouts(one_admitted):
 def test_p2_targets_must_be_strings(one_admitted):
     with pytest.raises(ValueError):
         generate("seed-a", p2_enemies=True, p2_targets=[1, 2])
+
+
+def test_placement_document_drives_targets_and_binding(one_admitted):
+    document = placement_document()
+    assert bridge.binding_targets_from_placement(document) == ["401"]
+    manifest = generate("seed-p", p2_enemies=True, p2_placement=document)
+    assert manifest["p2_layout"]["bindings"] == [
+        {"target": "401", "source_id": SOKKURI, "enum_name": "Sokkuri"}]
+    validate(manifest)
+
+
+def test_placement_layout_is_deterministic(one_admitted):
+    first = generate("seed-p", p2_enemies=True, p2_placement=placement_document())
+    second = generate("seed-p", p2_enemies=True, p2_placement=placement_document())
+    assert first["p2_layout"] == second["p2_layout"]
+
+
+def test_placement_defaults_denied_and_gated_by_admission():
+    empty = {"schema": "p2-placement-v1", "slots": [], "profiles": []}
+    with pytest.raises(ValueError):
+        bridge.binding_targets_from_placement(empty)  # nothing admitted
+    # A legal placement is still rejected while lane 02 admits nothing.
+    with pytest.raises(ValueError):
+        generate("seed-p", p2_enemies=True, p2_placement=placement_document())
