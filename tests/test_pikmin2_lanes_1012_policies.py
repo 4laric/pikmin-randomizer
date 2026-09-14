@@ -21,7 +21,8 @@ def _port_candidates():
     yield ROOT / 'engine' / 'pc_port'
     yield ROOT / 'native' / 'pc_port'
     for base in (ROOT, *ROOT.parents):
-        for worktree in ('native-sub2-captains', 'native-lanes-1012', 'native-sub-elements', 'native-sub3-states'):
+        for worktree in ('native-sub3-follow', 'native-sub3-states', 'native-sub2-captains',
+                         'native-lanes-1012', 'native-sub-elements'):
             yield base / 'output' / worktree / 'pc_port'
 
 

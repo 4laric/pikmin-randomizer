@@ -98,9 +98,24 @@ exit 0 `passed=true`, window 960x540 centred, `P2_RECV_SQUAD alive=20 reds=20`,
 (Yellow immune to electricity, White immune to gas, Bulbmin immune to both, Red
 affected by both). Fixture provenance `status=built`.
 
-Still blocked, not faked: real two-captain play (follow/split-squad AI, camera,
-controls, HUD, survivor-gated game over — `file:line` in the captain contract);
-a Mother Bulbmin actor/model and live spawn; enemy-side electricity/gas
-emitters (the Pikmin-side `PIKISTATE_DenkiDying`/`PIKISTATE_Panic`/gas gate are
-now present, native `2a4521da`). `PIKMIN_P2_SECOND_CAPTAIN` remains inert.
+## Wave 3 — lane 10/11/12 engine-feature slices
+
+Native `opencode/p2-submerged-native` @ `3d65f611`; root
+`opencode/p2-submerged-root`. Series `native-candidates/p2-submerged/` refreshed.
+
+| Slice | Native commit | Result |
+|---|---|---|
+| L10 electric/gas Pikmin reaction states | `2a4521da` | `PIKISTATE_DenkiDying`/`PIKISTATE_Panic`, `Piki::gasInvicible`, receivers route into them via `pc_port/pc_p2_hazard_reaction.h`; `PASS P2_HAZARD_REACTION`. |
+| L11 dedicated opt-in Mother Bulbmin path | `43d891f7` | labeled Chappy-proxy mother registry, registry-aware forget; `PASS P2_BULBMIN_MOTHER/BRIDGE`. |
+| L12 inactive-captain follow + squad split | `d22bc547`, `1347260f` | `P2SquadFollowPolicy`, `splitSquad`/`transferSquad`, `NaviMgr::update` hook gated on `mNumObjects > 1`; `PASS P2_SQUAD_POLICY`. |
+
+Combined build: `[234/234] Linking CXX executable bin\nectar.exe` (exit 0),
+`ninja -n pikmin_pc` no work; `nectar.exe` SHA-256
+`376CD5AF4C2E8767A42F0F2D7243F39AAD5CB825E6E44AAD980668B9E339FC25`. Combined
+policy set 11 C++ tests PASS; root pytest battery **32 passed**.
+
+Still blocked, not faked: real two-captain play (full follow-state parity,
+camera, controls, HUD, survivor-gated game over — `file:line` in the captain
+contract); a live LeafChappy/KumaChappy actor + `piki_kochappy` model; enemy-side
+electricity/gas emitters. `PIKMIN_P2_SECOND_CAPTAIN` remains inert.
 

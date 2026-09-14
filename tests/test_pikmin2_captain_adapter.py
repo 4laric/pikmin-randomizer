@@ -21,6 +21,7 @@ def _port_candidates():
     yield ROOT / 'engine' / 'pc_port'
     yield ROOT / 'native' / 'pc_port'
     for base in (ROOT, *ROOT.parents):
+        yield base / 'output' / 'native-sub3-follow' / 'pc_port'
         yield base / 'output' / 'native-sub2-captains' / 'pc_port'
         yield base / 'output' / 'native-sub-captains' / 'pc_port'
 
