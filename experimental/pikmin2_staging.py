@@ -364,22 +364,27 @@ def _materialize(tree, destination, manifest):
     return rows
 
 
-def stage_session_content(manifest, session_dir, base=None, cache_dir=None):
+def stage_session_content(manifest, destination, base=None, cache_dir=None, identities=None):
     """Stage a session's declared content automatically, with an optional cache.
 
     ``manifest`` is a lane 05 content manifest mapping or path. Content is
-    installed under ``<session_dir>/content`` so a revisit or process restart
-    reuses it. A missing/wrong source, unsafe destination or corrupt cache raises
-    ``StagingError`` before the caller launches anything; the session is never
-    left with a half-written tree. With ``cache_dir`` the verified tree is kept
-    under ``<cache_dir>/<version>-<staged_digest>/`` and later sessions materialize
-    from the cache without reading sources again.
+    installed under ``<destination>/content``; the launcher passes the native run
+    directory so the staged tree sits inside the tree the game is launched from,
+    and ``identities`` binds the staged content to the seed's P2 source IDs in the
+    receipt. A missing/wrong source, unsafe destination or corrupt cache raises
+    ``StagingError`` before the caller launches anything. Materialization is
+    per-file atomic (no half-written file), but a mid-run failure can leave a
+    resumable partial tree: already-correct entries are reused on the next call.
+    With ``cache_dir`` the verified tree is kept under
+    ``<cache_dir>/<version>-<staged_digest>/`` and later runs materialize from the
+    cache without reading sources again.
     """
     manifest, base = _resolve(manifest, base)
-    destination = Path(session_dir) / SESSION_CONTENT_DIR
+    destination = Path(destination) / SESSION_CONTENT_DIR
+    bound = sorted(str(value) for value in (identities or []))
     if cache_dir is None:
         receipt = stage(manifest, destination, base=base)
-        return dict(receipt, cached=False, destination=str(destination))
+        return dict(receipt, cached=False, destination=str(destination), identities=bound)
     key = cache_key(manifest)
     cache_root = Path(cache_dir) / key
     tree = cache_root / 'tree'
@@ -395,7 +400,7 @@ def stage_session_content(manifest, session_dir, base=None, cache_dir=None):
     summary.update(materialized=sum(1 for r in rows if r['status'] == 'materialized'),
                    reused=sum(1 for r in rows if r['status'] == 'cached'))
     return dict(receipt, cached=cached, destination=str(destination),
-                entries=rows, summary=summary)
+                entries=rows, summary=summary, identities=bound)
 
 
 def _report(report):
