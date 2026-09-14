@@ -134,5 +134,30 @@ the coordinator owns the serialized GL run.
   simulations.
 - **Death/corpse and re-entry cleanup**, and the hazard `stop` timing, remain
   open.
-- No runtime/gameplay acceptance is claimed by this worker; only build, policy
-  test and fixture-build evidence.
+- No natural gameplay acceptance is claimed; the bounded injected GL run below
+  passed, but visuals/effects/collision and cleanup remain open.
+
+## 7. Runtime evidence (bounded, labeled injections)
+
+GL run `output/p2-lane22-hiba-run-02/hiba/96648387b6c64688afd207bbc078e49d`
+(fixture `output/p2-lane22-hiba-fixture-02/build/fixture.exe` SHA-256
+`b0656881ecfc88adffb90b16d8d55a25946ade852d0d418f82d9df0353e9a98f`), validator
+all-true (`completion`, `baseline`, `window`, `activate_hiba/gas/elec`,
+`emit_hiba/gas/elec`, `vulnerable_hit`, `immune_pass`, `gas_blocked`,
+`cleanup`, `cleanup_dead`, `no_timeout`):
+
+```text
+P2_HIBA_ACTIVATE generator=20 hazard=Hiba from=wait to=attack
+P2_HIBA_EMIT generator=20 hazard=Hiba stimulus=InteractFire
+P2_HIBA_HIT generator=20 hazard=Hiba stimulus=InteractFire colour=Blue immune=0 applied=1 damage=1.0
+P2_HIBA_PASS generator=20 hazard=Hiba stimulus=InteractFire colour=Red immune=1 applied=0
+P2_HIBA_APPLY_BLOCKED generator=21 hazard=GasHiba stimulus=InteractGas colour=Red immune=0 applied=0 reason=no_engine_interaction
+PASS P2_HIBA_RUNTIME gates_ready
+```
+
+Hazard placement on the live-Pikmin centroid is a labeled injection; the
+GasHiba/ElecHiba engine apply remains BLOCKED (no interaction class at this
+base). The redirect says to distinguish predicted log gates from observed
+runtime passes: the Hiba fire receiver is an observed engine receiver pass; the
+Gas/Denki policy decisions are predicted/blocked, not applied. No natural
+gameplay acceptance is claimed.

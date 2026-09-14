@@ -158,5 +158,26 @@ Approximations, labeled:
   `Creature`/`Pellet` (`startStickTeki`), real death receiver, corpse and
   re-entry cleanup, and visuals remain open. Elemental discharge effects are
   not spawned.
-- No runtime/gameplay acceptance is claimed by this worker; only build,
-  policy-test and fixture-build evidence.
+- No natural gameplay acceptance is claimed; the bounded injected GL run below
+  passed, but engine actor binding and cleanup remain open.
+
+## 7. Runtime evidence (bounded, labeled injections)
+
+GL run `output/p2-lane22-dweevil-run-02/dweevil/e1a752dc7b1341b98ec271270bc388d4`
+(fixture `output/p2-lane22-dweevil-fixture-02/build/fixture.exe` SHA-256
+`ad9d8b130691ca65b14ca2d78a40c5c9ce1fc682e399b14c2fe6d4480aecc8a5`), validator
+all-true (`completion`, `baseline`, `window`, `captures`, `carries`,
+`capture_a/b`, `death_drop`, `interrupt_drop`, `suppressed_death`,
+`suppressed_interrupt`, `exactly_two_drops`, `exactly_two_suppressed`,
+`no_rewards`):
+
+```text
+P2_DWEEVIL_DROP generator=235300 treasure=900001 reason=death dropped=1 exactly_once=1 total_drops=1
+P2_DWEEVIL_DROP_SUPPRESSED generator=235300 treasure=900001 reason=death dropped=0 already_dropped=1
+P2_DWEEVIL_DROP generator=235300 treasure=900002 reason=interruption dropped=1 exactly_once=1 total_drops=1
+P2_DWEEVIL_DROP_SUPPRESSED generator=235300 treasure=900002 reason=death dropped=0 already_dropped=1
+PASS P2_DWEEVIL_RUNTIME bounded_behavior_tick
+```
+
+The captures, carries and kill/interrupt triggers are labeled injections; the
+base is a 5-red/5-blue squad at 960×540. This is not natural dweevil gameplay.

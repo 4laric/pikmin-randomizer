@@ -132,5 +132,28 @@ built the fixture; the coordinator owns the serialized GL run.
 - **Earthquake / bittered runtime paths** — the policy decision covers them and
   the test asserts them, but the fixture only exercises contact and death.
 - **Death/corpse and re-entry cleanup** beyond the fixture `kill_all` marker.
-- No runtime/gameplay acceptance is claimed by this worker; only build, policy
-  test and fixture-build evidence.
+- No natural gameplay acceptance is claimed; the bounded injected GL run below
+  passed, but real Bomb binding and the shared blast remain open.
+
+## 8. Runtime evidence (bounded, labeled injections)
+
+GL run `output/p2-lane22-bombotakara-run-02/bombotakara/a80087ca19844aab96f14e77cdc3fc43`
+(fixture `output/p2-lane22-bombotakara-fixture-02/build/fixture.exe` SHA-256
+`d589ebd263495b8322f6022d5b6e3858bf5214cbb2baa9f9b83aeb74e87aca54`), validator
+all-true (`completion`, `baseline`, `window`, `carry`, `arm`,
+`detonate_contact`, `detonate_death`, `exactly_two_detonations`,
+`suppressed_contact`, `suppressed_death`, `exactly_two_suppressed`,
+`blast_blocked`, `cleanup`, `no_timeout`, `no_rewards`):
+
+```text
+P2_BOMBOTAKARA_ARM generator=30 payload=40 arm_seconds=1.50 source=stimulateBomb
+P2_BOMBOTAKARA_DETONATE generator=30 payload=40 trigger=contact detonated=1 exactly_once=1 total_detonations=1
+P2_BOMBOTAKARA_BLAST_BLOCKED generator=30 payload=40 reason=no_shared_blast
+P2_BOMBOTAKARA_DETONATE generator=31 payload=41 trigger=death detonated=1 exactly_once=1 total_detonations=1
+P2_BOMBOTAKARA_DETONATE_SUPPRESSED generator=31 payload=41 trigger=death detonated=0 already_detonated=1
+PASS P2_BOMBOTAKARA_RUNTIME gates_ready
+```
+
+The bomb stub, placements and contact/death triggers are labeled injections;
+the shared blast application remains BLOCKED (no shared interface at this
+base). No natural gameplay acceptance is claimed.
