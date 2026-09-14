@@ -108,6 +108,37 @@ def absolute(value, root):
     return (path if path.is_absolute() else root / path).resolve()
 
 
+def expand_response_files(text, ninja, build):
+    """Inline Ninja response-file references so the link command is parseable.
+
+    CMake's Ninja generator switches to ``@<target>.rsp`` once the link command
+    approaches the Windows command-line limit (all current approved-base targets
+    with a large pc_port object list do). Ninja deletes the rsp after the build,
+    so recover the object list from the declared link inputs instead of the file.
+    """
+    if '@' not in text:
+        return text
+    code, inputs = run([str(ninja), '-t', 'inputs', 'pikmin_pc'], build)
+    if code:
+        raise BuildRejected('Cannot inspect Ninja link inputs for response-file expansion')
+    objects = [line.strip().strip('"') for line in inputs.splitlines()
+               if line.strip().lower().endswith('.obj')]
+    if not objects:
+        raise BuildRejected('No link objects found for response-file expansion')
+    # CMake stores the target libraries inside the same response file; recover
+    # them from the link build statement's LINK_LIBRARIES variable.
+    libraries = ''
+    build_text = (build / 'build.ninja').read_text(encoding='utf-8')
+    match = re.search(r'build bin[/\\]nectar\.exe:[^\n]*\n((?:  [A-Z_]+ = [^\n]*\n)*)', build_text)
+    if match:
+        for line in match.group(1).splitlines():
+            if line.strip().startswith('LINK_LIBRARIES ='):
+                libraries = line.split('=', 1)[1].strip()
+                break
+    replacement = ' '.join(objects) + ((' ' + libraries) if libraries else '')
+    return re.sub(r'@[^\s"]+\.rsp', replacement, text)
+
+
 def select_commands(commands, source, build):
     main = (source / 'pc_port/pc_main.cpp').resolve()
     compiles, links, objects = [], [], set()
@@ -227,6 +258,21 @@ def run(args, cwd, env=None):
     return completed.returncode, completed.stdout
 
 
+def run_command(command, build, env, output, phase):
+    """Run a compiler/linker command, using a response file when the argv is too
+    long for the Windows CreateProcess limit (which is why CMake emits one)."""
+    length = sum(len(str(arg)) + 1 for arg in command)
+    if length <= 7000:
+        return run(command, build, env)
+    response = (output / (phase + '.rsp')).resolve()
+    # GCC response files treat backslash as an escape, so quote and double it.
+    lines = []
+    for arg in command[1:]:
+        lines.append('"' + str(arg).replace('\\', '\\\\').replace('"', '\\"') + '"')
+    response.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    return run([command[0], '@' + str(response)], build, env)
+
+
 def require_fresh(ninja, build, record):
     code, text = run([str(ninja), '-n', '-d', 'explain', 'pikmin_pc'], build)
     record.append(dict(returncode=code, output=text))
@@ -335,6 +381,8 @@ def build_fixture(build, source, fixture, output, expected_head, check_only=Fals
         if code:
             raise BuildRejected('Cannot obtain Ninja commands')
         (output / 'native-commands.txt').write_text(text, encoding='utf-8')
+        text = expand_response_files(text, ninja, build)
+        (output / 'native-commands-expanded.txt').write_text(text, encoding='utf-8')
         compile_args, link_args, main_object, objects = select_commands(text.splitlines(), source, build)
         if absolute(compile_args[0], build) != compiler:
             raise BuildRejected('Ninja compiler differs from CMake cache')
@@ -410,7 +458,7 @@ def build_fixture(build, source, fixture, output, expected_head, check_only=Fals
         rewritten[option_index(rewritten, '-o')] = str(output / 'fixture.exe')
         for phase, command in [('compile', compile_args), ('link', rewritten)]:
             record['commands'].append(command)
-            code, text = run(command, build, env)
+            code, text = run_command(command, build, env, output, phase)
             (output / (phase + '.log')).write_text(text, encoding='utf-8')
             if code:
                 raise BuildRejected('Fixture ' + phase + ' failed; see ' + phase + '.log')
