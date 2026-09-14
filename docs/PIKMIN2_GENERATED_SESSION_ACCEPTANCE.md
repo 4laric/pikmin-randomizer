@@ -130,6 +130,33 @@ generates on the pinned build.
 - Snow Bulborb is the first cohort target, Dwarf Orange the second, per the
   dispatch. Neither identity is admitted by this document.
 
+### Integration probe, 2026-09-14 (not an accepted pair)
+
+The newest integration binary observed on this host is
+`output/native-sweep437-build/bin/nectar.exe` (native `codex/p2-sweep437` @
+`1531c0ba`, SHA-256
+`11311EE536C7438B0B68BA5A0C469C8A7DEAA547B57CF7C3C75504E5E6A3F324`). It is an
+in-progress integration build, **not** a published/accepted pair. Pinning it and
+running `plan` reproduces the same fail-closed result:
+
+```text
+BLOCKED: generate: no admitted P2 identities; refusing to seed an unadmitted
+pool (lane 02 admission set is empty)
+```
+
+A source check on that same tree found the `ENEMY_P2` parser and probe
+(`pc_port/pc_randomizer.cpp`, `pc_randomizer_probe.cpp`) but **no**
+`pc_p2_generated_bind`. The ordinary generated-spawn binding
+(`pc_port/pc_p2_enemy.cpp`, `pc_randomizer_p2_bound_source`, binding source `45`
+Snow to a `TEKI_Chappy` host) lives only on the assignment-1 private native
+branch `opencode/p2-asg1-native` @ `5a7329c5`, which is not on the maintained
+line. So the current integration binary cannot run the chain even if an identity
+were admitted.
+
+Assignment 4 therefore has two independent blockers: (1) the lane 02 admission
+set is empty, and (2) lane 01 has not exported/integrated the assignment-1
+generated binding into an accepted combined executable.
+
 ## Tests
 
 `tests/test_pikmin2_generated_session_acceptance.py` covers pin verification

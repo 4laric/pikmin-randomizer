@@ -138,6 +138,13 @@ cells as it is produced; those records must carry `kind: fixture` and full
 provenance. This lane will reproduce the cohort end to end as soon as lane 01
 supplies the immutable build and lane 02 admits the first identity.
 
+As of 2026-09-14 the ordinary generated-spawn binding is not on the maintained
+line either: the current integration binary (`output/native-sweep437-build`,
+native `1531c0ba`) parses `ENEMY_P2` but has no `pc_p2_generated_bind`, which
+lives only on the assignment-1 private branch `opencode/p2-asg1-native` @
+`5a7329c5`. So the chain has two independent blockers: admission and the
+integrated binding.
+
 The `frame_budget` and `memory_budget` cells additionally require an **accepted**
 budget policy. `experimental.pikmin2_performance_budget` resolves them from a
 measured mixed-scene manifest, but the existing `PROPOSED_BUDGETS` are
