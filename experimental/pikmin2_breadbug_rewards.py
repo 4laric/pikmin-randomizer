@@ -9,8 +9,10 @@ contested-cargo behavior (that remains the lane-06/engine-gated next slice) and
 never reads or mutates a Pikmin 2 save. See ``docs/PIKMIN2_BREADBUG_ACTOR_RUNTIME.md``.
 """
 from experimental import pikmin2_receipts as receipts
+from experimental import pikmin2_breadbug_contest as contest
 
 FAMILY = 'breadbug'
+DEATH = 'death'
 SMALL = 'enemy:38'          # PanModoki (small Breadbug)
 GIANT = 'enemy:40'          # OoPanModoki (Giant Breadbug, source boss)
 NEST_ALIAS = 'alias:39'     # PanModokiNest alias (non-spawnable)
@@ -73,3 +75,21 @@ def resolve_encounters(ledger, seed, encounters):
 def reconcile_runs(expected_checks):
     """Reconcile the family descriptors against the expected ordinary checks."""
     return registry().reconcile_all(expected_checks)
+
+
+def resolve_contest(ledger, seed, identity, actor, encounter, reason, *, held_slots=0):
+    """Resolve one contested-cargo event against the exactly-once ledger.
+
+    Only a defeat (``reason == 'death'``) grants the family reward, and it does so
+    exactly once; an interruption ``drop``, contest ``recover``, ``eat`` or
+    ``digest`` never grants a check. Held treasure is returned only on death.
+    """
+    if reason not in contest.RELEASE_REASONS + (DEATH,):
+        raise ValueError('Unknown cargo outcome: ' + repr(reason))
+    if reason != DEATH:
+        contest.release_plan(reason, held_slots=held_slots)
+        return {'granted': False, 'reason': reason, 'held': held_slots, 'returned': 0}
+    positions = contest.throw_up_positions(0.0, 0.0, 0.0, held_slots)
+    granted = grant_defeat(ledger, seed, identity, actor, encounter)
+    return {'granted': granted, 'reason': DEATH, 'held': held_slots,
+            'returned': len(positions)}

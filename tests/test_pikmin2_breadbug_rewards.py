@@ -2,6 +2,7 @@
 import pytest
 
 from experimental import pikmin2_breadbug_rewards as rewards
+from experimental import pikmin2_breadbug_contest as contest
 from experimental import pikmin2_receipts as receipts
 
 
@@ -79,3 +80,37 @@ def test_reconcile_refuses_a_pod_leak_for_an_ordinary_check():
               'family': 'breadbug', 'drop': 'treasure', 'ledger': receipts.LEDGER_POD,
               'value': 1, 'count': 1}],
             [rewards.GIANT])
+
+
+def test_interruption_and_digest_never_grant_a_reward():
+    ledger = receipts.ReceiptLedger(receipts.InMemoryPersistence())
+    for reason in (contest.DROP, contest.RECOVER, contest.DIGEST, contest.EAT):
+        result = rewards.resolve_contest(ledger, 'seed-a', rewards.GIANT, '187001',
+                                         'floor1', reason, held_slots=1)
+        assert result['granted'] is False and result['returned'] == 0
+    assert len(ledger) == 0
+
+
+def test_death_recovery_grants_once_and_returns_held_treasure():
+    ledger = receipts.ReceiptLedger(receipts.InMemoryPersistence())
+    first = rewards.resolve_contest(ledger, 'seed-a', rewards.GIANT, '187001',
+                                    'floor1', rewards.DEATH, held_slots=3)
+    assert first['granted'] is True and first['returned'] == 3
+    assert first['held'] == 3
+    second = rewards.resolve_contest(ledger, 'seed-a', rewards.GIANT, '187001',
+                                     'floor1', rewards.DEATH, held_slots=3)
+    assert second['granted'] is False
+    assert len(ledger) == 1
+
+
+def test_unknown_cargo_outcome_is_rejected():
+    ledger = receipts.ReceiptLedger(receipts.InMemoryPersistence())
+    with pytest.raises(ValueError, match='Unknown cargo outcome'):
+        rewards.resolve_contest(ledger, 'seed-a', rewards.GIANT, '187001', 'floor1', 'explode')
+
+
+def test_helpers_never_earn_a_reward_on_death():
+    ledger = receipts.ReceiptLedger(receipts.InMemoryPersistence())
+    with pytest.raises(ValueError, match='never earn'):
+        rewards.resolve_contest(ledger, 'seed-a', rewards.PANHOUSE, '187002',
+                                'floor1', rewards.DEATH)

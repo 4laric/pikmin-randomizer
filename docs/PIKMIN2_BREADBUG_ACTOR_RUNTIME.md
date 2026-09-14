@@ -152,3 +152,9 @@ slice; the existing contest-lost and death throw-up paths are unchanged.
 Remaining: the same interruption is not wired for the small Breadbug proxy
 (P1 `TEKI_Collec`), and native exactly-once receipt persistence still needs the
 lane 01/06 native save bridge. Both remain open on #168/#220/#441.
+
+`pikmin2_breadbug_rewards.resolve_contest()` ties the contest model to the
+lane-06 ledger: only a death grants the family reward (once), and it returns the
+thrown-back held treasure; `eat`/`drop`/`recover`/`digest` grant nothing. Four
+tests cover interruption/digest non-grants, exactly-once death grant, an unknown
+outcome and a helper identity. The rewards suite is now 14 tests.
