@@ -19,7 +19,7 @@ import re
 from pathlib import Path
 
 from experimental.pikmin2_animation_profile import capture_command
-from experimental.pikmin2_shijimi_arena import IDS, LEADER_ID, prepare
+from experimental.pikmin2_shijimi_species_arena import IDS, LEADER_ID, prepare
 
 SQUAD_X = tuple(-140.0 + (index % 10) * 8.0 for index in range(20))
 SQUAD_Z = tuple(1820.0 - (index // 10) * 8.0 for index in range(20))
