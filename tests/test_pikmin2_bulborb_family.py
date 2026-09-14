@@ -53,9 +53,8 @@ class BulborbFamilyTests(unittest.TestCase):
     def test_dwarf_kuma_follows_parent(self):
         self.assertIn('parent_following_walkpath', BY_INTERNAL['KumaKochappy'].special)
         rules = special_rules('KumaKochappy')
-        self.assertIn('parent_following_walkpath', rules)
-        self.assertIn('ChappyRelation', rules['chappy_relation_owner']['source']
-                      if 'chappy_relation_owner' in rules else
+        self.assertEqual(set(rules), {'parent_following_walkpath', 'no_parent_home_return'})
+        self.assertIn('ChappyRelation',
                       special_rules('KumaChappy')['chappy_relation_owner']['source'])
 
     def test_firechappy_special_rules(self):
