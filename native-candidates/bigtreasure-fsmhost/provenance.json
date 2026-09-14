@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "lane": 32,
+  "issue": 246,
+  "parent_issue": 175,
+  "title": "BigTreasure FSM host binding — real weapon damage and knock-off phase transition",
+  "native": {
+    "base": "086ed858c2693d9259679177e0eca00a80f57fbf",
+    "base_branch": "opencode/p2-hardlanes-native",
+    "head": "2826d61c7997585d52b55e6dea43e1a38b3790c2",
+    "local_branch": "opencode/p2-lane32-fsmhost",
+    "pushed": false,
+    "note": "Native origin is the parallel decomp checkout and upstream is Open Nectar; neither was pushed. These patches capture the local native branch."
+  },
+  "files": [
+    "pc_port/pc_p2_bigtreasure_fsmhost.h",
+    "pc_port/pc_p2_bigtreasure_fsmhost.cpp",
+    "tools/p2_bigtreasure_fsmhost_test.cpp"
+  ],
+  "patches": {
+    "full": {
+      "path": "native-candidates/bigtreasure-fsmhost/bigtreasure-fsmhost-full.patch",
+      "size": 15585,
+      "sha256": "0ae128849d75866fc68077c6c1ff07e8836b5d2a521214c834c025af1b29e064"
+    },
+    "series": [
+      {
+        "path": "native-candidates/bigtreasure-fsmhost/patches/0001-BigTreasure-FSM-host-binding-with-real-weapon-damage.patch",
+        "sha256": "617dd113805406642876958f0bc521fc55f37c726d906827930dbce2c3ba45fe"
+      }
+    ]
+  },
+  "standalone_fixture": {
+    "executable": "output/native-lane32/output/p2_bigtreasure_fsmhost_test.exe",
+    "sha256": "fd821792183c9d75de114208038b844da6e5e9e9ecd51388a43fa02adc5af86d",
+    "size": 117142,
+    "compiler": "MinGW64 g++ 16.2.0 (-std=gnu++17 -Wall -Wextra -Werror)",
+    "command": "g++ -std=gnu++17 -Wall -Wextra -Werror -Ipc_port tools/p2_bigtreasure_fsmhost_test.cpp pc_port/pc_p2_bigtreasure_fsmhost.cpp pc_port/pc_p2_bigtreasure_host.cpp pc_port/pc_p2_bigtreasure_fsm.cpp pc_port/pc_p2_bigtreasure.cpp pc_port/pc_p2_bigtreasure_attacks.cpp -o output/p2_bigtreasure_fsmhost_test.exe",
+    "result": "PASS BIGTREASURE_FSMHOST (exit 0)"
+  },
+  "integration_request": {
+    "cmake": "add pc_port/pc_p2_bigtreasure_fsmhost.cpp to the pikmin_pc BigTreasure translation-unit list (lane 01 reconciles the shared CMake).",
+    "runtime": "extend tools/p2_bigtreasure_runtime.cpp with a runFsmHost() phase after the existing seam probes for real-GL evidence; requires the CMake hook and a private fixture rebuild."
+  }
+}
