@@ -150,3 +150,51 @@ cell) and the CLI.
 ```powershell
 py -3.12 -m pytest tests/test_pikmin2_generated_session_acceptance.py tests/test_pikmin2_qa_matrix.py -q
 ```
+
+## Mixed-scene performance and actor budgets
+
+Assignment 4 also requires the two P2 identities to be tested together with
+recorded frame-time, memory and actor budgets.
+`experimental/pikmin2_performance_budget.py` owns the acceptance side of that: it
+consumes a measured manifest (`mixed-scene-validation.json` from
+`experimental.pikmin2_mixed_scene_behavior`) plus an explicit budget policy and
+resolves the `frame_budget` and `memory_budget` QA-matrix cells. It never
+measures and never invents a threshold.
+
+- **Nothing passes on a proposed policy.** The existing
+  `PROPOSED_BUDGETS` are marked `proposed_not_accepted`; while the policy status
+  is not `accepted`, every budget metric and cell resolves to `BLOCKED` with
+  `budget policy is proposed, not accepted`. A proposed 16.7 ms target can
+  therefore never be reported as an accepted PASS.
+- **Metrics → cells.** `frame_budget` = `mean_frame_ms`,
+  `slowest_window_mean_ms`; `memory_budget` = `tracked_texture_peak_mib`,
+  `total_pose_bank_bytes`, `actor_count`. A missing measurement or an
+  incomplete capture is `BLOCKED`; an exceeded budget is `FAIL`.
+- **Records.** `records` emits `frame_budget`/`memory_budget` records for the
+  matrix. These are boundary scenarios, so a private fixture run may satisfy
+  them (`kind: fixture`, stage `install`); `natural` still requires a verified
+  pin.
+
+```powershell
+py -3.12 -m experimental.pikmin2_performance_budget evaluate `
+    --manifest <run>/mixed-scene-validation.json --budgets budgets.json `
+    --output <run>/budget-evaluation.json
+py -3.12 -m experimental.pikmin2_performance_budget records `
+    --report <run>/budget-evaluation.json --kind fixture --stage install `
+    --root-commit <root> --executable <exe> --executable-sha256 <64-hex> `
+    --output output/lane33-records
+```
+
+An accepted policy is a JSON document: `schema` `p2-performance-budgets-v1`,
+`status` `accepted`, and numeric
+`target_mean_frame_ms_max`, `slowest_window_mean_ms_max`,
+`tracked_texture_peak_mib_max`, `total_pose_bank_bytes_max` and optional
+`actor_count_max`. No accepted policy exists yet, so the budget cells are
+`BLOCKED` today. For reference, the last mixed-scene worker baseline was 12
+species + one control at mean 33.45 ms and slowest-window mean 33.93 ms against
+the proposed 16.7 ms / 20.0 ms — which, if those budgets were accepted, would be
+a FAIL on `frame_budget` rather than a PASS.
+
+`tests/test_pikmin2_performance_budget.py` covers policy validation, metric
+extraction, the accepted/proposed/missing/invalid-capture outcomes, actor-budget
+gating, record emission and the CLI exits.

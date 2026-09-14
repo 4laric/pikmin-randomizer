@@ -138,6 +138,13 @@ cells as it is produced; those records must carry `kind: fixture` and full
 provenance. This lane will reproduce the cohort end to end as soon as lane 01
 supplies the immutable build and lane 02 admits the first identity.
 
+The `frame_budget` and `memory_budget` cells additionally require an **accepted**
+budget policy. `experimental.pikmin2_performance_budget` resolves them from a
+measured mixed-scene manifest, but the existing `PROPOSED_BUDGETS` are
+`proposed_not_accepted`, so any evaluation (and record) is `BLOCKED` until the
+user/integration accepts a policy. See
+[the generated-session acceptance runbook](PIKMIN2_GENERATED_SESSION_ACCEPTANCE.md).
+
 ## Tests
 
 `tests/test_pikmin2_qa_matrix.py` covers the full cross product, default
