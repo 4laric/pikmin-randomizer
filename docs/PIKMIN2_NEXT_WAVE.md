@@ -83,6 +83,19 @@ Do not split one shared file across multiple new sessions. A family owner may di
 | **12 Captains/squad** | Review slot-0 adapter and provide the real captain/squad interface needed by one captor or Antenna Beetle. | Target identity, claim/release, interrupted capture and cleanup demonstrated. Unsupported second-captain semantics stay explicit. |
 | **33 Independent QA** | Reproduce the first generated-session chain; add two-species mixed scene immediately after the second admission. | Immutable integrated build, natural evidence, replay/restart and agreed frame-time/memory/helper budgets. File precise failures; do not mutate production simultaneously. |
 
+### Lane 04 blocker (2026-09-14)
+
+Lane 04's concrete placement model is integrated ([sweep](PIKMIN2_PLACEMENT_SWEEP_437.md)),
+but no candidate can be admitted yet:
+
+- Native XYZ/terrain/return-route evidence is still false and needs a reserved
+  real-GL run (lane 01/33), so every `(slot, identity)` pair remains `denied`.
+- `Jigumo` (Hermit Crawmad) is `unplaceable`: the campaign table exposes no
+  nest-anchor slot for its `PanHouse` child.
+- Lanes 13/14/16/19 must confirm the per-identity space/water/home/helper facts,
+  lane 02's roster evidence overlay is still empty, and lanes 02/03/05 must agree
+  the optional `cohort` field before any consumer depends on it.
+
 ## Family lanes: finish a concrete identity before expanding variants
 
 Each row is an independently assignable lane. Owners implement family-local FSM/events/receivers/assets and additive hooks in private worktrees. Shared changes remain with the provider above. Reuse current native modules and candidate series; first inspect what is already integrated.
