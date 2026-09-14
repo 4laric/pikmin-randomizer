@@ -125,8 +125,12 @@ health/state/animation are untouched.
   replacement observer. BLOCKED, reproducibly: in the plain arena the source
   actor engages and is killed by the overlay starting squad around tick 60, so
   the `observed==120` swap cannot preserve `oldRed`; stderr shows
-  `FAIL p2 room: arena actor not live/unfrozen`. A squad-free, non-extinct
-  baseline is a shared fixture gap (#397). Recorded, not worked around by
+  `FAIL p2 room: arena actor not live/unfrozen`. Relocating the overlay squad to
+  a distant valid map point (`185,-180`) removes the fight but the engine then
+  enters its result/movie flow (`P2_DWARF_ORANGE_ARENA_GATE … teki=1 …
+  movie=1`), so `observed` stops advancing and the swap never runs. Both are
+  shared fixture/lifecycle gaps (#397): a squad-free, non-extinct baseline that
+  does not trip the day-flow is required. Recorded, not worked around by
   injecting enemy state or disabling extinction.
 
 ## 5. Limits and next consumer
