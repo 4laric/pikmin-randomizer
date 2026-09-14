@@ -88,16 +88,49 @@ loads the converted Qurione bank and draws poses but prints
 
 Shared receiver/wind semantics stay out of this lane; no shared file is edited.
 
-## 6. Blockers
+## 6. Native candidate (lane 15)
 
-1. **Source FSM not implemented** — the integrated module is draw/proxy only.
+Implemented on a private native worktree, since the maintained line is
+integration-owned:
+
+- Branch `opencode/p2-lane15-native` @ `99dfd755` (base native
+  `codex/pikmin2-room-preview` `f9e139d8`), worktree `output/native-lane15`,
+  private build `output/native-lane15-build`.
+- Files: `pc_port/pc_p2_qurione.cpp` + `.h` (source FSM; setup/update/draw/
+  param_f), `include/teki.h` (additive param chain), and
+  `src/plugPikiNakata/tekibteki.cpp` (`pc_p2_qurione_update(this)` from
+  `BTeki::update`). Every hook is a no-op for unregistered actors.
+- Build: Release, `PIKMIN_NATIVE_JAUDIO=ON`, Ninja `-j 6`; dry run
+  `ninja: no work to do`. Executable SHA-256
+  `1d7ebb089812d41a9b0a5b3be15d22c5064b4c00805d09dedd133c8bb7766a44`.
+- Runtime (`nectar.exe --experimental-pikmin2-room`,
+  `PIKMIN_P2_ROOM_WINDOW=960x540`): observed a centred 960x540 window,
+  `P2_QURIONE_BIND generator=203001 source_id=16 visual_only=0`,
+  `P2_ENEMY_READY species=Qurione ... behavior=native source_FSM=implemented
+  reward=P2_Egg`, `P2_QURIONE_EGG ... action=attach`, `P2_QURIONE_BANK`, and
+  `P2_QURIONE_DRAW corpse=0`. The update hook was confirmed reached with the
+  actor bound (private diagnostic showed `ready=1 actors=1`).
+- **BLOCKED: full transition observation.** The staged `output/p2-qurione207`
+  arena predates the BBFT direct-boot fixture and never enters active gameplay.
+  Injecting the actor into a working species arena (generator 346005 →
+  `Qurione` 203001) enters gameplay and loads/binds the actor, but the process
+  exits before transitions **even with the FSM module disabled**, so the exit is
+  attributable to the Qurione host in the preview path, not the FSM. Next step:
+  a preview/fixture that boots the room with a supported Qurione host.
+
+Recorded port adaptations: the carried Egg is reported through markers (lane 20
+owns the primitive); Drop fires at half the damage clip (no KEYEVENT frames in
+the bank); sight is a distance test; scale/glow/hit effects are not ported.
+
+## 6b. Blockers
+
+1. **Qurione host in the preview path** — see the blocked runtime above.
 2. **Egg helper ownership** — `EnemyID_Egg` 37 is a shared projectile/reward
    primitive (lane 20 cannon/projectiles owns `Egg` primitives). The carried
    Honeywisp Egg reuses that primitive rather than forking it.
 3. **Cleanup/re-entry** — #397 lifecycle remains the shared blocker.
-4. **Runtime slot** — a real-GL run must adopt the fan-out baseline (fresh
-   overlay, 20-red squad, centred 960x540 window) and record the #404 adoption
-   fields.
+4. **Integration** — the native candidate is not on the maintained line; lane 01
+   owns export/acceptance.
 
 ## 7. Tests
 
