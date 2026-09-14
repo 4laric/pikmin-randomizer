@@ -62,15 +62,33 @@
     "test_hooks": "OFF",
     "result": "[545/545] Linking CXX executable bin\\nectar.exe",
     "ninja_dry_run": "ninja: no work to do.",
-    "production_executable_sha256": "17543372A89FCBC719C94E593A20DB909801A628F9DDE5D45B5B889124CC02EC"
+    "production_executable_sha256": "57BAB171461C30B86575E9B0D8C54E27036F70BDC7E8DFA1A26D63AAC65A3C3E"
   },
   "runtime": {
-    "real_gl_run": false,
-    "reason": "No P2 disc image or staged assets in this environment."
+    "real_gl_run": true,
+    "fixture_dir": "output/lane32-ordinary-fixture-01",
+    "fixture_executable_sha256": "5293bbcfe092b634f2c4672211177f93bb73d84d1cdac8942a881d4043772cab",
+    "run_dir": "output/lane32-ordinary-runtime-01/ac20df3b58d246098f79fae526addc93",
+    "status": "passed",
+    "stdout_sha256": "228ac3a2f5dfba8b758bcea22fcbdd2eb4d0c3bfc1873b69a772623b6a4d3ee3",
+    "inputs": {
+      "assets": "C:/Users/alari/pikmin-local/game/assets",
+      "room": "output/pikmin2-room105",
+      "host_stage": "output/bigtreasure-host-stage-01",
+      "visual_stage": "output/bigtreasure-visual-stage-02"
+    },
+    "markers": [
+      "P2_BIGTREASURE_FSM phase=Stay weapons=4",
+      "P2_BIGTREASURE_FSM phase=Land weapons=4",
+      "P2_BIGTREASURE_WINDOW size=960x540 pos=373,263",
+      "P2_BIGTREASURE_FSMHOST_FULL_PASS knockoffs=4 weapons=0 phase=DropItem transitions=4",
+      "PASS BIGTREASURE_RUNTIME"
+    ],
+    "note": "Ordinary drive stepped the policy in the live game loop (pc_p2_hardlanes_update); the four-weapon injected fixture markers stayed green (no regression). Policy parks in Land pending the animation keyframe source."
   },
   "limitations": [
     "Animation keyframe source (#128) is the gate to full natural attack in ordinary play: only 2/29 clips are staged on the approved baseline and no state->clip key-event map exists, so the policy parks in Land (the non-source injected attack shortcut is retired).",
     "Natural attack-volume receiver routing is lane 10; the ingress pc_p2_hardlanes_bigtreasure_hit is ready but has no integrated caller.",
-    "No real-GL natural arena acceptance in this pass."
+    "Real-GL run used the four-weapon injected fixture plus the live ordinary drive; a full natural knock-off chain with a real attack volume was not observed."
   ]
 }

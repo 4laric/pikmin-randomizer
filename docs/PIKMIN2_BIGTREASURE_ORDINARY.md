@@ -84,10 +84,35 @@ Regression: `PASS BIGTREASURE_FSMHOST` (8/8) still green.
 `PIKMIN_NATIVE_OPTIMIZE=OFF`, test hooks OFF, MinGW GCC 16.2.0.
 `[545/545] Linking CXX executable bin\nectar.exe`, exit 0;
 `ninja -n pikmin_pc` = `no work to do`. Executable SHA-256
-`17543372A89FCBC719C94E593A20DB909801A628F9DDE5D45B5B889124CC02EC`.
+`57BAB171461C30B86575E9B0D8C54E27036F70BDC7E8DFA1A26D63AAC65A3C3E`.
 
-No real-GL runtime run: no P2 disc image or staged assets exist in this
-environment, so the arena acceptance remains for whoever holds the disc.
+**Real-GL runtime (this pass).** Fixture `output/lane32-ordinary-fixture-01`
+built from native `3b166836` (`status=built`, fixture.exe SHA-256
+`5293bbcfe092b634f2c4672211177f93bb73d84d1cdac8942a881d4043772cab`). Run
+`output/lane32-ordinary-runtime-01/ac20df3b58d246098f79fae526addc93`,
+`status=passed`, exit 0, stdout SHA-256
+`228ac3a2f5dfba8b758bcea22fcbdd2eb4d0c3bfc1873b69a772623b6a4d3ee3`; inputs
+`pikmin2-room105` + `bigtreasure-host-stage-01` + `bigtreasure-visual-stage-02`
+on the `pikmin-local` game assets; two PPM captures.
+
+The ordinary drive ran in the live game loop (`pc_p2_hardlanes_update` ->
+`P2BigTreasureOrdinary`), logging the policy stepping outside the fixture:
+
+```text
+P2_HARDLANES_READY family=BigTreasure host=1 captures=5
+P2_BIGTREASURE_FSM phase=Stay weapons=4
+P2_BIGTREASURE_FSM phase=Land weapons=4
+P2_BIGTREASURE_WINDOW size=960x540 pos=373,263
+[Pikipelago] P2_ROOM_PREVIEW room=room_4x4a_4_conc red=20 isolated=1
+```
+
+All pre-existing fixture markers stayed green in the same run
+(`P2_BIGTREASURE_HOST_SEAM_PASS`, `P2_BIGTREASURE_FSMHOST_FULL_PASS
+knockoffs=4 ... phase=DropItem`, `P2_BIGTREASURE_VISUAL_WAIT1_PASS`,
+`P2_BIGTREASURE_VISUAL_DEAD_PASS`, `PASS BIGTREASURE_RUNTIME`), so the add has
+no regression on the four-weapon injected fixture. As predicted above, the
+policy reaches `Land` and parks there: there is still no animation keyframe
+source, which remains the gating provider.
 
 ## Clip availability audit (lane 32 next-wave row)
 
@@ -131,7 +156,9 @@ supplies the natural attack volume that calls
   `Land`.
 - **Receiver routing from a real Pikmin attack volume (lane 10):** the hit
   ingress is ready; the caller is not integrated.
-- **Real-GL natural arena acceptance:** not run here (no disc/assets).
+- **Real-GL:** the ordinary drive ran in the live loop (run above) and the
+  policy steps `Stay -> Land`; a full natural attack chain still requires the
+  animation keyframe source and the lane-10 receiver.
 - Motion staging beyond 2/29, the unconverted loozy model, skeletal playback
   and material fidelity are unchanged. Finale `mPelletDropCode` / pellet
   configs remain disc-data unknowns.
@@ -150,7 +177,9 @@ Private build: output/native-lane32-ordinary-build (Ninja/Release/JAudio ON/
   optimize OFF/hooks OFF); exe SHA-256 17543372...4CC02EC; ninja -n no work.
 Fixture: standalone; PASS BIGTREASURE_ORDINARY (5/5), SHA-256 0C80FEA7...71350.
 Natural vs injected: pacer/target derived from live state; hits enter by
-  pc_p2_hardlanes_bigtreasure_hit (lane-10 boundary). Real-GL not run here.
+  pc_p2_hardlanes_bigtreasure_hit (lane-10 boundary). Real-GL: run
+  lane32-ordinary-runtime-01/ac20df3b... passed, phase=Stay->Land in the live
+  loop; four-weapon fixture markers unchanged.
 Combined-scene impact: none measured; additive lane-owned TU only.
 Next consumer: lane 10 receiver -> pc_p2_hardlanes_bigtreasure_hit;
   #128 motion stage -> state->clip key-event source.
