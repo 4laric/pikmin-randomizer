@@ -90,6 +90,22 @@ class GroundPlacementFactsTests(unittest.TestCase):
                 self.assertTrue(record['source_anchors'])
                 self.assertTrue(record['placement_note'])
 
+    def test_catalog_facts_match_json(self):
+        self.assertEqual(set(catalog.GROUND_INVERT_FACTS), set(self.facts['identities']))
+        for identity, record in self.facts['identities'].items():
+            with self.subTest(identity=identity):
+                self.assertEqual(catalog.GROUND_INVERT_FACTS[identity], record['profile'])
+
+    def test_catalog_profiles_carry_facts(self):
+        by_identity = {p['identity']: p for p in catalog.candidate_profiles()}
+        for identity, record in self.facts['identities'].items():
+            with self.subTest(identity=identity):
+                profile = by_identity[identity]
+                for key, value in record['profile'].items():
+                    self.assertEqual(profile[key], value, f'{identity}.{key}')
+                self.assertEqual(profile['accepted_gates'], [])
+                self.assertFalse(profile['is_boss'])
+
     def test_constraints_change_placement(self):
         profiles = {
             identity: placement.normalize_profile({'identity': identity, **record['profile']})

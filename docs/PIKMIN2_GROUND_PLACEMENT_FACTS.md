@@ -52,10 +52,12 @@ lane 16's `Jigumo` (`PanHouse` child).
 ## Lane-04 consumption
 
 Each `identities.<name>.profile` fragment in the JSON is a `p2-placement-v1`
-profile subset (the fields `randomizer.p2_placement` accepts). Lane 04 merges it
-into `randomizer.p2_placement_catalog.candidate_profiles()` and keeps owning
-`identity`, `cohort`, `family_lane`, `accepted_gates` and `notes`; lane 14 does
-not set those. The practical effect:
+profile subset (the fields `randomizer.p2_placement` accepts). Lane 14 merged
+them as `randomizer.p2_placement_catalog.GROUND_INVERT_FACTS`, which
+`candidate_profiles()` now reads for lane-14 identities; lane 04 still owns that
+module and may adjust the merge. Lane 04 keeps owning `identity`, `cohort`,
+`family_lane`, `accepted_gates` and `notes`; lane 14 does not set those. The
+practical effect:
 
 - **Sokkuri** stops matching land-only profiles and now accepts `water`/`mixed`
   slots.
@@ -69,6 +71,11 @@ Do not treat these values as a source pool. None of the six has a P1 campaign
 equivalent, so lane 04's `cohort` remains `null` and the terrain constraints,
 not a cohort, are the current restriction. A source-pool model for P2-only
 identities is a separate lane-02/04 decision.
+
+With the merge in place, lane 04's compatibility report now lists TamagoMushi in
+`unplaceable_identities` (alongside Jigumo) because its group `helper_budget`
+exceeds every slot's default `helper_capacity` of 0. That is the intended signal
+for gap 1 below, not a regression.
 
 ## Open gaps this slice exposes (not solved here)
 
@@ -96,9 +103,12 @@ Concrete scope: per-identity terrain/space/water/home/helper facts for Armor,
 Root base/head: codex/p2-main-review ef1cace; branch opencode/p2-lane14-placement;
   native/decomp read-only 632af937 (unchanged); no native build.
 Owned files: docs/PIKMIN2_GROUND_PLACEMENT_FACTS.md,
-  docs/p2_ground_placement_facts.json, tests/test_p2_ground_placement_facts.py.
+  docs/p2_ground_placement_facts.json, tests/test_p2_ground_placement_facts.py,
+  randomizer/p2_placement_catalog.py (GROUND_INVERT_FACTS + candidate_profiles
+  merge), tests/test_p2_placement.py (TamagoMushi unplaceable assertion).
 Already in integration branch: lane-04 schema + candidate inventory (1e23df4,
-  ff55584, 5d6ed8a, 6032863); what is new: the lane-14 fact fragments.
+  ff55584, 5d6ed8a, 6032863); what is new: the lane-14 fact fragments and their
+  consumption in candidate_profiles().
 Gates: A-G not claimed; source-contract placement facts only. No native
   evidence, no generated-session run, no identity admission.
 Next consumer: lane 04 (#440) merges the fragments and derives slot
