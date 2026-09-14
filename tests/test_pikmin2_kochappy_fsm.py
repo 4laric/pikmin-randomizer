@@ -36,12 +36,19 @@ int main()
     assert(defaults.privateRadius == 70.0f);
 
     assert(std::string(stateName(STATE_WAIT)) == "wait");
+    assert(std::string(stateName(STATE_DEAD)) == "dead");
+    assert(std::string(stateName(STATE_TURN)) == "turn");
     assert(std::string(stateName(STATE_WALK)) == "walk");
     assert(std::string(stateName(STATE_ATTACK)) == "attack");
     assert(std::string(stateName(STATE_FLICK)) == "flick");
-    assert(std::string(stateName(STATE_DEAD)) == "dead");
+    assert(std::string(stateName(STATE_TURN_TO_HOME)) == "turn_to_home");
+    assert(std::string(stateName(STATE_GO_HOME)) == "go_home");
+    assert(std::string(stateName(STATE_PRESS)) == "press");
     assert(std::string(stateName(static_cast<State>(99))) == "null");
-    assert(STATE_COUNT == 5);
+    assert(STATE_COUNT == 9);
+    assert(STATE_WAIT == 0 && STATE_DEAD == 1 && STATE_TURN == 2 && STATE_WALK == 3
+           && STATE_ATTACK == 4 && STATE_FLICK == 5 && STATE_TURN_TO_HOME == 6
+           && STATE_GO_HOME == 7 && STATE_PRESS == 8);
 
     Params parsed;
     std::istringstream magic("P2_DWARF_ORANGE_FSM_1");
