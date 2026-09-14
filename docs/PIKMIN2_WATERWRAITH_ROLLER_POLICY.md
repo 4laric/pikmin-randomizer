@@ -130,6 +130,35 @@ The profile grammar (`species <name> <id>` then
 `clip <species> <clip> <poses> <sourceFrames> <frames...>`) is staging data
 only; the native loader and fixture are the next slice.
 
+## Real-GL visual runtime
+
+The native display consumer now exists, built on the lane-01 reconciled line:
+
+- Native branch `opencode/p2-lane31-integ` @ `d1c15ff18e53c5674ee011ba01cf50a6166e41a8`,
+  base `opencode/p2-lane01-hardlanes` @ `07f173ae` (Batch E), clean. New
+  `pc_port/pc_p2_waterwraith_visual.{h,cpp}` (two-species
+  `P2_WATERWRAITH_VISUAL_1` profile loader + sampled-pose draw), plus
+  `tools/p2_waterwraith_runtime.cpp` and
+  `tools/p2_waterwraith_runtime_run.py`. Only shared edit is the additive
+  `CMakeLists.txt` TU line.
+- Private build `output/native-lane31-integ-build` (452/452), `ninja -n` = no
+  work, exe SHA-256
+  `7cb8239c42164548697c6c37db39d8257b4a43cd164dc04cbe3f5efe995741ca`.
+- Fixture `output/lane31-waterwraith-fixture-01` SHA-256
+  `8c77f276baea13f4ade69df77bb477fa06a52289b49ee9b37b73ce33db809bc0`; run
+  `output/lane31-waterwraith-runtime-01/43d7b203193448a6978e2609d528196a`
+  status `passed`, exit 0:
+  - `P2_WATERWRAITH_VISUAL_READY species=2 clips=16`
+  - `P2_WATERWRAITH_WINDOW size=960x540 pos=373,263`
+  - `P2_WATERWRAITH_VISUAL_PLAY BlackMan=kagebozu_walk Tyre=tyre_move`
+  - `P2_WATERWRAITH_VISUAL_DRAW species=2`
+  - `PASS WATERWRAITH_RUNTIME`, capture `waterwraith-visual.ppm` (1.5 MB).
+
+This is a display slice: baked sampled poses with approximate materials, no
+skeletal playback, no retail event execution, and no source actor/AI/ownership.
+Bundle: `native-candidates/waterwraith-visual/` (`...-full.patch`,
+`patches/0001-...`, `provenance.json`).
+
 ## Remaining / next slice
 
 - **Locomotion and route pathfinding are not implemented.** The wraith walk

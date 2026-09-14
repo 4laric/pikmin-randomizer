@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "lane": 31,
+  "issue": 443,
+  "parent_issue": 175,
+  "title": "Waterwraith/Tyre two-species sampled-pose visual module + real-GL runtime fixture",
+  "kind": "integration-ready",
+  "native": {
+    "base": "07f173aed35a09e9d1537cb6298f29cca86ded9d",
+    "base_subject": "integration: header-only sampled clock/event contract (#437 batch E)",
+    "base_branch": "opencode/p2-lane01-hardlanes",
+    "head": "d1c15ff18e53c5674ee011ba01cf50a6166e41a8",
+    "local_branch": "opencode/p2-lane31-integ",
+    "pushed": false,
+    "dirty_state": "clean",
+    "note": "Based on the lane-01 reconciled native line. Native origin and upstream were not pushed; the branch is available locally to lane 01."
+  },
+  "commits": ["d1c15ff18e53c5674ee011ba01cf50a6166e41a8"],
+  "files": [
+    "pc_port/pc_p2_waterwraith_visual.h",
+    "pc_port/pc_p2_waterwraith_visual.cpp",
+    "tools/p2_waterwraith_runtime.cpp",
+    "tools/p2_waterwraith_runtime_run.py",
+    "CMakeLists.txt"
+  ],
+  "patches": {
+    "full": {
+      "path": "native-candidates/waterwraith-visual/waterwraith-visual-full.patch",
+      "size": 29803,
+      "sha256": "e35020e8549549d6de27b026a587cb8617cf8b700b74c0a240ee6f5907594a45"
+    },
+    "series": [
+      {
+        "path": "native-candidates/waterwraith-visual/patches/0001-Waterwraith-two-species-sampled-pose-visual-module-r.patch",
+        "sha256": "96628b66f2f6fa0cd96bc4d4c110e479dcd866f020819c5d9367c16d3ddd140b"
+      }
+    ]
+  },
+  "root_stage_builder": {
+    "branch": "opencode/p2-lane31-root",
+    "modules": ["experimental/pikmin2_waterwraith_stage.py", "tests/test_pikmin2_waterwraith_stage.py"],
+    "note": "The visual module consumes the P2_WATERWRAITH_VISUAL_1 profile this builder writes."
+  },
+  "runtime": {
+    "private_build": "output/native-lane31-integ-build",
+    "configuration": "Ninja, Release, PIKMIN_NATIVE_JAUDIO=ON, PIKMIN_NATIVE_OPTIMIZE=OFF, PIKMIN_RANDOMIZER_TEST_HOOKS=OFF",
+    "production_executable_sha256": "7cb8239c42164548697c6c37db39d8257b4a43cd164dc04cbe3f5efe995741ca",
+    "ninja_dry_run": "ninja: no work to do.",
+    "fixture_dir": "output/lane31-waterwraith-fixture-01",
+    "fixture_executable_sha256": "8c77f276baea13f4ade69df77bb477fa06a52289b49ee9b37b73ce33db809bc0",
+    "run_dir": "output/lane31-waterwraith-runtime-01/43d7b203193448a6978e2609d528196a",
+    "status": "passed",
+    "markers": [
+      "P2_WATERWRAITH_VISUAL_READY species=2 clips=16",
+      "P2_WATERWRAITH_WINDOW size=960x540 pos=373,263",
+      "P2_WATERWRAITH_VISUAL_PLAY BlackMan=kagebozu_walk Tyre=tyre_move",
+      "P2_WATERWRAITH_VISUAL_DRAW species=2",
+      "PASS WATERWRAITH_RUNTIME"
+    ],
+    "captures": ["waterwraith-visual.ppm (1555215 bytes)"]
+  },
+  "requested_of_lane_01": [
+    "cherry-pick d1c15ff1 (or apply the full patch) onto the maintained reconciliation line. The only shared-file edit is the additive CMakeLists.txt TU line for pc_port/pc_p2_waterwraith_visual.cpp."
+  ],
+  "limitations": [
+    "Display slice only: baked sampled poses with approximate materials, no skeletal playback and no retail event execution.",
+    "No source actor/AI, ownership/phases, vulnerability or gameplay: those stay in pc_p2_waterwraith (policy) and later actor work.",
+    "Tyre and BlackMan are drawn as independent sampled-pose actors offset by 80 units."
+  ]
+}
