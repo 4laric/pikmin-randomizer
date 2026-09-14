@@ -172,6 +172,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_second_captain.cpp
     pc_port/pc_p2_economy.cpp
     pc_port/pc_p2_teki_lifetime.cpp
+    pc_port/pc_p2_input_script.cpp
     pc_port/pc_p2_purple.cpp
     pc_port/pc_p2_purple_impact.cpp
     pc_port/pc_p2_kochappy_stun.cpp
@@ -183,6 +184,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_sheargrub.cpp
     pc_port/pc_p2_kochappy.cpp
     pc_port/pc_p2_dwarf_orange.cpp
+    pc_port/pc_p2_kochappy_fsm.cpp
     pc_port/pc_p2_breadbug_visual.cpp
     pc_port/pc_p2_giant_breadbug_visual.cpp
     pc_port/pc_p2_bulblax_visual.cpp

@@ -18,6 +18,7 @@
 #include "pc_p2_flora_actor.h"
 #include "pc_p2_qurione.h"
 #include "pc_p2_shijimi.h"
+#include "pc_p2_kochappy_fsm.h"
 #ifdef PIKI_PC_PORT
 #include "pc_p2_sheargrub.h"
 #include "pc_p2_breadbug_visual.h"
@@ -149,7 +150,7 @@ int TekiMgr::typeIds[TEKI_TypeCount] = {
 void TekiMgr::initTekiMgr()
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
-	{ pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_dwarf_orange_reset(); pc_p2_giant_breadbug_actor_reset(); pc_p2_breadbug_actor_reset(); pc_p2_queen_reset(); pc_p2_king_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_tank_reset(); pc_p2_hiba_reset(); pc_p2_bombotakara_reset(); pc_p2_dweevil_reset(); pc_p2_qurione_reset(); pc_p2_shijimi_reset(); pc_p2_kurage_teki_reset(); pc_p2_onikurage_teki_reset(); pc_p2_batch2_reset(); pc_p2_projectiles_reset(); pc_p2_sokkuri_reset(); pc_p2_armor_reset(); pc_p2_elecbug_reset(); pc_p2_tamago_reset(); pc_p2_umimushi_reset(); pc_p2_jigumo_reset(); pc_p2_snakejoint_reset(); pc_p2_dangomushi_reset(); pc_p2_hanachirashi_reset(); pc_p2_catfish_reset(); pc_p2_mar_reset(); pc_p2_tadpole_reset(); pc_p2_hana_reset(); pc_p2_imomushi_reset(); pc_p2_batch3_reset(); pc_p2_long_legs_reset(); pc_p2_flora_reset(); }
+	{ pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_dwarf_orange_reset(); pc_p2_kochappy_fsm_reset(); pc_p2_giant_breadbug_actor_reset(); pc_p2_breadbug_actor_reset(); pc_p2_queen_reset(); pc_p2_king_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_tank_reset(); pc_p2_hiba_reset(); pc_p2_bombotakara_reset(); pc_p2_dweevil_reset(); pc_p2_qurione_reset(); pc_p2_shijimi_reset(); pc_p2_kurage_teki_reset(); pc_p2_onikurage_teki_reset(); pc_p2_batch2_reset(); pc_p2_projectiles_reset(); pc_p2_sokkuri_reset(); pc_p2_armor_reset(); pc_p2_elecbug_reset(); pc_p2_tamago_reset(); pc_p2_umimushi_reset(); pc_p2_jigumo_reset(); pc_p2_snakejoint_reset(); pc_p2_dangomushi_reset(); pc_p2_hanachirashi_reset(); pc_p2_catfish_reset(); pc_p2_mar_reset(); pc_p2_tadpole_reset(); pc_p2_hana_reset(); pc_p2_imomushi_reset(); pc_p2_batch3_reset(); pc_p2_long_legs_reset(); pc_p2_flora_reset(); }
 #endif
 	tekiMgr = nullptr;
 }
@@ -176,7 +177,7 @@ TekiMgr::TekiMgr()
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
 	// Stage teardown nulls the global manager. Do not clear an unrelated live manager.
-	if (!tekiMgr) { pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_dwarf_orange_reset(); pc_p2_giant_breadbug_actor_reset(); pc_p2_breadbug_actor_reset(); pc_p2_queen_reset(); pc_p2_king_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_tank_reset(); pc_p2_hiba_reset(); pc_p2_bombotakara_reset(); pc_p2_dweevil_reset(); pc_p2_qurione_reset(); pc_p2_shijimi_reset(); pc_p2_kurage_teki_reset(); pc_p2_onikurage_teki_reset(); pc_p2_batch2_reset(); pc_p2_projectiles_reset(); pc_p2_sokkuri_reset(); pc_p2_armor_reset(); pc_p2_elecbug_reset(); pc_p2_tamago_reset(); pc_p2_umimushi_reset(); pc_p2_jigumo_reset(); pc_p2_snakejoint_reset(); pc_p2_dangomushi_reset(); pc_p2_hanachirashi_reset(); pc_p2_catfish_reset(); pc_p2_mar_reset(); pc_p2_tadpole_reset(); pc_p2_hana_reset(); pc_p2_imomushi_reset(); pc_p2_batch3_reset(); pc_p2_long_legs_reset(); pc_p2_flora_reset(); }
+	if (!tekiMgr) { pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_dwarf_orange_reset(); pc_p2_kochappy_fsm_reset(); pc_p2_giant_breadbug_actor_reset(); pc_p2_breadbug_actor_reset(); pc_p2_queen_reset(); pc_p2_king_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_tank_reset(); pc_p2_hiba_reset(); pc_p2_bombotakara_reset(); pc_p2_dweevil_reset(); pc_p2_qurione_reset(); pc_p2_shijimi_reset(); pc_p2_kurage_teki_reset(); pc_p2_onikurage_teki_reset(); pc_p2_batch2_reset(); pc_p2_projectiles_reset(); pc_p2_sokkuri_reset(); pc_p2_armor_reset(); pc_p2_elecbug_reset(); pc_p2_tamago_reset(); pc_p2_umimushi_reset(); pc_p2_jigumo_reset(); pc_p2_snakejoint_reset(); pc_p2_dangomushi_reset(); pc_p2_hanachirashi_reset(); pc_p2_catfish_reset(); pc_p2_mar_reset(); pc_p2_tadpole_reset(); pc_p2_hana_reset(); pc_p2_imomushi_reset(); pc_p2_batch3_reset(); pc_p2_long_legs_reset(); pc_p2_flora_reset(); }
 #endif
 	PRINT_NAKATA("TekiMgr>\n");
 	memStat->start("tekiMgr");
@@ -324,7 +325,7 @@ Teki* TekiMgr::newTeki(int type)
 void TekiMgr::reset()
 {
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
-	if (this == tekiMgr) { pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_dwarf_orange_reset(); pc_p2_breadbug_visual_reset(); pc_p2_giant_breadbug_visual_reset(); pc_p2_bulblax_visual_reset(); pc_p2_giant_breadbug_actor_reset(); pc_p2_breadbug_actor_reset(); pc_p2_queen_reset(); pc_p2_king_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_tank_reset(); pc_p2_hiba_reset(); pc_p2_bombotakara_reset(); pc_p2_dweevil_reset(); pc_p2_qurione_reset(); pc_p2_shijimi_reset(); pc_p2_kurage_teki_reset(); pc_p2_onikurage_teki_reset(); pc_p2_batch2_reset(); pc_p2_projectiles_reset(); pc_p2_sokkuri_reset(); pc_p2_armor_reset(); pc_p2_elecbug_reset(); pc_p2_tamago_reset(); pc_p2_umimushi_reset(); pc_p2_jigumo_reset(); pc_p2_snakejoint_reset(); pc_p2_dangomushi_reset(); pc_p2_hanachirashi_reset(); pc_p2_catfish_reset(); pc_p2_mar_reset(); pc_p2_tadpole_reset(); pc_p2_hana_reset(); pc_p2_imomushi_reset(); pc_p2_batch3_reset(); pc_p2_long_legs_reset(); pc_p2_flora_reset(); }
+	if (this == tekiMgr) { pc_p2_snow_reset(); pc_p2_sheargrub_reset(); pc_p2_kochappy_reset(); pc_p2_dwarf_orange_reset(); pc_p2_kochappy_fsm_reset(); pc_p2_breadbug_visual_reset(); pc_p2_giant_breadbug_visual_reset(); pc_p2_bulblax_visual_reset(); pc_p2_giant_breadbug_actor_reset(); pc_p2_breadbug_actor_reset(); pc_p2_queen_reset(); pc_p2_king_reset(); pc_p2_frog_reset(); pc_p2_kogane_reset(); pc_p2_mamuta_reset(); pc_p2_tank_reset(); pc_p2_hiba_reset(); pc_p2_bombotakara_reset(); pc_p2_dweevil_reset(); pc_p2_qurione_reset(); pc_p2_shijimi_reset(); pc_p2_kurage_teki_reset(); pc_p2_onikurage_teki_reset(); pc_p2_batch2_reset(); pc_p2_projectiles_reset(); pc_p2_sokkuri_reset(); pc_p2_armor_reset(); pc_p2_elecbug_reset(); pc_p2_tamago_reset(); pc_p2_umimushi_reset(); pc_p2_jigumo_reset(); pc_p2_snakejoint_reset(); pc_p2_dangomushi_reset(); pc_p2_hanachirashi_reset(); pc_p2_catfish_reset(); pc_p2_mar_reset(); pc_p2_tadpole_reset(); pc_p2_hana_reset(); pc_p2_imomushi_reset(); pc_p2_batch3_reset(); pc_p2_long_legs_reset(); pc_p2_flora_reset(); }
 #endif
 	PRINT_NAKATA("reset>\n");
 	Iterator iter(this);

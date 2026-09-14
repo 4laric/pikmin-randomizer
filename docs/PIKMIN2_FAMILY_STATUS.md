@@ -1,5 +1,7 @@
 # P2 enemy family — ownership and next-step status
 
+Current integration baseline: [full integration pass #437](PIKMIN2_FULL_INTEGRATION_437.md). Its combined source and remaining-work ledger supersede historical pending-merge statements below.
+
 Current integration disposition: [integration sweep #456](PIKMIN2_INTEGRATION_456.md).
 Read this before interpreting historical integrated/candidate claims below.
 

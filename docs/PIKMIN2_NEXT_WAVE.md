@@ -1,5 +1,7 @@
 # P2 next wave: complete playable encounters and admit the first cohort
 
+Current integration baseline: [full integration pass #437](PIKMIN2_FULL_INTEGRATION_437.md). Its combined source and remaining-work ledger supersede historical pending-merge statements below.
+
 Dispatch guide, 2026-09-14. Tracking #454; coordination #186. Implementation owner for this document: Codex through shared account 4laric. This is a work plan, not a gameplay acceptance report or a reassignment of active owners.
 
 Start from the latest `origin/codex/p2-main-review` (draft #432). Current approved native baseline is `41304fd7953fe9166fb84a77d27ab2e1282feda6`, clean. Read [the fixture-command sweep](PIKMIN2_FIXTURE_COMMAND_SWEEP_437.md), [the roster-readiness sweep](PIKMIN2_ROSTER_READINESS_SWEEP_437.md), [the receipt-provider sweep](PIKMIN2_RECEIPT_INTEGRATION_437.md), [the Hiba sweep](PIKMIN2_HIBA_INTEGRATION_437.md), [the placement/native queue sweep](PIKMIN2_PLACEMENT_SWEEP_437.md), [the shared-provider sweep](PIKMIN2_SHARED_PROVIDERS_437.md), [the Waterwraith dependency sweep](PIKMIN2_WATERWRAITH_INTEGRATION_437.md), [the wave-three handoff review](PIKMIN2_WAVE3_REVIEW_437.md), [the pre-wave review](PIKMIN2_PREWAVE_REVIEW_437.md) and [staging disposition](PIKMIN2_INTEGRATION_STAGING_437.md) for integrated tooling, blocked actors and the next queue; production evidence is pinned in [sweep #456](PIKMIN2_INTEGRATION_456.md). Record the exact root HEAD you use. Never overwrite the current engine with an older worker export.

@@ -16,6 +16,7 @@
 #include "pc_p2_tank.h"
 #include "pc_p2_qurione.h"
 #include "pc_p2_shijimi.h"
+#include "pc_p2_kochappy_fsm.h"
 #ifdef PIKI_PC_PORT
 #include "pc_p2_enemy.h"
 #include "pc_p2_sheargrub.h"
@@ -486,10 +487,10 @@ void BTeki::update()
 	pc_p2_hanachirashi_update(this);
 	pc_p2_catfish_update(this);
 	pc_p2_mar_update(this);
-	pc_p2_hanachirashi_update(this);
 	pc_p2_tadpole_update(this);
 	pc_p2_hana_update(this);
 	pc_p2_imomushi_update(this);
+	pc_p2_kochappy_fsm_update(this);
 #endif
 	if (mDeadState == 0) {
 		updateTimers();
@@ -600,6 +601,9 @@ void BTeki::doAI()
 	STACK_PAD_VAR(2);
 #ifdef PIKI_PC_PORT
 	if (pc_p2_shijimi_suppress_ai(this)) {
+		return;
+	}
+	if (pc_p2_kochappy_fsm_suppress_ai(this)) {
 		return;
 	}
 #endif

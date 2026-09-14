@@ -1,5 +1,7 @@
 # P2 enemies: full implementation and randomizer blockers
 
+Current integration baseline: [full integration pass #437](PIKMIN2_FULL_INTEGRATION_437.md). Its combined source and remaining-work ledger supersede historical pending-merge statements below.
+
 Next-wave dispatch: [playable encounters and first cohort](PIKMIN2_NEXT_WAVE.md). Keep existing lane numbers; use this guide for current priorities and acceptance.
 
 Current integration disposition: [integration sweep #456](PIKMIN2_INTEGRATION_456.md).

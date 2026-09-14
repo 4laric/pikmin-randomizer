@@ -1,53 +1,45 @@
 # Numbered lane completion ledger (#437)
 
-Count full numbered lanes, not issues, commits, sessions or finished slices. A pushed candidate remains open until its remaining acceptance work is integrated and validated. A closed historical subtask does not close its parent lane. Keep worker-finished/handoff-ready status separate; no reliable live session count is available here.
+Full lanes and delivered slices are different units. All 33 representative tracking issues remain OPEN (verified 2026-09-14); no full lane is declared complete merely because its candidate merged.
 
-Current verified tracker count: **33/33 open: 32 implementation/QA lanes plus lane 01 integration; 0 full lanes recorded complete.** Each row below has an open tracking issue demonstrating remaining work. This is a tracker-based count; owners may have completed a bounded slice without closing the full lane. Reconcile owner completion evidence before changing a lane to complete, and never auto-close issues merely to make the count decrease.
+This integration pass drains the reviewed published handoff batch. The remaining work is **21 lanes needing implementation, 11 lanes primarily needing combined acceptance, and lane 01 integration/coordination**. These are primary next actions, not claims that every secondary task is finished. No reliable count of live worker sessions is available. Full-lane count: **33 open, change 0; 0 complete**.
 
-| Lane | Open tracking issue | Status |
-|---|---|---|
-| 01 | [#437](https://github.com/4laric/pikmin-randomizer/issues/437) | Open |
-| 02 | [#438](https://github.com/4laric/pikmin-randomizer/issues/438) | Open |
-| 03 | [#439](https://github.com/4laric/pikmin-randomizer/issues/439) | Open |
-| 04 | [#440](https://github.com/4laric/pikmin-randomizer/issues/440) | Open |
-| 05 | [#442](https://github.com/4laric/pikmin-randomizer/issues/442) | Open |
-| 06 | [#441](https://github.com/4laric/pikmin-randomizer/issues/441) | Open |
-| 07 | [#397](https://github.com/4laric/pikmin-randomizer/issues/397) | Open |
-| 08 | [#431](https://github.com/4laric/pikmin-randomizer/issues/431) | Open |
-| 09 | [#429](https://github.com/4laric/pikmin-randomizer/issues/429) | Open |
-| 10 | [#408](https://github.com/4laric/pikmin-randomizer/issues/408) | Open |
-| 11 | [#131](https://github.com/4laric/pikmin-randomizer/issues/131) | Open |
-| 12 | [#130](https://github.com/4laric/pikmin-randomizer/issues/130) | Open |
-| 13 | [#120](https://github.com/4laric/pikmin-randomizer/issues/120) | Open |
-| 14 | [#165](https://github.com/4laric/pikmin-randomizer/issues/165) | Open |
-| 15 | [#166](https://github.com/4laric/pikmin-randomizer/issues/166) | Open |
-| 16 | [#167](https://github.com/4laric/pikmin-randomizer/issues/167) | Open |
-| 17 | [#219](https://github.com/4laric/pikmin-randomizer/issues/219) | Open |
-| 18 | [#220](https://github.com/4laric/pikmin-randomizer/issues/220) | Open |
-| 19 | [#221](https://github.com/4laric/pikmin-randomizer/issues/221) | Open |
-| 20 | [#169](https://github.com/4laric/pikmin-randomizer/issues/169) | Open |
-| 21 | [#198](https://github.com/4laric/pikmin-randomizer/issues/198) | Open |
-| 22 | [#447](https://github.com/4laric/pikmin-randomizer/issues/447) | Open |
-| 23 | [#448](https://github.com/4laric/pikmin-randomizer/issues/448) | Open |
-| 24 | [#445](https://github.com/4laric/pikmin-randomizer/issues/445) | Open |
-| 25 | [#174](https://github.com/4laric/pikmin-randomizer/issues/174) | Open |
-| 26 | [#312](https://github.com/4laric/pikmin-randomizer/issues/312) | Open |
-| 27 | [#244](https://github.com/4laric/pikmin-randomizer/issues/244) | Open |
-| 28 | [#245](https://github.com/4laric/pikmin-randomizer/issues/245) | Open |
-| 29 | [#243](https://github.com/4laric/pikmin-randomizer/issues/243) | Open |
-| 30 | [#242](https://github.com/4laric/pikmin-randomizer/issues/242) | Open |
-| 31 | [#443](https://github.com/4laric/pikmin-randomizer/issues/443) | Open |
-| 32 | [#246](https://github.com/4laric/pikmin-randomizer/issues/246) | Open |
-| 33 | [#444](https://github.com/4laric/pikmin-randomizer/issues/444) | Open |
+Use [the full integration ledger](PIKMIN2_FULL_INTEGRATION_437.md) for accepted commits, tests and concrete limitations. “Acceptance” means the delivered slice is integrated and still needs the listed real gameplay evidence. It does not admit an identity into the randomizer.
 
-Lane 30 has multiple captain/captor issues; #242 is an open representative, not the complete scope. Similarly, family child issues do not enumerate all source identities. Consult the fan-out guide for scope.
+| Lane | Tracking issue | Primary next action | Remaining work |
+|---|---|---|---|
+| 01 | [#437](https://github.com/4laric/pikmin-randomizer/issues/437) | Integration | Current handoff batch merged; validation/publication tracked below. |
+| 02 | [#438](https://github.com/4laric/pikmin-randomizer/issues/438) | Implementation | Admission list remains empty until one identity passes the generated-session chain. |
+| 03 | [#439](https://github.com/4laric/pikmin-randomizer/issues/439) | Implementation | Native ENEMY_P2 parsing and ordinary spawn binding remain; the Python seed/bootstrap path is integrated. |
+| 04 | [#440](https://github.com/4laric/pikmin-randomizer/issues/440) | Implementation | Accepted native terrain and carry-route evidence for generated placements. |
+| 05 | [#442](https://github.com/4laric/pikmin-randomizer/issues/442) | Implementation | Complete family adapters and identity-to-runtime binding for ordinary generated sessions; staging/launcher consumer is integrated. |
+| 06 | [#441](https://github.com/4laric/pikmin-randomizer/issues/441) | Acceptance | Validate P2 rewards at actual endpoints across restart; ordinary P1 endpoint evidence is retained. |
+| 07 | [#397](https://github.com/4laric/pikmin-randomizer/issues/397) | Acceptance | Worker new-scene gate passed; repeat on the combined pair and broader family coverage. Scripted pad and scene signal are integrated. |
+| 08 | [#431](https://github.com/4laric/pikmin-randomizer/issues/431) | Implementation | Adopt sampled animation events across remaining family consumers; Armor migration is integrated. |
+| 09 | [#429](https://github.com/4laric/pikmin-randomizer/issues/429) | Implementation | Remaining conversion/material gaps and per-family visual fidelity; native billboard path is integrated. |
+| 10 | [#408](https://github.com/4laric/pikmin-randomizer/issues/408) | Implementation | Remaining family emitters and physical elemental receivers; ElecBug electric path is integrated. |
+| 11 | [#131](https://github.com/4laric/pikmin-randomizer/issues/131) | Acceptance | Combined Bulbmin/checkpoint restart and natural Mother Bulbmin acceptance. |
+| 12 | [#130](https://github.com/4laric/pikmin-randomizer/issues/130) | Implementation | Real second captain controls, camera, HUD and survival semantics; live opt-in stays disabled. |
+| 13 | [#120](https://github.com/4laric/pikmin-randomizer/issues/120) | Implementation | Partial KochappyBase FSM is integrated but opt-in; remaining states and generated-session acceptance remain. |
+| 14 | [#165](https://github.com/4laric/pikmin-randomizer/issues/165) | Acceptance | Natural combat, rewards and re-entry across the newly integrated ground species. |
+| 15 | [#166](https://github.com/4laric/pikmin-randomizer/issues/166) | Implementation | Real carried-Egg/reward ownership and remaining lifecycle parity; flight/Spectralid consumers are integrated. |
+| 16 | [#167](https://github.com/4laric/pikmin-randomizer/issues/167) | Acceptance | Aquatic source FSMs plus Frog combined combat, delivery and re-entry acceptance. |
+| 17 | [#219](https://github.com/4laric/pikmin-randomizer/issues/219) | Acceptance | Beetle ordinary generated placement and reward/lifecycle acceptance. |
+| 18 | [#220](https://github.com/4laric/pikmin-randomizer/issues/220) | Acceptance | Breadbug ordinary cargo/reward endpoints and restart acceptance. |
+| 19 | [#221](https://github.com/4laric/pikmin-randomizer/issues/221) | Acceptance | Mamuta generated-session chain and mixed-scene acceptance after its bounded natural fixture. |
+| 20 | [#169](https://github.com/4laric/pikmin-randomizer/issues/169) | Implementation | Complete physical projectile/child births, receivers and natural encounter integration. |
+| 21 | [#198](https://github.com/4laric/pikmin-randomizer/issues/198) | Implementation | Real Groink actor/pursuit, muzzle alignment, natural moving hits and corpse/revival; corrected strike bridge is integrated. |
+| 22 | [#447](https://github.com/4laric/pikmin-randomizer/issues/447) | Implementation | Dweevil/BombOtakara sidecars still need real actor/payload ownership; the shared blast consumer is integrated. |
+| 23 | [#448](https://github.com/4laric/pikmin-randomizer/issues/448) | Implementation | Remaining Flora conversion gaps and complete natural plant/Pom interactions. |
+| 24 | [#445](https://github.com/4laric/pikmin-randomizer/issues/445) | Implementation | Bulblax material/BTK fidelity and full natural encounter/campaign behavior. |
+| 25 | [#174](https://github.com/4laric/pikmin-randomizer/issues/174) | Implementation | Crawbster Turn vulnerability application and actual Rock/Egg births; source hazard decisions are integrated. |
+| 26 | [#312](https://github.com/4laric/pikmin-randomizer/issues/312) | Acceptance | Long Legs source FSM/landing effects need combined natural encounter and lifecycle acceptance. |
+| 27 | [#244](https://github.com/4laric/pikmin-randomizer/issues/244) | Implementation | Complete natural BombSarai child/receiver/lifecycle chain. |
+| 28 | [#245](https://github.com/4laric/pikmin-randomizer/issues/245) | Implementation | Fuefuki natural ownership/interference and release path beyond the policy/fixture. |
+| 29 | [#243](https://github.com/4laric/pikmin-randomizer/issues/243) | Acceptance | Combined Jellyfloat capture/release, rewards and re-entry acceptance. |
+| 30 | [#242](https://github.com/4laric/pikmin-randomizer/issues/242) | Implementation | Remaining captor actors and shared captain capture/release integration. |
+| 31 | [#443](https://github.com/4laric/pikmin-randomizer/issues/443) | Implementation | Waterwraith natural navigation/encounter and complete lifetime behavior beyond registered actor/roller gates. |
+| 32 | [#246](https://github.com/4laric/pikmin-randomizer/issues/246) | Implementation | Titan real elemental receiver adapter and campaign save/reward ownership; fixture health sink and standalone save policy are not those adapters. |
+| 33 | [#444](https://github.com/4laric/pikmin-randomizer/issues/444) | Acceptance | Whole-cohort mixed-scene performance, re-entry and restart on the final integrated pair. |
 
-## This sweep
-
-Integrated lane-04 target intersection 36ceac6 as 6032863. 82 placement/roster/seed-bridge tests and 17 subtests passed. The target API derives constraint compatibility only, not accepted native terrain/route evidence; product consumers must still enforce admission and accepted placement. Native remains 41304fd7, unchanged; no build/export/runtime acceptance this sweep. New generated-session probe 7eb2c75 is queued with the earlier seed/staging consumer requirements.
-
-Every future sweep must end with this count, report the change from the preceding sweep, and state any uncertainty about worker-finished sessions separately. Refresh issue states and completed acceptance evidence; do not infer completion from a branch name or a PASS marker.
-
-Latest refresh: roster-readiness sweep, 33 open (change 0); see PIKMIN2_ROSTER_READINESS_SWEEP_437.md.
-
-Fixture-command sweep refresh: 33 open, change 0; all representative issue states still OPEN.
+Every sweep must report newly integrated handoffs, unresolved merge blockers separately from implementation/acceptance, and the full-lane count with its change. Never decrement the count from a worker-finished message or an isolated PASS marker.

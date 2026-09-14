@@ -31,6 +31,7 @@
 #include "pc_p2_king.h"
 #include "pc_p2_kochappy.h"
 #include "pc_p2_dwarf_orange.h"
+#include "pc_p2_kochappy_fsm.h"
 #include "pc_p2_kogane.h"
 #include "pc_p2_kurage_teki.h"
 #include "pc_p2_long_legs.h"
@@ -55,6 +56,7 @@ void pc_p2_forget_teki(BTeki* actor)
 	pc_p2_sheargrub_forget(actor);
 	pc_p2_kochappy_forget(actor);
 	pc_p2_dwarf_orange_forget(actor);
+    pc_p2_kochappy_fsm_forget(actor);
 	pc_p2_giant_breadbug_actor_forget(actor);
 	pc_p2_breadbug_actor_forget(actor);
 	pc_p2_frog_forget(actor);
@@ -97,6 +99,7 @@ void pc_p2_reset_all_teki()
 	pc_p2_sheargrub_reset();
 	pc_p2_kochappy_reset();
 	pc_p2_dwarf_orange_reset();
+    pc_p2_kochappy_fsm_reset();
 	pc_p2_breadbug_visual_reset();
 	pc_p2_giant_breadbug_visual_reset();
 	pc_p2_bulblax_visual_reset();
