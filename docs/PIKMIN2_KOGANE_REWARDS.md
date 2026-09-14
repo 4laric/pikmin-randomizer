@@ -5,8 +5,9 @@ Lane 17 consumer of the lane-06 reward/receipt contract (#441). New host module
 (19 passing), the cave model `experimental/pikmin2_kogane_cave.py` with
 `tests/test_pikmin2_kogane_cave.py`, the re-entry fixture
 `experimental/pikmin2_kogane_reentry.py` with `tests/test_pikmin2_kogane_reentry.py`,
-and an additive native re-entry dedupe plus an on-disk flip-receipt sidecar in
-`native/pc_port/pc_p2_kogane.cpp`. No native save or shared build is modified.
+and an additive native re-entry dedupe, a first-flip treasure override and an
+on-disk flip-receipt sidecar in `native/pc_port/pc_p2_kogane.cpp`. No native save
+or shared build is modified.
 
 ## What is modelled
 
@@ -57,6 +58,35 @@ them:
 and emits the frame-7 `createItem` drop, then escapes after the third flip. That
 host `dropFor` keeps the documented P1 fallback (no cave, no sprays); the audited
 drop values are unchanged.
+
+**First-flip treasure override (P1 stand-in).** The P1 host has no P2 treasure
+item, so a configured `treasure <generator> <pellet_value>` sidecar row substitutes
+one labelled number pellet on that actor's first flip instead of the audited table
+entry (`createTreasureItem`, Kogane.cpp:386-414). `pellet_value` is `1` or `5`; the
+stand-in is emitted and then the normal frame-7 drop path runs, logging
+`P2_KOGANE_TREASURE generator=<id> value=<n>`. Later flips and every unconfigured
+actor keep the audited table unchanged, and `P2_ENEMY_READY` reports
+`treasure=standin` (or `treasure=disabled` when absent). This is a host
+approximation, not the source treasure object.
+
+The sidecar grammar is the optional tokens between the actors and the first clip:
+
+```text
+P2_KOGANE_NATIVE_1
+karada <shape>
+actors <count>
+<generator> <source_id>            (count rows)
+treasure <generator> <pellet_value> (optional, 0+ rows; value 1 or 5)
+<clip name> <count> <duration> <frames...>   (move, wait, damage)
+```
+
+`p2kogane::read` accepts zero treasure rows (absent section, the legacy format),
+requires every `treasure` generator to be a declared actor and rejects a duplicate
+generator or a value other than `1`/`5`. The host mirror is
+`experimental.pikmin2_kogane_native.treasure_lines` (also used by
+`pikmin2_kogane_behavior.native_sidecar`), and `emit` renders the row from an arena
+actor's optional `treasure` field. A generated sidecar can therefore never be
+refused at load.
 
 **In-process re-entry dedupe.** `pc_p2_kogane_reset()` snapshots each live
 actor's `flips` count keyed by generator id before clearing; `pc_p2_kogane_setup()`
@@ -127,11 +157,12 @@ back out, so the host copy and the native sidecar stay in sync. See
 `tests/test_pikmin2_kogane_rewards.py`.
 
 Still open: a native P2-save bridge (durable flips/treasure in the P2 save, lane
-01/06), plus native treasure override and cave relocation execution. The sidecar
-is run-directory local, so a fresh run directory or a moved/renamed run starts the
-beetles at zero flips; it is not a save-game contract. The `enemy:<species-id>`
-map likewise has to travel with the run — a real product run must pass the
-generator roster instead of the fixture default.
+01/06), plus real treasure-item and cave-relocation execution. The first-flip
+override is a labelled P1 number-pellet stand-in, not the source treasure object.
+The sidecar is run-directory local, so a fresh run directory or a moved/renamed run
+starts the beetles at zero flips; it is not a save-game contract. The
+`enemy:<species-id>` map likewise has to travel with the run — a real product run
+must pass the generator roster instead of the fixture default.
 
 ## Gates
 
@@ -147,5 +178,5 @@ generator roster instead of the fixture default.
 | In-process restored escape | IMPLEMENTED (source only) | `P2_KOGANE_RESTORED_ESCAPE` + `pcEscapeNow()` on `restored->second >= MAX_FLIPS`; `pikmin2_kogane_reentry` validator tests |
 | Cross-process sidecar receipts | IMPLEMENTED (source only) | `p2-kogane-receipts.txt` atomic write/load + `P2_KOGANE_RECEIPTS loaded=<n>`; host `parse_receipts`/`read_receipts` and `validate_cross_process` tests |
 | Native-sidecar -> lane-06 ledger bridge | PASS (host) | `reconcile_native` idempotent across reopen, per-seed, strict on malformed/unknown; `sync_receipts`/`write_receipts` round-trip; `tests/test_pikmin2_kogane_rewards.py` |
-| Native treasure override / cave relocation | UNIMPLEMENTED | no P2 cave in the P1 host |
+| Native treasure override / cave relocation | PARTIAL | first-flip override is a labelled P1 number-pellet stand-in (`P2_KOGANE_TREASURE`, optional `treasure` sidecar row); real P2 treasure item and cave relocation still UNIMPLEMENTED (no P2 cave in the P1 host) |
 | Native P2-save persistence | UNIMPLEMENTED | sidecar is run-directory local, not the lane 01/06 save |

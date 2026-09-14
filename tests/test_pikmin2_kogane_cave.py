@@ -22,6 +22,14 @@ def test_treasure_override_replaces_the_table_on_the_first_flip():
     assert later['drop'] == drop_for('kogane', 1, False)
 
 
+def test_number_pellet_standin_overrides_only_the_first_flip():
+    # P1 host stand-in for the cave first-flip treasure: a number-pellet value.
+    first = cave.resolve_flip('wealthy', 1, carried_treasure=5)
+    assert first['treasure'] == 5 and first['drop'] is None
+    later = cave.resolve_flip('wealthy', 2, carried_treasure=5)
+    assert later['treasure'] is None and later['drop'] == drop_for('wealthy', 1, False)
+
+
 @pytest.mark.parametrize('species,flip,in_cave,demo,hit', [
     ('kogane', 1, False, False, 0),
     ('kogane', 2, False, False, 1),

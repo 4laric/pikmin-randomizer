@@ -16,8 +16,10 @@ on the real registered actors:
     pc_p2_kogane_gas_state introspection hook and must die of sustained
     exposure; the other 19 survive (beetles are harmless; control is distant).
 
-Treasure override and cave relocation remain disabled in the P1 host and are
-not asserted here (recorded gaps on #219).
+The first-flip treasure override is now an opt-in labelled P1 number-pellet
+stand-in (`native_sidecar(..., treasures=...)`), but this fixture configures no
+treasure; cave relocation remains disabled in the P1 host and neither is asserted
+here (recorded gaps on #219).
 """
 import argparse
 import json
@@ -26,6 +28,7 @@ from pathlib import Path
 
 from experimental.pikmin2_kogane_runtime import build as build_fixture_base
 from experimental.pikmin2_kogane_runtime import run as run_fixture_base
+from experimental.pikmin2_kogane_native import treasure_lines
 
 IDS = (219001, 219002, 219003)
 SPECIES_ID = {219001: 9, 219002: 10, 219003: 11}
@@ -119,12 +122,14 @@ EXPECTED_DROPS = {(219001, 1): (1, 1, 0), (219001, 2): (0, 0, 2), (219001, 3): (
 EXPECTED_HEALTH = {219001: '1000.0', 219002: '1200.0', 219003: '1500.0'}
 
 
-def native_sidecar(bank, mapping=None):
+def native_sidecar(bank, mapping=None, treasures=None):
     """Build the P2_KOGANE_NATIVE_1 sidecar from the validated batch-1 bank.
 
     Mirrors every constraint of the C++ parser (p2kogane::read) so a generated
     sidecar can never be rejected at load: karada slot, unique generator/species
     rows, and move/wait/damage clips with ascending frames spanning [0, duration).
+    ``treasures`` optionally maps a generator to a P1 stand-in number-pellet value
+    (1 or 5) for that beetle's first flip; the host has no P2 treasure item.
     """
     mapping = mapping or SPECIES_ID
     if set(mapping) != set(IDS) or any(mapping[g] != SPECIES_ID[g] for g in IDS):
@@ -135,6 +140,7 @@ def native_sidecar(bank, mapping=None):
         raise ValueError('Bank clip set mismatch')
     rows = ['P2_KOGANE_NATIVE_1', f'karada {KARADA_INDEX}', f'actors {len(IDS)}']
     rows += [f'{g} {mapping[g]}' for g in IDS]
+    rows += treasure_lines((treasures or {}).items(), IDS)
     for name in ('move', 'wait', 'damage'):
         clip = clips[name + '.bca']
         frames = [int(p['frame']) for p in clip['poses']]
