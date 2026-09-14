@@ -152,3 +152,51 @@ def test_nest_collision_drops_after_eighty_frames():
     assert contest.nest_collision_after_death(1000) is False
     with pytest.raises(ValueError, match='Invalid frames-since-kill'):
         contest.nest_collision_after_death(-1)
+
+
+def test_coexistence_accepts_disjoint_giant_small_and_nest_roles():
+    # Giant 187001 + nest 187002 + one small proxy 186081: every role disjoint.
+    assert contest.coexistence_ok([187001], [186081], [187002]) is True
+    report = contest.coexistence_report([187001], [186081], [187002])
+    assert report['ok'] is True
+    assert report['violations'] == []
+    assert report['giant_count'] == report['small_count'] == report['nest_count'] == 1
+    assert report['pairs'] == [{'giant': 187001, 'nest': 187002}]
+    assert report['small_actors_independent'] is True
+    # No small actor is also a valid (vacuously independent) arrangement.
+    assert contest.coexistence_ok([187001], [], [187002]) is True
+    assert contest.coexistence_report([187001], [], [187002])[
+        'small_actors_independent'] is True
+
+
+def test_coexistence_rejects_shared_generator_ids_across_roles():
+    # A small actor reused as its own nest is not independent.
+    report = contest.coexistence_report([187001], [186081], [186081])
+    assert report['ok'] is False
+    assert report['small_actors_independent'] is False
+    assert any('small and nest share generator ids: 186081' in v
+               for v in report['violations'])
+    # A giant id claimed as a nest is likewise rejected.
+    assert contest.coexistence_ok([187001], [], [187001]) is False
+    # A small actor reusing the giant id is rejected.
+    assert contest.coexistence_ok([187001], [187001], [187002]) is False
+
+
+def test_coexistence_requires_one_nest_per_giant_and_a_giant():
+    assert contest.coexistence_ok([], [186081], []) is False
+    assert contest.coexistence_ok([187001, 187003], [186081], [187002]) is False
+    report = contest.coexistence_report([187001, 187003], [186081],
+                                        [187002, 187004])
+    assert report['ok'] is True
+    assert [p['giant'] for p in report['pairs']] == [187001, 187003]
+
+
+def test_coexistence_rejects_duplicates_and_malformed_ids():
+    with pytest.raises(ValueError, match='Duplicate generator id within the small role'):
+        contest.coexistence_ok([187001], [186081, 186081], [187002])
+    with pytest.raises(ValueError, match='must be an int'):
+        contest.coexistence_ok([187001], ['186081'], [187002])
+    with pytest.raises(ValueError, match='out of range'):
+        contest.coexistence_ok([187001], [contest.MAX_GENERATOR_ID + 1], [187002])
+    with pytest.raises(ValueError, match='must be a list or tuple'):
+        contest.coexistence_ok([187001], 186081, [187002])

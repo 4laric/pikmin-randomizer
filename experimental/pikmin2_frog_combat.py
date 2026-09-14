@@ -8,7 +8,11 @@ depleted squad, or the observation window. Unregistered control frogs stay alive
 The `P2_FROG_PRESS` and `P2_FROG_LAND` markers are reported as instrumentation,
 not proof of the source landing press: `P2_FROG_LAND` attributes grounded
 receivers inside the source head radius but is not made a hard pass condition.
-See ``docs/PIKMIN2_FROG_RUNTIME_ACCEPTANCE.md``.
+The `P2_FROG_LAND` row now carries the resolved ``bittered``/``pressed``/
+``origin``/``host_frozen`` fields and `P2_FROG_BITTER` records the
+``pc_p2_frog_set_bittered`` toggle, so a fixture can observe both the
+not-bittered and bittered branches. No engine provider writes
+``Creature::mIsFrozen``; see ``docs/PIKMIN2_FROG_RUNTIME_ACCEPTANCE.md``.
 """
 import re
 
@@ -86,7 +90,10 @@ def validate(text, code):
         controls_alive=bool(result) and result[5] == '1',
         outcome=bool(result) and (result[2] == '0' or int(result[3]) >= 1))
     land = re.findall(r'P2_FROG_LAND species=(\w+) radius=([\d.]+) bittered=(\d) '
-                      r'pikmin=(\d+) navi=(\d+) behavior=P1_proxy', text)
+                      r'pikmin=(\d+) navi=(\d+) behavior=P1_proxy'
+                      r'(?: pressed=(\d) origin=(\w+) host_frozen=(\d+))?', text)
+    bitter = re.findall(r'P2_FROG_BITTER species=(\w+) override=(\d) host_frozen=(\d+) '
+                        r'effective=(\d) origin=(\w+)', text)
     return dict(passed=all(checks.values()), checks=checks, ticks=ticks, squad=squad,
                 reason=result[1] if result else None, frog_dead=result[2] if result else None,
                 corpse=result[3] if result else None,
@@ -95,10 +102,17 @@ def validate(text, code):
                 land_markers={'Frog': len(re.findall(r'P2_FROG_LAND species=Frog ', text)),
                               'MaroFrog': len(re.findall(r'P2_FROG_LAND species=MaroFrog ', text))},
                 land_attribution=[{'species': s, 'radius': float(r), 'bittered': b == '1',
-                                   'pikmin': int(p), 'navi': int(n)} for s, r, b, p, n in land],
+                                   'pikmin': int(p), 'navi': int(n),
+                                   'pressed': int(pr) if pr != '' else int(b == '0'),
+                                   'origin': o or 'unknown', 'host_frozen': int(hf) if hf != '' else 0}
+                                  for s, r, b, p, n, pr, o, hf in land],
+                bitter_markers=[{'species': s, 'override': o == '1', 'host_frozen': int(hf),
+                                 'effective': e == '1', 'origin': og}
+                                for s, o, hf, e, og in bitter],
                 unmeasured=['transport/rewards', 'full scene/day reload',
-                            'native source landing-press receiver (P2_FROG_LAND is reported '
-                            'head-radius attribution; no native bitter provider yet)'])
+                            'native engine-level bitter/stone provider (Creature::mIsFrozen is '
+                            'read by the frog rule but no provider writes it; the family override '
+                            'pc_p2_frog_set_bittered covers fixture testing)'])
 
 
 if __name__ == '__main__':

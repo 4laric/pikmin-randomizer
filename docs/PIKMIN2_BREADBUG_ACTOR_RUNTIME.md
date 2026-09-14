@@ -331,3 +331,77 @@ press/contest/defeat sequence and a `JsonReceiptPersistence` restart replay.
 - Remaining: the small Breadbug proxy still has no cargo owner, and native
   exactly-once receipt persistence across process restart still needs the lane
   01/06 native save bridge. Both remain open on #168/#220/#441.
+
+## Giant/small Breadbug coexistence model and fixture (lane 18, 2026-09-14)
+
+The accepted Giant display run explicitly said "a live small-Breadbug
+coexistence test was not added" (`PIKMIN2_GIANT_BREADBUG_RUNTIME_ACCEPTANCE.md`).
+This closes the host-side half and stages the runnable half as far as committed
+sources allow.
+
+- **Host model:** `experimental/pikmin2_breadbug_contest.py` adds
+  `coexistence_ok(giant_ids, small_ids, nest_ids)` and
+  `coexistence_report(...)`. They require at least one Giant, exactly one nest per
+  Giant (`len(nest_ids) == len(giant_ids)`) and pairwise disjoint Giant/small/nest
+  generator ids, so no actor is reused across roles and no small actor is claimed
+  as a nest. `small_actors_independent` reports the small-vs-(giant|nest)
+  disjointness. This is identity bookkeeping only: it does **not** model shared
+  cargo, a P2 pull channel or contest ownership.
+- **Validator:** `experimental/pikmin2_breadbug_coexistence.py` renders and
+  validates the combined arena. `arena_config()` emits the `giant-arena.txt`
+  lines (giant/nest ids + XYZ, optional small id + XYZ) and refuses overlapping
+  roles through the host model. `validate()` parses the fixture log, requires
+  exactly one `P2_GIANT_BREADBUG_ACTOR_READY` and one `P2_GIANT_COEXIST` marker
+  whose ids agree, requires the small and Giant actors alive and independent, and
+  still requires the existing Giant PASS line so coexistence cannot pass while
+  Giant behavior regressed. It reports `p2_contest_semantics=False` and
+  `shared_cargo=False`.
+- **Fixture (additive):** `scripts/pikmin2_giant_breadbug_actor_fixture.cpp` reads
+  an optional fourth `giant-arena.txt` line `smallId smallX smallY smallZ`. When
+  present it resolves that generator as a second `TEKI_Collec`, asserts it is a
+  distinct actor from the Giant and the nest and that its birth XYZ matches,
+  keeps it AI-active and asserts it stays alive and unentangled every tick, then
+  logs `P2_GIANT_COEXIST_BIRTH ...` and, at the end,
+  `P2_GIANT_COEXIST small=... giant=... nest=... small_alive=1 giant_alive=1
+  independent=1` before the unchanged Giant PASS line. The three-line arena file
+  remains valid: coexistence is skipped and the prior Giant run is unaffected.
+- **Tests:** `tests/test_pikmin2_breadbug_contest.py` adds 4 coexistence-model
+  tests (now 18) and `tests/test_pikmin2_breadbug_coexistence.py` adds 7 validator
+  tests. No save, actor or shared physics is mutated and no P2 contest semantics
+  are claimed.
+
+### Runnable status and the exact missing piece
+
+A real coexistence run was **not** produced. The combined stage cannot be rebuilt
+from committed sources because the committed Giant **actor** arena stager is
+missing: the Giant/nest generator rows (187001/187002) and
+`p2-giant-breadbug-actor.txt` config exist only in the private stage
+`output/p2-lifecycle-batch/giant-actor-native-14/stages/...` (the committed
+`experimental/pikmin2_giant_breadbug_runtime.py` stages the *display* arena only,
+which adds no tekis). `staging_plan()` in the validator module records the four
+pieces a combined stage needs:
+
+1. the committed small-proxy arena overlay
+   (`experimental.pikmin2_breadbug_arena.prepare`);
+2. the Giant pair (TEKI_Collec + TEKI_Hollec) config/models from the private
+   Giant actor arena;
+3. one small `TEKI_Collec` proxy generator (e.g. 186081) with the
+   `p2-breadbug-actor.txt` config and lane-03 `breadbug_actor_*` models, disjoint
+   from the Giant/nest ids;
+4. the `giant-arena.txt` with the optional small line.
+
+Intended build/run once that stager is committed (no build or GL run was launched
+for this slice; the coordinator serializes both):
+
+```powershell
+# build the fixture against a private fresh native build
+py -3.12 -m scripts.build_pikmin2_fixture --help   # existing helper used by the proxy cargo runner
+# then, in the private combined stage (assets + profile + exe), run the fixture
+# and validate the log:
+py -3.12 -m experimental.pikmin2_breadbug_coexistence --log <stage>\host.log
+```
+
+Remaining: the small Breadbug still owns no P2 cargo (it is the P1
+`TEKI_Collec` host's own pointer), so coexistence here proves identity
+independence and unchanged Giant behavior only; P2 contest/shared-cargo parity
+stays gated on the lane 06/07 surfaces. Open on #168/#220/#441.

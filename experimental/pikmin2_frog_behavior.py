@@ -32,6 +32,14 @@ PARAMS = {
 # press is centred on the actor; the head joint XZ offset is under 1.5 units.
 HEAD_RADIUS = {'Frog': 23.0, 'MaroFrog': 21.0}
 
+# The source "unless bittered" precondition is resolved from a real host bit plus
+# the family-local fixture override. The only creature-level host candidate in
+# this tree is ``Creature::mIsFrozen``; no provider writes it yet, so the host
+# branch is documented as unreachable until an engine-level bitter/stone
+# provider lands (see docs/PIKMIN2_FROG_RUNTIME_ACCEPTANCE.md).
+BITTER_HOST_FIELD = 'Creature::mIsFrozen'
+BITTER_SOURCES = ('none', 'host', 'override')
+
 FSM_STATES = ('Dead', 'Wait', 'Turn', 'Jump', 'JumpWait', 'Fall', 'Attack',
               'Fail', 'TurnToHome', 'GoHome')
 
@@ -76,6 +84,23 @@ def landing_press(kind, bittered):
     return not bittered
 
 
+def effective_bittered(host_frozen=False, override=False):
+    """Resolve the source "unless bittered" precondition from host state.
+
+    The native rule ORs the real engine field ``Creature::mIsFrozen`` (the only
+    creature-level freeze/stone candidate on ``BTeki``) with the family-local
+    ``pc_p2_frog_set_bittered`` fixture override. ``origin`` reports which one
+    supplied the bit so a fixture can toggle and observe both branches; it is
+    ``'override'``, ``'host'`` or ``'none'``. No provider in this tree writes
+    ``host_frozen`` yet.
+    """
+    if override:
+        return {'bittered': True, 'origin': 'override', 'host_frozen': bool(host_frozen)}
+    if host_frozen:
+        return {'bittered': True, 'origin': 'host', 'host_frozen': True}
+    return {'bittered': False, 'origin': 'none', 'host_frozen': False}
+
+
 def landing_press_victims(bittered, grounded_pikmin, grounded_navi):
     """Resolve which grounded actors a falling frog presses.
 
@@ -100,7 +125,7 @@ def head_radius(kind):
     return HEAD_RADIUS[name]
 
 
-def landing_press_receiver(species, grounded_pikmin, grounded_navi, bittered, radius):
+def landing_press_receiver(species, grounded_pikmin, grounded_navi, bittered, radius, origin='unknown'):
     """Resolve a source landing press and the radius used.
 
     ``radius`` is the observed landing/receiver radius for this event. The
@@ -109,6 +134,8 @@ def landing_press_receiver(species, grounded_pikmin, grounded_navi, bittered, ra
     so a native ``P2_FROG_LAND`` row can be judged without asserting it. The
     source rule presses every grounded Pikmin/Navi on contact unless the frog is
     bittered; ``outcome`` is ``'pressed'``, ``'bittered'`` or ``'no_receiver'``.
+    ``origin`` names where the bittered bit came from (``'none'``/``'host'``/
+    ``'override'``), matching ``effective_bittered``.
     """
     name, _ = _params(species)
     if radius is not None and (not isinstance(radius, (int, float)) or radius <= 0):
@@ -118,7 +145,7 @@ def landing_press_receiver(species, grounded_pikmin, grounded_navi, bittered, ra
     outcome = 'bittered' if bittered else ('pressed' if victims['pressed'] else 'no_receiver')
     return {'species': name, 'source_radius': HEAD_RADIUS[name], 'radius_used': used,
             'radius_matches_source': used == HEAD_RADIUS[name],
-            'bittered': bool(bittered), 'outcome': outcome,
+            'bittered': bool(bittered), 'outcome': outcome, 'origin': origin,
             'pressed_pikmin': victims['pressed_pikmin'], 'pressed_navi': victims['pressed_navi'],
             'pressed': victims['pressed']}
 
