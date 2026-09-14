@@ -131,6 +131,30 @@ damage. The earlier single-transition run
 (`output/lane32-fsmhost-runtime3/3fa5cb8f…`, fixture-02) is superseded but kept
 for the record.
 
+## Integration-ready series on the lane-01 native line
+
+The slice was rebased onto the lane-01 reconciled native head (Batch D, #437)
+and re-verified, so it is ready to integrate without re-resolving shared files:
+
+- Native branch `opencode/p2-lane32-integ` @ `d288dd7b7771b4fe6c45bdc35ace37bb3ff986de`,
+  based on `opencode/p2-lane01-hardlanes` @ `90d87f53` (clean). Commits
+  `1acc4481` → `149ce1b5` → `aa1eefc4` → `d288dd7b`. The only shared-file edit is
+  the additive `CMakeLists.txt` TU line; it was resolved additively here. The
+  mandatory window baseline was already present in the lane-01 line as
+  `9f179c88`, so the equivalent cherry-pick resolved empty and was skipped.
+- Bundle: `native-candidates/bigtreasure-fsmhost-integ/`
+  (`bigtreasure-fsmhost-integ-full.patch`, `patches/0001..0004`,
+  `provenance.json`).
+- Private build `output/native-lane32-integ-build` (534/534), `ninja -n` = no
+  work, exe SHA-256
+  `ab078d117e6226b31e09ec044a49eda2c8c39f505f761cb91738cfff9a1b5ffe`.
+- Fixture `output/lane32-integ-fixture-01` SHA-256
+  `367e50593fc08d8a4f34eeb00912a89bb658bf7dd5d9c6596e548ac906fbe449`; run
+  `output/lane32-integ-runtime-01/2d0df22bd44b43f4bb5f67bf9630feb0` status
+  `passed` with `P2_BIGTREASURE_FSMHOST_FULL_PASS knockoffs=4 weapons=0
+  phase=DropItem transitions=4`, `P2_BIGTREASURE_WINDOW size=960x540`, and
+  `PASS BIGTREASURE_RUNTIME`.
+
 ## Remaining gaps
 
 - **Receiver routing from a real Pikmin attack volume is lane 10.** The damage
