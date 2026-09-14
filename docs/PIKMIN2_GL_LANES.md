@@ -124,3 +124,11 @@ The probes establish a functioning hidden second context and no observed focus
 change. They do not establish every existing fixture's input isolation, game
 state equivalence, or worst-case dual-game memory/frame-time budgets. Qualify
 each game fixture before moving it to B; retain exclusive performance runs.
+
+Occupancy correction, 2026-09-14 16:04 EDT: PID 38088 above was later identified
+as an orphaned lane-33 QA run: its Python launcher 37132 survived a missing parent
+39288. Following the user's report, those exact processes were stopped; all
+session files and logs were preserved. Both leases were free and no fixture or
+nectar process remained at verification. The PID references above are historical
+probe evidence, not a current reservation. Audit:
+`output/gl-lanes/orphan-lane33-38088.json`; interruption recorded in #444/#186.
