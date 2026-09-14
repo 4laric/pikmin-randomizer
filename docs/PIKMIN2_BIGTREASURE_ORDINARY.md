@@ -24,7 +24,7 @@ The integrated baseline ran the BigTreasure host seam from
 `pc_p2_hardlanes_update` through the **injected attack shortcut**
 (`p2_bigtreasure_host_tick_entry`: pacer -> pick -> `pools.start`); the 12-state
 policy stepped only inside `tools/p2_bigtreasure_runtime.cpp`. This slice does
-two things:
+three things:
 
 1. **Ordinary-update FSM host drive.** `pc_p2_hardlanes_update` now steps the
    real 12-state policy from the live game loop, with a single natural-hit
@@ -34,6 +34,10 @@ two things:
    event player over the lane's `P2_RETAIL_EVENTS_1` motion table and feeds the
    policy its `animEnd` / `keyEvent2` / `keyEvent100` pulses. This is what lets
    the policy leave `Land` in ordinary play.
+3. **Persistent element runtime.** A started attack is no longer inert: a new
+   lane-owned runtime owns the source fire/gas/water/elec controllers and steps
+   them each source tick against the lane map trace, so the live loop emits and
+   moves attack nodes.
 
 New lane-owned native files:
 
@@ -46,9 +50,14 @@ New lane-owned native files:
 - `pc_port/pc_p2_bigtreasure_animclock.h/.cpp` — engine-free
   `P2BigTreasureAnimClock`: state->clip mapping, retail event -> FSM pulse
   translation, and its own `P2BigTreasureMotionBank` + `p2retail::Player`.
+- `pc_port/pc_p2_bigtreasure_elements.h/.cpp` — engine-free
+  `P2BigTreasureElementRuntime`: owns the fire/gas/water/elec policies, starts
+  the controller the FSM started, and steps it against an injected trace/ground
+  host.
 - `tools/p2_bigtreasure_ordinary_test.cpp` (5 groups),
   `tools/p2_bigtreasure_animclock_test.cpp` (4 groups),
-  `tools/p2_bigtreasure_natural_test.cpp` (end-to-end chain to attack).
+  `tools/p2_bigtreasure_natural_test.cpp` (end-to-end chain to attack),
+  `tools/p2_bigtreasure_elements_test.cpp` (4 groups).
 
 Wired seam (additive) in `pc_port/pc_p2_hardlanes.cpp/.h`:
 
@@ -62,7 +71,7 @@ Wired seam (additive) in `pc_port/pc_p2_hardlanes.cpp/.h`:
   motion table); absent table leaves it inactive. The ordinary update steps the
   clock then the drive and logs each phase change as
   `P2_BIGTREASURE_FSM phase=<name> weapons=<n> clip=<clip>`.
-- `CMakeLists.txt`: two additive TU lines.
+- `CMakeLists.txt`: three additive TU lines.
 
 ## State -> clip map (source-grounded)
 
@@ -107,10 +116,12 @@ target angle (host work). Event types map `1000 -> animEnd`, `2 -> keyEvent2`,
 
 - `PASS BIGTREASURE_ORDINARY` (5/5), SHA-256 `8D8CE5E2371B0C6FC9C841507A9FBE8832435F80FC07C177A13EDD723C22B998`.
 - `PASS BIGTREASURE_ANIMCLOCK` (4/4), SHA-256 `A4A2B4D443F26613E5E0432444C3C1C426BFD10F345601562FB9CAD5813A2376`.
-- `PASS BIGTREASURE_NATURAL` (2/2), SHA-256 `C1F6D512BAD6F8D67A4EA67FB5B448CD1065962386793E16499C2CEF42AA0C23`:
-  the keyframe clock + ordinary drive reach `Attack` and fire `startAttack`,
-  then natural hits knock off all four weapons to `DropItem`, and death
-  releases Louie and confirms the kill.
+- `PASS BIGTREASURE_NATURAL` (2/2): the keyframe clock + ordinary drive reach
+  `Attack` and fire `startAttack`, then natural hits knock off all four weapons
+  to `DropItem`, and death releases Louie and confirms the kill.
+- `PASS BIGTREASURE_ELEMENTS` (4/4): the persistent runtime starts the correct
+  source controller, emits/steps nodes over the injected terrain and reports
+  bounce/ground counters.
 - Regression: `PASS BIGTREASURE_FSMHOST` (8/8) still green.
 
 **Production compile/link** (private, maintained config): build dir
@@ -118,7 +129,7 @@ target angle (host work). Event types map `1000 -> animEnd`, `2 -> keyEvent2`,
 `PIKMIN_NATIVE_OPTIMIZE=OFF`, test hooks OFF, MinGW GCC 16.2.0.
 `[545/545] Linking CXX executable bin\nectar.exe`, exit 0;
 `ninja -n pikmin_pc` = `no work to do`. Executable SHA-256
-`91AF796FC3C991CAFEEFF51DFBE5B608C7B22633ADC5818585A43A6553F86631`.
+`A019E17B4A3CECED74397F2CFC5D2B6B0600E0AE1B2B7BDC2BFC9EB61CF814A2`.
 
 **Real-GL runtime (this pass).** Fixture `output/lane32-anim-fixture-02`
 built from native `cb8e6d45` (fixture.exe SHA-256
@@ -151,6 +162,25 @@ no regression on the four-weapon injected fixture. The live run reached
 `ItemWait`; the full `PreAttack -> Attack -> startAttack` chain is proven in the
 deterministic `BIGTREASURE_NATURAL` fixture above.
 
+**Live ordinary cycle (this pass).** With the finite fixture run bounded, the
+same private `nectar.exe` build was run unattended for 55 s in the prepared
+overlay (`output/lane32-elements-runtime-02/dd55d28e…`, log
+`native-live2.log`, SHA-256
+`05B85A8B4D44481B5704FD222985295487C78A6147B858E63454EC1598EBF7D4`). The
+ordinary loop ran the full repeated lifecycle and emitted real attack nodes:
+
+```text
+P2_BIGTREASURE_FSM phase=Attack weapons=4 clip=attacke
+P2_BIGTREASURE_ATTACK_START weapon=elec
+P2_BIGTREASURE_ATTACK_EMIT weapon=elec nodes=11
+P2_BIGTREASURE_FSM phase=PutItem weapons=4 clip=attackende
+P2_BIGTREASURE_FSM phase=ItemWalk weapons=4 clip=move1
+P2_BIGTREASURE_FSM phase=PreAttack weapons=4 clip=preattacke
+```
+
+The attack repeats (PreAttack -> Attack -> PutItem -> ItemWalk -> PreAttack).
+No Pikmin health change is claimed: the damage receiver is lane 10.
+
 ## Clip availability audit (lane 32 next-wave row)
 
 - **Source registry:** 30 animation registrations
@@ -168,11 +198,14 @@ deterministic `BIGTREASURE_NATURAL` fixture above.
 ## Remaining gaps
 
 - **Receiver routing from a real Pikmin attack volume (lane 10):** the hit
-  ingress is ready and the `BIGTREASURE_NATURAL` fixture proves the downstream
-  knock-off/finale; the live caller is not integrated. Until then the live run
-  reaches `ItemWait` but not a natural weapon knock-off.
+  ingress is ready, the element runtime emits/moves in the live loop, and the
+  downstream knock-off/finale is proven in `BIGTREASURE_NATURAL`; the live
+  Pikmin-damage receiver is not integrated.
 - **IK bridge:** `finishIKMotion` is fed as always-true (no IK-system bridge),
   matching the fixture inputs; a real `isFinishIKMotion` query is future work.
+- **Animation finish gating:** the authored loop marker is treated as the host
+  cycle end because the per-weapon time-max parms are not yet fed; the true
+  source gates on `stateTimer > getPreAttackTimeMax()`.
 - **Fire direction:** the forward `attackf`/`preattackf` variant is used; the
   source target-angle selection is not yet wired.
 - **Visual playback:** the shared visual bank still plays its own clip; the
@@ -184,21 +217,23 @@ deterministic `BIGTREASURE_NATURAL` fixture above.
 
 ```text
 Concrete source ID and missing gate addressed: 73 BigTreasure (Titan
-Dweevil) — FSM host -> ordinary update, animation keyframe source, natural-hit
-ingress. Natural arena knock-off still gated on the lane-10 receiver.
-Root base/head: 3851d4b; native f14c6851; native head cb8e6d45.
+Dweevil) — FSM host -> ordinary update, animation keyframe source, persistent
+element runtime, natural-hit ingress. Natural Pikmin->weapon knock-off in the
+live arena still gated on the lane-10 receiver.
+Root base/head: 3851d4b; native f14c6851; native head 1cb9f697.
 Owned files: pc_port/pc_p2_bigtreasure_ordinary.{h,cpp};
   pc_port/pc_p2_bigtreasure_animclock.{h,cpp};
-  pc_port/pc_p2_hardlanes.{h,cpp} (additive); CMakeLists.txt (+2 TU);
-  tools/p2_bigtreasure_{ordinary,animclock,natural}_test.cpp.
+  pc_port/pc_p2_bigtreasure_elements.{h,cpp};
+  pc_port/pc_p2_hardlanes.{h,cpp} (additive); CMakeLists.txt (+3 TU);
+  tools/p2_bigtreasure_{ordinary,animclock,natural,elements}_test.cpp.
 Private build: output/native-lane32-ordinary-build (Ninja/Release/JAudio ON/
-  optimize OFF/hooks OFF); exe SHA-256 91AF796F...F86631; ninja -n no work.
-Fixture: PASS BIGTREASURE_ORDINARY, BIGTREASURE_ANIMCLOCK, BIGTREASURE_NATURAL.
-Natural vs injected: keyframes from the lane's own motion player; hits enter by
-  pc_p2_hardlanes_bigtreasure_hit (lane-10 boundary). Real-GL: run
-  lane32-anim-runtime-02/437cf39c... passed, full 29-clip stage, phase
-  Stay->Land->ItemWalk->ItemWait in the live loop; four-weapon fixture markers
-  unchanged.
+  optimize OFF/hooks OFF); exe SHA-256 A019E17B...F814A2; ninja -n no work.
+Fixture: PASS BIGTREASURE_{ORDINARY,ANIMCLOCK,NATURAL,ELEMENTS}.
+Natural vs injected: keyframes and element motion from the lane's own modules;
+  hits enter by pc_p2_hardlanes_bigtreasure_hit (lane-10 boundary). Real-GL:
+  fixture run lane32-elements-runtime-02/dd55d28e... passed (29-clip stage); live
+  55 s run native-live2.log shows the full repeated Attack cycle with elec nodes
+  emitted; four-weapon fixture markers unchanged.
 Combined-scene impact: none measured; additive lane-owned TUs only.
 Next consumer: lane 10 receiver -> pc_p2_hardlanes_bigtreasure_hit.
 ```

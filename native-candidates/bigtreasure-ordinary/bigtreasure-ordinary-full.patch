@@ -1,22 +1,23 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 6beb36f3..38a2b58f 100644
+index 6beb36f3..a2b4a9ff 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -223,6 +223,8 @@ set(PC_PORT_SOURCES
+@@ -223,6 +223,9 @@ set(PC_PORT_SOURCES
      pc_port/pc_p2_bigtreasure_map_trace.cpp
      pc_port/pc_p2_bigtreasure_motion.cpp
      pc_port/pc_p2_bigtreasure_visual.cpp
 +    pc_port/pc_p2_bigtreasure_ordinary.cpp
 +    pc_port/pc_p2_bigtreasure_animclock.cpp
++    pc_port/pc_p2_bigtreasure_elements.cpp
      pc_port/pc_randomizer.cpp
      pc_port/pc_p2_kurage.cpp
      pc_port/pc_p2_kurage_arena.cpp
 diff --git a/pc_port/pc_p2_bigtreasure_animclock.cpp b/pc_port/pc_p2_bigtreasure_animclock.cpp
 new file mode 100644
-index 00000000..f4c18358
+index 00000000..f958a1bb
 --- /dev/null
 +++ b/pc_port/pc_p2_bigtreasure_animclock.cpp
-@@ -0,0 +1,117 @@
+@@ -0,0 +1,123 @@
 +#include "pc_p2_bigtreasure_animclock.h"
 +
 +#include <cstdio>
@@ -83,6 +84,12 @@ index 00000000..f4c18358
 +        case 1000: out.animEnd = true; break;
 +        case 2: out.keyEvent2 = true; break;
 +        case 100: out.keyEvent100 = true; break;
++        // The authored loop marker is where the host ends the current cycle.
++        // The policy's idle states ignore animEnd, so this only finishes the
++        // one-shot states (Land / PreAttack / Attack / PutItem / Flick /
++        // DropItem / Dead); it mirrors the fixed loop-window the retail
++        // event-player fixture stops on.
++        case 1: out.animEnd = true; break;
 +        default: break;
 +        }
 +    }
@@ -136,10 +143,10 @@ index 00000000..f4c18358
 +}
 diff --git a/pc_port/pc_p2_bigtreasure_animclock.h b/pc_port/pc_p2_bigtreasure_animclock.h
 new file mode 100644
-index 00000000..da1e638a
+index 00000000..f3d3fb53
 --- /dev/null
 +++ b/pc_port/pc_p2_bigtreasure_animclock.h
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,62 @@
 +#pragma once
 +
 +#include "pc_p2_bigtreasure.h"
@@ -176,8 +183,9 @@ index 00000000..da1e638a
 +                              char* out, std::size_t capacity);
 +
 +// Maps retail-dispatched event types to FSM keyframe pulses: 1000 (implicit
-+// completion) -> animEnd; authored KEYEVENT_2 -> keyEvent2; KEYEVENT_100 ->
-+// keyEvent100. Other authored types are host-side effects the policy ignores.
++// completion) and 1 (authored loop marker, treated as the host cycle end) ->
++// animEnd; authored KEYEVENT_2 -> keyEvent2; KEYEVENT_100 -> keyEvent100.
++// Other authored types are host-side effects the policy ignores.
 +void p2_bigtreasure_anim_translate(const int* types, int count,
 +                                   P2BigTreasureAnimPulses& out);
 +
@@ -200,6 +208,197 @@ index 00000000..da1e638a
 +    P2BigTreasureMotionBank mBank;
 +    p2retail::Player mPlayer;
 +    char mActiveName[40] = {};
++};
+diff --git a/pc_port/pc_p2_bigtreasure_elements.cpp b/pc_port/pc_p2_bigtreasure_elements.cpp
+new file mode 100644
+index 00000000..693787bb
+--- /dev/null
++++ b/pc_port/pc_p2_bigtreasure_elements.cpp
+@@ -0,0 +1,119 @@
++#include "pc_p2_bigtreasure_elements.h"
++
++namespace {
++constexpr float kElecJointRaise = 100.0f;
++constexpr float kWaterEmitRaise = 100.0f;
++constexpr float kWaterTargetRange = 200.0f;
++} // namespace
++
++bool P2BigTreasureElementRuntime::start(int weapon, const P2BigTreasureVec3& origin,
++                                        float groundHeight, float weaponHealth,
++                                        float damagedPick, float pick01)
++{
++    reset();
++    if (weapon < 0 || weapon >= P2BTWEAPON_Count) {
++        return false;
++    }
++    mWeapon = weapon;
++    mGround = groundHeight;
++    mOrigin = origin;
++    const float zero[P2BigTreasureElecPolicy::kCapacity] = {};
++    switch (weapon) {
++    case P2BTWEAPON_Fire:
++        return mFire.start(p2_bigtreasure_fire_params(weaponHealth));
++    case P2BTWEAPON_Gas:
++        return mGas.start(p2_bigtreasure_gas_params(weaponHealth, damagedPick), 0.0f, true);
++    case P2BTWEAPON_Water:
++        return mWater.start(p2_bigtreasure_water_params(weaponHealth));
++    case P2BTWEAPON_Elec: {
++        const P2BigTreasureVec3 joint{ origin.x, origin.y + kElecJointRaise, origin.z };
++        return mElec.start(p2_bigtreasure_elec_params(weaponHealth, pick01), joint, 0.0f,
++                           zero, zero, zero);
++    }
++    default:
++        break;
++    }
++    mWeapon = -1;
++    return false;
++}
++
++void P2BigTreasureElementRuntime::finish()
++{
++    switch (mWeapon) {
++    case P2BTWEAPON_Fire: mFire.finish(); break;
++    case P2BTWEAPON_Gas: mGas.finish(); break;
++    case P2BTWEAPON_Water: mWater.finish(); break;
++    case P2BTWEAPON_Elec: mElec.finish(); break;
++    default: break;
++    }
++    mWeapon = -1;
++    mPrevNodes = 0;
++}
++
++void P2BigTreasureElementRuntime::defeat()
++{
++    mFire.finish();
++    mGas.finish();
++    mWater.defeat();
++    mElec.finish();
++    mWeapon = -1;
++    mPrevNodes = 0;
++}
++
++void P2BigTreasureElementRuntime::reset()
++{
++    mFire = P2BigTreasureFirePolicy();
++    mGas = P2BigTreasureGasPolicy();
++    mWater = P2BigTreasureWaterPolicy();
++    mElec = P2BigTreasureElecPolicy();
++    mWeapon = -1;
++    mGround = 0.0f;
++    mOrigin = P2BigTreasureVec3{};
++    mPrevNodes = 0;
++}
++
++void P2BigTreasureElementRuntime::tick(float delta, const P2BigTreasureElementHost& host,
++                                       P2BigTreasureElementStats& out)
++{
++    out = P2BigTreasureElementStats{};
++    if (mWeapon < 0) {
++        return;
++    }
++    switch (mWeapon) {
++    case P2BTWEAPON_Fire:
++        mFire.tick(delta);
++        out.nodes = mFire.nodeCount();
++        break;
++    case P2BTWEAPON_Gas:
++        mGas.tick(delta, false);
++        out.nodes = mGas.nodeCount();
++        break;
++    case P2BTWEAPON_Water: {
++        if (mWater.tickEmitter(delta)) {
++            const P2BigTreasureVec3 emit{ mOrigin.x, mGround + kWaterEmitRaise, mOrigin.z };
++            const P2BigTreasureVec3 target{ mOrigin.x, mGround,
++                                            mOrigin.z + kWaterTargetRange };
++            mWater.emitShot(emit, target, 0.0f, 0.0f, delta);
++        }
++        int groundHits = 0;
++        mWater.tick(delta, host.ground, host.context, &groundHits);
++        out.groundHits = groundHits;
++        out.nodes = mWater.activeCount();
++        break;
++    }
++    case P2BTWEAPON_Elec: {
++        const P2BigTreasureVec3 joint{ mOrigin.x, mOrigin.y + kElecJointRaise, mOrigin.z };
++        int bounces = 0;
++        mElec.tick(delta, joint, host.trace, host.context, &bounces);
++        out.bounces = bounces;
++        out.nodes = mElec.activeCount();
++        break;
++    }
++    default:
++        break;
++    }
++    if (out.nodes > mPrevNodes) {
++        out.emits = out.nodes - mPrevNodes;
++    }
++    mPrevNodes = out.nodes;
++}
+diff --git a/pc_port/pc_p2_bigtreasure_elements.h b/pc_port/pc_p2_bigtreasure_elements.h
+new file mode 100644
+index 00000000..859d18a1
+--- /dev/null
++++ b/pc_port/pc_p2_bigtreasure_elements.h
+@@ -0,0 +1,60 @@
++#pragma once
++
++#include "pc_p2_bigtreasure_attacks.h"
++
++// Lane-owned persistent element-controller runtime for the BigTreasure
++// ordinary encounter (#246). The FSM host starts an attack through the attack
++// pools (lifetime ledger); this module owns the actual per-element node motion
++// so a started attack is not inert in ordinary play. It reuses the existing
++// source policies (fire/gas/water/elec) and the lane terrain/trace adapter; the
++// Pikmin-damage receiver is lane 10's boundary and is intentionally not
++// invented here.
++//
++// Engine-free: the map trace/ground are injected through P2BigTreasureElementHost.
++
++struct P2BigTreasureElementHost {
++    void* context = nullptr;
++    P2BigTreasureTraceFn trace = nullptr;   // elec sphere trace
++    P2BigTreasureGroundFn ground = nullptr; // water bubble impact sample
++};
++
++struct P2BigTreasureElementStats {
++    int nodes = 0;      // currently active nodes for the running element
++    int emits = 0;      // nodes spawned this tick
++    int bounces = 0;    // elec floor-bounce events this tick
++    int groundHits = 0; // water ground impacts this tick
++};
++
++class P2BigTreasureElementRuntime {
++public:
++    // Starts the source controller for `weapon` at `origin` (boss base) on a
++    // floor at `groundHeight`, scaled by the weapon's current health. The
++    // damaged-set and elec pick inputs are host randWeightFloat values.
++    bool start(int weapon, const P2BigTreasureVec3& origin, float groundHeight,
++               float weaponHealth, float damagedPick, float pick01);
++
++    // Mirrors finishAttack: stops emission; fire/gas/elec recycle, water keeps
++    // flying (source gap 2, preserved by the policy).
++    void finish();
++
++    // Lane teardown: force-recycle everything, including in-flight water.
++    void defeat();
++    void reset();
++
++    bool active() const { return mWeapon >= 0; }
++    int activeWeapon() const { return mWeapon; }
++
++    // One 30 Hz source tick for the running element.
++    void tick(float delta, const P2BigTreasureElementHost& host,
++              P2BigTreasureElementStats& out);
++
++private:
++    int mWeapon = -1;
++    float mGround = 0.0f;
++    P2BigTreasureVec3 mOrigin{};
++    P2BigTreasureFirePolicy mFire;
++    P2BigTreasureGasPolicy mGas;
++    P2BigTreasureWaterPolicy mWater;
++    P2BigTreasureElecPolicy mElec;
++    int mPrevNodes = 0;
 +};
 diff --git a/pc_port/pc_p2_bigtreasure_ordinary.cpp b/pc_port/pc_p2_bigtreasure_ordinary.cpp
 new file mode 100644
@@ -381,19 +580,21 @@ index 00000000..46af527e
 +    int mCount = 0;
 +};
 diff --git a/pc_port/pc_p2_hardlanes.cpp b/pc_port/pc_p2_hardlanes.cpp
-index c093d9fe..d9fa5190 100644
+index c093d9fe..a5438a02 100644
 --- a/pc_port/pc_p2_hardlanes.cpp
 +++ b/pc_port/pc_p2_hardlanes.cpp
-@@ -26,6 +26,8 @@
+@@ -26,6 +26,10 @@
  #include "pc_p2_bombsarai_terrain.h"
  #include "pc_p2_fuefuki_binding.h"
  #include "pc_p2_bigtreasure_host.h"
 +#include "pc_p2_bigtreasure_ordinary.h"
 +#include "pc_p2_bigtreasure_animclock.h"
++#include "pc_p2_bigtreasure_elements.h"
++#include "pc_p2_bigtreasure_map_trace.h"
  #include "pc_p2_bigtreasure_visual.h"
  #include "Matrix4f.h"
  #include "pc_bbft.h"
-@@ -43,6 +45,7 @@
+@@ -43,6 +47,7 @@
  #include "teki.h"
  #include <cstdint>
  #include <cstdio>
@@ -401,17 +602,31 @@ index c093d9fe..d9fa5190 100644
  #include <map>
  
  namespace {
-@@ -178,10 +181,35 @@ P2FuefukiFsmParms fuefukiParms()
+@@ -178,10 +183,49 @@ P2FuefukiFsmParms fuefukiParms()
  // BigTreasure (#246)
  constexpr float kBigTreasureSourceDelta = 1.0f / 30.0f;
  P2BigTreasureHostSeam sBigTreasure;
 +P2BigTreasureOrdinary sBigTreasureOrdinary;
 +P2BigTreasureAnimClock sBigTreasureClock;
++P2BigTreasureElementRuntime sBigTreasureElements;
++P2BigTreasureMapTrace sBigTreasureTrace;
++bool sBigTreasureAttackLogged = false;
  bool sBigTreasureReady = false;
  bool sBigTreasureVisualReady = false;
  float sBigTreasureGround = 0.0f;
  double sBigTreasureDebt = 0.0;
 +P2BigTreasurePhase sBigTreasurePhase = P2BT_Dead;
++
++const char* bigTreasureWeaponName(int weapon)
++{
++    switch (weapon) {
++    case P2BTWEAPON_Elec: return "elec";
++    case P2BTWEAPON_Fire: return "fire";
++    case P2BTWEAPON_Gas: return "gas";
++    case P2BTWEAPON_Water: return "water";
++    default: return "?";
++    }
++}
 +
 +// Source isAttackLimitTime box test: a live Navi/Pikmin inside the 225-unit XZ
 +// box around the fixed placement. The ordinary FSM drive consumes the result
@@ -437,12 +652,14 @@ index c093d9fe..d9fa5190 100644
  }
  
  void pc_p2_hardlanes_reset()
-@@ -196,11 +224,23 @@ void pc_p2_hardlanes_reset()
+@@ -196,11 +240,25 @@ void pc_p2_hardlanes_reset()
      sFuefukiHeld.clear();
      sFuefukiNextId = 1;
      p2_bigtreasure_host_reset(sBigTreasure);
 +    sBigTreasureOrdinary.reset(P2BigTreasureFsmParms());
 +    sBigTreasureClock.reset();
++    sBigTreasureElements.defeat();
++    sBigTreasureAttackLogged = false;
      pc_p2_bigtreasure_visual_reset();
      sBigTreasureReady = false;
      sBigTreasureVisualReady = false;
@@ -461,7 +678,7 @@ index c093d9fe..d9fa5190 100644
  }
  
  void pc_p2_hardlanes_setup()
-@@ -248,6 +288,13 @@ void pc_p2_hardlanes_setup()
+@@ -248,6 +306,14 @@ void pc_p2_hardlanes_setup()
      // BigTreasure (#246): fixed-placement host seam + sampled visual bank.
      if (p2_bigtreasure_host_setup("p2-bigtreasure-host.txt", sBigTreasure)) {
          sBigTreasureReady = true;
@@ -472,10 +689,11 @@ index c093d9fe..d9fa5190 100644
 +        if (sBigTreasureClock.load("p2_bigtreasure_events.txt")) {
 +            std::printf("P2_HARDLANES_READY family=BigTreasure keyframes=1\n");
 +        }
++        sBigTreasureTrace.reset(mapMgr);
          sBigTreasureGround = mapMgr->getMinY(0.0f, 0.0f, false);
          std::printf("P2_HARDLANES_READY family=BigTreasure host=1 captures=5\n");
      }
-@@ -298,8 +345,39 @@ void pc_p2_hardlanes_update()
+@@ -298,8 +364,73 @@ void pc_p2_hardlanes_update()
          if (ticks > 4) ticks = 4;
          sBigTreasureDebt -= ticks * static_cast<double>(kBigTreasureSourceDelta);
          for (int i = 0; i < ticks; ++i) {
@@ -513,6 +731,40 @@ index c093d9fe..d9fa5190 100644
 +                                P2BigTreasureFsm::stateName(phase),
 +                                sBigTreasure.ownership.weaponCount(), clip);
 +                }
++                // Element runtime: start the source controller the FSM just
++                // started through the pools, and step it against the lane map
++                // trace so a live attack actually emits/moves. The Pikmin
++                // damage receiver stays lane 10's boundary.
++                if (fsmOut.fsm.startAttack) {
++                    const int weapon = sBigTreasureOrdinary.chosenWeapon();
++                    const P2BigTreasureVec3 origin{ sBigTreasure.placement.owner.x,
++                                                    sBigTreasureGround,
++                                                    sBigTreasure.placement.owner.z };
++                    if (sBigTreasureElements.start(
++                            weapon, origin, sBigTreasureGround,
++                            sBigTreasure.ownership.weaponHealth(weapon), 0.25f, 0.25f)) {
++                        sBigTreasureAttackLogged = false;
++                        std::printf("P2_BIGTREASURE_ATTACK_START weapon=%s\n",
++                                    bigTreasureWeaponName(weapon));
++                    }
++                }
++                if (fsmOut.fsm.finishAttack) {
++                    sBigTreasureElements.finish();
++                }
++                if (sBigTreasureElements.active()) {
++                    P2BigTreasureElementHost elementHost;
++                    elementHost.context = &sBigTreasureTrace;
++                    elementHost.trace = P2BigTreasureMapTrace::trace;
++                    elementHost.ground = P2BigTreasureMapTrace::ground;
++                    P2BigTreasureElementStats elementStats;
++                    sBigTreasureElements.tick(kBigTreasureSourceDelta, elementHost, elementStats);
++                    if (!sBigTreasureAttackLogged && elementStats.nodes > 0) {
++                        sBigTreasureAttackLogged = true;
++                        std::printf("P2_BIGTREASURE_ATTACK_EMIT weapon=%s nodes=%d\n",
++                                    bigTreasureWeaponName(sBigTreasureElements.activeWeapon()),
++                                    elementStats.nodes);
++                    }
++                }
 +            }
              if (sBigTreasureVisualReady) {
                  if (pc_p2_bigtreasure_visual_completed()) pc_p2_bigtreasure_visual_clip("wait1");
@@ -534,10 +786,10 @@ index b2cc3f93..5666488b 100644
 +bool pc_p2_hardlanes_bigtreasure_hit(int weapon, float damage, bool bittered);
 diff --git a/tools/p2_bigtreasure_animclock_test.cpp b/tools/p2_bigtreasure_animclock_test.cpp
 new file mode 100644
-index 00000000..fea75379
+index 00000000..e47e0e48
 --- /dev/null
 +++ b/tools/p2_bigtreasure_animclock_test.cpp
-@@ -0,0 +1,187 @@
+@@ -0,0 +1,193 @@
 +// Standalone engine-free fixture for the BigTreasure animation keyframe source
 +// (pc_port/pc_p2_bigtreasure_animclock.h/.cpp), issue #246. Proves the source
 +// state -> clip mapping, the retail event -> FSM pulse translation, and that
@@ -636,10 +888,16 @@ index 00000000..fea75379
 +    p2_bigtreasure_anim_translate(all, 3, pulses);
 +    assert(pulses.animEnd && pulses.keyEvent2 && pulses.keyEvent100);
 +
-+    const int none[] = {0, 1, 3, 7};
++    const int none[] = {0, 3, 7};
 +    pulses = P2BigTreasureAnimPulses{};
-+    p2_bigtreasure_anim_translate(none, 4, pulses);
++    p2_bigtreasure_anim_translate(none, 3, pulses);
 +    assert(!pulses.animEnd && !pulses.keyEvent2 && !pulses.keyEvent100);
++
++    // The authored loop marker ends the host cycle.
++    const int loop[] = {1};
++    pulses = P2BigTreasureAnimPulses{};
++    p2_bigtreasure_anim_translate(loop, 1, pulses);
++    assert(pulses.animEnd);
 +
 +    pulses = P2BigTreasureAnimPulses{};
 +    p2_bigtreasure_anim_translate(nullptr, 0, pulses);
@@ -723,6 +981,143 @@ index 00000000..fea75379
 +    testInactiveAndRestart();
 +    std::remove(kPath);
 +    std::puts("PASS BIGTREASURE_ANIMCLOCK");
++    return 0;
++}
+diff --git a/tools/p2_bigtreasure_elements_test.cpp b/tools/p2_bigtreasure_elements_test.cpp
+new file mode 100644
+index 00000000..dae416ed
+--- /dev/null
++++ b/tools/p2_bigtreasure_elements_test.cpp
+@@ -0,0 +1,131 @@
++// Standalone engine-free fixture for the BigTreasure persistent element runtime
++// (pc_port/pc_p2_bigtreasure_elements.h/.cpp), issue #246. Proves the runtime
++// starts the correct source controller, steps it with an injected terrain host
++// and reports node/emission/bounce/ground counters, and tears down cleanly.
++// Build (MinGW):
++//   g++ -std=gnu++17 -Wall -Wextra -Werror -Ipc_port tools/p2_bigtreasure_elements_test.cpp pc_port/pc_p2_bigtreasure_elements.cpp pc_port/pc_p2_bigtreasure_attacks.cpp -o <private-output>/p2_bigtreasure_elements_test.exe
++
++#include "pc_p2_bigtreasure_elements.h"
++
++#include <cassert>
++#include <cstdio>
++
++namespace {
++constexpr float kDt = 1.0f / 30.0f;
++
++bool mockTrace(void*, const P2BigTreasureVec3& position, const P2BigTreasureVec3& velocity,
++               float, float, float, P2BigTreasureTraceResult& result)
++{
++    result.position = P2BigTreasureVec3{ position.x, 20.0f, position.z }; // floor at y=0
++    result.velocity = P2BigTreasureVec3{ velocity.x, 0.0f, velocity.z };
++    result.floor = true;
++    result.wall = false;
++    result.groundY = 0.0f;
++    result.hasGroundY = true;
++    return true;
++}
++
++bool mockGround(void*, float, float, float* outY)
++{
++    *outY = 0.0f;
++    return true;
++}
++
++P2BigTreasureElementHost host()
++{
++    P2BigTreasureElementHost h;
++    h.context = nullptr;
++    h.trace = mockTrace;
++    h.ground = mockGround;
++    return h;
++}
++
++void testFireGas()
++{
++    P2BigTreasureElementRuntime runtime;
++    P2BigTreasureElementHost h = host();
++    P2BigTreasureElementStats stats;
++
++    assert(runtime.start(P2BTWEAPON_Fire, P2BigTreasureVec3{ 0, 0, 0 }, 0.0f,
++                         P2BigTreasureOwnership::kWeaponMaxHealth, 0.25f, 0.25f));
++    assert(runtime.active() && runtime.activeWeapon() == P2BTWEAPON_Fire);
++    int emitted = 0;
++    for (int i = 0; i < 30; ++i) {
++        runtime.tick(kDt, h, stats);
++        emitted += stats.emits;
++    }
++    assert(stats.nodes > 0 && emitted > 0);
++    runtime.finish();
++    assert(!runtime.active());
++
++    assert(runtime.start(P2BTWEAPON_Gas, P2BigTreasureVec3{ 0, 0, 0 }, 0.0f,
++                         P2BigTreasureOwnership::kWeaponMaxHealth, 0.25f, 0.25f));
++    int gasNodes = 0;
++    for (int i = 0; i < 30; ++i) {
++        runtime.tick(kDt, h, stats);
++        gasNodes = stats.nodes;
++    }
++    assert(gasNodes > 0);
++    runtime.defeat();
++    assert(!runtime.active());
++    std::puts("PASS elements_fire_gas");
++}
++
++void testWaterGroundHit()
++{
++    P2BigTreasureElementRuntime runtime;
++    P2BigTreasureElementHost h = host();
++    P2BigTreasureElementStats stats;
++    assert(runtime.start(P2BTWEAPON_Water, P2BigTreasureVec3{ 0, 0, 0 }, 0.0f,
++                         P2BigTreasureOwnership::kWeaponMaxHealth, 0.25f, 0.25f));
++    int hits = 0;
++    for (int i = 0; i < 80; ++i) {
++        runtime.tick(kDt, h, stats);
++        hits += stats.groundHits;
++    }
++    assert(hits > 0);
++    runtime.defeat();
++    std::puts("PASS elements_water_ground");
++}
++
++void testElecBounce()
++{
++    P2BigTreasureElementRuntime runtime;
++    P2BigTreasureElementHost h = host();
++    P2BigTreasureElementStats stats;
++    assert(runtime.start(P2BTWEAPON_Elec, P2BigTreasureVec3{ 0, 0, 0 }, 0.0f,
++                         P2BigTreasureOwnership::kWeaponMaxHealth, 0.25f, 0.25f));
++    int bounces = 0, maxNodes = 0;
++    for (int i = 0; i < 40; ++i) {
++        runtime.tick(kDt, h, stats);
++        bounces += stats.bounces;
++        if (stats.nodes > maxNodes) maxNodes = stats.nodes;
++    }
++    assert(maxNodes > 1); // anchor + at least one visible node
++    assert(bounces > 0);
++    runtime.finish();
++    std::puts("PASS elements_elec_bounce");
++}
++
++void testInvalidAndEmpty()
++{
++    P2BigTreasureElementRuntime runtime;
++    P2BigTreasureElementHost h = host();
++    P2BigTreasureElementStats stats;
++    assert(!runtime.start(-1, P2BigTreasureVec3{}, 0.0f, 6000.0f, 0.25f, 0.25f));
++    assert(!runtime.start(P2BTWEAPON_Count, P2BigTreasureVec3{}, 0.0f, 6000.0f, 0.25f, 0.25f));
++    runtime.tick(kDt, h, stats); // inactive: no-op
++    assert(stats.nodes == 0 && stats.emits == 0);
++    std::puts("PASS elements_invalid");
++}
++} // namespace
++
++int main()
++{
++    testFireGas();
++    testWaterGroundHit();
++    testElecBounce();
++    testInvalidAndEmpty();
++    std::puts("PASS BIGTREASURE_ELEMENTS");
 +    return 0;
 +}
 diff --git a/tools/p2_bigtreasure_natural_test.cpp b/tools/p2_bigtreasure_natural_test.cpp
