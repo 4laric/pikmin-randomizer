@@ -21,6 +21,7 @@ Design contract (agreed input to lanes 03/04/05)
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -592,7 +593,19 @@ def admission_set(roster: list[RosterEntry]) -> AdmissionSet:
 
 def admitted_ids(roster: list[RosterEntry]) -> list[int]:
     """Ordered source IDs a consumer may seed; empty while nothing is admitted."""
-    return list(admission_set(roster).admitted)
+    ids = list(admission_set(roster).admitted)
+    override = os.environ.get("PIKMIN_P2_ADMITTED_IDS")
+    if override:
+        # Private diagnostic scopes (candidate session run) admit extra identities
+        # for this process tree only; the product path never sets this.
+        for part in override.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            source_id = int(part)
+            if source_id not in ids:
+                ids.append(source_id)
+    return ids
 
 
 def require_admitted(roster: list[RosterEntry], source_id: int) -> RosterEntry:

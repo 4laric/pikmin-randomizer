@@ -7,6 +7,8 @@ from experimental import pikmin2_candidate_session as candidate
 from experimental import pikmin2_generated_session_acceptance as qa
 from experimental import pikmin2_seed_bridge as bridge
 from randomizer.seed import validate
+from randomizer.session import Session
+from randomizer.runner import NativeRun
 from tests.test_pikmin2_generated_session_acceptance import pin_for
 
 
@@ -111,3 +113,34 @@ def test_prepare_writes_reusable_candidate_runbook(tmp_path):
     assert "ENEMY_P2" in Path(data["bootstrap"]).read_text()
     with pytest.raises(ValueError):
         validate(json.loads(Path(data["manifest"]).read_text()))
+
+
+def test_p2_layout_journal_reloads_after_a_previous_run(tmp_path):
+    # Regression: Session journal recovery must accept the ENEMY_P2 bootstrap the
+    # runner writes (schema 9 + benefit_items + p2_layout = 31 tokens), so a
+    # second run of the same candidate session restarts instead of rejecting the
+    # prior run's journal as an incompatible manifest.
+    import hashlib
+    from experimental.pikmin2_staging import build_manifest, dump_manifest
+    pin = pin_for(tmp_path)
+    place = tmp_path / "placement.json"
+    place.write_text(json.dumps(placement()))
+    asset = tmp_path / "asset.txt"
+    asset.write_text("synthetic test content")
+    content = tmp_path / "content.json"
+    dump_manifest(build_manifest(1, [dict(id="test", kind="config", source=str(asset),
+        destination="p2-snow.txt", sha256=hashlib.sha256(asset.read_bytes()).hexdigest())],
+        identities=[45]), content)
+    manifest = None
+    with candidate.candidate_scope():
+        manifest = qa.generate_pinned_session("test", placement())
+    session_dir = tmp_path / "session"
+    with candidate.candidate_scope():
+        session = Session(manifest, session_dir)
+        run = NativeRun(session)
+        assert "ENEMY_P2" in run.bootstrap.read_text(encoding="ascii")
+        # The native game writes its check journal into the run directory; a
+        # restart must recover it without rejecting the ENEMY_P2 bootstrap.
+        (run.directory / "checks.txt").write_text("0\n", encoding="ascii")
+        reloaded = Session(manifest, session_dir)
+    assert reloaded.data["checked"] == [session.names[0]]
