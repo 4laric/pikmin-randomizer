@@ -71,15 +71,81 @@ Lane-02 roster ask: record `TEKI_P2Demon` as the lane-30 captor spawn identity
 (PC-only, default-deny until a generated seed emits it), distinct from the
 Dwarf Bulborb placeholder alias.
 
-## Remaining runtime proof
+## Runtime proof: dedicated identity spawned through the ordinary chain
 
-- Real-GL (reserved slot) generated-session spawn: the room stager
-  (`scripts/preview_pikmin2_room.py`, root/lane-03) must emit a generator whose
-  actor carries `TEKI_P2Demon` (or tag the reserved captor generator id), then
-  run `PIKMIN_DEMON_ORDINARY=1` with no explicit identity and observe
-  `DEMON_ORDINARY_IDENTITY ... dedicated=1` plus the natural
-  acquire/attack/capture/drop chain. Not run here (no GL slot; native-only
-  worktree).
-- Lane-03 spawn/manifest bridge: select the dedicated identity in the opt-in
-  generator rather than editing stager bytes; this native slice registers and
-  selects it only.
+The dedicated identity is now actually spawned, through an ordinary stage
+generator, and bound by the production manager. No shared stager was edited.
+
+- Branch `opencode/p2-demon-identity-spawn` from `cb624af6` (worktree
+  `output/native-lane30-rebase`); private build `output/native-lane30-rebase-build`
+  (`ninja -n pikmin_pc` = `no work to do.` — fixture-only change, production
+  untouched). Fixture built with
+  `output/p2-main-review/scripts/build_pikmin2_fixture.py` against that build.
+- Fixture `output/demon-identity-fixture-01` (`status=built`, expected native
+  head `5c73dec0541a4a9e150bea604eff875cdb220ed0`), exe SHA-256
+  `9DD34040987C204FC76C6B38433F2319852C2B46A797B8756A0C0DBA8825022A`.
+- Spawn mechanism: **lane-local post-process** (`tools/p2_demon_identity_arena.py`),
+  run after `scripts/preview_pikmin2_room.py`. It rewrites only the lane-owned
+  session's `dataDir/stages/chal0/default.gen`, changing the single enemy
+  generator's v10 teki type byte from `3` (`TEKI_Chappy`) to `35`
+  (`TEKI_P2Demon`). The generator still carries identity `385875968`; no shared
+  lane-03/lane-05 file and no engine source changed.
+
+Dedicated session
+`output/demon-identity-run-01/dedicated/10548ffa333f4027a42b5a13a8476ca6`,
+run `DEMON_HOST_MODE=ordinary_dedicated` (`PIKMIN_DEMON_ORDINARY=1`, no
+`PIKMIN_DEMON_ORDINARY_GENERATOR/TYPE`):
+
+```text
+ARENA dedicated ... old_type=3 new_type=35
+P2_DEMON_HOST_WINDOW size=960x540 pos=373,263 display=1707x1067 centered=1
+DEMON_ORDINARY_IDENTITY generator=385875968 type=35 dedicated=1 legacy=0 explicit=0
+DEMON_ORDINARY_BIND generator=385875968 type=35 anchor=(196.95,0.00,-165.55) captain=(121.49,0.00,157.90)
+DEMON_ORDINARY tick=420 phase=1 ...                 (source target/approach)
+DEMON_ORDINARY tick=480 phase=3 ... stuck=1 bound=1 (real mouth capture)
+DEMON_ORDINARY tick=840 phase=2 ... state=36        (registered DemonDrop)
+DEMON_STATE_RESUME owned_delivery=1 phase=3
+DEMON_STATE_DAMAGE generation=1 accepted=1 before=100.000 after=90.000
+PASS DEMON_HOST ordinary_spawned_captor_acquire_attack_capture_drop (ticks=898)
+```
+
+Legacy placeholder session
+`output/demon-identity-run-01/legacy/b7e059bbfda344a2b7e38c5cf504a414`, run
+`DEMON_HOST_MODE=ordinary_legacy` (`PIKMIN_DEMON_ORDINARY=1` +
+`PIKMIN_DEMON_ORDINARY_LEGACY_PLACEHOLDER=1`):
+
+```text
+DEMON_ORDINARY_IDENTITY generator=385875968 type=3 dedicated=0 legacy=1 explicit=0
+DEMON_ORDINARY_BIND generator=385875968 type=3 anchor=(187.90,0.00,-147.59) captain=(121.49,0.00,157.90)
+PASS DEMON_HOST ordinary_spawned_captor_acquire_attack_capture_drop (ticks=873)
+```
+
+Regressions on the same fixture (`ordinary` explicit identity on the unpatched
+legacy arena; the rest are identity-independent), all `rc=0` and `PASS`:
+
+```text
+PASS DEMON_HOST ordinary_spawned_captor_acquire_attack_capture_drop (ticks=874)
+PASS DEMON_HOST natural_captor_acquire_attack_capture_drop (ticks=308)
+PASS DEMON_HOST natural_idle_captor_acquire_attack_capture_drop (ticks=297)
+PASS DEMON_HOST injected_capture_catchfly_drop_recovery
+PASS DEMON_HOST live_owner_mouth_capture_release
+PASS DEMON_HOST teardown
+```
+
+`natural`, `natural_idle`, `drop`, `livecapture` and `teardown` do not observe
+the arena enemy; `ordinary` uses the unpatched legacy arena (explicit
+`385875968`/`3`, `dedicated=0 legacy=0 explicit=1`). Helper:
+`tools/p2_demon_identity_run.py`.
+
+## Remaining limits
+
+- The dedicated generator reuses the retail Chappy parameter/model/sound bank
+  (there is no dedicated Demon teki bank in the port); the type id is the
+  identity, and `P2DemonHost` draws the visual while the anchor is the
+  lifetime/identity token.
+- The spawn side is a lane-local arena post-process, not yet a lane-03
+  generator/manifest bridge. Folding `TEKI_P2Demon` into the opt-in generated
+  seed path (rather than rewriting stager bytes after the fact) remains the
+  generated-session/admission step for assignment 1 / lane 03.
+- The reserved captor generator id `0x646D6E30`/`'dmn0'` remains supported by
+  the selector but is not exercised by this run; the type-35 arm is proven.

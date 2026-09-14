@@ -55,6 +55,12 @@ public:
     int rocksRemaining() const { return mRocksRemaining; }
     int eggsRemaining() const { return mEggsRemaining; }
 
+    // Source DangoMushiState.cpp:530 clears EB_Invulnerable only inside the Turn
+    // stickable window; every attack/bomb outside it is rejected. Pure predicate
+    // so the host damage gate (pc_p2_dangomushi_invulnerable) and the engine-free
+    // fixture share one definition instead of re-deriving it.
+    static bool attackRejected(bool stickable) { return !stickable; }
+
     // Deterministic ring offset (X, Z) for rock `index` of `count` around the
     // active captain, rotated by `angle`. Keeps fixture output reproducible
     // instead of depending on engine RNG.

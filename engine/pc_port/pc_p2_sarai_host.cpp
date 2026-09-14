@@ -13,6 +13,9 @@
 
 namespace {
 std::uint64_t nextSaraiHostToken = 0;
+// Opaque lane identity for the bound captain; the shared bridge keeps the real
+// Navi* link, this only keys the engine-free lifecycle bookkeeping.
+std::uint64_t saraiCaptainId(Navi* captain) { return reinterpret_cast<std::uintptr_t>(captain); }
 }
 
 P2SaraiHost::P2SaraiHost()
@@ -129,8 +132,8 @@ void P2SaraiHost::sceneExit()
     mRenderedFrame = -1;
     mNaturalMotionStarted = false;
     mPlayer.cancel();
-    mOccupied = false;
     pc_demon_owner_lost(mOwnerToken);
+    mLifecycle.sceneExit();
     resetMouthPose();
 }
 
@@ -259,7 +262,7 @@ void P2SaraiHost::enableNatural(float moveSpeed, float turnSpeed, float maxTurnA
     mCaptor.reset();
     mPlayer.cancel();
     mNaturalMotionStarted = false;
-    mOccupied = false;
+    mLifecycle.reset();
     mCaptureWindowTicks = 0;
     mNatKeyEvent = p2sarai::KeyEvent::None;
     // Deterministic Wait spawn so the approach route is reproducible.
@@ -306,19 +309,20 @@ int P2SaraiHost::naturalPhase() const
 
 bool P2SaraiHost::forceDrop(Navi* target, float damage, float speed)
 {
-    if (!mOccupied || !target || !pc_demon_owned_by(target, this)) {
-        mOccupied = false;
+    const std::uint64_t captain = saraiCaptainId(target);
+    if (!mLifecycle.occupied() || !target || !pc_demon_owned_by(target, this)) {
+        mLifecycle.observeDetached();
         return false;
     }
     const bool released = pc_demon_forced_release(target, damage, speed);
-    if (released) mOccupied = false;
+    if (released) mLifecycle.interrupt(captain);
     return released;
 }
 
 void P2SaraiHost::release(Navi* target)
 {
     if (target && pc_demon_owned_by(target, this)) pc_demon_release(target);
-    mOccupied = false;
+    mLifecycle.detach();
     mNaturalMotionStarted = false;
     mPlayer.cancel();
 }
@@ -374,7 +378,7 @@ void P2SaraiHost::updateNatural()
 
     Navi* target = naviMgr ? naviMgr->getNavi() : nullptr;
     const bool haveCaptain = target && target->isAlive();
-    if (mOccupied && (!target || !pc_demon_owned_by(target, this))) mOccupied = false;
+    if (mLifecycle.occupied() && (!target || !pc_demon_owned_by(target, this))) mLifecycle.observeDetached();
 
     // Advance the current source motion and collect its due key events.
     bool ended = false;
@@ -394,7 +398,7 @@ void P2SaraiHost::updateNatural()
 
     // Acquisition/approach runs against the stable rest effector; the Attack,
     // CatchFly and FallMeck states keep the sampled animated mouth pose.
-    const bool approachPhase = !mOccupied && mFsm.state() != p2sarai::State::Attack;
+    const bool approachPhase = !mLifecycle.occupied() && mFsm.state() != p2sarai::State::Attack;
     P2SaraiCaptor::Output captorOut;
     if (approachPhase) {
         resetMouthPose();
@@ -434,7 +438,7 @@ void P2SaraiHost::updateNatural()
     in.deltaTime = dt;
     in.health = 100.0f;
     in.bodyStuckCount = 0;
-    in.mouthCarried = mOccupied ? 1 : 0;
+    in.mouthCarried = mLifecycle.occupied() ? 1 : 0;
     in.purpleLatched = false;
     in.mapY = 0.0f;
     in.positionY = mSRT.t.y;
@@ -454,18 +458,18 @@ void P2SaraiHost::updateNatural()
 
     // Source Attack capture window: 16 < frame <= 30. Admission only via the
     // shared pc_demon_capture bridge against a real live mouth CollPart.
-    if (out.attemptCatch && !mOccupied && haveCaptain && !target->isStickTo()) {
+    if (out.attemptCatch && !mLifecycle.occupied() && haveCaptain && !target->isStickTo()) {
         ++mCaptureWindowTicks;
         const Vector3f delta = target->mSRT.t - staticMouthCentre(0);
         if (delta.squaredLength() < 15.0f * 15.0f
             && pc_demon_capture(target, this, mMouths[0], mOwnerToken, 0)) {
-            mOccupied = true;
+            mLifecycle.capture(saraiCaptainId(target), mOwnerToken, 0);
         }
     }
     // FallMeck Key3 owns the one-shot damaging drop through the registered
     // receiver; ownership is revoked by the bridge itself.
-    if (out.drop && mOccupied && target) {
-        if (pc_demon_forced_release(target, 10.0f, p2sarai::Parms().fallMeckSpeed)) mOccupied = false;
+    if (out.drop && mLifecycle.occupied() && target) {
+        if (pc_demon_forced_release(target, 10.0f, p2sarai::Parms().fallMeckSpeed)) mLifecycle.detach();
     }
 
     if (approachPhase && captorOut.valid && captorOut.targetFound) {

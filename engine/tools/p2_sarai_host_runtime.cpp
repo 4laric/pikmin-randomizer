@@ -3,6 +3,7 @@
 #include "Navi.h"
 #include "NaviMgr.h"
 #include "NaviState.h"
+#include "Kontroller.h"
 #include "MoviePlayer.h"
 #include "system.h"
 #include "pc_bbft.h"
@@ -13,6 +14,7 @@
 #include "settings/pc_settings_p2d.h"
 #include "pc_p2_sarai_host.h"
 #include "pc_p2_demon_bridge.h"
+#include "pc_p2_demon_escape_state.h"
 #include "gameflow.h"
 #include <cstdio>
 #include <cstdlib>
@@ -137,8 +139,37 @@ static void runPoseMode(P2SaraiHost& host)
 
 static bool isCaptureMode(const char* m)
 {
-    return !std::strcmp(m, "capture") || !std::strcmp(m, "natural");
+    return !std::strcmp(m, "capture") || !std::strcmp(m, "natural")
+        || !std::strcmp(m, "natural_escape") || !std::strcmp(m, "natural_interrupt")
+        || !std::strcmp(m, "natural_teardown");
 }
+
+static bool isPostCaptureMode(const char* m)
+{
+    return !std::strcmp(m, "natural_escape") || !std::strcmp(m, "natural_interrupt")
+        || !std::strcmp(m, "natural_teardown");
+}
+
+// Input-simulated production controller source for the voluntary-escape gate.
+// It feeds the real Controller::updateCont() contract -- the same entry the
+// pad-to-Kontroller mapping uses -- with a bounded alternating D-pad keyStatus,
+// so Navi::doAI's production keyClick sampling reaches pc_demon_escape_tick
+// through the shared captor bridge. This is synthesised controller state, not
+// physical keyboard input, and is labelled as input-simulated in the evidence.
+class EscapeController final : public Kontroller {
+public:
+    bool active = false;
+    bool left = false;
+    unsigned edges = 0;
+    EscapeController() : Kontroller(1) {}
+    void update() override {
+        u32 keys = 0;
+        if (active) { left = !left; keys = left ? KBBTN_DPAD_LEFT : KBBTN_DPAD_RIGHT; }
+        updateCont(keys);
+        if (mInputPressed) ++edges;
+        mMainStickX = 0; mMainStickY = 0; mSubStickX = 0; mSubStickY = 0;
+    }
+};
 
 class SaraiHostApp final : public PlugPikiApp {
     P2SaraiHost host;
@@ -158,6 +189,12 @@ class SaraiHostApp final : public PlugPikiApp {
     int captureSlot = -1;
     const char* mode = "pose";
     bool idleTarget = false;
+    // Post-capture natural gates (voluntary escape / interruption / teardown).
+    EscapeController* escapeController = nullptr;
+    bool freezeHost = false;
+    bool naturalCaptured = false;
+    bool naturalActionDone = false;
+    bool naturalSawEscapeState = false;
 public:
     explicit SaraiHostApp(const char* runMode) : mode(runMode), idleTarget(!std::strcmp(runMode, "capture_idle")) {}
 
@@ -198,6 +235,13 @@ public:
             host.setNaturalMotions(wait, move, attack, catchFly, fallMeck);
             host.setNaturalPoseProfiles("sarai-wait-poses.txt", "sarai-move-poses.txt",
                 "sarai-attack-poses.txt", "sarai-waitact2-poses.txt", "sarai-waitact1-poses.txt");
+            // The voluntary-escape gate shares the Demon lane's production edge:
+            // synthesised controller D-pad state sampled by Navi::doAI feeds the
+            // shared pc_demon_escape_tick once the natural capture lands.
+            if (!std::strcmp(mode, "natural_escape")) {
+                escapeController = new EscapeController();
+                n->mKontroller = escapeController;
+            }
 
             host.mSRT.r.set(0, 0, 0);
             host.setPosition(Vector3f(0, 100, 100));
@@ -238,7 +282,9 @@ public:
         require(++naturalTicks < 20000, "sarai captor timeout");
         // No fixture-injected frame, target, END, capture or drop: host.update()
         // runs acquisition, approach, the source Attack window and the Sarai FSM.
-        host.update();
+        // The post-capture gates freeze the host so it cannot re-acquire or
+        // re-capture the captain while escape/release/teardown is asserted.
+        if (!freezeHost) host.update();
 
         if (host.naturalPhase() >= 2) sawAttack = true;
         if (host.naturalPhase() >= 1 && host.mSRT.t.z > approachStartZ + 1) sawTarget = true;
@@ -263,6 +309,98 @@ public:
                 n->mSRT.t.x, n->mSRT.t.y, n->mSRT.t.z, n->mHealth, n->getCurrState()->getID(),
                 int(n->isStickTo()), int(host.occupied()), host.captureWindowTicks());
             std::fflush(stdout);
+        }
+
+        // The three post-capture gates all begin from the same real natural
+        // capture (source Attack window + pc_demon_capture through the shared
+        // bridge); no frame, target, END or capture is injected.
+        if (isPostCaptureMode(mode)) {
+            if (!naturalCaptured) {
+                if (!(n->isStickToMouth() && pc_demon_bound(n))) return result;
+                naturalCaptured = true;
+                freezeHost = true;
+            }
+
+            if (!naturalActionDone) {
+                naturalActionDone = true;
+                if (!std::strcmp(mode, "natural_escape")) {
+                    // Fixture environment positioning only: the natural capture
+                    // lands with the captain on the ground, so raise the frozen
+                    // host (whose live mouth still carries the real captain) to
+                    // keep the source Fall state observable before it grounds.
+                    host.setPosition(Vector3f(host.mSRT.t.x, host.mSRT.t.y + 60.0f, host.mSRT.t.z));
+                    escapeController->active = true;
+                    std::printf("SARAI_NATURAL_ESCAPE arm token=%llu input=controller_dpad_simulated lift=%.2f\n",
+                        (unsigned long long)host.ownerToken(), host.mSRT.t.y);
+                    std::fflush(stdout);
+                } else if (!std::strcmp(mode, "natural_interrupt")) {
+                    // External bounded attack: the production forced-release
+                    // entry detaches the mouth link before drop admission.
+                    require(host.forceDrop(n, 10.0f, 200.0f), "natural interrupt forced release");
+                    require(!n->isStickToMouth() && !n->isStickTo(), "interrupt detached from mouth");
+                    require(n->getStickObject() == nullptr && n->getStickPart() == nullptr, "interrupt cleared stick pointers");
+                    require(!pc_demon_bound(n) && !pc_demon_owned_by(n, &host), "interrupt revoked bridge authority");
+                    require(n->isAlive(), "captain alive after interrupt");
+                    require(n->getCurrState()->getID() == NAVISTATE_DemonDrop, "bounded damage admitted drop state");
+                    const std::uint64_t token = host.ownerToken();
+                    pc_demon_owner_lost(token);
+                    require(!n->isStickTo() && n->isAlive(), "stale owner token inert after interrupt");
+                    host.sceneExit();
+                    require(!n->isStickTo() && !pc_demon_bound(n) && n->isAlive(), "owner teardown inert after interrupt");
+                    pc_demon_scene_exit();
+                    require(!n->isStickTo() && n->isAlive(), "scene teardown inert after interrupt");
+                    std::printf("PASS SARAI_HOST natural_captor_interruption_release_teardown (ticks=%d)\n", naturalTicks);
+                    std::fflush(stdout);
+                    std::_Exit(0);
+                } else if (!std::strcmp(mode, "natural_teardown")) {
+                    // Grounded release through the production bridge: detach
+                    // without damage, then let ordinary physics ground it.
+                    host.release(n);
+                    require(!n->isStickToMouth() && !n->isStickTo(), "grounded release detached from mouth");
+                    require(n->getStickObject() == nullptr && n->getStickPart() == nullptr, "grounded release cleared stick pointers");
+                    require(!pc_demon_bound(n) && !pc_demon_owned_by(n, &host), "grounded release revoked bridge authority");
+                    require(n->isAlive(), "captain alive after grounded release");
+                    require(n->getCurrState()->getID() == NAVISTATE_Walk, "grounded release keeps Walk ownership");
+                    std::printf("SARAI_NATURAL_TEARDOWN release state=%d ground=%d\n",
+                        n->getCurrState()->getID(), int(n->mGroundTriangle != nullptr));
+                    std::fflush(stdout);
+                }
+            }
+
+            if (!std::strcmp(mode, "natural_escape")) {
+                if (n->getCurrState()->getID() == NAVISTATE_DemonEscape) {
+                    if (!naturalSawEscapeState) {
+                        std::printf("SARAI_NATURAL_ESCAPE state=DemonEscape tick=%d cap=(%.2f,%.2f,%.2f) detached=%d edges=%u\n",
+                            naturalTicks, n->mSRT.t.x, n->mSRT.t.y, n->mSRT.t.z, int(!n->isStickToMouth()),
+                            escapeController->edges);
+                        std::fflush(stdout);
+                    }
+                    naturalSawEscapeState = true;
+                }
+                if (naturalSawEscapeState && n->getCurrState()->getID() == NAVISTATE_Walk) {
+                    require(n->mGroundTriangle != nullptr, "voluntary escape grounded on Walk return");
+                    require(!n->isStickToMouth() && !n->isStickTo(), "voluntary escape detached from mouth");
+                    require(n->getStickObject() == nullptr && n->getStickPart() == nullptr, "voluntary escape cleared stick pointers");
+                    require(!pc_demon_bound(n) && !pc_demon_owned_by(n, &host), "voluntary escape revoked bridge authority");
+                    require(n->isAlive(), "captain alive after voluntary escape");
+                    std::printf("PASS SARAI_HOST natural_captor_voluntary_escape (ticks=%d edges=%u)\n",
+                        naturalTicks, escapeController->edges);
+                    std::fflush(stdout);
+                    std::_Exit(0);
+                }
+            }
+            if (!std::strcmp(mode, "natural_teardown")) {
+                if (n->getCurrState()->getID() == NAVISTATE_Walk && n->mGroundTriangle != nullptr) {
+                    host.sceneExit();
+                    require(!n->isStickTo() && n->isAlive(), "owner teardown inert after grounded release");
+                    pc_demon_scene_exit();
+                    require(!n->isStickTo() && n->isAlive(), "scene teardown inert after grounded release");
+                    std::printf("PASS SARAI_HOST natural_captor_grounded_release_teardown (ticks=%d)\n", naturalTicks);
+                    std::fflush(stdout);
+                    std::_Exit(0);
+                }
+            }
+            return result;
         }
 
         if (sawDrop && n->getCurrState()->getID() == NAVISTATE_Walk) {

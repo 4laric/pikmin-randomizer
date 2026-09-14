@@ -750,7 +750,7 @@ add_executable(p2_dangomushi_hazard_test
     tools/p2_dangomushi_hazard_test.cpp
     pc_port/pc_p2_dangomushi_hazard.cpp)
 target_include_directories(p2_dangomushi_hazard_test PRIVATE pc_port)
-target_compile_options(p2_dangomushi_hazard_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+target_compile_options(p2_dangomushi_hazard_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME p2_dangomushi_hazard_test COMMAND p2_dangomushi_hazard_test)
 
 add_executable(p2_long_legs_fsm_test
@@ -928,6 +928,13 @@ add_executable(p2_sarai_captor_test tools/p2_sarai_captor_test.cpp)
 target_include_directories(p2_sarai_captor_test PRIVATE pc_port)
 target_compile_options(p2_sarai_captor_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME p2_sarai_captor_test COMMAND p2_sarai_captor_test)
+
+# Lane 30 (#457/#242) Sarai capture-lifecycle test. Engine-free: the shared
+# escape window and the lane's capture/detach model are dependency-free headers.
+add_executable(p2_sarai_captor_lifecycle_test tools/p2_sarai_captor_lifecycle_test.cpp)
+target_include_directories(p2_sarai_captor_lifecycle_test PRIVATE pc_port)
+target_compile_options(p2_sarai_captor_lifecycle_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_sarai_captor_lifecycle_test COMMAND p2_sarai_captor_lifecycle_test)
 
 # Lane 30 (#242) dedicated captor spawn-identity test. Engine-free: it asserts
 # the identity/selection seam; the constant is static_asserted against

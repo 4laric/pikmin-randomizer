@@ -162,3 +162,5 @@ loading, markdown output and the CLI. Run:
 ```powershell
 py -3.12 -m pytest tests/test_pikmin2_qa_matrix.py -q
 ```
+
+Integration correction (#437): the historical unpublished/missing-binding probe above is superseded by the current `PIKMIN2_SWEEP_COHORT_437.md` handoff. Fetch the downstream draft branch before reporting a missing baseline.

@@ -3,6 +3,7 @@
 #include "pc_p2_sarai_pose_bank.h"
 #include "pc_p2_sarai_fsm.h"
 #include "pc_p2_sarai_captor.h"
+#include "pc_p2_sarai_lifecycle.h"
 #include "pc_p2_retail_player.h"
 #include <cstdint>
 #include <string>
@@ -66,7 +67,7 @@ public:
     // 1 Wait/Move (acquire/approach), 2 Attack, 3 CatchFly, 4 FallMeck.
     int naturalPhase() const;
     int naturalStateId() const { return int(mFsm.state()); }
-    bool occupied() const { return mOccupied; }
+    bool occupied() const { return mLifecycle.occupied(); }
     // Ticks inside the source Attack capture window during which admission was
     // attempted (16 < frame <= 30).
     unsigned captureWindowTicks() const { return mCaptureWindowTicks; }
@@ -107,7 +108,13 @@ private:
     bool mNaturalEnabled = false;
     bool mNaturalMotionsSet = false;
     bool mNaturalMotionStarted = false;
-    bool mOccupied = false;
+    // Lane-owned, engine-free transcript of the shared captor bridge binding
+    // (owner token, mouth slot, stick pointers, authority) plus the shared escape
+    // window. The host still delegates every real side effect to
+    // pc_demon_capture / pc_demon_forced_release / pc_demon_release /
+    // pc_demon_owner_lost unchanged; this only replaces the raw occupancy bool so
+    // capture, voluntary escape, interruption and teardown share one contract.
+    p2sarai::CaptureLifecycle mLifecycle;
     float mNatMoveSpeed = 0.0f;
     float mNatTurnSpeed = 0.0f;
     float mNatMaxTurnDegrees = 0.0f;

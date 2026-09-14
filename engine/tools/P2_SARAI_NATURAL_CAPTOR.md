@@ -109,6 +109,47 @@ Standalone lane-30 headers (`p2_sarai_captor_test`, `p2_sarai_fsm_test`,
 `p2_sarai_policy_test`, `p2_demon_captor_test`, `p2_demon_escape_test`,
 `p2_demon_drop_policy_test`, `p2_demon_host_clock_test`) all PASS.
 
+## Post-capture gates: escape, interruption, teardown (engine-free this round)
+
+The lane reuses the shared P1/P2 captor bridge unchanged
+(`pc_demon_capture`, `pc_demon_forced_release`, `pc_demon_release`,
+`pc_demon_owner_lost`, `pc_demon_scene_exit`) and the registered
+`NaviDemonEscapeState`; no shared bridge/state file was edited. Two lane-owned
+additions make the Sarai route concrete:
+
+- `pc_port/pc_p2_sarai_lifecycle.h` (new, engine-free): the lane's explicit
+  transcription of the shared binding contract (owner generation token, mouth
+  slot, stick object/part, revoked authority) plus the shared
+  `P2DemonEscapeWindow`. `P2SaraiHost` uses it as the single occupancy/authority
+  source (`occupied()`, capture, escape observation, interruption, release,
+  scene exit) while still delegating every real side effect to the bridge.
+- `tools/p2_sarai_captor_lifecycle_test.cpp` (new, CTest): escape-window
+  accumulation and transfer, interruption clearing the stick pointers/authority,
+  and teardown inert after release.
+
+The fixture gains three modes that must be run next round (GL was not run this
+round). All three begin from the same real natural capture with no injected
+frame, target, END or capture:
+
+```text
+SARAI_HOST_MODE=natural_escape
+  P2_SARAI_HOST_WINDOW size=960x540 ... centered=1
+  SARAI_NATURAL_ESCAPE arm token=... input=controller_dpad_simulated lift=...
+  SARAI_NATURAL_ESCAPE state=DemonEscape tick=... detached=1 edges=...
+  PASS SARAI_HOST natural_captor_voluntary_escape (ticks=... edges=...)
+SARAI_HOST_MODE=natural_interrupt
+  PASS SARAI_HOST natural_captor_interruption_release_teardown (ticks=...)
+SARAI_HOST_MODE=natural_teardown
+  SARAI_NATURAL_TEARDOWN release state=0 ground=1
+  PASS SARAI_HOST natural_captor_grounded_release_teardown (ticks=...)
+```
+
+`natural_escape` feeds synthesised production controller D-pad edges through
+`Navi::doAI` (input-simulated controller state, not physical input) and raises
+the frozen host 60 units so the source `Fall` state spans more than one frame.
+`natural_interrupt` calls the shared forced-release entry (10 damage / 200
+speed); `natural_teardown` uses the production grounded release.
+
 ## Limits / remaining work
 
 - No patrol or turn-to-scan state is transcribed; the natural fixture uses the
@@ -120,5 +161,6 @@ Standalone lane-30 headers (`p2_sarai_captor_test`, `p2_sarai_fsm_test`,
   labelled in the fixture), not synthesised input.
 - Admission uses the rest-pose effector while the carry follows the sampled
   animated joint; rendered mesh selection is not yet synchronised.
-- Escape/interruption/teardown fidelity, generated-seed admission and
-  terrain/water/platform handling remain separate gates.
+- Escape/interruption/teardown fixture modes land this round but their GL
+  evidence, generated-seed admission and terrain/water/platform handling remain
+  separate gates.

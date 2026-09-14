@@ -23,15 +23,18 @@
 //   * The source only enters StateTurn from Obj::wallCallback (roll speed > 100
 //     and >30 deg into a wall normal). The P1 host exposes no wall normal, so a
 //     roll enters Turn when it leaves the source fp09=150 territory or after
-//     the bounded roll timeout; the crash effects and the Turn LOOP_START
-//     vulnerability window (DangoMushiState.cpp:530) are not reproduced.
+//     the bounded roll timeout; the crash effects are approximated. The Turn
+//     LOOP_START..key-3 vulnerability window (DangoMushiState.cpp:530) is now
+//     applied: pc_p2_dangomushi_invulnerable rejects attack/bomb damage outside
+//     the stickable window, exposed through the shared tekiinteraction hooks.
 //   * The Flick arm sweep (Obj::flickHandCollision) is resolved as one
 //     InteractFlick per Flick state at the attack_2 KEYEVENT_2 arm-swing frame
 //     (26), not per frame; the source Navi wither and Purple-crab rules are not
 //     representable.
-//   * The P2 invulnerability/ModelHidden state flags, the falling Rock/Egg
-//     child spawner (DangoMushi.cpp:649-776) and the dangomushi.brk material
-//     loop (DangoMushi.cpp:106-134) are P2-only and are not reproduced.
+//   * The P2 ModelHidden state flag, the falling Rock/Egg child spawner
+//     (DangoMushi.cpp:649-776) and the dangomushi.brk material loop
+//     (DangoMushi.cpp:106-134) are P2-only and are not reproduced. The hazard
+//     policy still emits the Rock/Egg decisions for a future lane-20 birth host.
 //   * Walk uses the source fp08=0.05 turn rate clamped to fp28=5 deg; the roll
 //     uses proper fp02=0.03 / fp03=3 deg and fp01=200. Target search is a full
 //     hemisphere (the source fp13 view-angle gate is not applied). When the
@@ -145,6 +148,10 @@ struct Dango {
     bool turnJustEntered = false;
     bool hazardWindowLogged = false;
     int hazardRocks = 0;
+    // Applied vulnerability state: true only inside the Turn stickable window.
+    // Outside it pc_p2_dangomushi_invulnerable rejects attack/bomb damage.
+    bool stickable = false;
+    bool attackRejectedLogged = false;
 };
 
 std::map<PelletView*, Dango> actors;
@@ -256,6 +263,9 @@ void enter(Dango& s, State state, const char* clip) {
     s.rolling = false;
     s.rollHit = false;
     s.armSwinging = false;
+    // Leave the body invulnerable on every transition; the Turn window reopens
+    // it while stickable. attackRejectedLogged is per-window, not per-state.
+    s.stickable = false;
     if (clip) s.clip = clip;
 }
 void setState(BTeki* a, Dango& s, State state, const char* clip) {
@@ -366,6 +376,32 @@ bool pc_p2_dangomushi_clip(const BTeki* actor, const char*& name, float& phase) 
     if (it == actors.end()) return false;
     name = it->second.clip.c_str();
     phase = it->second.phase;
+    return true;
+}
+
+bool pc_p2_dangomushi_invulnerable(const BTeki* actor) {
+    if (!ready || !actor) return false;
+    auto it = actors.find(static_cast<PelletView*>(const_cast<BTeki*>(actor)));
+    if (it == actors.end()) return false;
+    Dango& s = it->second;
+    const unsigned generator = actor->mGenerator ? actor->mGenerator->_70 : 0u;
+    if (!P2DangoMushiHazardPolicy::attackRejected(s.stickable)) {
+        // Inside the Turn stickable window: EB_Invulnerable is clear and the
+        // attack is admitted (return false so the normal damage path runs).
+        std::printf("P2_DANGOMUSHI_DAMAGE_ACCEPTED generator=%u stickable=1 state=%s\n",
+                    generator, stateName(s.state));
+        std::fflush(stdout);
+        return false;
+    }
+    // Outside the window the source body is invulnerable. Report the first
+    // rejection per window so the fixture can observe an applied (not merely
+    // decided) window without spamming every attack frame.
+    if (!s.attackRejectedLogged) {
+        s.attackRejectedLogged = true;
+        std::printf("P2_DANGOMUSHI_DAMAGE_REJECTED generator=%u stickable=0 invulnerable=1 "
+                    "state=%s\n", generator, stateName(s.state));
+        std::fflush(stdout);
+    }
     return true;
 }
 
@@ -586,6 +622,11 @@ void pc_p2_dangomushi_update(BTeki* actor) {
         hz.eggRoll = gsys->getRand(1.0f);
         P2DangoMushiHazardOutput hzo;
         s.hazard.update(hz, hzo);
+        // Apply the window: damage is only admitted while stickable.
+        if (hzo.stickable && !s.stickable) {
+            s.attackRejectedLogged = false;
+        }
+        s.stickable = hzo.stickable;
         if (hzo.rocksToSpawn > 0) {
             s.hazardRocks += hzo.rocksToSpawn;
             std::printf("P2_DANGOMUSHI_HAZARD generator=%u rocks=%d lifetime=%.1f egg=%d\n",
@@ -606,6 +647,7 @@ void pc_p2_dangomushi_update(BTeki* actor) {
             exitInput.turnExited = true;
             P2DangoMushiHazardOutput exitOutput;
             s.hazard.update(exitInput, exitOutput);
+            s.stickable = exitOutput.stickable; // false: body is invulnerable again
             setState(actor, s, DANGO_RECOVER, "recover");
         }
         break;

@@ -35,6 +35,12 @@ unsigned pc_randomizer_generator_id(const void* generator);
 void pc_randomizer_set_generator_id(const void* generator, unsigned uid);
 void pc_randomizer_bind_generator(const void* generator, int stage, const char* file, int offset);
 int pc_randomizer_enemy_for_generator(int original, bool protectedSpawn, const void* generator);
+// Generated spawn connection: the P2 source identity bound to a live generator's
+// placement target (0 when the generator is unbound). Ordinary generated targets
+// resolve through the same slot uid the P1 slot layouts use.
+unsigned pc_randomizer_p2_bound_source(const void* generator);
+// Fail closed when a bound identity has no reviewed native actor host.
+void pc_randomizer_bad_p2_host();
 void pc_randomizer_bad_spawn_cache();
 int pc_randomizer_field_capacity();
 void pc_randomizer_observe_population(int activePikmin, bool gameplay);

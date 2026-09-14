@@ -49,3 +49,74 @@ processes appeared during acceptance, so no performance budget is claimed.
 This first published checkpoint completes the batch through Jellyfloat aaac3612.
 Later Titan/Crawbster/Mamuta/Sarai submissions are under review in the ongoing
 sweep; this checkpoint does not claim those newer submissions integrated.
+
+
+## Completed late handoff review
+
+Native `2432ce99da4dbcb8b819319d16a84a244cf17be0`, clean, supersedes the first
+checkpoint for new work. Same isolated worktree and private build directory.
+Production SHA-256 `392f0a8fba51bad40e980a6c54eb578b62386bce0d6dfd79039daa2d90797f71`;
+production build and no-work dry run passed. Export: 1994 files, zero byte
+mismatches. Build log: `output/p2-sweep437-binding-build.log`.
+
+Integrated late submissions:
+
+- Sarai lifecycle `c89ddeb8`, `bcccdc12`, `1efd61b0` and identity evidence
+  `3459431c`: shared-bridge escape observation, interruption and teardown,
+  with new fixture modes and active Release assertions.
+- Mamuta native `25f96694`, root `f6f1386`: nine motion banks and sampled
+  source-frame selection. Integration preserves legacy three-bank installs:
+  missing optional banks fall back to the P1 renderer; required original banks
+  still fail closed. Duplicate manifest clips and unbounded event counts reject.
+- Crawbster native `e867d07b`, root `12ed9a5`: applied Turn vulnerability gate.
+  Hazard births remain pending; this gate alone is not full combat acceptance.
+- Ground placement `e5035f8`, `b83d662`: terrain, footprint, burrow and helper
+  facts consumed by the candidate catalog, without admitting any identity.
+- Generated Snow native `5a7329c5`, root `df32243`: exact live-generator lookup,
+  supported host selection, generated Snow binding and validated asset overlay.
+  Integration rejects protected generators and a simultaneous blanket campaign
+  override. Parser/query/product staging probes passed, including fresh/cache
+  content and rejection cases. These probes are not a live ordinary encounter;
+  their controlled admission override does not modify the product roster.
+- QA `e44b65e`, `87d3e60`: explicit-budget evaluator and probe notes. Integration
+  rejects missing exit evidence, nonfinite budgets and invalid measurements;
+  82 focused tests plus 5 subtests passed. Historical unpublished-baseline notes
+  were corrected against the actual pushed checkpoint.
+
+Held after concrete review (existing downstream issues updated):
+
+- Titan native `b691b128` / root `0a8bd8b`: overflow at 64 tracked targets can
+  repeat stimulation; temporary gas immunity is cached for the whole attack;
+  rejected captain stimuli consume the hit; target lifetime identity needs work.
+  Supplied GL run did not intersect the emitter, so live damage remains unproven.
+- Crawbster rain native `30631006` / root `60dc532`: policy-only rocks have no
+  rendered actor representation, and contact deduplication occurs before an
+  ignored contact is rejected. Require visible hazards or a diagnostic-only
+  opt-in, accepted-contact tracking, lifetime handling and runtime evidence.
+
+No full numbered lane closes from these slices. **33 open, change 0: 21 primarily
+implementation, 11 primarily acceptance, plus lane 01.** The five focused
+assignments remain active; the admitted roster remains empty.
+
+
+Final late-batch validation: **2735 passed, 44 skipped, 1136 subtests passed**
+(`output/p2-sweep437-complete-tests.xml`, 238.36 seconds). Skips identify absent
+private assets/run evidence, Windows symlink privilege and the local Tk runtime.
+Earlier accidental whole-repository pytest collection imported CLI scripts and
+aborted; the documented `pytest tests` suite above is the completed run.
+C++: **89 passed, one asset-dependent JAudio skip**. The audio test initially
+started while the executable was still linking and returned BAD_COMMAND; its
+post-link retry correctly skipped for missing assets. Logs:
+`output/p2-sweep437-complete-ctest.log` and
+`output/p2-sweep437-complete-audio-retry.log`.
+
+Final-head Sarai lifecycle fixture was built successfully with the current
+builder, native `2432ce99`, clean. SHA-256 `18952892798c1e3865eddf5021376a6944112f0994f4d376f27ca449ae110856`.
+Fresh stage: `output/p2-sweep437-sarai-lifecycle-stage`; executable:
+`output/p2-sweep437-sarai-lifecycle-fixture/fixture.exe`.
+The six-mode runner is `output/p2-sweep437-run-sarai-lifecycle.py`.
+The stage reuses the current 20-red overlay without saves; the fixture applies
+960x540 centered startup after settings. **Final-head lifecycle GL rerun remains
+pending the single-GL slot**, occupied by assignment 3 at publication. Its
+standalone lifecycle assertions passed; worker GL evidence and the earlier
+combined Sarai capture run are not relabeled as this final-head runtime.
