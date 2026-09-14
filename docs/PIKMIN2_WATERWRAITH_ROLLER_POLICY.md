@@ -201,6 +201,42 @@ Branch `opencode/p2-lane31-register` @ `a4526e6a5cb96d1d89e8687fcdd777845de9aa92
 Additive hooks live in `pc_port/pc_p2_hardlanes.cpp` (tagged for lane 01).
 Bundle `native-candidates/waterwraith-register/`.
 
+## Roller attacks, Purple vulnerability receiver and cleanup
+
+`pc_port/pc_p2_waterwraith_attack_policy.h` carries the engine-free combat rules
+(Purple-only damage, Purple landing stun, non-Purple roller crush while rolling,
+dismounted body acceptance). `pc_port/pc_p2_waterwraith_encounter.{h,cpp}` is the
+engine-facing consumer: each source tick it scans the live `pikiMgr` squad
+around the registered actor, routes accepted Purple hits through
+`p2_waterwraith_actor_apply_damage`, flick-crushes non-Purple Pikmin under the
+rolling wraith, and drives the roller death script (dismount -> `tyre_getoff` ->
+child removal). The register seam calls it from its tick; `reset` clears it, so
+teardown/re-entry leaves no stale actor, child or squad state. A standalone
+fixture (`PASS WATERWRAITH_ATTACK_POLICY`, 8 groups, exe `4195a9f8…`) covers the
+rules; the runtime fixture drives the real squad.
+
+Branch `opencode/p2-lane31-encounter` @
+`5e42ba1d1ef8a0eb46755265ce0eadd84e615025` (base `opencode/p2-lane31-register` @
+`a4526e6a`, clean). Real-GL run
+`output/lane31-waterwraith-encounter-runtime-06/c05e29fb3ac641019a59212ebc9f53e8`
+status `passed`, fixture `ace285f3…` (built at native head `5e42ba1d`):
+
+- `P2_WATERWRAITH_ENCOUNTER_STAGE_A crushes=20 damage=0.0` — non-Purple Pikmin
+  under the rollers are flicked but cannot damage the actor.
+- `P2_WATERWRAITH_STUN tick=43` -> `P2_WATERWRAITH_ROLLER_ZERO tick=53` ->
+  `P2_WATERWRAITH_TYRE_REMOVED tick=56` — real Purple squad hits stun the riding
+  roller and deplete the Tyre; the death script dismounts and removes the child.
+- `P2_WATERWRAITH_ENCOUNTER_REENTRY ready=1 attached=1` — reset then re-setup
+  with no stale state.
+- `P2_WATERWRAITH_ENCOUNTER_PASS stuns=1 hits=39 crushes=20 damage=2340.0
+  zeroed=1 child_removed=1`, `PASS WATERWRAITH_ENCOUNTER_RUNTIME`, capture
+  `waterwraith-encounter.ppm` (`9749616c…`).
+
+Bundle `native-candidates/waterwraith-encounter/`. No new `pc_p2_hardlanes.cpp`
+hook hunk; the register hook is reused. The crush uses `InteractFlick` with the
+captain as the acting owner (documented adaptation) and the treasure release is
+logged only (lane 06 owns the durable reward path).
+
 ## Remaining / next slice
 
 - **Locomotion and route pathfinding are not implemented.** The wraith walk
@@ -210,9 +246,10 @@ Bundle `native-candidates/waterwraith-register/`.
 - **Actor wiring.** No source actor is registered; the real-Map/world seam must
   drive `push()` and read the roller transform once the actor exists. This is
   lane-01-owned integration plus the family actor module.
-- **Purple vulnerability is expressed structurally, not by receiver.** The gate
-  is in place; the generic damage/receiver adapter and the Purple direct-hit
-  contract are lane 10 / lane 11 and must be wired for ordinary combat.
+- **Purple vulnerability is wired for the live squad, not the generic receiver.**
+  The family consumer accepts Purple hits at the rig's `damageable()` gate and
+  rejects all other Pikmin; the shared lane 10/11 damage adapter and the Purple
+  direct-hit contract are still the production route for ordinary combat.
 - **BlackMan FSM and signals.** Only the roller-facing wraith phases are
   carried; the full boss FSM (bend/escape/fall/flick/recover/tired) is a later
   slice. Boss phase transitions currently go through `setWraithPhase`.
