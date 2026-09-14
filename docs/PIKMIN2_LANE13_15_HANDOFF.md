@@ -20,10 +20,11 @@ All three: private Ninja/MinGW `g++ 16.2.0` Release builds, `PIKMIN_NATIVE_JAUDI
 `ninja -n` reports no work. Lane 15's `combined` merges the two lane-15
 candidates; lane 13's candidate is independent.
 
-**Superseding single head:** `opencode/p2-lane13-15-combined-native` @ `099b022c`
-merges all three plus the opt-in `pc_p2_kochappy_fsm` source FSM; build
-`output/native-lane15-qurione-r2-build`, exe SHA-256 `2005BB81…4588`
-(`docs/PIKMIN2_LANE1315_COMBINED.md`). Prefer this one for integration.
+**Superseding single head:** `opencode/p2-lane13-15-combined-native` @ `d9ea68c9`
+merges all three plus the opt-in `pc_p2_kochappy_fsm` source FSM (now with a
+witnessed Dead/Turn path); build `output/native-lane15-qurione-r2-build`, exe
+SHA-256 `508F78E1…8B63` (`docs/PIKMIN2_LANE1315_COMBINED.md`). Prefer this one
+for integration.
 
 ## Shared semantics needing lane-01 review
 
