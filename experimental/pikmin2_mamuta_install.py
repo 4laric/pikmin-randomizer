@@ -3,20 +3,24 @@
 Batch 2 (#221). Consumes the batch-1 extraction (`mamuta.json` schema 1) and
 installs bounded source poses into a private run layout for the P1 Miurin
 proxy actor. Refuses existing targets and hash mismatches before mutation.
+
+Every motion the native observer maps installs all sampled poses as
+`miulin_<clip>_<i>.mod` plus a bank manifest (`p2-mamuta-bank.txt`) carrying the
+clip length, sampled source frames and gameplay event frames, so the observer
+can place the strike at its sampled event frame instead of a uniform index.
 """
 import hashlib
 import json
 from pathlib import Path
 
 SPECIES = 'Miulin'
-# Install every sampled pose of the live/dead/attack clips as a time-sampled
-# bank (`miulin_<clip>_<i>.mod`). The native observer plays the bank by the P1
-# animator frame, so the ground strike (attack1, whose KEYEVENT_2 at frame 0 is
-# the bury/plant) is animated instead of a single frozen pose.
-BANK_CLIPS = ('wait', 'dead', 'attack1')
+BANK_CLIPS = ('wait', 'waitact', 'move', 'attack0', 'attack1', 'attack4',
+              'flick', 'dead', 'type5')
 MAX_POSES = 8
 CONFIG_NAME = 'p2-mamuta-actors.txt'
 CONFIG_HEADER = 'P2_MAMUTA_ACTORS_1'
+BANK_NAME = 'p2-mamuta-bank.txt'
+BANK_HEADER = 'P2_MAMUTA_BANK_1'
 
 
 def plan(imported, actors):
@@ -39,12 +43,14 @@ def plan(imported, actors):
         ids.add(generator)
         rows.append(f'{generator} {SPECIES}')
     by_file = {c['file']: c for c in metadata['clips']}
+    manifest = [f'{BANK_HEADER} {len(BANK_CLIPS)}']
     for clip in BANK_CLIPS:
         entry = by_file.get(clip + '.bca')
         if entry is None or entry['status'] != 'converted' or not entry['poses']:
             raise ValueError(f'Required source clip unavailable: {clip}')
         if len(entry['poses']) > MAX_POSES:
             raise ValueError(f'Too many sampled poses for {clip}')
+        frames = []
         for index, pose in enumerate(entry['poses']):
             name = pose['file']
             if Path(name).name != name or not name.endswith('.mod'):
@@ -53,7 +59,24 @@ def plan(imported, actors):
             if hashlib.sha256(data).hexdigest() != pose['sha256']:
                 raise ValueError('Pose hash mismatch')
             files[f'miulin_{clip}_{index:02d}.mod'] = data
+            frames.append(int(pose['frame']))
+        if frames != sorted(frames) or len(set(frames)) != len(frames) or frames[0] != 0:
+            raise ValueError(f'Unsorted or non-zero-start sampled frames for {clip}')
+        source = frames[-1] + 1
+        events = sorted({int(e['frame']) for e in entry.get('events', [])})
+        if any(not 0 <= f < source for f in events):
+            raise ValueError(f'Out-of-range event frame for {clip}')
+        manifest.append(f'clip {clip} {source} {len(frames)} {len(events)}')
+        manifest.append('frames ' + ' '.join(str(f) for f in frames))
+        manifest.append('events ' + ' '.join(str(f) for f in events))
+    files[BANK_NAME] = ('\n'.join(manifest) + '\n').encode('ascii')
     return '\n'.join(rows) + '\n', files
+
+
+def _targets(run, files):
+    room = run / 'assets/dataDir/courses/pikmin2room'
+    for name, data in files.items():
+        yield (run / name if name == BANK_NAME else room / name), data
 
 
 def install(imported, run, actors):
@@ -61,27 +84,25 @@ def install(imported, run, actors):
     room = run / 'assets/dataDir/courses/pikmin2room'
     if not room.is_dir() or room.resolve() != room.absolute():
         raise ValueError('Expected private non-junction room')
-    for name in files:
-        if (room / name).exists():
+    for target, _ in _targets(run, files):
+        if target.exists():
             raise ValueError('Refusing existing visual target')
     if (run / CONFIG_NAME).exists():
         raise ValueError('Refusing existing actor config')
-    for name, data in files.items():
-        (room / name).write_bytes(data)
+    for target, data in _targets(run, files):
+        target.write_bytes(data)
     (run / CONFIG_NAME).write_text(config)
     return {'species': [SPECIES], 'actors': len(actors),
             'proxy_behavior': 'P1 Miurin (TEKI_Miurin 24); not source P2 FSM',
-            'files': sorted(files), 'config': CONFIG_NAME}
+            'files': sorted(files), 'config': CONFIG_NAME, 'bank': BANK_NAME}
 
 
 def verify_install(imported, run, actors):
     """Reload an installed layout and prove every artifact matches the import."""
     config, files = plan(imported, actors)
-    room = run / 'assets/dataDir/courses/pikmin2room'
     if (run / CONFIG_NAME).read_text() != config:
         raise ValueError('Installed actor config mismatch')
-    for name, data in files.items():
-        target = room / name
+    for target, data in _targets(run, files):
         if not target.is_file() or target.read_bytes() != data:
-            raise ValueError(f'Installed visual mismatch: {name}')
-    return {'verified': sorted(files), 'config': CONFIG_NAME}
+            raise ValueError(f'Installed visual mismatch: {target.name}')
+    return {'verified': sorted(files), 'config': CONFIG_NAME, 'bank': BANK_NAME}

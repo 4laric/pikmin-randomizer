@@ -3,49 +3,60 @@
   "issues": ["168", "221"],
   "native_branch": "opencode/p2-mamuta-anim",
   "native_base": "5f33a9e6e8f618394c5d78cfb1cc1201a754c1b6",
-  "native_head": "dad4c920feea6c9cb0d8323909c5300504210a6a",
+  "native_head": "25f96694155fad633787e2766978c376097adb23",
   "native_pushed": false,
   "native_worktree": "output/native-mamuta-anim",
   "ordered_commits": [
-    "dad4c920 time-sampled Mamuta pose banks (animated ground strike)"
+    "dad4c920 time-sampled Mamuta pose banks (animated ground strike)",
+    "25f96694 animated move/flick banks and source-frame strike timing"
   ],
   "patch_series": [
-    "0001-Lane-19-221-time-sampled-Mamuta-pose-banks-animated-.patch"
+    "0001-Lane-19-221-time-sampled-Mamuta-pose-banks-animated-.patch",
+    "0002-Lane-19-221-animated-move-flick-banks-and-source-fra.patch"
   ],
   "scope": {
-    "native_modifies": ["pc_port/pc_p2_mamuta.cpp"],
+    "native_modifies": ["pc_port/pc_p2_mamuta.cpp", "pc_port/pc_p2_mamuta_policy.h"],
     "root_modifies": ["experimental/pikmin2_mamuta_install.py", "scripts/test_pikmin2_mamuta_native.py", "tests/test_pikmin2_mamuta_install.py", "tests/test_pikmin2_mamuta_runtime.py"],
-    "root_dependency": "cherry-picked fixture-builder response-file fix 9e7a99d (source candidate opencode/p2-fixture-builder-root @ fbef363) to build fixtures against the larger draft",
+    "root_dependency": "cherry-picked fixture-builder response-file fix 9e7a99d (source candidate opencode/p2-fixture-builder-root @ fbef363)",
     "no_shared_semantics": "Only the observer's visual pose selection and the private install layout change; gameplay stays the P1 Miurin proxy."
   },
-  "problem": "The observer drew a single frozen pose per clip, so the Mamuta ground strike (attack1, KEYEVENT_2 frame 0 = bury/plant) had no animation.",
-  "fix": {
-    "install": "install every sampled pose of wait/dead/attack1 as miulin_<clip>_<i>.mod",
-    "native": "load miulin_<clip>_00..NN.mod as a bank and index by the P1 animator frame; fall back to a single legacy pose",
-    "marker": "P2_MAMUTA_DRAW generator=... anchor=... poses=<n> animated=<0|1>"
+  "mappings": {
+    "Wait1/Wait2": "wait",
+    "WaitAct1/WaitAct2": "waitact",
+    "Move1/Move2": "move",
+    "Attack": "attack1",
+    "Flick": "flick",
+    "Type1/Type2/Type3": "attack1 (bury strike)",
+    "Type4": "attack4",
+    "Type5": "type5",
+    "Dead": "dead"
+  },
+  "install": {
+    "banks": ["wait", "waitact", "move", "attack0", "attack1", "attack4", "flick", "dead", "type5"],
+    "manifest": "p2-mamuta-bank.txt (clip, sourceFrames, poseCount, eventCount, sample frames, event frames)"
   },
   "native_build": {
     "dir": "output/native-mamuta-anim-build",
     "generator": "Ninja Release/MinGW, JAudio ON",
     "exe": "bin/nectar.exe",
-    "exe_sha256": "3E9E771ADB8112305DE8A32A805E9052DC49E0AD5C2190877A6483F82290F85C",
+    "exe_sha256": "9D84BD14F2369AA7EB825754CA166DE60C4407617A361F84695207042385E348",
     "no_work_dry_run": "ninja: no work to do."
   },
   "runtime": {
     "window": "960x540 windowed",
-    "fixture_exe_sha256": "6DEE805B93553810170C91EF70AE824250D1FE27FCE12A32D51C32E151739143",
-    "markers": ["P2_MAMUTA_READY ... P1_proxy_source_pose_banks_no_P2_planting", "P2_MAMUTA_DRAW generator=221001 anchor=attack1 poses=3 animated=1"],
-    "staged_banks": ["miulin_attack1_00/01/02.mod", "miulin_dead_00/01/02.mod", "miulin_wait_00/01/02.mod"],
+    "fixture_exe_sha256": "816A7D288801A24BAEF064AB62555A2BD8A133B975AABD1CC5CD7160397B74BB",
     "runs": [
-      {"run_dir": "output/mamuta-anim-run-01/a5e27f7796fc40ccb26e7992efafd2f5", "result": "animated attack1 bank drawn; no kill this run (variance)"},
-      {"run_dir": "output/mamuta-anim-run-02/9290f791b2104178b640a292bf35f4bd", "result": "full natural chain with animated attack1 + dead banks; P2_POD_RECEIPT id=corpse:mamuta:221001 value=2 pokos=2; died_tick=469"}
-    ]
+      {"run_dir": "output/mamuta-anim-run-03/cc88bf5151b948a1a7286906e4f4dbea", "result": "waitact/wait/move/attack1 banks animated; no kill (variance)"},
+      {"run_dir": "output/mamuta-anim-run-04/03f3b6a464b4412b9bd975db32f7bbb5", "result": "full chain with animated move/attack1/dead; P2_POD_RECEIPT id=corpse:mamuta:221001 value=2 pokos=2; died_tick=506"}
+    ],
+    "observed_animated": ["wait", "waitact", "move", "attack1", "dead"],
+    "not_observed": ["flick (mapped/installed, P1 reserve motion did not trigger)"]
   },
-  "tests": "tests/test_pikmin2_mamuta_{install,runtime,natural,pod,cargo}.py -> 36 passed, 9 subtests",
+  "tests": "tests/test_pikmin2_mamuta_{install,runtime,natural,pod,cargo,assets}.py -> 53 passed, 24 subtests",
   "not_claimed": [
     "source 38-frame attack1 parity (three sampled poses, nearest-pose selection, no interpolation)",
-    "P2 miulinState frame parity (P1 animator drives the pose index)",
-    "a full strike-to-corpse chain in this specific log",
+    "P2 miulinState frame parity (P1 animator drives the pose timeline)",
+    "runtime-observed flick",
     "day/floor reset, save-load, Piklopedia"
   ]
 }
