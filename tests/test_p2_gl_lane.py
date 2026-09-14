@@ -40,7 +40,8 @@ def test_cross_process_leases_and_exclusive_rollback(runner, tmp_path):
 def test_b_review_and_hash_required(runner, tmp_path):
     work = tmp_path / 'run'
     work.mkdir()
-    exe = Path(sys.base_prefix) / 'python.exe'
+    exe = tmp_path / 'fixture.exe'
+    exe.write_bytes(b'not launched; descriptor validation only')
     spec = dict(executable=str(exe), cwd=str(work), sha256=hashlib.sha256(exe.read_bytes()).hexdigest(), timeout_seconds=1)
     path = tmp_path / 'spec.json'
     path.write_text(json.dumps(spec))

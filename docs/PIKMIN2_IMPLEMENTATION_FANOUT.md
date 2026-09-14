@@ -1,5 +1,7 @@
 # P2 implementation fan-out and mandatory fixture baseline
 
+**GL scheduling update (#462, user-authorized):** use [GL-A / no-input GL-B leases](PIKMIN2_GL_LANES.md). One interactive run and one reviewed hidden autonomous fixture may run together; acquire both leases for exclusive/performance runs. This supersedes older blanket one-GL wording below. Unreviewed fixtures remain A/exclusive.
+
 Next-wave dispatch: [playable encounters and first cohort](PIKMIN2_NEXT_WAVE.md). Keep existing lane numbers; use this guide for current priorities and acceptance.
 
 Asset lookup: [verified local P1/P2 inputs and staging commands](PIKMIN2_NEXT_WAVE.md#local-p1p2-assets-verified-paths-for-every-lane). Private worktrees do not inherit the main checkout's ignored asset directories.

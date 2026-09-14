@@ -1,5 +1,7 @@
 # Assignment 4: test the candidate before admission
 
+**GL scheduling update (#462, user-authorized):** use [GL-A / no-input GL-B leases](PIKMIN2_GL_LANES.md). One interactive run and one reviewed hidden autonomous fixture may run together; acquire both leases for exclusive/performance runs. This supersedes older blanket one-GL wording below. Unreviewed fixtures remain A/exclusive.
+
 Tracking #444; implementation owner Codex through 4laric. This resolves the
 admission-before-QA circular dependency. Assignment 4 should gather private
 candidate encounter evidence now; lane 02 admits only after review. It must not

@@ -1,5 +1,7 @@
 # P2 next wave: Snow first, Dwarf Orange second
 
+**GL scheduling update (#462, user-authorized):** use [GL-A / no-input GL-B leases](PIKMIN2_GL_LANES.md). One interactive run and one reviewed hidden autonomous fixture may run together; acquire both leases for exclusive/performance runs. This supersedes older blanket one-GL wording below. Unreviewed fixtures remain A/exclusive.
+
 Latest integrated baseline and acceptance: [cohort preparation sweep](PIKMIN2_SWEEP_COHORT_437.md). Older queue entries below are historical and must be checked against this continuation.
 
 Current integration baseline: [full integration pass #437](PIKMIN2_FULL_INTEGRATION_437.md). Its combined source and remaining-work ledger supersede historical pending-merge statements below.

@@ -16,7 +16,10 @@ def shared_output():
     common = subprocess.check_output(
         ['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'], text=True
     ).strip()
-    return Path(common).parent / 'output'
+    root = Path(common).parent
+    if not (root / 'randomizer').is_dir():
+        raise RuntimeError('Run from a pikmin-randomizer root worktree, not native/ or another repository')
+    return root / 'output'
 
 
 @contextlib.contextmanager
@@ -59,6 +62,8 @@ def checked_spec(path, lane, output):
     if not 0 < spec.get('timeout_seconds', 0) <= 1800:
         raise ValueError('timeout_seconds must be 1..1800')
     if lane == 'B':
+        if exe.suffix.lower() != '.exe' or exe.stem.lower().startswith(('python', 'cmd', 'powershell', 'pwsh', 'node', 'wscript', 'cscript')):
+            raise ValueError('GL-B requires a direct compiled fixture, not an interpreter or shell')
         review = spec.get('no_input_review', {})
         for field in ('no_desktop_input', 'no_focus_changes', 'no_shared_writes', 'autonomous_exit'):
             if review.get(field) is not True:

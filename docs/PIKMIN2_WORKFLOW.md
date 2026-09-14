@@ -1,5 +1,7 @@
 # P2 workflow: family ownership and a small integration queue
 
+**GL scheduling update (#462, user-authorized):** use [GL-A / no-input GL-B leases](PIKMIN2_GL_LANES.md). One interactive run and one reviewed hidden autonomous fixture may run together; acquire both leases for exclusive/performance runs. This supersedes older blanket one-GL wording below. Unreviewed fixtures remain A/exclusive.
+
 Current operating policy, 2026-09-13. Owner: Codex using shared GitHub account
 4laric, [#186](https://github.com/4laric/pikmin-randomizer/issues/186).
 User direction: widen parallel work and reduce close integration supervision now
