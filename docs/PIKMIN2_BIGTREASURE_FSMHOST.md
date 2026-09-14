@@ -43,10 +43,13 @@ base `086ed858c2693d9259679177e0eca00a80f57fbf`, head
    source evidencing per the fan-out guide.
 4. `c4c40954` — the fixture entrypoint adopts the same 960x540 centered window
    after `pc_settings_init()`.
+5. `0a4aedb3` — the real-GL fixture drives the full four-weapon knock-off
+   progression (four transitions, body exposure, `DropItem`, body damage
+   routing).
 
 The patch bundle is published on the root branch at
 `native-candidates/bigtreasure-fsmhost/` (`bigtreasure-fsmhost-full.patch`,
-`patches/0001..0004`, `provenance.json`).
+`patches/0001..0005`, `provenance.json`).
 
 ## Binding contract
 
@@ -103,10 +106,10 @@ g++ -std=gnu++17 -Wall -Wextra -Werror -Ipc_port tools/p2_bigtreasure_fsmhost_te
 Private build `output/native-lane32-build` (Ninja, Release, JAudio ON, optimize
 OFF, hooks OFF), `ninja -n pikmin_pc` = `no work to do`; production
 `nectar.exe` SHA-256 `ca8af151c633ae6138c8d13ed595c56b2d679adcf858c3e73468cced9a45cf`.
-Private fixture `output/lane32-fsmhost-fixture-02` (`provenance.json`
+Private fixture `output/lane32-fsmhost-fixture-03` (`provenance.json`
 status `built`), fixture SHA-256
-`f75b5e34735eaf98b7e9cd87d7cf55e59d3f6c0d5e648666f41db2e702c51d4d`. Fresh
-overlay run `output/lane32-fsmhost-runtime3/3fa5cb8f34024f5f876fea5359b8a477`,
+`2b80ff7376b7a641758a8e02b72d09e507f93ee3d1468004e75992134b135489`. Fresh
+overlay run `output/lane32-fsmhost-runtime4/8e0eaa7e98c248b294f9975bbcb14cb4`,
 `verification.json` status `passed`, exit 0:
 
 | Marker | Result |
@@ -117,13 +120,16 @@ overlay run `output/lane32-fsmhost-runtime3/3fa5cb8f34024f5f876fea5359b8a477`,
 | `P2_BIGTREASURE_ELEC_PROBE_PASS bounces=10 traces=3000 floors=2720` | elec bounce |
 | `P2_BIGTREASURE_WATER_PROBE_PASS ticks=59 hits=1 ground=-0.000000` | water arc |
 | `P2_BIGTREASURE_HOST_SEAM_PASS ticks=361 attacks=1 events=5` | seam lifetime |
-| `P2_BIGTREASURE_FSMHOST_PASS ticks=1 knockoffs=1 weapons=3 phase=PreAttack` | **FSM host + real damage + phase transition** |
+| `P2_BIGTREASURE_FSMHOST_FULL_PASS knockoffs=4 weapons=0 phase=DropItem transitions=4` | **full four-weapon phase progression** |
 | `PASS BIGTREASURE_RUNTIME` | suite pass |
 
 Two PPM captures were produced (wait1, dead). The squad overlay ran with
-20 reds (`[Pikipelago] P2_ROOM_PREVIEW ... red=20`) and entered active gameplay;
-the FSM host phase knocked off one weapon on the real map and re-entered
-PreAttack in the same tick.
+20 reds (`[Pikipelago] P2_ROOM_PREVIEW ... red=20`) and entered active gameplay.
+Each of the four weapons is damaged to zero on the real map, released, and the
+policy re-picks (or drops to `DropItem` on the last one); the body then accepts
+damage. The earlier single-transition run
+(`output/lane32-fsmhost-runtime3/3fa5cb8f…`, fixture-02) is superseded but kept
+for the record.
 
 ## Remaining gaps
 

@@ -1,7 +1,7 @@
 From 6391a5a791586ef61023fc3b9af0426c96515db1 Mon Sep 17 00:00:00 2001
 From: 4laric <4laric@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 02:26:14 -0400
-Subject: [PATCH 2/4] BigTreasure: real-GL FSM host fixture phase, 960x540
+Subject: [PATCH 2/5] BigTreasure: real-GL FSM host fixture phase, 960x540
  window and CMake hook (#246)
 
 ---
