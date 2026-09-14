@@ -121,6 +121,21 @@ py -3.12 -m experimental.pikmin2_elecbug_denki_runtime run `
   --exe output/p2-lanes1011-elecbug-denki-fixture2/fixture.exe --seconds 90
 ```
 
+## Validation
+
+- Native private build: Ninja Release/MinGW, JAudio ON; `PASS` link `bin/nectar.exe`;
+  `ninja -n pikmin_pc` -> no work to do.
+- Standalone lane 10/11 gates on this tree: `PASS P2_HAZARD_EMITTER`,
+  `PASS P2_HAZARD_REACTION`, `PASS P2_ELEMENTAL_RECEIVERS`, `PASS P2_SPECIES_POLICY`,
+  `PASS P2_SPECIES_SCHEMA`, `PASS P2_BULBMIN_POLICY`.
+- Focused root suite: **64 passed** (ElecBug denki/pair/immunity/behavior,
+  lanes 10-12 policies, receivers runtime, ground assets).
+- Full root suite: **1659 passed, 24 skipped, 1052 subtests passed**, with 20
+  pre-existing failures (snow/kochappy/king/uji/animation/surface family gates
+  that require private native artifacts not present on this branch). The same 20
+  fail on the untouched `opencode/p2-submerged-root` base, so none are
+  regressions from this slice.
+
 ## Base composition and limits
 
 - Native `opencode/p2-lanes1011-elecbug` = `opencode/p2-submerged-native`
