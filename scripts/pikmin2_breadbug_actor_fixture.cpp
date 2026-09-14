@@ -1,4 +1,5 @@
 #include "room-prefix.inc"
+#include <cstring>
 #include "PelletView.h"
 #include "pc_p2_breadbug_actor.h"
 #include "Generator.h"
@@ -53,4 +54,9 @@ public:
   }
  }
 };
-int main(int argc,char** argv){SDL_setenv("SDL_AUDIODRIVER","dummy",1);SDL_SetMainReady();pc_gpu_preference_apply();_putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND","1");pc_bbft_init(argc,argv);require(pc_pikipelago_room_preview(),"preview flag");if(!pc_window_init("Breadbug actor arena",960,720))return 3;pc_settings_init();gsys->Initialise();pc_settings_p2d_init();nodeMgr=new NodeMgr();gsys->run(new BreadbugActorFixture());return 0;}
+int main(int argc,char** argv){SDL_setenv("SDL_AUDIODRIVER","dummy",1);SDL_SetMainReady();pc_gpu_preference_apply();_putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND","1");pc_bbft_init(argc,argv);require(pc_pikipelago_room_preview(),"preview flag");
+ int windowWidth=960,windowHeight=540;const char* spec=std::getenv("PIKMIN_P2_ROOM_WINDOW");
+ if(spec&&std::strcmp(spec,"off")!=0&&std::strcmp(spec,"0")!=0){int w=0,h=0;if(std::sscanf(spec,"%dx%d",&w,&h)==2&&w>0&&h>0){windowWidth=w;windowHeight=h;}}
+ if(!pc_window_init("Breadbug actor arena",windowWidth,windowHeight))return 3;
+ pc_window_center();std::printf("[PC Port] Experimental preview window set to %dx%d windowed and centered (override with PIKMIN_P2_ROOM_WINDOW=WxH or =off).\n",windowWidth,windowHeight);std::fflush(stdout);
+ pc_settings_init();gsys->Initialise();pc_settings_p2d_init();nodeMgr=new NodeMgr();gsys->run(new BreadbugActorFixture());return 0;}

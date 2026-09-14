@@ -88,11 +88,16 @@ its existing public API.
   - at frame 300 `pc_p2_breadbug_actor_reset()` (proxy draw declines),
   - then `pc_p2_breadbug_actor_setup()` re-registers (second `P2_BREADBUG_ACTOR_READY`),
   - then injected death `actor->mHealth=0`, and the proxy draw declines once dead.
-- Evidence: run `output/lane18-breadbug-runtime2/92e45733ab604788841e9ca75e9cc3cf`
-  (fixture SHA-256 `261bf516167001c66f6f85151e836892596aa3d953ca18dc4594d735f679b6b2`):
-  birth `-150,30,1850`, max displacement 469.16 over 300 moving frames,
+- Evidence: run `output/lane18-breadbug-runtime/11445227953f4e4a89641c8eda90f50e`
+  (fixture SHA-256 `6be31afa3c475176c9397873f5309910c530216fcfb1c58d5b05503c85c98cfa`):
+  birth `-150,30,1850`, max displacement 478.44 over 300 moving frames,
   `P2_BREADBUG_ACTOR_REENTRY`, `P2_BREADBUG_ACTOR_KILL frame=306`,
   `P2_BREADBUG_ACTOR_DEATH corpse=0`, PASS.
+- Fixture baseline adopted: env-driven window (`PIKMIN_P2_ROOM_WINDOW`, default
+  960x540) with `pc_window_center()` and the standard log line; 20-red starting
+  squad via `ensure_pikmin_squad` in the arena overlay; no extinction screen.
+- Native base `a0b5dca4049ddbe79979eecc9f72c517e5d3a920` (`output/lane18-native`),
+  private build `output/lane18-native-build` (`ninja -n pikmin_pc`: no work).
 - **Corpse finding**: on injected death the P1 `TEKI_Collec` host leaves **no
   PelletView corpse** (`corpse=0`). Cleanup/unmapping passes; the P2 corpse
   carry/reward is still unimplemented and is not claimed.
