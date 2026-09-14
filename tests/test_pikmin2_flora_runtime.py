@@ -7,6 +7,7 @@ failing the suite.
 """
 import os
 from pathlib import Path
+import struct
 import subprocess
 import tempfile
 import unittest
@@ -58,6 +59,16 @@ class ProtocolTests(unittest.TestCase):
         bad = fr.validate(missing, 0)
         self.assertFalse(bad['passed'])
         self.assertIn('captured', bad['failed'])
+
+    def test_generator_uid_is_little_endian(self):
+        # Generator::_70 is the little-endian view of record[8:12]; big-endian
+        # stamping would silently never bind.
+        little = bytearray(64)
+        struct.pack_into('<I', little, 8, 240001)
+        self.assertEqual(fr.generator_uid(bytes(little)), 240001)
+        big = bytearray(64)
+        struct.pack_into('>I', big, 8, 240001)
+        self.assertNotEqual(fr.generator_uid(bytes(big)), 240001)
 
     def test_instrument_replaces_room_app(self):
         source = 'prefix\nclass RoomApp : public PlugPikiApp {\n int idle() override { return 0; }\n};\nint main(int, char**) { return 0; }\n'

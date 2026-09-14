@@ -177,6 +177,17 @@ def instrument(source):
     return INCLUDES + source[:start] + APP + source[end:]
 
 
+def generator_uid(record):
+    """Generator::_70 for a .gen record.
+
+    Stream::readInt byte-swaps on little-endian hosts (returning the big-endian
+    view of the file bytes), then Generator::readID byte-swaps again, so the
+    engine sees the little-endian view of record[8:12]. Writers must therefore
+    stamp generator ids little-endian for the module's id match to hold.
+    """
+    return struct.unpack_from('<I', record, 8)[0]
+
+
 def pelplant_sidecar(specs):
     """Strict P2_FLORA_PELPLANT_1 text, mirroring pc_p2_flora_policy.h."""
     if not isinstance(specs, (list, tuple)) or not 1 <= len(specs) <= 64:
@@ -231,19 +242,24 @@ def stage(assets, output):
     # Starting squad (injection; the practice stage carries no Pikmin here).
     for i in range(10):
         row = bytearray(piki)
-        struct.pack_into('>I', row, 8, 235200 + i)
+        struct.pack_into('<I', row, 8, 235200 + i)
         row[16:48] = b'flora squad'.ljust(32, b'\0')
         write_position(row, [10 + i % 5 * 12, 30, 1890 + i // 5 * 12])
         struct.pack_into('>I', row, 92, 1)  # native Red
         entries.append(bytes(row))
 
     # One full Pellet Posy (TEKI_Palm) among the squad (labeled injection; the
-    # source position is authored, not copied from source placement data).
+    # source position is authored, not copied from source placement data). The
+    # generator id is written little-endian so Generator::_70 reads it back as
+    # POSY_GENERATOR (readID byte-swaps the streamed int), matching how
+    # preview_pikmin2_room.ensure_pikmin_squad stamps its own generators.
     posy = bytearray(enemy)
     posy[80] = 7  # TEKI_Palm, Pellet Posy
-    struct.pack_into('>I', posy, 8, POSY_GENERATOR)
+    struct.pack_into('<I', posy, 8, POSY_GENERATOR)
     posy[16:48] = b'flora pellet posy fixture'.ljust(32, b'\0')
     write_position(posy, [34, 30, 1896])
+    if generator_uid(bytes(posy)) != POSY_GENERATOR:
+        raise ValueError('Injected Pellet Posy generator id does not bind to %d' % POSY_GENERATOR)
     entries.append(bytes(posy))
 
     data = data[:20] + struct.pack('>I', len(entries)) + b''.join(entries)

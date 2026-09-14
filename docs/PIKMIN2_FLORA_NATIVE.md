@@ -99,7 +99,9 @@ P2_FLORA_ONION_RECEIPT generator=<id> pellet=<n> pokos=0 seeds=0 onion_slice_uni
 - Two-phase binding: the sidecar is parsed into pending specs and a proxy may
   resolve on any later frame, because generator actors can spawn after
   `GameCoreSection::finalSetup`. A spec that never resolves simply never emits
-  its observation lines (the validator then fails closed).
+  its observation lines (the validator then fails closed). The first pending
+  scan logs every scanned actor (`P2_FLORA_PELPLANT_SCAN generator=<id>
+  type=<t> palm=<0|1>`) so a binding failure is diagnosable from the log.
 
 **BLOCKED / remaining**
 
@@ -131,11 +133,11 @@ P2_FLORA_ONION_RECEIPT generator=<id> pellet=<n> pokos=0 seeds=0 onion_slice_uni
 ## Build and fixture provenance
 
 - Native branch `opencode/p2-lane23-native`, commit
-  `8f0574e923d7508dc170362d52badcd2537a2601` (base `57bb1a4e`), clean.
+  `383ad24d7a21d023d6767cb1903cef8d2e0f230f` (base `57bb1a4e`), clean.
 - Private build `output/p2-lane23-native-build`, Ninja; dry run
   `ninja: no work to do.`
-- Fixture `output/p2-lane23-flora-fixture-3/build/fixture.exe`
-  SHA-256 `7a6c6dbcb6e194a03bca387897ed06339ae76a623e8b80a913155af48113944a`,
+- Fixture `output/p2-lane23-flora-fixture-4/build/fixture.exe`
+  SHA-256 `13b70f5d9efa381609743edb3252d9dc37a8381448c3a54036a70e25a89c62f1`,
   `provenance.json` status `built`, expected native head matches.
 - GL fixture runs are serialized and owned by the coordinator. This lane built
   only; no runtime/gameplay acceptance is claimed.
@@ -150,7 +152,11 @@ The private chal0 slot reuses the byte-preserved practice course, so no
   `courses/practice/practice.mod`),
 - `dataDir/stages/chal0/default.gen` = the practice `default.gen` records plus
   10 Red Pikmin (injected squad) and one `TEKI_Palm` Pellet Posy generator
-  (`_70 = 240001`, authored at `(34, 30, 1896)`; labeled fixture injection),
+  (`_70 = 240001`, authored at `(34, 30, 1896)`; labeled fixture injection).
+  The id is stamped **little-endian** at record offset 8 so `Generator::_70`
+  reads back `240001` (`Stream::readInt` byte-swaps on the little-endian host
+  and `Generator::readID` byte-swaps again; the same convention as
+  `preview_pikmin2_room.ensure_pikmin_squad`),
 - every existing `dataDir/stages/chal0/*.gen` overridden to an empty stage,
 - `p2-cargo-free.txt` (`P2_CARGO_FREE_1`) so the preview skips the missing
   `courses/pikmin2room/treasure.mod`,
@@ -163,13 +169,13 @@ Exact GL run command (from `output/p2-lane23-root`):
 
 ```powershell
 $env:PIKMIN_P2_ROOM_WINDOW='960x540'
-py -3.12 -m experimental.pikmin2_flora_runtime run --assets C:\Users\alari\bbft\dist\cohesion\pikmin\assets --output output/p2-lane23-flora-runtime-02 --exe C:\Users\alari\pikmin-randomizer\output\p2-lane23-flora-fixture-3\build\fixture.exe
+py -3.12 -m experimental.pikmin2_flora_runtime run --assets C:\Users\alari\bbft\dist\cohesion\pikmin\assets --output output/p2-lane23-flora-runtime-03 --exe C:\Users\alari\pikmin-randomizer\output\p2-lane23-flora-fixture-4\build\fixture.exe
 ```
 
 ## Validation
 
 ```text
-py -3.12 -m pytest tests/ -q -k flora        # 73 passed
+py -3.12 -m pytest tests/ -q -k flora        # 74 passed
 g++ -std=c++17 -Wall -Wextra -Werror -I native-patches/flora tests/pikmin2_flora_policy.cpp
 ```
 
