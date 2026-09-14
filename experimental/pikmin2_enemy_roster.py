@@ -54,6 +54,22 @@ CLASSIFICATIONS = (
 )
 ELIGIBILITY = ("denied", "candidate", "admitted", "excluded")
 
+# Identity roles separate how a source identity participates in a randomizer
+# pool from its source classification. Consumers (03/04/05) select only
+# ``source``/``variant`` identities; helpers and aliases are never seeded on
+# their own. ``identity_role`` is derived from the roster facts, never stored.
+ROLES = (
+    "source",        # standalone randomizable enemy/boss with its own manager
+    "variant",       # randomizable identity sharing a parent manager/base
+    "helper",        # boss helper or dependent birth, not an independent spawn
+    "plant",
+    "hazard",
+    "projectile",
+    "nest",
+    "manager_base",
+    "non_spawnable",
+)
+
 # Source-backed classification sets, keyed by decomp enum name. Lane 02 decision,
 # reviewable by lanes 03/04/05; the audit flags any identity left unclassified.
 PLANTS = frozenset({
@@ -278,6 +294,26 @@ def classify(enum_name: str, facts: dict) -> str:
     return "enemy"
 
 
+def identity_role(entry: RosterEntry) -> str:
+    """How an identity participates in a pool: source, variant, helper or other.
+
+    A randomizable identity that shares a parent manager/base (for example
+    ``UmiMushi``/``UmiMushiBlind`` on ``UmiMushiBase``) is a *variant*; a
+    standalone enemy or boss is a *source*. Helpers and dependent births are
+    never seeded independently even if they carry an enemy-like classification.
+    """
+    if entry.classification == "boss_helper":
+        return "helper"
+    if entry.classification in ("plant", "hazard", "projectile", "nest",
+                                "manager_base", "non_spawnable"):
+        return entry.classification
+    if not entry.spawnable:
+        return "non_spawnable"
+    if entry.parent_id is not None:
+        return "variant"
+    return "source"
+
+
 def build_entries(enum_records: dict[str, dict], table_records: dict[str, dict]) -> list[dict]:
     """Merge enum identity data with gEnemyInfo facts into roster records."""
     by_enum = {r["enum_name"]: r for r in table_records.values()}
@@ -436,15 +472,104 @@ def by_id(roster: list[RosterEntry]) -> dict[int, RosterEntry]:
     return {entry.source_id: entry for entry in roster}
 
 
+def resolve_alias(token: str, roster: list[RosterEntry]) -> tuple[str, RosterEntry | None]:
+    """Resolve a content-inventory token to ``(kind, identity)``.
+
+    ``kind`` is ``exact`` (an enum name), ``generator_variant`` (a ``$N``-prefixed
+    generator token), ``treasure_carrier`` (an ``Enum_suffix`` carrier alias) or
+    ``unknown``. This lets 03/05 distinguish real identities from the alias
+    tokens the content inventory mixes into ``enemy_ids`` instead of inventing a
+    source ID for an alias.
+    """
+    lowered = {entry.enum_name.lower(): entry for entry in roster}
+    if token in {entry.enum_name for entry in roster}:
+        return "exact", lowered[token.lower()]
+    stripped = token.lstrip("$")
+    while stripped and stripped[0].isdigit():
+        stripped = stripped[1:]
+    if stripped.lower() in lowered:
+        return "generator_variant", lowered[stripped.lower()]
+    entry = lowered.get(stripped.split("_", 1)[0].lower())
+    if entry is None:
+        return "unknown", None
+    return "treasure_carrier", entry
+
+
+@dataclass(frozen=True)
+class AdmissionSet:
+    """The explicit, deny-by-default seedable identity set for this roster."""
+
+    admitted: tuple[int, ...]
+    candidates: tuple[int, ...]
+    excluded: tuple[int, ...]
+    denied: tuple[int, ...]
+    by_role: dict[str, int]
+
+    def __contains__(self, source_id: object) -> bool:
+        return source_id in self.admitted
+
+    def is_admitted(self, source_id: int) -> bool:
+        return source_id in self.admitted
+
+
+def admission_set(roster: list[RosterEntry]) -> AdmissionSet:
+    """Build the seedable admission set from the per-ID gate ledger.
+
+    An identity is admitted only when the overlay marks ``eligibility: admitted``
+    and its role is ``source`` or ``variant``. Any other eligibility remains
+    denied for seeding; source facts, taxonomy membership or a native module
+    presence never imply admission.
+    """
+    admitted: list[int] = []
+    candidates: list[int] = []
+    excluded: list[int] = []
+    denied: list[int] = []
+    for entry in sorted(roster, key=lambda item: item.source_id):
+        if entry.eligibility == "admitted":
+            role = identity_role(entry)
+            if role not in ("source", "variant"):
+                raise RosterError(f"{entry.enum_name} is admitted but its role {role!r} is not seedable")
+            admitted.append(entry.source_id)
+        elif entry.eligibility == "candidate":
+            candidates.append(entry.source_id)
+        elif entry.eligibility == "excluded":
+            excluded.append(entry.source_id)
+        else:
+            denied.append(entry.source_id)
+    by_role: dict[str, int] = {}
+    for entry in roster:
+        role = identity_role(entry)
+        by_role[role] = by_role.get(role, 0) + 1
+    return AdmissionSet(tuple(admitted), tuple(candidates), tuple(excluded), tuple(denied), by_role)
+
+
+def admitted_ids(roster: list[RosterEntry]) -> list[int]:
+    """Ordered source IDs a consumer may seed; empty while nothing is admitted."""
+    return list(admission_set(roster).admitted)
+
+
+def require_admitted(roster: list[RosterEntry], source_id: int) -> RosterEntry:
+    entry = by_id(roster).get(source_id)
+    if entry is None:
+        raise RosterError(f"unknown P2 source id {source_id}")
+    if entry.eligibility != "admitted" or identity_role(entry) not in ("source", "variant"):
+        raise RosterError(f"{entry.enum_name} ({source_id}) is not an admitted seedable identity")
+    return entry
+
+
 def summarize(roster: list[RosterEntry]) -> dict:
     counts: dict[str, int] = {}
     for entry in roster:
         counts[entry.classification] = counts.get(entry.classification, 0) + 1
     eligible = [e.enum_name for e in roster if e.eligibility in ("candidate", "admitted")]
+    admission = admission_set(roster)
     return {
         "entry_count": len(roster),
         "classification_counts": dict(sorted(counts.items())),
+        "role_counts": dict(sorted(admission.by_role.items())),
         "randomizable_candidates": sum(e.is_randomizable_candidate for e in roster),
         "eligible_identities": eligible,
+        "admitted_ids": list(admission.admitted),
+        "admitted_count": len(admission.admitted),
         "in_info_table": sum(1 for e in roster if getattr(e, "in_info_table", True)),
     }

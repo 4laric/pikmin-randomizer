@@ -162,6 +162,9 @@ def main() -> int:
     summary = report["summary"]
     print(f"roster identities: {summary['entry_count']}  candidates: {summary['randomizable_candidates']}")
     print("classifications:", summary["classification_counts"])
+    print("roles:", summary.get("role_counts", {}))
+    print(f"admitted seedable identities: {summary.get('admitted_count', 0)} "
+          f"{summary.get('admitted_ids', [])}")
     coverage = report["coverage"]
     print(f"inventory identities: {coverage['inventory_identities']} "
           f"(exact {coverage['inventory_exact_identities']}, "
