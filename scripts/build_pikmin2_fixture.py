@@ -108,12 +108,26 @@ def absolute(value, root):
     return (path if path.is_absolute() else root / path).resolve()
 
 
+def expand_response(command, build):
+    # CMake emits a Ninja response file for the final link once the expanded
+    # command crosses its length threshold (seen on the combined lane-13 head).
+    # Ninja only keeps the file with `-d keeprsp`, so it must already be on disk.
+    def replace(match):
+        path = Path(match.group(2))
+        if not path.is_absolute():
+            path = build / path
+        if not path.is_file():
+            raise BuildRejected('Missing response file (rerun the target link with `ninja -d keeprsp`): ' + str(path))
+        return path.read_text(encoding='utf-8')
+    return re.sub(r'@("?)([^\s"]+\.rsp)\1', replace, command)
+
+
 def select_commands(commands, source, build):
     main = (source / 'pc_port/pc_main.cpp').resolve()
     compiles, links, objects = [], [], set()
     # Archive/custom build steps can contain real shell pipelines. They are not
     # compiler/link invocations and must never be evaluated by this tool.
-    parsed = [compiler_args(line) for line in commands if ' -c ' in line or ' -o ' in line]
+    parsed = [compiler_args(expand_response(line, build)) for line in commands if ' -c ' in line or ' -o ' in line]
     for args in parsed:
         if '-c' in args:
             obj = absolute(args[option_index(args, '-o')], build)
