@@ -121,13 +121,14 @@ The bridge is no longer preview-only. With `p2_enemies` set, the ordinary
 generator writes a `p2_layout` field onto a schema-9 manifest:
 
 - `randomizer.seed.generate(..., p2_enemies=True, p2_placement=document)` derives
-  targets from a lane 04 placement/encounter document through
-  `randomizer.p2_placement.audit`: `binding_targets_from_placement()` lists legal
-  target tokens and `resolve_placement_layout()` binds each target to an identity
-  that is both admitted and placement-legal for it, so no identity lands in an
-  illegal slot. It stores `p2_layout` and adds the `p2-enemy-bridge-v1`
-  capability, and raises a clear `ValueError` when nothing is admitted or no
-  placement document is supplied. Default-deny is preserved.
+  targets from a lane 04 placement/encounter document. `binding_targets_from_placement()`
+  delegates to lane 04's `randomizer.p2_placement_catalog.binding_targets_for_sources`
+  for the constraint-compatible target list, and `resolve_placement_layout()` then
+  binds each target only to an identity with **accepted** placement evidence for it
+  (`randomizer.p2_placement.audit`), covering every admitted identity at least
+  once. It stores `p2_layout` and adds the `p2-enemy-bridge-v1` capability, and
+  raises a clear `ValueError` when nothing is admitted or no placement document is
+  supplied. Default-deny is preserved.
 - Explicit-cohort binding (`resolve_layout`) stays a diagnostic bridge API and is
   not exposed as a seed option.
 - CLI: `--p2-enemies --p2-placement PLACEMENT.json`.
