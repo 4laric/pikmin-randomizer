@@ -1,8 +1,8 @@
 From d1c15ff18e53c5674ee011ba01cf50a6166e41a8 Mon Sep 17 00:00:00 2001
 From: 4laric <4laric@users.noreply.github.com>
 Date: Mon, 14 Sep 2026 03:08:30 -0400
-Subject: [PATCH] Waterwraith: two-species sampled-pose visual module + real-GL
- runtime fixture (#175)
+Subject: [PATCH 1/4] Waterwraith: two-species sampled-pose visual module +
+ real-GL runtime fixture (#175)
 
 ---
  CMakeLists.txt                       |   1 +

@@ -1,21 +1,435 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index ede8e2e6..0441be3c 100644
+index ede8e2e6..f3da0aff 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -190,6 +190,7 @@ set(PC_PORT_SOURCES
+@@ -190,6 +190,9 @@ set(PC_PORT_SOURCES
      pc_port/pc_p2_mamuta.cpp
      pc_port/pc_p2_mamuta_rules.cpp
      pc_port/pc_p2_tank.cpp
++    pc_port/pc_p2_waterwraith.cpp
 +    pc_port/pc_p2_waterwraith_visual.cpp
++    pc_port/pc_p2_waterwraith_host.cpp
      pc_port/pc_p2_qurione.cpp
      pc_port/pc_p2_kurage_receiver.cpp
      pc_port/pc_p2_sokkuri.cpp
+diff --git a/pc_port/pc_p2_waterwraith.cpp b/pc_port/pc_p2_waterwraith.cpp
+new file mode 100644
+index 00000000..b2319274
+--- /dev/null
++++ b/pc_port/pc_p2_waterwraith.cpp
+@@ -0,0 +1,165 @@
++#include "pc_p2_waterwraith.h"
++
++#include <cmath>
++
++namespace {
++constexpr float kShadowRampPerSecond = 1.0f; // reaches full scale ~1 s after the fall
++} // namespace
++
++P2WaterwraithRig::P2WaterwraithRig(float properRotationSpeed)
++    : mProperRotationSpeed(properRotationSpeed)
++{
++}
++
++bool P2WaterwraithRig::birth()
++{
++    if (mAlive) {
++        return false;
++    }
++    mAlive        = true;
++    mAttached     = true;
++    mInvulnerable = false;
++    mTyre         = P2TYRE_Land; // tyre.cpp:79
++    mWraith       = P2BM_Walk;
++    mHealth       = kTyreMaxHealth;
++    mPosition     = P2WaterwraithVec3{};
++    mVelocity     = P2WaterwraithVec3{};
++    mFacing       = 0.0f;
++    mScale        = 1.0f;
++    mDistance     = 0.0f;
++    mRollAngle    = 0.0f;
++    mFalling      = false;
++    mShadow       = kShadowMinScale;
++    return true;
++}
++
++void P2WaterwraithRig::push(const P2WaterwraithVec3& position, const P2WaterwraithVec3& velocity,
++                            float facing, float scale)
++{
++    if (!mAlive) {
++        return;
++    }
++    if (mTyre == P2TYRE_Move || mTyre == P2TYRE_Land) {
++        const float dx = position.x - mPosition.x;
++        const float dz = position.z - mPosition.z;
++        const float step = std::sqrt(dx * dx + dz * dz);
++        mDistance += step;
++        // Roll rate = distance / circumference, scaled by the proper fp01.
++        mRollAngle += (step / kRollerCircumference) * mProperRotationSpeed;
++    }
++    mPosition = position;
++    mVelocity = velocity;
++    mFacing   = facing;
++    mScale    = scale;
++}
++
++bool P2WaterwraithRig::landFloorContact()
++{
++    if (!mAlive || mTyre != P2TYRE_Land) {
++        return false;
++    }
++    mTyre = P2TYRE_Freeze; // tyreState.cpp:105-115 (flick then freeze)
++    return true;
++}
++
++bool P2WaterwraithRig::moveRestart()
++{
++    if (!mAlive || mTyre != P2TYRE_Freeze || !mAttached) {
++        return false;
++    }
++    mTyre = P2TYRE_Move; // Tyre.cpp:565-572
++    return true;
++}
++
++bool P2WaterwraithRig::quakeFreeze()
++{
++    if (!mAlive || mTyre != P2TYRE_Move) {
++        return false;
++    }
++    mTyre = P2TYRE_Freeze; // tyre.cpp:347-353
++    return true;
++}
++
++bool P2WaterwraithRig::damageable() const
++{
++    if (!mAlive || mTyre == P2TYRE_Dead) {
++        return false;
++    }
++    // Stickable only while frozen, or once the wraith has dismounted.
++    return mTyre == P2TYRE_Freeze || mInvulnerable;
++}
++
++bool P2WaterwraithRig::applyDamage(float damage, bool* outDead)
++{
++    if (outDead) {
++        *outDead = false;
++    }
++    if (!damageable() || !(damage > 0.0f)) {
++        return false;
++    }
++    mHealth -= damage;
++    if (mHealth < 0.0f) {
++        mHealth = 0.0f;
++    }
++    // Death is gated on the dismounted EB_Invulnerable flag even at zero HP.
++    if (outDead) {
++        *outDead = mHealth <= 0.0f && mInvulnerable;
++    }
++    return true;
++}
++
++void P2WaterwraithRig::dismount()
++{
++    if (!mAlive) {
++        return;
++    }
++    mAttached     = false;
++    mInvulnerable = true;
++    if (mTyre == P2TYRE_Move) {
++        mTyre = P2TYRE_Freeze;
++    }
++}
++
++bool P2WaterwraithRig::beginDead()
++{
++    if (!mAlive || mTyre == P2TYRE_Dead || !mInvulnerable || mHealth > 0.0f) {
++        return false;
++    }
++    mTyre = P2TYRE_Dead; // tyre_getoff
++    return true;
++}
++
++bool P2WaterwraithRig::finishDead()
++{
++    if (!mAlive || mTyre != P2TYRE_Dead) {
++        return false;
++    }
++    mAlive    = false;
++    mAttached = false;
++    return true;
++}
++
++float P2WaterwraithRig::rideRegen(bool riding) const
++{
++    if (!mAlive || !mAttached || !riding) {
++        return 0.0f;
++    }
++    return kRideRegenPerTick; // blackMan.cpp:843-848
++}
++
++void P2WaterwraithRig::beginFall()
++{
++    mFalling = true;
++    mShadow  = kShadowMinScale;
++}
++
++float P2WaterwraithRig::tickShadow(float delta)
++{
++    if (mFalling && delta > 0.0f) {
++        mShadow += kShadowRampPerSecond * delta;
++        if (mShadow > kShadowMaxScale) {
++            mShadow = kShadowMaxScale;
++        }
++    }
++    return mShadow;
++}
+diff --git a/pc_port/pc_p2_waterwraith.h b/pc_port/pc_p2_waterwraith.h
+new file mode 100644
+index 00000000..419f8771
+--- /dev/null
++++ b/pc_port/pc_p2_waterwraith.h
+@@ -0,0 +1,139 @@
++#pragma once
++
++// Waterwraith (99 BlackMan) + Tyre (98) dependent-roller ownership and
++// vulnerability policy for lane 31 (#175 / #443). Mirrors US GPVE01 rev 0
++// semantics reconstructed from blackMan.cpp, tyre.cpp, tyreState.cpp,
++// blackManState.cpp, TyreShadow.cpp and the registration tables at research
++// revision 632af937. Engine-free: no actor, map, receiver, sound or effect
++// dependency. The wraith births exactly one child roller and pushes position,
++// velocity, facing and scale into it every frame; the roller has no steering
++// or AI of its own. Retained-assembly functions (walk/route/joint callbacks)
++// are out of scope; this policy owns the dependent lifetime and the
++// vulnerability gate, not locomotion.
++//
++// Source facts encoded here:
++//  - 98 Tyre is BDT_Empty (helper, no carcass/drops, not a boss); 99 BlackMan
++//    is BDT_Boss with childID = Tyre x1.
++//  - Tyre starts in `land` (tyre.cpp:79); first floor contact flicks and enters
++//    `freeze` (tyreState.cpp:105-115); moveRestart -> `move` (Tyre.cpp:565-572);
++//    a quake while moving -> `freeze` (tyre.cpp:347-353).
++//  - Six collision spheres (tyr1..tyr6) are stickable only in freeze/stone.
++//  - Death requires health <= 0 AND the wraith having set EB_Invulnerable
++//    after its dismount (tyreState.cpp:67-69, :152-153); dead plays
++//    tyre_getoff and is removed on the end key.
++//  - Roll rate = distance travelled / WRAITH_ROLLER_CIRCUMFERENCE (44*pi),
++//    scaled by the proper key fp01 (blackMan.cpp:988-995, tyreState.cpp:51-65).
++//  - The wraith regenerates 5 HP per frame while riding (blackMan.cpp:843-848).
++//  - The roller shadow ramps from 0.01 to 1 after the fall begins
++//    (tyre.cpp:721-727, TyreShadow.cpp:217-257).
++
++struct P2WaterwraithVec3 {
++    float x = 0.0f;
++    float y = 0.0f;
++    float z = 0.0f;
++};
++
++// StateID order from include/Game/Entities/Tyre.h:235-240.
++enum P2TyrePhase {
++    P2TYRE_Move = 0,
++    P2TYRE_Land = 1,
++    P2TYRE_Freeze = 2,
++    P2TYRE_Dead = 3,
++};
++
++// StateID order from include/Game/Entities/BlackMan.h:367-378.
++enum P2BlackManPhase {
++    P2BM_Walk = 0,
++    P2BM_Dead = 1,
++    P2BM_Freeze = 2,
++    P2BM_Bend = 3,
++    P2BM_Escape = 4,
++    P2BM_Fall = 5,
++    P2BM_Flick = 6,
++    P2BM_Recover = 7,
++    P2BM_Tired = 8,
++};
++
++class P2WaterwraithRig {
++public:
++    static constexpr float kRollerCircumference = 44.0f * 3.14159265358979323846f;
++    static constexpr float kRideRegenPerTick = 5.0f; // wraith HP/frame while riding
++    static constexpr float kTyreMaxHealth = 1800.0f; // general fp00
++    static constexpr float kTyreAttackDamage = 10.0f; // general fp24
++    static constexpr float kShadowMinScale = 0.01f;
++    static constexpr float kShadowMaxScale = 1.0f;
++
++    // `properRotationSpeed` is Tyre fp01 (retail 25.0; header default 0.5).
++    explicit P2WaterwraithRig(float properRotationSpeed = 25.0f);
++
++    // Births the single child roller (BlackMan::onInit). False if already
++    // alive. Lifetime invariant: at most one child, owned by the wraith.
++    bool birth();
++    bool alive() const { return mAlive; }
++    bool attachedToOwner() const { return mAttached; }
++    P2TyrePhase tyrePhase() const { return mTyre; }
++    P2BlackManPhase wraithPhase() const { return mWraith; }
++    float tyreHealth() const { return mHealth; }
++    bool ownerInvulnerableSet() const { return mInvulnerable; }
++
++    // Per-frame push from the wraith. Accumulates planar distance for the roll
++    // angle; the roller itself never steers.
++    void push(const P2WaterwraithVec3& position, const P2WaterwraithVec3& velocity,
++              float facing, float scale);
++    float travelledDistance() const { return mDistance; }
++    float rollAngle() const { return mRollAngle; }
++    P2WaterwraithVec3 position() const { return mPosition; }
++    float facing() const { return mFacing; }
++    float scale() const { return mScale; }
++
++    // Tyre state transitions. Each is a no-op returning false when the source
++    // precondition does not hold.
++    bool landFloorContact(); // Land  -> Freeze (flick requested)
++    bool moveRestart();      // Freeze -> Move
++    bool quakeFreeze();      // Move  -> Freeze
++    // Six stickable collision spheres only in freeze/stone.
++    bool collisionSticky() const { return mAlive && mTyre == P2TYRE_Freeze; }
++
++    // Vulnerability gate. The armed riding roller is not damageable except in
++    // freeze; after the wraith dismounts (EB_Invulnerable) it stays damageable.
++    bool damageable() const;
++    // Applies damage when allowed. `outDead` is true only when health reached
++    // zero AND the dismounted invulnerable flag is set (source death gate).
++    bool applyDamage(float damage, bool* outDead = nullptr);
++
++    // Dismount sets EB_Invulnerable and releases ownership so the roller can
++    // die. The wraith phase moves to Escape/Fall per the host.
++    void dismount();
++    void setWraithPhase(P2BlackManPhase phase) { mWraith = phase; }
++
++    // Death sequence: beginDead requires health <= 0 AND dismounted; it enters
++    // Dead and requests tyre_getoff. finishDead runs the end key and removes
++    // the child. Both are no-ops returning false otherwise.
++    bool beginDead();
++    bool finishDead();
++
++    // Wraith HP regenerated this tick while the roller is attached and riding.
++    float rideRegen(bool riding) const;
++
++    // Roller shadow scale, ramped from the minimum toward the maximum after
++    // the fall begins. `delta` is the 30 Hz source delta.
++    void beginFall();
++    float tickShadow(float delta);
++
++private:
++    bool mAlive = false;
++    bool mAttached = false;
++    bool mInvulnerable = false;
++    P2TyrePhase mTyre = P2TYRE_Land;
++    P2BlackManPhase mWraith = P2BM_Walk;
++    float mHealth = 0.0f;
++    P2WaterwraithVec3 mPosition{};
++    P2WaterwraithVec3 mVelocity{};
++    float mFacing = 0.0f;
++    float mScale = 1.0f;
++    float mDistance = 0.0f;
++    float mRollAngle = 0.0f;
++    float mProperRotationSpeed = 25.0f;
++    bool mFalling = false;
++    float mShadow = kShadowMinScale;
++};
+diff --git a/pc_port/pc_p2_waterwraith_host.cpp b/pc_port/pc_p2_waterwraith_host.cpp
+new file mode 100644
+index 00000000..54f3249f
+--- /dev/null
++++ b/pc_port/pc_p2_waterwraith_host.cpp
+@@ -0,0 +1,46 @@
++#include "pc_p2_waterwraith_host.h"
++
++#include <cmath>
++
++namespace {
++constexpr int kFreezeHoldTicks = 30; // one second of land/freeze before moveRestart
++} // namespace
++
++void p2_waterwraith_host_reset(P2WaterwraithHostSeam& seam)
++{
++    seam = P2WaterwraithHostSeam();
++}
++
++bool p2_waterwraith_host_setup(P2WaterwraithHostSeam& seam, float properRotationSpeed)
++{
++    p2_waterwraith_host_reset(seam);
++    seam.rig = P2WaterwraithRig(properRotationSpeed);
++    if (!seam.rig.birth()) {
++        return false;
++    }
++    seam.x      = 0.0f;
++    seam.y      = 0.0f;
++    seam.z      = 0.0f;
++    seam.facing = 0.0f;
++    seam.active = true;
++    // Initial push places the roller in Land.
++    seam.rig.push({ seam.x, seam.y, seam.z }, { 0.0f, 0.0f, 0.0f }, seam.facing, 1.0f);
++    return true;
++}
++
++void p2_waterwraith_host_tick(P2WaterwraithHostSeam& seam, float delta)
++{
++    if (!seam.active || !std::isfinite(delta) || delta <= 0.0f) {
++        return;
++    }
++    seam.x += seam.speed * delta;
++    const P2WaterwraithVec3 position{ seam.x, seam.y, seam.z };
++    const P2WaterwraithVec3 velocity{ seam.speed, 0.0f, 0.0f };
++    seam.rig.push(position, velocity, seam.facing, 1.0f);
++    if (seam.ticks == 0) {
++        seam.rig.landFloorContact(); // first contact: flick then freeze
++    } else if (seam.ticks == static_cast<std::uint64_t>(kFreezeHoldTicks)) {
++        seam.rig.moveRestart(); // wraith resumes: freeze -> move (roll begins)
++    }
++    ++seam.ticks;
++}
+diff --git a/pc_port/pc_p2_waterwraith_host.h b/pc_port/pc_p2_waterwraith_host.h
+new file mode 100644
+index 00000000..e7af69c3
+--- /dev/null
++++ b/pc_port/pc_p2_waterwraith_host.h
+@@ -0,0 +1,38 @@
++#pragma once
++
++#include "pc_p2_waterwraith.h"
++
++#include <cstdint>
++
++// Lane-owned host seam binding the Waterwraith/Tyre dependent-roller policy
++// (pc_p2_waterwraith, #175) to a display fixture. A fixed-route wraith drives
++// the rig, which owns the single Tyre child and derives its roll from the
++// planar distance travelled. Engine-free: no actor, map, receiver or gameplay
++// dependency; the host supplies the route and feed rate.
++//
++// Source anchors: BlackMan travel speed fp05 (retail 120), Tyre roll rate =
++// distance / 44*pi scaled by fp01 (blackMan.cpp:988-995). Locomotion here is a
++// host-driven straight route, not the retained-assembly walk code.
++
++struct P2WaterwraithHostSeam {
++    P2WaterwraithRig rig;
++    float x = 0.0f;
++    float y = 0.0f;
++    float z = 0.0f;
++    float facing = 0.0f;
++    float speed = 120.0f; // fp05 retail travel speed
++    std::uint64_t ticks = 0;
++    bool active = false;
++};
++
++// Resets the seam to an inactive state (rig torn down).
++void p2_waterwraith_host_reset(P2WaterwraithHostSeam& seam);
++
++// Births the roller and starts the wraith moving along +X from the origin.
++// `properRotationSpeed` is Tyre fp01 (retail 25.0).
++bool p2_waterwraith_host_setup(P2WaterwraithHostSeam& seam, float properRotationSpeed = 25.0f);
++
++// One 30 Hz host tick: advances the route, pushes position/velocity/facing to
++// the roller, resolves the first floor contact (land -> freeze) and restarts
++// movement (freeze -> move) after a short hold. Safe on an inactive seam.
++void p2_waterwraith_host_tick(P2WaterwraithHostSeam& seam, float delta);
 diff --git a/pc_port/pc_p2_waterwraith_visual.cpp b/pc_port/pc_p2_waterwraith_visual.cpp
 new file mode 100644
-index 00000000..7154f823
+index 00000000..db30bb4a
 --- /dev/null
 +++ b/pc_port/pc_p2_waterwraith_visual.cpp
-@@ -0,0 +1,388 @@
+@@ -0,0 +1,405 @@
 +#include "pc_p2_waterwraith_visual.h"
 +
 +#include "Camera.h"
@@ -371,17 +785,9 @@ index 00000000..7154f823
 +    if (!sVisual.ready || !gfx.mCamera) {
 +        return 0;
 +    }
-+    gfx.setPerspective(gfx.mCamera->mPerspectiveMatrix.mMtx, gfx.mCamera->mFov,
-+                       gfx.mCamera->mAspectRatio, gfx.mCamera->mNear, gfx.mCamera->mFar, 1.0f);
 +    int drawn = 0;
 +    for (int i = 0; i < sVisual.speciesCount; ++i) {
-+        const ActiveClip& active = sVisual.active[i];
-+        if (active.clip < 0) {
-+            continue;
-+        }
-+        const ClipBank& clip = sVisual.clips[active.clip];
-+        const int pose = pc_p2_waterwraith_visual_pose_index(sVisual.species[i].name.c_str());
-+        if (pose < 0 || !clip.poses[pose]) {
++        if (sVisual.active[i].clip < 0) {
 +            continue;
 +        }
 +        Matrix4f offset;
@@ -391,25 +797,50 @@ index 00000000..7154f823
 +            }
 +        }
 +        offset.mMtx[0][3] = static_cast<float>(i) * 80.0f;
-+        Matrix4f world, view;
++        Matrix4f world;
 +        ownerWorld.multiplyTo(offset, world);
-+        gfx.mCamera->mLookAtMtx.multiplyTo(world, view);
-+        clip.poses[pose]->updateAnim(gfx, view, nullptr, nullptr);
-+        clip.poses[pose]->drawshape(gfx, *gfx.mCamera, nullptr);
-+        ++drawn;
-+    }
-+    if (!sVisual.drew && drawn > 0) {
-+        std::printf("P2_WATERWRAITH_VISUAL_DRAW species=%d\n", drawn);
-+        sVisual.drew = true;
++        drawn += pc_p2_waterwraith_visual_draw_species(gfx, sVisual.species[i].name.c_str(), world);
 +    }
 +    return drawn;
 +}
++
++int pc_p2_waterwraith_visual_draw_species(Graphics& gfx, const char* species,
++                                          const Matrix4f& world)
++{
++    if (!sVisual.ready || !gfx.mCamera || !species) {
++        return 0;
++    }
++    const int speciesIndex = findSpecies(species);
++    if (speciesIndex < 0) {
++        return 0;
++    }
++    const ActiveClip& active = sVisual.active[speciesIndex];
++    if (active.clip < 0) {
++        return 0;
++    }
++    const int pose = pc_p2_waterwraith_visual_pose_index(species);
++    if (pose < 0 || !sVisual.clips[active.clip].poses[pose]) {
++        return 0;
++    }
++    gfx.setPerspective(gfx.mCamera->mPerspectiveMatrix.mMtx, gfx.mCamera->mFov,
++                       gfx.mCamera->mAspectRatio, gfx.mCamera->mNear, gfx.mCamera->mFar, 1.0f);
++    Matrix4f view;
++    gfx.mCamera->mLookAtMtx.multiplyTo(world, view);
++    Shape* shape = sVisual.clips[active.clip].poses[pose];
++    shape->updateAnim(gfx, view, nullptr, nullptr);
++    shape->drawshape(gfx, *gfx.mCamera, nullptr);
++    if (!sVisual.drew) {
++        std::printf("P2_WATERWRAITH_VISUAL_DRAW species=1\n");
++        sVisual.drew = true;
++    }
++    return 1;
++}
 diff --git a/pc_port/pc_p2_waterwraith_visual.h b/pc_port/pc_p2_waterwraith_visual.h
 new file mode 100644
-index 00000000..801dc070
+index 00000000..56de0035
 --- /dev/null
 +++ b/pc_port/pc_p2_waterwraith_visual.h
-@@ -0,0 +1,47 @@
+@@ -0,0 +1,52 @@
 +#pragma once
 +
 +class Graphics;
@@ -457,12 +888,17 @@ index 00000000..801dc070
 +// Draws every active species' current pose under `ownerWorld`, offset along X
 +// by 80 units per species index. Returns the number of species drawn.
 +int pc_p2_waterwraith_visual_draw(Graphics& gfx, const Matrix4f& ownerWorld);
++
++// Draws one species' current pose at an explicit world transform. Returns 1
++// when drawn, 0 when the species/clip is inactive or unknown.
++int pc_p2_waterwraith_visual_draw_species(Graphics& gfx, const char* species,
++                                          const Matrix4f& world);
 diff --git a/tools/p2_waterwraith_runtime.cpp b/tools/p2_waterwraith_runtime.cpp
 new file mode 100644
-index 00000000..861b8838
+index 00000000..c7f528ea
 --- /dev/null
 +++ b/tools/p2_waterwraith_runtime.cpp
-@@ -0,0 +1,162 @@
+@@ -0,0 +1,184 @@
 +// Private real-GL Waterwraith/Tyre visual runtime fixture (#175/#443). This
 +// file is compiled by the isolated fixture build only (root repo
 +// scripts/build_pikmin2_fixture.py); it is not part of the game target. Boots
@@ -495,8 +931,11 @@ index 00000000..861b8838
 +#include <vector>
 +
 +#include "pc_p2_waterwraith_visual.h"
++#include "pc_p2_waterwraith_host.h"
 +
 +namespace {
++constexpr float kDt = 1.0f / 30.0f;
++
 +void require(bool value, const char* message)
 +{
 +    if (!value) {
@@ -540,6 +979,7 @@ index 00000000..861b8838
 +    bool setup = false;
 +    bool captured = false;
 +    float ground = 0.0f;
++    P2WaterwraithHostSeam seam;
 +
 +public:
 +    int idle() override
@@ -568,6 +1008,8 @@ index 00000000..861b8838
 +            require(pc_p2_waterwraith_visual_play("BlackMan", "kagebozu_walk", true),
 +                    "BlackMan walk play");
 +            require(pc_p2_waterwraith_visual_play("Tyre", "tyre_move", true), "Tyre move play");
++            require(p2_waterwraith_host_setup(seam), "host setup");
++            require(seam.rig.alive() && seam.rig.attachedToOwner(), "roller birth");
 +            SDL_Window* window = SDL_GL_GetCurrentWindow();
 +            require(window != nullptr, "window");
 +            int windowWidth = 0, windowHeight = 0, windowX = 0, windowY = 0;
@@ -580,6 +1022,7 @@ index 00000000..861b8838
 +            setup = true;
 +        }
 +        require(pc_p2_waterwraith_visual_update() == 2, "visual update");
++        p2_waterwraith_host_tick(seam, kDt);
 +        ++visualFrames;
 +        return result;
 +    }
@@ -590,12 +1033,27 @@ index 00000000..861b8838
 +        if (!setup) {
 +            return;
 +        }
-+        Matrix4f owner;
-+        owner.makeSRT(Vector3f(1.0f, 1.0f, 1.0f), Vector3f(0.0f, 0.0f, 0.0f),
-+                      Vector3f(0.0f, ground, -250.0f));
-+        const int drawn = pc_p2_waterwraith_visual_draw(gfx, owner);
-+        require(drawn == 2, "visual draw");
++        // BlackMan walks the host route; the rig-owned Tyre child follows at
++        // the pushed position with the derived roll angle applied.
++        const P2WaterwraithVec3 roller = seam.rig.position();
++        Matrix4f wraithWorld;
++        wraithWorld.makeSRT(Vector3f(1.0f, 1.0f, 1.0f), Vector3f(0.0f, seam.facing, 0.0f),
++                            Vector3f(seam.x, seam.y, seam.z));
++        Matrix4f tyreWorld;
++        tyreWorld.makeSRT(Vector3f(1.0f, 1.0f, 1.0f),
++                          Vector3f(0.0f, 0.0f, seam.rig.rollAngle()),
++                          Vector3f(roller.x, roller.y, roller.z));
++        const int wraithDrawn =
++            pc_p2_waterwraith_visual_draw_species(gfx, "BlackMan", wraithWorld);
++        const int tyreDrawn = pc_p2_waterwraith_visual_draw_species(gfx, "Tyre", tyreWorld);
++        require(wraithDrawn == 1 && tyreDrawn == 1, "visual draw");
 +        if (visualFrames >= 90 && !captured) {
++            require(seam.rig.travelledDistance() > 0.0f, "roller travelled");
++            require(seam.rig.rollAngle() > 0.0f, "roller rolled");
++            std::printf("P2_WATERWRAITH_HOST_PASS ticks=%llu distance=%.3f roll=%.4f phase=%s\n",
++                        (unsigned long long)seam.ticks, seam.rig.travelledDistance(),
++                        seam.rig.rollAngle(),
++                        seam.rig.tyrePhase() == P2TYRE_Move ? "Move" : "Freeze");
 +            capture("waterwraith-visual.ppm");
 +            captured = true;
 +            std::puts("PASS WATERWRAITH_RUNTIME");
@@ -627,10 +1085,10 @@ index 00000000..861b8838
 +}
 diff --git a/tools/p2_waterwraith_runtime_run.py b/tools/p2_waterwraith_runtime_run.py
 new file mode 100644
-index 00000000..c700684a
+index 00000000..d44e4760
 --- /dev/null
 +++ b/tools/p2_waterwraith_runtime_run.py
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,191 @@
 +"""Run and verify the private Waterwraith/Tyre visual runtime fixture (#175/#443).
 +
 +Mirrors tools/p2_bigtreasure_runtime_run.py: verifies fixture provenance,
@@ -651,7 +1109,7 @@ index 00000000..c700684a
 +
 +MARKERS = ("P2_WATERWRAITH_VISUAL_READY", "P2_WATERWRAITH_VISUAL_DRAW",
 +           "P2_WATERWRAITH_VISUAL_PLAY", "P2_WATERWRAITH_WINDOW",
-+           "PASS WATERWRAITH_RUNTIME")
++           "P2_WATERWRAITH_HOST_PASS", "PASS WATERWRAITH_RUNTIME")
 +
 +
 +def sha256(path):
@@ -722,8 +1180,14 @@ index 00000000..c700684a
 +    draw = re.search(r"^P2_WATERWRAITH_VISUAL_DRAW\s+species=(\d+)\s*$", text, flags=re.MULTILINE)
 +    if not draw:
 +        errors.append("missing visual DRAW marker")
-+    elif int(draw.group(1)) != 2:
-+        errors.append(f"expected 2 species drawn: {draw.groups()}")
++    elif int(draw.group(1)) != 1:
++        errors.append(f"expected per-species draw marker: {draw.groups()}")
++    host = re.search(r"^P2_WATERWRAITH_HOST_PASS\s+ticks=(\d+)\s+distance=([\d.]+)\s+"
++                     r"roll=([\d.]+)\s+phase=(\w+)\s*$", text, flags=re.MULTILINE)
++    if not host:
++        errors.append("missing host PASS marker")
++    elif float(host.group(2)) <= 0.0 or float(host.group(3)) <= 0.0:
++        errors.append(f"roller did not travel/roll: {host.groups()}")
 +    return errors
 +
 +
@@ -816,3 +1280,173 @@ index 00000000..c700684a
 +
 +if __name__ == "__main__":
 +    raise SystemExit(main())
+diff --git a/tools/p2_waterwraith_test.cpp b/tools/p2_waterwraith_test.cpp
+new file mode 100644
+index 00000000..b32daa39
+--- /dev/null
++++ b/tools/p2_waterwraith_test.cpp
+@@ -0,0 +1,164 @@
++// Standalone engine-free fixture for the Waterwraith/Tyre dependent-roller
++// ownership and vulnerability policy (pc_port/pc_p2_waterwraith.h/.cpp),
++// lane 31 (#175 / #443). Build (MinGW):
++//   g++ -std=gnu++17 -Wall -Wextra -Werror -Ipc_port tools/p2_waterwraith_test.cpp pc_port/pc_p2_waterwraith.cpp -o <private-output>/p2_waterwraith_test.exe
++
++#include "pc_p2_waterwraith.h"
++
++#include <cassert>
++#include <cmath>
++#include <cstdio>
++
++namespace {
++
++void testBirthAndLifetime()
++{
++    P2WaterwraithRig rig;
++    assert(!rig.alive());
++    assert(rig.birth());
++    assert(rig.alive() && rig.attachedToOwner());
++    assert(rig.tyrePhase() == P2TYRE_Land);
++    assert(rig.tyreHealth() == P2WaterwraithRig::kTyreMaxHealth);
++    assert(!rig.ownerInvulnerableSet());
++    assert(!rig.birth()); // at most one child
++    std::puts("PASS waterwraith_birth");
++}
++
++void testStateTransitions()
++{
++    P2WaterwraithRig rig;
++    assert(rig.birth());
++
++    assert(rig.landFloorContact()); // Land -> Freeze
++    assert(rig.tyrePhase() == P2TYRE_Freeze);
++    assert(!rig.landFloorContact()); // not in Land any more
++    assert(rig.moveRestart());        // Freeze -> Move
++    assert(rig.tyrePhase() == P2TYRE_Move);
++    assert(!rig.moveRestart());       // not frozen
++    assert(rig.quakeFreeze());        // Move -> Freeze
++    assert(rig.tyrePhase() == P2TYRE_Freeze);
++    assert(!rig.quakeFreeze());       // not moving
++    std::puts("PASS waterwraith_states");
++}
++
++void testCollisionSticky()
++{
++    P2WaterwraithRig rig;
++    assert(rig.birth());
++    assert(!rig.collisionSticky()); // Land
++    rig.landFloorContact();
++    assert(rig.collisionSticky());  // Freeze
++    rig.moveRestart();
++    assert(!rig.collisionSticky()); // Move
++    std::puts("PASS waterwraith_sticky");
++}
++
++void testVulnerabilityGate()
++{
++    P2WaterwraithRig rig;
++    assert(rig.birth());
++    assert(!rig.damageable());                       // Land: riding, not damageable
++    bool dead = true;
++    assert(!rig.applyDamage(100.0f, &dead));         // ignored
++    assert(!dead && rig.tyreHealth() == P2WaterwraithRig::kTyreMaxHealth);
++
++    rig.landFloorContact();
++    assert(rig.damageable());                        // Freeze: stickable
++    assert(rig.applyDamage(300.0f, &dead));
++    assert(rig.tyreHealth() == P2WaterwraithRig::kTyreMaxHealth - 300.0f);
++
++    // Zero HP without the dismounted flag does not kill (source death gate).
++    assert(rig.applyDamage(P2WaterwraithRig::kTyreMaxHealth, &dead));
++    assert(rig.tyreHealth() == 0.0f);
++    assert(!dead);
++    assert(!rig.beginDead());
++    std::puts("PASS waterwraith_vulnerability");
++}
++
++void testDismountAndDeath()
++{
++    P2WaterwraithRig rig;
++    assert(rig.birth());
++    rig.landFloorContact();
++    rig.moveRestart();
++    assert(rig.tyrePhase() == P2TYRE_Move);
++
++    rig.dismount();
++    assert(!rig.attachedToOwner());
++    assert(rig.ownerInvulnerableSet());
++    assert(rig.tyrePhase() == P2TYRE_Freeze); // dismount freezes the roller
++    assert(rig.damageable());
++
++    bool dead = false;
++    assert(rig.applyDamage(P2WaterwraithRig::kTyreMaxHealth, &dead));
++    assert(dead); // zero HP + dismounted => death allowed
++    assert(rig.beginDead());
++    assert(rig.tyrePhase() == P2TYRE_Dead);
++    assert(!rig.collisionSticky());
++    assert(rig.finishDead());
++    assert(!rig.alive() && !rig.attachedToOwner());
++    assert(!rig.finishDead()); // already removed
++    assert(!rig.damageable());
++    std::puts("PASS waterwraith_death");
++}
++
++void testRollAngle()
++{
++    P2WaterwraithRig rig(1.0f); // fp01 = 1 for a 1:1 angle-to-distance check
++    assert(rig.birth());
++    rig.landFloorContact();
++    rig.moveRestart();
++
++    rig.push({ 0.0f, 0.0f, 0.0f }, { 0, 0, 0 }, 0.0f, 1.0f);
++    rig.push({ P2WaterwraithRig::kRollerCircumference, 0.0f, 0.0f }, { 0, 0, 0 }, 0.0f, 1.0f);
++    assert(std::fabs(rig.travelledDistance() - P2WaterwraithRig::kRollerCircumference) < 1e-2f);
++    assert(std::fabs(rig.rollAngle() - 1.0f) < 1e-3f);
++
++    // Frozen roller is a static collider: pushes no longer accumulate roll.
++    rig.quakeFreeze();
++    const float frozenDistance = rig.travelledDistance();
++    rig.push({ P2WaterwraithRig::kRollerCircumference * 2.0f, 0.0f, 0.0f }, { 0, 0, 0 }, 0.0f, 1.0f);
++    assert(rig.travelledDistance() == frozenDistance);
++    std::puts("PASS waterwraith_roll");
++}
++
++void testRideRegen()
++{
++    P2WaterwraithRig rig;
++    assert(rig.birth());
++    assert(rig.rideRegen(true) == P2WaterwraithRig::kRideRegenPerTick);
++    assert(rig.rideRegen(false) == 0.0f);
++    rig.dismount();
++    assert(rig.rideRegen(true) == 0.0f); // no regen once dismounted
++    std::puts("PASS waterwraith_regen");
++}
++
++void testShadowRamp()
++{
++    P2WaterwraithRig rig;
++    assert(rig.birth());
++    assert(std::fabs(rig.tickShadow(1.0f / 30.0f) - P2WaterwraithRig::kShadowMinScale) < 1e-6f);
++    rig.beginFall();
++    float scale = P2WaterwraithRig::kShadowMinScale;
++    for (int i = 0; i < 30; ++i) {
++        scale = rig.tickShadow(1.0f / 30.0f);
++    }
++    assert(std::fabs(scale - P2WaterwraithRig::kShadowMaxScale) < 1e-4f);
++    assert(rig.tickShadow(1.0f) == P2WaterwraithRig::kShadowMaxScale); // clamped
++    std::puts("PASS waterwraith_shadow");
++}
++} // namespace
++
++int main()
++{
++    testBirthAndLifetime();
++    testStateTransitions();
++    testCollisionSticky();
++    testVulnerabilityGate();
++    testDismountAndDeath();
++    testRollAngle();
++    testRideRegen();
++    testShadowRamp();
++    std::puts("PASS WATERWRAITH_POLICY");
++    return 0;
++}
