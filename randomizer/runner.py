@@ -246,16 +246,24 @@ async def serve(session, run, process=None, server=None, password=None, updates=
                 await asyncio.gather(task, return_exceptions=True)
 
 
-def launch(manifest, session_dir, exe=None, assets=None, server=None):
+def launch(manifest, session_dir, exe=None, assets=None, server=None,
+           content_manifest=None, content_cache=None):
     with SessionLock(session_dir):
-        return _launch(manifest, session_dir, exe, assets, server)
+        return _launch(manifest, session_dir, exe, assets, server, content_manifest, content_cache)
 
 
-def _launch(manifest, session_dir, exe=None, assets=None, server=None):
+def _launch(manifest, session_dir, exe=None, assets=None, server=None,
+            content_manifest=None, content_cache=None):
     if manifest["mode"] == "ap" and not server:
         raise ValueError("AP mode requires --server")
     session = Session(manifest, session_dir)
     run = NativeRun(session)
+    if content_manifest is not None:
+        # Stage the generated session's content before any native process starts;
+        # a missing/wrong source or corrupt cache raises and nothing is launched.
+        from experimental.pikmin2_staging import stage_session_content
+        receipt = stage_session_content(content_manifest, session.directory, cache_dir=content_cache)
+        print(f"PIKMIN_CONTENT_STAGED: {receipt['summary']}", flush=True)
     process = None
     overlay = None
     log = None
