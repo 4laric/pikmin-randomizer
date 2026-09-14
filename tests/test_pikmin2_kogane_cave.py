@@ -53,6 +53,34 @@ def test_relocation_only_for_unflipped_cave_beetles():
     assert cave.resolve_flip('kogane', 1, in_cave=True)['relocate'] is False
 
 
+def test_relocation_outcome_classifies_relocate_versus_death():
+    relocated = cave.relocation_outcome(0, True)
+    assert relocated == {'flip': 0, 'relocate': True, 'outcome': cave.RELOCATION}
+    for flip_count, in_cave in ((1, True), (2, True), (MAX_FLIPS, True), (0, False)):
+        outcome = cave.relocation_outcome(flip_count, in_cave)
+        assert outcome['relocate'] is False
+        assert outcome['outcome'] == cave.DEATH
+        assert outcome['flip'] == flip_count
+
+
+def test_relocation_outcome_rejects_invalid_inputs():
+    with pytest.raises(ValueError, match='Invalid flip count'):
+        cave.relocation_outcome(-1, True)
+    with pytest.raises(ValueError, match='Invalid flip count'):
+        cave.relocation_outcome(True, True)
+    with pytest.raises(ValueError, match='Invalid cave flag'):
+        cave.relocation_outcome(0, 1)
+    with pytest.raises(ValueError, match='Invalid cave flag'):
+        cave.relocates(0, 'cave')
+
+
+def test_resolve_flip_rejects_non_boolean_flags():
+    with pytest.raises(ValueError, match='Invalid cave flag'):
+        cave.resolve_flip('kogane', 1, in_cave=1)
+    with pytest.raises(ValueError, match='Invalid demo flag'):
+        cave.resolve_flip('kogane', 1, demo_flag='yes')
+
+
 def test_unknown_species_and_out_of_range_flips_are_rejected():
     with pytest.raises(ValueError, match='Unknown beetle species'):
         cave.resolve_flip('bulborb', 1)
