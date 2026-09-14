@@ -7,6 +7,7 @@ Two layers, neither touches GL, disc assets, a player save or a real run:
   real ``tools/preview_p2_room.cpp`` and the ``build()`` command rewriting with
   mocked compiler/Ninja steps.
 """
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -127,20 +128,26 @@ def test_combat_damage_is_observable_separately_from_death():
 
 def test_death_prior_health_is_reported():
     result = validate(NATURAL_DAMAGE, code=0)
-    assert 'P2_SOKKURI_DEAD generator=346005 source_id=79 health=0 prior_health=105.0' in \
-        NATURAL_DAMAGE
+    assert result['checks']['death']
+    assert result['checks']['natural_damage_seen']
+    # The prior_health suffix must not break the death marker match.
+    legacy = validate(GOOD_LOG.replace(' prior_health=0.0', ''), code=0)
+    assert legacy['checks']['death']
 
 
 def _native_roots():
     """Candidate native repo roots for the private fixture builder.
 
-    The lane worktree keeps the native repo as the sibling ``native-l14`` of the
-    root worktree; the historical ``native/`` subdir layout is also honored.
+    ``PIKMIN_NATIVE_ROOT`` points at a private lane worktree; the historical
+    ``native/`` subdir layout is also honored.
     """
+    roots = []
+    env = os.environ.get('PIKMIN_NATIVE_ROOT')
+    if env:
+        roots.append(Path(env))
     here = Path(__file__).resolve()
-    return [here.parents[2] / 'native-l14',
-            here.parents[1] / 'native',
-            Path('native')]
+    roots += [here.parents[1] / 'native', Path('native')]
+    return roots
 
 
 def _native_fixture_source():
