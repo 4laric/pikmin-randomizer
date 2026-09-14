@@ -184,6 +184,27 @@ map trace); encounter hits use a host sink standing in for the lane-10
 receiver; motion is bounded by the per-clip source-length cap, not the stage
 budget.
 
+## Merged lane-32 line: encounter + full motion + save policy
+
+`opencode/p2-lane32-merged` @ `7908de309ef2b1ccb935c3a87fefac9d15de1c75`
+(base `opencode/p2-lane32-integ` @ `d288dd7b`, clean; conflict-free merges of
+`encounter`, `motion`, `motionfull` and `save`).
+
+- **Encounter**: `P2_BIGTREASURE_ENCOUNTER_PASS knockoffs=4 hits=4 phase=Dead events=5`.
+- **Full motion**: all 29 clips staged, 27 advanced per-clip;
+  `P2_BIGTREASURE_MOTION_FULL_PASS clips=27 events=61 advanced=27`. The
+  binding limit was the harness wall-clock watchdog (raised 75s->240s,
+  harness-only), not heap or the stage budget.
+- **Save policy**: `pc_port/pc_p2_bigtreasure_save.{h,cpp}` — versioned 116-byte
+  little-endian record (magic/version/size/CRC-32) serializing ownership, FSM
+  and pool state plus dropped-cargo, with fail-closed restore and invariant
+  checks. Standalone fixture `PASS BIGTREASURE_SAVE` (exe `dd105502…`). Not
+  wired into the game save path; proposed for lane 06/01 shared-save review.
+
+Real-GL run `output/lane32-merged-runtime-02/edd65ed0e1c24f458b593185e43a5879`
+status `passed`; exe `98e21ed7…`, fixture `a563d646…`. Bundle
+`native-candidates/bigtreasure-merged/` (`patches/0001..0008`).
+
 ## Remaining gaps
 
 - **Receiver routing from a real Pikmin attack volume is lane 10.** The damage

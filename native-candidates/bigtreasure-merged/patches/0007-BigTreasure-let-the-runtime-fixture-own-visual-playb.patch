@@ -1,0 +1,89 @@
+From e3730cf99a53e920ababa9478c4765abd81e59ea Mon Sep 17 00:00:00 2001
+From: 4laric <4laric@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 06:14:21 -0400
+Subject: [PATCH 7/8] BigTreasure: let the runtime fixture own visual playback
+ for motion assertions (#246)
+
+---
+ pc_port/pc_p2_hardlanes.cpp      | 9 ++++++++-
+ pc_port/pc_p2_hardlanes.h        | 6 ++++++
+ tools/p2_bigtreasure_runtime.cpp | 4 ++++
+ 3 files changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/pc_port/pc_p2_hardlanes.cpp b/pc_port/pc_p2_hardlanes.cpp
+index c093d9fe..68143e21 100644
+--- a/pc_port/pc_p2_hardlanes.cpp
++++ b/pc_port/pc_p2_hardlanes.cpp
+@@ -180,10 +180,16 @@ constexpr float kBigTreasureSourceDelta = 1.0f / 30.0f;
+ P2BigTreasureHostSeam sBigTreasure;
+ bool sBigTreasureReady = false;
+ bool sBigTreasureVisualReady = false;
++bool sBigTreasureVisualDriven = true;
+ float sBigTreasureGround = 0.0f;
+ double sBigTreasureDebt = 0.0;
+ }
+ 
++void pc_p2_hardlanes_set_bigtreasure_visual_driven(bool driven)
++{
++    sBigTreasureVisualDriven = driven;
++}
++
+ void pc_p2_hardlanes_reset()
+ {
+     pc_p2_bombsarai_arena_reset();
+@@ -199,6 +205,7 @@ void pc_p2_hardlanes_reset()
+     pc_p2_bigtreasure_visual_reset();
+     sBigTreasureReady = false;
+     sBigTreasureVisualReady = false;
++    sBigTreasureVisualDriven = true;
+     sBigTreasureGround = 0.0f;
+     sBigTreasureDebt = 0.0;
+ }
+@@ -300,7 +307,7 @@ void pc_p2_hardlanes_update()
+         for (int i = 0; i < ticks; ++i) {
+             if (sBigTreasureReady)
+                 p2_bigtreasure_host_tick_entry(sBigTreasure, kBigTreasureSourceDelta, false, 0.0f);
+-            if (sBigTreasureVisualReady) {
++            if (sBigTreasureVisualReady && sBigTreasureVisualDriven) {
+                 if (pc_p2_bigtreasure_visual_completed()) pc_p2_bigtreasure_visual_clip("wait1");
+                 pc_p2_bigtreasure_visual_update(1.0f);
+             }
+diff --git a/pc_port/pc_p2_hardlanes.h b/pc_port/pc_p2_hardlanes.h
+index b2cc3f93..dc18658b 100644
+--- a/pc_port/pc_p2_hardlanes.h
++++ b/pc_port/pc_p2_hardlanes.h
+@@ -9,3 +9,9 @@ void pc_p2_hardlanes_setup();
+ void pc_p2_hardlanes_update();
+ void pc_p2_hardlanes_draw(Graphics&);
+ void pc_p2_hardlanes_reset();
++
++// Additive (#246 motion staging): the private real-GL runtime fixture owns the
++// BigTreasure visual clip player during its deterministic per-clip motion
++// phase, so it can assert each staged clip dispatches its authored events.
++// Production leaves the hardlanes source clock driving the visual bank.
++void pc_p2_hardlanes_set_bigtreasure_visual_driven(bool driven);
+diff --git a/tools/p2_bigtreasure_runtime.cpp b/tools/p2_bigtreasure_runtime.cpp
+index c570a2ad..5967e89e 100644
+--- a/tools/p2_bigtreasure_runtime.cpp
++++ b/tools/p2_bigtreasure_runtime.cpp
+@@ -36,6 +36,7 @@
+ #include "pc_p2_bigtreasure_fsmhost.h"
+ #include "pc_p2_bigtreasure_map_trace.h"
+ #include "pc_p2_bigtreasure_visual.h"
++#include "pc_p2_hardlanes.h"
+ 
+ // Batch 2: the lane implementations are part of the shared pikmin_pc target,
+ // so the fixture links against the build objects instead of compiling them into
+@@ -696,6 +697,9 @@ private:
+ 
+     void startVisual()
+     {
++        // Own the clip player for the deterministic per-clip phases below; the
++        // production hardlanes clock would otherwise advance the same player.
++        pc_p2_hardlanes_set_bigtreasure_visual_driven(false);
+         require(pc_p2_bigtreasure_visual_setup("p2-bigtreasure-visual.txt"), "visual setup");
+         require(pc_p2_bigtreasure_visual_pellet_count() == 4, "converted pellet count");
+         require(pc_p2_bigtreasure_visual_debug_count() == 1, "loozy debug marker count");
+-- 
+2.55.0.windows.3
+
