@@ -1,8 +1,9 @@
-"""Compile and run the hard-lane (BombSarai/Fuefuki/BigTreasure) unit tests.
+"""Compile and run the lane 01 hard-lane and projectile unit tests.
 
-Lane 01 Batch A (#437/#244/#245/#246). Standalone header/module tests with the
-exact module sets each test needs; this is the affected-gate repeat short of the
-real-GL runtime fixtures.
+Lane 01 batches A (BombSarai/Fuefuki/BigTreasure, #244/#245/#246) and C
+(cannon/projectiles, #406/#410-#413/#424/#425/#427). Standalone header/module
+tests with the exact module sets each needs; the affected-gate repeat short of
+the real-GL runtime fixtures.
 
     py -3.12 scripts/run_p2_hardlane_tests.py --native output/lane01-native
 """
@@ -31,6 +32,11 @@ TESTS = {
     "p2_bombsarai_induction_test": ["pc_port/pc_p2_bombsarai_fsm.cpp", "pc_port/pc_p2_bombsarai_bomb.cpp",
                                     "pc_port/pc_p2_bombsarai_terrain.cpp"],
     "p2_bombsarai_terrain_test": ["pc_port/pc_p2_bombsarai_terrain.cpp", "pc_port/pc_p2_bombsarai_bomb.cpp"],
+    "p2_cannon_stone_test": ["pc_port/pc_p2_cannon_stone.cpp"],
+    "p2_egg_hazard_test": ["pc_port/pc_p2_egg_hazard.cpp"],
+    "p2_rock_hazard_test": ["pc_port/pc_p2_rock_hazard.cpp"],
+    "p2_kabuto_cannon_test": ["pc_port/pc_p2_kabuto_cannon.cpp", "pc_port/pc_p2_cannon_stone.cpp"],
+    "p2_projectile_host_test": ["pc_port/pc_p2_projectile_host.cpp", "pc_port/pc_p2_cannon_stone.cpp"],
 }
 
 

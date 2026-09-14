@@ -197,6 +197,12 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_batch2.cpp
     pc_port/pc_p2_batch3.cpp
     pc_port/pc_p2_long_legs.cpp
+    pc_port/pc_p2_cannon_stone.cpp
+    pc_port/pc_p2_egg_hazard.cpp
+    pc_port/pc_p2_kabuto_cannon.cpp
+    pc_port/pc_p2_projectile_host.cpp
+    pc_port/pc_p2_rock_hazard.cpp
+    pc_port/pc_p2_projectiles.cpp
     pc_port/pc_p2_hardlanes.cpp
     pc_port/pc_p2_bombsarai_arena.cpp
     pc_port/pc_p2_bombsarai_blast.cpp

@@ -61,7 +61,7 @@ Full file lists and sample absent paths: `docs/PIKMIN2_RECONCILE_LEDGER.json`.
 
 ## Status
 
-Batch A (hard lanes) and Batch B (species root slice) are executed; batches C–E remain.
+Batches A (hard lanes), B (species root slice) and C (cannon/projectiles) are executed; batches D–E remain.
 
 ### Batch A result — hard lanes merged, built, exported, unit-gated
 
@@ -82,8 +82,16 @@ Batch A (hard lanes) and Batch B (species root slice) are executed; batches C–
   - snagret: `pc_p2_snakejoint/dangomushi`
   Each family sub-branch (`opencode/p2-species-*`) is a smaller merge that lanes 14–16 already own; integrating them one at a time keeps shared-file conflicts additive and reviewable.
 
+### Batch C result — cannon/projectiles extracted, built, exported, unit-gated
+
+- The `656c556` merge tip only carries a doc; the candidate is native `opencode/p2-projectiles-integration` (`104d6dfa`). Merging it wholesale conflicts on 13 files, again because it descends from the old `2c08d6b8` base and collides with already-integrated `pc_p2_batch2/cave/kochappy/long_legs`. Merge aborted; extracted the candidate's own delta (`1e649cdd..104d6dfa`) instead.
+- Added 12 projectile modules + 5 tests (`pc_p2_cannon_stone`, `pc_p2_egg_hazard`, `pc_p2_kabuto_cannon`, `pc_p2_projectile_host`, `pc_p2_projectiles`, `pc_p2_rock_hazard`) and the 4 additive hooks (`CMakeLists.txt`, `pc_p2_preview.cpp`, `gameCoreSection.cpp`, `tekimgr.cpp`). Native commit `3f87459b`.
+- Build: `[109/110] Linking CXX executable bin\nectar.exe`; `ninja -n` no work. Executable SHA-256 `A66649A5BA964A3B612C6F4032EB7C22F4900DA7B7E54D2278A6B0C3FA0518F9`.
+- Export: root `engine/` 21 files (4 modified hooks + 17 new). Affected-gate repeat: `run_p2_hardlane_tests.py` → **21/21 PASS** (16 hard-lane + 5 projectile).
+- Not done: real-GL cannon runtime and receiver/target-health mutation (the #425 handoff lists that as a shared-semantics follow-up). No gameplay PASS claimed.
+
 ### Remaining batches
 
-- C cannon/projectiles (#406/#424/#425), D lifecycle/reward (#397), E converter/clock (#429/#431).
+- D lifecycle/reward (#397), E converter/clock (#429/#431).
 - Native species modules: per-family merges (`opencode/p2-species-*`) rather than the 62-commit umbrella branch.
 - Real-GL fixtures require the reserved slot.
