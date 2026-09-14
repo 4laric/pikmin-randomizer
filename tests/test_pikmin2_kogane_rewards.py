@@ -85,3 +85,36 @@ def test_no_alias_or_helper_identities_are_accepted():
     assert rewards.FAMILY == 'kogane'
     assert set(rewards.ENEMY_IDS) == {9, 10, 11}
     assert rewards.identity(9) == 'enemy:9'
+
+
+def test_receipts_sidecar_parses_the_native_format():
+    assert rewards.RECEIPTS_HEADER == 'P2_KOGANE_RECEIPTS_1'
+    text = 'P2_KOGANE_RECEIPTS_1\n219001 3\n219002 1\n'
+    assert rewards.parse_receipts(text) == {219001: 3, 219002: 1}
+    assert rewards.parse_receipts('P2_KOGANE_RECEIPTS_1\n') == {}
+    # the native loader skips blank lines between rows
+    assert rewards.parse_receipts('P2_KOGANE_RECEIPTS_1\n\n219003 2\n\n') == {219003: 2}
+
+
+def test_receipts_sidecar_rejects_drift():
+    with pytest.raises(ValueError, match='header'):
+        rewards.parse_receipts('P2_KOGANE_RECEIPTS_2\n219001 3\n')
+    with pytest.raises(ValueError, match='header'):
+        rewards.parse_receipts('219001 3\n')
+    for bad in ('219001\n', '219001 3 4\n', '219001 three\n', 'x 1\n'):
+        with pytest.raises(ValueError, match='row'):
+            rewards.parse_receipts('P2_KOGANE_RECEIPTS_1\n' + bad)
+    for bad in ('0 1\n', '219001 0\n', '219001 %d\n' % (MAX_FLIPS + 1)):
+        with pytest.raises(ValueError, match='range'):
+            rewards.parse_receipts('P2_KOGANE_RECEIPTS_1\n' + bad)
+    with pytest.raises(ValueError, match='Duplicate'):
+        rewards.parse_receipts('P2_KOGANE_RECEIPTS_1\n219001 2\n219001 1\n')
+
+
+def test_read_receipts_fails_safe_on_missing_or_malformed_files(tmp_path):
+    assert rewards.read_receipts(tmp_path / 'absent.txt') == {}
+    (tmp_path / 'bad.txt').write_text('not a receipt ledger\n')
+    assert rewards.read_receipts(tmp_path / 'bad.txt') == {}
+    good = tmp_path / rewards.RECEIPTS_FILENAME
+    good.write_text('P2_KOGANE_RECEIPTS_1\n219002 1\n219001 3\n')
+    assert rewards.read_receipts(good) == {219001: 3, 219002: 1}

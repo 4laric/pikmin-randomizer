@@ -5,8 +5,8 @@ Lane 17 consumer of the lane-06 reward/receipt contract (#441). New host module
 (8 passing), the cave model `experimental/pikmin2_kogane_cave.py` with
 `tests/test_pikmin2_kogane_cave.py`, the re-entry fixture
 `experimental/pikmin2_kogane_reentry.py` with `tests/test_pikmin2_kogane_reentry.py`,
-and an additive native re-entry dedupe in `native/pc_port/pc_p2_kogane.cpp`. No
-native save or shared build is modified.
+and an additive native re-entry dedupe plus an on-disk flip-receipt sidecar in
+`native/pc_port/pc_p2_kogane.cpp`. No native save or shared build is modified.
 
 ## What is modelled
 
@@ -76,11 +76,40 @@ private fixture `experimental/pikmin2_kogane_reentry.py` drives one beetle to th
 cap and another to a partial count, then re-enters once in-process and validates
 both restore lines (`tests/test_pikmin2_kogane_reentry.py`).
 
-Still open: a **cross-process native save bridge** (durable flips/treasure in the
-P2 save, lane 01/06), plus native treasure override and cave relocation
-execution. The `restoredFlips` snapshot is process memory only: a real process
-restart still re-spawns every beetle with zero flips, so finite-drop dedupe does
-not yet survive a save/reload.
+**On-disk flip receipts (cross-process restart).** The in-process snapshot above
+is process memory only, so `pc_p2_kogane.cpp` also writes a family-local sidecar,
+`p2-kogane-receipts.txt`, in the process working directory. It is deliberately
+**not** the P2 save (lane 01/06 owns that contract): it is a small text ledger in
+the run directory that a second process can read.
+
+```text
+P2_KOGANE_RECEIPTS_1
+<generator> <flips>
+```
+
+The header is followed by one row per generator (`<flips>` is the source flip
+count `1..MAX_FLIPS`). `saveReceipts()` merges the live `beetles` counts with the
+restored snapshot and rewrites the file atomically (`.tmp` sibling plus
+`MoveFileExA`/`rename`) whenever a flip or escape occurs, so an interrupted write
+leaves the previous ledger intact. `pc_p2_kogane_setup()` calls `loadReceipts()`
+right after the in-process `restoredFlips` snapshot: disk rows fill in only when
+they are newer, then the existing restore/escape path runs unchanged and logs
+`P2_KOGANE_RECEIPTS loaded=<n>`. A missing or malformed file (bad header, bad row,
+duplicate generator, out-of-range count) is ignored wholesale (`loaded=0`) and
+never crashes the room.
+
+The host mirrors that contract with `experimental.pikmin2_kogane_rewards.parse_receipts`
+(strict, raises `ValueError`) and `read_receipts` (fail-safe, returns `{}` for a
+missing or malformed file). The re-entry fixture runs a first process that spends
+the flips, then a **second process on the same run directory** selected by the
+`kogane-pass.txt` marker; the second pass must load `loaded=2`, reconstruct the
+spent escape and the partial survivor, resume the survivor to the cap and log
+`P2_KOGANE_RECEIPTS loaded=2` (`validate_cross_process`).
+
+Still open: a native P2-save bridge (durable flips/treasure in the P2 save, lane
+01/06), plus native treasure override and cave relocation execution. The sidecar
+is run-directory local, so a fresh run directory or a moved/renamed run starts the
+beetles at zero flips; it is not a save-game contract.
 
 ## Gates
 
@@ -94,5 +123,6 @@ not yet survive a save/reload.
 | Treasure override model | PASS (host) | first-flip override in `treasure_override`/`resolve_flip` |
 | In-process native re-entry dedupe | IMPLEMENTED (source only) | `restoredFlips` in `native/pc_port/pc_p2_kogane.cpp`; not rebuilt/run in this slice |
 | In-process restored escape | IMPLEMENTED (source only) | `P2_KOGANE_RESTORED_ESCAPE` + `pcEscapeNow()` on `restored->second >= MAX_FLIPS`; `pikmin2_kogane_reentry` validator tests |
-| Cross-process native restart | UNTESTED | needs a native save bridge (lane 01/06) |
+| Cross-process sidecar receipts | IMPLEMENTED (source only) | `p2-kogane-receipts.txt` atomic write/load + `P2_KOGANE_RECEIPTS loaded=<n>`; host `parse_receipts`/`read_receipts` and `validate_cross_process` tests |
 | Native treasure override / cave relocation | UNIMPLEMENTED | no P2 cave in the P1 host |
+| Native P2-save persistence | UNIMPLEMENTED | sidecar is run-directory local, not the lane 01/06 save |

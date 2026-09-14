@@ -12,6 +12,8 @@ from the third flip. It does not implement the native contested-cargo or gas
 behavior. The P1 host has no spray items, so the spicy/bitter demo-flag branches
 use their documented nectar fallback. See ``docs/PIKMIN2_KOGANE_REWARDS.md``.
 """
+from pathlib import Path
+
 from experimental import pikmin2_kogane_cave as cave
 from experimental import pikmin2_receipts as receipts
 from experimental.pikmin2_kogane_assets import MAX_FLIPS
@@ -21,12 +23,64 @@ SPECIES = {'kogane': 9, 'wealthy': 10, 'fart': 11}
 ENEMY_IDS = (9, 10, 11)
 _BY_ID = {9: 'kogane', 10: 'wealthy', 11: 'fart'}
 
+# On-disk flip-receipt sidecar written by pc_p2_kogane.cpp (#168/#219). This is
+# a family-local file inside the run directory, deliberately separate from the
+# P2 save (lane 01/06 owns that contract).
+RECEIPTS_FILENAME = 'p2-kogane-receipts.txt'
+RECEIPTS_HEADER = 'P2_KOGANE_RECEIPTS_1'
+
 
 def identity(enemy_id):
     """Return the shared receipt identity token for one beetle source id."""
     if enemy_id not in ENEMY_IDS:
         raise ValueError('Unknown reward beetle id: ' + repr(enemy_id))
     return 'enemy:' + str(enemy_id)
+
+
+def parse_receipts(text):
+    """Parse and validate the native flip-receipt sidecar into ``{generator: flips}``.
+
+    Mirrors the native loader exactly: the first line must be
+    ``P2_KOGANE_RECEIPTS_1``, blank lines are skipped, every other row must be
+    ``<generator> <flips>`` with a positive generator and ``1..MAX_FLIPS`` flips,
+    and generators must be unique. Raises ``ValueError`` on any drift so callers
+    can fail safe (the native loader ignores the whole file instead).
+    """
+    if not isinstance(text, str):
+        raise ValueError('Receipt sidecar must be text')
+    lines = text.splitlines()
+    if not lines or lines[0] != RECEIPTS_HEADER:
+        raise ValueError('Invalid receipt sidecar header')
+    result = {}
+    for line in lines[1:]:
+        if not line.strip():
+            continue
+        fields = line.split()
+        if len(fields) != 2 or not all(field.isdigit() for field in fields):
+            raise ValueError('Invalid receipt sidecar row: ' + line)
+        generator, flips = int(fields[0]), int(fields[1])
+        if generator < 1 or not 1 <= flips <= MAX_FLIPS:
+            raise ValueError('Receipt sidecar value out of range: ' + line)
+        if generator in result:
+            raise ValueError('Duplicate receipt generator: ' + str(generator))
+        result[generator] = flips
+    return result
+
+
+def read_receipts(path):
+    """Read the sidecar at ``path``, returning ``{}`` when absent or malformed.
+
+    This is the exact fail-safe of the native ``loadReceipts``: a corrupt or
+    missing file yields an empty ledger rather than an error.
+    """
+    path = Path(path)
+    if not path.is_file():
+        return {}
+    try:
+        return parse_receipts(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return {}
+
 
 
 def flip_drop(enemy_id, flip, in_cave=False, demo_flag=False, carried_treasure=None):
