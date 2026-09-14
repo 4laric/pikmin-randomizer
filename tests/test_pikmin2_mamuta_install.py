@@ -72,12 +72,38 @@ class InstallTests(unittest.TestCase):
             imported = fake_imported(Path(tmp) / 'imported')
             run = self.make_run(Path(tmp))
             result = install(imported, run, [(221001, 'Miulin')])
-            self.assertEqual(result['files'], ['miulin_attack1.mod', 'miulin_dead.mod',
-                                               'miulin_wait.mod'])
+            self.assertEqual(result['files'], ['miulin_attack1_00.mod', 'miulin_dead_00.mod',
+                                               'miulin_wait_00.mod'])
             verified = verify_install(imported, run, [(221001, 'Miulin')])
             self.assertEqual(verified['verified'], result['files'])
             config = (run / CONFIG_NAME).read_text()
             self.assertEqual(config.split(), ['P2_MAMUTA_ACTORS_1', '1', '221001', 'Miulin'])
+
+    def test_installs_full_attack_bank(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            imported = root / 'imported'
+            species = imported / 'Miulin'
+            species.mkdir(parents=True)
+            poses = {f'attack1_{i:02d}.mod': bytes([65 + i]) for i in range(3)}
+            poses['wait_00.mod'] = b'W'
+            poses['dead_00.mod'] = b'D'
+            for name, data in poses.items():
+                (species / name).write_bytes(data)
+            clips = []
+            for clip in ('wait', 'dead', 'attack1'):
+                names = sorted(n for n in poses if n.startswith(clip + '_'))
+                clips.append({'file': clip + '.bca', 'status': 'converted',
+                              'poses': [{'file': n, 'sha256': hashlib.sha256(poses[n]).hexdigest()}
+                                        for n in names]})
+            (imported / 'mamuta.json').write_text(json.dumps(
+                {'schema': 1, 'species': 'Miulin', 'enemy_id': 54, 'clips': clips}))
+            run = self.make_run(root)
+            result = install(imported, run, [(1, 'Miulin')])
+            attack = sorted(n for n in result['files'] if n.startswith('miulin_attack1'))
+            self.assertEqual(attack, ['miulin_attack1_00.mod', 'miulin_attack1_01.mod',
+                                      'miulin_attack1_02.mod'])
+            verify_install(imported, run, [(1, 'Miulin')])
 
     def test_install_refuses_overwrite(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -92,7 +118,7 @@ class InstallTests(unittest.TestCase):
             imported = fake_imported(Path(tmp) / 'imported')
             run = self.make_run(Path(tmp))
             install(imported, run, [(1, 'Miulin')])
-            target = run / 'assets/dataDir/courses/pikmin2room/miulin_dead.mod'
+            target = run / 'assets/dataDir/courses/pikmin2room/miulin_dead_00.mod'
             target.write_bytes(b'X')
             with self.assertRaises(ValueError):
                 verify_install(imported, run, [(1, 'Miulin')])

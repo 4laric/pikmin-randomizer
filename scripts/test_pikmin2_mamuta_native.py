@@ -16,8 +16,8 @@ def validate(text):
         raise ValueError('Missing unique source identity')
     if any(abs(float(a)-b)>.02 for a,b in zip(rows[0][2:5],(-150,30,1850))):
         raise ValueError('Full birth XYZ mismatch')
-    anchors=re.findall(r'P2_MAMUTA_DRAW generator=221001 anchor=(\w+) static_pose',text)
-    if 'wait' not in anchors: raise ValueError('No source wait anchor drawn')
+    anchors=re.findall(r'P2_MAMUTA_DRAW generator=221001 anchor=(\w+) poses=(\d+) animated=(\d+)',text)
+    if 'wait' not in [row[0] for row in anchors]: raise ValueError('No source wait anchor drawn')
     if '[PC GX] DESYNC' in text: raise ValueError('GX display list desync')
     return dict(birth_xyz=list(map(float,rows[0][2:5])),anchors=sorted(set(anchors)),
                 reset=True,control='P1 Chappy',planting_verified=False,

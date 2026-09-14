@@ -9,9 +9,12 @@ import json
 from pathlib import Path
 
 SPECIES = 'Miulin'
-# Live/dead/attack visual anchors: wait pose 0, last dead pose, attack1 pose at
-# the retail bury-event frame (registry event frame 0 -> sampled pose index 0).
-REQUIRED_CLIPS = {'wait': 0, 'dead': -1, 'attack1': 0}
+# Install every sampled pose of the live/dead/attack clips as a time-sampled
+# bank (`miulin_<clip>_<i>.mod`). The native observer plays the bank by the P1
+# animator frame, so the ground strike (attack1, whose KEYEVENT_2 at frame 0 is
+# the bury/plant) is animated instead of a single frozen pose.
+BANK_CLIPS = ('wait', 'dead', 'attack1')
+MAX_POSES = 8
 CONFIG_NAME = 'p2-mamuta-actors.txt'
 CONFIG_HEADER = 'P2_MAMUTA_ACTORS_1'
 
@@ -36,18 +39,20 @@ def plan(imported, actors):
         ids.add(generator)
         rows.append(f'{generator} {SPECIES}')
     by_file = {c['file']: c for c in metadata['clips']}
-    for clip, index in REQUIRED_CLIPS.items():
+    for clip in BANK_CLIPS:
         entry = by_file.get(clip + '.bca')
         if entry is None or entry['status'] != 'converted' or not entry['poses']:
-            raise ValueError(f'Required source pose unavailable: {clip}')
-        pose = entry['poses'][index]
-        name = pose['file']
-        if Path(name).name != name or not name.endswith('.mod'):
-            raise ValueError('Unsafe pose filename')
-        data = (imported / SPECIES / name).read_bytes()
-        if hashlib.sha256(data).hexdigest() != pose['sha256']:
-            raise ValueError('Pose hash mismatch')
-        files[f'miulin_{clip}.mod'] = data
+            raise ValueError(f'Required source clip unavailable: {clip}')
+        if len(entry['poses']) > MAX_POSES:
+            raise ValueError(f'Too many sampled poses for {clip}')
+        for index, pose in enumerate(entry['poses']):
+            name = pose['file']
+            if Path(name).name != name or not name.endswith('.mod'):
+                raise ValueError('Unsafe pose filename')
+            data = (imported / SPECIES / name).read_bytes()
+            if hashlib.sha256(data).hexdigest() != pose['sha256']:
+                raise ValueError('Pose hash mismatch')
+            files[f'miulin_{clip}_{index:02d}.mod'] = data
     return '\n'.join(rows) + '\n', files
 
 
