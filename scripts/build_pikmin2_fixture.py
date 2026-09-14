@@ -227,6 +227,21 @@ def run(args, cwd, env=None):
     return completed.returncode, completed.stdout
 
 
+def run_command(command, build, env, output, phase):
+    """Run a compiler/linker command, using a response file when the argv is too
+    long for the Windows CreateProcess limit (which is why CMake emits one)."""
+    length = sum(len(str(arg)) + 1 for arg in command)
+    if length <= 7000:
+        return run(command, build, env)
+    response = (output / (phase + '.rsp')).resolve()
+    # GCC response files treat backslash as an escape, so quote and double it.
+    lines = []
+    for arg in command[1:]:
+        lines.append('"' + str(arg).replace('\\', '\\\\').replace('"', '\\"') + '"')
+    response.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    return run([command[0], '@' + str(response)], build, env)
+
+
 def require_fresh(ninja, build, record):
     code, text = run([str(ninja), '-n', '-d', 'explain', 'pikmin_pc'], build)
     record.append(dict(returncode=code, output=text))
@@ -410,7 +425,7 @@ def build_fixture(build, source, fixture, output, expected_head, check_only=Fals
         rewritten[option_index(rewritten, '-o')] = str(output / 'fixture.exe')
         for phase, command in [('compile', compile_args), ('link', rewritten)]:
             record['commands'].append(command)
-            code, text = run(command, build, env)
+            code, text = run_command(command, build, env, output, phase)
             (output / (phase + '.log')).write_text(text, encoding='utf-8')
             if code:
                 raise BuildRejected('Fixture ' + phase + ' failed; see ' + phase + '.log')

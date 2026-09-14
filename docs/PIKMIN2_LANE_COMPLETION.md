@@ -49,3 +49,5 @@ Integrated lane-04 target intersection 36ceac6 as 6032863. 82 placement/roster/s
 Every future sweep must end with this count, report the change from the preceding sweep, and state any uncertainty about worker-finished sessions separately. Refresh issue states and completed acceptance evidence; do not infer completion from a branch name or a PASS marker.
 
 Latest refresh: roster-readiness sweep, 33 open (change 0); see PIKMIN2_ROSTER_READINESS_SWEEP_437.md.
+
+Fixture-command sweep refresh: 33 open, change 0; all representative issue states still OPEN.

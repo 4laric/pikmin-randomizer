@@ -189,3 +189,26 @@ class WorkflowTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ResponseCommandTests(unittest.TestCase):
+    def test_short_command_preserves_argv(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            args = ['g++', '-c', 'path with spaces/source.cpp']
+            with patch.object(tool, 'run', return_value=(0, 'ok')) as execute:
+                self.assertEqual(tool.run_command(args, root, {}, root, 'compile'), (0, 'ok'))
+                execute.assert_called_once_with(args, root, {})
+            self.assertFalse((root / 'compile.rsp').exists())
+
+    def test_long_command_preserves_escaped_arguments(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            args = ['g++', 'C:\\source folder\\a.cpp', '-DNAME="quoted value"', 'x' * 7100]
+            with patch.object(tool, 'run', return_value=(0, 'ok')) as execute:
+                tool.run_command(args, root, {}, root, 'link')
+                execute.assert_called_once_with(['g++', '@' + str((root / 'link.rsp').resolve())], root, {})
+            text = (root / 'link.rsp').read_text()
+            self.assertIn('source folder', text)
+            self.assertIn('\\"quoted value\\"', text)
+            self.assertEqual(len(text.splitlines()), len(args) - 1)
