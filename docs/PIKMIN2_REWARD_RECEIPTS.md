@@ -124,3 +124,48 @@ and invalid receipt rows.
 - No retail assets are consumed, and no family drop value is asserted as source
   truth here.
 - Coverage is a host-side bookkeeping check, not a runtime or AP-logic proof.
+
+## Native provider surface
+
+The C++ counterpart ships in `native/pc_port/pc_p2_receipt.h` (engine-free, no
+engine types and no save layout):
+
+- `P2Receipt::ReceiptLedger` — exactly-once grants over a `ReceiptPersistence`
+  backend. `grant(seed, identity, slot_or_actor, encounter)` returns `true` only
+  for the first occurrence; `reload()` re-opens the same state and never
+  re-grants. Backends: `MemoryReceiptPersistence` (tests) and
+  `FileReceiptPersistence` (atomic temp-sibling plus `os.replace`/`MoveFileEx`,
+  ordinary sidecar text, **not** the native save). The same key tuple and
+  `P2_RECEIPTS_1` header as the Python ledger.
+- `P2Receipt::validateDescriptor` / `reconcileOrdinary` — versioned
+  `p2-reward-descriptor-v1` descriptors and the ordinary/pod split. A `pod`
+  descriptor covering an ordinary expected check is refused by default.
+- `pc_port/pc_p2_cargo_contest.h` — the lane-18 cargo-contest provider surface:
+  `P2CargoContest` takes cargo identity, source token, min/max thresholds,
+  required/max carriers and a freeze window; `update()` returns
+  `Held | Stolen | ReleasedToSource`; carriers are value tokens (never engine
+  pointers), so no recycled address can leave a dangling helper. State is owned
+  by the cargo and cleared on release, death, interruption, revisit and reset.
+  `grantReceipt(ledger, seed, slot, encounter)` is the exactly-once hop; helpers
+  and aliases never earn a receipt because the identity is the cargo only.
+
+Consumer agreement with lane 18 (#220): the small PanModoki / nest keeps only
+per-species parameters and consumes this transition table instead of forking the
+contest in `pc_p2_giant_breadbug_actor.cpp`.
+
+Tests: `native/tools/p2_receipt_test.cpp`,
+`native/tools/p2_cargo_contest_test.cpp` (registered as CTest
+`p2_receipt_test` / `p2_cargo_contest_test`) and the root
+`tests/test_pikmin2_receipt_native.py` which compiles the headers against the
+resolved native source.
+
+### Still open
+
+This surface is not yet wired into a real family transport endpoint in the
+maintained engine. The native ordinary endpoint (`GoalItem::suckMe` ->
+`pc_randomizer_corpse_delivered` -> `pc_randomizer_check`, durable `checks.txt`)
+already exists for P1-proxy corpses; connecting one P2 family drop through it,
+and proving no duplicate/lost required reward across revisit/process restart on
+a real generated session, remains the lane-06 next slice (needs lane 01 +
+real-GL).
+
