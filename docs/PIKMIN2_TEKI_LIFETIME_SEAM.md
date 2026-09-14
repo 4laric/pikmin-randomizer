@@ -169,25 +169,19 @@ the lane-07 runtime evidence is single-head. Native candidate bundle for lane 01
   late birth (respawned actor re-registered after start), **full stage-exit
   teardown** (all family maps cleared), control actor unaffected (`control=1`),
   window/squad baseline.
-- **New-scene attempt:** a Snow-campaign day-transition probe reached the save
-  boundary on the supported path — `P2_SNOW_CAMPAIGN_READY dwarfs=11
-  interpolation=1`, `P2_NEWSCENE_BEFORE day=2 bound=11`, day end -> results ->
-  save -> MapSelect. In the resume phase the campaign restored state
-  (`CAMPAIGN_RESUMED day=8`) but the engine never created a gameplay stage
-  (`tekiMgr` stayed null) — the supported resume stops at the setup/map-select
-  boundary. Driving MapSelect to load an area in-process crashed (access
-  violation) because the day transition tears down `tekiMgr` while the probe's
-  `countBound()` iteration still held a stale manager pointer; the transition
-  therefore needs a dedicated menu-automation harness. The safe new-scene
-  signal now exists: `pc_p2_scene_begin()`/`pc_p2_scene_generation()`
-  (patch 0004), incremented in `GameCoreSection::finalSetup`, so a probe can wait
-  for the transition to complete before touching `TekiMgr` (this removed the
-  crash; the remaining gap is map-select automation that actually loads an
-  area). The invariant is nevertheless held by the stage-exit teardown proof plus
-  the address-reuse proof: any new scene starts from emptied family maps, and a
-  reused address is cleared before use.
-- **Still open:** an in-process/menu-driven new **gameplay** scene re-entry run,
-  and the #186 shared-semantics review + lane 01 export of this candidate.
+- **New scene (runtime PASS):** a Snow-campaign day transition reaches MapSelect
+  (`P2_SNOW_CAMPAIGN_READY dwarfs=11`, `P2_NEWSCENE_BEFORE gen=1 day=2 bound=11`,
+  day end -> results -> save -> MapSelect section 4), and the **reusable scripted
+  pad** (`pc_p2_input_script`, patch 0005) drives the menu to load a fresh
+  in-process gameplay area:
+  `P2_NEWSCENE_RELOAD gen=2 day=8 bound=11` -> `PASS P2_NEWSCENE_RELOAD`. The old
+  scene was torn down (`pc_p2_reset_all_teki`) and the new scene rebound 11
+  family actors via `finalSetup`; `pc_p2_scene_generation()` (patch 0004) is the
+  safe readiness signal (the transition frees the previous `TekiMgr`). Fixture
+  `scripts/p2_new_scene_fixture.cpp`, runner `scripts/p2_new_scene_runtime.py`;
+  SHA-256 `67D9BB11...F1FD343A`, log `EEBC935B...395834C6`.
+- **Still open:** the #186 shared-semantics review + lane 01 export of this
+  candidate (`pc_p2_input_script` touches core input, default-off).
 
 Two-line divergence note: the approved native baseline `f14c6851` still differs
 from the maintained room-preview native tip; lane 01 owns reconciling the
