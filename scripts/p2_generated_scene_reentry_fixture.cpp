@@ -14,6 +14,7 @@
 #include "Generator.h"
 #include "ItemMgr.h"
 #include "GoalItem.h"
+#include "GameStat.h"
 #include "Pellet.h"
 #include "Interactions.h"
 #include "Route.h"
@@ -64,6 +65,7 @@ class OrdinaryApp : public PlugPikiApp {
     unsigned postReloadFrames = 0;
     unsigned deliveredFrames = 0;
     unsigned resetCount = 0;
+    int expectedRebound = 1;
 
     unsigned frames = 0;
     int phase = 0, waited = 0;
@@ -140,11 +142,12 @@ public:
             }
             countPiki(&live);
             if (!postReloadFrames) std::printf("P2_REENTRY_COUNTS registered=%d bound=%d live=%d\n", registered, bound, live);
-            require(registered==1 && bound==1, "exactly one rebound source44 actor");
-            require(live>0, "live reentry squad");
+            require(registered==expectedRebound && bound==expectedRebound, "expected rebound source44 actor count");
+            const int stored = GameStat::containerPikis;
+            require(live+stored>0, "surviving reentry Pikmin in field or Onion");
             if (++postReloadFrames==90) {
-                std::printf("PASS P2_GENERATED_SCENE_REENTRY generation=%lu old_generation=%lu registered=%d bound=%d live=%d reward_preserved=1 resets=%u\n",
-                    pc_p2_scene_generation(),oldGeneration,registered,bound,live,resetCount);
+                std::printf("PASS P2_GENERATED_SCENE_REENTRY generation=%lu old_generation=%lu registered=%d bound=%d expected=%d live=%d stored=%d reward_preserved=1 resets=%u\n",
+                    pc_p2_scene_generation(),oldGeneration,registered,bound,expectedRebound,live,stored,resetCount);
                 std::fflush(nullptr); std::_Exit(0);
             }
             return result;
@@ -291,6 +294,8 @@ public:
                 if (++deliveredFrames<90) return result;
                 oldGeneration=pc_p2_scene_generation();
                 auto* core=findCore(gameflow.mGameSection); require(core!=nullptr,"game core");
+                expectedRebound=0; // A delivered actor must not respawn before its rebirth interval.
+                core->cleanupDayEnd();
                 core->exitStage();
                 require(!pc_p2_dwarf_orange_registered(target), "old registry cleared at stage exit");
                 target=nullptr; corpse=nullptr; reloading=true;
