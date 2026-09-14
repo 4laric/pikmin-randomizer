@@ -142,6 +142,15 @@ evidence:
   of the default document because the campaign table exposes no boss arena slot;
   `build_document(include_bosses=True)` only makes sense with caller-supplied boss
   slots. Inspect the descriptors with `--boss-descriptors`.
+- `targets_by_identity()`, `binding_targets()` and `binding_targets_for_sources()`
+  supply lane 03's binding targets: the concrete slot `uid` tokens a cohort may
+  occupy. Because lane 03 binds a flat target list, `binding_targets()` returns
+  the intersection across the cohort so every random assignment stays legal; an
+  empty result means the cohort is not homogeneous enough for the flat contract.
+  `--targets` prints per-identity targets and per-cohort intersections. This is
+  the "real binding targets and legal placement" item in
+  [the seed bridge](PIKMIN2_SEED_BRIDGE.md); the token equals the slot `uid` to
+  match the existing native `ENEMY_CAMPAIGN` generator keying.
 
 ```
 py -3.12 -m randomizer.p2_placement_catalog --summary
