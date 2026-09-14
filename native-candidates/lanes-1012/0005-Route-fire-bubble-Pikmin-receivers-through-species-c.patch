@@ -1,0 +1,46 @@
+From d28ff29ceeefb4978aaf6ce8c61bac637776f2de Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 02:34:19 -0400
+Subject: [PATCH 5/5] Route fire/bubble Pikmin receivers through species
+ capability matrix (lanes 10-11)
+
+---
+ src/plugPikiKando/interactBattle.cpp | 9 +++++----
+ 1 file changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/src/plugPikiKando/interactBattle.cpp b/src/plugPikiKando/interactBattle.cpp
+index d16f245b..356943f2 100644
+--- a/src/plugPikiKando/interactBattle.cpp
++++ b/src/plugPikiKando/interactBattle.cpp
+@@ -1,5 +1,6 @@
+ #include "pc_p2_purple.h"
+ #include "pc_p2_species.h"
++#include "pc_p2_species_policy.h"
+ #include "BombItem.h"
+ #include "Collision.h"
+ #include "Condition.h"
+@@ -177,8 +178,8 @@ bool InteractBubble::actPiki(Piki* piki) immut
+ 		return false;
+ 	}
+ 
+-	// blue pikmin are immune to bubble
+-	if (piki->mColor != Blue) {
++	// blue pikmin (and P2 Bulbmin) are immune to bubble
++	if (!p2_species_immune(pc_p2_species(piki), P2HazardWater)) {
+ 		piki->changeMode(0, piki->mNavi);
+ 		piki->mFSM->transit(piki, PIKISTATE_Bubble);
+ 		return true;
+@@ -195,8 +196,8 @@ bool InteractFire::actPiki(Piki* piki) immut
+ 		return false;
+ 	}
+ 
+-	// red pikmin are immune to fire
+-	if (!pc_p2_has_red_immunity(piki)) {
++	// red pikmin (and P2 Bulbmin) are immune to fire
++	if (!p2_species_immune(pc_p2_species(piki), P2HazardFire)) {
+ 		piki->startFire();
+ 		return true;
+ 	}
+-- 
+2.55.0.windows.3
+

@@ -65,3 +65,27 @@ def test_lane_policy_contract(name, banner, tmp_path):
     run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=30)
     assert run.returncode == 0, run.stderr
     assert banner in run.stdout
+
+
+def _interact_battle_candidates():
+    found = []
+    for base in (ROOT, *ROOT.parents):
+        for rel in (base / 'engine/src/plugPikiKando/interactBattle.cpp',
+                    base / 'native/src/plugPikiKando/interactBattle.cpp',
+                    base / 'output/native-lanes-1012/src/plugPikiKando/interactBattle.cpp'):
+            if rel.is_file() and rel not in found:
+                found.append(rel)
+    return found
+
+
+def test_elemental_receivers_consult_species_capability_matrix():
+    candidates = _interact_battle_candidates()
+    if not candidates:
+        pytest.skip('native receiver source not present')
+    # Fire and bubble reject their immune species through the lane-11 matrix, so
+    # P2 Bulbmin (all-hazard immune) is covered without a new receiver.
+    assert any('p2_species_immune(pc_p2_species(piki), P2HazardFire)' in p.read_text(errors='replace')
+               for p in candidates)
+    assert any('p2_species_immune(pc_p2_species(piki), P2HazardWater)' in p.read_text(errors='replace')
+               for p in candidates)
+
