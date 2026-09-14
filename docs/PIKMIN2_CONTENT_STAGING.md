@@ -187,7 +187,13 @@ still produce the manifest; the launcher only installs verified bytes.
 
 ```powershell
 py -3.12 -m pytest tests/test_pikmin2_staging.py tests/test_pikmin2_session_staging.py -q   # 26 passed
+py -3.12 scripts/test_p2_generated_session.py <build>/pc_randomizer_probe.exe                 # generate -> bootstrap -> native parser -> stage/cache
 ```
+
+`scripts/test_p2_generated_session.py` is the combined lanes 02/03/05 product-path
+probe: it generates a manifest through the real admission-gated generator, lets
+`NativeRun` emit the real `ENEMY_P2` bootstrap, parses it with the native probe,
+then stages and cache-replays a synthetic content manifest into the same session.
 
 Covers happy-path staging plus receipt, cached replay no-op, missing source, wrong
 source hash, interrupted-staging detection/repair, path traversal, duplicate
