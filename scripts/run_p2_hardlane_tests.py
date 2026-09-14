@@ -14,6 +14,8 @@ import tempfile
 from pathlib import Path
 
 TESTS = {
+    "p2_waterwraith_test": ["pc_port/pc_p2_waterwraith.cpp"],
+    "p2_waterwraith_actor_test": ["pc_port/pc_p2_waterwraith.cpp", "pc_port/pc_p2_waterwraith_actor.cpp"],
     "test_p2_kurage": ["pc_port/pc_p2_kurage.cpp"],
     "test_p2_kurage_ingestion": [],
     "p2_kurage_flight_policy_test": [],
