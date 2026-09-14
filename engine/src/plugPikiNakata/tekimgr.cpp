@@ -20,6 +20,7 @@
 #include "pc_p2_shijimi.h"
 #include "pc_p2_kochappy_fsm.h"
 #ifdef PIKI_PC_PORT
+#include "pc_p2_dwarf_orange.h"
 #include "pc_p2_sheargrub.h"
 #include "pc_p2_breadbug_visual.h"
 #include "pc_p2_giant_breadbug_visual.h"
@@ -272,6 +273,18 @@ void TekiMgr::startStage()
 	memStat->end("teki data");
 	NSystem::getFreeHeap();
 	reset();
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	// Snow uses the same birth-time generated binding: load its bank after the
+	// reset and before initStage creates any bound source-45 actors.
+	pc_p2_snow_campaign_setup();
+	// Arm the generated Dwarf Orange (source 44) bank only after startStage's
+	// reset. reset() clears the pc_p2_dwarf_orange registration, so arming here
+	// guarantees pc_p2_dwarf_orange_generated() is true before any generator
+	// births during initStage; the birth-time pc_p2_generated_bind then routes
+	// source-44 hosts to the Dwarf Orange bind instead of aborting. The finalSetup
+	// scan still runs afterward as an idempotent verification/bind pass.
+	pc_p2_dwarf_orange_campaign_setup();
+#endif
 	PRINT_NAKATA("startStage<\n");
 }
 
