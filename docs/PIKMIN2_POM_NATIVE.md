@@ -1,6 +1,8 @@
 # P2 Candypop Bud native policy actor (lane 23, #171 / #448)
 
 > Integration disposition: diagnostic tooling only in draft #432; the native actor described below is a worker candidate, not integrated gameplay. See [pre-wave review](PIKMIN2_PREWAVE_REVIEW_437.md) for blockers and validation limits.
+>
+> Superseded for the three P1-representable colour buds (BluePom/RedPom/YellowPom) by the **real engine `Pom` Boss binding** in [PIKMIN2_CANDYPOP_ENGINE_448.md](PIKMIN2_CANDYPOP_ENGINE_448.md). The module-local injected actor below remains the policy/reference fixture for the species the engine path does not cover (RandPom Queen cycle, Black/White provider checks).
 
 ## Scope
 
