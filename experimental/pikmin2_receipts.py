@@ -238,7 +238,11 @@ class ReceiptLedger:
         if key in self._receipts:
             return False
         self._receipts.add(key)
-        self._persist()
+        try:
+            self._persist()
+        except Exception:
+            self._receipts.remove(key)
+            raise
         return True
 
     def restart(self):

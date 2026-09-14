@@ -19,6 +19,17 @@ def descriptor(identity='corpse:floor1:5000', **overrides):
 
 
 class DescriptorValidationTests(unittest.TestCase):
+    def test_failed_persistence_allows_retry(self):
+        persistence = InMemoryPersistence()
+        ledger = ReceiptLedger(persistence)
+        event = ('seed', 'corpse:5000', 'slot', 'encounter')
+        with patch.object(persistence, 'store', side_effect=OSError('disk full')):
+            with self.assertRaises(OSError):
+                ledger.grant(*event)
+        self.assertFalse(ledger.has(*event))
+        self.assertTrue(ledger.grant(*event))
+        self.assertFalse(ReceiptLedger(persistence).grant(*event))
+
     def test_valid_descriptor_normalized(self):
         result = validate_descriptor({'version': SCHEMA_VERSION, 'identity': 'corpse:5000',
                                       'family': 'lane-13-bulborbs', 'drop': 'corpse', 'ledger': 'onion'})

@@ -97,8 +97,10 @@ int main()
         beetle.beginCast(1);
         beetle.admit(1, 50, true, true, false, false);
         beetle.ping(1, 50);
-        auto released = beetle.suspend(1);
-        assert(released.size() == 1 && released[0] == 50);
+        auto susp = beetle.suspend(1);
+        assert(susp.accepted);
+        assert(susp.released.size() == 1 && susp.released[0] == 50);
+        assert(susp.fallback == P2FUEFUKI_SUSPEND_FALLBACK_FREE);
         assert(!beetle.squadActive());
         assert(!beetle.reclaimPanic(50).accepted); // suspend is not a Panic release
         // owner returns: can cast and re-claim

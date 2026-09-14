@@ -58,8 +58,20 @@ is applied here as owner epochs plus a shared ownership table.
     reuse.
   - suspend (owner flying or bittered, aiTeki.cpp:83-94): releases all
     claims as the source's ACTEXEC_Success/emote exit. It is NOT a Panic
-    release — no reclaim, no captain-ownership write; the Pikmin's stored
-    mNavi decides rejoining (brain fallback untraced, see audit).
+    release — no reclaim, no captain-ownership write. The source brain
+    destination is now traced and fixed: **Free, never Formation**.
+    ActTeki::getNextAIType() returns ACT_Free (PikiAI.h:1254);
+    Brain::exec routes the Success exit to start(ACT_Free, nullptr)
+    (aiAction.cpp:108-110); the stored piki->mNavi is not consulted and is
+    cleared by ActFree::init (aiFree.cpp:33). suspend() therefore returns a
+    P2FuefukiSuspendOut carrying the released ids plus the constant
+    fallback decision P2FUEFUKI_SUSPEND_FALLBACK_FREE. A suspended
+    follower re-attaches only through a future captain touch or whistle
+    path, never automatically. (Pre-fallback, the source force-invokes its
+    world-situation scan at aiAction.cpp:92-95, which may re-task the
+    released Pikmin — e.g. ACT_Attack on a grounded, bittered beetle
+    within mEnemySearchRange — before the Free fallback applies; that
+    re-task is a host/world gate the lane cannot see engine-free.)
   - reclaimPanic (source InteractFue::actPiki ACT_Teki branch,
     interactPiki.cpp:172-206): accepted only for a follower in the
     Panic-released set, exactly once. On acceptance the host performs the
@@ -117,10 +129,25 @@ these fixtures. Root retains shared integration.
   InteractFue ownership write belong to the future pc_p2_fuefuki FSM
   bridge and P1 squad hook requests (root-owned); this policy only
   arbitrates ownership.
-- Brain fallback after suspend (Formation rejoin vs Free) is untraced in
-  source; fixtures assert only the release set, not the destination state.
+- Brain fallback after suspend is resolved to **Free** (ActTeki::
+  getNextAIType()==ACT_Free; see "#245 suspend-fallback" slice and
+  tools/p2_fuefuki_suspend_fallback_test.cpp). The world-side
+  situation-scan re-task gate (aiAction.cpp:92-95) is host knowledge, not
+  owned by this policy.
 - Retail parm values (mAttackRadius whistle base, fp12/fp13) and the
   callable-state enumeration remain converter/audit dependencies (#128,
   #113, #131).
 - Persistence of claims across day/cave transitions is undefined; cancel
   on teardown is the safe default until the lifecycle contract is agreed.
+
+## Test evidence (this slice)
+
+    g++ -std=gnu++17 -Wall -Wextra -Werror -Ipc_port tools/p2_fuefuki_suspend_fallback_test.cpp -o <out>
+    <out>   # p2_fuefuki_suspend_fallback_test PASS (exit 0)
+
+Resolves the audit's open question 1 and the policy's prior "untraced"
+fallback note. tools/p2_fuefuki_suspend_fallback_test.cpp covers the
+trace-grounded Free decision at the policy, FSM (Jump->Stay Stay-entry
+release) and binding-seam levels; set-equal multi-claim release with no
+Panic records; inert stale-epoch suspend; and suspend-then-re-claim for a
+returning owner.

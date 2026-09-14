@@ -199,6 +199,22 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_snagret_fsm.cpp
     pc_port/pc_p2_long_legs_fsm.cpp
     pc_port/pc_p2_long_legs.cpp
+    pc_port/pc_p2_hardlanes.cpp
+    pc_port/pc_p2_bombsarai_arena.cpp
+    pc_port/pc_p2_bombsarai_blast.cpp
+    pc_port/pc_p2_bombsarai_bomb.cpp
+    pc_port/pc_p2_bombsarai_fsm.cpp
+    pc_port/pc_p2_bombsarai_hover.cpp
+    pc_port/pc_p2_bombsarai_map_trace.cpp
+    pc_port/pc_p2_bombsarai_terrain.cpp
+    pc_port/pc_p2_bigtreasure.cpp
+    pc_port/pc_p2_bigtreasure_attacks.cpp
+    pc_port/pc_p2_bigtreasure_fsm.cpp
+    pc_port/pc_p2_bigtreasure_host.cpp
+    pc_port/pc_p2_bigtreasure_fsmhost.cpp
+    pc_port/pc_p2_bigtreasure_map_trace.cpp
+    pc_port/pc_p2_bigtreasure_motion.cpp
+    pc_port/pc_p2_bigtreasure_visual.cpp
     pc_port/pc_randomizer.cpp
     pc_port/pc_main.cpp
     pc_port/pc_window.cpp

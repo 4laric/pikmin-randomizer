@@ -241,11 +241,25 @@ arrival radius^2 625, escape speed 1500, shadow radius 50/75
 
 ## Open questions / unknowns
 
-1. ActTeki::exec returns ACTEXEC_Success for a flying or bittered owner,
+1. ~~ActTeki::exec returns ACTEXEC_Success for a flying or bittered owner,
    but the follow-up brain action chosen after Success is not traced here;
    whether the Pikmin rejoins the previous captain's formation or Free
    depends on PikiAI brain fallback and the stored piki->mNavi. Needs
-   tracing before any release contract is written (touches #130).
+   tracing before any release contract is written (touches #130).~~
+   **RESOLVED (2026-09-13, #245 suspend-fallback lane slice):**
+   ActTeki::getNextAIType() returns ACT_Free
+   (include/PikiAI.h:1254), so on the Success exit the brain routes to
+   start(ACT_Free, nullptr)
+   (src/plugProjectKandoU/aiAction.cpp:108-110); the
+   ACT_Formation/searchOrima() branch is never reached for a Fuefuki
+   follower. The stored piki->mNavi is not consulted and ActFree::init
+   clears it (src/plugProjectKandoU/aiFree.cpp:33). A suspended follower
+   therefore detaches and re-attaches only through a future captain touch
+   or whistle path -- never automatically. Caveat: the source force-invokes
+   its situation scan (aiAction.cpp:92-95) BEFORE the fallback, so a
+   released Pikmin may be re-tasked there (notably ACT_Attack on a
+   grounded, bittered beetle within mEnemySearchRange) before Free applies;
+   that is a world-side gate the lane cannot see engine-free.
 2. mSquadTimer decrements per frame, not per second (Fuefuki.cpp:103-105);
    confirm intended retail cadence at 60 fps vs the decomp's deltaTime
    assumption before encoding durations in a native fixture.
