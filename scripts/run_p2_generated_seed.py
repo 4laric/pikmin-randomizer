@@ -1,0 +1,196 @@
+"""Lane 05 slice 4: the generated seed end-to-end through staging.
+
+Generates a real ``randomizer.seed.generate`` seed on a synthetic ledger with a
+small admitted cohort (one identity by default), stages its content through the
+REAL runner entry point (``runner.launch`` -> ``install_layout``) into the
+preview-generator room, boots ``nectar.exe --experimental-pikmin2-room`` and
+proves the engine loaded exactly the identities the seed chose — and nothing
+else, at the slots the seed bound.
+
+The admission cohort is injected the same way lane 03/04 seed tests do
+(``experimental.pikmin2_seed_bridge.admitted_ids`` is patched for the duration of
+``generate`` and ``runner.launch``, because the committed roster denies by
+default). The Pod (``p2-pod.txt``/``pod.mod``) is a preview/reward anchor, not
+enemy family content: staged here so ``pc_p2_enemy.cpp:161`` does not gate
+preview-mode Snow; ownership is discussed in the handoff.
+
+    py -3.12 slot.py run gl l05 -- py -3.12 scripts/run_p2_generated_seed.py run \
+        --assets <P1> --converted <c> --bank <bank> --profile <ref> --snow <cohort-run> \
+        --pod <cohort-run> --exe <nectar.exe> --out <dir> --seed seed-slice4 --cohort 44
+"""
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from scripts.probe_p2_cohort_native import (  # noqa: E402
+    GENERATOR_FOR_SOURCE, IDENTITY_ROWS, POD_CONFIG, build_content, build_retail,
+    write_placement_sidecar)
+from experimental.pikmin2_seed_evidence import find_mingw, ready_species  # noqa: E402
+
+SLOT_UID_BASE = 400
+ENUM_FOR_SOURCE = {44: 'BlueKochappy', 45: 'YellowKochappy'}
+READY_TOKEN = {44: 'BlueKochappy', 45: 'YellowKochappy'}
+
+
+def placement_document(cohort):
+    slots, profiles = [], []
+    for index, source_id in enumerate(sorted(cohort)):
+        uid = SLOT_UID_BASE + index + 1
+        enum = ENUM_FOR_SOURCE[source_id]
+        slots.append({'uid': uid, 'label': f'{enum.lower()}-slot', 'stage': 0,
+                      'terrain': 'ground', 'radius': 300.0,
+                      'evidence': {'xyz': True, 'terrain': True, 'route': True}})
+        profiles.append({'identity': enum, 'terrains': ['ground'], 'accepted_gates': ['xyz']})
+    return {'schema': 'p2-placement-v1', 'slots': slots, 'profiles': profiles}
+
+
+def stage(args):
+    out = Path(args.out).resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    cohort = tuple(sorted(set(args.cohort) or [44]))
+    build_retail(args.assets, args.converted, args.pod, out / 'retail', cohort)
+    build_content(args.bank, args.profile, args.snow, out / 'content', cohort)
+
+    import experimental.pikmin2_seed_bridge as bridge
+    from randomizer import runner
+    from randomizer.seed import generate as _generate
+
+    async def noop(*_a, **_k):
+        pass
+
+    saved_admitted = bridge.admitted_ids
+    saved_serve = runner.serve
+    bridge.admitted_ids = lambda roster: list(cohort)
+    runner.serve = noop
+    try:
+        manifest = _generate(args.seed, p2_enemies=True, p2_placement=placement_document(cohort))
+        bindings = manifest['p2_layout']['bindings']
+        assert {b['source_id'] for b in bindings} == set(cohort), bindings
+        actors = {b['target']: GENERATOR_FOR_SOURCE[b['source_id']] for b in bindings}
+        runner.launch(manifest, out / 'session', assets=out / 'retail',
+                      p2_content=out / 'content', p2_actors=actors)
+    finally:
+        bridge.admitted_ids = saved_admitted
+        runner.serve = saved_serve
+
+    run_dirs = list((out / 'session' / 'runs').iterdir())
+    assert len(run_dirs) == 1, run_dirs
+    run_dir = run_dirs[0]
+
+    slots = {}
+    for b in bindings:
+        slots.setdefault(b['source_id'], []).append(int(b['target']))
+    sidecar = [(GENERATOR_FOR_SOURCE[sid], sorted(uids)[0]) for sid, uids in slots.items() if uids]
+    write_placement_sidecar(run_dir, sidecar)
+    if 45 in cohort:
+        (run_dir / POD_CONFIG).write_text((Path(args.pod).resolve() / POD_CONFIG).read_text())
+    (run_dir / 'preview.json').write_text(json.dumps(
+        dict(room='room_4x4a_4_conc', experimental=True, ap=False, save_resume=False), indent=2))
+    (out / 'stage.json').write_text(json.dumps(dict(
+        run=str(run_dir), cohort=list(cohort), seed=args.seed,
+        bindings=manifest['p2_layout']['bindings'],
+        generator_slots=[[int(g), int(s)] for g, s in sidecar],
+        command=['nectar.exe', '--experimental-pikmin2-room']), indent=2))
+    (out / 'seed-manifest.json').write_text(json.dumps(manifest, indent=2))
+    return dict(run=str(run_dir), bindings=manifest['p2_layout']['bindings'],
+                cohort=list(cohort), slots={str(k): sorted(v) for k, v in slots.items()})
+
+
+def boot_native(stage_dir, exe, out, seconds):
+    stage_dir = Path(stage_dir).resolve()
+    out = Path(out).resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ)
+    env['PIKMIN_P2_ROOM_WINDOW'] = '960x540'
+    env['PYTHONUTF8'] = '1'
+    env['SDL_AUDIODRIVER'] = 'dummy'
+    mingw = find_mingw()
+    if mingw:
+        env['PATH'] = mingw + os.pathsep + env.get('PATH', '')
+    startup = subprocess.STARTUPINFO()
+    startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startup.wShowWindow = 0
+    kw = dict(cwd=stage_dir, env=env)
+    if os.name == 'nt':
+        kw['startupinfo'] = startup
+    log_path = out / 'native.log'
+    timed_out = False
+    with log_path.open('w', encoding='utf-8') as lg:
+        proc = subprocess.Popen([str(Path(exe).resolve()), '--experimental-pikmin2-room'],
+                                stdout=lg, stderr=subprocess.STDOUT, **kw)
+        try:
+            proc.wait(timeout=seconds)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+    return log_path.read_text(encoding='utf-8', errors='replace'), timed_out, proc.returncode
+
+
+def run(args):
+    out = Path(args.out).resolve()
+    stage_json = json.loads((out / 'stage.json').read_text(encoding='utf-8'))
+    cohort = stage_json['cohort']
+    text, timed_out, returncode = boot_native(stage_json['run'], args.exe, out, args.seconds)
+
+    roster = re.search(r'default: read (\d+) generators', text)
+    checks = {
+        'window_960x540': '960x540' in text,
+        'roster_read': roster is not None,
+        'roster_curated': roster is not None and int(roster.group(1)) < 80,
+        'no_missing_room': 'FAILED to open assets/dataDir/courses/pikmin2room/' not in text,
+        'no_duplicate_treasure': 'duplicate treasure' not in text,
+    }
+    observed = ready_species(text)
+    for source_id, token in READY_TOKEN.items():
+        if source_id in cohort:
+            checks[f'ready_{token}'] = f'P2_ENEMY_READY species={token}' in text
+            checks[f'bank_{token}'] = ('P2_DWARF_ORANGE_BANK poses=' if source_id == 44
+                                       else 'P2_SNOW_BANK poses=') in text
+        else:
+            checks[f'no_ready_{token}'] = f'P2_ENEMY_READY species={token}' not in text
+    checks['only_seed_identity'] = set(observed) == {READY_TOKEN[s] for s in cohort}
+
+    passed = (timed_out or returncode == 0) and all(checks.values())
+    result = dict(passed=passed, timed_out=timed_out, exit_code=returncode,
+                  cohort=cohort, checks=checks, observed_species=observed,
+                  bindings=stage_json['bindings'], generator_slots=stage_json['generator_slots'])
+    (out / 'evidence.json').write_text(json.dumps(result, indent=2))
+    for keep in (Path(stage_json['run']) / 'p2-binding-receipt.json', out / 'stage.json'):
+        if keep.is_file() and not (out / keep.name).exists():
+            shutil.copyfile(keep, out / keep.name)
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest='command', required=True)
+    s = sub.add_parser('stage')
+    for name in ('assets', 'converted', 'bank', 'profile', 'snow', 'pod', 'out'):
+        s.add_argument('--' + name, type=Path, required=True)
+    s.add_argument('--seed', type=str, default='seed-slice4')
+    s.add_argument('--cohort', type=int, action='append', default=[])
+    r = sub.add_parser('run')
+    for name in ('exe', 'out'):
+        r.add_argument('--' + name, type=Path, required=True)
+    r.add_argument('--seconds', type=float, default=45)
+    a = parser.parse_args()
+    if a.command == 'stage':
+        print(json.dumps(stage(a), indent=2))
+    else:
+        print(json.dumps(run(a), indent=2))
+
+
+if __name__ == '__main__':
+    main()

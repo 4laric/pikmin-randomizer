@@ -30,18 +30,32 @@ sys.path.insert(0, str(ROOT))
 
 from experimental import pikmin2_family_install as family_install  # noqa: E402
 from experimental.pikmin2_animation import parse_bank as parse_snow_bank  # noqa: E402
+from experimental.pikmin2_seed_evidence import cohort_markers, find_mingw, ready_species  # noqa: E402
 from scripts.preview_pikmin2_room import (  # noqa: E402
     generator, overlay, prototype_routes, records, replace_embedded_routes)
 
 SNOW_ID = 5001
 DWARF_ID = 211001
 POD_CONFIG = 'p2-pod.txt'
+PLACEMENT_SIDECAR = 'p2-placement-slots.txt'
+PLACEMENT_HEADER = 'P2_PLACEMENT_SLOTS_1'
+# source_id -> (generator id, display name, actor position)
+IDENTITY_ROWS = {
+    44: (DWARF_ID, 'Dwarf Orange Bulborb', (-150.0, 30.0, 1850.0)),
+    45: (SNOW_ID, 'Snow Bulborb', (-150.0, 30.0, 1700.0)),
+}
+GENERATOR_FOR_SOURCE = {44: DWARF_ID, 45: SNOW_ID}
 
 
-def build_retail(assets, converted, pod_root, out):
-    """Build a retail asset tree the runner will overlay: converted room + a
-    curated actor roster with one Dwarf Orange Chappy (211001) and one Snow
-    Chappy (5001) added to the preview generator, plus the Pod model."""
+def _writer(record, position):
+    from experimental.pikmin2_generator_pose import write_position
+    write_position(record, position)
+
+
+def build_retail(assets, converted, pod_root, out, identities=(44, 45)):
+    """Build a retail asset tree the runner overlays: converted room + a curated
+    actor roster carrying exactly one clean Chappy row per ``identities`` source,
+    plus the Pod model and a single treasure."""
     assets = Path(assets).resolve()
     converted = Path(converted).resolve()
     stage = re.sub(rb'(?m)^map_file[^\r\n]*', b'map_file courses/pikmin2room/room.mod',
@@ -55,20 +69,15 @@ def build_retail(assets, converted, pod_root, out):
     starts = [m.start() for m in re.finditer(b'    0.0v', blob)]
     entries = [blob[a:(starts[i + 1] if i + 1 < len(starts) else len(blob))]
                for i, a in enumerate(starts)]
-    # Re-key the audited enemy template into clean Dwarf Orange + Snow rows.
     enemy = next(r for r in entries if r[72:76] == b'iket' and r[80] == 3)
-    dwarf = bytearray(enemy)
-    struct.pack_into('<I', dwarf, 8, DWARF_ID)
-    dwarf[16:48] = b'Dwarf Orange Bulborb'.ljust(32, b'\0')
-    writer(dwarf, (-150.0, 30.0, 1850.0))
-    snow = bytearray(enemy)
-    struct.pack_into('<I', snow, 8, SNOW_ID)
-    snow[16:48] = b'Snow Bulborb'.ljust(32, b'\0')
-    writer(snow, (-150.0, 30.0, 1700.0))
-    # Drop the generator's own extra enemy rows (single dwarf from challenge[9]),
-    # keeping the reds / onion / ship / treasure and our two clean Chappy rows.
     kept = [e for e in entries if not (e[72:76] == b'iket' and e[80] == 3)]
-    kept += [bytes(dwarf), bytes(snow)]
+    for source_id in sorted(identities):
+        gid, name, position = IDENTITY_ROWS[source_id]
+        row = bytearray(enemy)
+        struct.pack_into('<I', row, 8, gid)
+        row[16:48] = name.encode('ascii')[:32].ljust(32, b'\0')
+        _writer(row, position)
+        kept.append(bytes(row))
     blob = blob[:20] + struct.pack('>I', len(kept)) + b''.join(kept)
 
     pod_mod = Path(pod_root).resolve() / 'assets/dataDir/courses/pikmin2room/pod.mod'
@@ -88,65 +97,74 @@ def build_retail(assets, converted, pod_root, out):
     return out
 
 
-def writer(record, position):
-    from experimental.pikmin2_generator_pose import write_position
-    write_position(record, position)
-
-
-def build_content(retail_root, bank, profile_ref, snow_run, out):
-    """Assemble the identity-keyed content_root (bank/profile + Snow flat bank)."""
-    bank = Path(bank).resolve()
-    profile_ref = Path(profile_ref).resolve()
-    snow_run = Path(snow_run).resolve()
+def build_content(bank, profile_ref, snow_run, out, identities=(44, 45)):
+    """Assemble the identity-keyed content_root (bank/profile and/or Snow flat bank)."""
     out = Path(out).resolve()
-    out.mkdir(parents=True)
+    out.mkdir(parents=True, exist_ok=True)
 
-    src = out / 'BlueKochappy'
-    b, p = src / 'bank', src / 'profile'
-    b.mkdir(parents=True)
-    p.mkdir()
-    shutil.copyfile(bank / 'dwarf-orange-bank.json', b / 'dwarf-orange-bank.json')
-    shutil.copyfile(bank / 'p2-dwarf-orange-bank.txt', b / 'p2-dwarf-orange-bank.txt')
-    shutil.copyfile(bank / 'p2-dwarf-orange-profile.txt', b / 'p2-dwarf-orange-profile.txt')
-    for m in sorted(bank.glob('dwarf_orange_*.mod')):
-        shutil.copyfile(m, b / m.name)
-    shutil.copyfile(profile_ref / 'dwarf-orange-profile.json', p / 'dwarf-orange-profile.json')
+    if 44 in identities:
+        bank = Path(bank).resolve()
+        profile_ref = Path(profile_ref).resolve()
+        src = out / 'BlueKochappy'
+        b, p = src / 'bank', src / 'profile'
+        b.mkdir(parents=True, exist_ok=True)
+        p.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(bank / 'dwarf-orange-bank.json', b / 'dwarf-orange-bank.json')
+        shutil.copyfile(bank / 'p2-dwarf-orange-bank.txt', b / 'p2-dwarf-orange-bank.txt')
+        shutil.copyfile(bank / 'p2-dwarf-orange-profile.txt', b / 'p2-dwarf-orange-profile.txt')
+        for m in sorted(bank.glob('dwarf_orange_*.mod')):
+            shutil.copyfile(m, b / m.name)
+        shutil.copyfile(profile_ref / 'dwarf-orange-profile.json', p / 'dwarf-orange-profile.json')
 
-    s = out / 'YellowKochappy'
-    s.mkdir()
-    snow_txt = (snow_run / 'p2-snow.txt').read_text(encoding='ascii')
-    bank_map = parse_snow_bank(snow_txt)
-    motions = {n: {'poses': i['poses'], 'source_frames': i['source_frames'], 'frames': i['frames']}
-               for n, i in bank_map.items()}
-    (s / 'p2-snow.txt').write_text(snow_txt, encoding='ascii')
-    (s / 'snow.json').write_text(json.dumps(
-        {'schema': 1, 'species': 'YellowKochappy', 'motions': motions}), encoding='utf-8')
-    room = snow_run / 'assets/dataDir/courses/pikmin2room'
-    for m in sorted(room.glob('snow_*.mod')):
-        shutil.copyfile(m, s / m.name)
+    if 45 in identities:
+        snow_run = Path(snow_run).resolve()
+        s = out / 'YellowKochappy'
+        s.mkdir(parents=True, exist_ok=True)
+        snow_txt = (snow_run / 'p2-snow.txt').read_text(encoding='ascii')
+        bank_map = parse_snow_bank(snow_txt)
+        motions = {n: {'poses': i['poses'], 'source_frames': i['source_frames'], 'frames': i['frames']}
+                   for n, i in bank_map.items()}
+        (s / 'p2-snow.txt').write_text(snow_txt, encoding='ascii')
+        (s / 'snow.json').write_text(json.dumps(
+            {'schema': 1, 'species': 'YellowKochappy', 'motions': motions}), encoding='utf-8')
+        room = snow_run / 'assets/dataDir/courses/pikmin2room'
+        for m in sorted(room.glob('snow_*.mod')):
+            shutil.copyfile(m, s / m.name)
     return out
 
 
-def stage(assets, converted, bank, profile, snow, pod, out):
+def write_placement_sidecar(directory, generator_slots):
+    """Write the lane-04 ``p2-placement-slots.txt`` sidecar (generator -> slot uid)."""
+    path = Path(directory) / PLACEMENT_SIDECAR
+    lines = [PLACEMENT_HEADER]
+    lines += [f'{int(g)} {int(s)}' for g, s in generator_slots]
+    path.write_text('\n'.join(lines) + '\n', encoding='ascii')
+    return path
+
+
+def stage(assets, converted, bank, profile, snow, pod, out, identities=(44, 45)):
     out = Path(out).resolve()
     out.mkdir(parents=True, exist_ok=True)
     retail = out / 'retail'
-    build_retail(assets, converted, pod, retail)
-    content = build_content(retail, bank, profile, snow, out / 'content')
+    build_retail(assets, converted, pod, retail, identities)
+    content = build_content(bank, profile, snow, out / 'content', identities)
     run = out / 'run'
     layout = {'bindings': [
-        {'target': 'orange', 'source_id': 44, 'enum_name': 'BlueKochappy'},
-        {'target': 'snow', 'source_id': 45, 'enum_name': 'YellowKochappy'},
+        {'target': kind, 'source_id': source_id, 'enum_name': enum}
+        for kind, source_id, enum in
+        (('orange', 44, 'BlueKochappy'), ('snow', 45, 'YellowKochappy'))
+        if source_id in identities
     ]}
     family_install.install_layout(
         run, layout, content,
-        actor_bindings={'orange': DWARF_ID, 'snow': SNOW_ID},
+        actor_bindings={b['target']: GENERATOR_FOR_SOURCE[b['source_id']] for b in layout['bindings']},
         retail_assets=retail)
-    (run / POD_CONFIG).write_text((Path(pod).resolve() / POD_CONFIG).read_text())
+    if 45 in identities:
+        (run / POD_CONFIG).write_text((Path(pod).resolve() / POD_CONFIG).read_text())
     (run / 'preview.json').write_text(json.dumps(
         dict(room='room_4x4a_4_conc', experimental=True, ap=False, save_resume=False), indent=2))
     (out / 'stage.json').write_text(json.dumps(dict(
-        run=str(run), identities=[DWARF_ID, SNOW_ID],
+        run=str(run), identities=list(identities),
         command=['nectar.exe', '--experimental-pikmin2-room']), indent=2))
     return run
 
@@ -158,32 +176,39 @@ def run(stage_dir, exe, out, seconds=45):
     env = dict(os.environ)
     env['PIKMIN_P2_ROOM_WINDOW'] = '960x540'
     env['PYTHONUTF8'] = '1'
-    mingw = Path(r'C:/msys64/mingw64/bin')
-    if mingw.is_dir():
-        env['PATH'] = str(mingw) + os.pathsep + env.get('PATH', '')
+    env['SDL_AUDIODRIVER'] = 'dummy'
+    mingw = find_mingw()
+    if mingw:
+        env['PATH'] = mingw + os.pathsep + env.get('PATH', '')
+    startup = subprocess.STARTUPINFO()
+    startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startup.wShowWindow = 0
+    kw = dict(cwd=stage_dir, env=env)
+    if os.name == 'nt':
+        kw['startupinfo'] = startup
     log_path = out / 'native.log'
+    timed_out = False
     with log_path.open('w', encoding='utf-8') as lg:
         proc = subprocess.Popen([str(Path(exe).resolve()), '--experimental-pikmin2-room'],
-                                cwd=stage_dir, env=env, stdout=lg, stderr=subprocess.STDOUT)
+                                stdout=lg, stderr=subprocess.STDOUT, **kw)
         try:
             proc.wait(timeout=seconds)
         except subprocess.TimeoutExpired:
+            timed_out = True
             proc.terminate()
             try:
                 proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 proc.kill()
     text = log_path.read_text(encoding='utf-8', errors='replace')
-    checks = {
-        'window_960x540': '960x540' in text,
-        'snow_bank': 'P2_SNOW_BANK poses=' in text,
-        'snow_ready': 'P2_ENEMY_READY species=YellowKochappy' in text,
-        'dwarf_bank': 'P2_DWARF_ORANGE_BANK poses=' in text,
-        'dwarf_ready': 'P2_ENEMY_READY species=BlueKochappy source_id=44' in text,
-        'no_retail_fallback': 'duplicate treasure' not in text and 'abort' not in text,
-    }
-    result = dict(exit_code=proc.returncode, passed=all(checks.values()), checks=checks)
+    marks = cohort_markers(text)
+    passed = (timed_out or proc.returncode == 0) and all(marks.values())
+    result = dict(passed=passed, timed_out=timed_out, exit_code=proc.returncode,
+                  checks=marks, ready_species=ready_species(text))
     (out / 'evidence.json').write_text(json.dumps(result, indent=2))
+    for keep in (stage_dir / 'p2-binding-receipt.json', stage_dir.parent / 'stage.json'):
+        if keep.is_file() and not (out / keep.name).exists():
+            shutil.copyfile(keep, out / keep.name)
     return result
 
 
