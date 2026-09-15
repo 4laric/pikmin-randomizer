@@ -124,6 +124,47 @@ def test_pod_validate_rejects_bad_completion_and_assisted_mismatch():
         validate(_pod_log(assisted=True), assisted=False)
 
 
+def test_pod_validate_natural_kill_flip_to_pass():
+    from scripts.pikmin2_mamuta_pod_native import validate
+    evidence = validate(_pod_log(died=1, corpse=1))
+    assert evidence['classify']['natural_kill'] == 'PASS'
+    assert evidence['classify']['natural_corpse'] == 'PASS'
+
+
+def test_pod_validate_natural_kill_flip_to_unproven():
+    from scripts.pikmin2_mamuta_pod_native import validate
+    evidence = validate(_pod_log(died=0, corpse=0, carried=0, goal=0, receipt=False, pokos=0))
+    assert evidence['captain_down'] is False
+    assert evidence['classify']['natural_kill'] == 'UNPROVEN'
+
+
+def test_pod_validate_natural_kill_flip_to_blocked():
+    from scripts.pikmin2_mamuta_pod_native import validate
+    evidence = validate(_pod_log(died=0, corpse=0, carried=0, goal=0, receipt=False,
+                                 pokos=0, captain_down=True))
+    assert evidence['classify']['natural_kill'] == 'BLOCKED(captain_down)'
+
+
+def test_pod_validate_delivery_flip_to_pass():
+    from scripts.pikmin2_mamuta_pod_native import validate
+    evidence = validate(_pod_log(carried=1, goal=1, receipt=True))
+    assert evidence['classify']['natural_carry'] == 'PASS'
+    assert evidence['classify']['pod_receipt'] == 'PASS'
+
+
+def test_pod_validate_delivery_flip_goal_missing():
+    from scripts.pikmin2_mamuta_pod_native import validate
+    evidence = validate(_pod_log(carried=1, goal=0, receipt=False))
+    assert evidence['classify']['natural_carry'] == 'UNPROVEN'
+    assert evidence['classify']['pod_receipt'] == 'UNPROVEN'
+
+
+def test_pod_validate_delivery_flip_not_carried():
+    from scripts.pikmin2_mamuta_pod_native import validate
+    evidence = validate(_pod_log(carried=0))
+    assert evidence['classify']['natural_carry'] == 'UNPROVEN'
+
+
 def test_instrument_selects_pod_and_assisted_fixtures(tmp_path):
     root = Path(__file__).resolve().parents[1]
     probe = ('class RoomApp : public PlugPikiApp {\n int idle() override { return 0; }\n};\n'
