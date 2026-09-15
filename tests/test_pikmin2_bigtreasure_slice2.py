@@ -40,6 +40,7 @@ def test_synthetic_log_reports_all_true():
     result = validate_slice2('\n'.join(lines))
     for key in _BOOL_KEYS:
         assert result[key] is True, key
+    assert result['held_count'] == 1
     assert len(result['recv_lines']) == 2
 
 
@@ -48,6 +49,7 @@ def test_empty_and_none_input_all_false():
         result = validate_slice2(text)
         for key in _BOOL_KEYS:
             assert result[key] is False, key
+        assert result['held_count'] == 0
         assert result['recv_lines'] == []
 
 
@@ -84,6 +86,17 @@ def test_handled_set_held_when_recv_held_present():
         'handled_set_held'] is True
     assert validate_slice2('P2_BIGTREASURE_RECV weapon=elec target=piki species=2 accepted=1\n')[
         'handled_set_held'] is False
+
+
+def test_held_count_counts_each_held_line():
+    text = '\n'.join([
+        'P2_BIGTREASURE_RECV_HELD weapon=elec target=piki species=2',
+        'P2_BIGTREASURE_RECV_HELD weapon=fire target=piki species=1',
+        'P2_BIGTREASURE_RECV_HELD weapon=gas target=piki species=4',
+    ])
+    result = validate_slice2(text)
+    assert result['held_count'] == 3
+    assert result['handled_set_held'] is True
 
 
 def test_crlf_and_whitespace_tolerant():

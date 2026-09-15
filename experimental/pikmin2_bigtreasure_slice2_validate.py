@@ -76,6 +76,7 @@ def validate_slice2(text: str) -> dict:
         'ordinary_attack_started': False,
         'ordinary_attack_emitted': False,
         'natural_drop': False,
+        'held_count': 0,
     }
     recv_lines = []
     weapon_counts = []
@@ -113,6 +114,7 @@ def validate_slice2(text: str) -> dict:
             # The ordinary loop's handled set re-armed this attack (a target in
             # geometry was already stimulated, so a re-stimulation was held).
             result['handled_set_held'] = True
+            result['held_count'] += 1
         elif marker == 'P2_BIGTREASURE_DROP_INGRESS':
             if fields.get('injected') == '0':
                 result['natural_drop'] = True

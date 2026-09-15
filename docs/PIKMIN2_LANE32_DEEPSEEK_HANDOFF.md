@@ -492,3 +492,85 @@ injected max-health hit is therefore retained as the flagged knock-off scenario.
 Net: the two explore agents saved the decomp/intercept/grep sessions and pinned
 the blocker with file:line; the general agent's validator extension landed with
 only a small follow-up (the RECV_HELD key).
+
+## Slice 3 — review fixes 3
+
+All five review items addressed on the existing branches.
+
+- **Item 1 (build evidence)**: `build_lane.py l32 --target pikmin_pc` at the
+  committed head `989e0e7cc379c2200ca8b376b3c3c0144f2c018d` (dirty=no):
+  `[build-evidence] 2026-09-15T02:40:34 lane=l32 target=pikmin_pc native=989e0e7c… dirty=no
+  … nectar.exe sha256=1abf71cc9e1e1f16e5c921f71d6541e58c1b91060cc15f682912db7c238bdac9
+  ninja_n="ninja: no work to do."`.
+- **Item 2 (RECV_HELD rate-limit)**: the ordinary loop now logs
+  `P2_BIGTREASURE_RECV_HELD` at most once per attack via a
+  `sBigTreasureHeldLogged` flag cleared at attack start
+  (`pc_p2_hardlanes.cpp`). Re-run held-count dropped **2684 -> 2**.
+- **Item 3 (probe no-erase)**: `pc_p2_hardlanes_bigtreasure_recv_probe` returns 0
+  on an insert-fail WITHOUT erasing the live loop's key (only the post-stimulate
+  erase remains).
+- **Item 4 (fixture)**: `framesInAttack` now resets on every `Attack` entry and
+  the knock-off fires 15 frames into the FIRST Attack, not the third
+  (`p2_bigtreasure_slice3_runtime.cpp`). Root commit `5fda0aa` added to the commit
+  list below; the slice-2 evidence blocks still show
+  `PASS BIGTREASURE_SLICE2_RUNTIME` / `SLICE2_HANDLED first=1 second=0` because the
+  slice-2 log was captured before the `RECEIVER_ONLY` rename and was not re-run —
+  recorded here, not silently edited. The reproduction runner is now committed as
+  `tools/p2_bigtreasure_slice3_run.py` (parameterized CLI, no lane paths).
+- **Item 5 (natural non-immune hit)**: NOT achieved — a non-immune hazard entry
+  still requires the fixture-injected Blue or a non-Red colour plus per-frame
+  teleport into the fixed boss's element; the live squad (all Red, spawned at
+  XZ ~(-86,-2)) is not inside the fixed `(0,0,0)` boss element without
+  teleport. Gate 3 remains **PARTIAL** (see table).
+
+Corrected re-run (`runs/bc5d9233b6444f66957a142b977d0c1f/stdout.log`, native
+`d8a18669`, exit 0):
+
+```text
+740: P2_BIGTREASURE_ATTACK_START weapon=elec
+741: P2_BIGTREASURE_ATTACK_EMIT weapon=elec nodes=11
+742: P2_BIGTREASURE_SLICE3_KNOCKOFF posted=1 weapon=elec injected=1   (first Attack)
+745: P2_BIGTREASURE_SLICE3_REPICK phase=PreAttack weapons=3
+750: P2_BIGTREASURE_ATTACK_START weapon=fire
+751: P2_BIGTREASURE_ATTACK_EMIT weapon=fire nodes=1
+752: P2_BIGTREASURE_RECV weapon=fire target=navi accepted=1
+757: P2_BIGTREASURE_RECV_HELD weapon=fire target=navi                  (<= 2 total)
+768: P2_BIGTREASURE_RECV weapon=fire target=piki species=0 accepted=1  (injected Blue)
+```
+
+### Commit list (slice 3, both branches, clean)
+
+- Native `deepseek/p2-l32-native` (base `b805d9c6`): `cd44157c`, `54865e33`,
+  `f79cc1af`, `93757389`, `989e0e7c` (review fixes 3: rate-limit + probe + run.py),
+  `d8a18669` (first-phase knock-off). Head `d8a18669b059539d96885d049c5391873fbc26fc`.
+- Root `deepseek/p2-l32` (base `ef1cace`): `5fda0aac` (slice 3),
+  `e91ebc7b` (integrator relabel: gate 3 PARTIAL), + this review-fix commit.
+
+### Subagent usage (fix3)
+
+1. `explore` — source audit of the RECV_HELD/probe lines, the fixture timing bug,
+   the squad/Navi spawn coordinates, and the fire/elec geometry numbers.
+   **Used as-is**: pinned the recv_probe erase lines (378/386), the squad at
+   XZ (-86,-2)/Navi (-85,0), and the fire column +z extend=200/radius=25.
+2. `explore` — candidate inventory (run_slice3.py tracking, the stale slice-2
+   marker strings and their line numbers, commit-list gap, RECV_HELD print sites).
+   **Used as-is** for the exact edits and the "not re-run" note.
+3. `general` — extended the validator with a `held_count` diagnostic + tests and
+   reported the pre-fix count (2684). **Used as-is**: `held_count` now lets the
+   handoff evidence the 2684 -> 2 rate-limit fix.
+
+Net: the two explore agents pinned exact line numbers so the code fixes were
+one-shot; the general agent's `held_count` key turned the rate-limit fix into a
+quantitatively evidenced correction.
+
+### Gate checker output (scripts/check_p2_handoff_gates.py)
+
+```text
+73 BigTreasure (role=source):
+  1. identity_spawn     ignored [UNTESTED]
+  2. movement_animation ignored [PARTIAL]
+  3. attacks_receivers  ignored [PARTIAL]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [N/A]
+  6. cleanup_reentry    ignored [UNTESTED]
+```
