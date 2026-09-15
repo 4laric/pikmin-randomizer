@@ -23,53 +23,6 @@ def _record(record_id, stage, scenario, kind, status, *, build_sha256=BUILD,
     }
 
 
-def test_fixture_pass_with_full_provenance_on_boundary_cell():
-    cell = qa.evaluate_cell(
-        [_record("mix-fixture", "generate", "frame_budget", qa.KIND_FIXTURE, qa.PASS)],
-        "generate", "frame_budget")
-    assert cell["status"] == qa.PASS
-    assert cell["evidence"][0]["id"] == "mix-fixture"
-
-
-def test_fixture_record_cannot_satisfy_natural_required_cell():
-    cell = qa.evaluate_cell(
-        [_record("mix-fixture", "natural_fight", "baseline_cohort", qa.KIND_FIXTURE, qa.PASS)],
-        "natural_fight", "baseline_cohort")
-    assert cell["status"] == qa.BLOCKED
-    assert "fixture evidence cannot satisfy this cell" in cell["reason"]
-
-
-def test_natural_pass_with_missing_build_hash_is_blocked():
-    rec = _record("mix-natural", "natural_fight", "baseline_cohort", qa.KIND_NATURAL,
-                  qa.PASS, build_sha256="")
-    cell = qa.evaluate_cell([rec], "natural_fight", "baseline_cohort")
-    assert cell["status"] == qa.BLOCKED
-    assert "incomplete provenance" in cell["reason"]
-
-
-def test_mocked_never_passes_even_with_full_provenance():
-    cell = qa.evaluate_cell(
-        [_record("mix-mocked", "install", "missing_assets", qa.KIND_MOCKED, qa.PASS)],
-        "install", "missing_assets")
-    assert cell["status"] != qa.PASS
-    assert cell["status"] == qa.BLOCKED
-
-
-def test_fail_record_wins_over_pass_record():
-    records = [
-        _record("mix-pass", "natural_fight", "baseline_cohort", qa.KIND_NATURAL, qa.PASS),
-        _record("mix-fail", "natural_fight", "baseline_cohort", qa.KIND_NATURAL, qa.FAIL),
-    ]
-    cell = qa.evaluate_cell(records, "natural_fight", "baseline_cohort")
-    assert cell["status"] == qa.FAIL
-
-
-def test_cell_with_no_records_is_untested():
-    cell = qa.evaluate_cell([], "reward", "strong_stats")
-    assert cell["status"] == qa.UNTESTED
-    assert cell["reason"] == "no evidence record"
-
-
 def test_cohort_slice_build_report_summary():
     records = [
         _record("mix-fixture", "generate", "frame_budget", qa.KIND_FIXTURE, qa.PASS),

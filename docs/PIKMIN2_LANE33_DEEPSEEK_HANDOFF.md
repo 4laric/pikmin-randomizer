@@ -80,8 +80,8 @@ already-integrated pin with zero native or root source edits.
 
 | Gate | Status | Evidence / label |
 |---|---|---|
-| 1. Exact identity and spawn | **PASS** (fixture) | Natural: `P2_ENEMY_READY species=BlueKochappy source_id=44 ... health=250.0 ... purple_stun=bluekochappy_5s`, `P2_ENEMY_READY species=YellowKochappy ... health=150.0`. Injected: `P2_MIXED_ARENA_BIRTH id=211001/211002/5001` verify stored birth XYZ, health 250/130/150 and display name (Dwarf Orange Bulborb / Snow Bulborb). |
-| 2. Autonomous movement and animation | **PASS** (fixture, artifact/draw) — autonomous locomotion NOT separately asserted | Natural: `P2_SNOW_BANK poses=60`, `P2_DWARF_ORANGE_BANK poses=64`, `P2_SNOW_DRAW corpse=0`, `P2_DWARF_ORANGE_DRAW corpse=0`. |
+| 1. Exact identity and spawn | **PASS** (fixture) | Natural: `P2_ENEMY_READY species=BlueKochappy source_id=44 ... health=250.0 ... purple_stun=bluekochappy_5s`, `P2_SNOW_POLICY generator=5001 health=150.0` (the READY line carries no health field). Injected: `P2_MIXED_ARENA_BIRTH id=211001/211002/5001` verify stored birth XYZ, health 250/130/150 and display name (Dwarf Orange Bulborb / Snow Bulborb). |
+| 2. Autonomous movement and animation | **UNTESTED** (draw-observed bank/draw markers only; not a gameplay PASS per fan-out rules) | Natural: `P2_SNOW_BANK poses=60`, `P2_DWARF_ORANGE_BANK poses=64`, `P2_SNOW_DRAW corpse=0`, `P2_DWARF_ORANGE_DRAW corpse=0`. |
 | 3. Attacks and receivers | **UNTESTED** | Not exercised by this fixture. |
 | 4. Death and corpse | **UNTESTED** (incidental marker only) | `P2_DWARF_ORANGE_DRAW corpse=1` observed late in the run (Dwarf Orange killed by the free 20-red squad during observation); not a controlled death/receiver gate, Snow never died. |
 | 5. Actual transport and reward | **UNTESTED** | Not exercised (lane 06 endpoint). |
@@ -170,7 +170,10 @@ py -3.12 -m experimental.pikmin2_mixed_bulborb_runtime prepare --assets C:/Users
 # the one real-GL runtime gate (gl slot + MinGW runtime DLLs on PATH):
 $env:PATH='C:\msys64\mingw64\bin;'+$env:PATH
 $env:PIKMIN_P2_ROOM_WINDOW='960x540'; $env:PYTHONUTF8='1'
-py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l33 -- py -3.12 -m experimental.pikmin2_mixed_bulborb_runtime run --stage C:/Users/alari/pikmin-randomizer/output/dsw/l33-out/mixed-arena/79cc878179fc4fa8b08ac279fc8b25d4 --exe C:/Users/alari/pikmin-randomizer/output/dsw/l33-out/mixed-fixture/baseline/fixture.exe --output C:/Users/alari/pikmin-randomizer/output/dsw/l33-out/mixed-run
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l33 -- py -3.12 -m experimental.pikmin2_mixed_bulborb_runtime run --stage C:/Users/alari/pikmin-randomizer/output/dsw/l33-out/mixed-arena/79cc878179fc4fa8b08ac279fc8b25d4 --exe C:/Users/alari/pikmin-randomizer/output/dsw/l33-out/mixed-fixture/baseline/fixture.exe --output C:/Users/alari/pikmin-randomizer/output/dsw/l33-out/mixed-run-final
+```
+
+Review note: `l33-out/mixed-run` holds a failed first attempt (exit 0xC0000135, MinGW DLLs missing from PATH); the cited evidence is `mixed-run-final`. Prepend `C:/msys64/mingw64/bin` to PATH before running. The QA record `gensession-install-missing-assets.json` is `kind=synthetic` (monkeypatched admission + synthetic manifest), so that cell reports BLOCKED, not PASS.
 ```
 
 Expected: `evidence.json` `passed=true` (13/13 checks), native.log shows centred
