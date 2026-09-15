@@ -266,3 +266,11 @@ min); the subagent results required no corrections.
 - Horizontal `walkToTarget` autonomy: next slice (TEKI-proxy pattern).
 - Multi-carrier ownership / dead-carrier attribution with real carriers: next slice.
 - Real skeletal joint + keyframe timings + visual assets: converter #128 / lane 09.
+
+
+## Integrator review notes (slice 2)
+
+- Committed native head `0debc442` has no build-evidence line; the fixture is pinned instead by `fixture2/provenance.json` (`observed_source.tracked_diff_sha256` == sha256 of `git diff 74533062 0debc442`), verified by the reviewer.
+- The "Verbatim key lines" block is a selection, not contiguous: the `ARENA_READY … events=2` line is log line 750 (reset before `purple`); the first ARENA_READY (line 722) reads `events=0`.
+- Blast attribution: the teki hit is `self=1 token=0` in the two live-carrier scenarios (log 746, 772); only navi/piki hits carry carrier token 9001, per the bombState rule.
+- Six-gate row 2 reads PARTIAL: joint-follow PASS on a pinned carrier (x/z fixed, hover-bob only); the "teardown" is the scripted `event 45 kill`. Not an ordinary-actor or autonomous-movement PASS. Multi-carrier ownership not started.
