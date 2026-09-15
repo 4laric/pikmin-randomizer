@@ -37,6 +37,7 @@ class BreadbugContestFixture : public PlugPikiApp {
  bool deathLogged = false;
  bool prevHeld = false;
  Teki* actor = nullptr;
+ Pellet* cargo = nullptr;
 public:
  Pellet* baitPellet() {
   Vector3f fwd;
@@ -61,6 +62,14 @@ public:
   if (!n) return result;
   ++tick;
   const bool held = actor && actor->getCreaturePointer(2) != nullptr;
+  // After a release/steal/deliver resolves the contest, remove the resolved
+  // pellet so the proxy cannot re-grab it and loop (the squad would carry it
+  // away in a real scene).
+  if (cargo && !held && prevHeld && cargo->isAlive()) {
+   cargo->kill(false);
+   std::printf("P2_BREADBUG_CONTEST_PELLET_RESOLVED tick=%d\n", tick);
+   std::fflush(stdout);
+  }
 
   if (tick == 1) {
    Iterator it(tekiMgr);
@@ -72,27 +81,27 @@ public:
    view.y = mapMgr->getMinY(view.x, view.z, true);
    n->resetPosition(view);
    pc_p2_breadbug_actor_probe_carriers(-1); // natural Stickers for the primary tug
-   baitPellet();
+   cargo = baitPellet();
    std::printf("P2_BREADBUG_CONTEST_PHASE phase=natural_tug_setup tick=%d\n", tick);
    std::fflush(stdout);
   }
 
   if (tick == 420) {                                   // revisit -> re-grab -> duplicate grant
    pc_p2_breadbug_actor_probe_revisit();
-   baitPellet();
+   cargo = baitPellet();
    pc_p2_breadbug_actor_probe_carriers(2);
    std::printf("P2_BREADBUG_CONTEST_PHASE phase=revisit_duplicate tick=%d\n", tick);
    std::fflush(stdout);
   } else if (tick == 800) {                            // interruption: hold, whistle carriers off, delivery -> interrupt
    pc_p2_breadbug_actor_probe_revisit();
-   baitPellet();
+   cargo = baitPellet();
    pc_p2_breadbug_actor_probe_carriers(1);             // keep the tug Held so the contest does not time out
    n->callPikis(150.0f, true);                         // natural captain-whistle carrier-off trigger (audited Navi::callPikis)
    std::printf("P2_BREADBUG_CONTEST_PHASE phase=interrupt_delivery tick=%d whistle=1\n", tick);
    std::fflush(stdout);
   } else if (tick == 2600) {                           // fresh hold for the death gate
    pc_p2_breadbug_actor_probe_revisit();
-   baitPellet();
+   cargo = baitPellet();
    pc_p2_breadbug_actor_probe_carriers(1);
    std::printf("P2_BREADBUG_CONTEST_PHASE phase=death_hold tick=%d\n", tick);
    std::fflush(stdout);
@@ -101,9 +110,9 @@ public:
   // Death: kill shortly after the death-hold pellet is grabbed (so released=1).
   if (tick >= 2600 && killAt < 0 && held && !prevHeld) { killAt = tick + 10; }
   if (killAt >= 0 && tick >= killAt) {
-   if (actor->isAlive()) { actor->mHealth = 0.0f; std::printf("P2_BREADBUG_CONTEST_PHASE phase=kill_injected tick=%d\n", tick); std::fflush(stdout); }
+   if (!actor->mDeadState) { actor->die(); std::printf("P2_BREADBUG_CONTEST_PHASE phase=kill tick=%d\n", tick); std::fflush(stdout); }
   }
-  if (killAt >= 0 && !actor->isAlive()) {
+  if (killAt >= 0 && actor->mDeadState) {
    if (!deathLogged) { deathLogged = true; std::printf("P2_BREADBUG_CONTEST_PHASE phase=dead tick=%d\n", tick); std::fflush(stdout); }
    if (tick >= killAt + 40) {
     capture("breadbug-contest-final.ppm");
