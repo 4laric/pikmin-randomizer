@@ -221,30 +221,28 @@ void NaviMgr::resetCaptainRoster()
 }
 
 /**
- * @brief Build mNaviShapeObject[1] from a fresh, uncached captain model so a
- * second Navi can index it without clobbering [0]'s animator overrides.
+ * @brief Point mNaviShapeObject[1] at slot 0's fully-initialised
+ * PikiShapeObject so a second Navi can index it without clobbering [0]'s
+ * animator overrides or reloading a crashing fresh, uncached model.
  *
  * Additive: does not create, activate or update any Navi. On the default
- * single-captain port this is never called. A second Navi also needs
- * follow-AI, split camera, control routing and survivor-gated game over before
- * it can be spawned safely, so the live opt-in path stays closed for now.
+ * single-captain port this is never called. The live opt-in path is now open
+ * (second_captain_live_allowed() defaults true, request-gated by
+ * PIKMIN_P2_SECOND_CAPTAIN); the two captains share mAnimatorA/B, so their
+ * poses couple (a documented cosmetic limitation).
  */
 bool NaviMgr::ensureSecondNaviShapeObject()
 {
-	if (mNaviShapeObject[1]) {
-		return true;
-	}
-	Shape* shape = gameflow.loadShape("pikis/nv3Model.mod", false);
-	if (!shape) {
-		return false;
-	}
-	PikiShapeObject* shapeObject = new PikiShapeObject(shape);
-	if (!shapeObject) {
-		return false;
-	}
-	shapeObject->mAnimMgr = PikiShapeObject::getAnimMgr();
-	mNaviShapeObject[1]   = shapeObject;
-	return true;
+	// Lane 12 (#130): share slot 0's fully-initialised PikiShapeObject. A fresh
+	// uncached `loadShape("pikis/nv3Model.mod", false)` crashed
+	// non-deterministically in the Navi::draw/demoDraw tail (fault location moved
+	// between runs), so the second captain reuses mNaviShapeObject[0] (same mesh,
+	// collision tree, animators and animation manager slot 0 already draws with).
+	// Consequence: the two captains drive the shared mAnimatorA/B, so their poses
+	// couple (a documented cosmetic limitation) while both are drawn at their own
+	// mSRT. mNaviShapeObject[1] is never deleted, so sharing is safe.
+	mNaviShapeObject[1] = mNaviShapeObject[0];
+	return mNaviShapeObject[1] != nullptr;
 }
 
 /**

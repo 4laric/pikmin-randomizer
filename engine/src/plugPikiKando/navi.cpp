@@ -2342,14 +2342,11 @@ void Navi::makeCStick(bool isSunset)
  */
 void Navi::refresh(Graphics& gfx)
 {
-	// Lane 12 (#130): the second captain is live in the roster (health, active
-	// index, knockout) but its model, self-shadow, plate and cursor rendering
-	// are deferred — the per-captain shape/head/collision bind is still open.
-	// Its game state still drives the survivor path; only the visual pass is
-	// skipped so the shared single-captain render path stays byte-identical.
-	if (mNaviID != 0) {
-		return;
-	}
+	// Lane 12 (#130): the second captain now draws like the first. It shares
+	// slot 0's fully-initialised PikiShapeObject (see
+	// NaviMgr::ensureSecondNaviShapeObject), so the fresh-shape crash in the
+	// draw/demoDraw tail is gone. Single-captain play is unchanged (only slot 0
+	// exists); with the live gate on, both captains render at their own mSRT.
 	draw(gfx);
 	if (!movieMode()) {
 		if (gsys->mToggleColls) {
@@ -2357,7 +2354,14 @@ void Navi::refresh(Graphics& gfx)
 		}
 
 		Matrix4f viewMtx;
-		mPlateMgr->render(gfx);
+		// Lane 12 (#130): a second Navi is birthed in the GameCoreSection
+		// constructor but init()/reset() (which allocates mPlateMgr) runs later in
+		// finalSetup, so the setup draw can reach refresh() with mPlateMgr still
+		// null. Guard it (and see demoDraw's light guards) so the second captain
+		// can render before reset without a null deref.
+		if (mPlateMgr) {
+			mPlateMgr->render(gfx);
+		}
 
 		// these aren't used for anything in the DLL either, lol.
 		f32 unusedVal  = sinf(mFaceDirection);
@@ -2447,8 +2451,12 @@ void Navi::demoDraw(Graphics& gfx, immut Matrix4f* mtx)
 		// of dereferencing a missing collision part during the transition.
 		mNaviLightPosition.set(mSRT.t.x, mSRT.t.y + 10.0f, mSRT.t.z);
 	}
-	mNaviLightEfx->updatePos(mNaviLightPosition);
-	mNaviLightGlowEfx->updatePos(mNaviLightPosition);
+	if (mNaviLightEfx) {
+		mNaviLightEfx->updatePos(mNaviLightPosition);
+	}
+	if (mNaviLightGlowEfx) {
+		mNaviLightGlowEfx->updatePos(mNaviLightPosition);
+	}
 }
 
 /**
