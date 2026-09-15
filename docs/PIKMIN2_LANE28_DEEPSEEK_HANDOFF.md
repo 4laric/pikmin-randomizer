@@ -47,10 +47,11 @@ the lane's gate table is no longer self-contradictory.
   - `92c2c773` lane28: hardlanes forget hook — clear the Fuefuki vehicle/stimulus on actor death (#245)
   - `ab694afd` lane28: hook (teki lifetime) forget Fuefuki hardlanes vehicle
   - `ee04e950` lane28: register Fuefuki combat runtime fixture compile target (#245)
-- Root base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`; head `becfe9c`, **clean**.
+- Root base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`; head `a5fcadd`, **clean**.
   - `866e9a6` lane28: refresh Fuefuki arena gates for natural combat + resolved fallback (#245)
   - `64ea227` lane28: DeepSeek handoff — natural-combat press receiver slice (#245)
   - `becfe9c` lane28: review fixes — honest Fuefuki gate labels (policy/untested) (#245)
+  - `a5fcadd` lane28: review fixes — handoff (phantom citation removed, honest gate/coverage status) (#245)
 
 ## Interfaces / hooks touched and why
 
