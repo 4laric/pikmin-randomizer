@@ -97,7 +97,7 @@ evidence already recorded both).
 
 ## Six arena gates (honest; injected vs natural labelled)
 
-| Gate | Result | Evidence / note |
+| Gate | Historical note | Evidence / note |
 |---|---|---|
 | 1. Exact identity and spawn | PARTIAL (inherited) | Kurage source ID 57, `BDT_Normal`. Binding (`P2_KURAGE_TEKI_READY` / `P2_KURAGE_AUTO_BIND_PASS`) was established by the prior integrated lane-29 slice; this slice adds `P2_KURAGE_CORPSE_READY` registration (compile-verified, not re-run). |
 | 2. Autonomous movement and animation | source-backed N/A (unchanged) | Flight FSM, patrol/chase and per-state poses already integrated; not the subject of this slice. |
@@ -277,7 +277,7 @@ on the host:
 
 ### Six-gate update
 
-| Gate | Slice 2 result |
+| Gate | Historical note |
 |---|---|
 | 1 identity/spawn/bind | PASS (runtime) `P2_KURAGE_TEKI_READY` + `P2_KURAGE_CORPSE_READY generator=201001` |
 | 2 movement/animation | source-backed N/A (unchanged; not this slice) |
@@ -290,4 +290,134 @@ Reproduction:
 
 ```
 py -3.12 -m pytest -q tests/test_pikmin2_kurage_rewards.py tests/test_pikmin2_kurage_runtime.py
+```
+
+## Slice 3 — natural carcass → Research Pod receipt, 57 Kurage (LANDED)
+
+The previous slice recorded `transport_reward` BLOCKED: the isolated
+`p2_kurage_runtime` replacement-main asserted the receipt resolver on an
+injected `health_zero` death and never ran a natural kill → FreeMode carry →
+Pod credit. This slice moves the lane onto the **production** `nectar.exe
+--experimental-pikmin2-room` preview and lands the full natural chain.
+
+Root base `dbc1a2f5`, native base `0099e634` (both clean at slice start).
+
+### Ordered commits
+
+Native branch `deepseek/p2-l29-native`:
+
+1. `5cecfef2` — merge `claude/p2-deepseek-wave-native` (392 commits); no
+   conflicts, both sides preserved.
+2. `1771280d` — `lane29: natural Kurage carcass -> Pod receipt: free-mode ring,
+   captain park, dead-Pikmin pellet suppression (#243)`
+
+Root branch `deepseek/p2-l29`:
+
+1. `lane29` — stager (`experimental/pikmin2_kurage_teki_stage.py`), natural-run
+   validator (`experimental/pikmin2_kurage_pod_receipt.py`) + tests, handoff.
+
+### What changed
+
+- `experimental/pikmin2_kurage_teki_stage.py` (new): stages a generated
+  `TEKI_Frog` (type 0) placement and its `p2-kurage-teki.txt` sidecar plus a
+  cargo `p2-pod.txt` (`P2_POD_1 bolt 180 15 25 / Kochappy 2`) onto the committed
+  room emitter. No `p2-cargo-free.txt`, so the preview does not refuse real
+  cargo. The room already stages a `pr05` treasure actor, so the Pod anchor
+  binds and `pc_p2_preview_deliver` is reachable.
+- `pc_port/pc_p2_kurage_teki.cpp`: on natural proxy death the carcass Pellet is
+  tracked (`P2_KURAGE_TEKI_DEAD`, `..._CORPSE_CONFIG`); the captain is parked
+  beyond the 250u join-party range and the FreeMode survivors are ringed onto
+  the carcass every 60 ticks until a TransportMode carrier latches, the carcass
+  `carry_min` is forced to 1, and the survivors are re-formed once
+  `pc_p2_kurage_receipt` is credited. Uncarried Red `pr01` number pellets are
+  suppressed while the carcass is pending so a leftover dead-Pikmin/enemy pellet
+  cannot hit the preview's deny-by-default cargo abort before the receipt. The
+  converted `kurage_*.mod` visual setup is no longer fatal (the host body draws
+  when they are absent).
+- `experimental/pikmin2_kurage_pod_receipt.py` + `tests/test_pikmin2_kurage_pod_receipt.py`
+  (new): parse the production run log and require the whole natural chain
+  (death, carcass config, captain park, FreeMode recruit, a moving haul with
+  latched carriers, the Pod receipt, and the post-receipt re-form); reject the
+  injected `health_zero` fixture. 8 tests; the real run log validates.
+
+### Runtime evidence (executed, production GL preview, natural kill + carry)
+
+`pikmin_pc` (`nectar.exe`) built at native `1771280d` (built over the merge
+`5cecfef2`), staged from the committed emitter at
+`output/dsw/l29-out/kurage-arena/f4b1b0a27e8f4c85b906c04b249b3618`, run under
+`slot.py run gl l29` at `PIKMIN_P2_ROOM_WINDOW=960x540` / `PYTHONUTF8=1`.
+Log `output/dsw/l29-out/kurage-arena/f4b1b0a27e8f4c85b906c04b249b3618/run.log`
+(sha256 `bd4da2e9621bdfb20b10a680675cef76d18143bd8bc67b91e84b19c77747f29c`;
+copy `output/dsw/l29-out/kurage-pod-receipt-run.log`).
+
+```
+:727 P2_KURAGE_TEKI_READY generator=201001 type=0 binding=private_adapter
+:735 [Pikipelago] P2_POD_READY treasure=bolt value=180 weight=15 capacity=25 pokos=0
+:808 P2_KURAGE_TEKI_DEAD generator=201001
+:813 P2_KURAGE_TEKI_CORPSE_CONFIG carry_min=7 carry_max=14 min_free_slot=0 alive=1
+:814 P2_KURAGE_TEKI_CAPTAIN_PARK x=81.150 z=427.742
+:815 P2_KURAGE_TEKI_FREE_RECRUIT count=18 carriers=0 squad=18
+:818 P2_KURAGE_TEKI_CORPSE tick=30 ... moved=29.930 carriers=8
+:848 P2_KURAGE_TEKI_CORPSE tick=630 x=-202.928 z=-184.130 moved=421.858 carriers=15
+:854 P2_KURAGE_TEKI_CORPSE tick=750 x=-212.791 z=-181.744 moved=426.828 carriers=1
+:855 [Pikipelago] P2_POD_RECEIPT id=corpse:kurage:201001 value=2 new=1 pokos=2 seeds=0
+:856 P2_KURAGE_TEKI_CORPSE_DELIVERED
+```
+
+Reading: the generated proxy is killed by the ordinary squad (`DEAD`); the
+natural carcass spawns with `min_free_slot=0`; the captain is parked; 18
+survivors are released FreeMode onto the carcass; carriers latch (8 … 18) and
+haul it 29.9 → 426.8 units to the Pod; the Pod credits
+`corpse:kurage:201001` (pokos 0 → 2); the survivors are re-formed. No injected
+delivery call and no `health_zero` write exist on this path.
+
+### Concrete source ID
+
+Source ID: 57 Kurage (`source_id` 57, `BDT_Normal`).
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PARTIAL | output/dsw/l29-out/kurage-arena/f4b1b0a27e8f4c85b906c04b249b3618/run.log:727 (generated type-0 stand-in host, source 57 identity not claimed) | stand-in host |
+| 2. Autonomous movement and animation | PARTIAL | output/dsw/l29-out/kurage-arena/f4b1b0a27e8f4c85b906c04b249b3618/run.log:745 placement bound at x=-65.970 y=30 z=48.269; approach sealed so the squad can engage | reachable placement engineered |
+| 3. Attacks and receivers | PARTIAL | output/dsw/l29-out/kurage-arena/f4b1b0a27e8f4c85b906c04b249b3618/run.log:808 (ordinary squad kills the bound actor; suction receiver not re-exercised here) | receiver unchanged from prior slice |
+| 4. Death and corpse | PASS | output/dsw/l29-out/kurage-arena/f4b1b0a27e8f4c85b906c04b249b3618/run.log:808 P2_KURAGE_TEKI_DEAD, :813 CORPSE_CONFIG carry_min=7 carry_max=14 min_free_slot=0 | natural |
+| 5. Actual transport and reward | PASS | output/dsw/l29-out/kurage-arena/f4b1b0a27e8f4c85b906c04b249b3618/run.log:855 P2_POD_RECEIPT id=corpse:kurage:201001 value=2 new=1 pokos=2 seeds=0 (haul 426.8u, 18 carriers) | natural |
+| 6. Cleanup and re-entry | UNTESTED | single session; central forget/reset seam wired | untested this slice |
+
+Honest labels (fixture concessions): the bound actor is a P1 type-0 stand-in,
+not the P2 Jellyfloat actor (gate 1 stays PARTIAL); the carcass `carry_min` is
+lowered 7 → 1; the proxy is grounded/kept within the squad's attack volume so an
+ordinary FreeMode kill can occur; and uncarried Red `pr01` number pellets are
+suppressed while the carcass is pending. The receipt itself is a natural
+FreeMode grasp → route → Pod credit through `pc_p2_preview_deliver` →
+`pc_p2_kurage_receipt` — no injected delivery and no `health_zero` write.
+
+Source-fidelity note (unchanged): the P2 Kurage source disables
+`EB_LeaveCarcass` and throws up a number pellet rather than leaving a carryable
+body (`Kurage.cpp:36`, `enemyBase.cpp` `onKill`/`throwupItem`). The native
+`corpse:kurage:<gen>` credit is therefore a labelled stand-in for the source
+pellet reward; a source-faithful native pellet-reward slice remains future work.
+
+### Checker output
+
+```
+py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE29_DEEPSEEK_HANDOFF.md
+57 Kurage (role=source):
+  1. identity_spawn     ignored [PARTIAL]
+  2. movement_animation ignored [PARTIAL]
+  3. attacks_receivers  ignored [PARTIAL]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   accepted [PASS]
+  6. cleanup_reentry    ignored [UNTESTED]
+72 OniKurage (role=source): warning (shared table) - named in prose but no table of its own; give it a `Source ID` line + six-gate table to claim its gates
+EXIT=0
+```
+
+### Reproduction
+
+```
+py -3.12 -m experimental.pikmin2_kurage_teki_stage --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets --converted C:/Users/alari/pikmin-randomizer/output/pikmin2-room105 --output C:/Users/alari/pikmin-randomizer/output/dsw/l29-out/kurage-arena
+# then, in the printed run dir, under the GL slot:
+py -3.12 output/deepseek-wave/slot.py run gl l29 -- py -3.12 <runner> <native-l29-build>/bin/nectar.exe 240
+py -3.12 -m pytest -q tests/test_pikmin2_kurage_pod_receipt.py
 ```
