@@ -87,6 +87,23 @@ production-eligible remain separate columns: an identity can be mechanically
 complete but still `denied` for the randomizer pool until placement/content/reward
 contracts (lanes 04/05/06) are satisfied.
 
+Each row also carries a `source` list — the `docs/PIKMIN2_*.md` filenames its gate
+statuses were transcribed from — with natural observations distinguished from
+labeled injected/fixture observations in `notes`. An injected-only observation is
+recorded as `UNTESTED`/`BLOCKED`, never as a natural `PASS`.
+
+### Ledger coverage audit
+
+`scripts/audit_pikmin2_roster.py --review` additionally enforces **complete ledger
+coverage** and exits non-zero on any gap: every row must cite an existing source
+doc and an existing native module (alias-aware), every `docs/PIKMIN2_*_NATIVE.md`
+source slice must be cited (renderer/cave plumbing docs are exempt), and every
+non-shared native `pc_p2_*.cpp` module must be referenced by a row (provider,
+Pikmin-species, projectile/hazard primitive and family sub-modules are allowlisted
+in `SHARED_MODULES`). The audit prints `ledger coverage complete: True` only when
+all four gap lists are empty.
+
+
 ## Identity roles and aliases
 
 `identity_role(entry)` derives, never stores, how an identity may participate:
