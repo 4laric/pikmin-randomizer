@@ -54,20 +54,25 @@ class ProtocolTests(unittest.TestCase):
         reject([dict(generator=240012, fail_births=100001)])                                   # bound
 
     def test_validate_pass_and_fail(self):
+        draw_lines = ''.join(
+            'P2_POM_DRAW generator=%d species=%s pose=%s draws=1\n' % (gen, sp, pose)
+            for gen, sp in ((353003, 'RedPom'), (353007, 'RandPom'))
+            for pose in pr.DRAW_POSES)
         text = (
-            'P2_POM_READY generator=353003 species=RedPom source_id=4 colour=1 budget=5 queen=0 x=-120.00 y=30.00 z=1850.00\n'
-            'P2_POM_READY generator=353007 species=RandPom source_id=8 colour=-1 budget=1 queen=1 x=360.00 y=30.00 z=1850.00\n'
+            'P2_POM_READY generator=353003 species=RedPom source_id=4 colour=1 budget=5 queen=0 x=360.00 y=30.00 z=1830.00\n'
+            'P2_POM_READY generator=353007 species=RandPom source_id=8 colour=-1 budget=1 queen=1 x=360.00 y=30.00 z=1870.00\n'
             'P2_POM_BASE_REJECTED generator=353099 species=Pom source_id=82 reason=nonspawnable_base\n'
-            'P2_POM_BIND generator=353007 species=RandPom source_id=8 host=teki type=3 drawn=1\n'
-            'P2_POM_DRAW generator=353007 species=RandPom pose=open draws=2\n'
-            'P2_POM_INVULNERABLE generator=353003 invulnerable_after_landing=1\n'
+            'P2_POM_BIND generator=353003 species=RedPom source_id=4 host=teki type=3\n'
+            'P2_POM_BIND generator=353007 species=RandPom source_id=8 host=teki type=3\n'
+            + draw_lines
+            + 'P2_POM_INVULNERABLE generator=353003 invulnerable_after_landing=1\n'
             'P2_POM_INVULNERABLE generator=353007 invulnerable_after_landing=1\n'
             'P2_POM_REFUND generator=353003 species=RedPom thrown_colour=1 used=0 budget=5 slot_refunded=1\n'
             'P2_POM_ACCEPT generator=353003 species=RedPom thrown_colour=0 used=1 budget=5\n'
             'P2_POM_ACCEPT generator=353007 species=RandPom thrown_colour=2 used=1 budget=1\n'
-            'P2_POM_CLOSE generator=353003 species=RedPom outcome=shot used=1 budget=5 swallowed=2\n'
+            'P2_POM_CLOSE generator=353003 species=RedPom outcome=shot used=5 budget=5 swallowed=6\n'
             'P2_POM_CLOSE generator=353007 species=RandPom outcome=shot used=1 budget=1 swallowed=1\n'
-            'P2_POM_SPROUT generator=353003 species=RedPom count=2 colour=1 body=1 leaf=1\n'
+            'P2_POM_SPROUT generator=353003 species=RedPom count=6 colour=1 body=1 leaf=1\n'
             'P2_POM_SPROUT generator=353007 species=RandPom count=9 colour=0 body=0 leaf=1\n'
             'P2_POM_SPROUT_RETRY generator=353007 species=RandPom owed_remaining=9 requested=9 born=0 item_capacity=1 forced=1\n'
             'P2_POM_SPROUT_SETTLED generator=353007 species=RandPom requested=9 born=9 conservation=1\n'
@@ -78,7 +83,7 @@ class ProtocolTests(unittest.TestCase):
             'P2_POM_STATE generator=353007 species=RandPom from=shot to=dead\n'
             'P2_POM_DEAD generator=353007 species=RandPom used=1 refunds=0 corpse=0 budget=1\n'
             'P2_POM_CONSERVATION generator=353007 species=RandPom used=1 refunds=0 requested=9 born=9 dead_pikis=0 loss_counted=0\n'
-            'PASS P2_POM_NATIVE accept_refund_close_sprout\n'
+            'PASS P2_POM_NATIVE bind_draw_fsm_walk\n'
         )
         good = pr.validate(text, 0)
         self.assertTrue(good['passed'], good['failed'])
@@ -99,14 +104,17 @@ class ProtocolTests(unittest.TestCase):
         # A conversion that wrongly counted a loss must fail.
         loss = text.replace('loss_counted=0', 'loss_counted=1')
         self.assertFalse(pr.validate(loss, 0)['passed'])
-        # A bound generator that never reports its drawn conversion must fail.
-        nobind = text.replace('P2_POM_BIND generator=353007 species=RandPom source_id=8 host=teki type=3 drawn=1\n', '')
+        # An unbound bud must fail (the bind gate names both generators).
+        nobind = text.replace('P2_POM_BIND generator=353007 species=RandPom source_id=8 host=teki type=3\n', '')
         self.assertFalse(pr.validate(nobind, 0)['passed'])
         self.assertIn('bind', pr.validate(nobind, 0)['failed'])
-        # A generator that binds but never emits a draw tick must fail.
-        nodraw = text.replace('P2_POM_DRAW generator=353007 species=RandPom pose=open draws=2\n', '')
-        self.assertFalse(pr.validate(nodraw, 0)['passed'])
-        self.assertIn('drawn', pr.validate(nodraw, 0)['failed'])
+        # Dropping both buds' confirmed draw for any single pose must fail.
+        for pose in pr.DRAW_POSES:
+            flip = text.replace('P2_POM_DRAW generator=353003 species=RedPom pose=%s draws=1\n' % pose, '')
+            flip = flip.replace('P2_POM_DRAW generator=353007 species=RandPom pose=%s draws=1\n' % pose, '')
+            result = pr.validate(flip, 0)
+            self.assertFalse(result['passed'], pose)
+            self.assertIn('drawn', result['failed'], pose)
 
     def test_instrument_replaces_room_app(self):
         source = 'prefix\nclass RoomApp : public PlugPikiApp {\n int idle() override { return 0; }\n};\nint main(int, char**) { return 0; }\n'
