@@ -9,6 +9,26 @@ or upstream GitHub was touched; nothing was pushed. The fix1 revision corrects t
 prior handoff whose central "health-floor/regression" claim was wrong.
 
 
+## Commits, bases and build provenance
+
+- Root base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`; root head
+  `0e2113e5f3de135c15c3aa16fbb53f18943754b0`. Ordered lane19 root commits
+  (oldest→newest): `f4c29aa6` (static anchors), `1284bcc9` (revisit fixture/runner/
+  validator/handoff), `f1c7b9df` (captain-down + ring/park natural kill), `6fc3469a`
+  (handoff corrections), `03e74c69` (slice2 natural kill+carry+Pod receipt),
+  `fd8bf727` (review-fix 2 squad 14 + re-ring 60), `0e2113e5` (slice3 natural
+  revisit). Dirty state: clean.
+- Native base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`; native head
+  `b805d9c626e4f4558c95aef7cac311a5d9a2068f` (clean). No lane19 native commits:
+  the Mamuta native module (`pc_p2_mamuta*`, `pc_p2_mamuta_rules*`) is already in
+  the pinned base, so this lane's slices are fixture/harness/evidence only.
+- Build evidence (`output/dsw/l19-build-evidence.txt`):
+  `2026-09-14T19:08:17 lane=l19 target=pikmin_pc native=b805d9c6... dirty=no exe=...\native-l19-build\bin\nectar.exe sha256=61fb1c850bd551c8c7c9d07a38e30dbb3ded5faf85ff866cdad7b1108c0b8fa8 ninja_n="ninja: no work to do."`
+  (`-DPIKMIN_NATIVE_JAUDIO=ON`, Ninja + MinGW g++).
+- Fixture adoption: `PIKMIN_P2_ROOM_WINDOW=960x540`; log
+  `[PC Port] Experimental preview window set to 960x540 windowed and centered ...`;
+  live starting squad `P2_MAMUTA_REVISIT_BIRTH ... squad=14 color=red`.
+
 ### Integrator note (review of fix 1)
 
 - The captain-down detection path is unit-tested only; no GL run under the lane evidence dir has emitted a CAPTAIN_DOWN marker yet (fix1-01 predates the mHealth<=1 check).
