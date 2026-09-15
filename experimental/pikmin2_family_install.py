@@ -12,10 +12,11 @@ before they can be consumed here.
 
 The binding layer (:func:`resolve_family`, :func:`install_layout`) maps a seed's
 ``p2_layout`` bindings (source id / enum name) to a family installer and stages
-each identity's content into the run tree. The first real adapters are Dwarf
-Orange Bulborb (``BlueKochappy``, source id 44) and Snow Bulborb
-(``YellowKochappy``, source id 45); content roots are identity-keyed so the
-launcher can install a generated session without per-family manual copying.
+each identity's content into the run tree. The first real adapters complete the
+KochappyBase dwarf family: Kochappy (Dwarf Red Bulborb, source id 1), Dwarf Orange
+Bulborb (``BlueKochappy``, source id 44) and Snow Bulborb (``YellowKochappy``,
+source id 45); content roots are identity-keyed so the launcher can install a
+generated session without per-family manual copying.
 """
 import argparse
 import hashlib
@@ -67,6 +68,7 @@ _OVERRIDES = {}
 IDENTITY_FAMILY = {
     44: 'dwarf_orange', 'bluekochappy': 'dwarf_orange',
     45: 'snow', 'yellowkochappy': 'snow',
+    1: 'kochappy', 'kochappy': 'kochappy',
 }
 
 
@@ -137,12 +139,43 @@ def _adapt_snow(source, run, actors):
     return dict(species='YellowKochappy', source_id=45, generators=generators)
 
 
+def _validate_kochappy(source):
+    """Pre-flight check for the Kochappy (Dwarf Red) identity content.
+
+    Kochappy uses the family bank's flat layout (``kochappy-bank.json`` +
+    ``p2-kochappy-profile.txt`` + ``p2-kochappy-bank.txt`` + ``kochappy_*.mod``);
+    the import must exist and declare the Kochappy Red identity.
+    """
+    source = Path(source)
+    bank_json = source / 'kochappy-bank.json'
+    if not bank_json.is_file():
+        raise StagingError(f'Kochappy bank missing for identity content: {bank_json}')
+    if not (source / 'p2-kochappy-profile.txt').is_file():
+        raise StagingError(f'Kochappy profile missing for identity content: {source / "p2-kochappy-profile.txt"}')
+    try:
+        metadata = json.loads(bank_json.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError, ValueError) as error:
+        raise StagingError(f'Kochappy bank unreadable for identity content: {bank_json}') from error
+    if (metadata.get('schema'), metadata.get('species'), metadata.get('source_id'),
+            metadata.get('health')) != (1, 'Kochappy', 1, 200):
+        raise StagingError(f'Kochappy bank identity mismatch for identity content: {bank_json}')
+
+
+def _adapt_kochappy(source, run, actors):
+    """Adapter for the Kochappy (Dwarf Red) installer (flat ``pikmin2_kochappy_bank``)."""
+    from experimental import pikmin2_kochappy_bank as kochappy
+    generators = [generator for generator, _species in actors]
+    kochappy.install(Path(source), Path(run), generators)
+    return dict(species='Kochappy', source_id=1, generators=generators)
+
+
 # Bespoke-family adapters, exposed alongside the shared-contract installers.
 # Each adapter carries an optional ``validate(source)`` pre-flight hook run by
 # ``install_layout`` before any destination write.
 ADAPTERS = {
     'dwarf_orange': {'install': _adapt_dwarf_orange, 'validate': _validate_dwarf_orange},
     'snow': {'install': _adapt_snow, 'validate': _validate_snow},
+    'kochappy': {'install': _adapt_kochappy, 'validate': _validate_kochappy},
 }
 
 

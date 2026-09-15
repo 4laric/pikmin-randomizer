@@ -17,6 +17,9 @@ from experimental import pikmin2_family_install as family_install
 from experimental.pikmin2_dwarf_orange_bank import (
     BANK_JSON, BANK_TXT, HEADER, POSE_PREFIX, PROFILE, PROFILE_JSON, PROFILE_TXT)
 from experimental.pikmin2_dwarf_orange_install import sha
+from experimental.pikmin2_kochappy_bank import (
+    HEADER as KOCHAPPY_HEADER, PROFILE as KOCHAPPY_PROFILE,
+    parse_bank as kochappy_parse_bank)
 from experimental.pikmin2_staging import StagingError
 
 
@@ -112,6 +115,48 @@ def make_snow_source(content_root):
     return source
 
 
+KOCHAPPY_CLIPS = DWARF_ORANGE_CLIPS
+
+
+def make_kochappy_source(content_root):
+    """Flat Dwarf Red (Kochappy) source accepted by the real bank installer.
+
+    Mirrors ``pikmin2_kochappy_bank.build``'s output layout: a single flat
+    ``<content_root>/Kochappy`` directory holding ``kochappy-bank.json``,
+    the flat bank/profile text files, and 15 ``kochappy_<clip>_<nn>.mod`` poses.
+    """
+    source = content_root / "Kochappy"
+    source.mkdir(parents=True)
+
+    data = model_bytes()
+    rows = [KOCHAPPY_HEADER]
+    for name, duration in KOCHAPPY_CLIPS.items():
+        frames = [0, duration // 2, duration - 1]
+        rows.append(f"{name} 3 {duration} " + " ".join(map(str, frames)))
+    bank_text = "\n".join(rows) + "\n"
+
+    motions = kochappy_parse_bank(bank_text)
+    file_sha256 = {}
+    for name in motions:
+        for index in range(3):
+            model_name = f"kochappy_{name}_{index:02}.mod"
+            (source / model_name).write_bytes(data)
+            file_sha256[model_name] = sha(data)
+
+    (source / "p2-kochappy-bank.txt").write_text(bank_text, encoding="ascii")
+    (source / "p2-kochappy-profile.txt").write_text(KOCHAPPY_PROFILE, encoding="ascii")
+    metadata = {
+        "schema": 1,
+        "species": "Kochappy",
+        "source_id": 1,
+        "health": 200,
+        "motions": motions,
+        "file_sha256": file_sha256,
+    }
+    (source / "kochappy-bank.json").write_text(json.dumps(metadata), encoding="utf-8")
+    return source
+
+
 def test_resolve_family_int_and_enum():
     assert family_install.resolve_family(44) == "dwarf_orange"
     assert family_install.resolve_family("BlueKochappy") == "dwarf_orange"
@@ -125,8 +170,16 @@ def test_resolve_family_snow():
     assert family_install.resolve_family("BlueKochappy") == "dwarf_orange"
 
 
+def test_resolve_family_kochappy():
+    assert family_install.resolve_family(1) == "kochappy"
+    assert family_install.resolve_family("Kochappy") == "kochappy"
+    assert family_install.resolve_family("kochappy") == "kochappy"
+    assert family_install.resolve_family("BlueKochappy") == "dwarf_orange"
+    assert family_install.resolve_family(45) == "snow"
+
+
 def test_resolve_family_unknown_identity():
-    for bad in (999, "Nope", "Kochappy", 1):
+    for bad in (999, "Nope", 0):
         with pytest.raises(ValueError):
             family_install.resolve_family(bad)
 
@@ -715,3 +768,66 @@ def test_install_layout_mid_failure_removes_run_root_sidecars(tmp_path):
     assert not (run / "assets").exists()
     assert not (run / "p2-snow.txt").exists()
     assert not (run / "p2-snow-actors.txt").exists()
+
+
+def test_install_layout_real_kochappy_adapter(tmp_path):
+    content_root = tmp_path / "content"
+    make_kochappy_source(content_root)
+    run = tmp_path / "run"
+    retail = tmp_path / "retail"
+    (retail / "dataDir" / "stages").mkdir(parents=True)
+
+    layout = layout_with(binding(source_id=1, enum_name="Kochappy"))
+    family_install.install_layout(
+        run, layout, content_root,
+        actor_bindings={"gen-001": 211100}, retail_assets=retail)
+
+    actors_txt = run / "p2-kochappy-actors.txt"
+    assert actors_txt.is_file()
+    assert "211100" in actors_txt.read_text(encoding="ascii")
+    assert (run / "p2-kochappy-bank.txt").is_file()
+    room = run / "assets" / "dataDir" / "courses" / "pikmin2room"
+    assert len(list(room.glob("kochappy_*.mod"))) == 15
+
+
+def test_install_layout_three_families_staged_together(tmp_path):
+    content_root = tmp_path / "content"
+    make_dwarf_orange_source(content_root)
+    make_snow_source(content_root)
+    make_kochappy_source(content_root)
+    run = tmp_path / "run"
+    retail = tmp_path / "retail"
+    (retail / "dataDir" / "stages").mkdir(parents=True)
+
+    layout = layout_with(
+        binding(target="gen-001", source_id=44, enum_name="BlueKochappy"),
+        binding(target="gen-002", source_id=45, enum_name="YellowKochappy"),
+        binding(target="gen-003", source_id=1, enum_name="Kochappy"),
+    )
+    family_install.install_layout(
+        run, layout, content_root,
+        actor_bindings={"gen-001": 211001, "gen-002": 211045, "gen-003": 211100},
+        retail_assets=retail)
+
+    assert (run / "p2-dwarf-orange-actors.txt").is_file()
+    assert (run / "p2-snow-actors.txt").is_file()
+    assert (run / "p2-kochappy-actors.txt").is_file()
+    room = run / "assets" / "dataDir" / "courses" / "pikmin2room"
+    assert len(list(room.glob("dwarf_orange_*.mod"))) == 15
+    assert len(list(room.glob("snow_*.mod"))) == 15
+    assert len(list(room.glob("kochappy_*.mod"))) == 15
+
+
+def test_install_layout_kochappy_validate_rejects_bad_source(tmp_path):
+    content_root = tmp_path / "content"
+    make_source_dir(content_root, "Kochappy")
+    run = tmp_path / "run"
+    retail = tmp_path / "retail"
+    (retail / "dataDir" / "stages").mkdir(parents=True)
+
+    layout = layout_with(binding(source_id=1, enum_name="Kochappy"))
+    with pytest.raises(StagingError):
+        family_install.install_layout(
+            run, layout, content_root,
+            actor_bindings={"gen-001": 211100}, retail_assets=retail)
+    assert not (run / "assets").exists()
