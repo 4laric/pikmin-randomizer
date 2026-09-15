@@ -18,6 +18,7 @@ import re
 
 from experimental.pikmin2_frog_runtime import build as _build
 from experimental.pikmin2_frog_runtime import run as _run
+from experimental.pikmin2_frog_fsm import parse_states as _parse_states, validate as _validate_fsm
 
 APP = r'''#include <cmath>
 #include "Piki.h"
@@ -89,6 +90,13 @@ def validate(text, code):
         frog_attack=bool(squad) and min(squad) < initial,
         controls_alive=bool(result) and result[5] == '1',
         outcome=bool(result) and (result[2] == '0' or int(result[3]) >= 1))
+    try:
+        fsm_result = _validate_fsm(_parse_states(text))
+        checks['fsm'] = fsm_result['passed']
+        fsm_errors = list(fsm_result['errors'])
+    except ValueError as exc:
+        checks['fsm'] = False
+        fsm_errors = [str(exc)]
     land = re.findall(r'P2_FROG_LAND species=(\w+) radius=([\d.]+) bittered=(\d) '
                       r'pikmin=(\d+) navi=(\d+) behavior=P1_proxy'
                       r'(?: pressed=(\d) origin=(\w+) host_frozen=(\d+))?', text)
@@ -97,6 +105,7 @@ def validate(text, code):
     return dict(passed=all(checks.values()), checks=checks, ticks=ticks, squad=squad,
                 reason=result[1] if result else None, frog_dead=result[2] if result else None,
                 corpse=result[3] if result else None,
+                fsm_errors=fsm_errors,
                 press_markers={'Frog': len(re.findall(r'P2_FROG_PRESS species=Frog ', text)),
                                'MaroFrog': len(re.findall(r'P2_FROG_PRESS species=MaroFrog ', text))},
                 land_markers={'Frog': len(re.findall(r'P2_FROG_LAND species=Frog ', text)),
