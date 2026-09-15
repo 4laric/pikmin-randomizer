@@ -1,4 +1,4 @@
-"""Focused tests for lane-44 proxy room instantiation (#481).
+"""Focused tests for lane-44 proxy room instantiation (#482).
 
 ``pikmin2_cave_rooms`` consumes a lane-40/41 ``p2-cave-observed-layout/1`` graph
 and produces a deterministic proxy grid plus the ``P2_CAVE_ROOMS_1`` native text
@@ -16,6 +16,7 @@ from experimental import pikmin2_cave_rooms as rooms_mod
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "pikmin2_cave_spike"
 OBSERVED_LAYOUT = Path("C:/Users/alari/pikmin-randomizer/output/dsw/l41-out/p2-cave-observed-layout.json")
+LIVE_EVIDENCE = Path("C:/Users/alari/pikmin-randomizer/output/dsw/l44-out/rooms-live")
 
 
 def load(name):
@@ -166,3 +167,40 @@ def test_lane41_observed_layout_instantiates():
     assert {unit["id"] for unit in rooms["units"]} == {node["id"] for node in observed["nodes"]}
     assert rooms_mod.instantiation_report(rooms, observed)["geometry"] == "proxy"
     assert rooms_mod.parse_rooms_text(rooms_mod.rooms_text(rooms)) == rooms
+
+
+def _timeline(log_text):
+    rows = {}
+    projections = []
+    for line in log_text.splitlines():
+        if line.startswith("P2_CAVE_ROOMS_TIMELINE "):
+            fields = dict(part.split("=", 1) for part in line.split()[1:])
+            rows[fields["tag"]] = {key: int(fields[key]) for key in
+                                   ("hole", "treasure_elec", "treasure_water", "untagged")}
+        elif line.startswith("P2_CAVE_ROOMS_PROJECTION "):
+            projections.append(line.split("projection=", 1)[1])
+    return rows, projections
+
+
+@pytest.mark.skipif(not (LIVE_EVIDENCE / "rooms-run-salt0.log").exists(),
+                    reason="live GL rooms evidence not present")
+def test_live_timeline_matches_lane40_scenarios():
+    rows, projections = _timeline((LIVE_EVIDENCE / "rooms-run-salt0.log").read_text(encoding="utf-8"))
+    assert rows["fresh_floor_no_abilities"] == {
+        "hole": 0, "treasure_elec": 0, "treasure_water": 0, "untagged": 1}
+    assert rows["come_back_with_yellow"] == {
+        "hole": 0, "treasure_elec": 1, "treasure_water": 0, "untagged": 1}
+    assert rows["return_with_yellow_and_blue"] == {
+        "hole": 1, "treasure_elec": 1, "treasure_water": 1, "untagged": 1}
+    assert len(projections) == 1
+
+
+@pytest.mark.skipif(not (LIVE_EVIDENCE / "rooms-run-salt7.log").exists(),
+                    reason="live GL reroll evidence not present")
+def test_live_reroll_keeps_projection_changes_geometry():
+    rows0, proj0 = _timeline((LIVE_EVIDENCE / "rooms-run-salt0.log").read_text(encoding="utf-8"))
+    rows7, proj7 = _timeline((LIVE_EVIDENCE / "rooms-run-salt7.log").read_text(encoding="utf-8"))
+    assert proj0 and proj0 == proj7
+    assert rows0 == rows7
+    assert (LIVE_EVIDENCE / "p2-cave-rooms-salt0.txt").read_text(encoding="utf-8") != \
+        (LIVE_EVIDENCE / "p2-cave-rooms-salt7.txt").read_text(encoding="utf-8")
