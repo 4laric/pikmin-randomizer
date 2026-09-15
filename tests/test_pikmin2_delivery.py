@@ -5,6 +5,7 @@ from experimental.pikmin2_delivery import (DeliveryReceiver, p1_proxy_identity,
                                            p2_source_identity)
 from experimental.pikmin2_receipts import (SCHEMA_VERSION, InMemoryPersistence,
                                            JsonReceiptPersistence, ReceiptLedger, reconcile)
+from experimental.pikmin2_reward_lifecycle import validate
 
 
 def receiver_for(ledger):
@@ -68,11 +69,23 @@ def test_exactly_once_across_process_restart(tmp_path):
 
 
 def test_mixed_dump_pod_and_ordinary_count_correctly():
-    ids = ['corpse:385875968', 'corpse:floor1:900', 'onion:p2:45:1', 'onion:p1:3:1']
-    pod_ids = [i for i in ids if i.startswith('corpse:')]
-    ordinary_ids = [i for i in ids if i.startswith('onion:')]
-    assert pod_ids == ['corpse:385875968', 'corpse:floor1:900']
-    assert ordinary_ids == ['onion:p2:45:1', 'onion:p1:3:1']
+    text = '\n'.join([
+        'P2_POD_RECEIPT id=corpse:385875968 value=2 new=1 pokos=2',
+        'P2_POD_RECEIPT id=onion:p2:45:1 value=1 new=1 pokos=0',
+        'P2_POD_RECEIPT id=onion:p1:3:1 value=1 new=1 pokos=0',
+        'P2_POD_RECEIPT id=corpse:385875968 value=2 new=0 pokos=2',
+    ])
+    result = validate(text, 0)
+    checks = result['checks']
+    assert len(result['receipts']) == 4
+    assert checks['corpse_receipts'] is True
+    assert checks['first_new'] is True
+    assert checks['second_duplicate'] is True
+    assert checks['pokos_stable'] is True
+    assert checks['value_is_2'] is True
+    corpse = [r for r in result['receipts'] if r[0].startswith('corpse:')]
+    assert len(corpse) == 2
+    assert 'onion:p2:45:1' not in [r[0] for r in corpse]
 
 
 def test_reconcile_integration_ok(tmp_path):
