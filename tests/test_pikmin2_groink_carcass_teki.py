@@ -55,6 +55,31 @@ class RunLogValidatorTests(unittest.TestCase):
         self.assertFalse(evidence["passed"])
         self.assertEqual(evidence["missing"], list(teki.ORDER))
 
+    def test_injected_kill_line_does_not_break_validation(self):
+        kill_line = "P2_GROINK_CARCASS_KILL_INJECTED host=generated_Frog generator=201001 method=pcEscapeNow health_write=1\n"
+        evidence = teki.validate_log(kill_line + SAMPLE_LOG)
+        self.assertTrue(evidence["passed"], evidence["missing"])
+        self.assertEqual(evidence["missing"], [])
+
+
+class InjectedKillMarkerTests(unittest.TestCase):
+    KILL_LINE = ("P2_GROINK_CARCASS_KILL_INJECTED host=generated_Frog generator=201001 "
+                 "method=pcEscapeNow health_write=1")
+    READY_LINE = ("P2_GROINK_CARCASS_READY generator=201001 type=0 gauge_delay=2.000 "
+                  "recovery=3.000 max_health=1200.000")
+
+    def test_is_injected_kill_true_for_kill_line(self):
+        self.assertTrue(teki.is_injected_kill(self.KILL_LINE))
+
+    def test_is_injected_kill_false_for_ready_line(self):
+        self.assertFalse(teki.is_injected_kill(self.READY_LINE))
+
+    def test_label_kill_line(self):
+        self.assertEqual(teki.injected_kill_label(self.KILL_LINE), "injected (pcEscapeNow)")
+
+    def test_label_ready_line(self):
+        self.assertEqual(teki.injected_kill_label(self.READY_LINE), "-")
+
 
 class SidecarConfigTests(unittest.TestCase):
     def test_writer_roundtrip(self):
@@ -78,6 +103,10 @@ class SidecarConfigTests(unittest.TestCase):
             teki.sidecar_config(201001, 0, gauge_delay=float("nan"))
         with self.assertRaises(ValueError):
             teki.sidecar_config(201001, 0, max_health=float("inf"))
+
+    def test_short_writer_tokens(self):
+        text = teki.sidecar_config_short(201001, 0)
+        self.assertEqual(text.splitlines()[2].split(), ["201001", "0", "2.0", "3.0", "1200.0"])
 
 
 class NativeSourceTests(unittest.TestCase):

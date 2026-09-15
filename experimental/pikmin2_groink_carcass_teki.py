@@ -36,6 +36,7 @@ _MARKERS = ORDER + ("P2_GROINK_CARCASS_GAUGE_INACTIVE",)
 _BIRTH_MARKER = "P2_GROINK_CARCASS_BIRTH"
 CONFIG_MAGIC = "P2_GROINK_TEKI_1"
 CONFIG_NAME = "p2-groink-teki.txt"
+KILL_INJECTED_MARKER = "P2_GROINK_CARCASS_KILL_INJECTED"
 
 
 def validate_log(log: str) -> dict:
@@ -74,6 +75,17 @@ def native_source() -> "Path | None":
     return candidate if candidate.is_file() else None
 
 
+def is_injected_kill(marker_line_or_log: str) -> bool:
+    """True when the log line records an injected kill (pcEscapeNow + marker)."""
+    return ("method=pcEscapeNow" in marker_line_or_log
+            and KILL_INJECTED_MARKER in marker_line_or_log)
+
+
+def injected_kill_label(log: str) -> str:
+    """Return the injected-kill label for a log, else ``"-"``."""
+    return "injected (pcEscapeNow)" if is_injected_kill(log) else "-"
+
+
 def sidecar_config(generator, teki_type, gauge_delay=30.0, recovery_seconds=10.0, max_health=1200.0):
     """Write the p2-groink-teki.txt profile naming the generated host actor.
 
@@ -92,3 +104,8 @@ def sidecar_config(generator, teki_type, gauge_delay=30.0, recovery_seconds=10.0
         raise ValueError("Groink recovery seconds must be > 0")
     return (f"{CONFIG_MAGIC}\n1\n{generator} {teki_type} "
             f"{float(gauge_delay)} {float(recovery_seconds)} {float(max_health)}\n")
+
+
+def sidecar_config_short(generator, teki_type):
+    """Short gauge/recovery profile so the native 1200-tick budget is reachable."""
+    return sidecar_config(generator, teki_type, gauge_delay=2.0, recovery_seconds=3.0, max_health=1200.0)
