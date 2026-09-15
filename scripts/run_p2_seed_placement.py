@@ -10,7 +10,7 @@ report asserts, from the native log:
    set for that source (the full set, not a single picked slot, is carried);
 2. the audit's stage guard fires from the probe's embedded ``arena_stage`` (no
    manual ``--stage``);
-3. two different seeds resolses to different slot binding sets.
+3. two different seeds resolve to different slot binding sets.
 
 When ``P2_SEED_RESOLVE`` (the seed-bridge birth resolution marker) and
 ``P2_ENEMY_READY`` are present in the log, the report also cross-checks that the
@@ -127,21 +127,22 @@ def main():
             'seed': seed_name,
             'seed_binding_set': seed_slots,
             'marker_slots': marker_slots,
-            'markers_are_binding_members': set(marker_slots) <= set(seed_slots),
+            'markers_are_single_binding_members': set(marker_slots) <= set(seed_slots),
             'stage_guard_passed': report.get('arena_stage') == placement.ARENA_STAGE
                                   and all(s in report.get('matched_slot_uids', []) for s in marker_slots),
             'catalog_join': report.get('catalog_join'),
             'malformed_markers': probe.get('malformed_markers', 0),
             'unmapped_generators': report.get('unmapped_generators'),
             'resolve_lines': resolve_lines,
-            'resolve_source_matches': sorted(set(resolves_of_source)) in ([], [placement.BLUEKOCHAPPY_SOURCE]),
+            # None when no P2_SEED_RESOLVE line exists (lane 03 join not observed), never a vacuous True.
+            'resolve_source_matches': (None if not resolves_of_source else sorted(set(resolves_of_source)) == [placement.BLUEKOCHAPPY_SOURCE]),
             'ready_lines': ready_lines,
             'exit': code,
         })
         (args.output / f'seed-{seed_name}.log').write_text(text, encoding='utf-8')
 
     distinct = len({tuple(row['seed_binding_set']) for row in results})
-    all_members = all(row['markers_are_binding_members'] for row in results)
+    all_members = all(row['markers_are_single_binding_members'] for row in results)
     all_stage_ok = all(row['stage_guard_passed'] for row in results)
     summary = {
         'run': str(stage),
