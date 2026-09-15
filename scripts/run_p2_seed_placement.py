@@ -76,7 +76,6 @@ def main():
     parser.add_argument('--timeout', type=int, default=45)
     args = parser.parse_args()
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from experimental.pikmin2_dwarf_orange_runtime import prepare  # noqa: E402
     from randomizer import p2_placement_probe  # noqa: E402
     from randomizer import p2_placement_catalog  # noqa: E402

@@ -118,10 +118,10 @@ def build_probe(text):
         for s in slots if s['slot'] is not None
     ]
     unmapped = [s['generator'] for s in slots if s['slot'] is None]
-    malicious = 0
+    malformed = 0
     for line in text.splitlines():
         if line.startswith(_SLOT_PREFIX) and _parse_slot_line(line) is None:
-            malicious += 1
+            malformed += 1
     return {
         'schema': PROBE_SCHEMA,
         'catalog_join': bool(mapping),
@@ -131,5 +131,5 @@ def build_probe(text):
             for m in mapping
         ],
         'unmapped_generators': unmapped,
-        'malformed_markers': malicious,
+        'malformed_markers': malformed,
     }

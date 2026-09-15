@@ -534,3 +534,9 @@ and test work inline. Net result: negative — no time saved, but the source aud
 existing-candidate inventory and test scaffolding are all captured directly in
 this handoff and the three proof/test files above rather than in a delegated
 report.
+
+### Integrator note (review of slice 3)
+
+- resolve_placement_layout binds every stage-0 ground target to source 44/45 (seed-a: 6 of 11 to 44); `seed_slot_uid` takes the first binding in (len, str) order, so the sidecar value is a lane-04 pick and the marker equals it by construction. "The slot the seed actually chose" is overstated: the seed chose a set, the sidecar took one of them. `seed_slot_uids` returns the last binding per source and is unused.
+- `run_audit` still skips the stage guard when neither argument nor probe arena_stage is present; only the CLI rejects. The claim "a catalog-join probe with no stage anywhere is rejected" holds for the CLI only.
+
