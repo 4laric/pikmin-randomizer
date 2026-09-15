@@ -678,19 +678,32 @@ two tables above.
 `py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE07_DEEPSEEK_HANDOFF.md` (script +
 roster copied read-only from `claude/p2-deepseek-wave`, not committed):
 ```
-44 BlueKochappy (role=source):
-  1. identity_spawn     accepted [PASS]
-  2. movement_animation accepted [PASS]
-  3. attacks_receivers  ignored [UNTESTED]
-  4. death_corpse       ignored [PARTIAL]
-  5. transport_reward   ignored [N/A]
-  6. cleanup_reentry    accepted [PASS]
-79 Sokkuri (role=source):
-  1. identity_spawn     accepted [PASS]
-  2. movement_animation accepted [PASS]
-  3. attacks_receivers  ignored [UNTESTED]
-  4. death_corpse       ignored [PARTIAL]
-  5. transport_reward   ignored [N/A]
+44 BlueKochappy (role=source):
+
+  1. identity_spawn     accepted [PASS]
+
+  2. movement_animation accepted [PASS]
+
+  3. attacks_receivers  ignored [UNTESTED]
+
+  4. death_corpse       ignored [PARTIAL]
+
+  5. transport_reward   ignored [N/A]
+
+  6. cleanup_reentry    accepted [PASS]
+
+79 Sokkuri (role=source):
+
+  1. identity_spawn     accepted [PASS]
+
+  2. movement_animation accepted [PASS]
+
+  3. attacks_receivers  ignored [UNTESTED]
+
+  4. death_corpse       ignored [PARTIAL]
+
+  5. transport_reward   ignored [N/A]
+
   6. cleanup_reentry    accepted [PASS]
 ```
 
@@ -708,3 +721,11 @@ roster copied read-only from `claude/p2-deepseek-wave`, not committed):
   `requires_move` flip-tests. Used with one correction: sokkuri's window movement was
   borderline (0.98), so sokkuri is `requires_move=False` (reported, not gated) and the test's
   optional-family case is satisfied by `waterwraith`.
+
+### Runtime inputs note
+
+The shared output/p2-dwarf-orange-bank and output/p2-dwarf-orange-ref directories
+referenced by the earlier reproduction were removed by another lane mid-session. The four
+fix3 runs used the read-only cached BlueKochappy bank/profile content (regenerate with
+pikmin2_dwarf_orange_profile.extract then pikmin2_dwarf_orange_bank.build), and the
+batch-1 ground-inverts import, both read-only inputs.
