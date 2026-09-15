@@ -69,7 +69,11 @@ HOUDAI_POSITION = (120.0, 30.0, 1850.0)
 BIGFOOT_POSITION = (-104.0, 30.0, 1816.0)
 # Reusable converted Pod package (pod.mod / treasure.mod / p2-pod.txt) so the
 # slice-3 transport/reward gate can credit ordinary corpse delivery at the Pod.
-POD_PACKAGE = 'C:/Users/alari/pikmin-randomizer/output/dsw/l19-out/pod'
+# Derived from this worktree's lane-19 sibling rather than hardcoding an absolute
+# lane-19 path (this is the only lane-19 coupling, and it is overridable).
+POD_PACKAGE = os.environ.get(
+    'PIKMIN_P2_POD_PACKAGE',
+    str(Path(__file__).resolve().parents[2] / 'l19-out' / 'pod'))
 
 
 def position_override():
@@ -98,9 +102,6 @@ APP = r'''class RoomApp : public PlugPikiApp {
     int assignAttack(Teki* target){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
         v->mActiveAction->abandon(nullptr);v->mActiveAction->mCurrActionIdx=PikiAction::Attack;
         v->mActiveAction->mChildActions[PikiAction::Attack].initialise(target);v->mMode=PikiMode::AttackMode;++n;}return n;}
-    int assignTransport(Pellet* corpse){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
-        v->mActiveAction->abandon(nullptr);v->mActiveAction->mCurrActionIdx=PikiAction::Transport;
-        v->mActiveAction->mChildActions[PikiAction::Transport].initialise(corpse);v->mMode=PikiMode::TransportMode;++n;}return n;}
     int freeAndPark(Teki* center, float radius){return freeAndParkAt(center->mSRT.t,radius);}
     // Stage the squad on the actor and open the real Attack action *without* a
     // FreeMode changeMode first: the BigFoot stage (which drains) only re-issues
@@ -128,7 +129,7 @@ APP = r'''class RoomApp : public PlugPikiApp {
         if(p->mConfig->mModelId.mId=='pr01'){p->mIsAlive=false;++n;}}return n;}
 public:int idle() override {
     int result=PlugPikiApp::idle();require(++frames<60000,"long legs pod timeout");
-    if(frames%3000==0)std::printf("P2_LL_HB frames=%d stage=%d ready=%d pause=%d overlay=%d movie=%d navi=%d piki=%d\n",frames,stage,int(pc_p2_preview_ready()),int(gameflow.mPauseAll),int(gameflow.mIsUIOverlayActive),gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive?1:0,naviMgr?1:0,pikiMgr?1:0);
+    if(frames%3000==0)std::printf("P2_LL_HB frames=%d stage=%d ready=%d pause=%d overlay=%d movie=%d navimgr=%d naviobj=%d pikimgr=%d\n",frames,stage,int(pc_p2_preview_ready()),int(gameflow.mPauseAll),int(gameflow.mIsUIOverlayActive),gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive?1:0,naviMgr?1:0,(naviMgr&&naviMgr->getNavi())?1:0,pikiMgr?1:0);
     if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->skipScene(SCENESKIP_SkipAll);return result;}
     if(!pc_p2_preview_ready()||!naviMgr||!pikiMgr||!tekiMgr)return result;
     Navi* n=naviMgr->getNavi();if(!n||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;
@@ -171,7 +172,7 @@ public:int idle() override {
         // and no clip compression.
         if(!parked){
             int c=freeAndPark(houdai,150.0f);std::printf("P2_LL_PARK species=Houdai count=%d\n",c);
-            Vector3f wake(houdai->mSRT.t.x,0,houdai->mSRT.t.z-60.0f);wake.y=mapMgr->getMinY(wake.x,wake.z,true);
+            Vector3f wake(houdai->mSRT.t.x,0,houdai->mSRT.t.z-70.0f);wake.y=mapMgr->getMinY(wake.x,wake.z,true);
             n->resetPosition(wake);std::printf("P2_LL_WAKE captain=1\n");
             wakeTick=observed;parked=true;std::fflush(stdout);
         }
@@ -224,6 +225,13 @@ public:int idle() override {
         return result;
     }
     if(stage==8){
+        // One-shot / liveness proof (review fix 3b): both corpses were credited by
+        // the Pod, so the receipt must have consumed each registration. Check the
+        // native corpse registry BEFORE the fixture forget (which also clears it),
+        // so a non-consuming receipt is visible as a surviving registration.
+        int remaining=pc_p2_long_legs_corpse_count();
+        std::printf("P2_LL_CORPSE_DRAIN remaining=%d\n",remaining);std::fflush(stdout);
+        require(remaining==0,"receipt is not one-shot: a delivered corpse registration survived");
         pc_p2_long_legs_forget(bigfoot);pc_p2_long_legs_forget(houdai);
         require(pc_p2_long_legs_count()==0,"long legs registry not cleared by forget");
         std::printf("P2_LL_FORGET species=BigFoot count=0 registered=0\n");
@@ -387,11 +395,27 @@ def validate(text, code=0):
     bigfoot_receipt = bool(re.search(r'P2_POD_RECEIPT id=corpse:[^\s]*longlegs:312002', text))
     houdai_receipt = bool(re.search(r'P2_POD_RECEIPT id=corpse:[^\s]*longlegs:312001', text))
     free_recruit = 'P2_LL_FREE_RECRUIT' in text
-    # natural_carry = both corpses were delivered by ordinary Piki::graspSituation
-    # transport (the two receipt lines) with no fixture-forced TransportMode write
-    # (P2_LL_ASSIST). An assisted/forced carry means the corpse was not naturally
-    # recruited, so the gate fails.
-    natural_carry = (bigfoot_receipt and houdai_receipt and 'P2_LL_ASSIST' not in text)
+    # One-shot / liveness sweep (review fix 3b): the native receipt consumes the
+    # corpse registration at delivery, so pc_p2_long_legs_corpse_count() is 0
+    # after both deliveries (the fixture checks it BEFORE its own forget, which is
+    # the only other clear path). A surviving registration would let MonoObjectMgr
+    # recycle the Pellet* slot and re-credit an unrelated future pellet.
+    corpse_one_shot = bool(re.search(r'P2_LL_CORPSE_DRAIN remaining=0\b', text))
+    # natural_carry = both corpses were delivered by the ordinary FreeMode
+    # Piki::graspSituation latch (the same path lane 21's carcass carry uses).
+    # Proven by the two receipt lines AND a positive native `P2_LL_CARRY ...
+    # transport=<n>` count -- that is the engine's own carrier count, not a
+    # fixture assignment. The fixture contains no forced TransportMode write at
+    # all (grep-asserted by the pod test), so a positive count can only come from
+    # graspSituation; the reviewer flagged the old `'P2_LL_ASSIST' not in text`
+    # term as vacuous because no code path ever emitted that marker.
+    carry_transports = [int(n) for n in re.findall(r'P2_LL_CARRY [^\n]*\btransport=(\d+)', text)]
+    bigfoot_carry = [int(n) for n in re.findall(r'P2_LL_CARRY species=BigFoot [^\n]*\btransport=(\d+)', text)]
+    houdai_carry = [int(n) for n in re.findall(r'P2_LL_CARRY species=Houdai [^\n]*\btransport=(\d+)', text)]
+    natural_carry = (bigfoot_receipt and houdai_receipt
+                     and bool(carry_transports)
+                     and bool(bigfoot_carry) and max(bigfoot_carry) > 0
+                     and bool(houdai_carry) and max(houdai_carry) > 0)
     # source_timed = source timings were used AND Houdai actually reached Shot
     # (fired a shell). The fixture declares source=1; the SHELL marker proves the
     # cooldown path (no clip compression) made Shot reachable.
@@ -434,6 +458,7 @@ def validate(text, code=0):
         bigfoot_receipt=bigfoot_receipt,
         houdai_receipt=houdai_receipt,
         free_recruit=free_recruit,
+        corpse_one_shot=corpse_one_shot,
         natural_carry=natural_carry,
         source_timed=source_timed,
         completion='PASS P2_LONG_LEGS_LIFECYCLE' in text,
@@ -457,6 +482,7 @@ def validate(text, code=0):
         bigfoot_receipt='pass' if bigfoot_receipt else 'fail',
         houdai_receipt='pass' if houdai_receipt else 'fail',
         free_recruit='pass' if free_recruit else 'fail',
+        corpse_one_shot='pass' if corpse_one_shot else 'fail',
         natural_carry='pass' if natural_carry else 'fail',
         source_timed='pass' if source_timed else 'fail',
     )
@@ -470,7 +496,8 @@ def validate(text, code=0):
                 'death_output', 'birth_children',
                 'houdai_natural_damage', 'houdai_shell_fires', 'houdai_shell_hits',
                 'houdai_natural_death', 'houdai_no_inject',
-                'bigfoot_receipt', 'houdai_receipt', 'free_recruit', 'natural_carry',
+                'bigfoot_receipt', 'houdai_receipt', 'free_recruit', 'corpse_one_shot',
+               'natural_carry',
                 'source_timed',
                 'corpse', 'cleanup', 'reentry', 'completion', 'no_extinction')
     return dict(passed=code == 0 and all(checks[name] for name in required),

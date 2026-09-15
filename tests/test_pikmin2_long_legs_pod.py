@@ -9,6 +9,9 @@ a time out of a complete passing natural+receipt log and assert the
 corresponding ``checks`` bool inverts. No GL, disc assets, save or real run are
 touched.
 """
+import re
+from pathlib import Path
+
 from experimental.pikmin2_long_legs_lifecycle import validate
 
 GOOD_LOG = '\n'.join([
@@ -31,9 +34,13 @@ GOOD_LOG = '\n'.join([
     'P2_LONG_LEGS_DEAD species=Houdai generator=312001 health=0 prior_health=10.0',
     'P2_LONG_LEGS_BIRTH species=BigFoot generator=312002 count=30',
     'P2_LL_FREE_RECRUIT species=BigFoot count=20',
+    'P2_LL_CARRY species=BigFoot state=0 alive=1 transport=20 slot=0 carr=20 pokos=0 '
+    'piki[free=0 atk=0 trans=20 carry=0 other=0]',
     'P2_LL_FREE_RECRUIT species=Houdai count=20',
+    'P2_LL_CARRY species=Houdai state=0 alive=1 transport=4 slot=0 pokos=0',
     '[Pikipelago] P2_POD_RECEIPT id=corpse:longlegs:312002 value=2 new=1 pokos=2 seeds=0',
     '[Pikipelago] P2_POD_RECEIPT id=corpse:longlegs:312001 value=2 new=1 pokos=4 seeds=0',
+    'P2_LL_CORPSE_DRAIN remaining=0',
     'P2_LL_FORGET species=BigFoot count=0 registered=0',
     'P2_LL_FORGET species=Houdai count=0 registered=0',
     'P2_LL_REENTRY species=BigFoot old=0x1 new=0x2 stale=0 fresh=1 count=2',
@@ -42,7 +49,8 @@ GOOD_LOG = '\n'.join([
     'reentry=2 stale=0 duplicate_reward=0',
 ])
 
-NEW_KEYS = ('bigfoot_receipt', 'houdai_receipt', 'free_recruit', 'source_timed')
+NEW_KEYS = ('bigfoot_receipt', 'houdai_receipt', 'free_recruit', 'corpse_one_shot',
+            'source_timed')
 
 
 def test_validate_returns_dict_with_all_new_checks_true():
@@ -91,12 +99,39 @@ def test_receipts_both_present():
     assert result['gates']['bigfoot_receipt'] == 'pass'
 
 
-def test_natural_carry_true_without_assist():
+def test_natural_carry_true_when_transport_positive():
     result = validate(GOOD_LOG, code=0)
     assert result['checks']['natural_carry'] is True
     assert result['gates']['natural_carry'] == 'pass'
 
 
-def test_natural_carry_flips_on_assist():
-    flipped = GOOD_LOG + '\nP2_LL_ASSIST species=BigFoot carriers=20 assisted=1'
+def test_natural_carry_flips_when_transport_zero():
+    assert validate(GOOD_LOG, code=0)['checks']['natural_carry'] is True
+    assert re.search(r'P2_LL_CARRY[^\n]*transport=0\b', GOOD_LOG) is None
+    flipped = re.sub(r'transport=\d+', 'transport=0', GOOD_LOG)
+    assert re.search(r'P2_LL_CARRY[^\n]*transport=0\b', flipped) is not None
     assert validate(flipped, code=0)['checks']['natural_carry'] is False
+
+
+def test_corpse_one_shot_flips_when_registration_survives():
+    # A delivered corpse must leave no registration: the native one-shot erase is
+    # what stops MonoObjectMgr slot reuse crediting a future unrelated pellet.
+    marker = 'P2_LL_CORPSE_DRAIN remaining=0'
+    assert validate(GOOD_LOG, code=0)['checks']['corpse_one_shot'] is True
+    flipped = validate(GOOD_LOG.replace(marker, 'P2_LL_CORPSE_DRAIN remaining=1'), code=0)
+    assert flipped['checks']['corpse_one_shot'] is False
+
+
+def test_fixture_source_has_no_forced_transport_write():
+    # The `natural_carry` gate is only meaningful because the fixture cannot force
+    # the carry: assert the lane fixture never writes TransportMode / a Transport
+    # action (the dead `assignTransport` was deleted in review fix 3b). This is a
+    # real signal -- reintroducing a forced write flips the gate's premise.
+    source = (Path(__file__).resolve().parents[1]
+              / 'experimental' / 'pikmin2_long_legs_lifecycle.py').read_text()
+    assert 'assignTransport' not in source
+    assert 'PikiAction::Transport' not in source
+    # Only a READ of the mode is allowed (transportingCount); a forced WRITE
+    # (`mMode=PikiMode::TransportMode`) would make the carry non-natural.
+    assert 'mMode=PikiMode::TransportMode' not in source
+    assert 'TransportMode' in source  # the read is still used by transportingCount
