@@ -4,8 +4,6 @@ from pathlib import Path
 
 import pytest
 
-DEFAULT_NATIVE_ROOT = "C:/Users/alari/pikmin-randomizer/output/dsw/native-l31"
-
 FULL_LOG_LINES = [
     "P2_WATERWRAITH_ENCOUNTER_WINDOW size=960x540",
     "P2_WATERWRAITH_ENCOUNTER_READY",
@@ -18,35 +16,43 @@ FULL_LOG_LINES = [
     "P2_WATERWRAITH_POD_RECEIPT generator=0 deliveries=1",
     "P2_WATERWRAITH_ENCOUNTER_DELIVERED deliveries=1",
     "P2_WATERWRAITH_ENCOUNTER_DEATH_REENTRY ready=1 attached=1",
-    ("P2_WATERWRAITH_ENCOUNTER_PASS stuns=1 hits=63 crushes=18 damage=3300.0 "
+    ("P2_WATERWRAITH_ENCOUNTER_PASS stuns=1 hits=63 crushes=18 damage=3780.0 "
      "zeroed=1 child_removed=1 body_zeroed=1 treasure=1 kill=1 delivered=1"),
     "PASS WATERWRAITH_ENCOUNTER_RUNTIME",
 ]
 
 FULL_LOG = "\n".join(FULL_LOG_LINES) + "\n"
 
-# A valid BLOCKED outcome: the corpse stand-in was born view-less, so there is
-# no Pod receipt/delivery; the teardown/re-entry and capture still complete.
+# A valid BLOCKED outcome: natural carry did not complete, so no Pod receipt
+# fires; carrier evidence is logged and teardown/re-entry still complete.
 BLOCKED_LOG_LINES = [
     "P2_WATERWRAITH_ENCOUNTER_WINDOW size=960x540",
     "P2_WATERWRAITH_ENCOUNTER_READY",
     "P2_WATERWRAITH_ENCOUNTER_STAGE_A crushes=18 damage=0.0",
     "P2_WATERWRAITH_ENCOUNTER_PURPLE_SETUP",
     "P2_WATERWRAITH_BODY_ZERO tick=62 bodyHealth=0.0",
-    "P2_WATERWRAITH_CORPSE pos=0.000,40.000,237.667 registered=0 standin=number_pellet",
+    "P2_WATERWRAITH_CORPSE pos=0.000,-0.000,229.667 registered=1 standin=number_pellet",
     "P2_WATERWRAITH_FINISHED tick=64 bodyHealth=0.0",
     "P2_WATERWRAITH_CARRY_SETUP",
-    "P2_WATERWRAITH_CARRY_BLOCKED registered=0 reason=viewless_number_pellet_mPelletView_null",
+    "P2_WATERWRAITH_CARRY_UNRESOLVED frame=2400 max_carriers=0 deliveries=0",
     "P2_WATERWRAITH_ENCOUNTER_DEATH_REENTRY ready=1 attached=1",
-    ("P2_WATERWRAITH_ENCOUNTER_PASS stuns=1 hits=63 crushes=18 damage=3300.0 "
+    ("P2_WATERWRAITH_ENCOUNTER_PASS stuns=1 hits=63 crushes=18 damage=3780.0 "
      "zeroed=1 child_removed=1 body_zeroed=1 treasure=1 kill=1 delivered=0"),
-    "BLOCKED WATERWRAITH_ENCOUNTER_RUNTIME carry=viewless_number_pellet",
+    "BLOCKED WATERWRAITH_ENCOUNTER_RUNTIME carry=no_natural_carry",
 ]
 BLOCKED_LOG = "\n".join(BLOCKED_LOG_LINES) + "\n"
 
 
 def _verifier_module():
-    root = Path(os.environ.get("PIKMIN_NATIVE_ROOT", DEFAULT_NATIVE_ROOT))
+    env_root = os.environ.get("PIKMIN_NATIVE_ROOT")
+    if env_root:
+        root = Path(env_root)
+    else:
+        engine = Path(__file__).resolve().parents[1] / "engine"
+        if engine.is_dir():
+            root = engine
+        else:
+            pytest.skip("PIKMIN_NATIVE_ROOT not set; set it to the native worktree")
     source = root / "tools" / "p2_waterwraith_encounter_runtime_run.py"
     spec = importlib.util.spec_from_file_location(
         "p2_waterwraith_encounter_runtime_run", source)

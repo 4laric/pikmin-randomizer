@@ -105,14 +105,21 @@ death, corpse and teardown are driven by the real engine tick
 (`pc_p2_hardlanes_update` -> `pc_p2_waterwraith_register_tick` ->
 `pc_p2_waterwraith_encounter_step`).
 
+## Concrete source ID
+
+- Source ID: 99 `BlackMan`.
+
 | Gate | Result | Evidence | Injected vs natural |
 |---|---|---|---|
-| 1. Exact identity and spawn | PASS (fixed) | `P2_WATERWRAITH_VISUAL_READY species=2 clips=16`; register profile placement `(0,30,0)` | **Injected placement** (opt-in fixed profile, not ordinary spawn — lane 03 owns ordinary binding) |
-| 2. Autonomous movement/animation | PASS | host-driven route at retail fp05 120, two-step; 960x540 draw | **Natural locomotion, host-driven route** (retained-asm pathfinding is the documented omission) |
-| 3. Attacks and receivers | PASS | `P2_WATERWRAITH_STUN` (Purple landing stun), `HIT attached=1 rollerHealth 1800..0`, `CRUSH` ×18 | Natural over the live squad; Purple-only gate structural (lane 10/11 generic receiver still separate) |
-| 4. Death and corpse | PASS | `ROLLER_ZERO` t=53 -> `TYRE_REMOVED` t=56 -> `BODY_ZERO` t=62 -> `TREASURE` t=63 -> `CORPSE pos=0,40,229.667 standin=number_pellet` | **Natural death**; corporeal drop is a spawned number-pellet **P1 stand-in** (labelled) |
-| 5. Actual transport/reward | UNTESTED (stand-in only) | corpse stand-in spawned (carry untested); no Onion/AP receipt | Durable exactly-once receipt is lane 06 |
-| 6. Cleanup and re-entry | PASS | `FINISHED t=64`, then `DEATH_REENTRY ready=1 attached=1` (reset + fresh actor, body health restored) | Natural teardown + seam re-entry |
+| 1. Exact identity and spawn | UNTESTED | opt-in fixed placement profile; ordinary seed spawn is lane 03 | injected |
+| 2. Autonomous movement and animation | UNTESTED | host-supplied route; retained-asm pathfinding is the omitted step | host-driven |
+| 3. Attacks and receivers | PASS (natural) | output/dsw/l31-out/waterwraith-encounter-run/5a00c6604d4d4f918ea37145fd5794cc/stdout.log:900 | natural |
+| 4. Death and corpse | PASS (natural) | output/dsw/l31-out/waterwraith-encounter-run/5a00c6604d4d4f918ea37145fd5794cc/stdout.log:933 | natural |
+| 5. Actual transport and reward | BLOCKED | output/dsw/l31-out/waterwraith-encounter-run/5a00c6604d4d4f918ea37145fd5794cc/stdout.log:1064 (0 carriers / 2400 frames); docs/PIKMIN2_FLORA_NATIVE.md:230-235 | natural |
+| 6. Cleanup and re-entry | PASS (natural) | output/dsw/l31-out/waterwraith-encounter-run/5a00c6604d4d4f918ea37145fd5794cc/stdout.log:964 | natural |
+
+98 `Tyre` is the helper roller (BDT_Empty, manager_base child); it has no
+independent gate table and is not seeded.
 
 ## Tests run
 
@@ -194,52 +201,98 @@ no work. ctest `-R waterwraith` **3/3 passed**. Encounter fixture
 `waterwraith-encounter-fixture` rebuilt at head `6ca37a8d` (status=built),
 `fixture.exe` SHA-256 `917e012b8d036dafc167764e8c397ada7ce363acf8b35be36b9887c2f8ea3644`.
 
+### Remaining blockers (slice 2, note: superseded by review fixes 2 below)
+
+- The transport/reward blocker is the host's natural carry (see review fixes 2),
+  not a view keying bug. Provider lanes **06/07** own the isolated-arena
+  transport route that would let idle Pikmin pick the corpse up.
+
+## Slice 2 — review fixes 2
+
+The slice-2 "view-less number pellet" blocker was self-imposed and is fixed. The
+real gate-E blocker is now established with carrier evidence.
+
+### Fixes
+
+1. **Corpse map keyed on `Pellet*`, registered unconditionally**, and
+   `pc_p2_waterwraith_receipt`/`forget` take `Pellet*`. `ActTransport::decideGoal`
+   (`src/plugPikiKando/aiTransport.cpp:1006`) routes every pellet to the preview
+   Pod regardless of view, so a `newNumberPellet` stand-in is carryable; the
+   `corpse_count()==0` short-circuit in the fixture was removed.
+2. **View-less receipt fixed** by matching flora's precedent
+   (`pc_p2_flora_receipt(Pellet*)`, `pc_p2_flora_actor.cpp:340-349`): the preview
+   hook passes the `Pellet*`, not `pellet->mPelletView`. `podTitle` now labels the
+   corpse "Waterwraith".
+3. **Liveness**: `sCorpses` is swept for `!pellet->isAlive()` at the top of
+   `pc_p2_waterwraith_register_tick` (even after the wraith is finished), so a
+   `MonoObjectMgr` slot reused after an undelivered corpse can never be re-credited.
+4. **Zero-hit suppression**: `p2_waterwraith_actor_apply_damage` returns
+   `P2WWDMG_Ignored` when the body is already `<= 0`, so hits on a zeroed body stop
+   counting (damage `3780` -> `3300`, hits `63` -> `55`).
+5. **Hygiene**: renamed `purpleHits` -> `acceptedHits`; the marker pytest defaults
+   to the repo `engine/` tree and skips when `PIKMIN_NATIVE_ROOT` is unset; the
+   run.py no longer exits `0` on a blocked outcome; merged
+   `claude/p2-deepseek-wave-native` (resolved conflicts in `pc_p2_preview.cpp`
+   corpse branch beside kurage/otakara and `pc_p2_teki_lifetime.cpp` includes).
+6. **Natural carry attempted**: the fixture releases the squad and logs carrier
+   counts over 2400 frames while waiting for the receipt.
+
+New commits on `deepseek/p2-l31-native`: `0648f5cb`, `54c497f9`, `8b9e07a8`, then
+merge commit `21dbc488` (wave). Build clean at `21dbc488`, exe SHA-256
+`0e223ecb7175168c45f012ce26bc379a70b4e22d55b21522cb1ac333e3d9ed60`; ctest
+`-R waterwraith` **3/3 passed**; fixture rebuilt at `21dbc488`.
+
 ### Runtime evidence (real-GL, `status: blocked`)
 
-Run `output/dsw/l31-out/waterwraith-encounter-run/eb41b7ef1bba4cb89a3da838c3ad2f4b`:
-`P2_ROOM_PREVIEW red=20`, `P2_POD_READY`, full natural combat chain, then:
-`P2_WATERWRAITH_CORPSE pos=0.000,-0.000,229.667 registered=0 standin=number_pellet`
-→ `CARRY_SETUP` → `CARRY_BLOCKED registered=0 reason=viewless_number_pellet_mPelletView_null`
-→ `DEATH_REENTRY` → `PASS ... delivered=0` → `BLOCKED WATERWRAITH_ENCOUNTER_RUNTIME`.
+Run `output/dsw/l31-out/waterwraith-encounter-run/5a00c6604d4d4f918ea37145fd5794cc`:
+full natural combat chain with correct counters
+(`PASS stuns=1 hits=55 crushes=18 damage=3300.0 ... kill=1`), corpse
+`registered=1 standin=number_pellet`, then
+`P2_WATERWRAITH_CARRY_OBSERVE ... carriers=0 max=0 deliveries=0` over 2400 frames
+(`P2_WATERWRAITH_CARRY_UNRESOLVED frame=2400 max_carriers=0 deliveries=0`), teardown
+and re-entry PASS.
 
-### Why BLOCKED (exact file:line)
+### Why BLOCKED (real host reason, owned by lane 06/07)
 
-The corpse stand-in is `pelletMgr->newNumberPellet(PELCOLOR_Blue, NUMPEL_OnePellet)`
-(`pc_port/pc_p2_waterwraith_register.cpp` `spawnWraithCorpse`). That path is
-`PelletMgr::newPellet(id, nullptr)` → view-less `initPellet(obj, config)`
-(`src/plugPikiKando/pelletMgr.cpp:1555`, `:1581-1594`), leaving `mPelletView == nullptr`
-(`registered=0` in the run). The lane-06 Pod receipt path
-(`pc_p2_preview_deliver` -> `pc_p2_waterwraith_receipt`) and every dead-Teki corpse
-receipt key on `pellet->mPelletView` (`pc_p2_preview.cpp:326-336`), so a view-less
-stand-in is invisible and cannot be picked up/transported. A view-backed corpse
-requires `PelletView::becomePellet` (`pelletMgr.cpp:166`) with a live `PelletView*`,
-which only an engine Teki corpse provides (cf. Mamuta `TEKI_Miurin`); this virtual,
-non-Teki Waterwraith actor has none.
+The corpse is now correctly registered (`registered=1`) and the receipt path is
+wired, but **no Pikmin ever entered `TransportMode`** in 2400 frames, so the corpse
+was never carried and `pc_p2_preview_deliver` never fired. This is the same
+host-wide limitation lane 06 already recorded:
+`docs/PIKMIN2_FLORA_NATIVE.md:230-235` ("Natural carry does not complete in this
+port (as lane 06 also found) ... The natural carry/transport gate stays open").
+The bare room-preview squad follows the captain and never runs the idle free-roam
+that `ActTransport::findPellet` (`src/plugPikiKando/aiTransport.cpp:213`) reaches;
+the Mamuta lane needed forced `PikiAction::Transport`
+(`scripts/pikmin2_mamuta_pod_assisted_fixture.inc:71-77`) for the same reason.
 
-### Gate table (slice 2)
+### Subagent usage (review fixes 2)
 
-| Gate | Result | Note |
-|---|---|---|
-| C combat/receivers | PASS (improved) | any-Pikmin dismounted-body damage now source-correct |
-| D death/corpse | PASS (spawn) | corpse drop at ground; carry untested |
-| E transport/reward | BLOCKED | view-less number pellet is invisible to the receipt path |
-| E lifetime (cleanup/re-entry) | PASS | FINISHED teardown + DEATH_REENTRY re-entry |
-
-### Subagent usage
-
-- `explore` #1 (source audit) — confirmed the dismounted-body all-Pikmin fact with
-  `blackMan.cpp`/`tyre.cpp` citations; used as-is to lift the gate correctly.
-- `explore` #2 (candidate inventory) — mapped the lane-06 receipt host, `deliver`
-  branches, Mamuta/Flora corpse patterns and lane-07 lifetime; used as-is to place
-  the new hook precisely and avoid forking a second receipt singleton.
-- `general` #3 (marker pytest) — wrote `test_pikmin2_waterwraith_encounter_markers.py`
-  (7 initial cases). I extended it for the blocked/delivered branch after the carry
-  became blocked; net the parallel scaffolding saved roughly one full build cycle of
-  my own context and immediately validated the verifier.
+- `explore` #1 (number-pellet carry/receipt audit) — confirmed `decideGoal`
+  view-agnostic routing, flora's `Pellet*` receipt + liveness, and `MonoObjectMgr`
+  address reuse; used as-is to key on `Pellet*` and add the sweep.
+- `explore` #2 (carry/transport fixture inventory) — mapped Mamuta/Flora carry
+  drivers, the current fixture/verifier markers, and the wave gate checker; used
+  as-is to write the honest BLOCKED table and host-reason citation.
+- `general` #3 (pytest hygiene) — removed the lane-path default (default-to-engine
+  or skip) and corrected `damage=3780`; used, with one correction: defaulting to
+  my stale `engine/` tree still tests an old verifier until the export syncs, so
+  I run it with `PIKMIN_NATIVE_ROOT` set.
 
 ### Remaining blockers
 
-- The corpse must become a **view-backed** pellet to be carried and credited; either
-  lane **03** (ordinary Teki registration giving the host a real `PelletView`) or
-  lane **06** (a virtual-actor corpse seam) supplies it. Until then transport/reward
-  stays BLOCKED while combat/death/cleanup are closed.
+- Gate E (transport/reward) is BLOCKED by the host's natural-carry gap
+  (`docs/PIKMIN2_FLORA_NATIVE.md:230-235`), owned by lane **06/07**. Everything
+  else for this identity is closed or honestly UNTESTED (spawn/movement).
+
+### Gate checker output
+
+```
+98 Tyre (role=helper): ignored (role)
+99 BlackMan (role=source):
+  1. identity_spawn     ignored [UNTESTED]
+  2. movement_animation ignored [UNTESTED]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   ignored [BLOCKED]
+  6. cleanup_reentry    accepted [PASS]
+```
