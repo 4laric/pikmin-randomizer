@@ -174,17 +174,21 @@ def test_ledger_count_accessor_and_independence(tmp_path):
 
 def test_two_paths_pod_vs_onion_vocabulary_do_not_collide():
     pod_identity = 'corpse:385875968'
-    assert pod_identity != p2_source_identity(385875968, 1)
-    assert pod_identity != p1_proxy_identity(385875968, 1)
+    for source_id, teki_type, stage in ((45, 3, 1), (385875968, 3, 1), (0, 0, 2), (7, 7, 3)):
+        p1 = p1_proxy_identity(teki_type, stage)
+        p2 = p2_source_identity(source_id, stage)
+        for ident in (p1, p2):
+            assert ident != f'corpse:{source_id}'
+            assert ident != f'corpse:{teki_type}'
+            assert ident != pod_identity
+            assert not ident.startswith('corpse:')
 
-    dump = [
-        pod_identity,
-        p2_source_identity(45, 1),
-        p1_proxy_identity(3, 1),
-        'corpse:999000',
-        p2_source_identity(385875968, 1),
+    lines = [
+        f'P2_POD_RECEIPT id={pod_identity} value=2 new=1 pokos=2',
+        f'P2_POD_RECEIPT id={p2_source_identity(45, 1)} value=1 new=1 pokos=0',
+        f'P2_POD_RECEIPT id={p1_proxy_identity(3, 1)} value=1 new=1 pokos=0',
+        f'P2_POD_RECEIPT id={p2_source_identity(385875968, 1)} value=1 new=1 pokos=0',
     ]
-    pod = [ident for ident in dump if ident.startswith('corpse:')]
-    onion = [ident for ident in dump if not ident.startswith('corpse:')]
-    assert set(pod) == {'corpse:385875968', 'corpse:999000'}
-    assert all(not ident.startswith('corpse:') for ident in onion)
+    corpse = [r[0] for r in validate('\n'.join(lines), 0)['receipts']
+              if r[0].startswith('corpse:')]
+    assert corpse == [pod_identity]

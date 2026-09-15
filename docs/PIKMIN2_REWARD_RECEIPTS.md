@@ -127,7 +127,7 @@ and invalid receipt rows.
 
 ## Native provider surface
 
-The C++ counterpart ships in `native/pc_port/pc_p2_receipt.h` (engine-free, no
+The C++ counterpart ships in `engine/pc_port/pc_p2_receipt.h` (engine-free, no
 engine types and no save layout):
 
 - `P2Receipt::ReceiptLedger` — exactly-once grants over a `ReceiptPersistence`
@@ -153,8 +153,8 @@ Consumer agreement with lane 18 (#220): the small PanModoki / nest keeps only
 per-species parameters and consumes this transition table instead of forking the
 contest in `pc_p2_giant_breadbug_actor.cpp`.
 
-Tests: `native/tools/p2_receipt_test.cpp`,
-`native/tools/p2_cargo_contest_test.cpp` (registered as CTest
+Tests: `engine/tools/p2_receipt_test.cpp`,
+`engine/tools/p2_cargo_contest_test.cpp` (registered as CTest
 `p2_receipt_test` / `p2_cargo_contest_test`) and the root
 `tests/test_pikmin2_receipt_native.py` which compiles the headers against the
 resolved native source.
@@ -251,4 +251,4 @@ same drop twice.
    (`P2_POD_RECEIPT id=corpse:...`, `p2-economy.txt`). This path never writes the
    Onion ledger and must never cover an ordinary expected check.
 
-The full contract block also lives in `native/pc_port/pc_p2_receipt_host.h`.
+The full contract block also lives in `engine/pc_port/pc_p2_receipt_host.h`.
