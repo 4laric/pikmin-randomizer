@@ -106,6 +106,13 @@ immut char* TekiMgr::typeNames[TEKI_TypeCount] = {
 	"swallob",  // 32, Spotty Bulbear
 	"frow",     // 33, Wollywog
 	"nakata1",  // 34, ? (unused enemy, crashes)
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	// Lane-30 captor spawn identity. No dedicated Demon teki bank exists in the
+	// port; the spawned actor is an invisible identity/lifetime anchor whose
+	// visual is drawn by P2DemonHost, so it reuses the retail Chappy bank.
+	// The identity is the distinct appended type id (TEKI_P2Demon), not the name.
+	"chappy",   // 35, PC-only lane-30 captor anchor
+#endif
 };
 
 int TekiMgr::typeIds[TEKI_TypeCount] = {
@@ -144,6 +151,9 @@ int TekiMgr::typeIds[TEKI_TypeCount] = {
 	'tksb', // 32, Spotty Bulbear
 	'tkfw', // 33, Wollywog
 	'tkn1', // 34, ? (unused enemy, crashes)
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	'tkch', // 35, PC-only lane-30 captor anchor (reuses the Chappy pellet id)
+#endif
 };
 
 /**

@@ -22,6 +22,7 @@
 #include "pc_p2_preview.h"
 #include "pc_p2_enemy.h"
 #include "pc_p2_demon_host.h"
+#include "pc_p2_sarai_manager.h"
 #include "pc_p2_cave.h"
 #include "pc_p2_kurage_receiver.h"
 #include "pc_p2_captain.h"
@@ -1489,6 +1490,7 @@ void GameCoreSection::finalSetup()
 	pc_p2_groink_teki_setup();
 	pc_p2_king_teki_setup();
 	pc_p2_demon_manager_setup();
+	pc_p2_sarai_manager_setup();
 	pc_p2_preview_setup();
 	pc_p2_snow_campaign_setup();
 	// Actor-lifetime (#397): mark the new scene ready for lifecycle fixtures.

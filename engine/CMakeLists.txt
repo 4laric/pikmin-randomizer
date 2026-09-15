@@ -170,6 +170,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_demon_bridge.cpp
     pc_port/pc_p2_demon_host.cpp
     pc_port/pc_p2_sarai_host.cpp
+    pc_port/pc_p2_sarai_manager.cpp
     pc_port/pc_bbft.cpp
     pc_port/pc_p2_preview.cpp
     pc_port/pc_p2_captain.cpp
@@ -962,6 +963,50 @@ add_executable(p2_specular_dir_test
 target_include_directories(p2_specular_dir_test PRIVATE pc_port)
 target_compile_options(p2_specular_dir_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_specular_dir_test COMMAND p2_specular_dir_test)
+
+# Lane 30 (#242) standalone policy tests. The drop/host-clock and Sarai
+# captor/lifecycle/identity harnesses are dependency-free headers: a test source
+# and the pc_port include dir are all they need. (demon_captor/demon_escape and
+# sarai_fsm/sarai_policy are already registered by the policy foreach below.)
+add_executable(p2_demon_drop_policy_test tools/p2_demon_drop_policy_test.cpp)
+target_include_directories(p2_demon_drop_policy_test PRIVATE pc_port)
+target_compile_options(p2_demon_drop_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_demon_drop_policy_test COMMAND p2_demon_drop_policy_test)
+
+add_executable(p2_demon_host_clock_test tools/p2_demon_host_clock_test.cpp)
+target_include_directories(p2_demon_host_clock_test PRIVATE pc_port)
+target_compile_options(p2_demon_host_clock_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_demon_host_clock_test COMMAND p2_demon_host_clock_test)
+
+add_executable(p2_sarai_captor_test tools/p2_sarai_captor_test.cpp)
+target_include_directories(p2_sarai_captor_test PRIVATE pc_port)
+target_compile_options(p2_sarai_captor_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_sarai_captor_test COMMAND p2_sarai_captor_test)
+
+# Lane 30 (#457/#242) Sarai capture-lifecycle test. Engine-free: the shared
+# escape window and the lane's capture/detach model are dependency-free headers.
+add_executable(p2_sarai_captor_lifecycle_test tools/p2_sarai_captor_lifecycle_test.cpp)
+target_include_directories(p2_sarai_captor_lifecycle_test PRIVATE pc_port)
+target_compile_options(p2_sarai_captor_lifecycle_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_sarai_captor_lifecycle_test COMMAND p2_sarai_captor_lifecycle_test)
+
+# Lane 30 (#242) dedicated captor spawn-identity test. Engine-free: it asserts
+# the identity/selection seam; the constant is static_asserted against
+# TEKI_P2Demon in the engine build (pc_port/pc_p2_demon_host.cpp).
+add_executable(p2_demon_identity_test tools/p2_demon_identity_test.cpp)
+target_include_directories(p2_demon_identity_test PRIVATE pc_port)
+target_compile_options(p2_demon_identity_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_demon_identity_test COMMAND p2_demon_identity_test)
+
+# Engine-including admission test: it includes Navi/NaviState through
+# pc_port/pc_p2_demon_admission.h and uses _putenv_s/_spawnl to prove both
+# allowlist branches, so it is Windows-only like the launcher platform tests.
+if(WIN32)
+    add_executable(p2_demon_admission_test tools/p2_demon_admission_test.cpp)
+    target_include_directories(p2_demon_admission_test PRIVATE pc_port include)
+    target_compile_options(p2_demon_admission_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME p2_demon_admission_test COMMAND p2_demon_admission_test)
+endif()
 
 add_executable(pc_render_phase_test
     pc_port/timing/pc_render_phase_test.cpp

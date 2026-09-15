@@ -139,7 +139,14 @@ enum TekiTypes {
 	TEKI_Swallob  = 32, // 32, Spotty Bulbear
 	TEKI_Frow     = 33, // 33, Wollywog
 	TEKI_Nakata1  = 34, // 34, ? (placeholder enemy, crashes)
-	TEKI_TypeCount,     // 35
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	// PC-only appended identity (lane 30 captor: Bumbling Snitchbug `Demon` ID 32
+	// / Swooping Snitchbug `Sarai` ID 23). Retail types 0-34 and the non-PC
+	// count stay unchanged; only the PC build grows by one slot. The actor is an
+	// invisible placement/anchor vehicle whose visual is drawn by P2DemonHost.
+	TEKI_P2Demon  = 35, // 35, lane-30 captor spawn identity (PC only)
+#endif
+	TEKI_TypeCount,     // PC 36; retail 35
 };
 
 BEGIN_ENUM_TYPE(TekiInteractType)
