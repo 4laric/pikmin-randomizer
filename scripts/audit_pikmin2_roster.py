@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT))
 from experimental.pikmin2_enemy_roster import (  # noqa: E402
     GATE_IDS,
     ROSTER_PATH,
+    admission_contract,
     candidate_review,
     entries_from_payload,
     inventory_encounters,
@@ -26,6 +27,7 @@ from experimental.pikmin2_enemy_roster import (  # noqa: E402
     parse_info_table,
     summarize,
     validate_roster,
+    write_admission,
 )
 
 DEFAULT_SOURCE = ROOT / "native/pikmin2-research"
@@ -253,6 +255,10 @@ def main(argv=None) -> int:
                         help="fail on source parity problems or unclassified identities")
     parser.add_argument("--review", action="store_true",
                         help="print per-candidate readiness rows and enforce ledger coverage (exit 1 on any gap)")
+    parser.add_argument("--admit", action="store_true",
+                        help="evaluate the admission contract: print the admitted set and, per candidate, the blocking gates")
+    parser.add_argument("--write-admission", action="store_true",
+                        help="persist the admission contract's admitted set into the evidence JSON")
     args = parser.parse_args(argv)
 
     roster = load_roster()
@@ -314,6 +320,19 @@ def main(argv=None) -> int:
     if args.strict and (parity or coverage["unclassified_identities"]):
         print("STRICT FAIL", file=sys.stderr)
         return 1
+
+    if args.write_admission:
+        result = write_admission(roster)
+        print(f"admission written: admitted {result['admitted']}, "
+              f"blocked {len(result['blocking'])}")
+
+    if args.admit:
+        contract = admission_contract(roster)
+        print(f"admission contract: admitted {contract['admitted']}")
+        by_enum = {e.source_id: e.enum_name for e in roster}
+        for source_id, missing in sorted(contract["blocking"].items()):
+            print(f"  {by_enum.get(source_id, source_id)} ({source_id}): "
+                  f"blocking={','.join(missing)}")
     return 0
 
 

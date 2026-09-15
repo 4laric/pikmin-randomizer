@@ -78,7 +78,11 @@ Rules enforced by `validate_roster()`:
 
 - `eligibility` ∈ `denied | candidate | admitted | excluded`.
 - Gate keys are exactly the six arena gates; statuses ∈ `PASS | FAIL | BLOCKED | UNTESTED | N/A`.
-- `admitted` requires a non-`FAIL`/non-`BLOCKED`/non-`UNTESTED` status for **all six** gates.
+- `admitted` requires a satisfied admission contract — a `source`/`variant` role,
+  a natural `PASS` on `identity_spawn`, `movement_animation`, `attacks_receivers`,
+  `death_corpse` and `cleanup_reentry`, and a cited `delivery_receipt` for
+  `transport_reward`. A hand-edited `admitted` flag without that evidence fails
+  closed with the exact missing gate.
 - Parent/child references must resolve; IDs and enum names are unique.
 
 The six gates are `identity_spawn`, `movement_animation`, `attacks_receivers`,
@@ -122,16 +126,25 @@ alias never becomes a new source ID.
 
 ## Admission set (deny by default)
 
-`admission_set(roster)` materializes the explicit seedable pool referenced by the
-gate ledger. An identity enters `admitted` only when the overlay sets
-`eligibility: admitted` **and** its role is `source`/`variant`; a helper, plant,
-hazard, projectile, nest, manager base or non-seedable alias is rejected even if
-marked admitted. Everything else remains in `candidate`, `excluded` or `denied`.
-`admitted_ids(roster)` is the ordered allowlist lane 03 consumes;
-`require_admitted(roster, source_id)` is the fail-closed check. The pool is empty
-until a family supplies complete six-gate evidence, which is the correct starting
-state — native module presence, source facts and taxonomy membership are not
-eligibility.
+The admission set is now **contract-driven**, not flag-driven.
+`admission_contract(roster)` computes the seedable pool directly from each ledger
+row's evidence — a seedable identity (`source`/`variant`) is admitted only when it
+holds a natural `PASS` on `identity_spawn`, `movement_animation`,
+`attacks_receivers`, `death_corpse` and `cleanup_reentry` **and** a cited
+`delivery_receipt` proving the actual transport/reward of gate 5
+(`transport_reward`); anything missing is refused with the exact missing gate,
+and an `excluded` identity is blocked with `["excluded"]`.
+`admission_requirements(entry)` reports a single identity's gaps.
+
+`admitted_ids(roster)` is the ordered allowlist lane 03 consumes, now equal to
+`admission_contract(roster)["admitted"]`; `require_admitted(roster, source_id)` is
+the fail-closed check that names the missing gates. `write_admission(roster)` (or
+`scripts/audit_pikmin2_roster.py --write-admission`) persists the computed set into
+the evidence JSON, and `--admit` prints the admitted set and every candidate's
+blocking gates. The pool is empty until a family supplies the full
+generated-session chain — native module presence, source facts and taxonomy
+membership are not eligibility, and a hand-edited `admitted` flag cannot bypass
+the contract.
 
 ### Private candidate validation path (opt-in, deny by default)
 

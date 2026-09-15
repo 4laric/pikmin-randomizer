@@ -120,8 +120,15 @@ def test_admitted_requires_complete_gates():
     with pytest.raises(RosterError):
         validate_roster(roster)
 
-    full = {"0": {"eligibility": "admitted", "gates": {g: "PASS" for g in GATE_IDS}}}
+    # A seedable identity (Frog=17) with a satisfied admission contract validates.
+    full = {"17": {"eligibility": "admitted", "gates": {g: "PASS" for g in GATE_IDS},
+                   "delivery_receipt": "corpse:frog:1 goal=1"}}
     validate_roster(entries_from_payload(payload, full))
+
+    # An admitted identity whose contract is missing the delivery receipt fails.
+    no_receipt = {"17": {"eligibility": "admitted", "gates": {g: "PASS" for g in GATE_IDS}}}
+    with pytest.raises(RosterError):
+        validate_roster(entries_from_payload(payload, no_receipt))
 
 
 def test_classify_uses_boss_and_flags():
@@ -175,12 +182,16 @@ def test_admission_defaults_deny_and_is_empty():
 def test_admission_set_admits_only_seedable_randomizable():
     payload = synthetic_payload()
     full = {g: "PASS" for g in GATE_IDS}
-    admitted = entries_from_payload(payload, {"17": {"eligibility": "admitted", "gates": full}})
-    assert admitted_ids(admitted) == [17]
-    assert require_admitted(admitted, 17).enum_name == "Frog"
+    adopted = entries_from_payload(payload, {"17": {
+        "eligibility": "admitted", "gates": full,
+        "delivery_receipt": "corpse:frog:1 goal=1"}})
+    assert admitted_ids(adopted) == [17]
+    assert require_admitted(adopted, 17).enum_name == "Frog"
 
-    # A plant cannot be admitted as a seedable identity even with full gates.
-    plant = entries_from_payload(payload, {"0": {"eligibility": "admitted", "gates": full}})
+    # A plant cannot be admitted as a seedable identity even with a full contract.
+    plant = entries_from_payload(payload, {"0": {
+        "eligibility": "admitted", "gates": full,
+        "delivery_receipt": "corpse:pelplant:1"}})
     with pytest.raises(RosterError):
         admission_set(plant)
 
