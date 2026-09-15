@@ -1160,6 +1160,22 @@ target_include_directories(p2_delivery_host_test PRIVATE pc_port)
 target_compile_options(p2_delivery_host_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME p2_delivery_host_test COMMAND p2_delivery_host_test)
 
+# Lane 06: engine-free provider unit tests (header-only; previously present but unregistered).
+add_executable(p2_receipt_test tools/p2_receipt_test.cpp)
+target_include_directories(p2_receipt_test PRIVATE pc_port)
+target_compile_options(p2_receipt_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_receipt_test COMMAND p2_receipt_test ${CMAKE_CURRENT_BINARY_DIR}/p2_receipt_test_tmp)
+
+add_executable(p2_cargo_contest_test tools/p2_cargo_contest_test.cpp)
+target_include_directories(p2_cargo_contest_test PRIVATE pc_port)
+target_compile_options(p2_cargo_contest_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_cargo_contest_test COMMAND p2_cargo_contest_test)
+
+add_executable(test_p2_cargo tools/test_p2_cargo.cpp)
+target_include_directories(test_p2_cargo PRIVATE pc_port)
+target_compile_options(test_p2_cargo PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME test_p2_cargo COMMAND test_p2_cargo)
+
 foreach(policy IN ITEMS demon_captor demon_escape demon_pose sarai_fsm sarai_policy fuefuki_follow fuefuki_follow_binding)
     add_executable(p2_${policy}_test tools/p2_${policy}_test.cpp)
     target_include_directories(p2_${policy}_test PRIVATE pc_port)
