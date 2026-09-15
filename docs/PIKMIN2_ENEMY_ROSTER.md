@@ -187,6 +187,62 @@ Generated from source revision `632af93787b9c95b63f0c13be32b161375ce3a96`:
   `manager_base`/`non_spawnable` identities as independent actors.
 - **06 (rewards)** reads `drop_type`/`child_*` rather than hard-coding corpses.
 
+## Family-lane six-gate handoff table (ingest contract)
+
+Family lanes publish a six-gate evidence table in
+`docs/PIKMIN2_LANE<NN>_DEEPSEEK_HANDOFF.md`. `scripts/ingest_p2_handoff_gates.py`
+parses that table into candidate ledger rows and is the contract lanes must
+follow. A markdown table whose header row names a `Result` column, with data rows
+numbered 1-6:
+
+```
+| Gate | Result | Evidence [| Injected vs natural] |
+|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md spawn binding |
+| 2. Autonomous movement and animation | ... | ... |
+| 3. Attacks and receivers | ... | ... |
+| 4. Death and corpse | ... | ... |
+| 5. Actual transport and reward | PASS | corpse:frog:1 goal=1 |
+| 6. Cleanup and re-entry | ... | ... |
+```
+
+Rules (the parser enforces them):
+
+- A row is matched by its leading gate number (1..6 -> `identity_spawn`,
+  `movement_animation`, `attacks_receivers`, `death_corpse`, `transport_reward`,
+  `cleanup_reentry`); the spelled-out name and column width may vary.
+- A table belongs to ONE identity: the `source_id` named in the nearest preceding
+  "Source ID" line (or an identity-naming heading). Other identities named in the
+  same handoff but without their own table are reported `shared table, excluded`
+  (all gates `UNTESTED`) and are never applied to the ledger.
+- A literal `|` inside a cell must be escaped as `\|` (the row is split on the
+  unescaped `|` only).
+- `Result` is matched at the start of the cell against
+  `^(PASS|PARTIAL|FAIL|BLOCKED|UNTESTED|N/A)\b` (bold stripped); anything else —
+  including `FAIL (was PASS earlier)` or `BYPASSED` — reads as `UNTESTED`.
+  `PARTIAL` is treated as blocking.
+- A `PASS` advances a gate only when the whole row (Result + Injected/natural
+  label + Evidence) does **not** match `NONNATURAL_MARKERS`
+  (injected/proxy/fixture-only/forced/vehicle/visual/host/display) and the
+  `Evidence` cell **cites** a source: a `.md`/`.log`/`.txt`/`.json` token
+  (`\S+\.(md|log|txt|json)\b`) or a file path rooted at `docs/`/`output/`/`tests/`
+  with at least two segments (a bare `12/16` separator does not count).
+  A PASS that is labelled injected/uncited is *refused* and printed as
+  `<gate>:injected` / `<gate>:uncited`.
+- `transport_reward` (gate 5) is the `delivery_receipt`: it advances only when the
+  `Evidence` cell is a lane-06 receipt (`onion:`/`corpse:`/`receipt:` key or the
+  same citation).
+- The identity is named as `<source_id> EnumName`, `` `EnumName` (<source_id>) ``,
+  or the literal `` `source_id` ``/`EnemyID` token, and is cross-referenced against
+  this roster; only `source`/`variant` identities get a candidate row.
+
+The script is deny-by-default: it prints, per identity, which gates the handoff
+would advance and which `admission_requirements` still reports as blocking, and
+writes nothing to the evidence overlay unless `--apply` is passed (and then only
+merges gate `PASS` values into the owning identity's existing row — it never
+touches `eligibility` or `delivery_receipt`, never fabricates a row and never
+applies to a sibling, so a handoff cannot admit an identity on its own).
+
 ## Candidate review and source-backed encounters
 
 `inventory_encounters(payload, roster)` resolves every identity across
