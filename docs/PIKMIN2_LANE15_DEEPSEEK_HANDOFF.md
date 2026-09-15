@@ -39,7 +39,7 @@ Root (base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`):
 2. `9924fbc` lane15: record carried-Egg reward handoff and gate-5 update (#166)
 3. `0d24fe0` lane15: review fixes - partial gate wording, anchored runtime regex, passed_real gate (#166)
 4. `abaf3d2` lane15: review-fix1 handoff, NaN localization, partial gate wording (#166)
-5. `(HEAD)`  lane15: review fixes 2 - drop 203002 control, NaN resolved (#166)
+5. `c2094cd` lane15: review fixes 2 - drop 203002 control, NaN resolved (#166)
 
 Native (base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`):
 1. `d1a579f3` lane15: Qurione carries real Egg reward via lane-20 P2Egg policy (#166)
