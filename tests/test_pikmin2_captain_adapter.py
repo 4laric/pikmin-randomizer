@@ -70,6 +70,7 @@ def test_captain_adapter_engine_double(tmp_path):
         [str(compiler), '-std=c++17', '-Wall', '-Wextra', '-Werror',
          '-I', str(port), str(tools / 'test_p2_captain_adapter.cpp'), '-o', str(exe)],
         check=True, capture_output=True, text=True, env=_compile_env(compiler))
-    run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=30)
+    run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=30,
+                         env=_compile_env(compiler))
     assert run.returncode == 0, run.stderr
     assert 'PASS P2_CAPTAIN_ADAPTER' in run.stdout
