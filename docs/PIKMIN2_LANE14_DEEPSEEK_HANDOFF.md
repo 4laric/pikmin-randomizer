@@ -33,37 +33,53 @@ Root base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`; native base
 | root | `2053d20`, `f8d4eae`, `9df2c03` | ElecBug staged-press/timing + Tamago group-birth runtime + handoff slice 4 (#165) |
 | root | `bbab6f3`, `5f84482` | review fixes 4: exactly_once on GROUP_ONCE, born=1 BIND, fixture forget via seam + handoff (#165) |
 | root | `f177b11` | slice 5: deferred kill fixture + in-place per-identity gate tables (#165) |
+| native | `aa928b4c` | temporary debug for born-follower position (removed in `e7dacd6d`; non-deliverable) (#165) |
+| native | `85261e37` | integrator: fix stale `tamago.h` comment (group birth exists) (#165) |
+| native | `47b546f1` | fix1: `P2_TAMAGO_GROUP_DRAIN killed=` marker + ElecBug flip comment (#165) |
+| root | `8c4eaa44` | fix1: gate Tamago cleanup on deferred `P2_TAMAGO_GROUP_DRAIN killed=9` (#165) |
+| root | `9bb40b48` | fix1b: honest gate-6 relabel in the tracked `docs/` mirror + reviewer notices (#165) |
 
 Dirty state: none (both clean).
 
 ## Interfaces / hooks touched and why
 
-Only the family-owned `pc_port/pc_p2_sokkuri.cpp` changed (16 inserts and a
-9-line revision). No shared file (`teki.h`, `tekiinteraction.cpp`, `tekibteki.cpp`,
-`tekimgr.cpp`, `gameCoreSection.cpp`, `navi.cpp`, `pc_p2_preview.cpp`, CMake) was
-edited — the Sokkuri module is already registered and hooked. The change is
-read-only observability:
+Family-owned native modules changed: `pc_port/pc_p2_sokkuri.cpp` (slice 1
+damage/death observability), `pc_port/pc_p2_elecbug.{cpp,h}` (natural
+Purple-landing press + registration observability; fix1 header comment),
+`pc_port/pc_p2_tamago.{cpp,h}` (manager-driven group birth, whole-group cleanup,
+deferred born-follower kills, and the fix1 `P2_TAMAGO_GROUP_DRAIN` marker).
+
+One **labelled shared hook**: `src/plugPikiKando/gameCoreSection.cpp:2954`
+calls `pc_p2_tamago_tick()` once per frame after `tekiMgr->update()` (inside the
+`!inPause()` block, alongside `pc_p2_flora_tick()`/`pc_p2_pom_tick()`/
+`pc_p2_plant_tick()`), so queued born-follower kills drain outside the TekiMgr
+update loop. Registration otherwise reuses the existing manager hooks; no
+`teki.h`, `tekiinteraction.cpp`, `tekibteki.cpp`, `tekimgr.cpp`, `navi.cpp`,
+`pc_p2_preview.cpp` or CMake change.
 
 - `P2_SOKKURI_DAMAGE generator=%u source_id=79 health=%.1f` — incremental,
   still-positive health decrease = natural Pikmin attack damage.
 - `P2_SOKKURI_DEAD ... health=0 prior_health=%.1f` — health one update before
   death, so a single injection (large `prior_health`) is distinguishable from a
   combat-culminated death (small `prior_health`).
+- `P2_TAMAGO_GROUP_DRAIN killed=%d source_id=68` (fix1) — the born followers
+  actually dispatched through the deferred death funnel, not merely erased from
+  the module actor map.
 
-Root: `experimental/pikmin2_ground_lifecycle_behavior.py` (validator +
-`combat_damage` gate), `tests/test_pikmin2_ground_lifecycle_behavior.py`
-(new tests + native-worktree path resolution), `docs/PIKMIN2_SOKKURI_NATURAL_COMBAT.md`.
+Root: `experimental/pikmin2_{ground_lifecycle,sokkuri_natural,elecbug_natural,tamago_group}_runtime.py`,
+`tests/test_pikmin2_*`, `docs/PIKMIN2_SOKKURI_NATURAL_COMBAT.md`.
 
 ## Build evidence (`output/dsw/l14-build-evidence.txt`)
 
-- Native head `3370950c54caf9995d8580af18c4d8c729d6cda9`, clean.
-- `nectar.exe` SHA-256 `855e50aeba0ffab7a6cd8915364e24e9261a516aa4a551f7e56ba077325d671f`.
+- Native head (fix1) `47b546f11d2af66529023f03df75f5b6e31f6c5f`, clean; private
+  build dir `output/dsw/native-l14-build`.
+- `nectar.exe` SHA-256 `b1f767d0c6ccce557ba986af8a63c543ecbc56b130f76f0c60f42a62fbd985a0`.
 - `ninja -n` → `ninja: no work to do.` (fresh).
 - Config: Ninja + MinGW g++ 16.2.0, Release, `PIKMIN_NATIVE_JAUDIO=ON`
   (the OFF default fails to link on `Jac_NoteDemoSkipped`; configured once with
   `-DCMAKE_MAKE_PROGRAM=<python ninja>` then built through `build_lane.py`).
-- Private replacement-main fixture `fixture.exe` SHA-256
-  `d2df8045d4d7c20b365bae0dc8a568de33ef2bf8fbfe25708281cfed99f9c0bf`
+- fix1 replacement-main fixture `output/dsw/l14-out/tamago-fixture-fix1/fixture.exe`
+  SHA-256 `a1bc6c1f3e1132683b7deafecc990335d19da1aafbd18aff11320bafca955d75`
   (`instrumentation.json` status `built`).
 
 ## Fixture adoption evidence
@@ -89,7 +105,7 @@ cargo-free arena, so it is `UNTESTED` everywhere.
 | 3. Attacks and receivers | PASS | natural | output/dsw/l14-out/natural-run2/afcc5104e5784937bcb514cb5ae06b0d/capture/native.log:801 |
 | 4. Death and corpse | PASS | natural | output/dsw/l14-out/natural-run2/afcc5104e5784937bcb514cb5ae06b0d/capture/native.log:904 |
 | 5. Transport and reward | UNTESTED | | no lane-06 receipt; cargo-free arena (#397) |
-| 6. Cleanup and re-entry | PASS | natural | output/dsw/l14-out/natural-run2/afcc5104e5784937bcb514cb5ae06b0d/capture/native.log:948 |
+| 6. Cleanup and re-entry | UNTESTED | injected (cleanup natural; re-entry forced re-bind) | cleanup output/dsw/l14-out/natural-run2/afcc5104e5784937bcb514cb5ae06b0d/capture/native.log:948; re-entry forced at experimental/pikmin2_sokkuri_natural_runtime.py:103 (sokkuriGen->mGenType->init) |
 
 ### ElecBug (EnemyID 28)
 
@@ -100,7 +116,7 @@ cargo-free arena, so it is `UNTESTED` everywhere.
 | 3. Attacks and receivers | PASS | natural | output/dsw/l14-out/elecbug-run4a/e23f06567a034d9bb6df3e12df79b115/capture/native.log:867 |
 | 4. Death and corpse | PASS | natural | output/dsw/l14-out/elecbug-run4a/e23f06567a034d9bb6df3e12df79b115/capture/native.log:1082 |
 | 5. Transport and reward | UNTESTED | | no lane-06 receipt; cargo-free arena (#397) |
-| 6. Cleanup and re-entry | PASS | natural | output/dsw/l14-out/elecbug-run4a/e23f06567a034d9bb6df3e12df79b115/capture/native.log:1161 |
+| 6. Cleanup and re-entry | UNTESTED | injected (cleanup natural; re-entry forced re-bind) | cleanup output/dsw/l14-out/elecbug-run4a/e23f06567a034d9bb6df3e12df79b115/capture/native.log:1161; re-entry forced at experimental/pikmin2_elecbug_natural_runtime.py:240 (aGen->mGenType->init) |
 
 Natural death (flip is a staged P1-derived press; death is natural combat drain):
 `PASS P2_ELECBUG_NATURAL_RUNTIME flip=staged-press death=natural ...` at
@@ -115,7 +131,7 @@ Natural death (flip is a staged P1-derived press; death is natural combat drain)
 | 3. Attacks and receivers | PASS | natural | output/dsw/l14-out/tamago-slice5c-run/4b3b656b30d24c7fa726cbda4a4e5273/capture/native.log:837 |
 | 4. Death and corpse | N/A | | source-backed: honey reward, corpse suppressed (genItem honey-only) |
 | 5. Transport and reward | UNTESTED | | no lane-06 receipt; cargo-free arena (#397) |
-| 6. Cleanup and re-entry | PASS | natural | output/dsw/l14-out/tamago-slice5c-run/4b3b656b30d24c7fa726cbda4a4e5273/capture/native.log:1286 |
+| 6. Cleanup and re-entry | UNTESTED | injected (fixture forget; re-entry untested) | forget injected at experimental/pikmin2_tamago_group_runtime.py:180 (pc_p2_forget_teki; `:166` is the `P2_TAMAGO_GROUP_ONCE` print); deferred-drain proof output/dsw/l14-out/tamago-fix1-run/f0c39b5ee47c41ddb188eeaded015b81/capture/native.log:1328 |
 
 Manager-driven group birth and exactly-once: `P2_TAMAGO_BIRTH ... source=manager`
 at `.../tamago-slice5c-run/4b3b656b30d24c7fa726cbda4a4e5273/capture/native.log:813`;
@@ -240,7 +256,7 @@ drain; blocking mechanism not triggered.
 |---|---|
 | 3. Attacks/receivers | natural PASS (`P2_SOKKURI_DAMAGE` sequence) |
 | 4. Death + corpse | natural PASS (`prior_health=15.0`, corpse pellet) |
-| 6. Cleanup + re-entry | PASS (`forget count=0`, fresh re-bind `stale=0`) |
+| 6. Cleanup + re-entry | UNTESTED (cleanup natural; re-entry forced re-bind) |
 
 `no_inject` check confirms no `mHealth` write anywhere (`mHealth=0.0f` absent from
 the instrumented source).
@@ -320,7 +336,7 @@ injected=0`. No `mHealth=` write anywhere in the instrumented source.
 | (a) natural press→flip | PASS (Purple landing → `P2_ELECBUG_FLIP` + `state=reverse` + `P2_ELECBUG_NATURAL_PRESS`) |
 | (b) vulnerability → lethal | PASS (30 `P2_ELECBUG_HIT` → dead) |
 | (c) Yellow immunity | PASS (`P2_ELECBUG_IMMUNE ... pikmin=yellow species=2`) |
-| (d) corpse/cleanup/reentry | PASS (corpse + forget + generator re-bind) |
+| (d) corpse/cleanup/reentry | UNTESTED (corpse/cleanup natural; re-entry forced re-bind) |
 
 Purple species deployed at runtime via lane-11 `pc_p2_set_species(p,
 P2SpeciesPurple)` storage; the landing press is documented P1-derived.
@@ -434,7 +450,7 @@ limitation; the host keeps the batch2 pose bank).
 | manager-driven birth | PASS (`P2_TAMAGO_BIRTH ... source=manager`, 10 born) |
 | exactly-once | PASS (`P2_TAMAGO_BIRTH_ONCE born=9`, `P2_TAMAGO_GROUP_ONCE count=10`) |
 | natural Astonish | PASS (all ten born ids 346020..346029 fire `P2_TAMAGO_ASTONISH`) |
-| whole-group cleanup | PASS (`P2_TAMAGO_GROUP_FORGET remaining=0 queued=9`) |
+| whole-group cleanup | UNTESTED (fixture forget; deferred `P2_TAMAGO_GROUP_DRAIN killed=9` proves despawn) |
 
 ### Exact reproduction (slice 4d)
 
@@ -589,10 +605,17 @@ delegated conclusions against the runtime.
      `BTeki::doAI`, `tekibteki.cpp:615/652`). The deferral removes the mid-loop
      sibling kill for any trigger regardless, so item 3 is resolved by construction.
 
-### Item 4 — checker output (zero refused PASS rows)
+### Item 4 — checker output (zero refused PASS rows; refreshed in Fix 1 after the gate-6 relabel)
+
+The checker is **not** in this lane's root (`output/dsw/l14-root`); it lives in the
+wave-root worktree at `output/dsw/wave-root/scripts/check_p2_handoff_gates.py`, so
+the command runs from `output/dsw/wave-root` against the handoff path. The same run
+against the tracked mirror `output/dsw/l14-root/docs/PIKMIN2_LANE14_DEEPSEEK_HANDOFF.md`
+gives the identical rows.
 
 ```
-py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE14_DEEPSEEK_HANDOFF.md
+$ cd output/dsw/wave-root
+$ py -3.12 scripts/check_p2_handoff_gates.py ../../deepseek-wave/handoffs/l14.md
 15 Armor (role=source):
   1. identity_spawn     accepted [PASS]
   2. movement_animation ignored [UNTESTED]
@@ -606,7 +629,7 @@ py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE14_DEEPSEEK_HANDOFF.
   3. attacks_receivers  accepted [PASS]
   4. death_corpse       accepted [PASS]
   5. transport_reward   ignored [UNTESTED]
-  6. cleanup_reentry    accepted [PASS]
+  6. cleanup_reentry    ignored [UNTESTED]
 65 Imomushi (role=source):
   1. identity_spawn     accepted [PASS]
   2. movement_animation ignored [UNTESTED]
@@ -620,14 +643,14 @@ py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE14_DEEPSEEK_HANDOFF.
   3. attacks_receivers  accepted [PASS]
   4. death_corpse       ignored [N/A]
   5. transport_reward   ignored [UNTESTED]
-  6. cleanup_reentry    accepted [PASS]
+  6. cleanup_reentry    ignored [UNTESTED]
 79 Sokkuri (role=source):
   1. identity_spawn     accepted [PASS]
   2. movement_animation accepted [PASS]
   3. attacks_receivers  accepted [PASS]
   4. death_corpse       accepted [PASS]
   5. transport_reward   ignored [UNTESTED]
-  6. cleanup_reentry    accepted [PASS]
+  6. cleanup_reentry    ignored [UNTESTED]
 84 Hana (role=source):
   1. identity_spawn     accepted [PASS]
   2. movement_animation ignored [UNTESTED]
@@ -637,6 +660,10 @@ py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE14_DEEPSEEK_HANDOFF.
   6. cleanup_reentry    ignored [UNTESTED]
 EXIT=0
 ```
+
+(The gate-6 `cleanup_reentry` rows are now `UNTESTED`: the re-entry is a
+fixture-forced re-bind in every case, and the Tamago cleanup forget is
+fixture-injected. See "Fix 1 — review" at the end.)
 
 ### Commits / evidence
 
@@ -662,3 +689,84 @@ EXIT=0
   binding rule (`EnemyID N`/`Name (N)` bind; a bare `source ID` line does not). Used
   with corrections (I supplied the real citations + replaced the shadowing slice-1
   table). Scratch files removed.
+
+## Fix 1 — review
+
+Resume of the hold-for-fix review on `handoffs/reviews/l14.md` (MERGE-WITH-FIXES,
+#165). Commits: native `47b546f1`, root `8c4eaa44`.
+
+### Blocking 1 — honest gate 6 (cleanup/re-entry)
+
+- **TamagoMushi 68:** the forget is **injected** — the fixture calls
+  `pc_p2_forget_teki(host)` (`experimental/pikmin2_tamago_group_runtime.py:180`),
+  so `P2_TAMAGO_GROUP_FORGET remaining=0` only proves the module map was erased.
+  Gate 6 is now `UNTESTED` / `injected (fixture forget; re-entry untested)`.
+- **Sokkuri 79 / ElecBug 28:** cleanup follows the natural death, but the
+  re-entry is a **fixture-forced re-bind** (`mGenType->init` at
+  `pikmin2_sokkuri_natural_runtime.py:103` /
+  `pikmin2_elecbug_natural_runtime.py:240`). Gate 6 is now `UNTESTED` /
+  `injected (cleanup natural; re-entry forced re-bind)`. The slice-2/slice-3/
+  slice-4 sub-gate rows were relabelled the same way.
+- The checker still exits 0; the relabelled rows are `ignored`, not refused.
+
+### Blocking 2 — prove the born Teki actually despawned (native `47b546f1`)
+
+- `pc_p2_tamago_tick()` now counts the queued followers it dispatches and prints
+  `P2_TAMAGO_GROUP_DRAIN killed=%d source_id=68` whenever it drains a non-empty
+  queue, instead of clearing `pendingKills` silently.
+- The runtime now gates `group_cleanup` on **both** `P2_TAMAGO_GROUP_FORGET
+  remaining=0` and `P2_TAMAGO_GROUP_DRAIN killed=9` (new
+  `test_removing_group_drain_fails_group_cleanup`), and the fixture waits two
+  frames after the injected forget so the deferred drain runs before `_Exit(0)`.
+- Rebuilt in `output/dsw/native-l14-build` (Ninja + MinGW g++ 16.2.0);
+  `ninja -n` → `ninja: no work to do.`; `nectar.exe` SHA
+  `b1f767d0c6ccce557ba986af8a63c543ecbc56b130f76f0c60f42a62fbd985a0`.
+- **Re-ran the tamago runtime** against fix1 fixture (`tamago-fixture-fix1`,
+  SHA `a1bc6c1f3e1132683b7deafecc990335d19da1aafbd18aff11320bafca955d75`):
+  run `output/dsw/l14-out/tamago-fix1-run/f0c39b5ee47c41ddb188eeeded015b81`,
+  exit 0, elapsed 10.1 s, validation `passed: true`, `drained: 9`.
+  Marker lines: `P2_TAMAGO_GROUP_FORGET ...:1326`,
+  `P2_TAMAGO_GROUP_CLEANUP ...:1327`,
+  `P2_TAMAGO_GROUP_DRAIN killed=9 source_id=68 ...:1328`,
+  `PASS P2_TAMAGO_GROUP_RUNTIME ...:1329`.
+
+### Non-blocking
+
+- `pc_p2_elecbug.h:43` now reads "once per flip (REVERSE/DEAD short-circuit)",
+  matching `pc_p2_elecbug.cpp:432`.
+- Interfaces / build-evidence pins refreshed to native `47b546f1` / root
+  `8c4eaa44`; the fix1 commits are in the ordered-commit table.
+- The `gameCoreSection.cpp:2954` `pc_p2_tamago_tick()` call is labelled in
+  "Interfaces / hooks touched and why" as the one shared (additive) hook.
+
+### Verify (fix1)
+
+- Named lane tests (`ground_lifecycle,sokkuri,armor,armor_receiver` behaviour)
+  → **40 passed**.
+- Family glob (`ground*,sokkuri*,armor*,elecbug*,imomushi*,hana*,tamago*`)
+  → **146 passed** (was 145; +1 new DRAIN negative test).
+- `scripts/check_p2_handoff_gates.py handoffs/l14.md` → **EXIT=0**.
+- No `reviews/*.md` verdict file was edited.
+
+## Fix 1b — review (tracked mirror)
+
+Follow-up to Fix 1 (#165): the committed/merged copy
+`docs/PIKMIN2_LANE14_DEEPSEEK_HANDOFF.md` on `deepseek/p2-l14` still carried the
+dishonest gate-6 rows — Sokkuri/ElecBug/Tamago `PASS | natural` (mirror :92/:103/:118)
+plus the slice-2/slice-3/slice-4d sub-gate rows (:243/:323/:437) — and the checker
+accepted them (exit 0), so the overclaim would have landed in the merged tree. This
+pass re-applies the honest relabel to the tracked mirror so the file the root branch
+merges no longer contains any `Tamago` gate-6 `PASS | natural`; all six gate-6
+`cleanup_reentry` rows are `UNTESTED` (`ignored`).
+
+Also clears the reviewer's actionable notices in this handoff: the ordered-commit
+table now lists native `aa928b4c` (non-deliverable debug, later removed) and
+`85261e37`; the fixture-forget citation is corrected `:166` → `:180`; and Item 4 now
+records that the checker lives in wave-root (`output/dsw/wave-root`), not the lane
+root.
+
+- Named lane tests (`ground_lifecycle,sokkuri,armor,armor_receiver` behaviour) → **40 passed**.
+- Family glob (`ground*,sokkuri*,armor*,elecbug*,imomushi*,hana*,tamago*`) → **146 passed**.
+- Checker on `handoffs/l14.md` **and** on the tracked mirror → **EXIT=0**, gate-6 rows `ignored`/`UNTESTED`.
+- Tracked-doc commit on `deepseek/p2-l14`: `9bb40b48`.
+- No `reviews/*.md` verdict file was edited.
