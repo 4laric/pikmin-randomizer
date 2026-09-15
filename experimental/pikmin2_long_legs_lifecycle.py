@@ -117,6 +117,7 @@ public:int idle() override {
     ++observed;
     if(stage==0){
         captainOrigin=n->mSRT.t;
+        n->mKontroller=new FixtureController();
         houdai=byGenerator(312001);bigfoot=byGenerator(312002);
         require(houdai&&bigfoot,"registered Long Legs actors present");
         require(pc_p2_long_legs_registered(houdai)&&pc_p2_long_legs_registered(bigfoot),"long legs registered");
