@@ -13,6 +13,8 @@ _IMMUNE_SPECIES = {
     'gas': {'4'},    # white
 }
 
+_ADVANCE_PHASES = frozenset({'PreAttack', 'ItemWalk', 'DropItem'})
+
 
 def _to_int(value):
     if value is None:
@@ -48,19 +50,33 @@ def _non_increasing_with_drop(counts):
     return dropped
 
 
+def _weapon_drop_index(fsm_lines):
+    for index in range(1, len(fsm_lines)):
+        previous_weapons = fsm_lines[index - 1][1]
+        weapons = fsm_lines[index][1]
+        if (
+            previous_weapons is not None
+            and weapons is not None
+            and weapons < previous_weapons
+        ):
+            return index
+    return None
+
+
 def validate_slice2(text: str) -> dict:
     result = {
         'attack_started': False,
         'emitted': False,
         'recv_observed': False,
         'nonimmune_accepted': False,
-        'immunity_via_handled': False,
+        'immune_rejected': False,
+        'handled_set_held': False,
         'phase_advanced': False,
         'weapon_count_dropped': False,
     }
     recv_lines = []
-    phases = set()
     weapon_counts = []
+    fsm_lines = []
 
     if not text:
         result['recv_lines'] = recv_lines
@@ -81,16 +97,27 @@ def validate_slice2(text: str) -> dict:
             if accepted == '1':
                 result['nonimmune_accepted'] = True
             if accepted == '0':
-                result['immunity_via_handled'] = True
+                result['immune_rejected'] = True
         elif marker == 'P2_BIGTREASURE_FSM':
             phase = fields.get('phase')
-            if phase is not None:
-                phases.add(phase)
             weapons = _to_int(fields.get('weapons'))
+            fsm_lines.append((phase, weapons))
             if weapons is not None:
                 weapon_counts.append(weapons)
+        elif marker == 'P2_BIGTREASURE_SLICE2_HANDLED':
+            first = _to_int(fields.get('first'))
+            second = _to_int(fields.get('second'))
+            if first == 1 and second == 0:
+                result['handled_set_held'] = True
 
-    result['phase_advanced'] = len(phases) >= 2
+    drop_index = _weapon_drop_index(fsm_lines)
+    if drop_index is None:
+        result['phase_advanced'] = False
+    else:
+        result['phase_advanced'] = any(
+            phase in _ADVANCE_PHASES
+            for phase, _weapons in fsm_lines[drop_index + 1:]
+        )
     result['weapon_count_dropped'] = _non_increasing_with_drop(weapon_counts)
     result['recv_lines'] = recv_lines
     return result

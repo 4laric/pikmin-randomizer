@@ -2,7 +2,8 @@
 
 The validator parses the native lane's real-GL log markers and reports boolean
 observations. These tests cover a fully satisfying synthetic log, empty/none
-input, the absence of a weapon-count drop, and CRLF/whitespace tolerance.
+input, the absence of a weapon-count drop, a bare boot sequence, the
+handled-set marker, and CRLF/whitespace tolerance.
 """
 import experimental.pikmin2_bigtreasure_slice2_validate as validate
 from experimental.pikmin2_bigtreasure_slice2_validate import validate_slice2
@@ -12,7 +13,8 @@ _BOOL_KEYS = (
     'emitted',
     'recv_observed',
     'nonimmune_accepted',
-    'immunity_via_handled',
+    'immune_rejected',
+    'handled_set_held',
     'phase_advanced',
     'weapon_count_dropped',
 )
@@ -24,9 +26,11 @@ def test_synthetic_log_reports_all_true():
         'P2_BIGTREASURE_ATTACK_EMIT weapon=elec nodes=3',
         'P2_BIGTREASURE_RECV weapon=elec target=piki species=2 accepted=1',
         'P2_BIGTREASURE_RECV weapon=fire target=piki species=1 accepted=0',
+        'P2_BIGTREASURE_SLICE2_HANDLED first=1 second=0',
         'P2_BIGTREASURE_FSM phase=Stay weapons=4 clip=0',
         'P2_BIGTREASURE_FSM phase=Attack weapons=4 clip=1',
         'P2_BIGTREASURE_FSM phase=DropItem weapons=2 clip=2',
+        'P2_BIGTREASURE_FSM phase=PreAttack weapons=2 clip=3',
         'some unrelated log line',
     ]
     result = validate_slice2('\n'.join(lines))
@@ -51,8 +55,24 @@ def test_received_without_fsm_drop_reports_no_drop():
     )
     result = validate_slice2(text)
     assert result['recv_observed'] is True
-    assert result['phase_advanced'] is True
+    assert result['phase_advanced'] is False
     assert result['weapon_count_dropped'] is False
+
+
+def test_bare_boot_sequence_drops_weapon_without_advancing():
+    text = (
+        'P2_BIGTREASURE_FSM phase=Stay weapons=4 clip=0\n'
+        'P2_BIGTREASURE_FSM phase=Land weapons=3 clip=0\n'
+    )
+    result = validate_slice2(text)
+    assert result['weapon_count_dropped'] is True
+    assert result['phase_advanced'] is False
+
+
+def test_handled_set_not_held_when_second_is_one():
+    text = 'P2_BIGTREASURE_SLICE2_HANDLED first=1 second=1\n'
+    result = validate_slice2(text)
+    assert result['handled_set_held'] is False
 
 
 def test_crlf_and_whitespace_tolerant():
@@ -62,6 +82,7 @@ def test_crlf_and_whitespace_tolerant():
         'P2_BIGTREASURE_RECV weapon=gas target=piki species=4 accepted=1\r\n'
         'P2_BIGTREASURE_FSM phase=PreAttack weapons=3 clip=x\r\n'
         'P2_BIGTREASURE_FSM phase=Attack weapons=1 clip=y\r\n'
+        'P2_BIGTREASURE_FSM phase=DropItem weapons=1 clip=z\r\n'
     )
     result = validate_slice2(text)
     assert result['attack_started'] is True
