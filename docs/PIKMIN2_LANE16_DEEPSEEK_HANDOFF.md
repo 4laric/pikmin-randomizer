@@ -108,7 +108,7 @@ Injected evidence is UNTESTED, never PASS.
 | Gate | Result | Evidence | Injected vs natural |
 |---|---|---|---|
 | 1. Exact identity and spawn | PASS (natural) | output/dsw/l16-out/run-runtime-f3/stages/e8edbce3f2bf445eb68c3feaa9731d43/native.log:1268 | natural |
-| 2. Autonomous movement and animation | PASS (natural) | output/dsw/l16-out/run-runtime-f3/stages/e8edbce3f2bf445eb68c3feaa9731d43/native.log:1313 | natural |
+| 2. Autonomous movement and animation | PASS (natural) | output/dsw/l16-out/run-runtime-f3/stages/e8edbce3f2bf445eb68c3feaa9731d43/native.log:1272,1361 (`P2_FROG_DRAW species=MaroFrog` wait1/attack draws) | natural |
 | 3. Attacks and receivers | UNTESTED | no combat run tracks MaroFrog as the target | natural |
 | 4. Death and corpse | UNTESTED (injected) | output/dsw/l16-out/run-runtime-f3/stages/e8edbce3f2bf445eb68c3feaa9731d43/native.log:1485 | injected |
 | 5. Actual transport and reward | UNTESTED | no transport/receipt observation | natural |
