@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <vector>
 
 #include "Dolphin/gx.h"
 #include "PVW.h"
