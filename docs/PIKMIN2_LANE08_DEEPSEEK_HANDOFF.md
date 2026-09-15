@@ -149,3 +149,120 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l0
     --exe C:/Users/alari/pikmin-randomizer/output/dsw/native-l08-build/bin/nectar.exe \
     --seconds 40
 ```
+
+## Slice 2
+
+Implementation owner: Codex through shared account `4laric`; executing agent (session): DeepSeek.
+
+Two deliverables this slice: (a) fix the runtime-layer delta drop so a >0.5 s hitch no
+longer discards a whole update before the sampled clock sees it; (b) migrate a second
+family consumer — **Catfish (Water Dumple, EnemyID 26)** — onto the sampled clock.
+
+### (a) Runtime delta-drop fix (Hana + Catfish)
+
+`pc_p2_hana.cpp`/`pc_p2_catfish.cpp` used `if (dt <= 0.0f || dt > 0.5f) return;`, which
+returned out of the entire update on a >0.5 s hitch, so the crossed animation events
+never reached the clock (undercutting exactly-once-across-frame-skips). Both now reject
+only non-positive `dt` and clamp a larger `dt` to `0.5f`, keeping `stateTime` and the
+sampled clock in lockstep while no longer dropping the update. Probe case added:
+`testTwoSecondHitch` (advance 2.0 s in one call → bite once, no swallow; resume → swallow
+once) in both `tools/test_p2_hana_events.cpp` and `tools/test_p2_catfish_events.cpp`.
+
+### (b) Catfish event-clock migration
+
+Catfish previously fired `attack` (bite 17:2 / swallow 75:3) and `flick` (knockback 25:2 /
+restore 47:3) through `fireAttackEvents`/`fireFlickEvents` with a `firedEvents` set plus
+`stateTime < frame/30` dedupe. New `pc_port/pc_p2_catfish_events.h`
+(`p2catfishevents::{Row,makeClip,Action{None,Bite,Swallow,Flick,FlickRestore},actionFor,
+Receiver,catfishRows}`) mirrors the Hana header; `pc_p2_catfish.cpp` now owns one
+`Receiver` per actor, starts it in `transition()`/bind, and dispatches crossed events in
+the ATTACK/FLICK states. The residual two-slot mouth (`slots[]`/`consumed`) and the
+White-Pikmin fp02 poison are untouched; only *when* the events fire changed. actionFor
+maps `attack:2→Bite, attack:3→Swallow, flick:2→Flick, flick:3→FlickRestore`; Python
+mirror `ACTIONS={'attack':{'2':'bite','3':'swallow'},'flick':{'2':'flick','3':'restore'}}`
+was diffed against it (agree).
+
+### Commits (slice 2; both clean, nothing pushed)
+
+Root branch `deepseek/p2-l08`, base `ef1cace…`:
+- `902066af` `lane08: Catfish event-mapping contract tests and harness (#431)`
+
+Native branch `deepseek/p2-l08-native`, base `b805d9c6…` (head was `e2411c43` after review):
+- `52e7de6f` `lane08: drive Catfish bite/swallow/flick from the sampled event clock (#431, #167)`
+- `de297cd7` `lane08: clamp dt instead of dropping the update (Hana + 2s-hitch probe) (#431)`
+- `b555c5df` `lane08: register p2_catfish_events_test CTest gate (hook) (#431)` (CMake only)
+
+### Build evidence (`output/dsw/l08-build-evidence.txt`)
+
+- `p2_catfish_events_test`: built + run `PASS p2_catfish_events`; probe exe SHA-256
+  `1d4c548d88aa67641a54b9e25fede53b1f546697f788f111da10103da456dfee`.
+- `p2_hana_events_test` re-run `PASS p2_hana_events` (incl. the new 2s-hitch case).
+- `pikmin_pc`: `[3/3] Linking CXX executable bin\nectar.exe`; `ninja -n` → no work; native
+  `b555c5df`; nectar.exe SHA-256 `dbc18a0da9cc6c7444c92ffcc805b7a3feadeab0792a9d59c165980fdd2ed514`.
+
+### Runtime evidence (Catfish, real-GL slot wrapped)
+
+- Run dir `output/dsw/l08-out/7213745821654e14bdf8047b92d416cb`; `capture/native.log`
+  SHA-256 `1ef4afcd2c76baf8efcb1bc27915d4c1448855a64bb0ed24f6f079264cb7124f`.
+- 960×540 centred window, no extinction, `P2_CATFISH_BIND source_id=26`,
+  `P2_ENEMY_READY species=Catfish … attack=animation_event`.
+- Natural, timer-terminated at 40 s: three flick cycles
+  `P2_CATFISH_FLICK frame=25 event=knockback hit=20/2/13` then `frame=47 event=restore`;
+  attack cycles `P2_CATFISH_BITE frame=17 pikmin=1 slot=0/1` (both mouth slots) then
+  `P2_CATFISH_EAT slot=0/1` — exactly-once per re-entry, bite at source frame 17, swallow
+  kill exactly once per captured Pikmin. Validator `passed`, bite frames `[17.0, 17.0, 17.0]`.
+
+### Six arena gates (slice-2 slice: Catfish event timing only)
+
+| Gate | Result | Evidence / label |
+|---|---|---|
+| 1 Exact identity and spawn | **PASS** | `source_id=26`, `P2_ENEMY_READY species=Catfish`, health 200. Natural; position is the engineered behavior-fixture override. |
+| 2 Autonomous movement and animation | **PASS** | wait/turn/walk/attack/flick loop, motion spread 149.8, 23 sampled positions. |
+| 3 Attacks and receivers | **PASS** | banked bite (17) captures two Pikmin across both mouth slots, swallow kills each once; flick knockback hits at source frame 25, restore at 47. Natural dispatch; injected squad. |
+| 4 Death and corpse | **UNTESTED** | Catfish never died within 40 s; corpse/carry not exercised. |
+| 5 Actual transport and reward | **source-backed N/A** | No reward endpoint for Catfish in this lane; not lane-08 scope. |
+| 6 Cleanup and re-entry | **UNTESTED (runtime)** | Natural attack/flick state re-entry shows exactly-once; recycled-address protection proven in the probe. |
+
+### Tests run (slice 2)
+
+- Native probes: `PASS p2_hana_events` (now with 2s-hitch), `PASS p2_catfish_events`.
+- Python: `py -3.12 -m pytest tests/test_pikmin2_catfish_events.py
+  tests/test_pikmin2_catfish_behavior.py tests/test_pikmin2_catfish_residual_behavior.py
+  tests/test_pikmin2_hana_events.py tests/test_pikmin2_hana_behavior.py
+  tests/test_pikmin2_animation_clock.py tests/test_pikmin2_armor_behavior.py -q` →
+  `62 passed`.
+
+### Assumptions / notes
+
+- Catfish clip durations are not in-repo (disc-derived at `setup()`); the probe's
+  `catfishRows()` uses representative valid durations (labelled), as Hana's does.
+- Fresh aquatic import extracted by this lane into `output/dsw/l08-out/aquatic` from the
+  pinned disc (`Downloads/PIKMIN2 for GAMECUBE.iso`, GPVE01 rev 0) and the read-only
+  decomp checkout (`native/pikmin2-research` @ `632af937…`), which was not edited.
+- The dt clamp caps a single simulation step at 0.5 s; brief ≤0.5 s frame skips are
+  fully processed by the clock (exactly-once), and the pathological >0.5 s case is
+  clamped rather than dropped. The probe's 2s-hitch test proves the clock itself is
+  exactly-once for a 2 s delta.
+
+### Remaining / next consumers
+
+- Same-family siblings still on `stateTime*30`/fired-frame sets reported in slice 1
+  (`dangomushi`, `hanachirashi`, `jigumo`, `kochappy_fsm`, `mar`, `snakejoint`, `tadpole`,
+  `umimushi`, `sokkuri`, optional `batch3`/`mamuta`/`breadbug`) migrate with their family
+  owners; lane 08 provided the pattern (three worked examples now: Armor, Hana, Catfish).
+- Ask of lane 01: export native `52e7de6f`+`de297cd7`+`b555c5df` with root `902066af`.
+
+### Subagent usage (slice 2)
+
+- `explore` #1 (Catfish source audit): used as-is — event table (17/2, 75/3, 25/2, 47/3),
+  exact `firedEvents`/`stateTime` lines, residual-policy reuse, and confirmation that no
+  shared-hook edit is needed.
+- `explore` #2 (candidate inventory): used as-is — full module/test/doc map, all
+  `P2_CATFISH_*` markers, and the `engine/` mirror warning (not edited).
+- `general` #3 (root mirror + tests): used as-is after I diffed `ACTIONS` against the
+  native `actionFor` (agree). Created `experimental/pikmin2_catfish_events.py` +
+  `tests/test_pikmin2_catfish_events.py`, `7 passed`.
+  Net: all three incorporated without correction; the mapping-diff was done in the main
+  context (the slice-1 lesson). The parallel split again kept the native implementation,
+  build, GL run and handoff off the subagent path.
+
