@@ -17,7 +17,7 @@ Expected single-log evidence:
 
 Run only under the host GL slot:
 
-    py -3.12 <repo>/output/deepseek-wave/slot.py run gl l04 -- \\
+    py -3.12 <repo>/output/deepseek-wave/slot.py run gl <lane> -- \\
         py -3.12 scripts/run_p2_cohort_seed_placement.py \\
             --assets <P1 assets> --bank <dwarf-orange bank> --profile <profile dir> \\
             --snow <snow-prepared dir> --exe <nectar.exe> --output <out dir> --seed <name>
