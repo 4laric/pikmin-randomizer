@@ -146,6 +146,8 @@ def validate_lifecycle(text):
     item_nectar = any(' real=1' in line and ' item=nectar' in line for line in item_lines)
     reward_real = dict(born=real_born, released=real_released, break_=egg_break,
                        item=item_real, nectar=item_nectar)
+    pos_lines = [ln for ln in text.splitlines() if ln.startswith('P2_QURIONE_POS ')]
+    pos_tuples = {tuple(re.findall(r'(x=[-0-9.na]+) (y=[-0-9.na]+) (z=[-0-9.na]+)', ln)[0]) for ln in pos_lines if re.findall(r'x=([-0-9.na]+) y=([-0-9.na]+) z=([-0-9.na]+)', ln)}
     checks = dict(
         identity=bool(re.search(rf'P2_QURIONE_BIND generator=\d+ source_id={SOURCE_ID} '
                                 r'visual_only=0', text)),
@@ -154,6 +156,7 @@ def validate_lifecycle(text):
         window=bool(re.search(r'Experimental preview window set to 960x540 windowed and centered',
                               text)),
         states=states,
+        moved=(len(pos_tuples) >= 3),
         source_cycle=seen.issuperset({'stay', 'appear', 'move', 'disappear'}),
         drop_path=seen.issuperset({'drop', 'dead'}),
         egg_attach='attach' in egg_events,

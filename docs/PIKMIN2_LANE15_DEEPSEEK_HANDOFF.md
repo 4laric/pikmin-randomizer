@@ -174,3 +174,104 @@ Notes: `run_fixture.py` (in `output/dsw/l15-out/`) sets `PIKMIN_P2_ROOM_WINDOW=9
 `PYTHONUTF8=1`, and prepends the MinGW bin to PATH. The arena stages a read-only
 junction `native/pikmin2-research` → the shared decomp checkout for the asset
 extractor.
+
+## Slice 3
+
+**Goal: the wisp actually flies, drops, and dies.** Two of the three legs are now
+delivered and evidenced; the drop/die leg is blocked for an environmental reason
+(no thrown Pikmin unattended), not a code defect.
+
+### 3.1 Move stall: root cause and fix
+
+The "3 distinct positions over ~70 s, frozen from POS line 1" freeze was not the
+FSM and not `MapMgr`. It was AI culling: once the wisp left the AI grid,
+`Creature::update` early-returns **before** the movement pass
+(`src/plugPikiKando/creature.cpp:677`), so `moveNew`/`traceMove` stop running and
+`mSRT.t` freezes even though the qurione FSM kept writing `mVelocity`. The source
+`Qurione::onInit` keeps animating while offscreen (`doAnimationCullingOff()`);
+the P1-host equivalent is `setInsideView()` → `CF_AIAlwaysActive`, applied at bind
+in `pc_port/pc_p2_qurione.cpp::pc_p2_qurione_setup`.
+
+After the fix the log shows continuous positions through a full natural cycle on a
+dirty=no lane build (`f88de0ec`, exe `bd23509a…`):
+
+```text
+state=appear -> move (6+ distinct positions) -> disappear -> stay
+0 `=nan`; validator: moved=True, source_cycle=True  (full appear/move/disappear)
+```
+
+`nearest Pikmin XZ distance` observed 36→67 while the idle 20-red squad mingles
+away from the wisp's fixed-birth facing flight path — that is why the natural drop
+does not fire (see 3.2).
+
+### 3.2 Natural drop — blocked (unattended), mechanism intact
+
+The source drop trigger is `Qurione::flyCollisionCallBack` (a CollPart physics
+contact, `Qurione.cpp:136-144`); the port proxy is `pikiContact(pos)` (`distXZ
+< HIT_RADIUS=30`, `pc_p2_qurione.cpp:156-164,492`), i.e. the ordinary contact path
+with **no health write**. With idle, player-less reds, no Pikmin reliably enters
+that 30-unit XZ radius mid-flight (they idle-wander 36–67 units away), so
+drop→dead→Egg release→break→item-birth never fires naturally in the unattended
+arena. The reward host (`onEndCapture` → bounded gravity fall → `bounce` →
+`P2Egg::update` → `qurioneEggBirthItems`) is code-complete and contract-tested
+(`passed_real`/`reward_real` validator; lane-20 `p2_egg_hazard_test`). This leg
+needs a thrown Pikmin or an arena that walks a Pikmin through the wisp; deferred.
+
+### 3.3 isnan probe (labelled control, lane + 203002)
+
+One committed probe build caught the first NaN with the un-suppressed 203002
+control present, backing the fix-2 mechanism (non-finite velocity entering the
+normal pass):
+
+```text
+[PC_L15_PROBE] first_nan state=0 vel=(nan,nan,nan) pos=(nan,nan,nan)
+```
+
+state=0 is Stay; the source wisp's **velocity** and position are both NaN before
+the FSM's Stay zero-velocity would run, confirming the contamination arrives from
+the neighbouring un-suppressed Mizinko, not from the qurione FSM or a map trace.
+203002 stays out of acceptance runs.
+
+### 3.4 Gate table (PIKMIN2_ENEMY_ROSTER.md format)
+
+Six arena gates for `EnemyID_Qurione` (16); statuses ∈ PASS/FAIL/BLOCKED/UNTESTED/N/A.
+
+```json
+"16": {
+  "native_module": "pc_p2_qurione",
+  "owner_lane": "15",
+  "gates": {
+    "identity_spawn": "PASS",
+    "movement_animation": "PASS",
+    "attacks_receivers": "N/A",
+    "death_corpse": "UNTESTED",
+    "transport_reward": "BLOCKED",
+    "cleanup_reentry": "UNTESTED"
+  },
+  "eligibility": "candidate",
+  "eligibility_reason": "PC port drives the source FSM; movement now reaches a full natural appear->move->disappear->stay cycle (file: src/plugPikiKando/creature.cpp:677 culling fix via setInsideView in pc_p2_qurione.cpp; flyCollisionCallBack proxy pikiContact pc_p2_qurione.cpp:492). Transport/cleanup still need a thrown-Pikmin contact unavailable unattended."
+}
+```
+
+File citations: `src/plugPikiKando/creature.cpp:677` (the culling early-return that
+froze Move), `pc_port/pc_p2_qurione.cpp` `setInsideView()` (fix), `:156-164,492`
+(pikiContact drop proxy), `:452-471` (Move pitch-bob velocity, source
+`Qurione.cpp:214-219`), `:487-502` (Drop release/egg onEndCapture). No lane-specific
+paths are hardcoded in code, tests or the lifecycle validator.
+
+### 3.5 Slice-3 subagent usage
+
+1. `explore` — Qurione Move/drop/culling source audit (moveFaceDir fixed facing,
+   dropItem KEYEVENT_2, flyCollisionCallBack, doAnimationCullingOff). **Used
+   as-is**; narrowed the stall to culling (missing `doAnimationCullingOff`
+   equivalent), not the FSM.
+2. `explore` — drop/reward + lane-07 lifetime seam inventory + validator gate
+   coverage. **Used as-is**; confirmed the forget/re-entry seam and the exact
+   markers/gates already present.
+3. `general` — added a `moved` (>=3 distinct positions) validator gate + two
+   tests. **Corrected**: its first cut failed the two synthetic-log tests (fixture
+   lacked POS lines); I added three distinct POS lines to `GOOD_LOG` and fixed the
+   frozen-position test. Final: 22 lifecycle tests pass.
+
+Every build/run/commit/fixture above was performed by me; no subagent built, ran a
+fixture, committed, or touched native/shared files.
