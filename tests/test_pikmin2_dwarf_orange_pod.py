@@ -7,6 +7,7 @@ import experimental.pikmin2_dwarf_orange_pod as pod
 POD_RECEIPT_LOG = '\n'.join([
     'P2_DWARF_ORANGE_POD_READY treasure=dia_a_red value=180 pokos=0',
     'P2_KOCHAPPY_DEAD generator=211001 source_id=44',
+    'P2_DWARF_ORANGE_POD_CORPSE tick=118',
     'P2_DWARF_ORANGE_POD_CARRY tick=120 state=0 alive=1 distance=341.2 transport=8 pokos=0 goal=1',
     '[Pikipelago] P2_POD_RECEIPT id=corpse:211001 value=2 new=1 pokos=2 seeds=0',
     'PASS P2_DWARF_ORANGE_P1_POD distance=341.2 reached=1',
