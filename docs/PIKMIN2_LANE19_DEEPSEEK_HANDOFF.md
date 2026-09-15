@@ -1,4 +1,4 @@
-# Lane 19 (Mamuta) DeepSeek handoff (fix1) — #221 / #168
+# Lane 19 (Mamuta) DeepSeek handoff (fix1 + slice 2 + review-fix 2) — #221 / #168
 
 Implementation owner: Codex via shared account `4laric`. Executing agent: DeepSeek
 (`deepseek-v4-pro`), lane 19, 2026-09-14. Root worktree `output/dsw/l19-root` on
@@ -53,30 +53,40 @@ The bisect request to lanes 01/08/10/13 is dropped.
 
 ## Six arena gates (natural vs injected)
 
-| Gate | Result (current head `b805d9c6`) |
-| --- | --- |
-| 1. Exact identity and spawn | **PASS** (P1 Miurin proxy) — `P2_MAMUTA_POD_BIRTH id=221001 type=24 squad=10 color=red` |
-| 2. Autonomous movement and animation | **PASS** — `approached=1`, full state coverage (`00017f9c`), static-anchor draw |
-| 3. Attacks and receivers | **PASS** (proxy, natural) — natural `P2_MAMUTA_PLANT kind=1 happa=2`; navi receiver (`P2_MAMUTA_NAVI damage=5.0`) observed in the pre-park runs |
-| 4. Death and corpse | **PASS (1 run) / FLAKY overall** — `fix1-02`: natural kill `died_tick=1922` + `corpse=1`; fix1-03/04 (park-250) wiped the squad before the kill; fix1-01 (park-100) ended in the captain-down freeze (integrator correction) |
-| 5. Actual transport and reward | **UNPROVEN** — `fix1-02` corpse was picked up (`transport=1`) but not delivered by window end (`goal=0`, `pokos=0`) |
-| 6. Cleanup and re-entry | **partial PASS** — reset/forget + control alive; revisit fixture built but runtime UNTESTED (gated on gate 5) |
+- Source ID: 54 `Miulin` (Mamuta).
 
-Injected: none. Squad ring-deploy, captain park/re-park and re-ring are documented
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | P2 generator 221001 bound to the P1 Miurin engine actor (TEKI_Miurin 24): `output/dsw/l19-out/mamuta-pod-deliver-01/e3e978a725c54b80baf677104a51d471/native.log:739` `P2_MAMUTA_POD_BIRTH id=221001 type=24 squad=10 color=red` | natural |
+| 2. Autonomous movement and animation | PASS (natural) | natural approach + full state coverage + static anchor: `output/dsw/l19-out/mamuta-pod-deliver-01/e3e978a725c54b80baf677104a51d471/native.log:1061` `P2_MAMUTA_POD_APPROACH_RESULT approached=1 min=11.2 states=00001e9c`, `:748` `P2_MAMUTA_DRAW generator=221001 anchor=attack1` | natural |
+| 3. Attacks and receivers | PASS (natural) | natural P2 bury/plant and captain receiver: `output/dsw/l19-out/mamuta-pod-deliver-01/e3e978a725c54b80baf677104a51d471/native.log:750` `P2_MAMUTA_PLANT kind=1 happa=2 planted=0`, `:749` `P2_MAMUTA_NAVI damage=5.0` | natural |
+| 4. Death and corpse | PASS (natural) | natural kill then carryable corpse: `output/dsw/l19-out/mamuta-pod-deliver-01/e3e978a725c54b80baf677104a51d471/native.log:802` `P2_MAMUTA_POD_DIED tick=523`; `output/dsw/l19-out/mamuta-pod-deliver-03/eff05ebe7f21417185c80126a5943113/native.log:796` `P2_MAMUTA_POD_DIED tick=478` | natural |
+| 5. Actual transport and reward | PASS (natural) | Pod receipt `corpse:mamuta:221001 value=2`: `output/dsw/l19-out/mamuta-pod-deliver-01/e3e978a725c54b80baf677104a51d471/native.log:902` `[Pikipelago] P2_POD_RECEIPT id=corpse:mamuta:221001 value=2 new=1 pokos=2`; `output/dsw/l19-out/mamuta-pod-deliver-03/eff05ebe7f21417185c80126a5943113/native.log:894` | natural |
+| 6. Cleanup and re-entry | PARTIAL (natural) | reset/forget + control alive: `output/dsw/l19-out/mamuta-pod-deliver-01/e3e978a725c54b80baf677104a51d471/native.log:1064` `P2_MAMUTA_POD_RESET`; revisit fixture built but runtime UNTESTED | natural |
+
+Injected: none. Squad ring-deploy, captain park and re-ring are documented
 fixture-placement interventions (the review-prescribed "free-mode-deploy the reds
-and park the captain"); the kill/corpse themselves are natural (no forced health,
-bury or lethal hit). `captain_down` runs are now correctly classified, not counted
-as frozen natural combat.
+and park the captain"); the kill, corpse, carry and Pod receipt themselves are
+natural (no forced health, bury, lethal hit or transport action). `captain_down`
+runs are classified `BLOCKED(captain_down)`, not counted as frozen natural combat.
 
-## Why gate 5 remains open
+Gate 5 was closed in Slice 2 (below) by parking the captain inside the ~70-unit
+attackable range so it absorbs the P2 bury and ~10 reds survive to meet the
+corpse's 8-carrier lift threshold; the earlier fix1 park-250 staging could not
+deliver because the bury planted the squad below 8 carriers.
 
-The captain-park strategy removes the captain-down pause but shifts the Miurin's
-pounds onto the Pikmin, whose P2 bury converts them (permanent with a parked
-captain). 10 basic reds vs a 2485-HP Mamuta is marginal: `fix1-02` left one red
-that killed (1922) and started carrying, but delivery did not finish in the
-2400-tick window (the fix1-02 exe 34b9226c predates the NATURAL_TICKS bump to 3600; carry ran ~300 ticks before the window closed — integrator correction); `fix1-03/04` lost all reds and the Mamuta healed. This is a
-squad-balance/attrition question for the integrator (e.g. 20-red overlay squad),
-not a lane-19 code defect.
+`py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE19_DEEPSEEK_HANDOFF.md`
+(wave-branch script, not committed):
+
+```text
+54 Miulin (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation accepted [PASS]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   accepted [PASS]
+  6. cleanup_reentry    ignored [PARTIAL]
+```
 
 ## Build and run evidence
 
@@ -151,7 +161,8 @@ reproduced end-to-end, and the captain-down marker/classification is runtime-pro
 
 - `scripts/pikmin2_mamuta_pod_fixture.inc`: default staging is now **captain inside
   the Miurin's ~70-unit attackable range (park 20) + ring-deploy (radius 22) + re-ring
-  every 120 ticks**, which lets the captain absorb the P2 bury so ~10 reds survive to
+  every 60 ticks** (raised from 120 in review-fix 2), which lets the captain absorb
+  the P2 bury so ~10 reds survive to
   meet the corpse's 8-carrier lift threshold. Added a **labelled captain-down control**
   (`p2-mamuta-captaindown.txt` → park 20 with the ring skipped) and a `--captaindown`
   flag in `scripts/pikmin2_mamuta_pod_native.py`. Added carry diagnostics
@@ -160,7 +171,8 @@ reproduced end-to-end, and the captain-down marker/classification is runtime-pro
   Removed the slice-1 `park-250`/re-park (it parked the captain out of reach so the
   bury hit the Pikmin instead, planting them below the 8-carrier threshold).
 - `tests/test_pikmin2_mamuta_pod.py`, `tests/test_pikmin2_mamuta_revisit.py`:
-  natural-kill and delivery "flip" tests (subagent-assigned; 24 added).
+  natural-kill and delivery "flip" tests (subagent-assigned; 8 new test functions,
+  suite 54→62).
 
 ### Kill/transport rate (default staging, exe `1acfcfdf01091b3cdd5e76a151041370e8742cca01757a6a3afb79986208e595`)
 
@@ -170,9 +182,39 @@ reproduced end-to-end, and the captain-down marker/classification is runtime-pro
 | `mamuta-pod-deliver-02` | 0 | 0 | 0 | 0 | 0 | — | `BLOCKED(captain_down)` |
 | `mamuta-pod-deliver-03` | 478 | 1 | 1 | 1 | 2 | `corpse:mamuta:221001 value=2 new=1` | natural (all gates PASS) |
 
+Earlier **development runs** in the same evidence dir used intermediate builds (not
+acceptance): `captaindown-01` (exe `5d73f986…`, park 50 + ring, killed 562, no
+delivery), `captaindown-02` (exe `4af4d40a…`, park 50 + no ring, `Unregistered P2 pod
+cargo` abort), `captaindown-03` (exe `42a1bab6…`, park 20 + squad relocation, the
+first full delivery: died 582, goal=1 pokos=2), `captaindown-04` (exe `e5fa3bbc…`)
+and `captaindown-05` (exe `d1e19a17…`) (out-of-bounds squad relocation → extinction
+timeout), `captaindown-06` (exe `faf16beb…`, captain-down control). The deliver-01/02/03
+runs (exe `1acfcfdf…`) are the review-visible slice-2 acceptance set.
+
 The race is between the ring kill (~480–520 ticks) and the captain absorbing 20
-pounds (~640 ticks): ~2/3 of runs deliver, ~1/3 down the captain. Both outcomes are
-now classified honestly (PASS vs BLOCKED(captain_down)).
+pounds (~640 ticks): at slice 2 it was ~2/3 deliver / ~1/3 captain-down. Both
+outcomes are classified honestly (PASS vs BLOCKED(captain_down)).
+
+### Review-fix 2: reliable delivery (squad 14 + re-ring 60)
+
+Lane 06 reported 0/4 deliveries on exe `1acfcfdf…` (captain-down at ticks 481–522
+every run), confirming the race was a coin-flip. Raising the shared squad to 14
+(`experimental/pikmin2_mamuta_rules.py` `SQUAD_COUNT = 14`, still ≥ the 8-carrier
+threshold) and re-ringing every 60 ticks instead of 120 makes the kill reliably
+beat the ~500-tick captain drain:
+
+| run dir | died_tick | carried | goal | pokos | receipt | class |
+| --- | --- | --- | --- | --- | --- | --- |
+| `mamuta-pod-deliver-05` | 424 | 1 | 1 | 2 | `corpse:mamuta:221001 value=2 new=1` | natural (all gates PASS) |
+| `mamuta-pod-deliver-06` | 444 | 1 | 1 | 2 | `corpse:mamuta:221001 value=2 new=1` | natural (all gates PASS) |
+| `mamuta-pod-deliver-07` | 387 | 1 | 1 | 2 | `corpse:mamuta:221001 value=2 new=1` | natural (all gates PASS) |
+
+**Delivery rate 3/3** on exe
+`133cbbad18ccec5a870ab9b6f501598c8c701d860b3ac76ba9aa8444afcfe737` (the committed
+fix2 source). Kill ticks dropped from ~480–520 to 387–444, so the kill now reliably
+wins the race and the captain survives every run. `mamuta-pod-deliver-04`
+(same source, re-ring-60-only, before the squad bump) was the remaining
+`BLOCKED(captain_down)` data point that motivated the squad bump.
 
 ### The delivery blocker and its fix (file:line)
 
@@ -192,6 +234,14 @@ recur in the successful deliveries and is noted for lane 06.)
 `mamuta-pod-captaindown-06` (park 20, ring skipped): 20 `P2_MAMUTA_NAVI damage=5.0`
 hits to captain health 0, then `P2_MAMUTA_POD_CAPTAIN_DOWN tick=527 health=0.0`,
 `PASS P2_MAMUTA_POD_RUNTIME captain_down`, classified `natural_kill=BLOCKED(captain_down)`.
+
+**Provenance note (review-fix 2, item 3):** `faf16beb…` (00:32) is an earlier build
+than the slice-2 acceptance exe `1acfcfdf…` (00:37). On the fix2 committed source the
+`--captaindown` control was re-run (`mamuta-pod-captaindown-07`, exe `133cbbad…`) and
+it no longer downs the captain: with the squad raised to 14 the un-rung squad kills at
+tick 368, so the plain control now delivers — i.e. the fix removed the drain condition
+that the control exercises. The marker + `BLOCKED(captain_down)` classification path
+itself remains runtime-proven by `captaindown-06` and is also unit-tested.
 This is the first runtime firing of the marker + classification.
 
 ### Natural vs injected

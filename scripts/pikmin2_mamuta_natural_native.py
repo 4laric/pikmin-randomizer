@@ -1,6 +1,6 @@
 """Private Mamuta natural-observation native arena runner (lane 19, #221/#168).
 
-Stages the batch-4 arena + rules marker + 10-red starting squad and runs the
+Stages the batch-4 arena + rules marker + 14-red starting squad and runs the
 natural-observation fixture, which drives the captain into the bound Miurin's
 territory without forcing any bury, lethal hit or Pikmin action. Validates the
 emitted markers and classifies the natural flick/bury, natural-kill and
@@ -22,7 +22,7 @@ def validate(text):
     if 'PASS P2_MAMUTA_NATURAL_RUNTIME observe approach reset' not in text:
         raise ValueError('Missing natural runtime completion')
     rows = re.findall(r'P2_MAMUTA_NATURAL_BIRTH id=(\d+) type=(\d+) squad=(\d+) color=(\w+)', text)
-    if len(rows) != 1 or rows[0] != ('221001', '24', '10', 'red'):
+    if len(rows) != 1 or rows[0] != ('221001', '24', '14', 'red'):
         raise ValueError('Missing unique identity/squad birth evidence')
     approach = re.findall(r'P2_MAMUTA_NATURAL_APPROACH_RESULT approached=(\d+) min=([-\d.]+) states=([0-9a-fA-F]+)', text)
     if len(approach) != 1 or approach[0][0] != '1':

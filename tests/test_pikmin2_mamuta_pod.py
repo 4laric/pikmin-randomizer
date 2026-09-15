@@ -13,7 +13,7 @@ def _pod_log(*, assisted=False, died=1, corpse=1, carried=1, goal=1, receipt=Tru
         'P2_MAMUTA_RULES enabled cap=99 navi_damage=5.0 vertical_band=20',
         'P2_MAMUTA_READY generator=221001 native_type=24 xyz=-150.000000,30.000000,1850.000000 P1_proxy_static_anchors_no_P2_planting',
         'P2_POD_READY treasure=dia_a_red value=180 weight=15 capacity=25 pokos=0',
-        'P2_MAMUTA_POD_BIRTH id=221001 type=24 squad=10 color=red',
+        'P2_MAMUTA_POD_BIRTH id=221001 type=24 squad=14 color=red',
         'P2_MAMUTA_POD_APPROACH target=-150.0,1870.0 actor=-150.0,1850.0',
     ]
     if assisted:
