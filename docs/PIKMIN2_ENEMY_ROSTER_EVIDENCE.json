@@ -1169,12 +1169,12 @@
         "PIKMIN2_LONG_LEGS_POLICY.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
+        "identity_spawn": "PASS",
         "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
         "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "cleanup_reentry": "PASS"
       },
       "notes": [
         "Houdai (Man-at-Legs): pc_p2_long_legs bind-pose/draw path (batch-4 display); legs/stomp/weak-points + natural death/re-entry remain (#173/#312)."
@@ -1210,12 +1210,12 @@
         "PIKMIN2_LONG_LEGS_POLICY.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
+        "identity_spawn": "PASS",
         "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
         "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "cleanup_reentry": "PASS"
       },
       "notes": [
         "BigFoot (Raging Long Legs): pc_p2_long_legs bind-pose/draw path (batch-4 display); legs/stomp/weak-points + natural death/re-entry remain (#173/#312)."
