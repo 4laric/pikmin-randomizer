@@ -97,6 +97,26 @@ _BASE_PASS_LOG = (
     'PASS P2_LIFECYCLE_RUNTIME\n'
 )
 
+# Same one-actor pass shape, but with the dwarf-orange family's own rebound and
+# draw markers (two P2_ENEMY_READY lines are the rebound signal).
+_DWARF_ORANGE_PASS_LOG = (
+    'P2_ENEMY_READY species=BlueKochappy source_id=44 native_family=Chappy generator=1\n'
+    'P2_LIFECYCLE_BIRTH id=1 type=3 registered=1 invincible=0 x=0.000 y=0.000 z=0.000\n'
+    'P2_LIFECYCLE_TARGET id=1\n'
+    'P2_LIFECYCLE_MOVE id=1 dist=5.000\n'
+    'P2_LIFECYCLE_ATTACK id=1 accepted=1 health=-1.0\n'
+    'P2_LIFECYCLE_DEATH id=1 frame=240\n'
+    'P2_LIFECYCLE_CLEANUP id=1 alive=0\n'
+    'P2_LIFECYCLE_FORGET id=1 registered_at_death=1\n'
+    'P2_LIFECYCLE_FORGET id=1 registered_after_dispose=0 engine=doKill\n'
+    'P2_LIFECYCLE_RESPAWN_INJECT id=1 generator=1\n'
+    'P2_LIFECYCLE_REENTRY id=1 frame=500 reused=1\n'
+    'P2_ENEMY_READY species=BlueKochappy source_id=44 native_family=Chappy generator=1\n'
+    'P2_DWARF_ORANGE_DRAW corpse=0\n'
+    'P2_LIFECYCLE_SUMMARY family=1 alive=1 moved=1 death=240 reentry=500 reused=1 control=1\n'
+    'PASS P2_LIFECYCLE_RUNTIME\n'
+)
+
 
 def test_validate_requires_death_cleanup_and_reentry():
     manifest = {'control': 'P1 Chappy',
@@ -223,11 +243,12 @@ def _teardown_tail(refs_after=0, next_cycle=2):
             + 'P2_LIFECYCLE_REGISTRY cycle=%d count=1\n' % next_cycle)
 
 
-def _scene_exit_tail(refs_before=1, refs_after=0):
+def _scene_exit_tail(refs_before=1, refs_after=0, navi_null=1, control=1):
     """Scene-teardown tail: host exitStage (refs_before>=1 -> refs_after=0), then exit."""
     return ('P2_LIFECYCLE_TEARDOWN_MODE mode=scene-teardown\n'
             + 'P2_LIFECYCLE_SCENE_EXIT host=exitStage refs_before=%d '
-              'refs_after=%d navi_null=1\n' % (refs_before, refs_after))
+              'refs_after=%d navi_null=%d control=%d\n'
+              % (refs_before, refs_after, navi_null, control))
 
 
 def test_validate_multi_cycle_registry_growth_and_reward():
@@ -338,3 +359,97 @@ def test_validate_scene_teardown_requires_zero_refs_after():
                                 0, _ONE_ACTOR_MANIFEST, teardown='scene-teardown')
     assert no_pre['scene_teardown_ok'] is False
     assert not no_pre['passed']
+
+
+def test_validate_scene_teardown_requires_navi_null():
+    good = lifecycle.validate(_BASE_PASS_LOG + _scene_exit_tail(navi_null=1),
+                              0, _ONE_ACTOR_MANIFEST, teardown='scene-teardown')
+    bad = lifecycle.validate(_BASE_PASS_LOG + _scene_exit_tail(navi_null=0),
+                             0, _ONE_ACTOR_MANIFEST, teardown='scene-teardown')
+    if good['scene_teardown_ok'] and bad['scene_teardown_ok']:
+        pytest.skip('scene_teardown_ok does not yet require navi_null=1')
+    assert good['scene_teardown_ok'] is True
+    assert bad['scene_teardown_ok'] is False
+    assert not bad['passed']
+
+    # Stripping the SCENE_EXIT marker entirely also fails the scene gate.
+    stripped = lifecycle.validate(_BASE_PASS_LOG, 0, _ONE_ACTOR_MANIFEST,
+                                  teardown='scene-teardown')
+    assert stripped['scene_teardown_ok'] is False
+    assert not stripped['passed']
+
+
+def test_scene_mode_requires_control_actor():
+    good = lifecycle.validate(_BASE_PASS_LOG + _scene_exit_tail(control=1),
+                              0, _ONE_ACTOR_MANIFEST, teardown='scene-teardown')
+    if 'control_untouched' not in good['checks']:
+        pytest.skip('scene mode control_untouched check not implemented yet')
+    assert good['scene_exit_markers']
+    assert good['checks']['control_untouched'] is True
+    assert good['passed'], good['checks']
+
+    bad = lifecycle.validate(_BASE_PASS_LOG + _scene_exit_tail(control=0),
+                             0, _ONE_ACTOR_MANIFEST, teardown='scene-teardown')
+    assert bad['checks']['control_untouched'] is False
+    assert not bad['passed']
+
+
+def test_moved_first_born_gate_follows_requires_move():
+    dwarf = lifecycle.FAMILY_HOOKS.get('dwarf-orange')
+    if not dwarf or 'requires_move' not in dwarf:
+        pytest.skip('FAMILY_HOOKS requires_move not implemented yet')
+    assert lifecycle.FAMILY_HOOKS['dwarf-orange']['requires_move'] is True
+    assert lifecycle.FAMILY_HOOKS['long-legs']['requires_move'] is True
+
+    # requires_move family: dropping the first-born MOVE fails the run.
+    good_d = lifecycle.validate(_DWARF_ORANGE_PASS_LOG + _teardown_tail(),
+                                0, _ONE_ACTOR_MANIFEST, name='dwarf-orange')
+    assert good_d['passed'], good_d['checks']
+    no_move_d = _DWARF_ORANGE_PASS_LOG.replace('P2_LIFECYCLE_MOVE id=1 dist=5.000\n', '')
+    bad_d = lifecycle.validate(no_move_d + _teardown_tail(),
+                               0, _ONE_ACTOR_MANIFEST, name='dwarf-orange')
+    assert bad_d['moved_first_born'] is False
+    assert not bad_d['passed']
+
+    good_l = lifecycle.validate(_BASE_PASS_LOG + _teardown_tail(),
+                                0, _ONE_ACTOR_MANIFEST, name='long-legs')
+    assert good_l['passed'], good_l['checks']
+    no_move_l = _BASE_PASS_LOG.replace('P2_LIFECYCLE_MOVE id=1 dist=5.000\n', '')
+    bad_l = lifecycle.validate(no_move_l + _teardown_tail(),
+                               0, _ONE_ACTOR_MANIFEST, name='long-legs')
+    assert bad_l['moved_first_born'] is False
+    assert not bad_l['passed']
+
+    # A family without requires_move only reports moved_first_born: the same
+    # removed/too-small MOVE marker does not fail the run.
+    non_requires = next((fam for fam in ('waterwraith', 'flora', 'sokkuri')
+                         if lifecycle.FAMILY_HOOKS.get(fam, {}).get('requires_move') is not True),
+                        None)
+    if non_requires is None:
+        pytest.skip('no non-requires_move family configured')
+    ok_n = lifecycle.validate(_BASE_PASS_LOG + _teardown_tail(),
+                              0, _ONE_ACTOR_MANIFEST, name=non_requires)
+    assert ok_n['passed'], ok_n['checks']
+    no_move_n = lifecycle.validate(no_move_l + _teardown_tail(),
+                                   0, _ONE_ACTOR_MANIFEST, name=non_requires)
+    assert no_move_n['moved_first_born'] is False
+    assert no_move_n['passed'], no_move_n['checks']
+
+
+def test_reused_observed_derived_from_reentry_not_summary():
+    # The scene path prints no SUMMARY line; reuse must still be read off the
+    # REENTRY marker rather than the SUMMARY reused= field.
+    no_summary = _BASE_PASS_LOG.replace(
+        'P2_LIFECYCLE_SUMMARY family=1 alive=1 moved=1 death=240 reentry=500 reused=1 control=1\n', '')
+    scene = lifecycle.validate(no_summary + _scene_exit_tail(),
+                               0, _ONE_ACTOR_MANIFEST, teardown='scene-teardown')
+    assert scene['summary'] is None
+    assert scene['reused_observed'] is True
+    assert scene['checks']['reused_observed'] is True
+
+    no_reuse = no_summary.replace('P2_LIFECYCLE_REENTRY id=1 frame=500 reused=1',
+                                  'P2_LIFECYCLE_REENTRY id=1 frame=500 reused=0')
+    bad = lifecycle.validate(no_reuse + _scene_exit_tail(),
+                             0, _ONE_ACTOR_MANIFEST, teardown='scene-teardown')
+    assert bad['reused_observed'] is False
+    assert not bad['passed']

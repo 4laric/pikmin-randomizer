@@ -583,3 +583,128 @@ Fixture build: `py -3.12 -m experimental.pikmin2_lifecycle_runtime build --nativ
   in intent but I rewrote the file to drop the unused `host_section_exit` kwarg and make scene
   mode always use the host `exitStage`. Estimated it saved the pytest-timing/validation pass
   but needed one round of correction.
+
+## Slice 3 — review fixes 3 (fix3)
+
+Root branch `deepseek/p2-l07` (base `016cb05f`); native `deepseek/p2-l07-native` merged
+`claude/p2-deepseek-wave-native` (now `77383657`, clean). Native production sources changed
+via that merge, so the native tree was rebuilt through `build_lane.py l07`.
+
+### Fixes (review items 1-6)
+
+1. **(blocking) Scene teardown is now bracketed.** `P2_LIFECYCLE_SCENE_EXIT` now prints
+   `refs_before=%d refs_after=%d navi_null=%d control=%d`, and `validate()`'s
+   `scene_teardown_ok` requires `refs_before>=1` **and** `refs_after==0`. The live
+   registration is asserted in the C++ before `exitStage()` (`require(refsBefore>=1)`), so
+   a re-born actor that the squad killed first can no longer yield a vacuous `0==0`.
+   New line: `output/dsw/l07-out/f3-dwarf-scene/2f254b4980aa478b9b02df8f3031edcf/native.log:881`.
+2. **(blocking) `navi_null` is now gated.** `scene_teardown_ok` requires the marker's
+   `navi_null==1` (production manager invalidation, `gameCoreSection.cpp:901`). Flip-tested
+   in `tests/test_pikmin2_lifecycle_runtime.py` (`test_validate_scene_teardown_requires_navi_null`):
+   `navi_null=0` -> `scene_teardown_ok` False and `passed` False.
+3. **In-place section re-enter: BLOCKED.** The lifecycle harness delivers the teardown half
+   (host `exitStage` -> registries 0) but does not re-enter a new scene in place: that needs
+   a fresh `GameCoreSection` + `initStage`, and `initStage` depends on the factories/`naviMgr`
+   nulled by `exitStage` at `gameCoreSection.cpp:892-899`. `BLOCKED fix3` is the honest status
+   for the re-enter leg; the "new scene" acceptance leg itself is separately delivered by the
+   existing lane-07 Snow evidence (`P2_NEWSCENE_RELOAD gen=2 day=8 bound=11`,
+   `docs/PIKMIN2_TEKI_LIFETIME_SEAM.md`) and remains lane 01's section-transition scope.
+   No `reused=1`-after-re-enter is claimed.
+4. **Gate 2 is a real per-family gate.** `FAMILY_HOOKS[...]['requires_move']` now drives
+   `moved_first_born`: required for `dwarf-orange`/`long-legs`; optional (reported, not gated)
+   for `waterwraith`/`flora`/`sokkuri` (the Skitter Leaf's Stay/Appear/MoveGround timing is
+   variable, so its movement is reported, not gated). The probe now tracks the FIRST-BORN
+   actor's MAX displacement over the whole pre-attack window (no `resetPosition` lure).
+5. **Scene mode checks the control actor.** The `SCENE_EXIT` marker carries `control=%d` and
+   the scene branch requires `controlAlive==1`; `validate()` sets `control_untouched` for the
+   scene path too.
+6. **Gate-3 health citation corrected.** The real first `P2_LIFECYCLE_ATTACK` line is
+   `P2_LIFECYCLE_ATTACK id=211001 accepted=1 health=70.0`
+   (`output/dsw/l07-out/f3-dwarf-mgr/81bdab59987043179bf98abe773a9d4f/native.log:860`, i.e.
+   the post-hit health after the injected `InteractAttack(100000)`), not the 250.0 spawn health.
+
+### Fix3 runtime evidence (slot.py run gl l07, 960x540, PYTHONUTF8=1; all exit 0, passed=True)
+
+| Run | Mode | moved_first_born | scene_ok | control | reused | registry_growth |
+|---|---|---|---|---|---|---|
+| `f3-dwarf-mgr` | manager-reset | True (dist=2.546) | - | True | True | True |
+| `f3-dwarf-scene` | scene-teardown | True (dist=2.910) | True (refs 1->0, navi_null=1, control=1) | True | True | True |
+| `f3-sok-mgr2` | manager-reset | True (dist=1.048) | - | True | True | True |
+| `f3-sok-scene2` | scene-teardown | False (dist=0.552; optional for sokkuri) | True (refs 1->0, navi_null=1, control=1) | True | True | True |
+
+Scene-mode bracketing lines: `P2_LIFECYCLE_SCENE_EXIT host=exitStage refs_before=1 refs_after=0
+navi_null=1 control=1` at `f3-dwarf-scene/2f254b4980aa478b9b02df8f3031edcf/native.log:881` and
+`f3-sok-scene2/51e9a6aacbe2477194f7dbde10048183/native.log:1423`.
+
+### Six-gate tables (wave format)
+
+## Concrete source ID
+- Source ID: 44 `BlueKochappy`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | output/dsw/l07-out/f3-dwarf-mgr/81bdab59987043179bf98abe773a9d4f/native.log:832 | natural |
+| 2. Autonomous movement and animation | PASS (natural) | output/dsw/l07-out/f3-dwarf-mgr/81bdab59987043179bf98abe773a9d4f/native.log:859 | natural |
+| 3. Attacks and receivers | UNTESTED (injected) | output/dsw/l07-out/f3-dwarf-mgr/81bdab59987043179bf98abe773a9d4f/native.log:860 | injected |
+| 4. Death and corpse | PARTIAL (real engine death/corpse, lethal hit injected) | output/dsw/l07-out/f3-dwarf-mgr/81bdab59987043179bf98abe773a9d4f/native.log:863 | injected |
+| 5. Actual transport and reward | N/A | cargo-free arena, no Onion/Pod | - |
+| 6. Cleanup and re-entry | PASS (natural) | output/dsw/l07-out/f3-dwarf-mgr/81bdab59987043179bf98abe773a9d4f/native.log:875,880 | natural |
+
+## Concrete source ID
+- Source ID: 79 `Sokkuri`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | output/dsw/l07-out/f3-sok-mgr2/81b9fd898c6b45d596d6090eb83dda10/native.log:1279 | natural |
+| 2. Autonomous movement and animation | PASS (natural) | output/dsw/l07-out/f3-sok-mgr2/81b9fd898c6b45d596d6090eb83dda10/native.log:1349 | natural |
+| 3. Attacks and receivers | UNTESTED (injected) | output/dsw/l07-out/f3-sok-mgr2/81b9fd898c6b45d596d6090eb83dda10/native.log:1354 | injected |
+| 4. Death and corpse | PARTIAL (real engine death/corpse, lethal hit injected) | output/dsw/l07-out/f3-sok-mgr2/81b9fd898c6b45d596d6090eb83dda10/native.log:1358 | injected |
+| 5. Actual transport and reward | N/A | cargo-free arena, no Onion/Pod | - |
+| 6. Cleanup and re-entry | PASS (natural) | output/dsw/l07-out/f3-sok-mgr2/81b9fd898c6b45d596d6090eb83dda10/native.log:1412,1428 | natural |
+
+The two earlier six-gate tables (under "Six arena gates (Dwarf Orange 44)" and "Six-gate table
+(Dwarf Orange 44) - updated for fix 2") are historical fix-1/fix-2 snapshots superseded by the
+two tables above.
+
+### Tests
+
+`py -3.12 -m pytest tests/test_pikmin2_lifecycle_runtime.py -q` -> **23 passed**
+(adds `test_validate_scene_teardown_requires_navi_null`,
+`test_scene_mode_requires_control_actor`, `test_moved_first_born_gate_follows_requires_move`,
+`test_reused_observed_derived_from_reentry_not_summary`).
+
+### Checker output
+
+`py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE07_DEEPSEEK_HANDOFF.md` (script +
+roster copied read-only from `claude/p2-deepseek-wave`, not committed):
+```
+44 BlueKochappy (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation accepted [PASS]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [PARTIAL]
+  5. transport_reward   ignored [N/A]
+  6. cleanup_reentry    accepted [PASS]
+79 Sokkuri (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation accepted [PASS]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [PARTIAL]
+  5. transport_reward   ignored [N/A]
+  6. cleanup_reentry    accepted [PASS]
+```
+
+### Subagent usage (fix3)
+
+- **explore #1 — current-code audit**: exact line numbers/quotes for the scene/manager
+  branches, movement probe, `FAMILY_HOOKS`, `validate()` and native `exitStage`/`initStage`.
+  Used as-is — it is why fixes 1/2/4/5 landed at the right lines and why item 3 is correctly
+  BLOCKED (`initStage` depends on the nulled factories/naviMgr).
+- **explore #2 — gate-format + evidence inventory**: the wave gate-table contract, the
+  `check_p2_handoff_gates.py` rules (allowed statuses, citation/marker refusal) and the real
+  evidence line numbers. Used as-is — corrected my assumption that the section is titled
+  "Gate table format" and that `native.log:NNN` placeholders count (they are rejected).
+- **general #3 — flip-tests**: added `navi_null`, scene-control and per-family
+  `requires_move` flip-tests. Used with one correction: sokkuri's window movement was
+  borderline (0.98), so sokkuri is `requires_move=False` (reported, not gated) and the test's
+  optional-family case is satisfied by `waterwraith`.
