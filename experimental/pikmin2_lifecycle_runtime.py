@@ -12,14 +12,18 @@ respawn the same generator ID (late birth) and re-runs the family registration.
 
 ``--cycles N`` runs the death->forget->respawn->re-entry leg N times on the same
 family, asserting no registry growth (each re-entry leaves exactly one live
-registration), no reward growth (cargo-free arena) and an untouched control
-actor. ``--teardown {manager-reset,scene-teardown}`` selects how the family is
-torn down after the cycles: the manager-reset path re-enters through the
-family's own ``_setup`` (which internally resets just that family), while the
-scene-teardown path calls the production ``pc_p2_reset_all_teki()`` (the
-``GameCoreSection::exitStage`` family-reset hook) which clears every family in
-one call. The evidence JSON labels which mode produced which surviving
-references.
+registration, read through the family ``_count``), no reward growth (cargo-free
+arena) and an untouched control actor. ``--teardown {manager-reset,scene-teardown}``
+selects which reset the family runs at the teardown point after the cycles: the
+manager-reset path calls the family's own ``_reset``, while the scene-teardown
+path calls the production ``pc_p2_reset_all_teki()`` (the
+``GameCoreSection::exitStage`` **family-reset hook**, which clears every family
+in one call), the same hook the real section-exit boundary reuses. Both modes
+then re-enter through the family's own ``_setup`` so the registry returns to
+exactly one registration, and the evidence JSON labels which mode produced which
+surviving references. The fixture calls this hook directly because the in-place
+``exitStage()`` section transition (which nulls the navi/gen factories) is out
+of reach; the full menu/section re-enter remains a lane-01 concern.
 
 This is deliberately a **proxy** lifecycle harness: the lethal damage value is
 injected (``InteractAttack(100000)``, a real receiver hit) and the corpse
@@ -51,12 +55,14 @@ TEARDOWN_MODES = ('manager-reset', 'scene-teardown')
 
 # Per-family native registration hooks. The three original families all bind
 # through the batch2/long-legs proxy modules; dwarf-orange and sokkuri bind
-# through their own modules (which have no ``_count``/``_rebind``, only
-# ``_registered``/``_forget``/``_reset``/``_setup``).
+# through their own modules. ``count`` is the read-only registry size and
+# ``reset`` clears that family alone; both are used at the teardown point so
+# the two teardown modes are directly comparable.
 _BATCH2_LONG_LEGS = dict(
     include='#include "pc_p2_batch2.h"\n#include "pc_p2_long_legs.h"\n',
     registered='(pc_p2_batch2_registered(deadPtr)||pc_p2_long_legs_registered(deadPtr))',
-    registered_fresh='(pc_p2_batch2_registered(fresh)||pc_p2_long_legs_registered(fresh))',
+    count='(pc_p2_batch2_count()+pc_p2_long_legs_count())',
+    reset='pc_p2_batch2_reset();pc_p2_long_legs_reset();',
     rebind='pc_p2_batch2_rebind();pc_p2_long_legs_setup();',
     bind_re=r'P2_(?:LONG_LEGS|BATCH2)_BIND',
     draw_re=r'P2_(?:LONG_LEGS|BATCH2)_DRAW',
@@ -69,7 +75,8 @@ FAMILY_HOOKS = {
     'dwarf-orange': dict(
         include='#include "pc_p2_dwarf_orange.h"\n',
         registered='pc_p2_dwarf_orange_registered(deadPtr)',
-        registered_fresh='pc_p2_dwarf_orange_registered(fresh)',
+        count='pc_p2_dwarf_orange_count()',
+        reset='pc_p2_dwarf_orange_reset();',
         rebind='pc_p2_dwarf_orange_setup();',
         # dwarf_orange has no *_BIND marker; the family setup re-emits the enemy
         # ready line, so two of them (initial + re-entry) is the rebound signal.
@@ -79,7 +86,8 @@ FAMILY_HOOKS = {
     'sokkuri': dict(
         include='#include "pc_p2_sokkuri.h"\n',
         registered='pc_p2_sokkuri_registered(deadPtr)',
-        registered_fresh='pc_p2_sokkuri_registered(fresh)',
+        count='pc_p2_sokkuri_count()',
+        reset='pc_p2_sokkuri_reset();',
         rebind='pc_p2_sokkuri_setup();',
         bind_re=r'P2_SOKKURI_BIND',
         draw_re=r'P2_SOKKURI_STATE',
@@ -87,14 +95,15 @@ FAMILY_HOOKS = {
 }
 
 # Phase frame numbers are deliberately spaced so one keyboard-free run can move
-# through spawn -> death -> corpse-dispose -> respawn -> re-entry -> (next cycle
-# | teardown) -> summary without input. ``__REGISTERED_EXPR__`` (on deadPtr),
-# ``__REGISTERED_FRESH_EXPR__`` (on the re-born actor) and ``__REBIND_CALL__``
-# are substituted per family; no family ``*_forget`` is ever called by the
-# fixture. ``totalCycles``/``teardownScene`` are read from lifecycle-config.txt.
+# through spawn -> movement -> death -> corpse-dispose -> respawn -> re-entry ->
+# (next cycle | teardown) -> summary without input. ``__REGISTERED_EXPR__`` (on
+# deadPtr), ``__COUNT_EXPR__`` (family registry size), ``__RESET_CALL__``
+# (family-only reset) and ``__REBIND_CALL__`` are substituted per family; no
+# family ``*_forget`` is ever called by the fixture. ``totalCycles``/
+# ``teardownScene`` are read from lifecycle-config.txt.
 APP = r'''class RoomApp : public PlugPikiApp {
- int frames=0,observed=0,familyCount=0,deathFrame=-1,reentryFrame=-1,respawnInjected=0,reuseSlot=0,disposed=0,cycleMarked=0;
- int totalCycles=1,cycleDone=0,teardownScene=0,finishing=0,readyFrame=0;
+ int frames=0,observed=0,familyCount=0,deathFrame=-1,reentryFrame=-1,respawnInjected=0,reuseSlot=0,disposed=0,cycleMarked=0,moveObserved=0;
+ int totalCycles=1,cycleDone=0,teardownScene=0,finishing=0,readyFrame=0,moveFrame=-1;
  unsigned ids[8]={},controlId=0,target=0;
  Vector3f first[8];
  Teki* deadPtr=nullptr;Generator* targetGen=nullptr;Pellet* corpsePtr=nullptr;
@@ -140,17 +149,13 @@ public:int idle() override {
    Teki* c=find(controlId);const int controlAlive=int(c&&c->isAlive());
    std::printf("P2_LIFECYCLE_SUMMARY family=%d alive=%d moved=%d death=%d reentry=%d reused=%d control=%d\n",
                familyCount,alive,moved,deathFrame,reentryFrame,reuseSlot,controlAlive);
+   require(moveObserved==1,"lifecycle no autonomous movement");
    require(controlAlive==1,"control actor did not survive repeatable teardown");
    std::printf("PASS P2_LIFECYCLE_RUNTIME\n");std::fflush(stdout);std::_Exit(0);
   }
   std::fflush(stdout);return result;
  }
  if(observed>1&&observed<=300&&observed%60==0){Teki* t=find(ids[(observed/60)%familyCount]);if(t)frameOn(t);}
- if(observed==150){
-  for(int i=0;i<familyCount;++i){Teki* a=find(ids[i]);if(!a)continue;Vector3f now=a->mSRT.t;
-   std::printf("P2_LIFECYCLE_MOVE id=%u dist=%.3f\n",ids[i],std::hypot(now.x-first[i].x,now.z-first[i].z));}
-  std::fflush(stdout);
- }
  if(observed>=2&&cycleMarked==0){std::printf("P2_LIFECYCLE_CYCLE cycle=%d\n",cycleDone+1);cycleMarked=1;std::fflush(stdout);}
  if(observed>=2&&deathFrame<0){
   Teki* a=find(target);
@@ -183,25 +188,48 @@ public:int idle() override {
    __REBIND_CALL__
    reentryFrame=observed;reuseSlot=int(fresh==deadPtr);
    std::printf("P2_LIFECYCLE_REENTRY id=%u frame=%d reused=%d\n",target,observed,reuseSlot);std::fflush(stdout);
-   const int cnt=int(__REGISTERED_FRESH_EXPR__);
+   const int cnt=int(__COUNT_EXPR__);
    std::printf("P2_LIFECYCLE_REGISTRY cycle=%d count=%d\n",cycleDone+1,cnt);std::fflush(stdout);
+   require(cnt==1,"family registry did not remain at one registration across cycles");
    ++cycleDone;
-   if(cycleDone>=totalCycles){
-    std::printf("P2_LIFECYCLE_REWARD pokos=%d\n",pc_p2_preview_pokos());std::fflush(stdout);
-    if(teardownScene){
-     std::printf("P2_LIFECYCLE_TEARDOWN_MODE mode=scene-teardown\n");
-     const int refsBefore=int(__REGISTERED_FRESH_EXPR__);
-     pc_p2_reset_all_teki();
-     const int refsAfter=int(__REGISTERED_FRESH_EXPR__);
-     std::printf("P2_LIFECYCLE_TEARDOWN refs_before=%d refs_after=%d\n",refsBefore,refsAfter);
-     require(refsAfter==0,"scene teardown did not clear family registry");
-    }else{
-     std::printf("P2_LIFECYCLE_TEARDOWN_MODE mode=manager-reset\n");
-    }
-    std::fflush(stdout);readyFrame=observed;finishing=1;
-   }else{
-    deathFrame=-1;reentryFrame=-1;respawnInjected=0;disposed=0;corpsePtr=nullptr;deadPtr=nullptr;cycleMarked=0;
-   }
+   // INJECT (labelled): the cargo-free arena leaves the idle Bulborb with no
+   // aggro stimulus, so relocate a few live Pikmin onto its front arc to drive
+   // real P1 pursuit locomotion (same injection category as the lethal
+   // InteractAttack and the corpse-disposal trigger).
+   {Vector3f lure=fresh->getPosition();int lured=0;Iterator lp(pikiMgr);CI_LOOP(lp){Piki* pk=static_cast<Piki*>(*lp);if(!pk||!pk->isAlive())continue;Vector3f at=lure;at.x+=14.0f+3.0f*float(lured%5);at.z+=8.0f*float(lured/5-1);pk->resetPosition(at);if(++lured>=10)break;}}
+   moveFrame=observed+40;
+  }
+ }
+ // Movement is sampled on the re-entered actor a fixed number of frames after
+ // each re-entry (the original spawned actor is idle until engaged, so the
+ // deterministic live-and-moving witness is the freshly rebound one); the first
+ // re-entry carries the observation, later ones only confirm the registry stays
+ // at one. Teardown (or the next lethal cycle) follows the sample immediately.
+ if(moveFrame>=0&&observed>=moveFrame&&!finishing){
+  moveFrame=-1;
+  for(int i=0;i<familyCount;++i){Teki* a=find(ids[i]);if(!a)continue;Vector3f now=a->mSRT.t;
+   const float d=std::hypot(now.x-first[i].x,now.z-first[i].z);
+   if(d>=1.f)moveObserved=1;
+   std::printf("P2_LIFECYCLE_MOVE id=%u dist=%.3f\n",ids[i],d);}
+  std::fflush(stdout);
+  if(cycleDone>=totalCycles){
+   std::printf("P2_LIFECYCLE_REWARD pokos=%d\n",pc_p2_preview_pokos());std::fflush(stdout);
+   // Symmetric teardown point: both modes reset the family registry (manager
+   // via the family _reset, scene via the exitStage family-reset hook), then
+   // re-enter through _setup so the registry is back to exactly one.
+   const int refsBefore=int(__COUNT_EXPR__);
+   std::printf("P2_LIFECYCLE_TEARDOWN_MODE mode=%s\n",teardownScene?"scene-teardown":"manager-reset");std::fflush(stdout);
+   if(teardownScene){pc_p2_reset_all_teki();}else{__RESET_CALL__}
+   const int refsAfter=int(__COUNT_EXPR__);
+   std::printf("P2_LIFECYCLE_TEARDOWN refs_before=%d refs_after=%d\n",refsBefore,refsAfter);
+   require(refsAfter==0,"teardown did not clear family registry");
+   __REBIND_CALL__
+   const int post=int(__COUNT_EXPR__);
+   std::printf("P2_LIFECYCLE_REGISTRY cycle=%d count=%d\n",cycleDone+1,post);std::fflush(stdout);
+   require(post==1,"teardown re-entry did not re-register exactly one family actor");
+   std::fflush(stdout);readyFrame=observed;finishing=1;
+  }else{
+   deathFrame=-1;reentryFrame=-1;respawnInjected=0;disposed=0;corpsePtr=nullptr;deadPtr=nullptr;cycleMarked=0;
   }
  }
  if(deathFrame>=0&&reentryFrame<0&&observed>=deathFrame+900){
@@ -224,7 +252,8 @@ def instrument(source, family='long-legs'):
             + hooks['include'] +
             '#include "Pcam/Camera.h"\n#include "Pcam/CameraManager.h"\n')
     probe = (APP.replace('__REGISTERED_EXPR__', hooks['registered'])
-                .replace('__REGISTERED_FRESH_EXPR__', hooks['registered_fresh'])
+                .replace('__COUNT_EXPR__', hooks['count'])
+                .replace('__RESET_CALL__', hooks['reset'])
                 .replace('__REBIND_CALL__', hooks['rebind']))
     text = head + source[:start] + probe + source[end:]
     # The provenance builder replaces pc_main.cpp with this fixture, so the
@@ -377,20 +406,30 @@ def validate(text, code, manifest, name='long-legs', cycles=1, teardown='manager
     binds = re.findall(hooks['bind_re'], text)
     draws = re.findall(hooks['draw_re'], text)
     cycle = re.findall(r'P2_LIFECYCLE_CYCLE cycle=(\d+)', text)
-    registry = re.findall(r'P2_LIFECYCLE_REGISTRY cycle=(\d+) count=(\d+)', text)
+    registry = [(int(n), int(c)) for n, c in re.findall(
+        r'P2_LIFECYCLE_REGISTRY cycle=(\d+) count=(\d+)', text)]
     reward = re.findall(r'P2_LIFECYCLE_REWARD pokos=(-?\d+)', text)
     tmode = re.findall(r'P2_LIFECYCLE_TEARDOWN_MODE mode=(\S+)', text)
     tdown = re.findall(r'P2_LIFECYCLE_TEARDOWN refs_before=(\d+) refs_after=(\d+)', text)
     life = summary[0] if summary else None
 
+    # Per-cycle registries are marked cycle=1..N; the post-teardown re-entry is
+    # cycle=N+1 (both teardown modes re-enter through _setup so the registry
+    # returns to exactly one living registration).
+    per_cycle = [c for n, c in registry if 1 <= n <= cycles]
+    post_teardown = [c for n, c in registry if n == cycles + 1]
+    moves_ok = bool(moves) and any(float(d) >= 1.0 for _, d in moves)
+
     registry_growth_ok = True
     reward_ok = True
     if cycles >= 2:
-        registry_growth_ok = len(registry) == cycles and all(c == '1' for _, c in registry)
+        registry_growth_ok = len(per_cycle) == cycles and all(c == 1 for c in per_cycle)
         reward_ok = bool(reward) and int(reward[0]) <= 0
+    teardown_cleared = bool(tdown) and tdown[0][1] == '0'
+    teardown_reentry = len(post_teardown) == 1 and post_teardown[0] == 1
     scene_teardown_ok = True
     if teardown == 'scene-teardown':
-        scene_teardown_ok = bool(tdown) and tdown[0][1] == '0'
+        scene_teardown_ok = teardown_cleared
 
     checks = dict(
         completion=code == 0 and 'PASS P2_LIFECYCLE_RUNTIME' in text,
@@ -406,9 +445,12 @@ def validate(text, code, manifest, name='long-legs', cycles=1, teardown='manager
         respawned=bool(reentry),
         rebound=len(binds) >= 2,
         drew=bool(draws),
+        moved=moves_ok,
         reentry_alive=bool(life) and int(life[3]) >= 0 and int(life[4]) >= 0,
         control_untouched=bool(life) and int(life[6]) == 1,
         teardown_mode=bool(tmode) and tmode[0] == teardown,
+        teardown_cleared=teardown_cleared,
+        teardown_reentry=teardown_reentry,
         registry_growth=registry_growth_ok,
         reward=reward_ok,
         scene_teardown=scene_teardown_ok,

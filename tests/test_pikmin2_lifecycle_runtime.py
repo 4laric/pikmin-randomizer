@@ -59,6 +59,8 @@ def test_validate_requires_death_cleanup_and_reentry():
         'P2_LONG_LEGS_DRAW corpse=0 species=Houdai pose=bind\n'
         'P2_LIFECYCLE_MOVE id=1 dist=5.000\n'
         'P2_LIFECYCLE_TEARDOWN_MODE mode=manager-reset\n'
+        'P2_LIFECYCLE_TEARDOWN refs_before=1 refs_after=0\n'
+        'P2_LIFECYCLE_REGISTRY cycle=2 count=1\n'
         'P2_LIFECYCLE_SUMMARY family=1 alive=1 moved=1 death=240 reentry=500 reused=1 control=1\n'
         'PASS P2_LIFECYCLE_RUNTIME\n')
     evidence = lifecycle.validate(text, 0, manifest)
@@ -99,6 +101,8 @@ def test_dwarf_orange_hooks_route_to_its_module():
     assert 'pc_p2_dwarf_orange_setup();' in source
     assert 'pc_p2_batch2_forget(' not in source
     assert 'pc_p2_dwarf_orange_forget(' not in source
+    # scene-teardown resets every family in one seam call.
+    assert 'pc_p2_reset_all_teki()' in source
 
 
 def test_sokkuri_hooks_route_to_its_module():
@@ -135,16 +139,13 @@ def test_validate_dwarf_orange_engine_forget_and_ready_rebind():
         'P2_DWARF_ORANGE_DRAW corpse=0\n'
         'P2_LIFECYCLE_MOVE id=211001 dist=5.000\n'
         'P2_LIFECYCLE_TEARDOWN_MODE mode=manager-reset\n'
+        'P2_LIFECYCLE_TEARDOWN refs_before=1 refs_after=0\n'
+        'P2_LIFECYCLE_REGISTRY cycle=2 count=1\n'
         'P2_LIFECYCLE_SUMMARY family=1 alive=1 moved=1 death=240 reentry=500 reused=0 control=1\n'
         'PASS P2_LIFECYCLE_RUNTIME\n')
     evidence = lifecycle.validate(text, 0, manifest, name='dwarf-orange')
     assert evidence['passed'], evidence['checks']
     assert evidence['reused_observed'] is False  # allocator handed a fresh slot; not gated
-
-
-def _require_slice2():
-    if getattr(lifecycle, 'TEARDOWN_MODES', None) is None:
-        pytest.skip('slice 2 lifecycle runtime not implemented yet')
 
 
 _ONE_ACTOR_MANIFEST = {
@@ -173,12 +174,10 @@ _BASE_PASS_LOG = (
 
 
 def test_teardown_modes_constant():
-    _require_slice2()
     assert lifecycle.TEARDOWN_MODES == ('manager-reset', 'scene-teardown')
 
 
 def test_run_cli_accepts_cycles_and_teardown():
-    _require_slice2()
     import subprocess
     import sys
     from pathlib import Path
@@ -194,7 +193,6 @@ def test_run_cli_accepts_cycles_and_teardown():
 
 
 def test_validate_reports_cycles_and_teardown_fields():
-    _require_slice2()
     evidence = lifecycle.validate(_BASE_PASS_LOG, 0, _ONE_ACTOR_MANIFEST)
     assert evidence['cycles'] == 1
     assert evidence['teardown_mode'] == 'manager-reset'
@@ -206,7 +204,7 @@ def test_validate_reports_cycles_and_teardown_fields():
     assert evidence['teardown_mode'] == 'scene-teardown'
 
 
-def _multi_cycle_lines(counts):
+def _cycle_lines(counts):
     out = ''
     for n, count in enumerate(counts, start=1):
         out += 'P2_LIFECYCLE_CYCLE cycle=%d\n' % n
@@ -215,11 +213,16 @@ def _multi_cycle_lines(counts):
     return out
 
 
+def _teardown_tail(mode, refs_after=0, next_cycle=2):
+    return ('P2_LIFECYCLE_TEARDOWN_MODE mode=%s\n' % mode
+            + 'P2_LIFECYCLE_TEARDOWN refs_before=1 refs_after=%d\n' % refs_after
+            + 'P2_LIFECYCLE_REGISTRY cycle=%d count=1\n' % next_cycle)
+
+
 def test_validate_multi_cycle_registry_growth_and_reward():
-    _require_slice2()
     text = (_BASE_PASS_LOG
-            + 'P2_LIFECYCLE_TEARDOWN_MODE mode=manager-reset\n'
-            + _multi_cycle_lines([1, 1]))
+            + _cycle_lines([1, 1])
+            + _teardown_tail('manager-reset', next_cycle=3))
     evidence = lifecycle.validate(text, 0, _ONE_ACTOR_MANIFEST,
                                   cycles=2, teardown='manager-reset')
     assert evidence['passed'], evidence['checks']
@@ -239,8 +242,7 @@ def test_validate_multi_cycle_registry_growth_and_reward():
 
 
 def test_validate_manager_reset_requires_mode_marker():
-    _require_slice2()
-    full = _BASE_PASS_LOG + 'P2_LIFECYCLE_TEARDOWN_MODE mode=manager-reset\n'
+    full = _BASE_PASS_LOG + _teardown_tail('manager-reset')
     evidence = lifecycle.validate(full, 0, _ONE_ACTOR_MANIFEST)
     assert evidence['passed'], evidence['checks']
     assert evidence['teardown_mode'] == 'manager-reset'
@@ -249,17 +251,14 @@ def test_validate_manager_reset_requires_mode_marker():
 
 
 def test_validate_scene_teardown_requires_zero_refs_after():
-    _require_slice2()
     ok_text = (_BASE_PASS_LOG
-               + 'P2_LIFECYCLE_TEARDOWN_MODE mode=scene-teardown\n'
-               + 'P2_LIFECYCLE_TEARDOWN refs_before=3 refs_after=0\n')
+               + _teardown_tail('scene-teardown', refs_after=0))
     ok = lifecycle.validate(ok_text, 0, _ONE_ACTOR_MANIFEST, teardown='scene-teardown')
     assert ok['passed'], ok['checks']
     assert ok['scene_teardown_ok'] is True
 
     leak_text = (_BASE_PASS_LOG
-                 + 'P2_LIFECYCLE_TEARDOWN_MODE mode=scene-teardown\n'
-                 + 'P2_LIFECYCLE_TEARDOWN refs_before=3 refs_after=1\n')
+                 + _teardown_tail('scene-teardown', refs_after=1))
     leak = lifecycle.validate(leak_text, 0, _ONE_ACTOR_MANIFEST, teardown='scene-teardown')
     assert leak['scene_teardown_ok'] is False
     assert not leak['passed']
