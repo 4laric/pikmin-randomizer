@@ -528,9 +528,9 @@ carrier counts, so no gate is a natural PASS (all UNTESTED/PARTIAL).
 | 1. Exact identity and spawn | UNTESTED (P1 proxy) | output/dsw/l18-out/slice3-run/host.log:705 | proxy |
 | 2. Autonomous movement and animation | UNTESTED (P1 proxy) | output/dsw/l18-out/slice3-run/host.log:826 | proxy |
 | 3. Attacks and receivers | UNTESTED (injected) | output/dsw/l18-out/slice3-run/host.log:765 | injected |
-| 4. Death and corpse | UNTESTED (injected) | output/dsw/l18-out/slice3-run/host.log:924 | injected |
+| 4. Death and corpse | UNTESTED (injected: fixture-invoked die(); release real) | output/dsw/l18-out/slice3-run/host.log:924 | injected |
 | 5. Actual transport and reward | PARTIAL | onion:p2:38:0 (contest receipt, exactly-once; output/dsw/l18-out/slice3-run/host.log:766) | injected |
-| 6. Cleanup and re-entry | UNTESTED (injected) | output/dsw/l18-out/slice3-run/host.log:794 | injected |
+| 6. Cleanup and re-entry | UNTESTED (injected: durable ledger refuses re-grant across a fresh contest; onRevisit() not exercised) | output/dsw/l18-out/slice3-run/host.log:794 | injected |
 
 ### Carried win / delivery-path grant (item 2)
 
