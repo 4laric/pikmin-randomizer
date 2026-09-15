@@ -71,7 +71,7 @@ PROFILE_ALLOWED = PROFILE_REQUIRED + (
     'requires_burrow_ground', 'requires_home', 'helper_budget',
     'requires_projectile_corridor', 'requires_corpse_route', 'is_boss',
     'encounter_descriptor', 'accepted_gates', 'allow_protected',
-    'requires_renewable_slot', 'min_first_day', 'notes', 'cohort',
+    'requires_renewable_slot', 'min_first_day', 'notes', 'cohort', 'accepted_slot_uids',
 )
 
 
@@ -160,10 +160,18 @@ def normalize_profile(data):
         'notes': data.get('notes', ''),
         'cohort': data.get('cohort'),
     }
+    if 'accepted_slot_uids' in data:
+        profile['accepted_slot_uids'] = _copy_list(data['accepted_slot_uids'])
     return validate_profile(profile)
 
 
 def validate_profile(profile):
+    if 'accepted_slot_uids' in profile:
+        uids = profile['accepted_slot_uids']
+        if (not isinstance(uids, list)
+                or any(not isinstance(uid, int) or isinstance(uid, bool) for uid in uids)
+                or len(set(uids)) != len(uids)):
+            _fail('profile accepted_slot_uids must be a list of unique integer slot IDs')
     if not isinstance(profile['identity'], str) or not profile['identity']:
         _fail('profile identity must be a non-empty string')
     if not isinstance(profile['terrains'], list) or not profile['terrains']:
@@ -374,6 +382,8 @@ def evaluate(slot, profile, encounters=None):
     reasons = []
     if not profile['accepted_gates']:
         reasons.append('no accepted placement evidence')
+    if 'accepted_slot_uids' in profile and slot['uid'] not in profile['accepted_slot_uids']:
+        reasons.append('slot has no accepted placement evidence for this identity')
     if not all(slot['evidence'].get(key, False) for key in EVIDENCE_KEYS):
         reasons.append('slot lacks accepted native placement evidence')
     if profile['is_boss'] and not profile['encounter_descriptor']:
