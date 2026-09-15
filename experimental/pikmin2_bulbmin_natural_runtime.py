@@ -195,7 +195,7 @@ def validate(text1, text2, transfer_text):
                 transfer=transfer_text.splitlines()[:3],
                 limitations=['Engineered arena: the mother is the bank-free Chappy-family host, '
                              'not a LeafChappy actor (its birth is out of scope). The whistle is the '
-                             'real Navi::callPikis hook code; the fixture only positions the captain.'])
+                             'the whistle hook Navi::callPikis calls, invoked directly by the fixture (Navi::callPikis not entered).'])
 
 
 if __name__ == '__main__':

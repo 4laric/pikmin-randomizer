@@ -382,11 +382,11 @@ Dirty state: none (both clean).
 | 3. Attacks / receivers | source-backed N/A | hazard immunity unchanged (lane 10/14) |
 | 4. Death + corpse | source-backed N/A | Bulbmin death is ordinary Piki death |
 | 5. Transport + reward | source-backed N/A | Bulbmin are not carried |
-| 6. Cleanup + re-entry | **PASS (live)** | real whistle recruited 1; descend dropped 1 wild; recruited persisted; exit move ran |
+| 6. Cleanup + re-entry | **PASS (live)** | fixture-invoked whistle hook (pc_p2_bulbmin_call_pikis, the code Navi::callPikis calls; Navi::callPikis itself not entered) recruited 1; descend dropped 1 wild; recruited persisted; exit move ran |
 
-Natural vs injected: recruitment is the captain's real whistle path
+Natural vs injected: recruitment is the whistle hook invoked directly by the fixture with a positioned cursor (Navi::callPikis not entered)
 (`pc_p2_bulbmin_call_pikis`), not the birth/whistle API; the mother is a
-bank-free labeled stand-in (no birthing); the fixture only positions the captain.
+bank-free labeled stand-in (no birthing); the fixture positions the captain and invokes the whistle hook directly.
 
 ### Runtime markers
 
