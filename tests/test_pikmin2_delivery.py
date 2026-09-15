@@ -194,17 +194,27 @@ def test_two_paths_pod_vs_onion_vocabulary_do_not_collide():
     assert corpse == [pod_identity]
 
 
-def test_mamuta_pod_reference_receipt_shapes_through_provider():
+def test_mamuta_pod_receipt_vocabulary_shape_disjoint_from_onion():
+    """Vocabulary-shape contract only (no provider/GL/native claim).
+
+    A Mamuta Pod receipt key uses the ``corpse:`` namespace, so it must be
+    disjoint from the Onion P1/P2 identity vocabularies produced by
+    ``p1_proxy_identity``/``p2_source_identity`` and must be counted as a Pod
+    ``corpse:`` row by the real ``validate`` parser. This test only exercises
+    those pure helpers; it does not drive a provider, GL, or reference run.
+    """
     pod_identity = 'corpse:mamuta:221001'
+    assert pod_identity.startswith('corpse:')
     assert not pod_identity.startswith('onion:')
     for source_id, teki_type, stage in ((45, 3, 1), (221001, 24, 1), (0, 0, 2), (7, 7, 3)):
         p1 = p1_proxy_identity(teki_type, stage)
         p2 = p2_source_identity(source_id, stage)
+        assert p1.startswith('onion:p1:')
+        assert p2.startswith('onion:p2:')
         assert pod_identity != p1
         assert pod_identity != p2
         assert not p1.startswith('corpse:')
         assert not p2.startswith('corpse:')
-    result = validate('P2_POD_RECEIPT id=corpse:mamuta:221001 value=2 new=1 pokos=2', 0)
-    assert result['receipts']
-    assert result['receipts'][0][0].startswith('corpse:')
-    assert result['receipts'][0][0] == pod_identity
+    result = validate(f'P2_POD_RECEIPT id={pod_identity} value=2 new=1 pokos=2', 0)
+    corpse = [r[0] for r in result['receipts'] if r[0].startswith('corpse:')]
+    assert corpse == [pod_identity]
