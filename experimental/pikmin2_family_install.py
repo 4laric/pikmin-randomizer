@@ -67,6 +67,15 @@ _OVERRIDES = {}
 IDENTITY_FAMILY = {
     44: 'dwarf_orange', 'bluekochappy': 'dwarf_orange',
     45: 'snow', 'yellowkochappy': 'snow',
+    # lane-03 seed/native bridge cohort (directive 012): Sarai (23) and the
+    # Otakara species (59-62). The Otakara rows reuse the existing dweevil
+    # installer (p2-dweevil-actors.txt) rather than forking it; Sarai gets the
+    # new actor-sidecar installer below. Anything else still fails closed.
+    23: 'sarai', 'sarai': 'sarai',
+    59: 'dweevil', 'fireotakara': 'dweevil',
+    60: 'dweevil', 'waterotakara': 'dweevil',
+    61: 'dweevil', 'gasotakara': 'dweevil',
+    62: 'dweevil', 'elecotakara': 'dweevil',
 }
 
 
@@ -137,12 +146,48 @@ def _adapt_snow(source, run, actors):
     return dict(species='YellowKochappy', source_id=45, generators=generators)
 
 
+SARAI_ACTORS_TXT = 'p2-sarai-actors.txt'
+SARAI_ACTORS_HEADER = 'P2_SARAI_ACTORS_1'
+
+
+def _validate_sarai(source):
+    """Pre-flight check for the Sarai (Swooping Snitchbug, source 23) content.
+
+    Sarai is a private visual host (lane 30) staged from the ``sarai-*`` files;
+    the identity content must carry the mouth bank the host reads. The native
+    selector binds by the seed source, so no sidecar is consumed there; this only
+    proves the identity content is present before the run tree is written.
+    """
+    source = Path(source)
+    if not (source / 'sarai-attack-mouths.txt').is_file():
+        raise StagingError(f'Sarai mouth bank missing for identity content: {source / "sarai-attack-mouths.txt"}')
+
+
+def _adapt_sarai(source, run, actors):
+    """Adapter for the Sarai (source 23) actor-sidecar install (lane-03 bridge).
+
+    Writes ``p2-sarai-actors.txt`` from the seed's assigned generator ids in the
+    batch-2 ``<header> <count>`` + one generator per line shape, so the
+    seed-derived binding is recorded for audit; the native Sarai module selects
+    by the seed source directly (``pc_randomizer_p2_source_for_70 == 23``).
+    """
+    run = Path(run)
+    generators = [int(generator) for generator, _species in actors]
+    if not generators:
+        raise StagingError('Sarai install requires at least one generator')
+    text = f'{SARAI_ACTORS_HEADER} {len(generators)}\n' + '\n'.join(str(g) for g in generators) + '\n'
+    (run / SARAI_ACTORS_TXT).write_text(text, encoding='ascii')
+    return dict(species='Sarai', source_id=23, generators=generators,
+                actors_config_sha256=hashlib.sha256(text.encode('ascii')).hexdigest())
+
+
 # Bespoke-family adapters, exposed alongside the shared-contract installers.
 # Each adapter carries an optional ``validate(source)`` pre-flight hook run by
 # ``install_layout`` before any destination write.
 ADAPTERS = {
     'dwarf_orange': {'install': _adapt_dwarf_orange, 'validate': _validate_dwarf_orange},
     'snow': {'install': _adapt_snow, 'validate': _validate_snow},
+    'sarai': {'install': _adapt_sarai, 'validate': _validate_sarai},
 }
 
 
