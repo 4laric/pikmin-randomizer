@@ -19,6 +19,7 @@ state transition, instead of the prior detection-only `queryHit` log.
 Root branch `deepseek/p2-l32`, base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`:
 
 - `a7fbe79` `lane32: BigTreasure elemental receiver tests + docs (#246)` (prior)
+- `96020f3` lane32: handoff commit-list fix (#246)
 - `feccd5c` `lane32: review fixes — BigTreasure receiver tests/docs (#246)`
   (this revision; dirty state **none**)
 

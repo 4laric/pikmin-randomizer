@@ -56,8 +56,9 @@ def test_receiver_stimulus_decision_compiles_and_passes(tmp_path):
     tools = base / 'tools'
     exe = tmp_path / 'p2_bigtreasure_receiver_test.exe'
     env = dict(os.environ)
-    if compiler.startswith('C:/msys64/mingw64/bin'):
-        env['PATH'] = str(Path(compiler).parent) + os.pathsep + env.get('PATH', '')
+    # Always put the compiler's own directory first so its runtime DLLs resolve
+    # (a bare fallback path without PATH gives rc=1 and empty stderr).
+    env['PATH'] = str(Path(compiler).parent) + os.pathsep + env.get('PATH', '')
     try:
         subprocess.run(
             [compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror',
