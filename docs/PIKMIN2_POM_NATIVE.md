@@ -259,3 +259,41 @@ The fixture validator now requires the state walk, `P2_POM_DEAD` and
 accept/refund/close/sprout/settled gates; a run that never dies, or that counts
 a loss, fails closed. The module remains sidecar-gated, fail-closed, and inert
 without `p2-pom.txt`.
+
+## DeepSeek #448 slice 2: ordinary spawned, drawn Candypop bud (gate 1 spawn FAIL → PASS)
+
+Lane 23 (DeepSeek session) makes the bud an ordinary spawned, drawn actor by
+binding each sidecar generator to the live **batch-2 `flora` family Chappy
+placement vehicle** and drawing the converted `enemy/data/Pom` bank through the
+existing batch-2 display path, with the bud FSM driving the drawn pose.
+
+- **Host bind** (`pc_p2_pom.cpp`): `pc_p2_pom_tick()` lazily resolves each
+  sidecar generator to its live `TEKI_Chappy` host (same `mGenerator->_70`
+  generator-id match the batch-2 `flora` family uses) and emits
+  `P2_POM_BIND generator=<id> species=<name> source_id=<n> host=teki type=3 drawn=1`.
+  A non-Chappy native type at that generator is a fail-closed abort.
+- **FSM-driven pose** (`pc_p2_pom_clip`): a small clip hook (mirror of
+  `pc_p2_hana_clip`) added to the batch-2 forced-clip chain maps the tracked
+  `p2pom::State` to the source clip name — Wait→`wait`, Open→`type1`, Close→`type2`,
+  Shot→`type3`, Swing→`type4`, Dead→`dead` (Pom::AnimID order) — and reports one
+  `P2_POM_DRAW ... pose=<state> draws=<n>` per draw tick. Static/bind-pose phase
+  (0.0); the clip alone distinguishes the state.
+- **Forget on despawn** (`pc_p2_pom_forget`): wired into `pc_p2_forget_teki`;
+  clears the host pointer while keeping the value-owned FSM/receipt state so a
+  recycled Teki address cannot alias the bud.
+- **Slot anchor stays planted**: the conversion mouth slot remains at the
+  authored plant point (sidecar XYZ == arena spawn position); the Chappy host is
+  the drawn vehicle only, so a wandering vehicle cannot move the receptor
+  (source buds are stationary and dropped exactly on their point).
+
+The arena is now `pikmin2_batch2_core.prepare(FAMILIES['flora'], …)`: generator
+`353003` RedPom and `353007` RandPom (the flora-family bud slots) with the
+converted `flora_<Species>_<clip>_*.mod` bank installed from
+`experimental/pikmin2_flora_assets` (extracted from the US GPVE01 rev 0 disc),
+plus one base-`Pom` rejection probe (`353099`, never bound). The runtime log now
+shows the live host bind, batch-2 draw (`P2_BATCH2_DRAW key=flora|…`) and the
+FSM pose walk (`pose=wait -> shot -> dead`) while the slice-1 death/conservation
+chain still fires on the spawned host.
+
+Conversion/material fidelity remain lane-09 scope; the drawn model is a static
+bind pose, not skeletal playback. The Spectralid sentinel (lane 15) is untouched.

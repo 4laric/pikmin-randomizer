@@ -169,3 +169,124 @@ $env:PYTHONUTF8='1'
 $env:PIKMIN_P2_ROOM_WINDOW='960x540'
 py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l23 -- py -3.12 -m experimental.pikmin2_pom_runtime run --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets --output C:/Users/alari/pikmin-randomizer/output/dsw/l23-out/pom-runtime-2 --exe C:/Users/alari/pikmin-randomizer/output/dsw/l23-out/pom-fixture-2/build/fixture.exe
 ```
+
+## Slice 2
+
+Slice 2 makes the Candypop bud an **ordinary spawned, drawn actor** (gate 1 spawn
+FAIL → PASS) by binding each sidecar generator to the live batch-2 `flora`-family
+Chappy placement vehicle and drawing the converted `enemy/data/Pom` bank through
+the existing batch-2 display path, with the bud FSM driving the drawn pose.
+
+### Source IDs and files owned
+
+Candypop Buds (`BluePom` 3 .. `RandPom` 8, base `Pom` 82). New/changed files:
+
+- Native: `pc_port/pc_p2_pom.h`, `pc_port/pc_p2_pom.cpp` (host bind + clip hook +
+  forget); additive one-line hook `pc_port/pc_p2_batch2.cpp` (`pc_p2_pom_clip`
+  in the forced-clip chain) + one `pc_p2_pom_forget` line in
+  `pc_port/pc_p2_teki_lifetime.cpp`.
+- Root: `experimental/pikmin2_pom_runtime.py` (stage now = flora-arena prepare +
+  `p2-pom.txt` sidecars; validator gains `bind`/`drawn`), `tests/test_pikmin2_pom_runtime.py`,
+  `docs/PIKMIN2_POM_NATIVE.md`.
+
+### Ordered commits and dirty state
+
+Root branch `deepseek/p2-l23` (base `ef1cace`, previous head `23fe0ec`):
+
+1. `lane23: slice 2 — flora-arena Chappy-vehicle Candypop runtime, bind/draw validator and tests (#448)`
+
+Native branch `deepseek/p2-l23-native` (base `b805d9c6`, previous head `df78cc06`):
+
+1. `f313d5df` — `lane23: slice 2 — bind Candypop buds to the batch-2 Chappy host, drive clipped draw, forget on despawn (#448)`
+2. `f41beb27` — `lane23: keep candypop conversion slot at the planted point, not the movable vehicle (#448)`
+
+Both worktrees clean at handoff.
+
+### Interfaces/hooks touched and why
+
+- `pc_p2_pom` gains `pc_p2_pom_forget(BTeki*)`, `pc_p2_pom_clip(const BTeki*, const char*&, float&)`,
+  `pc_p2_pom_bound()`; `pc_p2_pom_tick()` lazily `bindHosts()` by generator id
+  + `TEKI_Chappy` assert and emits `P2_POM_BIND ... host=teki type=3 drawn=1`.
+- `pc_p2_pom_clip` maps `p2pom::State` → clip (Wait→wait, Open→type1, Close→type2,
+  Shot→type3, Swing→type4, Dead→dead) and emits `P2_POM_DRAW ... pose=<state> draws=<n>`.
+- `pc_p2_batch2_draw` forced-clip chain gets `pc_p2_pom_clip` (mirror of `pc_p2_hana_clip`).
+- `pc_p2_forget_teki` gains `pc_p2_pom_forget`. Conversion slot stays at the
+  planted point (sidecar XYZ) so a moving vehicle cannot move the receptor.
+
+### Build / fixture / runtime evidence
+
+- Native `f41beb27df604df01c845fd577033406c94d912e`, clean. Main `nectar.exe`
+  SHA-256 `41ED946D8752CFE51A6DDE07C3949C72D2E8525039EB300B790E26F79BB2E874`,
+  `ninja -n pikmin_pc` "no work to do".
+- Fixture `output/dsw/l23-out/pom-fixture-3/build/fixture.exe` SHA-256
+  `E7DB285A0D667A32D90164A8EB6195E7FD973F4E93F127F5FF2D0C6A277AC506`,
+  `provenance.json` status `built`, expected native head `f41beb27`.
+- Converted bank: `output/dsw/l23-out/flora-bank` produced by
+  `experimental/pikmin2_flora_assets` (`--pose-limit 3`); all six bud clips
+  (`wait/dead/type1..type4`) convert 3/3 poses; HikariKinoko recorded unsupported.
+- GL run `output/dsw/l23-out/pom-runtime-3/pom/591b53c59d2b4738844371d963a43abe`
+  PASS (exit 0), 17/17 checks green, 960×540 centred window. New evidence:
+
+```text
+P2_POM_BIND generator=353003 species=RedPom source_id=4 host=teki type=3 drawn=1
+P2_POM_BIND generator=353007 species=RandPom source_id=8 host=teki type=3 drawn=1
+P2_BATCH2_DRAW corpse=0 key=flora|YellowPom clip=wait
+P2_POM_DRAW generator=353007 species=RandPom pose=wait draws=1 ... draws=10
+P2_POM_DRAW generator=353007 species=RandPom pose=shot draws=11
+P2_POM_DEAD generator=353007 species=RandPom used=1 refunds=0 corpse=0 budget=1
+P2_POM_CONSERVATION generator=353007 species=RandPom ... dead_pikis=0 loss_counted=0
+P2_POM_DRAW generator=353007 species=RandPom pose=dead draws=13 ...
+PASS P2_POM_NATIVE accept_refund_close_sprout
+```
+
+### Gates that changed
+
+- Gate 1 (exact identity / spawn): **FAIL → PASS (spawn)**. The bud is now bound
+  to a live generator-spawned `TEKI_Chappy` host and reports `P2_POM_BIND` with
+  the correct source id (4 / 8) and base-Pom rejection. Identity is still the
+  Chappy *vehicle*; the drawn visual is the converted Pom bank.
+- Gate 2 (movement/animation): animation now **drawn** via batch-2 (static bind
+  pose, clip per FSM state — `pose=wait -> shot -> dead`); no skeletal playback.
+- Gate 4/5/6 (death/conservation/re-entry): unchanged PASS, now executing on the
+  spawned host, plus `pc_p2_pom_forget` for despawn.
+
+### Subagent usage
+
+Three `task` subagents ran per the slice-2 instructions (experiment, per the wave
+brief):
+
+1. `explore` — batch-2/batch-4 proxy-vehicle host-bind + draw-path source audit.
+   Result used **as-is**: confirmed `FAMILIES['flora']` maps buds → `TEKI_Chappy`,
+   sidecar grammar `P2_FLORA_ACTORS_1`/`P2_FLORA_BANK_1`, draw chain
+   `pc_p2_batch2_draw` at `tekibteki.cpp:170/2094`, and the `pc_p2_hana_clip`
+   forced-clip hook to mirror. Saved a large amount of native-file reading.
+2. `explore` — flora/pom/batch2 candidate + converted-bank inventory. Used **as-is**:
+   established the bank did not yet exist and located the engine Pom Boss
+   (P1 Pellet Posy, must-not-reuse), which drove the decision to convert via
+   `pikmin2_flora_assets`. One finding (no `pc_p2_batch4` file; "batch 4" rides
+   `pc_p2_batch2`) corrected my mental model.
+3. `general` — wrote the `bind`/`drawn` validator checks + pytest scaffolding
+   against my marker spec, ran pytest (7 passed). Used **as-is**; I later changed
+   the synthetic validator test IDs from my provisional 240011/240012 to the
+   real flora-arena generators 353003/353007/353099.
+
+Net: the two explorers removed most of the read-heavy search from my context; the
+general subagent saved a modest amount of test-scaffolding typing. Rough estimate
+~20–30 minutes saved over doing everything inline; no result had to be discarded.
+
+### Remaining blockers (provider lane)
+
+- Drawn model is a static bind pose; skeletal playback/material fidelity → lane 09 (#429).
+- Ordinary **generated-session** spawn binding (the flora arena is an engineered
+  placement vehicle, not production placement) → lanes 03/04/05.
+- Onion/AP seed accounting for sprouts/pellets → lane 06.
+- Spectralid sentinel spawn → lane 15 (untouched).
+
+### Reproduction
+
+```powershell
+$env:PATH='C:\msys64\mingw64\bin;'+$env:PATH
+$env:PYTHONUTF8='1'
+$env:PIKMIN_P2_ROOM_WINDOW='960x540'
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l23 -- py -3.12 -m experimental.pikmin2_pom_runtime run --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets --imported C:/Users/alari/pikmin-randomizer/output/dsw/l23-out/flora-bank --output C:/Users/alari/pikmin-randomizer/output/dsw/l23-out/pom-runtime-3 --exe C:/Users/alari/pikmin-randomizer/output/dsw/l23-out/pom-fixture-3/build/fixture.exe
+```
