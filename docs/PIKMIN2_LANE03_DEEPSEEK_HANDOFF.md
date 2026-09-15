@@ -646,18 +646,30 @@ the randomizer-assigned generator purely from the seed
 - `P2_PLACEMENT_SLOT generator=349001 slot=1646783045 actor=3 xyz=1 terrain=ground
   route=1 route_distance=97.0 x=0.000 y=30.000 z=1850.000 water_depth=0.00` (:731)
 
-### Bridge-cohort native wiring (Sarai code-complete, live bind pending)
+### Live Sarai bridge run (ordinary spawn path proven)
 
-Sarai (23) is wired identically (`findSeedActor`) and unit/source-pin tested; its
-**live** room run needs lane 30's Sarai pose+mouth banks
-(`pc_port/pc_p2_sarai_manager.cpp`) plus `PIKMIN_SARAI_ORDINARY=1`, which is
-outside this lane's slice, so its live PASS is not claimed here.
+`scripts/run_p2_bridge_sarai.py` stages a Chappy room generator, generates a real
+admitted-cohort seed, writes the seed-derived placement sidecar mapping the
+generator to a slot the seed bound to Sarai (23), renames every fixed family actor
+sidecar away, copies lane 30's staged Sarai banks + model + 81 pose meshes into the
+run, and boots with `PIKMIN_SARAI_ORDINARY=1` + `--randomizer-seed`. The Sarai
+module binds the generator purely from the seed
+(`output/dsw/l03-out/e7b2623ac1764c5583335afda022a5e9/native.log`):
+
+- `P2_SEED_RESOLVE source_id=23 target=1646783045` (:585)
+- `P2_SARAI_READY source_id=23 species=Sarai generator=349001 type=3 health=130.0
+  behavior=source resolution=seed` (:789) — `resolution=seed`, i.e. the seed
+  selection path, not the fixed env generator
+- `P2_SARAI_CORPSE_READY generator=349001 drop=BDT_Normal ledger=onion
+  receipt=corpse:sarai:349001` (:790)
+- `P2_PLACEMENT_SLOT generator=349001 slot=1646783045 actor=3 xyz=1 terrain=ground
+  route=1 route_distance=97.0 x=0.000 y=30.000 z=1850.000 water_depth=0.00` (:801)
 
 Source ID: Sarai (23)
 
 | Gate | Result | Evidence |
 |---|---|---|
-| 1. Exact identity and spawn | UNTESTED | module selects by seed source (pc_p2_sarai_manager.cpp findSeedActor); live run needs lane-30 Sarai content |
+| 1. Exact identity and spawn | PASS (natural) | output/dsw/l03-out/e7b2623ac1764c5583335afda022a5e9/native.log:789 |
 | 2. Autonomous movement and animation | UNTESTED | lane 30 |
 | 3. Attacks and receivers | UNTESTED | lane 30 |
 | 4. Death and corpse | UNTESTED | lane 30 |
@@ -709,6 +721,17 @@ build/run round-trips.
 
 ### Exact reproduction commands
 
+Live Sarai seed-driven bridge (`scripts/run_p2_bridge_sarai.py`):
+
+```
+py -3.12 output/deepseek-wave/slot.py run gl l03 -- py -3.12 scripts/run_p2_bridge_sarai.py \
+  --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" \
+  --imported "C:/Users/alari/pikmin-randomizer/output/dsw/l22-assets" \
+  --sarai-source "C:/Users/alari/pikmin-randomizer/output/l30-drive-arena/b4c465c48592419caed342a1aa6347e7" \
+  --exe "C:/Users/alari/pikmin-randomizer/output/dsw/native-l03-build/bin/nectar.exe" \
+  --output "C:/Users/alari/pikmin-randomizer/output/dsw/l03-out" --seed "l03-bridge-sarai" --timeout 45
+```
+
 Live Otakara seed-driven bridge (`scripts/run_p2_bridge_otakara.py`):
 
 ```
@@ -734,7 +757,7 @@ py -3.12 output/deepseek-wave/slot.py run gl l03 -- py -3.12 scripts/run_p2_seed
 
 ```
 23 Sarai (role=source):
-  1. identity_spawn     ignored [UNTESTED]
+  1. identity_spawn     accepted [PASS]
   2. movement_animation ignored [UNTESTED]
   3. attacks_receivers  ignored [UNTESTED]
   4. death_corpse       ignored [UNTESTED]
