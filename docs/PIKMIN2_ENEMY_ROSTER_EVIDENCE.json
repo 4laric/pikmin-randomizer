@@ -58,7 +58,7 @@
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
         "death_corpse": "PASS",
-        "transport_reward": "BLOCKED",
+        "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
       "eligibility": "candidate",
@@ -67,7 +67,7 @@
         "Dwarf Orange Bulborb (BlueKochappy 44): full source-state FSM on the maintained native line; opt-in via p2-dwarf-orange-fsm.txt.",
         "Gates 1-4 natural on the wave: one 250 HP run logs bite + P2_KOCHAPPY_EAT eaten=1 + P2_KOCHAPPY_DEAD + P2_KOCHAPPY_CORPSE; see docs/PIKMIN2_LANE13_DEEPSEEK_HANDOFF.md six-gate table.",
         "cleanup_reentry PASS: natural-death cleanup (doKill funnel -> P2_DWARF_ORANGE_FORGET + P2_KOCHAPPY_FSM_FORGET) and manager re-entry (old_registry=clear new_red=250 control=130 birth=pass); see docs/PIKMIN2_LANE13_DEEPSEEK_HANDOFF.md.",
-        "transport_reward BLOCKED: natural Pikmin corpse carry observed (544.6 units) and the Pod corpse-receipt branch pre-registers both Chappy actors, but a natural carried-into-Pod receipt has not yet completed; see docs/PIKMIN2_LANE13_DEEPSEEK_HANDOFF.md.",
+        "transport_reward PASS (family evidence): FreeMode ring-deploy squad self-assigns carry, corpse delivered to Pod logging P2_POD_RECEIPT id=corpse:211001 new=1; exactly-once is P2Economy dedupe (unit-proven). Lane 06 owns product-level once-credit/restart review.",
         "Not admitted: candidate evidence only, not a randomizer admission PASS (#120/#186)."
       ]
     },
