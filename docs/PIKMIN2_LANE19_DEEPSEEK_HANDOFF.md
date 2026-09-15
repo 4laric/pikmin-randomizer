@@ -1,164 +1,123 @@
-# Lane 19 (Mamuta) DeepSeek handoff — #221 / #168
+# Lane 19 (Mamuta) DeepSeek handoff (fix1) — #221 / #168
 
 Implementation owner: Codex via shared account `4laric`. Executing agent: DeepSeek
 (`deepseek-v4-pro`), lane 19, 2026-09-14. Root worktree `output/dsw/l19-root` on
 `deepseek/p2-l19`; native worktree `output/dsw/native-l19` on
 `deepseek/p2-l19-native`. No maintained checkout, shared build, native origin or
-upstream GitHub was touched; nothing was pushed.
+upstream GitHub was touched; nothing was pushed. This revises the prior handoff
+whose central "health-floor/regression" claim was wrong.
 
-## Scope chosen (one source ID, one missing slice)
+## Correction (review item 1)
 
-- **Source enemy ID:** Mamuta = `Miulin` (enemy ID 54); native actor is the P1
-  proxy `TEKI_Miurin` (24) — the direct ancestor, unchanged P1 proxy behaviour.
-- **Missing slice from the ledger:** "extend pinned natural evidence through
-  actual transport/reward … and **revisit**" (next-wave goal), i.e. the combined
-  head's natural kill/carry/receipt plus the revisit/re-entry gate.
-- Outcome: the slice is **BLOCKED** at the natural-kill gate by a combined-head
-  combat regression (details + evidence below). The revisit/re-entry + exactly-once
-  reward infrastructure is **implemented, unit-tested and ready**; a root install
-  regression that blocked Mamuta staging at the approved baseline was **fixed**.
+The previous handoff claimed a "health floor / natural-kill regression on
+`b805d9c6`". That is **wrong**. There is no health floor and no regression:
 
-## Source IDs and files owned
+- Every stalled run froze at the tick where the 20th `P2_MAMUTA_NAVI` line
+  reported captain health `0.000`. `pc_p2_mamuta_bury_navi`
+  (`pc_port/pc_p2_mamuta_rules.cpp:69-79`) subtracts 5 HP per pound; at `<= 1` HP
+  `navi.cpp:402-404` issues `startPause`, and `NaviDeadState::init`
+  (`naviState.cpp:3206-3224`) sets `orimaDead`/`StageFinish`/`releasePikis` and
+  pauses the core. The fixture only gated on `mPauseAll`/movie, so ~1,900 frozen
+  ticks were counted as natural combat.
+- The prior worker build `a54f4af2` won the same race (killed at tick 466–500 with
+  the captain at ~10 HP); my 02/03 runs lost 2 and 5 reds early to
+  `P2_MAMUTA_PLANT` and lost the race. `git diff a54f4af2..HEAD -- pc_port/pc_p2_mamuta*`
+  is empty: the Mamuta module/rules are unchanged.
+- The captain was pinned 50 units south, inside the Miurin's `TPF_AttackableRange`
+  (70) / arm reach (`TAImiurin.cpp:801-809,544-586`), so every pound hit it.
 
-- `pc_p2_mamuta.{h,cpp}`, `pc_p2_mamuta_policy.h`, `pc_p2_mamuta_rules.{h,cpp}`
-  (native; existing, unchanged this slice).
-- Root: `experimental/pikmin2_mamuta_*.py`, `scripts/pikmin2_mamuta_*.{inc,py}`,
-  `tests/test_pikmin2_mamuta_*.py` (Mamuta family lane 19).
+**So gate 4 was BLOCKED by the P1 captain-down pause (pre-existing, same as the
+cont437 run), and the owner is the lane-19 fixture** — not lanes 01/08/10/13.
+The bisect request to lanes 01/08/10/13 is dropped.
 
-## Ordered commits (root)
+## What this fix adds
 
-Root base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`; native base/head
-`b805d9c626e4f4558c95aef7cac311a5d9a2068f` (clean — **no native commits** this slice).
-
-1. `lane19: restore single-pose static anchors alongside time-sampled pose banks (#221)`
-   — `experimental/pikmin2_mamuta_install.py` + `tests/test_pikmin2_mamuta_install.py`.
-2. `lane19: Mamuta revisit/re-entry fixture, runner and validator (#221)`
-   — `scripts/pikmin2_mamuta_revisit_fixture.inc`,
-   `scripts/pikmin2_mamuta_revisit_native.py`, `tests/test_pikmin2_mamuta_revisit.py`.
-
-Dirty state at handoff: clean (both commits applied, nothing staged beyond these).
-
-## What changed and why
-
-### 1. Install regression fix (unblocks staging on the approved baseline)
-
-The approved native baseline `b805d9c6` still loads **three single static anchors**
-`miulin_{wait,dead,attack1}.mod` (`pc_p2_mamuta.cpp` + `pc_p2_mamuta_policy.h`
-"Static source anchors"), but `pikmin2_mamuta_install.py` had been advanced to a
-**time-sampled bank** (`miulin_wait_00.mod`, …) whose native consumer
-(`opencode/p2-mamuta-anim` @ `dad4c920`) is **not** integrated. Result: `pc_p2_mamuta_setup`
-aborted `P2_MAMUTA invalid profile` (no single `.mod` on disk) — Mamuta could not
-stage at all on the current pair. Fix: `plan()` now emits the three single-pose
-anchors (`wait` pose 0, last `dead` pose, `attack1` pose 0 — the exact pre-bank
-selection from `ce92557`) **in addition to** the banks, so both the static path and
-the pending bank path can coexist.
-
-### 2. Revisit/re-entry slice (gate F persistence + gate E re-entry)
-
-- `scripts/pikmin2_mamuta_revisit_fixture.inc` re-enters the SAME Pod-arena stage
-  directory after process 1 credited `corpse:mamuta:221001` (`p2-economy.txt`
-  persisted, `pokos=2`). A fresh process re-births the Mamuta from the staged
-  `default.gen`, re-runs the natural approach/observation, and hard-requires
-  `pc_p2_preview_pokos()==initialPokos`, proving the re-delivery is deduped
-  (`new=0`) and the reward is neither duplicated nor lost.
-- `scripts/pikmin2_mamuta_revisit_native.py` re-runs the exe in an existing staged
-  directory and classifies the markers honestly (re-entry identity, natural
-  re-kill/corpse/carry, `receipt_deduped`, `reward_not_duplicated`).
-- `tests/test_pikmin2_mamuta_revisit.py` covers dedup/duplication/re-entry
-  classification and fixture instrumentation.
-
-The revisit runtime is **gated behind the natural kill** (process 1 must actually
-credit `corpse:mamuta:221001`), so its runtime evidence is `UNTESTED` here.
-
-## Build evidence (`output/dsw/l19-build-evidence.txt`)
-
-```
-2026-09-14T19:08:17 lane=l19 target=pikmin_pc native=b805d9c626e4f4558c95aef7cac311a5d9a2068f dirty=no build_dir=C:\Users\alari\pikmin-randomizer\output\dsw\native-l19-build exe=C:\Users\alari\pikmin-randomizer\output\dsw\native-l19-build\bin\nectar.exe sha256=61fb1c850bd551c8c7c9d07a38e30dbb3ded5faf85ff866cdad7b1108c0b8fa8 ninja_n="ninja: no work to do." seconds=137
-```
-
-Release / MinGW g++ 16.2.0 / Ninja / `PIKMIN_NATIVE_JAUDIO=ON`. Fixture builds
-(provenance `built`, against native `b805d9c6`):
-| fixture | `fixture.exe` SHA-256 |
-| --- | --- |
-| `mamuta-pod-natural-fixture` (pristine) | `e00e7a26730cddbfc9ce2b51c9fe29029cefc08bb1b4a84f068d99a537a36d74` |
-| `mamuta-revisit-fixture` (pristine) | link-validated at `d10a54f171224d712f592f6ebb45e7eaee652e11285e45954f8751908cfde307` (identical committed source); final on-disk relink was starved by build-slot contention and is not needed for the BLOCKED slice (the revisit runtime is gated on gate 4) |
-
-Note: the fixture link is **not bit-reproducible** across identical-source rebuilds
-(observed `cc8c2257…` → `e00e7a26…` for the same pristine source under LTO with 85
-serial LTRANS jobs), so the committed fixture source + native head are the
-authoritative provenance; the recorded SHA is the on-disk built artifact.
-
-## Fixture baseline adoption
-
-```text
-Child issue / lane / implementation owner: #221 / lane 19 / Codex via shared 4laric
-Root commit + dirty state / overlay source: ef1cace (after lane19 commits) / scripts/preview_pikmin2_room.py ensure_pikmin_squad
-Native commit + dirty state / worktree / build: b805d9c6 clean / output/dsw/native-l19 / output/dsw/native-l19-build
-Squad change present / window change present: explicit 10-red lane squad staged through overlay override (ensure_pikmin_squad preserves it); 960x540 centred startup via native base 1d5a242b
-Fresh arena command / run dir / hashes: py -3.12 -m scripts.pikmin2_mamuta_pod_native --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets --imported output/dsw/l19-out/imported --exe <fixture.exe> --output output/dsw/l19-out/mamuta-pod-accept-natural-02 --pod-package output/dsw/l19-out/pod ; run dir output/dsw/l19-out/mamuta-pod-accept-natural-02/4e903d6a18a94bde80ec60400982a080
-Executable SHA-256 / status: pod fixture e00e7a26... ; nectar.exe 61fb1c85... (native head b805d9c6)
-Window setting / observed size and centring: PIKMIN_P2_ROOM_WINDOW=960x540; captures are 960x540; "Experimental preview window set to 960x540 windowed and centered" log
-Live starting Pikmin / active gameplay / no immediate extinction: P2_MAMUTA_POD_BIRTH id=221001 type=24 squad=10 color=red ; approached=1 ; no extinction flow
-PASS / FAIL / BLOCKED: PASS for identity/movement/attacks; BLOCKED for natural kill (see below)
-```
+1. **Install regression fix (kept).** `experimental/pikmin2_mamuta_install.py`
+   emits the three single static anchors (`miulin_{wait,dead,attack1}.mod`) that
+   the approved native baseline loads, alongside the pending time-sampled banks.
+2. **Captain-down detection.** Both fixtures now detect `GameStat::orimaDead`,
+   `NAVISTATE_Dead`, **or** `Navi::mHealth <= 1.0f` (the P2 bury drains HP without
+   a Dead transit), emit `P2_MAMUTA_{POD,REVISIT}_CAPTAIN_DOWN tick= health=`, stop
+   counting observation ticks, and finish with a `captain_down` completion. The
+   validators classify `natural_{kill,rekill}` as `BLOCKED(captain_down)`.
+3. **Win attempt.** The fixtures now park the captain ~250 units south (beyond the
+   Miurin's arm reach) with a <150-unit re-park, and free-deploy the 10 reds in a
+   ring (radius 22) around the Mamuta, re-ringing survivors every 120 ticks. No
+   bury, lethal hit or transport action is forced; the Pikmin deal all damage.
 
 ## Six arena gates (natural vs injected)
 
-| Gate | Result | Evidence (current head `b805d9c6`) |
+| Gate | Result (current head `b805d9c6`) |
+| --- | --- |
+| 1. Exact identity and spawn | **PASS** (P1 Miurin proxy) — `P2_MAMUTA_POD_BIRTH id=221001 type=24 squad=10 color=red` |
+| 2. Autonomous movement and animation | **PASS** — `approached=1`, full state coverage (`00017f9c`), static-anchor draw |
+| 3. Attacks and receivers | **PASS** (proxy, natural) — natural `P2_MAMUTA_PLANT kind=1 happa=2`; navi receiver (`P2_MAMUTA_NAVI damage=5.0`) observed in the pre-park runs |
+| 4. Death and corpse | **PASS (1 run) / FLAKY overall** — `fix1-02`: natural kill `died_tick=1922` + `corpse=1`; 3 other park-250 runs wiped the squad before the kill |
+| 5. Actual transport and reward | **UNPROVEN** — `fix1-02` corpse was picked up (`transport=1`) but not delivered by window end (`goal=0`, `pokos=0`) |
+| 6. Cleanup and re-entry | **partial PASS** — reset/forget + control alive; revisit fixture built but runtime UNTESTED (gated on gate 5) |
+
+Injected: none. Squad ring-deploy, captain park/re-park and re-ring are documented
+fixture-placement interventions (the review-prescribed "free-mode-deploy the reds
+and park the captain"); the kill/corpse themselves are natural (no forced health,
+bury or lethal hit). `captain_down` runs are now correctly classified, not counted
+as frozen natural combat.
+
+## Why gate 5 remains open
+
+The captain-park strategy removes the captain-down pause but shifts the Miurin's
+pounds onto the Pikmin, whose P2 bury converts them (permanent with a parked
+captain). 10 basic reds vs a 2485-HP Mamuta is marginal: `fix1-02` left one red
+that killed (1922) and started carrying, but delivery did not finish in the
+3600-tick window; `fix1-03/04` lost all reds and the Mamuta healed. This is a
+squad-balance/attrition question for the integrator (e.g. 20-red overlay squad),
+not a lane-19 code defect.
+
+## Build and run evidence
+
+Native `bin/nectar.exe` = `61fb1c850bd551c8c7c9d07a38e30dbb3ded5faf85ff866cdad7b1108c0b8fa8`
+(build-evidence file, native head `b805d9c6`, `ninja -n` clean, `PIKMIN_NATIVE_JAUDIO=ON`).
+
+Per-run fixture.exe SHA-256 (`result.json` provenance):
+| run dir | outcome | fixture.exe |
 | --- | --- | --- |
-| 1. Exact identity and spawn | **PASS** (proxy) | `P2_MAMUTA_READY generator=221001 native_type=24`, `P2_MAMUTA_POD_BIRTH id=221001 type=24 squad=10 color=red` |
-| 2. Autonomous movement and animation | **PASS** | `approached=1 min=19.9 states=00001ea8`, `P2_MAMUTA_DRAW anchor=attack1` |
-| 3. Attacks and receivers | **PASS** (proxy, natural) | natural `P2_MAMUTA_PLANT kind=1 happa=2` (flower-stage), `P2_MAMUTA_NAVI damage=5.0`; no forced `InteractBury` |
-| 4. Death and corpse | **BLOCKED** / UNPROVEN | natural kill stalls: health ~2485 → ~70 then frozen; captain buried to 0 health; squad 10→5–8. No `died`. |
-| 5. Actual transport and reward | **BLOCKED** | no death → no corpse → no receipt (`pokos=0`) |
-| 6. Cleanup and re-entry | **partial PASS** | `P2_MAMUTA_POD_RESET` + `control_alive=1` (reset/forget + control unaffected); revisit infrastructure built+tested but **UNTESTED** at runtime (gated on gate 4) |
+| `mamuta-pod-accept-natural-01` | aborted `P2_MAMUTA invalid profile` (pre-install-fix) | — |
+| `mamuta-pod-accept-natural-02` | no kill (frozen at captain-down pause) | `cc8c22575822...` |
+| `mamuta-pod-accept-natural-03` | no kill (retreat variant) | `73346ea32400...` |
+| `mamuta-pod-accept-fix1-01` | no kill (park 100; frozen 1046.7, `captain_down` not flagged — pre-`mHealth<=1`) | `21c47aac663c...` |
+| `mamuta-pod-accept-fix1-02` | **natural kill 1922 + corpse + transport started** | `34b9226c4fac...` |
+| `mamuta-pod-accept-fix1-03` | no kill (squad wiped, healed) | `0be4d6ccd8ae...` |
+| `mamuta-pod-accept-fix1-04` | no kill (squad wiped, healed) | `0be4d6ccd8ae...` |
 
-Injected state: none. All gate 1–3 observations are natural (no forced health,
-bury, or lethal hit). The squad/captain start is the documented fixture placement
-(the pod fixture pins the captain to the south approach with `resetPosition`, as in
-the accepted prior evidence).
-
-## The blocker (natural-kill regression on the combined head)
-
-Reproduced 3/3 runs on `b805d9c6`: the Mamuta proxy is engaged and damaged
-naturally but is never killed. Health drops ~2485→~70, then **freezes**; the
-captain is buried to 0 health and 2–5 of the 10 Pikmin are planted, collapsing DPS.
-
-Contrast with the worker build (native `a54f4af2`, `output/mamuta-pod-accept-natural-04/…`):
-health drops through ~105→0 and `P2_MAMUTA_POD_DIED tick=466` with only 1 plant
-(`squad=9`) — a natural kill. The Mamuta FSM and the P2 bury rules are **unchanged**
-(same `pc_p2_mamuta_rules.cpp`, same P1 Miurin proxy), so this is a **shared
-behaviour regression**, not a lane-19 family change. Likely providers: lane 01
-(integration of the ~272-commit #437 range), lane 08 (sampled animation/clock
-changes altering attack/bury cadence), lane 10/13 (shared Piki receiver/attack
-hooks added for many #407 source FSMs and the Dwarf-Orange/Purple/White work),
-and lane 07 (`a3bec43e` centralizes Teki family forget on death). A 20-red overlay
-squad would likely tip the balance, but the lane's 10-red squad is the documented
-design, and masking a shared regression with a lane-local squad bump is deferred to
-integration.
+Revisit fixture (built, `provenance.json status=built`): `bd5acf2ebf8a5a2e3ef16b93bcc2186378dbf018c674058eb28b442dd52e967e`.
 
 ## Tests
 
-- `py -3.12 -m pytest tests/test_pikmin2_mamuta_*.py -q` → **81 passed, 1 skipped,
-  33 subtests** (includes the new `test_pikmin2_mamuta_revisit.py` and the updated
-  `test_pikmin2_mamuta_install.py`).
+`py -3.12 -m pytest tests/test_pikmin2_mamuta_pod.py tests/test_pikmin2_mamuta_revisit.py tests/test_pikmin2_mamuta_natural.py tests/test_pikmin2_mamuta_install.py tests/test_pikmin2_mamuta_cargo.py tests/test_pikmin2_mamuta_rules.py -q`
+→ **54 passed, 1 skipped** (incl. new captain-down classification tests).
 
-## Assumptions
+## Subagent usage
 
-- The `Miulin` visual is a P1-proxy static anchor (per the approved native
-  baseline); the time-sampled bank consumer (`opencode/p2-mamuta-anim`) is out of
-  this slice's scope and left for a separate animation-candidate slice.
-- `corpse:mamuta:221001` value is 2 (Kochappy `corpseValue` in `p2-pod.txt`),
-  matching the prior integrated receipt.
-- The natural-kill regression is a shared/combined-head issue; lane 19 is not
-  the owner of the shared Piki-receiver/animation-clock code.
+Three subagents were spawned in parallel (per the review's requirement), then I
+did the native/fixture work, builds, GL runs, commit and this handoff myself.
 
-## Remaining blockers (named provider)
+1. `explore` — **Mamuta source audit** (states/events/params/receivers + the
+   captain-down path). Used as-is; corrected two line cites against the real tree
+   (`pc_p2_mamuta_bury_navi` is at `pc_p2_mamuta_rules.cpp:69-79`, not 65-76; the
+   P2 decomp dir is `plugProjectMorimuraU`).
+2. `explore` — **Mamuta candidate + ring-deploy inventory**. Used as-is; correctly
+   identified the reusable ring pattern as the Kochappy combat fragment
+   (`experimental/pikmin2_kochappy_arena_combat.py:16-24`, `changeMode(PikiMode::FreeMode,n)`)
+   and noted the Sokkuri fixture does not ring-deploy.
+3. `general` — **validator + test scaffold for the captain-down gate** (pod/revisit
+   `validate()` three-way classification + tests). Used as-is (16 tests pass); I
+   additionally found and fixed the missing `Navi::mHealth <= 1.0f` signal that the
+   spec's `orimaDead/NAVISTATE_Dead` alone would not catch on the P2 bury path.
 
-- Natural kill/carry/receipt on `b805d9c6` → lane **01** (integration) to bisect the
-  #437 range with lane **08** (clock) / **10** (receivers) / **13** (Piki combat) / **07** (lifetime).
-- Generated/mixed-scene acceptance → lanes **03/05/06/33** (unchanged).
-- Day/floor reset, save-load, Piklopedia → shared-semantic, unchanged (flagged since PIKMIN2_MAMUTA_DEATH.md).
+Net effect: the read-heavy inventory/audit were offloaded (saved ~15–20 min of
+context); the test scaffold was applied directly. One shortcoming surfaced: the
+subagent's spec followed the review's `orimaDead/NAVISTATE_Dead` signals verbatim,
+which turned out incomplete, so I extended the detection myself after the first
+runtime run (`fix1-01`).
 
 ## Reproduction
 
@@ -170,9 +129,9 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l1
     --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets `
     --imported C:/Users/alari/pikmin-randomizer/output/dsw/l19-out/imported `
     --exe C:/Users/alari/pikmin-randomizer/output/dsw/l19-out/mamuta-pod-natural-fixture/fixture.exe `
-    --output C:/Users/alari/pikmin-randomizer/output/dsw/l19-out/mamuta-pod-accept-natural-04 `
+    --output C:/Users/alari/pikmin-randomizer/output/dsw/l19-out/mamuta-pod-accept-fix1-05 `
     --pod-package C:/Users/alari/pikmin-randomizer/output/dsw/l19-out/pod `
     --timeout 300
-# expect: approached=1, native bury/plant + navi damage, but died=0 (health floor ~70)
-#         => natural kill/carry/receipt BLOCKED on combined head b805d9c6
+# expect: ring-deploy + captain-park; natural bury/plants; with luck died=1 corpse=1
+#         (see fix1-02); kill is flaky on the 10-red squad.
 ```

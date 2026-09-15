@@ -8,7 +8,8 @@ from scripts.pikmin2_mamuta_revisit_native import REVISIT_FIXTURE
 
 
 def _revisit_log(*, died=1, corpse=1, carried=1, goal=1, prior_pokos=2,
-                 receipt='deduped', final_pokos=2, reset=True, desync=False):
+                 receipt='deduped', final_pokos=2, reset=True, desync=False,
+                 captain_down=False):
     lines = [
         'P2_MAMUTA_RULES enabled cap=99 navi_damage=5.0 vertical_band=20',
         'P2_MAMUTA_READY generator=221001 native_type=24 xyz=-150.000000,30.000000,1850.000000 P1_proxy_static_anchors_no_P2_planting',
@@ -19,6 +20,8 @@ def _revisit_log(*, died=1, corpse=1, carried=1, goal=1, prior_pokos=2,
         'P2_MAMUTA_REVISIT_OBSERVE tick=30 state=7 health=2424.8 navi=-150.0,1900.0 squad=10 min=55.0 states=00000080 pokos=2',
         'P2_MAMUTA_REVISIT_APPROACH_RESULT approached=1 min=12.0 states=00000d80',
     ]
+    if captain_down:
+        lines.append('P2_MAMUTA_REVISIT_CAPTAIN_DOWN tick=1234 health=0.0')
     if receipt == 'deduped':
         lines.append('[Pikipelago] P2_POD_RECEIPT id=corpse:mamuta:221001 value=2 new=0 pokos=2 seeds=0')
     elif receipt == 'duplicated':
@@ -30,7 +33,10 @@ def _revisit_log(*, died=1, corpse=1, carried=1, goal=1, prior_pokos=2,
         lines.append('P2_MAMUTA_REVISIT_RESET')
     if desync:
         lines.append('[PC GX] DESYNC something')
-    lines.append('PASS P2_MAMUTA_REVISIT_RUNTIME observe approach receipt_revisit reset')
+    if captain_down:
+        lines.append('PASS P2_MAMUTA_REVISIT_RUNTIME captain_down')
+    else:
+        lines.append('PASS P2_MAMUTA_REVISIT_RUNTIME observe approach receipt_revisit reset')
     return '\n'.join(lines) + '\n'
 
 
@@ -63,6 +69,14 @@ def test_revisit_validate_classifies_missing_rekill_unproven():
     assert evidence['classify']['reentry_ready'] == 'PASS'
     assert evidence['classify']['fresh_identity'] == 'PASS'
     assert evidence['classify']['reward_not_duplicated'] == 'PASS'
+
+
+def test_revisit_validate_classifies_captain_down_block():
+    from scripts.pikmin2_mamuta_revisit_native import validate
+    evidence = validate(_revisit_log(died=0, corpse=0, carried=0, goal=0, receipt=None,
+                                     captain_down=True))
+    assert evidence['captain_down'] is True
+    assert evidence['classify']['natural_rekill'] == 'BLOCKED(captain_down)'
 
 
 def test_revisit_validate_rejects_low_prior_pokos():

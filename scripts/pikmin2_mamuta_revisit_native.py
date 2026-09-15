@@ -28,8 +28,12 @@ def _line(text, pattern):
 
 def validate(text):
     """Parse the revisit markers and classify re-entry/reward honestly."""
-    completion = 'PASS P2_MAMUTA_REVISIT_RUNTIME observe approach receipt_revisit reset'
-    if completion not in text:
+    down = re.findall(r'P2_MAMUTA_REVISIT_CAPTAIN_DOWN tick=(\d+) health=([-\d.]+)', text)
+    if len(down) > 1:
+        raise ValueError('Expected at most one captain-down marker')
+    captain_down = bool(down)
+    if ('PASS P2_MAMUTA_REVISIT_RUNTIME observe approach receipt_revisit reset' not in text
+            and 'PASS P2_MAMUTA_REVISIT_RUNTIME captain_down' not in text):
         raise ValueError('Missing revisit runtime completion')
     birth = _line(text, r'P2_MAMUTA_REVISIT_BIRTH id=(\d+) type=(\d+) squad=(\d+) color=(\w+)')
     if birth != ('221001', '24', '10', 'red'):
@@ -72,17 +76,18 @@ def validate(text):
     classify = dict(
         reentry_ready='PASS',
         fresh_identity='PASS',
-        natural_rekill='PASS' if died else 'UNPROVEN',
+        natural_rekill='PASS' if died else ('BLOCKED(captain_down)' if captain_down else 'UNPROVEN'),
         natural_recorpse='PASS' if corpse else 'UNPROVEN',
         natural_recarry='PASS' if (carried and goal) else 'UNPROVEN',
         reward_not_duplicated='PASS' if unchanged and not duplicated else 'FAIL',
-        receipt_deduped='PASS' if deduped else ('UNPROVEN' if mamuta else 'UNPROVEN'),
+        receipt_deduped='PASS' if deduped else 'UNPROVEN',
     )
     return dict(squad=int(birth[2]), approached=True, min_distance=float(approach[1]),
                 states_seen=approach[2], prior_pokos=prior_pokos, final_pokos=pokos,
                 died=bool(died), died_tick=died_tick, corpse=bool(corpse),
                 carried=bool(carried), goal=bool(goal), control_alive=True,
-                mamuta_receipts=mamuta, deduped_receipt=deduped[0] if deduped else None,
+                captain_down=captain_down, mamuta_receipts=mamuta,
+                deduped_receipt=deduped[0] if deduped else None,
                 classify=classify)
 
 

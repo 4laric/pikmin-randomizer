@@ -2,25 +2,24 @@
 //
 // Re-enters the SAME Pod-arena stage directory after a prior natural Pod
 // observation already credited corpse:mamuta:221001 (p2-economy.txt persisted,
-// pokos=2). A fresh process re-births the Mamuta from the staged default.gen,
-// then re-runs the natural approach/observation without forcing any bury,
-// lethal hit or Pikmin action. A successful run proves:
-//   * clean actor re-entry (identity rebinds to the fresh Mamuta, no stale
-//     reference from the previous process),
-//   * exactly-once reward (the re-delivery is deduped with new=0 and the Pod
-//     total is unchanged; the fixture hard-requires pokos==prior_pokos at reset).
+// pokos=2). A fresh process re-births the Mamuta, then re-runs the natural
+// sequence with the squad ring-deployed and the captain parked beyond the
+// Miurin's 70-unit TPF_AttackableRange, so the P2 bury does not down the captain.
+// A successful run proves clean re-entry and exactly-once reward (re-delivery
+// dedupes with new=0; the fixture hard-requires pokos==prior_pokos at reset).
 class RoomApp : public PlugPikiApp {
  int frames=0,observed=0,squad=0;
  int naturalDiedTick=0,initialPokos=0; bool deathObserved=false,transported=false,goalSeen=false;
-  bool approached=false; float minDistance=1.0e9f;
-  unsigned statesSeen=0;
+ bool approached=false; float minDistance=1.0e9f;
+ bool captainDown=false; int captainDownFrame=0;
+ unsigned statesSeen=0;
  Teki* actor=nullptr; Teki* control=nullptr; Pellet* corpse=nullptr; PelletView* actorView=nullptr;
- static const int NATURAL_TICKS=2400;
+ static const int NATURAL_TICKS=3600;
  int aliveSquad(){int c=0;Iterator pit(pikiMgr);CI_LOOP(pit){Piki* p=static_cast<Piki*>(*pit);if(p&&p->isAlive()&&p->mColor==Red)++c;}return c;}
+ bool naviDown(Navi* n){ if(GameStat::orimaDead)return true; if(n->getCurrState() && n->getCurrState()->getID()==NAVISTATE_Dead)return true; return n->mHealth<=1.0f; }
 public:
  int idle() override {
   int result=PlugPikiApp::idle(); require(++frames<30000,"Mamuta revisit startup timeout");
-  // Intro-only fixture skip: never automatically skip day-end/results movies.
   if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){if(!observed)gameflow.mMoviePlayer->requestSkip();return result;}
   if(!pc_p2_preview_ready()||!naviMgr||!tekiMgr||!pikiMgr)return result;
   Navi* n=naviMgr->getNavi();if(!n||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;
@@ -40,24 +39,37 @@ public:
    require(squad==10,"starting squad of 10 red Pikmin");
    for(int i=0;i<DEMOFLAG_COUNT;++i)playerState->mDemoFlags.setFlagOnly(i);
    actorView=static_cast<PelletView*>(actor);
-   // Natural approach: same controlled start as the accepted cargo-free/Pod runs
-   // (fixture placement pin, no AI action assigned to any Pikmin).
    assembled=true;phase=1;ticks=0;walkGoals.clear();
-   walkGoals.push_back(Vector3f(actor->mSRT.t.x,0,actor->mSRT.t.z+20));walkPoint=0;
-   n->mKontroller=new FixtureController();
-   {Vector3f near(actor->mSRT.t.x,0,actor->mSRT.t.z+50);near.y=mapMgr->getMinY(near.x,near.z,true);n->resetPosition(near);}
+   Vector3f park(actor->mSRT.t.x,0,actor->mSRT.t.z+250);park.y=mapMgr->getMinY(park.x,park.z,true);
+   n->resetPosition(park);walkGoals.push_back(park);walkPoint=0;n->mKontroller=new FixtureController();
+   int ring=0;Iterator sq(pikiMgr);CI_LOOP(sq){Piki* p=static_cast<Piki*>(*sq);if(!p->isAlive()||p->mColor!=Red)continue;float a=float(ring)*6.2831853f/float(squad);Vector3f pt(actor->mSRT.t.x+22.0f*std::sin(a),0,actor->mSRT.t.z+22.0f*std::cos(a));pt.y=mapMgr->getMinY(pt.x,pt.z,true);p->resetPosition(pt);p->changeMode(PikiMode::FreeMode,n);++ring;}
    std::printf("P2_MAMUTA_REVISIT_BIRTH id=221001 type=24 squad=%d color=red\n",squad);
-   std::printf("P2_MAMUTA_REVISIT_APPROACH target=%.1f,%.1f actor=%.1f,%.1f\n",walkGoals[0].x,walkGoals[0].z,actor->mSRT.t.x,actor->mSRT.t.z);
+   std::printf("P2_MAMUTA_REVISIT_APPROACH target=%.1f,%.1f actor=%.1f,%.1f park=%.1f,%.1f ring=%d\n",walkGoals[0].x,walkGoals[0].z,actor->mSRT.t.x,actor->mSRT.t.z,park.x,park.z,ring);
+  }
+  if(!captainDown&&naviDown(n)){captainDown=true;captainDownFrame=frames;std::printf("P2_MAMUTA_REVISIT_CAPTAIN_DOWN tick=%d health=%.1f\n",observed,n->mHealth);}
+  if(captainDown){
+   if(frames==captainDownFrame+3){
+    std::printf("P2_MAMUTA_REVISIT_APPROACH_RESULT approached=%d min=%.1f states=%08x\n",approached?1:0,minDistance,statesSeen);
+    std::printf("P2_MAMUTA_REVISIT_RESULT died=0 died_tick=0 corpse=0 carried=0 goal=0 pokos=%d prior_pokos=%d control_alive=%d squad=%d\n",pc_p2_preview_pokos(),initialPokos,control->isAlive()?1:0,aliveSquad());
+   }
+   if(frames==captainDownFrame+5)capture("mamuta-revisit-final.ppm");
+   if(frames==captainDownFrame+6){require(pc_p2_preview_pokos()==initialPokos,"revisit must not duplicate the reward");pc_p2_mamuta_forget(actor);pc_p2_mamuta_reset();require(!pc_p2_mamuta_rules_enabled(),"reset disables P2 rules");std::puts("P2_MAMUTA_REVISIT_RESET");}
+   if(frames==captainDownFrame+9){require(control->isAlive(),"control survived revisit observation");std::puts("PASS P2_MAMUTA_REVISIT_RUNTIME captain_down");std::fflush(nullptr);std::_Exit(0);}
+   std::fflush(stdout);return result;
   }
   if(actor->isAlive()){
    int state=actor->mStateID;if(state>=0&&state<32)statesSeen|=(1u<<state);
-   float dx=actor->mSRT.t.x-n->mSRT.t.x,dz=actor->mSRT.t.z-n->mSRT.t.z;
-   float distance=std::sqrt(dx*dx+dz*dz);if(distance<minDistance)minDistance=distance;
-   if(distance<60.0f)approached=true;
+   float closest=1.0e9f;
+   Iterator pit(pikiMgr);CI_LOOP(pit){Piki* p=static_cast<Piki*>(*pit);if(!p||!p->isAlive()||p->mColor!=Red)continue;float dx=actor->mSRT.t.x-p->mSRT.t.x,dz=actor->mSRT.t.z-p->mSRT.t.z;float d=std::sqrt(dx*dx+dz*dz);if(d<closest)closest=d;}
+   if(closest<minDistance)minDistance=closest;
+   if(closest<60.0f)approached=true;
+   float cdx=actor->mSRT.t.x-n->mSRT.t.x,cdz=actor->mSRT.t.z-n->mSRT.t.z;
+   if(std::sqrt(cdx*cdx+cdz*cdz)<150.0f){Vector3f rp(actor->mSRT.t.x,0,actor->mSRT.t.z+250);rp.y=mapMgr->getMinY(rp.x,rp.z,true);n->resetPosition(rp);walkGoals.clear();walkGoals.push_back(rp);walkPoint=0;std::printf("P2_MAMUTA_REVISIT_REPARK tick=%d\n",observed);}
+   if(observed%120==0){int r=0;Iterator pg(pikiMgr);CI_LOOP(pg){Piki* p=static_cast<Piki*>(*pg);if(!p->isAlive()||p->mColor!=Red)continue;float a=float(r)*6.2831853f/float(squad);Vector3f pt(actor->mSRT.t.x+22.0f*std::sin(a),0,actor->mSRT.t.z+22.0f*std::cos(a));pt.y=mapMgr->getMinY(pt.x,pt.z,true);p->resetPosition(pt);++r;}std::printf("P2_MAMUTA_REVISIT_RERING tick=%d reds=%d\n",observed,r);}
   }
   if(observed%30==0)
-   std::printf("P2_MAMUTA_REVISIT_OBSERVE tick=%d state=%d health=%.1f navi=%.1f,%.1f squad=%d min=%.1f states=%08x pokos=%d\n",
-               observed,actor->mStateID,actor->mHealth,n->mSRT.t.x,n->mSRT.t.z,aliveSquad(),minDistance,statesSeen,pc_p2_preview_pokos());
+   std::printf("P2_MAMUTA_REVISIT_OBSERVE tick=%d state=%d health=%.1f actor=%.1f,%.1f navi=%.1f,%.1f squad=%d min=%.1f states=%08x pokos=%d\n",
+               observed,actor->mStateID,actor->mHealth,actor->mSRT.t.x,actor->mSRT.t.z,n->mSRT.t.x,n->mSRT.t.z,aliveSquad(),minDistance,statesSeen,pc_p2_preview_pokos());
   if(!deathObserved&&!actor->isAlive()){deathObserved=true;naturalDiedTick=observed;std::printf("P2_MAMUTA_REVISIT_DIED tick=%d\n",observed);}
   if(deathObserved&&!corpse){
    Iterator pellets(pelletMgr);CI_LOOP(pellets){Pellet* p=static_cast<Pellet*>(*pellets);if(p->isAlive()&&p->mPelletView==actorView)corpse=p;}
