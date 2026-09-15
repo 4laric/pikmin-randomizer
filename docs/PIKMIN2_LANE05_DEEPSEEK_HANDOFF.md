@@ -161,3 +161,60 @@ Tests: `py -3.12 -m pytest tests/test_pikmin2_install_binding.py -q` → **24 pa
 #### Lesson (subagent use)
 
 The delegated `test_interrupted_cache_staging_fails_safe` injected the crash in the fake-installer cache-populate step, where the WriteLast marker already made it pass, not in the real-adapter copy the brief asked for. I added `test_real_adapter_mid_install_failure_cleans_assets` myself to cover the real-adapter scenario and fixed the wording drift (partial tree IS now removed; wrong-source leaves no run tree). Going forward I will cross-check delegated tests against the brief's exact scenario before adopting them.
+
+## Slice 3
+
+Third bounded slice: fold in the two fix3 advisory cleanup gaps (with flip tests) and attempt the end-to-end generated-session → native launch proving the staged bank/sidecars are the ones the engine loads.
+
+### Deliverables
+
+1. **(root) `randomizer/runner.py`** — `_launch` now removes the run tree on **any** install failure (`except Exception`, was `except StagingError`). A `ValueError` or an adapter `RuntimeError` from `install_layout` no longer leaves `runs/<token>/{bootstrap.txt,state.txt}` behind.
+2. **(root) `experimental/pikmin2_family_install.py`** — `install_layout`'s mid-install cleanup now also removes run-root sidecars an adapter already copied (e.g. `p2-snow.txt` from `pikmin2_enemy.install`), preserving only `SESSION_FILES` and the (not-yet-written) binding receipt — not just `run/assets`.
+3. **(root tests) two flip-tests in `tests/test_pikmin2_install_binding.py`** — `test_launch_install_error_leaves_no_run_dir[ValueError|RuntimeError]` (launcher cleanup) and `test_install_layout_mid_failure_removes_run_root_sidecars` (adapter sidecar removal). **Verified flipping**: with the two fixes stashed these run as 3 failed; with the fixes applied, 27 passed.
+4. **(evidence) native build + bounded GL launch** — built `pikmin_pc` (nectar.exe); a real `slot.py run gl l05` launch with `PIKMIN_P2_ROOM_WINDOW=960x540` + `PYTHONUTF8=1` reached the room preview with the 960×540 centred window; the family bank load is blocked by family-lane artifacts (below).
+
+### Ordered commits / dirty state
+
+- **Root** `deepseek/p2-l05`, base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`. Clean. Full ordered list now (includes the fix3 items `8510b02`, `e12c429`, `5ec78d6` that the earlier list stopped short of):
+  1. `7ab7d79` identity-to-runtime binding → 2. `642e398` doc → 3. `9a3b647` handoff → 4. `021fafa` review fixes → 5. `dfb83a3` handoff → 6. `545edbe` review fixes 2 → 7. `8510b02` handoff → 8. `e12c429` slice 2 → 9. `5ec78d6` review fixes 3 → 10. **`b4263a8` slice 3** (new).
+- **Native** `deepseek/p2-l05-native`, base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`. Clean. **No change** — the bank/sidecar readers already exist on the base (`pc_p2_enemy.cpp`, `pc_p2_dwarf_orange.cpp`).
+
+### Build evidence (`output/dsw/l05-build-evidence.txt`)
+
+```
+2026-09-14T21:23:50 lane=l05 target=pikmin_pc native=b805d9c626e4f4558c95aef7cac311a5d9a2068f dirty=no build_dir=C:\Users\alari\pikmin-randomizer\output\dsw\native-l05-build exe=C:\Users\alari\pikmin-randomizer\output\dsw\native-l05-build\bin\nectar.exe sha256=039db847a1818fb41ee7c3a3dd90e5f5c027619b58af41e522b9d8f0ea65fbdb ninja_n="ninja: no work to do." seconds=126
+```
+
+### Native launch attempt (bounded, `slot.py run gl l05`)
+
+- Staged Snow + Dwarf Orange (15+15 room models) through the **real** adapter path into a real P1-retail junction overlay; `install_layout` produced `courses/pikmin2room/{snow,dwarf_orange}_*.mod` plus `p2-snow*.txt` and `p2-dwarf-orange-*.txt` at the run root.
+- `nectar.exe --experimental-pikmin2-room` booted with the **960×540 windowed + centred** preview window (adoption evidence) and reached `[Pikipelago] P2_ROOM_PREVIEW room=room_4x4a_4_conc red=20 isolated=1`, then aborted at `pc_p2_preview_setup` with `P2 preview: duplicate treasure` (exit 3).
+- Root cause: I overlaid the **stock P1 `chal0`** generator set, which exposes two `pr05` treasures; the single-treasure preview layout (`preview_pikmin2_room.generator()` + empty `plants.gen`) is required and the converted room (`pikmin2-room105`) is absent from `C:/Users/alari/pikmin-randomizer/output/`.
+- **Bank-load markers are already on the base and consume exactly what `install_layout` stages** — `P2_SNOW_BANK` / `P2_ENEMY_READY species=YellowKochappy` (`pc_p2_enemy.cpp:234`/`:128` reading `p2-snow.txt:147`, `p2-snow-actors.txt:239`, `courses/pikmin2room/snow_*.mod:180`); `P2_DWARF_ORANGE_BANK` / `P2_ENEMY_READY species=BlueKochappy source_id=44` (`pc_p2_dwarf_orange.cpp:84`/`:82` reading `p2-dwarf-orange-{profile,bank,actors}.txt:35`, `courses/pikmin2room/dwarf_orange_*.mod:52`). Retail P1 assets contain none of these files, so there is no retail fallback for them.
+
+### Tests run
+
+- `py -3.12 -m pytest tests/test_pikmin2_install_binding.py -q` → **27 passed**.
+- Wider lane-05-adjacent subset (install_binding, family_install, staging, session_staging, seed_bridge, seed_generation, dwarf_orange, dwarf_orange_install, enemy, roster) → **139 passed**.
+- `py -3.12 scripts/probe_p2_install_binding.py --output <out>` → **passed** (two-identity `runner.launch` staging, cache replay `[False, True]`, 15+15 room models, both actor files, wrong-source fail-closed `bad-session run dirs: 0`).
+
+### Six-gate update (unchanged: content-level provider lane)
+
+Staging/install binding for BOTH cohort dwarfs remains **PASS at the content level** (real runner entry point, cache replay, wrong/missing content fail-closed, and now full run-tree + run-root sidecar cleanup on any failure). The live native bank-load/spawn gates remain **UNTESTED** and are blocked below; no gameplay PASS is claimed.
+
+### Remaining blockers (all non-lane-05)
+
+- **Lane 13 / family:** the **real** Snow/Dwarf pose banks (render-able `.mod` from `pikmin2_dwarf_orange_bank.build`/`pikmin2_enemy.extract`) — my synthetic chunk-bank passes the hash/chunk pre-flight but cannot be `gameflow.loadShape`-rendered, so a live `P2_*_BANK` run needs the family bank artifact.
+- **Lane 13 / family:** Research Pod assets (`p2-pod.txt`/`pod.mod`) — `pc_p2_snow_setup` refuses to load the Snow bank in preview mode without a Pod (`pc_p2_enemy.cpp:161`).
+- **Lane 01 / shared asset:** `pikmin2-room105` converted room (`room.mod`/`room.ini`/`treasure.mod`) — absent; the single-treasure preview generator/room needs it.
+- **Lane 02 (#438):** admission set still empty; probes/tests monkeypatch `admitted_ids`.
+
+### Reproduction
+
+```powershell
+py -3.12 -m pytest tests/test_pikmin2_install_binding.py -q
+```
+
+### Subagent usage (slice 3)
+
+This slice ran with **no subagents**: the `task` subagent tool was not available in this execution session, so I did the source audit, candidate inventory and test scaffolding myself (the brief's split was applied as a mental checklist instead). Honest cost: the read-heavy native audit (`pc_p2_enemy.cpp`/`pc_p2_dwarf_orange.cpp`/`pc_p2_preview.cpp`/`gameSetup.cpp`/`Generator.cpp`) consumed the bulk of my context that two `explore` subagents would otherwise have absorbed. Net estimate: **+~25 min** versus the intended 3-way parallel split, with no correctness risk (single-owner, no reconciliation drift).
