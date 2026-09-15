@@ -108,6 +108,14 @@ APP = r'''class RoomApp : public PlugPikiApp {
         float ang=float(n)*6.2831853f/20.0f;Vector3f pt(center->mSRT.t.x+radius*std::sin(ang),0,center->mSRT.t.z+radius*std::cos(ang));
         pt.y=mapMgr->getMinY(pt.x,pt.z,true);v->resetPosition(pt);v->changeMode(PikiMode::FormationMode,naviMgr?naviMgr->getNavi():nullptr);++n;}return n;}
     int transportingCount(){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(v->isAlive()&&v->mMode==PikiMode::TransportMode)++n;}return n;}
+    // The Chappy placement proxy also drops a view-less `pr01` number pellet on
+    // death (a generic personality drop, unrelated to the Long Legs reward). It
+    // is carryable, so a freed squad can latch it and the Pod then aborts on
+    // unregistered cargo. Retire those stray drops so only the family corpse
+    // (the viewed `tkch` corpse the family receipt owns) remains deliverable.
+    int dropStrayPellets(){int n=0;Iterator i(pelletMgr);CI_LOOP(i){Pellet* p=static_cast<Pellet*>(*i);
+        if(!p||!p->isAlive()||p->mPelletView||!p->mConfig)continue;
+        if(p->mConfig->mModelId.mId=='pr01'){p->mIsAlive=false;++n;}}return n;}
 public:int idle() override {
     int result=PlugPikiApp::idle();require(++frames<60000,"long legs pod timeout");
     if(frames%3000==0)std::printf("P2_LL_HB frames=%d stage=%d ready=%d pause=%d overlay=%d movie=%d navi=%d piki=%d\n",frames,stage,int(pc_p2_preview_ready()),int(gameflow.mPauseAll),int(gameflow.mIsUIOverlayActive),gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive?1:0,naviMgr?1:0,pikiMgr?1:0);
@@ -175,24 +183,21 @@ public:int idle() override {
         if(!bigfootCorpse){bigfootCorpse=corpseOf(bigfoot);if(bigfootCorpse)std::printf("P2_LL_CORPSE species=BigFoot pellet=1 generator=%u\n",bigfootGen->_70);}
         if(!houdaiCorpse){houdaiCorpse=corpseOf(houdai);if(houdaiCorpse)std::printf("P2_LL_CORPSE species=Houdai pellet=1 generator=%u\n",houdaiGen->_70);}
         if(!bigfootCorpse||!houdaiCorpse){if(observed>24000){std::puts("FAIL P2_LONG_LEGS_LIFECYCLE corpse_timeout");std::fflush(stdout);std::_Exit(1);}return result;}
+        int stray=dropStrayPellets();
+        std::printf("P2_LL_DROP_STRAY pr01=%d\n",stray);
         int c=freeAndPark(bigfoot,22.0f);std::printf("P2_LL_FREE_RECRUIT species=BigFoot count=%d pokos=%d\n",c,pc_p2_preview_pokos());std::fflush(stdout);stage=5;return result;
     }
     if(stage==5){
-        if(!assistedBigfoot&&observed>bigfootDiedTick+240&&transportingCount()<bigfootCorpse->mConfig->mCarryMinPikis()){
-            int c=assignTransport(bigfootCorpse);assistedBigfoot=true;std::printf("P2_LL_ASSIST species=BigFoot carriers=%d assisted=1\n",c);std::fflush(stdout);
-        }
         if(observed%180==0)std::printf("P2_LL_CARRY species=BigFoot state=%d alive=%d transport=%d pokos=%d\n",bigfootCorpse->getState(),int(bigfootCorpse->isAlive()),transportingCount(),pc_p2_preview_pokos());
         if(!bigfootCorpse->isAlive()){std::printf("P2_LL_DELIVER species=BigFoot pokos=%d\n",pc_p2_preview_pokos());std::fflush(stdout);stage=6;return result;}
         if(observed>32000){std::puts("FAIL P2_LONG_LEGS_LIFECYCLE carry_timeout");std::fflush(stdout);std::_Exit(1);}
         return result;
     }
     if(stage==6){
-        int c=freeAndPark(houdai,22.0f);std::printf("P2_LL_FREE_RECRUIT species=Houdai count=%d pokos=%d\n",c,pc_p2_preview_pokos());std::fflush(stdout);stage=7;return result;
+        int stray=dropStrayPellets();
+        int c=freeAndPark(houdai,22.0f);std::printf("P2_LL_FREE_RECRUIT species=Houdai count=%d pokos=%d stray=%d\n",c,pc_p2_preview_pokos(),stray);std::fflush(stdout);stage=7;return result;
     }
     if(stage==7){
-        if(!assistedHoudai&&observed>houdaiDiedTick+240&&transportingCount()<houdaiCorpse->mConfig->mCarryMinPikis()){
-            int c=assignTransport(houdaiCorpse);assistedHoudai=true;std::printf("P2_LL_ASSIST species=Houdai carriers=%d assisted=1\n",c);std::fflush(stdout);
-        }
         if(observed%180==0)std::printf("P2_LL_CARRY species=Houdai state=%d alive=%d transport=%d pokos=%d\n",houdaiCorpse->getState(),int(houdaiCorpse->isAlive()),transportingCount(),pc_p2_preview_pokos());
         if(!houdaiCorpse->isAlive()){std::printf("P2_LL_DELIVER species=Houdai pokos=%d\n",pc_p2_preview_pokos());std::fflush(stdout);stage=8;return result;}
         if(observed>40000){std::puts("FAIL P2_LONG_LEGS_LIFECYCLE carry_timeout");std::fflush(stdout);std::_Exit(1);}
@@ -355,6 +360,11 @@ def validate(text, code=0):
     bigfoot_receipt = bool(re.search(r'P2_POD_RECEIPT id=corpse:[^\s]*longlegs:312002', text))
     houdai_receipt = bool(re.search(r'P2_POD_RECEIPT id=corpse:[^\s]*longlegs:312001', text))
     free_recruit = 'P2_LL_FREE_RECRUIT' in text
+    # natural_carry = both corpses were delivered by ordinary Piki::graspSituation
+    # transport (the two receipt lines) with no fixture-forced TransportMode write
+    # (P2_LL_ASSIST). An assisted/forced carry means the corpse was not naturally
+    # recruited, so the gate fails.
+    natural_carry = (bigfoot_receipt and houdai_receipt and 'P2_LL_ASSIST' not in text)
     # source_timed = source timings were used AND Houdai actually reached Shot
     # (fired a shell). The fixture declares source=1; the SHELL marker proves the
     # cooldown path (no clip compression) made Shot reachable.
@@ -397,6 +407,7 @@ def validate(text, code=0):
         bigfoot_receipt=bigfoot_receipt,
         houdai_receipt=houdai_receipt,
         free_recruit=free_recruit,
+        natural_carry=natural_carry,
         source_timed=source_timed,
         completion='PASS P2_LONG_LEGS_LIFECYCLE' in text,
         no_extinction=not re.search(r'Extinction', text, re.IGNORECASE),
@@ -419,6 +430,7 @@ def validate(text, code=0):
         bigfoot_receipt='pass' if bigfoot_receipt else 'fail',
         houdai_receipt='pass' if houdai_receipt else 'fail',
         free_recruit='pass' if free_recruit else 'fail',
+        natural_carry='pass' if natural_carry else 'fail',
         source_timed='pass' if source_timed else 'fail',
     )
     # `passed` is the full natural lifecycle contract for both species: natural
@@ -431,7 +443,8 @@ def validate(text, code=0):
                 'death_output', 'birth_children',
                 'houdai_natural_damage', 'houdai_shell_fires', 'houdai_shell_hits',
                 'houdai_natural_death', 'houdai_no_inject',
-                'bigfoot_receipt', 'houdai_receipt', 'free_recruit', 'source_timed',
+                'bigfoot_receipt', 'houdai_receipt', 'free_recruit', 'natural_carry',
+                'source_timed',
                 'corpse', 'cleanup', 'reentry', 'completion', 'no_extinction')
     return dict(passed=code == 0 and all(checks[name] for name in required),
                 checks=checks, gates=gates, squad=squad, exit_code=code,
@@ -445,6 +458,7 @@ def validate(text, code=0):
                     inject_present=injected,
                     bigfoot_receipt=bigfoot_receipt,
                     houdai_receipt=houdai_receipt,
+                    natural_carry=natural_carry,
                     source_timed=source_timed,
                     foot_crush_hits=crush),
                 delivery_reward_reason='Ordinary corpse carry to the Pod credits each Long Legs body '

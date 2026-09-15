@@ -89,3 +89,14 @@ def test_receipts_both_present():
     assert result['checks']['bigfoot_receipt'] is True
     assert result['checks']['houdai_receipt'] is True
     assert result['gates']['bigfoot_receipt'] == 'pass'
+
+
+def test_natural_carry_true_without_assist():
+    result = validate(GOOD_LOG, code=0)
+    assert result['checks']['natural_carry'] is True
+    assert result['gates']['natural_carry'] == 'pass'
+
+
+def test_natural_carry_flips_on_assist():
+    flipped = GOOD_LOG + '\nP2_LL_ASSIST species=BigFoot carriers=20 assisted=1'
+    assert validate(flipped, code=0)['checks']['natural_carry'] is False
