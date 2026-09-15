@@ -1,4 +1,4 @@
-# Lane 12 (Captains/squad) — DeepSeek handoff (#130)
+﻿# Lane 12 (Captains/squad) â€” DeepSeek handoff (#130)
 
 Implementation owner: Codex through shared account `4laric`; executing session:
 DeepSeek (`deepseek-v4-pro`), recorded separately per AGENTS.md. This handoff
@@ -14,8 +14,8 @@ corrects the headline labels identified by review.
 ### Integrator note (review of fix 2)
 
 - Squad release on survivor-down was initially UNTESTED at runtime: releasePikis iterates the plate (navi.cpp:1398-1404), which is empty before the first CPlate::refresh, so nothing observable was released. It was subsequently observed (Slice 3): survivor-path.log:730 shows piki_mode_before=1 piki_mode_after=0. "Source-faithful" alone was not a runtime PASS.
-- The fresh logs are the top-level l12-out/{base-final,knockout-final,survivor-path}.log; the 29aa… run dir holds the stale 23:34 runs with the old squad=1 marker.
-- The second-captain live gate is flipped by the PIKMIN_P2_SECOND_CAPTAIN_LIVE environment variable, not by fixture code; an invisible second Navi with live collision ships to anyone who sets it.
+- The fresh logs are the top-level l12-out/{base-final,knockout-final,survivor-path}.log; the 29aaâ€¦ run dir holds the stale 23:34 runs with the old squad=1 marker.
+- The second-captain gate is now request-gated default-on; the stale `PIKMIN_P2_SECOND_CAPTAIN_LIVE` environment variable is removed. The slot-0 shape is shared and the second captain is drawn when requested.
 - No build-evidence line was added for 16125f06 (tools-only commit; exe unaffected).
 
 ## Source IDs / owned files
@@ -31,33 +31,33 @@ interface, not OniKurage's enemy gates (those remain lane 29's).
 
 Files owned/edited (native worktree `output/dsw/native-l12`):
 
-- `pc_port/pc_p2_captain.h` / `pc_port/pc_p2_captain.cpp` — live query seam
+- `pc_port/pc_p2_captain.h` / `pc_port/pc_p2_captain.cpp` â€” live query seam
   `captain_handle(int)`/`captive_count()`/`navi_dead(int)` and
   `pc_p2_captain_forget_piki(Piki*)`.
-- `src/plugPikiKando/pikiMgr.cpp` — `PikiMgr::birth()` calls
+- `src/plugPikiKando/pikiMgr.cpp` â€” `PikiMgr::birth()` calls
   `pc_p2_captain_forget_piki(...)` beside the Bulbmin hook (line 64).
-- `include/Navi.h` + `src/plugPikiKando/navi.cpp` — new `Navi::pauseForDownIfLast()`
+- `include/Navi.h` + `src/plugPikiKando/navi.cpp` â€” new `Navi::pauseForDownIfLast()`
   helper and its use at every damage-receiver down site; `Navi::update` skips the
   Kontroller poll for an inactive captain; `Navi::refresh` still early-returns
   for `mNaviID != 0` (second-captain render deferred); Korntroller ctor comment
   corrected (change affects slot 1 only).
-- `src/plugPikiKando/gameCoreSection.cpp` — `setup_from_navi_mgr()` in the
+- `src/plugPikiKando/gameCoreSection.cpp` â€” `setup_from_navi_mgr()` in the
   `GameCoreSection` **constructor** + `teardown()` in `exitStage()`; the
   `getActiveNavi()` rebinds (camera/whistle-throw) and the second-captain slot
   offset applied **after** the Starting transition.
-- `src/plugPikiKando/naviState.cpp` — `NaviDeadState::init` survivor branch
+- `src/plugPikiKando/naviState.cpp` â€” `NaviDeadState::init` survivor branch
   (ODead/stop/`releasePikis`, no stage finish) vs last-captain stage-finish block.
-- `src/plugPikiNakata/pcamcameramanager.cpp` — **hook**: `outputNaviPosition()`
+- `src/plugPikiNakata/pcamcameramanager.cpp` â€” **hook**: `outputNaviPosition()`
   reads `getActiveNavi()` (fallback `getNavi(0)`) (2 lines).
-- `pc_port/pc_p2_second_captain.cpp` / `.h` — `second_captain_live_allowed()`
+- `pc_port/pc_p2_second_captain.cpp` / `.h` â€” `second_captain_live_allowed()`
   re-gated OFF; a fixture flips it via `PIKMIN_P2_SECOND_CAPTAIN_LIVE`.
-- `tools/p2_captain_runtime.cpp` — real-GL runtime fixture: base seam,
+- `tools/p2_captain_runtime.cpp` â€” real-GL runtime fixture: base seam,
   `--knockout-roster` and `--survivor-path` scenarios.
 
 Root worktree files:
 
-- `tests/test_pikmin2_captain_live.py` — source-presence gate (resolves
-  `PIKMIN_NATIVE_ROOT` → `native/` → `engine/`; asserts the live-seam and
+- `tests/test_pikmin2_captain_live.py` â€” source-presence gate (resolves
+  `PIKMIN_NATIVE_ROOT` â†’ `native/` â†’ `engine/`; asserts the live-seam and
   forget-piki markers, no hardcoded lane path, no duplicate compile tests).
 
 ## Ordered commits
@@ -65,22 +65,22 @@ Root worktree files:
 Native worktree (branch `deepseek/p2-l12-native`, base
 `b805d9c626e4f4558c95aef7cac311a5d9a2068f`):
 
-1. `0d0627ce`, `dfdf39cc`, `a90ceab3` — slice 1 + fix 1 (live seam, survivor-gated
+1. `0d0627ce`, `dfdf39cc`, `a90ceab3` â€” slice 1 + fix 1 (live seam, survivor-gated
    stage finish, bind attribution).
-2. `2fa5e109`, `d6ba3f52`, `16125f06` — slice 2 (second-captain rebind, natural
+2. `2fa5e109`, `d6ba3f52`, `16125f06` â€” slice 2 (second-captain rebind, natural
    knockdown, forget-piki, survivor runtime).
-3. `95fd4720` — fix 2 native: `Navi::pauseForDownIfLast()` at all 12 down sites,
+3. `95fd4720` â€” fix 2 native: `Navi::pauseForDownIfLast()` at all 12 down sites,
    `InteractAttack::actNavi` knockdown, `getActiveNavi()` Kontroller skip,
    second-captain live gate OFF + slot offset after Starting, corrected
    Kontroller comment.
-4. `1bf9593a`, `726842880`, `a07b1e40` — fix 2 fixture-only (obsrved squad value;
+4. `1bf9593a`, `726842880`, `a07b1e40` â€” fix 2 fixture-only (obsrved squad value;
    final state is `a07b1e40`).
 
 Root worktree (branch `deepseek/p2-l12`, base
 `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`):
 
 1. `dfa349a` (slice 1 test), `a48545a` (fix 1), `ff1a58a` (slice 2 handoff + test).
-2. `(this handoff)` — "lane12: review fixes 2 ... (#130)".
+2. `(this handoff)` â€” "lane12: review fixes 2 ... (#130)".
 
 Dirty state: both worktrees clean after the commits above (nothing committed
 under other lanes' `output/`, no assets/exe/build dirs). Two wave-branch scripts
@@ -94,12 +94,12 @@ were materialized locally to run the gate checker but are NOT committed.
   paused unconditionally). It checks the direct partner via
   `naviMgr->getOtherNavi(this)` (not `getAliveOrima()`, which would still report
   the dying captain alive before the death is recorded). Single-captain play is
-  byte-identical (no partner ⇒ pause).
+  byte-identical (no partner â‡’ pause).
 - `NaviDeadState::init` survivor branch keeps ODead/stop/`releasePikis` and does
   **not** set `GameStat::orimaDead`, dispatch `MOVIECMD_StageFinish`, deactivate
   the camera or pause; the last-captain branch does (source `mDeadNavis != 2`).
   `GameStat::orimaDead` is itself never read by engine code; the real end
-  condition is `MOVIECMD_StageFinish` → `forceDayEnd`.
+  condition is `MOVIECMD_StageFinish` â†’ `forceDayEnd`.
 - The `getActiveNavi()` reads are **hooks** (camera target, whistle/throw,
   `pcamcameramanager`) that the survivor rebind consults; controller start and
   camera bind still default to `getNavi(0)` for the primary captain.
@@ -127,7 +127,7 @@ head `a07b1e4003e80eaf21837ceb6bf6364078f16644`), `fixture.exe` SHA-256
 ## Fixture adoption evidence
 
 Fresh arena `output/dsw/l12-out/29aa57121d014e72ad96464855620d1d` (current
-overlay; converted room input read read-only from lane 04). 960×540 centred
+overlay; converted room input read read-only from lane 04). 960Ã—540 centred
 window and a live 20-Pikmin squad across all three runs. Captured stdout:
 `output/dsw/l12-out/survivor-path.log`, `output/dsw/l12-out/base-final.log`,
 `output/dsw/l12-out/knockout-final.log`.
@@ -145,7 +145,7 @@ All three runs exit 0.
 
 ## Six-gate table
 
-Identity: **captain slot 0 (Olimar) — lane 12 shared captain/squad provider**
+Identity: **captain slot 0 (Olimar) â€” lane 12 shared captain/squad provider**
 (not an enemy roster source_id; the six gates below cite the captain/squad
 interface directly). The Greater Jellyfloat (`OniKurage`, P2 id 72) is the
 lane-29 consumer named in prose; this lane does not claim its enemy gates.
@@ -162,12 +162,13 @@ lane-29 consumer named in prose; this lane does not claim its enemy gates.
 Caveats (injected vs natural, stated explicitly):
 
 - Gate 1 PASS basis is the always-present slot-0 identity; the second-captain
-  (slot 1) birth at survivor-path.log:310 runs under the fixture-only live gate
-  (`PIKMIN_P2_SECOND_CAPTAIN_LIVE=1`) and is reported as such, not as a normal
-  spawn.
-- Gate 3/4 are natural (the integrated `InteractAttack::actNavi` receiver applies
-  `pcNaviHurt` damage and the engine's own pause/damage path; `finishDamage`
-  exits to `NAVISTATE_Dead`). The **single-captain** injected game-over
+  (slot 1) birth at survivor-path.log:310 runs through the request-gated,
+  default-on second-captain path (the stale `PIKMIN_P2_SECOND_CAPTAIN_LIVE` env
+  var is removed).
+- Gate 3/4 in the slice-1/2 provider table are the integrated
+  `InteractAttack::actNavi` receiver path (`pcNaviHurt` + engine pause/damage);
+  the slice-3b spawned-Miurin bury is the P1 `InteractBury::actNavi` proxy with
+  the P2 rules off and is reported UNTESTED (assisted), not natural. The **single-captain** injected game-over
   (`mHealth=0` + `finishDamage`, `knockout-final.log:733`) and the **two-captain
   final stage-end** (`navi1->mHealth=0`, `survivor-path.log:731`) are UNTESTED
   (injected) diagnostics, not natural death claims.
@@ -175,7 +176,7 @@ Caveats (injected vs natural, stated explicitly):
   is called in the survivor branch of `NaviDeadState::init`) but its plate-mode
   flip is not runtime-observable in this preview (the plate's `mTotalSlotCount`
   is populated only by `CPlate::refresh` on a draw, which the sync fixture runs
-  before) — the observed counts are printed honestly (`squad_before=20
+  before) â€” the observed counts are printed honestly (`squad_before=20
   squad_after=20`) rather than a hardcoded `squad=1`.
 
 ## Gate checker
@@ -188,7 +189,7 @@ Output (exit 0; the OniKurage row is the lane-29 consumer named in prose, whose
 gates this shared provider does not claim):
 
 ```
-72 OniKurage (role=source): warning (shared table) - named in prose but no six-gate table of its own is bound to it (historical slice-1/2 run)
+72 OniKurage (role=source): warning (shared table) - named in prose but no six-gate table of its own is bound to it (historical slice-1/2 run; superseded by the slice-3b policy-only note above, which binds no identity)
 ```
 
 No PASS row is refused; the captain interface identity is outside the enemy
@@ -224,7 +225,7 @@ PIKMIN_NATIVE_ROOT=C:/Users/alari/pikmin-randomizer/output/dsw/native-l12 \
 
 - Second-captain model/self-shadow/plate/cursor rendering (`Navi::refresh`
   early-return for `mNaviID != 0`) and a real per-captain controller/camera split
-  remain open — the reason the live gate stays OFF.
+  remain open â€” the reason the live gate stays OFF.
 - The Greater Jellyfloat still composes `P2CaptainPolicy` directly rather than
   `pc_p2_captain::capture_captain`; wiring it to this live seam is **lane 29**'s
   family-adapter work.
@@ -235,13 +236,13 @@ PIKMIN_NATIVE_ROOT=C:/Users/alari/pikmin-randomizer/output/dsw/native-l12 \
 
 Fix 2 slice ("review fixes for the survivor-path labels"):
 
-- `explore` "navi pause/knockdown sites": used as-is — enumerated the exact 12
+- `explore` "navi pause/knockdown sites": used as-is â€” enumerated the exact 12
   `startPause` sites, the `InteractAttack` ctor/`actNavi` shape (4-arg, nullptr
   owner ok), `Navi::refresh`/`NaviStartingState`/Kontroller anchors. Drove
   `pauseForDownIfLast()` at all 12 sites and the `InteractAttack` receiver route.
-- `explore` "slice-2 change inventory": used as-is — pinned the +40/+40 offset,
+- `explore` "slice-2 change inventory": used as-is â€” pinned the +40/+40 offset,
   the second-captain gate, the `forget_piki` seam, and the exact log locations.
-- `general` "gate-table spec + checker": used as-is — fetched the wave-branch
+- `general` "gate-table spec + checker": used as-is â€” fetched the wave-branch
   checker/ingest/roster and confirmed the exact gate-table format, the citation
   rules (real `.log:NNN`, no `NNN`/`<...>` placeholders), and that `PASS` rows
   must avoid the NONNATURAL markers. I materialized the wave scripts in a scratch
@@ -267,10 +268,10 @@ PIKMIN_P2_SECOND_CAPTAIN=1 PIKMIN_P2_SECOND_CAPTAIN_LIVE=1 \
 Executing session: DeepSeek (`deepseek-v4-pro`). Goal: make the survivor path
 observable and real. Outcome of the four tasks:
 
-1. **Squad release observed at runtime — DONE.** The blocker was that
+1. **Squad release observed at runtime â€” DONE.** The blocker was that
    `releasePikis()` iterates the plate's traversable count `mTotalSlotCount`
    (CPlate), which the per-frame `makeCStick`->`CPlate::refresh` normally fills on
-   a later frame — so a single-frame knockdown observed nothing. The fixture now
+   a later frame â€” so a single-frame knockdown observed nothing. The fixture now
    refreshes the plate before the knockdown (`survivorNavi0->mPlateMgr->refresh(...)`)
    and asserts the real starting Piki's `mMode` flips to FreeMode, printing the
    observed values. Evidence (`output/dsw/l12-out/survivor-path.log`):
@@ -278,7 +279,7 @@ observable and real. Outcome of the four tasks:
    piki_mode_after=0 orima_dead=0 paused=0 active=1` (line 14/317/734; `mode
    before=1` Formation -> `mode after=0` FreeMode).
 
-2. **Second-captain render — BLOCKED.** The naive fix (drop `Navi::refresh`'s
+2. **Second-captain render â€” BLOCKED.** The naive fix (drop `Navi::refresh`'s
    `if (mNaviID != 0) return;`) crashes on the first draw (exit 127, no further
    log): the fresh uncached `mNaviShapeObject[1]` built by
    `NaviMgr::ensureSecondNaviShapeObject()` (naviMgr.cpp:232) crashes in the
@@ -290,18 +291,18 @@ observable and real. Outcome of the four tasks:
    per-captain shape/animator/head binding (likely lane 09 rendering infra), not a
    captain-lane change.
 
-3. **Natural knockdown from a real actor — BLOCKED.** The integrated receiver is
+3. **Natural knockdown from a real actor â€” BLOCKED.** The integrated receiver is
    already wired: `InteractBury::actNavi` (navi.cpp:2622) routes a bound Miulin to
    `pc_p2_mamuta_bury_navi` (pc_p2_mamuta_rules.cpp:69, 5.0 damage/hit) and the P1
    Miurin TAI throws `InteractBury(&teki,true,20.0f)` (TAImiurin.cpp:559). A NATURAL
    knockdown needs a spawned Miulin (generator 221001) + `p2-mamuta-actors.txt` +
    `p2-mamuta-rules.txt` + `miulin_*.mod` banks (lane 19's `pikmin2_mamuta_arena.py`
-   / `pikmin2_mamuta_natural_runtime.py`) and a walk-in — a separate Mamuta arena
+   / `pikmin2_mamuta_natural_runtime.py`) and a walk-in â€” a separate Mamuta arena
    staging, not wires into the captain survivor fixture this slice. Not
    implemented; remaining gate 5 natural-death evidence stays at the
    `InteractAttack::actNavi` receiver level.
 
-4. **Two compile-failing captain tests — DONE.** `tests/test_pikmin2_captain_adapter.py`
+4. **Two compile-failing captain tests â€” DONE.** `tests/test_pikmin2_captain_adapter.py`
    and `test_pikmin2_captain_squad_split.py` failed on every config because the
    compile step never put the MinGW bin dir on PATH (g++ dies silently on
    `cc1plus`). Both now resolve the native tree via `PIKMIN_NATIVE_ROOT` ->
@@ -310,25 +311,25 @@ observable and real. Outcome of the four tasks:
 
 ### Native commits (slice 3, base `a07b1e40`)
 
-1. `349abef1` — render second captain + gate default-on + two-captain PPM (later
+1. `349abef1` â€” render second captain + gate default-on + two-captain PPM (later
    reverted; the render path crashes).
-2. `0817b04a` — revert the render change + gate (fresh-shape draw crashes);
+2. `0817b04a` â€” revert the render change + gate (fresh-shape draw crashes);
    production build head.
-3. `111f80d9`, `c333d66f`, `960b1d6f` — fixture: single-frame survivor, plate
+3. `111f80d9`, `c333d66f`, `960b1d6f` â€” fixture: single-frame survivor, plate
    refresh before knockdown, observed real-Piki squad release (final head
    `960b1d6f`).
 
-Root commit (slice 3): `780fe5e` — fix the two captain compile gates.
+Root commit (slice 3): `780fe5e` â€” fix the two captain compile gates.
 
 ### Build
 
-Production build at `0817b04a` (nectar SHA `08766cf2…25383a`, `ninja -n` no
+Production build at `0817b04a` (nectar SHA `08766cf2â€¦25383a`, `ninja -n` no
 work); `960b1d6f` is a fixture-only delta. Fixture `p2-captain-fixture-final`
 (provenance built, native head `960b1d6f`).
 
 ### Six-gate table (slice 3)
 
-Identity: **captain slot 0 (Olimar) — lane 12 shared captain/squad provider**
+Identity: **captain slot 0 (Olimar) â€” lane 12 shared captain/squad provider**
 (not an enemy roster source_id). `OniKurage` (P2 id 72) is the lane-29 consumer.
 
 | Gate | Result | Evidence | Injected vs natural |
@@ -364,15 +365,15 @@ Output (exit 0, no refused PASS):
 
 ### Subagent usage
 
-- `explore` "Navi render + natural knockdown audit": used as-is — confirmed the
+- `explore` "Navi render + natural knockdown audit": used as-is â€” confirmed the
   remove-guard naive render is the only change needed IF the fresh shape were
   fully wired, identified `InteractBury::actNavi`/`pc_p2_mamuta_bury_navi` as the
   integrated natural knockdown receiver, and the Queen body/roll does NOT damage
   captains. Guided the render attempt and the task-3 feasibility call.
-- `explore` "mamuta/bind + test failure inventory": used as-is — gave the Mamuta
+- `explore` "mamuta/bind + test failure inventory": used as-is â€” gave the Mamuta
   sidecar token (`P2_MAMUTA_ACTORS_1`, generator 221001) and reproduced the
   captain-test compile failure as the missing MinGW PATH (not a stale mirror).
-- `general` "fix two captain pytest compile gates": used as-is — rewrote both
+- `general` "fix two captain pytest compile gates": used as-is â€” rewrote both
   tests to `PIKMIN_NATIVE_ROOT`-first resolution + PATH-prepended compile,
   reported `3 passed`; committed as `780fe5e`.
 
@@ -396,18 +397,18 @@ PIKMIN_P2_SECOND_CAPTAIN=1 PIKMIN_P2_SECOND_CAPTAIN_LIVE=1 \
 ## Slice 3b
 
 Executing session: DeepSeek (`deepseek-v4-pro`). Goal: finish the two slice-3
-blocking tasks — make the second captain visible (gate default-on) and knock the
+blocking tasks â€” make the second captain visible (gate default-on) and knock the
 active captain down from a spawned actor (natural gate 3/4). Wave native merged
 first (`91911022`), all receipt branches retained (`pc_p2_preview.cpp` keeps
 mamuta/king/otakara/kurage/waterwraith).
 
-### Task 1 — second-captain render, gate default on (DONE)
+### Task 1 â€” second-captain render, gate default on (DONE)
 
 **Root cause of the slice-3 crash (real gdb backtrace + instrumented markers).**
 gdb gave `#0 Navi::refresh` from `GameCoreSection::draw`. Per-captain markers then
 localised it: slot 0 drew fully; slot 1 completed `Navi::draw`/`demoDraw`, then
 crashed between `[L12r] after draw` and `[L12r] after plate` with
-`plateptr id=1 plateMgr=0000000000000000` — i.e. **slot 1's `mPlateMgr` is null on
+`plateptr id=1 plateMgr=0000000000000000` â€” i.e. **slot 1's `mPlateMgr` is null on
 the setup draw before `Navi::reset()` runs**. The second Navi is birthed in the
 `GameCoreSection` constructor (`gameCoreSection.cpp:1634`) but `init()/reset()`
 (which allocates `mPlateMgr`, `navi.cpp:653`) runs later in `finalSetup`
@@ -429,21 +430,21 @@ Fixes (native `dd17a33d`, the production head that changes the gate default):
   `PIKMIN_P2_SECOND_CAPTAIN_LIVE` fixture flip is gone.
 
 Evidence (default-on: only `PIKMIN_P2_SECOND_CAPTAIN=1`, no env flip):
-- `output/dsw/l12-out/two-captain-ppm.log:735` —
+- `output/dsw/l12-out/two-captain-ppm.log:735` â€”
   `P2_CAPTAIN_PPM saved=two-captains.ppm frame=150 captains=2`; the PPM
   (`two-captains.ppm`, 5.4 MB, non-black, in-frame) visibly shows **both captains**
-  (two Olimar models) — converted to `two-captains.png`.
+  (two Olimar models) â€” converted to `two-captains.png`.
 - `output/dsw/l12-out/survivor-path.log:730` `P2_CAPTAIN_SURVIVOR_DOWN dead=0
   survivor=1 plate=0 piki_mode_before=1 piki_mode_after=0 orima_dead=0 paused=0
   active=1` (default-on, observed squad release); `:731` stage-end; `:732` PASS.
 - `output/dsw/l12-out/base-final.log`/`knockout-final.log` (single-captain,
   `PIKMIN_P2_SECOND_CAPTAIN=0`): slot 0 unregressed, both PASS.
 
-### Task 2 — natural knockdown from a spawned Miurin (DONE)
+### Task 2 â€” proxy knockdown from a spawned Miurin (rules off; DONE, UNTESTED as natural)
 
 Lane 19's arena spawns a P1 Miurin (generator 221001). Its TAI throws
-`InteractBury(&teki,true,20.0f)` (`TAImiurin.cpp:559`) → `InteractBury::actNavi`
-(`navi.cpp:2622`) → `pc_p2_mamuta_bury_navi` (`pc_p2_mamuta_rules.cpp:69`). Staged
+`InteractBury(&teki,true,20.0f)` (`TAImiurin.cpp:559`) â†’ `InteractBury::actNavi`
+(`navi.cpp:2622`) â†’ `pc_p2_mamuta_bury_navi` (`pc_p2_mamuta_rules.cpp:69`). Staged
 the arena (Miurin + 10-red squad + installed Miulin bank) but **removed
 `p2-mamuta-rules.txt`** (the P2 rules make the bury damage-only, 5.0, no `Dead`)
 **and `p2-mamuta-actors.txt`** (so lane-19 `pc_p2_mamuta_setup` returns early
@@ -454,26 +455,26 @@ bury.
 Evidence (`output/dsw/l12-out/mamuta-natural.log`):
 - `:735` `P2_CAPTAIN_MAMUTA_ARMED actor=-150.0,30.0,1850.0 captain=... health=100.0 rules_off=1`
 - `:740` `P2_CAPTAIN_MAMUTA_BURY frame=125 health=80.0 state=19 hit=1 down=0`
-  (natural spawned Miurin bury, −20 = source `pcNaviHurt(20.0)`, state 19 Bury)
+  (spawned Miurin bury via the P1 InteractBury::actNavi proxy, rules off; not pc_p2_mamuta_bury_navi, âˆ’20 = source `pcNaviHurt(20.0)`, state 19 Bury)
 - `:760` `P2_CAPTAIN_MAMUTA_BURY frame=288 health=0.0 state=29 hit=1 down=1`
-  → `:761` `PASS P2_CAPTAIN_RUNTIME` (state 29 = `NAVISTATE_Dead`).
+  â†’ `:761` `PASS P2_CAPTAIN_RUNTIME` (state 29 = `NAVISTATE_Dead`).
 
 Deviation, stated honestly: the P1 `NaviBuryState` is an escapable, non-lethal
 state, so after each bury the fixture assists only the bury **exit**
 (`P2_CAPTAIN_MAMUTA_ESCAPE_ASSIST`, `transit(NAVISTATE_Walk)`) so the Miurin can
-land the next natural bury; the 5×20 damage down to Dead is the spawned actor's
+land the next natural bury; the 5Ã—20 damage down to Dead is the spawned actor's
 own `InteractBury`. The P2 source Miulin FSM (which would bury-to-kill in one
 sequence) remains lane 19's.
 
 ### Native commits (slice 3b, base `a07b1e40`)
 
-1. `91911022` — merge `claude/p2-deepseek-wave-native` (clean; all receipt
+1. `91911022` â€” merge `claude/p2-deepseek-wave-native` (clean; all receipt
    branches kept).
-2. `d8e4ed4c` — render-share + default-on gate + two-captain PPM.
-3. `dee77625`, `87d8f2eb` — instrumentation (root-caused the null `mPlateMgr`).
-4. `dd17a33d` — **production head**: `mPlateMgr`/light guards, clean (no
+2. `d8e4ed4c` â€” render-share + default-on gate + two-captain PPM.
+3. `dee77625`, `87d8f2eb` â€” instrumentation (root-caused the null `mPlateMgr`).
+4. `dd17a33d` â€” **production head**: `mPlateMgr`/light guards, clean (no
    instrumentation shipped).
-5. `02a1f19f`, `c20bd7cf`, `272d2638` — fixture-only (`--mamuta-natural`,
+5. `02a1f19f`, `c20bd7cf`, `272d2638` â€” fixture-only (`--mamuta-natural`,
    assisted bury exit, PPM at frame 150). Native head `272d2638`.
 
 Root commits: `58343ee2` (test run-PATH + preferred-tree fixes) and this section.
@@ -487,20 +488,19 @@ sha256=a3638c2666f0b7f68c0a3589153188f2a74112f6f9759890ebc178233e6baf70
 ninja_n="ninja: no work to do."
 ```
 `272d2638` was then a fixture-only delta. In fix 3 the narrative comments were
-corrected (share slot-0 shape / request-gated default-on) — comment-only, so a
+corrected (share slot-0 shape / request-gated default-on) â€” comment-only, so a
 behavior-identical rebuild; final production/committed head `b5956670` (nectar
-`5d21a578…`), and the final-head note in `output/dsw/l12-build-evidence.txt`
+`5d21a578â€¦`), and the final-head note in `output/dsw/l12-build-evidence.txt`
 records this. Fixture `p2-captain-fixture-final` (provenance built, final native
 head `b5956670`).
 
 ### Six-gate table (slice 3b)
 
-Source ID: 72 OniKurage
-
-Identity served: **captain slot 0 (Olimar) — lane 12 shared captain/squad
-provider** (slot 1 now default-on). The `Source ID: 72 OniKurage` line is the
-mechanical carrier id this interface cross-references; it is NOT a claim that
-lane 12 owns lane 29's OniKurage enemy gates.
+Identity served: **captain slot 0 (Olimar) â€” lane 12 shared captain/squad
+provider** (slot 1 now default-on). The captain/squad policy has no enemy-roster
+`Source ID`; this table is policy-only and is deliberately NOT ingested (it
+carries no `Source ID:` line), so it cannot advance any identity's gates â€” in
+particular it must never be attributed to lane 29's OniKurage (72).
 
 | Gate | Result | Evidence | Injected vs natural |
 |---|---|---|---|
@@ -518,24 +518,17 @@ so both are reported UNTESTED, not PASS.
 
 ### Gate checker
 
-The slice-3b table now carries its own `Source ID: 72 OniKurage` line (added in
-this fix pass), so the checker binds THIS table instead of the older one; the
-captain-policy identity itself is outside the enemy-roster checker's bindable id
-space, so the carrier id (lane 29's consumer) is used and the attribution is
-stated in the table's note above.
+`scripts/check_p2_handoff_gates.py` is not applicable to this policy-only table:
+it carries no `Source ID:` line, so the checker ignores it and no roster identity
+is advanced by captain evidence. The earlier accidental binding of the captain
+table to lane 29's `OniKurage` (72) is removed. Running the checker over the
+handoff emits no lane-12 identity (integrator fix, directive review item 1):
 
 ```
 py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE12_DEEPSEEK_HANDOFF.md
-```
-Output (exit 0, no refused PASS):
-```
-72 OniKurage (role=source):
-  1. identity_spawn     accepted [PASS]
-  2. movement_animation ignored [N/A]
-  3. attacks_receivers  ignored [UNTESTED]
-  4. death_corpse       ignored [UNTESTED]
-  5. transport_reward   ignored [N/A]
-  6. cleanup_reentry    accepted [PASS]
+# exit 0; no roster identity advanced by lane-12 evidence:
+# 72 OniKurage (role=source): warning (shared table) - named in prose but no table
+# of its own; give it a `Source ID` line + six-gate table to claim its gates
 ```
 
 ### Tests
@@ -552,15 +545,15 @@ Miurin bury integrated. No lane/absolute paths; native resolved via
 
 ### Subagent usage
 
-- `explore` "second-captain render crash root-cause": used as-is — compared slot-0
+- `explore` "second-captain render crash root-cause": used as-is â€” compared slot-0
   vs `ensureSecondNaviShapeObject` construction and warned the uncached-`Shape`
   comment was wrong; the crash needed a real backtrace (which I then took with
   gdb + markers). Narrowed the fix space.
-- `explore` "lane-19 Mamuta arena recipe": used as-is — gave the arena/install
+- `explore` "lane-19 Mamuta arena recipe": used as-is â€” gave the arena/install
   recipe, the `P2_MAMUTA_ACTORS_1` sidecar, and the crucial correction that the
   P2 rules make the bury damage-only (so the natural knockdown needs the rules
   absent). Directly enabled task 2.
-- `general` "slice-3b test scaffolding": used as-is with two corrections — the
+- `general` "slice-3b test scaffolding": used as-is with two corrections â€” the
   new `tests/test_pikmin2_captain_slice3b.py` was adopted after fixing its
   tree-iteration to the preferred (PIKMIN_NATIVE_ROOT) tree; I also fixed the
   adapter/squad tests to put MinGW on PATH for the **run** (not just the compile).
@@ -569,15 +562,15 @@ Net: ~40-50 minutes saved.
 
 ### Subagent usage (fix 3)
 
-- `explore` "checker gate-table binding": used as-is — proved `_bound_tables`
+- `explore` "checker gate-table binding": used as-is â€” proved `_bound_tables`
   keeps one table per owner and located the accidental binder (the embedded
   pasted "Source ID" text), then confirmed the fix (own `Source ID:` line +
   neutralised binder) makes the checker bind the slice-3b table. This drove the
   item-1 fix directly.
-- `explore` "stale comment inventory": used as-is — verbatim text of every stale
+- `explore` "stale comment inventory": used as-is â€” verbatim text of every stale
   comment plus proposed replacements (NaviMgr.h, naviMgr.cpp,
   pc_p2_second_captain.h/.cpp, gameCoreSection.cpp, FlowController.h).
-- `general` "log-citation + tests audit": used as-is with one correction — it
+- `general` "log-citation + tests audit": used as-is with one correction â€” it
   produced the exact current marker line numbers and the full list of stale
   citations; I applied them (the older tables had drifted ~6-8 lines after the
   logs were regenerated).
