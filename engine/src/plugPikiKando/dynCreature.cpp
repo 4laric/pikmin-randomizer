@@ -1,4 +1,10 @@
 #include "DynCreature.h"
+#if defined(PIKI_PC_PORT)
+#include "Pellet.h"
+#include "pc_p2_preview.h"
+#include "pc_p2_purple.h"
+#include "pc_p2_cargo_ground.h"
+#endif
 
 #include "CreatureProp.h"
 #include "DebugLog.h"
@@ -241,6 +247,19 @@ void DynCreature::update()
  */
 void DynCreature::simulate(f32 timeStep)
 {
+#if defined(PIKI_PC_PORT)
+    bool boundedCargoGround=false;
+    const float groundCeiling=mSRT.t.y+0.5f*getCylinderHeight();
+    if (mObjType==OBJTYPE_Pellet) {
+        Pellet* cargo=static_cast<Pellet*>(this);
+        boundedCargoGround=pc_p2_cargo_bounded_ground(
+            pc_p2_purples_enabled() && pc_p2_preview_cargo_shape(cargo), cargo->onGround(),
+            cargo->getPickOffset()!=0.f, cargo->mPikiCarrier && cargo->mPikiCarrier->isPiki()
+                && cargo->mConfig && cargo->mCarrierCounter>=cargo->mConfig->mCarryMinPikis(),
+            mGroundTriangle && !mCollPlatform && mCurrCollisionModel==mapMgr->mMapModel,
+            mCollPlatform!=nullptr);
+    }
+#endif
 	mAngularImpulseAccum.set(0.0f, 0.0f, 0.0f);
 	mGroundFlag = 0;
 
@@ -303,7 +322,15 @@ void DynCreature::simulate(f32 timeStep)
 		ptcl->mPreCollisionVelocity = ptcl->mWorldVelocity;
 
 		// Ground collision detection
-		f32 groundHeight = mapMgr->getMinY(ptcl->mWorldPosition.x, ptcl->mWorldPosition.z, true);
+        CollTriInfo* boundedTriangle=nullptr;
+        f32 groundHeight;
+#if defined(PIKI_PC_PORT)
+        if (boundedCargoGround) {
+            boundedTriangle=mapMgr->getStaticGroundBelow(ptcl->mWorldPosition.x,ptcl->mWorldPosition.z,groundCeiling,groundHeight);
+            if (!boundedTriangle) continue;
+        } else
+#endif
+        groundHeight=mapMgr->getMinY(ptcl->mWorldPosition.x,ptcl->mWorldPosition.z,true);
 		Vector3f vec(0.0f, 0.0f, 0.0f);
 		f32 penetrationDepth = groundHeight - (ptcl->mWorldPosition.y - ptcl->mCollisionRadius);
 
@@ -315,7 +342,7 @@ void DynCreature::simulate(f32 timeStep)
 			// Calculate collision normal from terrain or cylinder collision
 			Vector3f collisionNormal;
 			STACK_PAD_VAR(1);
-			CollTriInfo* groundTriangle = mapMgr->getCurrTri(ptcl->mWorldPosition.x, ptcl->mWorldPosition.z, true);
+			CollTriInfo* groundTriangle = boundedTriangle ? boundedTriangle : mapMgr->getCurrTri(ptcl->mWorldPosition.x, ptcl->mWorldPosition.z, true);
 			if (groundTriangle) {
 				collisionNormal = groundTriangle->mTriangle.mNormal;
 				collisionNormal.normalise();

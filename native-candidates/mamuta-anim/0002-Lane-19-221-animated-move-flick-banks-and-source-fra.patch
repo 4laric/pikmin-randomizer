@@ -1,0 +1,196 @@
+From 25f96694155fad633787e2766978c376097adb23 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 13:38:23 -0400
+Subject: [PATCH 2/2] Lane 19 (#221): animated move/flick banks and
+ source-frame strike timing
+
+Map every P1 Miurin motion (Wait/WaitAct/Move/Attack/Flick/Type1-5/Dead) to its
+P2 Miulin clip and load all nine banks. Read an optional p2-mamuta-bank.txt
+manifest (clip length, sampled source frames, event frames) and select the pose
+from the source-frame timeline so sampled event frames (attack1 frame 0 bury,
+frame 4) land on their true pose instead of a uniform index. DRAW logs
+src_frame/sample/events.
+---
+ pc_port/pc_p2_mamuta.cpp      | 82 ++++++++++++++++++++++++++++++-----
+ pc_port/pc_p2_mamuta_policy.h | 21 ++++++---
+ 2 files changed, 86 insertions(+), 17 deletions(-)
+
+diff --git a/pc_port/pc_p2_mamuta.cpp b/pc_port/pc_p2_mamuta.cpp
+index 52314e2d..e88c62de 100644
+--- a/pc_port/pc_p2_mamuta.cpp
++++ b/pc_port/pc_p2_mamuta.cpp
+@@ -17,15 +17,21 @@
+ #include <fstream>
+ #include <cstdio>
+ #include <cstdlib>
++#include <cmath>
+ static_assert(TEKI_Miurin == 24 && TekiMotion::Dead == 0 && TekiMotion::Wait1 == 2
+-              && TekiMotion::Type1 == 10 && TekiMotion::Type2 == 11 && TekiMotion::Type3 == 12,
++              && TekiMotion::WaitAct1 == 4 && TekiMotion::Move1 == 6 && TekiMotion::Attack == 8
++              && TekiMotion::Flick == 9 && TekiMotion::Type1 == 10 && TekiMotion::Type5 == 14,
+               "Mamuta source anchor policy must track native enum values");
+ namespace {
+-const char* names[] = {"wait", "dead", "attack1"};
+-constexpr int kClips = 3;
++const char* names[] = {"wait", "waitact", "move", "attack0", "attack1", "attack4",
++                       "flick", "dead", "type5"};
++constexpr int kClips = 9;
+ constexpr int kMaxPoses = 8;       // recorded import banks hold three sampled poses
+ std::vector<Shape*> banks[kClips];
+ bool animated[kClips] = {};
++int sourceFrames[kClips] = {};     // clip length in source frames, 0 = unknown
++std::vector<int> sampleFrames[kClips];
++std::vector<int> eventFrames[kClips];
+ std::map<BTeki*, unsigned> actors;
+ std::set<std::pair<BTeki*, int>> logged;
+ size_t bytesTotal = 0;
+@@ -44,9 +50,12 @@ Shape* loadOne(const std::string& name) {
+         if (shape->mTexAttrList[t].mTexture) shape->mTexAttrList[t].mTexture->attach();
+     return shape;
+ }
+-// Load `miulin_<clip>_00.mod`..`_NN.mod` as a time-sampled bank. A recorded
+-// import samples every clip, so a bank plays the source motion instead of a
+-// frozen pose. A single-pose legacy install still loads as a one-frame bank.
++int clipIndex(const std::string& name) {
++    for (int k=0; k<kClips; ++k) if (name == names[k]) return k;
++    return -1;
++}
++// Load `miulin_<clip>_00.mod`..`_NN.mod` as a time-sampled bank. A single-pose
++// legacy install still loads as a one-frame bank.
+ void loadBank(int k) {
+     const std::string base = std::string("miulin_") + names[k];
+     for (int i = 0; i < kMaxPoses; ++i) {
+@@ -62,10 +71,43 @@ void loadBank(int k) {
+     banks[k].push_back(pose);
+     animated[k] = false;
+ }
++// Optional bank manifest carrying the clip length, sampled source frames and
++// gameplay event frames, so the observer can place the strike at its sampled
++// event frame instead of a uniform pose index.
++void loadManifest() {
++    std::ifstream in("p2-mamuta-bank.txt");
++    if (!in) return;
++    std::string magic, word; int count = 0;
++    if (!(in >> magic >> count) || magic != "P2_MAMUTA_BANK_1" || count != kClips) fail();
++    for (int row = 0; row < count; ++row) {
++        std::string name; int source = 0, poseCount = 0, eventCount = 0;
++        if (!(in >> word >> name >> source >> poseCount >> eventCount) || word != "clip") fail();
++        const int k = clipIndex(name);
++        if (k < 0 || source < 1 || poseCount < 1 || poseCount > kMaxPoses || eventCount < 0) fail();
++        sourceFrames[k] = source;
++        if (!(in >> word) || word != "frames") fail();
++        sampleFrames[k].resize(poseCount);
++        for (int i = 0; i < poseCount; ++i) {
++            if (!(in >> sampleFrames[k][i])) fail();
++            if (sampleFrames[k][i] < 0 || sampleFrames[k][i] >= source) fail();
++            if (i && sampleFrames[k][i] <= sampleFrames[k][i-1]) fail();
++        }
++        if (!(in >> word) || word != "events") fail();
++        eventFrames[k].resize(eventCount);
++        for (int i = 0; i < eventCount; ++i) {
++            if (!(in >> eventFrames[k][i])) fail();
++            if (eventFrames[k][i] < 0 || eventFrames[k][i] >= source) fail();
++        }
++    }
++    if (in >> word) fail();
++}
+ }
+ void pc_p2_mamuta_reset() {
+     actors.clear(); logged.clear();
+-    for (int k=0; k<kClips; ++k) { banks[k].clear(); animated[k]=false; }
++    for (int k=0; k<kClips; ++k) {
++        banks[k].clear(); animated[k]=false; sourceFrames[k]=0;
++        sampleFrames[k].clear(); eventFrames[k].clear();
++    }
+     bytesTotal=0; pc_p2_mamuta_rules_reset();
+ }
+ bool pc_p2_mamuta_is_bound(BTeki* actor) { return actors.find(actor) != actors.end(); }
+@@ -101,16 +143,19 @@ void pc_p2_mamuta_setup() {
+     }
+     if (found!=wanted) fail();
+     pc_p2_mamuta_rules_setup();
++    loadManifest();
+     for (int k=0; k<kClips; ++k) loadBank(k);
+     for (const auto& e: actors) std::printf("P2_MAMUTA_READY generator=%u native_type=24 xyz=%.6f,%.6f,%.6f P1_proxy_source_pose_banks_no_P2_planting\n", e.second,e.first->mSRT.t.x,e.first->mSRT.t.y,e.first->mSRT.t.z);
+ }
+ bool pc_p2_mamuta_draw(BTeki* actor, Graphics& gfx, const Matrix4f& view, bool corpse) {
+     auto entry=actors.find(actor);
+     if (entry==actors.end() || !gfx.mCamera || !actor->mTekiAnimator) return false;
+-    int k=p2mamuta::anchor(actor->mTekiType,actor->mTekiAnimator->getCurrentMotionIndex(),corpse);
++    const int motion=actor->mTekiAnimator->getCurrentMotionIndex();
++    int k=p2mamuta::anchor(actor->mTekiType,motion,corpse);
+     if (k<0 || banks[k].empty()) return false;
+     const int poses = int(banks[k].size());
+     int index = 0;
++    float srcFrame = 0.0f;
+     if (animated[k] && poses > 1) {
+         const int frames = actor->mTekiAnimator->getFrameCount();
+         const int counter = actor->mTekiAnimator->getCounter();
+@@ -118,15 +163,28 @@ bool pc_p2_mamuta_draw(BTeki* actor, Graphics& gfx, const Matrix4f& view, bool c
+             float phase = float(counter) / float(frames - 1);
+             if (phase < 0.0f) phase = 0.0f;
+             if (phase > 1.0f) phase = 1.0f;
+-            index = int(phase * float(poses - 1) + 0.5f);
+-            if (index >= poses) index = poses - 1;
++            if (sourceFrames[k] > 0 && int(sampleFrames[k].size()) == poses) {
++                // Source-frame timeline: place each sampled pose at its true
++                // source frame (and its event frame) rather than a uniform index.
++                srcFrame = phase * float(sourceFrames[k] - 1);
++                int best = 0;
++                float bestDistance = std::fabs(srcFrame - float(sampleFrames[k][0]));
++                for (int i = 1; i < poses; ++i) {
++                    const float distance = std::fabs(srcFrame - float(sampleFrames[k][i]));
++                    if (distance < bestDistance) { bestDistance = distance; best = i; }
++                }
++                index = best;
++            } else {
++                index = int(phase * float(poses - 1) + 0.5f);
++                if (index >= poses) index = poses - 1;
++            }
+         }
+     }
+     Shape* shape = banks[k][index];
+     shape->updateAnim(gfx,view,nullptr,actor);
+     shape->drawshape(gfx,*gfx.mCamera,nullptr);
+     if (logged.insert({actor,k}).second)
+-        std::printf("P2_MAMUTA_DRAW generator=%u anchor=%s poses=%d animated=%d P1_gameplay_unchanged\n",
+-                    entry->second,names[k],poses,int(animated[k]));
++        std::printf("P2_MAMUTA_DRAW generator=%u anchor=%s poses=%d animated=%d src_frame=%.1f sample=%d events=%d P1_gameplay_unchanged\n",
++                    entry->second,names[k],poses,int(animated[k]),srcFrame,index,int(eventFrames[k].size()));
+     return true;
+ }
+diff --git a/pc_port/pc_p2_mamuta_policy.h b/pc_port/pc_p2_mamuta_policy.h
+index 7beaf60a..be7d539a 100644
+--- a/pc_port/pc_p2_mamuta_policy.h
++++ b/pc_port/pc_p2_mamuta_policy.h
+@@ -1,11 +1,22 @@
+ #pragma once
+-// Static source anchors, not time-sampled animation. Values checked against PaniAnimator.h.
++// Source pose-bank selection by exact P1 Miurin motion. Values checked against
++// PaniAnimator.h TekiMotion (Dead 0 .. Type5 14) and the P2 Miulin clip bank.
++// Clip indices match the installed bank order.
+ namespace p2mamuta {
++enum Clip { Wait=0, WaitAct=1, Move=2, Attack0=3, Attack1=4, Attack4=5, Flick=6, Dead=7, Type5=8 };
+ inline int anchor(int type, int motion, bool corpse) {
+     if (type != 24) return -1;
+-    if (corpse || motion == 0) return 1;
+-    if (motion == 2) return 0;
+-    if (motion == 10 || motion == 11 || motion == 12) return 2;
+-    return -1;
++    if (corpse || motion == 0) return Dead;          // Dead
++    switch (motion) {
++    case 2: case 3: return Wait;                     // Wait1/Wait2
++    case 4: case 5: return WaitAct;                  // WaitAct1/WaitAct2
++    case 6: case 7: return Move;                     // Move1/Move2
++    case 8: return Attack1;                          // Attack posture/attack
++    case 9: return Flick;                            // Flick (ground shake)
++    case 10: case 11: case 12: return Attack1;       // Type1/Type2/Type3 bury strike
++    case 13: return Attack4;                         // Type4 recovery
++    case 14: return Type5;                           // Type5 pellet tremble
++    default: return -1;
++    }
+ }
+ }
+-- 
+2.55.0.windows.3
+

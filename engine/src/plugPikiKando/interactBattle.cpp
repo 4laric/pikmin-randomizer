@@ -1,3 +1,8 @@
+#include "pc_p2_purple.h"
+#include "pc_p2_mamuta_rules.h"
+#include "pc_p2_hazard_reaction.h"
+#include "pc_p2_species.h"
+#include "pc_p2_species_policy.h"
 #include "BombItem.h"
 #include "Collision.h"
 #include "Condition.h"
@@ -71,6 +76,11 @@ bool InteractBomb::actPiki(Piki* piki) immut
  */
 bool InteractBury::actPiki(Piki* piki) immut
 {
+	int mamuta = pc_p2_mamuta_bury_piki(mOwner, piki);
+	if (mamuta >= 0) {
+		return mamuta > 0;
+	}
+
 	if (!piki->isAlive()) {
 		return false;
 	}
@@ -175,8 +185,8 @@ bool InteractBubble::actPiki(Piki* piki) immut
 		return false;
 	}
 
-	// blue pikmin are immune to bubble
-	if (piki->mColor != Blue) {
+	// blue pikmin (and P2 Bulbmin) are immune to bubble
+	if (!p2_species_immune(pc_p2_species(piki), P2HazardWater)) {
 		piki->changeMode(0, piki->mNavi);
 		piki->mFSM->transit(piki, PIKISTATE_Bubble);
 		return true;
@@ -193,14 +203,83 @@ bool InteractFire::actPiki(Piki* piki) immut
 		return false;
 	}
 
-	// red pikmin are immune to fire
-	if (piki->mColor != Red) {
+	// red pikmin (and P2 Bulbmin) are immune to fire
+	if (!p2_species_immune(pc_p2_species(piki), P2HazardFire)) {
 		piki->startFire();
 		return true;
 	}
 
 	playerState->mResultFlags.setOn(zen::RESFLAG_PikminOnFire);
 	return false;
+}
+
+/**
+ * @todo: Documentation
+ *
+ * P2 electric receiver (#170/#408). Source `InteractDenki::actPiki`
+ * (native/pikmin2-research/src/plugProjectKandoU/interactPiki.cpp:334) rejects
+ * Yellow and Bulbmin and otherwise transits to `PIKISTATE_DenkiDying`; this
+ * port now has that state, reached through the same lane-11 matrix so P2
+ * Bulbmin is covered without a separate colour test. Routing is decided by
+ * `p2_hazard_reaction`, which keeps the immunity gate and the reaction target
+ * in one testable place.
+ *
+ * `__attribute__((used))` is retained defensively: the ElecBug discharge sweep
+ * and the ElecHiba fixed hazard (pc_port/pc_p2_hiba.cpp) both reference this
+ * receiver, so LTO no longer depends on the attribute for linkage.
+ */
+__attribute__((used)) bool InteractDenki::actPiki(Piki* piki) immut
+{
+	if (!piki->isAlive()) {
+		return false;
+	}
+
+	int state = piki->getState();
+	if (state == PIKISTATE_Dying || state == PIKISTATE_Dead || state == PIKISTATE_DenkiDying) {
+		return false;
+	}
+
+	if (p2_hazard_reaction(pc_p2_species(piki), P2HazardElectric, piki->gasInvicible()) != P2HazardReactionDenkiDying) {
+		return false;
+	}
+
+	PRINT("P2_RECV_DENKI species=%d accepted=1 p2_state=PIKISTATE_DenkiDying\n", pc_p2_species(piki));
+	piki->mFSM->transit(piki, PIKISTATE_DenkiDying);
+	return true;
+}
+
+/**
+ * @todo: Documentation
+ *
+ * P2 gas receiver (#170/#408). Source `InteractGas::actPiki`
+ * (native/pikmin2-research/src/plugProjectKandoU/interactPiki.cpp:531) rejects a
+ * gas-invincible Piki, then White and Bulbmin, and otherwise requests
+ * `PIKISTATE_Panic` with `PIKIPANIC_Gas`. This port now has that state and the
+ * narrow `Piki::gasInvicible()` gate; the species gate stays matrix-driven so
+ * P2 Bulbmin is covered. `p2_hazard_reaction` applies both gates.
+ *
+ * `__attribute__((used))` is retained defensively: the GasHiba fixed hazard
+ * (pc_port/pc_p2_hiba.cpp) now references this receiver, so LTO no longer
+ * depends on the attribute for linkage.
+ */
+__attribute__((used)) bool InteractGas::actPiki(Piki* piki) immut
+{
+	if (!piki->isAlive()) {
+		return false;
+	}
+
+	int state = piki->getState();
+	if (state == PIKISTATE_Dying || state == PIKISTATE_Dead || state == PIKISTATE_Panic) {
+		return false;
+	}
+
+	if (p2_hazard_reaction(pc_p2_species(piki), P2HazardGas, piki->gasInvicible()) != P2HazardReactionGasPanic) {
+		return false;
+	}
+
+	PRINT("P2_RECV_GAS species=%d accepted=1 p2_state=PIKISTATE_Panic(gas)\n", pc_p2_species(piki));
+	piki->mFSM->transit(piki, PIKISTATE_Panic);
+	return true;
 }
 
 /**

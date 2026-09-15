@@ -16,6 +16,7 @@
 #include "Mesh.h"
 #include "Shape.h"
 #include "Vector.h"
+#include "pc_p2_billboard_draw.h"
 
 DEFINE_ERROR(__LINE__);
 DEFINE_PRINT("OGLGraphics")
@@ -653,6 +654,7 @@ void OGLGraphics::initMesh(Shape* model)
 void OGLGraphics::drawSingleMatpoly(Shape* model, Joint::MatPoly* matPoly)
 {
 	immut Matrix4f* animMatrices[10];
+	Matrix4f billboardMatrices[10]; // Per-dep camera-facing replacements (#429).
 
 	Mesh& mesh    = model->mMeshList[matPoly->mMeshIndex];
 	Material& mat = model->mMaterialList[matPoly->mIndex];
@@ -688,6 +690,27 @@ void OGLGraphics::drawSingleMatpoly(Shape* model, Joint::MatPoly* matPoly)
 					}
 				} else {
 					animMatrices[depListIdx] = &model->mJointList[vtxMtx.mIndex].mAnimMatrix;
+				}
+			}
+		}
+
+		// Opt-in camera-facing billboard (#429): replace the mesh's draw matrix
+		// with one that is screen-aligned under the active GPU matrix. Geometry
+		// is pivot-centred so the joint translation keeps the authored placement.
+		if ((mesh.mFeatureFlags & Mesh::FeatureFlags::Billboard) && mActiveMatrix) {
+			for (int depListIdx = 0; depListIdx < mtxGroup.mDepLength && depListIdx < 10; ++depListIdx) {
+				if (!animMatrices[depListIdx]) {
+					continue;
+				}
+				if (p2billboard::billboardFromJoint(billboardMatrices[depListIdx], *animMatrices[depListIdx],
+				                                    *mActiveMatrix)) {
+					const float off = p2billboard::offDiagonal(*mActiveMatrix, billboardMatrices[depListIdx]);
+					p2billboard::Stats& stats = p2billboard::stats();
+					++stats.draws;
+					if (off > stats.max_offdiagonal) {
+						stats.max_offdiagonal = off;
+					}
+					animMatrices[depListIdx] = &billboardMatrices[depListIdx];
 				}
 			}
 		}

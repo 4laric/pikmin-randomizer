@@ -43,6 +43,14 @@ PcamCameraManager::PcamCameraManager(Camera* camera, Controller* controller)
 
 	mVibrationEvents[PCAMVIB_LongVibration] = new PcamLongVibrationEvent(mCamera);
 
+	// Opt-in Purple impact uses a separate short event; existing camera events
+	// retain their original IDs and parameters. This is a P1 camera adaptation.
+	PcamVibrationEvent* purpleImpact = new PcamVibrationEvent(mCamera);
+	purpleImpact->mVibrationDuration = 0.12f;
+	purpleImpact->mVibrationAmplitude = 0.08f;
+	purpleImpact->mVibrationFrequency = 30.0f;
+	mVibrationEvents[PCAMVIB_PurpleImpact] = purpleImpact;
+
 	PcamDamageEvent* damage = new PcamDamageEvent(mCamera);
 	// nice typo.
 	vib2->mVibrationDuration  = 0.6f;
@@ -152,6 +160,7 @@ void PcamCameraManager::startVibrationEvent(int eventIdx, immut Vector3f& p2)
  */
 void PcamCameraManager::outputNaviPosition(Vector3f& naviPos)
 {
-	Navi* navi = naviMgr->getNavi(0);
+	Navi* navi = naviMgr->getActiveNavi();
+	if (!navi) navi = naviMgr->getNavi(0);
 	naviPos.input(navi->getPosition());
 }

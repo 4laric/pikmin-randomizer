@@ -1,0 +1,13 @@
+# Original-map Red corpse delivery
+
+Issue #120/#186. Extends the separate original-map combat fixture through the native corpse Pellet lifecycle and route to an original Onion. No Pod asset/config/economy binding is added. `pc_p2_preview_goal()==nullptr` and `pc_p2_preview_pokos()==-1` are runtime requirements. Thus P2 receipt and idempotent credit are explicitly not applicable, not silently passed.
+
+The existing successful free-Pikmin combat stimulus is retained. After corpse creation, native free recruitment gets120updates. If too few transporters attach, the fixture assigns native PikiAction::Transport to the actual corpse and labels this input. Enemy state/health is never assigned, corpse position is never teleported, and original map/routes remain unchanged. Require native transport mode, movement greater than100units, real Goal state, and subsequent actor removal. This is a route/goal regression; it is not a player-input haul or actual seed-yield measurement.
+
+Link the instrumented private fixture against frozen e704b268 inputs and the previous legitimate tutorial receiver object. Run `python -m experimental.pikmin2_kochappy_arena_delivery --stage <fresh combat stage> --exe <private executable> --output <new evidence directory>`. It logs timeout, executable identity, optional transport intervention and each acceptance gate independently. A future P2 economy gate requires a separately reviewed source-family corpse binding and Pod placement, not reusing ordinary P1 seed behavior as a receipt.
+
+Source boundary: `pc_p2_preview_deliver` enters economy credit only when `podAnchor` exists; this cargo-free arena has neither Pod nor preview treasure, so it returnsfalse for the corpse. `PelletGoalState::exec` then calls the native target `suckMe`, marks the Pellet not alive, kills it and transitions Dead. This justifies ordinary P1 delivery semantics and why a P2 once-credit assertion would be false coverage.
+
+## Measured result
+
+The e704b268 private run exits0 after38.53s. Executable SHA2561cc8721a8cd2a0d3f9bc96c9bfd68431825dada54644711f8ceff693d0c4ec1c. Evidence: output/p2-red-arena-delivery/observe/evidence.json. Initial source Red/control health and stored birth gates pass; native combat produces a rendered corpse. Zero transporters at120 corpse updates required labeled native transport-task assignment to20 surviving Pikmin. Six then carried the corpse over original terrain/routes, reaching603.0249units displacement and real Goal state near original Red Onion(-498,1454), followed by collection/removal. No Pod binding existed. This passes physical P1 hauling but not autonomous task selection, actual seed count, P2 receipts, or player-input acceptance. Three focused tests pass.

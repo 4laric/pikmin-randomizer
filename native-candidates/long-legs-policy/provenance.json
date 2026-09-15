@@ -1,0 +1,39 @@
+{
+  "lane": "26 Long Legs and Man-at-Legs",
+  "parent_issue": 173,
+  "child_issue": 312,
+  "implementation_owner": "Codex via shared account 4laric",
+  "executing_session": "opencode (deepseek-v4.1-flash), 2026-09-13",
+  "native_repository": "pikmin-randomizer/native (never pushed to native origin)",
+  "native_base_branch": "codex/pikmin2-room-preview",
+  "native_base": "f9e139d86afab0b7581599f2178ee1a95dcf33af",
+  "native_head": "a62a89313a67f59b943a9e1212209c3a526e8308",
+  "native_worktree": "output/native-lane26",
+  "native_branch": "opencode/p2-longlegs-fsm",
+  "dirty_state": "baseline maintained dirty files preserved; commit adds only lane files; build-fsm/ and compiled test .exe are untracked and not committed",
+  "files": [
+    "pc_port/pc_p2_long_legs_fsm.h",
+    "pc_port/pc_p2_long_legs_fsm.cpp",
+    "tools/p2_long_legs_fsm_test.cpp",
+    "CMakeLists.txt"
+  ],
+  "source": "docs/PIKMIN2_LONG_LEGS_AUDIT.md (US GPVE01 rev 0); Damagumo/Houdai/BigFoot state machines",
+  "verification": {
+    "standalone_command": "g++ -std=c++17 -O2 -Wall -Ipc_port tools/p2_long_legs_fsm_test.cpp pc_port/pc_p2_long_legs_fsm.cpp -o tools/p2_long_legs_fsm_test.exe",
+    "standalone_result": "PASS LONG_LEGS_FSM (exit 0)",
+    "standalone_exe_sha256": "95411538BB1A7566A0EFD09F5BF59AB6B1BBBF027191EC985264DE2F28208C20",
+    "cmake_target": "p2_long_legs_fsm_test",
+    "cmake_configure": "cmake -S . -B build-fsm -G Ninja -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Release -DPIKMIN_NATIVE_JAUDIO=ON",
+    "cmake_result": "PASS LONG_LEGS_FSM (exit 0)",
+    "cmake_exe_sha256": "AB0BEC0440A00386A70D21F292101AAA66260EB891F35D0357C29AA076E59890"
+  },
+  "runtime": "not run: engine-free source-policy slice. No assets, GL window or arena were used, so no six-gate runtime claim is made for this commit.",
+  "follow_up_0002": {
+    "native_head": "a75734d97a0ffa8160bb0e312e5bbde4d41bbd56",
+    "change": "Bound Man-at-Legs shell emission to the in-flight pool (shellPool=10): shotLoop requests are suppressed while shellsInFlight >= pool.",
+    "patch": "0002-pc_p2_long_legs_fsm-shell-pool.patch",
+    "test": "PASS LONG_LEGS_FSM standalone and ctest p2_long_legs_fsm_test; exe SHA-256 F1838E88C0CBE9E838191889ABDB809419C18668B2BF358143143A48E65556AE",
+    "note": "Applies on top of the #446-integrated policy; the touched file content is identical in the review baseline."
+  },
+  "integration": "Apply native patch 0001 (and 0002 on top) on the maintained native line after lane 01 pins it; the module is additive and engine-free until a host wires it to IKSystemMgr/animation events."
+}

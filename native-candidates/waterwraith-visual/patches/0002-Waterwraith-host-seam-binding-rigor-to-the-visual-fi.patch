@@ -1,0 +1,319 @@
+From a2156640a4a8dc92ebd2d26ad7e59988729b51ce Mon Sep 17 00:00:00 2001
+From: 4laric <4laric@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 03:12:24 -0400
+Subject: [PATCH 2/4] Waterwraith: host seam binding rigor to the visual
+ fixture (#175)
+
+---
+ CMakeLists.txt                       |  1 +
+ pc_port/pc_p2_waterwraith_host.cpp   | 46 +++++++++++++++++++++++++
+ pc_port/pc_p2_waterwraith_host.h     | 38 +++++++++++++++++++++
+ pc_port/pc_p2_waterwraith_visual.cpp | 51 ++++++++++++++++++----------
+ pc_port/pc_p2_waterwraith_visual.h   |  5 +++
+ tools/p2_waterwraith_runtime.cpp     | 32 ++++++++++++++---
+ tools/p2_waterwraith_runtime_run.py  | 12 +++++--
+ 7 files changed, 160 insertions(+), 25 deletions(-)
+ create mode 100644 pc_port/pc_p2_waterwraith_host.cpp
+ create mode 100644 pc_port/pc_p2_waterwraith_host.h
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 0441be3c..d0b8f48d 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -191,6 +191,7 @@ set(PC_PORT_SOURCES
+     pc_port/pc_p2_mamuta_rules.cpp
+     pc_port/pc_p2_tank.cpp
+     pc_port/pc_p2_waterwraith_visual.cpp
++    pc_port/pc_p2_waterwraith_host.cpp
+     pc_port/pc_p2_qurione.cpp
+     pc_port/pc_p2_kurage_receiver.cpp
+     pc_port/pc_p2_sokkuri.cpp
+diff --git a/pc_port/pc_p2_waterwraith_host.cpp b/pc_port/pc_p2_waterwraith_host.cpp
+new file mode 100644
+index 00000000..54f3249f
+--- /dev/null
++++ b/pc_port/pc_p2_waterwraith_host.cpp
+@@ -0,0 +1,46 @@
++#include "pc_p2_waterwraith_host.h"
++
++#include <cmath>
++
++namespace {
++constexpr int kFreezeHoldTicks = 30; // one second of land/freeze before moveRestart
++} // namespace
++
++void p2_waterwraith_host_reset(P2WaterwraithHostSeam& seam)
++{
++    seam = P2WaterwraithHostSeam();
++}
++
++bool p2_waterwraith_host_setup(P2WaterwraithHostSeam& seam, float properRotationSpeed)
++{
++    p2_waterwraith_host_reset(seam);
++    seam.rig = P2WaterwraithRig(properRotationSpeed);
++    if (!seam.rig.birth()) {
++        return false;
++    }
++    seam.x      = 0.0f;
++    seam.y      = 0.0f;
++    seam.z      = 0.0f;
++    seam.facing = 0.0f;
++    seam.active = true;
++    // Initial push places the roller in Land.
++    seam.rig.push({ seam.x, seam.y, seam.z }, { 0.0f, 0.0f, 0.0f }, seam.facing, 1.0f);
++    return true;
++}
++
++void p2_waterwraith_host_tick(P2WaterwraithHostSeam& seam, float delta)
++{
++    if (!seam.active || !std::isfinite(delta) || delta <= 0.0f) {
++        return;
++    }
++    seam.x += seam.speed * delta;
++    const P2WaterwraithVec3 position{ seam.x, seam.y, seam.z };
++    const P2WaterwraithVec3 velocity{ seam.speed, 0.0f, 0.0f };
++    seam.rig.push(position, velocity, seam.facing, 1.0f);
++    if (seam.ticks == 0) {
++        seam.rig.landFloorContact(); // first contact: flick then freeze
++    } else if (seam.ticks == static_cast<std::uint64_t>(kFreezeHoldTicks)) {
++        seam.rig.moveRestart(); // wraith resumes: freeze -> move (roll begins)
++    }
++    ++seam.ticks;
++}
+diff --git a/pc_port/pc_p2_waterwraith_host.h b/pc_port/pc_p2_waterwraith_host.h
+new file mode 100644
+index 00000000..e7af69c3
+--- /dev/null
++++ b/pc_port/pc_p2_waterwraith_host.h
+@@ -0,0 +1,38 @@
++#pragma once
++
++#include "pc_p2_waterwraith.h"
++
++#include <cstdint>
++
++// Lane-owned host seam binding the Waterwraith/Tyre dependent-roller policy
++// (pc_p2_waterwraith, #175) to a display fixture. A fixed-route wraith drives
++// the rig, which owns the single Tyre child and derives its roll from the
++// planar distance travelled. Engine-free: no actor, map, receiver or gameplay
++// dependency; the host supplies the route and feed rate.
++//
++// Source anchors: BlackMan travel speed fp05 (retail 120), Tyre roll rate =
++// distance / 44*pi scaled by fp01 (blackMan.cpp:988-995). Locomotion here is a
++// host-driven straight route, not the retained-assembly walk code.
++
++struct P2WaterwraithHostSeam {
++    P2WaterwraithRig rig;
++    float x = 0.0f;
++    float y = 0.0f;
++    float z = 0.0f;
++    float facing = 0.0f;
++    float speed = 120.0f; // fp05 retail travel speed
++    std::uint64_t ticks = 0;
++    bool active = false;
++};
++
++// Resets the seam to an inactive state (rig torn down).
++void p2_waterwraith_host_reset(P2WaterwraithHostSeam& seam);
++
++// Births the roller and starts the wraith moving along +X from the origin.
++// `properRotationSpeed` is Tyre fp01 (retail 25.0).
++bool p2_waterwraith_host_setup(P2WaterwraithHostSeam& seam, float properRotationSpeed = 25.0f);
++
++// One 30 Hz host tick: advances the route, pushes position/velocity/facing to
++// the roller, resolves the first floor contact (land -> freeze) and restarts
++// movement (freeze -> move) after a short hold. Safe on an inactive seam.
++void p2_waterwraith_host_tick(P2WaterwraithHostSeam& seam, float delta);
+diff --git a/pc_port/pc_p2_waterwraith_visual.cpp b/pc_port/pc_p2_waterwraith_visual.cpp
+index 7154f823..db30bb4a 100644
+--- a/pc_port/pc_p2_waterwraith_visual.cpp
++++ b/pc_port/pc_p2_waterwraith_visual.cpp
+@@ -353,17 +353,9 @@ int pc_p2_waterwraith_visual_draw(Graphics& gfx, const Matrix4f& ownerWorld)
+     if (!sVisual.ready || !gfx.mCamera) {
+         return 0;
+     }
+-    gfx.setPerspective(gfx.mCamera->mPerspectiveMatrix.mMtx, gfx.mCamera->mFov,
+-                       gfx.mCamera->mAspectRatio, gfx.mCamera->mNear, gfx.mCamera->mFar, 1.0f);
+     int drawn = 0;
+     for (int i = 0; i < sVisual.speciesCount; ++i) {
+-        const ActiveClip& active = sVisual.active[i];
+-        if (active.clip < 0) {
+-            continue;
+-        }
+-        const ClipBank& clip = sVisual.clips[active.clip];
+-        const int pose = pc_p2_waterwraith_visual_pose_index(sVisual.species[i].name.c_str());
+-        if (pose < 0 || !clip.poses[pose]) {
++        if (sVisual.active[i].clip < 0) {
+             continue;
+         }
+         Matrix4f offset;
+@@ -373,16 +365,41 @@ int pc_p2_waterwraith_visual_draw(Graphics& gfx, const Matrix4f& ownerWorld)
+             }
+         }
+         offset.mMtx[0][3] = static_cast<float>(i) * 80.0f;
+-        Matrix4f world, view;
++        Matrix4f world;
+         ownerWorld.multiplyTo(offset, world);
+-        gfx.mCamera->mLookAtMtx.multiplyTo(world, view);
+-        clip.poses[pose]->updateAnim(gfx, view, nullptr, nullptr);
+-        clip.poses[pose]->drawshape(gfx, *gfx.mCamera, nullptr);
+-        ++drawn;
++        drawn += pc_p2_waterwraith_visual_draw_species(gfx, sVisual.species[i].name.c_str(), world);
++    }
++    return drawn;
++}
++
++int pc_p2_waterwraith_visual_draw_species(Graphics& gfx, const char* species,
++                                          const Matrix4f& world)
++{
++    if (!sVisual.ready || !gfx.mCamera || !species) {
++        return 0;
+     }
+-    if (!sVisual.drew && drawn > 0) {
+-        std::printf("P2_WATERWRAITH_VISUAL_DRAW species=%d\n", drawn);
++    const int speciesIndex = findSpecies(species);
++    if (speciesIndex < 0) {
++        return 0;
++    }
++    const ActiveClip& active = sVisual.active[speciesIndex];
++    if (active.clip < 0) {
++        return 0;
++    }
++    const int pose = pc_p2_waterwraith_visual_pose_index(species);
++    if (pose < 0 || !sVisual.clips[active.clip].poses[pose]) {
++        return 0;
++    }
++    gfx.setPerspective(gfx.mCamera->mPerspectiveMatrix.mMtx, gfx.mCamera->mFov,
++                       gfx.mCamera->mAspectRatio, gfx.mCamera->mNear, gfx.mCamera->mFar, 1.0f);
++    Matrix4f view;
++    gfx.mCamera->mLookAtMtx.multiplyTo(world, view);
++    Shape* shape = sVisual.clips[active.clip].poses[pose];
++    shape->updateAnim(gfx, view, nullptr, nullptr);
++    shape->drawshape(gfx, *gfx.mCamera, nullptr);
++    if (!sVisual.drew) {
++        std::printf("P2_WATERWRAITH_VISUAL_DRAW species=1\n");
+         sVisual.drew = true;
+     }
+-    return drawn;
++    return 1;
+ }
+diff --git a/pc_port/pc_p2_waterwraith_visual.h b/pc_port/pc_p2_waterwraith_visual.h
+index 801dc070..56de0035 100644
+--- a/pc_port/pc_p2_waterwraith_visual.h
++++ b/pc_port/pc_p2_waterwraith_visual.h
+@@ -45,3 +45,8 @@ bool pc_p2_waterwraith_visual_completed();
+ // Draws every active species' current pose under `ownerWorld`, offset along X
+ // by 80 units per species index. Returns the number of species drawn.
+ int pc_p2_waterwraith_visual_draw(Graphics& gfx, const Matrix4f& ownerWorld);
++
++// Draws one species' current pose at an explicit world transform. Returns 1
++// when drawn, 0 when the species/clip is inactive or unknown.
++int pc_p2_waterwraith_visual_draw_species(Graphics& gfx, const char* species,
++                                          const Matrix4f& world);
+diff --git a/tools/p2_waterwraith_runtime.cpp b/tools/p2_waterwraith_runtime.cpp
+index 861b8838..c7f528ea 100644
+--- a/tools/p2_waterwraith_runtime.cpp
++++ b/tools/p2_waterwraith_runtime.cpp
+@@ -30,8 +30,11 @@
+ #include <vector>
+ 
+ #include "pc_p2_waterwraith_visual.h"
++#include "pc_p2_waterwraith_host.h"
+ 
+ namespace {
++constexpr float kDt = 1.0f / 30.0f;
++
+ void require(bool value, const char* message)
+ {
+     if (!value) {
+@@ -75,6 +78,7 @@ class WaterwraithApp final : public PlugPikiApp {
+     bool setup = false;
+     bool captured = false;
+     float ground = 0.0f;
++    P2WaterwraithHostSeam seam;
+ 
+ public:
+     int idle() override
+@@ -103,6 +107,8 @@ public:
+             require(pc_p2_waterwraith_visual_play("BlackMan", "kagebozu_walk", true),
+                     "BlackMan walk play");
+             require(pc_p2_waterwraith_visual_play("Tyre", "tyre_move", true), "Tyre move play");
++            require(p2_waterwraith_host_setup(seam), "host setup");
++            require(seam.rig.alive() && seam.rig.attachedToOwner(), "roller birth");
+             SDL_Window* window = SDL_GL_GetCurrentWindow();
+             require(window != nullptr, "window");
+             int windowWidth = 0, windowHeight = 0, windowX = 0, windowY = 0;
+@@ -115,6 +121,7 @@ public:
+             setup = true;
+         }
+         require(pc_p2_waterwraith_visual_update() == 2, "visual update");
++        p2_waterwraith_host_tick(seam, kDt);
+         ++visualFrames;
+         return result;
+     }
+@@ -125,12 +132,27 @@ public:
+         if (!setup) {
+             return;
+         }
+-        Matrix4f owner;
+-        owner.makeSRT(Vector3f(1.0f, 1.0f, 1.0f), Vector3f(0.0f, 0.0f, 0.0f),
+-                      Vector3f(0.0f, ground, -250.0f));
+-        const int drawn = pc_p2_waterwraith_visual_draw(gfx, owner);
+-        require(drawn == 2, "visual draw");
++        // BlackMan walks the host route; the rig-owned Tyre child follows at
++        // the pushed position with the derived roll angle applied.
++        const P2WaterwraithVec3 roller = seam.rig.position();
++        Matrix4f wraithWorld;
++        wraithWorld.makeSRT(Vector3f(1.0f, 1.0f, 1.0f), Vector3f(0.0f, seam.facing, 0.0f),
++                            Vector3f(seam.x, seam.y, seam.z));
++        Matrix4f tyreWorld;
++        tyreWorld.makeSRT(Vector3f(1.0f, 1.0f, 1.0f),
++                          Vector3f(0.0f, 0.0f, seam.rig.rollAngle()),
++                          Vector3f(roller.x, roller.y, roller.z));
++        const int wraithDrawn =
++            pc_p2_waterwraith_visual_draw_species(gfx, "BlackMan", wraithWorld);
++        const int tyreDrawn = pc_p2_waterwraith_visual_draw_species(gfx, "Tyre", tyreWorld);
++        require(wraithDrawn == 1 && tyreDrawn == 1, "visual draw");
+         if (visualFrames >= 90 && !captured) {
++            require(seam.rig.travelledDistance() > 0.0f, "roller travelled");
++            require(seam.rig.rollAngle() > 0.0f, "roller rolled");
++            std::printf("P2_WATERWRAITH_HOST_PASS ticks=%llu distance=%.3f roll=%.4f phase=%s\n",
++                        (unsigned long long)seam.ticks, seam.rig.travelledDistance(),
++                        seam.rig.rollAngle(),
++                        seam.rig.tyrePhase() == P2TYRE_Move ? "Move" : "Freeze");
+             capture("waterwraith-visual.ppm");
+             captured = true;
+             std::puts("PASS WATERWRAITH_RUNTIME");
+diff --git a/tools/p2_waterwraith_runtime_run.py b/tools/p2_waterwraith_runtime_run.py
+index c700684a..d44e4760 100644
+--- a/tools/p2_waterwraith_runtime_run.py
++++ b/tools/p2_waterwraith_runtime_run.py
+@@ -18,7 +18,7 @@ import traceback
+ 
+ MARKERS = ("P2_WATERWRAITH_VISUAL_READY", "P2_WATERWRAITH_VISUAL_DRAW",
+            "P2_WATERWRAITH_VISUAL_PLAY", "P2_WATERWRAITH_WINDOW",
+-           "PASS WATERWRAITH_RUNTIME")
++           "P2_WATERWRAITH_HOST_PASS", "PASS WATERWRAITH_RUNTIME")
+ 
+ 
+ def sha256(path):
+@@ -89,8 +89,14 @@ def verify_log(text):
+     draw = re.search(r"^P2_WATERWRAITH_VISUAL_DRAW\s+species=(\d+)\s*$", text, flags=re.MULTILINE)
+     if not draw:
+         errors.append("missing visual DRAW marker")
+-    elif int(draw.group(1)) != 2:
+-        errors.append(f"expected 2 species drawn: {draw.groups()}")
++    elif int(draw.group(1)) != 1:
++        errors.append(f"expected per-species draw marker: {draw.groups()}")
++    host = re.search(r"^P2_WATERWRAITH_HOST_PASS\s+ticks=(\d+)\s+distance=([\d.]+)\s+"
++                     r"roll=([\d.]+)\s+phase=(\w+)\s*$", text, flags=re.MULTILINE)
++    if not host:
++        errors.append("missing host PASS marker")
++    elif float(host.group(2)) <= 0.0 or float(host.group(3)) <= 0.0:
++        errors.append(f"roller did not travel/roll: {host.groups()}")
+     return errors
+ 
+ 
+-- 
+2.55.0.windows.3
+

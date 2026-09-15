@@ -1,0 +1,867 @@
+From 8352ef91bc9e32184f35a1345661673c637f7288 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 03:21:16 -0400
+Subject: [PATCH 13/17] Add opt-in second-captain engine primitives and slot-1
+ binding (#130)
+
+Lane 12 scaffolding for a second captain, default off. Adds additive
+Navi/NaviMgr queries (getNaviIndex/getOtherNaviIndex, getOtherNavi,
+getActiveNavi, getAliveOrima, getDeadOrima, setActiveNavi, informOrimaDead,
+isNaviDead, hasSecondNavi) backed by an engine-free P2CaptainRoster, and
+routes the pc_p2_captain adapter's switch/capture/knockout back into the
+engine helpers. pc_p2_captain now binds slot 1 when a second Navi exists and
+refuses safely otherwise.
+
+The PIKMIN_P2_SECOND_CAPTAIN opt-in path only prepares mNaviShapeObject[1];
+the live spawn is gated shut because follow-AI, split camera, control routing
+and survivor-gated game over are not ported yet. Default single-captain play
+is unchanged.
+
+Tests: tools/test_p2_captain_roster.cpp (PASS P2_CAPTAIN_ROSTER) and extended
+tools/test_p2_captain_adapter.cpp (PASS P2_CAPTAIN_ADAPTER).
+---
+ CMakeLists.txt                        |   1 +
+ include/Navi.h                        |   7 ++
+ include/NaviMgr.h                     |  24 +++++
+ pc_port/pc_p2_captain.cpp             |  50 ++++++++--
+ pc_port/pc_p2_captain.h               |  45 ++++++++-
+ pc_port/pc_p2_captain_roster.h        |  85 ++++++++++++++++
+ pc_port/pc_p2_second_captain.cpp      |  60 +++++++++++
+ pc_port/pc_p2_second_captain.h        |  48 +++++++++
+ src/plugPikiKando/gameCoreSection.cpp |  12 ++-
+ src/plugPikiKando/naviMgr.cpp         | 137 ++++++++++++++++++++++++++
+ tools/test_p2_captain_adapter.cpp     |  33 +++++++
+ tools/test_p2_captain_roster.cpp      |  73 ++++++++++++++
+ 12 files changed, 561 insertions(+), 14 deletions(-)
+ create mode 100644 pc_port/pc_p2_captain_roster.h
+ create mode 100644 pc_port/pc_p2_second_captain.cpp
+ create mode 100644 pc_port/pc_p2_second_captain.h
+ create mode 100644 tools/test_p2_captain_roster.cpp
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index f3921be3..e830576a 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -164,6 +164,7 @@ set(PC_PORT_SOURCES
+     pc_port/pc_bbft.cpp
+     pc_port/pc_p2_preview.cpp
+     pc_port/pc_p2_captain.cpp
++    pc_port/pc_p2_second_captain.cpp
+     pc_port/pc_p2_economy.cpp
+     pc_port/pc_p2_purple.cpp
+     pc_port/pc_p2_purple_motion.cpp
+diff --git a/include/Navi.h b/include/Navi.h
+index d3bbdac2..8afd0a49 100644
+--- a/include/Navi.h
++++ b/include/Navi.h
+@@ -125,6 +125,13 @@ public:
+ 	AState<Navi>* getCurrState() { return mCurrState; }
+ 	void setCurrState(AState<Navi>* state) { mCurrState = state; }
+ 
++	// Lane 12 second-captain primitives (#130). Additive accessors only; the
++	// engine already stores the spawn index in `mNaviID` (_92C) and NaviMgr
++	// already keeps `mNaviShapeObject[2]`. `getOtherNaviIndex` is the
++	// GET_OTHER_NAVI equivalent (source: `1 - mNaviIndex`).
++	int getNaviIndex() const { return mNaviID; }
++	int getOtherNaviIndex() const { return mNaviID == 0 ? 1 : (mNaviID == 1 ? 0 : -1); }
++
+ 	void setPellet(bool isPellet) { mIsPellet = isPellet; }
+ 
+ 	bool isPellet() { return mIsPellet; }
+diff --git a/include/NaviMgr.h b/include/NaviMgr.h
+index 89e0d077..d7be7768 100644
+--- a/include/NaviMgr.h
++++ b/include/NaviMgr.h
+@@ -5,6 +5,7 @@
+ #include "Navi.h"
+ #include "ObjectMgr.h"
+ #include "Piki.h"
++#include "pc_p2_captain_roster.h"
+ #include "types.h"
+ 
+ /**
+@@ -181,6 +182,28 @@ public:
+ 	void renderCircle(Graphics&);
+ 	void drawShadow(Graphics&);
+ 
++	// Lane 12 second-captain primitives (#130). These are additive queries over
++	// the existing object list; with a single Navi they all resolve to slot 0
++	// and change nothing. Source equivalents: NaviMgr::getActiveNavi,
++	// getAliveOrima, getDeadOrima, informOrimaDead, mNaviDeadFlags[2].
++	Navi* getOtherNavi(Navi*);
++	Navi* getActiveNavi();
++	Navi* getAliveOrima();
++	Navi* getDeadOrima();
++	void setActiveNavi(Navi*);
++	void informOrimaDead(Navi*);
++	bool isNaviDead(Navi*);
++	bool hasSecondNavi() const;
++	int getNaviCount() const;
++	void resetCaptainRoster();
++
++	// Build the second captain's shape object (mNaviShapeObject[1]) from a
++	// fresh, uncached copy of the captain model. Additive and inert: it does not
++	// touch the live object list and the single-captain path never calls it.
++	// Returns false when the asset cannot be prepared. The protected
++	// PikiShapeObject constructor is only reachable from NaviMgr (friend).
++	bool ensureSecondNaviShapeObject();
++
+ 	// unused/inlined:
+ 	void init();
+ 
+@@ -194,6 +217,7 @@ public:
+ 	PaniMotionTable* mMotionTable;        // _50
+ 	int mNaviID;                          // _54
+ 	NaviProp* mNaviParms;                 // _58
++	P2CaptainRoster mCaptainRoster;       // lane 12 active/dead selection (PC port)
+ };
+ 
+ extern NaviMgr* naviMgr;
+diff --git a/pc_port/pc_p2_captain.cpp b/pc_port/pc_p2_captain.cpp
+index 5ba4bd7d..298df41b 100644
+--- a/pc_port/pc_p2_captain.cpp
++++ b/pc_port/pc_p2_captain.cpp
+@@ -10,11 +10,12 @@
+ // Navi/NaviMgr/PikiMgr. This is the only translation unit that needs engine
+ // headers; the adapter logic is header-only and engine-free.
+ //
+-// Single-captain binding: captain slot 0 is the live `naviMgr->getNavi(0)`
+-// (Navi::mNaviID == 0); slot 1 is always absent. There is no
+-// NaviMgr::getActiveNavi / getAliveOrima / getDeadOrima on this port, so the
+-// adapter's own P2CaptainPolicy is the source of truth for active/captured
+-// bookkeeping and it mirrors Piki::mNavi writes back into the engine.
++// Captain slot N is the live `naviMgr->getNavi(N)` (Navi::mNaviID == N). Slot 1
++// binds when a second Navi exists (see pc_p2_second_captain.h); on the default
++// single-captain port getNavi(1) is null and slot 1 stays absent. The adapter's
++// P2CaptainPolicy is the source of truth for active/captured bookkeeping; it
++// mirrors Piki::mNavi writes and now routes active/knockout selection into the
++// additive NaviMgr helpers (setActiveNavi / informOrimaDead).
+ 
+ namespace {
+ 
+@@ -38,8 +39,8 @@ std::uint32_t actor_id_for(void* actor)
+ 
+ void* live_captain_at(void*, int slot)
+ {
+-    if (!naviMgr || slot != P2CaptainA) return nullptr;
+-    return static_cast<void*>(naviMgr->getNavi(0));
++    if (!naviMgr || !P2CaptainOwnershipTable::isCaptain(slot)) return nullptr;
++    return static_cast<void*>(naviMgr->getNavi(slot));
+ }
+ 
+ float live_get_health(void*, void* captain)
+@@ -62,7 +63,8 @@ int live_owner_slot(void* context, void* actor)
+     if (!actor) return P2CaptainInvalid;
+     Navi* owner = static_cast<Piki*>(actor)->mNavi;
+     if (!owner) return P2CaptainInvalid;
+-    return owner->mNaviID == P2CaptainA ? P2CaptainA : P2CaptainInvalid;
++    return P2CaptainOwnershipTable::isCaptain(owner->getNaviIndex()) ? owner->getNaviIndex()
++                                                                    : P2CaptainInvalid;
+ }
+ 
+ void live_set_owner_slot(void* context, void* actor, int slot)
+@@ -70,7 +72,23 @@ void live_set_owner_slot(void* context, void* actor, int slot)
+     (void)context;
+     if (!actor || !naviMgr) return;
+     Piki* piki = static_cast<Piki*>(actor);
+-    piki->mNavi = (slot == P2CaptainA) ? naviMgr->getNavi(0) : nullptr;
++    piki->mNavi = P2CaptainOwnershipTable::isCaptain(slot) ? naviMgr->getNavi(slot) : nullptr;
++}
++
++// Route the adapter's active/knockout selection into NaviMgr's additive
++// second-captain bookkeeping. With one Navi these simply touch slot 0/false.
++void live_notify_active(void*, int slot)
++{
++    if (!naviMgr) return;
++    Navi* navi = naviMgr->getNavi(slot);
++    if (navi) naviMgr->setActiveNavi(navi);
++}
++
++void live_notify_knockout(void*, int slot)
++{
++    if (!naviMgr) return;
++    Navi* navi = naviMgr->getNavi(slot);
++    if (navi) naviMgr->informOrimaDead(navi);
+ }
+ 
+ int live_enumerate(void*, P2PikiHandle* out, int capacity)
+@@ -96,6 +114,8 @@ P2CaptainHostOps live_ops()
+     ops.ownerSlot    = &live_owner_slot;
+     ops.setOwnerSlot = &live_set_owner_slot;
+     ops.enumerate    = &live_enumerate;
++    ops.notifyActive   = &live_notify_active;
++    ops.notifyKnockout = &live_notify_knockout;
+     return ops;
+ }
+ 
+@@ -113,7 +133,7 @@ bool setup_from_navi_mgr()
+ {
+     P2CaptainAdapter& adapter = live_adapter();
+     if (adapter.bound()) return true;
+-    if (!naviMgr || !naviMgr->getNavi(0)) return false;
++    if (!naviMgr || !naviMgr->getActiveNavi()) return false;
+     if (!adapter.bind(live_ops())) return false;
+     if (!adapter.setup()) {
+         adapter.teardown();
+@@ -167,4 +187,14 @@ std::vector<std::uint32_t> drop_captured(std::uint64_t captorEpoch)
+     return live_adapter().dropAllCaptured(captorEpoch);
+ }
+ 
++bool has_second_captain()
++{
++    return naviMgr && naviMgr->hasSecondNavi();
++}
++
++int other_captain(int captain)
++{
++    return p2_other_captain(captain);
++}
++
+ } // namespace pc_p2_captain
+diff --git a/pc_port/pc_p2_captain.h b/pc_port/pc_p2_captain.h
+index a6145deb..bd460874 100644
+--- a/pc_port/pc_p2_captain.h
++++ b/pc_port/pc_p2_captain.h
+@@ -55,6 +55,13 @@ struct P2CaptainHostOps {
+     // Enumerate live squad actors for adoption. Returns the count written to
+     // `out` (truncated to capacity), or -1 on failure.
+     int (*enumerate)(void* context, P2PikiHandle* out, int capacity) = nullptr;
++
++    // Optional engine notifications. These are how the policy's switch/capture
++    // selection is routed back into the engine's own active/dead bookkeeping
++    // (NaviMgr::setActiveNavi / informOrimaDead). They are nullable so existing
++    // engine-double tests keep binding without them.
++    void (*notifyActive)(void* context, int slot)   = nullptr;
++    void (*notifyKnockout)(void* context, int slot) = nullptr;
+ };
+ 
+ // One per loaded scene. Bind, setup(), then let captor families drive it.
+@@ -72,6 +79,15 @@ class P2CaptainAdapter {
+         return out != nullptr;
+     }
+ 
++    void notifyActive(int slot)
++    {
++        if (mHost.notifyActive) mHost.notifyActive(mHost.context, slot);
++    }
++    void notifyKnockout(int slot)
++    {
++        if (mHost.notifyKnockout) mHost.notifyKnockout(mHost.context, slot);
++    }
++
+ public:
+     // Requires every callback. A partially-bound adapter is refused rather
+     // than silently skipping engine writes.
+@@ -189,16 +205,19 @@ public:
+ 
+     bool switchActive(int target)
+     {
+-        if (!mBound) return false;
+-        return mPolicy.switchActive(target);
++        if (!mBound || !mPolicy.switchActive(target)) return false;
++        notifyActive(target);
++        return true;
+     }
+ 
+     // Captor ingest of a captain. On success the captive's squad is
+-    // transferred in-policy and mirrored into the engine.
++    // transferred in-policy and mirrored into the engine, and control has moved
++    // to the survivor.
+     bool captureCaptain(int captain, std::uint64_t captorEpoch)
+     {
+         if (!mBound || !mPolicy.capture(captain, captorEpoch)) return false;
+         syncOwnership();
++        notifyActive(mPolicy.activeCaptain());
+         return true;
+     }
+ 
+@@ -208,6 +227,21 @@ public:
+         return mPolicy.releaseCaptured(captain, captorEpoch);
+     }
+ 
++    // Source Navi damage/knockout. Returns true only when the hit knocked the
++    // captain out. The downed captain's actors are freed in-policy, mirrored to
++    // the engine, and the engine is told the captain is down and which captain
++    // now has control. Callers that already applied the damage in the engine
++    // should keep the engine authoritative and use refresh()/setHealth();
++    // this drives the shared policy and the engine active/dead bookkeeping.
++    bool damageCaptain(int captain, float amount)
++    {
++        if (!mBound || !mPolicy.damage(captain, amount)) return false;
++        syncOwnership();
++        notifyKnockout(captain);
++        notifyActive(mPolicy.activeCaptain());
++        return true;
++    }
++
+     // --- Captor-held actors (Pikmin / carried items) ---
+ 
+     bool captureActor(std::uint64_t captorEpoch, P2PikiHandle actor)
+@@ -296,6 +330,11 @@ bool switch_active(int captain);
+ bool reload();
+ int adopt_squad();
+ 
++// Lane 12 second-captain queries (#130). `has_second_captain` is false on the
++// single-captain port; `other_captain` is the GET_OTHER_NAVI mapping.
++bool has_second_captain();
++int other_captain(int captain);
++
+ // Captor-held squad actor (Piki*) operations. `piki` is a live Piki*.
+ bool capture_actor(std::uint64_t captorEpoch, P2PikiHandle piki);
+ bool release_actor(std::uint64_t captorEpoch, P2PikiHandle piki, int toCaptain);
+diff --git a/pc_port/pc_p2_captain_roster.h b/pc_port/pc_p2_captain_roster.h
+new file mode 100644
+index 00000000..7c5c0ae6
+--- /dev/null
++++ b/pc_port/pc_p2_captain_roster.h
+@@ -0,0 +1,85 @@
++#pragma once
++#include <cstdint>
++
++// Lane 12 engine-free second-captain roster (#130).
++//
++// NaviMgr owns one Navi per captain slot. The only state that cannot be read
++// straight off a Navi is the *selection* state: which slot is currently
++// controlled and which slots are down. This helper owns exactly that, with no
++// engine dependency, so NaviMgr::getActiveNavi()/getAliveOrima()/
++// getDeadOrima()/informOrimaDead() can stay thin delegators and the standalone
++// policy test can exercise the selection rules under g++.
++//
++// Single-captain safety: with count == 1, reset() leaves activeIndex() == 0,
++// no slot is dead, and active()/firstAlive() always return 0. Nothing here
++// changes the one-Navi path until a second Navi actually exists.
++//
++// Source basis (native/pikmin2-research, include/Game/Navi.h): Navi::mNaviIndex,
++// GET_OTHER_NAVI(navi) == 1 - mNaviIndex, NaviMgr::getActiveNavi,
++// getAliveOrima, getDeadOrima, informOrimaDead, mDeadNavis, mNaviDeadFlags[2].
++class P2CaptainRoster {
++public:
++    static constexpr int kSlots = 2;
++
++    // GET_OTHER_NAVI equivalent: the other captain index, or -1 if invalid.
++    static int otherIndex(int index)
++    {
++        return index == 0 ? 1 : (index == 1 ? 0 : -1);
++    }
++
++    // A slot index is usable when it is non-negative, inside the live count and
++    // inside this helper's fixed two-slot capacity.
++    static bool validIndex(int index, int count)
++    {
++        return index >= 0 && index < count && index < kSlots;
++    }
++
++    void reset()
++    {
++        mActiveIndex = 0;
++        mDeadMask    = 0;
++    }
++
++    int activeIndex() const { return mActiveIndex; }
++    void setActiveIndex(int index) { mActiveIndex = index; }
++
++    bool isDead(int index) const
++    {
++        return index >= 0 && index < kSlots && (mDeadMask & (1u << index)) != 0;
++    }
++    void markDead(int index)
++    {
++        if (index >= 0 && index < kSlots) mDeadMask |= (1u << index);
++    }
++    void markAlive(int index)
++    {
++        if (index >= 0 && index < kSlots) mDeadMask &= ~(1u << index);
++    }
++
++    int firstAlive(int count) const
++    {
++        for (int i = 0; i < count && i < kSlots; ++i) {
++            if (!isDead(i)) return i;
++        }
++        return -1;
++    }
++    int firstDead(int count) const
++    {
++        for (int i = 0; i < count && i < kSlots; ++i) {
++            if (isDead(i)) return i;
++        }
++        return -1;
++    }
++
++    // The controllable index: the current active slot if it is still valid and
++    // alive, otherwise the first alive slot, otherwise -1.
++    int active(int count) const
++    {
++        if (validIndex(mActiveIndex, count) && !isDead(mActiveIndex)) return mActiveIndex;
++        return firstAlive(count);
++    }
++
++private:
++    int mActiveIndex          = 0;
++    std::uint32_t mDeadMask   = 0;
++};
+diff --git a/pc_port/pc_p2_second_captain.cpp b/pc_port/pc_p2_second_captain.cpp
+new file mode 100644
+index 00000000..f2e7fddc
+--- /dev/null
++++ b/pc_port/pc_p2_second_captain.cpp
+@@ -0,0 +1,60 @@
++#include "pc_p2_second_captain.h"
++
++#include "NaviMgr.h"
++
++#include <cstdio>
++#include <cstdlib>
++
++// Lane 12 opt-in second-captain creation (#130). See the header for why the
++// live spawn is gated shut on this port.
++
++namespace pc_p2_captain {
++
++bool second_captain_requested()
++{
++    const char* env = std::getenv("PIKMIN_P2_SECOND_CAPTAIN");
++    if (!env || env[0] == '\0') return false;
++    if (env[0] == '0' && env[1] == '\0') return false;
++    return true;
++}
++
++bool second_captain_live_allowed()
++{
++    // Closed on purpose. A live second Navi requires, at minimum:
++    //   * per-captain follow/whistle AI and split-squad control routing,
++    //   * a per-captain camera and Kontroller binding (Navi ctor already makes
++    //     Kontroller(naviID + 1); P2 input mapping is not ported),
++    //   * survivor-gated GAMEEND_NaviDown (naviState.cpp:3190 sets a global),
++    //   * HUD/AI consumers to use getActiveNavi() instead of getNavi().
++    // Shipping the additive helpers and closed spawn path keeps default play
++    // byte-identical while a later slice ports those systems.
++    return false;
++}
++
++int navi_capacity()
++{
++    return (second_captain_requested() && second_captain_live_allowed()) ? 2 : 1;
++}
++
++bool prepare_second_captain_assets(NaviMgr* mgr)
++{
++    if (!mgr) return false;
++    if (!second_captain_live_allowed()) return false;
++    return mgr->ensureSecondNaviShapeObject();
++}
++
++Navi* birth_second_captain(NaviMgr* mgr)
++{
++    if (!mgr || !second_captain_live_allowed()) return nullptr;
++    if (!mgr->ensureSecondNaviShapeObject()) return nullptr;
++    // NaviMgr::create(2) already constructed the second Navi object; birth()
++    // simply activates the next free slot.
++    Navi* navi = static_cast<Navi*>(mgr->birth());
++    if (navi) {
++        std::printf("[Pikmin Randomizer] second captain spawned at slot %d\n", navi->getNaviIndex());
++        std::fflush(stdout);
++    }
++    return navi;
++}
++
++} // namespace pc_p2_captain
+diff --git a/pc_port/pc_p2_second_captain.h b/pc_port/pc_p2_second_captain.h
+new file mode 100644
+index 00000000..fa6f8d7a
+--- /dev/null
++++ b/pc_port/pc_p2_second_captain.h
+@@ -0,0 +1,48 @@
++#pragma once
++
++// Lane 12 strictly opt-in second-captain creation path (#130).
++//
++// The port is a single-captain Pikmin-1 engine: one live Navi, one camera, one
++// controller, single-captain follow/whistle/knockout and a global
++// GAMEEND_NaviDown. Creating a second Navi without porting all of that would
++// add an uncontrollable, uncameraed actor that the game-over and squad paths do
++// not understand. So this slice ships the *hook* and the additive asset
++// preparation but keeps the live spawn closed:
++//
++//   * second_captain_requested() reads PIKMIN_P2_SECOND_CAPTAIN (default off).
++//   * second_captain_live_allowed() is deliberately false until follow-AI,
++//     split camera, control routing and survivor-gated game over exist. See
++//     docs/PIKMIN2_CAPTAIN_SQUAD_CONTRACT.md for the file:line plan.
++//   * navi_capacity() is the count to pass to NaviMgr::create(): 1 normally,
++//     2 only when requested AND allowed.
++//   * prepare_second_captain_assets() and birth_second_captain() are the two
++//     halves of the spawn and refuse unless the gate is open.
++//
++// Nothing here runs unless a caller invokes it, and the game-core call site is
++// inert while the gate is closed, so default single-captain play is unchanged.
++
++class NaviMgr;
++class Navi;
++
++namespace pc_p2_captain {
++
++// True when PIKMIN_P2_SECOND_CAPTAIN is set to a non-empty value (not "0").
++bool second_captain_requested();
++
++// Whether this build may actually birth a live second Navi. Deliberately false.
++bool second_captain_live_allowed();
++
++// Object-manager capacity for NaviMgr::create(): 1, or 2 when the live gate is
++// open. This is the single value the scene initialiser consults.
++int navi_capacity();
++
++// Prepare mNaviShapeObject[1] before NaviMgr::create(2) constructs the second
++// Navi (Navi::Navi indexes mNaviShapeObject[mNaviID]). Idempotent and inert on
++// its own; returns false when the asset is unavailable.
++bool prepare_second_captain_assets(NaviMgr* mgr);
++
++// Birth the second Navi after the first. Only meaningful after
++// create(navi_capacity()) with assets prepared; refuses when the gate is shut.
++Navi* birth_second_captain(NaviMgr* mgr);
++
++} // namespace pc_p2_captain
+diff --git a/src/plugPikiKando/gameCoreSection.cpp b/src/plugPikiKando/gameCoreSection.cpp
+index 63d7c24e..973ca761 100644
+--- a/src/plugPikiKando/gameCoreSection.cpp
++++ b/src/plugPikiKando/gameCoreSection.cpp
+@@ -10,6 +10,7 @@
+ #include "pc_bbft.h"
+ #include "pc_p2_preview.h"
+ #include "pc_p2_cave.h"
++#include "pc_p2_second_captain.h"
+ #include "pc_p2_breadbug_visual.h"
+ #include "pc_p2_giant_breadbug_visual.h"
+ #include "pc_p2_bulblax_visual.h"
+@@ -1490,8 +1491,17 @@ GameCoreSection::GameCoreSection(Controller* controller, MapMgr* mgr, Camera& ca
+ 	PRINT("================== NAVI ===================\n");
+ 	memStat->start("navi");
+ 	naviMgr = new NaviMgr();
+-	naviMgr->create(1);
++	// Lane 12 (#130): strictly opt-in second captain. navi_capacity() is 1
++	// unless PIKMIN_P2_SECOND_CAPTAIN is set AND the live gate allows it; the
++	// gate is deliberately closed until follow-AI/camera/controls/game-over are
++	// ported, so this is inert in normal single-captain play.
++	int naviCapacity = pc_p2_captain::navi_capacity();
++	if (naviCapacity > 1 && !pc_p2_captain::prepare_second_captain_assets(naviMgr)) {
++		naviCapacity = 1;
++	}
++	naviMgr->create(naviCapacity);
+ 	mNavi = static_cast<Navi*>(naviMgr->birth());
++	if (naviCapacity > 1) pc_p2_captain::birth_second_captain(naviMgr);
+ 	PRINT("********* navi ==== %x\n", mNavi);
+ 	gameflow.addGenNode("naviMgr", naviMgr);
+ 	memStat->end("navi");
+diff --git a/src/plugPikiKando/naviMgr.cpp b/src/plugPikiKando/naviMgr.cpp
+index 4295c874..510f00e2 100644
+--- a/src/plugPikiKando/naviMgr.cpp
++++ b/src/plugPikiKando/naviMgr.cpp
+@@ -48,6 +48,7 @@ NaviMgr::NaviMgr()
+ 	memStat->end("navi animmgr");
+ 
+ 	mNaviID = 0;
++	mCaptainRoster.reset();
+ 	memStat->end("navi shape anim");
+ }
+ 
+@@ -101,6 +102,142 @@ Navi* NaviMgr::getNavi(int idx)
+ 	return static_cast<Navi*>(mObjectList[idx]);
+ }
+ 
++// ---------------------------------------------------------------------------
++// Lane 12 second-captain primitives (#130). Additive: the object list is
++// untouched and every query degrades to slot 0 when only one Navi exists, so
++// the single-captain campaign behaves exactly as before.
++// ---------------------------------------------------------------------------
++
++/**
++ * @brief The other live Navi, or null unless exactly two Navis exist.
++ */
++Navi* NaviMgr::getOtherNavi(Navi* navi)
++{
++	if (!navi) {
++		return nullptr;
++	}
++	int other = P2CaptainRoster::otherIndex(navi->getNaviIndex());
++	if (other < 0 || other >= mNumObjects) {
++		return nullptr;
++	}
++	return getNavi(other);
++}
++
++/**
++ * @brief The currently controlled Navi, falling back to the first alive slot.
++ */
++Navi* NaviMgr::getActiveNavi()
++{
++	int index = mCaptainRoster.active(mNumObjects);
++	return index < 0 ? nullptr : getNavi(index);
++}
++
++/**
++ * @brief First Navi that is not down, or null when all are down.
++ */
++Navi* NaviMgr::getAliveOrima()
++{
++	int index = mCaptainRoster.firstAlive(mNumObjects);
++	return index < 0 ? nullptr : getNavi(index);
++}
++
++/**
++ * @brief First down Navi, or null when none are down.
++ */
++Navi* NaviMgr::getDeadOrima()
++{
++	int index = mCaptainRoster.firstDead(mNumObjects);
++	return index < 0 ? nullptr : getNavi(index);
++}
++
++/**
++ * @brief Mark `navi` as the controlled captain (source getActiveNavi switch).
++ */
++void NaviMgr::setActiveNavi(Navi* navi)
++{
++	if (navi) {
++		mCaptainRoster.setActiveIndex(navi->getNaviIndex());
++	}
++}
++
++/**
++ * @brief Source NaviMgr::informOrimaDead: flag the captain down and, when it
++ * was active, hand control to the first surviving captain.
++ */
++void NaviMgr::informOrimaDead(Navi* navi)
++{
++	if (!navi) {
++		return;
++	}
++	int index = navi->getNaviIndex();
++	mCaptainRoster.markDead(index);
++	if (mCaptainRoster.activeIndex() == index) {
++		int survivor = mCaptainRoster.firstAlive(mNumObjects);
++		if (survivor >= 0) {
++			mCaptainRoster.setActiveIndex(survivor);
++		}
++	}
++}
++
++/**
++ * @brief Whether `navi` is flagged down (source mNaviDeadFlags).
++ */
++bool NaviMgr::isNaviDead(Navi* navi)
++{
++	return navi && mCaptainRoster.isDead(navi->getNaviIndex());
++}
++
++/**
++ * @brief Whether a second Navi is currently live.
++ */
++bool NaviMgr::hasSecondNavi() const
++{
++	return mNumObjects > 1;
++}
++
++/**
++ * @brief Number of live Navis (0 or 1 on the current port).
++ */
++int NaviMgr::getNaviCount() const
++{
++	return mNumObjects;
++}
++
++/**
++ * @brief Clear per-scene active/dead selection (scene reload / teardown).
++ */
++void NaviMgr::resetCaptainRoster()
++{
++	mCaptainRoster.reset();
++}
++
++/**
++ * @brief Build mNaviShapeObject[1] from a fresh, uncached captain model so a
++ * second Navi can index it without clobbering [0]'s animator overrides.
++ *
++ * Additive: does not create, activate or update any Navi. On the default
++ * single-captain port this is never called. A second Navi also needs
++ * follow-AI, split camera, control routing and survivor-gated game over before
++ * it can be spawned safely, so the live opt-in path stays closed for now.
++ */
++bool NaviMgr::ensureSecondNaviShapeObject()
++{
++	if (mNaviShapeObject[1]) {
++		return true;
++	}
++	Shape* shape = gameflow.loadShape("pikis/nv3Model.mod", false);
++	if (!shape) {
++		return false;
++	}
++	PikiShapeObject* shapeObject = new PikiShapeObject(shape);
++	if (!shapeObject) {
++		return false;
++	}
++	shapeObject->mAnimMgr = PikiShapeObject::getAnimMgr();
++	mNaviShapeObject[1]   = shapeObject;
++	return true;
++}
++
+ /**
+  * @todo: Documentation
+  */
+diff --git a/tools/test_p2_captain_adapter.cpp b/tools/test_p2_captain_adapter.cpp
+index 93bec5ff..a051113b 100644
+--- a/tools/test_p2_captain_adapter.cpp
++++ b/tools/test_p2_captain_adapter.cpp
+@@ -31,6 +31,10 @@ struct FakeScene {
+     FakePiki pikiB;
+     int setHealthCalls = 0;
+     int setOwnerCalls = 0;
++    int notifyActiveCalls = 0;
++    int lastActiveSlot = P2CaptainInvalid;
++    int notifyKnockoutCalls = 0;
++    int lastKnockoutSlot = P2CaptainInvalid;
+ };
+ 
+ P2CaptainHandle fake_captain_at(void* ctx, int slot)
+@@ -71,6 +75,20 @@ int fake_enumerate(void* ctx, P2PikiHandle* out, int capacity)
+     return count;
+ }
+ 
++void fake_notify_active(void* ctx, int slot)
++{
++    FakeScene* s = static_cast<FakeScene*>(ctx);
++    s->notifyActiveCalls++;
++    s->lastActiveSlot = slot;
++}
++
++void fake_notify_knockout(void* ctx, int slot)
++{
++    FakeScene* s = static_cast<FakeScene*>(ctx);
++    s->notifyKnockoutCalls++;
++    s->lastKnockoutSlot = slot;
++}
++
+ P2CaptainHostOps fake_ops(FakeScene& scene)
+ {
+     P2CaptainHostOps ops;
+@@ -82,6 +100,8 @@ P2CaptainHostOps fake_ops(FakeScene& scene)
+     ops.ownerSlot    = &fake_owner_slot;
+     ops.setOwnerSlot = &fake_set_owner_slot;
+     ops.enumerate    = &fake_enumerate;
++    ops.notifyActive   = &fake_notify_active;
++    ops.notifyKnockout = &fake_notify_knockout;
+     return ops;
+ }
+ 
+@@ -180,6 +200,8 @@ void test_two_captain_transfer_double(FakeScene& scene)
+     assert(adapter.switchActive(P2CaptainB));
+     assert(adapter.activeCaptain() == P2CaptainB);
+     assert(adapter.policy().phase(P2CaptainA) == P2CaptainPhase::Idle);
++    // The switch is routed into the engine's active-captain helper.
++    assert(scene.notifyActiveCalls == 1 && scene.lastActiveSlot == P2CaptainB);
+ 
+     // B owns 102: capture B hands 102 to A and mirrors it into the engine.
+     adapter.policy().abandon(P2CaptainA, 102);
+@@ -192,11 +214,22 @@ void test_two_captain_transfer_double(FakeScene& scene)
+     assert(adapter.ownerOfActor(102) == P2CaptainA);
+     assert(scene.pikiB.ownerSlot == P2CaptainA);
+     assert(adapter.ownsActor(101) && adapter.ownsActor(102));
++    // Capture routed control to the survivor.
++    assert(scene.notifyActiveCalls == 2 && scene.lastActiveSlot == P2CaptainA);
+ 
+     // Once B is down, the last controllable captain cannot be captured.
+     assert(!adapter.captureCaptain(P2CaptainA, 78));
+     assert(adapter.releaseCaptain(P2CaptainB, 77));
+     assert(adapter.policy().phase(P2CaptainB) == P2CaptainPhase::Idle);
++
++    // Knockout routes to the engine dead flag and the surviving captain.
++    assert(adapter.damageCaptain(P2CaptainB, 100.0f));
++    assert(adapter.policy().phase(P2CaptainB) == P2CaptainPhase::Down);
++    assert(scene.notifyKnockoutCalls == 1 && scene.lastKnockoutSlot == P2CaptainB);
++    assert(scene.notifyActiveCalls == 3 && scene.lastActiveSlot == P2CaptainA);
++    // A non-lethal hit does not report a knockout.
++    assert(!adapter.damageCaptain(P2CaptainA, 1.0f));
++    assert(adapter.policy().phase(P2CaptainA) == P2CaptainPhase::Active);
+ }
+ 
+ } // namespace
+diff --git a/tools/test_p2_captain_roster.cpp b/tools/test_p2_captain_roster.cpp
+new file mode 100644
+index 00000000..949be5e6
+--- /dev/null
++++ b/tools/test_p2_captain_roster.cpp
+@@ -0,0 +1,73 @@
++#include "pc_p2_captain_roster.h"
++#include <cassert>
++#include <cstdio>
++
++// Lane 12 second-captain roster test (#130). This is the engine-free selection
++// logic NaviMgr::getActiveNavi/getAliveOrima/getDeadOrima/informOrimaDead
++// delegate to. It is not a live Navi runtime: no engine object is constructed.
++int main()
++{
++    // Single captain is the default: active is slot 0, nothing is down, and
++    // every query resolves to slot 0 exactly as the old getNavi() did.
++    P2CaptainRoster single;
++    single.reset();
++    assert(single.activeIndex() == 0);
++    assert(single.active(1) == 0);
++    assert(single.firstAlive(1) == 0);
++    assert(single.firstDead(1) == -1);
++    assert(!single.isDead(0));
++
++    // Two live captains: slot 0 is active until reselected.
++    P2CaptainRoster two;
++    two.reset();
++    assert(two.active(2) == 0);
++    two.setActiveIndex(1);
++    assert(two.active(2) == 1);
++
++    // GET_OTHER_NAVI mapping.
++    assert(P2CaptainRoster::otherIndex(0) == 1);
++    assert(P2CaptainRoster::otherIndex(1) == 0);
++    assert(P2CaptainRoster::otherIndex(2) == -1);
++    assert(P2CaptainRoster::otherIndex(-1) == -1);
++
++    // A dead slot is not selectable and control falls to the survivor.
++    two.markDead(1);
++    assert(two.isDead(1));
++    assert(two.active(2) == 0);
++    assert(two.firstAlive(2) == 0);
++    assert(two.firstDead(2) == 1);
++
++    // Marking the active captain dead hands control to the first alive slot.
++    two.markAlive(1);
++    two.setActiveIndex(0);
++    two.markDead(0);
++    assert(two.firstAlive(2) == 1);
++    assert(two.active(2) == 1);
++
++    // Both down: no controllable captain (survivor-gated game over).
++    two.markDead(1);
++    assert(two.firstAlive(2) == -1);
++    assert(two.active(2) == -1);
++
++    // Reviving clears the dead flag without forcing an active switch.
++    two.markAlive(0);
++    assert(!two.isDead(0));
++    assert(two.firstDead(2) == 1);
++    assert(two.active(2) == 0);
++
++    // Out-of-range indices are inert rather than crashing.
++    P2CaptainRoster bounds;
++    bounds.reset();
++    bounds.markDead(5);
++    bounds.markDead(-1);
++    assert(!bounds.isDead(5));
++    assert(bounds.firstAlive(2) == 0);
++
++    // reset() returns to the single-captain default.
++    two.reset();
++    assert(!two.isDead(0) && !two.isDead(1));
++    assert(two.activeIndex() == 0 && two.active(2) == 0);
++
++    std::puts("PASS P2_CAPTAIN_ROSTER");
++    return 0;
++}
+-- 
+2.55.0.windows.3
+

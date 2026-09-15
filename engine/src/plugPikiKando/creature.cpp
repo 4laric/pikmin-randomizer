@@ -1,4 +1,9 @@
 #include "Creature.h"
+#include "Piki.h"
+#include "pc_p2_kurage_receiver.h"
+#include "pc_p2_queen.h"
+#include "pc_p2_king.h"
+#include "pc_p2_armor.h"
 #include "AIConstant.h"
 #include "AIPerf.h"
 #include "BombItem.h"
@@ -22,6 +27,8 @@
 #include "sysNew.h"
 #include "timers.h"
 #include <math.h>
+#include "pc_p2_preview.h"
+#include "pc_p2_purple.h"
 
 static CollTriInfo* triList[0x200];
 
@@ -498,6 +505,15 @@ void Creature::detachGenerator()
  */
 void Creature::kill(bool)
 {
+	// Revoke receiver pointers before stick cleanup or manager recycling.
+	if (mObjType == OBJTYPE_Piki) {
+        auto* piki = static_cast<Piki*>(this);
+        pc_p2_kurage_receiver_piki_invalidated(piki);
+        pc_p2_queen_forget_piki(piki);
+        pc_p2_king_forget_piki(piki);
+        pc_p2_armor_forget_piki(piki);
+    }
+	pc_p2_kurage_receiver_owner_invalidated(this);
 	finishWaterEffect();
 
 	if (mObjType == OBJTYPE_Teki) {
@@ -762,7 +778,18 @@ void Creature::update()
 	MATCHING_START_TIMER("MOVENEW", true);
 	Vector3f originalVel(mVelocity);
 	mVelocity = mVolatileVelocity;
-	moveNew(deltaTime);
+	// The temporary pass must still resolve impulses and contacts, but applying
+	// gravity again here pushes a slow supported P2 load downhill before its
+	// actual carry movement. The normal pass below still applies gravity.
+	bool supportedCargo = false;
+	if (pc_p2_purples_enabled() && mObjType == OBJTYPE_Pellet
+	    && mGroundTriangle && !mCollPlatform && mCurrCollisionModel == mapMgr->mMapModel) {
+		Pellet* cargo = static_cast<Pellet*>(this);
+		supportedCargo = pc_p2_preview_cargo_shape(cargo) && cargo->mPikiCarrier
+		    && cargo->mPikiCarrier->isPiki() && cargo->getPickOffset() != 0.0f
+		    && cargo->mCarrierCounter >= cargo->mConfig->mCarryMinPikis();
+	}
+	moveNew(deltaTime, !supportedCargo);
 
 	// Handle fixed position on non-slippery surfaces, with a slope < 60 degrees
 	if (mVolatileVelocity.length() > 0.0f && isCreatureFlag(CF_AllowFixPosition) && isCreatureFlag(CF_IsPositionFixed) && mGroundTriangle

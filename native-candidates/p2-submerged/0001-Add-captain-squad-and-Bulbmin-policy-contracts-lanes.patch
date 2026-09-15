@@ -1,0 +1,759 @@
+From 8219bf17c8b8427d245864a64a6b1eceed2ef499 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Sun, 13 Sep 2026 20:24:12 -0400
+Subject: [PATCH 01/17] Add captain/squad and Bulbmin policy contracts (lanes
+ 11-12)
+
+---
+ pc_port/pc_p2_bulbmin_policy.h   | 228 ++++++++++++++++++++++
+ pc_port/pc_p2_captain_policy.h   | 317 +++++++++++++++++++++++++++++++
+ tools/test_p2_bulbmin_policy.cpp |  72 +++++++
+ tools/test_p2_captain_policy.cpp |  98 ++++++++++
+ 4 files changed, 715 insertions(+)
+ create mode 100644 pc_port/pc_p2_bulbmin_policy.h
+ create mode 100644 pc_port/pc_p2_captain_policy.h
+ create mode 100644 tools/test_p2_bulbmin_policy.cpp
+ create mode 100644 tools/test_p2_captain_policy.cpp
+
+diff --git a/pc_port/pc_p2_bulbmin_policy.h b/pc_port/pc_p2_bulbmin_policy.h
+new file mode 100644
+index 00000000..68373d43
+--- /dev/null
++++ b/pc_port/pc_p2_bulbmin_policy.h
+@@ -0,0 +1,228 @@
++#pragma once
++#include <cstdint>
++#include <unordered_map>
++#include <vector>
++
++// P2 Bulbmin leader/dependent ownership and cave-only recruitment contract
++// (#131), lane 11 of docs/PIKMIN2_IMPLEMENTATION_FANOUT.md.
++//
++// Bulbmin are enemy-spawned Pikmin that a Mother Bulbmin (LeafChappy) births
++// into the scene. Wild Bulbmin are not counted as Pikmin, are immune to every
++// elemental hazard, follow their mother, and are converted into ordinary
++// Pikmin only when a captain whistles them. They never persist through a cave
++// exit, and only already-whistled Bulbmin descend to the next floor. The
++// mother actor, its FSM and its model stay with the enemy family; this header
++// owns the dependent ledger, recruitment and cave-transition boundary.
++//
++// Source basis (native/pikmin2-research, US GPVE01 revision 0):
++//   include/Game/Piki.h          Piki::Kind Bulbmin = 5; PikiInitArg::mLeader
++//   include/Game/Entities/LeafChappy.h
++//                                (Mother) Bulbmin = KumaChappy::Obj
++//   src/plugProjectNishimuraU/LeafChappy.cpp:131-152
++//                                birthChildren(): 10 pikiMgr->birth() at
++//                                2.5*i+17.5 units, initArg.mLeader = mother
++//   src/plugProjectKandoU/piki.cpp:155-156
++//                                changeShape(Bulbmin) + setFPFlag(
++//                                FPFLAGS_IsWildBulbmin)
++//   src/plugProjectKandoU/piki.cpp:231,250-251,788-789
++//                                wild Bulbmin are not Pikmin and do not count
++//                                toward the alive-Pikmin total
++//   src/plugProjectKandoU/interactPiki.cpp:178-179
++//                                captain whistle resets IsWildBulbmin
++//   src/plugProjectKandoU/interactPiki.cpp:347,453,511,543
++//                                Bulbmin immune to Denki/Fire/Bubble/Gas
++//   src/plugProjectKandoU/pikiMgr.cpp:134
++//                                follows a Teki (isTekiFollowAI) while wild
++//   src/plugProjectKandoU/pikiMgr.cpp:722-723,762
++//                                exiting a cave never saves Bulbmin; a floor
++//                                descent saves only isPikmin() (whistled) ones
++//
++// Invariants enforced by this contract (see the policy test):
++//   1. One mother owns each dependent; a dependent is never born twice.
++//   2. Recruitment converts a wild dependent in place; it is still one body
++//      and is not duplicated or destroyed.
++//   3. The mother's death releases its wild dependents; whistled team members
++//      keep their captain ownership and survive it.
++//   4. Floor descent keeps only whistled Bulbmin; cave exit removes them all.
++//   5. Wild Bulbmin never count toward the Pikmin total.
++
++enum P2BulbminPhase {
++    P2BulbminWild = 0,      // follows the mother, not counted as a Pikmin
++    P2BulbminRecruited = 1, // whistled; counted as a Pikmin
++};
++
++// Source birthChildren() spawns exactly ten dependents per mother.
++static const int P2BULBMIN_MAX_DEPENDENTS = 10;
++
++enum P2BulbminCaveTransition {
++    P2BulbminDescendFloor = 0, // pikiMgr save filter keeps only recruited
++    P2BulbminExitCave = 1,     // save filter drops every Bulbmin
++};
++
++// Bulbmin are immune to electricity, fire, water and gas in every phase.
++inline bool p2_bulbmin_hazard_immune() { return true; }
++
++struct P2BulbminCommand {
++    bool accepted = false;
++    std::uint32_t bulbmin = 0;
++    int phase = P2BulbminWild;
++    bool countsAsPikmin = false;
++    bool detachFromLeader = false; // recruitment: host reassigns to a captain
++};
++
++struct P2BulbminTransitionOut {
++    std::vector<std::uint32_t> kept;    // still in the scene after the move
++    std::vector<std::uint32_t> removed; // must be despawned, never saved
++    std::size_t recruitedKept = 0;
++};
++
++// Shared scene domain: dependent id -> {mother epoch, phase}. Invalidate the
++// whole domain before any manager-slot or pointer reuse so a recycled id
++// cannot inherit a stale leader.
++class P2BulbminFlock {
++    struct Record {
++        std::uint64_t leaderEpoch = 0;
++        int phase = P2BulbminWild;
++    };
++    std::unordered_map<std::uint32_t, Record> members;
++
++public:
++    void invalidateDomain() { members.clear(); }
++    bool contains(std::uint32_t bulbmin) const { return members.count(bulbmin) != 0; }
++    int phaseOf(std::uint32_t bulbmin) const {
++        auto it = members.find(bulbmin);
++        return it == members.end() ? -1 : it->second.phase;
++    }
++    bool ledBy(std::uint32_t bulbmin, std::uint64_t leaderEpoch) const {
++        auto it = members.find(bulbmin);
++        return it != members.end() && it->second.leaderEpoch == leaderEpoch;
++    }
++    bool add(std::uint32_t bulbmin, std::uint64_t leaderEpoch) {
++        if (!bulbmin || !leaderEpoch || members.count(bulbmin)) return false;
++        members[bulbmin] = Record{leaderEpoch, P2BulbminWild};
++        return true;
++    }
++    bool recruit(std::uint32_t bulbmin, std::uint64_t leaderEpoch) {
++        auto it = members.find(bulbmin);
++        if (it == members.end() || it->second.leaderEpoch != leaderEpoch
++            || it->second.phase != P2BulbminWild)
++            return false;
++        it->second.phase = P2BulbminRecruited;
++        return true;
++    }
++    std::size_t wildCount() const {
++        std::size_t n = 0;
++        for (const auto& entry : members)
++            if (entry.second.phase == P2BulbminWild) ++n;
++        return n;
++    }
++    std::size_t recruitedCount() const {
++        std::size_t n = 0;
++        for (const auto& entry : members)
++            if (entry.second.phase == P2BulbminRecruited) ++n;
++        return n;
++    }
++    std::size_t size() const { return members.size(); }
++
++    // Mother death/removal releases only its wild dependents. Recruited
++    // Bulbmin keep their captain ownership and stay in the ledger.
++    std::vector<std::uint32_t> releaseWild(std::uint64_t leaderEpoch) {
++        std::vector<std::uint32_t> out;
++        for (auto it = members.begin(); it != members.end();) {
++            if (it->second.leaderEpoch == leaderEpoch
++                && it->second.phase == P2BulbminWild) {
++                out.push_back(it->first);
++                it = members.erase(it);
++            } else {
++                ++it;
++            }
++        }
++        return out;
++    }
++
++    // Scene-wide cave transition. Wild Bulbmin are removed on either move;
++    // recruited Bulbmin survive a floor descent but not a full cave exit.
++    P2BulbminTransitionOut applyTransition(P2BulbminCaveTransition move) {
++        P2BulbminTransitionOut out;
++        for (auto it = members.begin(); it != members.end();) {
++            const bool wild = it->second.phase == P2BulbminWild;
++            const bool remove = move == P2BulbminExitCave
++                             || (move == P2BulbminDescendFloor && wild);
++            if (remove) {
++                out.removed.push_back(it->first);
++                it = members.erase(it);
++            } else {
++                out.kept.push_back(it->first);
++                if (!wild) ++out.recruitedKept;
++                ++it;
++            }
++        }
++        return out;
++    }
++};
++
++// One instance per Mother Bulbmin (LeafChappy) actor.
++class P2BulbminLeader {
++    P2BulbminFlock* flock = nullptr;
++    std::uint64_t epoch = 0;
++    int dependents = 0;
++    bool dead = false;
++
++    bool current(std::uint64_t id) const { return flock && id && id == epoch; }
++
++public:
++    bool bind(P2BulbminFlock* domain, std::uint64_t id) {
++        if (!domain || !id || epoch != 0) return false;
++        flock = domain;
++        epoch = id;
++        return true;
++    }
++    bool bound() const { return flock != nullptr; }
++    int dependentCount() const { return dependents; }
++
++    // Source LeafChappy::birthChildren. Bounded at ten live dependents.
++    P2BulbminCommand birth(std::uint64_t id, std::uint32_t bulbmin) {
++        P2BulbminCommand out;
++        if (!current(id) || dead) return out;
++        if (dependents >= P2BULBMIN_MAX_DEPENDENTS) return out;
++        if (!flock->add(bulbmin, epoch)) return out;
++        ++dependents;
++        out.accepted = true;
++        out.bulbmin = bulbmin;
++        out.phase = P2BulbminWild;
++        return out;
++    }
++
++    // Captain whistle (interactPiki.cpp:178-179). The dependent stays one
++    // body: it changes phase and the host reassigns it to the whistling
++    // captain. A recruited dependent no longer follows the mother.
++    P2BulbminCommand whistle(std::uint64_t id, std::uint32_t bulbmin) {
++        P2BulbminCommand out;
++        if (!current(id) || dead) return out;
++        if (!flock->recruit(bulbmin, epoch)) return out;
++        out.accepted = true;
++        out.bulbmin = bulbmin;
++        out.phase = P2BulbminRecruited;
++        out.countsAsPikmin = true;
++        out.detachFromLeader = true;
++        return out;
++    }
++
++    // Mother death / removal. Wild dependents are released to the free set;
++    // whistled team members keep their captain ownership and are untouched.
++    std::vector<std::uint32_t> leaderDied(std::uint64_t id) {
++        if (!current(id)) return {};
++        dead = true;
++        std::vector<std::uint32_t> released = flock->releaseWild(epoch);
++        dependents = 0;
++        return released;
++    }
++
++    // Synchronous cancellation before actor reuse. Releases only this
++    // mother's wild dependents.
++    void cancel() {
++        if (flock) flock->releaseWild(epoch);
++        dependents = 0;
++        dead = false;
++    }
++};
+diff --git a/pc_port/pc_p2_captain_policy.h b/pc_port/pc_p2_captain_policy.h
+new file mode 100644
+index 00000000..713911ef
+--- /dev/null
++++ b/pc_port/pc_p2_captain_policy.h
+@@ -0,0 +1,317 @@
++#pragma once
++#include <cmath>
++#include <cstdint>
++#include <unordered_map>
++#include <vector>
++
++// P2 captain / captive / squad ownership contract (#130), lane 12 of
++// docs/PIKMIN2_IMPLEMENTATION_FANOUT.md.
++//
++// This is the stable interface captor and squad-consumer families build
++// against: Greater Jellyfloat captain ingest (#243), Bumbling Snitchbug /
++// Demon forced drop (#215-#242) and Ranging Bloyster captain dependency
++// (#174). Captor FSMs and actor-local effects stay with their family modules;
++// this header owns only the two-captain identity, health/knockout, held-actor
++// ownership and capture/release boundary.
++//
++// Source basis (native/pikmin2-research, US GPVE01 revision 0):
++//   include/Game/Navi.h          Navi::mNaviIndex, mHealth, mInvincibleTimer,
++//                                GET_OTHER_NAVI(navi) == 1 - mNaviIndex
++//                                NaviMgr::getActiveNavi/getAliveOrima/
++//                                getDeadOrima/informOrimaDead, mDeadNavis,
++//                                mNaviDeadFlags[2]
++//   include/Game/Piki.h          Piki::mNavi                 (_2C4)
++//   include/Game/gamePlayData.h  mNaviLifeMax[2]
++//   include/Game/NaviState.h     capture/knockout/follow states
++//   src/plugProjectNishimuraU/OniKurage.cpp
++//                                mSuckedNavis[2], suckNavi(), isFinishNaviSuck()
++//   src/plugProjectNishimuraU/Kurage.cpp
++//                                flickNearbyNavi() (Lesser Jellyfloat knockback)
++//
++// Invariants enforced by this contract (see the policy test):
++//   1. Exactly one Active captain whenever any present captain is not Down.
++//   2. An ownership holder (Pikmin or carried actor) has at most one captain.
++//   3. Switch, capture, knockout and scene reload never lose or duplicate an
++//      owned actor: every owned actor is either still owned by one captain or
++//      explicitly released to the free set, never both.
++//   4. Captures are epoch-qualified. A stale captor (previous holder of the
++//      same manager slot or pointer) can never release another captor's
++//      capture.
++
++enum P2CaptainIndex {
++    P2CaptainA = 0, // Olimar
++    P2CaptainB = 1, // Louie, or President after substitution
++    P2CaptainCount = 2,
++    P2CaptainInvalid = -1,
++};
++
++// GET_OTHER_NAVI in source.
++inline int p2_other_captain(int captain) {
++    return (captain == P2CaptainA || captain == P2CaptainB)
++        ? (1 - captain)
++        : P2CaptainInvalid;
++}
++
++inline bool p2_is_captain(int captain) {
++    return captain == P2CaptainA || captain == P2CaptainB;
++}
++
++enum class P2CaptainPhase {
++    Idle,     // present, alive, not the controlled captain
++    Active,   // present, alive, controlled
++    Captured, // held by a captor actor (OniKurage mSuckedNavis)
++    Down,     // knocked out / dead this scene
++};
++
++struct P2CaptainSlot {
++    P2CaptainPhase phase = P2CaptainPhase::Idle;
++    bool present = true; // President substitution can add the second slot
++    float health = 0.0f;
++    float healthMax = 0.0f;
++    std::uint64_t captureEpoch = 0; // nonzero only while Captured
++};
++
++// Shared holder table: actor id -> captain index. 0 means free/unowned.
++// One table per loaded scene so two captors or two squads can never both own
++// the same actor. Invalidate the whole domain before any manager-slot or
++// pointer reuse; ownership epochs never wrap or repeat.
++class P2CaptainOwnershipTable {
++    std::unordered_map<std::uint32_t, int> owner;
++
++public:
++    void invalidateDomain() { owner.clear(); }
++    bool isOwned(std::uint32_t actor) const { return owner.count(actor) != 0; }
++    int ownerOf(std::uint32_t actor) const {
++        auto it = owner.find(actor);
++        return it == owner.end() ? P2CaptainInvalid : it->second;
++    }
++    bool tryClaim(std::uint32_t actor, int captain) {
++        if (!actor || !isCaptain(captain) || owner.count(actor)) return false;
++        owner[actor] = captain;
++        return true;
++    }
++    void release(std::uint32_t actor, int captain) {
++        auto it = owner.find(actor);
++        if (it != owner.end() && it->second == captain) owner.erase(it);
++    }
++    std::vector<std::uint32_t> releaseAll(int captain) {
++        std::vector<std::uint32_t> out;
++        for (auto it = owner.begin(); it != owner.end();) {
++            if (it->second == captain) {
++                out.push_back(it->first);
++                it = owner.erase(it);
++            } else {
++                ++it;
++            }
++        }
++        return out;
++    }
++    // Move every actor owned by `from` to `to` without dropping any. If `to`
++    // is invalid the actors are freed instead (knockout/stranding).
++    std::vector<std::uint32_t> transferAll(int from, int to) {
++        std::vector<std::uint32_t> moved;
++        for (auto& entry : owner) {
++            if (entry.second != from) continue;
++            moved.push_back(entry.first);
++            if (isCaptain(to)) entry.second = to;
++        }
++        if (!isCaptain(to)) {
++            for (std::uint32_t actor : moved) owner.erase(actor);
++        }
++        return moved;
++    }
++    std::size_t ownedCount() const { return owner.size(); }
++    std::size_t ownedBy(int captain) const {
++        std::size_t n = 0;
++        for (const auto& entry : owner)
++            if (entry.second == captain) ++n;
++        return n;
++    }
++
++    static bool isCaptain(int captain) {
++        return captain == P2CaptainA || captain == P2CaptainB;
++    }
++};
++
++// One instance per loaded scene. Bind it to the shared table before use.
++class P2CaptainPolicy {
++    P2CaptainOwnershipTable* table = nullptr;
++    P2CaptainSlot slots[P2CaptainCount];
++    int active = P2CaptainInvalid;
++    std::uint64_t nextEpoch = 1;
++
++    bool aliveIdle(int captain) const {
++        if (!p2_is_captain(captain)) return false;
++        const P2CaptainSlot& s = slots[captain];
++        return s.present && s.phase != P2CaptainPhase::Captured
++            && s.phase != P2CaptainPhase::Down;
++    }
++
++    // Pick the fallback controlled captain after the active one leaves the
++    // field. Prefers a present, alive Idle captain. Returns Invalid only when
++    // no captain can be controlled (both Down / absent).
++    void selectFallback() {
++        if (aliveIdle(active)) return;
++        for (int c = 0; c < P2CaptainCount; ++c) {
++            if (aliveIdle(c)) {
++                for (int o = 0; o < P2CaptainCount; ++o)
++                    if (o != c && slots[o].phase == P2CaptainPhase::Active)
++                        slots[o].phase = P2CaptainPhase::Idle;
++                slots[c].phase = P2CaptainPhase::Active;
++                active = c;
++                return;
++            }
++        }
++        active = P2CaptainInvalid;
++    }
++
++public:
++    bool bind(P2CaptainOwnershipTable* domain) {
++        if (bound() || !domain) return false;
++        table = domain;
++        slots[P2CaptainA] = P2CaptainSlot{};
++        slots[P2CaptainB] = P2CaptainSlot{};
++        active = P2CaptainInvalid;
++        return true;
++    }
++    bool bound() const { return table != nullptr; }
++
++    // Register a captain slot with its source maximum life. `present=false`
++    // keeps a slot reserved but not yet in the field (President substitution).
++    bool configure(int captain, float healthMax, bool present) {
++        if (!bound() || !P2CaptainOwnershipTable::isCaptain(captain)
++            || !std::isfinite(healthMax) || healthMax < 0.0f)
++            return false;
++        slots[captain].healthMax = healthMax;
++        slots[captain].health = healthMax;
++        slots[captain].present = present;
++        slots[captain].phase = present ? P2CaptainPhase::Idle
++                                       : P2CaptainPhase::Down;
++        slots[captain].captureEpoch = 0;
++        if (present && active == P2CaptainInvalid) {
++            slots[captain].phase = P2CaptainPhase::Active;
++            active = captain;
++        }
++        return true;
++    }
++
++    int activeCaptain() const { return active; }
++    P2CaptainPhase phase(int captain) const {
++        return P2CaptainOwnershipTable::isCaptain(captain)
++            ? slots[captain].phase : P2CaptainPhase::Down;
++    }
++    bool present(int captain) const {
++        return P2CaptainOwnershipTable::isCaptain(captain) && slots[captain].present;
++    }
++    float health(int captain) const {
++        return P2CaptainOwnershipTable::isCaptain(captain) ? slots[captain].health : 0.0f;
++    }
++    bool controllable(int captain) const { return aliveIdle(captain); }
++
++    // Source NaviMgr::getActiveNavi switch. Refuses a captain that is absent,
++    // captured or down. Owned actors stay with their owners; no transfer and
++    // no loss.
++    bool switchActive(int target) {
++        if (!bound() || !aliveIdle(target) || target == active) return false;
++        if (p2_is_captain(active) && slots[active].phase == P2CaptainPhase::Active)
++            slots[active].phase = P2CaptainPhase::Idle;
++        slots[target].phase = P2CaptainPhase::Active;
++        active = target;
++        return true;
++    }
++
++    // Source Navi damage path. Returns true when this hit knocked the captain
++    // out. A Down captain releases its controlled actors to the free set and
++    // yields control to the surviving captain.
++    bool damage(int captain, float amount) {
++        if (!bound() || !aliveIdle(captain) || !std::isfinite(amount) || amount < 0.0f)
++            return false;
++        slots[captain].health -= amount;
++        if (slots[captain].health > 0.0f) return false;
++        slots[captain].health = 0.0f;
++        slots[captain].phase = P2CaptainPhase::Down;
++        table->releaseAll(captain);
++        selectFallback();
++        return true;
++    }
++
++    // Captor ingest (OniKurage::suckNavi). `captorEpoch` identifies the captor
++    // instance so a stale holder cannot release this capture. Returns false if
++    // the captain is already captured/down or if it is the last controllable
++    // captain (source never leaves the player with zero control).
++    bool capture(int captain, std::uint64_t captorEpoch) {
++        if (!bound() || !aliveIdle(captain) || !captorEpoch) return false;
++        int other = p2_other_captain(captain);
++        if (!controllable(other)) return false;
++        slots[captain].phase = P2CaptainPhase::Captured;
++        slots[captain].captureEpoch = captorEpoch;
++        // Hand the captive's squad to the surviving controlled captain so it
++        // is neither lost nor duplicated; the source reassigns mNavi owners.
++        table->transferAll(captain, other);
++        if (active == captain) {
++            slots[other].phase = P2CaptainPhase::Active;
++            active = other;
++        }
++        return true;
++    }
++
++    // Captor death or interruption. Epoch must match the active capture; the
++    // released captain returns Idle and does not steal control back.
++    bool releaseCaptured(int captain, std::uint64_t captorEpoch) {
++        if (!bound() || !P2CaptainOwnershipTable::isCaptain(captain)) return false;
++        if (slots[captain].phase != P2CaptainPhase::Captured) return false;
++        if (!captorEpoch || slots[captain].captureEpoch != captorEpoch) return false;
++        slots[captain].phase = P2CaptainPhase::Idle;
++        slots[captain].captureEpoch = 0;
++        selectFallback();
++        return true;
++    }
++
++    // Revive a downed captain (source Onion / day boundary). Restores health
++    // and returns to Idle without changing the active captain.
++    bool revive(int captain, float health) {
++        if (!bound() || !P2CaptainOwnershipTable::isCaptain(captain)) return false;
++        if (slots[captain].phase != P2CaptainPhase::Down || !std::isfinite(health)
++            || health <= 0.0f)
++            return false;
++        slots[captain].health = health;
++        slots[captain].phase = P2CaptainPhase::Idle;
++        selectFallback();
++        return true;
++    }
++
++    // Scene reload / checkpoint restore. Captures are transient: any Captured
++    // captain returns Idle with no ownership change, so a reload cannot
++    // duplicate or lose a squad. Down captains stay down (source dead flags).
++    void reload() {
++        if (!bound()) return;
++        for (int c = 0; c < P2CaptainCount; ++c) {
++            if (slots[c].phase == P2CaptainPhase::Captured) {
++                slots[c].phase = slots[c].present ? P2CaptainPhase::Idle
++                                                  : P2CaptainPhase::Down;
++                slots[c].captureEpoch = 0;
++            }
++        }
++        selectFallback();
++    }
++
++    // Claim a Pikmin or carried actor for a captain. Exclusivity is enforced
++    // by the shared table, so within one frame the first claim wins.
++    bool claim(int captain, std::uint32_t actor) {
++        if (!bound() || !aliveIdle(captain)) return false;
++        return table->tryClaim(actor, captain);
++    }
++    void abandon(int captain, std::uint32_t actor) {
++        if (bound()) table->release(actor, captain);
++    }
++
++    // Synchronous cancellation before scene teardown or manager-slot reuse.
++    // Frees this policy's actors and clears transient capture state.
++    void cancel() {
++        if (!bound()) return;
++        for (int c = 0; c < P2CaptainCount; ++c) {
++            table->releaseAll(c);
++            slots[c].captureEpoch = 0;
++        }
++    }
++};
+diff --git a/tools/test_p2_bulbmin_policy.cpp b/tools/test_p2_bulbmin_policy.cpp
+new file mode 100644
+index 00000000..9975da03
+--- /dev/null
++++ b/tools/test_p2_bulbmin_policy.cpp
+@@ -0,0 +1,72 @@
++#include "pc_p2_bulbmin_policy.h"
++#include <cassert>
++#include <cstdio>
++
++// Lane 11 policy test: Bulbmin dependents are born only through a mother,
++// recruitment converts a body in place without duplication, the mother's
++// death releases only wild dependents, and cave transitions keep exactly the
++// source-permitted survivors.
++int main() {
++    P2BulbminFlock flock;
++    P2BulbminLeader mother;
++    assert(mother.bind(&flock, 100));
++
++    for (int i = 0; i < P2BULBMIN_MAX_DEPENDENTS; ++i) {
++        P2BulbminCommand c = mother.birth(100, 1000 + i);
++        assert(c.accepted);
++        assert(c.phase == P2BulbminWild);
++        assert(!c.countsAsPikmin);
++    }
++    assert(mother.dependentCount() == P2BULBMIN_MAX_DEPENDENTS);
++    assert(flock.size() == 10 && flock.wildCount() == 10 && flock.recruitedCount() == 0);
++
++    // The eleven dependents / duplicate id / stale mother epoch are refused.
++    assert(!mother.birth(100, 2000).accepted);
++    assert(!mother.birth(100, 1000).accepted);
++    assert(!mother.birth(999, 3000).accepted);
++    assert(flock.size() == 10);
++
++    // Whistle converts in place, counts as a Pikmin and detaches from the
++    // mother. A second whistle is a no-op and a stale epoch is refused.
++    P2BulbminCommand w = mother.whistle(100, 1000);
++    assert(w.accepted && w.phase == P2BulbminRecruited);
++    assert(w.countsAsPikmin && w.detachFromLeader);
++    assert(flock.phaseOf(1000) == P2BulbminRecruited);
++    assert(flock.size() == 10 && flock.wildCount() == 9 && flock.recruitedCount() == 1);
++    assert(!mother.whistle(100, 1000).accepted);
++    assert(!mother.whistle(999, 1001).accepted);
++
++    // Mother death releases only the nine wild dependents; the recruited
++    // team member survives with its captain ownership intact.
++    std::vector<std::uint32_t> released = mother.leaderDied(100);
++    assert(released.size() == 9);
++    assert(flock.size() == 1 && flock.recruitedCount() == 1);
++    assert(flock.contains(1000));
++    assert(!mother.birth(100, 4000).accepted);
++    assert(!mother.whistle(100, 1001).accepted);
++
++    // Floor descent keeps only whistled Bulbmin; cave exit removes them all.
++    P2BulbminFlock flock2;
++    P2BulbminLeader mother2;
++    assert(mother2.bind(&flock2, 200));
++    for (int i = 0; i < P2BULBMIN_MAX_DEPENDENTS; ++i) {
++        assert(mother2.birth(200, 5000 + i).accepted);
++    }
++    assert(mother2.whistle(200, 5000).accepted);
++    P2BulbminTransitionOut down = flock2.applyTransition(P2BulbminDescendFloor);
++    assert(down.kept.size() == 1 && down.removed.size() == 9 && down.recruitedKept == 1);
++    assert(flock2.size() == 1 && flock2.phaseOf(5000) == P2BulbminRecruited);
++    P2BulbminTransitionOut exitOut = flock2.applyTransition(P2BulbminExitCave);
++    assert(exitOut.removed.size() == 1 && exitOut.kept.empty());
++    assert(flock2.size() == 0);
++
++    // Bulbmin carry every elemental immunity in both phases.
++    assert(p2_bulbmin_hazard_immune());
++
++    // Teardown clears the shared ledger so a recycled id cannot inherit it.
++    flock.invalidateDomain();
++    assert(flock.size() == 0);
++
++    std::puts("PASS P2_BULBMIN_POLICY");
++    return 0;
++}
+diff --git a/tools/test_p2_captain_policy.cpp b/tools/test_p2_captain_policy.cpp
+new file mode 100644
+index 00000000..e3e94e20
+--- /dev/null
++++ b/tools/test_p2_captain_policy.cpp
+@@ -0,0 +1,98 @@
++#include "pc_p2_captain_policy.h"
++#include <cassert>
++#include <cstdio>
++
++// Lane 12 policy test: the two-captain / captive / squad ownership contract
++// must conserve owned actors across switch, capture, knockout, release and
++// reload, and must reject a capture that would leave zero control.
++int main() {
++    P2CaptainOwnershipTable table;
++    P2CaptainPolicy cap;
++    assert(cap.bind(&table));
++    assert(cap.configure(P2CaptainA, 100.0f, true));
++    assert(cap.configure(P2CaptainB, 100.0f, true));
++    assert(cap.activeCaptain() == P2CaptainA);
++
++    // Exclusive ownership: an actor has at most one captain.
++    assert(cap.claim(P2CaptainA, 11));
++    assert(cap.claim(P2CaptainB, 12));
++    assert(!cap.claim(P2CaptainB, 11));
++    assert(table.ownedBy(P2CaptainA) == 1);
++    assert(table.ownedBy(P2CaptainB) == 1);
++
++    // Switch preserves ownership and changes exactly one Active slot.
++    assert(cap.switchActive(P2CaptainB));
++    assert(cap.activeCaptain() == P2CaptainB);
++    assert(cap.phase(P2CaptainA) == P2CaptainPhase::Idle);
++    assert(table.ownedBy(P2CaptainA) == 1 && table.ownedBy(P2CaptainB) == 1);
++    assert(!cap.switchActive(P2CaptainB)); // already active
++    assert(p2_other_captain(P2CaptainA) == P2CaptainB);
++    assert(p2_other_captain(P2CaptainB) == P2CaptainA);
++
++    // Capture of the active captain: control falls to the other, and the
++    // captive's squad is transferred without loss or duplication.
++    assert(cap.capture(P2CaptainB, 7));
++    assert(cap.phase(P2CaptainB) == P2CaptainPhase::Captured);
++    assert(cap.activeCaptain() == P2CaptainA);
++    assert(table.ownedBy(P2CaptainA) == 2);
++    assert(table.ownedBy(P2CaptainB) == 0);
++    assert(table.ownedCount() == 2);
++
++    // A stale captor epoch cannot release another captor's capture.
++    assert(!cap.releaseCaptured(P2CaptainB, 8));
++    assert(cap.phase(P2CaptainB) == P2CaptainPhase::Captured);
++    assert(cap.releaseCaptured(P2CaptainB, 7));
++    assert(cap.phase(P2CaptainB) == P2CaptainPhase::Idle);
++    assert(cap.activeCaptain() == P2CaptainA);
++
++    // Knockout frees only the downed captain's actors; the rest stay owned.
++    assert(cap.claim(P2CaptainB, 13));
++    assert(table.ownedBy(P2CaptainB) == 1);
++    assert(cap.damage(P2CaptainB, 100.0f));
++    assert(cap.phase(P2CaptainB) == P2CaptainPhase::Down);
++    assert(table.ownedBy(P2CaptainB) == 0);
++    assert(table.ownedCount() == 2); // 11 and 12 remain owned by A
++
++    // Scene reload cannot duplicate or lose owned actors.
++    cap.reload();
++    assert(cap.phase(P2CaptainB) == P2CaptainPhase::Down);
++    assert(table.ownedBy(P2CaptainA) == 2);
++    assert(table.ownedCount() == 2);
++
++    // Revive returns the captain to Idle without stealing control.
++    assert(cap.revive(P2CaptainB, 100.0f));
++    assert(cap.phase(P2CaptainB) == P2CaptainPhase::Idle);
++    assert(cap.activeCaptain() == P2CaptainA);
++
++    // Transient capture is cleared by reload; ownership stays conserved.
++    assert(cap.capture(P2CaptainB, 11));
++    assert(cap.phase(P2CaptainB) == P2CaptainPhase::Captured);
++    cap.reload();
++    assert(cap.phase(P2CaptainB) == P2CaptainPhase::Idle);
++    assert(table.ownedCount() == 2);
++
++    // A capture that would leave zero control is refused: with B down, the
++    // last controllable captain (A) cannot be ingested.
++    assert(cap.damage(P2CaptainB, 100.0f));
++    assert(cap.phase(P2CaptainB) == P2CaptainPhase::Down);
++    assert(!cap.capture(P2CaptainA, 20));
++    assert(cap.phase(P2CaptainA) == P2CaptainPhase::Active);
++
++    // President substitution: a reserved but absent slot is not controllable.
++    P2CaptainOwnershipTable table2;
++    P2CaptainPolicy cap2;
++    assert(cap2.bind(&table2));
++    assert(cap2.configure(P2CaptainA, 80.0f, true));
++    assert(cap2.configure(P2CaptainB, 80.0f, false));
++    assert(cap2.activeCaptain() == P2CaptainA);
++    assert(!cap2.present(P2CaptainB));
++    assert(!cap2.controllable(P2CaptainB));
++    assert(!cap2.switchActive(P2CaptainB));
++
++    // Cancellation before teardown frees every owned actor.
++    cap.cancel();
++    assert(table.ownedCount() == 0);
++
++    std::puts("PASS P2_CAPTAIN_POLICY");
++    return 0;
++}
+-- 
+2.55.0.windows.3
+

@@ -1,3 +1,14 @@
+#include "pc_p2_frog.h"
+#include "pc_p2_king_teki.h"
+#include "pc_p2_umimushi.h"
+#include "pc_p2_jigumo.h"
+#include "pc_p2_snakejoint.h"
+#include "pc_p2_dangomushi.h"
+#include "pc_p2_hanachirashi.h"
+#include "pc_p2_catfish.h"
+#include "pc_p2_mar.h"
+#include "pc_p2_tadpole.h"
+#include "pc_p2_hana.h"
 #ifndef _TEKI_H
 #define _TEKI_H
 
@@ -17,6 +28,25 @@
 #include "system.h"
 #include "types.h"
 #include "zen/CallBack.h"
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+#include "pc_p2_enemy.h"
+#include "pc_p2_kochappy.h"
+#include "pc_p2_qurione.h"
+#include "pc_p2_dwarf_orange.h"
+#include "pc_p2_kogane.h"
+#include "pc_p2_sokkuri.h"
+#include "pc_p2_armor.h"
+#include "pc_p2_shijimi.h"
+#include "pc_p2_elecbug.h"
+#include "pc_p2_tamago.h"
+#include "pc_p2_imomushi.h"
+#include "pc_p2_otakara.h"
+#include "pc_p2_groink_teki.h"
+#endif
+
+#if defined(PIKI_PC_PORT)
+f32 pc_hardmode_teki_life(f32 base);
+#endif
 
 class CollEvent;
 class Colour;
@@ -109,7 +139,14 @@ enum TekiTypes {
 	TEKI_Swallob  = 32, // 32, Spotty Bulbear
 	TEKI_Frow     = 33, // 33, Wollywog
 	TEKI_Nakata1  = 34, // 34, ? (placeholder enemy, crashes)
-	TEKI_TypeCount,     // 35
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	// PC-only appended identity (lane 30 captor: Bumbling Snitchbug `Demon` ID 32
+	// / Swooping Snitchbug `Sarai` ID 23). Retail types 0-34 and the non-PC
+	// count stay unchanged; only the PC build grows by one slot. The actor is an
+	// invisible placement/anchor vehicle whose visual is drawn by P2DemonHost.
+	TEKI_P2Demon  = 35, // 35, lane-30 captor spawn identity (PC only)
+#endif
+	TEKI_TypeCount,     // PC 36; retail 35
 };
 
 BEGIN_ENUM_TYPE(TekiInteractType)
@@ -218,6 +255,12 @@ public:
 	virtual void reset();                                      // _170
 	virtual void startMotion(int);                             // _174
 	virtual void die();                                        // _178
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	// Family-lane escape helper (#219): finalize a death immediately. die()
+	// alone only arms mDeadState, but dieSoon() runs inside doAI's !mDeadState
+	// block, so a die() issued outside doAI would never finalize.
+	void pcEscapeNow() { die(); dieSoon(); }
+#endif
 	virtual void updateTimers();                               // _17C
 	virtual void gravitate(f32);                               // _180
 	virtual void animationKeyUpdated(immut PaniAnimKeyEvent&); // _184 (weak)
@@ -393,8 +436,43 @@ public:
 	void setPersonalityF(int idx, f32 val) { mPersonality->setF(idx, val); }
 	void setPersonalityI(int idx, int val) { mPersonality->setI(idx, val); }
 
-	f32 getParameterF(int idx) { return mTekiParams->getF(idx); } // see TekiFloatParams enum
-	int getParameterI(int idx) { return mTekiParams->getI(idx); } // see TekiIntParams enum
+	f32 getParameterF(int idx) {
+		const f32 value=pc_p2_frog_param_f(this,idx,pc_p2_king_teki_param_f(this,idx,mTekiParams->getF(idx)));
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+		const f32 kogane=pc_p2_armor_param_f(this,idx,pc_p2_sokkuri_param_f(this,idx,pc_p2_kogane_param_f(this,idx,pc_p2_shijimi_param_f(this,idx,value))));
+		const f32 beforeTamago=pc_p2_elecbug_param_f(this,idx,pc_p2_qurione_param_f(this,idx,kogane));
+		const f32 before_imomushi=pc_p2_tamago_param_f(this,idx,beforeTamago);
+		const f32 before_hana=pc_p2_imomushi_param_f(this,idx,before_imomushi);
+		const f32 before_tadpole=pc_p2_hana_param_f(this,idx,before_hana);
+		const f32 before_mar=pc_p2_tadpole_param_f(this,idx,before_tadpole);
+		const f32 before_catfish=pc_p2_mar_param_f(this,idx,before_mar);
+		const f32 before_hanachirashi=pc_p2_catfish_param_f(this,idx,before_catfish);
+		const f32 before_dangomushi=pc_p2_hanachirashi_param_f(this,idx,before_hanachirashi);
+		const f32 before_snakejoint=pc_p2_dangomushi_param_f(this,idx,before_dangomushi);
+		const f32 before_jigumo=pc_p2_snakejoint_param_f(this,idx,before_snakejoint);
+		const f32 before_umimushi=pc_p2_jigumo_param_f(this,idx,before_jigumo);
+		const f32 qurione=pc_p2_otakara_param_f(this,idx,pc_p2_umimushi_param_f(this,idx,before_umimushi));
+		if(idx==TPF_Life)return pc_p2_groink_teki_param_f(this,idx,pc_p2_dwarf_orange_max_health(this,pc_p2_kochappy_max_health(this,pc_p2_snow_max_health(this,qurione))));
+		return qurione;
+#endif
+		return value;
+	} // see TekiFloatParams enum
+	int getParameterI(int idx) {
+		const int value=mTekiParams->getI(idx);
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+		if(idx==TPI_CorpseType)return pc_p2_tamago_corpse_type(this,pc_p2_kogane_corpse_type(this,value));
+#endif
+		return value;
+	} // see TekiIntParams enum
+	// Hard scales only this, not every AI parameter read.
+	f32 getMaxLife()
+	{
+#if defined(PIKI_PC_PORT)
+		return pc_hardmode_teki_life(getParameterF(TPF_Life));
+#else
+		return getParameterF(TPF_Life);
+#endif
+	}
 
 	void outputDirectionVector(Vector3f& outDir) { BTeki::outputDirectionVector(getDirection(), outDir); }
 

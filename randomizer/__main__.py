@@ -22,6 +22,7 @@ def main():
     gen.add_argument('--starting-area', choices=['forest', 'navel', 'impact', 'spring', 'trial', 'random'], default='forest', help='Random includes four areas; excludes Final Trial')
     gen.add_argument('--all-areas', action='store_true', help='Enable five-area catalog with a fixed start')
     gen.add_argument('--miniboss-enemies', action='store_true', help='Experimental: three adult slots become Puffstool, Mamuta and Cannon Beetle')
+    gen.add_argument('--prerelease-trap-weight', type=int, default=0, choices=range(11), help='Temporary Beady replacement trap weight (0 disables)')
     gen.add_argument('--progg-trap-weight', type=int, default=0, choices=range(11), help='Smoky Progg ambush filler weight (0 disables)')
     gen.add_argument('--bomb-trap-weight', type=int, default=0, choices=range(11), help='Lit bomb ambush filler weight (0 disables)')
     gen.add_argument('--bomb-rock-weight', type=int, default=1, choices=range(11), help='Bomb delivery filler weight (0 disables; default 1)')
@@ -29,6 +30,8 @@ def main():
     gen.add_argument('--death-link-pikmin', type=int, default=10, choices=range(1, 101), metavar='N', help='DeathLink unit in Pikmin (1..100; default 10)')
     gen.add_argument('--per-spawn-enemies', action='store_true', help='Opt-in named adult Bulborb/Bulbear slots; overrides global family swaps')
     gen.add_argument('--group-spawn-enemies', action='store_true', help='Experimental dwarf/Sheargrub groups; implies per-spawn adults')
+    gen.add_argument('--p2-enemies', action='store_true', help='Experimental: place admitted Pikmin 2 source identities via the versioned admission bridge, using the committed accepted-placement document')
+    gen.add_argument('--p2-placement', type=Path, help='Lane 04 placement/encounter JSON document supplying legal binding targets; defaults to the committed admitted-cohort document docs/PIKMIN2_ADMITTED_PLACEMENT.json')
     gen.add_argument('--enemy-shuffle', action='store_true', help='Seeded compatible enemy-family swaps')
     gen.add_argument('--collection-checks', action='store_true', default=True, help='Onion corpse deliveries and population 10/25/50/100 per color')
     gen.add_argument('--starting-color', choices=['red', 'yellow', 'blue', 'random'], default='red', help='Non-default enables expanded checks')
@@ -43,6 +46,12 @@ def main():
     run.add_argument("--exe", type=Path)
     run.add_argument("--assets", type=Path)
     run.add_argument("--server")
+    run.add_argument("--content-manifest", type=Path, help="Lane 05 content manifest; staged into the run's private asset tree before launch")
+    run.add_argument("--family-install", help="Lane 05 family installer name (an existing family installer to consume)")
+    run.add_argument("--family-source", type=Path, help="Family bank/imported source directory for --family-install")
+    run.add_argument("--family-actor", action="append", default=[], metavar="ID:SPECIES", help="generator_id:Species for --family-install (repeatable)")
+    run.add_argument("--p2-content", type=Path, help="Lane 05 identity-keyed content root; auto-stages each p2_layout binding's family content")
+    run.add_argument("--p2-actors", type=Path, help="JSON {target: generator_id} actor bindings for --p2-content")
     status = sub.add_parser("status", help="Show collected checks and the bestiary")
     status.add_argument("manifest", type=Path)
     status.add_argument("--session-dir", type=Path, required=True)
@@ -52,7 +61,7 @@ def main():
     enemy_spoiler.add_argument('--output', type=Path)
     args = parser.parse_args()
     if args.command == "generate":
-        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas, enemy_shuffle=args.enemy_shuffle, collection_checks=args.collection_checks, starting_flarlic=args.starting_flarlic, randomize_color_stats=args.randomize_color_stats, progressive_color_stats=args.progressive_color_stats, permanent_checks=args.permanent_checks, per_spawn_enemies=args.per_spawn_enemies, group_spawn_enemies=args.group_spawn_enemies, miniboss_enemies=args.miniboss_enemies, campaign_enemies=args.campaign_enemies, progg_trap_weight=args.progg_trap_weight, bomb_trap_weight=args.bomb_trap_weight, bomb_rock_weight=args.bomb_rock_weight, death_link=args.death_link, death_link_pikmin=args.death_link_pikmin, goal_mode=args.goal, combined_captain=bool(args.collection_checks or args.permanent_checks or args.progressive_color_stats or args.per_spawn_enemies or args.group_spawn_enemies or args.miniboss_enemies or args.campaign_enemies or args.bomb_rock_weight or args.bomb_trap_weight or args.progg_trap_weight or args.goal == "emperor_bulblax"))
+        manifest = generate(args.seed, args.mode, args.slot, expanded=args.expanded, starting_area=args.starting_area, starting_color=args.starting_color, all_areas=args.all_areas, enemy_shuffle=args.enemy_shuffle, collection_checks=args.collection_checks, starting_flarlic=args.starting_flarlic, randomize_color_stats=args.randomize_color_stats, progressive_color_stats=args.progressive_color_stats, permanent_checks=args.permanent_checks, per_spawn_enemies=args.per_spawn_enemies, group_spawn_enemies=args.group_spawn_enemies, miniboss_enemies=args.miniboss_enemies, campaign_enemies=args.campaign_enemies, prerelease_trap_weight=args.prerelease_trap_weight, progg_trap_weight=args.progg_trap_weight, bomb_trap_weight=args.bomb_trap_weight, bomb_rock_weight=args.bomb_rock_weight, death_link=args.death_link, death_link_pikmin=args.death_link_pikmin, goal_mode=args.goal, combined_captain=bool(args.collection_checks or args.permanent_checks or args.progressive_color_stats or args.per_spawn_enemies or args.group_spawn_enemies or args.miniboss_enemies or args.campaign_enemies or args.bomb_rock_weight or args.bomb_trap_weight or args.progg_trap_weight or args.prerelease_trap_weight or args.goal == "emperor_bulblax"), p2_enemies=args.p2_enemies, p2_placement=(json.loads(args.p2_placement.read_text(encoding='utf-8')) if args.p2_placement else None))
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8") as f:
             f.write(json.dumps(manifest, indent=2) + "\n")
@@ -110,7 +119,16 @@ def main():
                 else:
                     print(text)
         else:
-            launch(manifest, args.session_dir.resolve(), args.exe, args.assets, args.server)
+            family_actors = [(int(value.split(':', 1)[0]), value.split(':', 1)[1])
+                             for value in args.family_actor]
+            p2_actors = None
+            if args.p2_actors is not None:
+                import json as _json
+                raw = _json.loads(args.p2_actors.read_text(encoding='utf-8'))
+                p2_actors = {str(target): int(generator) for target, generator in raw.items()}
+            launch(manifest, args.session_dir.resolve(), args.exe, args.assets, args.server,
+                   args.content_manifest, args.family_install, args.family_source, family_actors,
+                   args.p2_content, p2_actors)
 
 
 if __name__ == "__main__":

@@ -124,6 +124,7 @@ public:
 
 	returnStatusFlag update(Controller*);
 	void start();
+	void skip();
 	void draw(Graphics&);
 
 private:

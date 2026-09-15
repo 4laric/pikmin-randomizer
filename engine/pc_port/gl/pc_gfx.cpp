@@ -21,6 +21,7 @@
 #include "../timing/pc_render_phase.h"
 #include "../timing/pc_tick_profiler.h"
 
+#include "../pc_p2_specular_dir.h"
 #include "pc_opengl.h"
 
 // ── GL Function Pointers (Loaded via SDL_GL_GetProcAddress) ──
@@ -474,6 +475,17 @@ struct GfxChannel {
     float ambColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
 };
 static GfxChannel sChannels[2] = {}; // COLOR0/ALPHA0, COLOR1/ALPHA1
+// Specular instrumentation counters (renderer-owned): prove the corrected
+// half-vector path is reached by the ordinary draw, not only by a fixture.
+static unsigned sSpecularDirCalls = 0;
+static unsigned sSpecularChannelDraws = 0;
+// Family draw attribution: a bracketed scope entered around a family's own
+// draw (e.g. pc_p2_frog_draw's shape->drawshape) so the family-scoped specular
+// channel draws can be told apart from the renderer-global count.
+static bool sSpecularFamilyScope = false;
+static unsigned sSpecularFamilyDraws = 0;
+static unsigned sSpecularFamilyBegin = 0;      // upload count at scope entry
+static unsigned sSpecularFamilyDeltaLast = 0;  // per-draw delta of the last scope
 
 static constexpr GXAttnFn decode_xf_attn_fn(u32 control) {
     const bool bit9  = (control & (1u << 9)) != 0;
@@ -1315,7 +1327,7 @@ static const char* vShaderSrc =
     "uniform vec4 uAmbColor;\n"
     "uniform int uChan0En;\n"
     "uniform int uChan1En;\n"
-    "uniform int uChan0AttnFn;\n"  // 0=NONE,1=SPOT,2=SPEC
+    "uniform int uChan0AttnFn;\n"  // GXAttnFn: 0=SPEC, 1=SPOT, 2=NONE
     "uniform int uChan1AttnFn;\n"
     "uniform int uNumLights1;\n"
     "uniform vec4 uLightPos1[4];\n"
@@ -1354,10 +1366,17 @@ static const char* vShaderSrc =
     "    if (index == 3) return aTexCoord3;\n"
     "    return aTexCoord3;\n"
     "}\n"
+    // nrm is the OBJECT-space normal, not the lit one. GX feeds texgen from the
+    // raw vertex attribute, and the texgen matrix the game loads for the
+    // environment map already carries the modelview rotation (dgxGraphics
+    // useMatrixQuick). Passing the transformed normal rotates it twice and
+    // pushes the sphere-map coordinates off the useful range, which is what
+    // made the gloss on Olimar, the pellets and the ship disappear.
     "vec2 genTc(int slot, vec4 viewPos, vec3 nrm, vec2 uvIn, vec2 tc0, vec2 tc1, vec2 tc2, vec2 tc3) {\n"
     "    int mode = uTcMode[slot];\n"
     "    if (mode == 0) return uvIn;\n"
     "    vec4 src = (mode == 1) ? viewPos\n"
+    "             : (mode == 20) ? vec4(aNormal, 1.0)\n"
     "             : (mode == 2) ? vec4(nrm, 1.0)\n"
     "             : (mode >= 11) ? vec4((mode == 11) ? tc0 : (mode == 12) ? tc1 : (mode == 13) ? tc2 : tc3, 0.0, 1.0)\n"
     "             : vec4(rawTc(mode - 3), 0.0, 1.0);\n"
@@ -1369,16 +1388,25 @@ static const char* vShaderSrc =
     "    vec3 N = normalize(uNrmMtx * aNormal);\n"
     "    vec3 lit0 = uAmbColor.rgb + doLights(N, worldPos, uNumLights, uLightPos, uLightColor, uLightK);\n"
     "    vec3 spec1 = vec3(0.0);\n"
-    "    if (uChan1AttnFn == 2 && uNumLights1 > 0) {\n"
-    "        // GX hardware specular: att = clamp(a0 + a1*cosT + a2*cosT^2)\n"
+    // GX_AF_SPEC is 0; 2 is GX_AF_NONE. Testing for 2 meant the specular
+    // branch never ran on a specular channel, and the diffuse branch ran
+    // instead on a light whose dir field holds a half-vector, not a position.
+    // The misleading comment on uChan0AttnFn above is where that came from.
+    "    if (uChan1AttnFn == 0 && uNumLights1 > 0) {\n"
+    "        // GX evaluates specular as a ratio of two quadratics in N.H: the\n"
+    "        // angle coefficients over the distance ones. The numerator alone\n"
+    "        // gives a far broader, flatter highlight than the hardware.\n"
     "        float cosT = max(dot(N, normalize(uSpecHalf1.xyz)), 0.0);\n"
-    "        float att = clamp(uSpecAttn1.x + uSpecAttn1.y * cosT + uSpecAttn1.z * cosT * cosT, 0.0, 1.0);\n"
+    "        vec3 quad = vec3(1.0, cosT, cosT * cosT);\n"
+    "        float num = max(0.0, dot(uSpecAttn1.xyz, quad));\n"
+    "        float den = dot(uLightK1[0].xyz, quad);\n"
+    "        float att = (den > 1e-5) ? clamp(num / den, 0.0, 1.0) : 0.0;\n"
     "        spec1 = att * uLightColor1[0].rgb;\n"
     "    }\n"
     "    // GX_AF_SPEC uses the channel's attenuation function to produce the\n"
     "    // specular term.  Feeding the same light through the diffuse path as\n"
     "    // well double-counts COLOR1 and saturates specular materials white.\n"
-    "    vec3 diffuse1 = (uChan1AttnFn == 2)\n"
+    "    vec3 diffuse1 = (uChan1AttnFn == 0)\n"
     "        ? vec3(0.0)\n"
     "        : doLights(N, worldPos, uNumLights1, uLightPos1, uLightColor1, uLightK1);\n"
     "    vec3 lit1 = uAmbColor1.rgb + diffuse1 + spec1;\n"
@@ -1388,10 +1416,10 @@ static const char* vShaderSrc =
     // GX permits later texgens to use the output of an earlier texgen as
     // their source (GX_TG_TEXCOORD0..6). Evaluate in hardware order instead
     // of falling back to the usually absent raw attribute for that slot.
-    "    vec2 tc0 = genTc(0, worldPos, N, aTexCoord0, vec2(0.0), vec2(0.0), vec2(0.0), vec2(0.0));\n"
-    "    vec2 tc1 = genTc(1, worldPos, N, aTexCoord1, tc0, vec2(0.0), vec2(0.0), vec2(0.0));\n"
-    "    vec2 tc2 = genTc(2, worldPos, N, aTexCoord2, tc0, tc1, vec2(0.0), vec2(0.0));\n"
-    "    vec2 tc3 = genTc(3, worldPos, N, aTexCoord3, tc0, tc1, tc2, vec2(0.0));\n"
+    "    vec2 tc0 = genTc(0, worldPos, aNormal, aTexCoord0, vec2(0.0), vec2(0.0), vec2(0.0), vec2(0.0));\n"
+    "    vec2 tc1 = genTc(1, worldPos, aNormal, aTexCoord1, tc0, vec2(0.0), vec2(0.0), vec2(0.0));\n"
+    "    vec2 tc2 = genTc(2, worldPos, aNormal, aTexCoord2, tc0, tc1, vec2(0.0), vec2(0.0));\n"
+    "    vec2 tc3 = genTc(3, worldPos, aNormal, aTexCoord3, tc0, tc1, tc2, vec2(0.0));\n"
     "    vTexCoord0 = tc0;\n"
     "    vTexCoord1 = tc1;\n"
     "    vTexCoord2 = tc2;\n"
@@ -1868,6 +1896,16 @@ void pc_gfx_init(void) {
     printf("[PC Port] GPU: %s -- %s\n",
            glVendor ? reinterpret_cast<const char*>(glVendor) : "unknown",
            glRenderer ? reinterpret_cast<const char*>(glRenderer) : "unknown");
+    if (glRenderer) {
+        const char* renderer = reinterpret_cast<const char*>(glRenderer);
+        const bool integrated = std::strstr(renderer, "Intel") || std::strstr(renderer, "llvmpipe")
+                             || std::strstr(renderer, "Softpipe") || std::strstr(renderer, "SVGA3D");
+        if (integrated && std::getenv("__NV_PRIME_RENDER_OFFLOAD")) {
+            printf("[PC Port] WARNING: requested NVIDIA PRIME but the context is %s. "
+                   "Menus will sit around 30 fps. On Wayland use: prime-run ./build/bin/nectar\n",
+                   renderer);
+        }
+    }
     if (const char* value = std::getenv("PIKMIN_TEV_SPECIALIZE")) {
         sSpecialiseShaders = value[0] != '0';
     }
@@ -3761,9 +3799,36 @@ void pc_gfx_init_light_attn_k(void* ltObj, f32 k0, f32 k1, f32 k2) {
 void pc_gfx_init_specular_dir(void* ltObj, f32 x, f32 y, f32 z) {
     if (!ltObj) return;
     u8* raw = static_cast<u8*>(ltObj);
+    // This was a copy of pc_gfx_init_light_dir: it stored the raw direction
+    // and left the position alone. A specular light is not shaped like that.
+    // GXInitSpecularDir puts the half-angle vector between the reversed light
+    // direction and the eye (0,0,1) into ldir, and encodes the direction
+    // itself into lpos scaled by 1024*1024. Storing the plain direction gave a
+    // half-vector with negative Z -- pointing away from the camera -- so the
+    // highlight always landed on the far side of the model and never showed.
+    // The Onions were the obvious casualty.
+    float dir[3], pos[3];
+    p2specular::halfVector(x, y, z, dir, pos);
+    ++sSpecularDirCalls;
     f32* ldir = reinterpret_cast<f32*>(raw + 0x34);
-    ldir[0] = x; ldir[1] = y; ldir[2] = z;
+    ldir[0] = dir[0]; ldir[1] = dir[1]; ldir[2] = dir[2];
+
+    f32* lpos = reinterpret_cast<f32*>(raw + 0x28);
+    lpos[0] = pos[0]; lpos[1] = pos[1]; lpos[2] = pos[2];
 }
+unsigned pc_gfx_specular_dir_calls(void) { return sSpecularDirCalls; }
+unsigned pc_gfx_specular_channel_draws(void) { return sSpecularChannelDraws; }
+void pc_gfx_specular_family_scope(int active) {
+    if (active) {
+        sSpecularFamilyScope = true;
+        sSpecularFamilyBegin = sSpecularFamilyDraws;
+    } else {
+        sSpecularFamilyScope = false;
+        sSpecularFamilyDeltaLast = sSpecularFamilyDraws - sSpecularFamilyBegin;
+    }
+}
+unsigned pc_gfx_specular_family_draws(void) { return sSpecularFamilyDraws; }
+unsigned pc_gfx_specular_family_delta_last(void) { return sSpecularFamilyDeltaLast; }
 void pc_gfx_load_light(void* ltObj, u32 lightMask) {
     if (!ltObj) return;
     for (int i = 0; i < 8; i++) {
@@ -4528,10 +4593,45 @@ void pc_gfx_set_array(GXAttr attr, void* basePtr, u8 stride) {
 }
 
 static Vertex sCurVertex = {};
+static GXVtxFmt sImmVtxFmt = GX_VTXFMT0;
+static bool sFifoImmActive = false;
+static int sFifoAttr = GX_VA_PNMTXIDX;
+static u8 sFifoMtxId = 0;
+static u8 sFifoNeed = 0;
+static u8 sFifoGot = 0;
+static u8 sFifoTmp[32];
+static Vertex sFifoVertex = {};
+
+static bool vtx_desc_uses_fifo()
+{
+    // Matrix-index DIRECT is the normal GX default. Treating it as a FIFO
+    // stream made every UI and world draw parse vertices a byte at a time.
+    // Only indexed arrays, or packed non-float immediates (GXTexCoord2u8),
+    // need the byte parser.
+    for (int a = GX_VA_POS; a <= GX_VA_TEX7; ++a) {
+        const GXAttrType d = sVtxDesc[a];
+        if (d == GX_INDEX8 || d == GX_INDEX16) return true;
+        if (d == GX_DIRECT && sVtxFormats[sImmVtxFmt][a].type != GX_F32) return true;
+    }
+    return false;
+}
+
+static void fifo_imm_byte(u8 val);
+static void fifo_imm_start_vertex();
+
+static void fifo_imm_reset()
+{
+    sFifoImmActive = vtx_desc_uses_fifo();
+    sFifoMtxId     = static_cast<u8>(sCurrentPosMtxId);
+    fifo_imm_start_vertex();
+}
 
 // ── Drawing & FIFO Stream Parser ──
 void pc_gfx_begin(GXPrimitive type, GXVtxFmt vtxfmt, u16 nverts) {
-    (void)vtxfmt;
+    if (sInPrimitive) {
+        pc_gfx_end();
+    }
+    sImmVtxFmt = vtxfmt;
     sCurrentPrimType = type;
     sExpectedVerts = nverts;
     sVertexStream.clear();
@@ -4550,6 +4650,7 @@ void pc_gfx_begin(GXPrimitive type, GXVtxFmt vtxfmt, u16 nverts) {
         sCurVertex.tex[i][0] = 0.0f;
         sCurVertex.tex[i][1] = 0.0f;
     }
+    fifo_imm_reset();
 }
 static int sAttrStep = 0;
 
@@ -4588,12 +4689,22 @@ void pc_gfx_push_f32(f32 val) {
     sAttrStep++;
 }
 
-void pc_gfx_push_u8(u8 val) { (void)val; }
-void pc_gfx_push_u16(u16 val) { (void)val; }
-void pc_gfx_push_u32(u32 val) { (void)val; }
-void pc_gfx_push_s8(s8 val) { (void)val; }
-void pc_gfx_push_s16(s16 val) { (void)val; }
-void pc_gfx_push_s32(s32 val) { (void)val; }
+void pc_gfx_push_u8(u8 val) { fifo_imm_byte(val); }
+void pc_gfx_push_u16(u16 val)
+{
+    fifo_imm_byte(static_cast<u8>(val >> 8));
+    fifo_imm_byte(static_cast<u8>(val));
+}
+void pc_gfx_push_u32(u32 val)
+{
+    fifo_imm_byte(static_cast<u8>(val >> 24));
+    fifo_imm_byte(static_cast<u8>(val >> 16));
+    fifo_imm_byte(static_cast<u8>(val >> 8));
+    fifo_imm_byte(static_cast<u8>(val));
+}
+void pc_gfx_push_s8(s8 val) { fifo_imm_byte(static_cast<u8>(val)); }
+void pc_gfx_push_s16(s16 val) { pc_gfx_push_u16(static_cast<u16>(val)); }
+void pc_gfx_push_s32(s32 val) { pc_gfx_push_u32(static_cast<u32>(val)); }
 
 
 // ── Specialised TEV programs ──
@@ -6066,7 +6177,9 @@ void pc_gfx_end(void) {
     if (sLoc.ambColor1 >= 0) glUniform4f_ptr(sLoc.ambColor1, a1r, a1g, a1b, a1a);
     if (sLoc.chan1En >= 0) glUniform1i_ptr(sLoc.chan1En, sChannels[1].enabled ? 1 : 0);
     if (sLoc.chan1AttnFn >= 0) glUniform1i_ptr(sLoc.chan1AttnFn, (int)sChannels[1].attnFn);
-    // Specular half-vector: light 7's dir field (offset 0x34) holds it.
+    // Specular half-vector: light 7's dir field (offset 0x34) holds it. Count the
+    // channel draw only when the half-vector uniform is actually uploaded (light 7
+    // active), so a count proves the upload, not merely an in-flight spec state.
     if (sChannels[1].enabled && sChannels[1].attnFn == GX_AF_SPEC) {
         u32 mask1 = sChannels[1].lightMask;
         for (int i = 7; i < 8; i++) {
@@ -6077,7 +6190,8 @@ void pc_gfx_end(void) {
                 if (sLoc.specAttn1 >= 0) {
                     glUniform4f_ptr(sLoc.specAttn1, sLights[i].a[0], sLights[i].a[1], sLights[i].a[2], 0.0f);
                 }
-                
+                ++sSpecularChannelDraws;
+                if (sSpecularFamilyScope) ++sSpecularFamilyDraws;
                 break;
             }
         }
@@ -6100,7 +6214,9 @@ void pc_gfx_end(void) {
         int mode = 0;
         if (slot < 8 && sTexCoordGen[slot].active) {
             GXTexGenSrc src = static_cast<GXTexGenSrc>(sTexCoordGen[slot].src);
-            if (src == GX_TG_POS) mode = 1;
+            // Private P2 mode6 export marker: matrix already includes view/model.
+            if (int(src) == 0xE6) mode = 20;
+            else if (src == GX_TG_POS) mode = 1;
             else if (src == GX_TG_NRM) mode = 2;
             else if (src >= GX_TG_TEX0 && src <= GX_TG_TEX7)
                 mode = 3 + int(src - GX_TG_TEX0);
@@ -6300,6 +6416,120 @@ static u8 attr_inline_size(GXAttr attr, const VertexFormatState& fmt) {
         return (fmt.count == GX_TEX_ST ? 2 : 1) * get_comptype_size(fmt.type);
     }
     return 0;
+}
+
+static u8 fifo_imm_attr_bytes(GXAttr attr)
+{
+    const GXAttrType desc = sVtxDesc[attr];
+    if (desc == GX_NONE) return 0;
+    if (desc == GX_INDEX8) return 1;
+    if (desc == GX_INDEX16) return 2;
+    return attr_inline_size(attr, sVtxFormats[sImmVtxFmt][attr]);
+}
+
+static void fifo_imm_start_vertex()
+{
+    sFifoVertex.x  = 0.0f;
+    sFifoVertex.y  = 0.0f;
+    sFifoVertex.z  = 0.0f;
+    sFifoVertex.nx = 0.0f;
+    sFifoVertex.ny = 0.0f;
+    sFifoVertex.nz = 1.0f;
+    sFifoVertex.r  = 1.0f;
+    sFifoVertex.g  = 1.0f;
+    sFifoVertex.b  = 1.0f;
+    sFifoVertex.a  = 1.0f;
+    for (int tc = 0; tc < 4; ++tc) {
+        sFifoVertex.tex[tc][0] = 0.0f;
+        sFifoVertex.tex[tc][1] = 0.0f;
+    }
+    sFifoGot  = 0;
+    sFifoNeed = 0;
+    sFifoAttr = GX_VA_PNMTXIDX;
+    if (!sFifoImmActive) return;
+    while (sFifoAttr <= GX_VA_TEX7 && sVtxDesc[sFifoAttr] == GX_NONE) {
+        ++sFifoAttr;
+    }
+    if (sFifoAttr <= GX_VA_TEX7) {
+        sFifoNeed = fifo_imm_attr_bytes(static_cast<GXAttr>(sFifoAttr));
+    }
+}
+
+static void fifo_imm_apply_attr(GXAttr attr, const u8* data)
+{
+    const GXAttrType desc = sVtxDesc[attr];
+    if (attr <= GX_VA_TEX7MTXIDX) {
+        if (attr == GX_VA_PNMTXIDX) {
+            sFifoMtxId = data[0];
+        }
+        return;
+    }
+
+    const u8* element = data;
+    if (desc == GX_INDEX8 || desc == GX_INDEX16) {
+        u16 index = data[0];
+        if (desc == GX_INDEX16) {
+            index = static_cast<u16>((data[0] << 8) | data[1]);
+        }
+        const VertexArrayState& array = sVtxArrays[attr];
+        if (!array.base || array.stride == 0) return;
+        element = array.base + size_t(index) * array.stride;
+    }
+
+    if (attr == GX_VA_POS) {
+        const VertexFormatState& fmtState = sVtxFormats[sImmVtxFmt][attr];
+        const u8 compSize                 = get_comptype_size(fmtState.type);
+        const float x                     = read_attr_float(element, fmtState.type, fmtState.frac);
+        const float y                     = read_attr_float(element + compSize, fmtState.type, fmtState.frac);
+        const float z = (fmtState.count == GX_POS_XYZ) ? read_attr_float(element + 2 * compSize, fmtState.type, fmtState.frac) : 0.0f;
+        transform_position(sFifoMtxId, x, y, z, sFifoVertex.x, sFifoVertex.y, sFifoVertex.z);
+        sVerticesPretransformed = true;
+    } else if (attr == GX_VA_CLR0) {
+        const VertexFormatState& fmtState = sVtxFormats[sImmVtxFmt][attr];
+        u8 r, g, b, a;
+        read_attr_color(element, fmtState.type, r, g, b, a);
+        sFifoVertex.r = r / 255.0f;
+        sFifoVertex.g = g / 255.0f;
+        sFifoVertex.b = b / 255.0f;
+        sFifoVertex.a = a / 255.0f;
+    } else if (attr >= GX_VA_TEX0 && attr <= GX_VA_TEX7) {
+        const VertexFormatState& fmtState = sVtxFormats[sImmVtxFmt][attr];
+        const u8 compSize                 = get_comptype_size(fmtState.type);
+        const int tc                      = int(attr) - int(GX_VA_TEX0);
+        if (tc < 4) {
+            sFifoVertex.tex[tc][0] = read_attr_float(element, fmtState.type, fmtState.frac);
+            sFifoVertex.tex[tc][1]
+                = (fmtState.count == GX_TEX_ST) ? read_attr_float(element + compSize, fmtState.type, fmtState.frac) : 0.0f;
+        }
+    }
+}
+
+static void fifo_imm_byte(u8 val)
+{
+    if (!sInPrimitive || !sFifoImmActive || sFifoAttr > GX_VA_TEX7) return;
+    if (sFifoNeed == 0) return;
+    if (sFifoGot < sizeof(sFifoTmp)) {
+        sFifoTmp[sFifoGot++] = val;
+    }
+    if (sFifoGot < sFifoNeed) return;
+
+    fifo_imm_apply_attr(static_cast<GXAttr>(sFifoAttr), sFifoTmp);
+    ++sFifoAttr;
+    while (sFifoAttr <= GX_VA_TEX7 && sVtxDesc[sFifoAttr] == GX_NONE) {
+        ++sFifoAttr;
+    }
+    sFifoGot = 0;
+    if (sFifoAttr <= GX_VA_TEX7) {
+        sFifoNeed = fifo_imm_attr_bytes(static_cast<GXAttr>(sFifoAttr));
+        return;
+    }
+
+    sVertexStream.push_back(sFifoVertex);
+    if (sVertexStream.size() >= sExpectedVerts) {
+        pc_gfx_end();
+        return;
+    }
+    fifo_imm_start_vertex();
 }
 
 // ── Embedded GP command stream handlers ──

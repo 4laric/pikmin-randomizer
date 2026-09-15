@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "lane": 31,
+  "issue": 443,
+  "parent_issue": 175,
+  "title": "Waterwraith/Tyre dependent-roller ownership and vulnerability policy",
+  "native": {
+    "base": "086ed858c2693d9259679177e0eca00a80f57fbf",
+    "base_branch": "opencode/p2-hardlanes-native",
+    "head": "baa3c4dbd4c43145edb16e2471ad14be42467d70",
+    "local_branch": "opencode/p2-lane31-waterwraith",
+    "pushed": false,
+    "note": "Native origin is the parallel decomp checkout and upstream is Open Nectar; neither was pushed. These patches capture the local native branch."
+  },
+  "files": [
+    "pc_port/pc_p2_waterwraith.h",
+    "pc_port/pc_p2_waterwraith.cpp",
+    "tools/p2_waterwraith_test.cpp"
+  ],
+  "patches": {
+    "full": {
+      "path": "native-candidates/waterwraith-roller/waterwraith-roller-full.patch",
+      "size": 16318,
+      "sha256": "812edf376878ecb535a9c1ca8e7f9a7f210a4055e9585cb571125afb01047761"
+    },
+    "series": [
+      {
+        "path": "native-candidates/waterwraith-roller/patches/0001-Waterwraith-BlackMan-Tyre-dependent-roller-ownership.patch",
+        "sha256": "0ce2c3a1cbc4a11cf3cf6ec709dc9c99bf112aa87292985792ec26518c82a389"
+      }
+    ]
+  },
+  "standalone_fixture": {
+    "executable": "output/native-lane31/output/p2_waterwraith_test.exe",
+    "sha256": "6f8482ad11b2fe1bb9450ef0fb2f800369ba3ac9200b5b914a6cc340dbe3726b",
+    "size": 49157,
+    "compiler": "MinGW64 g++ 16.2.0 (-std=gnu++17 -Wall -Wextra -Werror)",
+    "command": "g++ -std=gnu++17 -Wall -Wextra -Werror -Ipc_port tools/p2_waterwraith_test.cpp pc_port/pc_p2_waterwraith.cpp -o output/p2_waterwraith_test.exe",
+    "result": "PASS WATERWRAITH_POLICY (exit 0)"
+  },
+  "integration_request": {
+    "cmake": "add pc_port/pc_p2_waterwraith.cpp to the pikmin_pc translation-unit list when the source-correct actor is wired (lane 01 reconciles the shared CMake).",
+    "next": "wire the actor into a natural cave/arena placement with the already-converted BlackMan/Tyre assets (experimental/pikmin2_waterwraith_{assets,install,arena}.py) and source route/steering; this policy covers dependent lifetime, vulnerability and the roller roll/shadow, not locomotion."
+  }
+}

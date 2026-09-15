@@ -1,3 +1,10 @@
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_demon_drop_state.h"
+#include "pc_p2_demon_escape_state.h"
+#include "pc_p2_demon_bridge.h"
+#endif
+#include "pc_p2_purple.h"
+#include "pc_p2_white.h"
 #include "NaviState.h"
 #include "pc_randomizer.h"
 #if defined(PIKI_PC_PORT)
@@ -39,6 +46,7 @@
 #include "sysNew.h"
 #include "teki.h"
 #include "zen/DrawContainer.h"
+#include "pc_p2_preview.h"
 #include "zen/ogTutorial.h"
 
 #include "CPlate.h"
@@ -73,9 +81,22 @@ NaviState* NaviStateMachine::getNaviState(Navi* navi)
 /**
  * @todo: Documentation
  */
+#if defined(PIKI_PC_PORT)
+void NaviStateMachine::transit(Navi* navi, int next)
+{
+	pc_demon_before_transition(navi, next);
+	pc_demon_drop_before_transition(navi, next);
+	StateMachine<Navi>::transit(navi, next);
+}
+#endif
+
 void NaviStateMachine::init(Navi* navi)
 {
 	create(NAVISTATE_Count);
+#if defined(PIKI_PC_PORT)
+	registerState(pc_demon_drop_state_create());
+	registerState(pc_demon_escape_state_create());
+#endif
 	registerState(new NaviWalkState());
 	registerState(new NaviStuckState());
 	registerState(new NaviFlickState());
@@ -598,7 +619,7 @@ void NaviWalkState::exec(Navi* navi)
 
 	for (int i = 0; i < 3; i++) {
 		GoalItem* onyon = itemMgr->getContainer(i);
-		if (!onyon) {
+		if (!onyon || pc_p2_preview_is_pod(onyon)) {
 			continue;
 		}
 		CollPart* coll = onyon->mCollInfo->getSphere('cont');
@@ -2769,6 +2790,8 @@ void NaviNukuAdjustState::exec(Navi* navi)
 			}
 			piki->init(navi);
 			piki->initColor(navi->mSproutToPluck->mSeedColor);
+            if(navi->mSproutToPluck->mP2Purple)pc_p2_make_purple(piki);
+            if(navi->mSproutToPluck->mP2White)pc_p2_make_white(piki);
 			piki->setFlower(navi->mSproutToPluck->mFlowerStage);
 			piki->resetPosition(navi->mSproutToPluck->mSRT.t);
 
@@ -3182,6 +3205,30 @@ void NaviDeadState::restart(Navi* navi)
  */
 void NaviDeadState::init(Navi* navi)
 {
+	// Lane 12 (#130) survivor-gated game over + knockout roster sync. Mark this
+	// captain down in the shared roster (source NaviMgr::informOrimaDead), which
+	// also re-points the roster's active index at a survivor. The stage is only
+	// finished when every present captain is down (source
+	// singleGS_MainGame.cpp:914-928 `mDeadNavis != 2`); with one captain
+	// getAliveOrima() is null after the sole captain goes down, so this block is
+	// unchanged. A survivor exits early and leaves the stage running; the actual
+	// controller/camera rebind to the survivor is a separate follow-up.
+	if (naviMgr) {
+		naviMgr->informOrimaDead(navi);
+	}
+	if (naviMgr && naviMgr->getAliveOrima()) {
+		// Survivor path: the downed captain still plays ODead, stops and drops
+		// its squad (source-faithful); only stage finish / camera / pause are
+		// deferred until the last captain is down.
+		navi->mMotionSpeed = 30.0f;
+		navi->startMotion(PaniMotionInfo(PIKIANIM_ODead, navi), PaniMotionInfo(PIKIANIM_ODead));
+		seSystem->playPlayerSe(SE_PLAYER_DOWN);
+		navi->mVelocity.set(0.0f, 0.0f, 0.0f);
+		navi->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
+		navi->releasePikis();
+		return;
+	}
+
 	GameStat::orimaDead = true;
 	playerState->mResultFlags.setOn(zen::RESFLAG_OlimarDown);
 	gameflow.mGameInterface->message(MOVIECMD_SetPauseAllowed, FALSE);
@@ -3223,6 +3270,10 @@ void NaviDeadState::procAnimMsg(Navi* navi, MsgAnim* msg)
 	switch (msg->mKeyEvent->mEventType) {
 	case KEY_Finished:
 	{
+		// Lane 12: a downed captain with a living partner must not end the game.
+		if (naviMgr && naviMgr->getAliveOrima()) {
+			break;
+		}
 		gameflow.mGameInterface->message(MOVIECMD_GameEndCondition, ENDCAUSE_NaviDown);
 		break;
 	}

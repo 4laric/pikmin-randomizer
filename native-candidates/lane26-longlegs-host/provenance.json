@@ -1,0 +1,82 @@
+{
+  "lane": "26 Long Legs and Man-at-Legs",
+  "parent_issue": 173,
+  "child_issue": 312,
+  "implementation_owner": "Codex via shared account 4laric",
+  "executing_session": "opencode (deepseek-v4.1-flash), 2026-09-14",
+  "native_repository": "pikmin-randomizer/native (never pushed to native origin)",
+  "approved_root_base": "3851d4b (codex/p2-main-review, draft #432)",
+  "approved_native_base": "f14c6851473ac1161be56c8b98f4f905232f3635",
+  "native_base": "f14c6851473ac1161be56c8b98f4f905232f3635",
+  "native_head": "6fcfaa11",
+  "native_commits": [
+    "af8b312c pc_p2_long_legs: port source FSM host + landing foot-crush onto approved line (#173, #312)",
+    "000e7af5 CMake: register BombSarai source-policy ctest gates (#244, #27)",
+    "0d855745 tests: make engine-free policy ctest gates non-vacuous under NDEBUG (#173, #244, #376)",
+    "6610a9dc CMake: register Fuefuki/BigTreasure hard-lane policy ctest gates (#244, #246)",
+    "0d7af4d9 pc_p2_long_legs: tick source FSM from BTeki::update, not the draw path (#173, #312)",
+    "bb4a1bf7 pc_p2_long_legs: signal engine death to the source FSM (drop/child intents) (#173, #312)",
+    "6fcfaa11 pc_p2_long_legs: feed the source damage edge to the Houdai shot cooldown (#173, #312)"
+  ],
+  "native_worktree": "output/native-lane26-host",
+  "native_branch": "opencode/p2-lane26-host",
+  "dirty_state": "clean private worktree created from f14c6851; commits touch only pc_p2_long_legs.cpp and CMakeLists.txt",
+  "files": [
+    "pc_port/pc_p2_long_legs.cpp",
+    "CMakeLists.txt"
+  ],
+  "source": "docs/PIKMIN2_LONG_LEGS_AUDIT.md (US GPVE01 rev 0); Damagumo/Houdai/BigFoot state machines",
+  "review_basis": "Reconciles the pending lane candidate opencode/p2-longlegs-fsm @ ad4dcd6e/dbff3a4b (which was based on merge-base 086ed858) onto the approved native baseline f14c6851, preserving the #397 lifecycle accessors (pc_p2_long_legs_count/registered) that only exist on the approved line.",
+  "changes": {
+    "host": "Ticks pc_p2_long_legs_fsm per registered actor from the draw path (no IKSystemMgr in port): synthesizes landing/flick key edges from audit frame times at 30 fps, feeds nearest-target/accumulating-Pikmin/health/roll inputs, and logs state/foot/shell intents. Awake actors become damageable after landing key 2; Stay remains bitter-immune.",
+    "foot_crush": "Source landing key-2 foot press is applied as an InteractFlick (knockback 100, source pressDamage) to alive Pikmin within the documented 60-unit port radius.",
+    "corpse_guard": "FSM now advances only when corpse=false, so a dead registration cannot re-enter the policy or emit a foot-crush from a corpse draw (review action from PIKMIN2_WAVE3_REVIEW_437).",
+    "ctest": "Registers p2_long_legs_fsm_test and p2_snagret_fsm_test in CMakeLists.txt; both policy test sources existed on the approved line but were not wired to ctest (only p2_dangomushi_hazard_test was)."
+  },
+  "verification": {
+    "private_build_dir": "output/native-lane26-host-build",
+    "configure": "cmake -S output/native-lane26-host -B output/native-lane26-host-build -G Ninja -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=Release -DPIKMIN_NATIVE_JAUDIO=ON",
+    "build": "cmake --build output/native-lane26-host-build --target pikmin_pc -j 6 -> PASS",
+    "no_work_dry_run": "ninja: no work to do.",
+    "executable": "output/native-lane26-host-build/bin/nectar.exe",
+    "executable_sha256": "8EC3882B30902ED6FA4D9275DF618B588185E2F77D7B3B732B49B40EF6071276",
+    "ctest_policy": "ctest -R 'p2_' -> 20/20 passed across long_legs/snagret/dangomushi, bombsarai_* (7), fuefuki_* (4) and bigtreasure_* (6)",
+    "ctest_bombsarai": "ctest -R 'p2_bombsarai_' -> 7/7 passed",
+    "assert_activation": "The engine-free policy tests performed state transitions inside assert(), which Release -DNDEBUG compiled out; ctest re-registration would have been vacuous. Added #undef NDEBUG (before <cassert>) to the long_legs/snagret/dangomushi/bombsarai test units and bounded the induction test's induce() loop. All ten policy gates now execute their assertions.",
+    "induction_fix": "tools/p2_bombsarai_induction_test.cpp now registers and passes; it previously hung because the compiled-out throwBomb()/update() side effects left an unbounded while(!induce()) loop."
+  },
+  "tick_hook": {
+    "commit": "0d7af4d9",
+    "change": "Moved the source-FSM tick from the family draw path (only on-camera actors advanced) to BTeki::update() via a one-line additive hook in src/plugPikiNakata/tekibteki.cpp, beside pc_p2_snow_update. `pc_p2_long_legs_draw` now only renders. Dead actors are skipped via isAlive(), preserving the corpse-guard behavior.",
+    "build": "pikmin_pc PASS; ninja -n no work; exe SHA-256 A6BEC93D18B6AE410DD6A73557E50F26E5B373C6FC9E7EBF7A91D1A02D16A9EF",
+    "runtime": "PASS in the combined 0d7af4d9+bb4a1bf7 run below: Houdai advanced through Land/Wait/Walk while off the direct draw path, confirming the FSM no longer freezes with camera visibility."
+  },
+  "death_wiring": {
+    "commit": "bb4a1bf7",
+    "change": "The host now maps engine death of the placement vehicle to the policy killed input with a single terminal tick, so the source death output (held-treasure drop, or the no-treasure child burst) actually fires; previously the host never signalled killed and the Dead branch was unreachable at runtime. The dropped treasure and ShijimiChou/Mitite children are lane 06/14/15/20 objects, so the intents are logged (P2_LONG_LEGS_DROP / P2_LONG_LEGS_BIRTH), not spawned.",
+    "build": "pikmin_pc PASS; ninja -n no work; exe SHA-256 0290EDA8352A851A63768B654077EF61EED9598169836E2BF0B1656E0DA90188",
+    "runtime": "PASS: P2_LONG_LEGS_BIRTH species=BigFoot count=30 then P2_LONG_LEGS_STATE state=Dead; no further state advance after Dead."
+  },
+  "damage_edge": {
+    "commit": "6fcfaa11",
+    "change": "Host feeds the source damage edge (health decrease this tick) to the policy damageTaken input, which resets the Houdai shot cooldown (Houdai.cpp). Previously the input was never set.",
+    "build": "pikmin_pc PASS; ninja -n no work; exe SHA-256 926D674C86459F8EEEA2C2C4A1E8E8C5C755FE13FED23F3CC97196F85CC38184",
+    "runtime": "PASS in the head run below: window 960x540, red=20, BigFoot Land/Wait/Flick -> BIRTH count=30 -> Dead (no further advance); Houdai Land/Wait/Flick/Shot. Damage edge accepted by the policy without regression."
+  },
+  "runtime_latest": {
+    "revision": "6fcfaa11 (includes 0d7af4d9/bb4a1bf7)",
+    "executable_sha256": "926D674C86459F8EEEA2C2C4A1E8E8C5C755FE13FED23F3CC97196F85CC38184",
+    "run_dir": "output/p2-lane26-host-run",
+    "stdout_sha256": "080FD400161025744811340CDBCC35899C0DE586D6CB4F6DECDD9749C6B45F06",
+    "result": "960x540 centred; red=20; native_fsm=implemented 312001/312002; BigFoot Land/Wait/Flick + foot intent, engine death -> P2_LONG_LEGS_BIRTH count=30 -> state=Dead with no further advance; Houdai Land/Wait/Flick/Shot (off-draw-path tick works). CRUSH=0 (squad not under a foot).",
+    "caveat": "No other GL process was observed for this run."
+  },
+  "runtime_previous": {
+    "revision": "bb4a1bf7",
+    "executable_sha256": "0290EDA8352A851A63768B654077EF61EED9598169836E2BF0B1656E0DA90188",
+    "stdout_sha256": "1BC2945635204B72FE2FC778DC1DAF99B92B2028272ED8148554004E0440DDB2",
+    "note": "Same markers; a separate fixture overlapped part of the window."
+  },
+  "runtime": "Real-GL smoke PASS (lane-26 host markers only, revision 6610a9dc): exe 8EC3882B... launched with --experimental-pikmin2-room, 960x540 centred, red=20, no extinction. native_fsm=implemented for 312001/312002; Houdai reached Shot after Flick, BigFoot Wait/Flick cycles, one foot intent, then a corpse draw with no subsequent FSM advance (guard confirmed). Run output/p2-lane26-host-run, stdout.log SHA-256 FAA5398CF7FE960B5E6155DBFC9061AB3D5B71E329703FCE2B49F480356958E7. Arena was a new private copy of the lane-26 staged 20-red arena (not re-imported). Natural leg/weak-point attacks, IK body movement, Man-at-Legs shell objects (lane 20), source actor death/re-entry and damage receivers remain open.",
+  "integration": "Apply native patch 0001 on the approved native line (f14c6851). The host is additive to pc_p2_long_legs.cpp and keeps the existing #397 accessors; CMake addition is narrow and additive."
+}

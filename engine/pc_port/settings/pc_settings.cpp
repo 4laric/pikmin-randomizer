@@ -28,6 +28,7 @@
 #include <vector>
 
 #include "pc_window.h"
+#include "pc_permadeath.h"
 #include "gl/pc_gfx.h"
 #include "gl/pc_postprocess.h"
 #include "Graphics.h"
@@ -234,6 +235,10 @@ bool sHadConfigFile = false;
 bool sMenuOpen = false;
 int sSelection = ROW_DISPLAY_MODE;
 static std::vector<Uint8> gPrevKeys; // previous-frame keyboard state snapshot
+// SDL calls the Xbox Select/View button BACK.  Keep its edge independently of
+// the keyboard snapshot: settings input is polled from more than one hook per
+// frame, and a held button must not reopen the menu after a modal closes.
+bool sPrevMenuToggleHeld = false;
 
 // Video confirm/revert dialog state.
 bool sVideoConfirmActive = false;
@@ -923,7 +928,10 @@ void loadConfig() {
             int idx = atoi(key.substr(3).c_str());
             if (idx >= 0 && idx < PC_KEY_ACT_COUNT) {
                 const int button = atoi(val.c_str());
-                if (button >= -1 && button < SDL_CONTROLLER_BUTTON_MAX) {
+                const bool isButton = button >= -1 && button < SDL_CONTROLLER_BUTTON_MAX;
+                const int axis = (button - PC_GP_AXIS_BIND) / 2;
+                const bool isAxis = button >= PC_GP_AXIS_BIND && axis >= 0 && axis < SDL_CONTROLLER_AXIS_MAX;
+                if (isButton || isAxis) {
                     sConfig.gamepadBindings[idx] = button;
                 }
             }
@@ -975,6 +983,26 @@ bool padNavRight(SDL_GameController* c)
 bool padNavA(SDL_GameController* c) { return padEdge(SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_A), 4); }
 bool padNavB(SDL_GameController* c) { return padEdge(SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_B), 5); }
 
+// The new-game prompt is a game-facing dialog rather than the F1 settings
+// menu. Its accept/cancel actions follow the configured A/B bindings, which
+// may be either SDL buttons or the axis encodings used by the remapping page.
+// Keep these separate from padNavA/B: F1 navigation deliberately retains its
+// physical A/B convention.
+bool promptPadBinding(SDL_GameController* c, int action, int edgeSlot)
+{
+	return c && padEdge(pc_window_gamepad_bind_held(c, pc_window_get_gamepad_binding(action)), edgeSlot);
+}
+
+bool promptPadA(SDL_GameController* c)
+{
+	return promptPadBinding(c, PC_KEY_ACT_A, 4);
+}
+
+bool promptPadB(SDL_GameController* c)
+{
+	return promptPadBinding(c, PC_KEY_ACT_B, 5);
+}
+
 bool captureConfirmHeld(SDL_GameController* ctl)
 {
 	int numKeys = 0;
@@ -984,17 +1012,6 @@ bool captureConfirmHeld(SDL_GameController* ctl)
 	if (SDL_SCANCODE_SPACE < numKeys && keys[SDL_SCANCODE_SPACE])
 		return true;
 	return ctl && SDL_GameControllerGetButton(ctl, SDL_CONTROLLER_BUTTON_A);
-}
-
-bool anyGamepadButtonHeld(SDL_GameController* ctl)
-{
-	if (!ctl)
-		return false;
-	for (int btn = 0; btn < SDL_CONTROLLER_BUTTON_MAX; btn++) {
-		if (SDL_GameControllerGetButton(ctl, (SDL_GameControllerButton)btn))
-			return true;
-	}
-	return false;
 }
 
 bool isCaptureModifierScancode(int sc)
@@ -1025,6 +1042,15 @@ void latchKeys() {
 void pcNewGamePromptInput();
 
 void pollMenuInput() {
+    SDL_GameController* ctl = pc_window_get_controller();
+    const bool menuToggleHeld = ctl && SDL_GameControllerGetButton(
+        ctl, SDL_CONTROLLER_BUTTON_BACK) != 0;
+    const bool menuTogglePressed = menuToggleHeld && !sPrevMenuToggleHeld;
+    // Latch before every modal early return.  A Select press used while the
+    // new-game/video/capture modal owns input must not become a fresh press
+    // when that modal exits while the button is still held.
+    sPrevMenuToggleHeld = menuToggleHeld;
+
     if (pc_newgame_prompt_active()) {
         // The prompt owns input while it is up, including F1: opening the
         // settings menu over a modal that is deciding a save file's rules
@@ -1033,28 +1059,31 @@ void pollMenuInput() {
         return;
     }
 
-    // F1 toggles the menu.
+    auto openMenu = [] {
+        sPending = sConfig;
+        sPending.controlMode = pc_window_get_control_mode();
+        sMenuOpen = true;
+        pc_window_set_settings_menu_open(true);
+        sSelection = ROW_DISPLAY_MODE;
+        sVideoConfirmActive = false;
+        rebuildResolutionList();
+        const int idx = resolutionIndexFor(pc_window_get_width(), pc_window_get_height());
+        sResolutionIdx = idx >= 0 ? idx : defaultResolutionIndex();
+    };
+
+    // F1 always toggles. Select/View can open the menu while it is closed;
+    // closing is handled after video confirmation has had first refusal.
     if (keyWentDown(SDL_SCANCODE_F1)) {
-        if (sMenuOpen) {
-            closeMenu();
-        } else {
-            sPending = sConfig;
-            sPending.controlMode = pc_window_get_control_mode();
-            sMenuOpen = true;
-            pc_window_set_settings_menu_open(true);
-            sSelection = ROW_DISPLAY_MODE;
-            sVideoConfirmActive = false;
-            rebuildResolutionList();
-            const int idx = resolutionIndexFor(pc_window_get_width(), pc_window_get_height());
-            sResolutionIdx = idx >= 0 ? idx : defaultResolutionIndex();
-        }
+        if (sMenuOpen) closeMenu();
+        else openMenu();
+        return;
+    }
+    if (menuTogglePressed && !sMenuOpen) {
+        openMenu();
         return;
     }
 
     if (!sMenuOpen) return;
-
-    // Poll gamepad state for menu navigation.
-    SDL_GameController* ctl = pc_window_get_controller();
 
     // Modal video-confirm dialog.
     if (sVideoConfirmActive) {
@@ -1074,6 +1103,16 @@ void pollMenuInput() {
                    (ctl && padNavB(ctl))) {
             revertVideoSettings();
         }
+        return;
+    }
+
+    // Select/View closes the menu from ordinary pages and submenus.  Capture
+    // owns the button while waiting for a binding (including the short
+    // wait-release period after accepting one), so it can be assigned or
+    // released without toggling the menu underneath.
+    if (menuTogglePressed && !sWaitingForKey && !sWaitingForButton &&
+        !sCaptureWaitRelease) {
+        closeMenu();
         return;
     }
 
@@ -1165,13 +1204,11 @@ void pollMenuInput() {
                 return;
             }
             if (ctl) {
-                for (int btn = 0; btn < SDL_CONTROLLER_BUTTON_MAX; btn++) {
-                    if (SDL_GameControllerGetButton(ctl, (SDL_GameControllerButton)btn)) {
-                        sPending.gamepadBindings[sGamepadSelection] = btn;
-                        sWaitingForButton = false;
-                        sCaptureWaitRelease = true;
-                        break;
-                    }
+                const int bind = pc_window_gamepad_first_held_binding(ctl);
+                if (bind >= 0) {
+                    sPending.gamepadBindings[sGamepadSelection] = bind;
+                    sWaitingForButton = false;
+                    sCaptureWaitRelease = true;
                 }
             }
             return;
@@ -1179,7 +1216,7 @@ void pollMenuInput() {
 
         // The button just bound is still held; do not treat it as Back.
         if (sCaptureWaitRelease) {
-            if (!anyGamepadButtonHeld(ctl) && !captureConfirmHeld(ctl))
+            if (!pc_window_gamepad_any_held(ctl) && !captureConfirmHeld(ctl))
                 sCaptureWaitRelease = false;
             return;
         }
@@ -1486,6 +1523,8 @@ void pollMenuInput() {
         // at a time: the menu has no key repeat, so a fine slider would take
         // hundreds of presses to cross the range.
         else if (sModsSelection == 4) {
+            if (pc_hardmode_active())
+                return;
             int idx = 0;
             for (int i = 0; i < kPikiLimitCount; i++) {
                 if (kPikiLimits[i] == sPending.pikiLimit) { idx = i; break; }
@@ -1496,6 +1535,8 @@ void pollMenuInput() {
         }
         // Day length.
         else if (sModsSelection == 5) {
+            if (pc_hardmode_active())
+                return;
             int idx = 0;
             for (int i = 0; i < kDayMinutesCount; i++) {
                 if (kDayMinutes[i] == sPending.dayMinutes) { idx = i; break; }
@@ -2035,20 +2076,28 @@ void pc_permadeath_draw_slot_badge(int vx, int vy, int vw)
 
 namespace {
 bool sNewGamePromptOpen = false;
-int  sNewGamePromptChoice = 0;   // 0 = normal, 1 = permadeath
+int  sNewGamePromptStep = 0;     // 0 = normal/permadeath, 1 = difficulty
+int  sNewGamePromptChoice = 0;   // current step: 0 = left option, 1 = right
+int  sNewGamePromptRules = 0;    // 0 = normal file, 1 = permadeath
 int  sNewGamePromptResult = PC_NEWGAME_PENDING;
+bool sNewGamePromptHard = false;
 }
 
 void pc_newgame_prompt_open(void) {
     sNewGamePromptOpen   = true;
+    sNewGamePromptStep   = 0;
     sNewGamePromptChoice = 0;
+    sNewGamePromptRules  = 0;
     sNewGamePromptResult = PC_NEWGAME_PENDING;
+    sNewGamePromptHard   = false;
     pc_menu_edge_reset();
 }
 
 bool pc_newgame_prompt_active(void) { return sNewGamePromptOpen; }
 
 int pc_newgame_prompt_result(void) { return sNewGamePromptResult; }
+
+bool pc_newgame_prompt_chose_hard(void) { return sNewGamePromptHard; }
 
 namespace {
 void pcNewGamePromptInput() {
@@ -2063,17 +2112,31 @@ void pcNewGamePromptInput() {
     if (ctl) {
         if (padNavLeft(ctl))  left   = true;
         if (padNavRight(ctl)) right  = true;
-        if (padNavA(ctl))     accept = true;
-        if (padNavB(ctl))     cancel = true;
+        if (promptPadA(ctl))  accept = true;
+        if (promptPadB(ctl))  cancel = true;
     }
 
     if (left || right) sNewGamePromptChoice = sNewGamePromptChoice ? 0 : 1;
 
     if (accept) {
-        sNewGamePromptResult = sNewGamePromptChoice ? PC_NEWGAME_PERMADEATH
-                                                    : PC_NEWGAME_NORMAL;
+        if (sNewGamePromptStep == 0) {
+            sNewGamePromptRules  = sNewGamePromptChoice;
+            sNewGamePromptStep   = 1;
+            sNewGamePromptChoice = 0;
+            pc_menu_edge_reset();
+            return;
+        }
+        sNewGamePromptHard   = sNewGamePromptChoice != 0;
+        sNewGamePromptResult = sNewGamePromptRules ? PC_NEWGAME_PERMADEATH
+                                                   : PC_NEWGAME_NORMAL;
         sNewGamePromptOpen   = false;
     } else if (cancel) {
+        if (sNewGamePromptStep == 1) {
+            sNewGamePromptStep   = 0;
+            sNewGamePromptChoice = sNewGamePromptRules;
+            pc_menu_edge_reset();
+            return;
+        }
         sNewGamePromptResult = PC_NEWGAME_CANCELLED;
         sNewGamePromptOpen   = false;
     }
@@ -2107,11 +2170,13 @@ void pc_newgame_prompt_draw(void) {
     drawPikminPanel(gfx, panelX, panelY, panelW, panelH, 22);
     drawPikminHeader(gfx, panelX, panelY, panelW, "New Game");
 
-    const char* line1 = "How should this file play?";
+    const bool difficultyStep = sNewGamePromptStep != 0;
+    const char* line1 = difficultyStep ? "How hard should this file be?"
+                                       : "How should this file play?";
     drawTextOutline(panelX + panelW / 2 - menuTextWidth(line1) / 2, panelY + 62,
                     "%s", Colour(214, 224, 245, 255), Colour(8, 12, 28, 255), line1);
 
-    const char* options[2] = { "Normal", "Permadeath" };
+    const char* options[2] = { "Normal", difficultyStep ? "Hard" : "Permadeath" };
     const int optY = panelY + 108;
     for (int i = 0; i < 2; i++) {
         const bool sel = (i == sNewGamePromptChoice);
@@ -2132,18 +2197,27 @@ void pc_newgame_prompt_draw(void) {
                         Colour(8, 12, 28, 255), options[i]);
     }
 
-    // Say plainly what the dangerous option does. This is the only place the
-    // player is told, and it costs a save file to find out the hard way.
-    const char* detail = sNewGamePromptChoice
-                             ? "If Olimar loses all his health, this file is erased."
-                             : "Losing Olimar ends the day. The original rules.";
+    // Say plainly what the current option does. The first screen is the only
+    // place permadeath is explained; the second is the only place Hard is.
+    const char* detail;
+    if (!difficultyStep) {
+        detail = sNewGamePromptChoice
+                     ? "If Olimar loses all his health, this file is erased."
+                     : "Losing Olimar ends the day. The original rules.";
+    } else {
+        detail = sNewGamePromptChoice
+                     ? "Tougher enemies, Olimar takes more damage. 8-minute days, 80 Pikmin."
+                     : "Original enemy health, day length and field limit.";
+    }
     drawTextOutline(panelX + panelW / 2 - menuTextWidth(detail) / 2, panelY + 172,
                     "%s",
                     sNewGamePromptChoice ? Colour(255, 150, 150, 255)
                                          : Colour(190, 200, 220, 255),
                     Colour(8, 12, 28, 255), detail);
 
-    const char* help = "Left/Right: choose    A / Enter: start    B / Esc: back";
+    const char* help = difficultyStep
+                           ? "Left/Right: choose    A / Enter: start    B / Esc: back"
+                           : "Left/Right: choose    A / Enter: next    B / Esc: back";
     drawTextOutline(panelX + panelW / 2 - menuTextWidth(help) / 2, panelY + 212,
                     "%s", Colour(150, 165, 195, 255), Colour(8, 12, 28, 255), help);
 }
@@ -2370,7 +2444,7 @@ void pc_settings_draw(void) {
         const int subX = px1 + 18, subY = py1 + 44;
         const int subW = panelW - 36, subH = panelH - 58;
         drawSubmenuSurface(gfx, subX, subY, subW, subH, "Gamepad Controls",
-                           sWaitingForButton ? "Press a button   Esc: cancel"
+                           sWaitingForButton ? "Press a button, trigger or stick   Esc: cancel"
                                             : "Enter: capture   Left/Right: default",
                            sWaitingForButton ? "" : "Up/Down: select   Esc/B: back");
 
@@ -2631,13 +2705,17 @@ void pc_settings_draw(void) {
                 snprintf(value, sizeof(value), "%s",
                          sPending.debugKeys ? "On" : "Off");
             } else if (i == 5) {
-                if (sPending.dayMinutes == 10) {
+                if (pc_hardmode_active()) {
+                    snprintf(value, sizeof(value), "%d min (Hard)", PC_HARDMODE_DAY_MINUTES);
+                } else if (sPending.dayMinutes == 10) {
                     snprintf(value, sizeof(value), "10 min (original)");
                 } else {
                     snprintf(value, sizeof(value), "%d min", sPending.dayMinutes);
                 }
             } else {
-                if (sPending.pikiLimit == 100) {
+                if (pc_hardmode_active()) {
+                    snprintf(value, sizeof(value), "%d (Hard)", PC_HARDMODE_PIKI_LIMIT);
+                } else if (sPending.pikiLimit == 100) {
                     snprintf(value, sizeof(value), "100 (original)");
                 } else if (sPending.pikiLimit > 200) {
                     snprintf(value, sizeof(value), "%d  (may cost performance)",
@@ -2688,10 +2766,14 @@ int pc_settings_get_mouse_wheel_action(void) {
 int pc_settings_get_piki_limit(void) {
     // Allocation callers must reserve the eventual maximum, not today's cap.
     if (pc_randomizer_expanded()) return 100;
+    if (pc_hardmode_active() && sConfig.pikiLimit > PC_HARDMODE_PIKI_LIMIT)
+        return PC_HARDMODE_PIKI_LIMIT;
     return sConfig.pikiLimit;
 }
 
 int pc_settings_get_day_minutes(void) {
+    if (pc_hardmode_active() && sConfig.dayMinutes > PC_HARDMODE_DAY_MINUTES)
+        return PC_HARDMODE_DAY_MINUTES;
     return sConfig.dayMinutes;
 }
 

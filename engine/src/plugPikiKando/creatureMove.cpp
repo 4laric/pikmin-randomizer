@@ -108,7 +108,7 @@ void Creature::moveAttach()
 /**
  * @todo: Documentation
  */
-void Creature::moveNew(f32 deltaTime)
+void Creature::moveNew(f32 deltaTime, bool applyGravity)
 {
 	if (mSRT.t.y < -2000.0f && isAlive()) {
 		if (mObjType == OBJTYPE_Piki) {
@@ -136,7 +136,7 @@ void Creature::moveNew(f32 deltaTime)
 		return;
 	}
 
-	if (!isCreatureFlag(CF_IsFlying) && !mRope && (!mStickTarget || !isStickToPlatform() || !mStickPart->isClimbable())
+	if (applyGravity && !isCreatureFlag(CF_IsFlying) && !mRope && (!mStickTarget || !isStickToPlatform() || !mStickPart->isClimbable())
 	    && !isCreatureFlag(CF_IgnoreGravity) && (!mStickTarget || mPelletStickSlot == -1)) {
 		mVelocity.y -= AICONST.mGravity() * deltaTime;
 	}

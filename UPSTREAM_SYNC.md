@@ -4,12 +4,57 @@ Tracking issue: [#25](https://github.com/4laric/pikmin-randomizer/issues/25).
 User authorized periodic upstream pulls and tested integration on 2026-09-11.
 The desktop heartbeat runs daily at 10:00 America/Toronto and stays quiet on unchanged state.
 
-## Recorded state (2026-09-11)
+## Draft integration #433 (2026-09-13)
+
+Upstream main `511f22fe` (12 commits after `f88c7810`) is integrated into
+private native `9735870cea769169446c524b6ae0cbdb07ed920e` for draft PR #432.
+This supersedes the historical state below for the draft only.
+
+Includes portable/legacy card discovery and PAL matching, per-save Hard mode,
+object-space normal texgen/specular fixes, DIRECT matrix handling, Wayland GPU
+selection, installer recovery/progress and the opt-in F7 debug shortcut.
+
+Conflict decisions: explicit randomizer/BBFT session card roots retain priority;
+ordinary game launches use upstream card discovery. Hard-mode max life uses
+P2-aware parameter lookup. Expanded randomizer allocation retains its maximum
+reservation before ordinary Hard-mode limits. Preserve broader transient rename
+retry handling and upstream installer UX. Remove duplicate CMake test entries.
+
+Private Release/MinGW/Ninja build with JAudio ON, randomizer test hooks OFF:
+`output/p2-upstream433-build`, targets `pikmin_pc` and `pc_randomizer_probe` PASS;
+dry run: `ninja: no work to do.` Executable SHA256:
+`15439A5FE924CF4BE282EA582EA06FBDB455FC4EF3ED180A04CD87192BA62277`.
+First configure exposed duplicate asset-finalize targets; corrected before build.
+
+Full suite: **1627 passed, 24 skipped, 1052 subtests passed**. Seven native tests
+pass: installer UI, asset finalization, prepared image, Hard mode, GPU preference,
+TEV shader and render packets. Native IPC, campaign assignments, prerelease
+receipt/save/reload protocol and DeathLink pass; catalog check and UT regeneration
+(12 slots/48 reachability comparisons plus fills) pass.
+
+Two old probe assumptions were corrected: the single-write DeathLink harness
+must cross MinGW's one-second timestamp resolution; the startup harness must use
+the current goal marker and per-color population catalog. Failed attempts remain
+in local output logs. Native startup passes as recorded below. Packaged AP validation also passes:
+2100 single-slot fills, 60 starting-Flarlic, 100 color-stat, 100 progressive-stat,
+100 permanent-check and 120 enemy-layout fills, plus remote-Blue, remote-Carry
+and remote-enemy-area two-slot fills.
+
+Startup follow-up: production build PASS in a fresh private session, Forest of
+Hope, 20 red Pikmin, other Onion grants exactly once, area gates, completion,
+current population checks and world rendering. CARDInit confirms the session's
+`campaign/card/card0` root. Source export parity: all 1593 tracked text files.
+
+No native-origin push, live save migration or main-branch merge. PAL save UI,
+ordinary-game legacy card migration, Hard-mode gameplay and P2 specular visual
+fidelity are not established by these automated gates.
+
+## Historical recorded state (2026-09-12)
 
 - Upstream: `SSunnKing/Open-Nectar---Pikmin-Native-PC-Port`, branch `main`.
-- Last fetched/reviewed: `7dc430c7` (integrated in #83).
-- Last integrated upstream: `7dc430c7` (0.4.6 fixes and accepted PRs #11–13).
-- Current maintained downstream native commit: `0b748f8a` (see ENGINE_SOURCE.md); per-color stats and progressive upgrades added after integration in #28/#29/#30, with permanent checks in #31 and damage-based structure work in #32, expanded bestiary/landing-only checks in #33.
+- Last fetched/reviewed: `f88c7810` (integration tracked in #107).
+- Last integrated upstream: `f88c7810` (including merged PRs #15 and #22–24).
+- Current maintained downstream native commit: `5421633e` (see ENGINE_SOURCE.md); includes experimental Purple support and two-floor cave checkpoints and preserves the separate release boundary.
 - **Earlier integration complete:** [#26](https://github.com/4laric/pikmin-randomizer/issues/26), all 14 commits across 51 files, merged without conflicts. This historical integration does not include the newer reviewed commits above.
 - [Health gauges PR #2](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port/pull/2): MERGED at `398258e7`, 2026-09-11.
 - [Save-slot PR #3](https://github.com/SSunnKing/Open-Nectar---Pikmin-Native-PC-Port/pull/3): CLOSED after maintainer manually applied the save guards on main in `4df56740`; not rejected. CI PR #7 was likewise applied manually and closed. Boss PR #4 and health-gauge PR #2 are merged.
@@ -85,3 +130,32 @@ PR #11 merged. PR #12 manually applied in 2fc6298d because post_apply gained all
 Validation: clean Windows production build (portable optimization, JAudio ON, test hooks OFF); 92 Python tests/eight subtests; 150 AP custom fills/10 remote-Blue multiworlds; legacy/new consumed-benefit save/reconnect probes and campaign protocol; all five live area startups with seed-matched births; four render/camera tests; real GL mask fixture; real pluck hold/release/cancel/re-press fixture. PAL runtime and physical controller/menu acceptance not claimed.
 
 Submitted bomb-warning fix as upstream PR #15 (b179e12a), tracking #84. CI pending at submission. Eight-line PC guard only; no randomizer hooks. Dynamic field-limit messaging is another candidate; Candypop timing, faster throws and other gameplay conveniences need optional-mod treatment upstream.
+
+
+## Experimental P2 fixture follow-up (2026-09-12)
+
+Native `f292a028` extends the standalone room fixture with decoded terrain expectations and a partial-recruitment fallback. The production runtime is unchanged from `5b0e3857`. This does not integrate the separate upstream candidate or alter the release boundary. Emergence entrance-room native validation passed; see docs/PIKMIN2_EMERGENCE_IMPORT.md.
+
+Native `34f2760e` adds controller-driven cross-seam walking and distant corpse-delivery assertions to the experimental fixture. Production runtime remains unchanged. The authored Emergence first-floor assembly passed native validation; no upstream integration was performed in this increment.
+
+Native `9630447e` adds the isolated Research Pod/economy scaffold and second-floor/mixed-color native fixtures. Automated P2 fixtures use a silent SDL device after the continuous-tone report (#116). No upstream integration is included in this increment; cave lifecycle and full Pod acceptance remain open.
+
+Native `6a1c352be46e` adds the opt-in Purple/Violet/Atlas preview (#113), sampled source poses and separate carry strength/speed. This is another downstream experimental increment, not an upstream pull. Purple campaign storage and full behavior remain open.
+
+## Heartbeat integration — #107 (2026-09-12)
+
+Fetched canonical upstream `f88c7810787d4dd8cb5e14785a5b73cd790a5946`. The previously isolated #107 candidate `8c9ffb82` was pending promotion; it was not repeated or discarded. Merged it into a new candidate based on current Purple native `6a1c352b`, then merged upstream through `f88c7810`, producing `ad82784ead43a84fddf773a7cd411a21d1be822a`. Both merges completed without new conflicts. Promoted source only after validation; experimental ancestry was not merged into release/main.
+
+New upstream work includes the opening ship exhaust rendering, mouse-look/WASD interaction correction, analog trigger/stick bindings, and our accepted bomb-warning, portable ARAM temporary-file, remapped prompt and controller settings-menu fixes. PR #15 and PRs #22–24 are merged with no additional review comments. PR #2 remains merged; PR #3 remains closed after the previously recorded manual application, with no new feedback. #108's three upstream submissions therefore no longer await merge.
+
+Validation in the isolated candidate: clean Windows Release build with native JAudio, portable CPU settings and test hooks OFF; 24 CTests passed and one asset-dependent JAudio test skipped (ARAM test passes with TMPDIR unset); 154 Python tests plus eight subtests; matching generated native catalog; 150 custom AP fills, ten remote-Blue multiworlds and 30 Prerelease-trap fills; five compiled protocol suites covering legacy IPC, campaign mappings, color stats, benefit persistence and Prerelease modes 17–32; five silent production area startups with ten yellows, rendered worlds, handshakes and seed-matched enemy births.
+
+The older `scripts/test_native_startup.py` reached native completion but timed out waiting for obsolete text `GOAL: Ship repaired!`; maintained native already emits `GOAL: Seed complete.` and the script also contains retired population expectations. This is a stale harness, not an observed new native regression. It was not retried unchanged; current campaign startup and protocol suites passed. Repairing or retiring that legacy harness remains a testing-maintenance item. An unscoped pytest discovery was stopped before running tests because it traversed local research/output checkouts; the reported 154-test pass explicitly targets `tests/`.
+
+Candidate build/evidence remains under ignored `output/upstream-sync-sep12-purple*`. Source snapshot was refreshed, but existing playtest executables, game assets, Purple launcher, sessions and saves were preserved. The candidate binary is `output/upstream-sync-sep12-purple-build/bin/nectar.exe`. Physical controller/menu acceptance, PAL runtime, full campaigns and the separate #116 audio investigation are not claimed by this integration. No new upstream PRs or external review replies were sent.
+
+Native `85074274` adds the downstream PC carry-counter expansion and P2 render/counter fixture diagnostics (#119). Upstream integration remains through `f88c7810`; no additional upstream PR is included.
+
+## Daily check — 2026-09-13 00:35 America/Toronto
+
+Fetched canonical upstream; main remains f88c7810787d4dd8cb5e14785a5b73cd790a5946 and HEAD..upstream/main is empty. No candidate integration or rebuild required. Open PR25 (installer UX) and PR26 (F10 fast-forward) have no review comments/reviews and both Linux build/smoke checks succeed. They remain open, not merged. Existing validated upstream integration is unchanged; no external review replies sent.

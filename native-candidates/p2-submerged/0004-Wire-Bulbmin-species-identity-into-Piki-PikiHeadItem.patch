@@ -1,0 +1,157 @@
+From 0a735f7ef226819eccb902580a9859cf959996d0 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 02:28:38 -0400
+Subject: [PATCH 04/17] Wire Bulbmin species identity into Piki/PikiHeadItem
+ (lane 11)
+
+---
+ include/Piki.h                     |  1 +
+ include/PikiHeadItem.h             |  1 +
+ pc_port/pc_p2_species.cpp          | 38 ++++++++++++++++++++++++++----
+ pc_port/pc_p2_species.h            |  5 ++++
+ src/plugPikiKando/piki.cpp         |  2 +-
+ src/plugPikiKando/pikiheadItem.cpp |  2 +-
+ 6 files changed, 43 insertions(+), 6 deletions(-)
+
+diff --git a/include/Piki.h b/include/Piki.h
+index d685b3e9..f4ceca07 100644
+--- a/include/Piki.h
++++ b/include/Piki.h
+@@ -335,6 +335,7 @@ public:
+     // Experimental sequel identity, never an index into legacy three-color arrays.
+     bool mP2Purple = false;
+     bool mP2White = false;
++    bool mP2Bulbmin = false; // source Piki.h Bulbmin = 5; cave-only, wild by default
+     float mP2AnimationTime = 0;
+ };
+ 
+diff --git a/include/PikiHeadItem.h b/include/PikiHeadItem.h
+index ae847cc2..18918dd4 100644
+--- a/include/PikiHeadItem.h
++++ b/include/PikiHeadItem.h
+@@ -77,6 +77,7 @@ struct PikiHeadItem : public ItemCreature {
+ 	RippleEffect* mRippleEfx;       // _3F4
+     bool mP2Purple = false; // Experimental species metadata; not legacy seed color.
+     bool mP2White = false;
++    bool mP2Bulbmin = false;
+ };
+ 
+ /**
+diff --git a/pc_port/pc_p2_species.cpp b/pc_port/pc_p2_species.cpp
+index b0bc0eba..4c18fbf8 100644
+--- a/pc_port/pc_p2_species.cpp
++++ b/pc_port/pc_p2_species.cpp
+@@ -3,33 +3,48 @@
+ #include "Piki.h"
+ #include "PikiHeadItem.h"
+ 
++namespace {
++// P2 sequel species are mutually exclusive; a doubly-flagged Piki is invalid.
++int p2_species_conflicts(bool purple, bool white, bool bulbmin) {
++    return int(purple) + int(white) + int(bulbmin);
++}
++}
++
+ int pc_p2_species(const Piki* piki) {
+-    if (!piki || (piki->mP2Purple && piki->mP2White)) return -1;
++    if (!piki
++        || p2_species_conflicts(piki->mP2Purple, piki->mP2White, piki->mP2Bulbmin) > 1)
++        return -1;
++    if (piki->mP2Bulbmin) return P2SpeciesBulbmin;
+     if (piki->mP2White) return P2SpeciesWhite;
+     if (piki->mP2Purple) return P2SpeciesPurple;
+     return piki->mColor >= Blue && piki->mColor <= Yellow ? piki->mColor : -1;
+ }
+ 
+ int pc_p2_species(const PikiHeadItem* sprout) {
+-    if (!sprout || (sprout->mP2Purple && sprout->mP2White)) return -1;
++    if (!sprout
++        || p2_species_conflicts(sprout->mP2Purple, sprout->mP2White, sprout->mP2Bulbmin) > 1)
++        return -1;
++    if (sprout->mP2Bulbmin) return P2SpeciesBulbmin;
+     if (sprout->mP2White) return P2SpeciesWhite;
+     if (sprout->mP2Purple) return P2SpeciesPurple;
+     return sprout->mSeedColor >= Blue && sprout->mSeedColor <= Yellow ? sprout->mSeedColor : -1;
+ }
+ 
+ bool pc_p2_set_species(Piki* piki, int species) {
+-    if (!piki || species < P2SpeciesBlue || species > P2SpeciesWhite) return false;
++    if (!piki || species < P2SpeciesBlue || species > P2SpeciesBulbmin) return false;
+     piki->initColor(species <= P2SpeciesYellow ? species : Red);
+     piki->mP2Purple = species == P2SpeciesPurple;
+     piki->mP2White = species == P2SpeciesWhite;
++    piki->mP2Bulbmin = species == P2SpeciesBulbmin;
+     return true;
+ }
+ 
+ bool pc_p2_set_species(PikiHeadItem* sprout, int species) {
+-    if (!sprout || species < P2SpeciesBlue || species > P2SpeciesWhite) return false;
++    if (!sprout || species < P2SpeciesBlue || species > P2SpeciesBulbmin) return false;
+     sprout->setColor(species <= P2SpeciesYellow ? species : Red);
+     sprout->mP2Purple = species == P2SpeciesPurple;
+     sprout->mP2White = species == P2SpeciesWhite;
++    sprout->mP2Bulbmin = species == P2SpeciesBulbmin;
+     return true;
+ }
+ 
+@@ -37,3 +52,18 @@ bool pc_p2_has_red_immunity(const Piki* piki) {
+     return pc_p2_species(piki) == P2SpeciesRed;
+ }
+ 
++bool pc_p2_is_bulbmin(const Piki* piki) {
++    return piki && piki->mP2Bulbmin;
++}
++
++void pc_p2_make_bulbmin(Piki* piki) {
++    if (!piki) return;
++    piki->mP2Purple = false;
++    piki->mP2White = false;
++    piki->mP2Bulbmin = true;
++    // Identity/colour only. The source piki_kochappy model binding and the
++    // Mother Bulbmin birth/whistle lifecycle land with the LeafChappy actor
++    // (see docs/PIKMIN2_BULBMIN_CONTRACT.md).
++    piki->mCurrentColour = piki->mDefaultColour = piki->mStartBlendColour
++        = piki->mTargetBlendColour = Colour(120, 180, 90, 255);
++}
+diff --git a/pc_port/pc_p2_species.h b/pc_port/pc_p2_species.h
+index dfa2b930..620e05fd 100644
+--- a/pc_port/pc_p2_species.h
++++ b/pc_port/pc_p2_species.h
+@@ -18,3 +18,8 @@ bool pc_p2_set_species(Piki* piki, int species);
+ bool pc_p2_set_species(PikiHeadItem* sprout, int species);
+ bool pc_p2_has_red_immunity(const Piki* piki);
+ 
++// Bulbmin identity. Wild/recruited lifecycle and dependent ownership live in
++// pc_p2_bulbmin_policy.h; this adapter only carries the species flag so the
++// captain/cave/receiver layers can recognize it.
++bool pc_p2_is_bulbmin(const Piki* piki);
++void pc_p2_make_bulbmin(Piki* piki);
+diff --git a/src/plugPikiKando/piki.cpp b/src/plugPikiKando/piki.cpp
+index 8e9c8bbf..f93c41f6 100644
+--- a/src/plugPikiKando/piki.cpp
++++ b/src/plugPikiKando/piki.cpp
+@@ -1271,7 +1271,7 @@ int Piki::graspSituation(Creature** outTarget)
+  */
+ void Piki::initColor(int color)
+ {
+-    mP2Purple=false;mP2White=false;mP2AnimationTime=0;
++    mP2Purple=false;mP2White=false;mP2Bulbmin=false;mP2AnimationTime=0;
+     if (!pc_bbft_color_access(color)) color = Red;
+ 	mColor = color;
+ 	if (flowCont.mIsVersusMode == TRUE) {
+diff --git a/src/plugPikiKando/pikiheadItem.cpp b/src/plugPikiKando/pikiheadItem.cpp
+index b92eb3d8..644daf9d 100644
+--- a/src/plugPikiKando/pikiheadItem.cpp
++++ b/src/plugPikiKando/pikiheadItem.cpp
+@@ -196,7 +196,7 @@ f32 PikiHeadItem::getiMass()
+  */
+ void PikiHeadItem::setColor(int color)
+ {
+-    mP2Purple=false;mP2White=false;
++    mP2Purple=false;mP2White=false;mP2Bulbmin=false;
+     if (!pc_bbft_color_access(color)) color = Red;
+ 	mSeedColor = color;
+ }
+-- 
+2.55.0.windows.3
+

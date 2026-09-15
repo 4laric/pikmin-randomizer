@@ -61,6 +61,10 @@ def spawn_sources(layout, groups=None):
 
 
 def bootstrap_slots(manifest):
+    if manifest.get('p2_layout'):
+        # Opt-in experimental bridge; lazy so ordinary seeds never load lane 02/03.
+        from experimental.pikmin2_seed_bridge import bootstrap_for_manifest
+        return bootstrap_for_manifest(manifest)
     if 'campaign_layout' in manifest:
         from .campaign_enemies import campaign_bootstrap
         return campaign_bootstrap(manifest)
