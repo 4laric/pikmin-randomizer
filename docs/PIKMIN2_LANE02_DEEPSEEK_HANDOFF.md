@@ -446,3 +446,133 @@ py -3.12 scripts/audit_pikmin2_roster.py --admit-check 79   # ['death_corpse','c
 py -3.12 scripts/audit_pikmin2_roster.py --admit-check 0    # ['role'], exit 1
 py -3.12 scripts/audit_pikmin2_roster.py --admit-check 99999# ['unknown'], exit 1
 ```
+
+## Slice 4
+
+Fourth bounded slice: **the admission contract gating a real seed** (root-side;
+no native build; no identity admitted; deny-by-default preserved end-to-end).
+
+### What was already wired vs. what this slice did
+
+`admitted_ids` was made contract-derived in slice 3 (`admission_contract` ->
+`admission_requirements(entry) == []` plus a `source`/`variant` role and not
+`excluded`). Lane 03's seed bridge and the schema-9 generator already read that
+same `admitted_ids` for the product path:
+
+- `experimental/pikmin2_seed_bridge.resolve_admitted_layout()` derives its cohort
+  from `admitted_ids(roster)` and fails closed when it is empty.
+- `resolve_placement_layout()` (the `generate(..., p2_enemies=True)` entry) and
+  `randomizer.seed.validate()` (loaded-seed re-validation) both re-derive the
+  admitted cohort via `admitted_ids(roster)`.
+
+So the "seedable P2 identity pool lane 03's bridge reads" was already the
+admission contract through the evidence file (`docs/PIKMIN2_ENEMY_ROSTER_EVIDENCE.json`);
+no lane 03 file edit was needed. Slice 4 *verifies* that gate end-to-end and pins
+it with a seed-pool test on a synthetic ledger, because nothing previously proved
+an identity passed into an actual generated `p2_layout` only on the contract (the
+existing seed-generation tests injected a fake `admitted_ids` via monkeypatch).
+
+### Deliverable (exact command)
+
+```
+cd C:/Users/alari/pikmin-randomizer/output/dsw/l02-root && py -3.12 scripts/audit_pikmin2_roster.py --admit
+```
+
+prints `admission contract: admitted []` followed by the exact per-candidate
+blocking gates for all 64 candidates (e.g. `Armor (15):
+blocking=death_corpse,cleanup_reentry,transport_reward`, `Sokkuri (79):
+blocking=death_corpse,cleanup_reentry,transport_reward`, and `BlueKochappy (44):
+blocking=identity_spawn:injected,...`). The same set is what the seed generator
+consumes; `generate(seed, p2_enemies=True, p2_placement=doc)` raises
+`ValueError: no admitted P2 identities; refusing to seed an unadmitted pool
+(lane 02 admission set is empty)`.
+
+### Files
+
+- `tests/test_pikmin2_admission_seed.py` (new, 4 tests).
+
+No source/scripts/docs/JSON edits and no native commit: the wiring is verified,
+not re-implemented.
+
+### The tests
+
+Synthetic two-source ledger (Frog=17 fully passed, Snek=41 with `death_corpse`
+open), built solely via `parse_enum_header`/`parse_info_table`/`build_entries`/
+`resolve_ids`/`snapshot_payload`/`entries_from_payload`:
+
+- `test_fully_passed_identity_is_the_whole_seed_pool` — Frog's natural PASS on
+  gates 1-4 + 6 plus a `corpse:` receipt makes `admitted_ids == [17]`; the seed
+  bridge's product entry binds only Frog (every binding `source_id == 17`).
+- `test_partial_sibling_never_reaches_the_seed_pool` — Snek (41) is blocked on
+  `death_corpse` and never appears in `admitted_ids`.
+- `test_stripping_receipt_drops_identity_from_seed_pool` — with Frog's
+  `delivery_receipt` removed, `admitted_ids == []` and gate 5 is reported as
+  `transport_reward`; `resolve_admitted_layout` raises `SeedBridgeError` (fails
+  closed).
+- `test_real_ledger_seed_pool_is_deny_by_default` — `admitted_ids(load_and_validate())
+  == []` and the product entry refuses to seed.
+
+### Tests run
+
+```
+py -3.12 -m pytest tests/test_pikmin2_admission_seed.py -q                                             # 4 passed
+py -3.12 -m pytest tests/test_pikmin2_admission_seed.py tests/test_pikmin2_admission_contract.py \
+    tests/test_pikmin2_enemy_roster.py tests/test_pikmin2_seed_bridge.py tests/test_pikmin2_seed_generation.py \
+    tests/test_pikmin2_roster.py tests/test_pikmin2_roster_coverage.py -q                             # 86 passed
+py -3.12 scripts/audit_pikmin2_roster.py --admit                                                       # admitted [] + per-candidate gates
+```
+
+### Build / fixture evidence
+
+Not applicable: this is a root-side ledger/seed-gate slice with no native C++
+change, so no `build_lane.py` queue and no real-GL fixture were run (lane 02
+roster/admission is a schema/tooling lane; gameplay gates remain lane 13 +
+providers). No `l02-build-evidence.txt` is claimed.
+
+### Six-gate table
+
+| Gate | Status | Note |
+|---|---|---|
+| identity_spawn | natural-PASS *required* (ledger) | refused as `<gate>:injected` on proxy/vehicle/injected rows |
+| movement_animation | natural-PASS *required* (ledger) | same |
+| attacks_receivers | natural-PASS *required* (ledger) | same |
+| death_corpse | natural-PASS *required* (ledger) | closest rows (Armor 15, Sokkuri 79) still UNTESTED |
+| transport_reward | cited `delivery_receipt` required | no durable Onion/corpse receipt exists today (lane 06) |
+| cleanup_reentry | natural-PASS *required* (ledger) | nothing admitted |
+
+Gate 2/4/5/6 runtime gameplay still belongs to family lanes, not lane 02.
+
+### Assumptions
+
+- The "seedable P2 identity pool" is the `p2_layout` binding cohort, which lane
+  03's bridge derives from `admitted_ids`; that derivation was already present in
+  the base and was made contract-gated in slice 3, so slice 4 adds a proof/test
+  rather than new wiring.
+- "One exact command" is the audit `--admit` line above; it is the admission
+  evaluation the seed path consumes.
+- No identity is admitted; the ledger stays deny-by-default until a family
+  supplies the full generated-session chain (lane 13 + providers 03/04/05/06/07/08).
+
+### Remaining blockers (named provider lane)
+
+- Nothing is admitted because no identity yet has natural PASS on death/corpse +
+  cleanup/re-entry and a durable transport receipt; that is lane 13/03/06, not
+  lane 02.
+
+### Subagent usage
+
+The `task` tool was not available in this execution environment (the agent's tool
+set has no subagent spawner), so the three read-heavy tasks from the brief were
+done inline with direct file/grep passes instead of delegated:
+
+1. *Source audit* (would-be `explore` #1): traced the seed-bridge read path
+   (`grep admitted_ids/resolve_admitted_layout/resolve_placement_layout`) to
+   confirm `generate`/`validate` consume contract-derived `admitted_ids`.
+2. *Existing-candidate inventory* (would-be `explore` #2): confirmed there was no
+   test that pushed a natural synthetic-ledger identity all the way into a
+   `p2_layout` (existing seed tests monkeypatch `admitted_ids`).
+3. *Tests/harness* (would-be `general` #3): wrote `tests/test_pikmin2_admission_seed.py`
+   and ran it.
+
+Net: no time saved versus delegating, but also no reconcilation rework; honest
+negative result on the subagent experiment for this lane.
