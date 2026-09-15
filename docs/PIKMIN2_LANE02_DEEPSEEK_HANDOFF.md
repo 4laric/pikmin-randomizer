@@ -158,7 +158,7 @@ py -3.12 scripts/generate_pikmin2_roster_revision.py --check \
 ## Exact reproduction command
 
 ```
-cd C:/Users/alari/pikmin-randomizer/output/dsw/l02-root && py -3.12 -m pytest tests/test_pikmin2_enemy_roster.py tests/test_pikmin2_seed_bridge.py -q
+py -3.12 -m pytest tests/test_pikmin2_enemy_roster.py tests/test_pikmin2_seed_bridge.py -q
 ```
 
 ## Subagent usage
@@ -475,17 +475,37 @@ existing seed-generation tests injected a fake `admitted_ids` via monkeypatch).
 ### Deliverable (exact command)
 
 ```
-cd C:/Users/alari/pikmin-randomizer/output/dsw/l02-root && py -3.12 scripts/audit_pikmin2_roster.py --admit
+py -3.12 scripts/audit_pikmin2_roster.py --admit
 ```
 
 prints `admission contract: admitted []` followed by the exact per-candidate
 blocking gates for all 64 candidates (e.g. `Armor (15):
 blocking=death_corpse,cleanup_reentry,transport_reward`, `Sokkuri (79):
 blocking=death_corpse,cleanup_reentry,transport_reward`, and `BlueKochappy (44):
-blocking=identity_spawn:injected,...`). The same set is what the seed generator
-consumes; `generate(seed, p2_enemies=True, p2_placement=doc)` raises
-`ValueError: no admitted P2 identities; refusing to seed an unadmitted pool
-(lane 02 admission set is empty)`.
+blocking=identity_spawn:injected,...`).
+
+A seed on the current ledger is actually generated with:
+
+```
+py -3.12 -c "from randomizer.seed import generate; from tests.test_pikmin2_seed_generation import placement_document; generate('s', p2_enemies=True, p2_placement=placement_document())"
+```
+
+which fails closed, verbatim:
+
+```
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "…\randomizer\seed.py", line 209, in generate
+    result['p2_layout'] = resolve_placement_layout(result['seed'], slot, p2_placement, load_and_validate())
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "…\experimental\pikmin2_seed_bridge.py", line 157, in resolve_placement_layout
+    raise SeedBridgeError(
+experimental.pikmin2_seed_bridge.SeedBridgeError: no admitted P2 identities; refusing to seed an unadmitted pool (lane 02 admission set is empty)
+```
+
+That is the exact set the admission report prints: `generate` ->
+`resolve_placement_layout` derives its cohort from `admitted_ids`
+(contract-derived), so deny-by-default is enforced at the real seed path.
 
 ### Files
 
@@ -501,16 +521,18 @@ open), built solely via `parse_enum_header`/`parse_info_table`/`build_entries`/
 `resolve_ids`/`snapshot_payload`/`entries_from_payload`:
 
 - `test_fully_passed_identity_is_the_whole_seed_pool` — Frog's natural PASS on
-  gates 1-4 + 6 plus a `corpse:` receipt makes `admitted_ids == [17]`; the seed
-  bridge's product entry binds only Frog (every binding `source_id == 17`).
+  gates 1-4 + 6 plus a `corpse:` receipt makes `admitted_ids == [17]`; the real
+  seed path (`resolve_placement_layout` against a Frog-accepting lane-04 document)
+  binds only Frog (every binding `source_id == 17`).
 - `test_partial_sibling_never_reaches_the_seed_pool` — Snek (41) is blocked on
   `death_corpse` and never appears in `admitted_ids`.
 - `test_stripping_receipt_drops_identity_from_seed_pool` — with Frog's
   `delivery_receipt` removed, `admitted_ids == []` and gate 5 is reported as
-  `transport_reward`; `resolve_admitted_layout` raises `SeedBridgeError` (fails
+  `transport_reward`; `resolve_placement_layout` raises `SeedBridgeError` (fails
   closed).
 - `test_real_ledger_seed_pool_is_deny_by_default` — `admitted_ids(load_and_validate())
-  == []` and the product entry refuses to seed.
+  == []` and `generate("seed", p2_enemies=True, p2_placement=...)` raises
+  `SeedBridgeError` (no monkeypatch).
 
 ### Tests run
 
@@ -576,3 +598,54 @@ done inline with direct file/grep passes instead of delegated:
 
 Net: no time saved versus delegating, but also no reconcilation rework; honest
 negative result on the subagent experiment for this lane.
+
+## Fix 4
+
+Review corrections to slice 4 (items 1-6; root-side, still no identity admitted).
+
+### Test path now drives the real seed entry
+
+The three seed-pool assertions drove `resolve_admitted_layout`, which no product
+code calls. They now drive the real path `randomizer.seed.generate` ->
+`experimental.pikmin2_seed_bridge.resolve_placement_layout` (where
+deny-by-default is enforced at `seed_bridge.py` lines 155-159):
+
+- `tests/test_pikmin2_admission_seed.py` `resolve_admitted_layout` calls replaced
+  with `resolve_placement_layout(seed, slot, placement_document_accepting_frog(), roster)`;
+  added a local `placement_document_accepting_frog()` (same shape as
+  `tests/test_pikmin2_seed_generation.py::placement_document`, identity `Frog`).
+- `test_real_ledger_seed_pool_is_deny_by_default` now calls
+  `generate("seed", p2_enemies=True, p2_placement=placement_document_accepting_frog())`
+  with no monkeypatch and expects `SeedBridgeError` (a `ValueError` subclass).
+- Fixed the `Froghas` -> `Frog has` typo.
+
+### Deliverable command actually generates a seed
+
+The "exact command" now pastes a real seed-generation call and its verbatim
+`SeedBridgeError` output (see the Slice 4 "Deliverable" section), and the
+`cd <lane-path> &&` prefix was dropped there and in the slice-1 reproduction
+command (no lane paths in docs).
+
+### Lane 03 ask (not edited here)
+
+`experimental/pikmin2_seed_bridge.py` lines 91-93 label `resolve_admitted_layout`
+"the product entry point", which contradicts `randomizer/seed.py` lines 202-204
+(the product path calls `resolve_placement_layout`). Lane 03 owns that docstring;
+please reword it (or mark `resolve_admitted_layout` as the legacy/diagnostic
+entry). No lane 03 file was edited in this fix.
+
+### Tests run
+
+```
+py -3.12 -m pytest tests/test_pikmin2_admission_seed.py -q                                            # 4 passed
+py -3.12 -m pytest tests/test_pikmin2_admission_seed.py tests/test_pikmin2_admission_contract.py \
+    tests/test_pikmin2_enemy_roster.py tests/test_pikmin2_seed_bridge.py tests/test_pikmin2_seed_generation.py \
+    tests/test_pikmin2_roster.py tests/test_pikmin2_roster_coverage.py -q                            # 86 passed
+py -3.12 -m pytest tests/test_pikmin2_seed_generation.py -q                                          # 9 passed (unchanged)
+```
+
+### Subagent usage
+
+The `task` tool is still not present in this session's tool set (only
+`bash`/`read`/`grep`/`glob`/`edit`/`write`/`web*`), so no subagents ran; the
+read-heavy work was again done inline. One line: task tool genuinely absent.
