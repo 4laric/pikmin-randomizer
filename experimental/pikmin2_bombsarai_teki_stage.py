@@ -20,6 +20,14 @@ from scripts.preview_pikmin2_room import prepare as room_prepare, records
 NAPKID_TYPE = 11  # TEKI_Napkid (Swooping Snitchbug), flying placement vehicle
 SIDECAR_MAGIC = 'P2_BOMBSARAI_TEKI_1'
 DEFAULT_GENERATOR = 270001
+# Cargo-enabled Research Pod so a killed carrier's corpse can be credited
+# (`P2_POD_RECEIPT id=corpse:...bombsarai:<gen>`). The room preview already
+# stages a `pr05` treasure actor (`preview treasure bolt`), so a `p2-pod.txt`
+# alone enables the Pod; without it `pc_p2_preview_goal()` is null and
+# `pc_p2_preview_deliver` is never entered (the lane-27 receipt branch is dead).
+# Format matches the native reader: P2_POD_1 <id> <value> <weight> <capacity>
+# Kochappy <corpse_value>.
+POD_CARGO_PROFILE = 'P2_POD_1\nbolt 180 15 25\nKochappy 2\n'
 # Spawn near the red-Pikmin squad so ordinary Pikmin can attack and kill the
 # vehicle after it has thrown; engineered placement, not production evidence.
 DEFAULT_POSITION = (-90.0, 30.0, 10.0)
@@ -60,6 +68,8 @@ def stage(assets, converted, output, generator=DEFAULT_GENERATOR, position=DEFAU
                                                  generator=generator,
                                                  type=NAPKID_TYPE),
         encoding='ascii')
+    # Cargo-enabled Pod so the corpse receipt path is reachable at all.
+    (run / 'p2-pod.txt').write_text(POD_CARGO_PROFILE, encoding='ascii')
     return run
 
 

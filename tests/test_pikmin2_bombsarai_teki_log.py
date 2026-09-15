@@ -33,6 +33,11 @@ def test_empty_log_all_false():
     assert result["probes"] == []
     assert result["min_y"] is None and result["max_nearest"] is None
     assert result["engaged"] is False
+    assert result["corpse_probes"] == []
+    assert result["corpse_max_carriers"] == 0
+    assert result["corpse_moved"] is None
+    assert result["corpse_config"] is None
+    assert result["transported"] is False
 
 
 def test_probe_in_reach_engages():
@@ -121,3 +126,79 @@ def test_multiple_blasts_accumulate():
     lines.insert(5, "P2_BOMBSARAI_TEKI_BLAST generator=270001 token=270001 carrier_valid=1 hits=1 pikmin_hits=1")
     result = validate_teki_markers("\n".join(lines))
     assert result["blasts"] == 2 and result["pikmin_hits"] == 3
+
+
+def test_corpse_probes_aggregate_and_transport():
+    log = "\n".join([
+        "P2_BOMBSARAI_TEKI_CORPSE tick=100 x=1.0 z=2.0 moved=5.0 carriers=0",
+        "P2_BOMBSARAI_TEKI_CORPSE tick=101 x=1.5 z=2.5 moved=40.0 carriers=3",
+        "P2_BOMBSARAI_TEKI_CORPSE tick=102 x=1.5 z=2.5 moved=12.0 carriers=4",
+    ])
+    result = validate_teki_markers(log)
+    assert len(result["corpse_probes"]) == 3
+    assert result["corpse_max_carriers"] == 4
+    assert result["corpse_moved"] == 40.0
+    assert result["transported"] is True
+    assert result["corpse_probes"][0] == {"tick": 100, "moved": 5.0, "carriers": 0}
+    assert result["corpse_probes"][1]["carriers"] == 3
+    assert result["corpse_probes"][2]["carriers"] == 4
+
+
+def test_corpse_probes_never_carried_not_transported():
+    log = "\n".join([
+        "P2_BOMBSARAI_TEKI_CORPSE tick=200 x=9.0 z=9.0 moved=7.5 carriers=0",
+        "P2_BOMBSARAI_TEKI_CORPSE tick=201 x=9.0 z=9.0 moved=8.0 carriers=0",
+    ])
+    result = validate_teki_markers(log)
+    assert result["transported"] is False
+    assert result["corpse_max_carriers"] == 0
+    assert result["corpse_moved"] == 8.0
+
+
+def test_corpse_config_parsed():
+    log = "P2_BOMBSARAI_TEKI_CORPSE_CONFIG carry_min=1 carry_max=3"
+    result = validate_teki_markers(log)
+    assert result["corpse_config"] == {"carry_min": 1, "carry_max": 3}
+
+
+def test_pod_receipt_transports_without_carriers():
+    log = "P2_POD_RECEIPT id=corpse:x:bombsarai:270001 value=10 new=1 pokos=10 seeds=0"
+    result = validate_teki_markers(log)
+    assert result["corpse_max_carriers"] == 0
+    assert result["transported"] is True
+
+
+def test_corpse_probe_malformed_numerics_degrade_to_none():
+    log = "\n".join([
+        "P2_BOMBSARAI_TEKI_CORPSE tick=300 x=1.0 z=1.0 moved=NaN carriers=..",
+        "P2_BOMBSARAI_TEKI_CORPSE tick=301 x=2.0 z=2.0 moved=3.5",
+    ])
+    result = validate_teki_markers(log)
+    assert len(result["corpse_probes"]) == 2
+    assert result["corpse_probes"][0]["carriers"] is None
+    assert result["corpse_probes"][0]["moved"] is None
+    assert result["corpse_probes"][1]["carriers"] is None
+    assert result["corpse_probes"][1]["moved"] == 3.5
+    assert result["corpse_max_carriers"] == 0
+    assert result["corpse_moved"] == 3.5
+    assert result["transported"] is False
+
+
+def test_full_log_with_corpse_probes():
+    log = "\n".join(FULL_LOG.splitlines() + [
+        "P2_BOMBSARAI_TEKI_CORPSE_CONFIG carry_min=1 carry_max=3",
+        "P2_BOMBSARAI_TEKI_CORPSE tick=110 x=3.0 z=4.0 moved=6.0 carriers=0",
+        "P2_BOMBSARAI_TEKI_CORPSE tick=111 x=3.5 z=4.5 moved=30.0 carriers=2",
+    ])
+    result = validate_teki_markers(log)
+    assert result["gates"] == {
+        "ready": True, "supplied": True, "joint_follow": True, "thrown": True,
+        "blasted": True, "dead": True, "corpse": True,
+    }
+    assert result["throw_kind"] == "Release"
+    assert result["blasts"] == 1 and result["pikmin_hits"] == 2
+    assert result["engaged"] is True
+    assert result["corpse_config"] == {"carry_min": 1, "carry_max": 3}
+    assert result["corpse_max_carriers"] == 2
+    assert result["corpse_moved"] == 30.0
+    assert result["transported"] is True
