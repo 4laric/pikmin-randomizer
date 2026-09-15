@@ -102,7 +102,7 @@ class SyntheticLogTests(unittest.TestCase):
         'P2_HIBA_EMIT generator=22 hazard=ElecHiba stimulus=InteractDenki\n'
         'P2_HIBA_DENKI_PASS generator=22 hazard=ElecHiba species=2 immune=1 applied=0\n'
         'P2_HIBA_DENKI_HIT generator=22 hazard=ElecHiba species=1 state=35 applied=1\n'
-        'P2_HIBA_GAS_LETHAL dead=1 species=2\n'
+        'P2_HIBA_GAS_LETHAL dead=1 species=1\n'
         'P2_HIBA_DENKI_LETHAL dead=1 species=1\n'
         'P2_HIBA_RECOLOUR white=1 yellow=1\n'
         'P2_HIBA_CLEANUP kill_all=1\n'
@@ -165,19 +165,31 @@ class SyntheticLogTests(unittest.TestCase):
         self.assertIn('no_apply_blocked', evidence['failed'])
 
     def test_fire_death_without_gas_lethal_fails(self):
-        text = self.GOOD.replace('P2_HIBA_GAS_LETHAL dead=1 species=2\n', '')
+        text = self.GOOD.replace('P2_HIBA_GAS_LETHAL dead=1 species=1\n', '')
         evidence = hr.validate(text, 0)
         self.assertFalse(evidence['passed'])
         self.assertIn('gas_lethal', evidence['failed'])
 
     def test_bare_gas_lethal_fails(self):
-        text = self.GOOD.replace('P2_HIBA_GAS_LETHAL dead=1 species=2\n', 'P2_HIBA_GAS_LETHAL dead=1\n')
+        text = self.GOOD.replace('P2_HIBA_GAS_LETHAL dead=1 species=1\n', 'P2_HIBA_GAS_LETHAL dead=1\n')
         evidence = hr.validate(text, 0)
         self.assertFalse(evidence['passed'])
         self.assertIn('gas_lethal', evidence['failed'])
 
     def test_bare_denki_lethal_fails(self):
         text = self.GOOD.replace('P2_HIBA_DENKI_LETHAL dead=1 species=1\n', 'P2_HIBA_DENKI_LETHAL dead=1\n')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('denki_lethal', evidence['failed'])
+
+    def test_gas_lethal_wrong_species_fails(self):
+        text = self.GOOD.replace('P2_HIBA_GAS_LETHAL dead=1 species=1\n', 'P2_HIBA_GAS_LETHAL dead=1 species=0\n')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('gas_lethal', evidence['failed'])
+
+    def test_denki_lethal_wrong_species_fails(self):
+        text = self.GOOD.replace('P2_HIBA_DENKI_LETHAL dead=1 species=1\n', 'P2_HIBA_DENKI_LETHAL dead=1 species=0\n')
         evidence = hr.validate(text, 0)
         self.assertFalse(evidence['passed'])
         self.assertIn('denki_lethal', evidence['failed'])
@@ -210,7 +222,7 @@ class GasReceiverNativeTests(unittest.TestCase):
     GOOD = SyntheticLogTests.GOOD
 
     def test_missing_gas_lethal_fails(self):
-        text = self.GOOD.replace('P2_HIBA_GAS_LETHAL dead=1 species=2\n', '')
+        text = self.GOOD.replace('P2_HIBA_GAS_LETHAL dead=1 species=1\n', '')
         evidence = hr.validate(text, 0)
         self.assertFalse(evidence['passed'])
         self.assertIn('gas_lethal', evidence['failed'])
