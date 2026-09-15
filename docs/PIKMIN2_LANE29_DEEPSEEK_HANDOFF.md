@@ -386,7 +386,7 @@ delivery call and no `health_zero` write exist on this path.
 
 Source ID: 57 Kurage (`source_id` 57, `BDT_Normal`).
 
-| Gate | Result | Evidence | Injected vs natural |
+| Gate | Historical note | Evidence | Injected vs natural |
 |---|---|---|---|
 | 1. Exact identity and spawn | PARTIAL | output/dsw/l29-out/kurage-arena/f4b1b0a27e8f4c85b906c04b249b3618/run.log:727 (generated type-0 stand-in host, source 57 identity not claimed) | stand-in host |
 | 2. Autonomous movement and animation | PARTIAL | output/dsw/l29-out/kurage-arena/f4b1b0a27e8f4c85b906c04b249b3618/run.log:745 placement bound at x=-65.970 y=30 z=48.269; approach sealed so the squad can engage | reachable placement engineered |
@@ -432,3 +432,100 @@ py -3.12 -m experimental.pikmin2_kurage_teki_stage --assets C:/Users/alari/bbft/
 py -3.12 output/deepseek-wave/slot.py run gl l29 -- py -3.12 <runner> <native-l29-build>/bin/nectar.exe 240
 py -3.12 -m pytest -q tests/test_pikmin2_kurage_pod_receipt.py
 ```
+
+## Slice 4 — natural flight movement/animation, receiver capture, cleanup/re-entry, 57 Kurage (LANDED)
+
+Root base `b2b38846`; native base `1771280dc5`; native head
+`50dde734928e402b2b1277920301628e89fb3fd3`. The current wave native
+`claude/p2-deepseek-wave-native` (`7ed95228`) was already an ancestor of the lane
+(the prior `5cecfef2` merge), so `git merge` reported `Already up to date`; no new
+merge commit was needed. Three additive lane-local hooks, no shared-semantics change.
+
+### What changed
+
+- `pc_port/pc_p2_kurage_teki.cpp`: env-gated production showcase
+  (`PIKMIN_P2_KURAGE_SHOWCASE=1`). When set, the bound generated actor runs the
+  transcribed source flight lifecycle (`pc_p2_kurage_fsm.h`) and logs its own
+  position plus animation state/counter every 30 ticks
+  (`P2_KURAGE_MOVE tick=... x=... y=... z=... state=... motion=... anim=...`) and
+  each state transition (`P2_KURAGE_STATE`). After the autonomous Wait/Move patrol,
+  one live Pikmin is seeded into the source suction window so the real Attack
+  receiver can be observed. The default (env unset) production path is unchanged.
+- `pc_port/pc_p2_kurage_receiver.cpp`: the one-consumer receiver now logs its real
+  engine actions on live Pikmin (`P2_KURAGE_RECEIVER_HIT`, `..._ATTACH
+  stick_before=0 stick_after=1`, `..._KILL alive_after=0`). Suction/ingestion logic
+  is unchanged.
+- `pc_port/pc_p2_kurage_teki.cpp`: `pc_p2_kurage_teki_forget` / `pc_p2_kurage_teki_reset`
+  now log the central seam (`P2_KURAGE_TEKI_FORGET`, `P2_KURAGE_TEKI_RESET`). These are
+  the exact hooks `pc_p2_forget_teki` (`pc_port/pc_p2_teki_lifetime.cpp:89`) and
+  `GameCoreSection::exitStage` (`src/plugPikiKando/gameCoreSection.cpp:887`) call.
+- `tools/p2_kurage_runtime.cpp`: new `--receiver-reentry` scenario exercising
+  forget -> reset -> re-bind and asserting the old address no longer resolves and
+  exactly one actor re-binds.
+
+### Build evidence
+
+`output/dsw/l29-build-evidence.txt`:
+- `pikmin_pc` -> `bin/nectar.exe` sha256 `335c275302d61d19ef8c79aeb645bcca23c3c5d49e9aaa43b5c673442adeae79`
+- `p2_kurage_runtime` -> `p2_kurage_runtime.exe` sha256 `ec7e51c760e1407976890e1bd67b4c5552c4b24efaa0b5d8156ca71f754e2902`
+- native `50dde734`, Ninja MinGW g++ 16.2.0, Release, JAudio ON, `ninja -n` no work.
+
+### Runtime evidence (real-GL, `slot.py run gl l29`)
+
+Movement/animation + receiver — production `nectar.exe --experimental-pikmin2-room`
+with `PIKMIN_P2_KURAGE_SHOWCASE=1`, `PIKMIN_P2_ROOM_WINDOW=960x540`; log
+`output/dsw/l29-out/kurage-arena/b7439430e78b48b6ad2c9400f50f4b02/run.log`:
+
+```
+:763 P2_KURAGE_STATE tick=1 state=1 motion=6 altitude=28.756
+:764 P2_KURAGE_MOVE tick=30 x=-39.581 y=84.680 z=21.077 state=1 motion=6 anim=0.00
+:771 P2_KURAGE_MOVE tick=120 x=-22.735 y=4.051 z=40.301 state=2 motion=6 anim=0.00
+:788 P2_KURAGE_MOVE tick=330 x=-42.177 y=3.090 z=-9.779 state=4 motion=10 anim=1.00
+:793 P2_KURAGE_RECEIVER_HIT owner=... piki=...487910 phase=mouth alive=1 stick=0
+:794 P2_KURAGE_RECEIVER_ATTACH owner=... piki=...487910 stick_before=0 stick_after=1 alive=1 scale=1.00
+:852 P2_KURAGE_RECEIVER_KILL owner=... piki=...487910 alive_after=0
+:4080 P2_KURAGE_MOVE tick=4080 x=37.077 y=42.977 z=120.282 state=1 motion=6 anim=0.00
+```
+
+136 sampled `P2_KURAGE_MOVE` lines span ticks 30..4080: the actor changes position in
+all three axes and cycles Wait(1)/Move(2)/Attack(4)/FlyFlick(9) with the attack clock
+advancing `anim` 0 -> 61. The receiver admits 13 live Pikmin, attaches them
+(stick 0 -> 1) and digests one to `alive_after=0`. The run ended at the 150 s harness
+deadline (`TIMEOUT`) at tick 4080.
+
+Cleanup/re-entry — isolated `p2_kurage_runtime.exe --experimental-pikmin2-room
+--receiver-reentry`; log `output/dsw/l29-out/kurage-reentry-run/stdout.log`:
+
+```
+:766 P2_KURAGE_TEKI_FORGET bound=1 corpse=0 remaining=0
+:767 P2_KURAGE_REENTRY_FORGET forgotten=1 bound=0 stale=0
+:770 P2_KURAGE_TEKI_RESET bound_before=1 corpse_before=0 bound_after=0 corpse_after=0
+:774 P2_KURAGE_REENTRY_PASS reset=1 stale_bound=0 rebound=1
+:775 PASS KURAGE_RUNTIME cleanup_reentry
+```
+
+### Bound six-gate table
+
+Source ID: 57 Kurage (`source_id` 57, `BDT_Normal`).
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PARTIAL | output/dsw/l29-out/kurage-arena/f4b1b0a27e8f4c85b906c04b249b3618/run.log:727 (generated type-0 placement; source 57 identity not claimed) | stand-in body |
+| 2. Autonomous movement and animation | PASS | output/dsw/l29-out/kurage-arena/b7439430e78b48b6ad2c9400f50f4b02/run.log:764 (P2_KURAGE_MOVE tick=30 .. :4080, 136 samples; states 1/2/4/9, anim 0->61) | natural source FSM; body stand-in labelled |
+| 3. Attacks and receivers | PASS | output/dsw/l29-out/kurage-arena/b7439430e78b48b6ad2c9400f50f4b02/run.log:793 P2_KURAGE_RECEIVER_HIT, :794 ATTACH stick_before=0 stick_after=1, :852 KILL alive_after=0 | natural receiver on live Pikmin |
+| 4. Death and corpse | PASS | output/dsw/l29-out/kurage-arena/f4b1b0a27e8f4c85b906c04b249b3618/run.log:808 P2_KURAGE_TEKI_DEAD, :813 CORPSE_CONFIG carry_min=7 carry_max=14 min_free_slot=0 | natural |
+| 5. Actual transport and reward | PASS | output/dsw/l29-out/kurage-arena/f4b1b0a27e8f4c85b906c04b249b3618/run.log:855 P2_POD_RECEIPT id=corpse:kurage:201001 value=2 new=1 pokos=2 seeds=0 | natural |
+| 6. Cleanup and re-entry | PASS | output/dsw/l29-out/kurage-reentry-run/stdout.log:766 FORGET, :770 RESET bound_before=1, :774 REENTRY_PASS stale_bound=0 rebound=1 | natural forget/reset seam |
+
+Honest labels: the bound actor body is the generated type-0 stand-in, not the P2
+Jellyfloat actor (gate 1 stays PARTIAL). The showcase seeds one live Pikmin into the
+suction window as a fixture concession; the receiver, its attachment and the ingestion
+kill are the real engine receiver. The default (non-showcase) production path is
+byte-identical, so gates 4/5 keep their earlier run citations.
+
+### Checker output
+
+```
+py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE29_DEEPSEEK_HANDOFF.md
+```
+
