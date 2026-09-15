@@ -50,10 +50,19 @@ class TamagoGroupRuntimeTests(unittest.TestCase):
 
     def test_removing_group_forget_fails_group_cleanup(self):
         bad = GOOD_LOG.replace(
-            'P2_TAMAGO_GROUP_FORGET host=346020 group=10 remaining=0\n', '')
+            'P2_TAMAGO_GROUP_FORGET host=346020 group=10 remaining=0 queued=9\n', '')
         result = validate(bad, code=0)
         self.assertFalse(result['checks']['group_cleanup'])
         self.assertFalse(result['passed'])
+
+    def test_removing_group_drain_fails_group_cleanup(self):
+        # Map erasure alone is not cleanup: the deferred born-follower drain must
+        # still be observed (P2_TAMAGO_GROUP_DRAIN killed=9).
+        bad = GOOD_LOG.replace('P2_TAMAGO_GROUP_DRAIN killed=9 source_id=68\n', '')
+        result = validate(bad, code=0)
+        self.assertFalse(result['checks']['group_cleanup'])
+        self.assertFalse(result['passed'])
+        self.assertEqual(result['drained'], 0)
 
     def test_stragglers_fail_group_cleanup(self):
         bad = GOOD_LOG.replace('remaining=0', 'remaining=3')
