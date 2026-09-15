@@ -8,6 +8,7 @@
 #include "teki.h"
 #include "pc_randomizer.h"
 #include "pc_p2_enemy.h"
+#include "pc_p2_generated_placement.h"
 #include <cstdio>
 
 static bool randomizerProtected(TekiPersonality* personality) {
@@ -157,9 +158,13 @@ Creature* GenObjectTeki::birth(BirthInfo& info)
     if (pc_randomizer_p2_bridge() && info.mGenerator) {
         const unsigned uid = pc_randomizer_generator_id(info.mGenerator);
         const unsigned source = pc_randomizer_p2_source_for_id(uid);
-        if (source)
+        if (source) {
             std::printf("P2_SEED_RESOLVE source_id=%u target=%u original_type=%d x=%.1f z=%.1f\n",
                         source, uid, int(mTekiType), info.mPosition.x, info.mPosition.z);
+            // Generated placement (lane 03/04): claim the spawned actor for its
+            // seeded P2 identity module instead of leaving it as a P1 stand-in.
+            pc_p2_generated_placement_bind(static_cast<BTeki*>(teki), source, uid, info.mGenerator->_70);
+        }
     }
 	return teki;
 }

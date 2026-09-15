@@ -170,6 +170,8 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_demon_bridge.cpp
     pc_port/pc_p2_demon_host.cpp
     pc_port/pc_p2_sarai_host.cpp
+    pc_port/pc_p2_sarai_manager.cpp
+    pc_port/pc_p2_generated_placement.cpp
     pc_port/pc_bbft.cpp
     pc_port/pc_p2_preview.cpp
     pc_port/pc_p2_captain.cpp

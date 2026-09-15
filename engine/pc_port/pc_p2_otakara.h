@@ -23,6 +23,9 @@ class PelletView;
 // Bomb blast contract and remains covered by pc_p2_bombotakara plus the batch-2
 // visual path. Every hook is a no-op for unregistered actors.
 void pc_p2_otakara_setup();
+// Generated-placement bridge (lane 03/04): register the randomizer-claimed
+// actor for its seeded elemental-dweevil source (59-62) by generator ID.
+bool pc_p2_otakara_bind_dynamic(BTeki*, unsigned generatorId, unsigned sourceId);
 void pc_p2_otakara_reset();
 void pc_p2_otakara_forget(BTeki*);
 void pc_p2_otakara_update(BTeki*);
