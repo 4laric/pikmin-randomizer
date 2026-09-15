@@ -210,12 +210,12 @@
         "PIKMIN2_KOGANE_AUDIT.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
         "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
+        "death_corpse": "PASS",
         "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "cleanup_reentry": "PASS"
       },
       "notes": [
         "Kogane (Iridescent Flint Beetle): pc_p2_kogane family vehicle; hit-triggered drops with finite counts + restart dedupe remain (#168/#219).",

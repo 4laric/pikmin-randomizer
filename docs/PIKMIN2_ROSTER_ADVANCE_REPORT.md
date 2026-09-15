@@ -42,19 +42,19 @@ Regenerate with:
 - PIKMIN2_LANE29_DEEPSEEK_HANDOFF.md: 57 Kurage, 72 OniKurage
 - PIKMIN2_LANE31_DEEPSEEK_HANDOFF.md: 98 Tyre, 99 BlackMan
 - PIKMIN2_LANE32_DEEPSEEK_HANDOFF.md: 73 BigTreasure
-- PIKMIN2_LANE33_DEEPSEEK_HANDOFF.md: 44 BlueKochappy, 45 YellowKochappy
+- PIKMIN2_LANE33_DEEPSEEK_HANDOFF.md: 38 PanModoki, 44 BlueKochappy, 45 YellowKochappy, 54 Miulin, 59 FireOtakara
 
 ## Gates-away summary
 
 | Gates away from admission | Identities |
 |---:|---:|
 | 0 | 1 |
-| 1 | 1 |
+| 1 | 3 |
 | 2 | 2 |
-| 3 | 1 |
-| 4 | 1 |
+| 3 | 2 |
+| 4 | 2 |
 | 5 | 2 |
-| 6 | 44 |
+| 6 | 40 |
 
 Seedable (`source`/`variant`) identities named across handoffs: 52
 
@@ -67,9 +67,8 @@ Seedable (`source`/`variant`) identities named across handoffs: 52
 
 ### 9 Kogane (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE17_DEEPSEEK_HANDOFF.md
-- advances: (none)
-- refused: attacks_receivers=injected, cleanup_reentry=uncited, death_corpse=uncited, identity_spawn=uncited, movement_animation=uncited
-- blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
+- advances: identity_spawn, movement_animation, death_corpse, transport_reward, cleanup_reentry
+- blocking: attacks_receivers
 
 ### 10 Wealthy (source) - shared table, excluded
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE17_DEEPSEEK_HANDOFF.md
@@ -151,10 +150,10 @@ Seedable (`source`/`variant`) identities named across handoffs: 52
 - advances: (none)
 - blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
 
-### 38 PanModoki (source) - shared table, excluded
-- handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE18_DEEPSEEK_HANDOFF.md
-- advances: (none)
-- blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
+### 38 PanModoki (source)
+- handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE18_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE33_DEEPSEEK_HANDOFF.md
+- advances: identity_spawn, attacks_receivers, transport_reward
+- blocking: movement_animation, death_corpse, cleanup_reentry
 
 ### 40 OoPanModoki (source) - shared table, excluded
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md
@@ -181,10 +180,10 @@ Seedable (`source`/`variant`) identities named across handoffs: 52
 - advances: attacks_receivers, death_corpse
 - blocking: identity_spawn, movement_animation, transport_reward, cleanup_reentry
 
-### 54 Miulin (source) - shared table, excluded
-- handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md
-- advances: (none)
-- blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
+### 54 Miulin (source)
+- handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE33_DEEPSEEK_HANDOFF.md
+- advances: identity_spawn, death_corpse
+- blocking: movement_animation, attacks_receivers, transport_reward, cleanup_reentry
 
 ### 55 Hanachirashi (source) - shared table, excluded
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md
@@ -207,10 +206,10 @@ Seedable (`source`/`variant`) identities named across handoffs: 52
 - blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
 
 ### 59 FireOtakara (source)
-- handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE22_DEEPSEEK_HANDOFF.md
-- advances: (none)
+- handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE22_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE33_DEEPSEEK_HANDOFF.md
+- advances: identity_spawn, movement_animation, attacks_receivers, death_corpse, cleanup_reentry
 - refused: attacks_receivers=uncited, identity_spawn=uncited, movement_animation=uncited
-- blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
+- blocking: transport_reward
 
 ### 60 WaterOtakara (source) - shared table, excluded
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE22_DEEPSEEK_HANDOFF.md
