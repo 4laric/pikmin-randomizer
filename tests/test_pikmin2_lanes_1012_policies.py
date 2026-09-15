@@ -32,7 +32,9 @@ def _native_root():
 
 def _port_candidates():
     root = _native_root()
-    (yield root / 'pc_port') if root else None
+    if root is None:
+        return []
+    return [root / 'pc_port']
 
 
 _CASES = (

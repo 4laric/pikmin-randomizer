@@ -170,7 +170,12 @@ fixture-placed on two X-separated clusters and the squad is recoloured (one Blue
 through the lane-07 lifetime seam: the fixture calls the engine's own
 `pc_p2_reset_all_teki()` (which invokes `pc_p2_hiba_reset`) and then re-enters via
 `pc_p2_hiba_setup()`; the trigger is staged, but the seam functions are the
-production teardown/re-entry path (no full scene reload is exercised).
+production teardown/re-entry path (no full scene reload is exercised). Note two
+things about "re-arm exactly once": `pc_p2_hiba_setup()` already calls
+`pc_p2_hiba_reset()` itself (`pc_p2_hiba.cpp:292`), so the once-invariant is
+partly guaranteed by construction; the probe's value is observing that
+`pc_p2_reset_all_teki()` actually clears the hazards (`before=3 reset=0`), and the
+re-arm re-reads the sidecar (`rearmed=3`, not a stale +3).
 
 - Source ID: 20 `Hiba`.
 
@@ -181,7 +186,7 @@ production teardown/re-entry path (no full scene reload is exercised).
 | 3. Attacks and receivers | PASS (natural) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:729 | natural |
 | 4. Death and corpse | PASS (natural, no corpse) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:730 | natural |
 | 5. Actual transport and reward | N/A | fixed hazard drops nothing | N/A |
-| 6. Cleanup and re-entry | PASS (natural) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:762 | natural |
+| 6. Cleanup and re-entry | PASS (staged seam) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:762 | staged |
 
 - Source ID: 21 `GasHiba`.
 
@@ -192,7 +197,7 @@ production teardown/re-entry path (no full scene reload is exercised).
 | 3. Attacks and receivers | PASS (natural) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:735 | natural |
 | 4. Death and corpse | PASS (natural, no corpse) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:752 | natural |
 | 5. Actual transport and reward | N/A | fixed hazard drops nothing | N/A |
-| 6. Cleanup and re-entry | PASS (natural) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:762 | natural |
+| 6. Cleanup and re-entry | PASS (staged seam) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:762 | staged |
 
 - Source ID: 22 `ElecHiba`.
 
@@ -203,7 +208,7 @@ production teardown/re-entry path (no full scene reload is exercised).
 | 3. Attacks and receivers | PASS (natural) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:721 | natural |
 | 4. Death and corpse | PASS (natural, no corpse) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:733 | natural |
 | 5. Actual transport and reward | N/A | fixed hazard drops nothing | N/A |
-| 6. Cleanup and re-entry | PASS (natural) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:762 | natural |
+| 6. Cleanup and re-entry | PASS (staged seam) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:762 | staged |
 
 `scripts/check_p2_handoff_gates.py` output (run against the wave branch's roster
 module; all three identities are `hazard` classification, so they are correctly
@@ -377,3 +382,64 @@ Subagent usage (slice 2):
    of its remit). Saved ~20 min, reclaimed ~5 min of correction.
 
 Net: ~60 min of parallel work off the critical path.
+
+## Review fixes 3
+
+1. **Merged `claude/p2-deepseek-wave-native`** into `deepseek/p2-l10-native`
+   (merge commit `762ed2e4`, +222 commits) so the receiver audit runs against the
+   current wave, not the stale lane-10 snapshot.
+2. **Receiver contract corrected (was audited against stale native).**
+   `pc_p2_otakara.cpp` is the second integrated consumer, not policy-only: on the
+   OtakaraBase Flick `attack1` frame-35 event, `dweevilAccepts` routes Fire/Water
+   through `p2_species_immune` and Gas/Denki through `p2_emitter_accepts`
+   (`:210`/`:211`), then `doDischarge` `stimulate(InteractFire/Bubble/Gas/Denki)`
+   (`:238`/`:241`/`:244`/`:248`) and logs `P2_OTAKARA_DISCHARGE_IMMUNE`/`HIT`.
+   `docs/PIKMIN2_LANE10_RECEIVER_CONTRACT.md` now cites `pc_p2_otakara.cpp:210-248`
+   and `pc_p2_elecbug.cpp:665` and marks `P2_RECV_GAS/DENKI` as `PRINT` debug-only
+   (`include/DebugLog.h:68`; run7 has 7 `P2_HIBA_GAS_HIT` + 1 `P2_HIBA_DENKI_HIT`
+   and zero `P2_RECV_*`).
+3. **Item 2 delivered (family emitter run on the merged native).** Ran
+   `experimental/pikmin2_elecbug_denki_runtime` against the merged native
+   (`nectar.exe` `ea12f423…`, fixture `8e9861d6…`): exit 0, all ten checks true —
+   `P2_ELECBUG_DENKI emitter=sweep target=0 accepted=1 target_state=35(DenkiDying)`
+   (natural ElecBug emission through the real `InteractDenki`, `native.log:913`),
+   `P2_ELECBUG_IMMUNE` Yellow/Bulbmin (`:915-916`), `P2_DENKI_LETHAL` Blue dead +
+   Yellow/Bulbmin alive with `violation=0` (`:929`). The receiver side therefore
+   proves **attacks/receivers** (natural emitter -> accepted + DenkiDying + immune
+   rejection) and **death** (electric-exclusive lethal path) as natural. The
+   Otakara arena harness (`pikmin2_otakara_runtime.py`) is lane 22's and absent
+   from this root; its `P2_OTAKARA_DISCHARGE` traffic is present under
+   `output/dsw/l22-*` (lane 22 evidence), and its receiver code is above.
+4. **Gate 6 re-labelled** `PASS (staged seam)` / `staged` (the trigger is fixture
+   code calling `pc_p2_reset_all_teki()` + `pc_p2_hiba_setup()` from the idle loop;
+   no real stage exit/re-entry). Noted that `pc_p2_hiba_setup()` self-resets
+   (`pc_p2_hiba.cpp:292`), so "exactly once" is partly by construction; the probe's
+   value is observing the reset clears (`h1=0`).
+5. **Test style fix** — `_port_candidates()` in
+   `tests/test_pikmin2_lanes_1012_policies.py` now uses a plain `if` (not the
+   obscure generator-`yield` expression); 40 focused tests pass.
+
+Reproduction (fix3: native `762ed2e4`, root `HEAD`):
+
+```powershell
+py -3.12 output/deepseek-wave/build_lane.py l10
+py -3.12 output/deepseek-wave/slot.py run build l10 -- py -3.12 -m experimental.pikmin2_elecbug_denki_runtime build --native C:/Users/alari/pikmin-randomizer/output/dsw/native-l10 --build-dir C:/Users/alari/pikmin-randomizer/output/dsw/native-l10-build --output C:/Users/alari/pikmin-randomizer/output/dsw/l10-out/elecbug-denki-fixture --head 762ed2e42f38e31ee6e31721203d2a577d1176a4
+$env:PYTHONUTF8='1'; $env:PIKMIN_P2_ROOM_WINDOW='960x540'
+py -3.12 output/deepseek-wave/slot.py run gl l10 -- py -3.12 -m experimental.pikmin2_elecbug_denki_runtime run --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" --imported "C:/Users/alari/pikmin-randomizer/output/dsw/l14-out/ground" --output C:/Users/alari/pikmin-randomizer/output/dsw/l10-out/elecbug-denki-run --exe C:/Users/alari/pikmin-randomizer/output/dsw/l10-out/elecbug-denki-fixture/fixture.exe --seconds 90
+```
+
+Subagent usage (fix3):
+
+1. **`explore` — source audit** of the merged Otakara + ElecBug emitters, the
+   `PRINT` no-op (`include/DebugLog.h:68`), and the run7 `P2_RECV_*` count. Result
+   **used as-is**: gave the exact Otakara `dweevilAccepts`/`doDischarge` line
+   numbers and confirmed `P2_RECV_*` is compiled out. Saved ~20 min.
+2. **`explore` — candidate inventory** of the Otakara/ElecBug runtime harnesses and
+   their asset requirements. Result **used as-is**: found `--imported` =
+   `output/dsw/l14-out/ground` (exists) for the ElecBug denki fixture, and that the
+   Otakara harness is lane-22's (absent here). Drove the decision to run ElecBug
+   denki. Saved ~25 min.
+3. **`general` — test fix**: `_port_candidates()` plain-if + pytest (13 passed).
+   Result **used as-is**. Saved ~10 min.
+
+Net: ~55 min of parallel work off the critical path.
