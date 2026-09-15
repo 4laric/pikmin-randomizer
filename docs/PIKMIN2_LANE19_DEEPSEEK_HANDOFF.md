@@ -7,6 +7,12 @@ Implementation owner: Codex via shared account `4laric`. Executing agent: DeepSe
 upstream GitHub was touched; nothing was pushed. This revises the prior handoff
 whose central "health-floor/regression" claim was wrong.
 
+
+### Integrator note (review of fix 1)
+
+- The captain-down detection path is unit-tested only; no GL run under the lane evidence dir has emitted a CAPTAIN_DOWN marker yet (fix1-01 predates the mHealth<=1 check).
+- fix1-02 is the first natural Mamuta kill on the wave: died tick 1922, corpse, transport started; delivery did not finish inside the 2400-tick window.
+
 ## Correction (review item 1)
 
 The previous handoff claimed a "health floor / natural-kill regression on
@@ -52,7 +58,7 @@ The bisect request to lanes 01/08/10/13 is dropped.
 | 1. Exact identity and spawn | **PASS** (P1 Miurin proxy) — `P2_MAMUTA_POD_BIRTH id=221001 type=24 squad=10 color=red` |
 | 2. Autonomous movement and animation | **PASS** — `approached=1`, full state coverage (`00017f9c`), static-anchor draw |
 | 3. Attacks and receivers | **PASS** (proxy, natural) — natural `P2_MAMUTA_PLANT kind=1 happa=2`; navi receiver (`P2_MAMUTA_NAVI damage=5.0`) observed in the pre-park runs |
-| 4. Death and corpse | **PASS (1 run) / FLAKY overall** — `fix1-02`: natural kill `died_tick=1922` + `corpse=1`; 3 other park-250 runs wiped the squad before the kill |
+| 4. Death and corpse | **PASS (1 run) / FLAKY overall** — `fix1-02`: natural kill `died_tick=1922` + `corpse=1`; fix1-03/04 (park-250) wiped the squad before the kill; fix1-01 (park-100) ended in the captain-down freeze (integrator correction) |
 | 5. Actual transport and reward | **UNPROVEN** — `fix1-02` corpse was picked up (`transport=1`) but not delivered by window end (`goal=0`, `pokos=0`) |
 | 6. Cleanup and re-entry | **partial PASS** — reset/forget + control alive; revisit fixture built but runtime UNTESTED (gated on gate 5) |
 
@@ -68,7 +74,7 @@ The captain-park strategy removes the captain-down pause but shifts the Miurin's
 pounds onto the Pikmin, whose P2 bury converts them (permanent with a parked
 captain). 10 basic reds vs a 2485-HP Mamuta is marginal: `fix1-02` left one red
 that killed (1922) and started carrying, but delivery did not finish in the
-3600-tick window; `fix1-03/04` lost all reds and the Mamuta healed. This is a
+2400-tick window (the fix1-02 exe 34b9226c predates the NATURAL_TICKS bump to 3600; carry ran ~300 ticks before the window closed — integrator correction); `fix1-03/04` lost all reds and the Mamuta healed. This is a
 squad-balance/attrition question for the integrator (e.g. 20-red overlay squad),
 not a lane-19 code defect.
 
