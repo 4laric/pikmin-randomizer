@@ -324,3 +324,77 @@ did not re-delegate the transcription; I re-derived every PASS gate myself again
 the rule and added a check to the fix script (a PASS whose notes carry
 inject/proxy/fixture/vehicle/visual/host/display is flagged). Future delegated
 doc-audit output will be gated the same way before transcription.
+
+## Slice 3
+
+Third bounded slice: **first real admission chain, deny-by-default preserved**
+(root-side; no native build required; no identity admitted).
+
+### Deliverable
+
+A documented, tested **admission contract** in `experimental/pikmin2_enemy_roster.py`
+that admits an identity ONLY when its ledger row proves the full chain:
+
+- natural PASS on `identity_spawn`, `movement_animation`, `attacks_receivers`,
+  `death_corpse`, `cleanup_reentry` (gates 1-4 + 6), AND
+- a cited `delivery_receipt` for `transport_reward` (gate 5) — a durable
+  receipt citation, not a gate status.
+
+API added:
+- `ADMISSION_GATES` — the five natural-PASS gates.
+- `RosterEntry.delivery_receipt` (`str | None`) + parsed from the overlay.
+- `admission_requirements(entry)` — exact missing gates (or `[]`).
+- `admission_contract(roster)` -> `{"admitted": [...], "blocking": {id: [missing]}}`.
+- `admitted_ids` / `require_admitted` / `admission_set` now derive from the contract.
+- `write_admission(roster, path)` persists `eligibility:"admitted"` (or demotes a
+  stale `admitted` to `candidate`) into the evidence JSON lane 03 reads; it only
+  mutates existing rows, never fabricates a row for an identity with no overlay.
+- `validate_roster` rejects a hand-edited `eligibility:"admitted"` whose contract
+  is unsatisfied, naming the exact gap.
+- `scripts/audit_pikmin2_roster.py --admit` prints the admitted set + per-candidate
+  blocking gates; `--write-admission` commits them.
+
+### Files
+
+- `experimental/pikmin2_enemy_roster.py`, `docs/PIKMIN2_ENEMY_ROSTER.md`,
+  `docs/PIKMIN2_ENEMY_ROSTER_EVIDENCE.json` (delivery_receipt field doc),
+  `scripts/audit_pikmin2_roster.py`, `tests/test_pikmin2_enemy_roster.py`
+  (updated synthetic admitted tests), `tests/test_pikmin2_admission_contract.py` (new, 9 tests).
+
+### Result
+
+```
+py -3.12 -m pytest <roster/admission/coverage/seed/placement/enemy suites> -q   # 137 passed, 17 subtests
+py -3.12 scripts/audit_pikmin2_roster.py --review                              # exit 0 (coverage complete)
+py -3.12 scripts/audit_pikmin2_roster.py --admit                               # admitted [], 64 candidates blocked w/ exact gates
+admitted_ids(load_and_validate()) == []                                        # nothing admitted today (correct)
+```
+
+No real identity is admitted: the closest rows (Sokkuri 79 / Armor 15) still miss
+`death_corpse`, `cleanup_reentry` and `transport_reward` (no durable Onion/AP
+receipt exists per lane 06 ordinary-vs-Pod split).
+
+### Assumptions / notes
+
+- "Roster JSON lane 03 reads" === the evidence overlay read through
+  `admitted_ids()`; `write_admission` writes `eligibility` there.
+- Gate 5 is gated by `delivery_receipt` (a citation), not a `PASS` status, because
+  the only `transport_reward: PASS` today (Shijimi 77) is an in-place nectar
+  reward marker, not real transport; the ordinary surface is still unwired
+  (PIKMIN2_REWARD_RECEIPTS.md).
+- `admission_set` keeps its category/raise shape (candidates/excluded/denied from
+  eligibility, `.admitted` from the contract) so lane 03's fail-closed reads are unchanged.
+
+### Subagent usage
+
+- `explore` #1 (admitted-set read-path consumers): used as-is; confirmed only lane 03's
+  seed bridge + `seed.py` + audit `summarize` read `admitted_ids`, so deriving it
+  from the contract is safe; produced the exact test list to update.
+- `explore` #2 (delivery-receipt concept): used as-is; pinned the ordinary-vs-Pod
+  receipt split and confirmed no identity has a real delivery receipt today, which
+  shaped `delivery_receipt` as a citation (not a status).
+- `general` #3 (contract tests): used nearly as-is; 9 tests landed and pass; I only
+  corrected `write_admission` so the merge path never fabricates rows (the empty
+  placeholder-row regression I caught when running `--write-admission`).
+  Net: all three materially shortened the read-heavy work; the general agent's
+  scaffold was kept and only lightly corrected.
