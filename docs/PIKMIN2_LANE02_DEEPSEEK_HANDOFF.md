@@ -1149,3 +1149,91 @@ py -3.12 scripts/audit_pikmin2_roster.py --review                       # exit 0
 py -3.12 -m pytest tests/test_pikmin2_roster_coverage.py -q             # 14 passed
 py -3.12 -m pytest <roster/admission/handoff/seed suites> -q            # 107 passed
 ```
+
+## Fix 10
+
+The wave engine re-export added one more `pc_p2_*.cpp` module the ledger did not
+cover, which broke the coverage audit on the merged tree (`test_real_ledger_is_fully_covered`
+failed with `['pc_p2_bombsarai_teki']`, `test_audit_review_exits_zero_on_real_ledger`
+exit 1). No new source identity is involved.
+
+- Source identities touched: none. `pc_p2_bombsarai_teki` is the BombSarai
+  (EnemyID 58) carrier sidecar: it binds a generated P1 TEKI_Napkid vehicle and
+  feeds lane 27's existing `pc_p2_bombsarai_*` policy (13-state FSM, hover, bomb
+  pool, capture joint, blast) plus shared receivers. It is a family-27 submodule
+  of identity 58's vehicle, covered by row 58 (`native_module pc_p2_bombsarai_fsm`),
+  so it joins `SHARED_MODULES` — no gate row fabricated, deny-by-default unchanged.
+- `tests/test_pikmin2_roster_coverage.py`: added `_lane_of_module("pc_p2_bombsarai_teki")
+  == "27"` to the routing test, and `test_review_lists_uncovered_module_with_lane`,
+  which injects a fake `pc_p2_sokkuri_probe.cpp` via a monkeypatched `ENGINE_PORT`
+  and asserts `--review` exits 1 with `pc_p2_sokkuri_probe (lane 14)` in stdout.
+  Tmp-dir + monkeypatch only; no lane paths, no shared state.
+
+## Root/native pins and ordered commits (Fix 10)
+
+- Root branch `deepseek/p2-l02`, head `5c27b950` at start; dirty: the two files below.
+- Native branch `deepseek/p2-l02-native`, head `b805d9c6`, clean, no lane02 commits
+  (unchanged by design — see "No native commit").
+
+Ordered commits (root only): the Fix 10 commit below. No native commit: this slice
+is entirely root-side (audit allowlist + tests). Verified
+`scripts/generate_pikmin2_roster_revision.py --check` matches BOTH
+`engine/pc_port/pc_randomizer_p2_roster.h` and the native worktree header, so the
+roster revision constant and native bindable-ID set are unchanged. No empty native
+commit created.
+
+## Owned files / interface (Fix 10)
+
+- `scripts/audit_pikmin2_roster.py` — one-line `SHARED_MODULES` addition
+  (`pc_p2_bombsarai_teki`).
+- `tests/test_pikmin2_roster_coverage.py` — routing assertion + failure-message test.
+- No shared C++ hooks, no seed-bridge/ingest/report changes. Real consumer unchanged:
+  lane 03 reads `admitted_ids()`; the suite proves the real pool
+  `[23, 44, 59, 60, 61, 62]` flows and unadmitted stays out.
+
+## Build / fixture evidence (Fix 10)
+
+- No native build invoked: no C++ changed, so no shared build slot was consumed.
+- No GL/runtime fixture: roster audit work involves no runtime acceptance run, so
+  the 960x540 centred-window + starting-Pikmin adoption rule does not trigger;
+  lane 02 claims no gameplay PASS in this slice.
+
+## Six-gate table (Fix 10)
+
+All six gates source-backed N/A for this slice: no enemy behavior, spawn binding,
+damage, corpse, transport, or lifetime path was touched. No injected state was
+introduced (the new test uses a synthetic ledger fixture and tmp files only).
+
+## Tests run (Fix 10)
+
+```
+py -3.12 -m pytest tests/test_pikmin2_roster_coverage.py -q             # 15 passed
+py -3.12 -m pytest <11 roster/admission/handoff/seed/placement files> -q  # 143 passed, 2 skipped
+py -3.12 scripts/audit_pikmin2_roster.py --review                       # exit 0, coverage complete: True
+```
+
+Failure-before proof (stashed Fix 10, reran): `test_real_ledger_is_fully_covered`
+failed with `['pc_p2_bombsarai_teki']` and `--review` exited 1; fix restored green.
+Stash popped cleanly, no other files touched.
+
+## Assumptions / remaining blockers (Fix 10)
+
+- Assumes the wave's refreshed `engine/` is the input to cover; the coverage test
+  plus the lane-annotated failure message is the standing guard, so the next
+  refresh that adds a module fails loudly with its owning lane attached.
+- No blockers from other lanes for this slice. Admission stays as the ledger
+  reports it (`[23, 44, 59, 60, 61, 62]`); family evidence remains family-owned.
+
+## Reproduction (Fix 10)
+
+```
+py -3.12 -m pytest tests/test_pikmin2_roster_coverage.py -q
+```
+
+## Subagent usage (Fix 10)
+
+No subagents: this environment exposes no `task` tool (consistent with lane 02's
+prior report that the tool is absent here), so all investigation, edits and
+verification were done directly by the primary session. The read-heavy steps
+(module classification from its header, audit semantics from the committed code)
+were short enough that delegation would not have saved wall-clock.
