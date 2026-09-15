@@ -164,6 +164,29 @@ The parser stores target→source bindings; the generator→target map and actua
 P2 actor spawn remain lane 04/family work, and the native branch is not yet
 reconciled into the maintained line (no whole-engine export was taken).
 
+## Ordinary spawn-binding seam (this lane, #439)
+
+The bridge now resolves a live generator's own ID32 identity (`Generator::_70`,
+read from each `.gen` entry on the ordinary stage-load path) to its bound source
+id, so the seed's `ENEMY_P2` binding is consulted at the actual enemy birth
+rather than only at probe time:
+
+- `pc_randomizer_p2_source_for_id(unsigned long generator_id)` stringifies the
+  generator id and returns `pc_randomizer_p2_source(...)` (0 when unbound).
+- `GenObjectTeki::birth` (`src/plugPikiNakata/genteki.cpp`) emits
+  `P2_SEED_BIND source_id=<n> target=<_70> original_type=<t> x=.. z=..` for a
+  bound generator, using the same `_70` key the Snow/Dwarf-Orange family
+  sidecars already select actors by.
+- `pc_randomizer_probe --enemy-p2-spawn-probe --enemy-p2-target <id>` asserts the
+  resolution, and `scripts/test_p2_bridge_spawn.py` drives it end to end from a
+  generated bootstrap with the Snow(45)/Dwarf-Orange(44) cohort.
+
+The target token a seed must emit is therefore the **decimal string of the bound
+dwarf generator's `_70` value**; lane 04 supplies those concrete placements, and
+lane 13/05 still own the actual family render/bank staging. This is a
+parser/seam-level identity gate, not a natural gameplay PASS, and it does not yet
+retire the `assets/p2-snow-all-dwarfs.txt` all-dwarfs opt-in.
+
 ## Remaining work
 
 - Lane 04: real binding targets and legal placement.
