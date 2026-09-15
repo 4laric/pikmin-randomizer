@@ -88,6 +88,14 @@ class OtakaraNativeSourceTests(unittest.TestCase):
         # fp24 attack: Fire/Elec 10, Water/Gas/Bomb 0.
         self.assertIn('return 10.0f', text)
 
+    def test_damage_attribution_wiring(self):
+        text = _read('pc_port/pc_p2_otakara.cpp')
+        self.assertIn('void pc_p2_otakara_attack', text)
+        self.assertIn('interaction=%s attacker=%s', text)
+        btk = _read('src/plugPikiNakata/tekibteki.cpp')
+        self.assertIn('pc_p2_otakara_attack(this, attack->mOwner, "InteractAttack");', btk)
+        self.assertIn('pc_p2_otakara_forget', _read('pc_port/pc_p2_teki_lifetime.cpp'))
+
     def test_hook_wiring(self):
         teki = _read('include/teki.h')
         self.assertIn('#include "pc_p2_otakara.h"', teki)

@@ -26,7 +26,7 @@ branch `deepseek/p2-l22`, base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`):
 - `ff83c3c` — "lane22: real FireOtakara actor FSM runtime + tests + handoff (#447)"
   (adds `experimental/pikmin2_otakara_runtime.py`, `tests/test_pikmin2_otakara_native.py`,
   `docs/PIKMIN2_LANE22_DEEPSEEK_HANDOFF.md`).
-- (fix1 commit, this session) — "lane22: review fixes — natural-damage log,
+- `4f909aa` — "lane22: review fixes — natural-damage log,
   squad counts, WAIT timer fix, validate test + path discovery (#447)".
 
 **Native** (worktree `C:/Users/alari/pikmin-randomizer/output/dsw/native-l22`,
@@ -200,3 +200,154 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l2
     --exe "C:/Users/alari/pikmin-randomizer/output/dsw/l22-fixture-fix1/fixture.exe" `
     --seconds 150
 ```
+
+## Slice 2 — natural death, host corpse and cleanup (gates 4/5/6)
+
+The first slice stopped the fixture at the mHealth<=0 drop, so the host
+die()/dieSoon()/becomePellet() path and the registry teardown were UNTESTED, and
+the 15 HP natural drop was logged without naming the attacking interaction. This
+slice removes the injected `P2_OTAKARA_DEATH_INJECT` from the primary run, lets
+an ordinary 20-Pikmin free squad kill the actor through the real `InteractAttack`
+receiver, names every drop, and runs past mHealth<=0 to observe the corpse and
+the lane-07 forget.
+
+### Ordered commits (both branches)
+
+**Native** (`deepseek/p2-l22-native`, base `b805d9c6...`):
+- `9fe3ac02` — "lane22: otakara damage attribution — interaction + attacker on P2_OTAKARA_HIT (#447)"
+  (adds `pc_p2_otakara_attack()` and the `interaction=`/`attacker=` fields on the HIT log).
+- `9eb0f78d` — "lane22: hook — pc_p2_otakara_attack in interactDefault Attack branch (#447)"
+  (one additive line in `BTeki::interactDefault`; no-op for unregistered actors).
+
+**Root** (`deepseek/p2-l22`, base `4f909aa`):
+- `1003bb0` — "lane22: natural death/corpse/cleanup runtime + validate markers + tests (#447)"
+  (`experimental/pikmin2_otakara_runtime.py`, `tests/test_pikmin2_otakara_native.py`,
+  `tests/test_pikmin2_otakara_runtime.py`).
+
+### Interfaces / hooks touched
+
+- `pc_p2_otakara_attack(BTeki*, Creature* owner, const char* interaction)` — new
+  family-local recorder; stores the queued attack's label plus the attacker
+  colour (Red/Blue/…) into the actor's module state so the next `P2_OTAKARA_HIT`
+  logs `interaction=InteractAttack attacker=red`. Reads `owner->isPiki()`/`mColor`.
+- `src/plugPikiNakata/tekibteki.cpp` — one additive line in the
+  `TekiInteractType::Attack` branch of `BTeki::interactDefault` (the path the
+  TaiChappyStrategy reuses for ordinary Pikmin melee): `pc_p2_otakara_attack(this,
+  attack->mOwner, "InteractAttack");`.
+
+The primary fixture (`scenario='natural'`) deploys the 20-Pikmin squad in a circle
+around the actor and calls `changeMode(PikiMode::FreeMode)` (the lane-13
+combat-observer recipe) — a player-equivalent stimulus, no fixture damage. The
+retained `scenario='inject'` variant keeps the old one-shot `InteractAttack`
+death trigger for cross-checking the recorder-side path.
+
+### Build evidence
+
+```text
+native=9eb0f78d58b219891a27a8fc215430af3955d01c  sha256=914117e1d22b2e29c7cfa6ee841d479acb13e1409653ac1a3ac42c1cefd3ec5a  ninja_n="ninja: no work to do."
+```
+
+Private fixture `output/dsw/l22-fixture-slice2/` (status `built`), `fixture.exe`
+SHA-256 `12364246e40af93e348379417ac67f5a7d2037746f24c88abddc4bc29b3cb849`.
+
+### Fixture adoption evidence (natural run)
+
+`output/dsw/l22-runtime-slice2/ecdba14fcd2c4a179fb0569a548eb1c6/` — exit 0 in
+~11 s. `Experimental preview window set to 960x540 windowed and centered`;
+`P2_OTAKARA_SQUAD red=1 blue=0 registered=1` (one recoloured Blue, rest Red);
+`P2_OTAKARA_DEPLOY free_squad=20`; no extinction.
+
+### Six arena gates (natural vs injected)
+
+| Gate | Result | Evidence |
+|---|---|---|
+| 1 Exact identity and spawn | **PASS (natural)** | `P2_OTAKARA_BIND generator=349001 source_id=59 stimulus=InteractFire visual_only=0`; `P2_ENEMY_READY species=FireOtakara ... health=150.0 max_health=150.0 behavior=native source_FSM=implemented attack=elemental_discharge` |
+| 2 Autonomous movement and animation | **PASS (natural)** | `P2_OTAKARA_STATE ... state=flick` / `state=wait` |
+| 3 Attacks and receivers | **PASS (natural emitter, real receiver)** | `P2_OTAKARA_DISCHARGE ... applied=1 immune=3`; `P2_OTAKARA_DISCHARGE_IMMUNE ... colour=red`; `P2_OTAKARA_DISCHARGE_HIT ... colour=blue accepted=1` |
+| 4 Death and corpse | **PASS (natural combat + host corpse)** | `P2_OTAKARA_HIT ... health=150.0->135.0 delta=15.0 interaction=InteractAttack attacker=red` (every drop named) → `P2_OTAKARA_DEAD generator=349001 source_id=59 health=0` (real death seam) → `P2_OTAKARA_CORPSE generator=349001 pellet=1 state=0` (host die()/dieSoon()/becomePellet() leaves a pellet whose `mPelletView` is the dead actor) |
+| 5 Actual transport and reward | **UNTESTED / BLOCKED** | cargo-free arena (`p2-cargo-free.txt`, no `p2-pod.txt`): the corpse pellet has no Onion/Pod goal, so transport and the lane-06 reward receipt are not staged (same boundary as lane 14) |
+| 6 Cleanup and re-entry | **PASS (forget, no stale pointers); re-entry UNTESTED** | `pc_p2_otakara_forget` → `P2_OTAKARA_FORGET generator=349001 count=0 registered=0 stale=0`; scene reload/recycled-address rebind not driven |
+
+Injected interventions (labelled): none in the primary run (the squad deployment is
+an engineered stimulus, not a health/state write); the FSM, emitter, receiver,
+source health, all damage drops, the die()/dieSoon()/becomePellet() seam and the
+forget are native. `scenario='inject'` remains available and labels
+`P2_OTAKARA_DEATH_INJECT`.
+
+### Tests
+
+```
+PIKMIN_NATIVE_ROOT=C:/Users/alari/pikmin-randomizer/output/dsw/native-l22 \
+  py -3.12 -m pytest tests/test_pikmin2_otakara_native.py tests/test_pikmin2_otakara_runtime.py \
+                    tests/test_pikmin2_elemental_behavior.py tests/test_pikmin2_dweevil_native.py -q
+# 65 passed
+
+py -3.12 -m pytest tests/test_pikmin2_otakara_native.py tests/test_pikmin2_otakara_runtime.py -q
+# 10 passed, 7 skipped (native source-read tests skip cleanly without PIKMIN_NATIVE_ROOT)
+```
+
+- `validate()` now requires three strip-able markers — `natural_death`
+  (`P2_OTAKARA_DEAD` + no `P2_OTAKARA_DEATH_INJECT`), `corpse`
+  (`P2_OTAKARA_CORPSE ... pellet=1`) and `forget` (`P2_OTAKARA_FORGET ...
+  count=0 registered=0 stale=0`) — plus `natural_hit`
+  (`P2_OTAKARA_HIT ... interaction=InteractAttack`). Removing each marker flips
+  its check (unit-tested in `test_pikmin2_otakara_runtime.py`).
+- `tests/test_pikmin2_otakara_native.py` pins the new attribution wiring
+  (`pc_p2_otakara_attack`, `interaction=%s attacker=%s`, the `interactDefault`
+  hook) against the native source under `PIKMIN_NATIVE_ROOT`.
+
+### Assumptions
+
+- The dweevil's ordinary melee receiver is the P1 `InteractAttack` path; the
+  elemental discharge hits Pikmin (receiver side) and never damages the dweevil,
+  so the only dweevil health interaction to name is `InteractAttack`.
+- `removing` the injected trigger means the primary run no longer prints
+  `P2_OTAKARA_DEATH_INJECT`; `natural_death` is defined as `dead` without that
+  marker so the inject scenario is reported separately and honestly.
+- The Chappy host strategy (`TaiChappyStrategy`) puts a `TaiDeadAction` in every
+  state, so mHealth<=0 drives `die()` → `dieSoon()` → `becomePellet()` without
+  the module calling `die()` itself (the module only drives the source dead clip).
+
+### Remaining blockers (provider lane named)
+
+- **Transport/reward (gate 5)**: lane 06 / lifecycle-reward (#397); requires a
+  Pod/Onion arena to stage the corpse carry and the ordinary receipt. The
+  cargo-free arena cannot exercise it.
+- **Re-entry / recycled-address rebind (gate 6 second half)**: lane 07 lifetime
+  harness (`pc_p2_scene_begin` already wired); not driven in this fixture.
+- **Water/Gas/Elec discharge runtime**: lanes 10/11 receivers are wired; only
+  Fire/`InteractFire` was exercised.
+
+### Subagent usage
+
+No subagents were spawned this slice: the session did not expose the `task`
+tool the slice brief assumed (`explore`/`general`), so the source audit, the
+candidate inventory and the test scaffolding were all done inline. Estimate:
+roughly neutral — the read-heavy parts (interactDefault/chaippy strategy,
+receipt host, kochappy/frog/ground-lifecycle fixtures) already satisfied the
+audit and inventory needs during implementation, and the subagent round-trips
+would have added coordination overhead rather than saving time. If the tool is
+available next slice, the read-only source-audit and the pure-Python test
+boilerplate are the two tasks worth delegating.
+
+### Reproduction
+
+```powershell
+$env:PYTHONUTF8='1'
+$env:PIKMIN_P2_ROOM_WINDOW='960x540'
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l22 -- `
+  py -3.12 -m experimental.pikmin2_otakara_runtime run `
+    --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" `
+    --imported "C:/Users/alari/pikmin-randomizer/output/dsw/l22-assets" `
+    --output "C:/Users/alari/pikmin-randomizer/output/dsw/l22-runtime-slice2-repro" `
+    --exe "C:/Users/alari/pikmin-randomizer/output/dsw/l22-fixture-slice2/fixture.exe" `
+    --seconds 150 --scenario natural
+```
+
+### Integrator note (review of slice 2)
+
+- Gate 4: `P2_OTAKARA_DEAD` is printed by the module on mHealth<=0 (pc_p2_otakara_update), before BTeki::die()/dieSoon(); it is not the host death seam. The host completion is proven by the corpse pellet (a pelletMgr entry with mPelletView==fire can only come from dieSoon()->becomePellet()). Death is natural (no injection marker in the primary run; nine named InteractAttack drops 150->0).
+- Gate 6: `pc_p2_otakara_forget(fire)` is invoked by the fixture, not by the lane 07 seam pc_p2_forget_teki in BTeki::doKill (the fixture exits while the corpse still holds the actor); the `stale=0` in the FORGET marker is a literal. Forget API verified; despawn-seam forget and stale-pointer freedom UNTESTED.
+- Gate 4 corpse: no lane 06 receipt was staged (cargo-free arena); "corpse" means pellet existence only.
+- `P2_OTAKARA_SQUAD` printed enum constants (red=1 blue=0) in slice 2; the integrator restored the fix1 count loop. Root handoff commit a022252 belongs in the ordered list.
+
