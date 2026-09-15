@@ -9,7 +9,14 @@ It then writes a ``p2-placement-probe-v1`` JSON and the audited evidence report.
 Run this only under the host GL slot:
 
     py -3.12 output/deepseek-wave/slot.py run gl l04 -- \
-        py -3.12 scripts/run_p2_placement_probe.py --exe <nectar.exe> --output output/dsw/l04-out
+        py -3.12 scripts/run_p2_placement_probe.py --exe <nectar.exe> \
+            --converted <room105 dir> --output output/dsw/l04-out
+
+The converted room (``room.mod``/``room.ini``/``treasure.mod``) is a required
+input and defaults to the documented ``output/pikmin2-room105`` path; pass
+``--converted`` if that directory is absent on this host. The MinGW runtime
+(needed for the engine DLLs) is discovered from ``MINGW_BIN`` or ``PATH``, never
+hardcoded.
 
 The GL process is time-limited: markers are flushed (unbuffered) at setup, so the
 runner terminates the window after a grace period and treats a timeout as a
@@ -18,37 +25,24 @@ successful marker capture.
 import argparse
 import json
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-MINGW = Path(r'C:/msys64/mingw64/bin')
-CONVERTED = Path(r'C:/Users/alari/pikmin-randomizer/output/dsw/l20-out/converted')
 ASSETS = Path(r'C:/Users/alari/bbft/dist/cohesion/pikmin/assets')
+DEFAULT_CONVERTED = Path(r'C:/Users/alari/pikmin-randomizer/output/pikmin2-room105')
+_CONVERTED_FILES = ('room.mod', 'room.ini', 'treasure.mod')
 
 
-def capture_markers(text):
-    slots = []
-    window = None
-    for line in text.splitlines():
-        if line.startswith('P2_PLACEMENT_SLOT '):
-            fields = dict(p.split('=', 1) for p in line[len('P2_PLACEMENT_SLOT '):].split() if '=' in p)
-            try:
-                slots.append({
-                    'uid': int(fields['uid']),
-                    'xyz': fields['xyz'] == '1',
-                    'terrain': fields['terrain'] in ('ground', 'water'),
-                    'route': fields['route'] == '1',
-                    'terrain_class': fields['terrain'],
-                    'water_depth': float(fields.get('water_depth', '0')),
-                })
-            except (KeyError, ValueError):
-                continue
-        if 'window set to 960x540' in line:
-            window = line.strip()
-    summary = [l.strip() for l in text.splitlines() if l.startswith('P2_PLACEMENT_PROBE ')]
-    return slots, window, summary
+def _find_mingw():
+    env = os.environ.get('MINGW_BIN')
+    if env and (Path(env) / 'SDL2.dll').exists():
+        return str(Path(env))
+    for entry in os.environ.get('PATH', '').split(os.pathsep):
+        if entry and (Path(entry) / 'SDL2.dll').exists():
+            return entry
+    fallback = Path(r'C:/msys64/mingw64/bin')
+    return str(fallback) if (fallback / 'SDL2.dll').exists() else None
 
 
 def main():
@@ -56,22 +50,27 @@ def main():
     parser.add_argument('--exe', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--assets', type=Path, default=ASSETS)
-    parser.add_argument('--converted', type=Path, default=CONVERTED)
+    parser.add_argument('--converted', type=Path, default=DEFAULT_CONVERTED)
     parser.add_argument('--timeout', type=int, default=45)
     args = parser.parse_args()
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from scripts import preview_pikmin2_room  # noqa: E402
+    from randomizer import p2_placement_probe  # noqa: E402
+
+    missing = [name for name in _CONVERTED_FILES if not (args.converted / name).exists()]
+    if missing:
+        raise SystemExit(
+            f'Converted room inputs missing from {args.converted}: {", ".join(missing)}. '
+            f'Pass --converted to a directory with room.mod/room.ini/treasure.mod.')
 
     args.output.mkdir(parents=True, exist_ok=True)
-    private_converted = args.output / 'converted'
-    if not (private_converted / 'room.mod').exists():
-        shutil.copytree(args.converted, private_converted)
-
-    run = preview_pikmin2_room.prepare(args.assets.resolve(), private_converted.resolve(), args.output)
+    run = preview_pikmin2_room.prepare(args.assets.resolve(), args.converted.resolve(), args.output)
     log = run / 'native.log'
     env = dict(os.environ)
-    env['PATH'] = str(MINGW) + os.pathsep + env.get('PATH', '')
+    mingw = _find_mingw()
+    if mingw:
+        env['PATH'] = mingw + os.pathsep + env.get('PATH', '')
     env['PIKMIN_P2_ROOM_WINDOW'] = '960x540'
     env['PYTHONUTF8'] = '1'
     env['SDL_AUDIODRIVER'] = 'dummy'
@@ -88,18 +87,15 @@ def main():
             code = 'timeout'  # markers already flushed; window retired
 
     text = log.read_text(encoding='utf-8', errors='replace')
-    slots, window_marker, summary = capture_markers(text)
+    slots, window_marker, summary = p2_placement_probe.capture_markers(text)
     ready = ('P2_ROOM_READY' in text)
-    identity = [l.strip() for l in text.splitlines()
-                if l.startswith('P2_ENEMY_READY') or l.startswith('P2_KOCHAPPY_READY')
-                or 'species=' in l]
-    probe = {'schema': 'p2-placement-probe-v1', 'slots': [
-        {'uid': s['uid'], 'xyz': s['xyz'], 'terrain': s['terrain'], 'route': s['route']}
-        for s in slots]}
+    probe = p2_placement_probe.build_probe(text)
     evidence = {
         'run': str(run), 'exit': code, 'window_marker': window_marker,
         'room_ready': ready, 'probe_summary': summary,
-        'identity_markers': identity,
+        'identity_markers': [l.strip() for l in text.splitlines()
+                             if l.startswith('P2_ENEMY_READY') or l.startswith('P2_KOCHAPPY_READY')
+                             or 'species=' in l],
         'slot_details': slots,
     }
     (run / 'probe.json').write_text(json.dumps(probe, indent=2) + '\n', encoding='utf-8')

@@ -7,6 +7,12 @@ for the disposable P2 room encounter arena. This script turns a captured
 encounter-arena document for the Snow/Dwarf Orange host cohort, and prints the
 deny -> evidence-stamped decision.
 
+The probe ``uid`` is the generator's 4-byte file id (``Generator::_70``), not a
+``p2_placement_catalog`` slot uid (those are crc32 keys). This report is
+therefore **arena-only: there is no catalog join** — it does not look the probe
+ids up in ``all_slots()`` because the two id spaces are unrelated. See the
+``catalog_join``/``catalog_join_note`` fields in the output.
+
 Three results are reported, kept strictly separate:
 
 * ``pre_probe``      -- default-deny: no slot evidence, no profile gates.
@@ -30,11 +36,11 @@ from randomizer import p2_placement_native
 
 
 def arena_document(probe):
-    """Build a labelled encounter-arena document from a probe's slot facts."""
+    """Build a labelled encounter-arena document from a probe's generator ids."""
     slots = []
     for slot in probe['slots']:
         slots.append(p2_placement.normalize_slot({
-            'uid': slot['uid'], 'label': 'p2-room-encounter', 'stage': 0,
+            'uid': slot['uid'], 'label': f'p2-room-encounter-generator-{slot["uid"]}', 'stage': 0,
             'terrain': 'ground', 'radius': 100.0,
             'corpse_route': True, 'evidence': {'xyz': False, 'terrain': False, 'route': False},
         }))
@@ -73,6 +79,11 @@ def main(argv=None):
     injected_audit = p2_placement.audit(injected)
 
     report = {
+        'catalog_join': None,
+        'catalog_join_note': (
+            'arena-only, no catalog join: the probe ids are generator 4-byte file '
+            'ids (Generator::_70), not p2_placement_catalog.all_slots() uid keys '
+            '(crc32), so they are not looked up in the campaign catalog.'),
         'probe': probe,
         'pre_probe_admitted': pre['admitted'],
         'pre_probe_denied_reasons': pre['denied_reasons'],
