@@ -27,7 +27,7 @@ addressed: *"Move one family gameplay effect onto authoritative simulation event
 
 Root branch `deepseek/p2-l08`, base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`:
 
-1. `c840fda` — `lane08: Hana event-mapping contract tests and harness (#431)`
+1. `c840fda (+ ad109d3 handoff doc; integrator review-fix commit follows)` — `lane08: Hana event-mapping contract tests and harness (#431)`
 
 Native branch `deepseek/p2-l08-native`, base
 `b805d9c626e4f4558c95aef7cac311a5d9a2068f`:

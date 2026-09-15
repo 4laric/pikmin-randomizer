@@ -10,6 +10,8 @@ from experimental.pikmin2_ground_inverts_assets import EXPECTED_EVENTS
 
 ACTIONS = {'attack1': {'2': 'bite', '3': 'swallow'}, 'flick': {'2': 'flick'}}
 
+# Representative durations for contract tests only; the native runtime table
+# (pc_p2_hana_events.h hanaRows) and the generated bank are authoritative.
 CLIP_DURATIONS = {
     'attack1': 80,
     'dead': 60,
