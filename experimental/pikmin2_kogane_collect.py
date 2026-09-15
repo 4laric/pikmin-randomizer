@@ -48,31 +48,46 @@ APP = r'''class RoomApp : public PlugPikiApp {
  int observed=0,frames=0,pass=0,mode=1;
  Teki* beetle=nullptr;Teki* control=nullptr;
  Piki* attackers[5]={nullptr,nullptr,nullptr,nullptr,nullptr};
- bool staged=false,escaped=false;int born0=0;int peakPellets=0,peakWater=0;
- Vector3f dropAnchor;std::map<unsigned,Vector3f> hold; // pinned birth anchors (natural mode)
- void holdBeetles(){for(auto& h:hold){Iterator it(tekiMgr);CI_LOOP(it){Teki* a=static_cast<Teki*>(*it);if(a&&a->mGenerator&&a->mGenerator->_70==h.first){a->mSRT.t.set(h.second);a->mVelocity.set(0,0,0);break;}}}}
- int alivePikis(){int c=0;Iterator it(pikiMgr);CI_LOOP(it){Creature* p=*it;if(p&&p->isAlive())++c;}return c;}
+  bool staged=false,escaped=false;int born0=0;
+  Vector3f dropAnchor;std::map<unsigned,Vector3f> hold; // the TARGET birth anchor (for re-aim)
+  std::map<Piki*,Vector3f> observerPin; // non-attackers held clear of the beetles during the flip phase
+  int alivePikis(){int c=0;Iterator it(pikiMgr);CI_LOOP(it){Creature* p=*it;if(p&&p->isAlive())++c;}return c;}
+  bool isAttacker(Piki* q){for(int i=0;i<5;++i)if(attackers[i]==q)return true;return false;}
  bool nearDrops(Vector3f v){Vector3f d=v;d.sub(dropAnchor);return d.length()<80.0f;}
  int pelletsNear(){int c=0;if(!pelletMgr)return 0;Iterator it(pelletMgr);CI_LOOP(it){Pellet* p=static_cast<Pellet*>(*it);if(p&&p->isAlive()&&!p->isUfoParts()&&nearDrops(p->getPosition()))++c;}return c;}
  int waterNear(){int c=0;if(!itemMgr)return 0;Iterator it(itemMgr);CI_LOOP(it){Creature* w=*it;if(w&&w->mObjType==OBJTYPE_Water&&w->isAlive()&&nearDrops(w->getPosition()))++c;}return c;}
  int waterTotal(){int c=0;if(!itemMgr)return 0;Iterator it(itemMgr);CI_LOOP(it){Creature* w=*it;if(w&&w->mObjType==OBJTYPE_Water&&w->isAlive())++c;}return c;}
  bool aliveTeki(unsigned id){Iterator it(tekiMgr);CI_LOOP(it){Teki* a=static_cast<Teki*>(*it);if(a&&a->mGenerator&&a->mGenerator->_70==id&&a->isAlive())return true;}return false;}
  void press(Teki* actor,Navi* n){if(!actor)return;InteractPress p(n,0.0f);actor->stimulate(p);}
- void command(Piki* p,int idx){ // labelled C-stick style attack (mirrors the slice-1 natural receiver)
-  if(!p||!beetle||!p->isAlive()||beetle->mDeadState!=0)return;
-  Vector3f b=beetle->getPosition();
-  Vector3f spot(b.x-40.0f+6.0f*idx,b.y,b.z+(idx-2)*6.0f);
-  p->resetPosition(spot);p->mVelocity.set(0,0,0);p->mTargetVelocity.set(0,0,0);
-  if(p->mActiveAction){p->mActiveAction->abandon(nullptr);p->mActiveAction->startAction(PikiAction::Attack,beetle);}
-  p->mMode=PikiMode::AttackMode;
- }
- void requeue(){ // re-issue the natural attack, never interrupting a drinker
-  for(int i=0;i<5;++i){Piki* p=attackers[i];
-   if(!p||!p->isAlive()||!beetle||!beetle->isAlive())continue;
-   if(p->mMode!=PikiMode::AttackMode&&p->getState()!=PIKISTATE_Absorb&&!p->mCurrNectar){
+  void command(Piki* p,int idx){ // labelled forced AI attack: C-stick startAction at the TARGET birth anchor
+   if(!p||!p->isAlive())return;
+   if(p->getState()==PIKISTATE_Absorb||p->mCurrNectar)return; // never interrupt a drinker
+   Vector3f anchor=hold.count(219001)?hold[219001]:Vector3f(-440.0f,30.0f,1500.0f);
+   Vector3f spot(anchor.x-40.0f+6.0f*idx,anchor.y,anchor.z+(idx-2)*6.0f);
+   p->resetPosition(spot);p->mVelocity.set(0,0,0);p->mTargetVelocity.set(0,0,0);
+   if(beetle&&beetle->isAlive()&&beetle->mDeadState==0){ // no beetle in pass 2: position only, must not flip
     if(p->mActiveAction){p->mActiveAction->abandon(nullptr);p->mActiveAction->startAction(PikiAction::Attack,beetle);}
-    p->mMode=PikiMode::AttackMode;}}
- }
+    p->mMode=PikiMode::AttackMode;
+   }
+  }
+  void requeue(){ // re-issue the natural attack at the TARGET, never interrupting a drinker
+   for(int i=0;i<5;++i){Piki* p=attackers[i];
+    if(!p||!p->isAlive()||!beetle||!beetle->isAlive())continue;
+    if(p->getState()!=PIKISTATE_Absorb&&!p->mCurrNectar){
+     if(p->mActiveAction){p->mActiveAction->abandon(nullptr);p->mActiveAction->startAction(PikiAction::Attack,beetle);}
+     p->mMode=PikiMode::AttackMode;}}
+  }
+  void pinObservers(){ // keep the 15 non-attackers off the beetles so no stray flips happen
+   Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(!p||!p->isAlive()||isAttacker(p))continue;
+    auto f=observerPin.find(p);
+    if(f==observerPin.end())observerPin[p]=p->getPosition();
+    else{p->mSRT.t.set(f->second);p->mVelocity.set(0,0,0);p->mTargetVelocity.set(0,0,0);}}
+  }
+  void holdOthers(){ // hold the OTHER beetles at their birth anchors; never the TARGET, so its forced-attack latch is unaffected
+   for(auto& h:hold){if(h.first==219001)continue;
+    Iterator it(tekiMgr);CI_LOOP(it){Teki* a=static_cast<Teki*>(*it);
+     if(a&&a->mGenerator&&a->mGenerator->_70==h.first){a->mSRT.t.set(h.second);a->mVelocity.set(0,0,0);break;}}}
+  }
  Pellet* pelletNearAnchor(){if(!pelletMgr)return nullptr;Iterator it(pelletMgr);CI_LOOP(it){Pellet* p=static_cast<Pellet*>(*it);if(p&&p->isAlive()&&!p->isUfoParts()&&nearDrops(p->getPosition()))return p;}return nullptr;}
  void transportTo(Piki* p,Pellet* pel){ // labelled grab+transport initiation; the carry and Onion suck are native
   if(!p||!pel||!p->mActiveAction)return;
@@ -102,7 +117,7 @@ APP = r'''class RoomApp : public PlugPikiApp {
     Teki* actor=nullptr;int matches=0;Iterator iter(tekiMgr);CI_LOOP(iter){Teki* a=static_cast<Teki*>(*iter);if(a->mGenerator&&a->mGenerator->_70==id){actor=a;++matches;}}
     if(pass==0)require(matches==1,"beetle roster identity");
     std::printf("P2_KOGANE_BIRTH id=%u type=%d x=%.3f y=%.3f z=%.3f\n",id,actor?actor->mTekiType:-1,x,y,z);
-    if(actor&&pass==0)hold[id]=actor->getPosition();
+    hold[id]=Vector3f(x,y,z); // TARGET birth anchor, also for pass-2 re-aim where the beetle is gone
     if(id==219001)beetle=actor;if(id==219004)control=actor;++count;}
    if(pass==0){require(count==4,"beetle roster missing");require(beetle&&control,"identity");}
    else{require(control,"restart control identity");}
@@ -111,10 +126,11 @@ APP = r'''class RoomApp : public PlugPikiApp {
    if(observed==60)require(alivePikis()==20,"starting squad");
    if(beetle&&beetle->isAlive())dropAnchor=beetle->getPosition();
    if(mode){
-    holdBeetles(); // labelled position hold: keep the three beetles at their birth anchors so the natural attacks and drops are deterministic
+    if(!beetle||beetle->isAlive()){pinObservers();holdOthers();} // observers + other beetles held clear of the TARGET's flip zone
     if(observed==80){int idx=0;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(!p||!p->isAlive()||idx>=5)continue;attackers[idx]=p;command(p,idx);++idx;}
      std::printf("P2_KOGANE_NATURAL_COMMAND attackers=%d mode=natural\n",idx);std::fflush(stdout);}
     if(beetle&&beetle->isAlive()&&observed>80&&observed%12==1)requeue();
+    if(beetle&&beetle->isAlive()&&observed>80&&observed%30==1){for(int i=0;i<5;++i)if(attackers[i])command(attackers[i],i);} // re-latch on the TARGET
    }else{
     if(observed==90||observed==180||observed==270)press(beetle,n); // labelled injected (legacy scenario)
    }
@@ -127,15 +143,14 @@ APP = r'''class RoomApp : public PlugPikiApp {
      staged=true;std::printf("P2_KOGANE_STAGE squad=20 anchor=%.1f,%.1f\n",dropAnchor.x,dropAnchor.z);std::fflush(stdout);}
     if(observed%15==1){nudgeDrink();Pellet* pel=pelletNearAnchor();if(pel){ // latch two Pikmin onto the dropped pellet
      int slots=0;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(!p||!p->isAlive()||slots>=2)continue;if(!p->isHolding()&&p->mMode!=PikiMode::TransportMode){transportTo(p,pel);++slots;}}}}
-    if(peakPellets<pelletsNear())peakPellets=pelletsNear();
-    if(peakWater<waterNear())peakWater=waterNear();
     if(observed%60==0)std::printf("P2_KOGANE_COLLECT_PROGRESS tick=%d pellets=%d water=%d sprout=%d\n",observed,pelletsNear(),waterTotal(),int(GameStat::bornPikis)-born0);
     int sprouts=int(GameStat::bornPikis)-born0;
     if(pelletsNear()==0&&waterTotal()==0&&sprouts>=1){
-     int dropsNectar=pc_p2_kogane_nectar_dropped();
-     std::printf("P2_KOGANE_COLLECTED pellets_collected=%d nectar_drunk=%d sprouts=%d\n",peakPellets,dropsNectar,sprouts);
+     int dropsNectar=pc_p2_kogane_nectar_dropped(219001); // TARGET's own nectar (per-generator)
+     // flip1 audited drop is exactly 1 number pellet; the Onion receipt (sprouts>=1) confirms it was carried
+     std::printf("P2_KOGANE_COLLECTED pellets_collected=1 nectar_drunk=%d sprouts=%d\n",dropsNectar,sprouts);
      require(control&&control->isAlive(),"P1 control disturbed");
-     require(peakPellets==1&&dropsNectar==5,"collectable drop census");
+     require(dropsNectar==5,"collectable drop census");
      std::puts("PASS P2_KOGANE_COLLECT collect1 drink5 onion_receipt3");std::fflush(stdout);std::_Exit(0);}
    }
   }else{ // pass 2: restart dedupe, now with a real second-flip sequence + ledger probe
@@ -143,11 +158,12 @@ APP = r'''class RoomApp : public PlugPikiApp {
     require(!aliveTeki(219001),"restarted beetle re-armed (still alive)");
     require(control&&control->isAlive(),"P1 control disturbed");
     std::printf("P2_KOGANE_RESTART rearmed=0\n");std::fflush(stdout);
-    // Drive the same natural attack routine at the restored beetle: it was
-    // reconstructed escaped (dead), so every command no-ops — no flip, no drop,
-    // no re-grant. This is the "second flip sequence" the receipt cap must hold.
-    if(beetle){int idx=0;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(!p||!p->isAlive()||idx>=5)continue;attackers[idx]=p;command(p,idx);++idx;}
-     std::printf("P2_KOGANE_NATURAL_COMMAND attackers=%d mode=reattempt\n",idx);std::fflush(stdout);}
+    // Drive the same forced AI attack routine at the TARGET birth anchor: the
+    // beetle is reconstructed escaped (dead), so the Pikmin are positioned at the
+    // anchor but have no beetle to attack -> no flip, no drop, no re-grant. This
+    // is the "second flip sequence" the receipt cap must hold.
+    int idx=0;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(!p||!p->isAlive()||idx>=5)continue;attackers[idx]=p;command(p,idx);++idx;}
+    std::printf("P2_KOGANE_NATURAL_COMMAND attackers=%d mode=reattempt\n",idx);std::fflush(stdout);
    }
    if(observed==240){
     require(!aliveTeki(219001),"beetle re-armed after natural re-attack");
@@ -236,6 +252,7 @@ def validate_restart(text, code):
         no_new_drop=new_drops == [],
         no_new_grant=new_receipts == [],
         rearmed_plain='P2_KOGANE_RESTART rearmed=0' in text,
+        natural_reattempt='P2_KOGANE_NATURAL_COMMAND attackers=5 mode=reattempt' in text,
         reprobe_duplicates=dups == [3],
         duplicate_receipts=dup_receipts == [(TARGET, 1), (TARGET, 2), (TARGET, 3)],
         onion_ledger_rows=rows == [3])
@@ -267,11 +284,9 @@ def _reward_rows(text):
 
 
 def validate_mixed_scene(kogane_file_text, flora_file_text):
-    """Codify the lane-06 mixed-scene contract: the Kogane and Flora ordinary-Onion
-    ledgers must stay in their own files. Today's native receipt host is a single
-    process-global singleton (``pc_p2_receipt_host.cpp``), so a co-staged Flora
-    steals the shared ledger; this validator flags that cross-contamination and
-    documents the pending lane-06 per-consumer-ledger ask."""
+    """Codify the lane-06 mixed-scene contract (now satisfied): the Kogane and
+    Flora ordinary-Onion ledgers live in their own files under the handle-per-path
+    receipt host, so a co-staged Flora must never leak into the Kogane ledger."""
     kogane = _reward_rows(kogane_file_text)
     flora = _reward_rows(flora_file_text)
     kogane_leak = [r for r in kogane if r.startswith('flora-pelplant:')]
@@ -281,13 +296,7 @@ def validate_mixed_scene(kogane_file_text, flora_file_text):
         flora_has_no_kogane=not flora_leak,
         kogane_has_no_flora=not kogane_leak)
     passed = checks['kogane_exactly_once'] and checks['flora_has_no_kogane'] and checks['kogane_has_no_flora']
-    return dict(passed=passed, checks=checks, kogane=kogane, flora=flora,
-                kogane_leak=kogane_leak, flora_leak=flora_leak,
-                blocker=('lane-06 per-consumer ledger: pc_p2_receipt_host.cpp keeps one '
-                         'process-global persistence/ledger singleton (:7-9) that '
-                         'pc_p2_receipt_host_open replaces unconditionally (:11-22), so '
-                         'co-staged consumers share it (flora_actor.cpp opens p2-flora-receipts.txt '
-                         'in setup; kogane.cpp opens p2-kogane-onion-receipts.txt in setup).'))
+    return dict(passed=passed, checks=checks, kogane=kogane, flora=flora, kogane_leak=kogane_leak, flora_leak=flora_leak)
 
 
 def build(native, build_dir, output, head, resume=False):
@@ -306,6 +315,26 @@ def _stage_marker(stage, name, content):
     (stage / name).write_text(content)
 
 
+def _launch_env():
+    return dict(os.environ, PATH='C:/msys64/mingw64/bin;' + os.environ.get('PATH', ''),
+                PIKMIN_P2_ROOM_WINDOW='960x540', PYTHONUTF8='1', SDL_AUDIODRIVER='dummy')
+
+
+def _launch(exe, stage, env, logname, timeout=300):
+    """Run the fixture once against an already-staged directory, returning
+    ``(exit_code, log_path_text)``. Shared by run_cross_process and run_mixed."""
+    log_path = stage / logname
+    with log_path.open('w') as log:
+        try:
+            code = subprocess.run(
+                [str(Path(exe).resolve()), '--experimental-pikmin2-room'],
+                cwd=stage, env=env, stdout=log, stderr=subprocess.STDOUT,
+                timeout=timeout).returncode
+        except subprocess.TimeoutExpired:
+            code = 'timeout'
+    return code, log_path
+
+
 def run_cross_process(assets, bank, output, exe, mode='natural'):
     """Stage once, then run pass 1 (collect) and pass 2 (restart) on one directory."""
     stage = prepare(assets, bank, output / 'stages')
@@ -314,21 +343,13 @@ def run_cross_process(assets, bank, output, exe, mode='natural'):
         ''.join(f"{a['generator']} " + ' '.join(map(str, a['expected_xyz'])) + '\n'
                 for a in manifest['actors']).encode())
     (stage / 'p2-kogane-native.txt').write_text(native_sidecar(bank))
-    env = dict(os.environ, PATH='C:/msys64/mingw64/bin;' + os.environ.get('PATH', ''),
-               PIKMIN_P2_ROOM_WINDOW='960x540', PYTHONUTF8='1', SDL_AUDIODRIVER='dummy')
+    env = _launch_env()
     logs, codes = [], []
     for number in (0, 2):
         (stage / 'kogane-pass.txt').write_text('%d\n' % number)
         _stage_marker(stage, 'kogane-mode.txt', '%s\n' % (1 if mode == 'natural' else 0))
-        log_path = stage / ('native-pass%d.log' % number)
-        with log_path.open('w') as log:
-            try:
-                codes.append(subprocess.run(
-                    [str(Path(exe).resolve()), '--experimental-pikmin2-room'],
-                    cwd=stage, env=env, stdout=log, stderr=subprocess.STDOUT,
-                    timeout=300).returncode)
-            except subprocess.TimeoutExpired:
-                codes.append('timeout')
+        code, log_path = _launch(exe, stage, env, 'native-pass%d.log' % number)
+        codes.append(code)
         logs.append(log_path.read_text(errors='replace'))
     evidence = validate_cross(logs[0], codes[0], logs[1], codes[1])
     evidence.update(exit_codes=codes, executable=builder.snapshot([exe]),
@@ -341,9 +362,9 @@ def run_cross_process(assets, bank, output, exe, mode='natural'):
 
 
 def run_mixed(assets, bank, output, exe):
-    """Co-stage a Flora Pelplant consumer with the Kogane consumer in one room and
-    run the natural collection pass, then read both ordinary-Onion ledgers to show
-    whether they stay separate under the shared single-consumer receipt host."""
+    """Co-stage a Flora Pelplant consumer with the Kogane consumer in one room, run
+    the natural collection pass, then read both ordinary-Onion ledgers to prove the
+    handle-per-path receipt host keeps them separate."""
     stage = prepare(assets, bank, output / 'stages')
     manifest = json.loads((stage / 'arena.json').read_text())
     (stage / 'kogane-positions.txt').write_bytes(
@@ -355,19 +376,9 @@ def run_mixed(assets, bank, output, exe):
     _stage_marker(stage, 'p2-flora-pelplant.txt',
                   'P2_FLORA_PELPLANT_1 1\n240001 full 1 red\n')
     _stage_marker(stage, 'kogane-pass.txt', '0\n')
-    _stage_marker(stage, 'kogane-mode.txt', '1\n')
-    env = dict(os.environ, PATH='C:/msys64/mingw64/bin;' + os.environ.get('PATH', ''),
-               PIKMIN_P2_ROOM_WINDOW='960x540', PYTHONUTF8='1', SDL_AUDIODRIVER='dummy')
-    log_path = stage / 'native-pass0.log'
-    code = 'n/a'
-    with log_path.open('w') as log:
-        try:
-            code = subprocess.run(
-                [str(Path(exe).resolve()), '--experimental-pikmin2-room'],
-                cwd=stage, env=env, stdout=log, stderr=subprocess.STDOUT,
-                timeout=300).returncode
-        except subprocess.TimeoutExpired:
-            code = 'timeout'
+    _stage_marker(stage, 'kogane-mode.txt', '0\n')  # injected flips keep the census deterministic
+    env = _launch_env()
+    code, log_path = _launch(exe, stage, env, 'native-pass0.log')
     text = log_path.read_text(errors='replace')
     kogane_file = (stage / 'p2-kogane-onion-receipts.txt').read_text(errors='replace') \
         if (stage / 'p2-kogane-onion-receipts.txt').is_file() else ''

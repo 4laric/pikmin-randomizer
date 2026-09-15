@@ -42,7 +42,8 @@ def _restart_log(completion=True):
     rows = ['P2_KOGANE_BIRTH id=219004 type=3 x=0.000 y=30.000 z=0.000',
             'P2_KOGANE_RECEIPTS loaded=1',
             'P2_KOGANE_RESTORED_ESCAPE generator=219001 flips=3',
-            'P2_KOGANE_RESTART rearmed=0']
+            'P2_KOGANE_RESTART rearmed=0',
+            'P2_KOGANE_NATURAL_COMMAND attackers=5 mode=reattempt']
     rows += ['P2_KOGANE_ONION_RECEIPT generator=219001 flip=%d granted=0 duplicate=1 ledger=onion seed=kogane-arena' % f
              for f in (1, 2, 3)]
     rows += ['P2_KOGANE_REPROBE duplicates=3',
@@ -150,10 +151,63 @@ def test_validate_restart_rejects_a_regrant_probe():
     assert not collect.validate_restart(bad, 0)['passed']
 
 
+def test_validate_restart_requires_the_natural_reattempt_command():
+    # pass 2 must report the labelled re-drive of the natural attack routine at
+    # the restored beetle (P2_KOGANE_NATURAL_COMMAND attackers=5 mode=reattempt);
+    # a pass-2 log that never emits it must not satisfy the restart gate.
+    full = _restart_log()
+    missing = full.replace('P2_KOGANE_NATURAL_COMMAND attackers=5 mode=reattempt\n', '')
+    evidence = collect.validate_restart(full, 0)
+    assert 'natural_reattempt' in evidence['checks'], (
+        "validate_restart does not yet check the natural re-attempt marker; add a "
+        "check such as natural_reattempt="
+        "'P2_KOGANE_NATURAL_COMMAND attackers=5 mode=reattempt' in text to its "
+        "'checks' dict")
+    assert evidence['checks']['natural_reattempt'] is True
+    assert not collect.validate_restart(missing, 0)['passed']
+
+
 def test_validate_cross_combines_both():
     evidence = collect.validate_cross(_collect_log(), 0, _restart_log(), 0)
     assert evidence['passed']
     assert not collect.validate_cross(_collect_log(), 0, _restart_log(completion=False), 0)['passed']
+
+
+def test_validate_mixed_scene_keeps_the_two_reward_ledgers_separate():
+    # exactly three kogane reward rows, no pelplant row in the kogane file, and
+    # no kogane reward identity in the flora file.
+    clean_kogane = 'P2_RECEIPTS_1\nkogane-arena enemy:9 219001 flip1\nkogane-arena enemy:9 219001 flip2\nkogane-arena enemy:9 219001 flip3\n'
+    clean_flora = 'P2_RECEIPTS_1\nlocal flora-pelplant:240001 240001 onion\n'
+    evidence = collect.validate_mixed_scene(clean_kogane, clean_flora)
+    assert evidence['passed'], evidence['checks']
+
+
+def test_validate_mixed_scene_rejects_a_kogane_file_leaking_a_pelplant_row():
+    clean_kogane = 'P2_RECEIPTS_1\nkogane-arena enemy:9 219001 flip1\nkogane-arena enemy:9 219001 flip2\nkogane-arena enemy:9 219001 flip3\n'
+    clean_flora = 'P2_RECEIPTS_1\nlocal flora-pelplant:240001 240001 onion\n'
+    leaked_kogane = clean_kogane + 'kogane-arena flora-pelplant:240001 240001 onion\n'
+    evidence = collect.validate_mixed_scene(leaked_kogane, clean_flora)
+    assert not evidence['passed']
+    assert evidence['checks']['kogane_has_no_flora'] is False
+    assert evidence['kogane_leak'] == ['flora-pelplant:240001']
+
+
+def test_validate_mixed_scene_rejects_a_flora_file_leaking_enemy_9():
+    clean_kogane = 'P2_RECEIPTS_1\nkogane-arena enemy:9 219001 flip1\nkogane-arena enemy:9 219001 flip2\nkogane-arena enemy:9 219001 flip3\n'
+    clean_flora = 'P2_RECEIPTS_1\nlocal flora-pelplant:240001 240001 onion\n'
+    leaked_flora = clean_flora + 'stalk enemy:9 219001 flip1\n'
+    evidence = collect.validate_mixed_scene(clean_kogane, leaked_flora)
+    assert not evidence['passed']
+    assert evidence['checks']['flora_has_no_kogane'] is False
+    assert evidence['flora_leak'] == ['enemy:9']
+
+
+def test_validate_mixed_scene_rejects_a_short_kogane_ledger():
+    clean_flora = 'P2_RECEIPTS_1\nlocal flora-pelplant:240001 240001 onion\n'
+    short_kogane = 'P2_RECEIPTS_1\nkogane-arena enemy:9 219001 flip1\nkogane-arena enemy:9 219001 flip2\n'
+    evidence = collect.validate_mixed_scene(short_kogane, clean_flora)
+    assert not evidence['passed']
+    assert evidence['checks']['kogane_exactly_once'] is False
 
 
 def test_validate_mixed_scene_detects_ledger_collision():
