@@ -69,7 +69,22 @@ def kabuto_config(species='Kabuto', position=None, face_deg=FACE_DEG):
             % (species, x, y, z, face_deg))
 
 
-def build_config(mode='stone', with_proxy=True):
+def rig_bank_text():
+    """Minimal valid P2_ATTACHMENTS_1 sidecar: `root` + `kuti` mouth joint and a
+    60-frame `attack` clip (fire frame 50). Identity TRS samples place the mouth
+    at the actor transform, so a Kabuto-actor Stone is born 25 above its own firer
+    (inside collisionRadius 40 + pad) — exactly the birth-frame self-contact the
+    SKIP_SELF path must reject."""
+    s = '0 0 0 0 0 0 1 1 1 1'
+    lines = ['P2_ATTACHMENTS_1 2 1', 'root -1', 'kuti 0', 'attack 60 2', '0 59',
+             s, s, s, s]
+    return '\n'.join(lines) + '\n'
+
+
+BUILDER_MODES = ('stone', 'kabuto', 'rkabuto', 'kabuto_actor')
+
+
+def build_config(mode='stone', generator=0, with_proxy=True):
     """Return the full p2-projectiles.txt body for the requested mode."""
     lines = [MAGIC, 'seed 1']
     lines.append(stone_config())            # stone parms (also the FSM's pool source)
@@ -77,6 +92,12 @@ def build_config(mode='stone', with_proxy=True):
         lines.append(kabuto_config('Kabuto'))
     elif mode == 'rkabuto':
         lines.append(kabuto_config('Rkabuto'))
+    elif mode == 'kabuto_actor':
+        lines.append(kabuto_config('Kabuto'))
+        # `kabuto_actor` requires a `kabuto_rig` sidecar; rig-bank.txt is written
+        # beside p2-projectiles.txt by run().
+        lines.append('kabuto_rig rig-bank.txt 185 0 -180 90')
+        lines.append('kabuto_actor %d' % generator)
     lines.append('engine_receiver 1')
     if with_proxy:
         lines.append('receiver any 20')
@@ -87,6 +108,8 @@ ENGINE_STRIKE_RE = re.compile(
     r'P2_PROJECTILE_ENGINE_STRIKE target=(\d+) kind=(Attack|Press) damage=([\d.]+) '
     r'applied=(\d) rejected=(\d) health=([\d.-]+)->([\d.-]+) stored=([\d.-]+)->([\d.-]+) '
     r'source=(\d+)')
+
+SKIP_SELF_RE = re.compile(r'P2_PROJECTILE_SKIP_SELF target=(\d+)')
 
 
 def parse_engine_strikes(log_text):
@@ -130,6 +153,10 @@ def evaluate(log_text):
     kabuto_fire = 'P2_PROJECTILE_KABUTO_FIRE' in log_text
     destroy = 'P2_PROJECTILE_STONE_DESTROY' in log_text
 
+    skip_self = set(int(m) for m in SKIP_SELF_RE.findall(log_text))
+    attack_targets = {s['target'] for s in teki}
+    self_hit = bool(skip_self & attack_targets)
+
     gates = {
         'window_960x540_centered': 'PASS' if window else 'FAIL',
         'config_ready': 'PASS' if ready else 'FAIL',
@@ -137,15 +164,19 @@ def evaluate(log_text):
         'cannon_fire_fsm': 'PASS' if kabuto_fire else 'UNTESTED',
         'teki_attack_receiver_mutation': 'PASS' if teki_ok() else 'FAIL',
         'navipiki_press_receiver_mutation': 'PASS' if press_ok() else ('UNTESTED' if not press else 'FAIL'),
+        'cannon_self_hit_skipped': ('PASS' if (skip_self and not self_hit)
+                                    else ('UNTESTED' if not skip_self else 'FAIL')),
         'stone_destroy_teardown': 'PASS' if destroy else 'UNTESTED',
     }
     return dict(gates=gates, strikes=strikes)
 
 
-def run(exe, assets, converted, output, mode='stone', seconds=40.0):
+def run(exe, assets, converted, output, mode='stone', seconds=40.0, generator=0):
     """Stage a fresh room, write the config, launch the exe, capture and evaluate."""
     run_dir = _prepare_room(Path(assets).resolve(), Path(converted).resolve(), Path(output))
-    (run_dir / 'p2-projectiles.txt').write_text(build_config(mode), encoding='utf8')
+    (run_dir / 'p2-projectiles.txt').write_text(build_config(mode, generator), encoding='utf8')
+    if mode == 'kabuto_actor':
+        (run_dir / 'rig-bank.txt').write_text(rig_bank_text(), encoding='utf8')
 
     env = dict(os.environ)
     env['PYTHONUTF8'] = '1'
@@ -184,13 +215,15 @@ def main():
     p.add_argument('--assets', type=Path,
                    default=Path('C:/Users/alari/bbft/dist/cohesion/pikmin/assets'))
     p.add_argument('--converted', type=Path,
-                   default=Path('C:/Users/alari/pikmin-randomizer/output/dsw/l20-out/converted'))
+                   default=Path('C:/Users/alari/pikmin-randomizer/output/pikmin2-room105'))
     p.add_argument('--output', type=Path,
-                   default=Path('C:/Users/alari/pikmin-randomizer/output/dsw/l20-out/runtime'))
-    p.add_argument('--mode', choices=('stone', 'kabuto', 'rkabuto'), default='stone')
+                   default=Path('C:/Users/alari/pikmin-randomizer/output/projectile-engine-receiver'))
+    p.add_argument('--mode', choices=BUILDER_MODES, default='stone')
+    p.add_argument('--generator', type=int, default=0,
+                   help='kabuto_actor generator ID (room Teki _70 value)')
     p.add_argument('--seconds', type=float, default=40.0)
     a = p.parse_args()
-    result = run(a.exe, a.assets, a.converted, a.output, a.mode, a.seconds)
+    result = run(a.exe, a.assets, a.converted, a.output, a.mode, a.seconds, a.generator)
     print(json.dumps(result, indent=2))
     ok = all(v in ('PASS', 'UNTESTED') for v in result['gates'].values())
     raise SystemExit(0 if ok else 1)

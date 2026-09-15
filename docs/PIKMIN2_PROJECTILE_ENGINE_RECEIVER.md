@@ -56,20 +56,43 @@ is already registered through the existing batch-2 setup/update/forget hooks.
 
 ## Runtime evidence
 
-Private `nectar.exe` head `e9bb1661` (see handoff). `rkabuto` run (the full
-ordinary-cannon chain) at
-`output/dsw/l20-out/runtime/c98e56b1ce5b49d79b48b95f2aca962b`:
+Private `nectar.exe` head `610bcf0b` (see handoff). The `rkabuto` run is the
+ordinary-cannon acceptance channel (homing Stone → live Teki receiver) at
+`output/projectile-engine-receiver/6280aebfc02045df837e8a973d90d82b`:
 
 ```
 P2_PROJECTILE_KABUTO_FIRE species=Rkabuto homing=1 ...
 P2_PROJECTILE_STRIKE kind=Attack damage=250.0 target=… health_zeroed=1
 P2_PROJECTILE_ENGINE_STRIKE target=… kind=Attack damage=250.0 applied=1 rejected=0 health=130.0->130.0 stored=0.0->250.0 source=0
-P2_PROJECTILE_ENGINE_STRIKE … stored=250.0->500.0 …  (14 applied Teki strikes)
+P2_PROJECTILE_ENGINE_STRIKE … stored=250.0->500.0 …  (15 applied Teki strikes)
+P2_PROJECTILE_STONE_DESTROY reason=health  (×15: Stone breaks on the Teki it hit)
 ```
 
-`stone` run (deterministic single Teki contact) at
-`output/dsw/l20-out/runtime/47b1839fcaea471faaae00dd098c5a20` shows the same
-`stored=0.0->250.0` mutation with `P2_PROJECTILE_STONE_DESTROY` teardown.
+A `reason=health` Stone destruction is the expected teardown for a Teki hit
+(source `Rock.cpp:230-232` zeroes the Stone's own health on a non-Navi/Piki
+contact). Compare the non-homing `kabuto` run (below), whose Stone misses the
+wandering Dwarf and destructs with `reason=wall`.
+
+### Review fix: Kabuto actor self-hit (the cannon is never damaged by its own Stone)
+
+With `kabuto_actor` + `engine_receiver 1` bound, the Stone is born 25 units
+above its own firing Teki (inside `collisionRadius 40` + host pad) and used to
+apply a real `InteractAttack(250)` to the cannon itself. The fix skips the bound
+actor in `detectStoneContacts` and passes `tokenOf(kabutoActor)` as the Stone
+source token so the source-grace matches the real firer.
+
+`kabuto_actor` run at
+`output/projectile-engine-receiver/d51051022b8f4ace8498d32f50f29bce`:
+
+```
+P2_PROJECTILE_KABUTO_ACTOR generator=385875968 bound=1 type=3 pos=(173.6,0.0,-143.2)
+P2_PROJECTILE_KABUTO_FIRE species=Kabuto homing=0 rig=1 ... fire=1..7
+P2_PROJECTILE_SKIP_SELF target=2031495177920    (exactly once per fire, ×7)
+P2_PROJECTILE_STONE_DESTROY reason=wall         (×7, Stone misses)
+```
+
+Zero `P2_PROJECTILE_ENGINE_STRIKE` lines appear: the firing Dwarf (type 3,
+`TEKI_Chappy`) is never mutated, proving the cannon's own health is unchanged.
 
 ## Six arena gates (Kabuto 75 → Stone 74 → live Teki receiver)
 
@@ -77,15 +100,36 @@ P2_PROJECTILE_ENGINE_STRIKE … stored=250.0->500.0 …  (14 applied Teki strike
 |---|---|---|
 | 1. Identity + spawn | PASS (source-backed) | room's `preview dwarf bulborb` generator as the Teki target; cannon fire is FSM-driven (`P2_PROJECTILE_KABUTO_*`) |
 | 2. Movement + animation | N/A (source-backed) | projectile is policy-simulated (no rendered model in this slice); fire/flight driven by the committed Stone FSM |
-| 3. Attacks / receivers | PASS — Teki `InteractAttack` 250 | `P2_PROJECTILE_ENGINE_STRIKE kind=Attack applied=1 stored=0.0->250.0` (×14) |
-| 4. Death + corpse | FAIL (honest) | Teki `mStoredDamage` accumulates (0→3500) but the P1 Chappy proxy never `makeDamaged()`s foreign stimuli in idle/wander, so `mHealth` stays 130 and no corpse drops |
+| 3. Attacks / receivers | PASS — Teki `InteractAttack` 250 | `P2_PROJECTILE_ENGINE_STRIKE kind=Attack applied=1 stored=0.0->250.0` (×15) |
+| 4. Death + corpse | FAIL (honest) | Teki `mStoredDamage` accumulates but the P1 Chappy proxy never `makeDamaged()`s foreign stimuli in idle/wander, so `mHealth` stays 130 and no corpse drops |
 | 5. Transport + reward | UNTESTED | cargo-free arena, no Pod; no lethal drop path reached |
-| 6. Cleanup + re-entry | PASS | `P2_PROJECTILE_STONE_DESTROY reason=wall` after each breaking Stone; no stale Teki pointer (contacts are token-keyed) |
+| 6. Cleanup + re-entry | PASS | `P2_PROJECTILE_STONE_DESTROY reason=health` (Teki hit) / `reason=wall` (miss); token-keyed contacts leave no stale pointer; self-hit is separately skipped (`P2_PROJECTILE_SKIP_SELF`) |
 
 Injected vs natural: the Stone fire is FSM-driven (not injected); the receiver
 mutation is a real `stimulate()` result, not a direct health write. The
 **lethal** path is not observed for the reason in gate 4 and is reported FAIL,
-not papered over.
+not papered over. The self-hit fix (gate 6 / new) is proven by the absence of any
+`P2_PROJECTILE_ENGINE_STRIKE` on the bound cannon.
+
+### Non-homing Kabuto run (missed, reported for completeness)
+
+The straight `kabuto` configuration (non-homing, no actor binding) fired but the
+Stone flew past the wandering Dwarf into a wall, so `stone_contact` (and the
+receiver hit) FAILED in that configuration:
+
+`output/dsw/l20-out/runtime/679cc52b377346aa9ccac3048255957c` →
+`P2_PROJECTILE_KABUTO_FIRE species=Kabuto homing=0 ...` (×11) and
+`P2_PROJECTILE_STONE_DESTROY reason=wall` (×11). This backs the "Kabuto did not
+reach the Dwarf" assumption and is why the homing `rkabuto` run is the acceptance
+channel.
+
+## Tests
+
+`tests/test_pikmin2_projectile_engine_receiver.py` covers **only** the Python
+log-evaluator/config functions (`build_config`, `parse_engine_strikes`,
+`evaluate`, `stone_config`, `kabuto_config`, `rig_bank_text`), not the native
+engine behavior; the native receiver mutation is validated by the real-GL
+runtime evidence above, not by pytest.
 
 ## Remaining blockers (named provider)
 
@@ -95,10 +139,10 @@ not papered over.
   session (#169).
 - `navipiki_press_receiver_mutation` remains UNTESTED: the homing Stone converged
   on the Pikmin-swarmed Dwarf (a Teki), not a grounded Pikmin. It is exercised
-  only in the unit tests and a direct `stone`-into-a-Pikmin configuration was not
-  run this slice.
-- The moving muzzle / sampled-clock / actor-binding inputs (already integrated)
-  were not re-exercised here; only the ordinary FSM + receiver slice is new.
+  only in the unit tests.
+- `kabuto_actor` self-hit evidence uses the standard room's Dwarf as the bound
+  cannon; a real Kabuto actor (source bank/motion) is still the remaining
+  generated-session work.
 
 ## Reproduction
 

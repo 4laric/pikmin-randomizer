@@ -2,7 +2,13 @@ import unittest
 
 from experimental.pikmin2_projectile_engine_receiver import (
     ENGINE_STRIKE_RE, MAGIC, build_config, evaluate, parse_engine_strikes,
-    stone_config, kabuto_config)
+    stone_config, kabuto_config, rig_bank_text)
+
+
+# This test file exercises ONLY the Python log-evaluator/config functions
+# (build_config, parse_engine_strikes, evaluate, stone_config, kabuto_config),
+# not the native engine behavior. The native receiver mutation is validated by
+# the real-GL runtime evidence, not by pytest.
 
 
 SAMPLE_LOG = """\
@@ -32,6 +38,32 @@ class ProjectileEngineReceiverTests(unittest.TestCase):
     def test_build_config_kabuto(self):
         text = build_config('kabuto')
         self.assertIn('kabuto Kabuto ', text)
+
+    def test_build_config_kabuto_actor(self):
+        text = build_config('kabuto_actor', generator=23)
+        self.assertIn('kabuto Kabuto ', text)
+        self.assertIn('kabuto_rig rig-bank.txt ', text)
+        self.assertIn('kabuto_actor 23', text)
+        self.assertIn('engine_receiver 1', text)
+
+    def test_rig_bank_text_has_attack_clip_and_kuti(self):
+        bank = rig_bank_text()
+        self.assertTrue(bank.startswith('P2_ATTACHMENTS_1 2 1'))
+        self.assertIn('kuti 0', bank)
+        self.assertIn('attack 60 2', bank)
+        self.assertIn('0 59', bank)
+
+    def test_evaluate_self_hit_skipped(self):
+        log = SAMPLE_LOG + ('P2_PROJECTILE_SKIP_SELF target=9999\n')
+        result = evaluate(log)
+        # target 9999 (the firer) is skipped and is not an Attack strike target.
+        self.assertEqual(result['gates']['cannon_self_hit_skipped'], 'PASS')
+
+    def test_evaluate_self_hit_fail_when_still_damaged(self):
+        log = SAMPLE_LOG + ('P2_PROJECTILE_SKIP_SELF target=1234\n')
+        result = evaluate(log)
+        # target 1234 was skipped but IS still an Attack strike target -> FAIL.
+        self.assertEqual(result['gates']['cannon_self_hit_skipped'], 'FAIL')
 
     def test_parse_engine_strikes(self):
         strikes = parse_engine_strikes(SAMPLE_LOG)
