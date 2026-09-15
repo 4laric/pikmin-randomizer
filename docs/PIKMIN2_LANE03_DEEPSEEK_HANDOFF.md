@@ -507,6 +507,9 @@ Source ID: BlueKochappy (44)
 | 4. Death and corpse | UNTESTED | lane 13 |
 | 5. Transport and reward | UNTESTED | lane 06 |
 | 6. Cleanup and re-entry | UNTESTED | lane 07 |
+| Persistence (cache round-trip) | PASS (natural, fixture-forced admission) | output/dsw/l03-out/p2-room-cache-resume.log:408-410,584 |
+
+Integrator addendum (2026-09-15): the Persistence row above is the slice-4 deliverable required by the brief; it is not one of the six ingestion gates, so it does not affect `ingest_p2_handoff_gates.py`. Ordered commits: root `d4bfcc9f`, `a9b63e1b`, `7ed5743a`; native `07e14ba5`, `84e4133e`, `cd3cc2cd`, `a0c0eb87`.
 
 Prose note (not part of the table row): the admitted cohort is fixture-forced via
 `experimental.pikmin2_seed_placement.generate_admitted_seed` (monkeypatched
