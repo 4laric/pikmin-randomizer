@@ -10,6 +10,14 @@ consumed by the Greater Jellyfloat (lane 29) captor-family path and demonstrated
 against the real Navi/NaviMgr in a private GL runtime. This revision (fix 2)
 corrects the headline labels identified by review.
 
+
+### Integrator note (review of fix 2)
+
+- Squad release on survivor-down is UNTESTED at runtime: survivor-path.log:724 shows squad_before=20 squad_after=20; releasePikis iterates the plate (navi.cpp:1398-1404), which is empty before the first CPlate::refresh, so nothing observable was released. "Source-faithful" is not a runtime PASS.
+- The fresh logs are the top-level l12-out/{base-final,knockout-final,survivor-path}.log; the 29aa… run dir holds the stale 23:34 runs with the old squad=1 marker.
+- The second-captain live gate is flipped by the PIKMIN_P2_SECOND_CAPTAIN_LIVE environment variable, not by fixture code; an invisible second Navi with live collision ships to anyone who sets it.
+- No build-evidence line was added for 16125f06 (tools-only commit; exe unaffected).
+
 ## Source IDs / owned files
 
 This is a shared/provider lane (captain/squad semantics), not a family lane, so
