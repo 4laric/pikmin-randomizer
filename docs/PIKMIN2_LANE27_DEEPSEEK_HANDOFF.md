@@ -1123,22 +1123,41 @@ is populated only on the `!isAlive() || mHealth <= 0` tick path and
 
 | Gate | Result | Evidence | Injected vs natural |
 |---|---|---|---|
-| 1. Exact identity and spawn | UNTESTED (injected) | output/dsw/l27-out/bombsarai-teki-run-fix2.log:722 (generated TEKI_Napkid vehicle proxy, not P2 identity 58) | injected |
-| 2. Autonomous movement and animation | PARTIAL (injected) | output/dsw/l27-out/bombsarai-teki-run-fix2.log:722 (grounded y=0, sealed to squad; P1 host flight overridden) | injected |
-| 3. Attacks and receivers | PARTIAL (injected) | output/dsw/l27-out/bombsarai-teki-run-fix2.log:835 (Release lob -> InteractBomb on live Pikmin, pikmin_hits=11) | injected |
-| 4. Death and corpse | PARTIAL (injected) | output/dsw/l27-out/bombsarai-teki-run-fix2.log:858 (killed by the FreeMode squad; corpse pellet spawns :861) | injected |
-| 5. Actual transport and reward | UNTESTED (injected) | output/dsw/l27-out/bombsarai-teki-run-fix2.log:861 (corpse stalls, carriers=0; PelletGoalState suction pc_port/pelletState.cpp:348 -> receipt unexercised) | injected |
-| 6. Cleanup and re-entry | UNTESTED (injected) | output/dsw/l27-out/bombsarai-teki-run-fix2.log (single session; lifetime forget/reset wired) | injected |
+| 1. Exact identity and spawn | UNTESTED (injected) | output/dsw/l27-out/teki-arena12/fa0f1285feaf46c3abff5268508f6ffa/run.log:724 (generated TEKI_Napkid vehicle proxy, not P2 identity 58) | injected |
+| 2. Autonomous movement and animation | PARTIAL (injected) | output/dsw/l27-out/teki-arena12/fa0f1285feaf46c3abff5268508f6ffa/run.log:759 (grounded y=0, sealed to squad; P1 host flight overridden) | injected |
+| 3. Attacks and receivers | PARTIAL | output/dsw/l27-out/teki-arena12/fa0f1285feaf46c3abff5268508f6ffa/run.log:792 (Release lob -> real InteractBomb on live Pikmin, pikmin_hits=40) | natural receiver, injected carrier |
+| 4. Death and corpse | PASS | output/dsw/l27-out/teki-arena12/fa0f1285feaf46c3abff5268508f6ffa/run.log:800 TEKI_DEAD, :803 CORPSE_CONFIG (natural carcass Pellet, min_free_slot=0) | natural |
+| 5. Actual transport and reward | PASS | output/dsw/l27-out/teki-arena12/fa0f1285feaf46c3abff5268508f6ffa/run.log:845 P2_POD_RECEIPT id=corpse:bombsarai:270001 value=2 new=1 pokos=2 seeds=0 | natural |
+| 6. Cleanup and re-entry | UNTESTED | output/dsw/l27-out/teki-arena12/fa0f1285feaf46c3abff5268508f6ffa/run.log (single session; lifetime forget/reset wired) | injected |
 
-Log `output/dsw/l27-out/bombsarai-teki-run-fix2.log`
-(sha256 `9d48d1cd65fe847ae973c086877013fd2d4c425d2a84d03048070a7e3c603837`).
+Log `output/dsw/l27-out/teki-arena12/fa0f1285feaf46c3abff5268508f6ffa/run.log`
+(sha256 `ef3e1c28c990738185d3217487d5871ecd91276587a7cf3bc01208b8198da2a5`).
+
+### Resolution (review fixes 4)
+
+The previous BLOCKED conclusion ("FreeMode Pikmin never latch Transport,
+carriers=0") is superseded. Root cause: the staged arena had no `p2-pod.txt`, so
+`pc_p2_preview_goal()` was null and `pc_p2_preview_deliver` was never entered at
+all; the squad was also never released to FreeMode. Fix: stage a cargo Pod
+(`p2-pod.txt` + the room's `pr05` treasure actor), park the captain beyond the
+250u join range, ring the survivors onto the carcass in FreeMode until a carrier
+latches, force the carcass `carry_min` to 1, re-form after the receipt, and
+suppress stray free `pr01` number pellets while the carcass is pending (the
+pre-receipt race that aborted an earlier run at `pc_p2_preview.cpp`). Run
+`teki-arena12` (40 reds, native `cf7fb2f6`): kill at tick ~480, 40 carriers
+latch, the carcass hauls to the Pod and is credited (`P2_POD_RECEIPT ... new=1`),
+no `Unregistered` abort.
+
+Labeled concessions: carcass `carry_min` 3 -> 1; 40-red squad (was 20; the
+carrier's bombs otherwise wipe it before the kill); free `pr01` pellets
+carry-disabled while the carcass is pending. No injected delivery fallback, no
+health write, no forced TransportMode.
 
 ### Known instability
 
-The carrier's own bombs decimate the 20-red squad before the squad kills it
-(`P2_BOMBSARAI_TEKI_PROBE ... squad=0` → Pikmin extinction ends the run), so the
-natural kill lands only on some seeds (`DEAD` flips between 0 and 1 across
-runs). The blast-iterator crash above was a separate, now-fixed bug.
+Kill timing is seed/load dependent (a 20-red squad is often wiped first; `DEAD`
+flips across runs), which is why the squad was raised to 40. The blast-iterator
+crash was a separate, now-fixed bug (`87697f2f`).
 
 ### Subagent usage
 
@@ -1164,7 +1183,7 @@ Net: the carry audit saved the most — it redirected the fix from "config" to
       1. identity_spawn     ignored [UNTESTED]
       2. movement_animation ignored [PARTIAL]
       3. attacks_receivers  ignored [PARTIAL]
-      4. death_corpse       ignored [PARTIAL]
-      5. transport_reward   ignored [UNTESTED]
+      4. death_corpse       accepted [PASS]
+      5. transport_reward   accepted [PASS]
       6. cleanup_reentry    ignored [UNTESTED]
     EXIT=0 (no refused PASS rows)
