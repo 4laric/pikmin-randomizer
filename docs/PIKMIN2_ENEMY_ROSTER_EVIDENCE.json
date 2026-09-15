@@ -342,7 +342,7 @@
         "attacks_receivers": "UNTESTED",
         "death_corpse": "PASS",
         "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "cleanup_reentry": "PASS"
       },
       "notes": [
         "Qurione (Honeywisp): native qurione vehicle; wind/nectar lifecycle remains open (#166).",
@@ -928,22 +928,23 @@
       "native_module": "pc_p2_mamuta",
       "owner_lane": "19",
       "eligibility": "candidate",
-      "eligibility_reason": "death/corpse and natural territory/flick reported; ordinary transport/reward and revisit unverified on the pinned pair",
+      "eligibility_reason": "death/corpse and natural transport/reward reported (lane 19 fix 2); cleanup/re-entry still partial on the pinned pair",
       "source": [
         "PIKMIN2_MAMUTA_AUDIT.md"
       ],
       "notes": [
         "Miulin (Mamuta): historical corpse and worker natural-flick evidence is recorded in PIKMIN2_MAMUTA_DEATH.md and PIKMIN2_MAMUTA_NATURAL.md; current-pair runtime acceptance must be repeated.",
-        "Worker evidence is not an integrated-build natural run; open transport/reward, revisit and attack1-draw abort (#221)."
+        "Lane 19 fix 2 (2026-09-15): natural kill -> pickup -> Pod receipt corpse:mamuta:221001 value=2 on the wave branches; squad ring/park are fixture placement, the kill/carry/receipt are natural. Cleanup remains PARTIAL; a retained-exe provenance gap is noted in the review."
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
         "cleanup_reentry": "UNTESTED"
-      }
+      },
+      "delivery_receipt": "corpse:mamuta:221001 (P2_POD_RECEIPT id=corpse:mamuta:221001 value=2 new=1 pokos=2) output/dsw/l19-out/mamuta-pod-deliver-01/e3e978a725c54b80baf677104a51d471/native.log:902"
     },
     "55": {
       "native_module": "pc_p2_hanachirashi",
@@ -1354,7 +1355,7 @@
         "identity_spawn": "UNTESTED",
         "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
+        "death_corpse": "PASS",
         "transport_reward": "UNTESTED",
         "cleanup_reentry": "UNTESTED"
       },
