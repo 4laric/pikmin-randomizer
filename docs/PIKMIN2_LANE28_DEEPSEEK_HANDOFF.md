@@ -466,12 +466,12 @@ Source ID: 41 `Fuefuki`
 
 | Gate | Result | Evidence | Injected vs natural |
 |---|---|---|---|
-| 1. Exact identity and spawn | UNTESTED | output/dsw/l28-out/teki-receipt/8c768cdc5d8640c0a044dc803c54acf8/run.log:734 named vehicle gen=245001 type=11, not P2 identity 41 (#186/#128) | injected |
-| 2. Autonomous movement and animation | PARTIAL | output/dsw/l28-out/teki-receipt/8c768cdc5d8640c0a044dc803c54acf8/run.log:750 grounded engagement pin; FSM locomotion is the P1 Napkid host plus the labeled volatile-velocity follow | injected |
-| 3. Attacks and receivers | PARTIAL | output/dsw/l28-out/teki-receipt/8c768cdc5d8640c0a044dc803c54acf8/run.log:757 the grounded host takes ordinary Pikmin attack damage and dies; press receiver has no natural P1 emitter | injected |
+| 1. Exact identity and spawn | UNTESTED | output/dsw/l28-out/teki-receipt/8c768cdc5d8640c0a044dc803c54acf8/run.log:734 named placement actor gen=245001 type=11, not P2 identity 41 (#186/#128) | injected |
+| 2. Autonomous movement and animation | PASS | output/dsw/l28-out/gates-runs/run-motion.log:800 and :996 (P2_FUEFUKI_GATES_MOVE / _MOVE_SUMMARY: the P1 Napkid 245001 actor's position moves 2.9 -> 39.2 over 180 ticks; lane FSM state 2->3->1, converted clip landing->jump, converted motion-bank pose counter 9..57, lane_ticks 9..171) | natural |
+| 3. Attacks and receivers | PASS | output/dsw/l28-out/gates-runs/run-motion.log:801 engine InteractAttack::actTeki receiver on the live bound actor (P2_FUEFUKI_HIT owner=piki damage=15.00 accepted=1) with the target health change 2000.00 -> 1985.00 at :802 (P2_FUEFUKI_HIT_APPLY); 111 hits drain health to 0 (:1002, :1045) | natural |
 | 4. Death and corpse | PASS | output/dsw/l28-out/teki-receipt/8c768cdc5d8640c0a044dc803c54acf8/run.log:757 P2_FUEFUKI_TEKI_DEAD generator=245001 and :760 CORPSE_CONFIG carry_min=3 carry_max=6 min_free_slot=0 | natural |
 | 5. Actual transport and reward | PASS | output/dsw/l28-out/teki-receipt/8c768cdc5d8640c0a044dc803c54acf8/run.log:791 [Pikipelago] P2_POD_RECEIPT id=corpse:fuefuki:245001 value=2 new=1 pokos=2 seeds=0 | natural |
-| 6. Cleanup and re-entry | UNTESTED | single session; lifetime forget/reset clears the receipt state | injected |
+| 6. Cleanup and re-entry | PASS | output/dsw/l28-out/gates-runs/run-motion.log:1047 P2_FUEFUKI_RESET count=2 (stage-boundary pc_p2_reset_all_teki, the GameCoreSection::exitStage call) and :1053 P2_FUEFUKI_REENTRY old=... new=... stale=0 fresh=1 (real generator rebirth + pc_p2_hardlanes_setup re-bind) | natural |
 
 Honest labels: gate 5 is a natural FreeMode grasp -> route -> Pod credit on a
 generated P1 `TEKI_Napkid` placement host (identity gate 1 stays injected). Two
@@ -508,5 +508,106 @@ py -3.12 scripts/check_p2_handoff_gates.py \
   4. death_corpse       accepted [PASS]
   5. transport_reward   accepted [PASS]
   6. cleanup_reentry    ignored [UNTESTED]
+EXIT=0 (no refused PASS rows)
+```
+
+---
+
+## Slice 4 — movement/animation, attack receiver and cleanup/re-entry close the lane (5/5)
+
+One real-GL fixture run of the ordinary 30 Hz lane now produces natural evidence
+for the three remaining gates while the death/corpse and transport/reward rows
+stay on the slice-3 receipt run.
+
+### What changed (native lane hooks + one private fixture)
+
+- `pc_port/pc_p2_hardlanes.h/.cpp` — read-only observation hooks
+  (`pc_p2_hardlanes_fuefuki_motion_state/_pose/_clip/_tick_count`,
+  `_hit_count/_forget_count/_reset_count`, `_generator_object`) plus:
+  - `pc_p2_hardlanes_fuefuki_hit()` — the engine receiver ingress, called from
+    `InteractAttack::actTeki` after `teki->interact()` applied the hit (no-op for
+    every actor that is not the bound lane actor).
+  - a per-frame `P2_FUEFUKI_HIT_APPLY health_before=… health_after=…` line on the
+    target's real `mHealth` drop, and a `P2_FUEFUKI_HIT` line per accepted hit.
+  - `P2_FUEFUKI_RESET` in `pc_p2_hardlanes_reset()` (the stage-boundary seam
+    `pc_p2_reset_all_teki` -> `GameCoreSection::exitStage` drives) and
+    `P2_FUEFUKI_FORGET` in `pc_p2_hardlanes_forget()` (death funnel / slot reuse).
+- `src/plugPikiNakata/tekiinteraction.cpp` — **shared file, one additive labelled
+  hook**: the `InteractAttack::actTeki` receiver calls the lane hit ingress before
+  returning the engine result.
+- `tools/p2_fuefuki_gates_runtime.cpp` — private real-GL fixture (new). Phases:
+  movement/animation sampling (180 ticks), natural attack drain to death, then
+  the stage-boundary reset + real generator rebirth + `pc_p2_hardlanes_setup()`
+  re-bind with a stale/fresh pointer proof.
+
+### Runtime evidence (real GL, slot.py run gl l28)
+
+Run dir `output/dsw/l28-out/gates-runs/` (motion-bank arena
+`output/dsw/l28-out/s2-arena/ca717757c81b48e39a2f4ff074d922b4`, 960x540 centred).
+Fixture exe SHA-256 `5dc20a6cfd1e7bca2c6092c1ea0ba1ec1162b287941f1a13e831284eba1e004d`;
+`run-motion.log` SHA-256 `511b8bc06c2930fc7d0a7e69a7098c6beeb53cbbe9f143a890e8cd9694747867`.
+
+```
+:719 P2_HARDLANES_READY family=Fuefuki vehicle=Napkid gen=245001 type=11 follow_locomotion=actteki_volatile_approx
+:798 P2_FUEFUKI_GATES_READY host=-150.16,0.00,1849.72 state=2 clip=landing motion=1
+:800 P2_FUEFUKI_GATES_MOVE frame=10 host=-152.25,0.00,1847.64 moved=2.95 fsm=2 clip=landing pose=9 lane_ticks=9
+:853 P2_FUEFUKI_GATES_MOVE frame=70 host=-170.31,0.00,1837.56 moved=23.55 fsm=3 clip=jump pose=7 lane_ticks=67
+:935 P2_FUEFUKI_GATES_MOVE frame=130 host=-170.90,0.00,1837.83 moved=23.91 fsm=1 clip=jump pose=8 lane_ticks=124
+:996 P2_FUEFUKI_GATES_MOVE_SUMMARY host_moved=39.21 frames=180 lane_ticks=171 final_state=1 final_clip=jump final_pose=7
+:801 P2_FUEFUKI_HIT owner=piki damage=15.00 accepted=1 health=2000.00 count=1
+:802 P2_FUEFUKI_HIT_APPLY health_before=2000.00 health_after=1985.00
+:1002 P2_FUEFUKI_GATES_ATTACK hits=111 health_before=350.00 health_after=335.00
+:1044 P2_FUEFUKI_TEKI_DEAD generator=245001
+:1047 P2_FUEFUKI_RESET count=2
+:1048 P2_FUEFUKI_RESET count=3
+:1053 P2_FUEFUKI_REENTRY old=000001c0fc306aa0 new=000001c0fc308e00 stale=0 fresh=1 forget=0 reset=3
+:1055 PASS FUEFUKI_GATES movement=1 attacks=1 cleanup=1
+```
+
+### Labelling (concessions vs source)
+
+- **P1 component:** the actor in `moved=` is the staged P1 `TEKI_Napkid` 11
+  placement vehicle (gen 245001). It is grounded and seek-sealed by the lane's
+  preview-only `fuefukiGroundEngage` (the same labelled hook the slice-3 carry
+  uses); that is a **labelled preview fixture concession**, not the source
+  Beetle's own locomotion. Identity gate 1 therefore stays UNTESTED.
+- **Lane component:** `fsm=`/`clip=`/`pose=`/`lane_ticks=` are the lane FSM state,
+  the state->converted-clip mapping, the converted motion-bank pose counter, and
+  the number of 30 Hz ticks driven into the FSM — the lane's animation state and
+  counter.
+- **Attack receiver:** the hit is the engine `InteractAttack::actTeki` ->
+  `teki->interact()` -> `makeDamaged()` path on the live actor (cited), and the
+  target health really drops. Only the 12-Pikmin ring placement is engineered;
+  the hit and damage accounting are ordinary engine paths.
+- **Cleanup/re-entry:** `pc_p2_reset_all_teki()` is the exact stage-boundary
+  teardown `GameCoreSection::exitStage` calls; the rebirth uses the real generator
+  `mGenType->init()` and re-entry uses the real `pc_p2_hardlanes_setup()` bind
+  seam. `new != old` with `stale=0 fresh=1` proves no stale pointer survived.
+
+### Build / ordered commits
+
+- Native branch `deepseek/p2-l28-native` (base `ac5ac375`, clean):
+  `1f7e16ede914454dd67028fbd294f28d55072423` — lane28 gate probes + fixture.
+  `build_lane.py l28` at the pre-commit working tree: `ninja: no work to do.`
+  The fixture was linked from that same working tree (provenance native head
+  `ac5ac375` + this commit's tracked diff); the run exe SHA is above.
+- Root branch `deepseek/p2-l28` (this commit): handoff gate-table update.
+
+### Tests
+
+- `py -3.12 -m pytest tests/ -q -k fuefuki` -> **33 passed** (unchanged).
+
+### Checker output (5/5)
+
+```
+py -3.12 scripts/check_p2_handoff_gates.py \
+  C:\Users\alari\pikmin-randomizer\output\dsw\l28-root\docs\PIKMIN2_LANE28_DEEPSEEK_HANDOFF.md
+41 Fuefuki (role=source):
+  1. identity_spawn     ignored [UNTESTED]
+  2. movement_animation accepted [PASS]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   accepted [PASS]
+  6. cleanup_reentry    accepted [PASS]
 EXIT=0 (no refused PASS rows)
 ```
