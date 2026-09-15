@@ -137,9 +137,9 @@ DONE P2_DWARF_ORANGE_COMBAT
 |---|---|---|
 | A Identity/content | PASS (unchanged) | `P2_ENEMY_READY source_id=44`, Dwarf Orange bank |
 | B Source behavior | PASS (opt-in candidate) | full source state set + `source_FSM=implemented`; wait/turn/attack/dead witnessed, flick/walk/turn_to_home/go_home witnessed |
-| C Combat/receivers | PASS at P1-proxy level | real Pikmin damage drives health 250→0; frame-8 `InteractAttack` |
+| C Combat/receivers | PASS (natural) | real Pikmin damage drives health 250→0; frame-8 bite + `P2_KOCHAPPY_EAT eaten=1 slot=1` and frame-88 `P2_KOCHAPPY_SWALLOW swallowed=1` (few-Pikmin observation squad) |
 | D Death/drop/transport | PASS at P1-proxy level | FSM Dead → `pcEscapeNow()` carcass, `corpses=1` |
-| E Lifetime | BLOCKED (unchanged) | #397 swap precondition |
+| E Lifetime | PASS (cleanup) / re-entry open | natural death → real corpse carry/removal → engine `doKill` → `pc_p2_dwarf_orange_forget` + `pc_p2_kochappy_fsm_forget`; see [the cleanup witness](PIKMIN2_DWARF_ORANGE_CLEANUP.md). Scene re-entry still needs the #397 squad-free baseline; the #397 stage-teardown reset already clears the maps. |
 | F Persistence | PASS (unchanged) | restart evidence untouched |
 | G Product/mixed scene | BLOCKED (unchanged) | not integrated |
 
@@ -148,9 +148,14 @@ DONE P2_DWARF_ORANGE_COMBAT
 - Press is implemented as a state and a trigger API but **UNTESTED**: the P1
   Chappy vehicle exposes no press callback for this P2 actor, so no in-engine
   squash reaches `pc_p2_kochappy_fsm_press`.
-- Attack applies one `InteractAttack` at frame 8; `eatPikmin`,
-  `flickStickPikmin`, the frame-88 swallow and white-Pikmin poison are not
-  modelled.
+- Attack applies one `InteractAttack` at frame 8 (the bite), then source
+  `eatPikmin` sticks one free Pikmin to a free mouth slot (`eaten=1 slot=1`) and
+  source `swallowPikmin` kills the mouth-stuck Pikmin at frame 88
+  (`swallowed=1`); a White Pikmin applies the proper-fp02 poison
+  (`eatWhitePikminCallBack` equivalent, `P2_KOCHAPPY_SWALLOW white=1`). The
+  no-free-slot one-shot eat path (`InteractSwallow` with a null slot) is
+  UNTESTED, and `flickStickPikmin` (frame 8) remains approximated by the
+  standalone Flick contact-radius path.
 - `EnemyFunc::isStartFlick` (a Pikmin stuck to the body) is approximated by a
   contact-radius test; attack posture takes precedence.
 - `isTargetOutOfRange` is approximated by distance > sight fp12 = 95.

@@ -34,6 +34,7 @@ int main()
     assert(defaults.attackHitRange == 35.0f && defaults.attackDamage == 10.0f);
     assert(defaults.homeRadius == 80.0f && defaults.territory == 500.0f);
     assert(defaults.privateRadius == 70.0f);
+    assert(defaults.eatRange == 35.0f && defaults.poisonDamage == 300.0f);
 
     assert(std::string(stateName(STATE_WAIT)) == "wait");
     assert(std::string(stateName(STATE_DEAD)) == "dead");
@@ -57,12 +58,14 @@ int main()
 
     std::istringstream full("P2_DWARF_ORANGE_FSM_1 health 250 move_speed 60 sight 95"
                             " attack_range 30 attack_angle 20 attack_hit_range 35"
-                            " attack_damage 10 home_radius 80 territory 500 private_radius 70");
+                            " attack_damage 10 home_radius 80 territory 500 private_radius 70"
+                            " eat_range 35 poison_damage 300");
     assert(parseConfig(full, parsed));
     assert(parsed.health == 250.0f && parsed.moveSpeed == 60.0f && parsed.sight == 95.0f);
     assert(parsed.attackRange == 30.0f && parsed.attackAngle == 20.0f);
     assert(parsed.attackHitRange == 35.0f && parsed.attackDamage == 10.0f);
     assert(parsed.homeRadius == 80.0f && parsed.territory == 500.0f && parsed.privateRadius == 70.0f);
+    assert(parsed.eatRange == 35.0f && parsed.poisonDamage == 300.0f);
 
     Params scratch;
     for (const char* bad : {
@@ -81,6 +84,10 @@ int main()
              "P2_DWARF_ORANGE_FSM_1 attack_angle 181",
              "P2_DWARF_ORANGE_FSM_1 attack_damage -1",
              "P2_DWARF_ORANGE_FSM_1 sight 1e9",
+             "P2_DWARF_ORANGE_FSM_1 eat_range 0",
+             "P2_DWARF_ORANGE_FSM_1 eat_range -1",
+             "P2_DWARF_ORANGE_FSM_1 poison_damage -1",
+             "P2_DWARF_ORANGE_FSM_1 poison_damage nan",
              "P2_DWARF_ORANGE_FSM_1 health 250 extra 1",
              "P2_DWARF_ORANGE_FSM_1 sight 95 trailing",
          }) {
@@ -95,9 +102,9 @@ int main()
 def test_compiled_fsm_policy(tmp_path, name):
     compiler = shutil.which('g++') or ('C:/msys64/mingw64/bin/g++.exe'
                                        if Path('C:/msys64/mingw64/bin/g++.exe').exists() else None)
-    candidates = [ROOT / 'native' / 'pc_port',
-                  ROOT / 'output' / 'native-lane13-orange-fsm' / 'pc_port',
-                  ROOT.parent / 'native-lane13-orange-fsm' / 'pc_port']
+    candidates = [ROOT / 'native' / 'pc_port']
+    if os.environ.get('PIKMIN_NATIVE_ROOT'):
+        candidates.insert(0, Path(os.environ['PIKMIN_NATIVE_ROOT']) / 'pc_port')
     if os.environ.get('P2_NATIVE_PC_PORT'):
         candidates.insert(0, Path(os.environ['P2_NATIVE_PC_PORT']))
     include = next((c for c in candidates if (c / name).is_file()), None)

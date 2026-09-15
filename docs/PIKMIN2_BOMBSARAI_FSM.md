@@ -187,8 +187,13 @@ Reading of the evidence:
 - Keyframe timings are harness stand-ins; converter (#128) should supply
   retail .bca durations and KEYEVENT_2 frames per state, replacing the
   profile `timing` line.
-- `kamu_jnt1` capture-joint transform still pinned (index 14 identified;
-  the bomb rides a static joint offset, not the animated joint).
+- `kamu_jnt1` capture-joint transform now follows the carrier: the profile
+  `joint` is a body-relative offset, rotated by the carrier yaw and added to
+  the hover-integrated body origin each tick, so the captured payload rides the
+  moving carrier (hover bob + facing) instead of the prior static world point
+  (`P2BombSaraiBomb::followJoint` + `P2BombSaraiJoint::compute`,
+  `pc_p2_bombsarai_joint.h`). The real animated skeletal joint transform (per
+  clip/pose) remains #128 converter work.
 - Flick effects (flickStickPikmin knockback/damage) are host-owned and not
   routed to receivers yet; only the FSM decision and `flickRequested`
   output exist.

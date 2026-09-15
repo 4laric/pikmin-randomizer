@@ -55,35 +55,58 @@ class ProtocolTests(unittest.TestCase):
 
     def test_validate_pass_and_fail(self):
         text = (
-            'P2_POM_READY generator=240011 species=RedPom source_id=4 colour=1 budget=5 queen=0 x=0.00 y=30.00 z=1850.00\n'
-            'P2_POM_READY generator=240012 species=RandPom source_id=8 colour=-1 budget=1 queen=1 x=30.00 y=30.00 z=1850.00\n'
-            'P2_POM_BASE_REJECTED generator=240013 species=Pom source_id=82 reason=nonspawnable_base\n'
-            'P2_POM_INVULNERABLE generator=240011 invulnerable_after_landing=1\n'
-            'P2_POM_INVULNERABLE generator=240012 invulnerable_after_landing=1\n'
-            'P2_POM_REFUND generator=240011 species=RedPom thrown_colour=1 used=0 budget=5 slot_refunded=1\n'
-            'P2_POM_ACCEPT generator=240011 species=RedPom thrown_colour=0 used=1 budget=5\n'
-            'P2_POM_ACCEPT generator=240012 species=RandPom thrown_colour=2 used=1 budget=1\n'
-            'P2_POM_CLOSE generator=240011 species=RedPom outcome=shot used=1 budget=5 swallowed=2\n'
-            'P2_POM_CLOSE generator=240012 species=RandPom outcome=shot used=1 budget=1 swallowed=1\n'
-            'P2_POM_SPROUT generator=240011 species=RedPom count=2 colour=1 body=1 leaf=1\n'
-            'P2_POM_SPROUT generator=240012 species=RandPom count=9 colour=0 body=0 leaf=1\n'
-            'P2_POM_SPROUT_RETRY generator=240012 species=RandPom owed_remaining=9 requested=9 born=0 item_capacity=1 forced=1\n'
-            'P2_POM_SPROUT_SETTLED generator=240012 species=RandPom requested=9 born=9 conservation=1\n'
+            'P2_POM_READY generator=353003 species=RedPom source_id=4 colour=1 budget=5 queen=0 x=-120.00 y=30.00 z=1850.00\n'
+            'P2_POM_READY generator=353007 species=RandPom source_id=8 colour=-1 budget=1 queen=1 x=360.00 y=30.00 z=1850.00\n'
+            'P2_POM_BASE_REJECTED generator=353099 species=Pom source_id=82 reason=nonspawnable_base\n'
+            'P2_POM_BIND generator=353007 species=RandPom source_id=8 host=teki type=3 drawn=1\n'
+            'P2_POM_DRAW generator=353007 species=RandPom pose=open draws=2\n'
+            'P2_POM_INVULNERABLE generator=353003 invulnerable_after_landing=1\n'
+            'P2_POM_INVULNERABLE generator=353007 invulnerable_after_landing=1\n'
+            'P2_POM_REFUND generator=353003 species=RedPom thrown_colour=1 used=0 budget=5 slot_refunded=1\n'
+            'P2_POM_ACCEPT generator=353003 species=RedPom thrown_colour=0 used=1 budget=5\n'
+            'P2_POM_ACCEPT generator=353007 species=RandPom thrown_colour=2 used=1 budget=1\n'
+            'P2_POM_CLOSE generator=353003 species=RedPom outcome=shot used=1 budget=5 swallowed=2\n'
+            'P2_POM_CLOSE generator=353007 species=RandPom outcome=shot used=1 budget=1 swallowed=1\n'
+            'P2_POM_SPROUT generator=353003 species=RedPom count=2 colour=1 body=1 leaf=1\n'
+            'P2_POM_SPROUT generator=353007 species=RandPom count=9 colour=0 body=0 leaf=1\n'
+            'P2_POM_SPROUT_RETRY generator=353007 species=RandPom owed_remaining=9 requested=9 born=0 item_capacity=1 forced=1\n'
+            'P2_POM_SPROUT_SETTLED generator=353007 species=RandPom requested=9 born=9 conservation=1\n'
+            'P2_POM_STATE generator=353007 species=RandPom from=wait to=open\n'
+            'P2_POM_STATE generator=353007 species=RandPom from=open to=swing\n'
+            'P2_POM_STATE generator=353007 species=RandPom from=swing to=close\n'
+            'P2_POM_STATE generator=353007 species=RandPom from=close to=shot\n'
+            'P2_POM_STATE generator=353007 species=RandPom from=shot to=dead\n'
+            'P2_POM_DEAD generator=353007 species=RandPom used=1 refunds=0 corpse=0 budget=1\n'
+            'P2_POM_CONSERVATION generator=353007 species=RandPom used=1 refunds=0 requested=9 born=9 dead_pikis=0 loss_counted=0\n'
             'PASS P2_POM_NATIVE accept_refund_close_sprout\n'
         )
         good = pr.validate(text, 0)
         self.assertTrue(good['passed'], good['failed'])
-        missing = text.replace('P2_POM_REFUND generator=240011 species=RedPom thrown_colour=1 used=0 budget=5 slot_refunded=1\n', '')
+        missing = text.replace('P2_POM_REFUND generator=353003 species=RedPom thrown_colour=1 used=0 budget=5 slot_refunded=1\n', '')
         bad = pr.validate(missing, 0)
         self.assertFalse(bad['passed'])
         self.assertIn('refund', bad['failed'])
         # A Queen that still falls back to the -1 sentinel colour must fail.
-        legacy = text.replace('P2_POM_SPROUT generator=240012 species=RandPom count=9 colour=0 body=0 leaf=1',
-                              'P2_POM_SPROUT generator=240012 species=RandPom count=9 colour=-1 leaf=1')
+        legacy = text.replace('P2_POM_SPROUT generator=353007 species=RandPom count=9 colour=0 body=0 leaf=1',
+                              'P2_POM_SPROUT generator=353007 species=RandPom count=9 colour=-1 leaf=1')
         self.assertFalse(pr.validate(legacy, 0)['passed'])
         # A silently dropped birth (no settled conservation) must fail.
-        dropped = text.replace('P2_POM_SPROUT_SETTLED generator=240012 species=RandPom requested=9 born=9 conservation=1\n', '')
+        dropped = text.replace('P2_POM_SPROUT_SETTLED generator=353007 species=RandPom requested=9 born=9 conservation=1\n', '')
         self.assertFalse(pr.validate(dropped, 0)['passed'])
+        # A budget-exhausted death that never happens must fail.
+        nodead = text.replace('P2_POM_DEAD generator=353007 species=RandPom used=1 refunds=0 corpse=0 budget=1\n', '')
+        self.assertFalse(pr.validate(nodead, 0)['passed'])
+        # A conversion that wrongly counted a loss must fail.
+        loss = text.replace('loss_counted=0', 'loss_counted=1')
+        self.assertFalse(pr.validate(loss, 0)['passed'])
+        # A bound generator that never reports its drawn conversion must fail.
+        nobind = text.replace('P2_POM_BIND generator=353007 species=RandPom source_id=8 host=teki type=3 drawn=1\n', '')
+        self.assertFalse(pr.validate(nobind, 0)['passed'])
+        self.assertIn('bind', pr.validate(nobind, 0)['failed'])
+        # A generator that binds but never emits a draw tick must fail.
+        nodraw = text.replace('P2_POM_DRAW generator=353007 species=RandPom pose=open draws=2\n', '')
+        self.assertFalse(pr.validate(nodraw, 0)['passed'])
+        self.assertIn('drawn', pr.validate(nodraw, 0)['failed'])
 
     def test_instrument_replaces_room_app(self):
         source = 'prefix\nclass RoomApp : public PlugPikiApp {\n int idle() override { return 0; }\n};\nint main(int, char**) { return 0; }\n'
@@ -129,6 +152,17 @@ class ConsistencyTests(unittest.TestCase):
         self.assertEqual(fb.candypop_queen_colour(elapsed_seconds=2.6, met_colours=('blue', 'red', 'yellow')), 'red')
         self.assertFalse(fb.candypop_spawn_allowed(species='BlackPom', floor=1, cave='Emergence Cave',
                                                    met_colours=(), player_count=20))
+        # Source six-state FSM and budget-only death.
+        self.assertEqual(fb.candypop_state_name(0), 'wait')
+        self.assertEqual(fb.candypop_state_name(1), 'dead')
+        self.assertEqual(fb.candypop_state_name(5), 'swing')
+        self.assertTrue(fb.candypop_dead(budget_spent=True, sprout_pending=0))
+        self.assertFalse(fb.candypop_dead(budget_spent=False, sprout_pending=0))
+        self.assertFalse(fb.candypop_dead(budget_spent=True, sprout_pending=1))
+        with self.assertRaises(ValueError):
+            fb.candypop_state_name(6)
+        with self.assertRaises(ValueError):
+            fb.candypop_dead(budget_spent=True, sprout_pending=-1)
 
     def test_native_policy_executable(self):
         candidates = [ROOT / 'native-patches' / 'pom']

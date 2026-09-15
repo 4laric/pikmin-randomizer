@@ -327,3 +327,314 @@ def coexistence_ok(giant_ids, small_ids, nest_ids):
     ``ValueError``; a well-formed but invalid arrangement returns ``False``.
     """
     return coexistence_report(giant_ids, small_ids, nest_ids)['ok']
+
+
+# ---------------------------------------------------------------------------
+# Native P2CargoContest consumer mirror (lane 18, small Breadbug id 38).
+#
+# The native side drives lane-06 ``P2CargoContest`` for the small Breadbug
+# (source id 38, native carry power 2) and emits the agreed ``P2_BREADBUG_*``
+# markers. This section is a self-contained Python mirror of that header-only
+# state machine (integer rules only) plus regex parsing and gate validation
+# for the native log lines. See ``docs/PIKMIN2_BREADBUG_ACTOR_RUNTIME.md``.
+# ---------------------------------------------------------------------------
+import re
+
+SMALL_CONTEST_IDENTITY = 'onion:p2:38:0'
+
+# Fixed small-Breadbug contest parameters; ``source_token`` and ``identity`` are
+# filled in by ``small_contest_config`` because the token names the generator.
+SMALL_CONTEST_CONFIG = {
+    'min_threshold': 1,
+    'max_threshold': 2,
+    'freeze_seconds': 0.5,
+    'required_carriers': 1,
+    'max_carriers': 0,
+}
+
+OUTCOME_HELD = 'held'
+OUTCOME_STOLEN = 'stolen'
+OUTCOME_RELEASED = 'released'
+
+REASON_TIMEOUT = 'timeout'
+REASON_INTERRUPTED = 'interrupted'
+REASON_OWNER_DIED = 'owner_died'
+REASON_REVISIT = 'revisit'
+
+
+def small_contest_config(generator):
+    """Small Breadbug (38) P2 cargo-contest consumer configuration.
+
+    ``identity`` is fixed to ``onion:p2:38:0`` and ``source_token`` becomes
+    ``nest:<generator>``. Two carriers are required to reach ``max_threshold=2``
+    and steal; a single carrier (strength 1) stays held because one carrier is
+    not below ``required_carriers`` and ``1 < min_threshold`` is False.
+    """
+    if type(generator) is not int:
+        raise ValueError('Generator id must be an int')
+    if not 0 <= generator <= MAX_GENERATOR_ID:
+        raise ValueError('Generator id out of range')
+    config = dict(SMALL_CONTEST_CONFIG)
+    config['identity'] = SMALL_CONTEST_IDENTITY
+    config['source_token'] = 'nest:%d' % generator
+    return config
+
+
+class SmallContestMirror:
+    """Python mirror of lane-06 ``P2CargoContest`` for the small Breadbug.
+
+    Every carrier token contributes strength 1, so ``max_threshold=2`` needs two
+    carriers to steal and a single carrier stays held. Stolen is sticky: once
+    stolen, ``update``, ``interrupt``, ``on_owner_died``, ``on_revisit`` and
+    ``reset`` all leave the outcome unchanged.
+    """
+
+    def __init__(self, generator, config=None):
+        if config is None:
+            config = small_contest_config(generator)
+        else:
+            config = dict(config)
+        self.identity = config['identity']
+        self.source_token = config['source_token']
+        self.min_threshold = config['min_threshold']
+        self.max_threshold = config['max_threshold']
+        self.freeze_seconds = config['freeze_seconds']
+        self.required_carriers = config['required_carriers']
+        self.max_carriers = config['max_carriers']
+        self._started = None
+        self._outcome = OUTCOME_HELD
+        self._reason = None
+        self._granted = set()
+
+    @property
+    def outcome(self):
+        return self._outcome
+
+    @property
+    def reason(self):
+        return self._reason
+
+    def begin(self):
+        """Reset to Held; the durable exactly-once receipt latch is not cleared."""
+        self._outcome = OUTCOME_HELD
+        self._reason = None
+        self._started = None
+        return self._outcome
+
+    def update(self, now_seconds, carrier_tokens):
+        """Advance the contest with ``carrier_tokens`` (each contributing 1)."""
+        now = _strength(now_seconds)
+        if isinstance(carrier_tokens, (str, bytes)) or not isinstance(
+                carrier_tokens, (list, tuple)):
+            raise ValueError('carrier_tokens must be a list or tuple')
+        tokens = list(carrier_tokens)
+        for token in tokens:
+            if not isinstance(token, str):
+                raise ValueError('Carrier token must be a string')
+        if self._outcome == OUTCOME_STOLEN:
+            return self._outcome
+        if self._started is None:
+            self._started = now
+        if self.max_carriers:
+            tokens = tokens[:self.max_carriers]
+        strengths = [1] * len(tokens)
+        total = sum(strengths)
+        strong = sum(1 for strength in strengths if strength > 0)
+        if self.max_threshold > 0 and total >= self.max_threshold:
+            self._outcome = OUTCOME_STOLEN
+            self._reason = None
+        elif strong < self.required_carriers:
+            if self.freeze_seconds > 0 and now - self._started >= self.freeze_seconds:
+                self._outcome = OUTCOME_RELEASED
+                self._reason = REASON_TIMEOUT
+            else:
+                self._outcome = OUTCOME_HELD
+                self._reason = None
+        else:
+            self._outcome = OUTCOME_HELD
+            self._reason = None
+        return self._outcome
+
+    def _mark_released(self, reason):
+        if self._outcome == OUTCOME_STOLEN:
+            return self._outcome
+        self._outcome = OUTCOME_RELEASED
+        self._reason = reason
+        return self._outcome
+
+    def interrupt(self):
+        return self._mark_released(REASON_INTERRUPTED)
+
+    def on_owner_died(self):
+        return self._mark_released(REASON_OWNER_DIED)
+
+    def on_revisit(self):
+        return self._mark_released(REASON_REVISIT)
+
+    def reset(self):
+        return self._mark_released(REASON_REVISIT)
+
+    def grant_receipt(self, key=None):
+        """Grant exactly once, raising unless the last outcome is Stolen.
+
+        The receipt is de-duplicated in-process by ``key`` (defaults to the
+        consumer ``source_token``), mirroring the native ``mReceiptGranted``
+        latch plus durable ledger de-dupe.
+        """
+        if self._outcome != OUTCOME_STOLEN:
+            raise ValueError('Grant receipt requires a stolen outcome')
+        dedupe_key = self.source_token if key is None else key
+        if dedupe_key in self._granted:
+            return False
+        self._granted.add(dedupe_key)
+        return True
+
+
+_MARKER_RE = re.compile(
+    r'(P2_BREADBUG_CONTEST_BEGIN|P2_BREADBUG_CONTEST_UPDATE|'
+    r'P2_BREADBUG_CONTEST_STOLEN|P2_BREADBUG_CONTEST_GRANT|'
+    r'P2_BREADBUG_CONTEST_PROBE|P2_BREADBUG_OWNER_DIED|'
+    r'P2_BREADBUG_REVISIT)\b')
+_FIELD_RE = re.compile(r'([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|\S+)')
+
+
+def _marker_fields(line):
+    marker = _MARKER_RE.match(line)
+    if marker is None:
+        return None, None
+    fields = {}
+    for key, value in _FIELD_RE.findall(line):
+        if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+            value = value[1:-1]
+        fields[key] = value
+    return marker.group(1), fields
+
+
+def _field_int(fields, name):
+    value = fields.get(name, '0')
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise ValueError('Malformed %s value in marker: %r' % (name, value))
+
+
+def parse_contest_consumer(text, generator):
+    """Parse P2 Breadbug cargo-contest markers into observed events.
+
+    Only marker lines whose ``generator=`` equals ``generator`` are counted. The
+    result records whether each gate input was observed (``began``, ``held``,
+    ``stolen``, ``released``, ``granted``, ``owner_died``, ``revisit``), plus the
+    exact grant count and duplicate flag for the exactly-once check. It also
+    counts ``P2_BREADBUG_CONTEST_PROBE`` markers and, in particular, how many of
+    them appear before the first ``granted=1`` (a probe during the primary tug).
+    """
+    target = str(generator)
+    events = {
+        'generator': generator,
+        'began': False,
+        'held': False,
+        'stolen': False,
+        'released': False,
+        'granted': False,
+        'grant_duplicate': False,
+        'grants': 0,
+        'owner_died': False,
+        'owner_died_released': False,
+        'revisit': False,
+        'update_outcomes': [],
+        'pass_marker': False,
+        'probe_markers': [],
+        'probe_before_first_grant': 0,
+    }
+    granted_seen = False
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith('PASS P2_BREADBUG_CONTEST'):
+            events['pass_marker'] = True
+            continue
+        marker, fields = _marker_fields(line)
+        if marker is None:
+            continue
+        if fields.get('generator') is not None and fields['generator'] != target:
+            continue
+        if marker == 'P2_BREADBUG_CONTEST_BEGIN':
+            events['began'] = True
+        elif marker == 'P2_BREADBUG_CONTEST_UPDATE':
+            outcome = fields.get('outcome')
+            if outcome in (OUTCOME_HELD, OUTCOME_STOLEN, OUTCOME_RELEASED):
+                events[outcome] = True
+                events['update_outcomes'].append(outcome)
+        elif marker == 'P2_BREADBUG_CONTEST_STOLEN':
+            events['stolen'] = True
+            if _field_int(fields, 'released') == 1:
+                events['released'] = True
+        elif marker == 'P2_BREADBUG_CONTEST_GRANT':
+            if _field_int(fields, 'granted') == 1:
+                events['granted'] = True
+                events['grants'] += 1
+                granted_seen = True
+            if _field_int(fields, 'duplicate') == 1:
+                events['grant_duplicate'] = True
+        elif marker == 'P2_BREADBUG_CONTEST_PROBE':
+            events['probe_markers'].append(_field_int(fields, 'carriers'))
+            if not granted_seen:
+                events['probe_before_first_grant'] += 1
+        elif marker == 'P2_BREADBUG_OWNER_DIED':
+            events['owner_died'] = True
+            if _field_int(fields, 'released') == 1:
+                events['owner_died_released'] = True
+        elif marker == 'P2_BREADBUG_REVISIT':
+            if _field_int(fields, 'rearmed') == 1:
+                events['revisit'] = True
+    return events
+
+
+def validate_contest_consumer(events):
+    """Assert the P2 Breadbug contest-consumer gates from observed events.
+
+    (a) a begin marker was observed; (b) a full contest ran (held then
+    stolen + released + granted); (c) an owner death released the cargo
+    (``released=1``); (d) the grant was emitted exactly once: exactly one
+    ``granted=1`` and one ``duplicate=1`` (the refused re-grant across the
+    revisit proves the durable ledger did not re-credit it); and (e) the
+    primary tug had no probe marker (``probe_before_first_grant == 0``), so the
+    Held -> Stolen reach was driven by the real squad, not an injected count.
+    """
+    began = bool(events.get('began'))
+    held = bool(events.get('held'))
+    stolen = bool(events.get('stolen'))
+    released = bool(events.get('released'))
+    granted = bool(events.get('granted'))
+    owner_died = bool(events.get('owner_died'))
+    owner_died_released = bool(events.get('owner_died_released'))
+    grants = int(events.get('grants', 0))
+    grant_duplicate = bool(events.get('grant_duplicate'))
+    probe_before_first_grant = int(events.get('probe_before_first_grant', 0))
+
+    gate_began = began
+    gate_contest = held and stolen and released and granted
+    gate_owner_died = owner_died and owner_died_released
+    gate_grant = granted and grants == 1 and grant_duplicate
+    gate_primary_tug_natural = probe_before_first_grant == 0
+
+    checks = {
+        'began': began,
+        'held': held,
+        'stolen': stolen,
+        'released': released,
+        'granted': granted,
+        'owner_died': owner_died,
+        'owner_died_released': owner_died_released,
+        'grant_exactly_once': gate_grant,
+        'probe_before_first_grant': probe_before_first_grant,
+        'gate_began': gate_began,
+        'gate_held_then_stolen_released_granted': gate_contest,
+        'gate_owner_died_released': gate_owner_died,
+        'gate_grant_exactly_once': gate_grant,
+        'gate_primary_tug_natural': gate_primary_tug_natural,
+    }
+    passed = (gate_began and gate_contest and gate_owner_died and gate_grant
+              and gate_primary_tug_natural)
+    return {'passed': passed, 'checks': checks}

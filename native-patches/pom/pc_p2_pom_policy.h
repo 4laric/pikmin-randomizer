@@ -143,6 +143,52 @@ inline bool queen(Species species)
 	return species == Species::RandPom;
 }
 
+// P2 source state set (enemy/Entities/Pom.h:153-161). One FSM is shared by the
+// six buds: Wait arms to Open at the open clip's key 2; a touch starts Swing;
+// Close after fp01 or a spent budget routes to Shot when Pikmin are inside (or
+// reopens); Shot spits leaf sprouts; Dead is reached only from an exhausted
+// lifetime budget (audit lines 60-73, 79-82). Note: this module has no clip
+// playback, so the logged walk collapses the source's transient Swing->Open
+// return into open -> swing -> close.
+enum class State {
+	Wait   = 0,
+	Dead   = 1,
+	Open   = 2,
+	Close  = 3,
+	Shot   = 4,
+	Swing  = 5,
+};
+
+inline const char* stateName(State state)
+{
+	switch (state) {
+	case State::Wait:
+		return "wait";
+	case State::Dead:
+		return "dead";
+	case State::Open:
+		return "open";
+	case State::Close:
+		return "close";
+	case State::Shot:
+		return "shot";
+	case State::Swing:
+		return "swing";
+	}
+	throw std::runtime_error("unknown pom state");
+}
+
+// candypop_dead: the bud dies only from an exhausted lifetime budget (no
+// combat path, no corpse). Death waits on conservation settlement so a
+// consumed Pikmin's sprouts can never be silently discarded by the death.
+inline bool dead(bool budgetSpent, int owed)
+{
+	if (owed < 0) {
+		throw std::runtime_error("negative owed sprout count");
+	}
+	return budgetSpent && owed == 0;
+}
+
 // candypop_accept: a Pikmin enters through the slot press while armed and under
 // the lifetime budget; any colour is accepted.
 inline bool accept(Species species, bool slotPressed, bool armed, int usedSlots)

@@ -8,7 +8,7 @@ from scripts.pikmin2_mamuta_pod_native import ASSISTED_FIXTURE, POD_FIXTURE
 
 
 def _pod_log(*, assisted=False, died=1, corpse=1, carried=1, goal=1, receipt=True,
-             pokos=182, reset=True, desync=False):
+             pokos=182, reset=True, desync=False, captain_down=False):
     lines = [
         'P2_MAMUTA_RULES enabled cap=99 navi_damage=5.0 vertical_band=20',
         'P2_MAMUTA_READY generator=221001 native_type=24 xyz=-150.000000,30.000000,1850.000000 P1_proxy_static_anchors_no_P2_planting',
@@ -21,6 +21,8 @@ def _pod_log(*, assisted=False, died=1, corpse=1, carried=1, goal=1, receipt=Tru
     lines.append('P2_MAMUTA_POD_OBSERVE tick=30 state=7 health=2424.8 navi=-150.0,1900.0 squad=10 min=55.0 states=00000080 pokos=0')
     lines.append('P2_MAMUTA_POD_APPROACH_RESULT approached=1 min=12.0 states=00000d80')
     lines.append('P2_MAMUTA_POD_PLANTED planted=2 bury_states=2')
+    if captain_down:
+        lines.append('P2_MAMUTA_POD_CAPTAIN_DOWN tick=1234 health=0.0')
     if assisted and carried:
         lines.append('P2_MAMUTA_POD_ASSIST carriers=8 assisted=1')
     if receipt:
@@ -35,8 +37,11 @@ def _pod_log(*, assisted=False, died=1, corpse=1, carried=1, goal=1, receipt=Tru
         lines.append('P2_MAMUTA_POD_RESET')
     if desync:
         lines.append('[PC GX] DESYNC something')
-    lines.append('PASS P2_MAMUTA_POD_RUNTIME assisted approach receipt reset' if assisted
-                 else 'PASS P2_MAMUTA_POD_RUNTIME observe approach receipt reset')
+    if captain_down:
+        lines.append('PASS P2_MAMUTA_POD_RUNTIME captain_down')
+    else:
+        lines.append('PASS P2_MAMUTA_POD_RUNTIME assisted approach receipt reset' if assisted
+                     else 'PASS P2_MAMUTA_POD_RUNTIME observe approach receipt reset')
     return '\n'.join(lines) + '\n'
 
 
@@ -82,6 +87,29 @@ def test_pod_validate_classifies_missing_receipt_unproven():
     assert evidence['classify']['natural_kill'] == 'UNPROVEN'
     assert evidence['classify']['natural_corpse'] == 'UNPROVEN'
     assert evidence['classify']['natural_carry'] == 'UNPROVEN'
+
+
+def test_pod_validate_classifies_captain_down_block():
+    from scripts.pikmin2_mamuta_pod_native import validate
+    evidence = validate(_pod_log(died=0, corpse=0, carried=0, goal=0, receipt=False,
+                                 pokos=0, captain_down=True))
+    assert evidence['captain_down'] is True
+    assert evidence['classify']['natural_kill'] == 'BLOCKED(captain_down)'
+    assert evidence['classify']['pod_receipt'] == 'UNPROVEN'
+
+
+def test_pod_validate_normal_kill_still_passes():
+    from scripts.pikmin2_mamuta_pod_native import validate
+    evidence = validate(_pod_log(died=1))
+    assert evidence['captain_down'] is False
+    assert evidence['classify']['natural_kill'] == 'PASS'
+
+
+def test_pod_validate_no_marker_no_death_unproven():
+    from scripts.pikmin2_mamuta_pod_native import validate
+    evidence = validate(_pod_log(died=0, corpse=0, carried=0, goal=0, receipt=False, pokos=0))
+    assert evidence['captain_down'] is False
+    assert evidence['classify']['natural_kill'] == 'UNPROVEN'
 
 
 def test_pod_validate_rejects_bad_completion_and_assisted_mismatch():

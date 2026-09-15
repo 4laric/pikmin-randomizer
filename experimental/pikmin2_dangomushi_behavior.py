@@ -156,6 +156,25 @@ def validate(text, code=0):
         r'egg=(\d)', text)]
     window_open = any(s == 1 and i == 0 and 31.0 <= f <= 35.0 for f, s, i in windows)
     window_close = any(s == 0 and i == 1 and 106.0 <= f <= 112.0 for f, s, i in windows)
+    # Applied damage gate (#174/#376): pc_p2_dangomushi_invulnerable rejects an
+    # attack/bomb outside the stickable window and admits it inside. A rejected
+    # line proves the window is applied, not merely observed.
+    rejects = re.findall(
+        r'P2_DANGOMUSHI_DAMAGE_REJECTED generator=376003 stickable=0 invulnerable=1', text)
+    accepts = re.findall(
+        r'P2_DANGOMUSHI_DAMAGE_ACCEPTED generator=376003 stickable=1', text)
+    # Realized children (#174/#376): the hazard rain hosts the lane-20 Rock/Egg
+    # policies, so a decision now produces a real falling Rock and a real Egg
+    # whose break births real P1 pellets/nectar.
+    rock_births = [(int(r), int(real)) for r, real in re.findall(
+        r'P2_DANGOMUSHI_ROCK_BIRTH generator=376003 requested=(\d+) real=(\d+)', text)]
+    egg_births = [int(real) for real in re.findall(
+        r'P2_DANGOMUSHI_EGG_BIRTH generator=376003 real=(\d)', text)]
+    egg_items = [(int(kind), int(real), item) for kind, real, item in re.findall(
+        r'P2_DANGOMUSHI_EGG_ITEM generator=376003 index=\d+ kind=(\d+) real=(\d) '
+        r'fallback=\d item=(\w+)', text)]
+    rock_strikes = re.findall(r'P2_DANGOMUSHI_ROCK_STRIKE generator=376003', text)
+    rock_birth = bool(rock_births) and any(real > 0 for _, real in rock_births)
     hazard_rain = bool(hazards) and all(1 <= r <= 10 for r, _, _ in hazards) \
         and all(28.0 <= l <= 32.0 for _, l, _ in hazards)
     # The source roll window: the attack clip KEYEVENT_4 roll gate is frame 23 and
@@ -193,13 +212,23 @@ def validate(text, code=0):
         hit_bounded=0 < len(hits) <= max(1, len(rolls)),
         hit_in_roll_window=hit_in_roll,
         turn_window=window_open and window_close,
+        damage_rejected=bool(rejects),
+        damage_accepted=bool(accepts),
+        window_applied=bool(rejects),
+        rock_birth=rock_birth,
+        egg_birth=bool(egg_births) and any(real > 0 for real in egg_births),
+        egg_item_birth=(not egg_items) or any(real > 0 and item in ('pellet', 'nectar')
+                                              for _, real, item in egg_items),
+        rock_strike=bool(rock_strikes),
         hazard_rain=hazard_rain,
         hazard_egg=(any(e == 1 for _, _, e in hazards) if hazards else False),
         autonomous_motion=spread > 5.0,
         no_extinction=not re.search(r'Extinction', text, re.IGNORECASE),
     )
     return dict(passed=all(v for k, v in checks.items()
-                           if k not in ('roll_frames', 'hit_pikmin', 'hazard_egg')),
+                           if k not in ('roll_frames', 'hit_pikmin', 'hazard_egg',
+                                        'damage_accepted', 'egg_birth', 'egg_item_birth',
+                                        'rock_strike')),
                 checks=checks, motion_spread=spread, exit_code=code,
                 unmeasured=['dangomushi.brk material loop',
                             'P2 InteractPress roll crush (mapped to InteractFlick)',
@@ -210,9 +239,24 @@ def validate(text, code=0):
                              'Roll contact is a single InteractFlick knockback+damage at the '
                              'first receiver inside the source fp22=100 hit radius, once per roll; '
                              'the P1 engine has no InteractPress collision callback.',
-                             'The Turn stickable window is observed from the hazard policy; the '
-                             'P1 host has no EB_Invulnerable flag, so it is not yet applied. '
-                             'Rock/Egg are spawn decisions; real births need lane 20 primitives.'])
+                             'The Turn stickable window is now applied: the host damage gate '
+                             '(pc_p2_dangomushi_invulnerable, wired through InteractAttack and '
+                             'InteractBomb) rejects attack/bomb damage outside the window and '
+                             'admits it inside. Acceptance still needs a real run showing '
+                             'DAMAGE_REJECTED and, when an attack lands in-window, DAMAGE_ACCEPTED.',
+                             'The Rock/Egg rain is now hosted lane-side using the lane-20 '
+                             'P2RockHazard / P2Egg policies: a decision births real falling '
+                             'Rocks that apply real InteractPress/InteractAttack, and a real Egg '
+                             'whose break births real P1 pellets/nectar. Rock fall/scale values '
+                             'are the documented fixture host parms; the Egg drop table uses the '
+                              'disc chances. Runtime observation of the births and strikes is still '
+                              'required.',
+                              'The Egg birth gate is probabilistic: eggRequested uses the source '
+                              'probability formationPikis/allPikis (DangoMushi.cpp:732-748), so it '
+                              'fires only while the captain has Pikmin in formation when the Turn '
+                              'decision is evaluated; a real birth was observed on a fresh run '
+                              '(P2_DANGOMUSHI_EGG_BIRTH real=1 + EGG_ITEM item=nectar), but other runs '
+                              'may roll egg=0. Rock births and strikes remain real births.'])
 
 
 if __name__ == '__main__':

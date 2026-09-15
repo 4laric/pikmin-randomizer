@@ -302,14 +302,30 @@ def require_fresh(ninja, build, record):
 
 
 def git_state(source):
-    values = {}
-    for key, args in [('head', ['rev-parse', 'HEAD']), ('status', ['status', '--porcelain=v1', '--untracked-files=normal']),
-                      ('tracked_diff', ['diff', '--binary', 'HEAD'])]:
+    def git(args):
         code, text = run(['git', '-C', str(source)] + args, source)
         if code:
             raise BuildRejected('Cannot read native Git state')
-        values[key + ('_sha256' if key == 'tracked_diff' else '')] = (
-            hashlib.sha256(text.encode('utf-8')).hexdigest() if key == 'tracked_diff' else text.strip())
+        return text
+
+    values = {
+        'head': git(['rev-parse', 'HEAD']).strip(),
+        'status': git(['status', '--porcelain=v1', '--untracked-files=normal']).strip(),
+    }
+    # Per-file sha256 of every tracked-modified source (relative path -> content
+    # hash). A single hash of `git diff --binary HEAD` does not reproduce from
+    # the committed state (the diff empties once the work is committed), so
+    # hashing each tracked-modified file's content is the reproducible identity.
+    tracked_modified = {}
+    for relative in git(['diff', '--name-only', 'HEAD']).splitlines():
+        relative = relative.strip()
+        if not relative:
+            continue
+        path = source / relative
+        if not path.is_file():
+            raise BuildRejected('Tracked-modified path is not a file: ' + relative)
+        tracked_modified[relative] = sha256(path)
+    values['tracked_modified_sha256'] = tracked_modified
     return values
 
 

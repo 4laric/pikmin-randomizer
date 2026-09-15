@@ -68,6 +68,58 @@ int main() {
             result = subprocess.run([str(exe)], check=True, capture_output=True, env=env)
             self.assertIn('PASS p2_receipt_native_contract', result.stdout.decode(errors='replace'))
 
+    def test_native_delivery_contract(self):
+        compiler = Path('C:/msys64/mingw64/bin/g++.exe')
+        if not compiler.is_file():
+            self.skipTest('MinGW compiler unavailable')
+        root = Path(__file__).resolve().parents[1]
+        native = Path(os.environ.get('PIKMIN_NATIVE_SOURCE', root / 'engine'))
+        delivery_header = native / 'pc_port' / 'pc_p2_delivery.h'
+        receipt_header = native / 'pc_port' / 'pc_p2_receipt.h'
+        if not receipt_header.is_file() or not delivery_header.is_file():
+            self.skipTest('pc_p2_delivery.h not available in the resolved native source')
+        source = r'''
+#include "pc_p2_delivery.h"
+#include <cstdio>
+#include <stdexcept>
+#include <string>
+using namespace P2Delivery;
+template <class F> bool throws(F f){try{f();}catch(const std::runtime_error&){return true;}return false;}
+int main() {
+    const unsigned kSnow=45, kDwarfOrange=44;
+    if(p2SourceIdentity(kSnow,1)==p1ProxyIdentity(3,1))return 1;
+    if(p2SourceIdentity(3,1)==p1ProxyIdentity(3,1))return 2;
+    if(p2SourceIdentity(kSnow,1)!="onion:p2:45:1")return 3;
+    if(p1ProxyIdentity(3,1)!="onion:p1:3:1")return 4;
+    P2Receipt::MemoryReceiptPersistence mem;
+    P2Receipt::ReceiptLedger ledger(mem);
+    DeliveryReceiver receiver(ledger);
+    if(!throws([&]{receiver.identity(0,3,1,false);}))return 5;
+    if(!receiver.deliver("seed-a",kSnow,3,1,77,"tutorial_1:floor1",false))return 6;
+    if(receiver.deliver("seed-a",kSnow,3,1,77,"tutorial_1:floor1",false))return 7;
+    if(!receiver.delivered("seed-a",kSnow,3,1,77,"tutorial_1:floor1",false))return 8;
+    if(!receiver.deliver("seed-a",0,3,1,77,"tutorial_1:floor1",true))return 9;
+    auto d44=sourceDescriptor(kDwarfOrange,1,"lane-13-bulborbs");
+    auto d45=sourceDescriptor(kSnow,1,"lane-13-bulborbs");
+    auto ok=P2Receipt::reconcileOrdinary({d44,d45},{p2SourceIdentity(44,1),p2SourceIdentity(45,1)});
+    if(!ok.ok)return 10;
+    auto pod=sourceDescriptor(kSnow,1,"lane-13-bulborbs"); pod.ledger=P2Receipt::Ledger::Pod;
+    if(!throws([&]{P2Receipt::reconcileOrdinary({d44,pod},{p2SourceIdentity(44,1),p2SourceIdentity(kSnow,1)});}))return 11;
+    std::printf("PASS p2_delivery_native_contract\n");
+    return 0;
+}
+'''
+        with tempfile.TemporaryDirectory(prefix='p2-delivery-') as tmp:
+            path = Path(tmp)
+            cpp = path / 'delivery.cpp'
+            exe = path / 'delivery.exe'
+            cpp.write_text(source)
+            env = dict(os.environ, PATH=str(compiler.parent) + os.pathsep + os.environ.get('PATH', ''))
+            subprocess.run([str(compiler), '-std=c++17', '-I', str(native / 'pc_port'), str(cpp), '-o', str(exe)],
+                           check=True, capture_output=True, env=env)
+            result = subprocess.run([str(exe)], check=True, capture_output=True, env=env)
+            self.assertIn('PASS p2_delivery_native_contract', result.stdout.decode(errors='replace'))
+
 
 if __name__ == '__main__':
     unittest.main()

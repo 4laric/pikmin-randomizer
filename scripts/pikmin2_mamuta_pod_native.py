@@ -34,9 +34,15 @@ def _line(text, pattern):
 
 def validate(text, assisted=False):
     """Parse the Pod-arena markers and classify carry/receipt honestly."""
-    completion = ('PASS P2_MAMUTA_POD_RUNTIME assisted approach receipt reset' if assisted
-                  else 'PASS P2_MAMUTA_POD_RUNTIME observe approach receipt reset')
-    if completion not in text:
+    down = re.findall(r'P2_MAMUTA_POD_CAPTAIN_DOWN tick=(\d+) health=([-\d.]+)', text)
+    if len(down) > 1:
+        raise ValueError('Expected at most one captain-down marker')
+    captain_down = bool(down)
+    if assisted:
+        if 'PASS P2_MAMUTA_POD_RUNTIME assisted approach receipt reset' not in text:
+            raise ValueError('Missing Pod runtime completion')
+    elif ('PASS P2_MAMUTA_POD_RUNTIME observe approach receipt reset' not in text
+          and 'PASS P2_MAMUTA_POD_RUNTIME captain_down' not in text):
         raise ValueError('Missing Pod runtime completion')
     birth = _line(text, r'P2_MAMUTA_POD_BIRTH id=(\d+) type=(\d+) squad=(\d+) color=(\w+)')
     if birth != ('221001', '24', '10', 'red'):
@@ -69,7 +75,7 @@ def validate(text, assisted=False):
     assist_markers = len(re.findall(r'^P2_MAMUTA_POD_ASSIST carriers=\d+ assisted=1', text, re.M))
     classify = dict(
         pod_ready='PASS',
-        natural_kill='PASS' if died else 'UNPROVEN',
+        natural_kill='PASS' if died else ('BLOCKED(captain_down)' if captain_down else 'UNPROVEN'),
         natural_corpse='PASS' if corpse else 'UNPROVEN',
         natural_carry='PASS' if (not assisted and carried and goal) else 'UNPROVEN',
         assisted_carry='PASS' if (assisted and assist_markers and carried) else 'UNPROVEN',
@@ -80,7 +86,8 @@ def validate(text, assisted=False):
                 pod_capacity=int(ready[3]), died=bool(died), died_tick=died_tick,
                 corpse=bool(corpse), carried=bool(carried), goal=bool(goal), pokos=pokos,
                 control_alive=True, assisted=bool(assisted), assist_markers=assist_markers,
-                mamuta_receipt=mamuta[0] if mamuta else None, classify=classify)
+                captain_down=captain_down, mamuta_receipt=mamuta[0] if mamuta else None,
+                classify=classify)
 
 
 def run(args):
