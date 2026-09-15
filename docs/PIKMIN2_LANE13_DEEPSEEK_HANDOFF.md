@@ -234,3 +234,138 @@ Three subagents were spawned as required:
 Net effect: the two `explore` agents compressed the source/host API reconnaissance that
 otherwise dominated the front of the session; the `general` test agent cost a small
 correction cycle because it ran before the runtime-motivated default change.
+
+## Slice 2
+
+Following the slice-1 integrator review, this slice delivers **one natural 250 HP run
+carrying every marker (eat -> swallow -> dead -> corpse) in a single log with
+`evidence.json passed:true`**, then reuses Codex's natural-death cleanup witness for
+**gate 6**.
+
+### Ordered commits (slice 2; slice-1 commits above)
+
+Native branch `deepseek/p2-l13-native` (base `b805d9c6`; head `261ee541`, clean):
+
+- `261ee541` — cherry-pick of `97bffb22` (reuse): signal Dwarf Orange family cleanup on the
+  natural death funnel (`P2_DWARF_ORANGE_FORGET` / `P2_KOCHAPPY_FSM_FORGET` in the forget hooks).
+
+Root branch `deepseek/p2-l13` (base `ef1cace`; head `a30d478`, clean):
+
+- `f4035d4` — cherry-pick of `11107fc` (reuse): natural-death cleanup witness
+  (`experimental/pikmin2_dwarf_orange_cleanup.py` + tests + `docs/PIKMIN2_DWARF_ORANGE_CLEANUP.md`),
+  roster candidate entry `44`, and the FSM-doc gate-E row update.
+- `a30d478` — lane13 slice2: FSM witness single-run gate (relaxed `expected20Pikmin` to
+  `expected17Pikmin`, new FSM-aware `evidence()`/`run()`), `PIKMIN_NATIVE_ROOT` +
+  `P2_NATIVE_PC_PORT` in the policy test (lane paths removed), FSM doc gate-C/partial fixes,
+  and `tests/test_pikmin2_dwarf_orange_fsm_witness.py`.
+
+### Carry-forward items fixed
+
+- `experimental/pikmin2_dwarf_orange_fsm_witness.py`: `require(count==20,…)` relaxed to
+  `require(count>=17,…)` (the source actor eats a Pikmin, so the alive count drops below 20).
+- `docs/PIKMIN2_KOCHAPPY_FSM.md` §7 no longer says eat/swallow are "not modelled"; the
+  no-free-slot `InteractSwallow` (null slot) one-shot eat path is labelled UNTESTED.
+- `tests/test_pikmin2_kochappy_fsm.py` honours both `PIKMIN_NATIVE_ROOT` (primary, `/pc_port`
+  appended) and `P2_NATIVE_PC_PORT`; the lane-specific `native-lane13-orange-fsm` candidate
+  paths are removed.
+
+### Build evidence (dirty=no)
+
+```
+2026-09-14T22:39:06 lane=l13 target=pikmin_pc native=261ee541a8ee2570ea4cfc7bd40593513d178268 dirty=no
+build_dir=C:\Users\alari\pikmin-randomizer\output\dsw\native-l13-build
+exe=...\bin\nectar.exe sha256=401a6b522b45887df605dcedf2dafdd50cb31c721c62b419a15d0a194777111b
+ninja_n="ninja: no work to do."
+```
+
+Fixtures (`status=built`): FSM witness `l13-out/s2-witness-fixture/baseline/fixture.exe`
+SHA-256 `5b24c3fabd4af671068a47b4f3e5f43f7e0f8ad1f98f45099df577491e48870b` and cleanup
+`l13-out/s2-cleanup-fixture/baseline/fixture.exe`
+SHA-256 `d4fda85cfd325bed9079a0642fbb187908fddd8a7b6f98729e3c794cfbb0271a`.
+
+### Runtime evidence (slot.py run gl l13, PIKMIN_P2_ROOM_WINDOW=960x540, PYTHONUTF8=1)
+
+Single natural 250 HP run `l13-out/s2-run` (`passed:true`, exit 0, all 12 checks true):
+
+```text
+P2_KOCHAPPY_STATE generator=211001 state=wait
+P2_KOCHAPPY_STATE generator=211001 state=turn
+P2_KOCHAPPY_STATE generator=211001 state=walk
+P2_KOCHAPPY_STATE generator=211001 state=attack
+P2_KOCHAPPY_ATTACK generator=211001 frame=8 damage=10
+P2_KOCHAPPY_EAT generator=211001 frame=8 eaten=1 slot=1
+P2_KOCHAPPY_SWALLOW generator=211001 frame=88 swallowed=1 white=0
+P2_KOCHAPPY_STATE generator=211001 state=attack
+P2_KOCHAPPY_ATTACK generator=211001 frame=8 damage=10
+P2_KOCHAPPY_EAT generator=211001 frame=8 eaten=0 slot=1
+P2_KOCHAPPY_STATE generator=211001 state=dead
+P2_KOCHAPPY_DEAD generator=211001 source_id=44 health=0.0
+P2_KOCHAPPY_CORPSE generator=211001 source_id=44 native=host_escape_now
+DONE P2_DWARF_ORANGE_COMBAT
+```
+
+Gate 6 cleanup run `l13-out/s2-cleanup-run` (`passed:true`, exit 0, all 8 checks true):
+
+```text
+P2_KOCHAPPY_DEAD ... health=0.0 ; P2_KOCHAPPY_CORPSE ... native=host_escape_now
+P2_DWARF_ORANGE_FORGET registered=1
+P2_KOCHAPPY_FSM_FORGET registered=1
+P2_DWARF_ORANGE_P1_REMOVED distance=544.6021
+PASS P2_DWARF_ORANGE_P1_CLEANUP distance=544.6021 reached=1
+```
+
+### Six arena gates (source ID 44) — slice-2 status
+
+| Gate | Status | Evidence |
+|---|---|---|
+| 1 Identity/spawn | PASS | `P2_ENEMY_READY source_id=44`, 64-pose bank, birth XYZ (unchanged) |
+| 2 Movement/anim | PASS | FSM wait/turn/walk/attack/dead (natural) |
+| 3 Attacks/receivers | PASS (natural) | frame-8 bite + `P2_KOCHAPPY_EAT eaten=1 slot=1` + frame-88 `P2_KOCHAPPY_SWALLOW swallowed=1`, real Pikmin damage 250->0 |
+| 4 Death/corpse | PASS (natural) | `P2_KOCHAPPY_DEAD health=0.0` -> `P2_KOCHAPPY_CORPSE native=host_escape_now` in the SAME log |
+| 5 Transport/reward | UNTESTED (BLOCKED for P2) | real P1 corpse carry observed (544.6 units, `reached=1`); P2 reward/once-credit is lane 06 |
+| 6 Cleanup/re-entry | PASS (cleanup) / re-entry wired-not-re-run | `P2_DWARF_ORANGE_FORGET` + `P2_KOCHAPPY_FSM_FORGET` on the doKill funnel; scene re-entry reset seam (`pc_p2_reset_all_teki`) is wired but a full #397 scene re-entry acceptance run was not re-run for 44 |
+
+### Tests (PIKMIN_NATIVE_ROOT only)
+
+`PIKMIN_NATIVE_ROOT=.../native-l13 py -3.12 -m pytest tests/test_pikmin2_kochappy_fsm.py
+tests/test_pikmin2_dwarf_orange_fsm_witness.py tests/test_pikmin2_dwarf_orange_cleanup.py
+tests/test_pikmin2_enemy_roster.py tests/test_pikmin2_dwarf_orange_chain.py -q` -> **31 passed**.
+
+### Remaining blockers (naming provider lanes)
+
+- Re-entry acceptance + generated-session/admission: lane 07 (#397 scene teardown), lane 03/05
+  (seed staging/join for generator 211001), lane 06 (P2 reward/once-credit), lane 01 integration.
+- White-Pikmin poison (`white=1`) and the null-slot one-shot eat remain UNTESTED (no White Pikmin).
+
+### Reproduction commands
+
+```
+# single natural eat->swallow->dead->corpse run (passed:true)
+py -3.12 .../slot.py run gl l13 -- \
+  py -3.12 -m experimental.pikmin2_dwarf_orange_fsm_witness run \
+  --stage .../l13-out/arena/701517b28814488786fde5229a375ed3 \
+  --exe .../l13-out/s2-witness-fixture/baseline/fixture.exe --output .../l13-out/s2-run --timeout 300
+
+# gate 6 cleanup run (passed:true)
+py -3.12 .../slot.py run gl l13 -- \
+  py -3.12 -m experimental.pikmin2_dwarf_orange_cleanup run \
+  --stage .../l13-out/arena/701517b28814488786fde5229a375ed3 \
+  --exe .../l13-out/s2-cleanup-fixture/baseline/fixture.exe --output .../l13-out/s2-cleanup-run --seconds 240
+```
+
+### Subagent usage (slice 2)
+
+1. `explore` — death-funnel + forget/reset seam audit in the native worktree. Used as-is; it pinned
+   the exact call chain (`die`->`dieSoon`->`becomePellet`->`detachGenerator`->`doKill`->
+   `pc_p2_forget_teki`-> both family forgets) and the separate `pc_p2_reset_all_teki` reset seam,
+   which anchors the honest "cleanup vs re-entry" split in the gate-6 row.
+2. `explore` — family/seam candidate inventory + the two witnesses' exact `evidence()` check
+   strings. Used as-is to confirm both forget markers exist and the FSM witness check set matches
+   the FSM marker grammar; also confirmed `pc_p2_kochappy_fsm_adopt` does not exist and
+   `pc_p2_kochappy_fsm_press` has no call site (kept the UNTESTED labels).
+3. `general` — authored `tests/test_pikmin2_dwarf_orange_fsm_witness.py` (4 passed) and re-ran the
+   cleanup test (5 passed) against the pre-specified `evidence()` contract. Used as-is; no correction
+   cycle this time.
+
+Net effect: the two `explore` agents removed the seam-reconnaissance risk for the gate-6 report, and
+the `general` agent delivered the witness test with no rework.
