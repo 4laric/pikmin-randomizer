@@ -160,7 +160,11 @@ int stuckPikminCount(Creature* creature){
 }
 float probeFloorY(const Vector3f& pos,float fallback){
     if(!mapMgr)return fallback;
-    const float y=mapMgr->getMinY(pos.x,pos.z,false);
+    // includePlatColl=true matches the engine grounded convention used by the
+    // other P2 ground modules (pc_p2_bulbmin.cpp, pc_p2_dangomushi.cpp) and the
+    // P1 fixture. The raw false query ignores platform/collision surfaces and
+    // returns a lower Y, so the frog model sat below the floor (user: too low).
+    const float y=mapMgr->getMinY(pos.x,pos.z,true);
     return std::isfinite(y)?y:fallback;
 }
 bool attackable(const FrogFsm& s,const Vector3f& pos,const Creature* target,float range){
