@@ -126,7 +126,8 @@ def test_stripping_receipt_drops_identity_from_seed_pool():
 
 def test_real_ledger_seed_pool_is_deny_by_default():
     roster = load_and_validate()
-    assert admitted_ids(roster) == []
-    # The product generator fails closed on the real, unadmitted ledger.
+    assert admitted_ids(roster) == [44]  # Dwarf Orange Bulborb admitted 2026-09-15 (lane 13 fix 4, natural six gates)
+    # The product generator still fails closed when the placement document accepts only
+    # identities outside the admitted set.
     with pytest.raises(SeedBridgeError):
         generate("seed", p2_enemies=True, p2_placement=placement_document_accepting_frog())

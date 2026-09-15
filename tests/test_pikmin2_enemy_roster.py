@@ -82,8 +82,10 @@ def test_known_identities_and_relationships():
 def test_eligibility_defaults_denied_except_reviewed_candidates():
     roster = load_and_validate()
     candidates = {entry.source_id for entry in roster if entry.eligibility == "candidate"}
-    assert candidates == {2, 15, 17, 44, 45, 54, 79}
-    assert all(entry.eligibility == "denied" for entry in roster if entry.source_id not in candidates)
+    assert candidates == {2, 15, 17, 45, 54, 79}
+    admitted = {entry.source_id for entry in roster if entry.eligibility == "admitted"}
+    assert admitted == {44}
+    assert all(entry.eligibility == "denied" for entry in roster if entry.source_id not in candidates | admitted)
 
 
 def test_synthetic_pipeline_round_trips():
@@ -171,9 +173,9 @@ def test_identity_roles_real_roster():
 def test_admission_defaults_deny_and_is_empty():
     roster = load_and_validate()
     admission = admission_set(roster)
-    assert admission.admitted == ()
-    assert admitted_ids(roster) == []
-    assert set(admission.candidates) == {2, 15, 17, 44, 45, 54, 79}
+    assert admission.admitted == (44,)
+    assert admitted_ids(roster) == [44]  # Dwarf Orange Bulborb admitted 2026-09-15 (lane 13 fix 4, natural six gates)
+    assert set(admission.candidates) == {2, 15, 17, 45, 54, 79}
     assert sum(admission.by_role.values()) == len(roster)
     with pytest.raises(RosterError):
         require_admitted(roster, 79)
@@ -235,9 +237,9 @@ def test_committed_overlay_reviewed_cohort_and_native_modules():
     roster = by_id(load_and_validate())
     assert roster[79].eligibility == "candidate" and roster[79].native_module == "pc_p2_sokkuri"
     assert roster[54].owner_lane == "19" and roster[45].owner_lane == "13"
-    assert roster[44].eligibility == "candidate" and roster[44].native_module == "pc_p2_dwarf_orange"
+    assert roster[44].eligibility == "admitted" and roster[44].native_module == "pc_p2_dwarf_orange"
     assert roster[44].owner_lane == "13"
-    assert admitted_ids(load_and_validate()) == []
+    assert admitted_ids(load_and_validate()) == [44]  # Dwarf Orange Bulborb admitted 2026-09-15 (lane 13 fix 4, natural six gates)
 
 
 def test_opt_in_requires_reviewed_seedable_identity():
@@ -263,9 +265,9 @@ def test_opt_in_validation_cohort_validates_and_does_not_admit():
     cohort = opt_in_validation_cohort(roster, [44, 45])
     assert cohort == [44, 45]
     # The private validation path never mutates the global admission set.
-    assert admitted_ids(roster) == []
+    assert admitted_ids(roster) == [44]  # Dwarf Orange Bulborb admitted 2026-09-15 (lane 13 fix 4, natural six gates)
     with pytest.raises(RosterError):
-        require_admitted(roster, 44)
+        require_admitted(roster, 45)
     with pytest.raises(RosterError):
         require_admitted(roster, 45)
 
@@ -296,8 +298,8 @@ def test_opt_in_cohort_feeds_private_validation_path_only():
     layout = resolve_layout("seed-l02", "Player1", ("gen-a", "gen-b", "gen-c"),
                             snow_dwarf, roster, admitted=snow_dwarf)
     assert {binding["source_id"] for binding in layout["bindings"]} == {44, 45}
-    # Normal generation remains deny-by-default: nothing is admitted, so the
-    # product entry point still refuses to seed.
-    assert admitted_ids(roster) == []
-    with pytest.raises(SeedBridgeError):
-        resolve_admitted_layout("seed-l02", "Player1", ("gen-a", "gen-b", "gen-c"), roster)
+    # Normal generation stays deny-by-default: the product entry point seeds only the
+    # admitted set (Dwarf Orange 44 since 2026-09-15), never the private cohort's Snow 45.
+    assert admitted_ids(roster) == [44]
+    admitted_layout = resolve_admitted_layout("seed-l02", "Player1", ("gen-a", "gen-b", "gen-c"), roster)
+    assert {binding["source_id"] for binding in admitted_layout["bindings"]} == {44}

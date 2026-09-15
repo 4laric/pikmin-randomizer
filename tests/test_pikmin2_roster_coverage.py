@@ -209,8 +209,8 @@ def test_real_ledger_is_fully_covered():
     assert gaps["uncovered_identity_modules"] == []
 
 
-def test_real_ledger_nothing_admitted():
-    assert admitted_ids(load_and_validate()) == []
+def test_real_ledger_admitted_set():
+    assert admitted_ids(load_and_validate()) == [44]  # Dwarf Orange Bulborb admitted 2026-09-15 (lane 13 fix 4, natural six gates)
 
 
 # ---------------------------------------------------------------------------

@@ -209,7 +209,7 @@ def test_admission_contract_respects_excluded():
 def test_admitted_ids_from_contract():
     roster = _roster({"17": _frog_overlay()})
     assert admitted_ids(roster) == [17]
-    assert admitted_ids(load_and_validate()) == []
+    assert admitted_ids(load_and_validate()) == [44]  # Dwarf Orange Bulborb admitted 2026-09-15 (lane 13 fix 4, natural six gates)
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +220,7 @@ def test_write_admission_round_trip(tmp_path):
     real = load_and_validate()
     path = tmp_path / "ev.json"
     result = write_admission(real, path=path)
-    assert result["admitted"] == []
+    assert result["admitted"] == [44]  # Dwarf Orange Bulborb admitted 2026-09-15 (lane 13 fix 4, natural six gates)
 
     written = json.loads(path.read_text(encoding="utf-8"))
     assert isinstance(written.get("entries"), dict)
