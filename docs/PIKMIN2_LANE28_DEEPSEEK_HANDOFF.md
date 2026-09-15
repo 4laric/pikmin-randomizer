@@ -611,3 +611,95 @@ py -3.12 scripts/check_p2_handoff_gates.py \
   6. cleanup_reentry    accepted [PASS]
 EXIT=0 (no refused PASS rows)
 ```
+
+---
+
+## Diagnostic slice: gate 1 (identity_spawn)
+
+This slice attempted only gate 1 and stopped at the provider boundary. Verdict:
+`BLOCKED gate1: missing lane-04 placement profile/accepted slot for source_id=41`.
+
+No native GL spawn was run because every path that could emit a truthful
+`P2_SEED_RESOLVE source_id=41` is absent; generating synthetic placement/seed
+markers would fabricate acceptance.
+
+Route A was unavailable in both the lane worktree and the wave branch:
+
+- `randomizer/p2_placement_catalog.py` has no `(41, 'Fuefuki', ...)` row in
+  `CANDIDATE_SPECS`, and lane-04 candidate profiles remain
+  `accepted_gates: []` by default.
+- The wave generated-seed runner is cohort-bound to
+  `{44: 'BlueKochappy', 45: 'YellowKochappy'}`:
+  `scripts/run_p2_generated_seed.py:ENUM_FOR_SOURCE` and
+  `scripts/probe_p2_cohort_native.py:GENERATOR_FOR_SOURCE` contain no 41 entry.
+- There is no placement-admission row for 41 in this worktree, and the wave
+  `docs/PIKMIN2_ADMITTED_PLACEMENT.json` has no `Fuefuki`/`source_id 41` match.
+
+Route B was invalid for identity: the family arena does birth a real generator id,
+but it is documented as a proxy rather than the source identity. Specifically,
+`experimental/pikmin2_fuefuki_teki_stage.py:10-12` says Fuefuki identity
+(`EnemyID 41`) "is NOT claimed", its appended generator row is P1
+`TEKI_Napkid` type 11 (`:25`, `:48-52`), and its default generator is `245001`
+(`:27`). Running that proxy could emit vehicle/bind markers, but it cannot
+truthfully emit `P2_SEED_RESOLVE source_id=41` for a natural source-41 birth.
+
+The native parser does not supply the missing provider work: `pc_randomizer`
+accepts an `ENEMY_P2` target bound to bindable source 41
+(`pc_port/pc_randomizer_p2_roster.h:6`), but
+`pc_port/pc_p2_generated_placement.cpp:7-30` binds only source IDs
+23/59/60/61/62 and returns false for the `default` case, so it has no case-41
+bind arm.
+
+### Gate-1 row
+
+No row was promoted. The existing gate-1 row remains:
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | UNTESTED | output/dsw/l28-out/teki-receipt/8c768cdc5d8640c0a044dc803c54acf8/run.log:734 named placement actor gen=245001 type=11, not P2 identity 41 (#186/#128) | injected |
+
+### Harness added for the eventual acceptance
+
+- `experimental/pikmin2_fuefuki_spawn_receipt.py` — dependency-free parser for the
+  required same-generator triple (`P2_PLACEMENT_SLOT`,
+  `P2_SEED_RESOLVE source_id=41`, and a Fuefuki ready/bind marker).
+- `tests/test_pikmin2_fuefuki_spawn_receipt.py` — canonical, truncated, and
+  generator-mismatch log cases.
+- Full Fuefuki pytest selection after this addition: **36 passed**.
+
+### Ordered commits (this slice)
+
+- Root branch `deepseek/p2-l28`: add the two receipt/test files above and this
+  handoff section. Native branch `deepseek/p2-l28-native` has no source changes
+  for this diagnostic slice and remains clean; no new native commit is required
+  to avoid fabricating spawn evidence.
+
+### Subagent usage (gate 1)
+
+Three parallel subagents were used before the core verification: an `explore`
+source audit, an `explore` candidate/marker inventory, and a `general`
+spawn-receipt validator/test author. Their findings were independently checked;
+the read-only audits were used as leads rather than as evidence, and the
+validator/tests were accepted after inspection. Estimated net savings were
+modest: roughly 30-45 minutes of grep/read/test scaffolding time.
+
+### Checker output (gate-1 diagnostic)
+
+```
+py -3.12 scripts/check_p2_handoff_gates.py \
+  C:\Users\alari\pikmin-randomizer\output\dsw\l28-root\docs\PIKMIN2_LANE28_DEEPSEEK_HANDOFF.md
+41 Fuefuki (role=source):
+  1. identity_spawn     ignored [UNTESTED]
+  2. movement_animation accepted [PASS]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   accepted [PASS]
+  6. cleanup_reentry    accepted [PASS]
+EXIT=0
+```
+
+### One exact reproduction command
+
+```
+py -3.12 -m pytest tests/test_pikmin2_fuefuki_spawn_receipt.py tests/test_pikmin2_fuefuki_combat_receipt.py -q
+```
