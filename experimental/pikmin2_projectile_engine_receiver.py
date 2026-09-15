@@ -78,14 +78,21 @@ VICTIM_POS = (173.6, 0.0, -60.0)
 GROINK_ORIGIN = (-85.0, 30.0, 0.0)
 GROINK_DAMAGE = 10.0
 
+# Bomb consumer proof: same muzzle origin/damage as the Groink proof; the
+# detonated Bomb is applied through the engine receiver on the live captain Navi.
+BOMB_ORIGIN = (-85.0, 30.0, 0.0)
+BOMB_DAMAGE = 10.0
 
-def add_second_teki(run_dir, position=VICTIM_POS, name='preview dwarf victim'):
+
+def add_second_teki(run_dir, position=VICTIM_POS, name='preview dwarf victim', count=1):
     """Duplicate the prepared room's single Dwarf Bulborb generator record.
 
     The generated ``default.gen`` carries exactly one Dwarf (the Kabuto firer).
-    Cloning its record (new id/name/position) yields a second live Teki with a
-    distinct runtime token, so the bound Stone must prove it skips only its own
-    firer and not every Teki in range.
+    Cloning its record (new id/name/position) yields `count` live victim Teki with
+    distinct runtime tokens, so the bound Stone proves it skips only its own firer
+    and can strike each surviving victim in flight (repeatable flight strikes).
+    Secondary victims are scattered along the firer's +z corridor so each
+    subsequent fire finds the next surviving victim.
     """
     gen = run_dir / 'assets' / 'dataDir' / 'stages' / 'chal0' / 'default.gen'
     data = gen.read_bytes()
@@ -95,11 +102,17 @@ def add_second_teki(run_dir, position=VICTIM_POS, name='preview dwarf victim'):
     dwarf = next((r for r in recs if r[16:48].rstrip(b'\0') == b'preview dwarf bulborb'), None)
     if dwarf is None:
         raise ValueError('prepared room has no dwarf bulborb record')
-    victim = bytearray(dwarf)
-    victim[8:12] = struct.pack('>I', len(recs) + 1)
-    victim[16:48] = name.encode('ascii').ljust(32, b'\0')
-    victim[48:72] = struct.pack('>6f', *position, 0.0, 0.0, 0.0)
-    gen.write_bytes(data[:20] + struct.pack('>I', len(recs) + 1) + b''.join(recs) + bytes(victim))
+    x, y, z = position
+    victims = []
+    for i in range(count):
+        victim = bytearray(dwarf)
+        victim[8:12] = struct.pack('>I', len(recs) + 1 + i)
+        victim[16:48] = (name + (' %d' % i)).encode('ascii').ljust(32, b'\0')
+        vx, vy, vz = x, y, z + i * 22.0
+        victim[48:72] = struct.pack('>6f', vx, vy, vz, 0.0, 0.0, 0.0)
+        victims.append(bytes(victim))
+    gen.write_bytes(data[:20] + struct.pack('>I', len(recs) + count)
+                    + b''.join(recs) + b''.join(victims))
 
 
 def stone_config(position=None, face_deg=FACE_DEG):
@@ -123,6 +136,11 @@ def kabuto_config(species='Kabuto', position=None, face_deg=FACE_DEG):
 def groink_config(position=GROINK_ORIGIN, damage=GROINK_DAMAGE):
     x, y, z = position
     return 'groink %.6g %.6g %.6g %.6g' % (x, y, z, damage)
+
+
+def bomb_config(position=BOMB_ORIGIN, damage=BOMB_DAMAGE):
+    x, y, z = position
+    return 'bomb %.6g %.6g %.6g %.6g' % (x, y, z, damage)
 
 
 def rig_bank_text():
@@ -164,6 +182,7 @@ def build_config(mode='stone', generator=0, with_proxy=True, teki_pin=False):
         if teki_pin:
             lines.append('teki_pin 1')
         lines.append(groink_config())
+        lines.append(bomb_config())
     lines.append('engine_receiver 1')
     if with_proxy:
         lines.append('receiver any 20')
@@ -183,6 +202,14 @@ GROINK_ENGINE_HIT_RE = re.compile(
     r'P2_PROJECTILE_GROINK_ENGINE_HIT token=(\d+) kind=(\w+) damage=([\d.]+) '
     r'applied=(\d) rejected=(\d) health=([\d.-]+)->([\d.-]+)')
 
+KABUTO_AIM_RE = re.compile(
+    r'P2_PROJECTILE_KABUTO_AIM fire=(\d+) victim=\(([\d.-]+),([\d.-]+),([\d.-]+)\) '
+    r'origin=\(([\d.-]+),([\d.-]+),([\d.-]+)\) face_deg=([\d.-]+)')
+
+BOMB_ENGINE_HIT_RE = re.compile(
+    r'P2_PROJECTILE_BOMB_ENGINE_HIT token=(\d+) kind=(\w+) damage=([\d.]+) '
+    r'applied=(\d) rejected=(\d) health=([\d.-]+)->([\d.-]+)')
+
 
 def parse_engine_strikes(log_text):
     """Return a list of parsed P2_PROJECTILE_ENGINE_STRIKE records."""
@@ -195,6 +222,14 @@ def parse_engine_strikes(log_text):
                         stored_before=float(m.group(8)), stored_after=float(m.group(9)),
                         source=int(m.group(10))))
     return out
+
+
+def strike_ratio_of(log_text):
+    """Return (fires, hits): the number of Kabuto fires vs the number of
+    health-destroy contacts in the log."""
+    fires = len(re.findall(r'P2_PROJECTILE_KABUTO_FIRE\b', log_text))
+    hits = sum(1 for m in STONE_DESTROY_RE.finditer(log_text) if m.group(1) == 'health')
+    return fires, hits
 
 
 def evaluate(log_text):
@@ -242,6 +277,17 @@ def evaluate(log_text):
         and float(m.group(7)) < float(m.group(6))
         for m in groink_hits)
 
+    # Bomb engine-receiver proof: the detonated Bomb is applied through the
+    # captain Navi's own engine receiver, so kind=Bomb, apply=1 AND a real health
+    # decrease are required.
+    bomb_hits = list(BOMB_ENGINE_HIT_RE.finditer(log_text))
+    bomb_engine_navi_hit = any(
+        m.group(2) == 'Bomb' and m.group(4) == '1'
+        and float(m.group(7)) < float(m.group(6))
+        for m in bomb_hits)
+
+    fires, hits = strike_ratio_of(log_text)
+
     # Flight vs birth-frame: the first health-destroy on the victim records how
     # many map traces the Stone flew before contacting (2 = birth frame, >=4 =
     # real trajectory). teki_pin (injected co-location) is excluded.
@@ -274,17 +320,22 @@ def evaluate(log_text):
                                            else 'FAIL')),
         'groink_engine_receiver_navi_hit': ('PASS' if groink_bomb_navi
                                             else ('UNTESTED' if not groink_hits else 'FAIL')),
+        'bomb_engine_navi_hit': ('PASS' if bomb_engine_navi_hit
+                                 else ('UNTESTED' if not bomb_hits else 'FAIL')),
+        'victim_strike_ratio': ('UNTESTED' if fires == 0
+                                else ('PASS' if (fires >= 9 and hits > fires // 2)
+                                      else 'FAIL')),
         'stone_destroy_teardown': 'PASS' if destroy else 'UNTESTED',
     }
-    return dict(gates=gates, strikes=strikes)
+    return dict(gates=gates, strikes=strikes, strike_ratio=f'{hits}/{fires}')
 
 
 def run(exe, assets, converted, output, mode='stone', seconds=40.0, generator=0,
-        teki_pin=False):
+        teki_pin=False, victims=1):
     """Stage a fresh room, write the config, launch the exe, capture and evaluate."""
     run_dir = _prepare_room(Path(assets).resolve(), Path(converted).resolve(), Path(output))
     if mode == 'two_teki':
-        add_second_teki(run_dir)
+        add_second_teki(run_dir, count=victims)
     (run_dir / 'p2-projectiles.txt').write_text(
         build_config(mode, generator, teki_pin=teki_pin), encoding='utf8')
     if mode in ('kabuto_actor', 'two_teki'):
@@ -335,10 +386,12 @@ def main():
                    help='kabuto_actor generator ID (room Teki _70 value)')
     p.add_argument('--teki-pin', action='store_true',
                    help='inject the victim onto the firer (labelled P2_PROJECTILE_TEKI_PIN)')
+    p.add_argument('--victims', type=int, default=1,
+                   help='number of victim dwarfs to spawn in the fire corridor')
     p.add_argument('--seconds', type=float, default=40.0)
     a = p.parse_args()
     result = run(a.exe, a.assets, a.converted, a.output, a.mode, a.seconds, a.generator,
-                 teki_pin=a.teki_pin)
+                 teki_pin=a.teki_pin, victims=a.victims)
     print(json.dumps(result, indent=2))
     ok = all(v in ('PASS', 'UNTESTED') for v in result['gates'].values())
     raise SystemExit(0 if ok else 1)
