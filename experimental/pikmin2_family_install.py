@@ -264,6 +264,15 @@ def _resolve_binding_family(target, source_id, enum_name):
     return family
 
 
+def _installer_sidecar(path):
+    """True when ``path`` is a run-root regular file an installer produced.
+
+    Excludes the native session machinery (``SESSION_FILES``) and the binding
+    receipt (written by this module only after every install succeeds).
+    """
+    return path.is_file() and path.name not in SESSION_FILES and path.name != BINDING_RECEIPT
+
+
 def _content_files(run):
     """Snapshot the family-installed files in a run tree as ``{relpath: sha256}``.
 
@@ -274,7 +283,7 @@ def _content_files(run):
     """
     files = {}
     for path in sorted(run.iterdir()):
-        if path.is_file() and path.name not in SESSION_FILES and path.name != BINDING_RECEIPT:
+        if _installer_sidecar(path):
             files[path.name] = sha256_file(path)
     room = run / 'assets' / ROOM
     if room.is_dir():
@@ -448,7 +457,7 @@ def install_layout(run, layout, content_root, actor_bindings=None, retail_assets
             shutil.rmtree(run / 'assets', ignore_errors=True)
         if run.is_dir():
             for path in run.iterdir():
-                if path.is_file() and path.name not in SESSION_FILES and path.name != BINDING_RECEIPT:
+                if _installer_sidecar(path):
                     path.unlink(missing_ok=True)
         raise
     files = _content_files(run)

@@ -161,3 +161,78 @@ Tests: `py -3.12 -m pytest tests/test_pikmin2_install_binding.py -q` → **24 pa
 #### Lesson (subagent use)
 
 The delegated `test_interrupted_cache_staging_fails_safe` injected the crash in the fake-installer cache-populate step, where the WriteLast marker already made it pass, not in the real-adapter copy the brief asked for. I added `test_real_adapter_mid_install_failure_cleans_assets` myself to cover the real-adapter scenario and fixed the wording drift (partial tree IS now removed; wrong-source leaves no run tree). Going forward I will cross-check delegated tests against the brief's exact scenario before adopting them.
+
+## Slice 3
+
+Third bounded slice: fold the two fix3 advisory cleanup gaps into the launcher/adapter (with flip tests), then prove end-to-end that the staged real banks and sidecars are the ones the engine loads.
+
+### Deliverables
+
+1. **(root) `randomizer/runner.py`** — `_launch` now removes the run tree on **any** install failure (`except Exception`, was `except StagingError`). A `ValueError` or an adapter `RuntimeError` from `install_layout` no longer leaves `runs/<token>/{bootstrap.txt,state.txt}` behind.
+2. **(root) `experimental/pikmin2_family_install.py`** — `install_layout`'s mid-install cleanup now also removes run-root sidecars an adapter already copied (e.g. `p2-snow.txt` from `pikmin2_enemy.install`), preserving only `SESSION_FILES` and the (not-yet-written) binding receipt. The run-root allowlist is shared with `_content_files` via a new `_installer_sidecar(path)` helper (deduplicates the `:277`/`:448` loops the review flagged).
+3. **(root tests) two flip-tests in `tests/test_pikmin2_install_binding.py`** — `test_launch_install_error_leaves_no_run_dir[ValueError|RuntimeError]` + `test_install_layout_mid_failure_removes_run_root_sidecars`. **Verified flipping**: with the fixes stashed → 3 failed; applied → 27 passed.
+4. **(proof) native cohort load** — `scripts/probe_p2_cohort_native.py` (new) stages Snow + Dwarf Orange + Pod through `install_layout` using the **preview-generator room** (`scripts/preview_pikmin2_room` overlay + the lane-20 converted `pikmin2-room105` copy) and the **real** banks, then launches `nectar.exe --experimental-pikmin2-room` via `slot.py run gl l05` and asserts the bank/sidecar load markers.
+
+### Native cohort load (bounded, `slot.py run gl l05`, PASS)
+
+Roster: `preview_pikmin2_room.generator()` + two clean Chappy rows (`211001` Dwarf Orange, `5001` Snow) over the converted room; `install_layout` staged the **real** `p2-dwarf-orange-bank` (64 poses) + Snow bank (60 poses) + Pod into `courses/pikmin2room` and the run root. Log markers (evidence: `l05-out/slice3b/native.log` + `evidence.json` `passed=true`):
+
+```
+[PC Port] Experimental preview window set to 960x540 windowed and centered ...
+[Pikipelago] P2_ROOM_PREVIEW room=room_4x4a_4_conc red=20 isolated=1
+P2_SNOW_BANK poses=60 mod_bytes=960000 texture_attach_calls=1 load_seconds=0.020 ...
+P2_ENEMY_READY species=YellowKochappy native_family=Chappy generator=5001 behavior=P1
+P2_ENEMY_READY species=BlueKochappy source_id=44 native_family=Chappy generator=211001 ... health=250.0 ...
+P2_DWARF_ORANGE_BANK poses=64 mod_bytes=1024000 texture_attach_calls=1 load_seconds=0.021
+P2_DWARF_ORANGE_DRAW corpse=0
+P2_SNOW_DRAW corpse=0
+```
+
+`P2_*_BANK` is the engine parsing the staged bank; `P2_ENEMY_READY species=…` is the staged sidecar identity line; `P2_*_DRAW corpse=0` proves the real (render-able) banks are actually drawn — not just hash-checked. The room's `default.gen` is the curated 25-row roster (20 reds + 1 treasure + 2 Chappies), not the stock 80-generator set, so there is no “duplicate treasure” abort and **no retail fallback** (the bank/sidecar files exist only in the private staged tree).
+
+### Ordered commits / dirty state
+
+- **Root** `deepseek/p2-l05`, base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`. Clean. Ordered list:
+  1. `7ab7d79` binding → 2. `642e398` doc → 3. `9a3b647` handoff → 4. `021fafa` review fixes → 5. `dfb83a3` handoff → 6. `545edbe` review fixes 2 → 7. `8510b02` handoff → 8. `e12c429` slice 2 → 9. `5ec78d6` review fixes 3 → 10. `b4263a8` slice 3 (cleanup fixes + flip tests) → 11. `0f2e2e1` handoff (superseded) → 12. `630f622` slice 3b (native-cohort proof + `_installer_sidecar` dedup).
+- **Native** `deepseek/p2-l05-native`, base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`. Clean. **No change** — the bank/sidecar readers already exist on the base (`pc_p2_enemy.cpp`, `pc_p2_dwarf_orange.cpp`).
+
+### Build evidence (`output/dsw/l05-build-evidence.txt`)
+
+```
+2026-09-14T21:23:50 lane=l05 target=pikmin_pc native=b805d9c626e4f4558c95aef7cac311a5d9a2068f dirty=no build_dir=C:\Users\alari\pikmin-randomizer\output\dsw\native-l05-build exe=C:\Users\alari\pikmin-randomizer\output\dsw\native-l05-build\bin\nectar.exe sha256=039db847a1818fb41ee7c3a3dd90e5f5c027619b58af41e522b9d8f0ea65fbdb ninja_n="ninja: no work to do." seconds=126
+```
+
+### Native readers consume exactly what `install_layout` stages (no retail fallback)
+
+- Snow: `pc_p2_enemy.cpp` opens `p2-snow.txt` (`:147`), `courses/pikmin2room/snow_*.mod` (`:180`), `p2-snow-actors.txt` (`:239`); prints `P2_SNOW_BANK` (`:234`) and `P2_ENEMY_READY species=YellowKochappy` (`:128`).
+- Dwarf Orange: `pc_p2_dwarf_orange.cpp` opens `p2-dwarf-orange-{profile,bank,actors}.txt` (`:35`), `courses/pikmin2room/dwarf_orange_*.mod` (`:52`); prints `P2_DWARF_ORANGE_BANK` (`:84`) and `P2_ENEMY_READY species=BlueKochappy source_id=44` (`:82`).
+- Retail P1 assets contain none of these files; the Snow preview Pod gate (`pc_p2_enemy.cpp:161`) is satisfied by the staged `p2-pod.txt` + `pod.mod`.
+
+### Tests run
+
+- `py -3.12 -m pytest tests/test_pikmin2_install_binding.py -q` → **27 passed**.
+- Wider lane-05-adjacent subset (install_binding, family_install, staging, session_staging, seed_bridge, seed_generation, dwarf_orange, dwarf_orange_install, enemy, roster) → **139 passed**.
+- `py -3.12 scripts/probe_p2_install_binding.py --output <out>` → **passed** (two-identity `runner.launch` staging, cache replay `[False, True]`, 15+15 room models, both actor files, wrong-source fail-closed `bad-session run dirs: 0`).
+- `py -3.12 scripts/probe_p2_cohort_native.py stage/run …` under `slot.py run gl l05` → **passed** (`evidence.json` `passed=true`; all six markers present, quotes above).
+
+### Six-gate update (installation/provider lane)
+
+- **Installation acceptance (A-content / G-product): PASS at the content level** — real runner staging, cache replay, wrong/missing content and interrupted staging fail-closed, full run-tree + run-root sidecar cleanup.
+- **Live native spawn/visual bind: PASS (stage/bank + sidecar identity + draw observed)** — the engine loads and draws the staged real banks (`P2_*_BANK`, `P2_ENEMY_READY`, `P2_*_DRAW`). This is a private staged arena, not a generated-session admission, and no combat/lifetime gameplay PASS is claimed (family lane 13 + QA 33 own those).
+
+### Remaining blockers
+
+- **Lane 02 (#438):** admission set still empty; probes monkeypatch `admitted_ids`, so this stays a private arena proof, not an ordinary generated-session spawn.
+- **Lane 13 / family:** the Pod (`p2-pod.txt`/`pod.mod`) is not a lane-05 family sidecar — `install_layout` does not stage it; the proof copies it from the family's cohort-arena run root. If generated-session Snow admission is to reach `P2_SNOW_BANK` in preview mode, the Pod staging belongs to lane 13 (or a lane-05 Pod adapter), citing `pc_p2_enemy.cpp:161`.
+
+### Reproduction
+
+```powershell
+py -3.12 -m pytest tests/test_pikmin2_install_binding.py -q
+# native cohort proof (real assets):
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l05 -- py -3.12 scripts/probe_p2_cohort_native.py run --stage <staged-run> --exe <nectar.exe> --out <dir>
+```
+
+### Subagent usage (slice 3)
+
+Task-tool subagents unavailable; worked solo (see the slice-3 fix note). Net +~25 min vs. the intended 3-way split (read-heavy native audit done in this context).
