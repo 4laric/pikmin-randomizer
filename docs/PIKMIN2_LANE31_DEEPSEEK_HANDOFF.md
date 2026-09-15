@@ -45,9 +45,12 @@ actor with restored health.
 - `tools/p2_waterwraith_encounter_runtime_run.py` — new marker verify + optional
   `p2-pod.txt`/`p2-economy.txt` staging (Pod anchor for the Purple converter).
 
-No shared-file edits (`teki.h`, `tekibteki.cpp`, `gameCoreSection.cpp`, `navi.cpp`,
-`pc_p2_preview.cpp`, CMake) were changed; the register seam reuses the existing
-lane-31 additive hook already wired in `pc_port/pc_p2_hardlanes.cpp`.
+Slice 1 added no shared-file edits; the register seam reuses the existing lane-31
+additive hook already wired in `pc_port/pc_p2_hardlanes.cpp`. Slice 2 changed
+`pc_p2_preview.cpp` (54c497f9, 6cfbbf82) and `pc_p2_teki_lifetime.cpp` (6cfbbf82)
+in small separately committed `[shared hook]` commits; `teki.h`,
+`tekiinteraction.cpp`, `tekibteki.cpp`, `tekimgr.cpp`, `gameCoreSection.cpp`,
+`navi.cpp` and `CMakeLists.txt` were not changed by lane 31.
 
 ## Commits (native `deepseek/p2-l31-native`, base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`)
 
