@@ -123,6 +123,7 @@ cfacff01 lane10: review fixes - species-based fire, element-attributed lethal (#
 f34abccf lane10: review fixes - ElecHiba warning override + two-cluster scene (#408)
 1c6ba3ce lane10: review fixes 2 - denki-lethal excludes gas-hit targets (#408)
 11fb136c lane10 (owner lane22 pc_p2_hiba): add hazard-count probe for gate-6 re-entry (#408)
+762ed2e4 lane10: merge claude/p2-deepseek-wave-native (fix3 audit base; +222 wave commits incl. lane 22 Otakara + lane 14 ElecBug)
 ```
 
 Root (base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`), clean:
@@ -136,6 +137,8 @@ f710f40 lane10: review fixes 2 - species=1 lethal gate, sidecar doc, lanes-1012 
 5f5d6cc lane10: review fixes 2 handoff update (#408)
 5570495 lane10: review fixes 2 - correct gate-1 citation line (#408)
 b99fba2 lane10: slice 2 - gate-6 re-entry proof, receiver contract doc, PIKMIN_NATIVE_ROOT (#408)
+e4ec437 lane10: slice 2 handoff (#408)
+1e1c673 lane10: review fixes 3 - wave-native audit, ElecBug denki run, staged gate-6, DEBUG-log note (#408)
 ```
 
 Dirty state: both worktrees clean at handoff (build dirs, fixture and run
@@ -147,12 +150,11 @@ First line (dirty base build) and final line (committed clean build):
 
 ```
 2026-09-14T20:59:03 ... native=55bd78a3... dirty=yes ... exe=...\nectar.exe sha256=19e497175485e6a65c526c6555f2f00efb447075abbc50d535d0aef42fb16630 ninja_n="ninja: no work to do." seconds=74
-2026-09-15T01:10:22 ... native=1c6ba3ce62e147649890ccf55717bb2dcf628529 dirty=no ... exe=...\nectar.exe sha256=323b2dfcef1476cea88394223c29fd9f2065c2d3a237ac661fc6ab34d0ab23df ninja_n="ninja: no work to do." seconds=0
+2026-09-15T01:56:42 ... native=762ed2e42f38e31ee6e31721203d2a577d1176a4 dirty=no ... exe=...\nectar.exe sha256=ea12f4236df14b46e0db07d451d49133015e54dbaa2d8e132e2de671d289fb83 ninja_n="ninja: no work to do." seconds=93
 ```
 
-- `[2/2] Linking CXX executable bin\nectar.exe` (exit 0); `ninja -n pikmin_pc` -> `ninja: no work to do.`
-- Fixture provenance `provenance.json` status `built` (`output/dsw/l10-out/hiba-fixture5/build/provenance.json`).
-- Fixture `fixture.exe` SHA-256 `450aa55b5600fc2ceab1abc877017ab179f7a7ae527a4c31c3b98032b0480404`.
+- `[247/248] Linking CXX executable bin\nectar.exe` (exit 0, merged wave head); `ninja -n pikmin_pc` -> `ninja: no work to do.`
+- ElecBug denki fixture provenance `status=built` (`output/dsw/l10-out/elecbug-denki-fixture/baseline/provenance.json`, `expected_native_head=762ed2e4...`); fixture `fixture.exe` SHA-256 `8e9861d6b399fa9538ca7503db0f1963f692bbc6b17a3167a48ffb84ce609dde`.
 
 ## Fixture baseline adoption
 
