@@ -69,6 +69,28 @@ def test_validator_requires_family_ready_when_asked():
     assert "READY" in result.reason
 
 
+def test_asdict_on_valid_ready_log():
+    d = validate_log(DWARF_ORANGE_LOG, require_ready=True)._asdict()
+    assert d["ok"] is True
+    assert isinstance(d["targets"], list)
+    assert d["targets"] == [5465461]
+    assert d["sources"] == [ORANGE_SOURCE]
+    assert d["sources"] == sorted(d["sources"])
+
+
+def test_asdict_missing_ready_flags_reason():
+    d = validate_log(SAMPLE_LOG, require_ready=True)._asdict()
+    assert d["ok"] is False
+    assert "READY" in d["reason"]
+
+
+def test_asdict_empty_log_fails():
+    d = validate_log("")._asdict()
+    assert d["ok"] is False
+    assert d["targets"] == []
+    assert d["sources"] == []
+
+
 def _native_root() -> Path | None:
     root = os.environ.get("PIKMIN_NATIVE_ROOT")
     if root and (Path(root) / "pc_port" / "pc_randomizer.cpp").is_file():
