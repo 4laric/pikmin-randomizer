@@ -192,6 +192,18 @@ def test_lane_of_module_routes_to_owning_lane():
     assert _lane_of_module("pc_p2_groink_carcass") == "21"
     assert _lane_of_module("pc_p2_sokkuri") == "14"
     assert _lane_of_module("pc_p2_rock_host") == "20"
+    assert _lane_of_module("pc_p2_bombsarai_teki") == "27"
+
+
+def test_review_lists_uncovered_module_with_lane(tmp_path, monkeypatch, capsys):
+    # A module the wave engine carries but no row/allowlist covers is reported
+    # with its owning-lane routing hint and fails the audit.
+    import scripts.audit_pikmin2_roster as audit
+    (tmp_path / "pc_p2_sokkuri_probe.cpp").write_text("// fake\n", encoding="utf-8")
+    monkeypatch.setattr(audit, "ENGINE_PORT", tmp_path)
+    assert audit.main(["--review"]) == 1
+    out = capsys.readouterr().out
+    assert "pc_p2_sokkuri_probe (lane 14)" in out
 
 
 # ---------------------------------------------------------------------------

@@ -711,3 +711,93 @@ Root tests: `45 passed, 19 subtests`.
 "shared table" warning: source 99 is lane-31-owned and deliberately has no lane-06
 table.)
 
+## Provider coverage slice (lane-06 CTest registration)
+
+Source IDs: none new (provider slice). Files owned: `tools/p2_receipt_test.cpp`,
+`tools/p2_cargo_contest_test.cpp`, `tools/test_p2_cargo.cpp` (tests only);
+`CMakeLists.txt` (registration only); `docs/PIKMIN2_REWARD_RECEIPTS.md` (doc claim fix).
+One real consumer: the CTest harness now exercises the lane-06 provider
+token/ledger/contest/cargo-parse contracts end-to-end on every configure.
+
+Ordered commits (root base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`, native base
+`b805d9c626e4f4558c95aef7cac311a5d9a2068f`):
+- Root `8f546764` doc claim fix. Native `6088ecda` CTest registration.
+Dirty state: both worktrees clean (`git status --short` empty).
+
+Interfaces/hooks touched and why: no production source, no engine hook, no API change.
+Only `add_executable`/`add_test` blocks (the shared CMake test registry, small
+labelled lane-06 commit) plus a doc sentence. Needed because the three engine-free
+provider unit tests existed but were never wired into CTest, so the documented
+"(registered as CTest ...)" claim was false and no CI/build would catch a provider
+regression.
+
+Build evidence (`output/dsw/l06-build-evidence.txt`):
+- `p2_receipt_test` exe SHA-256 `d227e6f6f143ed859240ccbb5ef389e7e410659e10f7ae23f9ca8c5fed2a25d2`.
+- `p2_cargo_contest_test` exe SHA-256 `903825181941d73680261f7cefab7b21d422b8a3fb90f8cc6e2ca58209ee945c`.
+- `test_p2_cargo` exe SHA-256 `1acc6cc4ce9ac6e84e51cde86ba81a758a62214f0957878b76d658f0226d825c`.
+- `pikmin_pc` (no-op, configure validation) exe SHA-256 `1e7ffa34240eea351658e2b8473138226832097f1558c37f993a6dccda91d14c`, native `6088ecda` dirty=no, `ninja -n` no work.
+- CTest log `output/dsw/l06-out/ctest-provider-coverage.txt`: 7/7 pass.
+
+Fixture adoption evidence: N/A (no GL fixture run this slice; all tests are engine-free
+CTests run without a window). The retained ordinary-endpoint reference is the `44
+BlueKochappy` delivery flow (`delivery-run-fix2b`, 960x540 + live squad, cited in the
+existing gate table above).
+
+Six arena gates (this slice adds no gameplay run; all are source-backed N/A except the
+retained reference):
+- 1. Exact identity and spawn: source-backed N/A (no spawn; provider test slice).
+- 2. Autonomous movement and animation: source-backed N/A (family lane 13).
+- 3. Attacks and receivers: source-backed N/A (family lane 13 / receiver lane 10).
+- 4. Death and corpse: source-backed N/A (no death run; retained reference is the 44 table).
+- 5. Actual transport and reward: UNTESTED (no new transport run; retained `onion:p2:44:1`
+  reference only). No injected PASS claimed.
+- 6. Cleanup and re-entry: source-backed N/A (lane 07).
+
+Tests run and results:
+- CTest (`ctest -R "p2_receipt_host|p2_delivery_host|p2_delivery_receiver|p2_receipt_test|p2_cargo_contest_test|test_p2_cargo"`): 7/7 pass.
+- Root `pytest tests/test_pikmin2_delivery.py tests/test_pikmin2_receipts.py`: 45 passed, 19 subtests.
+- Root `pytest tests/test_pikmin2_receipt_native.py` (PIKMIN_NATIVE_SOURCE=native-l06): 2 passed.
+
+Assumptions: (1) `${CMAKE_CURRENT_BINARY_DIR}/p2_receipt_test_tmp` is a safe
+out-of-source writable dir for the argv-requiring receipt test (it calls
+`create_directories`). (2) The doc's `engine/tools/...` paths are the integration
+export of these same `tools/...` files (hence the doc cites the export path).
+(3) Registering these tests changes no production binary (verified by the no-op
+`pikmin_pc` SHA).
+
+Remaining blockers (provider lane): the `44 BlueKochappy` ordinary `onion:p2:44`
+receiver still has no real generated-family caller (lane 13 Snow corpse -> Onion is
+the proposed consumer; needs lane 01 + family 13 + real-GL). The Pod corpse path
+reference remains lane 19 / lane 31 owned.
+
+ONE exact reproduction command:
+```
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/build_lane.py l06 --target p2_receipt_test
+```
+
+### Subagent usage (provider coverage slice)
+
+- `explore` #1 (registration audit): used as-is — reported the exact per-test
+  `main()`/argv/header/PASS facts, the current CMake blocks, and the verbatim stale
+  doc sentences; I applied its CMake snippet and doc fix directly.
+- `explore` #2 (CTest inventory): used as-is — confirmed the 86-unregistered split,
+  the 4-existing lane-06 CTest logs, and zero hardcoded lane paths; shaped the slice
+  to the three provider files.
+- `general` #3 (baseline + doc check): used as-is — quoted the stale claim and
+  reported the 45 / 2 baselines; I relied on those counts unchanged.
+
+### Checker output (provider coverage slice)
+
+```
+44 BlueKochappy (role=source):
+  1. identity_spawn     ignored [PARTIAL]
+  2. movement_animation ignored [N/A]
+  3. attacks_receivers  ignored [N/A]
+  4. death_corpse       ignored [PARTIAL]
+  5. transport_reward   ignored [PARTIAL]
+  6. cleanup_reentry    ignored [N/A]
+99 BlackMan (role=source): warning (shared table) - named in prose but no table of its own; give it a `Source ID` line + six-gate table to claim its gates
+```
+(checker exit 0; no refused PASS rows. The `99 BlackMan` warning is the expected
+non-blocking "shared table" note for the lane-31-owned identity.)
+

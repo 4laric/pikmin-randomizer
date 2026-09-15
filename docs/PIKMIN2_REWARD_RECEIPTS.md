@@ -154,10 +154,10 @@ per-species parameters and consumes this transition table instead of forking the
 contest in `pc_p2_giant_breadbug_actor.cpp`.
 
 Tests: `engine/tools/p2_receipt_test.cpp`,
-`engine/tools/p2_cargo_contest_test.cpp` (registered as CTest
-`p2_receipt_test` / `p2_cargo_contest_test`) and the root
-`tests/test_pikmin2_receipt_native.py` which compiles the headers against the
-resolved native source.
+`engine/tools/p2_cargo_contest_test.cpp` and `engine/tools/test_p2_cargo.cpp`
+(registered as CTest `p2_receipt_test` / `p2_cargo_contest_test` / `test_p2_cargo`)
+and the root `tests/test_pikmin2_receipt_native.py` which compiles the headers
+against the resolved native source.
 
 ### Runtime regression (experimental Pod ledger)
 
