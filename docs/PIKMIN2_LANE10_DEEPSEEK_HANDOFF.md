@@ -139,6 +139,7 @@ f710f40 lane10: review fixes 2 - species=1 lethal gate, sidecar doc, lanes-1012 
 b99fba2 lane10: slice 2 - gate-6 re-entry proof, receiver contract doc, PIKMIN_NATIVE_ROOT (#408)
 e4ec437 lane10: slice 2 handoff (#408)
 1e1c673 lane10: review fixes 3 - wave-native audit, ElecBug denki run, staged gate-6, DEBUG-log note (#408)
+427da25 lane10: review fixes 3 handoff (commits/build evidence) (#408)
 ```
 
 Dirty state: both worktrees clean at handoff (build dirs, fixture and run
