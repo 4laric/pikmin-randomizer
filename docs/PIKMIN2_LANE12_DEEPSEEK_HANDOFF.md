@@ -232,3 +232,164 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l1
 py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l12 -- \
   C:/Users/alari/pikmin-randomizer/output/dsw/p2-captain-fixture-01/fixture.exe --experimental-pikmin2-room --knockout-roster
 ```
+
+## Slice 2
+
+Executing session: DeepSeek (`deepseek-v4-pro`). This slice delivers **one real
+consumer of the survivor path end-to-end**: a live second captain in the roster,
+a natural (damage-receiver) knockdown of the active captain, the deferred
+minimal rebind (active index / camera target / whistle-throw input), the
+stage-end on the last captain down, and the `pc_p2_captain_forget_piki` hook.
+
+### Files owned/edited (native worktree `output/dsw/native-l12`)
+
+- `pc_port/pc_p2_second_captain.cpp` / `.h` — `second_captain_live_allowed()`
+  now returns `true` (still strictly request-gated by `PIKMIN_P2_SECOND_CAPTAIN`);
+  `birth_second_captain()` births slot 1 (full init/reset deferred to
+  `finalSetup`, see below).
+- `src/plugPikiKando/gameCoreSection.cpp` — minimal rebind: camera start
+  (`initStage:1256`) and controller start (`initStage:1319`) read
+  `getActiveNavi()`; the throw-selection query (`update:1831`) reads
+  `getActiveNavi()` (fallback to `getNavi()`); `finalSetup` fully initialises
+  the second Navi (`init`/`reset`/shared camera/spawn offset/`startKontroller`)
+  once all stage managers exist.
+- `src/plugPikiKando/navi.cpp` — `finishDamage()` gates its game-over pause on
+  `!(naviMgr && naviMgr->getAliveOrima())` so a downed captain with a living
+  partner keeps playing (single-captain byte-identical); the Navi ctor maps both
+  captains to Kontroller port 0 (single-pad PC port, source P2 maps `naviID+1`);
+  `refresh()` early-returns for `mNaviID != 0` (second-captain model/plate/cursor
+  render deferred — see blockers).
+- `src/plugPikiNakata/pcamcameramanager.cpp` — `outputNaviPosition()` follows
+  `getActiveNavi()` (fallback `getNavi(0)`).
+- `pc_port/pc_p2_captain.cpp` / `.h` — new free function
+  `pc_p2_captain_forget_piki(Piki*)` erases a recycled `Piki*` from the stable
+  `g_actorIds` registry.
+- `src/plugPikiKando/pikiMgr.cpp` — `PikiMgr::birth()` calls
+  `pc_p2_captain_forget_piki(...)` beside the Bulbmin hook (pikiMgr.cpp:61).
+- `tools/p2_captain_runtime.cpp` — new `--survivor-path` scenario.
+
+Root worktree file: `tests/test_pikmin2_captain_live.py` — the source-presence
+gate now also asserts `pc_p2_captain_forget_piki(` is present in
+`pc_p2_captain.cpp`, `pc_p2_captain.h` and `pikiMgr.cpp`.
+
+### Ordered commits
+
+Native worktree (branch `deepseek/p2-l12-native`, base
+`2fa5e109` = integrator fix from review):
+
+1. `d6ba3f52` — "lane12: survivor path consumer - second-captain rebind, natural
+   knockdown, forget-piki (#130)".
+2. `16125f06` — "lane12: add two-captain survivor-path runtime scenario to
+   captain fixture (#130)".
+
+Root worktree (branch `deepseek/p2-l12`, base `a48545a`):
+
+1. `(this handoff)` — "lane12: slice 2 handoff + forget-piki test marker (#130)".
+
+Dirty state: both worktrees clean after the commits above.
+
+### Build evidence
+
+`output/dsw/l12-build-evidence.txt` (single clean head, `ninja -n` = no work):
+
+```
+native=d6ba3f529e77bfd26f16931cc34c898bb836803d
+exe=C:\Users\alari\pikmin-randomizer\output\dsw\native-l12-build\bin\nectar.exe
+sha256=3e2c64c42c257dc2b1ac368d94e2fe86fff10562c6bdd2eb0d6a3bc4467dc0a2
+```
+
+Fixture `p2-captain-fixture-final` (provenance `status=built`, expected native
+head `16125f06eea4fff3ff5a10a2293650ad6709dcc7`), `fixture.exe` SHA-256 starts
+`1f0963d0…`.
+
+### Fixture adoption evidence
+
+Arena `output/dsw/l12-out/29aa57121d014e72ad96464855620d1d` (current overlay,
+`room_4x4a_4_conc`, re-converted input reused from lane 04's converted output as
+in slice 1). 960×540 centred window observed; a live 20-Pikmin squad auto-adopts.
+
+Markers from `l12-out/survivor-path.log`:
+
+```
+P2_CAPTAIN_WINDOW size=960x540 pos=373,263 display=1707x1067 centered=1
+[Pikmin Randomizer] second captain spawned at slot 1
+P2_CAPTAIN_SQUAD live=20
+P2_CAPTAIN_SURVIVOR_DOWN dead=0 survivor=1 squad=1 orima_dead=0 paused=0 active=1
+P2_CAPTAIN_SURVIVOR_STAGE_END dead=2 alive_orima=none orima_dead=1
+PASS P2_CAPTAIN_RUNTIME
+```
+
+### Six-gate table (slice 2)
+
+| Gate | Result | Evidence | Natural vs injected |
+|---|---|---|---|
+| 1. Exact identity | PASS | second captain birthed at slot 1, both slots adopted (`health(0)>0`, `health(1)>0`) | natural (live scene auto-bind) |
+| 2. Claim/release | PASS (unchanged) | single-captain claim/release + interruption/cleanup still pass (`P2_CAPTAIN_LIVE_SEAM_PASS`) | natural |
+| 3. Interrupted capture | PASS (unchanged) | same | natural |
+| 4. Cleanup / re-entry | PASS (unchanged) | same | natural |
+| 5. Survival semantics (knockout + survivor-gated stage finish) | PASS | `P2_CAPTAIN_SURVIVOR_DOWN dead=0 survivor=1 orima_dead=0 paused=0 active=1` | **natural** (damage-receiver `startDamage` → `finishDamage` → `NAVISTATE_Dead`) |
+| 6. Real second-captain runtime | PASS (gameplay) / BLOCKED (visual) | survivor rebind + stage-end asserted; second captain model render deferred | natural roster, injected final death for stage-end |
+
+Labels: (a) downed captain enters `NAVISTATE_Dead` (ODead) with a squad; (b)
+`orima_dead=0`, core not paused (`paused=0`), survivor alive; (c) control
+`getActiveNavi()` == slot 1; (d) second captain down sets `orima_dead=1`.
+
+### Tests run and results
+
+```
+PIKMIN_NATIVE_ROOT=C:/Users/alari/pikmin-randomizer/output/dsw/native-l12 \
+  py -3.12 -m pytest tests/test_pikmin2_captain_live.py -q
+# -> 2 passed
+```
+
+Runtime (via `slot.py run gl l12`, all exit 0):
+- `survivor-path.log` — `--survivor-path` + `PIKMIN_P2_SECOND_CAPTAIN=1` → PASS.
+- `base-final.log` — single-captain seam → PASS (no regression from the rebind).
+- `knockout-final.log` — single-captain injected game-over → PASS
+  (`P2_CAPTAIN_KNOCKOUT_SYNC dead=1 alive_orima=none orima_dead=1`).
+
+### Assumptions
+
+- "Natural" is the engine damage receiver (`startDamage` → `startDamageEffect`
+  → `finishDamage` → `NAVISTATE_Dead`), mirroring `InteractAttack::actNavi`; the
+  Mamuta bury (`pc_p2_mamuta_bury_navi`) path was not driven because the preview
+  scene does not spawn a bound Miulin actor with `p2-mamuta-rules.txt`.
+- "Releases its squad" is source-faithful: the survivor branch of
+  `NaviDeadState::init` calls `releasePikis()` (slice 1). The preview's 20-squad
+  are display-only (never added to the CPlate slot list, `mTotalSlotCount` 0), so
+  the mode-flip is not directly observable in the preview; the release is
+  demonstrated by the survivor branch running (game not ended) rather than a
+  plate-mode read.
+- The surviving controller is the PC port's single pad (both captains read
+  `Kontroller` port 0); P2's two-pad split is still not ported.
+
+### Remaining blockers
+
+- The second captain's **model/self-shadow/plate/cursor rendering** is deferred
+  (`Navi::refresh` returns early for `mNaviID != 0`). Getting it to draw requires
+  finishing the per-captain shape/head-look/collision binding (the fresh uncached
+  `nv3Model` shape's demoDraw/head path crashed — `getSphere('ante')`/head matrix
+  on the uncached shape) — the remainder of the original "per-captain camera +
+  Kontroller binding" gap.
+- The empty-plate `CPlate::refresh` math on a synthetic squad crashes (NaN→int),
+  so the squad-release was asserted via the survivor branch, not a plate-mode flip.
+- `test_pikmin2_captain_adapter.py` / `test_pikmin2_captain_squad_split.py` remain
+  compile/engine-double contract tests (unchanged; single-captain).
+
+### Subagent usage
+
+This session's toolset did **not** expose the `task` subagent tool, so the three
+planned `explore`/`explore`/`general` delegations could not be spawned. All
+source audit, candidate inventory, fixture edits and runtime work were done
+directly. Net delegation effect: none (a gap in the wave's tooling for this
+session), which is the honest negative result the experiment asked for.
+
+### Reproduction
+
+```bash
+export PATH="/c/msys64/mingw64/bin:$PATH"; export PIKMIN_P2_ROOM_WINDOW=960x540; export PYTHONUTF8=1
+cd C:/Users/alari/pikmin-randomizer/output/dsw/l12-out/29aa57121d014e72ad96464855620d1d
+# survivor path (two captains):
+PIKMIN_P2_SECOND_CAPTAIN=1 py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l12 -- \
+  C:/Users/alari/pikmin-randomizer/output/dsw/p2-captain-fixture-final/fixture.exe --experimental-pikmin2-room --survivor-path
+```
