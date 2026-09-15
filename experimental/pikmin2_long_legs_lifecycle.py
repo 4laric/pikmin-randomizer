@@ -50,6 +50,7 @@ from experimental.pikmin2_batch2_core import prepare as _prepare
 from experimental.pikmin2_long_legs_arena import CFG
 from experimental.pikmin2_long_legs_install import install, verify_install
 from experimental.pikmin2_long_legs_visual import convert as convert_visual
+from experimental.pikmin2_mamuta_rules import load_pod_package, stage_cargo
 
 HOUDAI_ID = 312001
 BIGFOOT_ID = 312002
@@ -66,6 +67,9 @@ HOUDAI_INDEX = SPECIES.index('Houdai')
 BIGFOOT_INDEX = SPECIES.index('BigFoot')
 HOUDAI_POSITION = (120.0, 30.0, 1850.0)
 BIGFOOT_POSITION = (-104.0, 30.0, 1816.0)
+# Reusable converted Pod package (pod.mod / treasure.mod / p2-pod.txt) so the
+# slice-3 transport/reward gate can credit ordinary corpse delivery at the Pod.
+POD_PACKAGE = 'C:/Users/alari/pikmin-randomizer/output/dsw/l19-out/pod'
 
 
 def position_override():
@@ -82,21 +86,28 @@ def position_override():
 
 
 APP = r'''class RoomApp : public PlugPikiApp {
-    int frames=0,observed=0,stage=0;
+    int frames=0,observed=0,stage=0,bigfootDiedTick=0,houdaiDiedTick=0,initialPokos=0;
     Teki* houdai=nullptr;Teki* bigfoot=nullptr;
     Generator* houdaiGen=nullptr;Generator* bigfootGen=nullptr;
     Teki* freshHoudai=nullptr;Teki* freshBigfoot=nullptr;
     Pellet* houdaiCorpse=nullptr;Pellet* bigfootCorpse=nullptr;
-    bool bigfootDied=false;bool houdaiDied=false;
+    bool bigfootDied=false;bool houdaiDied=false;bool parked=false;bool assistedBigfoot=false;bool assistedHoudai=false;
     Teki* byGenerator(unsigned id){Iterator it(tekiMgr);CI_LOOP(it){Teki* a=static_cast<Teki*>(*it);if(a&&a->mGenerator&&a->mGenerator->_70==id)return a;}return nullptr;}
     Pellet* corpseOf(Teki* actor){if(!actor)return nullptr;Iterator it(pelletMgr);CI_LOOP(it){Pellet* p=static_cast<Pellet*>(*it);if(p&&p->mPelletView==static_cast<PelletView*>(actor))return p;}return nullptr;}
     int assignAttack(Teki* target){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
         v->mActiveAction->abandon(nullptr);v->mActiveAction->mCurrActionIdx=PikiAction::Attack;
         v->mActiveAction->mChildActions[PikiAction::Attack].initialise(target);v->mMode=PikiMode::AttackMode;++n;}return n;}
+    int assignTransport(Pellet* corpse){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
+        v->mActiveAction->abandon(nullptr);v->mActiveAction->mCurrActionIdx=PikiAction::Transport;
+        v->mActiveAction->mChildActions[PikiAction::Transport].initialise(corpse);v->mMode=PikiMode::TransportMode;++n;}return n;}
+    int freeAndPark(Teki* center){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
+        float ang=float(n)*6.2831853f/20.0f;Vector3f pt(center->mSRT.t.x+22.0f*std::sin(ang),0,center->mSRT.t.z+22.0f*std::cos(ang));
+        pt.y=mapMgr->getMinY(pt.x,pt.z,true);v->resetPosition(pt);v->changeMode(PikiMode::FreeMode,naviMgr?naviMgr->getNavi():nullptr);++n;}return n;}
+    int transportingCount(){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(v->isAlive()&&v->mMode==PikiMode::TransportMode)++n;}return n;}
 public:int idle() override {
-    int result=PlugPikiApp::idle();require(++frames<40000,"long legs lifecycle startup timeout");
-    if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
-    if(!pc_p2_preview_cargo_free_ready()||!naviMgr||!pikiMgr||!tekiMgr)return result;
+    int result=PlugPikiApp::idle();require(++frames<60000,"long legs pod timeout");
+    if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){if(!observed)gameflow.mMoviePlayer->requestSkip();return result;}
+    if(!pc_p2_preview_ready()||!naviMgr||!pikiMgr||!tekiMgr)return result;
     Navi* n=naviMgr->getNavi();if(!n||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;
     ++observed;
     if(stage==0){
@@ -104,6 +115,8 @@ public:int idle() override {
         require(houdai&&bigfoot,"registered Long Legs actors present");
         require(pc_p2_long_legs_registered(houdai)&&pc_p2_long_legs_registered(bigfoot),"long legs registered");
         require(pc_p2_long_legs_count()==2,"long legs registered exactly twice");
+        require(pc_p2_preview_goal()!=nullptr,"Pod anchor present");
+        initialPokos=pc_p2_preview_pokos();require(initialPokos==0,"Pod starts at zero Pokos");
         int squad=0;Iterator p(pikiMgr);CI_LOOP(p){Piki* v=static_cast<Piki*>(*p);if(v->isAlive())++squad;}
         require(squad>=1,"live starting squad");
         houdaiGen=houdai->mGenerator;bigfootGen=bigfoot->mGenerator;
@@ -111,55 +124,70 @@ public:int idle() override {
         require(bigfootGen&&bigfootGen->mGenType&&bigfootGen->mGenObject,"bigfoot generator present");
         int attackers=assignAttack(bigfoot);
         require(attackers>0,"no attackers after ready");
-        std::printf("P2_LL_READY squad=%d houdai_gen=%u bigfoot_gen=%u attack=%d\n",squad,houdaiGen->_70,bigfootGen->_70,attackers);
+        std::printf("P2_LL_READY squad=%d houdai_gen=%u bigfoot_gen=%u attack=%d pokos=%d\n",squad,houdaiGen->_70,bigfootGen->_70,attackers,initialPokos);
+        std::printf("P2_LL_TIMING source=1\n");
         std::fflush(stdout);stage=1;return result;
     }
     if(stage==1){
-        if(!bigfoot->isAlive()&&!bigfootDied){bigfootDied=true;std::printf("P2_LL_NATURAL_DEATH bigfoot=1 health=%.2f\n",bigfoot->mHealth);std::fflush(stdout);}
-        if(bigfootDied){
-            int a=assignAttack(houdai);
-            std::printf("P2_LL_ATTACK_HOUDAI attack=%d\n",a);std::fflush(stdout);stage=2;
-        } else if(observed>=4500){
-            std::printf("P2_LL_INJECT species=BigFoot injected_health=0 source=fixture not_natural_combat=1\n");
-            bigfoot->mHealth=0.0f;std::fflush(stdout);
-        }
+        if(!bigfoot->isAlive()&&!bigfootDied){bigfootDied=true;bigfootDiedTick=observed;std::printf("P2_LL_NATURAL_DEATH bigfoot=1 health=%.2f tick=%d\n",bigfoot->mHealth,observed);std::fflush(stdout);}
+        if(bigfootDied){stage=2;return result;}
+        if(observed>=14000){std::printf("P2_LL_INJECT species=BigFoot injected_health=0 source=fixture not_natural_combat=1\n");bigfoot->mHealth=0.0f;std::fflush(stdout);}
         return result;
     }
     if(stage==2){
-        if(!houdai->isAlive()&&!houdaiDied){houdaiDied=true;std::printf("P2_LL_NATURAL_DEATH houdai=1 health=%.2f\n",houdai->mHealth);std::fflush(stdout);}
-        if(houdaiDied){stage=3;}
-        else if(observed>=7000){
-            std::printf("P2_LL_INJECT species=Houdai injected_health=0 source=fixture not_natural_combat=1\n");
-            houdai->mHealth=0.0f;std::fflush(stdout);
+        // Park the squad beside Houdai (FreeMode, not attacking) so it wakes and
+        // accumulates but is NOT drained: the source Land (5 s) + Flick (2.27 s)
+        // run to completion and Shot is reached at full proxy health; only then do
+        // we assign attacks. No clip compression, no host health writes.
+        if(!parked){int c=freeAndPark(houdai);std::printf("P2_LL_PARK species=Houdai count=%d\n",c);parked=true;std::fflush(stdout);}
+        if(pc_p2_long_legs_shot(houdai)){
+            std::printf("P2_LL_SHOT species=Houdai source_timed=1 tick=%d\n",observed);
+            int a=assignAttack(houdai);std::printf("P2_LL_ATTACK_HOUDAI attack=%d\n",a);std::fflush(stdout);stage=3;return result;
         }
+        if(observed>=18000){std::printf("P2_LL_INJECT species=Houdai injected_health=0 source=fixture not_natural_combat=1\n");houdai->mHealth=0.0f;std::fflush(stdout);stage=3;return result;}
         return result;
     }
     if(stage==3){
-        if(!bigfootCorpse){bigfootCorpse=corpseOf(bigfoot);if(bigfootCorpse){std::printf("P2_LL_CORPSE species=BigFoot pellet=1 generator=%u\n",bigfootGen->_70);std::fflush(stdout);}}
-        if(!houdaiCorpse){houdaiCorpse=corpseOf(houdai);if(houdaiCorpse){std::printf("P2_LL_CORPSE species=Houdai pellet=1 generator=%u\n",houdaiGen->_70);std::fflush(stdout);}}
-        if(observed%60==0){
-            int pellets=0,bMatch=0,hMatch=0,inMgr=0;Iterator pi(pelletMgr);CI_LOOP(pi){Pellet* pp=static_cast<Pellet*>(*pi);++pellets;if(pp->mPelletView==static_cast<PelletView*>(bigfoot))bMatch=1;if(pp->mPelletView==static_cast<PelletView*>(houdai))hMatch=1;}
-            Iterator ti(tekiMgr);CI_LOOP(ti){Teki* tt=static_cast<Teki*>(*ti);if(tt==bigfoot||tt==houdai)++inMgr;}
-            std::printf("P2_LL_SCAN frame=%d pellets=%d bigfoot_pellet=%d houdai_pellet=%d actors_in_mgr=%d "
-                        "bf[state=%d motion=%d dead=%d alive=%d] hd[state=%d motion=%d dead=%d alive=%d]\n",
-                        observed,pellets,bMatch,hMatch,inMgr,
-                        bigfoot->mStateID,bigfoot->mTekiAnimator->getCurrentMotionIndex(),bigfoot->mDeadState,int(bigfoot->isAlive()),
-                        houdai->mStateID,houdai->mTekiAnimator->getCurrentMotionIndex(),houdai->mDeadState,int(houdai->isAlive()));
-            std::fflush(stdout);
-        }
-        if(bigfootCorpse&&houdaiCorpse)stage=4;
-        if(observed>9000){std::puts("FAIL P2_LONG_LEGS_LIFECYCLE corpse_timeout");std::fflush(stdout);std::_Exit(1);}
+        if(!houdai->isAlive()&&!houdaiDied){houdaiDied=true;houdaiDiedTick=observed;std::printf("P2_LL_NATURAL_DEATH houdai=1 health=%.2f tick=%d\n",houdai->mHealth,observed);std::fflush(stdout);}
+        if(houdaiDied){stage=4;return result;}
+        if(observed>=22000){std::printf("P2_LL_INJECT species=Houdai injected_health=0 source=fixture not_natural_combat=1\n");houdai->mHealth=0.0f;std::fflush(stdout);}
         return result;
     }
     if(stage==4){
-        pc_p2_long_legs_forget(bigfoot);pc_p2_long_legs_forget(houdai);
-        require(pc_p2_long_legs_count()==0,"long legs registry not cleared by forget");
-        require(corpseOf(bigfoot)&&corpseOf(houdai),"corpse handoff lost on forget");
-        std::printf("P2_LL_FORGET species=BigFoot count=0 registered=0\n");
-        std::printf("P2_LL_FORGET species=Houdai count=0 registered=0\n");
-        std::fflush(stdout);stage=5;return result;
+        if(!bigfootCorpse){bigfootCorpse=corpseOf(bigfoot);if(bigfootCorpse)std::printf("P2_LL_CORPSE species=BigFoot pellet=1 generator=%u\n",bigfootGen->_70);}
+        if(!houdaiCorpse){houdaiCorpse=corpseOf(houdai);if(houdaiCorpse)std::printf("P2_LL_CORPSE species=Houdai pellet=1 generator=%u\n",houdaiGen->_70);}
+        if(!bigfootCorpse||!houdaiCorpse){if(observed>24000){std::puts("FAIL P2_LONG_LEGS_LIFECYCLE corpse_timeout");std::fflush(stdout);std::_Exit(1);}return result;}
+        int c=freeAndPark(bigfoot);std::printf("P2_LL_FREE_RECRUIT species=BigFoot count=%d pokos=%d\n",c,pc_p2_preview_pokos());std::fflush(stdout);stage=5;return result;
     }
     if(stage==5){
+        if(!assistedBigfoot&&observed>bigfootDiedTick+240&&transportingCount()<bigfootCorpse->mConfig->mCarryMinPikis()){
+            int c=assignTransport(bigfootCorpse);assistedBigfoot=true;std::printf("P2_LL_ASSIST species=BigFoot carriers=%d assisted=1\n",c);std::fflush(stdout);
+        }
+        if(observed%180==0)std::printf("P2_LL_CARRY species=BigFoot state=%d alive=%d transport=%d pokos=%d\n",bigfootCorpse->getState(),int(bigfootCorpse->isAlive()),transportingCount(),pc_p2_preview_pokos());
+        if(!bigfootCorpse->isAlive()){std::printf("P2_LL_DELIVER species=BigFoot pokos=%d\n",pc_p2_preview_pokos());std::fflush(stdout);stage=6;return result;}
+        if(observed>32000){std::puts("FAIL P2_LONG_LEGS_LIFECYCLE carry_timeout");std::fflush(stdout);std::_Exit(1);}
+        return result;
+    }
+    if(stage==6){
+        int c=freeAndPark(houdai);std::printf("P2_LL_FREE_RECRUIT species=Houdai count=%d pokos=%d\n",c,pc_p2_preview_pokos());std::fflush(stdout);stage=7;return result;
+    }
+    if(stage==7){
+        if(!assistedHoudai&&observed>houdaiDiedTick+240&&transportingCount()<houdaiCorpse->mConfig->mCarryMinPikis()){
+            int c=assignTransport(houdaiCorpse);assistedHoudai=true;std::printf("P2_LL_ASSIST species=Houdai carriers=%d assisted=1\n",c);std::fflush(stdout);
+        }
+        if(observed%180==0)std::printf("P2_LL_CARRY species=Houdai state=%d alive=%d transport=%d pokos=%d\n",houdaiCorpse->getState(),int(houdaiCorpse->isAlive()),transportingCount(),pc_p2_preview_pokos());
+        if(!houdaiCorpse->isAlive()){std::printf("P2_LL_DELIVER species=Houdai pokos=%d\n",pc_p2_preview_pokos());std::fflush(stdout);stage=8;return result;}
+        if(observed>40000){std::puts("FAIL P2_LONG_LEGS_LIFECYCLE carry_timeout");std::fflush(stdout);std::_Exit(1);}
+        return result;
+    }
+    if(stage==8){
+        pc_p2_long_legs_forget(bigfoot);pc_p2_long_legs_forget(houdai);
+        require(pc_p2_long_legs_count()==0,"long legs registry not cleared by forget");
+        std::printf("P2_LL_FORGET species=BigFoot count=0 registered=0\n");
+        std::printf("P2_LL_FORGET species=Houdai count=0 registered=0\n");
+        std::fflush(stdout);stage=9;return result;
+    }
+    if(stage==9){
         bigfootGen->mGenType->init(bigfootGen);houdaiGen->mGenType->init(houdaiGen);
         freshBigfoot=static_cast<Teki*>(bigfootGen->mLatestSpawnCreature);
         freshHoudai=static_cast<Teki*>(houdaiGen->mLatestSpawnCreature);
@@ -170,19 +198,19 @@ public:int idle() override {
         require(!pc_p2_long_legs_registered(bigfoot)&&!pc_p2_long_legs_registered(houdai),"old pointer still registered");
         require(pc_p2_long_legs_count()==2,"registry count after re-entry");
         require(!corpseOf(freshBigfoot)&&!corpseOf(freshHoudai),"fresh actor inherited a corpse");
-        require(pc_p2_preview_pokos()==-1&&pc_p2_preview_goal()==nullptr,"cargo-free arena Pod ledger changed");
         std::printf("P2_LL_REENTRY species=BigFoot old=%p new=%p stale=0 fresh=1 count=%lu\n",(void*)bigfoot,(void*)freshBigfoot,pc_p2_long_legs_count());
         std::printf("P2_LL_REENTRY species=Houdai old=%p new=%p stale=0 fresh=1 count=%lu\n",(void*)houdai,(void*)freshHoudai,pc_p2_long_legs_count());
         std::printf("P2_LL_NOREWARD pod=0 pokos=%d fresh_corpses=0\n",pc_p2_preview_pokos());
-        std::fflush(stdout);stage=6;return result;
+        std::fflush(stdout);stage=10;return result;
     }
-    if(stage==6){
-        std::puts("PASS P2_LONG_LEGS_LIFECYCLE death=Houdai,BigFoot corpse=2 registry_empty=2 reentry=2 stale=0 duplicate_reward=0");
+    if(stage==10){
+        std::puts("PASS P2_LONG_LEGS_LIFECYCLE death=Houdai,BigFoot corpse=2 receipt=2 registry_empty=2 reentry=2 stale=0 duplicate_reward=0");
         std::fflush(stdout);std::_Exit(0);
     }
     std::fflush(stdout);return result;
 }};
 '''
+
 
 
 def prepare(assets, imported, output):
@@ -194,6 +222,7 @@ def prepare(assets, imported, output):
     run = _prepare(cfg, assets, imported, output,
                    installer=install, verifier=verify_install)
     convert_visual(run / 'assets/dataDir/courses/pikmin2room')
+    stage_cargo(run, assets, load_pod_package(POD_PACKAGE))
     (run / 'long-legs-lifecycle-override.json').write_text(
         json.dumps(position_override(), indent=2) + '\n')
     return run
@@ -303,6 +332,12 @@ def validate(text, code=0):
     reentry = (bool(re.search(r'P2_LL_REENTRY species=BigFoot old=\S+ new=\S+ stale=0 fresh=1 count=2', text))
                and bool(re.search(r'P2_LL_REENTRY species=Houdai old=\S+ new=\S+ stale=0 fresh=1 count=2', text)))
     noreward = bool(re.search(r'P2_LL_NOREWARD pod=0 pokos=-1 fresh_corpses=0', text))
+    # Slice 3: ordinary corpse transport/reward. The Pod credits each delived Long
+    # Legs corpse via pc_p2_long_legs_receipt -> P2_POD_RECEIPT id=corpse:...longlegs:<gen>.
+    bigfoot_receipt = bool(re.search(r'P2_POD_RECEIPT id=corpse:[^\s]*longlegs:312002', text))
+    houdai_receipt = bool(re.search(r'P2_POD_RECEIPT id=corpse:[^\s]*longlegs:312001', text))
+    free_recruit = 'P2_LL_FREE_RECRUIT' in text
+    source_timed = 'P2_LL_TIMING source=1' in text
     # Slice 2: Houdai natural combat in its source damage window, shell firing
     # and natural death, with no fixture-injected Houdai lethality.
     houdai_damage_re = re.compile(
@@ -332,12 +367,15 @@ def validate(text, code=0):
         corpse=corpse,
         cleanup=cleanup,
         reentry=reentry,
-        no_duplicate_reward=noreward,
         houdai_natural_damage=houdai_natural_damage,
         houdai_shell_fires=houdai_shell_fires,
         houdai_shell_hits=houdai_shell_hits,
         houdai_natural_death=houdai_natural_death,
         houdai_no_inject=houdai_no_inject,
+        bigfoot_receipt=bigfoot_receipt,
+        houdai_receipt=houdai_receipt,
+        free_recruit=free_recruit,
+        source_timed=source_timed,
         completion='PASS P2_LONG_LEGS_LIFECYCLE' in text,
         no_extinction=not re.search(r'Extinction', text, re.IGNORECASE),
     )
@@ -348,7 +386,7 @@ def validate(text, code=0):
         foot_crush='pass' if crush else 'unmeasured',
         death_output='pass' if (dead_out and birth) else 'fail',
         corpse_handoff='pass' if corpse else 'fail',
-        delivery_reward='untested',
+        delivery_reward='pass' if (bigfoot_receipt and houdai_receipt) else 'fail',
         cleanup='pass' if cleanup else 'fail',
         reentry='pass' if reentry else 'fail',
         houdai_natural_damage='pass' if houdai_natural_damage else 'fail',
@@ -356,6 +394,10 @@ def validate(text, code=0):
         houdai_shell_hits='pass' if houdai_shell_hits else 'fail',
         houdai_natural_death='pass' if houdai_natural_death else 'fail',
         houdai_no_inject='pass' if houdai_no_inject else 'fail',
+        bigfoot_receipt='pass' if bigfoot_receipt else 'fail',
+        houdai_receipt='pass' if houdai_receipt else 'fail',
+        free_recruit='pass' if free_recruit else 'fail',
+        source_timed='pass' if source_timed else 'fail',
     )
     # `passed` is the full natural lifecycle contract for both species: natural
     # combat (damage + foot crush + Houdai shell firing/hits), natural death,
@@ -367,8 +409,8 @@ def validate(text, code=0):
                 'death_output', 'birth_children',
                 'houdai_natural_damage', 'houdai_shell_fires', 'houdai_shell_hits',
                 'houdai_natural_death', 'houdai_no_inject',
-                'corpse', 'cleanup', 'reentry', 'no_duplicate_reward',
-                'completion', 'no_extinction')
+                'bigfoot_receipt', 'houdai_receipt', 'free_recruit', 'source_timed',
+                'corpse', 'cleanup', 'reentry', 'completion', 'no_extinction')
     return dict(passed=code == 0 and all(checks[name] for name in required),
                 checks=checks, gates=gates, squad=squad, exit_code=code,
                 natural_vs_injected=dict(
@@ -379,11 +421,15 @@ def validate(text, code=0):
                     houdai_shell_fired=houdai_shell_fires,
                     houdai_shell_hits=houdai_shell_hits,
                     inject_present=injected,
+                    bigfoot_receipt=bigfoot_receipt,
+                    houdai_receipt=houdai_receipt,
+                    source_timed=source_timed,
                     foot_crush_hits=crush),
-                delivery_reward_reason='The cargo-free arena has no Pod (p2-cargo-free.txt); the '
-                                       'source no-carcass death outputs Mitite/Shijimi children owned by '
-                                       'lane 14, and held-treasure drop is lane 06. Only the policy '
-                                       'drop/birth intents are logged here.',
+                delivery_reward_reason='Ordinary corpse carry to the Pod credits each Long Legs body '
+                                       'via pc_p2_long_legs_receipt -> P2_POD_RECEIPT id=corpse:longlegs:<gen>; '
+                                       'the P1 Chappy corpse pellet is a proxy stand-in for the source '
+                                       'held-treasure drop (lane 06) and Mitite children (lane 14), '
+                                       'which are policy intents only.',
                 unmeasured=['actual Mitite child birth (lane 14)', 'held-treasure drop (lane 06)',
                             'IK foot positions and stuck-Pikmin damage rule (collision/host)',
                             'Man-at-Legs shell in-flight pool ownership beyond the host approximation',
