@@ -33,15 +33,17 @@ from scripts.ingest_p2_handoff_gates import (  # noqa: E402
     parse_identities,
 )
 
-# A cited PASS must carry one of these in the Evidence cell (token boundary), or
-# a path rooted at one of these directories. Mirrors the ingest script.
+# A cited PASS must carry a real evidence file in the Evidence cell, not a
+# placeholder: a `.md`/`.log`/`.txt`/`.json` token, or a path rooted at a
+# `docs/`/`output/`/`tests/` directory (with a concrete run and line number).
 CITATION_HINT = (
-    "cite an evidence file in the Evidence cell, e.g. "
-    "`output/<lane-out>/<run>/native.log:NNN` or `docs/PIKMIN2_*.md`"
+    "cite a real evidence file in the Evidence cell "
+    "(a `.md`/`.log`/`.txt`/`.json` filename or a `docs/`/`output/`/`tests/` "
+    "path - no `<...>`/`NNN` placeholders)"
 )
 RECEIPT_HINT = (
-    "cite a lane-06 receipt key (`onion:`/`corpse:`/`receipt:`) or an evidence "
-    "file in the Evidence cell"
+    "cite a lane-06 receipt key (`onion:`/`corpse:`/`receipt:`) or a real "
+    "evidence file in the Evidence cell"
 )
 
 
@@ -57,10 +59,23 @@ def _fix_for(reason: str, number: int) -> str:
 
 def _row_verdict(number: int, row: dict) -> dict:
     result = _strip_md(row.get("result", ""))
-    if result and _STATUS_RE.match(result.upper()) is None:
+    head = _STATUS_RE.match(result.upper())
+    if result and head is None:
+        # Status token is not at the start of the Result cell. A cell that merely
+        # misplaced a non-PASS token (or has none) is a warning; only a misplaced
+        # PASS is a refusal (it is a PASS row the lane failed to state cleanly).
+        inner = _STATUS_RE.search(result.upper())
+        if inner is None:
+            return {"verdict": "warn:bad status", "status": "UNTESTED",
+                    "fix": f"Result has no status token (got {ascii(result[:40])}); "
+                           "begin with PASS/PARTIAL/FAIL/BLOCKED/UNTESTED/N/A"}
+        if inner.group(1) != "PASS":
+            return {"verdict": "warn:bad status", "status": "UNTESTED",
+                    "fix": f"move `{inner.group(1)}` to the start of the Result cell "
+                           f"(got {ascii(result[:40])})"}
         return {"verdict": "refused:bad status", "status": "UNTESTED",
-                "fix": "Result must begin with one of "
-                       "PASS/PARTIAL/FAIL/BLOCKED/UNTESTED/N/A"}
+                "fix": f"move `PASS` to the start of the Result cell "
+                       f"(got {ascii(result[:40])})"}
     verdict = _gate_verdict(number, row)
     status = _status_token(result)
     if verdict["advance"]:
@@ -76,8 +91,10 @@ def check_handoff(markdown: str, roster=None) -> dict:
     """Return ``{"rows": [...], "had_refusal": bool}`` for one handoff.
 
     Each row is one identity: an ``ignored`` role/unknown row, a
-    ``refused:shared table`` row (no table bound), or a ``checked`` row carrying
-    a per-gate ``gates`` list with ``verdict``/``status``/``fix`` per gate 1-6.
+    ``warn:shared table`` row (named in prose but no table bound - a warning, not
+    a refusal), or a ``checked`` row carrying a per-gate ``gates`` list with
+    ``verdict``/``status``/``fix`` per gate 1-6. ``had_refusal`` is True only when
+    a cited-or-not PASS row is refused (``uncited``/``injected``/``bad status``).
     """
     roster = roster if roster is not None else load_and_validate()
     base = by_id(roster)
@@ -95,16 +112,14 @@ def check_handoff(markdown: str, roster=None) -> dict:
         role = identity_role(entry)
         if role not in ("source", "variant"):
             rows.append({"source_id": source_id, "enum_name": entry.enum_name, "role": role,
-                         "verdict": f"ignored:role", "fix": None})
+                         "verdict": "ignored:role", "fix": None})
             continue
         table = bound.get(source_id)
         if table is None:
             rows.append({"source_id": source_id, "enum_name": entry.enum_name, "role": role,
-                         "verdict": "refused:shared table",
-                         "fix": "give this identity its own `Source ID` line + "
-                                "six-gate table (its PASS rows are attributed to "
-                                "another identity)"})
-            had_refusal = True
+                         "verdict": "warn:shared table",
+                         "fix": "named in prose but no table of its own; give it a "
+                                "`Source ID` line + six-gate table to claim its gates"})
             continue
         gates = []
         for number in range(1, 7):
@@ -122,23 +137,27 @@ def check_handoff(markdown: str, roster=None) -> dict:
     return {"rows": rows, "had_refusal": had_refusal}
 
 
-def _print(check: dict, label: str) -> None:
+def _print(check: dict) -> None:
     for row in check["rows"]:
         head = f"{row['source_id']} {row['enum_name']} (role={row['role']})"
         if row["verdict"].startswith("ignored"):
             print(f"{head}: ignored ({row['verdict'].split(':')[1]})")
             continue
-        if row["verdict"] == "refused:shared table":
-            print(f"{head}: refused (shared table) — {row['fix']}")
+        if row["verdict"] == "warn:shared table":
+            print(f"{head}: warning (shared table) - {row['fix']}")
             continue
         print(f"{head}:")
         for gate in row["gates"]:
             note = f" [{gate['status']}]"
-            if gate["verdict"] == "accepted":
-                print(f"  {gate['number']}. {gate['gate']:<18} accepted{note}")
-            elif gate["verdict"].startswith("refused"):
+            if gate["verdict"].startswith("refused"):
                 print(f"  {gate['number']}. {gate['gate']:<18} {gate['verdict']}{note}")
                 print(f"      fix: {gate['fix']}")
+            elif gate["verdict"].startswith("warn"):
+                print(f"  {gate['number']}. {gate['gate']:<18} "
+                      f"warning ({gate['verdict'].split(':', 1)[1]}){note}")
+                print(f"      fix: {gate['fix']}")
+            elif gate["verdict"] == "accepted":
+                print(f"  {gate['number']}. {gate['gate']:<18} accepted{note}")
             else:
                 print(f"  {gate['number']}. {gate['gate']:<18} ignored{note}")
 
@@ -155,7 +174,8 @@ def main(argv=None) -> int:
     roster = load_and_validate()
     markdown = args.handoff.read_text(encoding="utf-8")
     check = check_handoff(markdown, roster)
-    _print(check, args.handoff.name)
+    _print(check)
+    sys.stdout.flush()
     if check["had_refusal"]:
         print(f"\n{args.handoff.name}: some PASS rows are refused (see fix lines above)",
               file=sys.stderr)

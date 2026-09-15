@@ -413,14 +413,28 @@ def test_checker_refuses_injected_and_uncited_rows():
 
 def test_checker_flip_bad_status_token_is_refused():
     from scripts.check_p2_handoff_gates import check_handoff
+    # A misplaced PASS token is a real refusal (a PASS row stated unclearly).
     text = ("# x\nSource ID: 17 `Frog`.\n\n## Six arena gates\n\n"
             "| Gate | Result | Evidence |\n|---|---|---|\n"
-            "| 1. Exact identity and spawn | PASSED | docs/PIKMIN2_FROG_IMPORT.md spawn |\n")
+            "| 1. Exact identity and spawn | was PASS earlier | docs/PIKMIN2_FROG_IMPORT.md spawn |\n")
     check = check_handoff(text, _roster())
     assert check["had_refusal"] is True
     (row,) = check["rows"]
     assert row["gates"][0]["verdict"] == "refused:bad status"
-    assert "PASS/PARTIAL/FAIL/BLOCKED/UNTESTED/N/A" in row["gates"][0]["fix"]
+    assert "move `PASS`" in row["gates"][0]["fix"]
+
+
+def test_checker_downgrades_non_pass_bad_status_to_warning():
+    from scripts.check_p2_handoff_gates import check_handoff
+    # A misplaced non-PASS token, or no token at all, is only a warning.
+    for result in ("source-backed N/A (unchanged)", "proxy artifact"):
+        text = ("# x\nSource ID: 17 `Frog`.\n\n## Six arena gates\n\n"
+                "| Gate | Result | Evidence |\n|---|---|---|\n"
+                f"| 1. Exact identity and spawn | {result} | docs/PIKMIN2_FROG_IMPORT.md spawn |\n")
+        check = check_handoff(text, _roster())
+        assert check["had_refusal"] is False
+        (row,) = check["rows"]
+        assert row["gates"][0]["verdict"] == "warn:bad status"
 
 
 def test_checker_cli_exit_codes(tmp_path):

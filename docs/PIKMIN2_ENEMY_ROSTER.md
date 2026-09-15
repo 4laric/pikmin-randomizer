@@ -255,22 +255,23 @@ the exact edit for every refused row.
 
 | Gate | Result | Evidence | Injected vs natural |
 |---|---|---|---|
-| 1. Exact identity and spawn | PASS (natural) | output/<lane-out>/<run>/native.log:42 | natural |
-| 2. Autonomous movement and animation | PASS (natural) | output/<lane-out>/<run>/native.log:143 | natural |
+| 1. Exact identity and spawn | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md spawn binding | natural |
+| 2. Autonomous movement and animation | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md leap animation | natural |
 | 3. Attacks and receivers | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md crush receiver | natural |
-| 4. Death and corpse | PASS (natural) | output/<lane-out>/<run>/native.log:230 | natural |
+| 4. Death and corpse | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md corpse drop | natural |
 | 5. Actual transport and reward | PASS (natural) | corpse:frog:1 goal=1 | natural |
-| 6. Cleanup and re-entry | PASS (injected) | docs/PIKMIN2_FROG_IMPORT.md forced reset | injected |
+| 6. Cleanup and re-entry | UNTESTED (injected) | docs/PIKMIN2_FROG_IMPORT.md forced reset | injected |
 ````
 
-Every `PASS` must cite a source in the `Evidence` cell at a token boundary —
-`\S+\.(md|log|txt|json)\b` — or a path rooted at `docs/`/`output/`/`tests/`
-(with at least two path segments); gate 5 additionally accepts an
-`onion:`/`corpse:`/`receipt:` receipt key. A `PASS` row whose Result/Evidence
-carries an injected/proxy/fixture-only/forced/vehicle/visual/host/display marker
-is refused: mark it `Injected vs natural = injected` and report the gate
-`UNTESTED` instead of `PASS`. A non-`PASS` status (`PARTIAL`/`FAIL`/`BLOCKED`/
-`UNTESTED`/`N/A`) is safe to leave as-is.
+Every `PASS` must cite a real source in the `Evidence` cell at a token boundary
+— `\S+\.(md|log|txt|json)\b` — or a path rooted at `docs/`/`output/`/`tests/`;
+gate 5 additionally accepts an `onion:`/`corpse:`/`receipt:` receipt key. Replace
+the example identity (`17 Frog`) and its doc with the handoff's own; do not paste
+a `<...>`/`NNN` placeholder. A `PASS` row whose Result/Evidence carries an
+injected/proxy/fixture-only/forced/vehicle/visual/host/display marker is refused:
+mark it `Injected vs natural = injected` and report the gate `UNTESTED` instead of
+`PASS`. A non-`PASS` status (`PARTIAL`/`FAIL`/`BLOCKED`/`UNTESTED`/`N/A`) is safe
+to leave as-is.
 
 
 ## Candidate review and source-backed encounters

@@ -1077,3 +1077,41 @@ py -3.12 -m pytest tests/test_pikmin2_handoff_ingest.py -q                 # 23 
 py -3.12 -m pytest <handoff/admission/roster/seed/placement suites> -q     # 166 passed, 17 subtests
 py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE22_DEEPSEEK_HANDOFF.md  # exit 1 (uncited/bad status)
 ```
+
+## Fix 8
+
+Review corrections to slice 7 (checker would exit 1 on every lane; solo).
+
+- **Template** (`docs/PIKMIN2_ENEMY_ROSTER.md`): gate-6 example row is now
+  `UNTESTED (injected)` (not `PASS (injected)`), and the natural rows cite
+  `docs/PIKMIN2_FROG_IMPORT.md ...` instead of the `output/<lane-out>/<run>/...`
+  placeholder; dropped the "at least two path segments" parenthetical.
+- **Checker** (`scripts/check_p2_handoff_gates.py`):
+  - `shared table` is now a *warning* (a lane naming a sibling in prose no longer
+    exits 1); `had_refusal` is set only by a refused PASS row.
+  - `bad status` is split: a misplaced `PASS` token is a refusal (exit 1), a
+    misplaced non-PASS token (or no token) is a warning; the offending cell is
+    shown via `ascii(result[:40])` (cp1252-safe) and the hint says "move `N/A` to
+    the start".
+  - `CITATION_HINT` reworded (no paste-able `output/<lane-out>/<run>/native.log:NNN`).
+  - Cosmetic: unused `label` param dropped, needless f-string removed, `sys.stdout.flush()`
+    before the stderr summary, an ASCII hyphen instead of an em-dash (cp1252-safe
+    wording in both scripts).
+- **Ingest** (`scripts/ingest_p2_handoff_gates.py`): `_has_citation` rejects evidence
+  containing `<` or `NNN` (a pasted placeholder no longer counts); `_owner_from_line`
+  now roster-filters its `_SOURCE_ID_RE` branch; em-dashes in the docstring and the
+  rendered "shared table" header replaced with `-`.
+
+### Re-run (checker)
+
+```
+py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_ENEMY_ROSTER.md   # template -> exit 0 (17 Frog all accepted, gate 6 UNTESTED; 15/79 shared-warning)
+L29 (Kurage/OniKurage):  exit 0  (movement/attacks "source-backed N/A" -> warning; 72 OniKurage shared-warning)
+L22 (FireOtakara 59):    exit 1  (identity_spawn/movement/attacks refused:uncited; death_corpse/cleanup -> warning bad-status "Injected damage applied 135\u21920")
+L31 (BlackMan 99):       exit 1  (identity_spawn/movement refused:injected; attacks/death/cleanup refused:uncited)
+L26 (Houdai 66):         exit 1  (identity_spawn/attacks/cleanup refused:uncited; death_corpse refused:bad status "proxy artifact" is not a PASS)
+```
+
+`py -3.12 -m pytest tests/test_pikmin2_handoff_ingest.py -q` -> 24 passed;
+full lane-02 suites -> 167 passed, 17 subtests. Advance report left at its
+committed state (lane 01 regenerates after merge).
