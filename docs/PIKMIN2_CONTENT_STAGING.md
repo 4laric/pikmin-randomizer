@@ -227,17 +227,20 @@ manual flags.
 
 - `ADAPTERS` registers bespoke-signature family installers wrapped to the shared
   `install(source, run, actors)` shape. Each adapter may expose a
-  `validate(source)` pre-flight hook run before any destination write. Two
-  adapters are registered: `dwarf_orange` (Dwarf Orange Bulborb, source id 44,
-  `<source>/bank` + `<source>/profile`, consuming
-  `pikmin2_dwarf_orange_install.install`) and `snow` (Snow Bulborb, source id 45,
+  `validate(source)` pre-flight hook run before any destination write. Three
+  adapters complete the KochappyBase dwarf family: `dwarf_orange` (Dwarf Orange
+  Bulborb, source id 44, `<source>/bank` + `<source>/profile`, consuming
+  `pikmin2_dwarf_orange_install.install`), `snow` (Snow Bulborb, source id 45,
   flat `<source>/snow.json` + `p2-snow.txt` + `snow_*.mod`, consuming
-  `pikmin2_enemy.install`).
+  `pikmin2_enemy.install`) and `kochappy` (Kochappy Dwarf Red, source id 1,
+  flat `<source>/kochappy-bank.json` + `p2-kochappy-profile.txt` +
+  `p2-kochappy-bank.txt` + `kochappy_*.mod`, consuming
+  `pikmin2_kochappy_bank.install`).
 - `resolve_family(identity)` maps a source id or enum name to a family key. It is
   intentionally narrow: only identities whose family already has an installer are
   registered, and anything else raises `ValueError` instead of silently binding a
-  P1 analogue. The registered pairs are `44`/`BlueKochappy` → `dwarf_orange` and
-  `45`/`YellowKochappy` → `snow`.
+  P1 analogue. The registered pairs are `44`/`BlueKochappy` → `dwarf_orange`,
+  `45`/`YellowKochappy` → `snow` and `1`/`Kochappy` → `kochappy`.
 - `install_layout(run, layout, content_root, actor_bindings=None,
   retail_assets=None, cache_dir=None)` stages every binding in a `p2_layout`.
   `content_root` is identity-keyed (`<root>/<enum_name>`); `actor_bindings` maps
@@ -317,12 +320,12 @@ end-to-end generated-seed launch. All sources are synthetic temp files.
 - The run-local destination (`<run>/content`) is installed, receipted and bound to
   the seed's P2 identities, but no native overlay consumer reads it yet; layered
   native consumption is the remaining lane 01/09 integration boundary.
-- The binding layer registers two adapters so far (`dwarf_orange` for
-  `BlueKochappy`/44 and `snow` for `YellowKochappy`/45); Kochappy Red and every
-  other bespoke family need their own adapter before they resolve through
-  `install_layout`. `actor_bindings` (target → native generator id) is supplied by
-  the caller because the runtime generator id is resolved by lane 03/04 + native
-  `ENEMY_P2`, not by this lane.
+- The binding layer registers three adapters completing the KochappyBase dwarf
+  family (`dwarf_orange` for `BlueKochappy`/44, `snow` for `YellowKochappy`/45 and
+  `kochappy` for `Kochappy`/1); every other bespoke family still needs its own
+  adapter before it resolves through `install_layout`. `actor_bindings`
+  (target → native generator id) is supplied by the caller because the runtime
+  generator id is resolved by lane 03/04 + native `ENEMY_P2`, not by this lane.
 - The session-level family-install cache is keyed by the binding plan (bindings +
   actor map), not by the family bank's bytes; changing a family's content under
   the same binding plan requires clearing `<session>/p2-content-cache` to avoid a
