@@ -193,7 +193,10 @@ Pod receipt hook, and CTest coverage for the engine-side sidecar.
 
 ### Source ID: 78 `MiniHoudai`
 
-| Gate | Result | Evidence | Injected vs natural |
+Superseded by the Slice 4 table at the end of this document (gate 5 is now a
+natural carcass -> Pod receipt). Retained only as history.
+
+| Gate | Historical note | Evidence | Injected vs natural |
 |---|---|---|---|
 | 1. Exact identity and spawn | N/A | no live MiniHoudai actor is spawned; the P2 carcass policy is bound to a generated Frog actor by p2-groink-teki.txt | - |
 | 2. Autonomous movement and animation | UNTESTED | locomotion + Rebirth animation (AnimID 7) remain on the shared teki actor hook | - |
@@ -204,7 +207,10 @@ Pod receipt hook, and CTest coverage for the engine-side sidecar.
 
 ### Source ID: 97 `FminiHoudai`
 
-| Gate | Result | Evidence | Injected vs natural |
+Superseded by the Slice 4 table at the end of this document. Retained only as
+history.
+
+| Gate | Historical note | Evidence | Injected vs natural |
 |---|---|---|---|
 | 1. Exact identity and spawn | N/A | no live pedestal Groink actor is spawned; shares the same policy binding | - |
 | 2. Autonomous movement and animation | UNTESTED | not run separately | - |
@@ -310,6 +316,131 @@ runs.
   3. attacks_receivers  ignored [UNTESTED]
   4. death_corpse       accepted [PASS]
   5. transport_reward   ignored [BLOCKED]
+  6. cleanup_reentry    ignored [BLOCKED]
+97 FminiHoudai (role=source):
+  1. identity_spawn     ignored [N/A]
+  2. movement_animation ignored [UNTESTED]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [BLOCKED]
+```
+
+## Slice 4 — natural carcass -> Pod receipt LANDED
+
+The Slice 3 transport blocker is resolved. The lane's transport profile now
+drives the killed host's own corpse pellet to the Research Pod natively: the
+`pc_p2_groink_teki` sidecar parks the captain beyond the 250u join-party range
+and re-rings the survivors onto the corpse pellet in FreeMode every 60 ticks
+until a carrier latches (`Piki::graspSituation`), holds the corpse at the kill
+site, forces `carry_min` to 1, and re-forms the squad after the Pod credits the
+carcass. The goal is the preview Pod (`aiTransport::decideGoal` ->
+`pc_p2_preview_goal()`), and `pc_p2_preview_deliver` calls
+`pc_p2_groink_receipt` for `corpse:groink:<gen>`. No delivery endpoint is called
+directly and no health is written.
+
+### Ordered commits (Slice 4)
+
+Native branch `deepseek/p2-l21-native` (base `7ed95228`, fast-forward merge of
+`claude/p2-deepseek-wave-native`; clean):
+
+1. `d7f608e1` — `lane21: natural carcass -> Pod receipt: transport tail (park
+   captain, free-mode ring, carry_min 1, re-form) (#198)` — adds the optional
+   `transport` sidecar token (`pc_p2_groink_teki_policy.h`), the carcass
+   transport tail in `pc_port/pc_p2_groink_teki.cpp`, the receipt delivery flag,
+   and hands the post-kill captain/squad ownership from the fixture to the
+   sidecar (`tools/p2_groink_runtime.cpp`).
+
+Root branch `deepseek/p2-l21` (base `6caa8d01`; clean):
+
+1. (this commit) — `lane21: stage/run Groink carcass transport, six-gate table (#198)` —
+   new `experimental/pikmin2_groink_transport_run.py` (base-squad expansion to 40
+   + `transport` sidecar + Pod cargo staging + GL run) and this handoff.
+
+### Build evidence
+
+- `build_lane.py l21` at native `d7f608e1`: `dirty=no`,
+  `bin/nectar.exe` sha256 `754fe59a89f383e1f6ac16c55f9dfbbab9f73792455de7ab93e3eeea40c3ef8b`,
+  `ninja -n` = `ninja: no work to do.`
+- Fixture (`scripts/build_pikmin2_fixture.py`, expected head `d7f608e1`) →
+  `output/dsw/l21-out/groink-transport-fixture/fixture.exe` (`status: built`).
+
+### Real-GL runtime evidence (executed, exit 0)
+
+Run via `slot.py run gl l21 -- py -3.12 experimental/pikmin2_groink_transport_run.py`
+at `PIKMIN_P2_ROOM_WINDOW=960x540`; log
+`output/dsw/l21-out/run-carcass-transport3/native.log`:
+
+```
+:723  [Pikipelago] P2_POD_READY treasure=dia_a_red value=180 weight=15 capacity=25 pokos=0
+:1275 P2_GROINK_CARCASS_HOST_BOUND ... kill=free_mode_squad health_write=0 host_life_clamp=120
+:1276 P2_GROINK_CARCASS_RING tick=1 reds=40 health=0.0
+:1277 P2_FROG_DEAD species=Frog generator=201001 health=0
+:1279 P2_GROINK_CARCASS_BECOME generator=201001 pos=-150.000,0.000,1850.000 face_dir=0.000
+:1302 P2_GROINK_CARCASS_CORPSE_CONFIG carry_min=7 carry_max=14 min_free_slot=0 alive=1
+:1303 P2_GROINK_CARCASS_CAPTAIN_PARK x=-150.000 z=2150.000
+:1304 P2_GROINK_CARCASS_FREE_RECRUIT count=40 carriers=0 squad=40
+:1308 P2_GROINK_CARCASS_CORPSE tick=30 x=-149.540 z=1832.987 moved=17.019 carriers=40
+:1346 P2_GROINK_CARCASS_CORPSE tick=270 x=-285.628 z=1444.301 moved=427.770 carriers=25
+:1371 P2_GROINK_CARCASS_CORPSE tick=420 x=-496.701 z=1451.072 moved=528.531 carriers=11
+:1378 [Pikipelago] P2_POD_RECEIPT id=corpse:groink:201001 value=2 new=1 pokos=2 seeds=0
+:1379 P2_GROINK_CARCASS_HOST tick=629 health=0.0 bound=0 reds=29 pokos=2 transport=11
+:1380 P2_GROINK_CARCASS_TRANSPORT_PASS ticks=629 pokos=2
+:1381 PASS GROINK_RUNTIME carcass_transport
+```
+
+Reading: 40 reds kill the generated Frog (`P2_FROG_DEAD` :1277) with no health
+write; the dead actor's own corpse pellet spawns with `carry_min=7 carry_max=14`
+and `min_free_slot=0`; the captain is parked at (-150.0, 2150.0) (300u beyond
+the corpse); 40 survivors are released FreeMode onto the corpse; carriers latch
+(40 -> 25 -> 11) and haul it 17 -> 528 units to the Pod; the Pod credits
+`corpse:groink:201001` (value 2, pokos 0 -> 2).
+
+### Source ID: 78 `MiniHoudai`
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | N/A | no live MiniHoudai actor is spawned; the P2 carcass policy is bound to a generated Frog generator 201001 | - |
+| 2. Autonomous movement and animation | UNTESTED | locomotion + Rebirth animation (AnimID 7) remain on the shared teki actor hook | - |
+| 3. Attacks and receivers | UNTESTED | strike bridge integrated; in-flight moving hits were not re-run this slice | - |
+| 4. Death and corpse | PASS | output/dsw/l21-out/run-carcass-transport3/native.log:1277 P2_FROG_DEAD and :1279 P2_GROINK_CARCASS_BECOME (natural free-mode squad kill) | natural |
+| 5. Actual transport and reward | PASS | output/dsw/l21-out/run-carcass-transport3/native.log:1378 P2_POD_RECEIPT id=corpse:groink:201001 value=2 new=1 pokos=2 seeds=0 | natural |
+| 6. Cleanup and re-entry | BLOCKED | generalEnemyMgr->birth + MINIHOUDAI_Rebirth transit on lane 06/07 | - |
+
+### Source ID: 97 `FminiHoudai`
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | N/A | no live pedestal Groink actor is spawned; shares the same policy binding | - |
+| 2. Autonomous movement and animation | UNTESTED | not run separately | - |
+| 3. Attacks and receivers | UNTESTED | not run separately | - |
+| 4. Death and corpse | UNTESTED | not run separately | - |
+| 5. Actual transport and reward | UNTESTED | not run separately | - |
+| 6. Cleanup and re-entry | BLOCKED | generalEnemyMgr->birth + Rebirth transit on lane 06/07 | - |
+
+Honest labels: gate 5 is a natural FreeMode grasp -> `aiTransport` route ->
+`pc_p2_preview_deliver` Pod credit. Fixture concessions: (1) the carcass
+`carry_min` is forced to 1 (`pc_p2_groink_teki.cpp`; the source pellet config
+read 7/14 and 40 carriers latched anyway); (2) the staged starting squad is
+expanded from 20 to 40 reds, because the area-landing attack thins a 20-red
+squad before the carry completes; (3) the generated identity is the lane-16
+staged Frog actor (EnemyID 78 is not spawned), so gate 1 stays `N/A`; (4) the
+kill-phase deploy + captain park is applied locomotion, while the grasp, route
+and Pod credit are the natural engine path. No injected delivery fallback
+remains.
+
+### slice4 check_p2_handoff_gates output
+
+`py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE21_DEEPSEEK_HANDOFF.md` from
+`output/dsw/wave-root` (exit 0):
+
+```
+78 MiniHoudai (role=source):
+  1. identity_spawn     ignored [N/A]
+  2. movement_animation ignored [UNTESTED]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   accepted [PASS]
   6. cleanup_reentry    ignored [BLOCKED]
 97 FminiHoudai (role=source):
   1. identity_spawn     ignored [N/A]
