@@ -66,4 +66,4 @@ def test_cave_checkpoint_wired_to_filter():
     native = _native_root()
     cave_cpp = native / 'pc_port' / 'pc_p2_cave.cpp'
     text = cave_cpp.read_text(errors='replace')
-    assert 'pc_p2_bulbmin_should_save' in text
+    assert 'pc_p2_bulbmin_transition' in text
