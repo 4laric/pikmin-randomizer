@@ -117,6 +117,7 @@ public:int idle() override {
     ++observed;
     if(stage==0){
         captainOrigin=n->mSRT.t;
+        for(int f=0;f<DEMOFLAG_COUNT;++f)playerState->mDemoFlags.setFlagOnly(f);
         assembled=true;phase=1;walkGoals.clear();walkGoals.push_back(captainOrigin);walkPoint=0;
         n->mKontroller=new FixtureController();
         houdai=byGenerator(312001);bigfoot=byGenerator(312002);
