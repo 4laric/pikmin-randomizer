@@ -47,7 +47,7 @@ the lane's gate table is no longer self-contradictory.
   - `92c2c773` lane28: hardlanes forget hook — clear the Fuefuki vehicle/stimulus on actor death (#245)
   - `ab694afd` lane28: hook (teki lifetime) forget Fuefuki hardlanes vehicle
   - `ee04e950` lane28: register Fuefuki combat runtime fixture compile target (#245)
-- Root base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`; head `a5fcadd`, **clean**.
+- Root base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`; head `699e9fa` (`a5fcadd` + `699e9fa` handoff-ledger commit; integrator review-note commit follows), **clean**.
   - `866e9a6` lane28: refresh Fuefuki arena gates for natural combat + resolved fallback (#245)
   - `64ea227` lane28: DeepSeek handoff — natural-combat press receiver slice (#245)
   - `becfe9c` lane28: review fixes — honest Fuefuki gate labels (policy/untested) (#245)
@@ -216,3 +216,9 @@ cd C:/Users/alari/pikmin-randomizer/output/dsw/l28-out/arena/4fdfc0b7af3c49cfa73
 cp C:/Users/alari/pikmin-randomizer/output/dsw/l28-combat-fixture/fixture.exe .
 py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l28 -- ./fixture.exe --experimental-pikmin2-room
 ```
+
+
+## Integrator review notes (fix pass 1)
+
+- Accepted `tests/test_pikmin2_fuefuki_arena.py::test_gate_status_review_corrected` as a label-lint test (literal prefixes, not a run log); a run-log reader belongs with the first real combat run.
+- Ordering hazard to verify before the vehicle-runtime evidence is cited again: `BTeki::doKill` (tekibteki.cpp:746) now calls `pc_p2_forget_teki` → `pc_p2_hardlanes_forget`, which nulls `sFuefukiVehicle` and stops the FSM tick but does not clear `sFuefukiHeld`/`sFuefukiPiki`. If the Napkid `TaiDyingAction` reaches `doKill` before the FSM consumes health<=0 → Dead → follower release, held Pikmin are never released. Re-run `p2_fuefuki_vehicle_runtime` on this head. Pre-existing: `pc_p2_reset_all_teki` does not call `pc_p2_hardlanes_reset`.
