@@ -13,9 +13,9 @@ Regenerate with:
 ## Handoffs read
 
 - PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md: 2 Chappy, 9 Kogane, 10 Wealthy, 11 Fart, 12 UjiA, 13 UjiB, 15 Armor, 16 Qurione, 17 Frog, 18 MaroFrog, 19 Rock, 23 Sarai, 24 Tank, 26 Catfish, 27 Tadpole, 28 ElecBug, 30 Queen, 32 Demon, 34 SnakeCrow, 38 PanModoki, 40 OoPanModoki, 41 Fuefuki, 44 BlueKochappy, 45 YellowKochappy, 53 KingChappy, 54 Miulin, 55 Hanachirashi, 56 Damagumo, 57 Kurage, 58 BombSarai, 59 FireOtakara, 60 WaterOtakara, 61 GasOtakara, 62 ElecOtakara, 63 Jigumo, 65 Imomushi, 66 Houdai, 68 TamagoMushi, 69 BigFoot, 70 SnakeWhole, 72 OniKurage, 73 BigTreasure, 75 Kabuto, 78 MiniHoudai, 79 Sokkuri, 84 Hana, 93 BombOtakara, 94 DangoMushi, 95 Rkabuto, 96 Fkabuto, 97 FminiHoudai, 98 Tyre, 99 BlackMan, 101 UmiMushiBlind
-- PIKMIN2_LANE03_DEEPSEEK_HANDOFF.md: 44 BlueKochappy
+- PIKMIN2_LANE03_DEEPSEEK_HANDOFF.md: 23 Sarai, 44 BlueKochappy, 59 FireOtakara
 - PIKMIN2_LANE04_DEEPSEEK_HANDOFF.md: 44 BlueKochappy, 45 YellowKochappy
-- PIKMIN2_LANE05_DEEPSEEK_HANDOFF.md: 44 BlueKochappy, 45 YellowKochappy
+- PIKMIN2_LANE05_DEEPSEEK_HANDOFF.md: 1 Kochappy, 44 BlueKochappy, 45 YellowKochappy
 - PIKMIN2_LANE06_DEEPSEEK_HANDOFF.md: 44 BlueKochappy, 99 BlackMan
 - PIKMIN2_LANE07_DEEPSEEK_HANDOFF.md: 44 BlueKochappy, 79 Sokkuri
 - PIKMIN2_LANE08_DEEPSEEK_HANDOFF.md: 84 Hana
@@ -55,11 +55,16 @@ Regenerate with:
 | 3 | 4 |
 | 4 | 2 |
 | 5 | 5 |
-| 6 | 24 |
+| 6 | 25 |
 
-Seedable (`source`/`variant`) identities named across handoffs: 54
+Seedable (`source`/`variant`) identities named across handoffs: 55
 
 ## Per-identity detail
+
+### 1 Kochappy (source)
+- handoffs: PIKMIN2_LANE05_DEEPSEEK_HANDOFF.md
+- advances: (none)
+- blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
 
 ### 2 Chappy (source) - shared table, excluded
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md
@@ -112,7 +117,7 @@ Seedable (`source`/`variant`) identities named across handoffs: 54
 - blocking: attacks_receivers, death_corpse, transport_reward, cleanup_reentry
 
 ### 23 Sarai (source)
-- handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE30_DEEPSEEK_HANDOFF.md
+- handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE03_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE30_DEEPSEEK_HANDOFF.md
 - advances: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
 - blocking: (none)
 
@@ -207,7 +212,7 @@ Seedable (`source`/`variant`) identities named across handoffs: 54
 - blocking: identity_spawn
 
 ### 59 FireOtakara (source)
-- handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE22_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE33_DEEPSEEK_HANDOFF.md
+- handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE03_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE22_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE33_DEEPSEEK_HANDOFF.md
 - advances: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
 - blocking: (none)
 

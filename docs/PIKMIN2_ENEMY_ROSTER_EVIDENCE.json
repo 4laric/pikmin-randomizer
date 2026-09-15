@@ -777,7 +777,7 @@
         "Open: natural death/carry/revisit and variant rules."
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
+        "identity_spawn": "PASS",
         "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
