@@ -628,13 +628,30 @@ Source ID: BlueKochappy (44)
 | 5. Transport and reward | UNTESTED | lane 06 |
 | 6. Cleanup and re-entry | UNTESTED | lane 07 |
 
-### Bridge-cohort native wiring (code-complete, live module bind pending)
+### Live Otakara bridge run (ordinary spawn path proven)
 
-The Sarai/Otakara module wiring below is implemented and unit/source-pin tested;
-its **live** room run needs those families' arena content staged by lane 22
-(Otakara, `experimental/pikmin2_otakara_runtime.py:235`) / lane 30 (Sarai,
-`pc_p2_sarai_manager.cpp` pose+mouth banks), which is outside this lane's slice,
-so the live PASS is not claimed here.
+`scripts/run_p2_bridge_otakara.py` stages the FireOtakara (source 59) arena via
+lane 22's runtime, generates a real seed on the admitted cohort (no admission
+injection), writes the seed-derived placement sidecar for generator 349001 and
+**renames the fixed `p2-dweevil-actors.txt` away**, then boots the room with
+`--randomizer-seed`. With the fixed sidecar gone the Otakara module still binds
+the randomizer-assigned generator purely from the seed
+(`output/dsw/l03-out/d50c5fc9c11240b09a8fa48d106a647d/native.log`):
+
+- `P2_SEED_RESOLVE source_id=59 target=1646783045` (:585)
+- `P2_OTAKARA_BIND generator=349001 source_id=59 stimulus=InteractFire visual_only=0` (:723)
+- `P2_ENEMY_READY species=FireOtakara native_family=Chappy generator=349001 x=0.0
+  y=30.0 z=1850.0 health=150.0 max_health=150.0 behavior=native source_FSM=implemented
+  attack=elemental_discharge` (:724) — the ordinary spawn/bind identity marker
+- `P2_PLACEMENT_SLOT generator=349001 slot=1646783045 actor=3 xyz=1 terrain=ground
+  route=1 route_distance=97.0 x=0.000 y=30.000 z=1850.000 water_depth=0.00` (:731)
+
+### Bridge-cohort native wiring (Sarai code-complete, live bind pending)
+
+Sarai (23) is wired identically (`findSeedActor`) and unit/source-pin tested; its
+**live** room run needs lane 30's Sarai pose+mouth banks
+(`pc_port/pc_p2_sarai_manager.cpp`) plus `PIKMIN_SARAI_ORDINARY=1`, which is
+outside this lane's slice, so its live PASS is not claimed here.
 
 Source ID: Sarai (23)
 
@@ -651,7 +668,7 @@ Source ID: FireOtakara (59)
 
 | Gate | Result | Evidence |
 |---|---|---|
-| 1. Exact identity and spawn | UNTESTED | module adds seed-bound generators 59-62 (pc_p2_otakara.cpp); live run needs lane-22 dweevil content |
+| 1. Exact identity and spawn | PASS (natural) | output/dsw/l03-out/d50c5fc9c11240b09a8fa48d106a647d/native.log:724 |
 | 2. Autonomous movement and animation | UNTESTED | lane 22 |
 | 3. Attacks and receivers | UNTESTED | lane 22 |
 | 4. Death and corpse | UNTESTED | lane 22 |
@@ -690,7 +707,19 @@ Both used as-is; the native edits, the run and the handoff were mine. Net: the t
 audits collapsed the read-heavy recon (~1h) that would otherwise have cost several
 build/run round-trips.
 
-### Exact reproduction command
+### Exact reproduction commands
+
+Live Otakara seed-driven bridge (`scripts/run_p2_bridge_otakara.py`):
+
+```
+py -3.12 output/deepseek-wave/slot.py run gl l03 -- py -3.12 scripts/run_p2_bridge_otakara.py \
+  --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" \
+  --imported "C:/Users/alari/pikmin-randomizer/output/dsw/l22-assets" \
+  --exe "C:/Users/alari/pikmin-randomizer/output/dsw/native-l03-build/bin/nectar.exe" \
+  --output "C:/Users/alari/pikmin-randomizer/output/dsw/l03-out" --seed "l03-bridge-otakara" --timeout 45
+```
+
+Dwarf Orange 44-cohort seed placement (`scripts/run_p2_seed_placement.py`):
 
 ```
 py -3.12 output/deepseek-wave/slot.py run gl l03 -- py -3.12 scripts/run_p2_seed_placement.py \
@@ -719,7 +748,7 @@ py -3.12 output/deepseek-wave/slot.py run gl l03 -- py -3.12 scripts/run_p2_seed
   5. transport_reward   ignored [UNTESTED]
   6. cleanup_reentry    ignored [UNTESTED]
 59 FireOtakara (role=source):
-  1. identity_spawn     ignored [UNTESTED]
+  1. identity_spawn     accepted [PASS]
   2. movement_animation ignored [UNTESTED]
   3. attacks_receivers  ignored [UNTESTED]
   4. death_corpse       ignored [UNTESTED]
