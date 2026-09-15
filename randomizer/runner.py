@@ -3,6 +3,7 @@ import asyncio
 import json
 import os
 import secrets
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -299,10 +300,17 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_m
         if not layout:
             raise ValueError("--p2-content requires a seed with a p2_layout (generate with --p2-enemies)")
         from experimental.pikmin2_family_install import install_layout
+        from experimental.pikmin2_staging import StagingError
         cache_dir = session.directory / "p2-content-cache"
-        receipt = install_layout(run.directory, layout, Path(p2_content),
-                                 actor_bindings=p2_actors, retail_assets=Path(assets),
-                                 cache_dir=cache_dir)
+        try:
+            receipt = install_layout(run.directory, layout, Path(p2_content),
+                                     actor_bindings=p2_actors, retail_assets=Path(assets),
+                                     cache_dir=cache_dir)
+        except StagingError:
+            # A wrong source / uncovered identity / bad binding must leave no run
+            # tree behind (NativeRun already seeded bootstrap.txt/state.txt).
+            shutil.rmtree(run.directory, ignore_errors=True)
+            raise
         print(f"PIKMIN_P2_BOUND: {len(receipt['bindings'])} identities cached={bool(receipt.get('cached'))}", flush=True)
     process = None
     overlay = None
