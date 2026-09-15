@@ -13,8 +13,10 @@
 //       exactly-once grant (no injected carrier count);
 //   (b) revisit re-arms and a second steal is refused (duplicate, durable ledger);
 //   (c) the real interruption: the Breadbug loses its cargo while the tug is Held
-//       (natural P1-host put-to-nest delivery; a captain whistle is also issued to
-//       pull the carriers off), so the module interrupts + destroys the handle;
+//       because the P1 host's Unk14 (RouteImpassable) -> Unk8 (PuttingPellet)
+//       timerLetGo runs TaiCollecLetGoOfPelletAction (taicollec.cpp:938-949) and
+//       clears pointer(2) on an injected carriers=1, so the module interrupts +
+//       destroys the handle;
 //   (d) the Breadbug dies holding a fresh pellet -> onOwnerDied() releases it.
 // Every injected carrier count is confessed by the module itself
 // (P2_BREADBUG_CONTEST_PROBE); the primary tug is probe-free.
@@ -92,12 +94,11 @@ public:
    pc_p2_breadbug_actor_probe_carriers(2);
    std::printf("P2_BREADBUG_CONTEST_PHASE phase=revisit_duplicate tick=%d\n", tick);
    std::fflush(stdout);
-  } else if (tick == 800) {                            // interruption: hold, whistle carriers off, delivery -> interrupt
+  } else if (tick == 800) {                            // interruption: P1 host Unk14->Unk8 letGo releases while Held (injected carriers=1)
    pc_p2_breadbug_actor_probe_revisit();
    cargo = baitPellet();
    pc_p2_breadbug_actor_probe_carriers(1);             // keep the tug Held so the contest does not time out
-   n->callPikis(150.0f, true);                         // natural captain-whistle carrier-off trigger (audited Navi::callPikis)
-   std::printf("P2_BREADBUG_CONTEST_PHASE phase=interrupt_delivery tick=%d whistle=1\n", tick);
+   std::printf("P2_BREADBUG_CONTEST_PHASE phase=interrupt_delivery tick=%d\n", tick);
    std::fflush(stdout);
   } else if (tick == 2600) {                           // fresh hold for the death gate
    pc_p2_breadbug_actor_probe_revisit();
