@@ -35,7 +35,7 @@ static void require(bool ok, const char* why)
 // pc_randomizer_p2_corpse_delivered) and let the durable ordinary receipt ledger
 // write the exactly-once grant into the session campaign directory. The source bind
 // is a labelled fixture intervention (lane 13 supplies it in a generated session);
-// the kill, corpse, Onion endpoint, receipt and the memory-card save are real.
+// the kill, corpse, Onion endpoint, receipt are real.
 class DeliveryApp : public PlugPikiApp {
     unsigned frames = 0;
     int phase = 0, waited = 0;
