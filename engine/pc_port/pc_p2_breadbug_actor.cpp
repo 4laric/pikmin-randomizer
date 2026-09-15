@@ -74,8 +74,9 @@ void pc_p2_breadbug_actor_probe_carriers(int count){
 void pc_p2_breadbug_actor_probe_revisit(){
  for(auto& entry:actors){
   auto& state=entry.second;
-  if(state.contestHandle){pc_p2_breadbug_contest_revisit(state.contestHandle);pc_p2_breadbug_contest_destroy(state.contestHandle);} // no Stolen-outcome handle leak
-  std::printf("P2_BREADBUG_REVISIT generator=%u rearmed=1\n",state.id);
+  const bool hadHandle=state.contestHandle!=0;
+  if(hadHandle){pc_p2_breadbug_contest_revisit(state.contestHandle);pc_p2_breadbug_contest_destroy(state.contestHandle);} // no Stolen-outcome handle leak
+  std::printf("P2_BREADBUG_REVISIT generator=%u rearmed=%d\n",state.id,int(hadHandle));
   state.contestHandle=0;state.lastOutcome=-1;state.ownerDiedLogged=false;
  }
 }
