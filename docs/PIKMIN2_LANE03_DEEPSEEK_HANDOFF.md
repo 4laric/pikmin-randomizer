@@ -311,7 +311,7 @@ P2_DWARF_ORANGE_BANK poses=64 mod_bytes=1024000 ...
 | Gate | Result | Label |
 |---|---|---|
 | 1 Exact identity + spawn | **PASS** (natural) | Seed bridge resolves room generator 211001 → 5465461 → source 44 at birth, with lane 13/05 `P2_ENEMY_READY` and lane 04 `P2_PLACEMENT_SLOT slot=5465461` agreeing. |
-| Persistence | PASS (feed) / second ramMode boot unexercised | uid now in `generatorIds`, so `Generator::write/read` cache it; literal reload boot pending the day-end save cycle. |
+| Persistence | UNTESTED (integrator relabel: cache write/read at generator.cpp:830/907 never executed in the room run — genCache 0 kB, no ramMode; probe-only) | uid now in `generatorIds`, so `Generator::write/read` cache it; literal reload boot pending the day-end save cycle. |
 
 ### Subagent usage
 

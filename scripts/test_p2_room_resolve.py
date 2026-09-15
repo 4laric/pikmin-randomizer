@@ -11,7 +11,7 @@ alongside lane 13/05's ``P2_ENEMY_READY species=BlueKochappy``.
 
 Run only under the host GL slot:
 
-    py -3.12 output/deepseek-wave/slot.py run gl l03 -- \\
+    py -3.12 output/deepseek-wave/slot.py run gl <lane> -- \\
         py -3.12 scripts/test_p2_room_resolve.py \\
             --assets <P1 assets> --bank <dwarf-orange bank> --profile <profile dir> \\
             --exe <nectar.exe> --output <out dir>
@@ -73,7 +73,7 @@ def main():
     parser.add_argument('--profile', type=Path, required=True)
     parser.add_argument('--exe', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--seed', type=str, default='l03-room-resolve')
+    parser.add_argument('--seed', type=str, default='p2-room-resolve')
     parser.add_argument('--timeout', type=int, default=60)
     args = parser.parse_args()
 
@@ -110,7 +110,7 @@ def main():
         'ready_bluekochappy': any(
             'source_id=44' in line for line in ready_lines),
     }
-    (args.output / 'l03-room-resolve.json').write_text(json.dumps(result, indent=2) + '\n')
+    (args.output / 'p2-room-resolve.json').write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(result, indent=2))
 
 
