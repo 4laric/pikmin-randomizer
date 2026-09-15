@@ -161,7 +161,7 @@ public:int idle() override {
         // update_all tick keeps it advancing off-camera). No host health writes
         // and no clip compression.
         if(!parked){
-            int c=freeAndPark(houdai,100.0f);std::printf("P2_LL_PARK species=Houdai count=%d\n",c);
+            int c=freeAndPark(houdai,150.0f);std::printf("P2_LL_PARK species=Houdai count=%d\n",c);
             Vector3f wake(houdai->mSRT.t.x,0,houdai->mSRT.t.z-60.0f);wake.y=mapMgr->getMinY(wake.x,wake.z,true);
             n->resetPosition(wake);std::printf("P2_LL_WAKE captain=1\n");
             wakeTick=observed;parked=true;std::fflush(stdout);
@@ -169,6 +169,7 @@ public:int idle() override {
         if(observed==wakeTick+8){n->resetPosition(captainOrigin);std::printf("P2_LL_RETREAT captain=1\n");std::fflush(stdout);}
         if(pc_p2_long_legs_shot(houdai)||observed>=4500){
             std::printf("P2_LL_SHOT species=Houdai source_timed=1 tick=%d\n",observed);
+            freeAndPark(houdai,30.0f); // adjacent: latch fast and drain before the next shell
             int a=assignAttack(houdai);std::printf("P2_LL_ATTACK_HOUDAI attack=%d\n",a);std::fflush(stdout);stage=3;return result;
         }
         if(observed>=30000){std::printf("P2_LL_INJECT species=Houdai injected_health=0 source=fixture not_natural_combat=1\n");houdai->mHealth=0.0f;std::fflush(stdout);stage=3;return result;}
@@ -177,6 +178,8 @@ public:int idle() override {
     if(stage==3){
         if(!houdai->isAlive()&&!houdaiDied){houdaiDied=true;houdaiDiedTick=observed;std::printf("P2_LL_NATURAL_DEATH houdai=1 health=%.2f tick=%d\n",houdai->mHealth,observed);std::fflush(stdout);}
         if(houdaiDied){stage=4;return result;}
+        if(observed%90==0){int live=0,atk=0;Iterator q(pikiMgr);CI_LOOP(q){Piki* v=static_cast<Piki*>(*q);if(!v->isAlive())continue;++live;if(v->mMode==PikiMode::AttackMode)++atk;}
+            std::printf("P2_LL_HOUDAI_HP health=%.2f squad=%d atk=%d tick=%d\n",houdai->mHealth,live,atk,observed);std::fflush(stdout);}
         if(observed>=6000){std::printf("P2_LL_INJECT species=Houdai injected_health=0 source=fixture not_natural_combat=1\n");houdai->mHealth=0.0f;std::fflush(stdout);}
         return result;
     }
