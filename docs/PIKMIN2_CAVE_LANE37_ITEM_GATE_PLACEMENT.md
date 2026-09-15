@@ -13,8 +13,9 @@ mark required. This is the engine-free equivalent of the native
 piece this unlocks is the item/gate binding layer over lane 34's seeded table.
 
 Root base/head; native base/head; dirty state; ordered commits:
-- Root base `fba8d5eb0767950f56486bd2738598eb99a4645d`, head
-  `e2c6bb4b5e28168e33fe87dafd9a858d537ee783`, clean.
+- Root base `fba8d5eb0767950f56486bd2738598eb99a4645d`, code head
+  `e2c6bb4b5e28168e33fe87dafd9a858d537ee783` (the handoff doc is the tip commit on
+  the lane branch), clean.
   - `e2c6bb4b` lane37: tagged cave item and gate placement validator over seeded
     floor table (#476)
 - Native base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`, head
