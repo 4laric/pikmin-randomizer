@@ -26,6 +26,7 @@ from randomizer.seed import generate  # noqa: E402
 from randomizer.session import Session  # noqa: E402
 
 BIND_LINE = re.compile(r"P2_SPAWN_BIND target=(\d+) source_id=(\d+)")
+ROUNDTRIP_LINE = re.compile(r"P2_ROUNDTRIP_BIND target=(\d+) source_id=(\d+)")
 
 
 def bootstrap_with_p2(manifest, layout, directory):
@@ -51,6 +52,7 @@ def main():
     assert set(native_bindings) == {int(t) for t in targets}, "native_bindings keys mismatch targets"
 
     parsed = {}
+    roundtripped = {}
     with tempfile.TemporaryDirectory() as tmp:
         run = bootstrap_with_p2(generate("p2-spawn", collection_checks=True), layout, Path(tmp) / "valid")
         probe = subprocess.run(
@@ -63,8 +65,22 @@ def main():
             if match:
                 parsed[int(match.group(1))] = int(match.group(2))
     assert parsed == native_bindings, (parsed, native_bindings)
+    # The same seed must survive a byte-for-byte ramMode/cache (SLT1) round trip:
+    # every bound spawn-slot uid recovers its source after a cache reload.
+    with tempfile.TemporaryDirectory() as tmp:
+        run = bootstrap_with_p2(generate("p2-spawn", collection_checks=True), layout, Path(tmp) / "roundtrip")
+        probe = subprocess.run(
+            [str(exe), "--randomizer-seed", str(run.bootstrap), "--enemy-p2-roundtrip-probe"],
+            capture_output=True, text=True, timeout=120,
+        )
+        assert probe.returncode == 0 and "ENEMY_P2_ROUNDTRIP_PASS" in probe.stdout, (probe.stdout, probe.stderr)
+        for line in probe.stdout.splitlines():
+            match = ROUNDTRIP_LINE.search(line)
+            if match:
+                roundtripped[int(match.group(1))] = int(match.group(2))
+    assert roundtripped == native_bindings, (roundtripped, native_bindings)
     print(f"Native P2 spawn binding passed: {len(targets)} real lane-04 uids resolve to the "
-          "seed's Snow/Dwarf Orange sources")
+          "seed's Snow/Dwarf Orange sources and survive a ramMode/cache round trip")
 
 
 if __name__ == "__main__":
