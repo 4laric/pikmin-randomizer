@@ -1,12 +1,33 @@
-# Lane 19 (Mamuta) DeepSeek handoff (fix1 + slice 2 + review-fix 2) — #221 / #168
+# Lane 19 (Mamuta) DeepSeek handoff (fix1 + slice 2 + review-fix 2 + slice 3 revisit) — #221 / #168
 
-Implementation owner: Codex via shared account `4laric`. Executing agent: DeepSeek
-(`deepseek-v4-pro`), lane 19, 2026-09-14. Root worktree `output/dsw/l19-root` on
-`deepseek/p2-l19`; native worktree `output/dsw/native-l19` on
-`deepseek/p2-l19-native`. No maintained checkout, shared build, native origin or
-upstream GitHub was touched; nothing was pushed. This revises the prior handoff
-whose central "health-floor/regression" claim was wrong.
+Implementation owner: Codex via shared account `4laric`. Executing agents:
+DeepSeek (`deepseek-v4-pro`) for fix1/slice 2 (2026-09-14), then
+DeepSeek (`deepseek-v4.1-flash`) for slice 3 (2026-09-15). Root worktree
+`output/dsw/l19-root` on `deepseek/p2-l19`; native worktree `output/dsw/native-l19`
+on `deepseek/p2-l19-native`. No maintained checkout, shared build, native origin
+or upstream GitHub was touched; nothing was pushed. The fix1 revision corrects the
+prior handoff whose central "health-floor/regression" claim was wrong.
 
+
+## Commits, bases and build provenance
+
+- Root base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`; root head
+  `45d7cc1c`. Ordered lane19 root commits
+  (oldest→newest): `f4c29aa6` (static anchors), `1284bcc9` (revisit fixture/runner/
+  validator/handoff), `f1c7b9df` (captain-down + ring/park natural kill), `6fc3469a`
+  (handoff corrections), `03e74c69` (slice2 natural kill+carry+Pod receipt),
+  `fd8bf727` (review-fix 2 squad 14 + re-ring 60), `0e2113e5` (slice3 natural
+  revisit), `45d7cc1c` (handoff commits/build provenance for slice3). Dirty state: clean.
+- Native base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`; native head
+  `b805d9c626e4f4558c95aef7cac311a5d9a2068f` (clean). No lane19 native commits:
+  the Mamuta native module (`pc_p2_mamuta*`, `pc_p2_mamuta_rules*`) is already in
+  the pinned base, so this lane's slices are fixture/harness/evidence only.
+- Build evidence (`output/dsw/l19-build-evidence.txt`):
+  `2026-09-14T19:08:17 lane=l19 target=pikmin_pc native=b805d9c6... dirty=no exe=...\native-l19-build\bin\nectar.exe sha256=61fb1c850bd551c8c7c9d07a38e30dbb3ded5faf85ff866cdad7b1108c0b8fa8 ninja_n="ninja: no work to do."`
+  (`-DPIKMIN_NATIVE_JAUDIO=ON`, Ninja + MinGW g++).
+- Fixture adoption: `PIKMIN_P2_ROOM_WINDOW=960x540`; log
+  `[PC Port] Experimental preview window set to 960x540 windowed and centered ...`;
+  live starting squad `P2_MAMUTA_REVISIT_BIRTH ... squad=14 color=red`.
 
 ### Integrator note (review of fix 1)
 
@@ -62,7 +83,7 @@ The bisect request to lanes 01/08/10/13 is dropped.
 | 3. Attacks and receivers | PASS (natural) | natural P2 bury/plant and captain receiver: `output/dsw/l19-out/mamuta-pod-deliver-01/e3e978a725c54b80baf677104a51d471/native.log:750` `P2_MAMUTA_PLANT kind=1 happa=2 planted=0`, `:749` `P2_MAMUTA_NAVI damage=5.0` | natural |
 | 4. Death and corpse | PASS (natural) | natural kill then carryable corpse: `output/dsw/l19-out/mamuta-pod-deliver-01/e3e978a725c54b80baf677104a51d471/native.log:802` `P2_MAMUTA_POD_DIED tick=523`; `output/dsw/l19-out/mamuta-pod-deliver-03/eff05ebe7f21417185c80126a5943113/native.log:796` `P2_MAMUTA_POD_DIED tick=478` | natural |
 | 5. Actual transport and reward | PASS (natural) | Pod receipt `corpse:mamuta:221001 value=2`: `output/dsw/l19-out/mamuta-pod-deliver-01/e3e978a725c54b80baf677104a51d471/native.log:902` `[Pikipelago] P2_POD_RECEIPT id=corpse:mamuta:221001 value=2 new=1 pokos=2`; `output/dsw/l19-out/mamuta-pod-deliver-03/eff05ebe7f21417185c80126a5943113/native.log:894` | natural |
-| 6. Cleanup and re-entry | PARTIAL (natural) | reset/forget + control alive: `output/dsw/l19-out/mamuta-pod-deliver-01/e3e978a725c54b80baf677104a51d471/native.log:1064` `P2_MAMUTA_POD_RESET`; revisit fixture built but runtime UNTESTED | natural |
+| 6. Cleanup and re-entry | PASS (natural) | `P2_MAMUTA_POD_RESET` (+ control alive) in `output/dsw/l19-out/mamuta-pod-deliver-01/e3e978a725c54b80baf677104a51d471/native.log:1064`; and slice 3 fresh-process revisit: `P2_MAMUTA_REVISIT_BIRTH`, `P2_MAMUTA_REVISIT_DIED tick=387`, `P2_MAMUTA_REVISIT_RESET`, `PASS P2_MAMUTA_REVISIT_RUNTIME observe approach receipt_revisit reset` in `output/dsw/l19-out/mamuta-revisit-01/107b823f7e6841a786f8dcfe42ac1bf6/native-revisit.log` | natural |
 
 Injected: none. Squad ring-deploy, captain park and re-ring are documented
 fixture-placement interventions (the review-prescribed "free-mode-deploy the reds
@@ -85,7 +106,7 @@ deliver because the bury planted the squad below 8 carriers.
   3. attacks_receivers  accepted [PASS]
   4. death_corpse       accepted [PASS]
   5. transport_reward   accepted [PASS]
-  6. cleanup_reentry    ignored [PARTIAL]
+  6. cleanup_reentry    accepted [PASS]
 ```
 
 ## Build and run evidence
@@ -281,4 +302,93 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l1
     --pod-package C:/Users/alari/pikmin-randomizer/output/dsw/l19-out/pod --timeout 300
 # captain-down control: expect P2_MAMUTA_POD_CAPTAIN_DOWN + BLOCKED(captain_down)
 #   (add --captaindown to the command above)
+```
+
+## Slice 3 — natural revisit / re-entry (gate 6 / gate E+F)
+
+Status: **DONE slice3** — the WIP revisit fixture left uncommitted at the end of
+slice 2 is finished, run naturally, validated and committed. Executing agent:
+DeepSeek (`deepseek-v4.1-flash`), 2026-09-15, on the same two lane worktrees.
+
+### What changed this slice (all root, no native)
+
+- `scripts/pikmin2_mamuta_revisit_fixture.inc`: re-entry staging now mirrors the
+  slice-2 Pod fixture (captain park inside the Miurin's ~70-unit attackable range,
+  14-red ring-deploy re-rung every 60 ticks, carry diagnostics), and captain-down
+  detection moved before the movie/pause/UI gates. The earlier park-250 staging
+  could not re-deliver (the bury planted the squad below the 8-carrier threshold).
+- `scripts/pikmin2_mamuta_revisit_native.py` / `tests/test_pikmin2_mamuta_revisit.py`:
+  squad 14 expectation.
+- No native change. The native worktree `deepseek/p2-l19-native` remains clean at
+  the pinned base `b805d9c6`; the revisit slice is fixture/harness only.
+
+### Fresh-process revisit evidence
+
+Each run is a fresh `fixture.exe` process in a *copy* of the slice-2 Pod stage
+`output/dsw/l19-out/mamuta-pod-deliver-07/107b823f7e6841a786f8dcfe42ac1bf6`, whose
+`p2-economy.txt` already persisted `corpse:mamuta:221001 2` (pokos=2) from the
+prior natural Pod run. The fixture re-births the Mamuta from the staged
+`default.gen` and re-runs the natural sequence; the persisted economy dedupes the
+re-delivery.
+
+| run | outcome | died_tick | receipt | prior→final pokos | classify |
+| --- | --- | --- | --- | --- | --- |
+| `mamuta-revisit-01` | PASS natural | 387 | `corpse:mamuta:221001 value=2 new=0` | 2→2 | all PASS |
+| `mamuta-revisit-03` | PASS natural | 378 | `corpse:mamuta:221001 value=2 new=0` | 2→2 | all PASS |
+| `mamuta-revisit-02` | BLOCKED(provider) | 459 | — (aborted) | 2→2 (unchanged) | `Unregistered P2 pod cargo` |
+| `mamuta-revisit-04` | BLOCKED(provider) | 392 | — (aborted) | 2→2 (unchanged) | `Unregistered P2 pod cargo` |
+
+The PASS runs emit: `P2_MAMUTA_REVISIT_READY prior_pokos=2`; re-birth
+`P2_MAMUTA_REVISIT_BIRTH id=221001 type=24 squad=14 color=red`;
+`P2_MAMUTA_REVISIT_DIED tick=387`; `P2_MAMUTA_REVISIT_CORPSE`;
+`P2_MAMUTA_REVISIT_CARRY ... mincarry=8 maxcarry=20 dist=526.9`;
+`[Pikipelago] P2_POD_RECEIPT id=corpse:mamuta:221001 value=2 new=0 pokos=2 seeds=0`
+(deduped); `P2_MAMUTA_REVISIT_RESET`; and
+`PASS P2_MAMUTA_REVISIT_RUNTIME observe approach receipt_revisit reset`. Control
+Chappy alive, no `[PC GX] DESYNC`, centred 960×540 window logged.
+`output/dsw/l19-out/mamuta-revisit-01/revisit-result.json` /
+`mamuta-revisit-03/revisit-result.json`.
+
+### Blocked runs: provider lane 06/07 abort (precise repro)
+
+The two blocked runs abort in the shared preview Pod:
+`Unregistered P2 pod cargo id=70723031 view=0000000000000000 pellet=... treasure=...;
+refusing seed side effects` → `std::abort()` at
+`pc_port/pc_p2_preview.cpp:335`. The offending pellet is not a Mamuta corpse: its
+`mPelletView` is null and `mModelId.mId` is garbage (`0x043725d7`), consistent
+with a planted Pikmin sprout (the P2 bury converted reds: the blocked runs log
+`P2_MAMUTA_PLANT` immediately before) being sucked into the Pod and hitting the
+fail-closed "unregistered cargo" guard. This is the same abort seen once in
+`mamuta-pod-captaindown-02`; it is a Pod/provider issue (lane 06, with 07 lifetime
+/ address reuse), not a Mamuta FSM or revisit-logic failure — the exactly-once
+economy is still intact in both blocked runs. It is reported here, not patched:
+the fail-closed guard lives in the shared preview deliver path owned by lane 06.
+Once the Pod ignores non-cargo pellets, the natural revisit should be ~4/4.
+
+### Tests
+
+`py -3.12 -m pytest tests/test_pikmin2_mamuta_pod.py tests/test_pikmin2_mamuta_revisit.py tests/test_pikmin2_mamuta_natural.py tests/test_pikmin2_mamuta_install.py tests/test_pikmin2_mamuta_cargo.py tests/test_pikmin2_mamuta_rules.py -q`
+→ **62 passed, 1 skipped, 9 subtests passed**.
+
+### Reproduce (revisit)
+
+```powershell
+cd C:/Users/alari/pikmin-randomizer/output/dsw/l19-root
+$env:PYTHONUTF8='1'; $env:PIKMIN_P2_ROOM_WINDOW='960x540'
+$stage = 'C:/Users/alari/pikmin-randomizer/output/dsw/l19-out/mamuta-revisit-05/107b823f7e6841a786f8dcfe42ac1bf6'
+New-Item -ItemType Directory -Path (Split-Path $stage) -Force
+Copy-Item -Recurse 'C:/Users/alari/pikmin-randomizer/output/dsw/l19-out/mamuta-pod-deliver-07/107b823f7e6841a786f8dcfe42ac1bf6' (Split-Path $stage)
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l19 -- `
+  py -3.12 -m scripts.pikmin2_mamuta_revisit_native `
+    --exe C:/Users/alari/pikmin-randomizer/output/dsw/l19-out/mamuta-revisit-fixture/fixture.exe `
+    --stage $stage --timeout 300
+# expect deduped P2_POD_RECEIPT new=0, pokos 2->2, PASS P2_MAMUTA_REVISIT_RUNTIME
+```
+
+The revisit fixture is built once (native base `b805d9c6`, status built) via:
+
+```powershell
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run build l19 -- `
+  py -3.12 -c "import sys;sys.path.insert(0,r'C:/Users/alari/pikmin-randomizer/output/dsw/l19-root');from pathlib import Path;from experimental.pikmin2_mamuta_natural_runtime import build;build(native=Path(r'C:/Users/alari/pikmin-randomizer/output/dsw/native-l19'),build_dir=Path(r'C:/Users/alari/pikmin-randomizer/output/dsw/native-l19-build'),output=Path(r'C:/Users/alari/pikmin-randomizer/output/dsw/l19-out/mamuta-revisit-fixture'),head='b805d9c626e4f4558c95aef7cac311a5d9a2068f',root=Path(r'C:/Users/alari/pikmin-randomizer/output/dsw/l19-root'),fixture='scripts/pikmin2_mamuta_revisit_fixture.inc')"
+# fixture.exe sha256 = 1db0418d1a93c5500e6a66bb3769b22312f0fac3fbe2760b7ac9cbdf8508740c
 ```
