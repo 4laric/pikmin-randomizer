@@ -236,3 +236,62 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l0
 ### Subagent usage (slice 3)
 
 Task-tool subagents unavailable; worked solo (see the slice-3 fix note). Net +~25 min vs. the intended 3-way split (read-heavy native audit done in this context).
+
+## Slice 4
+
+Fourth slice: the generated seed end-to-end through staging — a real `randomizer.seed.generate` seed (one admitted identity on an injected cohort) staged through the **real runner entry point** (`runner.launch` → `install_layout`), then booted in `nectar.exe --experimental-pikmin2-room` and proven to load exactly the identity/slot the seed chose.
+
+### Deliverables
+
+1. **`scripts/run_p2_generated_seed.py` (new)** — `stage` generates the seed (injecting `bridge.admitted_ids`, lane 02/03 pattern) and calls `runner.launch(assets=curated-retail, p2_content=real-content, p2_actors=seed-targets)`; writes the lane-04 `p2-placement-slots.txt` sidecar (`generator → slot uid`) and the Pod for Snow. `run` boots `nectar.exe` (bounded), and asserts the exact identity set (`P2_ENEMY_READY`, `P2_*_BANK`, `only_seed_identity`, `no_*_unadmitted`) plus the roster/fallback checks.
+2. **`experimental/pikmin2_seed_evidence.py` (new)** — `cohort_markers(text)` / `ready_species(text)` / `find_mingw()` (env `MINGW_BIN` → PATH → fallback), shared by the probes and the flip test.
+3. **`scripts/probe_p2_cohort_native.py`** — slice-3b review fixes folded in: `passed` now requires `timed_out or returncode==0`; added `roster_read`/`roster_curated`/<`read <N> generators`> + `no_missing_room` (absence of `FAILED to open assets/dataDir/courses/pikmin2room/`); dropped the unused `retail_root` parameter + `mkdir(exist_ok=True)`; MinGW via `MINGW_BIN` env with fallback; preserves `stage.json` and `p2-binding-receipt.json` under `--out`. `build_retail`/`build_content` are now `identities`-parameterised so the roster carries exactly the admitted cohort.
+4. **`tests/test_pikmin2_seed_evidence.py` (new)** — flip tests: a stripped `P2_*_BANK` or `P2_ENEMY_READY` line flips its marker (8 tests).
+
+### Native proof (bounded `slot.py run gl l05`, both identities PASS, evidence under `l05-out/`)
+
+- **Dwarf Orange only** (`--cohort 44`, seed `seed-slice4`): bindings `[{target:"401", source_id:44, enum_name:"BlueKochappy"}]`; log has `default: read 24 generators`, `P2_ENEMY_READY species=BlueKochappy source_id=44  generator=211001`, `P2_DWARF_ORANGE_BANK poses=64`; `observed_species == ["BlueKochappy"]`, no `YellowKochappy`. Evidence `l05-out/slice4/{native.log,evidence.json,seed-manifest.json,stage.json,p2-binding-receipt.json}`.
+- **Snow only** (`--cohort 45`, seed `seed-slice4-snow`): bindings `[{target:"401", source_id:45, enum_name:"YellowKochappy"}]`; the Pod (`p2-pod.txt` + `pod.mod`) is staged; log has `P2_SNOW_BANK poses=60`, `P2_ENEMY_READY species=YellowKochappy  generator=5001`; `observed_species == ["YellowKochappy"]`, no `BlueKochappy`. Evidence `l05-out/slice4-snow/…`.
+
+In both, `passed=true` with `timed_out=true` (45 s bound, markers flushed before retire): exactly the seed-chosen identity and slot (`generator_slots=[[211001|5001, 401]]`), nothing else.
+
+### Pod ownership decision (as asked)
+
+The Pod (`p2-pod.txt`/`pod.mod`) is a preview/reward anchor, not enemy-family content: `pc_p2_snow_setup` gates preview-mode Snow on `pc_p2_preview_goal()` (the `podAnchor` that `pc_p2_preview.cpp` establishes from `p2-pod.txt`), at `pc_p2_enemy.cpp:161`. Lane-05's `install_layout` is identity-keyed (`resolve_family`/`_OVERRIDES`), stage-by-`enum_name`, and owns only enemy family adapters — a source-id-less Pod has no place in that layout. **Conclusion: the Pod belongs in lane 13** (its `pikmin2_mixed_bulborb_runtime._install_snow` already stages `p2-pod.txt`/`pod.mod`), not lane 05's layout; lane 06 (rewards) is the fallback owner for a non-preview Pod path. My `run_p2_generated_seed.py` stages it only as a preview-enabling step so `pc_p2_enemy.cpp:161` no longer blocks Snow, and labels it `pod.root` not family content.
+
+### Ordered commits / dirty state
+
+- **Root** `deepseek/p2-l05`, base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`. Clean. Ordered: `7ab7d79` → `642e398` → `9a3b647` → `021fafa` → `dfb83a3` → `545edbe` → `8510b02` → `e12c429` → `5ec78d6` → `b4263a8` → `0f2e2e1` → `630f622` → `cc63388` → **`e698d49` slice 4**.
+- **Native** `deepseek/p2-l05-native`, base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`. Clean. **No change** — the bank/sidecar readers and the preview Pod/treasure consumers are already on the base.
+
+### Build evidence (`output/dsw/l05-build-evidence.txt`)
+
+```
+2026-09-14T21:23:50 lane=l05 target=pikmin_pc native=b805d9c626e4f4558c95aef7cac311a5d9a2068f dirty=no build_dir=C:\Users\alari\pikmin-randomizer\output\dsw\native-l05-build exe=C:\Users\alari\pikmin-randomizer\output\dsw\native-l05-build\bin\nectar.exe sha256=039db847a1818fb41ee7c3a3dd90e5f5c027619b58af41e522b9d8f0ea65fbdb ninja_n="ninja: no work to do." seconds=126
+```
+
+### Tests run
+
+- `py -3.12 -m pytest tests/test_pikmin2_install_binding.py tests/test_pikmin2_seed_evidence.py -q` → **35 passed** (27 + 8 flip tests).
+- `run_p2_generated_seed.py stage/run` (`--cohort 44` and `--cohort 45`) under `slot.py run gl l05` → **both `passed=true`** (evidence JSON under `l05-out/slice4*`).
+
+### Six-gate update (installation/provider lane)
+
+- **Generated-session staging (A / G-product): PASS** — a generated seed's `p2_layout` binds an admitted identity to a slot, `runner.launch` stages it, and the engine loads exactly that identity's bank/sidecar at that slot (plus the seed's `P2_PLACEMENT_SLOTS` sidecar row), nothing else.
+- **Live spawn/combat/lifetime gameplay gates:** still family lane 13 + QA 33; the placement-slot native `P2_PLACEMENT_SLOT`/`P2_SEED_RESOLVE` probe is lane 04's native hook (not on `b805d9c6`), so this slice proves the lane-05 content binding (bank + READY identity + actor generator), not lane 04's placement probe markers.
+
+### Remaining blockers
+
+- **Lane 02 (#438):** committed admission still denies by default; the cohort is injected for the seed (documented, same as lane 02/03/04 seed tests).
+- **Lane 13:** own the Pod stage for Snow preview-mode (see decision above); lane 04's native placement probe for the `P2_PLACEMENT_SLOT` runtime join.
+
+### Reproduction
+
+```powershell
+py -3.12 -m pytest tests/test_pikmin2_seed_evidence.py -q
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l05 -- py -3.12 scripts/run_p2_generated_seed.py run --exe <nectar.exe> --out <staged-out-dir>
+```
+
+### Subagent usage (slice 4)
+
+Task tool still absent; worked solo.
