@@ -250,3 +250,56 @@ def test_escaped_pipe_is_not_a_cell_boundary():
     from scripts.ingest_p2_handoff_gates import _split_row
     cells = _split_row("| 2 | PASS | `P2_BATCH2_DRAW key=dweevil\\|FireOtakara clip=attack1` |")
     assert cells == ["2", "PASS", "`P2_BATCH2_DRAW key=dweevil|FireOtakara clip=attack1`"]
+
+
+def test_citation_requires_extension_or_known_root_path():
+    from scripts.ingest_p2_handoff_gates import _has_citation
+    assert _has_citation("docs/PIKMIN2_FROG_IMPORT.md spawn")
+    assert _has_citation("output/p2-frog/native.log")
+    assert _has_citation("docs/foo")          # root + one segment = two segments
+    assert not _has_citation("12/16 frames")
+    assert not _has_citation("frame=12 / frame=20")
+    assert not _has_citation("P2_OTAKARA_BIND generator=349001")
+    assert not _has_citation("health=150.0")
+
+
+HEADING_BOUND_HANDOFF = """# x
+## Concrete source ID
+- Source ID: 17 `Frog`.
+
+## Snek (41)
+| Gate | Result | Evidence |
+|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md spawn |
+| 2. Autonomous movement and animation | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md leap |
+| 3. Attacks and receivers | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md crush |
+| 4. Death and corpse | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md corpse |
+| 5. Actual transport and reward | PASS (natural) | corpse:snek:1 goal=1 |
+| 6. Cleanup and re-entry | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md reentry |
+"""
+
+
+def test_table_binds_to_nearest_identity_heading():
+    rows = ingest(HEADING_BOUND_HANDOFF, _two_roster())
+    by_sid = {row["source_id"]: row for row in rows}
+    assert set(by_sid) == {17, 41}
+    # The table sits under "## Snek (41)", so Snek owns it even though Frog is
+    # named by a Source-ID line earlier in the document.
+    assert set(by_sid[41]["advances"]) == set(ADMISSION_GATES) | {"transport_reward"}
+    assert not by_sid[41].get("shared")
+    assert by_sid[17].get("shared") is True
+    assert by_sid[17]["advances"] == []
+
+
+def test_report_generator_is_deterministic():
+    from scripts.ingest_p2_handoff_gates import build_advance_report, render_advance_report
+    from scripts.generate_p2_advance_report import _REGENERATE_COMMAND
+    docs = [("L99-clean.md", CLEAN_HANDOFF), ("L99-injected.md", INJECTED_HANDOFF)]
+    report = build_advance_report(docs, _roster())
+    again = build_advance_report(docs, _roster())
+    assert render_advance_report(report, _REGENERATE_COMMAND) == \
+        render_advance_report(again, _REGENERATE_COMMAND)
+    assert report["total"] == 1            # both handoffs name Frog (17)
+    assert report["identities"][0]["source_id"] == 17
+    assert sum(report["summary"].values()) == report["total"]
+    assert set(report["summary"]) == set(range(7))

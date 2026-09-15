@@ -72,13 +72,17 @@ _SOURCE_ID_RE = re.compile(r"(?:source_id|EnemyID)\s*[`\"']?\s*(\d+)")
 _ID_ENUM_RE = re.compile(r"\b(\d{1,3})\s*`([A-Za-z][A-Za-z0-9_]*)`")
 _NAME_PAREN_RE = re.compile(r"([A-Za-z][A-Za-z0-9_]*)\s*\(\s*(\d+)")
 
-# A line that names the identity a following table belongs to.
-_SOURCE_ID_LINE_RE = re.compile(r"source\s+(?:enemy\s+)?id", re.IGNORECASE)
+# A line that names the identity a following table belongs to: the prose
+# "Source ID" / "Source enemy ID" / "Concrete source ID" line. A bare "EnemyID"
+# token on another line is deliberately NOT a clue, so a payload/child mention
+# ("... EnemyID 36 ..." on a wrapped line) cannot steal the owner identity.
+_OWNER_LINE_RE = re.compile(r"source\s+(?:enemy\s+)?id", re.IGNORECASE)
 
-# A citation is an extension token or a known-root path with >= 2 segments
-# ("12/16", "frame=12 / frame=20" and other bare separators do not count).
+# A citation is an extension token at a token boundary, or a path rooted at a
+# known directory with one segment after the root (two segments counting the
+# root). "12/16", "frame=12 / frame=20" and other bare separators do not count.
 _EXT_CITATION_RE = re.compile(r"\S+\.(?:md|log|txt|json)\b")
-_PLAIN_PATH_RE = re.compile(r"\b(?:docs|output|tests)/\S+/\S+")
+_PLAIN_PATH_RE = re.compile(r"\b(?:docs|output|tests)/\S+")
 
 
 def _strip_md(text: str) -> str:
@@ -117,9 +121,10 @@ def _extract_gate_table(block: list[list[str]]) -> dict[int, dict]:
     if len(block) < 2:
         return {}
     header = [_strip_md(cell).lower() for cell in block[0]]
-    if not any("result" in cell for cell in header):
+    if not any("result" in cell or "status" in cell for cell in header):
         return {}
-    result_col = next((idx for idx, cell in enumerate(header) if "result" in cell), 1)
+    result_col = next((idx for idx, cell in enumerate(header)
+                       if "result" in cell or "status" in cell), 1)
     evidence_col = next((idx for idx, cell in enumerate(header) if "evidence" in cell),
                         result_col + 1)
     label_col = next((idx for idx, cell in enumerate(header)
@@ -218,23 +223,31 @@ def _gate_verdict(number: int, row: dict) -> dict:
     return {"status": "PASS", "advance": True, "reason": None, "receipt": None}
 
 
-def _owner_from_line(line: str) -> int | None:
+def _owner_from_line(line: str, by_name=None) -> int | None:
     match = _SOURCE_ID_RE.search(line)
     if match:
         return int(match.group(1))
     match = _ID_ENUM_RE.search(line)
     if match:
         return int(match.group(1))
+    if by_name:
+        match = _NAME_PAREN_RE.search(line)
+        if match and match.group(1) in by_name:
+            return int(match.group(2))
     return None
 
 
 def _bound_tables(markdown: str, roster) -> dict[int, dict]:
     """Bind each gate table to the source id named nearest above it.
 
-    A table owns the identity named in the nearest preceding "Source ID" line
-    (or an identity-naming heading). Returns ``{source_id: gate_table}``.
+    Walks back from a table to the nearest "Source ID" line or heading that names
+    an identity (``source_id``/``EnemyID``/``N Name``/``Name (N)``); a heading that
+    names no identity is only skipped, never treated as a stop, so a table under
+    ``## WaterOtakara (60)`` binds 60 and not an earlier Source-ID line. Returns
+    ``{source_id: gate_table}``.
     """
     lines = markdown.splitlines()
+    by_name = {entry.enum_name for entry in roster}
     bound: dict[int, dict] = {}
     for start, block in _iter_tables(markdown):
         table = _extract_gate_table(block)
@@ -243,12 +256,12 @@ def _bound_tables(markdown: str, roster) -> dict[int, dict]:
         owner = None
         for idx in range(start - 1, -1, -1):
             line = lines[idx]
-            if _SOURCE_ID_LINE_RE.search(line):
-                owner = _owner_from_line(line)
+            if _OWNER_LINE_RE.search(line):
+                owner = _owner_from_line(line, by_name)
                 if owner is not None:
                     break
             elif line.lstrip().startswith("#"):
-                owner = _owner_from_line(line)
+                owner = _owner_from_line(line, by_name)
                 if owner is not None:
                     break
         if owner is not None and owner not in bound:
@@ -350,6 +363,97 @@ def _fmt_row(row: dict) -> list[str]:
         lines.append(f"  refused PASS: {details}")
     lines.append(f"  blocking (admission_requirements): {', '.join(row['blocking']) or '(none)'}")
     return lines
+
+
+def build_advance_report(docs, roster=None) -> dict:
+    """Aggregate a dry-run across ``[(handoff_label, markdown), ...]``.
+
+    Deterministic: identities are keyed/sorted by ``source_id``, gates by
+    ``GATE_IDS`` order and handoffs are name-sorted. Returns
+    ``{"identities": [...], "summary": {gates_away: count}, "total": n}``.
+    """
+    roster = roster if roster is not None else load_and_validate()
+    merged: dict[int, dict] = {}
+    for label, markdown in docs:
+        for row in ingest(markdown, roster):
+            if row.get("skipped") or row["role"] == "unknown":
+                continue
+            source_id = row["source_id"]
+            rec = merged.setdefault(source_id, {
+                "source_id": source_id, "enum_name": row["enum_name"], "role": row["role"],
+                "handoffs": [], "advances": set(), "refused": {}, "shared": True,
+            })
+            if label not in rec["handoffs"]:
+                rec["handoffs"].append(label)
+            rec["advances"] |= set(row["advances"])
+            if not row.get("shared"):
+                # Any handoff that binds a table for this identity makes it a real
+                # candidate; "shared" stays True only when none does.
+                rec["shared"] = False
+            for gate, reason in row.get("refused", {}).items():
+                rec["refused"].setdefault(gate, set()).add(reason)
+    identities = []
+    for source_id in sorted(merged):
+        rec = merged[source_id]
+        advances = [gate for gate in GATE_IDS if gate in rec["advances"]]
+        blocking = [gate for gate in GATE_IDS if gate not in rec["advances"]]
+        identities.append({
+            "source_id": source_id, "enum_name": rec["enum_name"], "role": rec["role"],
+            "handoffs": sorted(rec["handoffs"]),
+            "advances": advances,
+            "refused": {gate: sorted(rec["refused"][gate]) for gate in sorted(rec["refused"])},
+            "shared": rec["shared"],
+            "blocking": blocking,
+            "gates_away": len(blocking),
+        })
+    summary = {gates: 0 for gates in range(7)}
+    for row in identities:
+        summary[row["gates_away"]] += 1
+    return {"identities": identities, "summary": summary, "total": len(identities)}
+
+
+def render_advance_report(report: dict, command: str) -> str:
+    """Render ``build_advance_report`` output as deterministic markdown."""
+    lines = [
+        "# P2 roster advance report (dry run)",
+        "",
+        "Deny-by-default admission dry-run across every lane handoff on",
+        "`claude/p2-deepseek-wave`. Per identity: the gates the handoff(s) would",
+        "advance, the PASSes refused and why (`uncited` / `injected` / `shared table`),",
+        "and the gates still blocking `admission_requirements`. Nothing is admitted and",
+        "nothing is written (dry run).",
+        "",
+        "Regenerate with:",
+        "",
+        "    " + command,
+        "",
+        "## Gates-away summary",
+        "",
+        "| Gates away from admission | Identities |",
+        "|---:|---:|",
+    ]
+    for gates in range(7):
+        lines.append(f"| {gates} | {report['summary'].get(gates, 0)} |")
+    lines += [
+        "",
+        f"Seedable (`source`/`variant`) identities named across handoffs: {report['total']}",
+        "",
+        "## Per-identity detail",
+    ]
+    for row in report["identities"]:
+        lines.append("")
+        head = f"### {row['source_id']} {row['enum_name']} ({row['role']})"
+        if row["shared"]:
+            head += " — shared table, excluded"
+        lines.append(head)
+        lines.append(f"- handoffs: {', '.join(row['handoffs'])}")
+        lines.append(f"- advances: {', '.join(row['advances']) or '(none)'}")
+        if row["refused"]:
+            refused = ", ".join(f"{gate}={','.join(reasons)}"
+                                for gate, reasons in row["refused"].items())
+            lines.append(f"- refused: {refused}")
+        lines.append(f"- blocking: {', '.join(row['blocking']) or '(none)'}")
+    return "\n".join(lines) + "\n"
 
 
 def main(argv=None) -> int:
