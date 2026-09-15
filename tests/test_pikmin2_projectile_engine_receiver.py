@@ -161,7 +161,7 @@ class ProjectileEngineReceiverTests(unittest.TestCase):
 
     def test_strike_ratio_alive_fires_truncated_by_aim_none(self):
         # A mid-log AIM_NONE splits the fires: only the 4 preceding it are
-        # "alive", dropping alive_fires below the >=9 threshold -> FAIL.
+        # "alive", dropping alive_fires below the >=5 threshold -> FAIL.
         fire = 'P2_PROJECTILE_KABUTO_FIRE species=Kabuto homing=1 rig=1 mouth=(0.0,0.0,0.0)\n'
         hit = ('P2_PROJECTILE_ENGINE_STRIKE target=1234 kind=Attack damage=250.0 '
                'applied=1 rejected=0 health=180.0->180.0 stored=0.0->250.0 source=0\n')
@@ -171,6 +171,15 @@ class ProjectileEngineReceiverTests(unittest.TestCase):
         self.assertEqual((fires, hits, alive_fires), (9, 7, 4))
         result = evaluate(log)
         self.assertEqual(result['gates']['victim_strike_ratio'], 'FAIL')
+
+    def test_strike_ratio_floor_lowered_to_5(self):
+        # Host-loaded 60 s runs reach ~6-8 fires, so the gate floor is 5 alive
+        # fires (hits > half); 6/6 passes.
+        log = _fire_destroy_log(fires=6, health_hits=6)
+        fires, hits, alive_fires = strike_ratio_of(log)
+        self.assertEqual((fires, hits, alive_fires), (6, 6, 6))
+        result = evaluate(log)
+        self.assertEqual(result['gates']['victim_strike_ratio'], 'PASS')
 
     def test_evaluate_bomb_engine_navi_hit_pass(self):
         log = ('P2_PROJECTILE_BOMB_ENGINE_HIT token=1 kind=Bomb damage=10.0 '
@@ -203,9 +212,9 @@ class ProjectileEngineReceiverTests(unittest.TestCase):
         self.assertIsNotNone(m)
         self.assertEqual(m.group(1), '999.0')
 
-    def test_evaluate_bomb_nohit_leaves_untested(self):
+    def test_evaluate_bomb_nohit_is_fail(self):
         result = evaluate(BOMB_NOHIT_LOG)
-        self.assertEqual(result['gates']['bomb_engine_navi_hit'], 'UNTESTED')
+        self.assertEqual(result['gates']['bomb_engine_navi_hit'], 'FAIL')
 
     def test_groink_config_row(self):
         row = groink_config()
