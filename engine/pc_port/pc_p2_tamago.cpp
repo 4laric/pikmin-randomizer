@@ -274,9 +274,19 @@ bool pc_p2_tamago_registered(BTeki* actor) {
 void pc_p2_tamago_tick() {
     // Once-per-frame drain of queued born-follower kills (see pendingKills). Runs
     // outside the TekiMgr update loop so sibling despawns never re-enter the host's
-    // own update() death funnel.
+    // own update() death funnel. `killed` records how many born Teki actually went
+    // through the death funnel here, so the runtime can prove the group was
+    // despawned (not merely erased from this module's actor map) before _Exit(0).
+    int killed = 0;
     for (BTeki* child : pendingKills) {
-        if (child && child->isAlive()) child->kill(false);
+        if (child && child->isAlive()) {
+            child->kill(false);
+            ++killed;
+        }
+    }
+    if (!pendingKills.empty()) {
+        std::printf("P2_TAMAGO_GROUP_DRAIN killed=%d source_id=68\n", killed);
+        std::fflush(stdout);
     }
     pendingKills.clear();
 }

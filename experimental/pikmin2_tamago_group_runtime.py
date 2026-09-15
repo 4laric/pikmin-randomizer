@@ -13,7 +13,16 @@ owns the Mitite (TamagoMushi) *group* birth chain:
 * the birth runs exactly once (``P2_TAMAGO_BIRTH_ONCE ... duplicate=0``);
 * at least one natural Astonish is observed (``P2_TAMAGO_ASTONISH ... pikmin=1``);
 * the whole group is forgotten with nothing left behind
-  (``P2_TAMAGO_GROUP_FORGET ... remaining=0``);
+  (``P2_TAMAGO_GROUP_FORGET ... remaining=0``) and the born followers actually
+  go through the deferred death funnel on the next frame
+  (``P2_TAMAGO_GROUP_DRAIN killed=9``).
+
+The forget itself is **injected by this fixture** (``pc_p2_forget_teki(host)`` in
+stage 4): a non-injected natural host death is blocked (the harmless Mitite takes
+no squad damage and a bare ``BTeki::die()`` does not complete the engine funnel),
+so the cleanup/re-entry gate is reported UNTESTED, not natural. The deferred drain
+marker is what proves the born Teki were despawned, not merely erased from the
+module's actor map.
 
 No birth is injected and no enemy health/stat is written (the ``no_inject`` gate
 rejects ``P2_LIFECYCLE_INJECT``/``not_natural_combat=1``/``injected_health``/
@@ -66,8 +75,9 @@ GOOD_LOG = '\n'.join([
     'P2_TAMAGO_BIRTH_ONCE host=346020 born=9',
     'P2_TAMAGO_GROUP_ONCE host=346020 count=10',
     'P2_TAMAGO_ASTONISH generator=346021 pikmin=1',
-    'P2_TAMAGO_GROUP_FORGET host=346020 group=10 remaining=0',
+    'P2_TAMAGO_GROUP_FORGET host=346020 group=10 remaining=0 queued=9',
     'P2_TAMAGO_GROUP_CLEANUP host=346020 forgotten=10',
+    'P2_TAMAGO_GROUP_DRAIN killed=9 source_id=68',
     'PASS P2_TAMAGO_GROUP_RUNTIME birth=manager exactly_once=1 astonish=natural '
     'cleanup=group injected=0',
 ])
@@ -90,6 +100,7 @@ def validate(text, code=0):
     once = re.search(r'P2_TAMAGO_GROUP_ONCE host=346020\b[^\n]*count=10', text)
     astonish = re.findall(r'P2_TAMAGO_ASTONISH generator=\d+ pikmin=1', text)
     forget = re.search(r'P2_TAMAGO_GROUP_FORGET host=346020\b[^\n]*remaining=0', text)
+    drain = re.search(r'P2_TAMAGO_GROUP_DRAIN killed=9 source_id=68', text)
     inject = re.search(r'P2_LIFECYCLE_INJECT|not_natural_combat=1|injected_health|mHealth=', text)
     completion = re.search(r'PASS P2_TAMAGO_GROUP_RUNTIME', text)
     extinction = re.search(r'Extinction', text, re.IGNORECASE)
@@ -101,18 +112,19 @@ def validate(text, code=0):
         manager_birth=bool(birth) and bool(binds),
         exactly_once=bool(once),
         natural_astonish=bool(astonish),
-        group_cleanup=bool(forget),
+        group_cleanup=bool(forget) and bool(drain),
         no_inject=inject is None,
         completion=bool(completion),
         no_extinction=extinction is None,
     )
     passed = code == 0 and all(checks[name] for name in REQUIRED_CHECKS)
     return dict(passed=passed, checks=checks, exit_code=code,
-                births=len(binds), astonish_hits=len(astonish))
+                births=len(binds), astonish_hits=len(astonish),
+                drained=9 if drain else 0)
 
 
 APP = r'''class RoomApp : public PlugPikiApp {
-    int frames=0,observed=0,stage=0,steadyTicks=0;
+    int frames=0,observed=0,stage=0,steadyTicks=0,drainFrames=0;
     Teki* host=nullptr;
     Teki* byGenerator(unsigned id){Iterator it(tekiMgr);CI_LOOP(it){Teki* t=static_cast<Teki*>(*it);if(t&&t->mGenerator&&t->mGenerator->_70==id)return t;}return nullptr;}
     int aliveTotal(){int c=0;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(p&&p->isAlive())++c;}return c;}
@@ -156,19 +168,22 @@ public:int idle() override {
         return result;
     }
     if(stage==4){
-        // Host forget via the central lifetime seam. The group-forget branch now
-        // QUEUES the born followers and pc_p2_tamago_tick drains them once per frame
-        // (outside the TekiMgr update loop), so this exercises the deferred-despawn
-        // path. A non-injected natural host DEATH was attempted separately and is
-        // blocked: the harmless Mitite takes no squad damage (Astonish scatter) and
-        // a bare BTeki::die() does not complete the engine funnel (dieSoon is gated
-        // on !mDeadState in BTeki::doAI). See the handoff notes.
+        // Host forget is INJECTED via the central lifetime seam (a non-injected
+        // natural host DEATH is blocked: the harmless Mitite takes no squad damage
+        // (Astonish scatter) and a bare BTeki::die() does not complete the engine
+        // funnel, dieSoon being gated on !mDeadState in BTeki::doAI). The
+        // group-forget branch QUEUES the born followers and pc_p2_tamago_tick
+        // drains them once per frame outside the TekiMgr update loop; wait two
+        // frames so the deferred drain runs and emits P2_TAMAGO_GROUP_DRAIN before
+        // the PASS, proving the born Teki were despawned (cleanup/re-entry UNTESTED
+        // as a natural gate; see the handoff notes).
         pc_p2_forget_teki(host);
         require(pc_p2_tamago_count()==0,"whole group not cleared on host forget");
         std::printf("P2_TAMAGO_GROUP_CLEANUP host=346020 forgotten=10\n");
-        std::fflush(stdout);stage=5;return result;
+        std::fflush(stdout);drainFrames=0;stage=5;return result;
     }
     if(stage==5){
+        if(++drainFrames<2)return result;
         std::puts("PASS P2_TAMAGO_GROUP_RUNTIME birth=manager exactly_once=1 astonish=natural cleanup=group injected=0");
         std::fflush(stdout);std::_Exit(0);
     }
