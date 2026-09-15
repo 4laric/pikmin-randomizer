@@ -192,3 +192,19 @@ def test_two_paths_pod_vs_onion_vocabulary_do_not_collide():
     corpse = [r[0] for r in validate('\n'.join(lines), 0)['receipts']
               if r[0].startswith('corpse:')]
     assert corpse == [pod_identity]
+
+
+def test_mamuta_pod_reference_receipt_shapes_through_provider():
+    pod_identity = 'corpse:mamuta:221001'
+    assert not pod_identity.startswith('onion:')
+    for source_id, teki_type, stage in ((45, 3, 1), (221001, 24, 1), (0, 0, 2), (7, 7, 3)):
+        p1 = p1_proxy_identity(teki_type, stage)
+        p2 = p2_source_identity(source_id, stage)
+        assert pod_identity != p1
+        assert pod_identity != p2
+        assert not p1.startswith('corpse:')
+        assert not p2.startswith('corpse:')
+    result = validate('P2_POD_RECEIPT id=corpse:mamuta:221001 value=2 new=1 pokos=2', 0)
+    assert result['receipts']
+    assert result['receipts'][0][0].startswith('corpse:')
+    assert result['receipts'][0][0] == pod_identity
