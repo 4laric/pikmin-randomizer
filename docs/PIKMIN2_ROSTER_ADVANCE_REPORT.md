@@ -48,12 +48,12 @@ Regenerate with:
 
 | Gates away from admission | Identities |
 |---:|---:|
-| 0 | 0 |
+| 0 | 1 |
 | 1 | 1 |
 | 2 | 2 |
 | 3 | 1 |
 | 4 | 1 |
-| 5 | 3 |
+| 5 | 2 |
 | 6 | 44 |
 
 Seedable (`source`/`variant`) identities named across handoffs: 52
@@ -168,8 +168,8 @@ Seedable (`source`/`variant`) identities named across handoffs: 52
 
 ### 44 BlueKochappy (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE04_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE05_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE06_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE07_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE13_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE33_DEEPSEEK_HANDOFF.md
-- advances: identity_spawn
-- blocking: movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
+- advances: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
+- blocking: (none)
 
 ### 45 YellowKochappy (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE04_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE05_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE33_DEEPSEEK_HANDOFF.md

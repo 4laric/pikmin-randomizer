@@ -406,19 +406,11 @@ wired but not separately re-run for 44.
 
 ### Gate 5 — transport/reward
 
-- Transport (natural): already observed in slice 2 — real TransportMode carry 544.6 units to a
-  goal (`output/dsw/l13-out/s2-cleanup-run/native.log:3048-3375`).
-- Reward receipt: the Pod corpse-receipt branch in `pc_p2_preview_deliver` registers the Dwarf
-  Orange corpse — `P2_POD_CORPSES_REBOUND before=0 after=2` and `P2_POD_READY`
-  (`output/dsw/l13-out/s3-pod-run/native.log:710-711`) — and resolves it to
-  `corpse:<prefix>211001`. Exactly-once is `P2Economy::credit` (generator-keyed; `new=1` then
-  `new=0`), unit-proven (`tools/test_p2_economy.cpp`) and end-to-end for the same Chappy corpse
-  branch by `experimental/pikmin2_reward_lifecycle.py`.
-- The combined NATURAL corpse›Pod delivery did NOT complete: the Pod + combat observer trips the
-  preview movie/result flow (`P2_POD_CAPTAIN_RETURN`, observed stops at ~54 ticks). This is the
-  shared #397 preview-room fixture gap, not a lane-13 code gap. The pod witness
-  `experimental/pikmin2_dwarf_orange_pod.py` records the block; its gate is honest `passed:false`
-  with `receipt=false`.
+- Gate 5 (superseded by Slice 4 / fix 4): the natural corpse-to-Pod delivery completed in
+  `output/dsw/l13-out/fix4-pod-run/native.log` (transport 1->7 at :945-980, `P2_POD_RECEIPT
+  id=corpse:211001` at :1213). The slice-3 claims that `P2_POD_CORPSES_REBOUND` registered the
+  Dwarf Orange corpse and that the run stopped at ~54 ticks were wrong (the rebind keys every live
+  Chappy actor at Pod setup; 54 was the ARENA_GATE line count); the s3-pod-run never completed run().
 
 ### Six-gate table — for lane 02 ingestion
 
