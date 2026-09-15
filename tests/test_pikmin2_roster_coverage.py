@@ -210,7 +210,7 @@ def test_real_ledger_is_fully_covered():
 
 
 def test_real_ledger_admitted_set():
-    assert admitted_ids(load_and_validate()) == [44]  # Dwarf Orange Bulborb admitted 2026-09-15 (lane 13 fix 4, natural six gates)
+    assert admitted_ids(load_and_validate()) == [44, 59, 60, 61, 62]  # 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (admitted 2026-09-15)
 
 
 # ---------------------------------------------------------------------------

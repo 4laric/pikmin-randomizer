@@ -209,7 +209,7 @@ def test_admission_contract_respects_excluded():
 def test_admitted_ids_from_contract():
     roster = _roster({"17": _frog_overlay()})
     assert admitted_ids(roster) == [17]
-    assert admitted_ids(load_and_validate()) == [44]  # Dwarf Orange Bulborb admitted 2026-09-15 (lane 13 fix 4, natural six gates)
+    assert admitted_ids(load_and_validate()) == [44, 59, 60, 61, 62]  # 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (lane 22 fix 4, natural six gates, admitted 2026-09-15)
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +220,7 @@ def test_write_admission_round_trip(tmp_path):
     real = load_and_validate()
     path = tmp_path / "ev.json"
     result = write_admission(real, path=path)
-    assert result["admitted"] == [44]  # Dwarf Orange Bulborb admitted 2026-09-15 (lane 13 fix 4, natural six gates)
+    assert result["admitted"] == [44, 59, 60, 61, 62]  # 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (lane 22 fix 4, natural six gates, admitted 2026-09-15)
 
     written = json.loads(path.read_text(encoding="utf-8"))
     assert isinstance(written.get("entries"), dict)
@@ -257,10 +257,10 @@ def test_write_admission_fresh_path_keeps_fields(tmp_path):
 
 def test_admit_check_cli_exit_codes(capsys):
     import scripts.audit_pikmin2_roster as audit
-    # Sokkuri (79) has A/B/C natural PASS but death/cleanup/transport open -> blocked.
+    # Sokkuri (79) has A/B/C/D/E natural PASS but transport/reward open -> blocked.
     assert audit.main(["--admit-check", "79"]) == 1
     out = capsys.readouterr().out
-    assert "death_corpse" in out
+    assert "transport_reward" in out
     # A plant identity is refused for its role.
     assert audit.main(["--admit-check", "0"]) == 1
     # An unknown id fails closed.
