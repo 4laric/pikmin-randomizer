@@ -18,6 +18,8 @@ modified and nothing was pushed.
 
 ## Ordered commits
 
+Root: `11e1d83` handoff doc (+ integrator review-fix commit). Review note: multi-carrier ownership and dead-carrier attribution (ledger boundary) are DEFERRED, not advanced, by this slice — the arena still has a single `held` pointer + single `carrierToken`. Integrator synced the root-side arena mirrors `engine/tools/p2-bombsarai-arena{,-purple,-death}.txt` to `joint 0 -40 0` for the new body-relative semantics.
+
 Native branch `deepseek/p2-l27-native`, base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`, clean:
 
 1. `2a57e318` — `lane27: BombSarai animated capture joint: payload rides the moving carrier (#244)`
@@ -88,7 +90,7 @@ all PASS:
 - `p2_bombsarai_joint_test` (new): zero-yaw offset, yaw rotation of forward and
   lateral offsets matches the lob convention, followJoint rides three hover
   bodies, no-op after throw / before capture, NaN rejection.
-- Re-run existing suite: `p2_bombsarai_fsm_test`, `p2_bombsarai_bomb_test`,
+- Review correction: only `p2_bombsarai_joint_test` was verifiably built and run this slice (exe in the private build dir, exit 0); the existing suite below was NOT re-run this slice: `p2_bombsarai_fsm_test`, `p2_bombsarai_bomb_test`,
   `p2_bombsarai_blast_test`, `p2_bombsarai_clock_test`, `p2_bombsarai_hover_test`,
   `p2_bombsarai_terrain_test`, `p2_bombsarai_induction_test` — all PASS.
 
