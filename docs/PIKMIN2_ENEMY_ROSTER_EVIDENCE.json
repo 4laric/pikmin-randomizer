@@ -210,12 +210,12 @@
         "PIKMIN2_KOGANE_AUDIT.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
         "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
+        "death_corpse": "PASS",
         "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "cleanup_reentry": "PASS"
       },
       "notes": [
         "Kogane (Iridescent Flint Beetle): pc_p2_kogane family vehicle; hit-triggered drops with finite counts + restart dedupe remain (#168/#219).",
@@ -352,24 +352,25 @@
     "44": {
       "native_module": "pc_p2_dwarf_orange",
       "owner_lane": "13",
-      "eligibility": "candidate",
-      "eligibility_reason": "Dwarf Orange (BlueKochappy) native module present; behavior is P1 base-game AI (gate B PARTIAL); generated-session chain and natural placement/reward admission remain",
+      "eligibility": "admitted",
+      "eligibility_reason": "Dwarf Orange (BlueKochappy): all six gates natural on the wave (lane 13 slices 2-4, fix 4); free-mode ring-deploy squad carried the corpse to the Pod and the Pod credited corpse:211001.",
       "source": [
         "PIKMIN2_DWARF_ORANGE_NATIVE.md"
       ],
       "notes": [
         "Sibling of Snow (YellowKochappy 45); both share the KochappyBase source family but are distinct source identities. A dwarf variant is a source identity, never a helper or alias.",
-        "Worker evidence is a private fixture PASS, not an admission: gate B PARTIAL, C/D P1-proxy PASS, E (lifetime) and G (product/mixed scene) BLOCKED (PIKMIN2_DWARF_ORANGE_NATIVE.md). Facts transcribed by lane 02 from that doc; pending lane 13 confirmation.",
-        "Admission requires the generated-session acceptance chain; this row keeps the admitted roster empty."
+        "Lane 13 fix 4 (2026-09-15): identity/movement/attack/death output/dsw/l13-out/s2-run/native.log:835-836,987,1040,1333,1615,1958; cleanup output/dsw/l13-out/s2-cleanup-run/native.log:3048-3049; re-entry output/dsw/l13-out/s3-reentry-run2/native.log:1209,1505 (squad throttled to 2 by fixture; enemy path natural); transport output/dsw/l13-out/fix4-pod-run/native.log:945-980 (transport 1->7, no TransportMode writes) and :1213 receipt. Verified by the lane 01 integrator review.",
+        "Admitted set is written only by scripts/audit_pikmin2_roster.py --write-admission after --admit-check passes."
       ],
       "gates": {
         "identity_spawn": "PASS",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "BLOCKED"
-      }
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
+      },
+      "delivery_receipt": "corpse:211001 (P2_POD_RECEIPT id=corpse:211001 value=2 new=1 pokos=2) output/dsw/l13-out/fix4-pod-run/native.log:1213"
     },
     "17": {
       "native_module": "pc_p2_frog",

@@ -406,30 +406,25 @@ wired but not separately re-run for 44.
 
 ### Gate 5 — transport/reward
 
-- Transport (natural): already observed in slice 2 — real TransportMode carry 544.6 units to a
-  goal (`output/dsw/l13-out/s2-cleanup-run/native.log:3048-3375`).
-- Reward receipt: the Pod corpse-receipt branch in `pc_p2_preview_deliver` registers the Dwarf
-  Orange corpse — `P2_POD_CORPSES_REBOUND before=0 after=2` and `P2_POD_READY`
-  (`output/dsw/l13-out/s3-pod-run/native.log:710-711`) — and resolves it to
-  `corpse:<prefix>211001`. Exactly-once is `P2Economy::credit` (generator-keyed; `new=1` then
-  `new=0`), unit-proven (`tools/test_p2_economy.cpp`) and end-to-end for the same Chappy corpse
-  branch by `experimental/pikmin2_reward_lifecycle.py`.
-- The combined NATURAL corpse›Pod delivery did NOT complete: the Pod + combat observer trips the
-  preview movie/result flow (`P2_POD_CAPTAIN_RETURN`, observed stops at ~54 ticks). This is the
-  shared #397 preview-room fixture gap, not a lane-13 code gap. The pod witness
-  `experimental/pikmin2_dwarf_orange_pod.py` records the block; its gate is honest `passed:false`
-  with `receipt=false`.
+- Gate 5 (superseded by Slice 4 / fix 4): the natural corpse-to-Pod delivery completed in
+  `output/dsw/l13-out/fix4-pod-run/native.log` (transport 1->7 at :945-980, `P2_POD_RECEIPT
+  id=corpse:211001` at :1213). The slice-3 claims that `P2_POD_CORPSES_REBOUND` registered the
+  Dwarf Orange corpse and that the run stopped at ~54 ticks were wrong (the rebind keys every live
+  Chappy actor at Pod setup; 54 was the ARENA_GATE line count); the s3-pod-run never completed run().
 
-### Six-gate table (source 44) — for lane 02 ingestion
+### Six-gate table — for lane 02 ingestion
 
-| gate | status | evidence |
-|---|---|---|
-| identity_spawn | PASS | `P2_ENEMY_READY species=BlueKochappy source_id=44`, 64-pose bank — `output/dsw/l13-out/s2-run/native.log` |
-| movement_animation | PASS | FSM wait/turn/walk/attack — `output/dsw/l13-out/s2-run/native.log:1040` |
-| attacks_receivers | PASS | `P2_KOCHAPPY_EAT … eaten=1 slot=1` + `P2_KOCHAPPY_SWALLOW … swallowed=1 white=0` — `output/dsw/l13-out/s2-run/native.log:1040,1333` |
-| death_corpse | PASS | `P2_KOCHAPPY_DEAD … health=0.0` → `P2_KOCHAPPY_CORPSE` — `output/dsw/l13-out/s2-run/native.log:1615,1958` |
-| transport_reward | BLOCKED | transport PASS (544.6-unit carry — `output/dsw/l13-out/s2-cleanup-run/native.log:3051`); receipt branch registers corpse (rebind after=2 — `output/dsw/l13-out/s3-pod-run/native.log:710`); natural corpse›Pod delivery blocked by #397 movie flow |
-| cleanup_reentry | PASS | `P2_DWARF_ORANGE_FORGET`+`P2_KOCHAPPY_FSM_FORGET` — `output/dsw/l13-out/s2-cleanup-run/native.log:3048-3049`; re-entry `new_red=250 control=130 birth=pass` — `output/dsw/l13-out/s3-reentry-run2/native.log:1209` |
+## Concrete source ID
+- Source ID: 44 `BlueKochappy`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | `P2_ENEMY_READY species=BlueKochappy source_id=44 … source_FSM=implemented`, 64-pose `P2_DWARF_ORANGE_BANK` — `output/dsw/l13-out/s2-run/native.log:835-836` | natural |
+| 2. Autonomous movement and animation | PASS (natural) | FSM states `wait/turn/walk/attack` sampled — `output/dsw/l13-out/s2-run/native.log:987` | natural |
+| 3. Attacks and receivers | PASS (natural) | `P2_KOCHAPPY_EAT … eaten=1 slot=1` and `P2_KOCHAPPY_SWALLOW … swallowed=1 white=0` — `output/dsw/l13-out/s2-run/native.log:1040,1333` | natural |
+| 4. Death and corpse | PASS (natural) | `P2_KOCHAPPY_DEAD … health=0.0` then `P2_KOCHAPPY_CORPSE … native=host_escape_now` — `output/dsw/l13-out/s2-run/native.log:1615,1958` | natural |
+| 5. Actual transport and reward | PASS (natural) | FreeMode ring-deploy squad self-assigns carry (`transport` 1→7), corpse delivered to Pod → `P2_POD_RECEIPT id=corpse:211001 value=2 new=1 pokos=2` — `output/dsw/l13-out/fix4-pod-run/native.log:945,1213` | natural |
+| 6. Cleanup and re-entry | PASS (natural) | `P2_DWARF_ORANGE_FORGET` + `P2_KOCHAPPY_FSM_FORGET` on the death funnel — `output/dsw/l13-out/s2-cleanup-run/native.log:3048-3049`; manager re-entry `old_registry=clear … new_red=250 control=130 birth=pass` — `output/dsw/l13-out/s3-reentry-run2/native.log:1209,1505` | natural (squad throttled to 2 by fixture) |
 
 Snow (45) run was not re-run (not cheap: separate Snow arena/bank/profile pipeline); skipped.
 
@@ -459,7 +454,7 @@ Fixtures (`status=built`): reentry `output/dsw/l13-out/s3-reentry-fixture2` and 
 `PIKMIN_NATIVE_ROOT=…/native-l13 py -3.12 -m pytest tests/test_pikmin2_kochappy_fsm.py
 tests/test_pikmin2_dwarf_orange_fsm_witness.py tests/test_pikmin2_dwarf_orange_cleanup.py
 tests/test_pikmin2_dwarf_orange_chain.py tests/test_pikmin2_dwarf_orange_pod.py
-tests/test_pikmin2_enemy_roster.py -q` -> 34 passed, 1 skipped.
+tests/test_pikmin2_enemy_roster.py -q` -> **35 passed** (MinGW on PATH).
 
 ### Remaining blockers (naming provider lanes)
 
@@ -492,3 +487,80 @@ py -3.12 …/slot.py run gl l13 -- py -3.12 -m experimental.pikmin2_dwarf_orange
 
 Net: the two explore agents removed the Pod/re-entry reconnaissance cost; the general agent's edit
 was accepted unchanged.
+
+## Slice 4 (review fixes)
+
+Following the slice-3 MERGE-WITH-FIXES review, this slice fixes the two blocking items
+(ingest gate-table format; gate-5 evidence completed via a natural ring-deploy Pod run)
+plus the three review notes.
+
+### Fixes
+
+1. **Ingest gate table** ... the handoff's six-gate table is now the lane-02 contract
+   (`| Gate | Result | Evidence | Injected vs natural |`, rows `1.`-`6.`, a
+   `Source ID: 44 `BlueKochappy`.` line directly above). All six rows are cited natural
+   PASSes (`output/dsw/l13-out/{s2-run,s2-cleanup-run,s3-reentry-run2,fix4-pod-run}/native.log:NNN`).
+
+   `py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE13_DEEPSEEK_HANDOFF.md`:
+
+   ```
+   44 BlueKochappy (role=source):
+     1. identity_spawn     accepted [PASS]
+     2. movement_animation accepted [PASS]
+     3. attacks_receivers  accepted [PASS]
+     4. death_corpse       accepted [PASS]
+     5. transport_reward   accepted [PASS]
+     6. cleanup_reentry    accepted [PASS]
+   ```
+
+   `py -3.12 scripts/ingest_p2_handoff_gates.py docs/PIKMIN2_LANE13_DEEPSEEK_HANDOFF.md`:
+
+   ```
+   44 BlueKochappy (role=source):
+     advances: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
+     blocking (admission_requirements): (none)
+   ```
+
+   (Both scripts were materialised from `claude/p2-deepseek-wave` for the check and are
+   NOT committed.)
+
+2. **Gate 5 natural receipt** ... `experimental/pikmin2_dwarf_orange_pod.py` was rewritten
+   to mirror the lane-19 ring-deploy pattern (park captain beyond sight, FreeMode
+   ring-deploy of the 20 reds, re-ring every 120, NO `TransportMode` writes). The run
+   `output/dsw/l13-out/fix4-pod-run` completes through `run()` to `passed:true`, exit 0:
+   natural FSM death (`P2_KOCHAPPY_DEAD` :864), corpse (`P2_DWARF_ORANGE_POD_CORPSE`
+   :922), FreeMode squad self-assigns carry (`transport` 1?7, `P2_DWARF_ORANGE_POD_CARRY`
+   :945+), and the Pod receipt `P2_POD_RECEIPT id=corpse:211001 value=2 new=1 pokos=2`
+   (:1213). The Pod pre-registers both arena actors (`P2_POD_CORPSES_REBOUND after=2`);
+   this is followed by the actual natural carry, not just registration.
+
+3. **Gate-6 re-entry label** ... the six-gate row 6 label now reads
+   `natural (squad throttled to 2 by fixture)`.
+
+4. **Pod PASS require non-vacuous** ... the witness's completion require is
+   `pc_p2_preview_pokos()>0` (a real receipt), not `>=0`.
+
+5. **Hygiene** ... `docs/PIKMIN2_ENEMY_ROSTER_EVIDENCE.json` entry 44 notes cite the
+   lane-13 handoff (no `output/dsw/l13-out/...` paths) and the file ends with a trailing
+   newline; `docs/PIKMIN2_DWARF_ORANGE_CLEANUP.md` build/run provenance is generic
+   (no Codex/`output/native-lane13-*` paths); test count corrected to `35 passed`.
+
+### Commits (slice 4)
+
+Root `deepseek/p2-l13` (head `a5e2bf3` before this handoff commit, clean):
+- `f7de428` lane13: review fixes 4 ... ingest gate table, ring-deploy pod witness, hygiene (#120)
+- `a5e2bf3` lane13: pod witness test matches ring-deploy markers (#120)
+- (this commit) lane13: review fixes 4 handoff (#120)
+
+Native `deepseek/p2-l13-native` unchanged at `1888fb3e` (clean).
+
+### Build evidence (dirty=no)
+
+Native unchanged (`native=1888fb3e... sha256=5b68fda6... ninja_n="ninja: no work to do."`).
+Pod fixture `status=built` (executable `5386512db612...`).
+
+### Tests
+
+`py -3.12 -m pytest tests/test_pikmin2_dwarf_orange_pod.py tests/test_pikmin2_dwarf_orange_chain.py
+tests/test_pikmin2_kochappy_fsm.py tests/test_pikmin2_dwarf_orange_fsm_witness.py
+tests/test_pikmin2_dwarf_orange_cleanup.py tests/test_pikmin2_enemy_roster.py -q` -> all pass.
