@@ -312,9 +312,12 @@ def validate(text, code):
         sprout_settled=bool(re.search(r'P2_POM_SPROUT_SETTLED generator=%d species=RandPom requested=9 born=9 conservation=1' % RANDPOM, text)),
         state_walk=all(re.search(r'P2_POM_STATE generator=%d species=RandPom from=\w+ to=%s' % (RANDPOM, s), text)
                        for s in ('open', 'swing', 'close', 'shot', 'dead')),
-        dead=bool(re.search(r'P2_POM_DEAD generator=%d species=RandPom used=1 refunds=0 corpse=0 budget=1' % RANDPOM, text)),
+        dead=bool(re.search(r'P2_POM_DEAD generator=%d species=RandPom used=1 refunds=0 corpse=0 budget=1' % RANDPOM, text))
+             and bool(re.search(r'P2_POM_DEAD generator=%d species=RedPom used=5 refunds=1 corpse=0 budget=5' % REDPOM, text)),
         conservation=bool(re.search(r'P2_POM_CONSERVATION generator=%d species=RandPom used=1 refunds=0 requested=9 born=9 '
-                                    r'dead_pikis=\d+ loss_counted=0' % RANDPOM, text)),
+                                    r'dead_pikis=\d+ loss_counted=0' % RANDPOM, text))
+                     and bool(re.search(r'P2_POM_CONSERVATION generator=%d species=RedPom used=5 refunds=1 requested=6 born=6 '
+                                        r'dead_pikis=\d+ loss_counted=0' % REDPOM, text)),
         bind=bool(re.search(r'P2_POM_BIND generator=%d species=RedPom source_id=4 host=teki type=\d+' % REDPOM, text))
              and bool(re.search(r'P2_POM_BIND generator=%d species=RandPom source_id=8 host=teki type=\d+' % RANDPOM, text)),
         drawn=all(re.search(r'P2_POM_DRAW generator=%d species=RedPom pose=%s draws=[1-9]\d*' % (REDPOM, pose), text)

@@ -83,6 +83,8 @@ class ProtocolTests(unittest.TestCase):
             'P2_POM_STATE generator=353007 species=RandPom from=shot to=dead\n'
             'P2_POM_DEAD generator=353007 species=RandPom used=1 refunds=0 corpse=0 budget=1\n'
             'P2_POM_CONSERVATION generator=353007 species=RandPom used=1 refunds=0 requested=9 born=9 dead_pikis=0 loss_counted=0\n'
+            'P2_POM_DEAD generator=353003 species=RedPom used=5 refunds=1 corpse=0 budget=5\n'
+            'P2_POM_CONSERVATION generator=353003 species=RedPom used=5 refunds=1 requested=6 born=6 dead_pikis=0 loss_counted=0\n'
             'PASS P2_POM_NATIVE bind_draw_fsm_walk\n'
         )
         good = pr.validate(text, 0)
@@ -101,6 +103,10 @@ class ProtocolTests(unittest.TestCase):
         # A budget-exhausted death that never happens must fail.
         nodead = text.replace('P2_POM_DEAD generator=353007 species=RandPom used=1 refunds=0 corpse=0 budget=1\n', '')
         self.assertFalse(pr.validate(nodead, 0)['passed'])
+        # RedPom's natural death (used=5) must also be observed, independently.
+        rednodead = text.replace('P2_POM_DEAD generator=353003 species=RedPom used=5 refunds=1 corpse=0 budget=5\n', '')
+        self.assertFalse(pr.validate(rednodead, 0)['passed'])
+        self.assertIn('dead', pr.validate(rednodead, 0)['failed'])
         # A conversion that wrongly counted a loss must fail.
         loss = text.replace('loss_counted=0', 'loss_counted=1')
         self.assertFalse(pr.validate(loss, 0)['passed'])
@@ -108,13 +114,14 @@ class ProtocolTests(unittest.TestCase):
         nobind = text.replace('P2_POM_BIND generator=353007 species=RandPom source_id=8 host=teki type=3\n', '')
         self.assertFalse(pr.validate(nobind, 0)['passed'])
         self.assertIn('bind', pr.validate(nobind, 0)['failed'])
-        # Dropping both buds' confirmed draw for any single pose must fail.
+        # Dropping a single bud's confirmed draw for any pose must fail; each bud
+        # is required independently.
         for pose in pr.DRAW_POSES:
-            flip = text.replace('P2_POM_DRAW generator=353003 species=RedPom pose=%s draws=1\n' % pose, '')
-            flip = flip.replace('P2_POM_DRAW generator=353007 species=RandPom pose=%s draws=1\n' % pose, '')
-            result = pr.validate(flip, 0)
-            self.assertFalse(result['passed'], pose)
-            self.assertIn('drawn', result['failed'], pose)
+            for gen, sp in ((353003, 'RedPom'), (353007, 'RandPom')):
+                flip = text.replace('P2_POM_DRAW generator=%d species=%s pose=%s draws=1\n' % (gen, sp, pose), '')
+                result = pr.validate(flip, 0)
+                self.assertFalse(result['passed'], (sp, pose))
+                self.assertIn('drawn', result['failed'], (sp, pose))
 
     def test_instrument_replaces_room_app(self):
         source = 'prefix\nclass RoomApp : public PlugPikiApp {\n int idle() override { return 0; }\n};\nint main(int, char**) { return 0; }\n'
