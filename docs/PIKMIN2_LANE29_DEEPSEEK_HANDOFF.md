@@ -529,3 +529,125 @@ byte-identical, so gates 4/5 keep their earlier run citations.
 py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE29_DEEPSEEK_HANDOFF.md
 ```
 
+## Diagnostic slice: gate 1 (identity_spawn)
+
+Kurage is still one gate from admission: `identity_spawn` remains PARTIAL. This
+diagnostic did not relabel the old sidecar auto-bind as natural.
+
+### Preferred generated-seed route
+
+The lane-04/05 generated-seed route is unavailable for source 57 in this lane's
+baseline:
+
+- `randomizer/p2_placement_catalog.py` has candidate specs for other families but
+  no Kurage (`Kurage`/57) candidate.
+- The wave `docs/PIKMIN2_ADMITTED_PLACEMENT.json` has accepted slot UIDs only for
+  other identities (BlueKochappy and the elemental Otakara cohort); it has no
+  Kurage profile and no `accepted_slot_uids` for 57.
+- `scripts/run_p2_generated_seed.py` is absent from this lane's root baseline.
+- The committed roster may list 57 as bindable, but lane 02's overlay still denies
+  admission by default, and target tokens must come from lane 04 placement.
+
+### Arena fallback attempt
+
+A fresh private arena was staged with its real Kurage frog generator
+(`_70=201001`) plus a private room-preview seed bridge:
+
+- `output/dsw/l29-out/identity-spawn-57/6df7d329494542e0a2173268b7d5bf02/enemy-p2-57.txt`:
+  `ENEMY_P2 1 <compiled-roster-revision> 1`, then `201001 57`.
+- `.../p2-placement-slots.txt`: real room `_70` values mapped to placement-slot
+  UIDs, including `201001 201001`.
+- `.../p2-kurage-teki.txt`: `P2_KURAGE_TEKI_1 1 201001 0`.
+- Runtime: `p2_kurage_runtime.exe --experimental-pikmin2-room
+  --receiver-corpse-receipt --randomizer-seed enemy-p2-57.txt` with
+  `PIKMIN_P2_ROOM_WINDOW=960x540` and `PYTHONUTF8=1`, run from
+  `output/dsw/l29-out/identity-spawn-57/6df7d329494542e0a2173268b7d5bf02`
+  through `py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l29`.
+
+Exact rerun (from that run directory):
+
+```powershell
+$env:PIKMIN_P2_ROOM_WINDOW = "960x540"
+$env:PYTHONUTF8 = "1"
+$env:PATH = "C:\msys64\mingw64\bin;" + $env:PATH
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l29 -- C:/Users/alari/pikmin-randomizer/output/dsw/native-l29-build/p2_kurage_runtime.exe --experimental-pikmin2-room --receiver-corpse-receipt --randomizer-seed enemy-p2-57.txt
+```
+
+The process did not reach actor birth. Its failure marker is:
+
+- `output/dsw/l29-out/identity-spawn-57/6df7d329494542e0a2173268b7d5bf02/native.log:382`:
+  `[Pikmin Randomizer] unknown saved generator ID`
+
+A one-record Kurage-only diagnostic profile failed at the same startup point, so
+this is not merely an unmapped extra Pikmin/goal record. The relevant provider
+flow is:
+
+- `native/pc_port/pc_randomizer.cpp:619-628`: generator binding checks cataloged
+  P1 spawn slots, then the `p2-placement-slots.txt` `_70` join.
+- `native/pc_port/pc_randomizer.cpp:587-596`: an unmapped generator aborts with
+  `unknown saved generator ID`.
+- `native/src/plugPikiNakata/genteki.cpp:131-146`: `P2_SEED_RESOLVE` can only be
+  emitted afterward, inside `GenObjectTeki::birth`.
+
+No `P2_SEED_RESOLVE source_id=57` and no new `P2_KURAGE_TEKI_READY` exists in the
+failed run. The older ready/binding citations remain fixture-bound, not natural.
+
+### Verdict
+
+`BLOCKED gate1: missing lane-04 accepted Kurage placement slot for source 57.`
+A provider-owned mapping/behavior is also needed so the room-preview seed bridge
+can pass its private `_70`→slot join without aborting generator load for the
+rest of the staged room profile.
+
+### Validator and tests
+
+- `experimental/pikmin2_kurage_spawn.py`: inline-text validator requiring both
+  `P2_SEED_RESOLVE source_id=57 target=...` and `P2_KURAGE_TEKI_READY
+  generator=...` with the same generator/token mapping.
+- `tests/test_pikmin2_kurage_spawn.py`: 5 passed, covering a passing sample,
+  stripped-seed failure, seed/bind mismatch, bind-only failure, and an explicit
+  nonnumeric-target mapping case.
+
+```powershell
+$env:PYTHONUTF8 = "1"
+py -3.12 -m pytest tests/test_pikmin2_kurage_spawn.py -q
+# .....  5 passed in 0.10s
+```
+
+### Build evidence used here
+
+`output/dsw/l29-build-evidence.txt`:
+
+- `p2_kurage_runtime` at native `50dde734928e402b2b1277920301628e89fb3fd3`, dirty=no, `p2_kurage_runtime.exe`
+  sha256 `ec7e51c760e1407976890e1bd67b4c5552c4b24efaa0b5d8156ca71f754e2902`, `ninja -n` no work.
+- `pikmin_pc` at native `50dde734928e402b2b1277920301628e89fb3fd3`, dirty=no, `bin/nectar.exe`
+  sha256 `335c275302d61d19ef8c79aeb645bcca23c3c5d49e9aaa43b5c673442adeae79`, `ninja -n` no work.
+
+No native source changes were made for this diagnostic slice; the native branch
+remains at `50dde734...`, clean.
+
+### Subagent usage
+
+- Source audit: corroborated the room-bridge and `_70`/spawn-slot distinction.
+- Candidate inventory: confirmed that no lane-04 Kurage candidate/profile and no
+  lane-05 cohort-57 runner exists in the lane baseline.
+- Test scaffolding: delivered the spawn validator/test shape; its sample-token
+  semantics and marker-strip cases were used as-is.
+- The failed GL diagnosis, handoff edit, build evidence, and final gate verdict
+  were done directly, without letting subagents build, run fixtures, commit, or
+  touch shared files.
+
+### Checker output
+
+```
+py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE29_DEEPSEEK_HANDOFF.md
+57 Kurage (role=source):
+  1. identity_spawn     ignored [PARTIAL]
+  2. movement_animation accepted [PASS]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   accepted [PASS]
+  6. cleanup_reentry    accepted [PASS]
+72 OniKurage (role=source): warning (shared table) - named in prose but no table of its own; give it a `Source ID` line + six-gate table to claim its gates
+```
+
