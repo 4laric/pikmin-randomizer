@@ -95,3 +95,14 @@ run reports `Extinction`.
   the captain/squad and never inject enemy state.
 - Not claimed: generated-seed placement (lane 03/04), campaign save/re-entry,
   whole-scene heap teardown, mixed-scene frame budget.
+
+## Pushed (git push policy)
+
+- Root `origin` (4laric/pikmin-randomizer): `claude/p2-deepseek-wave`
+  `7d183286..27f7d656` (admission + engine re-export).
+- Native `fork` (4laric/Open-Nectar---Pikmin-Native-PC-Port):
+  `claude/p2-deepseek-wave-native` `1d0141c2..8f55bbc6`.
+- Lane branches `opencode/p2-l30-drive` / `opencode/p2-l30-drive-native` remain
+  local (the push policy covers `feature/**`, `fix/**`, `deepseek/**`,
+  `claude/**`, `codex/**`; the wave branches above carry the merged work).
+
