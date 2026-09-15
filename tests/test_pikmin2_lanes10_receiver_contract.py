@@ -18,6 +18,7 @@ this unit suite. The per-module checks are small pure helpers over the source
 text so the negative forked-matrix self-test needs no build.
 """
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -27,7 +28,14 @@ ROOT = Path(__file__).resolve().parents[1]
 INTERACT_ELEMENTS = ("InteractFire", "InteractBubble", "InteractGas", "InteractDenki")
 MATRIX_TOKENS = ("p2_emitter_accepts(", "p2_species_immune(")
 
-# Lane-10 consumer emitters (proven set) and their accepted/immune marker pair.
+# A pc_port module is a receiver consumer if it either consults the lane-10
+# emitter contract or constructs/stimulates an elemental receiver token. This
+# catches a NEW consumer that forks the matrix (it will still `stimulate(Interact<X>`
+# or mention the contract) even though it is absent from the proven set below.
+_EMIT_TRIGGER = re.compile(
+    r"p2_emitter_accepts\(|stimulate\(Interact(?:Fire|Bubble|Gas|Denki)")
+
+# Proven consumer emitters and their accepted/immune marker pair.
 EMITTERS = [
     dict(
         rel="pc_port/pc_p2_otakara.cpp",
@@ -69,6 +77,22 @@ def _native():
     return None
 
 
+def _scan_emitters(native):
+    """Every pc_port/*.cpp that consumes the receiver contract."""
+    return sorted(
+        p for p in (native / "pc_port").glob("*.cpp")
+        if p.name != "pc_p2_hazard_emitter.cpp" and _EMIT_TRIGGER.search(p.read_text(errors="replace"))
+    )
+
+
+def _strip_comments(text):
+    """Strip C++ `//`-line and `/* */` comments so a fork cannot satisfy the
+    matrix-consult check through a comment mention only."""
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+    text = re.sub(r"//[^\n]*", "", text)
+    return text
+
+
 def _has_element(text):
     """True iff the source constructs at least one elemental receiver."""
     return any(name in text for name in INTERACT_ELEMENTS)
@@ -80,8 +104,10 @@ def _delivers(text, elements):
 
 
 def _consults_matrix(text):
-    """True iff immunity is derived from the lane-10..11 matrix, not forked."""
-    return any(token in text for token in MATRIX_TOKENS)
+    """True iff immunity is derived (on code, not comments) from the lane-10..11
+    matrix, not forked."""
+    stripped = _strip_comments(text)
+    return any(token in stripped for token in MATRIX_TOKENS)
 
 
 def _logs_markers(text, accepted_markers, rejected_markers):
@@ -124,8 +150,27 @@ def test_emitter_honours_receiver_contract(module):
         "accepted and immune markers collide"
 
 
+def test_every_discovered_emitter_consults_matrix():
+    """Catch a NEW consumer: enumerate pc_port/*.cpp that consume the contract
+    and require each to construct an element and consult the matrix (not fork
+    immunity in a comment or hardcoded table)."""
+    native = _native()
+    if native is None:
+        pytest.skip("lane native worktree not available")
+    modules = _scan_emitters(native)
+    known = {native / m["rel"] for m in EMITTERS}
+    assert known <= set(modules), \
+        "proven emitters vanished from pc_port scan: " + str(sorted(str(p) for p in (known - set(modules))))
+    for p in modules:
+        text = p.read_text(errors="replace")
+        assert _has_element(text), f"{p.name} forked: no elemental receiver token"
+        assert _consults_matrix(text), \
+            f"{p.name} forked: immunity matrix not consulted in code (comments stripped)"
+
+
 def test_contract_rejects_forked_matrix():
-    fake = (
+    # A forked emitter that stimulates the receiver but never consults the matrix.
+    forked = (
         "void forked_emit(Creature* owner, Piki* p) {\n"
         "    p->stimulate(InteractGas(owner, 1.0f));\n"
         '    std::printf("P2_FAKE_HIT applied=1\\n");\n'
@@ -134,8 +179,23 @@ def test_contract_rejects_forked_matrix():
     accepted = ("P2_FAKE_HIT",)
     rejected = ()
 
-    assert _has_element(fake)
-    assert not _consults_matrix(fake)
-    assert not _logs_markers(fake, accepted, rejected)
+    assert _has_element(forked)
+    assert not _consults_matrix(forked)
+    assert not _logs_markers(forked, accepted, rejected)
     assert not _markers_distinct(accepted, rejected)
-    assert module_passes(fake, accepted, rejected) is False
+    assert module_passes(forked, accepted, rejected) is False
+
+
+def test_matrix_mention_only_in_comment_fails():
+    # A fork that mentions the contract only in a comment must not pass.
+    commented = (
+        "// was p2_emitter_accepts(pc_p2_species(p), P2HazardGas, false)\n"
+        "void forked_emit(Creature* owner, Piki* p) {\n"
+        "    if (p->mColor == Red) return;  // hardcoded immunity (forked)\n"
+        "    p->stimulate(InteractGas(owner, 1.0f));\n"
+        '    std::printf("P2_FAKE_HIT applied=1\\n");\n'
+        "}\n"
+    )
+    assert _has_element(commented)
+    assert not _consults_matrix(commented)   # comment mention was stripped
+    assert not module_passes(commented, ("P2_FAKE_HIT",), ())
