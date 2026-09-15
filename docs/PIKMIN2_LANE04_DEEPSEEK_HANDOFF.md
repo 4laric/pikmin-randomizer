@@ -540,3 +540,121 @@ report.
 - resolve_placement_layout binds every stage-0 ground target to source 44/45 (seed-a: 6 of 11 to 44); `seed_slot_uid` takes the first binding in (len, str) order, so the sidecar value is a lane-04 pick and the marker equals it by construction. "The slot the seed actually chose" is overstated: the seed chose a set, the sidecar took one of them. `seed_slot_uids` returns the last binding per source and is unused.
 - `run_audit` still skips the stage guard when neither argument nor probe arena_stage is present; only the CLI rejects. The claim "a catalog-join probe with no stage anywhere is rejected" holds for the CLI only.
 
+## Slice 4
+
+Bounded slice: **every binding, not one.** The seed bridge binds a *set* of
+stage-0 ground slots to each admitted source (44/45), so the sidecar and the
+probe report must carry the whole set and the audit must validate set equality,
+not membership of a single sidecar-inserted pick. This closes the reviewer's
+three slice-3 findings and adds the native co-occurrence contract.
+
+### (1) Every binding, not one — DONE (root)
+
+- `seed_slot_uid` is removed; `seed_slots(manifest, source_id)` returns the full
+  sorted binding set, and `seed_slot_uids(manifest)` returns
+  `{source_id: sorted [uids]}` (the old dict-comprehension kept only the last
+  binding per source and was unused).
+- `write_sidecar(directory, generator_slots)` now records every
+  `(generator_id, slot_uid)` pair (one line per generator), matching the probe's
+  one-marker-per-resolved-generator behaviour.
+- `tests/test_p2_seed_placement.py::test_marker_slot_set_equals_binding_set`
+  proves the parse-back marker-slot set equals the seed's binding set (not
+  membership of one); `test_seed_slot_uids_returns_full_set_per_source` proves the
+  two sources jointly cover the whole stage-0 ground set.
+
+### (2) Catalog-join stage rejection lives in `run_audit` — DONE
+
+- `run_audit` now hard-fails (`SystemExit`) when a catalog-join probe has no
+  stage anywhere (neither argument nor `arena_stage` field), after the
+  unmatched-uid check so a missing uid still reports its own error first. the
+  standalone CLI no longer needs its own rejection. Two tests:
+  `test_run_audit_rejects_catalog_join_without_any_stage` and
+  `test_run_audit_rejects_wrong_recorded_stage` (plus the passing
+  `test_run_audit_stage_guard_from_probe_passes`).
+- `scripts/run_p2_seed_placement.py` docstring lane references were removed.
+
+### (3) Native co-occurrence contract — validator + flip tests DONE; live run blocked
+
+New `experimental/pikmin2_seed_placement_native.py::validate_cooccurrence` and
+`tests/test_p2_seed_placement_native.py` close the three-marker loop a room run
+should emit once the native bridge + spawn catalog + family adapter keying agree:
+
+- `P2_PLACEMENT_SLOT generator=<g> slot=<u>` (lane 04) ↔
+- `P2_SEED_RESOLVE source_id=<s> target=<u>` (seed bridge) ↔
+- `P2_ENEMY_READY source_id=<s> generator=<g>` (identity birth)
+
+The validator requires a closed `generator -> slot -> source` and
+`generator -> birth source` triple for a cohort source (44/45); six flip tests
+prove each marker (and a non-cohort source) flips the result. Two
+`PIKMIN_NATIVE_ROOT`-guarded source-pin tests confirm the emission sites
+(`P2_PLACEMENT_SLOT` in `pc_p2_placement_probe.cpp`, `P2_SEED_RESOLVE` in
+`genteki.cpp`). Against the wave native the whole file is green (9 passed);
+against the lane-04 native worktree only the `genteki.cpp` pin fails, confirming
+the seed-bridge hook is present on the wave but not yet in the lane-04 native
+base.
+
+The **live room run** of the three markers together is **NOT achieved** this
+slice: it needs the seed bridge (lane 03) merged into the lane-04 native build,
+the room generator to resolve a spawn-catalogue uid, and the family adapter
+(lane 13/05) to key the live birth on the spawn-slot uid instead of `_70` — the
+same blockers the lane 03 slice-2 handoff names. See "Remaining blockers".
+
+### Files owned (root only; no native change this slice)
+
+- New: `experimental/pikmin2_seed_placement_native.py`, `tests/test_p2_seed_placement_native.py`.
+- Modified: `experimental/pikmin2_seed_placement.py`, `scripts/audit_p2_placement_evidence.py`,
+  `scripts/run_p2_seed_placement.py`, `tests/test_p2_seed_placement.py`,
+  `tests/test_p2_placement_audit.py` (adds `arena_stage=0` to the `allow_unmapped`
+  call).
+- Native: **unchanged** (the probe + sidecar mechanism already landed; nothing was
+  needed for the root-side full-set/stage-guard/validator work).
+
+### Assumptions
+
+- The full-set equality is proven at the root boundary (sidecar + parser) with
+  synthetic generator ids; the two-generator Dwarf Orange arena can only observe
+  a subset of a seed's binding set, so the runtime runner asserts membership-in-set
+  and reports the full set rather than claiming an N-generator set equality.
+- The Snow/Dwarf Orange acceptance and the admitted cohort remain injected
+  (deny-by-default ledger/catalog), labelled as such.
+
+### Remaining blockers (provider lane)
+
+- **Live part-(3) room run**: needs the seed-bridge spawn resolution to reach a
+  real bound actor in the room. That is lane 13/05 work (switch the family
+  adapter's actor selection from `mGenerator->_70` to the spawn-slot uid the seed
+  bridge keys on) plus the room-course generator entry in the native spawn
+  catalogue (lane 03 named this the lane-04 ask in their slice-2 handoff). The
+  co-occurrence validator, flip tests and wave source-pins are committed and
+  green so the run can be claimed immediately once the native side lines up.
+
+### Tests
+
+```
+py -3.12 -m pytest tests/test_p2_seed_placement.py tests/test_p2_seed_placement_native.py tests/test_p2_placement_probe.py tests/test_p2_placement_audit.py tests/test_p2_placement_native.py tests/test_p2_placement.py tests/test_pikmin2_seed_generation.py tests/test_pikmin2_seed_bridge.py -q
+128 passed, 2 skipped, 17 subtests passed
+```
+
+`2 skipped` are the `PIKMIN_NATIVE_ROOT`-guarded native source-pins; with
+`PIKMIN_NATIVE_ROOT=<native-wave>` the whole `test_p2_seed_placement_native.py`
+file is `9 passed`.
+
+### Commits (this slice)
+
+- Native: **none** (no C++ change; branch `deepseek/p2-l04-native` stays at `b446f0b1`).
+- Root: `55ea972` `lane04: slice 4 - full binding set, audit stage guard, co-occurrence validator (#440)`
+  (+ this handoff commit).
+
+### One exact reproduction command
+
+```
+py -3.12 -m pytest tests/test_p2_seed_placement.py tests/test_p2_seed_placement_native.py -q
+PIKMIN_NATIVE_ROOT=C:/Users/alari/pikmin-randomizer/output/dsw/native-wave py -3.12 -m pytest tests/test_p2_seed_placement_native.py -q
+```
+(run from `C:/Users/alari/pikmin-randomizer/output/dsw/l04-root`.)
+
+## Subagent usage (slice 4)
+
+No `task` tool is present, so this slice was done solo, as the slice-3 handoff
+already noted.
+
