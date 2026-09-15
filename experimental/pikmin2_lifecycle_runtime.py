@@ -223,10 +223,14 @@ public:int idle() override {
   if(teardownScene){
    GameCoreSection* core=lifecycleFindCore(gameflow.mGameSection);
    require(core!=nullptr,"host section core node");
+   // exitStage invalidates manager/stage-heap objects; assert the family is
+   // still registered BEFORE the exit so the drop to 0 is a real clear and
+   // not a vacuous 0==0 (mirrors native tools/p2_kurage_runtime.cpp:297-301).
+   require(refsBefore>=1,"scene exit requires a live family registration before exitStage");
    core->exitStage();
    const int refsAfter=int(__COUNT_EXPR__);
    const int naviNull=int(naviMgr==nullptr);
-   std::printf("P2_LIFECYCLE_SCENE_EXIT host=exitStage refs_after=%d navi_null=%d\n",refsAfter,naviNull);
+   std::printf("P2_LIFECYCLE_SCENE_EXIT host=exitStage refs_before=%d refs_after=%d navi_null=%d\n",refsBefore,refsAfter,naviNull);
    require(refsAfter==0&&naviNull==1,"host exitStage did not clear family registries");
    std::printf("PASS P2_LIFECYCLE_RUNTIME\n");std::fflush(stdout);std::_Exit(0);
   }else{
@@ -428,7 +432,8 @@ def validate(text, code, manifest, name='long-legs', cycles=1, teardown='manager
     tmode = re.findall(r'P2_LIFECYCLE_TEARDOWN_MODE mode=(\S+)', text)
     tdown = re.findall(r'P2_LIFECYCLE_TEARDOWN refs_before=(\d+) refs_after=(\d+)', text)
     life = summary[0] if summary else None
-    scene_exit = re.findall(r'P2_LIFECYCLE_SCENE_EXIT host=exitStage refs_after=(\d+)(?: navi_null=(\d+))?', text)
+    scene_exit = re.findall(r'P2_LIFECYCLE_SCENE_EXIT host=exitStage refs_before=(\d+) '
+                            r'refs_after=(\d+)(?: navi_null=(\d+))?', text)
 
     # Per-cycle registries are marked cycle=1..N; the manager-reset post-teardown
     # re-entry is cycle=N+1 (family _reset then _setup), while scene-teardown only
@@ -449,7 +454,13 @@ def validate(text, code, manifest, name='long-legs', cycles=1, teardown='manager
 
     teardown_cleared = bool(tdown) and tdown[0][1] == '0'
     teardown_reentry = len(post_teardown) == 1 and post_teardown[0] == 1
-    scene_teardown_ok = bool(scene_exit) and scene_exit[0][0] == '0'
+    # Scene teardown is a real clear only if the family was registered (>=1)
+    # before exitStage and 0 after; a bare refs_after==0 is not proof.
+    scene_teardown_ok = (bool(scene_exit) and int(scene_exit[0][0]) >= 1
+                         and scene_exit[0][1] == '0')
+    # Address reuse is observed from the REENTRY markers (present in both
+    # teardown modes), not the SUMMARY line (which the scene path never prints).
+    reused_observed = any(r[2] == '1' for r in reentry)
 
     reward_ok = True
     if cycles >= 2:
@@ -477,6 +488,7 @@ def validate(text, code, manifest, name='long-legs', cycles=1, teardown='manager
         rebound=len(binds) >= 2,
         drew=bool(draws),
         moved_first_born=moved_first_born,
+        reused_observed=reused_observed,
         teardown_mode=bool(tmode) and tmode[0] == teardown,
         registry_growth=registry_growth_ok,
         reward=reward_ok,
@@ -488,9 +500,10 @@ def validate(text, code, manifest, name='long-legs', cycles=1, teardown='manager
         checks['teardown_cleared'] = teardown_cleared
         checks['teardown_reentry'] = teardown_reentry
 
-    # moved_first_born is an honest first-born movement observation (ambush
-    # families may be idle), reported but not a hard pass gate.
-    passed = all(v for k, v in checks.items() if k != 'moved_first_born')
+    # moved_first_born (gate 2) and reused_observed (address reuse) are hard
+    # gates: a run whose first-born actor never moved >=1 unit, or whose freed
+    # generator slot was not reused, is not a pass.
+    passed = all(checks.values())
     return dict(passed=passed, checks=checks,
                 cycles=cycles, teardown_mode=teardown,
                 registry_growth_ok=registry_growth_ok,
@@ -502,7 +515,7 @@ def validate(text, code, manifest, name='long-legs', cycles=1, teardown='manager
                 forget_at_death=forget_at_death, forget_dispose=forget_dispose,
                 respawn_inject=inject,
                 reentry=reentry, summary=life,
-                reused_observed=bool(life) and int(life[5]) == 1,
+                reused_observed=reused_observed,
                 cycle_markers=cycle, registry=registry, reward=reward,
                 teardown_markers=tdown, scene_exit_markers=scene_exit,
                 bind_lines=len(binds), draw_lines=len(draws),

@@ -165,17 +165,17 @@ def test_validate_dwarf_orange_engine_forget_and_ready_rebind():
         'P2_LIFECYCLE_FORGET id=211001 registered_at_death=1\n'
         'P2_LIFECYCLE_FORGET id=211001 registered_after_dispose=0 engine=doKill\n'
         'P2_LIFECYCLE_RESPAWN_INJECT id=211001 generator=211001\n'
-        'P2_LIFECYCLE_REENTRY id=211001 frame=500 reused=0\n'
+        'P2_LIFECYCLE_REENTRY id=211001 frame=500 reused=1\n'
         'P2_ENEMY_READY species=BlueKochappy source_id=44 native_family=Chappy generator=211001\n'
         'P2_DWARF_ORANGE_DRAW corpse=0\n'
         'P2_LIFECYCLE_TEARDOWN_MODE mode=manager-reset\n'
         'P2_LIFECYCLE_TEARDOWN refs_before=1 refs_after=0\n'
         'P2_LIFECYCLE_REGISTRY cycle=2 count=1\n'
-        'P2_LIFECYCLE_SUMMARY family=1 alive=1 moved=1 death=240 reentry=500 reused=0 control=1\n'
+        'P2_LIFECYCLE_SUMMARY family=1 alive=1 moved=1 death=240 reentry=500 reused=1 control=1\n'
         'PASS P2_LIFECYCLE_RUNTIME\n')
     evidence = lifecycle.validate(text, 0, manifest, name='dwarf-orange')
     assert evidence['passed'], evidence['checks']
-    assert evidence['reused_observed'] is False  # allocator handed a fresh slot; not gated
+    assert evidence['reused_observed'] is True  # address reuse is a hard gate
 
 
 def test_teardown_modes_constant():
@@ -223,10 +223,11 @@ def _teardown_tail(refs_after=0, next_cycle=2):
             + 'P2_LIFECYCLE_REGISTRY cycle=%d count=1\n' % next_cycle)
 
 
-def _scene_exit_tail(refs_after=0):
-    """Scene-teardown tail: host exitStage (refs_after=0, navi nulled), then exit."""
+def _scene_exit_tail(refs_before=1, refs_after=0):
+    """Scene-teardown tail: host exitStage (refs_before>=1 -> refs_after=0), then exit."""
     return ('P2_LIFECYCLE_TEARDOWN_MODE mode=scene-teardown\n'
-            + 'P2_LIFECYCLE_SCENE_EXIT host=exitStage refs_after=%d navi_null=1\n' % refs_after)
+            + 'P2_LIFECYCLE_SCENE_EXIT host=exitStage refs_before=%d '
+              'refs_after=%d navi_null=1\n' % (refs_before, refs_after))
 
 
 def test_validate_multi_cycle_registry_growth_and_reward():
@@ -284,6 +285,26 @@ def test_validate_move_probe_precedes_first_death():
                               _ONE_ACTOR_MANIFEST)['checks']['moved_first_born'] is False
 
 
+def test_moved_first_born_and_reuse_are_hard_gates():
+    full = _BASE_PASS_LOG + _teardown_tail()
+    good = lifecycle.validate(full, 0, _ONE_ACTOR_MANIFEST)
+    assert good['passed'], good['checks']
+    assert good['checks']['moved_first_born'] is True
+    assert good['checks']['reused_observed'] is True
+
+    # No first-born MOVE >= 1.0 before death -> gate 2 fails the run.
+    no_move = full.replace('P2_LIFECYCLE_MOVE id=1 dist=5.000\n', '')
+    m = lifecycle.validate(no_move, 0, _ONE_ACTOR_MANIFEST)
+    assert m['checks']['moved_first_born'] is False
+    assert not m['passed']
+
+    # No address reuse -> the reuse gate fails the run.
+    no_reuse = full.replace('reused=1', 'reused=0')
+    r = lifecycle.validate(no_reuse, 0, _ONE_ACTOR_MANIFEST)
+    assert r['checks']['reused_observed'] is False
+    assert not r['passed']
+
+
 def test_validate_single_cycle_registry_growth_not_vacuous():
     missing_reentry = (_BASE_PASS_LOG
                        + 'P2_LIFECYCLE_TEARDOWN_MODE mode=manager-reset\n'
@@ -311,3 +332,9 @@ def test_validate_scene_teardown_requires_zero_refs_after():
                               0, _ONE_ACTOR_MANIFEST, teardown='scene-teardown')
     assert leak['scene_teardown_ok'] is False
     assert not leak['passed']
+
+    # refs_before=0 makes the refs_after=0 vacuous (nothing was registered).
+    no_pre = lifecycle.validate(_BASE_PASS_LOG + _scene_exit_tail(refs_before=0),
+                                0, _ONE_ACTOR_MANIFEST, teardown='scene-teardown')
+    assert no_pre['scene_teardown_ok'] is False
+    assert not no_pre['passed']

@@ -99,7 +99,7 @@ the pinned base; no native source change was needed). Both worktrees clean.
 | Gate | Result | Evidence (natural vs injected) |
 |---|---|---|
 | 1. Identity + spawn | PASS (natural) | `P2_ENEMY_READY species=BlueKochappy source_id=44 generator=211001 x=-150 y=30 z=1850 health=250.0 max_health=250.0` |
-| 2. Autonomous movement + animation | PASS (observed) | `P2_LIFECYCLE_MOVE id=211001 dist=4.062`; `P2_DWARF_ORANGE_DRAW` present |
+| 2. Autonomous movement + animation | PASS (first-born, no lure) | `P2_LIFECYCLE_MOVE id=211001 dist=2.766/3.505`; `P2_DWARF_ORANGE_DRAW` present |
 | 3. Attacks + receivers | natural receiver, injected lethal value | `P2_LIFECYCLE_ATTACK accepted=1 health=250.0 -> 0.0` (real `InteractAttack` receiver; value injected) |
 | 4. Death + corpse | death natural(receiver); disposal injected; engine forget | `registered_at_death=1` (corpse retains) -> `registered_after_dispose=0 engine=doKill` |
 | 5. Transport + reward | N/A | cargo-free arena, no Onion/Pod; lane 06 |
@@ -495,7 +495,7 @@ tree-walking `gameflow.mGameSection` for the `GameCoreSection` node
 
 ```
 P2_LIFECYCLE_TEARDOWN_MODE mode=scene-teardown
-P2_LIFECYCLE_SCENE_EXIT host=exitStage refs_after=0 navi_null=1
+P2_LIFECYCLE_SCENE_EXIT host=exitStage refs_before=1 refs_after=0 navi_null=1
 PASS P2_LIFECYCLE_RUNTIME                          # exit 0 (after exitStage)
 ```
 
