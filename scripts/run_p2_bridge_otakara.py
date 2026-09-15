@@ -122,6 +122,8 @@ def main():
         'sidecar_pairs': [[g, u] for g, u in pairs],
         'seed_binding_slots': slots,
         'otakara_bind': bind,
+        'otakara_bind_dynamic': _lines(text, 'P2_OTAKARA_BIND_DYNAMIC'),
+        'generated_placement_lines': _lines(text, 'P2_GENERATED_PLACEMENT'),
         'resolve_lines': _lines(text, 'P2_SEED_RESOLVE'),
         'placement_lines': _lines(text, 'P2_PLACEMENT_SLOT'),
         'ready_lines': _lines(text, 'P2_ENEMY_READY'),

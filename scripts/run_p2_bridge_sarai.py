@@ -146,6 +146,7 @@ def main():
     text = log.read_text(encoding='utf-8', errors='replace')
 
     ready = _lines(text, 'P2_SARAI_READY')
+    generated = _lines(text, 'P2_GENERATED_PLACEMENT')
     report = {
         'run': str(stage),
         'seed': args.seed,
@@ -154,16 +155,23 @@ def main():
         'sidecar_pairs': [[g, u] for g, u in pairs],
         'seed_binding_slots': slots,
         'sarai_ready': ready,
+        'generated_placement_lines': generated,
         'resolve_lines': _lines(text, 'P2_SEED_RESOLVE'),
         'placement_lines': _lines(text, 'P2_PLACEMENT_SLOT'),
         'sarai_ready_source_23': any('source_id=23 ' in line for line in ready),
-        'sarai_ready_resolution_seed': any('resolution=seed' in line for line in ready),
+        # The surviving owner is the wave's birth-time dispatcher
+        # (`P2_GENERATED_PLACEMENT ... bound=1`, and the host `generated=1`);
+        # lane-03's superseded setup marker was `resolution=seed`.
+        'sarai_seed_bound': (
+            any(('generated=1' in line or 'resolution=seed' in line) for line in ready)
+            or any('source_id=23 ' in line and 'bound=1' in line for line in generated)
+        ),
         'exit': code,
     }
     (stage / 'bridge-sarai-report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     (args.output / 'latest-bridge-sarai.json').write_text(json.dumps({'run': str(stage)}, indent=2) + '\n')
     print(json.dumps(report, indent=2))
-    if not report['sarai_ready_resolution_seed']:
+    if not report['sarai_seed_bound']:
         sys.exit(1)
 
 

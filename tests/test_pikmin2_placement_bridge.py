@@ -45,12 +45,15 @@ def test_sarai_adapter_writes_seed_derived_sidecar(tmp_path):
     run = tmp_path / 'run'
     run.mkdir()
     assert family_install._validator('sarai')(source) is None
-    receipt = family_install._adapt_sarai(source, run, [(211001, 'Sarai'), (211002, 'Sarai')])
+    # install_layout calls the adapter once per binding with a SINGLE generator,
+    # so successive bindings must accumulate, not overwrite.
+    first = family_install._adapt_sarai(source, run, [(211001, 'Sarai')])
+    second = family_install._adapt_sarai(source, run, [(211002, 'Sarai')])
     text = (run / family_install.SARAI_ACTORS_TXT).read_text(encoding='ascii')
     assert text.splitlines()[0] == f'{family_install.SARAI_ACTORS_HEADER} 2'
     assert text.splitlines()[1:] == ['211001', '211002']
-    assert receipt['source_id'] == 23
-    assert receipt['generators'] == [211001, 211002]
+    assert first['source_id'] == 23 and first['generators'] == [211001]
+    assert second['generators'] == [211001, 211002]
 
 
 def test_sarai_validator_fails_closed_without_mouth_bank(tmp_path):
@@ -69,16 +72,25 @@ def _native_root():
 
 
 @pytest.mark.skipif(_native_root() is None, reason='PIKMIN_NATIVE_ROOT not set')
-def test_native_bridge_helper_exists_and_is_consulted():
+def test_wave_generated_placement_bridge_is_the_single_binding_owner():
+    """The birth-time dispatcher is the surviving owner; lane-03 setup-time
+    mechanisms (`findSeedActor`, the Otakara setup seed-scan) must be gone, so a
+    merged branch cannot double-bind."""
     root = _native_root()
-    header = (root / 'pc_port' / 'pc_randomizer.h').read_text(encoding='utf-8')
-    impl = (root / 'pc_port' / 'pc_randomizer.cpp').read_text(encoding='utf-8')
-    assert 'pc_randomizer_p2_source_for_70' in header
-    assert 'unsigned pc_randomizer_p2_source_for_70' in impl
-    # It joins the placement sidecar to the seed binding, failing closed.
-    assert 'pc_randomizer_placement_slot_uid(generator70)' in impl
+    genteki = (root / 'src' / 'plugPikiNakata' / 'genteki.cpp').read_text(encoding='utf-8')
+    dispatcher = (root / 'pc_port' / 'pc_p2_generated_placement.cpp').read_text(encoding='utf-8')
     sarai = (root / 'pc_port' / 'pc_p2_sarai_manager.cpp').read_text(encoding='utf-8')
     otakara = (root / 'pc_port' / 'pc_p2_otakara.cpp').read_text(encoding='utf-8')
-    assert 'findSeedActor' in sarai and 'pc_randomizer_p2_source_for_70' in sarai
-    assert 'pc_randomizer_p2_source_for_70' in otakara
-    assert 'p2dweevil::FireId' in otakara
+    # Survived: the birth-time binding from GenObjectTeki::birth.
+    assert 'pc_p2_generated_placement_bind' in genteki
+    assert 'pc_p2_sarai_manager_bind_dynamic' in dispatcher
+    assert 'pc_p2_otakara_bind_dynamic' in dispatcher
+    assert 'pc_p2_sarai_manager_bind_dynamic' in sarai and 'pc_p2_otakara_bind_dynamic' in otakara
+    # Deleted: lane-03's superseded setup-time mechanisms.
+    assert 'findSeedActor' not in sarai
+    assert 'pc_randomizer_p2_source_for_70' not in otakara
+    impl = (root / 'pc_port' / 'pc_randomizer.cpp').read_text(encoding='utf-8')
+    header = (root / 'pc_port' / 'pc_randomizer.h').read_text(encoding='utf-8')
+    assert 'pc_randomizer_p2_source_for_70' not in impl and 'pc_randomizer_p2_source_for_70' not in header
+    # Fail-closed Otakara sidecar restored: a bad header/row returns, not binds.
+    assert 'header != "P2_DWEEVIL_ACTORS_1"' in otakara

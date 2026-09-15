@@ -169,15 +169,26 @@ def _adapt_sarai(source, run, actors):
     Writes ``p2-sarai-actors.txt`` from the seed's assigned generator ids in the
     batch-2 ``<header> <count>`` + one generator per line shape, so the
     seed-derived binding is recorded for audit; the native Sarai module selects
-    by the seed source directly (``pc_randomizer_p2_source_for_70 == 23``).
+    by the seed source directly. ``install_layout`` calls this once per binding
+    with a SINGLE generator, so the sidecar is accumulated (order-preserving
+    union) rather than overwritten when a seed binds Sarai to several generators.
     """
     run = Path(run)
     generators = [int(generator) for generator, _species in actors]
     if not generators:
         raise StagingError('Sarai install requires at least one generator')
-    text = f'{SARAI_ACTORS_HEADER} {len(generators)}\n' + '\n'.join(str(g) for g in generators) + '\n'
-    (run / SARAI_ACTORS_TXT).write_text(text, encoding='ascii')
-    return dict(species='Sarai', source_id=23, generators=generators,
+    path = run / SARAI_ACTORS_TXT
+    existing = []
+    if path.is_file():
+        tokens = path.read_text(encoding='ascii').split()
+        # Format is ``<header> <count>`` then one generator per line.
+        if len(tokens) < 2 or tokens[0] != SARAI_ACTORS_HEADER or int(tokens[1]) != len(tokens) - 2:
+            raise StagingError(f'existing {SARAI_ACTORS_TXT} is malformed')
+        existing = [int(token) for token in tokens[2:]]
+    merged = list(dict.fromkeys(existing + generators))  # order-preserving union
+    text = f'{SARAI_ACTORS_HEADER} {len(merged)}\n' + '\n'.join(str(g) for g in merged) + '\n'
+    path.write_text(text, encoding='ascii')
+    return dict(species='Sarai', source_id=23, generators=merged,
                 actors_config_sha256=hashlib.sha256(text.encode('ascii')).hexdigest())
 
 
