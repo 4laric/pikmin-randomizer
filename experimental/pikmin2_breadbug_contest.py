@@ -493,21 +493,32 @@ class SmallContestMirror:
 _MARKER_RE = re.compile(
     r'(P2_BREADBUG_CONTEST_BEGIN|P2_BREADBUG_CONTEST_UPDATE|'
     r'P2_BREADBUG_CONTEST_STOLEN|P2_BREADBUG_CONTEST_GRANT|'
-    r'P2_BREADBUG_CONTEST_PROBE|P2_BREADBUG_OWNER_DIED|'
+    r'P2_BREADBUG_CONTEST_PROBE|P2_BREADBUG_CONTEST_INTERRUPT|'
+    r'P2_BREADBUG_OWNER_DIED|'
     r'P2_BREADBUG_REVISIT)\b')
 _FIELD_RE = re.compile(r'([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|\S+)')
+
+# The legacy observation marker is the bare ``P2_BREADBUG_CONTEST`` name followed
+# by whitespace (never an underscore), so it is matched separately from the
+# suffixed ``_BEGIN``/``_UPDATE``/``_STOLEN``/``_GRANT``/``_PROBE``/
+# ``_INTERRUPT``/``_OWNER_DIED``/``_REVISIT`` markers above.
+_LEGACY_MARKER_RE = re.compile(r'P2_BREADBUG_CONTEST(?=\s|$)')
+
+
+def _line_fields(line):
+    fields = {}
+    for key, value in _FIELD_RE.findall(line):
+        if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+            value = value[1:-1]
+        fields[key] = value
+    return fields
 
 
 def _marker_fields(line):
     marker = _MARKER_RE.match(line)
     if marker is None:
         return None, None
-    fields = {}
-    for key, value in _FIELD_RE.findall(line):
-        if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
-            value = value[1:-1]
-        fields[key] = value
-    return marker.group(1), fields
+    return marker.group(1), _line_fields(line)
 
 
 def _field_int(fields, name):
@@ -540,6 +551,11 @@ def parse_contest_consumer(text, generator):
         'grants': 0,
         'owner_died': False,
         'owner_died_released': False,
+        'owner_died_released_raw': None,
+        'interrupt': False,
+        'interrupt_reason': [],
+        'update_carriers': [],
+        'integrity_violations': 0,
         'revisit': False,
         'update_outcomes': [],
         'pass_marker': False,
@@ -547,12 +563,18 @@ def parse_contest_consumer(text, generator):
         'probe_before_first_grant': 0,
     }
     granted_seen = False
+    legacy_carriers = {}
     for raw in text.splitlines():
         line = raw.strip()
         if not line:
             continue
         if line.startswith('PASS P2_BREADBUG_CONTEST'):
             events['pass_marker'] = True
+            continue
+        if _LEGACY_MARKER_RE.match(line):
+            legacy_fields = _line_fields(line)
+            if legacy_fields.get('generator') == target:
+                legacy_carriers[target] = _field_int(legacy_fields, 'carriers')
             continue
         marker, fields = _marker_fields(line)
         if marker is None:
@@ -566,6 +588,11 @@ def parse_contest_consumer(text, generator):
             if outcome in (OUTCOME_HELD, OUTCOME_STOLEN, OUTCOME_RELEASED):
                 events[outcome] = True
                 events['update_outcomes'].append(outcome)
+            carriers = _field_int(fields, 'carriers')
+            if not granted_seen:
+                events['update_carriers'].append(carriers)
+                if carriers != legacy_carriers.get(target):
+                    events['integrity_violations'] += 1
         elif marker == 'P2_BREADBUG_CONTEST_STOLEN':
             events['stolen'] = True
             if _field_int(fields, 'released') == 1:
@@ -581,9 +608,14 @@ def parse_contest_consumer(text, generator):
             events['probe_markers'].append(_field_int(fields, 'carriers'))
             if not granted_seen:
                 events['probe_before_first_grant'] += 1
+        elif marker == 'P2_BREADBUG_CONTEST_INTERRUPT':
+            events['interrupt'] = True
+            events['interrupt_reason'].append(fields.get('reason'))
         elif marker == 'P2_BREADBUG_OWNER_DIED':
             events['owner_died'] = True
-            if _field_int(fields, 'released') == 1:
+            released_raw = _field_int(fields, 'released')
+            events['owner_died_released_raw'] = released_raw
+            if released_raw == 1:
                 events['owner_died_released'] = True
         elif marker == 'P2_BREADBUG_REVISIT':
             if _field_int(fields, 'rearmed') == 1:
@@ -612,12 +644,16 @@ def validate_contest_consumer(events):
     grants = int(events.get('grants', 0))
     grant_duplicate = bool(events.get('grant_duplicate'))
     probe_before_first_grant = int(events.get('probe_before_first_grant', 0))
+    interrupt = bool(events.get('interrupt'))
+    integrity_violations = int(events.get('integrity_violations', 0))
 
     gate_began = began
     gate_contest = held and stolen and released and granted
     gate_owner_died = owner_died and owner_died_released
     gate_grant = granted and grants == 1 and grant_duplicate
-    gate_primary_tug_natural = probe_before_first_grant == 0
+    gate_interrupt = interrupt
+    gate_primary_tug_natural = (probe_before_first_grant == 0
+                                and integrity_violations == 0)
 
     checks = {
         'began': began,
@@ -627,14 +663,17 @@ def validate_contest_consumer(events):
         'granted': granted,
         'owner_died': owner_died,
         'owner_died_released': owner_died_released,
+        'interrupt': interrupt,
+        'integrity_violations': integrity_violations,
         'grant_exactly_once': gate_grant,
         'probe_before_first_grant': probe_before_first_grant,
         'gate_began': gate_began,
         'gate_held_then_stolen_released_granted': gate_contest,
         'gate_owner_died_released': gate_owner_died,
         'gate_grant_exactly_once': gate_grant,
+        'gate_interrupt': gate_interrupt,
         'gate_primary_tug_natural': gate_primary_tug_natural,
     }
     passed = (gate_began and gate_contest and gate_owner_died and gate_grant
-              and gate_primary_tug_natural)
+              and gate_interrupt and gate_primary_tug_natural)
     return {'passed': passed, 'checks': checks}

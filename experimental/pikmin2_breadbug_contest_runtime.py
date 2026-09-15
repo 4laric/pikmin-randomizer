@@ -32,10 +32,12 @@ FIXTURE = ROOT / 'scripts/pikmin2_breadbug_contest_fixture.cpp'
 WINDOW_LINE = 'Experimental preview window set to 960x540 windowed and centered'
 GENERATOR = 186081
 
-SCOPE = ('P1 TEKI_Collec proxy bound to P2CargoContest; natural Stickers tug '
-         'reaches the Stolen outcome (stolen-outcome release) and grants exactly '
-         'once; injected revisit/owner-death phases are probe-tagged; natural '
-         'squad tug/carry ownership remains lane 04/06')
+SCOPE = ('P1 TEKI_Collec proxy bound to P2CargoContest; natural Stickers tug reaches '
+         'the Stolen outcome and grants exactly once; the real interruption path '
+         '(interrupt + handle destroy on the !held transition) fires when the proxy '
+         'delivers its cargo while Held; revisit refuses a duplicate; injected '
+         'carrier counts are module-confessed via P2_BREADBUG_CONTEST_PROBE; '
+         'natural squad tug/carry ownership remains lane 04/06')
 
 
 def validate(text, generator=GENERATOR):
