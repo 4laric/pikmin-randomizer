@@ -350,25 +350,26 @@
       ]
     },
     "44": {
-      "native_module": "pc_p2_dwarf_orange + pc_p2_kochappy_fsm",
+      "native_module": "pc_p2_dwarf_orange",
       "owner_lane": "13",
+      "eligibility": "candidate",
+      "eligibility_reason": "Dwarf Orange (BlueKochappy) native module present; behavior is P1 base-game AI (gate B PARTIAL); generated-session chain and natural placement/reward admission remain",
+      "source": [
+        "PIKMIN2_DWARF_ORANGE_NATIVE.md"
+      ],
+      "notes": [
+        "Sibling of Snow (YellowKochappy 45); both share the KochappyBase source family but are distinct source identities. A dwarf variant is a source identity, never a helper or alias.",
+        "Worker evidence is a private fixture PASS, not an admission: gate B PARTIAL, C/D P1-proxy PASS, E (lifetime) and G (product/mixed scene) BLOCKED (PIKMIN2_DWARF_ORANGE_NATIVE.md). Facts transcribed by lane 02 from that doc; pending lane 13 confirmation.",
+        "Admission requires the generated-session acceptance chain; this row keeps the admitted roster empty."
+      ],
       "gates": {
         "identity_spawn": "PASS",
-        "movement_animation": "PASS",
-        "attacks_receivers": "PASS",
-        "death_corpse": "PASS",
-        "transport_reward": "BLOCKED",
-        "cleanup_reentry": "PASS"
-      },
-      "eligibility": "candidate",
-      "eligibility_reason": "opt-in source KochappyBase FSM; natural combat/death/carry and both natural-death cleanup and manager re-entry observed; natural corpse-to-Pod reward delivery blocked by the shared #397 preview movie-flow gap",
-      "notes": [
-        "Dwarf Orange Bulborb (BlueKochappy 44): full source-state FSM on the maintained native line; opt-in via p2-dwarf-orange-fsm.txt.",
-        "Gates 1-4 natural on the wave: one 250 HP run logs bite + P2_KOCHAPPY_EAT eaten=1 + P2_KOCHAPPY_SWALLOW swallowed=1 + P2_KOCHAPPY_DEAD + P2_KOCHAPPY_CORPSE (output/dsw/l13-out/s2-run/native.log).",
-        "cleanup_reentry PASS: natural-death cleanup (doKill funnel -> P2_DWARF_ORANGE_FORGET + P2_KOCHAPPY_FSM_FORGET, output/dsw/l13-out/s2-cleanup-run/native.log) AND manager re-entry (old_registry=clear before_setup=130 new_red=250 control=130 birth=pass, output/dsw/l13-out/s3-reentry-run2/native.log).",
-        "transport_reward BLOCKED: natural Pikmin corpse carry observed (544.6 units, output/dsw/l13-out/s2-cleanup-run) and the Pod corpse-receipt branch registers the Chappy corpse (P2_POD_CORPSES_REBOUND after=2, output/dsw/l13-out/s3-pod-run), but a natural carried-into-Pod receipt was not observed: the Pod+combat observer trips the #397 preview movie-flow (P2_POD_CAPTAIN_RETURN). P2Economy exactly-once is unit-proven.",
-        "Not admitted: candidate evidence only, not a randomizer admission PASS (#120/#186)."
-      ]
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "BLOCKED"
+      }
     },
     "17": {
       "native_module": "pc_p2_frog",
@@ -759,28 +760,6 @@
       "notes": [
         "Fuefuki (Antenna Beetle): fuefuki motion/visual; natural claim/panic/death release + follow locomotion remain (#245)."
       ]
-    },
-    "44": {
-      "native_module": "pc_p2_dwarf_orange",
-      "owner_lane": "13",
-      "eligibility": "candidate",
-      "eligibility_reason": "Dwarf Orange (BlueKochappy) native module present; behavior is P1 base-game AI (gate B PARTIAL); generated-session chain and natural placement/reward admission remain",
-      "source": [
-        "PIKMIN2_DWARF_ORANGE_NATIVE.md"
-      ],
-      "notes": [
-        "Sibling of Snow (YellowKochappy 45); both share the KochappyBase source family but are distinct source identities. A dwarf variant is a source identity, never a helper or alias.",
-        "Worker evidence is a private fixture PASS, not an admission: gate B PARTIAL, C/D P1-proxy PASS, E (lifetime) and G (product/mixed scene) BLOCKED (PIKMIN2_DWARF_ORANGE_NATIVE.md). Facts transcribed by lane 02 from that doc; pending lane 13 confirmation.",
-        "Admission requires the generated-session acceptance chain; this row keeps the admitted roster empty."
-      ],
-      "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "BLOCKED"
-      }
     },
     "45": {
       "native_module": "pc_p2_snow",
@@ -1330,7 +1309,7 @@
       "gates": {
         "identity_spawn": "UNTESTED",
         "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
+        "attacks_receivers": "PASS",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
         "cleanup_reentry": "UNTESTED"
