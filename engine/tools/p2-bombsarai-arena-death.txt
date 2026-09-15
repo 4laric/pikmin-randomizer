@@ -10,3 +10,4 @@ receiver 503 piki 0 15 -40 1 0
 receiver 504 teki 10 15 0 0 1
 events 1
 event 45 kill
+pool 1

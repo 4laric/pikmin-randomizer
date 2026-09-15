@@ -11,3 +11,4 @@ receiver 504 teki 10 15 119 0 1
 events 2
 event 50 stuck 0 1
 event 90 stuck 0 0
+pool 1
