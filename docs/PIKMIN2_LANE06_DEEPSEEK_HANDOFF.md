@@ -497,3 +497,96 @@ Root (`deepseek/p2-l06`, base `ef1cace`):
 - `general` #3 (count-accessor + two-path Python tests): used as-is — added
   `test_ledger_count_accessor_and_independence` and `test_two_paths_pod_vs_onion_vocabulary_do_not_collide`;
   confirmed `ReceiptLedger` exposes `__len__` (mirrored by `pc_p2_receipt_host_count`).
+
+## Slice 3 review fixes (fix3)
+
+### Items 1, 2, 4 — delivered
+
+1. Dropped the lane-06 Waterwraith hook. Merged `claude/p2-deepseek-wave-native`
+   (~lane 31 fix2, commit `6dfd8c8e`) and took lane 31's
+   `pc_p2_waterwraith_receipt(Pellet*, unsigned&)` + `sCorpses` map + per-tick
+   liveness sweep + its own `pc_p2_preview.cpp` dispatch (after otakara), removing
+   my `std::string&`-signature duplicate, `spawnedPellet` field, and my preview
+   branch (merge commit `27225e43`).
+2. Moved `pc_randomizer_p2_delivery_reset()` from the per-actor
+   `pc_p2_forget_teki` into `pc_p2_reset_all_teki` (the stage-boundary seam it
+   documents), and restored the tab indentation at the forget-source hook.
+4. Repo path corrected (`native/pc_port` -> `engine/pc_port`) in
+   `docs/PIKMIN2_REWARD_RECEIPTS.md`; the two-path vocabulary test now asserts
+   through the real identity helpers + `pikmin2_reward_lifecycle.validate` instead
+   of a hand-built list; CTest log archived at `output/dsw/l06-out/ctest-fix3.txt`
+   (4/4 pass at native `27225e43`, dirty=no).
+
+Added the free-mode requirement to the Pod contract (both the header block and
+`docs/PIKMIN2_REWARD_RECEIPTS.md`): natural pickup needs free-mode Pikmin
+(`Piki::graspSituation` only runs from `ActFree`; `mIdleWorkSearchRange` 100.0);
+reference fixtures must release the squad (`Navi::releasePikis` /
+`Piki::changeMode(FreeMode)`).
+
+### Item 3 (end-to-end GL reference) — BLOCKED
+
+A fresh corpse -> Pod -> `pc_p2_preview_deliver` -> family receipt GL run could not
+be produced this slice from lane 06's worktree:
+
+- **Waterwraith (lane 31, the requested view-less corpse):** the stand-in
+  `newNumberPellet` has `mPelletView == nullptr`; lane 31's own wave runs record
+  `P2_WATERWRAITH_CARRY_UNRESOLVED … no_natural_carry` /
+  `P2_WATERWRAITH_CARRY_BLOCKED … viewless_number_pellet_mPelletView_null` (carry is
+  formation-mode locked); fixing it needs a free-mode release in lane 31's fixture,
+  which is beyond lane 06's module boundary.
+- **Mamuta (lane 19, the proven corpse-leaving family on the wave):** `l19-out` has
+  the prebuilt natural fixture + `imported/` + `pod/`, but running it from lane 06's
+  root exits 3 with `P2_MAMUTA invalid profile` (`pc_port/pc_p2_mamuta.cpp:29` →
+  `loadModel` `assets/dataDir/courses/pikmin2room/<name>.mod`): lane 06's
+  `experimental/pikmin2_mamuta_arena.prepare` does not stage the Miulin `.mod` model
+  clips (lane 19's branch does); that module is lane 19's and is not edited here.
+
+Consequence: the `99 BlackMan` six-gate table in this handoff is superseded — the
+Waterwraith receipt is now lane 31's, so the transport/reward rows stay
+`UNTESTED (injected)`/`PARTIAL` with no lane-06 evidence, and no positive
+`P2_POD_RECEIPT id=corpse:…` run is claimed. The Onion-path reference is unchanged
+(`44 BlueKochappy` table, `delivery-run-fix2b`).
+
+### Checker output (after fix3)
+
+```
+44 BlueKochappy (role=source):
+  1. identity_spawn     ignored [PARTIAL]
+  2. movement_animation ignored [N/A]
+  3. attacks_receivers  ignored [N/A]
+  4. death_corpse       ignored [PARTIAL]
+  5. transport_reward   ignored [PARTIAL]
+  6. cleanup_reentry    ignored [N/A]
+99 BlackMan (role=source):
+  1. identity_spawn     ignored [N/A]
+  2. movement_animation ignored [N/A]
+  3. attacks_receivers  ignored [N/A]
+  4. death_corpse       ignored [PARTIAL]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [N/A]
+```
+(checker exit 0; no refused PASS rows.)
+
+### Commits this pass
+
+Native (`deepseek/p2-l06-native`): `27225e43` merge wave + drop duplicate Waterwraith
+hook + move delivery reset to stage boundary.
+Root (`deepseek/p2-l06`): `787eb72` repo-path fix + de-tautologized two-path test;
+`fc476bd` free-mode contract note.
+
+### Subagent usage (fix3)
+
+- `explore` #1 (lane-31 merged receipt + free-mode facts): used as-is — gave the exact
+  wave signature `pc_p2_waterwraith_receipt(Pellet*, unsigned&)` + `sCorpses` + sweep,
+  my exact lines to remove (register.cpp:28/61/221-231, register.h:28/32/64-67,
+  preview.cpp:29/344-348), and the free-mode pickup facts
+  (`graspSituation` piki.cpp:912/1102-1128, `mIdleWorkSearchRange` 100.0,
+  `ActFree::exec` aiFree.cpp:182, `Navi::releasePikis`). This made the merge removal and
+  the contract free-mode note exact and fast.
+- `explore` #2 (assets + proven-family inventory): used as-is — identified `l31-out`
+  staged assets and named Mamuta (lane 19) as the only proven corpse→Pod→receipt family
+  with its runner command; also confirmed the Waterwraith carry is architecturally blocked.
+  Directly shaped the item-3 attempt and the honest BLOCKED record.
+- `general` #3 (de-tautologize the two-path test): used as-is — rewrote
+  `test_two_paths_pod_vs_onion_vocabulary_do_not_collide` to assert via the real helpers
+  + `validate` (44 passed); I committed it with the doc fixes.
