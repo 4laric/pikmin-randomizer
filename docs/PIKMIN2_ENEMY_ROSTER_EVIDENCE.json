@@ -1034,7 +1034,7 @@
     "59": {
       "native_module": "pc_p2_dweevil",
       "owner_lane": "22",
-      "eligibility": "candidate",
+      "eligibility": "admitted",
       "eligibility_reason": "FireOtakara: all six gates natural on the wave (lane 22 fix 4); the free-mode squad latched graspSituation and hauled the corpse to the Pod (corpse:otakara:349001).",
       "source": [
         "PIKMIN2_DWEEVIL_NATIVE.md"
@@ -1056,7 +1056,7 @@
     "60": {
       "native_module": "pc_p2_dweevil",
       "owner_lane": "22",
-      "eligibility": "candidate",
+      "eligibility": "admitted",
       "eligibility_reason": "WaterOtakara: all six gates natural on the wave (lane 22 fix 4); free-mode squad hauled the corpse to the Pod (corpse:otakara:349001). Attack gate is the InteractBubble receiver rejection on the immune squad.",
       "source": [
         "PIKMIN2_DWEEVIL_NATIVE.md"
@@ -1077,7 +1077,7 @@
     "61": {
       "native_module": "pc_p2_dweevil",
       "owner_lane": "22",
-      "eligibility": "candidate",
+      "eligibility": "admitted",
       "eligibility_reason": "GasOtakara: all six gates natural on the wave (lane 22 fix 4); free-mode squad hauled the corpse to the Pod (corpse:otakara:349001). Attack gate is the InteractGas receiver rejection on the immune squad.",
       "source": [
         "PIKMIN2_DWEEVIL_NATIVE.md"
@@ -1098,7 +1098,7 @@
     "62": {
       "native_module": "pc_p2_dweevil",
       "owner_lane": "22",
-      "eligibility": "candidate",
+      "eligibility": "admitted",
       "eligibility_reason": "ElecOtakara: all six gates natural on the wave (lane 22 fix 4); free-mode squad hauled the corpse to the Pod (corpse:otakara:349001). Attack gate is the InteractDenki receiver rejection on the immune squad.",
       "source": [
         "PIKMIN2_DWEEVIL_NATIVE.md"
