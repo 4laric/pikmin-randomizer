@@ -11,6 +11,7 @@
 #include <array>
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 namespace {
 struct Entry {
@@ -64,6 +65,9 @@ void dispose(Entry e, bool kill, bool restoreDetached)
     if (kill) {
         piki->setEraseKill();
         piki->kill(false);
+        std::printf("P2_KURAGE_RECEIVER_KILL owner=%p piki=%p alive_after=%d\n",
+                    (void*)e.owner, (void*)piki, int(piki->isAlive()));
+        std::fflush(stdout);
     } else {
         if (piki->mFSM) piki->mFSM->transit(piki, PIKISTATE_Normal);
         piki->changeMode(PikiMode::FreeMode, naviMgr ? naviMgr->getNavi() : nullptr);
@@ -99,6 +103,11 @@ bool reserve(Piki* piki, Entry::Phase phase)
         e.capturedScale = piki->mSRT.s;
         e.generation = sGeneration;
         e.phase = phase;
+        std::printf("P2_KURAGE_RECEIVER_HIT owner=%p piki=%p phase=%s alive=%d stick=%d\n",
+                    (void*)sOwner, (void*)piki,
+                    phase == Entry::Phase::Stomach ? "stomach" : "mouth",
+                    int(piki->isAlive()), int(piki->isStickTo()));
+        std::fflush(stdout);
         return true;
     }
     return false;
@@ -110,6 +119,7 @@ bool enterStomach(Entry& e)
     if (!piki || !piki->isAlive() || piki->isStickTo() || !piki->mayIstick()
         || e.generation != sGeneration || e.owner != sOwner || e.mouth != sMouth)
         return false;
+    const bool stickBefore = piki->isStickTo();
     piki->startStickObject(e.owner, e.mouth, -1, 0.0f);
     const bool linked = piki->getStickObject() == e.owner && piki->getStickPart() == e.mouth;
     if (!linked || !e.ingestion.capture()) {
@@ -119,6 +129,10 @@ bool enterStomach(Entry& e)
     piki->mVelocity.set(0.0f, 0.0f, 0.0f);
     piki->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
     e.phase = Entry::Phase::Stomach;
+    std::printf("P2_KURAGE_RECEIVER_ATTACH owner=%p piki=%p stick_before=%d stick_after=%d alive=%d scale=%.2f\n",
+                (void*)e.owner, (void*)piki, int(stickBefore), int(piki->isStickTo()),
+                int(piki->isAlive()), piki->mSRT.s.x);
+    std::fflush(stdout);
     return true;
 }
 }

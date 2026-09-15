@@ -19,6 +19,7 @@
 #include "teki.h"
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <map>
 namespace {
@@ -38,6 +39,8 @@ struct Binding {
     int motionTimer = 0;
     int autoAdmissions = 0;
     int fsmTicks = 0;
+    int logTimer = 0;
+    int lastLoggedState = -1;
     // Host walkToTarget (Move patrol / Chase pursuit) for the ordinary actor.
     Vector3f spawnPos;
     Vector3f patrolTarget;
@@ -51,6 +54,14 @@ std::map<BTeki*, Binding> s;
 // revoked (mirrors the mamuta pattern; BTeki::update keeps ticking dead bodies).
 std::map<BTeki*, unsigned> corpses;
 int gTickCalls = 0;
+// Lane-local production showcase (env `PIKMIN_P2_KURAGE_SHOWCASE`). Opt-in so the
+// default binding path is byte-identical: the bound generated actor runs the
+// transcribed source flight lifecycle and one live Pikmin is seeded into its
+// suction window so the real receiver can be observed. The body remains the
+// generated vehicle; flight, suction and ingestion are lane-driven.
+bool sShowcase = false;
+bool sShowcaseBaitSpawned = false;
+Piki* sShowcaseBait = nullptr;
 // Natural carcass -> Research Pod carry tail (lane-27 recipe). After the bound
 // generated actor really dies, the corpse Pellet is held, the captain is parked
 // beyond the 250u join-party range, and the FreeMode survivors are ringed onto
@@ -310,6 +321,8 @@ bool corpseTail()
 void pc_p2_kurage_teki_reset()
 {
     for (auto& x : s) pc_p2_kurage_receiver_owner_invalidated(x.first);
+    const int boundBefore = int(s.size());
+    const int corpseBefore = int(corpses.size());
     s.clear();
     corpses.clear();
     sCorpseTeki = nullptr;
@@ -317,8 +330,28 @@ void pc_p2_kurage_teki_reset()
     sCorpseProbeTick = 0;
     sCorpseDelivered = false;
     sCaptainParked = false;
+    sShowcase = false;
+    sShowcaseBaitSpawned = false;
+    sShowcaseBait = nullptr;
+    if (boundBefore || corpseBefore) {
+        std::printf("P2_KURAGE_TEKI_RESET bound_before=%d corpse_before=%d bound_after=%d corpse_after=%d\n",
+                    boundBefore, corpseBefore, int(s.size()), int(corpses.size()));
+        std::fflush(stdout);
+    }
 }
-void pc_p2_kurage_teki_forget(BTeki* t) { if (t) { revoke(t); corpses.erase(t); } }
+void pc_p2_kurage_teki_forget(BTeki* t)
+{
+    if (!t) return;
+    const bool wasBound = s.count(t) != 0;
+    const bool wasCorpse = corpses.count(t) != 0;
+    revoke(t);
+    corpses.erase(t);
+    if (wasBound || wasCorpse) {
+        std::printf("P2_KURAGE_TEKI_FORGET bound=%d corpse=%d remaining=%d\n",
+                    int(wasBound), int(wasCorpse), int(s.size() + corpses.size()));
+        std::fflush(stdout);
+    }
+}
 bool pc_p2_kurage_teki_is_bound(const BTeki* t) { return t && s.count(const_cast<BTeki*>(t)); }
 
 void pc_p2_kurage_teki_setup()
@@ -348,6 +381,14 @@ void pc_p2_kurage_teki_setup()
         if (!pc_p2_kurage_receiver_setup(t, &b.mouth)) std::abort();
         std::printf("P2_KURAGE_TEKI_READY generator=%u type=%d binding=private_adapter\n", gen, type);
         std::printf("P2_KURAGE_CORPSE_READY generator=%u drop=BDT_Normal ledger=onion receipt=corpse:kurage:%u\n", gen, gen);
+        if (std::getenv("PIKMIN_P2_KURAGE_SHOWCASE")) {
+            b.fsmEnabled = true;
+            b.fsm = p2kurage::Fsm();
+            b.fsm.spawn();
+            sShowcase = true;
+            std::printf("P2_KURAGE_SHOWCASE_ARMED generator=%u fsm=1 bait=1\n", gen);
+            std::fflush(stdout);
+        }
     }
 }
 
@@ -381,6 +422,31 @@ void pc_p2_kurage_teki_tick(BTeki* t)
         pc_p2_kurage_receiver_update(dt, true, t->mHealth > 0.0f, false);
         return;
     }
+
+    // Showcase target: after the actor has demonstrated its autonomous patrol,
+    // seed one live Pikmin into its suction window so the source Attack state's
+    // real receiver can be observed. FreeMode keeps the candidate from biting the
+    // body before the suction owns it; it is repositioned until the receiver
+    // takes control, exactly like a Pikmin walking under the body.
+    if (sShowcase && !sShowcaseBaitSpawned && b.fsmTicks > 300
+        && pikiMgr && naviMgr && naviMgr->getNavi()) {
+        Piki* bait = static_cast<Piki*>(pikiMgr->birth());
+        if (bait) {
+            bait->init(naviMgr->getNavi());
+            bait->initColor(Red);
+            bait->setFlower(Leaf);
+            bait->changeMode(PikiMode::FreeMode, naviMgr->getNavi());
+            bait->resetPosition(Vector3f(t->mSRT.t.x, t->mSRT.t.y - 30.0f, t->mSRT.t.z));
+            sShowcaseBait = bait;
+            sShowcaseBaitSpawned = true;
+            std::printf("P2_KURAGE_SHOWCASE_BAIT spawned=1 x=%.3f y=%.3f z=%.3f\n",
+                        bait->mSRT.t.x, bait->mSRT.t.y, bait->mSRT.t.z);
+            std::fflush(stdout);
+        }
+    }
+    if (sShowcaseBait && sShowcaseBait->isAlive()
+        && !pc_p2_kurage_receiver_controls(sShowcaseBait))
+        sShowcaseBait->resetPosition(Vector3f(t->mSRT.t.x, t->mSRT.t.y - 30.0f, t->mSRT.t.z));
 
     // Source flight lifecycle authority for the ordinary generated actor.
     p2kurage::In in;
@@ -445,6 +511,20 @@ void pc_p2_kurage_teki_tick(BTeki* t)
     }
     tickAttack(b, dt * kAttackFramesPerSecond);
     refresh(t, b);
+    if (++b.logTimer >= 30) {
+        b.logTimer = 0;
+        std::printf("P2_KURAGE_MOVE tick=%d x=%.3f y=%.3f z=%.3f state=%d motion=%d anim=%.2f\n",
+                    b.fsmTicks, t->mSRT.t.x, t->mSRT.t.y, t->mSRT.t.z,
+                    (int)out.state, (int)out.motion,
+                    b.attackPlaying ? b.attackPlayer.frame() : 0.0f);
+        std::fflush(stdout);
+    }
+    if ((int)out.state != b.lastLoggedState) {
+        b.lastLoggedState = (int)out.state;
+        std::printf("P2_KURAGE_STATE tick=%d state=%d motion=%d altitude=%.3f\n",
+                    b.fsmTicks, (int)out.state, (int)out.motion, out.altitude);
+        std::fflush(stdout);
+    }
     if ((out.isSucking || b.sucking)
         && pc_p2_kurage_receiver_scan_admit(0.0f, kSourceAttackRadius, kMaxAutoAdmissions, true) > 0)
         ++b.autoAdmissions;

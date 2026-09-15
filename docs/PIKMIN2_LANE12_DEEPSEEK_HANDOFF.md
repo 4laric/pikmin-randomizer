@@ -1,4 +1,4 @@
-﻿# Lane 12 (Captains/squad) â€” DeepSeek handoff (#130)
+# Lane 12 (Captains/squad) â€” DeepSeek handoff (#130)
 
 Implementation owner: Codex through shared account `4laric`; executing session:
 DeepSeek (`deepseek-v4-pro`), recorded separately per AGENTS.md. This handoff

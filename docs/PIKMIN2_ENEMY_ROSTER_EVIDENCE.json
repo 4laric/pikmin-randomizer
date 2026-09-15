@@ -1004,7 +1004,7 @@
         "attacks_receivers": "PASS",
         "death_corpse": "PASS",
         "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "cleanup_reentry": "PASS"
       },
       "notes": [
         "Kurage (Lesser Spotted Jellyfloat): ingestion admit/mouth/stomach/kill16s/shrink/bitter PASS (natural); owner-death eject PASS (natural) for Kurage; Greater captain capture remains open.",
