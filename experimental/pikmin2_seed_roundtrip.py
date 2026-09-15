@@ -41,6 +41,14 @@ class Validation:
     def __repr__(self) -> str:
         return f"Validation(ok={self.ok!r}, reason={self.reason!r})"
 
+    def _asdict(self) -> dict:
+        return {
+            "ok": self.ok,
+            "reason": self.reason,
+            "targets": list(self.targets),
+            "sources": sorted(self.sources),
+        }
+
 
 def parse_resolves(text: str) -> list[tuple[int, int]]:
     """Return ``(target_uid, source_id)`` pairs for every ``P2_SEED_RESOLVE`` line."""

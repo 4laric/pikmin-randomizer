@@ -328,3 +328,109 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l0
     --exe "C:/Users/alari/pikmin-randomizer/output/dsw/native-l03-build/bin/nectar.exe" \
     --output "C:/Users/alari/pikmin-randomizer/output/dsw/l03-out"
 ```
+
+## Slice 3
+
+Goal: the real chunk-trip. Drive the generator-cache write/read on the live room
+generator, then reboot in cache mode with the `_70` sidecar removed. Also land the
+carry-forward fixes.
+
+Result: the **cache record round-trip is proven at the real-code level** (the
+`Generator::write`/`Generator::read` ramMode record, i.e. the SLT1 + spawn-slot uid
+trailer, round-trips on the live room generator 211001 and re-resolves source 44);
+the **cross-process "reboot in cache mode" is BLOCKED** because room generator
+211001 carries `mCarryOverFlags == 0` (no `GENCARRY_SaveGenerator`) and the room
+preview never reaches the day-end save. Persistence stays UNTESTED.
+
+### Carry-forward fixes landed
+
+- `gameCoreSection.cpp:2384` now passes `gen->_70` to `pc_randomizer_bind_generator`
+  (parity with generator.cpp:1063/1072).
+- `Validation._asdict()` added; `scripts/test_p2_room_resolve.py` records
+  `result['validation'] = validate_log(text, require_ready=...)._asdict()`, logs the
+  real exit reason (`ok`/`timeout`/`exit-N`), and requires markers before success
+  (exits 1 otherwise).
+- Sidecar `static bool loaded` load-once documented (correct: fresh process per boot).
+- Admission is fixture-forced via `experimental.pikmin2_seed_placement.generate_admitted_seed`
+  (monkeypatched `ADMITTED_COHORT=(44,45)`), so the "natural PASS" label below is a
+  fixture-forced admission, not a lane-02-admitted seed.
+- Rebuilt both targets clean at head.
+
+### The cache round-trip hook (native, env-gated, room-only)
+
+`gameCoreSection.cpp` `GameCoreSection::updateAI()` gains a block gated on
+`pc_pikipelago_room_preview() && getenv("PIKMIN_P2_CACHE_ROUNDTRIP")` that iterates
+the live `generatorList`, and for each generator with a bound uid runs the real
+`Generator::write` (ramMode) into a stream, constructs a fresh `Generator`, runs
+`Generator::read` (ramMode), and re-resolves `pc_randomizer_p2_source_for_id` on the
+restored uid. It prints `P2_ROOM_CACHE_ROUNDTRIP uid=.. restored=.. source_id=..
+carry_flags=..` and aborts on any mismatch. This runs the exact SLT1+uid trailer code
+the day-end cache serializes (generator.cpp:907-910 write / :830-833 read), not
+hand-packed bytes.
+
+### Runtime evidence (GL, slot.py run gl l03)
+
+Absolute logs under `C:/Users/alari/pikmin-randomizer/output/dsw/l03-out/`:
+
+- `p2-room-cache-roundtrip.log` (dirty=no build): natural birth
+  `P2_SEED_RESOLVE source_id=44 target=5465461 original_type=3`, lane-04
+  `P2_PLACEMENT_SLOT generator=211001 slot=5465461`, lane-13/05 `P2_ENEMY_READY
+  species=BlueKochappy`, then
+  `P2_ROOM_CACHE_ROUNDTRIP uid=5465461 restored=5465461 source_id=44 carry_flags=0`
+  and `TEST_ONLY p2_room_cache_roundtrip_pass bound=1` (exit 0).
+- `p2-room-resolve.log`: natural resolve re-confirmed after the change (validation
+  ok, exit `timeout`).
+
+### Six-gate table (slice 3 delta)
+
+| Gate | Result | Label |
+|---|---|---|
+| 1 Exact identity + spawn | PASS (natural, fixture-forced admission) | unchanged from slice 2b: `P2_SEED_RESOLVE source_id=44 target=5465461` re-confirmed. |
+| Persistence (cache round-trip) | UNTESTED | In-process REAL `Generator::write`/`read` round-trip PASSES (uid 5465461 survives, re-resolves 44). Cross-process "reboot on cache" BLOCKED: room generator 211001 `mCarryOverFlags == 0` (no `GENCARRY_SaveGenerator`, so the day-end loop `gameCoreSection.cpp:642` skips it), and the room preview never reaches `cleanupDayEnd`/`saveCurrentGame` (write half unreachable); the read half (`createRamGenerators` gameCoreSection.cpp:1223) runs on an empty `generatorCache` (cleared at gameSetup.cpp:253, no `loadCard`). |
+
+### Build evidence (output/dsw/l03-build-evidence.txt)
+
+- probe: native `251f3669f0bfb2aadfb0cf3e70be48cb8b3ab642` dirty=no,
+  `sha256 7be61101897dc67dd9695bc4b4b3b2a895c781ce09c0d375be735bcafb1cc8b5`.
+- `pikmin_pc`: native `251f3669f0bfb2aadfb0cf3e70be48cb8b3ab642` dirty=no,
+  `bin/nectar.exe`, `sha256 7457f619b8df650b1ebd7ee34324d7beb4257247dea2405d76dfd85a95d3b41b`,
+  `ninja -n` = "ninja: no work to do."
+
+### Tests run
+
+- `py -3.12 -m pytest tests/test_pikmin2_seed_roundtrip.py tests/test_pikmin2_seed_bridge.py tests/test_pikmin2_seed_generation.py -q` → 37 passed, 2 skipped (source-pin tests skip without `PIKMIN_NATIVE_ROOT`).
+- `scripts/test_p2_room_resolve.py --cache-roundtrip` → `roundtrip_pass=True`, exit 0.
+- `scripts/test_p2_room_resolve.py` → `validation.ok=True`, exit timeout (re-confirm).
+
+### Remaining blockers
+
+- Cross-process cache resume needs (i) the room generator marked `GENCARRY_SaveGenerator`
+  (its carry-over flags are 0 today) and (ii) a room-preview `loadCard` of a serialized
+  `GeneratorCache::saveCard` file injected after `gameSetup.cpp:253` `initGame()` and
+  before `newPikiGame.cpp:2021` `initStage()`. Both are new save/resume plumbing the
+  isolated, `save_resume=False` room deliberately has none of.
+
+### Subagent usage (honest)
+
+- `explore` #1 (cache-path audit): corrected the slice-2 premise and proved the read half
+  already executes while the write half is unreachable; exact citations driven straight
+  into this handoff. Used as-is.
+- `explore` #2 (inventory): named the reusable `GeneratorCache::saveCard/loadCard` API and
+  confirmed no two-boot room resume exists; also flagged `gameCoreSection.cpp:2384` missing
+  `_70`. Used as-is.
+- `general` #3 (validator): added `Validation._asdict()` + three pytest cases (passed). Used
+  as-is; I did the native hook, the script exit/marker logic and the GL runs myself.
+Net: the two `explore` audits collapsed ~1.5h of manual read; the `general` validator edit
+was adopted verbatim.
+
+### One exact reproduction command
+
+```
+py -3.12 scripts/test_p2_room_resolve.py \
+  --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" \
+  --bank "C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-bank" \
+  --profile "C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-ref" \
+  --exe "C:/Users/alari/pikmin-randomizer/output/dsw/native-l03-build/bin/nectar.exe" \
+  --output "C:/Users/alari/pikmin-randomizer/output/dsw/l03-out" \
+  --cache-roundtrip --timeout 90
+```
