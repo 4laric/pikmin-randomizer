@@ -354,11 +354,14 @@ Kochappy bank, and run it end-to-end at 960x540.
 |---|---|---|
 | native | `e292cb73` | lane11: bank-free Mother Bulbmin host resolver + generator in mother-birth marker (#131) |
 | native | `db39f652` | lane11(lane07 hook): release Bulbmin flock on any Chappy host forget (#131) |
+| native | `f8990bbf` | lane11: named failing-write contract test (drop set tracked until commit) (#131) |
 | native | `d8656bae` | lane11: attach mother after cave_setup so wild births don't skew restore spawn count (#131) |
 | native | `878932fa` | lane11: proxy mother registers without birthing (LeafChappy birth out of scope) (#131) |
-| native | `f8990bbf` | lane11: named failing-write contract test (drop set tracked until commit) (#131) |
 | root | `a1465ac` | lane11: natural runtime with bank-free mother host + failing-write/flight flips (#131) |
 | root | `7827f4b` | lane11: natural gate-6 runtime — bank-free mother + real whistle + descend/exit (#131) |
+| root | `cc51be3` | lane11: update slice 3 handoff — natural gate 6 completed, bank-free mother (#131) |
+| root | `1c5d2f85` | lane11: integrator relabel — whistle is the fixture-invoked hook, not Navi::callPikis (#131) |
+| root | `4824b0f5` | lane11: fix doubled word in limitation text (#131) |
 
 Dirty state: none (both clean).
 
@@ -375,18 +378,25 @@ Dirty state: none (both clean).
 
 ### Six arena gates (natural gate 6)
 
-| Gate | Result | Evidence |
-|---|---|---|
-| 1. Identity + spawn | PASS (labeled stand-in) | `P2_BULBMIN_MOTHER_BIRTH ... generator=385875968` |
-| 2. Autonomous movement | source-backed N/A | no LeafChappy actor |
-| 3. Attacks / receivers | source-backed N/A | hazard immunity unchanged (lane 10/14) |
-| 4. Death + corpse | source-backed N/A | Bulbmin death is ordinary Piki death |
-| 5. Transport + reward | source-backed N/A | Bulbmin are not carried |
-| 6. Cleanup + re-entry | **PASS (live)** | fixture-invoked whistle hook (pc_p2_bulbmin_call_pikis, the code Navi::callPikis calls; Navi::callPikis itself not entered) recruited 1; descend dropped 1 wild; recruited persisted; exit move ran |
+Source ID: 67 LeafChappy
 
-Natural vs injected: recruitment is the whistle hook invoked directly by the fixture with a positioned cursor (Navi::callPikis not entered)
-(`pc_p2_bulbmin_call_pikis`), not the birth/whistle API; the mother is a
-bank-free labeled stand-in (no birthing); the fixture positions the captain and invokes the whistle hook directly.
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | UNTESTED (injected) | proxy stand-in host only; no LeafChappy actor | injected |
+| 2. Autonomous movement and animation | N/A | no LeafChappy actor this lane | N/A |
+| 3. Attacks and receivers | N/A | no LeafChappy receiver this lane | N/A |
+| 4. Death and corpse | N/A | no LeafChappy death this lane | N/A |
+| 5. Actual transport and reward | N/A | Bulbmin are not carried | N/A |
+| 6. Cleanup and re-entry | UNTESTED (injected) | output/dsw/l11-out/natural-run9/write/e5b527e9936a49958d78c80b2f73717f/capture/native.log:897 (descend) and read/3255ed0526b74d12a669b8c71511d1e8/capture/native.log:918 (exit) | injected |
+
+Natural vs injected: the whistle is the real `Navi::callPikis` path (the fixture
+calls `n->callPikis`; the marker prints `via=navi_callPikis`), but the mother is a
+bank-free labeled stand-in and the wild/recruited dependents are bound by the
+fixture through the bridge, so gate 6 stays UNTESTED (injected). This lane
+implements the Bulbmin species/dependency and the cave transition; the LeafChappy
+mother actor is not implemented, so no gate for 67 advances. Non-roster note:
+Bulbmin is Piki species 5; the roster row 67 (`LeafChappy`, common_name Bulbmin)
+is the mother enemy, not a spawnable Piki.
 
 ### Runtime markers
 
@@ -461,3 +471,119 @@ py -3.12 output/deepseek-wave/slot.py run gl l11 -- `
   --pod <lane>/pod --purple <lane>/purple `
   --exe <lane>/natural-fixture/fixture.exe --output <lane>/natural-run --seconds 75
 ```
+
+## Slice 4
+
+**Goal:** make the gate-6 whistle genuinely real (`Navi::callPikis` on the path,
+not the hook called directly), make the gate table visible to the ingester, and
+clear the slice-3 review hygiene.
+
+**Concrete change:**
+
+1. **Real whistle.** `pc_p2_bulbmin_call_pikis` gained a `const char* via`
+   argument and its marker is now
+   `P2_BULBMIN_WHISTLE recruited=%d wild=%zu recruited_total=%zu via=%s`
+   (`pc_p2_bulbmin.cpp`, braces fixed so the `fflush` is inside the log guard).
+   `navi.cpp` passes `"navi_callPikis"`, and the fixture now calls
+   `n->callPikis(1.0f)` instead of the hook, so `Navi::callPikis` is on the path
+   and the marker proves it.
+2. **Gate table.** `Source ID: 67 LeafChappy` now heads the six-gate table (only
+   the `N  Enum` and heading forms bind; the `N (Enum)` paren form does not), so
+   `scripts/check_p2_handoff_gates.py` finds the identity. The row values stay
+   honest: the mother is a proxy stand-in, so no gate advances.
+3. **Lane-13 hygiene** (separate commit): `pc_p2_kochappy_forget` no longer
+   forwards to `pc_p2_bulbmin_proxy_forget` (the lane-07 lifetime hook in
+   `pc_p2_teki_lifetime.cpp` now calls it directly), removing the double call and
+   an unused include.
+4. **Generator byte order (note only).** `generator=%u` prints raw
+   `Generator::_70`; `Generator::read` parses it through `generator.cpp`'s
+   `readID` (`__builtin_bswap32` over the already-swapping `Stream::readInt`), so
+   it is the source file's four id bytes read as a little-endian u32 — the
+   stager's big-endian 23 prints `385875968` (0x17000000). No shared byte-swap
+   accessor exists on the wave (every `pc_p2_*` consumer reads `_70` raw), so the
+   value is left raw and documented at the print site.
+
+### Ordered commits (slice 4)
+
+| Branch | Commit | Subject |
+|---|---|---|
+| native | `3f041672` | lane11: slice 4 real Navi::callPikis whistle hook (P2_BULBMIN_WHISTLE via=navi_callPikis) + brace fix (#131) |
+| native | `5b6da807` | lane13: drop redundant pc_p2_bulbmin_proxy_forget forward from pc_p2_kochappy_forget (#131) |
+| native | `040b9a45` | lane11: slice 4 document the byte-swapped Generator::_70 in the mother-birth marker (#131) |
+| root | `90c399c1` | lane11: slice 4 real Navi::callPikis whistle fixture + mother_host_resolved rename + via test (#131) |
+| root | handoff commit | lane11: slice 4 handoff (this file) (#131) |
+
+### Build + runtime evidence
+
+- `pikmin_pc` clean build at native `040b9a45` (`dirty=no`),
+  `[2/2] Linking CXX executable bin\nectar.exe`, `ninja -n` → no work to do.
+- `nectar.exe` SHA-256 `ee42c694277b33bc224c65cb72020dda320a5edffa4e8b0cd333f7cf63b4e957`.
+- Natural fixture `fixture.exe` SHA-256
+  `66c061eb9b4b4bdf3408274e075d0555a2d8928dc519dff46d5354c5822de197` (`status built`,
+  built at clean head `040b9a45`).
+- Live run (`slot.py run gl l11`, `PIKMIN_P2_ROOM_WINDOW=960x540`,
+  `PYTHONUTF8=1`): write exit 42, read exit 0, validator `passed=true` on all 10
+  checks — including `whistle_via_real_path`, which now requires
+  `via=navi_callPikis`.
+
+```text
+# write  output/dsw/l11-out/natural-run9/write/e5b527e9936a49958d78c80b2f73717f/capture/native.log
+   8 Experimental preview window set to 960x540 windowed and centered
+ 814 P2_BULBMIN_MOTHER_BIRTH model=kochappy_proxy generator=385875968 dependents=0 wild=0 recruited=0
+ 823 P2_BULBMIN_TX_BOUND wild=2
+ 824 P2_BULBMIN_WHISTLE recruited=1 wild=1 recruited_total=1 via=navi_callPikis
+ 897 P2_CAVE_BULBMIN_TRANSITION move=descend removed=1 kept=17 exiting=0
+ 898 P2_CAVE_TRANSFER floor=1 survivors=17 health=0.625 failed=0
+# read  output/dsw/l11-out/natural-run9/read/3255ed0526b74d12a669b8c71511d1e8/capture/native.log
+ 799 P2_CAVE_RESTORE species=5 maturity=0
+ 918 P2_CAVE_BULBMIN_TRANSITION move=exit removed=0 kept=17 exiting=1
+ 920 PASS P2_BULBMIN_NATURAL
+```
+
+### Gate table ingestion (`scripts/check_p2_handoff_gates.py`)
+
+```text
+> py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE11_DEEPSEEK_HANDOFF.md
+67 LeafChappy (role=source):
+  1. identity_spawn     ignored [UNTESTED]
+  2. movement_animation ignored [N/A]
+  3. attacks_receivers  ignored [N/A]
+  4. death_corpse       ignored [N/A]
+  5. transport_reward   ignored [N/A]
+  6. cleanup_reentry    ignored [UNTESTED]
+```
+
+Exit 0: the identity is found and no PASS row is refused (the proxy/injected
+gates are reported `UNTESTED`, never advanced).
+
+### Subagent usage (slice 4)
+
+- `explore` #1 (source audit) — confirmed the `Generator::_70` byte order
+  (`generator.cpp readID`), found **no** shared byte-swap accessor, and traced
+  `Navi::callPikis` (navi.cpp:1163, hook at :1249). Used as-is.
+- `explore` #2 (inventory) — reported source 67 `LeafChappy` role `source` and
+  proved that only `Source ID: 67 LeafChappy` / `## 67 LeafChappy` actually bind
+  a table (the brief's paren form does not). Used as-is; the brief's suggested
+  paren form was corrected to the binding form.
+- `general` #3 (scaffold) — renamed `mother_sidecar` → `mother_host_resolved`,
+  added the `via=navi_callPikis` requirement plus a `via=direct` flip, updated
+  the fake log and wiring test, and ran pytest. Used as-is (I then added the
+  `n->callPikis` fixture call and restored the real-whistle wording).
+
+### Tests run (slice 4)
+
+```text
+# MinGW on PATH (the g++ probe needs it)
+PIKMIN_NATIVE_ROOT=<native> py -3.12 -m pytest \
+  tests/test_pikmin2_bulbmin_natural_runtime.py tests/test_pikmin2_bulbmin_cave_filter.py -q
+        -> 16 passed
+```
+
+### Remaining blockers (slice 4)
+
+- Real LeafChappy/KumaChappy actor birth + `piki_kochappy` model: Chappy family
+  (lane 13/#120). Only then can `proxy==false` birth the source flock live and
+  gate 1/6 for 67 move off `UNTESTED (injected)`.
+- The generator id stays the raw byte-swapped `_70` until a shared accessor
+  exists (lane 02/roster tooling owns the convention).
+- Production cave placement / surface rebirth for the exit drop: cave lane.
