@@ -15,10 +15,6 @@ keys are ``slot`` (int, default 0), ``route_distance`` and ``x``/``y``/``z``.
 lists only mapped pairs (each carrying xyz/terrain/route/position) and whose
 ``slots`` lists only mapped catalog slots; unmapped generators are collected in
 ``unmapped_generators``.
-
-The module under test is produced by a parallel worker; while it is still on an
-older contract the assertions below deliberately fail so the drift is visible
-(and is reported here rather than silently patched).
 """
 import randomizer.p2_placement_probe as probe
 import randomizer.p2_placement_native as native
