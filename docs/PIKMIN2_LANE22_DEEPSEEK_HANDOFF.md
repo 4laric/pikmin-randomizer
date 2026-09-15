@@ -351,3 +351,153 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l2
 - Gate 4 corpse: no lane 06 receipt was staged (cargo-free arena); "corpse" means pellet existence only.
 - `P2_OTAKARA_SQUAD` printed enum constants (red=1 blue=0) in slice 2; the integrator restored the fix1 count loop. Root handoff commit a022252 belongs in the ordered list.
 
+## Slice 3 — host seams for death, forget and reward (gate 5 natural)
+
+Slice 2 proved death/corpse/forget with the fixture driving the forget call and
+a cargo-free arena (no receipt). Slice 3 moves all three seams onto the host: a
+Pod/Onion goal consumes the corpse, `pc_p2_preview_deliver` grants a lane-06
+receipt, `BTeki::die()` logs the real death seam, and
+`pc_p2_forget_teki` (in `BTeki::doKill`) clears the registration after the pellet
+is consumed — with `stale` computed, not literal. The integrator's slice-2 fixes
+(root `0a198a2`, native `4866c873`) are already on both worktrees.
+
+### Ordered commits (both branches)
+
+**Native** (`deepseek/p2-l22-native`, base `4866c873`):
+- `95d7d62b` — "lane22: host-seam death/forget/receipt markers — MODULE_DEAD relabel, computed forget, receipt hook (#447)"
+  (relabels the module mHealth<=0 observation to `P2_OTAKARA_MODULE_DEAD`; adds
+  `pc_p2_otakara_died()`/`pc_p2_otakara_receipt()`, a stored `generator` field,
+  a computed `P2_OTAKARA_FORGET` from the forget seam, and opens the lane-06
+  receipt host in setup).
+- `d4a5ed0e` — "lane22: hook — pc_p2_otakara_died in BTeki::die death seam (#447)".
+- `26676f13` — "lane22: hook — pc_p2_otakara_receipt in pc_p2_preview_deliver (#447)".
+- `657d59c4` — "lane22: include Pellet.h for pc_p2_otakara_receipt corpse lookup (#447)".
+
+**Root** (`deepseek/p2-l22`, base `0a198a2`):
+- `17e36c4` — "lane22: host-seam runtime — pod receipt, seam forget, die-seam + validate/tests (#447)"
+  (`experimental/pikmin2_otakara_runtime.py`, `tests/test_pikmin2_otakara_native.py`,
+  `tests/test_pikmin2_otakara_runtime.py`).
+- `a022252` — (slice-2 handoff commit, listed here for completeness per the integrator note).
+
+### Interfaces / hooks touched
+
+- `pc_p2_otakara_died(BTeki*)` — fires `P2_OTAKARA_DEAD … mDeadState=1` from
+  `BTeki::die()`; the module's own mHealth<=0 observation is now
+  `P2_OTAKARA_MODULE_DEAD`. No-op for unregistered actors.
+- `pc_p2_otakara_receipt(Pellet*)` — returns true for a pellet whose
+  `mPelletView` is a registered Otakara actor, grants an exactly-once ordinary
+  receipt via the lane-06 `pc_p2_receipt_host` and logs
+  `P2_OTAKARA_ONION_RECEIPT … granted=1`. Hooked as one line in
+  `pc_p2_preview_deliver` (parallel to the flora receptor).
+- `pc_p2_otakara_forget(BTeki*)` — now emits `P2_OTAKARA_FORGET … registered=1
+  count=<after> stale=<computed>` where `stale` is a post-erase probe; the marker
+  fires from `pc_p2_forget_teki` (doKill/slot reuse), not from the fixture.
+
+The fixture no longer calls `pc_p2_otakara_forget`; it waits for the lane-07 seam
+(`registered==false`+`count==0`) after the pellet is consumed, using pointer
+identity only and never dereferencing fire/red/blue after the corpse appears.
+
+### Arena
+
+The primary scenario stages the concrete P2 Pod room (`room_4x4a_4_conc`) with the
+red Onion goal, the `dia_a_red` treasure and `p2-pod.txt`, repurposing the room's
+Chappy enemy record as the FireOtakara (generator `349001`, little-endian, ~115
+units from the Onion) plus the dweevil profile/bank/actor sidecars.
+
+### Build evidence
+
+```text
+native=657d59c430da349c38fbe8aa78a97d800599a70d  sha256=322e273948e4a07a10336e472171af5fe3f04379a1d039e49beccbca2a910abf  ninja_n="ninja: no work to do."
+```
+
+Private fixture `output/dsw/l22-fixture-slice3/` (status `built`), `fixture.exe`
+SHA-256 `19ecb37f5799c1a937e4dc2fd9999716afb01a905cdb079ed751f7c9cda76b5d`.
+
+### Fixture adoption evidence (natural Pod run)
+
+`output/dsw/l22-out/slice3-natural/5d8a9f42a632458197c50ddb887b9ca2/` — exit 0 in
+~40 s. `Experimental preview window set to 960x540 windowed and centered`;
+`P2_OTAKARA_SQUAD red=19 blue=1 registered=1`; `P2_POD_READY treasure=dia_a_red
+value=180 weight=15 capacity=25 pokos=0`; no extinction.
+
+### Six arena gates (natural vs injected)
+
+| Gate | Result | Evidence |
+|---|---|---|
+| 1 Exact identity and spawn | **PASS (natural)** | `P2_OTAKARA_BIND generator=349001 source_id=59 stimulus=InteractFire visual_only=0`; `P2_ENEMY_READY species=FireOtakara … health=150.0 max_health=150.0 behavior=native source_FSM=implemented attack=elemental_discharge` |
+| 2 Autonomous movement and animation | **PASS (natural)** | `P2_OTAKARA_STATE … state=flick` / `state=wait` |
+| 3 Attacks and receivers | **PASS (natural emitter, real receiver)** | `P2_OTAKARA_DISCHARGE … applied=1 immune=…`; `P2_OTAKARA_DISCHARGE_IMMUNE … colour=red`; `P2_OTAKARA_DISCHARGE_HIT … colour=blue accepted=1` |
+| 4 Death and corpse | **PASS (host death seam + corpse)** | nine named drops `P2_OTAKARA_HIT … interaction=InteractAttack attacker=red` 150→0 → `P2_OTAKARA_MODULE_DEAD` (module) → `P2_OTAKARA_DEAD … mDeadState=1` (BTeki::die hook) → `P2_OTAKARA_CORPSE … pellet=1` (dieSoon/becomePellet) |
+| 5 Actual transport and reward | **PASS (natural carry + lane-06 receipt)** | `P2_OTAKARA_ONION_RECEIPT generator=349001 granted=1 ledger=onion` + `P2_OTAKARA_DELIVER onion_receipt=1` from `pc_p2_preview_deliver`; corpse hauled via the native Transport action (`P2_OTAKARA_ASSIST assigned=16` labels the fixture assist after free recruitment did not latch a carrier) |
+| 6 Cleanup and re-entry | **PASS (lane-07 seam forget); re-entry UNTESTED** | `P2_OTAKARA_FORGET generator=349001 registered=1 count=0 stale=0` (computed, from `pc_p2_forget_teki` in `BTeki::doKill`) then `P2_OTAKARA_SEAM_OBSERVED registered=0 count=0`; scene reload/recycled-address rebind not driven |
+
+Injected interventions (labelled): none in the primary run; the free-squad
+deployment and the one-time Transport assist are engineered stimuli, and the
+assist is reported (`assisted=true`). The FSM, emitter, receiver, all damage
+drops, `BTeki::die()`/`dieSoon()`/`becomePellet()`, the delivery receipt and the
+forget are native.
+
+### Tests
+
+```
+PIKMIN_NATIVE_ROOT=C:/Users/alari/pikmin-randomizer/output/dsw/native-l22 \
+  py -3.12 -m pytest tests/test_pikmin2_otakara_native.py tests/test_pikmin2_otakara_runtime.py \
+                    tests/test_pikmin2_elemental_behavior.py tests/test_pikmin2_dweevil_native.py -q
+# 67 passed
+
+py -3.12 -m pytest tests/test_pikmin2_otakara_native.py tests/test_pikmin2_otakara_runtime.py -q
+# 11 passed, 8 skipped (native source-read tests skip cleanly without PIKMIN_NATIVE_ROOT)
+```
+
+- `validate()` now requires strip-able markers for `natural_death`
+  (`P2_OTAKARA_DEAD … mDeadState=1` + no inject), `corpse`
+  (`P2_OTAKARA_CORPSE`), `receipt` (`P2_OTAKARA_ONION_RECEIPT … granted=1`) and
+  `forget` (`P2_OTAKARA_FORGET … count=0 stale=0`), plus `module_dead` and
+  `natural_hit`; each flips when stripped (unit-tested).
+- `tests/test_pikmin2_otakara_native.py` pins the new hooks
+  (`pc_p2_otakara_died`/`pc_p2_otakara_receipt`, `MODULE_DEAD`, the computed
+  FORGET string, and their `BTeki::die`/`pc_p2_preview_deliver` call sites) under
+  `PIKMIN_NATIVE_ROOT` only.
+
+### Assumptions
+
+- The lane-06 receipt host is exactly-once and independent of the Pod economy; the
+  receipt identity is `otakara:<generator>` (seed from `PIKMIN_P2_SEED`, else
+  `l22-receipt`).
+- The FireOtakara reuses the concrete room's Chappy `iket` record, so its native
+  type stays `TEKI_Chappy`; generator `349001` is written little-endian to match
+  the engine's `records`/`deterministic_births` convention.
+- The corpse haul is the native `PikiAction::Transport`; the fixture forces it
+  once, unassigned, if free recruitment has not latched a carrier after ~600
+  updates (honestly reported as `assisted`).
+- `P2_OTAKARA_DEAD` is now the host `BTeki::die()` seam (`mDeadState=1`); the
+  module's mHealth<=0 observation is `P2_OTAKARA_MODULE_DEAD`, so "natural death"
+  and "module dead" can never be conflated (carried-forward integrator correction).
+
+### Remaining blockers (provider lane named)
+
+- **Scene re-entry / recycled-address rebind**: lane 07 lifetime harness
+  (`pc_p2_scene_begin` wired); not driven here.
+- **Water/Gas/Elec discharge runtime**: lanes 10/11 receivers are wired; only
+  Fire/`InteractFire` was exercised.
+- **BombOtakara (93) real payload**: lane 20 shared Bomb blast contract.
+
+### Subagent usage
+
+No subagents were spawned; the task tool is absent, so the source audit, candidate
+inventory and test scaffolding were done inline (one line, per the brief).
+
+### Reproduction
+
+```powershell
+$env:PYTHONUTF8='1'
+$env:PIKMIN_P2_ROOM_WINDOW='960x540'
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l22 -- `
+  py -3.12 -m experimental.pikmin2_otakara_runtime run `
+    --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" `
+    --imported "C:/Users/alari/pikmin-randomizer/output/dsw/l22-assets" `
+    --output "C:/Users/alari/pikmin-randomizer/output/dsw/l22-out/slice3-repro" `
+    --exe "C:/Users/alari/pikmin-randomizer/output/dsw/l22-fixture-slice3/fixture.exe" `
+    --seconds 150 --scenario natural
+```
+

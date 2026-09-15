@@ -212,7 +212,7 @@ def _prepare_pod(assets, imported, output, converted, pod_dir):
     run = room_prepare(Path(assets).resolve(), Path(converted).resolve(), Path(output).resolve())
     cfg = dict(FAMILIES['dweevil'])
     gen = run / 'assets/dataDir/stages/chal0/default.gen'
-    blob = gen.read_bytes()
+    blob = bytearray(gen.read_bytes())
     starts = [m.start() for m in re.finditer(rb'    0.0v', blob)]
     dwarf = next((s for s in starts if blob[s + 72:s + 76] == b'iket'), None)
     if dwarf is None:
@@ -222,7 +222,7 @@ def _prepare_pod(assets, imported, output, converted, pod_dir):
     # ~120 units from the room's red goal/Onion so the corpse carry route is bounded.
     onion = None
     for s in starts:
-        if blob[s + 16:s + 24] == b'red goal':
+        if b'preview red onion' in bytes(blob[s + 16:s + 48]):
             onion = struct.unpack_from('>3f', blob, s + 48)
             break
     if onion is None:
