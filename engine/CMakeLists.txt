@@ -170,6 +170,8 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_demon_bridge.cpp
     pc_port/pc_p2_demon_host.cpp
     pc_port/pc_p2_sarai_host.cpp
+    pc_port/pc_p2_sarai_manager.cpp
+    pc_port/pc_p2_generated_placement.cpp
     pc_port/pc_bbft.cpp
     pc_port/pc_p2_preview.cpp
     pc_port/pc_p2_captain.cpp
@@ -200,6 +202,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_bulblax_visual.cpp
     pc_port/pc_p2_queen.cpp
     pc_port/pc_p2_king.cpp
+    pc_port/pc_p2_king_teki.cpp
     pc_port/pc_p2_breadbug_actor.cpp
     pc_port/pc_p2_breadbug_contest_host.cpp
     pc_port/pc_p2_giant_breadbug_actor.cpp
@@ -211,6 +214,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_hiba.cpp
     pc_port/pc_p2_flora_actor.cpp
     pc_port/pc_p2_receipt_host.cpp
+    pc_port/pc_p2_delivery_host.cpp
     pc_port/pc_p2_pom.cpp
     pc_port/pc_p2_plant.cpp
     pc_port/pc_p2_waterwraith_visual.cpp
@@ -262,6 +266,8 @@ pc_port/pc_p2_projectile_host.cpp
     pc_port/pc_p2_groink_volley.cpp
     pc_port/pc_p2_groink_hit.cpp
     pc_port/pc_p2_groink_strike.cpp
+    pc_port/pc_p2_groink_carcass.cpp
+    pc_port/pc_p2_groink_teki.cpp
     pc_port/pc_p2_projectiles.cpp
     pc_port/pc_p2_hardlanes.cpp
     pc_port/pc_p2_fuefuki_visual.cpp
@@ -273,6 +279,7 @@ pc_port/pc_p2_projectile_host.cpp
     pc_port/pc_p2_bombsarai_hover.cpp
     pc_port/pc_p2_bombsarai_map_trace.cpp
     pc_port/pc_p2_bombsarai_terrain.cpp
+    pc_port/pc_p2_bombsarai_teki.cpp
     pc_port/pc_p2_bigtreasure.cpp
     pc_port/pc_p2_bigtreasure_attacks.cpp
     pc_port/pc_p2_bigtreasure_fsm.cpp
@@ -492,9 +499,21 @@ add_executable(pikmin_pc
 )
 target_compile_options(pikmin_pc PRIVATE ${NATIVE_COMPILE_OPTIONS})
 target_link_libraries(pikmin_pc PRIVATE pikmin_legacy)
+# Lane 29 replacement-main runtime fixture (#243). Built as an ordinary target so
+# the lane wrapper (`build_lane.py l29 --target p2_kurage_runtime`) produces it
+# under the normal build semaphore; it runs the same engine as pikmin_pc with the
+# kurage scenario main (tools/p2_kurage_runtime.cpp) instead of pc_main.cpp.
+set(P2_KURAGE_RUNTIME_SOURCES ${PC_PORT_SOURCES})
+list(REMOVE_ITEM P2_KURAGE_RUNTIME_SOURCES pc_port/pc_main.cpp)
+list(APPEND P2_KURAGE_RUNTIME_SOURCES tools/p2_kurage_runtime.cpp)
+add_executable(p2_kurage_runtime ${P2_KURAGE_RUNTIME_SOURCES})
+target_include_directories(p2_kurage_runtime PRIVATE tools)
+target_compile_options(p2_kurage_runtime PRIVATE ${NATIVE_COMPILE_OPTIONS})
+target_link_libraries(p2_kurage_runtime PRIVATE pikmin_legacy)
 if(WIN32)
     add_library(bbft_transport STATIC pc_port/bbft/bbft_transport.c)
     target_link_libraries(pikmin_pc PRIVATE bbft_transport ws2_32)
+    target_link_libraries(p2_kurage_runtime PRIVATE bbft_transport ws2_32)
     add_executable(pc_bbft_test pc_port/pc_bbft_test.cpp pc_port/pc_bbft.cpp pc_port/pc_randomizer.cpp)
     add_test(NAME pc_bbft_test COMMAND pc_bbft_test)
     add_test(NAME pc_bbft_background_test COMMAND pc_bbft_test --background)
@@ -516,7 +535,7 @@ endif()
 # -- the game code silently lost -march=native and LTO, and the library
 # boundary also stopped the translator from inlining into it. That is a
 # performance regression with no visible symptom other than the frame time.
-set(PIKMIN_OPTIMIZED_TARGETS pikmin_pc pikmin_legacy)
+set(PIKMIN_OPTIMIZED_TARGETS pikmin_pc pikmin_legacy p2_kurage_runtime)
 
 foreach(target IN LISTS PIKMIN_OPTIMIZED_TARGETS)
     target_compile_options(${target} PRIVATE
@@ -555,8 +574,10 @@ if (WIN32)
     # proyecto declara SDL_MAIN_HANDLED y define su propio main. Enlazarlo deja
     # SDL_main sin definir en todos los ejecutables.
     target_link_libraries(pikmin_pc PRIVATE ${SDL2_LIBRARIES} opengl32)
+    target_link_libraries(p2_kurage_runtime PRIVATE ${SDL2_LIBRARIES} opengl32)
 else()
     target_link_libraries(pikmin_pc PRIVATE m ${SDL2_LIBRARIES} OpenGL::GL X11)
+    target_link_libraries(p2_kurage_runtime PRIVATE m ${SDL2_LIBRARIES} OpenGL::GL X11)
 endif()
 # Export symbol names so the diagnostic backtrace in pc_gfx.cpp prints function
 # names rather than bare addresses. Costs nothing at runtime.
@@ -565,12 +586,14 @@ endif()
 # compiled out on Windows anyway (glibc's execinfo.h has no equivalent there).
 if (NOT WIN32)
     target_link_options(pikmin_pc PRIVATE -rdynamic)
+    target_link_options(p2_kurage_runtime PRIVATE -rdynamic)
 else()
     # SDL2's CMake package links -mwindows, which hides the console and with it
     # every printf the port uses to report what it is doing. Keep a console on
     # the game so a failed launch says why instead of vanishing. The launcher
     # stays windowed: it talks through native dialogs.
     target_link_options(pikmin_pc PRIVATE -mconsole)
+    target_link_options(p2_kurage_runtime PRIVATE -mconsole)
 endif()
 
 # Set output name
@@ -853,6 +876,11 @@ target_include_directories(p2_fuefuki_suspend_fallback_test PRIVATE pc_port)
 target_compile_options(p2_fuefuki_suspend_fallback_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_fuefuki_suspend_fallback_test COMMAND p2_fuefuki_suspend_fallback_test)
 
+add_executable(p2_fuefuki_owner_death_test tools/p2_fuefuki_owner_death_test.cpp)
+target_include_directories(p2_fuefuki_owner_death_test PRIVATE pc_port)
+target_compile_options(p2_fuefuki_owner_death_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_fuefuki_owner_death_test COMMAND p2_fuefuki_owner_death_test)
+
 # Lane 28 Fuefuki natural-combat real-GL fixture (#245): compile-only isolated
 # target. Its replacement-main executable is produced by
 # scripts/build_pikmin2_fixture.py against a completed pikmin_pc build; this
@@ -958,6 +986,50 @@ add_executable(p2_specular_dir_test
 target_include_directories(p2_specular_dir_test PRIVATE pc_port)
 target_compile_options(p2_specular_dir_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_specular_dir_test COMMAND p2_specular_dir_test)
+
+# Lane 30 (#242) standalone policy tests. The drop/host-clock and Sarai
+# captor/lifecycle/identity harnesses are dependency-free headers: a test source
+# and the pc_port include dir are all they need. (demon_captor/demon_escape and
+# sarai_fsm/sarai_policy are already registered by the policy foreach below.)
+add_executable(p2_demon_drop_policy_test tools/p2_demon_drop_policy_test.cpp)
+target_include_directories(p2_demon_drop_policy_test PRIVATE pc_port)
+target_compile_options(p2_demon_drop_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_demon_drop_policy_test COMMAND p2_demon_drop_policy_test)
+
+add_executable(p2_demon_host_clock_test tools/p2_demon_host_clock_test.cpp)
+target_include_directories(p2_demon_host_clock_test PRIVATE pc_port)
+target_compile_options(p2_demon_host_clock_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_demon_host_clock_test COMMAND p2_demon_host_clock_test)
+
+add_executable(p2_sarai_captor_test tools/p2_sarai_captor_test.cpp)
+target_include_directories(p2_sarai_captor_test PRIVATE pc_port)
+target_compile_options(p2_sarai_captor_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_sarai_captor_test COMMAND p2_sarai_captor_test)
+
+# Lane 30 (#457/#242) Sarai capture-lifecycle test. Engine-free: the shared
+# escape window and the lane's capture/detach model are dependency-free headers.
+add_executable(p2_sarai_captor_lifecycle_test tools/p2_sarai_captor_lifecycle_test.cpp)
+target_include_directories(p2_sarai_captor_lifecycle_test PRIVATE pc_port)
+target_compile_options(p2_sarai_captor_lifecycle_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_sarai_captor_lifecycle_test COMMAND p2_sarai_captor_lifecycle_test)
+
+# Lane 30 (#242) dedicated captor spawn-identity test. Engine-free: it asserts
+# the identity/selection seam; the constant is static_asserted against
+# TEKI_P2Demon in the engine build (pc_port/pc_p2_demon_host.cpp).
+add_executable(p2_demon_identity_test tools/p2_demon_identity_test.cpp)
+target_include_directories(p2_demon_identity_test PRIVATE pc_port)
+target_compile_options(p2_demon_identity_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_demon_identity_test COMMAND p2_demon_identity_test)
+
+# Engine-including admission test: it includes Navi/NaviState through
+# pc_port/pc_p2_demon_admission.h and uses _putenv_s/_spawnl to prove both
+# allowlist branches, so it is Windows-only like the launcher platform tests.
+if(WIN32)
+    add_executable(p2_demon_admission_test tools/p2_demon_admission_test.cpp)
+    target_include_directories(p2_demon_admission_test PRIVATE pc_port include)
+    target_compile_options(p2_demon_admission_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+    add_test(NAME p2_demon_admission_test COMMAND p2_demon_admission_test)
+endif()
 
 add_executable(pc_render_phase_test
     pc_port/timing/pc_render_phase_test.cpp
@@ -1065,6 +1137,12 @@ target_include_directories(p2_receipt_host_test PRIVATE pc_port)
 target_compile_options(p2_receipt_host_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME p2_receipt_host_test COMMAND p2_receipt_host_test)
 
+# Lane 06: per-consumer ledger — two handles on distinct paths never interfere.
+add_executable(p2_receipt_host_multi_test tools/p2_receipt_host_multi_test.cpp pc_port/pc_p2_receipt_host.cpp)
+target_include_directories(p2_receipt_host_multi_test PRIVATE pc_port)
+target_compile_options(p2_receipt_host_multi_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_receipt_host_multi_test COMMAND p2_receipt_host_multi_test)
+
 # Lane 06: P2 ordinary delivery receiver (header-only over pc_p2_receipt.h).
 add_executable(p2_delivery_receiver_test tools/p2_delivery_receiver_test.cpp)
 target_include_directories(p2_delivery_receiver_test PRIVATE pc_port)
@@ -1075,6 +1153,12 @@ add_executable(p2_breadbug_contest_consumer_test tools/p2_breadbug_contest_consu
 target_include_directories(p2_breadbug_contest_consumer_test PRIVATE pc_port)
 target_compile_options(p2_breadbug_contest_consumer_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME p2_breadbug_contest_consumer_test COMMAND p2_breadbug_contest_consumer_test)
+
+# Lane 06: engine-free delivery host bridge (persistent ordinary receipt ledger).
+add_executable(p2_delivery_host_test tools/p2_delivery_host_test.cpp pc_port/pc_p2_delivery_host.cpp)
+target_include_directories(p2_delivery_host_test PRIVATE pc_port)
+target_compile_options(p2_delivery_host_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_delivery_host_test COMMAND p2_delivery_host_test)
 
 foreach(policy IN ITEMS demon_captor demon_escape demon_pose sarai_fsm sarai_policy fuefuki_follow fuefuki_follow_binding)
     add_executable(p2_${policy}_test tools/p2_${policy}_test.cpp)
@@ -1148,6 +1232,19 @@ add_executable(p2_groink_lifetime_test tools/p2_groink_lifetime_test.cpp)
 target_include_directories(p2_groink_lifetime_test PRIVATE pc_port)
 target_compile_options(p2_groink_lifetime_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME p2_groink_lifetime_test COMMAND p2_groink_lifetime_test)
+# Slice 2: carcass sidecar binding descriptor reader + config handoff.
+add_executable(p2_groink_teki_test tools/p2_groink_teki_test.cpp pc_port/pc_p2_groink_carcass.cpp)
+target_include_directories(p2_groink_teki_test PRIVATE pc_port)
+target_compile_options(p2_groink_teki_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_groink_teki_test COMMAND p2_groink_teki_test)
+# Compile the engine-side sidecar under the CTest build as an object-only library:
+# its link deps are the product engine (tekiMgr/gsys/BTekii/Pellet), which this
+# standalone test does not link, but compiling it here catches sidecar source
+# regressions that the product build alone would only surface later.
+add_library(p2_groink_teki_sidecar OBJECT pc_port/pc_p2_groink_teki.cpp)
+target_include_directories(p2_groink_teki_sidecar PRIVATE pc_port)
+target_compile_options(p2_groink_teki_sidecar PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_dependencies(p2_groink_teki_test p2_groink_teki_sidecar)
 
 # Opt-in Purple and White policy regressions.
 add_executable(p2_purple_direct_policy_test tools/p2_purple_direct_policy_test.cpp)

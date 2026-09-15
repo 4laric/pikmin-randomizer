@@ -3,7 +3,6 @@
 #include "pc_p2_kochappy_stun.h"
 #include "pc_p2_pose_bank.h"
 #include "pc_p2_pose_shape.h"
-#include "pc_p2_bulbmin.h"
 #include "pc_p2_enemy.h"
 #include "pc_p2_sheargrub.h"
 #include "teki.h"
@@ -31,7 +30,7 @@ struct Mutable {Shape* shape=nullptr;p2pose::Pose scratch;std::string clip;float
 std::map<PelletView*,Mutable> instances;
 }
 void pc_p2_kochappy_reset(){instances.clear();baked.clear();interpolation=false;clips.clear();timing.clear();actors.clear();health.reset();pc_p2_kochappy_stun_reset();logged[0]=logged[1]=false;}
-void pc_p2_kochappy_forget(BTeki* actor){pc_p2_bulbmin_proxy_forget(actor);instances.erase(static_cast<PelletView*>(actor));actors.erase(static_cast<PelletView*>(actor));health.forget(actor);pc_p2_kochappy_stun_forget(actor);}
+void pc_p2_kochappy_forget(BTeki* actor){instances.erase(static_cast<PelletView*>(actor));actors.erase(static_cast<PelletView*>(actor));health.forget(actor);pc_p2_kochappy_stun_forget(actor);}
 float pc_p2_kochappy_max_health(const BTeki* actor,float fallback){return health.life(actor,fallback);}
 const char* pc_p2_kochappy_name(PelletView* actor){return actors.count(actor)?"Dwarf Red Bulborb":nullptr;}
 bool pc_p2_kochappy_registered(const BTeki* actor){return actors.count(const_cast<BTeki*>(actor))!=0;}

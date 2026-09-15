@@ -40,6 +40,7 @@ bool pc_p2_elecbug_registered(BTeki*);
 // by a thrown-Pikmin / Purple-hipdrop landing (PikiFlyingState/PikiHipDropState
 // collision, velocity.y<0). The P1 host routes no Pikmin->enemy InteractPress, so
 // this family-local probe detects a descending Purple Pikmin overlapping a
-// registered ElecBug once per descent and delegates to pc_p2_elecbug_pressed.
+// registered ElecBug once per flip (REVERSE/DEAD short-circuit) and delegates to
+// pc_p2_elecbug_pressed.
 // P1-derived adaptation; logged P2_ELECBUG_NATURAL_PRESS. No-op for other actors.
 void pc_p2_elecbug_check_landing_press(BTeki*);

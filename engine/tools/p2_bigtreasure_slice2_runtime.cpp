@@ -243,18 +243,15 @@ private:
         runtime.defeat();
         std::printf("P2_BIGTREASURE_SLICE2_GEOMETRY weapon=water species=red state=Bubble\n");
 
-        // Handled-set dedup: the probe reuses the ordinary loop's handled set,
-        // so a second probe of the same target returns 0 (no re-stimulation) and
-        // the probe removes its transient entry. This proves set-dedupe only;
-        // per-attack re-arm (attack-start clear) is not exercised without a real
-        // attack.
+        // Probe applies the stimulus to a live target through the ordinary
+        // loop's receiver (a test hook; it does not pollute the handled set).
+        // The real per-attack handled-set hold is the loop's own
+        // P2_BIGTREASURE_RECV_HELD, exercised by the slice-3 fixture.
         Piki* handled = freshPiki();
-        require(handled != nullptr, "fresh red for handled-set proof");
+        require(handled != nullptr, "fresh red for probe");
         const int first = pc_p2_hardlanes_bigtreasure_recv_probe(P2BTWEAPON_Water, handled);
-        require(first == 1, "first probe applies the stimulus");
-        const int second = pc_p2_hardlanes_bigtreasure_recv_probe(P2BTWEAPON_Water, handled);
-        require(second == 0, "second probe is held (no re-stimulation)");
-        std::printf("P2_BIGTREASURE_SLICE2_HANDLED first=%d second=%d\n", first, second);
+        require(first == 1, "probe applies the stimulus");
+        std::printf("P2_BIGTREASURE_SLICE2_HANDLED first=%d\n", first);
 
         std::printf("P2_BIGTREASURE_SLICE2_RECEIVER_PASS squad=%d\n", squad);
     }
@@ -287,7 +284,8 @@ private:
         if (after < weaponsBefore) {
             std::printf("P2_BIGTREASURE_SLICE2_DROP_INGRESS weapons=%d->%d injected=1 repick=0\n",
                         weaponsBefore, after);
-            std::puts("PASS BIGTREASURE_SLICE2_RUNTIME");
+            std::printf("P2_BIGTREASURE_SLICE2_REPICK observed=0\n");
+            std::puts("PASS BIGTREASURE_SLICE2_RECEIVER_ONLY");
             std::fflush(stdout);
             std::_Exit(0);
         }

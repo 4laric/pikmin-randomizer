@@ -15,6 +15,9 @@ GOOD_LOG = '\n'.join([
     'P2_QURIONE_STATE generator=160001 state=stay',
     'P2_QURIONE_STATE generator=160001 state=appear',
     'P2_QURIONE_STATE generator=160001 state=move',
+    'P2_QURIONE_POS generator=160001 state=move clip=waitl phase=0.31 x=0.00 y=61.00 z=10.00',
+    'P2_QURIONE_POS generator=160001 state=move clip=waitl phase=0.61 x=0.00 y=62.00 z=20.00',
+    'P2_QURIONE_POS generator=160001 state=move clip=waitl phase=0.91 x=0.00 y=63.00 z=30.00',
     'P2_QURIONE_EGG generator=160001 action=drop',
     'P2_QURIONE_STATE generator=160001 state=drop',
     'P2_QURIONE_STATE generator=160001 state=dead',
@@ -76,6 +79,21 @@ class QurioneLifecycleTests(unittest.TestCase):
 
     def test_gates_cover_all(self):
         self.assertEqual(set(life.GATE_STATUS), set(GATES))
+
+    def test_gate_status_matches_handoff(self):
+        # GATE_STATUS must not silently drift from the handoff six-gate table.
+        from pathlib import Path
+        import re
+        doc = Path(life.__file__).resolve().parents[1] / 'docs' / 'PIKMIN2_LANE15_DEEPSEEK_HANDOFF.md'
+        text = doc.read_text(encoding='utf-8')
+        rows = re.findall(r'^\|\s*(\d)\.\s*[^|]*\|\s*(PASS|PARTIAL|FAIL|BLOCKED|UNTESTED|N/A)', text, re.M)
+        self.assertTrue(rows, 'handoff gate table not found')
+        by_num = {int(n): s for n, s in rows}
+        for index, gate in enumerate(life.GATES, start=1):
+            self.assertIn(index, by_num, gate)
+            token = by_num[index]
+            self.assertTrue(life.GATE_STATUS[gate].upper().startswith(token.upper()),
+                            f'{gate}: GATE_STATUS={life.GATE_STATUS[gate]!r} handoff={token}')
 
     def test_acceptance_contract(self):
         contract = life.acceptance_contract()
@@ -145,6 +163,51 @@ class QurioneLifecycleTests(unittest.TestCase):
 
     def test_validate_accepts_finite_movement(self):
         self.assertTrue(life.validate_lifecycle(GOOD_LOG)['checks']['no_movement_nan'])
+
+    def test_validate_moved_requires_distinct_positions(self):
+        pos = 'P2_QURIONE_POS generator=160001 state=move clip=wait phase=1.00 '
+        log = GOOD_LOG + '\n' + '\n'.join(
+            [pos + 'x=0.0 y=60.0 z=0.0', pos + 'x=10.0 y=60.0 z=0.0', pos + 'x=20.0 y=60.0 z=0.0'])
+        result = life.validate_lifecycle(log)
+        self.assertIs(result['checks']['moved'], True)
+
+    def test_validate_moved_rejects_frozen_position(self):
+        pos = 'P2_QURIONE_POS generator=160001 state=move clip=wait phase=1.00 x=0.0 y=60.0 z=0.0'
+        base = '\n'.join(l for l in GOOD_LOG.splitlines() if not l.startswith('P2_QURIONE_POS '))
+        log = base + '\n' + '\n'.join([pos, pos, pos])
+        result = life.validate_lifecycle(log)
+        self.assertIs(result['checks']['moved'], False)
+        self.assertFalse(result['passed'])
+
+    def test_moved_ignores_dead_flyaway(self):
+        dead_lines = '\n'.join(
+            'P2_QURIONE_POS generator=160001 state=dead clip=run phase=1.00 x=0.0 y=%s z=0.0' % y
+            for y in (100.0, 200.0, 300.0))
+        log = GOOD_LOG + '\n' + dead_lines
+        result = life.validate_lifecycle(log)
+        self.assertIs(result['checks']['moved'], True)
+
+        base = '\n'.join(l for l in GOOD_LOG.splitlines() if not l.startswith('P2_QURIONE_POS '))
+        no_move = base + '\n' + dead_lines
+        self.assertIs(life.validate_lifecycle(no_move)['checks']['moved'], False)
+
+    def test_moved_false_without_move_displacement(self):
+        pos = 'P2_QURIONE_POS generator=160001 state=move clip=wait phase=1.00 x=0.0 y=60.0 z=0.0'
+        log = '\n'.join([pos, pos, pos])
+        self.assertIs(life.validate_lifecycle(log)['checks']['moved'], False)
+
+    def test_full_chain_requires_drop_and_reward(self):
+        result = life.validate_lifecycle(REAL_LOG)
+        self.assertIs(result['passed_real'], True)
+        self.assertIs(result['full_chain'], True)
+        no_break = '\n'.join(line for line in REAL_LOG.splitlines()
+                             if 'P2_QURIONE_EGG_BREAK' not in line)
+        self.assertIs(life.validate_lifecycle(no_break)['full_chain'], False)
+
+    def test_full_chain_false_when_missing_drop_path(self):
+        log = '\n'.join(line for line in GOOD_LOG.splitlines()
+                        if 'state=drop' not in line and 'state=dead' not in line)
+        self.assertIs(life.validate_lifecycle(log)['full_chain'], False)
 
     def test_validate_rejects_non_text(self):
         with self.assertRaises(ValueError):

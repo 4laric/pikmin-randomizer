@@ -330,6 +330,32 @@ void testExposedBodyDamageableAfterChildRemoval()
     std::puts("PASS actor_exposed_body_damageable");
 }
 
+void testDismountedBodyAcceptsNonPurple()
+{
+    // Source-faithful body gate: once dismounted (roller removed), the exposed
+    // body takes damage from ANY Pikmin, not just Purple (blackMan.cpp:680 has
+    // no color gate); the riding RIDING roller stays Purple-only.
+    P2WaterwraithActor actor = makeActor(P2BM_Walk);
+    actor.rig().landFloorContact(); // freeze
+    bool dead = false;
+
+    // Riding + frozen roller: non-Purple is still ignored.
+    assert(p2_waterwraith_actor_apply_damage(actor, 100.0f, false, &dead) == P2WWDMG_Ignored);
+    assert(actor.rig().tyreHealth() == P2WaterwraithRig::kTyreMaxHealth);
+
+    // Destroy the roller child.
+    assert(p2_waterwraith_actor_apply_damage(actor, P2WaterwraithRig::kTyreMaxHealth, true, &dead)
+           == P2WWDMG_Roller);
+    actor.rig().dismount();
+    assert(actor.rig().beginDead() && actor.rig().finishDead());
+    assert(!actor.rig().alive());
+
+    // Dismounted body: a NON-Purple hit now lands on the wraith body.
+    assert(p2_waterwraith_actor_apply_damage(actor, 500.0f, false, &dead) == P2WWDMG_Body);
+    assert(std::fabs(actor.bodyHealth() - (actor.bodyMaxHealth() - 500.0f)) < 1e-3f);
+    std::puts("PASS actor_dismounted_body_nonpurple");
+}
+
 void testNaturalFullLifecycle()
 {
     // Full source-ordered chain: fall -> recover -> walk/roll -> Purple stun
@@ -440,6 +466,7 @@ int main()
     testRollerFullCycle();
     testDamageGating();
     testExposedBodyDamageableAfterChildRemoval();
+    testDismountedBodyAcceptsNonPurple();
     testNaturalFullLifecycle();
     testTeardown();
     std::puts("PASS WATERWRAITH_ACTOR");

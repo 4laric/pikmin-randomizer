@@ -39,7 +39,10 @@ def generator(assets):
     type_start=piki.index(b'nota0.0v',96)
     count_start=piki.index(b'p00\x04',type_start)+4
     struct.pack_into('>I',piki,count_start,1)  # one Piki per selected placement
-    for i in range(20): add(piki,(-110+(i%5)*12,0,-20+(i//5)*12),'preview red pikmin')
+    # Lane 27: 40 reds (was 20). The grounded BombSarai/Napkid carrier lobs
+    # area bombs that otherwise wipe a 20-red squad before it can be killed;
+    # a 40-red squad lands the kill with survivors left to haul the carcass.
+    for i in range(40): add(piki,(-110+(i%5)*12,0,-20+(i//5)*12),'preview red pikmin')
     dwarf=bytearray(challenge[9]);dwarf[80]=3  # TEKI_Chappy (native Dwarf Bulborb), generator v10 byte enum
     # The source posy generator is an at-once pair; retain its framing but spawn one actor.
     type_start=dwarf.index(b'nota0.0v',80)

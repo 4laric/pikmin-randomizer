@@ -21,9 +21,11 @@ class Creature;
 // source=nullptr, so InteractAttack::actTeki -> tekibteki.cpp interactDefault
 // stores `setCreaturePointer(1, nullptr)` on the target Teki, clearing its
 // "last assailant" pointer to null (SmartPtr::set is null-safe; the source
-// attributes Teki damage to the Stone self, which has no Creature here). A
-// grounded Navi/Pikmin strike passes the real source (the bound Kabuto) when one
-// is bound, so `playEventSound(mOwner)` and its attribution stay valid.
+// attributes Teki damage to the Stone self, which has no Creature here).
+// `source` is always host-supplied and MAY also be nullptr for a Navi/Pikmin
+// target (the Stone/Rock host passes the bound Kabuto when one is bound, but the
+// Groink and Bomb consumers pass nullptr) — the engine null-checks its owner
+// uses, so a null source only means there is no "last assailant" attribution.
 //
 // This file is engine-aware (it calls Creature::stimulate with the interaction
 // types defined in Interactions.h) and therefore has no standalone unit test;

@@ -69,6 +69,31 @@ class FrogCombatTests(unittest.TestCase):
                            'pikmin': 1, 'navi': 0, 'pressed': 1, 'origin': 'unknown',
                            'host_frozen': 0}])
 
+    def test_land_row_with_source_behavior_parses(self):
+        row = ('P2_FROG_LAND species=Frog radius=23.0 bittered=0 pikmin=2 navi=1 '
+               'behavior=source pressed=1 origin=source host_frozen=0\n')
+        report = validate(self.sample() + row, 0)
+        self.assertTrue(report['passed'])
+        self.assertEqual(report['land_markers'], {'Frog': 1, 'MaroFrog': 0})
+        self.assertEqual(report['land_attribution'],
+                         [{'species': 'Frog', 'radius': 23.0, 'bittered': False,
+                           'pikmin': 2, 'navi': 1, 'pressed': 1, 'origin': 'source',
+                           'host_frozen': 0}])
+
+    def test_land_row_with_source_behavior_without_branch_fields_parses(self):
+        row = 'P2_FROG_LAND species=Frog radius=23.0 bittered=0 pikmin=2 navi=1 behavior=source\n'
+        report = validate(self.sample() + row, 0)
+        self.assertTrue(report['passed'])
+        self.assertEqual(report['land_attribution'],
+                         [{'species': 'Frog', 'radius': 23.0, 'bittered': False,
+                           'pikmin': 2, 'navi': 1, 'pressed': 1, 'origin': 'unknown',
+                           'host_frozen': 0}])
+
+    def test_land_row_with_unrelated_behavior_is_not_attributed(self):
+        row = ('P2_FROG_LAND species=Frog radius=23.0 bittered=0 pikmin=2 navi=1 '
+               'behavior=other pressed=1 origin=none host_frozen=0\n')
+        self.assertEqual(validate(self.sample() + row, 0)['land_attribution'], [])
+
     def test_bitter_toggle_markers_are_reported(self):
         toggles = ('P2_FROG_BITTER species=Frog override=1 host_frozen=0 effective=1 origin=override\n'
                    'P2_FROG_BITTER species=Frog override=0 host_frozen=0 effective=0 origin=none\n')

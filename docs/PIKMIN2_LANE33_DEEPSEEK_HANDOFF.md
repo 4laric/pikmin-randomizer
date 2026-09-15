@@ -320,3 +320,193 @@ the frozen `native-l33-pin` build.
 Subagents again absorbed the verification/reading phase (est. 25-35 min); one
 result was corrected on use — the Hana record pin was re-anchored to the frozen
 `41533626` after the frozen mixed-ground run produced equivalent evidence.
+
+## Slice 3 — reproduce the wave's strongest natural claims (frozen `138ac640`)
+
+Refreshed the frozen worktree `native-l33-pin` to the current
+`claude/p2-deepseek-wave-native` tip `138ac640f9f7a7b17285040d03056f321ca501d3`
+and rebuilt once (nectar `b61fbb78…`). Added **pin comparison to
+`evaluate_cell`** (a record whose root/native commit differs from the report pin
+now resolves BLOCKED with `stale-pin`, verified: `mismatched-pin seed cell ->
+BLOCKED :: stale-pin (commits do not match the report baseline)`) and `--note` to
+`emit-record`.
+
+### Results (all fixture-kind, pinned root `9d2921c7` / native `138ac640`)
+
+| Lane | Run | Result | Divergence from owning-lane handoff |
+|---|---|---|---|
+| 13 Dwarf Orange eat→swallow→dead→corpse | `pikmin2_dwarf_orange_fsm_witness` | **PASS (2/3 attempts)** | `eat@frame8 -> swallow@frame88 -> dead -> corpse` reproduced on 2 of 3 runs; the first run's 20-red squad over-killed health 250→0 before the swallow frame 88 — a documented race vs the tick-240 full-squad COMBAT_STIMULUS (`throttle kept=3`), not a divergence (lane-13's own `s2-run` uses the same throttle and gets the swallow). |
+| 13 Dwarf Orange cleanup witness | `pikmin2_dwarf_orange_cleanup` | **PASS** | corpse carry (`transport_task_injected=false`) + P1 removal + `P2_DWARF_ORANGE_FORGET`/`P2_KOCHAPPY_FSM_FORGET` on the `doKill` funnel reproduced. |
+| 22 Otakara natural death | `pikmin2_otakara_runtime --scenario natural` | **PASS** | natural hit → `P2_OTAKARA_DEAD health=0` → `P2_OTAKARA_CORPSE pellet=1` → `P2_OTAKARA_FORGET`; elemental discharge (immune_red/hit_blue). Reproduction targeted the lane-22 **slice-2** death/corpse claim; lane-22 slice 3 later proved fixture-assisted transport + shared-Pod receipt `corpse:otakara:349001`, which this QA slice did not re-run. |
+| 19 Mamuta natural kill (pod, ring/park ×3) | `scripts/pikmin2_mamuta_pod_native` | **2/3 kills** | run2 `died tick1664 + corpse`, run3 `died tick1318 + corpse`, run1 no kill (UNPROVEN, no captain_down). Corpse transport + `P2_POD_RECEIPT` UNPROVEN in all 3. Consistent with lane-19 "FLAKY" (they had 1 kill in 7 runs). |
+| 18 Breadbug natural tug | `pikmin2_breadbug_contest_runtime` | **BLOCKED (artefact) → PASS on fresh stage** | First run was a false FAIL: it executed inside lane-18's `l18-out/contest-stage` whose `p2-breadbug-contest-receipts.txt` already held `p2-preview onion:p2:38:0 g186081 contest`, so the frozen build correctly refused the primary grant (`granted=0 duplicate=1`) and every probe preceded the first grant. Re-run on a fresh copy (ledger reset): `probe_before_first_grant=0`, `granted=1` exactly once. The current-wave contest consumer still fails two newer gates (`interrupt=false`, `integrity_violations=2`) — a separate divergence from lane-18 slice 3. |
+| 04/03 three-marker seed run | `scripts/run_p2_seed_placement.py` | **PASS** | `validate_cooccurrence ok=true` — `closed generator->slot->source and birth chain for 2 generator(s): (211001→5465461→44), (211002→513430982→44)`; `markers_are_binding_members=true`. |
+
+No lane's cited PASS FAILED on the integrated build without a specific, explainable
+cause: the two FAILs are (a) dwarf swallow timing under a 20-red over-kill, and (b)
+breadbug reuse of a stale receipt ledger (fresh stage blocked). Otakara and the
+seed bridge reproduced cleanly; Mamuta reproduced but stays flaky by design.
+
+### QA records + matrix
+
+6 records under `slice3/records/` via `pikmin2_qa_repro` (kind=fixture, pinned,
+each carrying `checks`/`missing_markers`/`exit_code`). Matrix report
+(`qa-report-slice3`): **PASS=1** (`install × scheduled_births`, seed birth chains),
+**FAIL=1** (`natural_fight × baseline_cohort`, dwarf witness + breadbug), UNTESTED=76.
+
+### Tests
+
+`py -3.12 -m pytest tests/test_pikmin2_qa_matrix.py tests/test_pikmin2_qa_repro.py -q`
+→ **39 passed** (includes new `stale-pin` and `--note` coverage).
+
+### Commits
+
+- `lane33: slice 3 — five natural-claim reproductions, pin comparison, --note (#444)`
+
+### Exact reproduction command (representative; all five in `slice3/run-all.sh`)
+
+```powershell
+git -C C:/Users/alari/pikmin-randomizer/output/dsw/native-wave worktree add --detach \
+  C:/Users/alari/pikmin-randomizer/output/dsw/native-l33-pin 138ac640f9f7a7b17285040d03056f321ca501d3
+# reconfigure with ABSOLUTE compiler paths, rebuild, build each lane fixture, then:
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l33 -- py -3.12 scripts/run_p2_seed_placement.py \
+  --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets \
+  --bank C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-bank \
+  --profile C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-ref \
+  --exe C:/Users/alari/pikmin-randomizer/output/dsw/native-l33-pin-build/bin/nectar.exe \
+  --output C:/Users/alari/pikmin-randomizer/output/dsw/l33-out/slice3/seed-run
+```
+
+Lane harnesses run from the `wave-root` worktree; fixtures built against
+`native-l33-pin-build` at `138ac640`.
+
+### Remaining work / caveats
+
+- Dwarf swallow: re-run with a smaller/weaker squad to observe the swallow frame
+  (or confirm the swallow is frame-gated and the 20-red over-kill is expected).
+- Breadbug: fresh stage requires the lane-18 `breadbug-visual.json` profile
+  (`pikmin2_breadbug_actor.plan` reads it) — ask lane 18 for the import path.
+- Mamuta corpse transport + Pod receipt remain UNPROVEN across 3 runs.
+
+### Subagent usage (slice 3)
+
+- `explore` #1 (five-harness source audit): used as-is; gave exact argv, natural
+  marker contracts, FSM/event pins and each handoff's cited PASS, which produced
+  the exact `build`/`run` commands and the divergence table.
+- `explore` #2 (fixture/asset inventory): used as-is; surfaced the frozen worktree
+  refresh mechanics, which harnesses need a built fixture vs plain exe, the
+  `breadbug-visual.json`/flying-aquatic gaps, and the prebuilt-input paths
+  (`l19-out/imported+pod`, `l22-assets`, `p2-dwarf-orange-bank/-ref`).
+- `general` #3 (scaffolding): used as-is; added `stale-pin` detection to
+  `evaluate_cell`, `--note`/`note` to `reproduce`/`emit-record`, and their tests
+  (39 green). One correction adopted on use: the dwarf witness result is a genuine
+  `swallow`-timing FAIL, not a fixture plumbing issue.
+
+Subagents again collapsed the read/verify phase (est. 30-40 min of command
+archaeology); the only on-use adjustment was re-anchoring records to the frozen
+`138ac640` pin after the refresh.
+
+## Review fixes 3 — gate tables and two corrections
+
+Corrections applied after review: (1) the Dwarf Orange witness `swallow` is a
+documented race, reproduced 2/3 with the lane's own `throttle kept=3`; (2) the
+Breadbug FAIL was a stale-receipt artefact and reproduces cleanly on a fresh
+stage; (3) the seed record is now `kind=natural` (real generated session on the
+plain `nectar.exe`, not a private fixture) with `exit_code`/`accept_exit_codes`;
+(4) the Otakara note now says the reproduction targeted the lane-22 slice-2
+death/corpse claim. New root files: none (records under `l33-out/slice3/records`,
+untracked output).
+
+Re-pin rule: records stay pinned to root `9d2921c7` / native `138ac640`. A
+re-pin is warranted **only when a reproduced lane's native module actually
+changes** (the wave native has since moved to `acf597eb` and beyond; a
+`stale-pin` flag from the next `qa-report` is the intended signal to re-run that
+specific lane on the new pin, not to bump the pin globally).
+
+### Six-gate tables (independent QA reproduction, frozen `138ac640`)
+
+## Dwarf Orange Bulborb (BlueKochappy 44)
+- Source ID: 44 `BlueKochappy`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | output/dsw/l33-out/slice3/dwarf-witness-run2/native.log:834 | natural |
+| 2. Autonomous movement and animation | PASS (natural) | output/dsw/l33-out/slice3/dwarf-witness-run2/native.log:990 | natural |
+| 3. Attacks and receivers | PASS (natural) | output/dsw/l33-out/slice3/dwarf-witness-run2/native.log:1463 | natural |
+| 4. Death and corpse | PASS (natural) | output/dsw/l33-out/slice3/dwarf-witness-run2/native.log:1643 | natural |
+| 5. Actual transport and reward | PARTIAL (natural) | output/dsw/l33-out/slice3/dwarf-cleanup-run/native.log:3292 | natural |
+| 6. Cleanup and re-entry | PASS (natural) | output/dsw/l33-out/slice3/dwarf-cleanup-run/native.log:2985 | natural |
+
+## Mamuta (Miulin 54)
+- Source ID: 54 `Miulin`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | output/dsw/l33-out/slice3/mamuta-pod-run2/425ced093b6a40fab1ee89ef8736543b/native.log:742 | natural |
+| 2. Autonomous movement and animation | PARTIAL | output/dsw/l33-out/slice3/mamuta-pod-run2/425ced093b6a40fab1ee89ef8736543b/native.log:1059 | natural |
+| 3. Attacks and receivers | UNTESTED | bury attack not exercised by the pod observer | natural |
+| 4. Death and corpse | PASS (natural) | output/dsw/l33-out/slice3/mamuta-pod-run2/425ced093b6a40fab1ee89ef8736543b/native.log:1061 | natural |
+| 5. Actual transport and reward | UNTESTED | corpse P2_POD_RECEIPT not observed across 3 runs | natural |
+| 6. Cleanup and re-entry | UNTESTED | reset observed; full scene re-entry not exercised | natural |
+
+## FireOtakara (59)
+- Source ID: 59 `FireOtakara`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | output/dsw/l33-out/slice3/otakara-run/e4e0fae69cbf405dbf2cf7dc14c79e4f/capture/native.log:758 | natural |
+| 2. Autonomous movement and animation | PASS (natural) | output/dsw/l33-out/slice3/otakara-run/e4e0fae69cbf405dbf2cf7dc14c79e4f/capture/native.log:773 | natural |
+| 3. Attacks and receivers | PASS (natural) | output/dsw/l33-out/slice3/otakara-run/e4e0fae69cbf405dbf2cf7dc14c79e4f/capture/native.log:784 | natural |
+| 4. Death and corpse | PASS (natural) | output/dsw/l33-out/slice3/otakara-run/e4e0fae69cbf405dbf2cf7dc14c79e4f/capture/native.log:935 | natural |
+| 5. Actual transport and reward | UNTESTED | targeted slice-2 claim (no receipt); lane-22 slice 3 proved corpse:otakara:349001 | natural |
+| 6. Cleanup and re-entry | PASS (natural) | output/dsw/l33-out/slice3/otakara-run/e4e0fae69cbf405dbf2cf7dc14c79e4f/capture/native.log:993 | natural |
+
+## Breadbug (PanModoki 38)
+- Source ID: 38 `PanModoki`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | output/dsw/l33-out/slice3/breadbug-run2/contest.log:761 | natural |
+| 2. Autonomous movement and animation | PARTIAL | P1 TEKI_Collec proxy grab/drag; natural Stickers tug | natural |
+| 3. Attacks and receivers | PASS (natural) | output/dsw/l33-out/slice3/breadbug-run2/contest.log:772 | natural |
+| 4. Death and corpse | UNTESTED | owner-died release observed; small-breadbug death not a primary gate | natural |
+| 5. Actual transport and reward | PASS (natural) | output/dsw/l33-out/slice3/breadbug-run2/contest.log:773 | natural |
+| 6. Cleanup and re-entry | UNTESTED | revisit re-grant observed; full re-entry untested | natural |
+
+### Gate-checker output (`scripts/check_p2_handoff_gates.py`)
+
+```text
+38 PanModoki (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation ignored [PARTIAL]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   accepted [PASS]
+  6. cleanup_reentry    ignored [UNTESTED]
+44 BlueKochappy (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation accepted [PASS]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   ignored [PARTIAL]
+  6. cleanup_reentry    accepted [PASS]
+45 YellowKochappy (role=source): warning (shared table) - named in prose but no table of its own; give it a `Source ID` line + six-gate table to claim its gates
+54 Miulin (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation ignored [PARTIAL]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [UNTESTED]
+59 FireOtakara (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation accepted [PASS]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    accepted [PASS]
+```
+
+No PASS row is refused; the single `YellowKochappy (45)` warning is the slice-1/2 Snow
+identity named in prose without a six-gate table (warning only, not a refusal).
+

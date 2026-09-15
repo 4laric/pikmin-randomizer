@@ -1,4 +1,4 @@
-"""Lane 29 Jellyfloat corpse-reward consumer tests (#243)."""
+"""Lane 29 Jellyfloat reward consumer tests (#243)."""
 import pytest
 
 from experimental import pikmin2_kurage_rewards as rewards
@@ -11,10 +11,10 @@ def test_descriptors_use_the_shared_schema():
     assert set(by_identity) == {'enemy:57', 'enemy:72'}
     assert by_identity['enemy:57'] == {
         'version': receipts.SCHEMA_VERSION, 'identity': 'enemy:57', 'family': 'jellyfloat',
-        'drop': 'corpse', 'ledger': receipts.LEDGER_ONION, 'value': None, 'count': 1}
+        'drop': 'pellet', 'ledger': receipts.LEDGER_ONION, 'value': None, 'count': 1}
     assert by_identity['enemy:72'] == {
         'version': receipts.SCHEMA_VERSION, 'identity': 'enemy:72', 'family': 'jellyfloat',
-        'drop': 'corpse', 'ledger': receipts.LEDGER_ONION, 'value': None, 'count': 1}
+        'drop': 'pellet', 'ledger': receipts.LEDGER_ONION, 'value': None, 'count': 1}
     assert rewards.FAMILY == 'jellyfloat'
     assert rewards.SPECIES == {'Kurage': 57, 'OniKurage': 72}
     assert rewards.DROP_TYPE == {'Kurage': 'BDT_Normal', 'OniKurage': 'BDT_Strong'}

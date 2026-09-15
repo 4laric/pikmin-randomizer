@@ -386,3 +386,288 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/build_lane.py l18
 py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run build l18 -- py -3.12 -m experimental.pikmin2_breadbug_contest_runtime build --native C:/Users/alari/pikmin-randomizer/output/dsw/native-l18 --build-dir C:/Users/alari/pikmin-randomizer/output/dsw/native-l18-build --output C:/Users/alari/pikmin-randomizer/output/dsw/l18-out/slice2-fixture-build --head 452135cd6c34821ba4d3ad65058e3eac49d8a668
 py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l18 -- py -3.12 -m experimental.pikmin2_breadbug_contest_runtime run --stage C:/Users/alari/pikmin-randomizer/output/dsw/l18-out/contest-stage --exe C:/Users/alari/pikmin-randomizer/output/dsw/l18-out/slice2-fixture-build/fixture.exe --output C:/Users/alari/pikmin-randomizer/output/dsw/l18-out/slice2-run
 ```
+
+## Slice 3 — real interruption path + carried-win delivery grant
+
+Tracking #220. Owner: Codex through shared 4laric; executing agent DeepSeek lane-18.
+This slice closes the review's two open native gates for the small Breadbug
+consumer: (1) the **real interruption path** (`interrupt` + handle destroy on the
+`!held` transition — replacing the slice-2 borrowed "Stolen-outcome release" with
+a genuinely distinct release reason), and (3) the three carry-forward fix-ups
+(PROBE marker confessed by the module itself, `OWNER_DIED released=` prints the
+honest held-at-death state, `probe_revisit` destroys the handle instead of leaking
+the Stolen-outcome entry). The carried-win lane-06 delivery grant is re-confirmed
+below (ordinary Onion "Bestiary: Deliver Breadbug", exactly-once across restart).
+
+### Carry-forward fixes applied (review items)
+
+- **PROBE emitted by the module, not the fixture** — `pc_port/pc_p2_breadbug_actor.cpp`
+  `pc_p2_breadbug_actor_probe_carriers()` now prints
+  `P2_BREADBUG_CONTEST_PROBE generator=<id> carriers=<n> injected=1` for `count>=0`;
+  the validator trusts the module's confession, not the driver. The fixture's
+  PROBE prints were removed.
+- **OWNER_DIED `released=` is no longer a literal** — it prints `int(held!=nullptr)`
+  (the honest held-at-death state) at `pc_p2_breadbug_actor.cpp:123`.
+- **Revisit leak fixed** — `probe_revisit` now calls
+  `pc_p2_breadbug_contest_destroy()` before zeroing the handle
+  (`pc_p2_breadbug_actor.cpp:64-69`), so a Stolen-outcome `P2CargoContest` entry
+  is no longer left in the bridge's `sContests` map.
+- **Handoff commit list is complete** — root `ff418c1` / `60ba14a` and native
+  `452135cd` are now listed (see below).
+
+### The real interruption path (new)
+
+On the `!held` transition with a still-live HELD handle (the proxy lost/delivered
+its cargo while the tug was unresolved — not Stolen, not timed-out, both of which
+already destroy their handle), the tick now calls
+`pc_p2_breadbug_contest_interrupt()` + `pc_p2_breadbug_contest_destroy()` and emits
+`P2_BREADBUG_CONTEST_INTERRUPT generator=<id> reason=interrupted`
+(`pc_p2_breadbug_actor.cpp:171-176`). A Stolen outcome is now also terminal
+(`destroy` after the grant), so a fresh grab always begins a fresh contest; this is
+what the slice-2 host.log bug (held=0 state=8 at tick 840, next grab reusing the
+handle with no fresh BEGIN) required. In the slice-3 GL run the `!held` does **not**
+come from a captain whistle: the actor sits in `COLLECSTATE_Unk14` (RouteImpassable)
+with `held=1` (host.log ticks 960-1140), then the P1 host's Unk14->Unk8
+`timerLetGo` runs `TaiCollecLetGoOfPelletAction` (`taicollec.cpp:762-763, 938-949`)
+and clears `pointer(2)` (release without swallow/kill) while the tug is Held on the
+injected `carriers=1`; the module's interrupt branch then fires. The
+`n->callPikis()` whistle was therefore removed from the fixture (it fired while
+`held=0`/`carriers=0` and detached no Stickers — a whistle never clears
+`teki.clearCreaturePointer(2)`, `navi.cpp:1163-1252`, `pikiState.cpp:234-246`).
+
+### Ordered commits
+
+Root `deepseek/p2-l18`, base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91` (complete list):
+`3c18717`, `be68949`, `1442dc3`, `d4225ed`, `dad18ce`, `456fae4`, `c3b9921`,
+`ff418c1`, `d066f77`, `60ba14a`, `d813848` (integrator), then slice 3:
+`f988b68`, `8cf53ef`, `d8c660e`, `334c121`, `b7a2a14` (HEAD `b7a2a14`, clean),
+then fix 2: see the "## Fix 2 (review fixes) — slice 3" section.
+
+Native `deepseek/p2-l18-native`, base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`:
+`e2ad9445`, `9191e040`, `dcad95ba`, `4c7ee519`, `3b683c44`, `452135cd` (slice 2),
+then slice 3: `0a22fd06` (interruption path + Stolen-terminal),
+`56c7fdd0` (PROBE from probe_carriers + OWNER_DIED held literal + revisit destroy),
+`cafdaecc` (log natural carriers before the update for the integrity check),
+`d0b2d173` (detect owner death via `mDeadState` so interrupt cannot mask it),
+then fix 2: `ce998777` (REVISIT `rearmed=` reflects whether a live handle existed).
+HEAD (see fix-2 commit list below).
+
+### Interfaces / hooks touched
+
+- `pc_port/pc_p2_breadbug_actor.cpp` only (family module). No edits to
+  `teki.h`, `tekibteki.cpp`, `tekimgr.cpp`, `gameCoreSection.cpp`, `pc_p2_preview.cpp`
+  or the bridge. The bridge (`pc_p2_breadbug_contest_host`) already exposed
+  `interrupt`/`destroy`; slice 3 merely wires them at the correct transition.
+- Root: `scripts/pikmin2_breadbug_contest_fixture.cpp`,
+  `experimental/pikmin2_breadbug_contest.py`, `experimental/pikmin2_breadbug_contest_runtime.py`,
+  `tests/test_pikmin2_breadbug_contest_consumer.py`.
+
+### Build evidence (`output/dsw/l18-build-evidence.txt`)
+
+```text
+2026-09-15T00:06:30 lane=l18 target=pikmin_pc native=d0b2d173dc21a40526414f323d34d4e7f62bd3ca dirty=no build_dir=.../native-l18-build exe=.../bin/nectar.exe sha256=dd5e7e41d2a1b03c581812d3a40d81d5205780a7971d6993253be6762582aac3 ninja_n="ninja: no work to do."
+2026-09-15T00:30:24 lane=l18 target=p2_breadbug_contest_consumer_test native=d0b2d173dc21a40526414f323d34d4e7f62bd3ca dirty=no ... sha256=1f26bb5e38c0dc8eeb0755d90301dbb034e4473156071e2e863d984994603ba1 ninja_n="ninja: no work to do."
+2026-09-15T02:50:22 lane=l18 target=pikmin_pc native=ce9987773226a45ddda6f4c9506fa39aa44ee449 dirty=no build_dir=.../native-l18-build exe=.../bin/nectar.exe sha256=3c2dd4564af71ee9e5a6b2364c798522ad0783fcadbb7982bdd5160cb83745cc ninja_n="ninja: no work to do."
+```
+
+- Contest fixture exe SHA-256 `d37571d83a358ad15d4bc765303df13c0b08e591411ee1c4ab2eb34d24899e6a`.
+- Consumer CTest `1f26bb5e…` -> `PASS p2_breadbug_contest_consumer_test` (exit 0).
+
+### Fixture adoption evidence
+
+`Experimental preview window set to 960x540 windowed and centered`,
+`SDL2 Window & OpenGL Context initialized successfully (960x540)`,
+`P2_ROOM_PREVIEW room=room_4x4a_4_conc red=20 isolated=1`,
+`P2_BREADBUG_ACTOR_READY generator=186081 native_type=8`. Run wrapped in
+`slot.py run gl l18` with `PIKMIN_P2_ROOM_WINDOW=960x540`, `PYTHONUTF8=1`.
+
+### Runtime evidence (real-GL, 960x540)
+
+`output/dsw/l18-out/slice3-run/result.json` `passed=true`; host.log SHA-256
+`19e9030f322c3277b3780dbcccbccc3ee7803a50cb24a327b0bdcce1bec2bd95`. Marker
+sequence (generator 186081):
+
+```text
+P2_BREADBUG_CONTEST_BEGIN ... max=2
+P2_BREADBUG_CONTEST_UPDATE carriers=0 outcome=held          # natural tug (no probe)
+P2_BREADBUG_CONTEST_UPDATE carriers=2 outcome=stolen
+P2_BREADBUG_CONTEST_STOLEN ... released=1
+P2_BREADBUG_CONTEST_GRANT ... granted=1                     # exactly-once grant
+P2_BREADBUG_REVISIT ... rearmed=0                            # honest: no live handle (already destroyed)
+P2_BREADBUG_CONTEST_PROBE carriers=2 injected=1             # module-confessed
+P2_BREADBUG_CONTEST_BEGIN ... max=2
+P2_BREADBUG_CONTEST_STOLEN ... released=1
+P2_BREADBUG_CONTEST_GRANT ... granted=0 duplicate=1         # revisit refuses duplicate
+P2_BREADBUG_REVISIT ... rearmed=0
+P2_BREADBUG_CONTEST_PROBE carriers=1 injected=1
+P2_BREADBUG_CONTEST_BEGIN ... max=2
+P2_BREADBUG_CONTEST_UPDATE carriers=1 outcome=held
+P2_BREADBUG_CONTEST_INTERRUPT ... reason=interrupted        # real interruption (P1 Unk14->Unk8 letGo put-down)
+P2_BREADBUG_REVISIT ... rearmed=0
+P2_BREADBUG_CONTEST_PROBE carriers=1 injected=1
+P2_BREADBUG_CONTEST_BEGIN ... max=2
+P2_BREADBUG_CONTEST_UPDATE carriers=1 outcome=held
+P2_BREADBUG_OWNER_DIED ... released=1 reason=OwnerDied      # death releases the held cargo (fixture-invoked die())
+PASS P2_BREADBUG_CONTEST tug stolen_grant interrupt owner_died revisit_exactly_once
+```
+
+Validator: `began/held/stolen/released/granted/owner_died(1)/interrupt(reason=interrupted)/revisit`
+all true; `grants=1`, `grant_duplicate=true`, `integrity_violations=0`,
+`probe_before_first_grant=0`; all six gates passed.
+
+### Six-gate table (ingest contract)
+
+Deny-by-default: this slice's evidence is a P1-proxy preview run with injected
+carrier counts, so no gate is a natural PASS (all UNTESTED/PARTIAL).
+
+## Concrete source ID
+- Source ID: 38 `PanModoki`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | UNTESTED (P1 proxy) | output/dsw/l18-out/slice3-run/host.log:705 | proxy |
+| 2. Autonomous movement and animation | UNTESTED (P1 proxy) | output/dsw/l18-out/slice3-run/host.log:826 | proxy |
+| 3. Attacks and receivers | UNTESTED (injected) | output/dsw/l18-out/slice3-run/host.log:765 | injected |
+| 4. Death and corpse | UNTESTED (injected: fixture-invoked die(); release real) | output/dsw/l18-out/slice3-run/host.log:924 | injected |
+| 5. Actual transport and reward | PARTIAL | onion:p2:38:0 (contest receipt, exactly-once; output/dsw/l18-out/slice3-run/host.log:766) | injected |
+| 6. Cleanup and re-entry | UNTESTED (injected: durable ledger refuses re-grant across a fresh contest; onRevisit() not exercised) | output/dsw/l18-out/slice3-run/host.log:794 | injected |
+
+### Carried win / delivery-path grant (item 2)
+
+The contest's `grantReceipt` is the contest-internal reward (sidecar
+`p2-breadbug-contest-receipts.txt`). The lane-06 ordinary **delivery-path** grant
+is `GoalItem::suckMe` -> `pc_randomizer_corpse_delivered` ->
+`pc_randomizer_check("Bestiary: Deliver Breadbug")` (`goalItem.cpp:354-364`,
+`pc_randomizer.cpp:710-718`, `pc_randomizer_catalog.h:803` type 8). It fires across
+a process restart exactly once (session-1 handoff: `[run1] target_check_lines=1`,
+`[run2] target_check_lines=0`, `EXACTLY_ONCE_ACROSS_RESTART: True`), now driven by
+the parameterised `scripts/p2_ordinary_receipt_fixture.cpp` (`--enemy-type 8 --check
+"Bestiary: Deliver Breadbug"`). Slice 3 did not alter that path (its native edits are
+all in `pc_p2_breadbug_actor.cpp`, which is not loaded by the ordinary campaign), so
+that evidence stands. "The squad actually carrying the pellet to the Onion" (natural
+transport) is lane-04 ownership and is not claimed here.
+
+### Tests run and results
+
+- `py -3.12 -m pytest tests/test_pikmin2_breadbug_contest_consumer.py tests/test_pikmin2_breadbug_contest.py tests/test_pikmin2_breadbug_contest_observation.py tests/test_pikmin2_breadbug_ordinary.py tests/test_pikmin2_breadbug_rewards.py -q` -> **64 passed**.
+- Native CTest `p2_breadbug_contest_consumer_test` -> `PASS` (exit 0).
+
+### Subagent usage
+
+Three tasks delegated in parallel (staggered):
+
+- `explore` #1 (source audit: interruption + whistle + delivery path): **used as-is.**
+  Confirmed the P2 source has no separate "Stolen", that the P1 proxy releases the
+  held pointer via `endStickTeki`/`clearCreaturePointer(2)`, that the whistle
+  (`Navi::callPikis` -> `PikiLookAtState` detach) is the audited carrier-off trigger,
+  and the exact `GoalItem::suckMe` -> `pc_randomizer_corpse_delivered` -> type-8 ->
+  "Bestiary: Deliver Breadbug" delivery chain.
+- `explore` #2 (contest-chain inventory): **used as-is.** Confirmed the exact marker
+  producers, that `P2_BREADBUG_CONTEST_INTERRUPT` did not exist, that the PROBE was
+  fixture-emitted, `OWNER_DIED released=` was a literal, and the stale
+  `l18-root/engine/` mirror warning (I edited only `native-l18`).
+- `general` #3 (validator + tests rework): **used with one correction.** Added the
+  legacy-carriers integrity check, the INTERRUPT marker, the honest `released=` field,
+  and tests. I corrected `gate_owner_died` from "owner_died and released==1" to
+  "owner_died observed" (held-at-death is diagnostic, not a gate).
+
+Only I edited native C++, ran `build_lane.py`, ran the GL fixture through
+`slot.py run gl`, committed, and wrote this handoff.
+
+### Remaining blockers (provider lanes named)
+
+- Natural squad transport of the recovered pellet / corpse: lane 04.
+- Threading the real generated-session seed/stage/generator into the contest
+  identity and receipt coordinates (drop the `p2-preview`/stage-0 placeholders):
+  lane 01 / lane 03.
+- The carried-win delivery grant is confirmed exactly-once but is not yet wired
+  from a generated P2 family drop: lane 06 native save bridge + lane 01 + real-GL.
+
+### Exact reproduction command (slice 3)
+
+```powershell
+$env:PATH = 'C:/msys64/mingw64/bin;C:\Users\alari\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\Scripts;' + $env:PATH
+$env:PYTHONUTF8 = '1'
+$env:PIKMIN_P2_ROOM_WINDOW = '960x540'
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/build_lane.py l18
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run build l18 -- py -3.12 -m experimental.pikmin2_breadbug_contest_runtime build --native C:/Users/alari/pikmin-randomizer/output/dsw/native-l18 --build-dir C:/Users/alari/pikmin-randomizer/output/dsw/native-l18-build --output C:/Users/alari/pikmin-randomizer/output/dsw/l18-out/slice3-fixture-build --head ce9987773226a45ddda6f4c9506fa39aa44ee449
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l18 -- py -3.12 -m experimental.pikmin2_breadbug_contest_runtime run --stage C:/Users/alari/pikmin-randomizer/output/dsw/l18-out/slice3-stage --exe C:/Users/alari/pikmin-randomizer/output/dsw/l18-out/slice3-fixture-build/fixture.exe --output C:/Users/alari/pikmin-randomizer/output/dsw/l18-out/slice3-run --timeout 280
+```
+
+## Fix 2 (review fixes) — slice 3
+
+Blocking review items from the slice-3 merge, applied on the same branches.
+
+1. **Whistle did not cause the interruption.** `slice3-run/host.log:826-840`: the actor
+   sits in `COLLECSTATE_Unk14` (RouteImpassable) with `held=1` (ticks 960-1140), then
+   the P1 host's Unk14→Unk8 `timerLetGo` runs `TaiCollecLetGoOfPelletAction`
+   (`taicollec.cpp:762-763, 938-949`) and clears `pointer(2)` (release without
+   swallow/kill) while Held on the injected `carriers=1`. The inert `n->callPikis()`
+   (fired while `held=0`/`carriers=0`) was removed from the fixture; the run was
+   re-done and the interrupt still fires at host.log:839.
+2. **death_corpse relabelled.** The fixture calls `actor->die()` (fixture
+   `:113`, host.log:924), so the table row is `UNTESTED (injected)`, not PASS; the
+   `kill_fallback` at tick 4400 never fired (the death-hold grab succeeded).
+3. **`REVISIT rearmed=` is no longer a literal.** `pc_p2_breadbug_actor.cpp`
+   `probe_revisit` now prints `rearmed=%d` from `int(hadHandle)`; in the re-run it is
+   `rearmed=0` (every handle was already destroyed, so `onRevisit()` was not
+   exercised — the cleanup row is reworded accordingly).
+4. **Ingestible six-gate table.** Add `Source ID: 38 \`PanModoki\`` + numbered rows
+   with real `output/dsw/l18-out/slice3-run/host.log:NNN` citations (above). The
+   check script result is pasted below.
+5. **Commit-list/HEAD + death gate.** Root HEAD corrected to `b7a2a14`;
+   `gate_owner_died` restored to require `owner_died and owner_died_released`
+   (`released=1` in both runs); note `p2_breadbug_contest_consumer_test`
+   (`1f26bb5e…`) links only the engine-free bridge and says nothing about slice 3.
+
+### Fix-2 commits
+
+- Native `deepseek/p2-l18-native`: `ce998777` (REVISIT `rearmed=` truthful). HEAD
+  `ce998777`, clean.
+- Root `deepseek/p2-l18`: `4a99885` (honest interruption trigger; drop the inert
+  whistle), `45024a2` (REVISIT `rearmed=` honest + restore owner-died `released`
+  gate), plus this handoff commit. HEAD (see below).
+
+### Check-script output (pasted)
+
+```text
+$ py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE18_DEEPSEEK_HANDOFF.md
+38 PanModoki (role=source):
+  1. identity_spawn     ignored [UNTESTED]
+  2. movement_animation ignored [UNTESTED]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [PARTIAL]
+  6. cleanup_reentry    ignored [UNTESTED]
+```
+
+No PASS rows refused (all gates are honest UNTESTED/PARTIAL — this slice's evidence
+is a P1-proxy preview run with injected carrier counts, so deny-by-default holds).
+
+### Fix-2 runtime re-run (real-GL, 960x540)
+
+`output/dsw/l18-out/slice3-run/result.json` `passed=true`; host.log SHA-256
+`19e9030f322c3277b3780dbcccbccc3ee7803a50cb24a327b0bdcce1bec2bd95`; fixture exe
+`d37571d83a358ad15d4bc765303df13c0b08e591411ee1c4ab2eb34d24899e6a`; nectar.exe
+`3c2dd4564af71ee9e5a6b2364c798522ad0783fcadbb7982bdd5160cb83745cc`. Signal:
+`revisit_rearmed=0`, `interrupt_reason=["interrupted"]`, `integrity_violations=0`,
+`probe_before_first_grant=0`, all six gates passed (internal validator), and the
+interrupt fires from the P1 Unk14→Unk8 letGo (host.log:839) with no whistle call.
+
+### Subagent usage (fix 2)
+
+- `explore` #1 (P1 Collec put-down transition audit): **used as-is.** Corrected the
+  reviewer's `TaiCollecPuttingPelletAction` framing — the actual release is
+  `Unk14→Unk8 timerLetGo -> TaiCollecLetGoOfPelletAction` (`taicollec.cpp:938-949`),
+  and confirmed `Navi::callPikis` never touches `clearCreaturePointer(2)`. Drove the
+  honest relabel.
+- `explore` #2 (edit-site + host.log line-number inventory): **used as-is.** Supplied
+  the exact current `file:line` for every edit and the `host.log:NNN` citations used
+  in the ingestible table.
+- `general` #3 (validator + tests: REVISIT `rearmed` + owner-died gate): **used
+  as-is.** 18+18 pytest passed; no correction needed.
+
+Only I edited native C++, ran `build_lane.py`, ran the GL fixture through
+`slot.py run gl`, committed, and wrote this handoff. Net: the three read-heavy
+audits collapsed into one parallel round, saving roughly the serial re-grep + a
+pytest cycle.

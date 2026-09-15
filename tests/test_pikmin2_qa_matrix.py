@@ -93,6 +93,37 @@ class EvaluateTests(unittest.TestCase):
         self.assertEqual(cell["status"], qa.BLOCKED)
         self.assertEqual(cell["reason"], "all recorded attempts blocked")
 
+    def test_stale_pin_rejects_mismatched_root_commit(self):
+        pin = {"root_commit": "c" * 40}
+        mismatch = record(stage="install", scenario="missing_assets",
+                          kind=qa.KIND_FIXTURE, root_commit="a" * 40)
+        cell = qa.evaluate_cell([mismatch], "install", "missing_assets", pin=pin)
+        self.assertEqual(cell["status"], qa.BLOCKED)
+        self.assertIn("stale-pin", cell["reason"])
+        self.assertEqual(cell["evidence"][0]["id"], "r1")
+
+        match = record(stage="install", scenario="missing_assets",
+                       kind=qa.KIND_FIXTURE, root_commit="c" * 40)
+        cell = qa.evaluate_cell([match], "install", "missing_assets", pin=pin)
+        self.assertEqual(cell["status"], qa.PASS)
+
+    def test_stale_pin_rejects_mismatched_native_commit(self):
+        pin = {"native_commit": "d" * 40}
+        mismatch = record(stage="install", scenario="missing_assets",
+                          kind=qa.KIND_FIXTURE, native_commit="b" * 40)
+        cell = qa.evaluate_cell([mismatch], "install", "missing_assets", pin=pin)
+        self.assertEqual(cell["status"], qa.BLOCKED)
+        self.assertIn("stale-pin", cell["reason"])
+
+    def test_empty_record_commit_is_provenance_not_stale_pin(self):
+        pin = {"root_commit": "c" * 40}
+        incomplete = record(stage="install", scenario="missing_assets",
+                            kind=qa.KIND_FIXTURE, root_commit="")
+        cell = qa.evaluate_cell([incomplete], "install", "missing_assets", pin=pin)
+        self.assertEqual(cell["status"], qa.BLOCKED)
+        self.assertIn("provenance", cell["reason"])
+        self.assertNotIn("stale-pin", cell["reason"])
+
 
 class ValidationTests(unittest.TestCase):
     def test_validate_record_reports_every_problem(self):
@@ -135,6 +166,21 @@ class ReportTests(unittest.TestCase):
         self.assertIn("PASS", markdown)
         self.assertIn("Pinned baseline", markdown)
         self.assertIn("| scenario | status | reason | evidence |", markdown)
+
+    def test_build_report_threads_pin(self):
+        pin = {"root_commit": "c" * 40, "native_commit": "d" * 40}
+        stale = record(stage="install", scenario="missing_assets",
+                       kind=qa.KIND_FIXTURE, root_commit="a" * 40,
+                       native_commit="b" * 40)
+        fresh = record(record_id="fresh", stage="install", scenario="minimum_cap",
+                       kind=qa.KIND_FIXTURE, root_commit="c" * 40,
+                       native_commit="d" * 40)
+        report = qa.build_report([stale, fresh], pin=pin)
+        self.assertEqual(report["pin"], pin)
+        cells = {(c["stage"], c["scenario"]): c for c in report["cells"]}
+        self.assertEqual(cells[("install", "missing_assets")]["status"], qa.BLOCKED)
+        self.assertIn("stale-pin", cells[("install", "missing_assets")]["reason"])
+        self.assertEqual(cells[("install", "minimum_cap")]["status"], qa.PASS)
 
     def test_cli_report_and_validate(self):
         with tempfile.TemporaryDirectory() as tmp:

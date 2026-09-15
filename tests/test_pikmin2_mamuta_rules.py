@@ -51,7 +51,7 @@ def test_local_squad_record_roundtrip():
     record = squad_record(ASSETS)
     placement = validate_squad(record)
     assert placement['generator'] == SQUAD_GENERATOR
-    assert placement['count'] == SQUAD_COUNT == 10
+    assert placement['count'] == SQUAD_COUNT == 14
     assert placement['color'] == 'red' and SQUAD_COLOR == 1
     assert placement['formation'] == SQUAD_FORMATION == 2
     assert placement['position'] == list(SQUAD_POSITION)
@@ -109,7 +109,7 @@ def test_validate_plant_events_rejects_bad_semantics():
 def _death_log(*, corpse=1, withview=1, corpse_type=1):
     lines = [
         'P2_MAMUTA_RULES enabled cap=99 navi_damage=5.0 vertical_band=20',
-        'P2_MAMUTA_FIXTURE_BIRTH id=221001 type=24 squad=10 color=red',
+        'P2_MAMUTA_FIXTURE_BIRTH id=221001 type=24 squad=14 color=red',
         'P2_MAMUTA_CARCASS_CONFIG tkmu=1',
         'P2_MAMUTA_PLANT kind=1 happa=2 planted=0',
         'P2_MAMUTA_PLANT kind=1 happa=2 planted=0',

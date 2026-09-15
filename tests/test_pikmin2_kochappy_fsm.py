@@ -102,12 +102,16 @@ int main()
 def test_compiled_fsm_policy(tmp_path, name):
     compiler = shutil.which('g++') or ('C:/msys64/mingw64/bin/g++.exe'
                                        if Path('C:/msys64/mingw64/bin/g++.exe').exists() else None)
-    candidates = [ROOT / 'native' / 'pc_port']
-    if os.environ.get('PIKMIN_NATIVE_ROOT'):
-        candidates.insert(0, Path(os.environ['PIKMIN_NATIVE_ROOT']) / 'pc_port')
-    if os.environ.get('P2_NATIVE_PC_PORT'):
-        candidates.insert(0, Path(os.environ['P2_NATIVE_PC_PORT']))
+    pi_root = os.environ.get('PIKMIN_NATIVE_ROOT')
+    p2_port = os.environ.get('P2_NATIVE_PC_PORT')
+    candidates = [Path(pi_root) / 'pc_port'] if pi_root else []
+    if p2_port:
+        candidates.append(Path(p2_port))
+    if not pi_root and not p2_port:
+        candidates.append(ROOT / 'native' / 'pc_port')
     include = next((c for c in candidates if (c / name).is_file()), None)
+    if (pi_root or p2_port) and include is None:
+        pytest.fail('%s not found under PIKMIN_NATIVE_ROOT/P2_NATIVE_PC_PORT' % name)
     if compiler is None or include is None:
         pytest.skip('reference native pc_port or C++ compiler unavailable')
     source = tmp_path / 'policy.cpp'

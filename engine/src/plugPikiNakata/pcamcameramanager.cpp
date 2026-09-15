@@ -160,6 +160,7 @@ void PcamCameraManager::startVibrationEvent(int eventIdx, immut Vector3f& p2)
  */
 void PcamCameraManager::outputNaviPosition(Vector3f& naviPos)
 {
-	Navi* navi = naviMgr->getNavi(0);
+	Navi* navi = naviMgr->getActiveNavi();
+	if (!navi) navi = naviMgr->getNavi(0);
 	naviPos.input(navi->getPosition());
 }

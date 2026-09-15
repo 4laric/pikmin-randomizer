@@ -475,14 +475,18 @@ P2WaterwraithDamageResult p2_waterwraith_actor_apply_damage(P2WaterwraithActor& 
     if (outDead) {
         *outDead = false;
     }
-    if (!isPurple || !(damage > 0.0f) || !actor.mAlive) {
-        return P2WWDMG_Ignored; // structural Purple-only vulnerability
+    if (!(damage > 0.0f) || !actor.mAlive) {
+        return P2WWDMG_Ignored;
     }
 
     if (actor.mRig.attachedToOwner()) {
-        // Riding roller: the source-vulnerability gate is the roller's own
-        // `damageable()` (frozen riding, or dismounted tyre_getoff). Freeze/bend
-        // damage routes to the Tyre health.
+        // Riding roller: structurally Purple-only (the P1-host adaptation of the
+        // source collision flick vs. reachable roller attack), and the roller's
+        // own `damageable()` window (frozen riding / dismounted tyre_getoff).
+        // Freeze/bend damage routes to the Tyre health.
+        if (!isPurple) {
+            return P2WWDMG_Ignored; // non-Purple cannot damage the riding roller
+        }
         if (!actor.mRig.damageable()) {
             return P2WWDMG_Ignored; // riding/moving: the hit does nothing
         }
@@ -499,9 +503,15 @@ P2WaterwraithDamageResult p2_waterwraith_actor_apply_damage(P2WaterwraithActor& 
     // is set, and that flag persists past the Tyre child's finishDead/removal
     // (tyreState.cpp:152-153). Do NOT reuse rig.damageable() here: it is false
     // once the removed child is dead, which would wrongly close the body's
-    // vulnerability window and make body death unreachable.
+    // vulnerability window and make body death unreachable. In the source the
+    // dismounted body takes damage from ANY Pikmin (no color gate in
+    // `EnemyBase::damageCallBack` at blackMan.cpp:680); the Purple-only rule
+    // applies to the riding roller only.
     if (!actor.mRig.ownerInvulnerableSet()) {
         return P2WWDMG_Ignored; // still riding (no dismount yet)
+    }
+    if (actor.mBodyHealth <= 0.0f) {
+        return P2WWDMG_Ignored; // already zeroed: no further body hits count
     }
     actor.mBodyHealth -= damage;
     if (actor.mBodyHealth < 0.0f) {

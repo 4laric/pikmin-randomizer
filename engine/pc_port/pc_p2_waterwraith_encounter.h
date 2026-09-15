@@ -26,7 +26,7 @@
 struct P2WaterwraithEncounterStats {
     std::uint64_t ticks = 0;
     std::uint64_t stunned = 0;   // Purple landing stuns applied
-    std::uint64_t purpleHits = 0; // accepted Purple hits
+    std::uint64_t acceptedHits = 0; // accepted hits (Purple on the roller; any color on the body)
     std::uint64_t crushes = 0;   // non-Purple Pikmin flicked by the roller
     float damageDealt = 0.0f;
     bool rollerZeroed = false;   // roller health reached zero

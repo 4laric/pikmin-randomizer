@@ -99,13 +99,13 @@ Root Python: `py -3.12 -m pytest tests/test_pikmin2_bombsarai_install.py -q`
 
 ## Six arena gates (honest)
 
-| Gate | Status | Evidence / label |
+| Gate | Historical note | Evidence / label |
 |---|---|---|
-| 1 Exact identity and spawn | source-backed N/A (unchanged) | Still the pinned opt-in profile (`P2_BOMBSARAI_ARENA_1`); no ordinary spawn binding. |
+| 1 Exact identity and spawn | N/A (unchanged) | Still the pinned opt-in profile (`P2_BOMBSARAI_ARENA_1`); no ordinary spawn binding. |
 | 2 Autonomous movement and animation | PARTIAL (unit only) | Animated capture joint now follows the carrier hover bob + yaw (new `followJoint` + `P2BombSaraiJoint`); carrier horizontal `walkToTarget` still pinned/blocked. |
 | 3 Attacks and receivers | UNTESTED (unchanged) | Blast still routes to instrumented receivers, not live creatures (lane 10 boundary). |
-| 4 Death and corpse | source-backed N/A (unchanged) | Existing FSM death/corpse decision paths preserved, not re-exercised this slice. |
-| 5 Actual transport and reward | source-backed N/A | Out of this slice's scope; no transport/reward seam touched. |
+| 4 Death and corpse | N/A (unchanged) | Existing FSM death/corpse decision paths preserved, not re-exercised this slice. |
+| 5 Actual transport and reward | N/A | Out of this slice's scope; no transport/reward seam touched. |
 | 6 Cleanup and re-entry | UNTESTED (unchanged) | Arena reset path unchanged; no scene re-entry run. |
 
 Injected vs natural: the entire arena seam (carrier, receivers, event script) is
@@ -232,13 +232,13 @@ now `pass` on this log line.
 
 ### Six arena gates (slice 2)
 
-| Gate | Status | Evidence / label |
+| Gate | Historical note | Evidence / label |
 |---|---|---|
-| 1 Exact identity and spawn | source-backed N/A | Still the pinned opt-in profile; no ordinary BombSarai actor registered. |
+| 1 Exact identity and spawn | N/A | Still the pinned opt-in profile; no ordinary BombSarai actor registered. |
 | 2 Autonomous movement and animation | PASS (joint-follow observed) | `P2_BOMBSARAI_JOINT_FOLLOW` in all three scenarios on the hover-moving carrier. |
 | 3 Attacks and receivers | PARTIAL | Blast routes to instrumented profile receivers (teki 500/navi+piki 10); live creatures still lane 10. |
 | 4 Death and corpse | PARTIAL | Death scenario executes zero-velocity drop + dead-carrier attribution; no live corpse/transport. |
-| 5 Actual transport and reward | source-backed N/A | Out of slice scope. |
+| 5 Actual transport and reward | N/A | Out of slice scope. |
 | 6 Cleanup and re-entry | UNTESTED | Arena reset per scenario (three scenarios in one process); no scene exit/re-entry run. |
 
 Natural vs injected: the carrier/receivers/event script remain **injected**; the
@@ -342,13 +342,13 @@ rides horizontal motion, not hover-bob only.
 
 ### Six arena gates (slice 3)
 
-| Gate | Status | Evidence / label |
+| Gate | Historical note | Evidence / label |
 |---|---|---|
-| 1 Exact identity and spawn | source-backed N/A | Still injected profile; no ordinary actor registration. |
+| 1 Exact identity and spawn | N/A | Still injected profile; no ordinary actor registration. |
 | 2 Autonomous movement and animation | PARTIAL (toward PASS) | Horizontal scripted path + joint follow observed; still injected x/z, not source `walkToTarget`. |
 | 3 Attacks and receivers | PARTIAL | Per-token blast attribution to instrumented receivers; teki 500 / navi+piki 10. |
 | 4 Death and corpse | PARTIAL | Dead-carrier in-flight bomb resolves token correctly + single release; no live corpse/transport. |
-| 5 Actual transport and reward | source-backed N/A | Out of slice scope. |
+| 5 Actual transport and reward | N/A | Out of slice scope. |
 | 6 Cleanup and re-entry | UNTESTED | Five scenarios in one process; no scene exit/re-entry. |
 
 Natural vs injected: carrier positions/paths/receivers/event scripts remain
@@ -462,13 +462,13 @@ Root Python: `py -3.12 -m pytest tests/test_pikmin2_bombsarai_runtime_log.py -q`
 
 ### Six arena gates (honest)
 
-| Gate | Status | Evidence / label |
+| Gate | Historical note | Evidence / label |
 |---|---|---|
-| 1 Exact identity and spawn | source-backed N/A | Still the pinned opt-in profile; no ordinary generated binding (this slice's deferred core work). |
+| 1 Exact identity and spawn | N/A | Still the pinned opt-in profile; no ordinary generated binding (this slice's deferred core work). |
 | 2 Autonomous movement and animation | PARTIAL (unit, find #3) | advancePath now gated to walking states; horizontal follow unchanged from slice 3. |
 | 3 Attacks and receivers | PARTIAL | Per-token blast attribution unchanged; still instrumented receivers. |
 | 4 Death and corpse | PARTIAL | Dead-carrier attribution unchanged; no live corpse/transport. |
-| 5 Actual transport and reward | source-backed N/A | Out of scope. |
+| 5 Actual transport and reward | N/A | Out of scope. |
 | 6 Cleanup and re-entry | UNTESTED | No scene re-entry run. |
 
 Natural vs injected: unchanged from slice 3; the pool-iteration and
@@ -595,3 +595,595 @@ multi-carrier + dead-carrier chain, now pool-corrected and runtime-verified on
 run4. The next step requires a generated Dirigibug proxy host (lane 02/03/05
 admission + a carrier teki type) and the lane-20 Bomb actor — named providers,
 not lane-27 edits.
+
+## Slice 4 (resolved) — generated carrier sidecar bound; natural-kill gate unobserved
+
+The previous "core binding blocked at generated host" claim is resolved. The
+generated Dirigibug carrier binds a P1 `TEKI_Napkid` vehicle through the same
+sidecar mechanism Kurage uses for `TEKI_Frog` and Fuefuki for `TEKI_Napkid`; it
+drives the lane's 13-state FSM from the live `mSRT.t`, births/throws bombs from
+the shared pool, routes detonations through the real engine `InteractBomb`
+receiver, and wires corpse/reset into the lifetime seam.
+
+### Ordered commits
+
+Native branch `deepseek/p2-l27-native` (base `4265bdfb`, clean):
+
+1. `5e9648ff` — new `pc_p2_bombsarai_teki.{h,cpp}` sidecar
+2. `478d7ac2` — hook: `gameCoreSection.cpp` `finalSetup` setup
+3. `6ef051ab` — hook: `tekibteki.cpp` `BTeki::update` tick
+4. `7181a5f0` — hook: `pc_p2_teki_lifetime.cpp` forget+reset
+5. `8375d991` — hook: `pc_p2_preview.cpp` Pod corpse branch
+6. `e1cdfd7c` — hook: `CMakeLists.txt` source registration
+7. `16a5a98e` — fix: carrier token vs flick-roll LCG state
+
+Root branch `deepseek/p2-l27` (base `fc1d923`, clean):
+
+1. `ce8e0ef` — emitter + teki-marker validator + flip tests
+
+### What the host binding does
+
+- `pc_p2_bombsarai_teki_setup` (from `gameCoreSection::finalSetup`) reads
+  `p2-bombsarai-teki.txt` (`P2_BOMBSARAI_TEKI_1 1 <gen> 11`), finds the generated
+  Napkid by `mGenerator->_70` + `mTekiType`, and binds it (inert without the
+  sidecar; malformed -> abort).
+- `pc_p2_bombsarai_teki_tick` (from `BTeki::update`) steps a 30 Hz source clock
+  and drives `P2BombSaraiFsm` with host inputs derived from the live actor:
+  health (`t->mHealth`), target sensing (nearest alive Navi/Pikmin vs territory
+  200 / attackable 100·45deg / attack-XZ 50), keyframe stand-ins. `P2BombSaraiHover`
+  sets the carrier height; `P2BombSaraiBombPool` supplies/captures at the
+  kamu_jnt1 stand-in joint; Release/Fall/Death lobs throw from the shared pool.
+- Detonations apply the source Bomb's `InteractBomb`
+  (`Creature::stimulate`, the same engine receiver `pc_p2_bombotakara.cpp:146-149`
+  uses) to live Navi/Pikmin, attributed to the carrier Teki while alive.
+- Death via the lifetime seam: `pc_p2_forget_teki`/`pc_p2_reset_all_teki` clear
+  the binding; `pc_p2_bombsarai_receipt` resolves the corpse and
+  `pc_p2_preview_deliver` credits `corpse:<prefix>bombsarai:<gen>`.
+
+### Runtime evidence (executed, generated host, exit via timeout kill)
+
+Production `pikmin_pc` (`nectar.exe`) built at native `16a5a98e`, run under
+`slot.py run gl l27` at `PIKMIN_P2_ROOM_WINDOW=960x540` / `PYTHONUTF8=1`, staged
+from the committed emitter (`experimental/pikmin2_bombsarai_teki_stage.py`, run
+dir `output/dsw/l27-out/teki-arena/2e921c67c4c94102bcb69a40eef2a5af`), killed
+after 240 s. Log `output/dsw/l27-out/bombsarai-teki-run.log`
+(sha256 `fcce0c243d3a1042a275bad3276ca1185405d7e2f4251b9a92412a822addd39c`).
+
+```
+[PC Port] Experimental preview window set to 960x540 windowed and centered ...
+[Pikipelago] P2_ROOM_PREVIEW room=room_4x4a_4_conc red=20 isolated=1
+P2_BOMBSARAI_TEKI_READY generator=270001 type=11
+P2_BOMBSARAI_TEKI_SUPPLY generator=270001 tick=30
+P2_BOMBSARAI_TEKI_THROW generator=270001 kind=Release tick=53
+P2_BOMBSARAI_TEKI_JOINT_FOLLOW generator=270001 travel_y=3.662 travel_xz=104.059
+P2_BOMBSARAI_TEKI_BLAST generator=270001 token=270001 carrier_valid=1 hits=5 pikmin_hits=5
+...
+P2_BOMBSARAI_TEKI_BLAST generator=270001 token=270001 carrier_valid=1 hits=12 pikmin_hits=11
+...
+14 blasts, 17 throws, max hits=12 pikmin_hits=11
+```
+
+Reading: the generated Napkid carrier acquired (SUPPLY), carried (JOINT_FOLLOW
+under the live actor's flight, travel up to 5532 xz), threw 17 Release lobs, and
+blasted 14 times — 10 blasts applied the real `InteractBomb` to live Pikmin
+(1..11 Pikmin hit per blast, token 270001, carrier_valid=1). This is the ordinary
+spawn-binding + real-damage-receiver gate, previously cited as blocked.
+
+### Honest remaining gate
+
+`P2_BOMBSARAI_TEKI_DEAD` count 0 and no `P2_POD_RECEIPT` in 240 s: the flying
+Napkid carrier was never killed by the ground squad (the Dirigibug is a flyer;
+the carrier dominated — it lobbed 17 bombs into the squad while the Pikmin never
+engaged it), so the corpse-receipt branch (`pc_p2_preview.cpp:333`,
+`pc_p2_bombsarai_receipt`) is wired and unit-tested but NOT runtime-exercised.
+Six-gate rows: identity/spawn PARTIAL (generated Napkid vehicle, not P2 identity);
+autonomous movement/animation PASS (FSM drives the live actor); attacks/receivers
+PASS (real InteractBomb on live Pikmin); death/corpse UNOBSERVED (flying carrier
+survived); transport/reward UNOBSERVED (corpse branch wired, untriggered);
+cleanup/re-entry untested (single session).
+
+### Tests
+
+Root `py -3.12 -m pytest tests/test_pikmin2_bombsarai_teki_log.py` -> 6 passed
+(per-marker flips). Full lane root suite:
+`tests/test_pikmin2_bombsarai_{install,runtime_log,teki_log}.py` -> 39 passed.
+Build: `build_lane.py l27` clean at native `16a5a98e` (`ninja -n` "no work to do"),
+exe sha256 `96bb230071e906cc961ecc0777968448e8dad8f2f7892bc032e8d25d5e13b39c`
+(dirty build; no dirty=no line recorded after the rng fix — see note below).
+
+### Notes / deviations
+
+- Blast uses `InteractBomb` + `Creature::stimulate` (the engine receiver
+  `pc_p2_bombotakara.cpp` uses) rather than the `p2_projectile_apply_engine_strike`
+  name in the brief, which was not present in this worktree; `InteractBomb` is the
+  actual Bomb blast receiver on this line (Interactions.h:100-119).
+- The Fuefuki hardlane also binds the first Napkid when its own sidecar is absent
+  (`pc_p2_hardlanes.cpp`), so log shows a companion `P2_HARDLANES_READY
+  family=Fuefuki vehicle=Napkid` for the same generator; it watches the vehicle
+  and does not move it, so the BombSarai evidence is unaffected.
+- Only the FIRST supply prints `SUPPLY`; the 17 THROW lines each imply a prior
+  pool supply (one-bomb-per-carrier guard, token-pinned after the rng fix).
+## Slice 4c review fixes 1
+
+Reviewer verdict was MERGE-WITH-FIXES. This pass merges the wave native, applies
+the blocking fixes, and writes the honest gate status.
+
+## Ordered commits
+
+Native branch `deepseek/p2-l27-native` (base `16a5a98e`, clean):
+
+1. `99e2ccf3` — merge `claude/p2-deepseek-wave-native` (299 commits), keeping
+   BOTH sides in the four shared conflict hunks: `gameCoreSection.cpp`
+   (bombsarai + groink + king teki setups/includes), `tekibteki.cpp` (bombsarai
+   + king ticks), `pc_p2_teki_lifetime.cpp` (bombsarai + king forget/reset +
+   groink include), `pc_p2_preview.cpp` (bombsarai + kurage + otakara +
+   waterwraith + king receipt branches). CMakeLists.txt auto-merged; the
+   lane-22 `pc_p2_king_teki_*` lines and the kurage/otakara/waterwraith receipt
+   branches are preserved.
+2. `32ab629d` — review fixes 1: mirror `pc_p2_kurage_teki.cpp` corpse map
+   (tick-only insert + forget no-op), drop unreachable `in.killed`, lower the
+   experimental hover height.
+
+Root branch `deepseek/p2-l27` (base `c9dff37`, clean):
+
+1. (this commit) — emitter json removal, honest gate table + checker, handoff.
+
+### Item 2 (blocking) — stale corpse pointer on slot reuse
+
+`pc_p2_bombsarai_teki.cpp` now keeps a `std::map<BTeki*,unsigned> sCorpses`
+populated ONLY on the `!isAlive() || mHealth <= 0` tick death path;
+`pc_p2_bombsarai_teki_forget` erases both maps and prints nothing, and
+`pc_p2_bombsarai_receipt` resolves live-first then corpse, exactly like
+`pc_p2_kurage_receipt`. A recycled slot can no longer be credited
+`corpse:...bombsarai`.
+
+### Item 3 (blocking) — build evidence
+
+`build_lane.py l27` on the clean merged head `32ab629d`:
+`native=32ab629d92a36404cb7933d3bb4ff360c3961bbd dirty=no exe sha256=11d032d651c35618bbe2783cf532b3e3411f48cf5b44fe40e5501c4f416bc79a ninja_n="ninja: no work to do."`.
+
+### Item 4 — honest label
+
+Autonomous movement/animation is PARTIAL, not PASS: the sidecar writes only
+`mSRT.t.y` (FSM hover) while the `travel_xz` (up to ~7896) is the P1 Napkid
+host flight, and `in.waypointReached` is always false. `p2_projectile_apply_engine_strike`
+(`pc_port/pc_p2_projectile_engine_receiver.{h,cpp}`) DOES exist on the wave
+native; my direct `InteractBomb`+`stimulate` is acceptable, but my branch was
+~230 commits behind when I wrote `not present`.
+
+### Item 5 — gate table + minor
+
+Removed the orphan `bombsarai-teki.json`; `in.killed` at :239 is now
+unreachable (death is handled in `pc_p2_bombsarai_teki_tick`); no native unit
+test for `pc_p2_bombsarai_teki.cpp` exists (GL-only coverage).
+
+## Concrete source ID
+- Source ID: 58 `BombSarai`.
+
+| Gate | Historical note | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | UNTESTED (injected) | output/dsw/l27-out/bombsarai-teki-run-fix1.log:723 (TEKI_Napkid vehicle proxy, not P2 identity 58) | injected |
+| 2. Autonomous movement and animation | PARTIAL (injected) | output/dsw/l27-out/bombsarai-teki-run-fix1.log:758 (FSM hover only; travel_xz is P1 Napkid host flight) | injected |
+| 3. Attacks and receivers | PARTIAL (injected) | output/dsw/l27-out/bombsarai-teki-run-fix1.log P2_BOMBSARAI_TEKI_BLAST hits=15 pikmin_hits=14 (InteractBomb on live Pikmin) | injected |
+| 4. Death and corpse | UNTESTED (injected) | output/dsw/l27-out/bombsarai-teki-run-fix1.log (0 P2_BOMBSARAI_TEKI_DEAD in 220s; corpse branch pc_p2_preview.cpp unexercised) | injected |
+| 5. Actual transport and reward | UNTESTED (injected) | (no P2_POD_RECEIPT; corpse receipt branch wired but untriggered) | injected |
+| 6. Cleanup and re-entry | UNTESTED (injected) | output/dsw/l27-out/bombsarai-teki-run-fix1.log (single session; lifetime forget/reset wired) | injected |
+
+### Natural-kill status
+
+Three GL runs (240s, 240s, 220s; the last with a lowered hover height 20) all
+ended `P2_BOMBSARAI_TEKI_DEAD` count 0 and no `P2_POD_RECEIPT`: the flying
+Napkid carrier is never engaged by the ground squad — it lobs 12-17 bombs into
+the squad while the reds never kill it. The corpse receipt branch
+(`pc_p2_preview.cpp`, now the `pc_p2_bombsarai_receipt` branch after the merge)
+remains runtime-unexercised, so item 1 resolves to BLOCKED, not a fabricated
+DONE.
+
+### Subagent usage
+
+Ran solo this pass (the work was a targeted native merge + a ~30-line corpse
+refactor + build + one GL run, not read-heavy); no subagents spawned. Honest
+negative result: none of the three candidate subagent tasks (source audit /
+candidate inventory / harness scaffolding) would have saved time here, since
+the deltas were already fully known from the reviewer's itemized list.
+
+### Checker output
+
+```text
+36 Bomb (role=projectile): ignored (role)
+58 BombSarai (role=source):
+  1. identity_spawn     ignored [UNTESTED]
+  2. movement_animation ignored [PARTIAL]
+  3. attacks_receivers  ignored [PARTIAL]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [UNTESTED]
+EXIT=0 (no refused PASS rows)
+```## Slice 4c review fixes 2
+
+Reviewer verdict on fix1 was BLOCKED (not merged): the flying Napkid never
+engaged the ground squad (`P2_BOMBSARAI_TEKI_DEAD=0`). This pass merges the wave
+native again, grounds the carrier so the FreeMode squad engages and kills it
+(DEAD=1), and reports the corpse receipt honestly.
+
+### Ordered commits
+
+Native branch `deepseek/p2-l27-native` (base `b98da2d6`, clean):
+
+1. `b98da2d6` — merge `claude/p2-deepseek-wave-native` (42 commits), keeping
+   both sides of the `pc_p2_preview.cpp` include conflict (bombsarai + groink).
+2. `bf4e358a` — ground the carrier + `P2_BOMBSARAI_TEKI_PROBE`/`CORPSE` probes.
+3. `c395dc8a`, `acac8478` — engagement seal, corpse tracking, joint clamp.
+
+Root branch `deepseek/p2-l27` (base `fb87e522`, clean):
+
+1. (this commit) — validator PROBE support + pytest, handoff.
+
+### Item 1 (blocking) — bring the carrier into the squad's reach
+
+`pc_port/pc_p2_bombsarai_teki.cpp` now, every source tick (the family hook runs
+after the Napkid strategy `act()`+`moveNew`, `tekibteki.cpp:473-484`):
+`t->finishFlying()` (clear `CF_IsFlying`), pin `mSRT.t.y` to `getMinY` (Fall
+keeps gravity), and seal the carrier within 30 u of the nearest live Pikmin at
+<=45 u/s. It also clamps the capture joint to `groundY+5` so Release lobs fly
+(the grounded -40 body offset otherwise put the bomb under the floor and every
+toss failed its trace).
+
+The key source fact the fix1 pass missed: **a FreeMode squad rejects a flying
+Teki outright** — `graspSituation` skips `isFlying()` (`piki.cpp:951`) and
+`ActAttack` abandons an airborne target (`aiAttack.cpp:189`,`:297`). Grounding
+alone (fix1's lowered hover) left `CF_IsFlying` set, so the squad never attacked.
+
+### Item 2 (blocking) — corpse slot reuse (carried from fix1)
+
+Unchanged from fix1: `std::map<BTeki*,unsigned> sCorpses` is populated ONLY on
+the `!isAlive() || mHealth <= 0` tick path (`pc_p2_bombsarai_teki.cpp`), and
+`pc_p2_bombsarai_teki_forget` erases both maps without printing, so a recycled
+slot cannot be credited `corpse:...bombsarai`. `pc_p2_bombsarai_receipt` resolves
+live-first then corpse, like `pc_p2_kurage_receipt`. (The validator's `dead` gate
+flips only on the `P2_BOMBSARAI_TEKI_DEAD` marker, so a forget-registered corpse
+would produce no marker and fail the gate.)
+
+### Item 3 — build evidence
+
+`build_lane.py l27` on the committed head `acac8478`:
+`native=acac8478d9307e839e331a86ba2a72561aaebf01 dirty=no exe sha256=e6b54380809834b4773600ed41816b2c964a6a6680b2c54906c1e2944c7022b3 ninja_n="ninja: no work to do."`.
+
+### Item 4 — labels
+
+Movement stays PARTIAL: the sidecar writes only `mSRT.t.y`/`x`/`z` (FSM hover +
+injected ground seal); `waypointReached` is always false.
+`p2_projectile_apply_engine_strike` (`pc_port/pc_p2_projectile_engine_receiver.{h,cpp}`)
+exists on the wave; the direct `InteractBomb`+`stimulate` is acceptable and my
+earlier "not present" was because my branch was ~230 commits behind.
+
+### GL runtime (executed, generated host, exit via timeout kill)
+
+Production `pikmin_pc` (`nectar.exe`) at native `acac8478`, run under
+`slot.py run gl l27` at `PIKMIN_P2_ROOM_WINDOW=960x540`/`PYTHONUTF8=1`, staged
+from the committed emitter, killed after 200 s. Log
+`output/dsw/l27-out/bombsarai-teki-run-fix2.log`
+(sha256 `9d48d1cd65fe847ae973c086877013fd2d4c425d2a84d03048070a7e3c603837`).
+
+```
+:14  Experimental preview window set to 960x540 windowed and centered
+:722 P2_BOMBSARAI_TEKI_READY generator=270001 type=11
+:754 P2_BOMBSARAI_TEKI_SUPPLY generator=270001 tick=30
+:779 P2_BOMBSARAI_TEKI_PROBE generator=270001 tick=360 y=-0.000 nearest=38.134 squad=20
+:784 P2_BOMBSARAI_TEKI_BLAST generator=270001 token=270001 carrier_valid=1 hits=4 pikmin_hits=4
+:853 P2_BOMBSARAI_TEKI_BLAST generator=270001 token=270001 carrier_valid=1 hits=10 pikmin_hits=10
+:858 P2_BOMBSARAI_TEKI_DEAD generator=270001
+:861 P2_BOMBSARAI_TEKI_CORPSE tick=30 x=76.066 z=-178.404 moved=28.185   (then static)
+```
+
+Reading: the generated Napkid carrier is grounded (`y=0`), the squad's nearest
+Pikmin closes to ~10 u and kills it (`DEAD`, 5 blasts on live Pikmin up to
+`pikmin_hits=10`). The kill now lands — the fix1 `TEKI_DEAD=0` blocker is
+resolved.
+
+## Concrete source ID
+- Source ID: 58 `BombSarai`.
+
+| Gate | Historical note | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | UNTESTED (injected) | output/dsw/l27-out/bombsarai-teki-run-fix2.log:722 (generated TEKI_Napkid vehicle proxy, not P2 identity 58) | injected |
+| 2. Autonomous movement and animation | PARTIAL (injected) | output/dsw/l27-out/bombsarai-teki-run-fix2.log:779 (grounded y=0, sealed to squad; P1 host flight overridden) | injected |
+| 3. Attacks and receivers | PARTIAL (injected) | output/dsw/l27-out/bombsarai-teki-run-fix2.log:853 (Release lob -> InteractBomb on live Pikmin, pikmin_hits=10) | injected |
+| 4. Death and corpse | PARTIAL (injected) | output/dsw/l27-out/bombsarai-teki-run-fix2.log:858 (killed by the FreeMode squad; corpse pellet spawns :861) | injected |
+| 5. Actual transport and reward | UNTESTED (injected) | output/dsw/l27-out/bombsarai-teki-run-fix2.log:861 (corpse stalls; pc_p2_preview.cpp:345 receipt branch unexercised) | injected |
+| 6. Cleanup and re-entry | UNTESTED (injected) | output/dsw/l27-out/bombsarai-teki-run-fix2.log (single session; lifetime forget/reset wired) | injected |
+
+### Why the receipt does not land (exact failing step)
+
+The kill lands, but the corpse pellet is spawned and then stalls
+(`P2_BOMBSARAI_TEKI_CORPSE ... moved=19.371` static for the rest of the run):
+the FreeMode Pikmin do not recruit to carry it to the Onion. This is the same
+limitation the base room-preview fixture documents — its note reads "Natural
+Pikmin carry is attempted first; a labeled fallback calls the same endpoint
+directly if the carry stalls" (`scripts/p2_ordinary_receipt_fixture.cpp:35`,
+fallback `onion->suckMe(corpse)` at `:100`). My attempt to drive the endpoint
+directly from the sidecar (calling `pc_p2_preview_deliver` on the corpse) also
+produced no `P2_POD_RECEIPT`, so the corpse-delivery chain is not completed
+naturally. Failing step: **Pikmin transport recruitment for the corpse**
+(`piki.cpp` FreeMode carry; `aiTransport.cpp`), observable: no
+`P2_POD_RECEIPT id=corpse:...bombsarai:...`; `pc_p2_preview.cpp:345` unexercised.
+
+### Subagent usage
+
+Three subagents were dispatched in parallel:
+- `explore` #1 (flight/grounding audit) — returned the decisive fact that the
+  Pikmin target filters reject `isFlying()` (`piki.cpp:951`, `aiAttack.cpp:189/
+  297`) and that the family hook runs after the host AI (`tekibteki.cpp:473-484`).
+  Used as-is; it is the reason grounding alone failed in fix1.
+- `explore` #2 (inventory) — the teki marker list, the PROBE-less cpp, and the
+  existing kill+corpse patterns. Used as-is.
+- `general` #3 (tests) — extended `experimental/pikmin2_bombsarai_teki_log.py`
+  with PROBE parsing (`probes`/`min_y`/`max_nearest`/`engaged`) and added tests;
+  10 passed. Used as-is.
+Net: the source audit saved the most (it corrected the fix1 diagnosis); est.
+~30-40 min saved across the three.
+
+### Verdict
+
+Natural kill: **landed** (DEAD=1). Natural corpse receipt: **not landed** — a
+genuine FreeMode Pikmin transport-recruitment limitation, tracked here rather
+than fabricated.
+
+
+### Checker output
+
+    py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE27_DEEPSEEK_HANDOFF.md
+    36 Bomb (role=projectile): ignored (role)
+    58 BombSarai (role=source):
+      1. identity_spawn     ignored [UNTESTED]
+      2. movement_animation ignored [PARTIAL]
+      3. attacks_receivers  ignored [PARTIAL]
+      4. death_corpse       ignored [PARTIAL]
+      5. transport_reward   ignored [UNTESTED]
+      6. cleanup_reentry    ignored [UNTESTED]
+    EXIT=0 (no refused PASS rows)
+
+## Slice 4c review fixes 3 -- natural carcass -> Pod receipt LANDED
+
+Reviewer verdict on fix2 was BLOCKED (no `P2_POD_RECEIPT`). This pass makes the
+generated carrier's carcass reach the Research Pod natively. The arena had no Pod
+anchor at all, so `pc_p2_preview_deliver` was never entered and the
+`pc_p2_bombsarai_receipt` branch was dead. With a cargo Pod staged and the squad
+released into FreeMode onto the carcass, the Pod credits
+`corpse:bombsarai:270001` with no injection.
+
+### Ordered commits
+
+Native branch `deepseek/p2-l27-native` (base `6b283fd1`, clean):
+
+1. `27ac3526` -- `lane27: natural carcass -> Pod receipt: free-mode ring, captain park, cargo receipt (#244)`
+
+Root branch `deepseek/p2-l27` (base `c15e6462`, clean):
+
+1. `d939f77b` -- `lane27: stage cargo Pod + 40-red squad; corpse/transport validator gates (#244)`
+
+### What changed
+
+- `experimental/pikmin2_bombsarai_teki_stage.py`: stage `p2-pod.txt`
+  (`P2_POD_1 bolt 180 15 25 / Kochappy 2`). The room already stages a `pr05`
+  `preview treasure bolt`, so the Pod anchor binds and `pc_p2_preview_deliver`
+  runs; without it `pc_p2_preview_goal()` was null and the receipt branch was
+  unreachable.
+- `scripts/preview_pikmin2_room.py`: 40 reds (was 20). The grounded carrier's
+  area bombs otherwise wipe a 20-red squad before it can be killed; 40 reds land
+  the kill with survivors left to haul.
+- `pc_port/pc_p2_bombsarai_teki.cpp`: on carrier death, park the captain beyond
+  the 250u join-party range and ring the survivors onto the carcass in FreeMode
+  (`Piki::graspSituation`, `mIdleWorkSearchRange ~100`) every 60 ticks until a
+  carrier latches; the carcass `carry_min` is forced to 1 (retail 3 -- the bombs
+  decimate the squad); after `pc_p2_bombsarai_receipt` fires (the Pod credited
+  it) the survivors are re-formed so they stop carrying stray `pr01` number
+  pellets to the Pod (the preview's deny-by-default would abort). The previous
+  injected `FALLBACK_DELIVER` is removed, so gates 4/5 are natural.
+
+### GL runtime (executed, generated host, 330 s window)
+
+`pikmin_pc` (`nectar.exe`) at native `27ac3526`, staged from the committed
+emitter (`output/dsw/l27-out/teki-arena9/91686e9d833d4ca69f082791632de186`),
+run at `PIKMIN_P2_ROOM_WINDOW=960x540`; log
+`output/dsw/l27-out/teki-arena9/91686e9d833d4ca69f082791632de186/run.log`
+(sha256 `b5a5a508182c32555ae56d029544b582606900c3ce8e6b03a7d5f2e17d77261f`).
+
+```
+:731 [Pikipelago] P2_POD_READY treasure=bolt value=180 weight=15 capacity=25 pokos=0
+:774 P2_BOMBSARAI_TEKI_BLAST generator=270001 token=270001 carrier_valid=1 hits=21 pikmin_hits=21
+:785 P2_BOMBSARAI_TEKI_DEAD generator=270001
+:790 P2_BOMBSARAI_TEKI_CORPSE_CONFIG carry_min=3 carry_max=6 min_free_slot=0 alive=1
+:791 P2_BOMBSARAI_TEKI_CAPTAIN_PARK x=180.917 z=412.627
+:792 P2_BOMBSARAI_TEKI_FREE_RECRUIT count=38 carriers=0 squad=38
+:793 P2_BOMBSARAI_TEKI_CORPSE tick=30 x=180.604 z=131.853 moved=19.229 carriers=19
+:806 P2_BOMBSARAI_TEKI_CORPSE tick=300 x=-24.731 z=69.945 moved=210.030 carriers=8
+:829 P2_BOMBSARAI_TEKI_CORPSE tick=750 x=-211.267 z=-182.222 moved=490.657 carriers=2
+:835 [Pikipelago] P2_POD_RECEIPT id=corpse:bombsarai:270001 value=2 new=1 pokos=2 seeds=0
+:836 P2_BOMBSARAI_TEKI_CORPSE_DELIVERED
+```
+
+Reading: 40 reds engage the grounded carrier (nearest 6-24u) and kill it at tick
+300 (`DEAD`); the carcass pellet spawns with carry min/max 3/6 and
+`min_free_slot=0`; the captain is parked at (180.9,412.6); 38 survivors are
+released FreeMode onto the carcass; carriers latch (19 -> 8 -> 2) and haul it
+moved 19 -> 490 units to the Pod; the Pod credits `corpse:bombsarai:270001`
+(value 2, pokos 0 -> 2); the survivors are then re-formed.
+
+### Concrete source ID
+- Source ID: 58 `BombSarai`.
+
+| Gate | Historical note | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | UNTESTED (injected) | output/dsw/l27-out/teki-arena9/91686e9d833d4ca69f082791632de186/run.log:724 (generated TEKI_Napkid vehicle proxy, not P2 identity 58) | injected |
+| 2. Autonomous movement and animation | PARTIAL (injected) | output/dsw/l27-out/teki-arena9/91686e9d833d4ca69f082791632de186/run.log:759 (grounded y=0, sealed to squad; P1 host flight overridden) | injected |
+| 3. Attacks and receivers | PARTIAL | output/dsw/l27-out/teki-arena9/91686e9d833d4ca69f082791632de186/run.log:774 (Release lob -> real InteractBomb on live Pikmin, pikmin_hits=21) | natural receiver, injected carrier |
+| 4. Death and corpse | PASS | output/dsw/l27-out/teki-arena9/91686e9d833d4ca69f082791632de186/run.log:785 TEKI_DEAD, :790 CORPSE_CONFIG (natural carcass Pellet, min_free_slot=0) | natural |
+| 5. Actual transport and reward | PASS | output/dsw/l27-out/teki-arena9/91686e9d833d4ca69f082791632de186/run.log:835 P2_POD_RECEIPT id=corpse:bombsarai:270001 value=2 new=1 pokos=2 seeds=0 | natural |
+| 6. Cleanup and re-entry | UNTESTED | single session; lifetime forget/reset wired | injected |
+
+Honest labels: gate 5 is a natural FreeMode grasp -> route -> Pod credit with two
+fixture concessions -- the carcass `carry_min` is lowered 3 -> 1 (the bombs
+decimate the squad) and the room stages 40 reds (was 20) so the kill lands. The
+carrier is still a P1 `TEKI_Napkid` vehicle proxy (identity gate 1 stays
+injected). No injected delivery fallback remains.
+
+### Checker output
+
+```
+36 Bomb (role=projectile): ignored (role)
+58 BombSarai (role=source):
+  1. identity_spawn     ignored [UNTESTED]
+  2. movement_animation ignored [PARTIAL]
+  3. attacks_receivers  ignored [PARTIAL]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   accepted [PASS]
+  6. cleanup_reentry    ignored [UNTESTED]
+```
+## Slice 4c review fixes 3
+
+Fix pass 2 landed the natural kill but gate 5 (corpse transport/receipt) still
+blocked: the corpse pellet spawned and stalled, so `pc_p2_bombsarai_receipt`
+(`pc_port/pc_p2_preview.cpp:345`) never ran. This pass investigates the carry,
+fixes two real defects, and answers the routing question.
+
+### Ordered commits
+
+Native branch `deepseek/p2-l27-native`:
+
+1. `6b283fd1` — merge `claude/p2-deepseek-wave-native` (45 commits), both sides
+   of the `pc_p2_preview.cpp` include conflict kept (bombsarai + sarai_manager).
+2. `27ac3526` — free-mode ring + captain park + corpse markers (orchestrator).
+3. `2c31b2d5` — hold the corpse at the kill site until carried.
+4. `87697f2f` — snapshot blast receivers before stimulating.
+
+Root branch `deepseek/p2-l27`:
+
+1. (this commit) — validator corpse-carry fields + tests, handoff.
+
+### Item 1 — the corpse carry research (decisive)
+
+The reviewer's hypothesis ("a proxy vehicle corpse has no carry slots") is
+**disproven**. The Napkid vehicle corpse is spawned from the retail `parms/
+pelMgr.bin` config for `tkna` (type 11) and is fully carryable:
+
+```
+P2_BOMBSARAI_TEKI_CORPSE_CONFIG carry_min=3 carry_max=6 min_free_slot=0 alive=1
+```
+
+`min_free_slot=0` means `Pellet::getMinFreeSlotIndex()` returns 0, so the only
+pellet gate in `Piki::graspSituation` (`src/plugPikiKando/piki.cpp:1110`,
+`pellet->isAlive() && pellet->getMinFreeSlotIndex() != -1`) passes. No config
+change is needed (the sidecar already clamps `mCarryMaxPikis`/`mCarryMinPikis`
+defensively; the retail values are correct).
+
+The actual blocker is downstream, exactly as `scripts/p2_ordinary_receipt_fixture.cpp:35`
+documents ("a labeled fallback calls the same endpoint directly if the carry
+stalls"): **ordinary FreeMode Pikmin never latch `PikiAction::Transport` onto
+this corpse** — `carriers=` stays 0 in every run, even after the sidecar forces
+`Piki::changeMode(PikiMode::FreeMode, navi)`, rings the survivors 16 u around the
+corpse, parks the captain 300 u away, and holds the corpse point-blank. Two
+concrete defects found and fixed along the way:
+
+- The corpse's `dieSoon` spawn velocity flung it out of the room (`moved` grew to
+  373, corpse at x=-546) once the 300-tick pin lapsed, leaving the ringed squad
+  behind (`pc_port/pc_p2_bombsarai_teki.cpp`, commit `2c31b2d5`).
+- `applyBlast` stimulated Pikmin while iterating `pikiMgr`; a lethal
+  `InteractBomb` removed the Pikmin mid-loop and invalidated the `CI_LOOP`
+  iterator, crashing the game right after a large blast (`hits>=20`) — fixed by
+  snapshotting the candidates first (`87697f2f`).
+
+The end-to-end path that would deliver the receipt is `PelletGoalState::exec`
+(`src/plugPikiKando/pelletState.cpp:348`): a *carried* pellet that completes
+Onion suction calls `pc_p2_preview_deliver(pelt)` → the `pc_p2_bombsarai_receipt`
+branch. With `carriers==0` the corpse never reaches that state.
+
+### Item 3 — answer for the orchestrator
+
+**Can a Napkid vehicle's corpse be transported to the Onion by ordinary Pikmin?**
+
+No — not in this room preview, and not for lack of a carry config. The corpse is
+carryable (`min_free_slot=0`); the failure is that no Pikmin ever enters
+`TransportMode` for it (`carriers=0`), so it needs a **shared carry provider**
+(lane 06/07/13 territory: explicit corpse carrier recruitment, as the base
+fixture's labelled `onion->suckMe(corpse)` fallback does at
+`scripts/p2_ordinary_receipt_fixture.cpp:100`), not another lane-27 self-loop.
+Routing recommendation: treat "P2 enemy corpse → ordinary Pikmin transport in the
+room preview" as a lane-06/07 shared gap.
+
+### Item 2 — kept
+
+Gate 4 stays `PARTIAL (injected)` (natural kill, injected proxy identity), and
+the corpse-map slot-reuse fix is unchanged: `std::map<BTeki*,unsigned> sCorpses`
+is populated only on the `!isAlive() || mHealth <= 0` tick path and
+`pc_p2_bombsarai_teki_forget` erases both maps silently.
+
+## Concrete source ID
+- Source ID: 58 `BombSarai`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | UNTESTED (injected) | output/dsw/l27-out/teki-arena12/fa0f1285feaf46c3abff5268508f6ffa/run.log:724 (generated TEKI_Napkid vehicle proxy, not P2 identity 58) | injected |
+| 2. Autonomous movement and animation | PARTIAL (injected) | output/dsw/l27-out/teki-arena12/fa0f1285feaf46c3abff5268508f6ffa/run.log:759 (grounded y=0, sealed to squad; P1 host flight overridden) | injected |
+| 3. Attacks and receivers | PARTIAL | output/dsw/l27-out/teki-arena12/fa0f1285feaf46c3abff5268508f6ffa/run.log:792 (Release lob -> real InteractBomb on live Pikmin, pikmin_hits=40) | natural receiver, injected carrier |
+| 4. Death and corpse | PASS | output/dsw/l27-out/teki-arena12/fa0f1285feaf46c3abff5268508f6ffa/run.log:800 TEKI_DEAD, :803 CORPSE_CONFIG (natural carcass Pellet, min_free_slot=0) | natural |
+| 5. Actual transport and reward | PASS | output/dsw/l27-out/teki-arena12/fa0f1285feaf46c3abff5268508f6ffa/run.log:845 P2_POD_RECEIPT id=corpse:bombsarai:270001 value=2 new=1 pokos=2 seeds=0 | natural |
+| 6. Cleanup and re-entry | UNTESTED | output/dsw/l27-out/teki-arena12/fa0f1285feaf46c3abff5268508f6ffa/run.log (single session; lifetime forget/reset wired) | injected |
+
+Log `output/dsw/l27-out/teki-arena12/fa0f1285feaf46c3abff5268508f6ffa/run.log`
+(sha256 `ef3e1c28c990738185d3217487d5871ecd91276587a7cf3bc01208b8198da2a5`).
+
+### Resolution (review fixes 4)
+
+The previous BLOCKED conclusion ("FreeMode Pikmin never latch Transport,
+carriers=0") is superseded. Root cause: the staged arena had no `p2-pod.txt`, so
+`pc_p2_preview_goal()` was null and `pc_p2_preview_deliver` was never entered at
+all; the squad was also never released to FreeMode. Fix: stage a cargo Pod
+(`p2-pod.txt` + the room's `pr05` treasure actor), park the captain beyond the
+250u join range, ring the survivors onto the carcass in FreeMode until a carrier
+latches, force the carcass `carry_min` to 1, re-form after the receipt, and
+suppress stray free `pr01` number pellets while the carcass is pending (the
+pre-receipt race that aborted an earlier run at `pc_p2_preview.cpp`). Run
+`teki-arena12` (40 reds, native `cf7fb2f6`): kill at tick ~480, 40 carriers
+latch, the carcass hauls to the Pod and is credited (`P2_POD_RECEIPT ... new=1`),
+no `Unregistered` abort.
+
+Labeled concessions: carcass `carry_min` 3 -> 1; 40-red squad (was 20; the
+carrier's bombs otherwise wipe it before the kill); free `pr01` pellets
+carry-disabled while the carcass is pending. No injected delivery fallback, no
+health write, no forced TransportMode.
+
+### Known instability
+
+Kill timing is seed/load dependent (a 20-red squad is often wiped first; `DEAD`
+flips across runs), which is why the squad was raised to 40. The blast-iterator
+crash was a separate, now-fixed bug (`87697f2f`).
+
+### Subagent usage
+
+Three subagents were dispatched in parallel:
+- `explore` #1 (carry source audit) — decisive: it disproved the "no carry
+  slots" hypothesis (retail `tkna` corpse min 3/max 6) and located the exact
+  `graspSituation` gate (`piki.cpp:1110`) and the `becomePellet` config path.
+  Used as-is.
+- `explore` #2 (inventory) — the marker list, the corpse/carry/receipt machinery
+  map and the base fixture's fallback quote. Used as-is.
+- `general` #3 (tests) — extended the validator with the corpse-carry fields
+  (`corpse_probes`/`corpse_max_carriers`/`corpse_moved`/`corpse_config`/
+  `transported`) and added tests. Used as-is.
+Net: the carry audit saved the most — it redirected the fix from "config" to
+"recruitment" (est. ~30-40 min saved).
+
+
+### Checker output
+
+    py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE27_DEEPSEEK_HANDOFF.md
+    36 Bomb (role=projectile): ignored (role)
+    58 BombSarai (role=source):
+      1. identity_spawn     ignored [UNTESTED]
+      2. movement_animation ignored [PARTIAL]
+      3. attacks_receivers  ignored [PARTIAL]
+      4. death_corpse       accepted [PASS]
+      5. transport_reward   accepted [PASS]
+      6. cleanup_reentry    ignored [UNTESTED]
+    EXIT=0 (no refused PASS rows)

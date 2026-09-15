@@ -101,7 +101,9 @@ def test_bulbmin_mother_is_wired_additively():
                for _, bulbmin, _ in sources)
     assert any('pc_p2_bulbmin_attach_dedicated_mother' in preview
                for _, _, preview in sources)
-    # The prior Kochappy auto-attach path stays wired (default behavior).
+    # The default attach path stays wired: lane 11 slice 3 replaced the Kochappy
+    # first-registered lookup with the bank-free host resolver.
     assert any('pc_p2_bulbmin_attach_mother' in preview
-               and 'pc_p2_kochappy_first_registered' in preview
+               and ('pc_p2_bulbmin_mother_host' in preview
+                    or 'pc_p2_kochappy_first_registered' in preview)
                for _, _, preview in sources)

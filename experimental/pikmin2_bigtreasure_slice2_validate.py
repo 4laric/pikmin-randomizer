@@ -73,6 +73,10 @@ def validate_slice2(text: str) -> dict:
         'handled_set_held': False,
         'phase_advanced': False,
         'weapon_count_dropped': False,
+        'ordinary_attack_started': False,
+        'ordinary_attack_emitted': False,
+        'natural_drop': False,
+        'held_count': 0,
     }
     recv_lines = []
     weapon_counts = []
@@ -86,10 +90,12 @@ def validate_slice2(text: str) -> dict:
         marker, fields = _parse_line(line)
         if marker == 'P2_BIGTREASURE_ATTACK_START':
             result['attack_started'] = True
+            result['ordinary_attack_started'] = True
         elif marker == 'P2_BIGTREASURE_ATTACK_EMIT':
             nodes = _to_int(fields.get('nodes'))
             if nodes is not None and nodes >= 1:
                 result['emitted'] = True
+                result['ordinary_attack_emitted'] = True
         elif marker == 'P2_BIGTREASURE_RECV':
             result['recv_observed'] = True
             recv_lines.append(line.strip())
@@ -104,11 +110,14 @@ def validate_slice2(text: str) -> dict:
             fsm_lines.append((phase, weapons))
             if weapons is not None:
                 weapon_counts.append(weapons)
-        elif marker == 'P2_BIGTREASURE_SLICE2_HANDLED':
-            first = _to_int(fields.get('first'))
-            second = _to_int(fields.get('second'))
-            if first == 1 and second == 0:
-                result['handled_set_held'] = True
+        elif marker == 'P2_BIGTREASURE_RECV_HELD':
+            # The ordinary loop's handled set re-armed this attack (a target in
+            # geometry was already stimulated, so a re-stimulation was held).
+            result['handled_set_held'] = True
+            result['held_count'] += 1
+        elif marker == 'P2_BIGTREASURE_DROP_INGRESS':
+            if fields.get('injected') == '0':
+                result['natural_drop'] = True
 
     drop_index = _weapon_drop_index(fsm_lines)
     if drop_index is None:

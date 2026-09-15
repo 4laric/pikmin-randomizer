@@ -1,4 +1,4 @@
-# Lane 15 — DeepSeek handoff (fix2): NaN resolved — real Honeywisp carried-Egg reward (#166)
+# Lane 15 — DeepSeek handoff (fix5): Honeywisp carried-Egg reward + lifecycle gates (#166)
 
 Implementation owner: Codex via shared account `4laric`. Executing
 agent/session: DeepSeek (deepseek-v4-pro). This records ONE slice (real
@@ -27,44 +27,60 @@ policy (`pc_p2_egg_hazard.*`) as a *consumer*:
 ## Source IDs and files owned
 
 - Native `output/dsw/native-l15` (branch `deepseek/p2-l15-native`):
-  - `pc_port/pc_p2_qurione.cpp` (only file changed). Markers: `P2_QURIONE_EGG_REAL
-    born=1 drop_group=0` / `released=1`, `P2_QURIONE_EGG_BOUNCE`,
-    `P2_QURIONE_EGG_BREAK`, `P2_QURIONE_EGG_ITEM`.
+  - `pc_port/pc_p2_qurione.cpp`. Markers: `P2_QURIONE_EGG_REAL born=1
+    drop_group=0` / `released=1`, `P2_QURIONE_EGG_BOUNCE`,
+    `P2_QURIONE_EGG_BREAK`, `P2_QURIONE_EGG_ITEM`, `P2_QURIONE_FORGET`.
+  - `tools/p2_qurione_drop_runtime.cpp` (replacement-main drop/cleanup fixture,
+    built by `scripts/build_pikmin2_fixture.py`).
 - Root `output/dsw/l15-root` (branch `deepseek/p2-l15`):
   - `experimental/pikmin2_qurione_arena.py` (removed the invalid 203002 control)
-  - `experimental/pikmin2_qurione_lifecycle.py` (real markers, partial/partial gate
-    wording, `passed_real` + `no_movement_nan` gates)
+  - `experimental/pikmin2_qurione_lifecycle.py` (real markers, gate wording,
+    `passed_real` + `no_movement_nan` + `moved`(state=move) + `full_chain` gates,
+    `GATE_STATUS`)
   - `experimental/pikmin2_qurione_runtime.py` (anchored regex)
-  - `tests/test_pikmin2_qurione_lifecycle.py` (20 tests)
+  - `tests/test_pikmin2_qurione_lifecycle.py` (27 tests)
   - `docs/PIKMIN2_QURIONE_LIFECYCLE.md`, `docs/PIKMIN2_LANE15_DEEPSEEK_HANDOFF.md`
 
 No shared-file changes ship.
 
 ## Ordered commits
 
-Root (base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`):
-1. `a89996b` lane15: grade real carried-Egg reward in Qurione lifecycle contract (#166)
-2. `9924fbc` lane15: record carried-Egg reward handoff and gate-5 update (#166)
-3. `0d24fe0` lane15: review fixes - partial gate wording, anchored runtime regex, passed_real gate (#166)
-4. `abaf3d2` lane15: review-fix1 handoff, NaN localization, partial gate wording (#166)
-5. `c2094cd` lane15: review fixes 2 - drop 203002 control, NaN resolved (#166)
+Regenerated from git (only the unmerged delta; the earlier accepted history is
+already an ancestor of the wave branches).
 
-Native (base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`):
-1. `d1a579f3` lane15: Qurione carries real Egg reward via lane-20 P2Egg policy (#166)
-2. `7fa5eb01` lane15: review fix - apply egg drop positionOffsetY to birthed items (#166)
+Root — `git log codex/p2-main-review..HEAD` (base `codex/p2-main-review`):
+1. `e35187b8` lane15: review fixes 4 - gate 2 PARTIAL, gate 5 N/A (nectar), moved gate state=move (#166)
+2. `3f67f1a4` lane15: review fixes 5 - gate 6 PASS, commit lists, GATE_STATUS drift test, handoff hygiene (#166)
+3. `5194a7dc` lane15: fix5 handoff commit hash (#166)
+4. `00f75b21` lane15: fix5 subagent usage note (#166)
+
+Native — `git log claude/p2-deepseek-wave-native..HEAD` (base `claude/p2-deepseek-wave-native`):
+1. `c820395b` lane15: review fixes 5 - forget marker + two-appear-cycle fixture (#166)
+2. `dc14c11f` lane15: review fixes 5 - run fixture setup on preview-ready (not Walk state) (#166)
+3. `02e63c5b` lane15: review fixes 5 - fixture gate uses room-preview flag (no treasure required) (#166)
+4. `bce9c553` lane15: review fixes 5 - park fixture reds on valid terrain (#166)
+5. `b87b9881` lane15: review fixes 5 - finalize the wisp death so the lane-07 forget seam fires (#166)
+6. `586075f4` lane15: review fixes 5 - store the wisp generator for a clean forget marker (#166)
+
+Already on the wave (accepted): root through `f046915e`; native through `ccb9d3a7`.
 
 ## Interfaces / hooks touched
 
-None new. Consumes lane-20 `P2Egg` + P1 `itemMgr`/`pelletMgr`. **Request to
-lane 20:** extract a shared `pc_p2_egg_birth_items()` helper (the birth mapping
-is duplicated in `pc_p2_projectiles.cpp` and `qurioneEggBirthItems`).
+None new in production. Consumes lane-20 `P2Egg` + P1 `itemMgr`/`pelletMgr`.
+**Shared-helper request to lane 20 (still open):** `pc_port/pc_p2_qurione.cpp:203-247`
+(`qurioneEggBirthItems`) duplicates lane-20's birth mapping
+(`pc_p2_projectiles.cpp:997-1041`, `birthEggDrop`) and uses its own `gsys`-based
+random adapter instead of lane-20's `ScriptRng`; extract a shared
+`pc_p2_egg_birth_items()` (+ shared RNG adapter) and lane 15 will consume it
+rather than fork further.
 
 ## Build evidence (`output/dsw/l15-build-evidence.txt`)
 
 - **Lane build** (Ninja + MinGW g++ 16.2.0, Release, JAUDIO ON): native head
-  `7fa5eb01232f58bb45e32bb56417861c87e58ef2`, dirty=no, exe SHA-256
-  `ae91120369957fd58035032ce3508489ab5e3d7930293f9f9a6714638648012c`, `ninja -n`
-  no-work.
+  `ccb9d3a7` (fix3), dirty=no, exe SHA-256 `85b166a2...` (2026-09-15T02:40:26; fixture provenance
+  `output/dsw/l15-out/fixture-drop/provenance.json`). Earlier: `7fa5eb01`/`ae91120...` (fix2). Note: the
+  23:19:14 `f88de0ec dirty=no` line is a re-stamp of the 22:59 dirty build and cullfix-run.log (23:16)
+  predates that commit; the accepted slice-3 run used the 00:19:46 `bd23509a` build.
 - **Base build** (unmodified `b805d9c6`, separate worktree
   `output/dsw/native-l15-base` + build dir `native-l15-base-build`): 603/603, exe
   SHA-256 `0a9e500a8c0343dd006e0096c4642b268aedf43c6d631122744f2c34017236a1`,
@@ -104,24 +120,17 @@ resolve the NaN (wrong mechanism), so it was reverted (`git reset --hard
 7fa5eb01`) and is no longer on the branch. With 203002 removed the wisp flies to
 flight height naturally via the Move-state pitch bob, so the hold is unnecessary.
 
-## Six-gate table (natural vs injected)
+## Six-gate table
 
-| Gate | Result | Evidence |
-|---|---|---|
-| 1 identity/spawn | **PASS** | `source_id=16`, matched XYZ, `P2_QURIONE_EGG_REAL born=1` |
-| 2 movement/animation | **PARTIAL** | finite `stay→appear→move` flight once 203002 removed; disappear/drop legs not yet captured |
-| 3 attacks/receivers | source-backed N/A | no attack; contact trigger is flyCollisionCallBack |
-| 4 death/corpse | **UNTESTED** | drop→dead needs a Pikmin drop trigger |
-| 5 transport/reward | **PARTIAL** | attach + real Egg born observed live; release/break/item-birth contract-only |
-| 6 cleanup/re-entry | **UNTESTED** | requires a death path |
-
-Injected state: none. All observations are natural engine execution.
+The canonical six-gate table lives in the fix-3 section (3.4); it is the ingested
+one and supersedes the earlier inline rows. All observations are natural engine
+execution (no health write, no forced state).
 
 ## Tests
 
-`py -3.12 -m pytest tests/test_pikmin2_qurione_lifecycle.py -q` → **20 passed**
-(adds `passed_real` and `no_movement_nan` regression guards). Full flying-family
-suite remains green (79 passed + 14 subtests across the other files).
+`py -3.12 -m pytest tests/test_pikmin2_qurione_lifecycle.py -q` → **27 passed**
+(adds `passed_real`, `no_movement_nan`, `moved`(state=move), `full_chain` and
+`GATE_STATUS`-vs-handoff drift guards). Full flying-family suite remains green.
 
 ## Subagent usage
 
@@ -174,3 +183,192 @@ Notes: `run_fixture.py` (in `output/dsw/l15-out/`) sets `PIKMIN_P2_ROOM_WINDOW=9
 `PYTHONUTF8=1`, and prepends the MinGW bin to PATH. The arena stages a read-only
 junction `native/pikmin2-research` → the shared decomp checkout for the asset
 extractor.
+
+## Slice 3
+
+**Goal: the wisp actually flies, drops, and dies.** Two of the three legs are now
+delivered and evidenced; the drop/die leg is blocked for an environmental reason
+(no thrown Pikmin unattended), not a code defect.
+
+### 3.1 Move stall: root cause and fix
+
+The "3 distinct positions over ~70 s, frozen from POS line 1" freeze was not the
+FSM and not `MapMgr`. It was AI culling: once the wisp left the AI grid,
+`Creature::update` early-returns **before** the movement pass
+(`src/plugPikiKando/creature.cpp:677`), so `moveNew`/`traceMove` stop running and
+`mSRT.t` freezes even though the qurione FSM kept writing `mVelocity`. The source
+`Qurione::onInit` keeps animating while offscreen (`doAnimationCullingOff()`);
+the P1-host equivalent is `setInsideView()` → `CF_AIAlwaysActive`, applied at bind
+in `pc_port/pc_p2_qurione.cpp::pc_p2_qurione_setup`.
+
+After the fix the log shows continuous positions through a full natural cycle on a
+dirty=no lane build (`f88de0ec`, exe `bd23509a…`):
+
+```text
+state=appear -> move (3 distinct state=move positions in qurione-run.log:793-797; drop-run.log shows no Move displacement because contact fired on the first Move frame) -> disappear -> stay
+0 `=nan`; validator: moved=True (state=move), source_cycle=True  (full appear/move/disappear)
+```
+
+(nearest-Pikmin XZ distance was not logged in any run; the idle 20-red squad mingles
+away from the wisp's fixed-birth facing flight path — that is why the natural drop
+does not fire (see 3.2).
+
+### 3.2 Natural drop — achieved (dirty=no, real GL log)
+
+The source drop is `Qurione::flyCollisionCallBack` (CollPart contact,
+`Qurione.cpp:136-144`); the port contact test is `pikiContact(pos)` (`distXZ
+< HIT_RADIUS=30`, `pc_p2_qurione.cpp:156-164`, called at `:469`), the ordinary
+contact path with **no health write**. A replacement-main drop fixture throws a
+red Pikmin at the wisp (`tools/p2_qurione_drop_runtime.cpp`, built by
+`scripts/build_pikmin2_fixture.py` from the clean `ccb9d3a7` tree); the natural
+chain then fires in a real GL log:
+
+```text
+P2_QURIONE_STATE ... state=drop          drop triggered by Pikmin contact
+P2_QURIONE_EGG ... action=drop           dropItem (endCapture)
+P2_QURIONE_EGG_REAL ... released=1
+P2_QURIONE_EGG_BOUNCE ... health_zeroed=1
+P2_QURIONE_EGG_BREAK ... type=3 items=2 real=1      DoubleNectar
+P2_QURIONE_EGG_ITEM ... item=nectar ... (x2)        2 real nectar items
+P2_QURIONE_STATE ... state=dead          fly-away death (no corpse, source EB_LeaveCarcass)
+P2_QURIONE_DEAD ... source_id=16
+```
+
+Evidence: `output/dsw/l15-out/arena-runs/4eb9093898ff4d8a9e73110675683570/drop-run.log`
+(lines 769 drop, 771 released, 773 break, 774-775 item, 777 dead, 782 DEAD; 0
+`=nan`). The fixture's own `P2_QURIONE_DROP_THROW` marker never printed — the
+captain did not reach active Walk before a mingling red came within 30 XZ, which
+is exactly the review's stated path ("a red standing within 30 units fires Drop;
+nothing has to be thrown"). The drop is natural (no health write).
+
+### 3.3 isnan probe — committed, env-gated; mechanism still inferred
+
+The probe is now committed behind an env gate (`PIKMIN_P2_NAN_PROBE=1`, off by
+default) in `pc_p2_qurione_update` (`pc_p2_qurione.cpp`), so it is reproducible.
+Its output (dirty-tree build `09d931df`, labelled control with 203002 present):
+
+```text
+[PC_L15_PROBE] first_nan state=0 vel=(nan,nan,nan) pos=(nan,nan,nan)
+```
+
+state=0 is Stay, where `:459-460` zeroes `mVelocity` every frame — so the NaN is
+already present entering the FSM, i.e. it arrives **across actors** (a collision
+response with the neighbouring un-suppressed 203002 actor, per
+`objectMgr.cpp:958-969`) rather than a non-finite velocity entering *this*
+actor's normal move pass. **The mechanism is still inferred**, not probed to a
+specific writer. 203002 stays out of acceptance runs.
+
+### 3.4 Gate table (PIKMIN2_ENEMY_ROSTER.md §Gate table format)
+
+- Source ID: 16 `Qurione`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | output/dsw/l15-out/arena-runs/4eb9093898ff4d8a9e73110675683570/drop-run.log:748 | natural |
+| 2. Autonomous movement and animation | PARTIAL (one full cycle then re-appear stall) | output/dsw/l15-out/arena-runs/4eb9093898ff4d8a9e73110675683570/qurione-run.log:793-797 | natural |
+| 3. Attacks and receivers | N/A (source: no attack; contact is the drop trigger) | Qurione.cpp:136-144 flyCollisionCallBack | natural |
+| 4. Death and corpse | PASS (natural) | output/dsw/l15-out/arena-runs/4eb9093898ff4d8a9e73110675683570/drop-run.log:777,782 | natural |
+| 5. Actual transport and reward | N/A (reward is field-consumed nectar; no receivable item) | output/dsw/l15-out/arena-runs/4eb9093898ff4d8a9e73110675683570/drop-run.log:773-775 | natural |
+| 6. Cleanup and re-entry | PASS (natural) | output/dsw/l15-out/arena-runs/4eb9093898ff4d8a9e73110675683570/cleanup6-run.log:782,800 | natural |
+
+Gate 2 note: the drop-run intercepts the wisp on the first Move frame, so it has
+zero Move displacement; the movement evidence is the slice-3 clean flight run
+(`qurione-run.log:793-797` — `state=move` Z displacement 1816→1894→1977, then
+`disappear`→`stay` at :799-803). The wisp reaches one full
+appear→move→disappear→stay pass and then parks in Stay because `nearestTarget`
+(SIGHT=200, `pc_p2_qurione.cpp:131-146`) finds no re-trigger; re-appear is not
+sustained. Hence PARTIAL, not PASS.
+
+Gate 5 note: the Honeywisp has **no P2 treasure/corpse receipt**. Its carried Egg
+(EnemyID 37) breaks (`egg.cpp:243-289`) into field-consumed nectar `HONEY_Y`
+(single/double; sprays are first-spray-demo-gated; mitites fall back to
+`HONEY_Y`), which Pikmin absorb in place (`pikiAI.cpp:611-629` →
+`PIKISTATE_Absorb`, never `ACT_Transport`). The Egg drop table *also* has
+number-pellet branches (`egg.cpp:294-306`, `EGGDROP_1Pellets`/`5Pellets`) that,
+if birthed, are ordinary hauled pellets with the normal Onion receipt — but they
+are reachable only via `mForcedDropType`, which the Honeywisp's Egg leaves at 0
+(`Egg.h:124`, never loaded/assigned), so its roll yields nectar/mitites only.
+Either way there is no corpse (`Qurione.cpp:56` `EB_LeaveCarcass` and `egg.cpp:38`
+both disable it) and no P2 treasure/corpse receipt, so lane-06's receipt scheme
+does not apply to this identity; N/A keeps the ledger from waiting on a receipt
+that cannot exist.
+
+Gate 6 note: the cleanup fixture drives TWO appear cycles in one session and lets
+the natural contact kill the wisp. `cleanup6-run.log:765` is cycle-1 `appear` →
+`move` (:769, Z 1823→1983) → `disappear` (:775) → `stay` (:780); a red is then
+placed at the wisp's Stay XZ (`P2_QURIONE_REAPPEAR_TRIGGER` :776) so
+`nearestTarget` (SIGHT 200) fires a SECOND `appear` (:782), which drops (:787)
+and dies (:795,799). The death finalizes through the lane-07 seam and
+`P2_QURIONE_FORGET generator=203001` fires (:800; wired from
+`pc_p2_teki_lifetime.cpp:73`, reached by `BTeki::doKill` `tekibteki.cpp:746`).
+A structural note: the module's `die()` was changed to `pcEscapeNow()`
+(`pc_p2_qurione.cpp`, QS_DEAD) because `die()` alone only arms `mDeadState` and
+`dieSoon()` runs inside `doAI` (teki.h:249-252) — the FSM runs outside `doAI`, so
+a bare `die()` never finalized and the forget seam never ran.
+
+File citations: `src/plugPikiKando/creature.cpp:677` (culling early-return that
+froze Move), `pc_port/pc_p2_qurione.cpp` `setInsideView()` (`:418` re-applied at
+`:452`), `:158-163,497` (pikiContact contact test + call), `:486-505` (Move
+pitch-bob velocity), `:518-527` (Drop release/egg endCapture), `:471-472` (Stay
+zero-velocity), `:283-290` (forget marker), `:550` (`pcEscapeNow()` death
+finalize). `check_p2_handoff_gates.py` output:
+
+```text
+16 Qurione (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation ignored [PARTIAL]
+  3. attacks_receivers  ignored [N/A]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   ignored [N/A]
+  6. cleanup_reentry    accepted [PASS]
+37 Egg (role=projectile): ignored (role)
+```
+
+### 3.5 Slice-3 subagent usage
+
+1. `explore` — Qurione Move/drop/culling source audit (moveFaceDir fixed facing,
+   dropItem KEYEVENT_2, flyCollisionCallBack, doAnimationCullingOff). **Used
+   as-is**; narrowed the stall to culling (missing `doAnimationCullingOff`
+   equivalent), not the FSM.
+2. `explore` — drop/reward + lane-07 lifetime seam inventory + validator gate
+   coverage. **Used as-is**; confirmed the forget/re-entry seam and the exact
+   markers/gates already present.
+3. `general` — added a `moved` (>=3 distinct positions) validator gate + two
+   tests. **Corrected**: its first cut failed the two synthetic-log tests (fixture
+   lacked POS lines); I added three distinct POS lines to `GOOD_LOG` and fixed the
+   frozen-position test. Final: 22 lifecycle tests pass.
+
+Every build/run/commit/fixture above was performed by me; no subagent built, ran a
+fixture, committed, or touched native/shared files.
+
+### 3.6 fix-4 subagent usage
+
+1. `explore` — Honeywisp reward-path audit (Egg→nectar HONEY_Y, EB_LeaveCarcass on
+   Qurione+Egg, honey absorbed not hauled). **Used as-is**; supplied the source
+   reason for gate 5 = N/A (no receivable item for lane-06).
+2. `explore` — exact line numbers (Stay zero-velocity now `:459-460`; move POS
+   lines in `qurione-run.log` vs `drop-run.log`; lane-07 forget seam
+   `pc_p2_teki_lifetime.cpp:73`). **Used as-is**; drove the :443-444→:459-460 fix
+   and the gate 2/6 citations.
+3. `general` — restricted the `moved` validator gate to `state=move` POS lines and
+   added dead-flyaway/frozen-move regression tests. **Used as-is** (26 lifecycle
+   tests pass).
+
+Every build/run/commit above was performed by me; no subagent built, ran a
+fixture, committed, or touched native/shared files in this pass.
+
+### 3.7 fix-5 subagent usage
+
+1. `explore` — Honeywisp reward-path audit (Egg→nectar HONEY_Y; pellets only via
+   `mForcedDropType`, never loaded; `EB_LeaveCarcass` on Qurione+Egg). **Used
+   as-is**; supplied the gate-5 N/A qualification.
+2. `explore` — line-number inventory (GATE_STATUS, gate table, fixture/log
+   facts) and the forget/re-bind question. **Used as-is**; established there is
+   no within-session re-bind (`pc_p2_qurione.cpp:385` only bind) and no engine
+   respawn (`generator.cpp:688-690`), so a second appear must be the same wisp.
+3. `general` — fixed `GATE_STATUS` and added the `GATE_STATUS`-vs-handoff drift
+   test. **Used as-is** (27 lifecycle tests pass).
+
+The forget marker, the `pcEscapeNow()` death finalize and the two-appear-cycle
+fixture were implemented and run by me; no subagent built, ran a fixture,
+committed, or touched native/shared files in this pass.

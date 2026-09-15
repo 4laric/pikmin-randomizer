@@ -17,6 +17,7 @@
 #include "Piki.h"
 #include "PikiMgr.h"
 #include "PikiState.h"
+#include "PikiAI.h"
 #include "NaviMgr.h"
 #include "Navi.h"
 #include "Interactions.h"
@@ -210,6 +211,13 @@ void receiveScan(King& k) {
 		const Vector3f& pos = p->getPosition();
 		const float dx = pos.x - k.x, dy = pos.y - k.y, dz = pos.z - k.z;
 		if (dx * dx + dy * dy + dz * dz > root * root) continue;
+		// Source-faithful latch gate (BTeki::spawnPellets mk.attack predicate, the
+		// Piki actOnSituaton PIKISITCH_Unk1 -> AttackMode transition): a Pikmin
+		// only sticks when it is actually attached and running the attack action
+		// against this creature, not merely passing through the root sphere.
+		if (p->mMode != PikiMode::AttackMode || !p->mActiveAction
+		    || p->mActiveAction->mCurrActionIdx != PikiAction::Attack)
+			continue;
 		bool known = false;
 		for (int i = 0; i < k.stuckCount; ++i)
 			if (k.stuck[i] == p) known = true;

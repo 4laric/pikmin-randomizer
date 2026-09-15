@@ -328,6 +328,30 @@ public:
         return false;
     }
 
+    // (d) Force the owner-death release path directly. The host's forget/doKill
+    // seam calls this when the engine death funnel reaches the actor before the
+    // regular tick can consume health<=0 -> Dead. Mirrors tick()'s release
+    // dispatch: enterOwnerDeath() commits the Panic release inside the FSM, then
+    // followEnd(PANIC) fires for each released follower. Idempotent after a
+    // normal Dead transit (no claim survives, no duplicate callback).
+    P2FuefukiBindOut killVehicle()
+    {
+        P2FuefukiBindOut out;
+        if (!bound) return out;
+        P2FuefukiFsmOut fout = fsm.enterOwnerDeath();
+        if (!fout.accepted) return out;
+        for (std::uint32_t id : fout.releasedPanic) {
+            host.followEnd(host.context, id, P2FUEFUKI_END_PANIC);
+            followController.release(id);
+            out.endedPanic++;
+        }
+        out.accepted  = true;
+        out.state     = fout.state;
+        out.transited = fout.transited;
+        out.fsm       = fout;
+        return out;
+    }
+
     P2FuefukiFsm& getFsm() { return fsm; }
     P2FuefukiFollowController& follow() { return followController; }
     const P2FuefukiFollowController& follow() const { return followController; }

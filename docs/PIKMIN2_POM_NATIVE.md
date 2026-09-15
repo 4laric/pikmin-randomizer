@@ -270,14 +270,27 @@ existing batch-2 display path, with the bud FSM driving the drawn pose.
 - **Host bind** (`pc_p2_pom.cpp`): `pc_p2_pom_tick()` lazily resolves each
   sidecar generator to its live `TEKI_Chappy` host (same `mGenerator->_70`
   generator-id match the batch-2 `flora` family uses) and emits
-  `P2_POM_BIND generator=<id> species=<name> source_id=<n> host=teki type=3 drawn=1`.
-  A non-Chappy native type at that generator is a fail-closed abort.
+  `P2_POM_BIND generator=<id> species=<name> source_id=<n> host=teki type=3`.
+  A non-Chappy native type at that generator is a fail-closed abort. Bound hosts
+  are **re-anchored to the plant point every tick**, so the Chappy's own AI
+  cannot wander them out of frame.
 - **FSM-driven pose** (`pc_p2_pom_clip`): a small clip hook (mirror of
   `pc_p2_hana_clip`) added to the batch-2 forced-clip chain maps the tracked
   `p2pom::State` to the source clip name — Wait→`wait`, Open→`type1`, Close→`type2`,
-  Shot→`type3`, Swing→`type4`, Dead→`dead` (Pom::AnimID order) — and reports one
-  `P2_POM_DRAW ... pose=<state> draws=<n>` per draw tick. Static/bind-pose phase
-  (0.0); the clip alone distinguishes the state.
+  Shot→`type3`, Swing→`type4`, Dead→`dead` (Pom::AnimID order). Static/bind-pose
+  phase (0.0); the clip alone distinguishes the state.
+- **Confirmed draw report** (`pc_p2_pom_report_draw`): called by the batch-2 draw
+  chain just before `shape->drawshape`, gated on the forced clip actually being
+  the one drawn, so a `P2_POM_DRAW ... pose=<state> draws=<n>` line claims a pose
+  the chain rendered (not a candidate clip name that a later bank/clock/pose
+  guard could have rejected). The log is **per-pose capped** — the first frames
+  of each pose are logged, then the pose is suppressed until the FSM advances it;
+  `draws` stays a monotonic count.
+- **Source-timed state holds**: each state occupies its source clip length in
+  30 Hz behavior steps (wait 1, swing/type4 20, close/type2 30, shot/type3 40),
+  so transient swing/close poses are drawn across frames instead of flashing
+  within a single catch-up step. `Wait` arms on this timer, never on a confirmed
+  render (an off-camera/culled bud must still arm and accept).
 - **Forget on despawn** (`pc_p2_pom_forget`): wired into `pc_p2_forget_teki`;
   clears the host pointer while keeping the value-owned FSM/receipt state so a
   recycled Teki address cannot alias the bud.
@@ -292,8 +305,9 @@ converted `flora_<Species>_<clip>_*.mod` bank installed from
 `experimental/pikmin2_flora_assets` (extracted from the US GPVE01 rev 0 disc),
 plus one base-`Pom` rejection probe (`353099`, never bound). The runtime log now
 shows the live host bind, batch-2 draw (`P2_BATCH2_DRAW key=flora|…`) and the
-FSM pose walk (`pose=wait -> shot -> dead`) while the slice-1 death/conservation
-chain still fires on the spawned host.
+full six-pose FSM walk (`pose=wait -> open -> swing -> close -> shot -> dead`,
+both buds) while the slice-1 death/conservation chain fires on the spawned host
+(RedPom `used=5 refunds=1`, Queen `used=1`).
 
 Conversion/material fidelity remain lane-09 scope; the drawn model is a static
 bind pose, not skeletal playback. The Spectralid sentinel (lane 15) is untouched.

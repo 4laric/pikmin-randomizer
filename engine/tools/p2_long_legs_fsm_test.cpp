@@ -50,15 +50,16 @@ int main()
         assert(out.entered && fsm.state() == S::Land);
         in.wakeTargetNearby = false;
         fsm.update(in, out);
-        assert(out.bitterImmune && !out.damageable); // immunity holds until key 2
+        assert(out.bitterImmune && !out.damageable); // immunity holds through Land
         in.landingKey2 = true;
         fsm.update(in, out);
         assert(out.feetFired && out.footCrush); // key 2 fires all four feet
-        assert(out.damageable && !out.bitterImmune);
+        assert(out.bitterImmune && !out.damageable); // key 2 opens the feet, not the body
         in.landingKey2 = false;
         in.animEnd = true;
         fsm.update(in, out);
         assert(out.entered && fsm.state() == S::Wait);
+        assert(!out.bitterImmune && out.damageable); // damageable only after Land exit
         assert(out.chosenSeconds >= 1.75f && out.chosenSeconds <= 3.5f);
 
         in.animEnd = false;
@@ -181,6 +182,7 @@ int main()
         in.pikminAccumulating = false;
         in.animEnd = true; fsm.update(in, out); // Flick END -> Shot
         assert(out.entered && fsm.state() == S::Shot);
+        assert(out.damageable && !out.bitterImmune); // Shot is a damageable gun-exposed window
 
         in.animEnd = false;
         in.shotLoop = true;

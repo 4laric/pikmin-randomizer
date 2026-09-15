@@ -125,7 +125,7 @@ void bindSnow(Teki* teki) {
                 std::printf("P2_SNOW_POLICY generator=%u health=%.1f max_health=%.1f previous=%.1f source=YellowKochappy_fp00\n",
                             identity,teki->mHealth,teki->getParameterF(TPF_Life),oldHealth);
             }
-            std::printf("P2_ENEMY_READY species=YellowKochappy native_family=Chappy generator=%u behavior=P1\n",identity);
+            std::printf("P2_ENEMY_READY species=YellowKochappy source_id=45 native_family=Chappy generator=%u behavior=P1\n",identity);
     gsys->setHeap(previousHeap);
 }
 }

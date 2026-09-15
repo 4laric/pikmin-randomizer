@@ -28,6 +28,8 @@
 #include "pc_p2_rock_host.h"
 #include "pc_p2_groink.h"
 #include "pc_p2_groink_hit.h"
+#include "pc_p2_bombsarai_bomb.h"
+#include "pc_p2_bombsarai_blast.h"
 #include "pc_bbft.h"
 #include "Creature.h"
 #include "Generator.h"
@@ -70,6 +72,17 @@ constexpr int kKabutoWaitTicks = 30;   // Wait motion hold before END
 constexpr int kKabutoTurnTicks = 15;   // Turn motion hold before END
 constexpr int kKabutoAttackTicks = 20; // Attack motion hold through END
 constexpr int kKabutoKey2Tick = 8;     // KEYEVENT_2 (fire) frame in Attack
+
+// Bomb-consumer proof host defaults (#169 slice 4): the Bombsarai bomb policy
+// (pc_p2_bombsarai_bomb) is driven by a lane-20 host that supplies a floor trace;
+// these host values are documented approximations, not source-converter inputs.
+constexpr float kBombGravityPerTick = 1.0f; // host fall acceleration (source-tick)
+constexpr float kBombFuseHealth = 2.0f;     // bomb general mHealth (arbitrary demo)
+constexpr int kBombArmLoopTicks = 15;       // hit-loop animation length (demo)
+constexpr float kBombRadius = 15.0f;        // trace sphere radius
+constexpr float kBombBlastRadius = 90.0f;   // general mAttackRadius
+constexpr float kBombBlastHalfHeight = 50.0f; // fp02 default (Bomb.h:139)
+constexpr float kBombTekiDamage = 250.0f;   // fp01 default (Bomb.h:138)
 
 bool finite(float value) { return std::isfinite(value); }
 
@@ -141,6 +154,63 @@ private:
     MapMgr* mMap = nullptr;
     p2rockhost::TraceProxy mProxy;
     std::uint64_t mCalls = 0, mFloors = 0, mWalls = 0;
+};
+
+// Binds the Bombsarai bomb trace primitive to the P1 static map (lane-20 host
+// proving the shared Bomb primitive; the policy itself stays engine-free). The
+// bomb policy stores its position as the sphere center, so center/base + wall
+// and floor reporting match ProjectileMapBinding/RockMapBinding.
+class BombMapBinding {
+public:
+    void reset(MapMgr* map) { mMap = map; mProxy.clear(); mFloors = mWalls = 0; }
+
+    static bool trace(void* context, const P2BombSaraiVec3& center,
+                      const P2BombSaraiVec3& velocity, float delta, float radius,
+                      P2BombSaraiTraceResult& result)
+    {
+        if (!context || !finite(center.x) || !finite(center.y) || !finite(center.z)
+            || !finite(velocity.x) || !finite(velocity.y) || !finite(velocity.z)
+            || !finite(delta) || std::fabs(delta - kSourceDelta) > 0.000001f
+            || !finite(radius) || radius <= 0.0f) {
+            return false;
+        }
+        BombMapBinding& self = *static_cast<BombMapBinding*>(context);
+        if (!self.mMap || !self.mMap->mMapModel) {
+            return false;
+        }
+        self.mProxy.clear();
+        const Vector3f base(center.x, center.y - radius, center.z);
+        MoveTrace movement(base, Vector3f(velocity.x, velocity.y, velocity.z), radius, true);
+        self.mMap->traceMove(&self.mProxy, movement, delta);
+        result.position = { movement.mPosition.x, movement.mPosition.y + radius, movement.mPosition.z };
+        result.velocity = { movement.mVelocity.x, movement.mVelocity.y, movement.mVelocity.z };
+        result.floor = self.mProxy.mGroundTriangle != nullptr;
+        result.wall = self.mProxy.wall;
+        if (result.floor) {
+            // Host supplies a finite groundY so the policy can verify the floor
+            // contact (ground = min-Y of the map at this X/Z).
+            result.groundY = self.mMap->getMinY(result.position.x, result.position.z, true);
+            result.hasGroundY = finite(result.groundY);
+        } else {
+            result.groundY = 0.0f;
+            result.hasGroundY = false;
+        }
+        if (!finite(result.position.x) || !finite(result.position.y) || !finite(result.position.z)
+            || !finite(result.velocity.x) || !finite(result.velocity.y) || !finite(result.velocity.z)) {
+            return false;
+        }
+        self.mFloors += result.floor;
+        self.mWalls += result.wall;
+        return true;
+    }
+
+    std::uint64_t floors() const { return mFloors; }
+    std::uint64_t walls() const { return mWalls; }
+
+private:
+    MapMgr* mMap = nullptr;
+    p2rockhost::TraceProxy mProxy;
+    std::uint64_t mFloors = 0, mWalls = 0;
 };
 
 // Deterministic scripted RNG for the Egg policy (the host owns the source).
@@ -269,12 +339,32 @@ struct Host {
     float groinkDamage = 0.0f;
     bool groinkApplied = false;
 
+    // Bomb consumer proof (#169 slice 4): drive lane-27's Bombsarai bomb policy
+    // (pc_p2_bombsarai_bomb) through a lane-20 host, then apply the recorded
+    // Navi/Pikmin blast to the live captain Navi through THIS lane's engine
+    // receiver. Receiver-consumption proof: the source applies InteractBomb to a
+    // Navi, but this lane's primitive is InteractAttack/InteractPress, so the
+    // health delta proves the shared receiver, not lane-27 Bomb fidelity.
+    bool haveBombCfg = false;
+    P2BombSaraiVec3 bombOrigin{};
+    float bombNaviDamage = 0.0f;
+    P2BombSaraiBomb bomb;
+    BombMapBinding* bombBinding = nullptr;
+    std::uint64_t bombCarrierToken = 0x50424D42ULL; // "PBMB"
+    bool bombThrown = false;
+    bool bombApplied = false;
+
     // Two-Teki injected placement: when `teki_pin 1` is set, every other live Teki
     // (the victim) is re-anchored to the bound firer each step so the Stone's
     // birth-frame contact deterministically reaches it. Clearly labelled injected
     // (the room's two Dwarf Bulborbs otherwise settle ~70 units apart).
     bool pinVictim = false;
     bool sawTekiPinRow = false;
+
+    // Once-per-scene diagnostic loggers (moved out of function-scope statics so
+    // pc_p2_projectiles_reset() clears them like every other Host field).
+    bool aimNoneLogged = false;
+    bool kabutoTargetLogged = false;
 
     p2rockhost::ScriptRng rng;
     double debt = 0.0;
@@ -498,6 +588,21 @@ void parseConfig(const char* path)
             }
             gHost.groinkDamage = d;
             gHost.haveGroinkCfg = true;
+        } else if (word == "bomb") {
+            // Opt-in Bomb primitive consumer proof: drive lane-27's Bombsarai
+            // bomb policy and apply its Navi/Pikmin blast through this lane's
+            // engine receiver. `bomb <mx> <my> <mz> <naviPikiDamage>`.
+            if (gHost.haveBombCfg) {
+                fail("duplicate bomb row");
+            }
+            float d = 0.0f;
+            if (!(in >> gHost.bombOrigin.x >> gHost.bombOrigin.y >> gHost.bombOrigin.z >> d)
+                || !finite(gHost.bombOrigin.x) || !finite(gHost.bombOrigin.y)
+                || !finite(gHost.bombOrigin.z) || !finite(d) || d < 0.0f) {
+                fail("invalid bomb row");
+            }
+            gHost.bombNaviDamage = d;
+            gHost.haveBombCfg = true;
         } else if (word == "teki_pin") {
             // Opt-in injected victim placement: `teki_pin <0|1>` (default 0).
             if (gHost.sawTekiPinRow) {
@@ -528,7 +633,8 @@ void parseConfig(const char* path)
     if (gHost.pinVictim && !gHost.haveKabutoActor) {
         fail("teki_pin requires a kabuto_actor row");
     }
-    if (!gHost.haveStoneCfg && !gHost.haveEggCfg && !gHost.haveRockCfg && !gHost.haveGroinkCfg) {
+    if (!gHost.haveStoneCfg && !gHost.haveEggCfg && !gHost.haveRockCfg && !gHost.haveGroinkCfg
+        && !gHost.haveBombCfg) {
         fail("config has no rows");
     }
 }
@@ -846,16 +952,77 @@ p2attach::Affine kabutoActorWorld(float faceRad)
     return owner;
 }
 
+// The nearest live Teki that is not the bound firer (the "victim"). The source
+// Kabuto tracks its target (getSearchedTarget -> turnToTarget); the host instead
+// resolves the target Teki at fire time so the Stone is aimed at the victim's
+// current position, not a fixed corridor. Returns nullptr when there is no
+// non-firer Teki.
+Teki* findVictimTeki(const Vector3f& from)
+{
+    Teki* best = nullptr;
+    float bestDistSq = 0.0f;
+    int total = 0;
+    int aliveNonFirer = 0;
+    Iterator it(tekiMgr);
+    CI_LOOP(it) {
+        Teki* t = static_cast<Teki*>(*it);
+        if (!t) {
+            continue;
+        }
+        ++total;
+        if (t == gHost.kabutoActor) {
+            continue;
+        }
+        if (!t->isAlive()) {
+            continue;
+        }
+        ++aliveNonFirer;
+        const Vector3f& p = t->mSRT.t;
+        const float dx = p.x - from.x, dy = p.y - from.y, dz = p.z - from.z;
+        const float d2 = dx * dx + dy * dy + dz * dz;
+        if (!best || d2 < bestDistSq) {
+            best = t;
+            bestDistSq = d2;
+        }
+    }
+    if (!best) {
+        if (!gHost.aimNoneLogged) {
+            gHost.aimNoneLogged = true;
+            std::printf("P2_PROJECTILE_AIM_NONE total_teki=%d alive_nonfirer=%d\n",
+                        total, aliveNonFirer);
+        }
+    }
+    return best;
+}
+
 // Birth the Stone from a consumed FireStone: sample the rig muzzle when
 // configured, else the static mouth joint, then birth the Stone. Shared by the
 // synthetic KEYEVENT_2 path and the sampled-clock Key2 path.
 void fireKabutoStone(P2KabutoCannon& cannon)
 {
     P2KabutoStoneBirth birth;
-    // A live bound actor supplies its own facing (radians); otherwise the row.
-    const float faceRad = (gHost.haveKabutoActor && gHost.kabutoActor)
+    // Source Kabuto tracks its target before firing (StateTurn turnToTarget, then
+    // createStoneAttack fires along mFaceDir). The port does not simulate the
+    // turn, so when a bound firer has another live Teki in range it aims at that
+    // victim's current position at fire time; otherwise it keeps the actor/row
+    // facing. This makes the flight strike repeatable instead of a fixed corridor.
+    float faceRad = (gHost.haveKabutoActor && gHost.kabutoActor)
         ? gHost.kabutoActor->getDirection()
         : gHost.kabutoFaceDeg * kPi / 180.0f;
+    bool aimedAtVictim = false;
+    if (gHost.haveKabutoActor && gHost.kabutoActor) {
+        Teki* victim = findVictimTeki(gHost.kabutoActor->mSRT.t);
+        if (victim) {
+            const Vector3f& v = victim->mSRT.t;
+            const Vector3f& m = gHost.kabutoActor->mSRT.t;
+            faceRad = std::atan2(v.x - m.x, v.z - m.z);
+            aimedAtVictim = true;
+            std::printf("P2_PROJECTILE_KABUTO_AIM fire=%d victim=(%.1f,%.1f,%.1f) "
+                        "origin=(%.1f,%.1f,%.1f) face_deg=%.1f\n",
+                        gHost.kabutoFires + 1, v.x, v.y, v.z, m.x, m.y, m.z,
+                        faceRad * 180.0f / kPi);
+        }
+    }
     P2CannonStoneVec3 mouthJoint = gHost.kabutoMouthJoint;
     bool took = false;
     if (gHost.haveKabutoRig) {
@@ -893,12 +1060,13 @@ void fireKabutoStone(P2KabutoCannon& cannon)
     gHost.stoneSkippedSelf = false;
     ++gHost.kabutoFires;
     std::printf("P2_PROJECTILE_KABUTO_FIRE species=%s homing=%d rig=%d mouth=(%.1f,%.1f,%.1f) "
-                "birth=(%.1f,%.1f,%.1f) face_deg=%.1f source=%llu fire=%d\n",
+                "birth=(%.1f,%.1f,%.1f) face_deg=%.1f aim=%d source=%llu fire=%d\n",
                 kabutoSpeciesName(cannon.species()), int(birth.homing),
                 int(gHost.haveKabutoRig), mouthJoint.x, mouthJoint.y,
                 mouthJoint.z, birth.mouthPosition.x,
-                birth.mouthPosition.y, birth.mouthPosition.z, gHost.kabutoFaceDeg,
-                static_cast<unsigned long long>(gHost.kabutoSelf), gHost.kabutoFires);
+                birth.mouthPosition.y, birth.mouthPosition.z, faceRad * 180.0f / kPi,
+                int(aimedAtVictim), static_cast<unsigned long long>(sourceToken),
+                gHost.kabutoFires);
 }
 
 // Host-driven automatic attack cycle: Wait -> Turn -> Attack -> KEYEVENT_2 ->
@@ -920,9 +1088,8 @@ void tickKabuto()
     }
     const P2CannonStoneTarget target = selectHostTarget(origin, gHost.stoneCfg.sightRadius);
     {
-        static bool logged = false;
-        if (!logged) {
-            logged = true;
+        if (!gHost.kabutoTargetLogged) {
+            gHost.kabutoTargetLogged = true;
             std::printf("P2_PROJECTILE_KABUTO_TARGET present=%d origin=(%.1f,%.1f,%.1f) sight=%.1f\n",
                         int(target.hasTarget), origin.x, origin.y, origin.z,
                         gHost.stoneCfg.sightRadius);
@@ -1281,6 +1448,88 @@ void tickGroinkConsumer()
     gHost.groinkApplied = true;
 }
 
+// Bomb primitive consumer (#169 slice 4): drive lane-27's Bombsarai bomb policy
+// (pc_p2_bombsarai_bomb) through a lane-20 host — capture, throw (Death, so it
+// drops onto the floor), floor-armed fuse, detonate — then apply the recorded
+// Navi/Pikmin blast to the live captain Navi through THIS lane's engine receiver.
+// Receiver-consumption proof: the source applies InteractBomb to a Navi, but this
+// lane's primitive is InteractAttack/InteractPress, so the health delta proves
+// the shared receiver, not lane-27 Bomb fidelity.
+void tickBombConsumer()
+{
+    if (!gHost.haveBombCfg || gHost.bombApplied) {
+        return;
+    }
+    P2BombSaraiBomb& bomb = gHost.bomb;
+    if (bomb.phase() == P2BombSaraiBombPhase::Inactive) {
+        // Capture the bomb at the live captain (config origin fallback) so the
+        // blast volume genuinely contains the captain; then drop it (Death).
+        Navi* navi = naviMgr ? naviMgr->getNavi() : nullptr;
+        P2BombSaraiVec3 origin = gHost.bombOrigin;
+        if (navi && navi->isAlive()) {
+            const Vector3f& p = navi->mSRT.t;
+            origin = P2BombSaraiVec3{ p.x, p.y + 30.0f, p.z };
+        }
+        if (!bomb.capture(gHost.bombCarrierToken, origin)) {
+            fail("bomb capture failed");
+        }
+        std::printf("P2_PROJECTILE_BOMB_CAPTURE center=(%.1f,%.1f,%.1f) navi=%d\n",
+                    origin.x, origin.y, origin.z, int(navi && navi->isAlive()));
+        return;
+    }
+    if (bomb.phase() == P2BombSaraiBombPhase::Captured) {
+        if (!bomb.throwBomb(P2BombSaraiThrowKind::Death, 0.0f)) {
+            fail("bomb throw failed");
+        }
+        gHost.bombThrown = true;
+        std::printf("P2_PROJECTILE_BOMB_THROW center=(%.1f,%.1f,%.1f)\n",
+                    bomb.position().x, bomb.position().y, bomb.position().z);
+        return;
+    }
+    bomb.update(kSourceDelta, BombMapBinding::trace, gHost.bombBinding, nullptr, nullptr);
+    if (bomb.hasBlast()) {
+        const P2BombSaraiBlastEvent& blast = bomb.lastBlast();
+        std::printf("P2_PROJECTILE_BOMB_DETONATE center=(%.1f,%.1f,%.1f) radius=%.1f "
+                    "navi_damage=%.1f floors=%llu\n",
+                    blast.center.x, blast.center.y, blast.center.z, blast.radius,
+                    blast.naviPikiDamage,
+                    static_cast<unsigned long long>(gHost.bombBinding ? gHost.bombBinding->floors() : 0ULL));
+        // Route the blast through lane-27's shared classifier (never a direct
+        // unconditional application): build one Navi receiver from the live
+        // captain, let p2_bombsarai_route_blast decide the volume/damage, and apply
+        // the engine strike ONLY when a hit is routed. Distance is logged.
+        Navi* navi = naviMgr ? naviMgr->getNavi() : nullptr;
+        if (navi && navi->isAlive()) {
+            const Vector3f& p = navi->mSRT.t;
+            P2BombSaraiReceiver receiver;
+            receiver.id = tokenOf(navi);
+            receiver.position = P2BombSaraiVec3{ p.x, p.y, p.z };
+            receiver.kind = P2BombSaraiReceiverKind::Navi;
+            receiver.alive = true;
+            receiver.airborneBombImmune = false;
+            receiver.grounded = true;
+            P2BombSaraiRoutedHit routed;
+            const int routedCount = p2_bombsarai_route_blast(blast, &receiver, 1, &routed, 1);
+            const float dx = p.x - blast.center.x, dy = p.y - blast.center.y, dz = p.z - blast.center.z;
+            const float dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+            if (routedCount >= 1) {
+                const P2ProjectileEngineHit hit = p2_projectile_apply_engine_strike(
+                    navi, nullptr, /*attack=*/true, /*targetIsTeki=*/false, routed.damage);
+                std::printf("P2_PROJECTILE_BOMB_ENGINE_HIT token=%llu kind=Bomb damage=%.1f "
+                            "applied=%d rejected=%d health=%.1f->%.1f dist=%.1f\n",
+                            static_cast<unsigned long long>(tokenOf(navi)),
+                            routed.damage, int(hit.applied), int(hit.rejected),
+                            hit.healthBefore, hit.healthAfter, dist);
+            } else {
+                std::printf("P2_PROJECTILE_BOMB_NOHIT dist=%.1f\n", dist);
+            }
+        } else {
+            std::printf("P2_PROJECTILE_BOMB_NOHIT dist=-1.0\n");
+        }
+        gHost.bombApplied = true;
+    }
+}
+
 // Injected victim placement for the two-Teki proof: re-anchor every Teki other
 // than the bound firer to the firer's transform each step, so the Stone's
 // birth-frame contact finds the victim within collision radius regardless of the
@@ -1313,6 +1562,7 @@ void step()
     }
     tickRock();
     tickGroinkConsumer();
+    tickBombConsumer();
 }
 } // namespace
 
@@ -1377,8 +1627,16 @@ void pc_p2_projectiles_reset()
     gHost.groinkOrigin = P2GroinkVec3{};
     gHost.groinkDamage = 0.0f;
     gHost.groinkApplied = false;
+    gHost.haveBombCfg = false;
+    gHost.bombOrigin = P2BombSaraiVec3{};
+    gHost.bombNaviDamage = 0.0f;
+    gHost.bomb.reset(P2BombSaraiBombConfig{});
+    gHost.bombThrown = false;
+    gHost.bombApplied = false;
     gHost.pinVictim = false;
     gHost.sawTekiPinRow = false;
+    gHost.aimNoneLogged = false;
+    gHost.kabutoTargetLogged = false;
     gHost.rng.state = 1u;
     gHost.debt = 0.0;
     if (gHost.binding) {
@@ -1386,6 +1644,9 @@ void pc_p2_projectiles_reset()
     }
     if (gHost.rockBinding) {
         gHost.rockBinding->reset(nullptr);
+    }
+    if (gHost.bombBinding) {
+        gHost.bombBinding->reset(nullptr);
     }
 }
 
@@ -1420,8 +1681,12 @@ void pc_p2_projectiles_setup()
     if (!gHost.rockBinding) {
         gHost.rockBinding = new p2rockhost::RockMapBinding();
     }
+    if (!gHost.bombBinding) {
+        gHost.bombBinding = new BombMapBinding();
+    }
     gHost.binding->reset(mapMgr);
     gHost.rockBinding->reset(mapMgr);
+    gHost.bombBinding->reset(mapMgr);
     parseConfig("p2-projectiles.txt");
 
     if (gHost.haveKabutoCfg) {
@@ -1578,9 +1843,33 @@ void pc_p2_projectiles_setup()
                     gHost.eggPos.x, gHost.eggPos.y, gHost.eggPos.z,
                     int(gHost.eggDropGroup), gHost.eggCfg.health);
     }
-    std::printf("P2_PROJECTILES_READY stone=%d egg=%d kabuto=%d rock=%d seed=%u\n",
+    if (gHost.haveBombCfg) {
+        // Bomb primitive consumer: host-supplied lifecycle parms (documented
+        // approximations), the Navi/Pikmin blast damage from the config row. The
+        // bomb is captured lazily at the live captain on the first consumer tick
+        // (with the config row origin as fallback) so the detonation volume
+        // genuinely contains the captain; route_blast does the real volume test.
+        P2BombSaraiBombConfig config;
+        config.gravityPerTick = kBombGravityPerTick;
+        config.fuseHealth = kBombFuseHealth;
+        config.armLoopTicks = kBombArmLoopTicks;
+        config.bombRadius = kBombRadius;
+        config.blastRadius = kBombBlastRadius;
+        config.blastHalfHeight = kBombBlastHalfHeight;
+        config.tekiDamage = kBombTekiDamage;
+        config.naviPikiDamage = gHost.bombNaviDamage;
+        config.ip02TriggerLimit = 0; // no bomb-on-bomb induction in this proof
+        gHost.bomb.reset(config);
+        gHost.bombThrown = false;
+        gHost.bombApplied = false;
+        std::printf("P2_PROJECTILE_BOMB_READY center=(%.1f,%.1f,%.1f) navi_damage=%.1f\n",
+                    gHost.bombOrigin.x, gHost.bombOrigin.y, gHost.bombOrigin.z,
+                    gHost.bombNaviDamage);
+    }
+    std::printf("P2_PROJECTILES_READY stone=%d egg=%d kabuto=%d rock=%d groink=%d bomb=%d seed=%u\n",
                 int(gHost.haveStoneCfg), int(gHost.haveEggCfg), int(gHost.haveKabutoCfg),
-                int(gHost.haveRockCfg), gHost.rng.state);
+                int(gHost.haveRockCfg), int(gHost.haveGroinkCfg), int(gHost.haveBombCfg),
+                gHost.rng.state);
     std::fflush(stdout);
 }
 
@@ -1588,7 +1877,8 @@ void pc_p2_projectiles_update()
 {
     const bool anyActive = gHost.stoneActive || gHost.eggActive || gHost.rockPending
         || (gHost.haveKabutoCfg && gHost.kabuto.isAlive())
-        || (gHost.haveGroinkCfg && !gHost.groinkApplied);
+        || (gHost.haveGroinkCfg && !gHost.groinkApplied)
+        || (gHost.haveBombCfg && !gHost.bombApplied);
     if (!gsys || !anyActive) {
         return;
     }

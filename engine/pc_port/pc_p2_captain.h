@@ -395,3 +395,10 @@ void update_inactive_captain_follow();
 P2FollowPhase inactive_captain_follow_phase();
 
 } // namespace pc_p2_captain
+
+// Forget a freed/recycled Piki*'s stable actor id so a re-birthed slot never
+// inherits the previous occupant's id (the same lifetime rule the captor FSMs
+// and pc_p2_bulbmin_forget already follow). Called from PikiMgr::birth() beside
+// the Bulbmin hook; inert when the pointer is unknown.
+class Piki;
+void pc_p2_captain_forget_piki(Piki* piki);

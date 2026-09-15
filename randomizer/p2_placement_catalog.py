@@ -2,8 +2,8 @@
 
 This is the concrete-placement companion to :mod:`randomizer.p2_placement`. It
 turns the real slot tables the game already uses into `p2-placement-v1` slot
-records and pairs them with placement profiles for the initial P2 candidate
-cohort (fan-out lanes 13, 14, 16 and 19).
+records and pairs them with placement profiles for the P2 candidate cohort
+(fan-out lanes 13, 14, 16, 19, 22 and 30).
 
 Nothing here admits an identity. Every profile ships with empty
 ``accepted_gates``, so :func:`randomizer.p2_placement.evaluate` still denies the
@@ -105,6 +105,15 @@ CANDIDATE_SPECS = (
     (63, 'Jigumo', 16, ['water'], None, True),
     # Lane 19 - Mamuta.
     (54, 'Miulin', 19, ['ground'], 24, False),
+    # Lane 22 - elemental Otakara Dweevils (source ids 59-62). The port binds
+    # each to a generated ground slot (lane-22 arena generator=349001).
+    (59, 'FireOtakara', 22, ['ground'], None, False),
+    (60, 'WaterOtakara', 22, ['ground'], None, False),
+    (61, 'GasOtakara', 22, ['ground'], None, False),
+    (62, 'ElecOtakara', 22, ['ground'], None, False),
+    # Lane 30 - Sarai (Swooping Snitchbug). The port binds it to a generated
+    # ground slot (lane-30 arena generator=385875968); no P1 equivalent pool.
+    (23, 'Sarai', 30, ['ground'], None, False),
 )
 
 # Candidate source_ids that are bosses and therefore require a lane-04 encounter

@@ -1,4 +1,5 @@
 #include "pc_randomizer.h"
+#include "pc_bbft.h"
 #include "NewPikiGame.h"
 
 #include "Controller.h"
@@ -1395,6 +1396,14 @@ ModeState* DayOverModeState::update(u32& result)
 			// Clear the global pointer first so the draw pass cannot dereference
 			// the released screen while a memory-card dialog is still active.
 			resultWindow = nullptr;
+			// The abandoned results background may still have a StartMovie
+			// command queued. Drop pending cutscene commands before the
+			// gameplay section is torn down; otherwise parseMessages() would
+			// dispatch them against a released NaviMgr on a later frame.
+			if (gameflow.mGameInterface) {
+				static_cast<GameMovieInterface*>(gameflow.mGameInterface)->mSimpleMessageCount = 0;
+				static_cast<GameMovieInterface*>(gameflow.mGameInterface)->mComplexMesgCount   = 0;
+			}
 			// 2-second loading screen
 			gsys->startLoading(nullptr, true, 120);
 			PRINT("EXITDAYEND!!!!\n");
@@ -1705,6 +1714,15 @@ ModeState* DayOverModeState::initialisePhaseTwo()
 			// start the results window with our chosen diary entry
 			resultWindow = new zen::ogScrResultMgr((zen::EnumResult*)resultTable);
 			resultWindow->start();
+			// The end-of-day results/diary is EXEMPT from the tutorial suppression
+			// in normal play: it is the P2 treasure/diary tally, not a tutorial, so
+			// the player always sees it. Only unattended preview/fixture runs
+			// (--experimental-pikmin2-room) keep the historical auto-dismiss so they
+			// cannot stall on "1 Day Since Impact"; those can opt out by pinning
+			// disableTutorials = 0 in their private pikmin_settings.conf.
+			if (pc_pikipelago_room_preview() && pc_settings_get_disable_tutorials()) {
+				resultWindow->skip();
+			}
 
 		} else {
 			// challenge mode - start the challenge mode results window

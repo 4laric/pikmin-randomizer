@@ -355,9 +355,17 @@ void GoalItem::suckMe(Pellet* item)
         && config->mPelletColor() == -1 && flowCont.mCurrentStage) {
         for (int type = 0; type < TEKI_TypeCount; ++type) {
             if (config->mModelId.mId == static_cast<u32>(TekiMgr::getTypeId(type))) {
-                pc_randomizer_corpse_delivered(type, flowCont.mCurrentStage->mStageID,
-                    !gameflow.mIsChallengeMode && !gameflow.mPauseAll && !gameflow.mIsUIOverlayActive
-                    && !gameflow.mMoviePlayer->mIsActive);
+                const bool gameplay = !gameflow.mIsChallengeMode && !gameflow.mPauseAll
+                    && !gameflow.mIsUIOverlayActive && !gameflow.mMoviePlayer->mIsActive;
+                // Lane 06: a bound P2 corpse grants its own ordinary receipt identity;
+                // it must never ALSO credit the P1-proxy bestiary check. The delivery
+                // call returns true only when it handled a bound P2 source.
+                const bool deliveredP2 = item->mPelletView
+                    && pc_randomizer_p2_corpse_delivered(item->mPelletView, type,
+                        flowCont.mCurrentStage->mStageID, gameplay);
+                if (!deliveredP2) {
+                    pc_randomizer_corpse_delivered(type, flowCont.mCurrentStage->mStageID, gameplay);
+                }
                 break;
             }
         }

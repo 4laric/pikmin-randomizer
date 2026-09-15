@@ -145,7 +145,7 @@ def run(stage, exe, output, timeout=180):
     stage = Path(stage).resolve()
     output = Path(output).resolve()
     positions(stage)
-    os.environ['PIKMIN_P2_ROOM_WINDOW'] = '960x540'
+    os.environ.setdefault('PIKMIN_P2_ROOM_WINDOW', '960x540')
     meta = capture_command([str(Path(exe).resolve()), '--experimental-pikmin2-room'],
                            stage, output, timeout)
     report = evidence((output / 'native.log').read_text(errors='replace'), meta['exit_code'])

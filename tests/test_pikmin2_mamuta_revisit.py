@@ -95,6 +95,24 @@ def test_revisit_validate_rejects_bad_completion_and_desync():
         validate(_revisit_log(final_pokos=3))
 
 
+def test_revisit_validate_rekill_and_recarry_flip_to_pass():
+    from scripts.pikmin2_mamuta_revisit_native import validate
+    evidence = validate(_revisit_log(died=1, corpse=1, carried=1, goal=1, receipt='deduped',
+                                     final_pokos=2))
+    assert evidence['classify']['natural_rekill'] == 'PASS'
+    assert evidence['classify']['natural_recorpse'] == 'PASS'
+    assert evidence['classify']['natural_recarry'] == 'PASS'
+    assert evidence['classify']['receipt_deduped'] == 'PASS'
+    assert evidence['classify']['reward_not_duplicated'] == 'PASS'
+
+
+def test_revisit_validate_rekill_flip_to_blocked():
+    from scripts.pikmin2_mamuta_revisit_native import validate
+    evidence = validate(_revisit_log(died=0, corpse=0, carried=0, goal=0, receipt=None,
+                                     captain_down=True))
+    assert evidence['classify']['natural_rekill'] == 'BLOCKED(captain_down)'
+
+
 def test_instrument_selects_revisit_fixture():
     root = Path(__file__).resolve().parents[1]
     probe = ('class RoomApp : public PlugPikiApp {\n int idle() override { return 0; }\n};\n'

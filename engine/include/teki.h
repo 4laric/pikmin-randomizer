@@ -1,4 +1,5 @@
 #include "pc_p2_frog.h"
+#include "pc_p2_king_teki.h"
 #include "pc_p2_umimushi.h"
 #include "pc_p2_jigumo.h"
 #include "pc_p2_snakejoint.h"
@@ -40,6 +41,7 @@
 #include "pc_p2_tamago.h"
 #include "pc_p2_imomushi.h"
 #include "pc_p2_otakara.h"
+#include "pc_p2_groink_teki.h"
 #endif
 
 #if defined(PIKI_PC_PORT)
@@ -137,7 +139,14 @@ enum TekiTypes {
 	TEKI_Swallob  = 32, // 32, Spotty Bulbear
 	TEKI_Frow     = 33, // 33, Wollywog
 	TEKI_Nakata1  = 34, // 34, ? (placeholder enemy, crashes)
-	TEKI_TypeCount,     // 35
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	// PC-only appended identity (lane 30 captor: Bumbling Snitchbug `Demon` ID 32
+	// / Swooping Snitchbug `Sarai` ID 23). Retail types 0-34 and the non-PC
+	// count stay unchanged; only the PC build grows by one slot. The actor is an
+	// invisible placement/anchor vehicle whose visual is drawn by P2DemonHost.
+	TEKI_P2Demon  = 35, // 35, lane-30 captor spawn identity (PC only)
+#endif
+	TEKI_TypeCount,     // PC 36; retail 35
 };
 
 BEGIN_ENUM_TYPE(TekiInteractType)
@@ -428,7 +437,7 @@ public:
 	void setPersonalityI(int idx, int val) { mPersonality->setI(idx, val); }
 
 	f32 getParameterF(int idx) {
-		const f32 value=pc_p2_frog_param_f(this,idx,mTekiParams->getF(idx));
+		const f32 value=pc_p2_frog_param_f(this,idx,pc_p2_king_teki_param_f(this,idx,mTekiParams->getF(idx)));
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
 		const f32 kogane=pc_p2_armor_param_f(this,idx,pc_p2_sokkuri_param_f(this,idx,pc_p2_kogane_param_f(this,idx,pc_p2_shijimi_param_f(this,idx,value))));
 		const f32 beforeTamago=pc_p2_elecbug_param_f(this,idx,pc_p2_qurione_param_f(this,idx,kogane));
@@ -443,7 +452,7 @@ public:
 		const f32 before_jigumo=pc_p2_snakejoint_param_f(this,idx,before_snakejoint);
 		const f32 before_umimushi=pc_p2_jigumo_param_f(this,idx,before_jigumo);
 		const f32 qurione=pc_p2_otakara_param_f(this,idx,pc_p2_umimushi_param_f(this,idx,before_umimushi));
-		if(idx==TPF_Life)return pc_p2_dwarf_orange_max_health(this,pc_p2_kochappy_max_health(this,pc_p2_snow_max_health(this,qurione)));
+		if(idx==TPF_Life)return pc_p2_groink_teki_param_f(this,idx,pc_p2_dwarf_orange_max_health(this,pc_p2_kochappy_max_health(this,pc_p2_snow_max_health(this,qurione))));
 		return qurione;
 #endif
 		return value;

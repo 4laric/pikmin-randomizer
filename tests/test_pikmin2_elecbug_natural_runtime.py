@@ -86,6 +86,29 @@ class ElecBugNaturalRuntimeTests(unittest.TestCase):
         self.assertFalse(result['checks']['natural_flip'])
         self.assertFalse(result['passed'])
 
+    def test_flip_natural_label_is_rejected(self):
+        # The press is staged (P1-derived), not natural combat; a token that
+        # overclaims `flip=natural` must fail the staged_press gate.
+        bad = GOOD_LOG.replace('flip=staged-press', 'flip=natural')
+        result = validate(bad, code=0)
+        self.assertFalse(result['checks']['staged_press'])
+        self.assertFalse(result['passed'])
+
+    def test_health_floor_stall_names_blocking_reason(self):
+        stalled = '\n'.join([
+            'P2_ELECBUG_BIND generator=346002 source_id=28 visual_only=0',
+            'Experimental preview window set to 960x540 windowed and centered',
+            'P2_ELECBUG_NATURAL_READY squad=20 elecbug_gen=346002 pair_gen=346010 reg=2',
+            'P2_ELECBUG_NATURAL_DEPLOY free_squad=20 purple=1 yellow=1',
+            'P2_ELECBUG_NATURAL_OBSERVE tick=600 health=500.00 state=charge squad=20',
+            'P2_ELECBUG_NATURAL_BLOCKED health=500.00 squad=20',
+            'FAIL p2 room: natural death timeout (health stalled)',
+        ])
+        result = validate(stalled, code=1)
+        self.assertIsNotNone(result['blocking_reason'])
+        self.assertIn('health_floor=500.0', result['blocking_reason'])
+        self.assertFalse(result['passed'])
+
     def test_non_text_fails(self):
         with self.assertRaises(ValueError):
             validate(b'not text')

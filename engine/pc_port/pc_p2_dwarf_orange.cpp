@@ -30,7 +30,7 @@ void pc_p2_dwarf_orange_forget(BTeki* actor){
     const bool wasRegistered=actors.erase(static_cast<PelletView*>(actor))!=0;
     // The generator is already detached by dieSoon(), so identity is not
     // available here; the registration transition is the cleanup signal.
-    if(wasRegistered)std::printf("P2_DWARF_ORANGE_FORGET registered=1\n");
+    if(wasRegistered){std::printf("P2_DWARF_ORANGE_FORGET registered=1\n");std::fflush(stdout);}
     health.forget(actor);pc_p2_kochappy_stun_forget(actor);
 }
 float pc_p2_dwarf_orange_max_health(const BTeki* actor,float fallback){return health.life(actor,fallback);}

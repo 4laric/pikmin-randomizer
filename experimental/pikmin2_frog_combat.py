@@ -18,6 +18,7 @@ import re
 
 from experimental.pikmin2_frog_runtime import build as _build
 from experimental.pikmin2_frog_runtime import run as _run
+from experimental.pikmin2_frog_fsm import parse_states as _parse_states, validate as _validate_fsm
 
 APP = r'''#include <cmath>
 #include "Piki.h"
@@ -79,7 +80,7 @@ def validate(text, code):
     begin = re.search(r'P2_FROG_COMBAT_BEGIN generator=201001 health=([\d.]+) pikis=(\d+)', text)
     ticks = [float(h) for h in re.findall(r'P2_FROG_COMBAT_TICK health=([\d.]+)', text)]
     squad = [int(p) for p in re.findall(r'P2_FROG_COMBAT_TICK health=[\d.]+ pikis=(\d+)', text)]
-    result = re.search(r'P2_FROG_COMBAT_RESULT reason=(\w+) frog_dead=(\d) corpse=(\d) squad=(\d) controls=(\d)', text)
+    result = re.search(r'P2_FROG_COMBAT_RESULT reason=(\w+) frog_dead=(\d+) corpse=(\d+) squad=(\d+) controls=(\d+)', text)
     start = float(begin[1]) if begin else None
     initial = int(begin[2]) if begin else 0
     checks = dict(
@@ -89,14 +90,22 @@ def validate(text, code):
         frog_attack=bool(squad) and min(squad) < initial,
         controls_alive=bool(result) and result[5] == '1',
         outcome=bool(result) and (result[2] == '0' or int(result[3]) >= 1))
+    try:
+        fsm_result = _validate_fsm(_parse_states(text))
+        checks['fsm'] = fsm_result['passed']
+        fsm_errors = list(fsm_result['errors'])
+    except ValueError as exc:
+        checks['fsm'] = False
+        fsm_errors = [str(exc)]
     land = re.findall(r'P2_FROG_LAND species=(\w+) radius=([\d.]+) bittered=(\d) '
-                      r'pikmin=(\d+) navi=(\d+) behavior=P1_proxy'
+                      r'pikmin=(\d+) navi=(\d+) behavior=(P1_proxy|source)'
                       r'(?: pressed=(\d) origin=(\w+) host_frozen=(\d+))?', text)
     bitter = re.findall(r'P2_FROG_BITTER species=(\w+) override=(\d) host_frozen=(\d+) '
                         r'effective=(\d) origin=(\w+)', text)
     return dict(passed=all(checks.values()), checks=checks, ticks=ticks, squad=squad,
                 reason=result[1] if result else None, frog_dead=result[2] if result else None,
                 corpse=result[3] if result else None,
+                fsm_errors=fsm_errors,
                 press_markers={'Frog': len(re.findall(r'P2_FROG_PRESS species=Frog ', text)),
                                'MaroFrog': len(re.findall(r'P2_FROG_PRESS species=MaroFrog ', text))},
                 land_markers={'Frog': len(re.findall(r'P2_FROG_LAND species=Frog ', text)),
@@ -105,7 +114,7 @@ def validate(text, code):
                                    'pikmin': int(p), 'navi': int(n),
                                    'pressed': int(pr) if pr != '' else int(b == '0'),
                                    'origin': o or 'unknown', 'host_frozen': int(hf) if hf != '' else 0}
-                                  for s, r, b, p, n, pr, o, hf in land],
+                                   for s, r, b, p, n, _beh, pr, o, hf in land],
                 bitter_markers=[{'species': s, 'override': o == '1', 'host_frozen': int(hf),
                                  'effective': e == '1', 'origin': og}
                                 for s, o, hf, e, og in bitter],

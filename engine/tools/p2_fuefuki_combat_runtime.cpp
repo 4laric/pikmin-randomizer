@@ -1,20 +1,16 @@
 // Private real-GL Fuefuki natural-combat fixture, issue #245. Compiled by the
 // isolated fixture build only; runs inside the cargo-free practice arena so the
 // Napkid 11 vehicle births through the real generator and `pc_p2_hardlanes`
-// binds it (same staging as p2_fuefuki_vehicle_runtime.cpp / P2_FUEFUKI_VEHICLE_RUNTIME_EVIDENCE.md).
+// binds it (same staging as p2_fuefuki_vehicle_runtime.cpp).
 //
-// This slice observes the natural-combat receiver added by P2_FUEFUKI_COMBAT.md:
-// a real InteractPress dispatched on the bound vehicle must latch through
-// pc_p2_hardlanes_fuefuki_pressed and route the FSM to Struggle (state 8). The
-// press stimulus is delivered through the engine's own InteractPress::actTeki
-// interaction dispatch (the exact call the "swarm press" interaction makes); the
-// only fixture intervention is constructing that interaction directly instead of
-// a Pikmin physically pressing, which is labelled below.
+// First real combat run: drive one source cycle press -> Struggle -> Dead with
+// follower release on the bound vehicle, and observe the receiver, the Struggle
+// transit, health->Dead and the release from the log. Every injected step is
+// labelled inline (injected=1) because no P1 creature emits InteractPress onto a
+// Napkid (provider lane 10) and the death health is a fixture write, not natural
+// attack damage.
 //
-// Honest scope: the vehicle is Napkid 11 (not enemy 41); admission still requires
-// the FSM to be grounded with mCanStruggle armed (Land KEYEVENT_3), so the press
-// is timed to a Wait/Whisle window after the captain is moved out of the private
-// radius.
+// Marker grammar is consumed by experimental/pikmin2_fuefuki_combat_receipt.py.
 
 #include <SDL2/SDL.h>
 #include <GL/gl.h>
@@ -49,6 +45,8 @@ int gFrames = 0;
 int gPhase = 0;
 int gStageFrames = 0;
 int gStruggleFrames = 0;
+int gReleaseFrames = 0;
+int gHeldAtDeath = 0;
 Teki* gVehicle = nullptr;
 
 void require(bool value, const char* message)
@@ -101,7 +99,7 @@ public:
     int idle() override
     {
         int result = PlugPikiApp::idle();
-        require(++gFrames < 2400, "timeout");
+        require(++gFrames < 3600, "timeout");
         if (gameflow.mMoviePlayer && gameflow.mMoviePlayer->mIsActive) {
             gameflow.mMoviePlayer->requestSkip();
             return result;
@@ -113,7 +111,8 @@ public:
         case 0: setup(); break;
         case 1: stagePhase(); break;
         case 2: pressPhase(); break;
-        case 3: observePhase(); break;
+        case 3: strugglePhase(); break;
+        case 4: deathPhase(); break;
         }
         return result;
     }
@@ -137,42 +136,66 @@ private:
         require(pc_p2_hardlanes_fuefuki_vehicle_position(x, y, z), "vehicle position");
         stagePlacement(x, z);
         if (++gStageFrames % 60 == 0) {
-            std::printf("P2_FUEFUKI_COMBAT_RT_STAGE frames=%d state=%d\n",
-                        gStageFrames, pc_p2_hardlanes_fuefuki_state());
+            std::printf("P2_FUEFUKI_COMBAT_RT_STAGE frames=%d state=%d held=%d\n",
+                        gStageFrames, pc_p2_hardlanes_fuefuki_state(),
+                        pc_p2_hardlanes_fuefuki_held_count());
             std::fflush(stdout);
         }
-        require(gStageFrames < 1800, "FSM never reached a grounded state for press");
-        // Grounded states (Land/Wait/Turn/Walk/Whisle) where Land KEYEVENT_3 has
-        // armed mCanStruggle: a press there must enter Struggle (source press).
-        const int state = pc_p2_hardlanes_fuefuki_state();
-        if (state == 4 || state == 6 || state == 7) gPhase = 2;
+        require(gStageFrames < 1800, "no natural claim within the staging window");
+        // A live claim (Whisle cast admitted at least one in-ring Pikmin) must
+        // exist before the press, so the later follower release is observable.
+        if (pc_p2_hardlanes_fuefuki_held_count() > 0) gPhase = 2;
     }
 
     void pressPhase()
     {
-        // Dispatch a real InteractPress interaction on the bound vehicle. This is
-        // the engine's own press ingress (InteractPress::actTeki -> lane hook),
-        // not a direct FSM write; the stimulus is fixture-constructed (labelled).
+        // Injected step (labelled): dispatch the engine's own InteractPress onto
+        // the bound vehicle. No P1 creature does this for a Napkid, so the
+        // stimulus is fixture-constructed rather than a physical Pikmin press.
         Navi* navi = naviMgr ? naviMgr->getNavi() : nullptr;
         require(navi != nullptr, "captain missing for press stimulus");
         InteractPress press(navi, 0.0f);
         press.actTeki(gVehicle);
         require(pc_p2_hardlanes_fuefuki_press_count() >= 1, "press stimulus did not latch");
-        std::printf("P2_FUEFUKI_COMBAT_RT_PRESS state=%d press_count=%u\n",
+        std::printf("P2_FUEFUKI_COMBAT_RT_PRESS injected=1 press_count=%u state=%d held=%d\n",
+                    pc_p2_hardlanes_fuefuki_press_count(),
                     pc_p2_hardlanes_fuefuki_state(),
-                    pc_p2_hardlanes_fuefuki_press_count());
+                    pc_p2_hardlanes_fuefuki_held_count());
         std::fflush(stdout);
         gPhase = 3;
     }
 
-    void observePhase()
+    void strugglePhase()
     {
         ++gStruggleFrames;
         const int state = pc_p2_hardlanes_fuefuki_state();
         require(gStruggleFrames < 120, "no Struggle transit after real press");
         if (state == 8) {
-            std::printf("P2_FUEFUKI_COMBAT_RT_STRUGGLE frames=%d press_count=%u\n",
-                        gStruggleFrames, pc_p2_hardlanes_fuefuki_press_count());
+            std::printf("P2_FUEFUKI_COMBAT_RT_STRUGGLE state=8 held=%d\n",
+                        pc_p2_hardlanes_fuefuki_held_count());
+            std::fflush(stdout);
+            gPhase = 4;
+        }
+    }
+
+    void deathPhase()
+    {
+        // Injected step (labelled): zero the vehicle health to route the FSM
+        // Struggle -> Dead (source health<=0 exits) and release the followers.
+        if (gHeldAtDeath == 0) {
+            gHeldAtDeath = pc_p2_hardlanes_fuefuki_held_count();
+            gVehicle->mHealth = 0.0f;
+            std::printf("P2_FUEFUKI_COMBAT_RT_DEATH injected=1 state=%d held=%d\n",
+                        pc_p2_hardlanes_fuefuki_state(), gHeldAtDeath);
+            std::fflush(stdout);
+        }
+        ++gReleaseFrames;
+        const int held = pc_p2_hardlanes_fuefuki_held_count();
+        require(gReleaseFrames < 240, "follower release did not complete");
+        if (held == 0 && gReleaseFrames > 1) {
+            std::printf("P2_FUEFUKI_COMBAT_RT_RELEASE released=%d held=%d frames=%d state=%d\n",
+                        gHeldAtDeath, held, gReleaseFrames,
+                        pc_p2_hardlanes_fuefuki_state());
             std::printf("PASS FUEFUKI_COMBAT_RUNTIME\n");
             std::fflush(stdout);
             std::_Exit(0);

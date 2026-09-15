@@ -74,11 +74,18 @@ class OtakaraNativeSourceTests(unittest.TestCase):
         self.assertIn('p2_species_immune', text)
         self.assertIn('p2_emitter_accepts', text)
 
-    def test_bombotakara_is_not_bound(self):
+    def test_bombotakara_is_bound(self):
         text = _read('pc_port/pc_p2_otakara.cpp')
-        # Only Fire/Water/Gas/Elec are mapped; Bomb stays with lane-20 blast.
+        # Lane 22 slice 4 bound BombOtakara (93) to the shared Bomb primitive.
         self.assertIn('FireOtakara', text)
-        self.assertNotIn('"BombOtakara") return', text)
+        self.assertIn('"BombOtakara") return', text)
+
+    def test_bombotakara_is_bound_payload_delegating(self):
+        text = _read('pc_port/pc_p2_otakara.cpp')
+        # Slice 4 binds all five; Bomb (93) maps to its ID but delegates its
+        # element to the lane-20 payload (discharge emits P2_OTAKARA_DISCHARGE_NONE).
+        self.assertIn('if (name == "BombOtakara") return p2dweevil::BombId;', text)
+        self.assertIn('P2_OTAKARA_DISCHARGE_NONE', text)
 
     def test_source_parameters_match_disc_audit(self):
         text = _read('pc_port/pc_p2_otakara.cpp')

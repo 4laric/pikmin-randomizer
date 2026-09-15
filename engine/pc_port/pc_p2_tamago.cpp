@@ -11,14 +11,15 @@
 //     as an InteractFlick knockback (the closest P1 panic/scatter receiver),
 //     applied once per contact.
 //   * The source manager-owned group birth (tamagoMushiMgr.cpp::createGroup:77/
-//     122, 10 surface / 30 cave from TAMAGOMUSHI_GROUP_COUNT) is approximated:
-//     the private arena stages a bounded cluster of existing TamagoMushi
-//     generators and this module links the smallest-generator actor as the
-//     leader and the rest as followers. Followers emerge (Appear), run the
-//     singleton ground cycle around a leader-centred home and chase the live
-//     leader once outside the follow leash. No brand-new P1 Teki actors are
-//     born; source birth offsets (birthRadius * 45 ground / -10 object) are
-//     represented by the engineered arena positions, not replayed by a manager.
+//     122, 10 surface / 30 cave from TAMAGOMUSHI_GROUP_COUNT) has TWO port paths:
+//     - the pre-staged approximation (no p2-tamago-host.txt): the arena stages a
+//       bounded cluster of TamagoMushi generators and setup links the smallest as
+//       leader; no brand-new P1 Teki actors are born.
+//     - the manager-driven birth mode (p2-tamago-host.txt present): a single host
+//       births its group once on Appear via pc_p2_tamago_birth_group, which uses
+//       BTeki::generateTeki to create the real leader-follower Teki actors inside
+//       the scene (no spawn velocity; source birth offsets approximated by a
+//       bounded 45-unit distribution).
 //   * Leader teardown is not established by the source (audit note); an
 //     orphaned follower promotes itself to its own leader instead of holding a
 //     dangling swarm pointer.
@@ -113,11 +114,24 @@ struct Tamago {
     unsigned generator = 0;
     unsigned leaderGenerator = 0;
     BTeki* leaderActor = nullptr;
+    // Manager-driven birth (#165): host births its group exactly once on Appear.
+    bool madeFellow = false;
+    bool isGroupHost = false;
 };
 
 std::map<PelletView*, Tamago> actors;
 std::map<std::string, Clip> clips;
 bool ready = false;
+// Birth-mode group state: when p2-tamago-host.txt is present, the host births its
+// own group via pc_p2_tamago_birth_group (manager-driven), once.
+bool birthMode = false;
+unsigned hostGenerator = 0;
+int hostGroupCount = 0;
+// Deferred sibling kills: pc_p2_tamago_forget's group branch runs inside the
+// TekiMgr update loop (natural host death -> doKill -> forget), so it queues the
+// born followers here and pc_p2_tamago_tick() drains them once per frame outside
+// that loop (gameCoreSection.cpp, after tekiMgr->update()).
+std::vector<BTeki*> pendingKills;
 
 float wrapPi(float a) {
     while (a > 3.14159265f) a -= 6.28318531f;
@@ -177,8 +191,7 @@ void astonishContacts(BTeki* a, Tamago& s) {
             inside.insert(p);
             if (s.inContact.count(p)) continue;
             p->stimulate(InteractFlick(a, FLICK_KNOCKBACK, 0.0f, a->getDirection()));
-            std::printf("P2_TAMAGO_ASTONISH generator=%u pikmin=1\n",
-                        a->mGenerator ? a->mGenerator->_70 : 0u);
+            std::printf("P2_TAMAGO_ASTONISH generator=%u pikmin=1\n", s.generator);
             std::fflush(stdout);
         }
     }
@@ -193,8 +206,7 @@ void dropHoney(BTeki* a, Tamago& s) {
     if (!drop) return;
     drop->init(pos);
     drop->startAI(0);
-    std::printf("P2_TAMAGO_HONEY generator=%u source_id=68\n",
-                a->mGenerator ? a->mGenerator->_70 : 0u);
+    std::printf("P2_TAMAGO_HONEY generator=%u source_id=68\n", s.generator);
     std::fflush(stdout);
 }
 }
@@ -202,6 +214,7 @@ void dropHoney(BTeki* a, Tamago& s) {
 void pc_p2_tamago_reset() {
     actors.clear();
     clips.clear();
+    pendingKills.clear();
     ready = false;
 }
 void pc_p2_tamago_forget(BTeki* actor) {
@@ -209,11 +222,39 @@ void pc_p2_tamago_forget(BTeki* actor) {
     if (it == actors.end()) return;
     const bool wasLeader = it->second.isLeader;
     const unsigned gone = it->second.generator;
+    const bool wasGroupHost = it->second.isGroupHost;
+    // Whole-group cleanup on host forget: the manager-birth host owns its group,
+    // so forgetting the host erases the whole group and despawns every born
+    // follower. The born-actor kills are QUEUED and drained by pc_p2_tamago_tick()
+    // once per frame, outside the TekiMgr update loop this hook runs inside on a
+    // natural host death (BTeki::doKill -> pc_p2_forget_teki).
+    if (wasGroupHost) {
+        std::vector<BTeki*> children;
+        for (auto& entry : actors) {
+            if (entry.first != static_cast<PelletView*>(actor)
+                    && entry.second.leaderActor == actor) {
+                children.push_back(static_cast<BTeki*>(entry.first));
+            }
+        }
+        int queued = 0;
+        for (BTeki* child : children) {
+            actors.erase(static_cast<PelletView*>(child));
+            if (child->isAlive()) {
+                pendingKills.push_back(child);
+                ++queued;
+            }
+        }
+        actors.erase(static_cast<PelletView*>(actor));
+        std::printf("P2_TAMAGO_GROUP_FORGET host=%u group=%d remaining=%zu queued=%d source_id=68\n",
+                    gone, int(children.size()) + 1, actors.size(), queued);
+        std::fflush(stdout);
+        return;
+    }
     actors.erase(it);
     if (!wasLeader) return;
-    // Bounded leader teardown: source leader reuse/teardown is not established,
-    // so an orphaned follower promotes itself (Mgr::birth gives every object a
-    // self leader) rather than keeping a dangling swarm pointer.
+    // Bounded leader teardown for the pre-staged group path: source leader reuse/
+    // teardown is not established, so an orphaned follower promotes itself rather
+    // than keeping a dangling swarm pointer.
     for (auto& entry : actors) {
         if (entry.second.leaderActor != actor) continue;
         entry.second.leaderActor = nullptr;
@@ -222,6 +263,81 @@ void pc_p2_tamago_forget(BTeki* actor) {
         std::printf("P2_TAMAGO_PROMOTE generator=%u leader_gone=%u source_id=68\n",
                     entry.second.generator, gone);
     }
+    std::fflush(stdout);
+}
+
+unsigned long pc_p2_tamago_count() { return (unsigned long)actors.size(); }
+bool pc_p2_tamago_registered(BTeki* actor) {
+    return actors.count(static_cast<PelletView*>(actor)) != 0;
+}
+
+void pc_p2_tamago_tick() {
+    // Once-per-frame drain of queued born-follower kills (see pendingKills). Runs
+    // outside the TekiMgr update loop so sibling despawns never re-enter the host's
+    // own update() death funnel. `killed` records how many born Teki actually went
+    // through the death funnel here, so the runtime can prove the group was
+    // despawned (not merely erased from this module's actor map) before _Exit(0).
+    int killed = 0;
+    for (BTeki* child : pendingKills) {
+        if (child && child->isAlive()) {
+            child->kill(false);
+            ++killed;
+        }
+    }
+    if (!pendingKills.empty()) {
+        std::printf("P2_TAMAGO_GROUP_DRAIN killed=%d source_id=68\n", killed);
+        std::fflush(stdout);
+    }
+    pendingKills.clear();
+}
+
+void pc_p2_tamago_birth_group(BTeki* host, int count) {
+    if (!ready || !host || count < 1) return;
+    auto hostIt = actors.find(static_cast<PelletView*>(host));
+    if (hostIt == actors.end()) return;
+    Tamago& hostState = hostIt->second;
+    if (hostState.madeFellow) return;  // exactly-once (source mHasMadeFellow)
+    hostState.madeFellow = true;
+    hostState.isGroupHost = true;
+    const unsigned hostGen = hostState.generator;
+    const Vector3f hostPos = host->getPosition();
+    const int follow = count - 1;
+    int born = 0;
+    // Source createGroup follower placement: birthRadius*(45*sin/cos) around the
+    // leader (tamagoMushiMgr.cpp:152-178), leaders self-own.
+    for (int i = 0; i < follow; ++i) {
+        // generateTeki births a fresh Chappy-vehicle Teki with its personality
+        // inherited from the host but NO spawn position/launch velocity (spawnTeki
+        // would apply SpawnVelocity*Strength and fling the child out of the arena).
+        Teki* child = host->generateTeki(TEKI_Chappy);
+        if (!child) continue;  // null birth tolerated (source skips, count short)
+        // Bounded deterministic birth radius in [0.2, 1.0] (source
+        // createGroup birthRadius 0.8*randFloat()+0.2), 45-unit distribution.
+        const float radius = 0.2f + 0.8f * (float(unsigned(i * 2654435761u) & 0xffffu) / 65535.0f);
+        const float face = 6.28318531f * float(i) / float(count);
+        const Vector3f offset(45.0f * radius * std::sin(face), 0.0f,
+                              45.0f * radius * std::cos(face));
+        Vector3f pos = hostPos + offset;
+        child->inputPosition(pos);
+        child->startAI(0);
+        const unsigned gen = hostGen + 1u + unsigned(i);
+        Tamago& s = actors[static_cast<PelletView*>(child)];
+        s.generator = gen;
+        s.home = pos;
+        s.heading = 0.0f;
+        child->mHealth = LIFE;
+        s.isLeader = false;
+        s.leaderGenerator = hostGen;
+        s.leaderActor = host;
+        enter(s, TAMAGO_APPEAR, "set");
+        std::printf("P2_TAMAGO_GROUP leader=%u follower=%u source_id=68\n", hostGen, gen);
+        // born=1 flags the synthetic (manager-birth) id, distinct from a staged id.
+        std::printf("P2_TAMAGO_BIND generator=%u source_id=68 visual_only=0 born=1\n", gen);
+        ++born;
+    }
+    std::printf("P2_TAMAGO_BIRTH host=%u leader=%u follow=%d count=%d source=manager\n",
+                hostGen, hostGen, born, count);
+    std::printf("P2_TAMAGO_BIRTH_ONCE host=%u born=%d\n", hostGen, born);
     std::fflush(stdout);
 }
 
@@ -304,6 +420,61 @@ void pc_p2_tamago_setup() {
     }
     if (wanted.empty()) return;
 
+    // Manager-driven birth mode: a single staged host births its own group on
+    // Appear (source createFellow / tamagoMushiMgr::createGroup), exactly once.
+    hostGenerator = 0;
+    hostGroupCount = 0;
+    birthMode = false;
+    std::ifstream hostFile("p2-tamago-host.txt");
+    if (hostFile) {
+        std::string hdr;
+        unsigned long long hg = 0;
+        int hc = 0;
+        if (hostFile >> hdr >> hg >> hc && hdr == "P2_TAMAGO_HOST_1" && hc >= 1 && hc <= 100) {
+            birthMode = true;
+            hostGenerator = unsigned(hg);
+            hostGroupCount = hc;
+        }
+    }
+    if (birthMode) {
+        BTeki* hostActor = nullptr;
+        Iterator hit(tekiMgr);
+        CI_LOOP(hit) {
+            Teki* actor = static_cast<Teki*>(*hit);
+            if (actor && actor->mGenerator && actor->mGenerator->_70 == hostGenerator) {
+                hostActor = actor;
+                break;
+            }
+        }
+        if (!hostActor) {
+            std::printf("P2_TAMAGO_ERROR missing_host host=%u\n", hostGenerator);
+            std::abort();
+        }
+        Tamago& s = actors[static_cast<PelletView*>(hostActor)];
+        s.generator = hostGenerator;
+        s.home = hostActor->getPosition();
+        s.heading = hostActor->getDirection();
+        hostActor->mHealth = LIFE;
+        s.isLeader = true;
+        s.isGroupHost = true;
+        s.madeFellow = false;
+        s.leaderGenerator = hostGenerator;
+        s.leaderActor = hostActor;
+        enter(s, TAMAGO_APPEAR, "set");
+        std::printf("P2_TAMAGO_HOST_BIND host=%u egg=1 source_id=68\n", hostGenerator);
+        std::printf("P2_TAMAGO_LEADER generator=%u followers=0 surface_count=%d cave_count=%d "
+                    "source_group=createGroup\n",
+                    hostGenerator, SOURCE_GROUP_SURFACE, SOURCE_GROUP_CAVE);
+        std::printf("P2_TAMAGO_BIND generator=%u source_id=68 visual_only=0\n", hostGenerator);
+        const Vector3f pos = hostActor->getPosition();
+        std::printf("P2_ENEMY_READY species=TamagoMushi native_family=Chappy generator=%u "
+                    "x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=native "
+                    "source_FSM=implemented astonish=native_P1_approx honey=native\n",
+                    hostGenerator, pos.x, pos.y, pos.z, hostActor->mHealth, LIFE);
+        ready = true;
+        return;
+    }
+
     // Collect the staged cluster first so the leader can be chosen
     // deterministically (smallest generator) before any state is assigned.
     std::vector<std::pair<BTeki*, unsigned>> matched;
@@ -376,7 +547,13 @@ void pc_p2_tamago_update(BTeki* actor) {
     const float dt = gsys->getFrameTime();
     if (dt <= 0.0f || dt > 0.5f) return;
     const Vector3f pos = actor->getPosition();
-    const unsigned generator = actor->mGenerator ? actor->mGenerator->_70 : 0u;
+    const unsigned generator = s.generator;
+
+    // Manager-driven birth trigger: the host births its group exactly once on its
+    // first Appear (source createFellow, guarded by mHasMadeFellow).
+    if (birthMode && s.isGroupHost && s.state == TAMAGO_APPEAR && !s.madeFellow) {
+        pc_p2_tamago_birth_group(actor, hostGroupCount);
+    }
 
     if (actor->mHealth <= 0.0f && s.state != TAMAGO_DEAD) {
         if (!s.deadLogged) {

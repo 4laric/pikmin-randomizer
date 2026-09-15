@@ -209,8 +209,8 @@ def test_real_ledger_is_fully_covered():
     assert gaps["uncovered_identity_modules"] == []
 
 
-def test_real_ledger_nothing_admitted():
-    assert admitted_ids(load_and_validate()) == []
+def test_real_ledger_admitted_set():
+    assert admitted_ids(load_and_validate()) == [23, 44, 59, 60, 61, 62]  # 23 Sarai; 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (admitted 2026-09-15)
 
 
 # ---------------------------------------------------------------------------
