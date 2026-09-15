@@ -137,3 +137,128 @@ cd C:\Users\alari\pikmin-randomizer\output\dsw\l24-root
 py -3.12 C:\Users\alari\pikmin-randomizer\output\deepseek-wave\slot.py run gl l24 -- py -3.12 -m experimental.pikmin2_king_natural_death_runtime run --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" --bank "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/bulblax-bank" --output "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/king-natdeath-runtime2" --exe "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/king-natdeath-fixture2/build/fixture.exe"
 ```
 (set `PIKMIN_P2_ROOM_WINDOW=960x540` and `PYTHONUTF8=1`; wrap in `slot.py run gl`.)
+
+## Slice 2
+
+### (a) King free-mode natural death (no per-tick re-pin)
+
+`experimental/pikmin2_king_free_mode_runtime.py` stages 20 reds in a ring ONCE and
+switches them to `PikiMode::FreeMode`; there is no per-tick re-pin, no bomb, no
+injection. Result: **the 20 free Pikmin DID kill the Emperor** (killed=True,
+227 `P2_KING_COMBAT_DAMAGE` lines, health 1266 -> 0, `P2_KING_DEAD_KEY frame=185`,
+exit 0). Mechanism: after the first Flick scatters the squad, a small persistent
+latch (stuck 3-6) is maintained autonomously (P1 idle/latch-resume within
+`mIdleAttackSearchRange` 100) and drives 1300 HP down over ~151 s. This does not
+rely on the slice-1 ring re-pin (whose entry-blow re-fire the reviewer flagged);
+the reproduction is a genuine natural combat -> death without that inflation.
+Run dir `output/dsw/l24-out/king-freemode-runtime/king/900fd67a...`; fixture
+`king-freemode-fixture/build/fixture.exe` sha256 `845b487c...`.
+
+### (b) Natural-Flick GL re-run on current head
+
+`experimental/pikmin2_king_natural_flick_runtime.py` re-run against native
+`340d7377` (which carries the slice-1 continuous-damage receiver + the review
+`damageClock=0` reset). **PASS** (`king-natural True`, run dir
+`king-natflick-runtime/king/c165aad1...`; fixture `king-natflick-fixture/build/fixture.exe`
+sha256 `6ad899a3...`). The receiver change is now covered by its own run, not
+just by markers inside the death log.
+
+### (c) Queen natural lifecycle (births / baby bite / death cleanup)
+
+`experimental/pikmin2_queen_natural_runtime.py` + native Queen changes (below).
+Un-injected result **PASS** (exit 0; run dir `queen-natural-runtime2/queen/609b57d0...`):
+9 natural larva births from the 2.0 s timer with exactly-once `born=` accounting
+(1..9, no gaps), a natural Baby captain bite (`P2_QUEEN_LARVA_ATTACK damage=2
+captain_before=500.0 captain_health=498.0` — real health drop on a live captain),
+and Queen death (`P2_QUEEN_STATE from=4 to=0 health=0.0`,
+`P2_QUEEN_COMBAT_DAMAGE ... health=0.0`) releasing all 3 live larvae
+(`P2_QUEEN_DEATH_LARVA_RELEASE released=3`). No injected health; death is driven
+by the mirrored continuous latch damage.
+
+### Native changes (slice 2)
+
+- `pc_port/pc_p2_queen.cpp`: continuous stuck-Pikmin latch damage in `receiveScan`
+  (mirrors the King; `P2_QUEEN_COMBAT_DAMAGE`), `damageClock=0` reset on Flick,
+  exactly-once `births` counter (`born=` in `P2_QUEEN_LARVA`), and Queen-death
+  larva release (`P2_QUEEN_DEATH_LARVA_RELEASE`, set `active=false` on all live
+  larvae, exactly once via `deathReleased`).
+- `pc_port/pc_p2_queen_policy.h`: `DamagePerBlow = 1.0f`, `BlowIntervalTicks = 20`.
+- `pc_port/pc_p2_queen.h` + `.cpp`: `pc_p2_queen_death_released()` fixture getter.
+
+### Root files (slice 2)
+
+- `experimental/pikmin2_king_free_mode_runtime.py`
+- `experimental/pikmin2_queen_natural_runtime.py`
+- `experimental/pikmin2_lane24_gates.py` (pure validators `king_free_mode_validate`, `queen_natural_validate`)
+- `tests/test_pikmin2_lane24_gates.py`
+- `tests/pikmin2_queen_policy.cpp` (two new constant assertions)
+
+### Ordered commits (slice 2 only)
+
+Root (base `ef1cace`):
+```
+2406259 lane24: slice2 free-mode + Queen natural-lifecycle harnesses, gate validators, tests (#445)
+846705e lane24: Queen natural fixture — 64-red combat pool, hold-away births, press-avoiding ring (#445)
+```
+Native (base `b805d9c6`, after the slice-1 integrator review-fix `0f57d8a0`):
+```
+cafdc5e6 lane24: Queen natural lifecycle — continuous latch damage, exactly-once births, death larva release (#445)
+340d7377 lane24: expose Queen death-released observation getter for the natural-lifecycle fixture (#445)
+```
+
+### Build evidence (slice 2)
+
+`output/dsw/l24-build-evidence.txt` (build dir `native-l24-build`, Ninja/MinGW
+Release, JAudio ON):
+```text
+... lane=l24 target=pikmin_pc native=340d737722181495bacba5e7fde919acfb54a28c dirty=no exe=...bin/nectar.exe sha256=f8beeecc54dfc25d5fd245da46e0a3699c105d926a2d391bae6d43a16ba98171 ninja_n="ninja: no work to do."
+```
+Fixtures (all provenance `built`, expected native head `340d7377...`):
+`king-freemode-fixture` `845b487c...`, `king-natflick-fixture` `6ad899a3...`,
+`queen-natural-fixture2` `6dcf6da3...`. All runs: `PIKMIN_P2_ROOM_WINDOW=960x540`,
+centred window logged, live squad, no extinction.
+
+### Tests (slice 2)
+
+`py -3.12 -m pytest tests/test_pikmin2_lane24_gates.py tests/test_pikmin2_king_natural_death_runtime.py tests/test_pikmin2_king_natural_flick_runtime.py tests/test_pikmin2_king_actor.py tests/test_pikmin2_queen_actor.py tests/test_pikmin2_bulblax_behavior.py -q`
+-> 68 passed, 3 skipped; with `P2_NATIVE_PC_PORT=<native>/pc_port` the King/Queen
+policy C++ tests compile and pass (13 passed).
+
+### Subagent usage
+
+- explore #1 (source audit Queen/Baby/King): returned exact birth-timer/born-key
+  facts, Baby bite key frame 10 / damage 2 / dist 30 / angle 45, the six Queen
+  death entry points, and the Piki idle/latch-resume re-engage AI. Used as-is for
+  the native edits and the free-mode mechanism note (high value; saved the manual
+  source trace). One correction: it asserted the King "cannot re-latch autonomously",
+  which the free-mode run disproved for the proximity receiver — the proximity
+  scan, not the Piki AI, is what re-sticks them.
+- explore #2 (inventory): located the exact untouched native markers, confirmed the
+  Baby bite was unexercised by any harness and that no Queen-death cleanup path
+  existed, and pointed to `pikmin2_kochappy_arena_combat.py` as the free-mode ring
+  deploy pattern. Used as-is.
+- general #3 (tests/harness scaffolding): wrote `experimental/pikmin2_lane24_gates.py`
+  and `tests/test_pikmin2_lane24_gates.py` (8 tests) to the spec on the first run;
+  both harnesses import these validators. Used as-is (no corrections).
+
+Estimated net: ~25-35 min of manual source tracing and scaffolding saved; no
+rework needed from any of the three.
+
+### Remaining blockers (unchanged)
+
+- Queen material/BTK/TEV fidelity: lane 09 (#239/#128). King/Queen reward/transport
+  carry endpoint: lane 06. Generated-session ordinary spawn/persistence: 03/06.
+  Campaign lifecycle/re-entry, mixed-scene budget: 07/33. The Queen's ~5000 HP
+  (vs the King's 1300) means natural death needs the 64-red combat pool here;
+  per-color blow strength remains out of scope.
+
+### Reproduction (slice 2)
+
+```powershell
+cd C:\Users\alari\pikmin-randomizer\output\dsw\l24-root
+# (a) King free-mode
+py -3.12 C:\Users\alari\pikmin-randomizer\output\deepseek-wave\slot.py run gl l24 -- py -3.12 -m experimental.pikmin2_king_free_mode_runtime run --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" --bank "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/bulblax-bank" --output "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/king-freemode-runtime" --exe "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/king-freemode-fixture/build/fixture.exe"
+# (c) Queen natural lifecycle
+py -3.12 C:\Users\alari\pikmin-randomizer\output\deepseek-wave\slot.py run gl l24 -- py -3.12 -m experimental.pikmin2_queen_natural_runtime run --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" --bank "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/bulblax-bank" --output "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/queen-natural-runtime2" --exe "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/queen-natural-fixture2/build/fixture.exe"
+```
+(each with `PIKMIN_P2_ROOM_WINDOW=960x540` and `PYTHONUTF8=1`; wrap in `slot.py run gl`.)
