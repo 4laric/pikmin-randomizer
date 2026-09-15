@@ -212,3 +212,164 @@ py -3.12 -m pytest tests/test_pikmin2_delivery.py tests/test_pikmin2_receipts.py
 (Native mirror: `py -3.12 output/deepseek-wave/build_lane.py l06 --target p2_delivery_receiver_test`
 then `./p2_delivery_receiver_test.exe` in `output/dsw/native-l06-build`, or
 `ctest -R p2_delivery_receiver_test`.)
+
+## Slice 2 — first real consumer (GoalItem::suckMe -> durable ordinary receipt)
+
+### What was wired
+
+1. **Engine-free delivery host** `pc_port/pc_p2_delivery_host.{h,cpp}`: owns a
+   persistent `FileReceiptPersistence` + `P2Delivery::DeliveryReceiver` in its own TU;
+   `pc_p2_delivery_host_deliver(seed, sourceId, tekiType, stage, generatorToken,
+   encounter)` always `p1Proxy=false` and rejects `sourceId==0`.
+2. **Randomizer glue** (`pc_port/pc_randomizer.{h,cpp}`): `pc_randomizer_p2_bind_source
+   (tekiview, sourceId, generatorUid)` captures the bound source at bind/spawn time
+   (the Teki's `mGenerator` is nulled by `dieSoon` before the corpse reaches the Onion);
+   `pc_randomizer_p2_source_for` / `_generator_for` read it back;
+   `pc_randomizer_p2_corpse_delivered(tekiview, type, stage, gameplay)` opens the durable
+   host at `campaignDirectory/p2-delivery-receipts.txt` (identity `onion:p2:<sourceId>:
+   <stage>`, slot `g<generatorUid>`, seed = manifest `fingerprint`, encounter `corpse`).
+3. **Engine hook** `src/plugPikiKando/goalItem.cpp` (the corpse branch of
+   `GoalItem::suckMe`, separate labelled commit): when the corpse's `PelletView` has a
+   bound source, call `pc_randomizer_p2_corpse_delivered` so a P2 reward is granted under
+   its own identity, never the P1-proxy `Bestiary: Deliver Dwarf Bulborb` check.
+
+### Runtime proof (960x540, real-GL, two processes)
+
+Reproducer: `scripts/p2_delivery_fixture.cpp` (replacement main) +
+`scripts/p2_delivery_runtime.py`. Fixture binds source 44 (Dwarf Orange) onto the live
+Chappy host, kills it (frame 9), drives the real corpse through `GoalItem::suckMe`, and
+the host grants `onion:p2:44:1` exactly once; a second process over the same ledger
+re-delivers -> Duplicate.
+
+```text
+run1  P2_ORDINARY_P2_RECEIPT seed=225221..ab9d84 id=onion:p2:44:1 generator=185597288 new=1
+run2  P2_ORDINARY_P2_RECEIPT ... new=0      EXACTLY_ONCE_ACROSS_RESTART: True
+```
+
+Evidence in `output/dsw/l06-out/` (`slice2-evidence.txt`, `delivery-run-final/`,
+`ctest-delivery-slice2.txt`). Fixture SHA-256 `ad81e84720c9…fc90`; production
+`nectar.exe` SHA-256 `a991c44dc697…ad15f3` (native `45eb7fa6`, clean, `ninja` no-work).
+
+Natural vs injected: kill, corpse, Onion endpoint and durable receipt are real;
+the P2 source bind is a labelled fixture intervention (standing in for lane 13), and
+natural carry is injected (`natural_carry=0` -> `onion->suckMe` fallback; transport stays
+lane 04). Window `960x540` windowed/centred; `Direct boot: Forest of Hope day 2, 20 reds`
+(starting squad, no extinction).
+
+### New commits (this slice)
+
+Root (`deepseek/p2-l06`, base `ef1cace`):
+- `144c0bf` mixed-dump test drives real `pikmin2_reward_lifecycle.validate` counter.
+- `87d11c8` P2 delivery runtime fixture + two-process runner.
+- `8ee171c` include `Generator.h` in P2 delivery fixture.
+- `1f1d1e0` clean P2 delivery fixture + parent-poll two-process runner.
+- `0f26698` handoff Slice 2 (first real consumer + runtime proof).
+- `f3791d7` pin native commit SHAs in Slice 2 handoff.
+
+Native (`deepseek/p2-l06-native`, base `b805d9c6`):
+- `314a32af` review fixes (fix1).
+- `e193f65a` `pc_p2_delivery_host.{h,cpp}` + `tools/p2_delivery_host_test.cpp` + CMake (production + CTest).
+- `bee402dd` `pc_randomizer_p2_bind_source/_source_for/_generator_for/_corpse_delivered` (randomizer glue).
+- `1efcbaeb` `GoalItem::suckMe` -> `pc_randomizer_p2_corpse_delivered` (shared engine hook).
+- `45eb7fa6` drop the bridge-flag gate for the runtime binding (authoritative signal).
+
+### Six arena gates (natural vs injected)
+
+| Gate | Result |
+|---|---|
+| 1 Identity/spawn | interface PASS / natural N/A — source 44 bound at spawn (labelled fixture bind; lane 13 supplies it in a generated session). |
+| 2 Movement/animation | source-backed N/A (P1 proxy; family FSM is lane 13). |
+| 3 Attacks/receivers | source-backed N/A (single InteractAttack kill; receivers are lane 10). |
+| 4 Death/corpse | PASS — natural Chappy death -> `PELTYPE_Corpse` pellet (frame 9). |
+| 5 Transport/reward | interface PASS, transport INJECTED — `onion:p2:44:1` granted exactly once via real `GoalItem::suckMe`; natural carry did not move the corpse (`natural_carry=0`). |
+| 6 Cleanup/re-entry | source-backed N/A (lane 07). |
+
+Persistence (admission gate F): **PASS at the runtime level** — one durable receipt row
+across a fresh process (run2 Duplicate).
+
+### Subagent usage (slice 2)
+
+- `explore` #1 (corpse->source_id recovery + seed/restart mechanism): used as-is. Confirmed
+  `Pellet::mPelletView` is the Teki, that `mGenerator` is nulled by `dieSoon` (so the
+  source must be captured at bind), that `fingerprint` is the stable cross-restart seed
+  coordinate, and the receipt host needs an explicit stable path (not the per-run cwd).
+  Saved substantial recon. The parent-poll (vs background thread) fix came out of the
+  followed-on runtime debugging, not this audit.
+- `explore` #2 (runtime/stager inventory): used as-is to confirm the ordinary-room blueprint
+  (chal0 `TEKI_Chappy` host, `practice.ini` Onion) and that no ordinary consumer writes the
+  receipt host yet. The targeted reproduction path was largely already known; cost was low.
+- `general` #3 (mixed-dump test): used as-is — rewrote the mixed-dump test to call the real
+  `experimental.pikmin2_reward_lifecycle.validate`; 42 passed, 19 subtests. No corrections needed.
+
+## Slice 2 review fixes (fix2)
+
+### Resolution status (items 1-8)
+
+1. **Double credit — FIXED.** `pc_randomizer_p2_corpse_delivered` now returns `bool`
+   (true = it delivered a bound P2 source); `GoalItem::suckMe` credits the P1-proxy
+   bestiary check only when that returns false. Verified: run1 log has 0
+   `Bestiary: Deliver Dwarf Bulborb` / `CHECK 30` lines beside the `onion:p2:44:1` receipt.
+2. **Production open path exercised — FIXED.** Fixture no longer pre-opens via
+   `PIKMIN_P2_RECEIPT_PATH`; `pc_randomizer_p2_corpse_delivered` opens the handle at
+   `campaign/p2-delivery-receipts.txt`, and the runner reads that path. Run evidence shows
+   the ledger at `<session>/campaign/p2-delivery-receipts.txt`.
+3. **Checkpoint save — RELABELLED honestly.** A real `saveCurrentGame()` (`save_failed=0`,
+   `CAMPAIGN_SAVED generation=1`) made the second process resume day 2 instead of
+   cold-booting (it stalled at `CAMPAIGN_RESUMED`, no world). So the save trigger is
+   dropped and Persistence is labelled "process restart only, no checkpoint save"; the
+   durable `campaign/` sidecar still proves exactly-once across restart.
+4. **Stale pointer keys — FIXED.** The binding is single-use: `pc_randomizer_p2_corpse_delivered`
+   consumes it after the grant, and `pc_randomizer_p2_forget_source(const void*)` is called
+   from the central `pc_p2_forget_teki` lifetime seam, so a recycled Teki address can never
+   inherit a P2 binding or credit the P1 proxy as `onion:p2`.
+5. **Unbindable id abort — FIXED.** `pc_randomizer_p2_bind_source` logs-and-returns instead of
+   `fail()`; `tools/p2_*_host_test.cpp` temp dirs are pid-scoped.
+6. **Wave merge — DONE.** Merged `claude/p2-deepseek-wave-native` (commit `b9702636`),
+   keeping lane 03's `pc_randomizer_bind_generator(..., sourceId70=0)`,
+   `pc_randomizer_p2_room_bootstrap`, `pc_randomizer_p2_source_for_id` and un-guarded bridge
+   lookups alongside the lane-06 bind/deliver functions. Rebuilt clean.
+7. **Per-consumer ledgers — DONE.** `pc_p2_receipt_host` and `pc_p2_delivery_host` are now
+   handle-per-path registries: `open(path)` returns a handle; `grant`/`deliver`/`close` take
+   it. Flora (p2-flora-receipts.txt), kogane (p2-kogane-onion-receipts.txt, lazy-reopen
+   workaround retired) and the randomizer (p2-delivery-receipts.txt) each hold their own
+   handle. New `p2_receipt_host_multi_test` (two consumers, independent ledgers). Header docs
+   updated to describe the handle contract.
+8. **Handoff fixes — DONE.** All six root commits listed; "40/40 tests"; one
+   `build_lane.py l06 --target p2_delivery_host_test` line at the committed head; runner no
+   longer hardcodes the MinGW path (guarded `MINGW_BIN`) and uses a descriptive seed.
+
+### New commits this pass
+
+Native (`deepseek/p2-l06-native`, base `b805d9c6`):
+- `b9702636` merge `claude/p2-deepseek-wave-native`.
+- `b4480fca` per-consumer handle-per-path receipt/delivery host ledgers (its own commit).
+- `ea236072` exactly-once delivery, no P1 double-credit, single-use binding.
+
+Root (`deepseek/p2-l06`, base `ef1cace`):
+- `a6c6429` fixture drops pre-open, triggers a real save; runner reads campaign ledger.
+- `fc683cd` relabel persistence (process restart; no checkpoint save).
+- (also the three Python/subagent edits: `144c0bf`, then this pass's delivery test additions,
+  see `tests/test_pikmin2_delivery.py`.)
+
+### Build + runtime evidence
+
+- Production `nectar.exe` SHA-256 `9395256dfc92…8474a31`, native `ea236072` clean,
+  `ninja: no work to do`.
+- Fixture `cdc637b4aea0…602f7`. Two-process run `delivery-run-fix2b`: run1 `new=1`, run2
+  `new=0`, `EXACTLY_ONCE_ACROSS_RESTART: True`, one row in `campaign/p2-delivery-receipts.txt`.
+- CTest 4/4: `p2_receipt_host_test`, `p2_receipt_host_multi_test`, `p2_delivery_receiver_test`,
+  `p2_delivery_host_test`. pytest `42 passed, 19 subtests`; `test_pikmin2_receipt_native.py`
+  `2 passed`. Evidence file: `output/dsw/l06-out/slice-fix2-evidence.txt`.
+
+### Subagent usage (fix2)
+
+- `explore` #1 (wave-branch diff + save mechanism + consumer blast-radius): used as-is — the
+  exact `bind_generator(...,sourceId70=0)`/`p2_room_bootstrap`/`p2_source_for_id` signatures,
+  the `MemoryCard::saveCurrentGame()` recipe, and the consumer call-site list drove the merge
+  and the handle refactor. The save-triggers-resume complication was discovered by the actual
+  runtime, not this audit.
+- `explore` #2 (host/test inventory + doc locations): used as-is to find every
+  `pc_p2_receipt_host_*`/`pc_p2_delivery_host_*` caller and the exact CTest blocks; flagged the
+  kogane lazy-reopen and the stale "registered as CTest" doc claim I must correct.
+- `general` #3 (root per-path ledger tests): used as-is — added the two independent-ledger
+  tests to `tests/test_pikmin2_delivery.py` (42 tests pass).

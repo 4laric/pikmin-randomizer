@@ -5,6 +5,7 @@ from experimental.pikmin2_delivery import (DeliveryReceiver, p1_proxy_identity,
                                            p2_source_identity)
 from experimental.pikmin2_receipts import (SCHEMA_VERSION, InMemoryPersistence,
                                            JsonReceiptPersistence, ReceiptLedger, reconcile)
+from experimental.pikmin2_reward_lifecycle import validate
 
 
 def receiver_for(ledger):
@@ -68,11 +69,23 @@ def test_exactly_once_across_process_restart(tmp_path):
 
 
 def test_mixed_dump_pod_and_ordinary_count_correctly():
-    ids = ['corpse:385875968', 'corpse:floor1:900', 'onion:p2:45:1', 'onion:p1:3:1']
-    pod_ids = [i for i in ids if i.startswith('corpse:')]
-    ordinary_ids = [i for i in ids if i.startswith('onion:')]
-    assert pod_ids == ['corpse:385875968', 'corpse:floor1:900']
-    assert ordinary_ids == ['onion:p2:45:1', 'onion:p1:3:1']
+    text = '\n'.join([
+        'P2_POD_RECEIPT id=corpse:385875968 value=2 new=1 pokos=2',
+        'P2_POD_RECEIPT id=onion:p2:45:1 value=1 new=1 pokos=0',
+        'P2_POD_RECEIPT id=onion:p1:3:1 value=1 new=1 pokos=0',
+        'P2_POD_RECEIPT id=corpse:385875968 value=2 new=0 pokos=2',
+    ])
+    result = validate(text, 0)
+    checks = result['checks']
+    assert len(result['receipts']) == 4
+    assert checks['corpse_receipts'] is True
+    assert checks['first_new'] is True
+    assert checks['second_duplicate'] is True
+    assert checks['pokos_stable'] is True
+    assert checks['value_is_2'] is True
+    corpse = [r for r in result['receipts'] if r[0].startswith('corpse:')]
+    assert len(corpse) == 2
+    assert 'onion:p2:45:1' not in [r[0] for r in corpse]
 
 
 def test_reconcile_integration_ok(tmp_path):
@@ -91,3 +104,49 @@ def test_reconcile_refuses_pod_leak_covering_expected_check(tmp_path):
     with pytest.raises(ValueError):
         reconcile([desc44, pod45],
                   [p2_source_identity(44, 1), p2_source_identity(45, 1)])
+
+
+def test_two_ledgers_on_distinct_paths_do_not_interfere(tmp_path):
+    delivery_path = tmp_path / 'p2-delivery-receipts.json'
+    flora_path = tmp_path / 'p2-flora-receipts.json'
+
+    delivery = receiver_for(ReceiptLedger(JsonReceiptPersistence(delivery_path)))
+    flora = receiver_for(ReceiptLedger(JsonReceiptPersistence(flora_path)))
+
+    assert delivery.identity(3, 3, 1, p1_proxy=False) != flora.identity(4, 3, 1, p1_proxy=False)
+
+    delivery_event = ('seed', 3, 3, 1, 7, 'corpse')
+    flora_event = ('seed', 4, 3, 1, 7, 'onion')
+
+    assert delivery.deliver(*delivery_event, p1_proxy=False) is True
+    assert flora.deliver(*flora_event, p1_proxy=False) is True
+
+    assert len(delivery.ledger) == 1
+    assert len(flora.ledger) == 1
+
+    assert delivery.delivered(*delivery_event, p1_proxy=False) is True
+    assert delivery.delivered(*flora_event, p1_proxy=False) is False
+    assert flora.delivered(*flora_event, p1_proxy=False) is True
+    assert flora.delivered(*delivery_event, p1_proxy=False) is False
+
+    delivery_reopened = receiver_for(ReceiptLedger(JsonReceiptPersistence(delivery_path)))
+    flora_reopened = receiver_for(ReceiptLedger(JsonReceiptPersistence(flora_path)))
+
+    assert len(delivery_reopened.ledger) == 1
+    assert len(flora_reopened.ledger) == 1
+    assert delivery_reopened.delivered(*delivery_event, p1_proxy=False) is True
+    assert delivery_reopened.delivered(*flora_event, p1_proxy=False) is False
+    assert flora_reopened.delivered(*flora_event, p1_proxy=False) is True
+    assert flora_reopened.delivered(*delivery_event, p1_proxy=False) is False
+
+
+def test_reopen_same_path_reuses_same_ledger_state(tmp_path):
+    path = tmp_path / 'receipts.json'
+    first = ReceiptLedger(JsonReceiptPersistence(path))
+    event = ('seed', 'corpse:5000', 7, 'tutorial_1:floor1')
+    assert first.grant(*event) is True
+
+    second = ReceiptLedger(JsonReceiptPersistence(path))
+    assert second.has(*event) is True
+    assert second.grant(*event) is False
+    assert len(second) == 1
