@@ -200,3 +200,109 @@ built, ran a fixture, committed, or touched native sources.
 ```
 cd C:/Users/alari/pikmin-randomizer/output/dsw/l25-root && set PYTHONUTF8=1&& py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l25 -- py -3.12 -m experimental.pikmin2_dangomushi_behavior run --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" --imported "C:/Users/alari/pikmin-randomizer/output/dsw/l25-out/snagret-import" --output "C:/Users/alari/pikmin-randomizer/output/dsw/l25-out/runs" --exe "C:/Users/alari/pikmin-randomizer/output/dsw/native-l25-build/bin/nectar.exe" --seconds 45
 ```
+
+## Slice 2
+
+SnakeCrow / SnakeWhole — the shared-base snagret pair (source IDs 34 / 70),
+delivering the ledger's remaining snagret item: **source burrow/emerge/bite/jump
+and the vulnerable/death lifecycle**, proven with **no injected health**.
+
+Native commits (on `deepseek/p2-l25-native`, base `ff958c36`):
+
+1. `87dff2e0` lane25: SnakeCrow/SnakeWhole vulnerable-while-emerged gate, joint fidelity + cleanup markers (#174)
+2. `e488fa1f` lane25: hook InteractAttack/InteractBomb to pc_p2_snakejoint_invulnerable (#174)
+   (native head `e488fa1ff037d36c54b391d676940de6550b6a00`)
+
+Root commit `09feb4d1` on `deepseek/p2-l25` (base `2fbc0aae`).
+
+### What changed
+
+- `pc_port/pc_p2_snakejoint.h/.cpp`: add
+  `bool pc_p2_snakejoint_invulnerable(const BTeki*)`. Source-faithful gate: the
+  snagret sets `EB_Invulnerable` only in `StateStay::init`
+  (`SnakeCrowState.cpp:110` / `SnakeWholeState.cpp:113`) and clears it only in
+  `StateStay::cleanup` (`:213` / `:217`), so the head is damageable in every emerged
+  state and invulnerable while buried (`Stay`). The receiver emits
+  `P2_SNAKEJOINT_DAMAGE_REJECTED` (first attack per buried period) and
+  `P2_SNAKEJOINT_DAMAGE_ACCEPTED` (per emerged period). Also emit
+  `P2_SNAKEJOINT_JOINTS` at bind (joint-fidelity measurement) and a
+  `P2_SNAKEJOINT_FORGET` marker from `pc_p2_snakejoint_forget` (cleanup seam).
+- `src/plugPikiNakata/tekiinteraction.cpp`: `InteractAttack::actTeki` and
+  `InteractBomb::actTeki` consult the gate (own labelled commit).
+- Root: `experimental/pikmin2_snakejoint_behavior.py` now also parses the
+  DAMAGE_REJECTED/DAMAGE_ACCEPTED/JOINTS/DEAD markers per species (both species);
+  `experimental/pikmin2_snakejoint_slice2.py` is the isolated natural-kill harness
+  (replacement-main fixture that assigns the real squad into `PikiMode::AttackMode`,
+  the same assignment the production preview fixture uses at phase 3->4).
+
+### Joint-fidelity gap (measured, not assumed)
+
+The source rig drives six spinal joints `bodyjnt3..bodyjnt8` (SnakeJointMgr.cpp:47)
+feeding the head (`bodyjnt8` -> `kamujnt1..3`); the P1 host drives a flat
+translation-only Chappy body with zero driven spinal joints, so the drawn pose is
+the per-species clip override. The bind marker encodes this explicitly:
+`P2_SNAKEJOINT_JOINTS ... source_joints=6 host_joints=1 pose=clip_override`.
+
+### Evidence (real GL, isolated SnakeCrow, natural kill, no injected health)
+
+- Production build: `pikmin_pc` native `e488fa1f`, exe SHA-256
+  `df6a6e8709acec760c361c60922f772119556c21ecc904e4543930253867eab6`, `ninja -n`
+  no work.
+- Replacement-main fixture exe SHA-256
+  `4b8ef4c9d604f976b1dd476c1461d90ee5457e6de4d3bc126dcd66494316ffaa`.
+- Run `output/dsw/l25-out/runs/fd20e74ffece4ee8879760f741211b6c`, `passed=true`
+  (`snakejoint-slice2-validation.json`), window 960x540 centred, live 20-red squad.
+- Marker timeline: `SLICE2_ATTACK_ASSIGNED count=20` ->
+  `DAMAGE_REJECTED state=stay` (buried) -> `DAMAGE_ACCEPTED state=appear1`
+  (emerged) -> `BITE frame=34` (directional bite) -> `SLICE2_PROGRESS health=270`
+  -> `DAMAGE_REJECTED state=stay` -> `DAMAGE_ACCEPTED state=appear1` ->
+  `DEAD source_id=34 health=0` (natural kill) -> `BATCH3_DRAW corpse=1 clip=dead`.
+
+### Six-field status
+
+| Field | Result | Evidence |
+|---|---|---|
+| Vulnerable only while emerged | PASS (natural) | `DAMAGE_REJECTED state=stay` + `DAMAGE_ACCEPTED state=appear1` |
+| Natural squad kill (real receiver, no injected health) | PASS (natural) | health 1500 -> 270 -> 0 via real 20-red Pikmin AttackMode; no mHealth write |
+| Directional bite | PASS (documented approximation) | `BITE frame=34` (banked `hit` KEYEVENT_3); nearest target, normal `hit` stem |
+| Death animation + corpse | PASS (natural) | `DEAD ... health=0` + `BATCH3_DRAW corpse=1 clip=dead` |
+| Cleanup / forget | wired, not observed here | `pc_p2_snakejoint_forget` hooked to `BTeki::doKill` + `TekiMgr::newTeki`; free-mode corpse is drawn not consumed, so the death funnel is deferred |
+| Joint fidelity | measured | `source_joints=6 host_joints=1 pose=clip_override` |
+
+### Tests
+
+- `py -3.12 -m pytest tests/test_pikmin2_snakejoint_behavior.py tests/test_pikmin2_snakejoint_slice2.py -q`
+  -> 17 passed.
+
+### Subagent usage (slice 2)
+
+Three subagents were run in parallel at the start:
+
+1. **`explore` — source audit** (snagret state enums, the exact
+   `EB_Invulnerable` set/clear lines, 5-way directional bite, death/corpse, and the
+   6-joint `SnakeJointMgr` rig). Used as-is; its finding that `EB_Invulnerable` is
+   set/cleared *only* in `Stay` turned the gate from a hand-waved "buried vs
+   emerged" into the exact single-state predicate, and its 6-joint/`kamujnt1..3`
+   citations became the joint-fidelity marker's numbers.
+2. **`explore` — candidate inventory** (every snakejoint hook/setup/marker, the
+   DangoMushi receiver pattern to mirror, and confirmation the forget/reset/update
+   lifecycle seam is already wired). Used as-is for exact line navigation and to
+   place the new `tekiinteraction` hook.
+3. **`general` — validator/pytest** (added DAMAGE_REJECTED/ACCEPTED/JOINTS/DEAD
+   parsing to the both-species validator + tests). Used as-is (its 10 tests still
+   pass); I added a separate isolated slice-2 harness on top.
+
+Net: the two `explore` agents saved substantial source-navigation/citation time;
+the `general` agent's validator extension was kept unchanged. This slice spent the
+bulk of its wall-clock on understanding the preview room's Pikmin AI — idle
+free-mode Pikmin never auto-attack, so "natural squad kill" required the
+replacement-main fixture that assigns real `PikiMode::AttackMode` (the same
+mechanism the production preview fixture uses for its combat pass). No subagent
+built, ran a fixture, committed, or edited native sources.
+
+### Slice-2 reproduction command
+
+```
+cd C:/Users/alari/pikmin-randomizer/output/dsw/l25-root && set PYTHONUTF8=1&& py -3.12 -m experimental.pikmin2_snakejoint_slice2 build --native "C:/Users/alari/pikmin-randomizer/output/dsw/native-l25" --build-dir "C:/Users/alari/pikmin-randomizer/output/dsw/native-l25-build" --output "C:/Users/alari/pikmin-randomizer/output/dsw/l25-out/slice2-fixture" --head e488fa1ff037d36c54b391d676940de6550b6a00
+cd C:/Users/alari/pikmin-randomizer/output/dsw/l25-root && set PYTHONUTF8=1&& py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l25 -- py -3.12 -m experimental.pikmin2_snakejoint_slice2 run --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" --imported "C:/Users/alari/pikmin-randomizer/output/dsw/l25-out/snagret-import" --output "C:/Users/alari/pikmin-randomizer/output/dsw/l25-out/runs" --exe "C:/Users/alari/pikmin-randomizer/output/dsw/l25-out/slice2-fixture/fixture.exe" --seconds 120
+```
