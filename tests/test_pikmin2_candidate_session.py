@@ -1,4 +1,4 @@
-import json
+﻿import json
 import os
 import sys
 from pathlib import Path
@@ -28,7 +28,10 @@ def test_candidate_scope_restores_product_pool_and_admitted_seed_loads():
         candidate.validate_candidate(manifest)
         validate(manifest)
     assert bridge.admitted_ids is original
-    validate(manifest)  # Snow is now admitted; its historical candidate seed loads.
+    # Snow 45 is a candidate again (directive 008); its candidate seed does not
+    # load under the product admission set once the private scope exits.
+    with pytest.raises(ValueError):
+        validate(manifest)
     with pytest.raises(qa.AcceptanceBlocked):
         qa.generate_pinned_session("normal", placement())
 
@@ -68,15 +71,11 @@ def test_product_records_reject_candidate(tmp_path):
                  "--kind", "natural", "--output", str(tmp_path / "records")])
 
 
-@pytest.mark.parametrize("prior", [None, "outer-value"])
-@pytest.mark.parametrize("fails", [False, True])
-def test_run_reconstructs_launcher_and_restores_override(tmp_path, monkeypatch, prior, fails):
-    keys = ("PIKMIN_P2_ADMITTED_IDS", "PIKMIN_P2_CANDIDATE_SCOPE")
-    for key in keys:
-        if prior is None:
-            monkeypatch.delenv(key, raising=False)
-        else:
-            monkeypatch.setenv(key, prior)
+def test_run_reconstructs_launcher(tmp_path, monkeypatch):
+    # Directive 008: the run path no longer touches PIKMIN_P2_* env vars; the
+    # candidate_scope bridge patch is the only private path.
+    monkeypatch.setenv("PIKMIN_P2_ADMITTED_IDS", "outer-value")
+    monkeypatch.setenv("PIKMIN_P2_CANDIDATE_SCOPE", "outer-value")
     pin = pin_for(tmp_path)
     with candidate.candidate_scope():
         manifest = qa.generate_pinned_session("candidate", placement())
@@ -90,20 +89,14 @@ def test_run_reconstructs_launcher_and_restores_override(tmp_path, monkeypatch, 
         assert sys.argv[1] == "run"
         assert "--content-manifest" in sys.argv
         validate(manifest)
-        assert os.environ["PIKMIN_P2_CANDIDATE_SCOPE"] == candidate.SCOPE
-        assert os.environ["PIKMIN_P2_ADMITTED_IDS"] == "45"
-        if fails:
-            raise RuntimeError("launch failed")
     original = bridge.admitted_ids
     with patch("randomizer.__main__.main", launch):
-        if fails:
-            with pytest.raises(RuntimeError, match="launch failed"):
-                candidate.main(["run", "--prepared", str(report)])
-        else:
-            candidate.main(["run", "--prepared", str(report)])
+        candidate.main(["run", "--prepared", str(report)])
     assert bridge.admitted_ids is original
-    for key in keys:
-        assert os.environ.get(key) == prior
+    # The product admission path is env-inert: the outer values are untouched and
+    # never consulted by the product pool.
+    assert os.environ["PIKMIN_P2_ADMITTED_IDS"] == "outer-value"
+    assert os.environ["PIKMIN_P2_CANDIDATE_SCOPE"] == "outer-value"
 
 
 def test_prepare_writes_reusable_candidate_runbook(tmp_path):
@@ -129,7 +122,10 @@ def test_prepare_writes_reusable_candidate_runbook(tmp_path):
     assert data["launch"][2] == "experimental.pikmin2_candidate_session"
     assert data["content_manifest_path"] == str(content.resolve())
     assert "ENEMY_P2" in Path(data["bootstrap"]).read_text()
-    validate(json.loads(Path(data["manifest"]).read_text()))
+    # Snow 45 is a candidate (directive 008), so the product validate refuses it
+    # outside the private scope.
+    with pytest.raises(ValueError):
+        validate(json.loads(Path(data["manifest"]).read_text()))
 
 
 def test_p2_layout_journal_reloads_after_a_previous_run(tmp_path):

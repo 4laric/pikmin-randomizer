@@ -1,4 +1,4 @@
-"""Lane 33 mixed-scene and seeded-run QA matrix (#444, dispatch #435/#186).
+﻿"""Lane 33 mixed-scene and seeded-run QA matrix (#444, dispatch #435/#186).
 
 Independent acceptance lane 33 of ``docs/PIKMIN2_IMPLEMENTATION_FANOUT.md``.
 This module defines the machine-readable acceptance matrix and turns pinned
@@ -23,6 +23,10 @@ strong enough for that cell:
 * ``fixture`` records may satisfy cells that do not require a natural run;
 * ``injected``/``synthetic``/``mocked`` records never satisfy a cell -- a mocked
   scene is not a real seed.
+
+When ``report`` is given a pinned baseline (``--root-commit`` / ``--native-commit``
+/ ``--build-sha256``), a record must match that pin to pass: evidence from a
+different commit or executable is reported as ``BLOCKED``, never green.
 
 Usage::
 
@@ -192,12 +196,40 @@ def validate_record(record):
     return problems
 
 
-def _provenance_ok(record):
-    """A PASS needs a pinned root commit, a build hash and an evidence path."""
+def _provenance_problems(record, pin=None):
+    """Why a record's provenance does not satisfy a PASS, empty when it does.
+
+    When a report pin is supplied, a record must match the pinned baseline:
+    a record with a different root/native commit or executable hash is pinned to
+    a *different* artifact and must not turn the cell green.
+    """
+    problems = []
     root_commit = str(record.get("root_commit", "")).strip()
+    native_commit = str(record.get("native_commit", "")).strip()
     build_hash = str(record.get("build_sha256", record.get("executable_sha256", ""))).strip()
     paths = record.get("evidence_paths") or []
-    return bool(root_commit and build_hash and isinstance(paths, list) and paths)
+    if not root_commit:
+        problems.append("missing root commit")
+    if not build_hash:
+        problems.append("missing build/executable hash")
+    if not (isinstance(paths, list) and paths):
+        problems.append("missing evidence path")
+    pin = pin or {}
+    pin_root = str(pin.get("root_commit", "")).strip()
+    pin_native = str(pin.get("native_commit", "")).strip()
+    pin_build = str(pin.get("build_sha256", pin.get("executable_sha256", ""))).strip()
+    if pin_root and root_commit and root_commit != pin_root:
+        problems.append(f"stale-pin: root commit {root_commit[:12]} does not match the pinned baseline {pin_root[:12]}")
+    if pin_native and native_commit != pin_native:
+        problems.append(f"stale-pin: native commit {native_commit[:12]} does not match the pinned baseline {pin_native[:12]}")
+    if pin_build and build_hash and build_hash.lower() != pin_build.lower():
+        problems.append("stale-pin: executable hash does not match the pinned baseline")
+    return problems
+
+
+def _provenance_ok(record, pin=None):
+    """A PASS needs a pinned root commit, a build hash and an evidence path."""
+    return not _provenance_problems(record, pin)
 
 
 def _record_ref(record):
@@ -213,24 +245,13 @@ def _record_ref(record):
     }
 
 
-def _stale_pin(record, pin):
-    """True when the report pin and the record disagree on a non-empty commit.
-
-    A mismatch only counts when both the pin and the record carry a non-empty
-    value for the same commit field; an empty record commit is an incomplete
-    provenance problem, not a stale baseline.
-    """
-    pin = pin or {}
-    for field in ("root_commit", "native_commit"):
-        report_value = str(pin.get(field, "")).strip()
-        record_value = str(record.get(field, "")).strip()
-        if report_value and record_value and record_value != report_value:
-            return True
-    return False
-
-
 def evaluate_cell(records, stage, scenario, pin=None):
-    """Resolve one cell to a status plus the records that justify it."""
+    """Resolve one cell to a status plus the records that justify it.
+
+    ``pin`` is the report's pinned baseline. When supplied, a PASS record must
+    match it; a record pinned to another artifact is reported as ``BLOCKED``
+    instead of satisfying the cell.
+    """
     matching = [r for r in records if r.get("stage") == stage and r.get("scenario") == scenario]
     required = cell_required(stage, scenario)
     if not matching:
@@ -247,9 +268,7 @@ def evaluate_cell(records, stage, scenario, pin=None):
             continue
         if not pass_allowed(record.get("kind"), required):
             continue
-        if not _provenance_ok(record):
-            continue
-        if _stale_pin(record, pin):
+        if not _provenance_ok(record, pin):
             continue
         passing.append(record)
     if passing:
@@ -263,10 +282,10 @@ def evaluate_cell(records, stage, scenario, pin=None):
         for record in attempted_pass:
             if not pass_allowed(record.get("kind"), required):
                 reasons.append(f"{record.get('id')}: {record.get('kind')} evidence cannot satisfy this cell")
-            elif not _provenance_ok(record):
-                reasons.append(f"{record.get('id')}: incomplete provenance (commit/hash/evidence)")
-            elif _stale_pin(record, pin):
-                reasons.append(f"{record.get('id')}: stale-pin (commits do not match the report baseline)")
+            else:
+                problems = _provenance_problems(record, pin)
+                if problems:
+                    reasons.append(f"{record.get('id')}: incomplete provenance - " + " / ".join(problems))
         return {"stage": stage, "scenario": scenario, "status": BLOCKED,
                 "reason": "; ".join(dict.fromkeys(reasons)), "evidence": [_record_ref(r) for r in matching]}
     return {"stage": stage, "scenario": scenario, "status": BLOCKED,
@@ -274,7 +293,8 @@ def evaluate_cell(records, stage, scenario, pin=None):
 
 
 def build_report(records, pin=None):
-    cells = [evaluate_cell(records, stage, scenario, pin=pin) for stage, scenario in matrix_cells()]
+    cells = [evaluate_cell(records, stage, scenario, pin=pin)
+             for stage, scenario in matrix_cells()]
     summary = {status: 0 for status in STATUSES}
     for cell in cells:
         summary[cell["status"]] = summary.get(cell["status"], 0) + 1
@@ -313,7 +333,7 @@ def to_markdown(report):
     for cell in report["cells"]:
         by_stage.setdefault(cell["stage"], []).append(cell)
     for stage in report["stages"]:
-        lines.append(f"## {stage['key']} — {stage['label']}")
+        lines.append(f"## {stage['key']} ΓÇö {stage['label']}")
         lines.append("")
         lines.append("| scenario | status | reason | evidence |")
         lines.append("|---|---|---|---|")
@@ -436,6 +456,8 @@ def main(argv=None):
     report_parser.add_argument("--output", type=Path, required=True)
     report_parser.add_argument("--root-commit", default="")
     report_parser.add_argument("--native-commit", default="")
+    report_parser.add_argument("--build-sha256", default="",
+                               help="pinned executable hash; records must match to pass")
 
     validate_parser = sub.add_parser("validate", help="validate record files")
     validate_parser.add_argument("--records", action="append", default=[])
@@ -493,6 +515,8 @@ def main(argv=None):
         pin["root_commit"] = args.root_commit
     if args.native_commit:
         pin["native_commit"] = args.native_commit
+    if args.build_sha256:
+        pin["build_sha256"] = args.build_sha256
     report = build_report(records, pin=pin)
     output = _write_outputs(report, args.output)
     print(json.dumps(report["summary"], sort_keys=True))

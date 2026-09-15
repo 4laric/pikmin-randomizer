@@ -20,22 +20,22 @@ def test_reviewed_pairs_only():
 
 
 @pytest.mark.parametrize('seed', ['cohort-a', 'cohort-b', 'cohort-c', 'cohort-d'])
-def test_product_generation_places_both_without_candidate_override(monkeypatch, seed):
+def test_product_generation_fails_closed_without_accepted_placement(monkeypatch, seed):
+    # Directive 008 canonical set is [23,44,59,60,61,62]; directive 009/010 residual:
+    # there is no accepted placement evidence for 23/59-62 yet, so a real-ledger
+    # product generate must fail closed (the honest state) rather than fabricate it.
     monkeypatch.delenv('PIKMIN_P2_CANDIDATE_SCOPE', raising=False)
     monkeypatch.setenv('PIKMIN_P2_ADMITTED_IDS', '79')
     assert admitted_ids(load_and_validate()) == [23, 44, 59, 60, 61, 62]
-    manifest = generate(seed, p2_enemies=True, p2_placement=document())
-    assert {b['source_id']: b['target'] for b in manifest['p2_layout']['bindings']} == {
-        44: '1849273021', 45: '2049888785'}
-    validate(json.loads(json.dumps(manifest)))
-    assert generate(seed, p2_enemies=True, p2_placement=document()) == manifest
+    with pytest.raises(Exception, match='placement catalog rejected|admitted cohort'):
+        generate(seed, p2_enemies=True, p2_placement=document())
     assert 'p2_layout' not in generate(seed)
 
 
 def test_lost_second_slot_still_fails_closed():
     doc = document()
     doc['slots'] = [s for s in doc['slots'] if s['uid'] == 1849273021]
-    with pytest.raises(ValueError, match='accepted placement target'):
+    with pytest.raises(ValueError, match='placement catalog rejected|accepted placement'):
         generate('missing-slot', p2_enemies=True, p2_placement=doc)
 
 
