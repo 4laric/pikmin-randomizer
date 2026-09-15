@@ -9,6 +9,7 @@
 #include "pc_p2_tadpole.h"
 #include "pc_p2_hana.h"
 #include "pc_p2_kurage_teki.h"
+#include "pc_p2_groink_teki.h"
 #include "pc_p2_teki_lifetime.h"
 #include "pc_p2_onikurage_teki.h"
 #include "pc_p2_king_teki.h"
@@ -477,6 +478,7 @@ void BTeki::update()
 	pc_p2_armor_update(this);
 	pc_p2_otakara_update(this);
 	pc_p2_kurage_teki_tick(this);
+	pc_p2_groink_teki_tick(this);
 	pc_p2_onikurage_teki_tick(this);
 	pc_p2_kogane_update(this);
 	pc_p2_king_teki_tick(this);

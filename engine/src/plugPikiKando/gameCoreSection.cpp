@@ -3,6 +3,7 @@
 #include "pc_p2_teki_lifetime.h"
 #include "pc_p2_kurage_teki.h"
 #include "pc_p2_onikurage_teki.h"
+#include "pc_p2_groink_teki.h"
 #include "pc_p2_king_teki.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_p2_demon_drop_state.h"
@@ -1433,6 +1434,7 @@ void GameCoreSection::finalSetup()
 
 	pc_p2_kurage_teki_setup();
 	pc_p2_onikurage_teki_setup();
+	pc_p2_groink_teki_setup();
 	pc_p2_king_teki_setup();
 	pc_p2_demon_manager_setup();
 	pc_p2_preview_setup();

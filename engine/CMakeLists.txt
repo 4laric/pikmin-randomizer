@@ -264,6 +264,8 @@ pc_port/pc_p2_projectile_host.cpp
     pc_port/pc_p2_groink_volley.cpp
     pc_port/pc_p2_groink_hit.cpp
     pc_port/pc_p2_groink_strike.cpp
+    pc_port/pc_p2_groink_carcass.cpp
+    pc_port/pc_p2_groink_teki.cpp
     pc_port/pc_p2_projectiles.cpp
     pc_port/pc_p2_hardlanes.cpp
     pc_port/pc_p2_fuefuki_visual.cpp
@@ -1162,6 +1164,11 @@ add_executable(p2_groink_lifetime_test tools/p2_groink_lifetime_test.cpp)
 target_include_directories(p2_groink_lifetime_test PRIVATE pc_port)
 target_compile_options(p2_groink_lifetime_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME p2_groink_lifetime_test COMMAND p2_groink_lifetime_test)
+# Slice 2: carcass sidecar binding descriptor reader + config handoff.
+add_executable(p2_groink_teki_test tools/p2_groink_teki_test.cpp pc_port/pc_p2_groink_carcass.cpp)
+target_include_directories(p2_groink_teki_test PRIVATE pc_port)
+target_compile_options(p2_groink_teki_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_groink_teki_test COMMAND p2_groink_teki_test)
 
 # Opt-in Purple and White policy regressions.
 add_executable(p2_purple_direct_policy_test tools/p2_purple_direct_policy_test.cpp)

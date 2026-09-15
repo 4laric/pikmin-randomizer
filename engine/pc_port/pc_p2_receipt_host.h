@@ -33,6 +33,13 @@
 //    use a Pellet*-keyed variant and must carry a synthetic identity token, because
 //    no generator id survives a view-less drop. This path never writes the Onion
 //    ledger and must never cover an ordinary expected check.
+//
+//    Natural pickup of a dropped corpse requires FREE-MODE Pikmin: an idle Pikmin
+//    only searches for/carries a pellet from free mode (ActFree -> Piki::graspSituation,
+//    mIdleWorkSearchRange ~100.0); formation-mode Pikmin leave a headless corpse
+//    alone. A reference fixture/receiver must release the squad into free mode
+//    (Navi::releasePikis() / Piki::changeMode(PikiMode::FreeMode, ...)) near the
+//    corpse before asserting a natural carry.
 // =============================================================================
 
 // Opaque handle; nullptr is invalid / not opened.
