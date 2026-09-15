@@ -19,6 +19,17 @@ Two config modes, both using the standard room's Dwarf Bulborb actor
 * ``kabuto`` — the ordinary Cannon Beetle fire FSM (Wait → Turn → Attack →
   KEYEVENT_2) drives the Stone birth from a configured mouth joint toward the
   Dwarf, so the whole integrated chain ends in the same receiver mutation.
+* ``two_teki`` — a two-Teki room (the standard Dwarf bound as the Kabuto firer
+  plus a duplicated victim Dwarf). The bound Stone skips its own firer
+  (``P2_PROJECTILE_SKIP_SELF``) yet still strikes the *second* Teki through the
+  real engine receiver (``P2_PROJECTILE_ENGINE_STRIKE`` with the victim token),
+  closing the over-suppression gap. The victim is re-anchored to the firer each
+  step (``teki_pin 1``, injected placement, labelled ``P2_PROJECTILE_TEKI_PIN``)
+  because the room's two Dwarfs otherwise wander ~70 units apart. The same room
+  also drives the lane-21 Groink strike bridge (``p2_groink_apply_strike``)
+  against this lane's proxy receiver for a Bomb strike, proving a second family
+  consumes the shared projectile-receiver primitive without forking lane-21's
+  modules.
 
 Both modes leave the proxy receiver enabled (``receiver any``) so the new engine
 path is reported beside the existing proxy path, not instead of it.
@@ -27,11 +38,12 @@ import argparse
 import json
 import os
 import re
+import struct
 import subprocess
 import time
 from pathlib import Path
 
-from scripts.preview_pikmin2_room import prepare as _prepare_room
+from scripts.preview_pikmin2_room import prepare as _prepare_room, records as _gen_records
 
 MAGIC = 'P2_PROJECTILES_1'
 
@@ -49,6 +61,43 @@ STONE_PARMS = dict(moveSpeed=250.0, searchRumbleSpeed=100.0, turnSpeed=0.1,
 DWARF_POS = (185.0, 0.0, -180.0)
 # Facing +x (initialVelocity = moveSpeed * (sin face, 0, cos face)).
 FACE_DEG = 90.0
+
+# Second Teki (victim) spawn. It is a duplicated copy of the standard Dwarf
+# generator record, so the room holds two live `TEKI_Chappy` with distinct runtime
+# tokens. The room's two Dwarfs naturally settle ~70 units apart, so the two-Teki
+# run also enables `teki_pin 1` (see build_config) to re-anchor the victim to the
+# bound firer each step; the spawn co-ordinate only has to place a second valid
+# Chappy somewhere in the room.
+VICTIM_POS = (185.0, 0.0, -180.0)
+
+# Groink consumer proof: the muzzle fire origin is placed 30 units above the
+# captain's navi_start (scripts/preview_pikmin2_room.py: -85, 0, 0), so the
+# muzzle-origin -> live-captain sweep deterministically contains the captain.
+GROINK_ORIGIN = (-85.0, 30.0, 0.0)
+GROINK_DAMAGE = 10.0
+
+
+def add_second_teki(run_dir, position=VICTIM_POS, name='preview dwarf victim'):
+    """Duplicate the prepared room's single Dwarf Bulborb generator record.
+
+    The generated ``default.gen`` carries exactly one Dwarf (the Kabuto firer).
+    Cloning its record (new id/name/position) yields a second live Teki with a
+    distinct runtime token, so the bound Stone must prove it skips only its own
+    firer and not every Teki in range.
+    """
+    gen = run_dir / 'assets' / 'dataDir' / 'stages' / 'chal0' / 'default.gen'
+    data = gen.read_bytes()
+    if data[:4] != b'1.0v':
+        raise ValueError('unexpected prepared gen header')
+    recs = _gen_records(gen)
+    dwarf = next((r for r in recs if r[16:48].rstrip(b'\0') == b'preview dwarf bulborb'), None)
+    if dwarf is None:
+        raise ValueError('prepared room has no dwarf bulborb record')
+    victim = bytearray(dwarf)
+    victim[8:12] = struct.pack('>I', len(recs) + 1)
+    victim[16:48] = name.encode('ascii').ljust(32, b'\0')
+    victim[48:72] = struct.pack('>6f', *position, 0.0, 0.0, 0.0)
+    gen.write_bytes(data[:20] + struct.pack('>I', len(recs) + 1) + b''.join(recs) + bytes(victim))
 
 
 def stone_config(position=None, face_deg=FACE_DEG):
@@ -69,6 +118,11 @@ def kabuto_config(species='Kabuto', position=None, face_deg=FACE_DEG):
             % (species, x, y, z, face_deg))
 
 
+def groink_config(position=GROINK_ORIGIN, damage=GROINK_DAMAGE):
+    x, y, z = position
+    return 'groink %.6g %.6g %.6g %.6g' % (x, y, z, damage)
+
+
 def rig_bank_text():
     """Minimal valid P2_ATTACHMENTS_1 sidecar: `root` + `kuti` mouth joint and a
     60-frame `attack` clip (fire frame 50). Identity TRS samples place the mouth
@@ -81,7 +135,7 @@ def rig_bank_text():
     return '\n'.join(lines) + '\n'
 
 
-BUILDER_MODES = ('stone', 'kabuto', 'rkabuto', 'kabuto_actor')
+BUILDER_MODES = ('stone', 'kabuto', 'rkabuto', 'kabuto_actor', 'two_teki')
 
 
 def build_config(mode='stone', generator=0, with_proxy=True):
@@ -98,6 +152,12 @@ def build_config(mode='stone', generator=0, with_proxy=True):
         # beside p2-projectiles.txt by run().
         lines.append('kabuto_rig rig-bank.txt 185 0 -180 90')
         lines.append('kabuto_actor %d' % generator)
+    elif mode == 'two_teki':
+        lines.append(kabuto_config('Kabuto'))
+        lines.append('kabuto_rig rig-bank.txt 185 0 -180 90')
+        lines.append('kabuto_actor %d' % generator)
+        lines.append('teki_pin 1')
+        lines.append(groink_config())
     lines.append('engine_receiver 1')
     if with_proxy:
         lines.append('receiver any 20')
@@ -110,6 +170,10 @@ ENGINE_STRIKE_RE = re.compile(
     r'source=(\d+)')
 
 SKIP_SELF_RE = re.compile(r'P2_PROJECTILE_SKIP_SELF target=(\d+)')
+
+GROINK_RECEIVER_HIT_RE = re.compile(
+    r'P2_PROJECTILE_GROINK_RECEIVER_HIT token=(\d+) kind=(\w+) damage=([\d.]+) '
+    r'applied=(\d) died=(\d) health=([\d.-]+)')
 
 
 def parse_engine_strikes(log_text):
@@ -157,6 +221,13 @@ def evaluate(log_text):
     attack_targets = {s['target'] for s in teki}
     self_hit = bool(skip_self & attack_targets)
 
+    # Two-Teki proof: an applied Teki Attack whose target is NOT the skipped firer
+    # proves the Stone struck a *second* Teki (skip-self did not over-suppress).
+    victim_struck = any(s['applied'] and s['target'] not in skip_self for s in teki)
+
+    groink_hits = list(GROINK_RECEIVER_HIT_RE.finditer(log_text))
+    groink_bomb = any(m.group(2) == 'Bomb' and m.group(4) == '1' for m in groink_hits)
+
     gates = {
         'window_960x540_centered': 'PASS' if window else 'FAIL',
         'config_ready': 'PASS' if ready else 'FAIL',
@@ -166,6 +237,10 @@ def evaluate(log_text):
         'navipiki_press_receiver_mutation': 'PASS' if press_ok() else ('UNTESTED' if not press else 'FAIL'),
         'cannon_self_hit_skipped': ('PASS' if (skip_self and not self_hit)
                                     else ('UNTESTED' if not skip_self else 'FAIL')),
+        'second_teki_engine_strike': ('PASS' if (skip_self and victim_struck)
+                                      else ('UNTESTED' if not skip_self else 'FAIL')),
+        'groink_bomb_receiver_mutation': ('PASS' if groink_bomb
+                                          else ('UNTESTED' if not groink_hits else 'FAIL')),
         'stone_destroy_teardown': 'PASS' if destroy else 'UNTESTED',
     }
     return dict(gates=gates, strikes=strikes)
@@ -174,8 +249,10 @@ def evaluate(log_text):
 def run(exe, assets, converted, output, mode='stone', seconds=40.0, generator=0):
     """Stage a fresh room, write the config, launch the exe, capture and evaluate."""
     run_dir = _prepare_room(Path(assets).resolve(), Path(converted).resolve(), Path(output))
+    if mode == 'two_teki':
+        add_second_teki(run_dir)
     (run_dir / 'p2-projectiles.txt').write_text(build_config(mode, generator), encoding='utf8')
-    if mode == 'kabuto_actor':
+    if mode in ('kabuto_actor', 'two_teki'):
         (run_dir / 'rig-bank.txt').write_text(rig_bank_text(), encoding='utf8')
 
     env = dict(os.environ)
