@@ -169,7 +169,7 @@ emitters, and autonomy are natural; only this scenario setup is fixture work.
 
 | Gate | Result | Evidence | Injected vs natural |
 |---|---|---|---|
-| 1. Exact identity and spawn | UNTESTED (injected) | output/dsw/l10-out/hiba-run5/hiba/12cfd6c159a44129a83eaebbdb6fc98e/native.log:712 | injected |
+| 1. Exact identity and spawn | UNTESTED (injected) | output/dsw/l10-out/hiba-run5/hiba/12cfd6c159a44129a83eaebbdb6fc98e/native.log:713 | injected |
 | 2. Autonomous movement and animation | N/A | fixed hazard: no locomotion clip | N/A |
 | 3. Attacks and receivers | PASS (natural) | output/dsw/l10-out/hiba-run5/hiba/12cfd6c159a44129a83eaebbdb6fc98e/native.log:735 | natural |
 | 4. Death and corpse | PASS (natural, no corpse) | output/dsw/l10-out/hiba-run5/hiba/12cfd6c159a44129a83eaebbdb6fc98e/native.log:746 | natural |
