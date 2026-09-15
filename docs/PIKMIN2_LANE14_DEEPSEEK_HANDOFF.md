@@ -305,3 +305,105 @@ native `nectar.exe` SHA `765fc8d01d59ecf452b08311a0dcd68a44d18d0aae31bd6e4899d0e
 - Death IS natural: 34 accepted attacks, 30 hits 485→20, then `P2_ELECBUG_DEAD health=0`; no `mHealth` writes in the fixture.
 - Fixture timing fragility (next slice): the press is staged 45 ticks into a 90-tick discharge so the Purple is always shocked (`DenkiDying`, squad 20→19); run 3 succeeded only because death beat FLIP_TIME recovery by ~5 ticks. Wait for `!isDischarging` before the first landing, or re-designate a live Purple in the barrage. Also add the Sokkuri pattern's health-floor print and `blocking_reason` to `validate()`.
 - Subagent comparison: broader scope per slice than the solo slices, equally clean provenance, but the first lane-14 slice with an overclaiming docstring and a dropped pattern element.
+
+## Slice 4
+
+**Scope:** (a–c) fix the ElecBug slice-3 overclaim/timing/fragility + add
+health-floor/blocking_reason; (d) TamagoMushi (68) manager-driven group birth
+from an egg/host with exactly-once accounting, natural Astonish, and whole-group
+cleanup on host forget — no injected births.
+
+### Commits
+
+- native `d2911fdf` lane14: TamagoMushi manager-driven group birth + whole-group cleanup (#165)
+  — `pc_port/pc_p2_tamago.{cpp,h}`: `pc_p2_tamago_birth_group(host,count)` births
+  the group via `TekiMgr::newTeki` (source `tamagoMushiMgr::createGroup`),
+  triggered once on the host's first Appear (`mHasMadeFellow` analogue), and
+  `pc_p2_tamago_forget` now clears the whole group on host forget; added
+  `pc_p2_tamago_count`/`registered` observability.
+- native `ebc4c388` lane14: TamagoMushi markers use module generator id (born actors have no mGenerator) (#165).
+- root `2053d20` lane14: slice4 ElecBug staged-press label, timing fix, health-floor/blocking_reason (#165).
+- root (this commit) lane14: TamagoMushi manager-driven group birth runtime (no injected births) (#165)
+  — `experimental/pikmin2_tamago_group_runtime.py`, `tests/test_pikmin2_tamago_group_runtime.py`.
+
+### (a–c) ElecBug staged-press + timing + health-floor
+
+- PASS token renamed `flip=natural` → `flip=staged-press`; `validate()` now
+  requires `flip=staged-press` and rejects `flip=natural` (overclaim).
+- Timing: stage 3 waits for `!isDischarging(A)&&!isDischarging(B)` before the
+  first landing, and the stage-4 barrage re-designates a live Purple if the
+  current one is dead and never stages a landing while A is discharging. Two
+  consecutive runs PASS (15.6s / 15.2s), first press at `state=return`/`wait`
+  (Purple no longer shocked), `flip=staged-press death=natural immunity=yellow`.
+- `validate()` added `P2_ELECBUG_NATURAL_OBSERVE`/`P2_ELECBUG_NATURAL_BLOCKED`
+  health-floor parse and a named `blocking_reason` (Sokkuri pattern).
+
+### (d) TamagoMushi group birth
+
+Single host (346020) + control arena; the fixture writes `p2-tamago-host.txt`
+(`P2_TAMAGO_HOST_1 346020 10`). The native manager births 9 followers on the
+host's first Appear (exactly once). Runtime (run2 `592fbfe7...`, exit 0, 9.4s):
+`P2_TAMAGO_HOST_BIND host=346020 egg=1` → `P2_TAMAGO_BIRTH host=346020
+follow=9 count=10 source=manager` (+10 `P2_TAMAGO_BIND` 346020..346029) →
+`P2_TAMAGO_BIRTH_ONCE duplicate=0` → 54 `P2_TAMAGO_ASTONISH` (natural, correct
+generator ids) → `P2_TAMAGO_GROUP_ONCE count=10` (no duplicate after host
+cycles) → `P2_TAMAGO_GROUP_FORGET remaining=0` (whole-group cleanup) →
+`PASS ... injected=0`.
+
+Born followers are real Chappy-vehicle Teki (no per-actor generator, so they draw
+as the generic Chappy vehicle rather than the Mitite pose bank — documented
+limitation; the host keeps the batch2 pose bank).
+
+### Gates (slice 4d)
+
+| Gate | Result |
+|---|---|
+| manager-driven birth | PASS (`P2_TAMAGO_BIRTH ... source=manager`, 10 born) |
+| exactly-once | PASS (`P2_TAMAGO_BIRTH_ONCE duplicate=0`, `P2_TAMAGO_GROUP_ONCE count=10`) |
+| natural Astonish | PASS (54 `P2_TAMAGO_ASTONISH`) |
+| whole-group cleanup | PASS (`P2_TAMAGO_GROUP_FORGET remaining=0`) |
+
+### Exact reproduction (slice 4d)
+
+```powershell
+$env:PYTHONUTF8='1'
+py -3.12 -m experimental.pikmin2_tamago_group_runtime run `
+  --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets `
+  --imported C:/Users/alari/pikmin-randomizer/output/dsw/l14-out/ground `
+  --output C:/Users/alari/pikmin-randomizer/output/dsw/l14-out/tamago-run-final `
+  --exe C:/Users/alari/pikmin-randomizer/output/dsw/l14-out/tamago-fixture2/fixture.exe `
+  --seconds 120
+```
+
+### Tests
+
+`PIKMIN_NATIVE_ROOT=C:/Users/alari/pikmin-randomizer/output/dsw/native-l14`
+family suite → **145 passed** (11 Tamago group-runtime tests + 15 ElecBug natural
++ prior family tests). `tamago fixture.exe` SHA
+`3c4dd00f703337d71caaaa0fc6766ecdbb2235ee7c46a9a2e882235a22c3131e`; ElecBug
+`fixture.exe` SHA `a558b6f5f4298b90a494fad74559e8d5e37471f55e2f6db1c91585dfc746ccdc`;
+native `nectar.exe` SHA `2877add7f8b5378973c08522988ff8e80a52379f9235c0383b6eae0953151749`.
+
+### Subagent usage
+
+- **explore #1 (source audit)** — returned a precise table of `tamagoMushiMgr`
+  createGroup/createGroupByBigFoot, the `mHasMadeFellow` exactly-once flag, the
+  egg/BigFoot/surface hosts, `InteractAstonish` Purple exclusion, and the honey-only
+  `genItem`. Used as-is; it identified the surface-host `createFellow` on Appear as
+  the clean, family-local trigger for the birth (the egg path would have reached
+  lane-20/05 shared seams). Big time saver.
+- **explore #2 (birth-machinery inventory)** — found `TekiMgr::newTeki` +
+  `BTeki::spawnTeki`, the `pc_p2_teki_lifetime` forget seam, and confirmed no family
+  module ever births a real Teki child. Used as-is; `host->spawnTeki(TEKI_Chappy)`
+  was the key API I reused.
+- **general #3 (validator+test scaffold)** — wrote `validate()` + 11 pytest cases
+  against my contract. Used with minor corrections only (updated the synthetic
+  `leader=1`→`leader=346020` to match the native marker); the contract held this
+  time, unlike slice 3. Net time save.
+
+### Remaining
+
+- Born Mitite followers draw as generic Chappy (no per-actor generator/pose bank);
+  per-actor generator assignment for child births is a shared/lane-05 concern.
+- Reward/transport (#397) and the ElecBug retail Purple hipdrop (lane-11/#128)
+  remain out of scope.
