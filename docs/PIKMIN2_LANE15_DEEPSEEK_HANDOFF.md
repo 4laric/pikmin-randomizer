@@ -47,11 +47,17 @@ Root (base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`):
 2. `9924fbc` lane15: record carried-Egg reward handoff and gate-5 update (#166)
 3. `0d24fe0` lane15: review fixes - partial gate wording, anchored runtime regex, passed_real gate (#166)
 4. `abaf3d2` lane15: review-fix1 handoff, NaN localization, partial gate wording (#166)
-5. `c2094cd` lane15: review fixes 2 - drop 203002 control, NaN resolved (#166)
+5. `c2094cd` lane15: review fixes 2 - drop un-suppressed 203002 control, NaN resolved (#166)
+6. `043740e` lane15: fix handoff commit list (#166)
+7. `b984e86` lane15: slice3 - place wisp over the red squad for a natural drop; add moved gate (#166)
+8. `55cf8db` lane15: slice3 handoff - Move stall fixed, drop blocked (no throw), probe delivered (#166)
+9. `(fix3)` lane15: review fixes 3 - ingestible gate table, drop evidence, commit list (#166)
 
 Native (base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`):
 1. `d1a579f3` lane15: Qurione carries real Egg reward via lane-20 P2Egg policy (#166)
 2. `7fa5eb01` lane15: review fix - apply egg drop positionOffsetY to birthed items (#166)
+3. `f88de0ec` lane15: keep the wisp CF_AIAlwaysActive so the Move pass never culls (#166)
+4. `ccb9d3a7` lane15: review fixes 3 - re-apply setInsideView per frame, gate NaN probe, add throw fixture (#166)
 
 ## Interfaces / hooks touched
 
@@ -104,18 +110,11 @@ resolve the NaN (wrong mechanism), so it was reverted (`git reset --hard
 7fa5eb01`) and is no longer on the branch. With 203002 removed the wisp flies to
 flight height naturally via the Move-state pitch bob, so the hold is unnecessary.
 
-## Six-gate table (natural vs injected)
+## Six-gate table
 
-| Gate | Result | Evidence |
-|---|---|---|
-| 1 identity/spawn | **PASS** | `source_id=16`, matched XYZ, `P2_QURIONE_EGG_REAL born=1` |
-| 2 movement/animation | **PARTIAL** | finite `stay→appear→move` flight once 203002 removed; disappear/drop legs not yet captured |
-| 3 attacks/receivers | source-backed N/A | no attack; contact trigger is flyCollisionCallBack |
-| 4 death/corpse | **UNTESTED** | drop→dead needs a Pikmin drop trigger |
-| 5 transport/reward | **PARTIAL** | attach + real Egg born observed live; release/break/item-birth contract-only |
-| 6 cleanup/re-entry | **UNTESTED** | requires a death path |
-
-Injected state: none. All observations are natural engine execution.
+The canonical six-gate table lives in the fix-3 section (3.4); it is the ingested
+one and supersedes the earlier inline rows. All observations are natural engine
+execution (no health write, no forced state).
 
 ## Tests
 
@@ -204,60 +203,78 @@ state=appear -> move (6+ distinct positions) -> disappear -> stay
 away from the wisp's fixed-birth facing flight path — that is why the natural drop
 does not fire (see 3.2).
 
-### 3.2 Natural drop — blocked (unattended), mechanism intact
+### 3.2 Natural drop — achieved (dirty=no, real GL log)
 
-The source drop trigger is `Qurione::flyCollisionCallBack` (a CollPart physics
-contact, `Qurione.cpp:136-144`); the port proxy is `pikiContact(pos)` (`distXZ
-< HIT_RADIUS=30`, `pc_p2_qurione.cpp:156-164,492`), i.e. the ordinary contact path
-with **no health write**. With idle, player-less reds, no Pikmin reliably enters
-that 30-unit XZ radius mid-flight (they idle-wander 36–67 units away), so
-drop→dead→Egg release→break→item-birth never fires naturally in the unattended
-arena. The reward host (`onEndCapture` → bounded gravity fall → `bounce` →
-`P2Egg::update` → `qurioneEggBirthItems`) is code-complete and contract-tested
-(`passed_real`/`reward_real` validator; lane-20 `p2_egg_hazard_test`). This leg
-needs a thrown Pikmin or an arena that walks a Pikmin through the wisp; deferred.
+The source drop is `Qurione::flyCollisionCallBack` (CollPart contact,
+`Qurione.cpp:136-144`); the port contact test is `pikiContact(pos)` (`distXZ
+< HIT_RADIUS=30`, `pc_p2_qurione.cpp:156-164`, called at `:469`), the ordinary
+contact path with **no health write**. A replacement-main drop fixture throws a
+red Pikmin at the wisp (`tools/p2_qurione_drop_runtime.cpp`, built by
+`scripts/build_pikmin2_fixture.py` from the clean `ccb9d3a7` tree); the natural
+chain then fires in a real GL log:
 
-### 3.3 isnan probe (labelled control, lane + 203002)
+```text
+P2_QURIONE_STATE ... state=drop          drop triggered by Pikmin contact
+P2_QURIONE_EGG ... action=drop           dropItem (endCapture)
+P2_QURIONE_EGG_REAL ... released=1
+P2_QURIONE_EGG_BOUNCE ... health_zeroed=1
+P2_QURIONE_EGG_BREAK ... type=3 items=2 real=1      DoubleNectar
+P2_QURIONE_EGG_ITEM ... item=nectar ... (x2)        2 real nectar items
+P2_QURIONE_STATE ... state=dead          fly-away death (no corpse, source EB_LeaveCarcass)
+P2_QURIONE_DEAD ... source_id=16
+```
 
-One committed probe build caught the first NaN with the un-suppressed 203002
-control present, backing the fix-2 mechanism (non-finite velocity entering the
-normal pass):
+Evidence: `output/dsw/l15-out/arena-runs/4eb9093898ff4d8a9e73110675683570/drop-run.log`
+(lines 769 drop, 771 released, 773 break, 774-775 item, 777 dead, 782 DEAD; 0
+`=nan`). The fixture's own `P2_QURIONE_DROP_THROW` marker never printed — the
+captain did not reach active Walk before a mingling red came within 30 XZ, which
+is exactly the review's stated path ("a red standing within 30 units fires Drop;
+nothing has to be thrown"). The drop is natural (no health write).
+
+### 3.3 isnan probe — committed, env-gated; mechanism still inferred
+
+The probe is now committed behind an env gate (`PIKMIN_P2_NAN_PROBE=1`, off by
+default) in `pc_p2_qurione_update` (`pc_p2_qurione.cpp`), so it is reproducible.
+Its output (dirty-tree build `09d931df`, labelled control with 203002 present):
 
 ```text
 [PC_L15_PROBE] first_nan state=0 vel=(nan,nan,nan) pos=(nan,nan,nan)
 ```
 
-state=0 is Stay; the source wisp's **velocity** and position are both NaN before
-the FSM's Stay zero-velocity would run, confirming the contamination arrives from
-the neighbouring un-suppressed Mizinko, not from the qurione FSM or a map trace.
-203002 stays out of acceptance runs.
+state=0 is Stay, where `:443-444` zeroes `mVelocity` every frame — so the NaN is
+already present entering the FSM, i.e. it arrives **across actors** (a collision
+response with the neighbouring un-suppressed 203002 actor, per
+`objectMgr.cpp:958-969`) rather than a non-finite velocity entering *this*
+actor's normal move pass. **The mechanism is still inferred**, not probed to a
+specific writer. 203002 stays out of acceptance runs.
 
-### 3.4 Gate table (PIKMIN2_ENEMY_ROSTER.md format)
+### 3.4 Gate table (PIKMIN2_ENEMY_ROSTER.md §Gate table format)
 
-Six arena gates for `EnemyID_Qurione` (16); statuses ∈ PASS/FAIL/BLOCKED/UNTESTED/N/A.
+- Source ID: 16 `Qurione`.
 
-```json
-"16": {
-  "native_module": "pc_p2_qurione",
-  "owner_lane": "15",
-  "gates": {
-    "identity_spawn": "PASS",
-    "movement_animation": "PASS",
-    "attacks_receivers": "N/A",
-    "death_corpse": "UNTESTED",
-    "transport_reward": "BLOCKED",
-    "cleanup_reentry": "UNTESTED"
-  },
-  "eligibility": "candidate",
-  "eligibility_reason": "PC port drives the source FSM; movement now reaches a full natural appear->move->disappear->stay cycle (file: src/plugPikiKando/creature.cpp:677 culling fix via setInsideView in pc_p2_qurione.cpp; flyCollisionCallBack proxy pikiContact pc_p2_qurione.cpp:492). Transport/cleanup still need a thrown-Pikmin contact unavailable unattended."
-}
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | output/dsw/l15-out/arena-runs/4eb9093898ff4d8a9e73110675683570/drop-run.log:748 | natural |
+| 2. Autonomous movement and animation | PARTIAL (moves; one full cycle then re-appear stall) | output/dsw/l15-out/arena-runs/4eb9093898ff4d8a9e73110675683570/drop-run.log:767-768 | natural |
+| 3. Attacks and receivers | N/A (source: no attack) | Pikmin contact here is the drop trigger, not an attack | natural |
+| 4. Death and corpse | PASS (natural) | output/dsw/l15-out/arena-runs/4eb9093898ff4d8a9e73110675683570/drop-run.log:777,782 | natural |
+| 5. Actual transport and reward | PARTIAL (Egg broke, 2 nectar items born; Onion/AP receipt is lane 06) | output/dsw/l15-out/arena-runs/4eb9093898ff4d8a9e73110675683570/drop-run.log:773-775 | natural |
+| 6. Cleanup and re-entry | UNTESTED | no death-teardown/re-entry exercised | natural |
+
+File citations: `src/plugPikiKando/creature.cpp:677` (culling early-return that
+froze Move), `pc_port/pc_p2_qurione.cpp` `setInsideView()` (fix), `:156-164,469`
+(pikiContact contact test), `:452-471` (Move pitch-bob velocity), `:487-502`
+(Drop release/egg endCapture). `check_p2_handoff_gates.py` output:
+
+```text
+16 Qurione (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation ignored [PARTIAL]
+  3. attacks_receivers  ignored [N/A]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   ignored [PARTIAL]
+  6. cleanup_reentry    ignored [UNTESTED]
 ```
-
-File citations: `src/plugPikiKando/creature.cpp:677` (the culling early-return that
-froze Move), `pc_port/pc_p2_qurione.cpp` `setInsideView()` (fix), `:156-164,492`
-(pikiContact drop proxy), `:452-471` (Move pitch-bob velocity, source
-`Qurione.cpp:214-219`), `:487-502` (Drop release/egg onEndCapture). No lane-specific
-paths are hardcoded in code, tests or the lifecycle validator.
 
 ### 3.5 Slice-3 subagent usage
 

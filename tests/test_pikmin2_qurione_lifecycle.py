@@ -164,6 +164,19 @@ class QurioneLifecycleTests(unittest.TestCase):
         self.assertIs(result['checks']['moved'], False)
         self.assertFalse(result['passed'])
 
+    def test_full_chain_requires_drop_and_reward(self):
+        result = life.validate_lifecycle(REAL_LOG)
+        self.assertIs(result['passed_real'], True)
+        self.assertIs(result['full_chain'], True)
+        no_break = '\n'.join(line for line in REAL_LOG.splitlines()
+                             if 'P2_QURIONE_EGG_BREAK' not in line)
+        self.assertIs(life.validate_lifecycle(no_break)['full_chain'], False)
+
+    def test_full_chain_false_when_missing_drop_path(self):
+        log = '\n'.join(line for line in GOOD_LOG.splitlines()
+                        if 'state=drop' not in line and 'state=dead' not in line)
+        self.assertIs(life.validate_lifecycle(log)['full_chain'], False)
+
     def test_validate_rejects_non_text(self):
         with self.assertRaises(ValueError):
             life.validate_lifecycle(b'not text')
