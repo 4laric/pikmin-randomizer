@@ -251,4 +251,11 @@ same drop twice.
    (`P2_POD_RECEIPT id=corpse:...`, `p2-economy.txt`). This path never writes the
    Onion ledger and must never cover an ordinary expected check.
 
+   Natural pickup requires **free-mode** Pikmin: `Piki::graspSituation`
+   (src/plugPikiKando/piki.cpp, pellet block ~1102-1128, `mIdleWorkSearchRange`
+   100.0) only runs from free mode (`ActFree`); formation Pikmin leave a headless
+   corpse alone. A reference fixture/receiver must release the squad into free
+   mode (`Navi::releasePikis()` / `Piki::changeMode(PikiMode::FreeMode, ...)`) near
+   the corpse before asserting a natural carry.
+
 The full contract block also lives in `engine/pc_port/pc_p2_receipt_host.h`.
