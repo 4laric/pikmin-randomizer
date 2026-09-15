@@ -296,3 +296,10 @@ py -3.12 scripts/build_pikmin2_fixture.py --build C:/Users/alari/pikmin-randomiz
 # 3. run it under the single real-GL slot, cwd = the staged frog-run-01
 py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l09 -- py -3.12 C:/Users/alari/pikmin-randomizer/output/dsw/l09-out/run_driver.py C:/Users/alari/pikmin-randomizer/output/dsw/l09-out/frog-fixture/fixture.exe
 ```
+
+### Integrator note (review of slice 2)
+
+- FROG_SPECULAR_WINDOW `centered=1 visible=1` is a printf literal; with PIKMIN_RANDOMIZER_TEST_BACKGROUND=1 pc_window.cpp:475-476 creates the window SDL_WINDOW_HIDDEN, so visibility is not asserted by the log. Read as "960x540 GL context, live squad of 20 counted via pikiMgr; window visibility not asserted".
+- The PPM captures are the 1138x711 internal render target (log: Internal render resolution), not a 960x540 frame; the byte compare (diffuse == diffuse-repeat, specular0 == specular0-repeat) is real and gates the RENDER marker.
+- `control=0x93` in FROG_SPECULAR_READY is a literal; mCtrlFlag is checked but not printed.
+
