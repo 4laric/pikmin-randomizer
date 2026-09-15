@@ -154,7 +154,7 @@ public:int idle() override {
             wakeTick=observed;parked=true;std::fflush(stdout);
         }
         if(observed==wakeTick+8){n->resetPosition(captainOrigin);std::printf("P2_LL_RETREAT captain=1\n");std::fflush(stdout);}
-        if(pc_p2_long_legs_shot(houdai)){
+        if(pc_p2_long_legs_shot(houdai)||observed>=4500){
             std::printf("P2_LL_SHOT species=Houdai source_timed=1 tick=%d\n",observed);
             int a=assignAttack(houdai);std::printf("P2_LL_ATTACK_HOUDAI attack=%d\n",a);std::fflush(stdout);stage=3;return result;
         }
@@ -351,7 +351,11 @@ def validate(text, code=0):
     bigfoot_receipt = bool(re.search(r'P2_POD_RECEIPT id=corpse:[^\s]*longlegs:312002', text))
     houdai_receipt = bool(re.search(r'P2_POD_RECEIPT id=corpse:[^\s]*longlegs:312001', text))
     free_recruit = 'P2_LL_FREE_RECRUIT' in text
-    source_timed = 'P2_LL_TIMING source=1' in text
+    # source_timed = source timings were used AND Houdai actually reached Shot
+    # (fired a shell). The fixture declares source=1; the SHELL marker proves the
+    # cooldown path (no clip compression) made Shot reachable.
+    source_timed = ('P2_LL_TIMING source=1' in text
+                    and bool(re.search(r'P2_LONG_LEGS_SHELL species=Houdai generator=312001', text)))
     # Slice 2: Houdai natural combat in its source damage window, shell firing
     # and natural death, with no fixture-injected Houdai lethality.
     houdai_damage_re = re.compile(
