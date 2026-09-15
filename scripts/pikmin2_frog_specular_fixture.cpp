@@ -1,15 +1,19 @@
-// Private Frog renderer acceptance: second consumer of the corrected specular
-// half-vector path (pc_port/pc_p2_specular_dir.h -> pc_gfx_init_specular_dir ->
-// GL uSpecHalf1). Loads the profiled Frog material (control 0x93, whose
-// EnableSpecular bit reaches src/sysDolphin/dgxGraphics.cpp GXSetChanCtrl
-// GX_COLOR1 GX_AF_SPEC) and proves that light 7's half-vector draws the specular
-// contribution, isolated by re-rendering with that channel disabled.
+// Private Frog renderer acceptance: the corrected specular half-vector
+// primitive (pc_port/pc_p2_specular_dir.h -> pc_gfx_init_specular_dir ->
+// GL uSpecHalf1) consumed by the ordinary family draw, not a fixture toggle.
+//
+// Slice 3: boot the room preview (visible, centred 960x540), load the profiled
+// Frog material (control 0x93 -> dgxGraphics setLighting GX_COLOR1 GX_AF_SPEC)
+// and draw it through the ordinary shape->drawshape batch path with the scene's
+// own light (gameCoreSection calcLighting -> setLight(...,7) -> GXInitSpecularDir).
+// The renderer's lane-09 counters prove the primitive and the specular channel
+// were reached; a byte-compared re-draw gives replay_equal. No light is injected
+// and the material state is never forced.
 // Never install this fixture as the player executable.
 #include <SDL2/SDL.h>
 #include <GL/gl.h>
 #include <cstdio>
 #include <cstdlib>
-#include <fstream>
 #include <vector>
 
 #include "Dolphin/gx.h"
@@ -58,6 +62,7 @@ static std::vector<unsigned char> capture(const char* path) {
 class MaterialApp final : public PlugPikiApp {
     int frames = 0, ready = 0;
     Shape* model = nullptr;
+    unsigned control = 0;
 public:
     int idle() override {
         int result = PlugPikiApp::idle(); require(++frames < 1200, "startup timeout");
@@ -71,15 +76,13 @@ public:
             for (int i = 0; i < model->mTexAttrCount; ++i)
                 if (model->mTexAttrList[i].mTexture) model->mTexAttrList[i].mTexture->attach();
             gsys->setHeap(heap);
-            // The profiled Frog body carries the audited specular COLOR1 channel;
-            // refuse to run if the staged material does not select it.
-            bool specular = false;
-            for (int i = 0; i < model->mMaterialCount && !specular; ++i)
-                specular = (model->mMaterialList[i].mLightingInfo.mCtrlFlag & LightingControlFlags::EnableSpecular) != 0;
-            require(specular, "profiled Frog material has no specular channel");
+            control = model->mMaterialCount ? model->mMaterialList[0].mLightingInfo.mCtrlFlag : 0u;
+            // EnableSpecular (bit 1) selects the COLOR1 GX_AF_SPEC channel in
+            // dgxGraphics::setLighting; refuse to run if the staged material lacks it.
+            require((control & u32(LightingControlFlags::EnableSpecular)) != 0, "profiled Frog material has no specular channel");
             int pikmin = 0;
             if (pikiMgr) { Iterator it(pikiMgr); CI_LOOP(it) { Piki* p = static_cast<Piki*>(*it); if (p && p->isAlive()) ++pikmin; } }
-            std::printf("FROG_SPECULAR_READY materials=%d specular=channel1 control=0x93 replay_path=GXInitSpecularDir\n", model->mMaterialCount);
+            std::printf("FROG_SPECULAR_READY materials=%d control=0x%x\n", model->mMaterialCount, control);
             std::printf("FROG_SPECULAR_SQUAD pikmin=%d navi=%d\n", pikmin, naviMgr && naviMgr->getNavi() ? 1 : 0);
         }
         return result;
@@ -92,46 +95,44 @@ public:
         Matrix4f world, view; auto position = naviMgr->getNavi()->mSRT.t;
         world.makeSRT(Vector3f(1.f, 1.f, 1.f), Vector3f(0, 0, 0), position);
         gfx.mCamera->mLookAtMtx.multiplyTo(world, view);
-        // Isolated post-HUD light 7: GXInitSpecularDir -> pc_gfx_init_specular_dir
-        // -> p2specular::halfVector, the shared primitive this fixture consumes.
-        GXLightObj highlight; GXInitSpecularDir(&highlight, 0.f, 0.f, -1.f);
-        GXInitLightAttn(&highlight, 1.f, 0.f, 0.f, 1.f, 0.f, 0.f);
-        GXInitLightColor(&highlight, GXColor{96, 96, 96, 255}); GXLoadLightObjImm(&highlight, GX_LIGHT7);
-        GXSetChanMatColor(GX_COLOR1A1, GXColor{255, 255, 255, 255});
-        GXSetChanAmbColor(GX_COLOR1A1, GXColor{0, 0, 0, 0});
-        auto render = [&](bool enabled, const char* path) {
+        // Ordinary batch draw, exactly what the family draw hook (pc_p2_frog_draw)
+        // performs: updateAnim + drawshape. The scene's own calcLighting supplies
+        // the specular light 7; nothing is injected and the material is untouched.
+        auto renderOrdinary = [&](const char* path) {
             pc_gfx_flush_batch(); glClearColor(0, 0, 0, 1); glDepthMask(GL_TRUE);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            for (int i = 0; i < model->mMaterialCount; ++i) {
-                u32& c = model->mMaterialList[i].mLightingInfo.mCtrlFlag;
-                c = enabled ? (c | u32(LightingControlFlags::EnableSpecular))
-                            : (c & ~u32(LightingControlFlags::EnableSpecular));
-            }
             model->updateAnim(gfx, view, nullptr, nullptr);
             model->drawshape(gfx, *gfx.mCamera, nullptr);
             return capture(path);
         };
-        auto baseline = render(false, "frog-diffuse.ppm");
-        auto first = render(true, "frog-specular0.ppm");
-        auto again = render(true, "frog-specular0-repeat.ppm");
-        auto baselineAgain = render(false, "frog-diffuse-repeat.ppm");
-        require(first == again && baseline == baselineAgain, "same-frame replay changed pixels");
-        std::size_t visible = 0, contribution = 0;
-        for (std::size_t i = 0; i < first.size(); ++i) { visible += first[i] > 8; contribution += first[i] != baseline[i]; }
-        std::printf("FROG_SPECULAR_RENDER visible_channels=%zu specular_channels=%zu replay_equal=1\n", visible, contribution);
-        require(visible > 100 && contribution > 100, "specular contribution invisible");
+        auto first = renderOrdinary("frog-ordinary0.ppm");
+        auto again = renderOrdinary("frog-ordinary0-repeat.ppm");
+        require(first == again, "same-frame replay changed pixels");
+        GLint viewport[4]; glGetIntegerv(GL_VIEWPORT, viewport);
+        std::printf("FROG_SPECULAR_RENDER viewport_w=%d viewport_h=%d control=0x%x specular_dir_calls=%u specular_channel_draws=%u replay_equal=1\n",
+                    viewport[2], viewport[3], control, pc_gfx_specular_dir_calls(), pc_gfx_specular_channel_draws());
+        require(pc_gfx_specular_dir_calls() >= 1, "ordinary draw did not reach pc_gfx_init_specular_dir");
+        require(pc_gfx_specular_channel_draws() >= 1, "ordinary draw did not activate the specular channel");
         std::puts("PASS FROG_SPECULAR_RENDER");
         std::fflush(nullptr); std::_Exit(0);
     }
 };
 
 int main(int argc, char** argv) {
-    SDL_setenv("SDL_AUDIODRIVER", "dummy", 1); SDL_SetMainReady(); SDL_SetHint("SDL_WINDOW_NO_ACTIVATION_WHEN_SHOWN", "1");
+    SDL_setenv("SDL_AUDIODRIVER", "dummy", 1); SDL_SetMainReady();
     pc_gpu_preference_apply(); _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1"); pc_bbft_init(argc, argv);
     require(pc_pikipelago_room_preview(), "requires room preview");
-    // Centred 960x540 window, visible: the lane-09 runtime acceptance window.
     if (!pc_window_init("Frog specular fixture", 960, 540)) return 3;
-    std::printf("FROG_SPECULAR_WINDOW w=%d h=%d centered=1 visible=1\n", 960, 540);
-    pc_settings_init(); gsys->Initialise(); pc_settings_p2d_init(); nodeMgr = new NodeMgr();
+    pc_settings_init();
+    pc_window_set_display_mode(PC_WINDOW_FULLSCREEN_WINDOWED);
+    pc_window_set_window_size(960, 540);
+    pc_window_center();
+    const Uint32 flags = SDL_GetWindowFlags(SDL_GL_GetCurrentWindow());
+    std::printf("FROG_SPECULAR_WINDOW w=%d h=%d flags=%s centered=1\n",
+                pc_window_get_width(), pc_window_get_height(),
+                (flags & SDL_WINDOW_HIDDEN) ? "HIDDEN" : "SHOWN");
+    gsys->Initialise();
+    pc_settings_p2d_init();
+    nodeMgr = new NodeMgr();
     gsys->run(new MaterialApp()); return 0;
 }

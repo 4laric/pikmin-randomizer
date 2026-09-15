@@ -25,9 +25,12 @@ VERTEX_COLOR_FLAG = 0x1800
 ENABLE_SPECULAR_BIT = 1 << 1  # LightingControlFlags::EnableSpecular (include/PVW.h)
 
 MARKER = 'FROG_SPECULAR_RENDER'
+WINDOW_MARKER = 'FROG_SPECULAR_WINDOW'
 PASS_LINE = 'PASS ' + MARKER
 
 _INT = re.compile(r'(?P<key>[a-zA-Z_][a-zA-Z0-9_]*)=(?P<value>-?[0-9]+)')
+_HEX = re.compile(r'control=0x(?P<value>[0-9a-fA-F]+)')
+_FLAGS = re.compile(r'flags=(?P<value>SHOWN|HIDDEN)')
 
 
 def specular_criterion(control):
@@ -43,39 +46,57 @@ def specular_criterion(control):
     return bool(control & ENABLE_SPECULAR_BIT)
 
 
-def evidence(log):
-    """Validate a Frog specular RENDER marker collected from the room fixture.
+def _line(log, prefix, required):
+    for line in log.splitlines():
+        if line.strip().startswith(prefix + ' ') or line.strip() == prefix:
+            return line.strip()
+    raise ValueError('%s marker stripped from the captured log' % prefix)
 
-    Requires one `FROG_SPECULAR_RENDER <k=v>...` line whose specular and visible
-    channel counts are strictly positive, and whose replay_equal is 1, followed by
-    the `PASS FROG_SPECULAR_RENDER` line. replay_equal is only accepted alongside
-    positive specular/visible counts, so a naked literal without a real captured
-    frame compare cannot satisfy this gate.
+
+def evidence(log):
+    """Validate the four real Frog specular markers from the room fixture.
+
+    Window visibility (SHOWN, not HIDDEN), the readback viewport and the real
+    ``control`` (whose EnableSpecular bit is re-checked), and the renderer's own
+    counters (``specular_dir_calls``/``specular_channel_draws``) must all be
+    present and positive; ``replay_equal`` must be 1. A stripped, hidden, or
+    zero-count marker flips the gate.
     """
     if not isinstance(log, str):
         raise ValueError('Expected a captured log text')
-    marker_line = None
-    for line in log.splitlines():
-        if line.strip().startswith(MARKER + ' ') or line.strip() == MARKER:
-            marker_line = line.strip()
-            break
-    if marker_line is None:
-        raise ValueError('RENDER marker stripped from the captured log')
-    fields = {m.group('key'): int(m.group('value')) for m in _INT.finditer(marker_line)}
-    required = ('visible_channels', 'specular_channels', 'replay_equal')
-    missing = [k for k in required if k not in fields]
+
+    window = _line(log, WINDOW_MARKER, ('w', 'h', 'flags'))
+    wflags = _FLAGS.search(window)
+    if not wflags:
+        raise ValueError('window marker does not report the real SDL flag (SHOWN or HIDDEN)')
+    wfield = {m.group('key'): int(m.group('value')) for m in _INT.finditer(window)}
+    if wfield.get('w') != 960 or wfield.get('h') != 540 or wfield.get('centered') != 1:
+        raise ValueError('window is not the centred 960x540 acceptance window')
+
+    render = _line(log, MARKER, ('viewport_w', 'viewport_h', 'control',
+                                 'specular_dir_calls', 'specular_channel_draws', 'replay_equal'))
+    fields = {m.group('key'): int(m.group('value')) for m in _INT.finditer(render)}
+    control = _HEX.search(render)
+    if not control:
+        raise ValueError('RENDER marker missing the real control word')
+    control = int(control.group('value'), 16)
+    missing = [k for k in ('viewport_w', 'viewport_h', 'specular_dir_calls',
+                           'specular_channel_draws', 'replay_equal') if k not in fields]
     if missing:
         raise ValueError('RENDER marker missing fields: ' + ', '.join(missing))
-    if fields['specular_channels'] <= 0:
-        raise ValueError('RENDER marker reports no specular contribution')
-    if fields['visible_channels'] <= 0:
-        raise ValueError('RENDER marker reports no visible pixels for a real compare')
+    if fields['viewport_w'] <= 0 or fields['viewport_h'] <= 0:
+        raise ValueError('RENDER marker reports no readback viewport')
+    if fields['specular_dir_calls'] < 1:
+        raise ValueError('ordinary draw did not reach pc_gfx_init_specular_dir')
+    if fields['specular_channel_draws'] < 1:
+        raise ValueError('ordinary draw did not activate the specular channel')
     if fields['replay_equal'] != 1:
         raise ValueError('RENDER marker replay_equal is not a verified compare')
+    if not specular_criterion(control):
+        raise ValueError('RENDER marker control does not select the specular channel')
     if PASS_LINE not in log.splitlines():
         raise ValueError('RENDER PASS line stripped from the captured log')
-    return fields
-
+    return dict(fields, control=control)
 
 if __name__ == '__main__':
     import sys

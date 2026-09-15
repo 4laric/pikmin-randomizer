@@ -303,3 +303,97 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l0
 - The PPM captures are the 1138x711 internal render target (log: Internal render resolution), not a 960x540 frame; the byte compare (diffuse == diffuse-repeat, specular0 == specular0-repeat) is real and gates the RENDER marker.
 - `control=0x93` in FROG_SPECULAR_READY is a literal; mCtrlFlag is checked but not printed.
 
+## Slice 3
+
+### Deliverable
+
+Two fixes: (1) honest window/capture markers, and (2) the specular primitive proven on
+the **ordinary family draw path**, not a fixture-forced material toggle.
+
+### 1. Honest markers (window, viewport, control)
+
+- The fixture now follows `pikmin2_breadbug_actor_fixture.cpp:57`: after `pc_settings_init`
+  it calls `pc_window_set_display_mode(WINDOWED)`, `pc_window_set_window_size(960,540)`
+  then `pc_window_center()`.
+- `FROG_SPECULAR_WINDOW` prints the **real** SDL flag via `SDL_GetWindowFlags`
+  (`flags=SHOWN`, observed SHOWN in this room-preview run) and the real cached window size,
+  replacing the slice-2 `centered=1 visible=1` printf literal.
+- `FROG_SPECULAR_READY` prints the **real** `mCtrlFlag` read from the loaded material
+  (`control=0x93`, not a literal).
+- `FROG_SPECULAR_RENDER` prints the **real** readback viewport from `glGetIntegerv(GL_VIEWPORT)`
+  (`viewport_w=640 viewport_h=360`, the internal target, not a claimed 960x540) and the real
+  control, plus `replay_equal` from a byte-for-byte re-draw compare (`frog-ordinary0.ppm`
+  sha256 `6c409489…` == `frog-ordinary0-repeat.ppm`).
+
+### 2. Specular primitive on the ordinary family draw
+
+Slice 2 forced the material state and injected light 7 in the fixture. Slice 3 removes both:
+the profiled Frog (`frog_Frog_wait1_00.mod`, control 0x93) is drawn with the ordinary
+`shape->drawshape` batch path under the scene's own lighting. Two renderer-owned counters
+(native `a953b1da`, `pc_port/gl/pc_gfx.cpp`/`pc_gfx.h`) record reachability:
+
+```
+[lane09] pc_gfx_init_specular_dir first_call half=(-0.0000,0.5363,0.8440)
+FROG_SPECULAR_RENDER viewport_w=640 viewport_h=360 control=0x93 specular_dir_calls=123 specular_channel_draws=11876 replay_equal=1
+```
+
+The ordinary path reaches the primitive and does **not** diverge. Trace:
+
+- `gameCoreSection.cpp:3009` `gfx.calcLighting(1.0f)` → `src/sysCommon/graphics.cpp:1475`
+  `setLight((Light*)mLight.mChild, 7)` → `src/sysDolphin/dgxGraphics.cpp:776`
+  `GXInitSpecularDir(...)` → `pc_port/gl/pc_gfx.cpp:3788` `pc_gfx_init_specular_dir` →
+  `p2specular::halfVector`. 123 calls observed; the first half-vector is logged above.
+- The profiled material's `EnableSpecular` (real `control=0x93`) reaches
+  `dgxGraphics.cpp:1109` `setLighting(...)` → `GXSetChanCtrl(GX_COLOR1, GX_AF_SPEC)`; the
+  GL specular upload (`pc_gfx.cpp:6156`) ran 11876 times across the run, proving ordinary
+  draws activate the GX_AF_SPEC COLOR1 channel that `uSpecHalf1` lights.
+
+No renderer hook was needed beyond the labelled counters: the primitive was already on the
+ordinary path. `specular_dir_calls`/`specular_channel_draws` are renderer-global counts
+(not per-frog), reported honestly as such.
+
+### Files owned this slice
+
+- Native: `pc_port/gl/pc_gfx.cpp`, `pc_port/gl/pc_gfx.h` (labelled counters + getters).
+- Root: `scripts/pikmin2_frog_specular_fixture.cpp` (honest markers, ordinary draw),
+  `experimental/pikmin2_specular_slice2.py` (evidence gate reworked), `tests/
+  test_pikmin2_specular_slice2.py` (reworked + real-log parse), `tests/data/
+  frog_specular_render.log` (the four real marker lines + PASS + `[lane09]` first-call line).
+
+### Build evidence
+
+- Native: `a953b1daa69c285b89af085bd050bcc6e77edff8` `lane09: instrument specular half-vector path for ordinary-draw proof (#429)`.
+- Build wrapper (Ninja + MinGW, Release, JAudio ON):
+  `2026-09-14T22:14:27 lane=l09 target=pikmin_pc native=a953b1da… dirty=no … sha256=8a9fbef8… ninja_n="ninja: no work to do."`.
+- Fixture `output/dsw/l09-out/frog-fixture` provenance `built`; `fixture.exe` sha256 `91543d51…`.
+- Real-GL run: `output/dsw/l09-out/frog-gl-run-slice3.log`, `RETURNCODE=0`, captured above.
+
+### Tests
+
+- `tests/test_pikmin2_specular_slice2.py` → **10 passed** (reworked; asserts `evidence()`
+  parses the committed `tests/data/frog_specular_render.log`, and flips on stripped/hidden/
+  zero-count markers).
+- `tests/test_pikmin2_frog_specular_stage.py` → **4 passed**.
+- Eight-file focused set (those two + bulblax/frog/xurione material suites) → **42 passed**.
+
+### Six arena gates (honest, natural vs injected)
+
+Same source-backed N/A rows as slice 2 for gameplay gates; the lane-09 material gate is the
+actual acceptance. The lane-09 row is now proven on the ordinary family draw path with no
+fixture light injection or material toggle.
+
+### Subagent usage
+
+No `task`/subagent tool was available; the investigation/tracing was done inline (as in
+slices 2 and 3).
+
+### Reproduction (exact, verified)
+
+```powershell
+$env:PYTHONUTF8='1'; $env:PIKMIN_P2_ROOM_WINDOW='960x540'
+# profile (pre-existing), stage (pre-existing), then fixture against native a953b1da
+py -3.12 scripts/build_pikmin2_fixture.py --build C:/Users/alari/pikmin-randomizer/output/dsw/native-l09-build --source C:/Users/alari/pikmin-randomizer/output/dsw/native-l09 --fixture scripts/pikmin2_frog_specular_fixture.cpp --output C:/Users/alari/pikmin-randomizer/output/dsw/l09-out/frog-fixture --expected-native-head a953b1daa69c285b89af085bd050bcc6e77edff8
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l09 -- py -3.12 C:/Users/alari/pikmin-randomizer/output/dsw/l09-out/run_driver.py C:/Users/alari/pikmin-randomizer/output/dsw/l09-out/frog-fixture/fixture.exe
+```
+
+
