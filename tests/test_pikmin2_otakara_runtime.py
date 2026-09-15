@@ -32,8 +32,8 @@ GOOD_LINES = [
     'P2_OTAKARA_MODULE_DEAD generator=349001 source_id=59 health=0',
     'P2_OTAKARA_DEAD generator=349001 source_id=59 mDeadState=1',
     'P2_OTAKARA_CORPSE generator=349001 pellet=1 state=3',
-    'P2_OTAKARA_ONION_RECEIPT generator=349001 granted=1 ledger=onion',
-    'P2_OTAKARA_FORGET generator=349001 registered=1 count=0 stale=0',
+    'P2_POD_RECEIPT id=corpse:otakara:349001 value=15 new=1 pokos=25 seeds=0',
+    'P2_OTAKARA_FORGET generator=349001 registered=1 count=0',
     'P2_OTAKARA_SEAM_OBSERVED generator=349001 registered=0 count=0',
     'PASS P2_OTAKARA_RUNTIME natural_death=1 corpse=1 receipt=1 forget=1',
 ]
@@ -42,8 +42,8 @@ GOOD = '\n'.join(GOOD_LINES)
 
 DEAD_LINE = 'P2_OTAKARA_DEAD generator=349001 source_id=59 mDeadState=1'
 CORPSE_LINE = 'P2_OTAKARA_CORPSE generator=349001 pellet=1 state=3'
-RECEIPT_LINE = 'P2_OTAKARA_ONION_RECEIPT generator=349001 granted=1 ledger=onion'
-FORGET_LINE = 'P2_OTAKARA_FORGET generator=349001 registered=1 count=0 stale=0'
+RECEIPT_LINE = 'P2_POD_RECEIPT id=corpse:otakara:349001 value=15 new=1 pokos=25 seeds=0'
+FORGET_LINE = 'P2_OTAKARA_FORGET generator=349001 registered=1 count=0'
 HIT_LINE = 'P2_OTAKARA_DISCHARGE_HIT generator=349001 source_id=59 pikmin=0 colour=blue ' \
            'stimulus=InteractFire accepted=1 target_state=22(other)'
 

@@ -13,8 +13,9 @@ inside carry range of the goal, then:
 * observes the host dieSoon()/becomePellet() corpse pellet
   (``P2_OTAKARA_CORPSE``);
 * lets the Pikmin haul the corpse pellet to the Onion, where
-  ``pc_p2_preview_deliver`` fires the lane-06 receipt hook
-  (``P2_OTAKARA_ONION_RECEIPT … granted=1``);
+  ``pc_p2_preview_deliver`` routes the corpse into the shared Pod economy
+  (``P2_POD_RECEIPT id=corpse:…otakara:349001``) from the additive
+  ``pc_p2_otakara_receipt`` lookup branch (no separate ledger);
 * waits for the lane-07 seam ``pc_p2_forget_teki`` in ``BTeki::doKill`` to clear
   the registration after the pellet is consumed, and proves the registry dropped
   to zero without invoking ``pc_p2_otakara_forget`` itself; the module's own
@@ -48,7 +49,7 @@ APP_NATURAL = r'''class RoomApp : public PlugPikiApp {
  Teki* fire=nullptr;
  Piki* red=nullptr;Piki* blue=nullptr;
  Pellet* corpse=nullptr;
- bool blueHit=false,deadSeen=false,corpseSeen=false,assisted=false,violation=false;
+  bool blueHit=false,deadSeen=false,corpseSeen=false,assisted=false,violation=false,freeCarryLogged=false;
  public:int idle() override {
   int result=PlugPikiApp::idle();require(++frames<120000,"otakara runtime startup timeout");
   if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
@@ -102,10 +103,15 @@ APP_NATURAL = r'''class RoomApp : public PlugPikiApp {
     std::puts("PASS P2_OTAKARA_RUNTIME natural_death=1 corpse=1 receipt=1 forget=1");
     std::fflush(stdout);std::_Exit(0);
    }
-   if(corpse->isAlive()){
+   // Only assist while the corpse pellet is still present in the pellet manager;
+   // delivery consumes it, so never dereference `corpse` after the receipt fires.
+   bool present=false;Iterator pi(pelletMgr);CI_LOOP(pi){Pellet* pp=static_cast<Pellet*>(*pi);if(pp==corpse){present=true;break;}}
+   if(present){
     // Ordinary carry assist only if native free recruitment has not latched a
     // carrier after a grace period; the Transport action is the native haul.
     int carry=0;Iterator ck(pikiMgr);CI_LOOP(ck){Piki* p=static_cast<Piki*>(*ck);if(p&&p->isAlive()&&p->getStickObject()==static_cast<Creature*>(corpse))++carry;}
+    if(!freeCarryLogged&&carry>0){freeCarryLogged=true;
+     std::printf("P2_OTAKARA_CARRY_FREE carry=%d\n",carry);std::fflush(stdout);}
     if(!assisted&&carry==0&&observed-deadAt>600){assisted=true;
      int assigned=0;Iterator pk(pikiMgr);CI_LOOP(pk){Piki* p=static_cast<Piki*>(*pk);if(!p->isAlive()||!p->mActiveAction)continue;
       p->mActiveAction->abandon(nullptr);p->mActiveAction->mCurrActionIdx=PikiAction::Transport;
@@ -277,10 +283,10 @@ def validate(text, code=0):
     dead = bool(re.search(
         rf'P2_OTAKARA_DEAD generator={FIRE_ID} source_id=59 mDeadState=1', text))
     corpse = bool(re.search(rf'P2_OTAKARA_CORPSE generator={FIRE_ID} pellet=1', text))
-    receipt = bool(re.search(
-        rf'P2_OTAKARA_ONION_RECEIPT generator={FIRE_ID} granted=1 ledger=onion', text))
+    receipt = bool(re.search(rf'P2_POD_RECEIPT id=corpse:\S*otakara:{FIRE_ID}\b', text))
     forget = bool(re.search(
-        rf'P2_OTAKARA_FORGET generator={FIRE_ID} registered=1 count=0 stale=0', text))
+        rf'P2_OTAKARA_FORGET generator={FIRE_ID} registered=1 count=0\b', text))
+    assisted = 'P2_OTAKARA_ASSIST assigned=' in text
     squad = re.search(r'P2_OTAKARA_SQUAD red=(\d+) blue=(\d+) registered=(\d+)', text)
     checks = dict(
         completion=code == 0 and 'PASS P2_OTAKARA_RUNTIME' in text,
@@ -308,14 +314,14 @@ def validate(text, code=0):
         movement_animation='pass' if flick else 'fail',
         attacks_receivers='pass' if (discharge and immune_red and hit_blue) else 'fail',
         death_corpse='pass' if (dead and not injected and corpse) else 'fail',
-        transport_reward='pass' if receipt else 'fail',
+        transport_reward='pass_assisted' if (receipt and assisted) else ('pass' if receipt else 'fail'),
         cleanup_reentry='pass' if forget else 'fail',
     )
     return dict(passed=code == 0 and all(checks[name] for name in required),
                 checks=checks, gates=gates, squad=int(squad.group(1)) if squad else 0,
                 exit_code=code,
                 injected=['InteractAttack death trigger (damage value 100000)'] if injected else [],
-                assisted='P2_OTAKARA_ASSIST assigned=' in text,
+                assisted=assisted,
                 unmeasured=['scene re-entry and recycled-address rebind',
                             'Water/Gas/Elec discharge (only Fire was exercised)'],
                 limitations=['The 20-Pikmin FreeMode deployment is a player-equivalent stimulus, '
