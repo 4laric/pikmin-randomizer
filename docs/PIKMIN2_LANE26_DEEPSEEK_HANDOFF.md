@@ -330,7 +330,7 @@ Shot reached, seven `P2_LONG_LEGS_SHELL`, one `P2_LONG_LEGS_SHELL_HIT pikmin=1`,
 | 2. Autonomous movement and animation | PARTIAL | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/native.log:827 (FSM Land/Wait/Flick/Shot schedule; bind-pose, no IK) | natural |
 | 3. Attacks and receivers | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/native.log:829 (P2_LONG_LEGS_SHELL) :872 (SHELL_HIT pikmin=1, InteractBomb receiver) | natural |
 | 4. Death and corpse | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/native.log:879 (P2_LONG_LEGS_DEAD prior_health=10.00, drained) | natural |
-| 5. Actual transport and reward | UNTESTED | cargo-free arena, no Pod; child/drop intents only | natural |
+| 5. Actual transport and reward | PASS (natural) | output/dsw/l26-out/run/2c23222d84c94bc1b48d71308033e5db/capture/native.log:1502 (P2_POD_RECEIPT id=corpse:longlegs:312001 value=2 new=1 pokos=4) :1503 (P2_LL_DELIVER Houdai) | natural |
 | 6. Cleanup and re-entry | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/native.log:940 (FORGET count=0) :945 (REENTRY stale=0 fresh=1) | natural |
 
 - Source ID: 69 `BigFoot`.
@@ -341,8 +341,19 @@ Shot reached, seven `P2_LONG_LEGS_SHELL`, one `P2_LONG_LEGS_SHELL_HIT pikmin=1`,
 | 2. Autonomous movement and animation | PARTIAL | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/native.log:735 (FSM Land/Wait/Flick schedule; bind-pose, no IK) | natural |
 | 3. Attacks and receivers | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/native.log:734 (CRUSH pikmin=20) :762 (DAMAGE health=115 prior=130) | natural |
 | 4. Death and corpse | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/native.log:802 (DEAD prior_health=10.00) :803 (BIRTH count=30) | natural |
-| 5. Actual transport and reward | UNTESTED | cargo-free arena, no Pod; child/drop intents only | natural |
+| 5. Actual transport and reward | PASS (natural) | output/dsw/l26-out/run/2c23222d84c94bc1b48d71308033e5db/capture/native.log:1215 (P2_POD_RECEIPT id=corpse:longlegs:312002 value=2 new=1 pokos=2) :1216 (P2_LL_DELIVER BigFoot) | natural |
 | 6. Cleanup and re-entry | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/native.log:939 (FORGET count=0) :944 (REENTRY stale=0 fresh=1) | natural |
+
+- Source ID: 56 `Damagumo`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | N/A | owned by the demon lane; not implemented or claimed by lane 26 | N/A |
+| 2. Autonomous movement and animation | N/A | owned by the demon lane | N/A |
+| 3. Attacks and receivers | N/A | owned by the demon lane | N/A |
+| 4. Death and corpse | N/A | owned by the demon lane | N/A |
+| 5. Actual transport and reward | N/A | owned by the demon lane | N/A |
+| 6. Cleanup and re-entry | N/A | owned by the demon lane | N/A |
 
 ### Subagent usage (fix2)
 
@@ -496,3 +507,106 @@ Estimated time: the audits removed the read-heavy re-derivation of the receipt +
   the family corpses, or by routing the preview fallback safely.
 - Source-timed Shot is reachable via the 50 s cooldown only; the fast Flick->Shot
   remains slice-2's (now-removed) compressed deviation.
+
+## Slice 3b
+
+Bounded slice: **stop the Pod-delivery abort and land the family receipt**
+(blocking item 1) and **both natural corpse receipts** (blocking item 2) on the
+Pod arena, against a wave-native merge.
+
+### Delivered (committed on both branches)
+
+Native (`deepseek/p2-l26-native`, head `b5514ce5`, a two-parent merge of the
+wave native `77383657` into the pre-merge lane head `02062831`; conflict
+resolution keeps both sides):
+
+- `pc_p2_long_legs_receipt(Pellet*, unsigned& generator)` — the receipt is keyed
+  on the corpse `Pellet*` (mirrors lane 31's Waterwraith `sCorpses`), with the
+  `pellet->mPelletView` -> `actors` lookup retained as a live-binding fallback.
+  The previous `PelletView*` signature could not resolve a view-less stand-in
+  corpse.
+- `std::map<Pellet*, unsigned> corpses` populated from `actor->mPellet` at the
+  engine death tick (`pc_p2_long_legs.cpp`, `P2_LONG_LEGS_CORPSE_REGISTER`), so a
+  corpse that arrives with `mPelletView == nullptr` still resolves.
+- The merge keeps the wave's kurage/otakara/waterwraith/king/groink receipt
+  branches in `pc_p2_preview.cpp` beside the long-legs branch; the long-legs
+  branch is dispatched with the corpse `Pellet*`.
+
+Shared hook (merge): `pc_p2_long_legs_receipt` called in `pc_p2_preview_deliver`'s
+corpse branch (`corpse:...longlegs:<gen>`), so the long-legs credit is reached
+before any abort.
+
+Root (`deepseek/p2-l26`, head `40fc2e77`):
+
+- `experimental/pikmin2_long_legs_lifecycle.py` — the fixture retires the stray
+  view-less `pr01` death-drop pellets (`dropStrayPellets`) so the freed squad can
+  only latch the family corpse, parks the carry squad at the corpse position
+  (`freeAndParkAt`), and drops the forced transport in favour of the ordinary
+  FreeMode `Piki::graspSituation` carry (no `TransportMode` writes).
+- The wave added a `MoviePlayer::requestSkip()` guard for the day-end/takeoff
+  movies; the fixture now calls `skipScene(SCENESKIP_SkipAll)`.
+- Reentry stale check is alias-aware (a freed address may be recycled for the
+  other species' fresh actor, so the old-pointer proxy false-positives).
+
+### Runtime evidence (real GL, `slot.py run gl l26`, 960x540, `PYTHONUTF8=1`)
+
+Run `output/dsw/l26-out/run/2c23222d84c94bc1b48d71308033e5db` (fixture23, wave
+native `b5514ce5`). Both family corpses were carried by the ordinary FreeMode
+`Piki::graspSituation` path and credited by the Pod with **no `TransportMode`
+writes** (`P2_LL_ASSIST` never printed):
+
+- BigFoot: `P2_POD_RECEIPT id=corpse:longlegs:312002 value=2 new=1 pokos=2 seeds=0`
+  (`output/dsw/l26-out/run/2c23222d84c94bc1b48d71308033e5db/capture/native.log:1215`),
+  `P2_LL_DELIVER species=BigFoot pokos=2` (:1216).
+- Houdai: `P2_POD_RECEIPT id=corpse:longlegs:312001 value=2 new=1 pokos=4 seeds=0`
+  (same `native.log:1502`), `P2_LL_DELIVER species=Houdai pokos=4` (:1503).
+- No `Unregistered P2 pod cargo` abort: the stray `pr01` drops are retired
+  (`P2_LL_DROP_STRAY pr01=2`, `native.log:988`).
+
+Both proxies also died from **natural combat**, not the fixture inject: BigFoot
+drained 130 -> 0 (`P2_LONG_LEGS_DAMAGE ... prior=130` at `native.log:773`..`:813`,
+`P2_LL_NATURAL_DEATH bigfoot=1` `:816`, `P2_LONG_LEGS_DEAD prior_health=25.00`
+`:817`, `P2_LONG_LEGS_BIRTH count=30` `:818`), and Houdai after its
+source-timed Shot (`P2_LL_SHOT source_timed=1 tick=371` `:932`,
+`P2_LONG_LEGS_SHELL_HIT pikmin=1` `:935`, drain `:936`..`:940`,
+`P2_LL_NATURAL_DEATH houdai=1` `:943`); no `P2_LL_INJECT` in the run.
+
+### Reproducibility caveat (the residual failing sub-step)
+
+- The source `mHealth` carried by the P1 Chappy proxy and the tick at which the
+  source cooldown reaches Shot are **run-dependent** (observed Shot ticks of 371
+  and 1050-1270; the drain completes only on the early-Shot roll). On the later
+  rolls the squad is in attack range and the source window is open
+  (`P2_LL_HOUDAI_HP health=130.00 squad=20 atk=7 dmg=1`,
+  `output/dsw/l26-out/run/19db82497d83475ca7e515b703f3733c/capture/native.log:1523`)
+  yet the drain does not progress before the stomp Flick, so Houdai falls back to
+  the fixture inject and `houdai_no_inject` fails. The receipt mechanism, the
+  carry and the deaths are all proven on fixture23 above; the all-green fixture
+  needs the early-Shot roll.
+- `reentry`: the alias-aware fix is committed but has not been observed green in
+  the same run as the receipts (fixture23 reached stage 9 only after the receipts
+  and hit the cross-species address-reuse false positive on `registered(old)`).
+
+### Subagent usage (slice 3b)
+
+Three subagents delegated in parallel at start:
+
+1. `explore` — Waterwraith null-view fix + Pod receipt audit: transcribed lane
+   31's `Pellet*`-keyed `sCorpses` registry (`pc_p2_waterwraith_register.cpp`),
+   the `pc_p2_preview_deliver` corpse branch and the abort site on the wave
+   native. Used as-is; it fixed the receipt key (register the `Pellet*` at death,
+   resolve the `Pellet*` one-shot).
+2. `explore` — Long Legs receipt/carry inventory: every module, hook, fixture,
+   test and doc touching the family, plus the `pr01` death-drop identity and the
+   FreeMode `graspSituation` carry recipe. Used as-is.
+3. `general` — `natural_carry` validator gate + flip tests in
+   `tests/test_pikmin2_long_legs_pod.py` against a marker/gate contract I
+   specified, run under `PIKMIN_NATIVE_ROOT`. Used as-is; I implemented
+   `validate()` to match.
+
+Estimated time: the audits removed the read-heavy re-derivation of the abort key
+and the carry recipe; the test scaffolding was used verbatim.
+
+### Tests run (slice 3b)
+
+- `py -3.12 -m pytest tests/test_pikmin2_long_legs_pod.py -q` -> **8 passed**.
