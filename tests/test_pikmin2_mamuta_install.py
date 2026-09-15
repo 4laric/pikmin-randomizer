@@ -72,8 +72,9 @@ class InstallTests(unittest.TestCase):
             imported = fake_imported(Path(tmp) / 'imported')
             run = self.make_run(Path(tmp))
             result = install(imported, run, [(221001, 'Miulin')])
-            self.assertEqual(result['files'], ['miulin_attack1_00.mod', 'miulin_dead_00.mod',
-                                               'miulin_wait_00.mod'])
+            self.assertEqual(result['files'], ['miulin_attack1.mod', 'miulin_attack1_00.mod',
+                                               'miulin_dead.mod', 'miulin_dead_00.mod',
+                                               'miulin_wait.mod', 'miulin_wait_00.mod'])
             verified = verify_install(imported, run, [(221001, 'Miulin')])
             self.assertEqual(verified['verified'], result['files'])
             config = (run / CONFIG_NAME).read_text()
@@ -100,9 +101,11 @@ class InstallTests(unittest.TestCase):
                 {'schema': 1, 'species': 'Miulin', 'enemy_id': 54, 'clips': clips}))
             run = self.make_run(root)
             result = install(imported, run, [(1, 'Miulin')])
-            attack = sorted(n for n in result['files'] if n.startswith('miulin_attack1'))
+            attack = sorted(n for n in result['files'] if n.startswith('miulin_attack1_'))
             self.assertEqual(attack, ['miulin_attack1_00.mod', 'miulin_attack1_01.mod',
                                       'miulin_attack1_02.mod'])
+            # The static anchor is still written alongside the bank.
+            self.assertIn('miulin_attack1.mod', result['files'])
             verify_install(imported, run, [(1, 'Miulin')])
 
     def test_install_refuses_overwrite(self):

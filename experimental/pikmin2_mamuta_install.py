@@ -15,6 +15,11 @@ SPECIES = 'Miulin'
 # the bury/plant) is animated instead of a single frozen pose.
 BANK_CLIPS = ('wait', 'dead', 'attack1')
 MAX_POSES = 8
+# The approved native baseline (static anchors, pc_p2_mamuta_policy.h) loads
+# three single `miulin_<clip>.mod` files: wait pose 0, the last dead pose, and
+# the attack1 bury-event pose (frame 0). Stage these alongside the bank so the
+# static anchor path and the pending time-sampled bank path coexist.
+STATIC_CLIPS = {'wait': 0, 'dead': -1, 'attack1': 0}
 CONFIG_NAME = 'p2-mamuta-actors.txt'
 CONFIG_HEADER = 'P2_MAMUTA_ACTORS_1'
 
@@ -53,6 +58,18 @@ def plan(imported, actors):
             if hashlib.sha256(data).hexdigest() != pose['sha256']:
                 raise ValueError('Pose hash mismatch')
             files[f'miulin_{clip}_{index:02d}.mod'] = data
+    for clip, index in STATIC_CLIPS.items():
+        entry = by_file.get(clip + '.bca')
+        if entry is None or entry['status'] != 'converted' or not entry['poses']:
+            raise ValueError(f'Required static pose unavailable: {clip}')
+        pose = entry['poses'][index]
+        name = pose['file']
+        if Path(name).name != name or not name.endswith('.mod'):
+            raise ValueError('Unsafe static pose filename')
+        data = (imported / SPECIES / name).read_bytes()
+        if hashlib.sha256(data).hexdigest() != pose['sha256']:
+            raise ValueError('Static pose hash mismatch')
+        files[f'miulin_{clip}.mod'] = data
     return '\n'.join(rows) + '\n', files
 
 
