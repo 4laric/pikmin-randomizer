@@ -95,22 +95,29 @@ public:
         Matrix4f world, view; auto position = naviMgr->getNavi()->mSRT.t;
         world.makeSRT(Vector3f(1.f, 1.f, 1.f), Vector3f(0, 0, 0), position);
         gfx.mCamera->mLookAtMtx.multiplyTo(world, view);
-        // Ordinary batch draw, exactly what the family draw hook (pc_p2_frog_draw)
-        // performs: updateAnim + drawshape. The scene's own calcLighting supplies
-        // the specular light 7; nothing is injected and the material is untouched.
-        auto renderOrdinary = [&](const char* path) {
+        // The fixture draws the profiled Frog model through the same per-mesh
+        // routine the batch/family draw path runs (updateAnim + drawshape). This
+        // is not the full pc_p2_frog_draw actor FSM; the per-draw delta below
+        // proves this single mesh draw activates the specular channel. The scene's
+        // own calcLighting supplies light 7; nothing is injected.
+        unsigned firstDelta = 0;
+        auto renderOrdinary = [&](const char* path, unsigned* delta) {
             pc_gfx_flush_batch(); glClearColor(0, 0, 0, 1); glDepthMask(GL_TRUE);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            const unsigned before = pc_gfx_specular_channel_draws();
             model->updateAnim(gfx, view, nullptr, nullptr);
             model->drawshape(gfx, *gfx.mCamera, nullptr);
+            const unsigned after = pc_gfx_specular_channel_draws();
+            if (delta) *delta = after - before;
             return capture(path);
         };
-        auto first = renderOrdinary("frog-ordinary0.ppm");
-        auto again = renderOrdinary("frog-ordinary0-repeat.ppm");
+        auto first = renderOrdinary("frog-ordinary0.ppm", &firstDelta);
+        auto again = renderOrdinary("frog-ordinary0-repeat.ppm", nullptr);
         require(first == again, "same-frame replay changed pixels");
         GLint viewport[4]; glGetIntegerv(GL_VIEWPORT, viewport);
-        std::printf("FROG_SPECULAR_RENDER viewport_w=%d viewport_h=%d control=0x%x specular_dir_calls=%u specular_channel_draws=%u replay_equal=1\n",
-                    viewport[2], viewport[3], control, pc_gfx_specular_dir_calls(), pc_gfx_specular_channel_draws());
+        std::printf("FROG_SPECULAR_RENDER viewport_w=%d viewport_h=%d control=0x%x specular_dir_calls=%u specular_channel_draws=%u specular_draw_delta=%u replay_equal=1\n",
+                    viewport[2], viewport[3], control, pc_gfx_specular_dir_calls(), pc_gfx_specular_channel_draws(), firstDelta);
+        require(firstDelta >= 1, "ordinary draw did not activate the specular channel within a single draw");
         require(pc_gfx_specular_dir_calls() >= 1, "ordinary draw did not reach pc_gfx_init_specular_dir");
         require(pc_gfx_specular_channel_draws() >= 1, "ordinary draw did not activate the specular channel");
         std::puts("PASS FROG_SPECULAR_RENDER");
@@ -128,9 +135,19 @@ int main(int argc, char** argv) {
     pc_window_set_window_size(960, 540);
     pc_window_center();
     const Uint32 flags = SDL_GetWindowFlags(SDL_GL_GetCurrentWindow());
-    std::printf("FROG_SPECULAR_WINDOW w=%d h=%d flags=%s centered=1\n",
-                pc_window_get_width(), pc_window_get_height(),
-                (flags & SDL_WINDOW_HIDDEN) ? "HIDDEN" : "SHOWN");
+    int winW = 0, winH = 0, winX = 0, winY = 0, centered = 0;
+    SDL_GetWindowSize(SDL_GL_GetCurrentWindow(), &winW, &winH);
+    SDL_GetWindowPosition(SDL_GL_GetCurrentWindow(), &winX, &winY);
+    const int display = SDL_GetWindowDisplayIndex(SDL_GL_GetCurrentWindow());
+    if (display >= 0) {
+        SDL_Rect bounds;
+        if (SDL_GetDisplayBounds(display, &bounds) == 0) {
+            centered = (std::abs(winX + winW / 2 - (bounds.x + bounds.w / 2)) <= 2
+                     && std::abs(winY + winH / 2 - (bounds.y + bounds.h / 2)) <= 2) ? 1 : 0;
+        }
+    }
+    std::printf("FROG_SPECULAR_WINDOW w=%d h=%d flags=%s centered=%d\n",
+                winW, winH, (flags & SDL_WINDOW_HIDDEN) ? "HIDDEN" : "SHOWN", centered);
     gsys->Initialise();
     pc_settings_p2d_init();
     nodeMgr = new NodeMgr();

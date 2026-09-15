@@ -46,7 +46,7 @@ def specular_criterion(control):
     return bool(control & ENABLE_SPECULAR_BIT)
 
 
-def _line(log, prefix, required):
+def _line(log, prefix):
     for line in log.splitlines():
         if line.strip().startswith(prefix + ' ') or line.strip() == prefix:
             return line.strip()
@@ -65,23 +65,25 @@ def evidence(log):
     if not isinstance(log, str):
         raise ValueError('Expected a captured log text')
 
-    window = _line(log, WINDOW_MARKER, ('w', 'h', 'flags'))
+    window = _line(log, WINDOW_MARKER)
     wflags = _FLAGS.search(window)
     if not wflags:
         raise ValueError('window marker does not report the real SDL flag (SHOWN or HIDDEN)')
+    if wflags.group('value') != 'SHOWN':
+        raise ValueError('window is not visible (flags=HIDDEN); the acceptance window must be SHOWN')
     wfield = {m.group('key'): int(m.group('value')) for m in _INT.finditer(window)}
     if wfield.get('w') != 960 or wfield.get('h') != 540 or wfield.get('centered') != 1:
         raise ValueError('window is not the centred 960x540 acceptance window')
 
-    render = _line(log, MARKER, ('viewport_w', 'viewport_h', 'control',
-                                 'specular_dir_calls', 'specular_channel_draws', 'replay_equal'))
+    render = _line(log, MARKER)
     fields = {m.group('key'): int(m.group('value')) for m in _INT.finditer(render)}
     control = _HEX.search(render)
     if not control:
         raise ValueError('RENDER marker missing the real control word')
     control = int(control.group('value'), 16)
     missing = [k for k in ('viewport_w', 'viewport_h', 'specular_dir_calls',
-                           'specular_channel_draws', 'replay_equal') if k not in fields]
+                           'specular_channel_draws', 'specular_draw_delta', 'replay_equal')
+               if k not in fields]
     if missing:
         raise ValueError('RENDER marker missing fields: ' + ', '.join(missing))
     if fields['viewport_w'] <= 0 or fields['viewport_h'] <= 0:
@@ -90,6 +92,8 @@ def evidence(log):
         raise ValueError('ordinary draw did not reach pc_gfx_init_specular_dir')
     if fields['specular_channel_draws'] < 1:
         raise ValueError('ordinary draw did not activate the specular channel')
+    if fields['specular_draw_delta'] < 1:
+        raise ValueError('single ordinary draw did not activate the specular channel (specular_draw_delta)')
     if fields['replay_equal'] != 1:
         raise ValueError('RENDER marker replay_equal is not a verified compare')
     if not specular_criterion(control):
