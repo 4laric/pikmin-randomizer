@@ -104,6 +104,9 @@ APP = r'''class RoomApp : public PlugPikiApp {
     int freeAndPark(Teki* center, float radius){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
         float ang=float(n)*6.2831853f/20.0f;Vector3f pt(center->mSRT.t.x+radius*std::sin(ang),0,center->mSRT.t.z+radius*std::cos(ang));
         pt.y=mapMgr->getMinY(pt.x,pt.z,true);v->resetPosition(pt);v->changeMode(PikiMode::FreeMode,naviMgr?naviMgr->getNavi():nullptr);++n;}return n;}
+    int parkFormation(Teki* center, float radius){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
+        float ang=float(n)*6.2831853f/20.0f;Vector3f pt(center->mSRT.t.x+radius*std::sin(ang),0,center->mSRT.t.z+radius*std::cos(ang));
+        pt.y=mapMgr->getMinY(pt.x,pt.z,true);v->resetPosition(pt);v->changeMode(PikiMode::FormationMode,naviMgr?naviMgr->getNavi():nullptr);++n;}return n;}
     int transportingCount(){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(v->isAlive()&&v->mMode==PikiMode::TransportMode)++n;}return n;}
 public:int idle() override {
     int result=PlugPikiApp::idle();require(++frames<60000,"long legs pod timeout");
@@ -137,18 +140,18 @@ public:int idle() override {
         return result;
     }
     if(stage==2){
-        // Source-timed Shot without clip compression: park the squad beyond the
-        // 60-unit accumulate/stomp radius (at ~180, still inside the 200-unit shell
-        // search range), brief-place the captain within the 75-unit wake radius and
-        // return it, then let Houdai take the source 50 s burst-cooldown path to
-        // Shot. No host health writes and no clip compression.
+        // Source-timed Shot without clip compression: move the captain beside
+        // Houdai (camera stays on the actor so its FSM keeps ticking) and park the
+        // squad in formation around it. Formation Pikmin crowd (never attack), so
+        // Houdai takes the source Land (5 s) + Flick (2.27 s) schedule with no
+        // drain until Shot is reached; then we assign attacks. No host health
+        // writes and no clip compression.
         if(!parked){
-            int c=freeAndPark(houdai,180.0f);std::printf("P2_LL_PARK species=Houdai count=%d\n",c);
-            Vector3f wake(houdai->mSRT.t.x,0,houdai->mSRT.t.z-60.0f);wake.y=mapMgr->getMinY(wake.x,wake.z,true);
-            n->resetPosition(wake);std::printf("P2_LL_WAKE captain=1\n");
-            wakeTick=observed;parked=true;std::fflush(stdout);
+            Vector3f near(houdai->mSRT.t.x,0,houdai->mSRT.t.z+40.0f);near.y=mapMgr->getMinY(near.x,near.z,true);
+            n->resetPosition(near);
+            int c=parkFormation(houdai,25.0f);std::printf("P2_LL_PARK species=Houdai count=%d\n",c);
+            parked=true;std::fflush(stdout);
         }
-        if(observed==wakeTick+8){n->resetPosition(captainOrigin);std::printf("P2_LL_RETREAT captain=1\n");std::fflush(stdout);}
         if(pc_p2_long_legs_shot(houdai)){
             std::printf("P2_LL_SHOT species=Houdai source_timed=1 tick=%d\n",observed);
             int a=assignAttack(houdai);std::printf("P2_LL_ATTACK_HOUDAI attack=%d\n",a);std::fflush(stdout);stage=3;return result;
