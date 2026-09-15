@@ -61,8 +61,49 @@ def _parse_float(tokens, key):
         return None
 
 
+def _parse_bool(tokens, key):
+    raw = _field(tokens, key)
+    if raw is None:
+        return None
+    return raw == "1"
+
+
+def _parse_carrier(tokens):
+    """Return the carrier index, defaulting absent/malformed ``carrier=`` to 0."""
+    raw = _field(tokens, "carrier")
+    if raw is None:
+        return 0
+    try:
+        return int(float(raw))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _blank_carrier():
+    return {
+        "joint_follow": False,
+        "travel_y": None,
+        "travel_xz": None,
+        "throw_kind": None,
+        "blast_fired": False,
+        "blast_token": None,
+        "blast_carrier_valid": None,
+        "hit_count": None,
+        "carrier_dead": False,
+    }
+
+
+def _carrier_entry(entry, carrier_index):
+    carriers = entry["carriers"]
+    if carrier_index not in carriers:
+        carriers[carrier_index] = _blank_carrier()
+    return carriers[carrier_index]
+
+
 def _blank():
-    return dict(_DEFAULT_SCENARIO)
+    entry = dict(_DEFAULT_SCENARIO)
+    entry["carriers"] = {}
+    return entry
 
 
 def _scenarios(names):
@@ -105,12 +146,24 @@ def validate_markers(log_text, scenarios=('approach', 'purple', 'death')):
         if marker == "P2_BOMBSARAI_JOINT_FOLLOW":
             entry["joint_follow"] = True
             entry["travel_y"] = _parse_float(tokens, "travel_y")
+            carrier = _carrier_entry(entry, _parse_carrier(tokens))
+            carrier["joint_follow"] = True
+            carrier["travel_y"] = _parse_float(tokens, "travel_y")
+            carrier["travel_xz"] = _parse_float(tokens, "travel_xz")
         elif marker == "P2_BOMBSARAI_FSM_THROW":
             entry["throw_kind"] = _field(tokens, "kind")
+            carrier = _carrier_entry(entry, _parse_carrier(tokens))
+            carrier["throw_kind"] = _field(tokens, "kind")
         elif marker == "P2_BOMBSARAI_BLAST":
             entry["blast_fired"] = True
             entry["hit_count"] = _parse_int(tokens, "hits")
             entry["carrier_dead"] = _field(tokens, "carrier_dead") == "1"
+            carrier = _carrier_entry(entry, _parse_carrier(tokens))
+            carrier["blast_fired"] = True
+            carrier["blast_token"] = _parse_int(tokens, "token")
+            carrier["blast_carrier_valid"] = _parse_bool(tokens, "carrier_valid")
+            carrier["hit_count"] = _parse_int(tokens, "hits")
+            carrier["carrier_dead"] = _field(tokens, "carrier_dead") == "1"
         elif marker == "P2_BOMBSARAI_SCENARIO_PASS":
             entry["scenario_pass"] = True
     return result

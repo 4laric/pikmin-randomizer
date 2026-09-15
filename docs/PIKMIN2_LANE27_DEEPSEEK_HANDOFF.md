@@ -274,3 +274,108 @@ min); the subagent results required no corrections.
 - The "Verbatim key lines" block is a selection, not contiguous: the `ARENA_READY … events=2` line is log line 750 (reset before `purple`); the first ARENA_READY (line 722) reads `events=0`.
 - Blast attribution: the teki hit is `self=1 token=0` in the two live-carrier scenarios (log 746, 772); only navi/piki hits carry carrier token 9001, per the bombState rule.
 - Six-gate row 2 reads PARTIAL: joint-follow PASS on a pinned carrier (x/z fixed, hover-bob only); the "teardown" is the scripted `event 45 kill`. Not an ordinary-actor or autonomous-movement PASS. Multi-carrier ownership not started.
+
+## Slice 3 — multi-carrier ownership, dead-carrier attribution, horizontal motion
+
+Scope: two carriers sharing one bomb pool with per-token attribution, a dead
+carrier's in-flight bomb resolving its own (dead) token, and JOINT_FOLLOW under
+horizontal carrier motion (not hover-bob only).
+
+Native commits (base `0debc442`, clean):
+
+- `aeb25d68` — `lane27: multi-carrier ownership, dead-carrier attribution, horizontal motion (#244)`
+  Refactors the arena to up to two carriers (`kMaxCarriers=2`) sharing one
+  `P2BombSaraiBombPool` and receiver list; per-carrier FSM/hover/held/token plus
+  per-token carrier liveness in `carrierGate`. `in.carrying` now means Captured
+  (source `mHeldBomb` null in flight), so a kill with the bomb already lobbed
+  releases nothing twice. Added injected `path`/`path2` horizontal waypoints and
+  per-blast detonation records (`P2BombSaraiBlastRecord` with carrier/token/
+  carrierValid/hits). Two new profiles `p2-bombsarai-arena-multi.txt` /
+  `-deadflight.txt`; runtime fixture observes per-carrier throws, joint-follow
+  `travel_xz`, and per-blast attribution; five scenarios now.
+
+Root commits (base `5e5f365`, clean):
+
+- (this commit) — scenario payloads for multi/deadflight; gate updates
+  (`multi_carrier_pool`, `walk_to_target`, `carrier_fsm`, `dead-carrier`,
+  `animated_capture_joint` run3); validator extended; Slice 3 handoff.
+
+### Runtime evidence (executed, exit 0)
+
+Fixture `output/dsw/l27-out/fixture3` (`provenance.json` status `built`,
+`--expected-native-head 0debc442`). Executable SHA-256
+`969fe75223a350e051ee2452cb43ca0b3096ab21d498c0934313cc78357d8847`. Run under
+`slot.py run gl l27` at 960x540, log `output/dsw/l27-out/bombsarai-runtime-run3.log`
+(SHA-256 `a926189526319d824b9eb255e0fd862a37d6e0c46696b3e2c114f21671361a25`).
+
+Key lines:
+
+```
+P2_BOMBSARAI_ARENA_READY ... carriers=2 receivers=2 pool=2 events=0
+P2_BOMBSARAI_SCENARIO_BEGIN scenario=multi
+P2_BOMBSARAI_JOINT_FOLLOW scenario=multi carrier=0 travel_y=12.342 travel_xz=24.000 min=40.730 max=53.073
+P2_BOMBSARAI_FSM_THROW scenario=multi carrier=0 kind=Release tick=46
+P2_BOMBSARAI_JOINT_FOLLOW scenario=multi carrier=1 travel_y=12.342 travel_xz=24.000 min=40.730 max=53.073
+P2_BOMBSARAI_FSM_THROW scenario=multi carrier=1 kind=Release tick=46
+P2_BOMBSARAI_BLAST scenario=multi carrier=0 token=9001 carrier_valid=1 ticks=207 traces=18 floors=2 walls=0 hits=1 carrier_dead=0
+P2_BOMBSARAI_HIT scenario=multi id=502 kind=1 damage=10.000 self=0 token=9001
+P2_BOMBSARAI_BLAST scenario=multi carrier=1 token=9002 carrier_valid=1 ticks=207 traces=18 floors=2 walls=0 hits=1 carrier_dead=0
+P2_BOMBSARAI_HIT scenario=multi id=503 kind=2 damage=10.000 self=0 token=9002
+P2_BOMBSARAI_SCENARIO_PASS scenario=multi
+P2_BOMBSARAI_SCENARIO_BEGIN scenario=deadflight
+P2_BOMBSARAI_FSM_THROW scenario=deadflight carrier=0 kind=Release tick=46
+P2_BOMBSARAI_BLAST scenario=deadflight carrier=0 token=9001 carrier_valid=0 ticks=207 traces=9 floors=1 walls=0 hits=3 carrier_dead=1
+P2_BOMBSARAI_HIT scenario=deadflight id=502 kind=1 damage=10.000 self=1 token=0
+P2_BOMBSARAI_HIT scenario=deadflight id=503 kind=2 damage=10.000 self=1 token=0
+PASS BOMBSARAI_RUNTIME
+```
+
+Reading: (a) `multi` — two carriers each birth one bomb into the shared pool 2,
+each lobs (Release, tick 46), and each blast records its own token (9001 vs
+9002) with `carrier_valid=1`; receiver 502 carries token 9001 only, receiver 503
+token 9002 only — no cross-attribution. (b) `deadflight` — carrier 0 lobs at tick
+46, the `event 60 kill` arrives while the bomb is in flight, exactly one throw is
+reported (no Death drop), and the later blast still carries `token=9001` with
+`carrier_valid=0`, so navi/piki hits attribute to the bomb (`self=1 token=0`).
+(c) JOINT_FOLLOW shows `travel_xz=24.0` on both multi carriers — the payload
+rides horizontal motion, not hover-bob only.
+
+### Six arena gates (slice 3)
+
+| Gate | Status | Evidence / label |
+|---|---|---|
+| 1 Exact identity and spawn | source-backed N/A | Still injected profile; no ordinary actor registration. |
+| 2 Autonomous movement and animation | PARTIAL (toward PASS) | Horizontal scripted path + joint follow observed; still injected x/z, not source `walkToTarget`. |
+| 3 Attacks and receivers | PARTIAL | Per-token blast attribution to instrumented receivers; teki 500 / navi+piki 10. |
+| 4 Death and corpse | PARTIAL | Dead-carrier in-flight bomb resolves token correctly + single release; no live corpse/transport. |
+| 5 Actual transport and reward | source-backed N/A | Out of slice scope. |
+| 6 Cleanup and re-entry | UNTESTED | Five scenarios in one process; no scene exit/re-entry. |
+
+Natural vs injected: carrier positions/paths/receivers/event scripts remain
+injected; multi-carrier token ownership, per-token dead-carrier attribution and
+the captured-joint horizontal follow are natural policy behaviour now observed at
+runtime.
+
+### Subagent usage
+
+- `explore` #1 (source audit, multi-carrier/motion): returned the `mCarrier`/
+  `mHeldBomb`/`walkToTarget`/`setRandTarget`/pool facts. Used as-is; confirmed
+  mCarrier is not cleared on throw and the pool is `mChildNum=2`.
+- `explore` #2 (single-carrier inventory): exact accessor/caller list (only the
+  runtime fixture + hardlanes), current kScenarios, and confirmed no existing
+  motion/multi scaffolding. Used as-is to size the refactor and keep the seam
+  set unchanged.
+- `general` #3 (validator/tests): added per-carrier parsing (`carriers` dict,
+  `travel_xz`, per-blast `token`/`carrier_valid`) + 2 tests (8 passed). Used
+  as-is; I then ran the validator on the real run3 log (all five scenarios parse).
+- Net: saved the inventory/grep and test-scaffolding effort (est. ~25–35 min);
+  subagent results required no correction.
+
+### Remaining
+
+- Ordinary BombSarai actor + live creature damage: lane 10 (`#408`).
+- Source `walkToTarget` (waypoint arrival, 50–100u ring) instead of the injected
+  x/z path; carrier yaw steering.
+- Real shared Bomb manager limit under concurrent carriers + BombOtakara: lane 06/20.
+- Real skeletal joint + keyframe timings + visual assets: converter #128 / lane 09.
+- Induction (`ip02`) and save/resume remain open.
