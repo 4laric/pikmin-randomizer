@@ -115,6 +115,9 @@ def stage(assets, bank, pod_package, output):
     struct.pack_into('<I', row, 8, HOST_GENERATOR)
     row[16:48] = b'King host Chappy'.ljust(32, b'\0')
     row[80] = HOST_TYPE
+    row[81] = 0  # pellet kind none (the borrowed iket personality wants a pellet)
+    row[82] = 0  # pellet color
+    struct.pack_into('<f', row, 119, 0.0)  # FLT_PelletAppearChance: Emperor drops none
     write_position(row, SPAWN)
     entries.append(bytes(row))
     used.add(HOST_GENERATOR)
