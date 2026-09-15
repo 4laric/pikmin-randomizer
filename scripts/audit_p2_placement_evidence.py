@@ -24,7 +24,8 @@ to show the interface is wired, not natural acceptance).
 
 The arena stage is read from the probe document's ``arena_stage`` field when
 ``--stage`` is not given (the runner records it beside the probe); a catalog-join
-probe with no stage anywhere is rejected instead of silently skipping the guard.
+probe with no stage anywhere is rejected by ``run_audit`` itself instead of
+silently skipping the guard.
 """
 import argparse
 import json
@@ -62,7 +63,8 @@ def run_audit(probe, catalog_doc=None, identities=IDENTITIES, arena_stage=None, 
     When ``arena_stage`` is not passed explicitly it is read from the probe's own
     ``arena_stage`` field (the runner records the staged map stage beside the
     probe), so the stage guard fires without a manual ``--stage`` on the standalone
-    CLI. If neither is present the stage guard is skipped, as before.
+    CLI. A catalog-join probe with no stage anywhere is a hard failure here (not
+    only on the CLI): the stage guard is never silently skipped.
     """
     if arena_stage is None:
         arena_stage = probe.get('arena_stage')
@@ -77,12 +79,17 @@ def run_audit(probe, catalog_doc=None, identities=IDENTITIES, arena_stage=None, 
         catalog_slots = {slot['uid']: slot for slot in catalog_doc['slots']}
         mapping = probe['mapping']
         for m in mapping:
-            record = catalog_slots.get(m['slot'])
-            if record is None:
+            if m['slot'] not in catalog_slots:
                 raise SystemExit(
                     f'catalog join hard failure: probe slot uid {m["slot"]} is not '
                     f'present in p2_placement_catalog.all_slots()')
-            if arena_stage is not None and record['stage'] != arena_stage:
+        if arena_stage is None:
+            raise SystemExit(
+                'catalog join requires a stage: pass arena_stage or record an '
+                'arena_stage field inside the probe document (the runner does this)')
+        for m in mapping:
+            record = catalog_slots[m['slot']]
+            if record['stage'] != arena_stage:
                 raise SystemExit(
                     f'catalog join hard failure: slot uid {m["slot"]} is stage '
                     f'{record["stage"]} but the arena is stage {arena_stage}')
@@ -127,8 +134,6 @@ def main(argv=None):
 
     probe = json.loads(args.probe.read_text())
     stage = args.stage if args.stage is not None else probe.get('arena_stage')
-    if probe.get('catalog_join') and stage is None:
-        parser.error('catalog-join probe requires --stage or an arena_stage field inside the probe document')
     report = run_audit(probe, arena_stage=stage, allow_unmapped=args.allow_unmapped)
     print(json.dumps(report, indent=2))
     if args.out:

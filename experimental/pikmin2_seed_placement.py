@@ -1,17 +1,18 @@
-"""Lane-04 slice 3: the placement catalog driving a real generated seed.
+"""Lane-04 slice 4: the placement catalog driving a real generated seed.
 
 Slice 2 hand-built the ``p2-placement-slots.txt`` sidecar from a lane-04
-:func:`scripts.run_p2_catalog_placement.choose_slot`. This module flips that
-dependency: the catalog slot uid now comes from the seed's ``p2_layout``, i.e.
-from lane 03's seed bridge ``resolve_placement_layout`` (consuming lane 02's
-admitted cohort and lane 04's placement document), so the native probe's
-``P2_PLACEMENT_SLOT slot=...`` marker joins to the slot the *seed actually chose*
-rather than a lane-04-side pick.
+:func:`scripts.run_p2_catalog_placement.choose_slot`; slice 3 sourced the slot
+from the seed's ``p2_layout`` but still carried one binding. This module carries
+the whole binding: the seed bridge ``resolve_placement_layout`` binds a *set* of
+catalog slots to each admitted source (consuming the admitted cohort and the
+placement document), and the sidecar now records every ``(generator, slot)``
+pair, so the probe's ``P2_PLACEMENT_SLOT`` markers join to the full binding set
+rather than a single picked slot.
 
-Because the committed lane 02 ledger admits nothing (deny by default) and
+Because the committed admitted cohort is empty (deny by default) and
 ``randomizer.seed.generate`` has no roster-injection parameter, the admitted
-cohort is injected the same way lane 03's own ``tests/test_pikmin2_seed_generation.py``
-does it: ``experimental.pikmin2_seed_bridge.admitted_ids`` is patched for the
+cohort is injected the same way ``tests/test_pikmin2_seed_generation.py`` does
+it: ``experimental.pikmin2_seed_bridge.admitted_ids`` is patched for the
 duration of ``generate``. The placement document is the real
 ``p2_placement_catalog.build_document()`` with the Snow/Dwarf Orange cohort's
 acceptance labelled injected (evidence stamped to True + ``accepted_gates``
@@ -19,7 +20,7 @@ filled), filtered to the arena's stage-0 ground slots.
 
 This is the seed/manifest/sidecar half. The runtime half lives in
 ``scripts/run_p2_seed_placement.py`` (stage the Dwarf Orange arena, write the
-sidecar from the seed's chosen slot, run the native probe, audit).
+seed-derived sidecar, run the native probe, audit).
 """
 import json
 
@@ -80,24 +81,39 @@ def generate_admitted_seed(seed_name, document, slot='Player1',
         bridge.admitted_ids = saved
 
 
-def seed_slot_uid(manifest, source_id=BLUEKOCHAPPY_SOURCE):
-    """Return the catalog slot uid the seed bound to ``source_id``, or None."""
-    for binding in manifest['p2_layout']['bindings']:
-        if binding['source_id'] == source_id:
-            return int(binding['target'])
-    return None
+def seed_slots(manifest, source_id=BLUEKOCHAPPY_SOURCE):
+    """Return the sorted catalog slot uids the seed bound to ``source_id``.
+
+    The seed binds a *set* of stage-0 ground slots to each admitted source; this
+    returns the whole set (never a single slot), so a sidecar consumer carries
+    every binding rather than a lane-04-side pick of one.
+    """
+    return sorted(int(binding['target']) for binding in manifest['p2_layout']['bindings']
+                  if binding['source_id'] == source_id)
 
 
 def seed_slot_uids(manifest):
-    """Return ``{source_id: slot_uid}`` for every binding in a seed layout."""
-    return {binding['source_id']: int(binding['target'])
-            for binding in manifest['p2_layout']['bindings']}
+    """Return ``{source_id: sorted [slot uids]}`` for the seed's full binding set.
+
+    Every binding is accumulated per source (earlier a one-off used a dict
+    comprehension that kept only the last binding per source and was unused).
+    """
+    by_source = {}
+    for binding in manifest['p2_layout']['bindings']:
+        by_source.setdefault(binding['source_id'], []).append(int(binding['target']))
+    return {source_id: sorted(uids) for source_id, uids in by_source.items()}
 
 
-def write_sidecar(directory, generator_id, slot_uid):
-    """Write the ``p2-placement-slots.txt`` sidecar mapping a generator to a slot."""
+def write_sidecar(directory, generator_slots):
+    """Write the ``p2-placement-slots.txt`` sidecar mapping every generator.
+
+    ``generator_slots`` is an iterable of ``(generator_id, slot_uid)`` pairs; the
+    full set is written (one line per generator) so the probe reports one
+    ``P2_PLACEMENT_SLOT`` per generator that resolves.
+    """
     from pathlib import Path
     path = Path(directory) / SIDECAR_NAME
-    path.write_text(f'{SIDECAR_HEADER}\n{int(generator_id)} {int(slot_uid)}\n',
-                    encoding='ascii')
+    lines = [SIDECAR_HEADER]
+    lines += [f'{int(generator_id)} {int(slot_uid)}' for generator_id, slot_uid in generator_slots]
+    path.write_text('\n'.join(lines) + '\n', encoding='ascii')
     return path
