@@ -51,20 +51,20 @@ MODULE_ALIASES = {
 SHARED_MODULES = frozenset("""\
 pc_p2_batch3 pc_p2_bigtreasure_animclock pc_p2_bigtreasure_attacks pc_p2_bigtreasure_elements
 pc_p2_bigtreasure_fsm pc_p2_bigtreasure_fsmhost pc_p2_bigtreasure_host pc_p2_bigtreasure_map_trace
-pc_p2_bigtreasure_motion pc_p2_bigtreasure_ordinary pc_p2_bigtreasure_save pc_p2_bigtreasure_visual
-pc_p2_bombsarai_arena pc_p2_bombsarai_blast pc_p2_bombsarai_bomb pc_p2_bombsarai_hover
-pc_p2_bombsarai_map_trace pc_p2_bombsarai_terrain pc_p2_breadbug_visual pc_p2_bulbmin pc_p2_cannon_stone
-pc_p2_captain pc_p2_cave pc_p2_color_binding pc_p2_dangomushi_hazard pc_p2_demon_bridge
+pc_p2_bigtreasure_motion pc_p2_bigtreasure_ordinary pc_p2_bigtreasure_receiver pc_p2_bigtreasure_save
+pc_p2_bigtreasure_visual pc_p2_bombsarai_arena pc_p2_bombsarai_blast pc_p2_bombsarai_bomb pc_p2_bombsarai_hover
+pc_p2_bombsarai_map_trace pc_p2_bombsarai_terrain pc_p2_breadbug_contest_host pc_p2_breadbug_visual pc_p2_bulbmin
+pc_p2_cannon_stone pc_p2_captain pc_p2_cave pc_p2_color_binding pc_p2_dangomushi_hazard pc_p2_demon_bridge
 pc_p2_demon_drop_state pc_p2_demon_escape_state pc_p2_economy pc_p2_egg_hazard pc_p2_fuefuki_motion
-pc_p2_giant_breadbug_visual pc_p2_groink_arena pc_p2_groink_attack pc_p2_groink_hit pc_p2_groink_map_trace
+pc_p2_giant_breadbug_visual pc_p2_groink_arena pc_p2_groink_attack pc_p2_groink_carcass pc_p2_groink_hit pc_p2_groink_map_trace
 pc_p2_groink_strike pc_p2_groink_target pc_p2_groink_volley pc_p2_hardlanes pc_p2_input_script
 pc_p2_kabuto_binding pc_p2_kabuto_events pc_p2_kabuto_muzzle pc_p2_kochappy_fsm pc_p2_kochappy_stun
 pc_p2_kurage_arena pc_p2_kurage_receiver pc_p2_kurage_teki pc_p2_kurage_visual pc_p2_long_legs_fsm
 pc_p2_mamuta_rules pc_p2_material_binding pc_p2_material_scope pc_p2_onikurage_mouth pc_p2_onikurage_teki
-pc_p2_preview pc_p2_projectile_host pc_p2_projectile_receiver pc_p2_projectiles pc_p2_purple
-pc_p2_purple_direct pc_p2_purple_feedback pc_p2_purple_flight pc_p2_purple_impact pc_p2_purple_motion
-pc_p2_receipt_host pc_p2_rock_hazard pc_p2_second_captain pc_p2_snagret_fsm pc_p2_species
-pc_p2_specular_layer pc_p2_teki_lifetime pc_p2_waterwraith_actor pc_p2_waterwraith_encounter
+pc_p2_otakara pc_p2_placement_probe pc_p2_preview pc_p2_projectile_engine_receiver pc_p2_projectile_host
+pc_p2_projectile_receiver pc_p2_projectiles pc_p2_purple pc_p2_purple_direct pc_p2_purple_feedback pc_p2_purple_flight
+pc_p2_purple_impact pc_p2_purple_motion pc_p2_receipt_host pc_p2_rock_host pc_p2_rock_hazard pc_p2_second_captain
+pc_p2_snagret_fsm pc_p2_species pc_p2_specular_layer pc_p2_teki_lifetime pc_p2_waterwraith_actor pc_p2_waterwraith_encounter
 pc_p2_waterwraith_host pc_p2_waterwraith_register pc_p2_waterwraith_visual pc_p2_white pc_p2_white_poison
 """.split())
 
@@ -83,6 +83,47 @@ def native_source_docs() -> list[str]:
 
 def _resolve_module(name: str) -> str:
     return MODULE_ALIASES.get(name, name)
+
+
+# Owning-lane routing for native module stems, mirroring the family->lane table
+# in docs/PIKMIN2_IMPLEMENTATION_FANOUT.md (and the per-lane ledger in
+# docs/PIKMIN2_LANE_COMPLETION.md). Used only to annotate the coverage failure
+# message so the integrator can route an uncovered module to the right family.
+MODULE_LANE_HINTS = {
+    "bigtreasure": "32", "waterwraith": "31", "blackman": "31",
+    "sarai": "30", "demon": "30",
+    "kurage": "29", "onikurage": "29", "jellyfloat": "29",
+    "fuefuki": "28", "bombsarai": "27", "long_legs": "26",
+    "snakejoint": "25", "snagret": "25", "dangomushi": "25",
+    "queen": "24", "king": "24", "bulblax": "24",
+    "flora": "23", "pom": "23", "plant": "23", "pellplant": "23",
+    "tank": "22", "dweevil": "22", "otakara": "22", "bombotakara": "22", "hiba": "22",
+    "groink": "21",
+    "kabuto": "20", "rock": "20", "stone": "20", "egg": "20", "projectile": "20", "cannon": "20",
+    "mamuta": "19", "breadbug": "18", "kogane": "17",
+    "frog": "16", "catfish": "16", "tadpole": "16", "jigumo": "16", "umimushi": "16",
+    "mar": "15", "hanachirashi": "15", "shijimi": "15", "qurione": "15",
+    "sokkuri": "14", "armor": "14", "elecbug": "14", "tamago": "14", "imomushi": "14", "hana": "14",
+    "kochappy": "13", "dwarf_orange": "13", "sheargrub": "13", "snow": "13", "enemy": "13",
+    "chappy": "13", "batch2": "13", "batch3": "13",
+    "captain": "12", "second_captain": "12",
+    "purple": "11", "white": "11", "bulbmin": "11", "species": "11", "stun": "11",
+    "material": "09", "specular": "09", "color_binding": "09",
+    "cave": "07", "lifetime": "07", "economy": "06", "receipt": "06",
+    "placement": "04", "preview": "01", "hardlanes": "01", "input": "01",
+}
+
+
+def _lane_of_module(stem: str) -> str | None:
+    """Best-effort owning lane for a native module stem (routing hint only)."""
+    body = _resolve_module(stem).lower()
+    if body.startswith("pc_p2_"):
+        body = body[len("pc_p2_"):]
+    best, lane = 0, None
+    for keyword, owner in MODULE_LANE_HINTS.items():
+        if keyword in body and len(keyword) > best:
+            best, lane = len(keyword), owner
+    return lane
 
 
 def coverage_gaps(roster, modules: set[str], native_docs=None, *, existing_docs=None) -> dict:
@@ -316,7 +357,12 @@ def main(argv=None) -> int:
             ("uncovered_identity_modules", "identity modules without a row"),
         ):
             if ledger_gaps[key]:
-                print(f"  - {label}: {ledger_gaps[key]}")
+                if key == "uncovered_identity_modules":
+                    hinted = [f"{m} (lane {_lane_of_module(m) or '?'})"
+                              for m in sorted(ledger_gaps[key])]
+                    print(f"  - {label}: {hinted}")
+                else:
+                    print(f"  - {label}: {ledger_gaps[key]}")
         print(f"ledger coverage complete: {not any(ledger_gaps.values())}")
         if any(ledger_gaps.values()):
             print("LEDGER COVERAGE FAIL", file=sys.stderr)

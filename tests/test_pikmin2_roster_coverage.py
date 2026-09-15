@@ -27,6 +27,7 @@ from scripts.audit_pikmin2_roster import (
     ENGINE_PORT,
     MODULE_ALIASES,
     SHARED_MODULES,
+    _lane_of_module,
     coverage_gaps,
     native_modules,
     native_source_docs,
@@ -183,6 +184,14 @@ def test_shared_modules_subset_of_native_modules():
     modules = native_modules(ENGINE_PORT)
     assert SHARED_MODULES <= modules
     assert set(MODULE_ALIASES.values()) <= modules
+
+
+def test_lane_of_module_routes_to_owning_lane():
+    assert _lane_of_module("pc_p2_bigtreasure_receiver") == "32"
+    assert _lane_of_module("pc_p2_breadbug_contest_host") == "18"
+    assert _lane_of_module("pc_p2_groink_carcass") == "21"
+    assert _lane_of_module("pc_p2_sokkuri") == "14"
+    assert _lane_of_module("pc_p2_rock_host") == "20"
 
 
 # ---------------------------------------------------------------------------
