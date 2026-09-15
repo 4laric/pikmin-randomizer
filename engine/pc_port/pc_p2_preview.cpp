@@ -1,6 +1,7 @@
 #include "pc_p2_frog.h"
 #include "pc_p2_kogane.h"
 #include "pc_p2_mamuta.h"
+#include "pc_p2_waterwraith_register.h"
 #include "pc_p2_tank.h"
 #include "pc_p2_hiba.h"
 #include "pc_p2_dweevil.h"
@@ -328,7 +329,7 @@ bool pc_p2_preview_deliver(Pellet* pellet) {
             std::printf("[Pikipelago] P2_FLORA_DELIVER onion_receipt=1\n");std::fflush(stdout);return true;
         }
         if(cargoFree){std::fprintf(stderr,"Cargo-free P2 Pod refuses cargo rewards and seed side effects\n");std::abort();}
-        std::string receipt;int value=0;Cargo* c=cargoFor(pellet);
+        std::string receipt;int value=0;Cargo* c=cargoFor(pellet);bool waterwraithCorpse=false;
         if(c){receipt="treasure:"+c->spec.instance;value=c->spec.value;}
         else if(pellet==previewTreasure){receipt="treasure:"+treasureId;value=treasureValue;}
         else if(unsigned generator=0;pc_p2_sheargrub_receipt(pellet->mPelletView,generator,value)) {
@@ -340,13 +341,20 @@ bool pc_p2_preview_deliver(Pellet* pellet) {
         else if(unsigned generator=0;pc_p2_kurage_receipt(pellet->mPelletView,generator)) {
             receipt="corpse:"+pc_p2_cave_receipt_prefix()+"kurage:"+std::to_string(generator);value=corpseValue;
         }
+        else if(unsigned generator=0;pc_p2_otakara_receipt(pellet->mPelletView,generator)) {
+            receipt="corpse:"+pc_p2_cave_receipt_prefix()+"otakara:"+std::to_string(generator);value=corpseValue;
+        }
+        else if(unsigned generator=0;pc_p2_waterwraith_receipt(pellet,generator)) {
+            receipt="corpse:"+pc_p2_cave_receipt_prefix()+"waterwraith:"+std::to_string(generator);value=corpseValue;
+            waterwraithCorpse=true;
+        }
         else {
             auto found=corpses.find(pellet->mPelletView);
             if(found==corpses.end()) {std::fprintf(stderr,"Unregistered P2 pod cargo id=%08x view=%p pellet=%p treasure=%p; refusing seed side effects\n",pellet->mConfig->mModelId.mId,(void*)pellet->mPelletView,(void*)pellet,(void*)previewTreasure);std::abort();}
             receipt="corpse:"+pc_p2_cave_receipt_prefix()+found->second.substr(7);value=corpseValue;
         }
         bool added=economy.credit(receipt,value);
-        podTitle((c?c->spec.instance:pellet==previewTreasure?treasureId:(pc_p2_sheargrub_name(pellet->mPelletView)?pc_p2_sheargrub_name(pellet->mPelletView):pc_p2_enemy_name(pellet->mPelletView)?pc_p2_enemy_name(pellet->mPelletView):"Dwarf Bulborb"))+" +"+std::to_string(added?value:0));
+        podTitle(std::string(waterwraithCorpse ? "Waterwraith" : (c?c->spec.instance.c_str():pellet==previewTreasure?treasureId.c_str():(pc_p2_sheargrub_name(pellet->mPelletView)?pc_p2_sheargrub_name(pellet->mPelletView):pc_p2_enemy_name(pellet->mPelletView)?pc_p2_enemy_name(pellet->mPelletView):"Dwarf Bulborb"))) + " +" + std::to_string(added?value:0));
         pc_p2_purple_status();
         std::printf("[Pikipelago] P2_POD_RECEIPT id=%s value=%d new=%d pokos=%d seeds=0\n",receipt.c_str(),value,int(added),economy.total());
         if(pellet==previewTreasure) {

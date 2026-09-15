@@ -224,8 +224,9 @@ bool InteractFire::actPiki(Piki* piki) immut
  * `p2_hazard_reaction`, which keeps the immunity gate and the reaction target
  * in one testable place.
  *
- * `__attribute__((used))`: no gas/denki emitter references this receiver yet,
- * so LTO would otherwise dead-strip it (and its P2_RECV_ log) from the link.
+ * `__attribute__((used))` is retained defensively: the ElecBug discharge sweep
+ * and the ElecHiba fixed hazard (pc_port/pc_p2_hiba.cpp) both reference this
+ * receiver, so LTO no longer depends on the attribute for linkage.
  */
 __attribute__((used)) bool InteractDenki::actPiki(Piki* piki) immut
 {
@@ -257,8 +258,9 @@ __attribute__((used)) bool InteractDenki::actPiki(Piki* piki) immut
  * narrow `Piki::gasInvicible()` gate; the species gate stays matrix-driven so
  * P2 Bulbmin is covered. `p2_hazard_reaction` applies both gates.
  *
- * `__attribute__((used))` keeps the receiver and its P2_RECV_ log in the link
- * until a gas emitter references it (see InteractDenki::actPiki above).
+ * `__attribute__((used))` is retained defensively: the GasHiba fixed hazard
+ * (pc_port/pc_p2_hiba.cpp) now references this receiver, so LTO no longer
+ * depends on the attribute for linkage.
  */
 __attribute__((used)) bool InteractGas::actPiki(Piki* piki) immut
 {

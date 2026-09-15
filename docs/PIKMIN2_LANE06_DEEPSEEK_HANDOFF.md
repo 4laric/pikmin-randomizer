@@ -212,3 +212,381 @@ py -3.12 -m pytest tests/test_pikmin2_delivery.py tests/test_pikmin2_receipts.py
 (Native mirror: `py -3.12 output/deepseek-wave/build_lane.py l06 --target p2_delivery_receiver_test`
 then `./p2_delivery_receiver_test.exe` in `output/dsw/native-l06-build`, or
 `ctest -R p2_delivery_receiver_test`.)
+
+## Slice 2 — first real consumer (GoalItem::suckMe -> durable ordinary receipt)
+
+### What was wired
+
+1. **Engine-free delivery host** `pc_port/pc_p2_delivery_host.{h,cpp}`: owns a
+   persistent `FileReceiptPersistence` + `P2Delivery::DeliveryReceiver` in its own TU;
+   `pc_p2_delivery_host_deliver(seed, sourceId, tekiType, stage, generatorToken,
+   encounter)` always `p1Proxy=false` and rejects `sourceId==0`.
+2. **Randomizer glue** (`pc_port/pc_randomizer.{h,cpp}`): `pc_randomizer_p2_bind_source
+   (tekiview, sourceId, generatorUid)` captures the bound source at bind/spawn time
+   (the Teki's `mGenerator` is nulled by `dieSoon` before the corpse reaches the Onion);
+   `pc_randomizer_p2_source_for` / `_generator_for` read it back;
+   `pc_randomizer_p2_corpse_delivered(tekiview, type, stage, gameplay)` opens the durable
+   host at `campaignDirectory/p2-delivery-receipts.txt` (identity `onion:p2:<sourceId>:
+   <stage>`, slot `g<generatorUid>`, seed = manifest `fingerprint`, encounter `corpse`).
+3. **Engine hook** `src/plugPikiKando/goalItem.cpp` (the corpse branch of
+   `GoalItem::suckMe`, separate labelled commit): when the corpse's `PelletView` has a
+   bound source, call `pc_randomizer_p2_corpse_delivered` so a P2 reward is granted under
+   its own identity, never the P1-proxy `Bestiary: Deliver Dwarf Bulborb` check.
+
+### Runtime proof (960x540, real-GL, two processes)
+
+Reproducer: `scripts/p2_delivery_fixture.cpp` (replacement main) +
+`scripts/p2_delivery_runtime.py`. Fixture binds source 44 (Dwarf Orange) onto the live
+Chappy host, kills it (frame 9), drives the real corpse through `GoalItem::suckMe`, and
+the host grants `onion:p2:44:1` exactly once; a second process over the same ledger
+re-delivers -> Duplicate.
+
+```text
+run1  P2_ORDINARY_P2_RECEIPT seed=225221..ab9d84 id=onion:p2:44:1 generator=185597288 new=1
+run2  P2_ORDINARY_P2_RECEIPT ... new=0      EXACTLY_ONCE_ACROSS_RESTART: True
+```
+
+Evidence in `output/dsw/l06-out/` (`slice2-evidence.txt`, `delivery-run-final/`,
+`ctest-delivery-slice2.txt`). Fixture SHA-256 `ad81e84720c9…fc90`; production
+`nectar.exe` SHA-256 `a991c44dc697…ad15f3` (native `45eb7fa6`, clean, `ninja` no-work).
+
+Natural vs injected: kill, corpse, Onion endpoint and durable receipt are real;
+the P2 source bind is a labelled fixture intervention (standing in for lane 13), and
+natural carry is injected (`natural_carry=0` -> `onion->suckMe` fallback; transport stays
+lane 04). Window `960x540` windowed/centred; `Direct boot: Forest of Hope day 2, 20 reds`
+(starting squad, no extinction).
+
+### New commits (this slice)
+
+Root (`deepseek/p2-l06`, base `ef1cace`):
+- `144c0bf` mixed-dump test drives real `pikmin2_reward_lifecycle.validate` counter.
+- `87d11c8` P2 delivery runtime fixture + two-process runner.
+- `8ee171c` include `Generator.h` in P2 delivery fixture.
+- `1f1d1e0` clean P2 delivery fixture + parent-poll two-process runner.
+- `0f26698` handoff Slice 2 (first real consumer + runtime proof).
+- `f3791d7` pin native commit SHAs in Slice 2 handoff.
+
+Native (`deepseek/p2-l06-native`, base `b805d9c6`):
+- `314a32af` review fixes (fix1).
+- `e193f65a` `pc_p2_delivery_host.{h,cpp}` + `tools/p2_delivery_host_test.cpp` + CMake (production + CTest).
+- `bee402dd` `pc_randomizer_p2_bind_source/_source_for/_generator_for/_corpse_delivered` (randomizer glue).
+- `1efcbaeb` `GoalItem::suckMe` -> `pc_randomizer_p2_corpse_delivered` (shared engine hook).
+- `45eb7fa6` drop the bridge-flag gate for the runtime binding (authoritative signal).
+
+### Six arena gates (natural vs injected)
+
+| Gate | Result |
+|---|---|
+| 1 Identity/spawn | interface PASS / natural N/A — source 44 bound at spawn (labelled fixture bind; lane 13 supplies it in a generated session). |
+| 2 Movement/animation | source-backed N/A (P1 proxy; family FSM is lane 13). |
+| 3 Attacks/receivers | source-backed N/A (single InteractAttack kill; receivers are lane 10). |
+| 4 Death/corpse | PASS — natural Chappy death -> `PELTYPE_Corpse` pellet (frame 9). |
+| 5 Transport/reward | interface PASS, transport INJECTED — `onion:p2:44:1` granted exactly once via real `GoalItem::suckMe`; natural carry did not move the corpse (`natural_carry=0`). |
+| 6 Cleanup/re-entry | source-backed N/A (lane 07). |
+
+Persistence (admission gate F): **PASS at the runtime level** — one durable receipt row
+across a fresh process (run2 Duplicate).
+
+### Subagent usage (slice 2)
+
+- `explore` #1 (corpse->source_id recovery + seed/restart mechanism): used as-is. Confirmed
+  `Pellet::mPelletView` is the Teki, that `mGenerator` is nulled by `dieSoon` (so the
+  source must be captured at bind), that `fingerprint` is the stable cross-restart seed
+  coordinate, and the receipt host needs an explicit stable path (not the per-run cwd).
+  Saved substantial recon. The parent-poll (vs background thread) fix came out of the
+  followed-on runtime debugging, not this audit.
+- `explore` #2 (runtime/stager inventory): used as-is to confirm the ordinary-room blueprint
+  (chal0 `TEKI_Chappy` host, `practice.ini` Onion) and that no ordinary consumer writes the
+  receipt host yet. The targeted reproduction path was largely already known; cost was low.
+- `general` #3 (mixed-dump test): used as-is — rewrote the mixed-dump test to call the real
+  `experimental.pikmin2_reward_lifecycle.validate`; 42 passed, 19 subtests. No corrections needed.
+
+## Slice 2 review fixes (fix2)
+
+### Resolution status (items 1-8)
+
+1. **Double credit — FIXED.** `pc_randomizer_p2_corpse_delivered` now returns `bool`
+   (true = it delivered a bound P2 source); `GoalItem::suckMe` credits the P1-proxy
+   bestiary check only when that returns false. Verified: run1 log has 0
+   `Bestiary: Deliver Dwarf Bulborb` / `CHECK 30` lines beside the `onion:p2:44:1` receipt.
+2. **Production open path exercised — FIXED.** Fixture no longer pre-opens via
+   `PIKMIN_P2_RECEIPT_PATH`; `pc_randomizer_p2_corpse_delivered` opens the handle at
+   `campaign/p2-delivery-receipts.txt`, and the runner reads that path. Run evidence shows
+   the ledger at `<session>/campaign/p2-delivery-receipts.txt`.
+3. **Checkpoint save — RELABELLED honestly.** A real `saveCurrentGame()` (`save_failed=0`,
+   `CAMPAIGN_SAVED generation=1`) made the second process resume day 2 instead of
+   cold-booting (it stalled at `CAMPAIGN_RESUMED`, no world). So the save trigger is
+   dropped and Persistence is labelled "process restart only, no checkpoint save"; the
+   durable `campaign/` sidecar still proves exactly-once across restart.
+4. **Stale pointer keys — FIXED.** The binding is single-use: `pc_randomizer_p2_corpse_delivered`
+   consumes it after the grant, and `pc_randomizer_p2_forget_source(const void*)` is called
+   from the central `pc_p2_forget_teki` lifetime seam, so a recycled Teki address can never
+   inherit a P2 binding or credit the P1 proxy as `onion:p2`.
+5. **Unbindable id abort — FIXED.** `pc_randomizer_p2_bind_source` logs-and-returns instead of
+   `fail()`; `tools/p2_*_host_test.cpp` temp dirs are pid-scoped.
+6. **Wave merge — DONE.** Merged `claude/p2-deepseek-wave-native` (commit `b9702636`),
+   keeping lane 03's `pc_randomizer_bind_generator(..., sourceId70=0)`,
+   `pc_randomizer_p2_room_bootstrap`, `pc_randomizer_p2_source_for_id` and un-guarded bridge
+   lookups alongside the lane-06 bind/deliver functions. Rebuilt clean.
+7. **Per-consumer ledgers — DONE.** `pc_p2_receipt_host` and `pc_p2_delivery_host` are now
+   handle-per-path registries: `open(path)` returns a handle; `grant`/`deliver`/`close` take
+   it. Flora (p2-flora-receipts.txt), kogane (p2-kogane-onion-receipts.txt, lazy-reopen
+   workaround retired) and the randomizer (p2-delivery-receipts.txt) each hold their own
+   handle. New `p2_receipt_host_multi_test` (two consumers, independent ledgers). Header docs
+   updated to describe the handle contract.
+8. **Handoff fixes — DONE.** All six root commits listed; "40/40 tests"; one
+   `build_lane.py l06 --target p2_delivery_host_test` line at the committed head; runner no
+   longer hardcodes the MinGW path (guarded `MINGW_BIN`) and uses a descriptive seed.
+
+### New commits this pass
+
+Native (`deepseek/p2-l06-native`, base `b805d9c6`):
+- `b9702636` merge `claude/p2-deepseek-wave-native`.
+- `b4480fca` per-consumer handle-per-path receipt/delivery host ledgers (its own commit).
+- `ea236072` exactly-once delivery, no P1 double-credit, single-use binding.
+
+Root (`deepseek/p2-l06`, base `ef1cace`):
+- `a6c6429` fixture drops pre-open, triggers a real save; runner reads campaign ledger.
+- `fc683cd` relabel persistence (process restart; no checkpoint save).
+- (also the three Python/subagent edits: `144c0bf`, then this pass's delivery test additions,
+  see `tests/test_pikmin2_delivery.py`.)
+
+### Build + runtime evidence
+
+- Production `nectar.exe` SHA-256 `9395256dfc92…8474a31`, native `ea236072` clean,
+  `ninja: no work to do`.
+- Fixture `cdc637b4aea0…602f7`. Two-process run `delivery-run-fix2b`: run1 `new=1`, run2
+  `new=0`, `EXACTLY_ONCE_ACROSS_RESTART: True`, one row in `campaign/p2-delivery-receipts.txt`.
+- CTest 4/4: `p2_receipt_host_test`, `p2_receipt_host_multi_test`, `p2_delivery_receiver_test`,
+  `p2_delivery_host_test`. pytest `42 passed, 19 subtests`; `test_pikmin2_receipt_native.py`
+  `2 passed`. Evidence file: `output/dsw/l06-out/slice-fix2-evidence.txt`.
+
+### Subagent usage (fix2)
+
+- `explore` #1 (wave-branch diff + save mechanism + consumer blast-radius): used as-is — the
+  exact `bind_generator(...,sourceId70=0)`/`p2_room_bootstrap`/`p2_source_for_id` signatures,
+  the `MemoryCard::saveCurrentGame()` recipe, and the consumer call-site list drove the merge
+  and the handle refactor. The save-triggers-resume complication was discovered by the actual
+  runtime, not this audit.
+- `explore` #2 (host/test inventory + doc locations): used as-is to find every
+  `pc_p2_receipt_host_*`/`pc_p2_delivery_host_*` caller and the exact CTest blocks; flagged the
+  kogane lazy-reopen and the stale "registered as CTest" doc claim I must correct.
+- `general` #3 (root per-path ledger tests): used as-is — added the two independent-ledger
+  tests to `tests/test_pikmin2_delivery.py` (42 tests pass).
+
+## Slice 3 — provider sweep
+
+Deterministic provider fixes, the published consumer contract, and one more
+end-to-end consume (lane 31 Waterwraith view-less corpse). All build/test evidence
+is at committed native head `8e5e09b4` (dirty=no).
+
+### Carry-forward fixes (this pass)
+
+1. Closed-handle UB: `pc_p2_receipt_host_grant` / `pc_p2_delivery_host_deliver`
+   now resolve the handle through the registry (`*HostByHandle`, the same lookup
+   `_path()` uses), returning `Error` for a closed/invalid handle instead of
+   dereferencing a dangling host.
+2. Count accessor: `pc_p2_receipt_host_count(handle)` — lane 17 stops re-parsing
+   its sidecar to count receipts.
+3. Delivery-handle reset: `pc_randomizer_p2_delivery_reset()` closes the once-opened
+   `p2DeliveryHost`, wired into `pc_p2_reset_all_teki` (stage-boundary seam).
+4. Restored the atomic-write failure-path assertion in `tools/p2_receipt_host_test.cpp`.
+5. `PIKMIN_MINGW_BIN` env override for the runner's MinGW DLL path.
+
+### Consumer contract (published)
+
+`pc_port/pc_p2_receipt_host.h` (and `docs/PIKMIN2_REWARD_RECEIPTS.md` §"Family
+consumer contract") now spells out the two paths:
+- **Ordinary Onion/AP**: per-consumer `pc_p2_receipt_host_open(path)` handle +
+  `grant`/`count`/`close`; durable exactly-once across restart.
+- **Experimental Pod**: `bool pc_p2_<family>_receipt(PelletView*|Pellet*, ...)`
+  dispatched by `pc_p2_preview_deliver`; view-less number-pellet corpses use the
+  `Pellet*`-keyed form and carry a synthetic identity token.
+
+### Consume #2 (lane 31 Waterwraith)
+
+Lane 31's fixed-placement seam drops a **view-less** number-pellet corpse (no
+`mPelletView`, no generator id). Added `pc_p2_waterwraith_receipt(Pellet*,
+identity&)` (small labelled hook) and a `Pellet*`-keyed dispatch in
+`pc_p2_preview_deliver` before the abort fallback, so the drop credits the Pod
+(`P2_POD_RECEIPT id=corpse:...waterwraith`). Compiles and links at native
+`8e5e09b4`; a real GL delivery run is BLOCKED (lane-31 stage assets are not in
+this worktree, and the stand-in is never carried to the Pod naturally — see table).
+
+### Six-gate table
+
+## Concrete source ID
+- Source ID: 44 `BlueKochappy`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PARTIAL (fixture-binds 44 onto the Chappy host) | output/dsw/l06-out/delivery-run-fix2b/session-dc0da662/runs/e64887c2be1c7806da348aa1b0b499b0d2ddbfd6253fba4ac6456822ff906a1d/native.log:937 | injected |
+| 2. Autonomous movement and animation | N/A (family lane 13) | docs/PIKMIN2_SNOW_BULBORB.md | natural |
+| 3. Attacks and receivers | N/A (family lane 13 / receiver lane 10) | docs/PIKMIN2_SNOW_BULBORB.md | natural |
+| 4. Death and corpse | PARTIAL (real kill/corpse, P1-proxy) | output/dsw/l06-out/delivery-run-fix2b/session-dc0da662/runs/e64887c2be1c7806da348aa1b0b499b0d2ddbfd6253fba4ac6456822ff906a1d/native.log:938 | natural |
+| 5. Actual transport and reward | PARTIAL (receipt real, carry injected) | onion:p2:44:1 output/dsw/l06-out/delivery-run-fix2b/session-dc0da662/runs/e64887c2be1c7806da348aa1b0b499b0d2ddbfd6253fba4ac6456822ff906a1d/native.log:991 | injected |
+| 6. Cleanup and re-entry | N/A (lane 07) | docs/PIKMIN2_REWARD_RECEIPTS.md | natural |
+
+## Concrete source ID
+- Source ID: 99 `BlackMan`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | N/A (fixed-placement seam, no spawn table) | pc_port/pc_p2_waterwraith_register.cpp | natural |
+| 2. Autonomous movement and animation | N/A (family lane 31) | pc_port/pc_p2_waterwraith_actor.cpp | natural |
+| 3. Attacks and receivers | N/A (family lane 31) | pc_port/pc_p2_waterwraith_encounter.cpp | natural |
+| 4. Death and corpse | PARTIAL (real drop of a proxy stand-in number pellet) | output/dsw/l06-out/delivery-run-fix2b/session-dc0da662/runs/e64887c2be1c7806da348aa1b0b499b0d2ddbfd6253fba4ac6456822ff906a1d/native.log:991 | injected |
+| 5. Actual transport and reward | UNTESTED (hook+dispatch compile; no GL delivery run) | pc_port/pc_p2_preview.cpp | injected |
+| 6. Cleanup and re-entry | N/A (lane 07) | docs/PIKMIN2_REWARD_RECEIPTS.md | natural |
+
+### Checker output
+
+```
+44 BlueKochappy (role=source):
+  1. identity_spawn     ignored [PARTIAL]
+  2. movement_animation ignored [N/A]
+  3. attacks_receivers  ignored [N/A]
+  4. death_corpse       ignored [PARTIAL]
+  5. transport_reward   ignored [PARTIAL]
+  6. cleanup_reentry    ignored [N/A]
+99 BlackMan (role=source):
+  1. identity_spawn     ignored [N/A]
+  2. movement_animation ignored [N/A]
+  3. attacks_receivers  ignored [N/A]
+  4. death_corpse       ignored [PARTIAL]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [N/A]
+```
+(checker exit 0; no refused PASS rows — lane 06 is a provider lane, so the
+spawn/movement/attacks/cleanup gates are source-backed N/A and the reward gates
+are PARTIAL/UNTESTED with the injected/proxy label.)
+
+### Commits this pass
+
+Native (`deepseek/p2-l06-native`, base `b805d9c6`):
+- `5be052c8` closed-handle UB fix, count accessor, delivery reset, atomic-write assert.
+- `8e5e09b4` Waterwraith view-less corpse credit via Pellet*-keyed receipt.
+
+Root (`deepseek/p2-l06`, base `ef1cace`):
+- `2986eef` consumer contract doc, PIKMIN_MINGW_BIN override, count/two-path tests.
+
+### Build + test evidence
+
+- `build_lane.py l06` (production `pikmin_pc`) native `8e5e09b4` dirty=no,
+  `nectar.exe` SHA-256 `783ab689e94259eb5611b15eaa4ea4c1b5d0d13fa1e0a0281aa8fa5c48e4978a`,
+  `ninja -n` no work.
+- `build_lane.py l06 --target p2_delivery_host_test` SHA `a39c60aac1…a96ba424`.
+- `build_lane.py l06 --target p2_receipt_host_multi_test` SHA `08799de3ef…21e4b53`.
+- CTest 4/4: `p2_receipt_host_test` (count + closed-handle), `p2_receipt_host_multi_test`,
+  `p2_delivery_receiver_test`, `p2_delivery_host_test`.
+- pytest `44 passed, 19 subtests`; `test_pikmin2_receipt_native.py` `2 passed`.
+- Evidence: `output/dsw/l06-out/delivery-run-fix2b/…/native.log` (the fix2 two-process
+  delivery run; reused here for the 44 table line citations).
+
+### Subagent usage (slice 3)
+
+- `explore` #1 (Pod corpse-receipt branch + Waterwraith/Groink/Kogane): used as-is — gave
+  the exact `pc_p2_preview_deliver` dispatch, the `pc_p2_<family>_receipt` signatures
+  (PelletView*-keyed; flora Pellet*-keyed), the Waterwraith `spawnWraithCorpse` view-less
+  number-pellet path (no generator id), and the Groink `KillPellet/RequestBirth` gap. This
+  directly shaped the contract doc and the Waterwraith hook.
+- `explore` #2 (family-receipt inventory + gate-table spec + test tallies): used as-is —
+  located the 4 existing `_receipt` hooks, the `wave-root` gate-table spec/validator, and
+  reconciled the "44" vs "42" test count. The gate-table regex details saved a round-trip
+  on the checker (the enum-name + backtick binding requirement).
+- `general` #3 (count-accessor + two-path Python tests): used as-is — added
+  `test_ledger_count_accessor_and_independence` and `test_two_paths_pod_vs_onion_vocabulary_do_not_collide`;
+  confirmed `ReceiptLedger` exposes `__len__` (mirrored by `pc_p2_receipt_host_count`).
+
+## Slice 3 review fixes (fix3)
+
+### Items 1, 2, 4 — delivered
+
+1. Dropped the lane-06 Waterwraith hook. Merged `claude/p2-deepseek-wave-native`
+   (~lane 31 fix2, commit `6dfd8c8e`) and took lane 31's
+   `pc_p2_waterwraith_receipt(Pellet*, unsigned&)` + `sCorpses` map + per-tick
+   liveness sweep + its own `pc_p2_preview.cpp` dispatch (after otakara), removing
+   my `std::string&`-signature duplicate, `spawnedPellet` field, and my preview
+   branch (merge commit `27225e43`).
+2. Moved `pc_randomizer_p2_delivery_reset()` from the per-actor
+   `pc_p2_forget_teki` into `pc_p2_reset_all_teki` (the stage-boundary seam it
+   documents), and restored the tab indentation at the forget-source hook.
+4. Repo path corrected (`native/pc_port` -> `engine/pc_port`) in
+   `docs/PIKMIN2_REWARD_RECEIPTS.md`; the two-path vocabulary test now asserts
+   through the real identity helpers + `pikmin2_reward_lifecycle.validate` instead
+   of a hand-built list; CTest log archived at `output/dsw/l06-out/ctest-fix3.txt`
+   (4/4 pass at native `27225e43`, dirty=no).
+
+Added the free-mode requirement to the Pod contract (both the header block and
+`docs/PIKMIN2_REWARD_RECEIPTS.md`): natural pickup needs free-mode Pikmin
+(`Piki::graspSituation` only runs from `ActFree`; `mIdleWorkSearchRange` 100.0);
+reference fixtures must release the squad (`Navi::releasePikis` /
+`Piki::changeMode(FreeMode)`).
+
+### Item 3 (end-to-end GL reference) — BLOCKED
+
+A fresh corpse -> Pod -> `pc_p2_preview_deliver` -> family receipt GL run could not
+be produced this slice from lane 06's worktree:
+
+- **Waterwraith (lane 31, the requested view-less corpse):** the stand-in
+  `newNumberPellet` has `mPelletView == nullptr`; lane 31's own wave runs record
+  `P2_WATERWRAITH_CARRY_UNRESOLVED … no_natural_carry` /
+  `P2_WATERWRAITH_CARRY_BLOCKED … viewless_number_pellet_mPelletView_null` (carry is
+  formation-mode locked); fixing it needs a free-mode release in lane 31's fixture,
+  which is beyond lane 06's module boundary.
+- **Mamuta (lane 19, the proven corpse-leaving family on the wave):** `l19-out` has
+  the prebuilt natural fixture + `imported/` + `pod/`, but running it from lane 06's
+  root exits 3 with `P2_MAMUTA invalid profile` (`pc_port/pc_p2_mamuta.cpp:29` →
+  `loadModel` `assets/dataDir/courses/pikmin2room/<name>.mod`): lane 06's
+  `experimental/pikmin2_mamuta_arena.prepare` does not stage the Miulin `.mod` model
+  clips (lane 19's branch does); that module is lane 19's and is not edited here.
+
+Consequence: the `99 BlackMan` six-gate table in this handoff is superseded — the
+Waterwraith receipt is now lane 31's, so the transport/reward rows stay
+`UNTESTED (injected)`/`PARTIAL` with no lane-06 evidence, and no positive
+`P2_POD_RECEIPT id=corpse:…` run is claimed. The Onion-path reference is unchanged
+(`44 BlueKochappy` table, `delivery-run-fix2b`).
+
+### Checker output (after fix3)
+
+```
+44 BlueKochappy (role=source):
+  1. identity_spawn     ignored [PARTIAL]
+  2. movement_animation ignored [N/A]
+  3. attacks_receivers  ignored [N/A]
+  4. death_corpse       ignored [PARTIAL]
+  5. transport_reward   ignored [PARTIAL]
+  6. cleanup_reentry    ignored [N/A]
+99 BlackMan (role=source):
+  1. identity_spawn     ignored [N/A]
+  2. movement_animation ignored [N/A]
+  3. attacks_receivers  ignored [N/A]
+  4. death_corpse       ignored [PARTIAL]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [N/A]
+```
+(checker exit 0; no refused PASS rows.)
+
+### Commits this pass
+
+Native (`deepseek/p2-l06-native`): `27225e43` merge wave + drop duplicate Waterwraith
+hook + move delivery reset to stage boundary.
+Root (`deepseek/p2-l06`): `787eb72` repo-path fix + de-tautologized two-path test;
+`fc476bd` free-mode contract note.
+
+### Subagent usage (fix3)
+
+- `explore` #1 (lane-31 merged receipt + free-mode facts): used as-is — gave the exact
+  wave signature `pc_p2_waterwraith_receipt(Pellet*, unsigned&)` + `sCorpses` + sweep,
+  my exact lines to remove (register.cpp:28/61/221-231, register.h:28/32/64-67,
+  preview.cpp:29/344-348), and the free-mode pickup facts
+  (`graspSituation` piki.cpp:912/1102-1128, `mIdleWorkSearchRange` 100.0,
+  `ActFree::exec` aiFree.cpp:182, `Navi::releasePikis`). This made the merge removal and
+  the contract free-mode note exact and fast.
+- `explore` #2 (assets + proven-family inventory): used as-is — identified `l31-out`
+  staged assets and named Mamuta (lane 19) as the only proven corpse→Pod→receipt family
+  with its runner command; also confirmed the Waterwraith carry is architecturally blocked.
+  Directly shaped the item-3 attempt and the honest BLOCKED record.
+- `general` #3 (de-tautologize the two-path test): used as-is — rewrote
+  `test_two_paths_pod_vs_onion_vocabulary_do_not_collide` to assert via the real helpers
+  + `validate` (44 passed); I committed it with the doc fixes.

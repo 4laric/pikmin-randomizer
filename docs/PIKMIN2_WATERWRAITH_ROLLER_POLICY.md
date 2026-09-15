@@ -171,7 +171,9 @@ actor/AI/receivers. Bundle: `native-candidates/waterwraith-visual/`
 (walk/dead/freeze/bend/escape/fall/flick/recover/tired) with host-fed triggers,
 host-driven route locomotion (fp05 120, ip01 two-step timer), a
 `P2WaterwraithRig`-owned Tyre child, and a `p2_waterwraith_actor_apply_damage`
-hook gated on the rig's `damageable()` state (Purple-only structurally).
+hook that gates the riding roller on `damageable()` and the dismounted body on
+`ownerInvulnerableSet()` (roller Purple-only structurally; the dismounted body
+accepts all Pikmin, mirroring `blackMan.cpp:680`).
 
 Branch `opencode/p2-lane31-actor` @ `e8da82aa938c33d9d5564bfdc75bc9c5fd150a8c`
 (base `opencode/p2-lane31-integ` @ `5d38a918`, clean). Standalone fixture

@@ -1,27 +1,32 @@
-"""Lane 05 slice 4: the generated seed end-to-end through staging.
+"""Lane 05 slice 5: the generated seed resolves on the wave native, end to end.
 
-Generates a real ``randomizer.seed.generate`` seed on a synthetic ledger with a
-small admitted cohort (one identity by default), stages its content through the
-REAL runner entry point (``runner.launch`` -> ``install_layout``) into the
-preview-generator room, boots ``nectar.exe --experimental-pikmin2-room`` and
-proves the engine loaded exactly the identities the seed chose — and nothing
-else, at the slots the seed bound.
+Generates a real ``randomizer.seed.generate`` seed on the REAL lane-04 placement
+catalog (restricted to the arena's stage-0 ground slots, cohort acceptance
+stamped), stages its content through the REAL runner entry point
+(``runner.launch`` -> ``install_layout``) into the preview-generator room, and
+boots ``nectar.exe --experimental-pikmin2-room --randomizer-seed <bootstrap>`` so
+the wave native resolves the seed's chosen slot natively: lane-04
+``P2_PLACEMENT_SLOT`` (reads the staged ``p2-placement-slots.txt`` sidecar), lane-03
+``P2_SEED_RESOLVE source_id=<n>`` (``GenObjectTeki::birth``) and the family
+``P2_ENEMY_READY`` for the SAME generator, plus the Snow run's ``P2_SNOW_BANK``
+with the Pod present.
 
 The admission cohort is injected the same way lane 03/04 seed tests do
 (``experimental.pikmin2_seed_bridge.admitted_ids`` is patched for the duration of
 ``generate`` and ``runner.launch``, because the committed roster denies by
 default). The Pod (``p2-pod.txt``/``pod.mod``) is a preview/reward anchor, not
 enemy family content: staged here so ``pc_p2_enemy.cpp:161`` does not gate
-preview-mode Snow; ownership is discussed in the handoff.
+preview-mode Snow; ownership is lane 13.
 
-    py -3.12 slot.py run gl l05 -- py -3.12 scripts/run_p2_generated_seed.py run \
+    py -3.12 slot.py run gl l05 -- py -3.12 scripts/run_p2_generated_seed.py stage \
         --assets <P1> --converted <c> --bank <bank> --profile <ref> --snow <cohort-run> \
-        --pod <cohort-run> --exe <nectar.exe> --out <dir> --seed seed-slice4 --cohort 44
+        --pod <cohort-run> --out <dir> --seed seed-slice5 --cohort 44
+    py -3.12 slot.py run gl l05 -- py -3.12 scripts/run_p2_generated_seed.py run \
+        --exe <nectar.exe> --out <dir>
 """
 import argparse
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -31,25 +36,42 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from scripts.probe_p2_cohort_native import (  # noqa: E402
-    GENERATOR_FOR_SOURCE, IDENTITY_ROWS, POD_CONFIG, build_content, build_retail,
+    GENERATOR_FOR_SOURCE, POD_CONFIG, build_content, build_retail,
     write_placement_sidecar)
-from experimental.pikmin2_seed_evidence import find_mingw, ready_species  # noqa: E402
+from experimental.pikmin2_seed_evidence import (  # noqa: E402
+    cohort_markers, find_mingw, ready_species, resolve_markers)
 
-SLOT_UID_BASE = 400
 ENUM_FOR_SOURCE = {44: 'BlueKochappy', 45: 'YellowKochappy'}
 READY_TOKEN = {44: 'BlueKochappy', 45: 'YellowKochappy'}
 
 
 def placement_document(cohort):
-    slots, profiles = [], []
-    for index, source_id in enumerate(sorted(cohort)):
-        uid = SLOT_UID_BASE + index + 1
-        enum = ENUM_FOR_SOURCE[source_id]
-        slots.append({'uid': uid, 'label': f'{enum.lower()}-slot', 'stage': 0,
-                      'terrain': 'ground', 'radius': 300.0,
-                      'evidence': {'xyz': True, 'terrain': True, 'route': True}})
-        profiles.append({'identity': enum, 'terrains': ['ground'], 'accepted_gates': ['xyz']})
-    return {'schema': 'p2-placement-v1', 'slots': slots, 'profiles': profiles}
+    """The REAL lane-04 catalog restricted to one arena slot, cohort accepted (stamped).
+
+    The arena holds one generator per identity, so the seed is bound to a single
+    real catalog slot (the first stage-0 ground slot uid) — the seed's chosen slot.
+    The catalog ships deny-by-default, so the slot's ``xyz``/``terrain``/``route``
+    evidence is set True and the cohort profiles are given ``accepted_gates=['arena']``.
+    This is labelled INJECTED admission shaping for the bridge, not a claim the
+    native run accepted the cohort.
+    """
+    from randomizer import p2_placement_catalog as catalog
+    from randomizer.p2_placement import validate_document
+    doc = json.loads(json.dumps(catalog.build_document()))
+    ground = [slot for slot in doc['slots']
+              if slot['stage'] == 0 and slot['terrain'] == 'ground']
+    if not ground:
+        raise ValueError('no stage-0 ground slot in the placement catalog')
+    arena_slot = dict(min(ground, key=lambda slot: slot['uid']))
+    arena_slot.setdefault('evidence', {})
+    for key in ('xyz', 'terrain', 'route'):
+        arena_slot['evidence'][key] = True
+    doc['slots'] = [arena_slot]
+    cohort_enums = {ENUM_FOR_SOURCE[source_id] for source_id in cohort}
+    for profile in doc['profiles']:
+        if profile['identity'] in cohort_enums:
+            profile['accepted_gates'] = ['arena']
+    return validate_document(doc)
 
 
 def stage(args):
@@ -123,9 +145,11 @@ def boot_native(stage_dir, exe, out, seconds):
         kw['startupinfo'] = startup
     log_path = out / 'native.log'
     timed_out = False
+    bootstrap = Path(stage_dir) / 'bootstrap.txt'
+    cmd = [str(Path(exe).resolve()), '--experimental-pikmin2-room',
+           '--randomizer-seed', str(bootstrap.resolve())]
     with log_path.open('w', encoding='utf-8') as lg:
-        proc = subprocess.Popen([str(Path(exe).resolve()), '--experimental-pikmin2-room'],
-                                stdout=lg, stderr=subprocess.STDOUT, **kw)
+        proc = subprocess.Popen(cmd, stdout=lg, stderr=subprocess.STDOUT, **kw)
         try:
             proc.wait(timeout=seconds)
         except subprocess.TimeoutExpired:
@@ -144,27 +168,30 @@ def run(args):
     cohort = stage_json['cohort']
     text, timed_out, returncode = boot_native(stage_json['run'], args.exe, out, args.seconds)
 
-    roster = re.search(r'default: read (\d+) generators', text)
-    checks = {
-        'window_960x540': '960x540' in text,
-        'roster_read': roster is not None,
-        'roster_curated': roster is not None and int(roster.group(1)) < 80,
-        'no_missing_room': 'FAILED to open assets/dataDir/courses/pikmin2room/' not in text,
-        'no_duplicate_treasure': 'duplicate treasure' not in text,
-    }
-    observed = ready_species(text)
+    checks = cohort_markers(text)
+    # Per-identity bank/READY checks are recomputed from the staged cohort; the
+    # fixed bank/ready keys cohort_markers pre-filled are popped rather than
+    # duplicated (a source outside the cohort must emit NEITHER its bank NOR its
+    # READY line).
+    for key in ('dwarf_bank', 'dwarf_ready', 'snow_bank', 'snow_ready'):
+        checks.pop(key, None)
     for source_id, token in READY_TOKEN.items():
+        bank_line = ('P2_DWARF_ORANGE_BANK poses=' if source_id == 44
+                     else 'P2_SNOW_BANK poses=') in text
+        ready_line = f'P2_ENEMY_READY species={token}' in text
         if source_id in cohort:
-            checks[f'ready_{token}'] = f'P2_ENEMY_READY species={token}' in text
-            checks[f'bank_{token}'] = ('P2_DWARF_ORANGE_BANK poses=' if source_id == 44
-                                       else 'P2_SNOW_BANK poses=') in text
+            checks[f'ready_{token}'] = ready_line
+            checks[f'bank_{token}'] = bank_line
         else:
-            checks[f'no_ready_{token}'] = f'P2_ENEMY_READY species={token}' not in text
-    checks['only_seed_identity'] = set(observed) == {READY_TOKEN[s] for s in cohort}
+            checks[f'no_ready_{token}'] = not ready_line
+            checks[f'no_bank_{token}'] = not bank_line
+    checks['only_seed_identity'] = set(ready_species(text)) == {READY_TOKEN[s] for s in cohort}
+    # Wave-native resolution: lane-03 seed bridge + lane-04 placement reader agree.
+    checks.update(resolve_markers(text, cohort, GENERATOR_FOR_SOURCE))
 
     passed = (timed_out or returncode == 0) and all(checks.values())
     result = dict(passed=passed, timed_out=timed_out, exit_code=returncode,
-                  cohort=cohort, checks=checks, observed_species=observed,
+                  cohort=cohort, checks=checks, observed_species=ready_species(text),
                   bindings=stage_json['bindings'], generator_slots=stage_json['generator_slots'])
     (out / 'evidence.json').write_text(json.dumps(result, indent=2))
     for keep in (Path(stage_json['run']) / 'p2-binding-receipt.json', out / 'stage.json'):

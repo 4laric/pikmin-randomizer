@@ -127,7 +127,7 @@ and invalid receipt rows.
 
 ## Native provider surface
 
-The C++ counterpart ships in `native/pc_port/pc_p2_receipt.h` (engine-free, no
+The C++ counterpart ships in `engine/pc_port/pc_p2_receipt.h` (engine-free, no
 engine types and no save layout):
 
 - `P2Receipt::ReceiptLedger` — exactly-once grants over a `ReceiptPersistence`
@@ -153,8 +153,8 @@ Consumer agreement with lane 18 (#220): the small PanModoki / nest keeps only
 per-species parameters and consumes this transition table instead of forking the
 contest in `pc_p2_giant_breadbug_actor.cpp`.
 
-Tests: `native/tools/p2_receipt_test.cpp`,
-`native/tools/p2_cargo_contest_test.cpp` (registered as CTest
+Tests: `engine/tools/p2_receipt_test.cpp`,
+`engine/tools/p2_cargo_contest_test.cpp` (registered as CTest
 `p2_receipt_test` / `p2_cargo_contest_test`) and the root
 `tests/test_pikmin2_receipt_native.py` which compiles the headers against the
 resolved native source.
@@ -224,3 +224,38 @@ and proving no duplicate/lost required reward across revisit/process restart on
 a real generated session, remains the lane-06 next slice (needs lane 01 +
 real-GL).
 
+
+## Family consumer contract (Pod vs Onion)
+
+A family credits a corpse in exactly one of two ways; it must never credit the
+same drop twice.
+
+1. **Ordinary Onion/AP receipt.** Open a per-consumer `pc_p2_receipt_host` handle
+   and grant:
+   ```cpp
+   static P2ReceiptHostHandle receipt = nullptr;
+   receipt = pc_p2_receipt_host_open("p2-<family>-receipts.txt");
+   pc_p2_receipt_host_grant(receipt, seed, identity, slot, encounter);   // Granted|Duplicate|Error
+   pc_p2_receipt_host_count(receipt);                                    // don't re-parse the file
+   pc_p2_receipt_host_close(receipt);                                    // at reset; receipt = nullptr
+   ```
+   `identity = "enemy:<source_id>"` (ordinary), `slot` = the generator/actor token,
+   `encounter` a stable event label (`corpse`, `flip`, `onion`, ...). Revisit/restart
+   re-reads the same file, so exactly-once is durable.
+
+2. **Experimental Pod corpse receipt.** Implement
+   `bool pc_p2_<family>_receipt(PelletView* view, unsigned& generator [, int& value])`
+   (or a `Pellet*`-keyed variant for a view-less number pellet, which must return a
+   synthetic identity token because no generator survives) and let
+   `pc_p2_preview_deliver` dispatch it into the Pod economy
+   (`P2_POD_RECEIPT id=corpse:...`, `p2-economy.txt`). This path never writes the
+   Onion ledger and must never cover an ordinary expected check.
+
+   Natural pickup requires **free-mode** Pikmin: `Piki::graspSituation`
+   (src/plugPikiKando/piki.cpp, pellet block ~1102-1128, `mIdleWorkSearchRange`
+   100.0) only runs from free mode (`ActFree`); formation Pikmin leave a headless
+   corpse alone. A reference fixture/receiver must release the squad into free
+   mode (`Navi::releasePikis()` / `Piki::changeMode(PikiMode::FreeMode, ...)`) near
+   the corpse before asserting a natural carry.
+
+The full contract block also lives in `engine/pc_port/pc_p2_receipt_host.h`.

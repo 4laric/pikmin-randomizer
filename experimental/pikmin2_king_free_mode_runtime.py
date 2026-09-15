@@ -4,12 +4,16 @@ Slice 1 proved the Emperor's lethal path using the labeled per-tick re-pin of th
 live squad into a ring, which the reviewer flagged as neutralising the Flick
 (re-firing the entry blow for every stuck Pikmin after each Flick). This harness
 removes that inflation: the 20-red squad is authored in a ring ONCE, switched to
-`PikiMode::FreeMode`, and left to its own AI. The Emperor's `receiveScan` is a raw
-proximity scan (no Piki attack-state check), so this run measures whether 20 free
-Pikmin can still kill it and, if not, records the health floor and mechanism.
+`PikiMode::FreeMode`, and left to its own AI.
 
-No `p2-king-inject.txt`, no bombs, no per-tick re-pin. It reuses the #289 sampled
-actor and the #234 bank.
+Slice 3 makes the Emperor's `receiveScan` source-faithful (a Pikmin only sticks
+when it is actually attached and running the attack action, not merely inside the
+root collision sphere), removes the per-frame captain refill, and parks the
+captain outside `KingSight`. This run reports whether 20 free Pikmin still latch
+and kill the Emperor, or an honest health floor.
+
+No `p2-king-inject.txt`, no bombs, no per-tick re-pin, no captain refill. It
+reuses the #289 sampled actor and the #234 bank.
 """
 import argparse
 import json
@@ -41,11 +45,13 @@ public:int idle() override {
  if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
  if(!pc_p2_preview_cargo_free_ready()||!naviMgr||!tekiMgr||!mapMgr)return result;
  Navi* n=naviMgr->getNavi();if(!n||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;++ready;
- static bool sustainLogged=false;static bool healLogged=false;if(n->mHealth<500.0f){n->mHealth=500.0f;if(!healLogged){healLogged=true;std::puts("P2_KING_FREEMODE_NAVI_HEAL injection=1 staging=captain_refill");}}
- {int ns=n->mStateMachine->getCurrID(n);if(ns==NAVISTATE_Pressed||ns==NAVISTATE_Flick||ns==NAVISTATE_Dead||ns==NAVISTATE_PikiZero||ns==NAVISTATE_DemoSunset||ns==NAVISTATE_DemoWait||ns==NAVISTATE_DemoInf){n->mStateMachine->transit(n,NAVISTATE_Walk);if(!sustainLogged){sustainLogged=true;std::puts("P2_KING_FREEMODE_NAVI_SUSTAIN injection=1");}}}
+ // Slice 3: no captain refill. The captain is parked far outside KingSight once
+ // and never healed or sustained, so the free-mode result is not propped up by
+ // staging markers (NAVI_HEAL/NAVI_SUSTAIN are gone from this harness).
  {static bool guardLogged=false;if((int)GameStat::allPikis==0){GameStat::allPikis.set(1,Red);if(!guardLogged){guardLogged=true;std::puts("P2_KING_FREEMODE_GUARD_PIKMIN injection=1");}}}
  if(ready==1){
   n->mKontroller=new FixtureController();for(int i=0;i<DEMOFLAG_COUNT;++i)playerState->mDemoFlags.setFlagOnly(i);
+  n->resetPosition(Vector3f(34.0f,30.0f,400.0f)); // captain parked far outside KingSight (300)
   // Deploy once: switch the authored 20-red ring to FreeMode and leave it alone.
   int red=0,other=0;Iterator p(pikiMgr);CI_LOOP(p){Piki* a=static_cast<Piki*>(*p);if(!a||!a->isAlive())continue;if(a->mColor==Red){++red;a->changeMode(PikiMode::FreeMode,n);}else++other;}
   std::ifstream holding("king-keep-open.txt");hold=bool(holding);

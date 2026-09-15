@@ -30,6 +30,7 @@
 #include "Piki.h"
 #include "PikiState.h"
 #include "PikiMgr.h"
+#include "Pellet.h"
 #include "Navi.h"
 #include "NaviMgr.h"
 #include "Generator.h"
@@ -122,6 +123,8 @@ struct Otakara {
     float logTimer = 0.0f;
     std::string lastInteraction = "unknown";
     std::string lastAttacker = "none";
+    unsigned generator = 0;
+    bool deathSeamLogged = false;
 };
 
 std::map<PelletView*, Otakara> actors;
@@ -320,7 +323,37 @@ void pc_p2_otakara_reset() {
 }
 
 void pc_p2_otakara_forget(BTeki* actor) {
-    actors.erase(static_cast<PelletView*>(actor));
+    auto it = actors.find(static_cast<PelletView*>(actor));
+    if (it == actors.end()) return;
+    const unsigned generator = it->second.generator;
+    actors.erase(it);
+    // lane-07 seam (pc_p2_forget_teki in BTeki::doKill / slot reuse): report the
+    // registration actually dropping (count after the erase). This marker is
+    // computed from the live map; the fixture's P2_OTAKARA_SEAM_OBSERVED is the
+    // authoritative zero-registration probe.
+    const unsigned long after = (unsigned long)actors.size();
+    std::printf("P2_OTAKARA_FORGET generator=%u registered=1 count=%lu\n", generator, after);
+    std::fflush(stdout);
+}
+
+void pc_p2_otakara_died(BTeki* actor) {
+    if (!ready) return;
+    auto it = actors.find(static_cast<PelletView*>(actor));
+    if (it == actors.end() || it->second.deathSeamLogged) return;
+    it->second.deathSeamLogged = true;
+    // Host death seam (BTeki::die, mDeadState transition), distinct from the
+    // module's P2_OTAKARA_MODULE_DEAD observation on mHealth<=0.
+    std::printf("P2_OTAKARA_DEAD generator=%u source_id=%d mDeadState=1\n",
+                it->second.generator, it->second.species);
+    std::fflush(stdout);
+}
+
+bool pc_p2_otakara_receipt(PelletView* view, unsigned& generator) {
+    if (!view || !ready) return false;
+    auto it = actors.find(view);
+    if (it == actors.end()) return false;
+    generator = it->second.generator;
+    return true;
 }
 
 void pc_p2_otakara_attack(BTeki* actor, Creature* owner, const char* interaction) {
@@ -461,6 +494,7 @@ void pc_p2_otakara_setup() {
         s.stimulus = p2dweevil::stimulusFor(s.species);
         s.life = speciesLife(s.species);
         s.attack = speciesAttack(s.species);
+        s.generator = actor->mGenerator->_70;
         s.rng = (actor->mGenerator->_70 * 2654435761u) | 1u;
         s.home = actor->getPosition();
         s.target = s.home;
@@ -513,7 +547,7 @@ void pc_p2_otakara_update(BTeki* actor) {
 
     if (actor->mHealth <= 0.0f && s.state != OTA_DEAD) {
         if (!s.deadLogged) {
-            std::printf("P2_OTAKARA_DEAD generator=%u source_id=%d health=0\n", generator, s.species);
+            std::printf("P2_OTAKARA_MODULE_DEAD generator=%u source_id=%d health=0\n", generator, s.species);
             std::fflush(stdout);
             s.deadLogged = true;
         }

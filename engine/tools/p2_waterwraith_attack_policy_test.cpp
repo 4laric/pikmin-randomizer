@@ -29,7 +29,7 @@ int main()
         assert((e.actions & ActionStun) != 0u);
         assert((e.actions & ActionHit) == 0u);
         assert((e.actions & ActionCrush) == 0u);
-        assert(e.purpleHits == 0 && e.crushTargets == 0);
+        assert(e.acceptedHits == 0 && e.crushTargets == 0);
     }
 
     // 2. Riding, damageable (frozen): Purple in hit range is accepted once each;
@@ -40,7 +40,7 @@ int main()
         assert((e.actions & ActionHit) != 0u);
         assert((e.actions & ActionStun) == 0u);
         assert((e.actions & ActionCrush) == 0u);
-        assert(e.purpleHits == 1);
+        assert(e.acceptedHits == 1);
     }
 
     // 3. Riding, damageable: a Purple outside the hit radius does nothing.
@@ -70,15 +70,15 @@ int main()
         assert((e.actions & ActionStun) != 0u);
     }
 
-    // 6. Dismounted (no child): no stun, no crush; the exposed body still takes
-    //    Purple hits at hit range.
+    // 6. Dismounted (no child): no stun, no crush; the exposed body takes hits
+    //    from ANY Pikmin at hit range (source blackMan.cpp:680 has no color gate).
     {
         Target t[] = { make(40.0f, 0.0f, true), make(20.0f, 0.0f, false) };
         Evaluation e = evaluate(rule, 0.0f, 0.0f, false, true, false, t, 2);
         assert((e.actions & ActionStun) == 0u);
         assert((e.actions & ActionCrush) == 0u);
         assert((e.actions & ActionHit) != 0u);
-        assert(e.purpleHits == 1);
+        assert(e.acceptedHits == 2); // both the Purple and the non-Purple land a hit
     }
 
     // 7. Dead targets are ignored.
@@ -92,7 +92,7 @@ int main()
     {
         Target t[] = { make(10.0f, 0.0f, true), make(20.0f, 30.0f, true), make(300.0f, 0.0f, true) };
         Evaluation e = evaluate(rule, 0.0f, 0.0f, true, true, false, t, 3);
-        assert(e.purpleHits == 2);
+        assert(e.acceptedHits == 2);
     }
 
     std::puts("PASS WATERWRAITH_ATTACK_POLICY");

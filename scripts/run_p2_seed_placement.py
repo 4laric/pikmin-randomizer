@@ -15,7 +15,7 @@ Expected single-log evidence (one complete chain per resolving generator):
 
 Run only under the host GL slot:
 
-    py -3.12 <repo>/output/deepseek-wave/slot.py run gl l04 -- \\
+    py -3.12 <repo>/output/deepseek-wave/slot.py run gl <lane> -- \\
         py -3.12 scripts/run_p2_seed_placement.py \\
             --assets <P1 assets> --bank <dwarf-orange bank> --profile <profile dir> \\
             --exe <nectar.exe> --output <out dir> --seed <seed name>
@@ -23,7 +23,6 @@ Run only under the host GL slot:
 import argparse
 import json
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path

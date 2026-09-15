@@ -90,6 +90,21 @@ P2_PLACEMENT_PROBE actors=2 evidence_slots=2
     assert result.source == ORANGE_SOURCE
 
 
+def test_validator_flips_when_second_generator_ready_stripped():
+    both = """\
+P2_SEED_RESOLVE source_id=44 target=5465461 original_type=3 x=-150.0 z=1850.0
+P2_SEED_RESOLVE source_id=44 target=513430982 original_type=3 x=150.0 z=1550.0
+P2_PLACEMENT_SLOT generator=211001 slot=5465461 actor=3 xyz=1 terrain=ground route=1 route_distance=61.2 x=-150.000 y=30.000 z=1850.000 water_depth=0.00
+P2_PLACEMENT_SLOT generator=211002 slot=513430982 actor=3 xyz=1 terrain=ground route=1 route_distance=129.3 x=150.000 y=30.000 z=1550.000 water_depth=0.00
+P2_ENEMY_READY species=BlueKochappy source_id=44 native_family=Chappy generator=211001 x=-150.0000000 y=30.0000000 z=1850.0000000 health=250.0
+P2_PLACEMENT_PROBE actors=2 evidence_slots=2
+"""
+    result = validate_cooccurrence(both)
+    assert not result.ok
+    assert "P2_ENEMY_READY births" in result.reason
+
+
+
 
 def _native_root():
     root = os.environ.get("PIKMIN_NATIVE_ROOT")

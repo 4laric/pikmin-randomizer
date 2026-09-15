@@ -1,46 +1,41 @@
-"""Lane-22 natural elemental dweevil runtime gate (#170, child #447).
+"""Lane-22 elemental dweevil runtime gate (#170, child #447): host seams.
 
-Runs the real actor-bound Fiery Dweevil (FireOtakara, EnemyID 59) FSM
-(``pc_port/pc_p2_otakara.cpp``) on the batch-2 Chappy placement vehicle and
-observes the natural elemental emitter -> receiver chain plus the natural
-combat -> death -> corpse -> cleanup path:
+Slice 3 moves the death/forget/reward evidence off the fixture and onto the host
+seams. The primary run (`scenario='natural'`) stages the concrete P2 Pod room
+(red Onion goal + treasure + `p2-pod.txt`) with a FireOtakara Chappy actor placed
+inside carry range of the goal, then:
 
-* identity/spawn: ``P2_OTAKARA_BIND generator=349001 source_id=59
-  stimulus=InteractFire visual_only=0`` and ``P2_ENEMY_READY
-  species=FireOtakara ... source_FSM=implemented attack=elemental_discharge``;
-* movement/animation: the FSM drives the shared OtakaraBase ``wait1``/``attack1``
-  clips and flicks when a Pikmin is inside the 60-unit source hit radius;
-* natural elemental discharge: event type 3 of the ``attack1`` clip emits the
-  real ``InteractFire`` receiver. A Red Pikmin is rejected (``P2_OTAKARA_
-  DISCHARGE_IMMUNE ... colour=red``), a Blue Pikmin transits the fire panic
-  (``P2_OTAKARA_DISCHARGE_HIT ... stimulus=InteractFire accepted=1``);
-* natural combat death: the starting squad is deployed in a circle around the
-  actor and switched to ``FreeMode`` (player-equivalent stimulus, no fixture
-  damage). Ordinary Pikmin ``InteractAttack`` receivers reduce health; every drop
-  is logged with its interaction and attacker colour (``P2_OTAKARA_HIT ...
-  interaction=InteractAttack attacker=red``). The real death seam is
-  ``P2_OTAKARA_DEAD ... health=0``;
-* host corpse: the fixture keeps running past mHealth<=0 so the host
-  die()/dieSoon()/becomePellet() path runs; it observes the corpse pellet whose
-  ``mPelletView`` is the dead actor (``P2_OTAKARA_CORPSE ... pellet=1``);
-* cleanup: the lane-07 lifecycle seam ``pc_p2_otakara_forget`` clears the dead
-  binding and the registry returns to zero (``P2_OTAKARA_FORGET ... count=0
-  registered=0 stale=0``); no stale fire/red/blue pointers remain.
+* deploys the 20-Pikmin free squad so ordinary ``InteractAttack`` receivers bring
+  the actor down (every drop named `interaction=… attacker=…`);
+* lets the module's ``BTeki::die()`` hook log the real death seam
+  (``P2_OTAKARA_DEAD … mDeadState=1``) distinct from the module's own
+  mHealth<=0 observation (``P2_OTAKARA_MODULE_DEAD``);
+* observes the host dieSoon()/becomePellet() corpse pellet
+  (``P2_OTAKARA_CORPSE``);
+* lets the Pikmin haul the corpse pellet to the Onion, where
+  ``pc_p2_preview_deliver`` routes the corpse into the shared Pod economy
+  (``P2_POD_RECEIPT id=corpse:…otakara:349001``) from the additive
+  ``pc_p2_otakara_receipt`` lookup branch (no separate ledger);
+* waits for the lane-07 seam ``pc_p2_forget_teki`` in ``BTeki::doKill`` to clear
+  the registration after the pellet is consumed, and proves the registry dropped
+  to zero without invoking ``pc_p2_otakara_forget`` itself; the module's own
+  ``P2_OTAKARA_FORGET`` marker reports a computed ``stale=0``.
 
-The leading ``InteractAttack`` death inject of the previous slice is retained as
-the ``scenario='inject'`` variant for cross-checking the recorder-side death path;
-the primary run is natural combat.
+The prior ``scenario='inject'`` (one-shot ``InteractAttack`` death trigger) is
+retained as a recorder-side cross-check; it is not the primary run.
 """
 import argparse
 import functools
 import json
 import os
 import re
+import struct
 from pathlib import Path
 
 from experimental.pikmin2_animation_profile import capture_command
 from experimental.pikmin2_batch2_core import install, prepare as _prepare, verify_install
 from experimental.pikmin2_batch2_families import FAMILIES
+from experimental.pikmin2_generator_pose import write_position
 import experimental.pikmin2_elecbug_immunity_behavior as immunity
 
 FIRE_ID = 349001
@@ -53,12 +48,12 @@ APP_NATURAL = r'''class RoomApp : public PlugPikiApp {
  int frames=0,observed=0,stage=0,deadAt=0,deployed=0;
  Teki* fire=nullptr;
  Piki* red=nullptr;Piki* blue=nullptr;
- bool blueHit=false,deadSeen=false,violation=false;
  Pellet* corpse=nullptr;
+  bool blueHit=false,deadSeen=false,corpseSeen=false,assisted=false,violation=false,freeCarryLogged=false;
  public:int idle() override {
-  int result=PlugPikiApp::idle();require(++frames<120000,"otakara natural runtime startup timeout");
+  int result=PlugPikiApp::idle();require(++frames<120000,"otakara runtime startup timeout");
   if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
-  if(!pc_p2_preview_cargo_free_ready()||!naviMgr||!pikiMgr||!tekiMgr)return result;
+  if(!(pc_p2_preview_cargo_free_ready()||pc_p2_preview_ready())||!naviMgr||!pikiMgr||!tekiMgr||!pelletMgr)return result;
   Navi* n=naviMgr->getNavi();if(!n||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;
   ++observed;
   if(stage==0){
@@ -74,9 +69,6 @@ APP_NATURAL = r'''class RoomApp : public PlugPikiApp {
    std::fflush(stdout);stage=1;
   }
   if(stage<2){
-   // Park the fire-immune Red and fire-vulnerable Blue inside the 60-unit
-   // discharge radius so the native Flick discharge reaches them (labelled
-   // fixture intervention; the FSM/emitter/receiver are native).
    const Vector3f fp=fire->getPosition();
    if(red->isAlive()&&red->getState()!=PIKISTATE_Fired)red->mSRT.t=Vector3f(fp.x+14.0f,fp.y,fp.z);
    if(blue->isAlive()&&blue->getState()!=PIKISTATE_Fired)blue->mSRT.t=Vector3f(fp.x+32.0f,fp.y,fp.z);
@@ -97,25 +89,38 @@ APP_NATURAL = r'''class RoomApp : public PlugPikiApp {
    if(stage==1&&observed>900){std::puts("FAIL P2_OTAKARA_RUNTIME discharge_timeout");std::fflush(stdout);std::_Exit(1);}
   }
   if(stage>=2&&!deadSeen&&fire->mHealth<=0.0f){deadSeen=true;deadAt=observed;}
-  if(deadSeen&&!corpse){
-   // The host die()/dieSoon()/becomePellet() path leaves a corpse pellet whose
-   // mPelletView is the dead actor; pointer identity only, no deref of fire.
+  if(deadSeen&&!corpseSeen){
+   // Pointer identity only (never deref fire once the host owns teardown).
    Iterator pi(pelletMgr);CI_LOOP(pi){Pellet* pp=static_cast<Pellet*>(*pi);if(pp->mPelletView==static_cast<PelletView*>(fire)){corpse=pp;break;}}
-   if(corpse){std::printf("P2_OTAKARA_CORPSE generator=349001 pellet=1 state=%d\n",corpse->getState());std::fflush(stdout);}
+   if(corpse){corpseSeen=true;std::printf("P2_OTAKARA_CORPSE generator=349001 pellet=1 state=%d\n",corpse->getState());std::fflush(stdout);}
    else if(observed-deadAt>1200){std::puts("FAIL P2_OTAKARA_RUNTIME corpse_timeout");std::fflush(stdout);std::_Exit(1);}
   }
-  if(corpse){
-   // Lane-07 lifecycle seam: forget the dead binding and prove the registry is
-   // empty (no stale module key; the fire/red/blue C++ pointers are never
-   // dereferenced again after this point).
-   pc_p2_otakara_forget(fire);
-   require(pc_p2_otakara_count()==0&&!pc_p2_otakara_registered(fire),"otakara registry not cleared by forget");
-   std::printf("P2_OTAKARA_FORGET generator=349001 count=0 registered=0 stale=0\n");std::fflush(stdout);
-   std::puts("PASS P2_OTAKARA_RUNTIME natural_death=1 corpse=1 forget=1");
-   std::fflush(stdout);std::_Exit(0);
+  if(corpseSeen){
+   // Lane-07 seam: wait for pc_p2_forget_teki (BTeki::doKill) after the pellet is
+   // consumed. No direct pc_p2_otakara_forget call here.
+   if(!pc_p2_otakara_registered(fire)&&pc_p2_otakara_count()==0){
+    std::printf("P2_OTAKARA_SEAM_OBSERVED generator=349001 registered=0 count=0\n");std::fflush(stdout);
+    std::puts("PASS P2_OTAKARA_RUNTIME natural_death=1 corpse=1 receipt=1 forget=1");
+    std::fflush(stdout);std::_Exit(0);
+   }
+   // Only assist while the corpse pellet is still present in the pellet manager;
+   // delivery consumes it, so never dereference `corpse` after the receipt fires.
+   bool present=false;Iterator pi(pelletMgr);CI_LOOP(pi){Pellet* pp=static_cast<Pellet*>(*pi);if(pp==corpse){present=true;break;}}
+   if(present){
+    // Ordinary carry assist only if native free recruitment has not latched a
+    // carrier after a grace period; the Transport action is the native haul.
+    int carry=0;Iterator ck(pikiMgr);CI_LOOP(ck){Piki* p=static_cast<Piki*>(*ck);if(p&&p->isAlive()&&p->getStickObject()==static_cast<Creature*>(corpse))++carry;}
+    if(!freeCarryLogged&&carry>0){freeCarryLogged=true;
+     std::printf("P2_OTAKARA_CARRY_FREE carry=%d\n",carry);std::fflush(stdout);}
+    if(!assisted&&carry==0&&observed-deadAt>600){assisted=true;
+     int assigned=0;Iterator pk(pikiMgr);CI_LOOP(pk){Piki* p=static_cast<Piki*>(*pk);if(!p->isAlive()||!p->mActiveAction)continue;
+      p->mActiveAction->abandon(nullptr);p->mActiveAction->mCurrActionIdx=PikiAction::Transport;
+      p->mActiveAction->mChildActions[PikiAction::Transport].initialise(corpse);p->mMode=PikiMode::TransportMode;++assigned;}
+     std::printf("P2_OTAKARA_ASSIST assigned=%d\n",assigned);std::fflush(stdout);}
+   }
   }
   if(violation){std::puts("FAIL P2_OTAKARA_RUNTIME immune_violation=1");std::fflush(stdout);std::_Exit(1);}
-  if(observed>30000){std::puts("FAIL P2_OTAKARA_RUNTIME timeout");std::fflush(stdout);std::_Exit(1);}
+  if(observed>60000){std::puts("FAIL P2_OTAKARA_RUNTIME timeout forget_wait");std::fflush(stdout);std::_Exit(1);}
   std::fflush(stdout);return result;
  }};
 '''
@@ -173,12 +178,15 @@ def instrument(source, app=APP_NATURAL):
     end = source.index('int main(', start)
     return ('#include <cstring>\n#include <cstdlib>\n#include <cmath>\n#include "Generator.h"\n'
             '#include "TekiPersonality.h"\n#include "Interactions.h"\n'
-            '#include "Piki.h"\n#include "PikiState.h"\n#include "PikiMgr.h"\n'
-            '#include "GlobalGameOptions.h"\n#include "pc_p2_otakara.h"\n'
+            '#include "Piki.h"\n#include "PikiState.h"\n#include "PikiMgr.h"\n#include "PikiAI.h"\n'
+            '#include "Pellet.h"\n#include "PelletView.h"\n'
+            '#include "GlobalGameOptions.h"\n#include "pc_p2_otakara.h"\n#include "pc_p2_preview.h"\n'
             + source[:start] + app + source[end:])
 
 
-def prepare(assets, imported, output, scenario='natural'):
+def prepare(assets, imported, output, scenario='natural', converted=None, pod_dir=None):
+    if scenario == 'deliver' or scenario == 'natural':
+        return _prepare_pod(assets, imported, output, converted, pod_dir)
     cfg = dict(FAMILIES['dweevil'])
     cfg['arena_species'] = SPECIES + ('P1 Chappy',)
     cfg['arena_ids'] = (FIRE_ID, CONTROL_ID)
@@ -195,6 +203,47 @@ def prepare(assets, imported, output, scenario='natural'):
                'observable without production placement claims',
         production_placement=False)
     (run / 'otakara-override.json').write_text(json.dumps(override, indent=2) + '\n')
+    return run
+
+
+def _prepare_pod(assets, imported, output, converted, pod_dir):
+    """Concrete P2 Pod room (red Onion goal + treasure + p2-pod.txt) with one
+    FireOtakara Chappy actor placed inside carry range of the goal, plus the
+    dweevil profile/bank/actor sidecars and the lane-06 receipt host."""
+    from scripts.preview_pikmin2_room import prepare as room_prepare
+    if converted is None or pod_dir is None:
+        raise ValueError('deliver/natural scenario requires --converted and --pod-dir')
+    run = room_prepare(Path(assets).resolve(), Path(converted).resolve(), Path(output).resolve())
+    cfg = dict(FAMILIES['dweevil'])
+    gen = run / 'assets/dataDir/stages/chal0/default.gen'
+    blob = bytearray(gen.read_bytes())
+    starts = [m.start() for m in re.finditer(rb'    0.0v', blob)]
+    dwarf = next((s for s in starts if blob[s + 72:s + 76] == b'iket'), None)
+    if dwarf is None:
+        raise ValueError('Concrete room has no Chappy enemy record to bind FireOtakara')
+    struct.pack_into('<I', blob, dwarf + 8, FIRE_ID)
+    blob[dwarf + 16:dwarf + 48] = b'preview fireotakara'.ljust(32, b'\0')
+    # ~120 units from the room's red goal/Onion so the corpse carry route is bounded.
+    onion = None
+    for s in starts:
+        if b'preview red onion' in bytes(blob[s + 16:s + 48]):
+            onion = struct.unpack_from('>3f', blob, s + 48)
+            break
+    if onion is None:
+        onion = (-220.0, 0.0, -180.0)
+    struct.pack_into('>3f', blob, dwarf + 48, onion[0], 30.0, onion[2] + 115.0)
+    gen.write_bytes(blob)
+    install(cfg, Path(imported).resolve(), run, [(FIRE_ID, 'FireOtakara')])
+    (run / 'p2-pod.txt').write_text('P2_POD_1 dia_a_red 180 15 25 Kochappy 2\n')
+    (run / 'assets/dataDir/courses/pikmin2room/pod.mod').write_bytes(
+        (Path(pod_dir) / 'pod.mod').read_bytes())
+    (run / 'otakara-override.json').write_text(json.dumps(dict(
+        species=list(SPECIES), generators=[FIRE_ID], scenario='natural',
+        pod=True, onion=list(onion),
+        reason='FireOtakara staged ~120 units from the concrete-room red Onion so the '
+               'corpse pellet can be naturally hauled to the Pod goal and the lane-06 '
+               'receipt logged from pc_p2_preview_deliver',
+        production_placement=False), indent=2) + '\n')
     return run
 
 
@@ -229,10 +278,15 @@ def validate(text, code=0):
         rf'P2_OTAKARA_HIT generator={FIRE_ID} source_id=59 .*interaction=InteractAttack '
         r'attacker=\w+', text))
     injected = bool(re.search(r'P2_OTAKARA_DEATH_INJECT before=\d+', text))
-    dead = bool(re.search(rf'P2_OTAKARA_DEAD generator={FIRE_ID} source_id=59 health=0', text))
+    module_dead = bool(re.search(
+        rf'P2_OTAKARA_MODULE_DEAD generator={FIRE_ID} source_id=59 health=0', text))
+    dead = bool(re.search(
+        rf'P2_OTAKARA_DEAD generator={FIRE_ID} source_id=59 mDeadState=1', text))
     corpse = bool(re.search(rf'P2_OTAKARA_CORPSE generator={FIRE_ID} pellet=1', text))
+    receipt = bool(re.search(rf'P2_POD_RECEIPT id=corpse:\S*otakara:{FIRE_ID}\b', text))
     forget = bool(re.search(
-        rf'P2_OTAKARA_FORGET generator={FIRE_ID} count=0 registered=0 stale=0', text))
+        rf'P2_OTAKARA_FORGET generator={FIRE_ID} registered=1 count=0\b', text))
+    assisted = 'P2_OTAKARA_ASSIST assigned=' in text
     squad = re.search(r'P2_OTAKARA_SQUAD red=(\d+) blue=(\d+) registered=(\d+)', text)
     checks = dict(
         completion=code == 0 and 'PASS P2_OTAKARA_RUNTIME' in text,
@@ -245,42 +299,45 @@ def validate(text, code=0):
         immune_red=immune_red,
         hit_blue=hit_blue,
         natural_hit=natural_hit,
+        module_dead=module_dead,
         natural_death=dead and not injected,
         corpse=corpse,
+        receipt=receipt,
         forget=forget,
         no_extinction=not re.search(r'Extinction', text, re.IGNORECASE),
     )
     required = ('completion', 'window', 'squad', 'identity', 'ready', 'flick', 'discharge',
-                'immune_red', 'hit_blue', 'natural_hit', 'natural_death', 'corpse', 'forget',
-                'no_extinction')
+                'immune_red', 'hit_blue', 'natural_hit', 'module_dead', 'natural_death',
+                'corpse', 'receipt', 'forget', 'no_extinction')
     gates = dict(
         identity_spawn='pass' if (identity and ready) else 'fail',
         movement_animation='pass' if flick else 'fail',
         attacks_receivers='pass' if (discharge and immune_red and hit_blue) else 'fail',
-        death_corpse='pass' if ((dead and not injected) and corpse) else 'fail',
-        transport_reward='untested',
+        death_corpse='pass' if (dead and not injected and corpse) else 'fail',
+        transport_reward='pass_assisted' if (receipt and assisted) else ('pass' if receipt else 'fail'),
         cleanup_reentry='pass' if forget else 'fail',
     )
     return dict(passed=code == 0 and all(checks[name] for name in required),
                 checks=checks, gates=gates, squad=int(squad.group(1)) if squad else 0,
                 exit_code=code,
                 injected=['InteractAttack death trigger (damage value 100000)'] if injected else [],
-                unmeasured=['corpse pellet transport to Onion / reward (cargo-free arena has no '
-                            'Pod or Onion ledger)',
-                            'scene re-entry and recycled-address rebind',
+                assisted=assisted,
+                unmeasured=['scene re-entry and recycled-address rebind',
                             'Water/Gas/Elec discharge (only Fire was exercised)'],
                 limitations=['The 20-Pikmin FreeMode deployment is a player-equivalent stimulus, '
                              'not a recorded player-input run.',
-                             'Behavior fixture overrides the FireOtakara arena coordinate; '
-                             'not production placement evidence.',
+                             'Corpse haul uses the native Transport action; a fixture assist '
+                             'is labelled if natural free recruitment leaves the corpse uncarried.',
                              'Elemental discharge uses the P1 InteractFire receiver; '
                              'BombOtakara (93) and the item-carry states are out of scope.'])
 
 
-def run(assets, imported, output, exe, seconds=120, scenario='natural'):
+def run(assets, imported, output, exe, seconds=120, scenario='natural',
+        converted=None, pod_dir=None):
     os.environ['PIKMIN_P2_ROOM_WINDOW'] = '960x540'
     os.environ['PATH'] = 'C:\\msys64\\mingw64\\bin;' + os.environ.get('PATH', '')
-    run_dir = prepare(Path(assets), Path(imported), Path(output), scenario=scenario)
+    run_dir = prepare(Path(assets), Path(imported), Path(output), scenario=scenario,
+                      converted=converted, pod_dir=pod_dir)
     meta = capture_command([str(Path(exe).resolve()), '--experimental-pikmin2-room'],
                            run_dir, run_dir / 'capture', seconds)
     text = (run_dir / 'capture' / 'native.log').read_text(errors='replace')
@@ -302,22 +359,26 @@ if __name__ == '__main__':
         if name == 'run':
             sub.add_argument('--exe', type=Path, required=True)
             sub.add_argument('--seconds', type=int, default=120)
-            sub.add_argument('--scenario', choices=('natural', 'inject'), default='natural')
+            sub.add_argument('--scenario', choices=('natural', 'deliver', 'inject'), default='natural')
+        sub.add_argument('--converted', type=Path)
+        sub.add_argument('--pod-dir', type=Path)
     b = commands.add_parser('build')
     for flag in ('native', 'build-dir', 'output'):
         b.add_argument('--' + flag, type=Path, required=True)
     b.add_argument('--head', required=True)
     b.add_argument('--resume', action='store_true')
-    b.add_argument('--scenario', choices=('natural', 'inject'), default='natural')
+    b.add_argument('--scenario', choices=('natural', 'deliver', 'inject'), default='natural')
     args = parser.parse_args()
     if args.command == 'prepare':
         print(prepare(args.assets, args.imported, args.output,
-                      getattr(args, 'scenario', 'natural')))
+                      getattr(args, 'scenario', 'natural'),
+                      getattr(args, 'converted', None), getattr(args, 'pod_dir', None)))
     elif args.command == 'build':
         build(args.native, args.build_dir, args.output, args.head, args.resume,
               scenario=args.scenario)
     else:
         run_dir, meta, result = run(args.assets, args.imported, args.output, args.exe,
-                                    args.seconds, args.scenario)
+                                    args.seconds, args.scenario,
+                                    getattr(args, 'converted', None), getattr(args, 'pod_dir', None))
         print(run_dir)
         print(json.dumps(result, indent=2))

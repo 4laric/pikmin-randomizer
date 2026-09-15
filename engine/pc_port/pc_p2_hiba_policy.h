@@ -218,12 +218,14 @@ inline Stimulus elechibaVersusStimulus(const std::string& attribute) {
 //
 // P2_HIBA_NATIVE_1
 // <hazardCount>                                                        # 1..8
-//   <generatorId> <hazardId> <x> <y> <z> <yaw> <health> <waitOverride> <separation> <link>
+//   <generatorId> <hazardId> <x> <y> <z> <yaw> <health> <waitOverride> <separation> <link> <warningOverride>
 //                                                                      x hazardCount
 //
-// hazardId 20/21/22; waitOverride < 0 uses the disc wait; separation is
-// non-negative and must be 0 unless hazardId is ElecHiba; link 0..3 is the
-// GasHiba bridge/gate owner and must be 0 unless hazardId is GasHiba.
+// hazardId 20/21/22; waitOverride < 0 uses the disc wait; warningOverride < 0
+// uses the disc ElecHiba warning; separation is non-negative and must be 0
+// unless hazardId is ElecHiba; link 0..3 is the GasHiba bridge/gate owner and
+// must be 0 unless hazardId is GasHiba; warningOverride >= 0 applies only to
+// ElecHiba.
 struct HazardRow {
     std::uint32_t generator = 0;
     int hazardId = 0;
@@ -235,6 +237,7 @@ struct HazardRow {
     float waitOverride = -1.0f;
     float separation = 0.0f;
     int link = 0;
+    float warningOverride = -1.0f;
 };
 
 struct Config {
@@ -257,7 +260,9 @@ inline bool readConfig(std::istream& in, Config& out) {
         unsigned long long generator = 0;
         int hazardId = 0, link = 0;
         float x = 0.0f, y = 0.0f, z = 0.0f, yaw = 0.0f, health = 0.0f, waitOverride = -1.0f, separation = 0.0f;
-        if (!(in >> generator >> hazardId >> x >> y >> z >> yaw >> health >> waitOverride >> separation >> link)) {
+        float warningOverride = -1.0f;
+        if (!(in >> generator >> hazardId >> x >> y >> z >> yaw >> health >> waitOverride >> separation >> link
+              >> warningOverride)) {
             return false;
         }
         if (generator > 0xffffffffULL || !isFixedHazard(hazardId)) return false;
@@ -266,21 +271,24 @@ inline bool readConfig(std::istream& in, Config& out) {
         if (!std::isfinite(health) || health <= 0.0f || health > 100000.0f) return false;
         if (!std::isfinite(waitOverride) || std::fabs(waitOverride) > 1000.0f) return false;
         if (!std::isfinite(separation) || separation < 0.0f || separation > 1000.0f) return false;
+        if (!std::isfinite(warningOverride) || std::fabs(warningOverride) > 1000.0f) return false;
         if (hazardId != ElecHibaId && separation != 0.0f) return false;
+        if (hazardId != ElecHibaId && warningOverride >= 0.0f) return false;
         if (link < 0 || link > 3) return false;
         if (hazardId != GasHibaId && link != 0) return false;
         if (!ids.insert(std::uint32_t(generator)).second) return false;
         HazardRow row;
-        row.generator    = std::uint32_t(generator);
-        row.hazardId     = hazardId;
-        row.x            = x;
-        row.y            = y;
-        row.z            = z;
-        row.yaw          = yaw;
-        row.health       = health;
-        row.waitOverride = waitOverride;
-        row.separation   = separation;
-        row.link         = link;
+        row.generator       = std::uint32_t(generator);
+        row.hazardId        = hazardId;
+        row.x               = x;
+        row.y               = y;
+        row.z               = z;
+        row.yaw             = yaw;
+        row.health          = health;
+        row.waitOverride    = waitOverride;
+        row.separation      = separation;
+        row.link            = link;
+        row.warningOverride = warningOverride;
         config.hazards.push_back(row);
     }
     std::string trailing;

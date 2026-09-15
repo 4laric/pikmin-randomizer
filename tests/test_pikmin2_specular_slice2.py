@@ -1,17 +1,23 @@
 import unittest
+from pathlib import Path
 
 from experimental.pikmin2_specular_slice2 import evidence, specular_criterion, LIT_CONTROL, VERTEX_COLOR_FLAG
 
+DATA = Path(__file__).with_name('data') / 'frog_specular_render.log'
 
-def _render(**overrides):
-    values = dict(visible_channels=695092, specular_channels=260635, replay_equal=1)
-    values.update(overrides)
-    body = ' '.join('{}={}'.format(k, v) for k, v in sorted(values.items()))
+RENDER = ('FROG_SPECULAR_RENDER viewport_w=1138 viewport_h=711 control=0x93 '
+          'specular_dir_calls=2 specular_channel_draws=3 specular_draw_delta=1 replay_equal=1')
+
+
+def _log(window='FROG_SPECULAR_WINDOW w=960 h=540 flags=SHOWN centered=1',
+         render=RENDER):
     return '\n'.join([
-        'P2_QUEEN_SPECULAR_READY diffuse=UV1 specular=normal_btk source_lighting=host third_stage=omitted',
-        'FROG_SPECULAR_READY materials=1 source_control=0x93',
-        'FROG_SPECULAR_RENDER ' + body,
+        window,
+        'FROG_SPECULAR_READY materials=1 control=0x93',
+        'FROG_SPECULAR_SQUAD pikmin=20 navi=1',
+        render,
         'PASS FROG_SPECULAR_RENDER',
+        '',
     ])
 
 
@@ -31,37 +37,52 @@ class SpecularCriterionTests(unittest.TestCase):
 
 
 class RenderMarkerTests(unittest.TestCase):
-    def test_valid_marker_passes(self):
-        result = evidence(_render())
-        self.assertEqual(result['specular_channels'], 260635)
+    def test_valid_marker(self):
+        result = evidence(_log())
+        self.assertEqual(result['control'], 0x93)
+        self.assertEqual(result['specular_dir_calls'], 2)
+        self.assertEqual(result['specular_draw_delta'], 1)
         self.assertEqual(result['replay_equal'], 1)
+
+    def test_real_committed_marker_log_parses(self):
+        result = evidence(DATA.read_text(encoding='utf-8'))
+        self.assertEqual(result['control'], 0x93)
 
     def test_stripped_render_marker_flips(self):
         with self.assertRaises(ValueError):
-            evidence('')
+            evidence(_log(render=''))
         with self.assertRaises(ValueError):
-            evidence('P2_FROG_READY species=Frog generator=1 health=100\n')
+            evidence(_log(window=''))
+
+    def test_missing_real_flag_token_flips(self):
+        with self.assertRaises(ValueError):
+            evidence(_log(window='FROG_SPECULAR_WINDOW w=960 h=540 visible=1 centered=1'))
+        with self.assertRaises(ValueError):
+            evidence(_log(window='FROG_SPECULAR_WINDOW w=960 h=540 centered=1'))
+
+    def test_hidden_window_flips(self):
+        with self.assertRaises(ValueError):
+            evidence(_log(window='FROG_SPECULAR_WINDOW w=960 h=540 flags=HIDDEN centered=1'))
+
+    def test_ordinary_path_not_reached_flips(self):
+        with self.assertRaises(ValueError):
+            evidence(_log(render=RENDER.replace('specular_dir_calls=2', 'specular_dir_calls=0')))
+        with self.assertRaises(ValueError):
+            evidence(_log(render=RENDER.replace('specular_channel_draws=3', 'specular_channel_draws=0')))
+
+    def test_per_draw_delta_missing_or_zero_flips(self):
+        with self.assertRaises(ValueError):
+            evidence(_log(render=RENDER.replace(' specular_draw_delta=1', '')))
+        with self.assertRaises(ValueError):
+            evidence(_log(render=RENDER.replace('specular_draw_delta=1', 'specular_draw_delta=0')))
+
+    def test_literal_without_replay_flips(self):
+        with self.assertRaises(ValueError):
+            evidence(_log(render=RENDER.replace('replay_equal=1', 'replay_equal=0')))
 
     def test_stripped_pass_line_flips(self):
-        no_pass = _render().replace('PASS FROG_SPECULAR_RENDER', '')
         with self.assertRaises(ValueError):
-            evidence(no_pass)
-
-    def test_zero_specular_contribution_flips(self):
-        with self.assertRaises(ValueError):
-            evidence(_render(specular_channels=0))
-
-    def test_literal_replay_or_no_visible_pixels_flip(self):
-        with self.assertRaises(ValueError):
-            evidence(_render(visible_channels=0))
-        with self.assertRaises(ValueError):
-            evidence(_render(replay_equal=0))
-
-    def test_missing_fields_flip(self):
-        log = ('FROG_SPECULAR_RENDER specular_channels=5\n'
-               'PASS FROG_SPECULAR_RENDER\n')
-        with self.assertRaises(ValueError):
-            evidence(log)
+            evidence(_log().replace('PASS FROG_SPECULAR_RENDER', ''))
 
 
 if __name__ == '__main__':
