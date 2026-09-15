@@ -40,7 +40,6 @@ import experimental.pikmin2_elecbug_immunity_behavior as immunity
 
 FIRE_ID = 349001
 CONTROL_ID = 349006
-SPECIES = ('FireOtakara',)
 FIRE_POSITION = (0.0, 30.0, 1850.0)
 CONTROL_POSITION = (240.0, 30.0, 1500.0)
 
@@ -56,18 +55,19 @@ SPECIES_MAP = {
 }
 VALID_SPECIES = tuple(SPECIES_MAP)
 
-# Tokenized RoomApp template (slice 4). Placeholders @@GEN@@ / @@SRC@@ /
-# @@NAME@@ / @@FIRE1@@ are substituted by _app_for(). The deploy is time-based
-# (works for every elemental sibling), red/blue are parked to observe the fire
-# discharge for FireOtakara, and the corpse haul uses the ordinary whistle-recruit
-# (gather + native Transport discovery via findPellet) with a labelled ASSIST
-# fallback.
+# Tokenized RoomApp template (slice 4). Placeholders @@GEN@@ / @@NAME@@ are
+# substituted by _app_for(). The squad is recoloured to the element-immune
+# colour (read from otakara-species.txt at runtime) so it survives the discharge,
+# deployed in FreeMode to fight, and — for the corpse — the idle squad is freed
+# beside it and LEFT ALONE so Piki::graspSituation (mIdleWorkSearchRange=100)
+# latches Transport by itself; a forced Transport write exists ONLY as a flagged
+# `P2_OTAKARA_ASSIST` fallback.
 _APP_NATURAL_TMPL = r'''class RoomApp : public PlugPikiApp {
  int frames=0,observed=0,stage=0,deadAt=0,deployed=0;
  Teki* fire=nullptr;
  Piki* red=nullptr;Piki* blue=nullptr;
  Pellet* corpse=nullptr;
- bool diagnosed=false,deadSeen=false,corpseSeen=false,recruited=false,assisted=false,freeCarryLogged=false;
+ bool diagnosed=false,deadSeen=false,corpseSeen=false,freed=false,assisted=false,freeCarryLogged=false;
  public:int idle() override {
   int result=PlugPikiApp::idle();require(++frames<120000,"otakara runtime startup timeout");
   if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
@@ -79,8 +79,15 @@ _APP_NATURAL_TMPL = r'''class RoomApp : public PlugPikiApp {
     if(t->mGenerator->_70==@@GEN@@)fire=t;}
    require(fire,"@@NAME@@ registered");
    require(pc_p2_otakara_registered(fire),"@@NAME@@ FSM registered");
-   int index=0;Iterator p(pikiMgr);CI_LOOP(p){Piki* v=static_cast<Piki*>(*p);if(!v->isAlive())continue;
-    if(index==0){red=v;v->setColor(Red);}else if(index==1){blue=v;v->setColor(Blue);}++index;}
+   std::string sn="FireOtakara";{std::ifstream sf("otakara-species.txt");if(sf)sf>>sn;}
+   int i=0;Iterator p(pikiMgr);CI_LOOP(p){Piki* v=static_cast<Piki*>(*p);if(!v->isAlive())continue;
+    if(i==0){red=v;}else if(i==1){blue=v;}
+    if(sn=="GasOtakara"){pc_p2_set_species(v,P2SpeciesWhite);}
+    else if(sn=="ElecOtakara"){v->setColor(Yellow);}
+    else if(sn=="WaterOtakara"){v->setColor(Blue);}
+    else if(i==1&&sn=="FireOtakara"){v->setColor(Blue);}
+    else {v->setColor(Red);}
+    ++i;}
    require(red&&blue,"two starting Pikmin available");
    int reds=0,blues=0;Iterator q(pikiMgr);CI_LOOP(q){Piki* v=static_cast<Piki*>(*q);if(v->isAlive()){if(v->mColor==Red)++reds;else if(v->mColor==Blue)++blues;}}
    std::printf("P2_OTAKARA_SQUAD red=%d blue=%d registered=%lu\n",reds,blues,pc_p2_otakara_count());
@@ -130,20 +137,23 @@ _APP_NATURAL_TMPL = r'''class RoomApp : public PlugPikiApp {
     int carry=0;Iterator ck(pikiMgr);CI_LOOP(ck){Piki* p=static_cast<Piki*>(*ck);if(p&&p->isAlive()&&p->getStickObject()==static_cast<Creature*>(corpse))++carry;}
     if(!freeCarryLogged&&carry>=mn){freeCarryLogged=true;
      std::printf("P2_OTAKARA_CARRY_FREE carry=%d min=%d\n",carry,mn);std::fflush(stdout);}
-    // Whistle-recruit (ordinary recruitment): keep routing idle, non-carrying
-    // Pikmin onto the corpse until it lifts — the player-equivalent "whistle +
-    // throw" loop. P1 idle/free Pikmin never auto-grab a ground corpse, so this
-    // recruit is the ordinary carry path, not an injected state.
-    if(carry<mn&&observed%16==0){
+    // Natural haul: free the idle squad beside the corpse once and leave them
+    // alone. Piki::graspSituation (mIdleWorkSearchRange=100) latches
+    // PikiAction::Transport by itself; no forced mode/action write here.
+    if(!freed&&observed-deadAt>15){freed=true;
      int got=0;Iterator pk(pikiMgr);CI_LOOP(pk){Piki* p=static_cast<Piki*>(*pk);if(!p->isAlive()||p->getStickObject())continue;
       const float a=6.2831853f*float(got)/20.f;
-      Vector3f pt=corpse->getPosition()+Vector3f(14.0f*std::sin(a),0.0f,14.0f*std::cos(a));
+      Vector3f pt=corpse->getPosition()+Vector3f(12.0f*std::sin(a),0.0f,12.0f*std::cos(a));
       pt.y=mapMgr->getMinY(pt.x,pt.z,true);p->resetPosition(pt);
-      if(p->mActiveAction){p->mActiveAction->abandon(nullptr);p->mActiveAction->mCurrActionIdx=PikiAction::Transport;
-       p->mActiveAction->mChildActions[PikiAction::Transport].initialise(corpse);p->mMode=PikiMode::TransportMode;++got;}}
-     if(!recruited){recruited=true;
-      std::printf("P2_OTAKARA_WHISTLE recruited=%d\n",got);std::fflush(stdout);}
-    }
+      p->changeMode(PikiMode::FreeMode,n);++got;}
+     std::printf("P2_OTAKARA_SQUAD_FREE freed=%d\n",got);std::fflush(stdout);}
+    // Flagged fallback: a forced Transport write only if the natural pickup never
+    // latches a carrier after a long grace. Labelled `assisted`.
+    if(!assisted&&carry==0&&observed-deadAt>1500){assisted=true;
+     int assigned=0;Iterator pk(pikiMgr);CI_LOOP(pk){Piki* p=static_cast<Piki*>(*pk);if(!p->isAlive()||!p->mActiveAction)continue;
+      p->mActiveAction->abandon(nullptr);p->mActiveAction->mCurrActionIdx=PikiAction::Transport;
+      p->mActiveAction->mChildActions[PikiAction::Transport].initialise(corpse);p->mMode=PikiMode::TransportMode;++assigned;}
+     std::printf("P2_OTAKARA_ASSIST assigned=%d\n",assigned);std::fflush(stdout);}
    }
   }
   if(observed>60000){std::puts("FAIL P2_OTAKARA_RUNTIME timeout forget_wait");std::fflush(stdout);std::_Exit(1);}
@@ -153,10 +163,8 @@ _APP_NATURAL_TMPL = r'''class RoomApp : public PlugPikiApp {
 
 
 def _app_for(species):
-    source_id, _ = SPECIES_MAP[species]
     return (_APP_NATURAL_TMPL
             .replace('@@GEN@@', str(FIRE_ID))
-            .replace('@@SRC@@', str(source_id))
             .replace('@@NAME@@', species))
 
 
@@ -214,11 +222,13 @@ APP_INJECT = r'''class RoomApp : public PlugPikiApp {
 def instrument(source, app=_app_for('FireOtakara')):
     start = source.index('class RoomApp : public PlugPikiApp {')
     end = source.index('int main(', start)
-    return ('#include <cstring>\n#include <cstdlib>\n#include <cmath>\n#include "Generator.h"\n'
+    return ('#include <cstring>\n#include <cstdlib>\n#include <cmath>\n#include <fstream>\n#include <string>\n'
+            '#include "Generator.h"\n'
             '#include "TekiPersonality.h"\n#include "Interactions.h"\n'
             '#include "Piki.h"\n#include "PikiState.h"\n#include "PikiMgr.h"\n#include "PikiAI.h"\n'
             '#include "Pellet.h"\n#include "PelletView.h"\n'
             '#include "GlobalGameOptions.h"\n#include "pc_p2_otakara.h"\n#include "pc_p2_preview.h"\n'
+            '#include "pc_p2_species.h"\n'
             + source[:start] + app + source[end:])
 
 
@@ -275,6 +285,7 @@ def _prepare_pod(assets, imported, output, converted, pod_dir, species='FireOtak
     gen.write_bytes(blob)
     install(cfg, Path(imported).resolve(), run, [(FIRE_ID, species)])
     (run / 'p2-pod.txt').write_text('P2_POD_1 dia_a_red 180 15 25 Kochappy 2\n')
+    (run / 'otakara-species.txt').write_text(species + '\n')
     (run / 'assets/dataDir/courses/pikmin2room/pod.mod').write_bytes(
         (Path(pod_dir) / 'pod.mod').read_bytes())
     (run / 'otakara-override.json').write_text(json.dumps(dict(
@@ -308,10 +319,14 @@ def validate(text, code=0, species='FireOtakara'):
         rf'P2_OTAKARA_BIND generator={FIRE_ID} source_id={source_id} stimulus={stim or "None"} visual_only=0', text))
     ready = bool(re.search(
         rf'P2_ENEMY_READY species={species} .*generator={FIRE_ID} .*behavior=native '
-        r'.*source_FSM=implemented attack=elemental_discharge', text))
+        r'.*source_FSM=implemented attack=(elemental_discharge|payload_delegated)', text))
     flick = bool(re.search(rf'P2_OTAKARA_STATE generator={FIRE_ID} state=flick', text))
     discharge = bool(re.search(
         rf'P2_OTAKARA_DISCHARGE generator={FIRE_ID} source_id={source_id} stimulus={stim}', text))
+    # BombOtakara (93) has no self-contained element: the module emits a payload
+    # delegate marker, never a P2_OTAKARA_DISCHARGE line.
+    discharge_none = bool(re.search(
+        rf'P2_OTAKARA_DISCHARGE_NONE generator={FIRE_ID} source_id={source_id} payload_delegated=1', text))
     immune_red = bool(re.search(
         rf'P2_OTAKARA_DISCHARGE_IMMUNE generator={FIRE_ID} source_id={source_id} pikmin=\d+ colour=red '
         rf'stimulus={stim}', text))
@@ -331,7 +346,7 @@ def validate(text, code=0, species='FireOtakara'):
     forget = bool(re.search(
         rf'P2_OTAKARA_FORGET generator={FIRE_ID} registered=1 count=0\b', text))
     carry_cfg = re.search(r'P2_OTAKARA_CORPSE_CARRY min=(\d+) max=(\d+) free=(\d+)', text)
-    whistle = bool(re.search(r'P2_OTAKARA_WHISTLE recruited=\d+', text))
+    freed = bool(re.search(r'P2_OTAKARA_SQUAD_FREE freed=\d+', text))
     natural_carry = bool(re.search(r'P2_OTAKARA_CARRY_FREE carry=\d+', text))
     assisted = 'P2_OTAKARA_ASSIST assigned=' in text
     squad = re.search(r'P2_OTAKARA_SQUAD red=(\d+) blue=(\d+) registered=(\d+)', text)
@@ -343,21 +358,24 @@ def validate(text, code=0, species='FireOtakara'):
         ready=ready,
         flick=flick,
         discharge=discharge,
+        discharge_none=discharge_none,
         natural_hit=natural_hit,
         module_dead=module_dead,
         natural_death=dead and not injected,
         corpse=corpse,
         receipt=receipt,
+        natural_carry=natural_carry,
         forget=forget,
         no_extinction=not re.search(r'Extinction', text, re.IGNORECASE),
     )
-    # Fire-only: the red/blue elemental-immunity pair is only meaningful for
-    # InteractFire. Other elements route through their own lane-11 matrix rows
-    # (already exercised by the lane-10 receiver suite), so the element discharge
-    # plus a natural death is the gate-3/4 evidence for the siblings.
     required = list(('completion', 'window', 'squad', 'identity', 'ready', 'flick',
-                     'discharge', 'natural_hit', 'module_dead', 'natural_death',
+                     'natural_hit', 'module_dead', 'natural_death',
                      'corpse', 'receipt', 'forget', 'no_extinction'))
+    if stim is None:
+        # BombOtakara: no elemental discharge; the delegate marker is the gate-3 evidence.
+        required.append('discharge_none')
+    else:
+        required.append('discharge')
     if species == 'FireOtakara':
         required += ['immune_red', 'hit_blue']
         checks['immune_red'] = immune_red
@@ -365,7 +383,8 @@ def validate(text, code=0, species='FireOtakara'):
     gates = dict(
         identity_spawn='pass' if (identity and ready) else 'fail',
         movement_animation='pass' if flick else 'fail',
-        attacks_receivers='pass' if discharge else 'fail',
+        attacks_receivers=('n/a' if stim is None
+                           else ('pass' if discharge else 'fail')),
         death_corpse='pass' if (dead and not injected and corpse) else 'fail',
         transport_reward=('pass_natural' if (receipt and natural_carry and not assisted)
                           else ('pass_assisted' if (receipt and assisted)
@@ -376,15 +395,15 @@ def validate(text, code=0, species='FireOtakara'):
                 checks=checks, gates=gates, squad=int(squad.group(1)) if squad else 0,
                 exit_code=code, species=species, source_id=source_id,
                 injected=['InteractAttack death trigger (damage value 100000)'] if injected else [],
-                assisted=assisted, whistle=whistle, natural_carry=natural_carry,
+                assisted=assisted, freed=freed, natural_carry=natural_carry,
                 carry_config=(int(carry_cfg.group(1)), int(carry_cfg.group(2)), int(carry_cfg.group(3)))
                 if carry_cfg else None,
                 unmeasured=['scene re-entry and recycled-address rebind'],
-                limitations=['The 20-Pikmin FreeMode deployment is a player-equivalent stimulus, '
-                             'not a recorded player-input run.',
-                             'The corpse haul is the native Transport action; the fixture '
-                             'whistles the idle squad onto the corpse (ordinary recruitment) '
-                             'until enough carriers lift it, so no labelled assist fires.',
+                limitations=['The squad deployment (FreeMode, recoloured) is a player-equivalent '
+                             'stimulus, not a recorded player-input run.',
+                             'The corpse haul is the native idle graspSituation pickup; the fixture '
+                             'frees the squad beside the corpse and only labels a forced transport '
+                             'as assisted if the natural pickup never latches.',
                              'Elemental discharge routes through the lane-11 receiver matrix; '
                              'BombOtakara (93) delegates to the lane-20 payload.'])
 
