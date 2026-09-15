@@ -509,3 +509,29 @@ lane-16 base session.
 | 4. Death and corpse | UNTESTED | not run separately | - |
 | 5. Actual transport and reward | UNTESTED | not run separately | - |
 | 6. Cleanup and re-entry | BLOCKED | generalEnemyMgr->birth + MINIHOUDAI_Rebirth transit on lane 06/07 | - |
+
+### Slice 5 ordered commits and build evidence
+
+Native `deepseek/p2-l21-native` (base `d7f608e1`; merged
+`claude/p2-deepseek-wave-native` @ `7ed95228`, already an ancestor):
+
+- `bf01b9be` — `lane21: live generated-actor movement/animation and receiver
+  witness, FSM probe (#198)` (`pc_port/pc_p2_frog.{h,cpp}` read-only probe;
+  `tools/p2_groink_runtime.cpp --groink-live`).
+
+Root `deepseek/p2-l21` (base `282beac5`):
+
+- `e2254798` — `lane21: live movement/animation and receiver witnesses, six-gate
+  table (#198)` (`experimental/pikmin2_groink_live_run.py` + this handoff).
+- `aa2826b` — `lane21: move the live-witness gate table after the historical
+  sections (#198)`.
+
+`build_lane.py l21` at native `bf01b9be`: `dirty=no`,
+`bin/nectar.exe` sha256
+`934e18034235e0128a228857a503ffbf6fa2899e63a34690dbdfb6f6d358c79e`,
+`ninja -n` = `ninja: no work to do.` Fixture built against `bf01b9be` →
+`output/dsw/l21-out/groink-live-fixture/fixture.exe` sha256
+`3d07bdd682885ee269d1716ebaa3efd2c8f3286603722f8b9c9f0f233d3ba9da`
+(`provenance.json` status `built`). Run:
+`py -3.12 slot.py run gl l21 -- py -3.12 output/dsw/l21-out/run_groink_live.py`
+(exit 0).
