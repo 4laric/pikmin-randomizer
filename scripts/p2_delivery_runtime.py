@@ -25,8 +25,8 @@ import _winapi
 from pathlib import Path
 
 # MinGW runtime DLLs (libstdc++/libgcc/libwinpthread) must be on PATH for the
-# fixture exe; this is the maintained toolchain's bin directory.
-MINGW_BIN = Path('C:/msys64/mingw64/bin')
+# fixture exe; override with PIKMIN_MINGW_BIN if the maintained toolchain moves.
+MINGW_BIN = Path(os.environ.get('PIKMIN_MINGW_BIN', 'C:/msys64/mingw64/bin'))
 
 
 def run_once(session, exe, assets, label):
