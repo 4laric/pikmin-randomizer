@@ -271,7 +271,7 @@ Seedable (`source`/`variant`) identities named across handoffs: 52
 - advances: attacks_receivers
 - blocking: identity_spawn, movement_animation, death_corpse, transport_reward, cleanup_reentry
 
-### 78 MiniHoudai (source) - shared table, excluded
+### 78 MiniHoudai (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE21_DEEPSEEK_HANDOFF.md
 - advances: (none)
 - blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
@@ -309,7 +309,7 @@ Seedable (`source`/`variant`) identities named across handoffs: 52
 - advances: (none)
 - blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
 
-### 97 FminiHoudai (source) - shared table, excluded
+### 97 FminiHoudai (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE21_DEEPSEEK_HANDOFF.md
 - advances: (none)
 - blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
