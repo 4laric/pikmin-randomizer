@@ -19,9 +19,9 @@ from experimental.pikmin2_dwarf_orange_runtime import build_fixture_for, instrum
 # Natural few-Pikmin encounter stimulus. The base overlay spawns 20 reds within
 # ~30 units of the source actor, which kill it before the source attack cycle
 # (bite -> eat frame 8 -> swallow frame 88) can complete. This observer relocates
-# all but the first 5 starting Pikmin to a distant idle point at tick 2, then
+# all but the first 3 starting Pikmin to a distant idle point at tick 2, then
 # keeps the captain near the actor and orders only the near Pikmin into
-# AttackMode. It writes no enemy health, state, target or animation: the 5-Pikmin
+# AttackMode. It writes no enemy health, state, target or animation: the 3-Pikmin
 # damage is the real Pikmin attack path, so the enemy survives long enough to
 # exercise the eat/swallow receiver naturally.
 WITNESS = (

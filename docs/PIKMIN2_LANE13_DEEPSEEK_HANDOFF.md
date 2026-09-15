@@ -3,6 +3,14 @@
 Parent issue #120; coordination #186. Executing session: opencode/deepseek
 (lane 13). Implementation owner: Codex via shared account `4laric`.
 
+
+### Integrator note (review of slice 1)
+
+- The "Runtime evidence" block below is a composite: the CORPSE line is from run-evidence5 (natural 250 HP, no swallow), not run-evidence6 (which has EAT/SWALLOW/DEAD but aborted at `FAIL p2 room: expected20Pikmin` 39 lines after DEAD; evidence.json passed:false). No single run shows eat → swallow → dead → corpse yet.
+- Native fix ridden along: pc_p2_kochappy_fsm_press now sets healthAsserted before zeroing health, so the update prologue no longer restores 250 HP while pressed.
+- Witness comment said 5 Pikmin; code keeps 3. The witness anchor `require(count==20,"expected20Pikmin")` stays live and kills the run once a Pikmin is eaten (lane 13 to fix next slice).
+- doEat with no free slot (InteractSwallow null slot) is UNTESTED; both runtime EAT events had slot=1.
+
 ## Source IDs and files owned
 
 - Source ID: **44 — BlueKochappy (Dwarf Orange Bulborb)** on the shared
@@ -114,7 +122,7 @@ Fixture (replacement-main witness) built by
 | 1 Identity/spawn | PASS | `P2_ENEMY_READY species=BlueKochappy source_id=44`, 64-pose bank, birth XYZ | natural (reused setup) |
 | 2 Movement/anim | PASS | FSM `wait/turn/walk/attack/dead` states + `P2_KOCHAPPY_POS` | natural (FSM, no injection) |
 | 3 Attacks/receivers | PASS | `P2_KOCHAPPY_EAT frame=8 eaten=1 slot=1` (×2) and `P2_KOCHAPPY_SWALLOW frame=88 swallowed=1 white=0`; bite `P2_KOCHAPPY_ATTACK damage=10` | natural — real Pikmin attack damage drives health 250→0; squad throttle is an observation control (idle Pikmin relocated, no enemy health/state/animation writes) |
-| 4 Death/corpse | PASS | `P2_KOCHAPPY_DEAD health=0.0` → `P2_KOCHAPPY_CORPSE native=host_escape_now` | natural (reused Dead path) |
+| 4 Death/corpse | PASS (natural, run-evidence5 only: kept=5, no swallow) / run-evidence6 died but the witness aborted on `expected20Pikmin` before the corpse (integrator relabel) | `P2_KOCHAPPY_DEAD health=0.0` (run 6) ; `P2_KOCHAPPY_CORPSE native=host_escape_now` (run 5) | natural; the two markers come from different runs |
 | 5 Transport/reward | UNTESTED this slice | not exercised; prior P1-proxy corpse-carry evidence exists, not re-run | — |
 | 6 Cleanup/re-entry | BLOCKED | shared #397 manager-swap precondition (same as prior FSM gate E) | — |
 
