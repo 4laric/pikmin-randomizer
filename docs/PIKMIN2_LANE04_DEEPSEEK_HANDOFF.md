@@ -214,3 +214,112 @@ substitute the fresh run dir printed by the first command.)
   `randomizer.p2_placement_probe` contract; it fell back to a stub only before
   the real module existed and now passes against the real module. Net time
   saved was large; no result was discarded.
+
+## Slice 2
+
+Bounded slice: **catalog join and a P2-identity placement.** Supersedes the
+lane-04 "arena-only, no catalog join" state from the fix round.
+
+### (a) Catalog join — mechanism
+
+- Native (`pc_port/pc_p2_placement_probe.cpp`): the probe now reads a staged
+  sidecar `p2-placement-slots.txt` (header `P2_PLACEMENT_SLOTS_1`, then one
+  `<generator_id> <catalog_slot_uid>` pair per line) and emits BOTH ids in the
+  marker: `P2_PLACEMENT_SLOT generator=<_70> slot=<catalog_uid|0> actor=...
+  xyz=... terrain=... route=... route_distance=... water_depth=...`.
+- Root parser (`randomizer/p2_placement_probe.py`): `capture_markers` returns
+  per-slot `generator` + `slot` (None when `slot=0`); `build_probe` returns
+  `{schema, catalog_join, mapping, slots}`. `terrain` stays gated on
+  `xyz==True` + class in ground/water.
+- Audit (`scripts/audit_p2_placement_evidence.py::run_audit`): when
+  `catalog_join` is true, every mapped `slot` is looked up in
+  `p2_placement_catalog.all_slots()`; an **unmatched uid is a hard failure**
+  (`SystemExit`). Matched slots are stamped onto the real catalog document and
+  audited. The old synthetic `arena_document` path is now only the
+  `catalog_join=false` fallback (no sidecar).
+
+### (b) P2-identity placement
+
+Staged a Dwarf Orange (BlueKochappy source 44) two-actor original Impact Site
+arena via lane-13's stager (`experimental.pikmin2_dwarf_orange_runtime.prepare`,
+bank `output/p2-dwarf-orange-bank`, profile `output/p2-dwarf-orange-ref`,
+generators `211001` source + `211002` control) and wrote the sidecar mapping
+`211001 -> 648204418`. The chosen catalog slot is the first `dwarf`-cohort
+campaign slot by uid (impact/perplexing-pool; see the deterministic select in
+`scripts/run_p2_catalog_placement.py::choose_slot_uid`). Running the private
+build under the GL slot produced a genuine P2-identity spawn **with** native
+terrain/route evidence:
+
+```
+P2_ENEMY_READY species=BlueKochappy source_id=44 native_family=Chappy generator=211001 x=-150.0000000 y=30.0000000 z=1850.0000000 health=250.0 max_health=250.0 behavior=P1 purple_stun=bluekochappy_5s
+P2_PLACEMENT_SLOT generator=211001 slot=648204418 actor=3 xyz=1 terrain=ground route=1 route_distance=61.2 water_depth=0.00
+P2_PLACEMENT_SLOT generator=211002 slot=0 actor=3 xyz=1 terrain=ground route=1 route_distance=129.3 water_depth=0.00
+P2_PLACEMENT_PROBE actors=2 evidence_slots=2
+[PC Port] Experimental preview window set to 960x540 windowed and centered
+```
+
+Audit result (report.json): `catalog_join=true`, `matched_slot_uids=[648204418]`,
+and `injected_legal_admitted = {BlueKochappy:[648204418], YellowKochappy:[648204418]}`
+(clearly-labelled profile-gate injection; natural slot evidence is native).
+
+### Gate 1 (updated)
+
+Now a **P2-identity spawn**: native `P2_ENEMY_READY species=BlueKochappy
+source_id=44` with health 250 and the converted dwarf-orange bank, on the
+original Impact Site map, with native `xyz/terrain/route` evidence at
+`route_distance 61.2` (within the 200u cap). This replaces the slice-1 P1
+`TEKI_Chappy` proxy. Identity is still `behavior=P1` (host AI), matching lane
+13's documented candidate scope.
+
+### Commits (this slice)
+
+- Native `b805d9c6` ... `4601bdd84b5b039d88145b8f2a8f391a42295f10`:
+  - `4601bdd8` lane04: sidecar slot-id join in placement probe (#440)
+- Root `d6987073eaa3d7c39cb3bebf3f0d35296f6b9192`:
+  - `d698707` lane04: catalog join (sidecar slot uid) + P2-identity arena probe (#440)
+
+### Build evidence (from `output/dsw/l04-build-evidence.txt`)
+
+```
+2026-09-14T20:40:38 lane=l04 target=pikmin_pc native=4601bdd84b5b039d88145b8f2a8f391a42295f10 dirty=no build_dir=C:\Users\alari\pikmin-randomizer\output\dsw\native-l04-build exe=C:\Users\alari\pikmin-randomizer\output\dsw\native-l04-build\bin\nectar.exe sha256=ce78e953f24d09d9a6303a609a5d45d266801bbcb2786e651c69ed6344e5c046 ninja_n="ninja: no work to do." seconds=0
+```
+
+### Runtime evidence
+
+Run dir `output/dsw/l04-out/8a02d908ee644fa8b13ba53b95e60f9b` (native.log,
+probe.json, evidence.json, report.json).
+
+### Tests
+
+- `tests/test_p2_placement_probe.py` rewritten: the in-test `sys.modules` stub
+  fallback (previously lines 8-101) is removed and the production marker
+  (`generator=` + `slot=`) is covered. 8 test functions pass.
+- Full placement suite: `py -3.12 -m pytest tests/test_p2_placement_probe.py
+  tests/test_p2_placement_native.py tests/test_p2_placement.py -q` → `73 passed,
+  17 subtests passed`.
+- Manual audit checks: unmatched mapped uid `999999999` hard-fails; no-sidecar
+  probe reports `catalog_join=false`.
+
+## One exact reproduction command (slice 2)
+
+```
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l04 -- py -3.12 scripts/run_p2_catalog_placement.py --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" --bank "C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-bank" --profile "C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-ref" --exe "C:/Users/alari/pikmin-randomizer/output/dsw/native-l04-build/bin/nectar.exe" --output "C:/Users/alari/pikmin-randomizer/output/dsw/l04-out"
+```
+(run from the root worktree `C:/Users/alari/pikmin-randomizer/output/dsw/l04-root`.)
+
+## Subagent usage (slice 2)
+
+- `explore` #1 (catalog uid scheme + slot selection): used as-is. Traced the
+  crc32 uid derivation, confirmed BlueKochappy/YellowKochappy are
+  `cohort=None`/`terrains=['ground']`, and recommended the `dwarf`-cohort slot
+  uid `648204418` plus the deterministic selection rule; the sidecar uses it.
+- `explore` #2 (sidecar/arena run inventory): used as-is. Confirmed no
+  `p2-placement-slots` name collision, located the bank/profile dirs
+  (`output/p2-dwarf-orange-bank`, `output/p2-dwarf-orange-ref`), confirmed the
+  native `pc_p2_dwarf_orange` emits `source_id=44`, and that `arena-private.txt`
+  is an inert label.
+- `general` #3 (rewrite the parser test file): used as-is. Removed the stub
+  fallback and produced the 8 production-marker tests (which temporarily
+  reported 7 failures against the old module contract before I rewrote
+  `p2_placement_probe.py` to match; they now pass). Honest negative mid-state,
+  final result retained unchanged.
