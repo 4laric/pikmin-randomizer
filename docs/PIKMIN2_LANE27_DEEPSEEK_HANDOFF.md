@@ -884,7 +884,7 @@ resolved.
 ## Concrete source ID
 - Source ID: 58 `BombSarai`.
 
-| Gate | Result | Evidence | Injected vs natural |
+| Gate | Historical note | Evidence | Injected vs natural |
 |---|---|---|---|
 | 1. Exact identity and spawn | UNTESTED (injected) | output/dsw/l27-out/bombsarai-teki-run-fix2.log:722 (generated TEKI_Napkid vehicle proxy, not P2 identity 58) | injected |
 | 2. Autonomous movement and animation | PARTIAL (injected) | output/dsw/l27-out/bombsarai-teki-run-fix2.log:779 (grounded y=0, sealed to squad; P1 host flight overridden) | injected |
@@ -942,3 +942,101 @@ than fabricated.
       5. transport_reward   ignored [UNTESTED]
       6. cleanup_reentry    ignored [UNTESTED]
     EXIT=0 (no refused PASS rows)
+
+## Slice 4c review fixes 3 -- natural carcass -> Pod receipt LANDED
+
+Reviewer verdict on fix2 was BLOCKED (no `P2_POD_RECEIPT`). This pass makes the
+generated carrier's carcass reach the Research Pod natively. The arena had no Pod
+anchor at all, so `pc_p2_preview_deliver` was never entered and the
+`pc_p2_bombsarai_receipt` branch was dead. With a cargo Pod staged and the squad
+released into FreeMode onto the carcass, the Pod credits
+`corpse:bombsarai:270001` with no injection.
+
+### Ordered commits
+
+Native branch `deepseek/p2-l27-native` (base `6b283fd1`, clean):
+
+1. `27ac3526` -- `lane27: natural carcass -> Pod receipt: free-mode ring, captain park, cargo receipt (#244)`
+
+Root branch `deepseek/p2-l27` (base `c15e6462`, clean):
+
+1. `d939f77b` -- `lane27: stage cargo Pod + 40-red squad; corpse/transport validator gates (#244)`
+
+### What changed
+
+- `experimental/pikmin2_bombsarai_teki_stage.py`: stage `p2-pod.txt`
+  (`P2_POD_1 bolt 180 15 25 / Kochappy 2`). The room already stages a `pr05`
+  `preview treasure bolt`, so the Pod anchor binds and `pc_p2_preview_deliver`
+  runs; without it `pc_p2_preview_goal()` was null and the receipt branch was
+  unreachable.
+- `scripts/preview_pikmin2_room.py`: 40 reds (was 20). The grounded carrier's
+  area bombs otherwise wipe a 20-red squad before it can be killed; 40 reds land
+  the kill with survivors left to haul.
+- `pc_port/pc_p2_bombsarai_teki.cpp`: on carrier death, park the captain beyond
+  the 250u join-party range and ring the survivors onto the carcass in FreeMode
+  (`Piki::graspSituation`, `mIdleWorkSearchRange ~100`) every 60 ticks until a
+  carrier latches; the carcass `carry_min` is forced to 1 (retail 3 -- the bombs
+  decimate the squad); after `pc_p2_bombsarai_receipt` fires (the Pod credited
+  it) the survivors are re-formed so they stop carrying stray `pr01` number
+  pellets to the Pod (the preview's deny-by-default would abort). The previous
+  injected `FALLBACK_DELIVER` is removed, so gates 4/5 are natural.
+
+### GL runtime (executed, generated host, 330 s window)
+
+`pikmin_pc` (`nectar.exe`) at native `27ac3526`, staged from the committed
+emitter (`output/dsw/l27-out/teki-arena9/91686e9d833d4ca69f082791632de186`),
+run at `PIKMIN_P2_ROOM_WINDOW=960x540`; log
+`output/dsw/l27-out/teki-arena9/91686e9d833d4ca69f082791632de186/run.log`
+(sha256 `b5a5a508182c32555ae56d029544b582606900c3ce8e6b03a7d5f2e17d77261f`).
+
+```
+:731 [Pikipelago] P2_POD_READY treasure=bolt value=180 weight=15 capacity=25 pokos=0
+:774 P2_BOMBSARAI_TEKI_BLAST generator=270001 token=270001 carrier_valid=1 hits=21 pikmin_hits=21
+:785 P2_BOMBSARAI_TEKI_DEAD generator=270001
+:790 P2_BOMBSARAI_TEKI_CORPSE_CONFIG carry_min=3 carry_max=6 min_free_slot=0 alive=1
+:791 P2_BOMBSARAI_TEKI_CAPTAIN_PARK x=180.917 z=412.627
+:792 P2_BOMBSARAI_TEKI_FREE_RECRUIT count=38 carriers=0 squad=38
+:793 P2_BOMBSARAI_TEKI_CORPSE tick=30 x=180.604 z=131.853 moved=19.229 carriers=19
+:806 P2_BOMBSARAI_TEKI_CORPSE tick=300 x=-24.731 z=69.945 moved=210.030 carriers=8
+:829 P2_BOMBSARAI_TEKI_CORPSE tick=750 x=-211.267 z=-182.222 moved=490.657 carriers=2
+:835 [Pikipelago] P2_POD_RECEIPT id=corpse:bombsarai:270001 value=2 new=1 pokos=2 seeds=0
+:836 P2_BOMBSARAI_TEKI_CORPSE_DELIVERED
+```
+
+Reading: 40 reds engage the grounded carrier (nearest 6-24u) and kill it at tick
+300 (`DEAD`); the carcass pellet spawns with carry min/max 3/6 and
+`min_free_slot=0`; the captain is parked at (180.9,412.6); 38 survivors are
+released FreeMode onto the carcass; carriers latch (19 -> 8 -> 2) and haul it
+moved 19 -> 490 units to the Pod; the Pod credits `corpse:bombsarai:270001`
+(value 2, pokos 0 -> 2); the survivors are then re-formed.
+
+### Concrete source ID
+- Source ID: 58 `BombSarai`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | UNTESTED (injected) | output/dsw/l27-out/teki-arena9/91686e9d833d4ca69f082791632de186/run.log:724 (generated TEKI_Napkid vehicle proxy, not P2 identity 58) | injected |
+| 2. Autonomous movement and animation | PARTIAL (injected) | output/dsw/l27-out/teki-arena9/91686e9d833d4ca69f082791632de186/run.log:759 (grounded y=0, sealed to squad; P1 host flight overridden) | injected |
+| 3. Attacks and receivers | PARTIAL | output/dsw/l27-out/teki-arena9/91686e9d833d4ca69f082791632de186/run.log:774 (Release lob -> real InteractBomb on live Pikmin, pikmin_hits=21) | natural receiver, injected carrier |
+| 4. Death and corpse | PASS | output/dsw/l27-out/teki-arena9/91686e9d833d4ca69f082791632de186/run.log:785 TEKI_DEAD, :790 CORPSE_CONFIG (natural carcass Pellet, min_free_slot=0) | natural |
+| 5. Actual transport and reward | PASS | output/dsw/l27-out/teki-arena9/91686e9d833d4ca69f082791632de186/run.log:835 P2_POD_RECEIPT id=corpse:bombsarai:270001 value=2 new=1 pokos=2 seeds=0 | natural |
+| 6. Cleanup and re-entry | UNTESTED | single session; lifetime forget/reset wired | injected |
+
+Honest labels: gate 5 is a natural FreeMode grasp -> route -> Pod credit with two
+fixture concessions -- the carcass `carry_min` is lowered 3 -> 1 (the bombs
+decimate the squad) and the room stages 40 reds (was 20) so the kill lands. The
+carrier is still a P1 `TEKI_Napkid` vehicle proxy (identity gate 1 stays
+injected). No injected delivery fallback remains.
+
+### Checker output
+
+```
+36 Bomb (role=projectile): ignored (role)
+58 BombSarai (role=source):
+  1. identity_spawn     ignored [UNTESTED]
+  2. movement_animation ignored [PARTIAL]
+  3. attacks_receivers  ignored [PARTIAL]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   accepted [PASS]
+  6. cleanup_reentry    ignored [UNTESTED]
+```
