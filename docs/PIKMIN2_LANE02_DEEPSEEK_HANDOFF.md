@@ -1115,3 +1115,37 @@ L26 (Houdai 66):         exit 1  (identity_spawn/attacks/cleanup refused:uncited
 `py -3.12 -m pytest tests/test_pikmin2_handoff_ingest.py -q` -> 24 passed;
 full lane-02 suites -> 167 passed, 17 subtests. Advance report left at its
 committed state (lane 01 regenerates after merge).
+
+## Fix 9
+
+The engine refresh (wave `5071d6f`) re-exported `engine/`, adding seven `pc_p2_*.cpp`
+modules the ledger did not cover, which broke the coverage audit (`uncovered_identity_modules`,
+`LEDGER COVERAGE FAIL`). Merged `claude/p2-deepseek-wave` (fast-forward) to reproduce.
+
+- Added the seven modules to `SHARED_MODULES` in `scripts/audit_pikmin2_roster.py` —
+  each is a sub-module or provider of an already-covered identity, never a new
+  source identity, so no gate row is fabricated and deny-by-default is unchanged:
+
+  | Module | Kind | Owning lane |
+  |---|---|---|
+  | `pc_p2_bigtreasure_receiver` | Titan Dweevil (73) elemental receiver sub-module | 32 |
+  | `pc_p2_breadbug_contest_host` | Breadbug (38/40) contest bridge | 18 |
+  | `pc_p2_groink_carcass` | Groink (78) carcass/revival | 21 |
+  | `pc_p2_otakara` | Dweevil family (59-62) source FSM | 22 |
+  | `pc_p2_placement_probe` | placement terrain probe (provider) | 04 |
+  | `pc_p2_projectile_engine_receiver` | projectile engine receiver (primitive) | 20 |
+  | `pc_p2_rock_host` | Rock (19) projectile host primitive | 20 |
+
+- Coverage failure message now annotates each uncovered module with its owning lane
+  via a new `MODULE_LANE_HINTS` table + `_lane_of_module` (mirrors the family->lane
+  map in PIKMIN2_IMPLEMENTATION_FANOUT.md / PIKMIN2_LANE_COMPLETION.md), e.g.
+  `identity modules without a row: ['pc_p2_x (lane 32)', ...]`.
+- Added `test_lane_of_module_routes_to_owning_lane`.
+
+Result on a `engine/` matching the wave (133 modules):
+
+```
+py -3.12 scripts/audit_pikmin2_roster.py --review                       # exit 0, ledger coverage complete: True
+py -3.12 -m pytest tests/test_pikmin2_roster_coverage.py -q             # 14 passed
+py -3.12 -m pytest <roster/admission/handoff/seed suites> -q            # 107 passed
+```
