@@ -10,7 +10,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from experimental.pikmin2_bombsarai_teki_log import validate_teki_markers
+from experimental.pikmin2_bombsarai_teki_log import (
+    BOMBSARAI_SOURCE_ID,
+    validate_gate1_natural_spawn,
+    validate_teki_markers,
+)
 
 
 FULL_LOG = "\n".join([
@@ -284,3 +288,190 @@ def test_full_log_with_new_markers():
     assert result["hit_damage"] == 10.0
     assert result["forget"]["corpse_after"] == 0
     assert result["reentry_pass"] is True
+
+
+def test_free_recruit_parsed():
+    log = "P2_BOMBSARAI_TEKI_FREE_RECRUIT generator=270001 tick=120 count=5 free=3 recruited=2 carriers=2 x=1.0 z=2.0"
+    result = validate_teki_markers(log)
+    assert len(result["free_recruits"]) == 1
+    entry = result["free_recruits"][0]
+    assert entry["tick"] == 120
+    assert entry["count"] == 5
+    assert entry["free"] == 3
+    assert entry["recruited"] == 2
+    assert entry["carriers"] == 2
+    assert entry["x"] == 1.0 and entry["z"] == 2.0
+
+
+def test_free_recruit_whitespace_order_tolerant():
+    log = "   P2_BOMBSARAI_TEKI_FREE_RECRUIT   z=2.0   x=1.0   carriers=2   tick=120   count=5  "
+    result = validate_teki_markers(log)
+    assert len(result["free_recruits"]) == 1
+    entry = result["free_recruits"][0]
+    assert entry["tick"] == 120 and entry["count"] == 5
+    assert entry["x"] == 1.0 and entry["z"] == 2.0
+    assert entry["free"] is None and entry["recruited"] is None
+
+
+def test_free_recruit_malformed_numerics_degrade_to_none():
+    log = "\n".join([
+        "P2_BOMBSARAI_TEKI_FREE_RECRUIT generator=270001 tick=.. count=NaN x=inf z=..",
+        "P2_BOMBSARAI_TEKI_FREE_RECRUIT generator=270001 tick=121 count=4 x=3.0 z=4.0",
+    ])
+    result = validate_teki_markers(log)
+    assert len(result["free_recruits"]) == 2
+    assert result["free_recruits"][0]["tick"] is None
+    assert result["free_recruits"][0]["count"] is None
+    assert result["free_recruits"][0]["x"] is None
+    assert result["free_recruits"][0]["z"] is None
+    assert result["free_recruits"][1]["tick"] == 121
+    assert result["free_recruits"][1]["count"] == 4
+
+
+def test_captain_park_parsed():
+    log = "P2_BOMBSARAI_TEKI_CAPTAIN_PARK generator=270001 tick=130 x=300.0 y=0.0 z=100.0 distance=300.0"
+    result = validate_teki_markers(log)
+    assert len(result["captain_parks"]) == 1
+    entry = result["captain_parks"][0]
+    assert entry["tick"] == 130
+    assert entry["x"] == 300.0 and entry["z"] == 100.0
+    assert entry["distance"] == 300.0
+
+
+def test_captain_park_whitespace_order_tolerant():
+    log = "  P2_BOMBSARAI_TEKI_CAPTAIN_PARK   distance=300.0   z=100.0   x=300.0   tick=130  "
+    result = validate_teki_markers(log)
+    assert len(result["captain_parks"]) == 1
+    entry = result["captain_parks"][0]
+    assert entry["tick"] == 130
+    assert entry["x"] == 300.0 and entry["z"] == 100.0
+    assert entry["y"] is None
+
+
+def test_captain_park_malformed_numerics_degrade_to_none():
+    log = "P2_BOMBSARAI_TEKI_CAPTAIN_PARK generator=270001 tick=bad x=NaN z=inf distance=.."
+    result = validate_teki_markers(log)
+    assert len(result["captain_parks"]) == 1
+    entry = result["captain_parks"][0]
+    assert entry["tick"] is None
+    assert entry["x"] is None
+    assert entry["z"] is None
+    assert entry["distance"] is None
+
+
+def test_reset_stored():
+    log = "P2_BOMBSARAI_TEKI_RESET bound_before=1 corpse_before=0 bound_after=0 corpse_after=0"
+    result = validate_teki_markers(log)
+    assert result["reset"] == {
+        "bound_before": 1, "corpse_before": 0,
+        "bound_after": 0, "corpse_after": 0,
+    }
+
+
+def test_reset_whitespace_order_tolerant():
+    log = "  P2_BOMBSARAI_TEKI_RESET   corpse_after=0   bound_after=0   corpse_before=0   bound_before=1  "
+    result = validate_teki_markers(log)
+    assert result["reset"] == {
+        "bound_before": 1, "corpse_before": 0,
+        "bound_after": 0, "corpse_after": 0,
+    }
+
+
+def test_reset_malformed_numerics_degrade_to_none():
+    log = "P2_BOMBSARAI_TEKI_RESET bound_before=.. corpse_before=NaN bound_after=bad corpse_after="
+    result = validate_teki_markers(log)
+    assert result["reset"] == {
+        "bound_before": None, "corpse_before": None,
+        "bound_after": None, "corpse_after": None,
+    }
+
+
+def test_corpse_config_extra_fields_ignored():
+    log = "P2_BOMBSARAI_TEKI_CORPSE_CONFIG carry_min=3 carry_max=6 min_free_slot=0 alive=1"
+    result = validate_teki_markers(log)
+    assert result["corpse_config"] == {"carry_min": 3, "carry_max": 6}
+
+
+def test_empty_log_new_defaults():
+    result = validate_teki_markers("")
+    assert result["reset"] is None
+    assert result["free_recruits"] == []
+    assert result["captain_parks"] == []
+
+
+def test_full_log_with_free_recruit_and_captain_park():
+    log = "\n".join(FULL_LOG.splitlines() + [
+        "P2_BOMBSARAI_TEKI_FREE_RECRUIT generator=270001 tick=120 count=5 free=3 recruited=2 carriers=2 x=1.0 z=2.0",
+        "P2_BOMBSARAI_TEKI_CAPTAIN_PARK generator=270001 tick=130 x=300.0 y=0.0 z=100.0 distance=300.0",
+        "P2_BOMBSARAI_TEKI_RESET bound_before=1 corpse_before=0 bound_after=0 corpse_after=0",
+    ])
+    result = validate_teki_markers(log)
+    assert result["gates"] == {
+        "ready": True, "supplied": True, "joint_follow": True, "thrown": True,
+        "blasted": True, "dead": True, "corpse": True,
+    }
+    assert len(result["free_recruits"]) == 1
+    assert len(result["captain_parks"]) == 1
+    assert result["reset"]["bound_after"] == 0
+
+
+GATE1_PASS_LOG = "\n".join([
+    "P2_SEED_RESOLVE source_id=58 target=5465461 original_type=11 x=-150.0 z=1850.0",
+    "P2_PLACEMENT_SLOT generator=270001 slot=5465461 actor=3 xyz=1 terrain=ground route=1 route_distance=61.2 x=-150.000 y=30.000 z=1850.000 water_depth=0.00",
+    "P2_BOMBSARAI_TEKI_READY generator=270001 type=11",
+])
+
+
+def test_gate1_pass_seed_resolve_58_and_ready_same_generator():
+    assert BOMBSARAI_SOURCE_ID == 58
+    result = validate_teki_markers(GATE1_PASS_LOG)
+    assert result["seed_resolves"] == [{"source_id": 58, "target": 5465461}]
+    assert result["placement_slots"] == [{"generator": 270001, "slot": 5465461}]
+    assert result["ready_generators"] == [270001]
+    verdict = result["gate1_natural_spawn"]
+    assert verdict["ok"] is True
+    assert verdict["generator"] == 270001
+    assert verdict["slot"] == 5465461
+    assert verdict["source"] == 58
+    assert validate_gate1_natural_spawn(GATE1_PASS_LOG)["ok"] is True
+
+
+def test_gate1_flips_when_seed_resolve_missing():
+    log = "\n".join(
+        line for line in GATE1_PASS_LOG.splitlines()
+        if "P2_SEED_RESOLVE" not in line)
+    verdict = validate_gate1_natural_spawn(log)
+    assert verdict["ok"] is False
+    assert "P2_SEED_RESOLVE" in verdict["reason"]
+
+
+def test_gate1_flips_on_wrong_source_id():
+    log = GATE1_PASS_LOG.replace(
+        "source_id=58 target=", "source_id=59 target=")
+    verdict = validate_gate1_natural_spawn(log)
+    assert verdict["ok"] is False
+    assert "59" in verdict["reason"]
+
+
+def test_gate1_flips_on_generator_mismatch():
+    log = GATE1_PASS_LOG.replace(
+        "P2_BOMBSARAI_TEKI_READY generator=270001",
+        "P2_BOMBSARAI_TEKI_READY generator=270002")
+    verdict = validate_gate1_natural_spawn(log)
+    assert verdict["ok"] is False
+    assert "270001" in verdict["reason"]
+
+
+def test_gate1_unmapped_slot_zero_ignored():
+    log = GATE1_PASS_LOG.replace("slot=5465461", "slot=0")
+    verdict = validate_gate1_natural_spawn(log)
+    assert verdict["ok"] is False
+    assert "P2_PLACEMENT_SLOT" in verdict["reason"]
+
+
+def test_gate1_empty_log_defaults():
+    result = validate_teki_markers("")
+    assert result["seed_resolves"] == []
+    assert result["placement_slots"] == []
+    assert result["ready_generators"] == []
+    assert result["gate1_natural_spawn"]["ok"] is False
