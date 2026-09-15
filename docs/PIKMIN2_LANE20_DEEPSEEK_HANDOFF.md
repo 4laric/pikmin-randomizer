@@ -8,7 +8,7 @@ Implementation owner: Codex through shared account `4laric`; executing agent/ses
 
 **Source IDs owned / inspected:** Kabuto 75, Rkabuto 95, Fkabuto 96; Stone 74 /
 Rock 19 (projectile), Egg 37, Bomb 36 (shared primitives, unchanged; reused by
-21/25/26/27); FminiHoudai 97 (Groink pedestal, lane 21).
+21/25/26/27); FminiHoudai (Groink pedestal, owned by lane 21).
 
 **Concrete slice:** Kabuto 75 → Stone 74 → **actual engine receiver mutation**
 (source-faithful `InteractAttack`/`InteractPress` via `stimulate()`), plus the
@@ -81,16 +81,59 @@ Root files: `experimental/pikmin2_projectile_engine_receiver.py` (harness),
 - Acceptance run dirs: `output/projectile-engine-receiver/6280aebfc02045df837e8a973d90d82b`
   (rkabuto), `.../d51051022b8f4ace8498d32f50f29bce` (kabuto_actor).
 
-## Six arena gates (Kabuto 75 → Stone 74 → real Teki receiver)
+## Six arena gates (ingest contract)
 
-| Gate | Result | Evidence |
-|---|---|---|
-| 1. Identity + spawn | PASS (source-backed) | `preview dwarf bulborb` generator as the Teki target; fire is FSM-driven (`P2_PROJECTILE_KABUTO_FIRE species=Rkabuto`) |
-| 2. Movement + animation | source-backed N/A | projectile is policy-simulated (no rendered model this slice); flight driven by the committed Stone FSM |
-| 3. Attacks / receivers | PASS — natural Teki `InteractAttack` 250 | `P2_PROJECTILE_ENGINE_STRIKE kind=Attack damage=250.0 applied=1 stored=0.0->250.0` (×15) |
-| 4. Death + corpse | FAIL (honest) | Teki `mStoredDamage` accumulates but the P1 Chappy proxy never `makeDamaged()`s foreign stimuli when idle/wandering, so `mHealth` stays 130 and no corpse drops |
-| 5. Transport + reward | UNTESTED | cargo-free room, no Pod; no lethal drop path reached |
-| 6. Cleanup + re-entry | PASS | `P2_PROJECTILE_STONE_DESTROY reason=health` (Teki hit) / `reason=wall` (miss); token-keyed contacts; self-hit skipped (`P2_PROJECTILE_SKIP_SELF`) so the cannon's own health is untouched |
+One table per owned identity, in the roster ingest format. Evidence paths cite
+real line numbers from the clean post-fix4 run
+`output/dsw/l20-out/1aa87a71d01d4c39bb563782e8072a6e/native.log`.
+
+### Concrete source ID
+- Source ID: 75 `Kabuto`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | UNTESTED (proxy) | output/dsw/l20-out/1aa87a71d01d4c39bb563782e8072a6e/native.log:766 FSM-driven bound Dwarf Bulborb firer, no real Kabuto model | proxy |
+| 2. Autonomous movement and animation | N/A | policy-simulated Stone flight; no rendered model | natural |
+| 3. Attacks and receivers | PASS (natural) | output/dsw/l20-out/1aa87a71d01d4c39bb563782e8072a6e/native.log:772 | natural |
+| 4. Death and corpse | FAIL | output/dsw/l20-out/1aa87a71d01d4c39bb563782e8072a6e/native.log:772 stored 130->130; squad kills victims, not the Stone | natural |
+| 5. Actual transport and reward | BLOCKED | cargo-free room, no Pod/Onion | natural |
+| 6. Cleanup and re-entry | UNTESTED | Stone teardown only; scene re-entry not exercised | natural |
+
+### Concrete source ID
+- Source ID: 74 `Stone`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | UNTESTED (proxy) | FSM-birthed Stone, no Rock model | proxy |
+| 2. Autonomous movement and animation | N/A | policy-simulated flight | natural |
+| 3. Attacks and receivers | UNTESTED | admitted through the Kabuto identity, not independently | natural |
+| 4. Death and corpse | N/A | Stone breaks (health-zeroed), no corpse (EFlag_HasNoInfo) | natural |
+| 5. Actual transport and reward | BLOCKED | cargo-free room | natural |
+| 6. Cleanup and re-entry | UNTESTED | Stone teardown only | natural |
+
+### Concrete source ID
+- Source ID: 95 `Rkabuto`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | UNTESTED | not exercised this slice | natural |
+| 2. Autonomous movement and animation | UNTESTED | not exercised this slice | natural |
+| 3. Attacks and receivers | UNTESTED | not exercised this slice | natural |
+| 4. Death and corpse | UNTESTED | not exercised this slice | natural |
+| 5. Actual transport and reward | BLOCKED | cargo-free room | natural |
+| 6. Cleanup and re-entry | UNTESTED | not exercised this slice | natural |
+
+### Concrete source ID
+- Source ID: 96 `Fkabuto`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | UNTESTED | not exercised this slice | natural |
+| 2. Autonomous movement and animation | UNTESTED | not exercised this slice | natural |
+| 3. Attacks and receivers | UNTESTED | not exercised this slice | natural |
+| 4. Death and corpse | UNTESTED | not exercised this slice | natural |
+| 5. Actual transport and reward | BLOCKED | cargo-free room | natural |
+| 6. Cleanup and re-entry | UNTESTED | not exercised this slice | natural |
 
 Injected vs natural: the fire is FSM-driven (not injected); the receiver mutation
 is a real `stimulate()` result, not a direct health write. The **lethal** path is
@@ -468,7 +511,7 @@ the slice-3 commit table.
 | 1. Identity + spawn | PASS | 1 firer + 12 victims (`P2_PROJECTILE_TEKI_ROSTER`), distinct tokens |
 | 2. Movement + animation | N/A (source-backed) | policy-simulated flight |
 | 3. Attacks / receivers | PASS | victim `ENGINE_STRIKE kind=Attack 250` ×11; Pikmin `kind=Press 10` ×6; captain Navi `GROINK_ENGINE_HIT 100→90` then `BOMB_ENGINE_HIT 90→80` |
-| 4. Death + corpse | partial (victim death observed, corpse untracked) | `P2_PROJECTILE_AIM_NONE total_teki=13 alive_nonfirer=0` after all 12 victims were struck (250 each) — no corpse marker this slice |
+| 4. Death + corpse | FAIL | every `ENGINE_STRIKE` shows `health=130.0->130.0 stored=0.0->250.0` (stored damage never consumed in slices 1-4); the victims were killed by the preview Pikmin squad, not the Stone; one victim was never struck |
 | 5. Transport + reward | UNTESTED | cargo-free room, no Pod |
 | 6. Cleanup + re-entry | PASS | `STONE_DESTROY reason=health` (11 flight strikes) / `reason=wall` (4, after victims exhausted); firer untouched (`SKIP_SELF`) |
 
@@ -510,7 +553,8 @@ No subagent built, ran a fixture, committed, or touched native/shared files.
 ### Remaining blockers (named provider)
 
 - Victim corpse/carry/reward still untracked (no corpse marker this slice; lane
-  06/07 + #169). Death is now *observed* (victims become non-alive after 250 hits).
+  06/07 + #169). Death is NOT proven by the Stone: stored damage stays unconsumed
+  (`mStoredDamage` 0→250, `mHealth` 130→130) and the preview squad kills the victims.
 - The Bomb/Egg blast receiver stays `InteractAttack`-mapped (receiver proof, not
   lane-27 fidelity); real `InteractBomb` routing is lane 10/27 scope.
 - Egg primitive consumer (TamagoMushi/Egg) not separately exercised this slice;
@@ -528,3 +572,95 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l2
   --output C:/Users/alari/pikmin-randomizer/output/dsw/l20-out `
   --mode two_teki --generator 385875968 --victims 12 --seconds 60
 ```
+
+## Slice 4 review fixes (fix4)
+
+Reviewer: NOT merged — two blocking items (Bomb blast unconditional; gate-4
+death claim unsupported) plus three non-blocking. All fixed below.
+
+### Ordered commits (both branches clean)
+
+| Branch | Commit | Subject |
+|---|---|---|
+| native | `9f9b4cf4` | lane20: review fixes 4 — route Bomb blast through p2_bombsarai_route_blast; move logger flags into Host (#169) |
+| native | `efe1fe1d` | lane20: capture Bomb at the live captain so the routed blast genuinely contains it (#169) |
+| root | `7a952e3` | lane20: fix4 harness/tests — Attack-strike ratio, Bomb dist/NOHIT, shorter fire cycle (#169) |
+| root | this commit | lane20: fix4 handoff (gate table + gate-4 FAIL + subagent usage) (#169) |
+
+### Fixes applied
+
+1. **Bomb blast routing (blocking).** `tickBombConsumer` now builds a
+   `P2BombSaraiReceiver{kind=Navi, position=navi->mSRT.t}`, routes the recorded
+   blast through lane-27's `p2_bombsarai_route_blast` (real sphere + vertical
+   half-height volume test), and applies the engine strike **only when a hit is
+   routed**, logging the distance (`BOMB_ENGINE_HIT … dist=15.0`, or
+   `BOMB_NOHIT dist=…`). The bomb is captured at the live captain so the volume
+   genuinely contains it.
+2. **Gate 4 (blocking).** Reworded to FAIL: every `ENGINE_STRIKE` shows
+   `health=130.0->130.0 stored=0.0->250.0` — stored damage is never consumed
+   (slices 1–4); the victims are killed by the preview Pikmin squad, not the
+   Stone; one victim was never struck.
+3. **Evidence timing.** Re-ran after a clean (`dirty=no`) build: evidence below is
+   from `output/dsw/l20-out/1aa87a71d01d4c39bb563782e8072a6e` (post
+   `native=efe1fe1d` clean build).
+4. **strike_ratio_of.** Now counts only `ENGINE_STRIKE kind=Attack` with a
+   non-firer target (applied + stored delta), and reports both
+   `strike_ratio` (hits/fires) and `strike_ratio_while_alive` (hits / fires before
+   `AIM_NONE`). Every fire while a victim was alive aimed (`KABUTO_AIM`) and
+   struck; fire count is host-load dependent (6–16 fires across runs).
+5. **Static logger flags.** `AIM_NONE`/`KABUTO_TARGET` `static bool logged` moved
+   into Host (`aimNoneLogged`/`kabutoTargetLogged`) and reset.
+6. Bomb carrier stays a synthetic `PBMB` token (lane-20 host label, no Bombsarai
+   actor); Egg consumer still unexercised (declared).
+
+### Build evidence
+
+- `native=efe1fe1d63e4dc6a7dc0ce8f05f4ff085cf1359d dirty=no`, `nectar.exe`
+  SHA-256 `7116d3301ae77943472a0b04460798b0108afb05c847ebd8bc08e9c96752df49`,
+  `ninja -n` → `ninja: no work to do.`
+
+### Gate-table check (pasted output)
+
+`py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE20_DEEPSEEK_HANDOFF.md`
+(exit 0):
+
+```
+19 Rock (role=projectile): ignored (role)
+36 Bomb (role=projectile): ignored (role)
+37 Egg (role=projectile): ignored (role)
+74 Stone (role=projectile): ignored (role)
+75 Kabuto (role=source):
+  1. identity_spawn     ignored [UNTESTED]
+  2. movement_animation ignored [N/A]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       ignored [FAIL]
+  5. transport_reward   ignored [BLOCKED]
+  6. cleanup_reentry    ignored [UNTESTED]
+95 Rkabuto (role=source):
+  1..6 ignored [UNTESTED/BLOCKED]
+96 Fkabuto (role=source):
+  1..6 ignored [UNTESTED/BLOCKED]
+```
+
+### Subagent usage (honest)
+
+Three subagents dispatched in parallel:
+1. `explore` blast-routing audit (`pc_p2_bombsarai_blast` + lane 27 arena +
+   lane 22 bombotakara + `InteractAttack::actNavi`) → used as-is; it corrected my
+   premise (the arena does not stimulate; bombotakara is the concrete stimulator)
+   and gave the `P2BombSaraiReceiver` construction pattern I followed.
+2. `explore` static-logger + marker inventory → used as-is; confirmed exactly two
+   function-scope `static bool logged` flags (lines 983/1086) and that
+   `pc_p2_bombsarai_blast.h` was not yet included.
+3. `general` harness/tests (`strike_ratio_of` 3-tuple, `BOMB_ENGINE_HIT dist=`,
+   `BOMB_NOHIT`, gate update, focused tests) → used as-is; 39 passed. I then added
+   the `add_second_teki`/`--victims` reward myself (not delegated).
+
+No subagent built, ran a fixture, committed, or touched native/shared files.
+
+### Remaining blockers (named provider)
+
+- Battle smoke (dead-tanki) irrelevant. Stored damage consumption / a real Stone
+  kill needs the target's own damage-reaction state or a real P2 Teki FSM —
+  lane 07/10 + #169. Bomb `InteractBomb` (vs `InteractAttack`) routing is lane
+  10/27 scope.
