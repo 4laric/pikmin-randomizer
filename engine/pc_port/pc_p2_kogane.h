@@ -14,3 +14,10 @@ bool pc_p2_kogane_attacked(Teki*);
 void pc_p2_kogane_update(BTeki*);
 // Introspection for fixtures: 1 when a gas cloud is active, with anchor/radius out.
 int pc_p2_kogane_gas_state(BTeki*,float* x,float* z,float* remaining);
+// Slice 3 restart-dedupe introspection: read the persisted lane-06 onion-ledger
+// row count (P2_RECEIPTS_1 + one row per grant) and re-drive a farmed beetle's
+// three flip grants through the real pc_p2_receipt_host_grant Duplicate path,
+// proving the reward cap holds even if the flip-count sidecar were lost.
+int pc_p2_kogane_onion_ledger_rows();
+int pc_p2_kogane_reprobe_duplicates(unsigned generator,int id);
+int pc_p2_kogane_nectar_dropped(unsigned generator);
