@@ -58,6 +58,9 @@ def test_validate_requires_death_cleanup_and_reentry():
         'P2_LONG_LEGS_BIND generator=1 species=Houdai pose=bind\n'
         'P2_LONG_LEGS_DRAW corpse=0 species=Houdai pose=bind\n'
         'P2_LIFECYCLE_MOVE id=1 dist=5.000\n'
+        'P2_LIFECYCLE_TEARDOWN_MODE mode=manager-reset\n'
+        'P2_LIFECYCLE_TEARDOWN refs_before=1 refs_after=0\n'
+        'P2_LIFECYCLE_REGISTRY cycle=2 count=1\n'
         'P2_LIFECYCLE_SUMMARY family=1 alive=1 moved=1 death=240 reentry=500 reused=1 control=1\n'
         'PASS P2_LIFECYCLE_RUNTIME\n')
     evidence = lifecycle.validate(text, 0, manifest)
@@ -98,6 +101,18 @@ def test_dwarf_orange_hooks_route_to_its_module():
     assert 'pc_p2_dwarf_orange_setup();' in source
     assert 'pc_p2_batch2_forget(' not in source
     assert 'pc_p2_dwarf_orange_forget(' not in source
+    # scene-teardown resets every family in one seam call.
+    assert 'pc_p2_reset_all_teki()' in source
+
+
+def test_sokkuri_hooks_route_to_its_module():
+    source = lifecycle.instrument(SYNTHETIC, family='sokkuri')
+    assert '#include "pc_p2_sokkuri.h"' in source
+    assert 'pc_p2_sokkuri_registered(deadPtr)' in source
+    assert 'pc_p2_sokkuri_setup();' in source
+    assert 'pc_p2_sokkuri_forget(' not in source
+    # scene-teardown resets every family in one seam call.
+    assert 'pc_p2_reset_all_teki()' in source
 
 
 def test_validate_dwarf_orange_engine_forget_and_ready_rebind():
@@ -123,8 +138,127 @@ def test_validate_dwarf_orange_engine_forget_and_ready_rebind():
         'P2_ENEMY_READY species=BlueKochappy source_id=44 native_family=Chappy generator=211001\n'
         'P2_DWARF_ORANGE_DRAW corpse=0\n'
         'P2_LIFECYCLE_MOVE id=211001 dist=5.000\n'
+        'P2_LIFECYCLE_TEARDOWN_MODE mode=manager-reset\n'
+        'P2_LIFECYCLE_TEARDOWN refs_before=1 refs_after=0\n'
+        'P2_LIFECYCLE_REGISTRY cycle=2 count=1\n'
         'P2_LIFECYCLE_SUMMARY family=1 alive=1 moved=1 death=240 reentry=500 reused=0 control=1\n'
         'PASS P2_LIFECYCLE_RUNTIME\n')
     evidence = lifecycle.validate(text, 0, manifest, name='dwarf-orange')
     assert evidence['passed'], evidence['checks']
     assert evidence['reused_observed'] is False  # allocator handed a fresh slot; not gated
+
+
+_ONE_ACTOR_MANIFEST = {
+    'control': 'P1 Chappy',
+    'actors': [{'generator': 1, 'native_teki_type': 3, 'species': 'Houdai',
+                'expected_xyz': [0.0, 0.0, 0.0]}],
+}
+
+_BASE_PASS_LOG = (
+    'P2_LIFECYCLE_BIRTH id=1 type=3 registered=1 invincible=0 x=0.000 y=0.000 z=0.000\n'
+    'P2_LIFECYCLE_TARGET id=1\n'
+    'P2_LIFECYCLE_ATTACK id=1 accepted=1 health=-1.0\n'
+    'P2_LIFECYCLE_DEATH id=1 frame=240\n'
+    'P2_LIFECYCLE_CLEANUP id=1 alive=0\n'
+    'P2_LIFECYCLE_FORGET id=1 registered_at_death=1\n'
+    'P2_LIFECYCLE_FORGET id=1 registered_after_dispose=0 engine=doKill\n'
+    'P2_LIFECYCLE_RESPAWN_INJECT id=1 generator=1\n'
+    'P2_LIFECYCLE_REENTRY id=1 frame=500 reused=1\n'
+    'P2_LONG_LEGS_BIND generator=1 species=Houdai pose=bind\n'
+    'P2_LONG_LEGS_BIND generator=1 species=Houdai pose=bind\n'
+    'P2_LONG_LEGS_DRAW corpse=0 species=Houdai pose=bind\n'
+    'P2_LIFECYCLE_MOVE id=1 dist=5.000\n'
+    'P2_LIFECYCLE_SUMMARY family=1 alive=1 moved=1 death=240 reentry=500 reused=1 control=1\n'
+    'PASS P2_LIFECYCLE_RUNTIME\n'
+)
+
+
+def test_teardown_modes_constant():
+    assert lifecycle.TEARDOWN_MODES == ('manager-reset', 'scene-teardown')
+
+
+def test_run_cli_accepts_cycles_and_teardown():
+    import subprocess
+    import sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    proc = subprocess.run([sys.executable, '-m', 'experimental.pikmin2_lifecycle_runtime',
+                           'run', '--help'],
+                          cwd=root, capture_output=True, text=True, timeout=60)
+    assert proc.returncode == 0, proc.stderr
+    assert '--cycles' in proc.stdout
+    assert '--teardown' in proc.stdout
+    for mode in lifecycle.TEARDOWN_MODES:
+        assert mode in proc.stdout
+
+
+def test_validate_reports_cycles_and_teardown_fields():
+    evidence = lifecycle.validate(_BASE_PASS_LOG, 0, _ONE_ACTOR_MANIFEST)
+    assert evidence['cycles'] == 1
+    assert evidence['teardown_mode'] == 'manager-reset'
+    assert isinstance(evidence['cycles'], int)
+    assert isinstance(evidence['teardown_mode'], str)
+    evidence = lifecycle.validate(_BASE_PASS_LOG, 0, _ONE_ACTOR_MANIFEST,
+                                  cycles=3, teardown='scene-teardown')
+    assert evidence['cycles'] == 3
+    assert evidence['teardown_mode'] == 'scene-teardown'
+
+
+def _cycle_lines(counts):
+    out = ''
+    for n, count in enumerate(counts, start=1):
+        out += 'P2_LIFECYCLE_CYCLE cycle=%d\n' % n
+        out += 'P2_LIFECYCLE_REGISTRY cycle=%d count=%d\n' % (n, count)
+    out += 'P2_LIFECYCLE_REWARD pokos=0\n'
+    return out
+
+
+def _teardown_tail(mode, refs_after=0, next_cycle=2):
+    return ('P2_LIFECYCLE_TEARDOWN_MODE mode=%s\n' % mode
+            + 'P2_LIFECYCLE_TEARDOWN refs_before=1 refs_after=%d\n' % refs_after
+            + 'P2_LIFECYCLE_REGISTRY cycle=%d count=1\n' % next_cycle)
+
+
+def test_validate_multi_cycle_registry_growth_and_reward():
+    text = (_BASE_PASS_LOG
+            + _cycle_lines([1, 1])
+            + _teardown_tail('manager-reset', next_cycle=3))
+    evidence = lifecycle.validate(text, 0, _ONE_ACTOR_MANIFEST,
+                                  cycles=2, teardown='manager-reset')
+    assert evidence['passed'], evidence['checks']
+    assert evidence['registry_growth_ok'] is True
+
+    grown = text.replace('P2_LIFECYCLE_REGISTRY cycle=1 count=1',
+                         'P2_LIFECYCLE_REGISTRY cycle=1 count=2')
+    bad = lifecycle.validate(grown, 0, _ONE_ACTOR_MANIFEST,
+                             cycles=2, teardown='manager-reset')
+    assert bad['registry_growth_ok'] is False
+    assert not bad['passed']
+
+    no_reward = lifecycle.validate(text.replace('P2_LIFECYCLE_REWARD pokos=0\n', ''),
+                                   0, _ONE_ACTOR_MANIFEST,
+                                   cycles=2, teardown='manager-reset')
+    assert not no_reward['passed']
+
+
+def test_validate_manager_reset_requires_mode_marker():
+    full = _BASE_PASS_LOG + _teardown_tail('manager-reset')
+    evidence = lifecycle.validate(full, 0, _ONE_ACTOR_MANIFEST)
+    assert evidence['passed'], evidence['checks']
+    assert evidence['teardown_mode'] == 'manager-reset'
+    missing = lifecycle.validate(_BASE_PASS_LOG, 0, _ONE_ACTOR_MANIFEST)
+    assert not missing['passed']
+
+
+def test_validate_scene_teardown_requires_zero_refs_after():
+    ok_text = (_BASE_PASS_LOG
+               + _teardown_tail('scene-teardown', refs_after=0))
+    ok = lifecycle.validate(ok_text, 0, _ONE_ACTOR_MANIFEST, teardown='scene-teardown')
+    assert ok['passed'], ok['checks']
+    assert ok['scene_teardown_ok'] is True
+
+    leak_text = (_BASE_PASS_LOG
+                 + _teardown_tail('scene-teardown', refs_after=1))
+    leak = lifecycle.validate(leak_text, 0, _ONE_ACTOR_MANIFEST, teardown='scene-teardown')
+    assert leak['scene_teardown_ok'] is False
+    assert not leak['passed']
