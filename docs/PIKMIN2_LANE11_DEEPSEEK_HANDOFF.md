@@ -178,3 +178,139 @@ py -3.12 -m pytest tests/test_pikmin2_bulbmin_cave_filter.py -q
 (Standalone native contract gate, without the GL slot:
 `C:\msys64\mingw64\bin\g++.exe -std=c++17 -Wall -Wextra -I pc_port tools/test_p2_bulbmin_cave_filter.cpp -o cf.exe && cf.exe`
 → `PASS P2_BULBMIN_CAVE_FILTER`.)
+
+## Slice 2
+
+**Goal:** give `pc_p2_bulbmin_transition` its live caller and reconcile the
+recruitment/dependency transition with the schema-3 checkpoint, proven in a
+960x540 runtime.
+
+**Concrete change:** `pc_p2_bulbmin_transition(P2BulbminCaveTransition)` now
+returns `std::vector<Piki*>` (the live bodies the source
+`PikiMgr::caveSaveAllPikmins` filter — `pikiMgr.cpp:723` — drops), and
+`pc_p2_cave_checkpoint` is its single live caller: after the squad guards pass
+it applies `P2BulbminDescendFloor`/`P2BulbminExitCave` and builds the persisted
+squad from the surviving bodies, logging
+`P2_CAVE_BULBMIN_TRANSITION move=<descend|exit> removed=N kept=M exiting=0|1`.
+On a descent a wild (unwhistled) dependent is removed and a recruited one kept;
+on an exit every tracked Bulbmin is removed. Untracked (already-restored/
+injected) Bulbmin are kept — they represent an established recruited body and
+the preview has no surface-rebirth target for the source's exit-only drop
+(documented deviation). The prior slice-1 per-Piki `pc_p2_bulbmin_should_save`
+inline filter was replaced by this authoritative transition call;
+`pc_p2_bulbmin_phase` remains the public per-Piki query.
+
+### Ordered commits
+
+| Branch | Commit | Subject |
+|---|---|---|
+| native `deepseek/p2-l11-native` | `c4173f2b8909cdf1012b33beb3b459928444f86e` | lane11: wire pc_p2_bulbmin_transition into the live cave checkpoint (#131) |
+| root `deepseek/p2-l11` | `318bf48` | lane11: Bulbmin transition runtime gate (wild dropped, recruited survives) (#131) |
+
+Dirty state: none (both clean).
+
+### Interfaces / hooks touched
+
+- `pc_port/pc_p2_bulbmin.h/.cpp` — `pc_p2_bulbmin_transition` return type
+  `std::vector<std::uint32_t>` → `std::vector<Piki*>`, capturing the dropped
+  bodies before ledger erasure.
+- `pc_port/pc_p2_cave.cpp` — checkpoint gathers live `Piki*`, and after the
+  guards calls the transition once and rebuilds the squad; no shared engine file
+  outside lane-11-owned cave/bulbmin modules changed.
+- Root: `experimental/pikmin2_bulbmin_transition_runtime.py` (replacement-main
+  fixture + two-process validator), `tests/test_pikmin2_bulbmin_transition_runtime.py`
+  (7 unit tests), `tests/test_pikmin2_bulbmin_cave_filter.py` (wiring assertion
+  updated from `pc_p2_bulbmin_should_save` to `pc_p2_bulbmin_transition`).
+
+### Build + runtime evidence
+
+- `pikmin_pc` rebuild `[8/8] Linking CXX executable bin\nectar.exe`, `ninja -n`
+  → `no work to do`; `nectar.exe` SHA-256
+  `76adf843443e77ce405ab61c07e75083296b131ac3814299e16a9353392bd510`
+  (build_lane captured the still-dirty tree; content == commit `c4173f2b`).
+  `nm -C` shows `T pc_p2_bulbmin_transition(P2BulbminCaveTransition)`.
+- Fixture `fixture.exe` SHA-256
+  `90370c27310f98cfdd6e28fe51c158193ea849cacb20e8b1c7337e40e1300819`
+  (status `built`; `build_fixture` enforces clean native head `c4173f2b`).
+- Live run `output/dsw/l11-out/tx-run` (write exit 42, read exit 0), 960x540
+  centred window in both processes.
+
+### Six arena gates (Bulbmin cave-transition slice)
+
+| Gate | Result | Evidence |
+|---|---|---|
+| 1. Identity + spawn | PASS (source-backed identity; no new actor) | 18 reds + bridge-made dependents; `P2_BULBMIN_READY mother_epoch=1 dependents=10` |
+| 2. Autonomous movement | source-backed N/A this slice | no mother actor |
+| 3. Attacks / receivers | source-backed N/A this slice | hazard immunity unchanged (lane 10/14) |
+| 4. Death + corpse | source-backed N/A this slice | `pc_p2_bulbmin_birth` for dependency only |
+| 5. Transport + reward | source-backed N/A this slice | Bulbmin are not carried |
+| 6. Cleanup + re-entry | **PASS** | transition live caller drops wild, keeps recruited; schema-3 restart preserves the recruited body |
+
+Natural vs injected: the dependency is exercised through the bridge's public
+`pc_p2_bulbmin_birth`/`pc_p2_bulbmin_whistle` entrypoints (no Mother Bulbmin
+actor; its birth is out of scope). The transition filter + checkpoint + restore
+are the real engine path; no health/state was injected.
+
+### Runtime markers (write → read)
+
+```
+Experimental preview window set to 960x540 windowed and centered
+P2_BULBMIN_READY mother_epoch=1 dependents=10 ... captain_table=1
+P2_CAVE_READY floor=1 survivors=18 health=0.625
+P2_BULBMIN_TX_WILD made=1 phase=0
+P2_BULBMIN_TX_RECRUIT made=1 phase=1
+P2_CAVE_BULBMIN_TRANSITION move=descend removed=1 kept=17 exiting=0
+P2_CAVE_TRANSFER floor=1 survivors=17 health=0.625 failed=0
+P2_BULBMIN_TX_CHECKPOINT ok=1
+# read process
+P2_CAVE_RESTORE species=5 maturity=0   (x1) ; species=1 (x16)
+P2_CAVE_READY floor=2 survivors=17 health=0.625
+P2_BULBMIN_TX_READ bulbmin=1 observed=60
+PASS P2_BULBMIN_TRANSITION_RESTORE
+```
+
+All 13 validator checks `passed=true`.
+
+### Subagent usage (slice 2)
+
+- explore #1 (source audit) — confirmed the exact `caveSaveAllPikmins`/
+  `saveAllPikmins` filters, `baseGameSection.cpp:1301` and
+  `singleGS_CaveGame.cpp:656` cave-flow branches, and that leader/wild state is
+  runtime-only (never in `CaveSaveData`; restored Bulbmin is self-owned). Used
+  as-is; it pinned the descend-vs-exit semantics my transition implements.
+- explore #2 (candidate inventory) — confirmed `pc_p2_bulbmin_transition` was
+  still uncalled, quoted the slice-1 predicate code, mapped `mLeaderCreature`
+  (Piki.h:307), and documented the cave_restart fixture env/squad/flow I reused.
+  Used as-is; it selected the integration point and confirmed no birth/whistle
+  harness existed yet.
+- general #3 (scaffold) — wrote `experimental/pikmin2_bulbmin_transition_runtime.py`
+  + `tests/test_pikmin2_bulbmin_transition_runtime.py` per my marker spec. Used
+  as-is (7 unit tests pass; the live run's validator consumed the same `validate`).
+
+### Reproduce
+
+```powershell
+$env:PYTHONUTF8='1'; $env:PIKMIN_P2_ROOM_WINDOW='960x540'
+# 1) stage asset modules (already done once into output/dsw/l11-out)
+py -3.12 -m experimental.pikmin2_cave  --iso "C:/Users/alari/Downloads/PIKMIN2 for GAMECUBE.iso" --output output/dsw/l11-out/imported
+py -3.12 -m experimental.pikmin2_pod   --iso "C:/Users/alari/Downloads/PIKMIN2 for GAMECUBE.iso" --output output/dsw/l11-out/pod
+py -3.12 -m experimental.pikmin2_purple --iso "C:/Users/alari/Downloads/PIKMIN2 for GAMECUBE.iso" --output output/dsw/l11-out/purple
+# 2) build fixture (build slot) — see the exact command already run above
+# 3) run (gl slot)
+py -3.12 output/deepseek-wave/slot.py run gl l11 -- py -3.12 -m experimental.pikmin2_bulbmin_transition_runtime run `
+  --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets `
+  --imported output/dsw/l11-out/imported `
+  --treasure output/dsw/l11-out/pod/treasure.mod `
+  --pod output/dsw/l11-out/pod --purple output/dsw/l11-out/purple `
+  --exe output/dsw/l11-out/tx-fixture/fixture.exe `
+  --output output/dsw/l11-out/tx-run --seconds 75
+```
+
+### Remaining
+
+- A live Mother Bulbmin actor (LeafChappy/KumaChappy) birth — Chappy family
+  (lane 13/#120); the runtime exercises the dependency through the bridge API.
+- Production cave placement / surface rebirth for the exit-drop — cave lane.
+- `pc_p2_bulbmin_should_save` is now superseded at the live checkpoint by the
+  transition; it remains as the per-Piki semantic predicate covered by
+  `tools/test_p2_bulbmin_cave_filter.cpp`.
