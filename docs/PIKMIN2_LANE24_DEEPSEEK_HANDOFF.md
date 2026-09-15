@@ -32,9 +32,8 @@ Root (base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`), clean at head:
 ```
 8917781 lane24: King natural combat->death harness and tests (#445)
 63d15ea lane24: latch the natural-death squad outside the tongue/trample reach (#445)
+d0673a7 lane24: natural combat->death docs and handoff (#445)
 ```
-`docs/PIKMIN2_BULBLAX_NATURAL_COMBAT.md` is uncommitted at handoff time (the final
-docs commit below is applied by the integrator or committed next).
 
 Native (base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`), clean at head:
 ```
@@ -101,6 +100,12 @@ already-passed injected gate is re-run with unchanged inputs.
 Only labeled fixture staging is the larger authored squad (32 reds) and the
 per-tick re-pin of the live squad into a ring (same as the natural-Flick harness).
 There is no `p2-king-inject.txt` and no bomb in the run.
+
+Note: the `receiveScan` change is a changed input to the already-passed
+natural-Flick gate. Its unit validator still passes; the required early checks
+(`checkFlick next=3`, trample) fire before health falls below half, so the
+natural-Flick GL run should still pass, but it was not re-run this slice; lane 01
+should re-run it at the combined build.
 
 ## Tests
 
