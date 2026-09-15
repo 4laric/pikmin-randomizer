@@ -267,7 +267,7 @@ py -3.12 -m experimental.pikmin2_elecbug_natural_runtime run `
 ### Tests
 
 `PIKMIN_NATIVE_ROOT=C:/Users/alari/pikmin-randomizer/output/dsw/native-l14`
-family suite → **132 passed** (13 ElecBug natural-runtime tests).
+family suite → **132 passed** as run by the worker (file list not recorded; integrator reproduces 94 passed over the 10 named elecbug/sokkuri/ground/hana-catfish files and 48 over the natural-runtime + elecbug behaviour set).
 `fixture.exe` SHA `0a318e60132188fecf2be639cdedc56d26fafc00ed89641497fdadccc1996af7`;
 native `nectar.exe` SHA `765fc8d01d59ecf452b08311a0dcd68a44d18d0aae31bd6e4899d0e8b6502a8a`.
 
@@ -297,3 +297,11 @@ native `nectar.exe` SHA `765fc8d01d59ecf452b08311a0dcd68a44d18d0aae31bd6e4899d0e
   slices (#397 for reward/lifetime).
 - The press is P1-derived (documented); retail Purple hipdrop physics is
   lane-11/#128 scope.
+
+
+## Integrator review notes (slice 3)
+
+- The flip is a **staged P1-derived press**, not a thrown Pikmin: the fixture teleports a Purple onto the beetle with forced downward velocity and the native probe calls `pc_p2_elecbug_pressed` from inside the module, bypassing the `tekiinteraction.cpp` InteractPress receiver. The `flip=natural` PASS token is therefore overclaiming; rename to `flip=staged-press` in the next slice (token change needs a fixture rebuild).
+- Death IS natural: 34 accepted attacks, 30 hits 485→20, then `P2_ELECBUG_DEAD health=0`; no `mHealth` writes in the fixture.
+- Fixture timing fragility (next slice): the press is staged 45 ticks into a 90-tick discharge so the Purple is always shocked (`DenkiDying`, squad 20→19); run 3 succeeded only because death beat FLIP_TIME recovery by ~5 ticks. Wait for `!isDischarging` before the first landing, or re-designate a live Purple in the barrage. Also add the Sokkuri pattern's health-floor print and `blocking_reason` to `validate()`.
+- Subagent comparison: broader scope per slice than the solo slices, equally clean provenance, but the first lane-14 slice with an overclaiming docstring and a dropped pattern element.

@@ -6,7 +6,7 @@ press:
 
 * a paired 2-ElecBug isolated roster lets the pair discharge naturally (Yellow
   parked in the sweep proves ``P2_ELECBUG_IMMUNE ... pikmin=yellow species=2``);
-* a thrown Purple Pikmin physically lands on one beetle; the family-local
+* a Purple is teleported onto the beetle with a forced downward velocity (P1-derived staged landing; not a thrown Pikmin) on one beetle; the family-local
   ``pc_p2_elecbug_check_landing_press`` probe (source ``pressCallBack``
   adaptation) flips it into Reverse naturally (``P2_ELECBUG_FLIP`` +
   ``state=reverse`` + ``P2_ELECBUG_NATURAL_PRESS``);
@@ -57,7 +57,7 @@ GOOD_LOG = '\n'.join([
     'Experimental preview window set to 960x540 windowed and centered',
     'P2_ELECBUG_NATURAL_READY squad=20 elecbug_gen=346002 pair_gen=346010 reg=2',
     'P2_ELECBUG_NATURAL_DEPLOY free_squad=20 purple=1 yellow=1',
-    'P2_ELECBUG_NATURAL_PRESS generator=346002 purple=1 source_id=28 state=charge',
+    'P2_ELECBUG_NATURAL_PRESS generator=346002 purple=1 source_id=28 state=discharge'  # real run pressed during discharge,
     'P2_ELECBUG_FLIP generator=346002 source_id=28',
     'P2_ELECBUG_STATE generator=346002 state=reverse',
     'P2_ELECBUG_HIT generator=346002 source_id=28 health=380.0',
