@@ -13,6 +13,8 @@ evaluated. These tests pin:
   admitted cohort through the real ledger (`generate`, no admission injection).
 """
 import json
+import os
+from pathlib import Path
 
 import pytest
 
@@ -21,6 +23,8 @@ from randomizer import p2_placement_catalog as catalog
 from randomizer.seed import generate
 from experimental.pikmin2_enemy_roster import admitted_ids, load_and_validate
 from experimental.pikmin2_seed_bridge import SeedBridgeError, resolve_placement_layout
+
+ADMITTED_PLACEMENT_DOC = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) / "docs/PIKMIN2_ADMITTED_PLACEMENT.json"
 
 IDENTITY_BY_SOURCE = {
     23: 'Sarai',
@@ -95,3 +99,12 @@ def test_accepted_document_seeds_the_whole_admitted_cohort():
     result = generate('lane04-admitted', p2_enemies=True, p2_placement=document)
     bound = {binding['source_id'] for binding in result['p2_layout']['bindings']}
     assert set(admitted) <= bound
+
+
+def test_committed_admitted_placement_seeds_the_whole_cohort():
+    _, admitted = admitted_set()
+    document = json.loads(ADMITTED_PLACEMENT_DOC.read_text(encoding="utf-8"))
+    assert document["schema"] == p2_placement.SCHEMA
+    result = generate('lane04-committed', p2_enemies=True, p2_placement=document)
+    bound = {binding['source_id'] for binding in result['p2_layout']['bindings']}
+    assert bound == set(admitted)
