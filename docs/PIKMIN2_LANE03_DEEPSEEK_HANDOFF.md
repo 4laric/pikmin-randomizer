@@ -559,3 +559,170 @@ useful general result.
   5. transport_reward   ignored [UNTESTED]
   6. cleanup_reentry    ignored [UNTESTED]
 ```
+
+## Directive 012 — generated placement bridge (seed-resolved source -> native module)
+
+Goal: make Sarai (23) and the Otakara species (59-62) eligible under enemy
+randomization by wiring the seed's `p2_layout` binding through the actual
+opt-in generator, the versioned manifest/parser and the ordinary native spawn
+path, so a randomizer-assigned generator selects the right P2 module instead of a
+fixed `p2-<family>-actors.txt` config. Scope kept to one coherent unit.
+
+**Merge:** root `deepseek/p2-l03` and native `deepseek/p2-l03-native` were
+fast-forwarded onto `claude/p2-deepseek-wave` (`64d6adef`) and
+`claude/p2-deepseek-wave-native` (`007ca857`); no conflicts (my prior work was
+already in the wave).
+
+### What changed
+
+- **Native generic bridge** `pc_randomizer_p2_source_for_70(unsigned generator70)`
+  (`pc_port/pc_randomizer.{h,cpp}`): joins the generator's file id (`_70`) to the
+  lane-04 placement-slot uid (`p2-placement-slots.txt`) to the seed's `ENEMY_P2`
+  source id. Fails closed (0) when the bridge is off, the generator is unmapped or
+  the slot is unbound. This is the missing "seed source for THIS generator" path.
+- **Sarai** (`pc_port/pc_p2_sarai_manager.cpp`): new `findSeedActor(23, ...)`
+  selects the exactly-one spawned actor whose generator the seed bound to source
+  23, taking precedence over the fixed `PIKMIN_SARAI_GENERATOR`; logs
+  `P2_SARAI_READY ... resolution=seed|env`.
+- **Otakara** (`pc_port/pc_p2_otakara.cpp`): its selection set is now augmented
+  with every generator the seed bound to a dweevil source (59-62), so the module
+  binds the randomizer-assigned generator even with no `p2-dweevil-actors.txt`
+  row. The fixed sidecar still works (additive); the shared bank is unchanged.
+- **Root** (`experimental/pikmin2_family_install.py`): `IDENTITY_FAMILY` now
+  covers the admitted room-course cohort — Sarai (23) and the Otakara species
+  (59-62, reusing the existing dweevil installer, no fork). A new Sarai adapter
+  (`pikmin2_sarai_install` sidecar writer) emits `p2-sarai-actors.txt`
+  (`P2_SARAI_ACTORS_1`) from the seed's assigned generator ids. Unknown identities
+  and a missing mouth bank still fail closed.
+
+### Runtime evidence (GL, `slot.py run gl l03`; dirty=no build `24a6a0f7`)
+
+Seed-driven sidecar + probe + co-occurrence on one room run
+(`output/dsw/l03-out/4477d7708c2144879a05cd2e1e7a5856/native.log`):
+
+- `P2_PLACEMENT_SLOT generator=211001 slot=5465461 actor=3 xyz=1 terrain=ground
+  route=1 route_distance=61.2 x=-150.000 y=30.000 z=1850.000 water_depth=0.00` (:861)
+  and `generator=211002 slot=1646783045 ... xyz=1 terrain=ground route=1 ...` (:862)
+- `P2_SEED_RESOLVE source_id=44 target=5465461` (:585) and `target=1646783045` (:586)
+- `P2_ENEMY_READY species=BlueKochappy source_id=44 ... generator=211001` (:849),
+  `generator=211002` (:850)
+- report `validate_cooccurrence.ok = true`: closed `generator->slot->source` and
+  birth chains for both generators; `markers_are_binding_members = true`.
+  The sidecar pairs (`211001 5465461`, `211002 1646783045`) are the seed's own
+  binding set, not a fixed config — i.e. seed-driven actor-sidecar generation.
+
+`generate(p2_enemies=True)` no longer fails closed for the admitted cohort
+(23/44/59-62): pinned by `tests/test_pikmin2_admitted_placement.py` (whole cohort
+bound through the real ledger) and the new `tests/test_pikmin2_placement_bridge.py`.
+
+### Six-gate table (source 44)
+
+Source ID: BlueKochappy (44)
+
+| Gate | Result | Evidence |
+|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | output/dsw/l03-out/4477d7708c2144879a05cd2e1e7a5856/native.log:849 |
+| 2. Autonomous movement and animation | UNTESTED | lane 13 family FSM (not this lane) |
+| 3. Attacks and receivers | UNTESTED | lane 10 / lane 13 |
+| 4. Death and corpse | UNTESTED | lane 13 |
+| 5. Transport and reward | UNTESTED | lane 06 |
+| 6. Cleanup and re-entry | UNTESTED | lane 07 |
+
+### Bridge-cohort native wiring (code-complete, live module bind pending)
+
+The Sarai/Otakara module wiring below is implemented and unit/source-pin tested;
+its **live** room run needs those families' arena content staged by lane 22
+(Otakara, `experimental/pikmin2_otakara_runtime.py:235`) / lane 30 (Sarai,
+`pc_p2_sarai_manager.cpp` pose+mouth banks), which is outside this lane's slice,
+so the live PASS is not claimed here.
+
+Source ID: Sarai (23)
+
+| Gate | Result | Evidence |
+|---|---|---|
+| 1. Exact identity and spawn | UNTESTED | module selects by seed source (pc_p2_sarai_manager.cpp findSeedActor); live run needs lane-30 Sarai content |
+| 2. Autonomous movement and animation | UNTESTED | lane 30 |
+| 3. Attacks and receivers | UNTESTED | lane 30 |
+| 4. Death and corpse | UNTESTED | lane 30 |
+| 5. Transport and reward | UNTESTED | lane 06 |
+| 6. Cleanup and re-entry | UNTESTED | lane 07 |
+
+Source ID: FireOtakara (59)
+
+| Gate | Result | Evidence |
+|---|---|---|
+| 1. Exact identity and spawn | UNTESTED | module adds seed-bound generators 59-62 (pc_p2_otakara.cpp); live run needs lane-22 dweevil content |
+| 2. Autonomous movement and animation | UNTESTED | lane 22 |
+| 3. Attacks and receivers | UNTESTED | lane 22 |
+| 4. Death and corpse | UNTESTED | lane 22 |
+| 5. Transport and reward | UNTESTED | lane 06 |
+| 6. Cleanup and re-entry | UNTESTED | lane 07 |
+
+### Lane-04 interface (item 4)
+
+- **Bridge needs from the catalog (lane 04):** for each admitted identity, the
+  accepted slot uids, so `binding_targets_for_sources([...])` yields the target
+  tokens the seed binds (`str(slot['uid'])`). The bridge joins those target uids to
+  native generators through `p2-placement-slots.txt` (`generator _70 -> slot uid`),
+  so the catalog must use the **same uid registry** (`randomizer/spawn_data.py`).
+- **Catalog needs from the bridge:** the assigned `uid -> source id` mapping per
+  seed (the `p2_layout.bindings`), which the runtime already writes as
+  `p2-placement-slots.txt` + the `ENEMY_P2` bootstrap. No placement uids are
+  invented by the bridge; unaccepted/unknown slots fail closed.
+- `docs/PIKMIN2_ADMITTED_PLACEMENT.json` was left to lane 04 (no unevidenced slots
+  hand-edited).
+
+### Tests run
+
+- `PIKMIN_NATIVE_ROOT=<native> py -3.12 -m pytest tests/test_pikmin2_placement_bridge.py tests/test_p2_seed_placement.py tests/test_pikmin2_admitted_placement.py -q` → 21 passed.
+- `tests/test_pikmin2_placement_bridge.py` (new): identity mapping for 23/59-62,
+  the Sarai sidecar writer + fail-closed validator, and native source-pin asserts
+  (`pc_randomizer_p2_source_for_70`, `findSeedActor`, the Otakara seed-add).
+
+### Subagent usage (honest)
+
+Two `explore` subagents ran (this time successfully) and one `general` was not
+needed: explore #1 audited the Sarai/Otakara/Dwarf-Orange generator-selection sites
+and the seed-bridge API (its `_70`-vs-spawn-slot-uid caveat shaped the
+`pc_randomizer_p2_source_for_70` design); explore #2 inventoried the seed-placement
++ `*-actors.txt` machinery and identified `install_layout` as the seam to extend.
+Both used as-is; the native edits, the run and the handoff were mine. Net: the two
+audits collapsed the read-heavy recon (~1h) that would otherwise have cost several
+build/run round-trips.
+
+### Exact reproduction command
+
+```
+py -3.12 output/deepseek-wave/slot.py run gl l03 -- py -3.12 scripts/run_p2_seed_placement.py \
+  --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" \
+  --bank "C:/Users/alari/pikmin-randomizer/output/dsw/l05-out/slice5/cohort44/content/BlueKochappy/bank" \
+  --profile "C:/Users/alari/pikmin-randomizer/output/dsw/l05-out/slice5/cohort44/content/BlueKochappy/profile" \
+  --exe "C:/Users/alari/pikmin-randomizer/output/dsw/native-l03-build/bin/nectar.exe" \
+  --output "C:/Users/alari/pikmin-randomizer/output/dsw/l03-out" --seed "l03-placement-bridge" --timeout 45
+```
+
+### Checker output
+
+```
+23 Sarai (role=source):
+  1. identity_spawn     ignored [UNTESTED]
+  2. movement_animation ignored [UNTESTED]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [UNTESTED]
+44 BlueKochappy (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation ignored [UNTESTED]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [UNTESTED]
+59 FireOtakara (role=source):
+  1. identity_spawn     ignored [UNTESTED]
+  2. movement_animation ignored [UNTESTED]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [UNTESTED]
+```
