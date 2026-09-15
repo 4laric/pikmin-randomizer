@@ -777,7 +777,7 @@
         "Open: natural death/carry/revisit and variant rules. No natural delivery_receipt anywhere; the Codex-line admission was flag-based and is not canonical (directive 008)."
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
+        "identity_spawn": "PASS",
         "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
