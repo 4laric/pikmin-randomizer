@@ -21,6 +21,7 @@ Design contract (agreed input to lanes 03/04/05)
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -29,6 +30,19 @@ SCHEMA = "p2-enemy-roster-1"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ROSTER_PATH = REPO_ROOT / "docs" / "PIKMIN2_ENEMY_ROSTER.json"
 EVIDENCE_PATH = REPO_ROOT / "docs" / "PIKMIN2_ENEMY_ROSTER_EVIDENCE.json"
+
+# Schema documentation block copied into a freshly synthesized evidence overlay
+# so write_admission never emits an overlay missing the field descriptions.
+EVIDENCE_FIELDS = {
+    "native_module": "engine/pc_port module implementing the identity, or null",
+    "owner_lane": "family/shared lane that owns the identity",
+    "gates": "map of the six gate IDs to PASS/FAIL/BLOCKED/UNTESTED/N/A; a PASS needs root/native/exe pins, inputs and observed result",
+    "delivery_receipt": "citation of an actual transport/reward delivery for gate 5 (transport_reward), or null; required for admission",
+    "eligibility": "denied | candidate | admitted | excluded",
+    "eligibility_reason": "short justification",
+    "source": "list of docs/PIKMIN2_*.md filenames the evidence is transcribed from",
+    "notes": "free-form review notes (natural vs injected labels)",
+}
 
 # Six arena gates every admitted identity must eventually report.
 GATE_IDS = (
@@ -39,7 +53,34 @@ GATE_IDS = (
     "transport_reward",
     "cleanup_reentry",
 )
+# The five gates an identity must hold as a natural PASS to satisfy the
+# admission contract; gate 5 (``transport_reward``) is satisfied instead by a
+# cited ``delivery_receipt`` proving real transport/collection, not by a gate
+# status.
+ADMISSION_GATES = (
+    "identity_spawn",
+    "movement_animation",
+    "attacks_receivers",
+    "death_corpse",
+    "cleanup_reentry",
+)
 GATE_STATUS = ("PASS", "FAIL", "BLOCKED", "UNTESTED", "N/A")
+
+# A row whose notes/eligibility_reason carry any of these markers is treated as
+# non-natural evidence: a PASS on an admission gate in such a row is refused as
+# "<gate>:injected" rather than accepted as natural. This is the enforced version
+# of the "only natural PASS admits" rule (it is not merely assumed by construction).
+NONNATURAL_MARKERS = re.compile(
+    r"inject|\bproxy\b|fixture-only|\bforced\b|\bvehicle\b|\bvisual\b|\bhost\b|\bdisplay\b",
+    re.IGNORECASE,
+)
+
+# A delivery_receipt is a durable citation matching lane 06's per-identity scheme:
+# either an ``onion:``/``corpse:``/``receipt:`` key, or a doc/log citation (a
+# filename with a recognized extension or a path separator). A blank or arbitrary
+# string is refused.
+RECEIPT_KEY_PREFIXES = ("onion:", "corpse:", "receipt:")
+RECEIPT_CITATION_MARKERS = (".md", ".log", ".txt", ".json", "/", "\\")
 
 CLASSIFICATIONS = (
     "enemy",
@@ -124,6 +165,7 @@ class RosterEntry:
     native_module: str | None = None
     owner_lane: str | None = None
     gates: dict[str, str] = field(default_factory=dict)
+    delivery_receipt: str | None = None
     eligibility: str = "denied"
     eligibility_reason: str = "no accepted evidence; defaults denied"
     source: tuple[str, ...] = ()
@@ -315,6 +357,138 @@ def identity_role(entry: RosterEntry) -> str:
     return "source"
 
 
+def _nonnatural_evidence(entry: RosterEntry) -> bool:
+    """True when the row's notes/reason carry injected/proxy/display markers."""
+    text = " ".join([entry.eligibility_reason or ""] + list(entry.notes))
+    return NONNATURAL_MARKERS.search(text) is not None
+
+
+def _receipt_shaped(text: str) -> bool:
+    value = text.strip()
+    if not value:
+        return False
+    if value.startswith(RECEIPT_KEY_PREFIXES):
+        return True
+    return any(marker in value for marker in RECEIPT_CITATION_MARKERS)
+
+
+def admission_requirements(entry: RosterEntry) -> list[str]:
+    """Exact list of admission gaps for one identity, empty when it qualifies.
+
+    The contract requires a *natural* PASS on each gate in :data:`ADMISSION_GATES`
+    and a ``delivery_receipt`` matching lane 06's scheme for ``transport_reward``.
+    A PASS is accepted only when the row's notes/reason carry no
+    :data:`NONNATURAL_MARKERS`; otherwise the gate is reported as ``<gate>:injected``.
+    A blank or malformed receipt is reported as ``transport_reward`` or
+    ``transport_reward:invalid_receipt`` respectively.
+    """
+    nonnatural = _nonnatural_evidence(entry)
+    missing: list[str] = []
+    for gate in ADMISSION_GATES:
+        if entry.gates.get(gate) != "PASS":
+            missing.append(gate)
+        elif nonnatural:
+            missing.append(f"{gate}:injected")
+    receipt = (entry.delivery_receipt or "").strip()
+    if not receipt:
+        missing.append("transport_reward")
+    elif not _receipt_shaped(receipt):
+        missing.append("transport_reward:invalid_receipt")
+    return missing
+
+
+def admission_contract(roster: list[RosterEntry]) -> dict:
+    """Fail-closed admission set computed from gate evidence, never from a flag.
+
+    Returns ``{"admitted": [source_id...], "blocking": {source_id: [missing...]}}``.
+    Only a seedable role (``source``/``variant``) participates; an explicitly
+    ``excluded`` identity is blocked with ``["excluded"]``; any other role is
+    ignored. This is the authoritative admission gate: today's ledger has no
+    identity with the five natural PASSes plus a delivery receipt, so it admits
+    nothing until a family supplies the full generated-session chain.
+    """
+    admitted: list[int] = []
+    blocking: dict[int, list[str]] = {}
+    for entry in roster:
+        role = identity_role(entry)
+        if role not in ("source", "variant"):
+            continue
+        if entry.eligibility == "excluded":
+            blocking[entry.source_id] = ["excluded"]
+            continue
+        missing = admission_requirements(entry)
+        if missing:
+            blocking[entry.source_id] = missing
+        else:
+            admitted.append(entry.source_id)
+    return {"admitted": sorted(admitted), "blocking": blocking}
+
+
+def write_admission(roster: list[RosterEntry], path=None) -> dict:
+    """Persist the admission contract's admitted set into the evidence JSON.
+
+    For each identity the written ``eligibility`` becomes ``"admitted"`` when the
+    contract passes, ``"candidate"`` when it was previously ``"admitted"`` but the
+    contract no longer passes, and is otherwise left unchanged. Returns the
+    contract dict; it never admits an identity the contract refuses.
+    """
+    import json as _json
+    contract = admission_contract(roster)
+    admitted = set(contract["admitted"])
+    by_source = {entry.source_id: entry for entry in roster}
+    target = Path(path) if path is not None else EVIDENCE_PATH
+    if target.is_file():
+        # Merge: only update eligibility on rows that already exist, never add
+        # a placeholder row for an identity that has no overlay entry.
+        doc = _json.loads(target.read_text(encoding="utf-8"))
+        entries = doc.setdefault("entries", {})
+        for key in list(entries.keys()):
+            try:
+                source_id = int(key)
+            except ValueError:
+                continue
+            entry = by_source.get(source_id)
+            if entry is None:
+                continue
+            if source_id in admitted:
+                entries[key]["eligibility"] = "admitted"
+            elif entry.eligibility == "admitted":
+                entries[key]["eligibility"] = "candidate"
+                entries[key]["eligibility_reason"] = (
+                    "admission contract no longer satisfied: "
+                    + ", ".join(contract["blocking"].get(source_id, ["unknown"])))
+    else:
+        # Fresh path: synthesize a full overlay from the roster for each entry.
+        doc = {"schema": f"{SCHEMA}-evidence",
+               "note": "Eligibility overlay for the canonical P2 roster. Written by "
+                       "write_admission; see docs/PIKMIN2_ENEMY_ROSTER.md.",
+               "fields": EVIDENCE_FIELDS,
+               "entries": {}}
+        entries = doc["entries"]
+        for entry in roster:
+            if entry.source_id in admitted:
+                new_elig, reason = "admitted", entry.eligibility_reason
+            elif entry.eligibility == "admitted":
+                new_elig, reason = "candidate", (
+                    "admission contract no longer satisfied: "
+                    + ", ".join(contract["blocking"].get(entry.source_id, ["unknown"])))
+            else:
+                new_elig, reason = entry.eligibility, entry.eligibility_reason
+            entries[str(entry.source_id)] = {
+                "native_module": entry.native_module,
+                "owner_lane": entry.owner_lane,
+                "eligibility": new_elig,
+                "eligibility_reason": reason,
+                "gates": entry.gates,
+                "delivery_receipt": entry.delivery_receipt,
+                "source": list(entry.source),
+                "notes": list(entry.notes),
+            }
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(_json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+    return contract
+
+
 def build_entries(enum_records: dict[str, dict], table_records: dict[str, dict]) -> list[dict]:
     """Merge enum identity data with gEnemyInfo facts into roster records."""
     by_enum = {r["enum_name"]: r for r in table_records.values()}
@@ -428,6 +602,7 @@ def entries_from_payload(payload: dict, evidence: dict | None = None) -> list[Ro
             native_module=overlay.get("native_module"),
             owner_lane=overlay.get("owner_lane"),
             gates=gates,
+            delivery_receipt=overlay.get("delivery_receipt"),
             eligibility=overlay.get("eligibility", "denied"),
             eligibility_reason=overlay.get("eligibility_reason", "no accepted evidence; defaults denied"),
             source=tuple(overlay.get("source", [])),
@@ -459,9 +634,11 @@ def validate_roster(roster: list[RosterEntry]) -> None:
         if entry.eligibility not in ELIGIBILITY:
             raise RosterError(f"{entry.enum_name} has unknown eligibility {entry.eligibility!r}")
         if entry.eligibility == "admitted":
-            missing = [g for g in GATE_IDS if entry.gates.get(g) not in ("PASS", "N/A")]
+            if identity_role(entry) not in ("source", "variant"):
+                raise RosterError(f"{entry.enum_name} is admitted but its role {identity_role(entry)!r} is not seedable")
+            missing = admission_requirements(entry)
             if missing:
-                raise RosterError(f"{entry.enum_name} admitted without complete gates: {missing}")
+                raise RosterError(f"{entry.enum_name} admitted without the admission contract: {missing}")
 
 
 def load_and_validate() -> list[RosterEntry]:
@@ -562,24 +739,31 @@ class AdmissionSet:
 
 
 def admission_set(roster: list[RosterEntry]) -> AdmissionSet:
-    """Build the seedable admission set from the per-ID gate ledger.
+    """Build the seedable admission set from the admission contract.
 
-    An identity is admitted only when the overlay marks ``eligibility: admitted``
-    and its role is ``source`` or ``variant``. Any other eligibility remains
-    denied for seeding; source facts, taxonomy membership or a native module
-    presence never imply admission.
+    The ``admitted`` tuple is derived from :func:`admission_contract` — a
+    seedable identity earns it only with a natural PASS on each :data:`ADMISSION_GATES`
+    gate plus a cited delivery receipt for ``transport_reward``. ``candidates``,
+    ``excluded`` and ``denied`` categorize the remainder by their overlay
+    eligibility. Source facts, taxonomy membership or a native module presence
+    never imply admission.
     """
-    admitted: list[int] = []
+    contract = admission_contract(roster)
+    admitted = list(contract["admitted"])
+    admitted_set = set(admitted)
     candidates: list[int] = []
     excluded: list[int] = []
     denied: list[int] = []
     for entry in sorted(roster, key=lambda item: item.source_id):
-        if entry.eligibility == "admitted":
-            role = identity_role(entry)
-            if role not in ("source", "variant"):
-                raise RosterError(f"{entry.enum_name} is admitted but its role {role!r} is not seedable")
-            admitted.append(entry.source_id)
-        elif entry.eligibility == "candidate":
+        if entry.eligibility == "admitted" and entry.source_id not in admitted_set:
+            # Fail closed: an overlay flag of ``admitted`` must be backed by a
+            # satisfied contract (write_admission keeps them in sync).
+            raise RosterError(
+                f"{entry.enum_name} is admitted but its contract is not satisfied: "
+                f"{contract['blocking'].get(entry.source_id, 'unknown')}")
+        if entry.source_id in admitted_set:
+            continue
+        if entry.eligibility == "candidate":
             candidates.append(entry.source_id)
         elif entry.eligibility == "excluded":
             excluded.append(entry.source_id)
@@ -593,16 +777,23 @@ def admission_set(roster: list[RosterEntry]) -> AdmissionSet:
 
 
 def admitted_ids(roster: list[RosterEntry]) -> list[int]:
-    """Ordered source IDs a consumer may seed; empty while nothing is admitted."""
-    return list(admission_set(roster).admitted)
+    """Ordered source IDs a consumer may seed; empty while nothing is admitted.
+
+    Derived from :func:`admission_contract`, so an identity is admitted only when
+    its ledger row carries the five natural PASSes and a delivery receipt.
+    """
+    return admission_contract(roster)["admitted"]
 
 
 def require_admitted(roster: list[RosterEntry], source_id: int) -> RosterEntry:
     entry = by_id(roster).get(source_id)
     if entry is None:
         raise RosterError(f"unknown P2 source id {source_id}")
-    if entry.eligibility != "admitted" or identity_role(entry) not in ("source", "variant"):
-        raise RosterError(f"{entry.enum_name} ({source_id}) is not an admitted seedable identity")
+    role = identity_role(entry)
+    missing = admission_requirements(entry) if role in ("source", "variant") else ["role"]
+    if role not in ("source", "variant") or entry.eligibility == "excluded" or missing:
+        why = ["excluded"] if entry.eligibility == "excluded" else (missing or ["not seedable"])
+        raise RosterError(f"{entry.enum_name} ({source_id}) is not an admitted seedable identity: {', '.join(why)}")
     return entry
 
 

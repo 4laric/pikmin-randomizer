@@ -5,6 +5,7 @@
     "native_module": "engine/pc_port module implementing the identity, or null",
     "owner_lane": "family/shared lane that owns the identity",
     "gates": "map of the six gate IDs to PASS/FAIL/BLOCKED/UNTESTED/N/A; a PASS needs root/native/exe pins, inputs and observed result",
+    "delivery_receipt": "citation of an actual transport/reward delivery for gate 5 (transport_reward), or null; required for admission",
     "eligibility": "denied | candidate | admitted | excluded",
     "eligibility_reason": "short justification",
     "source": "list of docs/PIKMIN2_*.md filenames the evidence is transcribed from",

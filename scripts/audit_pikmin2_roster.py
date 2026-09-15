@@ -18,14 +18,18 @@ sys.path.insert(0, str(ROOT))
 from experimental.pikmin2_enemy_roster import (  # noqa: E402
     GATE_IDS,
     ROSTER_PATH,
+    admission_contract,
+    admission_requirements,
     candidate_review,
     entries_from_payload,
+    identity_role,
     inventory_encounters,
     load_roster,
     parse_enum_header,
     parse_info_table,
     summarize,
     validate_roster,
+    write_admission,
 )
 
 DEFAULT_SOURCE = ROOT / "native/pikmin2-research"
@@ -253,6 +257,13 @@ def main(argv=None) -> int:
                         help="fail on source parity problems or unclassified identities")
     parser.add_argument("--review", action="store_true",
                         help="print per-candidate readiness rows and enforce ledger coverage (exit 1 on any gap)")
+    parser.add_argument("--admit", action="store_true",
+                        help="evaluate the admission contract: print the admitted set and, per candidate, the blocking gates")
+    parser.add_argument("--admit-check", action="append", type=int, default=None,
+                        metavar="ID",
+                        help="print admission_requirements for one source ID (or ['role']/['excluded']/unknown); repeatable; exit 1 if any is blocked")
+    parser.add_argument("--write-admission", action="store_true",
+                        help="persist the admission contract's admitted set into the evidence JSON")
     args = parser.parse_args(argv)
 
     roster = load_roster()
@@ -314,6 +325,40 @@ def main(argv=None) -> int:
     if args.strict and (parity or coverage["unclassified_identities"]):
         print("STRICT FAIL", file=sys.stderr)
         return 1
+
+    if args.write_admission:
+        result = write_admission(roster)
+        print(f"admission written: admitted {result['admitted']}, "
+              f"blocked {len(result['blocking'])}")
+
+    if args.admit:
+        contract = admission_contract(roster)
+        print(f"admission contract: admitted {contract['admitted']}")
+        by_enum = {e.source_id: e.enum_name for e in roster}
+        for source_id, missing in sorted(contract["blocking"].items()):
+            print(f"  {by_enum.get(source_id, source_id)} ({source_id}): "
+                  f"blocking={','.join(missing)}")
+
+    if args.admit_check:
+        by_source = {e.source_id: e for e in roster}
+        blocked = False
+        for source_id in args.admit_check:
+            entry = by_source.get(source_id)
+            if entry is None:
+                print(f"admit-check {source_id}: ['unknown']")
+                blocked = True
+                continue
+            role = identity_role(entry)
+            if role not in ("source", "variant"):
+                req = ["role"]
+            elif entry.eligibility == "excluded":
+                req = ["excluded"]
+            else:
+                req = admission_requirements(entry)
+            blocked = blocked or bool(req)
+            print(f"admit-check {source_id} ({entry.enum_name}): {req or 'PASS'}")
+        if blocked:
+            return 1
     return 0
 
 
