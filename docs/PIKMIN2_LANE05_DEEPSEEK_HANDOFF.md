@@ -132,7 +132,7 @@ Still an installation/provider lane: identity→content binding for BOTH cohort 
 ### Remaining blockers
 
 - **Lane 02 (#438):** empty admission set — no real accepted `p2_layout`; probes/tests monkeypatch `admitted_ids`.
-- **Lane 13 / family:** produce the real banks (Dwarf Orange + Snow) and accept the native actor binding (native readers `pc_p2_dwarf_orange.cpp` / `pc_p2_enemy.cpp` already exist) so the staged content is consumed by live actors.
+- **Lane 13 / family:** produce the real banks (Dwarf Orange + Snow) and accept the native actor binding (native readers `pc_p2_dwarf_orange.cpp` / `pc_p2_enemy.cpp` already exist) so the staged content is consumed by live actors. **Snow has no bank↔identity hash binding** (`pikmin2_enemy.install` performs no `reference_sha256`/source-hash check, unlike Dwarf Orange), so wrong-source detection (c) covers Dwarf Orange only; lane 13 should add a content-hash binding to the Snow installer so a mismatched Snow bank is rejected at install/validate time too.
 - **Lane 01:** export/merge the launcher/`experimental` changes into the maintained line.
 
 ### Subagent usage (slice 2)
@@ -142,3 +142,22 @@ Still an installation/provider lane: identity→content binding for BOTH cohort 
 - **#3 general — test authoring:** wrote the 5 new tests + `make_snow_source` + `SNOW_CLIPS`; 4 failed initially only because the Snow adapter and the strengthened dwarf-orange validate did not exist yet, and `test_interrupted_cache_staging_fails_safe` passed immediately (marker written last already). Used as-is (one of #3's assertions — Snow receipt `is truthy` — required me to make `_adapt_snow` return a receipt instead of `None`, which is the correct adapter contract anyway).
 
 Estimate: the two explores saved ~25 min of Snow-layout/validation reading; the test-first split made the adapter + validate strengthening gaps explicit before I touched production code. Cost: one reconciliation (Snow receipt must be non-`None`).
+
+### fix3 pass (review follow-up)
+
+Review items 1–2 (blocking) and 3–7 addressed; acceptance wording is no longer narrower than the code.
+
+- **1 interrupted cache leaves nothing.** `_populate_cache` now wraps its copy loop in `try/except BaseException: shutil.rmtree(cache_root, ignore_errors=True); raise`, so a mid-copy interrupt removes the whole `p2bind-<digest>/` tree (not just the missing marker). `test_interrupted_cache_staging_fails_safe` asserts `not list(cache.glob("p2bind-*"))`.
+- **2 wrong-source leaves no run tree.** `runner._launch` wraps `install_layout` in `try/except StagingError: shutil.rmtree(run.directory, ignore_errors=True); raise` (NativeRun's bootstrap.txt/state.txt are removed, not left behind). The probe and a new `test_launch_wrong_source_leaves_no_run_dir` assert `list((bad_session/"runs").iterdir()) == []`.
+- **3 real-adapter mid-copy crash.** `install_layout` wraps the install loop in `try/except BaseException: shutil.rmtree(run/'assets', ignore_errors=True); raise`. New `test_real_adapter_mid_install_failure_cleans_assets` injects the copyfile crash inside the REAL Snow adapter and asserts no `run/assets` remains, then a re-run is a fresh install (15 snow models). `shutil.rmtree` was verified junction-safe in this environment (retail P1 assets are never followed through the overlay's `CreateJunction`/`os.link` overlay).
+- **4 probe/docstring path.** Removed the absolute `l05-out` path from `probe_p2_install_binding.py` module docstring and aligned `docs/PIKMIN2_CONTENT_STAGING.md` (both now use a `<out>` placeholder; the absolute `C:/Users/alari/pikmin-randomizer/output/dsw/l05-out/` stays only in this handoff).
+- **5 Snow wrong-source gap recorded** under Remaining blockers (lane 13 ask: add a Snow bank↔identity hash binding).
+- **6 `SNOW_CLIPS` aliases `DWARF_ORANGE_CLIPS`.**
+
+Commit: `lane05: review fixes 3 - safe interrupt cleanup + wrong-source run-tree removal (#442)`.
+
+Tests: `py -3.12 -m pytest tests/test_pikmin2_install_binding.py -q` → **24 passed**. Probe re-run to the absolute `l05-out` → **passed** (two-identity cache replay `[False, True]`, wrong-source `bad-session run dirs: 0`).
+
+#### Lesson (subagent use)
+
+The delegated `test_interrupted_cache_staging_fails_safe` injected the crash in the fake-installer cache-populate step, where the WriteLast marker already made it pass, not in the real-adapter copy the brief asked for. I added `test_real_adapter_mid_install_failure_cleans_assets` myself to cover the real-adapter scenario and fixed the wording drift (partial tree IS now removed; wrong-source leaves no run tree). Going forward I will cross-check delegated tests against the brief's exact scenario before adopting them.

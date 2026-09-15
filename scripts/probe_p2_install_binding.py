@@ -6,7 +6,7 @@ admitted identities (Dwarf Orange + Snow) -> ``runner.launch --p2-content`` ->
 the session-level cache (cached=True). Also proves wrong-source rejection at the
 launcher level leaves no private asset tree. No GL; synthetic banks.
 
-    py -3.12 scripts/probe_p2_install_binding.py --output C:/Users/alari/pikmin-randomizer/output/dsw/l05-out
+    py -3.12 scripts/probe_p2_install_binding.py --output <out>   # out is the lane's ignored evidence dir
 """
 import argparse
 import json
@@ -165,9 +165,8 @@ def main():
                 raise SystemExit("wrong-source launch unexpectedly succeeded")
             except StagingError as exc:
                 report(f"wrong-source rejected: {exc}")
-            assets_trees = list((bad_session / "runs").glob("*/assets"))
-            report(f"bad-session asset trees: {len(assets_trees)}")
-            assert assets_trees == [], assets_trees
+            report(f"bad-session run dirs: {len(list((bad_session / 'runs').iterdir()))}")
+            assert list((bad_session / "runs").iterdir()) == []
     finally:
         bridge.admitted_ids = original
 

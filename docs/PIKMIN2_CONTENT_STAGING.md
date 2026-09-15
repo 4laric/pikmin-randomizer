@@ -276,7 +276,7 @@ reports `cached=True`.
 py -3.12 -m pytest tests/test_pikmin2_staging.py tests/test_pikmin2_session_staging.py -q   # 26 passed
 py -3.12 -m pytest tests/test_pikmin2_family_install.py tests/test_pikmin2_install_binding.py -q
 py -3.12 scripts/test_p2_generated_session.py <build>/pc_randomizer_probe.exe                 # generate -> bootstrap -> native parser -> stage/cache
-py -3.12 scripts/probe_p2_install_binding.py --output output/dsw/l05-out                      # install_layout -> real adapter -> session-cache replay
+py -3.12 scripts/probe_p2_install_binding.py --output <out>                               # install_layout -> real adapters -> session-cache replay + wrong-source fail-closed
 ```
 
 `scripts/test_p2_generated_session.py` is the combined lanes 02/03/05 product-path

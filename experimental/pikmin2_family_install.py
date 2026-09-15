@@ -287,23 +287,29 @@ def _content_files(run):
 def _populate_cache(cache_root, run, files, aggregate):
     """Copy the just-installed content into a session-level cache keyed by plan.
 
-    The marker (``cache-receipt.json``) is written last, so an interrupted run
-    leaves at most a partial ``tree/`` with no marker and is treated as a miss.
+    The marker (``cache-receipt.json``) is written last. An interrupt mid-copy
+    removes the whole partial ``p2bind-<digest>`` tree (never a half-written cache)
+    and re-raises, so the next launch seeds a fresh install rather than reusing a
+    partial tree.
     """
     tree = cache_root / 'tree'
-    for relpath, digest in files.items():
-        source = run / relpath
-        destination = tree / relpath
-        if not source.is_file() or sha256_file(source) != digest:
-            raise StagingError(f'p2 content snapshot changed for {relpath}')
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        temp = destination.parent / f'{destination.name}.{os.getpid()}.{next(_TEMP)}{TEMP_SUFFIX}'
-        try:
-            shutil.copyfile(source, temp)
-            os.replace(temp, destination)
-        finally:
-            if temp.exists():
-                temp.unlink()
+    try:
+        for relpath, digest in files.items():
+            source = run / relpath
+            destination = tree / relpath
+            if not source.is_file() or sha256_file(source) != digest:
+                raise StagingError(f'p2 content snapshot changed for {relpath}')
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            temp = destination.parent / f'{destination.name}.{os.getpid()}.{next(_TEMP)}{TEMP_SUFFIX}'
+            try:
+                shutil.copyfile(source, temp)
+                os.replace(temp, destination)
+            finally:
+                if temp.exists():
+                    temp.unlink()
+    except BaseException:
+        shutil.rmtree(cache_root, ignore_errors=True)
+        raise
     marker = cache_root / CACHE_RECEIPT
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text(json.dumps(aggregate, indent=2, sort_keys=True) + '\n', encoding='utf-8')
@@ -428,8 +434,16 @@ def install_layout(run, layout, content_root, actor_bindings=None, retail_assets
     if retail_assets is not None:
         prepare_private_destination(run, Path(retail_assets))
     receipts = {}
-    for target, enum_name, family, source, generator in plans:
-        receipts[target] = _installer(family)(source, run, [(generator, enum_name)])
+    try:
+        for target, enum_name, family, source, generator in plans:
+            receipts[target] = _installer(family)(source, run, [(generator, enum_name)])
+    except BaseException:
+        # A family installer that fails mid-copy must not leave a partial asset
+        # tree: remove the private overlay (its retail junctions are not followed)
+        # and re-raise, so the next launch performs a fresh install.
+        if (run / 'assets').exists():
+            shutil.rmtree(run / 'assets', ignore_errors=True)
+        raise
     files = _content_files(run)
     aggregate = dict(schema=1, mode='identity-binding', plan_digest=plan_digest,
                      bindings=list(bindings), receipts=receipts, files=files)

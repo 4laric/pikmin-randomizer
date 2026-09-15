@@ -40,7 +40,7 @@ def _isolate_overrides(monkeypatch):
 
 
 DWARF_ORANGE_CLIPS = {"wait1": 75, "move1": 55, "attack": 90, "dead": 90, "flick": 80}
-SNOW_CLIPS = {"wait1": 75, "move1": 55, "attack": 90, "dead": 90, "flick": 80}
+SNOW_CLIPS = DWARF_ORANGE_CLIPS
 MODEL_CHUNKS = ((32, b"material"), (34, b"texture"), (48, b"event"), (65535, b""))
 
 
@@ -554,7 +554,7 @@ def test_interrupted_cache_staging_fails_safe(tmp_path, monkeypatch):
             run1, layout, content_root,
             actor_bindings={"gen-001": 211001}, cache_dir=cache)
 
-    assert list(cache.glob("p2bind-*/cache-receipt.json")) == []
+    assert not list(cache.glob("p2bind-*"))
 
     monkeypatch.setattr(family_install.shutil, "copyfile", real_copyfile)
     receipt = family_install.install_layout(
@@ -565,3 +565,79 @@ def test_interrupted_cache_staging_fails_safe(tmp_path, monkeypatch):
     assert (run2 / "a.txt").is_file()
     assert (run2 / "b.txt").is_file()
     assert (run2 / "c.txt").is_file()
+
+
+def test_real_adapter_mid_install_failure_cleans_assets(tmp_path, monkeypatch):
+    """Inject a crash mid-copy inside the REAL Snow adapter and assert no partial
+    asset tree is left, then a re-run performs a fresh install."""
+    content_root = tmp_path / "content"
+    make_snow_source(content_root)
+    run = tmp_path / "run"
+    retail = tmp_path / "retail"
+    (retail / "dataDir" / "stages").mkdir(parents=True)
+
+    real_copyfile = family_install.shutil.copyfile
+    calls = {"n": 0}
+
+    def flaky(source_arg, destination, *args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("mid-copy interrupt")
+        return real_copyfile(source_arg, destination, *args, **kwargs)
+
+    monkeypatch.setattr(family_install.shutil, "copyfile", flaky)
+    layout = layout_with(binding(source_id=45, enum_name="YellowKochappy"))
+    with pytest.raises(RuntimeError):
+        family_install.install_layout(
+            run, layout, content_root,
+            actor_bindings={"gen-001": 211045}, retail_assets=retail)
+    assert not (run / "assets").exists()
+
+    monkeypatch.setattr(family_install.shutil, "copyfile", real_copyfile)
+    family_install.install_layout(
+        run, layout, content_root,
+        actor_bindings={"gen-001": 211045}, retail_assets=retail)
+    assert (run / "p2-snow-actors.txt").is_file()
+    room = run / "assets" / "dataDir" / "courses" / "pikmin2room"
+    assert len(list(room.glob("snow_*.mod"))) == 15
+
+
+def test_launch_wrong_source_leaves_no_run_dir(tmp_path, monkeypatch):
+    """A wrong-source seed leaves NO runs/<token> tree at the launcher level."""
+    import experimental.pikmin2_seed_bridge as bridge
+    from randomizer import runner
+    from randomizer.seed import generate
+
+    content_root = tmp_path / "content"
+    make_dwarf_orange_source(content_root)
+    bank_json = content_root / "BlueKochappy" / "bank" / BANK_JSON
+    metadata = json.loads(bank_json.read_text(encoding="utf-8"))
+    metadata["reference_sha256"] = "0" * 64
+    bank_json.write_text(json.dumps(metadata), encoding="utf-8")
+    retail = tmp_path / "retail"
+    (retail / "dataDir" / "stages").mkdir(parents=True)
+
+    placeholder = dict(schema="p2-placement-v1",
+                       slots=[dict(uid=401, label="bulborb-slot", stage=1, terrain="ground",
+                                   radius=300.0, evidence=dict(xyz=True, terrain=True, route=True))],
+                       profiles=[dict(identity="BlueKochappy", terrains=["ground"],
+                                      accepted_gates=["xyz"])])
+    original = bridge.admitted_ids
+    bridge.admitted_ids = lambda roster: [44]
+
+    async def fake_serve(*args, **kwargs):
+        pass
+
+    monkeypatch.setattr(runner, "serve", fake_serve)
+    session = tmp_path / "sess"
+    try:
+        manifest = generate("p2-binding-seed", collection_checks=True,
+                            p2_enemies=True, p2_placement=placeholder)
+        target = manifest["p2_layout"]["bindings"][0]["target"]
+        with pytest.raises(StagingError):
+            runner.launch(manifest, session, assets=retail,
+                          p2_content=content_root, p2_actors={target: 211001})
+    finally:
+        bridge.admitted_ids = original
+
+    assert list((session / "runs").iterdir()) == []
