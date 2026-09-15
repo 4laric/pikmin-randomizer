@@ -1,11 +1,11 @@
-"""Unit tests for the lane-22 natural elemental dweevil runtime gate (#447).
+"""Unit tests for the lane-22 elemental dweevil runtime gate (#447), slice 3.
 
 Exercises ``experimental.pikmin2_otakara_runtime.validate`` against a synthetic
-native-log capture: the actor-bound FireOtakara (EnemyID 59) FSM spawn, the
-natural InteractFire emitter -> receiver chain (fire-immune Red, fire-vulnerable
-Blue), then ordinary Pikmin ``InteractAttack`` combat through the real death seam,
-the host corpse pellet, and the lane-07 registry forget. None of these touch GL,
-disc assets, a player save or a real run.
+native-log capture of the host seams: ordinary Pikmin ``InteractAttack`` combat,
+the module's ``P2_OTAKARA_MODULE_DEAD`` observation, the ``BTeki::die()`` death
+seam (``P2_OTAKARA_DEAD mDeadState=1``), the host corpse pellet, the lane-06
+receipt from ``pc_p2_preview_deliver`` and the lane-07 ``pc_p2_otakara_forget``
+clearance. None of these touch GL, disc assets, a player save or a real run.
 """
 import unittest
 
@@ -29,17 +29,21 @@ GOOD_LINES = [
     'interaction=InteractAttack attacker=red',
     'P2_OTAKARA_HIT generator=349001 source_id=59 health=135.0->0.0 delta=135.0 '
     'interaction=InteractAttack attacker=red',
-    'P2_OTAKARA_DEAD generator=349001 source_id=59 health=0',
+    'P2_OTAKARA_MODULE_DEAD generator=349001 source_id=59 health=0',
+    'P2_OTAKARA_DEAD generator=349001 source_id=59 mDeadState=1',
     'P2_OTAKARA_CORPSE generator=349001 pellet=1 state=3',
-    'P2_OTAKARA_FORGET generator=349001 count=0 registered=0 stale=0',
-    'PASS P2_OTAKARA_RUNTIME natural_death=1 corpse=1 forget=1',
+    'P2_OTAKARA_ONION_RECEIPT generator=349001 granted=1 ledger=onion',
+    'P2_OTAKARA_FORGET generator=349001 registered=1 count=0 stale=0',
+    'P2_OTAKARA_SEAM_OBSERVED generator=349001 registered=0 count=0',
+    'PASS P2_OTAKARA_RUNTIME natural_death=1 corpse=1 receipt=1 forget=1',
 ]
 
 GOOD = '\n'.join(GOOD_LINES)
 
-DEAD_LINE = 'P2_OTAKARA_DEAD generator=349001 source_id=59 health=0'
+DEAD_LINE = 'P2_OTAKARA_DEAD generator=349001 source_id=59 mDeadState=1'
 CORPSE_LINE = 'P2_OTAKARA_CORPSE generator=349001 pellet=1 state=3'
-FORGET_LINE = 'P2_OTAKARA_FORGET generator=349001 count=0 registered=0 stale=0'
+RECEIPT_LINE = 'P2_OTAKARA_ONION_RECEIPT generator=349001 granted=1 ledger=onion'
+FORGET_LINE = 'P2_OTAKARA_FORGET generator=349001 registered=1 count=0 stale=0'
 HIT_LINE = 'P2_OTAKARA_DISCHARGE_HIT generator=349001 source_id=59 pikmin=0 colour=blue ' \
            'stimulus=InteractFire accepted=1 target_state=22(other)'
 
@@ -49,22 +53,28 @@ def _without(target):
 
 
 class OtakaraRuntimeTests(unittest.TestCase):
-    def test_validate_passes_on_natural_log(self):
+    def test_validate_passes_on_host_seam_log(self):
         result = runtime.validate(GOOD, code=0)
         self.assertTrue(result['passed'], result['checks'])
         self.assertTrue(result['checks']['natural_death'])
         self.assertTrue(result['checks']['corpse'])
+        self.assertTrue(result['checks']['receipt'])
         self.assertTrue(result['checks']['forget'])
 
-    def test_missing_dead_marker_flips_natural_death(self):
+    def test_missing_die_seam_flips_natural_death(self):
         result = runtime.validate(_without(DEAD_LINE), code=0)
         self.assertFalse(result['passed'])
         self.assertFalse(result['checks']['natural_death'])
 
-    def test_missing_corpse_marker_fails(self):
+    def test_missing_corpse_fails(self):
         result = runtime.validate(_without(CORPSE_LINE), code=0)
         self.assertFalse(result['passed'])
         self.assertFalse(result['checks']['corpse'])
+
+    def test_missing_receipt_fails(self):
+        result = runtime.validate(_without(RECEIPT_LINE), code=0)
+        self.assertFalse(result['passed'])
+        self.assertFalse(result['checks']['receipt'])
 
     def test_missing_forget_marker_fails(self):
         result = runtime.validate(_without(FORGET_LINE), code=0)
@@ -72,8 +82,6 @@ class OtakaraRuntimeTests(unittest.TestCase):
         self.assertFalse(result['checks']['forget'])
 
     def test_unnamed_attack_fails_natural_hit(self):
-        # Stripping the interaction attribution turns natural combat into an
-        # unlabelled delta, which must not count as a named natural hit.
         text = GOOD.replace(' interaction=InteractAttack attacker=red', '')
         result = runtime.validate(text, code=0)
         self.assertFalse(result['passed'])
@@ -87,9 +95,6 @@ class OtakaraRuntimeTests(unittest.TestCase):
         self.assertTrue(result['injected'])
 
     def test_missing_discharge_hit_flips_hit_blue(self):
-        # The DISCHARGE_HIT line is the only evidence of a fire-vulnerable Blue
-        # Pikmin being accepted; the apply is independently proven by the
-        # P2_OTAKARA_DISCHARGE line, which remains.
         result = runtime.validate(_without(HIT_LINE), code=0)
         self.assertFalse(result['passed'])
         self.assertFalse(result['checks']['hit_blue'])
