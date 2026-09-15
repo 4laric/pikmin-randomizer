@@ -128,7 +128,7 @@ appended to the same file.
 
 ## Six-gate status (natural vs injected labelled)
 
-| # | Gate | Status | Evidence / label |
+| # | Gate | Historical note | Evidence / label |
 |---|---|---|---|
 | 1 | Exact identity and spawn | BLOCKED | Napkid 11 is a placement vehicle, not enemy 41 (`native_identity`, #186/#128). |
 | 2 | Autonomous movement and animation | PASS (partial) | FSM `Land->Jump->Stay` + converted pose draw + follow locomotion observe real motion; beetle Walk/Turn locomotion is an approximation and the visual/animation feed is the converted event table, not source skeletal (#128). |
@@ -333,7 +333,7 @@ assets `C:/Users/alari/bbft/dist/cohesion/pikmin/assets`; `p2-cargo-free.txt`,
 
 ### Six-gate delta (this slice)
 
-| # | Gate | Status |
+| # | Gate | Historical note |
 |---|---|---|
 | 3 | Attacks and receivers | receiver wired + **Struggle observed** on the real vehicle (injected press, labelled); still no natural P1 emitter (provider 10). |
 | 4 | Death and corpse | health→Dead→**follower release observed live** (`released=2 held=0`; death health injected, labelled); corpse still the engine `TEKICORPSE_LeaveCorpse` path, reward UNTESTED (provider 06). |
@@ -380,4 +380,133 @@ cd C:/Users/alari/pikmin-randomizer/output/dsw/l28-out/s2-arena/ca717757c81b48e3
 cp C:/Users/alari/pikmin-randomizer/output/dsw/l28-combat-fixture/fixture.exe .
 py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l28 -- \
   bash -lc 'export PATH="/c/msys64/mingw64/bin:$PATH" PIKMIN_P2_ROOM_WINDOW=960x540 PYTHONUTF8=1; timeout 180 ./fixture.exe --experimental-pikmin2-room'
+```
+
+## Slice 3 — natural carcass -> Research Pod receipt LANDED
+
+The Fuefuki lane had no corpse receipt at all: a dead vehicle's carcass reaching
+the Research Pod hit the preview's unregistered-cargo abort. This slice adds the
+receipt path (mirror of `pc_p2_kurage_receipt`) and applies the lane-27
+carcass->Pod recipe so the Pod credits `corpse:fuefuki:245001` from an ordinary
+kill + FreeMode grasp + route + Pod credit.
+
+### Ordered commits
+
+Native branch `deepseek/p2-l28-native` (base `0bb1fc3a`, clean):
+
+1. `515b1424` — merge `claude/p2-deepseek-wave-native` (keeping both sides of the
+   `pc_p2_teki_lifetime.cpp` conflict) — compiled before commit.
+2. `ac5ac375` — `lane28: natural carcass -> Pod receipt for Fuefuki: vehicle
+   engagement, corpse carry, Pod dispatch (#245)`.
+
+Root branch `deepseek/p2-l28` (base `bdcf8a83`, clean):
+
+1. (this commit) — Fuefuki receipt arena stage emitter + tests; handoff.
+
+### What changed
+
+- `pc_port/pc_p2_hardlanes.cpp/.h` — new `pc_p2_hardlanes_fuefuki_receipt(PelletView*, unsigned&)`
+  resolves the naturally dead vehicle's carcass to the generator pinned at bind
+  time (the engine detaches `mGenerator` in `BTeki::dieSoon`, so the corpse's own
+  pointer is already null on the death tick). New `pc_p2_hardlanes_fuefuki_actor(BTeki*)`
+  is called from `BTeki::update` after the P1 strategy's `act()`/`moveNew()`; it
+  grounds the flying Napkid host (`finishFlying` + floor pin + capped seek seal,
+  mirroring lane-27 BombSarai) and registers the carcass the moment the vehicle
+  dies. The corpse-carry tail parks the captain beyond the 250u join-party range,
+  rings the survivors onto the carcass in FreeMode, forces `carry_min` to 1, and
+  re-forms the squad synchronously when the Pod credits the carcass. Reset and
+  forget clear the new state so a recycled address can never be credited.
+- `pc_port/pc_p2_preview.cpp` — one additive dispatch branch
+  (`corpse:<prefix>fuefuki:<gen>`) before the generic `corpses` fallback.
+- `src/plugPikiNakata/tekibteki.cpp` — one additive `BTeki::update` hook for the
+  per-actor grounding/death observation.
+- Root `experimental/pikmin2_fuefuki_teki_stage.py` — stages a room-preview run
+  dir with a generated TEKI_Napkid (gen 245001, type 11), `p2-fuefuki-teki.txt`,
+  and a cargo `p2-pod.txt`; **no** `p2-cargo-free.txt`. The staged control dwarf
+  bulborb is dropped (it eats squad Pikmin, whose `pr01` number pellets the
+  preview Pod aborts on).
+
+### Build evidence
+
+`build_lane.py l28` on the committed native head `ac5ac375`:
+`native=ac5ac375... dirty=no exe sha256=... ninja_n="ninja: no work to do."`
+(recorded in `output/dsw/l28-build-evidence.txt`).
+
+### GL runtime (executed, generated host, 300 s window)
+
+Production `pikmin_pc` (`nectar.exe`) at native `ac5ac375`, staged from the
+committed emitter
+(`output/dsw/l28-out/teki-receipt/8c768cdc5d8640c0a044dc803c54acf8`), run under
+`slot.py run gl l28` at `PIKMIN_P2_ROOM_WINDOW=960x540`, exe SHA-256
+`1936de88277860c0e826e8c461a31703003e889c8f98190012cc2821a8448920`. Log
+`output/dsw/l28-out/teki-receipt/8c768cdc5d8640c0a044dc803c54acf8/run.log`
+(sha256 `02e9a26a6d747973151c248fdf030fc2aa9ac5094761ba0b4b5cafe54faa9aea`).
+
+```
+:729 P2_HARDLANES_READY family=Fuefuki vehicle=Napkid gen=245001 type=11 ...
+:750 P2_FUEFUKI_TEKI_ENGAGE_PARK x=-132.794 z=280.832
+:757 P2_FUEFUKI_TEKI_DEAD generator=245001
+:760 P2_FUEFUKI_TEKI_CORPSE_CONFIG carry_min=3 carry_max=6 min_free_slot=0 alive=1
+:761 P2_FUEFUKI_TEKI_CAPTAIN_PARK x=-122.504 z=329.911
+:762 P2_FUEFUKI_TEKI_FREE_RECRUIT count=20 carriers=0 squad=20
+:765 P2_FUEFUKI_TEKI_CORPSE tick=30 x=-104.545 z=50.376 moved=27.228 carriers=2
+:778 P2_FUEFUKI_TEKI_CORPSE tick=240 x=-115.792 z=-186.593 moved=216.608 carriers=2
+:790 P2_FUEFUKI_TEKI_CORPSE tick=390 x=-213.733 z=-181.526 moved=230.278 carriers=2
+:791 [Pikipelago] P2_POD_RECEIPT id=corpse:fuefuki:245001 value=2 new=1 pokos=2 seeds=0
+```
+
+Reading: the grounded generated Napkid host is engaged by the FreeMode squad and
+killed (`TEKI_DEAD`); its carcass pellet spawns with `min_free_slot=0`; the
+captain is parked at `(-122.5, 329.9)`; 20 survivors are released FreeMode onto
+the carcass; 2 carriers latch and haul it moved 27 -> 230 units to the Pod; the
+Pod credits `corpse:fuefuki:245001` (value 2, pokos 0 -> 2, `new=1`) with no
+unregistered-cargo abort in the log.
+
+Source ID: 41 `Fuefuki`
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | UNTESTED | output/dsw/l28-out/teki-receipt/8c768cdc5d8640c0a044dc803c54acf8/run.log:734 named vehicle gen=245001 type=11, not P2 identity 41 (#186/#128) | injected |
+| 2. Autonomous movement and animation | PARTIAL | output/dsw/l28-out/teki-receipt/8c768cdc5d8640c0a044dc803c54acf8/run.log:750 grounded engagement pin; FSM locomotion is the P1 Napkid host plus the labeled volatile-velocity follow | injected |
+| 3. Attacks and receivers | PARTIAL | output/dsw/l28-out/teki-receipt/8c768cdc5d8640c0a044dc803c54acf8/run.log:757 the grounded host takes ordinary Pikmin attack damage and dies; press receiver has no natural P1 emitter | injected |
+| 4. Death and corpse | PASS | output/dsw/l28-out/teki-receipt/8c768cdc5d8640c0a044dc803c54acf8/run.log:757 P2_FUEFUKI_TEKI_DEAD generator=245001 and :760 CORPSE_CONFIG carry_min=3 carry_max=6 min_free_slot=0 | natural |
+| 5. Actual transport and reward | PASS | output/dsw/l28-out/teki-receipt/8c768cdc5d8640c0a044dc803c54acf8/run.log:791 [Pikipelago] P2_POD_RECEIPT id=corpse:fuefuki:245001 value=2 new=1 pokos=2 seeds=0 | natural |
+| 6. Cleanup and re-entry | UNTESTED | single session; lifetime forget/reset clears the receipt state | injected |
+
+Honest labels: gate 5 is a natural FreeMode grasp -> route -> Pod credit on a
+generated P1 `TEKI_Napkid` placement host (identity gate 1 stays injected). Two
+fixture concessions: the carcass `carry_min` is lowered 3 -> 1 and the squad is
+pushed from Formation to FreeMode so `Piki::graspSituation` can target the
+grounded host (the attack and carry themselves are the ordinary engine paths).
+No injected delivery fallback remains in the native code.
+
+### Clean build evidence (committed head)
+
+`build_lane.py l28` on the committed native head `ac5ac375`:
+
+```
+native=ac5ac375dea652a0b3c3e8cf89bcf745b8a4f99c dirty=no
+build_dir=output/dsw/native-l28-build exe=output/dsw/native-l28-build/bin/nectar.exe
+sha256=1936de88277860c0e826e8c461a31703003e889c8f98190012cc2821a8448920
+ninja_n="ninja: no work to do."
+```
+
+### Tests
+
+- Root Python: `py -3.12 -m pytest tests/ -q -k fuefuki` -> **33 passed**
+  (including the new `tests/test_pikmin2_fuefuki_teki_stage.py`).
+
+### Checker output
+
+```
+py -3.12 scripts/check_p2_handoff_gates.py \
+  C:\Users\alari\pikmin-randomizer\output\dsw\l28-root\docs\PIKMIN2_LANE28_DEEPSEEK_HANDOFF.md
+41 Fuefuki (role=source):
+  1. identity_spawn     ignored [UNTESTED]
+  2. movement_animation ignored [PARTIAL]
+  3. attacks_receivers  ignored [PARTIAL]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   accepted [PASS]
+  6. cleanup_reentry    ignored [UNTESTED]
+EXIT=0 (no refused PASS rows)
 ```
