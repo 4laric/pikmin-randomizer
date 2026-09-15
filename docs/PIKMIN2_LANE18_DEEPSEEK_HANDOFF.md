@@ -227,3 +227,162 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run build
 # run + validate in the staged proxy arena
 py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l18 -- py -3.12 -m experimental.pikmin2_breadbug_contest_runtime run --stage C:/Users/alari/pikmin-randomizer/output/dsw/l18-out/contest-stage --exe C:/Users/alari/pikmin-randomizer/output/dsw/l18-out/contest-fixture-build/fixture.exe --output C:/Users/alari/pikmin-randomizer/output/dsw/l18-out/contest-run
 ```
+
+## Slice 2
+
+**The natural tug.** The primary-tug carrier counts now run natural
+(`pc_p2_breadbug_actor_probe_carriers(-1)`), so the real Stickers squad drives
+Held -> Stolen with no override, and the grant is exactly once. Injected carrier
+counts are confined to the revisit/death phases and each is tagged with a
+`P2_BREADBUG_CONTEST_PROBE` marker; a new validator gate proves the primary tug
+emitted none. Every "interrupt" claim was renamed to "stolen-outcome release":
+the contester releases on the P2CargoContest Stolen outcome, and the actor never
+calls `interrupt()` (that remains an engine-free bridge unit-test path only).
+
+### What changed
+
+- `scripts/pikmin2_breadbug_contest_fixture.cpp`: primary-tug setup now calls
+  `probe_carriers(-1)` and the first contest runs untouched to Stolen (the former
+  tick-300 injected steal is gone). Revisit (tick 420) and death (tick 800) keep
+  injected counts but are each preceded by a labelled
+  `P2_BREADBUG_CONTEST_PROBE generator=186081 carriers=<n> injected=1`. Pass token
+  renamed `interrupt_grant` -> `stolen_grant`.
+- `experimental/pikmin2_breadbug_contest.py`: parser records `probe_markers` and
+  `probe_before_first_grant`; validator adds a fifth gate
+  `gate_primary_tug_natural` (`probe_before_first_grant == 0`).
+- `experimental/pikmin2_breadbug_contest_runtime.py`: docstring/SCOPE now read
+  "natural Stickers tug ... stolen-outcome release", never "interrupt".
+- `scripts/p2_breadbug_ordinary_runtime.py`: de-lane-labelled slot/seed names
+  (`lane18-fixture` -> `breadbug-fixture`; seed `breadbug-ordinary-restart`).
+- `tests/test_pikmin2_breadbug_contest_consumer.py`: GOOD_LOG carries probe markers;
+  new tests for `gate_primary_tug_natural` (probe before the first grant fails it).
+
+No native C++ changed this slice: native HEAD is already the integrator's
+`452135cd` (timeout destroys the contest handle so the next grab starts fresh, and
+forget fires `owner_died`). This run independently exercised that timeout ->
+fresh-contest -> Stolen path in real GL (see markers below).
+
+### Ordered commits
+
+Root worktree `deepseek/p2-l18` (base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`):
+
+1. `d066f77` lane18: natural primary tug, probe-tagged revisit/death, stolen-outcome-release naming (#220)
+2. lane18: slice-2 natural-tug handoff (#220) *(this commit)*
+
+Native worktree `deepseek/p2-l18-native`: no new commit this slice; HEAD already
+`452135cd6c34821ba4d3ad65058e3eac49d8a668` (integrator merge, clean).
+
+### Interfaces / hooks touched and why
+
+No new native hook. The only changed interfaces are the root-side parser/validator
+(a new `P2_BREADBUG_CONTEST_PROBE` marker and a fifth gate) and the fixture
+timeline (natural primary tug; probe markers tag the injected phases). The
+`lane18-fixture` Archipelago slot name and the `lane18-breadbug-ordinary-restart`
+seed were renamed to drop the lane label.
+
+### Build evidence (`output/dsw/l18-build-evidence.txt`)
+
+```text
+2026-09-14T22:22:07 lane=l18 target=pikmin_pc native=452135cd6c34821ba4d3ad65058e3eac49d8a668 dirty=no build_dir=.../native-l18-build exe=.../bin/nectar.exe sha256=ff34cd93de5b9ed0a87bd11771eafb79cec713ff1e9cf0e0a4f09de4e03d6715 ninja_n="ninja: no work to do." seconds=85
+```
+
+- Fixture exe (private build, `l18-out/slice2-fixture-build/fixture.exe`) SHA-256
+  `a591e3ebd689ea1b53958eb68728936bc68438f0f7eb005c3266274fc40661e9`.
+
+### Fixture adoption evidence
+
+- Standard window: `SDL2 Window & OpenGL Context initialized successfully (960x540)`
+  + `Experimental preview window set to 960x540 windowed and centered`.
+- Live squad: `[Pikipelago] P2_ROOM_PREVIEW room=room_4x4a_4_conc red=20 isolated=1`.
+- Live proxy: `P2_BREADBUG_ACTOR_READY generator=186081 native_type=8 xyz=-150,30,1850`.
+- Run wrapped in `slot.py run gl l18`; env `PIKMIN_P2_ROOM_WINDOW=960x540`,
+  `PYTHONUTF8=1`, fixture built `dirty=no` against native `452135cd`.
+
+### Runtime evidence — natural primary tug (real-GL, 960x540)
+
+`output/dsw/l18-out/slice2-run/result.json` `passed=true`; host log SHA-256
+`cf9e2bb5d287feafc0dc4cdf1a76b2dae985489eac44b43d4cc6b70cca1c2408`. Marker
+sequence (generator 186081) — note the natural grab is fed the real count 0 and
+times out once (the integrator's `452135cd` fix), then a fresh contest reaches
+Stolen with two natural Stickers and grants exactly once; the probe markers appear
+only after the first grant:
+
+```text
+P2_BREADBUG_CONTEST_BEGIN generator=186081 identity=onion:p2:38:0 max=2
+P2_BREADBUG_CONTEST_UPDATE generator=186081 carriers=0 outcome=held
+P2_BREADBUG_CONTEST_UPDATE generator=186081 carriers=0 outcome=released   # timeout; handle recreated
+P2_BREADBUG_CONTEST_BEGIN generator=186081 identity=onion:p2:38:0 max=2
+P2_BREADBUG_CONTEST_UPDATE generator=186081 carriers=0 outcome=held
+P2_BREADBUG_CONTEST_UPDATE generator=186081 carriers=2 outcome=stolen     # 2 natural Stickers out-pull
+P2_BREADBUG_CONTEST_STOLEN generator=186081 carriers=2 released=1
+P2_BREADBUG_CONTEST_GRANT generator=186081 identity=onion:p2:38:0 granted=1
+P2_BREADBUG_CONTEST_PROBE generator=186081 carriers=2 injected=1          # revisit phase (tagged)
+P2_BREADBUG_REVISIT generator=186081 rearmed=1
+P2_BREADBUG_CONTEST_BEGIN generator=186081 identity=onion:p2:38:0 max=2
+P2_BREADBUG_CONTEST_UPDATE generator=186081 carriers=2 outcome=stolen
+P2_BREADBUG_CONTEST_STOLEN generator=186081 carriers=2 released=1
+P2_BREADBUG_CONTEST_GRANT generator=186081 identity=onion:p2:38:0 granted=0 duplicate=1
+P2_BREADBUG_CONTEST_PROBE generator=186081 carriers=1 injected=1          # death phase (tagged)
+P2_BREADBUG_REVISIT generator=186081 rearmed=1
+P2_BREADBUG_CONTEST_BEGIN generator=186081 identity=onion:p2:38:0 max=2
+P2_BREADBUG_CONTEST_UPDATE generator=186081 carriers=1 outcome=held
+P2_BREADBUG_OWNER_DIED generator=186081 released=1 reason=OwnerDied
+PASS P2_BREADBUG_CONTEST contest tug stolen_grant owner_died revisit_exactly_once
+```
+
+Parser/validator result: `probe_markers=[2,1] probe_before_first_grant=0
+update_outcomes=[held,released,held,stolen,stolen,held]`; all five gates passed
+(`gate_primary_tug_natural=true`).
+
+### Six-gate table (natural vs injected) — natural-tug slice
+
+| Gate | Result | Evidence / label |
+|---|---|---|
+| 1. Exact identity and spawn | **PASS (natural)** | `P2_BREADBUG_ACTOR_READY generator=186081 native_type=8 xyz=-150,30,1850` |
+| 2. Autonomous movement and animation | **PASS (natural, P1 proxy)** | breadbug grabs and drags the bait pellet; motion/animation are the P1 `TEKI_Collec` host |
+| 3. Attacks and receivers | **PASS (primary tug natural)** | `probe_carriers(-1)`: real Stickers count drives Held -> Stolen; held->stolen has no probe marker (`probe_before_first_grant=0`); revisit/death carrier counts are the only injections and are probe-tagged |
+| 4. Death and corpse | **PASS (death injected, release real)** | labelled `mHealth=0` injection at tick 1100; `onOwnerDied()` releases the held cargo (`released=1`) |
+| 5. Actual transport and reward | **PASS (transport natural; reward real)** | transport is the P1 host grab/drag; `grantReceipt` over the durable ledger grants exactly once |
+| 6. Cleanup and re-entry | **PASS (exactly-once)** | revisit re-arms; the re-steal grant is refused `granted=0 duplicate=1` with `grants=1` |
+
+## Tests run and results
+
+- `py -3.12 -m pytest tests/test_pikmin2_breadbug_contest_consumer.py tests/test_pikmin2_breadbug_contest.py tests/test_pikmin2_breadbug_contest_observation.py -q` -> **40 passed**.
+
+## Subagent usage
+
+The brief asked for three parallel subagents via a `task` tool; this session has no
+`task` tool, so all investigation, editing, build and run were done serially by the
+single agent. Negative result recorded: no delegation savings were realized, and
+the read-heavy source audit + parser/validator rework that the subagents would
+have covered were folded into the main thread.
+
+## Assumptions
+
+- Primary tug runs `probe_carriers(-1)`; the natural grab is fed the real Stickers
+  count and may hit the 0-carrier freeze timeout once (observed: `outcome=released`
+  then a fresh contest). That is the integrator-`452135cd` "fresh contest after
+  timeout" behaviour, exercised for real here.
+- The "no lane paths / lane-labelled names in code, tests or docs" requirement is
+  met for all code and tests written this slice (the two lane-labelled names in
+  `p2_breadbug_ordinary_runtime.py` were renamed); the handoff reproduction command
+  necessarily names the private `native-l18`/`l18-out` paths as the lane contract
+  requires.
+
+## Remaining blockers (provider lanes named)
+
+- Natural combat death (squad-inflicted kill) vs the still-injected `mHealth=0`:
+  lane 04 / lane 06 combat ownership.
+- Threading the real generated-session seed/stage/generator into the contest
+  identity (`onion:p2:38:<stage>`) and receipt coordinates: lane 01 / lane 03.
+
+## Exact reproduction command (slice 2)
+
+```powershell
+$env:PATH = 'C:/msys64/mingw64/bin;C:\Users\alari\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\Scripts;' + $env:PATH
+$env:PYTHONUTF8 = '1'
+$env:PIKMIN_P2_ROOM_WINDOW = '960x540'
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/build_lane.py l18
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run build l18 -- py -3.12 -m experimental.pikmin2_breadbug_contest_runtime build --native C:/Users/alari/pikmin-randomizer/output/dsw/native-l18 --build-dir C:/Users/alari/pikmin-randomizer/output/dsw/native-l18-build --output C:/Users/alari/pikmin-randomizer/output/dsw/l18-out/slice2-fixture-build --head 452135cd6c34821ba4d3ad65058e3eac49d8a668
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l18 -- py -3.12 -m experimental.pikmin2_breadbug_contest_runtime run --stage C:/Users/alari/pikmin-randomizer/output/dsw/l18-out/contest-stage --exe C:/Users/alari/pikmin-randomizer/output/dsw/l18-out/slice2-fixture-build/fixture.exe --output C:/Users/alari/pikmin-randomizer/output/dsw/l18-out/slice2-run
+```

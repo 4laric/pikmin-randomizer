@@ -72,7 +72,7 @@ def main():
     parser.add_argument('--assets', type=Path,
                         default=Path(os.environ.get('APPDATA', '')) / 'PikminRandomizer' / 'game-data' / 'assets')
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--seed', default='lane18-breadbug-ordinary-restart')
+    parser.add_argument('--seed', default='breadbug-ordinary-restart')
     args = parser.parse_args()
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -85,7 +85,7 @@ def main():
                         collection_checks=True, starting_flarlic=10,
                         starting_area='navel')
     session = Session(manifest, args.output / ('session-' + uuid.uuid4().hex[:8]))
-    session.bind_ap('lane18-fixture', 0, 1)
+    session.bind_ap('breadbug-fixture', 0, 1)
     wanted = [uid for name, uid in ITEM_IDS.items()
               if uid in session.allowed_items and (name.endswith('Onion') or name.endswith('Access'))]
     session.receive(0, wanted)

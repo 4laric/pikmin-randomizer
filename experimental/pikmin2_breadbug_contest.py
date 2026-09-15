@@ -493,7 +493,8 @@ class SmallContestMirror:
 _MARKER_RE = re.compile(
     r'(P2_BREADBUG_CONTEST_BEGIN|P2_BREADBUG_CONTEST_UPDATE|'
     r'P2_BREADBUG_CONTEST_STOLEN|P2_BREADBUG_CONTEST_GRANT|'
-    r'P2_BREADBUG_OWNER_DIED|P2_BREADBUG_REVISIT)\b')
+    r'P2_BREADBUG_CONTEST_PROBE|P2_BREADBUG_OWNER_DIED|'
+    r'P2_BREADBUG_REVISIT)\b')
 _FIELD_RE = re.compile(r'([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|\S+)')
 
 
@@ -523,7 +524,9 @@ def parse_contest_consumer(text, generator):
     Only marker lines whose ``generator=`` equals ``generator`` are counted. The
     result records whether each gate input was observed (``began``, ``held``,
     ``stolen``, ``released``, ``granted``, ``owner_died``, ``revisit``), plus the
-    exact grant count and duplicate flag for the exactly-once check.
+    exact grant count and duplicate flag for the exactly-once check. It also
+    counts ``P2_BREADBUG_CONTEST_PROBE`` markers and, in particular, how many of
+    them appear before the first ``granted=1`` (a probe during the primary tug).
     """
     target = str(generator)
     events = {
@@ -540,7 +543,10 @@ def parse_contest_consumer(text, generator):
         'revisit': False,
         'update_outcomes': [],
         'pass_marker': False,
+        'probe_markers': [],
+        'probe_before_first_grant': 0,
     }
+    granted_seen = False
     for raw in text.splitlines():
         line = raw.strip()
         if not line:
@@ -568,8 +574,13 @@ def parse_contest_consumer(text, generator):
             if _field_int(fields, 'granted') == 1:
                 events['granted'] = True
                 events['grants'] += 1
+                granted_seen = True
             if _field_int(fields, 'duplicate') == 1:
                 events['grant_duplicate'] = True
+        elif marker == 'P2_BREADBUG_CONTEST_PROBE':
+            events['probe_markers'].append(_field_int(fields, 'carriers'))
+            if not granted_seen:
+                events['probe_before_first_grant'] += 1
         elif marker == 'P2_BREADBUG_OWNER_DIED':
             events['owner_died'] = True
             if _field_int(fields, 'released') == 1:
@@ -581,13 +592,15 @@ def parse_contest_consumer(text, generator):
 
 
 def validate_contest_consumer(events):
-    """Assert the four P2 Breadbug contest-consumer gates from observed events.
+    """Assert the P2 Breadbug contest-consumer gates from observed events.
 
     (a) a begin marker was observed; (b) a full contest ran (held then
     stolen + released + granted); (c) an owner death released the cargo
-    (``released=1``); and (d) the grant was emitted exactly once: exactly one
+    (``released=1``); (d) the grant was emitted exactly once: exactly one
     ``granted=1`` and one ``duplicate=1`` (the refused re-grant across the
-    revisit proves the durable ledger did not re-credit it).
+    revisit proves the durable ledger did not re-credit it); and (e) the
+    primary tug had no probe marker (``probe_before_first_grant == 0``), so the
+    Held -> Stolen reach was driven by the real squad, not an injected count.
     """
     began = bool(events.get('began'))
     held = bool(events.get('held'))
@@ -598,11 +611,13 @@ def validate_contest_consumer(events):
     owner_died_released = bool(events.get('owner_died_released'))
     grants = int(events.get('grants', 0))
     grant_duplicate = bool(events.get('grant_duplicate'))
+    probe_before_first_grant = int(events.get('probe_before_first_grant', 0))
 
     gate_began = began
     gate_contest = held and stolen and released and granted
     gate_owner_died = owner_died and owner_died_released
     gate_grant = granted and grants == 1 and grant_duplicate
+    gate_primary_tug_natural = probe_before_first_grant == 0
 
     checks = {
         'began': began,
@@ -613,10 +628,13 @@ def validate_contest_consumer(events):
         'owner_died': owner_died,
         'owner_died_released': owner_died_released,
         'grant_exactly_once': gate_grant,
+        'probe_before_first_grant': probe_before_first_grant,
         'gate_began': gate_began,
         'gate_held_then_stolen_released_granted': gate_contest,
         'gate_owner_died_released': gate_owner_died,
         'gate_grant_exactly_once': gate_grant,
+        'gate_primary_tug_natural': gate_primary_tug_natural,
     }
-    passed = gate_began and gate_contest and gate_owner_died and gate_grant
+    passed = (gate_began and gate_contest and gate_owner_died and gate_grant
+              and gate_primary_tug_natural)
     return {'passed': passed, 'checks': checks}

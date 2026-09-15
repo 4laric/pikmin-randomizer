@@ -8,14 +8,19 @@
 
 // Small-Breadbug cargo-contest consumer fixture (#220). Binds the opted-in
 // TEKI_Collec proxy (generator 186081) to the lane-06 P2CargoContest consumer
-// bridge and drives the four gates through the family module's own tick with a
-// fixed frame timeline:
-//   (a) the Breadbug contests a carried pellet against the squad (1 carrier held);
-//   (b) two carriers out-pull it -> interrupt() + release + exactly-once grant;
-//   (c) a revisit re-arms, and a second steal is refused (duplicate, durable ledger);
-//   (d) the Breadbug dies holding a fresh pellet -> onOwnerDied() releases it.
-// Carrier counts are injected through the labelled probe hook (natural squad
-// combat/carry is lane 04/06; the probe only drives the value-token contest).
+// bridge and drives the four gates through the family module's own tick:
+//   (a) the natural squad tug: the Breadbug contests the carried pellet against
+//       the real Stickers count (probe_carriers(-1)); one carrier holds, two
+//       out-pull it -> the Stolen outcome releases the pellet and grants exactly
+//       once (no injected carrier count for this primary tug);
+//   (b) a labelled injected revisit re-arms, and a second steal is refused
+//       (duplicate, durable ledger);
+//   (c) a labelled injected carrier override holds a fresh pellet while the
+//       Breadbug dies -> onOwnerDied() releases it.
+// Only the revisit/death phases inject carrier counts; every injection is tagged
+// with a P2_BREADBUG_CONTEST_PROBE marker so the validator can prove the primary
+// tug had none. There is no actor interrupt() path here: the contester releases
+// cargo on the P2CargoContest Stolen outcome (stolen-outcome release).
 static bool contest_window_size(int& width, int& height)
 {
  const char* value = std::getenv("PIKMIN_P2_ROOM_WINDOW");
@@ -66,22 +71,38 @@ public:
    Vector3f view = actor->mSRT.t + Vector3f(0, 0, 120);
    view.y = mapMgr->getMinY(view.x, view.z, true);
    n->resetPosition(view);
-   pc_p2_breadbug_actor_probe_carriers(1); // squad of one contests first
+   pc_p2_breadbug_actor_probe_carriers(-1); // natural Stickers count for the primary tug
    baitPellet();
-   std::printf("P2_BREADBUG_CONTEST_PHASE phase=setup tick=%d\n", tick);
+   std::printf("P2_BREADBUG_CONTEST_PHASE phase=natural_tug_setup tick=%d\n", tick);
    std::fflush(stdout);
   }
 
-  // Fixed timeline (labelled injected carrier counts; grab latency ~120-150 frames).
-  if (tick == 300) { pc_p2_breadbug_actor_probe_carriers(2); std::printf("P2_BREADBUG_CONTEST_PHASE phase=steal1 tick=%d\n", tick); std::fflush(stdout); }
-  else if (tick == 380) { pc_p2_breadbug_actor_probe_carriers(-1); pc_p2_breadbug_actor_probe_revisit(); baitPellet(); pc_p2_breadbug_actor_probe_carriers(2); std::printf("P2_BREADBUG_CONTEST_PHASE phase=revisit1_bait2 tick=%d\n", tick); std::fflush(stdout); }
-  else if (tick == 750) { pc_p2_breadbug_actor_probe_carriers(-1); pc_p2_breadbug_actor_probe_revisit(); baitPellet(); pc_p2_breadbug_actor_probe_carriers(1); std::printf("P2_BREADBUG_CONTEST_PHASE phase=revisit2_bait3 tick=%d\n", tick); std::fflush(stdout); }
-  else if (tick == 1000) { if (actor->isAlive()) { actor->mHealth = 0.0f; std::printf("P2_BREADBUG_CONTEST_PHASE phase=kill_injected tick=%d\n", tick); std::fflush(stdout); } }
-  else if (tick >= 1060) {
+  // Natural primary tug: the real squad grabs the pellet and, once two Stickers
+  // latch, the Stolen outcome releases it and grants exactly once. No carrier
+  // count is injected here, so no P2_BREADBUG_CONTEST_PROBE marker is emitted.
+  // Revisit/death phases below are the only injected counts and are tagged.
+  if (tick == 420) {
+   std::printf("P2_BREADBUG_CONTEST_PROBE generator=186081 carriers=2 injected=1\n");
+   pc_p2_breadbug_actor_probe_revisit();
+   baitPellet();
+   pc_p2_breadbug_actor_probe_carriers(2);
+   std::printf("P2_BREADBUG_CONTEST_PHASE phase=revisit_duplicate tick=%d\n", tick);
+   std::fflush(stdout);
+  }
+  else if (tick == 800) {
+   std::printf("P2_BREADBUG_CONTEST_PROBE generator=186081 carriers=1 injected=1\n");
+   pc_p2_breadbug_actor_probe_revisit();
+   baitPellet();
+   pc_p2_breadbug_actor_probe_carriers(1);
+   std::printf("P2_BREADBUG_CONTEST_PHASE phase=death_hold tick=%d\n", tick);
+   std::fflush(stdout);
+  }
+  else if (tick == 1100) { if (actor->isAlive()) { actor->mHealth = 0.0f; std::printf("P2_BREADBUG_CONTEST_PHASE phase=kill_injected tick=%d\n", tick); std::fflush(stdout); } }
+  else if (tick >= 1140) {
    if (!deathLogged && !actor->isAlive()) { deathLogged = true; std::printf("P2_BREADBUG_CONTEST_PHASE phase=dead tick=%d\n", tick); std::fflush(stdout); }
-   if (tick >= 1100) {
+   if (tick >= 1180) {
     capture("breadbug-contest-final.ppm");
-    std::printf("PASS P2_BREADBUG_CONTEST contest tug interrupt_grant owner_died revisit_exactly_once\n");
+    std::printf("PASS P2_BREADBUG_CONTEST contest tug stolen_grant owner_died revisit_exactly_once\n");
     std::fflush(nullptr);
     std::_Exit(0);
    }

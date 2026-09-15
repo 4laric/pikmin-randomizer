@@ -10,11 +10,16 @@ GOOD_LOG = (
     'P2_BREADBUG_CONTEST_UPDATE generator=186081 carriers=2 outcome=stolen\n'
     'P2_BREADBUG_CONTEST_STOLEN generator=186081 carriers=2 released=1\n'
     'P2_BREADBUG_CONTEST_GRANT generator=186081 identity=onion:p2:38:0 granted=1\n'
+    'P2_BREADBUG_CONTEST_PROBE generator=186081 carriers=2 injected=1\n'
     'P2_BREADBUG_REVISIT generator=186081 rearmed=1\n'
     'P2_BREADBUG_CONTEST_BEGIN generator=186081 identity=onion:p2:38:0 max=2\n'
     'P2_BREADBUG_CONTEST_UPDATE generator=186081 carriers=2 outcome=stolen\n'
     'P2_BREADBUG_CONTEST_STOLEN generator=186081 carriers=2 released=1\n'
     'P2_BREADBUG_CONTEST_GRANT generator=186081 identity=onion:p2:38:0 granted=0 duplicate=1\n'
+    'P2_BREADBUG_CONTEST_PROBE generator=186081 carriers=1 injected=1\n'
+    'P2_BREADBUG_REVISIT generator=186081 rearmed=1\n'
+    'P2_BREADBUG_CONTEST_BEGIN generator=186081 identity=onion:p2:38:0 max=2\n'
+    'P2_BREADBUG_CONTEST_UPDATE generator=186081 carriers=1 outcome=held\n'
     'P2_BREADBUG_OWNER_DIED generator=186081 released=1 reason=OwnerDied\n'
     'PASS P2_BREADBUG_CONTEST\n'
 )
@@ -130,8 +135,10 @@ def test_parser_records_the_observed_consumer_events():
     assert events['owner_died'] is True
     assert events['owner_died_released'] is True
     assert events['revisit'] is True
-    assert events['update_outcomes'] == ['held', 'stolen', 'stolen']
+    assert events['update_outcomes'] == ['held', 'stolen', 'stolen', 'held']
     assert events['pass_marker'] is True
+    assert events['probe_markers'] == [2, 1]
+    assert events['probe_before_first_grant'] == 0
 
 
 def test_parser_ignores_markers_for_other_generators():
@@ -149,6 +156,23 @@ def test_validator_passes_a_complete_consumer_run():
     assert result['checks']['gate_held_then_stolen_released_granted'] is True
     assert result['checks']['gate_owner_died_released'] is True
     assert result['checks']['gate_grant_exactly_once'] is True
+    assert result['checks']['gate_primary_tug_natural'] is True
+
+
+def test_validator_rejects_a_probe_before_the_first_grant():
+    # A probe marker emitted before the primary tug's first grant proves the
+    # Held -> Stolen reach was injected, so the natural primary tug fails.
+    probed = GOOD_LOG.replace(
+        'P2_BREADBUG_CONTEST_GRANT generator=186081 identity=onion:p2:38:0 granted=1\n',
+        'P2_BREADBUG_CONTEST_PROBE generator=186081 carriers=2 injected=1\n'
+        'P2_BREADBUG_CONTEST_GRANT generator=186081 identity=onion:p2:38:0 granted=1\n')
+    events = contest.parse_contest_consumer(probed, 186081)
+    assert events['probe_before_first_grant'] == 1
+    result = contest.validate_contest_consumer(events)
+    assert result['passed'] is False
+    assert result['checks']['gate_primary_tug_natural'] is False
+    # The rest of the gates still hold; only the natural-primary gate fails.
+    assert result['checks']['gate_held_then_stolen_released_granted'] is True
 
 
 def test_validator_fails_on_a_missing_gate():

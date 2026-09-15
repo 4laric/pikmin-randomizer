@@ -7,11 +7,14 @@ slot, runs it in a staged proxy arena, then validates the host log through
 four-gate validator) plus the run-level gates (live visual delegation and the
 centred 960x540 window).
 
-Carrier counts are injected through the labelled ``pc_p2_breadbug_actor_probe_*``
-hooks; the P1 ``TEKI_Collec`` host still performs the actual pellet grab/drag, so
-this is a "binding is live + P2CargoContest transition table drives the release
-and exactly-once receipt" observation, not a claim of natural squad tug parity
-(that remains lane 04/06).
+The primary tug is natural: the fixture runs ``probe_carriers(-1)`` so the real
+Stickers count drives the P2CargoContest transition table, and the squad actually
+out-pulls the Breadbug to reach the Stolen outcome (stolen-outcome release) and
+the exactly-once grant. Only the revisit/death phases inject carrier counts via
+the labelled ``pc_p2_breadbug_actor_probe_*`` hooks, and each injection is tagged
+with a ``P2_BREADBUG_CONTEST_PROBE`` marker so the validator can prove the primary
+tug had none. The P1 ``TEKI_Collec`` host still performs the actual pellet
+grab/drag.
 """
 import argparse
 import json
@@ -29,9 +32,10 @@ FIXTURE = ROOT / 'scripts/pikmin2_breadbug_contest_fixture.cpp'
 WINDOW_LINE = 'Experimental preview window set to 960x540 windowed and centered'
 GENERATOR = 186081
 
-SCOPE = ('P1 TEKI_Collec proxy bound to P2CargoContest; contest, interrupt-grant, '
-         'owner-death release and revisit exactly-once driven through value-token '
-         'carriers; natural squad tug/carry ownership remains lane 04/06')
+SCOPE = ('P1 TEKI_Collec proxy bound to P2CargoContest; natural Stickers tug '
+         'reaches the Stolen outcome (stolen-outcome release) and grants exactly '
+         'once; injected revisit/owner-death phases are probe-tagged; natural '
+         'squad tug/carry ownership remains lane 04/06')
 
 
 def validate(text, generator=GENERATOR):
@@ -87,6 +91,7 @@ def run(stage_dir, exe, output, timeout=180):
     with log.open('w') as out:
         proc = subprocess.run([str(exe), '--experimental-pikmin2-room'], cwd=stage_dir,
                               env=env, stdout=out, stderr=subprocess.STDOUT, timeout=timeout)
+    shutil.copy2(log, output / 'host.log')  # keep the log with the result; the stage log is overwritten per run
     if proc.returncode:
         raise RuntimeError('Native contest consumer exited %d: %s' % (proc.returncode, stage_dir))
     report = {
