@@ -258,6 +258,12 @@ def route_strength(name, manifest, inventory=None):
 
 
 def can_reach_manifest(name, inventory, manifest):
+    # Lane 39 cave hook: only fires for locations the seed layer wrote into the
+    # seeded cave requirement map. Absent for every existing legacy location.
+    cave_requirements = manifest.get('cave_requirements')
+    if cave_requirements and name in cave_requirements:
+        from .cave_logic import requirement_satisfied
+        return requirement_satisfied(cave_requirements[name], inventory, manifest)
     if name == "Pikmin: Secret Safe" and manifest.get("goal_mode") == "emperor_bulblax" and inventory.get(REPAIR, 0) < 25: return False
     if 'enemy_layout' in manifest and name in BESTIARY_TARGETS:
         if name not in active_names(manifest): return False
