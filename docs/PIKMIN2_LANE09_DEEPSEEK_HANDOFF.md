@@ -423,4 +423,122 @@ py -3.12 scripts/build_pikmin2_fixture.py --build C:/Users/alari/pikmin-randomiz
 py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l09 -- py -3.12 C:/Users/alari/pikmin-randomizer/output/dsw/l09-out/run_driver.py C:/Users/alari/pikmin-randomizer/output/dsw/l09-out/frog-fixture/fixture.exe
 ```
 
+## Slice 4
+
+### Deliverable
+
+The corrected specular half-vector primitive is proven on the **real Frog family draw
+path**, not a fixture-loaded model: a live Frog (enemy 17) is spawned by lane 16's
+generator sidecar (`p2-frog.txt` + the `default.gen` Teki record), drawn through
+`tekibteki.cpp` -> `pc_p2_frog_draw` -> `shape->drawshape`, and the renderer's
+family-scoped counter attributes the per-run specular channel draws to that family draw.
+
+### Native (commit `0d6924d2`)
+
+- `pc_port/gl/pc_gfx.cpp` + `pc_gfx.h` (renderer-owned): added
+  `pc_gfx_specular_family_scope(int)` and `pc_gfx_specular_family_draws()`. The existing
+  `pc_gfx_specular_channel_draws()` increment now also counts into
+  `sSpecularFamilyDraws` while the family scope is active, so a family draw is told apart
+  from the renderer-global count.
+- `pc_port/pc_p2_frog.cpp` (small labelled hook): `pc_p2_frog_draw` brackets its
+  `shape->drawshape` with `pc_gfx_specular_family_scope(1)` / `(0)`. No renderer behaviour
+  change; the scope flag only gates a counter.
+
+### Root
+
+- `scripts/pikmin2_frog_draw_specular_fixture.cpp` — replacement-main room fixture that
+  boots the room preview (spawns the Frog via the generator), frames it with the camera,
+  and prints the window / READY / family-delta markers. Window size/position are real
+  `SDL_GetWindowSize`/`SDL_GetWindowPosition` reads; `centered` is computed against
+  `SDL_GetDisplayBounds`; `replay_equal` is a byte-for-byte same-frame re-read compare.
+- `experimental/pikmin2_frog_draw_specular.py` — `evidence()` validator (window within
+  tolerance of the requested size, `flags=SHOWN`, `family_specular_draws >= 1`,
+  `replay_equal == 1`) and the profiled-bank arena stage helper. A delta present only in
+  the renderer-global count (non-family) does not satisfy the gate.
+- `tests/test_pikmin2_frog_draw_specular.py` — 11 tests (incl. the non-family-delta flip,
+  window tolerance, hidden-window, and bad-replay flips).
+
+### Evidence (real-GL, single slot)
+
+- Native `0d6924d219056b904a8760ef2d8186bd4b488407`, pikmin_pc SHA-256
+  `313336baf75ef55c8cc05b92b2c3e8e944132541eddc781f0e3b5b87f7694ba4`, `ninja: no work to do`.
+- Fixture `output/dsw/l09-out/frog-draw-fixture` provenance `built`; fixture.exe SHA-256
+  `50ef1476d5b5ab2c4533f4d3d77dd6a97600117f858de8dcc5f06666bba32d2e`.
+- Run `output/dsw/l09-out/frog-draw-arena/7b71304c802843b1a232f25f92d8c5ff` with
+  `PIKMIN_P2_ROOM_WINDOW=960x540`, `PYTHONUTF8=1`:
+
+```
+native.log:1260 FROG_DRAW_WINDOW w=960 h=540 flags=SHOWN centered=1
+native.log:1261 FROG_DRAW_READY species=Frog generator=201001 registered=1
+native.log:1270 FROG_DRAW_SPECULAR family_specular_draws=187 total_specular_draws=26835 specular_dir_calls=182 replay_equal=1
+native.log:1271 PASS FROG_DRAW_SPECULAR
+```
+
+`family_specular_draws=187` is the delta attributed to the Frog's own `shape->drawshape`
+(the renderer-global count is 26835; the family scope brackets only the family draw, so a
+non-family draw cannot inflate it). `frog-family.ppm` is a real actor capture and
+`replay_equal=1` is a byte-for-byte same-frame re-read.
+
+- Tests: `tests/test_pikmin2_frog_draw_specular.py` 11 passed.
+
+### Reproduction (exact, verified)
+
+```powershell
+$env:PYTHONUTF8='1'; $env:PIKMIN_P2_ROOM_WINDOW='960x540'
+# profiled Frog bank pre-existing (pikmin2_frog_material_profile). Stage the arena:
+py -3.12 -m experimental.pikmin2_frog_draw_specular stage --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets --bank <profiled-frog-bank> --output <out>/frog-draw-arena
+# build the fixture against native 0d6924d2 and run under the GL slot (cwd = staged run):
+py -3.12 scripts/build_pikmin2_fixture.py --build <native-build> --source <native> --fixture scripts/pikmin2_frog_draw_specular_fixture.cpp --output <out>/frog-draw-fixture --expected-native-head 0d6924d219056b904a8760ef2d8186bd4b488407
+py -3.12 <wave>/slot.py run gl l09 -- py -3.12 <out>/run_driver.py <out>/frog-draw-fixture/fixture.exe
+```
+
+## Concrete source ID
+- Source ID: 17 `Frog`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | N/A | rendering lane: Frog 17 spawned via the generator sidecar for a material check; not a gameplay spawn acceptance | n/a |
+| 2. Autonomous movement and animation | N/A | lane 09 owns rendering, not gameplay | n/a |
+| 3. Attacks and receivers | N/A | lane 09 owns rendering, not gameplay | n/a |
+| 4. Death and corpse | N/A | lane 09 owns rendering, not gameplay | n/a |
+| 5. Actual transport and reward | N/A | lane 09 owns rendering, not gameplay | n/a |
+| 6. Cleanup and re-entry | N/A | lane 09 owns rendering, not gameplay | n/a |
+
+The lane-09 acceptance is the family-draw specular evidence above
+(`output/dsw/l09-out/frog-draw-arena/7b71304c802843b1a232f25f92d8c5ff/native.log:1270`),
+not a gameplay admission; the admitted roster remains empty.
+
+## Concrete source ID
+- Source ID: 30 `Queen`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | N/A | rendering lane: Queen 30 two-stage specular material was slice 1's consumer; not a gameplay spawn acceptance | n/a |
+| 2. Autonomous movement and animation | N/A | lane 09 owns rendering, not gameplay | n/a |
+| 3. Attacks and receivers | N/A | lane 09 owns rendering, not gameplay | n/a |
+| 4. Death and corpse | N/A | lane 09 owns rendering, not gameplay | n/a |
+| 5. Actual transport and reward | N/A | lane 09 owns rendering, not gameplay | n/a |
+| 6. Cleanup and re-entry | N/A | lane 09 owns rendering, not gameplay | n/a |
+
+### Gate checker output (`scripts/check_p2_handoff_gates.py`)
+
+```
+17 Frog (role=source):
+  1. identity_spawn     ignored [N/A]
+  2. movement_animation ignored [N/A]
+  3. attacks_receivers  ignored [N/A]
+  4. death_corpse       ignored [N/A]
+  5. transport_reward   ignored [N/A]
+  6. cleanup_reentry    ignored [N/A]
+30 Queen (role=source):
+  1. identity_spawn     ignored [N/A]
+  2. movement_animation ignored [N/A]
+  3. attacks_receivers  ignored [N/A]
+  4. death_corpse       ignored [N/A]
+  5. transport_reward   ignored [N/A]
+  6. cleanup_reentry    ignored [N/A]
+```
+
+Exit 0, no refused PASS rows (lane 09 is a rendering lane; no gameplay gates are claimed).
+
 
