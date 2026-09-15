@@ -8,6 +8,12 @@ own reusable harness, drops the fixture `*_forget`, makes the ENGINE `doKill ->
 pc_p2_forget_teki` seam the forget authority on a natural death, and honestly
 reports the address-reuse / manager-reset legs.
 
+
+### Integrator note (review of fix 2)
+
+- Gate 2 movement is observed on the re-entered actor under a labelled Pikmin lure (resetPosition), not on the originally spawned actor; the MOVE probe was not moved before the first attack. The lure is now listed in the evidence `injection` string.
+- Scene-mode SUMMARY prints moved=0 because it counts currently-alive actors that moved (the re-born actor was killed during the window); the gate reads the MOVE line, which is present (dist 4.201).
+
 ## Slice delivered
 
 **Consumer (one live family):** Dwarf Orange Bulborb — species `BlueKochappy`,
@@ -243,7 +249,7 @@ this slice pins the family-reset hook that the scene boundary reuses.
 
 `FAMILY_HOOKS` now includes `sokkuri` (routes `pc_p2_sokkuri_registered/
 setup/...`; string-tested via `test_sokkuri_hooks_route_to_its_module`).
-`--family sokkuri` fails fast with a clear deferral: the available ground arena
+**Hooks only, not run.** `--family sokkuri` fails fast with a clear deferral: the available ground arena
 co-stages Armor/ElecBug/Imomushi/TamagoMushi/Hana, and a clean Sokkuri-only run
 needs a Sokkuri-only arena (cross-lane, lane 14). The "torn down together"
 mechanism is unchanged and cited: `pc_p2_reset_all_teki()` resets both

@@ -474,7 +474,7 @@ def validate(text, code, manifest, name='long-legs', cycles=1, teardown='manager
                             'transport/reward', 'campaign resume', 'mixed-scene performance',
                             'full in-place day-end section transition (scene mode calls the '
                             'pc_p2_reset_all_teki exitStage hook, not the menu/section re-enter)'],
-                injection='repeated Navi InteractAttack(100000) via the receiver; corpse '
+                injection='Pikmin resetPosition lure after re-entry (movement probe); repeated Navi InteractAttack(100000) via the receiver; corpse '
                           'disposal trigger injected (no Onion in cargo-free arena); respawn via '
                           'the staged actor\'s own Generator::init() after death')
 
