@@ -51,11 +51,10 @@ from experimental.pikmin2_long_legs_arena import CFG
 from experimental.pikmin2_long_legs_install import install, verify_install
 from experimental.pikmin2_long_legs_visual import convert as convert_visual
 
-HOudai_ID = 312001
+HOUDAI_ID = 312001
 BIGFOOT_ID = 312002
-HOudai_SOURCE_ID = 66
+HOUDAI_SOURCE_ID = 66
 BIGFOOT_SOURCE_ID = 69
-POLICY = CFG['policy'] if 'policy' in CFG else '#312'
 
 # Impact Site squad overlay places 20 reds at x in [-140,-68], z in [1804,1820]
 # (scripts/preview_pikmin2_room.ensure_pikmin_squad). Put BigFoot among the squad
@@ -63,19 +62,19 @@ POLICY = CFG['policy'] if 'policy' in CFG else '#312'
 # its gunless-no-press schedule is observed without crush interference.
 DEFAULT_POSITIONS = tuple(CFG['arena_positions'])
 SPECIES = tuple(CFG['arena_species'])
-HOudai_INDEX = SPECIES.index('Houdai')
+HOUDAI_INDEX = SPECIES.index('Houdai')
 BIGFOOT_INDEX = SPECIES.index('BigFoot')
-HOudai_POSITION = (120.0, 30.0, 1850.0)
+HOUDAI_POSITION = (120.0, 30.0, 1850.0)
 BIGFOOT_POSITION = (-104.0, 30.0, 1816.0)
 
 
 def position_override():
     positions = dict(
         species=['Houdai', 'BigFoot'],
-        generators={'Houdai': HOudai_ID, 'BigFoot': BIGFOOT_ID},
-        arena_default=[list(DEFAULT_POSITIONS[HOudai_INDEX]),
+        generators={'Houdai': HOUDAI_ID, 'BigFoot': BIGFOOT_ID},
+        arena_default=[list(DEFAULT_POSITIONS[HOUDAI_INDEX]),
                        list(DEFAULT_POSITIONS[BIGFOOT_INDEX])],
-        behavior_fixture=[list(HOudai_POSITION), list(BIGFOOT_POSITION)],
+        behavior_fixture=[list(HOUDAI_POSITION), list(BIGFOOT_POSITION)],
         reason='stage BigFoot under the starting squad so the source landing '
                'foot-crush and real Pikmin attacks reach it immediately',
         production_placement=False)
@@ -88,9 +87,12 @@ APP = r'''class RoomApp : public PlugPikiApp {
     Generator* houdaiGen=nullptr;Generator* bigfootGen=nullptr;
     Teki* freshHoudai=nullptr;Teki* freshBigfoot=nullptr;
     Pellet* houdaiCorpse=nullptr;Pellet* bigfootCorpse=nullptr;
-    bool bigfootDied=false;
+    bool bigfootDied=false;bool houdaiDied=false;
     Teki* byGenerator(unsigned id){Iterator it(tekiMgr);CI_LOOP(it){Teki* a=static_cast<Teki*>(*it);if(a&&a->mGenerator&&a->mGenerator->_70==id)return a;}return nullptr;}
     Pellet* corpseOf(Teki* actor){if(!actor)return nullptr;Iterator it(pelletMgr);CI_LOOP(it){Pellet* p=static_cast<Pellet*>(*it);if(p&&p->mPelletView==static_cast<PelletView*>(actor))return p;}return nullptr;}
+    int assignAttack(Teki* target){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
+        v->mActiveAction->abandon(nullptr);v->mActiveAction->mCurrActionIdx=PikiAction::Attack;
+        v->mActiveAction->mChildActions[PikiAction::Attack].initialise(target);v->mMode=PikiMode::AttackMode;++n;}return n;}
 public:int idle() override {
     int result=PlugPikiApp::idle();require(++frames<40000,"long legs lifecycle startup timeout");
     if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
@@ -107,9 +109,7 @@ public:int idle() override {
         houdaiGen=houdai->mGenerator;bigfootGen=bigfoot->mGenerator;
         require(houdaiGen&&houdaiGen->mGenType&&houdaiGen->mGenObject,"houdai generator present");
         require(bigfootGen&&bigfootGen->mGenType&&bigfootGen->mGenObject,"bigfoot generator present");
-        int attackers=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
-            v->mActiveAction->abandon(nullptr);v->mActiveAction->mCurrActionIdx=PikiAction::Attack;
-            v->mActiveAction->mChildActions[PikiAction::Attack].initialise(bigfoot);v->mMode=PikiMode::AttackMode;++attackers;}
+        int attackers=assignAttack(bigfoot);
         require(attackers>0,"no attackers after ready");
         std::printf("P2_LL_READY squad=%d houdai_gen=%u bigfoot_gen=%u attack=%d\n",squad,houdaiGen->_70,bigfootGen->_70,attackers);
         std::fflush(stdout);stage=1;return result;
@@ -117,15 +117,24 @@ public:int idle() override {
     if(stage==1){
         if(!bigfoot->isAlive()&&!bigfootDied){bigfootDied=true;std::printf("P2_LL_NATURAL_DEATH bigfoot=1 health=%.2f\n",bigfoot->mHealth);std::fflush(stdout);}
         if(bigfootDied){
-            std::printf("P2_LL_INJECT species=Houdai injected_health=0 source=fixture not_natural_combat=1\n");
-            houdai->mHealth=0.0f;std::fflush(stdout);stage=2;
-        } else if(observed>=3600){
-            std::printf("P2_LL_INJECT species=BigFoot,Houdai injected_health=0 source=fixture not_natural_combat=1\n");
-            bigfoot->mHealth=0.0f;houdai->mHealth=0.0f;std::fflush(stdout);stage=2;
+            int a=assignAttack(houdai);
+            std::printf("P2_LL_ATTACK_HOUDAI attack=%d\n",a);std::fflush(stdout);stage=2;
+        } else if(observed>=4500){
+            std::printf("P2_LL_INJECT species=BigFoot injected_health=0 source=fixture not_natural_combat=1\n");
+            bigfoot->mHealth=0.0f;std::fflush(stdout);
         }
         return result;
     }
     if(stage==2){
+        if(!houdai->isAlive()&&!houdaiDied){houdaiDied=true;std::printf("P2_LL_NATURAL_DEATH houdai=1 health=%.2f\n",houdai->mHealth);std::fflush(stdout);}
+        if(houdaiDied){stage=3;}
+        else if(observed>=7000){
+            std::printf("P2_LL_INJECT species=Houdai injected_health=0 source=fixture not_natural_combat=1\n");
+            houdai->mHealth=0.0f;std::fflush(stdout);
+        }
+        return result;
+    }
+    if(stage==3){
         if(!bigfootCorpse){bigfootCorpse=corpseOf(bigfoot);if(bigfootCorpse){std::printf("P2_LL_CORPSE species=BigFoot pellet=1 generator=%u\n",bigfootGen->_70);std::fflush(stdout);}}
         if(!houdaiCorpse){houdaiCorpse=corpseOf(houdai);if(houdaiCorpse){std::printf("P2_LL_CORPSE species=Houdai pellet=1 generator=%u\n",houdaiGen->_70);std::fflush(stdout);}}
         if(observed%60==0){
@@ -138,19 +147,19 @@ public:int idle() override {
                         houdai->mStateID,houdai->mTekiAnimator->getCurrentMotionIndex(),houdai->mDeadState,int(houdai->isAlive()));
             std::fflush(stdout);
         }
-        if(bigfootCorpse&&houdaiCorpse)stage=3;
-        if(observed>1500){std::puts("FAIL P2_LONG_LEGS_LIFECYCLE corpse_timeout");std::fflush(stdout);std::_Exit(1);}
+        if(bigfootCorpse&&houdaiCorpse)stage=4;
+        if(observed>9000){std::puts("FAIL P2_LONG_LEGS_LIFECYCLE corpse_timeout");std::fflush(stdout);std::_Exit(1);}
         return result;
     }
-    if(stage==3){
+    if(stage==4){
         pc_p2_long_legs_forget(bigfoot);pc_p2_long_legs_forget(houdai);
         require(pc_p2_long_legs_count()==0,"long legs registry not cleared by forget");
         require(corpseOf(bigfoot)&&corpseOf(houdai),"corpse handoff lost on forget");
         std::printf("P2_LL_FORGET species=BigFoot count=0 registered=0\n");
         std::printf("P2_LL_FORGET species=Houdai count=0 registered=0\n");
-        std::fflush(stdout);stage=4;return result;
+        std::fflush(stdout);stage=5;return result;
     }
-    if(stage==4){
+    if(stage==5){
         bigfootGen->mGenType->init(bigfootGen);houdaiGen->mGenType->init(houdaiGen);
         freshBigfoot=static_cast<Teki*>(bigfootGen->mLatestSpawnCreature);
         freshHoudai=static_cast<Teki*>(houdaiGen->mLatestSpawnCreature);
@@ -165,9 +174,9 @@ public:int idle() override {
         std::printf("P2_LL_REENTRY species=BigFoot old=%p new=%p stale=0 fresh=1 count=%lu\n",(void*)bigfoot,(void*)freshBigfoot,pc_p2_long_legs_count());
         std::printf("P2_LL_REENTRY species=Houdai old=%p new=%p stale=0 fresh=1 count=%lu\n",(void*)houdai,(void*)freshHoudai,pc_p2_long_legs_count());
         std::printf("P2_LL_NOREWARD pod=0 pokos=%d fresh_corpses=0\n",pc_p2_preview_pokos());
-        std::fflush(stdout);stage=5;return result;
+        std::fflush(stdout);stage=6;return result;
     }
-    if(stage==5){
+    if(stage==6){
         std::puts("PASS P2_LONG_LEGS_LIFECYCLE death=Houdai,BigFoot corpse=2 registry_empty=2 reentry=2 stale=0 duplicate_reward=0");
         std::fflush(stdout);std::_Exit(0);
     }
@@ -179,7 +188,7 @@ public:int idle() override {
 def prepare(assets, imported, output):
     cfg = dict(CFG)
     positions = list(CFG['arena_positions'])
-    positions[HOudai_INDEX] = HOudai_POSITION
+    positions[HOUDAI_INDEX] = HOUDAI_POSITION
     positions[BIGFOOT_INDEX] = BIGFOOT_POSITION
     cfg['arena_positions'] = tuple(positions)
     run = _prepare(cfg, assets, imported, output,
@@ -294,6 +303,17 @@ def validate(text, code=0):
     reentry = (bool(re.search(r'P2_LL_REENTRY species=BigFoot old=\S+ new=\S+ stale=0 fresh=1 count=2', text))
                and bool(re.search(r'P2_LL_REENTRY species=Houdai old=\S+ new=\S+ stale=0 fresh=1 count=2', text)))
     noreward = bool(re.search(r'P2_LL_NOREWARD pod=0 pokos=-1 fresh_corpses=0', text))
+    # Slice 2: Houdai natural combat in its source damage window, shell firing
+    # and natural death, with no fixture-injected Houdai lethality.
+    houdai_natural_damage = bool(re.search(
+        r'P2_LONG_LEGS_DAMAGE species=Houdai generator=312001 '
+        r'health=(?!0+(?:\.0+)?\s)\d+(\.\d+)? prior=(?!0+(?:\.0+)?\s)\d+(\.\d+)?', text))
+    houdai_shell_fires = bool(re.search(r'P2_LONG_LEGS_SHELL species=Houdai generator=312001', text))
+    houdai_shell_hits = bool(re.search(r'P2_LONG_LEGS_SHELL_HIT species=Houdai generator=312001 pikmin=[1-9]\d*', text))
+    houdai_natural_death = (bool(re.search(r'P2_LL_NATURAL_DEATH houdai=1', text))
+                            and bool(re.search(r'P2_LONG_LEGS_DEAD species=Houdai generator=312001 '
+                                               r'health=0 prior_health=(?!0+(?:\.0+)?\s)[\d.]+', text)))
+    houdai_no_inject = not re.search(r'P2_LL_INJECT[^\n]*Houdai', text)
     checks = dict(
         identity=binds,
         window=bool(re.search(r'Experimental preview window set to 960x540 windowed and centered', text)),
@@ -310,6 +330,11 @@ def validate(text, code=0):
         cleanup=cleanup,
         reentry=reentry,
         no_duplicate_reward=noreward,
+        houdai_natural_damage=houdai_natural_damage,
+        houdai_shell_fires=houdai_shell_fires,
+        houdai_shell_hits=houdai_shell_hits,
+        houdai_natural_death=houdai_natural_death,
+        houdai_no_inject=houdai_no_inject,
         completion='PASS P2_LONG_LEGS_LIFECYCLE' in text,
         no_extinction=not re.search(r'Extinction', text, re.IGNORECASE),
     )
@@ -323,15 +348,34 @@ def validate(text, code=0):
         delivery_reward='untested',
         cleanup='pass' if cleanup else 'fail',
         reentry='pass' if reentry else 'fail',
+        houdai_natural_damage='pass' if houdai_natural_damage else 'unmeasured',
+        houdai_shell_fires='pass' if houdai_shell_fires else 'fail',
+        houdai_shell_hits='pass' if houdai_shell_hits else 'fail',
+        houdai_natural_death='pass' if houdai_natural_death else 'fail',
+        houdai_no_inject='pass' if houdai_no_inject else 'fail',
     )
-    required = ('identity', 'window', 'live_squad', 'schedule', 'injected_lethal',
-                'death_output', 'birth_children', 'corpse', 'cleanup', 'reentry',
-                'no_duplicate_reward', 'completion', 'no_extinction')
+    # `passed` is the full natural lifecycle contract for both species: natural
+    # combat (damage + foot crush + Houdai shell firing/hits), natural death,
+    # and clean forget/re-entry. A fixture-injected run still parses and is
+    # flagged separately (houdai_no_inject / injected_lethal), but it does not
+    # satisfy `passed`.
+    required = ('identity', 'window', 'live_squad', 'attackers', 'schedule',
+                'natural_damage', 'foot_crush', 'natural_bigfoot_death',
+                'death_output', 'birth_children',
+                'houdai_natural_damage', 'houdai_shell_fires', 'houdai_shell_hits',
+                'houdai_natural_death', 'houdai_no_inject',
+                'corpse', 'cleanup', 'reentry', 'no_duplicate_reward',
+                'completion', 'no_extinction')
     return dict(passed=code == 0 and all(checks[name] for name in required),
                 checks=checks, gates=gates, squad=squad, exit_code=code,
                 natural_vs_injected=dict(
                     natural_bigfoot_death=natural_bigfoot_death,
+                    natural_houdai_death=houdai_natural_death,
                     natural_combat_damage=natural_damage,
+                    houdai_natural_combat_damage=houdai_natural_damage,
+                    houdai_shell_fired=houdai_shell_fires,
+                    houdai_shell_hits=houdai_shell_hits,
+                    inject_present=injected,
                     foot_crush_hits=crush),
                 delivery_reward_reason='The cargo-free arena has no Pod (p2-cargo-free.txt); the '
                                        'source no-carcass death outputs Mitite/Shijimi children owned by '
@@ -339,11 +383,14 @@ def validate(text, code=0):
                                        'drop/birth intents are logged here.',
                 unmeasured=['actual Mitite child birth (lane 14)', 'held-treasure drop (lane 06)',
                             'IK foot positions and stuck-Pikmin damage rule (collision/host)',
-                            'Man-at-Legs shell pool (lane 20)', 'full animation bank (skeletal playback)'],
+                            'Man-at-Legs shell in-flight pool ownership beyond the host approximation',
+                            'full animation bank (skeletal playback)'],
                 limitations=['BigFoot proxy was staged under the squad (behavior fixture position, '
                              'not production placement).',
                              'P2_LL_CORPSE pellet is the P1 Chappy placement vehicle corpse; the '
                              'source Long Legs has no carcass and instead emits P2_LONG_LEGS_BIRTH.',
+                             'The Man-at-Legs shell reuses lane 20\'s rolling Stone projectile for '
+                             'flight; the source THdamaShell curl/gravity is a documented approximation.',
                              'Fixture rebirth uses the native generator path (mGenType->init) and '
                              'pc_p2_long_legs_setup; it is not a full scene/heap teardown or campaign resume.'])
 
