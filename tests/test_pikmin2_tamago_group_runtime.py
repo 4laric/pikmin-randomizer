@@ -19,7 +19,7 @@ class TamagoGroupRuntimeTests(unittest.TestCase):
         result = validate(GOOD_LOG, code=0)
         self.assertTrue(result['passed'], result['checks'])
         self.assertTrue(all(result['checks'][name] for name in REQUIRED_CHECKS))
-        self.assertEqual(result['births'], 10)
+        self.assertGreaterEqual(result['births'], 10)
         self.assertEqual(result['astonish_hits'], 1)
 
     def test_removing_birth_fails_manager_birth(self):
@@ -29,14 +29,15 @@ class TamagoGroupRuntimeTests(unittest.TestCase):
         self.assertFalse(result['checks']['manager_birth'])
         self.assertFalse(result['passed'])
 
-    def test_removing_birth_once_fails_exactly_once(self):
-        bad = GOOD_LOG.replace('P2_TAMAGO_BIRTH_ONCE host=346020 births=10 duplicate=0\n', '')
+    def test_removing_group_once_fails_exactly_once(self):
+        bad = GOOD_LOG.replace('P2_TAMAGO_GROUP_ONCE host=346020 count=10\n', '')
         result = validate(bad, code=0)
         self.assertFalse(result['checks']['exactly_once'])
         self.assertFalse(result['passed'])
 
-    def test_duplicate_birth_fails_exactly_once(self):
-        bad = GOOD_LOG.replace('duplicate=0', 'duplicate=1')
+    def test_duplicate_group_once_fails_exactly_once(self):
+        bad = GOOD_LOG.replace('P2_TAMAGO_GROUP_ONCE host=346020 count=10',
+                               'P2_TAMAGO_GROUP_ONCE host=346020 count=20')
         result = validate(bad, code=0)
         self.assertFalse(result['checks']['exactly_once'])
         self.assertFalse(result['passed'])

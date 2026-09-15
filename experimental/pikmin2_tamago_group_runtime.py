@@ -53,17 +53,18 @@ GOOD_LOG = '\n'.join([
     'Experimental preview window set to 960x540 windowed and centered',
     'P2_TAMAGO_GROUP_READY squad=20 host_gen=346020',
     'P2_TAMAGO_BIRTH host=346020 leader=346020 follow=9 count=10 source=manager',
-    'P2_TAMAGO_BIND generator=346021 source_id=68 visual_only=0',
-    'P2_TAMAGO_BIND generator=346022 source_id=68 visual_only=0',
-    'P2_TAMAGO_BIND generator=346023 source_id=68 visual_only=0',
-    'P2_TAMAGO_BIND generator=346024 source_id=68 visual_only=0',
-    'P2_TAMAGO_BIND generator=346025 source_id=68 visual_only=0',
-    'P2_TAMAGO_BIND generator=346026 source_id=68 visual_only=0',
-    'P2_TAMAGO_BIND generator=346027 source_id=68 visual_only=0',
-    'P2_TAMAGO_BIND generator=346028 source_id=68 visual_only=0',
-    'P2_TAMAGO_BIND generator=346029 source_id=68 visual_only=0',
-    'P2_TAMAGO_BIND generator=346030 source_id=68 visual_only=0',
-    'P2_TAMAGO_BIRTH_ONCE host=346020 births=10 duplicate=0',
+    'P2_TAMAGO_BIND generator=346020 source_id=68 visual_only=0',
+    'P2_TAMAGO_BIND generator=346021 source_id=68 visual_only=0 born=1',
+    'P2_TAMAGO_BIND generator=346022 source_id=68 visual_only=0 born=1',
+    'P2_TAMAGO_BIND generator=346023 source_id=68 visual_only=0 born=1',
+    'P2_TAMAGO_BIND generator=346024 source_id=68 visual_only=0 born=1',
+    'P2_TAMAGO_BIND generator=346025 source_id=68 visual_only=0 born=1',
+    'P2_TAMAGO_BIND generator=346026 source_id=68 visual_only=0 born=1',
+    'P2_TAMAGO_BIND generator=346027 source_id=68 visual_only=0 born=1',
+    'P2_TAMAGO_BIND generator=346028 source_id=68 visual_only=0 born=1',
+    'P2_TAMAGO_BIND generator=346029 source_id=68 visual_only=0 born=1',
+    'P2_TAMAGO_BIRTH_ONCE host=346020 born=9',
+    'P2_TAMAGO_GROUP_ONCE host=346020 count=10',
     'P2_TAMAGO_ASTONISH generator=346021 pikmin=1',
     'P2_TAMAGO_GROUP_FORGET host=346020 group=10 remaining=0',
     'P2_TAMAGO_GROUP_CLEANUP host=346020 forgotten=10',
@@ -86,7 +87,7 @@ def validate(text, code=0):
     ready = re.search(r'P2_TAMAGO_GROUP_READY squad=(\d+) host_gen=346020', text)
     birth = re.search(r'P2_TAMAGO_BIRTH host=346020\b[^\n]*source=manager', text)
     binds = re.findall(r'P2_TAMAGO_BIND generator=\d+ source_id=68 visual_only=0', text)
-    once = re.search(r'P2_TAMAGO_BIRTH_ONCE host=346020\b[^\n]*duplicate=0', text)
+    once = re.search(r'P2_TAMAGO_GROUP_ONCE host=346020\b[^\n]*count=10', text)
     astonish = re.findall(r'P2_TAMAGO_ASTONISH generator=\d+ pikmin=1', text)
     forget = re.search(r'P2_TAMAGO_GROUP_FORGET host=346020\b[^\n]*remaining=0', text)
     inject = re.search(r'P2_LIFECYCLE_INJECT|not_natural_combat=1|injected_health|mHealth=', text)
@@ -149,13 +150,13 @@ public:int idle() override {
         // the registry did NOT grow a second group.
         if(++steadyTicks>=240){
             require(pc_p2_tamago_count()==10,"duplicate group birth detected");
-            std::printf("P2_TAMAGO_GROUP_ONCE count=%lu\n",pc_p2_tamago_count());
+            std::printf("P2_TAMAGO_GROUP_ONCE host=346020 count=%lu\n",pc_p2_tamago_count());
             std::fflush(stdout);stage=4;
         }
         return result;
     }
     if(stage==4){
-        pc_p2_tamago_forget(host);
+        pc_p2_forget_teki(host);
         require(pc_p2_tamago_count()==0,"whole group not cleared on host forget");
         std::printf("P2_TAMAGO_GROUP_CLEANUP host=346020 forgotten=10\n");
         std::fflush(stdout);stage=5;return result;
@@ -195,7 +196,7 @@ def instrument(source):
     start = source.index('class RoomApp : public PlugPikiApp {')
     end = source.index('int main(', start)
     includes = ('#include <cstring>\n#include "Generator.h"\n#include "pc_p2_tamago.h"\n'
-                '#include "pc_p2_preview.h"\n')
+                '#include "pc_p2_teki_lifetime.h"\n#include "pc_p2_preview.h"\n')
     return includes + source[:start] + APP + source[end:]
 
 
