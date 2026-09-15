@@ -81,6 +81,43 @@ class InjectedKillMarkerTests(unittest.TestCase):
         self.assertEqual(teki.injected_kill_label(self.READY_LINE), "-")
 
 
+class PodReceiptTests(unittest.TestCase):
+    RECEIPT_LINE = ("[Pikipelago] P2_POD_RECEIPT id=corpse:groink:201001 value=5 "
+                    "new=1 pokos=5 seeds=0")
+
+    def test_has_groink_receipt_true_for_receipt_line(self):
+        self.assertTrue(teki.has_groink_receipt(self.RECEIPT_LINE))
+
+    def test_has_groink_receipt_false_for_ready_line(self):
+        self.assertFalse(teki.has_groink_receipt(
+            "P2_GROINK_CARCASS_READY generator=201001 type=0 gauge_delay=2.000 "
+            "recovery=3.000 max_health=1200.000"))
+
+    def test_receipt_generator_captured(self):
+        self.assertEqual(teki.groink_receipt_generator(self.RECEIPT_LINE), 201001)
+
+    def test_receipt_generator_none_when_absent(self):
+        self.assertIsNone(teki.groink_receipt_generator(SAMPLE_LOG))
+        self.assertEqual(teki.POD_RECEIPT_PREFIX, "P2_POD_RECEIPT id=corpse:groink:")
+
+
+class NaturalDeathTimelineTests(unittest.TestCase):
+    KILL_LINE = ("P2_GROINK_CARCASS_KILL_INJECTED host=generated_Frog generator=201001 "
+                 "method=pcEscapeNow health_write=1\n")
+
+    def test_natural_death_has_become_without_injection(self):
+        timeline = teki.natural_death_timeline(SAMPLE_LOG)
+        self.assertTrue(timeline["natural"])
+        self.assertFalse(timeline["injected"])
+        self.assertTrue(timeline["ordered"])
+
+    def test_injected_kill_line_flips_to_injected(self):
+        timeline = teki.natural_death_timeline(self.KILL_LINE + SAMPLE_LOG)
+        self.assertTrue(timeline["injected"])
+        self.assertFalse(timeline["natural"])
+        self.assertTrue(timeline["ordered"])
+
+
 class SidecarConfigTests(unittest.TestCase):
     def test_writer_roundtrip(self):
         text = teki.sidecar_config(201001, 0, 30.0, 10.0, 1200.0)

@@ -32,7 +32,7 @@ public:
    require(pc_p2_preview_treasure()==treasure,"Pod binds the staged pr05 treasure");
    initialPokos=pc_p2_preview_pokos();require(initialPokos==0,"Pod starts at zero Pokos");
    Iterator pit(pikiMgr);CI_LOOP(pit){Piki* p=static_cast<Piki*>(*pit);if(p&&p->isAlive()){require(p->mColor==Red,"squad is red");++squad;}}
-   require(squad==10,"starting squad of 10 red Pikmin");
+   require(squad==14,"starting squad of 14 red Pikmin");
    for(int i=0;i<DEMOFLAG_COUNT;++i)playerState->mDemoFlags.setFlagOnly(i);
    actorView=static_cast<PelletView*>(actor);
    plantedBefore=GameStat::mePikis;

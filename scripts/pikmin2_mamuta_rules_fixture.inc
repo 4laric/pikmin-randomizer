@@ -14,7 +14,7 @@ public:
    require(actor&&control&&actor->mTekiType==TEKI_Miurin&&control->mTekiType==TEKI_Chappy,"Mamuta/control exact identity");
    require(pc_p2_mamuta_rules_enabled(),"P2 rules profile enabled");
    Iterator pit(pikiMgr);CI_LOOP(pit){Piki* p=static_cast<Piki*>(*pit);if(p&&p->isAlive()){require(p->mColor==Red,"squad is red");++squad;}}
-   require(squad==10,"starting squad of 10 red Pikmin");
+   require(squad==14,"starting squad of 14 red Pikmin");
    std::printf("P2_MAMUTA_FIXTURE_BIRTH id=221001 type=24 squad=%d color=red\n",squad);
    for(int i=0;i<DEMOFLAG_COUNT;++i)playerState->mDemoFlags.setFlagOnly(i);
    n->mKontroller=new FixtureController();

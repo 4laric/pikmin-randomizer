@@ -37,6 +37,15 @@ int main() {
         P2GroinkCarcass cargo;
         assert(!cargo.become(b.carcass));
     }
+    // Stub: the process-wide birth tally is not owned by any per-actor binding,
+    // so it survives a binding forget (the sidecar's pellet-kill / erase) and only
+    // ever advances. This is the only sidecar behavior testable without the engine.
+    {
+        const int before = p2_groink_carcass_total_births();
+        p2_groink_carcass_note_birth();
+        assert(p2_groink_carcass_total_births() == before + 1);
+        assert(p2_groink_carcass_total_births() >= 1);
+    }
     std::puts("PASS p2_groink_teki_test");
     return 0;
 }

@@ -2,13 +2,15 @@
 //
 // Stages the cargo-enabled Pod arena (pc_p2_preview_ready + single `pr05`
 // treasure), then free-deploys the 10-red squad in a ring around the bound
-// Miurin and PARKS the captain beyond the Miurin's 70-unit TPF_AttackableRange
-// so the P2 bury (5 HP/pound) hits the Pikmin, not the captain. Without that
-// park the pre-existing P1 captain-down pause froze the scene mid-fight and the
-// previous observation counted ~1,900 paused ticks as natural combat. Nothing
-// is forced beyond squad/captain placement: no bury, lethal hit or transport
-// action is assigned. A captain going down anyway (GameStat::orimaDead /
-// NAVISTATE_Dead) is reported honestly as P2_MAMUTA_POD_CAPTAIN_DOWN.
+// Miurin and PARKS the captain INSIDE the Miurin's ~70-unit TPF_AttackableRange
+// (20 units south) so the P2 bury (5 HP/pound) pounds the captain, not the
+// Pikmin: the captain absorbing the bury keeps the squad alive to meet the
+// corpse's 8-carrier lift threshold. Survivors are re-rung every 60 ticks to
+// keep DPS on the Miurin so the kill beats the captain's 20-pound drain.
+// Nothing is forced beyond squad/captain placement: no bury, lethal hit or
+// transport action is assigned. A captain going down anyway (GameStat::orimaDead
+// / NAVISTATE_Dead / health <= 1) is reported honestly as
+// P2_MAMUTA_POD_CAPTAIN_DOWN.
 class RoomApp : public PlugPikiApp {
  int frames=0,observed=0,squad=0,plantedBefore=0,buryStates=0;
  int naturalDiedTick=0,initialPokos=0; bool deathObserved=false,transported=false,goalSeen=false;
@@ -55,7 +57,7 @@ public:
    require(pc_p2_preview_treasure()==treasure,"Pod binds the staged pr05 treasure");
    initialPokos=pc_p2_preview_pokos();require(initialPokos==0,"Pod starts at zero Pokos");
    Iterator pit(pikiMgr);CI_LOOP(pit){Piki* p=static_cast<Piki*>(*pit);if(p&&p->isAlive()){require(p->mColor==Red,"squad is red");++squad;}}
-   require(squad==10,"starting squad of 10 red Pikmin");
+   require(squad==14,"starting squad of 14 red Pikmin");
    for(int i=0;i<DEMOFLAG_COUNT;++i)playerState->mDemoFlags.setFlagOnly(i);
    actorView=static_cast<PelletView*>(actor);
    plantedBefore=GameStat::mePikis;
@@ -70,7 +72,8 @@ public:
    n->resetPosition(park);walkGoals.push_back(park);walkPoint=0;n->mKontroller=new FixtureController();
    // Free-deploy the reds in a ring around the Mamuta (radius 22) so they engage
    // it from all sides; the bury hits a frontal arc, so a ring keeps DPS up. The
-   // labelled captain-down control skips the ring entirely.
+   // labelled captain-down control leaves the squad at its spawn (no ring): the
+   // slower engagement lets the pound down the captain.
    int ring=0;
    if(!captdownControl){Iterator sq(pikiMgr);CI_LOOP(sq){Piki* p=static_cast<Piki*>(*sq);if(!p->isAlive()||p->mColor!=Red)continue;float a=float(ring)*6.2831853f/float(squad);Vector3f pt(actor->mSRT.t.x+22.0f*std::sin(a),0,actor->mSRT.t.z+22.0f*std::cos(a));pt.y=mapMgr->getMinY(pt.x,pt.z,true);p->resetPosition(pt);p->changeMode(PikiMode::FreeMode,n);++ring;}}
    std::printf("P2_MAMUTA_POD_READY generator=221004 model=pr05 pokos=%d\n",initialPokos);
@@ -87,7 +90,7 @@ public:
     if(closest<60.0f)approached=true;
     // Sustain contact: re-deploy surviving reds around the Mamuta so the bury/AI
     // does not scatter the squad permanently (disabled in the captain-down control).
-   if(!captdownControl&&observed%120==0){int r=0;Iterator pg(pikiMgr);CI_LOOP(pg){Piki* p=static_cast<Piki*>(*pg);if(!p->isAlive()||p->mColor!=Red)continue;float a=float(r)*6.2831853f/float(squad);Vector3f pt(actor->mSRT.t.x+22.0f*std::sin(a),0,actor->mSRT.t.z+22.0f*std::cos(a));pt.y=mapMgr->getMinY(pt.x,pt.z,true);p->resetPosition(pt);++r;}std::printf("P2_MAMUTA_POD_RERING tick=%d reds=%d\n",observed,r);}
+   if(!captdownControl&&observed%60==0){int r=0;Iterator pg(pikiMgr);CI_LOOP(pg){Piki* p=static_cast<Piki*>(*pg);if(!p->isAlive()||p->mColor!=Red)continue;float a=float(r)*6.2831853f/float(squad);Vector3f pt(actor->mSRT.t.x+22.0f*std::sin(a),0,actor->mSRT.t.z+22.0f*std::cos(a));pt.y=mapMgr->getMinY(pt.x,pt.z,true);p->resetPosition(pt);++r;}std::printf("P2_MAMUTA_POD_RERING tick=%d reds=%d\n",observed,r);}
   }
   if(observed%30==0)
    std::printf("P2_MAMUTA_POD_OBSERVE tick=%d state=%d health=%.1f actor=%.1f,%.1f navi=%.1f,%.1f squad=%d min=%.1f states=%08x pokos=%d\n",
