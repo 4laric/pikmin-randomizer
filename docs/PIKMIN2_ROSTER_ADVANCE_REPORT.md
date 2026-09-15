@@ -17,7 +17,7 @@ Regenerate with:
 - PIKMIN2_LANE04_DEEPSEEK_HANDOFF.md: 44 BlueKochappy, 45 YellowKochappy
 - PIKMIN2_LANE05_DEEPSEEK_HANDOFF.md: 44 BlueKochappy, 45 YellowKochappy
 - PIKMIN2_LANE06_DEEPSEEK_HANDOFF.md: 44 BlueKochappy, 99 BlackMan
-- PIKMIN2_LANE07_DEEPSEEK_HANDOFF.md: 44 BlueKochappy
+- PIKMIN2_LANE07_DEEPSEEK_HANDOFF.md: 44 BlueKochappy, 79 Sokkuri
 - PIKMIN2_LANE08_DEEPSEEK_HANDOFF.md: 84 Hana
 - PIKMIN2_LANE09_DEEPSEEK_HANDOFF.md: 17 Frog, 30 Queen
 - PIKMIN2_LANE10_DEEPSEEK_HANDOFF.md: 20 Hiba, 21 GasHiba, 22 ElecHiba
@@ -50,12 +50,12 @@ Regenerate with:
 | Gates away from admission | Identities |
 |---:|---:|
 | 0 | 6 |
-| 1 | 3 |
+| 1 | 5 |
 | 2 | 6 |
 | 3 | 4 |
-| 4 | 2 |
-| 5 | 6 |
-| 6 | 27 |
+| 4 | 4 |
+| 5 | 5 |
+| 6 | 24 |
 
 Seedable (`source`/`variant`) identities named across handoffs: 54
 
@@ -161,10 +161,10 @@ Seedable (`source`/`variant`) identities named across handoffs: 54
 - advances: (none)
 - blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
 
-### 41 Fuefuki (source) - shared table, excluded
+### 41 Fuefuki (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE28_DEEPSEEK_HANDOFF.md
-- advances: (none)
-- blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
+- advances: movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
+- blocking: identity_spawn
 
 ### 44 BlueKochappy (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE03_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE04_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE05_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE06_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE07_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE13_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE33_DEEPSEEK_HANDOFF.md
@@ -198,13 +198,13 @@ Seedable (`source`/`variant`) identities named across handoffs: 54
 
 ### 57 Kurage (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE29_DEEPSEEK_HANDOFF.md
-- advances: (none)
-- blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
+- advances: death_corpse, transport_reward
+- blocking: identity_spawn, movement_animation, attacks_receivers, cleanup_reentry
 
 ### 58 BombSarai (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE27_DEEPSEEK_HANDOFF.md
-- advances: (none)
-- blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
+- advances: death_corpse, transport_reward
+- blocking: identity_spawn, movement_animation, attacks_receivers, cleanup_reentry
 
 ### 59 FireOtakara (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE22_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE33_DEEPSEEK_HANDOFF.md
@@ -283,13 +283,13 @@ Seedable (`source`/`variant`) identities named across handoffs: 54
 
 ### 78 MiniHoudai (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE21_DEEPSEEK_HANDOFF.md
-- advances: death_corpse
-- blocking: identity_spawn, movement_animation, attacks_receivers, transport_reward, cleanup_reentry
+- advances: movement_animation, attacks_receivers, death_corpse, transport_reward
+- blocking: identity_spawn, cleanup_reentry
 
 ### 79 Sokkuri (source)
-- handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE14_DEEPSEEK_HANDOFF.md
-- advances: identity_spawn, movement_animation, attacks_receivers, death_corpse
-- blocking: transport_reward, cleanup_reentry
+- handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE07_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE14_DEEPSEEK_HANDOFF.md
+- advances: identity_spawn, movement_animation, attacks_receivers, death_corpse, cleanup_reentry
+- blocking: transport_reward
 
 ### 84 Hana (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE08_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE14_DEEPSEEK_HANDOFF.md

@@ -754,11 +754,11 @@
       ],
       "gates": {
         "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
         "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "cleanup_reentry": "PASS"
       },
       "notes": [
         "Fuefuki (Antenna Beetle): fuefuki motion/visual; natural claim/panic/death release + follow locomotion remain (#245)."
@@ -1024,7 +1024,7 @@
         "identity_spawn": "UNTESTED",
         "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
+        "death_corpse": "PASS",
         "transport_reward": "UNTESTED",
         "cleanup_reentry": "UNTESTED"
       },
@@ -1359,8 +1359,8 @@
       ],
       "gates": {
         "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
         "death_corpse": "PASS",
         "transport_reward": "UNTESTED",
         "cleanup_reentry": "UNTESTED"

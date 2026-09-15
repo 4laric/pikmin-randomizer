@@ -160,7 +160,11 @@ int stuckPikminCount(Creature* creature){
 }
 float probeFloorY(const Vector3f& pos,float fallback){
     if(!mapMgr)return fallback;
-    const float y=mapMgr->getMinY(pos.x,pos.z,false);
+    // includePlatColl=true matches the engine grounded convention used by the
+    // other P2 ground modules (pc_p2_bulbmin.cpp, pc_p2_dangomushi.cpp) and the
+    // P1 fixture. The raw false query ignores platform/collision surfaces and
+    // returns a lower Y, so the frog model sat below the floor (user: too low).
+    const float y=mapMgr->getMinY(pos.x,pos.z,true);
     return std::isfinite(y)?y:fallback;
 }
 bool attackable(const FrogFsm& s,const Vector3f& pos,const Creature* target,float range){
@@ -441,6 +445,15 @@ void pc_p2_frog_update(BTeki* actor){
     if(s.logTimer>=1.0f){s.logTimer=0.0f;const Vector3f now=actor->getPosition();
         std::printf("P2_FROG_FSM_POS species=%s generator=%u state=%s x=%.2f y=%.2f z=%.2f health=%.1f\n",
             ids[s.kind],gen,p2frog::stateName(s.state),now.x,now.y,now.z,actor->mHealth);std::fflush(stdout);}
+}
+bool pc_p2_frog_probe(const BTeki* actor,const char** state,const char** clip,float* phase){
+    auto* view=static_cast<PelletView*>(const_cast<BTeki*>(actor));
+    if(!actors.count(view))return false;
+    auto ft=fsms.find(view);if(ft==fsms.end())return false;
+    if(state)*state=p2frog::stateName(ft->second.state);
+    if(clip)*clip=ft->second.clip.c_str();
+    if(phase)*phase=ft->second.phase;
+    return true;
 }
 bool pc_p2_frog_draw(BTeki* actor,Graphics& gfx,const Matrix4f& matrix,bool corpse){
     auto it=actors.find(static_cast<PelletView*>(actor));if(it==actors.end())return false;

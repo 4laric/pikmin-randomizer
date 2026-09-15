@@ -249,6 +249,22 @@ public:
         return out;
     }
 
+    // Force the source owner-death transition. The host's teardown seam
+    // (BTeki::doKill -> pc_p2_forget_teki -> pc_p2_hardlanes_forget) can reach
+    // the actor before the next tick consumes health<=0 -> Dead, so the forget
+    // path calls this directly. Dead entry commits ownerDied (every claim
+    // released as Panic) exactly as the regular tick would; idempotent after a
+    // normal Dead transit because releaseAll returns empty.
+    P2FuefukiFsmOut enterOwnerDeath()
+    {
+        P2FuefukiFsmOut out;
+        if (!boundEpoch) return out;
+        enterDead(out);
+        out.accepted = true;
+        out.state    = state;
+        return out;
+    }
+
     P2FuefukiFsmOut tick(const P2FuefukiFsmInput& in)
     {
         P2FuefukiFsmOut out;

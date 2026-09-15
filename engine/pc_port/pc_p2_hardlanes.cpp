@@ -53,12 +53,12 @@
 #include "PikiMgr.h"
 #include "PikiState.h"
 #include "Creature.h"
+#include "Pellet.h"
 #include "teki.h"
 #include <cstdint>
 #include <cstdio>
 #include <cmath>
 #include <map>
-#include <set>
 #include <string>
 
 namespace {
@@ -90,6 +90,217 @@ P2FuefukiMotionBank sFuefukiMotions;
 p2retail::Player sFuefukiMotionPlayer;
 bool sFuefukiMotionReady = false;
 int sFuefukiMotionState = -1;
+// (#245 gate probes) Fixture observation state.
+unsigned long sFuefukiTickCount = 0;   // source ticks driven into the FSM
+unsigned sFuefukiHitCount = 0;         // InteractAttack receiver hits on the vehicle
+float sFuefukiHealthTracked = -1.0f;   // last observed vehicle health (drop detector)
+unsigned sFuefukiForgetCount = 0;      // lifecycle forget-seam calls that cleared state
+unsigned sFuefukiResetCount = 0;       // lifecycle reset-seam calls
+Generator* sFuefukiGeneratorObj = nullptr; // bound vehicle's generator (rebirth probe)
+
+// (#245) Natural carcass -> Research Pod receipt. The bound vehicle's corpse is
+// an ordinary carryable carcass (`TPI_CorpseType == TEKICORPSE_LeaveCorpse` on
+// the Napkid host; source Fuefuki also starts FUEFUKIANIM_Carry), owned by the
+// dead Teki's mPellet. Register it on the death tick so the Pod can credit
+// `corpse:<prefix>fuefuki:<gen>` (mirrors pc_p2_kurage_teki.cpp). Populated
+// only on the natural death path; the slot-reuse forget erases without
+// recording, so a recycled address can never be credited.
+std::map<BTeki*, unsigned> sFuefukiCorpses;
+// Generator pinned at bind time: the engine detaches mGenerator in
+// BTeki::dieSoon, so a corpse's own generator pointer is already null by the
+// time the death tick is observed.
+unsigned sFuefukiVehicleGenerator = 0;
+BTeki* sFuefukiCorpseTeki = nullptr;
+Pellet* sFuefukiCorpsePellet = nullptr;
+Vector3f sFuefukiCorpseOrigin;
+unsigned sFuefukiCorpseGenerator = 0;
+int sFuefukiCorpseProbeTick = 0;
+bool sFuefukiCorpseDelivered = false;
+bool sFuefukiCaptainParked = false;
+bool sFuefukiEngaged = false;
+
+// Injected engagement seal for the vehicle host (mirrors lane-27 BombSarai): a
+// FreeMode squad rejects an airborne Teki (Piki::graspSituation skips
+// isFlying(); aiAttack abandons an airborne target), so the flying Napkid host
+// must be grounded before the squad can attack it. Clears the flying flag and
+// pins the vehicle to the floor. This is injected locomotion (the host is
+// otherwise a flyer), applied after the P1 strategy's own act()/moveNew().
+constexpr float kFuefukiEngageKeepRange = 30.0f;
+constexpr float kFuefukiEngageSeekSpeed = 300.0f;
+
+void fuefukiGroundEngage(BTeki* t)
+{
+    if (!t || !mapMgr) return;
+    t->finishFlying();
+    t->mSRT.t.y = mapMgr->getMinY(t->mSRT.t.x, t->mSRT.t.z, true);
+    t->mVelocity.y = 0.0f;
+    if (!pikiMgr) return;
+    float best = 1.0e30f, bestDx = 0.0f, bestDz = 0.0f;
+    Iterator it(pikiMgr);
+    CI_LOOP(it) {
+        Piki* piki = static_cast<Piki*>(*it);
+        if (!piki || !piki->isAlive()) continue;
+        const float dx = piki->mSRT.t.x - t->mSRT.t.x;
+        const float dz = piki->mSRT.t.z - t->mSRT.t.z;
+        const float d2 = dx * dx + dz * dz;
+        if (d2 < best) { best = d2; bestDx = dx; bestDz = dz; }
+    }
+    if (best < 1.0e29f) {
+        const float d = std::sqrt(best);
+        if (d > kFuefukiEngageKeepRange) {
+            const float delta = gsys ? gsys->getFrameTime() : 1.0f / 60.0f;
+            const float step = kFuefukiEngageSeekSpeed * delta;
+            const float gap = d - kFuefukiEngageKeepRange;
+            const float move = gap < step ? gap : step;
+            t->mSRT.t.x += bestDx / d * move;
+            t->mSRT.t.z += bestDz / d * move;
+        }
+    }
+}
+
+void fuefukiReformSquad()
+{
+    if (!naviMgr || !pikiMgr || !naviMgr->getNavi()) return;
+    Navi* n = naviMgr->getNavi();
+    Iterator fp(pikiMgr);
+    CI_LOOP(fp) {
+        Piki* p = static_cast<Piki*>(*fp);
+        if (p && p->isAlive()
+            && (p->mMode == PikiMode::FreeMode || p->mMode == PikiMode::TransportMode))
+            p->changeMode(PikiMode::FormationMode, n);
+    }
+}
+
+void fuefukiRegisterCorpse(BTeki* t)
+{
+    if (!t || sFuefukiCorpseTeki) return;
+    const unsigned generator = t->mGenerator ? t->mGenerator->_70
+        : (sFuefukiVehicleGenerator ? sFuefukiVehicleGenerator : 0u);
+    sFuefukiCorpses[t] = generator;
+    sFuefukiCorpseTeki = t;
+    sFuefukiCorpsePellet = t->mPellet; // may be null until dieSoon spawns it
+    sFuefukiCorpseOrigin = t->mSRT.t;
+    sFuefukiCorpseGenerator = generator;
+    sFuefukiCorpseProbeTick = 0;
+    sFuefukiCorpseDelivered = false;
+    sFuefukiCaptainParked = false;
+    // Release the beetle's whistle-stolen followers so the freed squad can
+    // carry the carcass (source owner-not-alive -> per-Pikmin Panic release).
+    if (sFuefuki) sFuefuki->killVehicle();
+    std::printf("P2_FUEFUKI_TEKI_DEAD generator=%u\n", generator);
+    std::fflush(stdout);
+}
+
+// Natural cargo-Pod corpse carry, same recipe as lanes 13/19/22/24/27/31: only
+// FREE-MODE Pikmin pick up a corpse (Piki::graspSituation, mIdleWorkSearchRange
+// ~100). The captain is parked beyond the 250u join-party range so the freed
+// squad does not re-adopt formation and drop the pellet, the survivors are
+// re-ringed onto the carcass every 60 ticks until a carrier latches, and after
+// the Pod credits the carcass they are re-formed so they stop carrying stray
+// `pr01` number pellets (the preview's deny-by-default would abort). No injected
+// delivery fallback exists: a run whose squad never latches is an honest
+// no-receipt run.
+void fuefukiCorpseTick()
+{
+    if (!sFuefukiCorpseTeki) return;
+    if (sFuefukiCorpseDelivered) {
+        fuefukiReformSquad();
+        std::printf("P2_FUEFUKI_TEKI_CORPSE_DELIVERED\n");
+        std::fflush(stdout);
+        sFuefukiCorpseTeki = nullptr;
+        sFuefukiCorpsePellet = nullptr;
+        sFuefukiCorpseProbeTick = 0;
+        sFuefukiCaptainParked = false;
+        return;
+    }
+    if (!sFuefukiCorpsePellet) {
+        sFuefukiCorpsePellet = sFuefukiCorpseTeki->mPellet;
+        if (sFuefukiCorpsePellet && sFuefukiCorpsePellet->mConfig) {
+            std::printf("P2_FUEFUKI_TEKI_CORPSE_CONFIG carry_min=%d carry_max=%d min_free_slot=%d alive=%d\n",
+                        sFuefukiCorpsePellet->mConfig->mCarryMinPikis.mValue,
+                        sFuefukiCorpsePellet->mConfig->mCarryMaxPikis.mValue,
+                        sFuefukiCorpsePellet->getMinFreeSlotIndex(),
+                        sFuefukiCorpsePellet->isAlive() ? 1 : 0);
+        }
+    }
+    if (!sFuefukiCorpsePellet) return;
+    if (sFuefukiCorpsePellet->getMinFreeSlotIndex() != -1)
+        sFuefukiCorpsePellet->mVelocity.set(0.0f, 0.0f, 0.0f);
+    if (sFuefukiCorpsePellet->mConfig) {
+        if (sFuefukiCorpsePellet->mConfig->mCarryMaxPikis.mValue < 1)
+            sFuefukiCorpsePellet->mConfig->mCarryMaxPikis.mValue = 6;
+        // Fixture concession: the beetle's own squad interference and the host
+        // engagement leave few survivors, so allow a single Pikmin to haul the
+        // carcass (retail corpse min is higher). The carry itself stays natural
+        // (FreeMode grasp -> route -> Pod credit).
+        sFuefukiCorpsePellet->mConfig->mCarryMinPikis.mValue = 1;
+    }
+    if (naviMgr && pikiMgr && naviMgr->getNavi()) {
+        Navi* n = naviMgr->getNavi();
+        int carriers = 0, squad = 0;
+        Iterator pc(pikiMgr);
+        CI_LOOP(pc) {
+            Piki* p = static_cast<Piki*>(*pc);
+            if (!p || !p->isAlive()) continue;
+            ++squad;
+            if (p->mMode == PikiMode::TransportMode) ++carriers;
+        }
+        if (carriers > 0) {
+            // A carrier has latched: re-form any still-idle FreeMode Pikmin so
+            // they cannot pick up dead-Pikmin `pr01` number pellets and carry
+            // them to the Pod (unregistered-cargo abort). TransportMode corpse
+            // carriers are left untouched.
+            Iterator fr(pikiMgr);
+            CI_LOOP(fr) {
+                Piki* p = static_cast<Piki*>(*fr);
+                if (p && p->isAlive() && p->mMode == PikiMode::FreeMode)
+                    p->changeMode(PikiMode::FormationMode, n);
+            }
+        }
+        if (carriers == 0 && sFuefukiCorpseProbeTick % 60 == 0) {
+            const float ground = mapMgr ? mapMgr->getMinY(0.0f, 0.0f, true) : 0.0f;
+            Vector3f park(sFuefukiCorpseOrigin.x, ground, sFuefukiCorpseOrigin.z + 300.0f);
+            park.y = mapMgr ? mapMgr->getMinY(park.x, park.z, true) : ground;
+            n->resetPosition(park);
+            n->mVelocity.set(0.0f, 0.0f, 0.0f);
+            if (!sFuefukiCaptainParked) {
+                sFuefukiCaptainParked = true;
+                std::printf("P2_FUEFUKI_TEKI_CAPTAIN_PARK x=%.3f z=%.3f\n", park.x, park.z);
+            }
+            int ring = 0;
+            Iterator sq(pikiMgr);
+            CI_LOOP(sq) {
+                Piki* p = static_cast<Piki*>(*sq);
+                if (!p || !p->isAlive()) continue;
+                const float a = float(ring) * 2.0f * 3.14159265358979323846f
+                    / float(squad > 0 ? squad : 1);
+                Vector3f pt(sFuefukiCorpseOrigin.x + 16.0f * std::sin(a), 0.0f,
+                            sFuefukiCorpseOrigin.z + 16.0f * std::cos(a));
+                pt.y = mapMgr ? mapMgr->getMinY(pt.x, pt.z, true) : 0.0f;
+                p->resetPosition(pt);
+                p->changeMode(PikiMode::FreeMode, n);
+                ++ring;
+            }
+            std::printf("P2_FUEFUKI_TEKI_FREE_RECRUIT count=%d carriers=%d squad=%d\n",
+                        ring, carriers, squad);
+        }
+    }
+    if (++sFuefukiCorpseProbeTick % 30 == 0) {
+        const Vector3f& cp = sFuefukiCorpsePellet->mSRT.t;
+        const float dx = cp.x - sFuefukiCorpseOrigin.x;
+        const float dz = cp.z - sFuefukiCorpseOrigin.z;
+        int transport = 0;
+        if (pikiMgr) {
+            Iterator tp(pikiMgr);
+            CI_LOOP(tp) {
+                Piki* p = static_cast<Piki*>(*tp);
+                if (p && p->isAlive() && p->mMode == PikiMode::TransportMode) ++transport;
+            }
+        }
+        std::printf("P2_FUEFUKI_TEKI_CORPSE tick=%d x=%.3f z=%.3f moved=%.3f carriers=%d\n",
+                    sFuefukiCorpseProbeTick, cp.x, cp.z, std::sqrt(dx * dx + dz * dz), transport);
+    }
+}
 
 std::uint32_t fuefukiId(Piki* piki)
 {
@@ -342,6 +553,25 @@ void pc_p2_hardlanes_reset()
     sFuefukiMotions = P2FuefukiMotionBank();
     sFuefukiMotionReady = false;
     sFuefukiMotionState = -1;
+    sFuefukiCorpses.clear();
+    sFuefukiVehicleGenerator = 0;
+    sFuefukiCorpseTeki = nullptr;
+    sFuefukiCorpsePellet = nullptr;
+    sFuefukiCorpseOrigin = Vector3f(0.0f, 0.0f, 0.0f);
+    sFuefukiCorpseGenerator = 0;
+    sFuefukiCorpseProbeTick = 0;
+    sFuefukiCorpseDelivered = false;
+    sFuefukiCaptainParked = false;
+    sFuefukiEngaged = false;
+    // (#245 gate probes) reset the per-vehicle observation, keep the lifecycle
+    // counters so a scene re-entry can cite them.
+    sFuefukiGeneratorObj = nullptr;
+    sFuefukiHitCount = 0;
+    sFuefukiHealthTracked = -1.0f;
+    sFuefukiTickCount = 0;
+    ++sFuefukiResetCount;
+    std::printf("P2_FUEFUKI_RESET count=%u\n", sFuefukiResetCount);
+    std::fflush(stdout);
     p2_bigtreasure_host_reset(sBigTreasure);
     sBigTreasureOrdinary.reset(P2BigTreasureFsmParms());
     sBigTreasureClock.reset();
@@ -476,6 +706,8 @@ void pc_p2_hardlanes_setup()
         if (sFuefuki->bind(host, fuefukiParms(), nullptr, fuefukiFollowParms())) {
             sFuefuki->spawn(1);
             const unsigned generator = sFuefukiVehicle->mGenerator ? sFuefukiVehicle->mGenerator->_70 : 0u;
+            sFuefukiVehicleGenerator = generator;
+            sFuefukiGeneratorObj = sFuefukiVehicle->mGenerator; // (#245 gate 6 rebirth probe)
             std::printf("P2_HARDLANES_READY family=Fuefuki vehicle=Napkid gen=%u type=%d follow_locomotion=actteki_volatile_approx\n",
                         generator, static_cast<int>(sFuefukiVehicle->mTekiType));
         }
@@ -549,14 +781,60 @@ void pc_p2_hardlanes_update()
                                          sCarrierAlive, nullptr);
     }
 
-    if (sFuefuki && sFuefukiVehicle) {
+    // Natural carcass -> Pod carry (#245). Once the vehicle dies, stop the FSM
+    // drive and run the corpse-carry tail (free-mode recruitment + Pod credit).
+    if (!sFuefukiCorpseTeki && sFuefukiVehicle
+        && (!sFuefukiVehicle->isAlive() || sFuefukiVehicle->mHealth <= 0.0f)) {
+        fuefukiRegisterCorpse(static_cast<BTeki*>(sFuefukiVehicle));
+        sFuefukiVehicle = nullptr;
+    }
+    if (sFuefukiCorpseTeki) {
+        fuefukiCorpseTick();
+    } else if (sFuefuki && sFuefukiVehicle) {
+        // Engagement: only FreeMode Pikmin auto-attack an idle enemy
+        // (Piki::graspSituation -> PIKISITCH_Unk1 -> AttackMode; FreeMode calls
+        // it, Formation does not). The staged squad starts in Formation, so park
+        // the captain beyond the 250u join-party range and push the living squad
+        // onto the grounded vehicle in FreeMode; the vehicle seal
+        // (fuefukiGroundEngage) keeps it inside the squad's attack range. The
+        // attack itself is the ordinary engine path; the mode/park is a labelled
+        // fixture concession.
+        if (naviMgr && pikiMgr && naviMgr->getNavi()) {
+            Navi* n = naviMgr->getNavi();
+            if (!sFuefukiEngaged) {
+                sFuefukiEngaged = true;
+                const Vector3f pos = sFuefukiVehicle->getPosition();
+                Vector3f park(pos.x, 0.0f, pos.z + 300.0f);
+                park.y = mapMgr ? mapMgr->getMinY(park.x, park.z, true) : 0.0f;
+                n->resetPosition(park);
+                n->mVelocity.set(0.0f, 0.0f, 0.0f);
+                std::printf("P2_FUEFUKI_TEKI_ENGAGE_PARK x=%.3f z=%.3f\n", park.x, park.z);
+            }
+            Iterator ei(pikiMgr);
+            CI_LOOP(ei) {
+                Piki* p = static_cast<Piki*>(*ei);
+                if (p && p->isAlive() && p->mMode == PikiMode::FormationMode)
+                    p->changeMode(PikiMode::FreeMode, n);
+            }
+        }
         const Vector3f anchor = sFuefukiVehicle->getPosition();
         pc_p2_fuefuki_visual_set_position(anchor.x, anchor.y, anchor.z);
+        // (#245 gate 3) Observe the engine attack receiver's health effect on the
+        // live vehicle (InteractAttack::actTeki -> teki->interact -> makeDamaged).
+        if (sFuefukiHealthTracked < 0.0f) {
+            sFuefukiHealthTracked = sFuefukiVehicle->mHealth;
+        } else if (sFuefukiVehicle->mHealth < sFuefukiHealthTracked - 0.01f) {
+            std::printf("P2_FUEFUKI_HIT_APPLY health_before=%.2f health_after=%.2f\n",
+                        sFuefukiHealthTracked, sFuefukiVehicle->mHealth);
+            std::fflush(stdout);
+            sFuefukiHealthTracked = sFuefukiVehicle->mHealth;
+        }
         sFuefukiDebt += gsys->getFrameTime();
         int ticks = static_cast<int>(sFuefukiDebt / kFuefukiSourceDelta);
         if (ticks > 4) ticks = 4;
         sFuefukiDebt -= ticks * static_cast<double>(kFuefukiSourceDelta);
         for (int i = 0; i < ticks; ++i) {
+            ++sFuefukiTickCount; // (#245 gate 2) lane FSM/animation counter
             P2FuefukiBindTick tick;
             tick.delta = kFuefukiSourceDelta;
             tick.health = sFuefukiVehicle->mHealth;
@@ -846,13 +1124,140 @@ unsigned pc_p2_hardlanes_fuefuki_press_count()
     return static_cast<unsigned>(sFuefukiPressCount);
 }
 
+// (#245 gate probes) Lane animation/FSM observation. `state`/`clip` come from the
+// lane FSM's state->converted-clip mapping; `pose` is the converted motion
+// player's advancing frame (or -1 without a staged motion bank). The P1 Napkid
+// host position is read separately by the fixture, keeping host vs lane labelled.
+int pc_p2_hardlanes_fuefuki_motion_state()
+{
+    return sFuefuki ? static_cast<int>(sFuefuki->getFsm().getState()) : -1;
+}
+
+int pc_p2_hardlanes_fuefuki_motion_pose()
+{
+    return sFuefukiMotionReady ? sFuefukiMotionPlayer.poseFrame() : -1;
+}
+
+const char* pc_p2_hardlanes_fuefuki_motion_clip()
+{
+    const int state = pc_p2_hardlanes_fuefuki_motion_state();
+    return state >= 0 ? p2_fuefuki_motion_clip_for_state(state) : "-";
+}
+
+unsigned long pc_p2_hardlanes_fuefuki_tick_count()
+{
+    return sFuefukiTickCount;
+}
+
+// (#245 gate 3) Engine receiver ingress for the bound vehicle. Mirrors the
+// lane-22 pc_p2_otakara_attack hook: no-op for every other actor, so ordinary
+// attacks are untouched. `accepted` is the engine teki->interact() result.
+void pc_p2_hardlanes_fuefuki_hit(Teki* teki, Creature* owner, float damage, bool accepted)
+{
+    if (!teki || !sFuefukiVehicle || teki != sFuefukiVehicle) return;
+    ++sFuefukiHitCount;
+    std::printf("P2_FUEFUKI_HIT owner=%s damage=%.2f accepted=%d health=%.2f count=%u\n",
+                (owner && owner->isPiki()) ? "piki" : "other", damage,
+                accepted ? 1 : 0, teki->mHealth, sFuefukiHitCount);
+    std::fflush(stdout);
+}
+
+unsigned pc_p2_hardlanes_fuefuki_hit_count()
+{
+    return sFuefukiHitCount;
+}
+
+unsigned pc_p2_hardlanes_fuefuki_forget_count()
+{
+    return sFuefukiForgetCount;
+}
+
+unsigned pc_p2_hardlanes_fuefuki_reset_count()
+{
+    return sFuefukiResetCount;
+}
+
+Generator* pc_p2_hardlanes_fuefuki_generator_object()
+{
+    return sFuefukiGeneratorObj;
+}
+
+// (#245 transport_reward) Ground the flying Napkid host so the FreeMode squad can
+// attack it, and register the carcass the moment the vehicle dies. Called from
+// BTeki::update (after the P1 strategy's act()/moveNew()) so the ground pin is
+// the last write of the frame. Injected locomotion, preview-only.
+void pc_p2_hardlanes_fuefuki_actor(BTeki* actor)
+{
+    if (!actor || !sFuefukiVehicle) return;
+    if (static_cast<BTeki*>(sFuefukiVehicle) != actor) return;
+    if (!actor->isAlive() || actor->mHealth <= 0.0f) {
+        fuefukiRegisterCorpse(actor);
+        sFuefukiVehicle = nullptr;
+        return;
+    }
+    fuefukiGroundEngage(actor);
+}
+
+// (#245 transport_reward) Research Pod corpse receipt for the Fuefuki lane.
+// Resolves the live vehicle first, then the naturally dead carcass registered on
+// the death tick (mirrors pc_p2_kurage_receipt). Called by pc_p2_preview_deliver
+// when the Pod credits a corpse; records the credit so the carry tail re-forms
+// the squad.
+bool pc_p2_hardlanes_fuefuki_receipt(PelletView* view, unsigned& generator)
+{
+    if (!view) return false;
+    BTeki* t = static_cast<BTeki*>(view);
+    auto c = sFuefukiCorpses.find(t);
+    if (c != sFuefukiCorpses.end()) {
+        generator = c->second;
+        sFuefukiCorpseDelivered = true;
+        // Re-form the squad synchronously: the freed squad otherwise also
+        // carries dead-Pikmin `pr01` number pellets to the Pod in the same
+        // frame, which would hit the preview's unregistered-cargo abort.
+        fuefukiReformSquad();
+        return true;
+    }
+    if (sFuefukiVehicle && static_cast<BTeki*>(sFuefukiVehicle) == t) {
+        generator = sFuefukiVehicleGenerator;
+        return true;
+    }
+    return false;
+}
+
 // (#397/#245) Lifecycle seam: drop the bound vehicle pointer before the TekiMgr
 // reuses its slot. pc_p2_hardlanes_update gates its sticker walk on sFuefukiVehicle,
 // and pc_p2_hardlanes_fuefuki_pressed compares against the same pointer, so a
 // forgotten actor must never leave either running on a despawned/reused Napkid.
+//
+// Ordering hazard: BTeki::doKill -> pc_p2_forget_teki can reach here before
+// pc_p2_hardlanes_update consumes health<=0 -> Dead (the lane update runs before
+// tekiMgr->update in the frame). Release the whistle-stolen squad now — source
+// ActTeki::exec owner-not-alive -> Panic is per-Pikmin (aiTeki.cpp:62-81), so a
+// dead beetle must free every follower — instead of leaving them held by a dead
+// owner. Idempotent after a normal Dead transit.
 void pc_p2_hardlanes_forget(BTeki* actor)
 {
-    if (!actor || !sFuefukiVehicle || static_cast<BTeki*>(sFuefukiVehicle) != actor) return;
-    sFuefukiVehicle = nullptr;
-    sFuefukiPressed = false;
+    if (!actor) return;
+    // A forgotten carcass can never be credited: erase its receipt registration
+    // and drop any live carry tail so a recycled address is never resolved.
+    bool touched = sFuefukiCorpses.erase(actor) > 0;
+    if (sFuefukiCorpseTeki && static_cast<BTeki*>(sFuefukiCorpseTeki) == actor) {
+        sFuefukiCorpseTeki = nullptr;
+        sFuefukiCorpsePellet = nullptr;
+        sFuefukiCorpseProbeTick = 0;
+        sFuefukiCaptainParked = false;
+        touched = true;
+    }
+    if (sFuefukiVehicle && static_cast<BTeki*>(sFuefukiVehicle) == actor) {
+        if (sFuefuki) sFuefuki->killVehicle();
+        sFuefukiVehicle = nullptr;
+        sFuefukiPressed = false;
+        touched = true;
+    }
+    if (touched) {
+        ++sFuefukiForgetCount;
+        std::printf("P2_FUEFUKI_FORGET actor=%p count=%u stale=0\n",
+                    static_cast<void*>(actor), sFuefukiForgetCount);
+        std::fflush(stdout);
+    }
 }

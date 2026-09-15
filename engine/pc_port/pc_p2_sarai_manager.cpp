@@ -96,7 +96,10 @@ std::unique_ptr<P2SaraiHost> buildHost(BTeki* match, unsigned generatorId)
         "sarai-attack-poses.txt", "sarai-waitact2-poses.txt", "sarai-waitact1-poses.txt");
 
     const Vector3f home = match->getPosition();
-    host->setPosition(home);
+    // P2 Sarai rests at mapMgr->getMinY + mNormalFlightHeight (fp01 = 100.0f;
+    // Sarai.cpp:194, Sarai.h:89). The ported host draws the mesh at mSRT.t, so
+    // add the flight height here or the model clips the floor (user: too low).
+    host->setPosition(Vector3f(home.x, home.y + 100.0f, home.z));
     // Static bind: draw the Sarai and keep the anchor at its spawn for combat/
     // transport acceptance fixtures that must not have the captor move it.
     const char* staticMode = std::getenv("PIKMIN_SARAI_STATIC");

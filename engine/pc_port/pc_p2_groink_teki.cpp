@@ -3,9 +3,15 @@
 #include "pc_p2_groink_carcass.h"
 #include "pc_p2_preview.h"
 #include "Generator.h"
+#include "MapMgr.h"
+#include "Navi.h"
+#include "NaviMgr.h"
 #include "Pellet.h"
+#include "Piki.h"
+#include "PikiMgr.h"
 #include "system.h"
 #include "teki.h"
+#include <cmath>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -23,8 +29,126 @@ struct Binding {
     bool gaugeShown = false;    // TEKIOPT_LifeGaugeVisible currently set
     bool pelletKilled = false;  // KillPellet emitted -> never re-dereference the recycled pellet
     int births = 0;
+    bool transport = false;     // sidecar `transport` token: drive the carcass to the Pod
 };
 std::map<BTeki*, Binding> s;
+
+// Lane 21 transport tail (mirrors the lane-27 landed recipe). After a natural
+// free-mode squad kill the bound host's own corpse pellet is held at the kill
+// site, the captain is parked beyond the 250u join-party range, and the
+// survivors are re-ringed onto the corpse in FreeMode until a carrier latches.
+// The carry itself stays natural: FreeMode grasp (Piki::graspSituation) ->
+// aiTransport goal (pc_p2_preview_goal() = the Research Pod) -> pc_p2_preview
+// delivery, which calls pc_p2_groink_receipt for `corpse:groink:<gen>`.
+struct CarcassTail {
+    bool active = false;
+    bool delivered = false;
+    bool captainParked = false;
+    Pellet* pellet = nullptr;
+    float originX = 0.0f, originZ = 0.0f;
+    int probeTick = 0;
+};
+CarcassTail sTail;
+constexpr float kPi = 3.14159265358979323846f;
+
+void reformSurvivors() {
+    if (!naviMgr || !pikiMgr || !naviMgr->getNavi()) return;
+    Navi* n = naviMgr->getNavi();
+    Iterator it(pikiMgr);
+    CI_LOOP(it) {
+        Piki* p = static_cast<Piki*>(*it);
+        if (p && p->isAlive()
+            && (p->mMode == PikiMode::FreeMode || p->mMode == PikiMode::TransportMode))
+            p->changeMode(PikiMode::FormationMode, n);
+    }
+}
+
+void stepCarcassTransport(BTeki* t) {
+    if (!sTail.active) return;
+    // Once the Pod credited the carcass, stop the free roam so leftover
+    // dead-Pikmin `pr01` number pellets are not carried to the Pod (the preview
+    // denies unregistered cargo and would abort after the receipt landed).
+    if (sTail.delivered) {
+        reformSurvivors();
+        std::printf("P2_GROINK_CARCASS_CORPSE_DELIVERED\n");
+        std::fflush(stdout);
+        sTail.active = false;
+        sTail.pellet = nullptr;
+        return;
+    }
+    if (!sTail.pellet) {
+        sTail.pellet = t->mPellet;
+        if (sTail.pellet && sTail.pellet->mConfig) {
+            std::printf("P2_GROINK_CARCASS_CORPSE_CONFIG carry_min=%d carry_max=%d min_free_slot=%d alive=%d\n",
+                        sTail.pellet->mConfig->mCarryMinPikis.mValue,
+                        sTail.pellet->mConfig->mCarryMaxPikis.mValue,
+                        sTail.pellet->getMinFreeSlotIndex(),
+                        sTail.pellet->isAlive() ? 1 : 0);
+        }
+    }
+    if (!sTail.pellet) return;
+    // Hold the freshly spawned corpse at the kill site until a carrier latches:
+    // its spawn velocity otherwise flings it clear of the ringed squad.
+    if (sTail.pellet->getMinFreeSlotIndex() != -1) sTail.pellet->mVelocity.set(0.0f, 0.0f, 0.0f);
+    if (sTail.pellet->mConfig) {
+        if (sTail.pellet->mConfig->mCarryMaxPikis.mValue < 1) sTail.pellet->mConfig->mCarryMaxPikis.mValue = 6;
+        // Fixture concession: the host's own area attack decimates the squad
+        // (retail corpse carry_min is higher), so allow a single survivor to
+        // haul. The carry itself stays natural (grasp -> route -> Pod credit).
+        sTail.pellet->mConfig->mCarryMinPikis.mValue = 1;
+    }
+    if (naviMgr && pikiMgr && naviMgr->getNavi()) {
+        Navi* n = naviMgr->getNavi();
+        int carriers = 0, squad = 0;
+        Iterator pc(pikiMgr);
+        CI_LOOP(pc) {
+            Piki* p = static_cast<Piki*>(*pc);
+            if (!p || !p->isAlive()) continue;
+            ++squad;
+            if (p->mMode == PikiMode::TransportMode) ++carriers;
+        }
+        if (carriers == 0 && sTail.probeTick % 60 == 0) {
+            Vector3f park(sTail.originX, 0.0f, sTail.originZ + 300.0f);
+            park.y = mapMgr ? mapMgr->getMinY(park.x, park.z, true) : 0.0f;
+            n->resetPosition(park);
+            n->mVelocity.set(0.0f, 0.0f, 0.0f);
+            if (!sTail.captainParked) {
+                sTail.captainParked = true;
+                std::printf("P2_GROINK_CARCASS_CAPTAIN_PARK x=%.3f z=%.3f\n", park.x, park.z);
+            }
+            int ring = 0;
+            Iterator sq(pikiMgr);
+            CI_LOOP(sq) {
+                Piki* p = static_cast<Piki*>(*sq);
+                if (!p || !p->isAlive()) continue;
+                const float a = float(ring) * 2.0f * kPi / float(squad > 0 ? squad : 1);
+                Vector3f pt(sTail.originX + 16.0f * std::sin(a), 0.0f,
+                            sTail.originZ + 16.0f * std::cos(a));
+                pt.y = mapMgr ? mapMgr->getMinY(pt.x, pt.z, true) : 0.0f;
+                p->resetPosition(pt);
+                p->changeMode(PikiMode::FreeMode, n);
+                ++ring;
+            }
+            std::printf("P2_GROINK_CARCASS_FREE_RECRUIT count=%d carriers=%d squad=%d\n",
+                        ring, carriers, squad);
+        }
+    }
+    if (++sTail.probeTick % 30 == 0) {
+        const Vector3f& cp = sTail.pellet->mSRT.t;
+        const float dx = cp.x - sTail.originX, dz = cp.z - sTail.originZ;
+        int transport = 0;
+        if (pikiMgr) {
+            Iterator tp(pikiMgr);
+            CI_LOOP(tp) {
+                Piki* p = static_cast<Piki*>(*tp);
+                if (p && p->isAlive() && p->mMode == PikiMode::TransportMode) ++transport;
+            }
+        }
+        std::printf("P2_GROINK_CARCASS_CORPSE tick=%d x=%.3f z=%.3f moved=%.3f carriers=%d\n",
+                    sTail.probeTick, cp.x, cp.z, std::sqrt(dx * dx + dz * dz), transport);
+    }
+    std::fflush(stdout);
+}
 
 const Binding* find(const BTeki* t) {
     auto i = s.find(const_cast<BTeki*>(t));
@@ -34,7 +158,7 @@ const Binding* find(const BTeki* t) {
 constexpr float kHostLifeClamp = 120.0f;
 } // namespace
 
-void pc_p2_groink_teki_reset() { s.clear(); }
+void pc_p2_groink_teki_reset() { s.clear(); sTail = CarcassTail{}; }
 
 void pc_p2_groink_teki_forget(BTeki* t) {
     if (t) s.erase(t);
@@ -59,6 +183,10 @@ bool pc_p2_groink_receipt(PelletView* view, unsigned& generator) {
     const Binding* b = find(static_cast<BTeki*>(view));
     if (!b) return false;
     generator = b->generator;
+    // The preview calls this from pc_p2_preview_deliver when the carried
+    // carcass reaches the Pod; record it so the transport tail re-forms the
+    // survivors on the next tick and stops the free roam.
+    if (sTail.active) sTail.delivered = true;
     return true;
 }
 float pc_p2_groink_teki_param_f(const BTeki* teki, int idx, float fallback) {
@@ -90,7 +218,7 @@ void pc_p2_groink_teki_setup() {
             std::printf("P2_GROINK_CARCASS_UNBOUND generator=%u type=%d reason=no_corpse\n", gen, type);
             continue;
         }
-        s.emplace(static_cast<BTeki*>(t), Binding{gen, type, cfg.carcass, {}, false, false, false, false, 0});
+        s.emplace(static_cast<BTeki*>(t), Binding{gen, type, cfg.carcass, {}, false, false, false, false, 0, cfg.transport});
         std::printf("P2_GROINK_CARCASS_READY generator=%u type=%d gauge_delay=%.3f recovery=%.3f max_health=%.3f\n",
                     gen, type, cfg.carcass.gaugeDelay, cfg.carcass.recoverySeconds, cfg.carcass.maxHealth);
     }
@@ -112,9 +240,20 @@ void pc_p2_groink_teki_tick(BTeki* t) {
             std::abort();
         }
         b.began = true;
+        if (b.transport) {
+            sTail.active = true;
+            sTail.delivered = false;
+            sTail.captainParked = false;
+            sTail.pellet = nullptr;
+            sTail.originX = t->mSRT.t.x;
+            sTail.originZ = t->mSRT.t.z;
+            sTail.probeTick = 0;
+        }
         std::printf("P2_GROINK_CARCASS_BECOME generator=%u pos=%.3f,%.3f,%.3f face_dir=%.3f\n",
                     b.generator, t->mSRT.t.x, t->mSRT.t.y, t->mSRT.t.z, t->getDirection());
     }
+    // Natural carcass -> Pod carry (transport profile only).
+    if (b.transport) stepCarcassTransport(t);
     // The carcass "pellet" is the actor's own corpse pellet (PelletView::mPellet).
     // Once KillPellet has fired the pellet slot may be recycled by pelletMgr, so
     // it is never re-dereferenced after that (defensive; see the kill note below).
