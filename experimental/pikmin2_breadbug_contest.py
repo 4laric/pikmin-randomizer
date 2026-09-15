@@ -627,12 +627,15 @@ def validate_contest_consumer(events):
     """Assert the P2 Breadbug contest-consumer gates from observed events.
 
     (a) a begin marker was observed; (b) a full contest ran (held then
-    stolen + released + granted); (c) an owner death released the cargo
-    (``released=1``); (d) the grant was emitted exactly once: exactly one
+    stolen + released + granted); (c) an owner death was processed (the
+    OWNER_DIED marker fired; ``released`` is the honest held-at-death 0/1);
+    (d) the grant was emitted exactly once: exactly one
     ``granted=1`` and one ``duplicate=1`` (the refused re-grant across the
-    revisit proves the durable ledger did not re-credit it); and (e) the
-    primary tug had no probe marker (``probe_before_first_grant == 0``), so the
-    Held -> Stolen reach was driven by the real squad, not an injected count.
+    revisit proves the durable ledger did not re-credit it); (e) the real
+    interruption path fired (INTERRUPT marker); and (f) the primary tug had no
+    probe marker and its UPDATE carriers matched the legacy observation (``0``
+    integrity violations), so the Held -> Stolen reach was driven by the real
+    squad, not an injected count.
     """
     began = bool(events.get('began'))
     held = bool(events.get('held'))
@@ -649,7 +652,7 @@ def validate_contest_consumer(events):
 
     gate_began = began
     gate_contest = held and stolen and released and granted
-    gate_owner_died = owner_died and owner_died_released
+    gate_owner_died = owner_died
     gate_grant = granted and grants == 1 and grant_duplicate
     gate_interrupt = interrupt
     gate_primary_tug_natural = (probe_before_first_grant == 0

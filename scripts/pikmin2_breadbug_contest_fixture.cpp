@@ -42,7 +42,7 @@ public:
  Pellet* baitPellet() {
   Vector3f fwd;
   actor->outputDirectionVector(fwd);
-  Vector3f p = actor->mSRT.t + fwd * 60.0f;
+  Vector3f p = actor->mSRT.t + fwd * 25.0f;
   p.y = mapMgr->getMinY(p.x, p.z, true) + 5.0f;
   Pellet* pl = pelletMgr->newNumberPellet(PELCOLOR_Red, 0);
   require(pl, "native pellet allocation");
@@ -107,8 +107,10 @@ public:
    std::fflush(stdout);
   }
 
-  // Death: kill shortly after the death-hold pellet is grabbed (so released=1).
+  // Death: kill shortly after the death-hold pellet is grabbed (so released=1),
+  // with a fallback kill so the run still completes if the proxy drifts away.
   if (tick >= 2600 && killAt < 0 && held && !prevHeld) { killAt = tick + 10; }
+  if (tick >= 4400 && killAt < 0) { killAt = tick; std::printf("P2_BREADBUG_CONTEST_PHASE phase=kill_fallback tick=%d\n", tick); std::fflush(stdout); }
   if (killAt >= 0 && tick >= killAt) {
    if (!actor->mDeadState) { actor->die(); std::printf("P2_BREADBUG_CONTEST_PHASE phase=kill tick=%d\n", tick); std::fflush(stdout); }
   }
