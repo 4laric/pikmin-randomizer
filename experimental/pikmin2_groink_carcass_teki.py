@@ -21,6 +21,7 @@ reads at ``GameCoreSection::finalSetup``.
 """
 import math
 import os
+import re
 from pathlib import Path
 
 # Happy-path revival order. GAUGE_INACTIVE is a sibling (early pellet death) and
@@ -37,6 +38,8 @@ _BIRTH_MARKER = "P2_GROINK_CARCASS_BIRTH"
 CONFIG_MAGIC = "P2_GROINK_TEKI_1"
 CONFIG_NAME = "p2-groink-teki.txt"
 KILL_INJECTED_MARKER = "P2_GROINK_CARCASS_KILL_INJECTED"
+POD_RECEIPT_PREFIX = "P2_POD_RECEIPT id=corpse:groink:"
+_POD_RECEIPT_RE = re.compile(r"P2_POD_RECEIPT id=corpse:groink:(\d+)")
 
 
 def validate_log(log: str) -> dict:
@@ -84,6 +87,31 @@ def is_injected_kill(marker_line_or_log: str) -> bool:
 def injected_kill_label(log: str) -> str:
     """Return the injected-kill label for a log, else ``"-"``."""
     return "injected (pcEscapeNow)" if is_injected_kill(log) else "-"
+
+
+def has_groink_receipt(log: str) -> bool:
+    """True when the log carries a ``P2_POD_RECEIPT id=corpse:groink:<digits>`` line."""
+    return _POD_RECEIPT_RE.search(log) is not None
+
+
+def groink_receipt_generator(log: str) -> "int | None":
+    """Capture the generator from a corpse:groink pod receipt, else ``None``."""
+    match = _POD_RECEIPT_RE.search(log)
+    return int(match.group(1)) if match else None
+
+
+def natural_death_timeline(log: str) -> dict:
+    """Classify a carcass timeline: natural (BECOME, no injection) vs injected.
+
+    A natural death emits ``P2_GROINK_CARCASS_BECOME`` with no
+    ``P2_GROINK_CARCASS_KILL_INJECTED`` line; ``ordered`` reuses ``validate_log``.
+    """
+    injected = is_injected_kill(log)
+    return {
+        "natural": "P2_GROINK_CARCASS_BECOME" in log and not injected,
+        "injected": injected,
+        "ordered": validate_log(log)["passed"],
+    }
 
 
 def sidecar_config(generator, teki_type, gauge_delay=30.0, recovery_seconds=10.0, max_health=1200.0):
