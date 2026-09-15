@@ -68,13 +68,14 @@ bool pc_p2_waterwraith_register_corpse_spawned();
 // re-credited, and `register_tick` sweeps dead pellets for liveness.
 class Pellet;
 bool pc_p2_waterwraith_receipt(Pellet* pellet, unsigned& generator);
-// Forget a corpse pellet that dies or is cleared without being delivered.
-void pc_p2_waterwraith_forget(Pellet* pellet);
 // Lane-07 boundary: clear the corpse map and delivery counter.
 void pc_p2_waterwraith_reset();
 unsigned pc_p2_waterwraith_delivery_count();
 // Number of currently registered (still on-field, alive) corpse pellets.
 unsigned pc_p2_waterwraith_corpse_count();
+// First registered (alive) corpse pellet, or null. Lets the runtime fixture
+// observe the on-field stand-in and drive a labelled transport assist.
+Pellet* pc_p2_waterwraith_corpse_pellet();
 
 // One engine frame: source-clocks the actor at 30 Hz (at most 4 steps per
 // frame), feeds the fixed fall -> recover -> walk host script and advances the

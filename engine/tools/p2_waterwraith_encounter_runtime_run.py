@@ -86,6 +86,18 @@ def copy_new(source, target):
     shutil.copyfile(source, target)
 
 
+def classify(text):
+    """Classify a full runtime log: 'blocked' | 'assisted' | 'delivered' | 'unknown'."""
+    if (re.search(r"BLOCKED WATERWRAITH_ENCOUNTER_RUNTIME", text)
+            or re.search(r"P2_WATERWRAITH_CARRY_UNRESOLVED\s+frame=\d+", text)):
+        return "blocked"
+    if re.search(r"P2_WATERWRAITH_SQUAD_ASSIST\b.*assisted=1", text):
+        return "assisted"
+    if re.search(r"P2_WATERWRAITH_POD_RECEIPT\s+generator=\d+", text):
+        return "delivered"
+    return "unknown"
+
+
 def verify_log(text):
     errors = []
     if not re.search(r"^P2_WATERWRAITH_ENCOUNTER_WINDOW\s+size=960x540\s*$", text,
@@ -104,7 +116,7 @@ def verify_log(text):
     if not re.search(r"^P2_WATERWRAITH_BODY_ZERO\s+tick=\d+\s+bodyHealth=0\.0\s*$", text,
                      flags=re.MULTILINE):
         errors.append("missing body-zero marker")
-    if not re.search(r"^P2_WATERWRAITH_CORPSE\s+.*standin=number_pellet\s*$", text,
+    if not re.search(r"^P2_WATERWRAITH_CORPSE\s+.*standin=number_pellet\b.*$", text,
                      flags=re.MULTILINE):
         errors.append("missing corpse stand-in marker")
     if not re.search(r"^P2_WATERWRAITH_FINISHED\s+tick=\d+\s+bodyHealth=0\.0\s*$", text,
@@ -116,6 +128,7 @@ def verify_log(text):
                                text, flags=re.MULTILINE))
     blocked = bool(re.search(r"^P2_WATERWRAITH_CARRY_UNRESOLVED\s+frame=\d+\s+max_carriers=\d+\s+"
                              r"deliveries=0\s*$", text, flags=re.MULTILINE))
+    assisted = bool(re.search(r"P2_WATERWRAITH_SQUAD_ASSIST\b.*assisted=1", text))
     if delivered:
         if not re.search(r"^P2_WATERWRAITH_ENCOUNTER_DELIVERED\s+deliveries=\d+\s*$", text,
                          flags=re.MULTILINE):
@@ -146,10 +159,18 @@ def verify_log(text):
             errors.append("no damage dealt")
         if delivered_flag != (1 if delivered else 0):
             errors.append("delivered flag mismatch with carry outcome")
-    if delivered and "PASS WATERWRAITH_ENCOUNTER_RUNTIME" not in text:
-        errors.append("missing runtime PASS marker")
-    elif blocked and "BLOCKED WATERWRAITH_ENCOUNTER_RUNTIME" not in text:
-        errors.append("missing runtime BLOCKED marker")
+    if assisted:
+        # An injected assist must be reflected in the final runtime line.
+        if "PASS WATERWRAITH_ENCOUNTER_RUNTIME ASSISTED" not in text:
+            errors.append("assisted receipt must end with PASS ... ASSISTED")
+    elif delivered:
+        if "PASS WATERWRAITH_ENCOUNTER_RUNTIME ASSISTED" in text:
+            errors.append("natural receipt must not carry ASSISTED suffix")
+        elif "PASS WATERWRAITH_ENCOUNTER_RUNTIME" not in text:
+            errors.append("missing runtime PASS marker")
+    elif blocked:
+        if "BLOCKED WATERWRAITH_ENCOUNTER_RUNTIME" not in text:
+            errors.append("missing runtime BLOCKED marker")
     return errors
 
 
@@ -255,10 +276,10 @@ def main(argv=None):
             errors.append(f"fixture exit code {result.returncode}")
         record["errors"].extend(errors)
         if not errors:
-            record["status"] = (
-                "blocked" if "BLOCKED WATERWRAITH_ENCOUNTER_RUNTIME" in combined else "passed")
-            record["outcome"] = (
-                "blocked" if "BLOCKED WATERWRAITH_ENCOUNTER_RUNTIME" in combined else "delivered")
+            outcome = classify(combined)
+            record["outcome"] = outcome
+            record["status"] = {"blocked": "blocked", "assisted": "assisted",
+                                "delivered": "passed"}.get(outcome, "failed")
     except subprocess.TimeoutExpired as error:
         record["errors"].append("fixture timed out after 150 seconds")
         if run is not None:
@@ -275,7 +296,7 @@ def main(argv=None):
                                                encoding="utf-8")
     print(json.dumps({"status": record["status"], "run": str(run) if run else None,
                       "errors": record["errors"]}, indent=2))
-    return 0 if record["status"] == "passed" else 1
+    return 0 if record["status"] in ("passed", "assisted") else 1
 
 
 if __name__ == "__main__":
