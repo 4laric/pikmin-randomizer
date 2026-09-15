@@ -174,9 +174,68 @@ and this handoff.
   2. movement_animation ignored [UNTESTED]
   3. attacks_receivers  ignored [UNTESTED]
   4. death_corpse       ignored [UNTESTED]
-  5. transport_reward   ignored [N/A]
+  5. transport_reward   ignored [UNTESTED]
   6. cleanup_reentry    ignored [BLOCKED]
 ```
+
+## Slice 5 — live movement/animation and receiver witnesses (lane 21)
+
+The two remaining non-corpse gates are closed on the generated actor itself. A
+new lane-local fixture mode (`tools/p2_groink_runtime.cpp --groink-live`) leaves
+the generated Frog at generator 201001 alive and lets its own source FSM (lane
+16, wired into `BTeki::update`) drive it: no squad is ringed, no damage is
+written and no kill is injected. The staged starting squad is already inside the
+actor's sight, so it turns, hops and lands on its own. A read-only probe
+(`pc_p2_frog_probe`, `pc_port/pc_p2_frog.cpp`) reports the running source-FSM
+state, the current animation clip and the clip phase, and a per-Piki witness
+records each live target's `mHealth`/`PIKISTATE` change caused by the source
+`InteractPress` landing.
+
+Run via the GL slot at `PIKMIN_P2_ROOM_WINDOW=960x540`; log
+`output/dsw/l21-out/run-groink-live/native.log` (exit 0):
+
+```text
+:1269 P2_GROINK_MOVE generator=201001 tick=30 x=-150.000 y=0.000 z=1850.000 travel=0.000 state=wait clip=wait1 phase=0.945 health=800.0
+:1305 P2_GROINK_MOVE generator=201001 tick=90 x=-147.107 y=42.922 z=1850.498 travel=2.937 state=jumpwait clip=wait2 phase=0.316 health=575.0
+:1313 P2_FROG_LAND species=Frog radius=23.0 bittered=0 pikmin=3 navi=0 behavior=source
+:1314 P2_GROINK_TARGET_HIT id=2835558504432 health=30.0->20.0 state=22->33 alive=1->1 x=-133.685 z=1855.977
+:1319 P2_GROINK_MOVE generator=201001 tick=120 x=-143.177 y=0.000 z=1851.043 travel=10.256 state=attack clip=attack phase=0.283 health=575.0
+:1453 P2_FROG_LAND species=Frog radius=23.0 bittered=0 pikmin=2 navi=0 behavior=source
+:1455 P2_GROINK_TARGET_HIT id=2835558504432 health=10.0->0.0 state=22->33 alive=1->0 x=-117.181 z=1852.338
+:1566 P2_GROINK_LIVE_PASS ticks=600 travel=84.377 health_drops=18 state_changes=151
+:1567 PASS GROINK_RUNTIME groink_live
+```
+
+Reading: the generated actor travels 84.377 units over 600 ticks while the
+source FSM cycles wait->turn->jump->jumpwait->fall->attack->wait with the matching
+clips (wait1/type1/wait2/type2/attack/waitact1) and per-clip phase; the landing
+press (`behavior=source`) applies the engine `InteractPress` to the live Pikmin
+inside the source head radius (23u), dropping one 30->20 and then 10->0 HP with
+the `PIKISTATE` change 22->33 and alive 1->0. No health write, ring or injected
+hit is involved; the only fixture input is the staged starting squad from the
+lane-16 base session.
+
+### Source ID: 78 `MiniHoudai`
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | N/A | no live MiniHoudai actor is spawned; the P2 carcass policy is bound to a generated Frog generator 201001 | - |
+| 2. Autonomous movement and animation | PASS | output/dsw/l21-out/run-groink-live/native.log:1269,:1305,:1319,:1566 P2_GROINK_MOVE (position + source-FSM state + clip + phase; travel 0 -> 84.377 over 600 ticks) | natural |
+| 3. Attacks and receivers | PASS | output/dsw/l21-out/run-groink-live/native.log:1313 P2_FROG_LAND radius=23.0 pikmin=3 behavior=source and :1314 P2_GROINK_TARGET_HIT health=30.0->20.0 state=22->33 alive=1->1 (and :1455 health=10.0->0.0 alive=1->0) | natural |
+| 4. Death and corpse | PASS | output/dsw/l21-out/run-carcass-transport3/native.log:1277 P2_FROG_DEAD and :1279 P2_GROINK_CARCASS_BECOME (natural free-mode squad kill) | natural |
+| 5. Actual transport and reward | PASS | output/dsw/l21-out/run-carcass-transport3/native.log:1378 P2_POD_RECEIPT id=corpse:groink:201001 value=2 new=1 pokos=2 seeds=0 | natural |
+| 6. Cleanup and re-entry | BLOCKED | the binding is forgotten on the engine death funnel (output/dsw/l21-out/run-carcass-transport3/native.log:1379 bound=0 after the natural kill); re-entry needs a new born actor, which the shared P2 manager birth does not provide here (pc_port/pc_p2_groink_teki.cpp:287 RequestBirth records a descriptor and defers the birth to the shared hook; no generalEnemyMgr birth / MINIHOUDAI_Rebirth transit on lane 06/07) | - |
+
+### Source ID: 97 `FminiHoudai`
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | N/A | no live pedestal Groink actor is spawned; shares the same policy binding | - |
+| 2. Autonomous movement and animation | UNTESTED | not run separately | - |
+| 3. Attacks and receivers | UNTESTED | not run separately | - |
+| 4. Death and corpse | UNTESTED | not run separately | - |
+| 5. Actual transport and reward | UNTESTED | not run separately | - |
+| 6. Cleanup and re-entry | BLOCKED | generalEnemyMgr->birth + MINIHOUDAI_Rebirth transit on lane 06/07 | - |
 
 ## Reproduction
 
@@ -398,7 +457,7 @@ the corpse); 40 survivors are released FreeMode onto the corpse; carriers latch
 
 ### Source ID: 78 `MiniHoudai`
 
-| Gate | Result | Evidence | Injected vs natural |
+| Gate | Historical note | Evidence | Injected vs natural |
 |---|---|---|---|
 | 1. Exact identity and spawn | N/A | no live MiniHoudai actor is spawned; the P2 carcass policy is bound to a generated Frog generator 201001 | - |
 | 2. Autonomous movement and animation | UNTESTED | locomotion + Rebirth animation (AnimID 7) remain on the shared teki actor hook | - |
@@ -409,7 +468,7 @@ the corpse); 40 survivors are released FreeMode onto the corpse; carriers latch
 
 ### Source ID: 97 `FminiHoudai`
 
-| Gate | Result | Evidence | Injected vs natural |
+| Gate | Historical note | Evidence | Injected vs natural |
 |---|---|---|---|
 | 1. Exact identity and spawn | N/A | no live pedestal Groink actor is spawned; shares the same policy binding | - |
 | 2. Autonomous movement and animation | UNTESTED | not run separately | - |
