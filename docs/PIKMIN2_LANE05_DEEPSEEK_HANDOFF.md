@@ -396,3 +396,136 @@ pattern lane 02/03/04 seed tests use) — that shaping is not part of the gate-1
 The `task` tool was available; worked solo anyway (the read-heavy native/ingest audit was done in
 this context to keep the wave-native reproduction precise). One subagent-style split would have been
 possible but added no throughput here.
+
+## Slice 6
+
+Sixth slice: **third KochappyBase adapter (Kochappy Red, source 1)**, completing the family
+adapters (`kochappy` + `dwarf_orange` + `snow`). Consumes the existing family stager
+`experimental.pikmin2_kochappy_bank.install` through the generated-session launcher/cache path,
+with a `validate()` hook, a real-adapter test, and three-identity staging.
+
+### Source IDs and files owned
+
+- **Concrete consumer:** Kochappy — Dwarf Red Bulborb, source id **1** (enum `Kochappy`). Its
+  assets model `Kochappy` and the existing bespoke installer
+  `experimental.pikmin2_kochappy_bank.install(imported, run, generator_ids)` are consumed as-is;
+  lane 05 only adapts and sequences them. Snow (45) and Dwarf Orange (44) adapters are untouched.
+- **Owned/edited files (root only):**
+  - `experimental/pikmin2_family_install.py` — `IDENTITY_FAMILY` gains `1`/`kochappy` →
+    `kochappy`; new `_validate_kochappy` + `_adapt_kochappy`; `ADAPTERS` gains `kochappy`.
+  - `tests/test_pikmin2_install_binding.py` — `make_kochappy_source` helper + 4 new tests;
+    `test_resolve_family_unknown_identity` updated (1/`Kochappy` now valid).
+  - `docs/PIKMIN2_CONTENT_STAGING.md` — binding section + limitations updated (three adapters).
+
+### Ordered commits / dirty state
+
+- **Root** branch `deepseek/p2-l05`, base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`. Ordered: prior slices
+  (`7ab7d79` → … → `958f9a6` slice 5) plus this slice's `lane05: slice 6 - Kochappy Red adapter (#442)`.
+  Clean at head after commit.
+- **Native** branch `deepseek/p2-l05-native`, base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`.
+  **No changes** (`git status` clean). Lane 05 required no native edits: the Red config reader
+  (`pc_port/pc_p2_kochappy.cpp`, reads `p2-kochappy-*.txt`, emits
+  `P2_ENEMY_READY species=Kochappy source_id=1`) already exists on the base.
+
+### Interfaces/hooks touched and why
+
+- `IDENTITY_FAMILY` gains `1: 'kochappy'` and `'kochappy': 'kochappy'`; `resolve_family(1)` /
+  `resolve_family("Kochappy")` / `resolve_family("kochappy")` → `kochappy`, anything else unchanged.
+  Narrow by design; still raises `ValueError` for unknown identities (no silent P1 fallback).
+- `_validate_kochappy(source)` (new): requires `<source>/kochappy-bank.json` +
+  `<source>/p2-kochappy-profile.txt` and `(schema, species, source_id, health) ==
+  (1, 'Kochappy', 1, 200)`; otherwise `StagingError` before any destination write.
+- `_adapt_kochappy(source, run, actors)` (new): delegates to
+  `experimental.pikmin2_kochappy_bank.install(source, run, [generator, ...])` and returns a
+  small receipt (`species`/`source_id`/`generators`); the family installer itself returns `None`.
+- `ADAPTERS['kochappy'] = {'install', 'validate'}`. The `install_layout` plans loop, source-id/enum
+  agreement check, session cache, and launcher wiring are untouched and cover the third identity
+  without modification.
+
+No shared native files and no family-owned extractors were modified.
+
+### Build evidence
+
+No native rebuild for this slice (no native/engine change). Native branch is clean at the base;
+the last lane-05 build evidence remains `output/dsw/l05-build-evidence.txt` (slice 3 era,
+`pikmin_pc` on `b805d9c6`) and the slice-5 wave build (`output/dsw/l05-wave-build-evidence.txt`,
+tip `b56b97eb`). A `ninja -n` no-work check is vacuous without a rebuild; the Python evidence below
+is the slice's proof.
+
+### Fixture adoption evidence
+
+Not applicable and reported honestly: no real-GL runtime fixture for this slice. The Kochappy
+evidence is the real family installer executed at the Python level against a synthetic bank whose
+schema matches `tests/test_pikmin2_kochappy_bank.py`'s accepted fixture — not a wave-native
+resolve run (no real Red bank is available for a GL run, and the admission ledger is still empty).
+The 960×540 centred-window / live-squad adoption requirement remains for the next runtime
+acceptance run (family lane 13 + QA 33).
+
+### Six-gate table (provider lane; honest)
+
+### Kochappy (1)
+
+| Gate | Result | Evidence |
+|---|---|---|
+| 1. identity_spawn | UNTESTED | install-layer binding proven via the real `pikmin2_kochappy_bank.install` (identity + bank/profile/motion/file hashes all checked, no P1 fallback) — tests/test_pikmin2_install_binding.py; ordinary-spawn resolve not run (no real Red bank for a wave-native run) |
+| 2. movement_animation | UNTESTED | family lane 13 |
+| 3. attacks_receivers | UNTESTED | lanes 10/13 |
+| 4. death_corpse | UNTESTED | lane 13 |
+| 5. transport_reward | UNTESTED | lane 06 |
+| 6. cleanup_reentry | UNTESTED | lane 07 |
+
+Gate 1 is UNTESTED (not PASS): the content binding is proven but there is no ordinary-spawn
+resolve evidence for source 1, so nothing here advances the gate ledger. No gameplay PASS is
+claimed and no injected combat/lifecycle run is presented as one.
+
+### Tests run and results
+
+- `py -3.12 -m pytest tests/test_pikmin2_install_binding.py -q` → **31 passed** (incl. the 4 new
+  Kochappy tests: resolve, real adapter, three-family staging, validate fail-closed).
+- Wider lane-05 subset (install_binding, family_install, staging, session_staging, seed_bridge,
+  seed_generation, dwarf_orange_install, kochappy_bank, seed_evidence, enemy_roster) →
+  **149 passed, 1 failed**: the failure is the pre-existing
+  `test_pikmin2_kochappy_bank.py::test_compiled_family_policy`, which compiles C++ against
+  `l05-root/native/pc_port` — that directory is absent by worktree design (brief §3), so it fails
+  identically with and without this slice. Unrelated; not a regression.
+
+### Assumptions made
+
+- The Kochappy adapter's source layout mirrors `pikmin2_kochappy_bank.build` output (flat dir with
+  `kochappy-bank.json` + `p2-kochappy-bank.txt` + `p2-kochappy-profile.txt` + `kochappy_*.mod`);
+  a real family bank is produced by lane 13, not lane 05.
+- `actor_bindings` (target → native generator id) remains a caller input, resolved by lane 03/04 +
+  native `ENEMY_P2`, not this lane.
+- Kochappy Red is a randomizable `enemy` candidate (spawnable, own id, in the info table); adapter
+  presence is not admission (that stays lane 02).
+
+### Remaining blockers naming the provider lane
+
+- **Lane 02 (#438):** admission set still empty; Kochappy (1) joins Snow/Dwarf Orange as adapter-ready
+  but unadmitted.
+- **Lane 13 / family:** produce the real Kochappy Red bank and accept the native actor binding
+  (`pc_p2_kochappy.cpp` reader already exists) so the staged content is consumed by a live actor;
+  Pod staging for Snow stays lane 13.
+- **Lane 04:** native XYZ/terrain/route evidence for carrier-compatible slots remains lane 04's.
+- **Lane 01:** export/merge the launcher/`experimental` changes into the maintained line after review.
+
+### Reproduction (one command)
+
+```powershell
+py -3.12 -m pytest tests/test_pikmin2_install_binding.py -q
+```
+
+### Subagent usage
+
+- **explore #1 — Kochappy Red stager audit:** extracted `pikmin2_kochappy_bank` PROFILE/HEADER,
+  `build`/`install` inputs, the identity tuple, every `ValueError`, the sibling overlap and room
+  rules, plus the synthetic-fixture shape and roster confirmation. Used as-is to author
+  `_validate_kochappy`/`_adapt_kochappy` and the doc wording. Saved ~30 min of contract reading.
+- **explore #2 — Kochappy candidate inventory:** confirmed `IDENTITY_FAMILY`/`ADAPTERS` had no `1`/
+  `kochappy`, listed every Kochappy module/test/doc, and pinpointed the exact tests needing updates.
+  Used as-is; prevented reimplementing the family bank and scoped the test edits.
+- **general #3 — test scaffolding:** wrote `make_kochappy_source` + the 4 tests and updated the
+  unknown-identity list against my contract; reported 3 missing-contract failures vs 0 fixture
+  mismatches. Corrected: the "real adapter" test needed my `_adapt_kochappy` to return a receipt
+  (family installer returns `None`), which the test already assumed — I implemented to that
+  contract. Net saved the full test-authoring pass; cost was reconciling the receipt shape.
