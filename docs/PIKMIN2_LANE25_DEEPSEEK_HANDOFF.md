@@ -112,6 +112,9 @@ consumed, not copied.
   real=10`, `ROCK_STRIKE kind=Press damage=10.0`, `ROCK_DESTROY reason=floor`,
   `HAZARD egg=1`, `EGG_BIRTH real=1`, `EGG_CONTACT health=0`,
   `EGG_ITEM kind=2 real=1 item=nectar`.
+- `dangomushi-validation.json` reports `exit_code=1 timed_out=true`: the fixture
+  is timer-terminated at the requested observation window (pre-existing validator
+  counter), not an engine failure.
 
 ## Six-gate table (natural vs injected; DangoMushi 94)
 
