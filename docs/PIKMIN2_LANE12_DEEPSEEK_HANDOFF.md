@@ -392,3 +392,174 @@ FX="C:/Users/alari/pikmin-randomizer/output/dsw/p2-captain-fixture-final/fixture
 PIKMIN_P2_SECOND_CAPTAIN=1 PIKMIN_P2_SECOND_CAPTAIN_LIVE=1 \
   py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l12 -- "$FX" --experimental-pikmin2-room --survivor-path
 ```
+
+## Slice 3b
+
+Executing session: DeepSeek (`deepseek-v4-pro`). Goal: finish the two slice-3
+blocking tasks — make the second captain visible (gate default-on) and knock the
+active captain down from a spawned actor (natural gate 3/4). Wave native merged
+first (`91911022`), all receipt branches retained (`pc_p2_preview.cpp` keeps
+mamuta/king/otakara/kurage/waterwraith).
+
+### Task 1 — second-captain render, gate default on (DONE)
+
+**Root cause of the slice-3 crash (real gdb backtrace + instrumented markers).**
+gdb gave `#0 Navi::refresh` from `GameCoreSection::draw`. Per-captain markers then
+localised it: slot 0 drew fully; slot 1 completed `Navi::draw`/`demoDraw`, then
+crashed between `[L12r] after draw` and `[L12r] after plate` with
+`plateptr id=1 plateMgr=0000000000000000` — i.e. **slot 1's `mPlateMgr` is null on
+the setup draw before `Navi::reset()` runs**. The second Navi is birthed in the
+`GameCoreSection` constructor (`gameCoreSection.cpp:1634`) but `init()/reset()`
+(which allocates `mPlateMgr`, `navi.cpp:653`) runs later in `finalSetup`
+(`gameCoreSection.cpp:1451-1454`), so the pre-`reset` setup draw reaches
+`refresh()` with a null plate.
+
+Fixes (native `dd17a33d`, the production head that changes the gate default):
+- `naviMgr.cpp` `ensureSecondNaviShapeObject()` now shares slot 0's
+  fully-initialised `PikiShapeObject` (option (c) of the brief): the fresh
+  uncached `Shape` crashed non-deterministically, and `PikiShapeObject::initOnce`
+  already shares one `AnimMgr` across different shapes, so a second `Shape` was
+  never the right model. Documented cosmetic coupling: both captains drive the
+  shared `mAnimatorA/B`.
+- `navi.cpp` `Navi::refresh` guards the null `mPlateMgr` (and `demoDraw` guards
+  `mNaviLightEfx`/`mNaviLightGlowEfx`), so the second captain renders from the
+  first setup draw.
+- `pc_p2_second_captain.cpp` `second_captain_live_allowed()` now returns `true`
+  (default on, still `PIKMIN_P2_SECOND_CAPTAIN`-request-gated); the
+  `PIKMIN_P2_SECOND_CAPTAIN_LIVE` fixture flip is gone.
+
+Evidence (default-on: only `PIKMIN_P2_SECOND_CAPTAIN=1`, no env flip):
+- `output/dsw/l12-out/two-captain-ppm.log:731` —
+  `P2_CAPTAIN_PPM saved=two-captains.ppm frame=150 captains=2`; the PPM
+  (`two-captains.ppm`, 5.4 MB, non-black, in-frame) visibly shows **both captains**
+  (two Olimar models) — converted to `two-captains.png`.
+- `output/dsw/l12-out/survivor-path.log:730` `P2_CAPTAIN_SURVIVOR_DOWN dead=0
+  survivor=1 plate=0 piki_mode_before=1 piki_mode_after=0 orima_dead=0 paused=0
+  active=1` (default-on, observed squad release); `:731` stage-end; `:732` PASS.
+- `output/dsw/l12-out/base-final.log`/`knockout-final.log` (single-captain,
+  `PIKMIN_P2_SECOND_CAPTAIN=0`): slot 0 unregressed, both PASS.
+
+### Task 2 — natural knockdown from a spawned Miurin (DONE)
+
+Lane 19's arena spawns a P1 Miurin (generator 221001). Its TAI throws
+`InteractBury(&teki,true,20.0f)` (`TAImiurin.cpp:559`) → `InteractBury::actNavi`
+(`navi.cpp:2622`) → `pc_p2_mamuta_bury_navi` (`pc_p2_mamuta_rules.cpp:69`). Staged
+the arena (Miurin + 10-red squad + installed Miulin bank) but **removed
+`p2-mamuta-rules.txt`** (the P2 rules make the bury damage-only, 5.0, no `Dead`)
+**and `p2-mamuta-actors.txt`** (so lane-19 `pc_p2_mamuta_setup` returns early
+instead of aborting on a bind mismatch). The frozen new scenario
+`--mamuta-natural` parks the captain at Miurin `+50` z and observes the source
+bury.
+
+Evidence (`output/dsw/l12-out/mamuta-natural.log`):
+- `:735` `P2_CAPTAIN_MAMUTA_ARMED actor=-150.0,30.0,1850.0 captain=... health=100.0 rules_off=1`
+- `:740` `P2_CAPTAIN_MAMUTA_BURY frame=125 health=80.0 state=19 hit=1 down=0`
+  (natural spawned Miurin bury, −20 = source `pcNaviHurt(20.0)`, state 19 Bury)
+- `:760` `P2_CAPTAIN_MAMUTA_BURY frame=288 health=0.0 state=29 hit=1 down=1`
+  → `:761` `PASS P2_CAPTAIN_RUNTIME` (state 29 = `NAVISTATE_Dead`).
+
+Deviation, stated honestly: the P1 `NaviBuryState` is an escapable, non-lethal
+state, so after each bury the fixture assists only the bury **exit**
+(`P2_CAPTAIN_MAMUTA_ESCAPE_ASSIST`, `transit(NAVISTATE_Walk)`) so the Miurin can
+land the next natural bury; the 5×20 damage down to Dead is the spawned actor's
+own `InteractBury`. The P2 source Miulin FSM (which would bury-to-kill in one
+sequence) remains lane 19's.
+
+### Native commits (slice 3b, base `a07b1e40`)
+
+1. `91911022` — merge `claude/p2-deepseek-wave-native` (clean; all receipt
+   branches kept).
+2. `d8e4ed4c` — render-share + default-on gate + two-captain PPM.
+3. `dee77625`, `87d8f2eb` — instrumentation (root-caused the null `mPlateMgr`).
+4. `dd17a33d` — **production head**: `mPlateMgr`/light guards, clean (no
+   instrumentation shipped).
+5. `02a1f19f`, `c20bd7cf`, `272d2638` — fixture-only (`--mamuta-natural`,
+   assisted bury exit, PPM at frame 150). Native head `272d2638`.
+
+Root commits: `58343ee2` (test run-PATH + preferred-tree fixes) and this section.
+
+### Build
+
+Production build at `dd17a33d`:
+```
+native=dd17a33d82bd798b34605bc2832b5b053e1df966 dirty=no
+sha256=a3638c2666f0b7f68c0a3589153188f2a74112f6f9759890ebc178233e6baf70
+ninja_n="ninja: no work to do."
+```
+`272d2638` is a fixture-only delta. Fixture `p2-captain-fixture-final`
+(provenance built, native head `272d2638`).
+
+### Six-gate table (slice 3b)
+
+Identity: **captain slot 0 (Olimar) — lane 12 shared captain/squad provider**
+(slot 1 now default-on). `OniKurage` (P2 id 72) is the lane-29 consumer.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS | output/dsw/l12-out/two-captain-ppm.log:731 (captains=2, default-on; two-captains.ppm shows both) | natural |
+| 2. Autonomous movement and animation | N/A | captains are player-controlled; no autonomous enemy FSM | N/A |
+| 3. Attacks and receivers | PASS | output/dsw/l12-out/mamuta-natural.log:740 (spawned Miurin InteractBury landed, health 100->80) | natural |
+| 4. Death and corpse | PASS | output/dsw/l12-out/mamuta-natural.log:760 (health=0.0 state=29 down=1) | natural |
+| 5. Actual transport and reward | N/A | captains carry no reward | N/A |
+| 6. Cleanup and re-entry | PASS | output/dsw/l12-out/base-final.log:731 (interrupted capture frees) and :732 (reload conserves) | natural |
+
+Bury-exit assist for gate 4 is documented in prose above (the damage is natural;
+only the non-lethal P1 bury exit is assisted).
+
+### Gate checker
+
+```
+py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE12_DEEPSEEK_HANDOFF.md
+```
+Output (exit 0, no refused PASS):
+```
+72 OniKurage (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation ignored [N/A]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   ignored [N/A]
+  6. cleanup_reentry    accepted [PASS]
+```
+
+### Tests
+
+```
+PIKMIN_NATIVE_ROOT=C:/Users/alari/pikmin-randomizer/output/dsw/native-l12 \
+  py -3.12 -m pytest tests/test_pikmin2_captain_slice3b.py tests/test_pikmin2_captain_live.py \
+    tests/test_pikmin2_captain_adapter.py tests/test_pikmin2_captain_squad_split.py -q
+# -> 8 passed
+```
+(`test_pikmin2_captain_slice3b.py` is new: render guard gone, gate default on,
+Miurin bury integrated. No lane/absolute paths; native resolved via
+`PIKMIN_NATIVE_ROOT` only.)
+
+### Subagent usage
+
+- `explore` "second-captain render crash root-cause": used as-is — compared slot-0
+  vs `ensureSecondNaviShapeObject` construction and warned the uncached-`Shape`
+  comment was wrong; the crash needed a real backtrace (which I then took with
+  gdb + markers). Narrowed the fix space.
+- `explore` "lane-19 Mamuta arena recipe": used as-is — gave the arena/install
+  recipe, the `P2_MAMUTA_ACTORS_1` sidecar, and the crucial correction that the
+  P2 rules make the bury damage-only (so the natural knockdown needs the rules
+  absent). Directly enabled task 2.
+- `general` "slice-3b test scaffolding": used as-is with two corrections — the
+  new `tests/test_pikmin2_captain_slice3b.py` was adopted after fixing its
+  tree-iteration to the preferred (PIKMIN_NATIVE_ROOT) tree; I also fixed the
+  adapter/squad tests to put MinGW on PATH for the **run** (not just the compile).
+
+Net: ~40-50 minutes saved.
+
+### Reproduction
+
+```bash
+export PATH="/c/msys64/mingw64/bin:$PATH"; export PIKMIN_P2_ROOM_WINDOW=960x540; export PYTHONUTF8=1
+FX="C:/Users/alari/pikmin-randomizer/output/dsw/p2-captain-fixture-final/fixture.exe"
+# two captains drawn, gate default on:
+cd C:/Users/alari/pikmin-randomizer/output/dsw/l12-out/29aa57121d014e72ad96464855620d1d
+PIKMIN_P2_SECOND_CAPTAIN=1 py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l12 -- "$FX" --experimental-pikmin2-room --two-captain-ppm
+# natural Miurin knockdown (stage the arena without the rules/actors sidecars):
+cd C:/Users/alari/pikmin-randomizer/output/dsw/l12-out/4e46d0933151423ea47ab4c9a389964d
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l12 -- "$FX" --experimental-pikmin2-room --mamuta-natural
+```
