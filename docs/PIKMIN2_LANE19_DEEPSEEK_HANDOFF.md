@@ -12,12 +12,12 @@ prior handoff whose central "health-floor/regression" claim was wrong.
 ## Commits, bases and build provenance
 
 - Root base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`; root head
-  `0e2113e5f3de135c15c3aa16fbb53f18943754b0`. Ordered lane19 root commits
+  `45d7cc1c`. Ordered lane19 root commits
   (oldest→newest): `f4c29aa6` (static anchors), `1284bcc9` (revisit fixture/runner/
   validator/handoff), `f1c7b9df` (captain-down + ring/park natural kill), `6fc3469a`
   (handoff corrections), `03e74c69` (slice2 natural kill+carry+Pod receipt),
   `fd8bf727` (review-fix 2 squad 14 + re-ring 60), `0e2113e5` (slice3 natural
-  revisit). Dirty state: clean.
+  revisit), `45d7cc1c` (handoff commits/build provenance for slice3). Dirty state: clean.
 - Native base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`; native head
   `b805d9c626e4f4558c95aef7cac311a5d9a2068f` (clean). No lane19 native commits:
   the Mamuta native module (`pc_p2_mamuta*`, `pc_p2_mamuta_rules*`) is already in
@@ -106,7 +106,7 @@ deliver because the bury planted the squad below 8 carriers.
   3. attacks_receivers  accepted [PASS]
   4. death_corpse       accepted [PASS]
   5. transport_reward   accepted [PASS]
-  6. cleanup_reentry    ignored [PARTIAL]
+  6. cleanup_reentry    accepted [PASS]
 ```
 
 ## Build and run evidence
