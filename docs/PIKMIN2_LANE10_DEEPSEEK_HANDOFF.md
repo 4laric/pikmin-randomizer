@@ -124,6 +124,7 @@ f34abccf lane10: review fixes - ElecHiba warning override + two-cluster scene (#
 1c6ba3ce lane10: review fixes 2 - denki-lethal excludes gas-hit targets (#408)
 11fb136c lane10 (owner lane22 pc_p2_hiba): add hazard-count probe for gate-6 re-entry (#408)
 762ed2e4 lane10: merge claude/p2-deepseek-wave-native (fix3 audit base; +222 wave commits incl. lane 22 Otakara + lane 14 ElecBug)
+cf2945b2 lane10: fast-forward to wave tip (slice 3: lane 22 Otakara Gas/Elec/Bomb slice 4 + lane 06 stage-seam delivery reset)
 ```
 
 Root (base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`), clean:
@@ -140,6 +141,10 @@ b99fba2 lane10: slice 2 - gate-6 re-entry proof, receiver contract doc, PIKMIN_N
 e4ec437 lane10: slice 2 handoff (#408)
 1e1c673 lane10: review fixes 3 - wave-native audit, ElecBug denki run, staged gate-6, DEBUG-log note (#408)
 427da25 lane10: review fixes 3 handoff (commits/build evidence) (#408)
+683c2ff lane10: review fixes 3 - commit list completeness (#408)
+3c30cdc lane10 (integrator doc fix): contract doc names the real PRINT routing (sysCon via _Print) (#171)
+cc8b8b3 lane10 (integrator): untrack the local checker/ingest copies (#171)
+fdf1483 lane10: slice 3 - receiver contract as checked test (#408)
 ```
 
 Dirty state: both worktrees clean at handoff (build dirs, fixture and run
@@ -446,3 +451,75 @@ Subagent usage (fix3):
    Result **used as-is**. Saved ~10 min.
 
 Net: ~55 min of parallel work off the critical path.
+
+## Slice 3
+
+The receiver contract as a checked test, Hiba's real re-entry, and a second
+consumer. Native re-merged to wave tip `cf2945b2` (lane 22 slice 4 Otakara
+Gas/Elec/Bomb binding + lane 06 stage-seam delivery reset landed).
+
+1. **Contract -> checked test (DONE).** `tests/test_pikmin2_lanes10_receiver_contract.py`
+   (`PIKMIN_NATIVE_ROOT`-discovered native root) greps the three emitters —
+   `pc_p2_otakara.cpp`, `pc_p2_elecbug.cpp`, `pc_p2_hiba.cpp` (the only
+   `pc_port/*.cpp` modules that call `p2_emitter_accepts`/`stimulate(Interact<X>)`)
+   — and asserts each consults the species matrix (`p2_emitter_accepts(` or
+   `p2_species_immune(`), constructs an `Interact<Element>`, and logs a DISTINCT
+   accepted + immune marker pair. A negative self-test (`module_passes` helper)
+   proves a forked-matrix emitter fails. 4 passed. The contract doc
+   (`docs/PIKMIN2_LANE10_RECEIVER_CONTRACT.md`) now names this test and the
+   audited native head `cf2945b2` next to its line citations.
+2. **Hiba gate 6 real re-entry (BLOCKED).** The host seam exists and is the
+   correct consume-point — `pc_p2_reset_all_teki()` is called from
+   `GameCoreSection::exitStage` (`gameCoreSection.cpp:893`), and
+   `pc_p2_hiba_setup()` runs from `finalSetup` via `pc_p2_preview_setup`
+   (`gameCoreSection.cpp:1439` -> `pc_p2_preview.cpp:249`), with
+   `pc_p2_scene_begin()`/`pc_p2_scene_generation()` (`gameCoreSection.cpp:1441`)
+   the new-scene readiness signal (no runtime caller yet). But the Hiba hazards
+   are room-preview-opt-in: `pc_p2_hiba_setup()` returns early when
+   `!pc_pikipelago_room_preview()` (`pc_p2_hiba.cpp:293`), and the real new-scene
+   fixture (`scripts/p2_new_scene_fixture.cpp`) drives the campaign path
+   (`--randomizer-seed`, `forceDayEnd` -> MapSelect), where that gate is false.
+   So the hazards never arm on the campaign new-scene path, and the room-preview
+   mode has no day-end/map-select. Reaching a real host re-entry needs lane 07's
+   slice-3 "host-path teardown" (still landing) or a room-preview scene reload; the
+   current gate-6 evidence therefore stays `PASS (staged seam)` (fixture calls the
+   same `pc_p2_reset_all_teki`/`pc_p2_hiba_setup` seam functions the host does).
+3. **Second consumer (PARTIAL).** Lane 22 Otakara Gas/Elec receivers are on the
+   merged native (`pc_p2_otakara.cpp` `dweevilAccepts` :209-212,
+   `doDischarge` `stimulate(InteractGas/InteractDenki)` :253/:257), and lane 22's
+   own natural runs prove them (`output/dsw/l22-out/s4-GasOtakara/.../native.log:778`
+   `P2_OTAKARA_DISCHARGE_HIT ... source_id=61 ... InteractGas accepted=1
+   target_state=36(Panic)`; `s4-ElecOtakara/...:778` `... source_id=62 ...
+   InteractDenki accepted=1 target_state=35(DenkiDying)`). I did not re-run the
+   Otakara Gas/Elec arena from this root: the `--species` (Gas/Elec) harness is on
+   lane 22's `deepseek/p2-l22` slice-4 branch (the wave root harness is Fire-only),
+   so re-running would fork lane 22's harness. The receiver-side gates it proves
+   (Gas -> `PIKISTATE_Panic` 36, Elec -> `PIKISTATE_DenkiDying` 35) are already
+   natural-proven by my hiba run7 and the ElecBug denki run (fix3), so the receiver
+   contract is itself natural; only the Otakara-specific emitter rerun is lane 22's.
+
+Reproduction (slice 3 native `cf2945b2` / root `HEAD`):
+
+```powershell
+py -3.12 output/deepseek-wave/build_lane.py l10
+PIKMIN_NATIVE_ROOT="C:/Users/alari/pikmin-randomizer/output/dsw/native-l10" py -3.12 -m pytest tests/test_pikmin2_lanes10_receiver_contract.py tests/test_pikmin2_hiba_native.py tests/test_pikmin2_lanes_1012_policies.py -q
+```
+
+Subagent usage (slice 3):
+
+1. **`explore` — source audit** of the three emitters' matrix/deliver/marker call
+   sites + confirmation the module list is exactly {otakara, elecbug, hiba}.
+   Result **used as-is**: became the contract test's assertions and the doc's
+   file:line citations. Saved ~25 min.
+2. **`explore` — candidate inventory** of the scene re-entry seam
+   (`pc_p2_reset_all_teki` @ exitStage, `pc_p2_scene_begin/generation` @
+   finalSetup, the working `scripts/p2_new_scene_fixture.cpp`) and the Otakara
+   harness/assets. Result **used as-is**: established item (2)'s precise blocker
+   (room-preview gate vs campaign path) and located lane 22's Gas/Elec evidence.
+   Saved ~30 min.
+3. **`general` — contract test**: wrote
+   `tests/test_pikmin2_lanes10_receiver_contract.py` with the matrix/deliver/
+   markers helpers + negative forked-matrix self-test (4 passed). Result **used
+   as-is**. Saved ~20 min.
+
+Net: ~75 min of parallel reading/testing off the critical path.

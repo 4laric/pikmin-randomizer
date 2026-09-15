@@ -7,6 +7,12 @@ receiver side is this table. Every receiver routes immunity through the lane-11
 species matrix (`pc_port/pc_p2_species_policy.h`), so an emitter and its receiver
 cannot disagree about who is immune.
 
+> Audited against the native worktree at wave tip `cf2945b2` (line citations in
+> this doc are that revision; the wave moves, so re-check before quoting). The
+> contract below is **enforced by `tests/test_pikmin2_lanes10_receiver_contract.py`**
+> (greps every emitter module for the matrix + deliver + accepted/immune-marker
+> pattern, so a consumer that forks the matrix fails CI).
+
 ## Receiver table (what to stimulate, and what happens)
 
 | Element | Construct and stimulate | Immunity gate (species matrix) | Reaction state | Receiver log |
@@ -85,7 +91,8 @@ For the receiver side to be provable as natural (not injected), the family
 emitter must deliver the element through its own FSM/volume to a live Pikmin and
 log, per delivery: the target species + the receiver's accept/reject and the
 resulting Pikmin state; and, for immunity, one marker per rejected immune species
-in volume. These emitter-owned markers are the ONLY reliable signal in a GL
-build, because the receiver's own `P2_RECV_*` lines are `PRINT` (compiled out —
-see the note above). The ElecBug `P2_ELECBUG_*`, Otakara
+in volume. These emitter-owned markers are the ONLY reliable signal the stdout
+capture sees: the receiver's own `P2_RECV_*` lines are `PRINT` (routed to the
+in-game console `sysCon` via `_Print` under `PIKI_PC_PORT`, not the stdout capture
+— see the note above). The ElecBug `P2_ELECBUG_*`, Otakara
 `P2_OTAKARA_DISCHARGE_*`, and Hiba `P2_HIBA_*` logs are the model.
