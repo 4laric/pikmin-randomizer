@@ -87,11 +87,13 @@ GATES = ('identity_spawn', 'movement_animation', 'attacks_receivers',
          'death_corpse', 'transport_reward', 'cleanup_reentry')
 GATE_STATUS = {
     'identity_spawn': 'pass: source_id=16, birth XYZ matched, real Egg (lane-20 P2Egg) born on bind',
-    'movement_animation': 'blocked: wisp never leaves Stay at spawn (-150,30,1850); position goes NaN on the '
-                          'movement pass, so Appear/Move/Disappear cannot be observed (placement-local, probed), '
-                          'not a missing FSM',
+    'movement_animation': 'resolved: the private arena\'s un-suppressed "P1 Honeywisp" control (203002, '
+                          'TEKI_Qurione cloned from a Chappy template) drove a NaN position that blocked the '
+                          'FSM; with that row removed the wisp flies finite (stay->appear->move observed on '
+                          'base and lane builds). The full disappear/stay and drop->dead legs still need a '
+                          'Pikmin contact / faster locomotion and remain to be captured.',
     'attacks_receivers': 'source-backed N/A: Honeywisp has no attack; contact trigger is flyCollisionCallBack',
-    'death_corpse': 'untested: drop->dead fly-away cannot be reached while movement is blocked',
+    'death_corpse': 'untested: drop->dead fly-away not yet captured (needs a Pikmin drop trigger)',
     'transport_reward': 'partial: attach + real Egg born observed live (born=1); '
                         'release/break/item-birth are contract-only (never observed live)',
     'cleanup_reentry': 'untested: spawn-index flip + manager recreate',
@@ -132,6 +134,7 @@ def validate_lifecycle(text):
     if not isinstance(text, str):
         raise ValueError('Expected a native log string')
     states = re.findall(r'P2_QURIONE_STATE generator=\d+ state=(\w+)', text)
+    pos_nan = bool(re.search(r'P2_QURIONE_POS .*\b(nan)\b', text))
     seen = set(states)
     egg_events = set(re.findall(r'P2_QURIONE_EGG generator=\d+ action=(\w+)', text))
     drops = re.findall(r'P2_QURIONE_EGG generator=\d+ action=drop\b', text)
@@ -157,9 +160,16 @@ def validate_lifecycle(text):
         egg_drop='drop' in egg_events,
         exactly_one_drop=len(drops) == 1,
         no_extinction=not re.search(r'Extinction', text, re.IGNORECASE),
+        no_movement_nan=(not pos_nan),
         reward_real=reward_real,
     )
     scalar = {k: v for k, v in checks.items() if isinstance(v, bool)}
+    limitations = ['Bounded host gravity approximates the Egg fall; there is no '
+                   'physical P1 Egg creature, so the released Egg is a lane-20 policy '
+                   'object whose break births real items. Mitite groups downgrade to '
+                   'nectar (no P1 Mitite manager).']
+    if pos_nan:
+        limitations.append('movement position NaN (blocked)')
     return dict(passed=all(scalar.values()), passed_real=all(reward_real.values()),
                 checks=checks,
                 unmeasured=['glow/appear/disappear effect fidelity',
@@ -167,10 +177,7 @@ def validate_lifecycle(text):
                             'spawn-index flip after a full disappear',
                             'cleanup/re-entry',
                             'spicy/bitter spray births (first-spray demo flag)'],
-                limitations=['Bounded host gravity approximates the Egg fall; there is no '
-                             'physical P1 Egg creature, so the released Egg is a lane-20 policy '
-                             'object whose break births real items. Mitite groups downgrade to '
-                             'nectar (no P1 Mitite manager).'])
+                limitations=limitations)
 
 
 if __name__ == '__main__':

@@ -196,7 +196,12 @@ lane-20 `P2Egg` policy (`pc_p2_egg_hazard.*`) and births the source drop table o
 break (nectar via `OBJTYPE_Water`, pellets via `pelletMgr`, mitites->nectar).
 See [the lane handoff](PIKMIN2_LANE15_DEEPSEEK_HANDOFF.md). Gate 5 is
 `partial`: the `action=attach` + real Egg born (`born=1`) path is observed live;
-the release/break/item-birth path is contract-only at the time this update was
-written, and the natural drop->break->birth observation remains (see the DeepSeek
-handoff for the current fix1 control runs and first-NaN localization, which is no
-longer attributed to a `MapMgr::traceMove` regression).
+the release/break/item-birth path is contract-only.
+
+The earlier movement NaN was **not** a `MapMgr::traceMove` regression nor shared
+engine/Lane-07 code: it was caused by this lane's private arena, which staged an
+un-suppressed "P1 Honeywisp" control row (203002, `TEKI_Qurione` cloned from a
+Chappy template). Removing that row restores finite flight (`stay -> appear ->
+move`) on both the unmodified base `b805d9c6` and the lane build. The full
+disappear/stay and drop->dead->Egg-break legs still need a Pikmin drop trigger
+and remain a follow-up.

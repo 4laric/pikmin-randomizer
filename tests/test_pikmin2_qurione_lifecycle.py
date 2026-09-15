@@ -137,6 +137,15 @@ class QurioneLifecycleTests(unittest.TestCase):
         self.assertFalse(result['checks']['no_extinction'])
         self.assertFalse(result['passed'])
 
+    def test_validate_rejects_nan_movement(self):
+        bad = GOOD_LOG + '\nP2_QURIONE_POS generator=160001 state=stay clip=appear1 phase=1.00 x=nan y=nan z=nan'
+        result = life.validate_lifecycle(bad)
+        self.assertFalse(result['checks']['no_movement_nan'])
+        self.assertFalse(result['passed'])
+
+    def test_validate_accepts_finite_movement(self):
+        self.assertTrue(life.validate_lifecycle(GOOD_LOG)['checks']['no_movement_nan'])
+
     def test_validate_rejects_non_text(self):
         with self.assertRaises(ValueError):
             life.validate_lifecycle(b'not text')
