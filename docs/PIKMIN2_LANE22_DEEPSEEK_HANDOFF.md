@@ -503,3 +503,156 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l2
     --seconds 150 --scenario natural
 ```
 
+
+## Fix 3 — review of slice 3 (receipt fork, stale probe, die-seam order)
+
+Review feedback on slice 3 found one blocking defect: `pc_p2_otakara` opened the
+lane-06 receipt host with its own `p2-otakara-receipts.txt` file, which replaces
+the shared single ledger (`pc_p2_receipt_host` is a process-wide unique_ptr), so
+a co-staged flora/kogane receipt would be redirected and `pc_p2_receipt_host_close()`
+from another module could silently disable otakara grants. This slice removes the
+fork entirely and routes the otakara corpse through the shared Pod economy.
+
+### What changed (per review item)
+
+1. **Receipt fork removed (blocking).** `pc_p2_otakara_receipt` is now a
+   pure lookup `bool pc_p2_otakara_receipt(PelletView*, unsigned&)`: no
+   `pc_p2_receipt_host_open`, no `receiptSeed`/"l22-receipt", no `receiptLogged`.
+   In `pc_p2_preview.cpp`, the delivery hook no longer short-circuits; an additive
+   `else if` branch beside mamuta's builds
+   `receipt="corpse:"+pc_p2_cave_receipt_prefix()+"otakara:"+generator` with
+   `value=corpseValue` and flows through the existing `economy.credit` →
+   `P2_POD_RECEIPT id=corpse:otakara:349001`.
+2. **Stale probe dropped.** `pc_p2_otakara_forget` no longer prints `stale` (it
+   was `actors.count(key)` immediately after `erase`, always 0). The marker is
+   `P2_OTAKARA_FORGET … registered=1 count=<after>`; the authoritative
+   zero-registration probe is the fixture's `P2_OTAKARA_SEAM_OBSERVED registered=0`.
+3. **Die-seam order.** `pc_p2_otakara_died(this)` now runs after
+   `mDeadState = 1` inside `BTeki::die()`, so the `P2_OTAKARA_DEAD … mDeadState=1`
+   marker reflects the actual committed state.
+4. **Gate 5 relabel.** `transport_reward` is `pass_assisted` (not `pass`) when the
+   labelled carry assist fired; the free-recruitment attempt is named
+   (`P2_OTAKARA_CARRY_FREE carry=…`) and reported honestly.
+5. **Commit list + reproduction.** Slice-3 root commits `3a40ae5` and `d401dd8`
+   are now listed (below); the slice-3 natural evidence run predates them (both
+   are root-Python only). The reproduction and `_prepare_pod` require
+   `--converted`/`--pod-dir` (converted room `pikmin2-room105` + `pod.mod`), and
+   the fixture no longer dereferences the corpse after delivery (pellet-manager
+   membership guard).
+
+### Ordered commits (both branches)
+
+**Native** (`deepseek/p2-l22-native`, base `657d59c4`):
+- `ef252ec4` — "lane22: review fixes 3 — pod receipt branch beside mamuta + die-seam hook order (preview/tekibteki) (#447)".
+- `7a4b0824` — "lane22: review fixes 3 — pc_p2_otakara pure-lookup receipt, drop stale forget probe (#447)".
+
+**Root** (`deepseek/p2-l22`, base `d401dd8`):
+- `3a40ae5` — "lane22: slice 3 handoff + pod-prepare fixes (little-endian, onion record) (#447)" (predates fix3; root-Python only).
+- `d401dd8` — "lane22: require --converted/--pod-dir (no lane paths in code) (#447)" (predates fix3; root-Python only).
+- `e338b6d` — "lane22: review fixes 3 — pod receipt, pure-lookup hook, corpse-present guard, carry label (#447)".
+- (the fix3 handoff commit, immediately after `e338b6d`) — "lane22: review fixes 3 — handoff (pod receipt + gate relabel + reproduction deps) (#447)".
+
+### Build evidence
+
+```text
+native=7a4b0824b3003442c9b15b6202ec9dc1740f6390  sha256=6E6D3EB2601335C52E7EA1FA8F6FEB99AFB2EE4C2E5D1CED8E0839A5EBD7592F  ninja_n="ninja: no work to do."
+```
+
+Private fixture `output/dsw/l22-fixture-fix3/` (status `built`), `fixture.exe`
+SHA-256 `CAEA6DC7388A896F1A75BFAE7DE3A2C571ECA54CF7068E2D47DEC6156E1DCF73`.
+
+### Fixture adoption evidence (fix3 natural Pod run)
+
+`output/dsw/l22-out/fix3-natural/7db57612df034199b22f13cddc0b1cad/` — exit 0 in
+~41 s. `Experimental preview window set to 960x540 windowed and centered`;
+`P2_POD_READY treasure=dia_a_red value=180 weight=15 capacity=25 pokos=0`;
+`P2_OTAKARA_SQUAD red=19 blue=1 registered=1`; `P2_OTAKARA_DEPLOY free_squad=20`;
+no extinction.
+
+Key markers (post-fix):
+
+```text
+P2_OTAKARA_DEAD generator=349001 source_id=59 mDeadState=1
+P2_OTAKARA_CORPSE generator=349001 pellet=1 state=0
+P2_OTAKARA_ASSIST assigned=16
+P2_OTAKARA_CARRY_FREE carry=1
+[Pikipelago] P2_POD_RECEIPT id=corpse:otakara:349001 value=2 new=1 pokos=2 seeds=0
+P2_OTAKARA_FORGET generator=349001 registered=1 count=0
+P2_OTAKARA_SEAM_OBSERVED generator=349001 registered=0 count=0
+PASS P2_OTAKARA_RUNTIME natural_death=1 corpse=1 receipt=1 forget=1
+```
+
+### Six arena gates (fix3, natural vs injected)
+
+| Gate | Result | Evidence |
+|---|---|---|
+| 1 Exact identity and spawn | **PASS (natural)** | `P2_OTAKARA_BIND … source_id=59 stimulus=InteractFire visual_only=0`; `P2_ENEMY_READY species=FireOtakara … health=150.0 … source_FSM=implemented attack=elemental_discharge` |
+| 2 Autonomous movement and animation | **PASS (natural)** | `P2_OTAKARA_STATE … state=flick` |
+| 3 Attacks and receivers | **PASS (natural emitter, real receiver)** | `P2_OTAKARA_DISCHARGE … applied=1 immune=…`; `…IMMUNE … colour=red` (emitter-side); `…HIT … colour=blue accepted=1` |
+| 4 Death and corpse | **PASS (host death seam + corpse)** | nine named `P2_OTAKARA_HIT … interaction=InteractAttack attacker=red` 150→0 → `P2_OTAKARA_MODULE_DEAD` → `P2_OTAKARA_DEAD mDeadState=1` (BTeki::die hook, after the assignment) → `P2_OTAKARA_CORPSE pellet=1` |
+| 5 Actual transport and reward | **PASS (host receipt; carry fixture-assisted, labelled)** | `P2_POD_RECEIPT id=corpse:otakara:349001 new=1` from the shared Pod economy. Carry: free recruitment did not auto-latch a carrier (`assisted=true`); the labelled `P2_OTAKARA_ASSIST assigned=16` set the native Transport action, which latched `P2_OTAKARA_CARRY_FREE carry=1` and hauled to the Pod |
+| 6 Cleanup and re-entry | **PASS (lane-07 seam forget); re-entry UNTESTED** | `P2_OTAKARA_FORGET … registered=1 count=0` (from `pc_p2_forget_teki` in doKill) → `P2_OTAKARA_SEAM_OBSERVED registered=0 count=0`; scene reload/recycled-address rebind not driven |
+
+Injected interventions (labelled): none in the primary run. The free-squad
+deployment and the one-time Transport assist are engineered stimuli (the assist
+is reported `assisted=true`). The FSM, emitter, receiver, all damage drops,
+`BTeki::die()`/`dieSoon()`/`becomePellet()`, the shared Pod receipt and the
+lane-07 forget are native.
+
+### Natural-haul attempt (item 4)
+
+To test natural free recruitment, the fixture deploys the 20-Pikmin squad in
+FreeMode around the corpse and waits 600 updates for any Pikmin to latch
+(`getStickObject()==corpse`, logged as `P2_OTAKARA_CARRY_FREE`). Result: the
+P1 host has no idle-auto-carry, so no carrier latched during the grace period
+and the labelled Transport assist fired; `P2_OTAKARA_CARRY_FREE carry=1` then
+confirms the native Transport action latched a carrier and completed the haul.
+A fully natural haul would need a real throw input (player), which the
+programmatic fixture cannot synthesise. Reported accordingly (`pass_assisted`).
+
+### Tests
+
+```
+PIKMIN_NATIVE_ROOT=C:/Users/alari/pikmin-randomizer/output/dsw/native-l22 \
+  py -3.12 -m pytest tests/test_pikmin2_otakara_native.py tests/test_pikmin2_otakara_runtime.py -q
+# 19 passed
+
+py -3.12 -m pytest tests/test_pikmin2_otakara_native.py tests/test_pikmin2_otakara_runtime.py -q
+# 11 passed, 8 skipped (native source-read tests skip cleanly without PIKMIN_NATIVE_ROOT)
+```
+
+- `validate()` now require `receipt` as `P2_POD_RECEIPT id=corpse:…otakara:349001`
+  (not the old `P2_OTAKARA_ONION_RECEIPT … ledger=onion`) and `forget` without
+  the `stale` field; the sample-log tests strip exactly these markers.
+- `test_pikmin2_otakara_native.py` pins the pure-lookup signature
+  (`pc_p2_otakara_receipt(pellet->mPelletView` in `pc_p2_preview.cpp`) and the
+  `P2_OTAKARA_FORGET … count=%lu` string.
+
+### Remaining blockers (provider lane named)
+
+- **Scene re-entry / recycled-address rebind**: lane 07 lifetime harness.
+- **Water/Gas/Elec discharge runtime**: lanes 10/11 receivers wired; only
+  Fire/`InteractFire` exercised.
+- **BombOtakara (93) real payload**: lane 20 shared Bomb blast contract.
+- **Natural (throw) carry**: player-input only; the labelled fixture Transport
+  assist is the programmatic equivalent and is reported honestly.
+
+### Reproduction (fix3, natural Pod scenario)
+
+Requires the converted room (`--converted <room105>`) and `pod.mod`
+(`--pod-dir <pod>`); `_prepare_pod` raises without both.
+
+```powershell
+$env:PYTHONUTF8='1'
+$env:PIKMIN_P2_ROOM_WINDOW='960x540'
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l22 -- `
+  py -3.12 -m experimental.pikmin2_otakara_runtime run `
+    --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" `
+    --imported "C:/Users/alari/pikmin-randomizer/output/dsw/l22-assets" `
+    --converted "C:/Users/alari/pikmin-randomizer/output/dsw/l32-out/pikmin2-room105" `
+    --pod-dir "C:/Users/alari/pikmin-randomizer/output/dsw/l11-out/pod" `
+    --output "C:/Users/alari/pikmin-randomizer/output/dsw/l22-out/fix3-repro" `
+    --exe "C:/Users/alari/pikmin-randomizer/output/dsw/l22-fixture-fix3/fixture.exe" `
+    --seconds 150 --scenario natural
+```
+
