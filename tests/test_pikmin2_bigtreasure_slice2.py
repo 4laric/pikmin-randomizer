@@ -17,6 +17,9 @@ _BOOL_KEYS = (
     'handled_set_held',
     'phase_advanced',
     'weapon_count_dropped',
+    'ordinary_attack_started',
+    'ordinary_attack_emitted',
+    'natural_drop',
 )
 
 
@@ -26,9 +29,10 @@ def test_synthetic_log_reports_all_true():
         'P2_BIGTREASURE_ATTACK_EMIT weapon=elec nodes=3',
         'P2_BIGTREASURE_RECV weapon=elec target=piki species=2 accepted=1',
         'P2_BIGTREASURE_RECV weapon=fire target=piki species=1 accepted=0',
-        'P2_BIGTREASURE_SLICE2_HANDLED first=1 second=0',
+        'P2_BIGTREASURE_RECV_HELD weapon=elec target=piki species=2',
         'P2_BIGTREASURE_FSM phase=Stay weapons=4 clip=0',
         'P2_BIGTREASURE_FSM phase=Attack weapons=4 clip=1',
+        'P2_BIGTREASURE_DROP_INGRESS weapons=4->3 injected=0',
         'P2_BIGTREASURE_FSM phase=DropItem weapons=2 clip=2',
         'P2_BIGTREASURE_FSM phase=PreAttack weapons=2 clip=3',
         'some unrelated log line',
@@ -59,6 +63,12 @@ def test_received_without_fsm_drop_reports_no_drop():
     assert result['weapon_count_dropped'] is False
 
 
+def test_natural_drop_false_when_injected():
+    text = 'P2_BIGTREASURE_DROP_INGRESS weapons=4->3 injected=1\n'
+    result = validate_slice2(text)
+    assert result['natural_drop'] is False
+
+
 def test_bare_boot_sequence_drops_weapon_without_advancing():
     text = (
         'P2_BIGTREASURE_FSM phase=Stay weapons=4 clip=0\n'
@@ -69,10 +79,11 @@ def test_bare_boot_sequence_drops_weapon_without_advancing():
     assert result['phase_advanced'] is False
 
 
-def test_handled_set_not_held_when_second_is_one():
-    text = 'P2_BIGTREASURE_SLICE2_HANDLED first=1 second=1\n'
-    result = validate_slice2(text)
-    assert result['handled_set_held'] is False
+def test_handled_set_held_when_recv_held_present():
+    assert validate_slice2('P2_BIGTREASURE_RECV_HELD weapon=elec target=piki species=2\n')[
+        'handled_set_held'] is True
+    assert validate_slice2('P2_BIGTREASURE_RECV weapon=elec target=piki species=2 accepted=1\n')[
+        'handled_set_held'] is False
 
 
 def test_crlf_and_whitespace_tolerant():
