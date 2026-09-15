@@ -24,7 +24,8 @@ from experimental.pikmin2_enemy_roster import (
     resolve_ids,
     snapshot_payload,
 )
-from experimental.pikmin2_seed_bridge import SeedBridgeError, resolve_admitted_layout
+from experimental.pikmin2_seed_bridge import SeedBridgeError, resolve_placement_layout
+from randomizer.seed import generate
 
 # Two distinct "source" identities: Frog=17 (fully passed) and Snek=41 (one
 # open gate). Exactly one may satisfy the contract, so exactly one may seed.
@@ -81,14 +82,25 @@ def _two_identity_roster():
     return _roster({"17": _full_frog(), "41": _partial_snek()})
 
 
+def placement_document_accepting_frog():
+    """Minimal lane 04 document granting Frog one legal, accepted ground slot."""
+    return {
+        "schema": "p2-placement-v1",
+        "slots": [{"uid": 401, "label": "frog-slot", "stage": 1, "terrain": "ground",
+                   "radius": 300.0, "evidence": {"xyz": True, "terrain": True, "route": True}}],
+        "profiles": [{"identity": "Frog", "terrains": ["ground"], "accepted_gates": ["xyz"]}],
+    }
+
+
 def test_fully_passed_identity_is_the_whole_seed_pool():
     roster = _two_identity_roster()
-    # Froghas natural PASS on gates 1-4 + 6 and a cited receipt for gate 5.
+    # Frog has natural PASS on gates 1-4 + 6 and a cited receipt for gate 5.
     contract = admission_contract(roster)
     assert contract["admitted"] == [17]
     assert 41 in contract["blocking"]
-    # The seed bridge's product entry point reads that exact pool.
-    layout = resolve_admitted_layout("seed-l02", "Player1", ("gen-a", "gen-b", "gen-c"), roster)
+    # The real seed path (randomizer.seed.generate -> resolve_placement_layout)
+    # reads that exact pool.
+    layout = resolve_placement_layout("seed-l02", "Player1", placement_document_accepting_frog(), roster)
     assert {binding["source_id"] for binding in layout["bindings"]} == {17}
     assert all(binding["enum_name"] == "Frog" for binding in layout["bindings"])
 
@@ -109,11 +121,12 @@ def test_stripping_receipt_drops_identity_from_seed_pool():
     assert admitted_ids(roster) == []
     assert "transport_reward" in admission_contract(roster)["blocking"][17]
     with pytest.raises(SeedBridgeError):
-        resolve_admitted_layout("seed-l02", "Player1", ("gen-a", "gen-b", "gen-c"), roster)
+        resolve_placement_layout("seed-l02", "Player1", placement_document_accepting_frog(), roster)
 
 
 def test_real_ledger_seed_pool_is_deny_by_default():
     roster = load_and_validate()
     assert admitted_ids(roster) == []
+    # The product generator fails closed on the real, unadmitted ledger.
     with pytest.raises(SeedBridgeError):
-        resolve_admitted_layout("seed-l02", "Player1", ("gen-a", "gen-b", "gen-c"), roster)
+        generate("seed", p2_enemies=True, p2_placement=placement_document_accepting_frog())
