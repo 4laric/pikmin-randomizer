@@ -398,3 +398,51 @@ receipt exists per lane 06 ordinary-vs-Pod split).
   placeholder-row regression I caught when running `--write-admission`).
   Net: all three materially shortened the read-heavy work; the general agent's
   scaffold was kept and only lightly corrected.
+
+## Fix 3
+
+Review corrections to slice 3 (items 1-6; deny-by-default still holds, still no
+identity admitted).
+
+### API note (item 6)
+
+The brief described the admission entry point as `admit(identity, evidence_row)`;
+the delivered API is `admission_contract(roster)` (whole-ledger) plus
+`admission_requirements(entry)` (single-identity gap report); the write side is
+`write_admission(roster, path)`, with `admitted_ids`/`require_admitted` deriving
+from the contract.
+
+### Changes
+
+- `--admit-check <id>` (int, repeatable) added to the audit: prints
+  `admission_requirements(entry)` (or `["role"]`/`["excluded"]`/`["unknown"]`) and
+  exits 1 when any checked id is blocked.
+- `admission_requirements` now *enforces* natural PASS instead of assuming it:
+  a PASS whose row notes/eligibility_reason match
+  `inject|proxy|fixture-only|forced|vehicle|visual|host|display` is refused as
+  `<gate>:injected`; the recipient probe (Sokkuri all-PASS + injected notes +
+  `proxy: forced Onion suck` receipt) blocks instead of admitting.
+- `delivery_receipt` is validated by shape: blank -> `transport_reward`, arbitrary
+  string -> `transport_reward:invalid_receipt`; only an `onion:`/`corpse:`/`receipt:`
+  key or a doc/log citation currently admits.
+- Added module constants `NONNATURAL_MARKERS`, `RECEIPT_KEY_PREFIXES`,
+  `RECEIPT_CITATION_MARKERS`, `EVIDENCE_FIELDS`.
+- `write_admission` fresh path now copies the `EVIDENCE_FIELDS` schema block and
+  the merge path drops the no-op `eligibility = entry.eligibility` rewrite.
+- Removed the scaffold "does not exist yet" note from the admission-contract test
+  docstring.
+
+### Tests behind the 143
+
+`tests/test_pikmin2_admission_contract.py` (15), `tests/test_pikmin2_enemy_roster.py`
+(21), `tests/test_pikmin2_roster_coverage.py` (14), `tests/test_pikmin2_roster.py`
+(3), `tests/test_pikmin2_seed_bridge.py` (16), `tests/test_pikmin2_seed_generation.py`
+(~9), `tests/test_p2_placement.py`, `tests/test_enemy_layout.py`,
+`tests/test_enemy_slots.py`, `tests/test_pikmin2_enemy.py` — 143 passed, 17 subtests,
+plus `scripts/audit_pikmin2_roster.py --review` exit 0 and `--admit` `[]`.
+
+```
+py -3.12 scripts/audit_pikmin2_roster.py --admit-check 79   # ['death_corpse','cleanup_reentry','transport_reward'], exit 1
+py -3.12 scripts/audit_pikmin2_roster.py --admit-check 0    # ['role'], exit 1
+py -3.12 scripts/audit_pikmin2_roster.py --admit-check 99999# ['unknown'], exit 1
+```
