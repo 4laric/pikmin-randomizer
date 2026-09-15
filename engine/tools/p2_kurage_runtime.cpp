@@ -35,7 +35,7 @@
 #include <string>
 
 namespace {
-bool sKillScenario = false, sTransferScenario = false, sStageExitScenario = false, sAdmissionScenario = false, sAutomaticBindingScenario = false, sOniKurageScenario = false, sIngestionScenario = false, sFlightFsmScenario = false, sFlightFsmDeathScenario = false, sFlightFsmGreaterScenario = false, sFlightFsmGreaterDropScenario = false, sAutoFsmScenario = false, sFlightFsmGreaterCaptainScenario = false, sFlightFsmStuckFlickScenario = false, sFlightFsmDeathCycleScenario = false, sFlightFsmPatrolScenario = false, sAutoFsmMoveScenario = false, sCorpseReceiptScenario = false;
+bool sKillScenario = false, sTransferScenario = false, sStageExitScenario = false, sAdmissionScenario = false, sAutomaticBindingScenario = false, sOniKurageScenario = false, sIngestionScenario = false, sFlightFsmScenario = false, sFlightFsmDeathScenario = false, sFlightFsmGreaterScenario = false, sFlightFsmGreaterDropScenario = false, sAutoFsmScenario = false, sFlightFsmGreaterCaptainScenario = false, sFlightFsmStuckFlickScenario = false, sFlightFsmDeathCycleScenario = false, sFlightFsmPatrolScenario = false, sAutoFsmMoveScenario = false, sCorpseReceiptScenario = false, sReentryScenario = false;
 void require(bool value, const char* message)
 {
     if (!value) { std::printf("FAIL KURAGE_RUNTIME %s\n", message); std::fflush(stdout); std::_Exit(1); }
@@ -128,6 +128,36 @@ public:
                 std::fflush(stdout); std::_Exit(0);
             }
             require(pc_p2_kurage_teki_is_bound(generatedFrog), "finalSetup sidecar bound generated Frog");
+            if (sReentryScenario) {
+                // Cleanup: the death/slot-reuse funnel (pc_p2_forget_teki) clears
+                // the live binding AND the corpse registration, so the address is
+                // never mis-resolved.
+                pc_p2_kurage_teki_forget(generatedFrog);
+                unsigned stale = 0;
+                require(!pc_p2_kurage_receipt(static_cast<PelletView*>(generatedFrog), stale),
+                    "forgotten actor no longer resolves");
+                require(pc_p2_kurage_bound_count() == 0, "forget cleared the binding");
+                std::puts("P2_KURAGE_REENTRY_FORGET forgotten=1 bound=0 stale=0");
+                // Reset: the exact teardown seam GameCoreSection::exitStage and
+                // TekiMgr::reset call, so no BTeki* key survives stage teardown.
+                // Re-bind first so the seam has a live registration to clear.
+                pc_p2_kurage_teki_setup();
+                require(pc_p2_kurage_teki_is_bound(generatedFrog), "post-forget rebind");
+                pc_p2_kurage_teki_reset();
+                require(pc_p2_kurage_bound_count() == 0, "reset cleared the binding");
+                std::puts("P2_KURAGE_REENTRY_RESET reset=1 bound=0 corpse=0");
+                // Re-entry: a fresh setup re-binds the generated actor with no
+                // stale entry and a freshly resolving receipt.
+                pc_p2_kurage_teki_setup();
+                require(pc_p2_kurage_teki_is_bound(generatedFrog), "re-entry re-bound the generated actor");
+                require(pc_p2_kurage_bound_count() == 1, "re-entry binds exactly one actor");
+                unsigned rebound = 0;
+                require(pc_p2_kurage_receipt(static_cast<PelletView*>(generatedFrog), rebound)
+                    && rebound == 201001u, "re-entry receipt resolves freshly");
+                std::puts("P2_KURAGE_REENTRY_PASS reset=1 stale_bound=0 rebound=1");
+                std::puts("PASS KURAGE_RUNTIME cleanup_reentry");
+                std::fflush(stdout); std::_Exit(0);
+            }
             if (sCorpseReceiptScenario) {
                 unsigned generator = 0;
                 require(pc_p2_kurage_receipt(static_cast<PelletView*>(generatedFrog), generator),
@@ -688,6 +718,7 @@ int main(int argc, char** argv)
         if (std::string(argv[i]) == "--flight-fsm-death-cycle") sFlightFsmDeathCycleScenario = true;
         if (std::string(argv[i]) == "--flight-fsm-patrol") sFlightFsmPatrolScenario = true;
         if (std::string(argv[i]) == "--receiver-corpse-receipt") { sAutomaticBindingScenario = true; sCorpseReceiptScenario = true; }
+        if (std::string(argv[i]) == "--receiver-reentry") { sAutomaticBindingScenario = true; sReentryScenario = true; }
     }
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1); SDL_SetMainReady();
     pc_gpu_preference_apply(); _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1"); pc_bbft_init(argc, argv);
