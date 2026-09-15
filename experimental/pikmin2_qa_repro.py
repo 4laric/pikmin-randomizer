@@ -30,7 +30,8 @@ reported as a divergence.
 Usage::
 
     py -3.12 -m experimental.pikmin2_qa_repro emit-record \\
-        --spec spec.json --log native.log --exit-code 0 --out record.json
+        --spec spec.json --log native.log --exit-code 0 --out record.json \\
+        [--note "free-text note"]
 """
 from __future__ import annotations
 
@@ -53,7 +54,7 @@ def _marker_notes(markers, log_text):
     return "; ".join(parts) or "no natural markers"
 
 
-def reproduce(spec, log_text, exit_code, evidence_paths, timed_out=False):
+def reproduce(spec, log_text, exit_code, evidence_paths, timed_out=False, note=""):
     """Replay a ``ReproSpec`` against captured output and return a QA record.
 
     The record's ``kind`` defaults to ``"fixture"`` so a fixture-driven
@@ -65,7 +66,8 @@ def reproduce(spec, log_text, exit_code, evidence_paths, timed_out=False):
     present in ``log_text``; otherwise ``FAIL``. Provenance
     (``root_commit``/``native_commit``/``build_sha256`` and ``evidence_paths``)
     is carried through so the result satisfies
-    ``pikmin2_qa_matrix.validate_record``.
+    ``pikmin2_qa_matrix.validate_record``. A non-empty ``note`` is appended to
+    the record's ``notes`` (separated from the marker notes by a newline).
     """
     markers = [str(marker) for marker in spec.get("natural_markers") or []]
     present = [marker for marker in markers if marker in log_text]
@@ -80,6 +82,10 @@ def reproduce(spec, log_text, exit_code, evidence_paths, timed_out=False):
     timed_out_ok = bool(spec.get("timed_out_ok", False))
     accepted = (exit_code in accept_exit_codes) or (bool(timed_out) and timed_out_ok)
     passed = accepted and not absent
+    notes = _marker_notes(markers, log_text)
+    note_text = str(note).strip()
+    if note_text:
+        notes = f"{notes}\n{note_text}" if notes else note_text
     return {
         "id": spec.get("id"),
         "lane": spec.get("lane"),
@@ -92,7 +98,7 @@ def reproduce(spec, log_text, exit_code, evidence_paths, timed_out=False):
         "native_commit": spec.get("native_commit", ""),
         "build_sha256": spec.get("exe_sha256", ""),
         "evidence_paths": list(evidence_paths or []),
-        "notes": _marker_notes(markers, log_text),
+        "notes": notes,
         "exit_code": exit_code,
         "accept_exit_codes": accept_exit_codes,
         "timed_out": bool(timed_out),
@@ -178,6 +184,8 @@ def main(argv=None):
                       help="mark the run timer-terminated (for non-self-exiting fixtures)")
     emit.add_argument("--evidence", action="append", default=[],
                       help="evidence path (repeatable); defaults to the log path")
+    emit.add_argument("--note", default="",
+                      help="free-text note appended to the record's notes field")
     emit.add_argument("--out", type=Path, required=True,
                       help="output record JSON path")
 
@@ -186,7 +194,8 @@ def main(argv=None):
     spec = json.loads(args.spec.read_text(encoding="utf-8"))
     log_text = args.log.read_text(encoding="utf-8", errors="replace")
     evidence = args.evidence or [str(args.log)]
-    record = reproduce(spec, log_text, args.exit_code, evidence, timed_out=args.timed_out)
+    record = reproduce(spec, log_text, args.exit_code, evidence,
+                       timed_out=args.timed_out, note=args.note)
     problems = qa.validate_record(record)
     if problems:
         for problem in problems:

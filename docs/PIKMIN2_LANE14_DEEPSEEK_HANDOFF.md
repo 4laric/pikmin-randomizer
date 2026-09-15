@@ -305,3 +305,180 @@ native `nectar.exe` SHA `765fc8d01d59ecf452b08311a0dcd68a44d18d0aae31bd6e4899d0e
 - Death IS natural: 34 accepted attacks, 30 hits 485→20, then `P2_ELECBUG_DEAD health=0`; no `mHealth` writes in the fixture.
 - Fixture timing fragility (next slice): the press is staged 45 ticks into a 90-tick discharge so the Purple is always shocked (`DenkiDying`, squad 20→19); run 3 succeeded only because death beat FLIP_TIME recovery by ~5 ticks. Wait for `!isDischarging` before the first landing, or re-designate a live Purple in the barrage. Also add the Sokkuri pattern's health-floor print and `blocking_reason` to `validate()`.
 - Subagent comparison: broader scope per slice than the solo slices, equally clean provenance, but the first lane-14 slice with an overclaiming docstring and a dropped pattern element.
+
+## Slice 4
+
+**Scope:** (a–c) fix the ElecBug slice-3 overclaim/timing/fragility + add
+health-floor/blocking_reason; (d) TamagoMushi (68) manager-driven group birth
+from an egg/host with exactly-once accounting, natural Astonish, and whole-group
+cleanup on host forget — no injected births.
+
+### Commits
+
+- native `d2911fdf` lane14: TamagoMushi manager-driven group birth + whole-group cleanup (#165)
+  — `pc_port/pc_p2_tamago.{cpp,h}`: `pc_p2_tamago_birth_group(host,count)` births
+  the group via `TekiMgr::newTeki` (source `tamagoMushiMgr::createGroup`),
+  triggered once on the host's first Appear (`mHasMadeFellow` analogue), and
+  `pc_p2_tamago_forget` now clears the whole group on host forget; added
+  `pc_p2_tamago_count`/`registered` observability.
+- native `ebc4c388` lane14: TamagoMushi markers use module generator id (born actors have no mGenerator) (#165).
+- root `2053d20` lane14: slice4 ElecBug staged-press label, timing fix, health-floor/blocking_reason (#165).
+- root (this commit) lane14: TamagoMushi manager-driven group birth runtime (no injected births) (#165)
+  — `experimental/pikmin2_tamago_group_runtime.py`, `tests/test_pikmin2_tamago_group_runtime.py`.
+
+### (a–c) ElecBug staged-press + timing + health-floor
+
+- PASS token renamed `flip=natural` → `flip=staged-press`; `validate()` now
+  requires `flip=staged-press` and rejects `flip=natural` (overclaim).
+- Timing: stage 3 waits for `!isDischarging(A)&&!isDischarging(B)` before the
+  first landing, and the stage-4 barrage re-designates a live Purple if the
+  current one is dead and never stages a landing while A is discharging. Two
+  consecutive runs PASS (15.6s / 15.2s), first press at `state=return`/`wait`
+  (Purple no longer shocked), `flip=staged-press death=natural immunity=yellow`.
+- `validate()` added `P2_ELECBUG_NATURAL_OBSERVE`/`P2_ELECBUG_NATURAL_BLOCKED`
+  health-floor parse and a named `blocking_reason` (Sokkuri pattern).
+
+### (d) TamagoMushi group birth
+
+Single host (346020) + control arena; the fixture writes `p2-tamago-host.txt`
+(`P2_TAMAGO_HOST_1 346020 10`). The native manager births 9 followers on the
+host's first Appear (exactly once). Runtime (run2 `592fbfe7...`, exit 0, 9.4s):
+`P2_TAMAGO_HOST_BIND host=346020 egg=1` → `P2_TAMAGO_BIRTH host=346020
+follow=9 count=10 source=manager` (+10 `P2_TAMAGO_BIND` 346020..346029) →
+`P2_TAMAGO_BIRTH_ONCE duplicate=0` → 54 `P2_TAMAGO_ASTONISH` (natural, correct
+generator ids) → `P2_TAMAGO_GROUP_ONCE count=10` (no duplicate after host
+cycles) → `P2_TAMAGO_GROUP_FORGET remaining=0` (whole-group cleanup) →
+`PASS ... injected=0`.
+
+Born followers are real Chappy-vehicle Teki (no per-actor generator, so they draw
+as the generic Chappy vehicle rather than the Mitite pose bank — documented
+limitation; the host keeps the batch2 pose bank).
+
+### Gates (slice 4d)
+
+| Gate | Result |
+|---|---|
+| manager-driven birth | PASS (`P2_TAMAGO_BIRTH ... source=manager`, 10 born) |
+| exactly-once | PASS (`P2_TAMAGO_BIRTH_ONCE duplicate=0`, `P2_TAMAGO_GROUP_ONCE count=10`) |
+| natural Astonish | PASS (54 `P2_TAMAGO_ASTONISH`) |
+| whole-group cleanup | PASS (`P2_TAMAGO_GROUP_FORGET remaining=0`) |
+
+### Exact reproduction (slice 4d)
+
+```powershell
+$env:PYTHONUTF8='1'
+py -3.12 -m experimental.pikmin2_tamago_group_runtime run `
+  --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets `
+  --imported C:/Users/alari/pikmin-randomizer/output/dsw/l14-out/ground `
+  --output C:/Users/alari/pikmin-randomizer/output/dsw/l14-out/tamago-run-final `
+  --exe C:/Users/alari/pikmin-randomizer/output/dsw/l14-out/tamago-fixture2/fixture.exe `
+  --seconds 120
+```
+
+### Tests
+
+`PIKMIN_NATIVE_ROOT=C:/Users/alari/pikmin-randomizer/output/dsw/native-l14`
+family suite → **145 passed** (11 Tamago group-runtime tests + 15 ElecBug natural
++ prior family tests). `tamago fixture.exe` SHA
+`3c4dd00f703337d71caaaa0fc6766ecdbb2235ee7c46a9a2e882235a22c3131e`; ElecBug
+`fixture.exe` SHA `a558b6f5f4298b90a494fad74559e8d5e37471f55e2f6db1c91585dfc746ccdc`;
+native `nectar.exe` SHA `2877add7f8b5378973c08522988ff8e80a52379f9235c0383b6eae0953151749`.
+
+### Subagent usage
+
+- **explore #1 (source audit)** — returned a precise table of `tamagoMushiMgr`
+  createGroup/createGroupByBigFoot, the `mHasMadeFellow` exactly-once flag, the
+  egg/BigFoot/surface hosts, `InteractAstonish` Purple exclusion, and the honey-only
+  `genItem`. Used as-is; it identified the surface-host `createFellow` on Appear as
+  the clean, family-local trigger for the birth (the egg path would have reached
+  lane-20/05 shared seams). Big time saver.
+- **explore #2 (birth-machinery inventory)** — found `TekiMgr::newTeki` +
+  `BTeki::spawnTeki`, the `pc_p2_teki_lifetime` forget seam, and confirmed no family
+  module ever births a real Teki child. Used as-is; `host->spawnTeki(TEKI_Chappy)`
+  was the key API I reused.
+- **general #3 (validator+test scaffold)** — wrote `validate()` + 11 pytest cases
+  against my contract. Used with minor corrections only (updated the synthetic
+  `leader=1`→`leader=346020` to match the native marker); the contract held this
+  time, unlike slice 3. Net time save.
+
+### Remaining
+
+- Born Mitite followers draw as generic Chappy (no per-actor generator/pose bank);
+  per-actor generator assignment for child births is a shared/lane-05 concern.
+- Reward/transport (#397) and the ElecBug retail Purple hipdrop (lane-11/#128)
+  remain out of scope.
+
+## Review fixes 4 (NOT merged slice-4 feedback)
+
+### Commits
+
+- native `d2911fdf` → `2454bfc2` series: `bf02f219` (stopMove + group despawn + born count/BIND), `92eea3fe` (generateTeki), `e7dacd6d` (bounded birth radius), `2454bfc2` (exclude host from children cleanup). Final native head `2454bfc21fd059988ebbf31205787d6e9d2bd0d6`.
+- root `bbab6f3` lane14: review fixes 4 — exactly_once on GROUP_ONCE, born=1 BIND, fixture forget via seam (#165).
+
+### Item 1 — born followers no longer flung away
+
+The real cause was my birth-radius arithmetic, NOT `spawnTeki` launch velocity:
+`(i*2654435761u) >> 8 / 32768` produced a radius up to ~512 (→ 45×512 ≈ 2e4-unit
+offsets), so followers 346022–346029 were SPAWNED at (4098,7628), (−10467,5218), …
+A debug print (since removed) showed the child position was already wrong **before**
+`startAI`. Fix: bounded radius `0.2 + 0.8*((i*2654435761u) & 0xffff)/65535` in [0.2,1],
+plus switched `spawnTeki`→`generateTeki` (no SpawnVelocity*Strength launch) as the
+reviewer suggested. Verified: all 9 followers now report `P2_TAMAGO_FOLLOW
+distance` in 0.15–58.27 (all < FOLLOW_RADIUS 60), and `P2_TAMAGO_ASTONISH` now comes
+from **all 10** Mitites (346020 host + 346021–346029, 1–32 hits each) — run
+`tamago-fix4e-run/f706e354...`.
+
+### Item 2 — group forget now despawns the born children
+
+`pc_p2_tamago_forget` group branch now collects the born followers (excluding the
+host), calls `child->kill(false)` (death funnel → `pc_p2_forget_teki` + manager
+recycle) for each, then erases the host. The fixture now calls `pc_p2_forget_teki(host)`
+(the lane-07 seam, `pc_p2_teki_lifetime.h`) instead of `pc_p2_tamago_forget` directly.
+`P2_TAMAGO_GROUP_FORGET host=346020 group=10 remaining=0 killed=9`.
+
+### Item 3 — exactly_once is now a real observation
+
+`P2_TAMAGO_BIRTH_ONCE host=346020 born=9` (prints the actual `born` count, no
+literal `duplicate=0`). `validate()` `exactly_once` now gates the fixture's
+`P2_TAMAGO_GROUP_ONCE host=346020 count=10` (emitted only after a `require` that
+count is still exactly 10 after the host cycles).
+
+### Item 4 — synthetic born ids flagged
+
+Born followers emit `P2_TAMAGO_BIND ... visual_only=0 born=1`; the staged host emits
+no `born=`. Simple-gate GOOD_LOG now uses ids 346020 (host) + 346021..346029 (born),
+matching the native emission.
+
+### Item 5 — gate table + commit table corrections
+
+- Natural Astonish is now genuinely from the whole group (all 10), not host+1.
+- `P2_TAMAGO_GROUP_CLEANUP forgotten=10` is informational (the gate reads
+  `P2_TAMAGO_GROUP_FORGET remaining=0`).
+- Bind-time health writes are explicit (`hostActor->mHealth=LIFE` in setup,
+  `child->mHealth=LIFE` in birth) — labelled, not claimed as natural-combat damage.
+- Commit table above the slice-4 section updated with `9df2c03` (slice-4) and the
+  `bf02f219`..`2454bfc2` fix series.
+
+### Tests / evidence
+
+`PIKMIN_NATIVE_ROOT=...` family suite → **145 passed**. `tamago fixture.exe` SHA
+`548d3fb1f7e639f78a5ed1e54afcd414d837e178e8f6f1e4ec10d1a93286b58f`; native
+`nectar.exe` SHA `2d0332d472736be8c6fc5ea6f9a53d0311bc615423b5f5e806c2a04b5a7146ba`.
+
+### Subagent usage (fix4)
+
+- **explore #1 (source audit)** — confirmed the reviewer's spawnTeki launch-velocity
+  claim and the `stopVelocity`/`kill`/`pc_p2_forget_teki` semantics, and verified the
+  real log (host 38 + 346021 16 Astonish, 346022–346029 at 4098/7628 etc.). Used
+  as-is; a real time saver.
+- **explore #2 (inventory)** — located the exact fix lines + confirmed the forget is
+  registry-only and the fixture bypasses the seam. Used as-is.
+- **general #3 (validator/test scaffold)** — rewrote `validate()`/GOOD_LOG (exactly_once
+  on GROUP_ONCE, born=1 on BIND, born=9) + 11 tests. Applied with only the `born=9`
+  and `GROUP_ONCE host=346020` fixtures reconciled by hand. The delegated exactly_once
+  contract held this time.
+
+Note per the reviewer: the explore audit imported the spawnTeki launch-velocity
+behaviour uncleaned; the actual fly-off cause was my own radius arithmetic, found by
+adding a temporary debug print and reading the real log — a reminder to verify
+delegated conclusions against the runtime.

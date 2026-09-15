@@ -17,6 +17,20 @@ def instrument(source):
     s = orange(red_reentry(source))
     # The red printf hardcodes the literal; state the source health truthfully.
     s = s.replace('new_red=200', 'new_red=250')
+    # Throttle the overlay's 20-red starting squad to 2 Pikmin so the host-AI
+    # actor survives the tick-120 manager swap. With 20 reds it is killed ~tick
+    # 60; relocating the whole squad trips the day/movie flow (#397), so a small
+    # near squad is kept fighting. Enemy health/state/animation are untouched.
+    throttle = (
+        '        if(observed==2){int kept=0;Iterator sq(pikiMgr);CI_LOOP(sq){Piki* p=static_cast<Piki*>(*sq);'
+        'if(!p->isAlive())continue;if(kept<2){++kept;continue;}'
+        'Vector3f far(-400.0f+(kept%5)*8.0f,30.0f,1800.0f+(kept/5)*8.0f);far.y=mapMgr->getMinY(far.x,far.z,true);'
+        'p->resetPosition(far);++kept;}'
+        'std::printf("P2_DWARF_ORANGE_REENTRY_THROTTLE kept=2\\n");std::fflush(stdout);}\n')
+    anchor = '        if(observed==120){\n'
+    if s.count(anchor) != 1:
+        raise ValueError('Unexpected re-entry swap anchor')
+    s = s.replace(anchor, throttle + anchor)
     if 'P2_DWARF_ORANGE_REENTRY' not in s or 'pc_p2_dwarf_orange' not in s:
         raise ValueError('Re-entry transform lost the Dwarf Orange identity')
     return s
@@ -25,10 +39,9 @@ def instrument(source):
 def prepare(assets, bank, profile, output):
     """Plain two-actor arena (overlay starting squad retained).
 
-    Gate-E blocker: the source actor naturally engages and is killed by the
-    overlay starting squad near its cluster before the manager-swap tick, so the
-    swap precondition (`old actor alive`) is not met. A squad-free baseline with
-    a non-extinct watchdog is a shared fixture gap (#397).
+    The instrument() throttle (2-Pikmin near squad) keeps the host-AI actor
+    alive past the tick-120 swap, so the old-registration -> re-registration
+    transition is exercised without injecting enemy state.
     """
     from experimental.pikmin2_dwarf_orange_arena import prepare as arena
     return arena(Path(assets), Path(bank), Path(profile), Path(output))
@@ -64,7 +77,7 @@ def run(stage, exe, output, seconds=120):
     import os
     stage = Path(stage).resolve()
     positions(stage)
-    os.environ['PIKMIN_P2_ROOM_WINDOW'] = '960x540'
+    os.environ.setdefault('PIKMIN_P2_ROOM_WINDOW', '960x540')
     meta = capture_command([str(Path(exe).resolve()), '--experimental-pikmin2-room'],
                            stage, output, seconds)
     result = evidence((output / 'native.log').read_text(errors='replace'), meta['exit_code'])

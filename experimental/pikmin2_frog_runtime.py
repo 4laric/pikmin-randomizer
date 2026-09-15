@@ -5,6 +5,7 @@ from scripts import build_pikmin2_fixture as builder
 from experimental.pikmin2_frog_arena import prepare
 from experimental.pikmin2_elecbug_immunity_behavior import replace_tutorial_input
 from experimental.pikmin2_kochappy_arena_fixture import instrument_tutorial
+from experimental.pikmin2_frog_fsm import parse_states as _parse_states, validate as _validate_fsm
 
 APP=r'''class RoomApp : public PlugPikiApp {
  int observed=0,frames=0;Teki* frogs[4]={};bool hit[2]={};bool natural[2]={};
@@ -117,7 +118,19 @@ def validate(text,code):
  checks['source_params']=all(r[2]==want_params[r[0]] for r in params if r[1]=='1') and all(r[2] not in ('800.0','1100.0') for r in params if r[1]=='0')
  for species in ('Frog','MaroFrog'):
   own=[d for d in draws if d[0]==species];checks[species+'_live']=any(d[1]=='0' for d in own);checks[species+'_corpse']=any(d[1]=='1' and d[2]=='dead' for d in own);checks[species+'_poses']=len({(d[2],d[3]) for d in natural if d[0]==species and d[1]=='0'})>=2
- return dict(passed=all(checks.values()),checks=checks,draws=draws,natural_deaths=[int(i) for i in re.findall(r'P2_FROG_NATURAL_DEATH id=(\d+)',text)],unmeasured=['natural combat','transport/rewards','full scene/day reload (manager reset/re-entry covered by cleanup_reentry)','P2 mechanics'])
+ # Exercise the source-FSM validator on the emitted P2_FROG_STATE trace. The
+ # cleanup/re-entry at observed==80 calls pc_p2_frog_setup again, which emits a
+ # fresh P2_FROG_SETUP marker followed by each actor's `state=wait`; each episode
+ # on either side of a P2_FROG_SETUP must satisfy the state machine independently.
+ fsm_errors=[];fsm_episodes=0
+ for segment in re.split(r'P2_FROG_SETUP[^\n]*\n?',text):
+  if not segment.strip():continue
+  fsm_episodes+=1
+  try:res=_validate_fsm(_parse_states(segment))
+  except ValueError as exc:res={'passed':False,'errors':[str(exc)]}
+  fsm_errors.extend(res['errors'])
+ checks['fsm']=fsm_episodes>0 and not fsm_errors
+ return dict(passed=all(checks.values()),checks=checks,draws=draws,natural_deaths=[int(i) for i in re.findall(r'P2_FROG_NATURAL_DEATH id=(\d+)',text)],fsm_errors=fsm_errors,unmeasured=['natural combat','transport/rewards','full scene/day reload (manager reset/re-entry covered by cleanup_reentry)','P2 mechanics'])
 
 
 def run(assets,bank,output,exe,validator=None,near_onion=False):

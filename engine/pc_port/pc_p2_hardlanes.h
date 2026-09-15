@@ -59,4 +59,7 @@ bool pc_p2_hardlanes_bigtreasure_hit(int weapon, float damage, bool bittered);
 //     0 already-handled this attack (or inactive seam).
 bool pc_p2_hardlanes_bigtreasure_ready();
 int pc_p2_hardlanes_bigtreasure_weapon_count();
+// Current FSM phase (P2BigTreasurePhase, or P2BT_Dead when inactive); read-only
+// so a real-GL fixture can observe the weapon-loss re-pick after a knock-off.
+int pc_p2_hardlanes_bigtreasure_phase();
 int pc_p2_hardlanes_bigtreasure_recv_probe(int weapon, Piki* piki);

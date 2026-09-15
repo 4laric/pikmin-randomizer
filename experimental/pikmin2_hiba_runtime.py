@@ -148,19 +148,30 @@ public:int idle() override {
    std::printf("P2_HIBA_SCENARIO hiba_gas_elec centroid=%.3f,%.3f,%.3f\n",gcx,gcy,gcz);
    armed=true;
   }
- if(armed&&!finished){
-  if(pc_p2_hiba_gates_ready()){
-   pc_p2_hiba_kill_all();
-   std::puts("P2_HIBA_CLEANUP kill_all=1");
-   std::puts("PASS P2_HIBA_RUNTIME gates_ready");
-   finished=true;std::fflush(nullptr);if(!hold)std::_Exit(0);
-  } else if(pc_p2_hiba_behavior_tick()>900){
-   std::printf("P2_HIBA_BLOCKED gates reason=timeout hit=%d immune=%d activated=%d emitted=%d\n",
-               int(pc_p2_hiba_hit_seen()),int(pc_p2_hiba_immune_seen()),
-               pc_p2_hiba_activated(),pc_p2_hiba_emitted());
-   finished=true;std::fflush(nullptr);if(!hold)std::_Exit(0);
+  if(armed&&!finished){
+   if(pc_p2_hiba_gates_ready()){
+    pc_p2_hiba_kill_all();
+    std::puts("P2_HIBA_CLEANUP kill_all=1");
+    std::puts("PASS P2_HIBA_RUNTIME gates_ready");
+    // Gate 6: cleanup + re-entry through the lane-07 lifetime seam. The stage
+    // boundary teardown (pc_p2_reset_all_teki -> pc_p2_hiba_reset) must clear
+    // the hazards, and re-entry (pc_p2_hiba_setup, config still present) must
+    // re-arm them exactly once (3, not a stale +3 duplicate).
+    const int h0=pc_p2_hiba_hazard_count();
+    pc_p2_reset_all_teki();
+    const int h1=pc_p2_hiba_hazard_count();
+    {const int heap=gsys->setHeap(SYSHEAP_App);pc_p2_hiba_setup();gsys->setHeap(heap);}
+    const int h2=pc_p2_hiba_hazard_count();
+    std::printf("P2_HIBA_REENTRY before=%d reset=%d rearmed=%d once=%d\n",
+                h0,h1,h2,(h0==3&&h1==0&&h2==3)?1:0);
+    finished=true;std::fflush(nullptr);if(!hold)std::_Exit(0);
+   } else if(pc_p2_hiba_behavior_tick()>900){
+    std::printf("P2_HIBA_BLOCKED gates reason=timeout hit=%d immune=%d activated=%d emitted=%d\n",
+                int(pc_p2_hiba_hit_seen()),int(pc_p2_hiba_immune_seen()),
+                pc_p2_hiba_activated(),pc_p2_hiba_emitted());
+    finished=true;std::fflush(nullptr);if(!hold)std::_Exit(0);
+   }
   }
- }
  std::fflush(stdout);return result;
 }};
 '''
@@ -170,7 +181,7 @@ def instrument(source):
     start = source.index('class RoomApp : public PlugPikiApp {')
     end = source.index('int main(', start)
     includes = ('#include <cstdio>\n#include <cstdlib>\n#include <fstream>\n#include <string>\n'
-                '#include "pc_p2_hiba.h"\n#include "pc_p2_species.h"\n')
+                '#include "pc_p2_hiba.h"\n#include "pc_p2_species.h"\n#include "pc_p2_teki_lifetime.h"\n')
     return includes + source[:start] + APP + source[end:]
 
 
@@ -238,7 +249,7 @@ def validate(text, code):
         baseline='red=5 blue=5' in text,
         window='Experimental preview window set to 960x540 windowed and centered' in text,
         scenario='P2_HIBA_SCENARIO hiba_gas_elec' in text,
-        ready=text.count('P2_HIBA_READY') == 3,
+        ready=text.count('P2_HIBA_READY') == 6,  # 3 initial + 3 re-arm (re-entry proves no duplicate)
         activate_hiba=bool(re.search(r'P2_HIBA_ACTIVATE generator=\d+ hazard=Hiba from=wait to=attack', text)),
         activate_gas=bool(re.search(r'P2_HIBA_ACTIVATE generator=\d+ hazard=GasHiba from=\w+ to=attack', text)),
         activate_elec=bool(re.search(r'P2_HIBA_ACTIVATE generator=\d+ hazard=ElecHiba from=\w+ to=attack', text)),
@@ -259,6 +270,7 @@ def validate(text, code):
         no_gas_blocked=not bool(re.search(r'P2_HIBA_APPLY_BLOCKED generator=\d+ hazard=GasHiba stimulus=InteractGas ',
                                           text)),
         no_apply_blocked='P2_HIBA_APPLY_BLOCKED' not in text,
+        reentry=bool(re.search(r'P2_HIBA_REENTRY before=3 reset=0 rearmed=3 once=1', text)),
         cleanup='P2_HIBA_CLEANUP kill_all=1' in text,
         cleanup_dead=text.count('P2_HIBA_DEAD') >= 3,
         no_timeout='P2_HIBA_BLOCKED' not in text,

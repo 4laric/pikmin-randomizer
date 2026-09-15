@@ -95,8 +95,11 @@ def run(args):
     identity = executable_identity(args.exe)
     stage = prepare(args.assets, args.imported, args.output,
                     cargo=dict(pod_package=args.pod_package))
+    if args.captaindown:
+        (stage / 'p2-mamuta-captaindown.txt').write_text('1\n')
     (args.output / 'launch.json').write_text(json.dumps(dict(
         executable=identity, stage=str(stage), assisted=bool(args.assisted),
+        captaindown=bool(args.captaindown),
         fixture=ASSISTED_FIXTURE if args.assisted else POD_FIXTURE), indent=2))
     env = dict(os.environ, SDL_AUDIODRIVER='dummy', PIKMIN_P2_ROOM_WINDOW='960x540',
                PATH='C:/msys64/mingw64/bin;' + os.environ['PATH'])
@@ -106,6 +109,7 @@ def run(args):
     if process.returncode:
         raise RuntimeError(f'Native exit {process.returncode}: {stage}')
     result = dict(executable=identity, stage=str(stage), assisted=bool(args.assisted),
+                  captaindown=bool(args.captaindown),
                   evidence=validate((stage / 'native.log').read_text(errors='replace'),
                                     assisted=bool(args.assisted)))
     (args.output / 'result.json').write_text(json.dumps(result, indent=2))
@@ -118,6 +122,8 @@ if __name__ == '__main__':
     for key in ('assets', 'imported', 'exe', 'output', 'pod_package'):
         p.add_argument('--' + key.replace('_', '-'), dest=key, type=Path, required=True)
     p.add_argument('--assisted', action='store_true')
+    p.add_argument('--captaindown', action='store_true',
+                   help='labelled control: park the captain inside 70 units so the captain-down path fires')
     p.add_argument('--timeout', type=int, default=300)
     args = p.parse_args()
     for key, value in vars(args).items():

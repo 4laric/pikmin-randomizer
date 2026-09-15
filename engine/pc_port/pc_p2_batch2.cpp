@@ -298,6 +298,7 @@ bool pc_p2_batch2_draw(BTeki* actor, Graphics& gfx, const Matrix4f& matrix, bool
     const int motion = actor->mTekiAnimator->getCurrentMotionIndex();
     const char* name = nullptr;
     float forcedPhase = -1.0f;
+    const char* forcedClip = nullptr;
     // Family-owned source behavior: a registered Skitter Leaf forces the exact
     // source clip/phase for its FSM state instead of the generic P1-velocity pick.
     if (!corpse) {
@@ -310,6 +311,7 @@ bool pc_p2_batch2_draw(BTeki* actor, Graphics& gfx, const Matrix4f& matrix, bool
                 && bank.clips.count(forced)) {
             name = forced;
             forcedPhase = phase;
+            forcedClip = forced;
         }
     }
     if (corpse) {
@@ -355,6 +357,10 @@ bool pc_p2_batch2_draw(BTeki* actor, Graphics& gfx, const Matrix4f& matrix, bool
         logged[corpse ? 1 : 0] = true;
     }
     shape->updateAnim(gfx, matrix, nullptr, actor);
+    // Report a Pom draw only now: the forced clip survived every bank/clock/pose
+    // guard above and is the clip about to be rendered, so a P2_POM_DRAW claims
+    // a pose the draw chain actually drew, not merely a candidate clip name.
+    if (name == forcedClip) pc_p2_pom_report_draw(actor);
     shape->drawshape(gfx, *gfx.mCamera, nullptr);
     return true;
 }

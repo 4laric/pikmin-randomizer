@@ -282,16 +282,17 @@ void pc_p2_preview_setup() {
     pc_p2_purple_motion_setup();
     pc_p2_white_setup();
     pc_p2_bulbmin_setup();
-    // Lane-11 opt-in driver: use the existing Chappy-family registration as the
-    // Mother Bulbmin stand-in (no-op unless PIKMIN_P2_BULBMIN/p2-bulbmin.txt is
-    // set and a Kochappy actor is registered).
-    pc_p2_bulbmin_attach_mother(static_cast<Creature*>(pc_p2_kochappy_first_registered()));
-    // Lane-11 dedicated mother path: register the same proxy under an explicit
-    // label from PIKMIN_P2_BULBMIN_MOTHER (no-op unless the env value is set).
-    // Still a labeled Chappy-family proxy: no LeafChappy model exists.
-    pc_p2_bulbmin_attach_dedicated_mother();
     pc_p2_white_poison_setup();
     pc_p2_cave_setup();
+    // Lane-11 opt-in driver: resolve the Mother Bulbmin stand-in host (the
+    // labeled Dwarf Red registry, else the bare Chappy-family generator row) and
+    // birth the source flock behind it. Runs AFTER pc_p2_cave_setup so the wild
+    // births do not perturb the cave's restore spawn-count validation. No-op
+    // unless PIKMIN_P2_BULBMIN/p2-bulbmin.txt is set.
+    pc_p2_bulbmin_attach_mother(static_cast<Creature*>(pc_p2_bulbmin_mother_host()));
+    // Lane-11 dedicated mother path: register the same host under an explicit
+    // label from PIKMIN_P2_BULBMIN_MOTHER (no-op unless the env value is set).
+    pc_p2_bulbmin_attach_dedicated_mother();
     gsys->setHeap(previousHeap);
     const float points[][2]={{-85,0},{-175,-100},{185,-180},{-220,-180}};
     for (const auto& point : points)

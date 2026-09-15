@@ -24,6 +24,7 @@ bool pc_p2_hiba_gates_ready();
 void pc_p2_hiba_kill_all();
 int pc_p2_hiba_activated();
 int pc_p2_hiba_emitted();
+int pc_p2_hiba_hazard_count();
 bool pc_p2_hiba_hit_seen();
 bool pc_p2_hiba_immune_seen();
 bool pc_p2_hiba_gas_hit_seen();

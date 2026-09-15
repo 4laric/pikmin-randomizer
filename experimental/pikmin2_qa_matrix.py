@@ -213,7 +213,23 @@ def _record_ref(record):
     }
 
 
-def evaluate_cell(records, stage, scenario):
+def _stale_pin(record, pin):
+    """True when the report pin and the record disagree on a non-empty commit.
+
+    A mismatch only counts when both the pin and the record carry a non-empty
+    value for the same commit field; an empty record commit is an incomplete
+    provenance problem, not a stale baseline.
+    """
+    pin = pin or {}
+    for field in ("root_commit", "native_commit"):
+        report_value = str(pin.get(field, "")).strip()
+        record_value = str(record.get(field, "")).strip()
+        if report_value and record_value and record_value != report_value:
+            return True
+    return False
+
+
+def evaluate_cell(records, stage, scenario, pin=None):
     """Resolve one cell to a status plus the records that justify it."""
     matching = [r for r in records if r.get("stage") == stage and r.get("scenario") == scenario]
     required = cell_required(stage, scenario)
@@ -233,6 +249,8 @@ def evaluate_cell(records, stage, scenario):
             continue
         if not _provenance_ok(record):
             continue
+        if _stale_pin(record, pin):
+            continue
         passing.append(record)
     if passing:
         return {"stage": stage, "scenario": scenario, "status": PASS,
@@ -247,6 +265,8 @@ def evaluate_cell(records, stage, scenario):
                 reasons.append(f"{record.get('id')}: {record.get('kind')} evidence cannot satisfy this cell")
             elif not _provenance_ok(record):
                 reasons.append(f"{record.get('id')}: incomplete provenance (commit/hash/evidence)")
+            elif _stale_pin(record, pin):
+                reasons.append(f"{record.get('id')}: stale-pin (commits do not match the report baseline)")
         return {"stage": stage, "scenario": scenario, "status": BLOCKED,
                 "reason": "; ".join(dict.fromkeys(reasons)), "evidence": [_record_ref(r) for r in matching]}
     return {"stage": stage, "scenario": scenario, "status": BLOCKED,
@@ -254,7 +274,7 @@ def evaluate_cell(records, stage, scenario):
 
 
 def build_report(records, pin=None):
-    cells = [evaluate_cell(records, stage, scenario) for stage, scenario in matrix_cells()]
+    cells = [evaluate_cell(records, stage, scenario, pin=pin) for stage, scenario in matrix_cells()]
     summary = {status: 0 for status in STATUSES}
     for cell in cells:
         summary[cell["status"]] = summary.get(cell["status"], 0) + 1

@@ -27,7 +27,7 @@ def roster(assets):
     used={struct.unpack_from('<I',r,8)[0] for r in practice}
     entries=list(practice)
     placements=[]
-    for identity,kind,xyz in [(203001,'Qurione',(-150.,30.,1850.))]:
+    for identity,kind,xyz in [(203001,'Qurione',(-104.,30.,1816.))]:
         if identity in used:raise ValueError('Arena generator ID collision')
         used.add(identity)
         row=bytearray(enemy);row[80]=6;struct.pack_into('<I',row,8,identity)

@@ -320,3 +320,88 @@ the frozen `native-l33-pin` build.
 Subagents again absorbed the verification/reading phase (est. 25-35 min); one
 result was corrected on use — the Hana record pin was re-anchored to the frozen
 `41533626` after the frozen mixed-ground run produced equivalent evidence.
+
+## Slice 3 — reproduce the wave's strongest natural claims (frozen `138ac640`)
+
+Refreshed the frozen worktree `native-l33-pin` to the current
+`claude/p2-deepseek-wave-native` tip `138ac640f9f7a7b17285040d03056f321ca501d3`
+and rebuilt once (nectar `b61fbb78…`). Added **pin comparison to
+`evaluate_cell`** (a record whose root/native commit differs from the report pin
+now resolves BLOCKED with `stale-pin`, verified: `mismatched-pin seed cell ->
+BLOCKED :: stale-pin (commits do not match the report baseline)`) and `--note` to
+`emit-record`.
+
+### Results (all fixture-kind, pinned root `9d2921c7` / native `138ac640`)
+
+| Lane | Run | Result | Divergence from owning-lane handoff |
+|---|---|---|---|
+| 13 Dwarf Orange eat→swallow→dead→corpse | `pikmin2_dwarf_orange_fsm_witness` | **FAIL (11/12)** | `eat@frame8 -> dead -> corpse` reproduced; `P2_KOCHAPPY_SWALLOW` absent — the 20-red squad drove health 250→0 before attack1 swallow frame 88. Lane-13 cited "all 12 true". |
+| 13 Dwarf Orange cleanup witness | `pikmin2_dwarf_orange_cleanup` | **PASS** | corpse carry (`transport_task_injected=false`) + P1 removal + `P2_DWARF_ORANGE_FORGET`/`P2_KOCHAPPY_FSM_FORGET` on the `doKill` funnel reproduced. |
+| 22 Otakara natural death | `pikmin2_otakara_runtime --scenario natural` | **PASS** | natural hit → `P2_OTAKARA_DEAD health=0` → `P2_OTAKARA_CORPSE pellet=1` → `P2_OTAKARA_FORGET`; elemental discharge (immune_red/hit_blue). Fixture-assisted park (Red/Blue inside 60u), corpse pellet transport cargo-free (untested), as the lane states. |
+| 19 Mamuta natural kill (pod, ring/park ×3) | `scripts/pikmin2_mamuta_pod_native` | **2/3 kills** | run2 `died tick1664 + corpse`, run3 `died tick1318 + corpse`, run1 no kill (UNPROVEN, no captain_down). Corpse transport + `P2_POD_RECEIPT` UNPROVEN in all 3. Consistent with lane-19 "FLAKY" (they had 1 kill in 7 runs). |
+| 18 Breadbug natural tug | `pikmin2_breadbug_contest_runtime` | **FAIL** | `probe_before_first_grant=2` (expected 0), `grants=0` → `gate_primary_tug_natural=false`, `gate_grant_exactly_once=false`. CAVEAT: reused the stale `l18-out/contest-stage` whose `p2-breadbug-contest-receipts.txt` ledger may be contaminated; fresh staging was blocked (the `breadbug-visual.json` profile import is absent from `output/`). |
+| 04/03 three-marker seed run | `scripts/run_p2_seed_placement.py` | **PASS** | `validate_cooccurrence ok=true` — `closed generator->slot->source and birth chain for 2 generator(s): (211001→5465461→44), (211002→513430982→44)`; `markers_are_binding_members=true`. |
+
+No lane's cited PASS FAILED on the integrated build without a specific, explainable
+cause: the two FAILs are (a) dwarf swallow timing under a 20-red over-kill, and (b)
+breadbug reuse of a stale receipt ledger (fresh stage blocked). Otakara and the
+seed bridge reproduced cleanly; Mamuta reproduced but stays flaky by design.
+
+### QA records + matrix
+
+6 records under `slice3/records/` via `pikmin2_qa_repro` (kind=fixture, pinned,
+each carrying `checks`/`missing_markers`/`exit_code`). Matrix report
+(`qa-report-slice3`): **PASS=1** (`install × scheduled_births`, seed birth chains),
+**FAIL=1** (`natural_fight × baseline_cohort`, dwarf witness + breadbug), UNTESTED=76.
+
+### Tests
+
+`py -3.12 -m pytest tests/test_pikmin2_qa_matrix.py tests/test_pikmin2_qa_repro.py -q`
+→ **39 passed** (includes new `stale-pin` and `--note` coverage).
+
+### Commits
+
+- `lane33: slice 3 — five natural-claim reproductions, pin comparison, --note (#444)`
+
+### Exact reproduction command (representative; all five in `slice3/run-all.sh`)
+
+```powershell
+git -C C:/Users/alari/pikmin-randomizer/output/dsw/native-wave worktree add --detach \
+  C:/Users/alari/pikmin-randomizer/output/dsw/native-l33-pin 138ac640f9f7a7b17285040d03056f321ca501d3
+# reconfigure with ABSOLUTE compiler paths, rebuild, build each lane fixture, then:
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l33 -- py -3.12 scripts/run_p2_seed_placement.py \
+  --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets \
+  --bank C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-bank \
+  --profile C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-ref \
+  --exe C:/Users/alari/pikmin-randomizer/output/dsw/native-l33-pin-build/bin/nectar.exe \
+  --output C:/Users/alari/pikmin-randomizer/output/dsw/l33-out/slice3/seed-run
+```
+
+Lane harnesses run from the `wave-root` worktree; fixtures built against
+`native-l33-pin-build` at `138ac640`.
+
+### Remaining work / caveats
+
+- Dwarf swallow: re-run with a smaller/weaker squad to observe the swallow frame
+  (or confirm the swallow is frame-gated and the 20-red over-kill is expected).
+- Breadbug: fresh stage requires the lane-18 `breadbug-visual.json` profile
+  (`pikmin2_breadbug_actor.plan` reads it) — ask lane 18 for the import path.
+- Mamuta corpse transport + Pod receipt remain UNPROVEN across 3 runs.
+
+### Subagent usage (slice 3)
+
+- `explore` #1 (five-harness source audit): used as-is; gave exact argv, natural
+  marker contracts, FSM/event pins and each handoff's cited PASS, which produced
+  the exact `build`/`run` commands and the divergence table.
+- `explore` #2 (fixture/asset inventory): used as-is; surfaced the frozen worktree
+  refresh mechanics, which harnesses need a built fixture vs plain exe, the
+  `breadbug-visual.json`/flying-aquatic gaps, and the prebuilt-input paths
+  (`l19-out/imported+pod`, `l22-assets`, `p2-dwarf-orange-bank/-ref`).
+- `general` #3 (scaffolding): used as-is; added `stale-pin` detection to
+  `evaluate_cell`, `--note`/`note` to `reproduce`/`emit-record`, and their tests
+  (39 green). One correction adopted on use: the dwarf witness result is a genuine
+  `swallow`-timing FAIL, not a fixture plumbing issue.
+
+Subagents again collapsed the read/verify phase (est. 30-40 min of command
+archaeology); the only on-use adjustment was re-anchoring records to the frozen
+`138ac640` pin after the refresh.

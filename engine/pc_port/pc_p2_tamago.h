@@ -21,3 +21,11 @@ void pc_p2_tamago_update(BTeki*);
 float pc_p2_tamago_param_f(const BTeki*, int idx, float fallback);
 int pc_p2_tamago_corpse_type(const BTeki*, int fallback);
 bool pc_p2_tamago_clip(const BTeki*, const char*& name, float& phase);
+// Manager-driven group birth (#165): births `count` Mitite Teki actors from the
+// registered host (source tamagoMushiMgr::createGroup), exactly once per host,
+// and links them as follower. P1-derived: born actors are Chappy-vehicle Teki
+// (no per-actor generator), documented + logged P2_TAMAGO_BIRTH/BIRTH_ONCE.
+void pc_p2_tamago_birth_group(BTeki* host, int count);
+// Registration observability for the group-birth lifecycle fixture.
+unsigned long pc_p2_tamago_count();
+bool pc_p2_tamago_registered(BTeki*);
