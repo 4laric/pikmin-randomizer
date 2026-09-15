@@ -109,6 +109,13 @@ public:int idle() override {
         houdaiGen=houdai->mGenerator;bigfootGen=bigfoot->mGenerator;
         require(houdaiGen&&houdaiGen->mGenType&&houdaiGen->mGenObject,"houdai generator present");
         require(bigfootGen&&bigfootGen->mGenType&&bigfootGen->mGenObject,"bigfoot generator present");
+        // The P1 Chappy placement vehicle is ~130 HP and dies before the source
+        // Houdai FSM (Land 5 s + Flick 2.3 s) can reach Shot. Raise the proxy to a
+        // documented fixture baseline so the source Shot state is reachable; the
+        // death is still natural combat (the squad drains this baseline to zero).
+        houdai->mHealth=600.0f;
+        std::printf("P2_LL_HP_OVERRIDE species=Houdai hp=600 set_by=fixture baseline=1 "
+                    "not_lethal=1 reason=P1_chappy_proxy_too_fragile_for_source_shot\n");
         int attackers=assignAttack(bigfoot);
         require(attackers>0,"no attackers after ready");
         std::printf("P2_LL_READY squad=%d houdai_gen=%u bigfoot_gen=%u attack=%d\n",squad,houdaiGen->_70,bigfootGen->_70,attackers);
