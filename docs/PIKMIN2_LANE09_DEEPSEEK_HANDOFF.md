@@ -173,3 +173,105 @@ Three subagents were delegated in parallel at the start:
 Net effect: they collapsed the read-heavy discovery and pre-checked the harness; the native
 implementation, build, GL fixture, and handoff remained in-session. Estimated time saved ~30–40
 minutes of tooling/context work; no result was discarded.
+
+## Slice 2
+
+### Deliverable
+
+A **second real consumer of the corrected specular half-vector primitive**
+(`pc_port/pc_p2_specular_dir.h::p2specular::halfVector`) in the adopted fixture
+shape: the **Frog** (MaroFrog family, lane 16) audited diffuse+specular material,
+proven at the source and material-profile level to carry a genuine specular COLOR1
+channel. Unlike the Queen path (which needs the `p2material::drawSpecular` two-stage
+TEV layer), the profiled Frog material reaches the same GL `uSpecHalf1` branch
+through its ordinary `0x93` lighting control plus its restored additive COLOR1
+stage — the exact gap the upstream validation doc left as "Needs the audited
+diffuse+specular material profile".
+
+### Source / material audit (source-backed, no assets claimed missing)
+
+- Input Frog bank: `output/dsw/l16-out/frog-bank` (`frogs.json` policy
+  `P2_FROG_IMPORT_1`). `Frog/enemy.bmd` sha256 `8b6461d3358286620d9e774c824f1f7c…`
+  and `MaroFrog/enemy.bmd` `353f8e50e56f5d1fb3812b10c73fb0b6bd72739…` match the
+  `pikmin2_frog_material_profile` `SOURCES` exactly.
+- `source_material(Frog/enemy.bmd)[0].channels[2]` (COLOR1) =
+  `enabled=1 light_mask=128 diffuse_function=1(SIGN) attenuation_function=0(GX_AF_SPEC)`;
+  stage1 `rgb_arguments=[10,15,15,0]` adds raster1. This is the half-vector channel.
+- `pikmin2_frog_material_profile.prepare` emitted `control=0x93` (147) for both body
+  materials; `specular_criterion(0x93)` is True while the converter defaults
+  `0`/`0x1800` are False.
+
+### Root files owned this slice
+
+- `experimental/pikmin2_specular_slice2.py` (new) — the specular-channel criterion
+  (`LightingControlFlags::EnableSpecular == 1<<1`, cited to `include/PVW.h` +
+  `src/sysDolphin/dgxGraphics.cpp`) and the `FROG_SPECULAR_RENDER` marker gate that
+  **flips when the RENDER marker is stripped/zeroed/literal**.
+- `experimental/pikmin2_frog_specular_stage.py` (new) — stages the profiled Frog bank
+  into a fresh room-preview run (`overlay`, read-only shared assets).
+- `tests/test_pikmin2_specular_slice2.py` (new) — 9 tests.
+- `scripts/pikmin2_frog_specular_fixture.cpp` (new) — replacement-main fixture in the
+  adopted fixture shape: centred 960x540 visible window, live starting Pikmin, loads the
+  profiled `frog_Frog_wait1_00.mod`, installs light 7 via `GXInitSpecularDir`, and
+  isolates the specular contribution by toggling `EnableSpecular` per draw.
+
+### Private evidence (root-side, no GL yet)
+
+- `output/dsw/l09-out/frog-spec-profiled` — prepared profile bank
+  (`P2_FROG_SOURCE_MATERIAL_1`, control 0x93, 2 stages).
+- `output/dsw/l09-out/frog-run-01` — staged run; `frog-specular-stage.json` records the
+  profiled-mod overlays and their sha256.
+- Tests: `tests/test_pikmin2_specular_slice2.py` → **9 passed**; the seven-file
+  `test_pikmin2_specular_slice2.py test_pikmin2_bulblax_material.py
+  test_pikmin2_frog_material_compare.py test_pikmin2_frog_material_profile.py
+  test_pikmin2_qurione_material_audit.py test_pikmin2_qurione_material_patch.py
+  test_pikmin2_qurione_material_compare.py` → **37 passed**.
+
+### Build / GL status (BLOCKED)
+
+The native rebuild + fixture + real-GL run could not run this session: `build_lane.py
+l09` waited 15+ minutes without acquiring a build slot (build semaphore stayed 2/2 held,
+and the single `gl` semaphore stayed held, by the other 17 lanes). Consequently
+`pikmin_pc` is still the slice-1 build at native `ec9ead10` (not current `ec39d1c2`), so
+`build_pikmin2_fixture.py` (which requires a fresh `pikmin_pc` at HEAD with
+`ninja -n` == "no work to do") could not compile/run `pikmin2_frog_specular_fixture.cpp`.
+**No native C++ source was changed in this slice** (the primitive already exists on both
+branches); the fixture consumes it as-is. The GL `FROG_SPECULAR_RENDER .../
+specular_channels=.. replay_equal=1` marker remains UNTESTED pending the reserved GL run.
+
+### Six arena gates (honest, natural vs injected)
+
+| Gate | Result | Note |
+|---|---|---|
+| 1 Exact identity / spawn | source-backed N/A | Material-only consumer; Frog COLOR1 specular channel proven at the source-audit level, not an ordinary spawn. |
+| 2 Autonomous movement / animation | source-backed N/A | Not exercised by this material fixture. |
+| 3 Attacks and receivers | source-backed N/A (gameplay lane) | Unchanged; belongs to lane 16 / receivers lane. |
+| 4 Death and corpse | source-backed N/A | Not exercised. |
+| 5 Actual transport and reward | source-backed N/A | Not exercised. |
+| 6 Cleanup and re-entry | source-backed N/A | Not exercised. |
+| Lane-09 gate: source-backed material/visual comparison | **BLOCKED (runtime)** | Source specular-channel criterion proven + staged; corrected half-vector GL render not yet captured (build+GL slots contested). |
+
+### Subagent usage (honest)
+
+This session exposed no `task`/subagent-spawning tool, so the three recommended parallel
+delegations (source audit, existing-candidate inventory, test scaffolding) were performed
+inline. Net effect: no delegation was possible and the read-heavy discovery consumed my
+own context; this is recorded as a negative result on the subagent experiment, not a claim
+of having used it.
+
+### Reproduction (exact, for the reserved build+GL run)
+
+```powershell
+$env:PYTHONUTF8='1'; $env:PIKMIN_P2_ROOM_WINDOW='960x540'
+# 1. (slow, slot-gated) rebuild pikmin_pc at native HEAD ec39d1c2
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/build_lane.py l09
+# 2. build the replacement-main fixture against that build
+py -3.12 scripts/build_pikmin2_fixture.py --build C:/Users/alari/pikmin-randomizer/output/dsw/native-l09-build --source C:/Users/alari/pikmin-randomizer/output/dsw/native-l09 --fixture scripts/pikmin2_frog_specular_fixture.cpp --output output/dsw/l09-out/frog-fixture --expected-native-head ec39d1c2
+# 3. run it under the single real-GL slot from the staged run dir
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l09 -- py -3.12 C:/Users/alari/pikmin-randomizer/output/dsw/l09-out/run_driver.py C:/Users/alari/pikmin-randomizer/output/dsw/l09-out/frog-fixture/fixture.exe
+#   (run_driver.py changes cwd to the staged run; pass the frog-run-01 cwd via cwd before step 3)
+```
+
+Staging prerequisites (already produced, no slots): profiled bank
+`output/dsw/l09-out/frog-spec-profiled` from `output/dsw/l16-out/frog-bank`, and staged
+run `output/dsw/l09-out/frog-run-01`.
