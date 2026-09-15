@@ -16,7 +16,7 @@ Purple/White modules (unchanged).
 one live-wiring gap in the "identity storage → capability routing → recruitment →
 checkpoint schema" series. The lane already had identity (species 5), the hazard
 capability matrix, the whistle→recruited recruitment path and the schema-3 wire
-format, but **`pc_p2_bulbmin_transition` had no live engine caller** and the
+format, but **`pc_p2_bulbmin_transition` had no live engine caller** (review note: it still has none after this slice; what landed is the separate `pc_p2_bulbmin_should_save` predicate wired into the cave checkpoint) and the
 actual cave checkpoint wrote *every* surviving Bulbmin (wild or not). The source
 `PikiMgr::caveSaveAllPikmins` / `saveAllPikmins` filter
 (`src/plugProjectKandoU/pikiMgr.cpp:723,762`) never saves a wild (unwhistled)
