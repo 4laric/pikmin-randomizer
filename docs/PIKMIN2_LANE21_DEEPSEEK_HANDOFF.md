@@ -47,7 +47,7 @@ Root (`deepseek/p2-l21`):
 1. `895124b` — lane21: source Groink carcass revival policy twin, tests and doc (#198) [superseded API; kept in history].
 2. `cd0c59f` — lane21: DeepSeek handoff for carcass revival slice (#198) [superseded].
 3. `795b208` — lane21: resume parked carcass API in the Python twin, tests and doc (#198).
-4. `<head>` — lane21: fix1 handoff (this document).
+4. `5b27c79` — lane21: fix1 handoff for resumed parked carcass candidate (#198).
 
 ## Interfaces and hooks touched
 
