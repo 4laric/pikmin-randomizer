@@ -130,3 +130,65 @@ py -3.12 -m experimental.pikmin2_kogane_natural run `
   --output C:/Users/alari/pikmin-randomizer/output/dsw/l17-out/natural-run `
   --exe C:/Users/alari/pikmin-randomizer/output/dsw/l17-out/natural-fixture/fixture.exe
 ```
+
+## Slice 2 — real collection and restart dedupe
+
+Worker: DeepSeek. Source ID 9 Kogane. Closes gate 5 (real transport/reward through the
+ordinary P1 Onion/nectar path) and the restart half of gate 6. Full detail:
+`docs/PIKMIN2_KOGANE_COLLECT.md`.
+
+### Ordered commits (appended to slice 1)
+
+Root (`deepseek/p2-l17`, base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`):
+- `8d44bcf` lane17: real collection + restart dedupe fixture (Onion receipt, carry/drink, cross-process) (#219)
+
+Native (`deepseek/p2-l17-native`, base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`):
+- `75153537` lane17: grant reward drops exactly-once through the lane-06 ordinary Onion receipt ledger (#219)
+- `b5676090` lane17: lazy-reopen the lane-06 receipt host before granting (single-consumer close resilience) (#219)
+
+Dirty state: clean (both).
+
+### Interfaces / hooks touched
+
+- `pc_p2_kogane.cpp`: drop rewards now granted exactly once via `pc_p2_receipt_host_grant`
+  (lane-06 ordinary Onion ledger, `P2_KOGANE_ONION_RECEIPT`). Read `PIKMIN_P2_SEED`
+  (else token `kogane-arena`), open `p2-kogane-onion-receipts.txt`; lazy re-open on
+  grant because the single-consumer host may be closed by `pc_p2_flora_reset`.
+- No shared-file edits (the Onion receipt is observed via P1-native `GoalItem::suckMe`/
+  `bornPikis`, not a new hook). Arena placements only (no enemy change).
+
+### Build evidence (`output/dsw/l17-build-evidence.txt`, latest)
+
+```
+native=b56760901e4f47d03a111ff567af72a00cdf0e12 dirty=no exe=nectar.exe
+sha256=d5e6ec9bb9ac6f0aad97f9b92c9de174121f80e16ebd9d9d0500428d398ffc3a ninja_n="ninja: no work to do."
+```
+
+Fixture `collect-fixture` `status: built`; `fixture.exe` SHA-256
+`354a3a02f1d2b012350ff63810008bceeab5b63c1e77f2e80ca10e02175cbd61`.
+
+### Runtime evidence
+
+`collect-cross` (pass0 + pass2, both exit 0, 960x540 centred): real collection
+(`pellets_collected=1 nectar_drunk=5 sprouts=2`), three `P2_KOGANE_ONION_RECEIPT
+granted=1`, source escape, then pass2 `P2_KOGANE_RECEIPTS loaded=1` +
+`P2_KOGANE_RESTORED_ESCAPE generator=219001 flips=3` + `P2_KOGANE_RESTART rearmed=0`,
+no new drop/grant. Single-process `collect-run` also passes.
+
+### Subagent usage (slice 2 experiment, honest)
+
+- `explore` #1 (source audit: beetle drop/collection/escape + P1 Onion/pellet/nectar path):
+  used as-is. Key findings used: P1 Onion = `GoalItem`/`ItemMgr` (`goalItem.cpp`
+  `suckMe` -> `mCurrAnimId` seeds -> `GoalAI::EmitPiki` -> `GameStat::bornPikis`),
+  nectar = `OBJTYPE_Water` -> `PIKISTATE_Absorb`, and **no Poko/money counter in the
+  P1 host**. Shaped the "sprout credit" observation and the Onion-ledger design. Saved
+  ~30 min of source spelunking.
+- `explore` #2 (existing-candidate inventory): used as-is. Confirmed the kogane module
+  used its own flip sidecar (not `P2Receipt::ReceiptLedger`), and gave the exact
+  `pc_p2_receipt_host_*` + marker inventory. Saved ~20 min.
+- `general` #3 (test scaffolding): produced a 7-test standalone validator. I DISCARDED
+  its self-contained validator/marker grammar (it assumed a single-log `P2_KOGANE_RESTART
+  loaded/duplicate/rearmed` line and `sprouts=5`) and rewrote `tests/test_pikmin2_kogane_collect.py`
+  against the real module (`validate_collect`/`validate_restart`/`validate_cross`), because
+  restart dedupe is cross-process (two logs) and nectar does not produce sprouts (pellets do).
+  Net: cost ~5 min to discard, but the scaffolding confirmed the test shape. Honest negative.
