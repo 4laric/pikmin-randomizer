@@ -138,13 +138,11 @@ def king_creature_validate(text, code):
     checks = dict(
         completion=code == 0 and 'PASS P2_KING_CREATURE_RUNTIME' in text,
         teki_ready=bool(re.search(r'P2_KING_TEKI_READY generator=\d+ type=\d+', text)),
-        attached=bool(re.search(r'P2_KING_TEKI_ATTACHED', text)),
-        flick=bool(re.search(r'P2_KING_CHECK_FLICK', text)
-                   or re.search(r'P2_KING_TRAMPLE', text)),
-        lethal=bool(re.search(r'P2_KING_STATE id=\d+ from=\d+ to=2 health=0', text)),
-        dead_key=bool(re.search(r'P2_KING_DEAD_KEY id=\d+ frame=185 kill=1', text)),
-        corpse=bool(re.search(r'P2_KING_TEKI_CORPSE', text)),
-        pod_receipt=bool(re.search(r'P2_POD_RECEIPT id=corpse:', text)),
+        attached=bool(re.search(r'P2_KING_TEKI_ATTACHED generator=\d+ attached=[1-9]\d*', text)),
+        flick=bool(re.search(r'P2_KING_TEKI_FLICK generator=\d+', text)),
+        lethal=bool(re.search(r'P2_KING_TEKI_CORPSE generator=\d+ health=0.0', text))
+               and 'frame=185' not in text,
+        pod_receipt=bool(re.search(r'P2_POD_RECEIPT id=corpse:king:\d+', text)),
         no_staging=not any(marker in text for marker in staging),
     )
     failed = sorted(name for name, ok in checks.items() if not ok)

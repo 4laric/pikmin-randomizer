@@ -190,13 +190,11 @@ class QueenFreeModeTests(unittest.TestCase):
         self.assertFalse(evidence['passed'])
 
 
-_KC_TEKI_READY = 'P2_KING_TEKI_READY generator=230020 type=53'
-_KC_ATTACHED = 'P2_KING_TEKI_ATTACHED id=230020 attach=3'
-_KC_FLICK = 'P2_KING_CHECK_FLICK id=230020 flick=1'
-_KC_LETHAL = 'P2_KING_STATE id=230020 from=1 to=2 health=0'
-_KC_DEAD_KEY = 'P2_KING_DEAD_KEY id=230020 frame=185 kill=1'
-_KC_CORPSE = 'P2_KING_TEKI_CORPSE id=230020 frame=200'
-_KC_POD_RECEIPT = 'P2_POD_RECEIPT id=corpse:uji:4 value=15 new=1 pokos=15 seeds=0'
+_KC_TEKI_READY = 'P2_KING_TEKI_READY generator=221010 type=53'
+_KC_ATTACHED = 'P2_KING_TEKI_ATTACHED generator=221010 attached=7 blows=34 stuck=7 tier=0 flick=1'
+_KC_FLICK = 'P2_KING_TEKI_FLICK generator=221010 shaken=34 blown_threshold=30 stuck_threshold=5'
+_KC_CORPSE = 'P2_KING_TEKI_CORPSE generator=221010 health=0.0 corpse_pellet=1 cleanup_engine=1'
+_KC_POD_RECEIPT = 'P2_POD_RECEIPT id=corpse:king:221010 value=15 new=1 pokos=15 seeds=0'
 _KC_PASS = 'PASS P2_KING_CREATURE_RUNTIME'
 
 
@@ -205,8 +203,6 @@ def king_creature_log(*extra):
         _KC_TEKI_READY,
         _KC_ATTACHED,
         _KC_FLICK,
-        _KC_LETHAL,
-        _KC_DEAD_KEY,
         _KC_CORPSE,
         _KC_POD_RECEIPT,
         _KC_PASS,
@@ -225,8 +221,6 @@ class KingCreatureValidatorTests(unittest.TestCase):
             _KC_TEKI_READY,
             _KC_ATTACHED,
             _KC_FLICK,
-            _KC_LETHAL,
-            _KC_DEAD_KEY,
             _KC_CORPSE,
             _KC_PASS,
         ]) + '\n'
@@ -243,17 +237,15 @@ class KingCreatureValidatorTests(unittest.TestCase):
             _KC_TEKI_READY,
             _KC_ATTACHED,
             _KC_FLICK,
-            _KC_LETHAL,
-            _KC_DEAD_KEY,
             _KC_POD_RECEIPT,
             _KC_PASS,
         ]) + '\n'
         evidence = g.king_creature_validate(text, 0)
-        self.assertIn('corpse', evidence['failed'])
+        self.assertIn('lethal', evidence['failed'])
 
     def test_injected_kill_fails(self):
         evidence = g.king_creature_validate(
-            king_creature_log('P2_KING_INJECT id=230020 tick=5 force=Kill fixture=1'), 0)
+            king_creature_log('P2_KING_INJECT id=221010 tick=5 force=Kill fixture=1'), 0)
         self.assertIn('no_staging', evidence['failed'])
 
 
