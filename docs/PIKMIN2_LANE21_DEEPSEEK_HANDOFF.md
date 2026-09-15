@@ -490,7 +490,7 @@ lane-16 base session.
 
 ### Source ID: 78 `MiniHoudai`
 
-| Gate | Result | Evidence | Injected vs natural |
+| Gate | Historical note | Evidence | Injected vs natural |
 |---|---|---|---|
 | 1. Exact identity and spawn | N/A | no live MiniHoudai actor is spawned; the P2 carcass policy is bound to a generated Frog generator 201001 | - |
 | 2. Autonomous movement and animation | PASS | output/dsw/l21-out/run-groink-live/native.log:1269,:1305,:1319,:1566 P2_GROINK_MOVE (position + source-FSM state + clip + phase; travel 0 -> 84.377 over 600 ticks) | natural |
@@ -501,7 +501,7 @@ lane-16 base session.
 
 ### Source ID: 97 `FminiHoudai`
 
-| Gate | Result | Evidence | Injected vs natural |
+| Gate | Historical note | Evidence | Injected vs natural |
 |---|---|---|---|
 | 1. Exact identity and spawn | N/A | no live pedestal Groink actor is spawned; shares the same policy binding | - |
 | 2. Autonomous movement and animation | UNTESTED | not run separately | - |
@@ -535,3 +535,139 @@ Root `deepseek/p2-l21` (base `282beac5`):
 (`provenance.json` status `built`). Run:
 `py -3.12 slot.py run gl l21 -- py -3.12 output/dsw/l21-out/run_groink_live.py`
 (exit 0).
+
+## Slice 6 — cleanup and re-entry rehearsal, 5/5
+
+Gate 6 is closed. The generated Frog actor at generator 201001 is killed by the
+free-mode squad (the same natural kill gate 4 cites); its own carcass policy then
+forgets the sidecar binding through the **real engine death funnel** (carcass
+pellet kill -> `BTeki::doKill` -> `pc_p2_forget_teki` -> `pc_p2_groink_teki_forget`).
+The fixture then drives the exact stage-boundary teardown (`pc_p2_reset_all_teki`,
+the call `GameCoreSection::exitStage` makes), a real generator rebirth
+(`gGenerator->mGenType->init(gGenerator)`), and the real lane re-bind
+(`pc_p2_groink_teki_setup()`), proving a fresh binding with no stale-address
+credit.
+
+### Ordered commits (Slice 6)
+
+Native `deepseek/p2-l21-native` (base `d4be6bab`, fast-forward merge of
+`claude/p2-deepseek-wave-native`; merge clean):
+
+- `3a2ee051` — `lane21: cleanup/re-entry rehearsal - real death-funnel forget,
+  stage reset and generator rebirth re-bind (#198)` — adds the lifecycle probes
+  (`pc_p2_groink_teki_bound_count` / `_forget_count` / `_reset_count` /
+  `_generator_object`), the `P2_GROINK_TEKI_FORGET` / `P2_GROINK_TEKI_RESET`
+  markers and the `tools/p2_groink_runtime.cpp --groink-reentry` scenario.
+
+Root `deepseek/p2-l21` (this commit): handoff + gate-table update.
+
+### Build evidence
+
+- `build_lane.py l21` at native `3a2ee051`: `dirty=no`,
+  `bin/nectar.exe` sha256
+  `9ea8a86bd2b6c2c5f8583a2a0bb2f8eab106ebf69c31b49e414a7f1e6280cb21`,
+  `ninja -n` = `ninja: no work to do.`
+- Fixture (`scripts/build_pikmin2_fixture.py`, expected native head `3a2ee051`,
+  `provenance.json` status `built`) →
+  `output/dsw/l21-out/groink-reentry-fixture/fixture.exe` sha256
+  `9302cbbf6447945d7983f68e8dfad9b551ecb292b8e82821912d8f317a3ecb77`.
+- Native CTest `ctest --test-dir output/dsw/native-l21-build -R p2_groink` ->
+  11/11 PASS at the merged head.
+
+### Real-GL runtime evidence (executed, exit 0)
+
+Run `py -3.12 slot.py run gl l21 -- py -3.12 output/dsw/l21-out/run_groink_reentry.py`
+at `PIKMIN_P2_ROOM_WINDOW=960x540`; log
+`output/dsw/l21-out/run-groink-reentry/native.log` (960x540 centered, no
+extinction):
+
+```text
+:1273 P2_GROINK_REENTRY_BEGIN old=000001ddff8b3270 generator=201001 bound=1
+:1280 P2_GROINK_CARCASS_BECOME generator=201001 pos=-150.000,0.000,1850.000 face_dir=0.146
+:1298 P2_FROG_DEAD species=Frog generator=201001 health=0
+:1340 P2_GROINK_TEKI_FORGET bound=1 remaining=0 count=1
+:1341 P2_GROINK_REENTRY_FORGOTTEN tick=425 forget=1 bound=0
+:1342 P2_GROINK_REENTRY_REBIRTH new=000001ddff8b3270 recycled=1 stale_bound=0
+:1345 P2_GROINK_TEKI_RESET bound_before=1 bound_after=0 count=3
+:1348 P2_GROINK_REENTRY old=000001ddff8b3270 new=000001ddff8b3270 stale_bound=0 rebound=1 recycled=1 forget_total=1 reset_total=4
+:1349 PASS GROINK_RUNTIME groink_reentry
+```
+
+Reading: the natural kill drops the actor to death (`P2_FROG_DEAD`), the carcass
+policy begins (`BECOME`), and the pellet kill drives the real death-funnel forget
+(`P2_GROINK_TEKI_FORGET bound=1 remaining=0`). The real stage teardown then clears
+the fresh pre-reset registration (`P2_GROINK_TEKI_RESET bound_before=1
+bound_after=0`), and the real generator rebirth plus `pc_p2_groink_teki_setup()`
+re-binds a fresh actor (`P2_GROINK_REENTRY stale_bound=0 rebound=1`).
+
+### Honest labels (Slice 6)
+
+- **Cleanup:** the forget is the engine's own death funnel (carcass pellet kill ->
+  `BTeki::doKill` -> `pc_p2_forget_teki`), not an injected call.
+- **Re-entry:** `pc_p2_reset_all_teki()` is the exact stage-boundary teardown
+  `GameCoreSection::exitStage` calls; the rebirth is the real generator
+  `mGenType->init()`; the re-bind is the real lane `pc_p2_groink_teki_setup()`
+  seam.
+- **Allocator recycle:** the freed P1 `BTeki` slot is recycled by the allocator,
+  so the fresh and forgotten pointers are equal (`recycled=1`). This earns no
+  stale credit: the death-funnel forget had already erased the pointer key, and
+  the fixture asserts the recycled address is **unbound** (`:1342 stale_bound=0`)
+  until the lane setup explicitly re-binds it. `stale_bound=0 rebound=1` is the
+  real re-entry, not a recycled-address credit.
+- The re-entry is a lane-local labelled rehearsal on the generated Frog actor
+  (generator 201001), not a spawned EnemyID 78 `MiniHoudai`; the shared
+  `generalEnemyMgr->birth` / `MINIHOUDAI_Rebirth` transit (lane 06/07) is not
+  reproduced. Identity gate 1 stays `N/A`.
+
+### Source ID: 78 `MiniHoudai`
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | N/A | no live MiniHoudai actor is spawned; the P2 carcass policy is bound to a generated Frog generator 201001 | - |
+| 2. Autonomous movement and animation | PASS | output/dsw/l21-out/run-groink-live/native.log:1269,:1305,:1319,:1566 P2_GROINK_MOVE (position + source-FSM state + clip + phase; travel 0 -> 84.377 over 600 ticks) | natural |
+| 3. Attacks and receivers | PASS | output/dsw/l21-out/run-groink-live/native.log:1313 P2_FROG_LAND radius=23.0 pikmin=3 behavior=source and :1314 P2_GROINK_TARGET_HIT health=30.0->20.0 state=22->33 alive=1->1 (and :1455 health=10.0->0.0 alive=1->0) | natural |
+| 4. Death and corpse | PASS | output/dsw/l21-out/run-carcass-transport3/native.log:1277 P2_FROG_DEAD and :1279 P2_GROINK_CARCASS_BECOME (natural free-mode squad kill) | natural |
+| 5. Actual transport and reward | PASS | output/dsw/l21-out/run-carcass-transport3/native.log:1378 P2_POD_RECEIPT id=corpse:groink:201001 value=2 new=1 pokos=2 seeds=0 | natural |
+| 6. Cleanup and re-entry | PASS | output/dsw/l21-out/run-groink-reentry/native.log:1340 P2_GROINK_TEKI_FORGET bound=1 remaining=0 (real death funnel via the carcass pellet kill), :1345 P2_GROINK_TEKI_RESET bound_before=1 bound_after=0 (stage-boundary pc_p2_reset_all_teki) and :1348 P2_GROINK_REENTRY stale_bound=0 rebound=1 (real generator mGenType->init rebirth + pc_p2_groink_teki_setup re-bind) | natural |
+
+### Source ID: 97 `FminiHoudai`
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | N/A | no live pedestal Groink actor is spawned; shares the same policy binding | - |
+| 2. Autonomous movement and animation | UNTESTED | not run separately | - |
+| 3. Attacks and receivers | UNTESTED | not run separately | - |
+| 4. Death and corpse | UNTESTED | not run separately | - |
+| 5. Actual transport and reward | UNTESTED | not run separately | - |
+| 6. Cleanup and re-entry | UNTESTED | not run separately; the shared binding cleanup/re-entry is proven on identity 78 (output/dsw/l21-out/run-groink-reentry/native.log:1348) | - |
+
+### slice6 check_p2_handoff_gates output
+
+`py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE21_DEEPSEEK_HANDOFF.md` from
+`output/dsw/wave-root` (exit 0):
+
+```
+78 MiniHoudai (role=source):
+  1. identity_spawn     ignored [N/A]
+  2. movement_animation accepted [PASS]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   accepted [PASS]
+  6. cleanup_reentry    accepted [PASS]
+97 FminiHoudai (role=source):
+  1. identity_spawn     ignored [N/A]
+  2. movement_animation ignored [UNTESTED]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [UNTESTED]
+EXIT=0 (no refused PASS rows)
+```
+
+### Reproduction (Slice 6)
+
+```
+cd C:/Users/alari/pikmin-randomizer/output/deepseek-wave
+$env:PATH="C:/msys64/mingw64/bin;"+$env:PATH
+py -3.12 slot.py run gl l21 -- py -3.12 C:/Users/alari/pikmin-randomizer/output/dsw/l21-out/run_groink_reentry.py
+```
