@@ -69,8 +69,19 @@ GATE_BY_NUMBER = {index + 1: gate for index, gate in enumerate(GATE_IDS)}
 _STATUS_RE = re.compile(r"(PASS|PARTIAL|FAIL|BLOCKED|UNTESTED|N/A)\b")
 
 _SOURCE_ID_RE = re.compile(r"(?:source_id|EnemyID)\s*[`\"']?\s*(\d+)")
-_ID_ENUM_RE = re.compile(r"\b(\d{1,3})\s*`([A-Za-z][A-Za-z0-9_]*)`")
-_NAME_PAREN_RE = re.compile(r"([A-Za-z][A-Za-z0-9_]*)\s*\(\s*(\d+)")
+# Identity-naming forms. Names are roster-verified AND the adjacent number must
+# equal the roster entry's own source_id, so "54 Queen" (Queen=30) or a module
+# label like "batch-2 Chappy" cannot conjure a phantom identity. The leading
+# ``(?<![\w/-])`` prevents ``-``/``/`` from acting as a boundary (so "batch-2"
+# and "wave/3" do not detach their number).
+_ID_ENUM_RE = re.compile(r"(?<![\w/-])(\d{1,3})\s*`([A-Za-z][A-Za-z0-9_]*)`")
+_NAME_PAREN_RE = re.compile(r"(?<![\w/-])([A-Za-z][A-Za-z0-9_]*)\s*\(\s*(\d+)")
+_NAME_NUM_RE = re.compile(r"(?<![\w/-])([A-Za-z][A-Za-z0-9_]*)\s+(\d{1,3})\b")
+_NUM_NAME_RE = re.compile(r"(?<![\w/-])(\d{1,3})\s+([A-Za-z][A-Za-z0-9_]*)\b")
+_ENEMY_NUM_RE = re.compile(r"\benemy\s+(?:id\s+)?(\d{1,3})\b", re.IGNORECASE)
+# "source id 44" / "P2 id 72" (space-separated, possibly bold-marked).
+_SOURCE_ID_SPACE_RE = re.compile(r"\b(?:source\s+id|P2\s+id)\s*:?\s*\**\s*(\d{1,3})\b",
+                                 re.IGNORECASE)
 
 # A line that names the identity a following table belongs to: the prose
 # "Source ID" / "Source enemy ID" / "Concrete source ID" line. A bare "EnemyID"
@@ -94,8 +105,26 @@ def _split_row(line: str) -> list[str] | None:
     if not stripped.startswith("|"):
         return None
     stripped = stripped.strip("|")
-    cells = re.split(r"(?<!\\)\|", stripped)
-    return [re.sub(r"\\([|\\])", r"\1", cell).strip() for cell in cells]
+    # Tokenise: a backslash escapes exactly the next character (so ``\|`` is a
+    # literal pipe and ``\\|`` is a literal backslash followed by a separator).
+    cells: list[str] = []
+    current: list[str] = []
+    i = 0
+    while i < len(stripped):
+        ch = stripped[i]
+        if ch == "\\" and i + 1 < len(stripped):
+            current.append(stripped[i + 1])
+            i += 2
+            continue
+        if ch == "|":
+            cells.append("".join(current).strip())
+            current = []
+            i += 1
+            continue
+        current.append(ch)
+        i += 1
+    cells.append("".join(current).strip())
+    return cells
 
 
 def _iter_tables(markdown: str):
@@ -163,16 +192,34 @@ def parse_identities(markdown: str, roster=None) -> list[tuple[int, str | None]]
     by_name = {entry.enum_name: entry for entry in roster}
     found: dict[int, str | None] = {}
     for match in _SOURCE_ID_RE.finditer(markdown):
-        found.setdefault(int(match.group(1)), None)
+        sid = int(match.group(1))
+        if not roster or sid in by_source:
+            found.setdefault(sid, None)
     if roster:
         for match in _ID_ENUM_RE.finditer(markdown):
             sid, name = int(match.group(1)), match.group(2)
-            if name in by_name:
+            if name in by_name and by_name[name].source_id == sid:
                 found.setdefault(sid, name)
         for match in _NAME_PAREN_RE.finditer(markdown):
             name, sid = match.group(1), int(match.group(2))
-            if name in by_name:
+            if name in by_name and by_name[name].source_id == sid:
                 found.setdefault(sid, name)
+        for match in _NAME_NUM_RE.finditer(markdown):
+            name, sid = match.group(1), int(match.group(2))
+            if name in by_name and by_name[name].source_id == sid:
+                found.setdefault(sid, name)
+        for match in _NUM_NAME_RE.finditer(markdown):
+            sid, name = int(match.group(1)), match.group(2)
+            if name in by_name and by_name[name].source_id == sid:
+                found.setdefault(sid, name)
+    for match in _ENEMY_NUM_RE.finditer(markdown):
+        sid = int(match.group(1))
+        if not roster or sid in by_source:
+            found.setdefault(sid, None)
+    for match in _SOURCE_ID_SPACE_RE.finditer(markdown):
+        sid = int(match.group(1))
+        if not roster or sid in by_source:
+            found.setdefault(sid, None)
     result = []
     for sid in sorted(found):
         name = by_source[sid].enum_name if sid in by_source else found[sid]
@@ -229,11 +276,19 @@ def _owner_from_line(line: str, by_name=None) -> int | None:
         return int(match.group(1))
     match = _ID_ENUM_RE.search(line)
     if match:
-        return int(match.group(1))
+        sid, name = int(match.group(1)), match.group(2)
+        if by_name is None or (name in by_name and by_name[name].source_id == sid):
+            return sid
     if by_name:
         match = _NAME_PAREN_RE.search(line)
-        if match and match.group(1) in by_name:
+        if match and match.group(1) in by_name and by_name[match.group(1)].source_id == int(match.group(2)):
             return int(match.group(2))
+        match = _NAME_NUM_RE.search(line)
+        if match and match.group(1) in by_name and by_name[match.group(1)].source_id == int(match.group(2)):
+            return int(match.group(2))
+        match = _NUM_NAME_RE.search(line)
+        if match and match.group(2) in by_name and by_name[match.group(2)].source_id == int(match.group(1)):
+            return int(match.group(1))
     return None
 
 
@@ -247,7 +302,7 @@ def _bound_tables(markdown: str, roster) -> dict[int, dict]:
     ``{source_id: gate_table}``.
     """
     lines = markdown.splitlines()
-    by_name = {entry.enum_name for entry in roster}
+    by_name = {entry.enum_name: entry for entry in roster}
     bound: dict[int, dict] = {}
     for start, block in _iter_tables(markdown):
         table = _extract_gate_table(block)
@@ -369,16 +424,24 @@ def build_advance_report(docs, roster=None) -> dict:
     """Aggregate a dry-run across ``[(handoff_label, markdown), ...]``.
 
     Deterministic: identities are keyed/sorted by ``source_id``, gates by
-    ``GATE_IDS`` order and handoffs are name-sorted. Returns
-    ``{"identities": [...], "summary": {gates_away: count}, "total": n}``.
+    ``GATE_IDS`` order and handoffs are name-sorted. Returns ``{"identities":
+    [...], "summary": {gates_away: count}, "total": n, "handoffs": {label:
+    [(source_id, enum_name), ...]}}``.
     """
     roster = roster if roster is not None else load_and_validate()
+    base = by_id(roster)
     merged: dict[int, dict] = {}
+    handoffs: dict[str, list[tuple[int, str | None]]] = {}
     for label, markdown in docs:
+        found: dict[int, str | None] = {}
         for row in ingest(markdown, roster):
             if row.get("skipped") or row["role"] == "unknown":
+                found.setdefault(row["source_id"],
+                                 base[row["source_id"]].enum_name
+                                 if row["source_id"] in base else None)
                 continue
             source_id = row["source_id"]
+            found.setdefault(source_id, row["enum_name"])
             rec = merged.setdefault(source_id, {
                 "source_id": source_id, "enum_name": row["enum_name"], "role": row["role"],
                 "handoffs": [], "advances": set(), "refused": {}, "shared": True,
@@ -392,6 +455,7 @@ def build_advance_report(docs, roster=None) -> dict:
                 rec["shared"] = False
             for gate, reason in row.get("refused", {}).items():
                 rec["refused"].setdefault(gate, set()).add(reason)
+        handoffs[label] = [(sid, found[sid]) for sid in sorted(found)]
     identities = []
     for source_id in sorted(merged):
         rec = merged[source_id]
@@ -409,16 +473,18 @@ def build_advance_report(docs, roster=None) -> dict:
     summary = {gates: 0 for gates in range(7)}
     for row in identities:
         summary[row["gates_away"]] += 1
-    return {"identities": identities, "summary": summary, "total": len(identities)}
+    return {"identities": identities, "summary": summary, "total": len(identities),
+            "handoffs": handoffs}
 
 
-def render_advance_report(report: dict, command: str) -> str:
+def render_advance_report(report: dict, branch: str) -> str:
     """Render ``build_advance_report`` output as deterministic markdown."""
+    command = f"py -3.12 scripts/generate_p2_advance_report.py --branch {branch}"
     lines = [
         "# P2 roster advance report (dry run)",
         "",
         "Deny-by-default admission dry-run across every lane handoff on",
-        "`claude/p2-deepseek-wave`. Per identity: the gates the handoff(s) would",
+        f"`{branch}`. Per identity: the gates the handoff(s) would",
         "advance, the PASSes refused and why (`uncited` / `injected` / `shared table`),",
         "and the gates still blocking `admission_requirements`. Nothing is admitted and",
         "nothing is written (dry run).",
@@ -426,6 +492,18 @@ def render_advance_report(report: dict, command: str) -> str:
         "Regenerate with:",
         "",
         "    " + command,
+        "",
+        "## Handoffs read",
+        "",
+    ]
+    for label in sorted(report["handoffs"]):
+        sids = report["handoffs"][label]
+        if not sids:
+            lines.append(f"- {label}: (none)")
+        else:
+            parts = ", ".join(f"{sid} {name}" if name else str(sid) for sid, name in sids)
+            lines.append(f"- {label}: {parts}")
+    lines += [
         "",
         "## Gates-away summary",
         "",

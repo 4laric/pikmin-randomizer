@@ -844,8 +844,11 @@ native build; no identity admitted; deny-by-default holds wave-wide).
 
 - `_owner_from_line` now accepts the `Name (NN)` form (roster-filtered via
   `_NAME_PAREN_RE`), so a table under `## WaterOtakara (60)` binds 60.
-- The bound-table walk-back stops at the nearest identity-naming heading or
-  "Source ID" line (non-naming headings are skipped, never a stop).
+- The bound-table walk-back loop itself is unchanged (it already stops at the
+  nearest identity-naming heading or "Source ID" line and skips non-naming
+  headings); the `Name (NN)` fix above is what now resolves that heading, so it
+  is no longer skipped. `test_table_binds_to_nearest_identity_heading` renders
+  this behavior.
 - `_PLAIN_PATH_RE` now requires a known root plus one segment (two segments
   counting the root), matching the doc; a bare `12/16` still does not count.
 - Bonus for the wave-wide run: `_extract_gate_table` accepts a `Status` column
@@ -888,8 +891,8 @@ Per identity the report lists the gates the handoff(s) would advance, the PASSes
 refused (`uncited` / `injected`) and the blocking gates. 15 identities remain 6
 gates away; 0 are admitted. Notables: FireOtakara (59) gates 1-3 are refused
 `uncited`, BlackMan (99) refused `identity_spawn:injected`/`movement_animation:injected`,
-Hana (84) refused `attacks_receivers:injected`; several identities (Armor 41,
-Fuefuki 41, Sokkuri 79, the Otakara siblings) are `shared table, excluded`.
+Hana (84) refused `attacks_receivers:injected`; several identities (Armor 15,
+Sokkuri 79, the Otakara siblings) are `shared table, excluded`.
 
 ### Assumptions / notes
 
@@ -919,3 +922,87 @@ py -3.12 scripts/generate_p2_advance_report.py                                  
 
 The `task` tool remains absent from this session's tool set, so slice 6 was done
 solo (direct file/git reads); no subagent results to reconcile.
+
+## Fix 6
+
+Review corrections to slice 6 (items 1-5; report coverage claim was wrong).
+
+- `parse_identities` now accepts the roster-filtered `Name NN` ("DangoMushi 94",
+  "Houdai 66", "Kabuto 75, Rkabuto 95, Fkabuto 96") and `NN Name` ("73
+  BigTreasure") forms, plus `enemy NN`/`enemy ID NN` ("enemy 30", "enemy 53"),
+  "source id NN" ("source id **44**") and "P2 id NN" ("P2 id 72"). 24 of 26
+  handoffs now yield at least one identity; lanes 03 ("source 45/44" slash pair)
+  and 11 (Bulbmin is the P1 `species 5`, not a P2 roster id) report `(none)`.
+  Covered by `test_identity_parse_accepts_cited_real_forms`.
+- The report now carries a `## Handoffs read` section (handoff -> identities
+  found, or `(none)`), so gaps are visible; the determinism test asserts every
+  input label appears and `shared is False`.
+- `_split_row` is a proper tokeniser: a backslash escapes exactly one character,
+  so `\|` is a literal pipe and `\\|` is a literal backslash + separator. Covered
+  by `test_double_backslash_before_pipe_is_a_separator`.
+- Flip tests added for the `Status` column (`test_status_column_is_accepted_as_result`)
+  and the shared-only-when-no-handoff-binds rule
+  (`test_shared_flag_is_false_when_any_handoff_binds`).
+- `scripts/generate_p2_advance_report.py` runs `git` with `cwd=ROOT` and passes
+  `--branch` through (the rendered command and header now carry the branch).
+
+Per-lane citation note: every identity stays 6 gates away because PASS
+rows are `uncited` (Evidence cites a bare `P2_*` log marker, not a doc/log file)
+or `shared`. The integrator can tell each lane to add the citation its PASS rows
+need — a `docs/PIKMIN2_*.md` / `.log` / `.txt` / `.json` filename or a
+`docs/`/`output/`/`tests/` path in the Evidence cell:
+
+| Lane | Identity | Gates refused `uncited` (would advance on citation) |
+|---|---|---|
+| 22 | FireOtakara 59 | identity_spawn, movement_animation, attacks_receivers |
+| 31 | BlackMan 99 | attacks_receivers, death_corpse, cleanup_reentry |
+| 08 | Hana 84 | identity_spawn, movement_animation |
+| 14 | Sokkuri 79 | identity_spawn, movement_animation, cleanup_reentry |
+| 26 | Houdai 66 | identity_spawn, attacks_receivers, cleanup_reentry |
+| 32 | BigTreasure 73 | movement_animation |
+| 20 | Kabuto 75 | identity_spawn, attacks_receivers, cleanup_reentry |
+| 25 | DangoMushi 94 | identity_spawn, movement_animation |
+| 17 | Kogane 9 | identity_spawn, movement_animation, death_corpse, cleanup_reentry |
+
+For each, cite the lane's recorded natural run (e.g. the `output/<lane>/...` log
+or the lane's `docs/PIKMIN2_*` evidence doc) instead of the bare marker, e.g.
+`docs/PIKMIN2_DWEEVIL_NATIVE.md` / `.../dweevil-run.stdout.txt`.
+
+### Tests run
+
+```
+py -3.12 -m pytest tests/test_pikmin2_handoff_ingest.py -q                                             # 18 passed
+py -3.12 -m pytest <roster / admission / seed suites> -q                                              # 104 passed
+py -3.12 scripts/generate_p2_advance_report.py --branch claude/p2-deepseek-wave                          # deterministic
+```
+
+### Subagent usage
+
+The `task` tool is still absent; fix 6 was done solo.
+
+## Fix 7
+
+Review corrections to fix 6 (identity regexes conjured phantom identities; solo).
+
+- `parse_identities` / `_owner_from_line` now require
+  `by_name[name].source_id == sid` for every name form (`Name NN`, `NN Name`,
+  `Name (N)`, `NN`Name``), so a number that does not belong to the named identity
+  is dropped instead of renaming the entry that owns that number. `_bound_tables`
+  passes `by_name` as a name->entry dict (was a name set).
+- The leading `\b` on those forms is now `(?<![\w/-])`, so `-`/`/` no longer
+  detach a number (`batch-2 Chappy`, `wave/3 Frog`).
+- `_SOURCE_ID_RE` (and `_ID_ENUM_RE` in `_owner_from_line`) are roster-filtered:
+  a bare `source_id`/`EnemyID` number that is not a roster source id (e.g. a spawn
+  uid `219002`) no longer parses as an identity.
+- Flip tests: "54 Queen poses", "batch-2 Chappy host", "Pikmin 2 Frog",
+  "tick 80 Kogane", "wave/3 Frog" -> `[]` (plus the pre-existing real-form cases
+  still pass).
+- Regenerated `docs/PIKMIN2_ROSTER_ADVANCE_REPORT.md`: seedable count 52 -> 50;
+  phantoms "54 Miulin" (L09) and "2 Chappy" (L23, now `(none)`) removed.
+- Handoff typos: `\|` separator wording and "item 8" -> "note".
+
+```
+py -3.12 -m pytest tests/test_pikmin2_handoff_ingest.py -q                 # 19 passed
+py -3.12 -m pytest <handoff/admission/roster/seed/placement suites> -q     # 159 passed, 17 subtests
+py -3.12 scripts/generate_p2_advance_report.py --branch claude/p2-deepseek-wave  # deterministic, seedable 50
+```
