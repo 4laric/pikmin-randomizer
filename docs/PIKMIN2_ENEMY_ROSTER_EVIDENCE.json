@@ -23,9 +23,9 @@
         "identity_spawn": "UNTESTED",
         "movement_animation": "N/A",
         "attacks_receivers": "N/A",
-        "death_corpse": "PASS",
+        "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
-        "cleanup_reentry": "PASS"
+        "cleanup_reentry": "UNTESTED"
       },
       "notes": [
         "Pelplant (Pellet Posy, plant): identity via injected TEKI_Palm proxy (not the P2 FSM); natural fell+pellet release (death_corpse) and restart dedupe (cleanup) PASS.",
@@ -41,8 +41,8 @@
         "PIKMIN2_BULBORB_FAMILY_CONTRACT.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -64,7 +64,15 @@
       "notes": [
         "Red Bulborb (Chappy); batch-2 display path, not a complete source FSM.",
         "Open: per-variant receiver/event mapping, natural death/carry/revisit (#120/#197)."
-      ]
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      }
     },
     "3": {
       "native_module": "pc_p2_pom",
@@ -201,8 +209,8 @@
         "PIKMIN2_KOGANE_AUDIT.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -222,8 +230,8 @@
         "PIKMIN2_KOGANE_AUDIT.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -243,8 +251,8 @@
         "PIKMIN2_KOGANE_AUDIT.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -264,8 +272,8 @@
         "PIKMIN2_BULBORB_FAMILY_CONTRACT.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -285,8 +293,8 @@
         "PIKMIN2_BULBORB_FAMILY_CONTRACT.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -308,7 +316,15 @@
       "notes": [
         "Candidate mechanics require per-gate evidence pinned to the accepted root/native pair; this ledger does not assert a combined runtime PASS.",
         "Open: weak-point/captain interaction, death/corpse, transport/reward, cleanup/re-entry (#407)."
-      ]
+      ],
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      }
     },
     "16": {
       "native_module": "pc_p2_qurione",
@@ -320,8 +336,8 @@
         "PIKMIN2_QURIONE_LIFECYCLE.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -343,7 +359,15 @@
       "notes": [
         "Yellow Wollywog; water and land variants remain separate (#167).",
         "Open: landing/crush/receivers, death/re-entry, transport or source N/A (#194/#201)."
-      ]
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      }
     },
     "18": {
       "native_module": "pc_p2_frog",
@@ -354,8 +378,8 @@
         "PIKMIN2_FROG_IMPORT.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -376,7 +400,7 @@
       "gates": {
         "identity_spawn": "UNTESTED",
         "movement_animation": "N/A",
-        "attacks_receivers": "PASS",
+        "attacks_receivers": "UNTESTED",
         "death_corpse": "N/A",
         "transport_reward": "N/A",
         "cleanup_reentry": "BLOCKED"
@@ -435,8 +459,8 @@
         "PIKMIN2_FLYING_ENEMY_AUDIT.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -455,8 +479,8 @@
         "PIKMIN2_TANK_IMPORT.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -539,8 +563,8 @@
         "PIKMIN2_SPECIES_RESIDUAL_NATIVE.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -581,8 +605,8 @@
         "PIKMIN2_BULBLAX_RUNTIME.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -621,8 +645,8 @@
         "PIKMIN2_DEMON_PRODUCTION_RECEIVER.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -663,8 +687,8 @@
         "PIKMIN2_BREADBUG_ACTOR_RUNTIME.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -683,8 +707,8 @@
         "PIKMIN2_GIANT_BREADBUG_NATIVE_BINDING.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -703,8 +727,8 @@
         "PIKMIN2_HARD_LANES_HANDOFF.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -726,7 +750,15 @@
         "Sibling of Snow (YellowKochappy 45); both share the KochappyBase source family but are distinct source identities. A dwarf variant is a source identity, never a helper or alias.",
         "Worker evidence is a private fixture PASS, not an admission: gate B PARTIAL, C/D P1-proxy PASS, E (lifetime) and G (product/mixed scene) BLOCKED (PIKMIN2_DWARF_ORANGE_NATIVE.md). Facts transcribed by lane 02 from that doc; pending lane 13 confirmation.",
         "Admission requires the generated-session acceptance chain; this row keeps the admitted roster empty."
-      ]
+      ],
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "BLOCKED"
+      }
     },
     "45": {
       "native_module": "pc_p2_snow",
@@ -739,7 +771,15 @@
       "notes": [
         "Snow success does not admit all Bulborbs; report revival/elemental variants separately (#120).",
         "Open: natural death/carry/revisit and variant rules."
-      ]
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      }
     },
     "46": {
       "native_module": "pc_p2_plant",
@@ -871,8 +911,8 @@
         "PIKMIN2_QUEEN_SPECULAR.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -893,7 +933,15 @@
       "notes": [
         "Miulin (Mamuta): historical corpse and worker natural-flick evidence is recorded in PIKMIN2_MAMUTA_DEATH.md and PIKMIN2_MAMUTA_NATURAL.md; current-pair runtime acceptance must be repeated.",
         "Worker evidence is not an integrated-build natural run; open transport/reward, revisit and attack1-draw abort (#221)."
-      ]
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      }
     },
     "55": {
       "native_module": "pc_p2_hanachirashi",
@@ -905,7 +953,7 @@
       ],
       "gates": {
         "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -925,8 +973,8 @@
         "PIKMIN2_LONG_LEGS_POLICY.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -968,8 +1016,8 @@
         "PIKMIN2_BOMBSARAI_AUDIT.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -1112,8 +1160,8 @@
         "PIKMIN2_LONG_LEGS_POLICY.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -1134,7 +1182,7 @@
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
-        "attacks_receivers": "UNTESTED",
+        "attacks_receivers": "PASS",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
         "cleanup_reentry": "UNTESTED"
@@ -1153,8 +1201,8 @@
         "PIKMIN2_LONG_LEGS_POLICY.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -1217,9 +1265,9 @@
       ],
       "gates": {
         "identity_spawn": "PASS",
-        "movement_animation": "PASS",
-        "attacks_receivers": "PASS",
-        "death_corpse": "PASS",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
         "cleanup_reentry": "UNTESTED"
       },
@@ -1238,8 +1286,8 @@
         "PIKMIN2_BIGTREASURE_AUDIT.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -1258,8 +1306,8 @@
         "PIKMIN2_CANNON_GROINK_AUDIT.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -1301,8 +1349,8 @@
         "PIKMIN2_GROINK_BURST.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -1324,7 +1372,15 @@
       "notes": [
         "Candidate mechanics require per-gate evidence pinned to the accepted root/native pair; this ledger does not assert a combined runtime PASS.",
         "Open: water/press/death, transport/reward, cleanup/re-entry (#165/#407)."
-      ]
+      ],
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      }
     },
     "82": {
       "native_module": "pc_p2_pom",
@@ -1478,8 +1534,8 @@
         "PIKMIN2_CANNON_GROINK_AUDIT.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -1499,8 +1555,8 @@
         "PIKMIN2_CANNON_GROINK_AUDIT.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -1541,8 +1597,8 @@
         "PIKMIN2_WATERWRAITH_ROLLER_POLICY.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -1561,8 +1617,8 @@
         "PIKMIN2_SPECIES_RESIDUAL2_NATIVE.md"
       ],
       "gates": {
-        "identity_spawn": "PASS",
-        "movement_animation": "PASS",
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
         "attacks_receivers": "PASS",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",

@@ -244,7 +244,7 @@ def build_report(roster, inventory: set[str], modules: set[str], parity: list[st
     }
 
 
-def main() -> int:
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE,
                         help="pikmin2-research checkout; pass an empty path to skip parity")
@@ -253,7 +253,7 @@ def main() -> int:
                         help="fail on source parity problems or unclassified identities")
     parser.add_argument("--review", action="store_true",
                         help="print per-candidate readiness rows and enforce ledger coverage (exit 1 on any gap)")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     roster = load_roster()
     validate_roster(roster)

@@ -24,9 +24,11 @@ from experimental.pikmin2_enemy_roster import (
     snapshot_payload,
 )
 from scripts.audit_pikmin2_roster import (
+    ENGINE_PORT,
     MODULE_ALIASES,
     SHARED_MODULES,
     coverage_gaps,
+    native_modules,
     native_source_docs,
 )
 
@@ -90,10 +92,14 @@ def _covered_modules():
     return {MOD_FOO, MOD_BAR, MOD_BAZ}
 
 
-def _gaps(roster, modules=_covered_modules(), native_docs=None, existing_docs=None):
-    native_docs = _covered_docs() if native_docs is None else native_docs
-    existing = {DOC_FOO, DOC_BAR, DOC_BAZ, DOC_MISSING, DOC_UNUSED} if existing_docs is None else existing_docs
-    return coverage_gaps(roster, modules, native_docs, existing_docs=existing)
+def _gaps(roster, modules=None, native_docs=None, existing_docs=None):
+    if modules is None:
+        modules = _covered_modules()
+    if native_docs is None:
+        native_docs = _covered_docs()
+    if existing_docs is None:
+        existing_docs = {DOC_FOO, DOC_BAR, DOC_BAZ, DOC_MISSING, DOC_UNUSED}
+    return coverage_gaps(roster, modules, native_docs, existing_docs=existing_docs)
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +177,14 @@ def test_shared_modules_and_aliases_shape():
                for key, value in MODULE_ALIASES.items())
 
 
+def test_shared_modules_subset_of_native_modules():
+    # The allowlist can only name stems that actually exist on disk, otherwise
+    # a drifted entry silently masks a real uncovered identity module.
+    modules = native_modules(ENGINE_PORT)
+    assert SHARED_MODULES <= modules
+    assert set(MODULE_ALIASES.values()) <= modules
+
+
 # ---------------------------------------------------------------------------
 # Integration tests against the real ledger.
 # ---------------------------------------------------------------------------
@@ -188,3 +202,24 @@ def test_real_ledger_is_fully_covered():
 
 def test_real_ledger_nothing_admitted():
     assert admitted_ids(load_and_validate()) == []
+
+
+# ---------------------------------------------------------------------------
+# CLI exit-code tests for audit_pikmin2_roster.main(['--review'])
+# ---------------------------------------------------------------------------
+
+def test_audit_review_exits_zero_on_real_ledger(capsys):
+    import scripts.audit_pikmin2_roster as audit
+    assert audit.main(["--review"]) == 0
+
+
+def test_audit_review_exits_one_on_missing_cited_doc(tmp_path, monkeypatch, capsys):
+    import json
+    import experimental.pikmin2_enemy_roster as roster_mod
+    import scripts.audit_pikmin2_roster as audit
+    evidence = json.loads(roster_mod.EVIDENCE_PATH.read_text(encoding="utf-8"))
+    evidence["entries"]["79"]["source"] = ["PIKMIN2_DOES_NOT_EXIST_NATIVE.md"]
+    tmp_evidence = tmp_path / "evidence.json"
+    tmp_evidence.write_text(json.dumps(evidence), encoding="utf-8")
+    monkeypatch.setattr(roster_mod, "EVIDENCE_PATH", tmp_evidence)
+    assert audit.main(["--review"]) == 1
