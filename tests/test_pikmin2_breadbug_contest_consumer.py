@@ -14,13 +14,13 @@ GOOD_LOG = (
     'P2_BREADBUG_CONTEST_STOLEN generator=186081 carriers=2 released=1\n'
     'P2_BREADBUG_CONTEST_GRANT generator=186081 identity=onion:p2:38:0 granted=1\n'
     'P2_BREADBUG_CONTEST_PROBE generator=186081 carriers=2 injected=1\n'
-    'P2_BREADBUG_REVISIT generator=186081 rearmed=1\n'
+    'P2_BREADBUG_REVISIT generator=186081 rearmed=0\n'
     'P2_BREADBUG_CONTEST_BEGIN generator=186081 identity=onion:p2:38:0 max=2\n'
     'P2_BREADBUG_CONTEST_UPDATE generator=186081 carriers=2 outcome=stolen\n'
     'P2_BREADBUG_CONTEST_STOLEN generator=186081 carriers=2 released=1\n'
     'P2_BREADBUG_CONTEST_GRANT generator=186081 identity=onion:p2:38:0 granted=0 duplicate=1\n'
     'P2_BREADBUG_CONTEST_PROBE generator=186081 carriers=1 injected=1\n'
-    'P2_BREADBUG_REVISIT generator=186081 rearmed=1\n'
+    'P2_BREADBUG_REVISIT generator=186081 rearmed=0\n'
     'P2_BREADBUG_CONTEST_BEGIN generator=186081 identity=onion:p2:38:0 max=2\n'
     'P2_BREADBUG_CONTEST_UPDATE generator=186081 carriers=1 outcome=held\n'
     'P2_BREADBUG_OWNER_DIED generator=186081 released=1 reason=OwnerDied\n'
@@ -138,6 +138,7 @@ def test_parser_records_the_observed_consumer_events():
     assert events['owner_died'] is True
     assert events['owner_died_released'] is True
     assert events['revisit'] is True
+    assert events['revisit_rearmed'] == 0
     assert events['update_outcomes'] == ['held', 'stolen', 'stolen', 'held']
     assert events['pass_marker'] is True
     assert events['probe_markers'] == [2, 1]
@@ -242,8 +243,9 @@ def test_validator_requires_the_interrupt_gate():
 
 
 def test_validator_owner_died_released_zero_is_honest_not_released():
-    # `released=` is the honest held-at-death state, not a gate input: a 0 is
-    # recorded faithfully while the owner-died gate (marker observed) still holds.
+    # `released=` is the honest held-at-death state: a 0 means the handle was
+    # already gone, so the owner-death gate (which must release cargo) fails
+    # while the marker and the raw released=0 are still recorded faithfully.
     released_zero = GOOD_LOG.replace(
         'P2_BREADBUG_OWNER_DIED generator=186081 released=1 reason=OwnerDied\n',
         'P2_BREADBUG_OWNER_DIED generator=186081 released=0 reason=OwnerDied\n')
@@ -253,4 +255,4 @@ def test_validator_owner_died_released_zero_is_honest_not_released():
     assert events['owner_died_released'] is False
     result = contest.validate_contest_consumer(events)
     assert result['checks']['owner_died_released'] is False
-    assert result['checks']['gate_owner_died'] is True
+    assert result['checks']['gate_owner_died'] is False
