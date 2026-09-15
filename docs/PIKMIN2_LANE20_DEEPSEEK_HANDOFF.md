@@ -312,10 +312,11 @@ through the engine receiver on the live captain Navi (stimulate, not the proxy).
 
 | Branch | Commit | Subject |
 |---|---|---|
+| root `deepseek/p2-l20` | `2917397` | lane20: Slice 2 handoff build evidence (#169) |
 | native | `3999ab3d` | lane20: adopt shared p2rockhost ScriptRng/TraceProxy/RockMapBinding extraction (#169) |
 | native | `06b88e90` | lane20: route Groink Bomb through engine receiver on the captain Navi (#169) |
-
-Root: harness + tests + docs (this slice) and this handoff commit.
+| root | `36499ad` | lane20: Slice 3 flight-to-target and Groink engine receiver (harness/tests/docs) (#169) |
+| root | `072488b` | lane20: Slice 3 handoff (#169) |
 
 ### Interfaces / hooks touched
 
@@ -402,3 +403,128 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l2
   --mode two_teki --generator 385875968 --teki-pin --seconds 40
 ```
 
+
+## Slice 4
+
+**Goal:** (1) repeatable flight strikes without pinning — aim the cannon at the
+victim's *current* position at fire time (source Kabuto tracks its target) so
+most flights contact in flight; (2) exercise the shared Bomb/Egg primitives
+through a real consumer on the wave (lane 27's Bombsarai Bomb via
+`pc_p2_bombsarai_bomb`), applying its blast to a real Navi through this lane's
+engine receiver without forking; (3) fix the engine-receiver header comment and
+the slice-3 commit table.
+
+### Ordered commits (both branches clean)
+
+| Branch | Commit | Subject |
+|---|---|---|
+| native | `48313db7` | lane20: repeatable victim aim + Bombsarai Bomb primitive consumer (#169) |
+| root | `4923fc5` | lane20: Slice 4 harness/tests (bomb row + strike-ratio/victim-aim gates) (#169) |
+| root | this commit | lane20: Slice 4 doc + handoff (#169) |
+
+(For slice 3, the commit table above now lists the root commits `2917397`,
+`36499ad`, `072488b` beside the native ones — integrator carry-forward fix.)
+
+### Interfaces / hooks touched
+
+- Native `pc_p2_projectiles.cpp`:
+  - `findVictimTeki(from)` returns the nearest alive non-firer Teki; `fireKabutoStone`
+    aims the Stone at its current position at fire time and emits
+    `P2_PROJECTILE_KABUTO_AIM`; `P2_PROJECTILE_KABUTO_FIRE` now logs the actual
+    aim `face_deg`/`aim`/`source` instead of the static config angle. This
+    simulates the source StateTurn `turnToTarget` → `createStoneAttack` fires
+    along `mFaceDir` (Kabuto.cpp:279), which the port did not previously do.
+  - New `bomb <mx> <my> <mz> <naviPikiDamage>` config row + `tickBombConsumer()` +
+    a local `BombMapBinding` static-map trace: captures, drops (Death throw),
+    floor-arms and detonates a lane-27 `P2BombSaraiBomb`, then applies its
+    `naviPikiDamage` to the live captain Navi through
+    `p2_projectile_apply_engine_strike` (this lane's receiver) — emits
+    `P2_PROJECTILE_BOMB_THROW/DETONATE/ENGINE_HIT`. Host lifecycle parms are
+    documented approximations (`kBomb*`). No fork of `pc_p2_bombsarai_bomb.*`.
+  - Diagnostic `P2_PROJECTILE_AIM_NONE` when no alive non-firer Teki remains.
+- Native `pc_p2_projectile_engine_receiver.h`: corrected the "Navi/Pikmin strike
+  passes the real source" comment — `source` is host-supplied and may be nullptr
+  for a Navi target (the Groink and Bomb consumers pass nullptr).
+- Root harness: `bomb_config`/`BOMB_ORIGIN`/`BOMB_DAMAGE`, `add_second_teki(count=)`
+  scattering `N` victims along the +z corridor, `--victims` flag, `strike_ratio_of`
+  helper, and gates `victim_strike_ratio` + `bomb_engine_navi_hit`.
+
+### Build evidence
+
+- `native=48313db7ef86417b6f258b860698ce64f7f6a3ff dirty=no`, `nectar.exe`
+  SHA-256 `147b0c66cd3a9e581064e193f5e22d13269def3fc69eb457333823272443389c`,
+  `ninja -n` → `ninja: no work to do.`
+
+### Fixture adoption evidence
+
+- Window `960x540 windowed and centered`; live 20-red squad; timer-terminated.
+- Primary run `output/dsw/l20-out/97297947365c4f0c83d237b9a22df282` (`two_teki`,
+  `--generator 385875968 --victims 12 --seconds 60`): 13/13 gates PASS.
+
+### Six arena gates (repeatable flight + Bomb primitive)
+
+| Gate | Result | Evidence |
+|---|---|---|
+| 1. Identity + spawn | PASS | 1 firer + 12 victims (`P2_PROJECTILE_TEKI_ROSTER`), distinct tokens |
+| 2. Movement + animation | N/A (source-backed) | policy-simulated flight |
+| 3. Attacks / receivers | PASS | victim `ENGINE_STRIKE kind=Attack 250` ×11; Pikmin `kind=Press 10` ×6; captain Navi `GROINK_ENGINE_HIT 100→90` then `BOMB_ENGINE_HIT 90→80` |
+| 4. Death + corpse | partial (victim death observed, corpse untracked) | `P2_PROJECTILE_AIM_NONE total_teki=13 alive_nonfirer=0` after all 12 victims were struck (250 each) — no corpse marker this slice |
+| 5. Transport + reward | UNTESTED | cargo-free room, no Pod |
+| 6. Cleanup + re-entry | PASS | `STONE_DESTROY reason=health` (11 flight strikes) / `reason=wall` (4, after victims exhausted); firer untouched (`SKIP_SELF`) |
+
+**Injected vs natural:** the victims are naturally placed dwarfs (not pinned);
+`teki_pin` remains a separately-labelled scenario. A `victims=N` corridor is a
+host layout choice (more targets ≈ more data), not injected co-location. The
+`strike_ratio` over 16 fires is **11/16** hits (PASS): each fire aims at the
+surviving victim's current position, strikes it in flight, and the next fire
+re-aims at the next survivor.
+
+**Bomb caveat (honest):** the source applies `InteractBomb` to a Navi (not
+`InteractAttack`/`InteractPress`), so the captain blast is a **receiver-consumption
+proof** of this lane's primitive, not lane-27 Bomb fidelity (same caveat already
+recorded for the Groink Navi hit).
+
+### Tests
+
+`py -3.12 -m pytest tests/test_pikmin2_projectile_engine_receiver.py -q` → 32 passed.
+Pure-Python (log evaluator + config builders only; no native path, no
+`PIKMIN_NATIVE_ROOT`); new `victim_strike_ratio` PASS (9 fires/7 hits) / FAIL
+(9/3), and `bomb_engine_navi_hit` PASS/FAIL cases.
+
+### Subagent usage (honest)
+
+Three subagents dispatched in parallel:
+1. `explore` source audit (Kabuto turn-to-target + Bombsarai bomb receiver rules)
+   → used as-is; confirmed the port never applied the computed target angle, and
+   that a Navi bomb blast is `InteractBomb` (fed the bomb-caveat wording).
+2. `explore` candidate inventory (native modules + config keywords + markers)
+   → used as-is; confirmed there was no `bomb` keyword yet and listed all
+   `P2_PROJECTILE*` markers.
+3. `general` harness+pytest (bomb row, KABUTO_AIM/BOMB_ENGINE_HIT regexes,
+   `strike_ratio_of`, `victim_strike_ratio` + `bomb_engine_navi_hit` gates,
+   focused tests) → used as-is; 32 passed. I then added `add_second_teki(count=N)`
+   / `--victims` myself.
+
+No subagent built, ran a fixture, committed, or touched native/shared files.
+
+### Remaining blockers (named provider)
+
+- Victim corpse/carry/reward still untracked (no corpse marker this slice; lane
+  06/07 + #169). Death is now *observed* (victims become non-alive after 250 hits).
+- The Bomb/Egg blast receiver stays `InteractAttack`-mapped (receiver proof, not
+  lane-27 fidelity); real `InteractBomb` routing is lane 10/27 scope.
+- Egg primitive consumer (TamagoMushi/Egg) not separately exercised this slice;
+  the Bomb primitive was the required "one of them".
+
+## Exact reproduction (Slice 4)
+
+```powershell
+$env:PYTHONUTF8='1'
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l20 -- `
+  py -3.12 -m experimental.pikmin2_projectile_engine_receiver `
+  --exe C:/Users/alari/pikmin-randomizer/output/dsw/native-l20-build/bin/nectar.exe `
+  --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets `
+  --converted C:/Users/alari/pikmin-randomizer/output/dsw/l20-out/converted `
+  --output C:/Users/alari/pikmin-randomizer/output/dsw/l20-out `
+  --mode two_teki --generator 385875968 --victims 12 --seconds 60
+```
