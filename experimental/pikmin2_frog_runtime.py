@@ -119,10 +119,11 @@ def validate(text,code):
  for species in ('Frog','MaroFrog'):
   own=[d for d in draws if d[0]==species];checks[species+'_live']=any(d[1]=='0' for d in own);checks[species+'_corpse']=any(d[1]=='1' and d[2]=='dead' for d in own);checks[species+'_poses']=len({(d[2],d[3]) for d in natural if d[0]==species and d[1]=='0'})>=2
  # Exercise the source-FSM validator on the emitted P2_FROG_STATE trace. The
- # cleanup/re-entry at observed==80 resets both actors mid-run, so each episode
- # on either side of P2_FROG_CLEANUP must satisfy the state machine independently.
+ # cleanup/re-entry at observed==80 calls pc_p2_frog_setup again, which emits a
+ # fresh P2_FROG_SETUP marker followed by each actor's `state=wait`; each episode
+ # on either side of a P2_FROG_SETUP must satisfy the state machine independently.
  fsm_errors=[];fsm_episodes=0
- for segment in re.split(r'P2_FROG_CLEANUP[^\n]*\n?',text):
+ for segment in re.split(r'P2_FROG_SETUP[^\n]*\n?',text):
   if not segment.strip():continue
   fsm_episodes+=1
   try:res=_validate_fsm(_parse_states(segment))
