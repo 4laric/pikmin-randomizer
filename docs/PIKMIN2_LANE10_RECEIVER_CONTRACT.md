@@ -1,0 +1,76 @@
+# Lane 10 receiver-side contract for family emitters (#408)
+
+Lane 10 owns the damage/elemental/attack receiver layer. This is the contract an
+elemental **family emitter** consumes to deliver its element to a live Pikmin.
+The emitter side is `pc_port/pc_p2_hazard_emitter.h` (`p2_emitter_accepts`); the
+receiver side is this table. Every receiver routes immunity through the lane-11
+species matrix (`pc_port/pc_p2_species_policy.h`), so an emitter and its receiver
+cannot disagree about who is immune.
+
+## Receiver table (what to stimulate, and what happens)
+
+| Element | Construct and stimulate | Immunity gate (species matrix) | Reaction state | Receiver log |
+|---|---|---|---|---|
+| **Fire** (`P2HazardFire`) | `piki->stimulate(InteractFire(owner, damage))` | `p2_species_immune(species, P2HazardFire)` — Red, Bulbmin immune | `startFire()` -> `PIKISTATE_Fired` (P1); death timer `mPanicTime` (p55) | none (P1 path) |
+| **Water** (`P2HazardWater`) | `piki->stimulate(InteractBubble(owner, damage))` | `p2_species_immune(species, P2HazardWater)` — Blue, Bulbmin immune | `PIKISTATE_Bubble` (P1; decomp uses `PIKISTATE_Panic`+`PIKIPANIC_Water`) | none (P1 path) |
+| **Gas** (`P2HazardGas`) | `piki->stimulate(InteractGas(owner, damage))` | `p2_hazard_reaction(species, P2HazardGas, piki->gasInvicible())` — White, Bulbmin immune; `gasInvicible()` also rejects | `PIKISTATE_Panic` (gas) -> `PIKISTATE_Dying` | `P2_RECV_GAS` |
+| **Electric** (`P2HazardElectric`) | `piki->stimulate(InteractDenki(owner, force, &dir))` | `p2_hazard_reaction(species, P2HazardElectric, ...)` — Yellow, Bulbmin immune | `PIKISTATE_DenkiDying` (0.3s) -> `PIKISTATE_Dead` | `P2_RECV_DENKI` |
+| **Bomb** | not a Pikmin receiver — `BombOtakara` delegates to its carried `EnemyID_Bomb` payload (lane 20 blast contract) | n/a | n/a | n/a |
+
+Constructor signatures (`include/Interactions.h`):
+
+- `InteractFire(Creature* owner, f32 damage)`
+- `InteractBubble(Creature* owner, f32 damage)`
+- `InteractGas(Creature* owner, f32 damage)`
+- `InteractDenki(Creature* owner, f32 force, Vector3f* direction)`
+
+Implementation: `src/plugPikiKando/interactBattle.cpp`. The gas/electric receivers
+were `__attribute__((used))` for LTO retention when nothing referenced them; the
+ElecBug/GasHiba/ElecHiba emitters now reference them, so that markers are
+documented as defensive only.
+
+## Species immunity matrix (`pc_port/pc_p2_species_policy.h`)
+
+| Species | Fire | Water/Bubble | Electric/Denki | Gas |
+|---|---|---|---|---|
+| Blue (0) | - | immune | - | - |
+| Red (1) | immune | - | - | - |
+| Yellow (2) | - | - | immune | - |
+| Purple (3) | - | - | - | - |
+| White (4) | - | - | - | immune |
+| Bulbmin (5) | immune | immune | immune | immune |
+
+`p2_species_immune(species, hazard)` is the query. Electric and gas additionally
+go through `p2_hazard_reaction(species, hazard, gasInvincible)` (which applies the
+gas-invincible gate and returns the reaction target), because the P2 Denki/Gas
+receivers differ from the P1 Fire/Bubble receivers.
+
+## Family consumer notes
+
+- **Lane 14 ElecBug (source 28)** — already integrated. Its discharge sweep
+  selects the nearest shockable Pikmin with
+  `p2_emitter_accepts(pc_p2_species(p), P2HazardElectric, p->gasInvicible())` and
+  delivers `piki->stimulate(InteractDenki(teki, 1.0f, &dir))`, logging
+  `P2_ELECBUG_DENKI` (accepted+sweep target state) and `P2_ELECBUG_IMMUNE`
+  (Yellow/Bulbmin in sweep). This is the reference natural-emitter pattern.
+- **Lane 22 Otakara (dweevils 59-62, 93)** — `pc_p2_dweevil_policy.h` already maps
+  `FireOtakara->StimFire`, `WaterOtakara->StimBubble`, `GasOtakara->StimGas`,
+  `ElecOtakara->StimDenki`, `BombOtakara->StimNone` (Bomb payload owns the blast).
+  The current `pc_p2_dweevil.cpp` is capture/carry/drop policy only and does **not**
+  yet deliver any receiver; to close its element path, the dweevil discharge
+  should mirror ElecBug: pick a target with `p2_emitter_accepts(...)` and
+  `stimulate(Interact<X>(...))`, logging an `P2_OTAKARA_<X>` accepted/immune
+  marker per element.
+- **Fixed hazards (Hiba 20 / GasHiba 21 / ElecHiba 22)** — `pc_port/pc_p2_hiba.cpp`
+  `emitScan` is the worked example: it routes each hazard's stimulus through
+  `p2_emitter_accepts(...)` and delivers `InteractFire`/`InteractGas`/
+  `InteractDenki`, logging `P2_HIBA_FIRE/GAS/DENKI_HIT|PASS` and a species-tagged
+  `P2_HIBA_GAS/DENKI_LETHAL` (fire-immune Red witness).
+
+## What a family emitter must log (for the lane-10 gate)
+
+For the receiver side to be provable as natural (not injected), the family
+emitter must deliver the element through its own FSM/volume to a live Pikmin and
+log, per delivery: the target species + the receiver's accept/reject and the
+resulting Pikmin state; and, for immunity, one marker per rejected immune species
+in volume. The ElecBug `P2_ELECBUG_*` and Hiba `P2_HIBA_*` logs are the model.
