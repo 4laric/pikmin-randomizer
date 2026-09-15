@@ -116,6 +116,48 @@ CANDIDATE_SPECS = (
     (23, 'Sarai', 30, ['ground'], None, False),
 )
 
+# Muse placement slice (#492): candidate-only legal-slot profiles for
+# Fuefuki41, Kurage57, BombSarai58 and MiniHoudai78.
+#
+# Each entry carries exactly one defensible generated slot (`accepted_slot_uid`)
+# plus the P1 placement vehicle the family sidecar binds. Profiles ship with
+# empty `accepted_gates`, so `evaluate` still denies every pair until a family
+# lane or QA supplies accepted native terrain/route evidence; `compatibility`
+# (constraint-only) already resolves the accepted slot. Nothing here admits an
+# identity or touches ordinary random pools.
+# Fields: source_id, identity, legacy_lane, muse_lane, terrains,
+# accepted_slot_uid, vehicle.
+MUSE_CANDIDATE_SPECS = (
+    # Antenna Beetle: ground follower on the Napkid11 vehicle (lane-28 pattern,
+    # cf. Sarai ground profile). Hope ground slot, renewable, corpse route.
+    (41, 'Fuefuki', 28, 57, ['ground'], 1254096625, 'Napkid11'),
+    # Lesser Spotted Jellyfloat: grounded Frog0 body vehicle (lane-29 sidecar
+    # `p2-kurage-teki.txt` grounds the proxy), so frog-cohort mixed slot.
+    # Navel mixed slot, renewable, corpse route.
+    (57, 'Kurage', 29, 58, ['mixed', 'ground'], 689702860, 'Frog0'),
+    # Careening Dirigibug: Napkid11 carrier vehicle (lane-27 sidecar
+    # `p2-bombsarai-teki.txt`); the 13-state carrier FSM drives from the
+    # vehicle position with hover above a ground slot. Spring ground slot,
+    # renewable, corpse route. The two Bomb payloads are family-internal and
+    # are not slot helpers (helper_budget stays 0).
+    (58, 'BombSarai', 27, 59, ['ground'], 1787125272, 'Napkid11'),
+    # Gatling Groink: live generated host actor with carcass sidecar (lane-21
+    # `p2-groink-teki.txt`); ground shooter, volley corridor is a family-run
+    # gate, not a placement constraint. Navel ground slot, renewable, corpse
+    # route.
+    (78, 'MiniHoudai', 21, 60, ['ground'], 328297937, 'GroinkHost'),
+)
+
+# Native generated-placement bind contract mirror. The dispatcher in
+# `native/pc_port/pc_p2_generated_placement.{h,cpp}` carries the same
+# (source_id -> accepted slot uid) table as `MUSE_GENERATED_SLOT_UID`
+# constants; `tests/test_pikmin2_muse_placement.py` fails if the two drift.
+MUSE_GENERATED_SLOTS = {
+    source_id: slot_uid for source_id, _, _, _, _, slot_uid, _ in MUSE_CANDIDATE_SPECS
+}
+
+MUSE_CANDIDATE_IDS = frozenset(MUSE_GENERATED_SLOTS)
+
 # Candidate source_ids that are bosses and therefore require a lane-04 encounter
 # descriptor instead of a universal replacement profile. Tracked here so the
 # cohort is complete without silently admitting them.
@@ -339,6 +381,76 @@ def candidate_source_ids():
     mapping = {identity: source_id for source_id, identity, *_ in CANDIDATE_SPECS}
     mapping.update({identity: source_id for source_id, identity, *_ in BOSS_COHORT})
     return mapping
+
+
+def muse_candidate_profiles():
+    """Return default-deny placement profiles for the #492 muse cohort.
+
+    One profile per identity, each naming its single defensible generated
+    slot via `accepted_slot_uids`. `accepted_gates` stays empty so `evaluate`
+    denies every pair (fail closed) until accepted native evidence lands;
+    `compatibility` already accepts the named slot on constraints alone.
+    """
+    profiles = []
+    for (source_id, identity, legacy_lane, muse_lane, terrains, slot_uid,
+            vehicle) in MUSE_CANDIDATE_SPECS:
+        profiles.append(_placement.normalize_profile({
+            'identity': identity,
+            'terrains': list(terrains),
+            'family_lane': legacy_lane,
+            'requires_corpse_route': True,
+            'accepted_gates': [],
+            'accepted_slot_uids': [slot_uid],
+            'notes': (f"P2 source_id {source_id}; muse placement slice #492; "
+                      f"legacy lane {legacy_lane} / muse observer lane {muse_lane}; "
+                      f"vehicle {vehicle}; accepted generated slot {slot_uid}; "
+                      f"native placement gate pending family lane {legacy_lane}."),
+        }))
+    return profiles
+
+
+def muse_candidate_source_ids():
+    """Map muse-cohort identities to their lane-02 source ids."""
+    return {identity: source_id
+            for source_id, identity, *_ in MUSE_CANDIDATE_SPECS}
+
+
+def build_muse_document(slots=None, include_bosses=False):
+    """Return a validated document with base + muse-cohort profiles.
+
+    The default `build_document()` is unchanged (pinned lane-04 contract);
+    this parallel document is what packaging (#493) and the four gate
+    observers (#497-#500) consume for the 41/57/58/78 cohort.
+    """
+    if slots is None:
+        slots = all_slots()
+    profiles = candidate_profiles() + muse_candidate_profiles()
+    document = {
+        'schema': SCHEMA,
+        'slots': list(slots),
+        'profiles': profiles,
+        'notes': ('Lane-04 concrete candidate slots plus muse #492 candidate-only '
+                  'profiles for 41/57/58/78; default deny.'),
+    }
+    if include_bosses:
+        document['profiles'] = profiles + boss_profiles()
+        document['encounters'] = boss_encounters()
+    return _placement.validate_document(document)
+
+
+def binding_targets_for_muse_sources(source_ids, document=None):
+    """Return constraint-compatible uid targets for a muse-cohort source list."""
+    if document is None:
+        document = build_muse_document()
+    by_source = {source_id: identity
+                 for identity, source_id in muse_candidate_source_ids().items()}
+    identities = []
+    for source_id in source_ids:
+        identity = by_source.get(source_id)
+        if identity is None:
+            raise ValueError(f'source id {source_id} is not a muse #492 candidate')
+        identities.append(identity)
+    return binding_targets(identities, document=document)
 
 
 def targets_by_identity(document=None):
