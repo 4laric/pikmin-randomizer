@@ -61,7 +61,7 @@ void sweepCorpses()
 // treasure item, so a labelled number-pellet carryable corpse stand-in is
 // spawned at the wraith position (the same adaptation the Kogane lane records).
 // The pellet is registered for lane-06 Pod receipt via its Pellet* and for
-// lane-07 lifecycle via `pc_p2_waterwraith_forget/reset`.
+// lane-07 lifecycle via the register_tick liveness sweep and reset.
 void spawnWraithCorpse()
 {
     sState.corpseSpawned = true;
@@ -86,8 +86,11 @@ void spawnWraithCorpse()
     pellet->mVelocity.set(0.0f, 100.0f, 0.0f);
     pellet->startAI(0);
     sCorpses[pellet] = 0u; // fixed placement => generator 0 (register unconditionally)
-    std::printf("P2_WATERWRAITH_CORPSE pos=%.3f,%.3f,%.3f registered=%d standin=number_pellet\n",
-                pos.x, pos.y, pos.z, 1);
+    std::printf("P2_WATERWRAITH_CORPSE pos=%.3f,%.3f,%.3f registered=%d standin=number_pellet "
+                "carry_min=%d carry_max=%d\n",
+                pos.x, pos.y, pos.z, 1,
+                pellet->mConfig ? int(pellet->mConfig->mCarryMinPikis()) : -1,
+                pellet->mConfig ? int(pellet->mConfig->mCarryMaxPikis()) : -1);
     std::fflush(stdout);
 }
 
@@ -250,14 +253,6 @@ bool pc_p2_waterwraith_receipt(Pellet* pellet, unsigned& generator)
     return true;
 }
 
-void pc_p2_waterwraith_forget(Pellet* pellet)
-{
-    if (!pellet) {
-        return;
-    }
-    sCorpses.erase(pellet);
-}
-
 void pc_p2_waterwraith_reset()
 {
     sCorpses.clear();
@@ -272,6 +267,12 @@ unsigned pc_p2_waterwraith_delivery_count()
 unsigned pc_p2_waterwraith_corpse_count()
 {
     return static_cast<unsigned>(sCorpses.size());
+}
+
+Pellet* pc_p2_waterwraith_corpse_pellet()
+{
+    sweepCorpses();
+    return sCorpses.empty() ? nullptr : sCorpses.begin()->first;
 }
 
 bool pc_p2_waterwraith_register_ready()

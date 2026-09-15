@@ -270,6 +270,9 @@ P2BigTreasureMapTrace sBigTreasureTrace;
 // re-stimulated (and SEF_PIKI_FIRED re-emitted) every frame. Cleared on attack
 // start and on full reset.
 std::set<const void*> sBigTreasureHandled;
+// Rate-limit for the held log: print P2_BIGTREASURE_RECV_HELD once per attack
+// (not once per held target per frame). Cleared alongside the handled set.
+bool sBigTreasureHeldLogged = false;
 bool sBigTreasureAttackLogged = false;
 bool sBigTreasureReady = false;
 bool sBigTreasureVisualReady = false;
@@ -344,6 +347,7 @@ void pc_p2_hardlanes_reset()
     sBigTreasureClock.reset();
     sBigTreasureElements.defeat();
     sBigTreasureHandled.clear();
+    sBigTreasureHeldLogged = false;
     sBigTreasureAttackLogged = false;
     pc_p2_bigtreasure_visual_reset();
     sBigTreasureReady = false;
@@ -387,14 +391,14 @@ int pc_p2_hardlanes_bigtreasure_recv_probe(int weapon, Piki* piki)
         return 0;
     }
     // Reuse the ordinary loop's per-attack handled set transiently: the probe
-    // never leaves a target in the set. It returns 0 when the loop is already
-    // handling this target in a live attack (dedup, without tampering), and
-    // otherwise applies the stimulus and removes its transient entry. This is a
-    // test probe only; the real handled-set hold is the ordinary loop's
-    // P2_BIGTREASURE_RECV_HELD, cleared at attack start.
+    // returns 0 when the live loop is already handling this target in an attack
+    // (it must NOT erase here — erasing would un-handle a target the loop just
+    // inserted). When it does apply, it removes its own transient entry so the
+    // probe never leaves a target handled. This is a test probe only; the real
+    // handled-set hold is the ordinary loop's P2_BIGTREASURE_RECV_HELD, cleared
+    // at attack start.
     const void* key = static_cast<const void*>(piki);
     if (!sBigTreasureHandled.insert(key).second) {
-        sBigTreasureHandled.erase(key);
         return 0;
     }
     const P2BigTreasureVec3 origin{ sBigTreasure.placement.owner.x,
@@ -664,6 +668,7 @@ void pc_p2_hardlanes_update()
                             weapon, origin, sBigTreasureGround,
                             sBigTreasure.ownership.weaponHealth(weapon), 0.25f, 0.25f)) {
                         sBigTreasureHandled.clear();
+                        sBigTreasureHeldLogged = false;
                         sBigTreasureAttackLogged = false;
                         std::printf("P2_BIGTREASURE_ATTACK_START weapon=%s\n",
                                     bigTreasureWeaponName(weapon));
@@ -709,9 +714,11 @@ void pc_p2_hardlanes_update()
                                     pc_p2_bigtreasure_stimulate_navi(recvWeapon, origin,
                                                                      kBigTreasureAttackDamage,
                                                                      liveNavi);
-                                } else {
-                                    // Handled-set hold: target already stimulated
-                                    // this attack; no re-stimulation.
+                                } else if (!sBigTreasureHeldLogged) {
+                                    // Handled-set hold: a target was already
+                                    // stimulated this attack. Log once per attack
+                                    // (not once per held target per frame).
+                                    sBigTreasureHeldLogged = true;
                                     std::printf("P2_BIGTREASURE_RECV_HELD weapon=%s target=navi\n",
                                                 bigTreasureWeaponName(recvWeapon));
                                 }
@@ -730,7 +737,8 @@ void pc_p2_hardlanes_update()
                                     pc_p2_bigtreasure_stimulate_piki(recvWeapon, origin,
                                                                      kBigTreasureAttackDamage,
                                                                      piki);
-                                } else {
+                                } else if (!sBigTreasureHeldLogged) {
+                                    sBigTreasureHeldLogged = true;
                                     std::printf("P2_BIGTREASURE_RECV_HELD weapon=%s target=piki species=%d\n",
                                                 bigTreasureWeaponName(recvWeapon),
                                                 pc_p2_species(piki));

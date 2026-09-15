@@ -50,8 +50,8 @@ Regenerate with:
 |---:|---:|
 | 0 | 1 |
 | 1 | 3 |
-| 2 | 2 |
-| 3 | 2 |
+| 2 | 3 |
+| 3 | 1 |
 | 4 | 3 |
 | 5 | 2 |
 | 6 | 39 |
@@ -271,7 +271,7 @@ Seedable (`source`/`variant`) identities named across handoffs: 52
 - advances: attacks_receivers
 - blocking: identity_spawn, movement_animation, death_corpse, transport_reward, cleanup_reentry
 
-### 78 MiniHoudai (source) - shared table, excluded
+### 78 MiniHoudai (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE21_DEEPSEEK_HANDOFF.md
 - advances: (none)
 - blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
@@ -309,15 +309,15 @@ Seedable (`source`/`variant`) identities named across handoffs: 52
 - advances: (none)
 - blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
 
-### 97 FminiHoudai (source) - shared table, excluded
+### 97 FminiHoudai (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE21_DEEPSEEK_HANDOFF.md
 - advances: (none)
 - blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
 
 ### 99 BlackMan (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE06_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE31_DEEPSEEK_HANDOFF.md
-- advances: attacks_receivers, death_corpse, cleanup_reentry
-- blocking: identity_spawn, movement_animation, transport_reward
+- advances: attacks_receivers, death_corpse, transport_reward, cleanup_reentry
+- blocking: identity_spawn, movement_animation
 
 ### 101 UmiMushiBlind (variant) - shared table, excluded
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE16_DEEPSEEK_HANDOFF.md

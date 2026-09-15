@@ -1601,10 +1601,10 @@
       "gates": {
         "identity_spawn": "UNTESTED",
         "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
         "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "cleanup_reentry": "PASS"
       },
       "notes": [
         "BlackMan (Waterwraith): ordinary actor/roller host + register/encounter modules; roller attacks + Purple vulnerability + cleanup remain (#175)."

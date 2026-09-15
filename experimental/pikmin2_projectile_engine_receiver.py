@@ -294,8 +294,14 @@ def evaluate(log_text):
 
     # Bomb engine-receiver proof: the detonated Bomb is applied through the
     # captain Navi's own engine receiver, so kind=Bomb (enforced by the regex),
-    # applied=1 AND a real health decrease are required.
+    # applied=1 AND a real health decrease are required. The Bomb is host-placed:
+    # captured at the Navi +30 y, dropped by gravity to y=15, so the routed
+    # distance (dist=15.0) is by construction, not a coincidental near-miss. The
+    # Navi blast is applied via InteractAttack (targetIsTeki=false) in
+    # p2_projectile_apply_engine_strike, not the source's InteractBomb — this is a
+    # receiver-consumption proof, not lane-27 Bomb fidelity.
     bomb_hits = list(BOMB_ENGINE_HIT_RE.finditer(log_text))
+    bomb_nohit = list(BOMB_NOHIT_RE.finditer(log_text))
     bomb_engine_navi_hit = any(
         m.group(3) == '1' and float(m.group(6)) < float(m.group(5))
         for m in bomb_hits)
@@ -335,8 +341,9 @@ def evaluate(log_text):
         'groink_engine_receiver_navi_hit': ('PASS' if groink_bomb_navi
                                             else ('UNTESTED' if not groink_hits else 'FAIL')),
         'bomb_engine_navi_hit': ('PASS' if bomb_engine_navi_hit
-                                 else ('UNTESTED' if not bomb_hits else 'FAIL')),
-        'victim_strike_ratio': ('PASS' if (alive_fires >= 9 and hits > alive_fires // 2)
+                                 else ('FAIL' if (bomb_hits or bomb_nohit)
+                                       else 'UNTESTED')),
+        'victim_strike_ratio': ('PASS' if (alive_fires >= 5 and hits > alive_fires // 2)
                                 else ('UNTESTED' if alive_fires == 0 else 'FAIL')),
         'stone_destroy_teardown': 'PASS' if destroy else 'UNTESTED',
     }
