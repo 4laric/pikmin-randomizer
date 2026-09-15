@@ -5,6 +5,14 @@ agent/session: DeepSeek (deepseek-v4-pro). This records ONE slice (real
 carried-Egg reward) plus the fix1/fix2 control runs that resolved and correctly
 attributed the movement NaN. Not full-lane or whole-family sign-off.
 
+
+### Integrator note (review of fix 2)
+
+- The NaN is resolved by the arena fix (removing the un-suppressed 203002 control): base b805d9c6 minus 203002 and lane minus 203002 are both finite; lane plus 203002 reproduces the NaN. The mechanism ("the neighbouring actor's P1 state wrote the NaN") is inferred from that correlation: the isnan probe build from brief item 4(b) was not delivered and no base+203002 control run exists.
+- Gate 2 is PARTIAL, not "finite flight": base-run.log holds 3 distinct positions over ~70 s (frozen from line 792) and lane-run.log 6; the wisp stalls in Move with clip=waitl.
+- The l15base build-evidence line was hand-appended (tz suffix, POSIX exe path, non-wrapper lane tag); the base worktree/build artifacts themselves are genuine (CMakeCache, .ninja_log, exe sha 0a9e500a).
+- Root commit 043740e (this list) belongs in the ordered commits.
+
 ## Slice delivered
 
 **Source ID owned: `EnemyID_Qurione` (16, Honeywisp).** Real carried-Egg reward
