@@ -86,13 +86,14 @@ REWARD = dict(
 GATES = ('identity_spawn', 'movement_animation', 'attacks_receivers',
          'death_corpse', 'transport_reward', 'cleanup_reentry')
 GATE_STATUS = {
-    'identity_spawn': 'pass (integrated proxy; source_id=16, birth XYZ matched)',
-    'movement_animation': 'blocked: source Stay/Appear/Move/Disappear cycle not implemented',
-    'attacks_receivers': 'pass_injected (P1 InteractAttack -> nectar); natural Piki collision untested',
-    'death_corpse': 'run_gate: dead is a fly-away (no carcass); isFlyKill kill untested',
-    'transport_reward': 'pass: native host births a real Egg (lane-20 P2Egg policy) on attach, '
-                        'releases it on Drop, breaks it on floor impact and births the source '
-                        'drop table; spicy/bitter sprays unsupported',
+    'identity_spawn': 'pass: source_id=16, birth XYZ matched, real Egg (lane-20 P2Egg) born on bind',
+    'movement_animation': 'blocked: wisp never leaves Stay at spawn (-150,30,1850); position goes NaN on the '
+                          'movement pass, so Appear/Move/Disappear cannot be observed (placement-local, probed), '
+                          'not a missing FSM',
+    'attacks_receivers': 'source-backed N/A: Honeywisp has no attack; contact trigger is flyCollisionCallBack',
+    'death_corpse': 'untested: drop->dead fly-away cannot be reached while movement is blocked',
+    'transport_reward': 'partial: attach + real Egg born observed live (born=1); '
+                        'release/break/item-birth are contract-only (never observed live)',
     'cleanup_reentry': 'untested: spawn-index flip + manager recreate',
 }
 
@@ -140,6 +141,8 @@ def validate_lifecycle(text):
     item_lines = [line for line in text.splitlines() if line.startswith('P2_QURIONE_EGG_ITEM ')]
     item_real = any(' real=1 ' in line and ' item=' in line for line in item_lines)
     item_nectar = any(' real=1' in line and ' item=nectar' in line for line in item_lines)
+    reward_real = dict(born=real_born, released=real_released, break_=egg_break,
+                       item=item_real, nectar=item_nectar)
     checks = dict(
         identity=bool(re.search(rf'P2_QURIONE_BIND generator=\d+ source_id={SOURCE_ID} '
                                 r'visual_only=0', text)),
@@ -154,11 +157,11 @@ def validate_lifecycle(text):
         egg_drop='drop' in egg_events,
         exactly_one_drop=len(drops) == 1,
         no_extinction=not re.search(r'Extinction', text, re.IGNORECASE),
-        reward_real=dict(born=real_born, released=real_released, break_=egg_break,
-                         item=item_real, nectar=item_nectar),
+        reward_real=reward_real,
     )
     scalar = {k: v for k, v in checks.items() if isinstance(v, bool)}
-    return dict(passed=all(scalar.values()), checks=checks,
+    return dict(passed=all(scalar.values()), passed_real=all(reward_real.values()),
+                checks=checks,
                 unmeasured=['glow/appear/disappear effect fidelity',
                             'Piklopedia zukan-mode utility timer',
                             'spawn-index flip after a full disappear',

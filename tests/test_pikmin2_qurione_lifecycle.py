@@ -100,10 +100,19 @@ class QurioneLifecycleTests(unittest.TestCase):
         self.assertTrue(rr['break_'], rr)
         self.assertTrue(rr['item'], rr)
         self.assertTrue(rr['nectar'], rr)
+        self.assertTrue(result['passed_real'], result['checks'])
 
     def test_validate_reward_real_absent_in_proxy_log(self):
         result = life.validate_lifecycle(GOOD_LOG)
         self.assertFalse(any(result['checks']['reward_real'].values()))
+        self.assertFalse(result['passed_real'])
+
+    def test_validate_passed_real_requires_full_chain(self):
+        bad = '\n'.join(line for line in REAL_LOG.splitlines()
+                        if 'P2_QURIONE_EGG_BREAK' not in line)
+        result = life.validate_lifecycle(bad)
+        self.assertFalse(result['passed_real'])
+        self.assertFalse(result['checks']['reward_real']['break_'])
 
     def test_validate_rejects_missing_cycle_state(self):
         bad = drop('state=disappear')
