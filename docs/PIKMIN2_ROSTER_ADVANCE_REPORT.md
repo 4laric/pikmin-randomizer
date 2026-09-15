@@ -50,10 +50,10 @@ Regenerate with:
 | Gates away from admission | Identities |
 |---:|---:|
 | 0 | 6 |
-| 1 | 5 |
+| 1 | 6 |
 | 2 | 6 |
 | 3 | 4 |
-| 4 | 4 |
+| 4 | 3 |
 | 5 | 5 |
 | 6 | 24 |
 
@@ -198,8 +198,8 @@ Seedable (`source`/`variant`) identities named across handoffs: 54
 
 ### 57 Kurage (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE29_DEEPSEEK_HANDOFF.md
-- advances: death_corpse, transport_reward
-- blocking: identity_spawn, movement_animation, attacks_receivers, cleanup_reentry
+- advances: movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
+- blocking: identity_spawn
 
 ### 58 BombSarai (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE27_DEEPSEEK_HANDOFF.md
