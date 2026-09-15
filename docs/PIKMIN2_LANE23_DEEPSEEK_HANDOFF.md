@@ -438,3 +438,100 @@ $env:PYTHONUTF8='1'
 $env:PIKMIN_P2_ROOM_WINDOW='960x540'
 py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l23 -- py -3.12 -m experimental.pikmin2_pom_runtime run --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets --imported C:/Users/alari/pikmin-randomizer/output/dsw/l23-out/flora-bank --output C:/Users/alari/pikmin-randomizer/output/dsw/l23-out/pom-runtime-7 --exe C:/Users/alari/pikmin-randomizer/output/dsw/l23-out/pom-fixture-7/build/fixture.exe
 ```
+
+## Six-gate handoff table (ingest contract)
+
+Candypop Buds. The two runtime-tested identities are `RedPom` (4) and `RandPom`
+(8); the other four colour buds (BluePom 3, YellowPom 5, BlackPom 6, WhitePom 7)
+share the same converted Pom bank and FSM but are only drawn in the arena, not
+driven through death/conversion yet. The animal-facing base `Pom` (82) is
+nonspawnable and rejected. Every status below is `injected`: the drawn actor is
+the batch-2 Chappy placement vehicle (proxy) and the conversions are driven by
+fixture-placed Pikmin, so no gate is claimed as a natural PASS.
+
+### RedPom (Crimson Candypop Bud, source id 4)
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PARTIAL (injected) | output/dsw/l23-out/pom-runtime-10/pom/7f8a5ba0c883425b8c38ffaca436276b/native.log:979 | injected |
+| 2. Autonomous movement and animation | PARTIAL (injected) | output/dsw/l23-out/pom-runtime-10/pom/7f8a5ba0c883425b8c38ffaca436276b/native.log:986 | injected |
+| 3. Attacks and receivers | PARTIAL (injected) | output/dsw/l23-out/pom-runtime-10/pom/7f8a5ba0c883425b8c38ffaca436276b/native.log:1007 | injected |
+| 4. Death and corpse | PARTIAL (injected) | output/dsw/l23-out/pom-runtime-10/pom/7f8a5ba0c883425b8c38ffaca436276b/native.log:1066 | injected |
+| 5. Actual transport and reward | UNTESTED (injected) | output/dsw/l23-out/pom-runtime-10/pom/7f8a5ba0c883425b8c38ffaca436276b/native.log:1067 | injected |
+| 6. Cleanup and re-entry | UNTESTED (injected) | output/dsw/l23-out/pom-runtime-10/pom/7f8a5ba0c883425b8c38ffaca436276b/native.log:1094 | injected |
+
+### RandPom (Queen Candypop Bud, source id 8)
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PARTIAL (injected) | output/dsw/l23-out/pom-runtime-10/pom/7f8a5ba0c883425b8c38ffaca436276b/native.log:980 | injected |
+| 2. Autonomous movement and animation | PARTIAL (injected) | output/dsw/l23-out/pom-runtime-10/pom/7f8a5ba0c883425b8c38ffaca436276b/native.log:987 | injected |
+| 3. Attacks and receivers | PARTIAL (injected) | output/dsw/l23-out/pom-runtime-10/pom/7f8a5ba0c883425b8c38ffaca436276b/native.log:1014 | injected |
+| 4. Death and corpse | PARTIAL (injected) | output/dsw/l23-out/pom-runtime-10/pom/7f8a5ba0c883425b8c38ffaca436276b/native.log:1074 | injected |
+| 5. Actual transport and reward | UNTESTED (injected) | output/dsw/l23-out/pom-runtime-10/pom/7f8a5ba0c883425b8c38ffaca436276b/native.log:1075 | injected |
+| 6. Cleanup and re-entry | UNTESTED (injected) | output/dsw/l23-out/pom-runtime-10/pom/7f8a5ba0c883425b8c38ffaca436276b/native.log:1094 | injected |
+
+## Review fixes 3
+
+The slice-3 handoff was reviewed **NOT merged**: noted a blocking native
+regression (Wait gated the arm on `draws`, so an off-camera/culled bud never
+armed) plus one-shot Swing/Close timing, a draw-report placement gap, a one-shot
+host anchor, and validator/test/doc gaps. Fixed on this branch.
+
+### Native fixes (`deepseek/p2-l23-native`, base `b82dc0a9`)
+
+1. `103d15c2` — **source-timed Walk/Swing/Close/Shot holds**: `Wait` arms after
+   one SimTick (not a confirmed draw); `Swing`/`Close`/`Shot` hold their source
+   clip lengths (type4=20, type2=30, type3=40 behavior steps) so transient poses
+   are drawn across frames, not a single catch-up step. `bindHosts` re-anchors
+   the bound Chappy host every tick. `pc_p2_pom_report_draw` moved to just before
+   `shape->drawshape`, gated on `name == forcedClip` (the clip actually about to
+   render).
+2. `71163d6a` — increment `stateTicks` after the switch, so a newly-entered state
+   keeps its clip observable for the frame's draw (Wait is drawn once).
+3. `8eb03c49` — prime the sim clock on the first tick, so the setup-pause (movie
+   skip / preview) does not accrue as catch-up steps that collapse the one-tick
+   Wait arm into the bind frame.
+
+### Root fixes (`deepseek/p2-l23`, base `ce18398`)
+
+- `bb1fd20` — validator now requires **RedPom's** `P2_POM_DEAD` (`used=5
+  refunds=1 corpse=0 budget=5`) and `P2_POM_CONSERVATION` (`requested=6 born=6`)
+  in addition to the Queen's; `test_validate_pass_and_fail` flips each bud's
+  `P2_POM_DRAW` line separately per pose; `docs/PIKMIN2_POM_NATIVE.md` drops the
+  stale `drawn=1`, documents the per-pose draw cap and `pc_p2_pom_report_draw`,
+  and records the full six-pose walk.
+
+### Build / fixture / runtime evidence
+
+- Native `8eb03c490fdb76e310834add9e732d3739659e50`, clean. `nectar.exe`
+  SHA-256 `5BC7E473BF8C03EF79AB55EA11A54A43AA8A8CF1EA8157D4E5997A41EBD596DE`,
+  `ninja -n pikmin_pc` "no work to do".
+- Fixture `output/dsw/l23-out/pom-fixture-10/build/fixture.exe` SHA-256
+  `B7AFA0DBED174F5DEBBE1AA130095C7F157F181A9BAEEAE0585546323B65AD69`,
+  `provenance.json` status `built`, expected native head `8eb03c49`.
+- GL run `output/dsw/l23-out/pom-runtime-10/pom/7f8a5ba0c883425b8c38ffaca436276b`
+  PASS (exit 0), 17/17 checks, no leftover process, 960×540 centred window. The
+  Wait pose is now drawn (lines 986/987) before the arm; RedPom and Queen each
+  reach `DEAD`/`CONSERVATION` (`loss_counted=0`).
+
+### Six-gate table checker
+
+`py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE23_DEEPSEEK_HANDOFF.md`
+(exit 0):
+
+```text
+3 BluePom (role=plant): ignored (role)
+4 RedPom (role=plant): ignored (role)
+5 YellowPom (role=plant): ignored (role)
+6 BlackPom (role=plant): ignored (role)
+7 WhitePom (role=plant): ignored (role)
+8 RandPom (role=plant): ignored (role)
+```
+
+The checker ran against the wave-branch `experimental/pikmin2_enemy_roster.py`
+(the local copy was older and lacked `NONNATURAL_MARKERS`/`admission_requirements`).
+It reports no refusals; the six Candypop identities are classified `role=plant`
+in the roster, so the deny-by-default ingest does not treat them as seedable
+enemy identities and neither advances nor refuses any gate. The six-gate tables
+above are retained for traceability.
