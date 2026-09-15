@@ -11,14 +11,15 @@
 //     as an InteractFlick knockback (the closest P1 panic/scatter receiver),
 //     applied once per contact.
 //   * The source manager-owned group birth (tamagoMushiMgr.cpp::createGroup:77/
-//     122, 10 surface / 30 cave from TAMAGOMUSHI_GROUP_COUNT) is approximated:
-//     the private arena stages a bounded cluster of existing TamagoMushi
-//     generators and this module links the smallest-generator actor as the
-//     leader and the rest as followers. Followers emerge (Appear), run the
-//     singleton ground cycle around a leader-centred home and chase the live
-//     leader once outside the follow leash. No brand-new P1 Teki actors are
-//     born; source birth offsets (birthRadius * 45 ground / -10 object) are
-//     represented by the engineered arena positions, not replayed by a manager.
+//     122, 10 surface / 30 cave from TAMAGOMUSHI_GROUP_COUNT) has TWO port paths:
+//     - the pre-staged approximation (no p2-tamago-host.txt): the arena stages a
+//       bounded cluster of TamagoMushi generators and setup links the smallest as
+//       leader; no brand-new P1 Teki actors are born.
+//     - the manager-driven birth mode (p2-tamago-host.txt present): a single host
+//       births its group once on Appear via pc_p2_tamago_birth_group, which uses
+//       BTeki::generateTeki to create the real leader-follower Teki actors inside
+//       the scene (no spawn velocity; source birth offsets approximated by a
+//       bounded 45-unit distribution).
 //   * Leader teardown is not established by the source (audit note); an
 //     orphaned follower promotes itself to its own leader instead of holding a
 //     dangling swarm pointer.
@@ -126,6 +127,11 @@ bool ready = false;
 bool birthMode = false;
 unsigned hostGenerator = 0;
 int hostGroupCount = 0;
+// Deferred sibling kills: pc_p2_tamago_forget's group branch runs inside the
+// TekiMgr update loop (natural host death -> doKill -> forget), so it queues the
+// born followers here and pc_p2_tamago_tick() drains them once per frame outside
+// that loop (gameCoreSection.cpp, after tekiMgr->update()).
+std::vector<BTeki*> pendingKills;
 
 float wrapPi(float a) {
     while (a > 3.14159265f) a -= 6.28318531f;
@@ -208,6 +214,7 @@ void dropHoney(BTeki* a, Tamago& s) {
 void pc_p2_tamago_reset() {
     actors.clear();
     clips.clear();
+    pendingKills.clear();
     ready = false;
 }
 void pc_p2_tamago_forget(BTeki* actor) {
@@ -217,12 +224,11 @@ void pc_p2_tamago_forget(BTeki* actor) {
     const unsigned gone = it->second.generator;
     const bool wasGroupHost = it->second.isGroupHost;
     // Whole-group cleanup on host forget: the manager-birth host owns its group,
-    // so forgetting the host despawns every born follower (via the death funnel)
-    // and erases the whole group — no orphaned, unregistered Chappy actors remain.
+    // so forgetting the host erases the whole group and despawns every born
+    // follower. The born-actor kills are QUEUED and drained by pc_p2_tamago_tick()
+    // once per frame, outside the TekiMgr update loop this hook runs inside on a
+    // natural host death (BTeki::doKill -> pc_p2_forget_teki).
     if (wasGroupHost) {
-        // Collect only the born followers (exclude the host itself, whose own
-        // leaderActor points back to it), despawn them via the death funnel, then
-        // erase the host. No orphaned, unregistered Chappy actors remain.
         std::vector<BTeki*> children;
         for (auto& entry : actors) {
             if (entry.first != static_cast<PelletView*>(actor)
@@ -230,17 +236,17 @@ void pc_p2_tamago_forget(BTeki* actor) {
                 children.push_back(static_cast<BTeki*>(entry.first));
             }
         }
-        int killed = 0;
+        int queued = 0;
         for (BTeki* child : children) {
             actors.erase(static_cast<PelletView*>(child));
             if (child->isAlive()) {
-                child->kill(false);  // death funnel -> pc_p2_forget_teki + manager recycle
-                ++killed;
+                pendingKills.push_back(child);
+                ++queued;
             }
         }
         actors.erase(static_cast<PelletView*>(actor));
-        std::printf("P2_TAMAGO_GROUP_FORGET host=%u group=%d remaining=%zu killed=%d source_id=68\n",
-                    gone, int(children.size()) + 1, actors.size(), killed);
+        std::printf("P2_TAMAGO_GROUP_FORGET host=%u group=%d remaining=%zu queued=%d source_id=68\n",
+                    gone, int(children.size()) + 1, actors.size(), queued);
         std::fflush(stdout);
         return;
     }
@@ -263,6 +269,16 @@ void pc_p2_tamago_forget(BTeki* actor) {
 unsigned long pc_p2_tamago_count() { return (unsigned long)actors.size(); }
 bool pc_p2_tamago_registered(BTeki* actor) {
     return actors.count(static_cast<PelletView*>(actor)) != 0;
+}
+
+void pc_p2_tamago_tick() {
+    // Once-per-frame drain of queued born-follower kills (see pendingKills). Runs
+    // outside the TekiMgr update loop so sibling despawns never re-enter the host's
+    // own update() death funnel.
+    for (BTeki* child : pendingKills) {
+        if (child && child->isAlive()) child->kill(false);
+    }
+    pendingKills.clear();
 }
 
 void pc_p2_tamago_birth_group(BTeki* host, int count) {

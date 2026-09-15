@@ -517,9 +517,10 @@ void pc_p2_otakara_setup() {
         const Vector3f pos = actor->getPosition();
         std::printf("P2_ENEMY_READY species=%s native_family=Chappy generator=%u "
                     "x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=native "
-                    "source_FSM=implemented attack=elemental_discharge\n",
+                    "source_FSM=implemented attack=%s\n",
                     p2dweevil::speciesName(s.species), actor->mGenerator->_70, pos.x, pos.y,
-                    pos.z, actor->mHealth, s.life);
+                    pos.z, actor->mHealth, s.life,
+                    s.stimulus == p2dweevil::StimNone ? "payload_delegated" : "elemental_discharge");
         found.insert(actor->mGenerator->_70);
     }
     if (found.size() != wanted.size()) {

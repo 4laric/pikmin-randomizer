@@ -210,7 +210,7 @@ bool doFlip(BTeki* actor,int id,bool natural){
 }
 void pc_p2_kogane_reset(){
     for(const auto& entry:beetles)if(entry.second.generator&&entry.second.flips>0)restoredFlips[entry.second.generator]=entry.second.flips;
-    clips.clear();timing.clear();actors.clear();beetles.clear();karada=-1;logged[0]=logged[1]=false;
+    clips.clear();timing.clear();actors.clear();beetles.clear();karada=-1;logged[0]=logged[1]=false;nectarDropped.clear();
     if(koganeReceiptHandle){pc_p2_receipt_host_close(koganeReceiptHandle);koganeReceiptHandle=nullptr;}
 }
 void pc_p2_kogane_forget(BTeki* actor){actors.erase(static_cast<PelletView*>(actor));beetles.erase(static_cast<PelletView*>(actor));}
@@ -440,15 +440,10 @@ int pc_p2_kogane_gas_state(BTeki* actor,float* x,float* z,float* remaining){
 // family-local flip sidecar. These read/re-drive it so a restart pass can prove
 // the reward cap holds: the ledger still has exactly three rows and every
 // re-attempt is a genuine pc_p2_receipt_host_grant Duplicate, never a re-grant.
+// The row count uses the lane-06 handle accessor (pc_p2_receipt_host_count)
+// instead of re-parsing the on-disk format.
 int pc_p2_kogane_onion_ledger_rows(){
-    std::ifstream in(kOnionReceiptsPath);
-    if(!in)return 0; // missing file starts empty
-    std::string header;
-    if(!(in>>header)||header!="P2_RECEIPTS_1")return -1;
-    int rows=0;std::string seed,reward,slot,encounter;
-    while(in>>seed){ if(!(in>>reward>>slot>>encounter))return -1; ++rows; }
-    if(!in.eof())return -1;
-    return rows;
+    return koganeReceiptHandle ? int(pc_p2_receipt_host_count(koganeReceiptHandle)) : 0;
 }
 int pc_p2_kogane_reprobe_duplicates(unsigned generator,int id){
     // Re-drive a farmed beetle's three flip grants through the real lane-06 grant

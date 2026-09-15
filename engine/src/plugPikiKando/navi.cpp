@@ -1278,9 +1278,10 @@ void Navi::callPikis(f32 radius, bool recallWorkers)
 
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
 	// Lane-11 Bulbmin: a captain whistle converts wild dependents in place and
-	// hands them to the bound captain table. Inert unless opted in.
+	// hands them to the bound captain table. Inert unless opted in. The `via`
+	// label proves the real Navi::callPikis path is on the P2_BULBMIN_WHISTLE log.
 	if (pc_p2_bulbmin_active()) {
-		pc_p2_bulbmin_call_pikis(this, radius);
+		pc_p2_bulbmin_call_pikis(this, radius, "navi_callPikis");
 	}
 #endif
 

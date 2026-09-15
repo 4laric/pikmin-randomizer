@@ -40,6 +40,7 @@
 #include "pc_p2_flora_actor.h"
 #include "pc_p2_pom.h"
 #include "pc_p2_plant.h"
+#include "pc_p2_tamago.h"
 #include "pc_p2_hardlanes.h"
 #include "pc_p2_projectiles.h"
 #include "pc_randomizer.h"
@@ -1030,7 +1031,47 @@ void GameCoreSection::initStage()
 
 	PRINT("--------------- GeneratorCache : preload start\n");
 	memStat->start("genCache");
-	const bool hasAuthoritativeStageCache = generatorCache->preload(flowCont.mCurrentStage->mStageIndex);
+#if defined(PIKMIN_RANDOMIZER_TEST_HOOKS)
+	// lane-03 (#439): room generator-cache resume. Load the serialized cache
+	// written by a prior PIKMIN_P2_CACHE_SAVE boot, then preload keyed by the
+	// room's mStageID (STAGE_Practice = 0; the stage-list mStageIndex for chal0
+	// has no GeneratorCache entry). The ramMode Generator::read here restores the
+	// SLT1 spawn-slot uid that ordinary birth then re-resolves.
+	if (pc_pikipelago_room_preview() && std::getenv("PIKMIN_P2_CACHE_RESUME")) {
+		std::ifstream in("p2-gencache.bin", std::ios::binary | std::ios::ate);
+		if (in) {
+			std::streamsize size = in.tellg();
+			in.seekg(0);
+			static char card[0x8000];
+			if (size > 0 && size <= (std::streamsize)sizeof(card)) {
+				in.read(card, size);
+				RamStream stream(card, static_cast<int>(size));
+				generatorCache->loadCard(stream);
+			}
+			std::printf("P2_GENCACHE_RESUME stage_id=%u bytes=%lld bridge=%d bindings=%u\n",
+			            flowCont.mCurrentStage->mStageID, (long long)size,
+			            int(pc_randomizer_p2_bridge()), pc_randomizer_p2_binding_count());
+		}
+	}
+#endif
+	const u32 genCacheStage =
+#if defined(PIKMIN_RANDOMIZER_TEST_HOOKS)
+		(pc_pikipelago_room_preview() && std::getenv("PIKMIN_P2_CACHE_RESUME"))
+			? flowCont.mCurrentStage->mStageID : flowCont.mCurrentStage->mStageIndex;
+#else
+		flowCont.mCurrentStage->mStageIndex;
+#endif
+	const bool hasAuthoritativeStageCache = generatorCache->preload(genCacheStage);
+#if defined(PIKMIN_RANDOMIZER_TEST_HOOKS)
+	if (pc_pikipelago_room_preview() && std::getenv("PIKMIN_P2_CACHE_RESUME")) {
+		Generator* g;
+		FOREACH_NODE_REUSE(Generator, generatorList->mGenListHead->mChild, g) {
+			std::printf("P2_GENCACHE_DUMP _70=%u uid=%u alive=%d day=%d ram=%d\n",
+			            unsigned(g->_70), pc_randomizer_generator_id(g),
+			            int(g->mAliveCount), int(g->mLatestSpawnDay), int(g->readFromRam()));
+		}
+	}
+#endif
 	memStat->end("genCache");
 	PRINT("--------------- GeneratorCache : preload done\n");
 
@@ -1095,15 +1136,26 @@ void GameCoreSection::initStage()
 	bool useDay     = false;
 	bool useInit    = false;
 	bool usePlant   = false;
+#if defined(PIKMIN_RANDOMIZER_TEST_HOOKS)
+	// lane-03 (#439): on a room cache-resume boot, the generator list already
+	// came from preload; skipping the default.gen disk read avoids duplicate
+	// room actors binding the same _70.
+	const bool resumeRoomCache = pc_pikipelago_room_preview() && std::getenv("PIKMIN_P2_CACHE_RESUME");
+#else
+	const bool resumeRoomCache = false;
+#endif
 	sprintf(path2, "%sdefault.gen", path);
-	RandomAccessStream* data = gsys->openFile(path2);
+	// On a room cache-resume boot, skip the disk default.gen entirely (the
+	// generator list already came from GeneratorCache::preload); do not even
+	// open the stream, so it is neither leaked nor double-read.
+	RandomAccessStream* data = resumeRoomCache ? nullptr : gsys->openFile(path2);
 	if (data) {
 		PRINT("DEFAULT GEN LOADED **********************************\n");
 		generatorMgr->read(*data, false);
 		data->close();
 		generatorMgr->updateUseList();
 		useDefault = true;
-	} else {
+	} else if (!resumeRoomCache) {
 		PRINT("*** NO GENERATOR FILE\n");
 		mNavi->mSRT.t.set(0.0f, 0.0f, 0.0f);
 		mNavi->mDayEndPosition = mNavi->mSRT.t;
@@ -1226,7 +1278,7 @@ void GameCoreSection::initStage()
 	generatorList->createRamGenerators();
 
 	memStat->start("genCache");
-	generatorCache->load(flowCont.mCurrentStage->mStageIndex);
+	generatorCache->load(genCacheStage);
 	memStat->end("genCache");
 
 	if (useDay) {
@@ -2388,43 +2440,49 @@ void GameCoreSection::updateAI()
             bbftRedsReady = true;
         }
     }
-    // lane-03 (#439): room-preview cache round-trip. Drives the real
-    // Generator::write/Generator::read ramMode record (the SLT1 + spawn-slot uid
-    // trailer the day-end save serializes) on each live room generator, then
-    // re-reads a fresh Generator from those bytes and re-resolves the ENEMY_P2
-    // source from the restored uid. Env-gated so the ordinary room preview is
-    // unaffected; only runs under --experimental-pikmin2-room.
-    if (pc_pikipelago_room_preview() && std::getenv("PIKMIN_P2_CACHE_ROUNDTRIP") && generatorList && generatorList->mGenListHead) {
-        static bool tested = false;
-        if (!tested) {
-            tested = true;
-            int bound = 0;
+#if defined(PIKMIN_RANDOMIZER_TEST_HOOKS)
+    // lane-03 (#439): room generator-cache writer. Serializes the live room
+    // generators through the real day-end cache path (beginSave/saveGenerator/
+    // endSave) and writes the whole cache via saveCard to p2-gencache.bin, then
+    // exits. TEST_HOOKS + room-preview + env-gated so no exit path ships in a
+    // production build.
+    if (pc_pikipelago_room_preview() && std::getenv("PIKMIN_P2_CACHE_SAVE") && generatorList) {
+        static bool saved = false;
+        if (!saved) {
+            saved = true;
+            const u32 stage = flowCont.mCurrentStage->mStageID;  // 0 = STAGE_Practice for the room
+            generatorCache->beginSave(stage);
+            int gens = 0;
             Generator* gen;
             FOREACH_NODE_REUSE(Generator, generatorList->mGenListHead->mChild, gen)
             {
-                const unsigned uid = pc_randomizer_generator_id(gen);
-                if (!uid) continue;
-                char data[2048] = {};
-                RamStream saved(data, sizeof(data));
-                Generator::ramMode = true; gen->write(saved); Generator::ramMode = false;
-                saved.setPosition(0);
-                Generator* restored = new Generator();
-                Generator::ramMode = true; restored->read(saved); Generator::ramMode = false;
-                const unsigned restoredUid = pc_randomizer_generator_id(restored);
-                const unsigned source = pc_randomizer_p2_source_for_id(restoredUid);
-                std::printf("P2_ROOM_CACHE_ROUNDTRIP uid=%u restored=%u source_id=%u carry_flags=%u\n",
-                            uid, restoredUid, source, unsigned(gen->mCarryOverFlags));
-                if (restoredUid != uid || !source) std::abort();
-                delete restored;
-                ++bound;
+                std::printf("P2_GENCACHE_SCAN generator=%u flags=%u dayLimit=%d currentDay=%d\n",
+                            unsigned(gen->_70), unsigned(gen->mCarryOverFlags),
+                            int(gen->mDayLimit), int(gameflow.mWorldClock.mCurrentDay));
+                if (gen->mCarryOverFlags & GENCARRY_SaveGenerator) {
+                    generatorCache->saveGenerator(gen);
+                    ++gens;
+                }
             }
-            if (!bound) std::abort();
-            std::printf("TEST_ONLY p2_room_cache_roundtrip_pass bound=%d\n", bound);
+            generatorCache->endSave();
+            // saveCard writes 4 + 4 + GENCACHE_HEAP_SIZE + STAGE_COUNT*(1+9*4)
+            // bytes; bound the buffer so a growth cannot silently overflow it.
+            static char card[0x8000];
+            RamStream stream(card, sizeof(card));
+            generatorCache->saveCard(stream);
+            if (stream.getPosition() <= 0 || stream.getPosition() >= (int)sizeof(card)) {
+                std::fprintf(stderr, "[PC Generator] gen-cache record %d bytes does not fit the %zu-byte buffer\n",
+                             stream.getPosition(), sizeof(card));
+                std::abort();
+            }
+            std::ofstream out("p2-gencache.bin", std::ios::binary | std::ios::trunc);
+            out.write(card, stream.getPosition());
+            out.close();
+            std::printf("P2_GENCACHE_SAVE stage=%u generators=%d bytes=%d\n", stage, gens, stream.getPosition());
             std::fflush(stdout);
-            std::exit(0);
+            std::exit(gens ? 0 : 1);
         }
     }
-#if defined(PIKMIN_RANDOMIZER_TEST_HOOKS)
     const char* scripted = std::getenv("PIKMIN_RANDOMIZER_TEST_SCRIPT");
     const char* background = std::getenv("PIKMIN_RANDOMIZER_TEST_BACKGROUND");
     if (pc_randomizer_ready() && scripted && !std::strcmp(scripted, "spawn-audit")
@@ -3028,6 +3086,7 @@ void GameCoreSection::updateAI()
 				pc_p2_flora_tick();
 				pc_p2_pom_tick();
 				pc_p2_plant_tick();
+				pc_p2_tamago_tick();
 			}
 		}
 	}
