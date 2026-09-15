@@ -306,9 +306,11 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_m
             receipt = install_layout(run.directory, layout, Path(p2_content),
                                      actor_bindings=p2_actors, retail_assets=Path(assets),
                                      cache_dir=cache_dir)
-        except StagingError:
-            # A wrong source / uncovered identity / bad binding must leave no run
-            # tree behind (NativeRun already seeded bootstrap.txt/state.txt).
+        except Exception:
+            # Any install failure (wrong source / uncovered identity / bad binding /
+            # adapter ValueError or RuntimeError) must leave no run tree behind:
+            # NativeRun already seeded bootstrap.txt/state.txt and a partial tree
+            # would be replayed as an incomplete stage on the next launch.
             shutil.rmtree(run.directory, ignore_errors=True)
             raise
         print(f"PIKMIN_P2_BOUND: {len(receipt['bindings'])} identities cached={bool(receipt.get('cached'))}", flush=True)

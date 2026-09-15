@@ -641,3 +641,77 @@ def test_launch_wrong_source_leaves_no_run_dir(tmp_path, monkeypatch):
         bridge.admitted_ids = original
 
     assert list((session / "runs").iterdir()) == []
+
+
+@pytest.mark.parametrize("failure", [ValueError, RuntimeError])
+def test_launch_install_error_leaves_no_run_dir(tmp_path, monkeypatch, failure):
+    """A launcher-stage install failure (non-StagingError) must leave NO
+    runs/<token> tree: NativeRun has already seeded bootstrap.txt/state.txt."""
+    import experimental.pikmin2_seed_bridge as bridge
+    from randomizer import runner
+    from randomizer.seed import generate
+
+    placeholder = dict(schema="p2-placement-v1",
+                       slots=[dict(uid=401, label="bulborb-slot", stage=1, terrain="ground",
+                                   radius=300.0, evidence=dict(xyz=True, terrain=True, route=True))],
+                       profiles=[dict(identity="BlueKochappy", terrains=["ground"],
+                                      accepted_gates=["xyz"])])
+    original = bridge.admitted_ids
+    bridge.admitted_ids = lambda roster: [44]
+
+    def boom(*args, **kwargs):
+        raise failure("adapter crash")
+
+    monkeypatch.setattr(family_install, "install_layout", boom)
+
+    async def fake_serve(*args, **kwargs):
+        pass
+
+    monkeypatch.setattr(runner, "serve", fake_serve)
+
+    content_root = tmp_path / "content"
+    make_source_dir(content_root, "BlueKochappy")
+    retail = tmp_path / "retail"
+    (retail / "dataDir" / "stages").mkdir(parents=True)
+    session = tmp_path / "sess"
+    try:
+        manifest = generate("p2-binding-seed", collection_checks=True,
+                            p2_enemies=True, p2_placement=placeholder)
+        target = manifest["p2_layout"]["bindings"][0]["target"]
+        with pytest.raises(failure):
+            runner.launch(manifest, session, assets=retail,
+                          p2_content=content_root, p2_actors={target: 211001})
+    finally:
+        bridge.admitted_ids = original
+
+    assert list((session / "runs").iterdir()) == []
+
+
+def test_install_layout_mid_failure_removes_run_root_sidecars(tmp_path):
+    """A later family's failure must remove the run-root sidecars an earlier
+    fully-installed family already copied (e.g. p2-snow.txt), not just run/assets."""
+    content_root = tmp_path / "content"
+    make_snow_source(content_root)
+    make_source_dir(content_root, "BlueKochappy")
+    run = tmp_path / "run"
+    retail = tmp_path / "retail"
+    (retail / "dataDir" / "stages").mkdir(parents=True)
+
+    def failing(source, run_arg, actors):
+        raise RuntimeError("second family crash")
+
+    family_install.register("dwarf_orange", failing)
+
+    layout = layout_with(
+        binding(target="gen-001", source_id=45, enum_name="YellowKochappy"),
+        binding(target="gen-002", source_id=44, enum_name="BlueKochappy"),
+    )
+    with pytest.raises(RuntimeError):
+        family_install.install_layout(
+            run, layout, content_root,
+            actor_bindings={"gen-001": 211045, "gen-002": 211001},
+            retail_assets=retail)
+
+    assert not (run / "assets").exists()
+    assert not (run / "p2-snow.txt").exists()
+    assert not (run / "p2-snow-actors.txt").exists()
