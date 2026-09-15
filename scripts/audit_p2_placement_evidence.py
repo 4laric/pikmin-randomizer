@@ -21,6 +21,10 @@ profile gates), and ``injected_legal`` (clearly-labelled profile-gate injection
 to show the interface is wired, not natural acceptance).
 
    py -3.12 scripts/audit_p2_placement_evidence.py --probe probe.json [--stage 0] [--allow-unmapped] [--out report.json]
+
+The arena stage is read from the probe document's ``arena_stage`` field when
+``--stage`` is not given (the runner records it beside the probe); a catalog-join
+probe with no stage anywhere is rejected instead of silently skipping the guard.
 """
 import argparse
 import json
@@ -53,7 +57,15 @@ def _admitted_for(report, identities):
 
 
 def run_audit(probe, catalog_doc=None, identities=IDENTITIES, arena_stage=None, allow_unmapped=False):
-    """Return the join + before/after admission report for a probe document."""
+    """Return the join + before/after admission report for a probe document.
+
+    When ``arena_stage`` is not passed explicitly it is read from the probe's own
+    ``arena_stage`` field (the runner records the staged map stage beside the
+    probe), so the stage guard fires without a manual ``--stage`` on the standalone
+    CLI. If neither is present the stage guard is skipped, as before.
+    """
+    if arena_stage is None:
+        arena_stage = probe.get('arena_stage')
     unmapped = probe.get('unmapped_generators', [])
     if unmapped and not allow_unmapped:
         raise SystemExit(
@@ -107,13 +119,17 @@ def run_audit(probe, catalog_doc=None, identities=IDENTITIES, arena_stage=None, 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--probe', type=Path, required=True)
-    parser.add_argument('--stage', type=int, default=None)
+    parser.add_argument('--stage', type=int, default=None,
+                        help='arena stage; default is read from the probe document arena_stage field')
     parser.add_argument('--allow-unmapped', action='store_true')
     parser.add_argument('--out', type=Path, default=None)
     args = parser.parse_args(argv)
 
-    report = run_audit(json.loads(args.probe.read_text()),
-                       arena_stage=args.stage, allow_unmapped=args.allow_unmapped)
+    probe = json.loads(args.probe.read_text())
+    stage = args.stage if args.stage is not None else probe.get('arena_stage')
+    if probe.get('catalog_join') and stage is None:
+        parser.error('catalog-join probe requires --stage or an arena_stage field inside the probe document')
+    report = run_audit(probe, arena_stage=stage, allow_unmapped=args.allow_unmapped)
     print(json.dumps(report, indent=2))
     if args.out:
         args.out.write_text(json.dumps(report, indent=2) + '\n')

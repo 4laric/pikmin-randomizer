@@ -101,13 +101,15 @@ def build_probe(text):
         {'schema': PROBE_SCHEMA, 'catalog_join': bool,
          'mapping': [{'generator', 'slot', 'xyz', 'terrain', 'route', 'position'}, ...],
          'slots': [{'uid', 'xyz', 'terrain', 'route'}, ...],
-         'unmapped_generators': [int, ...]}
+         'unmapped_generators': [int, ...], 'malformed_markers': int}
 
     ``mapping`` lists only the sidecar-mapped slots (``slot`` not None); each
     entry keeps its sampled ``position``. ``slots`` is the stampable subset keyed
     by the catalog slot ``uid`` only — unmapped generators are NOT overloaded
     onto ``uid``. ``unmapped_generators`` lists generators whose ``slot`` was
-    absent/0. ``catalog_join`` is True when at least one mapping exists.
+    absent/0. ``malformed_markers`` counts ``P2_PLACEMENT_SLOT``-prefixed lines
+    that failed to parse (for diagnostic visibility instead of silent drop).
+    ``catalog_join`` is True when at least one mapping exists.
     """
     slots, _, _ = capture_markers(text)
     mapping = [
@@ -116,6 +118,10 @@ def build_probe(text):
         for s in slots if s['slot'] is not None
     ]
     unmapped = [s['generator'] for s in slots if s['slot'] is None]
+    malformed = 0
+    for line in text.splitlines():
+        if line.startswith(_SLOT_PREFIX) and _parse_slot_line(line) is None:
+            malformed += 1
     return {
         'schema': PROBE_SCHEMA,
         'catalog_join': bool(mapping),
@@ -125,4 +131,5 @@ def build_probe(text):
             for m in mapping
         ],
         'unmapped_generators': unmapped,
+        'malformed_markers': malformed,
     }

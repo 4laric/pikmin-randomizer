@@ -99,6 +99,7 @@ def main():
     text = log.read_text(encoding='utf-8', errors='replace')
     slots, window, summary = p2_placement_probe.capture_markers(text)
     probe = p2_placement_probe.build_probe(text)
+    probe['arena_stage'] = ARENA_STAGE
     report = run_audit(probe, catalog_doc, arena_stage=ARENA_STAGE, allow_unmapped=True)
 
     identity_ready = [l.strip() for l in text.splitlines()
