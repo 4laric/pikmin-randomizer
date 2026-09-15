@@ -143,9 +143,14 @@ e4ec437 lane10: slice 2 handoff (#408)
 427da25 lane10: review fixes 3 handoff (commits/build evidence) (#408)
 683c2ff lane10: review fixes 3 - commit list completeness (#408)
 3c30cdc lane10 (integrator doc fix): contract doc names the real PRINT routing (sysCon via _Print) (#171)
-cc8b8b3 lane10 (integrator): untrack the local checker/ingest copies (#171)
-fdf1483 lane10: slice 3 - receiver contract as checked test (#408)
+8f0d87a lane10: slice 3 - receiver contract as checked test (#408)
+ad4a8f2 lane10: slice 3 handoff (contract test, re-entry blocker, Otakara doc) (#408)
 ```
+
+(Note: an errant local commit `cc8b8b3` that deleted the wave-tracked
+`scripts/check_p2_handoff_gates.py`/`scripts/ingest_p2_handoff_gates.py` was
+removed in review-fixes-4 via `git rebase --onto 3c30cdc cc8b8b3`; the two scripts
+stay tracked exactly as the wave has them.)
 
 Dirty state: both worktrees clean at handoff (build dirs, fixture and run
 output are ignored/private).
@@ -459,20 +464,22 @@ consumer. Native re-merged to wave tip `cf2945b2` (lane 22 slice 4 Otakara
 Gas/Elec/Bomb binding + lane 06 stage-seam delivery reset landed).
 
 1. **Contract -> checked test (DONE).** `tests/test_pikmin2_lanes10_receiver_contract.py`
-   (`PIKMIN_NATIVE_ROOT`-discovered native root) greps the three emitters —
-   `pc_p2_otakara.cpp`, `pc_p2_elecbug.cpp`, `pc_p2_hiba.cpp` (the only
-   `pc_port/*.cpp` modules that call `p2_emitter_accepts`/`stimulate(Interact<X>)`)
-   — and asserts each consults the species matrix (`p2_emitter_accepts(` or
-   `p2_species_immune(`), constructs an `Interact<Element>`, and logs a DISTINCT
-   accepted + immune marker pair. A negative self-test (`module_passes` helper)
-   proves a forked-matrix emitter fails. 4 passed. The contract doc
+   (`PIKMIN_NATIVE_ROOT`-discovered native root) **enumerates** every
+   `pc_port/*.cpp` that consumes the contract (`p2_emitter_accepts(` or
+   `stimulate(Interact<Fire|Bubble|Gas|Denki>`), then asserts each consults the
+   species matrix (`p2_emitter_accepts(`/`p2_species_immune(`) — with `//` and
+   `/*…*/` comments stripped so a comment-only mention cannot pass) and constructs
+   an `Interact<Element>`; the known three (`pc_p2_otakara.cpp`,
+   `pc_p2_elecbug.cpp`, `pc_p2_hiba.cpp`) additionally assert their distinct
+   accepted/immune marker pair. Two pure helper self-tests exercise the
+   forked-matrix and comment-only cases (no build). 6 passed. The contract doc
    (`docs/PIKMIN2_LANE10_RECEIVER_CONTRACT.md`) now names this test and the
    audited native head `cf2945b2` next to its line citations.
 2. **Hiba gate 6 real re-entry (BLOCKED).** The host seam exists and is the
    correct consume-point — `pc_p2_reset_all_teki()` is called from
    `GameCoreSection::exitStage` (`gameCoreSection.cpp:893`), and
-   `pc_p2_hiba_setup()` runs from `finalSetup` via `pc_p2_preview_setup`
-   (`gameCoreSection.cpp:1439` -> `pc_p2_preview.cpp:249`), with
+    `pc_p2_hiba_setup()` runs from `finalSetup` via `pc_p2_preview_setup`
+    (`gameCoreSection.cpp:1439` -> `pc_p2_preview.cpp:252`), with
    `pc_p2_scene_begin()`/`pc_p2_scene_generation()` (`gameCoreSection.cpp:1441`)
    the new-scene readiness signal (no runtime caller yet). But the Hiba hazards
    are room-preview-opt-in: `pc_p2_hiba_setup()` returns early when
@@ -523,3 +530,38 @@ Subagent usage (slice 3):
    as-is**. Saved ~20 min.
 
 Net: ~75 min of parallel reading/testing off the critical path.
+
+## Review fixes 4
+
+1. **Branch corrected (was MERGE-WITH-FIXES).** `cc8b8b3`, which deleted the
+   wave-tracked `scripts/check_p2_handoff_gates.py`/`ingest_p2_handoff_gates.py`,
+   was dropped via `git rebase --onto 3c30cdc cc8b8b3 deepseek/p2-l10`; the two
+   scripts are kept tracked exactly as the wave has them. The integrator's `3c30cdc`
+   PRINT-routing doc fix is retained. (The handoff previously mislabelled `cc8b8b3`
+   as "(integrator)"; it was a local commit and is now gone.)
+2. **Contract test hardened.** It now *enumerates* every `pc_port/*.cpp` that
+   consumes the contract (`p2_emitter_accepts(` or `stimulate(Interact<Fire|Bubble|
+   Gas|Denki>`) under `PIKMIN_NATIVE_ROOT`) and requires each to consult the matrix,
+   with `//`/`/*…*/` comments stripped before matching (a comment-only mention can
+   no longer pass); the known three still assert their distinct accepted/immune
+   marker pair. Added `test_every_discovered_emitter_consults_matrix` and
+   `test_matrix_mention_only_in_comment_fails`; `test_contract_rejects_forked_matrix`
+   is a helper self-test (not cited as "the proof"). 6 passed.
+3. **Citation corrected** — `pc_p2_hiba_setup` is at `pc_p2_preview.cpp:252`
+   (249 is `pc_p2_kogane_setup`).
+4. **Item 2** (real day-end re-entry) is accepted as a **lane 01/33** item; **item 3**
+   (Otakara Gas/Elec) stays **PARTIAL** with lane 22's evidence cited
+   (`output/dsw/l22-out/s4-GasOtakara/.../native.log:778`, `s4-ElecOtakara/...:778`).
+
+Gate check (unchanged; all three `role=hazard`, exit 0, no refused PASS):
+
+```text
+20 Hiba (role=hazard): ignored (role)
+21 GasHiba (role=hazard): ignored (role)
+22 ElecHiba (role=hazard): ignored (role)
+EXIT=0
+```
+
+Subagent usage (fix4): no subagents were needed — this pass was a branch-history
+rebase plus a focused test hardening and a small citation/wording audit, all done
+directly.

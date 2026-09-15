@@ -35,6 +35,7 @@ struct Binding {
 	int blows = 0;
 	int flickTier = 0;
 	int attached = 0;
+	float prevHealth = 0;                  // last observed host health; drops feed the blow counter
 	bool deadLogged = false;
 	std::vector<Shape*> walkShapes;       // move1 sampled poses
 	std::vector<Shape*> deadShapes;       // dead sampled poses
@@ -161,7 +162,11 @@ void pc_p2_king_teki_setup() {
 		b.home = t->mSRT.t;
 		b.health = p2king::HealthDefault;
 		b.scale = 1.0f;
+		b.prevHealth = b.health;
 		t->mHealth = b.health;
+		// The Emperor drops no pellets in source; the copied iket personality may
+		// carry a non-zero appear chance, so zero it on the bound host.
+		t->setPersonalityF(TekiPersonality::FLT_PelletAppearChance, 0.0f);
 		loadClip("move1", b.walkShapes);
 		loadClip("dead", b.deadShapes);
 		if (b.walkShapes.empty() || b.deadShapes.empty()) fail();
@@ -176,6 +181,9 @@ void pc_p2_king_teki_tick(BTeki* t) {
 	auto i = s.find(t);
 	if (i == s.end()) return;
 	Binding& b = i->second;
+	// The Emperor is an ambush predator: hold the host at its spawn so it does not
+	// wander off and drag the fight/carcass away from the squad.
+	t->mSRT.t = b.home;
 	if (t->mHealth <= 0.0f) {
 		if (!b.deadLogged) {
 			b.deadLogged = true;
@@ -192,6 +200,12 @@ void pc_p2_king_teki_tick(BTeki* t) {
 		clockAcc -= Tick;
 		++steps;
 		++behaviorTick;
+		// Source-faithful blow counter: each unit of health lost to an attached
+		// Pikmin since the last behavior tick is one blow (unit blow damage, the
+		// same approximation the slice-3 headless receiver used), feeding the
+		// tiered 30/35/45/50 threshold.
+		if (t->mHealth < b.prevHealth) b.blows += int(b.prevHealth - t->mHealth);
+		b.prevHealth = t->mHealth;
 		scanFlick(b, t);
 	}
 	if (steps == 4) clockAcc = 0;
@@ -221,3 +235,22 @@ bool pc_p2_king_teki_draw(BTeki* t, Graphics& gfx, const Matrix4f& matrix, bool 
 bool pc_p2_king_teki_dead_key_seen() { return gDeadKeySeen; }
 unsigned long pc_p2_king_teki_behavior_tick() { return behaviorTick; }
 int pc_p2_king_teki_attached_count(const BTeki* t) { auto i = s.find(const_cast<BTeki*>(t)); return i == s.end() ? -1 : i->second.attached; }
+
+float pc_p2_king_teki_param_f(const BTeki* actor, int idx, float fallback) {
+    auto i = s.find(const_cast<BTeki*>(actor));
+    if (i == s.end()) return fallback;
+    // The Emperor's health is the host's max life, and its regen is zero, so the
+    // per-frame life-recovery clamp (tekibteki.cpp) keeps the host at 1300 until
+    // real Pikmin damage is dealt through the engine.
+    if (idx == TPF_Life) return p2king::HealthDefault;
+    if (idx == TPF_LifeRecoverRate) return 0.0f;
+    return fallback;
+}
+
+bool pc_p2_king_teki_receipt(PelletView* view, unsigned& generator) {
+    if (!view) return false;
+    auto i = s.find(static_cast<BTeki*>(view));
+    if (i == s.end()) return false;
+    generator = i->second.generator;
+    return true;
+}

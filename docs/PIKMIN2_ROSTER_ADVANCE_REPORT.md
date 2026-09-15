@@ -52,9 +52,9 @@ Regenerate with:
 | 1 | 1 |
 | 2 | 2 |
 | 3 | 1 |
-| 4 | 0 |
+| 4 | 1 |
 | 5 | 3 |
-| 6 | 45 |
+| 6 | 44 |
 
 Seedable (`source`/`variant`) identities named across handoffs: 52
 
@@ -178,8 +178,8 @@ Seedable (`source`/`variant`) identities named across handoffs: 52
 
 ### 53 KingChappy (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE24_DEEPSEEK_HANDOFF.md
-- advances: (none)
-- blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
+- advances: attacks_receivers, death_corpse
+- blocking: identity_spawn, movement_animation, transport_reward, cleanup_reentry
 
 ### 54 Miulin (source) - shared table, excluded
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md

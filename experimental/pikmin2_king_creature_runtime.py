@@ -34,6 +34,7 @@ public:KingCameraTarget():Creature(nullptr){mHealth=1;}
 };
 class RoomApp : public PlugPikiApp {
  int frames=0,ready=0;bool hold=false;bool armed=false;bool finished=false;bool deathSeen=false;
+ Teki* host=nullptr;bool corpseSeen=false;
 public:int idle() override {
  int result=PlugPikiApp::idle();require(++frames<30000||hold,"King creature startup timeout");
  if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
@@ -44,25 +45,31 @@ public:int idle() override {
  {if((int)GameStat::allPikis==0)GameStat::allPikis.set(1,Red);}
  if(ready==1){
   n->mKontroller=new FixtureController();for(int i=0;i<DEMOFLAG_COUNT;++i)playerState->mDemoFlags.setFlagOnly(i);
-  int red=0;Iterator p(pikiMgr);CI_LOOP(p){Piki* a=static_cast<Piki*>(*p);if(a&&a->isAlive()&&a->mColor==Red){++red;a->changeMode(PikiMode::FreeMode,n);}}
+  Iterator it(tekiMgr);CI_LOOP(it){Teki* t=static_cast<Teki*>(*it);if(t&&pc_p2_king_teki_is_bound(t))host=t;}
+  require(host,"King host found");
+  {Vector3f near(host->mSRT.t);near.y=mapMgr->getMinY(near.x,near.z,true);n->resetPosition(near);}
+  int red=0;Iterator p(pikiMgr);CI_LOOP(p){Piki* a=static_cast<Piki*>(*p);if(a&&a->isAlive()&&a->mColor==Red)++red;}
   std::ifstream holding("king-keep-open.txt");hold=bool(holding);
   SDL_SetWindowTitle(SDL_GL_GetCurrentWindow(),"Emperor Bulblax creature host (#445)");
   std::printf("P2_KING_CREATURE_BASELINE red=%d\n",red);
  }
  if(ready==30&&!armed){
-  require(cameraMgr&&cameraMgr->mCamera,"King camera missing");auto* target=new KingCameraTarget();target->mSRT.t=Vector3f(34.0f,60.f,1896.0f);auto* camera=cameraMgr->mCamera;camera->setTarget(target);camera->mControlsEnabled=false;
+  require(cameraMgr&&cameraMgr->mCamera,"King camera missing");auto* target=new KingCameraTarget();target->mSRT.t=Vector3f(host->mSRT.t.x,host->mSRT.t.y+60.f,host->mSRT.t.z);auto* camera=cameraMgr->mCamera;camera->setTarget(target);camera->mControlsEnabled=false;
   PcamMotionInfo info=camera->mTargetMotionInfo;info.mDistance=1100;info.mFov=40;info.mAngle=35;info.mNaviWatchWeight=0;info.mWatchAdjustment=0;camera->startMotion(info);
   armed=true;std::puts("P2_KING_CREATURE_ARMED no_injection=1 deploy_once=1");
  }
  if(armed&&!finished){
   if(pc_p2_king_teki_dead_key_seen()&&!deathSeen){deathSeen=true;std::puts("P2_KING_CREATURE_DEATH_SEEN receiver=engine host_health=0");}
+  if(deathSeen&&!corpseSeen){
+   Iterator pellets(pelletMgr);CI_LOOP(pellets){Pellet* pl=static_cast<Pellet*>(*pellets);if(pl->isAlive()&&pl->mPelletView==static_cast<PelletView*>(host)){corpseSeen=true;std::puts("P2_KING_CREATURE_CORPSE_PELLET found=1");break;}}
+  }
   if(deathSeen&&pc_p2_preview_pokos()>0){
    capture("king-creature-dead.ppm");
-   std::printf("P2_KING_CREATURE_RECEIPT pokos=%d\n",pc_p2_preview_pokos());
+   std::printf("P2_KING_CREATURE_RECEIPT pokos=%d corpse_pellet=%d\n",pc_p2_preview_pokos(),corpseSeen?1:0);
    std::puts("PASS P2_KING_CREATURE_RUNTIME");
    std::fflush(nullptr);finished=true;if(!hold)std::_Exit(0);
   } else if(ready>=18000){
-   std::puts("FAIL P2_KING_CREATURE_NO_DEATH");
+   std::printf("FAIL P2_KING_CREATURE_NO_RECEIPT corpse_pellet=%d pokos=%d\n",corpseSeen?1:0,pc_p2_preview_pokos());
    std::fflush(nullptr);finished=true;if(!hold)std::_Exit(3);
   }
  }
@@ -77,6 +84,7 @@ def instrument(source):
     includes = ('#include <cstdio>\n#include <cstdlib>\n#include <fstream>\n#include <string>\n#include "pc_p2_king_teki.h"\n'
                 '#include "pc_p2_preview.h"\n'
                 'bool pc_p2_king_teki_dead_key_seen();\n'
+                'bool pc_p2_king_teki_is_bound(const BTeki*);\n'
                 '#include "Pcam/Camera.h"\n#include "Pcam/CameraManager.h"\n')
     return includes + source[:start] + APP + source[end:]
 
@@ -115,6 +123,9 @@ def stage(assets, bank, pod_package, output):
     struct.pack_into('<I', row, 8, HOST_GENERATOR)
     row[16:48] = b'King host Chappy'.ljust(32, b'\0')
     row[80] = HOST_TYPE
+    row[81] = 0  # pellet kind none (the borrowed iket personality wants a pellet)
+    row[82] = 0  # pellet color
+    struct.pack_into('<f', row, 119, 0.0)  # FLT_PelletAppearChance: Emperor drops none
     write_position(row, SPAWN)
     entries.append(bytes(row))
     used.add(HOST_GENERATOR)
