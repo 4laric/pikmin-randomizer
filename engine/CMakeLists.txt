@@ -1083,7 +1083,9 @@ if(PIKMIN_NATIVE_JAUDIO)
 endif()
 
 # Standalone adapter harness; exercises real file I/O without game assets.
-add_executable(pc_randomizer_probe pc_port/pc_randomizer_probe.cpp pc_port/pc_randomizer.cpp)
+# Include the P2 ordinary delivery ledger because pc_randomizer.cpp always links
+# against its host entry points; this only changes probe linkage, not behavior.
+add_executable(pc_randomizer_probe pc_port/pc_randomizer_probe.cpp pc_port/pc_randomizer.cpp pc_port/pc_p2_delivery_host.cpp)
 
 # Only the isolated diagnostic build includes scripted stock/death fixtures.
 option(PIKMIN_RANDOMIZER_TEST_HOOKS "Enable standalone scripted gameplay test fixtures" OFF)

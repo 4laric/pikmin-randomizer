@@ -69,6 +69,15 @@ IDENTITY_FAMILY = {
     44: 'dwarf_orange', 'bluekochappy': 'dwarf_orange',
     45: 'snow', 'yellowkochappy': 'snow',
     1: 'kochappy', 'kochappy': 'kochappy',
+    # lane-03 seed/native bridge cohort (directive 012): Sarai (23) and the
+    # Otakara species (59-62). The Otakara rows reuse the existing dweevil
+    # installer (p2-dweevil-actors.txt) rather than forking it; Sarai gets the
+    # new actor-sidecar installer below. Anything else still fails closed.
+    23: 'sarai', 'sarai': 'sarai',
+    59: 'dweevil', 'fireotakara': 'dweevil',
+    60: 'dweevil', 'waterotakara': 'dweevil',
+    61: 'dweevil', 'gasotakara': 'dweevil',
+    62: 'dweevil', 'elecotakara': 'dweevil',
 }
 
 
@@ -169,6 +178,52 @@ def _adapt_kochappy(source, run, actors):
     return dict(species='Kochappy', source_id=1, generators=generators)
 
 
+SARAI_ACTORS_TXT = 'p2-sarai-actors.txt'
+SARAI_ACTORS_HEADER = 'P2_SARAI_ACTORS_1'
+
+
+def _validate_sarai(source):
+    """Pre-flight check for the Sarai (Swooping Snitchbug, source 23) content.
+
+    Sarai is a private visual host (lane 30) staged from the ``sarai-*`` files;
+    the identity content must carry the mouth bank the host reads. The native
+    selector binds by the seed source, so no sidecar is consumed there; this only
+    proves the identity content is present before the run tree is written.
+    """
+    source = Path(source)
+    if not (source / 'sarai-attack-mouths.txt').is_file():
+        raise StagingError(f'Sarai mouth bank missing for identity content: {source / "sarai-attack-mouths.txt"}')
+
+
+def _adapt_sarai(source, run, actors):
+    """Adapter for the Sarai (source 23) actor-sidecar install (lane-03 bridge).
+
+    Writes ``p2-sarai-actors.txt`` from the seed's assigned generator ids in the
+    batch-2 ``<header> <count>`` + one generator per line shape, so the
+    seed-derived binding is recorded for audit; the native Sarai module selects
+    by the seed source directly. ``install_layout`` calls this once per binding
+    with a SINGLE generator, so the sidecar is accumulated (order-preserving
+    union) rather than overwritten when a seed binds Sarai to several generators.
+    """
+    run = Path(run)
+    generators = [int(generator) for generator, _species in actors]
+    if not generators:
+        raise StagingError('Sarai install requires at least one generator')
+    path = run / SARAI_ACTORS_TXT
+    existing = []
+    if path.is_file():
+        tokens = path.read_text(encoding='ascii').split()
+        # Format is ``<header> <count>`` then one generator per line.
+        if len(tokens) < 2 or tokens[0] != SARAI_ACTORS_HEADER or int(tokens[1]) != len(tokens) - 2:
+            raise StagingError(f'existing {SARAI_ACTORS_TXT} is malformed')
+        existing = [int(token) for token in tokens[2:]]
+    merged = list(dict.fromkeys(existing + generators))  # order-preserving union
+    text = f'{SARAI_ACTORS_HEADER} {len(merged)}\n' + '\n'.join(str(g) for g in merged) + '\n'
+    path.write_text(text, encoding='ascii')
+    return dict(species='Sarai', source_id=23, generators=merged,
+                actors_config_sha256=hashlib.sha256(text.encode('ascii')).hexdigest())
+
+
 # Bespoke-family adapters, exposed alongside the shared-contract installers.
 # Each adapter carries an optional ``validate(source)`` pre-flight hook run by
 # ``install_layout`` before any destination write.
@@ -176,6 +231,7 @@ ADAPTERS = {
     'dwarf_orange': {'install': _adapt_dwarf_orange, 'validate': _validate_dwarf_orange},
     'snow': {'install': _adapt_snow, 'validate': _validate_snow},
     'kochappy': {'install': _adapt_kochappy, 'validate': _validate_kochappy},
+    'sarai': {'install': _adapt_sarai, 'validate': _validate_sarai},
 }
 
 
