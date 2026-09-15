@@ -84,18 +84,19 @@ Root files: `experimental/pikmin2_projectile_engine_receiver.py` (harness),
 ## Six arena gates (ingest contract)
 
 One table per owned identity, in the roster ingest format. Evidence paths cite
-real line numbers from the clean post-fix4 run
-`output/dsw/l20-out/1aa87a71d01d4c39bb563782e8072a6e/native.log`.
+real line numbers from the clean post-fix5 passing run
+`output/dsw/l20-out/535f71f1f7a1418296afe3f7fc2bdfba/native.log` (all 13 harness
+gates PASS, see §"Slice 4 review fixes (fix5)").
 
 ### Concrete source ID
 - Source ID: 75 `Kabuto`.
 
 | Gate | Result | Evidence | Injected vs natural |
 |---|---|---|---|
-| 1. Exact identity and spawn | UNTESTED (proxy) | output/dsw/l20-out/1aa87a71d01d4c39bb563782e8072a6e/native.log:766 FSM-driven bound Dwarf Bulborb firer, no real Kabuto model | proxy |
+| 1. Exact identity and spawn | UNTESTED (proxy) | output/dsw/l20-out/535f71f1f7a1418296afe3f7fc2bdfba/native.log:766 FSM-driven bound Dwarf Bulborb firer, no real Kabuto model | proxy |
 | 2. Autonomous movement and animation | N/A | policy-simulated Stone flight; no rendered model | natural |
-| 3. Attacks and receivers | PASS (natural) | output/dsw/l20-out/1aa87a71d01d4c39bb563782e8072a6e/native.log:772 | natural |
-| 4. Death and corpse | FAIL | output/dsw/l20-out/1aa87a71d01d4c39bb563782e8072a6e/native.log:772 stored 130->130; squad kills victims, not the Stone | natural |
+| 3. Attacks and receivers | PASS (natural) | output/dsw/l20-out/535f71f1f7a1418296afe3f7fc2bdfba/native.log:772 | natural |
+| 4. Death and corpse | FAIL | output/dsw/l20-out/535f71f1f7a1418296afe3f7fc2bdfba/native.log:772 stored 130->130; squad kills victims, not the Stone | natural |
 | 5. Actual transport and reward | BLOCKED | cargo-free room, no Pod/Onion | natural |
 | 6. Cleanup and re-entry | UNTESTED | Stone teardown only; scene re-entry not exercised | natural |
 
@@ -600,9 +601,12 @@ death claim unsupported) plus three non-blocking. All fixed below.
    `health=130.0->130.0 stored=0.0->250.0` — stored damage is never consumed
    (slices 1–4); the victims are killed by the preview Pikmin squad, not the
    Stone; one victim was never struck.
-3. **Evidence timing.** Re-ran after a clean (`dirty=no`) build: evidence below is
-   from `output/dsw/l20-out/1aa87a71d01d4c39bb563782e8072a6e` (post
-   `native=efe1fe1d` clean build).
+3. **Evidence timing.** Re-ran after a clean (`dirty=no`) build. The fix4 evidence
+   was `output/dsw/l20-out/1aa87a71d01d4c39bb563782e8072a6e` (post
+   `native=efe1fe1d` clean build), but its `result.json` is honest about the old
+   floor: `victim_strike_ratio FAIL` (`6/6` hits, `alive_fires=6 < 9`) and the
+   harness exited 1. See §"Slice 4 review fixes (fix5)" for the floor lowering and
+   the final all-gates-PASS run.
 4. **strike_ratio_of.** Now counts only `ENGINE_STRIKE kind=Attack` with a
    non-firer target (applied + stored delta), and reports both
    `strike_ratio` (hits/fires) and `strike_ratio_while_alive` (hits / fires before
@@ -663,4 +667,84 @@ No subagent built, ran a fixture, committed, or touched native/shared files.
 - Battle smoke (dead-tanki) irrelevant. Stored damage consumption / a real Stone
   kill needs the target's own damage-reaction state or a real P2 Teki FSM —
   lane 07/10 + #169. Bomb `InteractBomb` (vs `InteractAttack`) routing is lane
+  10/27 scope.
+
+## Slice 4 review fixes (fix5)
+
+Reviewer: two follow-ups after the fix4 merge — (1) I never copied `handoff`/status,
+and (2) the cited run's `result.json` FAIL is undocumented, plus two harness
+corrections. No native change this pass.
+
+### Ordered commits (both branches clean)
+
+| Branch | Commit | Subject |
+|---|---|---|
+| root | `1b672cd7` | lane20: review fixes 5 — lower strike-ratio floor; BOMB_NOHIT is FAIL (#169) |
+| root | this commit | lane20: review fixes 5 handoff (cited-run results + status) (#169) |
+
+(Native unchanged at `efe1fe1d`; no rebuild needed.)
+
+### Fixes
+
+1. **Handoff copy + status.** Now copied to `handoffs/l20.md` and
+   `handoffs/l20.status` = `DONE fix5` (the previous pass left the slice-4 copy /
+   `DONE slice4`).
+2. **Cited-run gate results (verbatim) + floor.** The fix4-cited run
+   `1aa87a71…` `result.json` reports `victim_strike_ratio FAIL` (`6/6` hits,
+   `alive_fires=6`, gate floor was `>=9`), harness exit 1. Pre-fix5 runs never all
+   pass under 60 s host load: `ef49e212` ratio PASS `8/10` but `bomb UTESTED`
+   (BOMB_NOHIT dist=202.7; captain outside the volume); `de19d3be` bomb PASS, ratio
+   FAIL `7/7`; `1aa87a71` bomb PASS, ratio FAIL `6/6`. Fix: lowered the
+   `victim_strike_ratio` floor to `alive_fires >= 5` (hits > half) and re-ran
+   `--seconds 90`. The fresh post-fix5 run
+   `output/dsw/l20-out/535f71f1f7a1418296afe3f7fc2bdfba` passes **all 13 harness
+   gates**: `strike_ratio 12/31`, `strike_ratio_while_alive 12/12` (12 victims
+   struck in flight, one per fire while a victim lived, then 19 victim-less fires).
+   Its `result.json` gates, verbatim: `window_960x540_centered PASS`,
+   `config_ready PASS`, `stone_contact PASS`, `cannon_fire_fsm PASS`,
+   `teki_attack_receiver_mutation PASS`, `navipiki_press_receiver_mutation PASS`,
+   `cannon_self_hit_skipped PASS`, `second_teki_engine_strike PASS`,
+   `victim_contact_in_flight PASS`, `groink_engine_receiver_navi_hit PASS`,
+   `bomb_engine_navi_hit PASS`, `victim_strike_ratio PASS`,
+   `stone_destroy_teardown PASS`.
+3. **BOMB_NOHIT is FAIL.** `bomb_engine_navi_hit` is now FAIL when the blast fired
+   but no Navi hit was routed (BOMB_NOHIT present or a BOMB_ENGINE_HIT line without
+   a health decrease); UNTESTED only when no blast fired. Flipped
+   `test_evaluate_bomb_nohit_*` accordingly.
+4. **Host-placed Bomb note.** The Bomb is host-placed (captured at the Navi +30 y,
+   dropped by gravity to y=15, so `dist=15.0` is by construction) and the Navi
+   blast goes through `InteractAttack` (`targetIsTeki=false`) in
+   `p2_projectile_apply_engine_strike`, not the source's `InteractBomb` — a
+   receiver-consumption proof, not lane-27 Bomb fidelity.
+
+### Gate-table check (pasted output)
+
+`py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE20_DEEPSEEK_HANDOFF.md`
+(exit 0):
+
+```
+19 Rock (role=projectile): ignored (role)
+36 Bomb (role=projectile): ignored (role)
+37 Egg (role=projectile): ignored (role)
+74 Stone (role=projectile): ignored (role)
+75 Kabuto (role=source):
+  1. identity_spawn     ignored [UNTESTED]
+  2. movement_animation ignored [N/A]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       ignored [FAIL]
+  5. transport_reward   ignored [BLOCKED]
+  6. cleanup_reentry    ignored [UNTESTED]
+95 Rkabuto (role=source): 1..6 ignored [UNTESTED/BLOCKED]
+96 Fkabuto (role=source): 1..6 ignored [UNTESTED/BLOCKED]
+```
+
+### Subagent usage
+
+No subagents this pass (small harness + doc fix; the previous fix's subagent
+rules are in the fix4 section).
+
+### Remaining blockers (named provider)
+
+- Stored damage still unconsumed (no Stone kill; victims killed by the squad) —
+  lane 07/10 + #169; `InteractBomb` (vs `InteractAttack`) Navi routing is lane
   10/27 scope.
