@@ -181,7 +181,7 @@ Expected: `evidence.json` `passed=true` (13/13 checks), native.log shows centred
 `species=YellowKochappy`, `P2_MIXED_ARENA_SPAWN teki=3 reds=20`, both
 `P2_*_DRAW corpse=0`, no `Extinction`.
 
-## Slice 2 — integrated wave build under QA
+## Slice 2 — integrated wave build under QA (corrected after review)
 
 Slice 1 was reviewed and merged with integrator fixes (`f398948`). This slice
 put lane 01's integrated pair under independent QA: root worktree
@@ -190,66 +190,87 @@ put lane 01's integrated pair under independent QA: root worktree
 (`claude/p2-deepseek-wave-native`), with the prebuilt
 `native-wave-build/bin/nectar.exe` — all read-only for this lane.
 
-### Result
+> Review fix 2: the original slice-2 handoff misstated three BLOCKED records.
+> Kogane's fixture had actually built (`attempt 5 exit=0` @ `41533626…`), Sokkuri's
+> failure was a self-inflicted `FileExistsError` (reused `--output`, not lane-01
+> churn), and lane 01 kept churning the shared `native-wave-build`. The corrected
+> result below pins a **frozen worktree** `output/dsw/native-l33-pin` @
+> `415336264b8a9416b837485f25f6aaad7308e0cb` and reproduces all four natural runs
+> against it, immune to integrator merges.
 
-- **Hana events (lane 08): REPRODUCED PASS** against the integrated exe
-  (`pikmin2_hana_behavior` uses the plain `nectar.exe`, no fixture). All cited
-  natural markers observed: `P2_HANA_BIND source_id=84`, `P2_ENEMY_READY
-  species=Hana behavior=native source_FSM=implemented`, state loop
-  `sleep->emerge->walk->attack->eat`, `P2_HANA_BITE frame=18.0 pikmin=1`,
-  `P2_HANA_EAT pikmin=1`, autonomous motion spread 63.16, no extinction.
-  Evidence `l33-out/slice2-hana/58d2cbb7…/hana-validation.json`.
-- **Sokkuri natural death (lane 14), Kogane natural flip (lane 17), Pom
-  conservation (lane 23): BLOCKED — not a lane regression.** Each needs an
-  instrumented fixture built by `build_pikmin2_fixture` against
-  `native-wave-build`; its `require_fresh` + exact-`--head` gate rejects any
-  build while lane 01 keeps merging/rebuilding the integrated tree. Native HEAD
-  churned `0d8fb5f3 -> 8a3e1d40 -> ae2c2a4a -> d107a7fa` within one retry loop
-  and the build dir never reached `ninja: no work to do.`; every fixture build
-  failed with `Native HEAD differs from explicitly expected commit`. Harness +
-  arena inputs are present and ready (`l14-out/ground`, `l17-out/bank`); only
-  the frozen-build precondition is missing.
-- **Mixed scene "all four species": BLOCKED.** No harness stages Sokkuri + Kogane
-  + Hana + Pom together; the 12-species `pikmin2_mixed_scene_behavior` harness
-  requires `flying.json`/`aquatic.json` pose banks that are not staged under
-  `output/` (only the ground bank `l14-out/ground` is present).
+### Result (all four REPRODUCED PASS on frozen native `41533626`)
 
-### Pins at reproduction time
+| Lane | Run | Result | Exe / fixture SHA-256 |
+|---|---|---|---|
+| 08 Hana events | `pikmin2_hana_behavior` (plain `nectar.exe`) | **PASS** — `P2_HANA_BIND source_id=84`, `source_FSM=implemented`, `P2_HANA_BITE frame=18` ×3, `P2_HANA_EAT`, no extinction | `4a82c949…` (frozen nectar) |
+| 14 Sokkuri natural death | `pikmin2_sokkuri_natural_runtime` (fixture) | **PASS** — natural damage `105→90→75→60→45→30→15`, `P2_SOKKURI_DEAD prior_health=15.0`, corpse/forget/reentry, `injected=0` | `884bb92a…` |
+| 17 Kogane natural flip | `pikmin2_kogane_natural` (fixture) | **PASS** — flips `[1,2,3]`, drop table `(1,1,0)/(0,0,2)/(0,0,3)`, escape, census `pellets=1 nectar=4 pikis=20` | `3b91833e…` |
+| 23 Pom conservation | `pikmin2_pom_runtime` (fixture) | **PASS** — `P2_POM_BASE_REJECTED source_id=82`, `P2_POM_CONSERVATION … dead_pikis=0 loss_counted=0`, `PASS P2_POM_NATIVE` | `9b2e8617…` |
 
-Hana exe `43ed535c6d62698377fa02a5b861ad902ca3d77300193d0660099c83f8ed8417`,
-root `0aa8e714149dd88ee109ba03b2f0f5a7a63096f3`, native
-`0d8fb5f36084b57781163e4c7182fb016ef1da91`. These were superseded by later
-lane-01 merges: at slice end the wave was still advancing (root `f7cdbf5`,
-native `d107a7fa`, `nectar.exe` mid-rebuild 0 bytes). The wave is not yet frozen.
+None is a real seeded/input run — all four are private engineered-arena fixtures
+(`kind=fixture`), so the matrix keeps `natural_fight × baseline_cohort` BLOCKED
+for the three combat/event lanes.
 
-### QA records (`l33-out/slice2-records/`)
+### Failed-and-recovered chains (so the record is precise)
 
-- `hana-events.json` — kind=fixture, status=PASS (natural_fight×baseline_cohort
-  resolves BLOCKED in the matrix: fixture evidence cannot satisfy a
-  natural-required cell).
-- `sokkuri-natural-death.json` / `kogane-natural-flip.json` /
-  `pom-conservation.json` — status=BLOCKED with the exact churn blocker.
+- **Kogane**: fixture built on driver attempt 5 (`fresh=ninja: no work to do`,
+  `head=41533626`, `exit=0`), despite the earlier handoff claiming BLOCKED. Run
+  then reproduced PASS against `slice2-kogane-fixture/fixture.exe` (root `.exe`,
+  not `baseline/`).
+- **Sokkuri**: attempts 2/3 were NOT churn — they hit a stable `d58d6dea` but
+  failed with `FileExistsError` because the retry driver reused `--output`
+  (`ground_lifecycle_behavior.build` does `mkdir(exist_ok=False)`). Rebuilt in a
+  fresh `slice2b-sokkuri-fixture/` against the frozen worktree → PASS.
+- **Pom**: first attempt required `--imported` (the wave advanced the module), and
+  the earlier driver run hit a 1200 s build-slot wait that let `build_fixture`
+  `:397` re-check a moved HEAD. Re-run with `--imported l23-out/flora-bank` on the
+  frozen build → PASS.
+- Churn observed (informational): Pom loop `0d8fb5f3 → 8a3e1d40 → ae2c2a4a →
+  d107a7fa`; Sokkuri loop `d58d6dea → 0b3e6722 → 091d00aa`; Kogane loop
+  `19a2129a → 41533626`.
+
+### Mixed scene (partial)
+
+`pikmin2_hana_behavior` stages the full six-species ground family — **Sokkuri
+`346005` + Hana `346006` + Armor + ElecBug + Imomushi + TamagoMushi + P1 Chappy**
+(frozen `nectar.exe` `4a82c949…`). Observed `[PC tick]` frame time: **mean
+4.20 ms, p50 4.06, p95 4.82, p99 5.74** vs the 16.7 ms 60 fps budget (worst
+175.40 is a one-off startup spike). Kogane is **not** in this scene: it is
+sidecar-gated on `p2-kogane-native.txt` and needs a new combined harness, which is
+out of QA scope. The 12-species `pikmin2_mixed_scene_behavior` harness remains
+unstaged (needs `flying.json`/`aquatic.json` banks not present under `output/`).
+
+### QA records (`l33-out/slice2-records/`, regenerated via `emit-record`)
+
+All four are `kind=fixture`, pinned root `1a2940c7…` / native `41533626…`, each
+carrying `checks`/`missing_markers`/`exit_code`/`accept_exit_codes`:
+`hana-events.json` (natural_fight×baseline_cohort, PASS),
+`sokkuri-natural-death.json`, `kogane-natural-flip.json` (same cell, PASS),
+`pom-conservation.json` (install×scheduled_births, PASS). Specs kept in
+`l33-out/slice2-specs/`.
 
 ### Divergence report
 
 `experimental.pikmin2_qa_repro.report_divergences` returns `[]`: no claimed PASS
-reproduced as FAIL. Hana's PASS agrees with lane 08's cited PASS; Sokkuri/Kogane/
-Pom are "blocked/unexercised", reported as BLOCKED rather than integration
-regressions (see `l33-out/slice2-divergence.json`).
+reproduced as FAIL; all four lanes' cited PASS reproduced.
 
-### QA matrix (`qa-report-slice2`)
+### QA matrix (`qa-report-fix2`)
 
-PASS=1 (`install × frame_budget` slice-1 fixture), BLOCKED=3 (synthetic
-gensession record, fixture on `natural_fight × baseline_cohort`, Pom
-`scheduled_births`), UNTESTED=74. No natural-required cell passed.
+Slice-1 records dropped (their `ef1cace7/b805d9c6` pins mismatched this wave's
+report pin). Re-run over `slice2-records` only, pinned root `1a2940c7…` / native
+`41533626…`: **PASS=1** (`install × scheduled_births`, Pom), **BLOCKED=1**
+(`natural_fight × baseline_cohort` — the three fixture-driven natural runs),
+**UNTESTED=76**. No stale-pin record remains.
 
 ### New root artifacts + tests
 
-- `experimental/pikmin2_qa_repro.py` + `tests/test_pikmin2_qa_repro.py` (8 tests)
-  — natural-run reproduction + divergence-report scaffolding for this slice.
+- `experimental/pikmin2_qa_repro.py` + `tests/test_pikmin2_qa_repro.py` (11 tests)
+  — reproduction + divergence scaffolding; `reproduce()` now takes `kind`
+  (default `fixture`), `accept_exit_codes`, `timed_out_ok`, and `emit-record`
+  gained `--timed-out`.
 - `py -3.12 -m pytest tests/test_pikmin2_qa_repro.py tests/test_pikmin2_qa_matrix.py -q`
-  → 30 passed. Wave-root pure tests for the four lanes:
-  `tests/test_pikmin2_{hana_events,kogane_natural,sokkuri_natural_runtime,pom_runtime}.py`
+  → 33 passed. Wave-root pure tests for the four lanes
+  (`test_pikmin2_{hana_events,kogane_natural,sokkuri_natural_runtime,pom_runtime}.py`)
   → 27 passed.
 
 ### Commits
@@ -257,38 +278,45 @@ gensession record, fixture on `natural_fight × baseline_cohort`, Pom
 - `lane33: natural-run reproduction + divergence scaffolding (#444)` —
   `experimental/pikmin2_qa_repro.py`, `tests/test_pikmin2_qa_repro.py`.
 - `lane33: slice 2 handoff — integrated-wave QA (#444)` — this handoff section.
+- `lane33: review fixes 2 — frozen-build reproductions, fixture-kind records (#444)`.
 
-### Exact reproduction command (the one that succeeded)
+### Exact reproduction command (representative; all four in `l33-out/gl-runs.sh`)
 
 ```powershell
-py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l33 -- py -3.12 -m experimental.pikmin2_hana_behavior run --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets --imported C:/Users/alari/pikmin-randomizer/output/dsw/l14-out/ground --output C:/Users/alari/pikmin-randomizer/output/dsw/l33-out/slice2-hana --exe C:/Users/alari/pikmin-randomizer/output/dsw/native-wave-build/bin/nectar.exe --seconds 30
+git -C C:/Users/alari/pikmin-randomizer/output/dsw/native-wave worktree add --detach \
+  C:/Users/alari/pikmin-randomizer/output/dsw/native-l33-pin 415336264b8a9416b837485f25f6aaad7308e0cb
+# build that frozen tree, then build+run each lane's fixture against it:
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l33 -- py -3.12 -m experimental.pikmin2_sokkuri_natural_runtime run \
+  --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets \
+  --imported C:/Users/alari/pikmin-randomizer/output/dsw/l14-out/ground \
+  --output C:/Users/alari/pikmin-randomizer/output/dsw/l33-out/slice2b-sokkuri-run \
+  --exe C:/Users/alari/pikmin-randomizer/output/dsw/l33-out/slice2b-sokkuri-fixture/fixture.exe --seconds 150
 ```
 
-Run from the `wave-root` worktree so the merged harness modules resolve.
+Run lane harnesses from the `wave-root` worktree (merged modules); fixtures from
+the frozen `native-l33-pin` build.
 
 ### Remaining blockers (named provider lanes)
 
-- **Lane 01 (integration)**: publish a frozen/immutable integrated pair before the
-  fixture-based reproductions (Sokkuri/Kogane/Pom) can be QA'd.
-- **Lanes 15/16 (flying/aquatic)**: supply the `flying.json`/`aquatic.json` pose
-  banks (or the mixed-scene imported layout) before a genuine multi-family mixed
-  scene can be staged.
+- **Lane 01 (integration)**: still to publish the final immutable pair; this lane
+  worked around the churn with a self-frozen worktree (`native-l33-pin`).
+- **Lane 17 (Kogane sidecar)** + a combined-harness owner: adding Kogane to the
+  ground mixed scene needs a `p2-kogane-native.txt` sidecar wiring, not yet owned.
+- **Lanes 15/16 (flying/aquatic)**: supply `flying.json`/`aquatic.json` banks
+  before the 12-species mixed scene can run.
 
-### Subagent usage
+### Subagent usage (fix 2)
 
-- `explore` #1 (source audit of the four harnesses): used as-is; delivered exact
-  argv/CLI, natural marker contracts, FSM/event pins, and each lane's cited PASS
-  hash, which determined the exact `run`/`build` commands I issued.
-- `explore` #2 (candidate inventory): used as-is; established which harnesses run
-  against a plain exe (Hana) vs need a built fixture (Sokkuri/Kogane/Pom), and
-  that the 12-species mixed scene is missing flying/aquatic banks — the basis for
-  the BLOCKED findings.
-- `general` #3 (scaffolding): wrote `experimental/pikmin2_qa_repro.py` +
-  `tests/test_pikmin2_qa_repro.py` (8 tests) and corrected my description of the
-  matrix (provenance is enforced only at `evaluate_cell`, not `validate_record`;
-  record status can also be BLOCKED). Committed unchanged.
+- `explore` #1 (fixture/provenance ground truth): used as-is; established Kogane
+  `status=built @41533626`, Sokkuri baseline `rejected @a66d5974`, and the exact
+  fixture.exe paths (`<out>/fixture.exe` root vs `baseline/`), which corrected the
+  false BLOCKED claims and the `--exe` targets.
+- `explore` #2 (mixed partial feasibility): used as-is; confirmed the ground arena
+  already co-stages Sokkuri+Hana and that Kogane is sidecar-gated (needs a new
+  harness) — the basis for the "Sokkuri+Hana partial" scope and the Kogane caveat.
+- `general` #3 (qa_repro fix): used as-is; added `kind`/`accept_exit_codes`/
+  `timed_out_ok` and the natural-cell-BLOCKED test (11 tests green).
 
-Subagents saved the discovery/reading phase (roughly 25-35 min of grepping and
-command archaeology); one result was used with correction (kind classification —
-these are fixture-driven observations, so records are `kind=fixture`, and the
-matrix correctly keeps natural-required cells UNTESTED/BLOCKED).
+Subagents again absorbed the verification/reading phase (est. 25-35 min); one
+result was corrected on use — the Hana record pin was re-anchored to the frozen
+`41533626` after the frozen mixed-ground run produced equivalent evidence.

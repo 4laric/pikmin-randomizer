@@ -4,6 +4,8 @@ import json
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from experimental import pikmin2_qa_matrix as qa
 from experimental import pikmin2_qa_repro as repro
 
@@ -36,10 +38,12 @@ def spec(**overrides):
 def test_reproduce_pass_when_exit_zero_and_all_markers_present():
     record = repro.reproduce(spec(), GOOD_LOG, 0, ["run/evidence.json"])
     assert record["status"] == qa.PASS
-    assert record["kind"] == qa.KIND_NATURAL
+    assert record["kind"] == qa.KIND_FIXTURE
     assert record["checks"][MARKER_A] is True
     assert record["checks"][MARKER_B] is True
     assert record["missing_markers"] == []
+    assert record["accept_exit_codes"] == [0]
+    assert record["timed_out"] is False
 
 
 def test_reproduce_fail_when_natural_marker_missing():
@@ -55,7 +59,7 @@ def test_reproduce_fail_when_nonzero_exit_code():
 
 
 def test_reproduce_record_validates_with_natural_provenance():
-    record = repro.reproduce(spec(), GOOD_LOG, 0, ["run/evidence.json"])
+    record = repro.reproduce(spec(kind=qa.KIND_NATURAL), GOOD_LOG, 0, ["run/evidence.json"])
     assert qa.validate_record(record) == []
     assert record["kind"] == qa.KIND_NATURAL
     assert record["build_sha256"] == EXE_SHA
@@ -113,7 +117,35 @@ def test_cli_emit_record_round_trips():
         record = json.loads(out_file.read_text(encoding="utf-8"))
         assert record["id"] == "repro-1"
         assert record["status"] == qa.PASS
-        assert record["kind"] == qa.KIND_NATURAL
+        assert record["kind"] == qa.KIND_FIXTURE
         assert record["build_sha256"] == EXE_SHA
         assert record["evidence_paths"] == [str(log_file)]
         assert qa.validate_record(record) == []
+
+
+def test_fixture_pass_resolves_blocked_on_natural_required_cell():
+    record = repro.reproduce(spec(), GOOD_LOG, 0, ["run/evidence.json"])
+    assert record["kind"] == qa.KIND_FIXTURE
+    assert record["status"] == qa.PASS
+    assert qa.validate_record(record) == []
+    cell = qa.evaluate_cell([record], "natural_fight", "baseline_cohort")
+    assert cell["status"] == qa.BLOCKED
+    assert "fixture evidence cannot satisfy this cell" in cell["reason"]
+
+
+def test_timed_out_ok_accepts_timer_terminated_fixture_run():
+    s = spec(accept_exit_codes=[1], timed_out_ok=True)
+    record = repro.reproduce(s, GOOD_LOG, 137, ["run/evidence.json"], timed_out=True)
+    assert record["status"] == qa.PASS
+    assert record["timed_out"] is True
+    assert record["accept_exit_codes"] == [1]
+    assert record["missing_markers"] == []
+
+    bare = spec(accept_exit_codes=[1], timed_out_ok=False)
+    assert repro.reproduce(bare, GOOD_LOG, 137, ["run/evidence.json"],
+                           timed_out=True)["status"] == qa.FAIL
+
+
+def test_reproduce_rejects_invalid_kind():
+    with pytest.raises(ValueError):
+        repro.reproduce(spec(kind="magic"), GOOD_LOG, 0, ["run/evidence.json"])

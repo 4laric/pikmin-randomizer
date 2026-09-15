@@ -2,9 +2,11 @@
 
 Companion to ``experimental.pikmin2_qa_matrix``. The matrix asserts that a cell
 only becomes ``PASS`` on admissible, fully-provenanced evidence; this module
-*reproduces* a prior lane's cited natural run on one integrated build and turns
-the reproduction into a ``natural`` evidence record keyed to that build's exe
-hash. A lane whose cited ``PASS`` does not reproduce on the integrated build is
+*reproduces* a prior lane's cited run on one integrated build and turns the
+reproduction into an evidence record keyed to that build's exe hash. The record
+``kind`` defaults to ``fixture`` so a fixture-driven observation never
+over-claims natural acceptance; cite ``kind="natural"`` explicitly for a real
+run. A lane whose cited ``PASS`` does not reproduce on the integrated build is
 reported as a divergence.
 
 ``ReproSpec`` is a plain dict with this shape::
@@ -19,6 +21,10 @@ reported as a divergence.
         "exe_sha256": str,            # integrated exe/build hash (becomes build_sha256)
         "root_commit": str,           # pinned source root commit
         "native_commit": str,         # pinned native (bbft) commit
+        "kind": str,                  # evidence kind; default "fixture" (see qa_matrix.EVIDENCE_KINDS)
+        "accept_exit_codes": [int, ...], # exit codes that count as success; default [0]
+        "timed_out_ok": bool,         # True lets a ``timed_out`` run pass when every marker
+                                      # is present (timer-terminated non-self-exiting fixtures)
     }
 
 Usage::
@@ -47,27 +53,40 @@ def _marker_notes(markers, log_text):
     return "; ".join(parts) or "no natural markers"
 
 
-def reproduce(spec, log_text, exit_code, evidence_paths):
+def reproduce(spec, log_text, exit_code, evidence_paths, timed_out=False):
     """Replay a ``ReproSpec`` against captured output and return a QA record.
 
-    The record is ``kind="natural"`` with ``stage``/``scenario`` taken from the
-    spec. Status is ``PASS`` only when ``exit_code == 0`` *and* every
-    ``natural_markers`` substring is present in ``log_text``; otherwise
-    ``FAIL``. Provenance (``root_commit``/``native_commit``/``build_sha256`` and
-    ``evidence_paths``) is carried through so the result satisfies
+    The record's ``kind`` defaults to ``"fixture"`` so a fixture-driven
+    observation never over-claims natural acceptance (pass ``"kind"``
+    explicitly for a real run); an unknown kind raises ``ValueError``. Status
+    is ``PASS`` only when the process is *accepted* -- ``exit_code`` is in
+    ``accept_exit_codes`` (default ``[0]``), or ``timed_out`` is true with
+    ``timed_out_ok`` set -- *and* every ``natural_markers`` substring is
+    present in ``log_text``; otherwise ``FAIL``. Provenance
+    (``root_commit``/``native_commit``/``build_sha256`` and ``evidence_paths``)
+    is carried through so the result satisfies
     ``pikmin2_qa_matrix.validate_record``.
     """
     markers = [str(marker) for marker in spec.get("natural_markers") or []]
     present = [marker for marker in markers if marker in log_text]
     absent = [marker for marker in markers if marker not in log_text]
-    passed = exit_code == 0 and not absent
+    kind = spec.get("kind") or "fixture"
+    if kind not in qa.EVIDENCE_KINDS:
+        raise ValueError(f"unknown evidence kind {kind!r}")
+    accept_exit_codes = spec.get("accept_exit_codes")
+    if accept_exit_codes is None:
+        accept_exit_codes = [0]
+    accept_exit_codes = list(accept_exit_codes)
+    timed_out_ok = bool(spec.get("timed_out_ok", False))
+    accepted = (exit_code in accept_exit_codes) or (bool(timed_out) and timed_out_ok)
+    passed = accepted and not absent
     return {
         "id": spec.get("id"),
         "lane": spec.get("lane"),
         "species": spec.get("species"),
         "stage": spec.get("stage"),
         "scenario": spec.get("scenario"),
-        "kind": qa.KIND_NATURAL,
+        "kind": kind,
         "status": qa.PASS if passed else qa.FAIL,
         "root_commit": spec.get("root_commit", ""),
         "native_commit": spec.get("native_commit", ""),
@@ -75,6 +94,8 @@ def reproduce(spec, log_text, exit_code, evidence_paths):
         "evidence_paths": list(evidence_paths or []),
         "notes": _marker_notes(markers, log_text),
         "exit_code": exit_code,
+        "accept_exit_codes": accept_exit_codes,
+        "timed_out": bool(timed_out),
         "checks": {marker: marker in log_text for marker in markers},
         "missing_markers": absent,
     }
@@ -146,13 +167,15 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="command", required=True)
 
     emit = sub.add_parser("emit-record",
-                          help="reproduce a spec against a log and write a natural record")
+                          help="reproduce a spec against a log and write an evidence record")
     emit.add_argument("--spec", type=Path, required=True,
                       help="JSON file holding a ReproSpec")
     emit.add_argument("--log", type=Path, required=True,
                       help="captured run log text")
     emit.add_argument("--exit-code", type=int, default=0,
                       help="process exit code (default 0)")
+    emit.add_argument("--timed-out", action="store_true",
+                      help="mark the run timer-terminated (for non-self-exiting fixtures)")
     emit.add_argument("--evidence", action="append", default=[],
                       help="evidence path (repeatable); defaults to the log path")
     emit.add_argument("--out", type=Path, required=True,
@@ -163,7 +186,7 @@ def main(argv=None):
     spec = json.loads(args.spec.read_text(encoding="utf-8"))
     log_text = args.log.read_text(encoding="utf-8", errors="replace")
     evidence = args.evidence or [str(args.log)]
-    record = reproduce(spec, log_text, args.exit_code, evidence)
+    record = reproduce(spec, log_text, args.exit_code, evidence, timed_out=args.timed_out)
     problems = qa.validate_record(record)
     if problems:
         for problem in problems:
