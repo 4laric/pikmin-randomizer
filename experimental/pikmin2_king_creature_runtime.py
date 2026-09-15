@@ -34,7 +34,7 @@ public:KingCameraTarget():Creature(nullptr){mHealth=1;}
 };
 class RoomApp : public PlugPikiApp {
  int frames=0,ready=0;bool hold=false;bool armed=false;bool finished=false;bool deathSeen=false;
- Teki* host=nullptr;bool corpseSeen=false;
+ Teki* host=nullptr;bool corpseSeen=false;Pellet* carcass=nullptr;
 public:int idle() override {
  int result=PlugPikiApp::idle();require(++frames<30000||hold,"King creature startup timeout");
  if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
@@ -70,7 +70,14 @@ public:int idle() override {
   }
   if(pc_p2_king_teki_dead_key_seen()&&!deathSeen){deathSeen=true;std::puts("P2_KING_CREATURE_DEATH_SEEN receiver=engine host_health=0");}
   if(deathSeen&&!corpseSeen){
-   Iterator pellets(pelletMgr);CI_LOOP(pellets){Pellet* pl=static_cast<Pellet*>(*pellets);if(pl->isAlive()&&pl->mPelletView==static_cast<PelletView*>(host)){corpseSeen=true;std::puts("P2_KING_CREATURE_CORPSE_PELLET found=1");break;}}
+   Iterator pellets(pelletMgr);CI_LOOP(pellets){Pellet* pl=static_cast<Pellet*>(*pellets);if(pl->isAlive()&&pl->mPelletView==static_cast<PelletView*>(host)){corpseSeen=true;carcass=pl;std::puts("P2_KING_CREATURE_CORPSE_PELLET found=1");break;}}
+  }
+  // After death, converge the free reds onto the carcass (the P1 pickup needs
+  // carriers on the pellet) and log the carry diagnostics each half second.
+  if(carcass&&ready%60==0){
+   Iterator r(pikiMgr);int idx=0;float nearest=1.0e9f;int transport=0;
+   CI_LOOP(r){Piki* a=static_cast<Piki*>(*r);if(!a||!a->isAlive()||a->mColor!=Red)continue;const float dx=a->mSRT.t.x-carcass->mSRT.t.x,dz=a->mSRT.t.z-carcass->mSRT.t.z;const float d=std::sqrt(dx*dx+dz*dz);if(d<nearest)nearest=d;if(a->mMode==PikiMode::TransportMode)++transport;if(a->getStickObject()||a->mMode==PikiMode::AttackMode||a->mMode==PikiMode::TransportMode)continue;const float ang=float(idx)*6.2831853f/32.f;Vector3f at(carcass->mSRT.t.x+20.f*std::sin(ang),carcass->mSRT.t.y,carcass->mSRT.t.z+20.f*std::cos(ang));a->mSRT.t.set(at);++idx;}
+   std::printf("P2_KING_CREATURE_CARRY carcass_state=%d carry=%d transport=%d nearest=%.1f pokos=%d\n",int(carcass->getState()),int(carcass->mConfig->mCarryMinPikis()),transport,nearest,pc_p2_preview_pokos());
   }
   if(deathSeen&&pc_p2_preview_pokos()>0){
    capture("king-creature-dead.ppm");
