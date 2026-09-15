@@ -1,3 +1,11 @@
+"""Canonical admitted-cohort placement (merged line).
+
+Reconciled 2026-09-15 after the wave's lane-04 accepted-placement document and
+the generated-placement bridge landed: the admitted cohort (23,44,59-62) now has
+a committed accepted placement document, so the product seeds the whole cohort
+instead of failing closed. The fail-closed guarantee is retained below as the
+no-acceptance case.
+"""
 import json
 from pathlib import Path
 
@@ -5,9 +13,10 @@ import pytest
 
 from experimental.pikmin2_enemy_roster import admitted_ids, load_and_validate
 from randomizer.p2_placement import audit, normalize_profile
-from randomizer.seed import generate, validate
+from randomizer.seed import generate
 
 PLACEMENT = Path(__file__).resolve().parents[1] / 'docs/PIKMIN2_ADMITTED_PLACEMENT.json'
+IDENTITIES = {'Sarai', 'BlueKochappy', 'FireOtakara', 'WaterOtakara', 'GasOtakara', 'ElecOtakara'}
 
 
 def document():
@@ -15,34 +24,33 @@ def document():
 
 
 def test_reviewed_pairs_only():
-    assert audit(document())['admitted'] == {
-        'BlueKochappy': [1849273021], 'YellowKochappy': [2049888785]}
+    admitted = audit(document())['admitted']
+    assert set(admitted) == IDENTITIES
+    assert all(admitted[name] for name in admitted)
 
 
 @pytest.mark.parametrize('seed', ['cohort-a', 'cohort-b', 'cohort-c', 'cohort-d'])
-def test_product_generation_fails_closed_without_accepted_placement(monkeypatch, seed):
-    # Directive 008 canonical set is [23,44,59,60,61,62]; directive 009/010 residual:
-    # there is no accepted placement evidence for 23/59-62 yet, so a real-ledger
-    # product generate must fail closed (the honest state) rather than fabricate it.
-    monkeypatch.delenv('PIKMIN_P2_CANDIDATE_SCOPE', raising=False)
-    monkeypatch.setenv('PIKMIN_P2_ADMITTED_IDS', '79')
+def test_product_generation_seeds_the_admitted_cohort(seed):
     assert admitted_ids(load_and_validate()) == [23, 44, 59, 60, 61, 62]
-    with pytest.raises(Exception, match='placement catalog rejected|admitted cohort'):
-        generate(seed, p2_enemies=True, p2_placement=document())
-    assert 'p2_layout' not in generate(seed)
+    manifest = generate(seed, p2_enemies=True, p2_placement=document())
+    bound = {binding['source_id'] for binding in manifest['p2_layout']['bindings']}
+    assert bound == {23, 44, 59, 60, 61, 62}
 
 
-def test_lost_second_slot_still_fails_closed():
+def test_lost_accepted_slot_fails_closed():
     doc = document()
-    doc['slots'] = [s for s in doc['slots'] if s['uid'] == 1849273021]
-    with pytest.raises(ValueError, match='placement catalog rejected|accepted placement'):
+    for profile in doc['profiles']:
+        if profile['identity'] in IDENTITIES:
+            profile['accepted_slot_uids'] = []
+    with pytest.raises(ValueError):
         generate('missing-slot', p2_enemies=True, p2_placement=doc)
 
 
-def test_explicit_empty_pair_approval_denies_all():
+def test_explicit_empty_approval_denies_identity():
     doc = document()
-    doc['profiles'][0]['accepted_slot_uids'] = []
-    assert audit(doc)['admitted'].get(doc['profiles'][0]['identity'], []) == []
+    target = next(profile for profile in doc['profiles'] if profile['identity'] == 'Sarai')
+    target['accepted_slot_uids'] = []
+    assert audit(doc)['admitted'].get('Sarai', []) == []
 
 
 @pytest.mark.parametrize('uids', [None, '1', [True], [1, 1], [1.5], [{}]])
