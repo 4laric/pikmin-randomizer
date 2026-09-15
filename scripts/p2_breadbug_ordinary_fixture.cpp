@@ -52,8 +52,22 @@ public:
         require(++frames < 9000, "startup timeout");
         if (gameflow.mMoviePlayer && gameflow.mMoviePlayer->mIsActive) { gameflow.mMoviePlayer->requestSkip(); return result; }
         if (!pc_randomizer_ready() || !naviMgr || !tekiMgr || !itemMgr || !pikiMgr) return result;
+
+        // Phase 4 result polling runs before the pause/overlay guard so a UI
+        // toast raised by corpse delivery cannot stall the exit deterministically.
+        if (phase == 4) {
+            if (++waited > 1500) {
+                const bool checked = pc_randomizer_checked("Bestiary: Deliver Breadbug");
+                std::printf("P2_BREADBUG_ORD_RESULT natural_carry=%d checked=%d\n", int(natural), int(checked));
+                std::printf(checked ? "PASS P2_BREADBUG_ORDINARY_RECEIPT\n" : "P2_BREADBUG_ORD_NO_CHECK\n");
+                std::fflush(stdout);
+                std::_Exit(checked ? 0 : 2);
+            }
+            return result;
+        }
+
         Navi* n = naviMgr->getNavi();
-        if (!n || gameflow.mPauseAll || gameflow.mIsUIOverlayActive) return result;
+        if (!n) return result;
 
         if (phase == 0) {
             Iterator it(tekiMgr);
@@ -80,13 +94,14 @@ public:
                 corpse = target->mPellet;
                 spawn = corpse->mSRT.t;
                 phase = 3;
+                waited = 0;
                 std::printf("P2_BREADBUG_ORD_CORPSE ready x=%.1f z=%.1f\n", spawn.x, spawn.z); std::fflush(stdout);
             }
         }
-        if (phase >= 3) {
+        if (phase == 3) {
             ++waited;
             // Natural-transport evidence: does the real corpse move toward the Onion?
-            if (phase == 3 && waited % 60 == 0) {
+            if (waited % 60 == 0) {
                 const float dx = corpse ? (corpse->mSRT.t.x - spawn.x) : 0.0f;
                 const float dz = corpse ? (corpse->mSRT.t.z - spawn.z) : 0.0f;
                 const float moved = std::sqrt(dx * dx + dz * dz);
@@ -95,7 +110,7 @@ public:
                             int(natural), int(pc_randomizer_checked("Bestiary: Deliver Breadbug")));
                 std::fflush(stdout);
             }
-            if (phase == 3 && waited > 900) {
+            if (waited > 900) {
                 require(corpse != nullptr, "no corpse for endpoint");
                 GoalItem* onion = nullptr;
                 for (int c = 0; c < 3 && !onion; ++c) onion = itemMgr->getContainer(c);
@@ -104,13 +119,7 @@ public:
                 std::fflush(stdout);
                 onion->suckMe(corpse);
                 phase = 4;
-            }
-            if (phase == 4 && waited > 1500) {
-                const bool checked = pc_randomizer_checked("Bestiary: Deliver Breadbug");
-                std::printf("P2_BREADBUG_ORD_RESULT natural_carry=%d checked=%d\n", int(natural), int(checked));
-                std::printf(checked ? "PASS P2_BREADBUG_ORDINARY_RECEIPT\n" : "P2_BREADBUG_ORD_NO_CHECK\n");
-                std::fflush(stdout);
-                std::_Exit(checked ? 0 : 2);
+                waited = 0;
             }
         }
         return result;
