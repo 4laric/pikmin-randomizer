@@ -80,6 +80,13 @@ class OtakaraNativeSourceTests(unittest.TestCase):
         self.assertIn('FireOtakara', text)
         self.assertIn('"BombOtakara") return', text)
 
+    def test_bombotakara_is_bound_payload_delegating(self):
+        text = _read('pc_port/pc_p2_otakara.cpp')
+        # Slice 4 binds all five; Bomb (93) maps to its ID but delegates its
+        # element to the lane-20 payload (discharge emits P2_OTAKARA_DISCHARGE_NONE).
+        self.assertIn('if (name == "BombOtakara") return p2dweevil::BombId;', text)
+        self.assertIn('P2_OTAKARA_DISCHARGE_NONE', text)
+
     def test_source_parameters_match_disc_audit(self):
         text = _read('pc_port/pc_p2_otakara.cpp')
         # fp00 general life: Gas 350, others 150.

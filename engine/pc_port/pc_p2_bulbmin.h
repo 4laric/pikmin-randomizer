@@ -380,8 +380,10 @@ int pc_p2_bulbmin_attach_dedicated_mother();
 const char* pc_p2_bulbmin_mother_model();
 bool pc_p2_bulbmin_has_mother();
 // Real Navi::callPikis whistle hook: recruits every wild dependent of `navi`
-// within `radius`, claiming through the bound captain table when present.
-int pc_p2_bulbmin_call_pikis(Navi* navi, float radius);
+// within `radius`, claiming through the bound captain table when present. `via`
+// labels the caller for the P2_BULBMIN_WHISTLE marker (navi.cpp passes
+// "navi_callPikis"; a direct hook call defaults to "direct").
+int pc_p2_bulbmin_call_pikis(Navi* navi, float radius, const char* via = "direct");
 // Mother death/removal: release only wild dependents and detach them from the
 // dead leader. Whistled members keep their captain ownership. Returns released.
 int pc_p2_bulbmin_leader_died();

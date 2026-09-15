@@ -1,20 +1,20 @@
-"""Lane-03 slice 2b runtime: the ENEMY_P2 seed bridge resolves a live Dwarf Orange.
+"""Lane-03 slice 4 runtime: cross-process generator-cache round trip for the P2 room.
 
 Reuses lane 04/05 staging as-is (``experimental.pikmin2_dwarf_orange_runtime.prepare``
-+ ``experimental.pikmin2_seed_placement.sidecar``) and additionally writes the
-seed's ``ENEMY_P2`` bootstrap and runs the room preview with
-``--randomizer-seed <bootstrap>``. The native room hook parses only the P2 bridge
-(no full session, so the preview is not held), then ``pc_randomizer_bind_generator``
-joins the room generator's ``_70`` (211001) to the seed-chosen slot uid through
-``p2-placement-slots.txt``, resolving ``P2_SEED_RESOLVE source_id=44`` at birth
-alongside lane 13/05's ``P2_ENEMY_READY species=BlueKochappy``.
++ ``experimental.pikmin2_seed_placement.sidecar``) and writes the seed's ``ENEMY_P2``
+bootstrap. Two modes, both run only under the host GL slot:
 
-Run only under the host GL slot:
+- default: natural resolve. One boot with the ``_70`` sidecar, asserting the live
+  Dwarf Orange binds (``P2_SEED_RESOLVE source_id=44`` + ``P2_ENEMY_READY``).
+- ``--cache-roundtrip``: cross-process round trip. Boot 1 writes the generator
+  cache (``PIKMIN_P2_CACHE_SAVE``) to ``p2-gencache.bin``; the ``_70`` sidecar is
+  then renamed away; boot 2 (``PIKMIN_P2_CACHE_RESUME``) reloads that cache and must
+  re-emit ``P2_SEED_RESOLVE`` from the cache, not the sidecar.
 
     py -3.12 output/deepseek-wave/slot.py run gl <lane> -- \\
         py -3.12 scripts/test_p2_room_resolve.py \\
             --assets <P1 assets> --bank <dwarf-orange bank> --profile <profile dir> \\
-            --exe <nectar.exe> --output <out dir>
+            --exe <nectar.exe> --output <out dir> [--cache-roundtrip]
 """
 import argparse
 import json
@@ -42,7 +42,7 @@ def _find_mingw():
     return str(fallback) if (fallback / 'SDL2.dll').exists() else None
 
 
-def run_native(exe, stage, bootstrap, timeout, roundtrip=False):
+def run_native(exe, stage, bootstrap, timeout, extra_env=None, log_name='native.log'):
     env = dict(os.environ)
     mingw = _find_mingw()
     if mingw:
@@ -51,12 +51,12 @@ def run_native(exe, stage, bootstrap, timeout, roundtrip=False):
     env['PYTHONUTF8'] = '1'
     env['SDL_AUDIODRIVER'] = 'dummy'
     env['PIKMIN_RANDOMIZER_TEST_BACKGROUND'] = '1'
-    if roundtrip:
-        env['PIKMIN_P2_CACHE_ROUNDTRIP'] = '1'
+    if extra_env:
+        env.update(extra_env)
     startup = subprocess.STARTUPINFO()
     startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
     startup.wShowWindow = 0
-    log = stage / 'native.log'
+    log = stage / log_name
     returncode = None
     with log.open('w', encoding='utf-8', errors='replace') as stream:
         try:
@@ -80,7 +80,8 @@ def main():
     parser.add_argument('--seed', type=str, default='p2-room-resolve')
     parser.add_argument('--timeout', type=int, default=60)
     parser.add_argument('--cache-roundtrip', action='store_true',
-                        help='run the Generator::write/read room cache round-trip instead of the resolve pass')
+                        help='cross-process round trip: save the generator cache, '
+                             'rename the sidecar, resume reading only the cache')
     args = parser.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
@@ -89,7 +90,7 @@ def main():
     seed_uid = placement.seed_slot_uid(manifest, placement.BLUEKOCHAPPY_SOURCE)
 
     stage = prepare(args.assets.resolve(), args.bank.resolve(), args.profile.resolve(), args.output)
-    placement.write_sidecar(stage, placement.ARENA_SOURCE_GENERATOR, seed_uid)
+    sidecar = placement.write_sidecar(stage, placement.ARENA_SOURCE_GENERATOR, seed_uid)
 
     saved_admitted = bridge.admitted_ids
     bridge.admitted_ids = lambda roster: list(placement.ADMITTED_COHORT)
@@ -100,36 +101,67 @@ def main():
     finally:
         bridge.admitted_ids = saved_admitted
 
-    log, returncode = run_native(args.exe, stage, bootstrap, args.timeout, args.cache_roundtrip)
+    if args.cache_roundtrip:
+        # Boot 1: write the generator cache, then exit.
+        save_log, save_rc = run_native(args.exe, stage, bootstrap, args.timeout,
+                                       {'PIKMIN_P2_CACHE_SAVE': '1'}, 'native-save.log')
+        save_text = save_log.read_text(encoding='utf-8', errors='replace')
+        cache_file = stage / 'p2-gencache.bin'
+        # Prove the source of the second boot is the cache, not the sidecar.
+        sidecar.rename(sidecar.with_name(sidecar.name + '.disabled'))
+        # Boot 2: resume from the cache only.
+        resume_log, resume_rc = run_native(args.exe, stage, bootstrap, args.timeout,
+                                           {'PIKMIN_P2_CACHE_RESUME': '1'}, 'native-resume.log')
+        resume_text = resume_log.read_text(encoding='utf-8', errors='replace')
+
+        (args.output / 'p2-room-cache-save.log').write_text(save_text, encoding='utf-8', errors='replace')
+        (args.output / 'p2-room-cache-resume.log').write_text(resume_text, encoding='utf-8', errors='replace')
+
+        save_ok = ('P2_GENCACHE_SAVE' in save_text) and cache_file.exists()
+        resume_validation = validate_log(resume_text, require_ready=True)._asdict()
+        resume_loaded = 'P2_GENCACHE_RESUME' in resume_text
+        result = {
+            'stage': str(stage),
+            'seed': args.seed,
+            'seed_slot_uid': seed_uid,
+            'cache_roundtrip': True,
+            'save_exit': 'ok' if save_rc == 0 else ('timeout' if save_rc is None else f'exit-{save_rc}'),
+            'resume_exit': 'ok' if resume_rc == 0 else ('timeout' if resume_rc is None else f'exit-{resume_rc}'),
+            'save_ok': save_ok,
+            'cache_file_bytes': cache_file.stat().st_size if cache_file.exists() else 0,
+            'resume_loaded': resume_loaded,
+            'resume_validation': resume_validation,
+            'resume_resolve_lines': [line for line in resume_text.splitlines() if 'P2_SEED_RESOLVE' in line],
+            'sidecar_renamed': not sidecar.exists(),
+        }
+        (args.output / 'p2-room-cache-roundtrip.json').write_text(json.dumps(result, indent=2) + '\n')
+        print(json.dumps(result, indent=2))
+        ok = save_ok and resume_loaded and resume_validation['ok']
+        sys.exit(0 if ok else 1)
+
+    log, returncode = run_native(args.exe, stage, bootstrap, args.timeout)
     text = log.read_text(encoding='utf-8', errors='replace')
-    log_name = 'p2-room-cache-roundtrip.log' if args.cache_roundtrip else 'p2-room-resolve.log'
-    (args.output / log_name).write_text(text, encoding='utf-8', errors='replace')
+    (args.output / 'p2-room-resolve.log').write_text(text, encoding='utf-8', errors='replace')
     resolve_lines = [line for line in text.splitlines() if 'P2_SEED_RESOLVE' in line]
     ready_lines = [line for line in text.splitlines() if 'P2_ENEMY_READY' in line]
     exit_reason = 'ok' if returncode == 0 else ('timeout' if returncode is None else f'exit-{returncode}')
-    validation = validate_log(text, require_ready=not args.cache_roundtrip)._asdict()
-    roundtrip_pass = 'TEST_ONLY p2_room_cache_roundtrip_pass' in text
+    validation = validate_log(text, require_ready=True)._asdict()
     result = {
         'stage': str(stage),
         'seed': args.seed,
         'seed_slot_uid': seed_uid,
-        'cache_roundtrip': args.cache_roundtrip,
+        'cache_roundtrip': False,
         'exit': exit_reason,
         'returncode': returncode,
-        'roundtrip_pass': roundtrip_pass,
         'validation': validation,
         'resolve_lines': resolve_lines,
         'ready_lines': ready_lines,
-        'resolved_bluekochappy': any(
-            'source_id=44' in line for line in resolve_lines),
-        'ready_bluekochappy': any(
-            'source_id=44' in line for line in ready_lines),
+        'resolved_bluekochappy': any('source_id=44' in line for line in resolve_lines),
+        'ready_bluekochappy': any('source_id=44' in line for line in ready_lines),
     }
-    (args.output / ('p2-room-cache-roundtrip.json' if args.cache_roundtrip else 'p2-room-resolve.json')) \
-        .write_text(json.dumps(result, indent=2) + '\n')
+    (args.output / 'p2-room-resolve.json').write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(result, indent=2))
-    ok = roundtrip_pass if args.cache_roundtrip else validation['ok']
-    if not ok:
+    if not validation['ok']:
         sys.exit(1)
 
 

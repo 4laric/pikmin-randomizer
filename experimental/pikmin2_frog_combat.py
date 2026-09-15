@@ -98,7 +98,7 @@ def validate(text, code):
         checks['fsm'] = False
         fsm_errors = [str(exc)]
     land = re.findall(r'P2_FROG_LAND species=(\w+) radius=([\d.]+) bittered=(\d) '
-                      r'pikmin=(\d+) navi=(\d+) behavior=P1_proxy'
+                      r'pikmin=(\d+) navi=(\d+) behavior=(P1_proxy|source)'
                       r'(?: pressed=(\d) origin=(\w+) host_frozen=(\d+))?', text)
     bitter = re.findall(r'P2_FROG_BITTER species=(\w+) override=(\d) host_frozen=(\d+) '
                         r'effective=(\d) origin=(\w+)', text)
@@ -114,7 +114,7 @@ def validate(text, code):
                                    'pikmin': int(p), 'navi': int(n),
                                    'pressed': int(pr) if pr != '' else int(b == '0'),
                                    'origin': o or 'unknown', 'host_frozen': int(hf) if hf != '' else 0}
-                                  for s, r, b, p, n, pr, o, hf in land],
+                                   for s, r, b, p, n, _beh, pr, o, hf in land],
                 bitter_markers=[{'species': s, 'override': o == '1', 'host_frozen': int(hf),
                                  'effective': e == '1', 'origin': og}
                                 for s, o, hf, e, og in bitter],

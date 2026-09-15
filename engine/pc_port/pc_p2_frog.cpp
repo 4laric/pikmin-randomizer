@@ -88,19 +88,6 @@ bool logPress(BTeki* actor,int kind){
     pressing.erase(view);return false;
 }
 bool isBittered(PelletView* view){return bitteredFrogs.count(view)!=0;}
-void logLand(BTeki* actor,int kind){
-    if(isBittered(static_cast<PelletView*>(actor)))return;
-    const float radius=p2frog::headRadius(kind);const Vector3f& at=actor->getPosition();
-    const float r2=radius*radius;int pikmin=0,navi=0;
-    if(pikiMgr){Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);
-        if(!p||!p->isAlive()||p->isFlying())continue;const Vector3f& pos=p->getPosition();
-        const float dx=pos.x-at.x,dz=pos.z-at.z;if(dx*dx+dz*dz<=r2)++pikmin;}}
-    if(naviMgr){Iterator it(naviMgr);CI_LOOP(it){Navi* n=static_cast<Navi*>(*it);
-        if(!n||!n->isAlive()||n->isFlying())continue;const Vector3f& pos=n->getPosition();
-        const float dx=pos.x-at.x,dz=pos.z-at.z;if(dx*dx+dz*dz<=r2)++navi;}}
-    if(pikmin+navi<=0)return;
-    std::printf("P2_FROG_LAND species=%s radius=%.1f bittered=0 pikmin=%d navi=%d behavior=P1_proxy\n",ids[kind],radius,pikmin,navi);
-}
 void loadAnimation(std::vector<p2animation::Clip> (&banks)[2]){
     size_t total=0;
     for(int kind=0;kind<2;++kind){std::vector<unsigned char> reference;
@@ -186,11 +173,14 @@ bool shouldFlick(BTeki* actor){return stuckPikminCount(actor)>=FLEE_STUCK_MIN;}
 // MaroFrog attackNaviPosition: an in-range living captain overrides the jump
 // landing point (the source captain retarget).
 void retargetNavi(BTeki* actor,FrogFsm& s){
+    // Source attackNaviPosition iterates every captain (P2 two-captain); the P1
+    // host exposes one active Navi, so this matches nearestTarget and uses
+    // getNavi() rather than an all-Navi iterator.
     if(s.kind!=1||!naviMgr)return;
-    const Vector3f pos=actor->getPosition();
-    Iterator it(naviMgr);CI_LOOP(it){Navi* n=static_cast<Navi*>(*it);
-        if(!n||!n->isAlive())continue;const Vector3f np=n->getPosition();
-        if(distXZ(pos,np)<p2frog::params(s.kind).attackRange){s.targetPos=np;s.targetValid=true;}}
+    Navi* n=naviMgr->getNavi();
+    if(!n||!n->isAlive())return;
+    const Vector3f np=n->getPosition();
+    if(distXZ(actor->getPosition(),np)<p2frog::params(s.kind).attackRange){s.targetPos=np;s.targetValid=true;}
 }
 // Source StateJump KEYEVENT_2: flickNearbyNavi + flickNearbyPikmin (non-damaging
 // adjacent shake; the P2 water branch is absent on the dry P1 host).
@@ -386,7 +376,13 @@ void pc_p2_frog_update(BTeki* actor){
     }
     case FRG_FALL:{
         advanceHop(actor,s,dt);
-        if(s.airTimer>=p.airTime){actor->getPosition().y=s.groundY;transition(actor,s,FRG_ATTACK,"attack",gen);}
+        // Source StateFall::exec lands on floor-triangle contact (FrogState.cpp:341),
+        // not on a timer: transit once the probed floor reaches the falling frog.
+        // The airTimer bound stays as a fallback for a hop with no floor below.
+        const float floorY=probeFloorY(actor->getPosition(),s.groundY);
+        if(floorY>=actor->getPosition().y||s.airTimer>=p.airTime){
+            actor->getPosition().y=s.groundY;transition(actor,s,FRG_ATTACK,"attack",gen);
+        }
         break;
     }
     case FRG_ATTACK:{
@@ -448,7 +444,7 @@ void pc_p2_frog_update(BTeki* actor){
 }
 bool pc_p2_frog_draw(BTeki* actor,Graphics& gfx,const Matrix4f& matrix,bool corpse){
     auto it=actors.find(static_cast<PelletView*>(actor));if(it==actors.end())return false;
-    int kind=it->second;if(!corpse&&logPress(actor,kind))logLand(actor,kind);
+    int kind=it->second;if(!corpse)logPress(actor,kind);
     auto ft=fsms.find(static_cast<PelletView*>(actor));
     const char* name=corpse?"dead":(ft!=fsms.end()?ft->second.clip.c_str():p2frog::motionClip(actor->mTekiAnimator->getCurrentMotionIndex()));
     Shape* shape=animated[kind].at("wait1").front();

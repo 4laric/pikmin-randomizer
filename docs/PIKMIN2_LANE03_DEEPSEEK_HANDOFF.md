@@ -434,3 +434,128 @@ py -3.12 scripts/test_p2_room_resolve.py \
   --output "C:/Users/alari/pikmin-randomizer/output/dsw/l03-out" \
   --cache-roundtrip --timeout 90
 ```
+
+## Slice 4 — the cross-process generator-cache round trip (resolved)
+
+Goal: prove the generator cache survives a real process restart and re-emits the
+seed's `P2_SEED_RESOLVE` from the cache alone (the `_70` sidecar renamed away).
+**Result: natural PASS.** Boot 1 writes `p2-gencache.bin`; the sidecar is renamed;
+boot 2 (fresh process) `loadCard`s the cache, `preload`s the room stage, and the
+ordinary `GenObjectTeki::birth` re-emits `P2_SEED_RESOLVE source_id=44 target=5465461`.
+
+### Root cause of the earlier rejection (named)
+
+- Root cause was the flag value: the arena packed `mCarryOverFlags = 1`
+  (GENCARRY_SaveGenerator only). `Generator::init` in ramMode returns before spawning
+  unless `GENCARRY_SaveSpawnCount` is set (`src/plugPikiKando/generator.cpp:596-602`);
+  the RESET DAY path (`generator.cpp:614-627`) is what calls `mGenType->init` and
+  births fresh. Now packs `0x5` = SaveGenerator|SaveSpawnCount
+  (`experimental/pikmin2_dwarf_orange_arena.py:57`, asserted in
+  `tests/test_pikmin2_dwarf_orange_arena.py`).
+- The resume abort (`resume_exit` exit-3) was lane 13's install abort:
+  `pc_port/pc_p2_dwarf_orange.cpp:47 if(seen != wanted) std::abort();` — with no actor
+  born, `seen` stayed empty and `wanted={211001}`. It clears once the flag fix makes
+  the RESET DAY path birth the actor (the cache-resume log now ends at line 846 with
+  `P2_ENEMY_READY ... generator=211001`).
+- The earlier resume logs that showed `P2_ENEMY_READY` (run dirs `ffbb14c2`,
+  `78b63bb4`) predate the default.gen skip and came from the disk `default.gen`
+  (`_70=0`), not from the cache.
+
+### Fixes this slice (all TEST_HOOKS/env-gated; no production path change)
+
+- Arena carry-over flags `0x5` + a row-offset-12 assertion (root).
+- Removed the injected `mAliveCount`/`mLatestSpawnDay` "Test-hook reset" before
+  `saveGenerator` (`gameCoreSection.cpp`); the natural RESET DAY path births instead.
+- On a resume boot the `default.gen` stream (`gsys->openFile`) is no longer opened at
+  all (`gameCoreSection.cpp:1144`), so it is neither leaked nor double-read; and
+  `generatorCache->load()` is now keyed on `genCacheStage` (was `mStageIndex`,
+  `gameCoreSection.cpp:1274`), matching the `preload` key.
+- Runtime-bounded the static cache buffer in the writer and reader
+  (`gameCoreSection.cpp`, `stream.getPosition()` vs `sizeof(card)`).
+
+### SLT1 cache trailer format bump (required note)
+
+The lane-03 SLT1 trailer grew 8 → 12 bytes: magic `0x534c5431` + spawn-slot uid +
+`Generator::_70` (`generator.cpp:831` read / `:911` write, `/ 12` pending guard). The
+`_70` was previously not serialized in ramMode (written only `if (!ramMode)`), so a
+cache-resumed generator lost the family adapter's `_70` identity. Any older 8-byte
+cache now hard-fails via `pc_randomizer_bad_spawn_cache` (fail-closed, intended).
+
+### Runtime evidence (GL, `slot.py run gl l03`; dirty=no build `a0c0eb87`)
+
+- boot 1 `output/dsw/l03-out/p2-room-cache-save.log`: `P2_GENCACHE_SCAN generator=211001
+  flags=5 dayLimit=-1 currentDay=2` (:865) and `P2_GENCACHE_SAVE stage=0 generators=2
+  bytes=27841` (:887).
+- boot 2 `output/dsw/l03-out/p2-room-cache-resume.log` (sidecar renamed away):
+  `P2_GENCACHE_RESUME stage_id=0 bytes=27841 bridge=1 bindings=11` (:408),
+  `[PC Generator] stage 0 cache accepted: 2 generators` (:409),
+  `P2_GENCACHE_DUMP _70=211001 uid=5465461 alive=1 day=2 ram=1` (:410),
+  `P2_SEED_RESOLVE source_id=44 target=5465461 original_type=3` (:584) and lane-13/05
+  `P2_ENEMY_READY species=BlueKochappy source_id=44 ... generator=211001` (:846).
+  `--cache-roundtrip` result: `save_ok=true`, `cache_file_bytes=27841`,
+  `resume_loaded=true`, `resume_validation.ok=true`, `sidecar_renamed=true`.
+
+### Six-gate table (source 44)
+
+Source ID: BlueKochappy (44)
+
+| Gate | Result | Evidence |
+|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | output/dsw/l03-out/p2-room-cache-resume.log:584 |
+| 2. Autonomous movement and animation | UNTESTED | lane 13 family FSM (not this lane) |
+| 3. Attacks and receivers | UNTESTED | lane 10 / lane 13 |
+| 4. Death and corpse | UNTESTED | lane 13 |
+| 5. Transport and reward | UNTESTED | lane 06 |
+| 6. Cleanup and re-entry | UNTESTED | lane 07 |
+| Persistence (cache round-trip) | PASS (natural, fixture-forced admission) | output/dsw/l03-out/p2-room-cache-resume.log:408-410,584 |
+
+Integrator addendum (2026-09-15): the Persistence row above is the slice-4 deliverable required by the brief; it is not one of the six ingestion gates, so it does not affect `ingest_p2_handoff_gates.py`. Ordered commits: root `d4bfcc9f`, `a9b63e1b`, `7ed5743a`; native `07e14ba5`, `84e4133e`, `cd3cc2cd`, `a0c0eb87`.
+
+Prose note (not part of the table row): the admitted cohort is fixture-forced via
+`experimental.pikmin2_seed_placement.generate_admitted_seed` (monkeypatched
+`ADMITTED_COHORT=(44,45)`); the birth that re-resolves is the natural
+`GenObjectTeki::birth` path. Gate 1 is scoped to lane 03's seed bridge; the family
+FSM/combat/reward gates stay with lanes 13/06.
+
+### Correction — slice 3 read-half citation
+
+The slice-2b/3 handoff named `GeneratorList::createRamGenerators` as the cache read.
+The real ramMode `Generator::read` runs in `GeneratorCache::preload`
+(`src/plugPikiKando/generatorCache.cpp:341-345`), called from
+`gameCoreSection.cpp:1030` (`preload(genCacheStage)`); `createRamGenerators`
+(`generator.cpp:1450-1460`) only re-`init`s the already-read generators.
+
+### Ownership note — preview scaffold generators
+
+The writer's `P2_GENCACHE_SCAN` also lists several non-room generators with
+nonsensical `_70`/flags (e.g. `generator=186402088 flags=2292916480`,
+`p2-room-cache-save.log:866` region). Those are preview-scaffold placements outside
+lane 03's ownership; leave to preview/lane 05.
+
+### Tests run
+
+- `py -3.12 -m pytest tests/test_pikmin2_dwarf_orange_arena.py -q` → all pass
+  (includes `test_carry_over_flags_save_generator_and_spawn_count`, offset-12 == 0x5).
+- `py -3.12 scripts/test_p2_room_resolve.py --cache-roundtrip` → `resume_validation.ok
+  = true`, `sidecar_renamed = true`.
+
+### Subagent usage (honest negative)
+
+Three subagents were dispatched. Both `explore` tasks died immediately with the
+provider error "Insufficient balance"; their read-only audits were done directly
+instead. The one `general` task (arena flag assertion) completed and was used as-is
+(it correctly failed at `assert 1 == 5` before the module edit and passes after).
+Net: the subagent experiment was negative this slice — no explore coverage, one
+useful general result.
+
+### Checker output
+
+```
+44 BlueKochappy (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation ignored [UNTESTED]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [UNTESTED]
+```

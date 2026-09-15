@@ -82,16 +82,97 @@ Private fixtures (all `status=built` against native head `b805d9c6...`):
 | combat (natural, no injection) | `l16-out/run-combat/stages/838febc1f841444298775ad7b13dbfd1` | PASS exit 0 |
 | carry (near_onion, injected lethal) | `l16-out/run-carry/stages/f5b95e9f795b419fa695874c6b61e576` | UNOBSERVED exit 0 |
 
-## Six arena gates (Frog 17 / MaroFrog 18)
+## Concrete source IDs and six-gate tables
 
-| Gate | Result | Evidence / label |
-|---|---|---|
-| A Identity + spawn | PASS | `P2_FROG_BIRTH id=201001/2 type=0/33 registered=1`, source health 800/1100 via `P2_FROG_READY`; controls keep P1 values |
-| B Autonomous movement + animation | PASS | per-state drawn poses (wait1/waitact1/type1/type2/attack/dead) incl. both live and corpse poses |
-| C Combat / receivers | PASS (natural vulnerability + attack) / **natural lethal FAIL** | `P2_FROG_COMBAT`: frog health 800→260 under NODAMAGE natural Pikmin attacks; squad 20→0 from frog landing press (reason=depleted); frog never died — 20 reds insufficient vs source 800 HP |
-| D Death / corpse / transport | corpse **PASS (injected, labelled)**; natural death UNTESTED; transport/reward **FAIL** | runtime (default + near_onion) both observed two live `PelletView` corpses after injected `InteractAttack(10000)`; `natural_deaths=[]` in every run. Carry fixture stayed `UNOBSERVED corpses=0` — see blockers |
-| E Cleanup / re-entry | PASS | `P2_FROG_CLEANUP registered_before=4 cleared=4 reentry=4` (manager reset then rebuild; controls stay unregistered) |
-| F Persistence | UNTESTED | no generated-session / process-restart reward ledger run |
+One `Source ID:` line and one six-gate table per identity the lane claims. Gate 1
+and 2 PASS rows are cited to `output/dsw/l16-out/run-runtime-f3/stages/e8edbce3f2bf445eb68c3feaa9731d43/native.log:NNN`
+(the runtime fixture re-run on native `7ad50a85`); gate 3 cites the combat re-run
+`output/dsw/l16-out/run-combat-f3/stages/b974d1e3a7d9403084c1ac47ee5b4ace/native.log:NNN`.
+Injected evidence is UNTESTED, never PASS.
+
+### 17 `Frog`
+- Source ID: 17 `Frog`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | output/dsw/l16-out/run-runtime-f3/stages/e8edbce3f2bf445eb68c3feaa9731d43/native.log:1267 | natural |
+| 2. Autonomous movement and animation | PASS (natural) | output/dsw/l16-out/run-runtime-f3/stages/e8edbce3f2bf445eb68c3feaa9731d43/native.log:1293 | natural |
+| 3. Attacks and receivers | PARTIAL (natural attack + vulnerability; natural lethal not reached) | output/dsw/l16-out/run-combat-f3/stages/b974d1e3a7d9403084c1ac47ee5b4ace/native.log:1325 | natural |
+| 4. Death and corpse | UNTESTED (injected) | output/dsw/l16-out/run-runtime-f3/stages/e8edbce3f2bf445eb68c3feaa9731d43/native.log:1473 | injected |
+| 5. Actual transport and reward | UNTESTED | no transport/receipt observation | natural |
+| 6. Cleanup and re-entry | UNTESTED (manager reset/re-entry only; full scene/day teardown not run) | output/dsw/l16-out/run-runtime-f3/stages/e8edbce3f2bf445eb68c3feaa9731d43/native.log:1313 | injected |
+
+### 18 `MaroFrog`
+- Source ID: 18 `MaroFrog`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | output/dsw/l16-out/run-runtime-f3/stages/e8edbce3f2bf445eb68c3feaa9731d43/native.log:1268 | natural |
+| 2. Autonomous movement and animation | PASS (natural) | output/dsw/l16-out/run-runtime-f3/stages/e8edbce3f2bf445eb68c3feaa9731d43/native.log:1272,1361 (`P2_FROG_DRAW species=MaroFrog` wait1/attack draws) | natural |
+| 3. Attacks and receivers | UNTESTED | no combat run tracks MaroFrog as the target | natural |
+| 4. Death and corpse | UNTESTED (injected) | output/dsw/l16-out/run-runtime-f3/stages/e8edbce3f2bf445eb68c3feaa9731d43/native.log:1485 | injected |
+| 5. Actual transport and reward | UNTESTED | no transport/receipt observation | natural |
+| 6. Cleanup and re-entry | UNTESTED | manager reset/re-entry only | injected |
+
+### 26 `Catfish`
+- Source ID: 26 `Catfish`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | UNTESTED | native FSM `pc_p2_catfish.cpp` present, not exercised this pass | natural |
+| 2. Autonomous movement and animation | UNTESTED | not exercised this pass | natural |
+| 3. Attacks and receivers | UNTESTED | not exercised this pass | natural |
+| 4. Death and corpse | UNTESTED | not exercised this pass | natural |
+| 5. Actual transport and reward | UNTESTED | not exercised this pass | natural |
+| 6. Cleanup and re-entry | UNTESTED | not exercised this pass | natural |
+
+### 27 `Tadpole`
+- Source ID: 27 `Tadpole`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | UNTESTED | prior `docs/PIKMIN2_TADPOLE_NATIVE.md`; not re-run this pass | natural |
+| 2. Autonomous movement and animation | UNTESTED | not re-run this pass | natural |
+| 3. Attacks and receivers | N/A | source-backed harmless (fp24=0); no attack surface | natural |
+| 4. Death and corpse | UNTESTED | not exercised this pass | natural |
+| 5. Actual transport and reward | UNTESTED | not exercised this pass | natural |
+| 6. Cleanup and re-entry | UNTESTED | not exercised this pass | natural |
+
+### 63 `Jigumo`
+- Source ID: 63 `Jigumo`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | UNTESTED | native FSM `pc_p2_jigumo.cpp` present, not exercised this pass | natural |
+| 2. Autonomous movement and animation | UNTESTED | not exercised this pass | natural |
+| 3. Attacks and receivers | UNTESTED | not exercised this pass | natural |
+| 4. Death and corpse | UNTESTED | not exercised this pass | natural |
+| 5. Actual transport and reward | UNTESTED | not exercised this pass | natural |
+| 6. Cleanup and re-entry | UNTESTED | not exercised this pass | natural |
+
+### 71 `UmiMushi`
+- Source ID: 71 `UmiMushi`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | UNTESTED | native FSM `pc_p2_umimushi.cpp` present, not exercised this pass | natural |
+| 2. Autonomous movement and animation | UNTESTED | not exercised this pass | natural |
+| 3. Attacks and receivers | UNTESTED | not exercised this pass | natural |
+| 4. Death and corpse | UNTESTED | not exercised this pass | natural |
+| 5. Actual transport and reward | UNTESTED | not exercised this pass | natural |
+| 6. Cleanup and re-entry | UNTESTED | not exercised this pass | natural |
+
+### 101 `UmiMushiBlind`
+- Source ID: 101 `UmiMushiBlind`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | UNTESTED | native FSM `pc_p2_umimushi.cpp` Blind split present, not exercised this pass | natural |
+| 2. Autonomous movement and animation | UNTESTED | not exercised this pass | natural |
+| 3. Attacks and receivers | UNTESTED | not exercised this pass | natural |
+| 4. Death and corpse | UNTESTED | not exercised this pass | natural |
+| 5. Actual transport and reward | UNTESTED | not exercised this pass | natural |
+| 6. Cleanup and re-entry | UNTESTED | not exercised this pass | natural |
 
 Injected state is separated: lethal death was produced by the fixture's
 `stimulate(InteractAttack(navi,nullptr,10000,false))` at `observed>=360`; the
@@ -304,8 +385,12 @@ cleared (verified: full Release build + link succeeds at the new head).
    now wait/turn before jumping. `Turn` also commits immediately when attackable
    or aligned (source `finishMotion`), restoring the landing-press combat gate.
 7. **Fall→Attack** — split the hop at the apex (`JumpWait → Fall` at `airTimer >=
-   airTime/2`) and land `Fall → Attack` on floor contact (`airTimer >= airTime`),
-   not the elapsed `type2*1.5` timer.
+   airTime/2`) and land `Fall → Attack` on **probed floor contact**
+   (`probeFloorY(pos) >= pos.y`, source `FrogState.cpp:341`), with the
+   `airTimer >= airTime` bound kept only as a fallback for a hop with no floor
+   below; this replaces the elapsed `type2*1.5` timer. (Fix-3 item 1: the earlier
+   fix-2 sentence paired "floor contact" with the `airTimer` timer, which was not
+   what the code did; see the fix-3 section.)
 8. **pressOnGround comment** — `doLandPress` comment now accurately describes the
    `collisionCallback` landing press only; the false "flips stuck" claim deleted
    (the pressOnGround stuck-shakeoff is not reproduced on the P1 host).
@@ -349,7 +434,7 @@ Root `deepseek/p2-l16`, base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`:
 | Fixture | Stage dir | Result |
 |---|---|---|
 | runtime (injected lethal) | `run-runtime-s2d/stages/24a8c28de0644a1a9baad664924b59be` | **PASS** exit 0; `fsm=true`, no illegal transitions |
-| combat / natural-lethal (no injection) | `run-combat-s2d/stages/69b3103a6d334202aaa1def16a0cd5a1` | **PASS** exit 0; `fsm=true`, `reason=depleted` (frog floor 245 HP, squad 20→0) |
+| combat (natural, 4-actor arena; no injection) | `run-combat-s2d/stages/69b3103a6d334202aaa1def16a0cd5a1` | **PASS** exit 0; `fsm=true`, `reason=depleted`; frog survives (floor ~245 HP); squad stays at 20 after each jump flick and drops to 0 only on the last tick |
 
 `P2_FROG_READY` now prints `behavior=source_fsm`; `P2_FROG_LAND` counts
 `pikmin`/`navi` separately; death is deferred (`attack→dead` terminal, no
@@ -367,7 +452,7 @@ tests/test_pikmin2_tadpole_behavior.py` → **64 passed**.
 
 | Gate | Slice 2 | fix pass |
 |---|---|---|
-| C combat | natural rerun BLOCKED (env) | PASS (vulnerability + landing-press, reason=depleted); natural lethal still FAIL (20 reds vs 800 HP → frog floor 245) |
+| C combat | natural rerun BLOCKED (env) | natural combat (4-actor arena); natural-lethal free-mode attempt not run |
 
 ### Subagent usage (this pass)
 
@@ -379,3 +464,162 @@ executed against the real log (it had been committed un-run; this pass found and
 fixed the episode-boundary and multi-digit-squad issues that only real output
 exposes). Honest negative result: the subagent experiment added no measurably
 saved time on this fix pass.
+
+## Slice 2 — review fix pass 3 (`l16-fix3`)
+
+Fix on the merged wave-native head (the integrator's resolved `pc_p2_frog.cpp`,
+keeping this lane's FSM phase/clip selection and lane 09's
+`pc_gfx_specular_family_scope` bracket around `drawshape`). Items 1-3 are the
+blocking review items.
+
+### Item resolutions
+
+1. **Fall→Attack floor contact (blocking).** `pc_p2_frog.cpp` `FRG_FALL` now
+   transits when `probeFloorY(actor->getPosition(), s.groundY) >= pos.y` (source
+   `FrogState.cpp:341` `mFloorTriangle` contact semantics), with
+   `s.airTimer >= p.airTime` kept only as a fallback for a hop with no floor
+   below. The fix-2 handoff sentence above is corrected.
+2. **Combat / natural-lethal row (blocking).** The lane-14-style Frog-only
+   free-mode natural-lethal attempt was **not** run; the row is relabeled
+   "natural combat (4-actor arena); natural-lethal free-mode attempt not run".
+   The 4-actor log shows natural vulnerability (800→365) and the landing press
+   delivered to 20 Pikmin, but the jump flick disengages the squad each jump (it
+   stays at 20 until the final tick), so "press wipes the squad" is not what the
+   log shows. Running the free-mode Frog-only arena remains the next bounded step.
+3. **Ingestible gate tables (blocking).** The single shared six-gate table was
+   replaced by one `Source ID:` line + six-gate table per claimed identity
+   (17/18/26/27/63/71/101). `check_p2_handoff_gates.py` now accepts gates 1 and 2
+   for 17 and 18, warns nothing, and refuses nothing (exit 0); output pasted
+   below.
+4. **P2_FROG_LAND validator + dead `logLand`.** `experimental/pikmin2_frog_combat.py`
+   now matches `behavior=(P1_proxy|source)` (the `land_attribution` list was
+   always empty before); the native `logLand` (the dead `behavior=P1_proxy`
+   landing path) is deleted and its `pc_p2_frog_draw` call site simplified. Note
+   `logPress`/`P2_FROG_PRESS` is now also unobserved (it keyed on the P1 `Attack`
+   motion, which the suppressed P1 TAI never plays) and is left as reported-only
+   instrumentation.
+5. **state=fail / hook ordering / retargetNavi.** `state=fail` appears in zero
+   logs: FRG_FAIL is implemented (jump-entry `stuckPikminCount>0 && rand01 <
+   jumpFail`) but is **untested at runtime** this pass. Hook commit `7122f544`
+   precedes the port commit `99b09e86` and does not compile standalone (it wires
+   symbols the port declares), so the pair is **non-bisectable** as committed.
+   `retargetNavi` now uses `naviMgr->getNavi()` like `nearestTarget` (it was an
+   all-Navi iterator), giving consistent single-active-Navi selection.
+
+### Ordered commits
+
+Native `deepseek/p2-l16-native`, on merged wave base `acf597eb`:
+
+| Commit | Message |
+|---|---|
+| `7ad50a85` | lane16: review fixes 3 - Fall floor-contact landing, drop dead logLand, retargetNavi consistency (#167) |
+
+Root `deepseek/p2-l16`:
+
+| Commit | Message |
+|---|---|
+| `531d0c96` | lane16: review fixes 3 - accept behavior=source in the P2_FROG_LAND validator (#167) |
+
+### Build evidence (`dirty=no`, appended to `output/dsw/l16-build-evidence.txt`)
+
+| native | EXE SHA-256 |
+|---|---|
+| `7ad50a85ba5e9d3a69744eaa92aaa286f436abd3` | `8a6b6e0ffda3f34e10c78142519e79ff8ce727dbae7040a11b18856913682726` |
+
+`ninja -n` = "ninja: no work to do." The host-wide `g++`/`cc1` silent failure
+seen at the start of this pass had cleared before this build.
+
+### Fixture re-runs (committed head `7ad50a85`, 960x540, GL slot wrapped)
+
+| Fixture | Stage dir | Result |
+|---|---|---|
+| runtime (injected lethal) | `output/dsw/l16-out/run-runtime-f3/stages/e8edbce3f2bf445eb68c3feaa9731d43` | **PASS** exit 0; `fsm=true`, floor-contact landing, no illegal transitions |
+| combat (natural, 4-actor arena; no injection) | `output/dsw/l16-out/run-combat-f3/stages/b974d1e3a7d9403084c1ac47ee5b4ace` | **PASS** exit 0; `fsm=true`; vulnerability 800→365; landing press on 20 Pikmin; frog survives (natural lethal not reached) |
+
+### Tests
+
+`py -3.12 -m pytest -q tests/test_pikmin2_frog_combat.py tests/test_pikmin2_frog_fsm.py`
+→ **20 passed** (including the new `behavior=source` validation cases).
+
+### Gate-checker output
+
+`py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE16_DEEPSEEK_HANDOFF.md`
+(exit 0, no refused PASS):
+
+```text
+17 Frog (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation accepted [PASS]
+  3. attacks_receivers  ignored [PARTIAL]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [UNTESTED]
+18 MaroFrog (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation accepted [PASS]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [UNTESTED]
+26 Catfish (role=source):
+  1. identity_spawn     ignored [UNTESTED]
+  2. movement_animation ignored [UNTESTED]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [UNTESTED]
+27 Tadpole (role=source):
+  1. identity_spawn     ignored [UNTESTED]
+  2. movement_animation ignored [UNTESTED]
+  3. attacks_receivers  ignored [N/A]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [UNTESTED]
+63 Jigumo (role=source):
+  1. identity_spawn     ignored [UNTESTED]
+  2. movement_animation ignored [UNTESTED]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [UNTESTED]
+71 UmiMushi (role=variant):
+  1. identity_spawn     ignored [UNTESTED]
+  2. movement_animation ignored [UNTESTED]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [UNTESTED]
+101 UmiMushiBlind (role=variant):
+  1. identity_spawn     ignored [UNTESTED]
+  2. movement_animation ignored [UNTESTED]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [UNTESTED]
+```
+
+### Subagent usage (this pass)
+
+Three subagents were dispatched in parallel (the task tool was available this
+pass):
+
+1. `explore` (free-mode arena + floor-contact audit) — located the lane-14 /
+   Kochappy free-mode deploy block (`observed==240`, `resetPosition` +
+   `changeMode(PikiMode::FreeMode)`), confirmed source `StateFall::exec`
+   floor-triangle transit, and reported that `probeFloorY` uses
+   `getMinY(x,z,false)`. Used as-is to write the item-1 fix and to scope the
+   (not-run) free-mode attempt.
+2. `explore` (marker/gate discrepancy inventory) — returned the exact
+   `pikmin2_frog_combat.py:100-102` regex, the `logLand`/`logPress` ranges and
+   draw call site, the `retargetNavi`/`nearestTarget` ranges, the
+   `7122f544`→`99b09e86` commit ordering, and the checker/gate-format locations.
+   Used as-is.
+3. `general` (validator fix) — changed the `P2_FROG_LAND` regex to
+   `behavior=(P1_proxy|source)` and added three cases; `11 passed` in that file.
+   Used as-is, committed as `531d0c96`.
+
+Estimated net: the two `explore` agents removed the read-heavy discovery
+(free-mode pattern, checker format, commit ordering) from this session and were
+accurate; the `general` agent's fix was correct on first run. This pass's
+subagent use was a net saver versus the fix-2 pass, which had no task tool and
+cost a longer manual read.

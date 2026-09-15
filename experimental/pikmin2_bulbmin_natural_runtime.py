@@ -4,8 +4,9 @@ Slice 3 continuation. Process 1 (floor 1) uses the *bank-free* Chappy-family
 host that every room preview writes (``scripts/preview_pikmin2_room.py`` sets
 ``TEKI_Chappy`` on the dwarf host) as the Mother Bulbmin stand-in: the engine
 resolver ``pc_p2_bulbmin_mother_host()`` auto-attaches it and births the source
-ten-body wild flock. The captain's real whistle hook (``pc_p2_bulbmin_call_pikis``,
-the code ``Navi::callPikis`` invokes) converts wild dependents in place; the
+ten-body wild flock. The fixture drives the captain's real whistle
+(``Navi::callPikis`` -> ``pc_p2_bulbmin_call_pikis``), which converts wild
+dependents in place and logs ``via=navi_callPikis``; the
 live ``pc_p2_cave_checkpoint`` descend then drops the remaining wild dependents
 while the whistled ones persist through a schema-3 transfer. Process 2 (floor 2)
 restores them and runs the exit move over any remaining tracked dependents.
@@ -75,8 +76,7 @@ public:int idle() override {
     if(v->isAlive()&&pc_p2_bulbmin_phase(v)==0){target=v;break;}}
    if(target){
     n->mCursorWorldPos=target->mSRT.t;
-    const int rec=pc_p2_bulbmin_call_pikis(n,1.0f);
-    std::printf("P2_BULBMIN_TX_WHISTLE recruited=%d\n",rec);std::fflush(stdout);
+    n->callPikis(1.0f);
     whistled=true;
    }
   }
@@ -180,10 +180,11 @@ def validate(text1, text2, transfer_text):
     descend = re.search(r'P2_CAVE_BULBMIN_TRANSITION move=descend removed=(\d+)', text1)
     checks = dict(
         write_window=bool(re.search(r'Experimental preview window set to 960x540 windowed and centered', text1)),
-        mother_sidecar=bool(re.search(r'P2_BULBMIN_MOTHER_BIRTH model=\S+ generator=[1-9]\d*', text1)),
+        mother_host_resolved=bool(re.search(r'P2_BULBMIN_MOTHER_BIRTH model=\S+ generator=[1-9]\d*', text1)),
         mother_birth=bool(re.search(r'P2_BULBMIN_MOTHER_BIRTH model=\S+ generator=\d+ dependents=0', text1)),
         natural_whistle=bool(whistle) and int(whistle.group(1)) >= 1,
-        whistle_via_real_path='P2_BULBMIN_TX_RECRUIT' not in text1,
+        whistle_via_real_path=(bool(re.search(r'P2_BULBMIN_WHISTLE recruited=\d+.*via=navi_callPikis', text1))
+                               and 'P2_BULBMIN_TX_RECRUIT' not in text1),
         descend_drops_wild=bool(descend) and int(descend.group(1)) >= 1,
         recruited_persist=(len([l for l in body if l.split()[0] == '5']) >= 1),
         read_restore=bool(re.search(r'P2_CAVE_RESTORE species=5 maturity=0', text2)),
@@ -195,7 +196,8 @@ def validate(text1, text2, transfer_text):
                 transfer=transfer_text.splitlines()[:3],
                 limitations=['Engineered arena: the mother is the bank-free Chappy-family host, '
                              'not a LeafChappy actor (its birth is out of scope). The whistle is '
-                             'the whistle hook Navi::callPikis calls, invoked directly by the fixture (Navi::callPikis not entered).'])
+                             'the real Navi::callPikis path (the fixture calls n->callPikis; the '
+                             'marker proves via=navi_callPikis).'])
 
 
 if __name__ == '__main__':

@@ -828,8 +828,9 @@ void Generator::read(RandomAccessStream& input)
 	STACK_PAD_INLINE(3);
 #if defined(PIKI_PC_PORT)
     if (ramMode && (pc_randomizer_spawn_slots() || pc_randomizer_p2_bridge()) && mGenObject && (mGenObject->mID == 'teki' || mGenObject->mID == 'boss')) {
-        if (input.getPending() < 8 || input.readInt() != 0x534c5431) pc_randomizer_bad_spawn_cache();
+        if (input.getPending() < 12 || input.readInt() != 0x534c5431) pc_randomizer_bad_spawn_cache();
         pc_randomizer_set_generator_id(this, static_cast<unsigned>(input.readInt()));
+        _70 = static_cast<u32>(input.readInt());  // lane-03 (#439): preserve disk identity across cache resume
     }
 #endif
 }
@@ -907,6 +908,7 @@ void Generator::write(RandomAccessStream& output)
     if (ramMode && (pc_randomizer_spawn_slots() || pc_randomizer_p2_bridge()) && mGenObject && (mGenObject->mID == 'teki' || mGenObject->mID == 'boss')) {
         output.writeInt(0x534c5431);
         output.writeInt(static_cast<int>(pc_randomizer_generator_id(this)));
+        output.writeInt(static_cast<int>(_70));  // lane-03 (#439): preserve disk identity across cache resume
     }
 #endif
 }

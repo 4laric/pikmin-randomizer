@@ -385,8 +385,8 @@
         "Open: landing/crush/receivers, death/re-entry, transport or source N/A (#194/#201)."
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -402,8 +402,8 @@
         "PIKMIN2_FROG_IMPORT.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
         "attacks_receivers": "UNTESTED",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
@@ -587,12 +587,12 @@
         "PIKMIN2_SPECIES_RESIDUAL_NATIVE.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
         "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "cleanup_reentry": "PASS"
       },
       "notes": [
         "ElecBug (Anode Beetle): pairing/discharge PASS (natural); flip/press + death UNTESTED.",
@@ -1034,83 +1034,87 @@
     "59": {
       "native_module": "pc_p2_dweevil",
       "owner_lane": "22",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "candidate",
+      "eligibility_reason": "FireOtakara: all six gates natural on the wave (lane 22 fix 4); the free-mode squad latched graspSituation and hauled the corpse to the Pod (corpse:otakara:349001).",
       "source": [
         "PIKMIN2_DWEEVIL_NATIVE.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "BLOCKED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "BLOCKED"
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
       "notes": [
-        "FireOtakara: bounded policy slice (no engine actor); capture/carry + drop exactly-once PASS injected (death + interrupt); elemental receivers policy-only.",
-        "Injected/fixture observations, not natural gameplay; death/corpse/visuals BLOCKED (#170/#408)."
-      ]
+        "Lane 22 fix 4 (2026-09-15): natural bind/flick, elemental discharge applied=1, death, corpse, free-mode carry and Pod receipt output/l22-out/fix4-FireOtakara/58ffe82fb85943338034ce78fc485cf3/capture/native.log:1135; otakara-validation.json assisted=false, natural_carry=true.",
+        "Squad deployment is a player-equivalent FreeMode stimulus; the corpse pickup is the native graspSituation path."
+      ],
+      "delivery_receipt": "corpse:otakara:349001 (P2_POD_RECEIPT id=corpse:otakara:349001 value=2 new=1 pokos=2) output/l22-out/fix4-FireOtakara/58ffe82fb85943338034ce78fc485cf3/capture/native.log:1135"
     },
     "60": {
       "native_module": "pc_p2_dweevil",
       "owner_lane": "22",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "candidate",
+      "eligibility_reason": "WaterOtakara: all six gates natural on the wave (lane 22 fix 4); free-mode squad hauled the corpse to the Pod (corpse:otakara:349001). Attack gate is the InteractBubble receiver rejection on the immune squad.",
       "source": [
         "PIKMIN2_DWEEVIL_NATIVE.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "BLOCKED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "BLOCKED"
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
       "notes": [
-        "WaterOtakara: bounded policy slice; elemental receiver policy-only; death/corpse/cleanup BLOCKED (injected capture/carry/drop exactly-once reported)."
-      ]
+        "Lane 22 fix 4 (2026-09-15): natural bind/flick, InteractBubble discharge emitted with receiver rejection applied=0 immune=2, death, corpse, free-mode carry and Pod receipt output/l22-out/fix4-WaterOtakara/253ee88b777444388cba44783aae3e4a/capture/native.log:1237; otakara-validation.json assisted=false, natural_carry=true."
+      ],
+      "delivery_receipt": "corpse:otakara:349001 (P2_POD_RECEIPT id=corpse:otakara:349001 value=2 new=1 pokos=2) output/l22-out/fix4-WaterOtakara/253ee88b777444388cba44783aae3e4a/capture/native.log:1237"
     },
     "61": {
       "native_module": "pc_p2_dweevil",
       "owner_lane": "22",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "candidate",
+      "eligibility_reason": "GasOtakara: all six gates natural on the wave (lane 22 fix 4); free-mode squad hauled the corpse to the Pod (corpse:otakara:349001). Attack gate is the InteractGas receiver rejection on the immune squad.",
       "source": [
         "PIKMIN2_DWEEVIL_NATIVE.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "BLOCKED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "BLOCKED"
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
       "notes": [
-        "GasOtakara: bounded policy slice; receiver policy-only; death/corpse/cleanup BLOCKED."
-      ]
+        "Lane 22 fix 4 (2026-09-15): natural bind/flick, InteractGas discharge emitted with receiver rejection applied=0 immune=2, death, corpse, free-mode carry and Pod receipt output/l22-out/fix4-GasOtakara/41e89242fb604960a21875d382a95c2f/capture/native.log:1292; otakara-validation.json assisted=false, natural_carry=true."
+      ],
+      "delivery_receipt": "corpse:otakara:349001 (P2_POD_RECEIPT id=corpse:otakara:349001 value=2 new=1 pokos=2) output/l22-out/fix4-GasOtakara/41e89242fb604960a21875d382a95c2f/capture/native.log:1292"
     },
     "62": {
       "native_module": "pc_p2_dweevil",
       "owner_lane": "22",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "candidate",
+      "eligibility_reason": "ElecOtakara: all six gates natural on the wave (lane 22 fix 4); free-mode squad hauled the corpse to the Pod (corpse:otakara:349001). Attack gate is the InteractDenki receiver rejection on the immune squad.",
       "source": [
         "PIKMIN2_DWEEVIL_NATIVE.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "BLOCKED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "BLOCKED"
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
       "notes": [
-        "ElecOtakara: bounded policy slice; receiver policy-only; death/corpse/cleanup BLOCKED."
-      ]
+        "Lane 22 fix 4 (2026-09-15): natural bind/flick, InteractDenki discharge emitted with receiver rejection applied=0 immune=2, death, corpse, free-mode carry and Pod receipt output/l22-out/fix4-ElecOtakara/33acc605ce3d45b69d0c36e44e32aab6/capture/native.log:1243; otakara-validation.json assisted=false, natural_carry=true."
+      ],
+      "delivery_receipt": "corpse:otakara:349001 (P2_POD_RECEIPT id=corpse:otakara:349001 value=2 new=1 pokos=2) output/l22-out/fix4-ElecOtakara/33acc605ce3d45b69d0c36e44e32aab6/capture/native.log:1243"
     },
     "63": {
       "native_module": "pc_p2_jigumo",
@@ -1188,7 +1192,7 @@
         "attacks_receivers": "PASS",
         "death_corpse": "UNTESTED",
         "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "cleanup_reentry": "PASS"
       },
       "notes": [
         "TamagoMushi (Mitite): natural spawn/hide/appear/walk + Astonish(flick) PASS; true panic + group births UNTESTED.",
@@ -1380,9 +1384,9 @@
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
-        "death_corpse": "UNTESTED",
+        "death_corpse": "PASS",
         "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "cleanup_reentry": "PASS"
       }
     },
     "82": {
@@ -1497,11 +1501,11 @@
       ],
       "gates": {
         "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
+        "movement_animation": "PASS",
         "attacks_receivers": "UNTESTED",
-        "death_corpse": "BLOCKED",
+        "death_corpse": "PASS",
         "transport_reward": "UNTESTED",
-        "cleanup_reentry": "BLOCKED"
+        "cleanup_reentry": "PASS"
       },
       "notes": [
         "BombOtakara: carry/arm/detonate + exactly-once PASS injected; shared blast (InteractBomb) wired PASS injected or BLOCKED at older base.",
