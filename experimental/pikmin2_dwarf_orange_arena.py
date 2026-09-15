@@ -52,6 +52,9 @@ def roster(assets):
         used.add(identity)
         row = bytearray(enemy)
         struct.pack_into('<I', row, 8, identity)
+        # lane-03 (#439): mark both arena actors save-eligible so the day-end
+        # generator-cache loop selects them (GENCARRY_SaveGenerator = 1 << 0).
+        struct.pack_into('>I', row, 12, 1)
         row[16:48] = kind.encode('ascii').ljust(32, b'\0')
         write_position(row, xyz)
         entries.append(bytes(row))
