@@ -64,7 +64,7 @@ bool readRestOffsets(const char* path, Vector3f& mouthA, Vector3f& mouthB)
     return true;
 }
 
-std::unique_ptr<P2SaraiHost> buildHost(BTeki* match)
+std::unique_ptr<P2SaraiHost> buildHost(BTeki* match, unsigned generatorId)
 {
     Vector3f restA, restB;
     if (!readRestOffsets("sarai-attack-mouths.txt", restA, restB)) return nullptr;
@@ -101,7 +101,7 @@ std::unique_ptr<P2SaraiHost> buildHost(BTeki* match)
     // transport acceptance fixtures that must not have the captor move it.
     const char* staticMode = std::getenv("PIKMIN_SARAI_STATIC");
     if (staticMode && std::strcmp(staticMode, "1") == 0) {
-        if (!host->bindNativeActor(match, match->mGenerator->_70, match->mTekiType)) return nullptr;
+    if (!host->bindNativeActor(match, generatorId, match->mTekiType)) return nullptr;
         return host;
     }
     // The converted private room's only spawned enemy starts away from the
@@ -153,7 +153,7 @@ void pc_p2_sarai_manager_setup()
 
     BTeki* match = nullptr;
     if (!findOwnerActor(wantedGenerator, wantedType, match)) return;
-    auto host = buildHost(match);
+    auto host = buildHost(match, match->mGenerator->_70);
     if (!host) return;
     s[match] = { host.get(), match->mGenerator->_70, match->mTekiType };
     std::printf("P2_SARAI_READY source_id=23 species=Sarai generator=%u type=%d health=%.1f behavior=source\n",
@@ -162,6 +162,25 @@ void pc_p2_sarai_manager_setup()
                 match->mGenerator->_70, match->mGenerator->_70);
     std::fflush(stdout);
     hosts.push_back(std::move(host));
+}
+
+bool pc_p2_sarai_manager_bind_dynamic(BTeki* actor, unsigned generatorId, unsigned seedTargetUid)
+{
+    if (!actor || !generatorId || s.count(actor)) return false;
+    auto host = buildHost(actor, generatorId);
+    if (!host) {
+        std::printf("P2_GENERATED_PLACEMENT source_id=23 target=%u bound=0 reason=host\n", seedTargetUid);
+        std::fflush(stdout);
+        return false;
+    }
+    s[actor] = { host.get(), generatorId, actor->mTekiType };
+    std::printf("P2_SARAI_READY source_id=23 species=Sarai generator=%u type=%d health=%.1f behavior=source generated=1 seed_target=%u\n",
+                generatorId, actor->mTekiType, actor->mHealth, seedTargetUid);
+    std::printf("P2_SARAI_CORPSE_READY generator=%u drop=BDT_Normal ledger=onion receipt=corpse:sarai:%u\n",
+                generatorId, generatorId);
+    std::fflush(stdout);
+    hosts.push_back(std::move(host));
+    return true;
 }
 
 void pc_p2_sarai_manager_update_actor(BTeki* actor)

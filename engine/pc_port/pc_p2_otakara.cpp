@@ -424,53 +424,93 @@ static int speciesFromName(const std::string& name) {
     return -1; // unknown species left to the other paths
 }
 
+static int speciesFromSource(unsigned source) {
+    switch (source) {
+    case 59: return p2dweevil::FireId;
+    case 60: return p2dweevil::WaterId;
+    case 61: return p2dweevil::GasId;
+    case 62: return p2dweevil::ElecId;
+    default: return -1;
+    }
+}
+
+static void loadBank() {
+    if (!clips.empty()) return;
+    // Shared OtakaraBase clip bank (one bank aliased across the dweevil species).
+    std::ifstream bank("p2-dweevil-bank.txt");
+    if (!bank) return;
+    std::string token;
+    if (!(bank >> token) || token != "P2_DWEEVIL_BANK_1") return;
+    while (bank >> token) {
+        if (token == "species") {
+            std::string species, id;
+            bank >> species >> id;
+        } else if (token == "clip") {
+            std::string species, name, events, marker, status;
+            long long frames = 0;
+            int poses = 0;
+            bank >> species >> name >> frames >> events >> marker >> poses >> status;
+            if (clips.count(name) == 0) {
+                Clip clip;
+                clip.name = name;
+                clip.duration = frames > 0 ? float(frames) / 30.0f : 1.0f;
+                clip.loop = (name == "wait1" || name == "move1" || name == "pivot1"
+                             || name == "wait2" || name == "move2" || name == "pivot2"
+                             || name == "carry");
+                if (events != "-") {
+                    size_t start = 0;
+                    while (start < events.size()) {
+                        const size_t comma = events.find(',', start);
+                        const std::string pair = events.substr(start, comma - start);
+                        const size_t colon = pair.find(':');
+                        if (colon != std::string::npos) {
+                            clip.events.emplace_back(std::atoi(pair.substr(0, colon).c_str()),
+                                                      std::atoi(pair.substr(colon + 1).c_str()));
+                        }
+                        if (comma == std::string::npos) break;
+                        start = comma + 1;
+                    }
+                }
+                clips[name] = clip;
+            }
+        } else {
+            break;
+        }
+    }
+}
+
+static bool registerActor(BTeki* actor, int species, unsigned generator) {
+    if (!actor || species < 0) return false;
+    Otakara& s = actors[static_cast<PelletView*>(actor)];
+    s = Otakara();
+    s.species = species;
+    s.stimulus = p2dweevil::stimulusFor(s.species);
+    s.life = speciesLife(s.species);
+    s.attack = speciesAttack(s.species);
+    s.generator = generator;
+    s.rng = (generator * 2654435761u) | 1u;
+    s.home = actor->getPosition();
+    s.target = s.home;
+    s.heading = actor->getDirection();
+    actor->mHealth = s.life;
+    s.prevHealth = s.life;
+    enter(s, OTA_WAIT, "wait1");
+    std::printf("P2_OTAKARA_BIND generator=%u source_id=%d stimulus=%s visual_only=0\n",
+                generator, s.species, p2dweevil::stimulusName(s.stimulus));
+    const Vector3f pos = actor->getPosition();
+    std::printf("P2_ENEMY_READY species=%s native_family=Chappy generator=%u "
+                "x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=native "
+                "source_FSM=implemented attack=%s\n",
+                p2dweevil::speciesName(s.species), generator, pos.x, pos.y,
+                pos.z, actor->mHealth, s.life,
+                s.stimulus == p2dweevil::StimNone ? "payload_delegated" : "elemental_discharge");
+    return true;
+}
+
 void pc_p2_otakara_setup() {
     pc_p2_otakara_reset();
     if (!tekiMgr) return;
-
-    // Shared OtakaraBase clip bank (one bank aliased across the dweevil species).
-    std::ifstream bank("p2-dweevil-bank.txt");
-    if (bank) {
-        std::string token;
-        if (bank >> token && token == "P2_DWEEVIL_BANK_1") {
-            while (bank >> token) {
-                if (token == "species") {
-                    std::string species, id;
-                    bank >> species >> id;
-                } else if (token == "clip") {
-                    std::string species, name, events, marker, status;
-                    long long frames = 0;
-                    int poses = 0;
-                    bank >> species >> name >> frames >> events >> marker >> poses >> status;
-                    if (clips.count(name) == 0) {
-                        Clip clip;
-                        clip.name = name;
-                        clip.duration = frames > 0 ? float(frames) / 30.0f : 1.0f;
-                        clip.loop = (name == "wait1" || name == "move1" || name == "pivot1"
-                                     || name == "wait2" || name == "move2" || name == "pivot2"
-                                     || name == "carry");
-                        if (events != "-") {
-                            size_t start = 0;
-                            while (start < events.size()) {
-                                const size_t comma = events.find(',', start);
-                                const std::string pair = events.substr(start, comma - start);
-                                const size_t colon = pair.find(':');
-                                if (colon != std::string::npos) {
-                                    clip.events.emplace_back(std::atoi(pair.substr(0, colon).c_str()),
-                                                              std::atoi(pair.substr(colon + 1).c_str()));
-                                }
-                                if (comma == std::string::npos) break;
-                                start = comma + 1;
-                            }
-                        }
-                        clips[name] = clip;
-                    }
-                } else {
-                    break;
-                }
-            }
-        }
-    }
+    loadBank();
 
     std::ifstream in("p2-dweevil-actors.txt");
     if (!in) return;
@@ -498,29 +538,7 @@ void pc_p2_otakara_setup() {
             std::printf("P2_OTAKARA_ERROR native_type generator=%u\n", actor->mGenerator->_70);
             std::abort();
         }
-        Otakara& s = actors[static_cast<PelletView*>(actor)];
-        s = Otakara();
-        s.species = match->second;
-        s.stimulus = p2dweevil::stimulusFor(s.species);
-        s.life = speciesLife(s.species);
-        s.attack = speciesAttack(s.species);
-        s.generator = actor->mGenerator->_70;
-        s.rng = (actor->mGenerator->_70 * 2654435761u) | 1u;
-        s.home = actor->getPosition();
-        s.target = s.home;
-        s.heading = actor->getDirection();
-        actor->mHealth = s.life;
-        s.prevHealth = s.life;
-        enter(s, OTA_WAIT, "wait1");
-        std::printf("P2_OTAKARA_BIND generator=%u source_id=%d stimulus=%s visual_only=0\n",
-                    actor->mGenerator->_70, s.species, p2dweevil::stimulusName(s.stimulus));
-        const Vector3f pos = actor->getPosition();
-        std::printf("P2_ENEMY_READY species=%s native_family=Chappy generator=%u "
-                    "x=%.7f y=%.7f z=%.7f health=%.1f max_health=%.1f behavior=native "
-                    "source_FSM=implemented attack=%s\n",
-                    p2dweevil::speciesName(s.species), actor->mGenerator->_70, pos.x, pos.y,
-                    pos.z, actor->mHealth, s.life,
-                    s.stimulus == p2dweevil::StimNone ? "payload_delegated" : "elemental_discharge");
+        registerActor(actor, match->second, actor->mGenerator->_70);
         found.insert(actor->mGenerator->_70);
     }
     if (found.size() != wanted.size()) {
@@ -528,6 +546,17 @@ void pc_p2_otakara_setup() {
         std::abort();
     }
     ready = true;
+}
+
+bool pc_p2_otakara_bind_dynamic(BTeki* actor, unsigned generatorId, unsigned sourceId) {
+    const int species = speciesFromSource(sourceId);
+    if (!actor || species < 0 || actors.count(static_cast<PelletView*>(actor))) return false;
+    loadBank();
+    if (!registerActor(actor, species, generatorId)) return false;
+    ready = true;
+    std::printf("P2_OTAKARA_BIND_DYNAMIC source_id=%u generator=%u\n", sourceId, generatorId);
+    std::fflush(stdout);
+    return true;
 }
 
 void pc_p2_otakara_update(BTeki* actor) {

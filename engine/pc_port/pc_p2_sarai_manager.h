@@ -13,6 +13,10 @@ class Matrix4f;
 class PelletView;
 
 void pc_p2_sarai_manager_setup();
+// Generated-placement bridge (lane 03/04): bind the P2 source-23 actor the
+// randomizer spawned at `seedTargetUid` to a fresh Sarai host. Unlike setup()
+// this does not read a fixed generator config; it claims the assigned actor.
+bool pc_p2_sarai_manager_bind_dynamic(BTeki* actor, unsigned generatorId, unsigned seedTargetUid);
 void pc_p2_sarai_manager_reset();
 void pc_p2_sarai_manager_forget(BTeki* actor);
 void pc_p2_sarai_manager_update_actor(BTeki* actor);
