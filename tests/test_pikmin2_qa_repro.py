@@ -123,6 +123,29 @@ def test_cli_emit_record_round_trips():
         assert qa.validate_record(record) == []
 
 
+def test_cli_emit_record_appends_note():
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        spec_file = root / "spec.json"
+        log_file = root / "native.log"
+        out_file = root / "records" / "repro-1.json"
+        spec_file.write_text(json.dumps(spec()), encoding="utf-8")
+        log_file.write_text(GOOD_LOG, encoding="utf-8")
+        assert repro.main(["emit-record", "--spec", str(spec_file),
+                           "--log", str(log_file), "--out", str(out_file),
+                           "--note", "manual sign-off 2026-09-14"]) == 0
+        record = json.loads(out_file.read_text(encoding="utf-8"))
+        assert "manual sign-off 2026-09-14" in record["notes"]
+        assert "present:" in record["notes"]
+
+
+def test_reproduce_appends_note_to_notes():
+    record = repro.reproduce(spec(), GOOD_LOG, 0, ["run/evidence.json"],
+                             note="operator-confirmed")
+    assert "operator-confirmed" in record["notes"]
+    assert "present:" in record["notes"]
+
+
 def test_fixture_pass_resolves_blocked_on_natural_required_cell():
     record = repro.reproduce(spec(), GOOD_LOG, 0, ["run/evidence.json"])
     assert record["kind"] == qa.KIND_FIXTURE
