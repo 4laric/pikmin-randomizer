@@ -129,7 +129,9 @@ def kabuto_config(species='Kabuto', position=None, face_deg=FACE_DEG):
     # mouth joint in front of the Dwarf, facing +x; the FSM births the Stone at
     # the mouth + (0,25,0). Kabuto = non-homing straight, Rkabuto = homing toward
     # the nearest Navi/Pikmin (the 20-red starting squad).
-    return ('kabuto %s %.6g %.6g %.6g %.6g 180 850 30 15 20 8'
+    # Fire-cycle ticks (wait, move, flick, attack, key2) are host approximation,
+    # shortened so a bounded GL run yields >=9 fires under shared-host load.
+    return ('kabuto %s %.6g %.6g %.6g %.6g 180 850 15 5 12 5'
             % (species, x, y, z, face_deg))
 
 
@@ -207,8 +209,10 @@ KABUTO_AIM_RE = re.compile(
     r'origin=\(([\d.-]+),([\d.-]+),([\d.-]+)\) face_deg=([\d.-]+)')
 
 BOMB_ENGINE_HIT_RE = re.compile(
-    r'P2_PROJECTILE_BOMB_ENGINE_HIT token=(\d+) kind=(\w+) damage=([\d.]+) '
-    r'applied=(\d) rejected=(\d) health=([\d.-]+)->([\d.-]+)')
+    r'P2_PROJECTILE_BOMB_ENGINE_HIT token=(\d+) kind=Bomb damage=([\d.]+) '
+    r'applied=(\d+) rejected=(\d+) health=([\d.-]+)->([\d.-]+) dist=([\d.]+)')
+
+BOMB_NOHIT_RE = re.compile(r'P2_PROJECTILE_BOMB_NOHIT dist=([\d.]+)')
 
 
 def parse_engine_strikes(log_text):
@@ -225,11 +229,22 @@ def parse_engine_strikes(log_text):
 
 
 def strike_ratio_of(log_text):
-    """Return (fires, hits): the number of Kabuto fires vs the number of
-    health-destroy contacts in the log."""
+    """Return (fires, hits, alive_fires): Kabuto fires, engine-receiver Attack
+    strikes that actually destroy stored health, and fires that landed while the
+    firer was still live (before the first AIM_NONE)."""
     fires = len(re.findall(r'P2_PROJECTILE_KABUTO_FIRE\b', log_text))
-    hits = sum(1 for m in STONE_DESTROY_RE.finditer(log_text) if m.group(1) == 'health')
-    return fires, hits
+    skip_self = set(int(m.group(1)) for m in SKIP_SELF_RE.finditer(log_text))
+    hits = sum(
+        1 for s in parse_engine_strikes(log_text)
+        if s['kind'] == 'Attack' and s['applied'] and s['target'] not in skip_self
+        and s['stored_after'] > s['stored_before'])
+    aim_none_pos = log_text.find('P2_PROJECTILE_AIM_NONE')
+    if aim_none_pos < 0:
+        alive_fires = fires
+    else:
+        alive_fires = len(re.findall(r'P2_PROJECTILE_KABUTO_FIRE\b',
+                                     log_text[:aim_none_pos]))
+    return fires, hits, alive_fires
 
 
 def evaluate(log_text):
@@ -278,15 +293,14 @@ def evaluate(log_text):
         for m in groink_hits)
 
     # Bomb engine-receiver proof: the detonated Bomb is applied through the
-    # captain Navi's own engine receiver, so kind=Bomb, apply=1 AND a real health
-    # decrease are required.
+    # captain Navi's own engine receiver, so kind=Bomb (enforced by the regex),
+    # applied=1 AND a real health decrease are required.
     bomb_hits = list(BOMB_ENGINE_HIT_RE.finditer(log_text))
     bomb_engine_navi_hit = any(
-        m.group(2) == 'Bomb' and m.group(4) == '1'
-        and float(m.group(7)) < float(m.group(6))
+        m.group(3) == '1' and float(m.group(6)) < float(m.group(5))
         for m in bomb_hits)
 
-    fires, hits = strike_ratio_of(log_text)
+    fires, hits, alive_fires = strike_ratio_of(log_text)
 
     # Flight vs birth-frame: the first health-destroy on the victim records how
     # many map traces the Stone flew before contacting (2 = birth frame, >=4 =
@@ -322,12 +336,12 @@ def evaluate(log_text):
                                             else ('UNTESTED' if not groink_hits else 'FAIL')),
         'bomb_engine_navi_hit': ('PASS' if bomb_engine_navi_hit
                                  else ('UNTESTED' if not bomb_hits else 'FAIL')),
-        'victim_strike_ratio': ('UNTESTED' if fires == 0
-                                else ('PASS' if (fires >= 9 and hits > fires // 2)
-                                      else 'FAIL')),
+        'victim_strike_ratio': ('PASS' if (alive_fires >= 9 and hits > alive_fires // 2)
+                                else ('UNTESTED' if alive_fires == 0 else 'FAIL')),
         'stone_destroy_teardown': 'PASS' if destroy else 'UNTESTED',
     }
-    return dict(gates=gates, strikes=strikes, strike_ratio=f'{hits}/{fires}')
+    return dict(gates=gates, strikes=strikes, strike_ratio=f'{hits}/{fires}',
+                strike_ratio_while_alive=f'{hits}/{alive_fires}')
 
 
 def run(exe, assets, converted, output, mode='stone', seconds=40.0, generator=0,
