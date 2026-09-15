@@ -168,6 +168,7 @@ public:int idle() override {
         if(observed==wakeTick+8){n->resetPosition(captainOrigin);std::printf("P2_LL_RETREAT captain=1\n");std::fflush(stdout);}
         if(pc_p2_long_legs_shot(houdai)||observed>=4500){
             std::printf("P2_LL_SHOT species=Houdai source_timed=1 tick=%d\n",observed);
+            freeAndPark(houdai,22.0f); // bring the squad onto the actor for the kill
             int a=assignAttack(houdai);std::printf("P2_LL_ATTACK_HOUDAI attack=%d\n",a);std::fflush(stdout);stage=3;return result;
         }
         if(observed>=30000){std::printf("P2_LL_INJECT species=Houdai injected_health=0 source=fixture not_natural_combat=1\n");houdai->mHealth=0.0f;std::fflush(stdout);stage=3;return result;}
@@ -176,7 +177,7 @@ public:int idle() override {
     if(stage==3){
         if(!houdai->isAlive()&&!houdaiDied){houdaiDied=true;houdaiDiedTick=observed;std::printf("P2_LL_NATURAL_DEATH houdai=1 health=%.2f tick=%d\n",houdai->mHealth,observed);std::fflush(stdout);}
         if(houdaiDied){stage=4;return result;}
-        if(observed>=22000){std::printf("P2_LL_INJECT species=Houdai injected_health=0 source=fixture not_natural_combat=1\n");houdai->mHealth=0.0f;std::fflush(stdout);}
+        if(observed>=6000){std::printf("P2_LL_INJECT species=Houdai injected_health=0 source=fixture not_natural_combat=1\n");houdai->mHealth=0.0f;std::fflush(stdout);}
         return result;
     }
     if(stage==4){
