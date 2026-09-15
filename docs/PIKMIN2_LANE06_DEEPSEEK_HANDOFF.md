@@ -264,10 +264,10 @@ Root (`deepseek/p2-l06`, base `ef1cace`):
 
 Native (`deepseek/p2-l06-native`, base `b805d9c6`):
 - `314a32af` review fixes (fix1).
-- `<delivery-host>` `pc_p2_delivery_host.{h,cpp}` + `tools/p2_delivery_host_test.cpp` + CMake.
-- `<randomizer>` `pc_randomizer_p2_bind_source/_source_for/_generator_for/_corpse_delivered`.
-- `<goalItem hook>` `GoalItem::suckMe` -> `pc_randomizer_p2_corpse_delivered` (shared engine hook).
-- `<goalItem gate>` drop the bridge-flag gate for the runtime binding (authoritative signal).
+- `e193f65a` `pc_p2_delivery_host.{h,cpp}` + `tools/p2_delivery_host_test.cpp` + CMake (production + CTest).
+- `bee402dd` `pc_randomizer_p2_bind_source/_source_for/_generator_for/_corpse_delivered` (randomizer glue).
+- `1efcbaeb` `GoalItem::suckMe` -> `pc_randomizer_p2_corpse_delivered` (shared engine hook).
+- `45eb7fa6` drop the bridge-flag gate for the runtime binding (authoritative signal).
 
 ### Six arena gates (natural vs injected)
 
