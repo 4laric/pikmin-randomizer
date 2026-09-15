@@ -245,8 +245,15 @@ def evaluate(log_text):
     # Flight vs birth-frame: the first health-destroy on the victim records how
     # many map traces the Stone flew before contacting (2 = birth frame, >=4 =
     # real trajectory). teki_pin (injected co-location) is excluded.
-    health_traces = [int(m.group(2)) for m in STONE_DESTROY_RE.finditer(log_text)
-                     if m.group(1) == 'health']
+    # traces= is cumulative across flights, so gate on the per-flight delta
+    # between consecutive STONE_DESTROY lines (integrator fix from review).
+    destroys = [(m.group(1), int(m.group(2))) for m in STONE_DESTROY_RE.finditer(log_text)]
+    per_flight = []
+    prev = 0
+    for reason, traces in destroys:
+        per_flight.append((reason, traces - prev))
+        prev = traces
+    health_traces = [delta for reason, delta in per_flight if reason == 'health']
     flew = bool(health_traces) and min(health_traces) >= 4
     teki_pinned = 'P2_PROJECTILE_TEKI_PIN' in log_text
 
@@ -317,7 +324,7 @@ def run(exe, assets, converted, output, mode='stone', seconds=40.0, generator=0,
 def main():
     # Repo-relative output root (…/output) so argparse defaults are not
     # user-absolute paths; `--assets` is outside any repo layout and is required.
-    output_root = Path(__file__).resolve().parents[3]
+    output_root = Path(__file__).resolve().parents[1] / 'output'
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--exe', type=Path, required=True)
     p.add_argument('--assets', type=Path, required=True)

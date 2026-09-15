@@ -360,7 +360,7 @@ Root: harness + tests + docs (this slice) and this handoff commit.
 | 5. Transport + reward | UNTESTED | cargo-free arena |
 | 6. Cleanup + re-entry | PASS | `STONE_DESTROY reason=health traces=7` (flight); firer untouched |
 
-Injected vs natural: victim placement is now **natural** (settle-then-freeze, ~58
+Injected vs natural: victim placement is now **natural** (1 strike in 9 flights; the wandering victim left the +z corridor after the first contact, fires 2-9 ended reason=wall — integrator correction; formerly "settle-then-freeze", ~58
 units downrange); `teki_pin` remains available and is separately flagged so
 `victim_contact_in_flight` FAILs when it is used.
 
