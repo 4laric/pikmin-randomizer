@@ -512,12 +512,12 @@ void pc_p2_otakara_setup() {
     if (!tekiMgr) return;
     loadBank();
 
+    std::map<unsigned, int> wanted;
     std::ifstream in("p2-dweevil-actors.txt");
     if (!in) return;
     std::string header;
     int count = 0;
     if (!(in >> header >> count) || header != "P2_DWEEVIL_ACTORS_1" || count < 1) return;
-    std::map<unsigned, int> wanted;
     for (int i = 0; i < count; ++i) {
         unsigned long long generator = 0;
         std::string species;
