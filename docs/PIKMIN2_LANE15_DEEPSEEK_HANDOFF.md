@@ -354,3 +354,19 @@ fixture, committed, or touched native/shared files.
 
 Every build/run/commit above was performed by me; no subagent built, ran a
 fixture, committed, or touched native/shared files in this pass.
+
+### 3.7 fix-5 subagent usage
+
+1. `explore` — Honeywisp reward-path audit (Egg→nectar HONEY_Y; pellets only via
+   `mForcedDropType`, never loaded; `EB_LeaveCarcass` on Qurione+Egg). **Used
+   as-is**; supplied the gate-5 N/A qualification.
+2. `explore` — line-number inventory (GATE_STATUS, gate table, fixture/log
+   facts) and the forget/re-bind question. **Used as-is**; established there is
+   no within-session re-bind (`pc_p2_qurione.cpp:385` only bind) and no engine
+   respawn (`generator.cpp:688-690`), so a second appear must be the same wisp.
+3. `general` — fixed `GATE_STATUS` and added the `GATE_STATUS`-vs-handoff drift
+   test. **Used as-is** (27 lifecycle tests pass).
+
+The forget marker, the `pcEscapeNow()` death finalize and the two-appear-cycle
+fixture were implemented and run by me; no subagent built, ran a fixture,
+committed, or touched native/shared files in this pass.
