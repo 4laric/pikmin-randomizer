@@ -37,6 +37,14 @@ the free squad stalls), which are already recorded in the delivery slice.
 
 ## 2. Native candidate and build provenance
 
+> Wave-line re-run (DeepSeek lane 13, slice 2): the cleanup witness above was
+> cherry-picked unchanged and re-run on the current wave pair (root
+> `deepseek/p2-l13`, native `deepseek/p2-l13-native` @ `261ee541`). Result
+> `output/dsw/l13-out/s2-cleanup-run/evidence.json`: `passed=true`, exit 0, all
+> eight checks true — `P2_DWARF_ORANGE_FORGET`/`P2_KOCHAPPY_FSM_FORGET` on the
+> `doKill` funnel after a 544.6-unit natural corpse carry. The private Codex
+> paths below are historical provenance, not the wave-line result.
+
 Native worktree `output/native-lane13-orange-fsm2`, branch
 `opencode/p2-lane13-orange-fsm2`, based on the approved maintained baseline
 `b805d9c6` (the version that already contains `pc_p2_dwarf_orange`,

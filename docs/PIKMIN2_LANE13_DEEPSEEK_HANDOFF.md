@@ -369,3 +369,126 @@ py -3.12 .../slot.py run gl l13 -- \
 
 Net effect: the two `explore` agents removed the seam-reconnaissance risk for the gate-6 report, and
 the `general` agent delivered the witness test with no rework.
+
+## Slice 3
+
+Close gate 6 (re-entry) for source 44 and advance gate 5 (transport/reward); write the
+ingestible six-gate table.
+
+### Carry-forward fixes from the slice-2 review (non-blocking)
+
+- `62ebf09` (slice-2 handoff commit) is now in the commit list above.
+- `docs/PIKMIN2_ENEMY_ROSTER_EVIDENCE.json` entry 44: `cleanup_reentry` is now qualified —
+  both the natural-death cleanup AND the manager re-entry legs have been run on the wave
+  (re-entry below), and `transport_reward` stays `BLOCKED` with the precise reason.
+- `docs/PIKMIN2_DWARF_ORANGE_CLEANUP.md` points the historical Codex paths at the wave-line
+  re-run (`output/dsw/l13-out/s2-cleanup-run`).
+- All lane-13 witness `run()` functions use `os.environ.setdefault('PIKMIN_P2_ROOM_WINDOW', '960x540')`.
+- `tests/test_pikmin2_kochappy_fsm.py` fails (not skip, not silent fallback) when
+  `PIKMIN_NATIVE_ROOT`/`P2_NATIVE_PC_PORT` is set but lacks the header.
+- `pc_p2_dwarf_orange.cpp` forget marker now `std::fflush(stdout)`s.
+
+### Gate 6 — re-entry (natural)
+
+`experimental/pikmin2_dwarf_orange_reentry.py` was blocked because the overlay 20-red squad
+killed the actor before the tick-120 manager swap. It now throttles the starting squad to 2
+Pikmin (relocating the rest; no enemy state written) so the actor survives. Run
+`output/dsw/l13-out/s3-reentry-run2/evidence.json`: `passed:true`, exit 0, all four checks.
+
+```text
+P2_DWARF_ORANGE_REENTRY old_manager=… new_manager=… old_registry=clear before_setup=130 new_red=250 control=130 birth=pass   (native.log:1209)
+PASS P2_DWARF_ORANGE_REENTRY observation   (native.log:1505)
+```
+
+Registry at zero after `killAll`/new-manager/startStage, then re-bound at source health 250;
+control untouched. Scene teardown path (`pc_p2_reset_all_teki`) remains a shared #397 leg,
+wired but not separately re-run for 44.
+
+### Gate 5 — transport/reward
+
+- Transport (natural): already observed in slice 2 — real TransportMode carry 544.6 units to a
+  goal (`output/dsw/l13-out/s2-cleanup-run/native.log:3048-3375`).
+- Reward receipt: the Pod corpse-receipt branch in `pc_p2_preview_deliver` registers the Dwarf
+  Orange corpse — `P2_POD_CORPSES_REBOUND before=0 after=2` and `P2_POD_READY`
+  (`output/dsw/l13-out/s3-pod-run/native.log:710-711`) — and resolves it to
+  `corpse:<prefix>211001`. Exactly-once is `P2Economy::credit` (generator-keyed; `new=1` then
+  `new=0`), unit-proven (`tools/test_p2_economy.cpp`) and end-to-end for the same Chappy corpse
+  branch by `experimental/pikmin2_reward_lifecycle.py`.
+- The combined NATURAL corpse›Pod delivery did NOT complete: the Pod + combat observer trips the
+  preview movie/result flow (`P2_POD_CAPTAIN_RETURN`, observed stops at ~54 ticks). This is the
+  shared #397 preview-room fixture gap, not a lane-13 code gap. The pod witness
+  `experimental/pikmin2_dwarf_orange_pod.py` records the block; its gate is honest `passed:false`
+  with `receipt=false`.
+
+### Six-gate table (source 44) — for lane 02 ingestion
+
+| gate | status | evidence |
+|---|---|---|
+| identity_spawn | PASS | `P2_ENEMY_READY species=BlueKochappy source_id=44`, 64-pose bank — `output/dsw/l13-out/s2-run/native.log` |
+| movement_animation | PASS | FSM wait/turn/walk/attack — `output/dsw/l13-out/s2-run/native.log:1040` |
+| attacks_receivers | PASS | `P2_KOCHAPPY_EAT … eaten=1 slot=1` + `P2_KOCHAPPY_SWALLOW … swallowed=1 white=0` — `output/dsw/l13-out/s2-run/native.log:1040,1333` |
+| death_corpse | PASS | `P2_KOCHAPPY_DEAD … health=0.0` → `P2_KOCHAPPY_CORPSE` — `output/dsw/l13-out/s2-run/native.log:1615,1958` |
+| transport_reward | BLOCKED | transport PASS (544.6-unit carry — `output/dsw/l13-out/s2-cleanup-run/native.log:3051`); receipt branch registers corpse (rebind after=2 — `output/dsw/l13-out/s3-pod-run/native.log:710`); natural corpse›Pod delivery blocked by #397 movie flow |
+| cleanup_reentry | PASS | `P2_DWARF_ORANGE_FORGET`+`P2_KOCHAPPY_FSM_FORGET` — `output/dsw/l13-out/s2-cleanup-run/native.log:3048-3049`; re-entry `new_red=250 control=130 birth=pass` — `output/dsw/l13-out/s3-reentry-run2/native.log:1209` |
+
+Snow (45) run was not re-run (not cheap: separate Snow arena/bank/profile pipeline); skipped.
+
+### Ordered commits (slice 3)
+
+Native `deepseek/p2-l13-native` (head `1888fb3e`, clean):
+- `1888fb3e` lane13: flush Dwarf Orange forget cleanup marker (#120)
+
+Root `deepseek/p2-l13` (head below, clean after commit):
+- `4878e06` lane13: slice3 prep — reentry throttle, window setdefault, test fail-on-missing-root (#120)
+- `bfb9cda` lane13: distinct reentry throttle marker (#120)
+- (this append commit) lane13: slice3 handoff (#120)
+- Also: `experimental/pikmin2_dwarf_orange_pod.py` + `tests/test_pikmin2_dwarf_orange_pod.py`
+  + roster/cleanup-doc edits are committed with the handoff.
+
+### Build evidence (dirty=no)
+
+```
+lane=l13 target=pikmin_pc native=1888fb3e… dirty=no sha256=5b68fda665e729ef11966ea35d43a73e5eb44b9e09103b2caef703c148999cf6 ninja_n="ninja: no work to do."
+```
+
+Fixtures (`status=built`): reentry `output/dsw/l13-out/s3-reentry-fixture2` and pod
+`output/dsw/l13-out/s3-pod-fixture`.
+
+### Tests (PIKMIN_NATIVE_ROOT only)
+
+`PIKMIN_NATIVE_ROOT=…/native-l13 py -3.12 -m pytest tests/test_pikmin2_kochappy_fsm.py
+tests/test_pikmin2_dwarf_orange_fsm_witness.py tests/test_pikmin2_dwarf_orange_cleanup.py
+tests/test_pikmin2_dwarf_orange_chain.py tests/test_pikmin2_dwarf_orange_pod.py
+tests/test_pikmin2_enemy_roster.py -q` -> 34 passed, 1 skipped.
+
+### Remaining blockers (naming provider lanes)
+
+- Natural corpse›Pod reward delivery: shared #397 preview-room movie/result-flow fixture gap
+  (lane 07). P2Economy exactly-once is already proven.
+- Generated-session/admission + seed staging: lane 03/04/05 (generator 211001), lane 01 integration.
+- White-Pikmin poison (`white=1`) and null-slot one-shot eat remain UNTESTED.
+
+### Reproduction commands
+
+```
+# gate 6 re-entry (passed:true)
+py -3.12 …/slot.py run gl l13 -- py -3.12 -c "import experimental.pikmin2_dwarf_orange_reentry as r; from pathlib import Path; print(r.run(Path('…/l13-out/s3-reentry-arena/a016d0f95a8348acb8388dbbc701be19'), Path('…/l13-out/s3-reentry-fixture2/baseline/fixture.exe'), Path('…/l13-out/s3-reentry-run2'), 90).get('passed'))"
+
+# gate 5 transport (cleanup, slice 2) + pod witness (recorded block)
+py -3.12 …/slot.py run gl l13 -- py -3.12 -m experimental.pikmin2_dwarf_orange_pod run \
+  --stage …/l13-out/s3-pod-arena/3b5d40a819c8464a9caaf567bdaa3416 \
+  --exe …/l13-out/s3-pod-fixture/baseline/fixture.exe --output …/l13-out/s3-pod-run --timeout 240
+```
+
+### Subagent usage (slice 3)
+
+1. `explore` — Pod corpse-receipt + economy.credit dedupe + re-entry chain audit. Used as-is; pinned
+   that the Dwarf Orange (TEKI_Chappy) is already covered by `pc_p2_preview_rebind_corpses` (no new
+   native receipt function needed) and that `P2Economy::credit` is the exactly-once mechanism.
+2. `explore` — Pod-staging / re-entry / witness-throttle inventory. Used as-is; gave the
+   `pikmin2_mamuta_rules.stage_cargo` chain and the exact re-entry swap marker, so gate 6 was a
+   throttle-only fix and gate 5 reused the proven Pod staging.
+3. `general` — test fallback (fail-not-skip) + run. Used as-is; verified the fail path with a bogus root.
+
+Net: the two explore agents removed the Pod/re-entry reconnaissance cost; the general agent's edit
+was accepted unchanged.
