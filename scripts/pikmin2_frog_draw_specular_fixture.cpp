@@ -65,6 +65,7 @@ static std::vector<unsigned char> capture(const char* path) {
 class MaterialApp final : public PlugPikiApp {
     int frames = 0, ready = 0;
     Teki* frog = nullptr;
+    bool capturePending = false;
 public:
     int idle() override {
         int result = PlugPikiApp::idle(); require(++frames < 15000, "startup timeout");
@@ -94,23 +95,36 @@ public:
             cameraMgr->mCamera->setTarget(frog);
             std::printf("FROG_DRAW_READY species=Frog generator=201001 registered=1\n");
         }
-        if (frog && ready == 180) {
-            const auto first = capture("frog-family.ppm");
-            const auto again = capture("frog-family-repeat.ppm");
-            const bool replay = (first == again);
-            const unsigned family = pc_gfx_specular_family_draws();
-            const unsigned total = pc_gfx_specular_channel_draws();
-            const unsigned dircalls = pc_gfx_specular_dir_calls();
-            std::printf("FROG_DRAW_SPECULAR family_specular_draws=%u total_specular_draws=%u specular_dir_calls=%u replay_equal=%d\n",
-                        family, total, dircalls, replay ? 1 : 0);
-            require(replay, "same-frame replay changed pixels");
-            require(family >= 1, "family draw did not attribute specular channel draws");
-            require(total >= 1, "scene never activated the specular channel");
-            require(dircalls >= 1, "scene never initialized the specular half-vector");
-            std::puts("PASS FROG_DRAW_SPECULAR");
-            std::fflush(nullptr); std::_Exit(0);
-        }
+        if (frog && ready == 180) capturePending = true;  // capture on this frame's draw pass
         std::fflush(stdout); return result;
+    }
+    void draw(Graphics& gfx) override {
+        // Post-draw, pre-swap point: the scene (including the spawned Frog) has
+        // just been drawn by PlugPikiApp::draw; capture the render target before
+        // doneRender/present clears it.
+        PlugPikiApp::draw(gfx);
+        if (!capturePending || !frog) return;
+        capturePending = false;
+        const auto first = capture("frog-family.ppm");
+        const auto again = capture("frog-family-repeat.ppm");
+        const bool replay = (first == again);
+        size_t nonzero = 0;
+        for (unsigned char c : first) nonzero += (c != 0) ? 1 : 0;
+        const unsigned deltalast = pc_gfx_specular_family_delta_last();
+        const unsigned family = pc_gfx_specular_family_draws();
+        const unsigned total = pc_gfx_specular_channel_draws();
+        const unsigned dircalls = pc_gfx_specular_dir_calls();
+        GLint vp[4]; glGetIntegerv(GL_VIEWPORT, vp);
+        std::printf("FROG_DRAW_WINDOW_VIEWPORT viewport_w=%d viewport_h=%d\n", vp[2], vp[3]);
+        std::printf("FROG_DRAW_SPECULAR family_delta_last=%u family_specular_draws=%u total_specular_draws=%u specular_dir_calls=%u nonzero_pixels=%zu replay_equal=%d\n",
+                    deltalast, family, total, dircalls, nonzero, replay ? 1 : 0);
+        require(nonzero > 0, "capture is all black (no rendered actor)");
+        require(replay, "same-frame replay changed pixels");
+        require(deltalast >= 1, "family draw did not upload the specular half-vector within this draw");
+        require(total >= 1, "scene never uploaded the specular half-vector");
+        require(dircalls >= 1, "scene never initialized light 7 half-vector");
+        std::puts("PASS FROG_DRAW_SPECULAR");
+        std::fflush(nullptr); std::_Exit(0);
     }
 };
 
