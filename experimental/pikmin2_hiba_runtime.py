@@ -57,6 +57,7 @@ def protocol(hazards):
         wait = hazard.get('wait_override', -1.0)
         separation = hazard.get('separation', 0.0)
         link = hazard.get('link', 0)
+        warning = hazard.get('warning_override', -1.0)
         if type(generator) is not int or not 0 <= generator <= 0xffffffff or generator in ids:
             raise ValueError('invalid hazard identity')
         if hazard_id not in HAZARD_IDS:
@@ -74,13 +75,17 @@ def protocol(hazards):
             raise ValueError('invalid separation')
         if hazard_id != 22 and separation != 0:
             raise ValueError('separation only applies to ElecHiba')
+        if type(warning) not in (int, float) or abs(warning) > 1000:
+            raise ValueError('invalid warning override')
+        if hazard_id != 22 and warning >= 0:
+            raise ValueError('warning only applies to ElecHiba')
         if type(link) is not int or not 0 <= link <= 3:
             raise ValueError('invalid link')
         if hazard_id != 21 and link != 0:
             raise ValueError('link only applies to GasHiba')
         ids.add(generator)
-        lines.append('%d %d %.6f %.6f %.6f %.6f %.6f %.6f %.6f %d'
-                     % (generator, hazard_id, xyz[0], xyz[1], xyz[2], yaw, health, wait, separation, link))
+        lines.append('%d %d %.6f %.6f %.6f %.6f %.6f %.6f %.6f %d %.6f'
+                     % (generator, hazard_id, xyz[0], xyz[1], xyz[2], yaw, health, wait, separation, link, warning))
     return ('\n'.join(lines) + '\n').encode('ascii')
 
 
@@ -88,7 +93,8 @@ def scenario_hazards():
     """Reference profile shape written by the fixture at runtime (centroid TBD)."""
     return [dict(generator_id=HIBA_GEN, hazard_id=20, xyz=[0, 0, 0], wait_override=0.4),
             dict(generator_id=GAS_GEN, hazard_id=21, xyz=[0, 0, 8], wait_override=-1.0),
-            dict(generator_id=ELEC_GEN, hazard_id=22, xyz=[0, 0, -8], wait_override=0.4, separation=40.0)]
+            dict(generator_id=ELEC_GEN, hazard_id=22, xyz=[0, 0, -8], wait_override=0.0,
+                 separation=40.0, warning_override=0.05)]
 
 
 APP = r'''#include "GameStat.h"
@@ -113,7 +119,7 @@ public:int idle() override {
     Piki* whiteTarget=nullptr;Piki* yellowTarget=nullptr;
     {Iterator q(pikiMgr);CI_LOOP(q){Piki* a=static_cast<Piki*>(*q);if(!a||!a->isAlive())continue;if(a->mColor!=Blue)continue;
       const Vector3f& apos=a->getPosition();
-      if(apos.z<2000.0f){if(!whiteTarget)whiteTarget=a;}
+      if(apos.x<120.0f){if(!whiteTarget)whiteTarget=a;}
       else{if(!yellowTarget)yellowTarget=a;}
       if(whiteTarget&&yellowTarget)break;}}
     require(whiteTarget&&yellowTarget,"Hiba recolour blue targets");
@@ -122,21 +128,22 @@ public:int idle() override {
     std::printf("P2_HIBA_RECOLOUR white=1 yellow=1\n");
    }
   if(ready==30&&!armed){
-   // Labeled placement: gas+fire hazards on the G-cluster centroid (z<2000) and
-   // the electric hazard on the E-cluster centroid (z>=2000), ~300 units apart,
+   // Labeled placement: gas+fire hazards on the G-cluster centroid (x<120) and
+   // the electric hazard on the E-cluster centroid (x>=120), ~150 units apart,
    // so the fire-immune Red in each cluster is its element's exclusive lethal
-   // witness and no Pikmin is co-exposed to gas and electricity.
+   // witness and no Pikmin is co-exposed to gas and electricity. ElecHiba gets a
+   // short warning override so it attacks before the gas-cluster panic run.
    float gx=0,gy=0,gz=0;int gc=0;float ex=0,ey=0,ez=0;int ec=0;
    Iterator p(pikiMgr);CI_LOOP(p){Piki* a=static_cast<Piki*>(*p);if(!a->isAlive())continue;const Vector3f& pos=a->getPosition();
-     if(pos.z<2000.0f){gx+=pos.x;gy+=pos.y;gz+=pos.z;++gc;}else{ex+=pos.x;ey+=pos.y;ez+=pos.z;++ec;}}
+     if(pos.x<120.0f){gx+=pos.x;gy+=pos.y;gz+=pos.z;++gc;}else{ex+=pos.x;ey+=pos.y;ez+=pos.z;++ec;}}
    require(gc>0&&ec>0,"Hiba two clusters for placement");
    const float gcx=gx/gc,gcy=gy/gc,gcz=gz/gc;
    const float ecx=ex/ec,ecy=ey/ec,ecz=ez/ec;
    {std::ofstream cfg("p2-hiba-native.txt");
     cfg<<"P2_HIBA_NATIVE_1\n3\n";
-    cfg<<"20 20 "<<gcx<<" "<<gcy<<" "<<gcz<<" 0 100 0.4 0 0\n";
-    cfg<<"21 21 "<<gcx<<" "<<gcy<<" "<<gcz+8<<" 0 100 -1 0 0\n";
-    cfg<<"22 22 "<<ecx<<" "<<ecy<<" "<<ecz-8<<" 0 100 0.4 40 0\n";cfg.close();}
+    cfg<<"20 20 "<<gcx<<" "<<gcy<<" "<<gcz<<" 0 100 0.4 0 0 -1\n";
+    cfg<<"21 21 "<<gcx<<" "<<gcy<<" "<<gcz+8<<" 0 100 -1 0 0 -1\n";
+    cfg<<"22 22 "<<ecx<<" "<<ecy<<" "<<ecz-8<<" 0 100 0.0 40 0 0.05\n";cfg.close();}
    const int heap=gsys->setHeap(SYSHEAP_App);pc_p2_hiba_setup();gsys->setHeap(heap);
    std::printf("P2_HIBA_SCENARIO hiba_gas_elec centroid=%.3f,%.3f,%.3f\n",gcx,gcy,gcz);
    armed=true;
@@ -189,14 +196,14 @@ def stage(assets, output):
     rows = [raw[a:(starts[i + 1] if i + 1 < len(starts) else len(raw))] for i, a in enumerate(starts)]
     template = next(r for r in rows if r[72:76] == b'ikip')
     # Two-cluster squad (5 red colour 1 + 5 blue colour 0 before recolour):
-    #   G cluster (gas + fire) near z~1896, E cluster (electric) ~300 units away
-    #   near z~2200. The fire-immune Red in each cluster is its element's lethal
-    #   witness, so gas and denki never co-expose the same Pikmin.
+    #   G cluster (gas + fire) near x~22-58, E cluster (electric) ~150 units away
+    #   near x~210 on the same z band. The fire-immune Red in each cluster is its
+    #   element's lethal witness, so gas and denki never co-expose a Pikmin.
     squad = [
         (1, (22, 30, 1890)), (1, (34, 30, 1890)), (1, (46, 30, 1890)), (1, (58, 30, 1890)),
         (0, (22, 30, 1902)), (0, (34, 30, 1902)), (0, (46, 30, 1902)), (0, (58, 30, 1902)),
-        (1, (34, 30, 2200)),
-        (0, (46, 30, 2200)),
+        (1, (210, 30, 1896)),
+        (0, (222, 30, 1896)),
     ]
     for i, (colour, pos) in enumerate(squad):
         row = bytearray(template)
