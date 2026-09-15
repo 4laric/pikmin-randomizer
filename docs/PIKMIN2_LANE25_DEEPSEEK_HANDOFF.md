@@ -46,7 +46,7 @@ Native base `b805d9c626e4f4558c95aef7cac311a5d9a2068f` (fix1, rewritten unpushed
 The two original native commits were rewritten on request to split the shared
 `tekiinteraction.cpp` hook into its own commit (commit 3) and to expose the
 lane-20 rock host binding as its own commit (commit 1) before the births commit
-consumes it. Author is Codex `<4laric@users.noreply.github.com>`.
+consumes it. Commits are authored by the repository user (Alaric McKenzie-Boone); implementation owner is recorded per AGENTS.md as the shared account.
 
 ## Interfaces / hooks touched and why
 
@@ -107,7 +107,7 @@ consumed, not copied.
   `Experimental preview window set to 960x540 windowed and centered`.
 - Run directory `output/dsw/l25-out/runs/9093da5e6b7d45b6b86857f2ca2d4152`;
   `capture/native.log` SHA-256
-  `da053c2ddea07a91f7ee3829e11c18fd8c4268dae25d0a2a698deb16dbb3f536`
+  `6df20f075dca6f7fbd5d0d0273a6bde52db6a3a9888b6e9e5939c5ff52e9ecc9`
   (see also `dangomushi-validation.json`).
 - Natural-chain markers (run 9093da5e): `DAMAGE_REJECTED` (state=appear/recover),
   `TURN_WINDOW stickable=1..0`, `DAMAGE_ACCEPTED ×6`, `ROCK_BIRTH requested=10
