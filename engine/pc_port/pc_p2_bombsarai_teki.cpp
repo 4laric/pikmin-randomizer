@@ -20,6 +20,7 @@
 // candidate and the flyer is immune while airborne, BombSarai.cpp:127-135).
 #include "pc_p2_bombsarai_teki.h"
 #include "pc_p2_preview.h"
+#include "pc_p2_teki_lifetime.h"
 #include "pc_p2_bombsarai_fsm.h"
 #include "pc_p2_bombsarai_hover.h"
 #include "pc_p2_bombsarai_bomb.h"
@@ -43,6 +44,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <map>
 #include <string>
@@ -58,16 +60,26 @@ constexpr float kAttackXZ = 50.0f;          // mAttackRadius XZ gate
 
 // Timing stand-ins until the #128 converter supplies retail .bca durations.
 constexpr int kTiming[11] = { 30, 30, 10, 30, 30, 10, 10, 24, 45, 21, 20 };
-// Injected engagement seal: keep the grounded carrier within this XZ distance
-// of the nearest live Pikmin (units), closing the gap at a capped per-tick
-// speed so the FreeMode squad can attack it (a large teleport crashes the host).
+// Lane host walkToTarget (source BombSarai Move/BombMove): walk toward the
+// nearest sensed creature inside the territory (target selection is host-owned
+// in the source), else toward a random 50-100u ring waypoint around home
+// (BombSarai::setRandTarget, BombSarai.cpp:230-245). Arrival radius 25u is the
+// source walkToTarget waypoint test (audit "Move waypoint ... 25 (625
+// squared)"). kEngageKeepRange is the XZ distance kept to the sensed creature
+// so the grounded FreeMode squad can attack it (grounding is a labelled
+// engagement concession: the source always hovers, but ordinary Pikmin reject
+// a flying Teki, piki.cpp:951 / aiAttack.cpp:189).
 constexpr float kEngageKeepRange = 30.0f;
-constexpr float kEngageSeekSpeed = 300.0f;
+constexpr float kMoveSpeed = 300.0f; // host move speed (source fp06 consumed parm)
+constexpr float kWaypointArrival = 25.0f; // source walkToTarget arrival radius
+// Movement/animation evidence is sampled once a second (30 source ticks).
+constexpr int kMoveSampleTicks = 30;
 
 struct Binding {
     std::uint64_t generator = 0;
     int type = 0;
     std::uint64_t rng = 0; // LCG seed for host-fed flick rolls (never the token)
+    std::uint64_t targetRng = 0; // LCG seed for walkToTarget ring waypoints
     P2BombSaraiFsm fsm;
     P2BombSaraiFsmParms fsmParms;
     P2BombSaraiHover hover;
@@ -86,6 +98,19 @@ struct Binding {
     float prevX = 0.0f, prevZ = 0.0f;
     bool havePrev = false;
     float horizTravel = 0.0f;
+    // Movement/animation evidence (#244): the lane host adapter's walk target
+    // (nearest sensed creature inside the territory, else a random 50-100u ring
+    // waypoint around home, mirroring BombSarai::setRandTarget/walkToTarget) and
+    // the previous position we wrote, so the P1 host's own flight contribution
+    // can be measured separately from the lane policy.
+    P2BombSaraiVec3 home{ 0.0f, 0.0f, 0.0f };
+    float targetX = 0.0f, targetZ = 0.0f;
+    bool targetActive = false;
+    float prevMoveX = 0.0f, prevMoveY = 0.0f, prevMoveZ = 0.0f;
+    bool haveMovePrev = false;
+    float hostAccum = 0.0f; // P1 host flight distance since the last MOVE sample
+    float laneAccum = 0.0f; // lane walkToTarget distance since the last sample
+    float lastPitch = 0.0f;
 };
 
 std::map<BTeki*, Binding> sBound;
@@ -103,6 +128,24 @@ P2BombSaraiVec3 sCorpseOrigin;
 int sCorpseProbeTick = 0;
 unsigned sCorpseGenerator = 0;
 bool sCorpseDelivered = false;
+// Snapshot of the shared carcass PelletConfig carry slots before the carry
+// concession mutates them, restored on receipt/reset so the shared config is
+// left at its retail values.
+PelletConfig* sCarryConfig = nullptr;
+int sOrigCarryMin = 0;
+int sOrigCarryMax = 0;
+bool sHaveOrigCarry = false;
+
+// Restore the shared carcass carry slots captured before the concession.
+void restoreCarryConfig()
+{
+    if (sHaveOrigCarry && sCarryConfig) {
+        sCarryConfig->mCarryMinPikis.mValue = sOrigCarryMin;
+        sCarryConfig->mCarryMaxPikis.mValue = sOrigCarryMax;
+    }
+    sHaveOrigCarry = false;
+    sCarryConfig = nullptr;
+}
 P2BombSaraiMapBinding sMap;
 P2BombSaraiTerrainAdapter sAdapter;
 int sThrowCount = 0;
@@ -197,13 +240,24 @@ void stepCarrier(BTeki* t, Binding& b, float delta)
     float groundY = 0.0f;
     if (!P2BombSaraiTerrainAdapter::getMinY(&sAdapter, pos.x, pos.z, groundY)) return;
 
-    // Experimental ground-engagement mode. A FreeMode Pikmin squad rejects a
-    // flying Teki outright: graspSituation skips `isFlying()` (piki.cpp:951) and
-    // ActAttack abandons an airborne target (aiAttack.cpp:189/297), so raising
-    // only the height is not enough. This hook runs after the Napkid strategy's
-    // act()+moveNew (tekibteki.cpp:473-484), so it is the last write of the
-    // frame: clear CF_IsFlying and pin the carrier to the floor every tick. The
-    // Fall crash keeps gravity; every other state walks on the ground.
+    // The P1 host's own flight this frame (its AI ran before this hook), measured
+    // from the position we wrote last tick. Reported separately from the lane
+    // walkToTarget so the movement evidence labels both components.
+    if (b.haveMovePrev) {
+        const float hx = t->mSRT.t.x - b.prevMoveX;
+        const float hz = t->mSRT.t.z - b.prevMoveZ;
+        b.hostAccum += std::sqrt(hx * hx + hz * hz);
+    }
+    const float hostStartX = t->mSRT.t.x, hostStartZ = t->mSRT.t.z;
+
+    // Ground-engagement concession (labelled): clear CF_IsFlying and pin the
+    // carrier to the floor every tick so ordinary FreeMode Pikmin can attack it.
+    // A FreeMode squad rejects a flying Teki outright (graspSituation skips
+    // `isFlying()`, piki.cpp:951; ActAttack abandons an airborne target,
+    // aiAttack.cpp:189/297), and the source dirigibug always hovers. This hook
+    // runs after the Napkid strategy's act()+moveNew (tekibteki.cpp:473-484),
+    // so it is the last write of the frame. Fall keeps gravity; every other
+    // state is grounded.
     t->finishFlying();
     if (state == P2BombSaraiFsmState::Fall) {
         t->mSRT.t.y -= b.bombConfig.gravityPerTick * 30.0f * delta;
@@ -213,34 +267,85 @@ void stepCarrier(BTeki* t, Binding& b, float delta)
     }
     t->mVelocity.y = 0.0f;
 
-    // Keep the grounded carrier inside the squad's attack volume: the P1 host
-    // flight otherwise carries it away from the FreeMode squad. If the nearest
-    // live Pikmin is farther than the keep range, close the gap at a capped
-    // per-tick speed (injected locomotion; the host is overridden after the
-    // fact). A large teleport on one tick crashes the P1 host.
-    if (pikiMgr) {
-        float best = 1.0e30f, bestDx = 0.0f, bestDz = 0.0f;
-        Iterator sit(pikiMgr);
-        CI_LOOP(sit) {
-            Piki* piki = static_cast<Piki*>(*sit);
-            if (!piki || !piki->isAlive()) continue;
-            const float dx = piki->mSRT.t.x - t->mSRT.t.x;
-            const float dz = piki->mSRT.t.z - t->mSRT.t.z;
-            const float d2 = dx * dx + dz * dz;
-            if (d2 < best) { best = d2; bestDx = dx; bestDz = dz; }
+    // Lane host walkToTarget (source BombSarai Move/BombMove; horizontal
+    // movement/target selection is host-owned per the FSM header): walk toward
+    // the nearest live Pikmin at the host move speed, holding the engage keep
+    // range; when no Pikmin exist, walk the source setRandTarget 50-100u ring
+    // around home. waypointReached fires inside the source 25u arrival radius.
+    bool waypointReached = false;
+    {
+        // Nearest live Pikmin (the host walkToTarget target when one exists).
+        float bestD2 = 1.0e30f, bx = 0.0f, bz = 0.0f;
+        bool havePiki = false;
+        if (pikiMgr) {
+            Iterator sit(pikiMgr);
+            CI_LOOP(sit) {
+                Piki* piki = static_cast<Piki*>(*sit);
+                if (!piki || !piki->isAlive()) continue;
+                const float dx = piki->mSRT.t.x - t->mSRT.t.x;
+                const float dz = piki->mSRT.t.z - t->mSRT.t.z;
+                const float d2 = dx * dx + dz * dz;
+                if (d2 < bestD2) { bestD2 = d2; bx = dx; bz = dz; havePiki = true; }
+            }
         }
-        if (best < 1.0e29f) {
-            const float d = std::sqrt(best);
-            if (d > kEngageKeepRange) {
-                const float step = kEngageSeekSpeed * delta;
-                const float gap = d - kEngageKeepRange;
+        const bool walkingState = state == P2BombSaraiFsmState::Move
+            || state == P2BombSaraiFsmState::BombMove;
+        // The walk runs every tick toward the nearest Pikmin: the P1 host
+        // flight is fast (~150u/s) and would otherwise carry the grounded
+        // carrier out of the squad's reach; the keep range holds it in the
+        // squad's attack volume. When no Pikmin exist, the source Move/BombMove
+        // setRandTarget ring walk (50-100u around home) is used instead.
+        if (havePiki) {
+            const float d = std::sqrt(bestD2);
+            if (d <= kWaypointArrival) {
+                waypointReached = true;
+            } else {
+                const float step = kMoveSpeed * delta;
+                const float gap = d > kEngageKeepRange ? d - kEngageKeepRange : 0.0f;
                 const float move = gap < step ? gap : step;
-                t->mSRT.t.x += bestDx / d * move;
-                t->mSRT.t.z += bestDz / d * move;
+                t->mSRT.t.x += bx / d * move;
+                t->mSRT.t.z += bz / d * move;
+                if (d - move <= kWaypointArrival) waypointReached = true;
+            }
+        } else if (walkingState) {
+            if (!b.targetActive) {
+                b.targetRng = b.targetRng * 6364136223846793005ull + 1442695040888963407ull;
+                const float roll = (float)((b.targetRng >> 33) & 0x7FFFFFFFull) / 2147483648.0f;
+                const float radius = 50.0f + roll * 50.0f; // cave 50-100u ring
+                b.targetRng = b.targetRng * 6364136223846793005ull + 1442695040888963407ull;
+                const float ang = ((float)((b.targetRng >> 33) & 0x7FFFFFFFull) / 2147483648.0f)
+                    * 2.0f * kPi;
+                b.targetX = b.home.x + radius * std::sin(ang);
+                b.targetZ = b.home.z + radius * std::cos(ang);
+                b.targetActive = true;
+            }
+            const float dx = b.targetX - t->mSRT.t.x, dz = b.targetZ - t->mSRT.t.z;
+            const float d = std::sqrt(dx * dx + dz * dz);
+            if (d > 0.0001f) {
+                const float step = kMoveSpeed * delta;
+                const float move = d < step ? d : step;
+                t->mSRT.t.x += dx / d * move;
+                t->mSRT.t.z += dz / d * move;
+                if (move >= d) { b.targetActive = false; waypointReached = true; }
             }
         }
     }
+    // Advance the source hover policy (BombSarai::setHeightVelocity/addPitchRatio)
+    // for the pitch animation. The grounding concession keeps y on the floor, so
+    // only the pitch ratio is consumed by the lane here.
+    {
+        float velocityY = 0.0f, height = 0.0f;
+        if (b.hover.update(state == P2BombSaraiFsmState::TakeOff2, 0, carrierPosition(t),
+                           delta, sAdapter.mGetMinY, sAdapter.mGetMinYContext,
+                           velocityY, height)) {
+            b.lastPitch = b.hover.pitchRatio();
+        }
+    }
     const P2BombSaraiVec3 carrier = carrierPosition(t);
+    b.laneAccum += std::sqrt((carrier.x - hostStartX) * (carrier.x - hostStartX)
+                             + (carrier.z - hostStartZ) * (carrier.z - hostStartZ));
+    b.prevMoveX = carrier.x; b.prevMoveY = carrier.y; b.prevMoveZ = carrier.z;
+    b.haveMovePrev = true;
 
     // Animated capture joint world position. The source body offset is below
     // the carrier (kamu_jnt1); with the carrier grounded that would put the
@@ -270,6 +375,20 @@ void stepCarrier(BTeki* t, Binding& b, float delta)
         if (nearest > 1.0e29f) nearest = -1.0f;
         std::printf("P2_BOMBSARAI_TEKI_PROBE generator=%llu tick=%d y=%.3f nearest=%.3f squad=%d\n",
                     (unsigned long long)b.generator, b.tick, t->mSRT.t.y, nearest, squad);
+    }
+
+    // Movement/animation evidence once a second: the carrier's position and
+    // facing, the driving FSM state and its animation keyframe counter, and the
+    // hover pitch, with the lane walk distance and the P1 host flight distance
+    // reported separately (further below).
+    if (b.tick % kMoveSampleTicks == 0) {
+        std::printf("P2_BOMBSARAI_TEKI_MOVE generator=%llu tick=%d state=%s anim=%d "
+                    "x=%.3f y=%.3f z=%.3f yaw=%.3f pitch=%.3f lane=%.3f host=%.3f\n",
+                    (unsigned long long)b.generator, b.tick, P2BombSaraiFsm::stateName(state),
+                    b.stateTick, carrier.x, carrier.y, carrier.z, t->getDirection(),
+                    b.lastPitch, b.laneAccum, b.hostAccum);
+        b.laneAccum = 0.0f;
+        b.hostAccum = 0.0f;
     }
 
     // Target sensing: nearest alive Navi/Pikmin against retail radii.
@@ -326,7 +445,7 @@ void stepCarrier(BTeki* t, Binding& b, float delta)
     in.targetWithinTerritory = territory;
     in.targetAttackable = attackable;
     in.targetWithinAttackXZ = attackXZ;
-    in.waypointReached = false;
+    in.waypointReached = waypointReached;
     in.heightAboveGround = carrier.y - groundY;
     in.animEnd = animEnd;
     in.keyEvent2 = keyEvent2;
@@ -414,7 +533,9 @@ void applyBlast(BTeki* t, Binding& b, const P2BombSaraiBlastEvent& event)
             if (piki) targets.emplace_back(static_cast<Creature*>(piki), true);
         }
     }
+    int index = 0;
     auto strike = [&](Creature* receiver, bool isPiki) -> bool {
+        const int target = index++;
         if (!receiver || !receiver->isAlive()) return false;
         const Vector3f& p = receiver->getPosition();
         const float dx = p.x - event.center.x;
@@ -422,8 +543,24 @@ void applyBlast(BTeki* t, Binding& b, const P2BombSaraiBlastEvent& event)
         const float dz = p.z - event.center.z;
         if (dy < -event.halfHeight || dy > event.halfHeight) return false;
         if (dx * dx + dz * dz > event.radius * event.radius) return false;
+        // Real engine receiver: the source Bomb's InteractBomb (Interactions.h)
+        // through Creature::stimulate. InteractBomb::actPiki reduces mHealth and
+        // transits PIKISTATE_Flick (interactBattle.cpp:37-74); log the target's
+        // health/state before and after so the receiver's effect is cited.
+        const float hpBefore = receiver->mHealth;
+        const int stateBefore = isPiki ? static_cast<Piki*>(receiver)->getState() : -1;
+        const bool aliveBefore = receiver->isAlive();
         InteractBomb bomb(owner, event.naviPikiDamage, nullptr);
-        receiver->stimulate(bomb);
+        const bool applied = receiver->stimulate(bomb);
+        const float hpAfter = receiver->mHealth;
+        const int stateAfter = isPiki ? static_cast<Piki*>(receiver)->getState() : -1;
+        const bool aliveAfter = receiver->isAlive();
+        std::printf("P2_BOMBSARAI_TEKI_HIT generator=%llu tick=%d target=%d kind=%s "
+                    "hp_before=%.3f hp_after=%.3f state_before=%d state_after=%d "
+                    "alive_before=%d alive_after=%d applied=%d\n",
+                    (unsigned long long)b.generator, b.tick, target,
+                    isPiki ? "piki" : "navi", hpBefore, hpAfter, stateBefore, stateAfter,
+                    aliveBefore ? 1 : 0, aliveAfter ? 1 : 0, applied ? 1 : 0);
         ++hits;
         if (isPiki) ++pikminHits;
         return true;
@@ -469,6 +606,8 @@ void pc_p2_bombsarai_teki_setup()
         b.generator = generator;
         b.type = type;
         b.rng = generator;
+        b.targetRng = generator ^ 0x9E3779B97F4A7C15ull; // independent of the flick LCG
+        b.home = carrierPosition(static_cast<BTeki*>(t)); // setRandTarget ring centre
         readConfig(b);
         b.fsm.reset(b.fsmParms);
         b.hover.reset(b.hoverParms);
@@ -483,8 +622,37 @@ void pc_p2_bombsarai_teki_setup()
     }
 }
 
+namespace {
+// Dedicated reset/re-entry rehearsal hook (#244). When
+// PIKMIN_P2_BOMBSARAI_REENTRY_TICK=<n> is set the family exercises the real
+// teardown/finalSetup entry points once, at source tick n, on the live scene:
+// the binding maps clear to zero and the generated carrier re-binds cleanly.
+// This is a lane-local test trigger, not a scene transition; the production
+// runs are unaffected (the variable is unset).
+void maybeReentry(BTeki* t)
+{
+    static bool done = false;
+    static bool announced = false;
+    const char* env = std::getenv("PIKMIN_P2_BOMBSARAI_REENTRY_TICK");
+    if (!announced) {
+        announced = true;
+        std::printf("P2_BOMBSARAI_TEKI_REENTRY_ENV %s\n", env ? env : "unset");
+    }
+    if (done || !env) return;
+    const int at = std::atoi(env);
+    if (at <= 0) return;
+    auto i = sBound.find(t);
+    if (i == sBound.end() || i->second.tick < at) return;
+    done = true;
+    int boundBefore = 0, boundAfter = 0, corpseAfter = 0;
+    const bool ok = pc_p2_bombsarai_teki_reentry(boundBefore, boundAfter, corpseAfter);
+    std::printf("P2_BOMBSARAI_TEKI_REENTRY_PASS %d\n", ok ? 1 : 0);
+}
+}
+
 void pc_p2_bombsarai_teki_tick(BTeki* t)
 {
+    maybeReentry(t);
     // Once the Pod receipt has credited the carcass, stop the free roam so the
     // survivors do not pick up leftover number pellets (dead-Pikmin `pr01`
     // bodies) and carry them to the Pod, which would hit the preview's
@@ -501,6 +669,7 @@ void pc_p2_bombsarai_teki_tick(BTeki* t)
             }
         }
         std::printf("P2_BOMBSARAI_TEKI_CORPSE_DELIVERED\n");
+        restoreCarryConfig();
         sCorpseTeki = nullptr;
         sCorpsePellet = nullptr;
         sCorpseProbeTick = 0;
@@ -535,6 +704,13 @@ void pc_p2_bombsarai_teki_tick(BTeki* t)
             // re-adopts formation and drops the pellet. Re-ring every 60 ticks
             // while no carrier is latched; stop once one is.
             if (sCorpsePellet->mConfig) {
+                if (!sHaveOrigCarry) {
+                    // Snapshot the shared carcass config before mutating it.
+                    sCarryConfig = sCorpsePellet->mConfig;
+                    sOrigCarryMin = sCarryConfig->mCarryMinPikis.mValue;
+                    sOrigCarryMax = sCarryConfig->mCarryMaxPikis.mValue;
+                    sHaveOrigCarry = true;
+                }
                 if (sCorpsePellet->mConfig->mCarryMaxPikis.mValue < 1) sCorpsePellet->mConfig->mCarryMaxPikis.mValue = 6;
                 // Fixture concession: the carrier's own bombs decimate the
                 // 20-red squad before it dies (retail Napkid corpse min is 3),
@@ -642,12 +818,29 @@ void pc_p2_bombsarai_teki_tick(BTeki* t)
 void pc_p2_bombsarai_teki_forget(BTeki* t)
 {
     if (!t) return;
-    sBound.erase(t);
-    sCorpses.erase(t);
+    const int boundBefore = (int)sBound.size();
+    const int corpseBefore = (int)sCorpses.size();
+    unsigned generator = 0;
+    auto bound = sBound.find(t);
+    if (bound != sBound.end()) generator = (unsigned)bound->second.generator;
+    auto corpse = sCorpses.find(t);
+    if (corpse != sCorpses.end()) generator = corpse->second;
+    const bool wasBound = sBound.erase(t) != 0;
+    const bool wasCorpse = sCorpses.erase(t) != 0;
+    // Cleanup evidence: a dead/despawned carrier is dropped from both maps so a
+    // recycled slot cannot inherit it (mirrors pc_p2_kurage_teki.cpp).
+    if (wasBound || wasCorpse) {
+        std::printf("P2_BOMBSARAI_TEKI_FORGET generator=%u bound_before=%d corpse_before=%d "
+                    "bound_after=%d corpse_after=%d\n",
+                    generator, boundBefore, corpseBefore, (int)sBound.size(), (int)sCorpses.size());
+    }
 }
 
 void pc_p2_bombsarai_teki_reset()
 {
+    const int boundBefore = (int)sBound.size();
+    const int corpseBefore = (int)sCorpses.size();
+    restoreCarryConfig();
     sBound.clear();
     sCorpses.clear();
     sThrowCount = 0;
@@ -659,6 +852,11 @@ void pc_p2_bombsarai_teki_reset()
     sCorpseGenerator = 0;
     sCorpseDelivered = false;
     sCaptainParked = false;
+    if (boundBefore || corpseBefore) {
+        std::printf("P2_BOMBSARAI_TEKI_RESET bound_before=%d corpse_before=%d "
+                    "bound_after=%d corpse_after=%d\n",
+                    boundBefore, corpseBefore, (int)sBound.size(), (int)sCorpses.size());
+    }
 }
 
 bool pc_p2_bombsarai_receipt(PelletView* view, unsigned& generator)
@@ -687,3 +885,27 @@ bool pc_p2_bombsarai_teki_is_bound(const BTeki* t)
 int pc_p2_bombsarai_teki_throw_count() { return sThrowCount; }
 int pc_p2_bombsarai_teki_blast_count() { return sBlastCount; }
 bool pc_p2_bombsarai_teki_carrier_dead() { return sCarrierDead; }
+
+int pc_p2_bombsarai_teki_bound_count() { return (int)sBound.size(); }
+int pc_p2_bombsarai_teki_corpse_count() { return (int)sCorpses.size(); }
+
+bool pc_p2_bombsarai_teki_reentry(int& boundBefore, int& boundAfter, int& corpseAfter)
+{
+    boundBefore = (int)sBound.size();
+    // Real stage-teardown entry point (GameCoreSection::exitStage ->
+    // pc_p2_reset_all_teki, gameCoreSection.cpp:897): every family map is
+    // cleared so a finished stage retains no stale BTeki* key.
+    pc_p2_reset_all_teki();
+    const int boundAfterReset = (int)sBound.size();
+    const int corpseAfterReset = (int)sCorpses.size();
+    // Real finalSetup entry point (gameCoreSection.cpp:1490): the fresh scene
+    // re-runs the family setup and re-binds the generated carrier.
+    pc_p2_bombsarai_teki_setup();
+    boundAfter = (int)sBound.size();
+    corpseAfter = (int)sCorpses.size();
+    std::printf("P2_BOMBSARAI_TEKI_REENTRY bound_before=%d bound_after_reset=%d "
+                "corpse_after_reset=%d bound_after=%d corpse_after=%d\n",
+                boundBefore, boundAfterReset, corpseAfterReset, boundAfter, corpseAfter);
+    return boundBefore > 0 && boundAfterReset == 0 && corpseAfterReset == 0
+        && boundAfter == 1 && corpseAfter == 0;
+}

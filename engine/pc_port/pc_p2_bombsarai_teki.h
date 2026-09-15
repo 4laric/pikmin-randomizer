@@ -32,3 +32,9 @@ bool pc_p2_bombsarai_teki_is_bound(const BTeki*);
 int pc_p2_bombsarai_teki_throw_count();
 int pc_p2_bombsarai_teki_blast_count();
 bool pc_p2_bombsarai_teki_carrier_dead();
+// Cleanup/re-entry probes (#244): live binding and retained-corpse counts, and
+// a reset/re-entry rehearsal that runs the same teardown (pc_p2_reset_all_teki)
+// and finalSetup (pc_p2_bombsarai_teki_setup) entry points on the live scene.
+int pc_p2_bombsarai_teki_bound_count();
+int pc_p2_bombsarai_teki_corpse_count();
+bool pc_p2_bombsarai_teki_reentry(int& boundBefore, int& boundAfter, int& corpseAfter);
