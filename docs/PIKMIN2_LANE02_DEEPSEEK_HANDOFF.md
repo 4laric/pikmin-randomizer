@@ -649,3 +649,112 @@ py -3.12 -m pytest tests/test_pikmin2_seed_generation.py -q                     
 The `task` tool is still not present in this session's tool set (only
 `bash`/`read`/`grep`/`glob`/`edit`/`write`/`web*`), so no subagents ran; the
 read-heavy work was again done inline. One line: task tool genuinely absent.
+
+## Slice 5
+
+Fifth bounded slice: **evidence ingestion from lane handoffs into the ledger**
+(root-side; no native build; no identity admitted).
+
+### Deliverable
+
+`scripts/ingest_p2_handoff_gates.py` parses a family lane's six-gate table out of
+its `docs/PIKMIN2_LANE<NN>_DEEPSEEK_HANDOFF.md`, normalizes each row to the lane-02
+status vocabulary, and runs the result through `admission_requirements`; it prints,
+per identity, the gates a handoff *would advance* and the gates that *remain
+blocking*. It writes nothing unless `--apply` is given, and refuses any PASS that
+is labelled injected/proxy (reusing `NONNATURAL_MARKERS`) or uncited (reusing
+`RECEIPT_CITATION_MARKERS` / the receipt shape). `--apply` merges only gate
+PASS values into existing evidence rows — it never fabricates a row and never
+touches `eligibility` or `delivery_receipt`, so a handoff cannot admit anyone.
+
+The table format lanes must follow is documented in `docs/PIKMIN2_ENEMY_ROSTER.md`
+(new "Family-lane six-gate handoff table (ingest contract)" section); the parser
+is the contract.
+
+### Files
+
+- `scripts/ingest_p2_handoff_gates.py` (new).
+- `tests/test_pikmin2_handoff_ingest.py` (new, 7 tests).
+- `docs/PIKMIN2_ENEMY_ROSTER.md` (table-format contract).
+
+### Real-handoff run (lanes 29, 31, 22)
+
+Read via `git show claude/p2-deepseek-wave:docs/PIKMIN2_LANE<NN>_DEEPSEEK_HANDOFF.md`:
+
+```
+# LANE29.md
+57 Kurage (role=source):
+  advances: (none)
+  blocking (admission_requirements): identity_spawn, movement_animation, attacks_receivers, death_corpse, cleanup_reentry, transport_reward
+72 OniKurage (role=source):
+  advances: (none)
+  blocking (admission_requirements): identity_spawn, movement_animation, attacks_receivers, death_corpse, cleanup_reentry, transport_reward
+# LANE31.md
+98 Tyre (role=helper): skipped (non-seedable role)
+99 BlackMan (role=source):
+  advances: (none)
+  refused PASS: attacks_receivers:uncited, cleanup_reentry:uncited, death_corpse:uncited, identity_spawn:injected, movement_animation:injected
+  blocking (admission_requirements): identity_spawn, movement_animation, attacks_receivers, death_corpse, cleanup_reentry, transport_reward
+# LANE22.md
+59 FireOtakara (role=source):
+  advances: (none)
+  refused PASS: attacks_receivers:uncited, identity_spawn:uncited, movement_animation:uncited
+  blocking (admission_requirements): identity_spawn, movement_animation, attacks_receivers, death_corpse, cleanup_reentry, transport_reward
+60 WaterOtakara (role=source):
+  advances: (none)
+  refused PASS: attacks_receivers:uncited, identity_spawn:uncited, movement_animation:uncited
+  blocking (admission_requirements): identity_spawn, movement_animation, attacks_receivers, death_corpse, cleanup_reentry, transport_reward
+61 GasOtakara (role=source):
+  advances: (none)
+  refused PASS: attacks_receivers:uncited, identity_spawn:uncited, movement_animation:uncited
+  blocking (admission_requirements): identity_spawn, movement_animation, attacks_receivers, death_corpse, cleanup_reentry, transport_reward
+62 ElecOtakara (role=source):
+  advances: (none)
+  refused PASS: attacks_receivers:uncited, identity_spawn:uncited, movement_animation:uncited
+  blocking (admission_requirements): identity_spawn, movement_animation, attacks_receivers, death_corpse, cleanup_reentry, transport_reward
+93 BombOtakara (role=source):
+  advances: (none)
+  refused PASS: attacks_receivers:uncited, identity_spawn:uncited, movement_animation:uncited
+  blocking (admission_requirements): identity_spawn, movement_animation, attacks_receivers, death_corpse, cleanup_reentry, transport_reward
+```
+
+Reading: lane 29 reports only PARTIAL/BLOCKED/N-A rows, so nothing advances; lane 31
+labels its identity-spawn and movement as "Injected placement"/"host-driven route"
+(refused as injected) and cites native log markers rather than doc/log files for the
+other three (refused as uncited); lane 22's PASSes cite log markers too (uncited).
+No identity is admitted anywhere, and `--apply` on these handoffs is a no-op
+(nothing advances).
+
+### Tests run
+
+```
+py -3.12 -m pytest tests/test_pikmin2_handoff_ingest.py -q                                             # 7 passed
+py -3.12 -m pytest tests/test_pikmin2_handoff_ingest.py tests/test_pikmin2_admission_seed.py \
+    tests/test_pikmin2_admission_contract.py tests/test_pikmin2_enemy_roster.py \
+    tests/test_pikmin2_roster_coverage.py -q                                                          # 60 passed
+py -3.12 scripts/ingest_p2_handoff_gates.py <lane29 lane31 lane22 handoff files>                       # pasted above
+```
+
+### Assumptions / notes
+
+- A gate PASS is "cited" only when the Evidence cell carries a `docs/PIKMIN2_*.md`
+  / `.log` / `.txt` / `.json` filename or a file path (the `/`/`\` markers of
+  `RECEIPT_CITATION_MARKERS` only count between non-space segments, so a
+  "frame=12 / frame=20" event clock is not a citation). Native log *markers*
+  (`P2_*`) are evidence but not a durable citation; lanes should cite the doc/log
+  file that records them.
+- Injected detection reuses `NONNATURAL_MARKERS` as-is, so "host-driven route"
+  (lane 31) reads as injected via the `host` marker. That is the same over-broad
+  rule `admission_requirements` applies; it errs toward denying, which is the
+  safe direction for an ingest gate.
+- The gate table is applied to every seedable (`source`/`variant`) identity named
+  in the handoff; helpers (`Tyre` 98) are reported as skipped, and a handoff
+  naming several siblings (lane 22) gets the same table on each lead identity.
+- `--apply` persists gate PASSes only; transport/reward receipts and eligibility
+  remain manual, so deny-by-default survives ingestion.
+
+### Remaining blockers (named provider lane)
+
+- Still nothing admits: the ingested handoffs are partial or cite no durable doc/log.
+  Natural receipt + full gate evidence stays with the family lanes (13/16/29/31/etc.)
+  and reward/persistence with lane 06/07; lane 02 only transcribes.
