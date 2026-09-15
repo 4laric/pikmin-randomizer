@@ -86,17 +86,14 @@ REWARD = dict(
 GATES = ('identity_spawn', 'movement_animation', 'attacks_receivers',
          'death_corpse', 'transport_reward', 'cleanup_reentry')
 GATE_STATUS = {
-    'identity_spawn': 'pass: source_id=16, birth XYZ matched, real Egg (lane-20 P2Egg) born on bind',
-    'movement_animation': 'resolved: the private arena\'s un-suppressed "P1 Honeywisp" control (203002, '
-                          'TEKI_Qurione cloned from a Chappy template) drove a NaN position that blocked the '
-                          'FSM; with that row removed the wisp flies finite (stay->appear->move observed on '
-                          'base and lane builds). The full disappear/stay and drop->dead legs still need a '
-                          'Pikmin contact / faster locomotion and remain to be captured.',
-    'attacks_receivers': 'source-backed N/A: Honeywisp has no attack; contact trigger is flyCollisionCallBack',
-    'death_corpse': 'untested: drop->dead fly-away not yet captured (needs a Pikmin drop trigger)',
-    'transport_reward': 'partial: attach + real Egg born observed live (born=1); '
-                        'release/break/item-birth are contract-only (never observed live)',
-    'cleanup_reentry': 'untested: spawn-index flip + manager recreate',
+    'identity_spawn': 'pass: exact identity and spawn (natural); source_id=16, birth XYZ matched, '
+                      'real Egg (lane-20 P2Egg) born on bind',
+    'movement_animation': 'partial: one full cycle (appear->move->disappear->stay) then a re-appear stall',
+    'attacks_receivers': 'N/A: source has no attack; contact is the drop trigger',
+    'death_corpse': 'pass: natural fly-away death; no corpse',
+    'transport_reward': 'N/A: reward is field-consumed nectar; no receivable item',
+    'cleanup_reentry': 'pass: two appear cycles in one session then natural death finalized via the '
+                       'lane-07 forget seam (P2_QURIONE_FORGET)',
 }
 
 

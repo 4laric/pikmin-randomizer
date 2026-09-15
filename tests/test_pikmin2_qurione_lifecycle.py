@@ -80,6 +80,21 @@ class QurioneLifecycleTests(unittest.TestCase):
     def test_gates_cover_all(self):
         self.assertEqual(set(life.GATE_STATUS), set(GATES))
 
+    def test_gate_status_matches_handoff(self):
+        # GATE_STATUS must not silently drift from the handoff six-gate table.
+        from pathlib import Path
+        import re
+        doc = Path(life.__file__).resolve().parents[1] / 'docs' / 'PIKMIN2_LANE15_DEEPSEEK_HANDOFF.md'
+        text = doc.read_text(encoding='utf-8')
+        rows = re.findall(r'^\|\s*(\d)\.\s*[^|]*\|\s*(PASS|PARTIAL|FAIL|BLOCKED|UNTESTED|N/A)', text, re.M)
+        self.assertTrue(rows, 'handoff gate table not found')
+        by_num = {int(n): s for n, s in rows}
+        for index, gate in enumerate(life.GATES, start=1):
+            self.assertIn(index, by_num, gate)
+            token = by_num[index]
+            self.assertTrue(life.GATE_STATUS[gate].upper().startswith(token.upper()),
+                            f'{gate}: GATE_STATUS={life.GATE_STATUS[gate]!r} handoff={token}')
+
     def test_acceptance_contract(self):
         contract = life.acceptance_contract()
         self.assertIn('P2_QURIONE_BIND', contract['identity'])
