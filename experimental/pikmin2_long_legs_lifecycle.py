@@ -178,13 +178,14 @@ public:int idle() override {
     if(stage==3){
         if(!houdai->isAlive()&&!houdaiDied){houdaiDied=true;houdaiDiedTick=observed;std::printf("P2_LL_NATURAL_DEATH houdai=1 health=%.2f tick=%d\n",houdai->mHealth,observed);std::fflush(stdout);}
         if(houdaiDied){stage=4;return result;}
-        // Host health is randomised per seed (observed source values 25..130), and
-        // the Attack action can fall back to Free while the proxy is displaced by
-        // its own stagger/return moves. Re-issue the real Pikmin Attack order on a
-        // cadence so the drain keeps pace instead of stalling at zero damage.
-        if(observed%20==0)assignAttack(houdai);
+        // Host health is randomised per seed (observed source values 25..130), the
+        // Attack action can fall back to Free while the proxy is displaced, and the
+        // source body is bitter-immune during Stay/Land, so attacks that land in the
+        // immune window are rejected. Re-issue the real Pikmin Attack order on a
+        // cadence only while the source damage window is open so the drain progresses.
+        if(observed%20==0&&pc_p2_long_legs_damageable(houdai))assignAttack(houdai);
         if(observed%90==0){int live=0,atk=0;Iterator q(pikiMgr);CI_LOOP(q){Piki* v=static_cast<Piki*>(*q);if(!v->isAlive())continue;++live;if(v->mMode==PikiMode::AttackMode)++atk;}
-            std::printf("P2_LL_HOUDAI_HP health=%.2f squad=%d atk=%d tick=%d\n",houdai->mHealth,live,atk,observed);std::fflush(stdout);}
+            std::printf("P2_LL_HOUDAI_HP health=%.2f squad=%d atk=%d dmg=%d tick=%d\n",houdai->mHealth,live,atk,int(pc_p2_long_legs_damageable(houdai)),observed);std::fflush(stdout);}
         if(observed>=6000){std::printf("P2_LL_INJECT species=Houdai injected_health=0 source=fixture not_natural_combat=1\n");houdai->mHealth=0.0f;std::fflush(stdout);}
         return result;
     }
