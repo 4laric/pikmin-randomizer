@@ -28,9 +28,10 @@ credits it exactly once through the lane-06 ordinary receipt provider.
 
 ## Bases, heads, dirty state, ordered commits
 
-- Root base `87dd05fb0cd7479e0f3545b1b2942f829b6ef105` (branch `deepseek/p2-l46`).
+- Root base `87dd05fb0cd7479e0f3545b1b2942f829b6ef105` -> head
+  `bd74845caff14439960f9e9049e0839614597406`, clean (branch `deepseek/p2-l46`).
   - `6b4454fd lane46: physical cave-item placement bridge and focused tests (#484)`
-  - the handoff commit (this document; see the root head below).
+  - `bd74845c lane46: physical collection handoff (#484)`
 - Native base `2d64d65dee0041f9b0e3be73cd34d8c40f663cfe` (branch
   `deepseek/p2-l46-native`).
   - `527c6db9 lane46: physical cave-item placement, carry and exactly-once receipt (#484)`
