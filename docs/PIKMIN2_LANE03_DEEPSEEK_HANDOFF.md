@@ -889,3 +889,38 @@ source-pin assertions serve as the independent cross-check instead.
   5. transport_reward   ignored [UNTESTED]
   6. cleanup_reentry    ignored [UNTESTED]
 ```
+
+## Directive 012 slice 2 — Persistence (gate F): same-seed process restart
+
+The lane's dependency boundary is "same seed, revisit and restart preserve
+identity". `scripts/run_p2_bridge_otakara.py` now boots the SAME generated seed
+twice in fresh processes (identical stage dir, sidecar and `ENEMY_P2` bootstrap)
+and requires the identical binding, proving the bridge is a pure function of the
+manifest/sidecar and does not depend on runtime state (addresses, load order).
+
+Evidence `output/dsw/l03-out/7aa4e73f7ffd4195815f7f60e2d71a4c/`:
+
+- boot 1 `native.log:589` and boot 2 `native-restart.log:589`:
+  `P2_GENERATED_PLACEMENT source_id=59 target=1646783045 bound=1` (identical)
+- boot 1/2 `:588`: `P2_OTAKARA_BIND_DYNAMIC source_id=59 generator=349001` (identical)
+- boot 1/2 `:585`: `P2_SEED_RESOLVE source_id=59 target=1646783045` (identical)
+- report: `restart_identical_binding=true`, `restart_identical_resolve=true`
+
+**Gate F (Persistence) = PASS (natural)** for the seed->identity binding: the same
+seed yields the same generator->source identity across a fresh process. Reward
+neither repeated nor lost is lane 06's receipt endpoint and is not claimed here.
+
+### Commits (slice 2)
+
+Root `deepseek/p2-l03` (parent `8b3a76ec`):
+- (this commit) lane03: persistence — same-seed restart identity for the bridge
+
+Reproduction:
+
+```
+py -3.12 output/deepseek-wave/slot.py run gl l03 -- py -3.12 scripts/run_p2_bridge_otakara.py \
+  --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" \
+  --imported "C:/Users/alari/pikmin-randomizer/output/dsw/l22-assets" \
+  --exe "C:/Users/alari/pikmin-randomizer/output/dsw/native-l03-build/bin/nectar.exe" \
+  --output "C:/Users/alari/pikmin-randomizer/output/dsw/l03-out" --seed "l03-bridge-otakara" --timeout 40
+```

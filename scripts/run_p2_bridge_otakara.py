@@ -102,17 +102,29 @@ def main():
     run = NativeRun(session)
     bootstrap = run.bootstrap.resolve()
 
-    log = stage / 'native.log'
-    code = 'ok'
-    with log.open('w', encoding='utf-8', errors='replace') as stream:
-        try:
-            subprocess.run([str(args.exe.resolve()), '--experimental-pikmin2-room',
-                            '--randomizer-seed', str(bootstrap)],
-                           cwd=stage, env=_env(), stdout=stream, stderr=subprocess.STDOUT,
-                           startupinfo=_startup(), timeout=args.timeout)
-        except subprocess.TimeoutExpired:
-            code = 'timeout'
-    text = log.read_text(encoding='utf-8', errors='replace')
+    def boot(log_name):
+        log = stage / log_name
+        code = 'ok'
+        with log.open('w', encoding='utf-8', errors='replace') as stream:
+            try:
+                subprocess.run([str(args.exe.resolve()), '--experimental-pikmin2-room',
+                                '--randomizer-seed', str(bootstrap)],
+                               cwd=stage, env=_env(), stdout=stream, stderr=subprocess.STDOUT,
+                               startupinfo=_startup(), timeout=args.timeout)
+            except subprocess.TimeoutExpired:
+                code = 'timeout'
+        return log.read_text(encoding='utf-8', errors='replace'), code
+
+    # Persistence (gate F, lane-03 boundary): boot the SAME seed twice in fresh
+    # processes and require the identical seed->generator binding, proving the
+    # bridge depends only on the manifest/sidecar, not on runtime state.
+    text, code = boot('native.log')
+    restart_text, restart_code = boot('native-restart.log')
+
+    binding = _lines(text, 'P2_GENERATED_PLACEMENT')
+    restart_binding = _lines(restart_text, 'P2_GENERATED_PLACEMENT')
+    resolve = _lines(text, 'P2_SEED_RESOLVE')
+    restart_resolve = _lines(restart_text, 'P2_SEED_RESOLVE')
 
     bind = _lines(text, 'P2_OTAKARA_BIND')
     report = {
@@ -123,19 +135,24 @@ def main():
         'seed_binding_slots': slots,
         'otakara_bind': bind,
         'otakara_bind_dynamic': _lines(text, 'P2_OTAKARA_BIND_DYNAMIC'),
-        'generated_placement_lines': _lines(text, 'P2_GENERATED_PLACEMENT'),
-        'resolve_lines': _lines(text, 'P2_SEED_RESOLVE'),
+        'generated_placement_lines': binding,
+        'restart_generated_placement_lines': restart_binding,
+        'resolve_lines': resolve,
+        'restart_resolve_lines': restart_resolve,
         'placement_lines': _lines(text, 'P2_PLACEMENT_SLOT'),
         'ready_lines': _lines(text, 'P2_ENEMY_READY'),
         'bind_source_59': any(f'source_id={FIRE_SOURCE} ' in line for line in bind),
-        'resolve_source_59': any(f'source_id={FIRE_SOURCE} ' in line
-                                 for line in _lines(text, 'P2_SEED_RESOLVE')),
+        'resolve_source_59': any(f'source_id={FIRE_SOURCE} ' in line for line in resolve),
+        'restart_identical_binding': bool(binding) and binding == restart_binding,
+        'restart_identical_resolve': bool(resolve) and resolve == restart_resolve,
         'exit': code,
+        'restart_exit': restart_code,
     }
     (stage / 'bridge-otakara-report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     (args.output / 'latest-bridge-otakara.json').write_text(json.dumps({'run': str(stage)}, indent=2) + '\n')
     print(json.dumps(report, indent=2))
-    if not report['bind_source_59']:
+    if not (report['bind_source_59'] and report['restart_identical_binding']
+            and report['restart_identical_resolve']):
         sys.exit(1)
 
 
