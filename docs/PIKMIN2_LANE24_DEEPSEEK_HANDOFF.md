@@ -425,3 +425,152 @@ py -3.12 C:\Users\alari\pikmin-randomizer\output\deepseek-wave\slot.py run gl l2
 # Queen free-mode (completed run)
 py -3.12 C:\Users\alari\pikmin-randomizer\output\deepseek-wave\slot.py run gl l24 -- py -3.12 -m experimental.pikmin2_queen_free_mode_runtime run --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" --bank "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/bulblax-bank" --output "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/queen-freemode-runtime2" --exe "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/queen-freemode-fixture2/build/fixture.exe"
 ```
+
+## Slice 4
+
+### Scope
+
+Bind the Emperor Bulblax (53) to a generated host Teki so ordinary free-Pikmin
+attacks reach it through the engine, with the source stuck/Flick thresholds, and
+prove a natural free-mode kill -> corpse -> Pod corpse receipt in one GL log. New
+native sidecar `pc_p2_king_teki` (mirrors `pc_p2_kurage_teki`): binds a generated
+TEKI_Chappy host by generator + type, rewrites the host health to the Emperor's
+1300, draws the King model over it, and applies the source stuck/Flick thresholds
+to Pikmin actually attached in AttackMode/Attack. Host health/damage/carcass stay
+engine-owned, so the preview Pod already rebind-scans the Chappy carcass.
+
+### Result
+
+**BLOCKED (partial).** The binding is built and compiles; free Pikmin DO reach the
+Emperor through the engine (`P2_KING_TEKI_ATTACHED attached=1,2`), and the host
+dies and drops a corpse (`P2_KING_TEKI_CORPSE`). A clean free-mode kill + Pod
+receipt is incomplete for three named reasons (file:line in "Remaining blockers").
+Queen (30) slice-3 free-mode death remains a solid natural PASS and its gate table
+below cites that merged run.
+
+### Owned files
+
+Native (`deepseek/p2-l24-native`):
+- `pc_port/pc_p2_king_teki_policy.h`, `pc_port/pc_p2_king_teki.h`, `pc_port/pc_p2_king_teki.cpp`
+- hooks (separate commit): `CMakeLists.txt`, `src/plugPikiKando/gameCoreSection.cpp`,
+  `src/plugPikiNakata/tekibteki.cpp`, `src/plugPikiNakata/tekimgr.cpp`,
+  `pc_port/pc_p2_teki_lifetime.cpp`
+
+Root (`deepseek/p2-l24`):
+- `experimental/pikmin2_king_creature_runtime.py`
+- `experimental/pikmin2_lane24_gates.py` (+ `king_creature_validate`), `tests/test_pikmin2_lane24_gates.py`
+
+### Ordered commits
+
+Root (base `ef1cace`):
+```
+69fec4e lane24: King Creature fixture + gate validators (bind host Teki slice) (#445)
+```
+Native (base `b805d9c6`):
+```
+29643d38 lane24: King Creature host sidecar (pc_p2_king_teki) — bind generated Teki for engine attacks (#445)
+e0ad0778 lane24: hook King Teki host (setup/tick/draw/forget/reset) (#445)
+0e56e42d lane24: fix King Teki host Generator include (#445)
+```
+
+### Interfaces / hooks
+
+- `pc_p2_king_teki_setup/tick/draw/forget/reset/is_bound` + `dead_key_seen` +
+  `behavior_tick` + `attached_count`. Hooked at `gameCoreSection.cpp` finalSetup/reset,
+  `tekibteki.cpp` update/draw, `pc_p2_teki_lifetime.cpp` forget/reset, `tekimgr.cpp` reset.
+- Sidecar config `p2-king-teki.txt` = `P2_KING_TEKI_1 <count> <generator> <type>`.
+- Source stuck/Flick thresholds reused (blows 30/35/45/50, sticking 5/10/15).
+
+### Build evidence
+
+`output/dsw/l24-build-evidence.txt`:
+```text
+... lane=l24 target=pikmin_pc native=0e56e42d21d85f0e77847d3302c97ddb7826b713 dirty=no exe=...nectar.exe sha256=63be5fd2f1b498b04b0c292473b527ec1ecdf09ee1461813f0a6c0ebc273be8a ninja_n="ninja: no work to do."
+```
+Fixture `king-creature-fixture/build/fixture.exe` provenance `built`, sha256 `32ef7dae...`.
+
+### Subagent usage
+
+- explore #1 (source audit): returned the host-generation tokens (`mGenerator->_70`
+  + `mTekiType`, Frog type 0), the exact InteractAttack/actTeki latch path, the
+  Chappy LeaveCorpse/`becomePellet` carcass path, and the Boss-vs-Teki abstraction
+  being crossed. Used as-is. High value.
+- explore #2 (inventory): identified the kurage/onikurage sidecar chain, the
+  `pc_p2_preview_deliver` corpse branch + rebind (Chappy-only), the BombOtakara
+  death-injection caveat, and pointed at the Mamuta Pod chain as the full
+  corpse->receipt reference. Used as-is.
+- general #3 (tests): wrote `king_creature_validate` + `KingCreatureValidatorTests`
+  (8 new tests) to spec on the first run; the validator correctly classified my
+  run's failure. Used as-is (its `flick`/`lethal`/`dead_key` markers track the
+  still-unreached FSM states; no rework needed).
+
+Net: ~35-45 min saved; no result discarded.
+
+### Six-gate tables
+
+## Concrete source ID
+- Source ID: 30 `Queen`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | output/l24-out/queen-freemode-runtime2/queen/7db39ad455b044c4aa006917d336b423/native.log:843 | natural |
+| 2. Autonomous movement and animation | PASS (natural) | output/l24-out/queen-freemode-runtime2/queen/7db39ad455b044c4aa006917d336b423/native.log:865 | natural |
+| 3. Attacks and receivers | PASS (natural) | output/l24-out/queen-freemode-runtime2/queen/7db39ad455b044c4aa006917d336b423/native.log:851 | natural |
+| 4. Death and corpse | PASS (natural) | output/l24-out/queen-freemode-runtime2/queen/7db39ad455b044c4aa006917d336b423/native.log:1723 | natural |
+| 5. Actual transport and reward | N/A | docs/PIKMIN2_LANE24_DEEPSEEK_HANDOFF.md (policy actor; no carcass, no Pod receipt) | natural |
+| 6. Cleanup and re-entry | PASS (natural) | output/l24-out/queen-freemode-runtime2/queen/7db39ad455b044c4aa006917d336b423/native.log:1724 | natural |
+
+## Concrete source ID
+- Source ID: 53 `KingChappy`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PARTIAL | output/l24-out/king-creature-runtime/king/c9a5b448a37744a596989eb2d8168340/native.log:728 | proxy (Chappy host binding; King visual over a generated TEKI_Chappy) |
+| 2. Autonomous movement and animation | PARTIAL | output/l24-out/king-creature-runtime/king/c9a5b448a37744a596989eb2d8168340/native.log:728 | natural (King visual drawn; host stationary) |
+| 3. Attacks and receivers | PARTIAL | output/l24-out/king-creature-runtime/king/c9a5b448a37744a596989eb2d8168340/native.log:779 | natural (engine InteractAttack; attached=1,2; Flick threshold 5 unreached - host dwarf collision) |
+| 4. Death and corpse | PARTIAL | output/l24-out/king-creature-runtime/king/c9a5b448a37744a596989eb2d8168340/native.log:788 | natural (host corpse; host health resets below 1300 so death is fast) |
+| 5. Actual transport and reward | BLOCKED | output/l24-out/king-creature-runtime/king/c9a5b448a37744a596989eb2d8168340/native.log:816 | natural (unregistered pr01 cargo -> abort) |
+| 6. Cleanup and re-entry | BLOCKED | docs/PIKMIN2_LANE24_DEEPSEEK_HANDOFF.md (no clean re-entry this slice) | natural |
+
+### Remaining blockers (BLOCKED slice4, file:line)
+
+1. Host dwarf collision admits only ~2 attached Pikmin (`attached=2` max), below the
+   source stick threshold 5, so `P2_KING_TEKI_FLICK` never fires. `pc_port/pc_p2_king_teki.cpp`
+   `scanFlick` -> `isAttackingHost` -> `getStickObject()==t` (latch on the Chappy's
+   small collision; `BTeki::reset` builds `mCollInfo` from the host model at
+   `src/plugPikiNakata/tekibteki.cpp:365`).
+2. Host health does not stay at the Emperor's 1300 (`king health=1300.0` in READY
+   but the host died within ~10 behavior ticks); the Chappy's own parm health is
+   re-applied somewhere after `pc_p2_king_teki_setup` set `t->mHealth = 1300.0`
+   (`pc_port/pc_p2_king_teki.cpp` setup). Needs a health-owning clamp in the tick.
+3. The corpse deliver path aborts on an unregistered `pr01` cargo
+   (`pc_port/pc_p2_preview.cpp:334-336` generic `corpses` branch looks up the
+   pellet's `mPelletView`, but the delivered pellet's view is null — the Chappy
+   host's carcass is not the pellet view the rebind registered at
+   `pc_port/pc_p2_preview.cpp:105-113`).
+
+### Gate-table checker output
+
+```
+30 Queen (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation accepted [PASS]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   ignored [N/A]
+  6. cleanup_reentry    accepted [PASS]
+53 KingChappy (role=source):
+  1. identity_spawn     ignored [PARTIAL]
+  2. movement_animation ignored [PARTIAL]
+  3. attacks_receivers  ignored [PARTIAL]
+  4. death_corpse       ignored [PARTIAL]
+  5. transport_reward   ignored [BLOCKED]
+  6. cleanup_reentry    ignored [BLOCKED]
+```
+
+### Reproduction
+
+```powershell
+cd C:\Users\alari\pikmin-randomizer\output\dsw\l24-root
+py -3.12 C:\Users\alari\pikmin-randomizer\output\deepseek-wave\slot.py run gl l24 -- py -3.12 -m experimental.pikmin2_king_creature_runtime run --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" --bank "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/bulblax-bank" --pod-package "C:/Users/alari/pikmin-randomizer/output/dsw/l19-out/pod" --output "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/king-creature-runtime" --exe "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/king-creature-fixture/build/fixture.exe"
+```
