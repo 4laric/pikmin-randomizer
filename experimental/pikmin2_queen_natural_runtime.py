@@ -8,7 +8,7 @@ all live larvae (the new family-local larva-pool cleanup; no injected health —
 the King-style continuous latch damage drives the 5000 HP Queen to 0).
 
 Staging is limited and labeled: the captain is repositioned near the Queen once
-so a larva can reach it, and the 32-red squad is held away during the birth/bite
+so a larva can reach it, and the 64-red squad (32 latch, bounded by StuckMax) is held away during the birth/bite
 window then held in a ring around the Queen for combat (the same labeled re-pin
 as the slice-1 King run; there is no health injection and no `p2-queen-inject.txt`).
 """
@@ -54,7 +54,7 @@ public:int idle() override {
  if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
  if(!pc_p2_preview_cargo_free_ready()||!naviMgr||!tekiMgr||!mapMgr)return result;
  Navi* n=naviMgr->getNavi();if(!n||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;++ready;
- static bool sustainLogged=false;if(n->mHealth<500.0f)n->mHealth=500.0f;
+ static bool sustainLogged=false;static bool healLogged=false;if(n->mHealth<500.0f){n->mHealth=500.0f;if(!healLogged){healLogged=true;std::puts("P2_QUEEN_NATURAL_NAVI_HEAL injection=1 staging=captain_refill");}}
  {int ns=n->mStateMachine->getCurrID(n);if(ns==NAVISTATE_Pressed||ns==NAVISTATE_Flick||ns==NAVISTATE_Dead||ns==NAVISTATE_PikiZero||ns==NAVISTATE_DemoSunset||ns==NAVISTATE_DemoWait||ns==NAVISTATE_DemoInf){n->mStateMachine->transit(n,NAVISTATE_Walk);if(!sustainLogged){sustainLogged=true;std::puts("P2_QUEEN_NATURAL_NAVI_SUSTAIN injection=1");}}}
  {static bool guardLogged=false;if((int)GameStat::allPikis==0){GameStat::allPikis.set(1,Red);if(!guardLogged){guardLogged=true;std::puts("P2_QUEEN_NATURAL_GUARD_PIKMIN injection=1");}}}
  if(ready==1){
@@ -83,6 +83,7 @@ public:int idle() override {
    if(ready==60)std::puts("P2_QUEEN_NATURAL_PHASE hold_away");
   } else {
    if(!deployed){deployed=true;std::puts("P2_QUEEN_NATURAL_PHASE combat");}
+   {static bool repinLogged=false;if(!repinLogged){repinLogged=true;std::puts("P2_QUEEN_NATURAL_REPIN staging=1 per_tick=1 flick_neutralised=1");}}
    pinSquad(34.0f,30.0f,1200.0f,240.0f); // combat: labeled re-pin into the root so the receiver can kill it
   }
   if(pc_p2_queen_death_released()){

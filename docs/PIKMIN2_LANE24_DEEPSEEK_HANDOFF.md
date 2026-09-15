@@ -175,6 +175,13 @@ and Queen death (`P2_QUEEN_STATE from=4 to=0 health=0.0`,
 (`P2_QUEEN_DEATH_LARVA_RELEASE released=3`). No injected health; death is driven
 by the mirrored continuous latch damage.
 
+### Integrator disclosure (review of slice 2)
+
+- The Queen kill in (c) uses the labelled per-tick ring re-pin (`pinSquad` radius 240 inside RootRadius 275 every idle frame): each Flick is neutralised and the 32 entry blows re-fire per Flick, so this is staged combat, not a free-mode Queen run. The harness now prints `P2_QUEEN_NATURAL_REPIN staging=1` once when the pins begin. A free-mode Queen run was not attempted.
+- Captain health is refilled to 500 by the fixture every frame in both harnesses (labelled staging; now printed once as `P2_QUEEN_NATURAL_NAVI_HEAL` / `P2_KING_FREEMODE_NAVI_HEAL injection=1`). The larva bite itself is a genuine InteractAttack through stimulate.
+- King free-mode persistence comes from the proximity latch in the King receiver (no attack-state check), not Piki idle/latch-resume AI.
+- Root commit `265a6c9` (handoff) belongs in the ordered list.
+
 ### Native changes (slice 2)
 
 - `pc_port/pc_p2_queen.cpp`: continuous stuck-Pikmin latch damage in `receiveScan`
