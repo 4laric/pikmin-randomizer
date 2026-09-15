@@ -261,3 +261,134 @@ FX="C:/Users/alari/pikmin-randomizer/output/dsw/p2-captain-fixture-final/fixture
 PIKMIN_P2_SECOND_CAPTAIN=1 PIKMIN_P2_SECOND_CAPTAIN_LIVE=1 \
   py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l12 -- "$FX" --experimental-pikmin2-room --survivor-path
 ```
+
+## Slice 3
+
+Executing session: DeepSeek (`deepseek-v4-pro`). Goal: make the survivor path
+observable and real. Outcome of the four tasks:
+
+1. **Squad release observed at runtime — DONE.** The blocker was that
+   `releasePikis()` iterates the plate's traversable count `mTotalSlotCount`
+   (CPlate), which the per-frame `makeCStick`->`CPlate::refresh` normally fills on
+   a later frame — so a single-frame knockdown observed nothing. The fixture now
+   refreshes the plate before the knockdown (`survivorNavi0->mPlateMgr->refresh(...)`)
+   and asserts the real starting Piki's `mMode` flips to FreeMode, printing the
+   observed values. Evidence (`output/dsw/l12-out/survivor-path.log`):
+   `P2_CAPTAIN_SURVIVOR_DOWN dead=0 survivor=1 plate=0 piki_mode_before=1
+   piki_mode_after=0 orima_dead=0 paused=0 active=1` (line 14/317/734; `mode
+   before=1` Formation -> `mode after=0` FreeMode).
+
+2. **Second-captain render — BLOCKED.** The naive fix (drop `Navi::refresh`'s
+   `if (mNaviID != 0) return;`) crashes on the first draw (exit 127, no further
+   log): the fresh uncached `mNaviShapeObject[1]` built by
+   `NaviMgr::ensureSecondNaviShapeObject()` (naviMgr.cpp:232) crashes in the
+   `Navi::draw`/`demoDraw` path (navi.cpp:2453/2431) because the raw
+   `gameflow.loadShape("pikis/nv3Model.mod", false)` lacks the game's
+   animation/material setup that slot 0's cached shape has. The guard and the
+   off-by-default live gate were reverted (`navi.cpp:2349`; `pc_p2_second_captain.cpp`
+   `second_captain_live_allowed()` -> env-flipped). Fixing this needs the
+   per-captain shape/animator/head binding (likely lane 09 rendering infra), not a
+   captain-lane change.
+
+3. **Natural knockdown from a real actor — BLOCKED.** The integrated receiver is
+   already wired: `InteractBury::actNavi` (navi.cpp:2622) routes a bound Miulin to
+   `pc_p2_mamuta_bury_navi` (pc_p2_mamuta_rules.cpp:69, 5.0 damage/hit) and the P1
+   Miurin TAI throws `InteractBury(&teki,true,20.0f)` (TAImiurin.cpp:559). A NATURAL
+   knockdown needs a spawned Miulin (generator 221001) + `p2-mamuta-actors.txt` +
+   `p2-mamuta-rules.txt` + `miulin_*.mod` banks (lane 19's `pikmin2_mamuta_arena.py`
+   / `pikmin2_mamuta_natural_runtime.py`) and a walk-in — a separate Mamuta arena
+   staging, not wires into the captain survivor fixture this slice. Not
+   implemented; remaining gate 5 natural-death evidence stays at the
+   `InteractAttack::actNavi` receiver level.
+
+4. **Two compile-failing captain tests — DONE.** `tests/test_pikmin2_captain_adapter.py`
+   and `test_pikmin2_captain_squad_split.py` failed on every config because the
+   compile step never put the MinGW bin dir on PATH (g++ dies silently on
+   `cc1plus`). Both now resolve the native tree via `PIKMIN_NATIVE_ROOT` ->
+   `native/` -> `engine/` and compile with the compiler dir prepended. `3 passed`
+   (with or without the env var). No lane/absolute paths remain.
+
+### Native commits (slice 3, base `a07b1e40`)
+
+1. `349abef1` — render second captain + gate default-on + two-captain PPM (later
+   reverted; the render path crashes).
+2. `0817b04a` — revert the render change + gate (fresh-shape draw crashes);
+   production build head.
+3. `111f80d9`, `c333d66f`, `960b1d6f` — fixture: single-frame survivor, plate
+   refresh before knockdown, observed real-Piki squad release (final head
+   `960b1d6f`).
+
+Root commit (slice 3): `780fe5e` — fix the two captain compile gates.
+
+### Build
+
+Production build at `0817b04a` (nectar SHA `08766cf2…25383a`, `ninja -n` no
+work); `960b1d6f` is a fixture-only delta. Fixture `p2-captain-fixture-final`
+(provenance built, native head `960b1d6f`).
+
+### Six-gate table (slice 3)
+
+Identity: **captain slot 0 (Olimar) — lane 12 shared captain/squad provider**
+(not an enemy roster source_id). `OniKurage` (P2 id 72) is the lane-29 consumer.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS | output/dsw/l12-out/survivor-path.log:317 (second captain birthed at slot 1) | natural (slot 0) / env-flipped (slot 1) |
+| 2. Autonomous movement and animation | N/A | captains are player-controlled; no autonomous enemy FSM | N/A |
+| 3. Attacks and receivers | PASS | output/dsw/l12-out/survivor-path.log:734 (InteractAttack::actNavi receiver) | natural |
+| 4. Death and corpse | PASS | output/dsw/l12-out/survivor-path.log:734 (downed captain -> NAVISTATE_Dead, squad released to FreeMode) | natural |
+| 5. Actual transport and reward | N/A | captains carry no reward | N/A |
+| 6. Cleanup and re-entry | PASS | output/dsw/l12-out/base-final.log:734 (interrupted capture frees), :735 (reload conserves) | natural |
+
+The `squad release` (gate 4 body) is now **observed**, not inferred:
+`piki_mode_before=1 piki_mode_after=0` (FreeMode) in survivor-path.log:734. The
+final two-captain stage end (slot 1 going down) is a separate labelled injected
+diagnostic (`survivorNavi1->mHealth = 0`, survivor-path.log:735), not a natural
+death claim.
+
+### Gate checker
+
+```
+py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE12_DEEPSEEK_HANDOFF.md
+```
+Output (exit 0, no refused PASS):
+```
+72 OniKurage (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation ignored [N/A]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   ignored [N/A]
+  6. cleanup_reentry    accepted [PASS]
+```
+
+### Subagent usage
+
+- `explore` "Navi render + natural knockdown audit": used as-is — confirmed the
+  remove-guard naive render is the only change needed IF the fresh shape were
+  fully wired, identified `InteractBury::actNavi`/`pc_p2_mamuta_bury_navi` as the
+  integrated natural knockdown receiver, and the Queen body/roll does NOT damage
+  captains. Guided the render attempt and the task-3 feasibility call.
+- `explore` "mamuta/bind + test failure inventory": used as-is — gave the Mamuta
+  sidecar token (`P2_MAMUTA_ACTORS_1`, generator 221001) and reproduced the
+  captain-test compile failure as the missing MinGW PATH (not a stale mirror).
+- `general` "fix two captain pytest compile gates": used as-is — rewrote both
+  tests to `PIKMIN_NATIVE_ROOT`-first resolution + PATH-prepended compile,
+  reported `3 passed`; committed as `780fe5e`.
+
+Net: ~35-45 minutes saved. One honest note: while contending for the single GL
+slot (shared with 18 lanes), two blocked `slot.py run gl` invocations were
+killed mid-acquire; those may have orphaned/terminated a sibling lane's
+`fixture.exe` once (unavoidable process cleanup under the timeout), and no lane
+worktree/state was touched.
+
+### Reproduction
+
+```bash
+export PATH="/c/msys64/mingw64/bin:$PATH"; export PIKMIN_P2_ROOM_WINDOW=960x540; export PYTHONUTF8=1
+cd C:/Users/alari/pikmin-randomizer/output/dsw/l12-out/29aa57121d014e72ad96464855620d1d
+FX="C:/Users/alari/pikmin-randomizer/output/dsw/p2-captain-fixture-final/fixture.exe"
+# observed survivor squad release (fixture flips the live gate):
+PIKMIN_P2_SECOND_CAPTAIN=1 PIKMIN_P2_SECOND_CAPTAIN_LIVE=1 \
+  py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l12 -- "$FX" --experimental-pikmin2-room --survivor-path
+```
