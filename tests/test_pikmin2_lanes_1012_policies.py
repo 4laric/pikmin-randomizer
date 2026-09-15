@@ -6,6 +6,7 @@ the native pc_port headers and require its PASS banner. Skips when no g++ or no
 native copy of the headers is present, so it passes before lane 01 exports them
 into engine/.
 """
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -65,11 +66,12 @@ def test_lane_policy_contract(name, banner, tmp_path):
     if compiler is None:
         pytest.skip('g++ required for native contract')
     exe = tmp_path / (Path(name).stem + ('.exe' if name.endswith('.cpp') else ''))
+    env = dict(os.environ, PATH=str(Path(compiler).parent) + os.pathsep + os.environ.get('PATH', ''))
     subprocess.run(
         [compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror',
          '-I', str(port), str(tools / name), '-o', str(exe)],
-        check=True, capture_output=True, text=True)
-    run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=30)
+        check=True, capture_output=True, text=True, env=env)
+    run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=30, env=env)
     assert run.returncode == 0, run.stderr
     assert banner in run.stdout
 
@@ -97,10 +99,10 @@ def test_elemental_receivers_consult_species_capability_matrix():
                for p in candidates)
     assert any('p2_species_immune(pc_p2_species(piki), P2HazardWater)' in p.read_text(errors='replace')
                for p in candidates)
-    # Electric/gas receivers (#170/#408) use the same matrix.
-    assert any('p2_species_immune(pc_p2_species(piki), P2HazardElectric)' in p.read_text(errors='replace')
+    # Electric/gas receivers (#170/#408) route through p2_hazard_reaction.
+    assert any('p2_hazard_reaction(pc_p2_species(piki), P2HazardElectric' in p.read_text(errors='replace')
                for p in candidates)
-    assert any('p2_species_immune(pc_p2_species(piki), P2HazardGas)' in p.read_text(errors='replace')
+    assert any('p2_hazard_reaction(pc_p2_species(piki), P2HazardGas' in p.read_text(errors='replace')
                for p in candidates)
 
 
