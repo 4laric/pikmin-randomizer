@@ -387,3 +387,48 @@ def test_parse_identities_rejects_phantom_numbers():
         "wave/3 Frog",          # "/3" must not detach 3 -> BluePom
     ):
         assert parse_identities(text, roster) == []
+
+
+def test_checker_accepts_clean_handoff():
+    from scripts.check_p2_handoff_gates import check_handoff
+    check = check_handoff(CLEAN_HANDOFF, _roster())
+    assert check["had_refusal"] is False
+    (row,) = check["rows"]
+    assert row["verdict"] == "checked"
+    assert all(gate["verdict"] == "accepted" for gate in row["gates"])
+
+
+def test_checker_refuses_injected_and_uncited_rows():
+    from scripts.check_p2_handoff_gates import check_handoff
+    check = check_handoff(INJECTED_HANDOFF, _roster())
+    assert check["had_refusal"] is True
+    (row,) = check["rows"]
+    by_gate = {gate["gate"]: gate for gate in row["gates"]}
+    assert by_gate["attacks_receivers"]["verdict"] == "refused:injected"
+    assert by_gate["cleanup_reentry"]["verdict"] == "refused:uncited"
+    # Every refused row carries a concrete fix.
+    assert by_gate["attacks_receivers"]["fix"]
+    assert "Evidence cell" in by_gate["cleanup_reentry"]["fix"]
+
+
+def test_checker_flip_bad_status_token_is_refused():
+    from scripts.check_p2_handoff_gates import check_handoff
+    text = ("# x\nSource ID: 17 `Frog`.\n\n## Six arena gates\n\n"
+            "| Gate | Result | Evidence |\n|---|---|---|\n"
+            "| 1. Exact identity and spawn | PASSED | docs/PIKMIN2_FROG_IMPORT.md spawn |\n")
+    check = check_handoff(text, _roster())
+    assert check["had_refusal"] is True
+    (row,) = check["rows"]
+    assert row["gates"][0]["verdict"] == "refused:bad status"
+    assert "PASS/PARTIAL/FAIL/BLOCKED/UNTESTED/N/A" in row["gates"][0]["fix"]
+
+
+def test_checker_cli_exit_codes(tmp_path):
+    from scripts.check_p2_handoff_gates import main
+    clean = tmp_path / "clean.md"
+    clean.write_text(CLEAN_HANDOFF, encoding="utf-8")
+    injected = tmp_path / "injected.md"
+    injected.write_text(INJECTED_HANDOFF, encoding="utf-8")
+    assert main([str(clean)]) == 0
+    assert main([str(injected)]) == 1
+    assert main([str(tmp_path / "missing.md")]) == 2

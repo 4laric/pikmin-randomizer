@@ -243,6 +243,36 @@ merges gate `PASS` values into the owning identity's existing row — it never
 touches `eligibility` or `delivery_receipt`, never fabricates a row and never
 applies to a sibling, so a handoff cannot admit an identity on its own).
 
+### Paste-able gate table template
+
+Copy one block per owner identity into `docs/PIKMIN2_LANE<NN>_DEEPSEEK_HANDOFF.md`.
+Run `scripts/check_p2_handoff_gates.py <handoff>` before writing `DONE`; it prints
+the exact edit for every refused row.
+
+````markdown
+## Concrete source ID
+- Source ID: 17 `Frog`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | output/<lane-out>/<run>/native.log:42 | natural |
+| 2. Autonomous movement and animation | PASS (natural) | output/<lane-out>/<run>/native.log:143 | natural |
+| 3. Attacks and receivers | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md crush receiver | natural |
+| 4. Death and corpse | PASS (natural) | output/<lane-out>/<run>/native.log:230 | natural |
+| 5. Actual transport and reward | PASS (natural) | corpse:frog:1 goal=1 | natural |
+| 6. Cleanup and re-entry | PASS (injected) | docs/PIKMIN2_FROG_IMPORT.md forced reset | injected |
+````
+
+Every `PASS` must cite a source in the `Evidence` cell at a token boundary —
+`\S+\.(md|log|txt|json)\b` — or a path rooted at `docs/`/`output/`/`tests/`
+(with at least two path segments); gate 5 additionally accepts an
+`onion:`/`corpse:`/`receipt:` receipt key. A `PASS` row whose Result/Evidence
+carries an injected/proxy/fixture-only/forced/vehicle/visual/host/display marker
+is refused: mark it `Injected vs natural = injected` and report the gate
+`UNTESTED` instead of `PASS`. A non-`PASS` status (`PARTIAL`/`FAIL`/`BLOCKED`/
+`UNTESTED`/`N/A`) is safe to leave as-is.
+
+
 ## Candidate review and source-backed encounters
 
 `inventory_encounters(payload, roster)` resolves every identity across
