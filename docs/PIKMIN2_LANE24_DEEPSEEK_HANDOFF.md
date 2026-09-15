@@ -269,3 +269,159 @@ py -3.12 C:\Users\alari\pikmin-randomizer\output\deepseek-wave\slot.py run gl l2
 py -3.12 C:\Users\alari\pikmin-randomizer\output\deepseek-wave\slot.py run gl l24 -- py -3.12 -m experimental.pikmin2_queen_natural_runtime run --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" --bank "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/bulblax-bank" --output "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/queen-natural-runtime2" --exe "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/queen-natural-fixture2/build/fixture.exe"
 ```
 (each with `PIKMIN_P2_ROOM_WINDOW=960x540` and `PYTHONUTF8=1`; wrap in `slot.py run gl`.)
+
+## Slice 3
+
+### (1) King receiver source-faithful latch gate + re-run
+
+The slice-2 review closed the King free-mode kill as a proximity-latch artifact:
+`receiveScan` added any Pikmin inside the root sphere to `stuck` with no
+attack-state check. This slice makes it source-faithful — a Pikmin only sticks
+when it is actually attached and running the attack action (the `BTeki::spawnPellets`
+`mMode == AttackMode && mActiveAction->mCurrActionIdx == PikiAction::Attack`
+predicate, the `actOnSituaton` `PIKISITCH_Unk1 -> AttackMode` transition):
+
+```cpp
+if (p->mMode != PikiMode::AttackMode || !p->mActiveAction
+    || p->mActiveAction->mCurrActionIdx != PikiAction::Attack)
+    continue;
+```
+
+The Emperor is a headless `pc_p2_king` actor (no `Creature`), so a free Pikmin
+never enters `AttackMode` against it (`targets()` cannot match a non-Creature).
+
+**Re-run result (honest): the Emperor is now never damaged.** 20 free reds
+deployed once (`P2_KING_FREEMODE_BASELINE red=20`, centred 960x540, live squad),
+6 minutes: **0 `P2_KING_COMBAT_DAMAGE`, 0 `P2_KING_EAT`, 0 `P2_KING_ATTACK_TRIGGER`,
+0 Flick/Trample/CHECK_FLICK**, 1 appear + 1 appear shake-off. Health stayed at the
+full 1300.0; the harness reports the honest floor (`P2_KING_FREEMODE_FLOOR tick=10801`,
+exit 0). This proves the slice-2 "free Pikmin killed the Emperor" was entirely the
+proximity-latch artifact, not real Pikmin attachment. The gate now passes on the
+honest floor (`killed=False, health_floor=None`, consistent via the floor marker).
+
+### (2) Queen free-mode natural death (deploy-once, no re-pin, no captain refill)
+
+New harness `experimental/pikmin2_queen_free_mode_runtime.py` mirrors the King
+free-mode pattern: 64 reds authored once in a ring and switched to `FreeMode`, the
+captain parked far outside the Queen's territory/press/larva-sight reach once, and
+**no `NAVI_HEAL` captain refill and no `REPIN`** in the harness. The Queen receiver
+was deliberately NOT given the slice-3 attack-state check (that was scoped to the
+King), so this measures the retained proximity latch against the 5000 HP Empress.
+
+First run exited early (~244 s, process exit 1, health 967, no floor marker — a
+fixture-lifetime gap, not a Queen behavior finding). After adding a navi
+state-sustain (state transit only, no health change; its one-time marker never
+actually fired in the clean run) and extending the window, the run completed:
+
+**Queen dies, cleanly:** `killed=True`, health `5000.0 -> 0.0`, exit 0, ~261 s
+(~4.3 min). 363 `P2_QUEEN_COMBAT_DAMAGE` lines (proximity latch, `stuck` 29 -> 13,
+sustained ~16.5 HP/s). **What the roll does to the squad:** 4 rolls (each a full
+home-to-home `roll_elapsed=3.733` pass, territory-bound bounce never needed),
+`P2_QUEEN_PRESS` fired 73 times (the roll crushes ~18 Pikmin per pass), 4 Flicks,
+50 natural larva births (pool 50 maxed) and all 50 released on death
+(`P2_QUEEN_DEATH_LARVA_RELEASE released=50`). Zero `NAVI_HEAL` / `REPIN` /
+`GUARD_PIKMIN` markers; no injection.
+
+Honest caveat: because the Queen keeps the proximity latch, this "free-mode death"
+is the **same artifact** the King check now exposes — not real Pikmin attachment.
+The two runs together establish that, in this headless-actor architecture, no
+Pikmin ever actually latches either boss; the King (checked) takes zero damage,
+the Queen (unchecked) still dies via proximity.
+
+### Owned files (slice 3)
+
+Root: `experimental/pikmin2_queen_free_mode_runtime.py` (new),
+`experimental/pikmin2_king_free_mode_runtime.py` (captain refill removed, captain
+parked outside `KingSight`, docstring updated), `experimental/pikmin2_lane24_gates.py`
+(`no_staging` check on both free-mode validators + new `queen_free_mode_validate`),
+`tests/test_pikmin2_lane24_gates.py` (flip tests). Native:
+`pc_port/pc_p2_king.cpp` (`#include "PikiAI.h"` + attack-state latch gate only). No
+shared files touched.
+
+### Ordered commits (slice 3)
+
+Root (base `ef1cace`, after `7c574d2`):
+```
+19a404f lane24: slice3 free-mode Queen harness + gates (no staging markers) + source-faithful King latch re-run (#445)
+```
+Native (base `b805d9c6`, after `baf50e04`):
+```
+c59a37dc lane24: King receiver source-faithful latch gate — only attached attacking Pikmin stick (#445)
+```
+
+### Build evidence (`output/dsw/l24-build-evidence.txt`)
+
+```text
+2026-09-14T21:48:32 lane=l24 target=pikmin_pc native=c59a37dce5a240bd9eff8e79d8d5b15060bc3d59 dirty=no build_dir=C:\Users\alari\pikmin-randomizer\output\dsw\native-l24-build exe=C:\Users\alari\pikmin-randomizer\output\dsw\native-l24-build\bin\nectar.exe sha256=68e9b23009e9024e4efc2ef62aa02b2adcb0628af1f24d690d7e9f0a35f7e7a3 ninja_n="ninja: no work to do." seconds=79
+```
+
+Fixtures (all provenance `built`, expected native head `c59a37dc...`):
+`king-freemode-s3-fixture` `c82fc68f...`, `queen-freemode-fixture` `cdbe16c3...`,
+`queen-freemode-fixture2` `acfc84ef...`.
+
+### Fixture adoption evidence
+
+`PIKMIN_P2_ROOM_WINDOW=960x540` centred window logged (`Experimental preview window
+set to 960x540 windowed and centered`); King baseline `red=20`, Queen baseline
+`red=64`, live squads, no extinction; run dirs
+`king-freemode-s3-runtime/king/aed79bdc...` and
+`queen-freemode-runtime2/queen/7db39ad4...`.
+
+### Six-gate table (natural vs injected)
+
+| Gate | King (checked receiver) | Queen (proximity receiver) |
+|---|---|---|
+| 1 identity/spawn | PASS `id=230020 enemy=53` | PASS `id=230010 enemy=30` |
+| 2 movement/animation | PASS appear/caution/walk clip draw | PASS sleep/wait/flick/roll/born clips + 50 larva births |
+| 3 attacks/receivers | PASS (honest): 0 latch, 0 damage — no attachment | PASS (artifact): 363 proximity-latch combat lines |
+| 4 death/corpse | honest floor, no kill | PASS: natural death, 50 larva release |
+| 5 transport/reward | source-backed N/A (lane 06) | source-backed N/A (lane 06) |
+| 6 cleanup/re-entry | PASS exit 0, no leftover | PASS exit 0, no leftover |
+
+### Tests
+
+`py -3.12 -m pytest tests/test_pikmin2_lane24_gates.py tests/test_pikmin2_king_natural_death_runtime.py tests/test_pikmin2_king_natural_flick_runtime.py tests/test_pikmin2_king_actor.py tests/test_pikmin2_queen_actor.py tests/test_pikmin2_bulblax_behavior.py -q`
+-> 74 passed, 3 skipped. New flip tests cover `no_staging` (a `NAVI_HEAL` marker
+flips both free-mode validators to failed) and the Queen free-mode kill/floor/
+floor-without-marker/injection cases.
+
+### Assumptions
+
+- The attack-state check uses the exact `BTeki::spawnPellets` predicate minus
+  `attack->targets()` (the headless actor has no `Creature` to target); the root-sphere
+  distance check is kept as a pre-filter.
+- `no_staging` targets exactly the review-named markers `NAVI_HEAL` and `REPIN`;
+  the navi state-sustain (state transit, no health change) and the `GUARD_PIKMIN`
+  game-stat top-up are separate fixture-survival guards, not counted as staging.
+- The Queen receiver is intentionally left un-checked this slice (the brief scoped
+  the attack-state check to the King); recording it as the remaining natural gap.
+
+### Subagent usage
+
+No subagent tool was available in this session (the brief's `task` tool is not
+exposed), so the three planned subagent tasks were performed inline: (1) source
+audit of the Piki latch predicate (`BTeki::spawnPellets`, `actOnSituaton`, `PikiMode`
+/`PikiAction`), (2) existing-candidate inventory (King/Queen receivers and harnesses),
+(3) validator/test scaffolding. Net time delta: not estimated; the inline audit was
+the only path and its cost is folded into the slice itself.
+
+### Remaining blockers (unchanged + new)
+
+- Queen material/BTK/TEV fidelity: lane 09. Reward/transport endpoint: lane 06.
+  Generated-session ordinary spawn/persistence: 03/06. Campaign lifecycle/re-entry:
+  07/33.
+- NEW: neither boss is a `Creature`, so real Pikmin can never `targets()` them; the
+  Queen still needs the same attack-state check (and, upstream, a real creature/Teki
+  binding) before any free-mode "natural death" can be real Pikmin combat rather than
+  the proximity latch.
+
+### Reproduction (slice 3)
+
+```powershell
+cd C:\Users\alari\pikmin-randomizer\output\dsw\l24-root
+# King free-mode re-run with the source-faithful receiver
+$env:PYTHONUTF8='1'; $env:PIKMIN_P2_ROOM_WINDOW='960x540'
+py -3.12 C:\Users\alari\pikmin-randomizer\output\deepseek-wave\slot.py run gl l24 -- py -3.12 -m experimental.pikmin2_king_free_mode_runtime run --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" --bank "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/bulblax-bank" --output "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/king-freemode-s3-runtime" --exe "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/king-freemode-s3-fixture/build/fixture.exe"
+# Queen free-mode (completed run)
+py -3.12 C:\Users\alari\pikmin-randomizer\output\deepseek-wave\slot.py run gl l24 -- py -3.12 -m experimental.pikmin2_queen_free_mode_runtime run --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" --bank "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/bulblax-bank" --output "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/queen-freemode-runtime2" --exe "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/queen-freemode-fixture2/build/fixture.exe"
+```
