@@ -326,23 +326,23 @@ Shot reached, seven `P2_LONG_LEGS_SHELL`, one `P2_LONG_LEGS_SHELL_HIT pikmin=1`,
 
 | Gate | Result | Evidence | Injected vs natural |
 |---|---|---|---|
-| 1. Exact identity and spawn | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/native.log:714 (P2_LONG_LEGS_BIND generator=312001 species=Houdai native_fsm=implemented) | natural |
-| 2. Autonomous movement and animation | PARTIAL | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/native.log:827 (FSM Land/Wait/Flick/Shot schedule; bind-pose, no IK) | natural |
-| 3. Attacks and receivers | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/native.log:829 (P2_LONG_LEGS_SHELL) :872 (SHELL_HIT pikmin=1, InteractBomb receiver) | natural |
-| 4. Death and corpse | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/native.log:879 (P2_LONG_LEGS_DEAD prior_health=10.00, drained) | natural |
-| 5. Actual transport and reward | PASS (natural) | output/dsw/l26-out/run/2c23222d84c94bc1b48d71308033e5db/capture/native.log:1502 (P2_POD_RECEIPT id=corpse:longlegs:312001 value=2 new=1 pokos=4) :1503 (P2_LL_DELIVER Houdai) | natural |
-| 6. Cleanup and re-entry | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/native.log:940 (FORGET count=0) :945 (REENTRY stale=0 fresh=1) | natural |
+| 1. Exact identity and spawn | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/capture/native.log:714 (P2_LONG_LEGS_BIND generator=312001 species=Houdai native_fsm=implemented) | natural |
+| 2. Autonomous movement and animation | PARTIAL | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/capture/native.log:827 (FSM Land/Wait/Flick/Shot schedule; bind-pose, no IK) | natural |
+| 3. Attacks and receivers | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/capture/native.log:829 (P2_LONG_LEGS_SHELL) :872 (SHELL_HIT pikmin=1, InteractBomb receiver) | natural |
+| 4. Death and corpse | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/capture/native.log:879 (P2_LONG_LEGS_DEAD prior_health=10.00, drained) | natural |
+| 5. Actual transport and reward | PARTIAL (proxy corpse) | PROXY: the credited corpse is the P1 Chappy placement-vehicle stand-in, not a source carcass, so the source-carcass reward mapping is unproven. The ordinary FreeMode `graspSituation` carry + Pod credit are real: output/dsw/l26-out/run/2c23222d84c94bc1b48d71308033e5db/capture/native.log:1502 (P2_POD_RECEIPT id=corpse:longlegs:312001 value=2 new=1 pokos=4) :1503 (P2_LL_DELIVER Houdai) | proxy stand-in corpse |
+| 6. Cleanup and re-entry | PASS (natural) | Proven on OLDER head (run `2c3ce2a8…`, pre-slice-3 native) — the receipt run `2c23222d…` failed reentry (`capture/native.log:1509` old pointer still registered). output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/capture/native.log:940 (FORGET count=0) :945 (REENTRY stale=0 fresh=1) | natural |
 
 - Source ID: 69 `BigFoot`.
 
 | Gate | Result | Evidence | Injected vs natural |
 |---|---|---|---|
-| 1. Exact identity and spawn | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/native.log:715 (P2_LONG_LEGS_BIND generator=312002 species=BigFoot native_fsm=implemented) | natural |
-| 2. Autonomous movement and animation | PARTIAL | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/native.log:735 (FSM Land/Wait/Flick schedule; bind-pose, no IK) | natural |
-| 3. Attacks and receivers | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/native.log:734 (CRUSH pikmin=20) :762 (DAMAGE health=115 prior=130) | natural |
-| 4. Death and corpse | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/native.log:802 (DEAD prior_health=10.00) :803 (BIRTH count=30) | natural |
-| 5. Actual transport and reward | PASS (natural) | output/dsw/l26-out/run/2c23222d84c94bc1b48d71308033e5db/capture/native.log:1215 (P2_POD_RECEIPT id=corpse:longlegs:312002 value=2 new=1 pokos=2) :1216 (P2_LL_DELIVER BigFoot) | natural |
-| 6. Cleanup and re-entry | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/native.log:939 (FORGET count=0) :944 (REENTRY stale=0 fresh=1) | natural |
+| 1. Exact identity and spawn | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/capture/native.log:715 (P2_LONG_LEGS_BIND generator=312002 species=BigFoot native_fsm=implemented) | natural |
+| 2. Autonomous movement and animation | PARTIAL | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/capture/native.log:735 (FSM Land/Wait/Flick schedule; bind-pose, no IK) | natural |
+| 3. Attacks and receivers | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/capture/native.log:734 (CRUSH pikmin=20) :762 (DAMAGE health=115 prior=130) | natural |
+| 4. Death and corpse | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/capture/native.log:802 (DEAD prior_health=10.00) :803 (BIRTH count=30) | natural |
+| 5. Actual transport and reward | PARTIAL (proxy corpse) | PROXY: the credited corpse is the P1 Chappy placement-vehicle stand-in, not a source carcass. The ordinary FreeMode `graspSituation` carry + Pod credit are real: output/dsw/l26-out/run/2c23222d84c94bc1b48d71308033e5db/capture/native.log:1215 (P2_POD_RECEIPT id=corpse:longlegs:312002 value=2 new=1 pokos=2) :1216 (P2_LL_DELIVER BigFoot) | proxy stand-in corpse |
+| 6. Cleanup and re-entry | PASS (natural) | Proven on OLDER head (run `2c3ce2a8…`, pre-slice-3 native) — the receipt run `2c23222d…` failed reentry. output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/capture/native.log:939 (FORGET count=0) :944 (REENTRY stale=0 fresh=1) | natural |
 
 - Source ID: 56 `Damagumo`.
 
@@ -384,26 +384,33 @@ stay focused on the native pin removal + rebuild + GL re-run.
 ### Gate-check output (`check_p2_handoff_gates.py`)
 
 ```
-56 Damagumo (role=source): warning (shared table) - named in prose but no table of its own; give it a `Source ID` line + six-gate table to claim its gates
+56 Damagumo (role=source):
+  1. identity_spawn     ignored [N/A]
+  2. movement_animation ignored [N/A]
+  3. attacks_receivers  ignored [N/A]
+  4. death_corpse       ignored [N/A]
+  5. transport_reward   ignored [N/A]
+  6. cleanup_reentry    ignored [N/A]
 66 Houdai (role=source):
   1. identity_spawn     accepted [PASS]
   2. movement_animation ignored [PARTIAL]
   3. attacks_receivers  accepted [PASS]
   4. death_corpse       accepted [PASS]
-  5. transport_reward   ignored [UNTESTED]
+  5. transport_reward   ignored [PARTIAL]
   6. cleanup_reentry    accepted [PASS]
 69 BigFoot (role=source):
   1. identity_spawn     accepted [PASS]
   2. movement_animation ignored [PARTIAL]
   3. attacks_receivers  accepted [PASS]
   4. death_corpse       accepted [PASS]
-  5. transport_reward   ignored [UNTESTED]
+  5. transport_reward   ignored [PARTIAL]
   6. cleanup_reentry    accepted [PASS]
 ```
 
-Exit 0; every PASS row accepted, no refusals. The `56 Damagumo` warning is
-expected: Damagumo is owned by the demon lane and is named only to say it is not
-claimed here, so it has no gate table of its own.
+Exit 0; no refusals. Damagumo now has its own N/A table (owned by the demon
+lane, not claimed here). Gate 5 is `ignored [PARTIAL]` because the credited corpse
+is the P1 Chappy placement-vehicle stand-in (proxy evidence must never be a PASS);
+gates 1/3/4/6 are accepted PASS, gate 2 is PARTIAL (bind-pose, no IK).
 
 ## Slice 3
 
@@ -610,3 +617,116 @@ and the carry recipe; the test scaffolding was used verbatim.
 ### Tests run (slice 3b)
 
 - `py -3.12 -m pytest tests/test_pikmin2_long_legs_pod.py -q` -> **8 passed**.
+
+## Review fixes 3b
+
+Review verdict: MERGE-WITH-FIXES. Items 1-2 blocking; 3-5 documentation.
+
+### 1. (blocking) One-shot receipt + liveness sweep - fixed
+
+Native (`deepseek/p2-l26-native`, head `45344123`):
+
+- `pc_p2_long_legs_receipt` now consumes the resolved registration
+  (`corpses.erase(corpse)`) before returning true, mirroring lane 31's
+  `pc_p2_waterwraith_receipt` (`pc_p2_waterwraith_register.cpp:248`). Without it
+  a MonoObjectMgr slot recycle could credit an unrelated future pellet.
+- `sweepCorpses()` drops a registered corpse whose `Pellet` is no longer alive,
+  emitting `P2_LONG_LEGS_CORPSE_DROPPED`, mirroring lane 31
+  (`pc_p2_waterwraith_register.cpp:48-58`). It runs from the new read-only
+  `pc_p2_long_legs_corpse_count()`; `pc_p2_long_legs_forget` now erases the
+  forgotten actor's corpse (`corpses.erase(actor->mPellet)`), and
+  `pc_p2_long_legs_reset` already cleared the whole map.
+- **Deliberate deviation from lane 31:** the sweep is not called from the
+  per-frame tick. An unconditional tick sweep stalls the stage-2 FSM in the
+  merged wave (see the blocker below), so the sweep stays at the
+  observation/reset/forget points where the registry is actually inspected.
+- The fixture asserts the one-shot property: after both deliveries and *before*
+  its own forget it checks `pc_p2_long_legs_corpse_count()==0` and emits
+  `P2_LL_CORPSE_DRAIN remaining=0`; `validate()` gains a `corpse_one_shot` gate.
+
+### 2. (blocking) `natural_carry` gate was vacuous - fixed
+
+Root (`deepseek/p2-l26`, head `f355762c`):
+
+- The dead `assignTransport` helper is deleted from
+  `experimental/pikmin2_long_legs_lifecycle.py` (never called; its `P2_LL_ASSIST`
+  sentinel never emitted), so the old third term was always true.
+- `natural_carry` now reads a real observed signal: both receipts AND a positive
+  native `P2_LL_CARRY ... transport=<n>` carrier count for *each* species (the
+  ordinary FreeMode `Piki::graspSituation` latch).
+- `tests/test_pikmin2_long_legs_pod.py::test_natural_carry_flips_when_transport_zero`
+  strips the real signal (rewrites every `transport=<n>` to `transport=0`) instead
+  of injecting a synthetic marker, and `test_fixture_source_has_no_forced_transport_write`
+  grep-asserts the fixture contains no `TransportMode` write / `Transport` action.
+
+### 3-5. Documentation
+
+- Gate-checker output re-pasted below; gate 5 is now reported (`ignored [PARTIAL]`,
+  proxy corpse), not the stale `UNTESTED` the checker had flagged.
+- Gate 6 rows are annotated as proven on an older head, and every evidence path now
+  includes the `/capture/` segment. The committed root head (`f355762c`) is **not**
+  the binary that produced the cited runs: the receipt evidence is run
+  `2c23222d…`, and the gate-6 evidence is run `2c3ce2a8…`.
+- Gate 5 rows carry an explicit `PROXY:` note (P1 Chappy placement-vehicle
+  stand-in). The hardcoded lane-19 `POD_PACKAGE` is replaced by a derived,
+  env-overridable default (`PIKMIN_P2_POD_PACKAGE`), and the corpse-registration
+  comment no longer claims it lasts "until forget/reset".
+
+### Blocker (GL re-run after the required merge)
+
+The required merge (`claude/p2-deepseek-wave-native` @ `7ed95228` into
+`deepseek/p2-l26-native`) regresses the fixture: after stage 1, `naviMgr` is null
+every frame (`navimgr=0 naviobj=0`,
+`output/dsw/l26-out/run/84e8632f21ea4635b9bce339533f7716/capture/native.log:1930`),
+so the fixture's `!naviMgr` guard stops advancing `observed` and it stalls. The
+identical fixture on the pre-merge native shows `navi=1` throughout
+(`output/dsw/l26-out/run/c7bb66fa8f1b49849b62873b56b7d9d0/capture/native.log`), so
+the regression comes from the merged wave, not from this lane. A tick-placed
+liveness sweep stalls stage 2 even earlier (naviMgr null by frame 3000), which is
+why the sweep is kept out of the tick. All 73 lane tests pass; the GL gate re-run
+(and a fresh merged-head `P2_POD_RECEIPT` capture) is blocked on the `naviMgr`
+regression.
+
+### Subagent usage (review fixes 3b)
+
+1. `explore` - lane-31 Waterwraith corpse model vs the current Long Legs
+   registry, with exact file:line for the one-shot erase, sweep and reset. Used
+   as-is; it fixed the exact edit set.
+2. `explore` - inventory of every receipt/carry/Pod occurrence in both worktrees;
+   confirmed `assignTransport` had no call site, no code emits `P2_LL_ASSIST`, and
+   located the hardcoded `POD_PACKAGE`. Used as-is.
+3. `general` - rewrote the pod test's `natural_carry` flip test onto the real
+   transport signal and added the static no-forced-write test. Used as-is, with
+   the GOOD_LOG marker shapes corrected to match the fixture's real lines.
+
+### Gate-checker output (re-run, `scripts/check_p2_handoff_gates.py`)
+
+```
+56 Damagumo (role=source):
+  1. identity_spawn     ignored [N/A]
+  2. movement_animation ignored [N/A]
+  3. attacks_receivers  ignored [N/A]
+  4. death_corpse       ignored [N/A]
+  5. transport_reward   ignored [N/A]
+  6. cleanup_reentry    ignored [N/A]
+66 Houdai (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation ignored [PARTIAL]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   ignored [PARTIAL]
+  6. cleanup_reentry    accepted [PASS]
+69 BigFoot (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation ignored [PARTIAL]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   ignored [PARTIAL]
+  6. cleanup_reentry    accepted [PASS]
+```
+
+### Tests run (review fixes 3b)
+
+- `py -3.12 -m pytest tests/test_pikmin2_long_legs_{pod,lifecycle,houdai,install,visual}.py -q`
+  -> **73 passed**.
+- Native `pikmin_pc` builds clean (`build_lane.py l26`, exe sha `0d9d45a4…`).
