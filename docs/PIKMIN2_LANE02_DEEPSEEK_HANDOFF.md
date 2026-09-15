@@ -267,3 +267,60 @@ py -3.12 scripts/generate_pikmin2_roster_revision.py --check (engine/ + native w
   against the final `coverage_gaps(..., existing_docs=)` signature; its skeleton and
   the 4-gap-list key names were retained. Net: the two explore agents saved most of
   the time; the general agent's tests needed a full rewrite (mild cost).
+
+## Fix 2
+
+Review corrections to slice 2 (blocking items 1-3 applied, 4-6 done).
+
+### Rows changed (transcription rule: natural PASS only, else UNTESTED/BLOCKED)
+
+Applied ONE rule across the whole ledger and re-scanned every PASS gate whose
+notes (or source doc) claim proxy/injected/fixture/vehicle/display/P1-host.
+
+- Row **20 (Hiba)**: `attacks_receivers` PASS -> `UNTESTED` (note kept: fire hit
+  PASS injected; no natural claim).
+- Row **0 (Pelplant)**: `death_corpse`/`cleanup_reentry` PASS -> `UNTESTED`
+  (identity is an injected TEKI_Palm proxy).
+- Row **1 (Kochappy)**: `identity_spawn`/`movement_animation` PASS -> `UNTESTED`
+  (visual/vehicle-only P1-proxy).
+- Row **38 (PanModoki)**: `identity_spawn`/`movement_animation` PASS -> `UNTESTED`
+  (actor/proxy).
+- Display/vehicle/P1-host rows downgraded to `UNTESTED` (were PASS A/B):
+  9 Kogane, 10 Wealthy, 11 Fart, 12 UjiA, 13 UjiB, 16 Qurione, 18 MaroFrog,
+  23 Sarai, 24 Tank, 28 ElecBug, 30 Queen, 32 Demon, 40 OoPanModoki, 41 Fuefuki,
+  53 KingChappy, 56 Damagumo, 58 BombSarai, 66 Houdai, 69 BigFoot, 73 BigTreasure,
+  75/95/96 Kabuto family, 78 MiniHoudai, 99 BlackMan.
+- Partial/policy/variant fixes: 55 Hanachirashi (movement PARTIAL -> UNTESTED),
+  72 OniKurage (only identity auto-bind natural; B/C/D -> UNTESTED),
+  101 UmiMushiBlind (only bite natural; A/B -> UNTESTED),
+  68 Tamago (Astonish/flick natural -> attacks_receivers PASS).
+
+### Candidate six-gate blocks added (item 3)
+
+2/17/45/54 all UNTESTED; 15 Armor and 79 Sokkuri A/B/C PASS (NATIVE natural) +
+D/E/F UNTESTED; 44 BlueKochappy A PASS, B/C/D/E UNTESTED, cleanup BLOCKED.
+
+### Audit + test changes (items 4-5)
+
+- `main(argv=None)` so the CLI is directly callable; added
+  `test_audit_review_exits_zero_on_real_ledger` and
+  `test_audit_review_exits_one_on_missing_cited_doc` (temp overlay + monkeypatch).
+- Added `test_shared_modules_subset_of_native_modules` (SHARED_MODULES and
+  MODULE_ALIASES values <= native_modules(ENGINE_PORT)); made the `_gaps` helper
+  build `modules` inside instead of as an import-time default.
+
+### Result
+
+```
+128 passed, 17 subtests passed (roster/coverage/seed/placement/enemy suites)
+py -3.12 scripts/audit_pikmin2_roster.py --review  # exit 0, ledger coverage complete: True, admitted 0
+```
+
+### Subagent lesson (item 6)
+
+The slice-2 transcription errors came from accepting explore #2's doc table
+without re-checking each PASS against a natural-vs-injected test. For this fix I
+did not re-delegate the transcription; I re-derived every PASS gate myself against
+the rule and added a check to the fix script (a PASS whose notes carry
+inject/proxy/fixture/vehicle/visual/host/display is flagged). Future delegated
+doc-audit output will be gated the same way before transcription.
