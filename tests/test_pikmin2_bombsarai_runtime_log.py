@@ -76,6 +76,7 @@ ALL_FALSE = {
     "hit_count": None,
     "carrier_dead": False,
     "scenario_pass": False,
+    "carriers": {},
 }
 
 
@@ -137,3 +138,74 @@ def test_malformed_line_raises_value_error():
     log = "P2_BOMBSARAI_BLAST ticks=10 hits=3 carrier_dead=0\n"
     with pytest.raises(ValueError):
         validate_markers(log)
+
+
+def build_multi_carrier_log():
+    """Two carriers, each with its own supply/follow/throw/blast marker."""
+    return "\n".join([
+        "P2_BOMBSARAI_SCENARIO_BEGIN scenario=multi",
+        "P2_BOMBSARAI_FSM_SUPPLY scenario=multi carrier=0 tick=10",
+        "P2_BOMBSARAI_JOINT_FOLLOW scenario=multi carrier=0 travel_y=40.0 "
+        "travel_xz=12.5 min=30.0 max=50.0",
+        "P2_BOMBSARAI_FSM_THROW scenario=multi carrier=0 kind=Release tick=20",
+        "P2_BOMBSARAI_FSM_SUPPLY scenario=multi carrier=1 tick=15",
+        "P2_BOMBSARAI_JOINT_FOLLOW scenario=multi carrier=1 travel_y=45.0 "
+        "travel_xz=18.0 min=30.0 max=50.0",
+        "P2_BOMBSARAI_FSM_THROW scenario=multi carrier=1 kind=Release tick=25",
+        "P2_BOMBSARAI_BLAST scenario=multi carrier=0 token=9001 carrier_valid=1 "
+        "ticks=100 traces=8 floors=2 walls=1 hits=3 carrier_dead=0",
+        "P2_BOMBSARAI_BLAST scenario=multi carrier=1 token=9002 carrier_valid=1 "
+        "ticks=110 traces=7 floors=1 walls=3 hits=3 carrier_dead=0",
+        "P2_BOMBSARAI_HIT scenario=multi id=501 kind=0 damage=45.000 self=0 token=9001",
+        "P2_BOMBSARAI_HIT scenario=multi id=502 kind=1 damage=30.000 self=0 token=9002",
+        "P2_BOMBSARAI_SCENARIO_PASS scenario=multi",
+        "PASS BOMBSARAI_RUNTIME",
+    ]) + "\n"
+
+
+def test_multi_carrier_separates_tokens():
+    result = validate_markers(build_multi_carrier_log(), scenarios=("multi",))
+    assert result["passed"] is True
+    carriers = result["scenarios"]["multi"]["carriers"]
+    assert set(carriers) == {0, 1}
+    c0 = carriers[0]
+    c1 = carriers[1]
+    assert c0["blast_token"] == 9001
+    assert c1["blast_token"] == 9002
+    assert c0["blast_token"] != c1["blast_token"]
+    for carrier in (c0, c1):
+        assert carrier["joint_follow"] is True
+        assert carrier["travel_y"] > 0
+        assert carrier["travel_xz"] > 0
+        assert carrier["throw_kind"] == "Release"
+        assert carrier["blast_fired"] is True
+        assert carrier["blast_carrier_valid"] is True
+        assert carrier["hit_count"] == 3
+        assert carrier["carrier_dead"] is False
+
+
+def build_dead_carrier_log():
+    """Dead carrier whose in-flight bomb still blasts (carrier_valid=0)."""
+    return "\n".join([
+        "P2_BOMBSARAI_SCENARIO_BEGIN scenario=dead",
+        "P2_BOMBSARAI_FSM_SUPPLY scenario=dead carrier=0 tick=18",
+        "P2_BOMBSARAI_JOINT_FOLLOW scenario=dead carrier=0 travel_y=30.0 "
+        "travel_xz=5.0 min=20.0 max=40.0",
+        "P2_BOMBSARAI_FSM_THROW scenario=dead carrier=0 kind=Release tick=60",
+        "P2_BOMBSARAI_BLAST scenario=dead carrier=0 token=9001 carrier_valid=0 "
+        "ticks=80 traces=6 floors=1 walls=1 hits=3 carrier_dead=1",
+        "P2_BOMBSARAI_HIT scenario=dead id=501 kind=0 damage=45.000 self=1 token=0",
+        "P2_BOMBSARAI_HIT scenario=dead id=502 kind=1 damage=30.000 self=1 token=0",
+        "P2_BOMBSARAI_SCENARIO_PASS scenario=dead",
+        "PASS BOMBSARAI_RUNTIME",
+    ]) + "\n"
+
+
+def test_dead_carrier_records_token_and_invalid_carrier():
+    result = validate_markers(build_dead_carrier_log(), scenarios=("dead",))
+    carriers = result["scenarios"]["dead"]["carriers"]
+    assert set(carriers) == {0}
+    c0 = carriers[0]
+    assert c0["blast_token"] == 9001
+    assert c0["blast_carrier_valid"] is False
+    assert c0["carrier_dead"] is True
