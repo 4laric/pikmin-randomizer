@@ -23,17 +23,23 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 
-_NATIVE_CANDIDATES = (
-    Path(os.environ.get('P2_NATIVE_L22', '')),
-    Path('C:/Users/alari/pikmin-randomizer/output/dsw/native-l22'),
-    ROOT / 'native',
-)
-
 
 def _native():
-    for candidate in _NATIVE_CANDIDATES:
-        if candidate and (candidate / 'pc_port' / 'pc_p2_otakara.cpp').is_file():
-            return candidate.resolve()
+    """Return the lane native repo root, or None when no worktree is present.
+
+    Discovery order: ``PIKMIN_NATIVE_ROOT`` (a native repo root, probed via its
+    ``pc_port/`` subdir), ``P2_NATIVE_PC_PORT`` (pointing directly at a
+    ``pc_port/`` dir), then ``ROOT/native/pc_port``.
+    """
+    root = os.environ.get('PIKMIN_NATIVE_ROOT')
+    if root and (Path(root) / 'pc_port' / 'pc_p2_otakara.cpp').is_file():
+        return Path(root).resolve()
+    pc_port = os.environ.get('P2_NATIVE_PC_PORT')
+    if pc_port and (Path(pc_port) / 'pc_p2_otakara.cpp').is_file():
+        return Path(pc_port).resolve().parent
+    candidate = ROOT / 'native' / 'pc_port'
+    if (candidate / 'pc_p2_otakara.cpp').is_file():
+        return candidate.resolve().parent
     return None
 
 

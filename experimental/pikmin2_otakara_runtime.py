@@ -11,17 +11,22 @@ path:
 * movement/animation: the FSM drives the shared OtakaraBase ``wait1``/``attack1``
   clips and flicks when a Pikmin is inside the 60-unit source hit radius;
 * natural elemental discharge: event type 3 of the ``attack1`` clip emits the
-  real ``InteractFire`` receiver. A Red Pikmin is rejected (``P2_OTAKARA_
-  DISCHARGE_IMMUNE ... colour=red``), a Blue Pikmin transits the fire panic
-  (``P2_OTAKARA_DISCHARGE_HIT ... stimulus=InteractFire accepted=1``);
-* damage/death: one labeled ``InteractAttack`` injection drives the source
-  queue-then-apply path 150 -> 0, the module logs ``P2_OTAKARA_DEAD health=0``
-  and drives the source dead clip while the host completes teardown/corpse.
+  real ``InteractFire`` receiver. The emitter honours the lane-11 capability
+  matrix and simply does not deliver to a fire-immune Pikmin
+  (``P2_OTAKARA_DISCHARGE_IMMUNE ... colour=red``, emitter-side); a Blue Pikmin
+  reaches the real receiver and transits the fire panic
+  (``P2_OTAKARA_DISCHARGE_HIT ... stimulus=InteractFire accepted=1``, later
+  ``PIKISTATE_Fired``);
+* damage/death: every mHealth drop is logged (``P2_OTAKARA_HIT``) including the
+  natural pre-injection combat; one labeled ``InteractAttack`` injection then
+  drives the queue-then-apply path to 0 and the module logs ``P2_OTAKARA_DEAD
+  health=0``. Host die()/dieSoon()/becomePellet() teardown and the corpse pellet
+  are NOT observed (the fixture exits at health<=0).
 
 The fixture recolours two starting Pikmin (Red/Blue) and parks them inside the
-fire discharge radius; the FSM, the emitter, the receiver and the death path are
-all native. The ``InteractAttack`` death trigger is a labeled injection of the
-damage value, not a forced death.
+fire discharge radius; the FSM, the emitter, the receiver and the death-health
+drop are all native. The ``InteractAttack`` death trigger is a labeled injection
+of the damage value, not a forced death.
 """
 import argparse
 import functools
@@ -60,7 +65,8 @@ public:int idle() override {
   int index=0;Iterator p(pikiMgr);CI_LOOP(p){Piki* v=static_cast<Piki*>(*p);if(!v->isAlive())continue;
    if(index==0){red=v;v->setColor(Red);}else if(index==1){blue=v;v->setColor(Blue);}++index;}
   require(red&&blue,"two starting Pikmin available");
-  std::printf("P2_OTAKARA_SQUAD red=%d blue=%d registered=%lu\n",Red,Blue,pc_p2_otakara_count());
+  int reds=0,blues=0;Iterator q(pikiMgr);CI_LOOP(q){Piki* v=static_cast<Piki*>(*q);if(v->isAlive()){if(v->mColor==Red)++reds;else if(v->mColor==Blue)++blues;}}
+  std::printf("P2_OTAKARA_SQUAD red=%d blue=%d registered=%lu\n",reds,blues,pc_p2_otakara_count());
   std::fflush(stdout);
  }
  // Park the two Pikmin inside the 60-unit fire discharge radius so the natural
@@ -81,10 +87,12 @@ public:int idle() override {
   std::printf("P2_OTAKARA_DEATH_INJECT before=%.1f\n",before);
   std::fflush(stdout);
  }
- // A real death drives health<=0 -> the module's Dead state and host teardown.
- if(injected&&!deadSeen&&fire->mHealth<=0.0f){deadSeen=true;
-  std::printf("P2_OTAKARA_DEATH_OBSERVE health=%.1f\n",fire->mHealth);
-  std::fflush(stdout);}
+  // A real queue-then-apply death drives health<=0 -> the module's Dead state.
+  // The fixture exits here: host die()/dieSoon()/becomePellet() teardown and the
+  // corpse pellet are NOT observed (relabelled UNTESTED, see handoff).
+  if(injected&&!deadSeen&&fire->mHealth<=0.0f){deadSeen=true;
+   std::printf("P2_OTAKARA_DEATH_OBSERVE health=%.1f\n",fire->mHealth);
+   std::fflush(stdout);}
  if(deadSeen){
   std::puts("PASS P2_OTAKARA_RUNTIME");
   std::fflush(stdout);std::_Exit(0);
@@ -153,6 +161,7 @@ def validate(text, code=0):
         r'stimulus=InteractFire accepted=1', text))
     death_inject = bool(re.search(rf'P2_OTAKARA_DEATH_INJECT before=\d+', text))
     dead = bool(re.search(rf'P2_OTAKARA_DEAD generator={FIRE_ID} source_id=59 health=0', text))
+    natural_damage = bool(re.search(rf'P2_OTAKARA_HIT generator={FIRE_ID} source_id=59 health=150\.0->', text))
     squad = re.search(r'P2_OTAKARA_SQUAD red=(\d+) blue=(\d+) registered=(\d+)', text)
     checks = dict(
         completion=code == 0 and 'PASS P2_OTAKARA_RUNTIME' in text,
@@ -164,6 +173,7 @@ def validate(text, code=0):
         discharge=discharge,
         immune_red=immune_red,
         hit_blue=hit_blue,
+        natural_damage=natural_damage,
         death_inject=death_inject,
         dead=dead,
         no_extinction=not re.search(r'Extinction', text, re.IGNORECASE),
@@ -172,12 +182,16 @@ def validate(text, code=0):
                 injected=['InteractAttack death trigger (damage value 100000)',
                            'starting Pikmin recoloured Red/Blue and parked in the '
                            'discharge radius'],
-                unmeasured=['corpse pellet/transport/reward after death',
+                unmeasured=['host die()/dieSoon()/becomePellet() corpse teardown after '
+                            'health<=0 (fixture exits at the health drop)',
+                            'corpse pellet/transport/reward after death',
                             'scene re-entry and recycled-address rebind'],
                 limitations=['Behavior fixture overrides the FireOtakara arena coordinate; '
                              'not production placement evidence.',
-                             'Elemental discharge uses the P1 InteractFire receiver; '
-                             'BombOtakara (93) and the item-carry states are out of scope.'])
+                             'The discharge immunity is emitter-side (the lane-11 matrix '
+                             'suppresses delivery to fire-immune Pikmin); the Blue hit proves '
+                             'the real InteractFire receiver runs. BombOtakara (93) and the '
+                             'item-carry states are out of scope.'])
 
 
 def run(assets, imported, output, exe, seconds=120):
