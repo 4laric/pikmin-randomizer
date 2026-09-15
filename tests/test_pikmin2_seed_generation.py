@@ -35,7 +35,9 @@ def test_p2_generation_fails_closed_for_unadmitted_placement():
         generate("seed-a", p2_enemies=True, p2_placement=placement_document())
 
 
-def test_p2_generation_requires_a_placement_document(one_admitted):
+def test_p2_generation_defaults_to_committed_document(one_admitted):
+    # No explicit document: the committed admitted-cohort document is used, so an
+    # injected admission (79) that it does not accept still fails closed.
     with pytest.raises(ValueError):
         generate("seed-a", p2_enemies=True)
 

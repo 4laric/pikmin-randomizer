@@ -44,7 +44,7 @@ class CampaignEnemies(Toggle):
 
 
 class P2EnemyRandomizer(Toggle):
-    """Experimental: seed Pikmin 2 source identities through the versioned admission bridge. Off by default. Requires a lane 04 placement/encounter document (legal targets) and at least one lane 02-admitted identity; generation fails closed with a clear error until both exist, and never substitutes a P1 enemy."""
+    """Experimental: place admitted Pikmin 2 source enemies in the randomizer through the versioned admission bridge. Off by default. When enabled, the admitted cohort is placed on the committed accepted-placement document (docs/PIKMIN2_ADMITTED_PLACEMENT.json); an empty or unaccepted admission set still fails closed with a clear error, and no P1 enemy is ever substituted."""
     display_name = 'Pikmin 2 Enemy Bridge (experimental)'
     default = 0
 

@@ -37,6 +37,15 @@ def test_product_generation_seeds_the_admitted_cohort(seed):
     assert bound == {23, 44, 59, 60, 61, 62}
 
 
+def test_p2_enemies_defaults_to_the_committed_document():
+    """The p2_enemies option places the admitted cohort with no explicit document."""
+    default = generate('admitted-default', p2_enemies=True)
+    explicit = generate('admitted-default', p2_enemies=True, p2_placement=document())
+    assert default['p2_layout'] == explicit['p2_layout']
+    bound = {binding['source_id'] for binding in default['p2_layout']['bindings']}
+    assert bound == {23, 44, 59, 60, 61, 62}
+
+
 def test_lost_accepted_slot_fails_closed():
     doc = document()
     for profile in doc['profiles']:
