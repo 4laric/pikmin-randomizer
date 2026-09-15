@@ -96,6 +96,17 @@ class OtakaraNativeSourceTests(unittest.TestCase):
         self.assertIn('pc_p2_otakara_attack(this, attack->mOwner, "InteractAttack");', btk)
         self.assertIn('pc_p2_otakara_forget', _read('pc_port/pc_p2_teki_lifetime.cpp'))
 
+    def test_host_seam_hooks(self):
+        text = _read('pc_port/pc_p2_otakara.cpp')
+        self.assertIn('void pc_p2_otakara_died', text)
+        self.assertIn('bool pc_p2_otakara_receipt', text)
+        self.assertIn('P2_OTAKARA_MODULE_DEAD', text)
+        self.assertIn('P2_OTAKARA_FORGET generator=%u registered=1 count=%lu', text)
+        die = _read('src/plugPikiNakata/tekibteki.cpp')
+        self.assertIn('pc_p2_otakara_died(this)', die)
+        preview = _read('pc_port/pc_p2_preview.cpp')
+        self.assertIn('pc_p2_otakara_receipt(pellet->mPelletView', preview)
+
     def test_hook_wiring(self):
         teki = _read('include/teki.h')
         self.assertIn('#include "pc_p2_otakara.h"', teki)
