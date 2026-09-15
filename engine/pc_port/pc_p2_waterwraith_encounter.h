@@ -31,6 +31,7 @@ struct P2WaterwraithEncounterStats {
     float damageDealt = 0.0f;
     bool rollerZeroed = false;   // roller health reached zero
     bool childRemoved = false;   // tyre_getoff end removed the Tyre child
+    bool bodyZeroed = false;     // dismounted wraith body health reached zero
     bool treasureReleased = false; // source Dead KEYEVENT_5
     bool killed = false;         // source Dead KEYEVENT_END (kill requested)
 };

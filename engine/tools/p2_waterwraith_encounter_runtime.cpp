@@ -14,9 +14,10 @@
 //     but non-Purple never damages the actor (`damageDealt == 0`).
 //   * Stage B (Purple adjacent): Purple stuns the riding roller, accepted hits
 //     deplete the Tyre health, the roller death script dismounts and removes the
-//     child, and the exposed body is finished.
-//   * Cleanup/re-entry: reset then re-setup the seam and require it is ready
-//     again with no stale state.
+//     child, and the exposed body is finished through its own death (body zero
+//     -> Dead key5 stand-in corpse drop -> Dead end teardown).
+//   * Cleanup/re-entry: after natural death, reset then re-setup the seam and
+//     require it is ready again with restored health and no stale state.
 
 #include <SDL2/SDL.h>
 #include <GL/gl.h>
@@ -207,36 +208,49 @@ public:
             return;
         }
         const P2WaterwraithEncounterStats& stats = pc_p2_waterwraith_encounter_stats();
+        // Full natural chain: stun -> roller death -> child removal -> exposed
+        // body death -> corpse drop -> teardown.
         if (!(stats.stunned > 0 && stats.purpleHits > 0 && stats.damageDealt > 0.0f
-              && stats.rollerZeroed && stats.childRemoved)) {
+              && stats.rollerZeroed && stats.childRemoved && stats.bodyZeroed
+              && stats.treasureReleased && stats.killed
+              && pc_p2_waterwraith_register_corpse_spawned()
+              && pc_p2_waterwraith_register_finished())) {
             return;
         }
 
         require(pc_p2_waterwraith_register_tyre_health() <= 0.0f, "roller health not zeroed");
+        require(pc_p2_waterwraith_register_body_health() <= 0.0f, "body health not zeroed");
 
         // Snapshot the combat counters before cleanup zeroes them.
         const P2WaterwraithEncounterStats summary = pc_p2_waterwraith_encounter_stats();
         require(summary.stunned > 0 && summary.purpleHits > 0 && summary.crushes > 0
-                    && summary.damageDealt > 0.0f,
+                    && summary.damageDealt > 0.0f && summary.bodyZeroed
+                    && summary.treasureReleased && summary.killed,
                 "combat counters incomplete");
 
         // Cleanup and re-entry: tear the seam down and bring it back with no
-        // stale actor/child/squad state.
+        // stale actor/child/squad/body/corpse state.
         if (!reentryChecked) {
             pc_p2_waterwraith_register_reset();
             require(!pc_p2_waterwraith_register_ready(), "register seam did not reset");
+            require(!pc_p2_waterwraith_register_finished(),
+                    "finished flag did not clear on reset");
+            require(!pc_p2_waterwraith_register_corpse_spawned(),
+                    "corpse flag did not clear on reset");
             require(pc_p2_waterwraith_encounter_stats().stunned == 0, "encounter stats did not reset");
             require(pc_p2_waterwraith_register_setup("p2-waterwraith-actor.txt"),
                     "register seam re-setup failed");
             require(pc_p2_waterwraith_register_ready() && pc_p2_waterwraith_register_attached(),
                     "re-entry seam not ready/attached");
-            std::printf("P2_WATERWRAITH_ENCOUNTER_REENTRY ready=1 attached=1\n");
+            require(pc_p2_waterwraith_register_body_health() > 0.0f,
+                    "re-entry body health not restored");
+            std::printf("P2_WATERWRAITH_ENCOUNTER_DEATH_REENTRY ready=1 attached=1\n");
             reentryChecked = true;
         }
 
         capture("waterwraith-encounter.ppm");
         std::printf("P2_WATERWRAITH_ENCOUNTER_PASS stuns=%llu hits=%llu crushes=%llu damage=%.1f "
-                    "zeroed=1 child_removed=1\n",
+                    "zeroed=1 child_removed=1 body_zeroed=1 treasure=1 kill=1\n",
                     static_cast<unsigned long long>(summary.stunned),
                     static_cast<unsigned long long>(summary.purpleHits),
                     static_cast<unsigned long long>(summary.crushes), summary.damageDealt);

@@ -57,7 +57,8 @@ struct ActorState {
     P2LongLegsFsm fsm;
     float animSeconds = 0.0f;   // time in the current state (source-key edges)
     bool key2Fired = false;
-    float lastHealth = 0.0f;    // host damage edge for the Houdai shot cooldown
+    float lastHealth = 0.0f;        // host damage edge for the Houdai shot cooldown
+    float lastPositiveHealth = 0.0f; // last still-positive health, for death provenance
     P2LongLegsState lastState = P2LongLegsState::Stay;
     bool stateLogged = false;
 };
@@ -239,6 +240,7 @@ void pc_p2_long_legs_setup() {
         state.parms = p2LongLegsParmsFor(speciesEnum(match->second));
         state.fsm.reset(state.parms);
         state.lastHealth = teki->mHealth;
+        state.lastPositiveHealth = teki->mHealth;
         speciesUsed.insert(match->second);
     }
     if (found.size() != wanted.size()) fail("arena actor not present in scene");
@@ -283,6 +285,12 @@ void pc_p2_long_legs_update(BTeki* actor) {
         kill.killed = true;
         P2LongLegsFsmOutput dead;
         state.fsm.update(kill, dead);
+        // prior_health distinguishes a naturally-fought death (small, drained
+        // to zero by incremental combat damage) from a fixture-injected large
+        // jump to zero. Reported from the last still-positive health, since the
+        // engine death tick already sees health == 0.
+        std::printf("P2_LONG_LEGS_DEAD species=%s generator=%u health=0 prior_health=%.2f\n",
+                    state.species.c_str(), state.generator, state.lastPositiveHealth);
         if (dead.dropTreasure)
             std::printf("P2_LONG_LEGS_DROP species=%s generator=%u\n",
                         state.species.c_str(), state.generator);
@@ -304,8 +312,17 @@ void pc_p2_long_legs_update(BTeki* actor) {
     in.health = actor->mHealth;
     // A health decrease this tick is the source damage edge; it postpones the
     // Houdai gun by resetting the shot cooldown (Houdai.cpp).
+    if (actor->mHealth > 0.0f && actor->mHealth < state.lastHealth) {
+        // Natural combat observability: an incremental, still-positive health
+        // decrease is live Pikmin attack damage, distinguishable from a single
+        // fixture-injected jump to zero (which shows up only in P2_LONG_LEGS_DEAD).
+        std::printf("P2_LONG_LEGS_DAMAGE species=%s generator=%u health=%.2f prior=%.2f\n",
+                    state.species.c_str(), state.generator, actor->mHealth, state.lastHealth);
+        std::fflush(stdout);
+    }
     in.damageTaken = actor->mHealth < state.lastHealth;
     state.lastHealth = actor->mHealth;
+    if (actor->mHealth > 0.0f) state.lastPositiveHealth = actor->mHealth;
     in.roll = gsys->getRand(1.0f);
     in.wakeTargetNearby = nearestTarget(pos, state.parms.privateRadius) != nullptr;
     in.pikminAccumulating = countPikiWithin(pos, AccumulateRadius) > 0;

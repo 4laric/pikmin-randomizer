@@ -50,6 +50,79 @@ int main(int argc, char** argv) {
         assert(pc_randomizer_p2_source(nullptr) == 0);
         std::puts("ENEMY_P2_PASS"); return 0;
     }
+    for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--enemy-p2-spawn-probe")) {
+        assert(pc_randomizer_p2_bridge());
+        int bound = 0;
+        for (const auto& row : randomizerSpawnSlots) {
+            int object;
+            pc_randomizer_bind_generator(&object, row.stage, row.file, row.offset);
+            const unsigned uid = pc_randomizer_generator_id(&object);
+            assert(uid == row.uid);
+            const unsigned source = pc_randomizer_p2_source_for_id(uid);
+            if (!source) continue;
+            // The slot uid is re-derived from (stage,file,offset) on every load;
+            // an unset + rebind (cache reload) must re-resolve the same source.
+            pc_randomizer_set_generator_id(&object, 0);
+            assert(pc_randomizer_generator_id(&object) == 0);
+            assert(pc_randomizer_p2_source_for_id(pc_randomizer_generator_id(&object)) == 0);
+            pc_randomizer_bind_generator(&object, row.stage, row.file, row.offset);
+            assert(pc_randomizer_p2_source_for_id(pc_randomizer_generator_id(&object)) == source);
+            std::printf("P2_SPAWN_BIND target=%u source_id=%u\n", uid, source);
+            ++bound;
+        }
+        assert(bound > 0);
+        assert(pc_randomizer_p2_source_for_id(0) == 0);
+        assert(pc_randomizer_p2_source_for_id(424242u) == 0); // unknown uid
+        std::puts("ENEMY_P2_SPAWN_PASS"); return 0;
+    }
+    for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--enemy-p2-roundtrip-probe")) {
+        assert(pc_randomizer_p2_bridge());
+        // Real ramMode/cache SLT1 record round trip, byte-for-byte what
+        // Generator::write/read serializes under the P2 bridge: big-endian
+        // magic 0x534c5431 then the spawn-slot uid. A cache reload must recover
+        // the SAME uid so P2_SEED_RESOLVE can fire again for it.
+        unsigned char record[8];
+        int roundtripped = 0;
+        for (const auto& row : randomizerSpawnSlots) {
+            int object;
+            pc_randomizer_bind_generator(&object, row.stage, row.file, row.offset);
+            const unsigned uid = pc_randomizer_generator_id(&object);
+            assert(uid == row.uid);
+            const unsigned source = pc_randomizer_p2_source_for_id(uid);
+            if (!source) continue;
+            const unsigned magic = 0x534c5431u;
+            record[0] = static_cast<unsigned char>(magic >> 24);
+            record[1] = static_cast<unsigned char>(magic >> 16);
+            record[2] = static_cast<unsigned char>(magic >> 8);
+            record[3] = static_cast<unsigned char>(magic);
+            record[4] = static_cast<unsigned char>(uid >> 24);
+            record[5] = static_cast<unsigned char>(uid >> 16);
+            record[6] = static_cast<unsigned char>(uid >> 8);
+            record[7] = static_cast<unsigned char>(uid);
+            // Cache-mode reload: forget the live binding, then re-establish it
+            // from the serialized record alone (Generator::read path).
+            pc_randomizer_set_generator_id(&object, 0);
+            assert(pc_randomizer_generator_id(&object) == 0);
+            assert(pc_randomizer_p2_source_for_id(0) == 0);
+            const unsigned recoveredMagic = (static_cast<unsigned>(record[0]) << 24)
+                | (static_cast<unsigned>(record[1]) << 16)
+                | (static_cast<unsigned>(record[2]) << 8)
+                | static_cast<unsigned>(record[3]);
+            const unsigned recoveredUid = (static_cast<unsigned>(record[4]) << 24)
+                | (static_cast<unsigned>(record[5]) << 16)
+                | (static_cast<unsigned>(record[6]) << 8)
+                | static_cast<unsigned>(record[7]);
+            assert(recoveredMagic == 0x534c5431u);
+            pc_randomizer_set_generator_id(&object, recoveredUid);
+            assert(pc_randomizer_generator_id(&object) == uid);
+            assert(pc_randomizer_p2_source_for_id(recoveredUid) == source);
+            std::printf("P2_ROUNDTRIP_BIND target=%u source_id=%u\n", uid, source);
+            ++roundtripped;
+        }
+        assert(roundtripped > 0);
+        assert(pc_randomizer_p2_source_for_id(0) == 0);
+        std::puts("ENEMY_P2_ROUNDTRIP_PASS"); return 0;
+    }
     for (int arg = 1; arg < argc; ++arg) if (!std::strcmp(argv[arg], "--group-probe")) {
         assert(pc_randomizer_group_slots());
         int objects[12] = {};

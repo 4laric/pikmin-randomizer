@@ -491,19 +491,25 @@ int pc_randomizer_start_stage() { return startStage; }
 int pc_randomizer_start_color() { return startColor; }
 bool pc_randomizer_spawn_slots() { return enabled && (slotEnemies || campaignEnemies); }
 bool pc_randomizer_group_slots() { return enabled && groupEnemies; }
-bool pc_randomizer_p2_bridge() { return enabled && p2EnemyBridge; }
+bool pc_randomizer_p2_bridge() { return p2EnemyBridge; }
 unsigned pc_randomizer_p2_source(const char* target) {
-    if (!enabled || !p2EnemyBridge || !target) return 0;
+    if (!p2EnemyBridge || !target) return 0;
     const auto it = p2Bindings.find(target);
     return it == p2Bindings.end() ? 0 : it->second;
 }
 unsigned pc_randomizer_p2_binding_count() {
-    return enabled && p2EnemyBridge ? static_cast<unsigned>(p2Bindings.size()) : 0;
+    return p2EnemyBridge ? static_cast<unsigned>(p2Bindings.size()) : 0;
 }
 bool pc_randomizer_p2_bound(unsigned source_id) {
-    if (!enabled || !p2EnemyBridge || !source_id) return false;
+    if (!p2EnemyBridge || !source_id) return false;
     for (const auto& binding : p2Bindings) if (binding.second == source_id) return true;
     return false;
+}
+unsigned pc_randomizer_p2_source_for_id(unsigned long generator_id) {
+    if (!p2EnemyBridge || !generator_id) return 0;
+    char target[24];
+    std::snprintf(target, sizeof(target), "%lu", generator_id);
+    return pc_randomizer_p2_source(target);
 }
 unsigned pc_randomizer_generator_id(const void* generator) {
     auto it = generatorIds.find(generator);
@@ -511,19 +517,71 @@ unsigned pc_randomizer_generator_id(const void* generator) {
 }
 void pc_randomizer_set_generator_id(const void* generator, unsigned uid) {
     if (!uid) { generatorIds.erase(generator); return; }
-    if (!pc_randomizer_spawn_slots()) return;
+    // Populate under the P2 enemy bridge too: ENEMY_P2 forbids the P1 slot
+    // layouts, so pc_randomizer_spawn_slots() is false and generatorIds would
+    // otherwise stay empty (the seed bindings key on the spawn-slot uid).
+    if (!pc_randomizer_spawn_slots() && !pc_randomizer_p2_bridge()) return;
     for (const auto& row : randomizerSpawnSlots) if (row.uid == uid) {
         generatorIds[generator] = uid; return;
     }
     fail("unknown saved generator ID");
 }
-void pc_randomizer_bind_generator(const void* generator, int stage, const char* file, int offset) {
+unsigned pc_randomizer_placement_slot_uid(unsigned sourceId70) {
+    // Lane-04 catalog join: generator _70 -> placement slot uid (crc32), read
+    // from the staged p2-placement-slots.txt sidecar. Only consulted under the
+    // P2 bridge for room-course generators absent from randomizerSpawnSlots.
+    static std::unordered_map<unsigned, unsigned> slotBy70;
+    static bool loaded = false;
+    if (!loaded) {
+        loaded = true;
+        std::ifstream sidecar("p2-placement-slots.txt");
+        if (sidecar) {
+            std::string magic;
+            if ((sidecar >> magic) && magic == "P2_PLACEMENT_SLOTS_1") {
+                unsigned generator = 0, slot = 0;
+                while (sidecar >> generator >> slot) slotBy70[generator] = slot;
+            }
+        }
+    }
+    const auto it = slotBy70.find(sourceId70);
+    return it == slotBy70.end() ? 0 : it->second;
+}
+
+void pc_randomizer_bind_generator(const void* generator, int stage, const char* file, int offset, unsigned sourceId70) {
     pc_randomizer_set_generator_id(generator, 0);
-    if (!pc_randomizer_spawn_slots() || !file) return;
+    if ((!pc_randomizer_spawn_slots() && !pc_randomizer_p2_bridge()) || !file) return;
     for (const auto& row : randomizerSpawnSlots)
         if (row.stage == stage && row.offset == offset && !std::strcmp(row.file, file)) {
             pc_randomizer_set_generator_id(generator, row.uid); return;
         }
+    if (pc_randomizer_p2_bridge() && sourceId70) {
+        const unsigned uid = pc_randomizer_placement_slot_uid(sourceId70);
+        if (uid) pc_randomizer_set_generator_id(generator, uid);
+    }
+}
+
+bool pc_randomizer_p2_room_bootstrap(const char* path) {
+    // Feed the room preview the seed's ENEMY_P2 bindings without a full session:
+    // a full session sets `enabled` (which holds/freezes the preview) but the
+    // bridge only needs p2Bindings + p2EnemyBridge to resolve room generators.
+    std::ifstream input(path);
+    std::string word;
+    while (input >> word) {
+        if (word != "ENEMY_P2") continue;
+        unsigned protocol, count; std::string revision;
+        if (!(input >> protocol >> revision >> count) || protocol != 1
+            || revision != randomizerP2RosterRevision || count == 0 || count > 64)
+            fail("incompatible P2 enemy roster or protocol version");
+        for (unsigned i = 0; i < count; ++i) {
+            std::string target; unsigned sourceId;
+            if (!(input >> target >> sourceId) || target.empty() || target.size() > 64
+                || !randomizerP2IsBindable(sourceId) || !p2Bindings.emplace(target, sourceId).second)
+                fail("invalid P2 enemy binding");
+        }
+        p2EnemyBridge = true;
+        return true;
+    }
+    return false;
 }
 int pc_randomizer_enemy_for_generator(int original, bool protectedSpawn, const void* generator) {
     if (!pc_randomizer_spawn_slots()) return pc_randomizer_enemy_type(original, protectedSpawn);

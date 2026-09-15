@@ -143,10 +143,50 @@ static void test_mother_birth_whistle_death_cave() {
     assert(bridge.forget(3000) == false); // already removed by the exit
 }
 
+static void test_transition_removes_is_nonmutating() {
+    // The cave checkpoint computes the drop set before writing the transfer
+    // file and commits the mutating transition only after a successful write, so
+    // a failed write retry must still track every removed dependent. Prove the
+    // non-mutating query (1) returns the correct drop set, (2) leaves the ledger
+    // untouched, and (3) that only the mutating transition() erases bodies.
+    P2BulbminBridge bridge;
+    P2CaptainOwnershipTable table;
+    P2BulbminConfig config;
+    config.motherEpoch = 77;
+    config.maxDependents = P2BULBMIN_MAX_DEPENDENTS;
+    config.motherModel = "kochappy_proxy";
+    assert(bridge.setup(config, &table));
+    int motherHost = 0;
+    assert(bridge.registerMother(&motherHost, "kochappy_proxy", true));
+
+    SpawnDouble engine = {&bridge, 5000};
+    P2BulbminDriver driver;
+    assert(driver.bind(&bridge, &spawn_double, &engine));
+    assert(driver.birthFlock(10) == 10);
+    // Whistle two bodies so exactly eight wild dependents remain.
+    assert(driver.whistle(5001, P2CaptainA).accepted);
+    assert(driver.whistle(5002, P2CaptainA).accepted);
+    assert(bridge.wildCount() == 8 && bridge.recruitedCount() == 2);
+
+    // A failed-write retry path: the non-mutating query reports the eight wild
+    // bodies without erasing them.
+    const auto first = bridge.transitionRemoves(P2BulbminDescendFloor);
+    assert(first.size() == 8);
+    assert(bridge.size() == 10 && bridge.wildCount() == 8 && bridge.recruitedCount() == 2);
+    const auto again = bridge.transitionRemoves(P2BulbminDescendFloor);
+    assert(again.size() == 8); // identical drop set on retry
+
+    // Commit after the (modeled) successful write: the eight wild bodies leave.
+    P2BulbminTransitionOut commit = bridge.transition(P2BulbminDescendFloor);
+    assert(commit.removed.size() == 8 && commit.kept.size() == 2);
+    assert(bridge.wildCount() == 0 && bridge.recruitedCount() == 2);
+}
+
 int main() {
     test_proxy_config_parse();
     test_dedicated_mother_registration();
     test_mother_birth_whistle_death_cave();
+    test_transition_removes_is_nonmutating();
     std::puts("PASS P2_BULBMIN_MOTHER");
     return 0;
 }

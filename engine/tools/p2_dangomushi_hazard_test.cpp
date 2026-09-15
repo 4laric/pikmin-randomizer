@@ -36,6 +36,10 @@ int main()
         P2DangoMushiHazardOutput out;
         enterTurn(policy, out, 10.0f, 1.0f, 1.0f);
         assert(out.invulnerable && !out.stickable);
+        // The host damage gate consumes this shared predicate: an attack/bomb is
+        // rejected whenever the body is not stickable.
+        assert(P2DangoMushiHazardPolicy::attackRejected(out.stickable));
+        assert(!P2DangoMushiHazardPolicy::attackRejected(true));
 
         P2DangoMushiHazardInput in;
         in.turnFrame = 31.9f;
@@ -45,6 +49,7 @@ int main()
         policy.update(in, out);
         assert(out.stickable && !out.invulnerable);
         assert(policy.windowActive());
+        assert(!P2DangoMushiHazardPolicy::attackRejected(out.stickable));
         in.turnFrame = 107.9f;
         policy.update(in, out);
         assert(out.stickable);

@@ -98,7 +98,9 @@ void pc_p2_waterwraith_encounter_step(P2WaterwraithActor& actor, P2WaterwraithAc
                 || !hitRange(target.x, target.z, reference.x, reference.z, rule.hitRadius)) {
                 continue;
             }
-            p2_waterwraith_actor_apply_damage(actor, rule.purpleHitDamage, true, nullptr);
+            if (p2_waterwraith_actor_apply_damage(actor, rule.purpleHitDamage, true, nullptr) == P2WWDMG_Ignored) {
+                continue;
+            }
             ++sStats.purpleHits;
             sStats.damageDealt += rule.purpleHitDamage;
             std::printf("P2_WATERWRAITH_HIT tick=%llu attached=%d rollerHealth=%.1f bodyHealth=%.1f\n",
@@ -159,6 +161,11 @@ void pc_p2_waterwraith_encounter_step(P2WaterwraithActor& actor, P2WaterwraithAc
 
     // Wraith body resolution: end the escape, then the source Dead key sequence
     // (KEYEVENT_5 releases the treasure, KEYEVENT_END kills).
+    if (actor.bodyZeroed() && !sStats.bodyZeroed) {
+        sStats.bodyZeroed = true;
+        std::printf("P2_WATERWRAITH_BODY_ZERO tick=%llu bodyHealth=0.0\n",
+                    static_cast<unsigned long long>(sStats.ticks));
+    }
     if (actor.phase() == P2BM_Escape) {
         in.animEnd = true;
     } else if (actor.phase() == P2BM_Dead) {

@@ -272,6 +272,24 @@ int main()
         assert(pool.activeCount() == 2);
     }
 
+    // Finding #2: a single carrier may supply a second bomb while the first is
+    // still in flight (source !mHeldBomb guard is Captured-only); the third
+    // supply then exhausts the mChildNum=2 pool. Slot iteration stays stable.
+    {
+        P2BombSaraiBombPool pool(2); // mChildNum = 2
+        P2BombSaraiBomb* first = pool.supply(1, { 0, 90, 0 }, config);
+        assert(first && pool.activeCount() == 1);
+        assert(first->throwBomb(P2BombSaraiThrowKind::Death, 0.0f)); // in-flight, held cleared
+        P2BombSaraiBomb* second = pool.supply(1, { 0, 90, 0 }, config); // same carrier, now legal
+        assert(second && second != first && pool.activeCount() == 2);
+        assert(second->phase() == P2BombSaraiBombPhase::Captured);
+        assert(pool.supply(1, { 0, 90, 0 }, config) == nullptr); // duplicate HELD carrier
+        assert(pool.supply(2, { 0, 90, 0 }, config) == nullptr); // exhausted (fresh token)
+        assert(pool.activeCount() == 2);
+        assert(pool.slotCount() == 2 && pool.slotLive(0) && pool.slotLive(1));
+        assert(pool.bombAt(0) == first || pool.bombAt(1) == first);
+    }
+
     // Invalid config refuses capture instead of inventing parameters.
     {
         P2BombSaraiBomb bomb;

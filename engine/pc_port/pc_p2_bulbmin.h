@@ -113,6 +113,12 @@ public:
     bool forget(std::uint32_t id);
     // Cave-transition filter (pikiMgr save filter).
     P2BulbminTransitionOut transition(P2BulbminCaveTransition move);
+    // Non-mutating drop set for transition(). The live checkpoint computes this
+    // before writing the transfer file and commits transition() only after a
+    // successful write, so a failed write can retry without leaking bodies.
+    std::vector<std::uint32_t> transitionRemoves(P2BulbminCaveTransition move) const {
+        return flock.removedOn(move);
+    }
 
     std::size_t size() const { return flock.size(); }
     std::size_t wildCount() const { return flock.wildCount(); }
@@ -326,8 +332,18 @@ Piki* pc_p2_bulbmin_birth_dependent(Creature* leader, const struct Vector3f& mot
 bool pc_p2_bulbmin_whistle(Piki* bulbmin);
 // Drop a destroyed dependent.
 void pc_p2_bulbmin_forget(Piki* piki);
-// Apply the cave save filter, returning the bodies that must not be saved.
-std::vector<std::uint32_t> pc_p2_bulbmin_transition(P2BulbminCaveTransition move);
+// Cave save filter (source PikiMgr::caveSaveAllPikmins, pikiMgr.cpp:723),
+// applied in two steps by pc_p2_cave_checkpoint:
+//   * pc_p2_bulbmin_transition_removes(move) computes, non-mutatingly, the live
+//     Piki bodies to exclude from the persisted squad. On P2BulbminDescendFloor
+//     a wild (unwhistled) dependent is removed and a recruited one kept; on
+//     P2BulbminExitCave every tracked Bulbmin is removed. Untracked
+//     (injected/restored before this save) Bulbmin are never returned.
+//   * pc_p2_bulbmin_transition(move) is the mutating commit, called only after
+//     the transfer file has been written successfully, so a failed write can be
+//     retried without leaking the removed bodies (they stay tracked).
+std::vector<Piki*> pc_p2_bulbmin_transition_removes(P2BulbminCaveTransition move);
+std::vector<Piki*> pc_p2_bulbmin_transition(P2BulbminCaveTransition move);
 // Optional handoff target for whistle; another lane can bind its captain
 // ownership table so recruited Bulbmin join the squad.
 void pc_p2_bulbmin_bind_captain_table(P2CaptainOwnershipTable* ownership);
@@ -368,3 +384,10 @@ int pc_p2_bulbmin_leader_died();
 // forgotten actor was the mother stand-in.
 void pc_p2_bulbmin_proxy_forget(BTeki* mother);
 int pc_p2_bulbmin_dependent_count();
+
+// Per-Piki phase query (source pikiMgr.cpp:723,762). `phase` returns -1 when the
+// Piki is not a tracked dependent (an injected/restored Bulbmin counts as
+// recruited, i.e. isPikmin()), P2BulbminWild for an unwhistled dependent, and
+// P2BulbminRecruited for a whistled one. The live checkpoint uses
+// pc_p2_bulbmin_transition_removes/transition (above); this is a read-only query.
+int pc_p2_bulbmin_phase(const Piki* piki);

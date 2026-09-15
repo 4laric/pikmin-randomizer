@@ -302,6 +302,109 @@ void testDamageGating()
     std::puts("PASS actor_damage_gate");
 }
 
+void testExposedBodyDamageableAfterChildRemoval()
+{
+    // Regression for the dismounted-body gate: once the Tyre child is removed
+    // (rig dead), the exposed wraith body must STILL be damageable. The source
+    // EB_Invulnerable dismount flag persists past the roller's finishDead
+    // (tyreState.cpp:152-153); rig.damageable() being false must not close the
+    // body window.
+    P2WaterwraithActor actor = makeActor(P2BM_Walk);
+    actor.rig().landFloorContact(); // freeze -> roller damageable
+    bool dead = false;
+    assert(p2_waterwraith_actor_apply_damage(actor, P2WaterwraithRig::kTyreMaxHealth, true, &dead)
+           == P2WWDMG_Roller);
+    assert(!dead && actor.rig().tyreHealth() == 0.0f);
+
+    actor.rig().dismount();
+    assert(actor.rig().ownerInvulnerableSet());
+    assert(actor.rig().beginDead() && actor.rig().finishDead());
+    assert(!actor.rig().alive()); // child removed
+
+    // The exposed body must still take Purple hits and reach zero.
+    assert(p2_waterwraith_actor_apply_damage(actor, 1000.0f, true, &dead) == P2WWDMG_Body);
+    assert(!dead && std::fabs(actor.bodyHealth() - (actor.bodyMaxHealth() - 1000.0f)) < 1e-3f);
+    assert(p2_waterwraith_actor_apply_damage(actor, actor.bodyMaxHealth(), true, &dead)
+           == P2WWDMG_Body);
+    assert(dead && actor.bodyZeroed());
+    std::puts("PASS actor_exposed_body_damageable");
+}
+
+void testNaturalFullLifecycle()
+{
+    // Full source-ordered chain: fall -> recover -> walk/roll -> Purple stun
+    // cycle -> roller zero -> dismount/escape -> tyre_getoff -> child removed ->
+    // exposed-body death -> Dead key5/end. This mirrors the engine encounter
+    // seam end to end at the policy level.
+    P2WaterwraithActor actor = makeActor(P2BM_Fall);
+    P2WaterwraithActorInput in;
+    P2WaterwraithActorOutput out;
+
+    in.landFloorContact = true;
+    step(actor, in, &out);
+    assert(actor.rig().tyrePhase() == P2TYRE_Freeze);
+
+    in           = P2WaterwraithActorInput{};
+    in.isFallEnd = true;
+    step(actor, in, &out);
+    assert(actor.phase() == P2BM_Recover);
+
+    in         = P2WaterwraithActorInput{};
+    in.animEnd = true;
+    step(actor, in, &out);
+    assert(actor.phase() == P2BM_Walk && actor.rig().tyrePhase() == P2TYRE_Move);
+
+    in             = P2WaterwraithActorInput{};
+    in.quakeFreeze = true;
+    step(actor, in, &out);
+    assert(actor.rig().tyrePhase() == P2TYRE_Freeze);
+
+    bool dead = false;
+    assert(p2_waterwraith_actor_apply_damage(actor, P2WaterwraithRig::kTyreMaxHealth, true, &dead)
+           == P2WWDMG_Roller);
+    assert(!dead && actor.rollerZeroed());
+
+    in            = P2WaterwraithActorInput{};
+    in.isTyreDead = true;
+    step(actor, in, &out);
+    assert(actor.phase() == P2BM_Escape && !actor.rig().attachedToOwner());
+
+    in                = P2WaterwraithActorInput{};
+    in.tyreDeathStart = true;
+    step(actor, in, &out);
+    assert(out.tyreDeathStarted && actor.rig().tyrePhase() == P2TYRE_Dead);
+
+    in                 = P2WaterwraithActorInput{};
+    in.tyreDeadAnimEnd = true;
+    step(actor, in, &out);
+    assert(out.tyreRemoved && !actor.rig().alive());
+
+    // After the child is removed the body is exposed and damageable.
+    assert(p2_waterwraith_actor_apply_damage(actor, actor.bodyMaxHealth(), true, &dead)
+           == P2WWDMG_Body);
+    assert(dead && actor.bodyZeroed());
+
+    // Out of Escape and into Dead on the next body-health check.
+    in         = P2WaterwraithActorInput{};
+    in.animEnd = true;
+    step(actor, in, &out);
+    assert(actor.phase() == P2BM_Walk);
+    in = P2WaterwraithActorInput{};
+    step(actor, in, &out);
+    assert(actor.phase() == P2BM_Dead && out.startDeadMotion);
+
+    in           = P2WaterwraithActorInput{};
+    in.keyEvent5 = true;
+    step(actor, in, &out);
+    assert(out.releaseTreasure);
+
+    in         = P2WaterwraithActorInput{};
+    in.animEnd = true;
+    step(actor, in, &out);
+    assert(out.killRequested && !actor.alive());
+    std::puts("PASS actor_natural_lifecycle");
+}
+
 void testTeardown()
 {
     P2WaterwraithActor actor = makeActor(P2BM_Walk);
@@ -336,6 +439,8 @@ int main()
     testTwoStepTimer();
     testRollerFullCycle();
     testDamageGating();
+    testExposedBodyDamageableAfterChildRemoval();
+    testNaturalFullLifecycle();
     testTeardown();
     std::puts("PASS WATERWRAITH_ACTOR");
     return 0;

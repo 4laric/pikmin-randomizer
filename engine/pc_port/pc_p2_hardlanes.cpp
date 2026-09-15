@@ -35,6 +35,7 @@
 #include "pc_p2_bigtreasure_ordinary.h"
 #include "pc_p2_bigtreasure_animclock.h"
 #include "pc_p2_bigtreasure_elements.h"
+#include "pc_p2_bigtreasure_receiver_host.h"
 #include "pc_p2_bigtreasure_map_trace.h"
 #include "pc_p2_bigtreasure_visual.h"
 #include "pc_p2_waterwraith_register.h"
@@ -51,11 +52,13 @@
 #include "Piki.h"
 #include "PikiMgr.h"
 #include "PikiState.h"
+#include "Creature.h"
 #include "teki.h"
 #include <cstdint>
 #include <cstdio>
 #include <cmath>
 #include <map>
+#include <set>
 #include <string>
 
 namespace {
@@ -78,6 +81,8 @@ std::map<std::uint32_t, Piki*> sFuefukiPiki;
 std::map<std::uint32_t, bool> sFuefukiHeld;
 std::uint32_t sFuefukiNextId = 1;
 double sFuefukiDebt = 0.0;
+bool sFuefukiPressed = false;      // #245 natural combat: press/hipdrop latch
+unsigned long sFuefukiPressCount = 0;
 bool sFuefukiVisualReady = false;
 double sFuefukiVisualDebt = 0.0;
 int sFuefukiLastState = -1;
@@ -236,16 +241,36 @@ P2FuefukiFsmParms fuefukiParms()
     return p;
 }
 
+// (#245) Count live Pikmin currently stuck to the vehicle (source stuck-attacker
+// count: Struggle exits to Jump when no stuck Pikmin remain after 3.0 s, and the
+// whistle cadence uses "stuck attackers present" to pick the fp12 interval).
+// Walks the engine sticker list and counts only living Piki.
+int fuefukiStuckPikmin(Teki* vehicle)
+{
+    int count = 0;
+    if (!vehicle) return 0;
+    for (Creature* stuck = vehicle->mStickListHead; stuck; stuck = stuck->mNextSticker) {
+        if (stuck->isPiki() && stuck->isAlive()) ++count;
+    }
+    return count;
+}
+
 // ---------------------------------------------------------------------------
 // BigTreasure (#246)
 constexpr float kBigTreasureSourceDelta = 1.0f / 30.0f;
+constexpr float kBigTreasureAttackDamage = kBigTreasureDefaultAttackDamage;
 P2BigTreasureHostSeam sBigTreasure;
 P2BigTreasureOrdinary sBigTreasureOrdinary;
 P2BigTreasureAnimClock sBigTreasureClock;
 P2BigTreasureElementRuntime sBigTreasureElements;
 P2BigTreasureMapTrace sBigTreasureTrace;
+// Per-attack handled set of live targets (Navi/Piki pointers). Mirrors lane 22's
+// per-Piki handled set (pc_p2_hiba.cpp:47,142): a target is stimulated at most
+// once per attack so a creature standing inside the running element is not
+// re-stimulated (and SEF_PIKI_FIRED re-emitted) every frame. Cleared on attack
+// start and on full reset.
+std::set<const void*> sBigTreasureHandled;
 bool sBigTreasureAttackLogged = false;
-bool sBigTreasureHitLogged = false;
 bool sBigTreasureReady = false;
 bool sBigTreasureVisualReady = false;
 bool sBigTreasureVisualDriven = true;
@@ -300,6 +325,8 @@ void pc_p2_hardlanes_reset()
     sBombSaraiReady = false;
     sFuefukiVehicle = nullptr;
     sFuefukiDebt = 0.0;
+    sFuefukiPressed = false;
+    sFuefukiPressCount = 0;
     sFuefukiId.clear();
     sFuefukiPiki.clear();
     sFuefukiHeld.clear();
@@ -316,8 +343,8 @@ void pc_p2_hardlanes_reset()
     sBigTreasureOrdinary.reset(P2BigTreasureFsmParms());
     sBigTreasureClock.reset();
     sBigTreasureElements.defeat();
+    sBigTreasureHandled.clear();
     sBigTreasureAttackLogged = false;
-    sBigTreasureHitLogged = false;
     pc_p2_bigtreasure_visual_reset();
     sBigTreasureReady = false;
     sBigTreasureVisualReady = false;
@@ -337,6 +364,41 @@ bool pc_p2_hardlanes_bigtreasure_hit(int weapon, float damage, bool bittered)
     hit.damage = damage;
     hit.bittered = bittered;
     return sBigTreasureOrdinary.postHit(hit);
+}
+
+bool pc_p2_hardlanes_bigtreasure_ready()
+{
+    return sBigTreasureReady && sBigTreasure.active;
+}
+
+int pc_p2_hardlanes_bigtreasure_weapon_count()
+{
+    return sBigTreasureReady ? sBigTreasure.ownership.weaponCount() : 0;
+}
+
+int pc_p2_hardlanes_bigtreasure_recv_probe(int weapon, Piki* piki)
+{
+    if (!sBigTreasureReady || !sBigTreasure.active || !piki || !piki->isAlive()) {
+        return 0;
+    }
+    // Reuse the ordinary loop's per-attack handled set: a target is stimulated
+    // at most once per attack, so a second probe of the same Piki returns 0.
+    // The probe removes its transient entry when it observes that dedup so it
+    // never leaves a target permanently handled. This demonstrates set-dedupe
+    // only; per-attack re-arm is the ordinary loop's attack-start clear
+    // (pc_p2_hardlanes_update, startAttack), which a probe cannot exercise
+    // without a real attack.
+    const void* key = static_cast<const void*>(piki);
+    if (!sBigTreasureHandled.insert(key).second) {
+        sBigTreasureHandled.erase(key);
+        return 0;
+    }
+    const P2BigTreasureVec3 origin{ sBigTreasure.placement.owner.x,
+                                    sBigTreasureGround,
+                                    sBigTreasure.placement.owner.z };
+    const bool accepted = pc_p2_bigtreasure_stimulate_piki(weapon, origin,
+                                                           kBigTreasureAttackDamage, piki);
+    return accepted ? 1 : -1;
 }
 
 void pc_p2_hardlanes_setup()
@@ -490,6 +552,10 @@ void pc_p2_hardlanes_update()
             tick.delta = kFuefukiSourceDelta;
             tick.health = sFuefukiVehicle->mHealth;
             tick.turnComplete = true;
+            tick.pressed = sFuefukiPressed; // #245 natural combat: consume the latch
+            sFuefukiPressed = false;
+            tick.stuckPikmin = fuefukiStuckPikmin(sFuefukiVehicle);
+            tick.bittered = false; // no P1 bittering bridge; host admits via parm
             if (sFuefukiMotionReady) {
                 // Drive the FSM from the converted clip bank: start the clip
                 // for the current state and feed its KEYEVENT_2/3 and END.
@@ -582,8 +648,8 @@ void pc_p2_hardlanes_update()
                 }
                 // Element runtime: start the source controller the FSM just
                 // started through the pools, and step it against the lane map
-                // trace so a live attack actually emits/moves. The Pikmin
-                // damage receiver stays lane 10's boundary.
+                // trace so a live attack actually emits/moves and its emitted
+                // nodes apply real elemental damage to live targets below.
                 if (fsmOut.fsm.startAttack) {
                     const int weapon = sBigTreasureOrdinary.chosenWeapon();
                     const P2BigTreasureVec3 origin{ sBigTreasure.placement.owner.x,
@@ -592,8 +658,8 @@ void pc_p2_hardlanes_update()
                     if (sBigTreasureElements.start(
                             weapon, origin, sBigTreasureGround,
                             sBigTreasure.ownership.weaponHealth(weapon), 0.25f, 0.25f)) {
+                        sBigTreasureHandled.clear();
                         sBigTreasureAttackLogged = false;
-                        sBigTreasureHitLogged = false;
                         std::printf("P2_BIGTREASURE_ATTACK_START weapon=%s\n",
                                     bigTreasureWeaponName(weapon));
                     }
@@ -614,35 +680,46 @@ void pc_p2_hardlanes_update()
                                     bigTreasureWeaponName(sBigTreasureElements.activeWeapon()),
                                     elementStats.nodes);
                     }
-                    // Detection only: report once when the running element's
-                    // source hit geometry intersects a live Navi/Pikmin. Damage
-                    // application is the lane-10 receiver.
-                    if (!sBigTreasureHitLogged && elementStats.nodes > 0) {
-                        bool hit = false;
+                    // Real elemental receiver (#246): apply each emitted node's
+                    // source stimulus to every live Navi/Pikmin intersecting it,
+                    // through the shared P2 receivers (InteractFire/InteractGas/
+                    // InteractBubble/InteractDenki). This closes the
+                    // "detection-only" gap: a hit now mutates the target. The
+                    // per-attack handled set targets once per attack, so a
+                    // creature standing in the running element is not
+                    // re-stimulated (and SEF_PIKI_FIRED re-emitted) every frame.
+                    if (elementStats.nodes > 0) {
+                        const int recvWeapon = sBigTreasureElements.activeWeapon();
+                        const P2BigTreasureVec3 origin{ sBigTreasure.placement.owner.x,
+                                                        sBigTreasureGround,
+                                                        sBigTreasure.placement.owner.z };
                         Navi* liveNavi = naviMgr ? naviMgr->getNavi() : nullptr;
-                        if (liveNavi
-                            && sBigTreasureElements.queryHit(P2BigTreasureVec3{
-                                   liveNavi->mSRT.t.x, liveNavi->mSRT.t.y,
-                                   liveNavi->mSRT.t.z })) {
-                            hit = true;
-                        }
-                        if (!hit) {
-                            Iterator pikiIt(pikiMgr);
-                            CI_LOOP(pikiIt) {
-                                Piki* piki = static_cast<Piki*>(*pikiIt);
-                                if (!piki || !piki->isAlive()) continue;
-                                if (sBigTreasureElements.queryHit(P2BigTreasureVec3{
-                                        piki->mSRT.t.x, piki->mSRT.t.y, piki->mSRT.t.z })) {
-                                    hit = true;
-                                    break;
-                                }
+                        if (liveNavi) {
+                            const P2BigTreasureVec3 target{ liveNavi->mSRT.t.x,
+                                                            liveNavi->mSRT.t.y,
+                                                            liveNavi->mSRT.t.z };
+                            if (sBigTreasureElements.queryHit(target)
+                                && sBigTreasureHandled.insert(
+                                       static_cast<const void*>(liveNavi)).second) {
+                                pc_p2_bigtreasure_stimulate_navi(recvWeapon, origin,
+                                                                 kBigTreasureAttackDamage,
+                                                                 liveNavi);
                             }
                         }
-                        if (hit) {
-                            sBigTreasureHitLogged = true;
-                            std::printf("P2_BIGTREASURE_ATTACK_HIT weapon=%s target=live\n",
-                                        bigTreasureWeaponName(
-                                            sBigTreasureElements.activeWeapon()));
+                        Iterator pikiIt(pikiMgr);
+                        CI_LOOP(pikiIt) {
+                            Piki* piki = static_cast<Piki*>(*pikiIt);
+                            if (!piki || !piki->isAlive()) continue;
+                            const P2BigTreasureVec3 target{ piki->mSRT.t.x,
+                                                            piki->mSRT.t.y,
+                                                            piki->mSRT.t.z };
+                            if (sBigTreasureElements.queryHit(target)
+                                && sBigTreasureHandled.insert(
+                                       static_cast<const void*>(piki)).second) {
+                                pc_p2_bigtreasure_stimulate_piki(recvWeapon, origin,
+                                                                 kBigTreasureAttackDamage,
+                                                                 piki);
+                            }
                         }
                     }
                 }
@@ -721,4 +798,37 @@ bool pc_p2_hardlanes_fuefuki_vehicle_position(float& x, float& y, float& z)
     y = position.y;
     z = position.z;
     return true;
+}
+
+// (#245) Source pressCallBack/hipdropCallBack (Fuefuki.cpp:163-185): latch the
+// press stimulus on the bound vehicle. Admission (mCanStruggle && !bittered) and
+// the Struggle transit are decided by the FSM on the next source tick, matching
+// the source's immediate-presence check rather than a spatial radius. A no-op
+// (returns false) for any unregistered Tei or when the seam is not bound.
+bool pc_p2_hardlanes_fuefuki_pressed(Teki* teki, Creature*)
+{
+    if (!teki || !sFuefukiVehicle || teki != sFuefukiVehicle) return false;
+    sFuefukiPressed     = true;
+    sFuefukiPressCount += 1;
+    std::printf("P2_FUEFUKI_PRESS press=%u state=%d\n",
+                pc_p2_hardlanes_fuefuki_press_count(),
+                pc_p2_hardlanes_fuefuki_state());
+    std::fflush(stdout);
+    return true;
+}
+
+unsigned pc_p2_hardlanes_fuefuki_press_count()
+{
+    return static_cast<unsigned>(sFuefukiPressCount);
+}
+
+// (#397/#245) Lifecycle seam: drop the bound vehicle pointer before the TekiMgr
+// reuses its slot. pc_p2_hardlanes_update gates its sticker walk on sFuefukiVehicle,
+// and pc_p2_hardlanes_fuefuki_pressed compares against the same pointer, so a
+// forgotten actor must never leave either running on a despawned/reused Napkid.
+void pc_p2_hardlanes_forget(BTeki* actor)
+{
+    if (!actor || !sFuefukiVehicle || static_cast<BTeki*>(sFuefukiVehicle) != actor) return;
+    sFuefukiVehicle = nullptr;
+    sFuefukiPressed = false;
 }

@@ -6,6 +6,7 @@
 
 #include "Graphics.h"
 #include "Matrix4f.h"
+#include "Pellet.h"
 
 #include <cmath>
 #include <cstdio>
@@ -22,6 +23,8 @@ constexpr std::streamoff kProfileBytes = 4096;
 struct RegisterState {
     bool ready = false;
     bool visualReady = false;
+    bool finished = false;       // source Dead KEYEVENT_END reached
+    bool corpseSpawned = false;  // Dead KEYEVENT_5 stand-in drop spawned once
     P2WaterwraithRegisterPlacement placement;
     P2WaterwraithActor actor;
     P2WaterwraithActorOutput out;
@@ -30,6 +33,34 @@ struct RegisterState {
 };
 
 RegisterState sState;
+
+// Source Dead KEYEVENT_5 releases the held treasure; the P1 host has no P2
+// treasure item, so a labelled number-pellet stand-in is spawned at the wraith
+// position (the same adaptation the Kogane lane records for its cave treasure).
+// Lane 06 owns the durable exactly-once receipt path; this is the on-field drop.
+void spawnWraithCorpse()
+{
+    sState.corpseSpawned = true;
+    if (!pelletMgr) {
+        std::printf("P2_WATERWRAITH_CORPSE skipped=no_pelletMgr\n");
+        return;
+    }
+    const Vector3f base(sState.placement.placement.x, sState.placement.placement.y,
+                        sState.placement.placement.z);
+    const P2WaterwraithVec3 local = sState.actor.position();
+    Pellet* pellet = pelletMgr->newNumberPellet(PELCOLOR_Blue, NUMPEL_OnePellet);
+    if (!pellet) {
+        std::printf("P2_WATERWRAITH_CORPSE skipped=no_pellet\n");
+        return;
+    }
+    const Vector3f pos(base.x + local.x, base.y + local.y + 10.0f, base.z + local.z);
+    pellet->init(pos);
+    pellet->mVelocity.set(0.0f, 100.0f, 0.0f);
+    pellet->startAI(0);
+    std::printf("P2_WATERWRAITH_CORPSE pos=%.3f,%.3f,%.3f standin=number_pellet\n", pos.x, pos.y,
+                pos.z);
+    std::fflush(stdout);
+}
 
 bool lineExhausted(std::istringstream& values)
 {
@@ -175,9 +206,19 @@ bool pc_p2_waterwraith_register_ready()
     return sState.ready;
 }
 
+bool pc_p2_waterwraith_register_finished()
+{
+    return sState.finished;
+}
+
+bool pc_p2_waterwraith_register_corpse_spawned()
+{
+    return sState.corpseSpawned;
+}
+
 void pc_p2_waterwraith_register_tick(float delta)
 {
-    if (!sState.ready || !std::isfinite(delta) || delta <= 0.0f) {
+    if (!sState.ready || sState.finished || !std::isfinite(delta) || delta <= 0.0f) {
         return;
     }
     sState.debt += static_cast<double>(delta);
@@ -199,10 +240,24 @@ void pc_p2_waterwraith_register_tick(float delta)
             in.animEnd = true;
         }
         // Live-squad combat: Purple stun/damage and roller crush, plus the
-        // roller death script (dismount -> tyre_getoff -> child removal).
+        // roller death script (dismount -> tyre_getoff -> child removal) and
+        // then the wrapped-body death once the child is gone.
         pc_p2_waterwraith_encounter_step(sState.actor, in);
         sState.actor.tick(in, sState.out, kSourceDelta);
         ++sState.actorTicks;
+        // Death side effects (source Dead key sequence, see encounter.cpp):
+        // KEYEVENT_5 drops the stand-in corpse; KEYEVENT_END tears the seam down.
+        if (sState.out.releaseTreasure && !sState.corpseSpawned) {
+            spawnWraithCorpse();
+        }
+        if (sState.out.killRequested) {
+            sState.finished = true;
+            std::printf("P2_WATERWRAITH_FINISHED tick=%llu bodyHealth=%.1f\n",
+                        static_cast<unsigned long long>(sState.actorTicks),
+                        sState.actor.bodyHealth());
+            std::fflush(stdout);
+            break;
+        }
         if (sState.visualReady) {
             pc_p2_waterwraith_visual_update();
         }
@@ -211,7 +266,7 @@ void pc_p2_waterwraith_register_tick(float delta)
 
 int pc_p2_waterwraith_register_draw(Graphics& gfx, const Matrix4f& world)
 {
-    if (!sState.ready || !sState.visualReady) {
+    if (!sState.ready || sState.finished || !sState.visualReady) {
         return 0;
     }
     const P2WaterwraithVec3 base = sState.placement.placement;

@@ -2,6 +2,7 @@
 class BTeki;
 class Graphics;
 class Matrix4f;
+class PelletView;
 void pc_p2_kurage_teki_setup();
 void pc_p2_kurage_teki_tick(BTeki*);
 void pc_p2_kurage_teki_forget(BTeki*);
@@ -20,3 +21,11 @@ int pc_p2_kurage_teki_fsm_state(const BTeki*);
 int pc_p2_kurage_teki_auto_admissions(const BTeki*);
 int pc_p2_kurage_teki_fsm_ticks(const BTeki*);
 int pc_p2_kurage_teki_tick_calls();
+// Ordinary corpse receipt (lane 29, #243). Resolves the delivered dead-body
+// PelletView of a bound Lesser Jellyfloat (source ID 57) back to its generator
+// so the Pod reward path can credit the corpse. Drop semantics: the source has
+// no family-local reward function (enemyBase.cpp::onKill supplies a BDT_Normal
+// corpse); the reward amount remains the Pod's configured corpseValue. Returns
+// false for any body not owned by a bound Kurage.
+bool pc_p2_kurage_receipt(PelletView* view, unsigned& generator);
+int pc_p2_kurage_bound_count();

@@ -176,6 +176,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_second_captain.cpp
     pc_port/pc_p2_economy.cpp
     pc_port/pc_p2_teki_lifetime.cpp
+    pc_port/pc_p2_placement_probe.cpp
     pc_port/pc_p2_input_script.cpp
     pc_port/pc_p2_purple.cpp
     pc_port/pc_p2_purple_motion.cpp
@@ -200,6 +201,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_queen.cpp
     pc_port/pc_p2_king.cpp
     pc_port/pc_p2_breadbug_actor.cpp
+    pc_port/pc_p2_breadbug_contest_host.cpp
     pc_port/pc_p2_giant_breadbug_actor.cpp
     pc_port/pc_p2_frog.cpp
     pc_port/pc_p2_kogane.cpp
@@ -222,6 +224,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_kurage_receiver.cpp
     pc_port/pc_p2_sokkuri.cpp
     pc_port/pc_p2_armor.cpp
+    pc_port/pc_p2_otakara.cpp
     pc_port/pc_p2_elecbug.cpp
     pc_port/pc_p2_tamago.cpp
     pc_port/pc_p2_imomushi.cpp
@@ -248,7 +251,9 @@ pc_port/pc_p2_kabuto_muzzle.cpp
 pc_port/pc_p2_kabuto_binding.cpp
 pc_port/pc_p2_projectile_host.cpp
     pc_port/pc_p2_rock_hazard.cpp
+    pc_port/pc_p2_rock_host.cpp
     pc_port/pc_p2_projectile_receiver.cpp
+    pc_port/pc_p2_projectile_engine_receiver.cpp
     pc_port/pc_p2_groink.cpp
     pc_port/pc_p2_groink_arena.cpp
     pc_port/pc_p2_groink_attack.cpp
@@ -280,6 +285,7 @@ pc_port/pc_p2_projectile_host.cpp
     pc_port/pc_p2_bigtreasure_ordinary.cpp
     pc_port/pc_p2_bigtreasure_animclock.cpp
     pc_port/pc_p2_bigtreasure_elements.cpp
+    pc_port/pc_p2_bigtreasure_receiver.cpp
     pc_port/pc_randomizer.cpp
     pc_port/pc_p2_waterwraith.cpp
     pc_port/pc_p2_waterwraith_actor.cpp
@@ -818,6 +824,14 @@ target_include_directories(p2_bombsarai_induction_test PRIVATE pc_port)
 target_compile_options(p2_bombsarai_induction_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_bombsarai_induction_test COMMAND p2_bombsarai_induction_test)
 
+# Animated capture-joint transform + payload follow gate (kamu_jnt1 stand-in).
+add_executable(p2_bombsarai_joint_test
+    tools/p2_bombsarai_joint_test.cpp
+    pc_port/pc_p2_bombsarai_bomb.cpp)
+target_include_directories(p2_bombsarai_joint_test PRIVATE pc_port)
+target_compile_options(p2_bombsarai_joint_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_bombsarai_joint_test COMMAND p2_bombsarai_joint_test)
+
 # Lane 27 Fuefuki hard-lane header-only policy gates (unwired on the approved line).
 add_executable(p2_fuefuki_binding_test tools/p2_fuefuki_binding_test.cpp)
 target_include_directories(p2_fuefuki_binding_test PRIVATE pc_port)
@@ -838,6 +852,15 @@ add_executable(p2_fuefuki_suspend_fallback_test tools/p2_fuefuki_suspend_fallbac
 target_include_directories(p2_fuefuki_suspend_fallback_test PRIVATE pc_port)
 target_compile_options(p2_fuefuki_suspend_fallback_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_fuefuki_suspend_fallback_test COMMAND p2_fuefuki_suspend_fallback_test)
+
+# Lane 28 Fuefuki natural-combat real-GL fixture (#245): compile-only isolated
+# target. Its replacement-main executable is produced by
+# scripts/build_pikmin2_fixture.py against a completed pikmin_pc build; this
+# object target only proves the full-app fixture source still compiles against
+# the engine headers (SDL2/GL/App/...) when the lane edits it.
+add_library(p2_fuefuki_combat_runtime_compile OBJECT tools/p2_fuefuki_combat_runtime.cpp)
+target_include_directories(p2_fuefuki_combat_runtime_compile PRIVATE pc_port ${SDL2_INCLUDE_DIRS})
+target_compile_options(p2_fuefuki_combat_runtime_compile PRIVATE ${NATIVE_COMPILE_OPTIONS} -Wno-unused-parameter)
 
 # Lane 27 BigTreasure policy gates (unwired on the approved line).
 add_executable(p2_bigtreasure_test
@@ -918,11 +941,23 @@ target_include_directories(p2_armor_events_test PRIVATE pc_port)
 target_compile_options(p2_armor_events_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_armor_events_test COMMAND p2_armor_events_test)
 
+add_executable(p2_hana_events_test
+    tools/test_p2_hana_events.cpp)
+target_include_directories(p2_hana_events_test PRIVATE pc_port)
+target_compile_options(p2_hana_events_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_hana_events_test COMMAND p2_hana_events_test)
+
 add_executable(p2_billboard_test
     tools/test_p2_billboard.cpp)
 target_include_directories(p2_billboard_test PRIVATE pc_port)
 target_compile_options(p2_billboard_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_billboard_test COMMAND p2_billboard_test)
+
+add_executable(p2_specular_dir_test
+    tools/test_p2_specular_dir.cpp)
+target_include_directories(p2_specular_dir_test PRIVATE pc_port)
+target_compile_options(p2_specular_dir_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_specular_dir_test COMMAND p2_specular_dir_test)
 
 add_executable(pc_render_phase_test
     pc_port/timing/pc_render_phase_test.cpp
@@ -1009,7 +1044,7 @@ if(PIKMIN_RANDOMIZER_TEST_HOOKS)
 endif()
 
 # Integration gates: keep assertions active for these engine-free contracts.
-foreach(policy IN ITEMS species_schema hazard_reaction hazard_emitter cave_transfer captain_roster squad_policy)
+foreach(policy IN ITEMS species_schema hazard_reaction hazard_emitter cave_transfer bulbmin_cave_filter captain_roster squad_policy)
     add_executable(p2_${policy}_test tools/test_p2_${policy}.cpp)
     target_include_directories(p2_${policy}_test PRIVATE pc_port)
     target_compile_options(p2_${policy}_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
@@ -1029,6 +1064,17 @@ add_executable(p2_receipt_host_test tools/p2_receipt_host_test.cpp pc_port/pc_p2
 target_include_directories(p2_receipt_host_test PRIVATE pc_port)
 target_compile_options(p2_receipt_host_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME p2_receipt_host_test COMMAND p2_receipt_host_test)
+
+# Lane 06: P2 ordinary delivery receiver (header-only over pc_p2_receipt.h).
+add_executable(p2_delivery_receiver_test tools/p2_delivery_receiver_test.cpp)
+target_include_directories(p2_delivery_receiver_test PRIVATE pc_port)
+target_compile_options(p2_delivery_receiver_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_delivery_receiver_test COMMAND p2_delivery_receiver_test)
+add_executable(p2_breadbug_contest_consumer_test tools/p2_breadbug_contest_consumer_test.cpp
+    pc_port/pc_p2_breadbug_contest_host.cpp)
+target_include_directories(p2_breadbug_contest_consumer_test PRIVATE pc_port)
+target_compile_options(p2_breadbug_contest_consumer_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_breadbug_contest_consumer_test COMMAND p2_breadbug_contest_consumer_test)
 
 foreach(policy IN ITEMS demon_captor demon_escape demon_pose sarai_fsm sarai_policy fuefuki_follow fuefuki_follow_binding)
     add_executable(p2_${policy}_test tools/p2_${policy}_test.cpp)
@@ -1056,6 +1102,13 @@ foreach(policy IN ITEMS bigtreasure_ordinary bigtreasure_animclock bigtreasure_n
     target_compile_options(p2_${policy}_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
     add_test(NAME p2_${policy}_test COMMAND p2_${policy}_test)
 endforeach()
+
+# Lane 32 (#246) elemental receiver decision (engine-free stimulus resolve).
+add_executable(p2_bigtreasure_receiver_test tools/p2_bigtreasure_receiver_test.cpp
+    pc_port/pc_p2_bigtreasure_receiver.cpp)
+target_include_directories(p2_bigtreasure_receiver_test PRIVATE pc_port)
+target_compile_options(p2_bigtreasure_receiver_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_bigtreasure_receiver_test COMMAND p2_bigtreasure_receiver_test)
 
 # Groink submitted policy dependencies; arena remains opt-in.
 add_executable(p2_groink_test tools/p2_groink_test.cpp pc_port/pc_p2_groink.cpp)
@@ -1086,6 +1139,15 @@ add_executable(p2_groink_hit_test tools/p2_groink_hit_test.cpp pc_port/pc_p2_gro
 target_include_directories(p2_groink_hit_test PRIVATE pc_port)
 target_compile_options(p2_groink_hit_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
 add_test(NAME p2_groink_hit_test COMMAND p2_groink_hit_test)
+# Parked Groink carcass-recovery and host-registration-guard policy tests.
+add_executable(p2_groink_carcass_test tools/p2_groink_carcass_test.cpp pc_port/pc_p2_groink_carcass.cpp)
+target_include_directories(p2_groink_carcass_test PRIVATE pc_port)
+target_compile_options(p2_groink_carcass_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_groink_carcass_test COMMAND p2_groink_carcass_test)
+add_executable(p2_groink_lifetime_test tools/p2_groink_lifetime_test.cpp)
+target_include_directories(p2_groink_lifetime_test PRIVATE pc_port)
+target_compile_options(p2_groink_lifetime_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
+add_test(NAME p2_groink_lifetime_test COMMAND p2_groink_lifetime_test)
 
 # Opt-in Purple and White policy regressions.
 add_executable(p2_purple_direct_policy_test tools/p2_purple_direct_policy_test.cpp)

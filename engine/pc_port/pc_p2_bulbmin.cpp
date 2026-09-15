@@ -152,16 +152,31 @@ void pc_p2_bulbmin_forget(Piki* piki) {
     idOfPiki.erase(found);
 }
 
-std::vector<std::uint32_t> pc_p2_bulbmin_transition(P2BulbminCaveTransition move) {
+std::vector<Piki*> pc_p2_bulbmin_transition_removes(P2BulbminCaveTransition move) {
+    std::vector<Piki*> removed;
+    if (!active) return removed;
+    const std::vector<std::uint32_t> ids = bridge.transitionRemoves(move);
+    removed.reserve(ids.size());
+    for (const std::uint32_t id : ids) {
+        auto found = pikiOfId.find(id);
+        if (found != pikiOfId.end()) removed.push_back(found->second);
+    }
+    return removed;
+}
+
+std::vector<Piki*> pc_p2_bulbmin_transition(P2BulbminCaveTransition move) {
+    std::vector<Piki*> removed;
+    if (!active) return removed;
     const P2BulbminTransitionOut result = bridge.transition(move);
+    removed.reserve(result.removed.size());
     for (const std::uint32_t id : result.removed) {
         auto found = pikiOfId.find(id);
-        if (found != pikiOfId.end()) {
-            idOfPiki.erase(found->second);
-            pikiOfId.erase(found);
-        }
+        if (found == pikiOfId.end()) continue;
+        removed.push_back(found->second);
+        idOfPiki.erase(found->second);
+        pikiOfId.erase(found);
     }
-    return result.removed;
+    return removed;
 }
 
 void pc_p2_bulbmin_bind_captain_table(P2CaptainOwnershipTable* ownership) {
@@ -170,6 +185,13 @@ void pc_p2_bulbmin_bind_captain_table(P2CaptainOwnershipTable* ownership) {
 
 int pc_p2_bulbmin_dependent_count() {
     return active ? bridge.dependentCount() : 0;
+}
+
+int pc_p2_bulbmin_phase(const Piki* piki) {
+    if (!piki) return -1;
+    const auto found = idOfPiki.find(const_cast<Piki*>(piki));
+    if (found == idOfPiki.end()) return -1;
+    return bridge.phaseOf(found->second);
 }
 
 namespace {
@@ -203,9 +225,13 @@ int pc_p2_bulbmin_attach_mother_ex(Creature* mother, const char* model, bool pro
     if (!active || !mother) return 0;
     const std::string label = (model && model[0] != '\0') ? model : kKochappyProxyModel;
     if (!bridge.registerMother(mother, label, proxy)) return 0;
-    return pc_p2_bulbmin_drive_birth(mother, mother->getPosition(),
-                                     mother->mFaceDirection,
-                                     bridge.settings().maxDependents);
+    const int born = pc_p2_bulbmin_drive_birth(mother, mother->getPosition(),
+                                               mother->mFaceDirection,
+                                               bridge.settings().maxDependents);
+    std::printf("P2_BULBMIN_MOTHER_BIRTH model=%s dependents=%d wild=%zu recruited=%zu\n",
+                label.c_str(), born, bridge.wildCount(), bridge.recruitedCount());
+    std::fflush(stdout);
+    return born;
 }
 
 int pc_p2_bulbmin_attach_mother(Creature* mother) {
@@ -246,6 +272,10 @@ int pc_p2_bulbmin_call_pikis(Navi* navi, float radius) {
         if (delta.x * delta.x + delta.z * delta.z >= radius2) continue;
         if (pc_p2_bulbmin_whistle(p)) ++recruited;
     }
+    if (recruited)
+        std::printf("P2_BULBMIN_WHISTLE recruited=%d wild=%zu recruited_total=%zu\n",
+                    recruited, bridge.wildCount(), bridge.recruitedCount());
+        std::fflush(stdout);
     return recruited;
 }
 

@@ -24,6 +24,9 @@ MARKERS = (
     "P2_WATERWRAITH_ENCOUNTER_READY",
     "P2_WATERWRAITH_ENCOUNTER_STAGE_A",
     "P2_WATERWRAITH_ENCOUNTER_PURPLE_SETUP",
+    "P2_WATERWRAITH_BODY_ZERO",
+    "P2_WATERWRAITH_CORPSE",
+    "P2_WATERWRAITH_FINISHED",
     "P2_WATERWRAITH_ENCOUNTER_PASS",
     "PASS WATERWRAITH_ENCOUNTER_RUNTIME",
 )
@@ -95,11 +98,21 @@ def verify_log(text):
         errors.append(f"Stage A non-Purple damage/crush gate failed: {stage_a.groups()}")
     if not re.search(r"^P2_WATERWRAITH_ENCOUNTER_PURPLE_SETUP\s*$", text, flags=re.MULTILINE):
         errors.append("missing Purple setup marker")
-    if not re.search(r"^P2_WATERWRAITH_ENCOUNTER_REENTRY\s+ready=1\s+attached=1\s*$", text,
+    if not re.search(r"^P2_WATERWRAITH_BODY_ZERO\s+tick=\d+\s+bodyHealth=0\.0\s*$", text,
                      flags=re.MULTILINE):
-        errors.append("missing cleanup/re-entry marker")
+        errors.append("missing body-zero marker")
+    if not re.search(r"^P2_WATERWRAITH_CORPSE\s+.*standin=number_pellet\s*$", text,
+                     flags=re.MULTILINE):
+        errors.append("missing corpse stand-in marker")
+    if not re.search(r"^P2_WATERWRAITH_FINISHED\s+tick=\d+\s+bodyHealth=0\.0\s*$", text,
+                     flags=re.MULTILINE):
+        errors.append("missing teardown marker")
+    if not re.search(r"^P2_WATERWRAITH_ENCOUNTER_DEATH_REENTRY\s+ready=1\s+attached=1\s*$", text,
+                     flags=re.MULTILINE):
+        errors.append("missing death cleanup/re-entry marker")
     passed = re.search(r"^P2_WATERWRAITH_ENCOUNTER_PASS\s+stuns=(\d+)\s+hits=(\d+)\s+crushes=(\d+)\s+"
-                       r"damage=([\d.]+)\s+zeroed=1\s+child_removed=1\s*$", text, flags=re.MULTILINE)
+                       r"damage=([\d.]+)\s+zeroed=1\s+child_removed=1\s+body_zeroed=1\s+"
+                       r"treasure=1\s+kill=1\s*$", text, flags=re.MULTILINE)
     if not passed:
         errors.append("missing encounter PASS marker")
     else:
@@ -148,6 +161,12 @@ def main(argv=None):
         copy_new(stage / "p2-waterwraith-actor.txt", run / "p2-waterwraith-actor.txt")
         profile = visual_stage / "p2-waterwraith-visual.txt"
         copy_new(profile, run / "p2-waterwraith-visual.txt")
+        # The Purple converter (pc_p2_make_purple) and several opt-in family
+        # setups gate on a live Pod anchor (pc_p2_preview_goal); stage one when
+        # the provider directory carries it (same borrow the cave/purple lanes use).
+        for extra in ("p2-pod.txt", "p2-economy.txt"):
+            if (stage / extra).is_file():
+                copy_new(stage / extra, run / extra)
         staged = {}
         mods = sorted((visual_stage / "assets" / "dataDir" / "courses" / "pikmin2room").glob("*.mod"))
         if not mods:

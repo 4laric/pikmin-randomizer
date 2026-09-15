@@ -35,8 +35,8 @@
 // effectively instantaneous). No claim of natural-Map navigation is made.
 //
 // Damage model (structural, not a receiver): only Purple hits are accepted, and
-// only when `P2WaterwraithRig::damageable()` is true (roller frozen, or after
-// the wraith dismounted). While riding/moving the hit is ignored. Damage while
+// while the roller is attached only when `P2WaterwraithRig::damageable()` is
+// true (frozen); after dismount the body accepts hits until `ownerInvulnerableSet()`. While riding/moving the hit is ignored. Damage while
 // the child is still attached routes to the Tyre health (source freeze/bend
 // routes to `mTyre`, blackMan.cpp:672-681); after dismount it routes to the
 // wraith body health (general fp00 = 1500). This expresses the Purple-only
@@ -225,11 +225,14 @@ private:
     int mWaypointIndex = 0;
 };
 
-// Routes a hit through the rig's `damageable()` gate. Only Purple damage is
-// accepted (structural vulnerability). While the child is attached the damage
-// goes to the Tyre health; after dismount it goes to the wraith body health.
-// `outDead` (optional) reports the underlying target's death gate (roller death
-// still requires the dismounted EB_Invulnerable flag; body death is HP <= 0).
+// Routes a hit through the per-target vulnerability gates. Only Purple damage
+// is accepted (structural vulnerability). While the child is attached the
+// damage goes to the Tyre health, gated on the roller's `damageable()`; after
+// dismount it goes to the wraith body health, gated on the dismount flag
+// (EB_Invulnerable) which persists past child removal so the exposed body stays
+// vulnerable until the wraith itself dies. `outDead` (optional) reports the
+// underlying target's death gate (roller death still requires the dismounted
+// EB_Invulnerable flag; body death is HP <= 0).
 P2WaterwraithDamageResult p2_waterwraith_actor_apply_damage(P2WaterwraithActor& actor,
                                                              float damage, bool isPurple,
                                                              bool* outDead = nullptr);

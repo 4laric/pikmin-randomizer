@@ -25,6 +25,7 @@
 #include "pc_p2_batch2.h"
 #include "pc_p2_sokkuri.h"
 #include "pc_p2_armor.h"
+#include "pc_p2_otakara.h"
 #include "pc_p2_elecbug.h"
 #include "pc_p2_tamago.h"
 #include "pc_p2_umimushi.h"
@@ -66,6 +67,7 @@
 #include "pc_p2_enemy.h"
 #include "pc_p2_cargo.h"
 #include "pc_p2_preview_policy.h"
+#include "pc_p2_placement_probe.h"
 #include <fstream>
 #include <filesystem>
 #include <vector>
@@ -257,6 +259,7 @@ void pc_p2_preview_setup() {
     pc_p2_batch2_setup();
     pc_p2_sokkuri_setup();
     pc_p2_armor_setup();
+    pc_p2_otakara_setup();
     pc_p2_elecbug_setup();
     pc_p2_tamago_setup();
     pc_p2_umimushi_setup();
@@ -292,6 +295,10 @@ void pc_p2_preview_setup() {
     const float points[][2]={{-85,0},{-175,-100},{185,-180},{-220,-180}};
     for (const auto& point : points)
         std::printf("[Pikipelago] P2_ROOM_GROUND x=%.1f z=%.1f y=%.3f\n",point[0],point[1],mapMgr->getMinY(point[0],point[1],true));
+    // Lane-04 (placement) native evidence probe: sample live terrain/water/route
+    // facts at each spawned actor's position. Read-only; additively after the
+    // legacy room ground probe.
+    pc_p2_placement_probe_run();
     setupComplete=true;
     if(cargoFree) std::printf("[Pikipelago] P2_ROOM_CARGO_FREE_READY cargo=0 repairs=%d\n",initialRepairs);
     else std::printf("[Pikipelago] P2_ROOM_READY treasure=%s carry=%d repairs=%d\n",podAnchor?treasureId.c_str():"bolt",previewTreasure->mConfig->mCarryMinPikis(),initialRepairs);
@@ -329,6 +336,9 @@ bool pc_p2_preview_deliver(Pellet* pellet) {
         }
         else if(unsigned generator=0;pc_p2_mamuta_receipt(pellet->mPelletView,generator)) {
             receipt="corpse:"+pc_p2_cave_receipt_prefix()+"mamuta:"+std::to_string(generator);value=corpseValue;
+        }
+        else if(unsigned generator=0;pc_p2_kurage_receipt(pellet->mPelletView,generator)) {
+            receipt="corpse:"+pc_p2_cave_receipt_prefix()+"kurage:"+std::to_string(generator);value=corpseValue;
         }
         else {
             auto found=corpses.find(pellet->mPelletView);
