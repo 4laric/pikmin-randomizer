@@ -12,26 +12,27 @@ Regenerate with:
 
 ## Handoffs read
 
-- PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md: 9 Kogane, 10 Wealthy, 11 Fart, 12 UjiA, 13 UjiB, 15 Armor, 16 Qurione, 18 MaroFrog, 23 Sarai, 24 Tank, 28 ElecBug, 30 Queen, 32 Demon, 40 OoPanModoki, 41 Fuefuki, 44 BlueKochappy, 45 YellowKochappy, 53 KingChappy, 55 Hanachirashi, 56 Damagumo, 57 Kurage, 58 BombSarai, 59 FireOtakara, 60 WaterOtakara, 61 GasOtakara, 62 ElecOtakara, 66 Houdai, 69 BigFoot, 72 OniKurage, 73 BigTreasure, 78 MiniHoudai, 79 Sokkuri, 84 Hana, 93 BombOtakara, 96 Fkabuto, 98 Tyre, 99 BlackMan, 101 UmiMushiBlind
+- PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md: 9 Kogane, 10 Wealthy, 11 Fart, 12 UjiA, 13 UjiB, 15 Armor, 16 Qurione, 18 MaroFrog, 23 Sarai, 24 Tank, 28 ElecBug, 30 Queen, 32 Demon, 40 OoPanModoki, 41 Fuefuki, 44 BlueKochappy, 45 YellowKochappy, 53 KingChappy, 55 Hanachirashi, 56 Damagumo, 57 Kurage, 58 BombSarai, 59 FireOtakara, 60 WaterOtakara, 61 GasOtakara, 62 ElecOtakara, 66 Houdai, 69 BigFoot, 72 OniKurage, 73 BigTreasure, 78 MiniHoudai, 79 Sokkuri, 84 Hana, 93 BombOtakara, 98 Tyre, 99 BlackMan, 101 UmiMushiBlind
 - PIKMIN2_LANE03_DEEPSEEK_HANDOFF.md: (none)
 - PIKMIN2_LANE04_DEEPSEEK_HANDOFF.md: 44 BlueKochappy, 45 YellowKochappy
 - PIKMIN2_LANE05_DEEPSEEK_HANDOFF.md: 44 BlueKochappy, 45 YellowKochappy
 - PIKMIN2_LANE06_DEEPSEEK_HANDOFF.md: 44 BlueKochappy
 - PIKMIN2_LANE07_DEEPSEEK_HANDOFF.md: 44 BlueKochappy
 - PIKMIN2_LANE08_DEEPSEEK_HANDOFF.md: 84 Hana
-- PIKMIN2_LANE09_DEEPSEEK_HANDOFF.md: 30 Queen, 54 Miulin
+- PIKMIN2_LANE09_DEEPSEEK_HANDOFF.md: 30 Queen
 - PIKMIN2_LANE11_DEEPSEEK_HANDOFF.md: (none)
 - PIKMIN2_LANE12_DEEPSEEK_HANDOFF.md: 72 OniKurage
+- PIKMIN2_LANE13_DEEPSEEK_HANDOFF.md: 44 BlueKochappy
 - PIKMIN2_LANE14_DEEPSEEK_HANDOFF.md: 15 Armor, 28 ElecBug, 65 Imomushi, 68 TamagoMushi, 79 Sokkuri, 84 Hana
 - PIKMIN2_LANE16_DEEPSEEK_HANDOFF.md: 17 Frog, 18 MaroFrog, 26 Catfish, 27 Tadpole, 63 Jigumo, 101 UmiMushiBlind
-- PIKMIN2_LANE17_DEEPSEEK_HANDOFF.md: 9 Kogane, 10 Wealthy, 219002
+- PIKMIN2_LANE17_DEEPSEEK_HANDOFF.md: 9 Kogane, 10 Wealthy
 - PIKMIN2_LANE18_DEEPSEEK_HANDOFF.md: 38 PanModoki
 - PIKMIN2_LANE20_DEEPSEEK_HANDOFF.md: 19 Rock, 36 Bomb, 37 Egg, 74 Stone, 75 Kabuto, 95 Rkabuto, 96 Fkabuto, 97 FminiHoudai
 - PIKMIN2_LANE21_DEEPSEEK_HANDOFF.md: 78 MiniHoudai, 97 FminiHoudai
 - PIKMIN2_LANE22_DEEPSEEK_HANDOFF.md: 59 FireOtakara, 60 WaterOtakara, 61 GasOtakara, 62 ElecOtakara, 93 BombOtakara
-- PIKMIN2_LANE23_DEEPSEEK_HANDOFF.md: 2 Chappy
+- PIKMIN2_LANE23_DEEPSEEK_HANDOFF.md: (none)
 - PIKMIN2_LANE24_DEEPSEEK_HANDOFF.md: 53 KingChappy
-- PIKMIN2_LANE25_DEEPSEEK_HANDOFF.md: 20 Hiba, 34 SnakeCrow, 70 SnakeWhole, 94 DangoMushi
+- PIKMIN2_LANE25_DEEPSEEK_HANDOFF.md: 34 SnakeCrow, 70 SnakeWhole, 94 DangoMushi
 - PIKMIN2_LANE26_DEEPSEEK_HANDOFF.md: 56 Damagumo, 66 Houdai, 69 BigFoot
 - PIKMIN2_LANE27_DEEPSEEK_HANDOFF.md: 36 Bomb, 58 BombSarai
 - PIKMIN2_LANE28_DEEPSEEK_HANDOFF.md: 41 Fuefuki
@@ -50,16 +51,11 @@ Regenerate with:
 | 3 | 0 |
 | 4 | 0 |
 | 5 | 0 |
-| 6 | 52 |
+| 6 | 50 |
 
-Seedable (`source`/`variant`) identities named across handoffs: 52
+Seedable (`source`/`variant`) identities named across handoffs: 50
 
 ## Per-identity detail
-
-### 2 Chappy (source) — shared table, excluded
-- handoffs: PIKMIN2_LANE23_DEEPSEEK_HANDOFF.md
-- advances: (none)
-- blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
 
 ### 9 Kogane (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE17_DEEPSEEK_HANDOFF.md
@@ -163,7 +159,7 @@ Seedable (`source`/`variant`) identities named across handoffs: 52
 - blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
 
 ### 44 BlueKochappy (source) — shared table, excluded
-- handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE04_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE05_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE06_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE07_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE33_DEEPSEEK_HANDOFF.md
+- handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE04_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE05_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE06_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE07_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE13_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE33_DEEPSEEK_HANDOFF.md
 - advances: (none)
 - blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
 
@@ -174,11 +170,6 @@ Seedable (`source`/`variant`) identities named across handoffs: 52
 
 ### 53 KingChappy (source) — shared table, excluded
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE24_DEEPSEEK_HANDOFF.md
-- advances: (none)
-- blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
-
-### 54 Miulin (source) — shared table, excluded
-- handoffs: PIKMIN2_LANE09_DEEPSEEK_HANDOFF.md
 - advances: (none)
 - blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
 
@@ -305,7 +296,7 @@ Seedable (`source`/`variant`) identities named across handoffs: 52
 - blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
 
 ### 96 Fkabuto (source) — shared table, excluded
-- handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE20_DEEPSEEK_HANDOFF.md
+- handoffs: PIKMIN2_LANE20_DEEPSEEK_HANDOFF.md
 - advances: (none)
 - blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
 

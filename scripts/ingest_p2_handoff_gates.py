@@ -69,13 +69,15 @@ GATE_BY_NUMBER = {index + 1: gate for index, gate in enumerate(GATE_IDS)}
 _STATUS_RE = re.compile(r"(PASS|PARTIAL|FAIL|BLOCKED|UNTESTED|N/A)\b")
 
 _SOURCE_ID_RE = re.compile(r"(?:source_id|EnemyID)\s*[`\"']?\s*(\d+)")
-_ID_ENUM_RE = re.compile(r"\b(\d{1,3})\s*`([A-Za-z][A-Za-z0-9_]*)`")
-_NAME_PAREN_RE = re.compile(r"([A-Za-z][A-Za-z0-9_]*)\s*\(\s*(\d+)")
-# Roster-name + bare number ("DangoMushi 94", "BigFoot 69"), number + roster-name
-# ("73 BigTreasure"), and "enemy NN"/"enemy ID NN" ("enemy 30"). The name forms
-# are roster-filtered like _NAME_PAREN_RE.
-_NAME_NUM_RE = re.compile(r"\b([A-Za-z][A-Za-z0-9_]*)\s+(\d{1,3})\b")
-_NUM_NAME_RE = re.compile(r"\b(\d{1,3})\s+([A-Za-z][A-Za-z0-9_]*)\b")
+# Identity-naming forms. Names are roster-verified AND the adjacent number must
+# equal the roster entry's own source_id, so "54 Queen" (Queen=30) or a module
+# label like "batch-2 Chappy" cannot conjure a phantom identity. The leading
+# ``(?<![\w/-])`` prevents ``-``/``/`` from acting as a boundary (so "batch-2"
+# and "wave/3" do not detach their number).
+_ID_ENUM_RE = re.compile(r"(?<![\w/-])(\d{1,3})\s*`([A-Za-z][A-Za-z0-9_]*)`")
+_NAME_PAREN_RE = re.compile(r"(?<![\w/-])([A-Za-z][A-Za-z0-9_]*)\s*\(\s*(\d+)")
+_NAME_NUM_RE = re.compile(r"(?<![\w/-])([A-Za-z][A-Za-z0-9_]*)\s+(\d{1,3})\b")
+_NUM_NAME_RE = re.compile(r"(?<![\w/-])(\d{1,3})\s+([A-Za-z][A-Za-z0-9_]*)\b")
 _ENEMY_NUM_RE = re.compile(r"\benemy\s+(?:id\s+)?(\d{1,3})\b", re.IGNORECASE)
 # "source id 44" / "P2 id 72" (space-separated, possibly bold-marked).
 _SOURCE_ID_SPACE_RE = re.compile(r"\b(?:source\s+id|P2\s+id)\s*:?\s*\**\s*(\d{1,3})\b",
@@ -190,23 +192,25 @@ def parse_identities(markdown: str, roster=None) -> list[tuple[int, str | None]]
     by_name = {entry.enum_name: entry for entry in roster}
     found: dict[int, str | None] = {}
     for match in _SOURCE_ID_RE.finditer(markdown):
-        found.setdefault(int(match.group(1)), None)
+        sid = int(match.group(1))
+        if not roster or sid in by_source:
+            found.setdefault(sid, None)
     if roster:
         for match in _ID_ENUM_RE.finditer(markdown):
             sid, name = int(match.group(1)), match.group(2)
-            if name in by_name:
+            if name in by_name and by_name[name].source_id == sid:
                 found.setdefault(sid, name)
         for match in _NAME_PAREN_RE.finditer(markdown):
             name, sid = match.group(1), int(match.group(2))
-            if name in by_name:
+            if name in by_name and by_name[name].source_id == sid:
                 found.setdefault(sid, name)
         for match in _NAME_NUM_RE.finditer(markdown):
             name, sid = match.group(1), int(match.group(2))
-            if name in by_name:
+            if name in by_name and by_name[name].source_id == sid:
                 found.setdefault(sid, name)
         for match in _NUM_NAME_RE.finditer(markdown):
             sid, name = int(match.group(1)), match.group(2)
-            if name in by_name:
+            if name in by_name and by_name[name].source_id == sid:
                 found.setdefault(sid, name)
     for match in _ENEMY_NUM_RE.finditer(markdown):
         sid = int(match.group(1))
@@ -272,16 +276,18 @@ def _owner_from_line(line: str, by_name=None) -> int | None:
         return int(match.group(1))
     match = _ID_ENUM_RE.search(line)
     if match:
-        return int(match.group(1))
+        sid, name = int(match.group(1)), match.group(2)
+        if by_name is None or (name in by_name and by_name[name].source_id == sid):
+            return sid
     if by_name:
         match = _NAME_PAREN_RE.search(line)
-        if match and match.group(1) in by_name:
+        if match and match.group(1) in by_name and by_name[match.group(1)].source_id == int(match.group(2)):
             return int(match.group(2))
         match = _NAME_NUM_RE.search(line)
-        if match and match.group(1) in by_name:
+        if match and match.group(1) in by_name and by_name[match.group(1)].source_id == int(match.group(2)):
             return int(match.group(2))
         match = _NUM_NAME_RE.search(line)
-        if match and match.group(2) in by_name:
+        if match and match.group(2) in by_name and by_name[match.group(2)].source_id == int(match.group(1)):
             return int(match.group(1))
     return None
 
@@ -296,7 +302,7 @@ def _bound_tables(markdown: str, roster) -> dict[int, dict]:
     ``{source_id: gate_table}``.
     """
     lines = markdown.splitlines()
-    by_name = {entry.enum_name for entry in roster}
+    by_name = {entry.enum_name: entry for entry in roster}
     bound: dict[int, dict] = {}
     for start, block in _iter_tables(markdown):
         table = _extract_gate_table(block)

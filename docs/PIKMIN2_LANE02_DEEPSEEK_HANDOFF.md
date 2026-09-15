@@ -938,7 +938,7 @@ Review corrections to slice 6 (items 1-5; report coverage claim was wrong).
   found, or `(none)`), so gaps are visible; the determinism test asserts every
   input label appears and `shared is False`.
 - `_split_row` is a proper tokeniser: a backslash escapes exactly one character,
-  so `\|` is a literal pipe and `\|` is a literal backslash + separator. Covered
+  so `\|` is a literal pipe and `\\|` is a literal backslash + separator. Covered
   by `test_double_backslash_before_pipe_is_a_separator`.
 - Flip tests added for the `Status` column (`test_status_column_is_accepted_as_result`)
   and the shared-only-when-no-handoff-binds rule
@@ -946,7 +946,7 @@ Review corrections to slice 6 (items 1-5; report coverage claim was wrong).
 - `scripts/generate_p2_advance_report.py` runs `git` with `cwd=ROOT` and passes
   `--branch` through (the rendered command and header now carry the branch).
 
-Per-lane citation fix (item 8): every identity stays 6 gates away because PASS
+Per-lane citation note: every identity stays 6 gates away because PASS
 rows are `uncited` (Evidence cites a bare `P2_*` log marker, not a doc/log file)
 or `shared`. The integrator can tell each lane to add the citation its PASS rows
 need — a `docs/PIKMIN2_*.md` / `.log` / `.txt` / `.json` filename or a

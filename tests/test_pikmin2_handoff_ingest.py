@@ -373,3 +373,17 @@ def test_identity_parse_accepts_cited_real_forms():
     ]
     for line, expected in cases:
         assert parse_identities(line, roster) == expected
+
+
+def test_parse_identities_rejects_phantom_numbers():
+    from experimental.pikmin2_enemy_roster import load_and_validate
+    from scripts.ingest_p2_handoff_gates import parse_identities
+    roster = load_and_validate()
+    for text in (
+        "54 Queen poses",       # "Queen" is 30; the number 54 must not rename Miulin
+        "batch-2 Chappy host",  # "batch-2" is a module label, not Chappy id 2
+        "Pikmin 2 Frog",        # "2 Frog" must not become (2, Chappy)
+        "tick 80 Kogane",       # Kogane is 9, not 80/Tukushi
+        "wave/3 Frog",          # "/3" must not detach 3 -> BluePom
+    ):
+        assert parse_identities(text, roster) == []
