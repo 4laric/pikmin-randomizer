@@ -224,3 +224,31 @@ and proving no duplicate/lost required reward across revisit/process restart on
 a real generated session, remains the lane-06 next slice (needs lane 01 +
 real-GL).
 
+
+## Family consumer contract (Pod vs Onion)
+
+A family credits a corpse in exactly one of two ways; it must never credit the
+same drop twice.
+
+1. **Ordinary Onion/AP receipt.** Open a per-consumer `pc_p2_receipt_host` handle
+   and grant:
+   ```cpp
+   static P2ReceiptHostHandle receipt = nullptr;
+   receipt = pc_p2_receipt_host_open("p2-<family>-receipts.txt");
+   pc_p2_receipt_host_grant(receipt, seed, identity, slot, encounter);   // Granted|Duplicate|Error
+   pc_p2_receipt_host_count(receipt);                                    // don't re-parse the file
+   pc_p2_receipt_host_close(receipt);                                    // at reset; receipt = nullptr
+   ```
+   `identity = "enemy:<source_id>"` (ordinary), `slot` = the generator/actor token,
+   `encounter` a stable event label (`corpse`, `flip`, `onion`, ...). Revisit/restart
+   re-reads the same file, so exactly-once is durable.
+
+2. **Experimental Pod corpse receipt.** Implement
+   `bool pc_p2_<family>_receipt(PelletView* view, unsigned& generator [, int& value])`
+   (or a `Pellet*`-keyed variant for a view-less number pellet, which must return a
+   synthetic identity token because no generator survives) and let
+   `pc_p2_preview_deliver` dispatch it into the Pod economy
+   (`P2_POD_RECEIPT id=corpse:...`, `p2-economy.txt`). This path never writes the
+   Onion ledger and must never cover an ordinary expected check.
+
+The full contract block also lives in `native/pc_port/pc_p2_receipt_host.h`.

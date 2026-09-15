@@ -150,3 +150,41 @@ def test_reopen_same_path_reuses_same_ledger_state(tmp_path):
     assert second.has(*event) is True
     assert second.grant(*event) is False
     assert len(second) == 1
+
+
+def test_ledger_count_accessor_and_independence(tmp_path):
+    first_path = tmp_path / 'first-receipts.json'
+    second_path = tmp_path / 'second-receipts.json'
+
+    first = receiver_for(ReceiptLedger(JsonReceiptPersistence(first_path)))
+    second = receiver_for(ReceiptLedger(JsonReceiptPersistence(second_path)))
+
+    assert first.deliver('seed-a', 45, 3, 1, 77, 'tutorial_1:floor1', p1_proxy=False) is True
+    assert first.deliver('seed-a', 46, 3, 1, 78, 'tutorial_1:floor1', p1_proxy=False) is True
+    assert second.deliver('seed-b', 45, 3, 1, 77, 'tutorial_1:floor1', p1_proxy=False) is True
+
+    assert len(first.ledger) == 2
+    assert len(second.ledger) == 1
+
+    first_reopened = receiver_for(ReceiptLedger(JsonReceiptPersistence(first_path)))
+    second_reopened = receiver_for(ReceiptLedger(JsonReceiptPersistence(second_path)))
+    assert len(first_reopened.ledger) == 2
+    assert len(second_reopened.ledger) == 1
+
+
+def test_two_paths_pod_vs_onion_vocabulary_do_not_collide():
+    pod_identity = 'corpse:385875968'
+    assert pod_identity != p2_source_identity(385875968, 1)
+    assert pod_identity != p1_proxy_identity(385875968, 1)
+
+    dump = [
+        pod_identity,
+        p2_source_identity(45, 1),
+        p1_proxy_identity(3, 1),
+        'corpse:999000',
+        p2_source_identity(385875968, 1),
+    ]
+    pod = [ident for ident in dump if ident.startswith('corpse:')]
+    onion = [ident for ident in dump if not ident.startswith('corpse:')]
+    assert set(pod) == {'corpse:385875968', 'corpse:999000'}
+    assert all(not ident.startswith('corpse:') for ident in onion)
