@@ -756,3 +756,129 @@ absent"). I did this slice solo: the one bounded task was the two-generator
 sidecar write, the bootstrap run, and recording `validate_cooccurrence` on the
 real log, which I completed directly.
 
+## Slice 6
+
+Bounded slice: **source 45 and the report row lane 02 can ingest.**
+
+### (1) Source 45 (Snow) births and the chain closes for both sources
+
+- Native: the Snow bind now emits the source id
+  (`pc_p2_enemy.cpp`: `P2_ENEMY_READY species=YellowKochappy source_id=45
+  native_family=Chappy generator=%u ...`).
+- Root: new `scripts/run_p2_cohort_seed_placement.py` stages the three-actor
+  mixed arena via `experimental.pikmin2_mixed_bulborb_runtime.prepare` (Dwarf
+  Orange 211001 = source 44, Snow 5001 = source 45, plus the P1 Chappy control
+  211002), writes the sidecar mapping `211001 -> slot(44)` and
+  `5001 -> slot(45)`, writes the `ENEMY_P2` bootstrap, runs with
+  `--randomizer-seed`, and runs `validate_cooccurrence` on the real log.
+
+Live run `output/dsw/l04-out/d144931bf1194474ac204fcdd0e75cdd` (one log, both
+sources close; the run ends by timeout as expected):
+
+```
+P2_SEED_RESOLVE source_id=44 target=513430982 original_type=3 x=-150.0 z=1850.0
+P2_SEED_RESOLVE source_id=45 target=5465461 original_type=3 x=-150.0 z=1700.0
+P2_ENEMY_READY species=YellowKochappy source_id=45 native_family=Chappy generator=5001 behavior=P1
+P2_ENEMY_READY species=BlueKochappy source_id=44 native_family=Chappy generator=211001 ...
+P2_PLACEMENT_SLOT generator=211001 slot=513430982 actor=3 xyz=1 terrain=ground route=1 route_distance=61.2 x=-150.000 y=30.000 z=1850.000 water_depth=0.00
+P2_PLACEMENT_SLOT generator=5001 slot=5465461 actor=3 xyz=1 terrain=ground route=1 route_distance=80.9 x=-150.000 y=30.000 z=1700.000 water_depth=0.00
+```
+
+`validate_cooccurrence` → `ok=true`, `closed generator->slot->source and birth
+chain for 2 generator(s): [(5001, 5465461, 45), (211001, 513430982, 44)]`.
+
+### (2) Gate tables (lane 02 ingest format)
+
+### 44 BlueKochappy
+
+| Gate | Result | Evidence |
+|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | output/dsw/l04-out/d144931bf1194474ac204fcdd0e75cdd/native.log:975 |
+| 2. Autonomous movement and animation | UNTESTED | lane 13 family render/FSM |
+| 3. Attacks and receivers | UNTESTED | receiver lanes |
+| 4. Death and corpse | UNTESTED | lifecycle lane |
+| 5. Actual transport and reward | UNTESTED | reward lane |
+| 6. Cleanup and re-entry | UNTESTED | lifecycle lane |
+
+### 45 YellowKochappy
+
+| Gate | Result | Evidence |
+|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | output/dsw/l04-out/d144931bf1194474ac204fcdd0e75cdd/native.log:846 |
+| 2. Autonomous movement and animation | UNTESTED | lane 13 family render/FSM |
+| 3. Attacks and receivers | UNTESTED | receiver lanes |
+| 4. Death and corpse | UNTESTED | lifecycle lane |
+| 5. Actual transport and reward | UNTESTED | reward lane |
+| 6. Cleanup and re-entry | UNTESTED | lifecycle lane |
+
+### (2b) Ingest checker output
+
+`py -3.12 scripts/ingest_p2_handoff_gates.py docs/PIKMIN2_LANE04_DEEPSEEK_HANDOFF.md`
+(ran on the wave, which has lane 02's `ingest_p2_handoff_gates.py`):
+
+```
+# PIKMIN2_LANE04_DEEPSEEK_HANDOFF.md
+44 BlueKochappy (role=source):
+  advances: identity_spawn
+  blocking (admission_requirements): identity_spawn:injected, movement_animation, attacks_receivers, death_corpse, cleanup_reentry, transport_reward
+45 YellowKochappy (role=source):
+  advances: identity_spawn
+  blocking (admission_requirements): movement_animation, attacks_receivers, death_corpse, cleanup_reentry, transport_reward
+```
+
+Both identities advance `identity_spawn` from this handoff. The `identity_spawn:injected`
+on 44 is the roster's own lane-13 annotation (44's `eligibility_reason` carries
+"P1-host AI"), not a refusal of this handoff's cited natural spawn — 45 has a
+clean reason so its `identity_spawn` is fully un-flagged.
+
+### (3) Carry-forward fixes
+
+- Added `test_validator_flips_when_second_generator_ready_stripped` (strip
+  211002's READY from the two-generator log → False), matching the integrator's
+  "every resolving generator must close" change.
+- Removed the unused `import re` in `scripts/run_p2_seed_placement.py`.
+- Removed the unused `ARENA_SOURCE_GENERATOR` in
+  `experimental/pikmin2_seed_placement.py`.
+- The run ends by timeout as expected (`exit=timeout`); slice 5 showed only
+  source 44, this slice shows both 44 and 45.
+
+### Build evidence (clean)
+
+```
+2026-09-14T23:22:04 lane=l04 target=pikmin_pc native=1dd030a7cefd9b60ad0d190aa50b03a7ed25f879 dirty=no build_dir=C:\Users\alari\pikmin-randomizer\output\dsw\native-l04-build exe=C:\Users\alari\pikmin-randomizer\output\dsw\native-l04-build\bin\nectar.exe sha256=c690981f3db4fcf5fecbee7b0e7c7cfd6ed4878954d6fc68539e68aec8d62086 ninja_n="ninja: no work to do." seconds=0
+```
+
+### Tests (PIKMIN_NATIVE_ROOT only)
+
+```
+PIKMIN_NATIVE_ROOT=C:/Users/alari/pikmin-randomizer/output/dsw/native-l04 py -3.12 -m pytest tests/test_p2_seed_placement_native.py -q
+11 passed
+```
+
+### Commits (this slice)
+
+- Native: `1dd030a7cefd9b60ad0d190aa50b03a7ed25f879`
+  `lane04: Snow P2_ENEMY_READY carries source_id=45 (#440)`
+- Root: (this slice's code + handoff, one commit plus the handoff follow-up).
+
+### One exact reproduction command
+
+```
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l04 -- \
+  py -3.12 scripts/run_p2_cohort_seed_placement.py \
+    --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" \
+    --bank "C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-bank" \
+    --profile "C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-ref" \
+    --snow "C:/Users/alari/pikmin-randomizer/output/p2-cohort-mixed-arena/4a4626c5a6844c4884e4a40224c6caa4" \
+    --exe "C:/Users/alari/pikmin-randomizer/output/dsw/native-l04-build/bin/nectar.exe" \
+    --output "C:/Users/alari/pikmin-randomizer/output/dsw/l04-out" \
+    --seed p2-cohort-seed-placement-live
+```
+(run from `C:/Users/alari/pikmin-randomizer/output/dsw/l04-root`.)
+
+## Subagent usage (slice 6)
+
+Slice 6 was done solo (the brief did not mandate subagents): the work was one
+native one-line source-id fix, one new runner reusing the existing mixed-bulborb
+stager, the carry-forward test/import cleanups, and the gate-table formatting.
+

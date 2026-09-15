@@ -1,24 +1,26 @@
-"""Seed-driven placement: both arena generators bind and resolve in one room run.
+"""Seed-driven placement with both Snow (45) and Dwarf Orange (44) birthing.
 
-Stages the two-actor arena (native Chappy generators ``211001``/``211002``) once,
-marks both generators in the dwarf-orange actor list, generates a single seed on
-the admitted cohort, writes the seed-derived sidecar (one ``(generator, slot)``
-pair per arena generator), writes the ``ENEMY_P2`` bootstrap, and runs the room
-with ``--randomizer-seed``. The report then runs the three-marker co-occurrence
-validator on the real log and records its verdict.
+Stages the three-actor mixed arena (Dwarf Orange 211001 = BlueKochappy 44, Snow
+5001 = YellowKochappy 45, plus the P1 Chappy control 211002) on the original
+Impact Site map, generates a seed on the admitted {44,45} cohort, writes the sidecar
+mapping one generator to a slot of each source, writes the ``ENEMY_P2`` bootstrap,
+and runs the room with ``--randomizer-seed``. The report runs the three-marker
+co-occurrence validator on the real log: both sources must close a
+`generator -> slot -> source` + birth chain.
 
-Expected single-log evidence (one complete chain per resolving generator):
+Expected single-log evidence:
 
-* ``P2_PLACEMENT_SLOT generator=<g> slot=<u> ...``
-* ``P2_SEED_RESOLVE source_id=<s> target=<u> ...``
-* ``P2_ENEMY_READY source_id=<s> ... generator=<g> ...``
+* ``P2_ENEMY_READY species=BlueKochappy source_id=44 ... generator=211001``
+* ``P2_ENEMY_READY species=YellowKochappy source_id=45 ... generator=5001``
+* ``P2_SEED_RESOLVE source_id=44 target=<u>`` / ``source_id=45 target=<u>``
+* ``P2_PLACEMENT_SLOT generator=211001 slot=<u>`` / ``generator=5001 slot=<u>``
 
 Run only under the host GL slot:
 
     py -3.12 <repo>/output/deepseek-wave/slot.py run gl <lane> -- \\
-        py -3.12 scripts/run_p2_seed_placement.py \\
+        py -3.12 scripts/run_p2_cohort_seed_placement.py \\
             --assets <P1 assets> --bank <dwarf-orange bank> --profile <profile dir> \\
-            --exe <nectar.exe> --output <out dir> --seed <seed name>
+            --snow <snow-prepared dir> --exe <nectar.exe> --output <out dir> --seed <name>
 """
 import argparse
 import json
@@ -31,6 +33,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import experimental.pikmin2_seed_placement as placement
 from experimental.pikmin2_seed_placement_native import validate_cooccurrence
+
+ORANGE_GENERATOR = 211001
+SNOW_GENERATOR = 5001
 
 
 def _find_mingw():
@@ -78,38 +83,32 @@ def main():
     parser.add_argument('--assets', type=Path, required=True)
     parser.add_argument('--bank', type=Path, required=True)
     parser.add_argument('--profile', type=Path, required=True)
+    parser.add_argument('--snow', type=Path, required=True)
     parser.add_argument('--exe', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--seed', type=str, default='p2-seed-placement')
+    parser.add_argument('--seed', type=str, default='p2-cohort-seed-placement')
     parser.add_argument('--timeout', type=int, default=60)
     args = parser.parse_args()
 
-    from experimental.pikmin2_dwarf_orange_runtime import prepare  # noqa: E402
-    from experimental.pikmin2_dwarf_orange_install import ACTORS_HEADER  # noqa: E402
-    from randomizer import p2_placement_probe, p2_placement_catalog  # noqa: E402
+    from experimental.pikmin2_mixed_bulborb_runtime import prepare  # noqa: E402
+    from randomizer import p2_placement_catalog  # noqa: E402
     import experimental.pikmin2_seed_bridge as bridge  # noqa: E402
     from randomizer.runner import NativeRun  # noqa: E402
     from randomizer.session import Session  # noqa: E402
 
     args.output.mkdir(parents=True, exist_ok=True)
-    stage = prepare(args.assets.resolve(), args.bank.resolve(), args.profile.resolve(), args.output)
-
-    # Mark BOTH arena generators as dwarf-orange source actors (both must close
-    # the three-marker chain, not just the single source generator).
-    actors_text = (f'{ACTORS_HEADER} {len(placement.ARENA_GENERATORS)}\n'
-                   + '\n'.join(map(str, placement.ARENA_GENERATORS)) + '\n')
-    (stage / 'p2-dwarf-orange-actors.txt').write_text(actors_text, encoding='ascii')
+    stage = prepare(args.assets.resolve(), args.bank.resolve(), args.profile.resolve(),
+                    args.snow.resolve(), args.output)
 
     catalog_doc = p2_placement_catalog.build_document()
     document = placement.placement_document(catalog_doc=catalog_doc)
     manifest = placement.generate_admitted_seed(args.seed, document)
-    seed_slots = placement.seed_slots(manifest, placement.BLUEKOCHAPPY_SOURCE)
-    if len(seed_slots) < len(placement.ARENA_GENERATORS):
-        raise SystemExit(
-            f'seed bound only {len(seed_slots)} slot(s) to source '
-            f'{placement.BLUEKOCHAPPY_SOURCE}; need {len(placement.ARENA_GENERATORS)} '
-            f'for the two arena generators')
-    pairs = list(zip(placement.ARENA_GENERATORS, seed_slots[:len(placement.ARENA_GENERATORS)]))
+    slots = placement.seed_slot_uids(manifest)
+    orange_slots = slots.get(placement.BLUEKOCHAPPY_SOURCE, [])
+    snow_slots = slots.get(placement.YELLOWKOCHAPPY_SOURCE, [])
+    if not orange_slots or not snow_slots:
+        raise SystemExit(f'seed must bind both sources 44 and 45; got {slots}')
+    pairs = [(ORANGE_GENERATOR, orange_slots[0]), (SNOW_GENERATOR, snow_slots[0])]
     placement.write_sidecar(stage, pairs)
 
     saved_admitted = bridge.admitted_ids
@@ -123,18 +122,12 @@ def main():
 
     log, code = _run_native(args.exe, stage, bootstrap, args.timeout)
     text = log.read_text(encoding='utf-8', errors='replace')
-
-    probe = p2_placement_probe.build_probe(text)
-    marker_slots = [m['slot'] for m in probe['mapping']]
     co_occurrence = validate_cooccurrence(text)
     report = {
         'run': str(stage),
         'seed': args.seed,
         'arena_stage': placement.ARENA_STAGE,
         'sidecar_pairs': [[g, u] for g, u in pairs],
-        'seed_binding_set': seed_slots,
-        'marker_slots': marker_slots,
-        'markers_are_binding_members': set(marker_slots) <= set(seed_slots),
         'placement_lines': _lines(text, 'P2_PLACEMENT_SLOT'),
         'resolve_lines': _lines(text, 'P2_SEED_RESOLVE'),
         'ready_lines': _lines(text, 'P2_ENEMY_READY'),
@@ -147,8 +140,9 @@ def main():
         },
         'exit': code,
     }
-    (stage / 'seed-placement-report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
-    (args.output / 'latest-seed-placement-run.json').write_text(
+    (stage / 'cohort-seed-placement-report.json').write_text(
+        json.dumps(report, indent=2) + '\n', encoding='utf-8')
+    (args.output / 'latest-cohort-seed-placement-run.json').write_text(
         json.dumps({'run': str(stage), 'seed': args.seed}, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report, indent=2))
 
