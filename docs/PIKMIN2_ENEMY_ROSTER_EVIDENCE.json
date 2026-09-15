@@ -1022,11 +1022,11 @@
       ],
       "gates": {
         "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
         "death_corpse": "PASS",
         "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "cleanup_reentry": "PASS"
       },
       "notes": [
         "BombSarai (Careening Dirigibug): bombsarai FSM/carrier modules; ordinary carrier + capture joint + bomb lifecycle + interruption remain (#244).",
