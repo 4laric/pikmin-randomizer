@@ -180,3 +180,115 @@ Expected: `evidence.json` `passed=true` (13/13 checks), native.log shows centred
 960x540 window, `P2_ENEMY_READY species=BlueKochappy source_id=44` and
 `species=YellowKochappy`, `P2_MIXED_ARENA_SPAWN teki=3 reds=20`, both
 `P2_*_DRAW corpse=0`, no `Extinction`.
+
+## Slice 2 — integrated wave build under QA
+
+Slice 1 was reviewed and merged with integrator fixes (`f398948`). This slice
+put lane 01's integrated pair under independent QA: root worktree
+`C:/Users/alari/pikmin-randomizer/output/dsw/wave-root` (branch
+`claude/p2-deepseek-wave`) and native `.../native-wave`
+(`claude/p2-deepseek-wave-native`), with the prebuilt
+`native-wave-build/bin/nectar.exe` — all read-only for this lane.
+
+### Result
+
+- **Hana events (lane 08): REPRODUCED PASS** against the integrated exe
+  (`pikmin2_hana_behavior` uses the plain `nectar.exe`, no fixture). All cited
+  natural markers observed: `P2_HANA_BIND source_id=84`, `P2_ENEMY_READY
+  species=Hana behavior=native source_FSM=implemented`, state loop
+  `sleep->emerge->walk->attack->eat`, `P2_HANA_BITE frame=18.0 pikmin=1`,
+  `P2_HANA_EAT pikmin=1`, autonomous motion spread 63.16, no extinction.
+  Evidence `l33-out/slice2-hana/58d2cbb7…/hana-validation.json`.
+- **Sokkuri natural death (lane 14), Kogane natural flip (lane 17), Pom
+  conservation (lane 23): BLOCKED — not a lane regression.** Each needs an
+  instrumented fixture built by `build_pikmin2_fixture` against
+  `native-wave-build`; its `require_fresh` + exact-`--head` gate rejects any
+  build while lane 01 keeps merging/rebuilding the integrated tree. Native HEAD
+  churned `0d8fb5f3 -> 8a3e1d40 -> ae2c2a4a -> d107a7fa` within one retry loop
+  and the build dir never reached `ninja: no work to do.`; every fixture build
+  failed with `Native HEAD differs from explicitly expected commit`. Harness +
+  arena inputs are present and ready (`l14-out/ground`, `l17-out/bank`); only
+  the frozen-build precondition is missing.
+- **Mixed scene "all four species": BLOCKED.** No harness stages Sokkuri + Kogane
+  + Hana + Pom together; the 12-species `pikmin2_mixed_scene_behavior` harness
+  requires `flying.json`/`aquatic.json` pose banks that are not staged under
+  `output/` (only the ground bank `l14-out/ground` is present).
+
+### Pins at reproduction time
+
+Hana exe `43ed535c6d62698377fa02a5b861ad902ca3d77300193d0660099c83f8ed8417`,
+root `0aa8e714149dd88ee109ba03b2f0f5a7a63096f3`, native
+`0d8fb5f36084b57781163e4c7182fb016ef1da91`. These were superseded by later
+lane-01 merges: at slice end the wave was still advancing (root `f7cdbf5`,
+native `d107a7fa`, `nectar.exe` mid-rebuild 0 bytes). The wave is not yet frozen.
+
+### QA records (`l33-out/slice2-records/`)
+
+- `hana-events.json` — kind=fixture, status=PASS (natural_fight×baseline_cohort
+  resolves BLOCKED in the matrix: fixture evidence cannot satisfy a
+  natural-required cell).
+- `sokkuri-natural-death.json` / `kogane-natural-flip.json` /
+  `pom-conservation.json` — status=BLOCKED with the exact churn blocker.
+
+### Divergence report
+
+`experimental.pikmin2_qa_repro.report_divergences` returns `[]`: no claimed PASS
+reproduced as FAIL. Hana's PASS agrees with lane 08's cited PASS; Sokkuri/Kogane/
+Pom are "blocked/unexercised", reported as BLOCKED rather than integration
+regressions (see `l33-out/slice2-divergence.json`).
+
+### QA matrix (`qa-report-slice2`)
+
+PASS=1 (`install × frame_budget` slice-1 fixture), BLOCKED=3 (synthetic
+gensession record, fixture on `natural_fight × baseline_cohort`, Pom
+`scheduled_births`), UNTESTED=74. No natural-required cell passed.
+
+### New root artifacts + tests
+
+- `experimental/pikmin2_qa_repro.py` + `tests/test_pikmin2_qa_repro.py` (8 tests)
+  — natural-run reproduction + divergence-report scaffolding for this slice.
+- `py -3.12 -m pytest tests/test_pikmin2_qa_repro.py tests/test_pikmin2_qa_matrix.py -q`
+  → 30 passed. Wave-root pure tests for the four lanes:
+  `tests/test_pikmin2_{hana_events,kogane_natural,sokkuri_natural_runtime,pom_runtime}.py`
+  → 27 passed.
+
+### Commits
+
+- `lane33: natural-run reproduction + divergence scaffolding (#444)` —
+  `experimental/pikmin2_qa_repro.py`, `tests/test_pikmin2_qa_repro.py`.
+- `lane33: slice 2 handoff — integrated-wave QA (#444)` — this handoff section.
+
+### Exact reproduction command (the one that succeeded)
+
+```powershell
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l33 -- py -3.12 -m experimental.pikmin2_hana_behavior run --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets --imported C:/Users/alari/pikmin-randomizer/output/dsw/l14-out/ground --output C:/Users/alari/pikmin-randomizer/output/dsw/l33-out/slice2-hana --exe C:/Users/alari/pikmin-randomizer/output/dsw/native-wave-build/bin/nectar.exe --seconds 30
+```
+
+Run from the `wave-root` worktree so the merged harness modules resolve.
+
+### Remaining blockers (named provider lanes)
+
+- **Lane 01 (integration)**: publish a frozen/immutable integrated pair before the
+  fixture-based reproductions (Sokkuri/Kogane/Pom) can be QA'd.
+- **Lanes 15/16 (flying/aquatic)**: supply the `flying.json`/`aquatic.json` pose
+  banks (or the mixed-scene imported layout) before a genuine multi-family mixed
+  scene can be staged.
+
+### Subagent usage
+
+- `explore` #1 (source audit of the four harnesses): used as-is; delivered exact
+  argv/CLI, natural marker contracts, FSM/event pins, and each lane's cited PASS
+  hash, which determined the exact `run`/`build` commands I issued.
+- `explore` #2 (candidate inventory): used as-is; established which harnesses run
+  against a plain exe (Hana) vs need a built fixture (Sokkuri/Kogane/Pom), and
+  that the 12-species mixed scene is missing flying/aquatic banks — the basis for
+  the BLOCKED findings.
+- `general` #3 (scaffolding): wrote `experimental/pikmin2_qa_repro.py` +
+  `tests/test_pikmin2_qa_repro.py` (8 tests) and corrected my description of the
+  matrix (provenance is enforced only at `evaluate_cell`, not `validate_record`;
+  record status can also be BLOCKED). Committed unchanged.
+
+Subagents saved the discovery/reading phase (roughly 25-35 min of grepping and
+command archaeology); one result was used with correction (kind classification —
+these are fixture-driven observations, so records are `kind=fixture`, and the
+matrix correctly keeps natural-required cells UNTESTED/BLOCKED).
