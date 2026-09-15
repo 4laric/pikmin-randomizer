@@ -1,6 +1,6 @@
 """Private Mamuta Pod-arena native runner (lane 19, #221/#168).
 
-Stages the batch-4 arena + rules marker + 10-red starting squad *with* the
+Stages the batch-4 arena + rules marker + 14-red starting squad *with* the
 cargo-enabled Pod (converted ``treasure.mod``/``pod.mod`` + single ``pr05``
 treasure actor) and runs the Pod-observation fixture. The fixture drives the
 captain into the bound Miurin's territory without forcing any bury, lethal hit
@@ -45,7 +45,7 @@ def validate(text, assisted=False):
           and 'PASS P2_MAMUTA_POD_RUNTIME captain_down' not in text):
         raise ValueError('Missing Pod runtime completion')
     birth = _line(text, r'P2_MAMUTA_POD_BIRTH id=(\d+) type=(\d+) squad=(\d+) color=(\w+)')
-    if birth != ('221001', '24', '10', 'red'):
+    if birth != ('221001', '24', '14', 'red'):
         raise ValueError('Missing unique identity/squad birth evidence')
     ready = _line(text, r'P2_POD_READY treasure=(\S+) value=(\d+) weight=(\d+) capacity=(\d+) pokos=(\d+)')
     approach = _line(text, r'P2_MAMUTA_POD_APPROACH_RESULT approached=(\d+) min=([-\d.]+) states=([0-9a-fA-F]+)')

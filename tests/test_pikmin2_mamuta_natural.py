@@ -10,7 +10,7 @@ def _natural_log(*, approached=1, died=0, corpse=0, carried=0, goal=0, plants=0,
     lines = [
         'P2_MAMUTA_RULES enabled cap=99 navi_damage=5.0 vertical_band=20',
         'P2_MAMUTA_READY generator=221001 native_type=24 xyz=-150.000000,30.000000,1850.000000 P1_proxy_static_anchors_no_P2_planting',
-        'P2_MAMUTA_NATURAL_BIRTH id=221001 type=24 squad=10 color=red',
+        'P2_MAMUTA_NATURAL_BIRTH id=221001 type=24 squad=14 color=red',
         'P2_MAMUTA_NATURAL_APPROACH target=-150.0,1870.0 actor=-150.0,1850.0',
         'P2_MAMUTA_NATURAL_OBSERVE tick=30 state=7 health=2424.8 navi=-150.0,1900.0 squad=10 min=55.0 states=00000080',
     ]

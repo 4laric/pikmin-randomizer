@@ -22,7 +22,7 @@ def validate(text):
     if 'PASS P2_MAMUTA_RULES_RUNTIME bury flower_stage cap99 navi_damage5 death corpse reset' not in text:
         raise ValueError('Missing rules runtime completion')
     rows = re.findall(r'P2_MAMUTA_FIXTURE_BIRTH id=(\d+) type=(\d+) squad=(\d+) color=(\w+)', text)
-    if len(rows) != 1 or rows[0] != ('221001', '24', '10', 'red'):
+    if len(rows) != 1 or rows[0] != ('221001', '24', '14', 'red'):
         raise ValueError('Missing unique identity/squad birth evidence')
     bury = re.findall(r'P2_MAMUTA_FIXTURE_BURY forced=(\d+) planted_before=(\d+)', text)
     if len(bury) != 1 or bury[0][0] != '3':

@@ -36,7 +36,7 @@ public:
    require(initialPokos>=2,"Pod economy must persist the prior mamuta receipt");
    std::printf("P2_MAMUTA_REVISIT_READY prior_pokos=%d\n",initialPokos);
    Iterator pit(pikiMgr);CI_LOOP(pit){Piki* p=static_cast<Piki*>(*pit);if(p&&p->isAlive()){require(p->mColor==Red,"squad is red");++squad;}}
-   require(squad==10,"starting squad of 10 red Pikmin");
+   require(squad==14,"starting squad of 14 red Pikmin");
    for(int i=0;i<DEMOFLAG_COUNT;++i)playerState->mDemoFlags.setFlagOnly(i);
    actorView=static_cast<PelletView*>(actor);
    assembled=true;phase=1;ticks=0;walkGoals.clear();
