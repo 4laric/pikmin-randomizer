@@ -49,7 +49,7 @@ def install(bank, run, actors):
     if any(p.exists() or p.is_symlink() for p in targets):raise ValueError('Refusing existing Frog target')
     for name,data in files:(room/name).write_bytes(data)
     (run/'p2-frog.txt').write_bytes(protocol)
-    result=dict(schema=1,manifest_sha256=digest,protocol_sha256=hashlib.sha256(protocol).hexdigest(),models=len(files),bytes=sum(len(data) for _,data in files),native_ready=False,behavior='P1 Frog/Frow proxy; native P1 rewards unchanged')
+    result=dict(schema=1,manifest_sha256=digest,protocol_sha256=hashlib.sha256(protocol).hexdigest(),models=len(files),bytes=sum(len(data) for _,data in files),native_ready=False,behavior='P2 source FSM (Frog/MaroFrog); native P1 rewards unchanged')
     (run/'frog-install.json').write_bytes((json.dumps(result,sort_keys=True,indent=2)+'\n').encode())
     return result
 

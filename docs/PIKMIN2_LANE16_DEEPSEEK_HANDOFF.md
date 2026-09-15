@@ -108,7 +108,7 @@ Injected evidence is UNTESTED, never PASS.
 | Gate | Result | Evidence | Injected vs natural |
 |---|---|---|---|
 | 1. Exact identity and spawn | PASS (natural) | output/dsw/l16-out/run-runtime-f3/stages/e8edbce3f2bf445eb68c3feaa9731d43/native.log:1268 | natural |
-| 2. Autonomous movement and animation | PASS (natural) | output/dsw/l16-out/run-runtime-f3/stages/e8edbce3f2bf445eb68c3feaa9731d43/native.log:1272,1361 (`P2_FROG_DRAW species=MaroFrog` wait1/attack draws) | natural |
+| 2. Autonomous movement and animation | PASS (natural) | output/dsw/l16-out/run-runtime-f3/stages/e8edbce3f2bf445eb68c3feaa9731d43/native.log:1283,1294 (`P2_FROG_STATE species=MaroFrog generator=201002` state=turn then state=jump) | natural |
 | 3. Attacks and receivers | UNTESTED | no combat run tracks MaroFrog as the target | natural |
 | 4. Death and corpse | UNTESTED (injected) | output/dsw/l16-out/run-runtime-f3/stages/e8edbce3f2bf445eb68c3feaa9731d43/native.log:1485 | injected |
 | 5. Actual transport and reward | UNTESTED | no transport/receipt observation | natural |
@@ -519,6 +519,8 @@ Root `deepseek/p2-l16`:
 | Commit | Message |
 |---|---|
 | `531d0c96` | lane16: review fixes 3 - accept behavior=source in the P2_FROG_LAND validator (#167) |
+| `cc309e50` | lane16: review fixes 3 - per-identity gate tables, natural-lethal relabel, handoff (#167) |
+| `51eb8fc2` | lane16 (integrator): cite the real MaroFrog draw lines for gate 2 |
 
 ### Build evidence (`dirty=no`, appended to `output/dsw/l16-build-evidence.txt`)
 
@@ -623,3 +625,47 @@ Estimated net: the two `explore` agents removed the read-heavy discovery
 accurate; the `general` agent's fix was correct on first run. This pass's
 subagent use was a net saver versus the fix-2 pass, which had no task tool and
 cost a longer manual read.
+
+## Slice 2 — review fix pass 3c (`l16-fix3c`)
+
+Clears the `hold-for-fix` review (tag `fix3b`) item by item. No native source
+change was needed; this pass is documentation + one installer-string correction.
+
+### Blocking — MaroFrog gate 2 citation
+
+`native.log:1313` is the `P2_FROG_CLEANUP` line, not movement; the integrator's
+`:1272,1361` replacement cites animated DRAW clips, not the autonomous movement
+states. Gate 2 now cites the real source-FSM movement rows in
+`output/dsw/l16-out/run-runtime-f3/stages/e8edbce3f2bf445eb68c3feaa9731d43/native.log`,
+verified against the log before writing:
+
+- `native.log:1283` — `P2_FROG_STATE species=MaroFrog generator=201002 state=turn`
+- `native.log:1294` — `P2_FROG_STATE species=MaroFrog generator=201002 state=jump`
+
+(The same MaroFrog then walks jump→jumpwait→fall→attack at
+`:1326,:1338,:1346,:1353`, so the behavior was always present in that log; only
+the citation was wrong.)
+
+### Non-blocking — ordered commits
+
+Root `cc309e50` (`per-identity gate tables, natural-lethal relabel, handoff`) and
+the integrator commit `51eb8fc2` are added to the root ordered-commit table.
+
+### Non-blocking — `frog-install.json` proxy label (integrator notice)
+
+**Integrator notice (disclosure option selected).** The checked evidence artifact
+`l16-out/run-runtime-f3/.../frog-install.json` reports
+`behavior: "P1 Frog/Frow proxy; native P1 rewards unchanged"` and
+`native_ready: false`, while the native runtime marker is
+`P2_FROG_READY ... behavior=source_fsm` (`native.log:1310`). Resolution:
+
+- `experimental/pikmin2_frog_install.py:52` is corrected so future installs emit
+  `behavior: "P2 source FSM (Frog/MaroFrog); native P1 rewards unchanged"`.
+- The existing `run-runtime-f3` JSON is a **pre-correction historical artifact**
+  and was intentionally not rewritten (editing generated run evidence would be
+  dishonest). It is disclosed here instead.
+- `native_ready: false` is the repo-wide asset-install convention (an install
+  certifies the pose bank, not runtime gameplay); the authoritative native
+  behavior/readiness signal for this lane is the native `P2_FROG_READY` marker
+  (`behavior=source_fsm`). No filed work depends on reading `native_ready` from
+  this JSON.
