@@ -4,22 +4,28 @@ Owned by the lifecycle/acceptance lane. It stages a family arena with the
 current starting-squad overlay, frames the engine camera on a registered proxy
 so its P1-proxy AI actually updates, asserts the target is not carrying
 ``TEKI_OPTION_INVINCIBLE``, drives the source damage receiver with repeated
-Navi ``InteractAttack`` hits until death, then forces the scene's own
-``Generator`` to respawn the same generator ID and re-runs the family
-registration so cleanup/re-entry can be observed.
+Navi ``InteractAttack`` hits until death, then disposes the corpse pellet so the
+ENGINE death funnel (``Pellet::doKill -> BTeki::viewKill -> kill -> doKill ->
+pc_p2_forget_teki``) clears the family registration -- the fixture itself never
+calls a family ``*_forget``. It then forces the scene's own ``Generator`` to
+respawn the same generator ID (late birth) and re-runs the family registration
+so cleanup/re-entry can be observed.
 
-This is deliberately a **proxy** lifecycle harness: it proves the P1 host's
-death/receiver path, the family's ``pc_p2_*_forget``/``reset`` hook and clean
-re-registration. It does not claim source P2 FSM, receivers, rewards or
-collision. Those remain BLOCKED on the family issues and #186.
+This is deliberately a **proxy** lifecycle harness: the lethal damage value is
+injected (``InteractAttack(100000)``, a real receiver hit) and the corpse
+disposal trigger is injected because the cargo-free arena has no Onion/Pod to
+dispose of the corpse naturally; everything downstream of those two triggers is
+the real engine death/forget/re-entry path. It does not claim source P2 FSM,
+receivers, rewards or collision -- those remain on the family issues and #186.
 
 Usage::
 
     py -3.12 -m experimental.pikmin2_lifecycle_runtime build \
-        --native <native worktree> --build-dir <private build> --output <new dir> --head <sha>
+        --native <native worktree> --build-dir <private build> --output <new dir> \
+        --head <sha> --family long-legs
     py -3.12 -m experimental.pikmin2_lifecycle_runtime run \
-        --family long-legs --assets <P1 assets> --imported <manifest dir> \
-        --output <new dir> --exe <fixture.exe>
+        --family dwarf-orange --assets <P1 assets> --output <new dir> --exe <fixture.exe> \
+        --bank <dwarf-orange bank dir> --profile <dwarf-orange profile dir>
 """
 import argparse
 import json
@@ -31,21 +37,50 @@ from pathlib import Path
 
 from scripts import build_pikmin2_fixture as builder
 
-FAMILIES = ('long-legs', 'waterwraith', 'flora')
+FAMILIES = ('long-legs', 'waterwraith', 'flora', 'dwarf-orange')
+
+# Per-family native registration hooks. The three original families all bind
+# through the batch2/long-legs proxy modules; dwarf-orange binds through its own
+# module (which has no ``_count``/``_rebind``, only ``_registered``/``_forget``/
+# ``_reset``/``_setup``).
+_BATCH2_LONG_LEGS = dict(
+    include='#include "pc_p2_batch2.h"\n#include "pc_p2_long_legs.h"\n',
+    registered='(pc_p2_batch2_registered(deadPtr)||pc_p2_long_legs_registered(deadPtr))',
+    rebind='pc_p2_batch2_rebind();pc_p2_long_legs_setup();',
+    bind_re=r'P2_(?:LONG_LEGS|BATCH2)_BIND',
+    draw_re=r'P2_(?:LONG_LEGS|BATCH2)_DRAW',
+)
+
+FAMILY_HOOKS = {
+    'long-legs': dict(_BATCH2_LONG_LEGS),
+    'waterwraith': dict(_BATCH2_LONG_LEGS),
+    'flora': dict(_BATCH2_LONG_LEGS),
+    'dwarf-orange': dict(
+        include='#include "pc_p2_dwarf_orange.h"\n',
+        registered='pc_p2_dwarf_orange_registered(deadPtr)',
+        rebind='pc_p2_dwarf_orange_setup();',
+        # dwarf_orange has no *_BIND marker; the family setup re-emits the enemy
+        # ready line, so two of them (initial + re-entry) is the rebound signal.
+        bind_re=r'P2_ENEMY_READY species=BlueKochappy',
+        draw_re=r'P2_DWARF_ORANGE_DRAW',
+    ),
+}
 
 # Phase frame numbers are deliberately spaced so one keyboard-free run can move
-# through spawn -> movement -> death -> respawn -> re-entry without input.
+# through spawn -> movement -> death -> corpse-dispose -> respawn -> re-entry
+# without input. ``__REGISTERED_EXPR__`` and ``__REBIND_CALL__`` are substituted
+# per family; no family ``*_forget`` is ever called by this fixture.
 APP = r'''class RoomApp : public PlugPikiApp {
- int frames=0,observed=0,familyCount=0,deathFrame=-1,reentryFrame=-1,respawnInjected=0,reuseSlot=0;
+ int frames=0,observed=0,familyCount=0,deathFrame=-1,reentryFrame=-1,respawnInjected=0,reuseSlot=0,disposed=0;
  unsigned ids[8]={},controlId=0,target=0;
  Vector3f first[8];
- Teki* deadPtr=nullptr;Generator* targetGen=nullptr;
- Teki* find(unsigned id){Iterator iter(tekiMgr);CI_LOOP(iter){Teki* a=static_cast<Teki*>(*iter);if(a&&a->mGenerator&&a->mGenerator->_70==id)return a;}return nullptr;}
+ Teki* deadPtr=nullptr;Generator* targetGen=nullptr;Pellet* corpsePtr=nullptr;
+ Teki* find(unsigned id){Iterator iter(tekiMgr);CI_LOOP(iter){Teki* a=static_cast<Teki*>(*iter);if(a&&a->isAlive()&&a->mGenerator&&a->mGenerator->_70==id)return a;}return nullptr;}
  void frameOn(Teki* t){if(cameraMgr&&cameraMgr->mCamera){cameraMgr->mCamera->setTarget(t);cameraMgr->mCamera->mControlsEnabled=false;}}
 public:int idle() override {
  int result=PlugPikiApp::idle();require(++frames<30000,"lifecycle startup timeout");
  if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
- if(!pc_p2_preview_cargo_free_ready()||!naviMgr||!tekiMgr||!mapMgr||!cameraMgr||!cameraMgr->mCamera)return result;
+ if(!pc_p2_preview_cargo_free_ready()||!naviMgr||!tekiMgr||!mapMgr||!cameraMgr||!cameraMgr->mCamera||!pelletMgr)return result;
  Navi* n=naviMgr->getNavi();if(!n||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;
  ++observed;
  if(observed==1){
@@ -81,27 +116,33 @@ public:int idle() override {
  }
  if(observed>=2&&deathFrame<0){
   Teki* a=find(target);
-  if(!a||!a->isAlive()){deathFrame=observed;std::printf("P2_LIFECYCLE_DEATH id=%u frame=%d\n",target,observed);std::fflush(stdout);}
+  if(!a){deathFrame=observed;std::printf("P2_LIFECYCLE_DEATH id=%u frame=%d\n",target,observed);std::fflush(stdout);}
   else{deadPtr=a;const bool hit=a->stimulate(InteractAttack(n,nullptr,100000,false));
    if(observed<40||observed%12==0)std::printf("P2_LIFECYCLE_ATTACK id=%u accepted=%d health=%.1f\n",target,int(hit),a->mHealth);}
  }
  if(deathFrame>=0&&reentryFrame<0&&observed<deathFrame+900){
   if(observed==deathFrame+1){
    Teki* c=find(target);std::printf("P2_LIFECYCLE_CLEANUP id=%u alive=%d\n",target,int(c&&c->isAlive()));
-   unsigned long before=pc_p2_batch2_count()+pc_p2_long_legs_count();
-   int regBefore=int(deadPtr&&(pc_p2_batch2_registered(deadPtr)||pc_p2_long_legs_registered(deadPtr)));
-   pc_p2_batch2_forget(deadPtr);pc_p2_long_legs_forget(deadPtr);
-   unsigned long after=pc_p2_batch2_count()+pc_p2_long_legs_count();
-   int regAfter=int(deadPtr&&(pc_p2_batch2_registered(deadPtr)||pc_p2_long_legs_registered(deadPtr)));
-   std::printf("P2_LIFECYCLE_FORGET id=%u before=%lu after=%lu registered_before=%d registered_after=%d\n",
-               target,before,after,regBefore,regAfter);std::fflush(stdout);
+   const int regAtDeath=int(deadPtr&&(__REGISTERED_EXPR__));
+   std::printf("P2_LIFECYCLE_FORGET id=%u registered_at_death=%d\n",target,regAtDeath);std::fflush(stdout);
+  }
+  if(!corpsePtr){Iterator pellets(pelletMgr);CI_LOOP(pellets){Pellet* p=static_cast<Pellet*>(*pellets);if(p&&p->isAlive()&&p->mPelletView==static_cast<PelletView*>(deadPtr)){corpsePtr=p;break;}}}
+  if(corpsePtr&&!disposed&&observed>=deathFrame+60){
+   // Engine corpse-disposal funnel (no Onion in the cargo-free arena, so the
+   // disposal trigger is injected): Pellet::doKill -> BTeki::viewKill ->
+   // kill(false) -> doKill -> pc_p2_forget_teki. No family *_forget here.
+   corpsePtr->kill(false);
+   const int regAfter=int(deadPtr&&(__REGISTERED_EXPR__));
+   std::printf("P2_LIFECYCLE_FORGET id=%u registered_after_dispose=%d engine=doKill\n",target,regAfter);
+   require(regAfter==0,"engine doKill did not forget at corpse disposal");
+   disposed=1;std::fflush(stdout);
   }
   Teki* fresh=find(target);
-  if(!fresh&&!respawnInjected&&observed>=deathFrame+120&&targetGen){targetGen->init();respawnInjected=1;
+  if(!fresh&&!respawnInjected&&observed>=deathFrame+120&&targetGen&&disposed){targetGen->init();respawnInjected=1;
    std::printf("P2_LIFECYCLE_RESPAWN_INJECT id=%u generator=%u\n",target,targetGen->_70);std::fflush(stdout);}
   if(fresh&&fresh->isAlive()){
    frameOn(fresh);
-   pc_p2_batch2_rebind();pc_p2_long_legs_setup();
+   __REBIND_CALL__
    reentryFrame=observed;reuseSlot=int(fresh==deadPtr);
    std::printf("P2_LIFECYCLE_REENTRY id=%u frame=%d reused=%d\n",target,observed,reuseSlot);std::fflush(stdout);
   }
@@ -124,16 +165,19 @@ public:int idle() override {
 '''
 
 
-def instrument(source):
+def instrument(source, family='long-legs'):
+    hooks = FAMILY_HOOKS[family]
     start = source.index('class RoomApp : public PlugPikiApp {')
     end = source.index('int main(', start)
     if 'PASS P2_LIFECYCLE_RUNTIME' in source:
         raise ValueError('Already instrumented')
     head = ('#include <fstream>\n#include <cmath>\n#include <cstring>\n#include "Generator.h"\n'
             '#include "TekiPersonality.h"\n#include "Interactions.h"\n'
-            '#include "pc_p2_batch2.h"\n#include "pc_p2_long_legs.h"\n'
+            + hooks['include'] +
             '#include "Pcam/Camera.h"\n#include "Pcam/CameraManager.h"\n')
-    text = head + source[:start] + APP + source[end:]
+    probe = (APP.replace('__REGISTERED_EXPR__', hooks['registered'])
+                .replace('__REBIND_CALL__', hooks['rebind']))
+    text = head + source[:start] + probe + source[end:]
     # The provenance builder replaces pc_main.cpp with this fixture, so the
     # production 960x540 centred-window policy (root a51b301 / native 1d5a242b)
     # does not run here. Apply the equivalent policy in this entrypoint and emit
@@ -154,18 +198,18 @@ def instrument(source):
     return text.replace(anchor, window)
 
 
-def build(native, build_dir, output, head):
+def build(native, build_dir, output, head, family='long-legs'):
     native, build_dir, output = (Path(p).resolve() for p in (native, build_dir, output))
     output.mkdir(parents=True, exist_ok=False)
     room = output / 'room.cpp'
-    room.write_text(instrument((native / 'tools/preview_p2_room.cpp').read_text()))
+    room.write_text(instrument((native / 'tools/preview_p2_room.cpp').read_text(), family))
     record = builder.build_fixture(build_dir, native, room, output / 'baseline', head)
     exe = output / 'baseline' / 'fixture.exe'
     print(exe)
     return exe
 
 
-def _arena(name, assets, imported, output):
+def _arena(name, assets, imported, output, bank, profile):
     output = Path(output).resolve()
     if name == 'waterwraith':
         from experimental.pikmin2_waterwraith_arena import prepare
@@ -176,6 +220,19 @@ def _arena(name, assets, imported, output):
     if name == 'long-legs':
         from experimental.pikmin2_long_legs_arena import prepare
         return prepare(assets, imported, output)
+    if name == 'dwarf-orange':
+        from experimental.pikmin2_dwarf_orange_arena import prepare
+        run_dir = prepare(assets, bank, profile, output)
+        # Normalize the family manifest to the shared harness shape: the
+        # dwarf-orange arena emits generator/species/native_family but not the
+        # top-level control or per-actor native_teki_type the harness reads.
+        manifest_path = run_dir / 'arena.json'
+        manifest = json.loads(manifest_path.read_text())
+        manifest['control'] = 'P1 Chappy'
+        for actor in manifest['actors']:
+            actor['native_teki_type'] = 3  # TEKI_Chappy
+        manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
+        return run_dir
     raise ValueError('Unknown lifecycle family: ' + name)
 
 
@@ -209,11 +266,11 @@ def adopt_existing(assets, run_dir, output):
     return new
 
 
-def run(name, assets, imported, output, exe, timeout=300, existing=None):
+def run(name, assets, imported, output, exe, timeout=300, existing=None, bank=None, profile=None):
     if existing is not None:
         run_dir = adopt_existing(assets, existing, output)
     else:
-        run_dir = _arena(name, assets, imported, output)
+        run_dir = _arena(name, assets, imported, output, bank, profile)
         if name == 'long-legs':
             from experimental.pikmin2_long_legs_visual import convert, verify
             room = run_dir / 'assets/dataDir/courses/pikmin2room'
@@ -236,7 +293,7 @@ def run(name, assets, imported, output, exe, timeout=300, existing=None):
         except subprocess.TimeoutExpired:
             code = 'timeout'
     text = log.read_text(errors='replace')
-    evidence = validate(text, code, manifest)
+    evidence = validate(text, code, manifest, name)
     evidence.update(family=name, exit_code=code, run=str(run_dir),
                     executable=builder.snapshot([Path(exe).resolve()]),
                     arena=builder.snapshot([run_dir / 'arena.json',
@@ -246,7 +303,8 @@ def run(name, assets, imported, output, exe, timeout=300, existing=None):
     return evidence
 
 
-def validate(text, code, manifest):
+def validate(text, code, manifest, name='long-legs'):
+    hooks = FAMILY_HOOKS.get(name, _BATCH2_LONG_LEGS)
     births = re.findall(r'P2_LIFECYCLE_BIRTH id=(\d+) type=(\d+) registered=(\d+) '
                         r'invincible=(\d)', text)
     moves = re.findall(r'P2_LIFECYCLE_MOVE id=(\d+) dist=(-?\d+\.\d+)', text)
@@ -254,14 +312,14 @@ def validate(text, code, manifest):
     target = re.findall(r'P2_LIFECYCLE_TARGET id=(\d+)', text)
     death = re.findall(r'P2_LIFECYCLE_DEATH id=(\d+) frame=(\d+)', text)
     cleanup = re.findall(r'P2_LIFECYCLE_CLEANUP id=(\d+) alive=(\d)', text)
-    forget = re.findall(r'P2_LIFECYCLE_FORGET id=(\d+) before=(\d+) after=(\d+) '
-                        r'registered_before=(\d) registered_after=(\d)', text)
+    forget_at_death = re.findall(r'P2_LIFECYCLE_FORGET id=(\d+) registered_at_death=(\d)', text)
+    forget_dispose = re.findall(r'P2_LIFECYCLE_FORGET id=(\d+) registered_after_dispose=(\d) engine=doKill', text)
     inject = re.findall(r'P2_LIFECYCLE_RESPAWN_INJECT id=(\d+) generator=(\d+)', text)
     reentry = re.findall(r'P2_LIFECYCLE_REENTRY id=(\d+) frame=(\d+) reused=(\d)', text)
     summary = re.findall(r'P2_LIFECYCLE_SUMMARY family=(\d+) alive=(\d+) moved=(\d+) '
                          r'death=(-?\d+) reentry=(-?\d+) reused=(\d) control=(\d)', text)
-    binds = re.findall(r'P2_(?:LONG_LEGS|BATCH2)_BIND', text)
-    draws = re.findall(r'P2_(?:LONG_LEGS|BATCH2)_DRAW', text)
+    binds = re.findall(hooks['bind_re'], text)
+    draws = re.findall(hooks['draw_re'], text)
     life = summary[0] if summary else None
     checks = dict(
         completion=code == 0 and 'PASS P2_LIFECYCLE_RUNTIME' in text,
@@ -272,8 +330,8 @@ def validate(text, code, manifest):
         health_reached_zero=any(float(a[2]) <= 0.0 for a in attacks),
         died=bool(death),
         cleaned_up=bool(cleanup) and cleanup[0][1] == '0',
-        forget_hook=bool(forget) and forget[0][3] == '1' and forget[0][4] == '0'
-                    and int(forget[0][2]) == int(forget[0][1]) - 1,
+        corpse_retained=bool(forget_at_death) and forget_at_death[0][1] == '1',
+        engine_forgot=bool(forget_dispose) and forget_dispose[0][1] == '0',
         respawned=bool(reentry),
         rebound=len(binds) >= 2,
         drew=bool(draws),
@@ -282,14 +340,18 @@ def validate(text, code, manifest):
     return dict(passed=all(checks.values()), checks=checks,
                 control_alive_observed=bool(life) and int(life[6]) == 1,
                 births=[list(b) for b in births], moves=moves, attacks=attacks,
-                target=target, death=death, cleanup=cleanup, forget=forget,
+                target=target, death=death, cleanup=cleanup,
+                forget_at_death=forget_at_death, forget_dispose=forget_dispose,
                 respawn_inject=inject,
                 reentry=reentry, summary=life,
+                reused_observed=bool(life) and int(life[5]) == 1,
                 bind_lines=len(binds), draw_lines=len(draws),
                 failures=re.findall(r'FAIL p2 room: (.*)', text),
                 unmeasured=['source P2 FSM', 'source receivers/rewards',
-                            'transport/reward', 'campaign resume', 'mixed-scene performance'],
-                injection='camera framing + repeated Navi InteractAttack(100000); respawn via '
+                            'transport/reward', 'campaign resume', 'mixed-scene performance',
+                            'same-address allocator reuse (reused is reported, not forced)'],
+                injection='repeated Navi InteractAttack(100000) via the receiver; corpse '
+                          'disposal trigger injected (no Onion in cargo-free arena); respawn via '
                           'the staged actor\'s own Generator::init() after death')
 
 
@@ -300,17 +362,24 @@ if __name__ == '__main__':
     for name in ('native', 'build-dir', 'output'):
         b.add_argument('--' + name, type=Path, required=True)
     b.add_argument('--head', required=True)
+    b.add_argument('--family', choices=FAMILIES, default='long-legs')
     r = sub.add_parser('run')
     for name in ('assets', 'output', 'exe'):
         r.add_argument('--' + name, type=Path, required=True)
     r.add_argument('--imported', type=Path)
     r.add_argument('--existing', type=Path)
+    r.add_argument('--bank', type=Path)
+    r.add_argument('--profile', type=Path)
     r.add_argument('--family', choices=FAMILIES, required=True)
     r.add_argument('--timeout', type=int, default=300)
     args = parser.parse_args()
     if args.command == 'build':
-        build(args.native, args.build_dir, args.output, args.head)
+        build(args.native, args.build_dir, args.output, args.head, args.family)
     else:
-        if args.existing is None and args.imported is None:
+        if args.family == 'dwarf-orange':
+            if not args.bank or not args.profile:
+                parser.error('dwarf-orange requires --bank and --profile')
+        elif args.existing is None and args.imported is None:
             parser.error('run requires --imported (fresh arena) or --existing (re-stage)')
-        run(args.family, args.assets, args.imported, args.output, args.exe, args.timeout, args.existing)
+        run(args.family, args.assets, args.imported, args.output, args.exe,
+            args.timeout, args.existing, args.bank, args.profile)
