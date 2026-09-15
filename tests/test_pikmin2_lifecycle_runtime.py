@@ -366,8 +366,6 @@ def test_validate_scene_teardown_requires_navi_null():
                               0, _ONE_ACTOR_MANIFEST, teardown='scene-teardown')
     bad = lifecycle.validate(_BASE_PASS_LOG + _scene_exit_tail(navi_null=0),
                              0, _ONE_ACTOR_MANIFEST, teardown='scene-teardown')
-    if good['scene_teardown_ok'] and bad['scene_teardown_ok']:
-        pytest.skip('scene_teardown_ok does not yet require navi_null=1')
     assert good['scene_teardown_ok'] is True
     assert bad['scene_teardown_ok'] is False
     assert not bad['passed']
@@ -382,8 +380,6 @@ def test_validate_scene_teardown_requires_navi_null():
 def test_scene_mode_requires_control_actor():
     good = lifecycle.validate(_BASE_PASS_LOG + _scene_exit_tail(control=1),
                               0, _ONE_ACTOR_MANIFEST, teardown='scene-teardown')
-    if 'control_untouched' not in good['checks']:
-        pytest.skip('scene mode control_untouched check not implemented yet')
     assert good['scene_exit_markers']
     assert good['checks']['control_untouched'] is True
     assert good['passed'], good['checks']
@@ -395,9 +391,6 @@ def test_scene_mode_requires_control_actor():
 
 
 def test_moved_first_born_gate_follows_requires_move():
-    dwarf = lifecycle.FAMILY_HOOKS.get('dwarf-orange')
-    if not dwarf or 'requires_move' not in dwarf:
-        pytest.skip('FAMILY_HOOKS requires_move not implemented yet')
     assert lifecycle.FAMILY_HOOKS['dwarf-orange']['requires_move'] is True
     assert lifecycle.FAMILY_HOOKS['long-legs']['requires_move'] is True
 
@@ -425,8 +418,6 @@ def test_moved_first_born_gate_follows_requires_move():
     non_requires = next((fam for fam in ('waterwraith', 'flora', 'sokkuri')
                          if lifecycle.FAMILY_HOOKS.get(fam, {}).get('requires_move') is not True),
                         None)
-    if non_requires is None:
-        pytest.skip('no non-requires_move family configured')
     ok_n = lifecycle.validate(_BASE_PASS_LOG + _teardown_tail(),
                               0, _ONE_ACTOR_MANIFEST, name=non_requires)
     assert ok_n['passed'], ok_n['checks']
@@ -453,3 +444,29 @@ def test_reused_observed_derived_from_reentry_not_summary():
                              0, _ONE_ACTOR_MANIFEST, teardown='scene-teardown')
     assert bad['reused_observed'] is False
     assert not bad['passed']
+
+
+def test_sokkuri_movement_window_is_extended_and_required():
+    # The Skitter Leaf is a mover (MoveGround), not an ambusher: its slow-start
+    # movement must be captured by an extended window and hard-gated, not
+    # laundered off with requires_move=False.
+    s = lifecycle.FAMILY_HOOKS['sokkuri']
+    assert s['requires_move'] is True
+    assert s['move_window'] >= 80
+    assert s['attack_frame'] > s['move_window']
+
+    src = lifecycle.instrument(SYNTHETIC, family='sokkuri')
+    assert '__MOVE_WINDOW__' not in src
+    assert '__ATTACK_FRAME__' not in src
+    assert 'observed<80' in src
+    assert 'observed==80' in src
+
+
+def test_dwarf_orange_window_is_valid():
+    # The dwarf Bulborb patrols slowly (oscillatory max), so its window is
+    # extended like sokkuri's; the attack must follow the window.
+    d = lifecycle.FAMILY_HOOKS['dwarf-orange']
+    assert d['requires_move'] is True
+    assert d['move_window'] >= 50
+    assert d['attack_frame'] > d['move_window']
+

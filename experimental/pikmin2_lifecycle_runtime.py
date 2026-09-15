@@ -66,6 +66,8 @@ _BATCH2_LONG_LEGS = dict(
     rebind='pc_p2_batch2_rebind();pc_p2_long_legs_setup();',
     bind_re=r'P2_(?:LONG_LEGS|BATCH2)_BIND',
     draw_re=r'P2_(?:LONG_LEGS|BATCH2)_DRAW',
+    move_window=50,
+    attack_frame=55,
 )
 
 FAMILY_HOOKS = {
@@ -83,6 +85,8 @@ FAMILY_HOOKS = {
         bind_re=r'P2_ENEMY_READY species=BlueKochappy',
         draw_re=r'P2_DWARF_ORANGE_DRAW',
         requires_move=True,
+        move_window=50,
+        attack_frame=55,
     ),
     'sokkuri': dict(
         include='#include "pc_p2_sokkuri.h"\n',
@@ -92,10 +96,13 @@ FAMILY_HOOKS = {
         rebind='pc_p2_sokkuri_setup();',
         bind_re=r'P2_SOKKURI_BIND',
         draw_re=r'P2_SOKKURI_STATE',
-        # Skitter Leaf MoveGround is real but its Stay/Appear/MoveGround timing
-        # varies (max displacement ~1-2 units in the pre-attack window, ~85 by
-        # frame 80), so movement is REPORTED but not hard-gated for this family.
-        requires_move=False,
+        # The Skitter Leaf's MoveGround starts late: this family's own
+        # f3-sok-scene2 probe read dist=0.552 in a 50-frame window while a
+        # frame-80 sample reads ~85. So extend the movement window to 80 and
+        # REQUIRE movement (it is a mover, not an ambusher).
+        requires_move=True,
+        move_window=80,
+        attack_frame=85,
     ),
 }
 
@@ -168,21 +175,22 @@ public:int idle() override {
  if(observed>=2&&cycleMarked==0){std::printf("P2_LIFECYCLE_CYCLE cycle=%d\n",cycleDone+1);cycleMarked=1;std::fflush(stdout);}
  // Natural movement of the FIRST-BORN actor, tracked over the WHOLE pre-attack
  // window (no Pikmin resetPosition lure). The MAX displacement counts: the dwarf
- // Bulborb patrols (oscillatory) and the Skitter Leaf's MoveGround starts a
- // little later, so a single early sample would miss one of them.
- if(deathFrame<0&&cycleDone==0&&observed>=2&&observed<50){
+ // Bulborb patrols (oscillatory) while the Skitter Leaf's MoveGround starts late,
+ // so the window is set per family (``__MOVE_WINDOW__``) and a single early
+ // sample would miss one of them.
+ if(deathFrame<0&&cycleDone==0&&observed>=2&&observed<__MOVE_WINDOW__){
   for(int i=0;i<familyCount;++i){Teki* a=find(ids[i]);if(!a)continue;Vector3f now=a->mSRT.t;
    const float d=std::hypot(now.x-first[i].x,now.z-first[i].z);
    if(d>maxd[i])maxd[i]=d;}
  }
- if(deathFrame<0&&cycleDone==0&&observed==50){
+ if(deathFrame<0&&cycleDone==0&&observed==__MOVE_WINDOW__){
   for(int i=0;i<familyCount;++i){if(maxd[i]>=1.f)moveObserved=1;
    std::printf("P2_LIFECYCLE_MOVE id=%u dist=%.3f\n",ids[i],maxd[i]);}
   std::fflush(stdout);
  }
  // Lethal receiver hits start only after the first-born movement window so Gate
  // 2 is natural; later cycles engage immediately.
- if(observed>=((cycleDone==0)?55:2)&&deathFrame<0){
+ if(observed>=((cycleDone==0)?__ATTACK_FRAME__:2)&&deathFrame<0){
   Teki* a=find(target);
   if(!a){deathFrame=observed;std::printf("P2_LIFECYCLE_DEATH id=%u frame=%d\n",target,observed);std::fflush(stdout);}
   else{deadPtr=a;const bool hit=a->stimulate(InteractAttack(n,nullptr,100000,false));
@@ -280,7 +288,9 @@ def instrument(source, family='long-legs'):
     probe = (APP.replace('__REGISTERED_EXPR__', hooks['registered'])
                 .replace('__COUNT_EXPR__', hooks['count'])
                 .replace('__RESET_CALL__', hooks['reset'])
-                .replace('__REBIND_CALL__', hooks['rebind']))
+                .replace('__REBIND_CALL__', hooks['rebind'])
+                .replace('__MOVE_WINDOW__', str(hooks.get('move_window', 50)))
+                .replace('__ATTACK_FRAME__', str(hooks.get('attack_frame', 55))))
     text = head + source[:start] + probe + source[end:]
     # The provenance builder replaces pc_main.cpp with this fixture, so the
     # production 960x540 centred-window policy (root a51b301 / native 1d5a242b)
