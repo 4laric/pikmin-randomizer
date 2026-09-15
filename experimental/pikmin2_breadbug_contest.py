@@ -672,7 +672,7 @@ def validate_contest_consumer(events):
         'probe_before_first_grant': probe_before_first_grant,
         'gate_began': gate_began,
         'gate_held_then_stolen_released_granted': gate_contest,
-        'gate_owner_died_released': gate_owner_died,
+        'gate_owner_died': gate_owner_died,
         'gate_grant_exactly_once': gate_grant,
         'gate_interrupt': gate_interrupt,
         'gate_primary_tug_natural': gate_primary_tug_natural,

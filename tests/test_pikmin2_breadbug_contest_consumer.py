@@ -157,7 +157,7 @@ def test_validator_passes_a_complete_consumer_run():
     assert result['passed'] is True
     assert result['checks']['gate_began'] is True
     assert result['checks']['gate_held_then_stolen_released_granted'] is True
-    assert result['checks']['gate_owner_died_released'] is True
+    assert result['checks']['gate_owner_died'] is True
     assert result['checks']['gate_grant_exactly_once'] is True
     assert result['checks']['gate_primary_tug_natural'] is True
 
@@ -184,7 +184,7 @@ def test_validator_fails_on_a_missing_gate():
     events = contest.parse_contest_consumer(missing_owner, 186081)
     result = contest.validate_contest_consumer(events)
     assert result['passed'] is False
-    assert result['checks']['gate_owner_died_released'] is False
+    assert result['checks']['gate_owner_died'] is False
     assert result['checks']['gate_began'] is True
 
 
@@ -241,7 +241,9 @@ def test_validator_requires_the_interrupt_gate():
     assert result['passed'] is False
 
 
-def test_validator_owner_died_released_zero_is_not_released():
+def test_validator_owner_died_released_zero_is_honest_not_released():
+    # `released=` is the honest held-at-death state, not a gate input: a 0 is
+    # recorded faithfully while the owner-died gate (marker observed) still holds.
     released_zero = GOOD_LOG.replace(
         'P2_BREADBUG_OWNER_DIED generator=186081 released=1 reason=OwnerDied\n',
         'P2_BREADBUG_OWNER_DIED generator=186081 released=0 reason=OwnerDied\n')
@@ -250,4 +252,5 @@ def test_validator_owner_died_released_zero_is_not_released():
     assert events['owner_died_released_raw'] == 0
     assert events['owner_died_released'] is False
     result = contest.validate_contest_consumer(events)
-    assert result['checks']['gate_owner_died_released'] is False
+    assert result['checks']['owner_died_released'] is False
+    assert result['checks']['gate_owner_died'] is True
