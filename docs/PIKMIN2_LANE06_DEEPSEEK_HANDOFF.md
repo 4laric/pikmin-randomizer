@@ -20,6 +20,11 @@ end-to-end at the interface level (native CTest + Python). The engine wiring tha
 this receiver from `GoalItem::suckMe` for a live P2 drop remains a lane-01 + family-13 +
 real-GL integration step (explicitly out of scope for a provider lane; see blockers).
 
+**Plainly: no family module calls the receiver yet.** The only current consumers are the
+native CTest and the Python tests, which drive the Snow (45) / Dwarf Orange (44) identity
+constants. The proposed first real consumer is **lane 13 (Snow corpse -> Onion)** — see
+"Remaining blockers" for the exact call site.
+
 Consumer cohort (from `docs/PIKMIN2_ENEMY_ROSTER.json` / `pc_randomizer_p2_roster.h`,
 both ids present and bindable):
 
@@ -35,6 +40,29 @@ delivery today maps by Teki type to the P1 check `Bestiary: Deliver Dwarf Bulbor
 No P2 source_id appears anywhere in the bestiary/collection catalogs, and no module maps a
 P2 source_id to the ordinary receipt ledger. This receiver supplies the missing identity
 bridge without inventing checks or touching the shared bestiary catalog.
+
+## Review fixes (this revision)
+
+Three blocking contract issues + three smaller items, all applied:
+
+1. **`corpse:` -> `onion:` prefix.** `p1ProxyIdentity`/`p2SourceIdentity` now emit
+   `onion:p1:<type>:<stage>` / `onion:p2:<id>:<stage>`. This is required because the Pod
+   economy's ids are `corpse:<generator>` / `corpse:floor{n}:<gen>` and
+   `experimental/pikmin2_reward_lifecycle.py:148,169` (and `pikmin2_snow_lifecycle.py:100`)
+   count Pod rows by `startswith('corpse:')`; an ordinary `corpse:`-prefixed key would be
+   miscounted in a shared dump. `onion:` is confirmed unclaimed (`grep`, no producer/consumer).
+   A mixed-dump test now proves the split (see tests).
+2. **No default family.** `sourceDescriptor(sourceId, stage, family)` requires the family
+   tag; the "lane-13-bulborbs" default was removed from the shared header.
+3. **Explicit proxy flag.** `identity`/`deliver`/`delivered` take an explicit
+   `bool p1Proxy`; the P2 path rejects an unbound `sourceId == 0` (throws
+   `std::runtime_error` / `ValueError`) instead of silently crediting the P1-proxy check.
+   The engine hook must pass the bound source_id (documented in the header).
+4. **CTest temp-dir collision**: the consumer test's durable sidecar directory is
+   pid-scoped.
+5. CTest/exe output saved under `output/dsw/l06-out/` (cited below); root commit `7695630`
+   added to the ordered-commit list; typo "prexes" -> "prefixes" fixed.
+6. First-consumer call site named (lane 13 Snow corpse -> Onion) — see blockers.
 
 ## Source IDs and files owned
 
@@ -53,6 +81,11 @@ Root base `ef1cace`:
 1. `bf0e56b` — `lane06: P2 ordinary delivery receiver (Python) + tests (#441)`
    (`experimental/pikmin2_delivery.py`, `tests/test_pikmin2_delivery.py`,
    `tests/test_pikmin2_receipt_native.py`).
+2. `7695630` — `lane06: handoff for P2 ordinary delivery receiver slice (#441)`
+   (`docs/PIKMIN2_LANE06_DEEPSEEK_HANDOFF.md`).
+3. `3856373` — `lane06: review fixes — onion: prefix, explicit p1_proxy, mixed-dump counting test (#441)`
+   (`experimental/pikmin2_delivery.py`, `tests/test_pikmin2_delivery.py`,
+   `tests/test_pikmin2_receipt_native.py`).
 
 Native base `b805d9c6`:
 
@@ -60,6 +93,8 @@ Native base `b805d9c6`:
    (`pc_port/pc_p2_delivery.h`, `tools/p2_delivery_receiver_test.cpp`).
 2. `abbf3d34` — `lane06: register p2_delivery_receiver_test CTest (shared CMake hook) (#441)`
    (`CMakeLists.txt`).
+3. `314a32af` — `lane06: review fixes — onion: prefix, explicit p1Proxy, no default family, pid-scoped temp dir (#441)`
+   (`pc_port/pc_p2_delivery.h`, `tools/p2_delivery_receiver_test.cpp`).
 
 Dirty state: both worktrees clean at publication (`git status --short` empty).
 
@@ -67,22 +102,26 @@ Dirty state: both worktrees clean at publication (`git status --short` empty).
 
 `P2Delivery::DeliveryReceiver` (header-only, mirrors Python `DeliveryReceiver`):
 
-- `p1ProxyIdentity(tekiType, stage)` -> `corpse:p1:<type>:<stage>`; `p2SourceIdentity(sourceId, stage)` -> `corpse:p2:<id>:<stage>`. Disjoint prefixes guarantee a P2 reward can never collide with a, and never alias a, P1-proxy reward.
-- `identity(sourceId, tekiType, stage)` (sourceId==0 -> P1 proxy), `slotOrActor(generatorToken)` -> `g<token>`.
-- `deliver(seed, sourceId, tekiType, stage, generatorToken, encounter)` -> `ledger.grant(...)` (True only on first grant); `delivered(...)` -> `ledger.has(...)`.
-- `sourceDescriptor(sourceId, stage, family)` -> ordinary `p2-reward-descriptor-v1` for `reconcileOrdinary` (never pod).
+- `p1ProxyIdentity(tekiType, stage)` -> `onion:p1:<type>:<stage>`; `p2SourceIdentity(sourceId, stage)` -> `onion:p2:<id>:<stage>`. Disjoint `onion:p1:`/`onion:p2:` prefixes guarantee a P2 reward can never collide with, or alias, a P1-proxy reward, and neither starts with `corpse:` (Pod-safe).
+- `identity(sourceId, tekiType, stage, p1Proxy)`: `p1Proxy=true` -> P1-proxy identity; otherwise requires a bound `sourceId != 0` (rejects 0). `slotOrActor(generatorToken)` -> `g<token>`.
+- `deliver(seed, sourceId, tekiType, stage, generatorToken, encounter, p1Proxy)` -> `ledger.grant(...)` (True only on first grant); `delivered(...)` -> `ledger.has(...)`.
+- `sourceDescriptor(sourceId, stage, family)` -> ordinary `p2-reward-descriptor-v1` for `reconcileOrdinary` (never pod); family is a required argument.
 
 No production-source change; the CMake edit only adds an `add_executable`/`add_test`
 block for the engine-free test, following `p2_receipt_host_test` (lines ~1028).
 
 ## Build evidence (`output/dsw/l06-build-evidence.txt`)
 
+Latest clean-head record:
+
 ```
-2026-09-14T19:51:40 lane=l06 target=p2_delivery_receiver_test native=abbf3d34cfaf86fea32ee25857ba8038454fcda5 dirty=no build_dir=...\native-l06-build exe=...\native-l06-build\p2_delivery_receiver_test.exe sha256=89aa7277395297a8a372d5db1acc47488ccf9d48e70a84747fd4bd07cc39eff9 ninja_n="ninja: no work to do." seconds=0
+2026-09-14T20:13:31 lane=l06 target=p2_delivery_receiver_test native=314a32aff1c9a28f85ab1d9ef0fc61d09dbeae17 dirty=no build_dir=...\native-l06-build exe=...\native-l06-build\p2_delivery_receiver_test.exe sha256=1e508f18e771fed76e807ec5129ddd8885f7b7fcbe405dfa0450829a51dc636e ninja_n="ninja: no work to do." seconds=0
 ```
 
-CTest: `PASS p2_delivery_receiver_test` (test #62, 0.01s). Full `pikmin_pc` not rebuilt:
-this slice changed no production translation unit (test-only, additive CMake).
+Runtime evidence (this revision): `output/dsw/l06-out/ctest-delivery.txt` (CTest #62,
+`Passed`, 0.01s, "100% tests passed out of 1") and `output/dsw/l06-out/delivery-exe.txt`
+(`PASS p2_delivery_receiver_test`, exit 0). Full `pikmin_pc` not rebuilt: this slice
+changed no production translation unit (test-only, additive CMake).
 
 ## Fixture adoption evidence
 
@@ -99,7 +138,7 @@ that wire this receiver (see blockers). This is reported honestly, not claimed a
 | 2 Autonomous movement / animation | source-backed N/A | family lane 13 owns Kochappy/Snow motion; not exercised here. |
 | 3 Attacks and receivers | source-backed N/A | family lane 13 / receiver lane 10; not exercised here. |
 | 4 Death and corpse | source-backed N/A (identity-level) | audit confirms cohort inherits P1 `TEKI_Chappy` corpse (`TEKICORPSE_LeaveCorpse` -> modelId = `TekiMgr::getTypeId(3)`); no P2 identity survives the corpse to the Onion. |
-| 5 Actual transport and reward | interface PASS / natural UNTESTED | Interface-level exactly-once + P2/P1 disambiguation + restart PASS (native CTest + Python). Natural Onion transport of a live P2 corpse NOT wired in engine (concern: lane 01 + family 13 + real-GL). |
+| 5 Actual transport and reward | interface PASS / natural UNTESTED | Interface-level exactly-once + P2/P1 disambiguation + Pod-safe prefix + restart PASS (native CTest + Python). Natural Onion transport of a live P2 corpse NOT wired in engine (concern: lane 01 + family 13 + real-GL). |
 | 6 Cleanup and re-entry | source-backed N/A | lifetime/re-entry owned by lane 07; receiver leaves no state beyond the ledger. |
 
 Persistence (admission gate F) at the provider/interface level: **PASS** — exactly-once
@@ -109,49 +148,56 @@ natural behaviour; this slice contains no injected health/animation/forced-drop 
 
 ## Tests run and results
 
-- `py -3.12 -m pytest tests/test_pikmin2_delivery.py tests/test_pikmin2_receipts.py -q` -> `38 passed, 19 subtests passed`.
+- `py -3.12 -m pytest tests/test_pikmin2_delivery.py tests/test_pikmin2_receipts.py -q` -> `40 passed, 19 subtests passed`.
 - `PIKMIN_NATIVE_SOURCE=<native worktree> py -3.12 -m pytest tests/test_pikmin2_receipt_native.py -q` -> `2 passed` (compiles + runs `pc_p2_receipt.h`/`pc_p2_cargo_contest.h`/`pc_p2_delivery.h` with MinGW g++).
 - Native CTest `p2_delivery_receiver_test` -> PASS (exit 0, `PASS p2_delivery_receiver_test`).
 
 ## Subagent usage
 
-- `explore` #1 (source audit): used as-is — pinned source_id 44/45, `TEKI_Chappy=3`,
-  `TEKI_TypeCount=35`, confirmed no P2 source_id anywhere in the bestiary/collection
-  catalogs, and the corpse-delivery hop chain with file:line. Saved substantial recon time.
-- `explore` #2 (candidate inventory): used as-is to locate the exact owned files and the
-  sole ordinary-Onion consumer (`pc_p2_flora_actor.cpp`), and to confirm no existing
-  P2-source->ordinary-receipt mapping. Corrected one detail in my handoff (the "p2-costs.txt"
-  token I had assumed does not exist; discarded that assumption).
-- `general` #3 (Python module + tests): used as-is — `experimental/pikmin2_delivery.py` +
-  `tests/test_pikmin2_delivery.py` (6 tests) merged without signature changes; I authored the
-  native mirror myself and extended `tests/test_pikmin2_receipt_native.py` (one correction:
-  an inverted early-return guard in my own snippet, not the subagent's work).
-  Net effect: saved the read-header + scaffold + first pytest pass; cost was modest
-  re-verification to align the native/Python contracts.
+fix1 round (three delegated tasks, run in parallel):
+
+- `explore` #1 (source audit / hook-site): used as-is. Confirmed every Pod `corpse:`
+  producer (`pc_p2_preview.cpp:112,328,331,336`) and the `startswith('corpse:')` counters
+  (`pikmin2_reward_lifecycle.py:148,169`, `pikmin2_snow_lifecycle.py:100`), and that a bound
+  P2 source_id is NOT reachable at `goalItem.cpp:356-363` today (must be threaded into
+  `pc_randomizer_corpse_delivered`; `pc_randomizer_p2_source(target)` exists but is
+  unwired). This directly supported fix items 1 and 6. Time saved vs. manual re-grep.
+- `explore` #2 (prefix-collision inventory): used as-is. Proved `onion:` is unclaimed and
+  enumerated all `corpse:`/`enemy:` producers and example strings. Used to justify the
+  `onion:` choice in the handoff.
+- `general` #3 (Python module + tests rework): used as-is — rewrote
+  `experimental/pikmin2_delivery.py` and `tests/test_pikmin2_delivery.py` to the new
+  `onion:`/explicit-`p1_proxy` contract and added the mixed-dump + bound-source-id tests.
+  I then made one one-line normalization (`p1_proxy is True` -> `p1_proxy` truthiness) so the
+  Python mirror matches the native `if (p1Proxy)`, and I updated the embedded C++ in
+  `tests/test_pikmin2_receipt_native.py` myself. Net: saved the pytest/rewrite cycle.
+
+Overall the subagents saved the read-heavy re-verification of the prefix corpus and the
+Python test rework; the native header/test edits, build, CTest and commits were done by me.
 
 ## Assumptions
 
-- The P1-proxy corpse identity should remain keyed by the reused Teki type
-  (`corpse:p1:<type>:<stage>`), unchanged, so ordinary P1 bestiary behaviour is preserved;
-  the P2 identity is additive and never rewrites it.
-- `generatorToken` is the stable per-slot placement uid (per the existing placement/bind
-  vocabulary), so seed+source_id+stage+generator reproduces across revisit/restart.
+- The ordinary identities now key on the `onion:` prefix (P1 proxy `onion:p1:<type>:<stage>`,
+  P2 source `onion:p2:<id>:<stage>`), preserving the ordinary-P1 bestiary behaviour
+  (its check names live in the catalog, not in this receiver) and never colliding with the
+  Pod `corpse:` economy.
+- `generatorToken` is the stable per-slot placement uid, so
+  seed+identity+generator+encounter reproduces across revisit/restart.
 - No new bestiary check is invented: the receiver only maps a P2 source to a durable
   ordinary identity string; the actual check-name/AP entitlement lives in lane 02/03's
   catalog, which this slice does not touch.
 
 ## Remaining blockers / next step
 
-1. **Lane 01 (integration) + family lane 13 + real-GL**: wire the live Snow/Dwarf-Orange
-   corpse through `GoalItem::suckMe` -> a new narrow hook that passes `(sourceId,
-   tekiType, stage, generatorToken)` into `P2Delivery::DeliveryReceiver::deliver`, then
-   assert the recipient check is credited once and survives restart. Proposed hook contract
-   (inputs/outputs/invariants) matches `deliver(seed, sourceId, tekiType, stage,
-   generatorToken, encounter)`: caller = `goalItem.cpp` corpse path; identity/lifetime = the
-   four-part receipt key; result = Granted/Duplicate/Error (Error must not consume the
-   reward); failure = fail-closed, no Onion seed/poko side effect from the receipt call.
-   One real acceptance case: kill Snow in the ordinary room, deliver its corpse to the
-   Onion, restart the process, deliver nothing -> no duplicate, no lost check.
+1. **Lane 13 (Snow corpse -> Onion) is the proposed first real consumer.** Exact call site:
+   `GoalItem::suckMe` (`src/plugPikiKando/goalItem.cpp:354-364`) currently maps
+   `config->mModelId.mId` to a P1 Teki type and calls `pc_randomizer_corpse_delivered(type,
+   stage, gameplay)`. To use this receiver, a bound P2 source_id must be threaded into that
+   path: recover the corpse's originating generator + placement target token, resolve the
+   source_id (via an integration-wired `pc_randomizer_p2_source(target)`), and call
+   `P2Delivery::DeliveryReceiver::deliver(seed, sourceId, tekiType, stage, generatorToken,
+   encounter, /*p1Proxy=*/false)` with the bound source_id. Requires lane 01 (integration) +
+   family 13 + real-GL; not performed here (provider boundary).
 2. **Lane 02/03 (roster/seed)**: admit Snow (45)/Dwarf Orange (44) and provide the seed +
    ordinary check name the receiver's identity maps to; this slice deliberately does not add
    catalog entries.
