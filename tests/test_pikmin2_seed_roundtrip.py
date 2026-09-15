@@ -88,7 +88,7 @@ def _read(rel: str) -> str:
 
 
 @unittest.skipUnless(_native_root(), "native worktree not available (set PIKMIN_NATIVE_ROOT)")
-class NativeEmissionSourceTests(unittest.TestCase):
+class NativeSourcePinTests(unittest.TestCase):
     def test_birth_hook_emits_resolve_marker(self):
         self.assertIn("P2_SEED_RESOLVE", _read("src/plugPikiNakata/genteki.cpp"))
 

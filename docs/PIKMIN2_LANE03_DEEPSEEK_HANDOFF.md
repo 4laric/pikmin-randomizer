@@ -185,7 +185,7 @@ and `p2_spawn_probe.txt` (both show 49 `target=<uid>` binds).
 | Gate | Result | Label |
 |---|---|---|
 | 1 Exact identity + spawn | UNTESTED | `P2_SEED_RESOLVE` still reaches birth; no live bound actor (room path uncataloged + adapter `_70`-keyed). |
-| Persistence | PASS (probe) | SLT1 `ramMode` cache record round-trips byte-for-byte; uid recovers and re-resolves after reload. |
+| Persistence | PASS (probe, hand-packed record) | The probe packs an 8-byte record itself and rebinds from it; `Generator::write`/`Generator::read` (generator.cpp:830/907) are not executed, so the cache path is still unproven (integrator relabel from review). |
 
 ### Tests run (slice 2)
 
