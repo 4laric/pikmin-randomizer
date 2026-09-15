@@ -184,3 +184,143 @@ Three subagents were launched in parallel (staggered; never more than three).
 Net: the three reports materially shortened the audit phase and let me keep my own
 context on the native/build/handoff work. Negative note: no fast way to delegate
 the actual implementation, which I retained as required.
+
+## Slice 2
+
+Second bounded slice: **complete ledger coverage** (same worktrees, no GitHub
+writes, no admission/seed-bridge change).
+
+### Concrete source IDs and files owned
+
+Expanded `docs/PIKMIN2_ENEMY_ROSTER_EVIDENCE.json` from 7 to **78 rows** (7
+unchanged `candidate` rows preserved verbatim + 71 new `denied` rows). Every
+identity with a native `pc_p2_*` module or a `docs/PIKMIN2_*_NATIVE.md` source
+slice now carries a row with: exact source ID, native module, owning lane,
+six-gate statuses (natural vs injected labelled in notes), `eligibility: denied`,
+and a `source` list naming the doc(s) transcribed from. Nothing is admitted.
+
+Files changed (lane 02 owned):
+- `experimental/pikmin2_enemy_roster.py` — added `RosterEntry.source` tuple + parse.
+- `docs/PIKMIN2_ENEMY_ROSTER_EVIDENCE.json` — 78 rows.
+- `scripts/audit_pikmin2_roster.py` — `SHARED_MODULES`, `MODULE_ALIASES`,
+  `native_source_docs()`, `coverage_gaps()`; `--review` now enforces completeness.
+- `docs/PIKMIN2_ENEMY_ROSTER.md` — documented the `source` field + coverage audit.
+- `tests/test_pikmin2_roster_coverage.py` — new audit-rule tests.
+
+### Audit rules (--review exit code)
+
+`--review` exits 1 when any of these hold, 0 on the completed ledger:
+- a row cites a `source` doc that does not exist;
+- a row cites a `native_module` that resolves to no `pc_p2_*.cpp`;
+- a `docs/PIKMIN2_*_NATIVE.md` slice is cited by no row (renderer BILLBOARD and
+  cave BEASTS_FLOOR3_FAILURE docs exempt);
+- a non-shared native `pc_p2_*.cpp` module is referenced by no row (`SHARED_MODULES`
+  allowlists provider/species/projectile/sub-module stems).
+
+### Coverage table (modules found / rows / gaps)
+
+- Native `pc_p2_*.cpp` modules found: **126** (engine/pc_port == native worktree).
+- Evidence rows: **78** (71 denied, 7 candidate).
+- Gaps: **0** — audit prints `ledger coverage complete: True`, exit 0,
+  `admitted: 0`.
+- SHARED_MODULES allowlist: 80 stems; MODULE_ALIASES: `pc_p2_snow -> pc_p2_enemy`.
+
+### Not-done-as-intended gaps recorded (not audit gaps)
+
+No dedicated native module yet for: Tobi=14, FireChappy=33, KumaChappy=35,
+BlueChappy=42, YellowChappy=43, KumaKochappy=76, FminiHoudai=97, Rock=19,
+Bomb=36, Egg=37, Stone=74, JigumoNest/PanModokiNest/PanHouse, UmiMushiBase=100,
+and LeafChappy=67 (Bulbmin species, lane 11). These correctly carry no row and
+default denied; they are not identity modules so no audit gap fires.
+
+### Tests / evidence
+
+```
+py -3.12 -m pytest tests/test_pikmin2_roster_coverage.py tests/test_pikmin2_enemy_roster.py -q   # 31 passed
+py -3.12 -m pytest tests/test_pikmin2_enemy_roster.py tests/test_pikmin2_roster.py \
+    tests/test_pikmin2_roster_coverage.py tests/test_pikmin2_seed_bridge.py \
+    tests/test_pikmin2_seed_generation.py tests/test_p2_placement.py -q                        # 113 passed, 17 subtests
+py -3.12 -m pytest <roster/seed/placement/enemy suites> -q                                      # 125 passed, 17 subtests
+py -3.12 scripts/audit_pikmin2_roster.py --review                                               # exit 0; coverage complete: True
+py -3.12 scripts/generate_pikmin2_roster_revision.py --check (engine/ + native worktree)        # both match
+```
+
+### Assumptions
+
+- `source` is a list (an identity is often covered by several docs), not a single
+  filename; the review note that the opt-in consumer is test-only still holds.
+- Six-gate values: only a doc's natural (real-GL) observation is transcribed as
+  `PASS`; labeled injected/fixture results are `UNTESTED`/`BLOCKED` and explained
+  in `notes`. Plant/hazard/helper rows exist (they have modules/slices) but can
+  never be `admitted` (role check unchanged).
+- Module-vs-row coverage is driven by `SHARED_MODULES`/`MODULE_ALIASES` curated
+  from the native source; no changes to admission or the seed bridge.
+
+### Subagent usage
+
+- `explore` #1 (module->identity classification): used as-is; gave the full 126-module
+  partition (30 shared / 96 identity) and the `pc_p2_snow -> pc_p2_enemy` alias.
+- `explore` #2 (docs->identity + six-gate evidence): used as-is; drove the 78-row
+  transcription and the `_NATIVE.md` citation map.
+- `general` #3 (coverage tests): the test contract was incomplete (single-string
+  `source` vs my list; doc-existence via `native_docs` vs on-disk). Rewritten by me
+  against the final `coverage_gaps(..., existing_docs=)` signature; its skeleton and
+  the 4-gap-list key names were retained. Net: the two explore agents saved most of
+  the time; the general agent's tests needed a full rewrite (mild cost).
+
+## Fix 2
+
+Review corrections to slice 2 (blocking items 1-3 applied, 4-6 done).
+
+### Rows changed (transcription rule: natural PASS only, else UNTESTED/BLOCKED)
+
+Applied ONE rule across the whole ledger and re-scanned every PASS gate whose
+notes (or source doc) claim proxy/injected/fixture/vehicle/display/P1-host.
+
+- Row **20 (Hiba)**: `attacks_receivers` PASS -> `UNTESTED` (note kept: fire hit
+  PASS injected; no natural claim).
+- Row **0 (Pelplant)**: `death_corpse`/`cleanup_reentry` PASS -> `UNTESTED`
+  (identity is an injected TEKI_Palm proxy).
+- Row **1 (Kochappy)**: `identity_spawn`/`movement_animation` PASS -> `UNTESTED`
+  (visual/vehicle-only P1-proxy).
+- Row **38 (PanModoki)**: `identity_spawn`/`movement_animation` PASS -> `UNTESTED`
+  (actor/proxy).
+- Display/vehicle/P1-host rows downgraded to `UNTESTED` (were PASS A/B):
+  9 Kogane, 10 Wealthy, 11 Fart, 12 UjiA, 13 UjiB, 16 Qurione, 18 MaroFrog,
+  23 Sarai, 24 Tank, 28 ElecBug, 30 Queen, 32 Demon, 40 OoPanModoki, 41 Fuefuki,
+  53 KingChappy, 56 Damagumo, 58 BombSarai, 66 Houdai, 69 BigFoot, 73 BigTreasure,
+  75/95/96 Kabuto family, 78 MiniHoudai, 99 BlackMan.
+- Partial/policy/variant fixes: 55 Hanachirashi (movement PARTIAL -> UNTESTED),
+  72 OniKurage (only identity auto-bind natural; B/C/D -> UNTESTED),
+  101 UmiMushiBlind (only bite natural; A/B -> UNTESTED),
+  68 Tamago (Astonish/flick natural -> attacks_receivers PASS).
+
+### Candidate six-gate blocks added (item 3)
+
+2/17/45/54 all UNTESTED; 15 Armor and 79 Sokkuri A/B/C PASS (NATIVE natural) +
+D/E/F UNTESTED; 44 BlueKochappy A PASS, B/C/D/E UNTESTED, cleanup BLOCKED.
+
+### Audit + test changes (items 4-5)
+
+- `main(argv=None)` so the CLI is directly callable; added
+  `test_audit_review_exits_zero_on_real_ledger` and
+  `test_audit_review_exits_one_on_missing_cited_doc` (temp overlay + monkeypatch).
+- Added `test_shared_modules_subset_of_native_modules` (SHARED_MODULES and
+  MODULE_ALIASES values <= native_modules(ENGINE_PORT)); made the `_gaps` helper
+  build `modules` inside instead of as an import-time default.
+
+### Result
+
+```
+128 passed, 17 subtests passed (roster/coverage/seed/placement/enemy suites)
+py -3.12 scripts/audit_pikmin2_roster.py --review  # exit 0, ledger coverage complete: True, admitted 0
+```
+
+### Subagent lesson (item 6)
+
+The slice-2 transcription errors came from accepting explore #2's doc table
+without re-checking each PASS against a natural-vs-injected test. For this fix I
+did not re-delegate the transcription; I re-derived every PASS gate myself against
+the rule and added a check to the fix script (a PASS whose notes carry
+inject/proxy/fixture/vehicle/visual/host/display is flagged). Future delegated
+doc-audit output will be gated the same way before transcription.

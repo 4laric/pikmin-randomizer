@@ -7,27 +7,50 @@
     "gates": "map of the six gate IDs to PASS/FAIL/BLOCKED/UNTESTED/N/A; a PASS needs root/native/exe pins, inputs and observed result",
     "eligibility": "denied | candidate | admitted | excluded",
     "eligibility_reason": "short justification",
-    "notes": "free-form review notes"
+    "source": "list of docs/PIKMIN2_*.md filenames the evidence is transcribed from",
+    "notes": "free-form review notes (natural vs injected labels)"
   },
   "entries": {
-    "79": {
-      "native_module": "pc_p2_sokkuri",
-      "owner_lane": "14",
-      "eligibility": "candidate",
-      "eligibility_reason": "native source FSM + flick/press receivers present; lifecycle and reward gates unverified on the pinned pair",
+    "0": {
+      "native_module": "pc_p2_flora_actor",
+      "owner_lane": "23",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_FLORA_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "N/A",
+        "attacks_receivers": "N/A",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
       "notes": [
-        "Candidate mechanics require per-gate evidence pinned to the accepted root/native pair; this ledger does not assert a combined runtime PASS.",
-        "Open: water/press/death, transport/reward, cleanup/re-entry (#165/#407)."
+        "Pelplant (Pellet Posy, plant): identity via injected TEKI_Palm proxy (not the P2 FSM); natural fell+pellet release (death_corpse) and restart dedupe (cleanup) PASS.",
+        "Onion receipt uses an injected fixture endpoint (seeds=0 open); plant is non-randomizable."
       ]
     },
-    "15": {
-      "native_module": "pc_p2_armor",
-      "owner_lane": "14",
-      "eligibility": "candidate",
-      "eligibility_reason": "native combat FSM + animation-event bite receiver present; weak-point/captain and lifecycle gates open",
+    "1": {
+      "native_module": "pc_p2_kochappy",
+      "owner_lane": "13",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_BULBORB_FAMILY_CONTRACT.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
       "notes": [
-        "Candidate mechanics require per-gate evidence pinned to the accepted root/native pair; this ledger does not assert a combined runtime PASS.",
-        "Open: weak-point/captain interaction, death/corpse, transport/reward, cleanup/re-entry (#407)."
+        "Kochappy (Dwarf Red Bulborb); source identity sharing the KochappyBase family; native pc_p2_kochappy visual/vehicle only.",
+        "Natural combat/death/carry remain on the family contract; no per-identity receiver acceptance. Injected vs natural: none asserted."
       ]
     },
     "2": {
@@ -35,30 +58,294 @@
       "owner_lane": "13",
       "eligibility": "candidate",
       "eligibility_reason": "visual/mechanics foundations present on the neutral batch-2 vehicle; per-variant behavior and natural death/carry unverified",
+      "source": [
+        "PIKMIN2_BULBORB_FAMILY_CONTRACT.md"
+      ],
       "notes": [
         "Red Bulborb (Chappy); batch-2 display path, not a complete source FSM.",
         "Open: per-variant receiver/event mapping, natural death/carry/revisit (#120/#197)."
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      }
+    },
+    "3": {
+      "native_module": "pc_p2_pom",
+      "owner_lane": "23",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_POM_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "N/A",
+        "attacks_receivers": "N/A",
+        "death_corpse": "N/A",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "N/A"
+      },
+      "notes": [
+        "BluePom (Candypop Bud, plant): module-local policy actor (sidecar-anchored, injected conversions); engine Pom FSM binding + Onion seeds BLOCKED (#171).",
+        "Conservation/refund policy PASS injected; not natural gameplay."
       ]
     },
-    "44": {
-      "native_module": "pc_p2_dwarf_orange",
-      "owner_lane": "13",
-      "eligibility": "candidate",
-      "eligibility_reason": "Dwarf Orange (BlueKochappy) native module present; behavior is P1-host AI (gate B PARTIAL); generated-session chain and natural placement/reward admission remain",
+    "4": {
+      "native_module": "pc_p2_pom",
+      "owner_lane": "23",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_POM_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "N/A",
+        "attacks_receivers": "N/A",
+        "death_corpse": "N/A",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "N/A"
+      },
       "notes": [
-        "Sibling of Snow (YellowKochappy 45); both share the KochappyBase source family but are distinct source identities. A dwarf variant is a source identity, never a helper or alias.",
-        "Worker evidence is a private fixture PASS, not an admission: gate B PARTIAL, C/D P1-proxy PASS, E (lifetime) and G (product/mixed scene) BLOCKED (PIKMIN2_DWARF_ORANGE_NATIVE.md). Facts transcribed by lane 02 from that doc; pending lane 13 confirmation.",
-        "Admission requires the generated-session acceptance chain; this row keeps the admitted roster empty."
+        "RedPom (Candypop Bud, plant): module-local policy actor (sidecar-anchored, injected conversions); engine Pom FSM binding + Onion seeds BLOCKED (#171).",
+        "Conservation/refund policy PASS injected; not natural gameplay."
       ]
     },
-    "45": {
-      "native_module": "pc_p2_snow",
-      "owner_lane": "13",
-      "eligibility": "candidate",
-      "eligibility_reason": "Snow-specific native module present; not an admission of the whole Bulborb family",
+    "5": {
+      "native_module": "pc_p2_pom",
+      "owner_lane": "23",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_POM_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "N/A",
+        "attacks_receivers": "N/A",
+        "death_corpse": "N/A",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "N/A"
+      },
       "notes": [
-        "Snow success does not admit all Bulborbs; report revival/elemental variants separately (#120).",
-        "Open: natural death/carry/revisit and variant rules."
+        "YellowPom (Candypop Bud, plant): module-local policy actor (sidecar-anchored, injected conversions); engine Pom FSM binding + Onion seeds BLOCKED (#171).",
+        "Conservation/refund policy PASS injected; not natural gameplay."
+      ]
+    },
+    "6": {
+      "native_module": "pc_p2_pom",
+      "owner_lane": "23",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_POM_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "N/A",
+        "attacks_receivers": "N/A",
+        "death_corpse": "N/A",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "N/A"
+      },
+      "notes": [
+        "BlackPom (Candypop Bud, plant): module-local policy actor (sidecar-anchored, injected conversions); engine Pom FSM binding + Onion seeds BLOCKED (#171).",
+        "Conservation/refund policy PASS injected; not natural gameplay."
+      ]
+    },
+    "7": {
+      "native_module": "pc_p2_pom",
+      "owner_lane": "23",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_POM_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "N/A",
+        "attacks_receivers": "N/A",
+        "death_corpse": "N/A",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "N/A"
+      },
+      "notes": [
+        "WhitePom (Candypop Bud, plant): module-local policy actor (sidecar-anchored, injected conversions); engine Pom FSM binding + Onion seeds BLOCKED (#171).",
+        "Conservation/refund policy PASS injected; not natural gameplay."
+      ]
+    },
+    "8": {
+      "native_module": "pc_p2_pom",
+      "owner_lane": "23",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_POM_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "N/A",
+        "attacks_receivers": "N/A",
+        "death_corpse": "N/A",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "N/A"
+      },
+      "notes": [
+        "RandPom (Candypop Bud, plant): module-local policy actor (sidecar-anchored, injected conversions); engine Pom FSM binding + Onion seeds BLOCKED (#171).",
+        "Conservation/refund policy PASS injected; not natural gameplay."
+      ]
+    },
+    "9": {
+      "native_module": "pc_p2_kogane",
+      "owner_lane": "17",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_KOGANE_AUDIT.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Kogane (Iridescent Flint Beetle): pc_p2_kogane family vehicle; hit-triggered drops with finite counts + restart dedupe remain (#168/#219).",
+        "Natural hit/drop limits and reload unchanged; no per-identity receiver acceptance."
+      ]
+    },
+    "10": {
+      "native_module": "pc_p2_kogane",
+      "owner_lane": "17",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_KOGANE_AUDIT.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Wealthy (Iridescent Glint Beetle): pc_p2_kogane family vehicle; hit-triggered drops with finite counts + restart dedupe remain (#168/#219).",
+        "Natural hit/drop limits and reload unchanged; no per-identity receiver acceptance."
+      ]
+    },
+    "11": {
+      "native_module": "pc_p2_kogane",
+      "owner_lane": "17",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_KOGANE_AUDIT.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Fart (Doodlebug): pc_p2_kogane family vehicle; hit-triggered drops with finite counts + restart dedupe remain (#168/#219).",
+        "Natural hit/drop limits and reload unchanged; no per-identity receiver acceptance."
+      ]
+    },
+    "12": {
+      "native_module": "pc_p2_sheargrub",
+      "owner_lane": "13",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_BULBORB_FAMILY_CONTRACT.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "UjiA (Female Sheargrub): pc_p2_sheargrub visual/vehicle (ids {\"UjiA\",\"UjiB\"}); natural combat/death/carry remain on the family contract.",
+        "Sheargrub siblings are distinct source identities, not helpers or aliases (#120/#197)."
+      ]
+    },
+    "13": {
+      "native_module": "pc_p2_sheargrub",
+      "owner_lane": "13",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_BULBORB_FAMILY_CONTRACT.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "UjiB (Male Sheargrub): pc_p2_sheargrub visual/vehicle (ids {\"UjiA\",\"UjiB\"}); natural combat/death/carry remain on the family contract.",
+        "Sheargrub siblings are distinct source identities, not helpers or aliases (#120/#197)."
+      ]
+    },
+    "15": {
+      "native_module": "pc_p2_armor",
+      "owner_lane": "14",
+      "eligibility": "candidate",
+      "eligibility_reason": "native combat FSM + animation-event bite receiver present; weak-point/captain and lifecycle gates open",
+      "source": [
+        "PIKMIN2_ARMOR_NATIVE.md"
+      ],
+      "notes": [
+        "Candidate mechanics require per-gate evidence pinned to the accepted root/native pair; this ledger does not assert a combined runtime PASS.",
+        "Open: weak-point/captain interaction, death/corpse, transport/reward, cleanup/re-entry (#407)."
+      ],
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      }
+    },
+    "16": {
+      "native_module": "pc_p2_qurione",
+      "owner_lane": "15",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_FLYING_ENEMY_AUDIT.md",
+        "PIKMIN2_QURIONE_LIFECYCLE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Qurione (Honeywisp): native qurione vehicle; wind/nectar lifecycle remains open (#166).",
+        "Carries Egg=37 as a reported child (lane 20 projectile), not an independent spawn."
       ]
     },
     "17": {
@@ -66,9 +353,573 @@
       "owner_lane": "16",
       "eligibility": "candidate",
       "eligibility_reason": "display/landing foundations present; source combat and escape/death chains unverified",
+      "source": [
+        "PIKMIN2_FROG_IMPORT.md"
+      ],
       "notes": [
         "Yellow Wollywog; water and land variants remain separate (#167).",
         "Open: landing/crush/receivers, death/re-entry, transport or source N/A (#194/#201)."
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      }
+    },
+    "18": {
+      "native_module": "pc_p2_frog",
+      "owner_lane": "16",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_FROG_IMPORT.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "MaroFrog (Wollywog): shares pc_p2_frog vehicle with Frog; landing/crush + source combat untested (#167/#201)."
+      ]
+    },
+    "20": {
+      "native_module": "pc_p2_hiba",
+      "owner_lane": "22",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_HIBA_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "N/A",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "N/A",
+        "transport_reward": "N/A",
+        "cleanup_reentry": "BLOCKED"
+      },
+      "notes": [
+        "Hiba (Fire geyser, hazard): activate+emit PASS injected; fire hit PASS injected (engine receiver); immune-pass PASS.",
+        "GasHiba/ElecHiba engine apply BLOCKED (no InteractGas/InteractDenki); visuals/collision/cleanup BLOCKED; injected, not natural."
+      ]
+    },
+    "21": {
+      "native_module": "pc_p2_hiba",
+      "owner_lane": "22",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_HIBA_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "N/A",
+        "attacks_receivers": "BLOCKED",
+        "death_corpse": "N/A",
+        "transport_reward": "N/A",
+        "cleanup_reentry": "BLOCKED"
+      },
+      "notes": [
+        "GasHiba (Gas pipe, hazard): engine apply BLOCKED (no InteractGas)."
+      ]
+    },
+    "22": {
+      "native_module": "pc_p2_hiba",
+      "owner_lane": "22",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_HIBA_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "N/A",
+        "attacks_receivers": "BLOCKED",
+        "death_corpse": "N/A",
+        "transport_reward": "N/A",
+        "cleanup_reentry": "BLOCKED"
+      },
+      "notes": [
+        "ElecHiba (Electrical wire, hazard): engine apply BLOCKED (no InteractDenki)."
+      ]
+    },
+    "23": {
+      "native_module": "pc_p2_sarai_host",
+      "owner_lane": "30",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_FLYING_ENEMY_AUDIT.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Sarai (Swooping Snitchbug): two-mouth visual host + sidecar/attachment binding; capture FSM + source actor parity + placement remain (#215-#242)."
+      ]
+    },
+    "24": {
+      "native_module": "pc_p2_tank",
+      "owner_lane": "22",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_TANK_IMPORT.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Tank (Fiery Blowhog): pc_p2_tank uses P1 TEKI_Tank host; fire emitter real receiver mutation remain (#170/#408)."
+      ]
+    },
+    "25": {
+      "native_module": "pc_p2_tank",
+      "owner_lane": "22",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_TANK_IMPORT.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Wtank (Watery Blowhog): water variant; static noninteractive display only (header notes).",
+        "No natural behavior acceptance."
+      ]
+    },
+    "26": {
+      "native_module": "pc_p2_catfish",
+      "owner_lane": "16",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_CATFISH_NATIVE.md",
+        "PIKMIN2_SPECIES_LIFECYCLE_RESIDUAL_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Catfish (Water Dumple): natural spawn/move PASS; two-slot bite/saucer poison + flick receiver PASS (natural, PIKMIN2_SPECIES_LIFECYCLE_RESIDUAL_NATIVE.md).",
+        "Death/corpse/transport/cleanup UNTESTED (#167)."
+      ]
+    },
+    "27": {
+      "native_module": "pc_p2_tadpole",
+      "owner_lane": "16",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_TADPOLE_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "N/A",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "N/A",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Tadpole (Wogpole): natural spawn/move/escape PASS; harmless (fp24=0) so attacks/reward N/A (#167).",
+        "Escape/death chain + cleanup/re-entry remain UNTESTED."
+      ]
+    },
+    "28": {
+      "native_module": "pc_p2_elecbug",
+      "owner_lane": "14",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_SPECIES_RESIDUAL_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "ElecBug (Anode Beetle): pairing/discharge PASS (natural); flip/press + death UNTESTED.",
+        "Pair discharge and group births need their own evidence (#165)."
+      ]
+    },
+    "29": {
+      "native_module": "pc_p2_mar",
+      "owner_lane": "15",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_MAR_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Mar (Puffy Blowhog): natural spawn/eat/wind PASS; wind->Flick receiver PASS (bounded; Purple excluded).",
+        "Death/corpse, reward N/A, cleanup UNTESTED (#166)."
+      ]
+    },
+    "30": {
+      "native_module": "pc_p2_queen",
+      "owner_lane": "24",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_BULBLAX_RUNTIME.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Queen (Empress Bulblax): queen vehicle + Baby child (boss_helper); natural combat/attachments/rewards remain (#172/#256)."
+      ]
+    },
+    "31": {
+      "native_module": "pc_p2_bulblax_visual",
+      "owner_lane": "24",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_BULBLAX_RUNTIME.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "PASS",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "N/A",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Baby (Bulborb Larva, boss_helper): never seeded independently; visual via pc_p2_bulblax_visual; historical baby attack receiver PASS (#172/#256)."
+      ]
+    },
+    "32": {
+      "native_module": "pc_p2_demon_host",
+      "owner_lane": "30",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_DEMON_PRODUCTION_RECEIVER.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Demon (Bumbling Snitchbug): host + capture/drop/escape modules; ordinary captor + moving attachment + teardown remain (#215-#242)."
+      ]
+    },
+    "34": {
+      "native_module": "pc_p2_snakejoint",
+      "owner_lane": "25",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_SNAKEJOINT_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "SnakeCrow (Burrowing Snagret): natural stay/appear/attack/eat PASS; bite receiver PASS (frame 34, once/eat).",
+        "Bury/emerge/vulnerable/death lifecycle + cleanup remain (#174)."
+      ]
+    },
+    "38": {
+      "native_module": "pc_p2_breadbug_actor",
+      "owner_lane": "18",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_SCAVENGER_ENEMY_AUDIT.md",
+        "PIKMIN2_BREADBUG_ACTOR_RUNTIME.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "PanModoki (Breadbug): actor/proxy + contested cargo; natural contested cargo/nest ownership/reward remain (#168/#220)."
+      ]
+    },
+    "40": {
+      "native_module": "pc_p2_giant_breadbug_actor",
+      "owner_lane": "18",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_GIANT_BREADBUG_NATIVE_BINDING.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "OoPanModoki (Giant Breadbug): giant binding/visual; contested cargo + scoring remain (#168/#220)."
+      ]
+    },
+    "41": {
+      "native_module": "pc_p2_fuefuki_visual",
+      "owner_lane": "28",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_HARD_LANES_HANDOFF.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Fuefuki (Antenna Beetle): fuefuki motion/visual; natural claim/panic/death release + follow locomotion remain (#245)."
+      ]
+    },
+    "44": {
+      "native_module": "pc_p2_dwarf_orange",
+      "owner_lane": "13",
+      "eligibility": "candidate",
+      "eligibility_reason": "Dwarf Orange (BlueKochappy) native module present; behavior is P1-host AI (gate B PARTIAL); generated-session chain and natural placement/reward admission remain",
+      "source": [
+        "PIKMIN2_DWARF_ORANGE_NATIVE.md"
+      ],
+      "notes": [
+        "Sibling of Snow (YellowKochappy 45); both share the KochappyBase source family but are distinct source identities. A dwarf variant is a source identity, never a helper or alias.",
+        "Worker evidence is a private fixture PASS, not an admission: gate B PARTIAL, C/D P1-proxy PASS, E (lifetime) and G (product/mixed scene) BLOCKED (PIKMIN2_DWARF_ORANGE_NATIVE.md). Facts transcribed by lane 02 from that doc; pending lane 13 confirmation.",
+        "Admission requires the generated-session acceptance chain; this row keeps the admitted roster empty."
+      ],
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "BLOCKED"
+      }
+    },
+    "45": {
+      "native_module": "pc_p2_snow",
+      "owner_lane": "13",
+      "eligibility": "candidate",
+      "eligibility_reason": "Snow-specific native module present; not an admission of the whole Bulborb family",
+      "source": [
+        "PIKMIN2_BULBORB_FAMILY_CONTRACT.md"
+      ],
+      "notes": [
+        "Snow success does not admit all Bulborbs; report revival/elemental variants separately (#120).",
+        "Open: natural death/carry/revisit and variant rules."
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      }
+    },
+    "46": {
+      "native_module": "pc_p2_plant",
+      "owner_lane": "23",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_PLANT_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "N/A",
+        "attacks_receivers": "N/A",
+        "death_corpse": "N/A",
+        "transport_reward": "N/A",
+        "cleanup_reentry": "N/A"
+      },
+      "notes": [
+        "Tanpopo (plant/scenery): LOD + sentinel slot-rule policy PASS injected; not a randomizable enemy; no gameplay acceptance claimed."
+      ]
+    },
+    "47": {
+      "native_module": "pc_p2_plant",
+      "owner_lane": "23",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_PLANT_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "N/A",
+        "attacks_receivers": "N/A",
+        "death_corpse": "N/A",
+        "transport_reward": "N/A",
+        "cleanup_reentry": "N/A"
+      },
+      "notes": [
+        "Clover (plant/scenery): LOD + sentinel slot-rule policy PASS injected; not a randomizable enemy; no gameplay acceptance claimed."
+      ]
+    },
+    "49": {
+      "native_module": "pc_p2_plant",
+      "owner_lane": "23",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_PLANT_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "N/A",
+        "attacks_receivers": "N/A",
+        "death_corpse": "N/A",
+        "transport_reward": "N/A",
+        "cleanup_reentry": "N/A"
+      },
+      "notes": [
+        "Ooinu_s (plant/scenery): LOD + sentinel slot-rule policy PASS injected; not a randomizable enemy; no gameplay acceptance claimed."
+      ]
+    },
+    "50": {
+      "native_module": "pc_p2_plant",
+      "owner_lane": "23",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_PLANT_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "N/A",
+        "attacks_receivers": "N/A",
+        "death_corpse": "N/A",
+        "transport_reward": "N/A",
+        "cleanup_reentry": "N/A"
+      },
+      "notes": [
+        "Ooinu_l (plant/scenery): LOD + sentinel slot-rule policy PASS injected; not a randomizable enemy; no gameplay acceptance claimed."
+      ]
+    },
+    "51": {
+      "native_module": "pc_p2_plant",
+      "owner_lane": "23",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_PLANT_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "N/A",
+        "attacks_receivers": "N/A",
+        "death_corpse": "N/A",
+        "transport_reward": "N/A",
+        "cleanup_reentry": "N/A"
+      },
+      "notes": [
+        "Wakame_s (plant/scenery): LOD + sentinel slot-rule policy PASS injected; not a randomizable enemy; no gameplay acceptance claimed."
+      ]
+    },
+    "52": {
+      "native_module": "pc_p2_plant",
+      "owner_lane": "23",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_PLANT_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "N/A",
+        "attacks_receivers": "N/A",
+        "death_corpse": "N/A",
+        "transport_reward": "N/A",
+        "cleanup_reentry": "N/A"
+      },
+      "notes": [
+        "Wakame_l (plant/scenery): LOD + sentinel slot-rule policy PASS injected; not a randomizable enemy; no gameplay acceptance claimed."
+      ]
+    },
+    "53": {
+      "native_module": "pc_p2_king",
+      "owner_lane": "24",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_BULBLAX_RUNTIME.md",
+        "PIKMIN2_QUEEN_SPECULAR.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "KingChappy (Emperor Bulblax): king vehicle; natural flick/trample/gates + material profile remain (#172/#289)."
       ]
     },
     "54": {
@@ -76,9 +927,706 @@
       "owner_lane": "19",
       "eligibility": "candidate",
       "eligibility_reason": "death/corpse and natural territory/flick reported; ordinary transport/reward and revisit unverified on the pinned pair",
+      "source": [
+        "PIKMIN2_MAMUTA_AUDIT.md"
+      ],
       "notes": [
         "Miulin (Mamuta): historical corpse and worker natural-flick evidence is recorded in PIKMIN2_MAMUTA_DEATH.md and PIKMIN2_MAMUTA_NATURAL.md; current-pair runtime acceptance must be repeated.",
         "Worker evidence is not an integrated-build natural run; open transport/reward, revisit and attack1-draw abort (#221)."
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      }
+    },
+    "55": {
+      "native_module": "pc_p2_hanachirashi",
+      "owner_lane": "15",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_HANACHIRASHI_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Hanachirashi (Withering Blowhog): natural spawn/wait/chase/attack/laugh PARTIAL (fly-state gap); wind->Flick partial PASS (19/11); Purple strip UNTESTED.",
+        "Death/corpse/cleanup UNTESTED (#166)."
+      ]
+    },
+    "56": {
+      "native_module": "pc_p2_long_legs",
+      "owner_lane": "26",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_LONG_LEGS_POLICY.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Damagumo (Beady Long Legs): pc_p2_long_legs bind-pose/draw path (batch-4 display); legs/stomp/weak-points + natural death/re-entry remain (#173/#312)."
+      ]
+    },
+    "57": {
+      "native_module": "pc_p2_kurage",
+      "owner_lane": "29",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_JELLYFLOAT_EXPANSION_NATIVE.md",
+        "PIKMIN2_KURAGE_MATERIAL.md"
+      ],
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Kurage (Lesser Spotted Jellyfloat): ingestion admit/mouth/stomach/kill16s/shrink/bitter PASS (natural); owner-death eject PASS (natural) for Kurage; Greater captain capture remains open.",
+        "Mixed-scene 60fps budget NOT met (33.45ms baseline); transport/reward + re-entry remain (#243)."
+      ]
+    },
+    "58": {
+      "native_module": "pc_p2_bombsarai_fsm",
+      "owner_lane": "27",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_BOMBSARAI_FSM.md",
+        "PIKMIN2_BOMBSARAI_AUDIT.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "BombSarai (Careening Dirigibug): bombsarai FSM/carrier modules; ordinary carrier + capture joint + bomb lifecycle + interruption remain (#244).",
+        "Bomb=36 child is a lane-20 projectile primitive, not an independent identity."
+      ]
+    },
+    "59": {
+      "native_module": "pc_p2_dweevil",
+      "owner_lane": "22",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_DWEEVIL_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "BLOCKED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "BLOCKED"
+      },
+      "notes": [
+        "FireOtakara: bounded policy slice (no engine actor); capture/carry + drop exactly-once PASS injected (death + interrupt); elemental receivers policy-only.",
+        "Injected/fixture observations, not natural gameplay; death/corpse/visuals BLOCKED (#170/#408)."
+      ]
+    },
+    "60": {
+      "native_module": "pc_p2_dweevil",
+      "owner_lane": "22",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_DWEEVIL_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "BLOCKED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "BLOCKED"
+      },
+      "notes": [
+        "WaterOtakara: bounded policy slice; elemental receiver policy-only; death/corpse/cleanup BLOCKED (injected capture/carry/drop exactly-once reported)."
+      ]
+    },
+    "61": {
+      "native_module": "pc_p2_dweevil",
+      "owner_lane": "22",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_DWEEVIL_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "BLOCKED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "BLOCKED"
+      },
+      "notes": [
+        "GasOtakara: bounded policy slice; receiver policy-only; death/corpse/cleanup BLOCKED."
+      ]
+    },
+    "62": {
+      "native_module": "pc_p2_dweevil",
+      "owner_lane": "22",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_DWEEVIL_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "BLOCKED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "BLOCKED"
+      },
+      "notes": [
+        "ElecOtakara: bounded policy slice; receiver policy-only; death/corpse/cleanup BLOCKED."
+      ]
+    },
+    "63": {
+      "native_module": "pc_p2_jigumo",
+      "owner_lane": "16",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_JIGUMO_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Jigumo (Hermit Crawmad): natural appear/wait/search/attack PASS; bite receiver PASS (frame 13, once/eat).",
+        "Carry->eat implemented but UNTESTED; cleanup PASS wiring only (#167)."
+      ]
+    },
+    "65": {
+      "native_module": "pc_p2_imomushi",
+      "owner_lane": "14",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_IMOMUSHI_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "N/A",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Imomushi (Ravenous Whiskerpillar): natural spawn/move/hide/appear PASS; plant-eating, no player receiver (attacks N/A).",
+        "Death/corpse and cleanup remain UNTESTED; plant interaction with lane 23 (#165/#407)."
+      ]
+    },
+    "66": {
+      "native_module": "pc_p2_long_legs",
+      "owner_lane": "26",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_LONG_LEGS_POLICY.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Houdai (Man-at-Legs): pc_p2_long_legs bind-pose/draw path (batch-4 display); legs/stomp/weak-points + natural death/re-entry remain (#173/#312)."
+      ]
+    },
+    "68": {
+      "native_module": "pc_p2_tamago",
+      "owner_lane": "14",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_TAMAGO_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "TamagoMushi (Mitite): natural spawn/hide/appear/walk + Astonish(flick) PASS; true panic + group births UNTESTED.",
+        "Death/corpse and honey drop (transport_reward) UNTESTED (#165)."
+      ]
+    },
+    "69": {
+      "native_module": "pc_p2_long_legs",
+      "owner_lane": "26",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_LONG_LEGS_POLICY.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "BigFoot (Raging Long Legs): pc_p2_long_legs bind-pose/draw path (batch-4 display); legs/stomp/weak-points + natural death/re-entry remain (#173/#312)."
+      ]
+    },
+    "70": {
+      "native_module": "pc_p2_snakejoint",
+      "owner_lane": "25",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_SNAKEJOINT_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "SnakeWhole (Pileated Snagret): natural stay/appear/attack/eat PASS; bite receiver PASS (frame 34, once/eat).",
+        "Bury/emerge/vulnerable/death lifecycle + cleanup remain (#174)."
+      ]
+    },
+    "71": {
+      "native_module": "pc_p2_umimushi",
+      "owner_lane": "16",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_UMIMUSHI_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "UmiMushi (Ranging Bloyster): natural walk/flick/attack/eat PASS; bite receiver PASS (frame 39, once/eat).",
+        "Captain-dependent behavior (lane 12) + death/transport/cleanup UNTESTED (#167)."
+      ]
+    },
+    "72": {
+      "native_module": "pc_p2_kurage",
+      "owner_lane": "29",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_JELLYFLOAT_EXPANSION_NATIVE.md",
+        "PIKMIN2_KURAGE_MATERIAL.md"
+      ],
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "OniKurage (Greater Spotted Jellyfloat): ingestion admit/mouth/stomach/kill16s/shrink/bitter PASS (natural); owner-death eject PASS (natural) for Kurage; Greater captain capture remains open.",
+        "Mixed-scene 60fps budget NOT met (33.45ms baseline); transport/reward + re-entry remain (#243)."
+      ]
+    },
+    "73": {
+      "native_module": "pc_p2_bigtreasure",
+      "owner_lane": "32",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_BIGTREASURE_CONTRACT.md",
+        "PIKMIN2_BIGTREASURE_AUDIT.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "BigTreasure (Titan Dweevil): ordinary FSM host + weapon/attack/element modules; real weapon damage + phase transition/drop remain (#246)."
+      ]
+    },
+    "75": {
+      "native_module": "pc_p2_kabuto_cannon",
+      "owner_lane": "20",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_CANNON_GROINK_AUDIT.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Kabuto (Armored Cannon Beetle Larva): pc_p2_kabuto_* family (moving muzzle + Stone projectile primitives); ordinary cannon actor + real receiver mutation remain (#169/#406).",
+        "Stone=74/Rock=19/Egg=37 primitives are lane-20 shared infrastructure, not identity rows."
+      ]
+    },
+    "77": {
+      "native_module": "pc_p2_shijimi",
+      "owner_lane": "15",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_SPECIES_RESIDUAL_NATIVE.md",
+        "PIKMIN2_SHIJIMI_LIFECYCLE.md"
+      ],
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "N/A",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "ShijimiChou (Unmarked Spectralid): natural spawn/move PASS; death + nectar reward PASS (natural); re-entry UNTESTED.",
+        "Group births + re-entry acceptance remains (#166)."
+      ]
+    },
+    "78": {
+      "native_module": "pc_p2_groink",
+      "owner_lane": "21",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_GROINK_BURST.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "MiniHoudai (Gatling Groink): targeting/burst/muzzle/strike modules present; natural moving hits + shell/revival + carcass remain (#198/#204-#210).",
+        "FminiHoudai=97 (pedestal) has no dedicated module yet; tracked as a gap."
+      ]
+    },
+    "79": {
+      "native_module": "pc_p2_sokkuri",
+      "owner_lane": "14",
+      "eligibility": "candidate",
+      "eligibility_reason": "native source FSM + flick/press receivers present; lifecycle and reward gates unverified on the pinned pair",
+      "source": [
+        "PIKMIN2_SOKKURI_NATIVE.md"
+      ],
+      "notes": [
+        "Candidate mechanics require per-gate evidence pinned to the accepted root/native pair; this ledger does not assert a combined runtime PASS.",
+        "Open: water/press/death, transport/reward, cleanup/re-entry (#165/#407)."
+      ],
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      }
+    },
+    "82": {
+      "native_module": "pc_p2_pom",
+      "owner_lane": "23",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_POM_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "N/A",
+        "attacks_receivers": "N/A",
+        "death_corpse": "N/A",
+        "transport_reward": "N/A",
+        "cleanup_reentry": "N/A"
+      },
+      "notes": [
+        "Pom (Candypop Bud base, manager_base): rejected at runtime (crashes); never a seeded identity."
+      ]
+    },
+    "84": {
+      "native_module": "pc_p2_hana",
+      "owner_lane": "14",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_HANA_NATIVE.md",
+        "PIKMIN2_SPECIES_LIFECYCLE_RESIDUAL_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Hana (Creeping Chrysanthemum): natural spawn/emerge/walk/eat PASS; bite receiver PASS (frames 18.1/18.2, once/eat); underground gate + poison + attackNavi PASS (natural, PIKMIN2_SPECIES_LIFECYCLE_RESIDUAL_NATIVE.md).",
+        "Death/corpse/transport/cleanup natural acceptance remains (#165)."
+      ]
+    },
+    "87": {
+      "native_module": "pc_p2_plant",
+      "owner_lane": "23",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_PLANT_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "N/A",
+        "attacks_receivers": "N/A",
+        "death_corpse": "N/A",
+        "transport_reward": "N/A",
+        "cleanup_reentry": "N/A"
+      },
+      "notes": [
+        "Magaret (plant/scenery): LOD + sentinel slot-rule policy PASS injected; not a randomizable enemy; no gameplay acceptance claimed."
+      ]
+    },
+    "91": {
+      "native_module": "pc_p2_plant",
+      "owner_lane": "23",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_PLANT_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "N/A",
+        "attacks_receivers": "N/A",
+        "death_corpse": "N/A",
+        "transport_reward": "N/A",
+        "cleanup_reentry": "N/A"
+      },
+      "notes": [
+        "KareOoinu_s (plant/scenery): LOD + sentinel slot-rule policy PASS injected; not a randomizable enemy; no gameplay acceptance claimed."
+      ]
+    },
+    "92": {
+      "native_module": "pc_p2_plant",
+      "owner_lane": "23",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_PLANT_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "N/A",
+        "attacks_receivers": "N/A",
+        "death_corpse": "N/A",
+        "transport_reward": "N/A",
+        "cleanup_reentry": "N/A"
+      },
+      "notes": [
+        "KareOoinu_l (plant/scenery): LOD + sentinel slot-rule policy PASS injected; not a randomizable enemy; no gameplay acceptance claimed."
+      ]
+    },
+    "93": {
+      "native_module": "pc_p2_bombotakara",
+      "owner_lane": "22",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_BOMBOTAKARA_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "BLOCKED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "BLOCKED"
+      },
+      "notes": [
+        "BombOtakara: carry/arm/detonate + exactly-once PASS injected; shared blast (InteractBomb) wired PASS injected or BLOCKED at older base.",
+        "Real Bomb payload actor + visuals/corpse BLOCKED; no natural claim (#170/#408)."
+      ]
+    },
+    "94": {
+      "native_module": "pc_p2_dangomushi",
+      "owner_lane": "25",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_DANGOMUSHI_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "DangoMushi (Segmented Crawbster): natural roll PASS (frame 23, once/hit); roll/fall hazards + vulnerable/death lifecycle remain (#174)."
+      ]
+    },
+    "95": {
+      "native_module": "pc_p2_kabuto_cannon",
+      "owner_lane": "20",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_CANNON_GROINK_AUDIT.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Rkabuto (Decorated Cannon Beetle): pc_p2_kabuto_* family (moving muzzle + Stone projectile primitives); ordinary cannon actor + real receiver mutation remain (#169/#406).",
+        "Stone=74/Rock=19/Egg=37 primitives are lane-20 shared infrastructure, not identity rows."
+      ]
+    },
+    "96": {
+      "native_module": "pc_p2_kabuto_cannon",
+      "owner_lane": "20",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_CANNON_GROINK_AUDIT.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Fkabuto (ACB Larva, burrowed): pc_p2_kabuto_* family (moving muzzle + Stone projectile primitives); ordinary cannon actor + real receiver mutation remain (#169/#406).",
+        "Stone=74/Rock=19/Egg=37 primitives are lane-20 shared infrastructure, not identity rows."
+      ]
+    },
+    "98": {
+      "native_module": "pc_p2_waterwraith",
+      "owner_lane": "31",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_WATERWRAITH_ASSETS.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "N/A",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "Tyre (Waterwraith roller, boss_helper): never seeded independently; staged two-species visuals only."
+      ]
+    },
+    "99": {
+      "native_module": "pc_p2_waterwraith",
+      "owner_lane": "31",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_WATERWRAITH_ASSETS.md",
+        "PIKMIN2_WATERWRAITH_ROLLER_POLICY.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "UNTESTED",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "BlackMan (Waterwraith): ordinary actor/roller host + register/encounter modules; roller attacks + Purple vulnerability + cleanup remain (#175)."
+      ]
+    },
+    "101": {
+      "native_module": "pc_p2_umimushi",
+      "owner_lane": "16",
+      "eligibility": "denied",
+      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "source": [
+        "PIKMIN2_SPECIES_RESIDUAL2_NATIVE.md"
+      ],
+      "gates": {
+        "identity_spawn": "UNTESTED",
+        "movement_animation": "UNTESTED",
+        "attacks_receivers": "PASS",
+        "death_corpse": "UNTESTED",
+        "transport_reward": "UNTESTED",
+        "cleanup_reentry": "UNTESTED"
+      },
+      "notes": [
+        "UmiMushiBlind (Toady Bloyster): variant sharing UmiMushiBase (role=variant); natural bite+eat PASS (blind=1 scale 0.5 health 800) (#167).",
+        "No converted visual bank (aliased to UmiMushi clips); death/transport/cleanup UNTESTED."
       ]
     }
   }

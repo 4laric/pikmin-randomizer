@@ -126,6 +126,7 @@ class RosterEntry:
     gates: dict[str, str] = field(default_factory=dict)
     eligibility: str = "denied"
     eligibility_reason: str = "no accepted evidence; defaults denied"
+    source: tuple[str, ...] = ()
     notes: tuple[str, ...] = ()
 
     @property
@@ -429,6 +430,7 @@ def entries_from_payload(payload: dict, evidence: dict | None = None) -> list[Ro
             gates=gates,
             eligibility=overlay.get("eligibility", "denied"),
             eligibility_reason=overlay.get("eligibility_reason", "no accepted evidence; defaults denied"),
+            source=tuple(overlay.get("source", [])),
             notes=tuple(overlay.get("notes", [])),
         ))
     return roster
