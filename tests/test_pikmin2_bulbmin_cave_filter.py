@@ -1,7 +1,16 @@
-"""Lane 11: Bulbmin cave-checkpoint filter contract (pc_p2_bulbmin_should_save).
+"""Lane 11: Bulbmin cave-checkpoint filter wiring (non-mutating drop + commit).
 
-Set PIKMIN_NATIVE_ROOT to a native worktree containing the predicate; otherwise these
-tests skip. The compiled probe test needs MinGW g++ on PATH."""
+Set PIKMIN_NATIVE_ROOT to a native worktree containing the pc_port sources;
+otherwise these tests skip. The compiled probe test needs MinGW g++ on PATH.
+
+Slice 3 folds the integrator review findings: (1) the checkpoint computes the
+Bulbmin drop set non-mutatingly via pc_p2_bulbmin_transition_removes and commits
+pc_p2_bulbmin_transition only after a successful transfer write, so a failed
+write can retry without leaking bodies; (2) the dead engine wrapper
+pc_p2_bulbmin_should_save is removed, leaving the engine-free policy predicate
+p2_bulbmin_should_save as a contract-only mirror kept alive by the cave-filter
+tool test.
+"""
 import shutil
 import subprocess
 import os
@@ -35,9 +44,9 @@ def _compiler():
 def test_cave_filter_tool_builds_and_passes(tmp_path):
     native = _native_root()
     tool_cpp = native / 'tools' / 'test_p2_bulbmin_cave_filter.cpp'
-    header = native / 'pc_port' / 'pc_p2_bulbmin.h'
+    header = native / 'pc_port' / 'pc_p2_bulbmin_policy.h'
     if not tool_cpp.is_file() or not header.is_file():
-        pytest.skip('native Bulbmin cave-filter tool/header not present')
+        pytest.skip('native Bulbmin cave-filter tool/policy not present')
     compiler = _compiler()
     if compiler is None:
         pytest.skip('g++ required to compile the cave-filter tool')
@@ -54,16 +63,31 @@ def test_cave_filter_tool_builds_and_passes(tmp_path):
     assert 'PASS P2_BULBMIN_CAVE_FILTER' in run.stdout
 
 
-def test_predicate_is_declared():
+def test_nonmutating_transition_is_declared():
     native = _native_root()
     header = native / 'pc_port' / 'pc_p2_bulbmin.h'
     text = header.read_text(errors='replace')
     assert 'pc_p2_bulbmin_phase' in text
-    assert 'pc_p2_bulbmin_should_save' in text
+    assert 'pc_p2_bulbmin_transition_removes' in text
+    assert 'pc_p2_bulbmin_transition' in text
 
 
-def test_cave_checkpoint_wired_to_filter():
+def test_dead_should_save_wrapper_is_removed():
+    native = _native_root()
+    header = native / 'pc_port' / 'pc_p2_bulbmin.h'
+    source = native / 'pc_port' / 'pc_p2_bulbmin.cpp'
+    assert 'pc_p2_bulbmin_should_save' not in header.read_text(errors='replace')
+    assert 'pc_p2_bulbmin_should_save' not in source.read_text(errors='replace')
+
+
+def test_cave_checkpoint_computes_drop_then_commits_after_write():
     native = _native_root()
     cave_cpp = native / 'pc_port' / 'pc_p2_cave.cpp'
     text = cave_cpp.read_text(errors='replace')
-    assert 'pc_p2_bulbmin_transition' in text
+    compute = text.index('pc_p2_bulbmin_transition_removes(move)')
+    write = text.index('writeTransfer(out.str())')
+    commit = text.index('pc_p2_bulbmin_transition(move)')
+    # The non-mutating drop set is computed before the transfer is written, and
+    # the mutating commit happens only after a successful write (so a failed
+    # write retries with the ledger still tracking every removed dependent).
+    assert compute < write < commit
