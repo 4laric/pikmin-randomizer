@@ -5,7 +5,7 @@ account `4laric`; executing session: DeepSeek lane 22.
 
 ## 1. Concrete source ID and missing gate addressed
 
-- **Source ID owned:** `FireOtakara` (EnemyID 59), plus the shared-base
+- **Source identity owned:** `FireOtakara` (id 59), plus the shared-base
   elemental siblings WaterOtakara (60), GasOtakara (61), ElecOtakara (62) bound
   through the same FSM.
 - **Missing gate addressed:** the ledger's open item — "Dweevil/BombOtakara
@@ -656,3 +656,174 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l2
     --seconds 150 --scenario natural
 ```
 
+## Slice 4 (corrected in Fix 4) — natural haul + the other four Dweevils (59-62/93)
+
+**Review correction.** The slice-4 handoff presented the corpse haul as
+"PASS (natural)" while the fixture actually wrote `mCurrActionIdx=PikiAction::Transport;
+mChildActions[Transport].initialise(corpse); mMode=TransportMode` and merely relabelled
+the ASSIST marker `P2_OTAKARA_WHISTLE`. That forced mode write is not natural
+recruitment, and it was removed. The haul is now genuinely natural: the fixture
+frees the idle squad beside the corpse (`changeMode(PikiMode::FreeMode)`) and
+**leaves it alone** — `Piki::graspSituation` (`piki.cpp:1103-1127`,
+`mIdleWorkSearchRange=100`) latches `PikiAction::Transport` by itself, exactly as
+lanes 19/31 do. A forced Transport write survives only as a flagged
+`P2_OTAKARA_ASSIST` fallback that never fires in these runs (`assisted=false`).
+
+### Natural-haul finding (gate 5)
+
+`P2_OTAKARA_CORPSE_CARRY min=3 max=6 free=1` proves the corpse is carryable
+(3 minimum carriers, 6 slots, `isFree()` true) — the earlier free-recruitment
+failure was NOT carry weight/flags/slots. P1 idle/free Pikmin only grasp a ground
+corpse through `graspSituation` while in `PIKISTATE_Normal` within 100 units, so
+the fix is to free them beside the corpse and stop touching them; the resident
+`graspSituation` poll then self-latches Transport. With the squad recoloured to
+the element-immune colour (Blue for Water, White for Gas, Yellow for Elec, Red
+for Fire/Bomb), all five identities die and haul naturally.
+
+### Six-gate tables
+
+(Private evidence on disk under `output/dsw/l22-out/`; cited here as
+`output/l22-out/…` per the ingest convention.)
+
+Source ID: 59 FireOtakara
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | output/l22-out/fix4-FireOtakara/58ffe82fb85943338034ce78fc485cf3/capture/native.log:763 P2_OTAKARA_BIND source_id=59 stimulus=InteractFire | natural |
+| 2. Autonomous movement and animation | PASS (natural) | output/l22-out/fix4-FireOtakara/58ffe82fb85943338034ce78fc485cf3/capture/native.log:775 P2_OTAKARA_STATE state=flick | natural |
+| 3. Attacks and receivers | PASS (natural) | output/l22-out/fix4-FireOtakara/58ffe82fb85943338034ce78fc485cf3/capture/native.log:780 P2_OTAKARA_DISCHARGE InteractFire applied=1 immune=1 | natural |
+| 4. Death and corpse | PASS (natural) | output/l22-out/fix4-FireOtakara/58ffe82fb85943338034ce78fc485cf3/capture/native.log:986 P2_OTAKARA_CORPSE pellet=1 (module_dead:928, death:984) | natural |
+| 5. Actual transport and reward | PASS (natural) | output/l22-out/fix4-FireOtakara/58ffe82fb85943338034ce78fc485cf3/capture/native.log:1135 P2_POD_RECEIPT id=corpse:otakara:349001 | natural |
+| 6. Cleanup and re-entry | PASS (natural) | output/l22-out/fix4-FireOtakara/58ffe82fb85943338034ce78fc485cf3/capture/native.log:1136 P2_OTAKARA_FORGET count=0 | natural |
+
+Source ID: 60 WaterOtakara
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | output/l22-out/fix4-WaterOtakara/253ee88b777444388cba44783aae3e4a/capture/native.log:763 P2_OTAKARA_BIND source_id=60 stimulus=InteractBubble | natural |
+| 2. Autonomous movement and animation | PASS (natural) | output/l22-out/fix4-WaterOtakara/253ee88b777444388cba44783aae3e4a/capture/native.log:775 P2_OTAKARA_STATE state=flick | natural |
+| 3. Attacks and receivers | PASS (natural) | output/l22-out/fix4-WaterOtakara/253ee88b777444388cba44783aae3e4a/capture/native.log:780 P2_OTAKARA_DISCHARGE InteractBubble applied=0 immune=2 | natural |
+| 4. Death and corpse | PASS (natural) | output/l22-out/fix4-WaterOtakara/253ee88b777444388cba44783aae3e4a/capture/native.log:1088 P2_OTAKARA_CORPSE pellet=1 (module_dead:1030, death:1087) | natural |
+| 5. Actual transport and reward | PASS (natural) | output/l22-out/fix4-WaterOtakara/253ee88b777444388cba44783aae3e4a/capture/native.log:1237 P2_POD_RECEIPT id=corpse:otakara:349001 | natural |
+| 6. Cleanup and re-entry | PASS (natural) | output/l22-out/fix4-WaterOtakara/253ee88b777444388cba44783aae3e4a/capture/native.log:1238 P2_OTAKARA_FORGET count=0 | natural |
+
+Source ID: 61 GasOtakara
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | output/l22-out/fix4-GasOtakara/41e89242fb604960a21875d382a95c2f/capture/native.log:763 P2_OTAKARA_BIND source_id=61 stimulus=InteractGas | natural |
+| 2. Autonomous movement and animation | PASS (natural) | output/l22-out/fix4-GasOtakara/41e89242fb604960a21875d382a95c2f/capture/native.log:775 P2_OTAKARA_STATE state=flick | natural |
+| 3. Attacks and receivers | PASS (natural) | output/l22-out/fix4-GasOtakara/41e89242fb604960a21875d382a95c2f/capture/native.log:780 P2_OTAKARA_DISCHARGE InteractGas applied=0 immune=2 | natural |
+| 4. Death and corpse | PASS (natural) | output/l22-out/fix4-GasOtakara/41e89242fb604960a21875d382a95c2f/capture/native.log:1154 P2_OTAKARA_CORPSE pellet=1 (module_dead:1117, death:1153) | natural |
+| 5. Actual transport and reward | PASS (natural) | output/l22-out/fix4-GasOtakara/41e89242fb604960a21875d382a95c2f/capture/native.log:1292 P2_POD_RECEIPT id=corpse:otakara:349001 | natural |
+| 6. Cleanup and re-entry | PASS (natural) | output/l22-out/fix4-GasOtakara/41e89242fb604960a21875d382a95c2f/capture/native.log:1293 P2_OTAKARA_FORGET count=0 | natural |
+
+Source ID: 62 ElecOtakara
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | output/l22-out/fix4-ElecOtakara/33acc605ce3d45b69d0c36e44e32aab6/capture/native.log:763 P2_OTAKARA_BIND source_id=62 stimulus=InteractDenki | natural |
+| 2. Autonomous movement and animation | PASS (natural) | output/l22-out/fix4-ElecOtakara/33acc605ce3d45b69d0c36e44e32aab6/capture/native.log:775 P2_OTAKARA_STATE state=flick | natural |
+| 3. Attacks and receivers | PASS (natural) | output/l22-out/fix4-ElecOtakara/33acc605ce3d45b69d0c36e44e32aab6/capture/native.log:780 P2_OTAKARA_DISCHARGE InteractDenki applied=0 immune=2 | natural |
+| 4. Death and corpse | PASS (natural) | output/l22-out/fix4-ElecOtakara/33acc605ce3d45b69d0c36e44e32aab6/capture/native.log:1094 P2_OTAKARA_CORPSE pellet=1 (module_dead:1069, death:1093) | natural |
+| 5. Actual transport and reward | PASS (natural) | output/l22-out/fix4-ElecOtakara/33acc605ce3d45b69d0c36e44e32aab6/capture/native.log:1243 P2_POD_RECEIPT id=corpse:otakara:349001 | natural |
+| 6. Cleanup and re-entry | PASS (natural) | output/l22-out/fix4-ElecOtakara/33acc605ce3d45b69d0c36e44e32aab6/capture/native.log:1244 P2_OTAKARA_FORGET count=0 | natural |
+
+Source ID: 93 BombOtakara
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PARTIAL | output/l22-out/fix4-BombOtakara/72ff8fec895a46ea8595d380f41f8896/capture/native.log:763 P2_OTAKARA_BIND source_id=93 stimulus=None (bound as a Chappy body; no Bomb payload actor) | natural |
+| 2. Autonomous movement and animation | PASS (natural) | output/l22-out/fix4-BombOtakara/72ff8fec895a46ea8595d380f41f8896/capture/native.log:775 P2_OTAKARA_STATE state=flick | natural |
+| 3. Attacks and receivers | N/A | output/l22-out/fix4-BombOtakara/72ff8fec895a46ea8595d380f41f8896/capture/native.log:778 P2_OTAKARA_DISCHARGE_NONE payload_delegated=1 (delegates to the lane-20 Bomb payload) | natural |
+| 4. Death and corpse | PASS (natural) | output/l22-out/fix4-BombOtakara/72ff8fec895a46ea8595d380f41f8896/capture/native.log:974 P2_OTAKARA_CORPSE pellet=1 (module_dead:917, death:973) | natural |
+| 5. Actual transport and reward | PASS (natural) | output/l22-out/fix4-BombOtakara/72ff8fec895a46ea8595d380f41f8896/capture/native.log:1111 P2_POD_RECEIPT id=corpse:otakara:349001 | natural |
+| 6. Cleanup and re-entry | PASS (natural) | output/l22-out/fix4-BombOtakara/72ff8fec895a46ea8595d380f41f8896/capture/native.log:1112 P2_OTAKARA_FORGET count=0 | natural |
+
+Bomb's death here is the plain Chappy corpse (`attack=payload_delegated` in the
+ENEMY_READY line now reflects the real attack kind); the source BombOtakara
+detonation/`EnemyID_Bomb` lifecycle stays with lane 20, so its gate-1 is PARTIAL
+and its gate-3 is N/A.
+
+### Fix 4 nits
+
+- `validate()` now special-cases `BombOtakara`: it requires
+  `P2_OTAKARA_DISCHARGE_NONE payload_delegated=1` (not a
+  `P2_OTAKARA_DISCHARGE stimulus=None` line) and reports
+  `attacks_receivers=n/a`, so the Bomb run passes (`passed:true`).
+- Dead `@@SRC@@`/`@@FIRE1@@` placeholders and the unused `SPECIES` tuple were
+  removed; the squad recolour reads `otakara-species.txt` at runtime.
+- Build/fixture evidence below is the Fix 4 fixture (the slice-4 SHA
+  `7A889004…` was stale).
+- Root commit list: the slice-4 head was `713ae2c6` (now superseded by the Fix 4
+  commit below); native slice-4 head was `92d5640c` (merged), then `47b1f269`.
+
+### Build and fixture evidence (Fix 4)
+
+- Native `47b1f26948f6e4a7e2f45ad32d664761296e69e6`, `ninja -n` clean,
+  `nectar.exe` SHA-256 `9D44B5B9D271E0C980A62DA16A945C8E3612C7DF3B8DD84EB3360475C20851E9`.
+- Fixture `output/dsw/l22-fixture-fix4/` (`built`), `fixture.exe` SHA-256
+  `5B5C408EB48AAA312CF849389350862740221402998F703FDA04BAB15932A474`.
+- Runs under `output/dsw/l22-out/fix4-<species>/` (one per identity, natural scenario).
+
+### Ordered commits
+
+**Root** (`deepseek/p2-l22`, base `7422dc91`): `713ae2c6` (slice 4, superseded),
+then this Fix 4 commit.
+
+**Native** (`deepseek/p2-l22-native`): `92d5640c` (slice 4, merged), then
+`47b1f269` (Fix 4 attack-kind).
+
+### Subagent usage
+
+Three subagents (required by this slice):
+1. **explore — graspSituation audit** (piki.cpp:1103-1127, ActFree::exec poll,
+   `actOnSituaton`/`freeAI`, `changeMode` re-arm). Used as-is; it confirmed the
+   natural recipe (free + leave alone) and the exact `PIKISITCH_Unk9` dispatch.
+2. **explore — fixture inventory** quoted the relabelled `P2_OTAKARA_WHISTLE`
+   block's exact lines and how lanes 19/31 do unassisted carry. Used as-is; it
+   (correctly) identified the force block the review flagged.
+3. **general — flip tests** wrote 15 tests (carry-free/assist/Bomb/per-species).
+   Used nearly as-is; I corrected its two Bomb tests from the old `fail` semantics
+   to the new `n/a`/`discharge_none` semantics. Net: the source audit saved real
+   time; the test scaffold needed a one-line semantic reconcile.
+
+### Gate-check output
+
+```
+59 FireOtakara (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation accepted [PASS]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   accepted [PASS]
+  6. cleanup_reentry    accepted [PASS]
+60 WaterOtakara (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation accepted [PASS]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   accepted [PASS]
+  6. cleanup_reentry    accepted [PASS]
+61 GasOtakara (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation accepted [PASS]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   accepted [PASS]
+  6. cleanup_reentry    accepted [PASS]
+62 ElecOtakara (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation accepted [PASS]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   accepted [PASS]
+  6. cleanup_reentry    accepted [PASS]
+93 BombOtakara (role=source):
+  1. identity_spawn     ignored [PARTIAL]
+  2. movement_animation accepted [PASS]
+  3. attacks_receivers  ignored [N/A]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   accepted [PASS]
+  6. cleanup_reentry    accepted [PASS]
+```
