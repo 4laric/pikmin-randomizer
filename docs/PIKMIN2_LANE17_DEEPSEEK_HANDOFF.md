@@ -141,6 +141,8 @@ ordinary P1 Onion/nectar path) and the restart half of gate 6. Full detail:
 
 Root (`deepseek/p2-l17`, base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`):
 - `8d44bcf` lane17: real collection + restart dedupe fixture (Onion receipt, carry/drink, cross-process) (#219)
+- `595cbe7` lane17: fix collect pass mapping (0=collect, 2=restart) and restart marker (#219)
+- `6055ee4` lane17: record slice-2 collection + restart dedupe handoff (#219)
 
 Native (`deepseek/p2-l17-native`, base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`):
 - `75153537` lane17: grant reward drops exactly-once through the lane-06 ordinary Onion receipt ledger (#219)
