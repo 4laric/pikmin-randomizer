@@ -1,13 +1,10 @@
-"""Lane-04 slice 4: the placement catalog driving a real generated seed.
+"""The placement catalog driving a real generated seed.
 
-Slice 2 hand-built the ``p2-placement-slots.txt`` sidecar from a lane-04
-:func:`scripts.run_p2_catalog_placement.choose_slot`; slice 3 sourced the slot
-from the seed's ``p2_layout`` but still carried one binding. This module carries
-the whole binding: the seed bridge ``resolve_placement_layout`` binds a *set* of
-catalog slots to each admitted source (consuming the admitted cohort and the
-placement document), and the sidecar now records every ``(generator, slot)``
-pair, so the probe's ``P2_PLACEMENT_SLOT`` markers join to the full binding set
-rather than a single picked slot.
+The seed bridge ``resolve_placement_layout`` binds a *set* of catalog slots to
+each admitted source (consuming the admitted cohort and the placement document),
+and the sidecar records every ``(generator, slot)`` pair, so the probe's
+``P2_PLACEMENT_SLOT`` markers join to the full binding set rather than a single
+picked slot.
 
 Because the committed admitted cohort is empty (deny by default) and
 ``randomizer.seed.generate`` has no roster-injection parameter, the admitted
@@ -33,6 +30,7 @@ BLUEKOCHAPPY_SOURCE = 44
 YELLOWKOCHAPPY_SOURCE = 45
 ADMITTED_COHORT = (BLUEKOCHAPPY_SOURCE, YELLOWKOCHAPPY_SOURCE)
 ARENA_SOURCE_GENERATOR = 211001
+ARENA_GENERATORS = (211001, 211002)
 SIDECAR_HEADER = 'P2_PLACEMENT_SLOTS_1'
 SIDECAR_NAME = 'p2-placement-slots.txt'
 
@@ -66,10 +64,11 @@ def generate_admitted_seed(seed_name, document, slot='Player1',
                            admitted=ADMITTED_COHORT):
     """Produce a real ``randomizer.seed.generate`` manifest on an injected cohort.
 
-    ``randomizer.seed.generate`` calls lane 02's ``load_and_validate`` (deny by
-    default) and lane 03's ``resolve_placement_layout``; the admitted cohort is
-    injected by temporarily patching ``experimental.pikmin2_seed_bridge.admitted_ids``
-    (the same mechanism lane 03's own seed-generation test uses), then restored.
+    ``randomizer.seed.generate`` calls the roster ``load_and_validate`` (deny by
+    default) and the seed-bridge ``resolve_placement_layout``; the admitted cohort
+    is injected by temporarily patching
+    ``experimental.pikmin2_seed_bridge.admitted_ids`` (the same mechanism the
+    seed-generation test uses), then restored.
     """
     import experimental.pikmin2_seed_bridge as bridge
     from randomizer.seed import generate as _generate
@@ -86,7 +85,7 @@ def seed_slots(manifest, source_id=BLUEKOCHAPPY_SOURCE):
 
     The seed binds a *set* of stage-0 ground slots to each admitted source; this
     returns the whole set (never a single slot), so a sidecar consumer carries
-    every binding rather than a lane-04-side pick of one.
+    every binding rather than a pick of one.
     """
     return sorted(int(binding['target']) for binding in manifest['p2_layout']['bindings']
                   if binding['source_id'] == source_id)

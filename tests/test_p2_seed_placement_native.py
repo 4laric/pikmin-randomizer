@@ -1,4 +1,4 @@
-"""Lane-04 slice 4 flip tests: the P2_PLACEMENT_SLOT / P2_SEED_RESOLVE / P2_ENEMY_READY co-occurrence.
+"""Flip tests for the P2_PLACEMENT_SLOT / P2_SEED_RESOLVE / P2_ENEMY_READY co-occurrence.
 
 Pure-Python: the validator passes on a representative captured log and flips when
 any one of the three markers is stripped (so the marker — not incidental text —
@@ -71,6 +71,24 @@ def test_validator_flips_on_non_cohort_source():
     result = validate_cooccurrence(bogus)
     assert not result.ok
     assert "non-cohort" in result.reason
+
+
+def test_validator_passes_on_two_generator_chain():
+    both = """\
+P2_SEED_RESOLVE source_id=44 target=5465461 original_type=3 x=-150.0 z=1850.0
+P2_SEED_RESOLVE source_id=44 target=513430982 original_type=3 x=150.0 z=1550.0
+P2_PLACEMENT_SLOT generator=211001 slot=5465461 actor=3 xyz=1 terrain=ground route=1 route_distance=61.2 x=-150.000 y=30.000 z=1850.000 water_depth=0.00
+P2_PLACEMENT_SLOT generator=211002 slot=513430982 actor=3 xyz=1 terrain=ground route=1 route_distance=129.3 x=150.000 y=30.000 z=1550.000 water_depth=0.00
+P2_ENEMY_READY species=BlueKochappy source_id=44 native_family=Chappy generator=211001 x=-150.0000000 y=30.0000000 z=1850.0000000 health=250.0
+P2_ENEMY_READY species=BlueKochappy source_id=44 native_family=Chappy generator=211002 x=150.0000000 y=30.0000000 z=1550.0000000 health=250.0
+P2_PLACEMENT_PROBE actors=2 evidence_slots=2
+"""
+    result = validate_cooccurrence(both)
+    assert result.ok, result.reason
+    assert result.generator == 211001
+    assert result.slot == 5465461
+    assert result.source == ORANGE_SOURCE
+
 
 
 def _native_root():

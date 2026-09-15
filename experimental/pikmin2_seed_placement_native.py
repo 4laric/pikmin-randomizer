@@ -1,8 +1,8 @@
-"""Lane-04 slice 4 native co-occurrence validator (pure Python).
+"""Native co-occurrence validator across the three placement/birth markers.
 
 Closes the loop across the three native markers a single room run emits:
 
-* ``P2_PLACEMENT_SLOT generator=<g> slot=<u> ...``  -- lane-04 placement probe:
+* ``P2_PLACEMENT_SLOT generator=<g> slot=<u> ...``  -- placement probe:
   generator ``g`` maps (sidecar) to catalog slot ``u``.
 * ``P2_SEED_RESOLVE source_id=<s> target=<u> ...``  -- seed bridge: catalog slot
   ``u`` resolves to source ``s``.
