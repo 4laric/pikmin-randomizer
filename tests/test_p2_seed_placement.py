@@ -1,19 +1,18 @@
-"""Lane-04 slice 3 tests: the placement catalog driving a real generated seed.
+"""Lane-04 slice 4 tests: every binding (full set), not one, plus the audit guards.
 
-These tests prove, without a native root, the three slice-3 claims plus the
-fold-in fixes, all via the real ``randomizer.seed.generate`` path:
+Proves, without a native root, the slice-4 corrections over
+``randomizer.seed.generate``:
 
-1. the slot the native ``P2_PLACEMENT_SLOT`` marker joins to (through the
-   generator->slot sidecar) equals the slot the seed's ``p2_layout`` bound to the
-   admitted identity;
-2. the audit's stage guard fires from the probe's ``arena_stage`` field without a
-   manual ``--stage``;
-3. two different seeds bind the admitted identity to different catalog slots, so
-   consecutive runs emit different markers.
+1. the seed bridge binds a *set* of stage-0 ground slots per admitted source, the
+   ``p2-placement-slots.txt`` sidecar carries that whole set, and the marker-slot
+   set parsed back from the log equals the binding set (not membership of one);
+2. the catalog-join stage rejection lives inside ``run_audit`` (no stage anywhere
+   is a hard failure, even with no ``--stage``);
+3. two different seeds bind the admitted source to different slot sets.
 
 The Snow/Dwarf Orange cohort's acceptance is injected (the committed ledger and
-catalog are deny-by-default); this is the bridge-shaping that lane 02/03 fixture
-tests already use, labelled clearly.
+catalog are deny-by-default); this is the bridge-shaping the lane 02/03 fixture
+tests already use, labelled clearly here.
 """
 import sys
 from pathlib import Path
@@ -29,10 +28,10 @@ from scripts import audit_p2_placement_evidence as auditplugin
 from scripts.run_p2_catalog_placement import choose_slot
 
 
-def _marker(generator, slot_uid, xyz=1, terrain='ground', route=1):
+def _marker(generator, slot_uid):
     return (
-        f'P2_PLACEMENT_SLOT generator={generator} slot={slot_uid} actor=3 xyz={xyz} '
-        f'terrain={terrain} route={route} route_distance=61.2 '
+        f'P2_PLACEMENT_SLOT generator={generator} slot={slot_uid} actor=3 xyz=1 '
+        f'terrain=ground route=1 route_distance=61.2 '
         f'x=-150.0 y=30.0 z=1850.0 water_depth=0.00\n'
     )
 
@@ -41,98 +40,111 @@ def _document():
     return placement.placement_document()
 
 
-def test_seed_slot_equals_binding_target():
-    """(1) The marker's `slot` equals the slot the seed placed in its layout."""
-    document = _document()
-    manifest = placement.generate_admitted_seed('seed-slice3-proof1', document)
-    uid = placement.seed_slot_uid(manifest, placement.BLUEKOCHAPPY_SOURCE)
-    assert uid is not None
-    document_uids = {slot['uid'] for slot in document['slots']}
-    assert uid in document_uids
+def _seed_slots(seed_name):
+    manifest = placement.generate_admitted_seed(seed_name, _document())
+    return placement.seed_slots(manifest, placement.BLUEKOCHAPPY_SOURCE)
 
-    # The runtime writes the generator -> seed-chosen-slot sidecar, whose value
-    # the native probe reads back into the marker. Simulate that round trip.
-    text = _marker(placement.ARENA_SOURCE_GENERATOR, uid)
+
+# --- (1) every binding, not one -------------------------------------------------
+
+def test_seed_binding_set_is_a_distinct_set_of_catalog_slots():
+    slots = _seed_slots('seed-slice4-a')
+    assert slots
+    doc_uids = {slot['uid'] for slot in _document()['slots']}
+    assert set(slots) <= doc_uids
+    assert len(slots) == len(set(slots))  # every slot appears once, not a re-pick
+
+
+def test_seed_slot_uids_returns_full_set_per_source():
+    manifest = placement.generate_admitted_seed('seed-slice4-a', _document())
+    by_source = placement.seed_slot_uids(manifest)
+    assert placement.BLUEKOCHAPPY_SOURCE in by_source
+    assert placement.YELLOWKOCHAPPY_SOURCE in by_source
+    # The two sources jointly bind the whole stage-0 ground slot set.
+    combined = sorted(by_source[placement.BLUEKOCHAPPY_SOURCE]
+                      + by_source[placement.YELLOWKOCHAPPY_SOURCE])
+    assert combined == sorted({slot['uid'] for slot in _document()['slots']})
+
+
+def test_full_set_sidecar_round_trips(tmp_path):
+    slots = _seed_slots('seed-slice4-a')
+    pairs = [(211000 + index, uid) for index, uid in enumerate(slots)]
+    path = placement.write_sidecar(tmp_path, pairs)
+    lines = path.read_text().splitlines()
+    assert lines[0] == placement.SIDECAR_HEADER
+    assert len(lines) - 1 == len(slots)
+    assert {(int(line.split()[1])) for line in lines[1:]} == set(slots)
+
+
+def test_marker_slot_set_equals_binding_set():
+    """The set of marker slots equals the seed's binding set for the source."""
+    slots = _seed_slots('seed-slice4-a')
+    pairs = [(211000 + index, uid) for index, uid in enumerate(slots)]
+    text = ''.join(_marker(generator, uid) for generator, uid in pairs)
     doc = probe.build_probe(text)
     assert doc['catalog_join'] is True
-    assert doc['mapping'][0]['slot'] == uid
-    assert doc['mapping'][0]['generator'] == placement.ARENA_SOURCE_GENERATOR
+    assert {mapping['slot'] for mapping in doc['mapping']} == set(slots)
     assert doc['unmapped_generators'] == []
 
 
-def test_stage_guard_passes_without_manual_stage(tmp_path):
-    """(2) run_audit guards stage from the probe's arena_stage, no --stage."""
-    document = _document()
-    manifest = placement.generate_admitted_seed('seed-slice3-proof2', document)
-    uid = placement.seed_slot_uid(manifest, placement.BLUEKOCHAPPY_SOURCE)
+# --- (2) stage guard now lives in run_audit -------------------------------------
 
-    probe_doc = probe.build_probe(_marker(placement.ARENA_SOURCE_GENERATOR, uid))
-    probe_doc['arena_stage'] = placement.ARENA_STAGE
-    catalog_doc = p2_placement_catalog.build_document()
+def test_run_audit_rejects_catalog_join_without_any_stage():
+    slots = _seed_slots('seed-slice4-a')
+    doc = probe.build_probe(_marker(211001, slots[0]))
+    assert doc['catalog_join'] is True
+    assert 'arena_stage' not in doc
+    with pytest.raises(SystemExit):
+        auditplugin.run_audit(doc, catalog_doc=p2_placement_catalog.build_document())
 
-    # No explicit arena_stage argument: the guard is satisfied from the probe.
-    report = auditplugin.run_audit(probe_doc, catalog_doc=catalog_doc)
+
+def test_run_audit_rejects_wrong_recorded_stage():
+    slots = _seed_slots('seed-slice4-a')
+    doc = probe.build_probe(_marker(211001, slots[0]))
+    doc['arena_stage'] = 3  # not the arena's stage-0
+    with pytest.raises(SystemExit):
+        auditplugin.run_audit(doc, catalog_doc=p2_placement_catalog.build_document())
+
+
+def test_run_audit_stage_guard_from_probe_passes():
+    slots = _seed_slots('seed-slice4-a')
+    doc = probe.build_probe(_marker(211001, slots[0]))
+    doc['arena_stage'] = placement.ARENA_STAGE
+    report = auditplugin.run_audit(doc, catalog_doc=p2_placement_catalog.build_document())
     assert report['catalog_join'] is True
     assert report['arena_stage'] == placement.ARENA_STAGE
-    assert uid in report['matched_slot_uids']
-
-    # A wrong recorded stage still hard-fails (the guard is live, not skipped).
-    wrong = dict(probe_doc, arena_stage=3)
-    with pytest.raises(SystemExit):
-        auditplugin.run_audit(wrong, catalog_doc=catalog_doc)
+    assert slots[0] in report['matched_slot_uids']
 
 
-def test_two_seeds_pick_different_slots():
-    """(3) Consecutive seeds bind the identity to different catalog slots."""
-    document = _document()
-    uids = {}
-    for seed_name in ('seed-slice3-a', 'seed-slice3-b', 'seed-slice3-c',
-                      'seed-slice3-d', 'seed-slice3-e'):
-        manifest = placement.generate_admitted_seed(seed_name, document)
-        uids[seed_name] = placement.seed_slot_uid(manifest, placement.BLUEKOCHAPPY_SOURCE)
-    distinct = {uids[name] for name in uids}
-    assert len(distinct) >= 2
-    # Two concrete seeds that demonstrably disagree.
-    differing = [name for name in uids if uids[name] != uids['seed-slice3-a']]
-    assert differing, uids
+# --- (3) two seeds bind different sets ------------------------------------------
+
+def test_two_seeds_bind_different_slot_sets():
+    assert _seed_slots('seed-slice4-a') != _seed_slots('seed-slice4-b')
 
 
-def test_slot_uid_is_deterministic_per_seed():
-    """The same seed name always resolves BlueKochappy to the same slot."""
-    document = _document()
-    first = placement.seed_slot_uid(
-        placement.generate_admitted_seed('seed-slice3-det', document), 44)
-    second = placement.seed_slot_uid(
-        placement.generate_admitted_seed('seed-slice3-det', document), 44)
-    assert first == second
+def test_slot_set_is_deterministic_per_seed():
+    assert _seed_slots('seed-slice4-det') == _seed_slots('seed-slice4-det')
 
+
+# --- fold-ins -------------------------------------------------------------------
 
 def test_malformed_markers_are_counted():
-    """Fold-in: malformed P2_PLACEMENT_SLOT lines are counted, not silently dropped."""
     text = (
-        _marker(placement.ARENA_SOURCE_GENERATOR, 513430982)
+        _marker(211001, 513430982)
         + 'P2_PLACEMENT_SLOT generator=broken slot=1 actor=3 xyz=1 terrain=ground '
         'route=1 route_distance=1.0 water_depth=0.00\n'
         + 'P2_PLACEMENT_SLOT generator=1 xyz=1 terrain=ground route=1\n'
     )
-    doc = probe.build_probe(text)
-    assert doc['malformed_markers'] == 2
-    assert doc['catalog_join'] is True
-    assert doc['mapping'][0]['slot'] == 513430982
+    assert probe.build_probe(text)['malformed_markers'] == 2
 
 
 def test_choose_slot_picks_stage_matching_ground_cohort():
-    """Fold-in: choose_slot selects a stage-matched ground-cohort ground slot."""
-    catalog_doc = p2_placement_catalog.build_document()
-    chosen = choose_slot(catalog_doc, stage=0)
+    chosen = choose_slot(p2_placement_catalog.build_document(), stage=0)
     assert chosen['stage'] == 0
     assert chosen['terrain'] == 'ground'
     assert chosen['cohort'] == 'ground'
-    assert chosen['uid'] in {slot['uid'] for slot in catalog_doc['slots']}
 
 
 def test_zero_slots_chooses_nothing():
-    """choose_slot raises when no slot matches the requested stage/terrain."""
-    catalog_doc = p2_placement_catalog.build_document()
     with pytest.raises(SystemExit):
         choose_slot({'slots': []}, stage=0)

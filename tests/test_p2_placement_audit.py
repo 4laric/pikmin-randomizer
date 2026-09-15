@@ -112,7 +112,7 @@ def test_unmapped_generator_fails_without_allow():
     probe = _probe(_mapping(111), unmapped=[211002])
     with pytest.raises(SystemExit):
         auditplugin.run_audit(probe, catalog_doc=catalog_doc())
-    report = auditplugin.run_audit(probe, catalog_doc=catalog_doc(), allow_unmapped=True)
+    report = auditplugin.run_audit(probe, catalog_doc=catalog_doc(), arena_stage=0, allow_unmapped=True)
     assert report['catalog_join'] is True
     assert report['unmapped_generators'] == [211002]
 
