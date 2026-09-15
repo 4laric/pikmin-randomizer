@@ -261,6 +261,9 @@ def test_citation_requires_extension_or_known_root_path():
     assert not _has_citation("frame=12 / frame=20")
     assert not _has_citation("P2_OTAKARA_BIND generator=349001")
     assert not _has_citation("health=150.0")
+    # placeholders from the checker hint must never count as a citation
+    assert not _has_citation("output/<lane-out>/<run>/native.log:NNN")
+    assert not _has_citation("output/p2/x/native.log:NNN")
 
 
 HEADING_BOUND_HANDOFF = """# x

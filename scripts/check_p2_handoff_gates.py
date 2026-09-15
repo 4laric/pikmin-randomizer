@@ -74,7 +74,7 @@ def _row_verdict(number: int, row: dict) -> dict:
                     "fix": f"move `{inner.group(1)}` to the start of the Result cell "
                            f"(got {ascii(result[:40])})"}
         return {"verdict": "refused:bad status", "status": "UNTESTED",
-                "fix": f"move `PASS` to the start of the Result cell "
+                "fix": "move `PASS` to the start of the Result cell "
                        f"(got {ascii(result[:40])})"}
     verdict = _gate_verdict(number, row)
     status = _status_token(result)
