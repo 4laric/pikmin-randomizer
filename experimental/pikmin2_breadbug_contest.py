@@ -557,6 +557,7 @@ def parse_contest_consumer(text, generator):
         'update_carriers': [],
         'integrity_violations': 0,
         'revisit': False,
+        'revisit_rearmed': None,
         'update_outcomes': [],
         'pass_marker': False,
         'probe_markers': [],
@@ -618,8 +619,8 @@ def parse_contest_consumer(text, generator):
             if released_raw == 1:
                 events['owner_died_released'] = True
         elif marker == 'P2_BREADBUG_REVISIT':
-            if _field_int(fields, 'rearmed') == 1:
-                events['revisit'] = True
+            events['revisit'] = True
+            events['revisit_rearmed'] = _field_int(fields, 'rearmed')
     return events
 
 
@@ -627,8 +628,8 @@ def validate_contest_consumer(events):
     """Assert the P2 Breadbug contest-consumer gates from observed events.
 
     (a) a begin marker was observed; (b) a full contest ran (held then
-    stolen + released + granted); (c) an owner death was processed (the
-    OWNER_DIED marker fired; ``released`` is the honest held-at-death 0/1);
+    stolen + released + granted); (c) an owner death must release the held
+    cargo (``released=1``);
     (d) the grant was emitted exactly once: exactly one
     ``granted=1`` and one ``duplicate=1`` (the refused re-grant across the
     revisit proves the durable ledger did not re-credit it); (e) the real
@@ -652,7 +653,7 @@ def validate_contest_consumer(events):
 
     gate_began = began
     gate_contest = held and stolen and released and granted
-    gate_owner_died = owner_died
+    gate_owner_died = owner_died and owner_died_released
     gate_grant = granted and grants == 1 and grant_duplicate
     gate_interrupt = interrupt
     gate_primary_tug_natural = (probe_before_first_grant == 0
