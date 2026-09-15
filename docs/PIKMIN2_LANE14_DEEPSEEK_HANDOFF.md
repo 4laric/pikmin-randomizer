@@ -407,3 +407,78 @@ native `nectar.exe` SHA `2877add7f8b5378973c08522988ff8e80a52379f9235c0383b6eae0
   per-actor generator assignment for child births is a shared/lane-05 concern.
 - Reward/transport (#397) and the ElecBug retail Purple hipdrop (lane-11/#128)
   remain out of scope.
+
+## Review fixes 4 (NOT merged slice-4 feedback)
+
+### Commits
+
+- native `d2911fdf` → `2454bfc2` series: `bf02f219` (stopMove + group despawn + born count/BIND), `92eea3fe` (generateTeki), `e7dacd6d` (bounded birth radius), `2454bfc2` (exclude host from children cleanup). Final native head `2454bfc21fd059988ebbf31205787d6e9d2bd0d6`.
+- root `bbab6f3` lane14: review fixes 4 — exactly_once on GROUP_ONCE, born=1 BIND, fixture forget via seam (#165).
+
+### Item 1 — born followers no longer flung away
+
+The real cause was my birth-radius arithmetic, NOT `spawnTeki` launch velocity:
+`(i*2654435761u) >> 8 / 32768` produced a radius up to ~512 (→ 45×512 ≈ 2e4-unit
+offsets), so followers 346022–346029 were SPAWNED at (4098,7628), (−10467,5218), …
+A debug print (since removed) showed the child position was already wrong **before**
+`startAI`. Fix: bounded radius `0.2 + 0.8*((i*2654435761u) & 0xffff)/65535` in [0.2,1],
+plus switched `spawnTeki`→`generateTeki` (no SpawnVelocity*Strength launch) as the
+reviewer suggested. Verified: all 9 followers now report `P2_TAMAGO_FOLLOW
+distance` in 0.15–58.27 (all < FOLLOW_RADIUS 60), and `P2_TAMAGO_ASTONISH` now comes
+from **all 10** Mitites (346020 host + 346021–346029, 1–32 hits each) — run
+`tamago-fix4e-run/f706e354...`.
+
+### Item 2 — group forget now despawns the born children
+
+`pc_p2_tamago_forget` group branch now collects the born followers (excluding the
+host), calls `child->kill(false)` (death funnel → `pc_p2_forget_teki` + manager
+recycle) for each, then erases the host. The fixture now calls `pc_p2_forget_teki(host)`
+(the lane-07 seam, `pc_p2_teki_lifetime.h`) instead of `pc_p2_tamago_forget` directly.
+`P2_TAMAGO_GROUP_FORGET host=346020 group=10 remaining=0 killed=9`.
+
+### Item 3 — exactly_once is now a real observation
+
+`P2_TAMAGO_BIRTH_ONCE host=346020 born=9` (prints the actual `born` count, no
+literal `duplicate=0`). `validate()` `exactly_once` now gates the fixture's
+`P2_TAMAGO_GROUP_ONCE host=346020 count=10` (emitted only after a `require` that
+count is still exactly 10 after the host cycles).
+
+### Item 4 — synthetic born ids flagged
+
+Born followers emit `P2_TAMAGO_BIND ... visual_only=0 born=1`; the staged host emits
+no `born=`. Simple-gate GOOD_LOG now uses ids 346020 (host) + 346021..346029 (born),
+matching the native emission.
+
+### Item 5 — gate table + commit table corrections
+
+- Natural Astonish is now genuinely from the whole group (all 10), not host+1.
+- `P2_TAMAGO_GROUP_CLEANUP forgotten=10` is informational (the gate reads
+  `P2_TAMAGO_GROUP_FORGET remaining=0`).
+- Bind-time health writes are explicit (`hostActor->mHealth=LIFE` in setup,
+  `child->mHealth=LIFE` in birth) — labelled, not claimed as natural-combat damage.
+- Commit table above the slice-4 section updated with `9df2c03` (slice-4) and the
+  `bf02f219`..`2454bfc2` fix series.
+
+### Tests / evidence
+
+`PIKMIN_NATIVE_ROOT=...` family suite → **145 passed**. `tamago fixture.exe` SHA
+`548d3fb1f7e639f78a5ed1e54afcd414d837e178e8f6f1e4ec10d1a93286b58f`; native
+`nectar.exe` SHA `2d0332d472736be8c6fc5ea6f9a53d0311bc615423b5f5e806c2a04b5a7146ba`.
+
+### Subagent usage (fix4)
+
+- **explore #1 (source audit)** — confirmed the reviewer's spawnTeki launch-velocity
+  claim and the `stopVelocity`/`kill`/`pc_p2_forget_teki` semantics, and verified the
+  real log (host 38 + 346021 16 Astonish, 346022–346029 at 4098/7628 etc.). Used
+  as-is; a real time saver.
+- **explore #2 (inventory)** — located the exact fix lines + confirmed the forget is
+  registry-only and the fixture bypasses the seam. Used as-is.
+- **general #3 (validator/test scaffold)** — rewrote `validate()`/GOOD_LOG (exactly_once
+  on GROUP_ONCE, born=1 on BIND, born=9) + 11 tests. Applied with only the `born=9`
+  and `GROUP_ONCE host=346020` fixtures reconciled by hand. The delegated exactly_once
+  contract held this time.
+
+Note per the reviewer: the explore audit imported the spawnTeki launch-velocity
+behaviour uncleaned; the actual fly-off cause was my own radius arithmetic, found by
+adding a temporary debug print and reading the real log — a reminder to verify
+delegated conclusions against the runtime.
