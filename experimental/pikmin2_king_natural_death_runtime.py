@@ -40,7 +40,11 @@ class RoomApp : public PlugPikiApp {
  int frames=0,ready=0;bool hold=false;bool armed=false;bool finished=false;
  void pinSquad(float cx,float cy,float cz){
   if(!pikiMgr)return;
-  const float r=30.0f;int idx=0;
+  // Ring radius 58: inside the 80-disc root collision sphere (so the Pikmin
+  // latch and deal damage) but outside the tongue mouth capsule (reach ~55) and
+  // the foot trample cone (~65), so the natural combat receiver keeps them
+  // latched instead of the Emperor licking/trampling the ring away.
+  const float r=58.0f;int idx=0;
   Iterator p(pikiMgr);
   CI_LOOP(p){
    Piki* a=static_cast<Piki*>(*p);
@@ -119,6 +123,7 @@ def build(native, build_dir, output, head):
 SQUAD_RED = 32
 PLACEMENT_ID = 230020
 SPAWN = (34.0, 30.0, 1896.0)
+RING_RADIUS = 58.0  # inside root (80), outside mouth capsule (~55) and trample cone (~65)
 
 
 def stage(assets, bank, output):
@@ -138,7 +143,7 @@ def stage(assets, bank, output):
         struct.pack_into('<I', row, 8, 235200 + i)
         row[16:48] = b'KingNaturalDeath fixture'.ljust(32, b'\0')
         ang = 2.0 * math.pi * i / SQUAD_RED
-        write_position(row, [SPAWN[0] + 30.0 * math.sin(ang), 30.0, SPAWN[2] + 30.0 * math.cos(ang)])
+        write_position(row, [SPAWN[0] + RING_RADIUS * math.sin(ang), 30.0, SPAWN[2] + RING_RADIUS * math.cos(ang)])
         struct.pack_into('>I', row, 92, 1)  # 1 = red
         entries.append(bytes(row))
     data = data[:20] + struct.pack('>I', len(entries)) + b''.join(entries)
