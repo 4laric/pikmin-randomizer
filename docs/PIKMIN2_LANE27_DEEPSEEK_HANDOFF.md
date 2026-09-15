@@ -595,3 +595,111 @@ multi-carrier + dead-carrier chain, now pool-corrected and runtime-verified on
 run4. The next step requires a generated Dirigibug proxy host (lane 02/03/05
 admission + a carrier teki type) and the lane-20 Bomb actor — named providers,
 not lane-27 edits.
+
+## Slice 4 (resolved) — generated carrier sidecar bound; natural-kill gate unobserved
+
+The previous "core binding blocked at generated host" claim is resolved. The
+generated Dirigibug carrier binds a P1 `TEKI_Napkid` vehicle through the same
+sidecar mechanism Kurage uses for `TEKI_Frog` and Fuefuki for `TEKI_Napkid`; it
+drives the lane's 13-state FSM from the live `mSRT.t`, births/throws bombs from
+the shared pool, routes detonations through the real engine `InteractBomb`
+receiver, and wires corpse/reset into the lifetime seam.
+
+### Ordered commits
+
+Native branch `deepseek/p2-l27-native` (base `4265bdfb`, clean):
+
+1. `5e9648ff` — new `pc_p2_bombsarai_teki.{h,cpp}` sidecar
+2. `478d7ac2` — hook: `gameCoreSection.cpp` `finalSetup` setup
+3. `6ef051ab` — hook: `tekibteki.cpp` `BTeki::update` tick
+4. `7181a5f0` — hook: `pc_p2_teki_lifetime.cpp` forget+reset
+5. `8375d991` — hook: `pc_p2_preview.cpp` Pod corpse branch
+6. `e1cdfd7c` — hook: `CMakeLists.txt` source registration
+7. `16a5a98e` — fix: carrier token vs flick-roll LCG state
+
+Root branch `deepseek/p2-l27` (base `fc1d923`, clean):
+
+1. `ce8e0ef` — emitter + teki-marker validator + flip tests
+
+### What the host binding does
+
+- `pc_p2_bombsarai_teki_setup` (from `gameCoreSection::finalSetup`) reads
+  `p2-bombsarai-teki.txt` (`P2_BOMBSARAI_TEKI_1 1 <gen> 11`), finds the generated
+  Napkid by `mGenerator->_70` + `mTekiType`, and binds it (inert without the
+  sidecar; malformed -> abort).
+- `pc_p2_bombsarai_teki_tick` (from `BTeki::update`) steps a 30 Hz source clock
+  and drives `P2BombSaraiFsm` with host inputs derived from the live actor:
+  health (`t->mHealth`), target sensing (nearest alive Navi/Pikmin vs territory
+  200 / attackable 100·45deg / attack-XZ 50), keyframe stand-ins. `P2BombSaraiHover`
+  sets the carrier height; `P2BombSaraiBombPool` supplies/captures at the
+  kamu_jnt1 stand-in joint; Release/Fall/Death lobs throw from the shared pool.
+- Detonations apply the source Bomb's `InteractBomb`
+  (`Creature::stimulate`, the same engine receiver `pc_p2_bombotakara.cpp:146-149`
+  uses) to live Navi/Pikmin, attributed to the carrier Teki while alive.
+- Death via the lifetime seam: `pc_p2_forget_teki`/`pc_p2_reset_all_teki` clear
+  the binding; `pc_p2_bombsarai_receipt` resolves the corpse and
+  `pc_p2_preview_deliver` credits `corpse:<prefix>bombsarai:<gen>`.
+
+### Runtime evidence (executed, generated host, exit via timeout kill)
+
+Production `pikmin_pc` (`nectar.exe`) built at native `16a5a98e`, run under
+`slot.py run gl l27` at `PIKMIN_P2_ROOM_WINDOW=960x540` / `PYTHONUTF8=1`, staged
+from the committed emitter (`experimental/pikmin2_bombsarai_teki_stage.py`, run
+dir `output/dsw/l27-out/teki-arena/2e921c67c4c94102bcb69a40eef2a5af`), killed
+after 240 s. Log `output/dsw/l27-out/bombsarai-teki-run.log`
+(sha256 `fcce0c243d3a1042a275bad3276ca1185405d7e2f4251b9a92412a822addd39c`).
+
+```
+[PC Port] Experimental preview window set to 960x540 windowed and centered ...
+[Pikipelago] P2_ROOM_PREVIEW room=room_4x4a_4_conc red=20 isolated=1
+P2_BOMBSARAI_TEKI_READY generator=270001 type=11
+P2_BOMBSARAI_TEKI_SUPPLY generator=270001 tick=30
+P2_BOMBSARAI_TEKI_THROW generator=270001 kind=Release tick=53
+P2_BOMBSARAI_TEKI_JOINT_FOLLOW generator=270001 travel_y=3.662 travel_xz=104.059
+P2_BOMBSARAI_TEKI_BLAST generator=270001 token=270001 carrier_valid=1 hits=5 pikmin_hits=5
+...
+P2_BOMBSARAI_TEKI_BLAST generator=270001 token=270001 carrier_valid=1 hits=12 pikmin_hits=11
+...
+14 blasts, 17 throws, max hits=12 pikmin_hits=11
+```
+
+Reading: the generated Napkid carrier acquired (SUPPLY), carried (JOINT_FOLLOW
+under the live actor's flight, travel up to 5532 xz), threw 17 Release lobs, and
+blasted 14 times — 10 blasts applied the real `InteractBomb` to live Pikmin
+(1..11 Pikmin hit per blast, token 270001, carrier_valid=1). This is the ordinary
+spawn-binding + real-damage-receiver gate, previously cited as blocked.
+
+### Honest remaining gate
+
+`P2_BOMBSARAI_TEKI_DEAD` count 0 and no `P2_POD_RECEIPT` in 240 s: the flying
+Napkid carrier was never killed by the ground squad (the Dirigibug is a flyer;
+the carrier dominated — it lobbed 17 bombs into the squad while the Pikmin never
+engaged it), so the corpse-receipt branch (`pc_p2_preview.cpp:333`,
+`pc_p2_bombsarai_receipt`) is wired and unit-tested but NOT runtime-exercised.
+Six-gate rows: identity/spawn PARTIAL (generated Napkid vehicle, not P2 identity);
+autonomous movement/animation PASS (FSM drives the live actor); attacks/receivers
+PASS (real InteractBomb on live Pikmin); death/corpse UNOBSERVED (flying carrier
+survived); transport/reward UNOBSERVED (corpse branch wired, untriggered);
+cleanup/re-entry untested (single session).
+
+### Tests
+
+Root `py -3.12 -m pytest tests/test_pikmin2_bombsarai_teki_log.py` -> 6 passed
+(per-marker flips). Full lane root suite:
+`tests/test_pikmin2_bombsarai_{install,runtime_log,teki_log}.py` -> 39 passed.
+Build: `build_lane.py l27` clean at native `16a5a98e` (`ninja -n` "no work to do"),
+exe sha256 `96bb230071e906cc961ecc0777968448e8dad8f2f7892bc032e8d25d5e13b39c`
+(dirty build; no dirty=no line recorded after the rng fix — see note below).
+
+### Notes / deviations
+
+- Blast uses `InteractBomb` + `Creature::stimulate` (the engine receiver
+  `pc_p2_bombotakara.cpp` uses) rather than the `p2_projectile_apply_engine_strike`
+  name in the brief, which was not present in this worktree; `InteractBomb` is the
+  actual Bomb blast receiver on this line (Interactions.h:100-119).
+- The Fuefuki hardlane also binds the first Napkid when its own sidecar is absent
+  (`pc_p2_hardlanes.cpp`), so log shows a companion `P2_HARDLANES_READY
+  family=Fuefuki vehicle=Napkid` for the same generator; it watches the vehicle
+  and does not move it, so the BombSarai evidence is unaffected.
+- Only the FIRST supply prints `SUPPLY`; the 17 THROW lines each imply a prior
+  pool supply (one-bomb-per-carrier guard, token-pinned after the rng fix).
