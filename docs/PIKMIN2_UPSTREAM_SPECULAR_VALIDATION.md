@@ -57,7 +57,11 @@ beneficiary.
     `test_pikmin2_frog_material_profile.py`,
     `test_pikmin2_qurione_material_audit.py`,
     `test_pikmin2_qurione_material_patch.py` -> **26 passed**.
-- Visual/GL validation against a real P2 material is **UNTESTED** pending the
+- Visual/GL validation against a real P2 material: **validated** on the Queen two-stage
+  path (lane 09 slice 1, native `ec9ead10`): `QUEEN_SPECULAR_RENDER ... specular_channels=260635 replay_equal=1`,
+  fixture sha `3aa858e2...`; see `docs/PIKMIN2_LANE09_DEEPSEEK_HANDOFF.md`. The shared specular
+  primitive family lanes should consume is `pc_port/pc_p2_specular_dir.h` (`p2specular::halfVector`,
+  probe target `p2_specular_dir_test`). Earlier note, kept for history: it was UNTESTED pending the
   real-GL/input slot. Repro (Queen two-stage path from #399):
 
   ```powershell
