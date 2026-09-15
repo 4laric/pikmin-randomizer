@@ -398,6 +398,12 @@ void pc_p2_qurione_setup() {
         w.timer = 0.0f;
         w.clip = "appear1";
         actor->mHealth = LIFE;
+        // Source onInit calls doAnimationCullingOff(): the wisp is never
+        // AI/LOD culled. On the P1 host the equivalent is CF_AIAlwaysActive,
+        // otherwise Creature::update early-returns (creature.cpp:677) once the
+        // wisp leaves the AI grid and its movement pass (moveNew) stops
+        // executing, freezing the position mid-Move.
+        actor->setInsideView();
         const unsigned gen = actor->mGenerator->_70;
         std::printf("P2_QURIONE_BIND generator=%u source_id=16 visual_only=0\n", gen);
         std::printf("P2_ENEMY_READY species=Qurione native_family=Qurione generator=%u x=%.7f y=%.7f z=%.7f "

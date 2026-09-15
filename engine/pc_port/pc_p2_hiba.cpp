@@ -417,6 +417,14 @@ int pc_p2_hiba_emitted() {
     return count;
 }
 
+// Number of currently-registered hazards. Lane-10 gate-6 (cleanup/re-entry) uses
+// this to observe the lane-07 reset seam (pc_p2_reset_all_teki -> reset) and the
+// re-arm path (pc_p2_hiba_setup), proving the hazards reset and re-arm exactly
+// once.
+int pc_p2_hiba_hazard_count() {
+    return static_cast<int>(hazards.size());
+}
+
 bool pc_p2_hiba_hit_seen() { return hitSeen; }
 bool pc_p2_hiba_immune_seen() { return immuneSeen; }
 bool pc_p2_hiba_gas_hit_seen() { return gasHitSeen; }

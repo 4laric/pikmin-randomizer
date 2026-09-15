@@ -366,10 +366,15 @@ int pc_p2_bulbmin_attach_mother(Creature* mother);
 // never fabricates one. Returns the dependents born (0 when inert, already
 // registered, or no host).
 int pc_p2_bulbmin_attach_mother_ex(Creature* host, const char* model, bool proxy);
-// Opt-in env registration (PIKMIN_P2_BULBMIN_MOTHER). Registers the first
-// Chappy-family actor as the dedicated labeled mother. No-op returning 0 when
-// the env value is unset or the bridge is inert, so default behavior is
-// unchanged.
+// Resolve the Mother Bulbmin stand-in host: the labeled Dwarf Red (Kochappy)
+// registry when present, else the first bare Chappy-family generator row every
+// room preview writes (scripts/preview_pikmin2_room.py TEKI_Chappy). The bridge
+// only compares the pointer and reads position/face direction once, so a
+// bank-free host is sufficient. Returns nullptr when no host exists.
+BTeki* pc_p2_bulbmin_mother_host();
+// Opt-in env registration (PIKMIN_P2_BULBMIN_MOTHER). Registers the resolved
+// Chappy-family host under an explicit label. No-op returning 0 when the env
+// value is unset, no host resolves, or the bridge is inert.
 int pc_p2_bulbmin_attach_dedicated_mother();
 // Label of the registered mother proxy, or "none" when unregistered.
 const char* pc_p2_bulbmin_mother_model();

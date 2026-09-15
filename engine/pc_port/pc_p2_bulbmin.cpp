@@ -10,6 +10,7 @@
 #include "NaviMgr.h"
 #include "MapMgr.h"
 #include "teki.h"
+#include "Generator.h"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -225,11 +226,20 @@ int pc_p2_bulbmin_attach_mother_ex(Creature* mother, const char* model, bool pro
     if (!active || !mother) return 0;
     const std::string label = (model && model[0] != '\0') ? model : kKochappyProxyModel;
     if (!bridge.registerMother(mother, label, proxy)) return 0;
-    const int born = pc_p2_bulbmin_drive_birth(mother, mother->getPosition(),
-                                               mother->mFaceDirection,
-                                               bridge.settings().maxDependents);
-    std::printf("P2_BULBMIN_MOTHER_BIRTH model=%s dependents=%d wild=%zu recruited=%zu\n",
-                label.c_str(), born, bridge.wildCount(), bridge.recruitedCount());
+    // Only a real LeafChappy (proxy==false) births the source ten-body flock.
+    // The labeled Chappy-family proxy registers the stand-in for the leader/epoch
+    // bookkeeping WITHOUT birthing Piki: the LeafChappy birth (pikiMgr->birth +
+    // piki_kochappy model) is out of scope for the Chappy family, and birthing
+    // raw Piki in the preview crashes the engine update. Dependents are instead
+    // bound to the mother epoch by the fixture/caller via pc_p2_bulbmin_birth.
+    int born = 0;
+    if (!proxy)
+        born = pc_p2_bulbmin_drive_birth(mother, mother->getPosition(),
+                                         mother->mFaceDirection,
+                                         bridge.settings().maxDependents);
+    const std::uint32_t generator = mother->mGenerator ? mother->mGenerator->_70 : 0;
+    std::printf("P2_BULBMIN_MOTHER_BIRTH model=%s generator=%u dependents=%d wild=%zu recruited=%zu\n",
+                label.c_str(), generator, born, bridge.wildCount(), bridge.recruitedCount());
     std::fflush(stdout);
     return born;
 }
@@ -238,14 +248,29 @@ int pc_p2_bulbmin_attach_mother(Creature* mother) {
     return pc_p2_bulbmin_attach_mother_ex(mother, kKochappyProxyModel, true);
 }
 
+BTeki* pc_p2_bulbmin_mother_host() {
+    // Prefer the labeled Dwarf Red (Kochappy) registry when its bank installed one;
+    // otherwise fall back to the bare Chappy-family generator row every preview
+    // writes (scripts/preview_pikmin2_room.py sets TEKI_Chappy on the dwarf host).
+    if (BTeki* kochappy = pc_p2_kochappy_first_registered()) return kochappy;
+    if (!tekiMgr) return nullptr;
+    Iterator it(tekiMgr);
+    CI_LOOP(it) {
+        Teki* enemy = static_cast<Teki*>(*it);
+        if (enemy && enemy->mTekiType == TEKI_Chappy && enemy->mGenerator)
+            return static_cast<BTeki*>(enemy);
+    }
+    return nullptr;
+}
+
 int pc_p2_bulbmin_attach_dedicated_mother() {
     if (!active) return 0;
     const char* env = std::getenv("PIKMIN_P2_BULBMIN_MOTHER");
     if (!env || env[0] == '\0') return 0;
-    Creature* host = static_cast<Creature*>(pc_p2_kochappy_first_registered());
+    BTeki* host = pc_p2_bulbmin_mother_host();
     if (!host) return 0;
     // Same-host re-registration only refreshes the label; it never re-births.
-    return pc_p2_bulbmin_attach_mother_ex(host, env, true);
+    return pc_p2_bulbmin_attach_mother_ex(static_cast<Creature*>(host), env, true);
 }
 
 const char* pc_p2_bulbmin_mother_model() {

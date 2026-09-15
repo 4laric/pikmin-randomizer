@@ -17,7 +17,8 @@
 //     own lane-11 capability matrix (Red/Bulbmin fire, Blue/Bulbmin bubble,
 //     White/Bulbmin gas, Yellow/Bulbmin electric).
 //   * The item-carry (5..10) and Bomb-carry (11..13) states are source-backed N/A:
-//     no treasure or Bomb payload is staged. BombOtakara (93) is not bound.
+//     no treasure or Bomb payload is staged. BombOtakara (93) is bound for identity
+//     only: it delegates its element to the lane-20 Bomb payload (no discharge).
 //   * Wander/wake navigation is a P1-host adaptation of OtakaraBase Move/Turn.
 //   * View angle is a full circle (hit angle fp23=0 on the disc).
 // No other lane's module is modified; every hook is a no-op for unregistered actors.
@@ -215,6 +216,14 @@ bool dweevilAccepts(const Piki* p, p2dweevil::Stimulus stim) {
 
 void doDischarge(BTeki* a, Otakara& s) {
     if (!pikiMgr) return;
+    if (s.stimulus == p2dweevil::StimNone) {
+        // BombOtakara (93) delegates its element to the carried Bomb payload
+        // (lane-20 shared blast contract); there is no self-contained discharge.
+        std::printf("P2_OTAKARA_DISCHARGE_NONE generator=%u source_id=%d payload_delegated=1\n",
+                    genOf(a), s.species);
+        std::fflush(stdout);
+        return;
+    }
     const Vector3f pos = a->getPosition();
     const unsigned generator = genOf(a);
     int applied = 0, immune = 0;
@@ -411,7 +420,8 @@ static int speciesFromName(const std::string& name) {
     if (name == "WaterOtakara") return p2dweevil::WaterId;
     if (name == "GasOtakara") return p2dweevil::GasId;
     if (name == "ElecOtakara") return p2dweevil::ElecId;
-    return -1; // BombOtakara and unknowns are left to the other paths
+    if (name == "BombOtakara") return p2dweevil::BombId;
+    return -1; // unknown species left to the other paths
 }
 
 void pc_p2_otakara_setup() {
