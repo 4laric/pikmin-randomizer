@@ -102,6 +102,15 @@ APP = r'''class RoomApp : public PlugPikiApp {
         v->mActiveAction->abandon(nullptr);v->mActiveAction->mCurrActionIdx=PikiAction::Transport;
         v->mActiveAction->mChildActions[PikiAction::Transport].initialise(corpse);v->mMode=PikiMode::TransportMode;++n;}return n;}
     int freeAndPark(Teki* center, float radius){return freeAndParkAt(center->mSRT.t,radius);}
+    // Stage the squad on the actor and open the real Attack action *without* a
+    // FreeMode changeMode first: the BigFoot stage (which drains) only re-issues
+    // Attack, while a FreeMode changeMode immediately before it can leave the Free
+    // action current so the proxy never takes damage.
+    int parkAttack(Teki* target,float radius){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
+        float ang=float(n)*6.2831853f/20.0f;Vector3f pt(target->mSRT.t.x+radius*std::sin(ang),0,target->mSRT.t.z+radius*std::cos(ang));
+        pt.y=mapMgr->getMinY(pt.x,pt.z,true);v->resetPosition(pt);
+        v->mActiveAction->abandon(nullptr);v->mActiveAction->mCurrActionIdx=PikiAction::Attack;
+        v->mActiveAction->mChildActions[PikiAction::Attack].initialise(target);v->mMode=PikiMode::AttackMode;++n;}return n;}
     int freeAndParkAt(const Vector3f& c, float radius){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
         float ang=float(n)*6.2831853f/20.0f;Vector3f pt(c.x+radius*std::sin(ang),0,c.z+radius*std::cos(ang));
         pt.y=mapMgr->getMinY(pt.x,pt.z,true);v->resetPosition(pt);v->changeMode(PikiMode::FreeMode,naviMgr?naviMgr->getNavi():nullptr);++n;}return n;}
@@ -169,8 +178,7 @@ public:int idle() override {
         if(observed==wakeTick+8){n->resetPosition(captainOrigin);std::printf("P2_LL_RETREAT captain=1\n");std::fflush(stdout);}
         if(pc_p2_long_legs_shot(houdai)||observed>=4500){
             std::printf("P2_LL_SHOT species=Houdai source_timed=1 tick=%d\n",observed);
-            freeAndPark(houdai,30.0f); // adjacent to the proxy so the squad latches and drains in the source damage window
-            int a=assignAttack(houdai);std::printf("P2_LL_ATTACK_HOUDAI attack=%d\n",a);std::fflush(stdout);stage=3;return result;
+            int a=parkAttack(houdai,30.0f);std::printf("P2_LL_ATTACK_HOUDAI attack=%d\n",a);std::fflush(stdout);stage=3;return result;
         }
         if(observed>=30000){std::printf("P2_LL_INJECT species=Houdai injected_health=0 source=fixture not_natural_combat=1\n");houdai->mHealth=0.0f;std::fflush(stdout);stage=3;return result;}
         return result;
