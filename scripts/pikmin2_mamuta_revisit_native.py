@@ -36,7 +36,7 @@ def validate(text):
             and 'PASS P2_MAMUTA_REVISIT_RUNTIME captain_down' not in text):
         raise ValueError('Missing revisit runtime completion')
     birth = _line(text, r'P2_MAMUTA_REVISIT_BIRTH id=(\d+) type=(\d+) squad=(\d+) color=(\w+)')
-    if birth != ('221001', '24', '10', 'red'):
+    if birth != ('221001', '24', '14', 'red'):
         raise ValueError('Missing re-birth identity/squad evidence')
     ready = _line(text, r'P2_MAMUTA_REVISIT_READY prior_pokos=(\d+)')
     prior_pokos = int(ready[0])
