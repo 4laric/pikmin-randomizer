@@ -224,8 +224,15 @@ public:int idle() override {
         require(freshBigfoot!=bigfoot&&freshHoudai!=houdai,"allocator reused the same address; stale proof inconclusive");
         pc_p2_long_legs_setup();
         require(pc_p2_long_legs_registered(freshBigfoot)&&pc_p2_long_legs_registered(freshHoudai),"fresh actor not bound");
-        require(!pc_p2_long_legs_registered(bigfoot)&&!pc_p2_long_legs_registered(houdai),"old pointer still registered");
         require(pc_p2_long_legs_count()==2,"registry count after re-entry");
+        // The registry is pointer-keyed and the allocator may recycle a freed
+        // address for the *other* species' fresh actor, so a raw !registered(old)
+        // check is a proxy that false-positives on aliasing. The stale proof is:
+        // the registry holds exactly the fresh pair (count==2 above), and every
+        // surviving old pointer that is still registered is a recycled live fresh
+        // actor, not the freed one.
+        require(!pc_p2_long_legs_registered(bigfoot)||freshBigfoot==bigfoot||freshHoudai==bigfoot,"stale old BigFoot pointer survived");
+        require(!pc_p2_long_legs_registered(houdai)||freshBigfoot==houdai||freshHoudai==houdai,"stale old Houdai pointer survived");
         require(!corpseOf(freshBigfoot)&&!corpseOf(freshHoudai),"fresh actor inherited a corpse");
         std::printf("P2_LL_REENTRY species=BigFoot old=%p new=%p stale=0 fresh=1 count=%lu\n",(void*)bigfoot,(void*)freshBigfoot,pc_p2_long_legs_count());
         std::printf("P2_LL_REENTRY species=Houdai old=%p new=%p stale=0 fresh=1 count=%lu\n",(void*)houdai,(void*)freshHoudai,pc_p2_long_legs_count());
