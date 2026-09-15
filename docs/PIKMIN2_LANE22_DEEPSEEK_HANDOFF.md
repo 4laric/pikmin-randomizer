@@ -496,6 +496,8 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l2
   py -3.12 -m experimental.pikmin2_otakara_runtime run `
     --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" `
     --imported "C:/Users/alari/pikmin-randomizer/output/dsw/l22-assets" `
+    --converted "C:/Users/alari/pikmin-randomizer/output/dsw/l32-out/pikmin2-room105" `
+    --pod-dir "C:/Users/alari/pikmin-randomizer/output/dsw/l11-out/pod" `
     --output "C:/Users/alari/pikmin-randomizer/output/dsw/l22-out/slice3-repro" `
     --exe "C:/Users/alari/pikmin-randomizer/output/dsw/l22-fixture-slice3/fixture.exe" `
     --seconds 150 --scenario natural

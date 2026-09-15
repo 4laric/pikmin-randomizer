@@ -204,11 +204,9 @@ def _prepare_pod(assets, imported, output, converted, pod_dir):
     """Concrete P2 Pod room (red Onion goal + treasure + p2-pod.txt) with one
     FireOtakara Chappy actor placed inside carry range of the goal, plus the
     dweevil profile/bank/actor sidecars and the lane-06 receipt host."""
-    from scripts.preview_pikmin2_room import prepare as room_prepare, records
-    if converted is None:
-        converted = Path('C:/Users/alari/pikmin-randomizer/output/dsw/l32-out/pikmin2-room105')
-    if pod_dir is None:
-        pod_dir = Path('C:/Users/alari/pikmin-randomizer/output/dsw/l11-out/pod')
+    from scripts.preview_pikmin2_room import prepare as room_prepare
+    if converted is None or pod_dir is None:
+        raise ValueError('deliver/natural scenario requires --converted and --pod-dir')
     run = room_prepare(Path(assets).resolve(), Path(converted).resolve(), Path(output).resolve())
     cfg = dict(FAMILIES['dweevil'])
     gen = run / 'assets/dataDir/stages/chal0/default.gen'
