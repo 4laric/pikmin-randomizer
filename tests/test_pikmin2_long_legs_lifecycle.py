@@ -143,7 +143,7 @@ def _native_roots():
         yield Path(env)
     here = Path(__file__).resolve()
     for base in (here.parents[2], here.parents[1]):
-        for sibling in ('native-l26', 'native'):
+        for sibling in ('native',):
             candidate = base / sibling
             if candidate.is_dir():
                 yield candidate

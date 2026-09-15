@@ -280,7 +280,7 @@ def validate(text, code=0):
     schedules = (bool(re.search(r'P2_LONG_LEGS_STATE species=Houdai generator=312001 state=(Land|Wait|Flick|Shot)', text))
                  and bool(re.search(r'P2_LONG_LEGS_STATE species=BigFoot generator=312002 state=(Land|Wait|Flick)', text)))
     natural_damage = bool(re.search(r'P2_LONG_LEGS_DAMAGE species=BigFoot generator=312002 '
-                                    r'health=\d+(\.\d+)? prior=\d+(\.\d+)?', text))
+                                    r'health=(?!0+(?:\.0+)?\s)\d+(\.\d+)? prior=\d+(\.\d+)?', text))
     crush = bool(re.search(r'P2_LONG_LEGS_CRUSH species=BigFoot generator=312002 pikmin=[1-9]\d*', text))
     injected = 'P2_LL_INJECT' in text and 'not_natural_combat=1' in text
     natural_bigfoot_death = bool(re.search(r'P2_LL_NATURAL_DEATH bigfoot=1', text))
