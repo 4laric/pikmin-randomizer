@@ -363,8 +363,9 @@ def run_cross_process(assets, bank, output, exe, mode='natural'):
 
 def run_mixed(assets, bank, output, exe):
     """Co-stage a Flora Pelplant consumer with the Kogane consumer in one room, run
-    the natural collection pass, then read both ordinary-Onion ledgers to prove the
-    handle-per-path receipt host keeps them separate."""
+    the injected collection pass (deterministic; kogane-mode.txt=0), then read both
+    ordinary-Onion ledgers to prove the handle-per-path receipt host keeps them
+    separate."""
     stage = prepare(assets, bank, output / 'stages')
     manifest = json.loads((stage / 'arena.json').read_text())
     (stage / 'kogane-positions.txt').write_bytes(
