@@ -194,3 +194,186 @@ no new drop/grant. Single-process `collect-run` also passes.
   against the real module (`validate_collect`/`validate_restart`/`validate_cross`), because
   restart dedupe is cross-process (two logs) and nectar does not produce sprouts (pellets do).
   Net: cost ~5 min to discard, but the scaffolding confirmed the test shape. Honest negative.
+
+## Slice 3 — natural flips, a real second-flip sequence and a mixed-scene ledger
+
+Worker: DeepSeek. Source ID 9 Kogane. (1) Replaces the slice-2 injected
+`InteractPress` flips with real Pikmin stick-attacks through the ordinary
+receiver (`pc_p2_kogane_attacked`), keeping the injected path as the separately
+flagged `mode=injected` legacy scenario; (2) strengthens pass 2 to actually drive
+a second flip sequence and re-probe the receipt grants through the real
+`pc_p2_receipt_host_grant` Duplicate path with a ledger row-count check; (3)
+codifies the lane-06 two-consumer (Kogane + Flora) mixed-scene contract and
+documents why today's host cannot keep the two ledgers separate.
+
+### Source IDs and files owned
+
+- Source ID 9 Kogane (target). Native (worktree `output/dsw/native-l17`):
+  `pc_port/pc_p2_kogane.cpp`, `pc_port/pc_p2_kogane.h` (owned, edited).
+- Root (worktree `output/dsw/l17-root`): `experimental/pikmin2_kogane_collect.py`
+  (edited), `tests/test_pikmin2_kogane_collect.py` (edited). No shared file edits.
+
+### Ordered commits
+
+Root (`deepseek/p2-l17`, base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`, dirty: clean):
+- `7e126f83` lane17: natural-flip collection + restart re-probe and ledger cap (slice 3) (#219)
+
+Native (`deepseek/p2-l17-native`, base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`, dirty: clean):
+- `04af0bce` lane17: restart-dedupe ledger introspection + real Duplicate re-probe (slice 3) (#219)
+- `1ccc4f37` lane17: total-nectar census counter for the natural collection pass (slice 3) (#219)
+
+### Interfaces / hooks touched
+
+- `pc_p2_kogane_onion_ledger_rows()` (new) — reads the persisted lane-06
+  `P2_RECEIPTS_1` Onion ledger and returns its row count (0 for missing, -1 for
+  malformed). Used by pass 2 to assert the ledger is still exactly three rows.
+- `pc_p2_kogane_reprobe_duplicates(unsigned generator,int id)` (new) — reopens the
+  kogane ledger (unconditionally, so a mixed-scene Flora steal cannot redirect it)
+  and re-drives the three `enemy:<id>` flip grants through the real
+  `pc_p2_receipt_host_grant`; every result must be Duplicate. Returns 3, else -1.
+- `pc_p2_kogane_nectar_dropped()` (new) — process-total nectar spawned by `doDrop`,
+  so the collection census reports the full 2 + 3 = 5 nectar as drunk once all water
+  organisms are gone (the slice-2 `peakWater` proxy under-counted nectar drunk before
+  the escape, e.g. flip-2 nectar consumed during the flip phase).
+- The collect RoomApp (`experimental/pikmin2_kogane_collect.py` APP) now reads a
+  `kogane-mode.txt` flag (natural default, injected legacy) and drives natural flips
+  with the slice-1 `command`/`requeue` attack routine plus a labelled position hold
+  (`holdBeetles`) that pins the three beetles at their birth anchors so the natural
+  attacks and drops are deterministic (position-only; the flip is still a native
+  `InteractAttack`). Pass 2 drives the same attack routine at the restored (escaped)
+  beetle, then calls the two new native hooks and emits `P2_KOGANE_REPROBE
+  duplicates=3` + `P2_KOGANE_ONION_LEDGER rows=3`.
+- No shared-file edit: `pc_p2_flora_*` and `pc_p2_receipt_host.*` are lane 06/other
+  files and were only read, not modified.
+
+### Build evidence (`output/dsw/l17-build-evidence.txt`, slice-3 lines)
+
+```
+native=1ccc4f371d79418876462225f183fe556ebaf93d dirty=no exe=nectar.exe
+sha256=20e051c09e9f91eaf21ddf234e3144edf495418a49164e1d2f0e8e5dd1268802 ninja_n="ninja: no work to do."
+```
+(earlier slice-3 line at `04af0bce`: nectar.exe sha256 `a95a72e9…471`)
+
+Fixture `collect-natural-fixture3` status `built`; `fixture.exe` SHA-256
+`2ff9a4af5c72c7412fafc47244bf7a884fe37311aff45b6b0cb88495d74da98e`.
+
+### Runtime evidence (real-GL, 960x540 centred, `slot.py run gl l17`)
+
+`collect-natural-cross2/stages/77b4aee793bb46b388ef6089e24c1aad` (pass0 exit 1 on
+the slice-2-style census, pass2 exit 0 — the key slice-3 gate):
+
+```
+# pass 0 (natural): the three flips are real Pikmin attacks, not injected presses
+P2_KOGANE_COLLECT_PASS pass=0 mode=natural
+P2_KOGANE_NATURAL_COMMAND attackers=5 mode=natural
+P2_KOGANE_FLIP / P2_KOGANE_NATURAL_ATTACK generator=219001 flip=1,2,3
+P2_KOGANE_DROP  generator=219001 flip=1 pellet1=1 nectar=0
+P2_KOGANE_DROP  generator=219001 flip=2 pellet0=0 nectar=2
+P2_KOGANE_DROP  generator=219001 flip=3 pellet0=0 nectar=3
+P2_KOGANE_ONION_RECEIPT generator=219001 flip=1..3 granted=1 duplicate=0 ledger=onion
+P2_KOGANE_ESCAPE generator=219001 flips=3
+P2_KOGANE_COLLECTED pellets_collected=1 nectar_drunk=3 sprouts=0   # census edge, fixed below
+
+# pass 2 (restart): the second flip sequence is a no-op and the ledger cap holds
+P2_KOGANE_RECEIPTS loaded=1
+P2_KOGANE_RESTORED_ESCAPE generator=219001 flips=3
+P2_KOGANE_RESTART rearmed=0
+P2_KOGANE_ONION_RECEIPT generator=219001 flip=1..3 granted=0 duplicate=1 ledger=onion
+P2_KOGANE_REPROBE duplicates=3
+P2_KOGANE_ONION_LEDGER rows=3
+PASS P2_KOGANE_RESTART dedupe_ok rearmed=0 duplicate=3 ledger=3
+```
+
+The natural flip/receipt chain and the pass-2 re-probe both validate. `duplicate=1`
+comes from the real `pc_p2_receipt_host_grant` Duplicate branch, not a fake marker.
+`collect-natural-cross3/4` did not flip within the 300 s window — the natural
+Pikmin stick-attack is non-deterministic under host AI (the same limitation the
+slice-1 natural run documented: flips 1–2 land then the attackers need re-queueing).
+This is why the injected `mode=injected` fallback remains and is labelled separately.
+The slice-3 census fix (total-nectar counter + wait-for-sprout) is in the fixture
+that built for cross3/cross4, but a fully clean natural-collect PASS (nectar_drunk=5,
+sprouts>=1) was not captured in the bounded window because those runs did not flip.
+
+### Six arena gates (natural vs injected labelled)
+
+| Gate | Result | Evidence / label |
+|---|---|---|
+| 1. Exact identity and spawn | PASS | `P2_KOGANE_BIRTH` ×4 exact; `P2_KOGANE_BIND source_id=9` |
+| 2. Movement/animation | PASS | wander/draw unchanged; position hold is a labelled fixture pin |
+| 3. Attacks and receivers | **PASS (natural, flaky)** | `P2_KOGANE_NATURAL_ATTACK` ×3 in cross2; 0 flips in cross3/4 (host AI non-determinism) |
+| 4. Death/corpse | PASS | 3rd flip -> `P2_KOGANE_ESCAPE`; no corpse |
+| 5. Transport and reward | PARTIAL | natural drops + onion_receipt ×3 + pellet carried (cross2); full 5-nectar/1-sprout census not captured in-window |
+| 6. Cleanup/re-entry | **PASS (restart dedupe)** | cross2 pass2: no re-arm, `duplicate=1` ×3, ledger rows=3 |
+
+Injections (labelled): the position hold of the three beetles (`holdBeetles`), the
+squad staging teleport, the pellet grab+transport initiation and the free-Pikmin
+nectar nudge. The flip itself (`InteractAttack` -> `pc_p2_kogane_attacked`) and the
+Onion/nectar endpoint are native execution.
+
+### Mixed-scene (lane-06) finding — documented, not fixed here
+
+`validate_mixed_scene(kogane_file, flora_file)` codifies the two-consumer contract.
+Today's native receipt host is a single process-global singleton:
+`pc_port/pc_p2_receipt_host.cpp:7-9` (`std::unique_ptr` persistence + ledger at
+namespace scope) and `:11-22` (`pc_p2_receipt_host_open` replaces the singleton
+unconditionally). `pc_p2_preview.cpp` calls `pc_p2_kogane_setup()` (:246) before
+`pc_p2_flora_setup()` (:250), so in a co-staged scene Flora opens
+`p2-flora-receipts.txt` last and Kogane's lazy `!ready` reopen is skipped, spilling
+Kogane `enemy:9` grants into Flora's file. **Lane-06 ask:** a per-consumer ledger
+(keyed by path) or a `pc_p2_receipt_host_path()` accessor so each consumer can be
+routed to its own file; the Kogane `reprobe` hook already works around it by
+re-opening unconditionally, which is family-local mitigation, not the fix.
+
+### Tests
+
+- `py -3.12 -m pytest tests/test_pikmin2_kogane_collect.py -q` -> 18 passed.
+- Full lane-17 suite `tests/test_pikmin2_kogane_*.py` -> 134 passed, 11 subtests.
+
+### Exact marker grammar the native side now emits / the validator accepts
+
+```
+P2_KOGANE_COLLECT_PASS pass=<0|2> mode=<natural|injected>
+P2_KOGANE_NATURAL_COMMAND attackers=<n> mode=<natural|reattempt>
+P2_KOGANE_NATURAL_ATTACK generator=219001 source_id=9 flip=<1|2|3>     # natural only
+P2_KOGANE_FLIP       generator=219001 source_id=9 flip=<1|2|3>
+P2_KOGANE_DROP       generator=219001 source_id=9 flip=1 pellet1=1 nectar=0
+P2_KOGANE_DROP       generator=219001 source_id=9 flip=2 pellet0=0 nectar=2
+P2_KOGANE_DROP       generator=219001 source_id=9 flip=3 pellet0=0 nectar=3
+P2_KOGANE_ONION_RECEIPT generator=219001 flip=<n> granted=1 duplicate=0 ledger=onion seed=kogane-arena
+P2_KOGANE_ESCAPE     generator=219001 source_id=9 flips=3
+P2_KOGANE_COLLECTED  pellets_collected=1 nectar_drunk=5 sprouts=<>=1>
+PASS P2_KOGANE_COLLECT collect1 drink5 onion_receipt3
+P2_KOGANE_RECEIPTS loaded=1
+P2_KOGANE_RESTORED_ESCAPE generator=219001 flips=3
+P2_KOGANE_RESTART rearmed=0
+P2_KOGANE_ONION_RECEIPT generator=219001 flip=<n> granted=0 duplicate=1 ledger=onion seed=kogane-arena
+P2_KOGANE_REPROBE duplicates=3
+P2_KOGANE_ONION_LEDGER rows=3
+PASS P2_KOGANE_RESTART dedupe_ok rearmed=0 duplicate=3 ledger=3
+```
+
+### Subagent usage (slice 3 experiment, honest)
+
+This agent was provisioned without a `task`/subagent tool, so the three-parallel
+subagent split could not be run; the source audit, candidate inventory and test
+scaffolding were all done inline. Net: higher context usage and a longer serial
+edit -> build -> GL loop (no parallel source/test prep). No subagent result to
+use, correct or discard.
+
+### Reproduction command
+
+```powershell
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/build_lane.py l17
+py -3.12 -m experimental.pikmin2_kogane_collect build `
+  --native C:/Users/alari/pikmin-randomizer/output/dsw/native-l17 `
+  --build-dir C:/Users/alari/pikmin-randomizer/output/dsw/native-l17-build `
+  --output C:/Users/alari/pikmin-randomizer/output/dsw/l17-out/collect-natural-fixture `
+  --head 1ccc4f371d79418876462225f183fe556ebaf93d
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l17 -- `
+  py -3.12 -m experimental.pikmin2_kogane_collect run-cross `
+  --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets `
+  --bank C:/Users/alari/pikmin-randomizer/output/dsw/l17-out/bank `
+  --output C:/Users/alari/pikmin-randomizer/output/dsw/l17-out/collect-natural-cross `
+  --exe C:/Users/alari/pikmin-randomizer/output/dsw/l17-out/collect-natural-fixture/fixture.exe
+# run-mixed stages a co-consumer Flora posy to expose the lane-06 ledger collision
+```
