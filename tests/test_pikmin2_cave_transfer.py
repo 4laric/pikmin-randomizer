@@ -4,6 +4,7 @@ Compiles the engine-free native tool that pins `pc_port/pc_p2_cave_transfer.h`
 (schema-3 Bulbmin round trip) and requires its PASS banner. Skips when no g++ or
 no native copy of the header is present.
 """
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -47,10 +48,15 @@ def test_cave_transfer_round_trip(tmp_path):
     if compiler is None:
         pytest.skip('g++ required for native contract')
     exe = tmp_path / 'test_p2_cave_transfer.exe'
+    # The MinGW g++ driver and the produced exe both need the toolchain bin
+    # directory on PATH (cc1plus/as/ld and the runtime DLLs). An absolute
+    # compiler path is not enough: without it g++ exits 1 with no diagnostics.
+    env = dict(os.environ)
+    env['PATH'] = str(Path(compiler).resolve().parent) + os.pathsep + env.get('PATH', '')
     subprocess.run(
         [compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror',
          '-I', str(port), str(source), '-o', str(exe)],
-        check=True, capture_output=True, text=True)
-    run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=30)
+        check=True, capture_output=True, text=True, env=env)
+    run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=30, env=env)
     assert run.returncode == 0, run.stderr
     assert 'PASS P2_CAVE_TRANSFER' in run.stdout
