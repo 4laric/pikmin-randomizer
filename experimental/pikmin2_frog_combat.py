@@ -80,7 +80,7 @@ def validate(text, code):
     begin = re.search(r'P2_FROG_COMBAT_BEGIN generator=201001 health=([\d.]+) pikis=(\d+)', text)
     ticks = [float(h) for h in re.findall(r'P2_FROG_COMBAT_TICK health=([\d.]+)', text)]
     squad = [int(p) for p in re.findall(r'P2_FROG_COMBAT_TICK health=[\d.]+ pikis=(\d+)', text)]
-    result = re.search(r'P2_FROG_COMBAT_RESULT reason=(\w+) frog_dead=(\d) corpse=(\d) squad=(\d) controls=(\d)', text)
+    result = re.search(r'P2_FROG_COMBAT_RESULT reason=(\w+) frog_dead=(\d+) corpse=(\d+) squad=(\d+) controls=(\d+)', text)
     start = float(begin[1]) if begin else None
     initial = int(begin[2]) if begin else 0
     checks = dict(
