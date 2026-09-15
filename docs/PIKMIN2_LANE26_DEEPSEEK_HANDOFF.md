@@ -5,8 +5,8 @@ Implementation owner: Codex through shared account `4laric`; executing agent/ses
 
 ## Slice delivered
 
-**Source IDs owned / implemented:** Houdai 66 (Man-at-Legs) and BigFoot 69
-(Raging Long Legs). Damagumo 56 (Beady Long Legs) remains with the demon lane.
+**Source IDs owned / implemented:** Houdai (Man-at-Legs) and BigFoot (Raging
+Long Legs). Damagumo (Beady Long Legs) remains with the demon lane.
 
 **Concrete slice:** combined **natural encounter + death/corpse/cleanup/re-entry**
 acceptance, connecting the integrated `pc_p2_long_legs` host to a real receiver.
@@ -393,3 +393,106 @@ stay focused on the native pin removal + rebuild + GL re-run.
 Exit 0; every PASS row accepted, no refusals. The `56 Damagumo` warning is
 expected: Damagumo is owned by the demon lane and is named only to say it is not
 claimed here, so it has no gate table of its own.
+
+## Slice 3
+
+Bounded slice: **transport/reward (six-gate #5) + source-timed Houdai** on the
+Pod arena, with the source Land/Flick timings restored.
+
+### Delivered (committed on both branches)
+
+Native (`deepseek/p2-l26-native`, head `02062831`):
+
+- `pc_p2_long_legs.cpp` — restored source `landingSeconds`/`flickSeconds`
+  (Damagumo/Houdai 150/68 frames; BigFoot 18/35), so the slice-2 clip
+  compression is gone.
+- `pc_p2_long_legs_reset()` now calls `finishDeath()` on every in-flight shell
+  before clearing, so a scene teardown frees the lane-20 shell-pool slots.
+- `pc_p2_long_legs_receipt(PelletView*, unsigned&)` — ordinary Pod corpse-receipt
+  lookup (mirrors kurage/otakara), resolving a delivered corpse to its generator.
+- `pc_p2_long_legs_shot(const BTeki*)` — read-only accessor for the fixture.
+- `pc_p2_long_legs_update_all()` — a manager-level, unculled tick (Biases the
+  source 50 s cooldown path to Shot even when the placement proxy is off-camera).
+- Shell contact radius widened 20 -> 30 units to cover the +25 mouth-y offset.
+
+Shared hooks (isolated commits): `pc_p2_long_legs_receipt` wired into
+`pc_p2_preview_deliver`'s corpse branch (`corpse:...longlegs:<gen>`);
+`pc_p2_long_legs_update_all()` hooked into `gameCoreSection` beside
+`pc_p2_projectiles_update`, and the per-Teki culled tick removed from
+`tekibteki.cpp`.
+
+Root (`deepseek/p2-l26`, head `6c543a1a`):
+
+- `experimental/pikmin2_long_legs_lifecycle.py` — Pod-arena staging (reuses the
+  lane-19 `stage_cargo` / `load_pod_package`), a two-corpse natural carry + Pod
+  receipt APP, and a source-timed Houdai staging (park the squad beyond the
+  60-unit stomp radius, brief captain wake, 50 s cooldown to Shot, then attack).
+- `validate()` gained `bigfoot_receipt`, `houdai_receipt`, `free_recruit`,
+  `source_timed` (timing + Shot shell), and `delivery_reward` derives from the
+  two receipts.
+- `tests/test_pikmin2_long_legs_pod.py` (6 flip tests) + updated lifecycle tests
+  (67 passed).
+
+### Runtime evidence (real GL, `slot.py run gl l26`, 960x540, `PYTHONUTF8=1`)
+
+Run `output/dsw/l26-out/run/f599264f58b14dbd852bb2f6cdc67ddf` (fixture17,
+native `02062831`, exe SHA `e5cc0442...`). Natural, no injection, no clip
+compression, no host health writes:
+
+- BigFoot natural death (`P2_LL_NATURAL_DEATH bigfoot=1`, DEAD prior_health=10).
+- Houdai **source-timed Shot**: `P2_LL_SHOT source_timed=1 tick=390` after the
+  50 s cooldown, `P2_LONG_LEGS_SHELL` fired, `P2_LONG_LEGS_SHELL_HIT pikmin=1`.
+- Houdai natural death (DEAD prior_health=10), no `P2_LL_INJECT`.
+- Both corpses observed, squad freed (`P2_LL_FREE_RECRUIT`), ordinary carry began
+  (`P2_LL_ASSIST` -> `P2_LL_CARRY transport=20`).
+
+### Blocker (receipt not yet runtime-proven)
+
+The carry reaches the Pod and then `pc_p2_preview_deliver` aborts:
+
+```
+Unregistered P2 pod cargo id=70723031 view=0000000000000000 pellet=...
+refusing seed side effects
+```
+
+A pellet with model id `70723031` ("pr01", a stray red pellet from the Pod/Impact
+Site environment that the knocked-around squad picked up) is delivered with a
+NULL `mPelletView`, which neither `pc_p2_long_legs_receipt` (correctly returns
+false on a NULL view) nor the preview's `corpses` fallback can resolve, so the
+shared preview aborts before the `corpse:longlegs:<gen>` credit is exercised
+end-to-end. The family receipt hook, the validator and the flip tests are all
+committed and unit-tested; only the live Pod-credit run is blocked by this
+unrelated pellet.
+
+### Subagent usage
+
+Three subagents delegated in parallel at start:
+
+1. `explore` - receipt/transport audit: transcribed `pc_p2_preview_deliver`, the
+   kurage/mamuta/otakara receipt hooks, the Pod-economy staging, P1 corpse-carry
+   mechanics, and the source Houdai death/treasure rule. Used as-is; it corrected
+   the premise (otakara is also a pure lookup, the lane-06 Onion ledger is a
+   separate `pc_randomizer_p2_corpse_delivered` path I must not touch).
+2. `explore` - natural-carry inventory: the canonical `preview_p2_room.cpp` corpse
+   phase, the Mamuta Pod fixture, and every family carry/receipt pattern. Used
+   as-is; it established the FreeMode/graspSituation + assisted-transport recipe
+   and the `POD_PACKAGE_FILES`/`stage_cargo` reuse.
+3. `general` - wrote `tests/test_pikmin2_long_legs_pod.py` (6 flip tests) against
+   a marker/gate contract I specified. Used as-is; I implemented `validate()` to
+   match.
+
+Estimated time: the audits removed the read-heavy re-derivation of the receipt +
+   carry contracts; the test scaffolding was used verbatim.
+
+### Tests run
+
+- `py -3.12 -m pytest tests/test_pikmin2_long_legs_{pod,houdai,lifecycle,install,visual}.py -q`
+  -> **67 passed** (0 skipped with `PIKMIN_NATIVE_ROOT` set).
+
+### Remaining blockers
+
+- Transport/reward (gate 5) end-to-end Pod credit: the `pr01` stray-pellet abort
+  above; fix by removing stray pellet spawns / making the carry stage target only
+  the family corpses, or by routing the preview fallback safely.
+- Source-timed Shot is reachable via the 50 s cooldown only; the fast Flick->Shot
+  remains slice-2's (now-removed) compressed deviation.
