@@ -285,12 +285,77 @@ def test_launch_binds_p2_layout_identity(tmp_path, monkeypatch):
     assert stored["mode"] == "identity-binding" and stored["bindings"] == manifest["p2_layout"]["bindings"]
 
 
+def test_launch_replays_from_session_cache(tmp_path, monkeypatch):
+    import experimental.pikmin2_seed_bridge as bridge
+    from randomizer import runner
+    from randomizer.seed import generate
+
+    def fake(source, run, actors):
+        (run / "p2-dwarf-orange-actors.txt").write_text(
+            "P2_DWARF_ORANGE_ACTORS_1 1\n" + str(actors[0][0]) + "\n")
+        (run / "assets" / "dataDir" / "courses" / "pikmin2room" /
+         "fake_model.mod").write_bytes(b"model")
+        return {"ok": True}
+
+    family_install.register("dwarf_orange", fake)
+
+    placeholder = dict(schema="p2-placement-v1",
+                       slots=[dict(uid=401, label="bulborb-slot", stage=1,
+                                   terrain="ground", radius=300.0,
+                                   evidence=dict(xyz=True, terrain=True, route=True))],
+                       profiles=[dict(identity="BlueKochappy", terrains=["ground"],
+                                      accepted_gates=["xyz"])])
+    original = bridge.admitted_ids
+    bridge.admitted_ids = lambda roster: [44]
+    content_root = tmp_path / "content"
+    make_source_dir(content_root, "BlueKochappy")
+    retail = tmp_path / "retail"
+    (retail / "dataDir" / "stages").mkdir(parents=True)
+
+    async def fake_serve(*args, **kwargs):
+        pass
+
+    monkeypatch.setattr(runner, "serve", fake_serve)
+    session = tmp_path / "sess"
+    try:
+        manifest = generate("p2-binding-seed", collection_checks=True,
+                            p2_enemies=True, p2_placement=placeholder)
+        # The admission patch must stay active through both launches because Session
+        # re-validates the manifest via fingerprint() on every launch.
+        target = manifest["p2_layout"]["bindings"][0]["target"]
+        runner.launch(manifest, session, assets=retail,
+                      p2_content=content_root, p2_actors={target: 211001})
+        shutil.rmtree(content_root)
+        runner.launch(manifest, session, assets=retail,
+                      p2_content=content_root, p2_actors={target: 211001})
+    finally:
+        bridge.admitted_ids = original
+
+    run_dirs = sorted((session / "runs").iterdir())
+    assert len(run_dirs) == 2
+
+    receipts = [run / "p2-binding-receipt.json" for run in run_dirs]
+    cached_flags = [bool(json.loads(p.read_text(encoding="utf-8")).get("cached"))
+                    for p in receipts]
+    assert sorted(cached_flags) == [False, True]
+
+    for run in run_dirs:
+        assert (run / "p2-dwarf-orange-actors.txt").is_file()
+        assert (run / "assets" / "dataDir" / "courses" / "pikmin2room" /
+                "fake_model.mod").is_file()
+    actors_files = [run / "p2-dwarf-orange-actors.txt" for run in run_dirs]
+    model_files = [run / "assets" / "dataDir" / "courses" / "pikmin2room" /
+                   "fake_model.mod" for run in run_dirs]
+    assert actors_files[0].read_bytes() == actors_files[1].read_bytes()
+    assert model_files[0].read_bytes() == model_files[1].read_bytes()
+
+
 def test_install_layout_source_id_mismatch_rejected(tmp_path):
     content_root = tmp_path / "content"
     make_source_dir(content_root, "BlueKochappy")
     run = tmp_path / "run"
     layout = layout_with(binding(source_id=999, enum_name="BlueKochappy"))
-    with pytest.raises((ValueError, StagingError)):
+    with pytest.raises(StagingError):
         family_install.install_layout(
             run, layout, content_root, actor_bindings={"gen-001": 211001})
     assert not run.exists()
