@@ -9,17 +9,39 @@ children. Source reference `src/plugProjectNishimuraU/DangoMushiState.cpp:530`
 `DangoMushi.cpp:649-776` for the rain.
 
 Implementation owner: Codex via shared account `4laric`. Executing session:
-opencode (deepseek-v4.1-flash), 2026-09-14.
+opencode (deepseek), 2026-09-14. Review-fix revision (fix1) applied after review.
 
-- Native branch `opencode/p2-crawbster-vuln-native`, base
+- Native branch `deepseek/p2-l25-native`, base
   `codex/p2-main-review-native` @ `b805d9c626e4f4558c95aef7cac311a5d9a2068f`.
-- Root branch `opencode/p2-crawbster-vuln-root`, base
-  `origin/codex/p2-main-review` @ `4fccf41f775fc70c907ebce4116637e9abed02ab`.
-- Private build `output/native-lane25-vuln-build`, `[603/603]` link, exit 0,
-  `-DCMAKE_BUILD_TYPE=Release -DPIKMIN_NATIVE_JAUDIO=ON`.
-- Executable SHA-256
-  `496EBEE70FF4A965B6E5B2F73ED80A25740C809C7150A3BF8DA3BFE24CDEC8F5`;
-  `ninja -n` -> `no work to do.`
+- Root branch `deepseek/p2-l25`, base
+  `codex/p2-main-review` @ `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`.
+- Private build `output/dsw/native-l25-build`,
+  `-DCMAKE_BUILD_TYPE=Release -DPIKMIN_NATIVE_JAUDIO=ON`; `ninja -n` -> `no work
+  to do.`
+- Executable SHA-256 (fix1)
+  `7bf0c81260fa501f93f37e55af0c7e7f22eaf7bfe7bfc518bba9f0c852b77691` at native
+  head `f11cec6c6b832403bfdddac5e06fcb56f23edb7e`.
+
+### Review fixes (fix1)
+
+- The lane-20 static-map trace/RNG/Wait-detection were forked in the original
+  slice; they are now extracted to a shared `pc_p2_rock_host.{h,cpp}`
+  (`p2rockhost::TraceProxy`/`RockMapBinding`/`ScriptRng`/`detectRock`) consumed by
+  both `pc_p2_projectiles.cpp` and `pc_p2_dangomushi.cpp`. Exposed in its own
+  commit `lane25: expose rock host binding for consumers (lane 20 primitive)`.
+- `tekiinteraction.cpp` hook now lives in its own commit
+  `lane25: hook InteractAttack/InteractBomb to pc_p2_dangomushi_invulnerable`.
+- `hzo.rockLifetime` (30 s) is now applied: a falling rock that never traces a
+  floor is force-killed (`P2RockHazard::forceDeath`, additive primitive
+  extension) after its lifetime and its pool slot is released
+  (`P2_DANGOMUSHI_ROCK_DESTROY reason=lifetime`).
+- A second Egg request no longer `reset()`s a live Egg (it would discard its
+  pending break); `spawnRainEgg` skips while one is active.
+- `applyRainRockContact` records a contact token only after the source 1 s
+  `atari` grace check passes, so a contact ignored during the grace is not
+  skipped forever for that rock.
+- Stale "future lane-20 birth host" / "future host seam" comments corrected.
+
 
 ## What changed
 
@@ -47,9 +69,12 @@ lists as lane 25's missing gate. The maintained line already carried
 
 ## Real Rock/Egg births
 
-`pc_port/pc_p2_dangomushi.cpp` now hosts the lane-20 **policies** unchanged
-(`P2RockHazard`, `P2Egg`; not forked) and realizes the hazard decisions as real
-children:
+`pc_port/pc_p2_dangomushi.cpp` hosts the lane-20 **policies** (`P2RockHazard`,
+`P2Egg`; not forked) and realizes the hazard decisions as real children. The
+static-map trace, scripted RNG and Wait detection are the shared
+`p2rockhost::*` (pc_p2_rock_host, extracted from lane 20); the only lane-20
+primitive edit is the additive `P2RockHazard::forceDeath()` used to cull a rock
+that never reaches a floor after its lifetime.
 
 - Rock rain (`hzo.rocksToSpawn`): one `P2RockHazard` per source ring slot is born
   at `P2DangoMushiHazardPolicy::rockOffset(...)` around the active captain,
@@ -69,9 +94,9 @@ parms fp01-fp05 (0.5/0.35/0.05/0.05/0.05) with general fp00=50. The host pool is
 16 slots with reuse of dead rocks (the source reserves 30 Rocks / 10 Eggs per
 Crawbster); Mitites fall back to nectar because P1 has no Mitite manager.
 
-This does not fork the lane-20 primitives and does not edit lane-20's module. It
-still needs a runtime run to observe the births/strikes; lane 20 remains the
-owner of the Rock/Egg policies and the shared `pc_p2_projectiles` host.
+Lane 20 remains the owner of the Rock/Egg policies and the shared
+`pc_p2_projectiles` host; the shared `pc_p2_rock_host` module and the additive
+`forceDeath()` extension are labelled `lane25:` commits for integration to review.
 
 ## Applied behavior
 
@@ -88,20 +113,33 @@ at key 3 (108).
 
 ## Status
 
-- Engine-free policy fixture: `PASS DANGOMUSHI_HAZARD` via `ctest -R
-  p2_dangomushi_hazard_test` and a direct `g++` build.
+- Engine-free policy fixture: `PASS DANGOMUSHI_HAZARD` — stdout saved to
+  `output/dsw/l25-out/p2_dangomushi_hazard_test.stdout.txt`.
 - Full production target build: PASS (see pins above), no-work dry run clean.
-- Runtime acceptance: PENDING a reserved real-GL run on the private executable.
-  The fixture validator now parses the window, birth and strike markers and
-  requires `DAMAGE_REJECTED` and a real `ROCK_BIRTH`; `DAMAGE_ACCEPTED`,
-  `EGG_BIRTH`, `EGG_ITEM` and `ROCK_STRIKE` are informational because a short
-  fixture may not land an in-window attack, break the probabilistic Egg or drop a
-  Rock onto a Pikmin.
+- Runtime acceptance (fix1, real GL, 960x540 centred, live 20-red squad): **PASS
+  for the new gates** on run
+  `output/dsw/l25-out/runs/9093da5e6b7d45b6b86857f2ca2d4152` (exe
+  `7bf0c812…`):
+  - `P2_DANGOMUSHI_DAMAGE_REJECTED` (outside window) and
+    `P2_DANGOMUSHI_DAMAGE_ACCEPTED ×6` (in-window) — window applied.
+  - `P2_DANGOMUSHI_ROCK_BIRTH requested=10 real=10` with a real
+    `P2_DANGOMUSHI_ROCK_STRIKE kind=Press damage=10.0` and `_ROCK_DESTROY
+    reason=floor` — real Rock births/strikes.
+  - `P2_DANGOMUSHI_EGG_BIRTH real=1`, `_EGG_CONTACT health=0`,
+    `_EGG_ITEM index=0 kind=2 real=1 item=nectar` — a real Egg birth that broke
+    into real nectar.
+  The whole-validator `passed` flag is `False` on this run only because the
+  pre-existing `wait`/`flick` state-coverage checks are timing/RNG dependent (the
+  Crawbster stayed engaged and never idled); every new-gate check passed. The
+  Egg decision is probabilistic (`formationPikis/allPikis`, source
+  `DangoMushi.cpp:732-748`), so a given run may roll `egg=0`; this run rolled
+  `egg=1`.
+  Note: `dangomushi-validation.json` reports `exit_code=1 timed_out=true` because
+  the fixture is timer-terminated at the requested observation window (pre-existing
+  validator counter); it is not an engine failure.
 
 ## Remaining
 
-1. Runtime observation and acceptance of the applied window and the real births
-   on a reserved real-GL run (the code paths compile and are validator-covered).
-2. True source `InteractPress` roll crush, the `wallCallback` crash trigger and
+1. True source `InteractPress` roll crush, the `wallCallback` crash trigger and
    the `dangomushi.brk` material loop remain.
-3. Death/corpse/cleanup (#397).
+2. Death/corpse/cleanup/re-entry (#397, lane 07 lifetime host).

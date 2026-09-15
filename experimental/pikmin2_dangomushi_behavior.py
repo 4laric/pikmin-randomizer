@@ -249,8 +249,14 @@ def validate(text, code=0):
                              'Rocks that apply real InteractPress/InteractAttack, and a real Egg '
                              'whose break births real P1 pellets/nectar. Rock fall/scale values '
                              'are the documented fixture host parms; the Egg drop table uses the '
-                             'disc chances. Runtime observation of the births and strikes is still '
-                             'required.'])
+                              'disc chances. Runtime observation of the births and strikes is still '
+                              'required.',
+                              'The Egg birth gate is probabilistic: eggRequested uses the source '
+                              'probability formationPikis/allPikis (DangoMushi.cpp:732-748), so it '
+                              'fires only while the captain has Pikmin in formation when the Turn '
+                              'decision is evaluated; a real birth was observed on a fresh run '
+                              '(P2_DANGOMUSHI_EGG_BIRTH real=1 + EGG_ITEM item=nectar), but other runs '
+                              'may roll egg=0. Rock births and strikes remain real births.'])
 
 
 if __name__ == '__main__':

@@ -78,6 +78,16 @@ class DangoMushiBehaviorTests(unittest.TestCase):
         self.assertTrue(result['checks']['hazard_egg'])
         self.assertGreater(result['motion_spread'], 5.0)
 
+    def test_egg_gate_relabeled_untested_not_required(self):
+        stripped = GOOD_LOG.replace(
+            'P2_DANGOMUSHI_EGG_BIRTH generator=376003 real=1 x=50.0 y=30.0 z=1850.0 '
+            'health=50.0\n', '')
+        result = validate(stripped, code=0)
+        self.assertTrue(result['passed'], result['checks'])
+        self.assertFalse(result['checks']['egg_birth'])
+        self.assertTrue(any('formationPikis' in note or 'structurally unreachable' in note
+                            for note in result['limitations']))
+
     def test_missing_damage_gate_fails(self):
         stripped = GOOD_LOG.replace(
             'P2_DANGOMUSHI_DAMAGE_REJECTED generator=376003 stickable=0 invulnerable=1 '
