@@ -32,6 +32,7 @@ Root base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`; native base
 | root `deepseek/p2-l26` | `f47c4c6` | recover Long Legs family asset extractor (Houdai/BigFoot disc profiles) (#312) |
 | root | `66e865f` | encounter/lifecycle harness + tests (natural combat, foot crush, death policy output, cleanup/re-entry) (#312) |
 | root | `0025d55` | document natural-encounter + lifecycle acceptance slice (#312) |
+| root | `0c405a0` | DeepSeek handoff (natural encounter + lifecycle acceptance) (#312) |
 
 Dirty state: none (both `git status` clean).
 
@@ -138,3 +139,144 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l2
 `07188fc3e4dc06fa8046daa58ec9bde9ef027980`, plus the `fixture2` replacement-main
 fixture built against that head via
 `experimental.pikmin2_long_legs_lifecycle.build(...)`.)
+
+## Slice 2
+
+Bounded slice: **Houdai (Man-at-Legs, 66) natural combat and death without
+injection**, closing the slice-1 gap where Houdai's lethal step was injected.
+
+### What changed
+
+Native (`pc_p2_long_legs_fsm.cpp` / `.h` / `.cpp`, plus one shared hook):
+
+- **Source damage window fixed** (`pc_p2_long_legs_fsm.cpp`): `bitterImmune` now
+  covers Stay and the WHOLE Land clip, and `damageable` is Wait/Flick/Walk/Shot
+  only. Source `EB_BitterImmune` is released at Land *exit*, not landing key 2;
+  landing key 2 fires the feet but does not open the body (HoudaiState.cpp).
+- **Receiver wiring (shared hook commit)**: `pc_p2_long_legs_receiver_rejects(Teki*, InteractAttack*)`
+  rejects ordinary Pikmin attack/bomb damage while a registered Long Legs is
+  bitter-immune; hooked into `InteractAttack::actTeki` and `InteractBomb::actTeki`
+  (`tekiinteraction.cpp`, beside the Armor receiver). No-op for unregistered actors.
+- **Man-at-Legs shell (consume lane 20)**: the host feeds `shotLoop` and
+  `shellsInFlight` to the policy and, on `fireShell`, consumes lane 20's shared
+  fired-projectile primitive `P2CannonStone` + `P2CannonStonePool` (source pool
+  of 10) to fly a shell at the nearest Pikmin and route the source HoudaiShotGun
+  damage (`InteractBomb` 10) into a real Pikmin. `P2_LONG_LEGS_SHELL`,
+  `P2_LONG_LEGS_SHELL_HIT ... pikmin=` logged.
+- **Proxy baseline** (documented approximation): the P1 Chappy vehicle's grid
+  activation re-runs `BTeki::reset` (`mHealth = getMaxLife() = 130`), so the host
+  pins the Houdai proxy to a bounded baseline (600, source 2800) only until it
+  *first* reaches Shot, then releases for good; natural death still drains the
+  baseline to zero.
+
+Root: `experimental/pikmin2_long_legs_lifecycle.py` (two-phase natural fixture:
+BigFoot first, then reassign to Houdai; the `P2_LL_INJECT` path retained only as a
+timeout fallback); `validate()` gained `houdai_natural_damage`,
+`houdai_shell_fires`, `houdai_shell_hits`, `houdai_natural_death`, `houdai_no_inject`
+and `passed` now requires the full natural contract. New
+`tests/test_pikmin2_long_legs_houdai.py` (9 flip tests) + updated lifecycle tests;
+`HOudai_*` casing fixed and the unused `POLICY` constant removed.
+
+### Ordered commits (slice 2)
+
+| Branch | Commit | Subject |
+|---|---|---|
+| native | `4e87f782` | Houdai source damage window + Man-at-Legs shell on lane-20 projectile (#312) |
+| native | `6c59a60c` | hook Long Legs bitter-immune receiver into InteractAttack/InteractBomb (shared hook) (#312) |
+| native | `56cecc7e` | pin Houdai proxy to a bounded baseline while bitter-immune so Shot is reachable (#312) |
+| native | `3dfbdcde` | release Houdai proxy pin only after the first Shot is reached (#312) |
+| root | `fd1708b` | slice 2 harness — Houdai natural combat/death + shell validator and flip tests (#312) |
+| root | `80dc574` | fixture HP override so Houdai FSM reaches Shot before natural death (#312) |
+| root | `2efb890` | drop fixture HP override in favour of host-side bitter-immune pin (#312) |
+
+Native head `3dfbdcdefafe69591014f7e01fd06e132e866f90`; root head
+`2efb890ac714ade204a9404dc3928cc6a25fbdb6`. Both clean.
+
+### Shared hook (isolated commit)
+
+`src/plugPikiNakata/tekiinteraction.cpp` (`6c59a60c`): one include +
+`pc_p2_long_legs_receiver_rejects` in `InteractAttack::actTeki` and
+`InteractBomb::actTeki`, mirroring the existing Armor receiver. Semantics agreed
+with the lane-10/11 receiver pattern (drop the hit while bitter-immune); no other
+shared change.
+
+### Build evidence
+
+- Native head `3dfbdcdefafe69591014f7e01fd06e132e866f90`, clean.
+- `pikmin_pc` `nectar.exe` SHA-256 `6ab8cc7fd5085f106ddec0ea487d6f45eb6453e88134a81c617bcc26dc29b466`.
+- `ninja -n` -> `ninja: no work to do.`
+- `p2_long_legs_fsm_test` -> `PASS LONG_LEGS_FSM` (updated damageable/bitterImmune asserts).
+- Private fixture `fixture6` `fixture.exe` SHA-256 `e2767c9cf4e5c01f36770bbb72359f590503db443ad3296720df0343cf0c24fe` (`built`).
+
+### Runtime evidence (real GL, `slot.py run gl l26`, `PIKMIN_P2_ROOM_WINDOW=960x540`, `PYTHONUTF8=1`)
+
+- Run dir `output/dsw/l26-out/run/6e44c2a095624dde94128dcceeb78b8e`; exit 0, not timed out.
+- Window `Experimental preview window set to 960x540 windowed and centered`; `red=20`.
+- Houdai schedule reached Shot: `P2_LONG_LEGS_STATE ... state=Shot`,
+  seven `P2_LONG_LEGS_SHELL ... species=Houdai`, one
+  `P2_LONG_LEGS_SHELL_HIT species=Houdai ... pikmin=1` (a shell reached a live Pikmin).
+- Natural death (drained to zero, no injection): `P2_LONG_LEGS_DEAD ... prior_health=10.00`
+  + `P2_LL_NATURAL_DEATH houdai=1`; no `P2_LL_INJECT` referencing Houdai.
+- Cleanup/re-entry unchanged: `P2_LL_FORGET`/`REENTRY`/`NOREWARD` all pass.
+
+### Six-gate status (slice 2, natural vs injected)
+
+| Gate | Result | Evidence |
+|---|---|---|
+| 1. Identity + spawn | PASS | `P2_LONG_LEGS_BIND` 312001/312002 `native_fsm=implemented` |
+| 2. Movement + animation | PARTIAL (bind-pose) | FSM schedule incl. Houdai `Shot`; no IK/skeletal playback |
+| 3. Attacks + receivers | PASS (natural) | `P2_LONG_LEGS_DAMAGE` for BigFoot and Houdai (incremental), `CRUSH pikmin=20`, `SHELL_HIT pikmin=1` |
+| 4. Death + corpse | PASS (natural, both) | `P2_LONG_LEGS_DEAD ... prior_health=10.00` Houdai + `25.00` BigFoot; `BIRTH count=30`; no injection |
+| 5. Transport + reward | UNTESTED | cargo-free arena; Mitite children (14)/treasure drop (06) intents only |
+| 6. Cleanup + re-entry | PASS | `FORGET count=0`, `REENTRY stale=0 fresh=1 count=2`, `NOREWARD` |
+
+Injected path retained only as a separately-flagged fallback: `P2_LL_INJECT ...
+not_natural_combat=1` appears only if natural combat misses its window; the
+validator flags it (`houdai_no_inject`=false) and it does not satisfy `passed`.
+
+### Subagent usage
+
+Delegated three tasks in parallel at start:
+
+1. `explore` — Houdai source audit (states/transitions/key event frames/params/
+   receiver + shot-gun rules). **Used as-is**; corrected my FSM `bitterImmune`
+   model (immunity releases at Land exit, not key 2) and confirmed the stuck-Pikmin
+   rule and `HoudaiShotGun` `InteractBomb 10` / pool 10 / speed 600 numbers.
+2. `explore` — existing-candidate inventory (lane 20 `P2CannonStone`/`pc_p2_projectiles`,
+   lane 10/11 receiver precedent `pc_p2_armor_receiver_rejects`, Groink shell, markers).
+   **Used as-is**; it established the exact lane-20 primitive + hook seam to consume
+   and the Armor receiver pattern to mirror.
+3. `general` — wrote the focused Houdai flip-test file
+   `tests/test_pikmin2_long_legs_houdai.py` against a marker/gate contract I
+   specified. **Used as-is**; I implemented `validate()` to match its contract and
+   all 9 flip tests now pass.
+
+Estimated time: the source audit and candidate inventory saved several hours of
+reverse-engineering the lane-20 projectile/receiver interfaces and the decomp
+Houdai state machine; the test scaffolding saved one full hand-write/test cycle.
+The subagent-produced test file's GOOD_LOG needed no correction.
+
+### Tests run
+
+- `py -3.12 -m pytest tests/test_pikmin2_long_legs_{lifecycle,houdai,install,visual}.py -q`
+  -> **58 passed** (with `PIKMIN_NATIVE_ROOT` set, 0 skipped).
+- Native `p2_long_legs_fsm_test` -> `PASS LONG_LEGS_FSM`.
+
+### Slice-2 assumptions
+
+- The Man-at-Legs shell reuses lane 20's rolling `P2CannonStone` for flight; the
+  source `THdamaShell` curl/gravity arc is a documented approximation (flat, homing),
+  which is why only 1 of 7 fired shells made a self-contact.
+- The proxy baseline pin (600 vs source 2800) is a documented host approximation;
+  it releases the moment the first Shot is reached, so death remains natural.
+- `SHELL_HIT pikmin=1` proves the receiver fired with a real `InteractBomb`; burst
+  accuracy and shell damage/friendly-damage split stay with lane 20.
+
+### Remaining blockers
+
+- IK body / real foot-plant + Walk translation (lane 09/08); stomp stays a circle.
+- Actual Mitite child births (lane 14) and held-treasure drop (lane 06).
+- Man-at-Legs shell in-flight pool parity beyond the `P2CannonStone` approximation
+  and real shell blast radius/spread (lane 20).
+- Stuck-Pikmin-damage rule (host/collision) — the port still accepts any ordinary
+  Pikmin attack in the damageable window rather than requiring `isStickTo`.

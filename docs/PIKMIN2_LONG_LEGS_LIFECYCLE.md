@@ -1,7 +1,7 @@
 # Long Legs natural encounter + death/corpse/cleanup/re-entry (#173 / #312)
 
 Lane 26 bounded slice. Implementation owner: Codex via shared account `4laric`.
-Executing session: DeepSeek (lane 26, `dsw/l26-root`), 2026-09-14.
+Executing session: DeepSeek (lane 26, private root worktree), 2026-09-14.
 
 Follow-on to [PIKMIN2_LONG_LEGS_POLICY.md](PIKMIN2_LONG_LEGS_POLICY.md) (the
 engine-free FSM) and [PIKMIN2_LONG_LEGS_HOST.md](PIKMIN2_LONG_LEGS_HOST.md) (the
