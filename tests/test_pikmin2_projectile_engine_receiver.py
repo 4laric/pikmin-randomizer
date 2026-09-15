@@ -1,8 +1,9 @@
 import unittest
 
 from experimental.pikmin2_projectile_engine_receiver import (
-    ENGINE_STRIKE_RE, MAGIC, build_config, evaluate, groink_config,
-    parse_engine_strikes, stone_config, kabuto_config, rig_bank_text)
+    BOMB_ENGINE_HIT_RE, BOMB_NOHIT_RE, ENGINE_STRIKE_RE, MAGIC, bomb_config,
+    build_config, evaluate, groink_config, parse_engine_strikes, stone_config,
+    kabuto_config, rig_bank_text, strike_ratio_of)
 
 
 # This test file exercises ONLY the Python log-evaluator/config functions
@@ -45,6 +46,28 @@ P2_PROJECTILE_GROINK_ENGINE_HIT token=3333 kind=Bomb damage=10.0 applied=1 rejec
 """
 
 
+def _fire_destroy_log(fires, health_hits, aim_none=False, press_hits=0):
+    lines = []
+    for _ in range(fires):
+        lines.append('P2_PROJECTILE_KABUTO_FIRE species=Kabuto homing=1 rig=1 '
+                     'mouth=(0.0,0.0,0.0)')
+    for _ in range(health_hits):
+        lines.append('P2_PROJECTILE_ENGINE_STRIKE target=1234 kind=Attack damage=250.0 '
+                     'applied=1 rejected=0 health=180.0->180.0 stored=0.0->250.0 source=0')
+    for _ in range(press_hits):
+        lines.append('P2_PROJECTILE_ENGINE_STRIKE target=1234 kind=Press damage=10.0 '
+                     'applied=1 rejected=0 health=300.0->290.0 stored=0.0->0.0 source=0')
+    if aim_none:
+        lines.append('P2_PROJECTILE_AIM_NONE fire=99')
+    lines.append('P2_PROJECTILE_SKIP_SELF target=9999')
+    return '\n'.join(lines) + '\n'
+
+
+BOMB_HIT_LOG = ('P2_PROJECTILE_BOMB_ENGINE_HIT token=1 kind=Bomb damage=10.0 '
+                'applied=1 rejected=0 health=100.0->90.0 dist=15.0\n')
+BOMB_NOHIT_LOG = 'P2_PROJECTILE_BOMB_NOHIT dist=999.0\n'
+
+
 class ProjectileEngineReceiverTests(unittest.TestCase):
     def test_build_config_stone(self):
         text = build_config('stone')
@@ -81,6 +104,108 @@ class ProjectileEngineReceiverTests(unittest.TestCase):
         # Opt-in injected scenario: teki_pin is a separately-flagged row.
         text = build_config('two_teki', generator=23, teki_pin=True)
         self.assertIn('teki_pin 1', text)
+
+    def test_build_config_two_teki_has_bomb_row(self):
+        text = build_config('two_teki', generator=23)
+        self.assertIn('groink ', text)
+        self.assertIn('bomb ', text)
+
+    def test_bomb_config_row(self):
+        row = bomb_config()
+        self.assertTrue(row.startswith('bomb '))
+        self.assertEqual(row.count(' '), 4)
+
+    def test_strike_ratio_of_pass(self):
+        log = _fire_destroy_log(fires=9, health_hits=7)
+        fires, hits, alive_fires = strike_ratio_of(log)
+        self.assertEqual((fires, hits, alive_fires), (9, 7, 9))
+        result = evaluate(log)
+        self.assertEqual(result['strike_ratio'], '7/9')
+        self.assertEqual(result['strike_ratio_while_alive'], '7/9')
+        self.assertEqual(result['gates']['victim_strike_ratio'], 'PASS')
+
+    def test_strike_ratio_of_fail(self):
+        log = _fire_destroy_log(fires=9, health_hits=3)
+        fires, hits, alive_fires = strike_ratio_of(log)
+        self.assertEqual((fires, hits, alive_fires), (9, 3, 9))
+        result = evaluate(log)
+        self.assertEqual(result['gates']['victim_strike_ratio'], 'FAIL')
+
+    def test_strike_ratio_untested_when_no_fires(self):
+        log = _fire_destroy_log(fires=0, health_hits=0)
+        self.assertEqual(strike_ratio_of(log), (0, 0, 0))
+        result = evaluate(log)
+        self.assertEqual(result['gates']['victim_strike_ratio'], 'UNTESTED')
+
+    def test_strike_ratio_press_is_not_counted_as_hit(self):
+        # A Press strike shares the ENGINE_STRIKE format but must NOT count as a
+        # health-destroying Attack hit.
+        log = _fire_destroy_log(fires=1, health_hits=1, press_hits=1)
+        fires, hits, alive_fires = strike_ratio_of(log)
+        self.assertEqual((fires, hits, alive_fires), (1, 1, 1))
+
+    def test_strike_ratio_skips_self_target(self):
+        log = ('P2_PROJECTILE_KABUTO_FIRE species=Kabuto homing=0 rig=0 mouth=(0.0,0.0,0.0)\n'
+               'P2_PROJECTILE_SKIP_SELF target=1234\n'
+               'P2_PROJECTILE_ENGINE_STRIKE target=1234 kind=Attack damage=250.0 '
+               'applied=1 rejected=0 health=180.0->180.0 stored=0.0->250.0 source=0\n')
+        self.assertEqual(strike_ratio_of(log), (1, 0, 1))
+
+    def test_strike_ratio_alive_fires_ends_at_aim_none(self):
+        # 9 fires and 7 Attack hits all land before the first AIM_NONE, so the
+        # alive-fires count is the full 9 and the gate PASSES.
+        log = _fire_destroy_log(fires=9, health_hits=7, aim_none=True)
+        self.assertEqual(strike_ratio_of(log), (9, 7, 9))
+        result = evaluate(log)
+        self.assertEqual(result['gates']['victim_strike_ratio'], 'PASS')
+
+    def test_strike_ratio_alive_fires_truncated_by_aim_none(self):
+        # A mid-log AIM_NONE splits the fires: only the 4 preceding it are
+        # "alive", dropping alive_fires below the >=9 threshold -> FAIL.
+        fire = 'P2_PROJECTILE_KABUTO_FIRE species=Kabuto homing=1 rig=1 mouth=(0.0,0.0,0.0)\n'
+        hit = ('P2_PROJECTILE_ENGINE_STRIKE target=1234 kind=Attack damage=250.0 '
+               'applied=1 rejected=0 health=180.0->180.0 stored=0.0->250.0 source=0\n')
+        log = (fire * 4 + 'P2_PROJECTILE_AIM_NONE fire=99\n' + fire * 5
+               + hit * 7 + 'P2_PROJECTILE_SKIP_SELF target=9999\n')
+        fires, hits, alive_fires = strike_ratio_of(log)
+        self.assertEqual((fires, hits, alive_fires), (9, 7, 4))
+        result = evaluate(log)
+        self.assertEqual(result['gates']['victim_strike_ratio'], 'FAIL')
+
+    def test_evaluate_bomb_engine_navi_hit_pass(self):
+        log = ('P2_PROJECTILE_BOMB_ENGINE_HIT token=1 kind=Bomb damage=10.0 '
+               'applied=1 rejected=0 health=100.0->90.0 dist=15.0\n')
+        result = evaluate(log)
+        self.assertEqual(result['gates']['bomb_engine_navi_hit'], 'PASS')
+
+    def test_evaluate_bomb_engine_navi_hit_fail_if_not_applied(self):
+        log = ('P2_PROJECTILE_BOMB_ENGINE_HIT token=1 kind=Bomb damage=10.0 '
+               'applied=0 rejected=1 health=100.0->90.0 dist=15.0\n')
+        result = evaluate(log)
+        self.assertEqual(result['gates']['bomb_engine_navi_hit'], 'FAIL')
+
+    def test_evaluate_bomb_engine_navi_hit_fail_if_no_health_change(self):
+        log = ('P2_PROJECTILE_BOMB_ENGINE_HIT token=1 kind=Bomb damage=10.0 '
+               'applied=1 rejected=0 health=100.0->100.0 dist=15.0\n')
+        result = evaluate(log)
+        self.assertEqual(result['gates']['bomb_engine_navi_hit'], 'FAIL')
+
+    def test_bomb_engine_hit_regex_captures_dist(self):
+        m = BOMB_ENGINE_HIT_RE.search(BOMB_HIT_LOG)
+        self.assertIsNotNone(m)
+        self.assertEqual(m.group(3), '1')       # applied
+        self.assertEqual(m.group(5), '100.0')   # health before
+        self.assertEqual(m.group(6), '90.0')    # health after
+        self.assertEqual(m.group(7), '15.0')    # dist
+
+    def test_bomb_nohit_regex_captures_dist(self):
+        m = BOMB_NOHIT_RE.search(BOMB_NOHIT_LOG)
+        self.assertIsNotNone(m)
+        self.assertEqual(m.group(1), '999.0')
+
+    def test_evaluate_bomb_nohit_leaves_untested(self):
+        result = evaluate(BOMB_NOHIT_LOG)
+        self.assertEqual(result['gates']['bomb_engine_navi_hit'], 'UNTESTED')
 
     def test_groink_config_row(self):
         row = groink_config()
