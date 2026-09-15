@@ -3,6 +3,7 @@
 #include "pc_p2_teki_lifetime.h"
 #include "pc_p2_kurage_teki.h"
 #include "pc_p2_onikurage_teki.h"
+#include "pc_p2_king_teki.h"
 #if defined(PIKI_PC_PORT)
 #include "pc_p2_demon_drop_state.h"
 #include "pc_p2_demon_bridge.h"
@@ -882,6 +883,7 @@ void GameCoreSection::exitStage()
 	pc_p2_kurage_receiver_reset();
 	pc_p2_kurage_teki_reset();
 	pc_p2_onikurage_teki_reset();
+	pc_p2_king_teki_reset();
 	pc_p2_kurage_visual_reset();
 	// Actor-lifetime seam (#397/#186): clear every remaining P2 family
 	// registration map so a finished stage cannot retain a stale BTeki* key
@@ -1253,7 +1255,7 @@ void GameCoreSection::initStage()
 	}
 
 	attentionCamera = new AttentionCamera;
-	cameraMgr->startCamera(naviMgr->getNavi());
+	cameraMgr->startCamera(naviMgr->getActiveNavi());
 	cameraMgr->update();
 	mNavi->mIsCursorVisible = TRUE;
 
@@ -1316,7 +1318,7 @@ void GameCoreSection::initStage()
 		DCFlushRange(controllerBuffer->mBufferAddr, data2->getLength());
 	}
 
-	naviMgr->getNavi(0)->startKontroller();
+	naviMgr->getActiveNavi()->startKontroller();
 	PRINT("init stage done\n");
 }
 
@@ -1383,6 +1385,31 @@ void GameCoreSection::finalSetup()
 		}
 	}
 
+	// Lane 12 (#130): finish the second captain's live setup now that the first
+	// captain's spawn position, the shared camera and every stage manager exist.
+	// The second Navi was birthed (create(2)) during initStage; here it is
+	// init'd and reset beside the active captain (the same sequence the first
+	// captain goes through), so the survivor path can rebind active/camera/
+	// whistle/throw to it when slot 0 goes down.
+	if (naviMgr->hasSecondNavi()) {
+		Navi* firstNavi = naviMgr->getActiveNavi();
+		Navi* secondNavi = naviMgr->getOtherNavi(firstNavi);
+		if (firstNavi && secondNavi) {
+			secondNavi->init(firstNavi->mSRT.t);
+			secondNavi->mSRT.r = firstNavi->mSRT.r;
+			secondNavi->mFaceDirection = firstNavi->mFaceDirection;
+			secondNavi->reset();
+			secondNavi->mNaviCamera = mNavi->mNaviCamera;
+			secondNavi->mStateMachine->transit(secondNavi, NAVISTATE_Starting);
+			// Lane 12 (#130): NaviStartingState::init re-centres the Navi on the
+			// ship, so apply the slot offset AFTER the Starting transition or the
+			// two captains stack at the same point.
+			secondNavi->mSRT.t.x += 40.0f;
+			secondNavi->mSRT.t.z += 40.0f;
+			secondNavi->startKontroller();
+		}
+	}
+
 	UfoItem* ufo = itemMgr->getUfo();
 	if (ufo) {
 		if (!playerState->isTutorial()) {
@@ -1406,6 +1433,7 @@ void GameCoreSection::finalSetup()
 
 	pc_p2_kurage_teki_setup();
 	pc_p2_onikurage_teki_setup();
+	pc_p2_king_teki_setup();
 	pc_p2_demon_manager_setup();
 	pc_p2_preview_setup();
 	pc_p2_snow_campaign_setup();
@@ -1812,7 +1840,9 @@ void GameCoreSection::update()
 	}
 
 
-	Piki* nextThrowPiki = naviMgr->getNavi()->mNextThrowPiki;
+	Navi* activeThrowNavi = naviMgr->getActiveNavi();
+	if (!activeThrowNavi) activeThrowNavi = naviMgr->getNavi();
+	Piki* nextThrowPiki = activeThrowNavi->mNextThrowPiki;
 	int encodedNextThrowType;
 	if (nextThrowPiki) {
 		int color = nextThrowPiki->mColor;

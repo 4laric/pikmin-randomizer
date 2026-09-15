@@ -70,6 +70,7 @@ bool scannedActors = false;          // one-shot binding diagnostic
 // Durable across process restart via an ordinary sidecar file; never the
 // Pikmin save layout.
 std::string receiptSeed = "local";
+P2ReceiptHostHandle receiptHandle = nullptr;
 int onionReceipts = 0;
 int onionDuplicates = 0;
 
@@ -200,8 +201,8 @@ void pc_p2_flora_reset()
 	knownPellets.clear();
 	trackedPellets.clear();
 	scannedActors = false;
-	pc_p2_receipt_host_close();
 	receiptSeed = "local";
+	if (receiptHandle) { pc_p2_receipt_host_close(receiptHandle); receiptHandle = nullptr; }
 	onionReceipts = 0;
 	onionDuplicates = 0;
 }
@@ -243,7 +244,8 @@ void pc_p2_flora_setup()
 			receiptSeed = seed;
 		}
 	}
-	if (!pc_p2_receipt_host_open("p2-flora-receipts.txt")) {
+	receiptHandle = pc_p2_receipt_host_open("p2-flora-receipts.txt");
+	if (!receiptHandle) {
 		std::fputs("P2_FLORA_PELPLANT invalid receipt state\n", stderr);
 		std::abort();
 	}
@@ -350,7 +352,7 @@ bool pc_p2_flora_receipt(Pellet* pellet)
 			const int seeds = pellet->mConfig ? int(pellet->mConfig->mPelletType()) : int(bound.spec.pellet);
 			const std::string identity = "flora-pelplant:" + std::to_string(bound.generator());
 			const auto result
-			    = pc_p2_receipt_host_grant(receiptSeed.c_str(), identity.c_str(), std::to_string(bound.generator()).c_str(),
+			    = pc_p2_receipt_host_grant(receiptHandle, receiptSeed.c_str(), identity.c_str(), std::to_string(bound.generator()).c_str(),
 			                               "onion");
 			if (result == P2ReceiptHostResult::Error) {
 				std::fputs("P2_FLORA_PELPLANT receipt persistence failed\n", stderr);

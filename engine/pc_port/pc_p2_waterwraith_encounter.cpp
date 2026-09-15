@@ -90,22 +90,26 @@ void pc_p2_waterwraith_encounter_step(P2WaterwraithActor& actor, P2WaterwraithAc
         sStunEdge = false;
     }
 
-    // Accepted Purple hits: one damage packet per Purple target in hit range.
+    // Accepted hits: one damage packet per target in hit range. While attached
+    // only Purple Pikmin damage the roller; after dismount the exposed body
+    // accepts a hit from any Pikmin (source blackMan.cpp:680).
     if ((evaluation.actions & p2wwatk::ActionHit) != 0u) {
         for (int i = 0; i < count; ++i) {
             const p2wwatk::Target& target = targets[i];
-            if (!target.alive || !target.purple
+            if (!target.alive
                 || !hitRange(target.x, target.z, reference.x, reference.z, rule.hitRadius)) {
                 continue;
             }
-            if (p2_waterwraith_actor_apply_damage(actor, rule.purpleHitDamage, true, nullptr) == P2WWDMG_Ignored) {
+            if (p2_waterwraith_actor_apply_damage(actor, rule.purpleHitDamage, target.purple,
+                                                  nullptr)
+                == P2WWDMG_Ignored) {
                 continue;
             }
-            ++sStats.purpleHits;
+            ++sStats.acceptedHits;
             sStats.damageDealt += rule.purpleHitDamage;
-            std::printf("P2_WATERWRAITH_HIT tick=%llu attached=%d rollerHealth=%.1f bodyHealth=%.1f\n",
+            std::printf("P2_WATERWRAITH_HIT tick=%llu attached=%d purple=%d rollerHealth=%.1f bodyHealth=%.1f\n",
                         static_cast<unsigned long long>(sStats.ticks), attached ? 1 : 0,
-                        rig.tyreHealth(), actor.bodyHealth());
+                        target.purple ? 1 : 0, rig.tyreHealth(), actor.bodyHealth());
         }
     }
 

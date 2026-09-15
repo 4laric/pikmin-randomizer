@@ -88,6 +88,10 @@ public:
 	void enterAllPikis();
 	void startDamageEffect();
 	void finishDamage();
+	// Lane 12 (#130): pause the core on a downed captain only when no living
+	// partner remains (source mDeadNavis != 2). Single-captain play always
+	// pauses.
+	void pauseForDownIfLast();
 	void startKontroller();
 	void rideUfo();
 	void reset();

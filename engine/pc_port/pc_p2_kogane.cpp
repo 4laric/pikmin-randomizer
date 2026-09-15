@@ -72,6 +72,7 @@ const char* kReceiptsHeader="P2_KOGANE_RECEIPTS_1";
 // source press count for re-arm prevention; this grants the actual drop reward.
 const char* kOnionReceiptsPath="p2-kogane-onion-receipts.txt";
 std::string receiptSeed="kogane-arena";
+P2ReceiptHostHandle koganeReceiptHandle=nullptr;
 
 int loadReceipts(){
     std::ifstream in(kReceiptsPath);
@@ -163,20 +164,12 @@ void doDrop(BTeki* actor,int id,Beetle& b){
     // re-attempted drop grants nothing (Duplicate), so a farmed beetle can never
     // re-arm for another reward; the flip-count sidecar independently keeps the
     // escaped beetle from flipping again.
-    if (receiptSeed.size() > 0) {
-        // The lane-06 receipt host is a single-consumer singleton; another lane's
-        // setup may have closed it after ours (e.g. pc_p2_flora_reset). Reopen
-        // lazily right before granting so the drop reward is never lost.
-        if (!pc_p2_receipt_host_ready()
-            && !pc_p2_receipt_host_open(kOnionReceiptsPath)) {
-            std::fputs("P2_KOGANE_ONION_RECEIPT invalid receipt state\n", stderr);
-            std::abort();
-        }
+    if (receiptSeed.size() > 0 && koganeReceiptHandle) {
         const unsigned gen = actor->mGenerator ? actor->mGenerator->_70 : 0u;
         const std::string identity = "enemy:" + std::to_string(id);
         const std::string encounter = "flip" + std::to_string(b.flips);
         const P2ReceiptHostResult result = pc_p2_receipt_host_grant(
-            receiptSeed.c_str(), identity.c_str(), std::to_string(gen).c_str(), encounter.c_str());
+            koganeReceiptHandle, receiptSeed.c_str(), identity.c_str(), std::to_string(gen).c_str(), encounter.c_str());
         if (result == P2ReceiptHostResult::Error) {
             std::fputs("P2_KOGANE_ONION_RECEIPT persistence failed\n", stderr);
             std::abort();
@@ -214,6 +207,7 @@ bool doFlip(BTeki* actor,int id,bool natural){
 void pc_p2_kogane_reset(){
     for(const auto& entry:beetles)if(entry.second.generator&&entry.second.flips>0)restoredFlips[entry.second.generator]=entry.second.flips;
     clips.clear();timing.clear();actors.clear();beetles.clear();karada=-1;logged[0]=logged[1]=false;
+    if(koganeReceiptHandle){pc_p2_receipt_host_close(koganeReceiptHandle);koganeReceiptHandle=nullptr;}
 }
 void pc_p2_kogane_forget(BTeki* actor){actors.erase(static_cast<PelletView*>(actor));beetles.erase(static_cast<PelletView*>(actor));}
 int pc_p2_kogane_source_id(PelletView* a){auto i=actors.find(a);return i==actors.end()?-1:i->second;}
@@ -230,7 +224,8 @@ void pc_p2_kogane_setup(){
     if (const char* seed = std::getenv("PIKMIN_P2_SEED")) {
         if (pc_p2_receipt_host_valid(seed)) receiptSeed = seed;
     }
-    if (!pc_p2_receipt_host_open(kOnionReceiptsPath)) {
+    koganeReceiptHandle = pc_p2_receipt_host_open(kOnionReceiptsPath);
+    if (!koganeReceiptHandle) {
         std::fputs("P2_KOGANE = invalid receipt state\n", stderr);
         std::abort();
     }

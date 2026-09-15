@@ -264,3 +264,9 @@ bool navi_dead(int captain)
 }
 
 } // namespace pc_p2_captain
+
+void pc_p2_captain_forget_piki(Piki* piki)
+{
+    if (!piki) return;
+    g_actorIds.erase(static_cast<void*>(piki));
+}
