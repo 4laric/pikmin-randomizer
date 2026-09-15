@@ -7,8 +7,9 @@
 // (pc_p2_hardlanes.cpp), which owns the per-attack handled set that rate-limits
 // re-application; the standalone engine-free test uses
 // pc_p2_bigtreasure_receiver.h only (this header is engine-facing and is not
-// compiled by the engine-free test). The private real-GL runtime fixture does
-// not reference this header today.
+// compiled by the engine-free test). The private real-GL runtime fixtures do
+// reference it: tools/p2_bigtreasure_slice2_runtime.cpp includes this header and
+// calls pc_p2_bigtreasure_stimulate_piki.
 //
 // The interaction owner is nullptr: the four elemental receivers never read
 // mOwner (their actPiki/actNavi either transit state or subtract a magnitude),
