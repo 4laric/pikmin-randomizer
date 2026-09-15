@@ -924,3 +924,86 @@ py -3.12 output/deepseek-wave/slot.py run gl l03 -- py -3.12 scripts/run_p2_brid
   --exe "C:/Users/alari/pikmin-randomizer/output/dsw/native-l03-build/bin/nectar.exe" \
   --output "C:/Users/alari/pikmin-randomizer/output/dsw/l03-out" --seed "l03-bridge-otakara" --timeout 40
 ```
+
+## Lane-03 follow-on slice — exact-head ENEMY_P2 probe/linkage upkeep
+
+Consumer and scope: lane 04–placed spawn UID targets bound to lane 02 identities,
+exercised without inventing a new spawn subsystem. This slice repairs acceptance of
+the already-integrated `ENEMY_P2` parse/query path on current heads. It does not
+implement Snow/Dwarf-Orange family behavior, does not change `pc_p2_*` family
+adapters, and does not claim ordinary live-actor binding.
+
+Source IDs and files owned: no new roster identity is claimed. Root touches only
+`scripts/test_p2_bridge_native.py` and `scripts/test_p2_bridge_spawn.py`; native
+touches only the `pc_randomizer_probe` link line in `CMakeLists.txt`.
+
+Ordered commits and dirty state:
+
+- Root `deepseek/p2-l03`, requested snapshot base
+  `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`; current parent
+  `a6e1fce91b27f1445cdf3d94f8ea8d4b4f9990e2`; this commit adds the handoff slice
+  and the two repaired lane-03 probe scripts.
+- Native `deepseek/p2-l03-native`, requested snapshot base
+  `b805d9c626e4f4558c95aef7cac311a5d9a2068f`; current
+  `17865bf33b5a2e5479c0f9b8b1d73453016d24b4`; the only native change in this slice
+  links `pc_p2_delivery_host.cpp` into `pc_randomizer_probe`.
+- Workspace state after the final build: root has only the expected staged doc and
+  the two probe-script edits; untracked, uncommitted subagent scratch files remain
+  local and are not part of this slice. Native is clean.
+
+Interfaces/hooks touched and why:
+
+- Reconciled `scripts/test_p2_bridge_native.py` with the integrated probe: it now
+  passes the two bound source ids through `--enemy-p2-expect` and runs every probe
+  with the same MinGW runtime environment already used by the broader session probe.
+- Reconciled `scripts/test_p2_bridge_spawn.py` to the same runtime environment for
+  both ENEMY_P2 spawn and round-trip probes.
+- Narrow probe-linkage hook in native `CMakeLists.txt`: `pc_randomizer.cpp`
+  unconditionally links the ordinary P2 receipt-ledger entry points, so the probe
+  must also link their unchanged implementation from lane 06. No reward, protocol,
+  parser, or gameplay semantics changed.
+
+Build evidence from `output/dsw/l03-build-evidence.txt`:
+
+- `2026-09-15T16:46:45 ... target=pikmin_pc native=17865bf33b5a2e5479c0f9b8b1d73453016d24b4 dirty=no ... exe=.../bin/nectar.exe sha256=902621d04a2ed4fa7f1ab32a8615d75545d3e4317c49a1b21b62f1c7a968e618 ninja_n="ninja: no work to do."`
+- `2026-09-15T16:46:56 ... target=pc_randomizer_probe native=17865bf33b5a2e5479c0f9b8b1d73453016d24b4 dirty=no ... exe=.../pc_randomizer_probe.exe sha256=4fc9f0aec8f2386d2162432824a6c3598fdea35c2dcde3523ef894e9ba013010 ninja_n="ninja: no work to do."`
+
+Fixture-adoption evidence: no real-GL/input run was used or needed for this
+probe/linkage slice. Therefore no centred-window, starting-Pikmin, extinction, or
+live-gameplay evidence is claimed.
+
+Six-gate table for source IDs 44/45:
+
+| Gate | Result | Label |
+|---|---|---|
+| 1 Exact identity + spawn | UNTESTED | `ENEMY_P2` 44/45 targets resolve and survive the host spawn/cache probes, but lane 03 cannot claim an ordinary live-actor bind; that binding and Snow/Dwarf-Orange behavior belong to lane 13. |
+| 2 Autonomous movement/animation | UNTESTED | lane 13 family behavior; not in lane-03 scope. |
+| 3 Attacks and receivers | UNTESTED | lane 10/13 required. |
+| 4 Death and corpse | UNTESTED | lane 13 required. |
+| 5 Actual transport and reward | UNTESTED | lane 06 receipt endpoint required. |
+| 6 Cleanup and re-entry | UNTESTED | lane 07 required. |
+
+Tests run and results:
+
+- `py -3.12 scripts/test_p2_bridge_native.py C:/Users/alari/pikmin-randomizer/output/dsw/native-l03-build/pc_randomizer_probe.exe` — passed parse/bind, unknown id, wrong revision, duplicate target, and bad count.
+- `py -3.12 scripts/test_p2_generated_session.py .../pc_randomizer_probe.exe` — passed real bootstrap ENEMY_P2, native parse/bind, content stage/cache, and five rejection cases.
+- `py -3.12 scripts/test_p2_bridge_spawn.py .../pc_randomizer_probe.exe` — passed real lane-04 uids, Snow/Dwarf-Orange resolution, and ramMode/cache round trip.
+- `py -3.12 -m pytest tests/test_pikmin2_seed_bridge.py tests/test_pikmin2_seed_generation.py tests/test_p2_seed_placement.py tests/test_p2_seed_placement_native.py -q` — 51 passed, 2 skipped.
+
+Assumptions and subagent use:
+
+- The read-heavy audit was delegated as required; its roster/source-ID facts were independently verified in the checked-in sources. The test-harness subagent output passed locally as throwaway scratch, but it created a separate validator/protocol (`p2-spawn-binding-v1`, `P2_SEED_BIND_OK/P2_MANIFEST_OK/P2_SPAWN_OK`) that duplicates the integrated `ENEMY_P2` contract and accepted aliases it does not own. Those two untracked files are not staged, not committed, and not part of this slice; their 22 local passes must not be treated as lane acceptance.
+- No GitHub issue was filed/updated because this lane brief forbids GitHub writes; scoped tracking remains #439, and issue/progress updates are left to the integration path.
+
+Remaining blockers naming the provider lane:
+
+- 02 roster/admission semantics and 04 accepted-placement evidence are unchanged.
+- 05 family adapters and identity-to-runtime binding still own the ordinary live
+  Snow/Dwarf-Orange spawn/binding step (13 owns behavior/FSM/rendering).
+- 06 owns ordinary receipt semantics if a bound actor later reaches a reward endpoint.
+
+One exact reproduction command:
+
+```
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/build_lane.py l03 --target pc_randomizer_probe; if ($?) { py -3.12 scripts/test_p2_bridge_native.py C:/Users/alari/pikmin-randomizer/output/dsw/native-l03-build/pc_randomizer_probe.exe }
+```

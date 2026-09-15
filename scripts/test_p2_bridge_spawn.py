@@ -10,6 +10,7 @@ no target is invented here.
     py -3.12 scripts/test_p2_bridge_spawn.py <build>/pc_randomizer_probe.exe
 """
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -18,6 +19,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+
+def probe_env():
+    """Match the probe's MinGW runtime environment (same mechanism as the session probe)."""
+    env = dict(os.environ)
+    mingw = Path(r"C:\msys64\mingw64\bin")
+    if mingw.is_dir():
+        env["PATH"] = str(mingw) + os.pathsep + env.get("PATH", "")
+    return env
 
 from experimental.pikmin2_seed_bridge import build_bootstrap, resolve_layout  # noqa: E402
 from randomizer.p2_placement_catalog import binding_targets_for_sources  # noqa: E402
@@ -57,7 +67,7 @@ def main():
         run = bootstrap_with_p2(generate("p2-spawn", collection_checks=True), layout, Path(tmp) / "valid")
         probe = subprocess.run(
             [str(exe), "--randomizer-seed", str(run.bootstrap), "--enemy-p2-spawn-probe"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, timeout=120, env=probe_env(),
         )
         assert probe.returncode == 0 and "ENEMY_P2_SPAWN_PASS" in probe.stdout, (probe.stdout, probe.stderr)
         for line in probe.stdout.splitlines():
@@ -71,7 +81,7 @@ def main():
         run = bootstrap_with_p2(generate("p2-spawn", collection_checks=True), layout, Path(tmp) / "roundtrip")
         probe = subprocess.run(
             [str(exe), "--randomizer-seed", str(run.bootstrap), "--enemy-p2-roundtrip-probe"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, timeout=120, env=probe_env(),
         )
         assert probe.returncode == 0 and "ENEMY_P2_ROUNDTRIP_PASS" in probe.stdout, (probe.stdout, probe.stderr)
         for line in probe.stdout.splitlines():
