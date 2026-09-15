@@ -24,12 +24,12 @@ class BreadbugOrdinaryWiringTests(unittest.TestCase):
         self.assertEqual(NEW_BESTIARY[TARGET], (8, 'The Forest Navel', 3))
 
     def test_seed_exposes_the_breadbug_check_in_the_navel(self):
-        m = generate('lane18-wiring', 'ap', expanded=True, all_areas=True,
+        m = generate('breadbug-wiring', 'ap', expanded=True, all_areas=True,
                      collection_checks=True, starting_flarlic=10, starting_area='navel')
         self.assertEqual(m['schema'], 9)
         self.assertEqual(m['profile'], 'navel-day2')
         from randomizer.session import Session
-        session = Session(m, ROOT / 'output' / 'lane18-wiring-check')
+        session = Session(m, ROOT / 'output' / 'breadbug-wiring-check')
         self.assertIn(TARGET, session.names)
 
 

@@ -91,6 +91,7 @@ def run(stage_dir, exe, output, timeout=180):
     with log.open('w') as out:
         proc = subprocess.run([str(exe), '--experimental-pikmin2-room'], cwd=stage_dir,
                               env=env, stdout=out, stderr=subprocess.STDOUT, timeout=timeout)
+    shutil.copy2(log, output / 'host.log')  # keep the log with the result; the stage log is overwritten per run
     if proc.returncode:
         raise RuntimeError('Native contest consumer exited %d: %s' % (proc.returncode, stage_dir))
     report = {
