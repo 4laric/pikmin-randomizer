@@ -185,8 +185,7 @@ gate D/E), while also folding in the four review items from the slice-1 merge.
 - `6cfbbf82` — `[shared hook]` Waterwraith corpse Pod-receipt branch in
   `pc_p2_preview.cpp` + `pc_p2_waterwraith_reset()` in `pc_p2_teki_lifetime.cpp`.
 - `6d92cd08` — update attack-policy test for any-color dismounted-body hits.
-- `b552e68c` (amended `4a3864ff`) — ground-snap corpse, `corpse_count` accessor,
-  blocked-aware carry outcome.
+- `4a3864ff` — ground-snap corpse, `corpse_count` accessor, blocked-aware carry outcome.
 - `6ca37a8d` — emit carry-setup marker deterministically.
 
 Build: `pikmin_pc` at native `6ca37a8d`, clean; exe SHA-256
