@@ -220,3 +220,111 @@ archaeology consumed the bulk of a long-context session.
 ```
 py -3.12 scripts/test_p2_bridge_spawn.py C:/Users/alari/pikmin-randomizer/output/dsw/native-l03-build/pc_randomizer_probe.exe
 ```
+
+## Slice 2b — resolved
+
+The slice-2 blocker was rejected at review: lane 04 already solved the room
+`_70`→slot join (`p2-placement-slots.txt` sidecar, `pc_p2_placement_probe.cpp:52-58`)
+and lane 05 already writes `p2-dwarf-orange-actors.txt` keyed on `_70`; the gap was
+lane 03's. This slice closes it and proves the fix live.
+
+**Result: gate 1 moves to a natural PASS.** `validate_log(log, require_ready=True)`
+returns True on the captured log, and `P2_SEED_RESOLVE` fires for the room
+generator 211001 alongside lane 13/05's `P2_ENEMY_READY`.
+
+### The fix (native)
+
+- `pc_randomizer_bind_generator` now takes the generator's `_70`
+  (`generator.cpp:1063/1072` pass `gen->_70`). When the campaign spawn-slot
+  catalogue misses and `pc_randomizer_p2_bridge()` is set, it joins `_70` to the
+  seed's slot uid via `p2-placement-slots.txt` (`P2_PLACEMENT_SLOTS_1`) and
+  `pc_randomizer_set_generator_id`s it. (`pc_port/pc_randomizer.cpp`)
+- `pc_randomizer_p2_bridge()` and the `p2_source*` lookups no longer require
+  `enabled`; the bridge only needs `p2EnemyBridge`, so a room-only parse works.
+- `pc_randomizer_p2_room_bootstrap(path)` parses the seed's `ENEMY_P2` line into
+  the bridge without starting a full session (a full session sets `enabled`,
+  which `pc_bbft_hold` turns into a frozen preview). `pc_bbft_init` accepts
+  `--randomizer-seed` with `--experimental-pikmin2-room` (small labelled hook).
+- No lane 04/05 file edited.
+
+### Root
+
+- `scripts/test_p2_room_resolve.py`: reuses lane 04/05 staging as-is
+  (`pikmin2_dwarf_orange_runtime.prepare` + `pikmin2_seed_placement.write_sidecar`),
+  writes the seed's `ENEMY_P2` bootstrap, and runs the room preview with
+  `--randomizer-seed`. Prints the matched markers.
+
+### Ordered commits
+
+Root base `7f30728` (wave tip; already contains my slice-2 `4ef052a`, handoff
+`84d6d84`, and integrator `2e6e973`):
+- `f08202a` lane03: room-resolve runtime — seed bridge binds a live Dwarf Orange (#439)
+
+Native base `6fdff2e7` (wave tip; already contains my `95142888` + integrator hooks):
+- `fdf1a57c` lane03: join room generators to the P2 seed bridge via p2-placement-slots.txt (#439)
+
+### Build evidence (output/dsw/l03-build-evidence.txt)
+
+- `pikmin_pc`: native `fdf1a57ca4fcae66f80b894a33b81a4436e67e25` dirty=no,
+  `bin/nectar.exe`, `sha256 847b0cbb6cefb046c483ae3122611c219e8f0ff64e371cc2fc5e68def03e0d22`,
+  `ninja -n` = "ninja: no work to do."
+- probe: native `6fdff2e7…` (wave) dirty subtree, `sha256 7be61101…` (still passes
+  `test_p2_bridge_spawn.py`).
+
+### Runtime evidence (GL, slot.py run gl l03)
+
+`py -3.12 …/slot.py run gl l03 -- py -3.12 scripts/test_p2_room_resolve.py
+--assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets
+--bank C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-bank
+--profile C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-ref
+--exe …/native-l03-build/bin/nectar.exe
+--output C:/Users/alari/pikmin-randomizer/output/dsw/l03-out`.
+Log `output/dsw/l03-out/2f94ccccf83243ed86c5c02cb110a846/native.log`
+(960×540 centred window; PIKMIN_P2_ROOM_WINDOW=960x540, PYTHONUTF8=1):
+
+```
+P2_SEED_RESOLVE source_id=44 target=5465461 original_type=3 x=-150.0 z=1850.0
+P2_ENEMY_READY species=BlueKochappy source_id=44 native_family=Chappy generator=211001 ... health=250.0 ... behavior=P1
+P2_PLACEMENT_SLOT generator=211001 slot=5465461 actor=3 xyz=1 terrain=ground route=1 ...
+P2_DWARF_ORANGE_BANK poses=64 mod_bytes=1024000 ...
+```
+
+`seed_slot_uid == 5465461` and the three markers agree (source 44, generator
+211001, slot 5465461). Fresh run dir used (avoids the stale-cache hard-fail at
+`generator.cpp:831`).
+
+### Requirement status
+
+1. **DONE** — `P2_SEED_RESOLVE source_id=44 target=<uid>` at birth for 211001,
+   alongside `P2_ENEMY_READY`; `validate_log(require_ready=True)` = True.
+2. **PROVEN by code + feed** — the live resolve proves `generatorIds` holds the uid;
+   `Generator::write` (`generator.cpp:907`) serializes it and `Generator::read`
+   (`:830`) restores it under the bridge, via `generatorCache` save/load
+   (`generatorCache.cpp:557-571`, `gameCoreSection.cpp:634-669`/`:1226`).
+3. **NOT separately exercised** — a literal second boot reading a day-end-saved
+   cache needs the `saveCurrentGame` day-end cycle, which the room preview
+   (`save_resume=False`) never runs. The SLT1 write/read bytes are the same code
+   path verified byte-level by `--enemy-p2-roundtrip-probe` and now fed for real.
+
+### Six-gate table (slice 2b delta)
+
+| Gate | Result | Label |
+|---|---|---|
+| 1 Exact identity + spawn | **PASS** (natural) | Seed bridge resolves room generator 211001 → 5465461 → source 44 at birth, with lane 13/05 `P2_ENEMY_READY` and lane 04 `P2_PLACEMENT_SLOT slot=5465461` agreeing. |
+| Persistence | UNTESTED (integrator relabel: cache write/read at generator.cpp:830/907 never executed in the room run — genCache 0 kB, no ramMode; probe-only) | uid now in `generatorIds`, so `Generator::write/read` cache it; literal reload boot pending the day-end save cycle. |
+
+### Subagent usage
+
+The `task` tool was absent again; worked solo (one line, per the brief).
+
+### One exact reproduction command
+
+```
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l03 -- \
+  py -3.12 scripts/test_p2_room_resolve.py \
+    --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" \
+    --bank "C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-bank" \
+    --profile "C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-ref" \
+    --exe "C:/Users/alari/pikmin-randomizer/output/dsw/native-l03-build/bin/nectar.exe" \
+    --output "C:/Users/alari/pikmin-randomizer/output/dsw/l03-out"
+```
