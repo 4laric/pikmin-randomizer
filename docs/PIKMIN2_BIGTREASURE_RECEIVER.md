@@ -52,7 +52,15 @@ Wired seam (additive) in `pc_port/pc_p2_hardlanes.cpp`:
   intersects the element geometry. The old `P2_BIGTREASURE_ATTACK_HIT`
   detection-only block is replaced by a real application that logs
   `P2_BIGTREASURE_RECV weapon=<e> target=piki species=<n> accepted=<0|1>`.
-- `CMakeLists.txt`: one additive TU in the game target and the receiver test.
+- A per-attack `std::set<const void*> sBigTreasureHandled` dedups targets (the
+  same pattern as lane 22's `pc_p2_hiba.cpp` §handled): a Navi/Piki is
+  stimulated at most once per element attack, so a creature standing inside the
+  running element is not re-stimulated (and `SEF_PIKI_FIRED`/`startFire` not
+  re-emitted) every 30 Hz tick. The set is cleared on `startAttack` and on full
+  reset. Without this, `InteractFire::actPiki` (`interactBattle.cpp`)
+  re-emits the burn effect every frame.
+- `CMakeLists.txt`: one additive TU in the game target and the receiver test
+  (in a separate labelled hook commit).
 
 ## Evidence (this pass)
 
@@ -86,6 +94,14 @@ Wired seam (additive) in `pc_port/pc_p2_hardlanes.cpp`:
 | 6 Cleanup and re-entry | source-backed N/A this slice |
 
 ## Remaining gaps / blocker
+
+- **Lane-10/11 blocker — `InteractGas::actNavi`.** The port's `InteractGas` has
+  no `actNavi`, so the base `Interaction::actNavi` returns true and the source
+  gas Navi flick/attack fallback (`BigTreasureAttack.cpp:226-233`) never runs on
+  captains. The source `InteractGas::actNavi` (`interactNavi.cpp:209-212`) is a
+  stub returning false that makes that fallback reachable in retail; until lane
+  10/11 ports it, a gas hit on a Navi is a no-op. This is named in the host
+  header (`pc_p2_bigtreasure_receiver_host.h`), not claimed as matching.
 
 The receiver decision and the ordinary-loop application are implemented and
 built, but a natural emitter -> real receiver -> Piki state-change observation
