@@ -41,14 +41,16 @@ public:int idle() override {
  if(!pc_p2_preview_cargo_free_ready()&&!pc_p2_preview_ready())return result;
  if(!naviMgr||!tekiMgr||!mapMgr)return result;
  Navi* n=naviMgr->getNavi();if(!n||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;++ready;
- {int ns=n->mStateMachine->getCurrID(n);if(ns==NAVISTATE_Pressed||ns==NAVISTATE_Flick||ns==NAVISTATE_Dead||ns==NAVISTATE_PikiZero||ns==NAVISTATE_DemoSunset||ns==NAVISTATE_DemoWait||ns==NAVISTATE_DemoInf){n->mStateMachine->transit(n,NAVISTATE_Walk);}}
+  // NAVISTATE_Pellet is the long-idle captain->pellet turn (NaviIdleState::exec,
+  // mNeutralTime > 140): forbid it so the free reds haul the carcass, not the captain.
+  {int ns=n->mStateMachine->getCurrID(n);if(ns==NAVISTATE_Pressed||ns==NAVISTATE_Flick||ns==NAVISTATE_Dead||ns==NAVISTATE_PikiZero||ns==NAVISTATE_DemoSunset||ns==NAVISTATE_DemoWait||ns==NAVISTATE_DemoInf||ns==NAVISTATE_Pellet){n->mStateMachine->transit(n,NAVISTATE_Walk);}}
  {if((int)GameStat::allPikis==0)GameStat::allPikis.set(1,Red);}
  if(ready==1){
   n->mKontroller=new FixtureController();for(int i=0;i<DEMOFLAG_COUNT;++i)playerState->mDemoFlags.setFlagOnly(i);
   Iterator it(tekiMgr);CI_LOOP(it){Teki* t=static_cast<Teki*>(*it);if(t&&pc_p2_king_teki_is_bound(t))host=t;}
   require(host,"King host found");
   {Vector3f near(host->mSRT.t);near.y=mapMgr->getMinY(near.x,near.z,true);n->resetPosition(near);}
-  int red=0;Iterator p(pikiMgr);CI_LOOP(p){Piki* a=static_cast<Piki*>(*p);if(a&&a->isAlive()&&a->mColor==Red)++red;}
+  int red=0;Iterator p(pikiMgr);CI_LOOP(p){Piki* a=static_cast<Piki*>(*p);if(a&&a->isAlive()&&a->mColor==Red){++red;a->changeMode(PikiMode::FreeMode,n);}}
   std::ifstream holding("king-keep-open.txt");hold=bool(holding);
   SDL_SetWindowTitle(SDL_GL_GetCurrentWindow(),"Emperor Bulblax creature host (#445)");
   std::printf("P2_KING_CREATURE_BASELINE red=%d\n",red);

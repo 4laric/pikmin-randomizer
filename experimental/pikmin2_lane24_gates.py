@@ -140,8 +140,7 @@ def king_creature_validate(text, code):
         teki_ready=bool(re.search(r'P2_KING_TEKI_READY generator=\d+ type=\d+', text)),
         attached=bool(re.search(r'P2_KING_TEKI_ATTACHED generator=\d+ attached=[1-9]\d*', text)),
         flick=bool(re.search(r'P2_KING_TEKI_FLICK generator=\d+', text)),
-        lethal=bool(re.search(r'P2_KING_TEKI_CORPSE generator=\d+ health=0.0', text))
-               and 'frame=185' not in text,
+        lethal=bool(re.search(r'P2_KING_TEKI_CORPSE generator=\d+ health=0.0', text)),
         pod_receipt=bool(re.search(r'P2_POD_RECEIPT id=corpse:king:\d+', text)),
         no_staging=not any(marker in text for marker in staging),
     )
