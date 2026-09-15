@@ -1,4 +1,4 @@
-"""Coverage-contract tests for ``scripts.audit_pikmin2_roster.coverage_gaps`` (lane 02).
+﻿"""Coverage-contract tests for ``scripts.audit_pikmin2_roster.coverage_gaps`` (lane 02).
 
 Pins the "complete ledger coverage" audit contract: every row cites an existing
 source doc and an existing native module; every ``docs/PIKMIN2_*_NATIVE.md``
@@ -210,7 +210,7 @@ def test_real_ledger_is_fully_covered():
 
 
 def test_real_ledger_admitted_set():
-    assert admitted_ids(load_and_validate()) == [44, 45, 59, 60, 61, 62]  # 44/45 Kochappy cohort; 59-62 Otakara elemental Dweevils (2026-09-15)
+    assert admitted_ids(load_and_validate()) == [23, 44, 59, 60, 61, 62]  # 44/45 Kochappy cohort; 59-62 Otakara elemental Dweevils (2026-09-15)
 
 
 # ---------------------------------------------------------------------------

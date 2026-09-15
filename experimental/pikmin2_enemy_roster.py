@@ -21,7 +21,6 @@ Design contract (agreed input to lanes 03/04/05)
 from __future__ import annotations
 
 import json
-import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -436,12 +435,7 @@ def write_admission(roster: list[RosterEntry], path=None) -> dict:
     import json as _json
     contract = admission_contract(roster)
     admitted = set(contract["admitted"])
-    # Keep the one-time user-authorized admitted-by-flag entries (directive 007)
-    # marked admitted rather than letting the contract demote them to candidate.
     by_source = {entry.source_id: entry for entry in roster}
-    for source_id in USER_AUTHORIZED_ADMITTED_BY_FLAG:
-        if source_id in by_source:
-            admitted.add(source_id)
     target = Path(path) if path is not None else EVIDENCE_PATH
     if target.is_file():
         # Merge: only update eligibility on rows that already exist, never add
@@ -642,10 +636,9 @@ def validate_roster(roster: list[RosterEntry]) -> None:
         if entry.eligibility == "admitted":
             if identity_role(entry) not in ("source", "variant"):
                 raise RosterError(f"{entry.enum_name} is admitted but its role {identity_role(entry)!r} is not seedable")
-            if entry.source_id not in USER_AUTHORIZED_ADMITTED_BY_FLAG:
-                missing = admission_requirements(entry)
-                if missing:
-                    raise RosterError(f"{entry.enum_name} admitted without the admission contract: {missing}")
+            missing = admission_requirements(entry)
+            if missing:
+                raise RosterError(f"{entry.enum_name} admitted without the admission contract: {missing}")
 
 
 def load_and_validate() -> list[RosterEntry]:
@@ -757,13 +750,6 @@ def admission_set(roster: list[RosterEntry]) -> AdmissionSet:
     """
     contract = admission_contract(roster)
     admitted = list(contract["admitted"])
-    # One-time user-authorized admitted-by-flag identities (directive 007): Snow 45
-    # is admitted on the Codex line without a receipt and must not fail closed here.
-    present = {entry.source_id for entry in roster}
-    for source_id in USER_AUTHORIZED_ADMITTED_BY_FLAG:
-        if source_id in present and source_id not in admitted:
-            admitted.append(source_id)
-    admitted.sort()
     admitted_set = set(admitted)
     candidates: list[int] = []
     excluded: list[int] = []
@@ -790,39 +776,15 @@ def admission_set(roster: list[RosterEntry]) -> AdmissionSet:
     return AdmissionSet(tuple(admitted), tuple(candidates), tuple(excluded), tuple(denied), by_role)
 
 
-# One-time USER-AUTHORIZED admitted-by-flag identities (directive 007, 2026-09-15).
-# Snow (YellowKochappy, 45) was admitted on the Codex line by an eligibility flag
-# with no delivery_receipt; the user explicitly authorized unioning it into this
-# reconciled line. The wave deny-by-default guarantee is unchanged for every other
-# identity: six natural gates plus a receipt-shaped delivery_receipt.
-USER_AUTHORIZED_ADMITTED_BY_FLAG: tuple[int, ...] = (45,)
-
-
 def admitted_ids(roster: list[RosterEntry]) -> list[int]:
     """Ordered source IDs a consumer may seed; empty while nothing is admitted.
 
-    Derived from :func:`admission_contract` (five natural PASSes plus a
-    receipt-shaped delivery_receipt), plus the one-time user-authorized
-    admitted-by-flag identities. A candidate-scope override is honoured only when
-    the process is explicitly marked by the private diagnostic CLI, so a stray
-    PIKMIN_P2_ADMITTED_IDS value can never broaden the product (default-deny) set.
+    Derived from :func:`admission_contract` — a seedable identity earns it only
+    with a natural PASS on each :data:`ADMISSION_GATES` gate plus a cited
+    delivery receipt for ``transport_reward``. There is no flag or environment
+    override: the strict contract is canonical (directive 008).
     """
-    ids = list(admission_contract(roster)["admitted"])
-    present = {entry.source_id for entry in roster}
-    for source_id in USER_AUTHORIZED_ADMITTED_BY_FLAG:
-        if source_id in present and source_id not in ids:
-            ids.append(source_id)
-    ids.sort()
-    if os.environ.get("PIKMIN_P2_CANDIDATE_SCOPE") and os.environ.get("PIKMIN_P2_ADMITTED_IDS"):
-        for part in os.environ["PIKMIN_P2_ADMITTED_IDS"].split(","):
-            part = part.strip()
-            if not part:
-                continue
-            source_id = int(part)
-            if source_id not in ids:
-                ids.append(source_id)
-        ids.sort()
-    return ids
+    return admission_contract(roster)["admitted"]
 
 
 def require_admitted(roster: list[RosterEntry], source_id: int) -> RosterEntry:
@@ -830,8 +792,6 @@ def require_admitted(roster: list[RosterEntry], source_id: int) -> RosterEntry:
     if entry is None:
         raise RosterError(f"unknown P2 source id {source_id}")
     role = identity_role(entry)
-    if entry.source_id in USER_AUTHORIZED_ADMITTED_BY_FLAG and role in ("source", "variant"):
-        return entry
     missing = admission_requirements(entry) if role in ("source", "variant") else ["role"]
     if role not in ("source", "variant") or entry.eligibility == "excluded" or missing:
         why = ["excluded"] if entry.eligibility == "excluded" else (missing or ["not seedable"])

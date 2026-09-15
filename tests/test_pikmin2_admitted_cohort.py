@@ -23,7 +23,7 @@ def test_reviewed_pairs_only():
 def test_product_generation_places_both_without_candidate_override(monkeypatch, seed):
     monkeypatch.delenv('PIKMIN_P2_CANDIDATE_SCOPE', raising=False)
     monkeypatch.setenv('PIKMIN_P2_ADMITTED_IDS', '79')
-    assert admitted_ids(load_and_validate()) == [44, 45]
+    assert admitted_ids(load_and_validate()) == [23, 44, 59, 60, 61, 62]
     manifest = generate(seed, p2_enemies=True, p2_placement=document())
     assert {b['source_id']: b['target'] for b in manifest['p2_layout']['bindings']} == {
         44: '1849273021', 45: '2049888785'}

@@ -9,7 +9,6 @@ from __future__ import annotations
 import argparse
 from contextlib import contextmanager
 import json
-import os
 from pathlib import Path
 import sys
 from unittest.mock import patch
@@ -73,22 +72,10 @@ def main(argv=None):
         command = qa.launch_command(report["manifest"], report["session_dir"], pin,
                                     report["content_manifest_path"])
         from randomizer.__main__ import main as launch
-        previous = os.environ.get("PIKMIN_P2_ADMITTED_IDS")
-        was_candidate = os.environ.get("PIKMIN_P2_CANDIDATE_SCOPE")
-        os.environ["PIKMIN_P2_ADMITTED_IDS"] = str(args.source)
-        os.environ["PIKMIN_P2_CANDIDATE_SCOPE"] = scope
-        try:
-            with candidate_scope(args.source), patch.object(sys, "argv", ["randomizer", *command[3:]]):
-                return launch()
-        finally:
-            if previous is None:
-                os.environ.pop("PIKMIN_P2_ADMITTED_IDS", None)
-            else:
-                os.environ["PIKMIN_P2_ADMITTED_IDS"] = previous
-            if was_candidate is None:
-                os.environ.pop("PIKMIN_P2_CANDIDATE_SCOPE", None)
-            else:
-                os.environ["PIKMIN_P2_CANDIDATE_SCOPE"] = was_candidate
+        # candidate_scope (the bridge.admitted_ids patch) is the only private path;
+        # the product admission set is never widened by environment variables.
+        with candidate_scope(args.source), patch.object(sys, "argv", ["randomizer", *command[3:]]):
+            return launch()
     pin = qa._pin_from_args(args)
     pin.verify()
     placement = qa.load_json(args.placement)
