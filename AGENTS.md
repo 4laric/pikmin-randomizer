@@ -1,5 +1,11 @@
 # Pikmin Randomizer track
 
+Lane execution, resource leases, watchdog recovery and handoff validation follow
+[the workflow operating contract](docs/PIKMIN2_WORKFLOW.md). Use one shared local
+registry under `output/workflow/` across participating worktrees. Private runtime
+launches are exempt from shared-runtime reservations; private build directories
+still require exclusive ownership and respect the aggregate heavy-build budget.
+
 P2 implementation agents must read [the fan-out and mandatory fixture baseline guide](docs/PIKMIN2_IMPLEMENTATION_FANOUT.md) before claiming or resuming work. Before the next runtime acceptance run, adopt the current starting-Pikmin overlay and 960×540 centred-window native startup, regenerate stale arenas, and record per-lane adoption evidence as required there. Existing active lanes are included.
 
 Before starting any implementation, ensure its scope and acceptance criteria are written in a GitHub issue in 4laric/pikmin-randomizer and assign that issue to the authenticated account (currently 4laric). Record Codex as the implementation owner when using that shared account; do not imply a separate Codex GitHub identity. Update the issue with progress, commits, validation evidence and remaining work. Assignment indicates ownership, not that every backlog item is actively underway. This issue-first requirement also applies to work inside native/ and bbft/.
@@ -27,7 +33,7 @@ Keep private build dirs, builds, saves, generated seeds, logs and runtime state 
 
 ## Git push policy
 
-Agents may commit freely on their work branches and **may `git push` to the remote on fix/feature branches** — `feature/**`, `fix/**`, and the wave work branches `deepseek/**`, `claude/**`, `codex/**` — on both this repo's remote (`origin`) and the native repo's remote. Never push the default branch (`main`/`master`), never push tags, and never force-push. Record what was pushed (branch + commit) in the handoff or report. Issue-first tracking (above) still governs GitHub issue writes; this policy only relaxes pushes.
+Agents may commit freely on their work branches and **may `git push` to root `origin` on fix/feature branches** — `feature/**`, `fix/**`, and the wave work branches `deepseek/**`, `claude/**`, `codex/**`. **Native work branches may be pushed to native `origin`**, including existing lane branch names. Never push the default branch (`main`/`master`), `p2-integration`, or a namespaced branch ending in `/p2-integration`; never push tags or force-push. Verify the remote rather than guessing it. Record what was pushed (branch + commit) in the handoff or report. Issue-first tracking still governs GitHub issue writes.
 
 ## Export does not wait on a clean shared `native/`
 
@@ -40,4 +46,4 @@ The shared `native/` checkout normally carries a recorded dirty baseline from ot
   py -3.12 scripts/export_native_source.py --source output/native-<lane>
   ```
 - Only the integration lead runs the maintained export; lanes keep their own uncommitted work out of the shared checkout by using private `native/` worktrees (§Build isolation) and commit native changes on their own branch.
-- Record the native commit **and** dirty state with any export evidence. Native work branches may be pushed under the Git push policy above (fix/feature/wave branches only; never the default branch, tags, or force-pushes).
+- Record the native commit **and** dirty state with any export evidence. Native work branches may be pushed to origin under the Git push policy above; never push default/p2-integration branches, tags, or force-pushes.

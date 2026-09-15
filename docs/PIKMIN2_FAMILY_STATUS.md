@@ -1,10 +1,10 @@
 # P2 enemy family — ownership and next-step status
 
-Live tracking: this file. Batch assignments and per-session mandates: [PIKMIN2_FAMILY_BATCHES.md](PIKMIN2_FAMILY_BATCHES.md).
+Family evidence summaries: this file. Live lane execution, resources, recovery and dispatch use [the workflow registry](PIKMIN2_WORKFLOW.md). Batch history and per-session mandates: [PIKMIN2_FAMILY_BATCHES.md](PIKMIN2_FAMILY_BATCHES.md).
 
-Coordination: [#186](https://github.com/4laric/pikmin-randomizer/issues/186). This is the single tracking view for the P2 enemy-family import pipeline. Evidence levels are defined in [PIKMIN2_ENEMY_IMPORT_PIPELINE.md](PIKMIN2_ENEMY_IMPORT_PIPELINE.md). Under the 2026-09-13 revision, family owners own extraction, conversion, native modules, narrow additive registration hooks, private builds and runtime evidence; #186 reviews shared semantics.
+Coordination: [#186](https://github.com/4laric/pikmin-randomizer/issues/186). This is a family evidence index, not an authoritative active-worker list. Evidence levels are defined in [PIKMIN2_ENEMY_IMPORT_PIPELINE.md](PIKMIN2_ENEMY_IMPORT_PIPELINE.md). Family owners own extraction, conversion, native modules, narrow additive registration hooks, private builds and runtime evidence; #186 reviews shared semantics.
 
-Shared, serialized resources (one at a time): the maintained `native/` build and any real-GL runtime fixture. The ISO is `output/pikmin2-runtime/pikmin2-source-test.iso` (GPVE01 rev 0, private). Native origin is never pushed.
+Shared, serialized resources: the maintained `native/` build/export and shared runtime fixtures. Private runtime launches are exempt. Private builds use exclusive directory leases and the aggregate build cap. The ISO is `output/pikmin2-runtime/pikmin2-source-test.iso` (GPVE01 rev 0, private). Native origin pushes follow [AGENTS.md](../AGENTS.md#git-push-policy).
 
 | Family | Parent | Source contract | Install + arena | Native registration | Evidence level | Next step | Owner |
 |---|---|---|---|---|---|---|---|
@@ -64,4 +64,4 @@ Shared, serialized resources (one at a time): the maintained `native/` build and
 
 ## Orchestration rule
 
-Each family owner prepares its next-step artifact and a precise, reproducible run command. Build in your own private environment per [AGENTS.md](../AGENTS.md#build-isolation-required) (own native worktree + private build dir); do not queue on `native/build-randomizer`. Keep the maintained checkout/build/export and any real-GL fixture serialized through the integration lead. A family that needs the disc assets reads only the private ISO above and commits no extracted assets.
+Each family owner prepares its next-step artifact and a precise, reproducible run command. Build in your own private environment per [AGENTS.md](../AGENTS.md#build-isolation-required) (own native worktree + private build dir); do not queue on `native/build-randomizer`. Use [workflow records and leases](PIKMIN2_WORKFLOW.md) for execution, shared build/export and shared runtime; private runtime launches are exempt. A family that needs the disc assets reads only the private ISO above and commits no extracted assets.

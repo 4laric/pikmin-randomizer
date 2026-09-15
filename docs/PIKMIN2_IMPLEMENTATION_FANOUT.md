@@ -4,6 +4,10 @@ Agent entrypoint, 2026-09-13. Documentation tracking: #404. Coordination and
 shared-semantics review: #186. Implementation owner: Codex through shared GitHub
 account `4laric`; assignment alone does not identify a lane or activate work.
 
+Execution update, 2026-09-15: use [the workflow operating contract](PIKMIN2_WORKFLOW.md)
+for durable lane records, watchdog actions, resource leases, handoff validation
+and integration metrics. Its current policy supersedes historical reservations.
+
 Read this before claiming or resuming a P2 implementation slice. Follow
 [AGENTS.md](../AGENTS.md), [the import pipeline](PIKMIN2_ENEMY_IMPORT_PIPELINE.md),
 [blockers](PIKMIN2_FULL_IMPL_BLOCKERS.md), and
@@ -130,10 +134,10 @@ measurements with the first two implemented species; establish explicit budgets
 with integration before scaling density. Family complete still requires every
 parent identity and all applicable gates, including mixed-scene performance.
 
-Before dispatch, reconcile contradictory status against pinned evidence. At this
-writing, the blocker doc's blanket cleanup statement differs from batch-1 evidence
-in family status, and King WarCry is listed both open and passed. Scope only the
-remaining unproven behavior; do not repeat completed work based on a stale summary.
+Before dispatch, reconcile status against pinned evidence and register the actual
+lane in the local workflow registry. The old blocker document is historical;
+King WarCry is passed. Scope only remaining unproven behavior and do not dispatch
+duplicate cleanup/FSM work from stale blanket summaries.
 
 ## Private builds and reviewable handoffs
 
@@ -150,8 +154,9 @@ cmake --build output/native-<lane>-build --target pikmin_pc -- -n
 
 Replace placeholders. Record pinned commit, private build directory, executable
 SHA-256 and the no-work dry-run result for each attempt. Never run two heavy jobs
-against one build directory. Coordinate real-GL/input fixture slots through the
-integration lead; private builds do not remove runtime contention.
+against one build directory. Use resource leases for private builds and the
+aggregate heavy-build budget. Shared runtime fixtures require the shared-runtime
+lease; private runtime launches are exempt from that reservation.
 
 For replacement-main fixtures, use [the provenance builder](PIKMIN2_FIXTURE_BUILDS.md)
 against that completed PRIVATE build:
@@ -173,6 +178,7 @@ into focused commits. Update the issue with progress and integrated commits.
 Family owners can implement narrow additive registration hooks. Saves/rewards,
 captain state, generic damage/physics, actor lifetime, converter defaults and ID
 conflicts require #186 review. Only integration builds `native/build-randomizer`
-after integration and runs `scripts/export_native_source.py`. Never push native
-origin. Keep assets, builds, logs, saves and runtime state local under `output/`;
+after integration and runs `scripts/export_native_source.py`. Native origin pushes
+follow [AGENTS.md](../AGENTS.md#git-push-policy); main/default and p2-integration
+branches remain protected. Keep assets, builds, logs, saves and runtime state local under `output/`;
 do not modify the parallel original BBFT or decomp/research checkouts or relink AP.

@@ -1,5 +1,9 @@
 # AFK implementation handoff
 
+> Historical September 12–13 batch log. Current execution and watchdog behavior
+> follow [PIKMIN2_WORKFLOW.md](PIKMIN2_WORKFLOW.md); current native push policy is in
+> [AGENTS.md](../AGENTS.md#git-push-policy). Do not resume or reassign lanes from this log.
+
 Continue issue-scoped P2 batches; the 15-minute heartbeat retains daily upstream sync. Push root source only, never native origin or game assets. Preserve unrelated files and fixed Kimi QA sessions.
 
 Native 7a4cca762b626cac4807b1ed0cc22987bed3de43 adds optional Breadbug Back/Hide visuals driven by native animation counters. Full build log: output/p2-team-batch1/breadbug-cargo-build.log. Check completed build and a no-work CMake dry run before private snapshots. Root owns shared hooks, builds and export.

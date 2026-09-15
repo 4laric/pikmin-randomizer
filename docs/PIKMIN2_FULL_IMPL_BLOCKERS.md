@@ -1,5 +1,12 @@
 # P2 families — blockers to full implementation
 
+> Historical snapshot — out of date, confirmed 2026-09-15. Do not use the table
+> below to dispatch work. King WarCry is passed; source FSM and cleanup/re-entry
+> evidence has advanced beyond the blanket statements below. Consult the latest
+> child-issue evidence, [family evidence index](PIKMIN2_FAMILY_STATUS.md), and
+> [workflow registry](PIKMIN2_WORKFLOW.md) for remaining gates and active owners.
+> The preserved text records earlier planning, not current failures.
+
 Companion to [PIKMIN2_FAMILY_STATUS.md](PIKMIN2_FAMILY_STATUS.md). "Full implementation" = the pipeline's **Family complete** level: every parent identity implemented as source P2 behavior (FSM, animation events, collision, receivers, rewards, lifecycle) passing the arena gates in mixed scenes.
 
 Current levels are visual/display only unless noted. The dominant blocker everywhere is **source-behavior translation**: most families render as P1 proxies with sampled visuals and have no source FSM, receivers or reward logic. Issues: [#186](https://github.com/4laric/pikmin-randomizer/issues/186) (coordination/acceptance), [#128](https://github.com/4laric/pikmin-randomizer/issues/128) (converter/animation/material pipeline), [#397](https://github.com/4laric/pikmin-randomizer/issues/397) (non-invincible cleanup/re-entry fixture).

@@ -77,11 +77,11 @@ py -3.12 scripts/build_pikmin2_fixture.py --source native --build native\build-r
 
 Reference: [PIKMIN2_ROOM_PREVIEW.md](PIKMIN2_ROOM_PREVIEW.md), [PIKMIN2_FIXTURE_BUILDS.md](PIKMIN2_FIXTURE_BUILDS.md), [PIKMIN2_ENEMY_ARENA.md](PIKMIN2_ENEMY_ARENA.md).
 
-## 6. Serialized shared resources
+## 6. Resource leases (2026-09-15)
 
-- One maintained `native/` build at a time; one real-GL run/fixture at a time.
-- Reserve a slot with the orchestrator (this session / `#186`) before building `native/` or launching a GL window. Private worktree builds/launches are separate.
-- Never push native origin. Root source is exported with `py -3.12 scripts/export_native_source.py` and committed/pushed from the root repo only.
+- Follow [the workflow operating contract](PIKMIN2_WORKFLOW.md): one maintained build/export lease, one shared-runtime lease, exclusive private build directories and an aggregate heavy-build cap.
+- Private runtime launches are exempt from shared-runtime reservations. Keep their assets, saves and output isolated.
+- Native work branches may be pushed to native origin under [AGENTS.md](../AGENTS.md#git-push-policy); main/default and p2-integration branches are protected. Only the integration lead exports native source into root `engine/`.
 
 ## 7. Tests
 
