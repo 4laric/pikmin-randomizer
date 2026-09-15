@@ -26,7 +26,7 @@ def instrument(source):
         'if(!p->isAlive())continue;if(kept<2){++kept;continue;}'
         'Vector3f far(-400.0f+(kept%5)*8.0f,30.0f,1800.0f+(kept/5)*8.0f);far.y=mapMgr->getMinY(far.x,far.z,true);'
         'p->resetPosition(far);++kept;}'
-        'std::printf("P2_DWARF_ORANGE_REENTRY throttle kept=2\\n");std::fflush(stdout);}\n')
+        'std::printf("P2_DWARF_ORANGE_REENTRY_THROTTLE kept=2\\n");std::fflush(stdout);}\n')
     anchor = '        if(observed==120){\n'
     if s.count(anchor) != 1:
         raise ValueError('Unexpected re-entry swap anchor')
