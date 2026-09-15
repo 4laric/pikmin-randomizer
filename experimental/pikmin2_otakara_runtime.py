@@ -69,7 +69,8 @@ APP_NATURAL = r'''class RoomApp : public PlugPikiApp {
    int index=0;Iterator p(pikiMgr);CI_LOOP(p){Piki* v=static_cast<Piki*>(*p);if(!v->isAlive())continue;
     if(index==0){red=v;v->setColor(Red);}else if(index==1){blue=v;v->setColor(Blue);}++index;}
    require(red&&blue,"two starting Pikmin available");
-   std::printf("P2_OTAKARA_SQUAD red=%d blue=%d registered=%lu\n",Red,Blue,pc_p2_otakara_count());
+   int reds=0,blues=0;Iterator q(pikiMgr);CI_LOOP(q){Piki* v=static_cast<Piki*>(*q);if(v->isAlive()){if(v->mColor==Red)++reds;else if(v->mColor==Blue)++blues;}}
+   std::printf("P2_OTAKARA_SQUAD red=%d blue=%d registered=%lu\n",reds,blues,pc_p2_otakara_count());
    std::fflush(stdout);stage=1;
   }
   if(stage<2){
@@ -138,7 +139,8 @@ APP_INJECT = r'''class RoomApp : public PlugPikiApp {
    int index=0;Iterator p(pikiMgr);CI_LOOP(p){Piki* v=static_cast<Piki*>(*p);if(!v->isAlive())continue;
     if(index==0){red=v;v->setColor(Red);}else if(index==1){blue=v;v->setColor(Blue);}++index;}
    require(red&&blue,"two starting Pikmin available");
-   std::printf("P2_OTAKARA_SQUAD red=%d blue=%d registered=%lu\n",Red,Blue,pc_p2_otakara_count());
+   int reds=0,blues=0;Iterator q(pikiMgr);CI_LOOP(q){Piki* v=static_cast<Piki*>(*q);if(v->isAlive()){if(v->mColor==Red)++reds;else if(v->mColor==Blue)++blues;}}
+   std::printf("P2_OTAKARA_SQUAD red=%d blue=%d registered=%lu\n",reds,blues,pc_p2_otakara_count());
    std::fflush(stdout);
   }
   const Vector3f fp=fire->getPosition();

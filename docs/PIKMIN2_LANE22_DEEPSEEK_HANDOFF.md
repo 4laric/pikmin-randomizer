@@ -343,3 +343,11 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l2
     --exe "C:/Users/alari/pikmin-randomizer/output/dsw/l22-fixture-slice2/fixture.exe" `
     --seconds 150 --scenario natural
 ```
+
+### Integrator note (review of slice 2)
+
+- Gate 4: `P2_OTAKARA_DEAD` is printed by the module on mHealth<=0 (pc_p2_otakara_update), before BTeki::die()/dieSoon(); it is not the host death seam. The host completion is proven by the corpse pellet (a pelletMgr entry with mPelletView==fire can only come from dieSoon()->becomePellet()). Death is natural (no injection marker in the primary run; nine named InteractAttack drops 150->0).
+- Gate 6: `pc_p2_otakara_forget(fire)` is invoked by the fixture, not by the lane 07 seam pc_p2_forget_teki in BTeki::doKill (the fixture exits while the corpse still holds the actor); the `stale=0` in the FORGET marker is a literal. Forget API verified; despawn-seam forget and stale-pointer freedom UNTESTED.
+- Gate 4 corpse: no lane 06 receipt was staged (cargo-free arena); "corpse" means pellet existence only.
+- `P2_OTAKARA_SQUAD` printed enum constants (red=1 blue=0) in slice 2; the integrator restored the fix1 count loop. Root handoff commit a022252 belongs in the ordered list.
+
