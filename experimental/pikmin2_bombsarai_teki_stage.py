@@ -60,8 +60,6 @@ def stage(assets, converted, output, generator=DEFAULT_GENERATOR, position=DEFAU
                                                  generator=generator,
                                                  type=NAPKID_TYPE),
         encoding='ascii')
-    (run / 'bombsarai-teki.json').write_bytes(
-        ('{"generator":' + str(generator) + ',"type":' + str(NAPKID_TYPE) + '}\n').encode('ascii'))
     return run
 
 

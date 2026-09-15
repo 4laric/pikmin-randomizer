@@ -99,13 +99,13 @@ Root Python: `py -3.12 -m pytest tests/test_pikmin2_bombsarai_install.py -q`
 
 ## Six arena gates (honest)
 
-| Gate | Status | Evidence / label |
+| Gate | Historical note | Evidence / label |
 |---|---|---|
-| 1 Exact identity and spawn | source-backed N/A (unchanged) | Still the pinned opt-in profile (`P2_BOMBSARAI_ARENA_1`); no ordinary spawn binding. |
+| 1 Exact identity and spawn | N/A (unchanged) | Still the pinned opt-in profile (`P2_BOMBSARAI_ARENA_1`); no ordinary spawn binding. |
 | 2 Autonomous movement and animation | PARTIAL (unit only) | Animated capture joint now follows the carrier hover bob + yaw (new `followJoint` + `P2BombSaraiJoint`); carrier horizontal `walkToTarget` still pinned/blocked. |
 | 3 Attacks and receivers | UNTESTED (unchanged) | Blast still routes to instrumented receivers, not live creatures (lane 10 boundary). |
-| 4 Death and corpse | source-backed N/A (unchanged) | Existing FSM death/corpse decision paths preserved, not re-exercised this slice. |
-| 5 Actual transport and reward | source-backed N/A | Out of this slice's scope; no transport/reward seam touched. |
+| 4 Death and corpse | N/A (unchanged) | Existing FSM death/corpse decision paths preserved, not re-exercised this slice. |
+| 5 Actual transport and reward | N/A | Out of this slice's scope; no transport/reward seam touched. |
 | 6 Cleanup and re-entry | UNTESTED (unchanged) | Arena reset path unchanged; no scene re-entry run. |
 
 Injected vs natural: the entire arena seam (carrier, receivers, event script) is
@@ -232,13 +232,13 @@ now `pass` on this log line.
 
 ### Six arena gates (slice 2)
 
-| Gate | Status | Evidence / label |
+| Gate | Historical note | Evidence / label |
 |---|---|---|
-| 1 Exact identity and spawn | source-backed N/A | Still the pinned opt-in profile; no ordinary BombSarai actor registered. |
+| 1 Exact identity and spawn | N/A | Still the pinned opt-in profile; no ordinary BombSarai actor registered. |
 | 2 Autonomous movement and animation | PASS (joint-follow observed) | `P2_BOMBSARAI_JOINT_FOLLOW` in all three scenarios on the hover-moving carrier. |
 | 3 Attacks and receivers | PARTIAL | Blast routes to instrumented profile receivers (teki 500/navi+piki 10); live creatures still lane 10. |
 | 4 Death and corpse | PARTIAL | Death scenario executes zero-velocity drop + dead-carrier attribution; no live corpse/transport. |
-| 5 Actual transport and reward | source-backed N/A | Out of slice scope. |
+| 5 Actual transport and reward | N/A | Out of slice scope. |
 | 6 Cleanup and re-entry | UNTESTED | Arena reset per scenario (three scenarios in one process); no scene exit/re-entry run. |
 
 Natural vs injected: the carrier/receivers/event script remain **injected**; the
@@ -342,13 +342,13 @@ rides horizontal motion, not hover-bob only.
 
 ### Six arena gates (slice 3)
 
-| Gate | Status | Evidence / label |
+| Gate | Historical note | Evidence / label |
 |---|---|---|
-| 1 Exact identity and spawn | source-backed N/A | Still injected profile; no ordinary actor registration. |
+| 1 Exact identity and spawn | N/A | Still injected profile; no ordinary actor registration. |
 | 2 Autonomous movement and animation | PARTIAL (toward PASS) | Horizontal scripted path + joint follow observed; still injected x/z, not source `walkToTarget`. |
 | 3 Attacks and receivers | PARTIAL | Per-token blast attribution to instrumented receivers; teki 500 / navi+piki 10. |
 | 4 Death and corpse | PARTIAL | Dead-carrier in-flight bomb resolves token correctly + single release; no live corpse/transport. |
-| 5 Actual transport and reward | source-backed N/A | Out of slice scope. |
+| 5 Actual transport and reward | N/A | Out of slice scope. |
 | 6 Cleanup and re-entry | UNTESTED | Five scenarios in one process; no scene exit/re-entry. |
 
 Natural vs injected: carrier positions/paths/receivers/event scripts remain
@@ -462,13 +462,13 @@ Root Python: `py -3.12 -m pytest tests/test_pikmin2_bombsarai_runtime_log.py -q`
 
 ### Six arena gates (honest)
 
-| Gate | Status | Evidence / label |
+| Gate | Historical note | Evidence / label |
 |---|---|---|
-| 1 Exact identity and spawn | source-backed N/A | Still the pinned opt-in profile; no ordinary generated binding (this slice's deferred core work). |
+| 1 Exact identity and spawn | N/A | Still the pinned opt-in profile; no ordinary generated binding (this slice's deferred core work). |
 | 2 Autonomous movement and animation | PARTIAL (unit, find #3) | advancePath now gated to walking states; horizontal follow unchanged from slice 3. |
 | 3 Attacks and receivers | PARTIAL | Per-token blast attribution unchanged; still instrumented receivers. |
 | 4 Death and corpse | PARTIAL | Dead-carrier attribution unchanged; no live corpse/transport. |
-| 5 Actual transport and reward | source-backed N/A | Out of scope. |
+| 5 Actual transport and reward | N/A | Out of scope. |
 | 6 Cleanup and re-entry | UNTESTED | No scene re-entry run. |
 
 Natural vs injected: unchanged from slice 3; the pool-iteration and
@@ -703,3 +703,100 @@ exe sha256 `96bb230071e906cc961ecc0777968448e8dad8f2f7892bc032e8d25d5e13b39c`
   and does not move it, so the BombSarai evidence is unaffected.
 - Only the FIRST supply prints `SUPPLY`; the 17 THROW lines each imply a prior
   pool supply (one-bomb-per-carrier guard, token-pinned after the rng fix).
+## Slice 4c review fixes 1
+
+Reviewer verdict was MERGE-WITH-FIXES. This pass merges the wave native, applies
+the blocking fixes, and writes the honest gate status.
+
+## Ordered commits
+
+Native branch `deepseek/p2-l27-native` (base `16a5a98e`, clean):
+
+1. `99e2ccf3` — merge `claude/p2-deepseek-wave-native` (299 commits), keeping
+   BOTH sides in the four shared conflict hunks: `gameCoreSection.cpp`
+   (bombsarai + groink + king teki setups/includes), `tekibteki.cpp` (bombsarai
+   + king ticks), `pc_p2_teki_lifetime.cpp` (bombsarai + king forget/reset +
+   groink include), `pc_p2_preview.cpp` (bombsarai + kurage + otakara +
+   waterwraith + king receipt branches). CMakeLists.txt auto-merged; the
+   lane-22 `pc_p2_king_teki_*` lines and the kurage/otakara/waterwraith receipt
+   branches are preserved.
+2. `32ab629d` — review fixes 1: mirror `pc_p2_kurage_teki.cpp` corpse map
+   (tick-only insert + forget no-op), drop unreachable `in.killed`, lower the
+   experimental hover height.
+
+Root branch `deepseek/p2-l27` (base `c9dff37`, clean):
+
+1. (this commit) — emitter json removal, honest gate table + checker, handoff.
+
+### Item 2 (blocking) — stale corpse pointer on slot reuse
+
+`pc_p2_bombsarai_teki.cpp` now keeps a `std::map<BTeki*,unsigned> sCorpses`
+populated ONLY on the `!isAlive() || mHealth <= 0` tick death path;
+`pc_p2_bombsarai_teki_forget` erases both maps and prints nothing, and
+`pc_p2_bombsarai_receipt` resolves live-first then corpse, exactly like
+`pc_p2_kurage_receipt`. A recycled slot can no longer be credited
+`corpse:...bombsarai`.
+
+### Item 3 (blocking) — build evidence
+
+`build_lane.py l27` on the clean merged head `32ab629d`:
+`native=32ab629d92a36404cb7933d3bb4ff360c3961bbd dirty=no exe sha256=11d032d651c35618bbe2783cf532b3e3411f48cf5b44fe40e5501c4f416bc79a ninja_n="ninja: no work to do."`.
+
+### Item 4 — honest label
+
+Autonomous movement/animation is PARTIAL, not PASS: the sidecar writes only
+`mSRT.t.y` (FSM hover) while the `travel_xz` (up to ~7896) is the P1 Napkid
+host flight, and `in.waypointReached` is always false. `p2_projectile_apply_engine_strike`
+(`pc_port/pc_p2_projectile_engine_receiver.{h,cpp}`) DOES exist on the wave
+native; my direct `InteractBomb`+`stimulate` is acceptable, but my branch was
+~230 commits behind when I wrote `not present`.
+
+### Item 5 — gate table + minor
+
+Removed the orphan `bombsarai-teki.json`; `in.killed` at :239 is now
+unreachable (death is handled in `pc_p2_bombsarai_teki_tick`); no native unit
+test for `pc_p2_bombsarai_teki.cpp` exists (GL-only coverage).
+
+## Concrete source ID
+- Source ID: 58 `BombSarai`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | UNTESTED (injected) | output/dsw/l27-out/bombsarai-teki-run-fix1.log:723 (TEKI_Napkid vehicle proxy, not P2 identity 58) | injected |
+| 2. Autonomous movement and animation | PARTIAL (injected) | output/dsw/l27-out/bombsarai-teki-run-fix1.log:758 (FSM hover only; travel_xz is P1 Napkid host flight) | injected |
+| 3. Attacks and receivers | PARTIAL (injected) | output/dsw/l27-out/bombsarai-teki-run-fix1.log P2_BOMBSARAI_TEKI_BLAST hits=15 pikmin_hits=14 (InteractBomb on live Pikmin) | injected |
+| 4. Death and corpse | UNTESTED (injected) | output/dsw/l27-out/bombsarai-teki-run-fix1.log (0 P2_BOMBSARAI_TEKI_DEAD in 220s; corpse branch pc_p2_preview.cpp unexercised) | injected |
+| 5. Actual transport and reward | UNTESTED (injected) | (no P2_POD_RECEIPT; corpse receipt branch wired but untriggered) | injected |
+| 6. Cleanup and re-entry | UNTESTED (injected) | output/dsw/l27-out/bombsarai-teki-run-fix1.log (single session; lifetime forget/reset wired) | injected |
+
+### Natural-kill status
+
+Three GL runs (240s, 240s, 220s; the last with a lowered hover height 20) all
+ended `P2_BOMBSARAI_TEKI_DEAD` count 0 and no `P2_POD_RECEIPT`: the flying
+Napkid carrier is never engaged by the ground squad — it lobs 12-17 bombs into
+the squad while the reds never kill it. The corpse receipt branch
+(`pc_p2_preview.cpp`, now the `pc_p2_bombsarai_receipt` branch after the merge)
+remains runtime-unexercised, so item 1 resolves to BLOCKED, not a fabricated
+DONE.
+
+### Subagent usage
+
+Ran solo this pass (the work was a targeted native merge + a ~30-line corpse
+refactor + build + one GL run, not read-heavy); no subagents spawned. Honest
+negative result: none of the three candidate subagent tasks (source audit /
+candidate inventory / harness scaffolding) would have saved time here, since
+the deltas were already fully known from the reviewer's itemized list.
+
+### Checker output
+
+```text
+36 Bomb (role=projectile): ignored (role)
+58 BombSarai (role=source):
+  1. identity_spawn     ignored [UNTESTED]
+  2. movement_animation ignored [PARTIAL]
+  3. attacks_receivers  ignored [PARTIAL]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [UNTESTED]
+EXIT=0 (no refused PASS rows)
+```
