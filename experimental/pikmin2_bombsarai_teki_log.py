@@ -34,10 +34,37 @@ def _as_float(value):
     return parsed if math.isfinite(parsed) else None
 
 
+def _as_str(value):
+    return value if value else None
+
+
 _PROBE_FIELDS = (("tick", _as_int), ("y", _as_float),
                  ("nearest", _as_float), ("squad", _as_int))
 _CORPSE_FIELDS = (("tick", _as_int), ("moved", _as_float), ("carriers", _as_int))
 _CORPSE_CONFIG_FIELDS = (("carry_min", _as_int), ("carry_max", _as_int))
+_MOVE_FIELDS = (("tick", _as_int), ("state", _as_str), ("x", _as_float),
+                ("z", _as_float), ("lane", _as_float), ("host", _as_float))
+_HIT_FIELDS = (("kind", _as_str), ("hp_before", _as_float),
+               ("hp_after", _as_float), ("applied", _as_int),
+               ("alive_after", _as_int))
+_FORGET_FIELDS = (("bound_before", _as_int), ("corpse_before", _as_int),
+                  ("bound_after", _as_int), ("corpse_after", _as_int))
+_RESET_FIELDS = _FORGET_FIELDS
+_REENTRY_FIELDS = (("bound_before", _as_int),
+                   ("bound_after_reset", _as_int),
+                   ("corpse_after_reset", _as_int),
+                   ("bound_after", _as_int), ("corpse_after", _as_int))
+
+
+def _move_travel(moves):
+    points = [(m["x"], m["z"]) for m in moves
+              if m["x"] is not None and m["z"] is not None]
+    if len(points) < 2:
+        return None
+    travel = 0.0
+    for (x0, z0), (x1, z1) in zip(points, points[1:]):
+        travel += math.hypot(x1 - x0, z1 - z0)
+    return travel
 
 
 def _parse_fields(tokens, field_spec):
@@ -82,13 +109,20 @@ def validate_teki_markers(log_text):
     corpse_probes = []
     corpse_config = None
     receipt_bombsarai = False
+    moves = []
+    hits = []
+    forget = None
+    reentry = None
+    reentry_pass = False
     if not log_text:
         return {"gates": gates, "blasts": 0, "pikmin_hits": 0,
                 "throw_kind": None, "probes": [], "min_y": None,
                 "max_nearest": None, "engaged": False,
                 "corpse_probes": [], "corpse_max_carriers": 0,
                 "corpse_moved": None, "corpse_config": None,
-                "transported": False}
+                "transported": False, "moves": [], "move_travel": None,
+                "states_seen": [], "hits": [], "hit_damage": None,
+                "forget": None, "reentry": None, "reentry_pass": False}
     for line in log_text.splitlines():
         stripped = line.strip()
         if not stripped:
@@ -125,6 +159,19 @@ def validate_teki_markers(log_text):
             corpse_probes.append(_parse_fields(tokens[1:], _CORPSE_FIELDS))
         elif marker == "P2_BOMBSARAI_TEKI_CORPSE_CONFIG":
             corpse_config = _parse_fields(tokens[1:], _CORPSE_CONFIG_FIELDS)
+        elif marker == "P2_BOMBSARAI_TEKI_MOVE":
+            moves.append(_parse_fields(tokens[1:], _MOVE_FIELDS))
+        elif marker == "P2_BOMBSARAI_TEKI_HIT":
+            hits.append(_parse_fields(tokens[1:], _HIT_FIELDS))
+        elif marker == "P2_BOMBSARAI_TEKI_FORGET":
+            forget = _parse_fields(tokens[1:], _FORGET_FIELDS)
+        elif marker == "P2_BOMBSARAI_TEKI_RESET":
+            _parse_fields(tokens[1:], _RESET_FIELDS)
+        elif marker == "P2_BOMBSARAI_TEKI_REENTRY":
+            reentry = _parse_fields(tokens[1:], _REENTRY_FIELDS)
+        elif marker == "P2_BOMBSARAI_TEKI_REENTRY_PASS":
+            if len(tokens) > 1 and tokens[1] == "1":
+                reentry_pass = True
         elif marker in ("P2_POD_RECEIPT", "[Pikipelago]") and "bombsarai" in stripped:
             gates["corpse"] = True
             if "P2_POD_RECEIPT" in stripped:
@@ -138,6 +185,13 @@ def validate_teki_markers(log_text):
                       if p["carriers"] is not None]
     moveds = [p["moved"] for p in corpse_probes if p["moved"] is not None]
     corpse_max_carriers = max(carrier_counts) if carrier_counts else 0
+    states_seen = []
+    for move in moves:
+        state = move["state"]
+        if state is not None and state not in states_seen:
+            states_seen.append(state)
+    damages = [h["hp_before"] - h["hp_after"] for h in hits
+               if h["hp_before"] is not None and h["hp_after"] is not None]
     return {"gates": gates, "blasts": blasts, "pikmin_hits": pikmin_hits,
             "throw_kind": throw_kind, "probes": probes,
             "min_y": min(ys) if ys else None,
@@ -147,4 +201,12 @@ def validate_teki_markers(log_text):
             "corpse_max_carriers": corpse_max_carriers,
             "corpse_moved": max(moveds) if moveds else None,
             "corpse_config": corpse_config,
-            "transported": corpse_max_carriers >= 1 or receipt_bombsarai}
+            "transported": corpse_max_carriers >= 1 or receipt_bombsarai,
+            "moves": moves,
+            "move_travel": _move_travel(moves),
+            "states_seen": states_seen,
+            "hits": hits,
+            "hit_damage": max(damages) if damages else None,
+            "forget": forget,
+            "reentry": reentry,
+            "reentry_pass": reentry_pass}

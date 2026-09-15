@@ -59,8 +59,11 @@ def append_napkid(gen_path, generator, position):
 
 
 
-def stage(assets, converted, output, generator=DEFAULT_GENERATOR, position=DEFAULT_POSITION):
-    run = room_prepare(Path(assets).resolve(), Path(converted).resolve(), Path(output))
+def stage(assets, converted, output, generator=DEFAULT_GENERATOR, position=DEFAULT_POSITION, reds=40):
+    # The carrier's area bombs otherwise wipe the shared 20-red default squad
+    # before it can be killed; lane 27 opts in to 40 so survivors are left to
+    # haul the carcass (see preview_pikmin2_room.generator).
+    run = room_prepare(Path(assets).resolve(), Path(converted).resolve(), Path(output), reds=reds)
     gen = run / 'assets' / 'dataDir' / 'stages' / 'chal0' / 'default.gen'
     append_napkid(gen, generator, position)
     (run / 'p2-bombsarai-teki.txt').write_text(
