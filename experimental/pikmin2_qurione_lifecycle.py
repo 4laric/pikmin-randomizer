@@ -173,7 +173,12 @@ def validate_lifecycle(text):
                    'nectar (no P1 Mitite manager).']
     if pos_nan:
         limitations.append('movement position NaN (blocked)')
+    full_chain = bool(checks['identity'] and checks['ready'] and checks['window']
+                      and checks['moved'] and checks['source_cycle'] and checks['drop_path']
+                      and checks['no_extinction'] and checks['no_movement_nan']
+                      and all(reward_real.values()))
     return dict(passed=all(scalar.values()), passed_real=all(reward_real.values()),
+                full_chain=full_chain,
                 checks=checks,
                 unmeasured=['glow/appear/disappear effect fidelity',
                             'Piklopedia zukan-mode utility timer',
