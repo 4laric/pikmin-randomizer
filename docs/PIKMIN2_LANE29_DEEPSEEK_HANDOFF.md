@@ -157,3 +157,137 @@ Native build (after `cmake -S ... -B ... -G Ninja -DCMAKE_C_COMPILER=<abs gcc>
 ```
 cmake --build C:/Users/alari/pikmin-randomizer/output/dsw/native-l29-build --target pikmin_pc -j 6
 ```
+
+## Slice 2
+
+Source ID: Kurage (Lesser Spotted Jellyfloat, 57). Goal: turn the corpse-receipt
+gate from UNTESTED into a real runtime run, then attempt the natural kill path.
+Root base `ef1cace7`, native base `b805d9c6`; both worktrees clean at handoff.
+
+### Source-fidelity correction (from a decomp audit this slice)
+
+Verified against `C:/Users/alari/pikmin-randomizer/native/pikmin2-research` @
+`632af937` (read-only): a Jellyfloat **disables `EB_LeaveCarcass`**
+(`Kurage.cpp:36`) and has no family-local reward function. On a natural kill,
+`EnemyBase::deathProcedure` (`enemyBase.cpp:2525`) runs `throwupItemInDeathProcedure`
+-> `throwupItem` (`:2590`), which births a **number pellet** via
+`pelletMgr->makePelletInitArg(..., mPelletDropCode)`; `EnemyBase::onKill` (`:1289`)
+then takes the "no carcass" branch -> `forceKillEffects` + `becomeCarcass`
+(`:1403-1421`). It does **not** leave a carryable corpse body; bitter-honey drops
+only when killed while `EB_Bittered`. No numeric Poko for ID 57/72 exists in
+`enemyInfo.h` (only `mBitterDrops` = BDT_Normal/BDT_Strong).
+
+Consequence (corrected this slice): the lane-06 descriptor's `drop` was
+`corpse` (slice-1 assumption) and is now **`drop='pellet'`** in
+`experimental/pikmin2_kurage_rewards.py`. The native `pc_p2_kurage_receipt`
+corpse hook (`corpse:kurage:<gen>`, `corpseValue`) is retained as a **labelled
+P1-proxy approximation**: the P1 TEKI_Frog proxy leaves a carryable body, whereas
+the P2 source throws up a pellet. A source-faithful native pellet-reward slice
+(reuse `pc_p2_receipt` `Ledger::Onion` `drop=pellet`) is future work.
+
+### Native (three new commits; base `b805d9c6`, head `0099e634`)
+
+1. `68814ed5` (integrator, pre-existing) keep naturally-dead Kurage bodies
+   resolvable: post-death tick moves the corpse to a `corpses` map cleared only
+   by forget/reset, and `--receiver-corpse-receipt` now zeroes health, ticks once
+   and asserts the corpse still resolves.
+2. `0099e634` this slice: add a `p2_kurage_runtime` replacement-main CMake target
+   (`tools/p2_kurage_runtime.cpp` instead of `pc_main.cpp`), so
+   `build_lane.py l29 --target p2_kurage_runtime` builds the fixture under the
+   normal build semaphore (added to `PIKMIN_OPTIMIZED_TARGETS` for LTO/march).
+
+### Build evidence (output/dsw/l29-build-evidence.txt)
+
+- `p2_kurage_runtime` -> `p2_kurage_runtime.exe` SHA-256
+  `0db537a064be93c472f0717c873bdfe9651e5197d9f1cd69b86876643247ce1c`, ninja -n clean.
+- `pikmin_pc` -> `bin/nectar.exe` SHA-256
+  `4a0da9eb4aad9736e94099ab04b6197c7fdc7d1ea1d52af7905fa07637a5d43a`, ninja -n clean.
+- Config: Ninja MinGW g++ 16.2.0, Release, JAudio ON, absolute compiler/ninja paths.
+
+### Runtime run (real-GL, `slot.py run gl l29`)
+
+Command: `p2_kurage_runtime.exe --experimental-pikmin2-room --receiver-corpse-receipt`
+in `output/dsw/l29-out/corpse-receipt-run` (assets reused read-only from
+`output/p2-lane29-n-binding/assets`: staged frog-generator room + `kurage_attack.mod`
++ `kurage_wait.mod`; sidecars `p2-kurage-teki.txt` / `p2-cargo-free.txt` written
+fresh). `PIKMIN_P2_ROOM_WINDOW=960x540`, `PYTHONUTF8=1`. Exit 0. Markers (full
+log at `l29-out/corpse-receipt-run/stdout.log`):
+
+```
+P2_KURAGE_WINDOW size=960x540 pos=373,263 display=1707x1067 centered=1
+[Pikipelago] P2_ROOM_PREVIEW room=room_4x4a_4_conc red=20 isolated=1
+P2_KURAGE_TEKI_READY generator=201001 type=0 binding=private_adapter
+P2_KURAGE_CORPSE_READY generator=201001 drop=BDT_Normal ledger=onion receipt=corpse:kurage:201001
+P2_KURAGE_CORPSE_RECEIPT_PASS generator=201001 bound=1 drop=BDT_Normal
+P2_KURAGE_DEAD_CORPSE_RECEIPT_PASS generator=201001 injected=health_zero
+P2_KURAGE_CORPSE_CLEANUP_PASS forgotten=1 bound=0
+PASS KURAGE_RUNTIME corpse_receipt_cleanup
+```
+
+Fixture-baseline adoption: 960x540 centred window (`centered=1`), 20-red starting
+squad (`red=20`), no immediate extinction.
+
+### Natural-kill path (BLOCKED, furthest marker)
+
+The natural path (Pikmin attacks -> frog proxy death, no health writes -> body
+carried -> `pc_p2_preview_deliver` credits `corpse:kurage:<gen>`) was NOT reached
+on the host:
+- `tools/p2_kurage_runtime.cpp:188-189`: the isolated room preview *pauses the
+  Teki manager's per-frame update*, so no ordinary P1 combat runs to reduce the
+  bound frog's health.
+- `pc_p2_kurage_teki_tick` (`pc_port/pc_p2_kurage_teki.cpp`) only reads
+  `t->mHealth` (`:178/:185/:248`) as the FSM/receiver fact; it never drives the
+  P1 damage->death->corpse flow.
+- The corpse->carry->Pod delivery that fires `pc_p2_preview_deliver`
+  (`pc_port/pc_p2_preview.cpp:310+`) is lane 07 (lifecycle) + lane 06 (transport/
+  reward) territory (the lane-16 frog carry/combat fixture is the precedent, not
+  forked here).
+- Furthest natural marker logged: `P2_KURAGE_DEAD_CORPSE_RECEIPT_PASS`
+  (post-death corpse still resolvable after the health-zero-injected tick).
+- Additionally source-inexact: even a P1-proxy natural corpse would be a body, but
+  the P2 reward is a thrown-up number pellet (see correction above).
+
+### Root
+
+- `experimental/pikmin2_kurage_runtime.py` + `tests/test_pikmin2_kurage_runtime.py`
+  (new): validator for the corpse-receipt markers; `validate_corpse_receipt`
+  flips to FAIL when `P2_KURAGE_CORPSE_RECEIPT_PASS` / `P2_KURAGE_DEAD_CORPSE_RECEIPT_PASS`
+  is stripped; `native_corpsereceipt_flag_present()` resolves `PIKMIN_NATIVE_ROOT`
+  (no hardcoded lane path). 7 tests.
+- `experimental/pikmin2_kurage_rewards.py` + `tests/..._rewards.py`: corrected
+  `drop='corpse'` -> `'pellet'` (source-fidelity), docstring documents the native
+  corpse proxy. 10 tests.
+- Combined run: `24 passed, 4 skipped, 11 subtests passed`.
+
+### Subagent usage
+
+- explore #1 (source audit): produced the authoritative `EB_LeaveCarcass` /
+  `throwupItem` / no-Poko findings — used as-is, then I re-verified the key lines
+  (`Kurage.cpp:36`, `enemyBase.cpp onKill/deathProcedure/throwupItem`) myself.
+  High value (~saved 30+ min of decomp digging); it corrected the reward semantics.
+- explore #2 (candidate inventory): used as-is to confirm no duplication and to
+  locate the `p2_kurage_runtime.cpp` markers and `pc_p2_preview_deliver` branches;
+  confirmed the `p2_kurage_runtime` CMake target did not yet exist. High value.
+- general #3 (validator scaffolding): delivered a correct, path-free validator +
+  7 passing tests; used as-is (minor sample-log pos/display values differ from the
+  real 373,263/1707x1067 but are cosmetic). High value; saved ~15 min of writing.
+- Net: subagents surfaced the source correction and delivered the validator;
+  cost was negligible (read-only + cheap pytest). I retained solely native C++,
+  build, GL run, commits and handoff.
+
+### Six-gate update
+
+| Gate | Slice 2 result |
+|---|---|
+| 1 identity/spawn/bind | PASS (runtime) `P2_KURAGE_TEKI_READY` + `P2_KURAGE_CORPSE_READY generator=201001` |
+| 2 movement/animation | source-backed N/A (unchanged; not this slice) |
+| 3 attacks/receivers | source-backed N/A (unchanged) |
+| 4 death/corpse | PASS (runtime, injected health-zero) corpse resolves post-death; labelled injected, not natural |
+| 5 transport/reward | BLOCKED (carry->Pod depends on lanes 06/07; source reward is a pellet, not a corpse) |
+| 6 cleanup/re-entry | PASS (runtime) forget clears corpse; recycled address never mis-resolves |
+
+Reproduction:
+
+```
+py -3.12 -m pytest -q tests/test_pikmin2_kurage_rewards.py tests/test_pikmin2_kurage_runtime.py
+```
