@@ -10,7 +10,7 @@ Run this only under the host GL slot:
 
     py -3.12 output/deepseek-wave/slot.py run gl l04 -- \
         py -3.12 scripts/run_p2_placement_probe.py --exe <nectar.exe> \
-            --converted <room105 dir> --output output/dsw/l04-out
+            --converted <room105 dir> --output <out dir>
 
 The converted room (``room.mod``/``room.ini``/``treasure.mod``) is a required
 input and defaults to the documented ``output/pikmin2-room105`` path; pass

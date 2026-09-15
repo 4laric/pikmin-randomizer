@@ -214,3 +214,174 @@ substitute the fresh run dir printed by the first command.)
   `randomizer.p2_placement_probe` contract; it fell back to a stub only before
   the real module existed and now passes against the real module. Net time
   saved was large; no result was discarded.
+
+## Slice 2
+
+Bounded slice: **catalog join and a P2-identity placement.** Supersedes the
+lane-04 "arena-only, no catalog join" state from the fix round.
+
+### (a) Catalog join — mechanism
+
+- Native (`pc_port/pc_p2_placement_probe.cpp`): the probe now reads a staged
+  sidecar `p2-placement-slots.txt` (header `P2_PLACEMENT_SLOTS_1`, then one
+  `<generator_id> <catalog_slot_uid>` pair per line) and emits BOTH ids in the
+  marker: `P2_PLACEMENT_SLOT generator=<_70> slot=<catalog_uid|0> actor=...
+  xyz=... terrain=... route=... route_distance=... water_depth=...`.
+- Root parser (`randomizer/p2_placement_probe.py`): `capture_markers` returns
+  per-slot `generator` + `slot` (None when `slot=0`); `build_probe` returns
+  `{schema, catalog_join, mapping, slots}`. `terrain` stays gated on
+  `xyz==True` + class in ground/water.
+- Audit (`scripts/audit_p2_placement_evidence.py::run_audit`): when
+  `catalog_join` is true, every mapped `slot` is looked up in
+  `p2_placement_catalog.all_slots()`; an **unmatched uid is a hard failure**
+  (`SystemExit`). Matched slots are stamped onto the real catalog document and
+  audited. The old synthetic `arena_document` path is now only the
+  `catalog_join=false` fallback (no sidecar).
+
+### (b) P2-identity placement
+
+> **CORRECTED BY fix2** — the slot below (`648204418`, Stage 3 / Distant Spring)
+> was a stage-mismatch bug: Impact Site arena evidence was stamped onto a
+> Distant Spring catalog slot. See the fix2 section; the accepted slot is now
+> the stage-0 `impact_7_1764` (`513430982`).
+
+Staged a Dwarf Orange (BlueKochappy source 44) two-actor original Impact Site
+arena via lane-13's stager (`experimental.pikmin2_dwarf_orange_runtime.prepare`,
+bank `output/p2-dwarf-orange-bank`, profile `output/p2-dwarf-orange-ref`,
+generators `211001` source + `211002` control) and wrote a sidecar mapping. The
+original choice (first `dwarf`-cohort campaign slot) was WRONG — it selected a
+Stage 3 slot while the arena is on the Stage 0 practice/Impact Site map. Running
+the private build under the GL slot produced a genuine P2-identity spawn **with**
+native terrain/route evidence; the evidence join was then corrected to a
+stage-matching slot (see fix2).
+
+### Gate 1 (updated)
+
+Now a **P2-identity spawn**: native `P2_ENEMY_READY species=BlueKochappy
+source_id=44` with health 250 and the converted dwarf-orange bank, on the
+original Impact Site map, with native `xyz/terrain/route` evidence at
+`route_distance 61.2` (within the 200u cap). This replaces the slice-1 P1
+`TEKI_Chappy` proxy. Identity is still `behavior=P1` (host AI), matching lane
+13's documented candidate scope.
+
+### Commits (this slice)
+
+- Native `b805d9c6` ... `4601bdd84b5b039d88145b8f2a8f391a42295f10`:
+  - `4601bdd8` lane04: sidecar slot-id join in placement probe (#440)
+- Root `d6987073eaa3d7c39cb3bebf3f0d35296f6b9192`:
+  - `d698707` lane04: catalog join (sidecar slot uid) + P2-identity arena probe (#440)
+
+### Build evidence (from `output/dsw/l04-build-evidence.txt`)
+
+```
+2026-09-14T20:40:38 lane=l04 target=pikmin_pc native=4601bdd84b5b039d88145b8f2a8f391a42295f10 dirty=no build_dir=C:\Users\alari\pikmin-randomizer\output\dsw\native-l04-build exe=C:\Users\alari\pikmin-randomizer\output\dsw\native-l04-build\bin\nectar.exe sha256=ce78e953f24d09d9a6303a609a5d45d266801bbcb2786e651c69ed6344e5c046 ninja_n="ninja: no work to do." seconds=0
+```
+
+### Runtime evidence
+
+Run dir `output/dsw/l04-out/8a02d908ee644fa8b13ba53b95e60f9b` (native.log,
+probe.json, evidence.json, report.json).
+
+### Tests
+
+- `tests/test_p2_placement_probe.py` rewritten: the in-test `sys.modules` stub
+  fallback (previously lines 8-101) is removed and the production marker
+  (`generator=` + `slot=`) is covered. 8 test functions pass.
+- Full placement suite: `py -3.12 -m pytest tests/test_p2_placement_probe.py
+  tests/test_p2_placement_native.py tests/test_p2_placement.py -q` → `73 passed,
+  17 subtests passed`.
+- Manual audit checks: unmatched mapped uid `999999999` hard-fails; no-sidecar
+  probe reports `catalog_join=false`.
+
+## One exact reproduction command (slice 2)
+
+```
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l04 -- py -3.12 scripts/run_p2_catalog_placement.py --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" --bank "C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-bank" --profile "C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-ref" --exe "C:/Users/alari/pikmin-randomizer/output/dsw/native-l04-build/bin/nectar.exe" --output "C:/Users/alari/pikmin-randomizer/output/dsw/l04-out"
+```
+(run from the root worktree `C:/Users/alari/pikmin-randomizer/output/dsw/l04-root`.)
+
+## Subagent usage (slice 2)
+
+- `explore` #1 (catalog uid scheme + slot selection): used as-is. Traced the
+  crc32 uid derivation, confirmed BlueKochappy/YellowKochappy are
+  `cohort=None`/`terrains=['ground']`, and recommended the `dwarf`-cohort slot
+  uid `648204418` plus the deterministic selection rule; the sidecar uses it.
+- `explore` #2 (sidecar/arena run inventory): used as-is. Confirmed no
+  `p2-placement-slots` name collision, located the bank/profile dirs
+  (`output/p2-dwarf-orange-bank`, `output/p2-dwarf-orange-ref`), confirmed the
+  native `pc_p2_dwarf_orange` emits `source_id=44`, and that `arena-private.txt`
+  is an inert label.
+- `general` #3 (rewrite the parser test file): used as-is. Removed the stub
+  fallback and produced the 8 production-marker tests (which temporarily
+  reported 7 failures against the old module contract before I rewrote
+  `p2_placement_probe.py` to match; they now pass). Honest negative mid-state,
+  final result retained unchanged.
+
+## Slice 2 review fixes (fix2)
+
+Fixes the six review items on the slice-2 join. All blocking.
+
+1. **Stage-matched slot / stage guard.** `choose_slot` (renamed from
+   `choose_slot_uid`) now selects a campaign slot whose `stage` matches the
+   staged map (`practice` = Impact Site = stage 0) and is constrained to the
+   `ground` cohort (BlueKochappy's host cohort). Deterministic pick by
+   `(first_day, uid)` → **`impact_7_1764` uid `513430982`** (stage 0). The
+   prior `648204418` (stage 3, Distant Spring) is corrected. `run_audit` now
+   hard-fails when a mapped slot's catalog `stage` differs from `arena_stage`,
+   and the sampled actor `position` is recorded beside each mapping entry.
+2. **`run_audit` tests.** New `tests/test_p2_placement_audit.py` (5 tests)
+   covers unmatched-uid `SystemExit`, matched stamping, stage-mismatch refusal,
+   arena-only fallback, and the unmapped guard.
+3. **Unmapped-generator guard.** `build_probe` reports `unmapped_generators`
+   explicitly; `run_audit` fails unless `--allow-unmapped`/`allow_unmapped`.
+   The arena runner passes `allow_unmapped=True` (the `211002` P1 Chappy
+   control is intentionally unmapped) and reports it.
+4. **Runner CLI.** `--assets/--bank/--profile` are now required (no user-
+   absolute module constants); the docstring no longer embeds lane/build paths.
+5. **Parser tolerance.** `capture_markers` is token-based: `slot`,
+   `route_distance`, and `x/y/z` are optional; `generator`/`uid` both accepted;
+   required keys are `generator|uid`, `xyz`, `terrain`, `route`, `water_depth`.
+   Slice-1 logs (no `slot`) now parse instead of silently yielding zero slots.
+6. **No uid overload.** `build_probe` emits `mapping` (`{generator, slot,
+   xyz, terrain, route, position}`) and a stamp-only `slots` keyed by the
+   catalog `slot` uid; unmasked generators are NOT overloaded onto `uid`.
+7. **Positional marker + rerun.** The native probe now emits
+   `x=.. y=.. z=..`; the run was redone on committed native head.
+
+Fresh corrected run (committed head `b446f0b1`, exe sha256
+`8b6d9967…73f4`), run dir `output/dsw/l04-out/a1c71372ec9f4b6bacee4725b46dee0b`:
+
+```
+P2_ENEMY_READY species=BlueKochappy source_id=44 native_family=Chappy generator=211001 x=-150.0000000 y=30.0000000 z=1850.0000000 health=250.0 max_health=250.0 behavior=P1 purple_stun=bluekochappy_5s
+P2_PLACEMENT_SLOT generator=211001 slot=513430982 actor=3 xyz=1 terrain=ground route=1 route_distance=61.2 x=-150.000 y=30.000 z=1850.000 water_depth=0.00
+P2_PLACEMENT_SLOT generator=211002 slot=0 actor=3 xyz=1 terrain=ground route=1 route_distance=129.3 x=150.000 y=30.000 z=1550.000 water_depth=0.00
+P2_PLACEMENT_PROBE actors=2 evidence_slots=2
+[PC Port] Experimental preview window set to 960x540 windowed and centered
+```
+
+report.json: `catalog_join=true`, `arena_stage=0`, `matched_slot_uids=[513430982]`,
+`unmapped_generators=[211002]`, `mapping` records `position [-150.0,30.0,1850.0]`
+beside the slot, and `injected_legal_admitted = {BlueKochappy:[513430982],
+YellowKochappy:[513430982]}`.
+
+Build evidence (clean):
+
+```
+2026-09-14T21:09:27 lane=l04 target=pikmin_pc native=b446f0b1147a5052c67d6aff4df83965c96ff405 dirty=no build_dir=C:\Users\alari\pikmin-randomizer\output\dsw\native-l04-build exe=C:\Users\alari\pikmin-randomizer\output\dsw\native-l04-build\bin\nectar.exe sha256=8b6d9967c95d5b7af98e43d0f8a5e00fb3959bdaf273e2162022f36c01a373f4 ninja_n="ninja: no work to do." seconds=0
+```
+
+Tests: `py -3.12 -m pytest tests/test_p2_placement_probe.py
+tests/test_p2_placement_audit.py tests/test_p2_placement_native.py
+tests/test_p2_placement.py -q` → `79 passed, 17 subtests passed`.
+
+Commits (this fix round):
+
+- Native: `b446f0b1147a5052c67d6aff4df83965c96ff405`
+  `lane04: review fixes 2 - emit sampled position in placement probe marker (#440)`
+- Root: `4b9a4c5` `lane04: review fixes 2 - stage-matched join, unmapped guard, positional marker, audit tests (#440)`
+
+Subagent-usage note: slice-2 explore #1's "min-uid dwarf slot" rule was the
+cause of the stage bug (a delegated selection rule adopted without cross-checking
+the slot's stage against the arena). fix2 re-derived the rule from
+`campaign_data`/`levels.py` (practice==stage 0) and guards it in `run_audit`, so
+a delegated choice can no longer pass through a stage mismatch unnoticed.
