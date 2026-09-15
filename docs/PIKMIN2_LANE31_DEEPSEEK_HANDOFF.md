@@ -252,61 +252,85 @@ full natural combat chain with correct counters
 (`P2_WATERWRAITH_CARRY_UNRESOLVED frame=2400 max_carriers=0 deliveries=0`), teardown
 and re-entry PASS.
 
-### Why gate 5 is UNTESTED (injected), and what now fires
-
-## Slice 2 — review fixes 3
+## Slice 2 — review fixes 3 (superseded by review fixes 4 below)
 
 Fix: free the squad from formation (`changeMode(PikiMode::FreeMode, navi)`) in the
-`corpseGrabStaged` block and scatter the whole squad onto the corpse, so free-mode
-natural pickup runs; drop the dead `pc_p2_waterwraith_forget`; add a labelled
-Transport-assist fallback and per-Pikmin mode/distance diagnostics; capture the
-delivery flag before the re-entry reset. Commit `e857a7dc` on
-`deepseek/p2-l31-native` (built clean, `pikmin_pc` exe `be42af61…`, ctest
-`-R waterwraith` 3/3; fixture rebuilt at `e857a7dc`).
+`corpseGrabStaged` block and scatter the whole squad onto the corpse; drop the dead
+`pc_p2_waterwraith_forget`; add a labelled Transport-assist fallback and per-Pikmin
+mode/distance diagnostics; capture the delivery flag before the re-entry reset.
 
-Runtime `output/dsw/l31-out/waterwraith-encounter-run/6793311948044ac19ae1503d4ea70801`
-`status: passed`: natural free-mode pickup triggers (`SQUAD_FREE`, observe
-`max_carriers=1`), labelled assist recruits 20 carriers, and the receipt fires —
-`P2_WATERWRAITH_POD_RECEIPT generator=0` / `P2_POD_RECEIPT id=corpse:waterwraith:0
-value=2 new=1 pokos=2 seeds=0`, `PASS ... delivered=1`.
+The freeing DID take effect immediately (`P2_WATERWRAITH_SQUAD_FREED_MODE` shows all
+8 squad members `mode=0` right after the block), but the receipt that fired was
+still the INJECTED assist, not natural carry: `P2_WATERWRAITH_SQUAD_ASSIST
+carriers=20 assisted=1` set `mMode = TransportMode` on every Pikmin after the 400
+frame grace, and that is what carried the corpse to the Pod
+(`P2_POD_RECEIPT id=corpse:waterwraith:0 value=2 new=1 pokos=2 seeds=0`). The handoff
+incorrectly reported this as "natural free-mode pickup triggers"; it does NOT — the
+only haul reaching the Pod was the assist. See review fixes 4 for the corrected
+diagnosis.
 
-### Why gate 5 is UNTESTED (injected), and what now fires
+Build: `pikmin_pc` at native `0d09210b`, clean, exe `be42af61…`; the final fixed commit
+was `e857a7dc` (fixture-only change; game target object unchanged). Fix-3 fixture.exe
+`f6016aa5efd5ea30a3257f0d7d3b26cab29222917f8c6b0aa87140e2ac46b28d`.
 
-The fix-2 "host-wide limitation" attribution was wrong: it was a fixture omission
-(the `corpseGrabStaged` block teleported the squad onto the corpse but never freed
-it from formation). After `changeMode(PikiMode::FreeMode, navi)` the free-mode
-`graspSituation` search (`piki.cpp:1103-1124`, `mIdleWorkSearchRange` 100) now
-naturally targets the corpse (`P2_WATERWRAITH_SQUAD_FREE`; `max_carriers=1` in the
-observe log). A single natural carrier is short of the number pellet's multi-carrier
-threshold in this bare arena (`carry strength`: purple 10, others 1,
-`pelletMgr.cpp:1254-1261`), so the haul does not complete on its own. After a grace
-period the fixture applies the labelled Transport assist
-(`P2_WATERWRAITH_SQUAD_ASSIST carriers=20 assisted=1`, same mechanism as
-`scripts/pikmin2_mamuta_pod_assisted_fixture.inc:71-77`), the corpse is carried,
-`decideGoal` routes it to the preview Pod (`aiTransport.cpp:1006`), and the durable
-receipt fires through `pc_p2_preview_deliver`:
-`P2_WATERWRAITH_POD_RECEIPT generator=0` and
-`P2_POD_RECEIPT id=corpse:waterwraith:0 value=2 new=1 pokos=2 seeds=0`.
+## Slice 2 — review fixes 4
 
-### Subagent usage (review fixes 3)
+Diagnosis of the "natural pickup" overclaim, and the assisted/natural distinction.
 
-- `explore` #1 (natural-pickup source audit) — confirmed `changeMode(FreeMode)`,
-  `graspSituation`/`mIdleWorkSearchRange`, the formation collision `distCheck` gate,
-  and `decideGoal`→Pod; used as-is to add the free-the-squad call and the assist.
-- `explore` #2 (free-pickup + fixture/verifier inventory) — located the
-  `preview_p2_room.cpp:330` free-recruit idiom, the current corpseGrabStaged block,
-  and confirmed `pc_p2_waterwraith_forget` is dead; used as-is to drop `forget` and
-  repair the fixture.
-- `general` #3 (pytest values/fixture) — corrected `hits=55`/`damage=3300`, added
-  the CARRY_UNRESOLVED removal case, and made the `engine/` fallback SKIP when the
-  export lacks the carry markers; used as-is.
+Fixes:
+- Installed a `NullNaviController` (a `Kontroller` that never whistles or moves) on
+  the captain at the first preview frame, so the navi's gather/whistle cannot
+  re-adopt the squad the fixture frees (`changeMode(FreeMode)` was being undone by
+  `Navi::callPikis` re-adopting Pikmin into `FormationMode`).
+- Added an immediate `P2_WATERWRAITH_SQUAD_FREED_MODE` diagnostic after the free.
+- Runtime now distinguishes outcomes: `PASS WATERWRAITH_ENCOUNTER_RUNTIME ASSISTED`
+  when the assist fired, and `verification.json status` is
+  `passed` / `assisted` / `blocked` (`tools/p2_waterwraith_encounter_runtime_run.py`).
+- Dropped the wrong multi-carrier-threshold explanation (one Free Pikmin suffices for
+  a `NewNumberPellet`; `mCarryMinPikis` defaults to 1, `pelletMgr.cpp:117`).
+
+Result (real-GL `status: assisted`, run
+`output/dsw/l31-out/waterwraith-encounter-run/00fb4ee6857746b7abf502d73c47f385`):
+`SQUAD_FREED_MODE` shows all 8 freed members `mode=0` immediately (stdout.log:971-978),
+but at the next observation the freed Pikmin sitting by the corpse are `mode=1`
+(FormationMode) again (stdout.log:986 `mode=1 dist=11.6`) while the ones that wandered
+off stay `mode=0` (stdout.log:984-985). `max_carriers=1` (one natural TransportMode
+entry) and `corpse_state=0` throughout the natural window, so the corpse is never
+carried naturally; the receipt fires only after the injected assist
+(stdout.log:1054 `SQUAD_ASSIST`; 1207-1208 receipt).
+
+### Why BLOCKED (file:line of the cause)
+
+`changeMode(FreeMode)` works (immediate mode=0), but the freed Pikmin that stay near
+the corpse re-adopt `FormationMode` via the free-Pikmin re-join path:
+`PikiLookAtState::cleanup` calls `changeMode(PikiMode::FormationMode, piki->mNavi)`
+at `src/plugPikiKando/pikiState.cpp:315`, reached from `ActFree::exec`
+(`src/plugPikiKando/aiFree.cpp:167-204`, `procCollideMsg :192-204`) and from the
+post-work join-party `changeMode(PikiMode::FormationMode, nullptr)` at
+`src/plugPikiKando/aiAction.cpp:514`. The `NewNumberPellet` stand-in has one carry
+slot (`mCarryMaxPikis=1`, `pelletMgr.cpp:118`), so once one Pikmin's search binds
+(or aborts), the remaining freed Pikmin finish their idle search and re-join
+formation instead of hauling. Natural pickup therefore never consolidates into a
+completed haul before the assist: gate 5 is UNTESTED (injected), not PASS.
+
+### Subagent usage (review fixes 4)
+
+- `explore` #1 (formation re-adoption audit) — found `PikiLookAtState::cleanup`
+  re-adoption (`pikiState.cpp:315`), `Navi::callPikis`, `ActFree::procCollideMsg`,
+  and the `FixtureController` idiom; used as-is to add the `NullNaviController`.
+- `explore` #2 (fixture/verifier/handoff inventory) — located the stale
+  `pc_p2_waterwraith_forget` comment, the orphan heading, and the multi-carrier
+  claims; used as-is.
+- `general` #3 (marker pytest) — added `SQUAD_FREE`/`SQUAD_ASSIST` optional-marker
+  tests and an `ASSISTED` outcome test; used as-is (14 passing).
 
 ### Remaining blockers
 
-- Gate 5 (transport/reward): NATURAL haul does not complete in this bare arena (the
-  freed single-carrier pickup is short of the number pellet's carry threshold); the
-  receipt path is proven via the labelled Transport assist (injected). Natural
-  multi-carrier completion and ordinary seed spawn remain open (lanes 03/06/07).
+- Gate 5 (transport/reward): natural pickup does not complete (freed near-corpse
+  Pikmin re-adopt formation; single carrier does not haul). The receipt path is
+  proven only via the injected Transport assist (`corpse:waterwraith:0`). Ordinary
+  seed spawn stays with lane 03; a stable natural multi-Pikmin haul with the
+  per-Pikmin re-adoption understood is the next step.
 
 ### Gate checker output
 

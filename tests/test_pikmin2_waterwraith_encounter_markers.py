@@ -105,3 +105,25 @@ def test_zero_crush_stage_a_is_detected():
         if line.startswith("P2_WATERWRAITH_ENCOUNTER_STAGE_A "):
             mutated[index] = "P2_WATERWRAITH_ENCOUNTER_STAGE_A crushes=0 damage=0.0"
     assert verify_log("\n".join(mutated) + "\n") != []
+
+
+# `verify_log` only regex-checks the markers listed in its own rules; it has no
+# rule for P2_WATERWRAITH_SQUAD_FREE / P2_WATERWRAITH_SQUAD_ASSIST, so those
+# markers are optional (their absence never flips the result).
+def test_free_assist_markers_are_optional():
+    verify_log = _verifier_module().verify_log
+    for marker in ("P2_WATERWRAITH_SQUAD_FREE count=8",
+                   "P2_WATERWRAITH_SQUAD_ASSIST carriers=20 assisted=1"):
+        assert verify_log(_log_without(marker)) == []
+
+
+# An ASSISTED receipt still satisfies the delivered path: the runtime PASS check
+# is a plain substring test ("PASS WATERWRAITH_ENCOUNTER_RUNTIME" in text), so
+# the " ASSISTED" suffix on the final line still matches.
+def test_assisted_delivery_is_valid():
+    verify_log = _verifier_module().verify_log
+    assisted_lines = FULL_LOG_LINES[:-1] + [
+        "P2_WATERWRAITH_SQUAD_ASSIST carriers=20 assisted=1",
+        "PASS WATERWRAITH_ENCOUNTER_RUNTIME ASSISTED",
+    ]
+    assert verify_log("\n".join(assisted_lines) + "\n") == []
