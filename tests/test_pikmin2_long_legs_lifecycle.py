@@ -15,8 +15,8 @@ import pytest
 
 from experimental import pikmin2_long_legs_lifecycle as behavior
 from experimental.pikmin2_long_legs_lifecycle import (
-    BIGFOOT_ID, BIGFOOT_POSITION, BIGFOOT_SOURCE_ID, HOudai_ID,
-    HOudai_POSITION, HOudai_SOURCE_ID, instrument, validate)
+    BIGFOOT_ID, BIGFOOT_POSITION, BIGFOOT_SOURCE_ID, HOUDAI_ID,
+    HOUDAI_POSITION, HOUDAI_SOURCE_ID, instrument, validate)
 
 GOOD_LOG = '\n'.join([
     'P2_LONG_LEGS_BIND generator=312001 species=Houdai pose=bind visual_only=0 native_fsm=implemented',
@@ -29,10 +29,13 @@ GOOD_LOG = '\n'.join([
     'P2_LONG_LEGS_DAMAGE species=BigFoot generator=312002 health=80.0 prior=85.0',
     'P2_LONG_LEGS_CRUSH species=BigFoot generator=312002 pikmin=5',
     'P2_LL_NATURAL_DEATH bigfoot=1 health=0.0',
-    'P2_LL_INJECT species=Houdai injected_health=0 source=fixture not_natural_combat=1',
-    'P2_LONG_LEGS_DEAD species=BigFoot generator=312002 health=0 prior_health=123.0',
+    'P2_LONG_LEGS_DEAD species=BigFoot generator=312002 health=0 prior_health=25.0',
     'P2_LONG_LEGS_BIRTH species=BigFoot generator=312002 count=30',
-    'P2_LONG_LEGS_DEAD species=Houdai generator=312001 health=0 prior_health=2800.0',
+    'P2_LONG_LEGS_DAMAGE species=Houdai generator=312001 health=80.0 prior=100.0',
+    'P2_LONG_LEGS_SHELL species=Houdai generator=312001',
+    'P2_LONG_LEGS_SHELL_HIT species=Houdai generator=312001 pikmin=3',
+    'P2_LL_NATURAL_DEATH houdai=1 health=0.00',
+    'P2_LONG_LEGS_DEAD species=Houdai generator=312001 health=0 prior_health=10.0',
     'P2_LL_CORPSE species=BigFoot pellet=1 generator=312002',
     'P2_LL_CORPSE species=Houdai pellet=1 generator=312001',
     'P2_LL_FORGET species=BigFoot count=0 registered=0',
@@ -44,15 +47,25 @@ GOOD_LOG = '\n'.join([
     'reentry=2 stale=0 duplicate_reward=0',
 ])
 
+INJECTED_LOG = GOOD_LOG.replace(
+    'P2_LONG_LEGS_DAMAGE species=Houdai generator=312001 health=80.0 prior=100.0\n'
+    'P2_LONG_LEGS_SHELL species=Houdai generator=312001\n'
+    'P2_LONG_LEGS_SHELL_HIT species=Houdai generator=312001 pikmin=3\n'
+    'P2_LL_NATURAL_DEATH houdai=1 health=0.00\n'
+    'P2_LONG_LEGS_DEAD species=Houdai generator=312001 health=0 prior_health=10.0',
+    'P2_LL_INJECT species=Houdai injected_health=0 source=fixture not_natural_combat=1\n'
+    'P2_LONG_LEGS_DEAD species=Houdai generator=312001 health=0 prior_health=2800.0')
+
 REQUIRED_MARKERS = {
     'identity': 'P2_LONG_LEGS_BIND generator=312002 species=BigFoot pose=bind '
                 'visual_only=0 native_fsm=implemented',
     'window': 'Experimental preview window set to 960x540 windowed and centered',
     'ready': 'P2_LL_READY squad=20 houdai_gen=312001 bigfoot_gen=312002 attack=20',
-    'injected': 'P2_LL_INJECT species=Houdai injected_health=0 source=fixture '
-                'not_natural_combat=1',
-    'dead': 'P2_LONG_LEGS_DEAD species=BigFoot generator=312002 health=0 prior_health=123.0',
+    'dead': 'P2_LONG_LEGS_DEAD species=BigFoot generator=312002 health=0 prior_health=25.0',
     'birth': 'P2_LONG_LEGS_BIRTH species=BigFoot generator=312002 count=30',
+    'houdai_damage': 'P2_LONG_LEGS_DAMAGE species=Houdai generator=312001 health=80.0 prior=100.0',
+    'houdai_shell': 'P2_LONG_LEGS_SHELL_HIT species=Houdai generator=312001 pikmin=3',
+    'houdai_natural_death': 'P2_LL_NATURAL_DEATH houdai=1 health=0.00',
     'corpse': 'P2_LL_CORPSE species=BigFoot pellet=1 generator=312002',
     'forget': 'P2_LL_FORGET species=BigFoot count=0 registered=0',
     'reentry': 'P2_LL_REENTRY species=BigFoot old=0x1 new=0x2 stale=0 fresh=1 count=2',
@@ -63,15 +76,15 @@ REQUIRED_MARKERS = {
 
 
 def test_identities_and_behavior_positions():
-    assert (HOudai_ID, BIGFOOT_ID) == (312001, 312002)
-    assert (HOudai_SOURCE_ID, BIGFOOT_SOURCE_ID) == (66, 69)
+    assert (HOUDAI_ID, BIGFOOT_ID) == (312001, 312002)
+    assert (HOUDAI_SOURCE_ID, BIGFOOT_SOURCE_ID) == (66, 69)
     # BigFoot is staged at the squad overlay centre so the source foot crush
     # (port radius 60) and wake radius (75) both cover the starting squad.
     squad_centre = (-104.0, 1816.0)
     dx, dz = BIGFOOT_POSITION[0] - squad_centre[0], BIGFOOT_POSITION[2] - squad_centre[1]
     assert (dx * dx + dz * dz) ** 0.5 < 1.0
     # Houdai is clear of the crush radius so BigFoot's landing is un-ambiguous.
-    ddx, ddz = HOudai_POSITION[0] - BIGFOOT_POSITION[0], HOudai_POSITION[2] - BIGFOOT_POSITION[2]
+    ddx, ddz = HOUDAI_POSITION[0] - BIGFOOT_POSITION[0], HOUDAI_POSITION[2] - BIGFOOT_POSITION[2]
     assert (ddx * ddx + ddz * ddz) ** 0.5 > 60.0
 
 
@@ -86,7 +99,13 @@ def test_validate_passes_on_complete_lifecycle_log():
     assert result['gates']['delivery_reward'] == 'untested'
     assert result['gates']['cleanup'] == 'pass'
     assert result['gates']['reentry'] == 'pass'
+    assert result['gates']['houdai_natural_damage'] == 'pass'
+    assert result['gates']['houdai_shell_fires'] == 'pass'
+    assert result['gates']['houdai_shell_hits'] == 'pass'
+    assert result['gates']['houdai_natural_death'] == 'pass'
+    assert result['gates']['houdai_no_inject'] == 'pass'
     assert result['natural_vs_injected']['natural_bigfoot_death'] is True
+    assert result['natural_vs_injected']['natural_houdai_death'] is True
 
 
 @pytest.mark.parametrize('name', sorted(REQUIRED_MARKERS))
@@ -107,17 +126,20 @@ def test_extinction_fails():
     assert not result['passed']
 
 
-def test_injected_lethal_is_labelled_distinct_from_natural_death():
-    result = validate(GOOD_LOG, code=0)
-    assert result['checks']['injected_lethal']
-    # Removing the natural-death marker still passes the injected lifecycle path.
-    no_natural = validate(GOOD_LOG.replace(
-        'P2_LL_NATURAL_DEATH bigfoot=1 health=0.0\nP2_LL_INJECT species=Houdai '
-        'injected_health=0 source=fixture not_natural_combat=1',
-        'P2_LL_INJECT species=BigFoot,Houdai injected_health=0 source=fixture not_natural_combat=1'),
-        code=0)
-    assert no_natural['passed']
-    assert not no_natural['natural_vs_injected']['natural_bigfoot_death']
+def test_injected_lethal_is_labelled_and_flags_not_passed():
+    # The natural log has no inject and passes.
+    natural = validate(GOOD_LOG, code=0)
+    assert not natural['checks']['injected_lethal']
+    assert natural['checks']['houdai_no_inject']
+    assert natural['passed']
+    # The retained injected scenario is flagged separately and does NOT satisfy
+    # the natural contract (houdai natural damage/death/shell are absent).
+    injected = validate(INJECTED_LOG, code=0)
+    assert injected['checks']['injected_lethal']
+    assert not injected['checks']['houdai_no_inject']
+    assert not injected['checks']['houdai_natural_death']
+    assert injected['gates']['houdai_no_inject'] == 'fail'
+    assert not injected['passed']
 
 
 def test_natural_combat_markers_report_separately():
