@@ -187,9 +187,10 @@ public:int idle() override {
         // update_all tick keeps it advancing off-camera). No host health writes
         // and no clip compression.
         if(!parked){
-            // Park INSIDE the 60u accumulate radius: Houdai then takes the source
-            // Wait->Flick->Shot path (early, deterministic) instead of the 50 s
-            // cooldown path, and the squad is already in latch range when Shot fires.
+            // Park at 90u (OUTSIDE the 60u accumulate radius): Houdai then takes
+            // the source Wait->Flick->Shot path (early, deterministic) instead of
+            // the 50 s cooldown path, and the squad is already in latch range when
+            // Shot fires.
             // The Flick path is the only roll on which the drain connects, so this
             // makes the kill repeatable (Houdai has no stomp, pressDamage=0).
             int c=freeAndPark(houdai,90.0f);std::printf("P2_LL_PARK species=Houdai count=%d\n",c);
