@@ -196,7 +196,7 @@ Seedable (`source`/`variant`) identities named across handoffs: 55
 - advances: (none)
 - blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
 
-### 56 Damagumo (source) - shared table, excluded
+### 56 Damagumo (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE26_DEEPSEEK_HANDOFF.md
 - advances: (none)
 - blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry

@@ -26,6 +26,7 @@ GOOD_LOG = '\n'.join([
     'P2_LONG_LEGS_STATE species=Houdai generator=312001 state=Wait',
     'P2_LONG_LEGS_STATE species=BigFoot generator=312002 state=Wait',
     'P2_LL_READY squad=20 houdai_gen=312001 bigfoot_gen=312002 attack=20',
+    'P2_LL_TIMING source=1',
     'P2_LONG_LEGS_DAMAGE species=BigFoot generator=312002 health=80.0 prior=85.0',
     'P2_LONG_LEGS_CRUSH species=BigFoot generator=312002 pikmin=5',
     'P2_LL_NATURAL_DEATH bigfoot=1 health=0.0',
@@ -38,13 +39,21 @@ GOOD_LOG = '\n'.join([
     'P2_LONG_LEGS_DEAD species=Houdai generator=312001 health=0 prior_health=10.0',
     'P2_LL_CORPSE species=BigFoot pellet=1 generator=312002',
     'P2_LL_CORPSE species=Houdai pellet=1 generator=312001',
+    'P2_LL_FREE_RECRUIT species=BigFoot count=20',
+    'P2_LL_CARRY species=BigFoot state=0 alive=1 transport=20 slot=0 carr=20 pokos=0 piki[free=0 atk=0 trans=20 carry=0 other=0]',
+    'P2_LL_FREE_RECRUIT species=Houdai count=20',
+    'P2_LL_CARRY species=Houdai state=0 alive=1 transport=4 slot=0 pokos=0',
+    '[Pikipelago] P2_POD_RECEIPT id=corpse:longlegs:312002 value=2 new=1 pokos=2 seeds=0',
+    '[Pikipelago] P2_POD_RECEIPT id=corpse:longlegs:312001 value=2 new=1 pokos=4 seeds=0',
+    'P2_LL_CORPSE_DRAIN remaining=0',
+    'P2_LL_HOUDAI_DRAIN events=5 min=70.00',
+    'P2_LL_SESSION navi=1 pikis=20 dayend=0',
     'P2_LL_FORGET species=BigFoot count=0 registered=0',
     'P2_LL_FORGET species=Houdai count=0 registered=0',
     'P2_LL_REENTRY species=BigFoot old=0x1 new=0x2 stale=0 fresh=1 count=2',
     'P2_LL_REENTRY species=Houdai old=0x3 new=0x4 stale=0 fresh=1 count=2',
-    'P2_LL_NOREWARD pod=0 pokos=-1 fresh_corpses=0',
-    'PASS P2_LONG_LEGS_LIFECYCLE death=Houdai,BigFoot corpse=2 registry_empty=2 '
-    'reentry=2 stale=0 duplicate_reward=0',
+    'PASS P2_LONG_LEGS_LIFECYCLE death=Houdai,BigFoot corpse=2 receipt=2 '
+    'registry_empty=2 reentry=2 stale=0 duplicate_reward=0',
 ])
 
 INJECTED_LOG = GOOD_LOG.replace(
@@ -61,16 +70,22 @@ REQUIRED_MARKERS = {
                 'visual_only=0 native_fsm=implemented',
     'window': 'Experimental preview window set to 960x540 windowed and centered',
     'ready': 'P2_LL_READY squad=20 houdai_gen=312001 bigfoot_gen=312002 attack=20',
+    'source_timed': 'P2_LL_TIMING source=1',
     'dead': 'P2_LONG_LEGS_DEAD species=BigFoot generator=312002 health=0 prior_health=25.0',
     'birth': 'P2_LONG_LEGS_BIRTH species=BigFoot generator=312002 count=30',
     'houdai_damage': 'P2_LONG_LEGS_DAMAGE species=Houdai generator=312001 health=80.0 prior=100.0',
     'houdai_shell': 'P2_LONG_LEGS_SHELL_HIT species=Houdai generator=312001 pikmin=3',
     'houdai_natural_death': 'P2_LL_NATURAL_DEATH houdai=1 health=0.00',
     'corpse': 'P2_LL_CORPSE species=BigFoot pellet=1 generator=312002',
+    'bigfoot_receipt': '[Pikipelago] P2_POD_RECEIPT id=corpse:longlegs:312002 value=2 new=1 pokos=2 seeds=0',
+    'houdai_receipt': '[Pikipelago] P2_POD_RECEIPT id=corpse:longlegs:312001 value=2 new=1 pokos=4 seeds=0',
+    'corpse_one_shot': 'P2_LL_CORPSE_DRAIN remaining=0',
+    'houdai_drain_connects': 'P2_LL_HOUDAI_DRAIN events=5 min=70.00',
+    'session_survives': 'P2_LL_SESSION navi=1 pikis=20 dayend=0',
+    'natural_carry': 'P2_LL_CARRY species=Houdai state=0 alive=1 transport=4 slot=0 pokos=0',
     'forget': 'P2_LL_FORGET species=BigFoot count=0 registered=0',
     'reentry': 'P2_LL_REENTRY species=BigFoot old=0x1 new=0x2 stale=0 fresh=1 count=2',
-    'noreward': 'P2_LL_NOREWARD pod=0 pokos=-1 fresh_corpses=0',
-    'completion': 'PASS P2_LONG_LEGS_LIFECYCLE death=Houdai,BigFoot corpse=2 '
+    'completion': 'PASS P2_LONG_LEGS_LIFECYCLE death=Houdai,BigFoot corpse=2 receipt=2 '
                   'registry_empty=2 reentry=2 stale=0 duplicate_reward=0',
 }
 
@@ -96,7 +111,7 @@ def test_validate_passes_on_complete_lifecycle_log():
     assert result['gates']['foot_crush'] == 'pass'
     assert result['gates']['death_output'] == 'pass'
     assert result['gates']['corpse_handoff'] == 'pass'
-    assert result['gates']['delivery_reward'] == 'untested'
+    assert result['gates']['delivery_reward'] == 'pass'
     assert result['gates']['cleanup'] == 'pass'
     assert result['gates']['reentry'] == 'pass'
     assert result['gates']['houdai_natural_damage'] == 'pass'
@@ -104,6 +119,10 @@ def test_validate_passes_on_complete_lifecycle_log():
     assert result['gates']['houdai_shell_hits'] == 'pass'
     assert result['gates']['houdai_natural_death'] == 'pass'
     assert result['gates']['houdai_no_inject'] == 'pass'
+    assert result['gates']['bigfoot_receipt'] == 'pass'
+    assert result['gates']['houdai_receipt'] == 'pass'
+    assert result['gates']['free_recruit'] == 'pass'
+    assert result['gates']['source_timed'] == 'pass'
     assert result['natural_vs_injected']['natural_bigfoot_death'] is True
     assert result['natural_vs_injected']['natural_houdai_death'] is True
 
@@ -152,10 +171,10 @@ def test_natural_combat_markers_report_separately():
     assert no_crush['gates']['foot_crush'] == 'unmeasured'
 
 
-def test_delivery_reward_is_honestly_untested():
+def test_delivery_reward_is_receipt_backed():
     result = validate(GOOD_LOG, code=0)
-    assert result['gates']['delivery_reward'] == 'untested'
-    assert 'lane 14' in result['delivery_reward_reason']
+    assert result['gates']['delivery_reward'] == 'pass'
+    assert 'longlegs' in result['delivery_reward_reason']
     assert 'lane 06' in result['delivery_reward_reason']
 
 

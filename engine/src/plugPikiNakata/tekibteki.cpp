@@ -492,7 +492,6 @@ void BTeki::update()
 	// last write of the frame; no-op for every actor not bound as the vehicle.
 	pc_p2_hardlanes_fuefuki_actor(this);
     pc_p2_snow_update(this,NSystem::getFrameTime());
-    pc_p2_long_legs_update(this);
 	pc_p2_shijimi_update(this);
 	pc_p2_qurione_update(this);
 	pc_p2_elecbug_update(this);
