@@ -9,6 +9,7 @@
 #include "Piki.h"
 #include "PikiMgr.h"
 #include "teki.h"
+#include "Generator.h"
 #include "PelletView.h"
 #include "ItemMgr.h"
 #include "GoalItem.h"
