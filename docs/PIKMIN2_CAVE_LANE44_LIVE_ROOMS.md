@@ -26,6 +26,7 @@ path and observe the come-back-with-yellow loop.
 - Root base `2f50d39530b1917dafd9d0d2994b818717d14936` (branch `deepseek/p2-l44`).
   - `7abc79a2 lane44: proxy room/unit instantiation bridge + tests (#482)`
   - `fa86969f lane44: live proxy rooms evidence tests and handoff (#482)`
+  - this document (lane44 root head; the native commits below are the code head)
 - Native base `346378a07861143162a623d00ccdb603d1b45200` (branch
   `deepseek/p2-l44-native`).
   - `94cf7c48 lane44: proxy cave-room module, one-consumer test and draw hook (#482)`
