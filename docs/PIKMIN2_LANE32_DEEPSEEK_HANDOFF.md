@@ -455,7 +455,7 @@ injected max-health hit is therefore retained as the flagged knock-off scenario.
 |---|---|---|---|
 | 1. Exact identity and spawn | UNTESTED | fixed placement; no ordinary spawn binding | injected (fixed placement) |
 | 2. Autonomous movement and animation | PARTIAL | output/dsw/l32-out/runs/03d8dbb1f01644e69137e5f725949956/stdout.log:714 FSM Stay->Land->ItemWalk->Attack via keyframe clock | natural (no locomotion; fixed placement) |
-| 3. Attacks and receivers | PASS | output/dsw/l32-out/runs/03d8dbb1f01644e69137e5f725949956/stdout.log:738 ATTACK_START, :832 fire->Blue accepted=1 | natural (ordinary loop receiver on live Pikmin) |
+| 3. Attacks and receivers | PARTIAL | output/dsw/l32-out/runs/03d8dbb1f01644e69137e5f725949956/stdout.log:738 ATTACK_START, :796 fire->Navi accepted=1, :797 fire->Red accepted=0 (immune) | ordinary loop and receiver natural; the accepted=1 Pikmin at :832 is the fixture-injected Blue (pc_p2_set_species, :711 injected=1) and targets are teleported into the box every frame, so non-immune Pikmin hazard entry stays UNTESTED (injected) |
 | 4. Death and corpse | UNTESTED | no boss death/corpse observed in this preview | n/a |
 | 5. Actual transport and reward | N/A | weapons knock off; no physical pellet transport in this preview | n/a |
 | 6. Cleanup and re-entry | UNTESTED | no scene re-entry/reload run | n/a |
