@@ -180,3 +180,133 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l0
 Prerequisite (already done): build the fixture for the family
 `py -3.12 -m experimental.pikmin2_lifecycle_runtime build --native .../native-l07 --build-dir .../native-l07-build --output .../lf-build --head b805d9c626e4f4558c95aef7cac311a5d9a2068f --family dwarf-orange`
 (after `build_lane.py l07` produces `nectar.exe`).
+
+## Slice 2
+
+Tracking the two open ledger legs on the same lane-07 reusable harness
+(`experimental/pikmin2_lifecycle_runtime.py`): (a) repeatable teardown, and
+(b) manager-reset vs full-scene teardown.
+
+### (a) Repeatable teardown — two full cycles
+
+`--cycles 2 --teardown manager-reset` on Dwarf Orange (source_id 44) runs
+`death -> engine forget (corpse disposal) -> respawn -> re-entry` twice on the
+same generator, then a final manager-reset teardown:
+
+```
+P2_LIFECYCLE_CYCLE cycle=1 -> DEATH frame=7 -> REENTRY frame=128 reused=1 -> REGISTRY cycle=1 count=1
+P2_LIFECYCLE_CYCLE cycle=2 -> DEATH frame=133 -> REENTRY frame=254 reused=1 -> REGISTRY cycle=2 count=1
+P2_LIFECYCLE_REWARD pokos=-1                     # cargo-free: no reward grew
+P2_LIFECYCLE_TEARDOWN_MODE mode=manager-reset
+P2_LIFECYCLE_SUMMARY ... control=1               # control actor untouched across both cycles
+PASS P2_LIFECYCLE_RUNTIME                        # exit 0
+```
+
+- **No registry growth**: each re-entry leaves exactly one registration
+  (`registry_growth_ok=true`, both cycles `count=1`).
+- **No duplicate reward**: `pokos=-1` (cargo-free arena; nothing grew).
+- **Control untouched**: `control=1` at the end of both cycles.
+- **Address reuse**: `reused=1` in both re-entries (natural death -> corpse
+  disposal releases the generator ref, so the freed slot is handed back).
+
+The `SUMMARY alive=0` is expected, not a defect: the re-born mortal Chappy is
+killed by the idle 20-red squad during the 120-frame post-teardown observation
+window (labelled mortal/hostile behavior); the *control* is what must stay
+alive, and it does.
+
+### (b) Manager reset vs scene teardown
+
+`--teardown manager-reset` (default) re-enters through the family's own
+`pc_p2_*_setup()` (which resets *just that family*). `--teardown scene-teardown`
+instead calls the production `pc_p2_reset_all_teki()` (the
+`GameCoreSection::exitStage` family-reset hook, `gameCoreSection.cpp:890`), which
+clears every family in one call:
+
+```
+P2_LIFECYCLE_TEARDOWN_MODE mode=scene-teardown
+P2_LIFECYCLE_TEARDOWN refs_before=1 refs_after=0    # dwarf_orange registry cleared
+P2_LIFECYCLE_SUMMARY ... control=1
+PASS P2_LIFECYCLE_RUNTIME                           # exit 0
+```
+
+The evidence JSON labels the mode (`teardown_mode`) and gate (`scene_teardown_ok`);
+`refs_before=1 -> refs_after=0` is the raw surviving-reference report.
+
+**Boundary (honest):** the in-place fixture calls `pc_p2_reset_all_teki()`, not
+the full day-end `exitStage()`/section re-enter (which nulls `naviMgr` and the
+gen factories and can only continue through the menu/map-select section
+transition — the Snow-campaign `pc_p2_input_script` path owned by lane 01). So
+"manager reset vs full scene/day/restart" remains OPEN at the section level;
+this slice pins the family-reset hook that the scene boundary reuses.
+
+### (c) Second family (Sokkuri)
+
+`FAMILY_HOOKS` now includes `sokkuri` (routes `pc_p2_sokkuri_registered/
+setup/...`; string-tested via `test_sokkuri_hooks_route_to_its_module`).
+`--family sokkuri` fails fast with a clear deferral: the available ground arena
+co-stages Armor/ElecBug/Imomushi/TamagoMushi/Hana, and a clean Sokkuri-only run
+needs a Sokkuri-only arena (cross-lane, lane 14). The "torn down together"
+mechanism is unchanged and cited: `pc_p2_reset_all_teki()` resets both
+`pc_p2_dwarf_orange_reset()` (`pc_p2_teki_lifetime.cpp:110`) and
+`pc_p2_sokkuri_reset()` (`:135`) in one call; this slice proves it clears
+dwarf_orange at runtime, and the prior seam evidence (`P2_TEARDOWN_PROBE
+before=6 after=0` in docs/PIKMIN2_TEKI_LIFETIME_SEAM.md) proves the multi-family
+clear.
+
+### Commits (slice 2)
+
+| Branch | Commit | Subject |
+|---|---|---|
+| root `deepseek/p2-l07` | `(this)` | lane07: repeatable teardown (--cycles) + manager/scene teardown + sokkuri hooks (#397) |
+
+### Evidence pins
+
+- native `b805d9c6` (unchanged), `nectar.exe` SHA
+  `2d507c6cf0a827ce4bbf4e3beb22aac1998b1bf310f90bf4005048388921accc`.
+- fixture SHA `b56047fee2deec65b2f12cb34dc5d046982831e2d9f167b334c9f49a6e737092`.
+- 2-cycle run `output/dsw/l07-out/lf2c-cycles2/a32d581e99c747d593d45b9a6fa9e2ee`.
+- scene run `output/dsw/l07-out/lf2c-scene/f8ec0e1adb67470fbe0a286a4bf29d9a`.
+- `tests/test_pikmin2_lifecycle_runtime.py` -> 16 passed.
+
+### Exact reproduction (slice 2)
+
+```powershell
+$env:PYTHONUTF8 = '1'
+# two-cycle repeatable teardown (manager reset)
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l07 -- `
+  py -3.12 -m experimental.pikmin2_lifecycle_runtime run --family dwarf-orange `
+    --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets `
+    --bank C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-bank `
+    --profile C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-ref `
+    --output C:/Users/alari/pikmin-randomizer/output/dsw/l07-out/lf2c-cycles2 `
+    --exe C:/Users/alari/pikmin-randomizer/output/dsw/l07-out/lf2c-build/baseline/fixture.exe `
+    --cycles 2 --teardown manager-reset
+# scene teardown
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l07 -- `
+  py -3.12 -m experimental.pikmin2_lifecycle_runtime run --family dwarf-orange `
+    --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets `
+    --bank C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-bank `
+    --profile C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-ref `
+    --output C:/Users/alari/pikmin-randomizer/output/dsw/l07-out/lf2c-scene `
+    --exe C:/Users/alari/pikmin-randomizer/output/dsw/l07-out/lf2c-build/baseline/fixture.exe `
+    --cycles 1 --teardown scene-teardown
+```
+
+Fixture build (after `build_lane.py l07`):
+`py -3.12 -m experimental.pikmin2_lifecycle_runtime build --native .../native-l07 --build-dir .../native-l07-build --output .../lf2c-build --head b805d9c626e4f4558c95aef7cac311a5d9a2068f --family dwarf-orange`.
+
+### Subagent usage (slice 2)
+
+- **explore #1 — source audit** (day-end/exitStage/finalSetup, `_reset_all_teki`
+  callers, Sokkuri module, corpse-leaving `TEKI_Chappy`): used as-is; its
+  finding that in-place `exitStage()` nulls the section (so the fixture can only
+  call the `pc_p2_reset_all_teki()` hook) directly shaped the scene-mode scope.
+- **explore #2 — existing-candidate inventory** (day-end/repeat/ground/mixed
+  fixtures, Sokkuri arena realities, `pc_p2_preview_pokos()==-1`): used as-is;
+  confirmed the ground arena is a 6-species mix (no Sokkuri-only arena) and that
+  `pokos=-1` in cargo-free mode — both drove the honest boundary/deferral notes.
+- **general #3 — tests scaffolding**: returned a `TEARDOWN_MODES`/`--cycles`/
+  `--teardown` contract; adopted almost verbatim (I only harmonized the existing
+  single-cycle test log to add the required `P2_LIFECYCLE_TEARDOWN_MODE`
+  marker, and extended `validate()` to match). Estimated it saved the full
+  pytest-authoring pass for the new gates.
