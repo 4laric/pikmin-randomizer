@@ -260,7 +260,11 @@ lane 04). Window `960x540` windowed/centred; `Direct boot: Forest of Hope day 2,
 
 Root (`deepseek/p2-l06`, base `ef1cace`):
 - `144c0bf` mixed-dump test drives real `pikmin2_reward_lifecycle.validate` counter.
+- `87d11c8` P2 delivery runtime fixture + two-process runner.
+- `8ee171c` include `Generator.h` in P2 delivery fixture.
 - `1f1d1e0` clean P2 delivery fixture + parent-poll two-process runner.
+- `0f26698` handoff Slice 2 (first real consumer + runtime proof).
+- `f3791d7` pin native commit SHAs in Slice 2 handoff.
 
 Native (`deepseek/p2-l06-native`, base `b805d9c6`):
 - `314a32af` review fixes (fix1).
@@ -295,4 +299,77 @@ across a fresh process (run2 Duplicate).
   (chal0 `TEKI_Chappy` host, `practice.ini` Onion) and that no ordinary consumer writes the
   receipt host yet. The targeted reproduction path was largely already known; cost was low.
 - `general` #3 (mixed-dump test): used as-is — rewrote the mixed-dump test to call the real
-  `experimental.pikmin2_reward_lifecycle.validate`; 8/40 tests pass. No corrections needed.
+  `experimental.pikmin2_reward_lifecycle.validate`; 42 passed, 19 subtests. No corrections needed.
+
+## Slice 2 review fixes (fix2)
+
+### Resolution status (items 1-8)
+
+1. **Double credit — FIXED.** `pc_randomizer_p2_corpse_delivered` now returns `bool`
+   (true = it delivered a bound P2 source); `GoalItem::suckMe` credits the P1-proxy
+   bestiary check only when that returns false. Verified: run1 log has 0
+   `Bestiary: Deliver Dwarf Bulborb` / `CHECK 30` lines beside the `onion:p2:44:1` receipt.
+2. **Production open path exercised — FIXED.** Fixture no longer pre-opens via
+   `PIKMIN_P2_RECEIPT_PATH`; `pc_randomizer_p2_corpse_delivered` opens the handle at
+   `campaign/p2-delivery-receipts.txt`, and the runner reads that path. Run evidence shows
+   the ledger at `<session>/campaign/p2-delivery-receipts.txt`.
+3. **Checkpoint save — RELABELLED honestly.** A real `saveCurrentGame()` (`save_failed=0`,
+   `CAMPAIGN_SAVED generation=1`) made the second process resume day 2 instead of
+   cold-booting (it stalled at `CAMPAIGN_RESUMED`, no world). So the save trigger is
+   dropped and Persistence is labelled "process restart only, no checkpoint save"; the
+   durable `campaign/` sidecar still proves exactly-once across restart.
+4. **Stale pointer keys — FIXED.** The binding is single-use: `pc_randomizer_p2_corpse_delivered`
+   consumes it after the grant, and `pc_randomizer_p2_forget_source(const void*)` is called
+   from the central `pc_p2_forget_teki` lifetime seam, so a recycled Teki address can never
+   inherit a P2 binding or credit the P1 proxy as `onion:p2`.
+5. **Unbindable id abort — FIXED.** `pc_randomizer_p2_bind_source` logs-and-returns instead of
+   `fail()`; `tools/p2_*_host_test.cpp` temp dirs are pid-scoped.
+6. **Wave merge — DONE.** Merged `claude/p2-deepseek-wave-native` (commit `b9702636`),
+   keeping lane 03's `pc_randomizer_bind_generator(..., sourceId70=0)`,
+   `pc_randomizer_p2_room_bootstrap`, `pc_randomizer_p2_source_for_id` and un-guarded bridge
+   lookups alongside the lane-06 bind/deliver functions. Rebuilt clean.
+7. **Per-consumer ledgers — DONE.** `pc_p2_receipt_host` and `pc_p2_delivery_host` are now
+   handle-per-path registries: `open(path)` returns a handle; `grant`/`deliver`/`close` take
+   it. Flora (p2-flora-receipts.txt), kogane (p2-kogane-onion-receipts.txt, lazy-reopen
+   workaround retired) and the randomizer (p2-delivery-receipts.txt) each hold their own
+   handle. New `p2_receipt_host_multi_test` (two consumers, independent ledgers). Header docs
+   updated to describe the handle contract.
+8. **Handoff fixes — DONE.** All six root commits listed; "40/40 tests"; one
+   `build_lane.py l06 --target p2_delivery_host_test` line at the committed head; runner no
+   longer hardcodes the MinGW path (guarded `MINGW_BIN`) and uses a descriptive seed.
+
+### New commits this pass
+
+Native (`deepseek/p2-l06-native`, base `b805d9c6`):
+- `b9702636` merge `claude/p2-deepseek-wave-native`.
+- `b4480fca` per-consumer handle-per-path receipt/delivery host ledgers (its own commit).
+- `ea236072` exactly-once delivery, no P1 double-credit, single-use binding.
+
+Root (`deepseek/p2-l06`, base `ef1cace`):
+- `a6c6429` fixture drops pre-open, triggers a real save; runner reads campaign ledger.
+- `fc683cd` relabel persistence (process restart; no checkpoint save).
+- (also the three Python/subagent edits: `144c0bf`, then this pass's delivery test additions,
+  see `tests/test_pikmin2_delivery.py`.)
+
+### Build + runtime evidence
+
+- Production `nectar.exe` SHA-256 `9395256dfc92…8474a31`, native `ea236072` clean,
+  `ninja: no work to do`.
+- Fixture `cdc637b4aea0…602f7`. Two-process run `delivery-run-fix2b`: run1 `new=1`, run2
+  `new=0`, `EXACTLY_ONCE_ACROSS_RESTART: True`, one row in `campaign/p2-delivery-receipts.txt`.
+- CTest 4/4: `p2_receipt_host_test`, `p2_receipt_host_multi_test`, `p2_delivery_receiver_test`,
+  `p2_delivery_host_test`. pytest `42 passed, 19 subtests`; `test_pikmin2_receipt_native.py`
+  `2 passed`. Evidence file: `output/dsw/l06-out/slice-fix2-evidence.txt`.
+
+### Subagent usage (fix2)
+
+- `explore` #1 (wave-branch diff + save mechanism + consumer blast-radius): used as-is — the
+  exact `bind_generator(...,sourceId70=0)`/`p2_room_bootstrap`/`p2_source_for_id` signatures,
+  the `MemoryCard::saveCurrentGame()` recipe, and the consumer call-site list drove the merge
+  and the handle refactor. The save-triggers-resume complication was discovered by the actual
+  runtime, not this audit.
+- `explore` #2 (host/test inventory + doc locations): used as-is to find every
+  `pc_p2_receipt_host_*`/`pc_p2_delivery_host_*` caller and the exact CTest blocks; flagged the
+  kogane lazy-reopen and the stale "registered as CTest" doc claim I must correct.
+- `general` #3 (root per-path ledger tests): used as-is — added the two independent-ledger
+  tests to `tests/test_pikmin2_delivery.py` (42 tests pass).
