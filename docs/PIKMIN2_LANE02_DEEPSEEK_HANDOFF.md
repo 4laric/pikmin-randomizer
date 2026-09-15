@@ -979,3 +979,30 @@ py -3.12 scripts/generate_p2_advance_report.py --branch claude/p2-deepseek-wave 
 ### Subagent usage
 
 The `task` tool is still absent; fix 6 was done solo.
+
+## Fix 7
+
+Review corrections to fix 6 (identity regexes conjured phantom identities; solo).
+
+- `parse_identities` / `_owner_from_line` now require
+  `by_name[name].source_id == sid` for every name form (`Name NN`, `NN Name`,
+  `Name (N)`, `NN`Name``), so a number that does not belong to the named identity
+  is dropped instead of renaming the entry that owns that number. `_bound_tables`
+  passes `by_name` as a name->entry dict (was a name set).
+- The leading `\b` on those forms is now `(?<![\w/-])`, so `-`/`/` no longer
+  detach a number (`batch-2 Chappy`, `wave/3 Frog`).
+- `_SOURCE_ID_RE` (and `_ID_ENUM_RE` in `_owner_from_line`) are roster-filtered:
+  a bare `source_id`/`EnemyID` number that is not a roster source id (e.g. a spawn
+  uid `219002`) no longer parses as an identity.
+- Flip tests: "54 Queen poses", "batch-2 Chappy host", "Pikmin 2 Frog",
+  "tick 80 Kogane", "wave/3 Frog" -> `[]` (plus the pre-existing real-form cases
+  still pass).
+- Regenerated `docs/PIKMIN2_ROSTER_ADVANCE_REPORT.md`: seedable count 52 -> 50;
+  phantoms "54 Miulin" (L09) and "2 Chappy" (L23, now `(none)`) removed.
+- Handoff typos: `\|` separator wording and "item 8" -> "note".
+
+```
+py -3.12 -m pytest tests/test_pikmin2_handoff_ingest.py -q                 # 19 passed
+py -3.12 -m pytest <handoff/admission/roster/seed/placement suites> -q     # 159 passed, 17 subtests
+py -3.12 scripts/generate_p2_advance_report.py --branch claude/p2-deepseek-wave  # deterministic, seedable 50
+```
