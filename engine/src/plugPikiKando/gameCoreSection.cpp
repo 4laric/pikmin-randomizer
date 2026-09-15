@@ -45,6 +45,7 @@
 #include "pc_p2_tamago.h"
 #include "pc_p2_hardlanes.h"
 #include "pc_p2_projectiles.h"
+#include "pc_p2_long_legs.h"
 #include "pc_randomizer.h"
 #include "MapCode.h"
 #include <fstream>
@@ -1879,6 +1880,7 @@ void GameCoreSection::update()
 	}
 	pc_p2_hardlanes_update();
 	pc_p2_projectiles_update();
+	pc_p2_long_legs_update_all();
 
 	if (GameStat::allPikis == 0 && GameStat::maxPikis > 0) {
 		Navi* navi = mNavi;

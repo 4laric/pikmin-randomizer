@@ -25,6 +25,7 @@
 #include "pc_p2_animation.h"
 #include "pc_bbft.h"
 #include "teki.h"
+#include "Pellet.h"
 #include "Interactions.h"
 #include "Generator.h"
 #include "Shape.h"
@@ -76,9 +77,38 @@ struct ActorState {
 };
 
 std::map<BTeki*, ActorState> actors;      // actor -> species + policy state
+// Naturally dead Long Legs proxy corpses, keyed on the corpse Pellet* the engine
+// created (PelletView::mPellet). A number-pellet stand-in corpse has no
+// PelletView, so the receipt must key on the Pellet* (mirrors lane 31 Waterwraith).
+std::map<Pellet*, unsigned> corpses;      // corpse pellet -> generator
 std::map<std::string, Shape*> shapes;     // species -> bind shape
 size_t bytesTotal = 0;
 bool logged[2] = {false, false};
+
+// Drop a registered corpse that died/vanished before it was delivered. The
+// registry is keyed on the corpse Pellet*, and MonoObjectMgr recycles slots, so
+// without this a future unrelated pellet at the same address could be credited as
+// a Long Legs corpse. Mirrors lane 31's Waterwraith sweepCorpses()
+// (pc_p2_waterwraith_register.cpp:48-58).
+//
+// Called from pc_p2_long_legs_corpse_count() (the fixture's observation point),
+// NOT from the per-frame tick: an unconditional tick sweep dereferences the
+// engine-owned corpse Pellet* every frame and stalled the stage-2 FSM in the
+// merged wave (naviMgr went null). reset() clears the whole registry and
+// forget() erases the forgotten actor's corpse, so the live tick does not need
+// to sweep. A corpse that dies undelivered is still dropped the next time the
+// registry is observed (or cleared), which is the slot-reuse protection.
+void sweepCorpses() {
+    for (auto it = corpses.begin(); it != corpses.end();) {
+        if (!it->first->isAlive()) {
+            std::printf("P2_LONG_LEGS_CORPSE_DROPPED generator=%u\n", it->second);
+            std::fflush(stdout);
+            it = corpses.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
 
 // Man-at-Legs shell pool (source pool of 10, HoudaiShotGun.cpp:1050) hosted on
 // lane 20's shared fired-projectile policy. Consume-only: no forked projectile.
@@ -111,30 +141,20 @@ P2LongLegsSpecies speciesEnum(const std::string& name) {
 // Source animation key frames (docs/PIKMIN2_LONG_LEGS_AUDIT.md) converted to
 // seconds at 30 fps. Landing runs to the last landing key; Flick to the last
 // flick key. Used only to synthesize the missing key edges in this fixture.
-//
-// The P1 Chappy placement vehicle (~130 HP) is drained by the squad before the
-// source pre-Shot schedule completes, so Houdai's Land/Flick are compressed for
-// the preview (documented approximation): the source state order and receiver
-// rules are preserved, only the animation key-edge timings shorten so the source
-// Shot state is reachable before the proxy dies. Natural death remains 130 -> 0.
 float landingSeconds(P2LongLegsSpecies species) {
     // Source Land (frames): Damagumo/Houdai 150, BigFoot 18.
-    if (species == P2LongLegsSpecies::BigFoot) return 18.0f / 30.0f;
-    if (species == P2LongLegsSpecies::Houdai) return 30.0f / 30.0f;  // compressed from 150
-    return 150.0f / 30.0f;  // Damagumo source
+    return species == P2LongLegsSpecies::BigFoot ? 18.0f / 30.0f : 150.0f / 30.0f;
 }
 float flickSeconds(P2LongLegsSpecies species) {
     // Source Flick (frames): Damagumo/Houdai 68, BigFoot 35.
-    if (species == P2LongLegsSpecies::BigFoot) return 35.0f / 30.0f;
-    if (species == P2LongLegsSpecies::Houdai) return 15.0f / 30.0f;  // compressed from 68
-    return 68.0f / 30.0f;  // Damagumo source
+    return species == P2LongLegsSpecies::BigFoot ? 35.0f / 30.0f : 68.0f / 30.0f;
 }
 float shotSeconds(P2LongLegsSpecies species) {
     // Houdai attack clip is 39 frames (Houdai.h); the gunless species never shoot.
     return species == P2LongLegsSpecies::Houdai ? 39.0f / 30.0f : 0.0f;
 }
 constexpr float kShellLoopPeriod = 5.0f / 30.0f; // one shell per attack loop (<-> frame 35)
-constexpr float kShellHitRadius = 20.0f;         // shell radius 10 + target margin
+constexpr float kShellHitRadius = 30.0f;         // shell radius 10 + contact margin over the +25 mouth y
 
 Creature* nearestTarget(const Vector3f& pos, float radius) {
     Creature* best = nullptr;
@@ -350,7 +370,11 @@ Shape* loadBind(const SpeciesDef& species) {
 }
 
 void pc_p2_long_legs_reset() {
+    for (HoudaiShell& shell : shells) {
+        if (shell.stone) { shell.stone->notifyWallContact(); shell.stone->finishDeath(); }
+    }
     actors.clear();
+    corpses.clear();
     shapes.clear();
     shells.clear();
     bytesTotal = 0;
@@ -360,6 +384,9 @@ void pc_p2_long_legs_reset() {
 void pc_p2_long_legs_forget(BTeki* actor) {
     killShellsOf(actor);
     actors.erase(actor);
+    // The actor's corpse registration is keyed on its Pellet*, so a plain
+    // actors.erase leaves it behind; clear it with the actor (review fix 3b).
+    if (actor && actor->mPellet) corpses.erase(actor->mPellet);
 }
 
 void pc_p2_long_legs_setup() {
@@ -411,6 +438,17 @@ void pc_p2_long_legs_update(BTeki* actor) {
     auto entry = actors.find(actor);
     if (entry == actors.end()) return;
     ActorState& state = entry->second;
+    // Once the proxy dies, capture the corpse Pellet* the engine created
+    // (PelletView::mPellet) so the ordinary Pod receipt can resolve a view-less
+    // stand-in corpse (mirrors lane 31). Runs each tick until the corpse is
+    // delivered (the receipt consumes it one-shot) or swept as dead, and is also
+    // cleared by forget (per-actor) and reset (whole registry).
+    if (!actor->isAlive() && actor->mPellet && !corpses.count(actor->mPellet)) {
+        corpses[actor->mPellet] = state.generator;
+        std::printf("P2_LONG_LEGS_CORPSE_REGISTER generator=%u species=%s\n",
+                    state.generator, state.species.c_str());
+        std::fflush(stdout);
+    }
     if (state.fsm.state() == P2LongLegsState::Dead) return;
 
     const float dt = gsys ? gsys->getFrameTime() : 0.0f;
@@ -567,4 +605,45 @@ bool pc_p2_long_legs_receiver_rejects(Teki* teki, const InteractAttack* /*attack
     // Unregistered actors are never rejected, keeping the shared hook a no-op.
     if (!actors.count(teki)) return false;
     return !actors[teki].damageable;
+}
+
+bool pc_p2_long_legs_receipt(Pellet* pellet, unsigned& generator) {
+    // Ordinary corpse receipt (mirrors lane 31's pc_p2_waterwraith_receipt and
+    // kurage/otakara). Primary key is the corpse Pellet* captured at death, which
+    // resolves even a view-less stand-in corpse; the PelletView backlink is a
+    // fallback for a live-binding corpse. Returns false for any unowned pellet.
+    // One-shot: the resolved registration is consumed so MonoObjectMgr slot reuse
+    // cannot re-credit a future unrelated pellet at the same address (lane 31).
+    if (!pellet) return false;
+    auto corpse = corpses.find(pellet);
+    if (corpse != corpses.end()) {
+        generator = corpse->second;
+        corpses.erase(corpse);
+        return true;
+    }
+    PelletView* view = pellet->mPelletView;
+    if (!view) return false;
+    auto it = actors.find(static_cast<BTeki*>(view));
+    if (it == actors.end()) return false;
+    generator = it->second.generator;
+    return true;
+}
+
+bool pc_p2_long_legs_shot(const BTeki* actor) {
+    auto it = actors.find(const_cast<BTeki*>(actor));
+    return it != actors.end() && it->second.fsm.state() == P2LongLegsState::Shot;
+}
+
+void pc_p2_long_legs_update_all() {
+    // Sweeping is done from the guarded per-actor tick (pc_p2_long_legs_update),
+    // not here: an unconditional per-frame sweep stalled the stage-2 FSM.
+    if (actors.empty()) return;
+    for (const auto& entry : actors) pc_p2_long_legs_update(entry.first);
+}
+
+unsigned long pc_p2_long_legs_corpse_count() {
+    // Fixture observability (review fix 3b): sweeps dead/undelivered corpses and
+    // reports the surviving registrations, so a non-one-shot receipt is visible.
+    sweepCorpses();
+    return static_cast<unsigned long>(corpses.size());
 }
