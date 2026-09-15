@@ -162,11 +162,21 @@ the real objects — `KillPellet` kills the actor's own corpse pellet
 (`t->mPellet->kill(false)`), `ActivateGauge`/`DeactivateGauge` toggle
 `TEKIOPT_LifeGaugeVisible`, `RequestBirth` emits the
 `P2_GROINK_CARCASS_BIRTH` descriptor (position/face-dir from the dead actor) and
-marks the old object terminal (→ `MINIHOUDAI_Rebirth`). All seams log ordered
+records the birth descriptor while stopping further ticks — the
+replacement-object birth itself is **pending lane 06/07**, not performed here.
+All seams log ordered
 `P2_GROINK_CARCASS_READY/BECOME/GAUGE_ACTIVE/GAUGE_INACTIVE/KILL_PELLET/BIRTH`.
 
 The carcass `become()` fires on the alive→dead transition so the regrowth
 timeline is read from the actor's real death and pellet presence, never injected.
+
+Review fixes (second pass): record `pelletKilled` so a recycled pool pellet is
+never re-dereferenced after `KillPellet`; require
+`TPI_CorpseType == TEKICORPSE_LeaveCorpse` at setup (a no-corpse host dies
+through `doKill` → `pc_p2_forget_teki` on the death frame, erasing the binding
+before `RequestBirth` can fire) and log `P2_GROINK_CARCASS_UNBOUND
+reason=no_corpse` otherwise; reword `RequestBirth` to "records the birth
+descriptor, stops ticking; birth pending lane 06/07".
 
 ### Source IDs and files owned
 
@@ -186,9 +196,12 @@ Root base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`; native base
 Native (`deepseek/p2-l21-native`), after the fix1 commits:
 1. `b3f784e9` — lane21: bind Groink carcass policy to a live generated actor sidecar (#198).
 2. `e22e075d` — lane21: wire Groink carcass sidecar into shared teki lifecycle hooks (#198).
+3. `12298fd5` — lane21: review fixes 2 - pellet recycle guard, corpse-type gate and honest birth wording (#198).
 
 Root (`deepseek/p2-l21`):
 1. `c711545` — lane21: root validator guarding the Groink carcass-birth marker (#198).
+2. `ea78fd0` — lane21: slice 2 handoff for live carcass-actor binding (#198).
+3. `857f11a` — lane21: review fixes 2 - ordered run-log validator and sidecar config writer (#198).
 
 ### Interfaces and hooks touched
 
@@ -201,11 +214,11 @@ and `pc_p2_groink_teki_forget/reset` in the centralized
 wiring beyond adding `pc_p2_groink_carcass.cpp` + `pc_p2_groink_teki.cpp` to the
 main source list (they were previously test- or module-only).
 
-### Build evidence (output/dsw/l21-build-evidence.txt)
+### Build evidence (<lane-build-evidence>)
 
 ```
-2026-09-14T21:24:15 lane=l21 target=pikmin_pc native=e22e075d04d86889a14fbfa2cfccbd15dab3652d dirty=no build_dir=...\native-l21-build exe=...\bin\nectar.exe sha256=bd18573d5296f15432d0ba94c37a1408311e95de594051e54766639ae03b79ea ninja_n="ninja: no work to do." seconds=0
-2026-09-14T21:20:11 lane=l21 target=p2_groink_teki_test native=5f5cf5fe... dirty=yes exe=...\p2_groink_teki_test.exe sha256=3cc854e16549cb344b539acb3b2086bb7130261746f94a3f5b7e9265b53a6178
+2026-09-14T21:49:56 lane=l21 target=pikmin_pc native=12298fd5229c9219c1467354440bfc8e4bf722dd dirty=no build_dir=<native-build-dir> exe=<native-build-dir>/bin/nectar.exe sha256=7def6b349e9e24ce80ce42a66c90e397ced39d2972375f5925087a4f61368930 ninja_n="ninja: no work to do." seconds=0
+2026-09-14T21:51:20 lane=l21 target=p2_groink_teki_test native=12298fd5229c9219c1467354440bfc8e4bf722dd dirty=no exe=<native-build-dir>/p2_groink_teki_test.exe sha256=3cc854e16549cb344b539acb3b2086bb7130261746f94a3f5b7e9265b53a6178
 ```
 
 ### Fixture adoption evidence
@@ -233,42 +246,54 @@ No injected state promoted to a gameplay PASS.
 
 - Native CTest: all eleven `p2_groink*` PASS, including the new
   `p2_groink_teki_test` (reader + config handoff) — log in
-  `output/dsw/l21-out/ctest-groink-slice2.log`.
-- Root Python: `tests/test_pikmin2_groink_carcass_teki.py` 5 passed (pure
-  validator + real-source check via `PIKMIN_NATIVE_ROOT`).
+  `<lane-out>/ctest-groink-slice2.log`.
+- Root Python: `tests/test_pikmin2_groink_carcass_teki.py` 9 passed (ordered
+  run-log validator + sidecar config writer + real-source check via
+  `PIKMIN_NATIVE_ROOT`).
 
 ### Assumptions
 
 - `pelletAlive` maps to the actor's own corpse pellet (`PelletView::mPellet`
-  alive); `gaugeManager` is always true (the P1 engine life-gauge manager is
-  unconditional for a bound Teki).
+  alive), gated on `!pelletKilled` so the `KillPellet`-recycled slot is never
+  re-dereferenced; `gaugeManager` is always true (the P1 engine life-gauge
+  manager is unconditional for a bound Teki).
+- Binding requires `TPI_CorpseType == TEKICORPSE_LeaveCorpse`. A `NoCorpse`
+  host dies through `dieSoon -> kill -> doKill`, which runs `pc_p2_forget_teki`
+  on the death frame (tekibteki.cpp:742-749) and erases the binding before
+  `RequestBirth` can fire; such a host is refused with
+  `P2_GROINK_CARCASS_UNBOUND reason=no_corpse` rather than silently bound.
 - Regenerated health stays inside `P2GroinkCarcass` and is surfaced through
   `pc_p2_groink_teki_health()` rather than being written back to `t->mHealth`
   (writing a dead P1 host's `mHealth` up would resurrect the proxy actor and
-  fight its corpse FSM); the real health-gauge regrowth is a lane 06/07 concern.
-- `RequestBirth` logs position/face-dir from the dead actor and leaves
-  `existenceLength=-1`/`inPiklopedia=false` because `EnemyBirthArg` duration and
-  the Piklopedia flag are owned by the lane 06/07 manager-birth path.
+  fight its corpse FSM). The on-screen `TEKIOPT_LifeGaugeVisible` gauge is
+  therefore empty (`updateLifeGauge` reads `mHealth == 0`); the real health-gauge
+  regrowth is a lane 06/07 concern.
+- `RequestBirth` records the birth descriptor (position/face-dir from the dead
+  actor) and stops ticking; `existenceLength=-1`/`inPiklopedia=false` because
+  `EnemyBirthArg` duration and the Piklopedia flag are owned by the lane 06/07
+  manager-birth path.
 
 ### Remaining blockers (provider lane)
 
 - Live MiniHoudai actor registration + generated-node spawn in a room (lane 01
   shared actor hook / lane 03 generator / lane 05 install) — without it there is
-  no naturally dying Groink to drive the sidecar.
+  no naturally dying Groink to drive the sidecar. Concretely: no MiniHoudai host
+  exists in the P1 `TekiTypes` enum (`include/teki.h:101-140`, 35 types), and
+  there is no generated-Groink room binding flag on the preview binary to match
+  the Kurage equivalent (`engine/tools/run_kurage_automatic_binding.py`), so
+  `slot.py run gl l21` has no Groink to bind and emits no `P2_GROINK_CARCASS_*`
+  log.
 - Pellet drop (`EnemyBase::onKill`) and `generalEnemyMgr->birth` + Rebirth
   transit (lane 06/07) for the real KillPellet/RequestBirth end state.
 
 ### Subagent usage
 
-Not delegated: this session had no `task` subagent tool, so the read-heavy source
-audit, existing-candidate inventory and test scaffolding were done inline by the
-agent itself rather than three parallel subagents. Net effect: the intended
-parallelization was not exercised; the slice still completed with the native
-implementation, build, CTest and root-validator evidence done directly. Honest
-negative result for the required three-subagent experiment.
+No `task` subagent tool was available in this session, so all work (source audit,
+candidate inventory, tests, native implementation, build, handoff) was done solo
+by the agent; the required three-subagent parallelization was not exercised.
 
 ### Reproduction
 
 ```
-cd /c/Users/alari/pikmin-randomizer/output/deepseek-wave && PATH="/c/msys64/mingw64/bin:$PATH" py -3.12 build_lane.py l21 --target p2_groink_teki_test && PATH="/c/msys64/mingw64/bin:$PATH" ctest --test-dir C:/Users/alari/pikmin-randomizer/output/dsw/native-l21-build -R p2_groink --output-on-failure
+cd /c/Users/alari/pikmin-randomizer/output/deepseek-wave && PATH="/c/msys64/mingw64/bin:$PATH" py -3.12 build_lane.py l21 --target p2_groink_teki_test && PATH="/c/msys64/mingw64/bin:$PATH" ctest --test-dir <native-build-dir> -R p2_groink --output-on-failure
 ```
