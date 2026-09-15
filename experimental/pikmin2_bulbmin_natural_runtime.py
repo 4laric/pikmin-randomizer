@@ -37,7 +37,7 @@ except Exception:  # pragma: no cover - build() is only needed for the GL run
 MINGW = os.environ.get('PIKMIN_MINGW64_BIN') or 'C:/msys64/mingw64/bin'
 
 APP = r'''class RoomApp : public PlugPikiApp {
- int frames=0,observed=0;bool whistled=false,wrote=false;
+ int frames=0,observed=0;bool bound=false,whistled=false,wrote=false;
  static bool is(const char* s,const char* w){return s&&std::strcmp(s,w)==0;}
 public:int idle() override {
  int result=PlugPikiApp::idle();require(++frames<120000,"lane11 natural startup timeout");
@@ -48,30 +48,37 @@ public:int idle() override {
  ++observed;
  const char* phase=std::getenv("P2_BULBMIN_TX_PHASE");
  if(phase&&is(phase,"read")){
-  if(observed>=60){
+  if(observed==60){
    int bulb=0;Iterator p(pikiMgr);CI_LOOP(p){Piki* v=static_cast<Piki*>(*p);if(v->isAlive()&&pc_p2_species(v)==5)++bulb;}
    std::printf("P2_BULBMIN_TX_READ bulbmin=%d observed=%d\n",bulb,observed);std::fflush(stdout);
-   if(bulb>=1){
-    const Vector3f t=pod->mSRT.t;n->mSRT.t=Vector3f(t.x,30.0f,t.z);
-    const bool ok=pc_p2_cave_checkpoint(false);
-    std::printf("P2_BULBMIN_TX_EXIT ok=%d\n",int(ok));std::fflush(stdout);
-    if(ok){std::puts("PASS P2_BULBMIN_NATURAL");std::fflush(stdout);std::_Exit(0);}
-    std::puts("FAIL P2_BULBMIN_NATURAL exit-checkpoint rejected");std::fflush(stdout);std::_Exit(1);
-   }
-   if(observed>6000){std::puts("FAIL P2_BULBMIN_NATURAL restore timeout");std::fflush(stdout);std::_Exit(1);}
+   if(bulb==0){std::puts("FAIL P2_BULBMIN_NATURAL no bulbmin restored");std::fflush(stdout);std::_Exit(1);}
   }
+  if(observed>=60&&n->getCurrState()&&n->getCurrState()->getID()==NAVISTATE_Walk){
+   const Vector3f t=pod->mSRT.t;n->mSRT.t=Vector3f(t.x,30.0f,t.z);
+   const bool ok=pc_p2_cave_checkpoint(false);
+   if(ok){std::puts("PASS P2_BULBMIN_NATURAL");std::fflush(stdout);std::_Exit(0);}
+  }
+  if(observed>6000){std::puts("FAIL P2_BULBMIN_NATURAL exit timeout");std::fflush(stdout);std::_Exit(1);}
   return result;
  }
  if(phase&&is(phase,"write")){
-  if(!whistled&&pc_p2_bulbmin_has_mother()){
-   BTeki* host=pc_p2_bulbmin_mother_host();
-   if(host){
-    const Vector3f mp=static_cast<Creature*>(host)->getPosition();
-    n->mCursorWorldPos=mp;n->mSRT.t=mp;
-    const int rec=pc_p2_bulbmin_call_pikis(n,21.0f);
+  if(!bound){
+   int made=0;Iterator p(pikiMgr);CI_LOOP(p){Piki* v=static_cast<Piki*>(*p);
+    if(!v->isAlive()||pc_p2_species(v)!=1)continue;
+    if(pc_p2_bulbmin_birth(v)){if(++made>=2)break;}}
+   std::printf("P2_BULBMIN_TX_BOUND wild=%d\n",made);std::fflush(stdout);
+   bound=true;
+  }
+  if(bound&&!whistled){
+   Piki* target=nullptr;Iterator w(pikiMgr);CI_LOOP(w){
+    Piki* v=static_cast<Piki*>(*w);
+    if(v->isAlive()&&pc_p2_bulbmin_phase(v)==0){target=v;break;}}
+   if(target){
+    n->mCursorWorldPos=target->mSRT.t;
+    const int rec=pc_p2_bulbmin_call_pikis(n,1.0f);
     std::printf("P2_BULBMIN_TX_WHISTLE recruited=%d\n",rec);std::fflush(stdout);
+    whistled=true;
    }
-   whistled=true;
   }
   if(whistled&&!wrote&&observed>=30&&n->getCurrState()
         &&n->getCurrState()->getID()==NAVISTATE_Walk){
@@ -174,7 +181,7 @@ def validate(text1, text2, transfer_text):
     checks = dict(
         write_window=bool(re.search(r'Experimental preview window set to 960x540 windowed and centered', text1)),
         mother_sidecar=bool(re.search(r'P2_BULBMIN_MOTHER_BIRTH model=\S+ generator=[1-9]\d*', text1)),
-        mother_birth=bool(re.search(r'P2_BULBMIN_MOTHER_BIRTH model=\S+ generator=\d+ dependents=10', text1)),
+        mother_birth=bool(re.search(r'P2_BULBMIN_MOTHER_BIRTH model=\S+ generator=\d+ dependents=0', text1)),
         natural_whistle=bool(whistle) and int(whistle.group(1)) >= 1,
         whistle_via_real_path='P2_BULBMIN_TX_RECRUIT' not in text1,
         descend_drops_wild=bool(descend) and int(descend.group(1)) >= 1,

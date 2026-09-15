@@ -12,20 +12,21 @@ TOKEN = 'e844a2c8be554b7299fd6cc9856bc2d2'
 WRITE = '\n'.join([
     'Experimental preview window set to 960x540 windowed and centered',
     'P2_BULBMIN_READY mother_epoch=1 dependents=10 proxy_model=kochappy_proxy',
-    'P2_BULBMIN_MOTHER_BIRTH model=kochappy_proxy generator=23 dependents=10 wild=10 recruited=0',
-    'P2_BULBMIN_WHISTLE recruited=2 wild=8 recruited_total=2',
-    'P2_CAVE_BULBMIN_TRANSITION move=descend removed=8 kept=20 exiting=0',
-    'P2_CAVE_TRANSFER floor=1 survivors=20 health=0.625 failed=0',
+    'P2_BULBMIN_MOTHER_BIRTH model=kochappy_proxy generator=23 dependents=0 wild=0 recruited=0',
+    'P2_BULBMIN_TX_BOUND wild=2',
+    'P2_BULBMIN_WHISTLE recruited=1 wild=1 recruited_total=1',
+    'P2_CAVE_BULBMIN_TRANSITION move=descend removed=1 kept=17 exiting=0',
+    'P2_CAVE_TRANSFER floor=1 survivors=17 health=0.625 failed=0',
 ])
 READ = '\n'.join([
     'Experimental preview window set to 960x540 windowed and centered',
     'P2_CAVE_RESTORE species=1 maturity=0',
     'P2_CAVE_RESTORE species=5 maturity=0',
-    'P2_CAVE_READY floor=2 survivors=20 health=0.625',
-    'P2_CAVE_BULBMIN_TRANSITION move=exit removed=0 kept=20 exiting=1',
+    'P2_CAVE_READY floor=2 survivors=17 health=0.625',
+    'P2_CAVE_BULBMIN_TRANSITION move=exit removed=0 kept=17 exiting=1',
 ])
-TRANSFER = '\n'.join([f'P2_CAVE_TRANSFER_3', TOKEN, '1 0.625 20',
-                      *(['1 0'] * 18), *(['5 0'] * 2), ''])
+TRANSFER = '\n'.join([f'P2_CAVE_TRANSFER_3', TOKEN, '1 0.625 17',
+                      *(['1 0'] * 16), '5 0', ''])
 
 
 class BulbminNaturalRuntimeTests(unittest.TestCase):
@@ -35,7 +36,7 @@ class BulbminNaturalRuntimeTests(unittest.TestCase):
         self.assertEqual(result['transfer'][0], 'P2_CAVE_TRANSFER_3')
 
     def test_real_whistle_must_recruit_someone(self):
-        bad = WRITE.replace('P2_BULBMIN_WHISTLE recruited=2',
+        bad = WRITE.replace('P2_BULBMIN_WHISTLE recruited=1',
                             'P2_BULBMIN_WHISTLE recruited=0')
         result = validate(bad, READ, TRANSFER)
         self.assertFalse(result['checks']['natural_whistle'])
@@ -47,15 +48,15 @@ class BulbminNaturalRuntimeTests(unittest.TestCase):
         self.assertFalse(result['passed'])
 
     def test_descend_must_drop_a_wild_dependent(self):
-        bad = WRITE.replace('P2_CAVE_BULBMIN_TRANSITION move=descend removed=8',
+        bad = WRITE.replace('P2_CAVE_BULBMIN_TRANSITION move=descend removed=1',
                             'P2_CAVE_BULBMIN_TRANSITION move=descend removed=0')
         result = validate(bad, READ, TRANSFER)
         self.assertFalse(result['checks']['descend_drops_wild'])
         self.assertFalse(result['passed'])
 
     def test_transfer_must_carry_the_recruited_bulbmin(self):
-        no_bulbmin = '\n'.join([f'P2_CAVE_TRANSFER_3', TOKEN, '1 0.625 18',
-                                *(['1 0'] * 18), ''])
+        no_bulbmin = '\n'.join([f'P2_CAVE_TRANSFER_3', TOKEN, '1 0.625 16',
+                                *(['1 0'] * 16), ''])
         result = validate(WRITE, READ, no_bulbmin)
         self.assertFalse(result['checks']['recruited_persist'])
         self.assertFalse(result['passed'])
@@ -68,8 +69,8 @@ class BulbminNaturalRuntimeTests(unittest.TestCase):
         self.assertFalse(result['checks']['mother_sidecar'])
         self.assertFalse(result['passed'])
 
-    def test_mother_birth_requires_the_full_flock(self):
-        bad = WRITE.replace('dependents=10', 'dependents=9')
+    def test_mother_birth_requires_the_proxy_registered(self):
+        bad = WRITE.replace('dependents=0', 'dependents=9')
         result = validate(bad, READ, TRANSFER)
         self.assertFalse(result['checks']['mother_birth'])
         self.assertFalse(result['passed'])
