@@ -60,14 +60,14 @@ existenceLength; inPiklopedia; }` as the host payload for `RequestBirth`. No
 shared files modified; no product `PC_PORT_SOURCES` wiring (parked scope "no
 shared hooks/build/export"); only two additive CMake test targets were added.
 
-## Build evidence (output/dsw/l21-build-evidence.txt + output/dsw/l21-out/)
+## Build evidence (<lane-build-evidence> + <lane-out>/)
 
 ```
-2026-09-14T20:52:01 lane=l21 target=pikmin_pc native=5f5cf5fe72f40a47c06cd6b33c9672ebed97774a dirty=no build_dir=...\native-l21-build exe=...\bin\nectar.exe sha256=9dd6f5d3fd6d53962bf83b0fc4ab8b7e5cfae1ee16f4d31ae0c5c4a07d167840 ninja_n="ninja: no work to do." seconds=74
-2026-09-14T20:39:42 lane=l21 target=p2_groink_lifetime_test native=5f5cf5fe... exe=...\p2_groink_lifetime_test.exe sha256=d62bb72c... ninja_n="ninja: no work to do."
+2026-09-14T20:52:01 lane=l21 target=pikmin_pc native=5f5cf5fe72f40a47c06cd6b33c9672ebed97774a dirty=no build_dir=<native-build-dir> exe=<native-build-dir>/bin/nectar.exe sha256=9dd6f5d3fd6d53962bf83b0fc4ab8b7e5cfae1ee16f4d31ae0c5c4a07d167840 ninja_n="ninja: no work to do." seconds=74
+2026-09-14T20:39:42 lane=l21 target=p2_groink_lifetime_test native=5f5cf5fe... exe=<native-build-dir>/p2_groink_lifetime_test.exe sha256=d62bb72c... ninja_n="ninja: no work to do."
 ```
-CTest (10/10 `p2_groink*` PASS) logged to `output/dsw/l21-out/ctest-groink-all.log`;
-carcass+lifetime subset in `output/dsw/l21-out/ctest-carcass-lifetime.log`.
+CTest (10/10 `p2_groink*` PASS) logged to `<lane-out>/ctest-groink-all.log`;
+carcass+lifetime subset in `<lane-out>/ctest-carcass-lifetime.log`.
 
 ## Fixture adoption evidence
 
@@ -142,7 +142,7 @@ port; my own context stayed on the native cherry-pick/build/ctest/handoff.
 ## Reproduction
 
 ```
-cd /c/Users/alari/pikmin-randomizer/output/deepseek-wave && PATH="/c/msys64/mingw64/bin:$PATH" py -3.12 build_lane.py l21 --target p2_groink_carcass_test && PATH="/c/msys64/mingw64/bin:$PATH" ctest --test-dir C:/Users/alari/pikmin-randomizer/output/dsw/native-l21-build -R p2_groink --output-on-failure
+cd /c/Users/alari/pikmin-randomizer/output/deepseek-wave && PATH="/c/msys64/mingw64/bin:$PATH" py -3.12 build_lane.py l21 --target p2_groink_carcass_test && PATH="/c/msys64/mingw64/bin:$PATH" ctest --test-dir <native-build-dir> -R p2_groink --output-on-failure
 ```
 
 ## Slice 2
@@ -195,7 +195,7 @@ Root base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`; native base
 
 Native (`deepseek/p2-l21-native`), after the fix1 commits:
 1. `b3f784e9` — lane21: bind Groink carcass policy to a live generated actor sidecar (#198).
-2. `e22e075d` — lane21: wire Groink carcass sidecar into shared teki lifecycle hooks (#198).
+2. `e22e075d` — lane21: [hook] wire Groink carcass sidecar into shared teki lifecycle hooks (#198).
 3. `12298fd5` — lane21: review fixes 2 - pellet recycle guard, corpse-type gate and honest birth wording (#198).
 
 Root (`deepseek/p2-l21`):
@@ -205,7 +205,7 @@ Root (`deepseek/p2-l21`):
 
 ### Interfaces and hooks touched
 
-Shared hook commit `e22e075d` adds three additive seams, each mirroring an
+Shared hook [hook] commit `e22e075d` adds three additive seams, each mirroring an
 existing family sidecar call: `pc_p2_groink_teki_setup()` in
 `GameCoreSection::finalSetup`, `pc_p2_groink_teki_tick(this)` in `BTeki::update`,
 and `pc_p2_groink_teki_forget/reset` in the centralized
@@ -265,9 +265,10 @@ No injected state promoted to a gameplay PASS.
 - Regenerated health stays inside `P2GroinkCarcass` and is surfaced through
   `pc_p2_groink_teki_health()` rather than being written back to `t->mHealth`
   (writing a dead P1 host's `mHealth` up would resurrect the proxy actor and
-  fight its corpse FSM). The on-screen `TEKIOPT_LifeGaugeVisible` gauge is
-  therefore empty (`updateLifeGauge` reads `mHealth == 0`); the real health-gauge
-  regrowth is a lane 06/07 concern.
+  fight its corpse FSM). The on-screen `TEKIOPT_LifeGaugeVisible` toggle is
+  therefore inert on a corpse (`updateLifeGauge` runs only while
+  `mDeadState == 0`, tekibteki.cpp:~651): the gauge is not updated, not "empty";
+  the real health-gauge regrowth is a lane 06/07 concern.
 - `RequestBirth` records the birth descriptor (position/face-dir from the dead
   actor) and stops ticking; `existenceLength=-1`/`inPiklopedia=false` because
   `EnemyBirthArg` duration and the Piklopedia flag are owned by the lane 06/07

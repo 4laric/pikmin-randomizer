@@ -41,16 +41,14 @@ CONFIG_NAME = "p2-groink-teki.txt"
 def validate_log(log: str) -> dict:
     """Ordered run-log validation. Each marker must appear after the previous."""
     missing = []
-    ordered = True
     pos = -1
     for marker in ORDER:
         nxt = log.find(marker, pos + 1)
         if nxt < 0:
             missing.append(marker)
-            ordered = False
         else:
             pos = nxt
-    return {"passed": not missing, "missing": missing, "ordered": ordered}
+    return {"passed": not missing, "missing": missing}
 
 
 def missing_markers(text: str) -> list:
