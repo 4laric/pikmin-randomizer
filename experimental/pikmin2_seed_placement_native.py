@@ -73,6 +73,9 @@ def validate_cooccurrence(text):
     if non_cohort:
         return Cooccurrence(False, f'non-cohort source resolved: {sorted(non_cohort)}')
 
+    # Every resolving generator must close its chain (integrator fix from review:
+    # the first closed chain used to short-circuit the remaining generators).
+    closed = []
     for generator, slot in sorted(slots.items(), key=lambda row: row[1]):
         source = resolve_by_target.get(slot)
         if source is None:
@@ -86,7 +89,10 @@ def validate_cooccurrence(text):
                 f'but P2_ENEMY_READY births {ready_by_generator.get(generator)}',
                 generator=generator, slot=slot, source=source,
             )
-        return Cooccurrence(True, 'closed generator->slot->source and birth chain',
+        closed.append((generator, slot, source))
+    if closed:
+        generator, slot, source = closed[0]
+        return Cooccurrence(True, f'closed generator->slot->source and birth chain for {len(closed)} generator(s): {closed}',
                             generator=generator, slot=slot, source=source)
     return Cooccurrence(
         False, f'no P2_SEED_RESOLVE matched a mapped slot: {sorted(slots.values())}')
