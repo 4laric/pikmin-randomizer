@@ -26,12 +26,12 @@ from scripts.ingest_p2_handoff_gates import (  # noqa: E402
 )
 
 _HANDOFF_RE = re.compile(r"PIKMIN2_LANE\d+_DEEPSEEK_HANDOFF\.md$")
-_REGENERATE_COMMAND = "py -3.12 scripts/generate_p2_advance_report.py"
 
 
 def _git(*args: str) -> str:
     return subprocess.run(["git", *args], capture_output=True, text=True,
-                          encoding="utf-8", errors="replace", check=True).stdout
+                          encoding="utf-8", errors="replace", check=True,
+                          cwd=str(ROOT)).stdout
 
 
 def list_handoffs(branch: str) -> list[str]:
@@ -55,7 +55,7 @@ def main(argv=None) -> int:
     names = list_handoffs(args.branch)
     docs = [(name, read_handoff(args.branch, name)) for name in names]
     report = build_advance_report(docs)
-    text = render_advance_report(report, _REGENERATE_COMMAND)
+    text = render_advance_report(report, args.branch)
 
     output = args.output or (ROOT / "docs" / "PIKMIN2_ROSTER_ADVANCE_REPORT.md")
     output.parent.mkdir(parents=True, exist_ok=True)

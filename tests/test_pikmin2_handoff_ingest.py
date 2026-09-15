@@ -293,13 +293,83 @@ def test_table_binds_to_nearest_identity_heading():
 
 def test_report_generator_is_deterministic():
     from scripts.ingest_p2_handoff_gates import build_advance_report, render_advance_report
-    from scripts.generate_p2_advance_report import _REGENERATE_COMMAND
     docs = [("L99-clean.md", CLEAN_HANDOFF), ("L99-injected.md", INJECTED_HANDOFF)]
     report = build_advance_report(docs, _roster())
     again = build_advance_report(docs, _roster())
-    assert render_advance_report(report, _REGENERATE_COMMAND) == \
-        render_advance_report(again, _REGENERATE_COMMAND)
+    rendered = render_advance_report(report, "claude/p2-deepseek-wave")
+    assert rendered == render_advance_report(again, "claude/p2-deepseek-wave")
     assert report["total"] == 1            # both handoffs name Frog (17)
     assert report["identities"][0]["source_id"] == 17
+    assert report["identities"][0]["shared"] is False   # both bind a Frog table
     assert sum(report["summary"].values()) == report["total"]
     assert set(report["summary"]) == set(range(7))
+    # Every input handoff is accounted for in the "Handoffs read" section.
+    assert set(report["handoffs"]) == {"L99-clean.md", "L99-injected.md"}
+    assert all(name in rendered for name in ("L99-clean.md", "L99-injected.md"))
+
+
+def test_shared_flag_is_false_when_any_handoff_binds():
+    from scripts.ingest_p2_handoff_gates import build_advance_report
+    # Frog owns a table in the clean handoff but is only a named sibling (no
+    # table) in the second -> any binding makes it a real candidate.
+    sibling = ("# x\nSource ID: 17 `Frog`.\nSnek (41) shares the base.\n")
+    report = build_advance_report([("owner.md", CLEAN_HANDOFF), ("other.md", sibling)], _two_roster())
+    frog = next(row for row in report["identities"] if row["source_id"] == 17)
+    assert frog["shared"] is False
+    snek = next(row for row in report["identities"] if row["source_id"] == 41)
+    assert snek["shared"] is True
+
+
+def test_double_backslash_before_pipe_is_a_separator():
+    from scripts.ingest_p2_handoff_gates import _split_row
+    # "b \\| c": a literal backslash followed by a real pipe -> three cells,
+    # not an escaped pipe joined into the second cell.
+    cells = _split_row(r"| a | b \\| c |")
+    assert cells == ["a", "b \\", "c"]
+
+
+STATUS_HANDOFF = """# Lane with a Status column
+## Concrete source ID
+- Source ID: 17 `Frog`.
+
+## Six arena gates
+| Gate | Status | Evidence / label |
+|---|---|---|
+| 1 Exact identity and spawn | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md spawn |
+| 2 Autonomous movement and animation | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md leap |
+| 3 Attacks and receivers | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md crush |
+| 4 Death and corpse | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md corpse |
+| 5 Actual transport and reward | PASS | corpse:frog:1 goal=1 |
+| 6 Cleanup and re-entry | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md reentry |
+"""
+
+
+def test_status_column_is_accepted_as_result():
+    from scripts.ingest_p2_handoff_gates import parse_gate_table
+    table = parse_gate_table(STATUS_HANDOFF)
+    assert set(table) == set(range(1, 7))
+    (row,) = ingest(STATUS_HANDOFF, _roster())
+    assert set(row["advances"]) == set(ADMISSION_GATES) | {"transport_reward"}
+
+
+def test_identity_parse_accepts_cited_real_forms():
+    from experimental.pikmin2_enemy_roster import load_and_validate
+    from scripts.ingest_p2_handoff_gates import parse_identities
+    roster = load_and_validate()
+    cases = [
+        ("Empress Bulblax (Queen, enemy ID 30)", [(30, "Queen")]),
+        ("Emperor Bulblax (KingChappy, enemy 53).", [(53, "KingChappy")]),
+        ("One concrete source ID (DangoMushi 94,", [(94, "DangoMushi")]),
+        ("Concrete source enemy ID: 73 BigTreasure (Titan Dweevil).",
+         [(73, "BigTreasure")]),
+        ("Source IDs owned: Houdai 66 (Man-at-Legs) and BigFoot 69",
+         [(66, "Houdai"), (69, "BigFoot")]),
+        ("Source IDs owned: Kabuto 75, Rkabuto 95, Fkabuto 96; Stone 74 /",
+         [(74, "Stone"), (75, "Kabuto"), (95, "Rkabuto"), (96, "Fkabuto")]),
+        ("Dwarf Orange Bulborb — `BlueKochappy`, source id **44** (enum `BlueKochappy`)",
+         [(44, "BlueKochappy")]),
+        ("the Greater Jellyfloat (OniKurage, P2 id 72) captain-capture path",
+         [(72, "OniKurage")]),
+    ]
+    for line, expected in cases:
+        assert parse_identities(line, roster) == expected
