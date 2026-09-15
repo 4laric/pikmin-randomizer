@@ -330,7 +330,7 @@ Shot reached, seven `P2_LONG_LEGS_SHELL`, one `P2_LONG_LEGS_SHELL_HIT pikmin=1`,
 | 2. Autonomous movement and animation | PARTIAL | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/capture/native.log:827 (FSM Land/Wait/Flick/Shot schedule; bind-pose, no IK) | natural |
 | 3. Attacks and receivers | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/capture/native.log:829 (P2_LONG_LEGS_SHELL) :872 (SHELL_HIT pikmin=1, InteractBomb receiver) | natural |
 | 4. Death and corpse | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/capture/native.log:879 (P2_LONG_LEGS_DEAD prior_health=10.00, drained) | natural |
-| 5. Actual transport and reward | PARTIAL (proxy corpse) | PROXY: the credited corpse is the P1 Chappy placement-vehicle stand-in, not a source carcass, so the source-carcass reward mapping is unproven. The ordinary FreeMode `graspSituation` carry + Pod credit are real: output/dsw/l26-out/run/2c23222d84c94bc1b48d71308033e5db/capture/native.log:1502 (P2_POD_RECEIPT id=corpse:longlegs:312001 value=2 new=1 pokos=4) :1503 (P2_LL_DELIVER Houdai) | proxy stand-in corpse |
+| 5. Actual transport and reward | PARTIAL (proxy corpse) | PROXY: the credited corpse is the P1 Chappy placement-vehicle stand-in, not a source carcass, so the source-carcass reward mapping is unproven. The ordinary FreeMode `graspSituation` carry + Pod credit are real and now repeatable (fix 4): output/dsw/l26-out/run/42d35826db0d47718f26df6bd59169a5/capture/native.log:1536 (P2_POD_RECEIPT id=corpse:longlegs:312001 value=2 new=1 pokos=4) | proxy stand-in corpse |
 | 6. Cleanup and re-entry | PASS (natural) | Proven on OLDER head (run `2c3ce2a8…`, pre-slice-3 native) — the receipt run `2c23222d…` failed reentry (`capture/native.log:1509` old pointer still registered). output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/capture/native.log:940 (FORGET count=0) :945 (REENTRY stale=0 fresh=1) | natural |
 
 - Source ID: 69 `BigFoot`.
@@ -341,7 +341,7 @@ Shot reached, seven `P2_LONG_LEGS_SHELL`, one `P2_LONG_LEGS_SHELL_HIT pikmin=1`,
 | 2. Autonomous movement and animation | PARTIAL | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/capture/native.log:735 (FSM Land/Wait/Flick schedule; bind-pose, no IK) | natural |
 | 3. Attacks and receivers | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/capture/native.log:734 (CRUSH pikmin=20) :762 (DAMAGE health=115 prior=130) | natural |
 | 4. Death and corpse | PASS (natural) | output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/capture/native.log:802 (DEAD prior_health=10.00) :803 (BIRTH count=30) | natural |
-| 5. Actual transport and reward | PARTIAL (proxy corpse) | PROXY: the credited corpse is the P1 Chappy placement-vehicle stand-in, not a source carcass. The ordinary FreeMode `graspSituation` carry + Pod credit are real: output/dsw/l26-out/run/2c23222d84c94bc1b48d71308033e5db/capture/native.log:1215 (P2_POD_RECEIPT id=corpse:longlegs:312002 value=2 new=1 pokos=2) :1216 (P2_LL_DELIVER BigFoot) | proxy stand-in corpse |
+| 5. Actual transport and reward | PARTIAL (proxy corpse) | PROXY: the credited corpse is the P1 Chappy placement-vehicle stand-in, not a source carcass. The ordinary FreeMode `graspSituation` carry + Pod credit are real and now repeatable (fix 4): output/dsw/l26-out/run/42d35826db0d47718f26df6bd59169a5/capture/native.log:1237 (P2_POD_RECEIPT id=corpse:longlegs:312002 value=2 new=1 pokos=2) | proxy stand-in corpse |
 | 6. Cleanup and re-entry | PASS (natural) | Proven on OLDER head (run `2c3ce2a8…`, pre-slice-3 native) — the receipt run `2c23222d…` failed reentry. output/dsw/l26-out/run/2c3ce2a8252241e68160e8f8b3747a80/capture/native.log:939 (FORGET count=0) :944 (REENTRY stale=0 fresh=1) | natural |
 
 - Source ID: 56 `Damagumo`.
@@ -805,3 +805,78 @@ is the Houdai combat drain itself, not the guards or the settings boot path.
 - `py -3.12 -m pytest tests/test_pikmin2_long_legs_{pod,lifecycle,houdai,install,visual}.py -q`
   -> **75 passed**.
 - `scripts/check_p2_handoff_gates.py` -> gate 5 `ignored [PARTIAL]` (proxy); no refusals.
+
+## Fix 4
+
+### 1. Deterministic Houdai drain (was: connected only on the early Shot roll)
+
+Root cause: a Piki's attack only lands through `ActJumpAttack`, which requires
+`angle < PI/10` and `dist3D < size+centre+10` and only runs while the Piki state
+allows AI (`src/plugPikiKando/aiAttack.cpp:594-665`). The fixture parked the
+approach at 150u (cooldown Shot), then teleported a ring at 15u with **arbitrary
+facing**, so no attack latched for 2400+ ticks (`P2_LL_HOUDAI_HP health=130.00
+squad=20 atk=20 dmg=1 events=0`,
+`output/dsw/l26-out/run/fbae6787e51542b195efe28a4db599f1/capture/native.log:1441`)
+even though `pc_p2_long_legs_damageable()==1`.
+
+The fixture now (`experimental/pikmin2_long_legs_lifecycle.py`):
+
+- parks the approach at 90u (outside the 60u accumulate radius) so Houdai reaches
+  Shot through the source burst loop, then re-parks the squad at **45u with each
+  Pikmin rotated inward** (`v->mSRT.r.y = ringAngle + PI`) so the attack-latch
+  angle gate is satisfied, re-issuing it every 15 ticks while `damageable`;
+- adds a **receiver-hit probe**: it counts actual `houdai->mHealth` decreases into
+  `P2_LL_HOUDAI_DRAIN events=<n> min=<h>`, and `validate()`'s new
+  `houdai_drain_connects` gate requires >=2 connected hits with a bounded final
+  health, so an "ordered but not connecting" run can never pass.
+
+Repeat-run evidence (same fixture exe, `slot.py run gl l26`): **6/6 green**, all
+`exit 0`, all `passed=True` - primary run
+`output/dsw/l26-out/run/42d35826db0d47718f26df6bd59169a5` (Houdai Shot
+`capture/native.log:900`, natural death `:945`/`:946`, drain `:1550`, receipts
+`:1237`/`:1536`, one-shot `:1538`, session `:1551`, PASS `:1552`) plus five
+reruns `3a76d6a9`, `4a1d7784`, `83bb21c5`, `4a3e5f78`, `636c3661`.
+
+### 2. The 0xFFFFFFFF exit
+
+Not reproduced on the deterministic path: every repeat run exits `0` (`capture.json`
+`"exit_code": 0`, `"timed_out": false`). The crash only appeared on the late
+cooldown Shot with a shell in flight at teardown. The runner
+(`experimental/pikmin2_animation_profile.py:152-181`) records the raw process code
+with **no** crash mapping and merges stderr into `native.log`, so only a native
+access violation reaches `0xFFFFFFFF`; the audit's ranked candidates (unchanged
+since native `45344123`) are the `pc_port/pc_p2_cannon_stone.h` /
+`pc_p2_long_legs.cpp` shell-pool aliasing and the raw `corpses` / `actor->mPellet`
+keys. With the trigger gone, no native change was made; this is the residual.
+
+### 3. Early day-end trigger
+
+The trigger was the staged captain being killed during the Houdai approach. With
+the approach at 90u and the attack ring at 45u, the captain never enters a dead
+state: `P2_LL_GUARD navi_sustain=1` no longer fires and no `EXITDAYEND` appears in
+the passing runs, so the run survives on its own logic rather than on the results
+overlay. The labeled guards (`navi_sustain`, `pikmin_guard`) remain as inert
+insurance.
+
+### 4. Gate table
+
+Gate 5 stays `PARTIAL (proxy corpse)`; the table was regenerated against the
+repeatable run and the checker reports no refusals.
+
+### Subagent usage (fix 4)
+
+1. `explore` - damage-path audit: `ActJumpAttack`'s angle/range/visibility gates,
+   the `pc_p2_long_legs_receiver_rejects` window, the Shot cooldown vs Flick path,
+   and the shell/corpse crash candidates. Used as-is; it pinpointed the facing
+   angle gate and the `isVisible()` gate.
+2. `explore` - inventory of the Houdai markers, the runner's exit-code handling
+   (no crash mapping, stderr merged), and the other lanes' multi-hit drain
+   patterns. Used as-is.
+3. `general` - added the `houdai_drain_connects` flip test to
+   `tests/test_pikmin2_long_legs_pod.py`. Used as-is.
+
+### Tests run (fix 4)
+
+- `py -3.12 -m pytest tests/test_pikmin2_long_legs_{pod,lifecycle,houdai,install,visual}.py -q`
+  -> **77 passed**.
+- 6/6 GL repeat runs `passed=True`, exit 0, per-gate clean.
