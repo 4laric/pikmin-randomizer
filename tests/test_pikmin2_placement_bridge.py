@@ -7,9 +7,9 @@ this slice that are new:
   the admitted room-course cohort (Sarai 23, Otakara 59-62) in addition to the
   Dwarf Orange/Snow 44/45 pair, so a generated seed's ``install_layout`` stages
   the right family content instead of failing closed;
-* the native side exposes the generic ``pc_randomizer_p2_source_for_70`` bridge
-  and Sarai/Otakara consult it, so a randomizer-assigned generator selects the
-  module rather than only a fixed ``p2-<family>-actors.txt`` set.
+* the native side exposes the birth-time ``pc_p2_generated_placement_bind``
+  dispatcher, and Sarai/Otakara consult it, so a randomizer-assigned generator
+  selects the module rather than only a fixed ``p2-<family>-actors.txt`` set.
 
 The native assertions are source-text pins (no build) and skip cleanly unless
 ``PIKMIN_NATIVE_ROOT`` points at a native checkout; no lane paths are hardcoded.

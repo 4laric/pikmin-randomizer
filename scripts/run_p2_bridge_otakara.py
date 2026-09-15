@@ -5,7 +5,7 @@ seed on the admitted cohort (23/44/59-62, no admission injection), writes the
 seed-derived placement sidecar for the arena generator and RENAMES the fixed
 ``p2-dweevil-actors.txt`` away, then boots the room with ``--randomizer-seed``.
 The Otakara module must bind the generator purely from the seed
-(``pc_randomizer_p2_source_for_70``), logging ``P2_OTAKARA_BIND source_id=59``
+(the birth-time ``pc_p2_generated_placement_bind`` dispatcher), logging ``P2_OTAKARA_BIND source_id=59``
 alongside ``P2_SEED_RESOLVE`` and ``P2_PLACEMENT_SLOT``.
 
 Run only under the host GL slot:

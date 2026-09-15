@@ -6,7 +6,7 @@ sidecar mapping the arena generator to a slot the seed bound to Sarai (23), rena
 the fixed family actor sidecars away, copies lane 30's staged Sarai banks + model
 into the run, and boots the room with ``--randomizer-seed`` and
 ``PIKMIN_SARAI_ORDINARY=1``. The Sarai module must bind the generator purely from
-the seed (``findSeedActor(23)``), logging ``P2_SARAI_READY source_id=23`` with
+the seed (the birth-time ``pc_p2_generated_placement_bind`` dispatcher), logging ``P2_SARAI_READY source_id=23`` with
 ``resolution=seed``.
 
 Run only under the host GL slot:
