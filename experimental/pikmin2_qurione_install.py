@@ -48,4 +48,4 @@ def install(imported,run,generator_ids,expected_source_sha256):
     if any((run/n).exists() for n in configs) or any((directory/n).exists() for n in files):raise ValueError('Refusing existing installation')
     for name,data in files.items():(directory/name).write_bytes(data)
     for name,data in configs.items():(run/name).write_bytes(data)
-    return dict(source_sha256=expected_source_sha256,files={n:sha(d) for n,d in files.items()},configs={n:sha(d) for n,d in configs.items()},reward='P1 nectar; P2 Egg unavailable',native_runtime='untested')
+    return dict(source_sha256=expected_source_sha256,files={n:sha(d) for n,d in files.items()},configs={n:sha(d) for n,d in configs.items()},reward='P2 Egg (real host birth via lane-20 P2Egg policy)',native_runtime='untested')
