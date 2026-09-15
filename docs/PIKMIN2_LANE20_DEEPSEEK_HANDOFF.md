@@ -201,7 +201,7 @@ Root:
 | Commit | Subject |
 |---|---|
 | `664322e` | lane20: two-Teki room, Groink consumer and victim-strike gates + tests (#169) |
-| `_hash_` (this handoff commit) | lane20: Slice 2 handoff (#169) |
+| `45e4b83` | lane20: Slice 2 handoff (#169) |
 
 ### Interfaces / hooks touched
 
@@ -223,10 +223,10 @@ Root:
 
 ### Build evidence (`output/dsw/l20-build-evidence.txt`)
 
-- Final native build: `lane=l20 target=pikmin_pc native=610bcf0b… dirty=yes`,
+- Final native build (clean, post-commit): `lane=l20 target=pikmin_pc`
+  `native=0f235b17b1b9fb80bc28317699b72151abbf6c81 dirty=no`,
   `nectar.exe` SHA-256 `d00811ea78d0eb01e625498e98c8caeb6d0722eaced0fb2515c8182de3fd4b8c`,
-  `ninja_n="ninja: no work to do."` (dirty at evidence time = this slice's
-  uncommitted edits; committed after).
+  `ninja_n="ninja: no work to do."`.
 
 ### Fixture adoption evidence
 
