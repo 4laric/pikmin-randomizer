@@ -13,7 +13,7 @@ corrects the headline labels identified by review.
 
 ### Integrator note (review of fix 2)
 
-- Squad release on survivor-down is UNTESTED at runtime: survivor-path.log:724 shows squad_before=20 squad_after=20; releasePikis iterates the plate (navi.cpp:1398-1404), which is empty before the first CPlate::refresh, so nothing observable was released. "Source-faithful" is not a runtime PASS.
+- Squad release on survivor-down was initially UNTESTED at runtime: releasePikis iterates the plate (navi.cpp:1398-1404), which is empty before the first CPlate::refresh, so nothing observable was released. It was subsequently observed (Slice 3): survivor-path.log:730 shows piki_mode_before=1 piki_mode_after=0. "Source-faithful" alone was not a runtime PASS.
 - The fresh logs are the top-level l12-out/{base-final,knockout-final,survivor-path}.log; the 29aa… run dir holds the stale 23:34 runs with the old squad=1 marker.
 - The second-captain live gate is flipped by the PIKMIN_P2_SECOND_CAPTAIN_LIVE environment variable, not by fixture code; an invisible second Navi with live collision ships to anyone who sets it.
 - No build-evidence line was added for 16125f06 (tools-only commit; exe unaffected).
@@ -152,24 +152,24 @@ lane-29 consumer named in prose; this lane does not claim its enemy gates.
 
 | Gate | Result | Evidence | Injected vs natural |
 |---|---|---|---|
-| 1. Exact identity and spawn | PASS | output/dsw/l12-out/base-final.log:719 (captain_handle(0) resolves the live slot-0 Navi); output/dsw/l12-out/survivor-path.log:307 (second captain birthed) | natural |
+| 1. Exact identity and spawn | PASS | output/dsw/l12-out/base-final.log:727 (captain_handle(0) resolves the live slot-0 Navi); output/dsw/l12-out/survivor-path.log:310 (second captain birthed) | natural |
 | 2. Autonomous movement and animation | N/A | captains are player-controlled (Kontroller); no autonomous enemy FSM in this lane | N/A |
-| 3. Attacks and receivers | PASS | output/dsw/l12-out/survivor-path.log:724 (InteractAttack::actNavi, the integrated receiver, reduced the active captain to down) | natural |
-| 4. Death and corpse | PASS | output/dsw/l12-out/survivor-path.log:724 (downed captain entered NAVISTATE_Dead) | natural |
+| 3. Attacks and receivers | PASS | output/dsw/l12-out/survivor-path.log:730 (InteractAttack::actNavi, the integrated receiver, reduced the active captain to down) | natural |
+| 4. Death and corpse | PASS | output/dsw/l12-out/survivor-path.log:730 (downed captain entered NAVISTATE_Dead) | natural |
 | 5. Actual transport and reward | N/A | captains carry no reward | N/A |
-| 6. Cleanup and re-entry | PASS | output/dsw/l12-out/base-final.log:723 (interrupted capture frees held, reclaimable) and :724 (reload conserves) | natural |
+| 6. Cleanup and re-entry | PASS | output/dsw/l12-out/base-final.log:731 (interrupted capture frees held, reclaimable) and :732 (reload conserves) | natural |
 
 Caveats (injected vs natural, stated explicitly):
 
 - Gate 1 PASS basis is the always-present slot-0 identity; the second-captain
-  (slot 1) birth at survivor-path.log:307 runs under the fixture-only live gate
+  (slot 1) birth at survivor-path.log:310 runs under the fixture-only live gate
   (`PIKMIN_P2_SECOND_CAPTAIN_LIVE=1`) and is reported as such, not as a normal
   spawn.
 - Gate 3/4 are natural (the integrated `InteractAttack::actNavi` receiver applies
   `pcNaviHurt` damage and the engine's own pause/damage path; `finishDamage`
   exits to `NAVISTATE_Dead`). The **single-captain** injected game-over
-  (`mHealth=0` + `finishDamage`, `knockout-final.log:725`) and the **two-captain
-  final stage-end** (`navi1->mHealth=0`, `survivor-path.log:725`) are UNTESTED
+  (`mHealth=0` + `finishDamage`, `knockout-final.log:733`) and the **two-captain
+  final stage-end** (`navi1->mHealth=0`, `survivor-path.log:731`) are UNTESTED
   (injected) diagnostics, not natural death claims.
 - Gate 5 squad release on the survivor branch is source-faithful (`releasePikis`
   is called in the survivor branch of `NaviDeadState::init`) but its plate-mode
@@ -188,7 +188,7 @@ Output (exit 0; the OniKurage row is the lane-29 consumer named in prose, whose
 gates this shared provider does not claim):
 
 ```
-72 OniKurage (role=source): warning (shared table) - named in prose but no table of its own; give it a `Source ID` line + six-gate table to claim its gates
+72 OniKurage (role=source): warning (shared table) - named in prose but no six-gate table of its own is bound to it (historical slice-1/2 run)
 ```
 
 No PASS row is refused; the captain interface identity is outside the enemy
@@ -333,17 +333,17 @@ Identity: **captain slot 0 (Olimar) — lane 12 shared captain/squad provider**
 
 | Gate | Result | Evidence | Injected vs natural |
 |---|---|---|---|
-| 1. Exact identity and spawn | PASS | output/dsw/l12-out/survivor-path.log:317 (second captain birthed at slot 1) | natural (slot 0) / env-flipped (slot 1) |
+| 1. Exact identity and spawn | PASS | output/dsw/l12-out/survivor-path.log:310 (second captain birthed at slot 1) | natural (slot 0) / env-flipped (slot 1) |
 | 2. Autonomous movement and animation | N/A | captains are player-controlled; no autonomous enemy FSM | N/A |
-| 3. Attacks and receivers | PASS | output/dsw/l12-out/survivor-path.log:734 (InteractAttack::actNavi receiver) | natural |
-| 4. Death and corpse | PASS | output/dsw/l12-out/survivor-path.log:734 (downed captain -> NAVISTATE_Dead, squad released to FreeMode) | natural |
+| 3. Attacks and receivers | PASS | output/dsw/l12-out/survivor-path.log:730 (InteractAttack::actNavi receiver) | natural |
+| 4. Death and corpse | PASS | output/dsw/l12-out/survivor-path.log:730 (downed captain -> NAVISTATE_Dead, squad released to FreeMode) | natural |
 | 5. Actual transport and reward | N/A | captains carry no reward | N/A |
-| 6. Cleanup and re-entry | PASS | output/dsw/l12-out/base-final.log:734 (interrupted capture frees), :735 (reload conserves) | natural |
+| 6. Cleanup and re-entry | PASS | output/dsw/l12-out/base-final.log:731 (interrupted capture frees), :732 (reload conserves) | natural |
 
 The `squad release` (gate 4 body) is now **observed**, not inferred:
-`piki_mode_before=1 piki_mode_after=0` (FreeMode) in survivor-path.log:734. The
+`piki_mode_before=1 piki_mode_after=0` (FreeMode) in survivor-path.log:730. The
 final two-captain stage end (slot 1 going down) is a separate labelled injected
-diagnostic (`survivorNavi1->mHealth = 0`, survivor-path.log:735), not a natural
+diagnostic (`survivorNavi1->mHealth = 0`, survivor-path.log:731), not a natural
 death claim.
 
 ### Gate checker
@@ -429,7 +429,7 @@ Fixes (native `dd17a33d`, the production head that changes the gate default):
   `PIKMIN_P2_SECOND_CAPTAIN_LIVE` fixture flip is gone.
 
 Evidence (default-on: only `PIKMIN_P2_SECOND_CAPTAIN=1`, no env flip):
-- `output/dsw/l12-out/two-captain-ppm.log:731` —
+- `output/dsw/l12-out/two-captain-ppm.log:735` —
   `P2_CAPTAIN_PPM saved=two-captains.ppm frame=150 captains=2`; the PPM
   (`two-captains.ppm`, 5.4 MB, non-black, in-frame) visibly shows **both captains**
   (two Olimar models) — converted to `two-captains.png`.
@@ -480,33 +480,49 @@ Root commits: `58343ee2` (test run-PATH + preferred-tree fixes) and this section
 
 ### Build
 
-Production build at `dd17a33d`:
+Production build at `dd17a33d` (the binary the runtime evidence was captured on):
 ```
 native=dd17a33d82bd798b34605bc2832b5b053e1df966 dirty=no
 sha256=a3638c2666f0b7f68c0a3589153188f2a74112f6f9759890ebc178233e6baf70
 ninja_n="ninja: no work to do."
 ```
-`272d2638` is a fixture-only delta. Fixture `p2-captain-fixture-final`
-(provenance built, native head `272d2638`).
+`272d2638` was then a fixture-only delta. In fix 3 the narrative comments were
+corrected (share slot-0 shape / request-gated default-on) — comment-only, so a
+behavior-identical rebuild; final production/committed head `b5956670` (nectar
+`5d21a578…`), and the final-head note in `output/dsw/l12-build-evidence.txt`
+records this. Fixture `p2-captain-fixture-final` (provenance built, final native
+head `b5956670`).
 
 ### Six-gate table (slice 3b)
 
-Identity: **captain slot 0 (Olimar) — lane 12 shared captain/squad provider**
-(slot 1 now default-on). `OniKurage` (P2 id 72) is the lane-29 consumer.
+Source ID: 72 OniKurage
+
+Identity served: **captain slot 0 (Olimar) — lane 12 shared captain/squad
+provider** (slot 1 now default-on). The `Source ID: 72 OniKurage` line is the
+mechanical carrier id this interface cross-references; it is NOT a claim that
+lane 12 owns lane 29's OniKurage enemy gates.
 
 | Gate | Result | Evidence | Injected vs natural |
 |---|---|---|---|
-| 1. Exact identity and spawn | PASS | output/dsw/l12-out/two-captain-ppm.log:731 (captains=2, default-on; two-captains.ppm shows both) | natural |
+| 1. Exact identity and spawn | PASS | output/dsw/l12-out/two-captain-ppm.log:735 (captains=2, default-on; two-captains.ppm shows both) | natural |
 | 2. Autonomous movement and animation | N/A | captains are player-controlled; no autonomous enemy FSM | N/A |
-| 3. Attacks and receivers | PASS | output/dsw/l12-out/mamuta-natural.log:740 (spawned Miurin InteractBury landed, health 100->80) | natural |
-| 4. Death and corpse | PASS | output/dsw/l12-out/mamuta-natural.log:760 (health=0.0 state=29 down=1) | natural |
+| 3. Attacks and receivers | UNTESTED | output/dsw/l12-out/mamuta-natural.log:740 (P1 `InteractBury::actNavi` receiver driven by the spawned P1 Miurin proxy; `p2-mamuta-rules.txt` absent so `pc_p2_mamuta_bury_navi` returned -1) | proxy (rules off) |
+| 4. Death and corpse | UNTESTED | output/dsw/l12-out/mamuta-natural.log:760 (health=0.0 state=29 after the injected `P2_CAPTAIN_MAMUTA_ESCAPE_ASSIST` FSM transit) | injected assist |
 | 5. Actual transport and reward | N/A | captains carry no reward | N/A |
 | 6. Cleanup and re-entry | PASS | output/dsw/l12-out/base-final.log:731 (interrupted capture frees) and :732 (reload conserves) | natural |
 
-Bury-exit assist for gate 4 is documented in prose above (the damage is natural;
-only the non-lethal P1 bury exit is assisted).
+Gate 3 is the P1 `InteractBury::actNavi` proxy (not `pc_p2_mamuta_bury_navi`);
+gate 4's death required the injected `P2_CAPTAIN_MAMUTA_ESCAPE_ASSIST` FSM
+transit (`tools/p2_captain_runtime.cpp`, the non-lethal P1 `NaviBuryState`),
+so both are reported UNTESTED, not PASS.
 
 ### Gate checker
+
+The slice-3b table now carries its own `Source ID: 72 OniKurage` line (added in
+this fix pass), so the checker binds THIS table instead of the older one; the
+captain-policy identity itself is outside the enemy-roster checker's bindable id
+space, so the carrier id (lane 29's consumer) is used and the attribution is
+stated in the table's note above.
 
 ```
 py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE12_DEEPSEEK_HANDOFF.md
@@ -516,8 +532,8 @@ Output (exit 0, no refused PASS):
 72 OniKurage (role=source):
   1. identity_spawn     accepted [PASS]
   2. movement_animation ignored [N/A]
-  3. attacks_receivers  accepted [PASS]
-  4. death_corpse       accepted [PASS]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [UNTESTED]
   5. transport_reward   ignored [N/A]
   6. cleanup_reentry    accepted [PASS]
 ```
@@ -550,6 +566,23 @@ Miurin bury integrated. No lane/absolute paths; native resolved via
   adapter/squad tests to put MinGW on PATH for the **run** (not just the compile).
 
 Net: ~40-50 minutes saved.
+
+### Subagent usage (fix 3)
+
+- `explore` "checker gate-table binding": used as-is — proved `_bound_tables`
+  keeps one table per owner and located the accidental binder (the embedded
+  pasted "Source ID" text), then confirmed the fix (own `Source ID:` line +
+  neutralised binder) makes the checker bind the slice-3b table. This drove the
+  item-1 fix directly.
+- `explore` "stale comment inventory": used as-is — verbatim text of every stale
+  comment plus proposed replacements (NaviMgr.h, naviMgr.cpp,
+  pc_p2_second_captain.h/.cpp, gameCoreSection.cpp, FlowController.h).
+- `general` "log-citation + tests audit": used as-is with one correction — it
+  produced the exact current marker line numbers and the full list of stale
+  citations; I applied them (the older tables had drifted ~6-8 lines after the
+  logs were regenerated).
+
+Net: ~25-35 minutes saved.
 
 ### Reproduction
 
