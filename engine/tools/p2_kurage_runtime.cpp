@@ -35,7 +35,7 @@
 #include <string>
 
 namespace {
-bool sKillScenario = false, sTransferScenario = false, sStageExitScenario = false, sAdmissionScenario = false, sAutomaticBindingScenario = false, sOniKurageScenario = false, sIngestionScenario = false, sFlightFsmScenario = false, sFlightFsmDeathScenario = false, sFlightFsmGreaterScenario = false, sFlightFsmGreaterDropScenario = false, sAutoFsmScenario = false, sFlightFsmGreaterCaptainScenario = false, sFlightFsmStuckFlickScenario = false, sFlightFsmDeathCycleScenario = false, sFlightFsmPatrolScenario = false, sAutoFsmMoveScenario = false;
+bool sKillScenario = false, sTransferScenario = false, sStageExitScenario = false, sAdmissionScenario = false, sAutomaticBindingScenario = false, sOniKurageScenario = false, sIngestionScenario = false, sFlightFsmScenario = false, sFlightFsmDeathScenario = false, sFlightFsmGreaterScenario = false, sFlightFsmGreaterDropScenario = false, sAutoFsmScenario = false, sFlightFsmGreaterCaptainScenario = false, sFlightFsmStuckFlickScenario = false, sFlightFsmDeathCycleScenario = false, sFlightFsmPatrolScenario = false, sAutoFsmMoveScenario = false, sCorpseReceiptScenario = false;
 void require(bool value, const char* message)
 {
     if (!value) { std::printf("FAIL KURAGE_RUNTIME %s\n", message); std::fflush(stdout); std::_Exit(1); }
@@ -128,6 +128,33 @@ public:
                 std::fflush(stdout); std::_Exit(0);
             }
             require(pc_p2_kurage_teki_is_bound(generatedFrog), "finalSetup sidecar bound generated Frog");
+            if (sCorpseReceiptScenario) {
+                unsigned generator = 0;
+                require(pc_p2_kurage_receipt(static_cast<PelletView*>(generatedFrog), generator),
+                    "bound Kurage corpse resolves to a generator");
+                require(generator == 201001u, "corpse receipt generator matches the bound actor");
+                require(pc_p2_kurage_bound_count() == 1, "exactly one bound Kurage corpse");
+                std::printf("P2_KURAGE_CORPSE_RECEIPT_PASS generator=%u bound=1 drop=BDT_Normal\n", generator);
+                // Natural death path (injected health write): the first tick after
+                // death revokes the live binding; the corpse must still resolve.
+                generatedFrog->mHealth = 0.0f;
+                pc_p2_kurage_teki_tick(generatedFrog);
+                unsigned dead = 0;
+                require(pc_p2_kurage_receipt(static_cast<PelletView*>(generatedFrog), dead),
+                    "dead Kurage corpse still resolves after the post-death tick");
+                require(dead == 201001u, "dead corpse receipt generator matches");
+                std::printf("P2_KURAGE_DEAD_CORPSE_RECEIPT_PASS generator=%u injected=health_zero\n", dead);
+                // Cleanup / re-entry seam: forgetting the actor clears the corpse
+                // registration so a recycled address is never mis-resolved.
+                pc_p2_kurage_teki_forget(generatedFrog);
+                unsigned stale = 0;
+                require(!pc_p2_kurage_receipt(static_cast<PelletView*>(generatedFrog), stale),
+                    "forgotten Kurage corpse no longer resolves");
+                require(pc_p2_kurage_bound_count() == 0, "corpse registry cleared on forget");
+                std::puts("P2_KURAGE_CORPSE_CLEANUP_PASS forgotten=1 bound=0");
+                std::puts("PASS KURAGE_RUNTIME corpse_receipt_cleanup");
+                std::fflush(stdout); std::_Exit(0);
+            }
             if (sAutoFsmScenario) {
                 // Ordinary generated actor runs the source flight lifecycle and
                 // its Attack state admits a nearby Pikmin.
@@ -660,6 +687,7 @@ int main(int argc, char** argv)
         if (std::string(argv[i]) == "--flight-fsm-stuck-flick") sFlightFsmStuckFlickScenario = true;
         if (std::string(argv[i]) == "--flight-fsm-death-cycle") sFlightFsmDeathCycleScenario = true;
         if (std::string(argv[i]) == "--flight-fsm-patrol") sFlightFsmPatrolScenario = true;
+        if (std::string(argv[i]) == "--receiver-corpse-receipt") { sAutomaticBindingScenario = true; sCorpseReceiptScenario = true; }
     }
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1); SDL_SetMainReady();
     pc_gpu_preference_apply(); _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1"); pc_bbft_init(argc, argv);

@@ -51,6 +51,14 @@ void pc_p2_waterwraith_register_reset();
 
 bool pc_p2_waterwraith_register_ready();
 
+// True once the wraith body reached the source Dead end key (KEYEVENT_END).
+// The seam stops driving the actor and stops drawing it after this point.
+bool pc_p2_waterwraith_register_finished();
+
+// True once the dead-wraith treasure stand-in was dropped into the world
+// (source Dead KEYEVENT_5 -> a P1 number-pellet stand-in, see register.cpp).
+bool pc_p2_waterwraith_register_corpse_spawned();
+
 // One engine frame: source-clocks the actor at 30 Hz (at most 4 steps per
 // frame), feeds the fixed fall -> recover -> walk host script and advances the
 // visual bank. Safe before setup (no-op).

@@ -478,12 +478,14 @@ P2WaterwraithDamageResult p2_waterwraith_actor_apply_damage(P2WaterwraithActor& 
     if (!isPurple || !(damage > 0.0f) || !actor.mAlive) {
         return P2WWDMG_Ignored; // structural Purple-only vulnerability
     }
-    if (!actor.mRig.damageable()) {
-        return P2WWDMG_Ignored; // riding/moving: the hit does nothing
-    }
 
     if (actor.mRig.attachedToOwner()) {
-        // Frozen riding roller: source routes freeze/bend damage to mTyre.
+        // Riding roller: the source-vulnerability gate is the roller's own
+        // `damageable()` (frozen riding, or dismounted tyre_getoff). Freeze/bend
+        // damage routes to the Tyre health.
+        if (!actor.mRig.damageable()) {
+            return P2WWDMG_Ignored; // riding/moving: the hit does nothing
+        }
         bool dead = false;
         actor.mRig.applyDamage(damage, &dead);
         actor.refreshHealthFlags();
@@ -493,7 +495,14 @@ P2WaterwraithDamageResult p2_waterwraith_actor_apply_damage(P2WaterwraithActor& 
         return P2WWDMG_Roller;
     }
 
-    // Dismounted: the wraith body itself is exposed.
+    // Dismounted wraith: the exposed body stays damageable once EB_Invulnerable
+    // is set, and that flag persists past the Tyre child's finishDead/removal
+    // (tyreState.cpp:152-153). Do NOT reuse rig.damageable() here: it is false
+    // once the removed child is dead, which would wrongly close the body's
+    // vulnerability window and make body death unreachable.
+    if (!actor.mRig.ownerInvulnerableSet()) {
+        return P2WWDMG_Ignored; // still riding (no dismount yet)
+    }
     actor.mBodyHealth -= damage;
     if (actor.mBodyHealth < 0.0f) {
         actor.mBodyHealth = 0.0f;

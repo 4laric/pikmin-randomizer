@@ -32,3 +32,14 @@ bool pc_p2_elecbug_attacked(Teki*);
 // P2_ELECBUG_PRESS_IMMUNE for an electric-immune Yellow/Bulbmin, decided by the
 // lane-11 capability matrix.
 bool pc_p2_elecbug_pressed(BTeki*, Creature*);
+// Read-only registration observability (mirrors pc_p2_sokkuri/armor) so the
+// lifecycle fixture can prove forget clears a stale binding. Additive.
+unsigned long pc_p2_elecbug_count();
+bool pc_p2_elecbug_registered(BTeki*);
+// Natural press adaptation (#165): the source ElecBug::pressCallBack is triggered
+// by a thrown-Pikmin / Purple-hipdrop landing (PikiFlyingState/PikiHipDropState
+// collision, velocity.y<0). The P1 host routes no Pikmin->enemy InteractPress, so
+// this family-local probe detects a descending Purple Pikmin overlapping a
+// registered ElecBug once per descent and delegates to pc_p2_elecbug_pressed.
+// P1-derived adaptation; logged P2_ELECBUG_NATURAL_PRESS. No-op for other actors.
+void pc_p2_elecbug_check_landing_press(BTeki*);

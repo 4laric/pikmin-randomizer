@@ -52,8 +52,15 @@ void pc_bbft_init(int argc, char** argv) {
         }
     }
     if (challengeLevel>=0) {
-        for(int i=1;i<argc;++i) if(!std::strcmp(argv[i],"--randomizer-seed") || !std::strcmp(argv[i],"--bbft-port")) {
-            std::fprintf(stderr,"Challenge layout preview cannot use AP or BBFT sessions\n"); std::exit(2);
+        for(int i=1;i<argc;++i) if(!std::strcmp(argv[i],"--bbft-port")) {
+            std::fprintf(stderr,"Challenge layout preview cannot use BBFT sessions\n"); std::exit(2);
+        }
+        // lane-03 hook: the room preview may carry an ENEMY_P2 seed; feed it a
+        // bridge-only bootstrap (no full session, so the preview never holds).
+        for(int i=1;i<argc;++i) if(!std::strcmp(argv[i],"--randomizer-seed")) {
+            if (i+1 >= argc) { std::fprintf(stderr,"--randomizer-seed needs a file\n"); std::exit(2); }
+            pc_randomizer_p2_room_bootstrap(argv[i+1]);
+            break;
         }
         return;
     }

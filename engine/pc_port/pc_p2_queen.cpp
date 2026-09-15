@@ -67,6 +67,9 @@ struct Queen {
 	int stuckCount = 0;
 	int blows = 0;
 	int flickTier = 0;
+	int damageClock = 0; // continuous stuck-Pikmin latch damage accumulator
+	int births = 0;      // exactly-once larva birth counter
+	bool deathReleased = false; // larvae released exactly once on this Queen's death
 	bool hitUp = false;
 	// timers / larvae
 	float idleSec = 0, birthTimer = 0;
@@ -146,8 +149,9 @@ void spawnLarva(Queen& q) {
 		l.vx = std::sin(lrad) * p2queen::LaunchSpeed;
 		l.vz = std::cos(lrad) * p2queen::LaunchSpeed;
 		l.vy = p2queen::LaunchSpeed * 0.5f;
-		std::printf("P2_QUEEN_LARVA id=%u xyz=%.6f,%.6f,%.6f yaw=%.3f launch_speed=50\n", q.cfg.id, l.x, l.y, l.z,
-		            l.yaw);
+		++q.births; // exactly-once: one spawn per Born-clip key crossing
+		std::printf("P2_QUEEN_LARVA id=%u xyz=%.6f,%.6f,%.6f yaw=%.3f launch_speed=50 born=%d\n", q.cfg.id, l.x, l.y,
+		            l.z, l.yaw, q.births);
 		return;
 	}
 }
@@ -178,6 +182,7 @@ void flickStuck(Queen& q) {
 	            q.stuckCount);
 	q.stuckCount = 0;
 	q.blows = 0;
+	q.damageClock = 0; // a Flick must not be followed by an interval blow one tick later
 	if (q.flickTier < 3) ++q.flickTier;
 }
 
@@ -234,6 +239,19 @@ void receiveScan(Queen& q, float dt) {
 			q.stuck[i] = q.stuck[--q.stuckCount];
 			--i;
 		}
+	}
+	// Continuous latch damage (mirrors the King receiver): while any Pikmin
+	// remain inside the root collision sphere they keep delivering their
+	// per-blow damage each blow interval, driving the natural lethal path to a
+	// Dead state without injected health. The entry blow and the stuck/blow
+	// counters above are unchanged, so flick/roll timing is untouched.
+	if (q.stuckCount > 0 && ++q.damageClock >= p2queen::BlowIntervalTicks) {
+		q.damageClock = 0;
+		const float dmg = float(q.stuckCount) * p2queen::DamagePerBlow;
+		q.health -= dmg;
+		if (q.health < 0.0f) q.health = 0.0f;
+		std::printf("P2_QUEEN_COMBAT_DAMAGE id=%u stuck=%d damage=%.1f health=%.1f interval=%d\n", q.cfg.id,
+		            q.stuckCount, dmg, q.health, p2queen::BlowIntervalTicks);
 	}
 	(void)dt;
 }
@@ -494,8 +512,21 @@ void tickQueen(Queen& q) {
 		std::printf("P2_QUEEN_STATE id=%u from=%d to=0 health=0\n", q.cfg.id, q.state);
 		enter(q, p2queen::Dead);
 	}
+	// Queen death releases/cleans every live larva exactly once: free the slots
+	// so they stop ticking and drawing (larvae leave no corpse). The shared
+	// forget seam is elsewhere; this is the family-local larva-pool cleanup.
+	if (q.state == p2queen::Dead && !q.deathReleased) {
+		q.deathReleased = true;
+		int released = 0;
+		for (auto& l : q.larvae)
+			if (l.active) {
+				l.active = false;
+				++released;
+			}
+		std::printf("P2_QUEEN_DEATH_LARVA_RELEASE id=%u released=%d\n", q.cfg.id, released);
+	}
 	for (auto& l : q.larvae)
-		if (l.active) tickLarva(q, l); // larvae persist after Queen death
+		if (l.active) tickLarva(q, l); // released above on Queen death; no larvae outlive the Queen
 }
 } // namespace
 
@@ -503,6 +534,12 @@ void pc_p2_queen_forget_piki(Piki* piki) {
     for (auto& actor : queens) {
         p2ActorForgetSlots(actor.stuck, actor.stuckCount, piki);
     }
+}
+
+bool pc_p2_queen_death_released() {
+    for (const auto& q : queens)
+        if (q.deathReleased) return true;
+    return false;
 }
 
 void pc_p2_queen_reset() {

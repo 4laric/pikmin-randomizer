@@ -99,6 +99,7 @@ struct Sokkuri {
     float phase = 0.0f;
     bool hidden = true;
     bool deadLogged = false;
+    float lastHealth = LIFE;
     float logTimer = 0.0f;
 };
 
@@ -428,10 +429,23 @@ void pc_p2_sokkuri_update(BTeki* actor) {
     if (dt <= 0.0f || dt > 0.5f) return;
     const Vector3f pos = actor->getPosition();
 
+    // Natural-combat observability (#165/#407): an incremental, still-positive
+    // health decrease is real attack damage (thrown/retaliating Pikmin). The death
+    // marker records prior_health (the value one update before <=0) so a single
+    // fixture-injected jump to 0 is distinguishable from a combat-culminated death
+    // by its large prior_health; P2_SOKKURI_DAMAGE marks combat damage directly.
+    const float previousHealth = s.lastHealth;
+    if (actor->mHealth < s.lastHealth && actor->mHealth > 0.0f) {
+        std::printf("P2_SOKKURI_DAMAGE generator=%u source_id=79 health=%.1f\n",
+                    actor->mGenerator ? actor->mGenerator->_70 : 0u, actor->mHealth);
+        std::fflush(stdout);
+    }
+    s.lastHealth = actor->mHealth;
+
     if (actor->mHealth <= 0.0f && s.state != SOKKURI_DEAD && s.state != SOKKURI_PRESS) {
         if (!s.deadLogged) {
-            std::printf("P2_SOKKURI_DEAD generator=%u source_id=79 health=0\n",
-                        actor->mGenerator ? actor->mGenerator->_70 : 0u);
+            std::printf("P2_SOKKURI_DEAD generator=%u source_id=79 health=0 prior_health=%.1f\n",
+                        actor->mGenerator ? actor->mGenerator->_70 : 0u, previousHealth);
             std::fflush(stdout);
             s.deadLogged = true;
         }

@@ -31,9 +31,21 @@ bool pc_randomizer_p2_bridge();
 unsigned pc_randomizer_p2_source(const char* target);
 unsigned pc_randomizer_p2_binding_count();
 bool pc_randomizer_p2_bound(unsigned source_id);
+// Resolve a bound generator's spawn-slot uid (as returned by
+// pc_randomizer_generator_id) to its ENEMY_P2 source id. 0 means the target is
+// not bound. The ordinary spawn path keys its seed bindings on the spawn-slot
+// uid, not Generator::_70.
+unsigned pc_randomizer_p2_source_for_id(unsigned long generator_id);
 unsigned pc_randomizer_generator_id(const void* generator);
 void pc_randomizer_set_generator_id(const void* generator, unsigned uid);
-void pc_randomizer_bind_generator(const void* generator, int stage, const char* file, int offset);
+// `sourceId70` is the generator's on-file id (Generator::_70); it is consulted
+// only for the P2 enemy bridge when the (stage,file,offset) spawn-slot catalogue
+// misses, via lane 04's p2-placement-slots.txt sidecar.
+void pc_randomizer_bind_generator(const void* generator, int stage, const char* file, int offset, unsigned sourceId70 = 0);
+// Room-preview bridge: parse an ENEMY_P2 seed for the room without starting a
+// full randomizer session (which would otherwise hold the preview). Returns
+// true when an ENEMY_P2 line was found; the normal full-session path is unneeded.
+bool pc_randomizer_p2_room_bootstrap(const char* path);
 int pc_randomizer_enemy_for_generator(int original, bool protectedSpawn, const void* generator);
 void pc_randomizer_bad_spawn_cache();
 int pc_randomizer_field_capacity();

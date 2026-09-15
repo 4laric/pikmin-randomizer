@@ -353,6 +353,20 @@ bool P2RockHazard::finishDeath()
     return true;
 }
 
+bool P2RockHazard::forceDeath()
+{
+    // Host lifetime cull (source birthArg.mExistenceLength): the same enterDead()
+    // the floor-contact path uses, so the Dead -> Killed teardown still runs via
+    // finishDeath(). A no-op unless the rock is currently alive.
+    if (mPhase != P2RockHazardPhase::Wait && mPhase != P2RockHazardPhase::Appear
+        && mPhase != P2RockHazardPhase::DropWait && mPhase != P2RockHazardPhase::Fall) {
+        return false;
+    }
+    mHealth = 0.0f;
+    enterDead();
+    return true;
+}
+
 bool P2RockHazard::shouldIgnoreAtari(std::uint64_t targetToken) const
 {
     // ignoreAtari (Rock.cpp:298-304): ignore mSourceEnemy for the first second.

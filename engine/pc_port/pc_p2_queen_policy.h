@@ -82,6 +82,16 @@ constexpr float PressHeightBand = 50.0f;
 // Collision tree, queen/enemycoll.txt.
 constexpr float RootRadius = 275.0f;
 
+// Continuous stuck-Pikmin latch damage (approximation; mirrors the King
+// receiver). Pikmin inside the root collision sphere keep delivering the unit
+// per-blow damage every attack interval while they remain latched, driving the
+// natural lethal path. The per-color blow strength is out of scope (unit blow,
+// tier x1 when stuck to a part); the interval is a documented 20-tick (2/3 s at
+// the 30 Hz behavior clock) approximation of the attack cadence. They do not
+// change the flick blow/stick counters.
+constexpr float DamagePerBlow = 1.0f; // stuck-to-part blow damage (tier x1)
+constexpr int BlowIntervalTicks = 20; // attack interval, 30 Hz behavior ticks
+
 // Larva birth, Queen.cpp:423-479.
 constexpr int LarvaPoolMax = 50;
 

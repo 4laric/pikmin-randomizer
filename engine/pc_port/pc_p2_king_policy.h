@@ -122,6 +122,17 @@ constexpr float HealthDefault = 1300.0f; // fp00
 constexpr float ShakeRange = 60.0f;      // fp19
 constexpr float AttackDamage = 5.0f;     // fp24 (captain mouth-slot damage)
 
+// Continuous stuck-Pikmin latch damage (approximation). The decomp applies the
+// Pikmin blow damage per attached Pikmin per attack interval while they remain
+// inside the root collision sphere (proximity latch; no Piki attack-state check on this host), not once on entry. The per-color blow strength
+// is out of scope (the family uses a unit blow, tier x1 when stuck to a part);
+// the interval is a documented 20-tick (2/3 s at the 30 Hz behavior clock)
+// approximation of the ordinary Pikmin attack cadence. These constants back the
+// natural combat->death receiver; they do not change the flick blow/stick
+// counters (those trigger shake-off independently).
+constexpr float DamagePerBlow = 1.0f;   // stuck-to-part blow damage (tier x1)
+constexpr int BlowIntervalTicks = 20;   // attack interval, 30 Hz behavior ticks
+
 // Big variant (f_03 or force-big), kingChappy.cpp:60-72, 148-158.
 constexpr float BigScale = 1.5f;     // fp15 disc
 constexpr float BigHealth = 1800.0f; // fp16 disc

@@ -8,9 +8,12 @@
 // Port adaptations (recorded, not retail-faithful):
 //   * The P2 three-slot mouth swallow (kamu1..3) is resolved on the P1 host as an
 //     explicit capture of the nearest Pikmin inside the source attack sweep
-//     radius during the attack1 bite window, then a single InteractKill at the
-//     source swallow event frame. Exactly-once per bite. A successfully consumed
-//     White Pikmin applies the fp02 poison (2500) to Hana at that swallow frame.
+//     radius at the attack1 bite event (frame 18), then a single InteractKill at
+//     the source swallow event (frame 71). Timing is delivered by the
+//     authoritative sampled clock (#431), so the effects fire exactly once
+//     across skipped frames, pause, interruption and actor-address reuse.
+//     A successfully consumed White Pikmin applies the fp02 poison (2500) at
+//     that swallow frame.
 //   * The buried gate is implemented as a read-only policy gate
 //     (pc_p2_hana_buried / pc_p2_hana_rejects_attack) because the P1 Chappy host
 //     has no EB_Invulnerable/EB_ModelHidden event flags and its TEKIOPT_Atari /
@@ -28,6 +31,7 @@
 //     the ambusher, per lane audit.
 // No other lane's module is modified; every hook is a no-op for unregistered actors.
 #include "pc_p2_hana.h"
+#include "pc_p2_hana_events.h"
 #include "pc_p2_hana_residual_policy.h"
 #include "pc_p2_white.h"
 #include "teki.h"
@@ -92,16 +96,11 @@ constexpr float POISON_DAMAGE = p2hanapolicy::WhitePoisonDamage; // proper fp02
 constexpr float CAPTAIN_DAMAGE = 10.0f;     // general fp24 attack power
 constexpr float ATTACK_HIT_ANGLE = 0.261799f; // general fp23 default 15 deg half-angle
 
-// Audit fallbacks for the attack1 bite/swallow events (Hana bank 18:2, 71:3).
-constexpr int FALLBACK_BITE_FRAME = 18;
-constexpr int FALLBACK_SWALLOW_FRAME = 71;
-constexpr int FALLBACK_FLICK_FRAME = 50;
-
 struct Clip {
     std::string name;
     float duration = 1.0f;
     bool loop = false;
-    std::vector<std::pair<int, int>> events;
+    p2sampled::Clip sampled;
 };
 
 struct Hana {
@@ -112,10 +111,7 @@ struct Hana {
     Piki* captured = nullptr;
     bool killed = false;
     bool hidden = true;
-    int biteFrame = FALLBACK_BITE_FRAME;
-    int swallowFrame = FALLBACK_SWALLOW_FRAME;
-    int flickFrame = FALLBACK_FLICK_FRAME;
-    std::set<int> firedEvents;
+    p2hanaevents::Receiver events;
     std::string clip = "type1";
     float phase = 0.0f;
     bool deadLogged = false;
@@ -204,8 +200,9 @@ void doFlick(BTeki* a, Hana& s) {
 }
 // Source EnemyFunc::attackNavi (enemyAction.cpp:1179): damage every Navi inside
 // the attack hit radius (fp22) and hit half-angle (fp23) at the attack event
-// frame. Fired once per attack1 bite (KEYEVENT_2).
-void doAttackNavi(BTeki* a, const Hana& s, unsigned generator) {
+// frame. Fired once per attack1 bite (KEYEVENT_2); `frame` is the source event
+// frame delivered by the sampled clock, not the accumulated wall time.
+void doAttackNavi(BTeki* a, const Hana& s, unsigned generator, int frame) {
     if (!naviMgr) return;
     const Vector3f pos = a->getPosition();
     int attacked = 0;
@@ -219,8 +216,8 @@ void doAttackNavi(BTeki* a, const Hana& s, unsigned generator) {
         n->stimulate(InteractAttack(a, nullptr, CAPTAIN_DAMAGE, false));
         ++attacked;
     }
-    std::printf("P2_HANA_ATTACK_NAVI generator=%u frame=%.1f navi=%d damage=%.1f\n",
-                generator, s.stateTime * 30.0f, attacked, CAPTAIN_DAMAGE);
+    std::printf("P2_HANA_ATTACK_NAVI generator=%u frame=%d navi=%d damage=%.1f\n",
+                generator, frame, attacked, CAPTAIN_DAMAGE);
     std::fflush(stdout);
 }
 // Read-only policy gate for the buried window. Registered Hana actors in the
@@ -250,12 +247,20 @@ void applyUndergroundGate(BTeki* a, Hana& s, unsigned generator) {
 void enter(Hana& s, State state, const char* clip) {
     s.state = state;
     s.stateTime = 0.0f;
-    s.firedEvents.clear();
     if (state == HANA_ATTACK) {
         s.captured = nullptr;
         s.killed = false;
     }
     if (clip) s.clip = clip;
+    // Start the sampled clock for the entered clip, or cancel it when the clip
+    // has no authored gameplay events. A start() bumps the clock generation,
+    // discarding the previous clip's outstanding events.
+    auto it = clips.find(s.clip);
+    if (it != clips.end()) {
+        s.events.start(it->second.sampled, it->second.name);
+    } else {
+        s.events.cancel();
+    }
 }
 void walkTo(BTeki* a, Hana& s, const Vector3f& target, float dt) {
     const Vector3f pos = a->getPosition();
@@ -276,7 +281,6 @@ void stop(BTeki* a) {
     a->mVelocity.x = 0.0f;
     a->mVelocity.z = 0.0f;
 }
-float motionFrame(const Hana& s) { return s.stateTime * 30.0f; }
 
 void setPhase(Hana& s) {
     if (s.state == HANA_SLEEP) { s.phase = 0.0f; return; }
@@ -376,6 +380,11 @@ void pc_p2_hana_setup() {
                         clip.name = name;
                         clip.duration = frames > 0 ? float(frames) / 30.0f : 1.0f;
                         clip.loop = (name == "move1" || name == "wait2");
+                        p2hanaevents::Row row;
+                        row.name = name;
+                        row.sourceFrames = frames > 0 ? int(frames) : 0;
+                        row.poseCount = poses;
+                        row.loop = clip.loop;
                         if (events != "-") {
                             size_t start = 0;
                             while (start < events.size()) {
@@ -383,13 +392,15 @@ void pc_p2_hana_setup() {
                                 const std::string pair = events.substr(start, comma - start);
                                 const size_t colon = pair.find(':');
                                 if (colon != std::string::npos) {
-                                    clip.events.emplace_back(std::atoi(pair.substr(0, colon).c_str()),
-                                                             std::atoi(pair.substr(colon + 1).c_str()));
+                                    const int eventFrame = std::atoi(pair.substr(0, colon).c_str());
+                                    const std::string key = pair.substr(colon + 1);
+                                    row.events.push_back(p2sampled::Event{eventFrame, key});
                                 }
                                 if (comma == std::string::npos) break;
                                 start = comma + 1;
                             }
                         }
+                        clip.sampled = p2hanaevents::makeClip(row);
                         clips[name] = clip;
                     }
                 } else {
@@ -425,21 +436,12 @@ void pc_p2_hana_setup() {
             std::abort();
         }
         Hana& s = actors[static_cast<PelletView*>(actor)];
+        s = Hana();  // reject stale clock/capture state on actor-address reuse
         s.home = actor->getPosition();
         s.heading = actor->getDirection();
         actor->mHealth = LIFE;
-        // Bite/swallow/flick frames come from the validated disc bank, not hardcoded.
-        auto attack = clips.find("attack1");
-        if (attack != clips.end()) {
-            for (const auto& event : attack->second.events) {
-                if (event.second == 2 && s.biteFrame == FALLBACK_BITE_FRAME) s.biteFrame = event.first;
-                if (event.second == 3 && s.swallowFrame == FALLBACK_SWALLOW_FRAME) s.swallowFrame = event.first;
-            }
-        }
-        auto flick = clips.find("flick");
-        if (flick != clips.end() && !flick->second.events.empty()) {
-            s.flickFrame = flick->second.events.front().first;
-        }
+        // Bite/swallow/flick timing comes from the authored attack1/flick events
+        // via the sampled clock; no per-state frame fields to extract.
         enter(s, HANA_SLEEP, "type1");
         std::printf("P2_HANA_BIND generator=%u source_id=84 visual_only=0\n",
                     actor->mGenerator->_70);
@@ -531,36 +533,36 @@ void pc_p2_hana_update(BTeki* actor) {
     }
     case HANA_ATTACK: {
         stop(actor);
-        const float frame = motionFrame(s);
-        // Source StateAttack::exec KEYEVENT_2: attackNavi + eatAttackPikmin.
-        if (!s.firedEvents.count(s.biteFrame) && frame >= float(s.biteFrame)) {
-            s.firedEvents.insert(s.biteFrame);
-            doAttackNavi(actor, s, generator);
-            Piki* piki = nearestPiki(pos, ATTACK_RANGE);
-            if (piki) {
-                s.captured = piki;
-                std::printf("P2_HANA_BITE generator=%u frame=%.1f pikmin=1\n", generator, frame);
+        // Source StateAttack::exec KEYEVENT_2/KEYEVENT_3 (bite capture +
+        // attackNavi, then swallow + White poison) are delivered by the sampled
+        // clock exactly once per crossing, in source frame order.
+        for (const p2hanaevents::Dispatched& event : s.events.advance(dt)) {
+            if (event.action == p2hanaevents::Action::Bite && !s.captured) {
+                doAttackNavi(actor, s, generator, event.frame);
+                Piki* piki = nearestPiki(pos, ATTACK_RANGE);
+                if (piki) {
+                    s.captured = piki;
+                    std::printf("P2_HANA_BITE generator=%u frame=%d pikmin=1\n", generator, event.frame);
+                    std::fflush(stdout);
+                }
+            } else if (event.action == p2hanaevents::Action::Swallow && s.captured && !s.killed) {
+                s.killed = true;
+                Piki* piki = s.captured;
+                s.captured = nullptr;
+                const bool isWhite = pc_p2_is_white(piki);
+                const bool killedNow = piki->isAlive() && piki->stimulate(InteractKill(actor, 0));
+                p2hanapolicy::PoisonInputs poison;
+                poison.killSucceeded = killedNow;
+                poison.isWhite = isWhite;
+                if (p2hanapolicy::appliesWhitePoison(poison)) {
+                    actor->mHealth -= p2hanapolicy::poisonDamage(poison);
+                    std::printf("P2_HANA_POISON generator=%u pikmin=1 damage=%.1f health=%.1f\n",
+                                generator, p2hanapolicy::poisonDamage(poison), actor->mHealth);
+                    std::fflush(stdout);
+                }
+                std::printf("P2_HANA_EAT generator=%u pikmin=1\n", generator);
                 std::fflush(stdout);
             }
-        }
-        // Source StateAttack::exec KEYEVENT_3: swallowPikmin(poisonDamage).
-        if (s.captured && !s.killed && frame >= float(s.swallowFrame)) {
-            s.killed = true;
-            Piki* piki = s.captured;
-            s.captured = nullptr;
-            const bool isWhite = pc_p2_is_white(piki);
-            const bool killedNow = piki->isAlive() && piki->stimulate(InteractKill(actor, 0));
-            p2hanapolicy::PoisonInputs poison;
-            poison.killSucceeded = killedNow;
-            poison.isWhite = isWhite;
-            if (p2hanapolicy::appliesWhitePoison(poison)) {
-                actor->mHealth -= p2hanapolicy::poisonDamage(poison);
-                std::printf("P2_HANA_POISON generator=%u pikmin=1 damage=%.1f health=%.1f\n",
-                            generator, p2hanapolicy::poisonDamage(poison), actor->mHealth);
-                std::fflush(stdout);
-            }
-            std::printf("P2_HANA_EAT generator=%u pikmin=1\n", generator);
-            std::fflush(stdout);
         }
         if (s.stateTime >= clipDuration("attack1")) {
             if (s.killed) {
@@ -582,11 +584,12 @@ void pc_p2_hana_update(BTeki* actor) {
         break;
     case HANA_FLICK: {
         stop(actor);
-        if (!s.firedEvents.count(s.flickFrame) && s.stateTime >= s.flickFrame / 30.0f) {
-            s.firedEvents.insert(s.flickFrame);
-            doFlick(actor, s);
-            std::printf("P2_HANA_FLICK generator=%u frame=%d\n", generator, s.flickFrame);
-            std::fflush(stdout);
+        for (const p2hanaevents::Dispatched& event : s.events.advance(dt)) {
+            if (event.action == p2hanaevents::Action::Flick) {
+                doFlick(actor, s);
+                std::printf("P2_HANA_FLICK generator=%u frame=%d\n", generator, event.frame);
+                std::fflush(stdout);
+            }
         }
         if (s.stateTime >= clipDuration("flick")) {
             std::printf("P2_HANA_STATE generator=%u state=walk\n", generator);

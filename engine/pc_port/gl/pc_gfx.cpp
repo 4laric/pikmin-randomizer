@@ -21,6 +21,7 @@
 #include "../timing/pc_render_phase.h"
 #include "../timing/pc_tick_profiler.h"
 
+#include "../pc_p2_specular_dir.h"
 #include "pc_opengl.h"
 
 // ── GL Function Pointers (Loaded via SDL_GL_GetProcAddress) ──
@@ -3795,25 +3796,13 @@ void pc_gfx_init_specular_dir(void* ltObj, f32 x, f32 y, f32 z) {
     // half-vector with negative Z -- pointing away from the camera -- so the
     // highlight always landed on the far side of the model and never showed.
     // The Onions were the obvious casualty.
-    f32 vx = -x;
-    f32 vy = -y;
-    f32 vz = -z + 1.0f;
-    const f32 mag = std::sqrt(vx * vx + vy * vy + vz * vz);
-    if (mag > 1e-6f) {
-        const f32 inv = 1.0f / mag;
-        vx *= inv; vy *= inv; vz *= inv;
-    } else {
-        // The light points straight at the eye and the half-vector degenerates.
-        vx = 0.0f; vy = 0.0f; vz = 1.0f;
-    }
+    float dir[3], pos[3];
+    p2specular::halfVector(x, y, z, dir, pos);
     f32* ldir = reinterpret_cast<f32*>(raw + 0x34);
-    ldir[0] = vx; ldir[1] = vy; ldir[2] = vz;
+    ldir[0] = dir[0]; ldir[1] = dir[1]; ldir[2] = dir[2];
 
-    const f32 kSpecularPosScale = 1024.0f * 1024.0f;
     f32* lpos = reinterpret_cast<f32*>(raw + 0x28);
-    lpos[0] = -x * kSpecularPosScale;
-    lpos[1] = -y * kSpecularPosScale;
-    lpos[2] = -z * kSpecularPosScale;
+    lpos[0] = pos[0]; lpos[1] = pos[1]; lpos[2] = pos[2];
 }
 void pc_gfx_load_light(void* ltObj, u32 lightMask) {
     if (!ltObj) return;

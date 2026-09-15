@@ -17,6 +17,8 @@
 #include "pc_p2_elecbug.h"
 #include "pc_p2_tamago.h"
 #include "pc_p2_imomushi.h"
+#include "pc_p2_otakara.h"
+#include "pc_p2_pom.h"
 #include "pc_bbft.h"
 #include "teki.h"
 #include "Generator.h"
@@ -303,7 +305,8 @@ bool pc_p2_batch2_draw(BTeki* actor, Graphics& gfx, const Matrix4f& matrix, bool
         float phase = 0.0f;
         if ((pc_p2_sokkuri_clip(actor, forced, phase) || pc_p2_armor_clip(actor, forced, phase)
                 || pc_p2_elecbug_clip(actor, forced, phase) || pc_p2_tamago_clip(actor, forced, phase)
-                || pc_p2_imomushi_clip(actor, forced, phase) || pc_p2_hana_clip(actor, forced, phase))
+                || pc_p2_imomushi_clip(actor, forced, phase) || pc_p2_hana_clip(actor, forced, phase)
+                || pc_p2_otakara_clip(actor, forced, phase) || pc_p2_pom_clip(actor, forced, phase))
                 && bank.clips.count(forced)) {
             name = forced;
             forcedPhase = phase;
