@@ -125,3 +125,34 @@ def queen_free_mode_validate(text, code):
               'health-refilled, so a natural kill or an honest health floor are both valid; no injection '
               'or staging markers present',
     )
+
+
+def king_creature_validate(text, code):
+    """Validate an un-injected Emperor Bulblax (enemy 53) creature run.
+
+    The Bulblax is bound to a generated host Teki and killed by free Pikmin,
+    producing a Pod corpse receipt, with no staging or injection markers.
+    """
+    staging = ('NAVI_HEAL', 'REPIN', 'NAVI_SUSTAIN', 'GUARD_PIKMIN',
+               'P2_KING_INJECT', 'P2_QUEEN_INJECT')
+    checks = dict(
+        completion=code == 0 and 'PASS P2_KING_CREATURE_RUNTIME' in text,
+        teki_ready=bool(re.search(r'P2_KING_TEKI_READY generator=\d+ type=\d+', text)),
+        attached=bool(re.search(r'P2_KING_TEKI_ATTACHED', text)),
+        flick=bool(re.search(r'P2_KING_CHECK_FLICK', text)
+                   or re.search(r'P2_KING_TRAMPLE', text)),
+        lethal=bool(re.search(r'P2_KING_STATE id=\d+ from=\d+ to=2 health=0', text)),
+        dead_key=bool(re.search(r'P2_KING_DEAD_KEY id=\d+ frame=185 kill=1', text)),
+        corpse=bool(re.search(r'P2_KING_TEKI_CORPSE', text)),
+        pod_receipt=bool(re.search(r'P2_POD_RECEIPT id=corpse:', text)),
+        no_staging=not any(marker in text for marker in staging),
+    )
+    failed = sorted(name for name, ok in checks.items() if not ok)
+    return dict(
+        passed=not failed,
+        failed=failed,
+        checks=checks,
+        exit_code=code,
+        scope='Un-injected Emperor Bulblax bound to a generated host Teki, killed by free Pikmin '
+              'with a Pod corpse receipt; no staging or injection channels present',
+    )

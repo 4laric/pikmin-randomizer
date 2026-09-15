@@ -190,5 +190,72 @@ class QueenFreeModeTests(unittest.TestCase):
         self.assertFalse(evidence['passed'])
 
 
+_KC_TEKI_READY = 'P2_KING_TEKI_READY generator=230020 type=53'
+_KC_ATTACHED = 'P2_KING_TEKI_ATTACHED id=230020 attach=3'
+_KC_FLICK = 'P2_KING_CHECK_FLICK id=230020 flick=1'
+_KC_LETHAL = 'P2_KING_STATE id=230020 from=1 to=2 health=0'
+_KC_DEAD_KEY = 'P2_KING_DEAD_KEY id=230020 frame=185 kill=1'
+_KC_CORPSE = 'P2_KING_TEKI_CORPSE id=230020 frame=200'
+_KC_POD_RECEIPT = 'P2_POD_RECEIPT id=corpse:uji:4 value=15 new=1 pokos=15 seeds=0'
+_KC_PASS = 'PASS P2_KING_CREATURE_RUNTIME'
+
+
+def king_creature_log(*extra):
+    return '\n'.join([
+        _KC_TEKI_READY,
+        _KC_ATTACHED,
+        _KC_FLICK,
+        _KC_LETHAL,
+        _KC_DEAD_KEY,
+        _KC_CORPSE,
+        _KC_POD_RECEIPT,
+        _KC_PASS,
+        *extra,
+    ]) + '\n'
+
+
+class KingCreatureValidatorTests(unittest.TestCase):
+    def test_creature_pass(self):
+        evidence = g.king_creature_validate(king_creature_log(), 0)
+        self.assertTrue(evidence['passed'], evidence)
+        self.assertEqual(evidence['failed'], [])
+
+    def test_missing_receipt_fails(self):
+        text = '\n'.join([
+            _KC_TEKI_READY,
+            _KC_ATTACHED,
+            _KC_FLICK,
+            _KC_LETHAL,
+            _KC_DEAD_KEY,
+            _KC_CORPSE,
+            _KC_PASS,
+        ]) + '\n'
+        evidence = g.king_creature_validate(text, 0)
+        self.assertIn('pod_receipt', evidence['failed'])
+
+    def test_staging_marker_fails(self):
+        evidence = g.king_creature_validate(
+            king_creature_log('NAVI_SUSTAIN tick=999'), 0)
+        self.assertIn('no_staging', evidence['failed'])
+
+    def test_missing_corpse_fails(self):
+        text = '\n'.join([
+            _KC_TEKI_READY,
+            _KC_ATTACHED,
+            _KC_FLICK,
+            _KC_LETHAL,
+            _KC_DEAD_KEY,
+            _KC_POD_RECEIPT,
+            _KC_PASS,
+        ]) + '\n'
+        evidence = g.king_creature_validate(text, 0)
+        self.assertIn('corpse', evidence['failed'])
+
+    def test_injected_kill_fails(self):
+        evidence = g.king_creature_validate(
+            king_creature_log('P2_KING_INJECT id=230020 tick=5 force=Kill fixture=1'), 0)
+        self.assertIn('no_staging', evidence['failed'])
+
+
 if __name__ == '__main__':
     unittest.main()
