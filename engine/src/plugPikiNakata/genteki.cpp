@@ -8,6 +8,7 @@
 #include "teki.h"
 #include "pc_randomizer.h"
 #include "pc_p2_generated_placement.h"
+#include "pc_p2_placement_probe.h"
 #include <cstdio>
 
 static bool randomizerProtected(TekiPersonality* personality) {
@@ -142,6 +143,11 @@ Creature* GenObjectTeki::birth(BirthInfo& info)
             // Generated placement (lane 03/04): claim the spawned actor for its
             // seeded P2 identity module instead of leaving it as a P1 stand-in.
             pc_p2_generated_placement_bind(static_cast<BTeki*>(teki), source, uid, info.mGenerator->_70);
+            // Lane-04 placement evidence: sample the generated slot's terrain/route
+            // at the birth position. Additive; the slot uid is already resolved.
+            if (uid)
+                pc_p2_placement_probe_birth(info.mPosition.x, info.mPosition.y, info.mPosition.z,
+                                            info.mGenerator->_70, uid, replacement);
         }
     }
 	return teki;
