@@ -112,7 +112,7 @@ retains the `P2_BIGTREASURE_RECV` literals.
 
 ## Six-gate table
 
-| Gate | Result | Natural vs injected |
+| Gate | Outcome | Natural vs injected |
 |---|---|---|
 | 1 Exact identity and spawn | UNTESTED | fixed-placement visual bank; no ordinary spawn binding yet (unchanged) |
 | 2 Autonomous movement / animation | PASS (prior slice) | natural keyframe FSM drive |
@@ -275,7 +275,7 @@ BIGTREASURE_RECEIVER` (4/4), `ninja -n` = `ninja: no work to do.`
 
 ### Six-gate table (slice-2 focus)
 
-| Gate | Result |
+| Gate | Outcome |
 |---|---|
 | 1 Exact identity and spawn | UNTESTED (fixed placement; no ordinary spawn binding yet) |
 | 2 Autonomous movement / animation | PASS (prior slice keyframe FSM) |
@@ -385,3 +385,110 @@ Validator against the captured stdout: `recv_observed=true`,
 Net: the two explore agents pinned line numbers and the re-pick semantics; the
 general agent's validator rewrite landed without rework (and its misnamed-key /
 unparsed-marker defect from the prior slice was corrected).
+
+## Slice 3 — the ordinary loop for real
+
+Native branch `deepseek/p2-l32-native`, base `b805d9c6`, clean. New commits:
+`cd44157c` (recv-held marker + phase/recv probes + slice3 fixture), `54865e33`
+(include), `f79cc1af` (pinning + elec window), `93757389` (fire column + injected
+Blue). Final native head **`93757389a2ece43694fb85c7c1c57ac9fa593443`**.
+
+Carry-forward fixes applied alongside: the slice-2 fixture terminal renamed to
+`PASS BIGTREASURE_SLICE2_RECEIVER_ONLY` (+`REPICK observed=0`); `recv_probe` now
+erases its entry after the stimulate too (fully non-polluting); and the ordinary
+loop gains a `P2_BIGTREASURE_RECV_HELD` marker for the per-attack handled-set
+hold.
+
+### What runs now (evidence `slice3-stdout.log`, run `03d8dbb1…`)
+
+The ordinary loop, without any direct `pc_p2_bigtreasure_stimulate_piki` call,
+advanced the 12-state FSM through `Stay -> Land -> ItemWalk -> ItemWait ->
+PreAttack -> Attack`, emitted a real weapon attack, applied it through the real
+receiver to live targets, and re-picked after a knock-off:
+
+```text
+714: P2_BIGTREASURE_FSM phase=Land weapons=4 clip=appear2
+738: P2_BIGTREASURE_ATTACK_START weapon=elec
+739: P2_BIGTREASURE_ATTACK_EMIT weapon=elec nodes=11
+784: P2_BIGTREASURE_SLICE3_KNOCKOFF posted=1 weapon=elec injected=1
+785: P2_BIGTREASURE_FSM phase=PreAttack weapons=3 clip=preattackf   (re-pick)
+794: P2_BIGTREASURE_ATTACK_START weapon=fire
+795: P2_BIGTREASURE_ATTACK_EMIT weapon=fire nodes=1
+796: P2_BIGTREASURE_RECV weapon=fire target=navi accepted=1
+797: P2_BIGTREASURE_RECV weapon=fire target=piki species=1 accepted=0   (Red immune)
+832: P2_BIGTREASURE_RECV weapon=fire target=piki species=0 accepted=1   (Blue, non-immune)
+799: P2_BIGTREASURE_RECV_HELD weapon=fire target=navi                    (handled set held)
+```
+
+- `ATTACK_START`/`ATTACK_EMIT` (elec, then fire after the re-pick) come from the
+  ordinary loop (`pc_p2_hardlanes.cpp` startAttack -> element -> tick).
+- The fire sweep hits a live **Navi** (`accepted=1`) and pinned live Pikmin
+  through the loop's own `queryHit` + handled-set + `pc_p2_bigtreasure_stimulate_*`
+  path: **Red is fire-immune (`accepted=0`)** and one **Blue (injected identity)
+  is non-immune and enters the fire hazard (`accepted=1`)**.
+- `P2_BIGTREASURE_RECV_HELD` repeats across frames: the per-attack handled set
+  (cleared at attack start) held, so no target was re-stimulated every frame.
+- The elec weapon is knocked off via ONE flagged injected max-health ingress hit,
+  and the FSM then re-enters `PreAttack` (`weapons=3`, clip `preattackf`), i.e.
+  the weapon-loss re-pick to the next weapon set, observed through the loop.
+
+Labelled interventions (fixture, not the ordinary path): the Navi/Pikmin are
+teleported each frame into the boss attack box/fire column, one Pikmin's species
+is injected Blue, and the elec knock-off is a single injected max-health hit.
+
+### Remaining blocker (real Pikmin coll-part attack)
+
+Goal (1)'s strictly-natural form — "route a real Pikmin coll-part attack on a
+weapon into the ingress so weapon health drops over several natural hits" — is
+**BLOCKED**: the BigTreasure has no P1 Teki actor or weapon coll part; the four
+"weapon pellets" are only `P2BigTreasureOwnership` flags (`pc_p2_bigtreasure_host.cpp:111-132`,
+`p2_bigtreasure_host_setup -> attachWeapon`) plus visual `Shape*` meshes, whereas
+the decomp routes damage via `mCollTree->getCollPart({'elec','fire','gasi','mizu'})`
+(`BigTreasure.cpp:705-724`). A real attacker needs a boss Teki actor with those
+coll parts (lane 04/09 host, outside lane 32's fixed-placement seam). The
+injected max-health hit is therefore retained as the flagged knock-off scenario.
+
+## Concrete source ID
+- Source ID: 73 `BigTreasure`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | UNTESTED | fixed placement; no ordinary spawn binding | injected (fixed placement) |
+| 2. Autonomous movement and animation | PARTIAL | output/dsw/l32-out/runs/03d8dbb1f01644e69137e5f725949956/stdout.log:714 FSM Stay->Land->ItemWalk->Attack via keyframe clock | natural (no locomotion; fixed placement) |
+| 3. Attacks and receivers | PASS | output/dsw/l32-out/runs/03d8dbb1f01644e69137e5f725949956/stdout.log:738 ATTACK_START, :832 fire->Blue accepted=1 | natural (ordinary loop receiver on live Pikmin) |
+| 4. Death and corpse | UNTESTED | no boss death/corpse observed in this preview | n/a |
+| 5. Actual transport and reward | N/A | weapons knock off; no physical pellet transport in this preview | n/a |
+| 6. Cleanup and re-entry | UNTESTED | no scene re-entry/reload run | n/a |
+
+### Gate checker output (scripts/check_p2_handoff_gates.py)
+
+```text
+73 BigTreasure (role=source):
+  1. identity_spawn     ignored [UNTESTED]
+  2. movement_animation ignored [PARTIAL]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [N/A]
+  6. cleanup_reentry    ignored [UNTESTED]
+```
+
+### Subagent usage (slice 3)
+
+1. `explore` — source audit of the real Pikmin->InteractAttack->actTeki->stored
+   damage chain, the decomp weapon coll parts, whether the native seam has any
+   Teki/coll part, the ordinary-loop block, and the FSM->Attack prerequisites.
+   **Used as-is**: it established that no boss Teki actor/coll part exists (the
+   "real Pikmin coll-part attack" blocker) and that `p2_bigtreasure_events.txt` +
+   `targetInBox` are required to reach Attack.
+2. `explore` — candidate inventory (arena, intercept patterns, slice-2 fixture
+   structure, roster gate-tab template + checker absence). **Used as-is**: gave the
+   `InteractAttack::actTeki` hooking pattern and confirmed the checker/roster
+   need the wave-branch copies.
+3. `general` — extended the validator (`ordinary_attack_started/emitted`,
+   `natural_drop`) + tests, ran pytest + real-log check. **Used as-is**, then I
+   amended `handled_set_held` to parse the loop's `P2_BIGTREASURE_RECV_HELD`
+   marker and updated the corresponding test.
+
+Net: the two explore agents saved the decomp/intercept/grep sessions and pinned
+the blocker with file:line; the general agent's validator extension landed with
+only a small follow-up (the RECV_HELD key).
