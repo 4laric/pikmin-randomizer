@@ -283,6 +283,15 @@ def prepare(assets, imported, output):
     stage_cargo(run, assets, load_pod_package(POD_PACKAGE))
     (run / 'long-legs-lifecycle-override.json').write_text(
         json.dumps(position_override(), indent=2) + '\n')
+    # The fork's settings default `disableTutorials = 1`, and newPikiGame.cpp
+    # calls ogScrResultMgr::skip() from that flag, so the end-of-day results
+    # screen is auto-dismissed and the game advances to MapSelect. MapSelect
+    # tears down the gameplay section (GameCoreSection::exitStage nulls the
+    # global naviMgr), which this preview fixture cannot recover from (its
+    # `!naviMgr` guard stalls). Pin the skip off for this private run only so
+    # the results screen stays up and the gameplay section (and naviMgr)
+    # survives the fixture's day-end, matching pre-disableTutorials behavior.
+    (run / 'pikmin_settings.conf').write_text('disableTutorials = 0\n')
     return run
 
 
