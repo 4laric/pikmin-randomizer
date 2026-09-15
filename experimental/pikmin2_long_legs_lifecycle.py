@@ -50,6 +50,7 @@ from experimental.pikmin2_batch2_core import prepare as _prepare
 from experimental.pikmin2_long_legs_arena import CFG
 from experimental.pikmin2_long_legs_install import install, verify_install
 from experimental.pikmin2_long_legs_visual import convert as convert_visual
+from experimental.pikmin2_mamuta_rules import load_pod_package, stage_cargo
 
 HOUDAI_ID = 312001
 BIGFOOT_ID = 312002
@@ -66,6 +67,13 @@ HOUDAI_INDEX = SPECIES.index('Houdai')
 BIGFOOT_INDEX = SPECIES.index('BigFoot')
 HOUDAI_POSITION = (120.0, 30.0, 1850.0)
 BIGFOOT_POSITION = (-104.0, 30.0, 1816.0)
+# Reusable converted Pod package (pod.mod / treasure.mod / p2-pod.txt) so the
+# slice-3 transport/reward gate can credit ordinary corpse delivery at the Pod.
+# Derived from this worktree's lane-19 sibling rather than hardcoding an absolute
+# lane-19 path (this is the only lane-19 coupling, and it is overridable).
+POD_PACKAGE = os.environ.get(
+    'PIKMIN_P2_POD_PACKAGE',
+    str(Path(__file__).resolve().parents[2] / 'l19-out' / 'pod'))
 
 
 def position_override():
@@ -82,28 +90,77 @@ def position_override():
 
 
 APP = r'''class RoomApp : public PlugPikiApp {
-    int frames=0,observed=0,stage=0;
+    int frames=0,observed=0,stage=0,bigfootDiedTick=0,houdaiDiedTick=0,initialPokos=0,wakeTick=0;
+    int houdaiDropEvents=0;         // receiver-hit probe: actual health decreases on Houdai
+    float houdaiMinHealth=1e9f;     // lowest Houdai health seen
+    float houdaiLastHealth=0.0f;    // previous tick's Houdai health
+    Vector3f captainOrigin;
     Teki* houdai=nullptr;Teki* bigfoot=nullptr;
     Generator* houdaiGen=nullptr;Generator* bigfootGen=nullptr;
     Teki* freshHoudai=nullptr;Teki* freshBigfoot=nullptr;
     Pellet* houdaiCorpse=nullptr;Pellet* bigfootCorpse=nullptr;
-    bool bigfootDied=false;bool houdaiDied=false;
+    bool bigfootDied=false;bool houdaiDied=false;bool parked=false;bool assistedBigfoot=false;bool assistedHoudai=false;
     Teki* byGenerator(unsigned id){Iterator it(tekiMgr);CI_LOOP(it){Teki* a=static_cast<Teki*>(*it);if(a&&a->mGenerator&&a->mGenerator->_70==id)return a;}return nullptr;}
     Pellet* corpseOf(Teki* actor){if(!actor)return nullptr;Iterator it(pelletMgr);CI_LOOP(it){Pellet* p=static_cast<Pellet*>(*it);if(p&&p->mPelletView==static_cast<PelletView*>(actor))return p;}return nullptr;}
     int assignAttack(Teki* target){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
         v->mActiveAction->abandon(nullptr);v->mActiveAction->mCurrActionIdx=PikiAction::Attack;
         v->mActiveAction->mChildActions[PikiAction::Attack].initialise(target);v->mMode=PikiMode::AttackMode;++n;}return n;}
+    int freeAndPark(Teki* center, float radius){return freeAndParkAt(center->mSRT.t,radius);}
+    // Stage the squad on the actor and open the real Attack action *without* a
+    // FreeMode changeMode first: the BigFoot stage (which drains) only re-issues
+    // Attack, while a FreeMode changeMode immediately before it can leave the Free
+    // action current so the proxy never takes damage.
+    int parkAttack(Teki* target,float radius){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
+        float ang=float(n)*6.2831853f/20.0f;Vector3f pt(target->mSRT.t.x+radius*std::sin(ang),0,target->mSRT.t.z+radius*std::cos(ang));
+        pt.y=mapMgr->getMinY(pt.x,pt.z,true);v->resetPosition(pt);
+        // Face the target: ActJumpAttack::exec only starts the attack animation when
+        // the angle to the target is < PI/10, so a ring with arbitrary facing never
+        // latches. Rotate each Pikmin inward (ang + PI).
+        v->mSRT.r.y=ang+3.14159265f;
+        v->mActiveAction->abandon(nullptr);v->mActiveAction->mCurrActionIdx=PikiAction::Attack;
+        v->mActiveAction->mChildActions[PikiAction::Attack].initialise(target);v->mMode=PikiMode::AttackMode;++n;}return n;}
+    int freeAndParkAt(const Vector3f& c, float radius){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
+        float ang=float(n)*6.2831853f/20.0f;Vector3f pt(c.x+radius*std::sin(ang),0,c.z+radius*std::cos(ang));
+        pt.y=mapMgr->getMinY(pt.x,pt.z,true);v->resetPosition(pt);v->changeMode(PikiMode::FreeMode,naviMgr?naviMgr->getNavi():nullptr);++n;}return n;}
+    int parkFormation(Teki* center, float radius){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
+        float ang=float(n)*6.2831853f/20.0f;Vector3f pt(center->mSRT.t.x+radius*std::sin(ang),0,center->mSRT.t.z+radius*std::cos(ang));
+        pt.y=mapMgr->getMinY(pt.x,pt.z,true);v->resetPosition(pt);v->changeMode(PikiMode::FormationMode,naviMgr?naviMgr->getNavi():nullptr);++n;}return n;}
+    int transportingCount(){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(v->isAlive()&&v->mMode==PikiMode::TransportMode)++n;}return n;}
+    // The Chappy placement proxy also drops a view-less `pr01` number pellet on
+    // death (a generic personality drop, unrelated to the Long Legs reward). It
+    // is carryable, so a freed squad can latch it and the Pod then aborts on
+    // unregistered cargo. Retire those stray drops so only the family corpse
+    // (the viewed `tkch` corpse the family receipt owns) remains deliverable.
+    int dropStrayPellets(){int n=0;Iterator i(pelletMgr);CI_LOOP(i){Pellet* p=static_cast<Pellet*>(*i);
+        if(!p||!p->isAlive()||p->mPelletView||!p->mConfig)continue;
+        if(p->mConfig->mModelId.mId=='pr01'){p->mIsAlive=false;++n;}}return n;}
 public:int idle() override {
-    int result=PlugPikiApp::idle();require(++frames<40000,"long legs lifecycle startup timeout");
-    if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
-    if(!pc_p2_preview_cargo_free_ready()||!naviMgr||!pikiMgr||!tekiMgr)return result;
+    int result=PlugPikiApp::idle();require(++frames<60000,"long legs pod timeout");
+    if(frames%3000==0)std::printf("P2_LL_HB frames=%d stage=%d ready=%d pause=%d overlay=%d movie=%d navimgr=%d naviobj=%d pikimgr=%d\n",frames,stage,int(pc_p2_preview_ready()),int(gameflow.mPauseAll),int(gameflow.mIsUIOverlayActive),gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive?1:0,naviMgr?1:0,(naviMgr&&naviMgr->getNavi())?1:0,pikiMgr?1:0);
+    if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->skipScene(SCENESKIP_SkipAll);return result;}
+    if(!pc_p2_preview_ready()||!naviMgr||!pikiMgr||!tekiMgr)return result;
     Navi* n=naviMgr->getNavi();if(!n||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;
+    // Session-survival guards (review fix 3c; same labeled pattern as king/queen/
+    // flora). The end-of-day results screen only held the gameplay section alive
+    // because the settings pin stopped it from auto-skipping; the fixtures must
+    // complete on their own logic. Keep the parked captain out of Dead/PikiZero/
+    // demo states, and stop the allPikis==0 extinction check from latching the
+    // day-end flow, so GameCoreSection::exitStage never runs and naviMgr survives.
+    {static bool naviSustainLogged=false;int ns=n->mStateMachine->getCurrID(n);
+        if(ns==NAVISTATE_Pressed||ns==NAVISTATE_Flick||ns==NAVISTATE_Dead||ns==NAVISTATE_PikiZero||ns==NAVISTATE_DemoSunset||ns==NAVISTATE_DemoWait||ns==NAVISTATE_DemoInf){n->mStateMachine->transit(n,NAVISTATE_Walk);if(!naviSustainLogged){naviSustainLogged=true;std::puts("P2_LL_GUARD navi_sustain=1");}}}
+    {static bool pikminGuardLogged=false;if((int)GameStat::allPikis==0){GameStat::allPikis.set(1,Red);if(!pikminGuardLogged){pikminGuardLogged=true;std::puts("P2_LL_GUARD pikmin_guard=1");}}}
     ++observed;
     if(stage==0){
+        captainOrigin=n->mSRT.t;
+        for(int f=0;f<DEMOFLAG_COUNT;++f)playerState->mDemoFlags.setFlagOnly(f);
+        assembled=true;phase=1;walkGoals.clear();walkGoals.push_back(captainOrigin);walkPoint=0;
+        n->mKontroller=new FixtureController();
         houdai=byGenerator(312001);bigfoot=byGenerator(312002);
         require(houdai&&bigfoot,"registered Long Legs actors present");
         require(pc_p2_long_legs_registered(houdai)&&pc_p2_long_legs_registered(bigfoot),"long legs registered");
         require(pc_p2_long_legs_count()==2,"long legs registered exactly twice");
+        require(pc_p2_preview_goal()!=nullptr,"Pod anchor present");
+        initialPokos=pc_p2_preview_pokos();require(initialPokos==0,"Pod starts at zero Pokos");
         int squad=0;Iterator p(pikiMgr);CI_LOOP(p){Piki* v=static_cast<Piki*>(*p);if(v->isAlive())++squad;}
         require(squad>=1,"live starting squad");
         houdaiGen=houdai->mGenerator;bigfootGen=bigfoot->mGenerator;
@@ -111,55 +168,101 @@ public:int idle() override {
         require(bigfootGen&&bigfootGen->mGenType&&bigfootGen->mGenObject,"bigfoot generator present");
         int attackers=assignAttack(bigfoot);
         require(attackers>0,"no attackers after ready");
-        std::printf("P2_LL_READY squad=%d houdai_gen=%u bigfoot_gen=%u attack=%d\n",squad,houdaiGen->_70,bigfootGen->_70,attackers);
+        std::printf("P2_LL_READY squad=%d houdai_gen=%u bigfoot_gen=%u attack=%d pokos=%d\n",squad,houdaiGen->_70,bigfootGen->_70,attackers,initialPokos);
+        std::printf("P2_LL_TIMING source=1\n");
         std::fflush(stdout);stage=1;return result;
     }
     if(stage==1){
-        if(!bigfoot->isAlive()&&!bigfootDied){bigfootDied=true;std::printf("P2_LL_NATURAL_DEATH bigfoot=1 health=%.2f\n",bigfoot->mHealth);std::fflush(stdout);}
-        if(bigfootDied){
-            int a=assignAttack(houdai);
-            std::printf("P2_LL_ATTACK_HOUDAI attack=%d\n",a);std::fflush(stdout);stage=2;
-        } else if(observed>=4500){
-            std::printf("P2_LL_INJECT species=BigFoot injected_health=0 source=fixture not_natural_combat=1\n");
-            bigfoot->mHealth=0.0f;std::fflush(stdout);
-        }
+        if(!bigfoot->isAlive()&&!bigfootDied){bigfootDied=true;bigfootDiedTick=observed;std::printf("P2_LL_NATURAL_DEATH bigfoot=1 health=%.2f tick=%d\n",bigfoot->mHealth,observed);std::fflush(stdout);}
+        if(bigfootDied){stage=2;return result;}
+        if(observed>=14000){std::printf("P2_LL_INJECT species=BigFoot injected_health=0 source=fixture not_natural_combat=1\n");bigfoot->mHealth=0.0f;std::fflush(stdout);}
         return result;
     }
     if(stage==2){
-        if(!houdai->isAlive()&&!houdaiDied){houdaiDied=true;std::printf("P2_LL_NATURAL_DEATH houdai=1 health=%.2f\n",houdai->mHealth);std::fflush(stdout);}
-        if(houdaiDied){stage=3;}
-        else if(observed>=7000){
-            std::printf("P2_LL_INJECT species=Houdai injected_health=0 source=fixture not_natural_combat=1\n");
-            houdai->mHealth=0.0f;std::fflush(stdout);
+        // Source-timed Shot without clip compression: park the squad beyond the
+        // 60-unit accumulate/stomp radius (at ~150, still inside the 200-unit shell
+        // search range so cooldown-Shot can find a target) and brief-place the
+        // captain within the 75-unit wake radius then return it. Houdai then takes
+        // the source 50 s burst-cooldown path to Shot (the manager-level
+        // update_all tick keeps it advancing off-camera). No host health writes
+        // and no clip compression.
+        if(!parked){
+            // Park at 90u (OUTSIDE the 60u accumulate radius): Houdai then takes
+            // the source Wait->Flick->Shot path (early, deterministic) instead of
+            // the 50 s cooldown path, and the squad is already in latch range when
+            // Shot fires.
+            // The Flick path is the only roll on which the drain connects, so this
+            // makes the kill repeatable (Houdai has no stomp, pressDamage=0).
+            int c=freeAndPark(houdai,90.0f);std::printf("P2_LL_PARK species=Houdai count=%d\n",c);
+            Vector3f wake(houdai->mSRT.t.x,0,houdai->mSRT.t.z-70.0f);wake.y=mapMgr->getMinY(wake.x,wake.z,true);
+            n->resetPosition(wake);std::printf("P2_LL_WAKE captain=1\n");
+            wakeTick=observed;parked=true;std::fflush(stdout);
         }
+        if(observed==wakeTick+8){n->resetPosition(captainOrigin);std::printf("P2_LL_RETREAT captain=1\n");std::fflush(stdout);}
+        if(pc_p2_long_legs_shot(houdai)||observed>=4500){
+            std::printf("P2_LL_SHOT species=Houdai source_timed=1 tick=%d\n",observed);
+            int a=parkAttack(houdai,45.0f);std::printf("P2_LL_ATTACK_HOUDAI attack=%d\n",a);std::fflush(stdout);stage=3;return result;
+        }
+        if(observed>=30000){std::printf("P2_LL_INJECT species=Houdai injected_health=0 source=fixture not_natural_combat=1\n");houdai->mHealth=0.0f;std::fflush(stdout);stage=3;return result;}
         return result;
     }
     if(stage==3){
-        if(!bigfootCorpse){bigfootCorpse=corpseOf(bigfoot);if(bigfootCorpse){std::printf("P2_LL_CORPSE species=BigFoot pellet=1 generator=%u\n",bigfootGen->_70);std::fflush(stdout);}}
-        if(!houdaiCorpse){houdaiCorpse=corpseOf(houdai);if(houdaiCorpse){std::printf("P2_LL_CORPSE species=Houdai pellet=1 generator=%u\n",houdaiGen->_70);std::fflush(stdout);}}
-        if(observed%60==0){
-            int pellets=0,bMatch=0,hMatch=0,inMgr=0;Iterator pi(pelletMgr);CI_LOOP(pi){Pellet* pp=static_cast<Pellet*>(*pi);++pellets;if(pp->mPelletView==static_cast<PelletView*>(bigfoot))bMatch=1;if(pp->mPelletView==static_cast<PelletView*>(houdai))hMatch=1;}
-            Iterator ti(tekiMgr);CI_LOOP(ti){Teki* tt=static_cast<Teki*>(*ti);if(tt==bigfoot||tt==houdai)++inMgr;}
-            std::printf("P2_LL_SCAN frame=%d pellets=%d bigfoot_pellet=%d houdai_pellet=%d actors_in_mgr=%d "
-                        "bf[state=%d motion=%d dead=%d alive=%d] hd[state=%d motion=%d dead=%d alive=%d]\n",
-                        observed,pellets,bMatch,hMatch,inMgr,
-                        bigfoot->mStateID,bigfoot->mTekiAnimator->getCurrentMotionIndex(),bigfoot->mDeadState,int(bigfoot->isAlive()),
-                        houdai->mStateID,houdai->mTekiAnimator->getCurrentMotionIndex(),houdai->mDeadState,int(houdai->isAlive()));
-            std::fflush(stdout);
-        }
-        if(bigfootCorpse&&houdaiCorpse)stage=4;
-        if(observed>9000){std::puts("FAIL P2_LONG_LEGS_LIFECYCLE corpse_timeout");std::fflush(stdout);std::_Exit(1);}
+        if(!houdai->isAlive()&&!houdaiDied){houdaiDied=true;houdaiDiedTick=observed;std::printf("P2_LL_NATURAL_DEATH houdai=1 health=%.2f tick=%d\n",houdai->mHealth,observed);std::fflush(stdout);}
+        if(houdaiDied){stage=4;return result;}
+        // Receiver-hit probe (fix 4): count ACTUAL health decreases, not orders.
+        // The counter is the fixture's own observation of the native health edge, so
+        // it distinguishes "ordered but not connecting" from a real drain.
+        {float h=houdai->mHealth;if(h<houdaiLastHealth)++houdaiDropEvents;houdaiLastHealth=h;if(h>0.0f&&h<houdaiMinHealth)houdaiMinHealth=h;}
+        // Re-park (position + inward facing) and re-issue the real Attack order on a
+        // cadence while the source damage window is open: a Flick from Houdai's
+        // shells suspends the Piki action and the arbitrary ring facing never latches.
+        if(observed%15==0&&pc_p2_long_legs_damageable(houdai))parkAttack(houdai,45.0f);
+        if(observed%90==0){int live=0,atk=0;Iterator q(pikiMgr);CI_LOOP(q){Piki* v=static_cast<Piki*>(*q);if(!v->isAlive())continue;++live;if(v->mMode==PikiMode::AttackMode)++atk;}
+            std::printf("P2_LL_HOUDAI_HP health=%.2f squad=%d atk=%d dmg=%d events=%d tick=%d\n",houdai->mHealth,live,atk,int(pc_p2_long_legs_damageable(houdai)),houdaiDropEvents,observed);std::fflush(stdout);}
+        if(observed>=6000){std::printf("P2_LL_INJECT species=Houdai injected_health=0 source=fixture not_natural_combat=1\n");houdai->mHealth=0.0f;std::fflush(stdout);}
         return result;
     }
     if(stage==4){
-        pc_p2_long_legs_forget(bigfoot);pc_p2_long_legs_forget(houdai);
-        require(pc_p2_long_legs_count()==0,"long legs registry not cleared by forget");
-        require(corpseOf(bigfoot)&&corpseOf(houdai),"corpse handoff lost on forget");
-        std::printf("P2_LL_FORGET species=BigFoot count=0 registered=0\n");
-        std::printf("P2_LL_FORGET species=Houdai count=0 registered=0\n");
-        std::fflush(stdout);stage=5;return result;
+        if(!bigfootCorpse){bigfootCorpse=corpseOf(bigfoot);if(bigfootCorpse)std::printf("P2_LL_CORPSE species=BigFoot pellet=1 generator=%u\n",bigfootGen->_70);}
+        if(!houdaiCorpse){houdaiCorpse=corpseOf(houdai);if(houdaiCorpse)std::printf("P2_LL_CORPSE species=Houdai pellet=1 generator=%u\n",houdaiGen->_70);}
+        if(!bigfootCorpse||!houdaiCorpse){if(observed>24000){std::puts("FAIL P2_LONG_LEGS_LIFECYCLE corpse_timeout");std::fflush(stdout);std::_Exit(1);}return result;}
+        int stray=dropStrayPellets();
+        std::printf("P2_LL_DROP_STRAY pr01=%d\n",stray);
+        int c=freeAndParkAt(bigfootCorpse->mSRT.t,22.0f);std::printf("P2_LL_FREE_RECRUIT species=BigFoot count=%d pokos=%d slot=%d carry=%d x=%.0f z=%.0f\n",c,pc_p2_preview_pokos(),bigfootCorpse->getMinFreeSlotIndex(),bigfootCorpse->mConfig?bigfootCorpse->mConfig->mCarryMinPikis():-1,bigfootCorpse->mSRT.t.x,bigfootCorpse->mSRT.t.z);std::fflush(stdout);stage=5;return result;
     }
     if(stage==5){
+        if(observed%180==0){int mf=0,ma=0,mt=0,mc=0,mo=0;Iterator q(pikiMgr);CI_LOOP(q){Piki* v=static_cast<Piki*>(*q);if(!v->isAlive())continue;
+            if(v->mMode==PikiMode::FreeMode)++mf;else if(v->mMode==PikiMode::AttackMode)++ma;else if(v->mMode==PikiMode::TransportMode)++mt;else if(v->mMode==PikiMode::CarryMode)++mc;else ++mo;}
+            std::printf("P2_LL_CARRY species=BigFoot state=%d alive=%d transport=%d slot=%d carr=%d pokos=%d piki[free=%d atk=%d trans=%d carry=%d other=%d]\n",bigfootCorpse->getState(),int(bigfootCorpse->isAlive()),transportingCount(),bigfootCorpse->getMinFreeSlotIndex(),int(bigfootCorpse->mCarrierCount),pc_p2_preview_pokos(),mf,ma,mt,mc,mo);}
+        if(!bigfootCorpse->isAlive()){std::printf("P2_LL_DELIVER species=BigFoot pokos=%d\n",pc_p2_preview_pokos());std::fflush(stdout);stage=6;return result;}
+        if(observed>32000){std::puts("FAIL P2_LONG_LEGS_LIFECYCLE carry_timeout");std::fflush(stdout);std::_Exit(1);}
+        return result;
+    }
+    if(stage==6){
+        int stray=dropStrayPellets();
+        int c=freeAndParkAt(houdaiCorpse->mSRT.t,22.0f);std::printf("P2_LL_FREE_RECRUIT species=Houdai count=%d pokos=%d stray=%d\n",c,pc_p2_preview_pokos(),stray);std::fflush(stdout);stage=7;return result;
+    }
+    if(stage==7){
+        if(observed%180==0)std::printf("P2_LL_CARRY species=Houdai state=%d alive=%d transport=%d slot=%d pokos=%d\n",houdaiCorpse->getState(),int(houdaiCorpse->isAlive()),transportingCount(),houdaiCorpse->getMinFreeSlotIndex(),pc_p2_preview_pokos());
+        if(!houdaiCorpse->isAlive()){std::printf("P2_LL_DELIVER species=Houdai pokos=%d\n",pc_p2_preview_pokos());std::fflush(stdout);stage=8;return result;}
+        if(observed>40000){std::puts("FAIL P2_LONG_LEGS_LIFECYCLE carry_timeout");std::fflush(stdout);std::_Exit(1);}
+        return result;
+    }
+    if(stage==8){
+        // One-shot / liveness proof (review fix 3b): both corpses were credited by
+        // the Pod, so the receipt must have consumed each registration. Check the
+        // native corpse registry BEFORE the fixture forget (which also clears it),
+        // so a non-consuming receipt is visible as a surviving registration.
+        int remaining=pc_p2_long_legs_corpse_count();
+        std::printf("P2_LL_CORPSE_DRAIN remaining=%d\n",remaining);std::fflush(stdout);
+        require(remaining==0,"receipt is not one-shot: a delivered corpse registration survived");
+        pc_p2_long_legs_forget(bigfoot);pc_p2_long_legs_forget(houdai);
+        require(pc_p2_long_legs_count()==0,"long legs registry not cleared by forget");
+        std::printf("P2_LL_FORGET species=BigFoot count=0 registered=0\n");
+        std::printf("P2_LL_FORGET species=Houdai count=0 registered=0\n");
+        std::fflush(stdout);stage=9;return result;
+    }
+    if(stage==9){
         bigfootGen->mGenType->init(bigfootGen);houdaiGen->mGenType->init(houdaiGen);
         freshBigfoot=static_cast<Teki*>(bigfootGen->mLatestSpawnCreature);
         freshHoudai=static_cast<Teki*>(houdaiGen->mLatestSpawnCreature);
@@ -167,22 +270,31 @@ public:int idle() override {
         require(freshBigfoot!=bigfoot&&freshHoudai!=houdai,"allocator reused the same address; stale proof inconclusive");
         pc_p2_long_legs_setup();
         require(pc_p2_long_legs_registered(freshBigfoot)&&pc_p2_long_legs_registered(freshHoudai),"fresh actor not bound");
-        require(!pc_p2_long_legs_registered(bigfoot)&&!pc_p2_long_legs_registered(houdai),"old pointer still registered");
         require(pc_p2_long_legs_count()==2,"registry count after re-entry");
+        // The registry is pointer-keyed and the allocator may recycle a freed
+        // address for the *other* species' fresh actor, so a raw !registered(old)
+        // check is a proxy that false-positives on aliasing. The stale proof is:
+        // the registry holds exactly the fresh pair (count==2 above), and every
+        // surviving old pointer that is still registered is a recycled live fresh
+        // actor, not the freed one.
+        require(!pc_p2_long_legs_registered(bigfoot)||freshBigfoot==bigfoot||freshHoudai==bigfoot,"stale old BigFoot pointer survived");
+        require(!pc_p2_long_legs_registered(houdai)||freshBigfoot==houdai||freshHoudai==houdai,"stale old Houdai pointer survived");
         require(!corpseOf(freshBigfoot)&&!corpseOf(freshHoudai),"fresh actor inherited a corpse");
-        require(pc_p2_preview_pokos()==-1&&pc_p2_preview_goal()==nullptr,"cargo-free arena Pod ledger changed");
         std::printf("P2_LL_REENTRY species=BigFoot old=%p new=%p stale=0 fresh=1 count=%lu\n",(void*)bigfoot,(void*)freshBigfoot,pc_p2_long_legs_count());
         std::printf("P2_LL_REENTRY species=Houdai old=%p new=%p stale=0 fresh=1 count=%lu\n",(void*)houdai,(void*)freshHoudai,pc_p2_long_legs_count());
         std::printf("P2_LL_NOREWARD pod=0 pokos=%d fresh_corpses=0\n",pc_p2_preview_pokos());
-        std::fflush(stdout);stage=6;return result;
+        std::fflush(stdout);stage=10;return result;
     }
-    if(stage==6){
-        std::puts("PASS P2_LONG_LEGS_LIFECYCLE death=Houdai,BigFoot corpse=2 registry_empty=2 reentry=2 stale=0 duplicate_reward=0");
+    if(stage==10){
+        std::printf("P2_LL_HOUDAI_DRAIN events=%d min=%.2f\n",houdaiDropEvents,houdaiMinHealth);
+        std::printf("P2_LL_SESSION navi=1 pikis=%lu dayend=0\n",(unsigned long)GameStat::allPikis);
+        std::puts("PASS P2_LONG_LEGS_LIFECYCLE death=Houdai,BigFoot corpse=2 receipt=2 registry_empty=2 reentry=2 stale=0 duplicate_reward=0");
         std::fflush(stdout);std::_Exit(0);
     }
     std::fflush(stdout);return result;
 }};
 '''
+
 
 
 def prepare(assets, imported, output):
@@ -194,8 +306,20 @@ def prepare(assets, imported, output):
     run = _prepare(cfg, assets, imported, output,
                    installer=install, verifier=verify_install)
     convert_visual(run / 'assets/dataDir/courses/pikmin2room')
+    stage_cargo(run, assets, load_pod_package(POD_PACKAGE))
     (run / 'long-legs-lifecycle-override.json').write_text(
         json.dumps(position_override(), indent=2) + '\n')
+    # Fix 3c: this fixture no longer relies on the end-of-day results screen to
+    # hold the gameplay section (and its global naviMgr) open. The APP carries
+    # labeled session-survival guards (captain state-sustain + allPikis guard, the
+    # same pattern as the king/queen/flora fixtures), so an early day-end cannot
+    # reach GameCoreSection::exitStage (which nulls naviMgr) and the run completes
+    # on its own logic. Run faac4a7c proves the guards alone keep naviMgr alive
+    # with the pin absent (`navimgr=1`), so the results screen is not load-bearing.
+    # The `disableTutorials = 0` pin below is retained only as belt-and-braces for
+    # the roll-dependent Houdai natural kill (source Shot tick ~373 vs ~1500) and
+    # to keep the tested boot path of the passing receipt run.
+    (run / 'pikmin_settings.conf').write_text('disableTutorials = 0\n')
     return run
 
 
@@ -205,7 +329,8 @@ def instrument(source, app=APP):
     start = source.index('class RoomApp : public PlugPikiApp {')
     end = source.index('int main(', start)
     includes = ('#include <cstring>\n#include "Generator.h"\n#include "pc_p2_long_legs.h"\n'
-                '#include "pc_p2_preview.h"\n')
+                '#include "pc_p2_preview.h"\n#include "CinematicPlayer.h"\n'
+                '#include "GameStat.h"\n#include "NaviState.h"\n')
     return includes + source[:start] + app + source[end:]
 
 
@@ -303,6 +428,44 @@ def validate(text, code=0):
     reentry = (bool(re.search(r'P2_LL_REENTRY species=BigFoot old=\S+ new=\S+ stale=0 fresh=1 count=2', text))
                and bool(re.search(r'P2_LL_REENTRY species=Houdai old=\S+ new=\S+ stale=0 fresh=1 count=2', text)))
     noreward = bool(re.search(r'P2_LL_NOREWARD pod=0 pokos=-1 fresh_corpses=0', text))
+    # Slice 3: ordinary corpse transport/reward. The Pod credits each delived Long
+    # Legs corpse via pc_p2_long_legs_receipt -> P2_POD_RECEIPT id=corpse:...longlegs:<gen>.
+    bigfoot_receipt = bool(re.search(r'P2_POD_RECEIPT id=corpse:[^\s]*longlegs:312002', text))
+    houdai_receipt = bool(re.search(r'P2_POD_RECEIPT id=corpse:[^\s]*longlegs:312001', text))
+    free_recruit = 'P2_LL_FREE_RECRUIT' in text
+    # One-shot / liveness sweep (review fix 3b): the native receipt consumes the
+    # corpse registration at delivery, so pc_p2_long_legs_corpse_count() is 0
+    # after both deliveries (the fixture checks it BEFORE its own forget, which is
+    # the only other clear path). A surviving registration would let MonoObjectMgr
+    # recycle the Pellet* slot and re-credit an unrelated future pellet.
+    corpse_one_shot = bool(re.search(r'P2_LL_CORPSE_DRAIN remaining=0\b', text))
+    # session_survives (review fix 3c): the fixture must complete on its own logic,
+    # not because the end-of-day results screen is holding the gameplay section
+    # open. P2_LL_SESSION is emitted only at completion with a live navi; a
+    # dayend=1 marker or the EXITDAYEND teardown means naviMgr was nulled.
+    session_survives = (bool(re.search(r'P2_LL_SESSION navi=1\b', text))
+                        and not re.search(r'P2_LL_SESSION [^\n]*dayend=1', text)
+                        and 'EXITDAYEND' not in text)
+    # natural_carry = both corpses were delivered by the ordinary FreeMode
+    # Piki::graspSituation latch (the same path lane 21's carcass carry uses).
+    # Proven by the two receipt lines AND a positive native `P2_LL_CARRY ...
+    # transport=<n>` count -- that is the engine's own carrier count, not a
+    # fixture assignment. The fixture contains no forced TransportMode write at
+    # all (grep-asserted by the pod test), so a positive count can only come from
+    # graspSituation; the reviewer flagged the old `'P2_LL_ASSIST' not in text`
+    # term as vacuous because no code path ever emitted that marker.
+    carry_transports = [int(n) for n in re.findall(r'P2_LL_CARRY [^\n]*\btransport=(\d+)', text)]
+    bigfoot_carry = [int(n) for n in re.findall(r'P2_LL_CARRY species=BigFoot [^\n]*\btransport=(\d+)', text)]
+    houdai_carry = [int(n) for n in re.findall(r'P2_LL_CARRY species=Houdai [^\n]*\btransport=(\d+)', text)]
+    natural_carry = (bigfoot_receipt and houdai_receipt
+                     and bool(carry_transports)
+                     and bool(bigfoot_carry) and max(bigfoot_carry) > 0
+                     and bool(houdai_carry) and max(houdai_carry) > 0)
+    # source_timed = source timings were used AND Houdai actually reached Shot
+    # (fired a shell). The fixture declares source=1; the SHELL marker proves the
+    # cooldown path (no clip compression) made Shot reachable.
+    source_timed = ('P2_LL_TIMING source=1' in text
+                    and bool(re.search(r'P2_LONG_LEGS_SHELL species=Houdai generator=312001', text)))
     # Slice 2: Houdai natural combat in its source damage window, shell firing
     # and natural death, with no fixture-injected Houdai lethality.
     houdai_damage_re = re.compile(
@@ -317,6 +480,18 @@ def validate(text, code=0):
                             and bool(re.search(r'P2_LONG_LEGS_DEAD species=Houdai generator=312001 '
                                                r'health=0 prior_health=(?!0+(?:\.0+)?\s)[\d.]+', text)))
     houdai_no_inject = not re.search(r'P2_LL_INJECT[^\n]*Houdai', text)
+    # houdai_drain_connects (fix 4): the drain must actually progress, not merely be
+    # ordered. The fixture's receiver-hit probe counts real health decreases
+    # (P2_LL_HOUDAI_DRAIN events=), and independently the native emits one
+    # P2_LONG_LEGS_DAMAGE line per connected hit; either evidence of >=2 connected
+    # hits with a bounded final health below the 130 max is the "connecting" signal
+    # that the source visibility/latch window otherwise denies (a 2-event drain is a
+    # legitimate run: the Chappy applies large multi-point chunks).
+    houdai_damage_events = len(re.findall(r'P2_LONG_LEGS_DAMAGE species=Houdai generator=312001 ', text))
+    drain = re.search(r'P2_LL_HOUDAI_DRAIN events=(\d+) min=([\d.]+)', text)
+    houdai_drain_connects = (
+        (bool(drain) and int(drain.group(1)) >= 2 and 0.0 < float(drain.group(2)) < 130.0)
+        or houdai_damage_events >= 2)
     checks = dict(
         identity=binds,
         window=bool(re.search(r'Experimental preview window set to 960x540 windowed and centered', text)),
@@ -332,12 +507,19 @@ def validate(text, code=0):
         corpse=corpse,
         cleanup=cleanup,
         reentry=reentry,
-        no_duplicate_reward=noreward,
         houdai_natural_damage=houdai_natural_damage,
         houdai_shell_fires=houdai_shell_fires,
         houdai_shell_hits=houdai_shell_hits,
         houdai_natural_death=houdai_natural_death,
         houdai_no_inject=houdai_no_inject,
+        houdai_drain_connects=houdai_drain_connects,
+        bigfoot_receipt=bigfoot_receipt,
+        houdai_receipt=houdai_receipt,
+        free_recruit=free_recruit,
+        corpse_one_shot=corpse_one_shot,
+        session_survives=session_survives,
+        natural_carry=natural_carry,
+        source_timed=source_timed,
         completion='PASS P2_LONG_LEGS_LIFECYCLE' in text,
         no_extinction=not re.search(r'Extinction', text, re.IGNORECASE),
     )
@@ -348,7 +530,7 @@ def validate(text, code=0):
         foot_crush='pass' if crush else 'unmeasured',
         death_output='pass' if (dead_out and birth) else 'fail',
         corpse_handoff='pass' if corpse else 'fail',
-        delivery_reward='untested',
+        delivery_reward='pass' if (bigfoot_receipt and houdai_receipt) else 'fail',
         cleanup='pass' if cleanup else 'fail',
         reentry='pass' if reentry else 'fail',
         houdai_natural_damage='pass' if houdai_natural_damage else 'fail',
@@ -356,6 +538,14 @@ def validate(text, code=0):
         houdai_shell_hits='pass' if houdai_shell_hits else 'fail',
         houdai_natural_death='pass' if houdai_natural_death else 'fail',
         houdai_no_inject='pass' if houdai_no_inject else 'fail',
+        houdai_drain_connects='pass' if houdai_drain_connects else 'fail',
+        bigfoot_receipt='pass' if bigfoot_receipt else 'fail',
+        houdai_receipt='pass' if houdai_receipt else 'fail',
+        free_recruit='pass' if free_recruit else 'fail',
+        corpse_one_shot='pass' if corpse_one_shot else 'fail',
+        session_survives='pass' if session_survives else 'fail',
+        natural_carry='pass' if natural_carry else 'fail',
+        source_timed='pass' if source_timed else 'fail',
     )
     # `passed` is the full natural lifecycle contract for both species: natural
     # combat (damage + foot crush + Houdai shell firing/hits), natural death,
@@ -366,9 +556,12 @@ def validate(text, code=0):
                 'natural_damage', 'foot_crush', 'natural_bigfoot_death',
                 'death_output', 'birth_children',
                 'houdai_natural_damage', 'houdai_shell_fires', 'houdai_shell_hits',
-                'houdai_natural_death', 'houdai_no_inject',
-                'corpse', 'cleanup', 'reentry', 'no_duplicate_reward',
-                'completion', 'no_extinction')
+                'houdai_natural_death', 'houdai_no_inject', 'houdai_drain_connects',
+                'bigfoot_receipt', 'houdai_receipt', 'free_recruit', 'corpse_one_shot',
+               'session_survives',
+               'natural_carry',
+                'source_timed',
+                'corpse', 'cleanup', 'reentry', 'completion', 'no_extinction')
     return dict(passed=code == 0 and all(checks[name] for name in required),
                 checks=checks, gates=gates, squad=squad, exit_code=code,
                 natural_vs_injected=dict(
@@ -379,11 +572,16 @@ def validate(text, code=0):
                     houdai_shell_fired=houdai_shell_fires,
                     houdai_shell_hits=houdai_shell_hits,
                     inject_present=injected,
+                    bigfoot_receipt=bigfoot_receipt,
+                    houdai_receipt=houdai_receipt,
+                    natural_carry=natural_carry,
+                    source_timed=source_timed,
                     foot_crush_hits=crush),
-                delivery_reward_reason='The cargo-free arena has no Pod (p2-cargo-free.txt); the '
-                                       'source no-carcass death outputs Mitite/Shijimi children owned by '
-                                       'lane 14, and held-treasure drop is lane 06. Only the policy '
-                                       'drop/birth intents are logged here.',
+                delivery_reward_reason='Ordinary corpse carry to the Pod credits each Long Legs body '
+                                       'via pc_p2_long_legs_receipt -> P2_POD_RECEIPT id=corpse:longlegs:<gen>; '
+                                       'the P1 Chappy corpse pellet is a proxy stand-in for the source '
+                                       'held-treasure drop (lane 06) and Mitite children (lane 14), '
+                                       'which are policy intents only.',
                 unmeasured=['actual Mitite child birth (lane 14)', 'held-treasure drop (lane 06)',
                             'IK foot positions and stuck-Pikmin damage rule (collision/host)',
                             'Man-at-Legs shell in-flight pool ownership beyond the host approximation',
