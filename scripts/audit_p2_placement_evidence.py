@@ -1,24 +1,24 @@
-"""Lane-04 audit bridge: fold native placement-evidence probe output into a
-placement document and report the before/after admission decision (#440).
+"""Lane-04 audit bridge: fold a native placement-evidence probe into the real
+placement catalog and report the before/after admission decision (#440).
 
 The native probe (``pc_p2_placement_probe``) emits ``P2_PLACEMENT_SLOT`` facts
-for the disposable P2 room encounter arena. This script turns a captured
-``p2-placement-probe-v1`` JSON into slot ``evidence``, builds a labelled
-encounter-arena document for the Snow/Dwarf Orange host cohort, and prints the
-deny -> evidence-stamped decision.
+carrying both the generator 4-byte file id and, when a ``p2-placement-slots.txt``
+sidecar is staged, a placement-catalog slot uid. This script turns a captured
+``p2-placement-probe`` JSON (``randomizer.p2_placement_probe.build_probe``) into
+slot ``evidence`` and runs the deny -> evidence-stamped decision.
 
-The probe ``uid`` is the generator's 4-byte file id (``Generator::_70``), not a
-``p2_placement_catalog`` slot uid (those are crc32 keys). This report is
-therefore **arena-only: there is no catalog join** — it does not look the probe
-ids up in ``all_slots()`` because the two id spaces are unrelated. See the
-``catalog_join``/``catalog_join_note`` fields in the output.
+When the probe carries a catalog join (``catalog_join=true``), every mapped slot
+uid is looked up in ``randomizer.p2_placement_catalog.all_slots()``: an
+**unmappable uid is a hard failure**. Only matched slots are stamped, and the
+audit runs against the genuine catalog document. When ``catalog_join=false``
+(no sidecar) the report is arena-only.
 
 Three results are reported, kept strictly separate:
 
 * ``pre_probe``      -- default-deny: no slot evidence, no profile gates.
-* ``stamped``        -- native xyz/terrain/route evidence applied; the pair is
-  now denied only on the profile placement gates (`accepted_gates`), which are
-  lane-33/QA-owned, NOT lane-04.
+* ``stamped``        -- native evidence applied to the matched catalog slot(s);
+  the pair is then denied only on the profile gates (`accepted_gates`, owned by
+  lane 33/QA, NOT lane-04).
 * ``injected_legal`` -- clearly-labelled: profile gates filled by hand to show
   the end-to-end interface is wired; this is NOT natural acceptance.
 
@@ -32,11 +32,26 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from randomizer import p2_placement
+from randomizer import p2_placement_catalog
 from randomizer import p2_placement_native
+
+IDENTITIES = ('YellowKochappy', 'BlueKochappy')
+
+
+def catalog_document():
+    return p2_placement_catalog.build_document()
+
+
+def _inject_gates(document):
+    doc = json.loads(json.dumps(document))
+    for profile in doc['profiles']:
+        if profile['identity'] in IDENTITIES:
+            profile['accepted_gates'] = ['arena']
+    return p2_placement.validate_document(doc)
 
 
 def arena_document(probe):
-    """Build a labelled encounter-arena document from a probe's generator ids."""
+    """Fallback for a probe without a catalog join (generator ids only)."""
     slots = []
     for slot in probe['slots']:
         slots.append(p2_placement.normalize_slot({
@@ -59,40 +74,66 @@ def arena_document(probe):
     return p2_placement.validate_document({'schema': p2_placement.SCHEMA, 'slots': slots, 'profiles': profiles})
 
 
+def _admitted_for(report, identities):
+    return {k: v for k, v in report['admitted'].items() if k in identities}
+
+
+def run_audit(probe, catalog_doc=None, identities=IDENTITIES):
+    """Return the join + before/after admission report for a probe document."""
+    if probe.get('catalog_join'):
+        catalog_doc = catalog_doc if catalog_doc is not None else catalog_document()
+        catalog_uids = {slot['uid'] for slot in catalog_doc['slots']}
+        mapped = [m for m in probe['mapping']]
+        mapped_uids = {m['slot'] for m in mapped}
+        unmatched = sorted(mapped_uids - catalog_uids)
+        if unmatched:
+            raise SystemExit(
+                f'catalog join hard failure: probe slot uid(s) {unmatched} are not '
+                f'present in p2_placement_catalog.all_slots()')
+        stamp_probe = {'schema': probe['schema'],
+                       'slots': [s for s in probe['slots'] if s['uid'] in mapped_uids]}
+        stamped = p2_placement_native.stamp_evidence(catalog_doc, stamp_probe)
+        pre = p2_placement.audit(catalog_doc, identities=list(identities))
+        post = p2_placement.audit(stamped, identities=list(identities))
+        injected = p2_placement.audit(_inject_gates(stamped), identities=list(identities))
+        return {
+            'catalog_join': True,
+            'matched_slot_uids': sorted(mapped_uids),
+            'mapping': mapped,
+            'pre_probe_admitted': _admitted_for(pre, identities),
+            'pre_probe_denied_reasons': pre['denied_reasons'],
+            'stamped_admitted': _admitted_for(post, identities),
+            'stamped_denied_reasons': post['denied_reasons'],
+            'injected_legal_admitted': _admitted_for(injected, identities),
+            'slot_evidence': p2_placement_native.slot_evidence_summary(stamped),
+        }
+    doc = arena_document(probe)
+    pre = p2_placement.audit(doc)
+    stamped = p2_placement_native.stamp_evidence(doc, probe)
+    post = p2_placement.audit(stamped)
+    injected = p2_placement.audit(_inject_gates(stamped))
+    return {
+        'catalog_join': False,
+        'catalog_join_note': (
+            'arena-only, no catalog join: the probe ids are generator 4-byte file '
+            'ids (Generator::_70), not p2_placement_catalog.all_slots() uid keys '
+            '(crc32), so they are not looked up in the campaign catalog.'),
+        'pre_probe_admitted': _admitted_for(pre, identities),
+        'pre_probe_denied_reasons': pre['denied_reasons'],
+        'stamped_admitted': _admitted_for(post, identities),
+        'stamped_denied_reasons': post['denied_reasons'],
+        'injected_legal_admitted': _admitted_for(injected, identities),
+        'slot_evidence': p2_placement_native.slot_evidence_summary(stamped),
+    }
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--probe', type=Path, required=True)
     parser.add_argument('--out', type=Path, default=None)
     args = parser.parse_args(argv)
 
-    probe = p2_placement_native.normalize_probe(json.loads(args.probe.read_text()))
-    document = arena_document(probe)
-
-    pre = p2_placement.audit(document)
-    stamped = p2_placement_native.stamp_evidence(document, probe)
-    post = p2_placement.audit(stamped)
-
-    injected = json.loads(json.dumps(stamped))
-    for profile in injected['profiles']:
-        profile['accepted_gates'] = ['arena']
-    injected = p2_placement.validate_document(injected)
-    injected_audit = p2_placement.audit(injected)
-
-    report = {
-        'catalog_join': None,
-        'catalog_join_note': (
-            'arena-only, no catalog join: the probe ids are generator 4-byte file '
-            'ids (Generator::_70), not p2_placement_catalog.all_slots() uid keys '
-            '(crc32), so they are not looked up in the campaign catalog.'),
-        'probe': probe,
-        'pre_probe_admitted': pre['admitted'],
-        'pre_probe_denied_reasons': pre['denied_reasons'],
-        'stamped_admitted': post['admitted'],
-        'stamped_denied_reasons': post['denied_reasons'],
-        'injected_legal_admitted': injected_audit['admitted'],
-        'injected_legal_unplaced': injected_audit['unplaced_identities'],
-        'slot_evidence': p2_placement_native.slot_evidence_summary(stamped),
-    }
+    report = run_audit(json.loads(args.probe.read_text()))
     print(json.dumps(report, indent=2))
     if args.out:
         args.out.write_text(json.dumps(report, indent=2) + '\n')
