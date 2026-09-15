@@ -119,7 +119,7 @@ APP = r'''class RoomApp : public PlugPikiApp {
 public:int idle() override {
     int result=PlugPikiApp::idle();require(++frames<60000,"long legs pod timeout");
     if(frames%3000==0)std::printf("P2_LL_HB frames=%d stage=%d ready=%d pause=%d overlay=%d movie=%d navi=%d piki=%d\n",frames,stage,int(pc_p2_preview_ready()),int(gameflow.mPauseAll),int(gameflow.mIsUIOverlayActive),gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive?1:0,naviMgr?1:0,pikiMgr?1:0);
-    if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
+    if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->skipScene(SCENESKIP_SkipAll);return result;}
     if(!pc_p2_preview_ready()||!naviMgr||!pikiMgr||!tekiMgr)return result;
     Navi* n=naviMgr->getNavi();if(!n||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;
     ++observed;
@@ -257,7 +257,7 @@ def instrument(source, app=APP):
     start = source.index('class RoomApp : public PlugPikiApp {')
     end = source.index('int main(', start)
     includes = ('#include <cstring>\n#include "Generator.h"\n#include "pc_p2_long_legs.h"\n'
-                '#include "pc_p2_preview.h"\n')
+                '#include "pc_p2_preview.h"\n#include "CinematicPlayer.h"\n')
     return includes + source[:start] + app + source[end:]
 
 
