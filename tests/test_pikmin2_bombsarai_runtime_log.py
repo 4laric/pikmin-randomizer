@@ -209,3 +209,26 @@ def test_dead_carrier_records_token_and_invalid_carrier():
     assert c0["blast_token"] == 9001
     assert c0["blast_carrier_valid"] is False
     assert c0["carrier_dead"] is True
+
+
+def test_multi_stripping_joint_follow_flips_passed():
+    log = "\n".join(
+        line for line in build_multi_carrier_log().splitlines()
+        if "JOINT_FOLLOW scenario=multi" not in line
+    ) + "\n"
+    result = validate_markers(log, scenarios=("multi",))
+    assert result["passed"] is False
+
+
+def test_multi_stripping_scenario_pass_flips_passed():
+    log = build_multi_carrier_log().replace(
+        "P2_BOMBSARAI_SCENARIO_PASS scenario=multi\n", "")
+    result = validate_markers(log, scenarios=("multi",))
+    assert result["passed"] is False
+
+
+def test_multi_single_token_flips_passed():
+    log = build_multi_carrier_log().replace(
+        "carrier=1 token=9002", "carrier=1 token=9001")
+    result = validate_markers(log, scenarios=("multi",))
+    assert result["passed"] is False

@@ -379,3 +379,124 @@ runtime.
 - Real shared Bomb manager limit under concurrent carriers + BombOtakara: lane 06/20.
 - Real skeletal joint + keyframe timings + visual assets: converter #128 / lane 09.
 - Induction (`ip02`) and save/resume remain open.
+
+## Slice 4
+
+Scope: fold the six slice-3 review findings and harden the root validator. The
+named "next bounded slice" — bind the ordinary **generated** BombSarai
+(Careening Dirigibug) through the family sidecar pattern (`pc_p2_kurage_teki`),
+acquire a lane-20 bomb, carry it toward a live squad, throw it, and be killed
+by ordinary Pikmin attacks with corpse/receipt via the 06/07 seams — was **not**
+implemented this slice (see "Remaining", and the status file records BLOCKED).
+
+### Ordered commits (both branches clean)
+
+Native branch `deepseek/p2-l27-native`, base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`:
+
+1. `fbfa99e0` — `lane27: fold slice-3 review findings — captured-only held, pool iteration, advancePath gate, blast overflow fail, fixture single-step (#244)`
+
+Root branch `deepseek/p2-l27`, base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`:
+
+1. `8740a62` — `lane27: harden runtime-log validator — require per-scenario scenario_pass and multi distinct tokens/travel_xz; flip tests (#244)`
+
+Dirty state at handoff: none on either branch.
+
+### Findings folded (6)
+
+1. **#1 double-stepped arena** — the room preview runs
+   `pc_p2_hardlanes_setup()` (auto-loads `p2-bombsarai-arena.txt`) and
+   `gameCoreSection.cpp:1785` steps the same global `sArena` every frame, so the
+   fixture's own `idle()` double-stepped it and `observe()` sampled every other
+   tick. Fix: `tools/p2_bombsarai_runtime.cpp` now calls `pc_p2_hardlanes_reset()`
+   at first idle (after `pc_p2_preview_ready()`), releasing the hardlane's arena
+   ownership so the fixture advances it exactly once per source tick.
+2. **#2 captured-only held + pool iteration** — `mHeldBomb` is Captured-only in
+   the source (null in flight). `pc_p2_bombsarai_arena.cpp` now clears the
+   carrier's `held` pointer on throw and `in.carrying = k.held != nullptr`; the
+   pool guard in `supply()` is now Captured-only (was any-live-phase), so a
+   second bomb can be supplied while the first is airborne (up to `mChildNum=2`).
+   Phase B now iterates the pool via the new `slotCount()/slotLive()/bombAt()`
+   accessors instead of the per-carrier `held` pointer, so in-flight bombs keep
+   advancing after their carrier clears `held` and re-supplies. Pool exhaustion
+   under one carrier is covered by a new unit test.
+3. **#3 advancePath gate** — `advancePath()` is skipped in Fall/Damage/Dead
+   (the carrier is crashing/grounded and must not walk its waypoint).
+4. **#4 validator `passed`** — `passed` now additionally requires every
+   requested scenario's `scenario_pass` and (when `multi` was requested) two
+   distinct blast tokens with at least one `travel_xz > 0`. Added three flip
+   tests (strip multi `JOINT_FOLLOW`, strip multi `SCENARIO_PASS`, same token).
+5. **#5 blast-record overflow** — a detonation beyond `kMaxBlastRecords` now
+   logs `P2_BOMBSARAI_BLAST_OVERFLOW` and returns false instead of dropping the
+   detonation silently.
+6. **#6 evidence hygiene** — a `dirty=no` `build_lane.py pikmin_pc` line is
+   recorded on the committed head (see Build evidence). The remaining sub-item
+   (record per-file sha256 of tracked-modified sources in
+   `build_pikmin2_fixture.py:307` instead of the non-reproducing
+   `tracked_diff_sha256`) is NOT done: it is tied to a fixture rebuild I did not
+   run this slice. No new GL "Key lines" block exists, so the line-number
+   labelling sub-item does not apply.
+
+### Build evidence
+
+`output/dsw/l27-build-evidence.txt` (Ninja + MinGW g++, JAudio ON):
+
+```
+lane=l27 target=pikmin_pc native=fbfa99e010112f4ba0c41e6722dfc522e9ba7b17 dirty=no exe=...\bin\nectar.exe sha256=170020ba9109b367a86c1f33bbd2367a90e79f8b1615b00f23446f17c2e07a24 ninja_n="ninja: no work to do."
+```
+
+(There is also an earlier `dirty=yes` line during bring-up with the same exe
+sha, and the previous `aeb25d68` slice-3 build.)
+
+### Tests run
+
+Native standalone (compiled `-std=gnu++17 -Wall -Wextra -Werror`, MinGW GCC
+16.2), all PASS, run directly:
+- `p2_bombsarai_bomb_test` — extended with a pool-exhaustion-under-one-carrier
+  block (second supply while first is in flight, duplicate-HELD refusal, clean
+  exhaustion, stable slot addressing). Exit 0.
+- `p2_bombsarai_induction_test` — re-run against the new Captured-only pool
+  guard. Exit 0 (`PASS BOMBSARAI_INDUCTION`).
+
+Root Python: `py -3.12 -m pytest tests/test_pikmin2_bombsarai_runtime_log.py -q`
+→ **11 passed**.
+
+### Six arena gates (honest)
+
+| Gate | Status | Evidence / label |
+|---|---|---|
+| 1 Exact identity and spawn | source-backed N/A | Still the pinned opt-in profile; no ordinary generated binding (this slice's deferred core work). |
+| 2 Autonomous movement and animation | PARTIAL (unit, find #3) | advancePath now gated to walking states; horizontal follow unchanged from slice 3. |
+| 3 Attacks and receivers | PARTIAL | Per-token blast attribution unchanged; still instrumented receivers. |
+| 4 Death and corpse | PARTIAL | Dead-carrier attribution unchanged; no live corpse/transport. |
+| 5 Actual transport and reward | source-backed N/A | Out of scope. |
+| 6 Cleanup and re-entry | UNTESTED | No scene re-entry run. |
+
+Natural vs injected: unchanged from slice 3; the pool-iteration and
+captured-only-held changes are natural source-policy fixes verified at unit
+level and compile-verified into `nectar.exe`, not yet observed on a live run.
+
+### Subagent usage
+
+None. The `task` tool (subagent spawning) required by the slice brief was not
+available in this session; I ran the source audit, the validator/test work, the
+native fixes and the build myself. Honest negative result: no parallelism was
+possible, and the read-heavy inventory/source-audit steps consumed this agent's
+own context directly instead of being delegated.
+
+### Remaining (and why the slice is BLOCKED)
+
+- **Ordinary generated BombSarai binding (core deliverable) NOT started:** the
+  family sidecar pattern (`pc_p2_kurage_teki`), lane-20 bomb acquisition,
+  live-squad carry/throw, ordinary Pikmin kills and the 06/07 corpse/receipt
+  seams are the next bounded slice. Not reached after folding the findings.
+- **GL runtime re-tune required:** finding #2 changes the single-carrier
+  scenario marker stream (the FSM now supplies a second bomb after the first
+  throw), so the fixture's `approach/purple/death` expected throw/blast counts
+  and (per #5) any multi-blast record growth must be re-derived and exercised on
+  a fresh `slot.py run gl l27` run — not performed this slice. The
+  double-step (#1) and overflow (#5) fixes are compile-verified but not yet
+  runtime-verified.
+- **Provenance #6/8:** per-file sha256 of tracked-modified sources in
+  `build_pikmin2_fixture.py:307` remains open (needs a fixture rebuild/run).
+- Named providers unchanged: lane 10 receivers (#408), lane 06/20 shared Bomb
+  manager, converter #128 / lane 09 visuals.

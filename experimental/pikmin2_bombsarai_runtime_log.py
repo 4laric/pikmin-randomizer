@@ -118,6 +118,11 @@ def validate_markers(log_text, scenarios=('approach', 'purple', 'death')):
     lines (recognised marker without ``scenario=``) raise ``ValueError``;
     unknown/extra lines and out-of-order lines are ignored, and individually
     malformed numeric fields degrade to ``None`` instead of aborting.
+
+    ``passed`` is only True when a ``PASS BOMBSARAI_RUNTIME`` line is present
+    AND every requested scenario reports ``scenario_pass`` AND (when the
+    ``multi`` scenario was requested) the ``multi`` carriers record at least
+    two distinct blast tokens and at least one carrier with ``travel_xz > 0``.
     """
     result = {
         "passed": False,
@@ -166,4 +171,18 @@ def validate_markers(log_text, scenarios=('approach', 'purple', 'death')):
             carrier["carrier_dead"] = _field(tokens, "carrier_dead") == "1"
         elif marker == "P2_BOMBSARAI_SCENARIO_PASS":
             entry["scenario_pass"] = True
+
+    if result["passed"]:
+        for entry in result["scenarios"].values():
+            if not entry["scenario_pass"]:
+                result["passed"] = False
+        multi = result["scenarios"].get("multi")
+        if multi is not None:
+            tokens = {carrier["blast_token"] for carrier in multi["carriers"].values()
+                      if carrier["blast_token"] is not None}
+            if len(tokens) < 2:
+                result["passed"] = False
+            if not any(carrier["travel_xz"] is not None and carrier["travel_xz"] > 0
+                       for carrier in multi["carriers"].values()):
+                result["passed"] = False
     return result
