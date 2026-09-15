@@ -51,7 +51,8 @@ int pc_settings_get_chain_actions(void);
 // the first pluck keeps going; release or whistle cancels. Off by default.
 int pc_settings_get_hold_to_pluck(void);
 
-// Suppress informational hints and the end-of-day diary when on. Default on in the fork.
+// Suppress informational hints when on. Default on in the fork. The end-of-day
+// results/diary is exempt in normal play (only preview/fixture runs dismiss it).
 int pc_settings_get_disable_tutorials(void);
 
 /// What the mouse wheel controls: 0 = Pikmin colour to throw, 1 = camera zoom.
