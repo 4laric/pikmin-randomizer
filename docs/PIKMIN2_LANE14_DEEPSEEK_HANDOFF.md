@@ -37,6 +37,7 @@ Root base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`; native base
 | native | `85261e37` | integrator: fix stale `tamago.h` comment (group birth exists) (#165) |
 | native | `47b546f1` | fix1: `P2_TAMAGO_GROUP_DRAIN killed=` marker + ElecBug flip comment (#165) |
 | root | `8c4eaa44` | fix1: gate Tamago cleanup on deferred `P2_TAMAGO_GROUP_DRAIN killed=9` (#165) |
+| root | `9bb40b48` | fix1b: honest gate-6 relabel in the tracked `docs/` mirror + reviewer notices (#165) |
 
 Dirty state: none (both clean).
 
@@ -767,4 +768,5 @@ root.
 - Named lane tests (`ground_lifecycle,sokkuri,armor,armor_receiver` behaviour) → **40 passed**.
 - Family glob (`ground*,sokkuri*,armor*,elecbug*,imomushi*,hana*,tamago*`) → **146 passed**.
 - Checker on `handoffs/l14.md` **and** on the tracked mirror → **EXIT=0**, gate-6 rows `ignored`/`UNTESTED`.
+- Tracked-doc commit on `deepseek/p2-l14`: `9bb40b48`.
 - No `reviews/*.md` verdict file was edited.
