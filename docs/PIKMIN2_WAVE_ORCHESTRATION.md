@@ -53,8 +53,11 @@ lane 01 orchestrator (1 long-running agent)  ── polls, reviews, merges, buil
 
 ## 3. Hard rules (unchanged from AGENTS.md / the lane briefs)
 
-- **Never push, never write to GitHub.** Local merges only; the user pushes after
-  reading `handoffs/l01-report.md`.
+- **Push policy (relaxed 2026-09-15).** Agents may commit freely and may
+  `git push` on fix/feature work branches — `feature/**`, `fix/**`,
+  `deepseek/**`, `claude/**`, `codex/**` — on the root and native remotes. Never
+  push the default branch (`main`/`master`), tags, or force-pushes. GitHub issue
+  writes are separate and still user-governed.
 - **Never edit** the shared `native/` checkout, `native/build-randomizer`, or the
   main repo checkout. Work only in `output/dsw/**` and `output/p2-main-review`.
 - **Honest six gates.** Natural evidence only is PASS; injected/forced/proxy is
@@ -198,4 +201,5 @@ the directive's `detail` line. The orchestrator never admits on its own.
 5. Launch the orchestrator: `launch_orchestrator.ps1 -Brief l01-orchestrator.md`.
 6. Start the watchdog with `-KillStalled`, detached.
 7. Drive with inbox directives; read `handoffs/l01-report.md` and `ledger.md`.
-8. Push only when the user decides.
+8. Push accepted work branches at green checkpoints (fix/feature patterns only;
+   never the default branch, tags, or force-pushes), or on a `PUSH` directive.
