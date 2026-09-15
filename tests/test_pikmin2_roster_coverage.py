@@ -210,7 +210,7 @@ def test_real_ledger_is_fully_covered():
 
 
 def test_real_ledger_admitted_set():
-    assert admitted_ids(load_and_validate()) == [44, 59, 60, 61, 62]  # 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (admitted 2026-09-15)
+    assert admitted_ids(load_and_validate()) == [44, 45, 59, 60, 61, 62]  # 44/45 Kochappy cohort; 59-62 Otakara elemental Dweevils (2026-09-15)
 
 
 # ---------------------------------------------------------------------------

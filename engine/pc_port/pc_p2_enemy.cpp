@@ -1,5 +1,6 @@
 #include "pc_p2_enemy.h"
 #include "pc_p2_kochappy.h"
+#include "pc_p2_dwarf_orange.h"
 #include "pc_p2_animation.h"
 #include "pc_p2_snow_policy.h"
 #include "pc_p2_snow_attack_policy.h"
@@ -23,6 +24,7 @@
 #include "gameflow.h"
 #include "Graphics.h"
 #include "Camera.h"
+#include "pc_randomizer.h"
 #include <map>
 #include <set>
 #include <vector>
@@ -38,6 +40,7 @@ std::map<std::string,p2animation::Clip> timing;
 bool interpolation=false;
 bool crossfade=false;
 bool campaignMode=false;
+bool generatedMode=false;
 std::shared_ptr<const p2skin::Mesh> skin;
 std::shared_ptr<const p2attach::Bank> skeleton;
 std::map<std::string,std::vector<p2pose::Baked>> baked;
@@ -50,7 +53,7 @@ P2SnowTurnPolicy turnPolicy;
 P2SnowChasePolicy chasePolicy;
 }
 float pc_p2_snow_max_health(const BTeki* actor,float fallback) { return healthPolicy.life(actor,fallback); }
-void pc_p2_snow_reset() { interpolation=false;crossfade=false;campaignMode=false;skin.reset();skeleton.reset();baked.clear();instances.clear(); clips.clear();actors.clear();timing.clear();healthPolicy.reset();attackPolicy.reset();turnPolicy.reset();chasePolicy.reset(); }
+void pc_p2_snow_reset() { interpolation=false;crossfade=false;campaignMode=false;generatedMode=false;skin.reset();skeleton.reset();baked.clear();instances.clear(); clips.clear();actors.clear();timing.clear();healthPolicy.reset();attackPolicy.reset();turnPolicy.reset();chasePolicy.reset(); }
 void pc_p2_snow_update(BTeki* actor,float seconds){
     if(!crossfade)return;
     auto it=instances.find(static_cast<PelletView*>(actor));
@@ -87,10 +90,9 @@ bool pc_p2_snow_attackable(BTeki* actor,Creature& target,bool& result) {
 }
 const char* pc_p2_enemy_name(PelletView* view) { if(const char* name=pc_p2_kochappy_name(view))return name;return actors.count(view)?"Snow Bulborb":nullptr; }
 namespace {
-void bindSnow(Teki* teki) {
+void bindSnow(Teki* teki,unsigned identity) {
     if(actors.count(static_cast<PelletView*>(teki)))return;
     if(teki->mTekiType!=TEKI_Chappy || pc_p2_kochappy_name(teki))std::abort();
-    const unsigned identity=campaignMode?0:teki->mGenerator->_70;
     Shape* shared=clips.begin()->second.front();
     const int previousHeap=gsys->setHeap(SYSHEAP_App);
             actors.insert(static_cast<PelletView*>(teki));
@@ -130,10 +132,30 @@ void bindSnow(Teki* teki) {
 }
 }
 void pc_p2_snow_campaign_bind(Teki* teki) {
-    if(campaignMode && teki && teki->mTekiType==TEKI_Chappy)bindSnow(teki);
+    if(campaignMode && teki && teki->mTekiType==TEKI_Chappy)bindSnow(teki,0);
+}
+void pc_p2_generated_bind(Teki* teki,const void* generator) {
+    if(!teki || !generator)return;
+    const unsigned source=pc_randomizer_p2_bound_source(generator);
+    if(!source)return;
+    if(source==45) {
+        if(!generatedMode || teki->mTekiType!=TEKI_Chappy)std::abort();
+        bindSnow(teki,pc_randomizer_generator_id(generator));
+        return;
+    }
+    if(source==44) {
+        if(!pc_p2_dwarf_orange_generated() || teki->mTekiType!=TEKI_Chappy)std::abort();
+        pc_p2_dwarf_orange_bind(teki,pc_randomizer_generator_id(generator));
+        return;
+    }
+    // A bound identity the generated bridge cannot host must fail closed rather
+    // than silently spawn a P1 actor under a P2 identity.
+    pc_randomizer_bad_p2_host();
 }
 void pc_p2_snow_campaign_setup() {
-    if(pc_pikipelago_room_preview() || !std::ifstream("assets/p2-snow-all-dwarfs.txt"))return;
+    if(pc_pikipelago_room_preview())return;
+    const bool generated=pc_randomizer_p2_bridge() && pc_randomizer_p2_bound(45);
+    if(!generated && !std::ifstream("assets/p2-snow-all-dwarfs.txt"))return;
     const int previousHeap=gsys->setHeap(SYSHEAP_App);
     pc_p2_snow_setup();
     gsys->setHeap(previousHeap);
@@ -143,30 +165,39 @@ void pc_p2_snow_setup() {
     pc_p2_snow_reset();
     std::ifstream campaign("assets/p2-snow-all-dwarfs.txt");
     if(campaign){std::string magic,extra;if(!(campaign>>magic)||magic!="P2_SNOW_ALL_DWARFS_1"||(campaign>>extra)||pc_pikipelago_room_preview())std::abort();campaignMode=true;}
-    if(!pc_pikipelago_room_preview() && !campaignMode)return;
-    std::ifstream in(campaignMode?"assets/p2-snow.txt":"p2-snow.txt");if(!in){if(campaignMode)std::abort();return;}
+    // Generated sessions stage the Snow bank into the run's private asset overlay
+    // and opt in only when the ENEMY_P2 layout actually binds Snow (source 45).
+    const bool generated=pc_randomizer_p2_bridge() && pc_randomizer_p2_bound(45);
+    if(generated && campaignMode)std::abort(); // refuse a blanket override in an exact-identity session
+    if(!pc_pikipelago_room_preview() && !campaignMode && !generated)return;
+    const char* prefix=(campaignMode || generated)?"assets/":"";
+    char pathBuffer[256];
+    auto assetPath=[&](const char* name){std::snprintf(pathBuffer,sizeof(pathBuffer),"%s%s",prefix,name);return pathBuffer;};
+    std::ifstream in(assetPath("p2-snow.txt"));
+    if(!in){if(campaignMode || generated)std::abort();return;}
+    generatedMode=generated;
     const auto started=std::chrono::steady_clock::now();
-    std::ifstream blendOption(campaignMode?"assets/p2-snow-interpolation.txt":"p2-snow-interpolation.txt");
+    std::ifstream blendOption(assetPath("p2-snow-interpolation.txt"));
     if(blendOption){std::string magic,extra;if(!(blendOption>>magic)||magic!="P2_SNOW_INTERPOLATION_1"||(blendOption>>extra))std::abort();interpolation=true;}
-    std::ifstream skinOption(campaignMode?"assets/p2-snow-skeletal.txt":"p2-snow-skeletal.txt");
+    std::ifstream skinOption(assetPath("p2-snow-skeletal.txt"));
     if(skinOption){std::string magic,extra;if(!(skinOption>>magic)||magic!="P2_SNOW_SKELETAL_1"||(skinOption>>extra)||!interpolation)std::abort();
-        std::ifstream mesh(campaignMode?"assets/p2-snow-skin.txt":"p2-snow-skin.txt");
-        std::ifstream joints(campaignMode?"assets/p2-snow-joints.txt":"p2-snow-joints.txt");
+        std::ifstream mesh(assetPath("p2-snow-skin.txt"));
+        std::ifstream joints(assetPath("p2-snow-joints.txt"));
         skin=p2skin::read(mesh);skeleton=p2attach::read(joints);
         if(!skin||!skeleton||skin->joints!=skeleton->joints.size())std::abort();}
-    std::ifstream fadeOption(campaignMode?"assets/p2-snow-crossfade.txt":"p2-snow-crossfade.txt");
+    std::ifstream fadeOption(assetPath("p2-snow-crossfade.txt"));
     if(fadeOption){std::string magic,extra;if(!(fadeOption>>magic)||magic!="P2_SNOW_CROSSFADE_1"||(fadeOption>>extra)||!skin)std::abort();crossfade=true;}
     std::vector<unsigned char> topology;
     std::vector<p2animation::Clip> manifest;
-    if(!p2animation::parse(in,manifest) || (!campaignMode && !pc_p2_preview_goal()))std::abort();
+    if(!p2animation::parse(in,manifest) || (!campaignMode && !generated && !pc_p2_preview_goal()))std::abort();
     if(!campaignMode) {
-    std::ifstream policy("p2-snow-policy.txt");
+    std::ifstream policy(assetPath("p2-snow-policy.txt"));
     if(policy && !healthPolicy.read(policy))std::abort();
-    std::ifstream attack("p2-snow-attack.txt");
+    std::ifstream attack(assetPath("p2-snow-attack.txt"));
     if(attack && !attackPolicy.read(attack))std::abort();
-    std::ifstream turn("p2-snow-turn.txt");
+    std::ifstream turn(assetPath("p2-snow-turn.txt"));
     if(turn && !turnPolicy.read(turn))std::abort();
-    std::ifstream chase("p2-snow-chase.txt");
+    std::ifstream chase(assetPath("p2-snow-chase.txt"));
     if(chase && !chasePolicy.read(chase))std::abort();
     }
     // Validate the entire bank before allocating Shapes or uploading textures.
@@ -233,8 +264,11 @@ void pc_p2_snow_setup() {
     const double seconds=std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count();
     std::printf("P2_SNOW_BANK poses=%zu mod_bytes=%zu texture_attach_calls=%d load_seconds=%.3f load_budget_seconds=5 budget_exceeded=%d\n",
                 poses,total,attachments,seconds,int(seconds>5));
-    if(campaignMode){int count=0;Iterator all(tekiMgr);CI_LOOP(all){auto* actor=static_cast<Teki*>(*all);if(actor->mTekiType==TEKI_Chappy){bindSnow(actor);++count;}}
+    if(campaignMode){int count=0;Iterator all(tekiMgr);CI_LOOP(all){auto* actor=static_cast<Teki*>(*all);if(actor->mTekiType==TEKI_Chappy){bindSnow(actor,0);++count;}}
         std::printf("P2_SNOW_CAMPAIGN_READY dwarfs=%d interpolation=%d native_rewards=1\n",count,int(interpolation));return;}
+    if(generatedMode){int count=0;Iterator all(tekiMgr);CI_LOOP(all){auto* actor=static_cast<Teki*>(*all);
+        if(actor->mTekiType==TEKI_Chappy && actor->mGenerator && pc_randomizer_p2_bound_source(actor->mGenerator)==45){bindSnow(actor,pc_randomizer_generator_id(actor->mGenerator));++count;}}
+        std::printf("P2_SNOW_GENERATED_READY dwarfs=%d interpolation=%d bridge=1\n",count,int(interpolation));return;}
     std::string word;
     std::ifstream placements("p2-snow-actors.txt");int count;
     if(!(placements>>word>>count) || word!="P2_SNOW_ACTORS_1" || count<1 || count>100)std::abort();
@@ -245,7 +279,7 @@ void pc_p2_snow_setup() {
         Teki* teki=static_cast<Teki*>(*it);
         if(teki && teki->mGenerator && wanted.erase(teki->mGenerator->_70)) {
             if(teki->mTekiType!=TEKI_Chappy || pc_p2_kochappy_name(teki))std::abort();
-            bindSnow(teki);
+            bindSnow(teki,teki->mGenerator->_70);
         }
     }
     if(!wanted.empty())std::abort();

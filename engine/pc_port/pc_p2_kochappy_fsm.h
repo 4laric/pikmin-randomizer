@@ -14,6 +14,7 @@ struct Matrix4f;
 void pc_p2_kochappy_fsm_setup();
 void pc_p2_kochappy_fsm_reset();
 void pc_p2_kochappy_fsm_forget(BTeki*);
+void pc_p2_kochappy_fsm_adopt(BTeki*);
 void pc_p2_kochappy_fsm_update(BTeki*);
 bool pc_p2_kochappy_fsm_suppress_ai(const BTeki*);
 bool pc_p2_kochappy_fsm_enabled();

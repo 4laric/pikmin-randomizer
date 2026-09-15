@@ -35,10 +35,19 @@
 #include <string>
 
 namespace {
-bool sKillScenario = false, sTransferScenario = false, sStageExitScenario = false, sAdmissionScenario = false, sAutomaticBindingScenario = false, sOniKurageScenario = false, sIngestionScenario = false, sFlightFsmScenario = false, sFlightFsmDeathScenario = false, sFlightFsmGreaterScenario = false, sFlightFsmGreaterDropScenario = false, sAutoFsmScenario = false, sFlightFsmGreaterCaptainScenario = false, sFlightFsmStuckFlickScenario = false, sFlightFsmDeathCycleScenario = false, sFlightFsmPatrolScenario = false, sAutoFsmMoveScenario = false, sCorpseReceiptScenario = false;
+bool sKillScenario = false, sTransferScenario = false, sStageExitScenario = false, sAdmissionScenario = false, sAutomaticBindingScenario = false, sOniKurageScenario = false, sIngestionScenario = false, sFlightFsmScenario = false, sFlightFsmDeathScenario = false, sFlightFsmGreaterScenario = false, sFlightFsmGreaterDropScenario = false, sAutoFsmScenario = false, sFlightFsmGreaterCaptainScenario = false, sFlightFsmStuckFlickScenario = false, sFlightFsmDeathCycleScenario = false, sFlightFsmPatrolScenario = false, sAutoFsmMoveScenario = false, sCorpseReceiptScenario = false, sFlightFsmGreaterBitterScenario = false;
 void require(bool value, const char* message)
 {
     if (!value) { std::printf("FAIL KURAGE_RUNTIME %s\n", message); std::fflush(stdout); std::_Exit(1); }
+}
+// Place the candidate in the source suction window and keep it stick-eligible:
+// Piki::mayIstick() rejects LookAt/Flick, which the live AI can enter while
+// approaching a flying actor.
+void placeCandidate(Piki* piki, const Vector3f& position)
+{
+    if (!piki) return;
+    piki->resetPosition(position);
+    if (piki->isAlive() && !piki->isStickTo() && piki->mFSM) piki->mFSM->transit(piki, PIKISTATE_Normal);
 }
 GameCoreSection* findCore(CoreNode* node, int depth = 0)
 {
@@ -107,7 +116,7 @@ class KurageApp final : public PlugPikiApp {
 public:
     int idle() override {
         int result = PlugPikiApp::idle();
-        require(++frames < (sFlightFsmGreaterCaptainScenario ? 3600
+        require(++frames < ((sFlightFsmGreaterCaptainScenario || sFlightFsmGreaterBitterScenario) ? 3600
             : (sAutoFsmScenario || sFlightFsmStuckFlickScenario) ? 2400 : 900), "timeout");
         if (gameflow.mMoviePlayer && gameflow.mMoviePlayer->mIsActive) { gameflow.mMoviePlayer->requestSkip(); return result; }
         if (sAutomaticBindingScenario) {
@@ -211,7 +220,7 @@ public:
                     return result;
                 }
                 if (autoFsmPiki && autoFsmPiki->isAlive() && !pc_p2_kurage_receiver_controls(autoFsmPiki))
-                    autoFsmPiki->resetPosition(Vector3f(autoFsmActor->mSRT.t.x, autoFsmActor->mSRT.t.y - 30.0f, autoFsmActor->mSRT.t.z));
+                    placeCandidate(autoFsmPiki, Vector3f(autoFsmActor->mSRT.t.x, autoFsmActor->mSRT.t.y - 30.0f, autoFsmActor->mSRT.t.z));
                 if (pc_p2_kurage_receiver_stomach_count() == 1) {
                     require(pc_p2_kurage_teki_auto_admissions(autoFsmActor) >= 1,
                         "ordinary actor autonomous admission counted");
@@ -292,7 +301,8 @@ public:
             if (sFlightFsmScenario || sFlightFsmDeathScenario
                 || sFlightFsmGreaterScenario || sFlightFsmGreaterDropScenario
                 || sFlightFsmGreaterCaptainScenario || sFlightFsmStuckFlickScenario
-                || sFlightFsmDeathCycleScenario || sFlightFsmPatrolScenario) {
+                || sFlightFsmDeathCycleScenario || sFlightFsmPatrolScenario
+                || sFlightFsmGreaterBitterScenario) {
                 // Source flight lifecycle drives the host; the candidate sits
                 // inside the source suction window until the Attack state's
                 // autonomous admission scan claims it.
@@ -300,9 +310,9 @@ public:
                 piki->mMode = PikiMode::AttackMode;
                 fsmPiki = piki;
                 if (sFlightFsmGreaterScenario || sFlightFsmGreaterDropScenario
-                    || sFlightFsmGreaterCaptainScenario)
+                    || sFlightFsmGreaterCaptainScenario || sFlightFsmGreaterBitterScenario)
                     pc_p2_kurage_arena_set_greater(true);
-                if (sFlightFsmGreaterCaptainScenario) {
+                if (sFlightFsmGreaterCaptainScenario || sFlightFsmGreaterBitterScenario) {
                     if (!captainBound) captainBound = captainPolicy.bind(&captainTable);
                     captainPolicy.configure(P2CaptainA, 100.0f, true);
                     captainPolicy.configure(P2CaptainB, 100.0f, true);
@@ -430,7 +440,7 @@ public:
             ++fsmTicks;
             Creature* host = pc_p2_kurage_arena_owner();
             if (fsmPiki && fsmPiki->isAlive() && !pc_p2_kurage_receiver_controls(fsmPiki) && host)
-                fsmPiki->resetPosition(Vector3f(host->mSRT.t.x, host->mSRT.t.y - 30.0f, host->mSRT.t.z));
+                placeCandidate(fsmPiki, Vector3f(host->mSRT.t.x, host->mSRT.t.y - 30.0f, host->mSRT.t.z));
             require(pc_p2_kurage_arena_update(1.0f / 60.0f, true), "death cycle host update");
             if (fsmStage == 0) {
                 if (pc_p2_kurage_receiver_stomach_count() == 1) fsmStage = 1;
@@ -463,7 +473,7 @@ public:
             // A stuck Pikmin raises the source fall timer; after the shake time
             // the FSM enters FlyFlick and the real flick1.bca KEY2 ejects it.
             if (fsmPiki && fsmPiki->isAlive() && !pc_p2_kurage_receiver_controls(fsmPiki) && host)
-                fsmPiki->resetPosition(Vector3f(host->mSRT.t.x, host->mSRT.t.y - 30.0f, host->mSRT.t.z));
+                placeCandidate(fsmPiki, Vector3f(host->mSRT.t.x, host->mSRT.t.y - 30.0f, host->mSRT.t.z));
             require(pc_p2_kurage_arena_update(1.0f / 60.0f, true), "stuck flick host update");
             if (fsmStage == 0) {
                 if (pc_p2_kurage_receiver_stomach_count() == 1) fsmStage = 1;
@@ -479,6 +489,36 @@ public:
                 std::fflush(stdout); std::_Exit(0);
             }
             require(fsmTicks < 1500, "stuck flick timeout");
+            return result;
+        }
+        if (sFlightFsmGreaterBitterScenario) {
+            ++fsmTicks;
+            Creature* host = pc_p2_kurage_arena_owner();
+            Navi* captainNavi = naviMgr->getNavi();
+            if (captainNavi && host && !pc_p2_kurage_arena_captain_captured())
+                captainNavi->resetPosition(Vector3f(host->mSRT.t.x, host->mSRT.t.y - 20.0f, host->mSRT.t.z));
+            require(pc_p2_kurage_arena_update(1.0f / 60.0f, true), "greater bitter host update");
+            if (fsmStage == 0) {
+                if (captainPolicy.phase(P2CaptainA) == P2CaptainPhase::Captured) fsmStage = 1;
+                else require(fsmTicks < 1800, "greater bitter capture timeout");
+                return result;
+            }
+            if (fsmStage == 1) {
+                // Bittered while a captain is held: the source escapeCheckNavi
+                // zeroes the enemy health.
+                pc_p2_kurage_arena_set_owner_facts(true, true);
+                fsmStage = 2;
+                return result;
+            }
+            if (pc_p2_kurage_arena_killed()) {
+                require(captainPolicy.phase(P2CaptainA) == P2CaptainPhase::Idle,
+                    "bitter death releases the captain");
+                std::printf("P2_KURAGE_GREATER_BITTER_PASS captured=1 bitter_death=1 released=1 occupied=%d\n",
+                    pc_p2_kurage_arena_captain_occupied());
+                std::puts("PASS KURAGE_RUNTIME flight_fsm_greater_bitter");
+                std::fflush(stdout); std::_Exit(0);
+            }
+            require(fsmTicks < 2400, "greater bitter death timeout");
             return result;
         }
         if (sFlightFsmGreaterCaptainScenario) {
@@ -520,7 +560,7 @@ public:
                 // receiver owns it, mirroring a Pikmin walking under the body.
                 if (fsmPiki && fsmPiki->isAlive() && !pc_p2_kurage_receiver_controls(fsmPiki)) {
                     Creature* host = pc_p2_kurage_arena_owner();
-                    if (host) fsmPiki->resetPosition(Vector3f(host->mSRT.t.x, host->mSRT.t.y - 30.0f, host->mSRT.t.z));
+                    if (host) placeCandidate(fsmPiki, Vector3f(host->mSRT.t.x, host->mSRT.t.y - 30.0f, host->mSRT.t.z));
                 }
                 require(pc_p2_kurage_arena_update(1.0f / 60.0f, true), "fsm host update");
                 if (pc_p2_kurage_receiver_stomach_count() == 1) {
@@ -684,6 +724,7 @@ int main(int argc, char** argv)
         if (std::string(argv[i]) == "--receiver-auto-fsm") { sAutomaticBindingScenario = true; sAutoFsmScenario = true; }
         if (std::string(argv[i]) == "--receiver-auto-fsm-move") { sAutomaticBindingScenario = true; sAutoFsmScenario = true; sAutoFsmMoveScenario = true; }
         if (std::string(argv[i]) == "--flight-fsm-greater-captain") sFlightFsmGreaterCaptainScenario = true;
+        if (std::string(argv[i]) == "--flight-fsm-greater-bitter") sFlightFsmGreaterBitterScenario = true;
         if (std::string(argv[i]) == "--flight-fsm-stuck-flick") sFlightFsmStuckFlickScenario = true;
         if (std::string(argv[i]) == "--flight-fsm-death-cycle") sFlightFsmDeathCycleScenario = true;
         if (std::string(argv[i]) == "--flight-fsm-patrol") sFlightFsmPatrolScenario = true;
@@ -693,6 +734,9 @@ int main(int argc, char** argv)
     pc_gpu_preference_apply(); _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1"); pc_bbft_init(argc, argv);
     require(pc_pikipelago_room_preview(), "requires --experimental-pikmin2-room");
     if (!pc_window_init("P2 Kurage display fixture", 960, 540)) return 3;
+    pc_settings_init();
+    pc_window_set_display_mode(0);
+    pc_window_set_window_size(960, 540);
     pc_window_center();
     {
         SDL_Window* window = SDL_GL_GetCurrentWindow();
@@ -705,6 +749,6 @@ int main(int argc, char** argv)
             width, height, x, y, bounds.w, bounds.h, int(centered));
         std::fflush(stdout);
     }
-    pc_settings_init(); gsys->Initialise(); pc_settings_p2d_init(); nodeMgr = new NodeMgr();
+    gsys->Initialise(); pc_settings_p2d_init(); nodeMgr = new NodeMgr();
     gsys->run(new KurageApp()); return 0;
 }

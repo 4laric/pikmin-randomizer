@@ -189,6 +189,16 @@ def resolve_placement_layout(seed, slot, document, roster: list[RosterEntry] | N
         remaining.remove(target)
     for target in remaining:
         assigned[target] = rng.shuffle(eligible[target])[0]
+    # Fail closed: every admitted identity must end up bound to at least one
+    # target. A target is assigned to exactly one identity, so when two admitted
+    # identities share only one accepted slot (e.g. Snow 45 and Dwarf Orange 44
+    # reuse the same P1 Dwarf-Bulborb host slot) the second identity is silently
+    # dropped unless we reject here. This keeps the slot contract default-deny.
+    covered = set(assigned.values())
+    uncovered = [source_id for source_id in admitted if source_id not in covered]
+    if uncovered:
+        raise SeedBridgeError(
+            f"admitted identities have no unique accepted placement target: {uncovered}")
     bindings = [{"target": target, "source_id": source_id,
                  "enum_name": by_source[source_id].enum_name}
                 for target, source_id in sorted(assigned.items(), key=lambda item: (len(item[0]), item[0]))]

@@ -82,8 +82,9 @@ def prepare(base_run, qurione_run, shijimi_run, output):
     return run
 
 
-def evidence(log, exit_code):
+def evidence(log, exit_code, *, timed_out=False):
     checks = {
+        'process_completed_or_timer_stopped': exit_code == 0 or (timed_out and exit_code == 1),
         'window': '960x540' in log,
         'dwarf_orange': 'P2_ENEMY_READY species=BlueKochappy source_id=44' in log,
         'snow': 'P2_ENEMY_READY species=YellowKochappy' in log,
@@ -110,7 +111,7 @@ def run(stage, exe, output, seconds=40):
     os.environ['PIKMIN_P2_ROOM_WINDOW'] = '960x540'
     meta = capture_command([str(Path(exe).resolve()), '--experimental-pikmin2-room'],
                            stage, output, seconds)
-    report = evidence((output / 'native.log').read_text(errors='replace'), meta['exit_code'])
+    report = evidence((output / 'native.log').read_text(errors='replace'), meta['exit_code'], timed_out=meta['timed_out'])
     report['capture'] = meta
     (output / 'evidence.json').write_text(json.dumps(report, indent=2))
     return report

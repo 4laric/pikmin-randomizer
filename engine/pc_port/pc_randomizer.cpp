@@ -580,6 +580,14 @@ unsigned pc_randomizer_p2_source_for_id(unsigned long generator_id) {
     std::snprintf(target, sizeof(target), "%lu", generator_id);
     return pc_randomizer_p2_source(target);
 }
+unsigned pc_randomizer_p2_bound_source(const void* generator) {
+    if (!enabled || !p2EnemyBridge || !generator) return 0;
+    const unsigned uid = pc_randomizer_generator_id(generator);
+    if (!uid) return 0;
+    const auto it = p2Bindings.find(std::to_string(uid));
+    return it == p2Bindings.end() ? 0 : it->second;
+}
+void pc_randomizer_bad_p2_host() { fail("P2 binding has no supported native actor host"); }
 unsigned pc_randomizer_generator_id(const void* generator) {
     auto it = generatorIds.find(generator);
     return it == generatorIds.end() ? 0 : it->second;

@@ -1,7 +1,7 @@
 From dad4c920feea6c9cb0d8323909c5300504210a6a Mon Sep 17 00:00:00 2001
 From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
 Date: Mon, 14 Sep 2026 13:23:30 -0400
-Subject: [PATCH] Lane 19 (#221): time-sampled Mamuta pose banks (animated
+Subject: [PATCH 1/2] Lane 19 (#221): time-sampled Mamuta pose banks (animated
  ground strike)
 
 The observer drew one frozen pose per clip, so the Mamuta had no strike

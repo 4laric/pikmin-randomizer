@@ -1,3 +1,7 @@
+## Disable Tutorials
+
+Use **F1 > Mods > Disable Tutorials > On**, then **Save**, to skip informational hints including nectar/flower, bombs, capacity and carry routes. On by default in this fork; saved Off choices are respected. [Details and validation](docs/DISABLE_TUTORIALS.md).
+
 # Pikipelago
 
 Experimental standalone and Archipelago randomizer for Pikmin 1, built on the Open Nectar PC port. It randomizes the starting area and color, Pikmin stats and enemies, and turns exploration, population milestones, bestiary deliveries and structure completion into checks; new seeds contain 30 Ship Repairs, 25 of which unlock the Emperor Bulblax finale that ends the game.

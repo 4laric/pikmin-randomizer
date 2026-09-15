@@ -209,7 +209,7 @@ def test_admission_contract_respects_excluded():
 def test_admitted_ids_from_contract():
     roster = _roster({"17": _frog_overlay()})
     assert admitted_ids(roster) == [17]
-    assert admitted_ids(load_and_validate()) == [44, 59, 60, 61, 62]  # 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (lane 22 fix 4, natural six gates, admitted 2026-09-15)
+    assert admitted_ids(load_and_validate()) == [44, 45, 59, 60, 61, 62]  # 44/45 Kochappy cohort; 59-62 Otakara elemental Dweevils (2026-09-15)
 
 
 # ---------------------------------------------------------------------------

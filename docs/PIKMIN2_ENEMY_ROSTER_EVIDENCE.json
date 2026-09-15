@@ -360,7 +360,8 @@
       "notes": [
         "Sibling of Snow (YellowKochappy 45); both share the KochappyBase source family but are distinct source identities. A dwarf variant is a source identity, never a helper or alias.",
         "Lane 13 fix 4 (2026-09-15): identity/movement/attack/death output/dsw/l13-out/s2-run/native.log:835-836,987,1040,1333,1615,1958; cleanup output/dsw/l13-out/s2-cleanup-run/native.log:3048-3049; re-entry output/dsw/l13-out/s3-reentry-run2/native.log:1209,1505 (squad throttled to 2 by fixture; enemy path natural); transport output/dsw/l13-out/fix4-pod-run/native.log:945-980 (transport 1->7, no TransportMode writes) and :1213 receipt. Verified by the lane 01 integrator review.",
-        "Admitted set is written only by scripts/audit_pikmin2_roster.py --write-admission after --admit-check passes."
+        "Admitted set is written only by scripts/audit_pikmin2_roster.py --write-admission after --admit-check passes.",
+        "Reconciled 2026-09-15 (directive 007) with the Codex line, which also admitted 44 (native ae00c510, docs/PIKMIN2_DWARF_ORANGE_ROUTE_ACCEPTANCE_440.md and docs/PIKMIN2_ORANGE_SNOW_ADMISSION.md). The wave lane-13 implementation and its receipt corpse:211001 are canonical."
       ],
       "gates": {
         "identity_spawn": "PASS",
@@ -765,22 +766,23 @@
     "45": {
       "native_module": "pc_p2_snow",
       "owner_lane": "13",
-      "eligibility": "candidate",
-      "eligibility_reason": "Snow-specific native module present; not an admission of the whole Bulborb family",
+      "eligibility": "admitted",
+      "eligibility_reason": "Snow (YellowKochappy, 45): one-time USER-AUTHORIZED admitted-by-flag entry unioned from the Codex line (directive 007); not receipt-backed.",
       "source": [
         "PIKMIN2_BULBORB_FAMILY_CONTRACT.md"
       ],
       "notes": [
+        "USER-AUTHORIZED UNION (2026-09-15, directive 007): Snow 45 is admitted by the Codex eligibility flag; the Codex remote carries no delivery_receipt for 45. This one-time flag admission was explicitly authorized by the user. Future admissions still require six natural gates plus a receipt-shaped delivery_receipt.",
         "Snow success does not admit all Bulborbs; report revival/elemental variants separately (#120).",
-        "Open: natural death/carry/revisit and variant rules."
+        "Codex natural-chain evidence: docs/PIKMIN2_SNOW_NATURAL_ROUTE_ACCEPTANCE_120.md and docs/PIKMIN2_ORANGE_SNOW_ADMISSION.md; native ae00c510f7f1dca6c26f49c00a6f6f96e9e52fe2. Uses P1 proxy behavior; does not claim P2 FSM parity."
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       }
     },
     "46": {

@@ -1,12 +1,18 @@
+> Source 44 progress: [Dwarf Orange natural-run evidence](PIKMIN2_DWARF_ORANGE_NATURAL_RUN_461.md) covers generated death, delivery and cleanup on a2f4b9dc. Revisit/restart and remaining sign-off still gate admission.
+
+> Replacement startup-tested pin: root `3bacebc29da8fc19955a416e112f5f8f7a0d9550`, native `08bae2517b77ed809a75d085afb83ee532f7b92a`. See [init-order fix and fresh Snow runtime](PIKMIN2_INIT_ORDER_FIX_437.md). This supersedes the crashing 9b15d371 binary below.
+
+> Current combined QA source: root `99ca118733b6919548565af538971ff284df7daf`, native `9b15d371cc63e7b0154bfc3dfc2cf5be9874c754`. See [combined QA pin](PIKMIN2_COMBINED_QA_PIN_437.md) for the executable hash and scope. This supersedes older source/build pins below. `output/p2-main-review` at `ef1cace` is an old dirty worktree, not the maintained remote head. `output/native-sweep437` remains assignment-5 WIP, not an export source.
+
 # P2 next wave: Snow first, Dwarf Orange second
 
-Latest integrated baseline and acceptance: [dependency reconciliation](PIKMIN2_DEPENDENCY_RECONCILIATION_437.md). Older queue entries below are historical and must be checked against this continuation.
+Latest integrated baseline and acceptance: [cohort preparation sweep](PIKMIN2_SWEEP_COHORT_437.md). Older queue entries below are historical and must be checked against this continuation.
 
 Current integration baseline: [full integration pass #437](PIKMIN2_FULL_INTEGRATION_437.md). Its combined source and remaining-work ledger supersede historical pending-merge statements below.
 
 Dispatch guide, 2026-09-14. Tracking #454; coordination #186. Implementation owner for this document: Codex through shared account 4laric. This is a work plan, not a gameplay acceptance report or a reassignment of active owners.
 
-Start from the latest `origin/codex/p2-main-review` (draft #432). Current approved native baseline is `b805d9c626e4f4558c95aef7cac311a5d9a2068f`, clean. Read [the fixture-command sweep](PIKMIN2_FIXTURE_COMMAND_SWEEP_437.md), [the roster-readiness sweep](PIKMIN2_ROSTER_READINESS_SWEEP_437.md), [the receipt-provider sweep](PIKMIN2_RECEIPT_INTEGRATION_437.md), [the Hiba sweep](PIKMIN2_HIBA_INTEGRATION_437.md), [the placement/native queue sweep](PIKMIN2_PLACEMENT_SWEEP_437.md), [the shared-provider sweep](PIKMIN2_SHARED_PROVIDERS_437.md), [the Waterwraith dependency sweep](PIKMIN2_WATERWRAITH_INTEGRATION_437.md), [the wave-three handoff review](PIKMIN2_WAVE3_REVIEW_437.md), [the pre-wave review](PIKMIN2_PREWAVE_REVIEW_437.md) and [staging disposition](PIKMIN2_INTEGRATION_STAGING_437.md) for integrated tooling, blocked actors and the next queue; production evidence is pinned in [sweep #456](PIKMIN2_INTEGRATION_456.md). Record the exact root HEAD you use. Never overwrite the current engine with an older worker export.
+Start from the latest `origin/codex/p2-main-review` (draft #432). Current approved native baseline is `5b446a64156b338628c6d636cab3dc76f5a9d224`, clean. Read [the fixture-command sweep](PIKMIN2_FIXTURE_COMMAND_SWEEP_437.md), [the roster-readiness sweep](PIKMIN2_ROSTER_READINESS_SWEEP_437.md), [the receipt-provider sweep](PIKMIN2_RECEIPT_INTEGRATION_437.md), [the Hiba sweep](PIKMIN2_HIBA_INTEGRATION_437.md), [the placement/native queue sweep](PIKMIN2_PLACEMENT_SWEEP_437.md), [the shared-provider sweep](PIKMIN2_SHARED_PROVIDERS_437.md), [the Waterwraith dependency sweep](PIKMIN2_WATERWRAITH_INTEGRATION_437.md), [the wave-three handoff review](PIKMIN2_WAVE3_REVIEW_437.md), [the pre-wave review](PIKMIN2_PREWAVE_REVIEW_437.md) and [staging disposition](PIKMIN2_INTEGRATION_STAGING_437.md) for integrated tooling, blocked actors and the next queue; production evidence is pinned in [sweep #456](PIKMIN2_INTEGRATION_456.md). The current native integration worktree is `C:/Users/alari/pikmin-randomizer/output/native-sweep437` on `codex/p2-sweep437`; create your own native worktree from the pinned commit. The older `output/p2-main-review/native` is occupied by assignment 1 and must not be switched or used as an integration source. Record the exact root HEAD you use. Never overwrite the current engine with an older worker export.
 
 This guide sets next-wave priorities. Keep the existing **01–33 lane numbers** and owners from [the fan-out guide](PIKMIN2_IMPLEMENTATION_FANOUT.md). Its build isolation, ownership and fixture rules still apply. Earlier lists telling agents to recover already-integrated hardlane/projectile/clock modules are historical; inspect the actual source first.
 
@@ -39,6 +45,15 @@ First deliver this chain for Snow in a restricted, explicitly opt-in pool. Then 
 Experimental admission may retain declared P1-derived AI, timing or animation approximations. It still requires working combat/receivers, legal placement, correct supported rewards, cleanup and persistence. Record the chosen behavior and known deviations beside the evidence and expose the experimental scope to the user. Do not label proxy acceptance as full P2 fidelity or whole-family completion. Any required roster/schema support for this distinction belongs to assignment 1; preserve existing validation and default-deny behavior until reviewed evidence supports explicit opt-in admission. A private candidate validation path must not enable unaccepted identities in normal generation.
 
 Historical Snow evidence includes physical Pod delivery with a P1 host; it does not prove the current generated campaign path. Dwarf Orange has combined bind/draw evidence and partial behavior, not accepted natural delivery. At this dispatch revision the admitted enemy roster is still empty.
+
+Dispatch progress (2026-09-14): assignment 5 (Dwarf Orange, source 44) wired the generated bind path in a private native worktree on the maintained baseline container where Snow (source 45) generated binds — `pc_p2_generated_bind` now dispatches 44 to `TEKI_Chappy` via `pc_p2_dwarf_orange_bind` gated by the dwarf-orange generated marker, with the Kochappy FSM auto-opting in for the bound spawn and an optional `assets/p2-dwarf-orange-fsm.txt` override. Private build `output/native-sweep437-build` links clean (ninja: no work to do). Root side: `experimental/pikmin2_dwarf_orange_content.py` emits the identity-44 content manifest (15 models + bank/profile config, hash-verified) and `experimental/pikmin2_candidate_session.py --source 44` provides the private pre-admission candidate scope; 11 new focused tests pass and the candidate/staging/install/enemy/placement suites stay green (118 tests + 17 subtests). Remaining for assignment 5: real-GL generated acceptance (spawn → combat → death → carry → reward → revisit → restart) and `cleanup_reentry` re-exercise on the pinned pair before admission; `transport_reward` stays lane 06. No identity is admitted by these changes.
+
+## Assignment 4 does not wait for admission
+
+Use [the private Snow candidate QA runbook](PIKMIN2_CANDIDATE_QA.md) to gather
+pre-admission evidence on the published combined native build. Normal generation
+remains gated. The native generated binding is already integrated; waiting for
+lane 02 to admit Snow before testing it creates a circular dependency.
 
 ## Mandatory first actions for every session
 

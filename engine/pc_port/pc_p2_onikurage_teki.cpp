@@ -3,8 +3,11 @@
 #include "pc_p2_onikurage_mouth.h"
 #include "pc_p2_kurage_receiver.h"
 #include "pc_p2_kurage_visual.h"
+#include "Camera.h"
 #include "Collision.h"
 #include "Generator.h"
+#include "Graphics.h"
+#include "Shape.h"
 #include "system.h"
 #include "teki.h"
 #include <cstdio>
@@ -97,8 +100,14 @@ void pc_p2_onikurage_teki_tick(BTeki* t)
 bool pc_p2_onikurage_teki_draw(BTeki* t, Graphics& gfx, const Matrix4f& matrix, bool corpse)
 {
     if (!s.count(t)) return false;
-    // No OniKurage-specific converted MOD exists yet; the bounded host reuses
-    // the Kurage wait/attack shapes as the established visual stand-in.
+    // Prefer the OniKurage (Greater) converted pose; fall back to the Kurage
+    // wait/attack pair when the Greater files are absent.
+    const char* base = (!corpse && t->mTekiAnimator->getCurrentMotionIndex() == TekiMotion::Attack) ? "attack" : "wait";
+    if (Shape* shape = pc_p2_kurage_visual_shape_variant(base, true)) {
+        shape->updateAnim(gfx, matrix, nullptr, t);
+        shape->drawshape(gfx, *gfx.mCamera, nullptr);
+        return true;
+    }
     return pc_p2_kurage_visual_draw(t, gfx, matrix, corpse);
 }
 

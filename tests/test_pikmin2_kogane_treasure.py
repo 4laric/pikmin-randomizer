@@ -7,7 +7,7 @@ import experimental.pikmin2_kogane_reentry as reentry
 
 def _log(completion=True, census='P2_KOGANE_CENSUS pellets=1'):
     rows = ['P2_KOGANE_BIRTH id=%d type=3 x=0.000 y=30.000 z=0.000' % i
-            for i in (219001, 219002, 219003, 219004)]
+            for i in (219001, 219002, 219003)]
     rows += ['P2_KOGANE_FLIP generator=219002 source_id=10 flip=1',
              'P2_KOGANE_TREASURE generator=219002 value=5',
              'P2_KOGANE_DROP generator=219002 source_id=10 flip=1 pellet5=1 nectar=0',

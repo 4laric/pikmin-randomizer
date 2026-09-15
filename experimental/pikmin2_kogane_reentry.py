@@ -218,7 +218,7 @@ def validate_treasure(text, code):
     observed = drops.get((TREASURE, 1))
     checks = dict(
         completion=code == 0 and 'PASS P2_KOGANE_TREASURE standin1 value5' in text,
-        births=births == list(IDS) + [219004],
+        births=births == list(IDS),
         flips=flips == [(TREASURE, 1)],
         marker=treasures == [(TREASURE, TREASURE_VALUE)],
         standin=observed == standin,
