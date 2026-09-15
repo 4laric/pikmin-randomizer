@@ -350,6 +350,17 @@ Log `output/dsw/l29-out/kurage-arena/f4b1b0a27e8f4c85b906c04b249b3618/run.log`
 (sha256 `bd4da2e9621bdfb20b10a680675cef76d18143bd8bc67b91e84b19c77747f29c`;
 copy `output/dsw/l29-out/kurage-pod-receipt-run.log`).
 
+### Build evidence
+
+`output/dsw/l29-build-evidence.txt` (Ninja + MinGW g++, private
+`native-l29-build`):
+
+```
+lane=l29 target=pikmin_pc native=1771280dc559806bc8f19dbf5d3bfe3f56be3db3 dirty=no exe=...\bin\nectar.exe sha256=16ca37bed324030e5f54d2eabe25d458cd4689be2876cf152e33c6e8ed31ff90 ninja_n="ninja: no work to do."
+```
+
+The run above used exactly that executable (`sha256 16ca37be…`).
+
 ```
 :727 P2_KURAGE_TEKI_READY generator=201001 type=0 binding=private_adapter
 :735 [Pikipelago] P2_POD_READY treasure=bolt value=180 weight=15 capacity=25 pokos=0
