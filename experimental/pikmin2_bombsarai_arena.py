@@ -55,12 +55,14 @@ GATES = ('native_identity', 'terrain_floor_probe', 'terrain_wall_probe',
          'carrier_fsm', 'purple_forced_fall', 'dead_carrier_fallback',
          'pool_exhaustion', 'visual_assets', 'walk_to_target',
          'flick_effect_routing', 'retail_keyframe_timings',
-         'multi_carrier_pool', 'induction_ip02', 'save_resume')
+         'animated_capture_joint', 'multi_carrier_pool', 'induction_ip02',
+         'save_resume')
 # The fixture reads one arena profile per scenario from its cwd (see
 # ``output/lane01-native/tools/p2_bombsarai_runtime.cpp`` kScenarios and the
 # ``P2_BOMBSARAI_ARENA_1`` parser in ``pc_p2_bombsarai_arena.cpp``). Content is
-# the audited retail-asset profile: pinned carrier/token, kamu_jnt1 stand-in
-# joint, hover and bomb values from the retail tables, and the four static
+# the audited retail-asset profile: pinned carrier/token, a body-relative
+# kamu_jnt1 stand-in joint (the payload rides the moving carrier, not a static
+# point), hover and bomb values from the retail tables, and the four static
 # receivers; the purple/death scenarios add the tick-indexed host-event script.
 # These are emitted into the run directory so the fixture's cwd is complete.
 SCENARIO_FILES = ('p2-bombsarai-arena.txt', 'p2-bombsarai-arena-purple.txt',
@@ -69,7 +71,7 @@ SCENARIO_LINES = {
     'p2-bombsarai-arena.txt': (
         'P2_BOMBSARAI_ARENA_1',
         'carrier 0 120 0 0 9001',
-        'joint 0 55 0',
+        'joint 0 -40 0',
         'hover 70 2.5 20 1.5 1.0',
         'bomb 18.666667 4.5 30 15 90 50 500 10',
         'receivers 4',
@@ -80,7 +82,7 @@ SCENARIO_LINES = {
     'p2-bombsarai-arena-purple.txt': (
         'P2_BOMBSARAI_ARENA_1',
         'carrier 0 120 0 0 9001',
-        'joint 0 55 0',
+        'joint 0 -40 0',
         'hover 70 2.5 20 1.5 1.0',
         'bomb 18.666667 4.5 30 15 90 50 500 10',
         'receivers 4',
@@ -94,7 +96,7 @@ SCENARIO_LINES = {
     'p2-bombsarai-arena-death.txt': (
         'P2_BOMBSARAI_ARENA_1',
         'carrier 0 120 0 0 9001',
-        'joint 0 55 0',
+        'joint 0 -40 0',
         'hover 70 2.5 20 1.5 1.0',
         'bomb 18.666667 4.5 30 15 90 50 500 10',
         'receivers 4',
@@ -132,6 +134,7 @@ GATE_STATES = {
     'walk_to_target': 'blocked: horizontal walkToTarget not integrated; carrier is pinned',
     'flick_effect_routing': 'blocked: flickStickPikmin knockback/damage host-owned, not routed',
     'retail_keyframe_timings': 'partial: profile timing stand-ins, not retail .bca durations (#128)',
+    'animated_capture_joint': 'partial: unit-level followJoint/yaw transform; runtime P2_BOMBSARAI_JOINT_FOLLOW not yet observed',
     'multi_carrier_pool': 'blocked: shared Bomb manager limit under concurrent carriers open',
     'induction_ip02': 'blocked: bomb-on-bomb induction (ip02=15) not modeled',
     'save_resume': 'blocked: no BombSarai/Bomb serialization; carried/in-flight/armed persistence open',
