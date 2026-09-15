@@ -18,7 +18,7 @@ cannot disagree about who is immune.
 | **Bomb** | not a Pikmin receiver — `BombOtakara` delegates to its carried `EnemyID_Bomb` payload (lane 20 blast contract) | n/a | n/a | n/a |
 
 > `P2_RECV_GAS`/`P2_RECV_DENKI` are emitted with the `PRINT` macro
-> (`src/plugPikiKando/interactBattle.cpp:246,280`), which compiles to nothing in a
+> (`src/plugPikiKando/interactBattle.cpp:246,280`), which is routed to the in-game console (sysCon) via _Print under PIKI_PC_PORT (include/DebugLog.h:64-65, :13-29), not to the stdout capture in a
 > Release/GL build (`include/DebugLog.h:68` — the `#else` branch defines `PRINT`
 > empty). The hiba run7 log has 7 `P2_HIBA_GAS_HIT` + 1 `P2_HIBA_DENKI_HIT` and
 > **zero** `P2_RECV_*` lines. The **family emitter** must therefore log its own
