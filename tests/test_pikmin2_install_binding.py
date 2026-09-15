@@ -8,10 +8,15 @@ receipt cache.
 """
 import json
 import shutil
+import struct
+from pathlib import Path
 
 import pytest
 
 from experimental import pikmin2_family_install as family_install
+from experimental.pikmin2_dwarf_orange_bank import (
+    BANK_JSON, BANK_TXT, HEADER, POSE_PREFIX, PROFILE, PROFILE_JSON, PROFILE_TXT)
+from experimental.pikmin2_dwarf_orange_install import sha
 from experimental.pikmin2_staging import StagingError
 
 
@@ -26,6 +31,64 @@ def layout_with(*bindings):
 def make_source_dir(content_root, enum_name):
     source = content_root / enum_name
     source.mkdir(parents=True)
+    return source
+
+
+@pytest.fixture(autouse=True)
+def _isolate_overrides(monkeypatch):
+    monkeypatch.setattr(family_install, "_OVERRIDES", {})
+
+
+DWARF_ORANGE_CLIPS = {"wait1": 75, "move1": 55, "attack": 90, "dead": 90, "flick": 80}
+MODEL_CHUNKS = ((32, b"material"), (34, b"texture"), (48, b"event"), (65535, b""))
+
+
+def model_bytes():
+    return b"".join(struct.pack(">II", tag, len(payload)) + payload
+                    for tag, payload in MODEL_CHUNKS)
+
+
+def make_dwarf_orange_source(content_root):
+    source = content_root / "BlueKochappy"
+    bank = source / "bank"
+    profile = source / "profile"
+    bank.mkdir(parents=True)
+    profile.mkdir()
+
+    profile_json_bytes = json.dumps(
+        {"schema": 1, "species": "BlueKochappy", "source_id": 44},
+        separators=(",", ":")).encode("ascii")
+    (profile / PROFILE_JSON).write_bytes(profile_json_bytes)
+    (bank / PROFILE_TXT).write_bytes(PROFILE.encode("ascii"))
+
+    data = model_bytes()
+    motions = {}
+    rows = [HEADER]
+    file_sha256 = {}
+    for name, duration in DWARF_ORANGE_CLIPS.items():
+        frames = [0, duration // 2, duration - 1]
+        motions[name] = {
+            "poses": 3,
+            "source_frames": duration,
+            "frames": frames,
+            "event_frames": [duration // 2],
+        }
+        rows.append(f"{name} 3 {duration} " + " ".join(map(str, frames)))
+        for index in range(3):
+            model_name = f"{POSE_PREFIX}_{name}_{index:02}.mod"
+            (bank / model_name).write_bytes(data)
+            file_sha256[model_name] = sha(data)
+    (bank / BANK_TXT).write_text("\n".join(rows) + "\n", encoding="ascii")
+    metadata = {
+        "schema": 1,
+        "species": "BlueKochappy",
+        "source_id": 44,
+        "health": 250,
+        "motions": motions,
+        "reference_sha256": sha(profile_json_bytes),
+        "file_sha256": file_sha256,
+    }
+    (bank / BANK_JSON).write_text(json.dumps(metadata), encoding="utf-8")
     return source
 
 
@@ -57,13 +120,13 @@ def test_install_layout_happy_path(tmp_path):
 
     layout = layout_with(binding(source_id=44, enum_name="BlueKochappy"))
     receipt = family_install.install_layout(
-        run, layout, content_root, actor_bindings={"gen-001": 44})
+        run, layout, content_root, actor_bindings={"gen-001": 211001})
 
     assert len(calls) == 1
     source_arg, run_arg, actors = calls[0]
     assert source_arg == source
     assert run_arg == run
-    assert actors == [(44, "BlueKochappy")]
+    assert actors == [(211001, "BlueKochappy")]
 
     assert receipt["schema"] == 1
     assert receipt["mode"] == "identity-binding"
@@ -136,13 +199,13 @@ def test_install_layout_cached_replay(tmp_path):
 
     layout = layout_with(binding(source_id=44, enum_name="BlueKochappy"))
     family_install.install_layout(
-        run, layout, content_root, actor_bindings={"gen-001": 44})
+        run, layout, content_root, actor_bindings={"gen-001": 211001})
     assert len(calls) == 1
 
     shutil.rmtree(content_root)
 
     replay = family_install.install_layout(
-        run, layout, content_root, actor_bindings={"gen-001": 44})
+        run, layout, content_root, actor_bindings={"gen-001": 211001})
 
     assert replay.get("cached") is True
     assert replay["schema"] == 1
@@ -203,7 +266,7 @@ def test_launch_binds_p2_layout_identity(tmp_path, monkeypatch):
 
     monkeypatch.setattr(runner, "serve", fake_serve)
     try:
-        manifest = generate("p2-l05-launch", collection_checks=True,
+        manifest = generate("p2-binding-seed", collection_checks=True,
                             p2_enemies=True, p2_placement=placeholder)
         # The admission set must stay patched through launch: Session validates the
         # manifest via fingerprint(), which re-checks the current admission set.
@@ -220,3 +283,83 @@ def test_launch_binds_p2_layout_identity(tmp_path, monkeypatch):
     assert len(receipts) == 1
     stored = json.loads(receipts[0].read_text(encoding="utf-8"))
     assert stored["mode"] == "identity-binding" and stored["bindings"] == manifest["p2_layout"]["bindings"]
+
+
+def test_install_layout_source_id_mismatch_rejected(tmp_path):
+    content_root = tmp_path / "content"
+    make_source_dir(content_root, "BlueKochappy")
+    run = tmp_path / "run"
+    layout = layout_with(binding(source_id=999, enum_name="BlueKochappy"))
+    with pytest.raises((ValueError, StagingError)):
+        family_install.install_layout(
+            run, layout, content_root, actor_bindings={"gen-001": 211001})
+    assert not run.exists()
+
+
+def test_install_layout_real_dwarf_orange_adapter(tmp_path):
+    content_root = tmp_path / "content"
+    make_dwarf_orange_source(content_root)
+    run = tmp_path / "run"
+    retail = tmp_path / "retail"
+    (retail / "dataDir" / "stages").mkdir(parents=True)
+
+    layout = layout_with(binding(source_id=44, enum_name="BlueKochappy"))
+    receipt = family_install.install_layout(
+        run, layout, content_root,
+        actor_bindings={"gen-001": 211001}, retail_assets=retail)
+
+    assert receipt["receipts"]["gen-001"]["species"] == "BlueKochappy"
+    actors_txt = run / "p2-dwarf-orange-actors.txt"
+    assert actors_txt.is_file()
+    assert "211001" in actors_txt.read_text(encoding="ascii")
+    room = run / "assets" / "dataDir" / "courses" / "pikmin2room"
+    assert len(list(room.glob("dwarf_orange_*.mod"))) == 15
+
+
+def test_install_layout_validate_hook_rejects_bad_source(tmp_path):
+    content_root = tmp_path / "content"
+    make_source_dir(content_root, "BlueKochappy")
+    run = tmp_path / "run"
+    retail = tmp_path / "retail"
+    (retail / "dataDir" / "stages").mkdir(parents=True)
+
+    layout = layout_with(binding(source_id=44, enum_name="BlueKochappy"))
+    with pytest.raises(StagingError):
+        family_install.install_layout(
+            run, layout, content_root,
+            actor_bindings={"gen-001": 211001}, retail_assets=retail)
+    assert not (run / "assets").exists()
+
+
+def test_install_layout_session_cache_replay(tmp_path):
+    content_root = tmp_path / "content"
+    make_source_dir(content_root, "BlueKochappy")
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    run1 = tmp_path / "run1"
+    run2 = tmp_path / "run2"
+
+    calls = []
+
+    def fake_installer(source_arg, run_arg, actors):
+        (Path(run_arg) / "installed.txt").write_text("done")
+        calls.append((source_arg, run_arg, actors))
+        return {"ok": True}
+
+    family_install.register("dwarf_orange", fake_installer)
+
+    layout = layout_with(binding(source_id=44, enum_name="BlueKochappy"))
+    family_install.install_layout(
+        run1, layout, content_root, actor_bindings={"gen-001": 211001},
+        cache_dir=cache)
+    assert len(calls) == 1
+
+    shutil.rmtree(content_root)
+
+    replay = family_install.install_layout(
+        run2, layout, content_root, actor_bindings={"gen-001": 211001},
+        cache_dir=cache)
+
+    assert len(calls) == 1
+    assert replay.get("cached") is True
+    assert (run2 / "installed.txt").is_file()

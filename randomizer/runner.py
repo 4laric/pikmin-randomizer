@@ -299,9 +299,11 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_m
         if not layout:
             raise ValueError("--p2-content requires a seed with a p2_layout (generate with --p2-enemies)")
         from experimental.pikmin2_family_install import install_layout
+        cache_dir = session.directory / "p2-content-cache"
         receipt = install_layout(run.directory, layout, Path(p2_content),
-                                 actor_bindings=p2_actors, retail_assets=Path(assets))
-        print(f"PIKMIN_P2_BOUND: {len(receipt['bindings'])} identities {receipt['receipts']}", flush=True)
+                                 actor_bindings=p2_actors, retail_assets=Path(assets),
+                                 cache_dir=cache_dir)
+        print(f"PIKMIN_P2_BOUND: {len(receipt['bindings'])} identities cached={bool(receipt.get('cached'))}", flush=True)
     process = None
     overlay = None
     log = None

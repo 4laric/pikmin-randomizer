@@ -226,23 +226,28 @@ to family installers so a generated session stages its content without per-famil
 manual flags.
 
 - `ADAPTERS` registers bespoke-signature family installers wrapped to the shared
-  `install(source, run, actors)` shape. The first adapter is `dwarf_orange`,
-  consuming `pikmin2_dwarf_orange_install.install` from an identity content dir
-  laid out as `<source>/bank` + `<source>/profile`.
+  `install(source, run, actors)` shape. Each adapter may expose a
+  `validate(source)` pre-flight hook run before any destination write. The first
+  adapter is `dwarf_orange`, consuming `pikmin2_dwarf_orange_install.install` from
+  an identity content dir laid out as `<source>/bank` + `<source>/profile`.
 - `resolve_family(identity)` maps a source id or enum name to a family key. It is
   intentionally narrow: only identities whose family already has an installer are
   registered, and anything else raises `ValueError` instead of silently binding a
   P1 analogue. With the first adapter this is `44` / `BlueKochappy` →
   `dwarf_orange` (Dwarf Orange Bulborb).
 - `install_layout(run, layout, content_root, actor_bindings=None,
-  retail_assets=None)` stages every binding in a `p2_layout`. `content_root` is
-  identity-keyed (`<root>/<enum_name>`); `actor_bindings` maps every `target`
-  token to its int native generator id (the runtime seam owned by lane 03/04 +
-  native `ENEMY_P2`). All bindings are validated before any write, so an unknown
-  identity, missing/wrong source or missing actor binding raises `StagingError`
-  and leaves no partial tree. A matching on-disk `p2-binding-receipt.json` is a
-  cached replay (reused without re-reading sources); a conflicting/partial tree
-  fails closed.
+  retail_assets=None, cache_dir=None)` stages every binding in a `p2_layout`.
+  `content_root` is identity-keyed (`<root>/<enum_name>`); `actor_bindings` maps
+  every `target` token to its int native generator id (the runtime seam owned by
+  lane 03/04 + native `ENEMY_P2`). Each binding is validated — identity
+  resolution, source-id/enum-name agreement, source presence, the family
+  `validate(source)` pre-flight and the actor binding — before the destination is
+  created, so an unknown identity, source-id/enum disagreement, missing/wrong
+  source or missing actor binding raises `StagingError` and leaves nothing behind.
+  A matching on-disk `p2-binding-receipt.json` (no `cache_dir`) or a session-level
+  cache marker (with `cache_dir`) is a cached replay that is reused without
+  re-reading sources, materializing the staged content into the new run;
+  a conflicting/partial tree fails closed.
 
 The launcher consumes it through identity-keyed flags:
 
@@ -254,6 +259,10 @@ py -3.12 -m randomizer run MANIFEST --session-dir DIR --exe EXE --assets ASSETS 
 `--p2-content` is mutually exclusive with `--content-manifest` and
 `--family-install`, since each owns the private asset tree. Staging runs before
 any native process, so a bad identity/source/binding raises and nothing launches.
+The launcher keeps a session-level content cache at
+`<session>/p2-content-cache`, so a relaunch of the same seed/session materializes
+the staged content into a fresh `runs/<token>` without re-reading sources and
+reports `cached=True`.
 
 ## Validation
 
@@ -261,6 +270,7 @@ any native process, so a bad identity/source/binding raises and nothing launches
 py -3.12 -m pytest tests/test_pikmin2_staging.py tests/test_pikmin2_session_staging.py -q   # 26 passed
 py -3.12 -m pytest tests/test_pikmin2_family_install.py tests/test_pikmin2_install_binding.py -q
 py -3.12 scripts/test_p2_generated_session.py <build>/pc_randomizer_probe.exe                 # generate -> bootstrap -> native parser -> stage/cache
+py -3.12 scripts/probe_p2_install_binding.py --output output/dsw/l05-out                      # install_layout -> real adapter -> session-cache replay
 ```
 
 `scripts/test_p2_generated_session.py` is the combined lanes 02/03/05 product-path
@@ -306,4 +316,9 @@ end-to-end generated-seed launch. All sources are synthetic temp files.
   adapter before they resolve through `install_layout`. `actor_bindings` (target →
   native generator id) is supplied by the caller because the runtime generator id
   is resolved by lane 03/04 + native `ENEMY_P2`, not by this lane.
+- The session-level family-install cache is keyed by the binding plan (bindings +
+  actor map), not by the family bank's bytes; changing a family's content under
+  the same binding plan requires clearing `<session>/p2-content-cache` to avoid a
+  stale replay. The family installer's own receipt still records the bank/profile
+  hashes for diagnosis.
 
