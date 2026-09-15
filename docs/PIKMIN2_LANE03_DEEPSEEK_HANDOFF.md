@@ -621,7 +621,7 @@ Source ID: BlueKochappy (44)
 
 | Gate | Result | Evidence |
 |---|---|---|
-| 1. Exact identity and spawn | PASS (natural) | output/dsw/l03-out/4477d7708c2144879a05cd2e1e7a5856/native.log:849 |
+| 1. Exact identity and spawn | PASS (natural) | output/dsw/l03-out/aefdd95405654b49b618c3ba6d9935b8/native.log:849 |
 | 2. Autonomous movement and animation | UNTESTED | lane 13 family FSM (not this lane) |
 | 3. Attacks and receivers | UNTESTED | lane 10 / lane 13 |
 | 4. Death and corpse | UNTESTED | lane 13 |
@@ -669,7 +669,7 @@ Source ID: Sarai (23)
 
 | Gate | Result | Evidence |
 |---|---|---|
-| 1. Exact identity and spawn | PASS (natural) | output/dsw/l03-out/e7b2623ac1764c5583335afda022a5e9/native.log:789 |
+| 1. Exact identity and spawn | PASS (natural) | output/dsw/l03-out/55a78f3a951943d18dfd48b8f01c8696/native.log:656 |
 | 2. Autonomous movement and animation | UNTESTED | lane 30 |
 | 3. Attacks and receivers | UNTESTED | lane 30 |
 | 4. Death and corpse | UNTESTED | lane 30 |
@@ -680,7 +680,7 @@ Source ID: FireOtakara (59)
 
 | Gate | Result | Evidence |
 |---|---|---|
-| 1. Exact identity and spawn | PASS (natural) | output/dsw/l03-out/d50c5fc9c11240b09a8fa48d106a647d/native.log:724 |
+| 1. Exact identity and spawn | PASS (natural) | output/dsw/l03-out/e2d42f832c6f458aa705617d2573a1fc/native.log:587 |
 | 2. Autonomous movement and animation | UNTESTED | lane 22 |
 | 3. Attacks and receivers | UNTESTED | lane 22 |
 | 4. Death and corpse | UNTESTED | lane 22 |
@@ -754,6 +754,117 @@ py -3.12 output/deepseek-wave/slot.py run gl l03 -- py -3.12 scripts/run_p2_seed
 ```
 
 ### Checker output
+
+```
+23 Sarai (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation ignored [UNTESTED]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [UNTESTED]
+44 BlueKochappy (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation ignored [UNTESTED]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [UNTESTED]
+59 FireOtakara (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation ignored [UNTESTED]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [UNTESTED]
+```
+
+## Directive 012 fix1 — reconciled with the wave's birth-time bridge
+
+The wave integrated a different generated-placement bridge (`fe04c881`, `761df658`,
+squash `7ed95228`): a birth-time dispatcher `pc_p2_generated_placement_bind`
+(`pc_port/pc_p2_generated_placement.cpp`) called from `genteki.cpp:144`, routing
+source 23 to `pc_p2_sarai_manager_bind_dynamic` and 59-62 to
+`pc_p2_otakara_bind_dynamic`, both building the host with the generator id.
+
+**One binding owner survives — the wave's birth-time mechanism. Deleted lane-03's
+superseded setup-time mechanism:**
+
+| Mechanism | Owner | Outcome |
+|---|---|---|
+| `pc_p2_generated_placement_bind` → `bind_dynamic` at `GenObjectTeki::birth` | wave | **kept** |
+| `findSeedActor(23, …)` in `pc_p2_sarai_manager_setup` | lane-03 | **deleted** |
+| Otakara setup-time seed-scan (`wanted[...]` from the seed) | lane-03 | **deleted** |
+| `pc_randomizer_p2_source_for_70` helper | lane-03 | **deleted** (unused after the above) |
+
+The wave's mechanism is better: it binds at birth (address-lifetime correct, one
+`registerActor` path) and is generic across families, where lane-03's bound at
+setup-time under the env opt-in. `tests/test_pikmin2_placement_bridge.py` now
+asserts the surviving dispatcher and the absence of the deleted symbols, so a
+merge cannot silently reintroduce a double bind.
+
+### Rebased ordinary-spawn evidence (dirty=no build `5a981cef`)
+
+- **Sarai 23** `output/dsw/l03-out/55a78f3a951943d18dfd48b8f01c8696/native.log`:
+  `P2_SARAI_READY source_id=23 species=Sarai generator=349001 type=3 health=130.0
+  behavior=source generated=1 seed_target=1646783045` (:656),
+  `P2_GENERATED_PLACEMENT source_id=23 target=1646783045 bound=1` (:658),
+  `P2_SEED_RESOLVE source_id=23 target=1646783045` (:585),
+  `P2_PLACEMENT_SLOT generator=349001 slot=1646783045 xyz=1 terrain=ground route=1
+  route_distance=97.0` (:802). Fixed family sidecars renamed away.
+- **BlueKochappy 44** `output/dsw/l03-out/aefdd95405654b49b618c3ba6d9935b8/native.log`:
+  `P2_ENEMY_READY species=BlueKochappy source_id=44 ... generator=211001` (:849),
+  `P2_PLACEMENT_SLOT ... xyz=1 terrain=ground route=1` (:861).
+- **FireOtakara 59** `output/dsw/l03-out/e2d42f832c6f458aa705617d2573a1fc/native.log`:
+  `P2_ENEMY_READY species=FireOtakara ... generator=349001 ... behavior=native
+  source_FSM=implemented` (:587), `P2_OTAKARA_BIND_DYNAMIC source_id=59
+  generator=349001` (:588), `P2_GENERATED_PLACEMENT source_id=59 target=1646783045
+  bound=1` (:589), `P2_PLACEMENT_SLOT ... xyz=1 terrain=ground route=1` (:733).
+  Fixed `p2-dweevil-actors.txt` renamed away.
+
+### Review items landed
+
+- **2 (fail-closed Otakara sidecar):** `pc_p2_otakara.cpp` restored `return`-on-bad
+  header/row; a malformed/absent sidecar now leaves the fixed path denied (the
+  birth-time seed path is the only other binder).
+- **3 (Sarai singleton):** `_adapt_sarai` accumulates the per-binding single
+  generator into `p2-sarai-actors.txt` (order-preserving union) instead of
+  overwriting; the test now exercises two successive singleton calls.
+- **4 (labels):**
+  - Item 1 (seed-driven actor-sidecar generation) is **code + unit-test proven**:
+    the runtime evidence above is the Dwarf-Orange placement sidecar (44) and the
+    Sarai/Otakara *hosts*; `p2-sarai-actors.txt` is **write-only** (the native
+    selector binds by the seed source, not by that file), so no run reads it.
+  - The run scripts stamp **injected** placement acceptance:
+    `experimental/pikmin2_seed_placement.placement_document` sets every ground
+    slot's `evidence={xyz,terrain,route}=True` and the cohort
+    `accepted_gates=['arena']` (`scripts/run_p2_bridge_otakara.py:4-6`,
+    `run_p2_bridge_sarai.py:5-6`). The *probe* `xyz/terrain/route` values are
+    native-observed; the *admission* that produced the targets is injected.
+  - Ordered commits below.
+
+### Ordered commits (fix1)
+
+Native `deepseek/p2-l03-native` (base `7ed95228` = wave native tip; parent `24a6a0f7`):
+- `5a981cef` lane03: merge wave native generated-placement bridge (reconcile)
+  — resolved the Sarai conflict to the wave's side, deleted `findSeedActor` + the
+  Otakara setup seed-scan + `pc_randomizer_p2_source_for_70`, restored fail-closed.
+
+Root `deepseek/p2-l03` (base `fc7762f6` = wave root tip; parent `80498aa7`):
+- `7276ee20` lane03: merge wave root (generated-placement bridge reconcile)
+- `20726569` lane03: review fixes placement-bridge — Sarai sidecar accumulates,
+  tests target the surviving bridge
+
+### Subagent usage (honest)
+
+No subagents this slice. The reconcile was a single interactive merge + two-file
+conflict resolution plus targeted code/test edits, all navigation-bound; the
+provider balance errors that hit two `explore` agents earlier in this lane made
+delegation unreliable, and spawning readers after the mechanism was already
+identified would have cost more than it saved. The `tests/test_pikmin2_placement_bridge.py`
+source-pin assertions serve as the independent cross-check instead.
+
+### Checker output (fix1)
 
 ```
 23 Sarai (role=source):
