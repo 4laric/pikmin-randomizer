@@ -295,3 +295,104 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l0
 ### Subagent usage (slice 4)
 
 Task tool still absent; worked solo.
+
+## Slice 5
+
+Fifth slice: **the staged seed resolves on the wave native, end to end.** Point the exe at a
+self-built `claude/p2-deepseek-wave-native` (tip `b56b97eb`), stage the generated seed through
+the real runner exactly as in slice 4, and show the seed's chosen slot resolving natively in one
+log: lane-04 `P2_PLACEMENT_SLOT`, lane-03 `P2_SEED_RESOLVE source_id=<n>`, and the family
+`P2_ENEMY_READY` for the same generator — plus the Snow run with the Pod present and
+`P2_SNOW_BANK` loaded from the staged tree.
+
+### Deliverables
+
+1. `scripts/run_p2_generated_seed.py` — `placement_document` now uses the REAL lane-04 catalog
+   (`p2_placement_catalog.build_document()`), restricted to one stage-0 ground slot (the seed's
+   chosen slot uid `5465461`), cohort acceptance stamped. `boot_native` boots with
+   `--randomizer-seed <bootstrap>` so the wave native parses the `ENEMY_P2` bridge (a full room
+   session would hold the preview). `run()` builds its checks from `cohort_markers`, pops the fixed
+   bank/ready keys, adds `no_bank_<token>` (an out-of-cohort source must emit neither its bank nor
+   its READY line), and adds the wave-native resolve markers.
+2. `experimental/pikmin2_seed_evidence.py` — `resolve_markers(text, cohort, generator_for_source)`
+   requires the lane-03 `P2_SEED_RESOLVE source_id=<n> target=<uid>` and the lane-04
+   `P2_PLACEMENT_SLOT generator=<g> slot=<uid>` to agree on the same uid for the identity's
+   generator, alongside the family `P2_ENEMY_READY`; out-of-cohort sources must emit neither.
+3. `tests/test_pikmin2_seed_evidence.py` — flip tests for the resolve markers (stripping
+   `P2_SEED_RESOLVE` / `P2_PLACEMENT_SLOT` flips the check), 12 tests.
+
+### Native build (own worktree at the current tip)
+
+`output/dsw/native-l05-wave` (detached at `claude/p2-deepseek-wave-native` tip), built through
+`build_lane.py l05-wave`; `output/dsw/l05-wave-build-evidence.txt`:
+
+```
+2026-09-14T23:26:29 lane=l05-wave target=pikmin_pc native=b56b97eb9a01ecc0bc013a4ed46d1a13bf166585 dirty=no build_dir=C:\Users\alari\pikmin-randomizer\output\dsw\native-l05-wave-build exe=C:\Users\alari\pikmin-randomizer\output\dsw\native-l05-wave-build\bin\nectar.exe sha256=6396e865a8f02367edf33c2a889e6c873b43f029437c78a0daf0678a0b550223 ninja_n="ninja: no work to do." seconds=122
+```
+
+### Runtime evidence (both identities, `slot.py run gl l05`)
+
+Evidence lives at the absolute `C:/Users/alari/pikmin-randomizer/output/dsw/l05-out/slice5/{cohort44,cohort45}` (equal to repo-relative `output/dsw/l05-out/slice5/…`):
+
+- **Dwarf Orange (`--cohort 44`)**: `cohort44/native.log` — `P2_SEED_RESOLVE source_id=44 target=5465461`,
+  `P2_ENEMY_READY species=BlueKochappy source_id=44 ... generator=211001`, `P2_DWARF_ORANGE_BANK poses=64`,
+  `P2_PLACEMENT_SLOT generator=211001 slot=5465461`, `P2_PLACEMENT_PROBE actors=1`. `evidence.json`
+  `passed=true` (all checks, incl. `slot_agree_BlueKochappy` + `no_*_YellowKochappy`).
+- **Snow (`--cohort 45`)**: `cohort45/native.log` — Pod `pod.mod` opened (`size 72832`),
+  `P2_SNOW_BANK poses=60 ... load_seconds=0.032`, `P2_ENEMY_READY species=YellowKochappy ... generator=5001`,
+  `P2_SEED_RESOLVE source_id=45 target=5465461`, `P2_PLACEMENT_SLOT generator=5001 slot=5465461`.
+  `evidence.json` `passed=true` (incl. `slot_agree_YellowKochappy` + `no_*_BlueKochappy`).
+
+Both use the seed's `p2-placement-slots.txt` sidecar (`_70` → slot uid) and the `ENEMY_P2` bootstrap
+target `5465461`; the native reports `P2_PLACEMENT_SLOT ... xyz=0 terrain=none route=0` because the
+arena generator sits off the converted room's terrain mesh (a lane-04 placement-quality note, not a
+binding failure: the generator→slot→source join and the family READY/bank load are all observed).
+
+### Six-gate evidence (formatted for lane-02 ingestion)
+
+### BlueKochappy (44)
+
+| Gate | Result | Evidence |
+|---|---|---|
+| 1. identity_spawn | PASS | output/dsw/l05-out/slice5/cohort44/native.log — P2_SEED_RESOLVE source_id=44 target=5465461; P2_PLACEMENT_SLOT generator=211001 slot=5465461; P2_ENEMY_READY species=BlueKochappy source_id=44 generator=211001; P2_DWARF_ORANGE_BANK poses=64 |
+| 2. movement_animation | UNTESTED | family lane 13 |
+| 3. attacks_receivers | UNTESTED | lanes 10/13 |
+| 4. death_corpse | UNTESTED | lane 13 |
+| 5. transport_reward | UNTESTED | lane 06 |
+| 6. cleanup_reentry | UNTESTED | lane 07 |
+
+### YellowKochappy (45)
+
+| Gate | Result | Evidence |
+|---|---|---|
+| 1. identity_spawn | PASS | output/dsw/l05-out/slice5/cohort45/native.log — P2_SEED_RESOLVE source_id=45 target=5465461; P2_PLACEMENT_SLOT generator=5001 slot=5465461; P2_ENEMY_READY species=YellowKochappy generator=5001; pod.mod loaded; P2_SNOW_BANK poses=60 |
+| 2. movement_animation | UNTESTED | family lane 13 |
+| 3. attacks_receivers | UNTESTED | lanes 10/13 |
+| 4. death_corpse | UNTESTED | lane 13 |
+| 5. transport_reward | UNTESTED | lane 06 |
+| 6. cleanup_reentry | UNTESTED | lane 07 |
+
+The `identity_spawn` PASS is a lint-clean, cited, natural resolution (the seed's chosen source id
+resolves at ordinary `GenObjectTeki::birth` with the real bank, no P1 fallback). The admission
+cohort remains empty in the committed ledger; these runs enable it only for the seed (the same
+pattern lane 02/03/04 seed tests use) — that shaping is not part of the gate-1 claim.
+
+### Remaining blockers
+
+- **Lane 02 (#438):** commit/ingest these `identity_spawn` rows (the committed ledger still denies by
+  default; the runs enable the cohort locally).
+- **Lane 04:** the arena generator is off the converted room's terrain mesh
+  (`P2_PLACEMENT_SLOT ... xyz=0 terrain=none route=0`); native XYZ/terrain/route evidence for a
+  carrier-compatible slot remains lane 04's.
+- **Lane 13:** Pod staging for preview-mode Snow stays lane 13 (slice 4 Pod decision unchanged).
+
+### Tests run
+
+- `py -3.12 -m pytest tests/test_pikmin2_seed_evidence.py tests/test_pikmin2_install_binding.py -q` → **39 passed**.
+- `run_p2_generated_seed.py stage/run` (cohort 44 and 45) under `slot.py run gl l05` → **both `passed=true`**.
+
+### Subagent usage (slice 5)
+
+The `task` tool was available; worked solo anyway (the read-heavy native/ingest audit was done in
+this context to keep the wave-native reproduction precise). One subagent-style split would have been
+possible but added no throughput here.
