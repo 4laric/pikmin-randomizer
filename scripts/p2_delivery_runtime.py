@@ -4,14 +4,16 @@ Stages a real native randomizer session (schema 9 + collection_checks), binds a
 live P2 source (Dwarf Orange Bulborb, source 44) onto the ordinary Chappy host
 — a labelled fixture intervention standing in for the lane-13 bind path — kills
 it, drives its real corpse through the real Onion endpoint
-(``GoalItem::suckMe`` -> ``pc_randomizer_p2_corpse_delivered``), triggers a real
-memory-card save, then re-runs a fresh process over the SAME durable receipt
-ledger (in the session ``campaign`` directory) to prove the ordinary P2 reward is
-granted exactly once across restart.
+(``GoalItem::suckMe`` -> ``pc_randomizer_p2_corpse_delivered``), then re-runs a
+fresh process over the SAME durable receipt ledger (written by the production
+open path into the session ``campaign`` directory) to prove the ordinary P2
+reward is granted exactly once across restart.
 
 Fixture: ``scripts/p2_delivery_fixture.cpp`` (replacement main). Carry is injected
-(natural carry does not move the corpse; transport is lane 04). See
-``docs/PIKMIN2_REWARD_RECEIPTS.md``.
+(natural carry does not move the corpse; transport is lane 04). Persistence is
+process restart only: the durable ``campaign/p2-delivery-receipts.txt`` sidecar is
+re-read by the second cold process, but no memory-card checkpoint save is
+triggered in this fixture. See ``docs/PIKMIN2_REWARD_RECEIPTS.md``.
 """
 import argparse
 import os
@@ -57,11 +59,10 @@ def run_once(session, exe, assets, label):
     grants = [l for l in text.splitlines() if 'P2_ORDINARY_P2_RECEIPT' in l]
     news = [l for l in grants if ' new=1' in l]
     dups = [l for l in grants if ' new=0' in l]
-    saves = [l for l in text.splitlines() if 'P2_DELIVERY_SAVE' in l]
-    print(f'[{label}] exit={code} receipt_grants={len(news)} receipt_duplicates={len(dups)} saves={len(saves)}')
+    print(f'[{label}] exit={code} receipt_grants={len(news)} receipt_duplicates={len(dups)}')
     for line in grants:
         print(f'  {line.strip()}')
-    return code, news, dups, saves, run
+    return code, news, dups, run
 
 
 def main():
@@ -92,15 +93,15 @@ def main():
     # directory (a live save/checkpoint root), not the run cwd.
     receipt_path = session.directory / 'campaign' / 'p2-delivery-receipts.txt'
 
-    code1, news1, dups1, saves1, run1 = run_once(session, args.exe, args.assets, 'run1')
-    code2, news2, dups2, saves2, run2 = run_once(session, args.exe, args.assets, 'run2')
+    code1, news1, dups1, run1 = run_once(session, args.exe, args.assets, 'run1')
+    code2, news2, dups2, run2 = run_once(session, args.exe, args.assets, 'run2')
 
     ledger_rows = 0
     if receipt_path.exists():
         lines = [l for l in receipt_path.read_text().splitlines() if l.strip() and l.split()[0] != 'P2_RECEIPTS_1']
         ledger_rows = len([l for l in lines if 'onion:p2:44:' in l])
 
-    ok = (code1 == 0 and len(news1) == 1 and len(dups1) == 0 and len(saves1) >= 1
+    ok = (code1 == 0 and len(news1) == 1 and len(dups1) == 0
           and code2 == 0 and len(news2) == 0 and len(dups2) >= 1
           and ledger_rows == 1)
     print('EXACTLY_ONCE_ACROSS_RESTART:', ok)

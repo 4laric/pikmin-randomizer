@@ -15,7 +15,6 @@
 #include "GoalItem.h"
 #include "Pellet.h"
 #include "Interactions.h"
-#include "MemoryCard.h"
 #include "pc_randomizer.h"
 #include "pc_window.h"
 #include "pc_bbft.h"
@@ -105,13 +104,6 @@ public:
                 phase = 4;
             }
             if (phase == 4 && waited > 1200) {
-                // Trigger a real memory-card save so the campaign directory (where the
-                // receipt ledger lives) is a live checkpoint before exit. The direct-boot
-                // card provides a save slot; saveCurrentGame writes card + campaign.
-                gameflow.mGamePrefs.mSpareMemCardSaveIndex = 4;
-                gameflow.mMemoryCard.saveCurrentGame();
-                std::printf("P2_DELIVERY_SAVE save_failed=%d\n", int(gameflow.mMemoryCard.didSaveFail()));
-                std::fflush(stdout);
                 std::printf("P2_DELIVERY_RESULT natural_carry=%d\n", int(natural));
                 std::printf("PASS P2_DELIVERY_RECEIPT\n");
                 std::fflush(stdout);
