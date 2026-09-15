@@ -575,3 +575,70 @@ cd C:\Users\alari\pikmin-randomizer\output\dsw\l24-root
 py -3.12 C:\Users\alari\pikmin-randomizer\output\deepseek-wave\slot.py run gl l24 -- py -3.12 -m experimental.pikmin2_king_creature_runtime run --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" --bank "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/bulblax-bank" --pod-package "C:/Users/alari/pikmin-randomizer/output/dsw/l19-out/pod" --output "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/king-creature-runtime4" --exe "C:/Users/alari/pikmin-randomizer/output/dsw/l24-out/king-creature-fixture5/build/fixture.exe"
 ```
 
+
+## Fix 1 (review of slice 4b)
+
+Reviewer fix set applied and re-run. All four items done; only the transport
+still blocks (see below).
+
+- **1a (captain carry): fixed.** Added `NAVISTATE_Pellet` to the fixture's navi
+  state-guard transit list (`experimental/pikmin2_king_creature_runtime.py`), so the
+  long-idle captain no longer becomes a `navi` pellet and the free reds no longer
+  haul him to the Pod. The latest run has **zero** `P2_POD_CAPTAIN_RETURN` lines
+  (previously three at runtime4 `native.log:1257/1410/1565`).
+- **1b (concentrate the squad): attempted.** Added a 120-tick re-ring of the live
+  *un-latched* reds around the Emperor (skipping `getStickObject()`/AttackMode so
+  the engine stick/attack joints are never disturbed). No crash, but does not by
+  itself make the carcass carry fire.
+- **2 (FreeMode): restored.** `changeMode(PikiMode::FreeMode, n)` is back in the
+  deploy line, so the transport phase is explicit rather than generator-default.
+- **3 (native marker/name): fixed.** `pc_port/pc_p2_king_teki.cpp`: the ambush pin
+  moved below the `mHealth <= 0` check (dead host no longer re-pinned while the
+  carcass pellet moves); `P2_KING_TEKI_CORPSE` now prints `carcass_pellet=%d`
+  (`t->mPellet != nullptr`) instead of literal flags; `P2_KING_TEKI_FLICK`
+  `shaken=%d` now prints the flicked count (attached), not `b.blows`.
+  `pc_p2_king_teki_name` returns "Emperor Bulblax" and is chained into the
+  `podTitle` name fallback in `pc_port/pc_p2_preview.cpp`.
+- **4 (validator): fixed.** `experimental/pikmin2_lane24_gates.py` dropped the
+  stale headless `frame=185` negative check.
+
+### Transport still BLOCKED (fix1)
+
+Latest run (runtime7) reaches the full kill chain but not the receipt:
+
+```text
+king-creature-runtime7/king/c52f1d6176604f33bef0b0cbd8fc4b9a/native.log:
+  1060:P2_KING_TEKI_CORPSE generator=221010 health=0.0 carcass_pellet=0
+  1061:P2_KING_CREATURE_DEATH_SEEN receiver=engine host_health=0
+  1066:P2_KING_CREATURE_CORPSE_PELLET found=1
+  (no P2_POD_CAPTAIN_RETURN, no P2_POD_RECEIPT id=corpse:king:221010)
+```
+
+The carcass pellet exists (`mPelletView == host`, `found=1`), the preview rebind
+registered the host (`P2_POD_CORPSES_REBOUND after=1`), and the
+`corpse:king:<gen>` receipt is wired in `pc_port/pc_p2_preview.cpp`, yet the free
+reds never pick up and carry the Red-Bulborb carcass to the Pod. Suspected
+contributor: the Chappy host's own AI eats the squad during the ~200 s fight, so
+few carriers remain after death (the host's eat is not suppressed by the sidecar,
+which only holds position and health). The natural carcass->Pod carry is exactly
+the path lane 19 had to ship an *assisted* transport variant for
+(`pikmin2_mamuta_pod_assisted_fixture.inc`); a natural carry is flaky in P1.
+
+Remaining (not the 4 review items): either suppress the host's Pikmin-eating AI
+during the fight, or accept an assisted transport with the same labeling lane 19
+used. `pc_port/pc_p2_king_teki.cpp` owns the host lifecycle; the eating is the
+host Teki's P1 strategy, not lane 24's code.
+
+### Subagent usage (fix1)
+
+- explore #1 (audit): returned the exact `NAVISTATE_Pellet=24` and its long-idle
+  entry (`naviState.cpp:1425-1428` `mNeutralTime > 140`), and the `podTitle` name
+  chain with the exact `pc_p2_king_teki_name` wiring. Used as-is.
+- explore #2 (inventory): quoted the exact harness/native/validator lines to edit
+  and flagged that the validator `frame=185` was already removed in the tree.
+  Used as-is.
+- general #3 (validator): removed the `frame=185` relic, 19 tests green, no test
+  edits needed. Used as-is.
+
+Net ~15 min saved; no result discarded.
+
