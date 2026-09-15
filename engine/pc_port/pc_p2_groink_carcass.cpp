@@ -2,7 +2,10 @@
 #include <cmath>
 namespace {
 bool finite(float x) { return std::isfinite(x)&&x>=0&&x<=1.0e6f; }
+int sTotalBirths = 0;
 }
+void p2_groink_carcass_note_birth() { ++sTotalBirths; }
+int p2_groink_carcass_total_births() { return sTotalBirths; }
 bool P2GroinkCarcass::become(const P2GroinkCarcassConfig& config) {
     if (!finite(config.gaugeDelay)||!finite(config.recoverySeconds)||config.recoverySeconds<=0||
         !finite(config.maxHealth)||!std::isfinite(config.maxHealth/config.recoverySeconds)) return false;

@@ -1,6 +1,7 @@
 #include "pc_p2_groink_teki.h"
 #include "pc_p2_groink_teki_policy.h"
 #include "pc_p2_groink_carcass.h"
+#include "pc_p2_preview.h"
 #include "Generator.h"
 #include "Pellet.h"
 #include "system.h"
@@ -29,12 +30,9 @@ const Binding* find(const BTeki* t) {
     auto i = s.find(const_cast<BTeki*>(t));
     return i == s.end() ? nullptr : &i->second;
 }
+// Preview-only bound-host max-life cap (see the header note).
+constexpr float kHostLifeClamp = 120.0f;
 } // namespace
-
-// Process-wide RequestBirth tally. It deliberately lives outside the per-actor
-// map so a deferred pellet kill (which erases the binding via forget on the BIRTH
-// frame) cannot zero it before the runtime fixture reads the result.
-static int sTotalBirths = 0;
 
 void pc_p2_groink_teki_reset() { s.clear(); }
 
@@ -55,7 +53,19 @@ int pc_p2_groink_teki_births(const BTeki* t) {
     const Binding* b = find(t);
     return b ? b->births : 0;
 }
-int pc_p2_groink_teki_total_births() { return sTotalBirths; }
+int pc_p2_groink_teki_total_births() { return p2_groink_carcass_total_births(); }
+bool pc_p2_groink_receipt(PelletView* view, unsigned& generator) {
+    if (!view) return false;
+    const Binding* b = find(static_cast<BTeki*>(view));
+    if (!b) return false;
+    generator = b->generator;
+    return true;
+}
+float pc_p2_groink_teki_param_f(const BTeki* teki, int idx, float fallback) {
+    if (idx != TPF_Life || !pc_pikipelago_room_preview()) return fallback;
+    if (!find(teki)) return fallback;
+    return fallback < kHostLifeClamp ? fallback : kHostLifeClamp;
+}
 
 void pc_p2_groink_teki_setup() {
     pc_p2_groink_teki_reset();
@@ -145,7 +155,7 @@ void pc_p2_groink_teki_tick(BTeki* t) {
             born.existenceLength = -1.0f;
             born.inPiklopedia = false;
             ++b.births;
-            ++sTotalBirths;
+            p2_groink_carcass_note_birth();
             std::printf("P2_GROINK_CARCASS_BIRTH generator=%u pos=%.3f,%.3f,%.3f face_dir=%.3f existence_length=%.3f in_piklopedia=%d health=%.3f\n",
                         b.generator, born.position.x, born.position.y, born.position.z,
                         born.faceDir, born.existenceLength, born.inPiklopedia ? 1 : 0,

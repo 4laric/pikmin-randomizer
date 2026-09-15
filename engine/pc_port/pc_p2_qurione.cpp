@@ -89,6 +89,7 @@ constexpr float EGG_FLOOR_PAD = 2.0f;    // floor-contact tolerance
 
 struct Wisp {
     QState state = QS_STAY;
+    unsigned generator = 0;  // stable id for the forget marker (mGenerator nulls on teardown)
     float stateTime = 0.0f;
     float timer = 0.0f;
     Vector3f spawn[2];
@@ -98,6 +99,7 @@ struct Wisp {
     bool eggAttached = true;
     bool dropFired = false;
     bool deadLogged = false;
+    bool killed = false;
     bool probeLogged = false;
     float logTimer = 0.0f;
     std::string clip = "appear1";
@@ -278,7 +280,16 @@ void pc_p2_qurione_reset() {
     logged[0] = logged[1] = false;
 }
 
-void pc_p2_qurione_forget(BTeki* actor) { actors.erase(static_cast<PelletView*>(actor)); }
+void pc_p2_qurione_forget(BTeki* actor) {
+    // Lane-07 lifetime seam (pc_p2_forget_teki, from BTeki::doKill / TekiMgr::newTeki):
+    // report the unbind so the drop fixture can show cleanup after death.
+    auto it = actors.find(static_cast<PelletView*>(actor));
+    if (it != actors.end()) {
+        std::printf("P2_QURIONE_FORGET generator=%u\n", it->second.generator);
+        std::fflush(stdout);
+        actors.erase(it);
+    }
+}
 const char* pc_p2_qurione_name(PelletView* actor) { return actors.count(actor) ? "Honeywisp (source FSM)" : nullptr; }
 
 float pc_p2_qurione_param_f(const BTeki* actor, int idx, float fallback) {
@@ -406,6 +417,7 @@ void pc_p2_qurione_setup() {
         // executing, freezing the position mid-Move.
         actor->setInsideView();
         const unsigned gen = actor->mGenerator->_70;
+        w.generator = gen;
         std::printf("P2_QURIONE_BIND generator=%u source_id=16 visual_only=0\n", gen);
         std::printf("P2_ENEMY_READY species=Qurione native_family=Qurione generator=%u x=%.7f y=%.7f z=%.7f "
                     "health=%.1f max_health=%.1f behavior=native source_FSM=implemented reward=P2_Egg\n",
@@ -531,7 +543,14 @@ void pc_p2_qurione_update(BTeki* actor) {
             w.deadLogged = true;
             std::printf("P2_QURIONE_DEAD generator=%u source_id=16\n", gen);
         }
-        if (w.stateTime >= DEATH_TIME) actor->die();
+        // die() alone only arms mDeadState, and dieSoon() runs inside doAI's
+        // !mDeadState block (teki.h:249-252); because this FSM update is outside
+        // doAI, a bare die() never finalizes, so doKill and the lane-07
+        // pc_p2_forget_teki seam never run. pcEscapeNow() = die()+dieSoon().
+        // pcEscapeNow() finalizes the death, runs doKill and the lane-07 forget
+        // seam, which erases this wisp from actors (:290). w is dangling after
+        // this call, so return before the egg tick / POS log below touch it.
+        if (w.stateTime >= DEATH_TIME && !w.killed) { w.killed = true; actor->pcEscapeNow(); return; }
         break;
     }
     default:

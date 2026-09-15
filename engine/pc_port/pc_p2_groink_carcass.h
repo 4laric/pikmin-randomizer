@@ -25,6 +25,12 @@ struct P2GroinkCarcassBirth {
     float existenceLength = -1.0f;
     bool inPiklopedia = false;
 };
+
+// Process-wide RequestBirth tally for host/runtime evidence. It is deliberately
+// not owned by any per-actor binding, so erasing a binding on pellet kill /
+// forget cannot zero a birth that already fired. Monotonic; never reset.
+void p2_groink_carcass_note_birth();
+int p2_groink_carcass_total_births();
 class P2GroinkCarcass {
 public:
     bool become(const P2GroinkCarcassConfig& config);

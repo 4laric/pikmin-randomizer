@@ -9,6 +9,7 @@
 #include "pc_p2_qurione.h"
 #include "pc_p2_shijimi.h"
 #include "pc_p2_kurage_teki.h"
+#include "pc_p2_groink_teki.h"
 #include "pc_p2_sheargrub.h"
 #include "pc_p2_king_teki.h"
 #include "pc_p2_kochappy.h"
@@ -352,6 +353,10 @@ bool pc_p2_preview_deliver(Pellet* pellet) {
         }
         else if(unsigned generator=0;pc_p2_king_teki_receipt(pellet->mPelletView,generator)) {
             receipt="corpse:"+pc_p2_cave_receipt_prefix()+"king:"+std::to_string(generator);value=corpseValue;
+        }
+        // Lane 21 (#198): Groink carcass sidecar receipt (corpse:groink:<gen>).
+        else if(unsigned generator=0;pc_p2_groink_receipt(pellet->mPelletView,generator)) {
+            receipt="corpse:"+pc_p2_cave_receipt_prefix()+"groink:"+std::to_string(generator);value=corpseValue;
         }
         else {
             auto found=corpses.find(pellet->mPelletView);
