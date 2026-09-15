@@ -1006,3 +1006,112 @@ py -3.12 -m pytest tests/test_pikmin2_handoff_ingest.py -q                 # 19 
 py -3.12 -m pytest <handoff/admission/roster/seed/placement suites> -q     # 159 passed, 17 subtests
 py -3.12 scripts/generate_p2_advance_report.py --branch claude/p2-deepseek-wave  # deterministic, seedable 50
 ```
+
+## Slice 7
+
+Bounded slice (solo): **make the citation gap actionable and checkable.**
+
+### Deliverables
+
+- `scripts/check_p2_handoff_gates.py` — checks one handoff doc and prints, per
+  gate row, `accepted` (cited natural PASS), `refused` (`uncited` / `injected` /
+  `shared table` / `bad status`) or `ignored`, with the exact edit for each refused
+  row; exits 1 when any PASS row is refused, 2 on a missing file.
+- `docs/PIKMIN2_ENEMY_ROSTER.md` — new 'Paste-able gate table template' block with
+  the citation regex and a natural-PASS example row plus an injected row.
+- Per-lane action list below (run over every merged handoff on
+  `claude/p2-deepseek-wave`); the integrator can forward these row edits to the lanes.
+- Tests: `tests/test_pikmin2_handoff_ingest.py` gains the checker on the two
+  synthetic handoffs, CLI exit codes and a bad-status flip.
+
+### Fix legend (what a refused row needs)
+
+- `uncited` -> add a citation to the Evidence cell: a `.md`/`.log`/`.txt`/`.json`
+  token or a `docs/`·`output/`·`tests/` path; for `transport_reward`, an
+  `onion:`/`corpse:`/`receipt:` key.
+- `injected` -> mark `Injected vs natural = injected` and set Result `UNTESTED`,
+  or supply a natural citation (an injected PASS never advances).
+- `bad status` -> begin the Result cell with
+  `PASS`/`PARTIAL`/`FAIL`/`BLOCKED`/`UNTESTED`/`N/A`.
+- `shared` -> give the identity its own `Source ID` line + six-gate table (its
+  PASS rows are currently attributed to another identity), or drop it from the
+  handoff's identity list when it is genuinely out of scope.
+
+The `shared` rows are mostly lanes mentioning sibling identities without claiming
+a table for them (e.g. lane 02 names the whole roster); the *citation* gap to fix
+is the `uncited`/`injected`/`bad status` rows on the identities that already have
+a table:
+
+| Lane | Refused rows (identity: gate:reason …; shared: named-no-table) |
+|---|---|
+| 02 | shared: 2 Chappy, 9 Kogane, 10 Wealthy, 11 Fart, 12 UjiA, 13 UjiB, 15 Armor, 16 Qurione, 18 MaroFrog, 23 Sarai, 24 Tank, 28 ElecBug, 30 Queen, 32 Demon, 40 OoPanModoki, 41 Fuefuki, 44 BlueKochappy, 45 YellowKochappy, 53 KingChappy, 54 Miulin, 55 Hanachirashi, 56 Damagumo, 57 Kurage, 58 BombSarai, 59 FireOtakara, 60 WaterOtakara, 61 GasOtakara, 62 ElecOtakara, 66 Houdai, 69 BigFoot, 72 OniKurage, 73 BigTreasure, 75 Kabuto, 78 MiniHoudai, 79 Sokkuri, 84 Hana, 93 BombOtakara, 94 DangoMushi, 95 Rkabuto, 96 Fkabuto, 99 BlackMan, 101 UmiMushiBlind |
+| 04 | shared: 44 BlueKochappy, 45 YellowKochappy |
+| 05 | shared: 44 BlueKochappy, 45 YellowKochappy |
+| 06 | shared: 44 BlueKochappy |
+| 07 | shared: 44 BlueKochappy |
+| 08 | 84 Hana (identity_spawn:uncited movement_animation:uncited attacks_receivers:injected transport_reward:bad status) |
+| 09 | shared: 30 Queen |
+| 12 | shared: 72 OniKurage |
+| 13 | shared: 44 BlueKochappy |
+| 14 | 79 Sokkuri (identity_spawn:uncited movement_animation:uncited attacks_receivers:bad status death_corpse:injected cleanup_reentry:uncited)<br>shared: 15 Armor, 28 ElecBug, 65 Imomushi, 68 TamagoMushi, 84 Hana |
+| 16 | shared: 17 Frog, 18 MaroFrog, 26 Catfish, 27 Tadpole, 63 Jigumo, 101 UmiMushiBlind |
+| 17 | 9 Kogane (identity_spawn:uncited movement_animation:uncited attacks_receivers:injected death_corpse:uncited cleanup_reentry:uncited)<br>shared: 10 Wealthy |
+| 18 | shared: 38 PanModoki |
+| 20 | 75 Kabuto (identity_spawn:uncited movement_animation:bad status attacks_receivers:uncited cleanup_reentry:uncited)<br>shared: 95 Rkabuto, 96 Fkabuto, 97 FminiHoudai |
+| 21 | shared: 78 MiniHoudai, 97 FminiHoudai |
+| 22 | 59 FireOtakara (identity_spawn:uncited movement_animation:uncited attacks_receivers:uncited death_corpse:bad status cleanup_reentry:bad status)<br>shared: 60 WaterOtakara, 61 GasOtakara, 62 ElecOtakara, 93 BombOtakara |
+| 24 | shared: 53 KingChappy |
+| 25 | 94 DangoMushi (identity_spawn:uncited movement_animation:uncited attacks_receivers:injected transport_reward:bad status)<br>shared: 34 SnakeCrow, 70 SnakeWhole |
+| 26 | 66 Houdai (identity_spawn:uncited attacks_receivers:uncited death_corpse:bad status cleanup_reentry:uncited)<br>shared: 56 Damagumo, 69 BigFoot |
+| 27 | 58 BombSarai (identity_spawn:bad status death_corpse:bad status transport_reward:bad status) |
+| 28 | shared: 41 Fuefuki |
+| 29 | 57 Kurage (movement_animation:bad status attacks_receivers:bad status)<br>shared: 72 OniKurage |
+| 31 | 99 BlackMan (identity_spawn:injected movement_animation:injected attacks_receivers:uncited death_corpse:uncited cleanup_reentry:uncited) |
+| 32 | 73 BigTreasure (movement_animation:uncited attacks_receivers:bad status transport_reward:bad status cleanup_reentry:bad status) |
+| 33 | shared: 44 BlueKochappy, 45 YellowKochappy |
+
+### Tests
+
+```
+py -3.12 -m pytest tests/test_pikmin2_handoff_ingest.py -q                 # 23 passed
+py -3.12 -m pytest <handoff/admission/roster/seed/placement suites> -q     # 166 passed, 17 subtests
+py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE22_DEEPSEEK_HANDOFF.md  # exit 1 (uncited/bad status)
+```
+
+## Fix 8
+
+Review corrections to slice 7 (checker would exit 1 on every lane; solo).
+
+- **Template** (`docs/PIKMIN2_ENEMY_ROSTER.md`): gate-6 example row is now
+  `UNTESTED (injected)` (not `PASS (injected)`), and the natural rows cite
+  `docs/PIKMIN2_FROG_IMPORT.md ...` instead of the `output/<lane-out>/<run>/...`
+  placeholder; dropped the "at least two path segments" parenthetical.
+- **Checker** (`scripts/check_p2_handoff_gates.py`):
+  - `shared table` is now a *warning* (a lane naming a sibling in prose no longer
+    exits 1); `had_refusal` is set only by a refused PASS row.
+  - `bad status` is split: a misplaced `PASS` token is a refusal (exit 1), a
+    misplaced non-PASS token (or no token) is a warning; the offending cell is
+    shown via `ascii(result[:40])` (cp1252-safe) and the hint says "move `N/A` to
+    the start".
+  - `CITATION_HINT` reworded (no paste-able `output/<lane-out>/<run>/native.log:NNN`).
+  - Cosmetic: unused `label` param dropped, needless f-string removed, `sys.stdout.flush()`
+    before the stderr summary, an ASCII hyphen instead of an em-dash (cp1252-safe
+    wording in both scripts).
+- **Ingest** (`scripts/ingest_p2_handoff_gates.py`): `_has_citation` rejects evidence
+  containing `<` or `NNN` (a pasted placeholder no longer counts); `_owner_from_line`
+  now roster-filters its `_SOURCE_ID_RE` branch; em-dashes in the docstring and the
+  rendered "shared table" header replaced with `-`.
+
+### Re-run (checker)
+
+```
+py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_ENEMY_ROSTER.md   # template -> exit 0 (17 Frog all accepted, gate 6 UNTESTED; 15/79 shared-warning)
+L29 (Kurage/OniKurage):  exit 0  (movement/attacks "source-backed N/A" -> warning; 72 OniKurage shared-warning)
+L22 (FireOtakara 59):    exit 1  (identity_spawn/movement/attacks refused:uncited; death_corpse/cleanup -> warning bad-status "Injected damage applied 135\u21920")
+L31 (BlackMan 99):       exit 1  (identity_spawn/movement refused:injected; attacks/death/cleanup refused:uncited)
+L26 (Houdai 66):         exit 1  (identity_spawn/attacks/cleanup refused:uncited; death_corpse refused:bad status "proxy artifact" is not a PASS)
+```
+
+`py -3.12 -m pytest tests/test_pikmin2_handoff_ingest.py -q` -> 24 passed;
+full lane-02 suites -> 167 passed, 17 subtests. Advance report left at its
+committed state (lane 01 regenerates after merge).

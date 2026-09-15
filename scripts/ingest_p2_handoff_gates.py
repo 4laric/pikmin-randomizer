@@ -10,7 +10,7 @@ It is the ingest counterpart to ``scripts/audit_pikmin2_roster.py`` and shares
 its deny-by-default posture:
 
 * Nothing is written to the evidence ledger unless ``--apply`` is given, and even
-  then only the advanced gate ``PASS`` values are merged into existing rows — the
+  then only the advanced gate ``PASS`` values are merged into existing rows - the
   ``delivery_receipt`` and ``eligibility`` are never touched, so a handoff cannot
   admit an identity on its own (transport/reward stays lane 06 review).
 * A gate table belongs to ONE identity: the source id named in the nearest
@@ -235,7 +235,9 @@ def _status_token(result_cell: str) -> str:
 
 def _has_citation(text: str) -> bool:
     clean = text.strip()
-    if not clean:
+    # A paste-able placeholder (``<...>`` or a literal ``NNN`` line marker) is not
+    # a citation: reject it so a lane cannot paste the template verbatim.
+    if not clean or "<" in clean or "NNN" in clean:
         return False
     if _EXT_CITATION_RE.search(clean):
         return True
@@ -273,7 +275,10 @@ def _gate_verdict(number: int, row: dict) -> dict:
 def _owner_from_line(line: str, by_name=None) -> int | None:
     match = _SOURCE_ID_RE.search(line)
     if match:
-        return int(match.group(1))
+        sid = int(match.group(1))
+        if by_name is None or any(entry.source_id == sid for entry in by_name.values()):
+            return sid
+        return None
     match = _ID_ENUM_RE.search(line)
     if match:
         sid, name = int(match.group(1)), match.group(2)
@@ -522,7 +527,7 @@ def render_advance_report(report: dict, branch: str) -> str:
         lines.append("")
         head = f"### {row['source_id']} {row['enum_name']} ({row['role']})"
         if row["shared"]:
-            head += " — shared table, excluded"
+            head += " - shared table, excluded"
         lines.append(head)
         lines.append(f"- handoffs: {', '.join(row['handoffs'])}")
         lines.append(f"- advances: {', '.join(row['advances']) or '(none)'}")
