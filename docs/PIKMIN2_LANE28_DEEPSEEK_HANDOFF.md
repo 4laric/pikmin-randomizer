@@ -222,3 +222,162 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l2
 
 - Accepted `tests/test_pikmin2_fuefuki_arena.py::test_gate_status_review_corrected` as a label-lint test (literal prefixes, not a run log); a run-log reader belongs with the first real combat run.
 - Ordering hazard to verify before the vehicle-runtime evidence is cited again: `BTeki::doKill` (tekibteki.cpp:746) now calls `pc_p2_forget_teki` → `pc_p2_hardlanes_forget`, which nulls `sFuefukiVehicle` and stops the FSM tick but does not clear `sFuefukiHeld`/`sFuefukiPiki`. If the Napkid `TaiDyingAction` reaches `doKill` before the FSM consumes health<=0 → Dead → follower release, held Pikmin are never released. Re-run `p2_fuefuki_vehicle_runtime` on this head. Pre-existing: `pc_p2_reset_all_teki` does not call `pc_p2_hardlanes_reset`.
+
+---
+
+## Slice 2 — first real combat run + the ordering hazard
+
+Delivered on the same worktrees (native base `8ac74e7f` = integrator's
+compile-only-doc commit; root base `3d05f322` = integrator's review-notes
+commit). Three parts, all verified at runtime this session:
+
+1. **(a) First real combat run.** The combat fixture (`tools/p2_fuefuki_combat_runtime.cpp`)
+   was rewritten to drive one source cycle `press → Struggle → Dead` with follower
+   release and to emit the receipt-parseable marker family, then linked into a
+   runnable replacement-main executable and executed on the staged cargo-free
+   arena at 960×540 with the live squad. Both the injected press and the injected
+   death health are labelled `injected=1` (there is no natural P1 press emitter
+   for a Napkid, provider lane 10).
+2. **(b) Ordering-hazard fix + re-verify.** Confirmed the death-funnel ordering
+   (details below) and made `pc_p2_hardlanes_forget` release held followers via a
+   new `P2FuefukiBinding::killVehicle()` instead of only nulling the pointer.
+   Re-ran `p2_fuefuki_vehicle_runtime` on this head: the release is not lost.
+3. **(c) Reset hook.** `pc_p2_reset_all_teki` now calls `pc_p2_hardlanes_reset`.
+
+### Death-funnel ordering (verified, source + native)
+
+- `pc_p2_hardlanes_update()` runs from `GameCoreSection::update` (gameCoreSection.cpp:1785),
+  **before** `tekiMgr->update()` in `GameCoreSection::updateAI` (gameCoreSection.cpp:2946).
+  So a health drop that lands in the teki AI pass is only seen by the FSM on the
+  next frame.
+- The native funnel can complete entirely within one `updateAI` frame
+  (`die()` tekibteki.cpp:661-670 → `dieSoon()` 675-720 → `kill(false)` 718 →
+  `Creature::kill` → `BTeki::doKill` 740 → `pc_p2_forget_teki` 746 → `pc_p2_hardlanes_forget`).
+  The standard `TaiDyingAction` delays `die()` one or more frames (taireactionactions.cpp:83-101),
+  but the instant `TaiDyeAction::start` (:48-51) and the `viewKill` path
+  (tekibteki.cpp:178-181) can null the vehicle before the FSM consumes health<=0.
+- Source "death releases the squad" is per-Pikmin, not a beetle-side broadcast:
+  `ActTeki::exec` owner-not-alive branch (aiTeki.cpp:62-81) transits each follower
+  to `PIKISTATE_Panic` (whistle-reclaimable). `Fuefuki::onKill` (Fuefuki.cpp:85-93)
+  does NOT release followers.
+
+### Fix
+
+- `pc_port/pc_p2_fuefuki_fsm.h` — `P2FuefukiFsm::enterOwnerDeath()` forces the Dead
+  entry (ownerDied commits the Panic release exactly as a normal health<=0 transit;
+  idempotent after a normal death).
+- `pc_port/pc_p2_fuefuki_binding.h` — `P2FuefukiBinding::killVehicle()` drives that
+  transition and dispatches `followEnd(PANIC)` per released follower (mirrors
+  `tick()`'s release dispatch).
+- `pc_port/pc_p2_hardlanes.cpp` — `pc_p2_hardlanes_forget` now calls `killVehicle()`
+  before nulling `sFuefukiVehicle`, so a `doKill`-before-FSM-tick can never strand
+  held whistle-stolen Pikmin.
+
+### Native commits (clean, on `8ac74e7f`)
+
+- `a7c8d545` lane28: Fuefuki owner-death release — killVehicle path on forget (#245)
+- `88c20fbc` lane28: hook (teki lifetime) reset Fuefuki hardlanes at stage boundary
+- `69bfcd24` lane28: Fuefuki owner-death release test (#245)
+- `0bb1fc3a` lane28: full-chain combat runtime markers (press/Struggle/Dead/release) (#245)
+
+Root commit (clean, on `3d05f322`): `8325f09f` lane28 slice2: Fuefuki combat
+run-log receipt reader + tests (#245) — `experimental/pikmin2_fuefuki_combat_receipt.py`
+(dependency-free `parse(text)`) + `tests/test_pikmin2_fuefuki_combat_receipt.py`.
+
+### Build evidence
+
+- `build_dir=output/dsw/native-l28-build exe=output/dsw/native-l28-build/bin/nectar.exe`
+  `native=0bb1fc3a44d25c0babc607d6035236836e75ae86` `sha256=7fd3b62349d9d225719277c47097f593fa223b9bb79aa83dd6f5b03412a27923` `ninja_n="ninja: no work to do."`
+- `p2_fuefuki_owner_death_test` built via `build_lane.py l28 --target p2_fuefuki_owner_death_test`
+  (exe SHA-256 `ca9f92f4aae29c1868d9e63c93124cfe68d5ffb74526dec1ab4973822078125f`), PASS.
+- Build-note: `scripts/build_pikmin2_fixture.py` resolves `CMAKE_CXX_COMPILER`
+  relative to the build dir, so the private build was reconfigured with the
+  absolute compiler path `C:/msys64/mingw64/bin/g++.exe` (matches the maintained
+  `native/build-randomizer` convention); no object recompilation was needed.
+
+### Runtime evidence (real-GL, both executed this session)
+
+Run dir `output/dsw/l28-out/s2-arena/ca717757c81b48e39a2f4ff074d922b4` (regenerated
+from the absolute P2 disc `C:/Users/alari/Downloads/PIKMIN2 for GAMECUBE.iso` and P1
+assets `C:/Users/alari/bbft/dist/cohesion/pikmin/assets`; `p2-cargo-free.txt`,
+`p2-fuefuki-teki.txt 245001 11`, overlaid pose bank + motion event table).
+
+- **Combat run PASS** (`output/dsw/l28-out/s2-runs/combat-run.log`, fixture exe
+  SHA-256 `13de61aff0b6fc09c334b084412e90d7e9d996f129be51816ae446ebfcf5263c`, provenance `built`):
+  `P2_FUEFUKI_COMBAT_RT_WINDOW size=960x540 centered=1`; vehicle bound
+  (`vehicle=Napkid gen=245001 type=11`); claim `held=2`; `P2_FUEFUKI_COMBAT_RT_PRESS injected=1 press_count=1 state=7 held=2`;
+  `P2_FUEFUKI_COMBAT_RT_STRUGGLE state=8 held=2`; `P2_FUEFUKI_COMBAT_RT_DEATH injected=1 state=8 held=2`;
+  `P2_FUEFUKI_COMBAT_RT_RELEASE released=2 held=0 frames=63 state=0`; `PASS FUEFUKI_COMBAT_RUNTIME`.
+  Receipt verdict: `{window,ready,receiver_wired,struggle,death,release_ok,passed}`
+  all true, `released=2`, `held_after=0`.
+- **Vehicle run PASS** (`output/dsw/l28-out/s2-runs/vehicle-run.log`, fixture exe
+  SHA-256 `92a8bb472043d1177fd6b129474120b438118e529b4c01f6e5a11af4df06ba01`): the
+  re-run on this head is `PASS FUEFUKI_VEHICLE_RUNTIME` — `CLAIM held=2`,
+  `MOVE held=2 moved=190.7`, `DEATH state=0 held=0 frames=22` (follower release is
+  NOT lost; the direct `mHealth=0` injection does not reach `doKill` before the
+  FSM tick, matching the death-funnel audit. The residual instant-die/viewKill
+  exposure is covered by `killVehicle()` + the owner-death test).
+
+### Tests
+
+- Native `tools/p2_fuefuki_owner_death_test.cpp` (new; CMake-registered) — PASS:
+  `killVehicle()` releases the claimed follower as PANIC exactly once with the
+  hold cleared and the follower reclaimable; idempotent after a normal death;
+  no-claim `killVehicle()` transits Dead with zero releases.
+- Prior fuefuki policy fixtures re-run clean (no regression): interference_policy,
+  fsm, binding, suspend_fallback, follow, follow_binding — PASS.
+- `-fsyntax-only` clean on `pc_p2_hardlanes.cpp`, `pc_p2_teki_lifetime.cpp`,
+  `tools/p2_fuefuki_combat_runtime.cpp` (PIKI_PC_PORT=1).
+- Root Python: `test_pikmin2_fuefuki_combat_receipt.py` (3) + the prior five
+  fuefuki suites — **30 passed**.
+
+### Six-gate delta (this slice)
+
+| # | Gate | Status |
+|---|---|---|
+| 3 | Attacks and receivers | receiver wired + **Struggle observed** on the real vehicle (injected press, labelled); still no natural P1 emitter (provider 10). |
+| 4 | Death and corpse | health→Dead→**follower release observed live** (`released=2 held=0`; death health injected, labelled); corpse still the engine `TEKICORPSE_LeaveCorpse` path, reward UNTESTED (provider 06). |
+| 6 | Cleanup and re-entry | forget now releases followers + `pc_p2_hardlanes_reset` wired into `pc_p2_reset_all_teki`; a generation-change run remains (provider 07). |
+
+### Subagent usage
+
+- `explore` #1 — **Death-funnel + owner-death audit.** Used as-is. Confirmed the
+  `pc_p2_hardlanes_update` runs *before* `tekiMgr->update` in the frame, the exact
+  `doKill` funnel, the instant-die (`TaiDyeAction`) and `viewKill` residual paths,
+  and that `Fuefuki::onKill` does not release followers (per-Pikmin via `ActTeki`).
+  This directly shaped the `killVehicle()` fix. ~30 min saved.
+- `explore` #2 — **Candidate inventory.** Used as-is. Confirmed `P2FuefukiFollowController`
+  exposes `release(id)/releaseAll()`, that `pc_p2_hardlanes_reset` was absent from
+  `pc_p2_reset_all_teki` (task c defect), and enumerated the exact fixture marker
+  strings. ~15 min saved.
+- `general` #3 — **Run-log receipt reader + pytest.** Used as-is; I verified the
+  marker grammar against my final fixture `printf` formats and the parser then
+  validated the *real* combat log (all verdict fields true). ~15 min saved; no
+  correction needed.
+
+### Remaining blockers (unchanged)
+
+- `native_identity` (enemy 41) — #186/#128.
+- Natural P1 press emitter for the Napkid vehicle — provider 10.
+- Dedicated P1 follow action — provider 12 (`mVolatileVelocity` approximation).
+- Corpse transport/reward — provider 06; generation-change cleanup run — provider 07.
+
+### One exact reproduction command
+
+```
+cd <native-l28> && export PATH="/c/msys64/mingw64/bin:$PATH" && \
+g++ -std=c++17 -Wall -Wextra -Werror -Ipc_port tools/p2_fuefuki_owner_death_test.cpp -o /tmp/ot.exe && /tmp/ot.exe   # PASS
+```
+Combat GL run:
+```
+cd C:/Users/alari/pikmin-randomizer/output/dsw/l28-root
+py -3.12 scripts/build_pikmin2_fixture.py --build C:/Users/alari/pikmin-randomizer/output/dsw/native-l28-build \
+  --source C:/Users/alari/pikmin-randomizer/output/dsw/native-l28 \
+  --fixture C:/Users/alari/pikmin-randomizer/output/dsw/native-l28/tools/p2_fuefuki_combat_runtime.cpp \
+  --output C:/Users/alari/pikmin-randomizer/output/dsw/l28-combat-fixture \
+  --expected-native-head 0bb1fc3a44d25c0babc607d6035236836e75ae86
+cd C:/Users/alari/pikmin-randomizer/output/dsw/l28-out/s2-arena/ca717757c81b48e39a2f4ff074d922b4
+cp C:/Users/alari/pikmin-randomizer/output/dsw/l28-combat-fixture/fixture.exe .
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l28 -- \
+  bash -lc 'export PATH="/c/msys64/mingw64/bin:$PATH" PIKMIN_P2_ROOM_WINDOW=960x540 PYTHONUTF8=1; timeout 180 ./fixture.exe --experimental-pikmin2-room'
+```
