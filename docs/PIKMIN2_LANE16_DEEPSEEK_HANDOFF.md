@@ -146,3 +146,124 @@ $env:PATH='C:\msys64\mingw64\bin;'+$env:PATH
 $env:PIKMIN_P2_ROOM_WINDOW='960x540'; $env:PYTHONUTF8='1'
 py -3.12 output/deepseek-wave/slot.py run gl l16 -- py -3.12 -m experimental.pikmin2_frog_combat run --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" --bank "C:/Users/alari/pikmin-randomizer/output/dsw/l16-out/frog-bank" --output "C:/Users/alari/pikmin-randomizer/output/dsw/l16-out/run-combat" --exe "C:/Users/alari/pikmin-randomizer/output/dsw/l16-out/fixture-combat/fixture.exe"
 ```
+
+## Slice 2
+
+Worker session: DeepSeek (lane 16). This slice ports the Frog/MaroFrog **source
+FSM** onto `pc_p2_frog.cpp` (the previous slice's "next implementation slice").
+
+### What was implemented (native)
+
+- `pc_port/pc_p2_frog.cpp` now drives the ten-state source FSM
+  (Dead/Wait/Turn/Jump/JumpWait/Fall/Attack/Fail/TurnToHome/GoHome from
+  `FrogState.cpp`) on the P1 TEKI_Frog/TEKI_Frow host, emitting
+  `P2_FROG_STATE species=<Frog|MaroFrog> generator=<id> state=<name>` on every
+  transition. Existing `P2_FROG_READY`/`P2_FROG_BANK_READY` and the
+  setup/reset/forget seam are preserved.
+- New `pc_p2_frog_update(BTeki*)` and `pc_p2_frog_suppress_ai(const BTeki*)`.
+  `suppress_ai` returns true for registered actors and is wired into
+  `BTeki::doAI()` so the P1 TaiOtimoti strategy does not act for registered
+  frogs (the source FSM has exclusive control). `update` is wired into the
+  `BTeki::update()` chain (`src/plugPikiNakata/tekibteki.cpp`).
+- Landing press: source `collisionCallback` InteractPress(attackDamage) on
+  grounded non-bittered Navi/Pikmin in the source head radius (23/21), fired once
+  at the Fall->Attack landing. Jump shake: InteractFlick(0 knockback) at the
+  type1 key event (frame 8). Jump-fail -> Fail via the isStickTo stuck stand-in;
+  home-return via TurnToHome/GoHome. MaroFrog retargets a living captain
+  (`attackNaviPosition`).
+- Two correctness fixes required because the P1 TAI is suppressed in the
+  registered frog: pending damage is applied through `makeDamaged()` (the
+  TaiDamagingAction path no longer runs), and death is finalized through
+  `pcEscapeNow()` (die()+dieSoon(); dieSoon only runs in the suppressed doAI
+  block). Without these, the frog took no damage and never dropped a corpse.
+- `pc_p2_frog_policy.h` adds `p2frog::stateName(int)` for the mapping.
+
+### Root-side
+
+- New `experimental/pikmin2_frog_fsm.py` (parse/validate `P2_FROG_STATE` rows:
+  10 legal states, Wait-first, adjacency table, Dead terminal, combat-cycle and
+  per-variant requirements) and `tests/test_pikmin2_frog_fsm.py` (9 tests).
+
+### Subagent usage
+
+Three subagents were dispatched in parallel:
+
+1. `explore` (source audit) — returned compact FrogState.cpp state/transition/
+   event/param/parameter tables with file:line citations. Used as-is as a
+   cross-check against my own read of `FrogState.cpp`/`Frog.h`/`MaroFrog.cpp`;
+   confirmed the ten states and confirmed the landing press is InteractPress in
+   `collisionCallback` and that there is **no** eatPikmin/swallow for Frog.
+2. `explore` (candidate inventory) — surfaced that `pc_p2_frog.cpp` was still a
+   P1 proxy (no update/suppress), that `P2_FROG_STATE` did not exist natively,
+   and located the `pcEscapeNow()` escape helper in `include/teki.h` (used for
+   the corpse fix). Used as-is; the `dieSoon`/`pcEscapeNow` pointer saved real
+   debugging time.
+3. `general` (tests + validator) — wrote `experimental/pikmin2_frog_fsm.py` +
+   `tests/test_pikmin2_frog_fsm.py`; 9 tests pass locally. Used as-is; committed
+   unchanged.
+
+Estimated net: the two explore agents saved roughly a full working session of
+grep/read time (they located `pcEscapeNow`, confirmed the ODI loop and the
+suppress-AI pattern). The general agent's validator was correct on first run.
+
+### Build / runtime evidence
+
+- Native commits: `6b1a2063` on `deepseek/p2-l16-native` (base
+  `b805d9c626e4f4558c95aef7cac311a5d9a2068f`). Incremental Release builds
+  (`PIKMIN_NATIVE_JAUDIO=ON`, MinGW g++ 16.2, Ninja) succeeded at three
+  intermediate heads, EXE SHA-256:
+  - `17d8ee75ddfb8ea8a34d0364af2688dd25ae7c3fec1419b7264cbb4e4a531590` (FSM port)
+  - `4146ec445e15d7a3ead0286c1fca745486654f944af110cc3cbafa979f150f3a` (+makeDamaged)
+  - `19e437a2bf5aa5e70f14c55b727681b9b22d0d9ee5b85cec4bec14e921422811` (+pcEscapeNow)
+- Runtime fixture (rebuilt `ad336c59…` / final `52e5272b…`) **PASS**, exit 0:
+  `PASS P2_FROG_RUNTIME birth4 controls2 corpses2 injected_attack=1 natural=0`;
+  all checks true (births, cleanup_reentry `4/4/4`, source_params 800/1100,
+  Frog/MaroFrog live+corpse+poses). The `P2_FROG_STATE` trace shows the source
+  cycle `type1→wait2→type2→attack→wait1→waitact1` before injected death, and
+  `clip=dead` then `corpse=1 clip=dead` on pcEscapeNow. Run dir
+  `output/dsw/l16-out/run-runtime-s2/stages/f03e4a22ed95402cb9fe1b484fd336e0`.
+- Python: `py -3.12 -m pytest -q tests/test_pikmin2_frog_fsm.py
+  tests/test_pikmin2_frog_behavior.py tests/test_pikmin2_frog_combat.py
+  tests/test_pikmin2_frog_rewards.py tests/test_pikmin2_frog_carry.py
+  tests/test_pikmin2_frog_arena.py tests/test_pikmin2_tadpole_behavior.py` →
+  **60 passed**.
+
+### Six-gate change vs slice 1
+
+| Gate | Slice 1 | Slice 2 (FSM) |
+|---|---|---|
+| A identity/spawn | PASS | PASS |
+| B movement/animation | PASS (P1 proxy) | PASS (source FSM state trace) |
+| C combat | natural vulnerability PASS, natural lethal FAIL | natural rerun **BLOCKED** (env) |
+| D death/corpse | PASS injected | PASS injected (real source press + pcEscapeNow) |
+| E cleanup/re-entry | PASS | PASS |
+| F persistence | UNTESTED | UNTESTED |
+
+### BLOCKED (environmental, not this lane)
+
+After the FSM landed, the shared MinGW toolchain on this host failed:
+`g++.exe`/`cc1.exe`/`cc1plus.exe` exit 1 with no stdout/stderr and produce no
+object or assembly file, affecting even a trivial `int main(){}` compile (C and
+C++) while `as.exe` still works. This is a host-wide failure under the current
+18-lane parallel load (Windows `C:\Users\alari\AppData\Local\Temp` at ~14 GB,
+thousands of cc*.s files), not a source error — the same sources compiled and
+linked at the three SHAs above. Blocked remainder:
+- **Combat fixture re-run** (natural combat + landing-press under the FSM) and
+- **Natural-lethal attempt** (Frog-only free-mode deploy, no injected damage).
+
+Mechanism expectation (to re-verify once the host recovers): the source Frog is
+800 HP; the 20-red starting squad deals well under 800 before the frog's landing
+press (InteractPress, attackDamage 10) wipes them, so natural lethal should FAIL
+with a health floor ~260 and a squad floor 0 — the same floor observed in slice
+1's P1-proxy combat run. Two trivial hardening edits are already in the committed
+source (a `dead`-escape once-guard and a per-landing `pressDone` reset) but are
+not part of the last successful build (`19e437a2`, which predates them); they
+compile-trivial and will be verified on the next build.
+
+### One exact reproduction
+
+```
+$env:PATH='C:\msys64\mingw64\bin;'+$env:PATH
+$env:PIKMIN_P2_ROOM_WINDOW='960x540'; $env:PYTHONUTF8='1'
+py -3.12 output/deepseek-wave/slot.py run gl l16 -- py -3.12 -m experimental.pikmin2_frog_runtime run --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" --bank "C:/Users/alari/pikmin-randomizer/output/dsw/l16-out/frog-bank" --output "C:/Users/alari/pikmin-randomizer/output/dsw/l16-out/run-runtime-s2" --exe "C:/Users/alari/pikmin-randomizer/output/dsw/l16-out/fixture-runtime-s2/fixture.exe"
+```
