@@ -43,7 +43,7 @@ def _isolate_overrides(monkeypatch):
 
 
 DWARF_ORANGE_CLIPS = {"wait1": 75, "move1": 55, "attack": 90, "dead": 90, "flick": 80}
-SNOW_CLIPS = DWARF_ORANGE_CLIPS
+SNOW_CLIPS = dict(DWARF_ORANGE_CLIPS)
 MODEL_CHUNKS = ((32, b"material"), (34, b"texture"), (48, b"event"), (65535, b""))
 
 
@@ -115,7 +115,7 @@ def make_snow_source(content_root):
     return source
 
 
-KOCHAPPY_CLIPS = DWARF_ORANGE_CLIPS
+KOCHAPPY_CLIPS = dict(DWARF_ORANGE_CLIPS)
 
 
 def make_kochappy_source(content_root):

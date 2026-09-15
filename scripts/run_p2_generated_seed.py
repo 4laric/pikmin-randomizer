@@ -18,10 +18,10 @@ default). The Pod (``p2-pod.txt``/``pod.mod``) is a preview/reward anchor, not
 enemy family content: staged here so ``pc_p2_enemy.cpp:161`` does not gate
 preview-mode Snow; ownership is lane 13.
 
-    py -3.12 slot.py run gl l05 -- py -3.12 scripts/run_p2_generated_seed.py stage \
+    py -3.12 slot.py run gl <lane> -- py -3.12 scripts/run_p2_generated_seed.py stage \
         --assets <P1> --converted <c> --bank <bank> --profile <ref> --snow <cohort-run> \
         --pod <cohort-run> --out <dir> --seed seed-slice5 --cohort 44
-    py -3.12 slot.py run gl l05 -- py -3.12 scripts/run_p2_generated_seed.py run \
+    py -3.12 slot.py run gl <lane> -- py -3.12 scripts/run_p2_generated_seed.py run \
         --exe <nectar.exe> --out <dir>
 """
 import argparse
