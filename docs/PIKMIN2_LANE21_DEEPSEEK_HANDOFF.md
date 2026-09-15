@@ -1,35 +1,57 @@
-# Pikmin 2 lane 21 (Groink) DeepSeek handoff — fix1
+# Pikmin 2 lane 21 (Groink) DeepSeek handoff — fix4
 
 Lane 21 — Gatling Groink (`MiniHoudai` 78 / `FminiHoudai` 97). Tracking #198;
 candidate reuse #204–#210. Executing agent: opencode (deepseek-v4-pro), 2026-09-14.
 Implementation owner: Codex through shared account `4laric`.
 
-## Supersession of the rejected slice
-
-The first slice reimplemented the parked Codex carcass candidate under the same
-file names with an incompatible free-function/POD API (a terminal `revived` flag,
-health clamping, collapsed gauge-manager guard) and was rejected. The native
-branch was reset to base and the parked Codex work resumed by cherry-pick; the
-Python twin / tests / docs were rewritten to mirror the parked API.
-
 ## Slice delivered
 
-Death/corpse recovery for #78/#97: resume the parked carcass regeneration +
-replacement-object revival policy (`pc_p2_groink_carcass`) and the host
-registration guard (`pc_p2_groink_lifetime`), and add a typed birth descriptor
-(`P2GroinkCarcassBirth`) plus a Python twin and tests. The integrated
-shell-strike bridge is untouched.
+Resume the parked Codex Groink carcass policy (`pc_p2_groink_carcass` +
+`pc_p2_groink_lifetime`), bind it to a live generated actor sidecar
+(`pc_p2_groink_teki`), and prove the death/corpse recovery timeline in a real-GL
+run. The native branch was merged from `claude/p2-deepseek-wave-native` (lanes
+06–32) keeping both the lane-12 `pc_p2_king_teki` and lane-21
+`pc_p2_groink_teki` hooks. The prior review's blockers are fixed: the birth
+marker's binding-erase is now observed through a process-wide tally, the frame
+budget is met by short sidecar parameters, and the GL scenario is actually run.
 
-## Source IDs and files owned
+## Concrete source IDs (six-gate tables)
 
-- #78 MiniHoudai, #97 FminiHoudai.
-- Native (`deepseek/p2-l21-native`): `pc_port/pc_p2_groink_carcass.{h,cpp}`,
-  `pc_port/pc_p2_groink_lifetime.h`, `tools/p2_groink_carcass_test.cpp`,
-  `tools/p2_groink_lifetime_test.cpp`, `tools/P2_GROINK_CARCASS.md`,
-  `tools/P2_GROINK_LIFETIME.md`, CMake test wiring.
-- Root (`deepseek/p2-l21`): `experimental/pikmin2_groink_carcass.py`,
-  `tests/test_pikmin2_groink_carcass.py`, `docs/PIKMIN2_GROINK_CARCASS.md`,
-  `docs/PIKMIN2_LANE21_DEEPSEEK_HANDOFF.md`.
+### Source ID: 78 `MiniHoudai`
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | N/A | no live MiniHoudai actor is spawned; the carcass policy is bound to a generated Frog host (proxy) | - |
+| 2. Autonomous movement and animation | UNTESTED | locomotion + Rebirth animation (AnimID 7) remain on the shared teki actor hook | - |
+| 3. Attacks and receivers | UNTESTED | strike bridge integrated; in-flight moving hits remain fixture-pinned | - |
+| 4. Death and corpse | UNTESTED | output/dsw/l21-out/run-carcass-binding2/native.log:1294 | injected (pcEscapeNow kill on a Frog host, then the natural regrowth timeline) |
+| 5. Actual transport and reward | N/A | lane 06 owns drops/cargo; the sidecar only records the birth descriptor | - |
+| 6. Cleanup and re-entry | BLOCKED | generalEnemyMgr->birth + MINIHOUDAI_Rebirth transit on lane 06/07 | - |
+
+### Source ID: 97 `FminiHoudai`
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | N/A | no live pedestal Groink actor is spawned; fixed variant shares the same policy binding | - |
+| 2. Autonomous movement and animation | UNTESTED | locomotion + Rebirth animation remain on the shared teki actor hook | - |
+| 3. Attacks and receivers | UNTESTED | strike bridge integrated; in-flight moving hits remain fixture-pinned | - |
+| 4. Death and corpse | UNTESTED | output/dsw/l21-out/run-carcass-binding2/native.log:1294 (shared Frog-host proxy) | injected (pcEscapeNow kill on a Frog host) |
+| 5. Actual transport and reward | N/A | lane 06 owns drops/cargo | - |
+| 6. Cleanup and re-entry | BLOCKED | generalEnemyMgr->birth + Rebirth transit on lane 06/07 | - |
+
+No gate is claimed as a natural PASS: gate 4 is UNTESTED (injected) because the
+death funnel is a labelled `pcEscapeNow` write, not a natural squad kill.
+
+## Honest labelling (review item 4)
+
+The BECOME chain follows an injected kill. `tools/p2_groink_runtime.cpp` writes
+`mHealth = 0` then `pcEscapeNow()` on the generated Frog and logs
+`P2_GROINK_CARCASS_KILL_INJECTED method=pcEscapeNow`; the Frog leaves a real
+corpse pellet (`TaiOtimotiParameters` `TEKICORPSE_LeaveCorpse`), and the
+`P2_GROINK_CARCASS_READY/BECOME/GAUGE_ACTIVE/KILL_PELLET/BIRTH` markers then run
+**naturally on that corpse** (the regrowth is real, only the kill is injected).
+So the previous wording "natural `P2_GROINK_CARCASS_*` markers" is corrected to
+"natural revival timeline after a labelled injected kill"; gate 4 stays UNTESTED.
 
 ## Ordered commits and dirty state
 
@@ -37,286 +59,146 @@ Root base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`; native base
 `b805d9c626e4f4558c95aef7cac311a5d9a2068f`. Both clean at handoff.
 
 Native (`deepseek/p2-l21-native`):
-1. `45697128` — cherry-pick of parked `codex/p2-groink-carcass` @ `8324a5a0`
-   (feat: model Groink carcass recovery and revival request ordering).
-2. `016a3b77` — cherry-pick of parked `codex/p2-groink-lifetime` @ `14d9391d`
-   (feat: guard Groink registrations across revival and reuse).
-3. `5f5cf5fe` — lane21: resume parked carcass candidate - birth descriptor and CMake test wiring (#198).
+1. `45697128` — cherry-pick `codex/p2-groink-carcass` @ `8324a5a0` (carcass policy).
+2. `016a3b77` — cherry-pick `codex/p2-groink-lifetime` @ `14d9391d` (registration guard).
+3. `5f5cf5fe` — birth descriptor + CMake test wiring.
+4. `b3f784e9` — bind carcass policy to a live generated actor sidecar.
+5. `e22e075d` — [hook] wire sidecar into shared teki lifecycle hooks.
+6. `12298fd5` — review fixes 2: pellet recycle guard, corpse-type gate, honest birth wording.
+7. `3e9f52be` — review fixes 3: snapshot birth before pellet kill, fix use-after-free.
+8. `53916b1c` — review fixes 3: carcass automatic-binding runtime scenario.
+9. `6581ddfe` — merge `claude/p2-deepseek-wave-native` (lanes 06–32), keeping both `pc_p2_groink_teki` and `pc_p2_king_teki` in `gameCoreSection.cpp`.
+10. `dfdccbfe` — review fixes 4: process-wide birth counter surviving pellet-kill forget.
+11. `eef03f93` — review fixes 4: poll the process-wide tally independent of the frog generator.
 
 Root (`deepseek/p2-l21`):
-1. `895124b` — lane21: source Groink carcass revival policy twin, tests and doc (#198) [superseded API; kept in history].
-2. `cd0c59f` — lane21: DeepSeek handoff for carcass revival slice (#198) [superseded].
-3. `795b208` — lane21: resume parked carcass API in the Python twin, tests and doc (#198).
-4. `5b27c79` — lane21: fix1 handoff for resumed parked carcass candidate (#198).
+1. `895124b` — carcass-policy Python twin/tests/doc (superseded API, kept in history).
+2. `cd0c59f` — fix1 handoff (superseded).
+3. `795b208` — resume parked carcass API in the Python twin/tests/doc.
+4. `5b27c79` — fix1 handoff.
+5. `8d8db52` — pin fix1 handoff head hash.
+6. `af4b599` — drop lane-private paths from the Groink carcass doc.
+7. `c711545` — root validator guarding the carcass-birth marker.
+8. `ea78fd0` — slice-2 handoff for live carcass-actor binding.
+9. `857f11a` — review fixes 2: ordered run-log validator + sidecar config writer.
+10. `e5da007` — review fixes 2: slice-2 handoff honesty and placeholders.
+11. `f7f9b62` — review fixes 3: hygiene placeholders, [hook] label, validator cleanup.
+12. `e3ffce3` — review fixes 3: slice-2 handoff update.
+13. `988c7ab` — review fixes 4: short sidecar helper + injected-kill marker validator and tests.
+14. (this handoff commit) — review fixes 4: fix4 handoff.
 
 ## Interfaces and hooks touched
 
-Kept parked: `class P2GroinkCarcass { become(config); reset(); step(delta,
-pelletAlive, gaugeManager, activeTick) }` returning ordered `KillPellet` /
-`RequestBirth` commands (host reports birth outcome; no terminal flag), and
-`class P2GroinkLifetime` (generation-qualified handles, single pending revival
-ticket, fail-closed serials). Added `P2GroinkCarcassBirth { position; faceDir;
-existenceLength; inPiklopedia; }` as the host payload for `RequestBirth`. No
-shared files modified; no product `PC_PORT_SOURCES` wiring (parked scope "no
-shared hooks/build/export"); only two additive CMake test targets were added.
+Merged wave keeps lane 12's `include "pc_p2_king_teki.h"` and
+`pc_p2_king_teki_setup()` beside lane 21's `pc_p2_groink_teki.h` /
+`pc_p2_groink_teki_setup()` (`src/plugPikiKando/gameCoreSection.cpp`). The
+`pc_p2_groink_teki` sidecar exposes a new process-wide probe
+`pc_p2_groink_teki_total_births()` (survives `pc_p2_groink_teki_forget`); the
+per-actor `timer`/`health`/`births`/`is_bound` probes are unchanged. No other
+shared file was edited beyond the merge.
 
-## Build evidence (<lane-build-evidence> + <lane-out>/)
+## Build evidence
+
+- `output/dsw/l21-build-evidence.txt`: `pikmin_pc` built at the merged head,
+  `bin/nectar.exe` sha256 `86d84a2fb80828d0884290e9b3c066170ed279fcef0ba751ce4e1e79ec1fa628`,
+  `ninja -n` = `ninja: no work to do.` (eef03f93 only edits the fixture source,
+  not a product TU, so the product freshness carries over).
+- Fixture: `scripts/build_pikmin2_fixture.py` (expected native head `eef03f93`)
+  → `output/dsw/l21-out/groink-carcass-fixture5/fixture.exe` sha256
+  `3806c96c1e2f10c3bd01072db43719436bffe1066b49f5317def5fc6a0de69fd`.
+
+## Runtime evidence (real-GL, `slot.py run gl l21`)
+
+Run directory `output/dsw/l21-out/run-carcass-binding2/`, native.log starts with
+`SDL2 Window ... (960x540)` + `Experimental preview window set to 960x540 windowed
+and centered`, no extinction. Ordered markers (native.log line numbers):
 
 ```
-2026-09-14T20:52:01 lane=l21 target=pikmin_pc native=5f5cf5fe72f40a47c06cd6b33c9672ebed97774a dirty=no build_dir=<native-build-dir> exe=<native-build-dir>/bin/nectar.exe sha256=9dd6f5d3fd6d53962bf83b0fc4ab8b7e5cfae1ee16f4d31ae0c5c4a07d167840 ninja_n="ninja: no work to do." seconds=74
-2026-09-14T20:39:42 lane=l21 target=p2_groink_lifetime_test native=5f5cf5fe... exe=<native-build-dir>/p2_groink_lifetime_test.exe sha256=d62bb72c... ninja_n="ninja: no work to do."
+715  P2_GROINK_CARCASS_READY generator=201001 type=0 gauge_delay=2.000 recovery=3.000 max_health=1200.000
+1268 P2_GROINK_CARCASS_KILL_INJECTED host=generated_Frog generator=201001 method=pcEscapeNow health_write=1
+1269 P2_GROINK_CARCASS_BECOME generator=201001 pos=-150.000,0.000,1850.000 face_dir=0.000
+1278 P2_GROINK_CARCASS_GAUGE_ACTIVE generator=201001 timer=2.017
+1293 P2_GROINK_CARCASS_KILL_PELLET generator=201001 health=1206.351
+1294 P2_GROINK_CARCASS_BIRTH generator=201001 pos=-150.000,0.000,1850.000 face_dir=0.000 existence_length=-1.000 in_piklopedia=0 health=1206.351
+1295 P2_GROINK_CARCASS_BIRTH_PASS ticks=162 total_births=1
+1296 PASS GROINK_RUNTIME carcass_automatic_binding
 ```
-CTest (10/10 `p2_groink*` PASS) logged to `<lane-out>/ctest-groink-all.log`;
-carcass+lifetime subset in `<lane-out>/ctest-carcass-lifetime.log`.
 
-## Fixture adoption evidence
+The short sidecar (`sidecar_config(201001, 0, gauge_delay=2.0,
+recovery_seconds=3.0)`) is what makes the 1200-tick budget reachable (documented
+choice: shorter sidecar values, budget unchanged). Note `health=1206.351` at
+KILL_PELLET exceeds `max_health=1200` — confirming the policy does not clamp,
+as the source does not.
 
-No real-GL runtime fixture run this slice (actor-independent policy). The
-current starting-Pikmin overlay / centred 960×540 window adoption is deferred
-to the next runtime acceptance run.
+## Tests
 
-## Six-gate table (natural vs injected)
-
-| Gate | Verdict |
-|---|---|
-| 1. Identity and spawn | source-backed N/A (policy attaches to existing #78/#97 identity) |
-| 2. Movement and animation | UNTESTED (locomotion + Rebirth anim on shared actor hook) |
-| 3. Attacks and receivers | unchanged (strike bridge; in-flight moving hits remain fixture-pinned) |
-| 4. Death and corpse | source-backed policy + unit-proven; BLOCKED naturally (needs live `onKill` path) |
-| 5. Transport and reward | source-backed N/A (lane 06 owns drops/cargo) |
-| 6. Cleanup and re-entry | BLOCKED (guard exists; `generalEnemyMgr->birth` + Rebirth transit pending) |
-
-No injected state promoted to a gameplay PASS.
-
-## Tests run and results
-
-- Native CTest: all ten `p2_groink*` PASS (incl. `p2_groink_carcass_test`,
-  `p2_groink_lifetime_test`).
-- Root Python: `tests/test_pikmin2_groink_carcass.py` 15 passed;
-  `test_pikmin2_groink_arena.py` + `test_pikmin2_groink_assets.py` + carcass = 17 passed.
+- Native CTest: `ctest --test-dir output/dsw/native-l21-build -R p2_groink` →
+  11/11 PASS (log `output/dsw/l21-out/ctest-groink-fix4.log`). The earlier
+  `ctest-groink-slice2.log` (21:52) predates `3e9f52be`/`53916b1c`, so it is not
+  cited here.
+- Root Python: `tests/test_pikmin2_groink_carcass.py` +
+  `tests/test_pikmin2_groink_carcass_teki.py` → 29 passed, 1 skipped.
 
 ## Assumptions
 
-- Kept parked adapters unchanged (config fields finite/nonnegative ≤1e6,
-  `recoverySeconds>0`, step delta in [0,0.25]).
-- `P2GroinkCarcassBirth` carries exactly the four `EnemyBirthArg` fields the
-  source populates (position, face-dir, existence length, Piklopedia flag);
-  `mTypeID` stays host/manager-owned.
-- Python twin uses snake_case field names (idiomatic) for the same three config
-  fields; command ordering and no-clamp semantics are identical to native.
-
-## Next-wave order note
-
-The ledger's next-wave order ("natural targeting/burst and shell effects",
-then "source revival/carcass recovery") was skipped: this slice advances the
-carcass/revival policy (a later item) because the earlier items need the live
-MiniHoudai actor over the shared `teki.h`/`tekimgr.cpp`/`gameCoreSection.cpp`
-hook. Natural targeting/burst/shell effects remain the next slice.
+- The kill is injected (`pcEscapeNow`) because the isolated preview pauses the
+  ordinary Teki-manager update, so no natural squad kill can run; this is
+  surfaced as `KILL_INJECTED` and gate 4 stays UNTESTED. Remove the `mHealth=0`
+  write once a natural combat slice lands (natural targeting/burst, the skipped
+  next-wave item).
+- Short sidecar values (2s gauge + 3s recovery) are the documented budget choice;
+  the 1200-tick / 1800-frame budgets are unchanged.
 
 ## Remaining blockers (provider lane)
 
-- Real MiniHoudai actor registration / locomotion / pursuit and natural
-  in-flight moving hit / animated muzzle: shared `teki.h`/`tekimgr.cpp`/
-  `gameCoreSection.cpp` hook (lane 01 integration; lane 20 primitives, #128 bake).
+- Natural targeting/burst/shell effects (the next-wave order) were skipped; they
+  need the live MiniHoudai actor over `teki.h`/`tekimgr.cpp`/`gameCoreSection.cpp`
+  (lane 01; lane 20 primitives, #128 angle-aware bake).
 - Carcass pellet drop (`EnemyBase::onKill`) and `generalEnemyMgr->birth` +
-  `init` + Rebirth transit wiring: lane 06/07 lifetime + reward semantics.
+  Rebirth transit (lane 06/07).
 
 ## Subagent usage
 
-Three parallel subagents were used (per the brief):
-1. `explore` — source audit of `doBecomeCarcass`/`doUpdateCarcass`, parameter
-   defaults, `EnemyBirthArg` fields, Rebirth state events, and the
-   pellet-kill → owner-release chain. Result used as-is (materially confirmed
-   no-clamp, no-retry, life-gauge guard; cited in the doc and handoff).
-2. `explore` — full Groink inventory across both trees (modules, parked
-   branches, markers, CMake wiring). Used as-is; confirmed `pc_p2_groink_lifetime`
-   was parked-only and un-wired, and named the `P2_GROINK_*` marker set.
-3. `general` — wrote the Python twin (`experimental/pikmin2_groink_carcass.py`)
-   and `tests/test_pikmin2_groink_carcass.py` to mirror the parked API (15 tests
-   pass). Used essentially as-is; I reviewed the no-clamp/no-retry/gauge-guard
-   coverage and only integrated it without further edits.
+Three parallel subagents, per the brief:
+1. `explore` — source audit (frog corpse/pellet flow, `TEKICORPSE_LeaveCorpse`,
+   `sys->getDeltaTime()` vs `gsys->getFrameTime()`). Used as-is; grounding that
+   the port rehosts the policy timestamp and that the frog leaves a real corpse.
+2. `explore` — inventory + merge-conflict surface. Used as-is; it confirmed the
+   merge is one additive conflict in `gameCoreSection.cpp` (keep both includes +
+   both `_setup()` calls), which I resolved exactly as described.
+3. `general` — root-side validator/test additions (`sidecar_config_short`,
+   `is_injected_kill`, `injected_kill_label` + 5 tests, 14 pass/1 skip). Used
+   as-is.
 
-Net: the delegation saved the read-heavy source/inventory work and the Python
-port; my own context stayed on the native cherry-pick/build/ctest/handoff.
+The delegation offloaded the read-heavy source/inventory work and the Python
+port; my context stayed on the native merge, the birth-counter fix, the GL run
+and this handoff.
+
+## check_p2_handoff_gates output
+
+`py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE21_DEEPSEEK_HANDOFF.md` (exit 0):
+
+```
+78 MiniHoudai (role=source):
+  1. identity_spawn     ignored [N/A]
+  2. movement_animation ignored [UNTESTED]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [N/A]
+  6. cleanup_reentry    ignored [BLOCKED]
+97 FminiHoudai (role=source):
+  1. identity_spawn     ignored [N/A]
+  2. movement_animation ignored [UNTESTED]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [N/A]
+  6. cleanup_reentry    ignored [BLOCKED]
+```
 
 ## Reproduction
 
 ```
-cd /c/Users/alari/pikmin-randomizer/output/deepseek-wave && PATH="/c/msys64/mingw64/bin:$PATH" py -3.12 build_lane.py l21 --target p2_groink_carcass_test && PATH="/c/msys64/mingw64/bin:$PATH" ctest --test-dir <native-build-dir> -R p2_groink --output-on-failure
-```
-
-## Slice 2
-
-Bind the parked `P2GroinkCarcass` model to a live generated Groink actor so the
-death/corpse gate moves off a policy-only unit test onto a real actor update.
-
-### What it adds
-
-Native `pc_port/pc_p2_groink_teki.{h,cpp}` + `pc_p2_groink_teki_policy.h`: a
-family sidecar (exact `pc_p2_kurage_teki` / `pc_p2_mamuta` shape) that reads
-`p2-groink-teki.txt` (`P2_GROINK_TEKI_1`), binds the generated Teki at that
-generator/type in `GameCoreSection::finalSetup`, and drives
-`P2GroinkCarcass::step(dt, pelletAlive, gaugeManager)` from the actor's own
-`BTeki::update` each frame with `dt = gsys->getFrameTime()`. Host commands act on
-the real objects — `KillPellet` kills the actor's own corpse pellet
-(`t->mPellet->kill(false)`), `ActivateGauge`/`DeactivateGauge` toggle
-`TEKIOPT_LifeGaugeVisible`, `RequestBirth` emits the
-`P2_GROINK_CARCASS_BIRTH` descriptor (position/face-dir from the dead actor) and
-records the birth descriptor while stopping further ticks — the
-replacement-object birth itself is **pending lane 06/07**, not performed here.
-All seams log ordered
-`P2_GROINK_CARCASS_READY/BECOME/GAUGE_ACTIVE/GAUGE_INACTIVE/KILL_PELLET/BIRTH`.
-
-The carcass `become()` fires on the alive→dead transition so the regrowth
-timeline is read from the actor's real death and pellet presence, never injected.
-
-Review fixes (second pass): record `pelletKilled` so a recycled pool pellet is
-never re-dereferenced after `KillPellet`; require
-`TPI_CorpseType == TEKICORPSE_LeaveCorpse` at setup (a no-corpse host dies
-through `doKill` → `pc_p2_forget_teki` on the death frame, erasing the binding
-before `RequestBirth` can fire) and log `P2_GROINK_CARCASS_UNBOUND
-reason=no_corpse` otherwise; reword `RequestBirth` to "records the birth
-descriptor, stops ticking; birth pending lane 06/07".
-
-### Source IDs and files owned
-
-- #78 MiniHoudai, #97 FminiHoudai (unchanged identity).
-- Native (`deepseek/p2-l21-native`): `pc_port/pc_p2_groink_teki.{h,cpp}`,
-  `pc_port/pc_p2_groink_teki_policy.h`, `tools/p2_groink_teki_test.cpp`, CMake
-  (main-build + test wiring); shared hooks `src/plugPikiKando/gameCoreSection.cpp`,
-  `src/plugPikiNakata/tekibteki.cpp`, `pc_port/pc_p2_teki_lifetime.cpp`.
-- Root (`deepseek/p2-l21`): `experimental/pikmin2_groink_carcass_teki.py`,
-  `tests/test_pikmin2_groink_carcass_teki.py`, this handoff.
-
-### Ordered commits and dirty state
-
-Root base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`; native base
-`b805d9c626e4f4558c95aef7cac311a5d9a2068f`. Both clean at handoff.
-
-Native (`deepseek/p2-l21-native`), after the fix1 commits:
-1. `b3f784e9` — lane21: bind Groink carcass policy to a live generated actor sidecar (#198).
-2. `e22e075d` — lane21: [hook] wire Groink carcass sidecar into shared teki lifecycle hooks (#198).
-3. `12298fd5` — lane21: review fixes 2 - pellet recycle guard, corpse-type gate and honest birth wording (#198).
-4. `3e9f52be` — lane21: review fixes 3 - snapshot birth before pellet kill, fix use-after-free (#198).
-5. `53916b1c` — lane21: review fixes 3 - carcass automatic-binding runtime scenario (#198).
-
-Root (`deepseek/p2-l21`):
-1. `c711545` — lane21: root validator guarding the Groink carcass-birth marker (#198).
-2. `ea78fd0` — lane21: slice 2 handoff for live carcass-actor binding (#198).
-3. `857f11a` — lane21: review fixes 2 - ordered run-log validator and sidecar config writer (#198).
-4. `f7f9b62` — lane21: review fixes 3 - hygiene placeholders, [hook] label and validator cleanup (#198).
-
-### Interfaces and hooks touched
-
-Shared hook [hook] commit `e22e075d` adds three additive seams, each mirroring an
-existing family sidecar call: `pc_p2_groink_teki_setup()` in
-`GameCoreSection::finalSetup`, `pc_p2_groink_teki_tick(this)` in `BTeki::update`,
-and `pc_p2_groink_teki_forget/reset` in the centralized
-`pc_p2_teki_lifetime.cpp` registration set (`pc_p2_forget_teki` /
-`pc_p2_reset_all_teki`). No draw override and no `teki.h` change. No product
-wiring beyond adding `pc_p2_groink_carcass.cpp` + `pc_p2_groink_teki.cpp` to the
-main source list (they were previously test- or module-only).
-
-### Build evidence (<lane-build-evidence>)
-
-```
-2026-09-14T22:36:10 lane=l21 target=pikmin_pc native=53916b1c9a8c0926d0f035a9348cb40c270ed830 dirty=no build_dir=<native-build-dir> exe=<native-build-dir>/bin/nectar.exe sha256=3176d80a69d5f3fb85b78e231750a74a5bacf0510c75e2b90ea2b581fb0b0494 ninja_n="ninja: no work to do." seconds=0
-2026-09-14T21:51:20 lane=l21 target=p2_groink_teki_test native=12298fd5229c9219c1467354440bfc8e4bf722dd dirty=no exe=<native-build-dir>/p2_groink_teki_test.exe sha256=3cc854e16549cb344b539acb3b2086bb7130261746f94a3f5b7e9265b53a6178
-```
-Fixture build: `<lane-out>/groink-carcass-fixture` fixture.exe
-sha256 `9a34b3c7b39b48811d98fa684682d8cb0d605d679acb3f7a7ab2c52de6105ec3`
-(`scripts/build_pikmin2_fixture.py`, expected native head 53916b1c).
-
-### Fixture adoption evidence
-
-Review-fixes-3 built the private runtime fixture `tools/p2_groink_runtime.cpp`
-(+ the `--carcass-automatic-binding` scenario) into a fixture binary whose
-provenance is recorded under `<lane-out>/groink-carcass-fixture` (fixture.exe
-sha256 `9a34b3c7b39b48811d98fa684682d8cb0d605d679acb3f7a7ab2c52de6105ec3`,
-via `scripts/build_pikmin2_fixture.py`). The scenario finds the generated Frog
-(TEKI_Frog @ generator 201001), requires `pc_p2_groink_teki_is_bound`, uses a
-labelled injected death (`P2_GROINK_CARCASS_KILL_INJECTED method=pcEscapeNow`) —
-the isolated room preview pauses the Teki manager update, so there is no ordinary
-Pikmin combat to kill it naturally — and sweeps `pc_p2_groink_teki_tick` until a
-birth is recorded. No real-GL run has been captured yet: the generated-session
-room staging (family-install frog + generated `default.gen` @ 201001) still has
-to be assembled before `slot.py run gl l21`.
-
-### Six-gate table (natural vs injected)
-
-| Gate | Verdict |
-|---|---|
-| 1. Identity and spawn | source-backed N/A (sidecar attaches to the existing #78/#97 identity) |
-| 2. Movement and animation | UNTESTED (locomotion on shared actor hook) |
-| 3. Attacks and receivers | unchanged (strike bridge) |
-| 4. Death and corpse | sidecar-bound + unit-proven; BLOCKED naturally (no live Groink spawn, pellet-drop/onKill) |
-| 5. Transport and reward | source-backed N/A (lane 06) |
-| 6. Cleanup and re-entry | BLOCKED (`generalEnemyMgr->birth` + Rebirth transit on lane 06/07) |
-
-No injected state promoted to a gameplay PASS.
-
-### Tests run and results
-
-- Native CTest: all eleven `p2_groink*` PASS, including the new
-  `p2_groink_teki_test` (reader + config handoff) — log in
-  `<lane-out>/ctest-groink-slice2.log`.
-- Root Python: `tests/test_pikmin2_groink_carcass_teki.py` 9 passed (ordered
-  run-log validator + sidecar config writer + real-source check via
-  `PIKMIN_NATIVE_ROOT`).
-
-### Assumptions
-
-- `pelletAlive` maps to the actor's own corpse pellet (`PelletView::mPellet`
-  alive), gated on `!pelletKilled` so the `KillPellet`-recycled slot is never
-  re-dereferenced; `gaugeManager` is always true (the P1 engine life-gauge
-  manager is unconditional for a bound Teki).
-- Binding requires `TPI_CorpseType == TEKICORPSE_LeaveCorpse`. A `NoCorpse`
-  host dies through `dieSoon -> kill -> doKill`, which runs `pc_p2_forget_teki`
-  on the death frame (tekibteki.cpp:742-749) and erases the binding before
-  `RequestBirth` can fire; such a host is refused with
-  `P2_GROINK_CARCASS_UNBOUND reason=no_corpse` rather than silently bound.
-- Regenerated health stays inside `P2GroinkCarcass` and is surfaced through
-  `pc_p2_groink_teki_health()` rather than being written back to `t->mHealth`
-  (writing a dead P1 host's `mHealth` up would resurrect the proxy actor and
-  fight its corpse FSM). The on-screen `TEKIOPT_LifeGaugeVisible` toggle is
-  therefore inert on a corpse (`updateLifeGauge` runs only while
-  `mDeadState == 0`, tekibteki.cpp:~651): the gauge is not updated, not "empty";
-  the real health-gauge regrowth is a lane 06/07 concern.
-- `RequestBirth` records the birth descriptor (position/face-dir from the dead
-  actor) and stops ticking; `existenceLength=-1`/`inPiklopedia=false` because
-  `EnemyBirthArg` duration and the Piklopedia flag are owned by the lane 06/07
-  manager-birth path.
-- `KillPellet` is deferred to the end of the step and the birth descriptor is
-  snapshotted/logged first: `t->mPellet->kill(false)` runs
-  `Pellet::doKill -> BTeki::viewKill -> BTeki::doKill -> pc_p2_forget_teki`
-  (pelletMgr.cpp:261-273, tekibteki.cpp:179-182,742-749), which erases the
-  binding (and the actor), so no `b`/`t` field is read after the kill. On a P1
-  host the actor dies with its pellet, so "stop ticking" after `RequestBirth` is
-  moot.
-
-### Remaining blockers (provider lane)
-
-- The sidecar now binds any host `type` the `p2-groink-teki.txt` profile names
-  (like `pc_p2_kurage_teki`), and the `--carcass-automatic-binding` runtime
-  scenario lives in our own `tools/p2_groink_runtime.cpp` (not the preview); the
-  previously cited "no Groink type / no binding flag" blocker is resolved. What
-  remains for a natural `P2_GROINK_CARCASS_*` log is assembling a generated-session
-  room overlay with a generated Frog (`default.gen` generator 201001, available
-  from lane 16's staged runs) + the frog family install + this sidecar config, then
-  one `slot.py run gl l21` execution. This run has not been captured yet, so the
-  death/corpse gate stays BLOCKED.
-- Pellet drop (`EnemyBase::onKill`) and `generalEnemyMgr->birth` + Rebirth
-  transit (lane 06/07) for the real KillPellet/RequestBirth end state (the sidecar
-  records the descriptor and stops ticking; the replacement birth is lane 06/07).
-
-### Subagent usage
-
-No `task` subagent tool was available in this session, so all work (source audit,
-candidate inventory, tests, native implementation, build, handoff) was done solo
-by the agent; the required three-subagent parallelization was not exercised.
-
-### Reproduction
-
-```
-cd /c/Users/alari/pikmin-randomizer/output/deepseek-wave && PATH="/c/msys64/mingw64/bin:$PATH" py -3.12 build_lane.py l21 --target p2_groink_teki_test && PATH="/c/msys64/mingw64/bin:$PATH" ctest --test-dir <native-build-dir> -R p2_groink --output-on-failure
+cd C:/Users/alari/pikmin-randomizer/output/deepseek-wave
+$env:PATH="C:/msys64/mingw64/bin;"+$env:PATH
+py -3.12 slot.py run gl l21 -- py -3.12 C:/Users/alari/pikmin-randomizer/output/dsw/l21-out/run_carcass_binding.py
 ```
