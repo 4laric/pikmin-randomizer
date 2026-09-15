@@ -55,7 +55,13 @@ bool InteractAttack::actTeki(Teki* teki) immut
 		return false; // registered Long Legs rejects damage while bitter-immune (Stay/Land)
 	}
 #endif
-	return teki->interact(TekiInteractionKey(TekiInteractType::Attack, this));
+	const bool damageAccepted = teki->interact(TekiInteractionKey(TekiInteractType::Attack, this));
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	// Lane 28 (#245 gate 3): real engine receiver observation for the bound
+	// Fuefuki vehicle. No-op for every other actor.
+	pc_p2_hardlanes_fuefuki_hit(teki, mOwner, mDamage, damageAccepted);
+#endif
+	return damageAccepted;
 }
 
 /**

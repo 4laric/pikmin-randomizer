@@ -13,3 +13,7 @@ bool pc_p2_frog_draw(BTeki*,Graphics&,const Matrix4f&,bool corpse=false);
 // has exclusive control. Both are no-ops for unregistered actors.
 void pc_p2_frog_update(BTeki*);
 bool pc_p2_frog_suppress_ai(const BTeki*);
+// Lane 21 read-only probe (#198): expose the running source-FSM animation state
+// of a registered frog (state name, current clip, clip phase) for the Groink
+// movement/animation evidence. Never mutates the actor or FSM.
+bool pc_p2_frog_probe(const BTeki*, const char** state, const char** clip, float* phase);

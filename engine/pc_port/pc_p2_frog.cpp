@@ -446,6 +446,15 @@ void pc_p2_frog_update(BTeki* actor){
         std::printf("P2_FROG_FSM_POS species=%s generator=%u state=%s x=%.2f y=%.2f z=%.2f health=%.1f\n",
             ids[s.kind],gen,p2frog::stateName(s.state),now.x,now.y,now.z,actor->mHealth);std::fflush(stdout);}
 }
+bool pc_p2_frog_probe(const BTeki* actor,const char** state,const char** clip,float* phase){
+    auto* view=static_cast<PelletView*>(const_cast<BTeki*>(actor));
+    if(!actors.count(view))return false;
+    auto ft=fsms.find(view);if(ft==fsms.end())return false;
+    if(state)*state=p2frog::stateName(ft->second.state);
+    if(clip)*clip=ft->second.clip.c_str();
+    if(phase)*phase=ft->second.phase;
+    return true;
+}
 bool pc_p2_frog_draw(BTeki* actor,Graphics& gfx,const Matrix4f& matrix,bool corpse){
     auto it=actors.find(static_cast<PelletView*>(actor));if(it==actors.end())return false;
     int kind=it->second;if(!corpse)logPress(actor,kind);

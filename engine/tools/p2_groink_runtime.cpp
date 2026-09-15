@@ -27,8 +27,10 @@
 #include "settings/pc_settings.h"
 #include "settings/pc_settings_p2d.h"
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -58,6 +60,12 @@ struct WallProbe { bool valid = false; P2GroinkVec3 center{}, velocity{}; };
 
 bool sCarcassAutomaticBinding = false;
 bool sCarcassTransport = false;
+bool sGroinkLive = false;
+
+// Lane 21 live-host witness (#198): per-Piki health/FSM-state snapshot so the
+// landing press (a real InteractPress receiver) can be cited with the target's
+// health/state change. Keyed by the live Piki pointer (identity/incarnation).
+struct LivePikiSample { float health = 0.0f; int state = 0; bool alive = false; };
 
 class GroinkApp final : public PlugPikiApp {
     int frames = 0, sourceTicks = 0;
@@ -68,12 +76,90 @@ class GroinkApp final : public PlugPikiApp {
     P2GroinkMapTrace trace;
     P2GroinkSourceClock clock;
     WallProbe wall;
+    BTeki* liveHost = nullptr;
+    int liveTicks = 0, liveHealthDrops = 0, liveStateChanges = 0;
+    float liveTravel = 0.0f, liveLastX = 0.0f, liveLastZ = 0.0f;
+    std::map<const Piki*, LivePikiSample> livePrevPiki;
 public:
     int idle() override {
         int result = PlugPikiApp::idle();
         require(++frames < 3600, "timeout");
         if (gameflow.mMoviePlayer && gameflow.mMoviePlayer->mIsActive) {
             clock.reset(); gameflow.mMoviePlayer->requestSkip(); return result;
+        }
+        if (sGroinkLive) {
+            // Lane 21 live-host run (#198): the generated Frog actor at 201001 is
+            // left alive and driven only by its own source FSM (lane 16, wired into
+            // BTeki::update). The staged starting squad is already inside its sight,
+            // so the FSM turns/hops/attacks on its own. No squad is ringed, no
+            // health is written and no damage is injected; the only witness reads
+            // the actor's position/FSM/animation and each live Piki's health/state.
+            if (!tekiMgr || !naviMgr || !pikiMgr) { return result; }
+            if (!liveHost) {
+                Iterator it(tekiMgr); CI_LOOP(it) {
+                    Teki* teki = static_cast<Teki*>(*it);
+                    if (teki && teki->mTekiType == TEKI_Frog && teki->mGenerator
+                        && teki->mGenerator->_70 == 201001u) {
+                        liveHost = static_cast<BTeki*>(teki);
+                        break;
+                    }
+                }
+                if (!liveHost) { return result; }
+                liveLastX = liveHost->mSRT.t.x; liveLastZ = liveHost->mSRT.t.z;
+                std::puts("P2_GROINK_LIVE_BEGIN generator=201001 actor=generated_Frog damage_write=0 ring=0");
+                std::fflush(stdout);
+            }
+            ++liveTicks;
+            const char* state = nullptr; const char* clip = nullptr; float phase = 0.0f;
+            const bool probed = pc_p2_frog_probe(liveHost, &state, &clip, &phase);
+            if (!probed) { state = "unregistered"; clip = "none"; }
+            const Vector3f now = liveHost->mSRT.t;
+            const float stepX = now.x - liveLastX, stepZ = now.z - liveLastZ;
+            liveTravel += std::sqrt(stepX * stepX + stepZ * stepZ);
+            liveLastX = now.x; liveLastZ = now.z;
+            if (liveTicks % 30 == 0) {
+                std::printf("P2_GROINK_MOVE generator=201001 tick=%d x=%.3f y=%.3f z=%.3f travel=%.3f "
+                            "state=%s clip=%s phase=%.3f health=%.1f\n",
+                            liveTicks, now.x, now.y, now.z, liveTravel,
+                            state ? state : "unregistered", clip ? clip : "none", phase, liveHost->mHealth);
+                std::fflush(stdout);
+            }
+            // Real receiver witness: an engine InteractPress on a live Piki mutates
+            // Piki::mHealth and its PIKISTATE FSM. Report each change with the
+            // before/after pair so the press outcome is explicit.
+            if (pikiMgr) {
+                Iterator pc(pikiMgr);
+                CI_LOOP(pc) {
+                    Piki* p = static_cast<Piki*>(*pc);
+                    if (!p) { continue; }
+                    const int st = p->getState();
+                    const bool alive = p->isAlive();
+                    auto it = livePrevPiki.find(p);
+                    if (it == livePrevPiki.end()) {
+                        livePrevPiki[p] = LivePikiSample{p->mHealth, st, alive};
+                        continue;
+                    }
+                    LivePikiSample& prev = it->second;
+                    if (prev.health != p->mHealth || prev.state != st || prev.alive != alive) {
+                        std::printf("P2_GROINK_TARGET_HIT id=%llu health=%.1f->%.1f state=%d->%d "
+                                    "alive=%d->%d x=%.3f z=%.3f\n",
+                                    static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(p)),
+                                    prev.health, p->mHealth, prev.state, st, int(prev.alive), int(alive),
+                                    p->mSRT.t.x, p->mSRT.t.z);
+                        if (p->mHealth < prev.health) { ++liveHealthDrops; }
+                        if (prev.state != st) { ++liveStateChanges; }
+                        prev = LivePikiSample{p->mHealth, st, alive};
+                        std::fflush(stdout);
+                    }
+                }
+            }
+            if ((liveTravel > 5.0f && liveHealthDrops > 0 && liveTicks >= 600) || liveTicks >= 1800) {
+                std::printf("P2_GROINK_LIVE_PASS ticks=%d travel=%.3f health_drops=%d state_changes=%d\n",
+                            liveTicks, liveTravel, liveHealthDrops, liveStateChanges);
+                std::puts("PASS GROINK_RUNTIME groink_live");
+                std::fflush(stdout); std::_Exit(0);
+            }
+            return result;
         }
         if (sCarcassAutomaticBinding || sCarcassTransport) {
             if (!tekiMgr || !naviMgr || !pikiMgr) return result;
@@ -102,15 +188,21 @@ public:
             // every 120 ticks; the transport mode rings once and then leaves the
             // squad free to pick up and carry the dropped corpse to the Pod.
             if (pc_p2_groink_teki_is_bound(carcassHost)) {
-                Vector3f park(carcassHost->mSRT.t.x, 0.0f, carcassHost->mSRT.t.z + 40.0f);
-                park.y = mapMgr->getMinY(park.x, park.z, true);
-                n->resetPosition(park);
-                if (sCarcassTransport) {
-                    // Keep the free squad on the corpse until a Pikmin grasps it,
-                    // then stop re-ringing so the carry is not disrupted.
-                    if (transportCarriers() == 0 && (carcassTicks == 1 || carcassTicks % 60 == 0)) ringReds(n, carcassHost);
-                } else if (carcassTicks == 1 || carcassTicks % 120 == 0) {
-                    ringReds(n, carcassHost);
+                // Kill phase only: park the captain beside the live host and
+                // deploy the free-mode squad. Once the host dies in transport
+                // mode the native carcass tail (pc_p2_groink_teki.cpp) owns the
+                // captain park and the free-mode re-ring onto the corpse pellet,
+                // so the fixture must stop overriding the captain here.
+                const bool hostAlive = carcassHost->isAlive();
+                if (!sCarcassTransport || hostAlive) {
+                    Vector3f park(carcassHost->mSRT.t.x, 0.0f, carcassHost->mSRT.t.z + 40.0f);
+                    park.y = mapMgr->getMinY(park.x, park.z, true);
+                    n->resetPosition(park);
+                    if (sCarcassTransport) {
+                        if (carcassTicks == 1 || carcassTicks % 60 == 0) ringReds(n, carcassHost);
+                    } else if (carcassTicks == 1 || carcassTicks % 120 == 0) {
+                        ringReds(n, carcassHost);
+                    }
                 }
             }
             if (carcassTicks % 60 == 0 || !pc_p2_groink_teki_is_bound(carcassHost)) {
@@ -263,6 +355,7 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--carcass-automatic-binding") sCarcassAutomaticBinding = true;
         if (std::string(argv[i]) == "--carcass-transport") sCarcassTransport = true;
+        if (std::string(argv[i]) == "--groink-live") sGroinkLive = true;
     }
     _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1"); pc_bbft_init(argc, argv);
     require(pc_pikipelago_room_preview(), "requires --experimental-pikmin2-room");

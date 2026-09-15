@@ -279,6 +279,7 @@ pc_port/pc_p2_projectile_host.cpp
     pc_port/pc_p2_bombsarai_hover.cpp
     pc_port/pc_p2_bombsarai_map_trace.cpp
     pc_port/pc_p2_bombsarai_terrain.cpp
+    pc_port/pc_p2_bombsarai_teki.cpp
     pc_port/pc_p2_bigtreasure.cpp
     pc_port/pc_p2_bigtreasure_attacks.cpp
     pc_port/pc_p2_bigtreasure_fsm.cpp
@@ -498,9 +499,21 @@ add_executable(pikmin_pc
 )
 target_compile_options(pikmin_pc PRIVATE ${NATIVE_COMPILE_OPTIONS})
 target_link_libraries(pikmin_pc PRIVATE pikmin_legacy)
+# Lane 29 replacement-main runtime fixture (#243). Built as an ordinary target so
+# the lane wrapper (`build_lane.py l29 --target p2_kurage_runtime`) produces it
+# under the normal build semaphore; it runs the same engine as pikmin_pc with the
+# kurage scenario main (tools/p2_kurage_runtime.cpp) instead of pc_main.cpp.
+set(P2_KURAGE_RUNTIME_SOURCES ${PC_PORT_SOURCES})
+list(REMOVE_ITEM P2_KURAGE_RUNTIME_SOURCES pc_port/pc_main.cpp)
+list(APPEND P2_KURAGE_RUNTIME_SOURCES tools/p2_kurage_runtime.cpp)
+add_executable(p2_kurage_runtime ${P2_KURAGE_RUNTIME_SOURCES})
+target_include_directories(p2_kurage_runtime PRIVATE tools)
+target_compile_options(p2_kurage_runtime PRIVATE ${NATIVE_COMPILE_OPTIONS})
+target_link_libraries(p2_kurage_runtime PRIVATE pikmin_legacy)
 if(WIN32)
     add_library(bbft_transport STATIC pc_port/bbft/bbft_transport.c)
     target_link_libraries(pikmin_pc PRIVATE bbft_transport ws2_32)
+    target_link_libraries(p2_kurage_runtime PRIVATE bbft_transport ws2_32)
     add_executable(pc_bbft_test pc_port/pc_bbft_test.cpp pc_port/pc_bbft.cpp pc_port/pc_randomizer.cpp)
     add_test(NAME pc_bbft_test COMMAND pc_bbft_test)
     add_test(NAME pc_bbft_background_test COMMAND pc_bbft_test --background)
@@ -522,7 +535,7 @@ endif()
 # -- the game code silently lost -march=native and LTO, and the library
 # boundary also stopped the translator from inlining into it. That is a
 # performance regression with no visible symptom other than the frame time.
-set(PIKMIN_OPTIMIZED_TARGETS pikmin_pc pikmin_legacy)
+set(PIKMIN_OPTIMIZED_TARGETS pikmin_pc pikmin_legacy p2_kurage_runtime)
 
 foreach(target IN LISTS PIKMIN_OPTIMIZED_TARGETS)
     target_compile_options(${target} PRIVATE
@@ -561,8 +574,10 @@ if (WIN32)
     # proyecto declara SDL_MAIN_HANDLED y define su propio main. Enlazarlo deja
     # SDL_main sin definir en todos los ejecutables.
     target_link_libraries(pikmin_pc PRIVATE ${SDL2_LIBRARIES} opengl32)
+    target_link_libraries(p2_kurage_runtime PRIVATE ${SDL2_LIBRARIES} opengl32)
 else()
     target_link_libraries(pikmin_pc PRIVATE m ${SDL2_LIBRARIES} OpenGL::GL X11)
+    target_link_libraries(p2_kurage_runtime PRIVATE m ${SDL2_LIBRARIES} OpenGL::GL X11)
 endif()
 # Export symbol names so the diagnostic backtrace in pc_gfx.cpp prints function
 # names rather than bare addresses. Costs nothing at runtime.
@@ -571,12 +586,14 @@ endif()
 # compiled out on Windows anyway (glibc's execinfo.h has no equivalent there).
 if (NOT WIN32)
     target_link_options(pikmin_pc PRIVATE -rdynamic)
+    target_link_options(p2_kurage_runtime PRIVATE -rdynamic)
 else()
     # SDL2's CMake package links -mwindows, which hides the console and with it
     # every printf the port uses to report what it is doing. Keep a console on
     # the game so a failed launch says why instead of vanishing. The launcher
     # stays windowed: it talks through native dialogs.
     target_link_options(pikmin_pc PRIVATE -mconsole)
+    target_link_options(p2_kurage_runtime PRIVATE -mconsole)
 endif()
 
 # Set output name
@@ -858,6 +875,11 @@ add_executable(p2_fuefuki_suspend_fallback_test tools/p2_fuefuki_suspend_fallbac
 target_include_directories(p2_fuefuki_suspend_fallback_test PRIVATE pc_port)
 target_compile_options(p2_fuefuki_suspend_fallback_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
 add_test(NAME p2_fuefuki_suspend_fallback_test COMMAND p2_fuefuki_suspend_fallback_test)
+
+add_executable(p2_fuefuki_owner_death_test tools/p2_fuefuki_owner_death_test.cpp)
+target_include_directories(p2_fuefuki_owner_death_test PRIVATE pc_port)
+target_compile_options(p2_fuefuki_owner_death_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+add_test(NAME p2_fuefuki_owner_death_test COMMAND p2_fuefuki_owner_death_test)
 
 # Lane 28 Fuefuki natural-combat real-GL fixture (#245): compile-only isolated
 # target. Its replacement-main executable is produced by

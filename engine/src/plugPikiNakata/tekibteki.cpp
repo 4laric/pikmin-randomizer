@@ -13,6 +13,7 @@
 #include "pc_p2_groink_teki.h"
 #include "pc_p2_teki_lifetime.h"
 #include "pc_p2_onikurage_teki.h"
+#include "pc_p2_bombsarai_teki.h"
 #include "pc_p2_king_teki.h"
 #include "pc_p2_frog.h"
 #include "pc_p2_kogane.h"
@@ -35,6 +36,7 @@
 #include "pc_p2_otakara.h"
 #include "pc_p2_batch3.h"
 #include "pc_p2_long_legs.h"
+#include "pc_p2_hardlanes.h"
 #endif
 #include "pc_randomizer.h"
 #include "FlowController.h"
@@ -482,8 +484,13 @@ void BTeki::update()
 	pc_p2_kurage_teki_tick(this);
 	pc_p2_groink_teki_tick(this);
 	pc_p2_onikurage_teki_tick(this);
+	pc_p2_bombsarai_teki_tick(this);
 	pc_p2_kogane_update(this);
 	pc_p2_king_teki_tick(this);
+	// Lane 28 (#245): ground the Fuefuki vehicle host + register its carcass. Runs
+	// after Creature::update()'s strategy act()/moveNew() so the ground pin is the
+	// last write of the frame; no-op for every actor not bound as the vehicle.
+	pc_p2_hardlanes_fuefuki_actor(this);
     pc_p2_snow_update(this,NSystem::getFrameTime());
     pc_p2_long_legs_update(this);
 	pc_p2_shijimi_update(this);
