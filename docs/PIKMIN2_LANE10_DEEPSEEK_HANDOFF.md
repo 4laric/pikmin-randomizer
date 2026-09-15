@@ -122,6 +122,7 @@ cfacff01 lane10: review fixes - species-based fire, element-attributed lethal (#
 7910d838 lane10: review fixes - fire-immune-only gas/denki lethal witness (#408)
 f34abccf lane10: review fixes - ElecHiba warning override + two-cluster scene (#408)
 1c6ba3ce lane10: review fixes 2 - denki-lethal excludes gas-hit targets (#408)
+11fb136c lane10 (owner lane22 pc_p2_hiba): add hazard-count probe for gate-6 re-entry (#408)
 ```
 
 Root (base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`), clean:
@@ -132,6 +133,9 @@ Root (base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`), clean:
 7426ff7 lane10: review fixes - two-cluster scene, per-element Red lethal witness (#408)
 4defa3e lane10: review fixes - warning override wiring in harness+tests (#408)
 f710f40 lane10: review fixes 2 - species=1 lethal gate, sidecar doc, lanes-1012 policies (#408)
+5f5d6cc lane10: review fixes 2 handoff update (#408)
+5570495 lane10: review fixes 2 - correct gate-1 citation line (#408)
+b99fba2 lane10: slice 2 - gate-6 re-entry proof, receiver contract doc, PIKMIN_NATIVE_ROOT (#408)
 ```
 
 Dirty state: both worktrees clean at handoff (build dirs, fixture and run
@@ -161,53 +165,68 @@ First line (dirty base build) and final line (committed clean build):
 ## Six-gate evidence (ingest format)
 
 Scenario note (labelled injection, not part of any PASS): the fixed hazards are
-fixture-placed on two X-separated clusters, and the squad is recoloured (one Blue
--> White, one Blue -> Yellow) to expose the immunity boundary. The receivers,
-emitters, and autonomy are natural; only this scenario setup is fixture work.
+fixture-placed on two X-separated clusters and the squad is recoloured (one Blue
+-> White, one Blue -> Yellow) to expose the immunity boundary. Gate 6 is proven
+through the lane-07 lifetime seam: the fixture calls the engine's own
+`pc_p2_reset_all_teki()` (which invokes `pc_p2_hiba_reset`) and then re-enters via
+`pc_p2_hiba_setup()`; the trigger is staged, but the seam functions are the
+production teardown/re-entry path (no full scene reload is exercised).
+
+- Source ID: 20 `Hiba`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | UNTESTED (injected) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:712 | injected |
+| 2. Autonomous movement and animation | N/A | fixed hazard: no locomotion clip | N/A |
+| 3. Attacks and receivers | PASS (natural) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:729 | natural |
+| 4. Death and corpse | PASS (natural, no corpse) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:730 | natural |
+| 5. Actual transport and reward | N/A | fixed hazard drops nothing | N/A |
+| 6. Cleanup and re-entry | PASS (natural) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:762 | natural |
 
 - Source ID: 21 `GasHiba`.
 
 | Gate | Result | Evidence | Injected vs natural |
 |---|---|---|---|
-| 1. Exact identity and spawn | UNTESTED (injected) | output/dsw/l10-out/hiba-run5/hiba/12cfd6c159a44129a83eaebbdb6fc98e/native.log:713 | injected |
+| 1. Exact identity and spawn | UNTESTED (injected) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:713 | injected |
 | 2. Autonomous movement and animation | N/A | fixed hazard: no locomotion clip | N/A |
-| 3. Attacks and receivers | PASS (natural) | output/dsw/l10-out/hiba-run5/hiba/12cfd6c159a44129a83eaebbdb6fc98e/native.log:735 | natural |
-| 4. Death and corpse | PASS (natural, no corpse) | output/dsw/l10-out/hiba-run5/hiba/12cfd6c159a44129a83eaebbdb6fc98e/native.log:746 | natural |
+| 3. Attacks and receivers | PASS (natural) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:735 | natural |
+| 4. Death and corpse | PASS (natural, no corpse) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:752 | natural |
 | 5. Actual transport and reward | N/A | fixed hazard drops nothing | N/A |
-| 6. Cleanup and re-entry | PARTIAL (cleanup) | output/dsw/l10-out/hiba-run5/hiba/12cfd6c159a44129a83eaebbdb6fc98e/native.log:751 | natural |
+| 6. Cleanup and re-entry | PASS (natural) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:762 | natural |
 
 - Source ID: 22 `ElecHiba`.
 
 | Gate | Result | Evidence | Injected vs natural |
 |---|---|---|---|
-| 1. Exact identity and spawn | UNTESTED (injected) | output/dsw/l10-out/hiba-run5/hiba/12cfd6c159a44129a83eaebbdb6fc98e/native.log:715 | injected |
+| 1. Exact identity and spawn | UNTESTED (injected) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:715 | injected |
 | 2. Autonomous movement and animation | N/A | fixed hazard: no locomotion clip | N/A |
-| 3. Attacks and receivers | PASS (natural) | output/dsw/l10-out/hiba-run5/hiba/12cfd6c159a44129a83eaebbdb6fc98e/native.log:721 | natural |
-| 4. Death and corpse | PASS (natural, no corpse) | output/dsw/l10-out/hiba-run5/hiba/12cfd6c159a44129a83eaebbdb6fc98e/native.log:733 | natural |
+| 3. Attacks and receivers | PASS (natural) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:721 | natural |
+| 4. Death and corpse | PASS (natural, no corpse) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:733 | natural |
 | 5. Actual transport and reward | N/A | fixed hazard drops nothing | N/A |
-| 6. Cleanup and re-entry | PARTIAL (cleanup) | output/dsw/l10-out/hiba-run5/hiba/12cfd6c159a44129a83eaebbdb6fc98e/native.log:751 | natural |
+| 6. Cleanup and re-entry | PASS (natural) | output/dsw/l10-out/hiba-run7/hiba/2a55926119f5455fba1683f77b33a675/native.log:762 | natural |
 
 `scripts/check_p2_handoff_gates.py` output (run against the wave branch's roster
-module; both identities are `hazard` classification, so they are correctly
+module; all three identities are `hazard` classification, so they are correctly
 *ignored for enemy admission* rather than admitted — no refused PASS rows):
 
 ```text
+20 Hiba (role=hazard): ignored (role)
 21 GasHiba (role=hazard): ignored (role)
 22 ElecHiba (role=hazard): ignored (role)
 EXIT=0
 ```
 
-## Tests
+## Tests (run with `PIKMIN_NATIVE_ROOT` pointing at the native worktree)
 
-- `tests/test_pikmin2_hiba_native.py` + `tests/test_pikmin2_lanes_1012_policies.py` -> **38 passed** (with `P2_NATIVE_PC_PORT` set to the native worktree so the C++ policy tests compile against the current native headers). The 7 `test_lane_policy_contract[...]` subtests now compile and pass after the MinGW-PATH fix; `test_elemental_receivers_consult_species_capability_matrix` now greps `p2_hazard_reaction` (the current routing) and passes.
+- `tests/test_pikmin2_hiba_native.py` + `tests/test_pikmin2_lanes_1012_policies.py` -> **40 passed** (`PIKMIN_NATIVE_ROOT` set to the native repo root; the C++ policy contracts compile from `<root>/pc_port` + `<root>/tools`, and the `p2_hazard_reaction`/reaction-state/piki.h source greps resolve under `<root>/src` + `<root>/include`).
 - Focused lane-10 receiver suite -> **77 passed**
   (`test_pikmin2_hiba_native`, `test_pikmin2_receivers_runtime`,
   `test_pikmin2_elemental_behavior`, `test_pikmin2_elecbug_denki_runtime`).
 
 Negative tests: a fire-only death must not satisfy the gas gate; a bare/untagged
-LETHAL is rejected; missing `gas_hit_red` fails; and (new in fix2) a `species=0`
-(decorated Blue) LETHAL fails `gas_lethal`/`denki_lethal` because the gates now
-require `species=1`.
+LETHAL is rejected; missing `gas_hit_red` fails; a `species=0` LETHAL fails; and
+(slice 2) a wrong re-entry (`rearmed=6`, `once=0`) or a missing `P2_HIBA_REENTRY`
+line fails the fixture validator.
 
 ## Assumptions
 
@@ -295,3 +314,66 @@ Fix2 slice used three more subagents:
    in `test_lane_policy_contract` (38 passed). Result **used as-is**. Saved ~20 min.
 
 Net: ~50 min of parallel work off the critical path.
+
+## Slice 2
+
+Receiver provider consumed by more families with natural attackers; gate-6
+(cleanup/re-entry) and the receiver contract.
+
+1. **Gate 6 cleanup/re-entry (was UNTESTED).** The fixture now proves the lane-07
+   lifetime seam for the fixed hazards: after the gates pass it calls
+   `pc_p2_reset_all_teki()` (the production stage-boundary teardown, which invokes
+   `pc_p2_hiba_reset`) and then re-enters via `pc_p2_hiba_setup()`, logging
+   `P2_HIBA_REENTRY before=3 reset=0 rearmed=3 once=1` — hazards reset to 0 and
+   re-arm **exactly once** (3, not a stale +3 duplicate). Native hook
+   `pc_p2_hiba_hazard_count()` added (labeled lane-22 module). Run7
+   `native.log:762`, `hiba True`, exit 0.
+2. **Receiver-side contract documented** in
+   `docs/PIKMIN2_LANE10_RECEIVER_CONTRACT.md`: the `Interact*` class/constructor
+   per element, the immunity helper (`p2_species_immune` for Fire/Water,
+   `p2_hazard_reaction` for Gas/Electric), the reaction state, and the `P2_RECV_*`
+   log. It records that lane 14 ElecBug already delivers `InteractDenki` via
+   `p2_emitter_accepts` (the reference pattern), and that lane 22 Otakara maps
+   Water/Gas/Elec/Bomb stimuli but its native module is capture/carry policy only
+   — the discharge step should mirror ElecBug's `p2_emitter_accepts` +
+   `stimulate(Interact<X>)` + accepted/immune log. Run7 re-proves the gas and
+   electric receivers end-to-end through the natural fixed-hazard emitters, so the
+   receiver side can prove attacks/receivers and death/corpse as natural.
+3. **Gate tables** for Hiba 20 / GasHiba 21 / ElecHiba 22 in the ingest format with
+   run7 log citations; `check_p2_handoff_gates.py` exit 0 (all three `role=hazard`,
+   ignored — no refused PASS rows).
+4. **`PIKMIN_NATIVE_ROOT` convention**: `tests/test_pikmin2_lanes_1012_policies.py`
+   and `tests/test_pikmin2_hiba_native.py` now probe the native repo root via
+   `PIKMIN_NATIVE_ROOT` (then `P2_NATIVE_PC_PORT`, then `ROOT/native`) and no
+   longer probe `engine/` or hard-coded lane-worktree names (no lane paths in
+   tests).
+
+Reproduction (slice 2 head `11fb136c` / root `b99fba2`):
+
+```powershell
+py -3.12 output/deepseek-wave/build_lane.py l10
+py -3.12 output/deepseek-wave/slot.py run build l10 -- py -3.12 -m experimental.pikmin2_hiba_runtime build --native C:/Users/alari/pikmin-randomizer/output/dsw/native-l10 --build-dir C:/Users/alari/pikmin-randomizer/output/dsw/native-l10-build --output C:/Users/alari/pikmin-randomizer/output/dsw/l10-out/hiba-fixture6 --head 11fb136c186317dbda6e568e6e9c5fddada8d726
+$env:PYTHONUTF8='1'; $env:PIKMIN_P2_ROOM_WINDOW='960x540'
+py -3.12 output/deepseek-wave/slot.py run gl l10 -- py -3.12 -m experimental.pikmin2_hiba_runtime run --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" --output C:/Users/alari/pikmin-randomizer/output/dsw/l10-out/hiba-run7 --exe C:/Users/alari/pikmin-randomizer/output/dsw/l10-out/hiba-fixture6/build/fixture.exe
+```
+
+Subagent usage (slice 2):
+
+1. **`explore` — source audit** of the receiver classes (`InteractFire/Bubble/Gas/Denki`),
+   the immunity matrix, and the Otakara/ElecBug emitter status. Result **used
+   as-is**: became the receiver-contract table, incl. the finding that Fire/Bubble
+   use the P1 `startFire`/`PIKISTATE_Bubble` path while Gas/Denki match the decomp
+   reaction states. Saved ~25 min.
+2. **`explore` — candidate inventory** of the lane-07 seam (`pc_p2_reset_all_teki`
+   -> `pc_p2_hiba_reset`), the hiba hook call sites, and the `PIKMIN_NATIVE_ROOT`
+   convention. Result **used as-is**: confirmed the seam wiring and no existing
+   scene-transition fixture (my gate-6 proof is a staged seam invocation), and
+   gave the env-var helper to mirror. Saved ~20 min.
+3. **`general` — validator + tests**: switched lanes-1012 policy tests to
+   `PIKMIN_NATIVE_ROOT`, added the `reentry` gate + negative tests. Result **used
+   with corrections**: I had to fix two caller rel strings the agent left pointing
+   at `engine/…`/`native/…`/`output/…` (they had silently skipped), and I added the
+   `pc_p2_hiba_hazard_count()` native hook + the `APP` re-entry block myself (out
+   of its remit). Saved ~20 min, reclaimed ~5 min of correction.
+
+Net: ~60 min of parallel work off the critical path.
