@@ -17,8 +17,9 @@ model (`experimental/pikmin2_cave_growth.py`) and an engine-free native policy
 
 ## Bases, heads, dirty state, ordered commits
 
-- Root base `fba8d5eb0767950f56486bd2738598eb99a4645d`; head
-  `d68dc3e105ecfc3d84c8d0230f1b70744706e706`; dirty: no.
+- Root base `fba8d5eb0767950f56486bd2738598eb99a4645d`; implementation head
+  `d68dc3e105ecfc3d84c8d0230f1b70744706e706`; handoff-doc commit is the branch tip
+  after this file; dirty: no.
   1. `d68dc3e1` lane35: seeded cave unit-pool partition + phased trunk growth model + tests (#474)
 - Native base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`; head
   `40a0cfaf3d9ac7bf0fe8ae2e2afc1e00f47d6227`; dirty: no.
