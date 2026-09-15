@@ -85,6 +85,10 @@ struct PcConfig {
     int chainActions = 0;
     // Hold Extract to keep plucking (0=off/faithful, 1=on). Off by default.
     int holdToPluck = 0;
+    // Suppress informational hints (0=off/faithful, 1=on). On by default in the
+    // fork. The end-of-day results/diary screen is EXEMPT: it always shows in
+    // normal play and only preview/fixture runs (pc_pikipelago_room_preview())
+    // auto-dismiss it.
     int disableTutorials = 1;
     // What the mouse wheel does: 0 = pick the Pikmin colour to throw,
     // 1 = zoom the camera. One setting rather than two toggles, so the two

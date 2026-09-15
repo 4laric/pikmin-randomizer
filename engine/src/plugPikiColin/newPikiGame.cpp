@@ -1,4 +1,5 @@
 #include "pc_randomizer.h"
+#include "pc_bbft.h"
 #include "NewPikiGame.h"
 
 #include "Controller.h"
@@ -1714,7 +1715,13 @@ ModeState* DayOverModeState::initialisePhaseTwo()
 			// start the results window with our chosen diary entry
 			resultWindow = new zen::ogScrResultMgr((zen::EnumResult*)resultTable);
 			resultWindow->start();
-			if (pc_settings_get_disable_tutorials()) {
+			// The end-of-day results/diary is EXEMPT from the tutorial suppression
+			// in normal play: it is the P2 treasure/diary tally, not a tutorial, so
+			// the player always sees it. Only unattended preview/fixture runs
+			// (--experimental-pikmin2-room) keep the historical auto-dismiss so they
+			// cannot stall on "1 Day Since Impact"; those can opt out by pinning
+			// disableTutorials = 0 in their private pikmin_settings.conf.
+			if (pc_pikipelago_room_preview() && pc_settings_get_disable_tutorials()) {
 				resultWindow->skip();
 			}
 

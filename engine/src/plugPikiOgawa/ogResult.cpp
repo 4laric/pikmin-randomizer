@@ -543,8 +543,10 @@ void zen::ogScrResultMgr::start()
  */
 void zen::ogScrResultMgr::skip()
 {
-	// Auto-dismiss the end-of-day results screen (Disable Tutorials) so
-	// unattended fixture runs do not stall on "1 Day Since Impact".
+	// Auto-dismiss the end-of-day results screen for *unattended preview/fixture
+	// runs* only (see newPikiGame.cpp: pc_pikipelago_room_preview() &&
+	// disableTutorials) so they cannot stall on "1 Day Since Impact". Normal play
+	// always shows the results/diary, which is exempt from tutorial suppression.
 	mWaitTimer     = 1.0f;
 	mPendingStatus = RESULT_ExitToMapSelect;
 	mStatus        = RESULT_FadeOut;
