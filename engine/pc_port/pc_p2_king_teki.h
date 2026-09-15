@@ -18,3 +18,12 @@ bool pc_p2_king_teki_draw(BTeki*, Graphics&, const Matrix4f&, bool corpse = fals
 bool pc_p2_king_teki_dead_key_seen();
 unsigned long pc_p2_king_teki_behavior_tick();
 int pc_p2_king_teki_attached_count(const BTeki*);
+// Parameter-override seam (chained in include/teki.h BTeki::getParameterF): for
+// a bound host, report the Emperor's health as TPF_Life and zero life recovery
+// so the per-frame life-recovery clamp keeps the host at 1300 until real damage
+// is dealt. Unbound hosts fall through unchanged.
+float pc_p2_king_teki_param_f(const BTeki*, int idx, float fallback);
+// Pod corpse receipt (family-local, the preview Pod's corpse branch): maps a
+// delivered carcass PelletView back to its bound host generator.
+class PelletView;
+bool pc_p2_king_teki_receipt(PelletView*, unsigned& generator);
