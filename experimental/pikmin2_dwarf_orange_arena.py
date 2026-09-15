@@ -53,8 +53,10 @@ def roster(assets):
         row = bytearray(enemy)
         struct.pack_into('<I', row, 8, identity)
         # lane-03 (#439): mark both arena actors save-eligible so the day-end
-        # generator-cache loop selects them (GENCARRY_SaveGenerator = 1 << 0).
-        struct.pack_into('>I', row, 12, 1)
+        # generator-cache loop selects them, and carry the spawn count so a
+        # cache-resumed ramMode Generator::init can run its RESET DAY path and
+        # birth fresh (GENCARRY_SaveGenerator | GENCARRY_SaveSpawnCount = 0x5).
+        struct.pack_into('>I', row, 12, 0x5)
         row[16:48] = kind.encode('ascii').ljust(32, b'\0')
         write_position(row, xyz)
         entries.append(bytes(row))
