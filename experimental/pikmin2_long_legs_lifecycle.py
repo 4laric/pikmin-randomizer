@@ -101,8 +101,9 @@ APP = r'''class RoomApp : public PlugPikiApp {
     int assignTransport(Pellet* corpse){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
         v->mActiveAction->abandon(nullptr);v->mActiveAction->mCurrActionIdx=PikiAction::Transport;
         v->mActiveAction->mChildActions[PikiAction::Transport].initialise(corpse);v->mMode=PikiMode::TransportMode;++n;}return n;}
-    int freeAndPark(Teki* center, float radius){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
-        float ang=float(n)*6.2831853f/20.0f;Vector3f pt(center->mSRT.t.x+radius*std::sin(ang),0,center->mSRT.t.z+radius*std::cos(ang));
+    int freeAndPark(Teki* center, float radius){return freeAndParkAt(center->mSRT.t,radius);}
+    int freeAndParkAt(const Vector3f& c, float radius){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
+        float ang=float(n)*6.2831853f/20.0f;Vector3f pt(c.x+radius*std::sin(ang),0,c.z+radius*std::cos(ang));
         pt.y=mapMgr->getMinY(pt.x,pt.z,true);v->resetPosition(pt);v->changeMode(PikiMode::FreeMode,naviMgr?naviMgr->getNavi():nullptr);++n;}return n;}
     int parkFormation(Teki* center, float radius){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
         float ang=float(n)*6.2831853f/20.0f;Vector3f pt(center->mSRT.t.x+radius*std::sin(ang),0,center->mSRT.t.z+radius*std::cos(ang));
@@ -186,20 +187,20 @@ public:int idle() override {
         if(!bigfootCorpse||!houdaiCorpse){if(observed>24000){std::puts("FAIL P2_LONG_LEGS_LIFECYCLE corpse_timeout");std::fflush(stdout);std::_Exit(1);}return result;}
         int stray=dropStrayPellets();
         std::printf("P2_LL_DROP_STRAY pr01=%d\n",stray);
-        int c=freeAndPark(bigfoot,22.0f);std::printf("P2_LL_FREE_RECRUIT species=BigFoot count=%d pokos=%d\n",c,pc_p2_preview_pokos());std::fflush(stdout);stage=5;return result;
+        int c=freeAndParkAt(bigfootCorpse->mSRT.t,22.0f);std::printf("P2_LL_FREE_RECRUIT species=BigFoot count=%d pokos=%d slot=%d carry=%d x=%.0f z=%.0f\n",c,pc_p2_preview_pokos(),bigfootCorpse->getMinFreeSlotIndex(),bigfootCorpse->mConfig?bigfootCorpse->mConfig->mCarryMinPikis():-1,bigfootCorpse->mSRT.t.x,bigfootCorpse->mSRT.t.z);std::fflush(stdout);stage=5;return result;
     }
     if(stage==5){
-        if(observed%180==0)std::printf("P2_LL_CARRY species=BigFoot state=%d alive=%d transport=%d pokos=%d\n",bigfootCorpse->getState(),int(bigfootCorpse->isAlive()),transportingCount(),pc_p2_preview_pokos());
+        if(observed%180==0)std::printf("P2_LL_CARRY species=BigFoot state=%d alive=%d transport=%d slot=%d pokos=%d\n",bigfootCorpse->getState(),int(bigfootCorpse->isAlive()),transportingCount(),bigfootCorpse->getMinFreeSlotIndex(),pc_p2_preview_pokos());
         if(!bigfootCorpse->isAlive()){std::printf("P2_LL_DELIVER species=BigFoot pokos=%d\n",pc_p2_preview_pokos());std::fflush(stdout);stage=6;return result;}
         if(observed>32000){std::puts("FAIL P2_LONG_LEGS_LIFECYCLE carry_timeout");std::fflush(stdout);std::_Exit(1);}
         return result;
     }
     if(stage==6){
         int stray=dropStrayPellets();
-        int c=freeAndPark(houdai,22.0f);std::printf("P2_LL_FREE_RECRUIT species=Houdai count=%d pokos=%d stray=%d\n",c,pc_p2_preview_pokos(),stray);std::fflush(stdout);stage=7;return result;
+        int c=freeAndParkAt(houdaiCorpse->mSRT.t,22.0f);std::printf("P2_LL_FREE_RECRUIT species=Houdai count=%d pokos=%d stray=%d\n",c,pc_p2_preview_pokos(),stray);std::fflush(stdout);stage=7;return result;
     }
     if(stage==7){
-        if(observed%180==0)std::printf("P2_LL_CARRY species=Houdai state=%d alive=%d transport=%d pokos=%d\n",houdaiCorpse->getState(),int(houdaiCorpse->isAlive()),transportingCount(),pc_p2_preview_pokos());
+        if(observed%180==0)std::printf("P2_LL_CARRY species=Houdai state=%d alive=%d transport=%d slot=%d pokos=%d\n",houdaiCorpse->getState(),int(houdaiCorpse->isAlive()),transportingCount(),houdaiCorpse->getMinFreeSlotIndex(),pc_p2_preview_pokos());
         if(!houdaiCorpse->isAlive()){std::printf("P2_LL_DELIVER species=Houdai pokos=%d\n",pc_p2_preview_pokos());std::fflush(stdout);stage=8;return result;}
         if(observed>40000){std::puts("FAIL P2_LONG_LEGS_LIFECYCLE carry_timeout");std::fflush(stdout);std::_Exit(1);}
         return result;
