@@ -22,10 +22,17 @@ Root base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`; native base
 
 | Branch | Commit | Subject |
 |---|---|---|
-| native `deepseek/p2-l14-native` | `3370950c` | Sokkuri death marker reports prior_health for combat-vs-inject distinction (#165) |
-| native | `0ec890de` | Sokkuri natural-combat damage/death observability markers (#165) |
-| root `deepseek/p2-l14` | `f66624b` | prior_health death marker + separate combat-damage gate (harness+tests+doc) (#165) |
-| root | `ae0aca4` | Sokkuri natural-vs-injected death labelling (harness+tests+doc) (#165) |
+| native `deepseek/p2-l14-native` | `3370950c`, `0ec890de` | Sokkuri natural-combat damage/death observability markers + prior_health (#165) |
+| native | `536a364a`, `060feddb` | ElecBug natural Purple-landing press + registration observability (#165) |
+| native | `d2911fdf`, `ebc4c388` | TamagoMushi manager-driven group birth + whole-group cleanup; markers use module gen id (#165) |
+| native | `bf02f219`, `92eea3fe`, `e7dacd6d`, `2454bfc2` | review fixes 4: stopMove/despawn, generateTeki, bounded birth radius, exclude host (#165) |
+| native | `06a226d1` | slice 5: defer born-follower kills via `pc_p2_tamago_tick` + birth-mode header note (#165) |
+| root `deepseek/p2-l14` | `ae0aca4`, `f66624b` | Sokkuri natural-vs-injected labelling + prior_health death marker/gate (#165) |
+| root | `081e621` | integrator review fixes: `PIKMIN_NATIVE_ROOT` + real prior_health assertion (#165) |
+| root | `e8a7d6b`, `0d03565` | Sokkuri natural lethal-death runtime + handoff slice 2 (#165) |
+| root | `2053d20`, `f8d4eae`, `9df2c03` | ElecBug staged-press/timing + Tamago group-birth runtime + handoff slice 4 (#165) |
+| root | `bbab6f3`, `5f84482` | review fixes 4: exactly_once on GROUP_ONCE, born=1 BIND, fixture forget via seam + handoff (#165) |
+| root | (slice 5 commits) | slice 5: deferred kill + in-place gate tables (#165) |
 
 Dirty state: none (both clean).
 
@@ -66,21 +73,87 @@ Root: `experimental/pikmin2_ground_lifecycle_behavior.py` (validator +
 - No extinction; run exit 0.
 - Run dir: `output/dsw/l14-out/run2/2c10ec7097254c3e84f0a1ca957ac935`.
 
-## Six arena gates (Sokkuri 79)
+## Six-gate evidence tables (per identity)
 
-| Gate | Result | Evidence |
-|---|---|---|
-| 1. Identity + spawn | PASS | `P2_SOKKURI_BIND generator=346005 source_id=79 visual_only=0` |
-| 2. Autonomous movement + animation | PASS (source-backed) | `P2_SOKKURI_STATE state=appear/flick`; prior sokkuri run evidence; not re-verified here |
-| 3. Attacks / receivers | natural damage PASS; lethal injected | `P2_SOKKURI_DAMAGE health=105.0` (natural squad attack); `P2_LIFECYCLE_INJECT not_natural_combat=1` (lethal step injected) |
-| 4. Death + corpse | PASS (injected lethal) | `P2_SOKKURI_DEAD prior_health=105.0`; `P2_LIFECYCLE_CORPSE species=Sokkuri pellet=1` |
-| 5. Transport + reward | UNTESTED (deferred #397) | cargo-free arena, no Pod; source carry clip `type5` exists → not source-backed N/A |
-| 6. Cleanup + re-entry | PASS (generator re-bind) | `P2_LIFECYCLE_FORGET count=0`; `P2_LIFECYCLE_REENTRY stale=0 fresh=1 count=1` |
+Per-identity natural gate evidence. Every PASS cites a real successful-run log
+line (`output/<run>/native.log:NNN`); injected/proxy or bind-only evidence is
+`UNTESTED`, never a PASS. Gate 5 (transport/reward) has no lane-06 receipt in this
+cargo-free arena, so it is `UNTESTED` everywhere.
 
-Injected vs natural is labelled: injected lethal step is explicit
-(`P2_LIFECYCLE_INJECT ... not_natural_combat=1`, `injected=1` completion marker);
-natural combat **damage** is separately proven by `P2_SOKKURI_DAMAGE`. A natural
-**lethal** death (health fully drained by combat, no injection) is still open.
+### Sokkuri (EnemyID 79)
+
+| Gate | Result | Injected vs natural | Evidence |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS | natural | output/dsw/l14-out/natural-run2/afcc5104e5784937bcb514cb5ae06b0d/capture/native.log:782 |
+| 2. Autonomous movement and animation | PASS | natural | output/dsw/l14-out/natural-run2/afcc5104e5784937bcb514cb5ae06b0d/capture/native.log:826 |
+| 3. Attacks and receivers | PASS | natural | output/dsw/l14-out/natural-run2/afcc5104e5784937bcb514cb5ae06b0d/capture/native.log:801 |
+| 4. Death and corpse | PASS | natural | output/dsw/l14-out/natural-run2/afcc5104e5784937bcb514cb5ae06b0d/capture/native.log:904 |
+| 5. Transport and reward | UNTESTED | | no lane-06 receipt; cargo-free arena (#397) |
+| 6. Cleanup and re-entry | PASS | natural | output/dsw/l14-out/natural-run2/afcc5104e5784937bcb514cb5ae06b0d/capture/native.log:948 |
+
+### ElecBug (EnemyID 28)
+
+| Gate | Result | Injected vs natural | Evidence |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS | natural | output/dsw/l14-out/elecbug-run4a/e23f06567a034d9bb6df3e12df79b115/capture/native.log:807 |
+| 2. Autonomous movement and animation | PASS | natural | output/dsw/l14-out/elecbug-run4a/e23f06567a034d9bb6df3e12df79b115/capture/native.log:820 |
+| 3. Attacks and receivers | PASS | natural | output/dsw/l14-out/elecbug-run4a/e23f06567a034d9bb6df3e12df79b115/capture/native.log:867 |
+| 4. Death and corpse | PASS | natural | output/dsw/l14-out/elecbug-run4a/e23f06567a034d9bb6df3e12df79b115/capture/native.log:1082 |
+| 5. Transport and reward | UNTESTED | | no lane-06 receipt; cargo-free arena (#397) |
+| 6. Cleanup and re-entry | PASS | natural | output/dsw/l14-out/elecbug-run4a/e23f06567a034d9bb6df3e12df79b115/capture/native.log:1161 |
+
+Natural death (flip is a staged P1-derived press; death is natural combat drain):
+`PASS P2_ELECBUG_NATURAL_RUNTIME flip=staged-press death=natural ...` at
+`output/dsw/l14-out/elecbug-run4a/e23f06567a034d9bb6df3e12df79b115/capture/native.log:1166`.
+
+### TamagoMushi (EnemyID 68)
+
+| Gate | Result | Injected vs natural | Evidence |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS | natural | output/dsw/l14-out/tamago-slice5c-run/4b3b656b30d24c7fa726cbda4a4e5273/capture/native.log:782 |
+| 2. Autonomous movement and animation | PASS | natural | output/dsw/l14-out/tamago-slice5c-run/4b3b656b30d24c7fa726cbda4a4e5273/capture/native.log:909 |
+| 3. Attacks and receivers | PASS | natural | output/dsw/l14-out/tamago-slice5c-run/4b3b656b30d24c7fa726cbda4a4e5273/capture/native.log:837 |
+| 4. Death and corpse | N/A | | source-backed: honey reward, corpse suppressed (genItem honey-only) |
+| 5. Transport and reward | UNTESTED | | no lane-06 receipt; cargo-free arena (#397) |
+| 6. Cleanup and re-entry | PASS | natural | output/dsw/l14-out/tamago-slice5c-run/4b3b656b30d24c7fa726cbda4a4e5273/capture/native.log:1286 |
+
+Manager-driven group birth and exactly-once: `P2_TAMAGO_BIRTH ... source=manager`
+at `.../tamago-slice5c-run/4b3b656b30d24c7fa726cbda4a4e5273/capture/native.log:813`;
+`P2_TAMAGO_GROUP_ONCE host=346020 count=10` at
+`.../tamago-slice5c-run/4b3b656b30d24c7fa726cbda4a4e5273/capture/native.log:1285`.
+
+### Armor (EnemyID 15)
+
+| Gate | Result | Injected vs natural | Evidence |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS | natural | output/dsw/l14-out/run1/1fde880218f34c1381e13d8f2ef921b4/capture/native.log:1284 |
+| 2. Autonomous movement and animation | UNTESTED | | not exercised this lane |
+| 3. Attacks and receivers | UNTESTED | injected | dmg1/bittered receiver only exercised by an injected press |
+| 4. Death and corpse | UNTESTED | injected | only the injected lethal lifecycle fixture |
+| 5. Transport and reward | UNTESTED | | no lane-06 receipt (#397) |
+| 6. Cleanup and re-entry | UNTESTED | | not exercised this lane |
+
+### Imomushi (EnemyID 65)
+
+| Gate | Result | Injected vs natural | Evidence |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS | natural | output/dsw/l14-out/run1/1fde880218f34c1381e13d8f2ef921b4/capture/native.log:1295 |
+| 2. Autonomous movement and animation | UNTESTED | | not exercised this lane |
+| 3. Attacks and receivers | UNTESTED | | plant-eating interface still interface-only (#23) |
+| 4. Death and corpse | UNTESTED | | not exercised this lane |
+| 5. Transport and reward | UNTESTED | | no lane-06 receipt (#397) |
+| 6. Cleanup and re-entry | UNTESTED | | not exercised this lane |
+
+### Hana (EnemyID 84)
+
+| Gate | Result | Injected vs natural | Evidence |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS | natural | output/dsw/l14-out/run1/1fde880218f34c1381e13d8f2ef921b4/capture/native.log:1291 |
+| 2. Autonomous movement and animation | UNTESTED | | not exercised this lane |
+| 3. Attacks and receivers | UNTESTED | | buried ambush behaviour not exercised this lane |
+| 4. Death and corpse | UNTESTED | | not exercised this lane |
+| 5. Transport and reward | UNTESTED | | no lane-06 receipt (#397) |
+| 6. Cleanup and re-entry | UNTESTED | | not exercised this lane |
 
 ## Tests
 
@@ -359,9 +432,9 @@ limitation; the host keeps the batch2 pose bank).
 | Gate | Result |
 |---|---|
 | manager-driven birth | PASS (`P2_TAMAGO_BIRTH ... source=manager`, 10 born) |
-| exactly-once | PASS (`P2_TAMAGO_BIRTH_ONCE duplicate=0`, `P2_TAMAGO_GROUP_ONCE count=10`) |
-| natural Astonish | PASS (54 `P2_TAMAGO_ASTONISH`) |
-| whole-group cleanup | PASS (`P2_TAMAGO_GROUP_FORGET remaining=0`) |
+| exactly-once | PASS (`P2_TAMAGO_BIRTH_ONCE born=9`, `P2_TAMAGO_GROUP_ONCE count=10`) |
+| natural Astonish | PASS (all ten born ids 346020..346029 fire `P2_TAMAGO_ASTONISH`) |
+| whole-group cleanup | PASS (`P2_TAMAGO_GROUP_FORGET remaining=0 queued=9`) |
 
 ### Exact reproduction (slice 4d)
 
@@ -482,3 +555,110 @@ Note per the reviewer: the explore audit imported the spawnTeki launch-velocity
 behaviour uncleaned; the actual fly-off cause was my own radius arithmetic, found by
 adding a temporary debug print and reading the real log — a reminder to verify
 delegated conclusions against the runtime.
+
+## Slice 5 — ingestible gate tables + deferred group cleanup
+
+### Items 1–3 (in-place corrections)
+
+1. **Gate tables corrected in place** (not appended): the stale slice-1
+   `## Six arena gates (Sokkuri 79)` table (which shadowed Sokkuri in the checker)
+   is replaced by six per-identity `Source ID`/`EnemyID` tables under
+   `## Six-gate evidence tables (per identity)`; the slice-4d `### Gates (slice 4d)`
+   rows now read `P2_TAMAGO_BIRTH_ONCE born=9` / `P2_TAMAGO_GROUP_ONCE count=10`
+   and `natural Astonish PASS (all ten born ids 346020..346029)`; the commit table
+   now lists the slice 2–5 commits.
+2. **`pc_p2_tamago.cpp` header** now documents the manager-driven birth mode
+   (`pc_p2_tamago_birth_group` via `BTeki::generateTeki`), not just the pre-staged
+   approximation.
+3. **Deferred sibling kill** (native `06a226d1`): `pc_p2_tamago_forget`'s group
+   branch no longer calls `child->kill(false)` inline (it ran inside the TekiMgr
+   update loop on a natural host death). It queues the born followers and the new
+   `pc_p2_tamago_tick()` drains them once per frame, hooked in
+   `gameCoreSection.cpp` after `tekiMgr->update()` (small labelled shared hook).
+   Runtime: `P2_TAMAGO_GROUP_FORGET host=346020 group=10 remaining=0 queued=9`;
+   `PASS P2_TAMAGO_GROUP_RUNTIME ... injected=0`, exit 0.
+   - Iteration-safety probe: `MonoObjectMgr::update()` (`objectMgr.cpp:285-298`)
+     iterates by the fixed pool bound `mMaxElements` and re-tests `mEntryStatus[i]`
+     each step; `MonoObjectMgr::kill` (`objectMgr.cpp:358-369`) only flips a slot to
+     `-1`/`-2`, so killing a sibling mid-iteration is index-safe — but the deferral
+     is the cleaner fix and is what shipped.
+   - **Natural host DEATH is BLOCKED (not injected):** the free squad deals zero
+     damage to the harmless Mitite (Astonish `InteractFlick` scatters it; host
+     health stayed 50.00 across the observation), and a bare `BTeki::die()` does not
+     complete the engine funnel (`dieSoon()` is gated on `!mDeadState` inside
+     `BTeki::doAI`, `tekibteki.cpp:615/652`). The deferral removes the mid-loop
+     sibling kill for any trigger regardless, so item 3 is resolved by construction.
+
+### Item 4 — checker output (zero refused PASS rows)
+
+```
+py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE14_DEEPSEEK_HANDOFF.md
+15 Armor (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation ignored [UNTESTED]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [UNTESTED]
+28 ElecBug (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation accepted [PASS]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    accepted [PASS]
+65 Imomushi (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation ignored [UNTESTED]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [UNTESTED]
+68 TamagoMushi (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation accepted [PASS]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       ignored [N/A]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    accepted [PASS]
+79 Sokkuri (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation accepted [PASS]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    accepted [PASS]
+84 Hana (role=source):
+  1. identity_spawn     accepted [PASS]
+  2. movement_animation ignored [UNTESTED]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [UNTESTED]
+EXIT=0
+```
+
+### Commits / evidence
+
+- native `06a226d1` (slice 5: deferred born-follower kills + header note); native
+  `nectar.exe` SHA `ef24aab62dc9150b311366302417cdcf10838378ac1109272122bf52abed4345`.
+- root (this commit): fixture stage-4 deferred path + in-place gate tables + this
+  section. Tamago fixture `fixture.exe` SHA
+  `40cc543abf14edf9d0edb173f4b07959416f9b917708bd257ab01474d9646b66`.
+- `PIKMIN_NATIVE_ROOT=...` family suite → 145 passed.
+
+### Subagent usage (slice 5)
+
+- **explore #1 (iterator safety + tick hook)** — traced `MonoObjectMgr::update` /
+  `kill` and located the once-per-frame `_tick` cluster in `gameCoreSection.cpp`
+  (lines 2195/2950). Used as-is; it (correctly) judged inline mid-iteration kill
+  index-safe, but I still shipped the deferral.
+- **explore #2 (evidence census)** — returned exact `native.log:NNN` line numbers
+  for every gate marker across my runs (Sokkuri `natural-run2`, ElecBug
+  `elecbug-run4a/4b`, Tamago `slice5c-run`, Armor/Imomushi/Hana `run1`). Used
+  as-is; this was the bulk of the citation work.
+- **general #3 (gate-table format probe)** — wrote the six-table block to a scratch
+  file and iterated the checker on a probe copy; discovered the exact heading
+  binding rule (`EnemyID N`/`Name (N)` bind; a bare `source ID` line does not). Used
+  with corrections (I supplied the real citations + replaced the shadowing slice-1
+  table). Scratch files removed.

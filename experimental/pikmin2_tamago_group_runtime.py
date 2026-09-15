@@ -156,6 +156,13 @@ public:int idle() override {
         return result;
     }
     if(stage==4){
+        // Host forget via the central lifetime seam. The group-forget branch now
+        // QUEUES the born followers and pc_p2_tamago_tick drains them once per frame
+        // (outside the TekiMgr update loop), so this exercises the deferred-despawn
+        // path. A non-injected natural host DEATH was attempted separately and is
+        // blocked: the harmless Mitite takes no squad damage (Astonish scatter) and
+        // a bare BTeki::die() does not complete the engine funnel (dieSoon is gated
+        // on !mDeadState in BTeki::doAI). See the handoff notes.
         pc_p2_forget_teki(host);
         require(pc_p2_tamago_count()==0,"whole group not cleared on host forget");
         std::printf("P2_TAMAGO_GROUP_CLEANUP host=346020 forgotten=10\n");
