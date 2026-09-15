@@ -51,9 +51,9 @@ Regenerate with:
 |---:|---:|
 | 0 | 6 |
 | 1 | 6 |
-| 2 | 6 |
+| 2 | 7 |
 | 3 | 4 |
-| 4 | 3 |
+| 4 | 2 |
 | 5 | 5 |
 | 6 | 24 |
 
@@ -203,8 +203,8 @@ Seedable (`source`/`variant`) identities named across handoffs: 54
 
 ### 58 BombSarai (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE27_DEEPSEEK_HANDOFF.md
-- advances: death_corpse, transport_reward
-- blocking: identity_spawn, movement_animation, attacks_receivers, cleanup_reentry
+- advances: movement_animation, attacks_receivers, transport_reward, cleanup_reentry
+- blocking: identity_spawn, death_corpse
 
 ### 59 FireOtakara (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE22_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE33_DEEPSEEK_HANDOFF.md

@@ -38,6 +38,14 @@ def test_empty_log_all_false():
     assert result["corpse_moved"] is None
     assert result["corpse_config"] is None
     assert result["transported"] is False
+    assert result["moves"] == []
+    assert result["move_travel"] is None
+    assert result["states_seen"] == []
+    assert result["hits"] == []
+    assert result["hit_damage"] is None
+    assert result["forget"] is None
+    assert result["reentry"] is None
+    assert result["reentry_pass"] is False
 
 
 def test_probe_in_reach_engages():
@@ -202,3 +210,77 @@ def test_full_log_with_corpse_probes():
     assert result["corpse_max_carriers"] == 2
     assert result["corpse_moved"] == 30.0
     assert result["transported"] is True
+
+
+def test_move_travel_and_states_seen():
+    log = "\n".join([
+        "P2_BOMBSARAI_TEKI_MOVE generator=270001 tick=40 state=Idle anim=1 x=0.0 y=5.0 z=0.0 yaw=0.0 pitch=0.0 lane=0.0 host=0.0",
+        "P2_BOMBSARAI_TEKI_MOVE generator=270001 tick=41 state=Walk anim=2 x=10.0 y=5.0 z=0.0 yaw=0.0 pitch=0.0 lane=0.0 host=0.0",
+        "P2_BOMBSARAI_TEKI_MOVE generator=270001 tick=42 state=Walk anim=2 x=30.0 y=5.0 z=0.0 yaw=0.0 pitch=0.0 lane=0.0 host=0.0",
+    ])
+    result = validate_teki_markers(log)
+    assert len(result["moves"]) == 3
+    assert result["move_travel"] == 30.0
+    assert result["states_seen"] == ["Idle", "Walk"]
+    assert result["moves"][2]["x"] == 30.0 and result["moves"][2]["z"] == 0.0
+
+
+def test_hit_damage():
+    log = "P2_BOMBSARAI_TEKI_HIT generator=270001 tick=47 target=12 kind=piki hp_before=30.0 hp_after=20.0 state_before=0 state_after=1 alive_before=1 alive_after=0 applied=1"
+    result = validate_teki_markers(log)
+    assert len(result["hits"]) == 1
+    assert result["hits"][0]["kind"] == "piki"
+    assert result["hit_damage"] == 10.0
+
+
+def test_forget_cleanup():
+    log = "P2_BOMBSARAI_TEKI_FORGET generator=270001 bound_before=0 corpse_before=1 bound_after=0 corpse_after=0"
+    result = validate_teki_markers(log)
+    assert result["forget"] == {
+        "bound_before": 0, "corpse_before": 1,
+        "bound_after": 0, "corpse_after": 0,
+    }
+    assert result["forget"]["corpse_after"] == 0
+
+
+def test_reentry_and_pass():
+    reentry = "P2_BOMBSARAI_TEKI_REENTRY bound_before=1 bound_after_reset=0 corpse_after_reset=0 bound_after=1 corpse_after=0"
+    without_pass = validate_teki_markers(reentry)
+    assert without_pass["reentry"] == {
+        "bound_before": 1, "bound_after_reset": 0,
+        "corpse_after_reset": 0, "bound_after": 1, "corpse_after": 0,
+    }
+    assert without_pass["reentry_pass"] is False
+    with_pass = validate_teki_markers(reentry + "\nP2_BOMBSARAI_TEKI_REENTRY_PASS 1")
+    assert with_pass["reentry"] is not None
+    assert with_pass["reentry_pass"] is True
+
+
+def test_move_malformed_lane_degrades_to_none():
+    log = "P2_BOMBSARAI_TEKI_MOVE generator=270001 tick=43 state=Walk x=5.0 z=2.0 host=0.0"
+    result = validate_teki_markers(log)
+    assert len(result["moves"]) == 1
+    assert result["moves"][0]["lane"] is None
+    assert result["moves"][0]["state"] == "Walk"
+    assert result["move_travel"] is None
+
+
+def test_full_log_with_new_markers():
+    log = "\n".join(FULL_LOG.splitlines() + [
+        "P2_BOMBSARAI_TEKI_MOVE generator=270001 tick=40 state=Idle anim=1 x=0.0 y=5.0 z=0.0 yaw=0.0 pitch=0.0 lane=0.0 host=0.0",
+        "P2_BOMBSARAI_TEKI_MOVE generator=270001 tick=41 state=Walk anim=2 x=10.0 y=5.0 z=0.0 yaw=0.0 pitch=0.0 lane=0.0 host=0.0",
+        "P2_BOMBSARAI_TEKI_HIT generator=270001 tick=47 target=12 kind=piki hp_before=30.0 hp_after=20.0 state_before=0 state_after=1 alive_before=1 alive_after=0 applied=1",
+        "P2_BOMBSARAI_TEKI_FORGET generator=270001 bound_before=0 corpse_before=1 bound_after=0 corpse_after=0",
+        "P2_BOMBSARAI_TEKI_REENTRY bound_before=1 bound_after_reset=0 corpse_after_reset=0 bound_after=1 corpse_after=0",
+        "P2_BOMBSARAI_TEKI_REENTRY_PASS 1",
+    ])
+    result = validate_teki_markers(log)
+    assert result["gates"] == {
+        "ready": True, "supplied": True, "joint_follow": True, "thrown": True,
+        "blasted": True, "dead": True, "corpse": True,
+    }
+    assert result["move_travel"] == 10.0
+    assert result["states_seen"] == ["Idle", "Walk"]
+    assert result["hit_damage"] == 10.0
+    assert result["forget"]["corpse_after"] == 0
+    assert result["reentry_pass"] is True

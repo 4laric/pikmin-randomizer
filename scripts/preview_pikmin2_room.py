@@ -18,7 +18,7 @@ def records(path):
     return [data[s:(starts[i+1] if i+1<len(starts) else len(data))] for i,s in enumerate(starts)]
 
 
-def generator(assets):
+def generator(assets, reds=20):
     base=assets/'dataDir/stages'
     challenge=records(base/'chal0/default.gen')
     practice=records(base/'practice/default.gen')
@@ -39,10 +39,11 @@ def generator(assets):
     type_start=piki.index(b'nota0.0v',96)
     count_start=piki.index(b'p00\x04',type_start)+4
     struct.pack_into('>I',piki,count_start,1)  # one Piki per selected placement
-    # Lane 27: 40 reds (was 20). The grounded BombSarai/Napkid carrier lobs
-    # area bombs that otherwise wipe a 20-red squad before it can be killed;
-    # a 40-red squad lands the kill with survivors left to haul the carcass.
-    for i in range(40): add(piki,(-110+(i%5)*12,0,-20+(i//5)*12),'preview red pikmin')
+    # Shared room-preview squad: default 20 reds. A family arena that needs more
+    # (e.g. lane 27 BombSarai, whose carrier's area bombs otherwise wipe a 20-red
+    # squad before it can be killed) passes reds= explicitly to its staging call.
+    if reds < 0 or reds > 100: raise ValueError('reds out of range')
+    for i in range(reds): add(piki,(-110+(i%5)*12,0,-20+(i//5)*12),'preview red pikmin')
     dwarf=bytearray(challenge[9]);dwarf[80]=3  # TEKI_Chappy (native Dwarf Bulborb), generator v10 byte enum
     # The source posy generator is an at-once pair; retain its framing but spawn one actor.
     type_start=dwarf.index(b'nota0.0v',80)
@@ -146,7 +147,7 @@ def replace_embedded_routes(model,route):
     raise ValueError('Missing MOD EOF')
 
 
-def prepare(assets,converted,output):
+def prepare(assets,converted,output,reds=20):
     run=output.resolve()/uuid.uuid4().hex
     run.mkdir(parents=True)
     stage=(assets/'dataDir/stages/chal0.ini').read_bytes()
@@ -155,7 +156,7 @@ def prepare(assets,converted,output):
     empty=b'1.0v'+struct.pack('>4fI',-85,0,0,45,0)
     routes=prototype_routes((converted/'room.ini').read_bytes())
     room_model=replace_embedded_routes((converted/'room.mod').read_bytes(),routes)
-    overrides={'dataDir/stages/chal0.ini':stage,'dataDir/stages/chal0/default.gen':generator(assets),
+    overrides={'dataDir/stages/chal0.ini':stage,'dataDir/stages/chal0/default.gen':generator(assets,reds),
       'dataDir/stages/chal0/plants.gen':empty,
       'dataDir/courses/pikmin2room/room.mod':room_model,
       'dataDir/courses/pikmin2room/room.ini':routes}
