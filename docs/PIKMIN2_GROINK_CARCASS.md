@@ -78,13 +78,13 @@ populates at revival.
 ## Build and test evidence
 
 Native branch `deepseek/p2-l21-native` head `5f5cf5fe` on base
-`b805d9c626e4f4558c95aef7cac311a5d9a2068f`. Private build dir
-`output/dsw/native-l21-build` (Ninja + MinGW g++, JAUDIO ON, OPTIMIZE OFF).
+`b805d9c626e4f4558c95aef7cac311a5d9a2068f`. Private lane build dir
+(Ninja + MinGW g++, JAUDIO ON, OPTIMIZE OFF).
 
 - `pikmin_pc` builds clean; `ninja -n` reports no work to do; `bin/nectar.exe`
-  SHA-256 `9dd6f5d3…` (recorded in `output/dsw/l21-build-evidence.txt`).
+  SHA-256 `9dd6f5d3…` (recorded in the lane 21 build-evidence file; see the lane 21 handoff).
 - All ten `p2_groink*` CTests pass, including `p2_groink_carcass_test` and the
-  newly wired `p2_groink_lifetime_test`. CTest log: `output/dsw/l21-out/ctest-groink-all.log`.
+  newly wired `p2_groink_lifetime_test`. CTest log: lane 21 evidence dir `ctest-groink-all.log` (see the lane 21 handoff).
 
 ## Gate table (six gates, natural vs injected)
 
