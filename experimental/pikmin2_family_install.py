@@ -439,10 +439,17 @@ def install_layout(run, layout, content_root, actor_bindings=None, retail_assets
             receipts[target] = _installer(family)(source, run, [(generator, enum_name)])
     except BaseException:
         # A family installer that fails mid-copy must not leave a partial asset
-        # tree: remove the private overlay (its retail junctions are not followed)
-        # and re-raise, so the next launch performs a fresh install.
+        # tree or run-root sidecars (e.g. p2-snow.txt copied by the Snow adapter):
+        # remove the private overlay (its retail junctions are not followed) plus
+        # every adapter-produced run-root file, preserving only the native session
+        # files and the (not-yet-written) binding receipt, then re-raise so the
+        # next launch performs a fresh install.
         if (run / 'assets').exists():
             shutil.rmtree(run / 'assets', ignore_errors=True)
+        if run.is_dir():
+            for path in run.iterdir():
+                if path.is_file() and path.name not in SESSION_FILES and path.name != BINDING_RECEIPT:
+                    path.unlink(missing_ok=True)
         raise
     files = _content_files(run)
     aggregate = dict(schema=1, mode='identity-binding', plan_digest=plan_digest,
