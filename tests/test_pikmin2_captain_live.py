@@ -36,9 +36,12 @@ def test_captain_live_hooks_present():
     checks = [
         ('pc_port/pc_p2_captain.cpp', [
             'setup_from_navi_mgr(', 'capture_captain(', 'capture_actor(',
-            'drop_captured(', 'captain_handle(']),
+            'drop_captured(', 'captain_handle(', 'pc_p2_captain_forget_piki(']),
         ('pc_port/pc_p2_captain.h', [
-            'captain_handle(', 'captive_count(', 'navi_dead(']),
+            'captain_handle(', 'captive_count(', 'navi_dead(',
+            'pc_p2_captain_forget_piki(']),
+        ('src/plugPikiKando/pikiMgr.cpp', [
+            'pc_p2_captain_forget_piki(']),
         ('src/plugPikiKando/naviState.cpp', [
             'informOrimaDead(', 'getAliveOrima']),
         ('src/plugPikiKando/gameCoreSection.cpp', [
