@@ -106,7 +106,6 @@ def test_validate_cross_combines_both():
 
 def test_instrument_splices_the_collection_app():
     root = Path(__file__).resolve().parents[1]
-    source = collect.build.__wrapped__ if hasattr(collect.build, '__wrapped__') else None
     # exercise instrument via the module's INCLUDES/APP through the base builder is
     # not available headless; the app string must at least never inject a press.
     assert 'InteractPress' in collect.APP  # the labelled injected flip is present

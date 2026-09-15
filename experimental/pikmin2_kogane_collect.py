@@ -118,7 +118,7 @@ APP = r'''class RoomApp : public PlugPikiApp {
     require(!aliveTeki(219001),"restarted beetle re-armed (still alive)");
     require(control&&control->isAlive(),"P1 control disturbed");
     std::printf("P2_KOGANE_RESTART rearmed=0\n");std::fflush(stdout);
-    require(!aliveTeki(219001),"press re-armed the farmed beetle");
+    require(!aliveTeki(219001),"restored beetle re-armed (passive check; no press in pass 2)");
     std::puts("PASS P2_KOGANE_RESTART dedupe_ok rearmed=0");std::fflush(stdout);std::_Exit(0);}
   }
   std::fflush(stdout);return result;
