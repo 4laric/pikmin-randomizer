@@ -61,11 +61,12 @@ public:int idle() override {
   armed=true;std::puts("P2_KING_CREATURE_ARMED no_injection=1 deploy_once=1");
  }
  if(armed&&!finished){
-  // Lane-19 transport tactic: re-ring the live reds around the Emperor every 120
-  // ticks while it is alive, so after it dies a concentrated squad is on the
-  // carcass to carry it (FreeMode AI does the attack and the pickup).
+  // Lane-19 transport tactic: ring the live, un-latched reds around the Emperor
+  // every 120 ticks while it is alive, so after it dies a concentrated squad is
+  // on the carcass to carry it. Skip Pikmin already stuck to the Emperor or
+  // running an attack, so the engine stick/attack joints are never disturbed.
   if(!deathSeen&&host&&host->mHealth>0.0f&&ready%120==0){
-   Iterator r(pikiMgr);int idx=0;CI_LOOP(r){Piki* a=static_cast<Piki*>(*r);if(!a||!a->isAlive()||a->mColor!=Red)continue;const float ang=float(idx)*6.2831853f/32.f;Vector3f at(host->mSRT.t.x+30.f*std::sin(ang),host->mSRT.t.y,host->mSRT.t.z+30.f*std::cos(ang));a->mSRT.t.set(at);++idx;}
+   Iterator r(pikiMgr);int idx=0;CI_LOOP(r){Piki* a=static_cast<Piki*>(*r);if(!a||!a->isAlive()||a->mColor!=Red)continue;if(a->getStickObject()||a->mMode==PikiMode::AttackMode)continue;const float ang=float(idx)*6.2831853f/32.f;Vector3f at(host->mSRT.t.x+30.f*std::sin(ang),host->mSRT.t.y,host->mSRT.t.z+30.f*std::cos(ang));a->mSRT.t.set(at);++idx;}
   }
   if(pc_p2_king_teki_dead_key_seen()&&!deathSeen){deathSeen=true;std::puts("P2_KING_CREATURE_DEATH_SEEN receiver=engine host_health=0");}
   if(deathSeen&&!corpseSeen){
