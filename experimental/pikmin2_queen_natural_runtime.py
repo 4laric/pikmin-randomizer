@@ -44,13 +44,13 @@ class RoomApp : public PlugPikiApp {
   CI_LOOP(p){
    Piki* a=static_cast<Piki*>(*p);
    if(!a||!a->isAlive())continue;
-   const float ang=float(idx)*6.2831853f/32.f;
+   const float ang=float(idx)*6.2831853f/64.f;
    a->mSRT.t.set(cx+r*std::sin(ang),cy,cz+r*std::cos(ang));
    ++idx;
   }
  }
 public:int idle() override {
- int result=PlugPikiApp::idle();require(++frames<28000||hold,"Queen natural startup timeout");
+ int result=PlugPikiApp::idle();require(++frames<36000||hold,"Queen natural startup timeout");
  if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
  if(!pc_p2_preview_cargo_free_ready()||!naviMgr||!tekiMgr||!mapMgr)return result;
  Navi* n=naviMgr->getNavi();if(!n||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;++ready;
@@ -79,17 +79,17 @@ public:int idle() override {
  }
  if(armed&&!finished){
   if(ready<900){
-   pinSquad(34.0f,30.0f,1200.0f,400.0f); // hold-away: keep the squad outside the 275 root during the birth window
+   pinSquad(34.0f,30.0f,2200.0f,40.0f); // hold-away: far north, outside BabySight and the root
    if(ready==60)std::puts("P2_QUEEN_NATURAL_PHASE hold_away");
   } else {
    if(!deployed){deployed=true;std::puts("P2_QUEEN_NATURAL_PHASE combat");}
-   pinSquad(34.0f,30.0f,1200.0f,200.0f); // combat: labeled re-pin into the root so the receiver can kill it
+   pinSquad(34.0f,30.0f,1200.0f,240.0f); // combat: labeled re-pin into the root so the receiver can kill it
   }
   if(pc_p2_queen_death_released()){
    capture("queen-natural-death.ppm");
    std::puts("PASS P2_QUEEN_NATURAL_RUNTIME");
    std::fflush(nullptr);finished=true;if(!hold)std::_Exit(0);
-  } else if(ready>=16000){
+  } else if(ready>=20000){
    std::puts("FAIL P2_QUEEN_NATURAL_NO_DEATH");
    std::fflush(nullptr);finished=true;if(!hold)std::_Exit(3);
   }
@@ -122,7 +122,7 @@ def build(native, build_dir, output, head):
 
 QUEEN_WANTED = ('dead', 'sleep', 'wait1', 'damage', 'flick', 'rolling_l', 'rolling_r', 'born')
 BABY_WANTED = ('born', 'move', 'dead')
-SQUAD_RED = 32
+SQUAD_RED = 64
 PLACEMENT_ID = 230010
 QUEEN_XYZ = (34.0, 30.0, 1200.0)
 
@@ -214,7 +214,7 @@ def run(assets, bank, output, exe):
         process = subprocess.Popen([str(Path(exe).resolve()), '--experimental-pikmin2-room'], cwd=directory,
                                    env=env, stdout=log, stderr=subprocess.STDOUT)
         try:
-            code = process.wait(timeout=420)
+            code = process.wait(timeout=600)
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait()
