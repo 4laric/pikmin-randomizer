@@ -1121,7 +1121,7 @@ is populated only on the `!isAlive() || mHealth <= 0` tick path and
 ## Concrete source ID
 - Source ID: 58 `BombSarai`.
 
-| Gate | Result | Evidence | Injected vs natural |
+| Gate | Historical note | Evidence | Injected vs natural |
 |---|---|---|---|
 | 1. Exact identity and spawn | UNTESTED (injected) | output/dsw/l27-out/teki-arena12/fa0f1285feaf46c3abff5268508f6ffa/run.log:724 (generated TEKI_Napkid vehicle proxy, not P2 identity 58) | injected |
 | 2. Autonomous movement and animation | PARTIAL (injected) | output/dsw/l27-out/teki-arena12/fa0f1285feaf46c3abff5268508f6ffa/run.log:759 (grounded y=0, sealed to squad; P1 host flight overridden) | injected |
@@ -1187,3 +1187,137 @@ Net: the carry audit saved the most — it redirected the fix from "config" to
       5. transport_reward   accepted [PASS]
       6. cleanup_reentry    ignored [UNTESTED]
     EXIT=0 (no refused PASS rows)
+
+## Slice 5 — movement/animation, attacks/receivers, cleanup/re-entry: 5/5 (#244)
+
+This pass merges the current wave native, then closes the three remaining gates
+on the generated-carrier run while keeping `death_corpse`/`transport_reward`
+PASS. The carrier is still the generated P1 `TEKI_Napkid` vehicle; identity is
+unchanged (gate 1 stays UNTESTED).
+
+### Ordered commits
+
+Native branch `deepseek/p2-l27-native` (base `cf7fb2f6`, clean):
+
+1. `0f037463` — merge `claude/p2-deepseek-wave-native` (3 commits; the only
+   overlap, `CMakeLists.txt`, auto-merged; the touched objects were compiled).
+2. `0ff668b730c6184f19d1bd92e3e469fb655c2df5` — lane27: movement/animation,
+   receiver-hit, cleanup/re-entry evidence hooks + reset/re-entry rehearsal (#244).
+
+Root branch `deepseek/p2-l27` (base `6deeafab`, clean):
+
+1. (this commit) — lane27: bind the five-gate table to the generated-carrier
+   run (#244).
+
+### What changed (native)
+
+- `pc_port/pc_p2_bombsarai_teki.cpp`:
+  - Movement/animation evidence: a per-second `P2_BOMBSARAI_TEKI_MOVE` marker with
+    the carrier position, facing, FSM state name and animation keyframe counter
+    (`stateTick`), the lane `walkToTarget` distance, and the P1 carrier flight
+    distance measured separately.
+  - Lane `walkToTarget` (source Move/BombMove; horizontal movement/target
+    selection is host-owned per `pc_p2_bombsarai_fsm.h`): walks toward the nearest
+    live Pikmin at the host move speed, holds the engage range, and reports
+    `waypointReached` inside the source 25u arrival radius; the source
+    `setRandTarget` 50-100u ring is used when no Pikmin exist.
+  - `P2_BOMBSARAI_TEKI_HIT` marker: logs each live target's health and state
+    before/after the real `InteractBomb` -> `Creature::stimulate` receiver.
+  - `P2_BOMBSARAI_TEKI_FORGET`/`_RESET`/`_REENTRY` markers plus a reset/re-entry
+    rehearsal hook (`PIKMIN_P2_BOMBSARAI_REENTRY_TICK`) that runs the same teardown
+    (`pc_p2_reset_all_teki`) and finalSetup (`pc_p2_bombsarai_teki_setup`) entry
+    points on the live scene and re-binds cleanly.
+
+### Build evidence
+
+`output/dsw/l27-build-evidence.txt` on the committed native head:
+
+```
+lane=l27 target=pikmin_pc native=0ff668b730c6184f19d1bd92e3e469fb655c2df5 dirty=no
+exe=...\bin\nectar.exe sha256=3d304222918c461527b9a3291fb4185fd0bacd612fe4c267e3c3ec487eaf24ad
+ninja_n="ninja: no work to do."
+```
+
+### Natural run (executed, generated host)
+
+`slot.py run gl l27`, `PIKMIN_P2_ROOM_WINDOW=960x540`, 360 s, log
+`output/dsw/l27-out/teki-arena15/bb2f00000000000000000000000000bb/run.log`
+(sha256 `72fa803a47b5ea6e4a3214fc3ada623d51f9cc94fe72d44ad7f49aeb8ce786df`).
+
+```
+:724 P2_BOMBSARAI_TEKI_READY generator=270001 type=11
+:760 P2_BOMBSARAI_TEKI_MOVE generator=270001 tick=30 state=Wait anim=29 x=-96.826 y=0.000 z=41.628 yaw=0.625 pitch=0.000 lane=18.530 host=49.190
+:767 P2_BOMBSARAI_TEKI_MOVE generator=270001 tick=60 state=Wait anim=8 x=56.865 y=-0.000 z=93.714 yaw=1.453 pitch=0.000 lane=0.000 host=168.376
+:769 P2_BOMBSARAI_TEKI_MOVE generator=270001 tick=90 state=Supply anim=8 x=182.348 y=-0.000 z=108.816 yaw=3.593 pitch=0.000 lane=0.000 host=129.330
+:780 P2_BOMBSARAI_TEKI_HIT generator=270001 tick=191 target=2 kind=piki hp_before=30.000 hp_after=20.000 state_before=0 state_after=22 alive_before=1 alive_after=1 applied=1
+:962 P2_BOMBSARAI_TEKI_DEAD generator=270001
+:965 P2_BOMBSARAI_TEKI_CORPSE_CONFIG carry_min=3 carry_max=6 min_free_slot=0 alive=1
+:1761 [Pikipelago] P2_POD_RECEIPT id=corpse:bombsarai:270001 value=2 new=1 pokos=2 seeds=0
+:1762 P2_BOMBSARAI_TEKI_FORGET generator=270001 bound_before=0 corpse_before=1 bound_after=0 corpse_after=0
+```
+
+Reading: the carrier moves (`x` changes across ticks and samples) and animates
+(FSM state changes `Wait`/`Supply`/`Release`/`BombMove`; the `anim` keyframe
+counter resets on each state entry) under its FSM, with the lane walk and the P1
+carrier flight (`host`) separated in the marker. The blast applies the real
+`InteractBomb` to live Pikmin (`hp 30 -> 20`, state `0 -> 22` PIKISTATE_Flick,
+`applied=1`). The carrier dies, the carcass is credited by the Pod, and the
+dead/orphan binding is forgotten (`bound_after=0 corpse_after=0`).
+
+### Reset/re-entry run (executed)
+
+`slot.py run gl l27`, `PIKMIN_P2_BOMBSARAI_REENTRY_TICK=120`, 60 s, log
+`output/dsw/l27-out/teki-arena18/ee5f00000000000000000000000000ee/run.log`
+(sha256 `98565be927ee58cccf0a05bd127ba13fdabcde90e30b66be8302f16ff4493f85`).
+
+```
+:759 P2_BOMBSARAI_TEKI_REENTRY_ENV 120
+:774 P2_BOMBSARAI_TEKI_MOVE generator=270001 tick=120 state=Wait anim=17 x=112.627 ...
+:776 P2_BOMBSARAI_TEKI_RESET bound_before=1 corpse_before=0 bound_after=0 corpse_after=0
+:777 P2_BOMBSARAI_TEKI_READY generator=270001 type=11
+:778 P2_BOMBSARAI_TEKI_REENTRY bound_before=1 bound_after_reset=0 corpse_after_reset=0 bound_after=1 corpse_after=0
+:779 P2_BOMBSARAI_TEKI_REENTRY_PASS 1
+:781 P2_BOMBSARAI_TEKI_MOVE generator=270001 tick=30 state=Wait anim=29 x=112.092 ...
+```
+
+Reading: the lane hook exercises the real stage-teardown (`pc_p2_reset_all_teki`)
+and finalSetup (`pc_p2_bombsarai_teki_setup`) entry points on the live scene; the
+binding and corpse maps clear to zero and the generated carrier re-binds cleanly,
+so no stale reference survives the reset. This is a reset/manager re-entry
+rehearsal, not a full scene swap (that remains the shared lane-06/07 seam,
+`gameCoreSection.cpp:897` teardown / `:1490` finalSetup).
+
+### Six arena gates (5/5)
+
+## Concrete source ID
+- Source ID: 58 `BombSarai`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | UNTESTED | output/dsw/l27-out/teki-arena15/bb2f00000000000000000000000000bb/run.log:724 (generated TEKI_Napkid vehicle proxy, not P2 identity 58) | injected |
+| 2. Autonomous movement and animation | PASS | output/dsw/l27-out/teki-arena15/bb2f00000000000000000000000000bb/run.log:760,767,769 P2_BOMBSARAI_TEKI_MOVE (x/z travel, FSM state + animation counter across ticks; P1 Napkid flight component reported separately) | natural lane walk + FSM animation |
+| 3. Attacks and receivers | PASS | output/dsw/l27-out/teki-arena15/bb2f00000000000000000000000000bb/run.log:780 P2_BOMBSARAI_TEKI_HIT hp_before=30.000 hp_after=20.000 state_before=0 state_after=22 applied=1 (real InteractBomb via Creature::stimulate on a live Pikmin) | natural engine receiver |
+| 4. Death and corpse | PASS | output/dsw/l27-out/teki-arena12/fa0f1285feaf46c3abff5268508f6ffa/run.log:800 TEKI_DEAD, :803 CORPSE_CONFIG (natural carcass Pellet, min_free_slot=0); re-confirmed output/dsw/l27-out/teki-arena15/bb2f00000000000000000000000000bb/run.log:962,965 | natural |
+| 5. Actual transport and reward | PASS | output/dsw/l27-out/teki-arena12/fa0f1285feaf46c3abff5268508f6ffa/run.log:845 P2_POD_RECEIPT id=corpse:bombsarai:270001 value=2 new=1 pokos=2 seeds=0; re-confirmed output/dsw/l27-out/teki-arena15/bb2f00000000000000000000000000bb/run.log:1761 | natural |
+| 6. Cleanup and re-entry | PASS | output/dsw/l27-out/teki-arena15/bb2f00000000000000000000000000bb/run.log:1762 P2_BOMBSARAI_TEKI_FORGET bound_before=0 corpse_before=1 bound_after=0 corpse_after=0; reset/re-entry run output/dsw/l27-out/teki-arena18/ee5f00000000000000000000000000ee/run.log:776,778 teardown clears both maps (bound_after_reset=0 corpse_after_reset=0) and the carrier re-binds (bound_after=1) | natural (teardown/reset + re-bind) |
+
+Honest labels: the carrier is still a generated P1 `TEKI_Napkid` vehicle, so gate
+1 stays UNTESTED (identity is not claimed); the grounded engagement is a labeled
+concession (the source dirigibug always hovers, but ordinary FreeMode Pikmin
+reject a flying Teki, `piki.cpp:951`/`aiAttack.cpp:189`); the carcass `carry_min`
+is lowered 3 -> 1 and the room stages 40 reds (was 20). Gates 4/5 keep the prior
+teki-arena12 citations superseded by the same-run lines above.
+
+### Checker output
+
+```
+py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE27_DEEPSEEK_HANDOFF.md
+36 Bomb (role=projectile): ignored (role)
+58 BombSarai (role=source):
+  1. identity_spawn     ignored [UNTESTED]
+  2. movement_animation accepted [PASS]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   accepted [PASS]
+  6. cleanup_reentry    accepted [PASS]
+```
