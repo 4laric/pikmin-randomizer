@@ -53,6 +53,33 @@ def _roster():
     return entries_from_payload(payload)
 
 
+TWO_SOURCE_HEADER = """
+struct EnemyTypeID {
+enum EEnemyTypeID {
+\tEnemyID_NULL     = -1, // ID not set
+\tEnemyID_Frog     = 17,  // Yellow Wollywog
+\tEnemyID_Snek     = 41,  // Synthetic source enemy
+\tEnemyID_COUNT,
+};
+};
+"""
+
+TWO_SOURCE_TABLE = """
+EnemyInfo gEnemyInfo[] = {
+//  name   ID   parent   members flags   model anim animgr texture param collision stone childID childNum droptype
+\t{"Frog", EnemyTypeID::EnemyID_Frog, -1, 1, (EFlag_DayEndMax4 | EFlag_CanBeSpawned | 2 | EFlag_UseOwnID), "", "", "", "", "", "", "", -1, 0, BDT_Strong},
+\t{"Snek", EnemyTypeID::EnemyID_Snek, -1, 1, (EFlag_DayEndMax4 | EFlag_CanBeSpawned | 2 | EFlag_UseOwnID), "", "", "", "", "", "", "", -1, 0, BDT_Strong},
+};
+"""
+
+
+def _two_roster():
+    enums = parse_enum_header(TWO_SOURCE_HEADER)
+    tables = parse_info_table(TWO_SOURCE_TABLE)
+    payload = snapshot_payload(resolve_ids(build_entries(enums, tables)), "synthetic")
+    return entries_from_payload(payload)
+
+
 CLEAN_HANDOFF = """# Lane 99 handoff (clean synthetic)
 
 ## Concrete source ID
@@ -157,3 +184,69 @@ def test_apply_never_fabricates_a_missing_row(tmp_path):
     ledger.write_text(json.dumps({"entries": {}}), encoding="utf-8")
     assert apply_ingested_gates([row], ledger) == []
     assert json.loads(ledger.read_text(encoding="utf-8"))["entries"] == {}
+
+
+def test_plain_pass_with_injected_evidence_marker_is_refused():
+    text = ("# x\nSource ID: 17 `Frog`.\n\n## Six arena gates\n\n"
+            "| Gate | Result | Evidence |\n|---|---|---|\n"
+            "| 1. Exact identity and spawn | PASS | docs/PIKMIN2_FROG_IMPORT.md forced health write |\n")
+    (row,) = ingest(text, _roster())
+    assert row["refused"]["identity_spawn"] == "injected"
+    assert "identity_spawn" not in row["advances"]
+    assert "identity_spawn" in row["blocking"]
+
+
+TWO_IDENTITY_HANDOFF = """# Lane 99 two identities
+## Concrete source ID
+- Source ID: 17 `Frog`.
+
+## Six arena gates
+| Gate | Result | Evidence |
+|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md spawn |
+| 2. Autonomous movement and animation | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md leap |
+| 3. Attacks and receivers | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md crush |
+| 4. Death and corpse | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md corpse |
+| 5. Actual transport and reward | PASS (natural) | corpse:frog:1 goal=1 |
+| 6. Cleanup and re-entry | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md reentry |
+
+Snek (41) shares the base but is not the subject of this table.
+"""
+
+
+def test_multi_identity_binds_table_to_named_owner_only(tmp_path):
+    rows = ingest(TWO_IDENTITY_HANDOFF, _two_roster())
+    by_sid = {row["source_id"]: row for row in rows}
+    assert set(by_sid) == {17, 41}
+    frog = by_sid[17]
+    assert set(frog["advances"]) == set(ADMISSION_GATES) | {"transport_reward"}
+    assert not frog.get("shared")
+    snek = by_sid[41]
+    assert snek.get("shared") is True
+    assert snek["advances"] == []
+    assert snek["blocking"] == list(ADMISSION_GATES) + ["transport_reward"]
+    # --apply never writes a sibling whose table belongs to another identity.
+    ledger = tmp_path / "ev.json"
+    ledger.write_text(json.dumps({"entries": {
+        "17": {"gates": {}, "eligibility": "candidate"},
+        "41": {"gates": {}, "eligibility": "candidate"},
+    }}), encoding="utf-8")
+    changed = apply_ingested_gates(rows, ledger)
+    assert [key for key, _ in changed] == ["17"]
+    doc = json.loads(ledger.read_text(encoding="utf-8"))
+    assert doc["entries"]["17"]["gates"]["identity_spawn"] == "PASS"
+    assert doc["entries"]["41"]["gates"] == {}
+
+
+def test_status_token_is_start_anchored():
+    from scripts.ingest_p2_handoff_gates import _status_token
+    assert _status_token("FAIL (was PASS earlier)") == "FAIL"
+    assert _status_token("BYPASSED") == "UNTESTED"
+    assert _status_token("**PASS (natural)**") == "PASS"
+    assert _status_token("PARTIAL (inherited)") == "PARTIAL"
+
+
+def test_escaped_pipe_is_not_a_cell_boundary():
+    from scripts.ingest_p2_handoff_gates import _split_row
+    cells = _split_row("| 2 | PASS | `P2_BATCH2_DRAW key=dweevil\\|FireOtakara clip=attack1` |")
+    assert cells == ["2", "PASS", "`P2_BATCH2_DRAW key=dweevil|FireOtakara clip=attack1`"]

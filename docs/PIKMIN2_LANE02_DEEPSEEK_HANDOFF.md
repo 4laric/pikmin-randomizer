@@ -758,3 +758,79 @@ py -3.12 scripts/ingest_p2_handoff_gates.py <lane29 lane31 lane22 handoff files>
 - Still nothing admits: the ingested handoffs are partial or cite no durable doc/log.
   Natural receipt + full gate evidence stays with the family lanes (13/16/29/31/etc.)
   and reward/persistence with lane 06/07; lane 02 only transcribes.
+
+## Fix 5
+
+Review corrections to slice 5 (items 1-8; blocking items 1-2 applied). The
+parser now refuses every injected/unevidenced PASS and scopes a gate table to a
+single owning identity, so nothing leaks to the ledger under `--apply`.
+
+- Non-natural markers are now searched across `Result + label + Evidence`, not
+  just `Result`+`label` (`_gate_verdict`). A plain `PASS` whose evidence says
+  "forced health write" is refused as `<gate>:injected`. Covered by
+  `test_plain_pass_with_injected_evidence_marker_is_refused`.
+- A gate table is bound to the identity named in the nearest preceding "Source ID"
+  line (or identity-naming heading). Siblings named in the handoff but without
+  their own table are printed `(shared table, excluded)` (all gates `UNTESTED`)
+  and are never applied. Covered by
+  `test_multi_identity_binds_table_to_named_owner_only`.
+- `--apply` additionally skips `shared` rows (`apply_ingested_gates`).
+- Citation detection is now an extension at a token boundary
+  (`\S+\.(md|log|txt|json)\b`) or a path rooted at `docs/`/`output/`/`tests/` with
+  at least two segments; a bare `12/16` no longer counts.
+- `_status_token` matches `^(PASS|PARTIAL|FAIL|BLOCKED|UNTESTED|N/A)\b` at the
+  start of the stripped Result cell, so `FAIL (was PASS earlier)` -> `FAIL` and
+  `BYPASSED` -> `UNTESTED`. Covered by `test_status_token_is_start_anchored`.
+- `_split_row` splits on `(?<!\)\|` and unescapes `\|`, so lane 22's
+  `key=dweevil\|FireOtakara` no longer truncates the Evidence cell. Covered by
+  `test_escaped_pipe_is_not_a_cell_boundary`.
+- `docs/PIKMIN2_ENEMY_ROSTER.md` contract updated for all of the above.
+
+Corrected real-handoff run (paste):
+
+```
+# LANE29.md
+57 Kurage (role=source):
+  advances: (none)
+  blocking (admission_requirements): identity_spawn, movement_animation, attacks_receivers, death_corpse, cleanup_reentry, transport_reward
+72 OniKurage (role=source) (shared table, excluded):
+  advances: (none)
+  blocking (admission_requirements): identity_spawn, movement_animation, attacks_receivers, death_corpse, cleanup_reentry, transport_reward
+# LANE31.md
+98 Tyre (role=helper): skipped (non-seedable role)
+99 BlackMan (role=source):
+  advances: (none)
+  refused PASS: attacks_receivers:uncited, cleanup_reentry:uncited, death_corpse:uncited, identity_spawn:injected, movement_animation:injected
+  blocking (admission_requirements): identity_spawn, movement_animation, attacks_receivers, death_corpse, cleanup_reentry, transport_reward
+# LANE22.md
+59 FireOtakara (role=source):
+  advances: (none)
+  refused PASS: attacks_receivers:uncited, identity_spawn:uncited, movement_animation:uncited
+  blocking (admission_requirements): identity_spawn, movement_animation, attacks_receivers, death_corpse, cleanup_reentry, transport_reward
+60 WaterOtakara (role=source) (shared table, excluded):
+  advances: (none)
+  blocking (admission_requirements): identity_spawn, movement_animation, attacks_receivers, death_corpse, cleanup_reentry, transport_reward
+61 GasOtakara (role=source) (shared table, excluded):
+  advances: (none)
+  blocking (admission_requirements): identity_spawn, movement_animation, attacks_receivers, death_corpse, cleanup_reentry, transport_reward
+62 ElecOtakara (role=source) (shared table, excluded):
+  advances: (none)
+  blocking (admission_requirements): identity_spawn, movement_animation, attacks_receivers, death_corpse, cleanup_reentry, transport_reward
+93 BombOtakara (role=source) (shared table, excluded):
+  advances: (none)
+  blocking (admission_requirements): identity_spawn, movement_animation, attacks_receivers, death_corpse, cleanup_reentry, transport_reward
+```
+
+The lane-22 siblings (60/61/62/93) no longer inherit FireOtakara's table: they
+are `shared table, excluded` and `--apply` cannot touch them. Nothing admits, and
+`--apply` remains a no-op on all three real handoffs.
+
+### Tests run
+
+```
+py -3.12 -m pytest tests/test_pikmin2_handoff_ingest.py -q                                             # 11 passed
+py -3.12 -m pytest tests/test_pikmin2_handoff_ingest.py tests/test_pikmin2_admission_seed.py \
+    tests/test_pikmin2_admission_contract.py tests/test_pikmin2_enemy_roster.py \
+    tests/test_pikmin2_roster_coverage.py -q                                                          # 64 passed
+py -3.12 scripts/ingest_p2_handoff_gates.py <lane29 lane31 lane22 handoff files>                       # pasted above
+```

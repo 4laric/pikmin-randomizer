@@ -13,13 +13,17 @@ its deny-by-default posture:
   then only the advanced gate ``PASS`` values are merged into existing rows — the
   ``delivery_receipt`` and ``eligibility`` are never touched, so a handoff cannot
   admit an identity on its own (transport/reward stays lane 06 review).
-* A ``PASS`` only advances a gate when it is *not* labelled injected/proxy (the
-  row's result/label is checked against ``NONNATURAL_MARKERS``) and is *backed by
-  a citation* (the evidence carries a ``docs/PIKMIN2_*.md``/``.log``/``.txt``/
-  ``.json`` filename or a file path, reusing ``RECEIPT_CITATION_MARKERS``; a
-  slash/backslash only counts between non-space segments). The
-  ``transport_reward`` gate is gated by ``RECEIPT_KEY_PREFIXES`` /
-  ``RECEIPT_CITATION_MARKERS`` exactly as ``admission_requirements`` does.
+* A gate table belongs to ONE identity: the source id named in the nearest
+  preceding "Source ID" line (or an identity-naming heading). Other identities
+  named in the same handoff but without their own table are reported as
+  ``shared table, excluded`` (all gates ``UNTESTED``) and are never applied.
+* A ``PASS`` only advances a gate when the row (Result + Injected/natural label
+  + Evidence) does *not* match ``NONNATURAL_MARKERS`` (injected/proxy/fixture/
+  forced/vehicle/visual/host/display), and the Evidence carries a citation: a
+  ``.md``/``.log``/``.txt``/``.json`` token (``\\S+\\.(md|log|txt|json)\\b``) or a
+  file path rooted at ``docs/``/``output/``/``tests/`` with at least two segments.
+  ``transport_reward`` instead requires a lane-06 receipt (``onion:``/``corpse:``/
+  ``receipt:`` key or the same citation).
 
 Table format (the parser is the contract; see docs/PIKMIN2_ENEMY_ROSTER.md):
 
@@ -27,11 +31,11 @@ Table format (the parser is the contract; see docs/PIKMIN2_ENEMY_ROSTER.md):
     |---|---|---:|
     | 1. Exact identity and spawn | PASS (natural) | docs/PIKMIN2_*.md ... |
 
-* Rows are matched by their leading gate number (1..6 -> ``GATE_IDS``) so the
-  spelled-out name may vary. ``Result`` may be bolded and carry a parenthetical.
-* An identity is named as ``<source_id> EnumName``, ``EnumName (<source_id>)`` or
-  the literal ``source_id``/``EnemyID`` token; each is cross-referenced against the
-  roster, and only ``source``/``variant`` identities get candidate rows.
+* Rows are matched by their leading gate number (1..6 -> ``GATE_IDS``).
+* A literal ``|`` inside a cell must be escaped as ``\\|``.
+* ``Result`` status is matched at the start of the cell
+  (``^(PASS|PARTIAL|FAIL|BLOCKED|UNTESTED|N/A)\\b``); anything else reads as
+  ``UNTESTED``. Bold and a parenthetical are fine.
 """
 from __future__ import annotations
 
@@ -60,13 +64,21 @@ from experimental.pikmin2_enemy_roster import (  # noqa: E402
 # Gate number (1..6 in the handoff table) -> lane-02 gate id.
 GATE_BY_NUMBER = {index + 1: gate for index, gate in enumerate(GATE_IDS)}
 
-# Statuses we normalize table results into. PARTIAL is a family-lane rendering of
-# a not-yet-natural gate and is treated as non-PASS (blocking).
-_STATUS_ORDER = ("PASS", "PARTIAL", "FAIL", "BLOCKED", "UNTESTED", "N/A")
+# A Result cell must open with one of these tokens; anything else is UNTESTED.
+# (This deliberately rejects "FAIL (was PASS earlier)" and "BYPASSED".)
+_STATUS_RE = re.compile(r"(PASS|PARTIAL|FAIL|BLOCKED|UNTESTED|N/A)\b")
 
 _SOURCE_ID_RE = re.compile(r"(?:source_id|EnemyID)\s*[`\"']?\s*(\d+)")
 _ID_ENUM_RE = re.compile(r"\b(\d{1,3})\s*`([A-Za-z][A-Za-z0-9_]*)`")
 _NAME_PAREN_RE = re.compile(r"([A-Za-z][A-Za-z0-9_]*)\s*\(\s*(\d+)")
+
+# A line that names the identity a following table belongs to.
+_SOURCE_ID_LINE_RE = re.compile(r"source\s+(?:enemy\s+)?id", re.IGNORECASE)
+
+# A citation is an extension token or a known-root path with >= 2 segments
+# ("12/16", "frame=12 / frame=20" and other bare separators do not count).
+_EXT_CITATION_RE = re.compile(r"\S+\.(?:md|log|txt|json)\b")
+_PLAIN_PATH_RE = re.compile(r"\b(?:docs|output|tests)/\S+/\S+")
 
 
 def _strip_md(text: str) -> str:
@@ -78,16 +90,19 @@ def _split_row(line: str) -> list[str] | None:
     if not stripped.startswith("|"):
         return None
     stripped = stripped.strip("|")
-    return [cell.strip() for cell in stripped.split("|")]
+    cells = re.split(r"(?<!\\)\|", stripped)
+    return [re.sub(r"\\([|\\])", r"\1", cell).strip() for cell in cells]
 
 
 def _iter_tables(markdown: str):
+    """Yield ``(start_line_index, block)`` for each pipe table block."""
     lines = markdown.splitlines()
     i = 0
     while i < len(lines):
         if not lines[i].lstrip().startswith("|"):
             i += 1
             continue
+        start = i
         block = []
         while i < len(lines) and lines[i].lstrip().startswith("|"):
             cells = _split_row(lines[i])
@@ -95,37 +110,42 @@ def _iter_tables(markdown: str):
                 block.append(cells)
             i += 1
         if block:
-            yield block
+            yield start, block
+
+
+def _extract_gate_table(block: list[list[str]]) -> dict[int, dict]:
+    if len(block) < 2:
+        return {}
+    header = [_strip_md(cell).lower() for cell in block[0]]
+    if not any("result" in cell for cell in header):
+        return {}
+    result_col = next((idx for idx, cell in enumerate(header) if "result" in cell), 1)
+    evidence_col = next((idx for idx, cell in enumerate(header) if "evidence" in cell),
+                        result_col + 1)
+    label_col = next((idx for idx, cell in enumerate(header)
+                      if "injected" in cell or "natural" in cell), None)
+    table: dict[int, dict] = {}
+    for row in block[1:]:
+        first = _strip_md(row[0])
+        match = re.match(r"^(\d+)", first)
+        if not match:
+            continue
+        number = int(match.group(1))
+        if not (1 <= number <= 6):
+            continue
+        table[number] = {
+            "result": row[result_col] if len(row) > result_col else "",
+            "evidence": row[evidence_col] if len(row) > evidence_col else "",
+            "label": row[label_col] if label_col is not None and len(row) > label_col else "",
+        }
+    return table
 
 
 def parse_gate_table(markdown: str) -> dict[int, dict]:
     """Return ``{gate_number: {'result','evidence','label'}}`` from the first
     handoff table whose header names a ``Result`` column."""
-    for block in _iter_tables(markdown):
-        if len(block) < 2:
-            continue
-        header = [_strip_md(cell).lower() for cell in block[0]]
-        if not any("result" in cell for cell in header):
-            continue
-        result_col = next((idx for idx, cell in enumerate(header) if "result" in cell), 1)
-        evidence_col = next((idx for idx, cell in enumerate(header) if "evidence" in cell),
-                            result_col + 1)
-        label_col = next((idx for idx, cell in enumerate(header)
-                          if "injected" in cell or "natural" in cell), None)
-        table: dict[int, dict] = {}
-        for row in block[1:]:
-            first = _strip_md(row[0])
-            match = re.match(r"^(\d+)", first)
-            if not match:
-                continue
-            number = int(match.group(1))
-            if not (1 <= number <= 6):
-                continue
-            table[number] = {
-                "result": row[result_col] if len(row) > result_col else "",
-                "evidence": row[evidence_col] if len(row) > evidence_col else "",
-                "label": row[label_col] if label_col is not None and len(row) > label_col else "",
-            }
+    for _, block in _iter_tables(markdown):
+        table = _extract_gate_table(block)
         if table:
             return table
     return {}
@@ -157,25 +177,17 @@ def parse_identities(markdown: str, roster=None) -> list[tuple[int, str | None]]
 
 def _status_token(result_cell: str) -> str:
     text = _strip_md(result_cell).upper()
-    for token in _STATUS_ORDER:
-        if token in text:
-            return token
-    return "UNTESTED"
-
-
-# Citation markers split between an unambiguous file extension and a path
-# separator used between segments, so a bare "/" list-separator (e.g. a
-# "frame=12 / frame=20" event clock) does not read as a citation.
-_EXTENSION_CITATIONS = tuple(m for m in RECEIPT_CITATION_MARKERS if m.startswith("."))
+    match = _STATUS_RE.match(text)
+    return match.group(1) if match else "UNTESTED"
 
 
 def _has_citation(text: str) -> bool:
     clean = text.strip()
     if not clean:
         return False
-    if any(ext in clean for ext in _EXTENSION_CITATIONS):
+    if _EXT_CITATION_RE.search(clean):
         return True
-    return bool(re.search(r"\S[/\\]\S", clean))
+    return bool(_PLAIN_PATH_RE.search(clean))
 
 
 def _receipt_shaped(text: str) -> bool:
@@ -184,7 +196,7 @@ def _receipt_shaped(text: str) -> bool:
         return False
     if value.startswith(RECEIPT_KEY_PREFIXES):
         return True
-    return any(marker in value for marker in RECEIPT_CITATION_MARKERS)
+    return _has_citation(value)
 
 
 def _gate_verdict(number: int, row: dict) -> dict:
@@ -194,9 +206,9 @@ def _gate_verdict(number: int, row: dict) -> dict:
     if status != "PASS":
         return {"status": status, "advance": False, "reason": None, "receipt": None}
     label = _strip_md(row.get("label", ""))
-    if NONNATURAL_MARKERS.search(f"{result} {label}"):
-        return {"status": "PASS", "advance": False, "reason": "injected", "receipt": None}
     evidence = _strip_md(row.get("evidence", ""))
+    if NONNATURAL_MARKERS.search(f"{result} {label} {evidence}"):
+        return {"status": "PASS", "advance": False, "reason": "injected", "receipt": None}
     if number == 5:
         if _receipt_shaped(evidence):
             return {"status": "PASS", "advance": True, "reason": None, "receipt": evidence}
@@ -206,13 +218,82 @@ def _gate_verdict(number: int, row: dict) -> dict:
     return {"status": "PASS", "advance": True, "reason": None, "receipt": None}
 
 
+def _owner_from_line(line: str) -> int | None:
+    match = _SOURCE_ID_RE.search(line)
+    if match:
+        return int(match.group(1))
+    match = _ID_ENUM_RE.search(line)
+    if match:
+        return int(match.group(1))
+    return None
+
+
+def _bound_tables(markdown: str, roster) -> dict[int, dict]:
+    """Bind each gate table to the source id named nearest above it.
+
+    A table owns the identity named in the nearest preceding "Source ID" line
+    (or an identity-naming heading). Returns ``{source_id: gate_table}``.
+    """
+    lines = markdown.splitlines()
+    bound: dict[int, dict] = {}
+    for start, block in _iter_tables(markdown):
+        table = _extract_gate_table(block)
+        if not table:
+            continue
+        owner = None
+        for idx in range(start - 1, -1, -1):
+            line = lines[idx]
+            if _SOURCE_ID_LINE_RE.search(line):
+                owner = _owner_from_line(line)
+                if owner is not None:
+                    break
+            elif line.lstrip().startswith("#"):
+                owner = _owner_from_line(line)
+                if owner is not None:
+                    break
+        if owner is not None and owner not in bound:
+            bound[owner] = table
+    return bound
+
+
+def _ingest_identity(entry, table: dict[int, dict] | None) -> dict:
+    role = identity_role(entry)
+    if table is None:
+        # Named in the handoff but no table of its own: never advanced.
+        candidate = replace(entry, gates={gate: "UNTESTED" for gate in GATE_IDS},
+                            notes=(), delivery_receipt=None)
+        return {"source_id": entry.source_id, "enum_name": entry.enum_name, "role": role,
+                "shared": True, "advances": [], "refused": {},
+                "blocking": admission_requirements(candidate)}
+    gates: dict[str, str] = {}
+    advances: list[str] = []
+    refused: dict[str, str] = {}
+    receipt: str | None = None
+    for number, gate in GATE_BY_NUMBER.items():
+        if number not in table:
+            gates[gate] = "UNTESTED"
+            continue
+        verdict = _gate_verdict(number, table[number])
+        if verdict["advance"]:
+            gates[gate] = "PASS"
+            advances.append(gate)
+            if gate == "transport_reward":
+                receipt = verdict["receipt"]
+        else:
+            gates[gate] = verdict["status"] if verdict["status"] != "PASS" else "UNTESTED"
+            if verdict["reason"]:
+                refused[gate] = verdict["reason"]
+    candidate = replace(entry, gates=gates, notes=(), delivery_receipt=receipt)
+    return {"source_id": entry.source_id, "enum_name": entry.enum_name, "role": role,
+            "advances": advances, "refused": refused,
+            "blocking": admission_requirements(candidate)}
+
+
 def ingest(markdown: str, roster=None) -> list[dict]:
-    """Parse a handoff and return per-identity candidate rows with
-    ``advances``, ``refused`` and ``blocking`` (the ``admission_requirements``
-    output) without writing anything."""
+    """Parse a handoff into per-identity candidate rows (no writes)."""
     roster = roster if roster is not None else load_and_validate()
     base = by_id(roster)
-    table = parse_gate_table(markdown)
+    bound = _bound_tables(markdown, roster)
     rows: list[dict] = []
     for source_id, name in parse_identities(markdown, roster):
         entry = base.get(source_id)
@@ -225,38 +306,12 @@ def ingest(markdown: str, roster=None) -> list[dict]:
             rows.append({"source_id": source_id, "enum_name": entry.enum_name, "role": role,
                          "skipped": True, "advances": [], "refused": {}, "blocking": []})
             continue
-        gates: dict[str, str] = {}
-        advances: list[str] = []
-        refused: dict[str, str] = {}
-        receipt: str | None = None
-        for number, gate in GATE_BY_NUMBER.items():
-            if number not in table:
-                gates[gate] = "UNTESTED"
-                continue
-            verdict = _gate_verdict(number, table[number])
-            if verdict["advance"]:
-                gates[gate] = "PASS"
-                advances.append(gate)
-                if gate == "transport_reward":
-                    receipt = verdict["receipt"]
-            else:
-                gates[gate] = verdict["status"] if verdict["status"] != "PASS" else "UNTESTED"
-                if verdict["reason"]:
-                    refused[gate] = verdict["reason"]
-        candidate = replace(entry, gates=gates, notes=(), delivery_receipt=receipt)
-        rows.append({"source_id": source_id, "enum_name": entry.enum_name, "role": role,
-                     "advances": advances, "refused": refused,
-                     "blocking": admission_requirements(candidate)})
+        rows.append(_ingest_identity(entry, bound.get(source_id)))
     return rows
 
 
 def apply_ingested_gates(rows: list[dict], ledger_path) -> list[tuple[str, list[str]]]:
-    """Merge validated advanced gates into an evidence overlay (merge-only).
-
-    Sets ``gates[<gate>]="PASS"`` for each advanced gate on rows that already
-    exist; never fabricates a row, never writes ``transport_reward`` (a receipt is
-    a manual lane-06 step) and never touches ``eligibility`` or ``delivery_receipt``.
-    """
+    """Merge validated advanced gates into an evidence overlay (merge-only)."""
     path = Path(ledger_path)
     if not path.is_file():
         raise FileNotFoundError(f"ledger not found: {path}")
@@ -264,7 +319,7 @@ def apply_ingested_gates(rows: list[dict], ledger_path) -> list[tuple[str, list[
     entries = doc.setdefault("entries", {})
     changed: list[tuple[str, list[str]]] = []
     for row in rows:
-        if row.get("skipped") or row["source_id"] is None:
+        if row.get("skipped") or row.get("shared") or row["source_id"] is None:
             continue
         advanced = [gate for gate in row["advances"] if gate != "transport_reward"]
         if not advanced:
@@ -282,14 +337,15 @@ def apply_ingested_gates(rows: list[dict], ledger_path) -> list[tuple[str, list[
 
 
 def _fmt_row(row: dict) -> list[str]:
-    lines = []
     if row.get("skipped"):
-        lines.append(f"{row['source_id']} {row['enum_name']} (role={row['role']}): "
-                     f"skipped (non-seedable role)")
-        return lines
-    lines.append(f"{row['source_id']} {row['enum_name']} (role={row['role']}):")
+        return [f"{row['source_id']} {row['enum_name']} (role={row['role']}): "
+                f"skipped (non-seedable role)"]
+    head = f"{row['source_id']} {row['enum_name']} (role={row['role']})"
+    if row.get("shared"):
+        head += " (shared table, excluded)"
+    lines = [head + ":"]
     lines.append(f"  advances: {', '.join(row['advances']) or '(none)'}")
-    if row["refused"]:
+    if row.get("refused"):
         details = ", ".join(f"{gate}:{reason}" for gate, reason in sorted(row["refused"].items()))
         lines.append(f"  refused PASS: {details}")
     lines.append(f"  blocking (admission_requirements): {', '.join(row['blocking']) or '(none)'}")

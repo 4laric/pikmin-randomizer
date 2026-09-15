@@ -211,16 +211,27 @@ Rules (the parser enforces them):
 - A row is matched by its leading gate number (1..6 -> `identity_spawn`,
   `movement_animation`, `attacks_receivers`, `death_corpse`, `transport_reward`,
   `cleanup_reentry`); the spelled-out name and column width may vary.
-- `Result` is one of `PASS` / `FAIL` / `BLOCKED` / `UNTESTED` / `N/A` (`PARTIAL`
-  is accepted and treated as blocking); bold and a parenthetical are fine.
-- A `PASS` advances a gate only when the row's result/label does **not** match
-  `NONNATURAL_MARKERS` (injected/proxy/fixture-only/forced/vehicle/visual/host/
-  display) and the `Evidence` cell **cites** a source (`docs/PIKMIN2_*.md`,
-  `.log`, `.txt`, `.json` filename or a file path). A PASS that is labelled
-  injected/uncited is *refused* and printed as `<gate>:injected`/`<gate>:uncited`.
+- A table belongs to ONE identity: the `source_id` named in the nearest preceding
+  "Source ID" line (or an identity-naming heading). Other identities named in the
+  same handoff but without their own table are reported `shared table, excluded`
+  (all gates `UNTESTED`) and are never applied to the ledger.
+- A literal `|` inside a cell must be escaped as `\|` (the row is split on the
+  unescaped `|` only).
+- `Result` is matched at the start of the cell against
+  `^(PASS|PARTIAL|FAIL|BLOCKED|UNTESTED|N/A)\b` (bold stripped); anything else —
+  including `FAIL (was PASS earlier)` or `BYPASSED` — reads as `UNTESTED`.
+  `PARTIAL` is treated as blocking.
+- A `PASS` advances a gate only when the whole row (Result + Injected/natural
+  label + Evidence) does **not** match `NONNATURAL_MARKERS`
+  (injected/proxy/fixture-only/forced/vehicle/visual/host/display) and the
+  `Evidence` cell **cites** a source: a `.md`/`.log`/`.txt`/`.json` token
+  (`\S+\.(md|log|txt|json)\b`) or a file path rooted at `docs/`/`output/`/`tests/`
+  with at least two segments (a bare `12/16` separator does not count).
+  A PASS that is labelled injected/uncited is *refused* and printed as
+  `<gate>:injected` / `<gate>:uncited`.
 - `transport_reward` (gate 5) is the `delivery_receipt`: it advances only when the
-  `Evidence` cell is a lane-06 receipt (`onion:`/`corpse:`/`receipt:` key or a
-  doc/log citation).
+  `Evidence` cell is a lane-06 receipt (`onion:`/`corpse:`/`receipt:` key or the
+  same citation).
 - The identity is named as `<source_id> EnumName`, `` `EnumName` (<source_id>) ``,
   or the literal `` `source_id` ``/`EnemyID` token, and is cross-referenced against
   this roster; only `source`/`variant` identities get a candidate row.
@@ -228,8 +239,9 @@ Rules (the parser enforces them):
 The script is deny-by-default: it prints, per identity, which gates the handoff
 would advance and which `admission_requirements` still reports as blocking, and
 writes nothing to the evidence overlay unless `--apply` is passed (and then only
-merges gate `PASS` values into existing rows — it never touches `eligibility` or
-`delivery_receipt`, so a handoff cannot admit an identity on its own).
+merges gate `PASS` values into the owning identity's existing row — it never
+touches `eligibility` or `delivery_receipt`, never fabricates a row and never
+applies to a sibling, so a handoff cannot admit an identity on its own).
 
 ## Candidate review and source-backed encounters
 
