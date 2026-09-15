@@ -7,22 +7,20 @@ sidecar is staged, a placement-catalog slot uid. This script turns a captured
 ``p2-placement-probe`` JSON (``randomizer.p2_placement_probe.build_probe``) into
 slot ``evidence`` and runs the deny -> evidence-stamped decision.
 
-When the probe carries a catalog join (``catalog_join=true``), every mapped slot
-uid is looked up in ``randomizer.p2_placement_catalog.all_slots()``: an
-**unmappable uid is a hard failure**. Only matched slots are stamped, and the
-audit runs against the genuine catalog document. When ``catalog_join=false``
-(no sidecar) the report is arena-only.
+Guardrails (all hard failures via ``SystemExit``):
 
-Three results are reported, kept strictly separate:
+* unmapped generators (no sidecar row) fail unless ``--allow-unmapped``;
+* a mapped slot uid absent from ``p2_placement_catalog.all_slots()`` fails;
+* a mapped slot whose catalog ``stage`` differs from the arena stage
+  (``--stage``) fails, so terrain/route evidence is never stamped onto a
+  different map.
 
-* ``pre_probe``      -- default-deny: no slot evidence, no profile gates.
-* ``stamped``        -- native evidence applied to the matched catalog slot(s);
-  the pair is then denied only on the profile gates (`accepted_gates`, owned by
-  lane 33/QA, NOT lane-04).
-* ``injected_legal`` -- clearly-labelled: profile gates filled by hand to show
-  the end-to-end interface is wired; this is NOT natural acceptance.
+Three admission columns are reported, kept separate: ``pre_probe`` (default
+deny), ``stamped`` (native slot evidence applied; denied only on lane-33/QA
+profile gates), and ``injected_legal`` (clearly-labelled profile-gate injection
+to show the interface is wired, not natural acceptance).
 
-   py -3.12 scripts/audit_p2_placement_evidence.py --probe probe.json [--out report.json]
+   py -3.12 scripts/audit_p2_placement_evidence.py --probe probe.json [--stage 0] [--allow-unmapped] [--out report.json]
 """
 import argparse
 import json
@@ -50,56 +48,44 @@ def _inject_gates(document):
     return p2_placement.validate_document(doc)
 
 
-def arena_document(probe):
-    """Fallback for a probe without a catalog join (generator ids only)."""
-    slots = []
-    for slot in probe['slots']:
-        slots.append(p2_placement.normalize_slot({
-            'uid': slot['uid'], 'label': f'p2-room-encounter-generator-{slot["uid"]}', 'stage': 0,
-            'terrain': 'ground', 'radius': 100.0,
-            'corpse_route': True, 'evidence': {'xyz': False, 'terrain': False, 'route': False},
-        }))
-    profiles = [
-        p2_placement.normalize_profile({
-            'identity': 'YellowKochappy', 'terrains': ['ground'], 'family_lane': 13,
-            'requires_corpse_route': True, 'accepted_gates': [],
-            'notes': 'Snow Bulborb (lane-04 encounter arena audit; profile gates owned by lane 33).',
-        }),
-        p2_placement.normalize_profile({
-            'identity': 'BlueKochappy', 'terrains': ['ground'], 'family_lane': 13,
-            'requires_corpse_route': True, 'accepted_gates': [],
-            'notes': 'Dwarf Orange Bulborb (lane-04 encounter arena audit; profile gates owned by lane 33).',
-        }),
-    ]
-    return p2_placement.validate_document({'schema': p2_placement.SCHEMA, 'slots': slots, 'profiles': profiles})
-
-
 def _admitted_for(report, identities):
     return {k: v for k, v in report['admitted'].items() if k in identities}
 
 
-def run_audit(probe, catalog_doc=None, identities=IDENTITIES):
+def run_audit(probe, catalog_doc=None, identities=IDENTITIES, arena_stage=None, allow_unmapped=False):
     """Return the join + before/after admission report for a probe document."""
+    unmapped = probe.get('unmapped_generators', [])
+    if unmapped and not allow_unmapped:
+        raise SystemExit(
+            f'catalog join: actor(s) {sorted(set(unmapped))} have no sidecar slot '
+            f'mapping; pass --allow-unmapped to proceed')
+
     if probe.get('catalog_join'):
         catalog_doc = catalog_doc if catalog_doc is not None else catalog_document()
-        catalog_uids = {slot['uid'] for slot in catalog_doc['slots']}
-        mapped = [m for m in probe['mapping']]
-        mapped_uids = {m['slot'] for m in mapped}
-        unmatched = sorted(mapped_uids - catalog_uids)
-        if unmatched:
-            raise SystemExit(
-                f'catalog join hard failure: probe slot uid(s) {unmatched} are not '
-                f'present in p2_placement_catalog.all_slots()')
-        stamp_probe = {'schema': probe['schema'],
-                       'slots': [s for s in probe['slots'] if s['uid'] in mapped_uids]}
+        catalog_slots = {slot['uid']: slot for slot in catalog_doc['slots']}
+        mapping = probe['mapping']
+        for m in mapping:
+            record = catalog_slots.get(m['slot'])
+            if record is None:
+                raise SystemExit(
+                    f'catalog join hard failure: probe slot uid {m["slot"]} is not '
+                    f'present in p2_placement_catalog.all_slots()')
+            if arena_stage is not None and record['stage'] != arena_stage:
+                raise SystemExit(
+                    f'catalog join hard failure: slot uid {m["slot"]} is stage '
+                    f'{record["stage"]} but the arena is stage {arena_stage}')
+        mapped_uids = [m['slot'] for m in mapping]
+        stamp_probe = {'schema': probe['schema'], 'slots': probe['slots']}
         stamped = p2_placement_native.stamp_evidence(catalog_doc, stamp_probe)
         pre = p2_placement.audit(catalog_doc, identities=list(identities))
         post = p2_placement.audit(stamped, identities=list(identities))
         injected = p2_placement.audit(_inject_gates(stamped), identities=list(identities))
         return {
             'catalog_join': True,
+            'arena_stage': arena_stage,
             'matched_slot_uids': sorted(mapped_uids),
-            'mapping': mapped,
+            'mapping': mapping,
+            'unmapped_generators': unmapped,
             'pre_probe_admitted': _admitted_for(pre, identities),
             'pre_probe_denied_reasons': pre['denied_reasons'],
             'stamped_admitted': _admitted_for(post, identities),
@@ -107,33 +93,27 @@ def run_audit(probe, catalog_doc=None, identities=IDENTITIES):
             'injected_legal_admitted': _admitted_for(injected, identities),
             'slot_evidence': p2_placement_native.slot_evidence_summary(stamped),
         }
-    doc = arena_document(probe)
-    pre = p2_placement.audit(doc)
-    stamped = p2_placement_native.stamp_evidence(doc, probe)
-    post = p2_placement.audit(stamped)
-    injected = p2_placement.audit(_inject_gates(stamped))
     return {
         'catalog_join': False,
+        'arena_stage': arena_stage,
+        'unmapped_generators': unmapped,
         'catalog_join_note': (
-            'arena-only, no catalog join: the probe ids are generator 4-byte file '
-            'ids (Generator::_70), not p2_placement_catalog.all_slots() uid keys '
-            '(crc32), so they are not looked up in the campaign catalog.'),
-        'pre_probe_admitted': _admitted_for(pre, identities),
-        'pre_probe_denied_reasons': pre['denied_reasons'],
-        'stamped_admitted': _admitted_for(post, identities),
-        'stamped_denied_reasons': post['denied_reasons'],
-        'injected_legal_admitted': _admitted_for(injected, identities),
-        'slot_evidence': p2_placement_native.slot_evidence_summary(stamped),
+            'arena-only, no catalog join: no sidecar slot mapping was staged, so '
+            'the probe ids are generator 4-byte file ids (Generator::_70), not '
+            'p2_placement_catalog.all_slots() uid keys; nothing is stamped.'),
     }
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--probe', type=Path, required=True)
+    parser.add_argument('--stage', type=int, default=None)
+    parser.add_argument('--allow-unmapped', action='store_true')
     parser.add_argument('--out', type=Path, default=None)
     args = parser.parse_args(argv)
 
-    report = run_audit(json.loads(args.probe.read_text()))
+    report = run_audit(json.loads(args.probe.read_text()),
+                       arena_stage=args.stage, allow_unmapped=args.allow_unmapped)
     print(json.dumps(report, indent=2))
     if args.out:
         args.out.write_text(json.dumps(report, indent=2) + '\n')
