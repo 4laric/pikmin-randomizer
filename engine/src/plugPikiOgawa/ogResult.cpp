@@ -540,6 +540,18 @@ void zen::ogScrResultMgr::start()
 
 /**
  * @todo: Documentation
+ */
+void zen::ogScrResultMgr::skip()
+{
+	// Auto-dismiss the end-of-day results screen (Disable Tutorials) so
+	// unattended fixture runs do not stall on "1 Day Since Impact".
+	mWaitTimer     = 1.0f;
+	mPendingStatus = RESULT_ExitToMapSelect;
+	mStatus        = RESULT_FadeOut;
+}
+
+/**
+ * @todo: Documentation
  * @note UNUSED Size: 000038
  */
 void zen::ogScrResultMgr::StartRESULT()

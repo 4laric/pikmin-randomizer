@@ -5,8 +5,8 @@
 #include <cstdio>
 #include <cstdlib>
 
-// Lane 12 opt-in second-captain creation (#130). See the header for why the
-// live spawn is gated shut on this port.
+// Lane 12 opt-in second-captain creation (#130). See the header for the
+// request-gated live-spawn path.
 
 namespace pc_p2_captain {
 
@@ -18,22 +18,15 @@ bool second_captain_requested()
     return true;
 }
 
-// Lane 12 (#130): the live spawn gate is OPEN only for a fixture/test that
-// explicitly requests it. Normal play stays single-captain until the second
-// captain's model/plate/cursor rendering (Navi::refresh) and per-captain
-// controller routing are finished, so a live second Navi (whose collision is
-// active but whose model is skipped) is never born in a normal run.
-bool second_captain_live_requested()
-{
-    const char* env = std::getenv("PIKMIN_P2_SECOND_CAPTAIN_LIVE");
-    if (!env || env[0] == '\0') return false;
-    if (env[0] == '0' && env[1] == '\0') return false;
-    return true;
-}
-
+// Lane 12 (#130): the live spawn gate now defaults ON. The second captain
+// renders (Navi::refresh no longer defers mNaviID != 0 and shares slot 0's
+// PikiShapeObject) and its Kontroller poll is skipped when inactive, so a
+// requested second captain is no longer invisible/input-mirroring. Default
+// single-captain play still never spawns one: navi_capacity() only reaches 2
+// when second_captain_requested() (PIKMIN_P2_SECOND_CAPTAIN) is set.
 bool second_captain_live_allowed()
 {
-    return second_captain_live_requested();
+    return true;
 }
 
 int navi_capacity()
