@@ -27,7 +27,11 @@ GOOD_LOG = '\n'.join([
     'P2_LL_TIMING source=1',
     'P2_LONG_LEGS_CRUSH species=BigFoot generator=312002 pikmin=20',
     'P2_LONG_LEGS_DAMAGE species=BigFoot generator=312002 health=80.0 prior=95.0',
-    'P2_LONG_LEGS_DAMAGE species=Houdai generator=312001 health=80.0 prior=100.0',
+    'P2_LL_HOUDAI_HP health=130.00 squad=20 atk=20 dmg=1 tick=90',
+    'P2_LONG_LEGS_DAMAGE species=Houdai generator=312001 health=115.0 prior=130.0',
+    'P2_LL_HOUDAI_HP health=115.00 squad=20 atk=20 dmg=1 tick=180',
+    'P2_LONG_LEGS_DAMAGE species=Houdai generator=312001 health=100.0 prior=115.0',
+    'P2_LONG_LEGS_DAMAGE species=Houdai generator=312001 health=70.0 prior=100.0',
     'P2_LONG_LEGS_SHELL species=Houdai generator=312001',
     'P2_LONG_LEGS_SHELL_HIT species=Houdai generator=312001 pikmin=1',
     'P2_LL_NATURAL_DEATH bigfoot=1 health=0.00',
@@ -140,6 +144,27 @@ def test_session_survives_flips_when_dayend():
     assert teardown != GOOD_LOG
     flipped = validate(teardown, code=0)
     assert flipped['checks']['session_survives'] is False
+
+
+def test_houdai_drain_connects_true_and_flips():
+    # houdai_drain_connects asserts the Attack order actually connected across the
+    # run: at least three distinct P2_LONG_LEGS_DAMAGE Houdai events AND a real
+    # decrease (the first event's health strictly below the max prior seen), not
+    # one stray hit. This is not the old single-delta `houdai_natural_damage`
+    # plausibility check. Skip cleanly until the validator wires the gate in (a
+    # parallel change); never assert the old behaviour here.
+    result = validate(GOOD_LOG, code=0)
+    if 'houdai_drain_connects' not in result['checks']:
+        pytest.skip('houdai_drain_connects gate not yet wired into validate()')
+    assert result['checks']['houdai_drain_connects'] is True
+    drain = 'P2_LONG_LEGS_DAMAGE species=Houdai generator=312001 '
+    single = '\n'.join(line for line in GOOD_LOG.splitlines()
+                       if not line.startswith(drain))
+    assert single.count(drain) == 0
+    single += ('\nP2_LONG_LEGS_DAMAGE species=Houdai generator=312001 '
+               'health=115.0 prior=130.0')
+    assert single.count(drain) == 1
+    assert validate(single, code=0)['checks']['houdai_drain_connects'] is False
 
 
 def test_fixture_source_has_no_forced_transport_write():

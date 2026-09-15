@@ -91,6 +91,9 @@ def position_override():
 
 APP = r'''class RoomApp : public PlugPikiApp {
     int frames=0,observed=0,stage=0,bigfootDiedTick=0,houdaiDiedTick=0,initialPokos=0,wakeTick=0;
+    int houdaiDropEvents=0;         // receiver-hit probe: actual health decreases on Houdai
+    float houdaiMinHealth=1e9f;     // lowest Houdai health seen
+    float houdaiLastHealth=0.0f;    // previous tick's Houdai health
     Vector3f captainOrigin;
     Teki* houdai=nullptr;Teki* bigfoot=nullptr;
     Generator* houdaiGen=nullptr;Generator* bigfootGen=nullptr;
@@ -110,6 +113,10 @@ APP = r'''class RoomApp : public PlugPikiApp {
     int parkAttack(Teki* target,float radius){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
         float ang=float(n)*6.2831853f/20.0f;Vector3f pt(target->mSRT.t.x+radius*std::sin(ang),0,target->mSRT.t.z+radius*std::cos(ang));
         pt.y=mapMgr->getMinY(pt.x,pt.z,true);v->resetPosition(pt);
+        // Face the target: ActJumpAttack::exec only starts the attack animation when
+        // the angle to the target is < PI/10, so a ring with arbitrary facing never
+        // latches. Rotate each Pikmin inward (ang + PI).
+        v->mSRT.r.y=ang+3.14159265f;
         v->mActiveAction->abandon(nullptr);v->mActiveAction->mCurrActionIdx=PikiAction::Attack;
         v->mActiveAction->mChildActions[PikiAction::Attack].initialise(target);v->mMode=PikiMode::AttackMode;++n;}return n;}
     int freeAndParkAt(const Vector3f& c, float radius){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
@@ -180,7 +187,12 @@ public:int idle() override {
         // update_all tick keeps it advancing off-camera). No host health writes
         // and no clip compression.
         if(!parked){
-            int c=freeAndPark(houdai,150.0f);std::printf("P2_LL_PARK species=Houdai count=%d\n",c);
+            // Park INSIDE the 60u accumulate radius: Houdai then takes the source
+            // Wait->Flick->Shot path (early, deterministic) instead of the 50 s
+            // cooldown path, and the squad is already in latch range when Shot fires.
+            // The Flick path is the only roll on which the drain connects, so this
+            // makes the kill repeatable (Houdai has no stomp, pressDamage=0).
+            int c=freeAndPark(houdai,90.0f);std::printf("P2_LL_PARK species=Houdai count=%d\n",c);
             Vector3f wake(houdai->mSRT.t.x,0,houdai->mSRT.t.z-70.0f);wake.y=mapMgr->getMinY(wake.x,wake.z,true);
             n->resetPosition(wake);std::printf("P2_LL_WAKE captain=1\n");
             wakeTick=observed;parked=true;std::fflush(stdout);
@@ -188,7 +200,7 @@ public:int idle() override {
         if(observed==wakeTick+8){n->resetPosition(captainOrigin);std::printf("P2_LL_RETREAT captain=1\n");std::fflush(stdout);}
         if(pc_p2_long_legs_shot(houdai)||observed>=4500){
             std::printf("P2_LL_SHOT species=Houdai source_timed=1 tick=%d\n",observed);
-            int a=parkAttack(houdai,15.0f);std::printf("P2_LL_ATTACK_HOUDAI attack=%d\n",a);std::fflush(stdout);stage=3;return result;
+            int a=parkAttack(houdai,45.0f);std::printf("P2_LL_ATTACK_HOUDAI attack=%d\n",a);std::fflush(stdout);stage=3;return result;
         }
         if(observed>=30000){std::printf("P2_LL_INJECT species=Houdai injected_health=0 source=fixture not_natural_combat=1\n");houdai->mHealth=0.0f;std::fflush(stdout);stage=3;return result;}
         return result;
@@ -196,14 +208,16 @@ public:int idle() override {
     if(stage==3){
         if(!houdai->isAlive()&&!houdaiDied){houdaiDied=true;houdaiDiedTick=observed;std::printf("P2_LL_NATURAL_DEATH houdai=1 health=%.2f tick=%d\n",houdai->mHealth,observed);std::fflush(stdout);}
         if(houdaiDied){stage=4;return result;}
-        // Host health is randomised per seed (observed source values 25..130), the
-        // Attack action can fall back to Free while the proxy is displaced, and the
-        // source body is bitter-immune during Stay/Land, so attacks that land in the
-        // immune window are rejected. Re-issue the real Pikmin Attack order on a
-        // cadence only while the source damage window is open so the drain progresses.
-        if(observed%10==0&&pc_p2_long_legs_damageable(houdai))assignAttack(houdai);
+        // Receiver-hit probe (fix 4): count ACTUAL health decreases, not orders.
+        // The counter is the fixture's own observation of the native health edge, so
+        // it distinguishes "ordered but not connecting" from a real drain.
+        {float h=houdai->mHealth;if(h<houdaiLastHealth)++houdaiDropEvents;houdaiLastHealth=h;if(h>0.0f&&h<houdaiMinHealth)houdaiMinHealth=h;}
+        // Re-park (position + inward facing) and re-issue the real Attack order on a
+        // cadence while the source damage window is open: a Flick from Houdai's
+        // shells suspends the Piki action and the arbitrary ring facing never latches.
+        if(observed%15==0&&pc_p2_long_legs_damageable(houdai))parkAttack(houdai,45.0f);
         if(observed%90==0){int live=0,atk=0;Iterator q(pikiMgr);CI_LOOP(q){Piki* v=static_cast<Piki*>(*q);if(!v->isAlive())continue;++live;if(v->mMode==PikiMode::AttackMode)++atk;}
-            std::printf("P2_LL_HOUDAI_HP health=%.2f squad=%d atk=%d dmg=%d tick=%d\n",houdai->mHealth,live,atk,int(pc_p2_long_legs_damageable(houdai)),observed);std::fflush(stdout);}
+            std::printf("P2_LL_HOUDAI_HP health=%.2f squad=%d atk=%d dmg=%d events=%d tick=%d\n",houdai->mHealth,live,atk,int(pc_p2_long_legs_damageable(houdai)),houdaiDropEvents,observed);std::fflush(stdout);}
         if(observed>=6000){std::printf("P2_LL_INJECT species=Houdai injected_health=0 source=fixture not_natural_combat=1\n");houdai->mHealth=0.0f;std::fflush(stdout);}
         return result;
     }
@@ -271,6 +285,7 @@ public:int idle() override {
         std::fflush(stdout);stage=10;return result;
     }
     if(stage==10){
+        std::printf("P2_LL_HOUDAI_DRAIN events=%d min=%.2f\n",houdaiDropEvents,houdaiMinHealth);
         std::printf("P2_LL_SESSION navi=1 pikis=%lu dayend=0\n",(unsigned long)GameStat::allPikis);
         std::puts("PASS P2_LONG_LEGS_LIFECYCLE death=Houdai,BigFoot corpse=2 receipt=2 registry_empty=2 reentry=2 stale=0 duplicate_reward=0");
         std::fflush(stdout);std::_Exit(0);
@@ -464,6 +479,18 @@ def validate(text, code=0):
                             and bool(re.search(r'P2_LONG_LEGS_DEAD species=Houdai generator=312001 '
                                                r'health=0 prior_health=(?!0+(?:\.0+)?\s)[\d.]+', text)))
     houdai_no_inject = not re.search(r'P2_LL_INJECT[^\n]*Houdai', text)
+    # houdai_drain_connects (fix 4): the drain must actually progress, not merely be
+    # ordered. The fixture's receiver-hit probe counts real health decreases
+    # (P2_LL_HOUDAI_DRAIN events=), and independently the native emits one
+    # P2_LONG_LEGS_DAMAGE line per connected hit; either evidence of >=2 connected
+    # hits with a bounded final health below the 130 max is the "connecting" signal
+    # that the source visibility/latch window otherwise denies (a 2-event drain is a
+    # legitimate run: the Chappy applies large multi-point chunks).
+    houdai_damage_events = len(re.findall(r'P2_LONG_LEGS_DAMAGE species=Houdai generator=312001 ', text))
+    drain = re.search(r'P2_LL_HOUDAI_DRAIN events=(\d+) min=([\d.]+)', text)
+    houdai_drain_connects = (
+        (bool(drain) and int(drain.group(1)) >= 2 and 0.0 < float(drain.group(2)) < 130.0)
+        or houdai_damage_events >= 2)
     checks = dict(
         identity=binds,
         window=bool(re.search(r'Experimental preview window set to 960x540 windowed and centered', text)),
@@ -484,6 +511,7 @@ def validate(text, code=0):
         houdai_shell_hits=houdai_shell_hits,
         houdai_natural_death=houdai_natural_death,
         houdai_no_inject=houdai_no_inject,
+        houdai_drain_connects=houdai_drain_connects,
         bigfoot_receipt=bigfoot_receipt,
         houdai_receipt=houdai_receipt,
         free_recruit=free_recruit,
@@ -509,6 +537,7 @@ def validate(text, code=0):
         houdai_shell_hits='pass' if houdai_shell_hits else 'fail',
         houdai_natural_death='pass' if houdai_natural_death else 'fail',
         houdai_no_inject='pass' if houdai_no_inject else 'fail',
+        houdai_drain_connects='pass' if houdai_drain_connects else 'fail',
         bigfoot_receipt='pass' if bigfoot_receipt else 'fail',
         houdai_receipt='pass' if houdai_receipt else 'fail',
         free_recruit='pass' if free_recruit else 'fail',
@@ -526,7 +555,7 @@ def validate(text, code=0):
                 'natural_damage', 'foot_crush', 'natural_bigfoot_death',
                 'death_output', 'birth_children',
                 'houdai_natural_damage', 'houdai_shell_fires', 'houdai_shell_hits',
-                'houdai_natural_death', 'houdai_no_inject',
+                'houdai_natural_death', 'houdai_no_inject', 'houdai_drain_connects',
                 'bigfoot_receipt', 'houdai_receipt', 'free_recruit', 'corpse_one_shot',
                'session_survives',
                'natural_carry',
