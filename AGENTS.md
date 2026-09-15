@@ -23,7 +23,11 @@ Work in this directory's native/ and bbft/ repositories. Original BBFT and decom
 - Only the integration lead builds `native/build-randomizer` for the maintained line, after a fast-forward/merge, and then runs `py -3.12 scripts/export_native_source.py`. Do not hold that directory for exploratory builds.
 - Record build evidence per attempt: pinned commit, private build dir, executable SHA-256, and the `ninja -n` dry-run result.
 
-Keep private build dirs, builds, saves, generated seeds, logs and runtime state under ignored `output/`. Never push native origin.
+Keep private build dirs, builds, saves, generated seeds, logs and runtime state under ignored `output/`.
+
+## Git push policy
+
+Agents may commit freely on their work branches and **may `git push` to the remote on fix/feature branches** — `feature/**`, `fix/**`, and the wave work branches `deepseek/**`, `claude/**`, `codex/**` — on both this repo's remote (`origin`) and the native repo's remote. Never push the default branch (`main`/`master`), never push tags, and never force-push. Record what was pushed (branch + commit) in the handoff or report. Issue-first tracking (above) still governs GitHub issue writes; this policy only relaxes pushes.
 
 ## Export does not wait on a clean shared `native/`
 
@@ -36,4 +40,4 @@ The shared `native/` checkout normally carries a recorded dirty baseline from ot
   py -3.12 scripts/export_native_source.py --source output/native-<lane>
   ```
 - Only the integration lead runs the maintained export; lanes keep their own uncommitted work out of the shared checkout by using private `native/` worktrees (§Build isolation) and commit native changes on their own branch.
-- Record the native commit **and** dirty state with any export evidence. Never push native origin.
+- Record the native commit **and** dirty state with any export evidence. Native work branches may be pushed under the Git push policy above (fix/feature/wave branches only; never the default branch, tags, or force-pushes).
