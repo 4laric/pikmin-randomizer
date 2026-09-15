@@ -122,6 +122,7 @@ public:
 
 int main(int argc, char** argv)
 {
+    setvbuf(stdout, nullptr, _IONBF, 0);
     SDL_SetMainReady(); pc_gpu_preference_apply(); _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1");
     pc_bbft_init(argc, argv);
     if (!pc_window_init("lane06 delivery", 960, 540)) return 3;

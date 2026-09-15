@@ -16,7 +16,7 @@ import argparse
 import os
 import subprocess
 import sys
-import threading
+import time
 import uuid
 import _winapi
 from pathlib import Path
@@ -27,31 +27,27 @@ def run_once(session, exe, assets, receipt_path, label):
     native_run = NativeRun(session)
     run = native_run.directory
     _winapi.CreateJunction(str(assets.resolve()), str((run / 'assets').resolve()))
-    done = threading.Event()
-
-    def refresh():
-        while not done.is_set():
-            native_run.write_state(True)
-            done.wait(0.1)
-
-    threading.Thread(target=refresh, daemon=True).start()
     env = dict(os.environ, SDL_AUDIODRIVER='dummy', PIKMIN_RANDOMIZER_TEST_BACKGROUND='1',
                PIKMIN_P2_RECEIPT_PATH=str(receipt_path.resolve()))
+    env['PATH'] = 'C:/msys64/mingw64/bin;' + env['PATH']
     env.pop('BBFT_PORT', None)
     startup = subprocess.STARTUPINFO()
     startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-    startup.wShowWindow = 0
+    startup.wShowWindow = 1
     log = run / 'native.log'
-    try:
-        with log.open('w') as stream:
-            try:
-                code = subprocess.run([str(exe), '--randomizer-seed', str(native_run.bootstrap.resolve())],
-                                      cwd=run, env=env, startupinfo=startup, stdout=stream,
-                                      stderr=subprocess.STDOUT, timeout=300).returncode
-            except subprocess.TimeoutExpired:
-                code = 'timeout'
-    finally:
-        done.set()
+    native_run.write_state(True)
+    with log.open('w') as stream:
+        proc = subprocess.Popen([str(exe), '--randomizer-seed', str(native_run.bootstrap.resolve())],
+                                cwd=run, env=env, startupinfo=startup, stdout=stream,
+                                stderr=subprocess.STDOUT)
+        deadline = time.time() + 300
+        while proc.poll() is None and time.time() < deadline:
+            native_run.write_state(True)
+            time.sleep(0.1)
+        code = proc.poll()
+        if code is None:
+            proc.kill()
+            code = 'timeout'
     text = log.read_text(errors='replace')
     grants = [l for l in text.splitlines() if 'P2_ORDINARY_P2_RECEIPT' in l]
     news = [l for l in grants if ' new=1' in l]
