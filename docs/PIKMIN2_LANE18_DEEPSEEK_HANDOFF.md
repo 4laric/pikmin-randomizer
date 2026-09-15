@@ -386,3 +386,198 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/build_lane.py l18
 py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run build l18 -- py -3.12 -m experimental.pikmin2_breadbug_contest_runtime build --native C:/Users/alari/pikmin-randomizer/output/dsw/native-l18 --build-dir C:/Users/alari/pikmin-randomizer/output/dsw/native-l18-build --output C:/Users/alari/pikmin-randomizer/output/dsw/l18-out/slice2-fixture-build --head 452135cd6c34821ba4d3ad65058e3eac49d8a668
 py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l18 -- py -3.12 -m experimental.pikmin2_breadbug_contest_runtime run --stage C:/Users/alari/pikmin-randomizer/output/dsw/l18-out/contest-stage --exe C:/Users/alari/pikmin-randomizer/output/dsw/l18-out/slice2-fixture-build/fixture.exe --output C:/Users/alari/pikmin-randomizer/output/dsw/l18-out/slice2-run
 ```
+
+## Slice 3 — real interruption path + carried-win delivery grant
+
+Tracking #220. Owner: Codex through shared 4laric; executing agent DeepSeek lane-18.
+This slice closes the review's two open native gates for the small Breadbug
+consumer: (1) the **real interruption path** (`interrupt` + handle destroy on the
+`!held` transition — replacing the slice-2 borrowed "Stolen-outcome release" with
+a genuinely distinct release reason), and (3) the three carry-forward fix-ups
+(PROBE marker confessed by the module itself, `OWNER_DIED released=` prints the
+honest held-at-death state, `probe_revisit` destroys the handle instead of leaking
+the Stolen-outcome entry). The carried-win lane-06 delivery grant is re-confirmed
+below (ordinary Onion "Bestiary: Deliver Breadbug", exactly-once across restart).
+
+### Carry-forward fixes applied (review items)
+
+- **PROBE emitted by the module, not the fixture** — `pc_port/pc_p2_breadbug_actor.cpp`
+  `pc_p2_breadbug_actor_probe_carriers()` now prints
+  `P2_BREADBUG_CONTEST_PROBE generator=<id> carriers=<n> injected=1` for `count>=0`;
+  the validator trusts the module's confession, not the driver. The fixture's
+  PROBE prints were removed.
+- **OWNER_DIED `released=` is no longer a literal** — it prints `int(held!=nullptr)`
+  (the honest held-at-death state) at `pc_p2_breadbug_actor.cpp:123`.
+- **Revisit leak fixed** — `probe_revisit` now calls
+  `pc_p2_breadbug_contest_destroy()` before zeroing the handle
+  (`pc_p2_breadbug_actor.cpp:64-69`), so a Stolen-outcome `P2CargoContest` entry
+  is no longer left in the bridge's `sContests` map.
+- **Handoff commit list is complete** — root `ff418c1` / `60ba14a` and native
+  `452135cd` are now listed (see below).
+
+### The real interruption path (new)
+
+On the `!held` transition with a still-live HELD handle (the proxy lost/delivered
+its cargo while the tug was unresolved — not Stolen, not timed-out, both of which
+already destroy their handle), the tick now calls
+`pc_p2_breadbug_contest_interrupt()` + `pc_p2_breadbug_contest_destroy()` and emits
+`P2_BREADBUG_CONTEST_INTERRUPT generator=<id> reason=interrupted`
+(`pc_p2_breadbug_actor.cpp:171-176`). A Stolen outcome is now also terminal
+(`destroy` after the grant), so a fresh grab always begins a fresh contest; this is
+what the slice-2 host.log bug (held=0 state=8 at tick 840, next grab reusing the
+handle with no fresh BEGIN) required. The audited natural trigger is the captain
+whistle pulling the carriers off (`Navi::callPikis` -> `PikiLookAtState` detach,
+`navi.cpp:1163-1301` / `pikiState.cpp:234-246`); the fixture issues `n->callPikis()`
+and the proxy's own P1 delivery/loss produces the `!held`.
+
+### Ordered commits
+
+Root `deepseek/p2-l18`, base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91` (complete list):
+`3c18717`, `be68949`, `1442dc3`, `d4225ed`, `dad18ce`, `456fae4`, `c3b9921`,
+`ff418c1`, `d066f77`, `60ba14a`, `d813848` (integrator), then slice 3:
+`f988b68`, `8cf53ef`, `d8c660e`, `334c121` (HEAD `334c121`, clean).
+
+Native `deepseek/p2-l18-native`, base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`:
+`e2ad9445`, `9191e040`, `dcad95ba`, `4c7ee519`, `3b683c44`, `452135cd` (slice 2),
+then slice 3: `0a22fd06` (interruption path + Stolen-terminal),
+`56c7fdd0` (PROBE from probe_carriers + OWNER_DIED held literal + revisit destroy),
+`cafdaecc` (log natural carriers before the update for the integrity check),
+`d0b2d173` (detect owner death via `mDeadState` so interrupt cannot mask it).
+HEAD `d0b2d173`, clean.
+
+### Interfaces / hooks touched
+
+- `pc_port/pc_p2_breadbug_actor.cpp` only (family module). No edits to
+  `teki.h`, `tekibteki.cpp`, `tekimgr.cpp`, `gameCoreSection.cpp`, `pc_p2_preview.cpp`
+  or the bridge. The bridge (`pc_p2_breadbug_contest_host`) already exposed
+  `interrupt`/`destroy`; slice 3 merely wires them at the correct transition.
+- Root: `scripts/pikmin2_breadbug_contest_fixture.cpp`,
+  `experimental/pikmin2_breadbug_contest.py`, `experimental/pikmin2_breadbug_contest_runtime.py`,
+  `tests/test_pikmin2_breadbug_contest_consumer.py`.
+
+### Build evidence (`output/dsw/l18-build-evidence.txt`)
+
+```text
+2026-09-15T00:06:30 lane=l18 target=pikmin_pc native=d0b2d173dc21a40526414f323d34d4e7f62bd3ca dirty=no build_dir=.../native-l18-build exe=.../bin/nectar.exe sha256=dd5e7e41d2a1b03c581812d3a40d81d5205780a7971d6993253be6762582aac3 ninja_n="ninja: no work to do."
+2026-09-15T00:30:24 lane=l18 target=p2_breadbug_contest_consumer_test native=d0b2d173dc21a40526414f323d34d4e7f62bd3ca dirty=no ... sha256=1f26bb5e38c0dc8eeb0755d90301dbb034e4473156071e2e863d984994603ba1 ninja_n="ninja: no work to do."
+```
+
+- Contest fixture exe SHA-256 `9c83d0520dab49e4165f9a1e8617be6349ff910ccff4114a400561d87d308185`.
+- Consumer CTest `1f26bb5e…` -> `PASS p2_breadbug_contest_consumer_test` (exit 0).
+
+### Fixture adoption evidence
+
+`Experimental preview window set to 960x540 windowed and centered`,
+`SDL2 Window & OpenGL Context initialized successfully (960x540)`,
+`P2_ROOM_PREVIEW room=room_4x4a_4_conc red=20 isolated=1`,
+`P2_BREADBUG_ACTOR_READY generator=186081 native_type=8`. Run wrapped in
+`slot.py run gl l18` with `PIKMIN_P2_ROOM_WINDOW=960x540`, `PYTHONUTF8=1`.
+
+### Runtime evidence (real-GL, 960x540)
+
+`output/dsw/l18-out/slice3-run/result.json` `passed=true`; host.log SHA-256
+`2786ccfcb50d61ceeb7f28ee5cdcb4efe3fd9b8d043e586e875311b7da5dd66a`. Marker
+sequence (generator 186081):
+
+```text
+P2_BREADBUG_CONTEST_BEGIN ... max=2
+P2_BREADBUG_CONTEST_UPDATE carriers=0 outcome=held          # natural tug (no probe)
+P2_BREADBUG_CONTEST_UPDATE carriers=0 outcome=released      # uncontested -> timeout (handle drop)
+P2_BREADBUG_CONTEST_BEGIN ... max=2
+P2_BREADBUG_CONTEST_UPDATE carriers=2 outcome=stolen
+P2_BREADBUG_CONTEST_STOLEN ... released=1
+P2_BREADBUG_CONTEST_GRANT ... granted=1                     # exactly-once grant
+P2_BREADBUG_REVISIT ... rearmed=1
+P2_BREADBUG_CONTEST_PROBE carriers=2 injected=1             # module-confessed
+P2_BREADBUG_CONTEST_BEGIN ... max=2
+P2_BREADBUG_CONTEST_STOLEN ... released=1
+P2_BREADBUG_CONTEST_GRANT ... granted=0 duplicate=1         # revisit refuses duplicate
+P2_BREADBUG_REVISIT ... rearmed=1
+P2_BREADBUG_CONTEST_PROBE carriers=1 injected=1
+P2_BREADBUG_CONTEST_BEGIN ... max=2
+P2_BREADBUG_CONTEST_UPDATE carriers=1 outcome=held
+P2_BREADBUG_CONTEST_INTERRUPT ... reason=interrupted        # real interruption (whistle -> loss)
+P2_BREADBUG_REVISIT ... rearmed=1
+P2_BREADBUG_CONTEST_PROBE carriers=1 injected=1
+P2_BREADBUG_CONTEST_BEGIN ... max=2
+P2_BREADBUG_CONTEST_UPDATE carriers=1 outcome=held
+P2_BREADBUG_OWNER_DIED ... released=1 reason=OwnerDied       # death releases the held cargo
+PASS P2_BREADBUG_CONTEST tug stolen_grant interrupt owner_died revisit_exactly_once
+```
+
+Validator: `began/held/stolen/released/granted/owner_died(1)/interrupt(reason=interrupted)/revisit`
+all true; `grants=1`, `grant_duplicate=true`, `integrity_violations=0`,
+`probe_before_first_grant=0`; all six gates passed.
+
+### Six-gate table (ENEMY_ROSTER format, file-cited)
+
+| gate | status | evidence / citation |
+|---|---|---|
+| identity_spawn | PASS (natural) | `P2_BREADBUG_ACTOR_READY generator=186081 native_type=8 xyz=-150,30,1850` (`pc_p2_breadbug_actor.cpp:83`) |
+| movement_animation | PASS (natural, P1 proxy) | P1 `TEKI_Collec` host grab/drag + `P2_BREADBUG_ACTOR_DRAW` (`taicollec.cpp:796-829`, `pc_p2_breadbug_actor.cpp:180-184`) |
+| attacks_receivers | PASS (state machine real; carriers injected/labelled) | P2CargoContest Held->Stolen transition table driven by the real Stickers count (`pc_p2_breadbug_actor.cpp:140-146`); revisit/death carrier counts are module-confessed PROBE markers |
+| death_corpse | PASS (death real via `die()`; corpse P1 `TEKICORPSE_LeaveCorpse`) | `P2_BREADBUG_OWNER_DIED released=1` (`pc_p2_breadbug_actor.cpp:118-125`); P1 corpse flag `taicollec.cpp:469` |
+| transport_reward | PASS (contest reward); delivery-path grant proven separately | contest `grantReceipt` -> `onion:p2:38:0` exactly-once (`pc_p2_breadbug_contest_host.cpp:136-152`); ordinary Onion "Bestiary: Deliver Breadbug" exactly-once via `p2_ordinary_receipt_fixture.cpp --enemy-type 8` (session-1 `EXACTLY_ONCE_ACROSS_RESTART: True`, unchanged by slice 3); natural squad carry remains lane 04 |
+| cleanup_reentry | PASS (exactly-once across revisit) | `P2_BREADBUG_CONTEST_GRANT granted=0 duplicate=1` after `REVISIT rearmed=1` (`pc_p2_breadbug_actor.cpp:164-176`); Stolen handle is terminal |
+
+### Carried win / delivery-path grant (item 2)
+
+The contest's `grantReceipt` is the contest-internal reward (sidecar
+`p2-breadbug-contest-receipts.txt`). The lane-06 ordinary **delivery-path** grant
+is `GoalItem::suckMe` -> `pc_randomizer_corpse_delivered` ->
+`pc_randomizer_check("Bestiary: Deliver Breadbug")` (`goalItem.cpp:354-364`,
+`pc_randomizer.cpp:710-718`, `pc_randomizer_catalog.h:803` type 8). It fires across
+a process restart exactly once (session-1 handoff: `[run1] target_check_lines=1`,
+`[run2] target_check_lines=0`, `EXACTLY_ONCE_ACROSS_RESTART: True`), now driven by
+the parameterised `scripts/p2_ordinary_receipt_fixture.cpp` (`--enemy-type 8 --check
+"Bestiary: Deliver Breadbug"`). Slice 3 did not alter that path (its native edits are
+all in `pc_p2_breadbug_actor.cpp`, which is not loaded by the ordinary campaign), so
+that evidence stands. "The squad actually carrying the pellet to the Onion" (natural
+transport) is lane-04 ownership and is not claimed here.
+
+### Tests run and results
+
+- `py -3.12 -m pytest tests/test_pikmin2_breadbug_contest_consumer.py tests/test_pikmin2_breadbug_contest.py tests/test_pikmin2_breadbug_contest_observation.py tests/test_pikmin2_breadbug_ordinary.py tests/test_pikmin2_breadbug_rewards.py -q` -> **64 passed**.
+- Native CTest `p2_breadbug_contest_consumer_test` -> `PASS` (exit 0).
+
+### Subagent usage
+
+Three tasks delegated in parallel (staggered):
+
+- `explore` #1 (source audit: interruption + whistle + delivery path): **used as-is.**
+  Confirmed the P2 source has no separate "Stolen", that the P1 proxy releases the
+  held pointer via `endStickTeki`/`clearCreaturePointer(2)`, that the whistle
+  (`Navi::callPikis` -> `PikiLookAtState` detach) is the audited carrier-off trigger,
+  and the exact `GoalItem::suckMe` -> `pc_randomizer_corpse_delivered` -> type-8 ->
+  "Bestiary: Deliver Breadbug" delivery chain.
+- `explore` #2 (contest-chain inventory): **used as-is.** Confirmed the exact marker
+  producers, that `P2_BREADBUG_CONTEST_INTERRUPT` did not exist, that the PROBE was
+  fixture-emitted, `OWNER_DIED released=` was a literal, and the stale
+  `l18-root/engine/` mirror warning (I edited only `native-l18`).
+- `general` #3 (validator + tests rework): **used with one correction.** Added the
+  legacy-carriers integrity check, the INTERRUPT marker, the honest `released=` field,
+  and tests. I corrected `gate_owner_died` from "owner_died and released==1" to
+  "owner_died observed" (held-at-death is diagnostic, not a gate).
+
+Only I edited native C++, ran `build_lane.py`, ran the GL fixture through
+`slot.py run gl`, committed, and wrote this handoff.
+
+### Remaining blockers (provider lanes named)
+
+- Natural squad transport of the recovered pellet / corpse: lane 04.
+- Threading the real generated-session seed/stage/generator into the contest
+  identity and receipt coordinates (drop the `p2-preview`/stage-0 placeholders):
+  lane 01 / lane 03.
+- The carried-win delivery grant is confirmed exactly-once but is not yet wired
+  from a generated P2 family drop: lane 06 native save bridge + lane 01 + real-GL.
+
+### Exact reproduction command (slice 3)
+
+```powershell
+$env:PATH = 'C:/msys64/mingw64/bin;C:\Users\alari\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\Scripts;' + $env:PATH
+$env:PYTHONUTF8 = '1'
+$env:PIKMIN_P2_ROOM_WINDOW = '960x540'
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/build_lane.py l18
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run build l18 -- py -3.12 -m experimental.pikmin2_breadbug_contest_runtime build --native C:/Users/alari/pikmin-randomizer/output/dsw/native-l18 --build-dir C:/Users/alari/pikmin-randomizer/output/dsw/native-l18-build --output C:/Users/alari/pikmin-randomizer/output/dsw/l18-out/slice3-fixture-build --head d0b2d173dc21a40526414f323d34d4e7f62bd3ca
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l18 -- py -3.12 -m experimental.pikmin2_breadbug_contest_runtime run --stage C:/Users/alari/pikmin-randomizer/output/dsw/l18-out/slice3-stage --exe C:/Users/alari/pikmin-randomizer/output/dsw/l18-out/slice3-fixture-build/fixture.exe --output C:/Users/alari/pikmin-randomizer/output/dsw/l18-out/slice3-run --timeout 280
+```

@@ -6,7 +6,10 @@ from experimental import pikmin2_breadbug_contest as contest
 
 GOOD_LOG = (
     'P2_BREADBUG_CONTEST_BEGIN generator=186081 identity=onion:p2:38:0 max=2\n'
+    'P2_BREADBUG_CONTEST generator=186081 native_power=2 carriers=1\n'
     'P2_BREADBUG_CONTEST_UPDATE generator=186081 carriers=1 outcome=held\n'
+    'P2_BREADBUG_CONTEST_INTERRUPT generator=186081 reason=interrupted\n'
+    'P2_BREADBUG_CONTEST generator=186081 native_power=2 carriers=2\n'
     'P2_BREADBUG_CONTEST_UPDATE generator=186081 carriers=2 outcome=stolen\n'
     'P2_BREADBUG_CONTEST_STOLEN generator=186081 carriers=2 released=1\n'
     'P2_BREADBUG_CONTEST_GRANT generator=186081 identity=onion:p2:38:0 granted=1\n'
@@ -154,7 +157,7 @@ def test_validator_passes_a_complete_consumer_run():
     assert result['passed'] is True
     assert result['checks']['gate_began'] is True
     assert result['checks']['gate_held_then_stolen_released_granted'] is True
-    assert result['checks']['gate_owner_died_released'] is True
+    assert result['checks']['gate_owner_died'] is True
     assert result['checks']['gate_grant_exactly_once'] is True
     assert result['checks']['gate_primary_tug_natural'] is True
 
@@ -181,7 +184,7 @@ def test_validator_fails_on_a_missing_gate():
     events = contest.parse_contest_consumer(missing_owner, 186081)
     result = contest.validate_contest_consumer(events)
     assert result['passed'] is False
-    assert result['checks']['gate_owner_died_released'] is False
+    assert result['checks']['gate_owner_died'] is False
     assert result['checks']['gate_began'] is True
 
 
@@ -204,3 +207,50 @@ def test_validator_requires_the_revisit_duplicate_for_exactly_once():
 
 def test_validator_rejects_an_empty_observation():
     assert contest.validate_contest_consumer({})['passed'] is False
+
+
+def test_parser_records_the_interrupt_and_legacy_integrity_events():
+    events = contest.parse_contest_consumer(GOOD_LOG, 186081)
+    assert events['interrupt'] is True
+    assert events['interrupt_reason'] == ['interrupted']
+    assert events['update_carriers'] == [1, 2]
+    assert events['integrity_violations'] == 0
+    assert events['owner_died_released_raw'] == 1
+
+
+def test_parser_flags_a_legacy_vs_update_carrier_mismatch():
+    mismatched = GOOD_LOG.replace(
+        'P2_BREADBUG_CONTEST generator=186081 native_power=2 carriers=2\n',
+        'P2_BREADBUG_CONTEST generator=186081 native_power=2 carriers=3\n')
+    events = contest.parse_contest_consumer(mismatched, 186081)
+    assert events['integrity_violations'] == 1
+    result = contest.validate_contest_consumer(events)
+    assert result['checks']['gate_primary_tug_natural'] is False
+
+
+def test_validator_requires_the_interrupt_gate():
+    result = contest.validate_contest_consumer(
+        contest.parse_contest_consumer(GOOD_LOG, 186081))
+    assert result['checks']['gate_interrupt'] is True
+
+    no_interrupt = GOOD_LOG.replace(
+        'P2_BREADBUG_CONTEST_INTERRUPT generator=186081 reason=interrupted\n', '')
+    result = contest.validate_contest_consumer(
+        contest.parse_contest_consumer(no_interrupt, 186081))
+    assert result['checks']['gate_interrupt'] is False
+    assert result['passed'] is False
+
+
+def test_validator_owner_died_released_zero_is_honest_not_released():
+    # `released=` is the honest held-at-death state, not a gate input: a 0 is
+    # recorded faithfully while the owner-died gate (marker observed) still holds.
+    released_zero = GOOD_LOG.replace(
+        'P2_BREADBUG_OWNER_DIED generator=186081 released=1 reason=OwnerDied\n',
+        'P2_BREADBUG_OWNER_DIED generator=186081 released=0 reason=OwnerDied\n')
+    events = contest.parse_contest_consumer(released_zero, 186081)
+    assert events['owner_died'] is True
+    assert events['owner_died_released_raw'] == 0
+    assert events['owner_died_released'] is False
+    result = contest.validate_contest_consumer(events)
+    assert result['checks']['owner_died_released'] is False
+    assert result['checks']['gate_owner_died'] is True
