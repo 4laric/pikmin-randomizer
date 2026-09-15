@@ -194,8 +194,9 @@ without an older-base merge:
 The carried Egg is now a real reward: `pc_p2_qurione.cpp` consumes the integrated
 lane-20 `P2Egg` policy (`pc_p2_egg_hazard.*`) and births the source drop table on
 break (nectar via `OBJTYPE_Water`, pellets via `pelletMgr`, mitites->nectar).
-See [the lane handoff](PIKMIN2_LANE15_DEEPSEEK_HANDOFF.md). Gate 5 is now
-`pass (implemented; egg-born observed live)` at the implementation level; the
-natural drop->break->birth runtime observation is **blocked** by a flying-teki
-`mSRT.t` NaN in the shared `MapMgr::traceMove` path at this base (regression vs
-the previously-working `b602d8c4` runtime), not by this slice.
+See [the lane handoff](PIKMIN2_LANE15_DEEPSEEK_HANDOFF.md). Gate 5 is
+`partial`: the `action=attach` + real Egg born (`born=1`) path is observed live;
+the release/break/item-birth path is contract-only at the time this update was
+written, and the natural drop->break->birth observation remains (see the DeepSeek
+handoff for the current fix1 control runs and first-NaN localization, which is no
+longer attributed to a `MapMgr::traceMove` regression).
