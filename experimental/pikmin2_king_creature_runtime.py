@@ -34,21 +34,30 @@ public:KingCameraTarget():Creature(nullptr){mHealth=1;}
 };
 class RoomApp : public PlugPikiApp {
  int frames=0,ready=0;bool hold=false;bool armed=false;bool finished=false;bool deathSeen=false;
- Teki* host=nullptr;bool corpseSeen=false;
+ Teki* host=nullptr;bool corpseSeen=false;Pellet* carcass=nullptr;
+ // Lane-19/21 ring: deploy every live red on a 22-unit circle with resetPosition
+ // + changeMode(FreeMode) so the P1 free-idle grasp can latch the carcass.
+ void ringReds(Navi* n,float cx,float cz){
+  int total=0;Iterator c(pikiMgr);CI_LOOP(c){Piki* p=static_cast<Piki*>(*c);if(p&&p->isAlive()&&p->mColor==Red)++total;}
+  if(total<=0)return;
+  int idx=0;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(!p||!p->isAlive()||p->mColor!=Red)continue;const float ang=float(idx)*6.2831853f/float(total);Vector3f spot(cx+22.0f*std::sin(ang),0.0f,cz+22.0f*std::cos(ang));spot.y=mapMgr->getMinY(spot.x,spot.z,true);p->resetPosition(spot);p->changeMode(PikiMode::FreeMode,n);++idx;}
+ }
 public:int idle() override {
  int result=PlugPikiApp::idle();require(++frames<30000||hold,"King creature startup timeout");
  if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->requestSkip();return result;}
  if(!pc_p2_preview_cargo_free_ready()&&!pc_p2_preview_ready())return result;
  if(!naviMgr||!tekiMgr||!mapMgr)return result;
  Navi* n=naviMgr->getNavi();if(!n||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;++ready;
- {int ns=n->mStateMachine->getCurrID(n);if(ns==NAVISTATE_Pressed||ns==NAVISTATE_Flick||ns==NAVISTATE_Dead||ns==NAVISTATE_PikiZero||ns==NAVISTATE_DemoSunset||ns==NAVISTATE_DemoWait||ns==NAVISTATE_DemoInf){n->mStateMachine->transit(n,NAVISTATE_Walk);}}
+  // NAVISTATE_Pellet is the long-idle captain->pellet turn (NaviIdleState::exec,
+  // mNeutralTime > 140): forbid it so the free reds haul the carcass, not the captain.
+  {int ns=n->mStateMachine->getCurrID(n);if(ns==NAVISTATE_Pressed||ns==NAVISTATE_Flick||ns==NAVISTATE_Dead||ns==NAVISTATE_PikiZero||ns==NAVISTATE_DemoSunset||ns==NAVISTATE_DemoWait||ns==NAVISTATE_DemoInf||ns==NAVISTATE_Pellet){n->mStateMachine->transit(n,NAVISTATE_Walk);}}
  {if((int)GameStat::allPikis==0)GameStat::allPikis.set(1,Red);}
  if(ready==1){
   n->mKontroller=new FixtureController();for(int i=0;i<DEMOFLAG_COUNT;++i)playerState->mDemoFlags.setFlagOnly(i);
   Iterator it(tekiMgr);CI_LOOP(it){Teki* t=static_cast<Teki*>(*it);if(t&&pc_p2_king_teki_is_bound(t))host=t;}
   require(host,"King host found");
   {Vector3f near(host->mSRT.t);near.y=mapMgr->getMinY(near.x,near.z,true);n->resetPosition(near);}
-  int red=0;Iterator p(pikiMgr);CI_LOOP(p){Piki* a=static_cast<Piki*>(*p);if(a&&a->isAlive()&&a->mColor==Red)++red;}
+  int red=0;Iterator p(pikiMgr);CI_LOOP(p){Piki* a=static_cast<Piki*>(*p);if(a&&a->isAlive()&&a->mColor==Red){++red;a->changeMode(PikiMode::FreeMode,n);}}
   std::ifstream holding("king-keep-open.txt");hold=bool(holding);
   SDL_SetWindowTitle(SDL_GL_GetCurrentWindow(),"Emperor Bulblax creature host (#445)");
   std::printf("P2_KING_CREATURE_BASELINE red=%d\n",red);
@@ -59,9 +68,23 @@ public:int idle() override {
   armed=true;std::puts("P2_KING_CREATURE_ARMED no_injection=1 deploy_once=1");
  }
  if(armed&&!finished){
+  // Lane-19/21 recipe: ring the live FreeMode reds around the Emperor while it
+  // is alive; after it dies, keep ringing them onto the carcass every 60 ticks
+  // until a Pikmin grasps it, then STOP so the carry is not disrupted.
+  if(!deathSeen&&host&&host->mHealth>0.0f&&ready%120==0) ringReds(n,host->mSRT.t.x,host->mSRT.t.z);
   if(pc_p2_king_teki_dead_key_seen()&&!deathSeen){deathSeen=true;std::puts("P2_KING_CREATURE_DEATH_SEEN receiver=engine host_health=0");}
   if(deathSeen&&!corpseSeen){
-   Iterator pellets(pelletMgr);CI_LOOP(pellets){Pellet* pl=static_cast<Pellet*>(*pellets);if(pl->isAlive()&&pl->mPelletView==static_cast<PelletView*>(host)){corpseSeen=true;std::puts("P2_KING_CREATURE_CORPSE_PELLET found=1");break;}}
+   Iterator pellets(pelletMgr);CI_LOOP(pellets){Pellet* pl=static_cast<Pellet*>(*pellets);if(pl->isAlive()&&pl->mPelletView==static_cast<PelletView*>(host)){corpseSeen=true;carcass=pl;std::puts("P2_KING_CREATURE_CORPSE_PELLET found=1");break;}}
+  }
+  if(carcass){
+   int transport=0,nearest=0;
+   {Iterator r(pikiMgr);CI_LOOP(r){Piki* a=static_cast<Piki*>(*r);if(!a||!a->isAlive()||a->mColor!=Red)continue;if(a->mMode==PikiMode::TransportMode)++transport;}}
+   if(transport==0&&(ready%60==0)) ringReds(n,carcass->mSRT.t.x,carcass->mSRT.t.z);
+   if(ready%60==0){
+    float nd=1.0e9f;Iterator r(pikiMgr);CI_LOOP(r){Piki* a=static_cast<Piki*>(*r);if(!a||!a->isAlive()||a->mColor!=Red)continue;const float dx=a->mSRT.t.x-carcass->mSRT.t.x,dz=a->mSRT.t.z-carcass->mSRT.t.z;const float d=std::sqrt(dx*dx+dz*dz);if(d<nd)nd=d;}
+    std::printf("P2_KING_CREATURE_CARRY carcass_state=%d carry=%d transport=%d nearest=%.1f pokos=%d\n",int(carcass->getState()),int(carcass->mConfig->mCarryMinPikis()),transport,nd,pc_p2_preview_pokos());
+    (void)nearest;
+   }
   }
   if(deathSeen&&pc_p2_preview_pokos()>0){
    capture("king-creature-dead.ppm");

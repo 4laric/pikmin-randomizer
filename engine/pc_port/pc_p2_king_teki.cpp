@@ -110,7 +110,7 @@ void scanFlick(Binding& b, BTeki* t) {
 	            b.generator, attached, b.blows, b.stuck, b.flickTier, int(startFlick));
 	if (startFlick) {
 		std::printf("P2_KING_TEKI_FLICK generator=%u shaken=%d blown_threshold=%d stuck_threshold=%d\n",
-		            b.generator, b.blows, blowTh[blowTier], stickTh[stickTier]);
+		            b.generator, attached, blowTh[blowTier], stickTh[stickTier]);
 		Iterator f(pikiMgr);
 		CI_LOOP(f) {
 			Piki* p = static_cast<Piki*>(*f);
@@ -174,6 +174,8 @@ void pc_p2_king_teki_setup() {
 		lastTicks = SDL_GetTicks();
 		std::printf("P2_KING_TEKI_READY generator=%u type=%d binding=creature_host health=%.1f scale=%.2f xyz=%.3f,%.3f,%.3f\n",
 		            cfg.generator, cfg.type, b.health, b.scale, b.home.x, b.home.y, b.home.z);
+		std::printf("P2_KING_TEKI_HOST_AI_SUPPRESSED generator=%u method=param_seam sight_attack_indices=9 "
+		            "eat_state=CHAPPYSTATE_Unk8 latch_preserved=1\n", cfg.generator);
 	}
 }
 
@@ -181,17 +183,18 @@ void pc_p2_king_teki_tick(BTeki* t) {
 	auto i = s.find(t);
 	if (i == s.end()) return;
 	Binding& b = i->second;
-	// The Emperor is an ambush predator: hold the host at its spawn so it does not
-	// wander off and drag the fight/carcass away from the squad.
-	t->mSRT.t = b.home;
 	if (t->mHealth <= 0.0f) {
 		if (!b.deadLogged) {
 			b.deadLogged = true;
 			gDeadKeySeen = true;
-			std::printf("P2_KING_TEKI_CORPSE generator=%u health=0.0 corpse_pellet=1 cleanup_engine=1\n", b.generator);
+			std::printf("P2_KING_TEKI_CORPSE generator=%u health=0.0 carcass_pellet=%d\n", b.generator,
+			            int(t->mPellet != nullptr));
 		}
-		return;
+		return; // stop re-pinning once dead so the engine's carcass pellet moves freely
 	}
+	// The Emperor is an ambush predator: hold the host at its spawn so it does not
+	// wander off and drag the fight/carcass away from the squad.
+	t->mSRT.t = b.home;
 	const unsigned now = SDL_GetTicks();
 	clockAcc += float(now - lastTicks) * 0.001f;
 	lastTicks = now;
@@ -244,7 +247,26 @@ float pc_p2_king_teki_param_f(const BTeki* actor, int idx, float fallback) {
     // real Pikmin damage is dealt through the engine.
     if (idx == TPF_Life) return p2king::HealthDefault;
     if (idx == TPF_LifeRecoverRate) return 0.0f;
-    return fallback;
+    // Host-AI suppression (the armor/kogane pattern): zero the bound host's own
+    // sight/attack parms so the borrowed Chappy strategy can never target or eat
+    // the squad (TaiAttackableNaviPikiAction -> CHAPPYSTATE_Unk8 reads
+    // TPF_AttackableRange/Angle and TPF_AttackHitRange). Pikmin still latch and
+    // damage the host via TPF_CollisionRadius and the engine InteractAttack, so
+    // latchability is unaffected.
+    switch (idx) {
+    case TPF_VisibleRange:
+    case TPF_VisibleAngle:
+    case TPF_AttackableRange:
+    case TPF_AttackableAngle:
+    case TPF_AttackRange:
+    case TPF_AttackHitRange:
+    case TPF_AttackPower:
+    case TPF_DangerTerritoryRange:
+    case TPF_SafetyTerritoryRange:
+        return 0.0f;
+    default:
+        return fallback;
+    }
 }
 
 bool pc_p2_king_teki_receipt(PelletView* view, unsigned& generator) {
@@ -253,4 +275,10 @@ bool pc_p2_king_teki_receipt(PelletView* view, unsigned& generator) {
     if (i == s.end()) return false;
     generator = i->second.generator;
     return true;
+}
+
+const char* pc_p2_king_teki_name(PelletView* view) {
+    if (!view) return nullptr;
+    auto i = s.find(static_cast<BTeki*>(view));
+    return i == s.end() ? nullptr : "Emperor Bulblax";
 }

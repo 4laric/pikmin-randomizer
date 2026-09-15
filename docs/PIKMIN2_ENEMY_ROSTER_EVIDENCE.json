@@ -478,22 +478,24 @@
     "23": {
       "native_module": "pc_p2_sarai_host",
       "owner_lane": "30",
-      "eligibility": "denied",
-      "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
+      "eligibility": "admitted",
+      "eligibility_reason": "Sarai (Swooping Snitchbug): all six gates natural on the lane-30 ordinary-spawn line; free Pikmin killed the generated actor, the corpse was carried across the room and the Pod credited corpse:sarai:385875968.",
       "source": [
         "PIKMIN2_FLYING_ENEMY_AUDIT.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
-        "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
+        "transport_reward": "PASS",
+        "cleanup_reentry": "PASS"
       },
       "notes": [
-        "Sarai (Swooping Snitchbug): two-mouth visual host + sidecar/attachment binding; capture FSM + source actor parity + placement remain (#215-#242)."
-      ]
+        "Lane 30 ordinary-spawn manager: identity/movement/capture output/l30-drive-arena/b4c465c48592419caed342a1aa6347e7/native.log:787,827,854; death/corpse output/l30-drive-pod-arena/15f359d18d8b4adc8cc9ac6fd7470bcf/native.log:840,848; Pod receipt :879; cleanup/re-entry output/l30-drive-reentry-arena/9f0bdb7023dd43798b6dbfe573157beb/native.log:799,868.",
+        "Natural six-gate evidence on the pinned wave line; no enemy health/state/animation was written by the runs."
+      ],
+      "delivery_receipt": "corpse:sarai:385875968 (P2_POD_RECEIPT id=corpse:sarai:385875968 value=2 new=1 pokos=2) output/l30-drive-pod-arena/15f359d18d8b4adc8cc9ac6fd7470bcf/native.log:879"
     },
     "24": {
       "native_module": "pc_p2_tank",

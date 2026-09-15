@@ -27,3 +27,5 @@ float pc_p2_king_teki_param_f(const BTeki*, int idx, float fallback);
 // delivered carcass PelletView back to its bound host generator.
 class PelletView;
 bool pc_p2_king_teki_receipt(PelletView*, unsigned& generator);
+// Pod title name: "Emperor Bulblax" for a bound king host, else nullptr.
+const char* pc_p2_king_teki_name(PelletView*);

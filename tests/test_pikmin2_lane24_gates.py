@@ -248,6 +248,12 @@ class KingCreatureValidatorTests(unittest.TestCase):
             king_creature_log('P2_KING_INJECT id=221010 tick=5 force=Kill fixture=1'), 0)
         self.assertIn('no_staging', evidence['failed'])
 
+    def test_forced_transport_fails(self):
+        evidence = g.king_creature_validate(
+            king_creature_log('P2_KING_TEKI_FORCED_TRANSPORT generator=221010 mode=Transport'), 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('no_staging', evidence['failed'])
+
 
 if __name__ == '__main__':
     unittest.main()
