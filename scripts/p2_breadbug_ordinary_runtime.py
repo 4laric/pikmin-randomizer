@@ -9,8 +9,9 @@ kills a real Breadbug, drives its real corpse through the real Onion endpoint
 process against the same session to prove the ordinary check is granted exactly
 once across restart.
 
-The fixture source is ``scripts/p2_breadbug_ordinary_fixture.cpp`` (replacement
-main), built with ``scripts/build_pikmin2_fixture.py``. The Pikmin carry step is
+The fixture source is ``scripts/p2_ordinary_receipt_fixture.cpp`` (the shared
+parameterised replacement main, driven with ``--enemy-type 8 --check`` for the
+Breadbug), built with ``scripts/build_pikmin2_fixture.py``. The Pikmin carry step is
 injected: the fixture calls the same public Onion endpoint with the real corpse
 pellet because natural carry does not move the corpse; natural transport is lane
 04. See ``docs/PIKMIN2_REWARD_RECEIPTS.md``.
@@ -49,7 +50,8 @@ def run_once(session, exe, assets, label):
     try:
         with log.open('w') as stream:
             try:
-                code = subprocess.run([str(exe), '--randomizer-seed', str(native_run.bootstrap.resolve())],
+                code = subprocess.run([str(exe), '--randomizer-seed', str(native_run.bootstrap.resolve()),
+                                      '--enemy-type', '8', '--check', TARGET],
                                       cwd=run, env=env, startupinfo=startup, stdout=stream,
                                       stderr=subprocess.STDOUT, timeout=300).returncode
             except subprocess.TimeoutExpired:

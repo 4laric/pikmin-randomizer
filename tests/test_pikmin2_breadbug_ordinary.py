@@ -2,9 +2,9 @@
 
 These tests pin the family/endpoint wiring the ordinary-RESTART runtime relies
 on: the Breadbug bestiary check maps to native TEKI_Collec (type 8) in the
-Forest Navel, the generated session exposes the check, and the fixture/driver
-target the Collec and the exact check name. The real-GL run itself is invoked by
-``scripts/p2_breadbug_ordinary_runtime.py`` against a privately built fixture.
+Forest Navel, and the generated session exposes the check. The real-GL run is
+invoked by ``scripts/p2_breadbug_ordinary_runtime.py`` driving the shared
+parameterised ``scripts/p2_ordinary_receipt_fixture.cpp``.
 """
 import unittest
 from pathlib import Path
@@ -13,8 +13,6 @@ from randomizer.seed import generate
 from randomizer.catalog import NEW_BESTIARY
 
 ROOT = Path(__file__).resolve().parents[1]
-FIXTURE = ROOT / 'scripts' / 'p2_breadbug_ordinary_fixture.cpp'
-DRIVER = ROOT / 'scripts' / 'p2_breadbug_ordinary_runtime.py'
 
 TARGET = 'Bestiary: Deliver Breadbug'
 
@@ -33,18 +31,6 @@ class BreadbugOrdinaryWiringTests(unittest.TestCase):
         from randomizer.session import Session
         session = Session(m, ROOT / 'output' / 'lane18-wiring-check')
         self.assertIn(TARGET, session.names)
-
-    def test_fixture_targets_collec_and_the_breadbug_check(self):
-        text = FIXTURE.read_text(encoding='utf-8')
-        self.assertIn('TEKI_Collec', text)
-        self.assertIn(TARGET, text)
-        self.assertIn('GoalItem', text)
-        self.assertIn('pc_randomizer', text)
-
-    def test_driver_targets_the_breadbug_check_and_boots_the_navel(self):
-        text = DRIVER.read_text(encoding='utf-8')
-        self.assertIn("TARGET = 'Bestiary: Deliver Breadbug'", text)
-        self.assertIn("starting_area='navel'", text)
 
 
 if __name__ == '__main__':
