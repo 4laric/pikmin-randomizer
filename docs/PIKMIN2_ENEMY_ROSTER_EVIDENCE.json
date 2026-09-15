@@ -1363,7 +1363,7 @@
         "attacks_receivers": "PASS",
         "death_corpse": "PASS",
         "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "cleanup_reentry": "PASS"
       },
       "notes": [
         "MiniHoudai (Gatling Groink): targeting/burst/muzzle/strike modules present; natural moving hits + shell/revival + carcass remain (#198/#204-#210).",
