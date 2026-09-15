@@ -183,3 +183,205 @@ Net: the two explore agents saved roughly the time of three manual read/greps
 sessions across the decomp and both worktrees; the test-editing agent was
 approximately break-even (the edits were narrowly specified). No result was
 discarded.
+
+## Slice 2
+
+Concrete source ID: **73 BigTreasure (Titan Dweevil)**. Goal: the real-GL run
+observing the wired elemental receiver on live Pikmin (immunity + non-immune
+state change) and a weapon knock-off through the lane's natural-hit ingress.
+Scoped as receiver acceptance, NOT a full natural combat claim (see "review
+fixes 2" relabels below).
+
+### Regenerated assets (all under `output/dsw/l32-out/`, from the pinned disc)
+
+- `pikmin2-extract105/` — `experimental.pikmin2_assets --iso "Downloads/PIKMIN2 for GAMECUBE.iso"` (arc/texts/treasure).
+- `pikmin2-room105/` — `pikmin2_convert` (render.mod, treasure.mod) + `pikmin2_collision --cap-exits` (room.mod, room.ini). `room.mod`/`room.ini`/`treasure.mod` present.
+- `bigtreasure-import-01/` — `pikmin2_bigtreasure_assets --iso --source native/pikmin2-research` (29 clips, 167 poses, 4 pellets).
+- `bigtreasure-visual-stage/` — `pikmin2_bigtreasure_stage` (p2-bigtreasure-visual.txt, p2_bigtreasure_events.txt, mods).
+- `bigtreasure-host-stage/p2-bigtreasure-host.txt` — host profile (placement 0 0 0 0, target 0 0 100, discharge 16).
+
+The shared `output/pikmin2-room105` and `output/bigtreasure-import-01` named in
+the brief were NOT present on disk; they were regenerated into `l32-out/` as
+instructed.
+
+### Native changes (slice 2)
+
+New `tools/p2_bigtreasure_slice2_runtime.cpp` (real-GL acceptance fixture) plus
+three additive read/probe hooks in `pc_port/pc_p2_hardlanes.{h,cpp}`:
+`pc_p2_hardlanes_bigtreasure_ready`, `_weapon_count`, and
+`_recv_probe` (reuses the ordinary loop's per-attack handled set + the wired
+host helper, so a fixture can prove "no re-stimulation" deterministically).
+
+Commits (native branch `deepseek/p2-l32-native`, base
+`b805d9c626e4f4558c95aef7cac311a5d9a2068f`, clean):
+`6d4e036d` (hooks + fixture), `0af42ba7`, `18c74e31`, `3b22425b`, `20c31960`,
+`195f3354` (fixture fixes). Final native head **`195f3354e138b38bb0e7869c68890f5e05d9fb61`**.
+
+### Build + run evidence (verbatim)
+
+Fixture built by `scripts/build_pikmin2_fixture.py` against the private build
+(provenance `status=built`, `expected_native_head=195f3354e138b38bb0e7869c68890f5e05d9fb61`);
+`fixture.exe` SHA-256 `94f71f446b5ed40b5eef7c6df5870eaad1264ddc79f6fbc0efa3c060e280f29a`.
+Run at 960x540 centred + 20-red squad (room overlay `runs/b53893af00d448bead5863cfbc883fdd`,
+full log `output/dsw/l32-out/slice2-stdout.log`), exit 0:
+
+```text
+P2_BIGTREASURE_WINDOW size=960x540 pos=373,263
+P2_BIGTREASURE_SLICE2_SQUAD alive=20
+P2_BIGTREASURE_SLICE2_DIAG weapons_at_start=4 ready=1
+P2_BIGTREASURE_RECV weapon=fire target=piki species=1 accepted=0
+P2_BIGTREASURE_SLICE2_IMMUNE weapon=fire species=red
+P2_BIGTREASURE_RECV weapon=water target=piki species=1 accepted=1
+P2_BIGTREASURE_SLICE2_HIT weapon=water species=red state=Bubble
+P2_BIGTREASURE_RECV weapon=gas target=piki species=1 accepted=1
+P2_BIGTREASURE_SLICE2_HIT weapon=gas species=red state=Panic
+P2_BIGTREASURE_RECV weapon=elec target=piki species=1 accepted=1
+P2_BIGTREASURE_SLICE2_HIT weapon=elec species=red state=DenkiDying
+P2_BIGTREASURE_RECV weapon=water target=piki species=0 accepted=0
+P2_BIGTREASURE_SLICE2_IMMUNE weapon=water species=blue(injected)
+P2_BIGTREASURE_RECV weapon=water target=piki species=1 accepted=1
+P2_BIGTREASURE_SLICE2_GEOMETRY weapon=water species=red state=Bubble
+P2_BIGTREASURE_RECV weapon=water target=piki species=1 accepted=1
+P2_BIGTREASURE_SLICE2_HANDLED first=1 second=0
+P2_BIGTREASURE_SLICE2_RECEIVER_PASS squad=20
+P2_BIGTREASURE_FSM phase=Stay weapons=4 clip=appear
+P2_BIGTREASURE_SLICE2_DIAG phase_weapons_before=4
+P2_BIGTREASURE_FSM phase=Land weapons=3 clip=appear2
+P2_BIGTREASURE_SLICE2_PHASE weapons=4->3
+PASS BIGTREASURE_SLICE2_RUNTIME
+```
+
+`p2_bigtreasure_receiver_test` re-run at the merged head via `build_lane.py
+--target`: `[build-evidence] ... native=195f3354e1... dirty=no ...
+p2_bigtreasure_receiver_test.exe sha256=1799c74d...`, exe `PASS
+BIGTREASURE_RECEIVER` (4/4), `ninja -n` = `ninja: no work to do.`
+
+### What was observed (natural vs injected)
+
+- **Natural**: window/squad from the room preview; the wired receiver host
+  (`pc_p2_bigtreasure_stimulate_piki`) applied to live Red Pikmin (fire immune,
+  water->Bubble, gas->Panic, elec->DenkiDying).
+- **Injected/labelled**: the Blue-water immunity flips a live Pikmin's species
+  via `pc_p2_set_species(Blue)` (squad is all Red) and restores it afterwards;
+  the element-geometry check drives a standalone `P2BigTreasureElementRuntime`
+  with `host.trace=nullptr` (`host.ground=nullptr`) and a teleported Pikmin, not
+  the ordinary loop's `sBigTreasureElements`; and the weapon knock-off posts a
+  single max-health `pc_p2_hardlanes_bigtreasure_hit(P2BTWEAPON_Elec,
+  kWeaponMaxHealth, false)` from the fixture — there is NO engine-side caller of
+  that ingress and no Pikmin coll-part attacker, so it is equivalent to writing
+  the weapon's health to zero. The FSM is still in its boot landing
+  (`Stay`->`Land`); the `weapons=4->3` count is printed on that landing line and
+  NO PreAttack/pickWeapon re-pick is exercised.
+
+### Six-gate table (slice-2 focus)
+
+| Gate | Result |
+|---|---|
+| 1 Exact identity and spawn | UNTESTED (fixed placement; no ordinary spawn binding yet) |
+| 2 Autonomous movement / animation | PASS (prior slice keyframe FSM) |
+| 3 Attacks and receivers | receiver host applied to live Pikmin: PASS (direct calls); ordinary attack -> element geometry -> receiver path in real GL: NOT OBSERVED (no ATTACK_START/ATTACK_EMIT) |
+| 4 Death and corpse | UNTESTED (receiver reactions reach Bubble/Panic/DenkiDying; full corpse/onion transport unobserved) |
+| 5 Actual transport and reward | source-backed N/A (boss drops not transported) |
+| 6 Cleanup and re-entry | source-backed N/A |
+
+### Root-side validator
+
+`experimental/pikmin2_bigtreasure_slice2_validate.py` (new, subagent-authored)
++ `tests/test_pikmin2_bigtreasure_slice2.py`. Run against the captured stdout it
+reports `recv_observed=true`, `nonimmune_accepted=true`, `immune_rejected=true`,
+`handled_set_held=true`, `phase_advanced=false`, `weapon_count_dropped=true`
+(`attack_started`/`emitted` false, as labelled above).
+
+### Assumptions / limitations
+
+- Boss elemental attack power is the header default `10.0f`.
+- Elec zap direction is a source-shaped 150-magnitude horizontal vector (unused
+  by the port receivers).
+- The weapon knock-off is driven by the fixture's injected ingress hit (see
+  above); the full 4->0 + DropItem/death cycle was already covered by the
+  engine-free FSMHOST/encounter fixtures, not re-run in real-GL here.
+- Physical coll-part attack (a real Pikmin attaching to a weapon) remains
+  lane-10's boundary; the ingress is the lane's natural-hit seam.
+
+### Subagent usage (slice 2)
+
+1. `explore` — source audit (element emission geometry, knock-off rule, FSM
+   re-pick sequence, immunity). **Used as-is** for geometry numbers/immunity and
+   for the knock-off threshold.
+2. `explore` — candidate inventory (fixture build/run/input files, bank/stage
+   manifest, markers, 960x540 env). **Used as-is**; it flagged that room105 and
+   bigtreasure-import-01 were absent, which sent me to regenerate them.
+3. `general` — wrote the slice-2 log validator + pytest. **Used as-is** (its
+   `validate_slice2` was run against the captured stdout).
+
+Net: the two explore agents saved the decomp/grep sessions and the inventory the
+asset path needed; the general agent delivered the validator with no rework.
+
+## Slice 2 — review fixes 2
+
+Relabelled the overstated slice-2 claims and fixed the concrete review items
+(items 1-6). No new behaviour; the receiver acceptance result is unchanged.
+
+- **Item 1 (weapon destroy relabelled Injected)**: the knock-off is posted by the
+  fixture (`pc_p2_hardlanes_bigtreasure_hit(P2BTWEAPON_Elec, kWeaponMaxHealth,
+  false)`), a single max-health hit equal to writing weapon health to zero.
+  `git grep` confirms NO engine-side caller of that ingress. Remaining blocker:
+  **wire a real Pikmin coll-part attack (lane-10 receiver) to the ingress** and
+  show weapon health dropping over several natural hits. The marker is renamed
+  `P2_BIGTREASURE_SLICE2_DROP_INGRESS weapons=4->3 injected=1 repick=0`.
+- **Item 2 (no re-pick)**: the only FSM line after the drop is the boot landing
+  (`Stay`->`Land`, fsm.cpp:147-160). No PreAttack/pickWeapon re-pick runs.
+  Stated in the fixture + handoff. The validator `phase_advanced` now requires a
+  post-drop phase (`PreAttack`/`ItemWalk`/`DropItem`) instead of `len(phases)>=2`.
+- **Item 3 (gate 3 relabelled)**: "receiver host applied to live Pikmin: PASS
+  (direct calls); ordinary attack -> element geometry -> receiver path in real GL:
+  NOT OBSERVED" (no ATTACK_START/ATTACK_EMIT; coupled with item 1, this slice is
+  receiver acceptance, not ordinary-loop combat).
+- **Item 4 (probe erase)**: `pc_p2_hardlanes_bigtreasure_recv_probe` now erases
+  its transient handled-set entry when it observes the dedup, so it no longer
+  leaves a target permanently handled. Limitation noted: proves set-dedupe only,
+  not per-attack re-arm (the loop's attack-start clear, not exercised by a probe).
+- **Item 5 (validator)**: key `immunity_via_handled` renamed to `immune_rejected`
+  (set from `accepted=0`); new `handled_set_held` key parses
+  `P2_BIGTREASURE_SLICE2_HANDLED first=1 second=0`; `phase_advanced` requires a
+  post-drop phase. Tests: 6 passed.
+- **Item 6**: `build_lane.py l32 --target pikmin_pc` re-run at the head
+  (`5e275c1fdebf8f33e0fcdcba06cdb1c56a3df549`) with `dirty=no`; fixed the doubled
+  "the the" in `pc_p2_hardlanes.h`; the fixture restores the injected Blue
+  species to Red (`pc_p2_set_species(blue, P2SpeciesRed)`) instead of filtering
+  `freshPiki` by colour.
+
+Re-run at 960x540 centred + 20-red squad (native head `5e275c1f`, fixture
+`expected_native_head=5e275c1fdebf8f33e0fcdcba06cdb1c56a3df549`,
+`status=built`), exit 0. Key lines unchanged; the phase marker is now:
+
+```text
+P2_BIGTREASURE_SLICE2_HANDLED first=1 second=0
+P2_BIGTREASURE_SLICE2_RECEIVER_PASS squad=20
+P2_BIGTREASURE_FSM phase=Stay weapons=4 clip=appear
+P2_BIGTREASURE_FSM phase=Land weapons=3 clip=appear2
+P2_BIGTREASURE_SLICE2_DROP_INGRESS weapons=4->3 injected=1 repick=0
+PASS BIGTREASURE_SLICE2_RUNTIME
+```
+
+Validator against the captured stdout: `recv_observed=true`,
+`nonimmune_accepted=true`, `immune_rejected=true`, `handled_set_held=true`,
+`phase_advanced=false`, `weapon_count_dropped=true` (`attack_started=false`,
+`emitted=false`).
+
+### Subagent usage (fix2)
+
+1. `explore` — source audit (boot Stay->Land, weapon-loss guards, chosen-weapon
+   pick, and the callers of the ingress). **Used as-is**: confirmed no engine-side
+   caller of `pc_p2_hardlanes_bigtreasure_hit` (only the fixture) and pinned the
+   re-pick condition (chosen weapon knocked off in PreAttack/Attack/PutItem).
+2. `explore` — inventory of the current validator/test/`recv_probe`/`freshPiki`
+   text + exact "the the" line (37). **Used as-is** for the precise edit targets.
+3. `general` — rewrote the validator (rename + `handled_set_held` +
+   post-drop `phase_advanced`) and tests + ran pytest and the real-log check.
+   **Used as-is** (6 passed; real-log `phase_advanced=false` as expected after the
+   relabel).
+
+Net: the two explore agents pinned line numbers and the re-pick semantics; the
+general agent's validator rewrite landed without rework (and its misnamed-key /
+unparsed-marker defect from the prior slice was corrected).
