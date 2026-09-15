@@ -41,7 +41,7 @@ P2_PROJECTILE_STONE_DESTROY reason=health traces=4 floors=0 walls=0
 GROINK_LOG = """\
 Experimental preview window set to 960x540 windowed and centered
 P2_PROJECTILES_READY stone=1 egg=0 kabuto=1 rock=0 seed=1
-P2_PROJECTILE_GROINK_RECEIVER_HIT token=3333 kind=Bomb damage=10.0 applied=1 died=0 health=10.0
+P2_PROJECTILE_GROINK_ENGINE_HIT token=3333 kind=Bomb damage=10.0 applied=1 rejected=0 health=30.0->20.0
 """
 
 
@@ -67,13 +67,20 @@ class ProjectileEngineReceiverTests(unittest.TestCase):
         self.assertIn('engine_receiver 1', text)
 
     def test_build_config_two_teki(self):
+        # Primary two-Teki run is NOT injected (no teki_pin); the victim sits at
+        # its natural settle in the fire corridor.
         text = build_config('two_teki', generator=23)
         self.assertIn('kabuto Kabuto ', text)
         self.assertIn('kabuto_rig rig-bank.txt ', text)
         self.assertIn('kabuto_actor 23', text)
-        self.assertIn('teki_pin 1', text)
+        self.assertNotIn('teki_pin 1', text)
         self.assertIn(groink_config(), text)
         self.assertIn('engine_receiver 1', text)
+
+    def test_build_config_two_teki_with_pin(self):
+        # Opt-in injected scenario: teki_pin is a separately-flagged row.
+        text = build_config('two_teki', generator=23, teki_pin=True)
+        self.assertIn('teki_pin 1', text)
 
     def test_groink_config_row(self):
         row = groink_config()
@@ -113,15 +120,37 @@ class ProjectileEngineReceiverTests(unittest.TestCase):
         result = evaluate(stripped)
         self.assertEqual(result['gates']['second_teki_engine_strike'], 'FAIL')
 
-    def test_evaluate_groink_bomb_receiver_mutation(self):
-        result = evaluate(GROINK_LOG)
-        self.assertEqual(result['gates']['groink_bomb_receiver_mutation'], 'PASS')
+    def test_evaluate_victim_contact_in_flight_passes(self):
+        result = evaluate(TWO_TEKI_LOG)
+        # No teki_pin row/marker and >=4 traces -> the Stone flew to the victim.
+        self.assertEqual(result['gates']['victim_contact_in_flight'], 'PASS')
 
-    def test_evaluate_groink_wind_is_not_bomb_mutation(self):
-        wind = GROINK_LOG.replace('kind=Bomb damage=10.0 applied=1 died=0 health=10.0',
-                                  'kind=Wind damage=0.0 applied=0 died=0 health=20.0')
+    def test_evaluate_victim_contact_in_flight_fails_on_injection(self):
+        log = TWO_TEKI_LOG + 'P2_PROJECTILE_TEKI_PIN injected=1 anchor=1111\n'
+        result = evaluate(log)
+        self.assertEqual(result['gates']['victim_contact_in_flight'], 'FAIL')
+
+    def test_evaluate_victim_contact_in_flight_fails_birth_frame(self):
+        # traces=2 is the birth-frame contact (teki_pin style), not a trajectory.
+        log = TWO_TEKI_LOG.replace('reason=health traces=4', 'reason=health traces=2')
+        result = evaluate(log)
+        self.assertEqual(result['gates']['victim_contact_in_flight'], 'FAIL')
+
+    def test_evaluate_groink_engine_receiver_navi_hit(self):
+        result = evaluate(GROINK_LOG)
+        self.assertEqual(result['gates']['groink_engine_receiver_navi_hit'], 'PASS')
+
+    def test_evaluate_groink_engine_no_health_change_is_fail(self):
+        # Applied=1 but health did NOT decrease -> the Navi was not really hit.
+        no_change = GROINK_LOG.replace('health=30.0->20.0', 'health=30.0->30.0')
+        result = evaluate(no_change)
+        self.assertEqual(result['gates']['groink_engine_receiver_navi_hit'], 'FAIL')
+
+    def test_evaluate_groink_wind_is_not_bomb(self):
+        wind = GROINK_LOG.replace('kind=Bomb damage=10.0 applied=1 rejected=0 health=30.0->20.0',
+                                  'kind=Wind damage=0.0 applied=0 rejected=1 health=30.0->30.0')
         result = evaluate(wind)
-        self.assertEqual(result['gates']['groink_bomb_receiver_mutation'], 'FAIL')
+        self.assertEqual(result['gates']['groink_engine_receiver_navi_hit'], 'FAIL')
 
     def test_parse_engine_strikes(self):
         strikes = parse_engine_strikes(SAMPLE_LOG)

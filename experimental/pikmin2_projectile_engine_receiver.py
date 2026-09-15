@@ -23,13 +23,14 @@ Two config modes, both using the standard room's Dwarf Bulborb actor
   plus a duplicated victim Dwarf). The bound Stone skips its own firer
   (``P2_PROJECTILE_SKIP_SELF``) yet still strikes the *second* Teki through the
   real engine receiver (``P2_PROJECTILE_ENGINE_STRIKE`` with the victim token),
-  closing the over-suppression gap. The victim is re-anchored to the firer each
-  step (``teki_pin 1``, injected placement, labelled ``P2_PROJECTILE_TEKI_PIN``)
-  because the room's two Dwarfs otherwise wander ~70 units apart. The same room
-  also drives the lane-21 Groink strike bridge (``p2_groink_apply_strike``)
-  against this lane's proxy receiver for a Bomb strike, proving a second family
-  consumes the shared projectile-receiver primitive without forking lane-21's
-  modules.
+  closing the over-suppression gap. The victim is a natural-settle Teki placed in
+  the fire corridor, so the Stone reaches it *in flight* (``--teki-pin`` is an
+  opt-in injected-co-location scenario, labelled ``P2_PROJECTILE_TEKI_PIN``, not
+  part of the primary run). The same room drives the lane-21 Groink classifier
+  (``p2_groink_classify_hit``) and applies the classified Bomb through this lane's
+  **engine** receiver on the live captain Navi
+  (``P2_PROJECTILE_GROINK_ENGINE_HIT`` with a health decrease), proving a second
+  family consumes the shared receiver primitive without forking lane-21's modules.
 
 Both modes leave the proxy receiver enabled (``receiver any``) so the new engine
 path is reported beside the existing proxy path, not instead of it.
@@ -62,13 +63,14 @@ DWARF_POS = (185.0, 0.0, -180.0)
 # Facing +x (initialVelocity = moveSpeed * (sin face, 0, cos face)).
 FACE_DEG = 90.0
 
-# Second Teki (victim) spawn. It is a duplicated copy of the standard Dwarf
-# generator record, so the room holds two live `TEKI_Chappy` with distinct runtime
-# tokens. The room's two Dwarfs naturally settle ~70 units apart, so the two-Teki
-# run also enables `teki_pin 1` (see build_config) to re-anchor the victim to the
-# bound firer each step; the spawn co-ordinate only has to place a second valid
-# Chappy somewhere in the room.
-VICTIM_POS = (185.0, 0.0, -180.0)
+# Second Teki (victim) spawn: placed directly in the firer's fire corridor
+# (the firer settles at ~(173.6, 0, -143.2) and faces +z), so the victim's
+# natural settle — wherever its one-time spawn move lands it — stays within the
+# Stone's collision radius of the +z trajectory. The Stone therefore strikes the
+# victim *in flight* (~50-90 units downrange), not at the birth frame. `teki_pin`
+# (injected co-location) remains available as a separately-flagged scenario (see
+# build_config) and is NOT part of the primary two-Teki run.
+VICTIM_POS = (173.6, 0.0, -60.0)
 
 # Groink consumer proof: the muzzle fire origin is placed 30 units above the
 # captain's navi_start (scripts/preview_pikmin2_room.py: -85, 0, 0), so the
@@ -138,7 +140,7 @@ def rig_bank_text():
 BUILDER_MODES = ('stone', 'kabuto', 'rkabuto', 'kabuto_actor', 'two_teki')
 
 
-def build_config(mode='stone', generator=0, with_proxy=True):
+def build_config(mode='stone', generator=0, with_proxy=True, teki_pin=False):
     """Return the full p2-projectiles.txt body for the requested mode."""
     lines = [MAGIC, 'seed 1']
     lines.append(stone_config())            # stone parms (also the FSM's pool source)
@@ -156,7 +158,11 @@ def build_config(mode='stone', generator=0, with_proxy=True):
         lines.append(kabuto_config('Kabuto'))
         lines.append('kabuto_rig rig-bank.txt 185 0 -180 90')
         lines.append('kabuto_actor %d' % generator)
-        lines.append('teki_pin 1')
+        # The primary two-Teki run is NOT injected: the victim sits at its natural
+        # settle in the fire corridor and the Stone reaches it in flight. teki_pin
+        # (injected co-location) is opt-in via the teki_pin flag.
+        if teki_pin:
+            lines.append('teki_pin 1')
         lines.append(groink_config())
     lines.append('engine_receiver 1')
     if with_proxy:
@@ -171,9 +177,11 @@ ENGINE_STRIKE_RE = re.compile(
 
 SKIP_SELF_RE = re.compile(r'P2_PROJECTILE_SKIP_SELF target=(\d+)')
 
-GROINK_RECEIVER_HIT_RE = re.compile(
-    r'P2_PROJECTILE_GROINK_RECEIVER_HIT token=(\d+) kind=(\w+) damage=([\d.]+) '
-    r'applied=(\d) died=(\d) health=([\d.-]+)')
+STONE_DESTROY_RE = re.compile(r'P2_PROJECTILE_STONE_DESTROY reason=(\w+) traces=(\d+)')
+
+GROINK_ENGINE_HIT_RE = re.compile(
+    r'P2_PROJECTILE_GROINK_ENGINE_HIT token=(\d+) kind=(\w+) damage=([\d.]+) '
+    r'applied=(\d) rejected=(\d) health=([\d.-]+)->([\d.-]+)')
 
 
 def parse_engine_strikes(log_text):
@@ -225,8 +233,29 @@ def evaluate(log_text):
     # proves the Stone struck a *second* Teki (skip-self did not over-suppress).
     victim_struck = any(s['applied'] and s['target'] not in skip_self for s in teki)
 
-    groink_hits = list(GROINK_RECEIVER_HIT_RE.finditer(log_text))
-    groink_bomb = any(m.group(2) == 'Bomb' and m.group(4) == '1' for m in groink_hits)
+    # Groink engine-receiver proof: the classified Bomb is applied through the
+    # captain Navi's own stimulate(InteractAttack), so apply=1 AND a real health
+    # decrease are required (a proxy/wind path would not move the Navi's health).
+    groink_hits = list(GROINK_ENGINE_HIT_RE.finditer(log_text))
+    groink_bomb_navi = any(
+        m.group(2) == 'Bomb' and m.group(4) == '1'
+        and float(m.group(7)) < float(m.group(6))
+        for m in groink_hits)
+
+    # Flight vs birth-frame: the first health-destroy on the victim records how
+    # many map traces the Stone flew before contacting (2 = birth frame, >=4 =
+    # real trajectory). teki_pin (injected co-location) is excluded.
+    # traces= is cumulative across flights, so gate on the per-flight delta
+    # between consecutive STONE_DESTROY lines (integrator fix from review).
+    destroys = [(m.group(1), int(m.group(2))) for m in STONE_DESTROY_RE.finditer(log_text)]
+    per_flight = []
+    prev = 0
+    for reason, traces in destroys:
+        per_flight.append((reason, traces - prev))
+        prev = traces
+    health_traces = [delta for reason, delta in per_flight if reason == 'health']
+    flew = bool(health_traces) and min(health_traces) >= 4
+    teki_pinned = 'P2_PROJECTILE_TEKI_PIN' in log_text
 
     gates = {
         'window_960x540_centered': 'PASS' if window else 'FAIL',
@@ -239,19 +268,25 @@ def evaluate(log_text):
                                     else ('UNTESTED' if not skip_self else 'FAIL')),
         'second_teki_engine_strike': ('PASS' if (skip_self and victim_struck)
                                       else ('UNTESTED' if not skip_self else 'FAIL')),
-        'groink_bomb_receiver_mutation': ('PASS' if groink_bomb
-                                          else ('UNTESTED' if not groink_hits else 'FAIL')),
+        'victim_contact_in_flight': ('PASS' if (skip_self and victim_struck
+                                                and not teki_pinned and flew)
+                                     else ('UNTESTED' if not (skip_self and victim_struck)
+                                           else 'FAIL')),
+        'groink_engine_receiver_navi_hit': ('PASS' if groink_bomb_navi
+                                            else ('UNTESTED' if not groink_hits else 'FAIL')),
         'stone_destroy_teardown': 'PASS' if destroy else 'UNTESTED',
     }
     return dict(gates=gates, strikes=strikes)
 
 
-def run(exe, assets, converted, output, mode='stone', seconds=40.0, generator=0):
+def run(exe, assets, converted, output, mode='stone', seconds=40.0, generator=0,
+        teki_pin=False):
     """Stage a fresh room, write the config, launch the exe, capture and evaluate."""
     run_dir = _prepare_room(Path(assets).resolve(), Path(converted).resolve(), Path(output))
     if mode == 'two_teki':
         add_second_teki(run_dir)
-    (run_dir / 'p2-projectiles.txt').write_text(build_config(mode, generator), encoding='utf8')
+    (run_dir / 'p2-projectiles.txt').write_text(
+        build_config(mode, generator, teki_pin=teki_pin), encoding='utf8')
     if mode in ('kabuto_actor', 'two_teki'):
         (run_dir / 'rig-bank.txt').write_text(rig_bank_text(), encoding='utf8')
 
@@ -287,20 +322,23 @@ def run(exe, assets, converted, output, mode='stone', seconds=40.0, generator=0)
 
 
 def main():
+    # Repo-relative output root (…/output) so argparse defaults are not
+    # user-absolute paths; `--assets` is outside any repo layout and is required.
+    output_root = Path(__file__).resolve().parents[1] / 'output'
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--exe', type=Path, required=True)
-    p.add_argument('--assets', type=Path,
-                   default=Path('C:/Users/alari/bbft/dist/cohesion/pikmin/assets'))
-    p.add_argument('--converted', type=Path,
-                   default=Path('C:/Users/alari/pikmin-randomizer/output/pikmin2-room105'))
-    p.add_argument('--output', type=Path,
-                   default=Path('C:/Users/alari/pikmin-randomizer/output/projectile-engine-receiver'))
+    p.add_argument('--assets', type=Path, required=True)
+    p.add_argument('--converted', type=Path, default=output_root / 'pikmin2-room105')
+    p.add_argument('--output', type=Path, default=output_root / 'projectile-engine-receiver')
     p.add_argument('--mode', choices=BUILDER_MODES, default='stone')
     p.add_argument('--generator', type=int, default=0,
                    help='kabuto_actor generator ID (room Teki _70 value)')
+    p.add_argument('--teki-pin', action='store_true',
+                   help='inject the victim onto the firer (labelled P2_PROJECTILE_TEKI_PIN)')
     p.add_argument('--seconds', type=float, default=40.0)
     a = p.parse_args()
-    result = run(a.exe, a.assets, a.converted, a.output, a.mode, a.seconds, a.generator)
+    result = run(a.exe, a.assets, a.converted, a.output, a.mode, a.seconds, a.generator,
+                 teki_pin=a.teki_pin)
     print(json.dumps(result, indent=2))
     ok = all(v in ('PASS', 'UNTESTED') for v in result['gates'].values())
     raise SystemExit(0 if ok else 1)

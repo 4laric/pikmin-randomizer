@@ -202,8 +202,9 @@ to FAIL (pytest-covered).
 
 ### Second consumer (consumer #2: lane-21 Groink → shared receiver)
 
-The Groink Bomb strike maps onto this lane's proxy receiver through lane-21's own
-`p2_groink_apply_strike`, exercised in the same room/executable:
+The Groink Bomb strike maps onto this lane's **proxy receiver** — via lane-21's
+own `p2_groink_apply_strike` with a **host-supplied sweep** to the captain's own
+position (slice 2 only; superseded in Slice 3 by the engine-receiver path):
 
 ```
 P2_PROJECTILE_GROINK_RECEIVER_HIT token=<captain> kind=Bomb damage=10.0 applied=1 died=0 health=10.0
@@ -222,3 +223,61 @@ full shell-flight/arena fixture; this slice proves the receiver consumption.)
 - `second_teki_engine_strike` PASS (16 applied victim strikes; firer skipped ×16).
 - `groink_bomb_receiver_mutation` PASS.
 - `navipiki_press_receiver_mutation` UNTESTED (the Stone strikes only Teki here).
+
+## Slice 3 — flight-to-target (no placement injection) + real engine target for Groink
+
+### Provider interface changes (this slice)
+
+- `pc_p2_projectiles.cpp` (family-owned) now adopts the shared
+  `p2rockhost` extraction (`pc_p2_rock_host.{h,cpp}`: `p2rockhost::ScriptRng`,
+  `TraceProxy`, `RockMapBinding`, `detectRock`) so lane 25's
+  `p2rockhost::ScriptRng` no longer conflicts with a local fork (rebase commit).
+- Groink consumer (goal 2) rerouted: `tickGroinkConsumer` classifies the shell
+  with lane-21's `p2_groink_classify_hit` (unchanged, not forked) and applies the
+  Bomb through **this lane's real engine receiver**
+  (`p2_projectile_apply_engine_strike` → `stimulate(InteractAttack)` on the live
+  captain Navi), replacing the slice-2 proxy path. New marker
+  `P2_PROJECTILE_GROINK_ENGINE_HIT token=… kind=Bomb damage=… applied=1 health=A->B`.
+- Two-Teki primary run (goal 1) is **no longer injected**: `teki_pin` is opt-in
+  (`--teki-pin` → `teki_pin 1`), and the victim is placed so its natural settle
+  (~50-90 units downrange, `(141.3,0,-92.9)` observed) stays in the fire
+  corridor; the Stone strikes it in flight, not at the birth frame.
+
+### Flight-to-target evidence (consumer #1, natural)
+
+The victim settles at `(141.3, 0, -92.9)` (spawn `(173.6,0,-60)` + one-time
+`(-32.3,-32.9)` settle move); the Stone is fired from the firer at
+`(173.6,25,-143.2)` and reaches the victim 58 units downrange:
+
+```
+P2_PROJECTILE_TEKI_ROSTER token=…656 type=3 gen=385875968   # firer (173.6,-143.2)
+P2_PROJECTILE_TEKI_ROSTER token=…184 type=3 gen=419430400   # victim (141.3,-92.9)
+P2_PROJECTILE_SKIP_SELF target=…656                          # firer skipped at birth
+P2_PROJECTILE_ENGINE_STRIKE target=…184 kind=Attack damage=250 applied=1 stored=0.0->250.0
+P2_PROJECTILE_STONE_DEAD x=173.6 y=40.0 z=-84.9 timer=0.23 health=0.0   # 58 units flown
+P2_PROJECTILE_STONE_DESTROY reason=health traces=7                        # 7 traces (not the 2-trace birth frame)
+```
+
+No `P2_PROJECTILE_TEKI_PIN` marker appears; `victim_contact_in_flight` passes
+only when skip-self + victim strike hold, no injection marker is present, and the
+first health-destroy ran `>= 4` map traces. With `--teki-pin` the same gate flips
+to FAIL (labelled injected), while `second_teki_engine_strike` still passes.
+
+### Groink engine-receiver evidence (consumer #2, real Navi)
+
+```
+P2_PROJECTILE_GROINK_ENGINE_HIT token=<captain> kind=Bomb damage=10.0 applied=1 rejected=0 health=100.0->90.0
+```
+
+The captain Navi's health decreases 100 → 90 through its own
+`stimulate(InteractAttack)` — a real engine-target mutation, not a proxy write.
+
+### Runtime evidence (slice 3)
+
+- Primary (natural flight): `output/dsw/l20-out/4c4d2fd239ff49b68da012476a2e105d`
+  — `victim_contact_in_flight` PASS, `groink_engine_receiver_navi_hit` PASS,
+  `second_teki_engine_strike` PASS, all other gates PASS/UNTESTED.
+  `nectar.exe` head `06b88e90` (SHA-256 `b9f70c4a…`), dirty=no.
+- Flagged injected scenario: `output/dsw/l20-out/d32dd6420c60448fa3b30217ae8eccf2`
+  — `victim_contact_in_flight` FAIL (correctly flags `--teki-pin` injection),
+  `second_teki_engine_strike` PASS (15 birth-frame strikes), `groink_engine_receiver_navi_hit` PASS.
