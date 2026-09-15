@@ -41,6 +41,16 @@ def test_expected_xyz_translation_only(tmp_path):
     assert actors[1]['expected_xyz'] == [150., 30., 1550.]
 
 
+def test_carry_over_flags_save_generator_and_spawn_count(tmp_path):
+    data, actors = staged(tmp_path)
+    count = struct.unpack_from('>I', data, 20)[0]
+    row_size = (len(data) - 24) // count
+    existing = count - len(actors)
+    for i, a in enumerate(actors):
+        flags = struct.unpack_from('>I', data, 24 + (existing + i) * row_size + 12)[0]
+        assert flags == 0x5, (a['generator'], flags)
+
+
 def test_generator_id_collision_rejected(tmp_path):
     with pytest.raises(ValueError, match='collision'):
         staged(tmp_path, existing=[entry(identity=211001)])

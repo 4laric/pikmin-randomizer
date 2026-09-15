@@ -47,7 +47,7 @@ enum ActionFlags : unsigned {
 
 struct Evaluation {
     unsigned actions = ActionNone;
-    int purpleHits = 0;   // Purple targets in hit range (one accepted hit each)
+    int acceptedHits = 0;   // targets that landed a hit (Purple on roller; any color on body)
     int crushTargets = 0; // non-Purple targets in crush range
 };
 
@@ -60,30 +60,33 @@ inline bool inRange(float ax, float az, float bx, float bz, float radius)
 
 // Pure rules.
 //  `attached`   : the single Tyre child is present and owned by the wraith.
-//  `damageable` : the rig vulnerability gate is open (frozen riding, or after
-//                 the wraith dismounted).
+//  `damageable` : the roller vulnerability gate is open (frozen riding, or after
+//                 the wraith dismounted) — applies to the RIDING roller only.
 //  `rolling`    : the wraith is moving with the rollers (crush applies only
 //                 then; a frozen roller is static and does not crush).
 //
-// A Purple target in stun range while the rig is closed sets ActionStun; the
-// caller turns that into a roller quakeFreeze edge (once). While the rig is
-// damageable, each Purple in hit range is one accepted hit. Non-Purple targets
-// never stun or damage; they are only crushed while rolling.
+// While attached: a Purple target in stun range while the rig is closed sets
+// ActionStun; the caller turns that into a roller quakeFreeze edge (once).
+// While the rig is damageable, each Purple in hit range is one accepted hit.
+// Non-Purple targets never stun or damage the roller; they are only crushed
+// while rolling.
+// After dismount (attached == false): the exposed body accepts a hit from ANY
+// target in hit range (source blackMan.cpp:680 has no color gate); there is no
+// roller to stun or crush with.
 inline Evaluation evaluate(const Rule& rule, float rollerX, float rollerZ, bool attached,
                            bool damageable, bool rolling, const Target* targets, int count)
 {
     Evaluation result;
     if (!attached) {
-        // Dismounted: the exposed body can still take Purple hits, but there is
-        // no roller to stun or to crush with.
+        // Dismounted: the exposed body can take hits from any Pikmin.
         for (int i = 0; i < count; ++i) {
             const Target& target = targets[i];
-            if (!target.alive || !target.purple) {
+            if (!target.alive) {
                 continue;
             }
             if (inRange(target.x, target.z, rollerX, rollerZ, rule.hitRadius)) {
                 result.actions |= ActionHit;
-                ++result.purpleHits;
+                ++result.acceptedHits; // accepted hit count (any color here)
             }
         }
         return result;
@@ -98,7 +101,7 @@ inline Evaluation evaluate(const Rule& rule, float rollerX, float rollerZ, bool 
             if (damageable) {
                 if (inRange(target.x, target.z, rollerX, rollerZ, rule.hitRadius)) {
                     result.actions |= ActionHit;
-                    ++result.purpleHits;
+                    ++result.acceptedHits;
                 }
             } else if (inRange(target.x, target.z, rollerX, rollerZ, rule.stunRadius)) {
                 result.actions |= ActionStun;

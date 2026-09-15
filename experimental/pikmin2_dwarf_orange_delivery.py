@@ -53,7 +53,7 @@ def run(stage, exe, output, seconds=150):
     from experimental.pikmin2_animation_profile import capture_command
     stage = Path(stage).resolve()
     positions(stage)
-    os.environ['PIKMIN_P2_ROOM_WINDOW'] = '960x540'
+    os.environ.setdefault('PIKMIN_P2_ROOM_WINDOW', '960x540')
     meta = capture_command([str(Path(exe).resolve()), '--experimental-pikmin2-room'],
                            stage, output, seconds)
     result = evidence((output / 'native.log').read_text(errors='replace'), meta['exit_code'])

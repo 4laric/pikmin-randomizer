@@ -62,6 +62,23 @@ enum P2BulbminCaveTransition {
 // Bulbmin are immune to electricity, fire, water and gas in every phase.
 inline bool p2_bulbmin_hazard_immune() { return true; }
 
+// Cave save filter, engine-free mirror of the source
+// PikiMgr::saveAllPikmins / caveSaveAllPikmins predicate
+// (src/plugProjectKandoU/pikiMgr.cpp:723,762):
+//   (getKind() != Bulbmin || isPikmin()) && isAlive()
+// `species` is the P2PikminSpecies value (Bulbmin == 5); `phase` is -1 (not a
+// tracked dependent, i.e. already whistled/restored -> isPikmin()), 0
+// (P2BulbminWild -> !isPikmin()) or 1 (P2BulbminRecruited -> isPikmin()).
+// Wild dependents are never saved; recruited/untracked Bulbmin are carried.
+// The source's additional exit-only drop (a Bulbmin never leaves the cave) is
+// deferred: the open-nectar preview has no surface-rebirth target to convert a
+// carried Bulbmin into, so exit retains recruited bodies (documented deviation,
+// not a bug). The bool form exists so a future surface path can enforce it.
+inline bool p2_bulbmin_should_save(int species, int phase) {
+    if (species != 5) return true; // 5 == P2SpeciesBulbmin
+    return phase != P2BulbminWild;
+}
+
 struct P2BulbminCommand {
     bool accepted = false;
     std::uint32_t bulbmin = 0;
@@ -144,6 +161,21 @@ public:
             } else {
                 ++it;
             }
+        }
+        return out;
+    }
+
+    // Non-mutating cave-transition drop set. Mirrors applyTransition's removal
+    // rule (wild on either move; recruited additionally on a cave exit) without
+    // erasing, so a checkpoint can compute the excluded squad before writing the
+    // transfer file and commit only after a successful write. The returned id
+    // order is that of the member map and must not be relied upon.
+    std::vector<std::uint32_t> removedOn(P2BulbminCaveTransition move) const {
+        std::vector<std::uint32_t> out;
+        for (const auto& entry : members) {
+            const bool wild = entry.second.phase == P2BulbminWild;
+            if (move == P2BulbminExitCave || (move == P2BulbminDescendFloor && wild))
+                out.push_back(entry.first);
         }
         return out;
     }

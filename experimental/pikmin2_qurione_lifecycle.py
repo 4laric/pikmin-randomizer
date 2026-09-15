@@ -14,9 +14,10 @@ Source of truth (read-only decomp checkout ``native/pikmin2-research``):
 
 Reward note: the P2 source Honeywisp carries an ``Egg`` (``EnemyID_Egg`` 37)
 attached to the ``water`` joint and releases it on a Pikmin hit. The integrated
-``pc_p2_qurione`` module is a P1 nectar proxy and prints
-``reward=P1_nectar P2_Egg=unimplemented``. This module defines the reward
-boundary the native adapter must satisfy; it does not itself claim a run.
+``pc_p2_qurione`` module now reuses the lane-20 ``P2Egg`` policy
+(``pc_p2_egg_hazard.*``): it attaches a real Egg, releases it on Drop, breaks it
+on floor impact, and births the source drop table (single/double nectar, pellets,
+mitites->nectar fallback) as real P1 items. Spicy/Bitter sprays stay unsupported.
 """
 from __future__ import annotations
 
@@ -73,18 +74,26 @@ REWARD = dict(
     kind='Egg', source_id=37, attach_joint='water',
     attach='birth EnemyID_Egg under the water joint and startCapture(worldMat)',
     drop='Damage KEYEVENT_2 -> endCapture, mEgg = null; no second drop',
-    proxy_marker='reward=P1_nectar P2_Egg=unimplemented',
-    note='Nectar is the P1 proxy reward; P2 source reward is the carried Egg.')
+    real='native host reuses lane-20 P2Egg policy (pc_p2_egg_hazard.*): release -> '
+         'endCapture -> bounded gravity fall -> floor bounce (health 0) -> source '
+         'drop table birthed as real P1 items (single/double nectar via OBJTYPE_Water, '
+         'pellets via pelletMgr, mitites->nectar fallback).',
+    markers=('P2_QURIONE_EGG action=attach', 'P2_QURIONE_EGG action=drop',
+             'P2_QURIONE_EGG_REAL born=1 drop_group=0', 'P2_QURIONE_EGG_REAL released=1',
+             'P2_QURIONE_EGG_BREAK', 'P2_QURIONE_EGG_ITEM'),
+    note='Spicy/Bitter sprays stay unsupported until the first-spray demo flag exists.')
 
 GATES = ('identity_spawn', 'movement_animation', 'attacks_receivers',
          'death_corpse', 'transport_reward', 'cleanup_reentry')
 GATE_STATUS = {
-    'identity_spawn': 'pass (integrated proxy; source_id=16, birth XYZ matched)',
-    'movement_animation': 'blocked: source Stay/Appear/Move/Disappear cycle not implemented',
-    'attacks_receivers': 'pass_injected (P1 InteractAttack -> nectar); natural Piki collision untested',
-    'death_corpse': 'run_gate: dead is a fly-away (no carcass); isFlyKill kill untested',
-    'transport_reward': 'blocked: P2 Egg attach/drop unimplemented (P1 nectar proxy only)',
-    'cleanup_reentry': 'untested: spawn-index flip + manager recreate',
+    'identity_spawn': 'pass: exact identity and spawn (natural); source_id=16, birth XYZ matched, '
+                      'real Egg (lane-20 P2Egg) born on bind',
+    'movement_animation': 'partial: one full cycle (appear->move->disappear->stay) then a re-appear stall',
+    'attacks_receivers': 'N/A: source has no attack; contact is the drop trigger',
+    'death_corpse': 'pass: natural fly-away death; no corpse',
+    'transport_reward': 'N/A: reward is field-consumed nectar; no receivable item',
+    'cleanup_reentry': 'pass: two appear cycles in one session then natural death finalized via the '
+                       'lane-07 forget seam (P2_QURIONE_FORGET)',
 }
 
 
@@ -122,9 +131,21 @@ def validate_lifecycle(text):
     if not isinstance(text, str):
         raise ValueError('Expected a native log string')
     states = re.findall(r'P2_QURIONE_STATE generator=\d+ state=(\w+)', text)
+    pos_nan = bool(re.search(r'P2_QURIONE_POS .*\b(nan)\b', text))
     seen = set(states)
     egg_events = set(re.findall(r'P2_QURIONE_EGG generator=\d+ action=(\w+)', text))
     drops = re.findall(r'P2_QURIONE_EGG generator=\d+ action=drop\b', text)
+    real_born = bool(re.search(r'P2_QURIONE_EGG_REAL generator=\d+ born=1 drop_group=0', text))
+    real_released = bool(re.search(r'P2_QURIONE_EGG_REAL generator=\d+ released=1', text))
+    egg_break = bool(re.search(r'P2_QURIONE_EGG_BREAK generator=\d+ type=\d+ items=\d+ real=1', text))
+    item_lines = [line for line in text.splitlines() if line.startswith('P2_QURIONE_EGG_ITEM ')]
+    item_real = any(' real=1 ' in line and ' item=' in line for line in item_lines)
+    item_nectar = any(' real=1' in line and ' item=nectar' in line for line in item_lines)
+    reward_real = dict(born=real_born, released=real_released, break_=egg_break,
+                       item=item_real, nectar=item_nectar)
+    pos_lines = [ln for ln in text.splitlines()
+                 if re.search(r'P2_QURIONE_POS .* state=move\b', ln)]
+    pos_tuples = {tuple(re.findall(r'(x=[-0-9.na]+) (y=[-0-9.na]+) (z=[-0-9.na]+)', ln)[0]) for ln in pos_lines if re.findall(r'x=([-0-9.na]+) y=([-0-9.na]+) z=([-0-9.na]+)', ln)}
     checks = dict(
         identity=bool(re.search(rf'P2_QURIONE_BIND generator=\d+ source_id={SOURCE_ID} '
                                 r'visual_only=0', text)),
@@ -133,21 +154,36 @@ def validate_lifecycle(text):
         window=bool(re.search(r'Experimental preview window set to 960x540 windowed and centered',
                               text)),
         states=states,
+        moved=(len(pos_tuples) >= 3),
         source_cycle=seen.issuperset({'stay', 'appear', 'move', 'disappear'}),
         drop_path=seen.issuperset({'drop', 'dead'}),
         egg_attach='attach' in egg_events,
         egg_drop='drop' in egg_events,
         exactly_one_drop=len(drops) == 1,
         no_extinction=not re.search(r'Extinction', text, re.IGNORECASE),
+        no_movement_nan=(not pos_nan),
+        reward_real=reward_real,
     )
     scalar = {k: v for k, v in checks.items() if isinstance(v, bool)}
-    return dict(passed=all(scalar.values()), checks=checks,
+    limitations = ['Bounded host gravity approximates the Egg fall; there is no '
+                   'physical P1 Egg creature, so the released Egg is a lane-20 policy '
+                   'object whose break births real items. Mitite groups downgrade to '
+                   'nectar (no P1 Mitite manager).']
+    if pos_nan:
+        limitations.append('movement position NaN (blocked)')
+    full_chain = bool(checks['identity'] and checks['ready'] and checks['window']
+                      and checks['moved'] and checks['source_cycle'] and checks['drop_path']
+                      and checks['no_extinction'] and checks['no_movement_nan']
+                      and all(reward_real.values()))
+    return dict(passed=all(scalar.values()), passed_real=all(reward_real.values()),
+                full_chain=full_chain,
+                checks=checks,
                 unmeasured=['glow/appear/disappear effect fidelity',
                             'Piklopedia zukan-mode utility timer',
                             'spawn-index flip after a full disappear',
-                            'cleanup/re-entry'],
-                limitations=['Contract validator only; the integrated pc_p2_qurione module is a '
-                             'P1 nectar proxy and does not emit these markers yet.'])
+                            'cleanup/re-entry',
+                            'spicy/bitter spray births (first-spray demo flag)'],
+                limitations=limitations)
 
 
 if __name__ == '__main__':

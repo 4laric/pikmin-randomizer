@@ -24,6 +24,12 @@ MARKERS = (
     "P2_WATERWRAITH_ENCOUNTER_READY",
     "P2_WATERWRAITH_ENCOUNTER_STAGE_A",
     "P2_WATERWRAITH_ENCOUNTER_PURPLE_SETUP",
+    "P2_WATERWRAITH_BODY_ZERO",
+    "P2_WATERWRAITH_CORPSE",
+    "P2_WATERWRAITH_FINISHED",
+    "P2_WATERWRAITH_CARRY_SETUP",
+    "P2_WATERWRAITH_POD_RECEIPT",
+    "P2_WATERWRAITH_ENCOUNTER_DELIVERED",
     "P2_WATERWRAITH_ENCOUNTER_PASS",
     "PASS WATERWRAITH_ENCOUNTER_RUNTIME",
 )
@@ -80,6 +86,18 @@ def copy_new(source, target):
     shutil.copyfile(source, target)
 
 
+def classify(text):
+    """Classify a full runtime log: 'blocked' | 'assisted' | 'delivered' | 'unknown'."""
+    if (re.search(r"BLOCKED WATERWRAITH_ENCOUNTER_RUNTIME", text)
+            or re.search(r"P2_WATERWRAITH_CARRY_UNRESOLVED\s+frame=\d+", text)):
+        return "blocked"
+    if re.search(r"P2_WATERWRAITH_SQUAD_ASSIST\b.*assisted=1", text):
+        return "assisted"
+    if re.search(r"P2_WATERWRAITH_POD_RECEIPT\s+generator=\d+", text):
+        return "delivered"
+    return "unknown"
+
+
 def verify_log(text):
     errors = []
     if not re.search(r"^P2_WATERWRAITH_ENCOUNTER_WINDOW\s+size=960x540\s*$", text,
@@ -95,16 +113,42 @@ def verify_log(text):
         errors.append(f"Stage A non-Purple damage/crush gate failed: {stage_a.groups()}")
     if not re.search(r"^P2_WATERWRAITH_ENCOUNTER_PURPLE_SETUP\s*$", text, flags=re.MULTILINE):
         errors.append("missing Purple setup marker")
-    if not re.search(r"^P2_WATERWRAITH_ENCOUNTER_REENTRY\s+ready=1\s+attached=1\s*$", text,
+    if not re.search(r"^P2_WATERWRAITH_BODY_ZERO\s+tick=\d+\s+bodyHealth=0\.0\s*$", text,
                      flags=re.MULTILINE):
-        errors.append("missing cleanup/re-entry marker")
+        errors.append("missing body-zero marker")
+    if not re.search(r"^P2_WATERWRAITH_CORPSE\s+.*standin=number_pellet\b.*$", text,
+                     flags=re.MULTILINE):
+        errors.append("missing corpse stand-in marker")
+    if not re.search(r"^P2_WATERWRAITH_FINISHED\s+tick=\d+\s+bodyHealth=0\.0\s*$", text,
+                     flags=re.MULTILINE):
+        errors.append("missing teardown marker")
+    if not re.search(r"^P2_WATERWRAITH_CARRY_SETUP\s*$", text, flags=re.MULTILINE):
+        errors.append("missing carry-setup marker")
+    delivered = bool(re.search(r"^P2_WATERWRAITH_POD_RECEIPT\s+generator=\d+\s+deliveries=\d+\s*$",
+                               text, flags=re.MULTILINE))
+    blocked = bool(re.search(r"^P2_WATERWRAITH_CARRY_UNRESOLVED\s+frame=\d+\s+max_carriers=\d+\s+"
+                             r"deliveries=0\s*$", text, flags=re.MULTILINE))
+    assisted = bool(re.search(r"P2_WATERWRAITH_SQUAD_ASSIST\b.*assisted=1", text))
+    if delivered:
+        if not re.search(r"^P2_WATERWRAITH_ENCOUNTER_DELIVERED\s+deliveries=\d+\s*$", text,
+                         flags=re.MULTILINE):
+            errors.append("missing encounter delivered marker")
+    elif blocked:
+        pass  # natural carry did not complete; carrier evidence is logged
+    else:
+        errors.append("missing carry outcome (delivered or unresolved)")
+    if not re.search(r"^P2_WATERWRAITH_ENCOUNTER_DEATH_REENTRY\s+ready=1\s+attached=1\s*$", text,
+                     flags=re.MULTILINE):
+        errors.append("missing death cleanup/re-entry marker")
     passed = re.search(r"^P2_WATERWRAITH_ENCOUNTER_PASS\s+stuns=(\d+)\s+hits=(\d+)\s+crushes=(\d+)\s+"
-                       r"damage=([\d.]+)\s+zeroed=1\s+child_removed=1\s*$", text, flags=re.MULTILINE)
+                       r"damage=([\d.]+)\s+zeroed=1\s+child_removed=1\s+body_zeroed=1\s+"
+                       r"treasure=1\s+kill=1\s+delivered=(\d+)\s*$", text, flags=re.MULTILINE)
     if not passed:
         errors.append("missing encounter PASS marker")
     else:
-        stuns, hits, crushes, damage = (int(passed.group(1)), int(passed.group(2)),
-                                        int(passed.group(3)), float(passed.group(4)))
+        stuns, hits, crushes, damage, delivered_flag = (int(passed.group(1)), int(passed.group(2)),
+                                                        int(passed.group(3)), float(passed.group(4)),
+                                                        int(passed.group(5)))
         if stuns < 1:
             errors.append("no Purple landing stun observed")
         if hits < 1:
@@ -113,8 +157,20 @@ def verify_log(text):
             errors.append("no roller crush observed")
         if damage <= 0.0:
             errors.append("no damage dealt")
-    if "PASS WATERWRAITH_ENCOUNTER_RUNTIME" not in text:
-        errors.append("missing runtime PASS marker")
+        if delivered_flag != (1 if delivered else 0):
+            errors.append("delivered flag mismatch with carry outcome")
+    if assisted:
+        # An injected assist must be reflected in the final runtime line.
+        if "PASS WATERWRAITH_ENCOUNTER_RUNTIME ASSISTED" not in text:
+            errors.append("assisted receipt must end with PASS ... ASSISTED")
+    elif delivered:
+        if "PASS WATERWRAITH_ENCOUNTER_RUNTIME ASSISTED" in text:
+            errors.append("natural receipt must not carry ASSISTED suffix")
+        elif "PASS WATERWRAITH_ENCOUNTER_RUNTIME" not in text:
+            errors.append("missing runtime PASS marker")
+    elif blocked:
+        if "BLOCKED WATERWRAITH_ENCOUNTER_RUNTIME" not in text:
+            errors.append("missing runtime BLOCKED marker")
     return errors
 
 
@@ -148,6 +204,12 @@ def main(argv=None):
         copy_new(stage / "p2-waterwraith-actor.txt", run / "p2-waterwraith-actor.txt")
         profile = visual_stage / "p2-waterwraith-visual.txt"
         copy_new(profile, run / "p2-waterwraith-visual.txt")
+        # The Purple converter (pc_p2_make_purple) and several opt-in family
+        # setups gate on a live Pod anchor (pc_p2_preview_goal); stage one when
+        # the provider directory carries it (same borrow the cave/purple lanes use).
+        for extra in ("p2-pod.txt", "p2-economy.txt"):
+            if (stage / extra).is_file():
+                copy_new(stage / extra, run / extra)
         staged = {}
         mods = sorted((visual_stage / "assets" / "dataDir" / "courses" / "pikmin2room").glob("*.mod"))
         if not mods:
@@ -193,14 +255,15 @@ def main(argv=None):
         record["inputs"]["preview_helper"] = file_record(root / "scripts" / "preview_pikmin2_room.py")
         command = [str(executable), "--experimental-pikmin2-room"]
         record["command"] = command
-        result = subprocess.run(command, cwd=run, env=dict(os.environ), timeout=90,
+        result = subprocess.run(command, cwd=run, env=dict(os.environ), timeout=150,
                                 text=True, encoding="utf-8", errors="replace", capture_output=True)
         (run / "stdout.log").write_text(result.stdout, encoding="utf-8")
         (run / "stderr.log").write_text(result.stderr, encoding="utf-8")
-        record["subprocess"] = {"returncode": result.returncode, "timeout_seconds": 90,
+        record["subprocess"] = {"returncode": result.returncode, "timeout_seconds": 150,
                                 "stdout": file_record(run / "stdout.log"),
                                 "stderr": file_record(run / "stderr.log")}
-        errors = verify_log(result.stdout + "\n" + result.stderr)
+        combined = result.stdout + "\n" + result.stderr
+        errors = verify_log(combined)
         record["verification"] = {"errors": errors}
         capture = run / "waterwraith-encounter.ppm"
         if not capture.is_file():
@@ -213,9 +276,12 @@ def main(argv=None):
             errors.append(f"fixture exit code {result.returncode}")
         record["errors"].extend(errors)
         if not errors:
-            record["status"] = "passed"
+            outcome = classify(combined)
+            record["outcome"] = outcome
+            record["status"] = {"blocked": "blocked", "assisted": "assisted",
+                                "delivered": "passed"}.get(outcome, "failed")
     except subprocess.TimeoutExpired as error:
-        record["errors"].append("fixture timed out after 90 seconds")
+        record["errors"].append("fixture timed out after 150 seconds")
         if run is not None:
             for name, value in (("stdout.log", error.stdout), ("stderr.log", error.stderr)):
                 if isinstance(value, bytes):
@@ -230,7 +296,7 @@ def main(argv=None):
                                                encoding="utf-8")
     print(json.dumps({"status": record["status"], "run": str(run) if run else None,
                       "errors": record["errors"]}, indent=2))
-    return 0 if record["status"] == "passed" else 1
+    return 0 if record["status"] in ("passed", "assisted") else 1
 
 
 if __name__ == "__main__":

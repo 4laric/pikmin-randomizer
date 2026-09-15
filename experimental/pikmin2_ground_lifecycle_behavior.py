@@ -270,8 +270,10 @@ def validate(text, code=0):
         raise ValueError('Expected a native log string')
     ready = re.search(r'P2_LIFECYCLE_READY squad=(\d+) sokkuri_gen=346005 armor_gen=346001', text)
     squad = int(ready.group(1)) if ready else 0
-    death = (bool(re.search(r'P2_SOKKURI_DEAD generator=346005 source_id=79', text))
-             and bool(re.search(r'P2_ARMOR_DEAD generator=346001 source_id=15', text)))
+    death = (bool(re.search(r'P2_SOKKURI_DEAD generator=346005 source_id=79 health=0', text))
+             and bool(re.search(r'P2_ARMOR_DEAD generator=346001 source_id=15 health=0', text)))
+    natural_damage_seen = bool(re.search(r'P2_SOKKURI_DAMAGE generator=346005 source_id=79 '
+                                         r'health=\d+(\.\d+)?', text))
     deadclips = (bool(re.search(r'P2_LIFECYCLE_DEADCLIP species=Sokkuri source_id=79 clip=dead1', text))
                  and bool(re.search(r'P2_LIFECYCLE_DEADCLIP species=Armor source_id=15 clip=dead', text)))
     corpse = (bool(re.search(r'P2_LIFECYCLE_CORPSE species=Sokkuri pellet=1 generator=346005', text))
@@ -290,6 +292,7 @@ def validate(text, code=0):
         live_squad=squad >= 1,
         injected_damage=injected,
         death=death,
+        natural_damage_seen=natural_damage_seen,
         dead_clip=deadclips,
         corpse=corpse,
         cleanup=cleanup,
@@ -304,9 +307,11 @@ def validate(text, code=0):
         delivery_reward='untested',
         cleanup='pass' if cleanup else 'fail',
         reentry='pass' if reentry else 'fail',
+        combat_damage='pass' if natural_damage_seen else 'unmeasured',
     )
     required = ('identity', 'window', 'live_squad', 'injected_damage', 'death', 'dead_clip',
-                'corpse', 'cleanup', 'reentry', 'no_duplicate_reward', 'completion', 'no_extinction')
+                'corpse', 'cleanup', 'reentry', 'no_duplicate_reward', 'completion',
+                'no_extinction')
     return dict(passed=code == 0 and all(checks[name] for name in required),
                 checks=checks, gates=gates, squad=squad, exit_code=code,
                 delivery_reward_reason='The ground arena is a cargo-free private arena with no Pod '
@@ -314,10 +319,12 @@ def validate(text, code=0):
                                        'registry to exercise. Deferred to the lifecycle/reward lane '
                                        '(#397). Source carry clips exist (Sokkuri type5, Armor carry), '
                                        'so this is not a source-backed N/A for the species.',
-                unmeasured=['natural combat (damage is fixture-injected)',
+                unmeasured=['natural lethal death (the lethal step is fixture-injected)',
                             'P2 corpse transport and Pod reward (#397)',
                             'water (MoveWater) branch', 'full action animation bank'],
-                limitations=['Fixture injects lethal damage (mHealth=0); this is not a receiver/combat proof.',
+                limitations=['Fixture injects the lethal step (mHealth=0); P2_SOKKURI_DAMAGE '
+                             'shows natural combat damage, but the killing blow is not a combat '
+                             'receiver proof.',
                              'Fixture rebirth uses the native generator path (mGenType->init) and '
                              'pc_p2_*_setup; it is not a full scene/heap teardown or campaign resume.'])
 

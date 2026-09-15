@@ -129,6 +129,9 @@ int main() {
 	assert(damageTier(false, false, false, 5.0f, 0.0f) == 0.0f);          // above -> nothing
 	assert(PetrifiedDamageFactor == 0.1f && GroundAttackFactor == 0.2f && GroundAttackRange == 40.0f);
 
+	// Continuous stuck-Pikmin latch damage (natural combat -> lethal path).
+	assert(DamagePerBlow == 1.0f && BlowIntervalTicks == 20);
+
 	// Flick trample: captains flicked only if none pressed.
 	const FlickStep none = flickStep(0, 0);
 	assert(none.pressedPikmin == 0 && none.flickCaptains);

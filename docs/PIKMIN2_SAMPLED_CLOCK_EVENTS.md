@@ -93,6 +93,10 @@ for event in batch.events:                    # independent of `pose`
 | `pc_p2_mamuta` | optional migration | bespoke anchor frame math |
 | `pc_p2_breadbug_actor` | optional migration | `p2breadbugcargo::select` |
 
+## Consumers migrated
+
+Armor (first consumer, integrated) and Hana (Creeping Chrysanthemum, source 84; lane 08 slice 1, `pc_p2_hana_events.h` + `pc_p2_hana.cpp`): the attack1 key-2 bite / key-3 swallow and flick key-2 events are dispatched from the sampled clock, proven exactly-once per attack re-entry in a 960x540 runtime (four re-entries, bite frame 18 each) with the runtime-layer caveat that `pc_p2_hana.cpp` skips an update when `dt > 0.5 s`, so a hitch larger than that drops its delta before it reaches the clock. See `docs/PIKMIN2_LANE08_DEEPSEEK_HANDOFF.md` for the migration pattern.
+
 ## Native handoff
 
 The native consumers are C++. A header-only candidate

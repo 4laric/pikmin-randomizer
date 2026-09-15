@@ -78,7 +78,11 @@ Rules enforced by `validate_roster()`:
 
 - `eligibility` ∈ `denied | candidate | admitted | excluded`.
 - Gate keys are exactly the six arena gates; statuses ∈ `PASS | FAIL | BLOCKED | UNTESTED | N/A`.
-- `admitted` requires a non-`FAIL`/non-`BLOCKED`/non-`UNTESTED` status for **all six** gates.
+- `admitted` requires a satisfied admission contract — a `source`/`variant` role,
+  a natural `PASS` on `identity_spawn`, `movement_animation`, `attacks_receivers`,
+  `death_corpse` and `cleanup_reentry`, and a cited `delivery_receipt` for
+  `transport_reward`. A hand-edited `admitted` flag without that evidence fails
+  closed with the exact missing gate.
 - Parent/child references must resolve; IDs and enum names are unique.
 
 The six gates are `identity_spawn`, `movement_animation`, `attacks_receivers`,
@@ -86,6 +90,23 @@ The six gates are `identity_spawn`, `movement_animation`, `attacks_receivers`,
 production-eligible remain separate columns: an identity can be mechanically
 complete but still `denied` for the randomizer pool until placement/content/reward
 contracts (lanes 04/05/06) are satisfied.
+
+Each row also carries a `source` list — the `docs/PIKMIN2_*.md` filenames its gate
+statuses were transcribed from — with natural observations distinguished from
+labeled injected/fixture observations in `notes`. An injected-only observation is
+recorded as `UNTESTED`/`BLOCKED`, never as a natural `PASS`.
+
+### Ledger coverage audit
+
+`scripts/audit_pikmin2_roster.py --review` additionally enforces **complete ledger
+coverage** and exits non-zero on any gap: every row must cite an existing source
+doc and an existing native module (alias-aware), every `docs/PIKMIN2_*_NATIVE.md`
+source slice must be cited (renderer/cave plumbing docs are exempt), and every
+non-shared native `pc_p2_*.cpp` module must be referenced by a row (provider,
+Pikmin-species, projectile/hazard primitive and family sub-modules are allowlisted
+in `SHARED_MODULES`). The audit prints `ledger coverage complete: True` only when
+all four gap lists are empty.
+
 
 ## Identity roles and aliases
 
@@ -105,16 +126,43 @@ alias never becomes a new source ID.
 
 ## Admission set (deny by default)
 
-`admission_set(roster)` materializes the explicit seedable pool referenced by the
-gate ledger. An identity enters `admitted` only when the overlay sets
-`eligibility: admitted` **and** its role is `source`/`variant`; a helper, plant,
-hazard, projectile, nest, manager base or non-seedable alias is rejected even if
-marked admitted. Everything else remains in `candidate`, `excluded` or `denied`.
-`admitted_ids(roster)` is the ordered allowlist lane 03 consumes;
-`require_admitted(roster, source_id)` is the fail-closed check. The pool is empty
-until a family supplies complete six-gate evidence, which is the correct starting
-state — native module presence, source facts and taxonomy membership are not
-eligibility.
+The admission set is now **contract-driven**, not flag-driven.
+`admission_contract(roster)` computes the seedable pool directly from each ledger
+row's evidence — a seedable identity (`source`/`variant`) is admitted only when it
+holds a natural `PASS` on `identity_spawn`, `movement_animation`,
+`attacks_receivers`, `death_corpse` and `cleanup_reentry` **and** a cited
+`delivery_receipt` proving the actual transport/reward of gate 5
+(`transport_reward`); anything missing is refused with the exact missing gate,
+and an `excluded` identity is blocked with `["excluded"]`.
+`admission_requirements(entry)` reports a single identity's gaps.
+
+`admitted_ids(roster)` is the ordered allowlist lane 03 consumes, now equal to
+`admission_contract(roster)["admitted"]`; `require_admitted(roster, source_id)` is
+the fail-closed check that names the missing gates. `write_admission(roster)` (or
+`scripts/audit_pikmin2_roster.py --write-admission`) persists the computed set into
+the evidence JSON, and `--admit` prints the admitted set and every candidate's
+blocking gates. The pool is empty until a family supplies the full
+generated-session chain — native module presence, source facts and taxonomy
+membership are not eligibility, and a hand-edited `admitted` flag cannot bypass
+the contract.
+
+### Private candidate validation path (opt-in, deny by default)
+
+Lane 03's ordinary product entry point seeds only `admitted_ids(roster)` and
+fails closed while that set is empty. For the Snow/Dwarf Orange cohort, a caller
+may run a *private* validation of the generated-session chain through
+`opt_in_validation_cohort(roster, source_ids)` — an ordered allowlist that only
+accepts explicitly reviewed identities (`candidate`/`admitted`) whose role is
+`source`/`variant`. Denied, excluded, unknown, helper, plant, hazard, projectile,
+nest and manager-base IDs are rejected, so the path can never opt a previously
+un-reviewed identity into a run.
+
+`require_opt_in(roster, source_id)` is the per-identity fail-closed check. Neither
+function mutates the roster or the admission set: `admitted_ids(roster)` stays
+empty, `require_admitted` still raises, and normal seed generation is unaffected.
+The Snow (`YellowKochappy` 45) and Dwarf Orange (`BlueKochappy` 44) siblings are
+distinct *source* identities (never helpers or aliases); each is reviewed
+independently, and neither is admitted by this document.
 
 ## Current coverage
 
@@ -139,6 +187,93 @@ Generated from source revision `632af93787b9c95b63f0c13be32b161375ce3a96`:
   `manager_base`/`non_spawnable` identities as independent actors.
 - **06 (rewards)** reads `drop_type`/`child_*` rather than hard-coding corpses.
 
+## Family-lane six-gate handoff table (ingest contract)
+
+Family lanes publish a six-gate evidence table in
+`docs/PIKMIN2_LANE<NN>_DEEPSEEK_HANDOFF.md`. `scripts/ingest_p2_handoff_gates.py`
+parses that table into candidate ledger rows and is the contract lanes must
+follow. A markdown table whose header row names a `Result` column, with data rows
+numbered 1-6:
+
+```
+| Gate | Result | Evidence [| Injected vs natural] |
+|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md spawn binding |
+| 2. Autonomous movement and animation | ... | ... |
+| 3. Attacks and receivers | ... | ... |
+| 4. Death and corpse | ... | ... |
+| 5. Actual transport and reward | PASS | corpse:frog:1 goal=1 |
+| 6. Cleanup and re-entry | ... | ... |
+```
+
+Rules (the parser enforces them):
+
+- A row is matched by its leading gate number (1..6 -> `identity_spawn`,
+  `movement_animation`, `attacks_receivers`, `death_corpse`, `transport_reward`,
+  `cleanup_reentry`); the spelled-out name and column width may vary.
+- A table belongs to ONE identity: the `source_id` named in the nearest preceding
+  "Source ID" line (or an identity-naming heading). Other identities named in the
+  same handoff but without their own table are reported `shared table, excluded`
+  (all gates `UNTESTED`) and are never applied to the ledger.
+- A literal `|` inside a cell must be escaped as `\|` (the row is split on the
+  unescaped `|` only).
+- `Result` is matched at the start of the cell against
+  `^(PASS|PARTIAL|FAIL|BLOCKED|UNTESTED|N/A)\b` (bold stripped); anything else —
+  including `FAIL (was PASS earlier)` or `BYPASSED` — reads as `UNTESTED`.
+  `PARTIAL` is treated as blocking.
+- A `PASS` advances a gate only when the whole row (Result + Injected/natural
+  label + Evidence) does **not** match `NONNATURAL_MARKERS`
+  (injected/proxy/fixture-only/forced/vehicle/visual/host/display) and the
+  `Evidence` cell **cites** a source: a `.md`/`.log`/`.txt`/`.json` token
+  (`\S+\.(md|log|txt|json)\b`) or a file path rooted at `docs/`/`output/`/`tests/`
+  with at least two segments (a bare `12/16` separator does not count).
+  A PASS that is labelled injected/uncited is *refused* and printed as
+  `<gate>:injected` / `<gate>:uncited`.
+- `transport_reward` (gate 5) is the `delivery_receipt`: it advances only when the
+  `Evidence` cell is a lane-06 receipt (`onion:`/`corpse:`/`receipt:` key or the
+  same citation).
+- The identity is named as `<source_id> EnumName`, `` `EnumName` (<source_id>) ``,
+  or the literal `` `source_id` ``/`EnemyID` token, and is cross-referenced against
+  this roster; only `source`/`variant` identities get a candidate row.
+
+The script is deny-by-default: it prints, per identity, which gates the handoff
+would advance and which `admission_requirements` still reports as blocking, and
+writes nothing to the evidence overlay unless `--apply` is passed (and then only
+merges gate `PASS` values into the owning identity's existing row — it never
+touches `eligibility` or `delivery_receipt`, never fabricates a row and never
+applies to a sibling, so a handoff cannot admit an identity on its own).
+
+### Paste-able gate table template
+
+Copy one block per owner identity into `docs/PIKMIN2_LANE<NN>_DEEPSEEK_HANDOFF.md`.
+Run `scripts/check_p2_handoff_gates.py <handoff>` before writing `DONE`; it prints
+the exact edit for every refused row.
+
+````markdown
+## Concrete source ID
+- Source ID: 17 `Frog`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md spawn binding | natural |
+| 2. Autonomous movement and animation | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md leap animation | natural |
+| 3. Attacks and receivers | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md crush receiver | natural |
+| 4. Death and corpse | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md corpse drop | natural |
+| 5. Actual transport and reward | PASS (natural) | corpse:frog:1 goal=1 | natural |
+| 6. Cleanup and re-entry | UNTESTED (injected) | docs/PIKMIN2_FROG_IMPORT.md forced reset | injected |
+````
+
+Every `PASS` must cite a real source in the `Evidence` cell at a token boundary
+— `\S+\.(md|log|txt|json)\b` — or a path rooted at `docs/`/`output/`/`tests/`;
+gate 5 additionally accepts an `onion:`/`corpse:`/`receipt:` receipt key. Replace
+the example identity (`17 Frog`) and its doc with the handoff's own; do not paste
+a `<...>`/`NNN` placeholder. A `PASS` row whose Result/Evidence carries an
+injected/proxy/fixture-only/forced/vehicle/visual/host/display marker is refused:
+mark it `Injected vs natural = injected` and report the gate `UNTESTED` instead of
+`PASS`. A non-`PASS` status (`PARTIAL`/`FAIL`/`BLOCKED`/`UNTESTED`/`N/A`) is safe
+to leave as-is.
+
+
 ## Candidate review and source-backed encounters
 
 `inventory_encounters(payload, roster)` resolves every identity across
@@ -159,9 +294,9 @@ any `native_module` declared in the overlay that is absent from
 
 The first reviewed cohort (overlay `candidate`, not admitted) records the reported
 evidence and named blockers for Sokkuri (79), Armor (15), Red Bulborb (2), Snow
-Bulborb (45), Wollywog (17) and Mamuta/Miulin (54). No gate is marked PASS without
-pinned root/native/executable, inputs and observed result, so the seedable
-admission set remains empty.
+Bulborb (45), Dwarf Orange Bulborb (44), Wollywog (17) and Mamuta/Miulin (54). No
+gate is marked PASS without pinned root/native/executable, inputs and observed
+result, so the seedable admission set remains empty.
 
 ## Ownership
 

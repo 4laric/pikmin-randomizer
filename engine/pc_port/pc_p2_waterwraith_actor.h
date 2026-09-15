@@ -34,13 +34,15 @@
 // = 120 with a documented two-step timer (ip01 retail 0, so the first step is
 // effectively instantaneous). No claim of natural-Map navigation is made.
 //
-// Damage model (structural, not a receiver): only Purple hits are accepted, and
-// only when `P2WaterwraithRig::damageable()` is true (roller frozen, or after
-// the wraith dismounted). While riding/moving the hit is ignored. Damage while
-// the child is still attached routes to the Tyre health (source freeze/bend
-// routes to `mTyre`, blackMan.cpp:672-681); after dismount it routes to the
-// wraith body health (general fp00 = 1500). This expresses the Purple-only
-// vulnerability without a gameplay receiver adapter (lane 10/11 owns that).
+// Damage model (structural, not a receiver). The RIDING ROLLER accepts only
+// Purple hits, and only while `P2WaterwraithRig::damageable()` is true (frozen);
+// while riding/moving the hit is ignored. After dismount the exposed BODY
+// accepts hits from ANY Pikmin until `ownerInvulnerableSet()` fades (source
+// `EnemyBase::damageCallBack`, blackMan.cpp:672-681 / :680, has no color gate).
+// Damage while the child is still attached routes to the Tyre health; after
+// dismount it routes to the wraith body health (general fp00 = 1500). This is
+// the structural expression of the source vulnerability window without a
+// gameplay receiver adapter (lane 10/11 owns the shared production route).
 
 #include "pc_p2_waterwraith.h"
 
@@ -48,9 +50,9 @@
 
 // Routing outcome of `p2_waterwraith_actor_apply_damage`.
 enum P2WaterwraithDamageResult {
-    P2WWDMG_Ignored = 0, // non-Purple, non-positive, dead actor, or not damageable
-    P2WWDMG_Roller  = 1, // accepted while the child roller is attached + frozen
-    P2WWDMG_Body    = 2, // accepted after dismount, applied to the wraith body
+    P2WWDMG_Ignored = 0, // non-positive, dead actor, or not in the target's window
+    P2WWDMG_Roller  = 1, // accepted while the child roller is attached + frozen (Purple-only)
+    P2WWDMG_Body    = 2, // accepted after dismount, applied to the wraith body (any Pikmin)
 };
 
 // One host-supplied route waypoint (XZ plane; Y is carried through untouched).
@@ -225,11 +227,14 @@ private:
     int mWaypointIndex = 0;
 };
 
-// Routes a hit through the rig's `damageable()` gate. Only Purple damage is
-// accepted (structural vulnerability). While the child is attached the damage
-// goes to the Tyre health; after dismount it goes to the wraith body health.
-// `outDead` (optional) reports the underlying target's death gate (roller death
-// still requires the dismounted EB_Invulnerable flag; body death is HP <= 0).
+// Routes a hit through the per-target vulnerability gates. Only Purple damage
+// is accepted (structural vulnerability). While the child is attached the
+// damage goes to the Tyre health, gated on the roller's `damageable()`; after
+// dismount it goes to the wraith body health, gated on the dismount flag
+// (EB_Invulnerable) which persists past child removal so the exposed body stays
+// vulnerable until the wraith itself dies. `outDead` (optional) reports the
+// underlying target's death gate (roller death still requires the dismounted
+// EB_Invulnerable flag; body death is HP <= 0).
 P2WaterwraithDamageResult p2_waterwraith_actor_apply_damage(P2WaterwraithActor& actor,
                                                              float damage, bool isPurple,
                                                              bool* outDead = nullptr);

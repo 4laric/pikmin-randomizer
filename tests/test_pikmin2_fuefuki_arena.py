@@ -48,18 +48,17 @@ def test_proxy_types_match_native_registry():
     assert 'Napkid' in arena.FAMILY[P1_NAPKID_TYPE]
 
 
-def test_gate_status_matches_real_gl_evidence():
-    for gate in ('whistle_theft', 'interference', 'reclaim', 'carry'):
-        assert gate in GATES
-        assert STATUS[gate] == PASSED[gate]
-        assert STATUS[gate].startswith('pass')
-    for gate in ('follow_locomotion', 'panic_staging', 'brain_fallback',
-                 'claim_persistence', 'native_identity'):
-        assert gate in GATES
-        assert STATUS[gate] == BLOCKED[gate]
-        assert STATUS[gate].startswith('blocked')
+def test_gate_status_review_corrected():
+    assert STATUS['brain_fallback'].startswith('pass (policy)')
+    assert STATUS['press_combat'].startswith('untested')
+    assert 'provider lane 10' in STATUS['press_combat']
+    assert STATUS['whistle_theft'].startswith('pass')
+    assert 'P2_FUEFUKI_RT' in STATUS['whistle_theft']
+    assert STATUS['native_identity'].startswith('blocked')
     assert STATUS['spawn'] == 'untested'
     assert set(STATUS) == set(GATES)
+    assert 'press_combat' in set(GATES)
+    assert 'brain_fallback' in set(GATES)
 
 
 def test_roster_requires_real_stage_records():

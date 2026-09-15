@@ -23,15 +23,18 @@
 //   * The source only enters StateTurn from Obj::wallCallback (roll speed > 100
 //     and >30 deg into a wall normal). The P1 host exposes no wall normal, so a
 //     roll enters Turn when it leaves the source fp09=150 territory or after
-//     the bounded roll timeout; the crash effects and the Turn LOOP_START
-//     vulnerability window (DangoMushiState.cpp:530) are not reproduced.
+//     the bounded roll timeout; the crash effects are approximated. The Turn
+//     LOOP_START..key-3 vulnerability window (DangoMushiState.cpp:530) is now
+//     applied: pc_p2_dangomushi_invulnerable rejects attack/bomb damage outside
+//     the stickable window, exposed through the shared tekiinteraction hooks.
 //   * The Flick arm sweep (Obj::flickHandCollision) is resolved as one
 //     InteractFlick per Flick state at the attack_2 KEYEVENT_2 arm-swing frame
 //     (26), not per frame; the source Navi wither and Purple-crab rules are not
 //     representable.
-//   * The P2 invulnerability/ModelHidden state flags, the falling Rock/Egg
-//     child spawner (DangoMushi.cpp:649-776) and the dangomushi.brk material
-//     loop (DangoMushi.cpp:106-134) are P2-only and are not reproduced.
+//   * The P2 ModelHidden state flag and the dangomushi.brk material loop
+//     (DangoMushi.cpp:106-134) are P2-only and are not reproduced. The falling
+//     Rock/Egg child spawner (DangoMushi.cpp:649-776) is realized by hosting the
+//     lane-20 P2RockHazard / P2Egg policies (see the DANGO_TURN rain below).
 //   * Walk uses the source fp08=0.05 turn rate clamped to fp28=5 deg; the roll
 //     uses proper fp02=0.03 / fp03=3 deg and fp01=200. Target search is a full
 //     hemisphere (the source fp13 view-angle gate is not applied). When the
@@ -41,6 +44,9 @@
 // actors.
 #include "pc_p2_dangomushi.h"
 #include "pc_p2_dangomushi_hazard.h"
+#include "pc_p2_egg_hazard.h"
+#include "pc_p2_rock_hazard.h"
+#include "pc_p2_rock_host.h"
 #include "teki.h"
 #include "Interactions.h"
 #include "Piki.h"
@@ -50,7 +56,13 @@
 #include "Generator.h"
 #include "gameflow.h"
 #include "GameStat.h"
+#include "Creature.h"
+#include "MapMgr.h"
+#include "ItemMgr.h"
+#include "Pellet.h"
+#include "ObjType.h"
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -118,6 +130,10 @@ constexpr float FLICK_RADIUS = 150.0f;
 // installed bank is absent.
 constexpr int FALLBACK_ROLL_START = 23;      // attack 23:4 KEYEVENT_4
 constexpr int FALLBACK_FLICK_START = 26;     // attack_2 26:2 KEYEVENT_2
+// Lane-25 real rain host slots (source reserves 30 Rocks / 10 Eggs per
+// Crawbster; 16 host slots with reuse of dead rocks is the documented host
+// limit, matching the lane-20 P2RockHazardPool capacity).
+constexpr int kRainRockSlots = 16;
 
 struct Clip {
     std::string name;
@@ -145,6 +161,28 @@ struct Dango {
     bool turnJustEntered = false;
     bool hazardWindowLogged = false;
     int hazardRocks = 0;
+    // Applied vulnerability state: true only inside the Turn stickable window.
+    // Outside it pc_p2_dangomushi_invulnerable rejects attack/bomb damage.
+    bool stickable = false;
+    bool attackRejectedLogged = false;
+    // Lane-25 real rain host (#174/#376): the hazard policy's Rock/Egg decisions
+    // realized as falling Rock hazards (lane-20 P2RockHazard) and a real Egg
+    // (lane-20 P2Egg) whose break births real P1 pellets/nectar. The policies are
+    // consumed unchanged; this state only hosts them.
+    P2RockHazard rainRock[kRainRockSlots];
+    bool rainRockUsed[kRainRockSlots] = {};
+    float rainRockDeadTimer[kRainRockSlots] = {};
+    float rainRockMaxLife[kRainRockSlots] = {};
+    float rainRockAge[kRainRockSlots] = {};
+    bool rainRockLifetimeExpired[kRainRockSlots] = {};
+    P2RockHazardPhase rainRockPrev[kRainRockSlots] = {};
+    std::set<std::uint64_t> rainContacts[kRainRockSlots];
+    std::uint64_t rainRockSelf = 1;
+    P2Egg rainEgg;
+    bool rainEggActive = false;
+    P2EggVec3 rainEggPos;
+    p2rockhost::ScriptRng rainRng;
+    double rainDebt = 0.0;
 };
 
 std::map<PelletView*, Dango> actors;
@@ -256,6 +294,9 @@ void enter(Dango& s, State state, const char* clip) {
     s.rolling = false;
     s.rollHit = false;
     s.armSwinging = false;
+    // Leave the body invulnerable on every transition; the Turn window reopens
+    // it while stickable. attackRejectedLogged is per-window, not per-state.
+    s.stickable = false;
     if (clip) s.clip = clip;
 }
 void setState(BTeki* a, Dango& s, State state, const char* clip) {
@@ -329,6 +370,299 @@ void setPhase(Dango& s) {
         if (s.phase > 1.0f) s.phase = 1.0f;
     }
 }
+
+// ---------------------------------------------------------------------------
+// Lane-25 real rain host (#174/#376): consume the lane-20 Rock/Egg policies and
+// realize the Crawbster's hazard decisions as real children. The policies are
+// not forked: P2RockHazard falls under the source velocity and emits real
+// InteractPress/InteractAttack; P2Egg breaks into real P1 pellets/nectar. Rock
+// fall/scale values are the documented fixture host parms already used by
+// tools/p2_rock_hazard_test.cpp (mSearchDistance/Height/Angle stand-ins); they
+// are host inputs, never source constants. Egg drop chances are the disc proper
+// parms fp01-fp05 (0.5/0.35/0.05/0.05/0.05) with general fp00=50.
+// ---------------------------------------------------------------------------
+constexpr float kRainDelta = P2RockHazard::kSourceDelta;
+constexpr float kRainOnFloorTolerance = 40.0f;
+constexpr float kRainContactPad = 12.0f;
+constexpr float kRainEggContactRadius = 25.0f;
+constexpr float kRainSpawnHeight = 300.0f;
+
+P2RockHazardConfig rainRockConfig() {
+    P2RockHazardConfig config;
+    config.fallSpeed = 500.0f;      // fixture host parm (mSearchDistance)
+    config.fallOffset = 100.0f;     // fixture host parm (mSearchHeight)
+    config.scaleUpRate = 5.0f;      // fixture host parm (mSearchAngle)
+    config.sightRadius = 350.0f;    // general mSightRadius fixture
+    config.attackDamage = 10.0f;    // general mAttackDamage fixture
+    config.collisionRadius = 40.0f; // host fall trace radius
+    config.health = 100.0f;         // general mHealth fixture
+    return config;
+}
+
+P2EggConfig rainEggConfig() {
+    P2EggConfig config;
+    config.singleNectarChance = 0.5f;  // disc fp01
+    config.doubleNectarChance = 0.35f; // disc fp02
+    config.mititesChance = 0.05f;      // disc fp03
+    config.spicyChance = 0.05f;        // disc fp04
+    config.bitterChance = 0.05f;       // disc fp05
+    config.forcedDropType = 0;
+    config.checkHasSpray = true;
+    config.health = 50.0f;             // general fp00
+    return config;
+}
+
+// Static-map sphere trace for the rain Rocks: reuse the shared lane-20 Rock host
+// binding (p2rockhost::RockMapBinding / detectRock / ScriptRng) rather than a
+// local fork of pc_p2_projectiles.cpp's RockMapBinding / rockDetection / rng.
+p2rockhost::RockMapBinding gRainBinding;
+
+bool rainOnFloor(const Creature& creature) {
+    if (!mapMgr) return false;
+    const Vector3f& position = creature.mSRT.t;
+    if (!std::isfinite(position.x) || !std::isfinite(position.z)) return false;
+    const float ground = mapMgr->getMinY(position.x, position.z, true);
+    return std::isfinite(ground) && std::fabs(position.y - ground) <= kRainOnFloorTolerance;
+}
+
+std::uint64_t rainToken(const Creature* creature) {
+    return static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(creature));
+}
+
+void spawnRainRocks(Dango& s, BTeki* actor, const Vector3f& center, float angle,
+                    int count, float lifetime, unsigned generator) {
+    const P2RockHazardConfig config = rainRockConfig();
+    int spawned = 0;
+    for (int i = 0; i < count; ++i) {
+        int slot = -1;
+        for (int k = 0; k < kRainRockSlots; ++k) {
+            if (!s.rainRockUsed[k]
+                || s.rainRock[k].phase() == P2RockHazardPhase::Killed) {
+                slot = k;
+                break;
+            }
+        }
+        if (slot < 0) break; // slot exhaustion: silent, matches the source birth
+        float ox = 0.0f, oz = 0.0f;
+        P2DangoMushiHazardPolicy::rockOffset(i, count, angle, &ox, &oz);
+        P2RockHazardInit init;
+        init.position = { center.x + ox, center.y + kRainSpawnHeight, center.z + oz };
+        init.dropGroupNone = false; // DropWait -> immediate Fall
+        init.timedAppear = false;
+        init.initialTimer = 0.0f;
+        init.sourceToken = actor
+            ? static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(actor)) : 0;
+        init.selfToken = s.rainRockSelf++;
+        s.rainRock[slot].reset(config);
+        if (!s.rainRock[slot].onInit(init)) continue;
+        s.rainRockUsed[slot] = true;
+        s.rainRockDeadTimer[slot] = 0.0f;
+        s.rainRockMaxLife[slot] = lifetime;
+        s.rainRockAge[slot] = 0.0f;
+        s.rainRockLifetimeExpired[slot] = false;
+        s.rainRockPrev[slot] = s.rainRock[slot].phase();
+        s.rainContacts[slot].clear();
+        ++spawned;
+    }
+    std::printf("P2_DANGOMUSHI_ROCK_BIRTH generator=%u requested=%d real=%d lifetime=%.1f\n",
+                generator, count, spawned, lifetime);
+    std::fflush(stdout);
+}
+
+void spawnRainEgg(Dango& s, const Vector3f& home, unsigned generator) {
+    // Only one Egg can be live per Crawbster; a second request while the first
+    // has not broken must not reset() it (that would discard its pending drop).
+    if (s.rainEggActive) return;
+    s.rainEgg.reset(rainEggConfig());
+    s.rainEggPos = { home.x, home.y, home.z };
+    if (!s.rainEgg.birth(true)) { // drop-group: a Navi/Piki touch breaks it
+        std::printf("P2_DANGOMUSHI_EGG_BIRTH generator=%u real=0\n", generator);
+        std::fflush(stdout);
+        return;
+    }
+    s.rainEggActive = true;
+    std::printf("P2_DANGOMUSHI_EGG_BIRTH generator=%u real=1 x=%.1f y=%.1f z=%.1f health=%.1f\n",
+                generator, home.x, home.y, home.z, rainEggConfig().health);
+    std::fflush(stdout);
+}
+
+void applyRainRockContact(Dango& s, int slot, P2RockHazardContactKind kind,
+                          Creature* target, BTeki* owner, unsigned generator) {
+    const std::uint64_t token = rainToken(target);
+    const P2RockHazardContactResult result =
+        s.rainRock[slot].contact(kind, rainOnFloor(*target), false, token);
+    // Do not dedupe a contact ignored by the source 1 s atari grace, or it would
+    // be skipped forever for this rock once the grace expires.
+    if (result.ignored) return;
+    if (!s.rainContacts[slot].insert(token).second) return;
+    if (result.strikeEmitted) {
+        if (result.strike.kind == P2RockHazardStrikeKind::Press) {
+            target->stimulate(InteractPress(owner, result.strike.damage));
+        } else {
+            target->stimulate(InteractAttack(owner, nullptr, result.strike.damage, false));
+        }
+        std::printf("P2_DANGOMUSHI_ROCK_STRIKE generator=%u kind=%s damage=%.1f target=%llu\n",
+                    generator,
+                    result.strike.kind == P2RockHazardStrikeKind::Press ? "Press" : "Attack",
+                    result.strike.damage, static_cast<unsigned long long>(token));
+        std::fflush(stdout);
+    }
+}
+
+void birthRainEggDrop(Dango& s, unsigned generator) {
+    const P2EggDrop& drop = s.rainEgg.drop();
+    const Vector3f base(s.rainEggPos.x, s.rainEggPos.y + drop.positionOffsetY, s.rainEggPos.z);
+    for (int i = 0; i < drop.itemCount && i < 2; ++i) {
+        const P2EggItem& item = drop.items[i];
+        P2EggSpawnKind kind = item.kind;
+        bool fallback = false;
+        if (kind == P2EggSpawnKind::MititeGroup && drop.mititeFallbackToNectar) {
+            kind = P2EggSpawnKind::Nectar; // P1 has no Mitite manager
+            fallback = true;
+        }
+        bool birthed = false;
+        const char* born = "none";
+        if (kind == P2EggSpawnKind::PelletOne || kind == P2EggSpawnKind::PelletFive) {
+            if (pelletMgr) {
+                Pellet* pellet = pelletMgr->newNumberPellet(
+                    item.pelletColor,
+                    kind == P2EggSpawnKind::PelletFive ? NUMPEL_FivePellet : NUMPEL_OnePellet);
+                if (pellet) {
+                    pellet->init(base);
+                    pellet->mVelocity.set(item.velocity.x, item.velocity.y, item.velocity.z);
+                    pellet->startAI(0);
+                    birthed = true;
+                    born = "pellet";
+                }
+            }
+        } else if (kind == P2EggSpawnKind::Nectar) {
+            if (itemMgr) {
+                Creature* nectar = itemMgr->birth(OBJTYPE_Water);
+                if (nectar) {
+                    nectar->init(base);
+                    nectar->startAI(0);
+                    birthed = true;
+                    born = "nectar";
+                }
+            }
+        } else {
+            born = "unsupported";
+        }
+        std::printf("P2_DANGOMUSHI_EGG_ITEM generator=%u index=%d kind=%d real=%d fallback=%d "
+                    "item=%s\n", generator, i, int(item.kind), int(birthed), int(fallback), born);
+    }
+    std::fflush(stdout);
+}
+
+void tickRain(Dango& s, BTeki* actor, const Vector3f& pos, float dt) {
+    s.rainDebt += dt;
+    int ticks = static_cast<int>(s.rainDebt / kRainDelta);
+    if (ticks > 6) ticks = 6;
+    s.rainDebt -= ticks * static_cast<double>(kRainDelta);
+    if (ticks <= 0) return;
+    const unsigned generator = actor->mGenerator ? actor->mGenerator->_70 : 0u;
+    const P2RockHazardConfig config = rainRockConfig();
+    const float radiusSq = (config.collisionRadius + kRainContactPad)
+        * (config.collisionRadius + kRainContactPad);
+
+    for (int tick = 0; tick < ticks; ++tick) {
+        for (int k = 0; k < kRainRockSlots; ++k) {
+            if (!s.rainRockUsed[k]) continue;
+            P2RockHazard& rock = s.rainRock[k];
+            if (rock.phase() == P2RockHazardPhase::Killed) {
+                s.rainRockUsed[k] = false;
+                s.rainContacts[k].clear();
+                continue;
+            }
+            if (!rock.isAlive()) {
+                if (rock.phase() == P2RockHazardPhase::Dead) {
+                    s.rainRockDeadTimer[k] += kRainDelta;
+                    if (s.rainRockDeadTimer[k] >= 0.5f && rock.finishDeath()) {
+                        std::printf("P2_DANGOMUSHI_ROCK_DESTROY generator=%u slot=%d "
+                                    "reason=%s\n", generator, k,
+                                    s.rainRockLifetimeExpired[k] ? "lifetime"
+                                        : (rock.health() <= 0.0f ? "health" : "floor"));
+                        std::fflush(stdout);
+                    }
+                }
+                continue;
+            }
+            // Source birthArg.mExistenceLength 30 s: a rock that never traces a
+            // floor still dies and releases its pool slot after its lifetime.
+            s.rainRockAge[k] += kRainDelta;
+            if (s.rainRockMaxLife[k] > 0.0f && s.rainRockAge[k] >= s.rainRockMaxLife[k]) {
+                rock.forceDeath();
+                s.rainRockLifetimeExpired[k] = true;
+                if (rock.phase() != s.rainRockPrev[k]) {
+                    std::printf("P2_DANGOMUSHI_ROCK_PHASE generator=%u slot=%d phase=%d\n",
+                                generator, k, int(rock.phase()));
+                    std::fflush(stdout);
+                    s.rainRockPrev[k] = rock.phase();
+                }
+                continue;
+            }
+            const P2RockHazardVec3 before = rock.position();
+            rock.update(kRainDelta, p2rockhost::detectRock(before, config.sightRadius),
+                        p2rockhost::RockMapBinding::trace, &gRainBinding);
+            if (rock.phase() != s.rainRockPrev[k]) {
+                std::printf("P2_DANGOMUSHI_ROCK_PHASE generator=%u slot=%d phase=%d\n",
+                            generator, k, int(rock.phase()));
+                std::fflush(stdout);
+                s.rainRockPrev[k] = rock.phase();
+            }
+            const P2RockHazardVec3 rp = rock.position();
+            auto consider = [&](Creature* creature, P2RockHazardContactKind kind) {
+                if (!creature || !creature->isAlive()) return;
+                const Vector3f& q = creature->mSRT.t;
+                const float dx = q.x - rp.x, dy = q.y - rp.y, dz = q.z - rp.z;
+                if (dx * dx + dy * dy + dz * dz > radiusSq) return;
+                applyRainRockContact(s, k, kind, creature, actor, generator);
+            };
+            consider(naviMgr ? naviMgr->getNavi() : nullptr, P2RockHazardContactKind::NaviPiki);
+            if (pikiMgr) {
+                Iterator pikiIt(pikiMgr);
+                CI_LOOP(pikiIt) {
+                    consider(static_cast<Piki*>(*pikiIt), P2RockHazardContactKind::NaviPiki);
+                }
+            }
+            if (tekiMgr) {
+                Iterator tekiIt(tekiMgr);
+                CI_LOOP(tekiIt) {
+                    consider(static_cast<Teki*>(*tekiIt), P2RockHazardContactKind::Teki);
+                }
+            }
+        }
+
+        if (s.rainEggActive) {
+            bool touched = false;
+            auto near = [&](const Creature* creature) {
+                const Vector3f& p = creature->mSRT.t;
+                const float dx = p.x - s.rainEggPos.x, dy = p.y - s.rainEggPos.y;
+                const float dz = p.z - s.rainEggPos.z;
+                return dx * dx + dy * dy + dz * dz
+                    <= kRainEggContactRadius * kRainEggContactRadius;
+            };
+            Navi* navi = naviMgr ? naviMgr->getNavi() : nullptr;
+            if (navi && navi->isAlive() && near(navi)) touched = true;
+            if (!touched && pikiMgr) {
+                Iterator it(pikiMgr);
+                CI_LOOP(it) {
+                    Piki* piki = static_cast<Piki*>(*it);
+                    if (piki && piki->isAlive() && near(piki)) { touched = true; break; }
+                }
+            }
+            if (touched && s.rainEgg.contact(false, false)) {
+                std::printf("P2_DANGOMUSHI_EGG_CONTACT generator=%u health=0\n", generator);
+                std::fflush(stdout);
+            }
+            if (s.rainEgg.health() <= 0.0f
+                && s.rainEgg.update(p2rockhost::rngFloat, &s.rainRng, p2rockhost::rngInt, &s.rainRng)) {
+                birthRainEggDrop(s, generator);
+                s.rainEggActive = false;
+            }
+        }
+    }
+}
 }
 
 void pc_p2_dangomushi_reset() {
@@ -369,8 +703,35 @@ bool pc_p2_dangomushi_clip(const BTeki* actor, const char*& name, float& phase) 
     return true;
 }
 
+bool pc_p2_dangomushi_invulnerable(const BTeki* actor) {
+    if (!ready || !actor) return false;
+    auto it = actors.find(static_cast<PelletView*>(const_cast<BTeki*>(actor)));
+    if (it == actors.end()) return false;
+    Dango& s = it->second;
+    const unsigned generator = actor->mGenerator ? actor->mGenerator->_70 : 0u;
+    if (!P2DangoMushiHazardPolicy::attackRejected(s.stickable)) {
+        // Inside the Turn stickable window: EB_Invulnerable is clear and the
+        // attack is admitted (return false so the normal damage path runs).
+        std::printf("P2_DANGOMUSHI_DAMAGE_ACCEPTED generator=%u stickable=1 state=%s\n",
+                    generator, stateName(s.state));
+        std::fflush(stdout);
+        return false;
+    }
+    // Outside the window the source body is invulnerable. Report the first
+    // rejection per window so the fixture can observe an applied (not merely
+    // decided) window without spamming every attack frame.
+    if (!s.attackRejectedLogged) {
+        s.attackRejectedLogged = true;
+        std::printf("P2_DANGOMUSHI_DAMAGE_REJECTED generator=%u stickable=0 invulnerable=1 "
+                    "state=%s\n", generator, stateName(s.state));
+        std::fflush(stdout);
+    }
+    return true;
+}
+
 void pc_p2_dangomushi_setup() {
     pc_p2_dangomushi_reset();
+    gRainBinding.reset(mapMgr);
     if (!tekiMgr) return;
 
     std::ifstream bank("p2-snagret-bank.txt");
@@ -575,8 +936,9 @@ void pc_p2_dangomushi_update(BTeki* actor) {
     case DANGO_TURN: {
         stop(actor);
         // Lane-25 hazard policy: the source stickable window and the Rock/Egg
-        // rain decisions. The P1 host has no EB_Invulnerable flag, so the window
-        // is observed/decided here and applied by a future host seam.
+        // rain decisions. The window is applied through the shared
+        // tekiinteraction damage gate (pc_p2_dangomushi_invulnerable): attack/
+        // bomb/press damage is admitted only while stickable.
         const float share = GameStat::allPikis > 0
             ? float(GameStat::formationPikis) / float(GameStat::allPikis) : 0.0f;
         P2DangoMushiHazardInput hz;
@@ -586,12 +948,33 @@ void pc_p2_dangomushi_update(BTeki* actor) {
         hz.eggRoll = gsys->getRand(1.0f);
         P2DangoMushiHazardOutput hzo;
         s.hazard.update(hz, hzo);
+        // Apply the window: damage is only admitted while stickable.
+        if (hzo.stickable && !s.stickable) {
+            s.attackRejectedLogged = false;
+        }
+        s.stickable = hzo.stickable;
         if (hzo.rocksToSpawn > 0) {
             s.hazardRocks += hzo.rocksToSpawn;
             std::printf("P2_DANGOMUSHI_HAZARD generator=%u rocks=%d lifetime=%.1f egg=%d\n",
                         generator, hzo.rocksToSpawn, hzo.rockLifetime,
                         int(hzo.eggRequested));
             std::fflush(stdout);
+            // Realize the decision as real falling Rocks around the active
+            // captain (the source rain centre). No-op when the slot pool is full.
+            Vector3f rainCentre = pos;
+            if (naviMgr) {
+                Navi* active = naviMgr->getNavi();
+                if (active && active->isAlive()) rainCentre = active->getPosition();
+            }
+            spawnRainRocks(s, actor, rainCentre, s.heading, hzo.rocksToSpawn,
+                           hzo.rockLifetime, generator);
+        }
+        if (hzo.eggRequested) {
+            // One real Egg at the Crawbster's home; its break births real items.
+            // Source probability is the captain's formation share of all Pikmin
+            // (DangoMushi.cpp:732-748), so with a squad attacking out of formation
+            // (share ~0) it is rare in the attack fixture; run 9093da5e observed one birth.
+            spawnRainEgg(s, s.home, generator);
         }
         if (hzo.stickable != s.hazardWindowLogged) {
             s.hazardWindowLogged = hzo.stickable;
@@ -606,6 +989,7 @@ void pc_p2_dangomushi_update(BTeki* actor) {
             exitInput.turnExited = true;
             P2DangoMushiHazardOutput exitOutput;
             s.hazard.update(exitInput, exitOutput);
+            s.stickable = exitOutput.stickable; // false: body is invulnerable again
             setState(actor, s, DANGO_RECOVER, "recover");
         }
         break;
@@ -646,4 +1030,6 @@ void pc_p2_dangomushi_update(BTeki* actor) {
                     generator, stateName(s.state), s.clip.c_str(), s.phase, pos.x, pos.z);
         std::fflush(stdout);
     }
+    // Step any live Rock/Egg children the hazard decisions created.
+    tickRain(s, actor, pos, dt);
 }

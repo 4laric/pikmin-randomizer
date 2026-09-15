@@ -164,6 +164,13 @@ public:
     // once on Dead -> Killed; false in any other phase.
     bool finishDeath();
 
+    // Host lifetime cull (additive, for the lane-25 DangoMushi rock rain, source
+    // birthArg.mExistenceLength 30 s): transit an alive rock straight to Dead
+    // the same way the floor-contact path does, so a rock that never traces a
+    // floor still releases its pool slot. Returns true when the phase changed
+    // (alive -> Dead); no-op in any other phase.
+    bool forceDeath();
+
     P2RockHazardPhase phase() const { return mPhase; }
     bool isAlive() const
     {

@@ -85,6 +85,9 @@ struct PcConfig {
     int chainActions = 0;
     // Hold Extract to keep plucking (0=off/faithful, 1=on). Off by default.
     int holdToPluck = 0;
+    // Suppress informational hints and the end-of-day diary results screen
+    // (0=off/faithful, 1=on). On by default in the fork.
+    int disableTutorials = 1;
     // What the mouse wheel does: 0 = pick the Pikmin colour to throw,
     // 1 = zoom the camera. One setting rather than two toggles, so the two
     // uses cannot both be on or both be off.
@@ -128,6 +131,7 @@ struct PcConfig {
         cStickInvert = 0;
         chainActions = 0;
         holdToPluck = 0;
+        disableTutorials = 1;
         mouseWheelAction = 0;
         pikiLimit = 100;
         dayMinutes = 10;
@@ -754,6 +758,7 @@ void saveConfig() {
     out << "fpsMode = " << sConfig.fpsMode << "\n";
     out << "chainActions = " << sConfig.chainActions << "\n";
     out << "holdToPluck = " << sConfig.holdToPluck << "\n";
+    out << "disableTutorials = " << sConfig.disableTutorials << "\n";
     out << "mouseWheelAction = " << sConfig.mouseWheelAction << "\n";
     out << "pikiLimit = " << sConfig.pikiLimit << "\n";
     out << "dayMinutes = " << sConfig.dayMinutes << "\n";
@@ -854,6 +859,9 @@ void loadConfig() {
         }
         else if (key == "holdToPluck") {
             sConfig.holdToPluck = atoi(val.c_str()) ? 1 : 0;
+        }
+        else if (key == "disableTutorials") {
+            sConfig.disableTutorials = atoi(val.c_str()) ? 1 : 0;
         }
         else if (key == "mouseWheelAction") {
             sConfig.mouseWheelAction = atoi(val.c_str());
@@ -2739,6 +2747,10 @@ int pc_settings_get_chain_actions(void) {
 
 int pc_settings_get_hold_to_pluck(void) {
     return sConfig.holdToPluck;
+}
+
+int pc_settings_get_disable_tutorials(void) {
+    return sConfig.disableTutorials;
 }
 
 int pc_settings_get_mouse_wheel_action(void) {

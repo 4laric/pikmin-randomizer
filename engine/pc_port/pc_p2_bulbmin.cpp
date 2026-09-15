@@ -10,6 +10,7 @@
 #include "NaviMgr.h"
 #include "MapMgr.h"
 #include "teki.h"
+#include "Generator.h"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -152,16 +153,31 @@ void pc_p2_bulbmin_forget(Piki* piki) {
     idOfPiki.erase(found);
 }
 
-std::vector<std::uint32_t> pc_p2_bulbmin_transition(P2BulbminCaveTransition move) {
+std::vector<Piki*> pc_p2_bulbmin_transition_removes(P2BulbminCaveTransition move) {
+    std::vector<Piki*> removed;
+    if (!active) return removed;
+    const std::vector<std::uint32_t> ids = bridge.transitionRemoves(move);
+    removed.reserve(ids.size());
+    for (const std::uint32_t id : ids) {
+        auto found = pikiOfId.find(id);
+        if (found != pikiOfId.end()) removed.push_back(found->second);
+    }
+    return removed;
+}
+
+std::vector<Piki*> pc_p2_bulbmin_transition(P2BulbminCaveTransition move) {
+    std::vector<Piki*> removed;
+    if (!active) return removed;
     const P2BulbminTransitionOut result = bridge.transition(move);
+    removed.reserve(result.removed.size());
     for (const std::uint32_t id : result.removed) {
         auto found = pikiOfId.find(id);
-        if (found != pikiOfId.end()) {
-            idOfPiki.erase(found->second);
-            pikiOfId.erase(found);
-        }
+        if (found == pikiOfId.end()) continue;
+        removed.push_back(found->second);
+        idOfPiki.erase(found->second);
+        pikiOfId.erase(found);
     }
-    return result.removed;
+    return removed;
 }
 
 void pc_p2_bulbmin_bind_captain_table(P2CaptainOwnershipTable* ownership) {
@@ -170,6 +186,13 @@ void pc_p2_bulbmin_bind_captain_table(P2CaptainOwnershipTable* ownership) {
 
 int pc_p2_bulbmin_dependent_count() {
     return active ? bridge.dependentCount() : 0;
+}
+
+int pc_p2_bulbmin_phase(const Piki* piki) {
+    if (!piki) return -1;
+    const auto found = idOfPiki.find(const_cast<Piki*>(piki));
+    if (found == idOfPiki.end()) return -1;
+    return bridge.phaseOf(found->second);
 }
 
 namespace {
@@ -203,23 +226,57 @@ int pc_p2_bulbmin_attach_mother_ex(Creature* mother, const char* model, bool pro
     if (!active || !mother) return 0;
     const std::string label = (model && model[0] != '\0') ? model : kKochappyProxyModel;
     if (!bridge.registerMother(mother, label, proxy)) return 0;
-    return pc_p2_bulbmin_drive_birth(mother, mother->getPosition(),
-                                     mother->mFaceDirection,
-                                     bridge.settings().maxDependents);
+    // Only a real LeafChappy (proxy==false) births the source ten-body flock.
+    // The labeled Chappy-family proxy registers the stand-in for the leader/epoch
+    // bookkeeping WITHOUT birthing Piki: the LeafChappy birth (pikiMgr->birth +
+    // piki_kochappy model) is out of scope for the Chappy family, and birthing
+    // raw Piki in the preview crashes the engine update. Dependents are instead
+    // bound to the mother epoch by the fixture/caller via pc_p2_bulbmin_birth.
+    int born = 0;
+    if (!proxy)
+        born = pc_p2_bulbmin_drive_birth(mother, mother->getPosition(),
+                                         mother->mFaceDirection,
+                                         bridge.settings().maxDependents);
+    // Raw Generator::_70. Generator::read parses it through generator.cpp's
+    // file-local readID (__builtin_bswap32 over the already-swapping
+    // Stream::readInt), so it is the source file's four id bytes read as a
+    // little-endian u32 (e.g. the stager's big-endian 23 prints 0x17000000 =
+    // 385875968). No shared byte-swap accessor exists on the wave; every pc_p2
+    // consumer reads _70 raw, so keep the raw value and document it here.
+    const std::uint32_t generator = mother->mGenerator ? mother->mGenerator->_70 : 0;
+    std::printf("P2_BULBMIN_MOTHER_BIRTH model=%s generator=%u dependents=%d wild=%zu recruited=%zu\n",
+                label.c_str(), generator, born, bridge.wildCount(), bridge.recruitedCount());
+    std::fflush(stdout);
+    return born;
 }
 
 int pc_p2_bulbmin_attach_mother(Creature* mother) {
     return pc_p2_bulbmin_attach_mother_ex(mother, kKochappyProxyModel, true);
 }
 
+BTeki* pc_p2_bulbmin_mother_host() {
+    // Prefer the labeled Dwarf Red (Kochappy) registry when its bank installed one;
+    // otherwise fall back to the bare Chappy-family generator row every preview
+    // writes (scripts/preview_pikmin2_room.py sets TEKI_Chappy on the dwarf host).
+    if (BTeki* kochappy = pc_p2_kochappy_first_registered()) return kochappy;
+    if (!tekiMgr) return nullptr;
+    Iterator it(tekiMgr);
+    CI_LOOP(it) {
+        Teki* enemy = static_cast<Teki*>(*it);
+        if (enemy && enemy->mTekiType == TEKI_Chappy && enemy->mGenerator)
+            return static_cast<BTeki*>(enemy);
+    }
+    return nullptr;
+}
+
 int pc_p2_bulbmin_attach_dedicated_mother() {
     if (!active) return 0;
     const char* env = std::getenv("PIKMIN_P2_BULBMIN_MOTHER");
     if (!env || env[0] == '\0') return 0;
-    Creature* host = static_cast<Creature*>(pc_p2_kochappy_first_registered());
+    BTeki* host = pc_p2_bulbmin_mother_host();
     if (!host) return 0;
     // Same-host re-registration only refreshes the label; it never re-births.
-    return pc_p2_bulbmin_attach_mother_ex(host, env, true);
+    return pc_p2_bulbmin_attach_mother_ex(static_cast<Creature*>(host), env, true);
 }
 
 const char* pc_p2_bulbmin_mother_model() {
@@ -231,7 +288,7 @@ bool pc_p2_bulbmin_has_mother() {
     return active && bridge.hasMother();
 }
 
-int pc_p2_bulbmin_call_pikis(Navi* navi, float radius) {
+int pc_p2_bulbmin_call_pikis(Navi* navi, float radius, const char* via) {
     if (!active || !navi || !pikiMgr || radius <= 0.0f) return 0;
     const float radius2 = radius * radius;
     int recruited = 0;
@@ -245,6 +302,12 @@ int pc_p2_bulbmin_call_pikis(Navi* navi, float radius) {
         const Vector3f delta = p->mSRT.t - navi->mCursorWorldPos;
         if (delta.x * delta.x + delta.z * delta.z >= radius2) continue;
         if (pc_p2_bulbmin_whistle(p)) ++recruited;
+    }
+    if (recruited) {
+        std::printf("P2_BULBMIN_WHISTLE recruited=%d wild=%zu recruited_total=%zu via=%s\n",
+                    recruited, bridge.wildCount(), bridge.recruitedCount(),
+                    via ? via : "direct");
+        std::fflush(stdout);
     }
     return recruited;
 }

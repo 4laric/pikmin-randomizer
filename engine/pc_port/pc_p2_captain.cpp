@@ -248,4 +248,25 @@ int other_captain(int captain)
     return p2_other_captain(captain);
 }
 
+P2CaptainHandle captain_handle(int captain)
+{
+    if (!naviMgr || !P2CaptainOwnershipTable::isCaptain(captain)) return nullptr;
+    return static_cast<void*>(naviMgr->getNavi(captain));
+}
+
+int captive_count() { return live_adapter().captiveCount(); }
+
+bool navi_dead(int captain)
+{
+    if (!naviMgr || !P2CaptainOwnershipTable::isCaptain(captain)) return true;
+    Navi* navi = naviMgr->getNavi(captain);
+    return !navi || naviMgr->isNaviDead(navi);
+}
+
 } // namespace pc_p2_captain
+
+void pc_p2_captain_forget_piki(Piki* piki)
+{
+    if (!piki) return;
+    g_actorIds.erase(static_cast<void*>(piki));
+}

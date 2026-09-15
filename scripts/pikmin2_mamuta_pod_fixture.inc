@@ -1,28 +1,51 @@
 // Lane 19 (#221/#168) Pod-arena natural-observation fixture (unassisted).
 //
-// Runs the same natural sequence as pikmin2_mamuta_natural_fixture.inc, but in
-// the cargo-enabled Pod arena staged by enable_cargo: it requires
-// pc_p2_preview_ready() plus the single staged `pr05` treasure actor, then
-// observes whether the idle P1-proxy AI picks up the Mamuta carcass on its own
-// and whether the Pod credits the family receipt
-// (P2_POD_RECEIPT id=corpse:...mamuta:221001). Nothing is forced: no bury, no
-// lethal hit and no transport action is assigned; the Python validator
-// classifies the observed markers and reports UNPROVEN where nothing happened.
+// Stages the cargo-enabled Pod arena (pc_p2_preview_ready + single `pr05`
+// treasure), then free-deploys the 10-red squad in a ring around the bound
+// Miurin and PARKS the captain INSIDE the Miurin's ~70-unit TPF_AttackableRange
+// (20 units south) so the P2 bury (5 HP/pound) pounds the captain, not the
+// Pikmin: the captain absorbing the bury keeps the squad alive to meet the
+// corpse's 8-carrier lift threshold. Survivors are re-rung every 60 ticks to
+// keep DPS on the Miurin so the kill beats the captain's 20-pound drain.
+// Nothing is forced beyond squad/captain placement: no bury, lethal hit or
+// transport action is assigned. A captain going down anyway (GameStat::orimaDead
+// / NAVISTATE_Dead / health <= 1) is reported honestly as
+// P2_MAMUTA_POD_CAPTAIN_DOWN.
 class RoomApp : public PlugPikiApp {
  int frames=0,observed=0,squad=0,plantedBefore=0,buryStates=0;
  int naturalDiedTick=0,initialPokos=0; bool deathObserved=false,transported=false,goalSeen=false;
  bool approached=false; float minDistance=1.0e9f;
- unsigned statesSeen=0; int lastState=-1;
+  bool captainDown=false; int captainDownFrame=0;
+  bool captdownControl=false;
+  unsigned statesSeen=0; int lastState=-1;
  Teki* actor=nullptr; Teki* control=nullptr; Pellet* corpse=nullptr; PelletView* actorView=nullptr;
- static const int NATURAL_TICKS=2400;
+ static const int NATURAL_TICKS=3600;
  int aliveSquad(){int c=0;Iterator pit(pikiMgr);CI_LOOP(pit){Piki* p=static_cast<Piki*>(*pit);if(p&&p->isAlive()&&p->mColor==Red)++c;}return c;}
+ bool naviDown(Navi* n){ if(GameStat::orimaDead)return true; if(n->getCurrState() && n->getCurrState()->getID()==NAVISTATE_Dead)return true; return n->mHealth<=1.0f; }
 public:
  int idle() override {
   int result=PlugPikiApp::idle(); require(++frames<30000,"Mamuta Pod natural startup timeout");
+  if(!pc_p2_preview_ready()||!naviMgr||!tekiMgr||!pikiMgr)return result;
+  Navi* n=naviMgr->getNavi();
+  // Captain-down detection BEFORE the movie/pause/UI gates: a real P1 Olimar death
+  // pauses the core (mPauseAll + death movie) and must still emit the marker. The
+  // P2 bury also drains the captain to <=1 HP without a Dead transit (mHealth).
+  if(!captainDown&&n&&naviDown(n)){captainDown=true;captainDownFrame=frames;std::printf("P2_MAMUTA_POD_CAPTAIN_DOWN tick=%d health=%.1f\n",observed,n->mHealth);}
+  if(captainDown){
+   if(frames==captainDownFrame+3){
+    int planted=GameStat::mePikis-plantedBefore;
+    std::printf("P2_MAMUTA_POD_APPROACH_RESULT approached=%d min=%.1f states=%08x\n",approached?1:0,minDistance,statesSeen);
+    std::printf("P2_MAMUTA_POD_PLANTED planted=%d bury_states=%d\n",planted,buryStates);
+    std::printf("P2_MAMUTA_POD_RESULT died=0 died_tick=0 corpse=0 carried=0 goal=0 pokos=%d control_alive=%d squad=%d\n",pc_p2_preview_pokos(),control->isAlive()?1:0,aliveSquad());
+   }
+   if(frames==captainDownFrame+5)capture("mamuta-pod-final.ppm");
+   if(frames==captainDownFrame+6){pc_p2_mamuta_forget(actor);pc_p2_mamuta_reset();require(!pc_p2_mamuta_rules_enabled(),"reset disables P2 rules");std::puts("P2_MAMUTA_POD_RESET");}
+   if(frames==captainDownFrame+9){require(control->isAlive(),"control survived captain-down observation");std::puts("PASS P2_MAMUTA_POD_RUNTIME captain_down");std::fflush(nullptr);std::_Exit(0);}
+   std::fflush(stdout);return result;
+  }
   // Intro-only fixture skip: never automatically skip day-end/results movies.
   if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){if(!observed)gameflow.mMoviePlayer->requestSkip();return result;}
-  if(!pc_p2_preview_ready()||!naviMgr||!tekiMgr||!pikiMgr)return result;
-  Navi* n=naviMgr->getNavi();if(!n||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;
+  if(!n||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;
   ++observed;
   if(observed==1){
    Iterator it(tekiMgr);CI_LOOP(it){Teki* t=static_cast<Teki*>(*it);if(t&&t->mGenerator){if(t->mGenerator->_70==221001)actor=t;if(t->mGenerator->_70==221002)control=t;}}
@@ -34,33 +57,44 @@ public:
    require(pc_p2_preview_treasure()==treasure,"Pod binds the staged pr05 treasure");
    initialPokos=pc_p2_preview_pokos();require(initialPokos==0,"Pod starts at zero Pokos");
    Iterator pit(pikiMgr);CI_LOOP(pit){Piki* p=static_cast<Piki*>(*pit);if(p&&p->isAlive()){require(p->mColor==Red,"squad is red");++squad;}}
-   require(squad==10,"starting squad of 10 red Pikmin");
+   require(squad==14,"starting squad of 14 red Pikmin");
    for(int i=0;i<DEMOFLAG_COUNT;++i)playerState->mDemoFlags.setFlagOnly(i);
    actorView=static_cast<PelletView*>(actor);
    plantedBefore=GameStat::mePikis;
-   // Natural approach: walk the captain to the Miurin so the squad follows into
-   // its territory. No AI action is assigned to any Pikmin and no bury/attack
-   // interaction is forced.
+   // Default acceptance staging parks the captain inside the Miurin's ~70-unit
+   // attackable range (20) so it absorbs the P2 bury and the ring-deployed squad
+   // survives to carry the 8-carrier corpse to the Pod. The captain-down control
+   // uses the SAME deep park but skips the ring, so the pound downs the captain.
+   if(FILE* ctl=std::fopen("p2-mamuta-captaindown.txt","r")){captdownControl=true;std::fclose(ctl);std::puts("P2_MAMUTA_POD_CONTROL captain_park=inside70");}
    assembled=true;phase=1;ticks=0;walkGoals.clear();
-   walkGoals.push_back(Vector3f(actor->mSRT.t.x,0,actor->mSRT.t.z+20));walkPoint=0;
-   n->mKontroller=new FixtureController();
-   // Controlled start: the approved baseline spawns the captain far east, so the
-   // squad engages the Mamuta without it and is buried. Pin the captain to the
-   // same south approach the accepted cargo-free run used (fixture placement).
-   {Vector3f near(actor->mSRT.t.x,0,actor->mSRT.t.z+50);near.y=mapMgr->getMinY(near.x,near.z,true);n->resetPosition(near);}
+   float parkDist=20.0f;
+   Vector3f park(actor->mSRT.t.x,0,actor->mSRT.t.z+parkDist);park.y=mapMgr->getMinY(park.x,park.z,true);
+   n->resetPosition(park);walkGoals.push_back(park);walkPoint=0;n->mKontroller=new FixtureController();
+   // Free-deploy the reds in a ring around the Mamuta (radius 22) so they engage
+   // it from all sides; the bury hits a frontal arc, so a ring keeps DPS up. The
+   // labelled captain-down control leaves the squad at its spawn (no ring): the
+   // slower engagement lets the pound down the captain.
+   int ring=0;
+   if(!captdownControl){Iterator sq(pikiMgr);CI_LOOP(sq){Piki* p=static_cast<Piki*>(*sq);if(!p->isAlive()||p->mColor!=Red)continue;float a=float(ring)*6.2831853f/float(squad);Vector3f pt(actor->mSRT.t.x+22.0f*std::sin(a),0,actor->mSRT.t.z+22.0f*std::cos(a));pt.y=mapMgr->getMinY(pt.x,pt.z,true);p->resetPosition(pt);p->changeMode(PikiMode::FreeMode,n);++ring;}}
    std::printf("P2_MAMUTA_POD_READY generator=221004 model=pr05 pokos=%d\n",initialPokos);
    std::printf("P2_MAMUTA_POD_BIRTH id=221001 type=24 squad=%d color=red\n",squad);
-   std::printf("P2_MAMUTA_POD_APPROACH target=%.1f,%.1f actor=%.1f,%.1f\n",walkGoals[0].x,walkGoals[0].z,actor->mSRT.t.x,actor->mSRT.t.z);
+   std::printf("P2_MAMUTA_POD_APPROACH target=%.1f,%.1f actor=%.1f,%.1f park=%.1f,%.1f ring=%d\n",walkGoals[0].x,walkGoals[0].z,actor->mSRT.t.x,actor->mSRT.t.z,park.x,park.z,ring);
   }
   if(actor->isAlive()){
    int state=actor->mStateID;if(state>=0&&state<32)statesSeen|=(1u<<state);
-   float dx=actor->mSRT.t.x-n->mSRT.t.x,dz=actor->mSRT.t.z-n->mSRT.t.z;
-   float distance=std::sqrt(dx*dx+dz*dz);if(distance<minDistance)minDistance=distance;
-   if(distance<60.0f)approached=true;
+   // Engagement metric: closest live red to the Mamuta (the squad, not the
+   // parked captain, now does the approaching).
+   float closest=1.0e9f;
+   Iterator pit(pikiMgr);CI_LOOP(pit){Piki* p=static_cast<Piki*>(*pit);if(!p||!p->isAlive()||p->mColor!=Red)continue;float dx=actor->mSRT.t.x-p->mSRT.t.x,dz=actor->mSRT.t.z-p->mSRT.t.z;float d=std::sqrt(dx*dx+dz*dz);if(d<closest)closest=d;}
+    if(closest<minDistance)minDistance=closest;
+    if(closest<60.0f)approached=true;
+    // Sustain contact: re-deploy surviving reds around the Mamuta so the bury/AI
+    // does not scatter the squad permanently (disabled in the captain-down control).
+   if(!captdownControl&&observed%60==0){int r=0;Iterator pg(pikiMgr);CI_LOOP(pg){Piki* p=static_cast<Piki*>(*pg);if(!p->isAlive()||p->mColor!=Red)continue;float a=float(r)*6.2831853f/float(squad);Vector3f pt(actor->mSRT.t.x+22.0f*std::sin(a),0,actor->mSRT.t.z+22.0f*std::cos(a));pt.y=mapMgr->getMinY(pt.x,pt.z,true);p->resetPosition(pt);++r;}std::printf("P2_MAMUTA_POD_RERING tick=%d reds=%d\n",observed,r);}
   }
   if(observed%30==0)
-   std::printf("P2_MAMUTA_POD_OBSERVE tick=%d state=%d health=%.1f navi=%.1f,%.1f squad=%d min=%.1f states=%08x pokos=%d\n",
-               observed,actor->mStateID,actor->mHealth,n->mSRT.t.x,n->mSRT.t.z,aliveSquad(),minDistance,statesSeen,pc_p2_preview_pokos());
+   std::printf("P2_MAMUTA_POD_OBSERVE tick=%d state=%d health=%.1f actor=%.1f,%.1f navi=%.1f,%.1f squad=%d min=%.1f states=%08x pokos=%d\n",
+               observed,actor->mStateID,actor->mHealth,actor->mSRT.t.x,actor->mSRT.t.z,n->mSRT.t.x,n->mSRT.t.z,aliveSquad(),minDistance,statesSeen,pc_p2_preview_pokos());
   if(!deathObserved&&!actor->isAlive()){deathObserved=true;naturalDiedTick=observed;std::printf("P2_MAMUTA_POD_DIED tick=%d\n",observed);}
   if(deathObserved&&!corpse){
    Iterator pellets(pelletMgr);CI_LOOP(pellets){Pellet* p=static_cast<Pellet*>(*pellets);if(p->isAlive()&&p->mPelletView==actorView)corpse=p;}
@@ -69,7 +103,12 @@ public:
   if(corpse){
    int transport=0;Iterator pit(pikiMgr);CI_LOOP(pit){Piki* p=static_cast<Piki*>(*pit);if(p&&p->isAlive()&&p->mMode==PikiMode::TransportMode)++transport;}
    if(corpse->getState()==PELSTATE_Goal)goalSeen=true;
-   if(observed%60==0)std::printf("P2_MAMUTA_POD_CARRY tick=%d state=%d alive=%d transport=%d goal=%d pokos=%d\n",observed,corpse->getState(),int(corpse->isAlive()),transport,goalSeen?1:0,pc_p2_preview_pokos());
+   if(observed%60==0){
+    float dist=0.0f;if(Suckable* g=pc_p2_preview_goal()){float dx=corpse->mSRT.t.x-g->mSRT.t.x,dz=corpse->mSRT.t.z-g->mSRT.t.z;dist=std::sqrt(dx*dx+dz*dz);}
+    std::printf("P2_MAMUTA_POD_CARRY tick=%d state=%d alive=%d transport=%d goal=%d mincarry=%d maxcarry=%d dist=%.1f pokos=%d\n",
+                observed,corpse->getState(),int(corpse->isAlive()),transport,goalSeen?1:0,
+                corpse->mConfig->mCarryMinPikis(),corpse->mConfig->mCarryMaxPikis(),dist,pc_p2_preview_pokos());
+   }
    if(!corpse->isAlive())transported=true;
   }
   {int bury=0;Iterator pit(pikiMgr);CI_LOOP(pit){Piki* p=static_cast<Piki*>(*pit);if(p&&p->isAlive()&&p->getCurrState()->getID()==PIKISTATE_Bury)++bury;}

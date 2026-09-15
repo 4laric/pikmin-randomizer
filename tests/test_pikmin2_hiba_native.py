@@ -51,6 +51,7 @@ class ProtocolTests(unittest.TestCase):
         reject([good, dict(good)])
         reject([dict(good, hazard_id=22, separation=-1)])
         reject([dict(good, hazard_id=21, link=4)])
+        reject([dict(good, warning_override=1)])           # warning on Hiba
 
 
 class ReferenceTests(unittest.TestCase):
@@ -91,20 +92,29 @@ class SyntheticLogTests(unittest.TestCase):
         'P2_HIBA_NODES generator=22 hazard=ElecHiba center=34.000 negative=14.000 positive=54.000\n'
         'P2_HIBA_ACTIVATE generator=20 hazard=Hiba from=wait to=attack\n'
         'P2_HIBA_EMIT generator=20 hazard=Hiba stimulus=InteractFire\n'
-        'P2_HIBA_HIT generator=20 hazard=Hiba stimulus=InteractFire colour=Blue immune=0 applied=1 damage=1.0\n'
-        'P2_HIBA_PASS generator=20 hazard=Hiba stimulus=InteractFire colour=Red immune=1 applied=0\n'
+        'P2_HIBA_FIRE_PASS generator=20 hazard=Hiba species=1 immune=1 applied=0\n'
+        'P2_HIBA_FIRE_HIT generator=20 hazard=Hiba species=0 state=7 applied=1 damage=1.0\n'
         'P2_HIBA_ACTIVATE generator=21 hazard=GasHiba from=wait to=attack\n'
         'P2_HIBA_EMIT generator=21 hazard=GasHiba stimulus=InteractGas\n'
-        'P2_HIBA_APPLY_BLOCKED generator=21 hazard=GasHiba stimulus=InteractGas colour=Blue immune=0 applied=0 reason=no_engine_interaction\n'
+        'P2_HIBA_GAS_PASS generator=21 hazard=GasHiba species=4 immune=1 applied=0\n'
+        'P2_HIBA_GAS_HIT generator=21 hazard=GasHiba species=1 state=36 applied=1\n'
         'P2_HIBA_ACTIVATE generator=22 hazard=ElecHiba from=sign to=attack\n'
         'P2_HIBA_EMIT generator=22 hazard=ElecHiba stimulus=InteractDenki\n'
-        'P2_HIBA_APPLY_BLOCKED generator=22 hazard=ElecHiba stimulus=InteractDenki colour=Red immune=0 applied=0 reason=no_engine_interaction\n'
+        'P2_HIBA_DENKI_PASS generator=22 hazard=ElecHiba species=2 immune=1 applied=0\n'
+        'P2_HIBA_DENKI_HIT generator=22 hazard=ElecHiba species=1 state=35 applied=1\n'
+        'P2_HIBA_GAS_LETHAL dead=1 species=1\n'
+        'P2_HIBA_DENKI_LETHAL dead=1 species=1\n'
+        'P2_HIBA_RECOLOUR white=1 yellow=1\n'
+        'P2_HIBA_REENTRY before=3 reset=0 rearmed=3 once=1\n'
         'P2_HIBA_CLEANUP kill_all=1\n'
         'P2_HIBA_DEAD generator=20 hazard=Hiba\n'
         'P2_HIBA_DEAD generator=21 hazard=GasHiba\n'
         'P2_HIBA_DEAD generator=22 hazard=ElecHiba\n'
         'Experimental preview window set to 960x540 windowed and centered\n'
         'PASS P2_HIBA_RUNTIME gates_ready\n'
+        'P2_HIBA_READY generator=20 hazard=Hiba xyz=34.000,30.000,1896.000 wait=0.40 active=2.50 separation=0.00 link=none policy=hiba_source_1\n'
+        'P2_HIBA_READY generator=21 hazard=GasHiba xyz=34.000,30.000,1904.000 wait=0.00 active=3.00 separation=0.00 link=none policy=hiba_source_1\n'
+        'P2_HIBA_READY generator=22 hazard=ElecHiba xyz=34.000,30.000,1888.000 wait=0.40 active=2.50 separation=40.00 link=none policy=hiba_source_1\n'
     )
 
     def test_good_log_passes(self):
@@ -112,17 +122,100 @@ class SyntheticLogTests(unittest.TestCase):
         self.assertTrue(evidence['passed'], evidence['failed'])
         self.assertEqual(evidence['failed'], [])
 
-    def test_missing_vulnerable_hit_fails(self):
-        text = self.GOOD.replace('P2_HIBA_HIT generator=20 hazard=Hiba stimulus=InteractFire colour=Blue immune=0 applied=1 damage=1.0\n', '')
+    def test_missing_fire_hit_fails(self):
+        text = self.GOOD.replace('P2_HIBA_FIRE_HIT generator=20 hazard=Hiba species=0 state=7 applied=1 damage=1.0\n', '')
         evidence = hr.validate(text, 0)
         self.assertFalse(evidence['passed'])
-        self.assertIn('vulnerable_hit', evidence['failed'])
+        self.assertIn('fire_hit', evidence['failed'])
 
-    def test_missing_immune_pass_fails(self):
-        text = self.GOOD.replace('P2_HIBA_PASS generator=20 hazard=Hiba stimulus=InteractFire colour=Red immune=1 applied=0\n', '')
+    def test_missing_fire_pass_fails(self):
+        text = self.GOOD.replace('P2_HIBA_FIRE_PASS generator=20 hazard=Hiba species=1 immune=1 applied=0\n', '')
         evidence = hr.validate(text, 0)
         self.assertFalse(evidence['passed'])
-        self.assertIn('immune_pass', evidence['failed'])
+        self.assertIn('fire_pass', evidence['failed'])
+
+    def test_wrong_reentry_fails(self):
+        text = self.GOOD.replace('P2_HIBA_REENTRY before=3 reset=0 rearmed=3 once=1\n',
+                                 'P2_HIBA_REENTRY before=3 reset=0 rearmed=6 once=0\n')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('reentry', evidence['failed'])
+
+    def test_missing_reentry_fails(self):
+        text = self.GOOD.replace('P2_HIBA_REENTRY before=3 reset=0 rearmed=3 once=1\n', '')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('reentry', evidence['failed'])
+
+    def test_missing_gas_hit_fails(self):
+        text = self.GOOD.replace('P2_HIBA_GAS_HIT generator=21 hazard=GasHiba species=1 state=36 applied=1\n', '')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('gas_hit', evidence['failed'])
+
+    def test_missing_gas_pass_fails(self):
+        text = self.GOOD.replace('P2_HIBA_GAS_PASS generator=21 hazard=GasHiba species=4 immune=1 applied=0\n', '')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('gas_pass', evidence['failed'])
+
+    def test_missing_denki_hit_fails(self):
+        text = self.GOOD.replace('P2_HIBA_DENKI_HIT generator=22 hazard=ElecHiba species=1 state=35 applied=1\n', '')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('denki_hit', evidence['failed'])
+
+    def test_missing_denki_pass_fails(self):
+        text = self.GOOD.replace('P2_HIBA_DENKI_PASS generator=22 hazard=ElecHiba species=2 immune=1 applied=0\n', '')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('denki_pass', evidence['failed'])
+
+    def test_gas_blocked_reintroduced_fails(self):
+        text = self.GOOD.replace('P2_HIBA_GAS_HIT generator=21 hazard=GasHiba species=1 state=36 applied=1\n',
+                                 'P2_HIBA_APPLY_BLOCKED generator=21 hazard=GasHiba stimulus=InteractGas '
+                                 'colour=Blue immune=0 applied=0 reason=no_engine_interaction\n'
+                                 'P2_HIBA_GAS_HIT generator=21 hazard=GasHiba species=1 state=36 applied=1\n')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('no_gas_blocked', evidence['failed'])
+        self.assertIn('no_apply_blocked', evidence['failed'])
+
+    def test_fire_death_without_gas_lethal_fails(self):
+        text = self.GOOD.replace('P2_HIBA_GAS_LETHAL dead=1 species=1\n', '')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('gas_lethal', evidence['failed'])
+
+    def test_bare_gas_lethal_fails(self):
+        text = self.GOOD.replace('P2_HIBA_GAS_LETHAL dead=1 species=1\n', 'P2_HIBA_GAS_LETHAL dead=1\n')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('gas_lethal', evidence['failed'])
+
+    def test_bare_denki_lethal_fails(self):
+        text = self.GOOD.replace('P2_HIBA_DENKI_LETHAL dead=1 species=1\n', 'P2_HIBA_DENKI_LETHAL dead=1\n')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('denki_lethal', evidence['failed'])
+
+    def test_gas_lethal_wrong_species_fails(self):
+        text = self.GOOD.replace('P2_HIBA_GAS_LETHAL dead=1 species=1\n', 'P2_HIBA_GAS_LETHAL dead=1 species=0\n')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('gas_lethal', evidence['failed'])
+
+    def test_denki_lethal_wrong_species_fails(self):
+        text = self.GOOD.replace('P2_HIBA_DENKI_LETHAL dead=1 species=1\n', 'P2_HIBA_DENKI_LETHAL dead=1 species=0\n')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('denki_lethal', evidence['failed'])
+
+    def test_missing_gas_hit_red_fails(self):
+        text = self.GOOD.replace('P2_HIBA_GAS_HIT generator=21 hazard=GasHiba species=1 state=36 applied=1\n', '')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('gas_hit_red', evidence['failed'])
 
     def test_missing_elec_activation_fails(self):
         text = self.GOOD.replace('P2_HIBA_ACTIVATE generator=22 hazard=ElecHiba from=sign to=attack\n', '')
@@ -142,13 +235,36 @@ class SyntheticLogTests(unittest.TestCase):
         self.assertFalse(hr.validate(self.GOOD, 1)['passed'])
 
 
+class GasReceiverNativeTests(unittest.TestCase):
+    GOOD = SyntheticLogTests.GOOD
+
+    def test_missing_gas_lethal_fails(self):
+        text = self.GOOD.replace('P2_HIBA_GAS_LETHAL dead=1 species=1\n', '')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('gas_lethal', evidence['failed'])
+
+    def test_missing_denki_lethal_fails(self):
+        text = self.GOOD.replace('P2_HIBA_DENKI_LETHAL dead=1 species=1\n', '')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('denki_lethal', evidence['failed'])
+
+    def test_missing_recolour_fails(self):
+        text = self.GOOD.replace('P2_HIBA_RECOLOUR white=1 yellow=1\n', '')
+        evidence = hr.validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('recolour', evidence['failed'])
+
+
 class NativePolicyTests(unittest.TestCase):
     def test_native_policy_executable(self):
         candidates = []
+        if os.environ.get('PIKMIN_NATIVE_ROOT'):
+            candidates.append(Path(os.environ['PIKMIN_NATIVE_ROOT']) / 'pc_port')
         if os.environ.get('P2_NATIVE_PC_PORT'):
             candidates.append(Path(os.environ['P2_NATIVE_PC_PORT']))
         candidates.append(ROOT / 'native' / 'pc_port')
-        candidates.append(ROOT / 'engine' / 'pc_port')
         include = next((c for c in candidates if (c / 'pc_p2_hiba_policy.h').is_file()), None)
         compiler = Path('C:/msys64/mingw64/bin/g++.exe')
         if include is None or not compiler.is_file():

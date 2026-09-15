@@ -1,6 +1,7 @@
 #include "pc_p2_frog.h"
 #include "pc_p2_kogane.h"
 #include "pc_p2_mamuta.h"
+#include "pc_p2_waterwraith_register.h"
 #include "pc_p2_tank.h"
 #include "pc_p2_hiba.h"
 #include "pc_p2_dweevil.h"
@@ -8,7 +9,10 @@
 #include "pc_p2_qurione.h"
 #include "pc_p2_shijimi.h"
 #include "pc_p2_kurage_teki.h"
+#include "pc_p2_sarai_manager.h"
+#include "pc_p2_groink_teki.h"
 #include "pc_p2_sheargrub.h"
+#include "pc_p2_king_teki.h"
 #include "pc_p2_kochappy.h"
 #include "pc_p2_dwarf_orange.h"
 #include "pc_p2_kochappy_fsm.h"
@@ -25,6 +29,7 @@
 #include "pc_p2_batch2.h"
 #include "pc_p2_sokkuri.h"
 #include "pc_p2_armor.h"
+#include "pc_p2_otakara.h"
 #include "pc_p2_elecbug.h"
 #include "pc_p2_tamago.h"
 #include "pc_p2_umimushi.h"
@@ -66,6 +71,7 @@
 #include "pc_p2_enemy.h"
 #include "pc_p2_cargo.h"
 #include "pc_p2_preview_policy.h"
+#include "pc_p2_placement_probe.h"
 #include <fstream>
 #include <filesystem>
 #include <vector>
@@ -257,6 +263,7 @@ void pc_p2_preview_setup() {
     pc_p2_batch2_setup();
     pc_p2_sokkuri_setup();
     pc_p2_armor_setup();
+    pc_p2_otakara_setup();
     pc_p2_elecbug_setup();
     pc_p2_tamago_setup();
     pc_p2_umimushi_setup();
@@ -278,20 +285,25 @@ void pc_p2_preview_setup() {
     pc_p2_purple_motion_setup();
     pc_p2_white_setup();
     pc_p2_bulbmin_setup();
-    // Lane-11 opt-in driver: use the existing Chappy-family registration as the
-    // Mother Bulbmin stand-in (no-op unless PIKMIN_P2_BULBMIN/p2-bulbmin.txt is
-    // set and a Kochappy actor is registered).
-    pc_p2_bulbmin_attach_mother(static_cast<Creature*>(pc_p2_kochappy_first_registered()));
-    // Lane-11 dedicated mother path: register the same proxy under an explicit
-    // label from PIKMIN_P2_BULBMIN_MOTHER (no-op unless the env value is set).
-    // Still a labeled Chappy-family proxy: no LeafChappy model exists.
-    pc_p2_bulbmin_attach_dedicated_mother();
     pc_p2_white_poison_setup();
     pc_p2_cave_setup();
+    // Lane-11 opt-in driver: resolve the Mother Bulbmin stand-in host (the
+    // labeled Dwarf Red registry, else the bare Chappy-family generator row) and
+    // birth the source flock behind it. Runs AFTER pc_p2_cave_setup so the wild
+    // births do not perturb the cave's restore spawn-count validation. No-op
+    // unless PIKMIN_P2_BULBMIN/p2-bulbmin.txt is set.
+    pc_p2_bulbmin_attach_mother(static_cast<Creature*>(pc_p2_bulbmin_mother_host()));
+    // Lane-11 dedicated mother path: register the same host under an explicit
+    // label from PIKMIN_P2_BULBMIN_MOTHER (no-op unless the env value is set).
+    pc_p2_bulbmin_attach_dedicated_mother();
     gsys->setHeap(previousHeap);
     const float points[][2]={{-85,0},{-175,-100},{185,-180},{-220,-180}};
     for (const auto& point : points)
         std::printf("[Pikipelago] P2_ROOM_GROUND x=%.1f z=%.1f y=%.3f\n",point[0],point[1],mapMgr->getMinY(point[0],point[1],true));
+    // Lane-04 (placement) native evidence probe: sample live terrain/water/route
+    // facts at each spawned actor's position. Read-only; additively after the
+    // legacy room ground probe.
+    pc_p2_placement_probe_run();
     setupComplete=true;
     if(cargoFree) std::printf("[Pikipelago] P2_ROOM_CARGO_FREE_READY cargo=0 repairs=%d\n",initialRepairs);
     else std::printf("[Pikipelago] P2_ROOM_READY treasure=%s carry=%d repairs=%d\n",podAnchor?treasureId.c_str():"bolt",previewTreasure->mConfig->mCarryMinPikis(),initialRepairs);
@@ -321,7 +333,7 @@ bool pc_p2_preview_deliver(Pellet* pellet) {
             std::printf("[Pikipelago] P2_FLORA_DELIVER onion_receipt=1\n");std::fflush(stdout);return true;
         }
         if(cargoFree){std::fprintf(stderr,"Cargo-free P2 Pod refuses cargo rewards and seed side effects\n");std::abort();}
-        std::string receipt;int value=0;Cargo* c=cargoFor(pellet);
+        std::string receipt;int value=0;Cargo* c=cargoFor(pellet);bool waterwraithCorpse=false;
         if(c){receipt="treasure:"+c->spec.instance;value=c->spec.value;}
         else if(pellet==previewTreasure){receipt="treasure:"+treasureId;value=treasureValue;}
         else if(unsigned generator=0;pc_p2_sheargrub_receipt(pellet->mPelletView,generator,value)) {
@@ -330,13 +342,33 @@ bool pc_p2_preview_deliver(Pellet* pellet) {
         else if(unsigned generator=0;pc_p2_mamuta_receipt(pellet->mPelletView,generator)) {
             receipt="corpse:"+pc_p2_cave_receipt_prefix()+"mamuta:"+std::to_string(generator);value=corpseValue;
         }
+        else if(unsigned generator=0;pc_p2_kurage_receipt(pellet->mPelletView,generator)) {
+            receipt="corpse:"+pc_p2_cave_receipt_prefix()+"kurage:"+std::to_string(generator);value=corpseValue;
+        }
+        else if(unsigned generator=0;pc_p2_sarai_receipt(pellet->mPelletView,generator)) {
+            receipt="corpse:"+pc_p2_cave_receipt_prefix()+"sarai:"+std::to_string(generator);value=corpseValue;
+        }
+        else if(unsigned generator=0;pc_p2_otakara_receipt(pellet->mPelletView,generator)) {
+            receipt="corpse:"+pc_p2_cave_receipt_prefix()+"otakara:"+std::to_string(generator);value=corpseValue;
+        }
+        else if(unsigned generator=0;pc_p2_waterwraith_receipt(pellet,generator)) {
+            receipt="corpse:"+pc_p2_cave_receipt_prefix()+"waterwraith:"+std::to_string(generator);value=corpseValue;
+            waterwraithCorpse=true;
+        }
+        else if(unsigned generator=0;pc_p2_king_teki_receipt(pellet->mPelletView,generator)) {
+            receipt="corpse:"+pc_p2_cave_receipt_prefix()+"king:"+std::to_string(generator);value=corpseValue;
+        }
+        // Lane 21 (#198): Groink carcass sidecar receipt (corpse:groink:<gen>).
+        else if(unsigned generator=0;pc_p2_groink_receipt(pellet->mPelletView,generator)) {
+            receipt="corpse:"+pc_p2_cave_receipt_prefix()+"groink:"+std::to_string(generator);value=corpseValue;
+        }
         else {
             auto found=corpses.find(pellet->mPelletView);
             if(found==corpses.end()) {std::fprintf(stderr,"Unregistered P2 pod cargo id=%08x view=%p pellet=%p treasure=%p; refusing seed side effects\n",pellet->mConfig->mModelId.mId,(void*)pellet->mPelletView,(void*)pellet,(void*)previewTreasure);std::abort();}
             receipt="corpse:"+pc_p2_cave_receipt_prefix()+found->second.substr(7);value=corpseValue;
         }
         bool added=economy.credit(receipt,value);
-        podTitle((c?c->spec.instance:pellet==previewTreasure?treasureId:(pc_p2_sheargrub_name(pellet->mPelletView)?pc_p2_sheargrub_name(pellet->mPelletView):pc_p2_enemy_name(pellet->mPelletView)?pc_p2_enemy_name(pellet->mPelletView):"Dwarf Bulborb"))+" +"+std::to_string(added?value:0));
+        podTitle(std::string(waterwraithCorpse ? "Waterwraith" : (c?c->spec.instance.c_str():pellet==previewTreasure?treasureId.c_str():(pc_p2_king_teki_name(pellet->mPelletView)?pc_p2_king_teki_name(pellet->mPelletView):pc_p2_sheargrub_name(pellet->mPelletView)?pc_p2_sheargrub_name(pellet->mPelletView):pc_p2_enemy_name(pellet->mPelletView)?pc_p2_enemy_name(pellet->mPelletView):"Dwarf Bulborb"))) + " +" + std::to_string(added?value:0));
         pc_p2_purple_status();
         std::printf("[Pikipelago] P2_POD_RECEIPT id=%s value=%d new=%d pokos=%d seeds=0\n",receipt.c_str(),value,int(added),economy.total());
         if(pellet==previewTreasure) {

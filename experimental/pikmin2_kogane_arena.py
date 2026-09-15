@@ -30,7 +30,14 @@ from experimental.pikmin2_kogane_install import install
 
 IDS = (219001, 219002, 219003, 219004)
 SPECIES = ('kogane', 'wealthy', 'fart', 'P1 Chappy')
-POSITIONS = ((-150., 30., 1850.), (-50., 30., 1850.), (50., 30., 1850.), (150., 30., 1550.))
+# Slice 2 collection: Kogane (219001) is placed within carry range of the audited
+# red Onion goal (practice/default.gen record "red goal" at about (-498, 0, 1454))
+# so its drops (1 pellet + 5 nectar) can be carried/drunk through the ordinary P1
+# Onion endpoint. This is a placement change only; no enemy behavior is altered and
+# the other three actors are moved into the (validated) north-east corner, away from
+# the starting squad and the collection area, so their wander never pollutes the
+# collection census.
+POSITIONS = ((-440., 30., 1500.), (150., 30., 1850.), (100., 30., 1650.), (50., 30., 1450.))
 # Source yaw: beetles burrow-emerge and wander with random headings
 # (Kogane.cpp setTargetPosition); no authored above-ground placement yaw was
 # audited. Kept as unapplied metadata, never in offsets.

@@ -17,6 +17,7 @@
 #include "Piki.h"
 #include "PikiMgr.h"
 #include "PikiState.h"
+#include "PikiAI.h"
 #include "NaviMgr.h"
 #include "Navi.h"
 #include "Interactions.h"
@@ -65,6 +66,7 @@ struct King {
 	int stuckCount = 0;
 	int blows = 0;
 	int flickTier = 0;
+	int damageClock = 0; // continuous stuck-Pikmin latch damage accumulator
 	// mouth (9 slots kamu1..9)
 	Piki* mouth[p2king::MouthSlots] = {};
 	int mouthPikmin = 0;
@@ -209,6 +211,13 @@ void receiveScan(King& k) {
 		const Vector3f& pos = p->getPosition();
 		const float dx = pos.x - k.x, dy = pos.y - k.y, dz = pos.z - k.z;
 		if (dx * dx + dy * dy + dz * dz > root * root) continue;
+		// Source-faithful latch gate (BTeki::spawnPellets mk.attack predicate, the
+		// Piki actOnSituaton PIKISITCH_Unk1 -> AttackMode transition): a Pikmin
+		// only sticks when it is actually attached and running the attack action
+		// against this creature, not merely passing through the root sphere.
+		if (p->mMode != PikiMode::AttackMode || !p->mActiveAction
+		    || p->mActiveAction->mCurrActionIdx != PikiAction::Attack)
+			continue;
 		bool known = false;
 		for (int i = 0; i < k.stuckCount; ++i)
 			if (k.stuck[i] == p) known = true;
@@ -226,6 +235,19 @@ void receiveScan(King& k) {
 			k.stuck[i] = k.stuck[--k.stuckCount];
 			--i;
 		}
+	}
+	// Continuous latch damage: while any Pikmin remain stuck to a part they keep
+	// delivering their per-blow damage each blow interval, driving the natural
+	// lethal path to a Dead state without injected health. The entry blow and
+	// the stuck/blow counters above are unchanged, so flick shake-off timing is
+	// untouched.
+	if (k.stuckCount > 0 && ++k.damageClock >= p2king::BlowIntervalTicks) {
+		k.damageClock = 0;
+		const float dmg = float(k.stuckCount) * p2king::DamagePerBlow;
+		k.health -= dmg;
+		if (k.health < 0.0f) k.health = 0.0f;
+		std::printf("P2_KING_COMBAT_DAMAGE id=%u stuck=%d damage=%.1f health=%.1f interval=%d\n", k.cfg.id,
+		            k.stuckCount, dmg, k.health, p2king::BlowIntervalTicks);
 	}
 }
 
@@ -261,6 +283,7 @@ void flickStuck(King& k) {
 	std::printf("P2_KING_FLICK id=%u shaken=%d shake_range=60\n", k.cfg.id, k.stuckCount);
 	k.stuckCount = 0;
 	k.blows = 0;
+	k.damageClock = 0; // review: a Flick must not be followed by an interval blow one tick later
 	if (k.flickTier < 3) ++k.flickTier;
 }
 

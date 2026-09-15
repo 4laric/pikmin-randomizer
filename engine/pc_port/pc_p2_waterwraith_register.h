@@ -51,6 +51,32 @@ void pc_p2_waterwraith_register_reset();
 
 bool pc_p2_waterwraith_register_ready();
 
+// True once the wraith body reached the source Dead end key (KEYEVENT_END).
+// The seam stops driving the actor and stops drawing it after this point.
+bool pc_p2_waterwraith_register_finished();
+
+// True once the dead-wraith treasure stand-in was dropped into the world
+// (source Dead KEYEVENT_5 -> a P1 number-pellet stand-in, see register.cpp).
+bool pc_p2_waterwraith_register_corpse_spawned();
+
+// --- Corpse receipt / lane-07 lifecycle seam ---
+// The spawned corpse pellet is registered so `pc_p2_preview_deliver` (lane 06's
+// experimental Pod receipt path) can recognize it as a Waterwraith corpse and
+// credit the durable P2Economy ledger. The map is keyed on `Pellet*` (a
+// newNumberPellet stand-in has no PelletView); `pc_p2_waterwraith_receipt` is a
+// one-shot lookup + consume so a reused MonoObjectMgr slot can never be
+// re-credited, and `register_tick` sweeps dead pellets for liveness.
+class Pellet;
+bool pc_p2_waterwraith_receipt(Pellet* pellet, unsigned& generator);
+// Lane-07 boundary: clear the corpse map and delivery counter.
+void pc_p2_waterwraith_reset();
+unsigned pc_p2_waterwraith_delivery_count();
+// Number of currently registered (still on-field, alive) corpse pellets.
+unsigned pc_p2_waterwraith_corpse_count();
+// First registered (alive) corpse pellet, or null. Lets the runtime fixture
+// observe the on-field stand-in and drive a labelled transport assist.
+Pellet* pc_p2_waterwraith_corpse_pellet();
+
 // One engine frame: source-clocks the actor at 30 Hz (at most 4 steps per
 // frame), feeds the fixed fall -> recover -> walk host script and advances the
 // visual bank. Safe before setup (no-op).

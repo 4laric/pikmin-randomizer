@@ -1,5 +1,6 @@
 // P2 small Breadbug appearance on an opted-in P1 Collec. P1 gameplay remains authoritative.
 #include "pc_p2_breadbug_actor.h"
+#include "pc_p2_breadbug_contest_host.h"
 #include "pc_p2_animation.h"
 #include "pc_p2_breadbug_cargo_phase.h"
 #include "pc_bbft.h"
@@ -29,10 +30,19 @@ namespace {
 // 2.0, while the P2 PanModokiBase contest strength for the same pellet is
 // (min+max)/2. The two scales are reported separately, never conflated.
 const float PROXY_CARRY_POWER=2.0f;
+// Small Breadbug (PanModoki, source 38) contest-consumer parameters. The P1
+// TEKI_Collec host drags at carry power 2, so the squad needs two Pikmin to
+// out-pull it (maxThreshold=2); identity uses lane-06's onion:p2:38:<stage>.
+const unsigned CONTEST_SOURCE_ID=38;
+const int CONTEST_STAGE=0;      // preview arena placeholder; campaign stage is lane-06/integration
+const int CONTEST_MIN_THRESHOLD=1,CONTEST_MAX_THRESHOLD=2;
+const float CONTEST_FREEZE_SECONDS=0.5f;
+const int CONTEST_REQUIRED_CARRIERS=1,CONTEST_MAX_CARRIERS=0;
 struct Motion {int duration=0;std::vector<int> frames;std::vector<Shape*> shapes;};
-struct BreadbugProxyActor {unsigned id;unsigned started;int lastMotion=-1;bool logged=false;int loggedCargo=-99;bool lastHeld=false;int lastCarriers=-1;};
+struct BreadbugProxyActor {unsigned id;unsigned started;int lastMotion=-1;bool logged=false;int loggedCargo=-99;bool lastHeld=false;int lastCarriers=-1;int contestHandle=0;int lastOutcome=-1;bool ownerDiedLogged=false;};
 std::map<BTeki*,BreadbugProxyActor> actors;Motion motions[2];
-Motion cargoMotions[2];bool cargoEnabled=false;
+Motion cargoMotions[2];bool cargoEnabled=false;int probeCarriers=-1;
+const char* reasonName(int r){switch(r){case 1:return "interrupted";case 2:return "owner_died";case 3:return "carrier_lost";case 4:return "timeout";case 5:return "revisit";default:return "none";}}
 void fail(){std::fputs("P2_BREADBUG_ACTOR invalid P1 proxy profile\n",stderr);std::abort();}
 int carriers(Pellet* pellet){
  Stickers stuckList(pellet);Iterator it(&stuckList);int count=0;CI_LOOP(it){if((*it)->isPiki())++count;}return count;
@@ -44,8 +54,32 @@ Shape* load(const std::string& name){
  for(int i=0;i<shape->mTexAttrCount;++i)if(shape->mTexAttrList[i].mTexture)shape->mTexAttrList[i].mTexture->attach();return shape;
 }
 }
-void pc_p2_breadbug_actor_reset(){actors.clear();for(auto& motion:motions)motion=Motion{};for(auto& motion:cargoMotions)motion=Motion{};cargoEnabled=false;}
-void pc_p2_breadbug_actor_forget(BTeki* actor){actors.erase(actor);}
+void pc_p2_breadbug_actor_reset(){actors.clear();for(auto& motion:motions)motion=Motion{};for(auto& motion:cargoMotions)motion=Motion{};cargoEnabled=false;probeCarriers=-1;pc_p2_breadbug_contest_reset_all();}
+void pc_p2_breadbug_actor_forget(BTeki* actor){
+ auto found=actors.find(actor);if(found==actors.end())return;
+ auto& state=found->second;
+ if(state.contestHandle){if(!state.ownerDiedLogged)pc_p2_breadbug_contest_owner_died(state.contestHandle);pc_p2_breadbug_contest_destroy(state.contestHandle);state.contestHandle=0;} // no handle leak on despawn
+ actors.erase(found);
+}
+void pc_p2_breadbug_actor_probe_carriers(int count){
+ probeCarriers=count;
+ if(count>=0){
+  // The labelled injection is confessed by the module itself, not the fixture, so
+  // the validator can trust the confession without trusting the driver.
+  for(auto& entry:actors){
+   std::printf("P2_BREADBUG_CONTEST_PROBE generator=%u carriers=%d injected=1\n",entry.second.id,count);
+  }
+ }
+}
+void pc_p2_breadbug_actor_probe_revisit(){
+ for(auto& entry:actors){
+  auto& state=entry.second;
+  const bool hadHandle=state.contestHandle!=0;
+  if(hadHandle){pc_p2_breadbug_contest_revisit(state.contestHandle);pc_p2_breadbug_contest_destroy(state.contestHandle);} // no Stolen-outcome handle leak
+  std::printf("P2_BREADBUG_REVISIT generator=%u rearmed=%d\n",state.id,int(hadHandle));
+  state.contestHandle=0;state.lastOutcome=-1;state.ownerDiedLogged=false;
+ }
+}
 void pc_p2_breadbug_actor_setup(){
  pc_p2_breadbug_actor_reset();if(!pc_pikipelago_room_preview())return;std::ifstream in("p2-breadbug-actor.txt");if(!in)return;
  std::string word;if(!(in>>word)||word!="P2_BREADBUG_ACTOR_PROXY_1"||!tekiMgr)fail();
@@ -61,6 +95,7 @@ void pc_p2_breadbug_actor_setup(){
   std::printf("P2_BREADBUG_ACTOR_READY generator=%u native_type=8 xyz=%.6f,%.6f,%.6f behavior=P1_Collec_proxy\n",id,actor->mSRT.t.x,actor->mSRT.t.y,actor->mSRT.t.z);
  }
  if(found!=wanted)fail();
+ if(!pc_p2_breadbug_contest_open("p2-breadbug-contest-receipts.txt"))fail();
  for(int k=0;k<2;++k)for(size_t i=0;i<motions[k].frames.size();++i){char name[80];std::snprintf(name,sizeof(name),"breadbug_actor_%s_%02u.mod",k?"move":"wait",unsigned(i));motions[k].shapes.push_back(load(name));}
  std::ifstream bank("p2-breadbug-cargo.txt");if(bank){
   if(!(bank>>word)||word!="P2_BREADBUG_CARGO_1")fail();
@@ -77,14 +112,70 @@ void pc_p2_breadbug_actor_setup(){
 }
 void pc_p2_breadbug_actor_tick(){
  if(actors.empty())return;
+ const float now=SDL_GetTicks()*0.001f;
  for(auto& entry:actors){
   BTeki* actor=entry.first;auto& state=entry.second;
   Pellet* held=actor->getCreaturePointer(2)&&actor->getCreaturePointer(2)->isObjType(OBJTYPE_Pellet)?static_cast<Pellet*>(actor->getCreaturePointer(2)):nullptr;
-  if(!held){state.lastHeld=false;continue;} // read-only: the P1 host owns the cargo, the proxy only observes it
-  const int n=carriers(held);
-  if(!state.lastHeld||n!=state.lastCarriers){
-   state.lastHeld=true;state.lastCarriers=n;
-   std::printf("P2_BREADBUG_CONTEST generator=%u native_power=%g carriers=%d\n",state.id,PROXY_CARRY_POWER,n);
+  if(actor->mDeadState || !actor->isAlive()){
+   if(state.contestHandle&&!state.ownerDiedLogged){
+    state.ownerDiedLogged=true;
+    if(held){held->endStickTeki(actor);}actor->clearCreaturePointer(2);actor->stopParticleGenerator(2);
+    pc_p2_breadbug_contest_owner_died(state.contestHandle);
+    std::printf("P2_BREADBUG_OWNER_DIED generator=%u released=%d reason=OwnerDied\n",state.id,int(held!=nullptr));
+    pc_p2_breadbug_contest_destroy(state.contestHandle);state.contestHandle=0;
+   }
+   continue;
+  }
+  if(held){
+   // Legacy read-only observation marker FIRST, so the natural carriers value is
+   // logged before the contest update samples it (the validator cross-checks each
+   // pre-grant CONTEST_UPDATE carriers against this latest legacy carriers value).
+   if(!state.lastHeld||carriers(held)!=state.lastCarriers){state.lastHeld=true;state.lastCarriers=carriers(held);std::printf("P2_BREADBUG_CONTEST generator=%u native_power=%g carriers=%d\n",state.id,PROXY_CARRY_POWER,state.lastCarriers);}
+   if(!state.contestHandle){
+    std::string sourceToken="nest:"+std::to_string(state.id);
+    state.contestHandle=pc_p2_breadbug_contest_create((int)CONTEST_SOURCE_ID,CONTEST_STAGE,sourceToken.c_str(),CONTEST_MIN_THRESHOLD,CONTEST_MAX_THRESHOLD,CONTEST_FREEZE_SECONDS,CONTEST_REQUIRED_CARRIERS,CONTEST_MAX_CARRIERS);
+    if(state.contestHandle){
+     pc_p2_breadbug_contest_begin(state.contestHandle,now);state.lastOutcome=-1;state.ownerDiedLogged=false;
+     std::printf("P2_BREADBUG_CONTEST_BEGIN generator=%u identity=%s max=%d\n",state.id,pc_p2_breadbug_contest_identity(state.contestHandle),CONTEST_MAX_THRESHOLD);
+    }
+   }
+   if(state.contestHandle){
+    const int n=(probeCarriers>=0)?probeCarriers:carriers(held);
+    std::vector<std::string> tokenStore;std::vector<const char*> tokenPtrs;std::vector<int> strengths;
+    for(int i=0;i<n;++i){tokenStore.push_back("piki:"+std::to_string(i));strengths.push_back(1);}
+    for(auto& t:tokenStore)tokenPtrs.push_back(t.c_str());
+    const int outcome=pc_p2_breadbug_contest_update(state.contestHandle,now,n?tokenPtrs.data():nullptr,n?strengths.data():nullptr,n);
+    if(outcome!=state.lastOutcome){
+     state.lastOutcome=outcome;
+     const char* os=outcome==0?"held":(outcome==1?"stolen":"released");
+     std::printf("P2_BREADBUG_CONTEST_UPDATE generator=%u carriers=%d outcome=%s\n",state.id,n,os);
+      if(outcome==1){
+       held->endStickTeki(actor);actor->clearCreaturePointer(2);actor->stopParticleGenerator(2);
+       actor->mReturnStateID=actor->mStateID;actor->mStateID=3;actor->mIsStateReady=true; // resume wandering after losing the tug
+       std::printf("P2_BREADBUG_CONTEST_STOLEN generator=%u carriers=%d released=1\n",state.id,n);
+       std::string slot="g"+std::to_string(state.id);
+       const int grant=pc_p2_breadbug_contest_grant(state.contestHandle,"p2-preview",slot.c_str(),"contest");
+       if(grant==1)std::printf("P2_BREADBUG_CONTEST_GRANT generator=%u identity=%s granted=1\n",state.id,pc_p2_breadbug_contest_identity(state.contestHandle));
+       else if(grant==2)std::printf("P2_BREADBUG_CONTEST_GRANT generator=%u identity=%s granted=0 duplicate=1\n",state.id,pc_p2_breadbug_contest_identity(state.contestHandle));
+       pc_p2_breadbug_contest_destroy(state.contestHandle);state.contestHandle=0;state.lastOutcome=-1; // Stolen is terminal: the next grab starts a fresh tug
+      }
+     if(outcome==2){
+      // Timeout/release is terminal for this contest; drop the handle so the next grab starts a fresh tug (the ledger keeps exactly-once durable).
+      pc_p2_breadbug_contest_destroy(state.contestHandle);state.contestHandle=0;state.lastOutcome=-1;
+     }
+    }
+   }
+  } else {
+   state.lastHeld=false;
+   // Lost the cargo while the contest was still Held (delivered to its nest, or
+   // the carriers were pulled off) — not a Stolen/timeout, which already destroy
+   // their handle. Interrupt + destroy so the next grab begins a fresh tug.
+   if(state.contestHandle){
+    pc_p2_breadbug_contest_interrupt(state.contestHandle);
+    const int reason=pc_p2_breadbug_contest_reason(state.contestHandle);
+    std::printf("P2_BREADBUG_CONTEST_INTERRUPT generator=%u reason=%s\n",state.id,reasonName(reason));
+    pc_p2_breadbug_contest_destroy(state.contestHandle);state.contestHandle=0;state.lastOutcome=-1;
+   }
   }
  }
 }

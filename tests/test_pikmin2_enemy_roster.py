@@ -19,9 +19,11 @@ from experimental.pikmin2_enemy_roster import (
     identity_role,
     inventory_encounters,
     load_and_validate,
+    opt_in_validation_cohort,
     parse_enum_header,
     parse_info_table,
     require_admitted,
+    require_opt_in,
     resolve_alias,
     resolve_ids,
     snapshot_payload,
@@ -81,7 +83,9 @@ def test_eligibility_defaults_denied_except_reviewed_candidates():
     roster = load_and_validate()
     candidates = {entry.source_id for entry in roster if entry.eligibility == "candidate"}
     assert candidates == {2, 15, 17, 45, 54, 79}
-    assert all(entry.eligibility == "denied" for entry in roster if entry.source_id not in candidates)
+    admitted = {entry.source_id for entry in roster if entry.eligibility == "admitted"}
+    assert admitted == {23, 44, 59, 60, 61, 62}
+    assert all(entry.eligibility == "denied" for entry in roster if entry.source_id not in candidates | admitted)
 
 
 def test_synthetic_pipeline_round_trips():
@@ -118,8 +122,15 @@ def test_admitted_requires_complete_gates():
     with pytest.raises(RosterError):
         validate_roster(roster)
 
-    full = {"0": {"eligibility": "admitted", "gates": {g: "PASS" for g in GATE_IDS}}}
+    # A seedable identity (Frog=17) with a satisfied admission contract validates.
+    full = {"17": {"eligibility": "admitted", "gates": {g: "PASS" for g in GATE_IDS},
+                   "delivery_receipt": "corpse:frog:1 goal=1"}}
     validate_roster(entries_from_payload(payload, full))
+
+    # An admitted identity whose contract is missing the delivery receipt fails.
+    no_receipt = {"17": {"eligibility": "admitted", "gates": {g: "PASS" for g in GATE_IDS}}}
+    with pytest.raises(RosterError):
+        validate_roster(entries_from_payload(payload, no_receipt))
 
 
 def test_classify_uses_boss_and_flags():
@@ -162,8 +173,8 @@ def test_identity_roles_real_roster():
 def test_admission_defaults_deny_and_is_empty():
     roster = load_and_validate()
     admission = admission_set(roster)
-    assert admission.admitted == ()
-    assert admitted_ids(roster) == []
+    assert admission.admitted == (23, 44, 59, 60, 61, 62)
+    assert admitted_ids(roster) == [23, 44, 59, 60, 61, 62]  # 23 Sarai; 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (admitted 2026-09-15)
     assert set(admission.candidates) == {2, 15, 17, 45, 54, 79}
     assert sum(admission.by_role.values()) == len(roster)
     with pytest.raises(RosterError):
@@ -173,12 +184,16 @@ def test_admission_defaults_deny_and_is_empty():
 def test_admission_set_admits_only_seedable_randomizable():
     payload = synthetic_payload()
     full = {g: "PASS" for g in GATE_IDS}
-    admitted = entries_from_payload(payload, {"17": {"eligibility": "admitted", "gates": full}})
-    assert admitted_ids(admitted) == [17]
-    assert require_admitted(admitted, 17).enum_name == "Frog"
+    adopted = entries_from_payload(payload, {"17": {
+        "eligibility": "admitted", "gates": full,
+        "delivery_receipt": "corpse:frog:1 goal=1"}})
+    assert admitted_ids(adopted) == [17]
+    assert require_admitted(adopted, 17).enum_name == "Frog"
 
-    # A plant cannot be admitted as a seedable identity even with full gates.
-    plant = entries_from_payload(payload, {"0": {"eligibility": "admitted", "gates": full}})
+    # A plant cannot be admitted as a seedable identity even with a full contract.
+    plant = entries_from_payload(payload, {"0": {
+        "eligibility": "admitted", "gates": full,
+        "delivery_receipt": "corpse:pelplant:1"}})
     with pytest.raises(RosterError):
         admission_set(plant)
 
@@ -222,4 +237,69 @@ def test_committed_overlay_reviewed_cohort_and_native_modules():
     roster = by_id(load_and_validate())
     assert roster[79].eligibility == "candidate" and roster[79].native_module == "pc_p2_sokkuri"
     assert roster[54].owner_lane == "19" and roster[45].owner_lane == "13"
-    assert admitted_ids(load_and_validate()) == []
+    assert roster[44].eligibility == "admitted" and roster[44].native_module == "pc_p2_dwarf_orange"
+    assert roster[44].owner_lane == "13"
+    assert admitted_ids(load_and_validate()) == [23, 44, 59, 60, 61, 62]  # 23 Sarai; 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (admitted 2026-09-15)
+
+
+def test_opt_in_requires_reviewed_seedable_identity():
+    roster = load_and_validate()
+    # Snow (45) and Dwarf Orange (44) are reviewed candidates with a source role.
+    assert require_opt_in(roster, 45).enum_name == "YellowKochappy"
+    assert require_opt_in(roster, 44).enum_name == "BlueKochappy"
+    # Denied (un-reviewed) identity cannot be opted in.
+    with pytest.raises(RosterError):
+        require_opt_in(roster, 1)  # Kochappy: denied
+    # Non-seedable roles are rejected even though their classification is enemy/boss.
+    with pytest.raises(RosterError):
+        require_opt_in(roster, 82)  # manager_base
+    with pytest.raises(RosterError):
+        require_opt_in(roster, 0)  # plant
+    # Unknown ids are rejected.
+    with pytest.raises(RosterError):
+        require_opt_in(roster, 999)
+
+
+def test_opt_in_validation_cohort_validates_and_does_not_admit():
+    roster = load_and_validate()
+    cohort = opt_in_validation_cohort(roster, [44, 45])
+    assert cohort == [44, 45]
+    # The private validation path never mutates the global admission set.
+    assert admitted_ids(roster) == [23, 44, 59, 60, 61, 62]  # 23 Sarai; 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (admitted 2026-09-15)
+    with pytest.raises(RosterError):
+        require_admitted(roster, 45)
+    with pytest.raises(RosterError):
+        require_admitted(roster, 45)
+
+
+def test_opt_in_validation_cohort_rejects_invalid_input():
+    roster = load_and_validate()
+    with pytest.raises(RosterError):
+        opt_in_validation_cohort(roster, [])
+    with pytest.raises(RosterError):
+        opt_in_validation_cohort(roster, [44, 44])
+    with pytest.raises(RosterError):
+        opt_in_validation_cohort(roster, [1])  # denied
+    with pytest.raises(RosterError):
+        opt_in_validation_cohort(roster, [44, 1])  # one denied member
+    with pytest.raises(RosterError):
+        opt_in_validation_cohort(roster, [999])
+    for coerced in ([True], ["44"], [44.5]):
+        with pytest.raises(RosterError):
+            opt_in_validation_cohort(roster, coerced)
+
+
+def test_opt_in_cohort_feeds_private_validation_path_only():
+    from experimental.pikmin2_seed_bridge import SeedBridgeError, resolve_admitted_layout, resolve_layout
+    roster = load_and_validate()
+    snow_dwarf = opt_in_validation_cohort(roster, [44, 45])
+    # A consumer may run the Snow/Dwarf Orange cohort through a private binding
+    # layout (ordinary generated-session validation) without admission.
+    layout = resolve_layout("seed-l02", "Player1", ("gen-a", "gen-b", "gen-c"),
+                            snow_dwarf, roster, admitted=snow_dwarf)
+    assert {binding["source_id"] for binding in layout["bindings"]} == {44, 45}
+    # Normal generation stays deny-by-default: the product entry point seeds only the
+    # admitted set (Sarai 23, Dwarf Orange 44 + Otakara 59-62 since 2026-09-15), never the private cohort's Snow 45.
+    assert admitted_ids(roster) == [23, 44, 59, 60, 61, 62]
+    admitted_layout = resolve_admitted_layout("seed-l02", "Player1", ("gen-a", "gen-b", "gen-c", "gen-d", "gen-e", "gen-f"), roster)
+    assert {binding["source_id"] for binding in admitted_layout["bindings"]} == {23, 44, 59, 60, 61, 62}

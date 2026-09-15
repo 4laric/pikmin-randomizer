@@ -9,4 +9,8 @@ void pc_p2_dwarf_orange_forget(BTeki*);
 float pc_p2_dwarf_orange_max_health(const BTeki*,float fallback);
 const char* pc_p2_dwarf_orange_name(PelletView*);
 bool pc_p2_dwarf_orange_registered(const BTeki*);
+// Fixture observability (#397): read-only registration count. Never mutates
+// state; the lifecycle fixture uses it to prove the registry does not grow
+// across death/forget/respawn/re-entry cycles.
+unsigned long pc_p2_dwarf_orange_count();
 bool pc_p2_dwarf_orange_draw(BTeki*,Graphics&,const Matrix4f&,bool corpse=false);

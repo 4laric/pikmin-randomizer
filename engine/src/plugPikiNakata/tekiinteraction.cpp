@@ -7,6 +7,9 @@
 #include "pc_p2_elecbug.h"
 #include "pc_p2_armor.h"
 #include "pc_p2_hana.h"
+#include "pc_p2_hardlanes.h"
+#include "pc_p2_dangomushi.h"
+#include "pc_p2_long_legs.h"
 #endif
 
 /**
@@ -45,6 +48,12 @@ bool InteractAttack::actTeki(Teki* teki) immut
 	if (pc_p2_armor_receiver_rejects(teki, this)) {
 		return false; // registered Armor rejects non-'dmg1'/non-bittered damage
 	}
+	if (pc_p2_dangomushi_invulnerable(teki)) {
+		return true; // registered Crawbster is invulnerable outside the flip window
+	}
+	if (pc_p2_long_legs_receiver_rejects(teki, this)) {
+		return false; // registered Long Legs rejects damage while bitter-immune (Stay/Land)
+	}
 #endif
 	return teki->interact(TekiInteractionKey(TekiInteractType::Attack, this));
 }
@@ -63,6 +72,12 @@ bool InteractBomb::actTeki(Teki* teki) immut
 	InteractAttack attack(mOwner, nullptr, mDamage * bombFactor, false);
 	if (pc_p2_armor_receiver_rejects(teki, &attack)) {
 		return false;
+	}
+	if (pc_p2_dangomushi_invulnerable(teki)) {
+		return true; // registered Crawbster is invulnerable outside the flip window
+	}
+	if (pc_p2_long_legs_receiver_rejects(teki, &attack)) {
+		return false; // registered Long Legs is bitter-immune to bombs too
 	}
 	return teki->interact(
 	    TekiInteractionKey(TekiInteractType::Attack, stack_new(InteractAttack)(mOwner, nullptr, mDamage * bombFactor, false)));
@@ -92,6 +107,7 @@ bool InteractPress::actTeki(Teki* teki) immut
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
 	if (pc_p2_elecbug_pressed(teki, mOwner)) return true;
 	if (pc_p2_sokkuri_pressed(teki, mOwner)) return true;
+	if (pc_p2_hardlanes_fuefuki_pressed(teki, mOwner)) return true;
 	if (pc_p2_kogane_pressed(teki, mOwner)) {
 		return true; // registered beetles flip instead of the host pressed state
 	}

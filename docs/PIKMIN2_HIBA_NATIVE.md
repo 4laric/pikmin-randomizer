@@ -63,14 +63,16 @@ reader and the Python `protocol()` serializer:
 ```text
 P2_HIBA_NATIVE_1
 <hazardCount>                                                                 # 1..8
-<generatorId> <hazardId> <x> <y> <z> <yaw> <health> <waitOverride> <separation> <link>
+<generatorId> <hazardId> <x> <y> <z> <yaw> <health> <waitOverride> <separation> <link> <warningOverride>
                                                                               x hazardCount
 ```
 
-`hazardId` is 20/21/22; `waitOverride < 0` uses the disc wait; `separation`
-must be 0 unless ElecHiba; `link` (0 none, 1 bridge, 2 gate, 3 bridge+gate)
-must be 0 unless GasHiba. `waitOverride` gives the fixture a short activation
-without changing the store defaults.
+`hazardId` is 20/21/22; `waitOverride < 0` uses the disc wait; `warningOverride
+< 0` uses the disc ElecHiba warning; `separation` must be 0 unless ElecHiba;
+`link` (0 none, 1 bridge, 2 gate, 3 bridge+gate) must be 0 unless GasHiba;
+`warningOverride >= 0` applies only to ElecHiba. `waitOverride` gives the fixture
+a short activation without changing the store defaults; `warningOverride` lets
+the fixture make ElecHiba attack promptly (before the gas-cluster panic-run).
 
 ## 4. Receiver application
 

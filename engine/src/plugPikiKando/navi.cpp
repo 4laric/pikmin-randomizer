@@ -401,7 +401,7 @@ void Navi::startDamageEffect()
 
 	if (mHealth <= 1.0f) {
 		gameflow.mGameInterface->message(MOVIECMD_SetPauseAllowed, FALSE);
-		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+		pauseForDownIfLast();
 
 	} else if (!gameflow.mMoviePlayer->mIsActive && mHealth <= 0.25f * NAVI_PARM(mHealth)
 	           && !playerState->mDemoFlags.isFlag(DEMOFLAG_OlimarLowHealth)) {
@@ -435,6 +435,23 @@ void Navi::startDamageEffect()
 /**
  * @todo: Documentation
  */
+void Navi::pauseForDownIfLast()
+{
+	// Lane 12 (#130): a downed captain holds the game only when no living
+	// partner remains (source mDeadNavis != 2). The damage receivers call this
+	// before the death is recorded in the roster, so the check uses the direct
+	// partner (getOtherNavi) rather than getAliveOrima(), which would still
+	// report the dying captain as alive. Single-captain play always pauses.
+	Navi* partner = naviMgr ? naviMgr->getOtherNavi(this) : nullptr;
+	const bool partnerAlive = partner && partner->isAlive() && partner->mHealth > 1.0f;
+	if (!partnerAlive) {
+		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+	}
+}
+
+/**
+ * @todo: Documentation
+ */
 void Navi::finishDamage()
 {
 	resetStateDamaged();
@@ -442,7 +459,12 @@ void Navi::finishDamage()
 
 	if (mHealth <= 1.0f) {
 		mStateMachine->transit(this, NAVISTATE_Dead);
-		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+		// Lane 12 (#130): a downed captain with a living partner must not pause
+		// or finish the stage (source mDeadNavis != 2). NaviDeadState::init takes
+		// the survivor branch in that case; gate finishDamage's own pause the same
+		// way so a survivor keeps playing. Single-captain play is unchanged (the
+		// sole captain going down still pauses into game over).
+		pauseForDownIfLast();
 	} else {
 		if (!gameflow.mMoviePlayer->mIsActive && mHealth <= 0.25f * NAVI_PARM(mHealth)
 		    && !playerState->mDemoFlags.isFlag(DEMOFLAG_OlimarLowHealth)) {
@@ -520,7 +542,12 @@ Navi::Navi(CreatureProp* props, int naviID)
 	mVelocity.set(0.0f, 0.0f, 0.0f);
 	mTargetVelocity.set(0.0f, 0.0f, 0.0f);
 	_268        = 0.0f;
-	mKontroller = new Kontroller(naviID + 1);
+	// Lane 12 (#130): the PC port has a single live pad (controller port 0). The
+	// change from the source's Kontroller(naviID + 1) to Kontroller(1) affects
+	// slot 1 only: slot 0 already mapped to port 1, while a second captain would
+	// otherwise request a nonexistent port 2. Source P2 maps each Navi to its own
+	// pad; that input split is not ported.
+	mKontroller = new Kontroller(1);
 	mSize       = 20.0f;
 
 	memStat->start("naviStateM");
@@ -1069,7 +1096,14 @@ void Navi::update()
 	}
 #endif
 
-	mKontroller->update();
+	// Lane 12 (#130): only the controlled captain polls the shared pad; an
+	// inactive second captain never updates its Kontroller, so it observes
+	// neutral input instead of mirroring the active captain (source P2 maps each
+	// Navi to its own pad; that split is not ported). Single-captain play always
+	// polls (naviMgr is a single Navi, so getActiveNavi() == this).
+	if (!naviMgr || naviMgr->getActiveNavi() == this) {
+		mKontroller->update();
+	}
 	mWalkAnimPrevDir = mFaceDirection;
 	Creature::update();
 #if defined(PIKI_PC_PORT)
@@ -1244,9 +1278,10 @@ void Navi::callPikis(f32 radius, bool recallWorkers)
 
 #if defined(PIKI_PC_PORT) && PIKI_PC_PORT
 	// Lane-11 Bulbmin: a captain whistle converts wild dependents in place and
-	// hands them to the bound captain table. Inert unless opted in.
+	// hands them to the bound captain table. Inert unless opted in. The `via`
+	// label proves the real Navi::callPikis path is on the P2_BULBMIN_WHISTLE log.
 	if (pc_p2_bulbmin_active()) {
-		pc_p2_bulbmin_call_pikis(this, radius);
+		pc_p2_bulbmin_call_pikis(this, radius, "navi_callPikis");
 	}
 #endif
 
@@ -2307,6 +2342,11 @@ void Navi::makeCStick(bool isSunset)
  */
 void Navi::refresh(Graphics& gfx)
 {
+	// Lane 12 (#130): the second captain now draws like the first. It shares
+	// slot 0's fully-initialised PikiShapeObject (see
+	// NaviMgr::ensureSecondNaviShapeObject), so the fresh-shape crash in the
+	// draw/demoDraw tail is gone. Single-captain play is unchanged (only slot 0
+	// exists); with the live gate on, both captains render at their own mSRT.
 	draw(gfx);
 	if (!movieMode()) {
 		if (gsys->mToggleColls) {
@@ -2314,7 +2354,14 @@ void Navi::refresh(Graphics& gfx)
 		}
 
 		Matrix4f viewMtx;
-		mPlateMgr->render(gfx);
+		// Lane 12 (#130): a second Navi is birthed in the GameCoreSection
+		// constructor but init()/reset() (which allocates mPlateMgr) runs later in
+		// finalSetup, so the setup draw can reach refresh() with mPlateMgr still
+		// null. Guard it (and see demoDraw's light guards) so the second captain
+		// can render before reset without a null deref.
+		if (mPlateMgr) {
+			mPlateMgr->render(gfx);
+		}
 
 		// these aren't used for anything in the DLL either, lol.
 		f32 unusedVal  = sinf(mFaceDirection);
@@ -2404,8 +2451,12 @@ void Navi::demoDraw(Graphics& gfx, immut Matrix4f* mtx)
 		// of dereferencing a missing collision part during the transition.
 		mNaviLightPosition.set(mSRT.t.x, mSRT.t.y + 10.0f, mSRT.t.z);
 	}
-	mNaviLightEfx->updatePos(mNaviLightPosition);
-	mNaviLightGlowEfx->updatePos(mNaviLightPosition);
+	if (mNaviLightEfx) {
+		mNaviLightEfx->updatePos(mNaviLightPosition);
+	}
+	if (mNaviLightGlowEfx) {
+		mNaviLightGlowEfx->updatePos(mNaviLightPosition);
+	}
 }
 
 /**
@@ -2595,7 +2646,7 @@ bool InteractBury::actNavi(Navi* navi) immut
 	navi->startDamageEffect();
 	navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
 	if (navi->mHealth <= 1.0f) {
-		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+		navi->pauseForDownIfLast();
 		navi->mStateMachine->transit(navi, NAVISTATE_Dead);
 	}
 
@@ -2640,7 +2691,7 @@ __attribute__((used)) bool InteractDenki::actNavi(Navi* navi) immut
 	rumbleMgr->start(RUMBLE_Unk1, 0, nullptr);
 	SeSystem::playPlayerSe(SE_FIRED);
 	if (navi->mHealth <= 1.0f) {
-		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+		navi->pauseForDownIfLast();
 	}
 	navi->mFlickIntensity = 2.0f;
 	navi->mStateMachine->transit(navi, NAVISTATE_Flick);
@@ -2678,7 +2729,7 @@ bool InteractSuck::actNavi(Navi* navi) immut
 	navi->startDamageEffect();
 	BUGPRINT("dmg eff");
 	if (navi->mHealth <= 1.0f) {
-		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+		navi->pauseForDownIfLast();
 		navi->mStateMachine->transit(navi, NAVISTATE_Dead);
 		BUGPRINT("navi dead");
 	}
@@ -2705,7 +2756,7 @@ bool InteractAttack::actNavi(Navi* navi) immut
 	navi->mHealth -= pcNaviHurt(mDamage);
 	navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
 	if (navi->mHealth <= 1.0f) {
-		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+		navi->pauseForDownIfLast();
 		PRINT("ATTACK DEAD ******\n");
 	} else {
 		navi->startMotion(PaniMotionInfo(PIKIANIM_Damage, navi), PaniMotionInfo(PIKIANIM_Damage));
@@ -2734,7 +2785,7 @@ bool InteractPress::actNavi(Navi* navi) immut
 	navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
 	navi->mTargetVelocity.set(0.0f, 0.0f, 0.0f);
 	if (navi->mHealth <= 1.0f) {
-		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+		navi->pauseForDownIfLast();
 		PRINT("PRESS DEAD ******\n");
 	}
 
@@ -2762,7 +2813,7 @@ bool InteractSwallow::actNavi(Navi* navi) immut
 	SeSystem::playPlayerSe(SE_DAMAGED);
 	navi->startDamageEffect();
 	if (navi->mHealth <= 1.0f) {
-		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+		navi->pauseForDownIfLast();
 		PRINT("SWALLOW DEAD ******\n");
 	} else {
 		navi->startMotion(PaniMotionInfo(PIKIANIM_Damage, navi), PaniMotionInfo(PIKIANIM_Damage));
@@ -2793,7 +2844,7 @@ bool InteractBomb::actNavi(Navi* navi) immut
 	navi->startDamageEffect();
 	navi->mFlickIntensity = 100.0f;
 	if (navi->mHealth <= 1.0f) {
-		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+		navi->pauseForDownIfLast();
 		PRINT("BOMB DEAD ******\n");
 	}
 	navi->mStateMachine->transit(navi, NAVISTATE_Flick);
@@ -2836,7 +2887,7 @@ bool InteractFlick::actNavi(Navi* navi) immut
 	navi->mLifeGauge.updValue(navi->mHealth, C_NAVI_PARM(navi, mHealth));
 	navi->mFlickIntensity = mIntensity;
 	if (navi->mHealth <= 1.0f) {
-		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+		navi->pauseForDownIfLast();
 		PRINT("FLICK DEAD ******\n");
 	}
 
@@ -2861,7 +2912,7 @@ bool InteractBubble::actNavi(Navi* navi) immut
 	SeSystem::playPlayerSe(SE_FIRED);
 	navi->startDamageEffect();
 	if (navi->mHealth <= 1.0f) {
-		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+		navi->pauseForDownIfLast();
 	}
 	navi->mFlickIntensity = 2.0f;
 	navi->mStateMachine->transit(navi, NAVISTATE_Flick);
@@ -2883,7 +2934,7 @@ bool InteractFire::actNavi(Navi* navi) immut
 	rumbleMgr->start(RUMBLE_Unk1, 0, nullptr);
 	SeSystem::playPlayerSe(SE_FIRED);
 	if (navi->mHealth <= 1.0f) {
-		GameCoreSection::startPause(COREPAUSE_Unk1 | COREPAUSE_Unk3 | COREPAUSE_Unk16);
+		navi->pauseForDownIfLast();
 	}
 	navi->mFlickIntensity = 2.0f;
 	navi->mStateMachine->transit(navi, NAVISTATE_Flick);

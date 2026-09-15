@@ -188,3 +188,20 @@ without an older-base merge:
   re-reach it, and the drop path was reached here.
 - Gates unchanged: 1/2 PASS; 3 source-backed N/A; 4 PASS at source level; 5
   marker-level (physical Egg is lane 20); 6 blocked (#397).
+
+## Delivered update (DeepSeek lane 15, base `b805d9c6`)
+
+The carried Egg is now a real reward: `pc_p2_qurione.cpp` consumes the integrated
+lane-20 `P2Egg` policy (`pc_p2_egg_hazard.*`) and births the source drop table on
+break (nectar via `OBJTYPE_Water`, pellets via `pelletMgr`, mitites->nectar).
+See [the lane handoff](PIKMIN2_LANE15_DEEPSEEK_HANDOFF.md). Gate 5 is
+`partial`: the `action=attach` + real Egg born (`born=1`) path is observed live;
+the release/break/item-birth path is contract-only.
+
+The earlier movement NaN was **not** a `MapMgr::traceMove` regression nor shared
+engine/Lane-07 code: it was caused by this lane's private arena, which staged an
+un-suppressed "P1 Honeywisp" control row (203002, `TEKI_Qurione` cloned from a
+Chappy template). Removing that row restores finite flight (`stay -> appear ->
+move`) on both the unmodified base `b805d9c6` and the lane build. The full
+disappear/stay and drop->dead->Egg-break legs still need a Pikmin drop trigger
+and remain a follow-up.

@@ -365,6 +365,14 @@ int adopt_squad();
 bool has_second_captain();
 int other_captain(int captain);
 
+// Live target-identity / captivity query seam (#130). `captain_handle` returns
+// the live Navi for a captain slot (the object `captainAt` binds to), so a
+// captor can assert "which captain am I configured to capture" against the real
+// engine. `navi_dead` reports the roster's down flag for that slot.
+P2CaptainHandle captain_handle(int captain);
+int captive_count();
+bool navi_dead(int captain);
+
 // Captor-held squad actor (Piki*) operations. `piki` is a live Piki*.
 bool capture_actor(std::uint64_t captorEpoch, P2PikiHandle piki);
 bool release_actor(std::uint64_t captorEpoch, P2PikiHandle piki, int toCaptain);
@@ -387,3 +395,10 @@ void update_inactive_captain_follow();
 P2FollowPhase inactive_captain_follow_phase();
 
 } // namespace pc_p2_captain
+
+// Forget a freed/recycled Piki*'s stable actor id so a re-birthed slot never
+// inherits the previous occupant's id (the same lifetime rule the captor FSMs
+// and pc_p2_bulbmin_forget already follow). Called from PikiMgr::birth() beside
+// the Bulbmin hook; inert when the pointer is unknown.
+class Piki;
+void pc_p2_captain_forget_piki(Piki* piki);

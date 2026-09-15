@@ -234,13 +234,14 @@ void P2LongLegsFsm::update(const P2LongLegsFsmInput& input, P2LongLegsFsmOutput&
         break;
     }
 
-    // Derived after the transition so a landing-key-2 tick reports the new
-    // damage window immediately.
-    output.bitterImmune = mState == P2LongLegsState::Stay
-        || (mState == P2LongLegsState::Land && !mFeetFired);
-    output.damageable = (mState == P2LongLegsState::Wait || mState == P2LongLegsState::Flick
-                         || mState == P2LongLegsState::Walk || mState == P2LongLegsState::Shot)
-        || (mState == P2LongLegsState::Land && mFeetFired);
+    // Derived after the transition. Source (HoudaiState.cpp) keeps EB_BitterImmune
+    // on through the WHOLE Land clip and releases it only in Land's cleanup, so
+    // the body is bitter-immune during Stay and Land and becomes damageable only
+    // from Wait/Flick/Walk/Shot onward. Landing key 2 fires all four feet; it does
+    // not open the damage window.
+    output.bitterImmune = mState == P2LongLegsState::Stay || mState == P2LongLegsState::Land;
+    output.damageable = mState == P2LongLegsState::Wait || mState == P2LongLegsState::Flick
+        || mState == P2LongLegsState::Walk || mState == P2LongLegsState::Shot;
     output.enragedWalk = mParms.species == P2LongLegsSpecies::BigFoot && mEnraged
         && mState == P2LongLegsState::Walk;
     output.state = mState;

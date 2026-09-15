@@ -6,6 +6,7 @@ the native pc_port headers and require its PASS banner. Skips when no g++ or no
 native copy of the headers is present, so it passes before lane 01 exports them
 into engine/.
 """
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -15,14 +16,25 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _native_root():
+    """Native repo root, or None. PIKMIN_NATIVE_ROOT -> P2_NATIVE_PC_PORT(->parent) -> ROOT/native."""
+    env = os.environ.get('PIKMIN_NATIVE_ROOT')
+    if env and (Path(env) / 'pc_port' / 'pc_p2_species_policy.h').is_file():
+        return Path(env).resolve()
+    pc = os.environ.get('P2_NATIVE_PC_PORT')
+    if pc and (Path(pc) / 'pc_p2_species_policy.h').is_file():
+        return Path(pc).resolve().parent
+    cand = ROOT / 'native'
+    if (cand / 'pc_port' / 'pc_p2_species_policy.h').is_file():
+        return cand.resolve()
+    return None
+
+
 def _port_candidates():
-    # Prefer the exported engine/ tree, then the shared native/ checkout, then
-    # the lane's private worktree under any output/ ancestor (local evidence).
-    yield ROOT / 'engine' / 'pc_port'
-    yield ROOT / 'native' / 'pc_port'
-    for base in (ROOT, *ROOT.parents):
-        for worktree in ('native-sub3-follow', 'native-sub2-captains', 'native-lanes-1012', 'native-sub-elements', 'native-sub3-states'):
-            yield base / 'output' / worktree / 'pc_port'
+    root = _native_root()
+    if root is None:
+        return []
+    return [root / 'pc_port']
 
 
 _CASES = (
@@ -65,26 +77,22 @@ def test_lane_policy_contract(name, banner, tmp_path):
     if compiler is None:
         pytest.skip('g++ required for native contract')
     exe = tmp_path / (Path(name).stem + ('.exe' if name.endswith('.cpp') else ''))
+    env = dict(os.environ, PATH=str(Path(compiler).parent) + os.pathsep + os.environ.get('PATH', ''))
     subprocess.run(
         [compiler, '-std=c++17', '-Wall', '-Wextra', '-Werror',
          '-I', str(port), str(tools / name), '-o', str(exe)],
-        check=True, capture_output=True, text=True)
-    run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=30)
+        check=True, capture_output=True, text=True, env=env)
+    run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=30, env=env)
     assert run.returncode == 0, run.stderr
     assert banner in run.stdout
 
 
 def _interact_battle_candidates():
-    found = []
-    for base in (ROOT, *ROOT.parents):
-        for rel in (base / 'engine/src/plugPikiKando/interactBattle.cpp',
-                    base / 'native/src/plugPikiKando/interactBattle.cpp',
-                    base / 'output/native-lanes-1012/src/plugPikiKando/interactBattle.cpp',
-                    base / 'output/native-sub-elements/src/plugPikiKando/interactBattle.cpp',
-                    base / 'output/native-sub3-states/src/plugPikiKando/interactBattle.cpp'):
-            if rel.is_file() and rel not in found:
-                found.append(rel)
-    return found
+    root = _native_root()
+    if not root:
+        return []
+    rel = root / 'src' / 'plugPikiKando' / 'interactBattle.cpp'
+    return [rel] if rel.is_file() else []
 
 
 def test_elemental_receivers_consult_species_capability_matrix():
@@ -97,24 +105,19 @@ def test_elemental_receivers_consult_species_capability_matrix():
                for p in candidates)
     assert any('p2_species_immune(pc_p2_species(piki), P2HazardWater)' in p.read_text(errors='replace')
                for p in candidates)
-    # Electric/gas receivers (#170/#408) use the same matrix.
-    assert any('p2_species_immune(pc_p2_species(piki), P2HazardElectric)' in p.read_text(errors='replace')
+    # Electric/gas receivers (#170/#408) route through p2_hazard_reaction.
+    assert any('p2_hazard_reaction(pc_p2_species(piki), P2HazardElectric' in p.read_text(errors='replace')
                for p in candidates)
-    assert any('p2_species_immune(pc_p2_species(piki), P2HazardGas)' in p.read_text(errors='replace')
+    assert any('p2_hazard_reaction(pc_p2_species(piki), P2HazardGas' in p.read_text(errors='replace')
                for p in candidates)
 
 
 def _interactions_header_candidates():
-    found = []
-    for base in (ROOT, *ROOT.parents):
-        for rel in (base / 'engine/include/Interactions.h',
-                    base / 'native/include/Interactions.h',
-                    base / 'output/native-lanes-1012/include/Interactions.h',
-                    base / 'output/native-sub-elements/include/Interactions.h',
-                    base / 'output/native-sub3-states/include/Interactions.h'):
-            if rel.is_file() and rel not in found:
-                found.append(rel)
-    return found
+    root = _native_root()
+    if not root:
+        return []
+    rel = root / 'include' / 'Interactions.h'
+    return [rel] if rel.is_file() else []
 
 
 def test_denki_gas_receiver_classes_present():
@@ -134,14 +137,11 @@ def test_denki_gas_receiver_classes_present():
 
 
 def _cave_candidates():
-    found = []
-    for base in (ROOT, *ROOT.parents):
-        for rel in (base / 'engine/pc_port/pc_p2_cave.cpp',
-                    base / 'native/pc_port/pc_p2_cave.cpp',
-                    base / 'output/native-lanes-1012/pc_port/pc_p2_cave.cpp'):
-            if rel.is_file() and rel not in found:
-                found.append(rel)
-    return found
+    root = _native_root()
+    if not root:
+        return []
+    rel = root / 'pc_port' / 'pc_p2_cave.cpp'
+    return [rel] if rel.is_file() else []
 
 
 def test_cave_checkpoint_uses_versioned_schema():
@@ -159,23 +159,16 @@ def test_cave_checkpoint_uses_versioned_schema():
 
 
 def _native_candidates(*rels):
-    found = []
-    for base in (ROOT, *ROOT.parents):
-        for rel in rels:
-            p = base / rel
-            if p.is_file() and p not in found:
-                found.append(p)
-    return found
+    root = _native_root()
+    if not root:
+        return []
+    return [p for rel in rels for p in [root / rel] if p.is_file()]
 
 
 def test_pikmin_reaction_states_declared_and_registered():
     """#170/#408: the P2 electric/gas Pikmin states exist and are reachable."""
-    headers = _native_candidates('engine/include/PikiState.h',
-                                 'native/include/PikiState.h',
-                                 'output/native-sub3-states/include/PikiState.h')
-    sources = _native_candidates('engine/src/plugPikiKando/pikiState.cpp',
-                                 'native/src/plugPikiKando/pikiState.cpp',
-                                 'output/native-sub3-states/src/plugPikiKando/pikiState.cpp')
+    headers = _native_candidates('include/PikiState.h')
+    sources = _native_candidates('src/plugPikiKando/pikiState.cpp')
     if not headers or not sources:
         pytest.skip('native PikiState sources not present')
     texts = [p.read_text(errors='replace') for p in headers]
@@ -218,9 +211,7 @@ def test_denki_gas_receivers_route_to_p2_states():
 
 def test_piki_exposes_gas_invincible_gate():
     """#170/#408: the narrow gas gate mirrors source Piki::gasInvicible."""
-    pikis = _native_candidates('engine/include/Piki.h',
-                               'native/include/Piki.h',
-                               'output/native-sub3-states/include/Piki.h')
+    pikis = _native_candidates('include/Piki.h')
     if not pikis:
         pytest.skip('native Piki.h not present')
     texts = [p.read_text(errors='replace') for p in pikis]

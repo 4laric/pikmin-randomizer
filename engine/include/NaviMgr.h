@@ -197,11 +197,11 @@ public:
 	int getNaviCount() const;
 	void resetCaptainRoster();
 
-	// Build the second captain's shape object (mNaviShapeObject[1]) from a
-	// fresh, uncached copy of the captain model. Additive and inert: it does not
-	// touch the live object list and the single-captain path never calls it.
-	// Returns false when the asset cannot be prepared. The protected
-	// PikiShapeObject constructor is only reachable from NaviMgr (friend).
+	// Point the second captain's shape object (mNaviShapeObject[1]) at slot 0's
+	// fully-initialised PikiShapeObject, so a second Navi can index it without
+	// clobbering [0]'s animators or reloading a crashing fresh, uncached model.
+	// Additive: it does not touch the live object list and the single-captain
+	// path never calls it. Returns false when slot 0's shape is unavailable.
 	bool ensureSecondNaviShapeObject();
 
 	// unused/inlined:

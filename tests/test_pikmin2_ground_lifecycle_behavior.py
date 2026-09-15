@@ -7,6 +7,7 @@ Two layers, neither touches GL, disc assets, a player save or a real run:
   real ``tools/preview_p2_room.cpp`` and the ``build()`` command rewriting with
   mocked compiler/Ninja steps.
 """
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -28,7 +29,7 @@ GOOD_LOG = '\n'.join([
     'P2_LIFECYCLE_READY squad=20 sokkuri_gen=346005 armor_gen=346001 sokkuri_reg=1 armor_reg=1',
     'P2_LIFECYCLE_INJECT species=Sokkuri,Armor injected_health=0 source=fixture '
     'not_natural_combat=1',
-    'P2_SOKKURI_DEAD generator=346005 source_id=79 health=0',
+    'P2_SOKKURI_DEAD generator=346005 source_id=79 health=0 prior_health=0.0',
     'P2_ARMOR_DEAD generator=346001 source_id=15 health=0',
     'P2_LIFECYCLE_DEADCLIP species=Sokkuri source_id=79 clip=dead1',
     'P2_LIFECYCLE_DEADCLIP species=Armor source_id=15 clip=dead',
@@ -78,7 +79,8 @@ def test_validate_passes_on_complete_lifecycle_log():
     assert result['squad'] == 20
     assert result['gates'] == {'death': 'pass', 'corpse': 'pass',
                                'delivery_reward': 'untested',
-                               'cleanup': 'pass', 'reentry': 'pass'}
+                               'cleanup': 'pass', 'reentry': 'pass',
+                               'combat_damage': 'unmeasured'}
 
 
 @pytest.mark.parametrize('name', sorted(REQUIRED_MARKERS))
@@ -106,19 +108,68 @@ def test_delivery_reward_is_honestly_untested_not_n_a():
     assert 'not a source-backed N/A' in result['delivery_reward_reason']
 
 
-LANE_FIXTURE = Path('output/native-species-groundlife/tools/preview_p2_room.cpp')
-FALLBACK_FIXTURE = Path('native/tools/preview_p2_room.cpp')
+NATURAL_DAMAGE = GOOD_LOG.replace(
+    'P2_SOKKURI_DEAD generator=346005 source_id=79 health=0 prior_health=0.0',
+    'P2_SOKKURI_DAMAGE generator=346005 source_id=79 health=80.0\n'
+    'P2_SOKKURI_DEAD generator=346005 source_id=79 health=0 prior_health=105.0')
+
+
+def test_combat_damage_is_observable_separately_from_death():
+    plain = validate(GOOD_LOG, code=0)
+    assert plain['checks']['death']
+    assert not plain['checks']['natural_damage_seen']
+    assert plain['gates']['combat_damage'] == 'unmeasured'
+    with_damage = validate(NATURAL_DAMAGE, code=0)
+    assert with_damage['checks']['natural_damage_seen']
+    assert with_damage['gates']['combat_damage'] == 'pass'
+    # Death still passes; the injected lethal step is recorded separately.
+    assert with_damage['gates']['death'] == 'pass'
+
+
+def test_death_prior_health_is_reported():
+    result = validate(NATURAL_DAMAGE, code=0)
+    assert result['checks']['death']
+    assert result['checks']['natural_damage_seen']
+    # The prior_health suffix must not break the death marker match.
+    legacy = validate(GOOD_LOG.replace(' prior_health=0.0', ''), code=0)
+    assert legacy['checks']['death']
+
+
+def _native_roots():
+    """Candidate native repo roots for the private fixture builder.
+
+    ``PIKMIN_NATIVE_ROOT`` points at a private lane worktree; the historical
+    ``native/`` subdir layout is also honored.
+    """
+    roots = []
+    env = os.environ.get('PIKMIN_NATIVE_ROOT')
+    if env:
+        roots.append(Path(env))
+    here = Path(__file__).resolve()
+    roots += [here.parents[1] / 'native', Path('native')]
+    return roots
+
+
+def _native_fixture_source():
+    for root in _native_roots():
+        fixture = root / 'tools/preview_p2_room.cpp'
+        if fixture.is_file():
+            return root, fixture
+    return None, None
 
 
 def _fixture_source():
-    path = LANE_FIXTURE if LANE_FIXTURE.is_file() else FALLBACK_FIXTURE
-    return path.read_text(), path
+    root, fixture = _native_fixture_source()
+    if root is None:
+        pytest.skip('private native fixture worktree not present')
+    return fixture.read_text(), fixture
 
 
 def test_lane_fixture_honors_960x540_window():
-    if not LANE_FIXTURE.is_file():
+    root, fixture = _native_fixture_source()
+    if root is None:
         pytest.skip('lane fixture worktree not present')
-    text = LANE_FIXTURE.read_text()
+    text = fixture.read_text()
     assert 'PIKMIN_P2_ROOM_WINDOW' in text and 'pc_window_center()' in text
 
 
@@ -142,7 +193,10 @@ def test_instrument_is_gl_free_builder_smoke():
 
 
 def test_build_orchestration_rewrites_fixture_objects_gl_free(tmp_path):
-    native = Path('native').resolve()
+    native_root, _ = _native_fixture_source()
+    if native_root is None:
+        pytest.skip('private native fixture worktree not present')
+    native = native_root.resolve()
     build = tmp_path / 'build'
     output = tmp_path / 'fixture-output'
     build.mkdir()

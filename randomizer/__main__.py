@@ -50,6 +50,8 @@ def main():
     run.add_argument("--family-install", help="Lane 05 family installer name (an existing family installer to consume)")
     run.add_argument("--family-source", type=Path, help="Family bank/imported source directory for --family-install")
     run.add_argument("--family-actor", action="append", default=[], metavar="ID:SPECIES", help="generator_id:Species for --family-install (repeatable)")
+    run.add_argument("--p2-content", type=Path, help="Lane 05 identity-keyed content root; auto-stages each p2_layout binding's family content")
+    run.add_argument("--p2-actors", type=Path, help="JSON {target: generator_id} actor bindings for --p2-content")
     status = sub.add_parser("status", help="Show collected checks and the bestiary")
     status.add_argument("manifest", type=Path)
     status.add_argument("--session-dir", type=Path, required=True)
@@ -119,8 +121,14 @@ def main():
         else:
             family_actors = [(int(value.split(':', 1)[0]), value.split(':', 1)[1])
                              for value in args.family_actor]
+            p2_actors = None
+            if args.p2_actors is not None:
+                import json as _json
+                raw = _json.loads(args.p2_actors.read_text(encoding='utf-8'))
+                p2_actors = {str(target): int(generator) for target, generator in raw.items()}
             launch(manifest, args.session_dir.resolve(), args.exe, args.assets, args.server,
-                   args.content_manifest, args.family_install, args.family_source, family_actors)
+                   args.content_manifest, args.family_install, args.family_source, family_actors,
+                   args.p2_content, p2_actors)
 
 
 if __name__ == "__main__":

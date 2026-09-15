@@ -5,11 +5,14 @@
 #include "pc_p2_waterwraith_visual.h"
 
 #include "Graphics.h"
+#include "MapMgr.h"
 #include "Matrix4f.h"
+#include "Pellet.h"
 
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <map>
 #include <sstream>
 #include <string>
 
@@ -22,6 +25,8 @@ constexpr std::streamoff kProfileBytes = 4096;
 struct RegisterState {
     bool ready = false;
     bool visualReady = false;
+    bool finished = false;       // source Dead KEYEVENT_END reached
+    bool corpseSpawned = false;  // Dead KEYEVENT_5 stand-in drop spawned once
     P2WaterwraithRegisterPlacement placement;
     P2WaterwraithActor actor;
     P2WaterwraithActorOutput out;
@@ -30,6 +35,64 @@ struct RegisterState {
 };
 
 RegisterState sState;
+
+// Corpse pellet {pellet -> generator}. Fixed placement, so generator is 0. This
+// is the lane-07 registration the shared `pc_p2_preview_deliver` consumes. Keyed
+// on `Pellet*` (a newNumberPellet stand-in has no PelletView), so a liveness
+// sweep drops entries whose pellet died without delivery (MonoObjectMgr reuses
+// the slot, so a stale key could otherwise credit a future pellet).
+std::map<Pellet*, unsigned> sCorpses;
+unsigned sDeliveryCount = 0;
+
+// Lane-07 liveness: drop corpses that died without being delivered.
+void sweepCorpses()
+{
+    for (auto it = sCorpses.begin(); it != sCorpses.end();) {
+        if (!it->first->isAlive()) {
+            std::printf("P2_WATERWRAITH_CORPSE_DROPPED generator=%u\n", it->second);
+            it = sCorpses.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+// Source Dead KEYEVENT_5 releases the held treasure; the P1 host has no P2
+// treasure item, so a labelled number-pellet carryable corpse stand-in is
+// spawned at the wraith position (the same adaptation the Kogane lane records).
+// The pellet is registered for lane-06 Pod receipt via its Pellet* and for
+// lane-07 lifecycle via the register_tick liveness sweep and reset.
+void spawnWraithCorpse()
+{
+    sState.corpseSpawned = true;
+    if (!pelletMgr) {
+        std::printf("P2_WATERWRAITH_CORPSE skipped=no_pelletMgr\n");
+        return;
+    }
+    const Vector3f base(sState.placement.placement.x, sState.placement.placement.y,
+                        sState.placement.placement.z);
+    const P2WaterwraithVec3 local = sState.actor.position();
+    Pellet* pellet = pelletMgr->newNumberPellet(PELCOLOR_Blue, NUMPEL_OnePellet);
+    if (!pellet) {
+        std::printf("P2_WATERWRAITH_CORPSE skipped=no_pellet\n");
+        return;
+    }
+    Vector3f pos(base.x + local.x, 0.0f, base.z + local.z);
+    // Snap to the ground so ordinary Pikmin can actually reach and pick it up.
+    if (mapMgr) {
+        pos.y = mapMgr->getMinY(pos.x, pos.z, true);
+    }
+    pellet->init(pos);
+    pellet->mVelocity.set(0.0f, 100.0f, 0.0f);
+    pellet->startAI(0);
+    sCorpses[pellet] = 0u; // fixed placement => generator 0 (register unconditionally)
+    std::printf("P2_WATERWRAITH_CORPSE pos=%.3f,%.3f,%.3f registered=%d standin=number_pellet "
+                "carry_min=%d carry_max=%d\n",
+                pos.x, pos.y, pos.z, 1,
+                pellet->mConfig ? int(pellet->mConfig->mCarryMinPikis()) : -1,
+                pellet->mConfig ? int(pellet->mConfig->mCarryMaxPikis()) : -1);
+    std::fflush(stdout);
+}
 
 bool lineExhausted(std::istringstream& values)
 {
@@ -168,6 +231,48 @@ void pc_p2_waterwraith_register_reset()
     sState = RegisterState();
     pc_p2_waterwraith_visual_reset();
     pc_p2_waterwraith_encounter_reset();
+    pc_p2_waterwraith_reset();
+}
+
+bool pc_p2_waterwraith_receipt(Pellet* pellet, unsigned& generator)
+{
+    if (!pellet) {
+        return false;
+    }
+    auto it = sCorpses.find(pellet);
+    if (it == sCorpses.end()) {
+        return false;
+    }
+    generator = it->second;
+    // One-shot consume: the delivered corpse's slot must never be re-credited.
+    sCorpses.erase(it);
+    ++sDeliveryCount;
+    std::printf("P2_WATERWRAITH_POD_RECEIPT generator=%u deliveries=%u\n", generator,
+                sDeliveryCount);
+    std::fflush(stdout);
+    return true;
+}
+
+void pc_p2_waterwraith_reset()
+{
+    sCorpses.clear();
+    sDeliveryCount = 0;
+}
+
+unsigned pc_p2_waterwraith_delivery_count()
+{
+    return sDeliveryCount;
+}
+
+unsigned pc_p2_waterwraith_corpse_count()
+{
+    return static_cast<unsigned>(sCorpses.size());
+}
+
+Pellet* pc_p2_waterwraith_corpse_pellet()
+{
+    sweepCorpses();
+    return sCorpses.empty() ? nullptr : sCorpses.begin()->first;
 }
 
 bool pc_p2_waterwraith_register_ready()
@@ -175,9 +280,22 @@ bool pc_p2_waterwraith_register_ready()
     return sState.ready;
 }
 
+bool pc_p2_waterwraith_register_finished()
+{
+    return sState.finished;
+}
+
+bool pc_p2_waterwraith_register_corpse_spawned()
+{
+    return sState.corpseSpawned;
+}
+
 void pc_p2_waterwraith_register_tick(float delta)
 {
-    if (!sState.ready || !std::isfinite(delta) || delta <= 0.0f) {
+    // Lane-07 liveness: drop corpses that died without delivery even after the
+    // wraith itself is finished (the carried stand-in outlives the actor).
+    sweepCorpses();
+    if (!sState.ready || sState.finished || !std::isfinite(delta) || delta <= 0.0f) {
         return;
     }
     sState.debt += static_cast<double>(delta);
@@ -199,10 +317,24 @@ void pc_p2_waterwraith_register_tick(float delta)
             in.animEnd = true;
         }
         // Live-squad combat: Purple stun/damage and roller crush, plus the
-        // roller death script (dismount -> tyre_getoff -> child removal).
+        // roller death script (dismount -> tyre_getoff -> child removal) and
+        // then the wrapped-body death once the child is gone.
         pc_p2_waterwraith_encounter_step(sState.actor, in);
         sState.actor.tick(in, sState.out, kSourceDelta);
         ++sState.actorTicks;
+        // Death side effects (source Dead key sequence, see encounter.cpp):
+        // KEYEVENT_5 drops the stand-in corpse; KEYEVENT_END tears the seam down.
+        if (sState.out.releaseTreasure && !sState.corpseSpawned) {
+            spawnWraithCorpse();
+        }
+        if (sState.out.killRequested) {
+            sState.finished = true;
+            std::printf("P2_WATERWRAITH_FINISHED tick=%llu bodyHealth=%.1f\n",
+                        static_cast<unsigned long long>(sState.actorTicks),
+                        sState.actor.bodyHealth());
+            std::fflush(stdout);
+            break;
+        }
         if (sState.visualReady) {
             pc_p2_waterwraith_visual_update();
         }
@@ -211,7 +343,7 @@ void pc_p2_waterwraith_register_tick(float delta)
 
 int pc_p2_waterwraith_register_draw(Graphics& gfx, const Matrix4f& world)
 {
-    if (!sState.ready || !sState.visualReady) {
+    if (!sState.ready || sState.finished || !sState.visualReady) {
         return 0;
     }
     const P2WaterwraithVec3 base = sState.placement.placement;

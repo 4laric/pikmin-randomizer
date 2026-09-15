@@ -32,6 +32,9 @@ int main() {
 	       && clipKeys("dead").keys[2] == 86 && clipKeys("dead").keys[3] == 99);
 	assert(clipKeys("carry").frames == 0); // carry stays P1-authoritative
 
+	// Continuous stuck-Pikmin latch damage (natural combat -> lethal path).
+	assert(DamagePerBlow == 1.0f && BlowIntervalTicks == 20);
+
 	// Sleep deferred next state (clip end), QueenState.cpp:89-103.
 	assert(sleepNext(100.0f, false, false, false, false) == -1);
 	assert(sleepNext(100.0f, false, true, false, false) == Wait);

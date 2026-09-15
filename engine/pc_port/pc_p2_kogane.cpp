@@ -37,6 +37,9 @@ std::map<PelletView*,int> actors;int karada=-1;
 struct Beetle {
     int flips=0;             // press count so far (source mFlipCount)
     float dropTimer=-1.0f;   // seconds until the pending flip drop fires (source damage.bca frame 7 of 50)
+    float recoverTimer=0.0f; // seconds until the current damage clip finishes (source damage.bca 50 frames);
+                             // further presses/attacks are held until then so a continuous stick-attack
+                             // flips at most once per damage clip (source NoInterrupt at KEYEVENT_2..4)
     bool moving=false;       // wander phase flag
     float phaseTimer=0.5f;   // seconds left in the current wander phase
     float heading=0.0f;      // current wander heading (radians)
@@ -63,6 +66,16 @@ std::map<unsigned,int> restoredFlips;
 // previously granted drops.
 const char* kReceiptsPath="p2-kogane-receipts.txt";
 const char* kReceiptsHeader="P2_KOGANE_RECEIPTS_1";
+// Lane-06 ordinary Onion reward receipt: exactly-once per (seed, identity,
+// generator, flip) through the shared pc_p2_receipt_host ledger. Distinct from
+// the family-local flip-count sidecar above (kReceiptsPath), which records the
+// source press count for re-arm prevention; this grants the actual drop reward.
+const char* kOnionReceiptsPath="p2-kogane-onion-receipts.txt";
+std::string receiptSeed="kogane-arena";
+P2ReceiptHostHandle koganeReceiptHandle=nullptr;
+// Slice 3: per-generator nectar census (foregrounds the TARGET in a mixed scene,
+// where retargeting onto Wealthy/Fart also spawns nectar this process).
+std::map<unsigned,int> nectarDropped;
 
 int loadReceipts(){
     std::ifstream in(kReceiptsPath);
@@ -149,11 +162,56 @@ void doDrop(BTeki* actor,int id,Beetle& b){
     std::printf("P2_KOGANE_DROP generator=%u source_id=%d flip=%d pellet%d=%d nectar=%d\n",
         actor->mGenerator?actor->mGenerator->_70:0u,id,b.flips,pelletValue,pellets,nectar);
     std::fflush(stdout);
+    nectarDropped[actor->mGenerator?actor->mGenerator->_70:0u]+=nectar;
+    // Grant the drop reward exactly-once through the lane-06 ordinary Onion
+    // ledger (never the Pod). On a process restart the host ledger reloads and a
+    // re-attempted drop grants nothing (Duplicate), so a farmed beetle can never
+    // re-arm for another reward; the flip-count sidecar independently keeps the
+    // escaped beetle from flipping again.
+    if (receiptSeed.size() > 0 && koganeReceiptHandle) {
+        const unsigned gen = actor->mGenerator ? actor->mGenerator->_70 : 0u;
+        const std::string identity = "enemy:" + std::to_string(id);
+        const std::string encounter = "flip" + std::to_string(b.flips);
+        const P2ReceiptHostResult result = pc_p2_receipt_host_grant(
+            koganeReceiptHandle, receiptSeed.c_str(), identity.c_str(), std::to_string(gen).c_str(), encounter.c_str());
+        if (result == P2ReceiptHostResult::Error) {
+            std::fputs("P2_KOGANE_ONION_RECEIPT persistence failed\n", stderr);
+            std::abort();
+        }
+        std::printf("P2_KOGANE_ONION_RECEIPT generator=%u flip=%d granted=%d duplicate=%d ledger=onion seed=%s\n",
+            gen, b.flips, int(result == P2ReceiptHostResult::Granted), int(result == P2ReceiptHostResult::Duplicate),
+            receiptSeed.c_str());
+        std::fflush(stdout);
+    }
+}
+
+// Shared flip entry: one press/land counts a single flip, plays the host damage
+// clip and schedules the frame-7 drop; the source has no distinct P1 stimulus
+// for a Pikmin landing on a beetle, so a real Pikmin stick-attack (InteractAttack,
+// routed by pc_p2_kogane_attacked) counts as the press while the injected
+// InteractPress path remains for the historical fixtures. Registered beetles
+// never take attack health damage: the flip is the only combat outcome.
+bool doFlip(BTeki* actor,int id,bool natural){
+    Beetle& b=beetles[static_cast<PelletView*>(actor)];
+    if(actor->mDeadState!=0||b.dropTimer>=0.0f||b.recoverTimer>0.0f)return true; // mid-flip/recovery: swallow
+    ++b.flips;
+    actor->startMotion(TekiMotion::Damage);
+    b.dropTimer=7.0f/50.0f*(50.0f/30.0f);  // source damage.bca createItem event at frame 7 of 50
+    b.recoverTimer=50.0f/30.0f;            // hold until the full damage clip completes
+    b.moving=false;
+    actor->stopMove();
+    const unsigned gen=actor->mGenerator?actor->mGenerator->_70:0u;
+    std::printf("P2_KOGANE_FLIP generator=%u source_id=%d flip=%d\n",gen,id,b.flips);
+    if(natural)std::printf("P2_KOGANE_NATURAL_ATTACK generator=%u source_id=%d flip=%d\n",gen,id,b.flips);
+    std::fflush(stdout);
+    saveReceipts();
+    return true;
 }
 }
 void pc_p2_kogane_reset(){
     for(const auto& entry:beetles)if(entry.second.generator&&entry.second.flips>0)restoredFlips[entry.second.generator]=entry.second.flips;
-    clips.clear();timing.clear();actors.clear();beetles.clear();karada=-1;logged[0]=logged[1]=false;
+    clips.clear();timing.clear();actors.clear();beetles.clear();karada=-1;logged[0]=logged[1]=false;nectarDropped.clear();
+    if(koganeReceiptHandle){pc_p2_receipt_host_close(koganeReceiptHandle);koganeReceiptHandle=nullptr;}
 }
 void pc_p2_kogane_forget(BTeki* actor){actors.erase(static_cast<PelletView*>(actor));beetles.erase(static_cast<PelletView*>(actor));}
 int pc_p2_kogane_source_id(PelletView* a){auto i=actors.find(a);return i==actors.end()?-1:i->second;}
@@ -164,6 +222,17 @@ void pc_p2_kogane_setup(){
     std::printf("P2_KOGANE_RECEIPTS loaded=%d\n",receipts);
     std::fflush(stdout);
     std::ifstream sidecar("p2-kogane-native.txt");if(!sidecar)return;
+    // Open the lane-06 ordinary Onion receipt ledger for this run. Seed is the
+    // product seed when the host provides one (PIKMIN_P2_SEED), else a stable
+    // family-local token (single-receipt-consumer caveat as in pc_p2_flora_actor).
+    if (const char* seed = std::getenv("PIKMIN_P2_SEED")) {
+        if (pc_p2_receipt_host_valid(seed)) receiptSeed = seed;
+    }
+    koganeReceiptHandle = pc_p2_receipt_host_open(kOnionReceiptsPath);
+    if (!koganeReceiptHandle) {
+        std::fputs("P2_KOGANE = invalid receipt state\n", stderr);
+        std::abort();
+    }
     p2kogane::Config config;if(!tekiMgr||!p2kogane::read(sidecar,config))std::abort();
     auto manifest=config.clips;std::set<std::uint32_t> wanted;for(auto row:config.ids)wanted.insert(row.first);karada=config.karada;
     // Reject identity overlap and unresolved/duplicate generator IDs before loading.
@@ -259,27 +328,20 @@ float pc_p2_kogane_param_f(const BTeki* actor,int idx,float fallback){
     default:return fallback;
     }
 }
-// Pikmin attacks do no damage (source: only flip-on-press affects beetles);
-// swallow the attack interaction for registered actors.
+// Pikmin attacks do no health damage (source: only flip-on-press affects
+// beetles), but a landed Pikmin stick-attack is the host's only natural press
+// stimulus, so route it to the flip. Registered actors are fully handled here.
 bool pc_p2_kogane_attacked(Teki* teki){
-    return pc_p2_kogane_source_id(static_cast<PelletView*>(teki))>=0;
+    int id=pc_p2_kogane_source_id(static_cast<PelletView*>(teki));
+    if(id<0)return false;
+    return doFlip(teki,id,true);
 }
-// Press (Pikmin landing on top): count a flip, play the host damage motion and
-// schedule the source frame-7 drop. The third flip's drop triggers escape.
+// Injected press (historical fixtures): count a flip, play the host damage motion
+// and schedule the source frame-7 drop. The third flip's drop triggers escape.
 bool pc_p2_kogane_pressed(Teki* teki,Creature*){
     int id=pc_p2_kogane_source_id(static_cast<PelletView*>(teki));
     if(id<0)return false;
-    Beetle& b=beetles[static_cast<PelletView*>(teki)];
-    if(teki->mDeadState!=0||b.dropTimer>=0.0f)return true; // mid-flip: swallow extra presses
-    ++b.flips;
-    teki->startMotion(TekiMotion::Damage);
-    b.dropTimer=7.0f/50.0f*(50.0f/30.0f); // source damage.bca createItem event at frame 7 of 50 @30fps
-    b.moving=false;
-    teki->stopMove();
-    std::printf("P2_KOGANE_FLIP generator=%u source_id=%d flip=%d\n",teki->mGenerator?teki->mGenerator->_70:0u,id,b.flips);
-    std::fflush(stdout);
-    saveReceipts();
-    return true;
+    return doFlip(teki,id,false);
 }
 // Per-frame driver: wander, pending drops, Fart gas, forced escape.
 void pc_p2_kogane_update(BTeki* actor){
@@ -289,6 +351,7 @@ void pc_p2_kogane_update(BTeki* actor){
     if(actor->mDeadState!=0)return;
     const float dt=gsys->getFrameTime();
     if(dt<=0.0f||dt>0.5f)return; // skip paused/hitched frames
+    if(b.recoverTimer>0.0f){b.recoverTimer-=dt;if(b.recoverTimer<=0.0f)b.recoverTimer=0.0f;}
     // Pending flip drop (beetle is held still while flipping).
     if(b.dropTimer>=0.0f){
         b.dropTimer-=dt;
@@ -372,6 +435,42 @@ int pc_p2_kogane_gas_state(BTeki* actor,float* x,float* z,float* remaining){
     if(b.gasTimer<=0.0f)return 0;
     if(x)*x=b.gasPosition.x;if(z)*z=b.gasPosition.z;if(remaining)*remaining=b.gasTimer;
     return 1;
+}
+// Slice 3: the persisted lane-06 onion ledger is the independent backstop to the
+// family-local flip sidecar. These read/re-drive it so a restart pass can prove
+// the reward cap holds: the ledger still has exactly three rows and every
+// re-attempt is a genuine pc_p2_receipt_host_grant Duplicate, never a re-grant.
+// The row count uses the lane-06 handle accessor (pc_p2_receipt_host_count)
+// instead of re-parsing the on-disk format.
+int pc_p2_kogane_onion_ledger_rows(){
+    return koganeReceiptHandle ? int(pc_p2_receipt_host_count(koganeReceiptHandle)) : 0;
+}
+int pc_p2_kogane_reprobe_duplicates(unsigned generator,int id){
+    // Re-drive a farmed beetle's three flip grants through the real lane-06 grant
+    // path on THIS lane's per-consumer handle. Every row must be a genuine
+    // Duplicate (a missing or re-armed ledger would return Granted, which fails).
+    if(!koganeReceiptHandle)return -1; // no sidecar -> no ledger opened
+    const std::string identity="enemy:"+std::to_string(id);
+    const std::string slot=std::to_string(generator);
+    int dups=0;
+    for(int flip=1;flip<=3;++flip){
+        const std::string encounter="flip"+std::to_string(flip);
+        const P2ReceiptHostResult result=pc_p2_receipt_host_grant(
+            koganeReceiptHandle,receiptSeed.c_str(),identity.c_str(),slot.c_str(),encounter.c_str());
+        if(result==P2ReceiptHostResult::Error){std::fputs("P2_KOGANE_ONION_RECEIPT persistence failed\n",stderr);std::abort();}
+        const bool granted=result==P2ReceiptHostResult::Granted;
+        const bool duplicate=result==P2ReceiptHostResult::Duplicate;
+        std::printf("P2_KOGANE_ONION_RECEIPT generator=%u flip=%d granted=%d duplicate=%d ledger=onion seed=%s\n",
+            generator,flip,int(granted),int(duplicate),receiptSeed.c_str());
+        if(granted)return -1; // a re-farm grant is a cap bug; fail closed
+        if(duplicate)++dups;
+    }
+    std::fflush(stdout);
+    return dups;
+}
+int pc_p2_kogane_nectar_dropped(unsigned generator){
+    auto it=nectarDropped.find(generator);
+    return it==nectarDropped.end()?0:it->second;
 }
 bool pc_p2_kogane_draw(BTeki* actor,Graphics& gfx,const Matrix4f& matrix,bool corpse){
     if(!actors.count(static_cast<PelletView*>(actor)))return false;

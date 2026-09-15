@@ -164,6 +164,32 @@ The parser stores target→source bindings; the generator→target map and actua
 P2 actor spawn remain lane 04/family work, and the native branch is not yet
 reconciled into the maintained line (no whole-engine export was taken).
 
+## Ordinary spawn-binding resolution (this lane, #439) — parser + resolution only
+
+The bridge resolves a live generator to its bound source id via the **spawn-slot
+uid** (lane 04's contract, `str(slot['uid'])`), not the raw `Generator::_70` ID
+tag (which is only read on the non-ram file path and is not the placement key):
+
+- `pc_randomizer_set_generator_id` / `pc_randomizer_bind_generator` now populate
+  the generator→uid map under the P2 bridge as well as the P1 slot layouts
+  (`ENEMY_P2` forbids `ENEMY_CAMPAIGN`/`ENEMY_SLOTS`/`ENEMY_GROUPS`, so
+  `pc_randomizer_spawn_slots()` is false and the map used to stay empty).
+- `pc_randomizer_p2_source_for_id(unsigned long)` stringifies a spawn-slot uid and
+  returns `pc_randomizer_p2_source(...)` (0 when unbound). `GenObjectTeki::birth`
+  calls it with `pc_randomizer_generator_id(info.mGenerator)` and emits
+  `P2_SEED_RESOLVE source_id=<n> target=<uid> ...` for a bound generator.
+- `pc_randomizer_probe --enemy-p2-spawn-probe` re-derives and re-resolves every
+  bound slot uid across an unset+rebind (cache reload); `scripts/test_p2_bridge_spawn.py`
+  drives `binding_targets_for_sources([45, 44])` end to end and asserts the native
+  resolution equals the seed bindings.
+
+This is **parser + resolution only**: nothing consumes the marker to create a
+bound live actor yet, so game gate A (identity + spawn) stays UNTESTED. Binding a
+live Snow/Dwarf-Orange actor requires lane 13/05 to switch their
+`-actors.txt`/vehicle selection from `_70` to the spawn-slot uid and hand the
+resolved source id to a birth consumer (`pc_p2_kochappy_fsm` for Dwarf Orange; the
+Snow campaign seam for Snow).
+
 ## Remaining work
 
 - Lane 04: real binding targets and legal placement.

@@ -320,6 +320,10 @@ void pc_p2_elecbug_reset() {
     clips.clear();
     ready = false;
 }
+// Fixture observability (mirrors pc_p2_sokkuri/armor): read-only registration
+// count/membership so the lifecycle fixture can prove forget clears stale state.
+unsigned long pc_p2_elecbug_count() { return (unsigned long)actors.size(); }
+bool pc_p2_elecbug_registered(BTeki* actor) { return actors.count(static_cast<PelletView*>(actor)) != 0; }
 void pc_p2_elecbug_forget(BTeki* actor) {
     ElecBug* s = lookup(actor);
     if (s && s->partner) breakLink(actor, *s);
@@ -421,6 +425,33 @@ const char* pc_p2_elecbug_state_name(const BTeki* actor) {
     return stateName(it->second.state);
 }
 
+// Natural press adaptation (#165): source ElecBug::pressCallBack is reached by a
+// thrown/hipdropped Pikmin landing (velocity.y<0 in PikiFlyingState collision).
+// The P1 host has no Pikmin->enemy InteractPress routing for a Chappy-vehicle
+// enemy, so this probe detects a descending Purple Pikmin overlapping the adult
+// ElecBug once per flip (REVERSE/DEAD short-circuit) and delegates to the source-equivalent press receiver.
+// Constant press radius 30 is a documented P1-derived adaptation (source uses the
+// collision searchDistance/height), not a retail-faithful proximity.
+void pc_p2_elecbug_check_landing_press(BTeki* actor) {
+    if (!ready || !pikiMgr) return;
+    ElecBug* s = lookup(actor);
+    if (!s || s->state == ELEC_DEAD || s->state == ELEC_REVERSE) return;
+    const Vector3f pos = actor->getPosition();
+    Iterator it(pikiMgr);
+    CI_LOOP(it) {
+        Piki* p = static_cast<Piki*>(*it);
+        if (!p || !p->isAlive()) continue;
+        if (pc_p2_species(p) != P2SpeciesPurple) continue;
+        if (p->mVelocity.y >= -0.01f) continue;  // ascending / grounded
+        if (distXZ(p->getPosition(), pos) > 30.0f) continue;
+        std::printf("P2_ELECBUG_NATURAL_PRESS generator=%u purple=1 source_id=28 state=%s\n",
+                    genOf(actor), stateName(s->state));
+        std::fflush(stdout);
+        pc_p2_elecbug_pressed(actor, p);
+        break;
+    }
+}
+
 void pc_p2_elecbug_setup() {
     pc_p2_elecbug_reset();
     if (!tekiMgr) return;
@@ -508,6 +539,10 @@ void pc_p2_elecbug_update(BTeki* actor) {
     if (dt <= 0.0f || dt > 0.5f) return;
     const Vector3f pos = actor->getPosition();
     const unsigned generator = genOf(actor);
+
+    // Natural press (Purple landing) -> source StateReverse, before the health
+    // bookkeeping so a same-frame flip still reports the pre-flip health.
+    pc_p2_elecbug_check_landing_press(actor);
 
     // Reversed beetles accept InteractAttack damage; every non-lethal drop is the
     // runtime proof that invulnerability is disabled while flipped.

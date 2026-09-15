@@ -129,9 +129,9 @@ int main() {
     const std::string good =
         "P2_HIBA_NATIVE_1\n"
         "3\n"
-        "20 20 0 0 0 0 100 -1 0 0\n"
-        "21 21 10 0 10 0 100 0.5 0 1\n"
-        "22 22 -10 0 -10 0 100 -1 40 0\n";
+        "20 20 0 0 0 0 100 -1 0 0 -1\n"
+        "21 21 10 0 10 0 100 0.5 0 1 -1\n"
+        "22 22 -10 0 -10 0 100 -1 40 0 0.05\n";
     {
         Config config;
         assert(parse(good, config));
@@ -139,28 +139,31 @@ int main() {
         assert(config.hazards[0].hazardId == HibaId && config.hazards[0].waitOverride == -1.0f);
         assert(config.hazards[1].hazardId == GasHibaId && config.hazards[1].link == 1);
         assert(config.hazards[2].hazardId == ElecHibaId && config.hazards[2].separation == 40.0f);
+        assert(config.hazards[2].warningOverride == 0.05f);
     }
 
     auto reject = [](const std::string& text) {
         Config config;
         assert(!parse(text, config));
     };
-    reject("P2_HIBA_NATIVE_2\n1\n20 20 0 0 0 0 100 -1 0 0\n");            // wrong version
+    reject("P2_HIBA_NATIVE_2\n1\n20 20 0 0 0 0 100 -1 0 0 -1\n");   // wrong version
     reject("P2_HIBA_NATIVE_1\n0\n");                                      // empty
     reject("P2_HIBA_NATIVE_1\n9\n0\n");                                   // budget
-    reject("P2_HIBA_NATIVE_1\n1\n20 23 0 0 0 0 100 -1 0 0\n");            // unknown hazard
-    reject("P2_HIBA_NATIVE_1\n1\n20 20 0 0 0 0 0 -1 0 0\n");              // zero health
-    reject("P2_HIBA_NATIVE_1\n1\n20 20 1e39 0 0 0 100 -1 0 0\n");         // non-finite xyz
-    reject("P2_HIBA_NATIVE_1\n1\n20 20 0 0 0 361 100 -1 0 0\n");          // yaw bound
-    reject("P2_HIBA_NATIVE_1\n1\n20 20 0 0 0 0 100 1001 0 0\n");          // wait bound
-    reject("P2_HIBA_NATIVE_1\n1\n20 20 0 0 0 0 100 -1 1 0\n");            // separation on Hiba
-    reject("P2_HIBA_NATIVE_1\n1\n20 20 0 0 0 0 100 -1 0 1\n");            // link on Hiba
-    reject("P2_HIBA_NATIVE_1\n1\n21 21 0 0 0 0 100 -1 0 4\n");            // link bound
-    reject("P2_HIBA_NATIVE_1\n1\n22 22 0 0 0 0 100 -1 -1 0\n");           // negative separation
-    reject("P2_HIBA_NATIVE_1\n1\n4294967296 20 0 0 0 0 100 -1 0 0\n");    // id overflow
-    reject("P2_HIBA_NATIVE_1\n2\n20 20 0 0 0 0 100 -1 0 0\n20 21 0 0 0 0 100 -1 0 0\n"); // dup generator
+    reject("P2_HIBA_NATIVE_1\n1\n20 23 0 0 0 0 100 -1 0 0 -1\n");         // unknown hazard
+    reject("P2_HIBA_NATIVE_1\n1\n20 20 0 0 0 0 0 -1 0 0 -1\n");           // zero health
+    reject("P2_HIBA_NATIVE_1\n1\n20 20 1e39 0 0 0 100 -1 0 0 -1\n");      // non-finite xyz
+    reject("P2_HIBA_NATIVE_1\n1\n20 20 0 0 0 361 100 -1 0 0 -1\n");       // yaw bound
+    reject("P2_HIBA_NATIVE_1\n1\n20 20 0 0 0 0 100 1001 0 0 -1\n");       // wait bound
+    reject("P2_HIBA_NATIVE_1\n1\n20 20 0 0 0 0 100 -1 1 0 -1\n");         // separation on Hiba
+    reject("P2_HIBA_NATIVE_1\n1\n20 20 0 0 0 0 100 -1 0 1 -1\n");         // link on Hiba
+    reject("P2_HIBA_NATIVE_1\n1\n20 20 0 0 0 0 100 -1 0 0 1\n");          // warning on Hiba
+    reject("P2_HIBA_NATIVE_1\n1\n21 21 0 0 0 0 100 -1 0 4 -1\n");         // link bound
+    reject("P2_HIBA_NATIVE_1\n1\n22 22 0 0 0 0 100 -1 -1 0 -1\n");        // negative separation
+    reject("P2_HIBA_NATIVE_1\n1\n22 22 0 0 0 0 100 -1 0 0 1001\n");       // warning bound
+    reject("P2_HIBA_NATIVE_1\n1\n4294967296 20 0 0 0 0 100 -1 0 0 -1\n"); // id overflow
+    reject("P2_HIBA_NATIVE_1\n2\n20 20 0 0 0 0 100 -1 0 0 -1\n20 21 0 0 0 0 100 -1 0 0 -1\n"); // dup generator
     reject(good + "junk");                                                 // trailing
-    reject(good.substr(0, good.size() - 3));                               // truncated
+    reject("P2_HIBA_NATIVE_1\n1\n22 22 0 0 0 0 100 -1 40\n");              // truncated row (missing link+warning)
 
     std::puts("pikmin2_hiba_policy PASS");
     return 0;

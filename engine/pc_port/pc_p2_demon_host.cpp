@@ -1,5 +1,6 @@
 #include "pc_p2_demon_host.h"
 #include "pc_p2_demon_bridge.h"
+#include "pc_p2_demon_identity.h"
 #include "Collision.h"
 #include "Navi.h"
 #include "NaviMgr.h"
@@ -18,6 +19,16 @@
 #include <cstdlib>
 #include <cstring>
 
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+// Compile-level registration proof for the lane-30 captor identity: the
+// engine-free selector constant must match the appended PC-only teki type, and
+// that type must sit inside the registered range.
+static_assert(TEKI_P2Demon == p2demonid::kCaptorTekiType,
+              "lane-30 captor identity must match the registered teki type id");
+static_assert(TEKI_P2Demon < TEKI_TypeCount,
+              "lane-30 captor teki type must be registered inside TekiMgr");
+#endif
+
 namespace {
 std::uint64_t nextHostToken = 0;
 struct ManagerBinding { P2DemonHost* host; unsigned generator; int type; };
@@ -26,10 +37,12 @@ std::vector<std::unique_ptr<P2DemonHost>> managerHosts;
 std::size_t managerOrdinaryBindings = 0;
 
 // Find the one spawned arena actor the ordinary Demon host binds to. The
-// converted private room spawns a single Dwarf Bulborb (native TEKI_Chappy)
-// placeholder as its only enemy generator; an explicit identity may be supplied
-// instead. Exactly one match is required, so a stale/ambiguous scene fails closed.
-bool findOrdinaryActor(unsigned wantedGenerator, int wantedType, bool fixedIdentity, BTeki*& match)
+// binding keys on the dedicated lane-30 captor identity (the appended
+// TEKI_P2Demon type, or the reserved captor generator id), never on the Dwarf
+// Bulborb placeholder. The legacy placeholder is an explicit opt-in. An
+// explicit identity may be supplied instead. Exactly one match is required, so a
+// stale/ambiguous scene fails closed.
+bool findOrdinaryActor(unsigned wantedGenerator, int wantedType, bool fixedIdentity, bool legacyPlaceholder, BTeki*& match)
 {
     match = nullptr;
     Iterator actors(tekiMgr); CI_LOOP(actors) {
@@ -37,7 +50,9 @@ bool findOrdinaryActor(unsigned wantedGenerator, int wantedType, bool fixedIdent
         if (!actor || !actor->mGenerator) continue;
         if (fixedIdentity) {
             if (actor->mGenerator->_70 != wantedGenerator || actor->mTekiType != wantedType) continue;
-        } else if (actor->mTekiType != TEKI_Chappy) {
+        } else if (legacyPlaceholder) {
+            if (!p2demonid::isLegacyPlaceholderIdentity(actor->mGenerator->_70, actor->mTekiType)) continue;
+        } else if (!p2demonid::isDedicatedCaptorIdentity(actor->mGenerator->_70, actor->mTekiType)) {
             continue;
         }
         if (match) return false;
@@ -57,9 +72,17 @@ void setupOrdinaryHost()
     const char* type = std::getenv("PIKMIN_DEMON_ORDINARY_TYPE");
     const bool fixedIdentity = gen && *gen && type && *type;
     const unsigned wantedGenerator = fixedIdentity ? unsigned(std::strtoul(gen, nullptr, 10)) : 0u;
-    const int wantedType = fixedIdentity ? std::atoi(type) : TEKI_Chappy;
+    const int wantedType = fixedIdentity ? std::atoi(type) : p2demonid::kCaptorTekiType;
+    // Legacy fallback for the pre-identity converted room: the Dwarf Bulborb
+    // placeholder is accepted only when explicitly requested.
+    const char* legacy = std::getenv("PIKMIN_DEMON_ORDINARY_LEGACY_PLACEHOLDER");
+    const bool legacyPlaceholder = !fixedIdentity && legacy && std::strcmp(legacy, "1") == 0;
     BTeki* match = nullptr;
-    if (!findOrdinaryActor(wantedGenerator, wantedType, fixedIdentity, match)) return;
+    if (!findOrdinaryActor(wantedGenerator, wantedType, fixedIdentity, legacyPlaceholder, match)) return;
+    std::printf("DEMON_ORDINARY_IDENTITY generator=%u type=%d dedicated=%d legacy=%d explicit=%d\n",
+                match->mGenerator->_70, match->mTekiType,
+                int(!fixedIdentity && !legacyPlaceholder), int(legacyPlaceholder), int(fixedIdentity));
+    std::fflush(stdout);
 
     const char* model = std::getenv("PIKMIN_DEMON_ORDINARY_MODEL");
     if (!model || !*model) model = "courses/pikmin2room/demon0.mod";
