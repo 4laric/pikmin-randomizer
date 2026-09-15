@@ -14,7 +14,7 @@ WRITE = '\n'.join([
     'P2_BULBMIN_READY mother_epoch=1 dependents=10 proxy_model=kochappy_proxy',
     'P2_BULBMIN_MOTHER_BIRTH model=kochappy_proxy generator=23 dependents=0 wild=0 recruited=0',
     'P2_BULBMIN_TX_BOUND wild=2',
-    'P2_BULBMIN_WHISTLE recruited=1 wild=1 recruited_total=1',
+    'P2_BULBMIN_WHISTLE recruited=1 wild=1 recruited_total=1 via=navi_callPikis',
     'P2_CAVE_BULBMIN_TRANSITION move=descend removed=1 kept=17 exiting=0',
     'P2_CAVE_TRANSFER floor=1 survivors=17 health=0.625 failed=0',
 ])
@@ -47,6 +47,12 @@ class BulbminNaturalRuntimeTests(unittest.TestCase):
         self.assertFalse(result['checks']['whistle_via_real_path'])
         self.assertFalse(result['passed'])
 
+    def test_whistle_must_come_from_the_navi_path(self):
+        bad = WRITE.replace('via=navi_callPikis', 'via=direct')
+        result = validate(bad, READ, TRANSFER)
+        self.assertFalse(result['checks']['whistle_via_real_path'])
+        self.assertFalse(result['passed'])
+
     def test_descend_must_drop_a_wild_dependent(self):
         bad = WRITE.replace('P2_CAVE_BULBMIN_TRANSITION move=descend removed=1',
                             'P2_CAVE_BULBMIN_TRANSITION move=descend removed=0')
@@ -63,10 +69,10 @@ class BulbminNaturalRuntimeTests(unittest.TestCase):
 
     # Strip-a-line flips: each nominated marker must gate exactly its own check.
 
-    def test_mother_sidecar_requires_a_real_host_generator(self):
+    def test_mother_host_resolved_requires_a_real_generator(self):
         bad = WRITE.replace('generator=23', 'generator=0')
         result = validate(bad, READ, TRANSFER)
-        self.assertFalse(result['checks']['mother_sidecar'])
+        self.assertFalse(result['checks']['mother_host_resolved'])
         self.assertFalse(result['passed'])
 
     def test_mother_birth_requires_the_proxy_registered(self):
@@ -115,6 +121,8 @@ class BulbminNaturalWiringTests(unittest.TestCase):
         self.assertIn('P2_BULBMIN_WHISTLE', bulbmin)
         self.assertIn('pc_p2_bulbmin_mother_host', header)
         self.assertIn('pc_p2_bulbmin_call_pikis', navi)
+        self.assertIn('navi_callPikis', navi)
+        self.assertIn('via=%s', bulbmin)
         self.assertIn('pc_p2_bulbmin_attach_mother', preview)
         self.assertIn('pc_p2_bulbmin_transition', cave)
         self.assertIn('pc_p2_bulbmin_proxy_forget', lifetime)
