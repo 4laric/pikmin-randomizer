@@ -1,8 +1,8 @@
 import unittest
 
 from experimental.pikmin2_projectile_engine_receiver import (
-    ENGINE_STRIKE_RE, MAGIC, build_config, evaluate, parse_engine_strikes,
-    stone_config, kabuto_config, rig_bank_text)
+    ENGINE_STRIKE_RE, MAGIC, build_config, evaluate, groink_config,
+    parse_engine_strikes, stone_config, kabuto_config, rig_bank_text)
 
 
 # This test file exercises ONLY the Python log-evaluator/config functions
@@ -22,6 +22,26 @@ P2_PROJECTILE_STRIKE kind=Attack damage=250.0 target=1234 attributed=5678 source
 P2_PROJECTILE_ENGINE_STRIKE target=1234 kind=Attack damage=250.0 applied=1 rejected=0 health=180.0->180.0 stored=0.0->250.0 source=0
 P2_PROJECTILE_STONE_CONTACT target=1234 kind=1 health_zeroed=1
 P2_PROJECTILE_STONE_DESTROY reason=health traces=4 floors=0 walls=0
+"""
+
+
+# Two-Teki scenario: the bound firer (token 1111) is skipped on the birth tick,
+# but a *distinct* victim Teki (token 2222) is struck through the engine receiver.
+TWO_TEKI_LOG = """\
+Experimental preview window set to 960x540 windowed and centered
+P2_PROJECTILES_READY stone=1 egg=0 kabuto=1 rock=0 seed=1
+P2_PROJECTILE_KABUTO_FIRE species=Kabuto homing=0 rig=1 mouth=(173.6,0.0,-143.2)
+P2_PROJECTILE_SKIP_SELF target=1111
+P2_PROJECTILE_ENGINE_STRIKE target=2222 kind=Attack damage=250.0 applied=1 rejected=0 health=180.0->180.0 stored=0.0->250.0 source=0
+P2_PROJECTILE_STONE_CONTACT target=2222 kind=1 health_zeroed=1
+P2_PROJECTILE_STONE_DESTROY reason=health traces=4 floors=0 walls=0
+"""
+
+
+GROINK_LOG = """\
+Experimental preview window set to 960x540 windowed and centered
+P2_PROJECTILES_READY stone=1 egg=0 kabuto=1 rock=0 seed=1
+P2_PROJECTILE_GROINK_RECEIVER_HIT token=3333 kind=Bomb damage=10.0 applied=1 died=0 health=10.0
 """
 
 
@@ -46,6 +66,20 @@ class ProjectileEngineReceiverTests(unittest.TestCase):
         self.assertIn('kabuto_actor 23', text)
         self.assertIn('engine_receiver 1', text)
 
+    def test_build_config_two_teki(self):
+        text = build_config('two_teki', generator=23)
+        self.assertIn('kabuto Kabuto ', text)
+        self.assertIn('kabuto_rig rig-bank.txt ', text)
+        self.assertIn('kabuto_actor 23', text)
+        self.assertIn('teki_pin 1', text)
+        self.assertIn(groink_config(), text)
+        self.assertIn('engine_receiver 1', text)
+
+    def test_groink_config_row(self):
+        row = groink_config()
+        self.assertTrue(row.startswith('groink '))
+        self.assertEqual(row.count(' '), 4)
+
     def test_rig_bank_text_has_attack_clip_and_kuti(self):
         bank = rig_bank_text()
         self.assertTrue(bank.startswith('P2_ATTACHMENTS_1 2 1'))
@@ -64,6 +98,30 @@ class ProjectileEngineReceiverTests(unittest.TestCase):
         result = evaluate(log)
         # target 1234 was skipped but IS still an Attack strike target -> FAIL.
         self.assertEqual(result['gates']['cannon_self_hit_skipped'], 'FAIL')
+
+    def test_evaluate_second_teki_strike_passes(self):
+        result = evaluate(TWO_TEKI_LOG)
+        # The firer (1111) is skipped, and a *different* victim (2222) is struck.
+        self.assertEqual(result['gates']['second_teki_engine_strike'], 'PASS')
+
+    def test_evaluate_second_teki_fails_when_victim_marker_stripped(self):
+        # Strip the victim ENGINE_STRIKE line: skip-self fires but no second Teki
+        # is mutated -> the gate flips to FAIL (over-suppression would be hidden).
+        victim_line = ('P2_PROJECTILE_ENGINE_STRIKE target=2222 kind=Attack damage=250.0 '
+                       'applied=1 rejected=0 health=180.0->180.0 stored=0.0->250.0 source=0\n')
+        stripped = TWO_TEKI_LOG.replace(victim_line, '')
+        result = evaluate(stripped)
+        self.assertEqual(result['gates']['second_teki_engine_strike'], 'FAIL')
+
+    def test_evaluate_groink_bomb_receiver_mutation(self):
+        result = evaluate(GROINK_LOG)
+        self.assertEqual(result['gates']['groink_bomb_receiver_mutation'], 'PASS')
+
+    def test_evaluate_groink_wind_is_not_bomb_mutation(self):
+        wind = GROINK_LOG.replace('kind=Bomb damage=10.0 applied=1 died=0 health=10.0',
+                                  'kind=Wind damage=0.0 applied=0 died=0 health=20.0')
+        result = evaluate(wind)
+        self.assertEqual(result['gates']['groink_bomb_receiver_mutation'], 'FAIL')
 
     def test_parse_engine_strikes(self):
         strikes = parse_engine_strikes(SAMPLE_LOG)

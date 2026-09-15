@@ -158,3 +158,67 @@ The `--converted` room is a lane-owned copy of `room.mod`/`room.ini`/`treasure.m
 from a prior assembled room run (the canonical `output/pikmin2-room105` directory
 was absent from the shared `output/` at this session; see the handoff for the
 provenance).
+
+## Slice 2 — two real consumers in one room
+
+### Provider interface changes (this slice)
+
+- New opt-in config rows in the family-owned host `pc_p2_projectiles.cpp`:
+  - `groink <mx> <my> <mz> <damage>` — drives **lane-21's Groink strike bridge**
+    (`p2_groink_classify_hit` / `p2_groink_apply_strike` from `pc_p2_groink_hit.h`
+    / `pc_p2_groink_strike.h`) against **this lane's** `P2ProjectileReceiverRegistry`
+    for a Bomb strike on the live captain Navi. The sweep is the
+    muzzle-origin → live-captain segment (the host supplies it because the Groink
+    policy owns no actor). Lane-21's modules are not forked: their headers are
+    included and their functions called as-is.
+  - `teki_pin <0|1>` — injected victim placement for the two-Teki proof: every
+    Teki other than the bound `kabuto_actor` is re-anchored to the firer each
+    step, so the Stone's birth-frame contact deterministically reaches the second
+    Teki. Clearly labelled injected (marker `P2_PROJECTILE_TEKI_PIN`); the room's
+    two Dwarf Bulborbs otherwise wander ~70 units apart.
+- New markers: `P2_PROJECTILE_GROINK_RECEIVER_HIT`, `P2_PROJECTILE_TEKI_ROSTER`
+  (setup-time two-Teki diagnostic), `P2_PROJECTILE_TEKI_PIN`.
+
+### Two-Teki proof (consumer #1: Kabuto Stone → real engine receiver)
+
+The room now carries **two** live `TEKI_Chappy` (the standard Dwarf bound as the
+Kabuto firer plus a duplicated victim Dwarf). On every fire the Stone skips its
+own firer but still strikes the *second* Teki through the real engine receiver,
+proving skip-self closes the self-hit without over-suppressing other Teki:
+
+```
+P2_PROJECTILE_KABUTO_ACTOR bound=1 pos=(173.6,0.0,-143.2)   # firer
+P2_PROJECTILE_TEKI_ROSTER token=…016 type=3 gen=385875968    # firer
+P2_PROJECTILE_TEKI_ROSTER token=…544 type=3 gen=419430400    # victim (distinct token)
+P2_PROJECTILE_TEKI_PIN injected=1 anchor=…016
+P2_PROJECTILE_SKIP_SELF target=…016                          # firer skipped (once per fire)
+P2_PROJECTILE_ENGINE_STRIKE target=…544 kind=Attack damage=250 applied=1 stored=0.0->250.0  # victim struck
+```
+
+The `second_teki_engine_strike` gate passes only when a skip-self exists AND at
+least one applied Teki `InteractAttack` lands on a token that is **not** the
+skipped firer; stripping the victim `P2_PROJECTILE_ENGINE_STRIKE` line flips it
+to FAIL (pytest-covered).
+
+### Second consumer (consumer #2: lane-21 Groink → shared receiver)
+
+The Groink Bomb strike maps onto this lane's proxy receiver through lane-21's own
+`p2_groink_apply_strike`, exercised in the same room/executable:
+
+```
+P2_PROJECTILE_GROINK_RECEIVER_HIT token=<captain> kind=Bomb damage=10.0 applied=1 died=0 health=10.0
+```
+
+This reuses the intersecting `pc_p2_groink_strike.cpp` already linked into
+`pikmin_pc`; no Groink module was copied or changed. (Lane-21 still owns the
+full shell-flight/arena fixture; this slice proves the receiver consumption.)
+
+### Runtime evidence
+
+`output/dsw/l20-out/80293b9e420b4ade900e2f94ad68ebfc` (mode `two_teki`,
+`nectar.exe` head `610bcf0b` + this slice's uncommitted native edits, SHA-256
+`d00811ea78d0eb01e625498e98c8caeb6d0722eaced0fb2515c8182de3fd4b8c`):
+
+- `second_teki_engine_strike` PASS (16 applied victim strikes; firer skipped ×16).
+- `groink_bomb_receiver_mutation` PASS.
+- `navipiki_press_receiver_mutation` UNTESTED (the Stone strikes only Teki here).
