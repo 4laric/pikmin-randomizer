@@ -267,3 +267,115 @@ $env:PATH='C:\msys64\mingw64\bin;'+$env:PATH
 $env:PIKMIN_P2_ROOM_WINDOW='960x540'; $env:PYTHONUTF8='1'
 py -3.12 output/deepseek-wave/slot.py run gl l16 -- py -3.12 -m experimental.pikmin2_frog_runtime run --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" --bank "C:/Users/alari/pikmin-randomizer/output/dsw/l16-out/frog-bank" --output "C:/Users/alari/pikmin-randomizer/output/dsw/l16-out/run-runtime-s2" --exe "C:/Users/alari/pikmin-randomizer/output/dsw/l16-out/fixture-runtime-s2/fixture.exe"
 ```
+
+## Slice 2 — review fix pass (`l16-fix2`)
+
+Review rejection resolved item-by-item. The `g++` host-wide failure had already
+cleared (verified: full Release build + link succeeds at the new head).
+
+### Item resolutions
+
+1. **`pressDone` compile break** — added `bool pressDone = false;` to `FrogFsm`
+   (`pc_p2_frog.cpp`); the per-landing reset now compiles (item 1 was the flat
+   compile failure — the previous handoff admitted the reset was never compiled).
+2. **dirty=no build + fixture re-runs** — committed first, then built at the fixed
+   head through `build_lane.py l16`; three new `dirty=no` rows appended to
+   `l16-build-evidence.txt`. Rebuilt and re-ran the runtime fixture, the combat
+   fixture and the natural-lethal attempt (combat = natural, no injection), all
+   on the committed head.
+3. **Deferred death + validator wired** — removed the unconditional
+   `mHealth<=0 → Dead` at `pc_p2_frog_update` and deferred death to the source
+   exec points: `Wait` (isDead), `Turn`/`TurnToHome`/`GoHome` (finishMotion),
+   `Attack`/`Fail` (KEYEVENT_END), never from Jump/JumpWait/Fall. The
+   `experimental/pikmin2_frog_fsm.py` adjacency table already agreed with the
+   source. `pikmin2_frog_runtime.py` and `pikmin2_frog_combat.py` now actually
+   call the validator (`checks['fsm']`); a `P2_FROG_SETUP` episode marker added to
+   `pc_p2_frog_setup` lets the validator re-segment around the observed==80
+   re-entry so the reset does not forge an illegal adjacency.
+4. **groundY drift / sinking** — `groundY` is now captured from a floor probe
+   (`mapMgr->getMinY`) at setup and re-probed at each `launchHop` (no longer the
+   driftable `pos.y`), and every grounded state pins `pos.y = groundY`.
+5. **FRG_FAIL unreachable** — in `FRG_JUMP` entry, `stuckPikminCount>0 && rand01 <
+   p.jumpFail` transits to `FRG_FAIL` (StateJump::init); `rand01`/`nextRand` are
+   live again and the dead `nextState` field was removed.
+6. **shouldFlick** — replaced "any target within 40u" with a stuck-Pikmin count
+   gate (`mStickListHead` walk) at the `mShakeOffSticking1` tier (3); the
+   graduated flick-timer thresholds are a documented port omission. Frozen frogs
+   now wait/turn before jumping. `Turn` also commits immediately when attackable
+   or aligned (source `finishMotion`), restoring the landing-press combat gate.
+7. **Fall→Attack** — split the hop at the apex (`JumpWait → Fall` at `airTimer >=
+   airTime/2`) and land `Fall → Attack` on floor contact (`airTimer >= airTime`),
+   not the elapsed `type2*1.5` timer.
+8. **pressOnGround comment** — `doLandPress` comment now accurately describes the
+   `collisionCallback` landing press only; the false "flips stuck" claim deleted
+   (the pressOnGround stuck-shakeoff is not reproduced on the P1 host).
+9. **markers/params** — added `shakeRange` (120.0) to `p2frog::Params` and used it
+   in `doJumpFlick`; `P2_FROG_READY` prints `behavior=source_fsm`;
+   `P2_FROG_LAND` now counts Navi separately instead of hard-coding `navi=0`.
+10. **Hook split** — `src/plugPikiNakata/tekibteki.cpp` (+4 lines) was extracted
+    into its own `lane16: hooks — wire pc_p2_frog FSM update + suppress-AI into
+    BTeki (#167)` commit; the FSM port is a separate commit.
+
+### Ordered commits
+
+Native `deepseek/p2-l16-native`, base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`:
+
+| Commit | Message |
+|---|---|
+| `7122f544` | lane16: hooks — wire pc_p2_frog FSM update + suppress-AI into BTeki (#167) |
+| `99b09e86` | lane16: port Frog/MaroFrog source FSM onto P1 Wollywog host (#167) |
+| `51acd8b0` | lane16: review fixes 2 — deferred death, floor-probed groundY, stuck-gated flick, FRG_FAIL entry, land navi count (#167) |
+| `19e36c83` | lane16: review fixes 2 — P2_FROG_SETUP episode marker for FSM re-entry (#167) |
+| `32749e5a` | lane16: review fixes 2 — source-faithful Turn finishMotion (#167) |
+
+Root `deepseek/p2-l16`, base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`:
+
+| Commit | Message |
+|---|---|
+| `53bf6ae` | lane16: wire source-FSM validator into runtime/combat acceptance (#167) |
+| `1b44593` | lane16: split FSM-episode validation on P2_FROG_SETUP (#167) |
+| `e0fd013` | lane16: parse multi-digit squad in the natural-lethal combat validator (#167) |
+
+### Build evidence (all `dirty=no`, appended to `l16-build-evidence.txt`)
+
+| native | EXE SHA-256 |
+|---|---|
+| `51acd8b0c68b743a6276c81fa4c098962e13c24a` | `615b96843d7cce8c77f1cd5625833a65da54400287f528fe73b11d33fa7bfaec` |
+| `19e36c83648de33add0263074b4d5378fe3490e5` | `46c8972a12a10da3f6d8fd3314de47c4e35dc4b7995d2ef4247a49b105523432` |
+| `32749e5a5178b6a712fdb5fb6893a68b4b56e68c` | `97bee0e978d7e898568c838607b5705c038b2db349f717586829587d4c9bf322` |
+
+### Fixture re-runs (committed head `32749e5a`, 960x540, GL slot wrapped)
+
+| Fixture | Stage dir | Result |
+|---|---|---|
+| runtime (injected lethal) | `run-runtime-s2d/stages/24a8c28de0644a1a9baad664924b59be` | **PASS** exit 0; `fsm=true`, no illegal transitions |
+| combat / natural-lethal (no injection) | `run-combat-s2d/stages/69b3103a6d334202aaa1def16a0cd5a1` | **PASS** exit 0; `fsm=true`, `reason=depleted` (frog floor 245 HP, squad 20→0) |
+
+`P2_FROG_READY` now prints `behavior=source_fsm`; `P2_FROG_LAND` counts
+`pikmin`/`navi` separately; death is deferred (`attack→dead` terminal, no
+`jump→dead`); frozen frogs `wait→turn` before jumping.
+
+### Tests
+
+`py -3.12 -m pytest -q tests/test_pikmin2_frog_fsm.py
+tests/test_pikmin2_frog_runtime.py tests/test_pikmin2_frog_combat.py
+tests/test_pikmin2_frog_behavior.py tests/test_pikmin2_frog_carry.py
+tests/test_pikmin2_frog_rewards.py tests/test_pikmin2_frog_arena.py
+tests/test_pikmin2_tadpole_behavior.py` → **64 passed**.
+
+### Six-gate change vs slice 2
+
+| Gate | Slice 2 | fix pass |
+|---|---|---|
+| C combat | natural rerun BLOCKED (env) | PASS (vulnerability + landing-press, reason=depleted); natural lethal still FAIL (20 reds vs 800 HP → frog floor 245) |
+
+### Subagent usage (this pass)
+
+No subagents were available in this session (no task tool was exposed), so the
+review-specified three-way subagent split could not be run. All source audit,
+validator wiring, native fixes, builds and GL re-runs were done directly by this
+session. The slice-2 `general` subagent's validator remains in use, now correctly
+executed against the real log (it had been committed un-run; this pass found and
+fixed the episode-boundary and multi-digit-squad issues that only real output
+exposes). Honest negative result: the subagent experiment added no measurably
+saved time on this fix pass.
