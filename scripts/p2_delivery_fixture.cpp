@@ -15,8 +15,8 @@
 #include "GoalItem.h"
 #include "Pellet.h"
 #include "Interactions.h"
+#include "MemoryCard.h"
 #include "pc_randomizer.h"
-#include "pc_p2_delivery_host.h"
 #include "pc_window.h"
 #include "pc_bbft.h"
 #include "pc_gpu_preference.h"
@@ -33,11 +33,10 @@ static void require(bool ok, const char* why)
 
 // Lane 06 first real consumer: bind a live P2 source onto the ordinary Chappy host,
 // kill it, drive its corpse through the real Onion endpoint (GoalItem::suckMe ->
-// pc_randomizer_p2_corpse_delivered) and let the durable ordinary receipt host write the
-// exactly-once grant. The source bind here is a labelled fixture intervention (lane 13
-// supplies it in a generated session); the kill, corpse, Onion endpoint and durable
-// receipt are real. The receipt file path is taken from PIKMIN_P2_RECEIPT_PATH so two
-// processes (restart) share one ledger.
+// pc_randomizer_p2_corpse_delivered) and let the durable ordinary receipt ledger
+// write the exactly-once grant into the session campaign directory. The source bind
+// is a labelled fixture intervention (lane 13 supplies it in a generated session);
+// the kill, corpse, Onion endpoint, receipt and the memory-card save are real.
 class DeliveryApp : public PlugPikiApp {
     unsigned frames = 0;
     int phase = 0, waited = 0;
@@ -46,7 +45,6 @@ class DeliveryApp : public PlugPikiApp {
     Teki* target = nullptr;
     PelletView* view = nullptr;
     Pellet* corpse = nullptr;
-    const char* receiptPath = nullptr;
 public:
     int idle() override
     {
@@ -64,16 +62,13 @@ public:
                 if (e && e->mTekiType == TEKI_Chappy && e->isAlive()) { target = e; break; }
             }
             if (!target) return result;
-            receiptPath = std::getenv("PIKMIN_P2_RECEIPT_PATH");
-            if (!receiptPath || !*receiptPath) receiptPath = "p2-delivery-receipts.txt";
             view = static_cast<PelletView*>(target);
             require(target->mGenerator != nullptr, "target has no generator");
-            require(pc_p2_delivery_host_open(receiptPath), "cannot open receipt host");
             pc_randomizer_p2_bind_source(view, 44, target->mGenerator->_70); // labelled bind: Dwarf Orange 44
             Vector3f p = target->mSRT.t;
             n->resetPosition(p + Vector3f(45, 0, 45));
-            std::printf("P2_DELIVERY_BOUND source=44 teki_type=%d generator=%u receipt=%s x=%.1f z=%.1f\n",
-                        target->mTekiType, target->mGenerator->_70, receiptPath, p.x, p.z);
+            std::printf("P2_DELIVERY_BOUND source=44 teki_type=%d generator=%u x=%.1f z=%.1f\n",
+                        target->mTekiType, target->mGenerator->_70, p.x, p.z);
             std::fflush(stdout);
             phase = 1;
         }
@@ -110,7 +105,14 @@ public:
                 phase = 4;
             }
             if (phase == 4 && waited > 1200) {
-                std::printf("P2_DELIVERY_RESULT natural_carry=%d receipt=%s\n", int(natural), receiptPath);
+                // Trigger a real memory-card save so the campaign directory (where the
+                // receipt ledger lives) is a live checkpoint before exit. The direct-boot
+                // card provides a save slot; saveCurrentGame writes card + campaign.
+                gameflow.mGamePrefs.mSpareMemCardSaveIndex = 4;
+                gameflow.mMemoryCard.saveCurrentGame();
+                std::printf("P2_DELIVERY_SAVE save_failed=%d\n", int(gameflow.mMemoryCard.didSaveFail()));
+                std::fflush(stdout);
+                std::printf("P2_DELIVERY_RESULT natural_carry=%d\n", int(natural));
                 std::printf("PASS P2_DELIVERY_RECEIPT\n");
                 std::fflush(stdout);
                 std::_Exit(0);

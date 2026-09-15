@@ -4,9 +4,10 @@ Stages a real native randomizer session (schema 9 + collection_checks), binds a
 live P2 source (Dwarf Orange Bulborb, source 44) onto the ordinary Chappy host
 — a labelled fixture intervention standing in for the lane-13 bind path — kills
 it, drives its real corpse through the real Onion endpoint
-(``GoalItem::suckMe`` -> ``pc_randomizer_p2_corpse_delivered``), and re-runs a
-fresh process over the SAME durable receipt ledger to prove the ordinary P2
-reward is granted exactly once across restart.
+(``GoalItem::suckMe`` -> ``pc_randomizer_p2_corpse_delivered``), triggers a real
+memory-card save, then re-runs a fresh process over the SAME durable receipt
+ledger (in the session ``campaign`` directory) to prove the ordinary P2 reward is
+granted exactly once across restart.
 
 Fixture: ``scripts/p2_delivery_fixture.cpp`` (replacement main). Carry is injected
 (natural carry does not move the corpse; transport is lane 04). See
@@ -21,15 +22,19 @@ import uuid
 import _winapi
 from pathlib import Path
 
+# MinGW runtime DLLs (libstdc++/libgcc/libwinpthread) must be on PATH for the
+# fixture exe; this is the maintained toolchain's bin directory.
+MINGW_BIN = Path('C:/msys64/mingw64/bin')
 
-def run_once(session, exe, assets, receipt_path, label):
+
+def run_once(session, exe, assets, label):
     from randomizer.runner import NativeRun
     native_run = NativeRun(session)
     run = native_run.directory
     _winapi.CreateJunction(str(assets.resolve()), str((run / 'assets').resolve()))
-    env = dict(os.environ, SDL_AUDIODRIVER='dummy', PIKMIN_RANDOMIZER_TEST_BACKGROUND='1',
-               PIKMIN_P2_RECEIPT_PATH=str(receipt_path.resolve()))
-    env['PATH'] = 'C:/msys64/mingw64/bin;' + env['PATH']
+    env = dict(os.environ, SDL_AUDIODRIVER='dummy', PIKMIN_RANDOMIZER_TEST_BACKGROUND='1')
+    if MINGW_BIN.is_dir():
+        env['PATH'] = str(MINGW_BIN) + ';' + env['PATH']
     env.pop('BBFT_PORT', None)
     startup = subprocess.STARTUPINFO()
     startup.dwFlags |= subprocess.STARTF_USESHOWWINDOW
@@ -52,10 +57,11 @@ def run_once(session, exe, assets, receipt_path, label):
     grants = [l for l in text.splitlines() if 'P2_ORDINARY_P2_RECEIPT' in l]
     news = [l for l in grants if ' new=1' in l]
     dups = [l for l in grants if ' new=0' in l]
-    print(f'[{label}] exit={code} receipt_grants={len(news)} receipt_duplicates={len(dups)}')
+    saves = [l for l in text.splitlines() if 'P2_DELIVERY_SAVE' in l]
+    print(f'[{label}] exit={code} receipt_grants={len(news)} receipt_duplicates={len(dups)} saves={len(saves)}')
     for line in grants:
         print(f'  {line.strip()}')
-    return code, news, dups, run
+    return code, news, dups, saves, run
 
 
 def main():
@@ -64,7 +70,7 @@ def main():
     parser.add_argument('--assets', type=Path,
                         default=Path(os.environ.get('APPDATA', '')) / 'PikminRandomizer' / 'game-data' / 'assets')
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--seed', default='lane06-p2-delivery')
+    parser.add_argument('--seed', default='p2-delivery-two-process-restart')
     args = parser.parse_args()
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -82,17 +88,19 @@ def main():
     session.receive(0, wanted)
     print('schema', manifest['schema'], 'catalog', manifest['catalog'])
 
-    receipt_path = session.directory / 'p2-delivery-receipts.txt'
+    # The production open path writes the ledger to the session campaign
+    # directory (a live save/checkpoint root), not the run cwd.
+    receipt_path = session.directory / 'campaign' / 'p2-delivery-receipts.txt'
 
-    code1, news1, dups1, run1 = run_once(session, args.exe, args.assets, receipt_path, 'run1')
-    code2, news2, dups2, run2 = run_once(session, args.exe, args.assets, receipt_path, 'run2')
+    code1, news1, dups1, saves1, run1 = run_once(session, args.exe, args.assets, 'run1')
+    code2, news2, dups2, saves2, run2 = run_once(session, args.exe, args.assets, 'run2')
 
     ledger_rows = 0
     if receipt_path.exists():
         lines = [l for l in receipt_path.read_text().splitlines() if l.strip() and l.split()[0] != 'P2_RECEIPTS_1']
         ledger_rows = len([l for l in lines if 'onion:p2:44:' in l])
 
-    ok = (code1 == 0 and len(news1) == 1 and len(dups1) == 0
+    ok = (code1 == 0 and len(news1) == 1 and len(dups1) == 0 and len(saves1) >= 1
           and code2 == 0 and len(news2) == 0 and len(dups2) >= 1
           and ledger_rows == 1)
     print('EXACTLY_ONCE_ACROSS_RESTART:', ok)
