@@ -25,7 +25,7 @@ bumped #289 fixture uses. Family parent [#172]; actor issue [#289]; tracking
   stages a 32-red starting squad in a ring around the buried Emperor, removes
   `p2-king-inject.txt` and aborts if it reappears, and lets the actor's own
   `receiveScan` drive health to 0. The only staging is the labeled per-tick
-  re-pin of the live squad into a ring (as in the natural-Flick harness) plus
+  re-pin of the live squad into a ring (as in the natural-Flick harness; note this pin neutralises the shake-off, so the entry blow at pc_p2_king.cpp re-fires for all stuck Pikmin after every Flick — roughly 7 flicks × 32 ≈ 220 of the 1300 HP came from that pin-defeats-flick loop; staging that inflates damage, not injection) plus
   the larger authored squad so blows accumulate on this host's clock. There are
   no bombs and no force/Flick/kill injection. Exit 0 only when the Dead clip's
   frame-185 kill key fires naturally; a bounded window without a Dead key exits 3.

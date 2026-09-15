@@ -33,6 +33,8 @@ Root (base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`), clean at head:
 8917781 lane24: King natural combat->death harness and tests (#445)
 63d15ea lane24: latch the natural-death squad outside the tongue/trample reach (#445)
 d0673a7 lane24: natural combat->death docs and handoff (#445)
+- e9afed6 lane24: handoff accuracy (commit list + natural-flick re-run note) (#445)
+- (integrator review-fix commits follow on both branches)
 ```
 
 Native (base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`), clean at head:
@@ -98,7 +100,7 @@ already-passed injected gate is re-run with unchanged inputs.
 | 6. Cleanup and re-entry | PASS | natural exit 0, no leftover process; re-entry alias not exercised this slice |
 
 Only labeled fixture staging is the larger authored squad (32 reds) and the
-per-tick re-pin of the live squad into a ring (same as the natural-Flick harness).
+per-tick re-pin of the live squad into a ring (same as the natural-Flick harness). Review note: the pin neutralises the shake-off, so the entry blow re-fires for all stuck Pikmin after every Flick (~220 of 1300 HP from that loop); staging that inflates damage, labelled as such, not injection.
 There is no `p2-king-inject.txt` and no bomb in the run.
 
 Note: the `receiveScan` change is a changed input to the already-passed
