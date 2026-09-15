@@ -1,4 +1,4 @@
-# Lane 15 — DeepSeek handoff (fix2): NaN resolved — real Honeywisp carried-Egg reward (#166)
+# Lane 15 — DeepSeek handoff (fix3): NaN resolved — real Honeywisp carried-Egg reward (#166)
 
 Implementation owner: Codex via shared account `4laric`. Executing
 agent/session: DeepSeek (deepseek-v4-pro). This records ONE slice (real
@@ -68,9 +68,10 @@ is duplicated in `pc_p2_projectiles.cpp` and `qurioneEggBirthItems`).
 ## Build evidence (`output/dsw/l15-build-evidence.txt`)
 
 - **Lane build** (Ninja + MinGW g++ 16.2.0, Release, JAUDIO ON): native head
-  `7fa5eb01232f58bb45e32bb56417861c87e58ef2`, dirty=no, exe SHA-256
-  `ae91120369957fd58035032ce3508489ab5e3d7930293f9f9a6714638648012c`, `ninja -n`
-  no-work.
+  `ccb9d3a7` (fix3), dirty=no, exe SHA-256 `85b166a2...` (2026-09-15T02:40:26; fixture provenance
+  `output/dsw/l15-out/fixture-drop/provenance.json`). Earlier: `7fa5eb01`/`ae91120...` (fix2). Note: the
+  23:19:14 `f88de0ec dirty=no` line is a re-stamp of the 22:59 dirty build and cullfix-run.log (23:16)
+  predates that commit; the accepted slice-3 run used the 00:19:46 `bd23509a` build.
 - **Base build** (unmodified `b805d9c6`, separate worktree
   `output/dsw/native-l15-base` + build dir `native-l15-base-build`): 603/603, exe
   SHA-256 `0a9e500a8c0343dd006e0096c4642b268aedf43c6d631122744f2c34017236a1`,
@@ -195,11 +196,11 @@ After the fix the log shows continuous positions through a full natural cycle on
 dirty=no lane build (`f88de0ec`, exe `bd23509a…`):
 
 ```text
-state=appear -> move (6+ distinct positions) -> disappear -> stay
+state=appear -> move (4 distinct positions in qurione-run.log; drop-run.log shows no Move displacement because contact fired on the first Move frame) -> disappear -> stay
 0 `=nan`; validator: moved=True, source_cycle=True  (full appear/move/disappear)
 ```
 
-`nearest Pikmin XZ distance` observed 36→67 while the idle 20-red squad mingles
+(nearest-Pikmin XZ distance was not logged in any run; the idle 20-red squad mingles
 away from the wisp's fixed-birth facing flight path — that is why the natural drop
 does not fire (see 3.2).
 
