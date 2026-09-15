@@ -197,3 +197,111 @@ family suite → **119 passed** (7 new natural-runtime tests).
   death.
 - Reward/transport still UNTESTED (cargo-free arena, #397).
 - ElecBug pair discharge + TamagoMushi group births remain for later slices.
+
+## Slice 3
+
+**Source ID:** ElecBug 28. **Slice:** natural press-to-flip → lethal death →
+Yellow discharge-immunity → corpse/cleanup/re-entry, with no injected health or
+state.
+
+### Commits
+
+- native `536a364a` lane14: ElecBug natural Purple-landing press + registration observability (#165)
+  — `pc_port/pc_p2_elecbug.{cpp,h}`: `pc_p2_elecbug_check_landing_press` (family-
+  local `pressCallBack` adaptation: a descending Purple overlapping the beetle
+  flips it via the existing `pc_p2_elecbug_pressed`), plus `pc_p2_elecbug_count`
+  /`registered` observability mirroring Sokkuri/Armor. No shared file touched.
+- root `c5115e6` lane14: ElecBug natural press-to-flip→death runtime (no injected state) (#165)
+  — `experimental/pikmin2_elecbug_natural_runtime.py`, `tests/test_pikmin2_elecbug_natural_runtime.py`.
+
+### What was implemented / investigated
+
+- The P1 host has **no Pikmin→enemy `InteractPress`** emission (P1 thrown Pikmin
+  stick via `InteractAttack`; `InteractPress` in P1 is only enemy→Pikmin). The
+  prior immunity fixture therefore injected `pc_p2_elecbug_pressed` directly.
+- Slice 3 adds a family-local natural probe: `pc_p2_elecbug_check_landing_press`
+  runs in `pc_p2_elecbug_update` and, when a Purple Pikmin
+  (`pc_p2_species(p)==P2SpeciesPurple`) is descending (`mVelocity.y<-0.01`) within
+  30 units of the beetle, delegates to the source-equivalent press receiver.
+  P1-derived, logged `P2_ELECBUG_NATURAL_PRESS`; no shared lane-11 Purple edit.
+- The pair-discharge/immunity race: the Purple kept landing during Charge and
+  breaking the pair before discharge. Fixed by parking Purple+reds far away until
+  the pair discharges (Yellow parked at the pair midpoint survives, being
+  electric-immune), then staging the Purple landing in a barrage so the beetle
+  stays flipped until the 500 HP drain completes.
+
+### Runtime evidence (run `l14-out/elecbug-run3/6be6f3e6...`, exit 0, 14.9s)
+
+`P2_ELECBUG_IMMUNE ... pikmin=yellow species=2` (Yellow immune to the natural
+pair discharge) → `P2_ELECBUG_NATURAL_PRESS ... state=discharge` +
+`P2_ELECBUG_FLIP` + `state=reverse` (natural Purple press flipped a discharging
+beetle) → 30 `P2_ELECBUG_HIT` steps (485→20) → `P2_ELECBUG_DEAD health=0` →
+`P2_ELECBUG_NATURAL_CORPSE pellet=1` → `P2_ELECBUG_NATURAL_FORGET count=1` →
+`P2_ELECBUG_NATURAL_REENTRY ... stale=0 fresh=1 count=2` → `PASS ...
+injected=0`. No `mHealth=` write anywhere in the instrumented source.
+
+### Gates (slice 3)
+
+| Gate | Result |
+|---|---|
+| (a) natural press→flip | PASS (Purple landing → `P2_ELECBUG_FLIP` + `state=reverse` + `P2_ELECBUG_NATURAL_PRESS`) |
+| (b) vulnerability → lethal | PASS (30 `P2_ELECBUG_HIT` → dead) |
+| (c) Yellow immunity | PASS (`P2_ELECBUG_IMMUNE ... pikmin=yellow species=2`) |
+| (d) corpse/cleanup/reentry | PASS (corpse + forget + generator re-bind) |
+
+Purple species deployed at runtime via lane-11 `pc_p2_set_species(p,
+P2SpeciesPurple)` storage; the landing press is documented P1-derived.
+
+### Exact reproduction (slice 3)
+
+```powershell
+$env:PYTHONUTF8='1'
+py -3.12 -m experimental.pikmin2_elecbug_natural_runtime run `
+  --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets `
+  --imported C:/Users/alari/pikmin-randomizer/output/dsw/l14-out/ground `
+  --output C:/Users/alari/pikmin-randomizer/output/dsw/l14-out/elecbug-run-final `
+  --exe C:/Users/alari/pikmin-randomizer/output/dsw/l14-out/elecbug-fixture3/fixture.exe `
+  --seconds 120
+```
+
+### Tests
+
+`PIKMIN_NATIVE_ROOT=C:/Users/alari/pikmin-randomizer/output/dsw/native-l14`
+family suite → **132 passed** as run by the worker (file list not recorded; integrator reproduces 94 passed over the 10 named elecbug/sokkuri/ground/hana-catfish files and 48 over the natural-runtime + elecbug behaviour set).
+`fixture.exe` SHA `0a318e60132188fecf2be639cdedc56d26fafc00ed89641497fdadccc1996af7`;
+native `nectar.exe` SHA `765fc8d01d59ecf452b08311a0dcd68a44d18d0aae31bd6e4899d0e8b6502a8a`.
+
+### Subagent usage
+
+- **explore #1 (source audit)** — returned a precise source-facts table
+  (`pressCallBack`, Purple `hipdropCallBack`, `StateReverse` invulnerability,
+  `InteractDenki` Yellow/Bulbmin border, `becomePellet`). Used as-is; it correctly
+  flagged the missing P1-host `InteractPress` routing, which shaped the
+  landing-probe design. Estimated saving: large (I would have had to grep the decomp
+  myself for the press/hipdrop wiring).
+- **explore #2 (candidate inventory)** — confirmed the immunity fixture already
+  injected the flip, listed every `pc_p2_*` marker, and the `pc_p2_set_species` /
+  `pc_p2_make_purple` deployment API. Used as-is; the `pc_p2_set_species`
+  discovery let me deploy Purple/Yellow without reading lane-11 sources.
+- **general #3 (validator + test scaffold)** — wrote `validate()` + 12 pytest
+  cases against the marker contract I supplied. Used with corrections: I expanded
+  the marker contract (added `P2_ELECBUG_NATURAL_PRESS` to `natural_flip`,
+  pair-aware counts, second BIND) and replaced the "scaffold-only" placeholder
+  with the actual `APP`/`prepare`/`instrument`/`build`/`run`, then updated the
+  tests. Estimated: saved the boilerplate but the contract churn meant I still
+  edited both files substantially.
+
+### Remaining
+
+- TamagoMushi group births and any further reward/transport remain for later
+  slices (#397 for reward/lifetime).
+- The press is P1-derived (documented); retail Purple hipdrop physics is
+  lane-11/#128 scope.
+
+
+## Integrator review notes (slice 3)
+
+- The flip is a **staged P1-derived press**, not a thrown Pikmin: the fixture teleports a Purple onto the beetle with forced downward velocity and the native probe calls `pc_p2_elecbug_pressed` from inside the module, bypassing the `tekiinteraction.cpp` InteractPress receiver. The `flip=natural` PASS token is therefore overclaiming; rename to `flip=staged-press` in the next slice (token change needs a fixture rebuild).
+- Death IS natural: 34 accepted attacks, 30 hits 485→20, then `P2_ELECBUG_DEAD health=0`; no `mHealth` writes in the fixture.
+- Fixture timing fragility (next slice): the press is staged 45 ticks into a 90-tick discharge so the Purple is always shocked (`DenkiDying`, squad 20→19); run 3 succeeded only because death beat FLIP_TIME recovery by ~5 ticks. Wait for `!isDischarging` before the first landing, or re-designate a live Purple in the barrage. Also add the Sokkuri pattern's health-floor print and `blocking_reason` to `validate()`.
+- Subagent comparison: broader scope per slice than the solo slices, equally clean provenance, but the first lane-14 slice with an overclaiming docstring and a dropped pattern element.
