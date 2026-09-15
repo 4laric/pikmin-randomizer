@@ -1,0 +1,13 @@
+{
+  "schema": "p2-cave-leaf-table-v1",
+  "floor": "forest_1:floor2",
+  "note": "Fixture-injected seeded leaf table for lane 36's attachment demonstration. Lanes 34/35 had not landed their seeded-table producer when this slice ran, so these segment doors and leaf slots are an explicit fixture, not generated output. The producer contract is the schema name above.",
+  "segments": [
+    {"segment": 0, "doors": [1, 2]},
+    {"segment": 1, "doors": [1]}
+  ],
+  "leaves": [
+    {"slot": "water-0", "segment": 0, "hazard": "water"},
+    {"slot": "elec-0", "segment": 1, "hazard": "elec"}
+  ]
+}
