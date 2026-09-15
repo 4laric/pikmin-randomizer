@@ -32,7 +32,7 @@ Root base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`; native base
 | root | `e8a7d6b`, `0d03565` | Sokkuri natural lethal-death runtime + handoff slice 2 (#165) |
 | root | `2053d20`, `f8d4eae`, `9df2c03` | ElecBug staged-press/timing + Tamago group-birth runtime + handoff slice 4 (#165) |
 | root | `bbab6f3`, `5f84482` | review fixes 4: exactly_once on GROUP_ONCE, born=1 BIND, fixture forget via seam + handoff (#165) |
-| root | (slice 5 commits) | slice 5: deferred kill + in-place gate tables (#165) |
+| root | `f177b11` | slice 5: deferred kill fixture + in-place per-identity gate tables (#165) |
 
 Dirty state: none (both clean).
 
