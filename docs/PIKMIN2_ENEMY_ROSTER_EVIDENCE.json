@@ -337,10 +337,10 @@
         "PIKMIN2_QURIONE_LIFECYCLE.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
+        "identity_spawn": "PASS",
         "movement_animation": "UNTESTED",
         "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
+        "death_corpse": "PASS",
         "transport_reward": "UNTESTED",
         "cleanup_reentry": "UNTESTED"
       },

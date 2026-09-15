@@ -25,7 +25,7 @@ Regenerate with:
 - PIKMIN2_LANE12_DEEPSEEK_HANDOFF.md: 72 OniKurage
 - PIKMIN2_LANE13_DEEPSEEK_HANDOFF.md: 44 BlueKochappy
 - PIKMIN2_LANE14_DEEPSEEK_HANDOFF.md: 15 Armor, 28 ElecBug, 65 Imomushi, 68 TamagoMushi, 79 Sokkuri, 84 Hana
-- PIKMIN2_LANE15_DEEPSEEK_HANDOFF.md: (none)
+- PIKMIN2_LANE15_DEEPSEEK_HANDOFF.md: 16 Qurione
 - PIKMIN2_LANE16_DEEPSEEK_HANDOFF.md: 17 Frog, 18 MaroFrog, 26 Catfish, 27 Tadpole, 63 Jigumo, 101 UmiMushiBlind
 - PIKMIN2_LANE17_DEEPSEEK_HANDOFF.md: 9 Kogane, 10 Wealthy
 - PIKMIN2_LANE18_DEEPSEEK_HANDOFF.md: 38 PanModoki
@@ -52,9 +52,9 @@ Regenerate with:
 | 1 | 3 |
 | 2 | 2 |
 | 3 | 2 |
-| 4 | 2 |
+| 4 | 3 |
 | 5 | 2 |
-| 6 | 40 |
+| 6 | 39 |
 
 Seedable (`source`/`variant`) identities named across handoffs: 52
 
@@ -95,10 +95,10 @@ Seedable (`source`/`variant`) identities named across handoffs: 52
 - advances: (none)
 - blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
 
-### 16 Qurione (source) - shared table, excluded
-- handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md
-- advances: (none)
-- blocking: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
+### 16 Qurione (source)
+- handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE15_DEEPSEEK_HANDOFF.md
+- advances: identity_spawn, death_corpse
+- blocking: movement_animation, attacks_receivers, transport_reward, cleanup_reentry
 
 ### 17 Frog (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE09_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE16_DEEPSEEK_HANDOFF.md

@@ -98,6 +98,7 @@ struct Wisp {
     bool eggAttached = true;
     bool dropFired = false;
     bool deadLogged = false;
+    bool probeLogged = false;
     float logTimer = 0.0f;
     std::string clip = "appear1";
     float phase = 0.0f;
@@ -433,10 +434,25 @@ void pc_p2_qurione_update(BTeki* actor) {
     auto it = actors.find(static_cast<PelletView*>(actor));
     if (it == actors.end()) return;
     Wisp& w = it->second;
+    // Idempotent re-apply each frame: Creature::init (creature.cpp:429) resets
+    // CF_AIAlwaysActive, and setup-only setInsideView would not survive a
+    // re-entry/new-scene bind, re-freezing Move via the culling early-return.
+    actor->setInsideView();
     const float dt = gsys->getFrameTime();
     if (dt <= 0.0f || dt > 0.5f) return;
     const unsigned gen = actor->mGenerator ? actor->mGenerator->_70 : 0u;
     const Vector3f pos = actor->getPosition();
+    // Env-gated first-NaN probe (evidence; off by default). The prior probe
+    // build was a dirty tree, so this gate makes it reproducible:
+    //   PIKMIN_P2_NAN_PROBE=1 nectar.exe --experimental-pikmin2-room
+    if (std::getenv("PIKMIN_P2_NAN_PROBE") && !w.probeLogged
+        && (pos.x != pos.x || pos.y != pos.y || pos.z != pos.z)) {
+        w.probeLogged = true;
+        std::printf("[PC_L15_PROBE] first_nan state=%d vel=(%.3f,%.3f,%.3f) pos=(%.3f,%.3f,%.3f)\n",
+                    int(w.state), (double)actor->mVelocity.x, (double)actor->mVelocity.y,
+                    (double)actor->mVelocity.z, (double)pos.x, (double)pos.y, (double)pos.z);
+        std::fflush(stdout);
+    }
     w.stateTime += dt;
     switch (w.state) {
     case QS_STAY:
