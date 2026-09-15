@@ -1,116 +1,146 @@
-# Pikmin 2 lane 21 (Groink) DeepSeek handoff
+# Pikmin 2 lane 21 (Groink) DeepSeek handoff — fix1
 
 Lane 21 — Gatling Groink (`MiniHoudai` 78 / `FminiHoudai` 97). Tracking #198;
 candidate reuse #204–#210. Executing agent: opencode (deepseek-v4-pro), 2026-09-14.
 Implementation owner: Codex through shared account `4laric`.
 
-## Slice chosen
+## Supersession of the rejected slice
 
-One source enemy ID (#78 MiniHoudai, plus its fixed pedestal variant #97) and the
-missing end-to-end slice **death/corpse recovery**: source-faithful carcass
-gauge-delay -> regeneration -> replacement-object revival, mirroring
-`MiniHoudai::Obj::doBecomeCarcass` / `doUpdateCarcass`
-(`src/plugProjectNishimuraU/MiniHoudai.cpp:282-325`). The already-integrated
-shell-strike bridge (`pc_p2_groink_hit` / `pc_p2_groink_strike`) is preserved and
-not reimplemented.
+The first slice reimplemented the parked Codex carcass candidate under the same
+file names with an incompatible free-function/POD API (a terminal `revived` flag,
+health clamping, collapsed gauge-manager guard) and was rejected. The native
+branch was reset to base and the parked Codex work resumed by cherry-pick; the
+Python twin / tests / docs were rewritten to mirror the parked API.
+
+## Slice delivered
+
+Death/corpse recovery for #78/#97: resume the parked carcass regeneration +
+replacement-object revival policy (`pc_p2_groink_carcass`) and the host
+registration guard (`pc_p2_groink_lifetime`), and add a typed birth descriptor
+(`P2GroinkCarcassBirth`) plus a Python twin and tests. The integrated
+shell-strike bridge is untouched.
 
 ## Source IDs and files owned
 
-- #78 MiniHoudai (roaming Gatling Groink), #97 FminiHoudai (fixed pedestal).
+- #78 MiniHoudai, #97 FminiHoudai.
 - Native (`deepseek/p2-l21-native`): `pc_port/pc_p2_groink_carcass.{h,cpp}`,
-  `tools/p2_groink_carcass_test.cpp`, CMake registration.
+  `pc_port/pc_p2_groink_lifetime.h`, `tools/p2_groink_carcass_test.cpp`,
+  `tools/p2_groink_lifetime_test.cpp`, `tools/P2_GROINK_CARCASS.md`,
+  `tools/P2_GROINK_LIFETIME.md`, CMake test wiring.
 - Root (`deepseek/p2-l21`): `experimental/pikmin2_groink_carcass.py`,
-  `tests/test_pikmin2_groink_carcass.py`, `docs/PIKMIN2_GROINK_CARCASS.md`.
+  `tests/test_pikmin2_groink_carcass.py`, `docs/PIKMIN2_GROINK_CARCASS.md`,
+  `docs/PIKMIN2_LANE21_DEEPSEEK_HANDOFF.md`.
 
 ## Ordered commits and dirty state
 
 Root base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`; native base
-`b805d9c626e4f4558c95aef7cac311a5d9a2068f`. Both branches clean at handoff.
+`b805d9c626e4f4558c95aef7cac311a5d9a2068f`. Both clean at handoff.
 
 Native (`deepseek/p2-l21-native`):
-1. `88373a12` — lane21: source Groink carcass regeneration and replacement-object revival (#198)
+1. `45697128` — cherry-pick of parked `codex/p2-groink-carcass` @ `8324a5a0`
+   (feat: model Groink carcass recovery and revival request ordering).
+2. `016a3b77` — cherry-pick of parked `codex/p2-groink-lifetime` @ `14d9391d`
+   (feat: guard Groink registrations across revival and reuse).
+3. `5f5cf5fe` — lane21: resume parked carcass candidate - birth descriptor and CMake test wiring (#198).
 
 Root (`deepseek/p2-l21`):
-1. `895124b` — lane21: source Groink carcass revival policy twin, tests and doc (#198)
+1. `895124b` — lane21: source Groink carcass revival policy twin, tests and doc (#198) [superseded API; kept in history].
+2. `cd0c59f` — lane21: DeepSeek handoff for carcass revival slice (#198) [superseded].
+3. `795b208` — lane21: resume parked carcass API in the Python twin, tests and doc (#198).
+4. `<head>` — lane21: fix1 handoff (this document).
 
 ## Interfaces and hooks touched
 
-New engine-free policy only; no shared-framework edits. `pc_p2_groink_carcass`
-depends solely on the existing `pc_p2_groink.h` (P2GroinkVec3). No shared files
-(`teki.h`, `tekiinteraction.cpp`, `tekibteki.cpp`, `tekimgr.cpp`,
-`gameCoreSection.cpp`, `navi.cpp`, `pc_p2_preview.cpp`) were modified. The host
-contract: a future actor calls `p2_groink_carcass_become` on death, then
-`p2_groink_carcass_step(parms, dt)` each update; on `Revive` it performs the
-replacement `generalEnemyMgr->birth` with the returned `P2GroinkCarcassBirth` and
-transits the old object to `MINIHOUDAI_Rebirth`.
+Kept parked: `class P2GroinkCarcass { become(config); reset(); step(delta,
+pelletAlive, gaugeManager, activeTick) }` returning ordered `KillPellet` /
+`RequestBirth` commands (host reports birth outcome; no terminal flag), and
+`class P2GroinkLifetime` (generation-qualified handles, single pending revival
+ticket, fail-closed serials). Added `P2GroinkCarcassBirth { position; faceDir;
+existenceLength; inPiklopedia; }` as the host payload for `RequestBirth`. No
+shared files modified; no product `PC_PORT_SOURCES` wiring (parked scope "no
+shared hooks/build/export"); only two additive CMake test targets were added.
 
-## Build evidence (output/dsw/l21-build-evidence.txt)
+## Build evidence (output/dsw/l21-build-evidence.txt + output/dsw/l21-out/)
 
 ```
-2026-09-14T19:30:47 lane=l21 target=pikmin_pc native=88373a124ead6ca354cb24b84ad4ed21bfaf1be4 dirty=no build_dir=C:\Users\alari\pikmin-randomizer\output\dsw\native-l21-build exe=C:\Users\alari\pikmin-randomizer\output\dsw\native-l21-build\bin\nectar.exe sha256=b85d69a8f3d0054d5ccef81ca31a29206a1f69acaac1c3e39285a154bd086504 ninja_n="ninja: no work to do." seconds=160
+2026-09-14T20:52:01 lane=l21 target=pikmin_pc native=5f5cf5fe72f40a47c06cd6b33c9672ebed97774a dirty=no build_dir=...\native-l21-build exe=...\bin\nectar.exe sha256=9dd6f5d3fd6d53962bf83b0fc4ab8b7e5cfae1ee16f4d31ae0c5c4a07d167840 ninja_n="ninja: no work to do." seconds=74
+2026-09-14T20:39:42 lane=l21 target=p2_groink_lifetime_test native=5f5cf5fe... exe=...\p2_groink_lifetime_test.exe sha256=d62bb72c... ninja_n="ninja: no work to do."
 ```
-
-Configure: Ninja + MinGW g++ 16.2.0, `-DCMAKE_BUILD_TYPE=Release
--DPIKMIN_NATIVE_JAUDIO=ON -DPIKMIN_NATIVE_OPTIMIZE=OFF`, `CMAKE_MAKE_PROGRAM`
-set to the Python-bundled `ninja.exe`
-(`…/Python312/Scripts/ninja.exe`), compilers on `C:\msys64\mingw64\bin` PATH
-(MSYS `/c/msys64/mingw64/bin` form). `pikmin_pc` links clean (604/604).
+CTest (10/10 `p2_groink*` PASS) logged to `output/dsw/l21-out/ctest-groink-all.log`;
+carcass+lifetime subset in `output/dsw/l21-out/ctest-carcass-lifetime.log`.
 
 ## Fixture adoption evidence
 
-No real-GL runtime fixture was run for this slice — the deliverable is an
-actor-independent policy proven by compiled CTest + Python unit tests. The
-current starting-Pikmin overlay / 960×540 centred-window adoption is therefore
-**deferred** to the next runtime acceptance run (the policy runs on the existing
-integrated Groink strike fixture's host, which already adopts the current
-override, not a regenerated family room).
+No real-GL runtime fixture run this slice (actor-independent policy). The
+current starting-Pikmin overlay / centred 960×540 window adoption is deferred
+to the next runtime acceptance run.
 
 ## Six-gate table (natural vs injected)
 
-| Gate | Verdict | Evidence |
-|---|---|---|
-| 1. Exact identity and spawn | source-backed N/A | No new actor registration here; policy feeds the existing MiniHoudai/FminiHoudai identity. |
-| 2. Autonomous movement/animation | UNTESTED | Out of slice (locomotion remains on the shared actor hook). |
-| 3. Attacks and receivers | unchanged / BLOCKED natural | Strike bridge integrated; in-flight natural moving hits remain fixture-pinned (see GROINK_STRIKE). |
-| 4. Death and corpse | source-backed policy + unit-proven; BLOCKED natural | `doBecomeCarcass`/`doUpdateCarcass` mirrored; natural carcass needs the live actor `onKill` path. |
-| 5. Actual transport/reward | source-backed N/A | No reward changes; carcass pellet transport is lane 06. |
-| 6. Cleanup and re-entry | BLOCKED | Replacement birth + `MINIHOUDAI_Rebirth` transition outstanding. |
+| Gate | Verdict |
+|---|---|
+| 1. Identity and spawn | source-backed N/A (policy attaches to existing #78/#97 identity) |
+| 2. Movement and animation | UNTESTED (locomotion + Rebirth anim on shared actor hook) |
+| 3. Attacks and receivers | unchanged (strike bridge; in-flight moving hits remain fixture-pinned) |
+| 4. Death and corpse | source-backed policy + unit-proven; BLOCKED naturally (needs live `onKill` path) |
+| 5. Transport and reward | source-backed N/A (lane 06 owns drops/cargo) |
+| 6. Cleanup and re-entry | BLOCKED (guard exists; `generalEnemyMgr->birth` + Rebirth transit pending) |
 
-No injected health/state is claimed as gameplay PASS; the whole gate table is
-honest and none of the natural gates were promoted.
+No injected state promoted to a gameplay PASS.
 
 ## Tests run and results
 
-- Native CTest: `p2_groink_carcass_test` PASS; all nine `p2_groink*` CTests PASS
-  (strike, test, attack, clock, events, target, volley, hit, carcass).
-- Root Python: `tests/test_pikmin2_groink_carcass.py` 10 passed; combined
-  `test_pikmin2_groink_arena.py` + `test_pikmin2_groink_assets.py` +
-  `test_pikmin2_groink_carcass.py` = 14 passed.
+- Native CTest: all ten `p2_groink*` PASS (incl. `p2_groink_carcass_test`,
+  `p2_groink_lifetime_test`).
+- Root Python: `tests/test_pikmin2_groink_carcass.py` 15 passed;
+  `test_pikmin2_groink_arena.py` + `test_pikmin2_groink_assets.py` + carcass = 17 passed.
 
 ## Assumptions
 
-- Params default to source values: `maxHealth` 1200 (roaming) / 700 (fixed),
-  `healthGaugeTimer` 30s (fp11), `respawnRate` 10s (fp12); the module accepts
-  host-supplied overrides.
-- The engine's `lifeGaugeMgr` presence guard is collapsed to a semantic
-  `GaugeActive`/`GaugeInactive` event; the host applies it only when it owns a
-  gauge.
-- A single overshooting step crosses the gauge but does not also regenerate
-  (source's if / else-if only runs one branch per update).
-- Revive is terminal for the carcass (the object transits to Rebirth and stops
-  running the carcass update).
+- Kept parked adapters unchanged (config fields finite/nonnegative ≤1e6,
+  `recoverySeconds>0`, step delta in [0,0.25]).
+- `P2GroinkCarcassBirth` carries exactly the four `EnemyBirthArg` fields the
+  source populates (position, face-dir, existence length, Piklopedia flag);
+  `mTypeID` stays host/manager-owned.
+- Python twin uses snake_case field names (idiomatic) for the same three config
+  fields; command ordering and no-clamp semantics are identical to native.
+
+## Next-wave order note
+
+The ledger's next-wave order ("natural targeting/burst and shell effects",
+then "source revival/carcass recovery") was skipped: this slice advances the
+carcass/revival policy (a later item) because the earlier items need the live
+MiniHoudai actor over the shared `teki.h`/`tekimgr.cpp`/`gameCoreSection.cpp`
+hook. Natural targeting/burst/shell effects remain the next slice.
 
 ## Remaining blockers (provider lane)
 
-- Real MiniHoudai actor registration / locomotion / pursuit: shared
-  `teki.h`/`tekimgr.cpp`/`gameCoreSection.cpp` hook (lane 01 integration).
-- Carcass pellet drop (EnemyBase::onKill) and replacement `generalEnemyMgr->birth`
-  wiring: lane 06/07 lifetime + reward semantics.
-- Natural in-flight moving hit / animated muzzle still open as before (lane 20
-  primitives + #128 angle-aware bake).
+- Real MiniHoudai actor registration / locomotion / pursuit and natural
+  in-flight moving hit / animated muzzle: shared `teki.h`/`tekimgr.cpp`/
+  `gameCoreSection.cpp` hook (lane 01 integration; lane 20 primitives, #128 bake).
+- Carcass pellet drop (`EnemyBase::onKill`) and `generalEnemyMgr->birth` +
+  `init` + Rebirth transit wiring: lane 06/07 lifetime + reward semantics.
+
+## Subagent usage
+
+Three parallel subagents were used (per the brief):
+1. `explore` — source audit of `doBecomeCarcass`/`doUpdateCarcass`, parameter
+   defaults, `EnemyBirthArg` fields, Rebirth state events, and the
+   pellet-kill → owner-release chain. Result used as-is (materially confirmed
+   no-clamp, no-retry, life-gauge guard; cited in the doc and handoff).
+2. `explore` — full Groink inventory across both trees (modules, parked
+   branches, markers, CMake wiring). Used as-is; confirmed `pc_p2_groink_lifetime`
+   was parked-only and un-wired, and named the `P2_GROINK_*` marker set.
+3. `general` — wrote the Python twin (`experimental/pikmin2_groink_carcass.py`)
+   and `tests/test_pikmin2_groink_carcass.py` to mirror the parked API (15 tests
+   pass). Used essentially as-is; I reviewed the no-clamp/no-retry/gauge-guard
+   coverage and only integrated it without further edits.
+
+Net: the delegation saved the read-heavy source/inventory work and the Python
+port; my own context stayed on the native cherry-pick/build/ctest/handoff.
 
 ## Reproduction
 
 ```
-cd /c/Users/alari/pikmin-randomizer/output/deepseek-wave && PATH="/c/msys64/mingw64/bin:$PATH" py -3.12 slot.py run build l21 -- ctest --test-dir C:/Users/alari/pikmin-randomizer/output/dsw/native-l21-build -R p2_groink --output-on-failure
+cd /c/Users/alari/pikmin-randomizer/output/deepseek-wave && PATH="/c/msys64/mingw64/bin:$PATH" py -3.12 build_lane.py l21 --target p2_groink_carcass_test && PATH="/c/msys64/mingw64/bin:$PATH" ctest --test-dir C:/Users/alari/pikmin-randomizer/output/dsw/native-l21-build -R p2_groink --output-on-failure
 ```
