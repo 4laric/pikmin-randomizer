@@ -49,8 +49,8 @@ Regenerate with:
 
 | Gates away from admission | Identities |
 |---:|---:|
-| 0 | 6 |
-| 1 | 8 |
+| 0 | 7 |
+| 1 | 7 |
 | 2 | 5 |
 | 3 | 4 |
 | 4 | 2 |
@@ -188,8 +188,8 @@ Seedable (`source`/`variant`) identities named across handoffs: 55
 
 ### 54 Miulin (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE19_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE33_DEEPSEEK_HANDOFF.md
-- advances: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward
-- blocking: cleanup_reentry
+- advances: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
+- blocking: (none)
 
 ### 55 Hanachirashi (source) - shared table, excluded
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md
