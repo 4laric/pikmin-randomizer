@@ -300,3 +300,105 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l2
   --mode two_teki --generator 385875968 --seconds 45
 ```
 
+## Slice 3
+
+**Goal:** flight-to-target without placement injection, and a real engine target
+for the second consumer. (1) The primary two-Teki run drops `teki_pin` and proves
+the Stone reaches the victim's natural settle in flight; teki_pin stays as a
+separately-flagged (and gate-failing) scenario. (2) The Groink Bomb is routed
+through the engine receiver on the live captain Navi (stimulate, not the proxy).
+
+### Ordered commits (both branches clean)
+
+| Branch | Commit | Subject |
+|---|---|---|
+| native | `3999ab3d` | lane20: adopt shared p2rockhost ScriptRng/TraceProxy/RockMapBinding extraction (#169) |
+| native | `06b88e90` | lane20: route Groink Bomb through engine receiver on the captain Navi (#169) |
+
+Root: harness + tests + docs (this slice) and this handoff commit.
+
+### Interfaces / hooks touched
+
+- `pc_p2_rock_host.{h,cpp}` + CMake line (rebase only, no behaviour change):
+  `pc_p2_projectiles.cpp` now uses `p2rockhost::ScriptRng`/`TraceProxy`/
+  `RockMapBinding`/`detectRock`/`rngFloat`/`rngInt`, deleting its local forks.
+- `tickGroinkConsumer`: classify via lane-21's `p2_groink_classify_hit`, apply via
+  this lane's `p2_projectile_apply_engine_strike` (stimulate on the captain Navi),
+  emit `P2_PROJECTILE_GROINK_ENGINE_HIT`. `#include "pc_p2_groink_strike.h"`
+  dropped (no longer using the proxy bridge).
+- Harness: `VICTIM_POS` moved into the fire corridor (`173.6,0,-60`); `build_config`
+  takes `teki_pin=` (primary `two_teki` omits it); new gate
+  `victim_contact_in_flight` (skip-self + victim strike + no `P2_PROJECTILE_TEKI_PIN`
+  + first health-destroy `>=4` traces) and `groink_engine_receiver_navi_hit`
+  (Bomb + applied + Navi health decrease); `--assets` now required, `--converted`/
+  `--output` derived from repo root via `Path(__file__).parents[3]`, `--teki-pin`
+  flag added. No route lanes paths in code/tests.
+
+### Build evidence
+
+- `native=06b88e902bb87482bcddf344f6b1cd0bd7ccdf14 dirty=no`, `nectar.exe`
+  SHA-256 `b9f70c4a1517fc6e72bacc044cac36306fafbf78f591393ab53339ce946d58b0`,
+  `ninja -n` → `ninja: no work to do.`
+
+### Fixture adoption evidence
+
+- Window `960x540 windowed and centered`; live 20-red squad; timer-terminated
+  (`exit_code=1`).
+- Primary (natural flight): `output/dsw/l20-out/4c4d2fd239ff49b68da012476a2e105d`,
+  `victim_contact_in_flight` PASS, `groink_engine_receiver_navi_hit` PASS.
+- Flagged injected: `output/dsw/l20-out/d32dd6420c60448fa3b30217ae8eccf2`,
+  `victim_contact_in_flight` FAIL (labelled injected), `second_teki_engine_strike` PASS.
+
+### Six arena gates (natural flight + Groink engine Navi)
+
+| Gate | Result | Evidence |
+|---|---|---|
+| 1. Identity + spawn | PASS | firer + victim both live `TEKI_Chappy`, distinct tokens (`P2_PROJECTILE_TEKI_ROSTER`) |
+| 2. Movement + animation | N/A (source-backed) | policy-simulated flight |
+| 3. Attacks / receivers | PASS | victim `ENGINE_STRIKE stored=0.0->250.0` in flight; captain Navi `GROINK_ENGINE_HIT health=100.0->90.0` |
+| 4. Death + corpse | FAIL (honest) | victim `mStoredDamage` accumulates but the P1 Chappy proxy never `makeDamaged()`s foreign stimuli |
+| 5. Transport + reward | UNTESTED | cargo-free arena |
+| 6. Cleanup + re-entry | PASS | `STONE_DESTROY reason=health traces=7` (flight); firer untouched |
+
+Injected vs natural: victim placement is now **natural** (settle-then-freeze, ~58
+units downrange); `teki_pin` remains available and is separately flagged so
+`victim_contact_in_flight` FAILs when it is used.
+
+### Tests
+
+`py -3.12 -m pytest tests/test_pikmin2_projectile_engine_receiver.py -q` → 24 passed.
+New: `victim_contact_in_flight` PASS / FAIL-on-injection / FAIL-birth-frame; and
+`groink_engine_receiver_navi_hit` PASS / FAIL-no-health-change / FAIL-wind.
+Tests are pure-Python (no native path; no `PIKMIN_NATIVE_ROOT` needed).
+
+### Subagent usage (one line)
+
+The `task` tool is not available in this session, so I worked solo (no subagents).
+
+### Remaining blockers (named provider)
+
+- Victim lethal resolution / corpse still FAIL (lane 07/10 + #169).
+- Groink proof still uses a host-supplied sweep (no full shell flight; lane 21/#205).
+
+## Exact reproduction (Slice 3)
+
+```powershell
+$env:PYTHONUTF8='1'
+# Primary: natural flight to the victim + Groink engine Navi hit
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l20 -- `
+  py -3.12 -m experimental.pikmin2_projectile_engine_receiver `
+  --exe C:/Users/alari/pikmin-randomizer/output/dsw/native-l20-build/bin/nectar.exe `
+  --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets `
+  --converted C:/Users/alari/pikmin-randomizer/output/dsw/l20-out/converted `
+  --output C:/Users/alari/pikmin-randomizer/output/dsw/l20-out `
+  --mode two_teki --generator 385875968 --seconds 45
+# Flagged injected scenario (victim_contact_in_flight FAILs by design)
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l20 -- `
+  py -3.12 -m experimental.pikmin2_projectile_engine_receiver `
+  --exe C:/Users/alari/pikmin-randomizer/output/dsw/native-l20-build/bin/nectar.exe `
+  --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets `
+  --converted C:/Users/alari/pikmin-randomizer/output/dsw/l20-out/converted `
+  --output C:/Users/alari/pikmin-randomizer/output/dsw/l20-out `
+  --mode two_teki --generator 385875968 --teki-pin --seconds 40
+```
+
