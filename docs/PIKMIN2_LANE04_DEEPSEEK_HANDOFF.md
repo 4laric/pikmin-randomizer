@@ -882,3 +882,174 @@ Slice 6 was done solo (the brief did not mandate subagents): the work was one
 native one-line source-id fix, one new runner reusing the existing mixed-bulborb
 stager, the carry-forward test/import cleanups, and the gate-table formatting.
 
+## Slice 7
+
+Bounded slice: **ordinary generated-spawn placement evidence at native birth.**
+
+Real consumer: Snow/Dwarf Orange cohort, source IDs `45 YellowKochappy` and
+`44 BlueKochappy`, exercised end-to-end through an injected generated-seed
+cohort, the ENEMY_P2/bootstrap binding, and ordinary `GenObjectTeki::birth`
+placement. Missing slice from the ledger: **ordinary spawn binding** backed by
+accepted native XYZ/terrain and carry-return-route evidence.
+
+### Native implementation
+
+- Factored one shared read-only placement sampler into
+  `pc_port/pc_p2_placement_probe.{h,cpp}` and added
+  `pc_p2_placement_probe_birth(...)`.
+- Added a six-line, separately committed additive hook in
+  `src/plugPikiNakata/genteki.cpp`. It calls the probe only after lane 03's
+  resolved `uid` is known, only when that uid is nonzero, and mutates no
+  gameplay state.
+- When the P2 seed bridge is active, the room-preview scan no longer re-emits
+  one marker per actor; the log explicitly records
+  `P2_PLACEMENT_PROBE actors=0 evidence_slots=0 source=birth_hook`. This
+  preserves ordinary birth reporting while avoiding duplicate evidence for the
+  same generated spawn.
+
+### Root implementation
+
+- `scripts/run_p2_cohort_seed_placement.py` now preserves and reports the real
+  `placement_probe_summary` line as well as individual placement, resolve, and
+  ready lines.
+- `tests/test_p2_placement_probe.py` has a focused regression proving that a
+  `source=birth_hook` summary does not create an unmapped generator entry and
+  does not disturb the existing generator→catalog-slot join.
+
+The unused parallel validator and tests created by this slice's test-scaffolding
+subagent were **not** merged: that draft used a different record grammar and
+unsupported Snow home-anchor/helper assumptions. The implementation instead
+reuses `randomizer/p2_placement_probe.py`.
+
+### Runtime evidence
+
+Fresh generated mixed-arena run:
+
+`output/dsw/l04-out/f3cf40cd8df943c6ac14d705267442a9/native.log`
+
+The real log contains exactly one mapped placement marker per generated
+Snow/Dwarf Orange actor:
+
+```text
+P2_SEED_RESOLVE source_id=44 target=513430982 original_type=3 x=-150.0 z=1850.0
+P2_PLACEMENT_SLOT generator=211001 slot=513430982 actor=3 xyz=1 terrain=ground route=1 route_distance=61.2 x=-150.000 y=30.000 z=1850.000 water_depth=0.00
+P2_SEED_RESOLVE source_id=45 target=5465461 original_type=3 x=-150.0 z=1700.0
+P2_PLACEMENT_SLOT generator=5001 slot=5465461 actor=3 xyz=1 terrain=ground route=1 route_distance=80.9 x=-150.000 y=30.000 z=1700.000 water_depth=0.00
+P2_ENEMY_READY species=YellowKochappy source_id=45 native_family=Chappy generator=5001 behavior=P1
+P2_ENEMY_READY species=BlueKochappy source_id=44 native_family=Chappy generator=211001 x=-150.0000000 y=30.0000000 z=1850.0000000 health=250.0 max_health=250.0 behavior=P1 purple_stun=bluekochappy_5s
+P2_PLACEMENT_PROBE actors=0 evidence_slots=0 source=birth_hook
+```
+
+The runtime report says `validate_cooccurrence.ok=true` for both mapped
+Snow/Dwarf Orange triples.
+
+Fixture adoption: mixed-arena manifest stages Orange `211001`, Snow `5001`, P1
+control `211002`, and 20 reds; the log records a 960×540 initialized and
+centered window. It also records both live Snow/Orange banks and `corpse=0`
+draws. No extinction-screen marker is reported. The generated cohort/admission
+setup is injected and is not a production admission claim. The process was
+retired by the fixture timeout after markers were collected.
+
+### Six arena gates
+
+| Gate | Result | Label |
+|---|---|---|
+| 1. Exact identity and spawn | PASS | Natural ordinary generated births for sources 45 and 44; P2 banks staged and bind markers observed |
+| 2. Autonomous movement/animation | UNTESTED | Family/lane-13 scope |
+| 3. Attacks/receivers | Source-backed N/A | Lanes 10/13 |
+| 4. Death/corpse | Source-backed N/A | Lanes 06/07 |
+| 5. Actual transport/reward | Source-backed N/A | Lane 06; only a natural carry-corridor origin is shown |
+| 6. Cleanup/re-entry | UNTESTED | Lane 07 |
+
+### Branches, interfaces, and commits
+
+- Root branch: `deepseek/p2-l04`; root base:
+  `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`.
+- Native branch: `deepseek/p2-l04-native`; native base:
+  `b805d9c626e4f4558c95aef7cac311a5d9a2068f`.
+- Both branches are clean after the commits below.
+- Root implementation commit:
+  `efd1875b758b72315c0edc79c9ba75ed775da617`
+  `lane04: record birth-hook placement evidence and add bridge-source regression test (#440)`.
+- Native lane-owned module commit:
+  `fe5088d6289c99ac245f69e1bca1c9033f727241`
+  `lane04: factor shared placement sampler and add campaign birth entry (#440)`.
+- Native shared-hook commit:
+  `5178f598d9cb92943d622fa525c541b5ffe3a0d7`
+  `lane04: hook generated Teki births into placement evidence (#440)`.
+- Root-side code changes only add the runner report field and a focused parser
+  regression. This handoff document is the follow-up root commit.
+- Consumer/interface agreements: lane-03 supplied the resolved slot uid and
+  source at birth; lane-13 supplied the configured Snow/Dwarf Orange generators
+  and banks; lane-04 only reads those contracts. No seed-serialization,
+  family-AI, reward, save, receiver, or shared-semantics edits were made.
+- No GitHub issue write was made: tracking is #440, and integration posts
+  updates after review, as this brief requires.
+
+### Build
+
+`output/dsw/l04-build-evidence.txt`:
+
+```text
+2026-09-15T16:47:23 lane=l04 target=pikmin_pc native=5178f598d9cb92943d622fa525c541b5ffe3a0d7 dirty=no build_dir=C:\Users\alari\pikmin-randomizer\output\dsw\native-l04-build exe=C:\Users\alari\pikmin-randomizer\output\dsw\native-l04-build\bin\nectar.exe sha256=513990ffe61514a14045d6861a350807f3a9c37744686511b5a5c8aa34fe44ef ninja_n="ninja: no work to do." seconds=102
+```
+
+### Tests
+
+```text
+py -3.12 -m pytest tests/test_p2_placement_probe.py tests/test_p2_seed_placement_native.py tests/test_p2_placement_audit.py tests/test_p2_seed_placement.py tests/test_p2_placement_native.py tests/test_p2_placement.py -q
+101 passed, 2 skipped, 17 subtests passed in 0.64s
+```
+
+The two skips are the existing `PIKMIN_NATIVE_ROOT`-guarded native source-pin
+tests:
+
+```text
+PIKMIN_NATIVE_ROOT=C:/Users/alari/pikmin-randomizer/output/dsw/native-l04 py -3.12 -m pytest tests/test_p2_seed_placement_native.py -q
+11 passed in 0.08s
+```
+
+### Assumptions
+
+- The generated arena remains engineered: coordinate/scatter, overlay,
+  sidecar pairs, and bootstrap are fixture staging, so this is ordinary-spawn
+  placement evidence rather than untouched-campaign traversal.
+- The public admitted roster remains deny-by-default; the generated seed cohort
+  is injected/test-only and not an admission claim.
+- `route=1` means a sampled carry-corridor origin within 200 units, not proof of
+  a completed corpse path or reward.
+- P1-derived AI/animation remains as already owned by lane 13; only placement
+  sampling and readiness evidence are in lane-04 scope.
+
+### Remaining blockers
+
+- Full untouched production campaign traversal and placement collection remain
+  with lane 01 integration and family/QA acceptance.
+- Natural combat, damage/receivers, death/corpse, actual transport/reward,
+  cleanup/re-entry, persistence, and whole-cohort completion belong to lanes
+  13, 06/07, 10/11/12, 33, and lane 02 admission.
+
+### One exact reproduction command
+
+```text
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l04 -- py -3.12 scripts/run_p2_cohort_seed_placement.py --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" --bank "C:/Users/alari/pikmin-randomizer/output/dsw/l05-out/slice5/cohort44/content/BlueKochappy/bank" --profile "C:/Users/alari/pikmin-randomizer/output/dsw/l05-out/slice5/cohort44/content/BlueKochappy/profile" --snow "C:/Users/alari/pikmin-randomizer/output/dsw/l05-out/slice4-snow/session/runs/0af4813f692d8dd009931be69b6e5339fe3781e2e96d449af4fe426506aec812" --exe "C:/Users/alari/pikmin-randomizer/output/dsw/native-l04-build/bin/nectar.exe" --output "C:/Users/alari/pikmin-randomizer/output/dsw/l04-out" --seed p2-cohort-seed-placement-live
+```
+
+Run from `C:/Users/alari/pikmin-randomizer/output/dsw/l04-root`.
+
+### Subagent usage
+
+- Source audit (`explore`): used as-is for exact identities, numeric
+  Snow/Dwarf parameters, water/home/helper bounds, and source-backed placement
+  limits. It also guided the consumer-local scope and avoided new family FSM
+  work.
+- Existing-candidate inventory (`explore`): used as-is to identify the
+  integrated probe/parser/runner contracts and the correct additive insertion
+  points, avoiding reimplementation.
+- Test/harness scaffolding (`general`): corrected/discarded. It produced two
+  untracked helper files and reported seven passes, but its marker grammar and
+  assumptions conflicted with the integrated placement-evidence contract, so
+  those files were removed before commit. That delegation cost a small amount of
+  reconciliation time while helping confirm the integrated parser was the right
+  place to extend.
+
