@@ -86,7 +86,8 @@ def position_override():
 
 
 APP = r'''class RoomApp : public PlugPikiApp {
-    int frames=0,observed=0,stage=0,bigfootDiedTick=0,houdaiDiedTick=0,initialPokos=0;
+    int frames=0,observed=0,stage=0,bigfootDiedTick=0,houdaiDiedTick=0,initialPokos=0,wakeTick=0;
+    Vector3f captainOrigin;
     Teki* houdai=nullptr;Teki* bigfoot=nullptr;
     Generator* houdaiGen=nullptr;Generator* bigfootGen=nullptr;
     Teki* freshHoudai=nullptr;Teki* freshBigfoot=nullptr;
@@ -100,8 +101,8 @@ APP = r'''class RoomApp : public PlugPikiApp {
     int assignTransport(Pellet* corpse){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
         v->mActiveAction->abandon(nullptr);v->mActiveAction->mCurrActionIdx=PikiAction::Transport;
         v->mActiveAction->mChildActions[PikiAction::Transport].initialise(corpse);v->mMode=PikiMode::TransportMode;++n;}return n;}
-    int freeAndPark(Teki* center){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
-        float ang=float(n)*6.2831853f/20.0f;Vector3f pt(center->mSRT.t.x+22.0f*std::sin(ang),0,center->mSRT.t.z+22.0f*std::cos(ang));
+    int freeAndPark(Teki* center, float radius){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(!v->isAlive())continue;
+        float ang=float(n)*6.2831853f/20.0f;Vector3f pt(center->mSRT.t.x+radius*std::sin(ang),0,center->mSRT.t.z+radius*std::cos(ang));
         pt.y=mapMgr->getMinY(pt.x,pt.z,true);v->resetPosition(pt);v->changeMode(PikiMode::FreeMode,naviMgr?naviMgr->getNavi():nullptr);++n;}return n;}
     int transportingCount(){int n=0;Iterator a(pikiMgr);CI_LOOP(a){Piki* v=static_cast<Piki*>(*a);if(v->isAlive()&&v->mMode==PikiMode::TransportMode)++n;}return n;}
 public:int idle() override {
@@ -111,6 +112,7 @@ public:int idle() override {
     Navi* n=naviMgr->getNavi();if(!n||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;
     ++observed;
     if(stage==0){
+        captainOrigin=n->mSRT.t;
         houdai=byGenerator(312001);bigfoot=byGenerator(312002);
         require(houdai&&bigfoot,"registered Long Legs actors present");
         require(pc_p2_long_legs_registered(houdai)&&pc_p2_long_legs_registered(bigfoot),"long legs registered");
@@ -135,16 +137,23 @@ public:int idle() override {
         return result;
     }
     if(stage==2){
-        // Park the squad beside Houdai (FreeMode, not attacking) so it wakes and
-        // accumulates but is NOT drained: the source Land (5 s) + Flick (2.27 s)
-        // run to completion and Shot is reached at full proxy health; only then do
-        // we assign attacks. No clip compression, no host health writes.
-        if(!parked){int c=freeAndPark(houdai);std::printf("P2_LL_PARK species=Houdai count=%d\n",c);parked=true;std::fflush(stdout);}
+        // Source-timed Shot without clip compression: park the squad beyond the
+        // 60-unit accumulate/stomp radius (at ~180, still inside the 200-unit shell
+        // search range), brief-place the captain within the 75-unit wake radius and
+        // return it, then let Houdai take the source 50 s burst-cooldown path to
+        // Shot. No host health writes and no clip compression.
+        if(!parked){
+            int c=freeAndPark(houdai,180.0f);std::printf("P2_LL_PARK species=Houdai count=%d\n",c);
+            Vector3f wake(houdai->mSRT.t.x,0,houdai->mSRT.t.z-60.0f);wake.y=mapMgr->getMinY(wake.x,wake.z,true);
+            n->resetPosition(wake);std::printf("P2_LL_WAKE captain=1\n");
+            wakeTick=observed;parked=true;std::fflush(stdout);
+        }
+        if(observed==wakeTick+8){n->resetPosition(captainOrigin);std::printf("P2_LL_RETREAT captain=1\n");std::fflush(stdout);}
         if(pc_p2_long_legs_shot(houdai)){
             std::printf("P2_LL_SHOT species=Houdai source_timed=1 tick=%d\n",observed);
             int a=assignAttack(houdai);std::printf("P2_LL_ATTACK_HOUDAI attack=%d\n",a);std::fflush(stdout);stage=3;return result;
         }
-        if(observed>=18000){std::printf("P2_LL_INJECT species=Houdai injected_health=0 source=fixture not_natural_combat=1\n");houdai->mHealth=0.0f;std::fflush(stdout);stage=3;return result;}
+        if(observed>=30000){std::printf("P2_LL_INJECT species=Houdai injected_health=0 source=fixture not_natural_combat=1\n");houdai->mHealth=0.0f;std::fflush(stdout);stage=3;return result;}
         return result;
     }
     if(stage==3){
@@ -157,7 +166,7 @@ public:int idle() override {
         if(!bigfootCorpse){bigfootCorpse=corpseOf(bigfoot);if(bigfootCorpse)std::printf("P2_LL_CORPSE species=BigFoot pellet=1 generator=%u\n",bigfootGen->_70);}
         if(!houdaiCorpse){houdaiCorpse=corpseOf(houdai);if(houdaiCorpse)std::printf("P2_LL_CORPSE species=Houdai pellet=1 generator=%u\n",houdaiGen->_70);}
         if(!bigfootCorpse||!houdaiCorpse){if(observed>24000){std::puts("FAIL P2_LONG_LEGS_LIFECYCLE corpse_timeout");std::fflush(stdout);std::_Exit(1);}return result;}
-        int c=freeAndPark(bigfoot);std::printf("P2_LL_FREE_RECRUIT species=BigFoot count=%d pokos=%d\n",c,pc_p2_preview_pokos());std::fflush(stdout);stage=5;return result;
+        int c=freeAndPark(bigfoot,22.0f);std::printf("P2_LL_FREE_RECRUIT species=BigFoot count=%d pokos=%d\n",c,pc_p2_preview_pokos());std::fflush(stdout);stage=5;return result;
     }
     if(stage==5){
         if(!assistedBigfoot&&observed>bigfootDiedTick+240&&transportingCount()<bigfootCorpse->mConfig->mCarryMinPikis()){
@@ -169,7 +178,7 @@ public:int idle() override {
         return result;
     }
     if(stage==6){
-        int c=freeAndPark(houdai);std::printf("P2_LL_FREE_RECRUIT species=Houdai count=%d pokos=%d\n",c,pc_p2_preview_pokos());std::fflush(stdout);stage=7;return result;
+        int c=freeAndPark(houdai,22.0f);std::printf("P2_LL_FREE_RECRUIT species=Houdai count=%d pokos=%d\n",c,pc_p2_preview_pokos());std::fflush(stdout);stage=7;return result;
     }
     if(stage==7){
         if(!assistedHoudai&&observed>houdaiDiedTick+240&&transportingCount()<houdaiCorpse->mConfig->mCarryMinPikis()){
