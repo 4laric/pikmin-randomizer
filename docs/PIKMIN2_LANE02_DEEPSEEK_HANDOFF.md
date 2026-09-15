@@ -834,3 +834,88 @@ py -3.12 -m pytest tests/test_pikmin2_handoff_ingest.py tests/test_pikmin2_admis
     tests/test_pikmin2_roster_coverage.py -q                                                          # 64 passed
 py -3.12 scripts/ingest_p2_handoff_gates.py <lane29 lane31 lane22 handoff files>                       # pasted above
 ```
+
+## Slice 6
+
+Sixth bounded slice: **the wave-wide dry-run advance report** (root-side; no
+native build; no identity admitted; deny-by-default holds wave-wide).
+
+### Advisory fixes (folded in, each with a test)
+
+- `_owner_from_line` now accepts the `Name (NN)` form (roster-filtered via
+  `_NAME_PAREN_RE`), so a table under `## WaterOtakara (60)` binds 60.
+- The bound-table walk-back stops at the nearest identity-naming heading or
+  "Source ID" line (non-naming headings are skipped, never a stop).
+- `_PLAIN_PATH_RE` now requires a known root plus one segment (two segments
+  counting the root), matching the doc; a bare `12/16` still does not count.
+- Bonus for the wave-wide run: `_extract_gate_table` accepts a `Status` column
+  as the result column (lanes 27/28 use `| Gate | Status | ... |`), and
+  `build_advance_report` only marks an identity `shared` when *no* handoff binds
+  a table for it.
+
+Tests added: `test_citation_requires_extension_or_known_root_path`,
+`test_table_binds_to_nearest_identity_heading`,
+`test_report_generator_is_deterministic`.
+
+### Report generator + exact command
+
+`scripts/generate_p2_advance_report.py` reads every
+`docs/PIKMIN2_LANE<NN>_DEEPSEEK_HANDOFF.md` from `claude/p2-deepseek-wave` (via
+`git ls-tree`/`git show`), dry-runs the ingestion against the committed roster,
+and writes `docs/PIKMIN2_ROSTER_ADVANCE_REPORT.md`. Lane 01 / the integrator
+re-run it after each merge so the report tracks the wave:
+
+```
+py -3.12 scripts/generate_p2_advance_report.py
+```
+
+The generator is deterministic (byte-identical on repeat runs; covered by the
+determinism test on synthetic handoffs).
+
+### Report result (current wave)
+
+15 seedable (`source`/`variant`) identities named across the lane handoffs; none
+advance a single gate:
+
+```
+| Gates away from admission | Identities |
+|---:|---:|
+| 0..5 | 0 |
+| 6    | 15 |
+```
+
+Per identity the report lists the gates the handoff(s) would advance, the PASSes
+refused (`uncited` / `injected`) and the blocking gates. 15 identities remain 6
+gates away; 0 are admitted. Notables: FireOtakara (59) gates 1-3 are refused
+`uncited`, BlackMan (99) refused `identity_spawn:injected`/`movement_animation:injected`,
+Hana (84) refused `attacks_receivers:injected`; several identities (Armor 41,
+Fuefuki 41, Sokkuri 79, the Otakara siblings) are `shared table, excluded`.
+
+### Assumptions / notes
+
+- The wave-wide run confirms the downstream note from fix 5: FireOtakara's gates
+  1-3 no longer advance because their Evidence cells cite bare `P2_*` log lines
+  rather than doc/log files — the intended data-quality outcome.
+- Owner binding covers the "Source ID"/"Source enemy ID"/"Concrete source ID"
+  lines and identity-naming headings. Two lanes phrase their owner differently
+  ("Source IDs owned / inspected: Sokkuri 79" with a bare number, and
+  "Source enemy: ... EnemyID 41" with no `id` token); those identities report
+  `shared table, excluded` — benign and deny-safe under-attribution, since none
+  of their PASSes would advance anyway. Recorded here for lane 01, not chased in
+  this slice.
+
+### Tests run
+
+```
+py -3.12 -m pytest tests/test_pikmin2_handoff_ingest.py -q                                             # 14 passed
+py -3.12 -m pytest tests/test_pikmin2_handoff_ingest.py tests/test_pikmin2_admission_seed.py \
+    tests/test_pikmin2_admission_contract.py tests/test_pikmin2_enemy_roster.py \
+    tests/test_pikmin2_roster_coverage.py tests/test_pikmin2_seed_bridge.py \
+    tests/test_pikmin2_seed_generation.py -q                                                          # 100 passed
+py -3.12 scripts/generate_p2_advance_report.py                                                         # writes docs/PIKMIN2_ROSTER_ADVANCE_REPORT.md (deterministic)
+```
+
+### Subagent usage
+
+The `task` tool remains absent from this session's tool set, so slice 6 was done
+solo (direct file/git reads); no subagent results to reconcile.
