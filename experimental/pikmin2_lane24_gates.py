@@ -134,7 +134,8 @@ def king_creature_validate(text, code):
     producing a Pod corpse receipt, with no staging or injection markers.
     """
     staging = ('NAVI_HEAL', 'REPIN', 'NAVI_SUSTAIN', 'GUARD_PIKMIN',
-               'P2_KING_INJECT', 'P2_QUEEN_INJECT')
+               'P2_KING_INJECT', 'P2_QUEEN_INJECT',
+               'P2_KING_TEKI_FORCED_TRANSPORT', 'P2_KING_TEKI_TRANSPORT_INJECT')
     checks = dict(
         completion=code == 0 and 'PASS P2_KING_CREATURE_RUNTIME' in text,
         teki_ready=bool(re.search(r'P2_KING_TEKI_READY generator=\d+ type=\d+', text)),
