@@ -730,3 +730,78 @@ regression.
 - `py -3.12 -m pytest tests/test_pikmin2_long_legs_{pod,lifecycle,houdai,install,visual}.py -q`
   -> **73 passed**.
 - Native `pikmin_pc` builds clean (`build_lane.py l26`, exe sha `0d9d45a4…`).
+
+## Fix 3c
+
+### Session survival (no longer depends on the results screen)
+
+End-of-day chain: `ogScrResultMgr::skip()` (`newPikiGame.cpp:1716-1718`, gated on
+`pc_settings_get_disable_tutorials()`) -> `RESULT_ExitToMapSelect` ->
+`QuittingGameModeState::postUpdate` -> `GameCoreSection::exitStage()` ->
+`naviMgr = nullptr` (`src/plugPikiKando/gameCoreSection.cpp:903`); the fixture's
+`!naviMgr` guard then stalled.
+
+The fixture now carries labeled session-survival guards in its APP (the same
+pattern as the king/queen/flora fixtures, `experimental/pikmin2_long_legs_lifecycle.py`):
+
+- captain state-sustain: transit out of
+  `NAVISTATE_Pressed/Flick/Dead/PikiZero/DemoSunset/DemoWait/DemoInf` to
+  `NAVISTATE_Walk` (`P2_LL_GUARD navi_sustain=1`);
+- `allPikis` guard: `GameStat::allPikis.set(1,Red)` when it would read 0
+  (`P2_LL_GUARD pikmin_guard=1`).
+
+Run `output/dsw/l26-out/run/faac4a7c6f6d4b47ae57980a61ad8287` shows
+`navimgr=1 naviobj=1` with the `disableTutorials` pin ABSENT, so the end-of-day
+results screen is no longer load-bearing for session survival. The pin is kept
+only as documented belt-and-braces (see the `prepare()` comment). The fixture also
+parks the Houdai attack ring closer (15u, was 30u) and emits
+`P2_LL_SESSION navi=1 pikis=<n> dayend=0`; `validate()` gains a `session_survives`
+gate with a pod flip test.
+
+### Passing receipt run (both species)
+
+Run `output/dsw/l26-out/run/8a3532dfde174188aa40695df2f65422` (fixture36, native
+`45344123`, 960x540): all gates green, `passed=True`, exit 0.
+
+- Houdai natural death: `P2_LL_NATURAL_DEATH houdai=1 health=0.00 tick=373`
+  (`capture/native.log:939`), `P2_LONG_LEGS_DEAD species=Houdai generator=312001
+  health=0 prior_health=55.00` (`:940`) — drained, not injected.
+- BigFoot: `P2_POD_RECEIPT id=corpse:longlegs:312002 value=2 new=1 pokos=2 seeds=0`
+  (`:1230`), `P2_LL_DELIVER species=BigFoot pokos=2` (`:1231`).
+- Houdai: `P2_POD_RECEIPT id=corpse:longlegs:312001 value=2 new=1 pokos=4 seeds=0`
+  (`:1497`), `P2_LL_DELIVER species=Houdai pokos=4` (`:1498`).
+- One-shot: `P2_LL_CORPSE_DRAIN remaining=0` (`:1519`).
+- Positive native transport (ordinary FreeMode `Piki::graspSituation`, no
+  `TransportMode` write): `P2_LL_CARRY species=BigFoot ... transport=7` (`:1019`)
+  and `... transport=9` (`:1104`).
+- Session: `P2_LL_SESSION navi=1 pikis=20 dayend=0` (`:1543`); `PASS
+  P2_LONG_LEGS_LIFECYCLE ... receipt=2 registry_empty=2 reentry=2 stale=0
+  duplicate_reward=0` (`:1544`).
+
+### Residual (the reason the status is BLOCKED, not DONE)
+
+The fixture is not reproducible across runs. The Houdai natural kill depends on
+the source Shot roll: `P2_LL_SHOT ... tick=373` (the green run) versus
+`tick=1502`, where the fixture stalls at stage 3 with the squad in range and the
+window open (`P2_LL_HOUDAI_HP health=130.00 squad=20 atk=20 dmg=1`) so the drain
+never completes, and the process also exits -1 (a crash) after the Shot
+(`output/dsw/l26-out/run/491c841de2284abe9c2b8f0f40c66bd4`). The unreliable step
+is the Houdai combat drain itself, not the guards or the settings boot path.
+
+### Subagent usage (fix 3c)
+
+1. `explore` - source audit of the day-end -> MapSelect -> `exitStage`/`naviMgr`
+   path, the `disableTutorials`/`pikmin_settings.conf` cwd resolution, the
+   day-end/GameOver triggers, the Mitite birth (log-only) and the Houdai
+   shell/stomp receivers. Used as-is; it produced the exact mechanism and ruled
+   out the Mitites.
+2. `explore` - inventory of every session/day-end/settings touchpoint plus the
+   king/queen/flora `allPikis`-guard pattern. Used as-is; the guards follow it.
+3. `general` - added the `session_survives` flip test + GOOD_LOG marker to
+   `tests/test_pikmin2_long_legs_pod.py`. Used as-is.
+
+### Tests run (fix 3c)
+
+- `py -3.12 -m pytest tests/test_pikmin2_long_legs_{pod,lifecycle,houdai,install,visual}.py -q`
+  -> **75 passed**.
+- `scripts/check_p2_handoff_gates.py` -> gate 5 `ignored [PARTIAL]` (proxy); no refusals.

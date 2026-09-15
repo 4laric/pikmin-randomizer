@@ -12,6 +12,8 @@ touched.
 import re
 from pathlib import Path
 
+import pytest
+
 from experimental.pikmin2_long_legs_lifecycle import validate
 
 GOOD_LOG = '\n'.join([
@@ -41,6 +43,7 @@ GOOD_LOG = '\n'.join([
     '[Pikipelago] P2_POD_RECEIPT id=corpse:longlegs:312002 value=2 new=1 pokos=2 seeds=0',
     '[Pikipelago] P2_POD_RECEIPT id=corpse:longlegs:312001 value=2 new=1 pokos=4 seeds=0',
     'P2_LL_CORPSE_DRAIN remaining=0',
+    'P2_LL_SESSION navi=1 pikis=20 dayend=0',
     'P2_LL_FORGET species=BigFoot count=0 registered=0',
     'P2_LL_FORGET species=Houdai count=0 registered=0',
     'P2_LL_REENTRY species=BigFoot old=0x1 new=0x2 stale=0 fresh=1 count=2',
@@ -120,6 +123,23 @@ def test_corpse_one_shot_flips_when_registration_survives():
     assert validate(GOOD_LOG, code=0)['checks']['corpse_one_shot'] is True
     flipped = validate(GOOD_LOG.replace(marker, 'P2_LL_CORPSE_DRAIN remaining=1'), code=0)
     assert flipped['checks']['corpse_one_shot'] is False
+
+
+def test_session_survives_flips_when_dayend():
+    # The end-of-day path tears down the gameplay section and nulls naviMgr; the
+    # APP only emits P2_LL_SESSION once the run completes without that teardown.
+    # session_survives is true iff a `navi=1` line exists and no `dayend=1` /
+    # EXITDAYEND teardown marker is present. Skip cleanly until the validator
+    # wires the gate in (a parallel change); never assert the old vacuous result.
+    result = validate(GOOD_LOG, code=0)
+    if 'session_survives' not in result['checks']:
+        pytest.skip('session_survives gate not yet wired into validate()')
+    assert result['checks']['session_survives'] is True
+    teardown = GOOD_LOG.replace('P2_LL_SESSION navi=1 pikis=20 dayend=0',
+                                'P2_LL_SESSION navi=0 pikis=0 dayend=1')
+    assert teardown != GOOD_LOG
+    flipped = validate(teardown, code=0)
+    assert flipped['checks']['session_survives'] is False
 
 
 def test_fixture_source_has_no_forced_transport_write():

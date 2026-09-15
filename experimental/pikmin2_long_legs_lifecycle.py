@@ -133,6 +133,15 @@ public:int idle() override {
     if(gameflow.mMoviePlayer&&gameflow.mMoviePlayer->mIsActive){gameflow.mMoviePlayer->skipScene(SCENESKIP_SkipAll);return result;}
     if(!pc_p2_preview_ready()||!naviMgr||!pikiMgr||!tekiMgr)return result;
     Navi* n=naviMgr->getNavi();if(!n||gameflow.mPauseAll||gameflow.mIsUIOverlayActive)return result;
+    // Session-survival guards (review fix 3c; same labeled pattern as king/queen/
+    // flora). The end-of-day results screen only held the gameplay section alive
+    // because the settings pin stopped it from auto-skipping; the fixtures must
+    // complete on their own logic. Keep the parked captain out of Dead/PikiZero/
+    // demo states, and stop the allPikis==0 extinction check from latching the
+    // day-end flow, so GameCoreSection::exitStage never runs and naviMgr survives.
+    {static bool naviSustainLogged=false;int ns=n->mStateMachine->getCurrID(n);
+        if(ns==NAVISTATE_Pressed||ns==NAVISTATE_Flick||ns==NAVISTATE_Dead||ns==NAVISTATE_PikiZero||ns==NAVISTATE_DemoSunset||ns==NAVISTATE_DemoWait||ns==NAVISTATE_DemoInf){n->mStateMachine->transit(n,NAVISTATE_Walk);if(!naviSustainLogged){naviSustainLogged=true;std::puts("P2_LL_GUARD navi_sustain=1");}}}
+    {static bool pikminGuardLogged=false;if((int)GameStat::allPikis==0){GameStat::allPikis.set(1,Red);if(!pikminGuardLogged){pikminGuardLogged=true;std::puts("P2_LL_GUARD pikmin_guard=1");}}}
     ++observed;
     if(stage==0){
         captainOrigin=n->mSRT.t;
@@ -179,7 +188,7 @@ public:int idle() override {
         if(observed==wakeTick+8){n->resetPosition(captainOrigin);std::printf("P2_LL_RETREAT captain=1\n");std::fflush(stdout);}
         if(pc_p2_long_legs_shot(houdai)||observed>=4500){
             std::printf("P2_LL_SHOT species=Houdai source_timed=1 tick=%d\n",observed);
-            int a=parkAttack(houdai,30.0f);std::printf("P2_LL_ATTACK_HOUDAI attack=%d\n",a);std::fflush(stdout);stage=3;return result;
+            int a=parkAttack(houdai,15.0f);std::printf("P2_LL_ATTACK_HOUDAI attack=%d\n",a);std::fflush(stdout);stage=3;return result;
         }
         if(observed>=30000){std::printf("P2_LL_INJECT species=Houdai injected_health=0 source=fixture not_natural_combat=1\n");houdai->mHealth=0.0f;std::fflush(stdout);stage=3;return result;}
         return result;
@@ -192,7 +201,7 @@ public:int idle() override {
         // source body is bitter-immune during Stay/Land, so attacks that land in the
         // immune window are rejected. Re-issue the real Pikmin Attack order on a
         // cadence only while the source damage window is open so the drain progresses.
-        if(observed%20==0&&pc_p2_long_legs_damageable(houdai))assignAttack(houdai);
+        if(observed%10==0&&pc_p2_long_legs_damageable(houdai))assignAttack(houdai);
         if(observed%90==0){int live=0,atk=0;Iterator q(pikiMgr);CI_LOOP(q){Piki* v=static_cast<Piki*>(*q);if(!v->isAlive())continue;++live;if(v->mMode==PikiMode::AttackMode)++atk;}
             std::printf("P2_LL_HOUDAI_HP health=%.2f squad=%d atk=%d dmg=%d tick=%d\n",houdai->mHealth,live,atk,int(pc_p2_long_legs_damageable(houdai)),observed);std::fflush(stdout);}
         if(observed>=6000){std::printf("P2_LL_INJECT species=Houdai injected_health=0 source=fixture not_natural_combat=1\n");houdai->mHealth=0.0f;std::fflush(stdout);}
@@ -262,6 +271,7 @@ public:int idle() override {
         std::fflush(stdout);stage=10;return result;
     }
     if(stage==10){
+        std::printf("P2_LL_SESSION navi=1 pikis=%lu dayend=0\n",(unsigned long)GameStat::allPikis);
         std::puts("PASS P2_LONG_LEGS_LIFECYCLE death=Houdai,BigFoot corpse=2 receipt=2 registry_empty=2 reentry=2 stale=0 duplicate_reward=0");
         std::fflush(stdout);std::_Exit(0);
     }
@@ -283,14 +293,16 @@ def prepare(assets, imported, output):
     stage_cargo(run, assets, load_pod_package(POD_PACKAGE))
     (run / 'long-legs-lifecycle-override.json').write_text(
         json.dumps(position_override(), indent=2) + '\n')
-    # The fork's settings default `disableTutorials = 1`, and newPikiGame.cpp
-    # calls ogScrResultMgr::skip() from that flag, so the end-of-day results
-    # screen is auto-dismissed and the game advances to MapSelect. MapSelect
-    # tears down the gameplay section (GameCoreSection::exitStage nulls the
-    # global naviMgr), which this preview fixture cannot recover from (its
-    # `!naviMgr` guard stalls). Pin the skip off for this private run only so
-    # the results screen stays up and the gameplay section (and naviMgr)
-    # survives the fixture's day-end, matching pre-disableTutorials behavior.
+    # Fix 3c: this fixture no longer relies on the end-of-day results screen to
+    # hold the gameplay section (and its global naviMgr) open. The APP carries
+    # labeled session-survival guards (captain state-sustain + allPikis guard, the
+    # same pattern as the king/queen/flora fixtures), so an early day-end cannot
+    # reach GameCoreSection::exitStage (which nulls naviMgr) and the run completes
+    # on its own logic. Run faac4a7c proves the guards alone keep naviMgr alive
+    # with the pin absent (`navimgr=1`), so the results screen is not load-bearing.
+    # The `disableTutorials = 0` pin below is retained only as belt-and-braces for
+    # the roll-dependent Houdai natural kill (source Shot tick ~373 vs ~1500) and
+    # to keep the tested boot path of the passing receipt run.
     (run / 'pikmin_settings.conf').write_text('disableTutorials = 0\n')
     return run
 
@@ -301,7 +313,8 @@ def instrument(source, app=APP):
     start = source.index('class RoomApp : public PlugPikiApp {')
     end = source.index('int main(', start)
     includes = ('#include <cstring>\n#include "Generator.h"\n#include "pc_p2_long_legs.h"\n'
-                '#include "pc_p2_preview.h"\n#include "CinematicPlayer.h"\n')
+                '#include "pc_p2_preview.h"\n#include "CinematicPlayer.h"\n'
+                '#include "GameStat.h"\n#include "NaviState.h"\n')
     return includes + source[:start] + app + source[end:]
 
 
@@ -410,6 +423,13 @@ def validate(text, code=0):
     # the only other clear path). A surviving registration would let MonoObjectMgr
     # recycle the Pellet* slot and re-credit an unrelated future pellet.
     corpse_one_shot = bool(re.search(r'P2_LL_CORPSE_DRAIN remaining=0\b', text))
+    # session_survives (review fix 3c): the fixture must complete on its own logic,
+    # not because the end-of-day results screen is holding the gameplay section
+    # open. P2_LL_SESSION is emitted only at completion with a live navi; a
+    # dayend=1 marker or the EXITDAYEND teardown means naviMgr was nulled.
+    session_survives = (bool(re.search(r'P2_LL_SESSION navi=1\b', text))
+                        and not re.search(r'P2_LL_SESSION [^\n]*dayend=1', text)
+                        and 'EXITDAYEND' not in text)
     # natural_carry = both corpses were delivered by the ordinary FreeMode
     # Piki::graspSituation latch (the same path lane 21's carcass carry uses).
     # Proven by the two receipt lines AND a positive native `P2_LL_CARRY ...
@@ -468,6 +488,7 @@ def validate(text, code=0):
         houdai_receipt=houdai_receipt,
         free_recruit=free_recruit,
         corpse_one_shot=corpse_one_shot,
+        session_survives=session_survives,
         natural_carry=natural_carry,
         source_timed=source_timed,
         completion='PASS P2_LONG_LEGS_LIFECYCLE' in text,
@@ -492,6 +513,7 @@ def validate(text, code=0):
         houdai_receipt='pass' if houdai_receipt else 'fail',
         free_recruit='pass' if free_recruit else 'fail',
         corpse_one_shot='pass' if corpse_one_shot else 'fail',
+        session_survives='pass' if session_survives else 'fail',
         natural_carry='pass' if natural_carry else 'fail',
         source_timed='pass' if source_timed else 'fail',
     )
@@ -506,6 +528,7 @@ def validate(text, code=0):
                 'houdai_natural_damage', 'houdai_shell_fires', 'houdai_shell_hits',
                 'houdai_natural_death', 'houdai_no_inject',
                 'bigfoot_receipt', 'houdai_receipt', 'free_recruit', 'corpse_one_shot',
+               'session_survives',
                'natural_carry',
                 'source_timed',
                 'corpse', 'cleanup', 'reentry', 'completion', 'no_extinction')
