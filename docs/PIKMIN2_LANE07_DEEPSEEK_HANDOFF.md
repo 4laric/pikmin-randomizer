@@ -310,3 +310,128 @@ Fixture build (after `build_lane.py l07`):
   single-cycle test log to add the required `P2_LIFECYCLE_TEARDOWN_MODE`
   marker, and extended `validate()` to match). Estimated it saved the full
   pytest-authoring pass for the new gates.
+
+---
+
+# Review fix 2 (l07-fix2)
+
+Reviewed: slice-2 handoff NOT merged (root merges clean; native had no commits).
+This fix addresses all six review items on the same branches; both teardown
+modes now pass end-to-end with a real registry-count gate and a real movement
+gate.
+
+## What changed (per review item)
+
+1. **Movement gate restored and now gated.** `validate()` adds a `moved` check
+   (≥1 `P2_LIFECYCLE_MOVE` line with `dist>=1.0`); the native summary
+   `require(moved>=1, "lifecycle no autonomous movement")` is restored as
+   `require(moveObserved==1, ...)`. The probe was flaky in two ways: (a) the
+   finishing early-return skipped the fixed `observed==150` probe, and (b) the
+   idle Dwarf Orange Bulborb does not autonomously locomote in the cargo-free
+   arena (the one-shot slice-1 `dist=4.062` was a squad-engagement fluke). The
+   movement is now sampled a fixed number of frames after the re-entry, with a
+   labelled **locomotion lure** injection (relocate up to 10 live Pikmin onto the
+   re-entered target's front arc) so the real P1 pursuit path drives observable
+   motion — the same injection category as the lethal hit and the corpse-disposal
+   trigger.
+2. **Real registry count.** Added `pc_p2_dwarf_orange_count()` (native hook
+   commit `7a0865c1`); `pc_p2_sokkuri_count()` already existed. `FAMILY_HOOKS`
+   now carries `count`/`reset` per family; the fixture prints the real count at
+   each re-entry (`require(cnt==1, ...)`) and the post-teardown re-entry, and
+   `validate()` gates `registry_growth = all per-cycle counts == 1` on real ints
+   (no longer `int(bool(registered))`).
+3. **manager-reset performs a real teardown.** Both modes now reset the family
+   at the teardown point (`manager-reset` → family `_reset`; `scene-teardown` →
+   `pc_p2_reset_all_teki()`), print the same `P2_LIFECYCLE_TEARDOWN
+   refs_before/after` line, and `require(refs_after==0)`.
+4. **scene-teardown re-enters/rebinds.** After the teardown line both modes call
+   `_setup` again and print a post-teardown `P2_LIFECYCLE_REGISTRY cycle=N+1
+   count=1` (`require(post==1, ...)`); docstring now says "family-reset hook",
+   not section teardown (in-place `exitStage()` out of reach — deferral noted).
+5. **Sokkuri labelled hooks-only.** Handoff section (c) now says "hooks only,
+   not run"; the `_arena()` fast-fail raise is unchanged.
+6. **Tests.** Deleted the dead `_require_slice2()` guard and its calls; added the
+   `pc_p2_reset_all_teki()` routing assert to the dwarf-orange instrument test;
+   refreshed the synthetic logs for the new teardown/registry markers.
+
+## Commits
+
+| Branch | Commit | Subject |
+|---|---|---|
+| native `deepseek/p2-l07-native` | `7a0865c1` | lane07: add pc_p2_dwarf_orange_count for registry-growth fixture evidence (#397) |
+| root `deepseek/p2-l07` | `14bf97f` | lane07: review fixes 2 — real registry count, movement gate, symmetric teardown+re-entry (#397) |
+
+Native base unchanged (`b805d9c6`), root base unchanged (`ef1cace7`).
+
+## Build evidence
+
+`py -3.12 .../build_lane.py l07` →
+`native=7a0865c1adb0594b37136774bb9c839be7fdc4af dirty=no`
+`nectar.exe sha256=83087329e888d5ab656cc7e7ad6af2d9cc7a9185cee038b4c18c9e8ae62c2be4`
+`ninja_n="ninja: no work to do." seconds=107`.
+
+Replacement-main dwarf-orange fixture `sha256=53aa3212e11d5fc7992fdf90a389af1616ecfa93a28cda0c6f618ffac18ae0da`
+(`lf2c-fix2d-build`).
+
+## Runtime evidence (both modes)
+
+- **manager-reset `--cycles 2`** — `lf2c-fix2d-cycles2/888d57dabd3a4b42bb11bbff2f57007b`:
+  `passed=true`, `registry=[[1,1],[2,1],[3,1]]`, `moved=true` (dist 2.780 / 4.074),
+  `teardown_cleared=true`, `teardown_reentry=true`, `control_untouched=true`,
+  `reused_observed=true`, `bind_lines=4 draw_lines=4`, exit 0.
+- **scene-teardown `--cycles 1`** — `lf2c-fix2d-scene/633edceb40e745568e91ab0c6a09d1d4`:
+  `passed=true`, `registry=[[1,1],[2,1]]`, `moved=true` (dist 4.201),
+  `teardown_cleared=true` (`refs_before=1 refs_after=0`),
+  `teardown_reentry=true` (`cycle=2 count=1`), `control_untouched=true`, exit 0.
+
+Both runs: real registry count stays `1` across cycles (no growth), reward
+`pokos=-1` (cargo-free), control actor survives, window 960x540 centred.
+
+## Tests
+
+`py -3.12 -m pytest tests/test_pikmin2_lifecycle_runtime.py -q` → **16 passed**.
+Focused battery (`..._lifecycle_runtime.py` + `dwarf_orange_runtime/chain/dwarf_orange`)
+→ **57 passed**.
+
+## Six-gate table (Dwarf Orange 44) — updated for fix 2
+
+| Gate | Result | Evidence |
+|---|---|---|
+| 1. Identity + spawn | PASS (natural) | `P2_ENEMY_READY species=BlueKochappy source_id=44 generator=211001 health=250.0 max_health=250.0` |
+| 2. Autonomous movement + animation | PASS (injected lure → real pursuit) | `P2_LIFECYCLE_MOVE dist=2.780/4.074/4.201`; `P2_DWARF_ORANGE_DRAW corpse=0` |
+| 3. Attacks + receivers | natural receiver, injected lethal value | `P2_LIFECYCLE_ATTACK accepted=1 health=250.0 -> 0.0` |
+| 4. Death + corpse | death natural; disposal injected; engine forget | `registered_at_death=1` → `registered_after_dispose=0 engine=doKill` |
+| 5. Transport + reward | N/A | cargo-free; `pokos=-1`, lane 06 |
+| 6. Cleanup + re-entry | **PASS** | engine forget, `reused=1`, real `count=1` both cycles, `teardown refs 1->0`, post-teardown `count=1`, control `=1` |
+
+## Assumptions / honesty
+
+- The locomotion lure (Pikmin relocation) is injected and labelled; it does not
+  fabricate the movement — the pursuit is the real engine P1 AI. Without it the
+  idle Bulborb does not reliably exceed `dist>=1` in the cargo-free arena.
+- `scene_teardown_ok` still means "the `pc_p2_reset_all_teki()` family-reset
+  hook cleared the family"; the full in-place day-end section re-enter remains
+  lane-01/lane-33 territory (unchanged deferral).
+
+## Subagent usage (review fix 2)
+
+- The brief instructed a three-subagent split, but **no `task` subagent tool was
+  exposed in this session**, so the source audit, candidate inventory and
+  test/harness work were all performed inline. Net effect: the three-way
+  parallelization did not happen (could not), and its time-saving benefit was
+  therefore zero; the findings documented in the prior slices' "Subagent usage"
+  sections were reused as-is where relevant.
+
+## Exact reproduction
+
+```powershell
+$env:PYTHONUTF8 = '1'; $env:PIKMIN_P2_ROOM_WINDOW = '960x540'
+# build native once
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/build_lane.py l07
+# replacement-main fixture
+py -3.12 -m experimental.pikmin2_lifecycle_runtime build --native C:/Users/alari/pikmin-randomizer/output/dsw/native-l07 --build-dir C:/Users/alari/pikmin-randomizer/output/dsw/native-l07-build --output C:/Users/alari/pikmin-randomizer/output/dsw/l07-out/lf2c-fix2d-build --head 7a0865c1adb0594b37136774bb9c839be7fdc4af --family dwarf-orange
+# manager-reset, 2 cycles
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l07 -- py -3.12 -m experimental.pikmin2_lifecycle_runtime run --family dwarf-orange --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets --bank C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-bank --profile C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-ref --output C:/Users/alari/pikmin-randomizer/output/dsw/l07-out/lf2c-fix2d-cycles2 --exe C:/Users/alari/pikmin-randomizer/output/dsw/l07-out/lf2c-fix2d-build/baseline/fixture.exe --cycles 2 --teardown manager-reset
+# scene-teardown, 1 cycle
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l07 -- py -3.12 -m experimental.pikmin2_lifecycle_runtime run --family dwarf-orange --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets --bank C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-bank --profile C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-ref --output C:/Users/alari/pikmin-randomizer/output/dsw/l07-out/lf2c-fix2d-scene --exe C:/Users/alari/pikmin-randomizer/output/dsw/l07-out/lf2c-fix2d-build/baseline/fixture.exe --cycles 1 --teardown scene-teardown
+```
