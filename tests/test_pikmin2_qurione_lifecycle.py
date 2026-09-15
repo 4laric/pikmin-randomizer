@@ -164,6 +164,23 @@ class QurioneLifecycleTests(unittest.TestCase):
         self.assertIs(result['checks']['moved'], False)
         self.assertFalse(result['passed'])
 
+    def test_moved_ignores_dead_flyaway(self):
+        dead_lines = '\n'.join(
+            'P2_QURIONE_POS generator=160001 state=dead clip=run phase=1.00 x=0.0 y=%s z=0.0' % y
+            for y in (100.0, 200.0, 300.0))
+        log = GOOD_LOG + '\n' + dead_lines
+        result = life.validate_lifecycle(log)
+        self.assertIs(result['checks']['moved'], True)
+
+        base = '\n'.join(l for l in GOOD_LOG.splitlines() if not l.startswith('P2_QURIONE_POS '))
+        no_move = base + '\n' + dead_lines
+        self.assertIs(life.validate_lifecycle(no_move)['checks']['moved'], False)
+
+    def test_moved_false_without_move_displacement(self):
+        pos = 'P2_QURIONE_POS generator=160001 state=move clip=wait phase=1.00 x=0.0 y=60.0 z=0.0'
+        log = '\n'.join([pos, pos, pos])
+        self.assertIs(life.validate_lifecycle(log)['checks']['moved'], False)
+
     def test_full_chain_requires_drop_and_reward(self):
         result = life.validate_lifecycle(REAL_LOG)
         self.assertIs(result['passed_real'], True)

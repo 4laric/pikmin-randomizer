@@ -242,7 +242,7 @@ Its output (dirty-tree build `09d931df`, labelled control with 203002 present):
 [PC_L15_PROBE] first_nan state=0 vel=(nan,nan,nan) pos=(nan,nan,nan)
 ```
 
-state=0 is Stay, where `:443-444` zeroes `mVelocity` every frame — so the NaN is
+state=0 is Stay, where `:459-460` zeroes `mVelocity` every frame — so the NaN is
 already present entering the FSM, i.e. it arrives **across actors** (a collision
 response with the neighbouring un-suppressed 203002 actor, per
 `objectMgr.cpp:958-969`) rather than a non-finite velocity entering *this*
@@ -256,16 +256,40 @@ specific writer. 203002 stays out of acceptance runs.
 | Gate | Result | Evidence | Injected vs natural |
 |---|---|---|---|
 | 1. Exact identity and spawn | PASS (natural) | output/dsw/l15-out/arena-runs/4eb9093898ff4d8a9e73110675683570/drop-run.log:748 | natural |
-| 2. Autonomous movement and animation | PARTIAL (moves; one full cycle then re-appear stall) | output/dsw/l15-out/arena-runs/4eb9093898ff4d8a9e73110675683570/drop-run.log:767-768 | natural |
-| 3. Attacks and receivers | N/A (source: no attack) | Pikmin contact here is the drop trigger, not an attack | natural |
+| 2. Autonomous movement and animation | PARTIAL (one full cycle then re-appear stall) | output/dsw/l15-out/arena-runs/4eb9093898ff4d8a9e73110675683570/qurione-run.log:793-797 | natural |
+| 3. Attacks and receivers | N/A (source: no attack; contact is the drop trigger) | Qurione.cpp:136-144 flyCollisionCallBack | natural |
 | 4. Death and corpse | PASS (natural) | output/dsw/l15-out/arena-runs/4eb9093898ff4d8a9e73110675683570/drop-run.log:777,782 | natural |
-| 5. Actual transport and reward | PARTIAL (Egg broke, 2 nectar items born; Onion/AP receipt is lane 06) | output/dsw/l15-out/arena-runs/4eb9093898ff4d8a9e73110675683570/drop-run.log:773-775 | natural |
-| 6. Cleanup and re-entry | UNTESTED | no death-teardown/re-entry exercised | natural |
+| 5. Actual transport and reward | N/A (reward is field-consumed nectar; no receivable item) | output/dsw/l15-out/arena-runs/4eb9093898ff4d8a9e73110675683570/drop-run.log:773-775 | natural |
+| 6. Cleanup and re-entry | UNTESTED (forget seam wired; no second appear cycle exercised) | pc_port/pc_p2_teki_lifetime.cpp:73 | natural |
+
+Gate 2 note: the drop-run intercepts the wisp on the first Move frame, so it has
+zero Move displacement; the movement evidence is the slice-3 clean flight run
+(`qurione-run.log:793-797` — `state=move` Z displacement 1816→1894→1977, then
+`disappear`→`stay` at :799-803). The wisp reaches one full
+appear→move→disappear→stay pass and then parks in Stay because `nearestTarget`
+(SIGHT=200, `pc_p2_qurione.cpp:131-146`) finds no re-trigger; re-appear is not
+sustained. Hence PARTIAL, not PASS.
+
+Gate 5 note: the Honeywisp has **no receivable reward**. Every reward path is
+field-consumed nectar: the carried Egg (EnemyID 37) breaks (egg.cpp:243-289)
+into ItemHoney `HONEY_Y` (single/double; sprays are first-spray-demo-gated; mitites
+fall back to `HONEY_Y`), which Pikmin absorb in the field (`pikiAI.cpp:611-629` →
+`PIKISTATE_Absorb`, never `ACT_Transport`). Both Qurione (`Qurione.cpp:56`
+`EB_LeaveCarcass`) and the Egg disable carcass, so there is no corpse/pellet/
+treasure carry and no Onion/AP/Pod receipt. Lane-06's receipt scheme (hauled
+items) does not apply to this identity; marking it N/A keeps the ledger from
+waiting on a receipt that cannot exist.
+
+Gate 6 note: `pc_p2_qurione_forget` is wired through the lane-07 lifetime seam
+(`pc_p2_teki_lifetime.cpp:73`, from `BTeki::doKill` `tekibteki.cpp:746` and
+`TekiMgr::newTeki` `tekimgr.cpp:313`), but a second appear cycle in the same
+session is not exercised by the drop fixture, so cleanup/re-entry stays UNTESTED.
 
 File citations: `src/plugPikiKando/creature.cpp:677` (culling early-return that
-froze Move), `pc_port/pc_p2_qurione.cpp` `setInsideView()` (fix), `:156-164,469`
-(pikiContact contact test), `:452-471` (Move pitch-bob velocity), `:487-502`
-(Drop release/egg endCapture). `check_p2_handoff_gates.py` output:
+froze Move), `pc_port/pc_p2_qurione.cpp` `setInsideView()` (`:407` re-applied at
+`:440`), `:156-161,485` (pikiContact contact test + call), `:474-493` (Move
+pitch-bob velocity), `:506-515` (Drop release/egg endCapture), `:459-460` (Stay
+zero-velocity). `check_p2_handoff_gates.py` output:
 
 ```text
 16 Qurione (role=source):
@@ -273,8 +297,9 @@ froze Move), `pc_port/pc_p2_qurione.cpp` `setInsideView()` (fix), `:156-164,469`
   2. movement_animation ignored [PARTIAL]
   3. attacks_receivers  ignored [N/A]
   4. death_corpse       accepted [PASS]
-  5. transport_reward   ignored [PARTIAL]
+  5. transport_reward   ignored [N/A]
   6. cleanup_reentry    ignored [UNTESTED]
+37 Egg (role=projectile): ignored (role)
 ```
 
 ### 3.5 Slice-3 subagent usage
@@ -293,3 +318,19 @@ froze Move), `pc_port/pc_p2_qurione.cpp` `setInsideView()` (fix), `:156-164,469`
 
 Every build/run/commit/fixture above was performed by me; no subagent built, ran a
 fixture, committed, or touched native/shared files.
+
+### 3.6 fix-4 subagent usage
+
+1. `explore` — Honeywisp reward-path audit (Egg→nectar HONEY_Y, EB_LeaveCarcass on
+   Qurione+Egg, honey absorbed not hauled). **Used as-is**; supplied the source
+   reason for gate 5 = N/A (no receivable item for lane-06).
+2. `explore` — exact line numbers (Stay zero-velocity now `:459-460`; move POS
+   lines in `qurione-run.log` vs `drop-run.log`; lane-07 forget seam
+   `pc_p2_teki_lifetime.cpp:73`). **Used as-is**; drove the :443-444→:459-460 fix
+   and the gate 2/6 citations.
+3. `general` — restricted the `moved` validator gate to `state=move` POS lines and
+   added dead-flyaway/frozen-move regression tests. **Used as-is** (26 lifecycle
+   tests pass).
+
+Every build/run/commit above was performed by me; no subagent built, ran a
+fixture, committed, or touched native/shared files in this pass.
