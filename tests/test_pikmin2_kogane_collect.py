@@ -33,7 +33,7 @@ def _restart_log(completion=True):
     rows = ['P2_KOGANE_BIRTH id=219004 type=3 x=0.000 y=30.000 z=0.000',
             'P2_KOGANE_RECEIPTS loaded=1',
             'P2_KOGANE_RESTORED_ESCAPE generator=219001 flips=3',
-            'P2_KOGANE_RESTART loaded=seen rearmed=0']
+            'P2_KOGANE_RESTART rearmed=0']
     if completion:
         rows.append('PASS P2_KOGANE_RESTART dedupe_ok rearmed=0')
     return '\n'.join(rows) + '\n'

@@ -117,7 +117,7 @@ APP = r'''class RoomApp : public PlugPikiApp {
    if(observed==60){
     require(!aliveTeki(219001),"restarted beetle re-armed (still alive)");
     require(control&&control->isAlive(),"P1 control disturbed");
-    std::printf("P2_KOGANE_RESTART loaded=seen rearmed=0\n");std::fflush(stdout);
+    std::printf("P2_KOGANE_RESTART rearmed=0\n");std::fflush(stdout);
     require(!aliveTeki(219001),"press re-armed the farmed beetle");
     std::puts("PASS P2_KOGANE_RESTART dedupe_ok rearmed=0");std::fflush(stdout);std::_Exit(0);}
   }
@@ -172,7 +172,7 @@ def validate_restart(text, code):
         restored_escape=restored_escape == [(TARGET, 3)],
         no_new_drop=new_drops == [],
         no_new_grant=new_receipts == [],
-        rearmed_plain='P2_KOGANE_RESTART loaded=seen rearmed=0' in text)
+        rearmed_plain='P2_KOGANE_RESTART rearmed=0' in text)
     return dict(passed=all(checks.values()), checks=checks,
                 receipts_loaded=receipts_loaded,
                 restored_escape=[list(r) for r in restored_escape])
@@ -208,7 +208,7 @@ def run_cross_process(assets, bank, output, exe):
     env = dict(os.environ, PATH='C:/msys64/mingw64/bin;' + os.environ.get('PATH', ''),
                PIKMIN_P2_ROOM_WINDOW='960x540', PYTHONUTF8='1', SDL_AUDIODRIVER='dummy')
     logs, codes = [], []
-    for number in (1, 2):
+    for number in (0, 2):
         (stage / 'kogane-pass.txt').write_text('%d\n' % number)
         log_path = stage / ('native-pass%d.log' % number)
         with log_path.open('w') as log:
