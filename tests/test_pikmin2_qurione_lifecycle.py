@@ -15,6 +15,9 @@ GOOD_LOG = '\n'.join([
     'P2_QURIONE_STATE generator=160001 state=stay',
     'P2_QURIONE_STATE generator=160001 state=appear',
     'P2_QURIONE_STATE generator=160001 state=move',
+    'P2_QURIONE_POS generator=160001 state=move clip=waitl phase=0.31 x=0.00 y=61.00 z=10.00',
+    'P2_QURIONE_POS generator=160001 state=move clip=waitl phase=0.61 x=0.00 y=62.00 z=20.00',
+    'P2_QURIONE_POS generator=160001 state=move clip=waitl phase=0.91 x=0.00 y=63.00 z=30.00',
     'P2_QURIONE_EGG generator=160001 action=drop',
     'P2_QURIONE_STATE generator=160001 state=drop',
     'P2_QURIONE_STATE generator=160001 state=dead',
@@ -145,6 +148,21 @@ class QurioneLifecycleTests(unittest.TestCase):
 
     def test_validate_accepts_finite_movement(self):
         self.assertTrue(life.validate_lifecycle(GOOD_LOG)['checks']['no_movement_nan'])
+
+    def test_validate_moved_requires_distinct_positions(self):
+        pos = 'P2_QURIONE_POS generator=160001 state=move clip=wait phase=1.00 '
+        log = GOOD_LOG + '\n' + '\n'.join(
+            [pos + 'x=0.0 y=60.0 z=0.0', pos + 'x=10.0 y=60.0 z=0.0', pos + 'x=20.0 y=60.0 z=0.0'])
+        result = life.validate_lifecycle(log)
+        self.assertIs(result['checks']['moved'], True)
+
+    def test_validate_moved_rejects_frozen_position(self):
+        pos = 'P2_QURIONE_POS generator=160001 state=move clip=wait phase=1.00 x=0.0 y=60.0 z=0.0'
+        base = '\n'.join(l for l in GOOD_LOG.splitlines() if not l.startswith('P2_QURIONE_POS '))
+        log = base + '\n' + '\n'.join([pos, pos, pos])
+        result = life.validate_lifecycle(log)
+        self.assertIs(result['checks']['moved'], False)
+        self.assertFalse(result['passed'])
 
     def test_validate_rejects_non_text(self):
         with self.assertRaises(ValueError):
