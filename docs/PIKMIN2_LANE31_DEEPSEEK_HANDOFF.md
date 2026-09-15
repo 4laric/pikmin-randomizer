@@ -113,10 +113,10 @@ death, corpse and teardown are driven by the real engine tick
 |---|---|---|---|
 | 1. Exact identity and spawn | UNTESTED | opt-in fixed placement profile; ordinary seed spawn is lane 03 | injected |
 | 2. Autonomous movement and animation | UNTESTED | host-supplied route; retained-asm pathfinding is the omitted step | host-driven |
-| 3. Attacks and receivers | PASS (natural) | output/dsw/l31-out/waterwraith-encounter-run/6793311948044ac19ae1503d4ea70801/stdout.log:904 | natural |
-| 4. Death and corpse | PASS (natural) | output/dsw/l31-out/waterwraith-encounter-run/6793311948044ac19ae1503d4ea70801/stdout.log:966 | natural |
-| 5. Actual transport and reward | UNTESTED (injected) | output/dsw/l31-out/waterwraith-encounter-run/6793311948044ac19ae1503d4ea70801/stdout.log:1198 (receipt corpse:waterwraith:0 via labelled Transport assist) | injected |
-| 6. Cleanup and re-entry | PASS (natural) | output/dsw/l31-out/waterwraith-encounter-run/6793311948044ac19ae1503d4ea70801/stdout.log:1202 | natural |
+| 3. Attacks and receivers | PASS (natural) | output/dsw/l31-out/waterwraith-encounter-run/5b9a375fcc7a470f9db1d5b6325705d5/stdout.log:905 | natural |
+| 4. Death and corpse | PASS (natural) | output/dsw/l31-out/waterwraith-encounter-run/5b9a375fcc7a470f9db1d5b6325705d5/stdout.log:967 | natural |
+| 5. Actual transport and reward | PASS (natural) | output/dsw/l31-out/waterwraith-encounter-run/5b9a375fcc7a470f9db1d5b6325705d5/stdout.log:1133 corpse:waterwraith:0 | natural |
+| 6. Cleanup and re-entry | PASS (natural) | output/dsw/l31-out/waterwraith-encounter-run/5b9a375fcc7a470f9db1d5b6325705d5/stdout.log:1137 | natural |
 
 98 `Tyre` is the helper roller (BDT_Empty, manager_base child); it has no
 independent gate table and is not seeded.
@@ -269,68 +269,69 @@ incorrectly reported this as "natural free-mode pickup triggers"; it does NOT �
 only haul reaching the Pod was the assist. See review fixes 4 for the corrected
 diagnosis.
 
-Build: `pikmin_pc` at native `0d09210b`, clean, exe `be42af61…`; the final fixed commit
-was `e857a7dc` (fixture-only change; game target object unchanged). Fix-3 fixture.exe
-`f6016aa5efd5ea30a3257f0d7d3b26cab29222917f8c6b0aa87140e2ac46b28d`.
+Build evidence: no `dirty=no` game-build line exists for `e857a7dc` (it was a
+fixture-only change; the `0d09210b` exe was rewritten away). Fix-2 fixture.exe
+`d6ea4a14…`; fix-3 fixture.exe
+`f6016aa5efd5ea30a3257f0d7d3b26cab29222917f8c6b0aa87140e2ac46b28d`; fix-4
+`pikmin_pc` native `b76b93b0` dirty=no exe `25e6b7a9…`, fixture.exe `8584c963…`.
+Fix-5 `pikmin_pc` native `0e6c4ff` dirty=no exe `ae9a64fa…`, fixture.exe `7c1148ec…`.
 
-## Slice 2 — review fixes 4
+## Slice 2 — review fixes 4 (corrections noted in review fixes 5)
 
-Diagnosis of the "natural pickup" overclaim, and the assisted/natural distinction.
+- The `NullNaviController` "pin" was checked in behind a `!navi->mKontroller` guard
+  that can never fire (`Navi::Navi` unconditionally does `mKontroller = new
+  Kontroller(naviID+1)` at `src/plugPikiKando/navi.cpp:523`), so it was dead code —
+  the fix-4 run showed the same mode=1 picture as fix-3. Corrected in fix-5.
+- Outcome distinction (PASS ... ASSISTED + `status` passed/assisted/blocked) landed
+  and is retained.
+- The multi-carrier-threshold explanation was dropped (one Free Pikmin suffices; the
+  real loaded 'pb01' config is read now: `carry_min=1 carry_max=2`).
+
+## Slice 2 — review fixes 5 (DONE — natural pickup observed)
+
+The real cause was the post-work join-party: a Pikmin whose action ends/fails while
+its assigned Navi is within `mPostWorkJoinPartyRange = 250` (`PikiMgr.h:113`) re-joins
+formation (`aiAction.cpp:462-468,514`). The stationary captain was ~248 units from the
+corpse, inside the range, so failed transports re-adopted the freed Pikmin.
 
 Fixes:
-- Installed a `NullNaviController` (a `Kontroller` that never whistles or moves) on
-  the captain at the first preview frame, so the navi's gather/whistle cannot
-  re-adopt the squad the fixture frees (`changeMode(FreeMode)` was being undone by
-  `Navi::callPikis` re-adopting Pikmin into `FormationMode`).
-- Added an immediate `P2_WATERWRAITH_SQUAD_FREED_MODE` diagnostic after the free.
-- Runtime now distinguishes outcomes: `PASS WATERWRAITH_ENCOUNTER_RUNTIME ASSISTED`
-  when the assist fired, and `verification.json status` is
-  `passed` / `assisted` / `blocked` (`tools/p2_waterwraith_encounter_runtime_run.py`).
-- Dropped the wrong multi-carrier-threshold explanation (one Free Pikmin suffices for
-  a `NewNumberPellet`; `mCarryMinPikis` defaults to 1, `pelletMgr.cpp:117`).
+- Assign the captain controller UNCONDITIONALLY and **park it >250 from both the corpse
+  and the corpse→Pod path** (`P2_WATERWRAITH_NAVI_PARKED pos=-400,0,0`).
+- Log per-Pikmin `mCurrActionIdx` (the transport action's internal `mState` is
+  `protected`, so the action index + mode name the step), and read the real loaded
+  `pb01` `carry_min`/`carry_max`.
+- Extract `classify(text)` (delivered/assisted/blocked) and add the assisted/natural
+  suffix rule to `verify_log` (an assisted receipt must end `PASS ... ASSISTED`; a
+  natural receipt must not).
+- Only meet the transport assist after `kAssistGraceFrames = 1800`, so a natural
+  multi-carrier haul has time to complete first.
 
-Result (real-GL `status: assisted`, run
-`output/dsw/l31-out/waterwraith-encounter-run/00fb4ee6857746b7abf502d73c47f385`):
-`SQUAD_FREED_MODE` shows all 8 freed members `mode=0` immediately (stdout.log:971-978),
-but at the next observation the freed Pikmin sitting by the corpse are `mode=1`
-(FormationMode) again (stdout.log:986 `mode=1 dist=11.6`) while the ones that wandered
-off stay `mode=0` (stdout.log:984-985). `max_carriers=1` (one natural TransportMode
-entry) and `corpse_state=0` throughout the natural window, so the corpse is never
-carried naturally; the receipt fires only after the injected assist
-(stdout.log:1054 `SQUAD_ASSIST`; 1207-1208 receipt).
+Result (real-GL `status: passed`, run
+`output/dsw/l31-out/waterwraith-encounter-run/5b9a375fcc7a470f9db1d5b6325705d5`):
+`SQUAD_FREE count=8`, `carry_min=1 carry_max=2`, a **sustained natural 2-carrier haul**
+(`CARRY_OBSERVE carriers=2 max=2` frames 193→673), the carriers release the corpse at
+the Pod (`frame=793 carriers=0 corpse_state=1`), and with **no `SQUAD_ASSIST`** the
+durable receipt fires:
+`P2_WATERWRAITH_POD_RECEIPT generator=0` / `P2_POD_RECEIPT id=corpse:waterwraith:0
+value=2 new=1 pokos=2 seeds=0`, `PASS WATERWRAITH_ENCOUNTER_RUNTIME` (plain; no
+` ASSISTED`).
 
-### Why BLOCKED (file:line of the cause)
+### Subagent usage (review fixes 5)
 
-`changeMode(FreeMode)` works (immediate mode=0), but the freed Pikmin that stay near
-the corpse re-adopt `FormationMode` via the free-Pikmin re-join path:
-`PikiLookAtState::cleanup` calls `changeMode(PikiMode::FormationMode, piki->mNavi)`
-at `src/plugPikiKando/pikiState.cpp:315`, reached from `ActFree::exec`
-(`src/plugPikiKando/aiFree.cpp:167-204`, `procCollideMsg :192-204`) and from the
-post-work join-party `changeMode(PikiMode::FormationMode, nullptr)` at
-`src/plugPikiKando/aiAction.cpp:514`. The `NewNumberPellet` stand-in has one carry
-slot (`mCarryMaxPikis=1`, `pelletMgr.cpp:118`), so once one Pikmin's search binds
-(or aborts), the remaining freed Pikmin finish their idle search and re-join
-formation instead of hauling. Natural pickup therefore never consolidates into a
-completed haul before the assist: gate 5 is UNTESTED (injected), not PASS.
-
-### Subagent usage (review fixes 4)
-
-- `explore` #1 (formation re-adoption audit) — found `PikiLookAtState::cleanup`
-  re-adoption (`pikiState.cpp:315`), `Navi::callPikis`, `ActFree::procCollideMsg`,
-  and the `FixtureController` idiom; used as-is to add the `NullNaviController`.
-- `explore` #2 (fixture/verifier/handoff inventory) — located the stale
-  `pc_p2_waterwraith_forget` comment, the orphan heading, and the multi-carrier
-  claims; used as-is.
-- `general` #3 (marker pytest) — added `SQUAD_FREE`/`SQUAD_ASSIST` optional-marker
-  tests and an `ASSISTED` outcome test; used as-is (14 passing).
+- `explore` #1 (transport-abort/source audit) — confirmed `Navi::Navi`'s unconditional
+  `mKontroller`, `ActTransport::exec` `gotoLiftPos()` abort (`aiTransport.cpp:735-744`),
+  the join-party range 250, and `pb01` mapping; used as-is.
+- `explore` #2 (fixture/verifier inventory) — located the dead `!mKontroller` guard,
+  the tautological pytest, the build-evidence drift, and the run.py classifier; used
+  as-is.
+- `general` #3 (marker pytest) — wrote the assisted/natural suffix flip-tests and the
+  `classify()` outcome tests (3 new); used as-is after I added `classify()`.
 
 ### Remaining blockers
 
-- Gate 5 (transport/reward): natural pickup does not complete (freed near-corpse
-  Pikmin re-adopt formation; single carrier does not haul). The receipt path is
-  proven only via the injected Transport assist (`corpse:waterwraith:0`). Ordinary
-  seed spawn stays with lane 03; a stable natural multi-Pikmin haul with the
-  per-Pikmin re-adoption understood is the next step.
+- Ordinary seed spawn (gate 1) stays with lane 03; the movement route (gate 2) stays
+  host-driven. Gate 5 is now natural (no assist) in the fixed-placement arena; the
+  generated-session admission and whole-family completion remain lane 01/02/33 work.
 
 ### Gate checker output
 
@@ -341,6 +342,6 @@ completed haul before the assist: gate 5 is UNTESTED (injected), not PASS.
   2. movement_animation ignored [UNTESTED]
   3. attacks_receivers  accepted [PASS]
   4. death_corpse       accepted [PASS]
-  5. transport_reward   ignored [UNTESTED]
+  5. transport_reward   accepted [PASS]
   6. cleanup_reentry    accepted [PASS]
 ```

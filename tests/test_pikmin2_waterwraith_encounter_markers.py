@@ -107,14 +107,12 @@ def test_zero_crush_stage_a_is_detected():
     assert verify_log("\n".join(mutated) + "\n") != []
 
 
-# `verify_log` only regex-checks the markers listed in its own rules; it has no
-# rule for P2_WATERWRAITH_SQUAD_FREE / P2_WATERWRAITH_SQUAD_ASSIST, so those
-# markers are optional (their absence never flips the result).
-def test_free_assist_markers_are_optional():
+# `P2_WATERWRAITH_SQUAD_FREE` has no verify_log rule, so its absence never flips
+# the result (SQUAD_ASSIST is separately enforced by the assisted/natural rules
+# tested below).
+def test_squad_free_marker_is_optional():
     verify_log = _verifier_module().verify_log
-    for marker in ("P2_WATERWRAITH_SQUAD_FREE count=8",
-                   "P2_WATERWRAITH_SQUAD_ASSIST carriers=20 assisted=1"):
-        assert verify_log(_log_without(marker)) == []
+    assert verify_log(_log_without("P2_WATERWRAITH_SQUAD_FREE count=8")) == []
 
 
 # An ASSISTED receipt still satisfies the delivered path: the runtime PASS check
@@ -127,3 +125,41 @@ def test_assisted_delivery_is_valid():
         "PASS WATERWRAITH_ENCOUNTER_RUNTIME ASSISTED",
     ]
     assert verify_log("\n".join(assisted_lines) + "\n") == []
+
+
+# Assisted/natural distinction: with an assisted=1 squad marker the runtime line
+# MUST carry the " ASSISTED" suffix; the plain runtime line alone is an error.
+def test_assisted_needs_assisted_suffix():
+    verify_log = _verifier_module().verify_log
+    assisted_plain_lines = FULL_LOG_LINES[:-1] + [
+        "P2_WATERWRAITH_SQUAD_ASSIST carriers=20 assisted=1",
+        "PASS WATERWRAITH_ENCOUNTER_RUNTIME",
+    ]
+    assert verify_log("\n".join(assisted_plain_lines) + "\n") != []
+
+
+# The inverse: a natural delivered receipt (no assisted=1) MUST NOT carry the
+# " ASSISTED" suffix on the runtime line.
+def test_natural_must_not_be_assisted():
+    verify_log = _verifier_module().verify_log
+    natural_assisted_lines = FULL_LOG_LINES[:-1] + [
+        "PASS WATERWRAITH_ENCOUNTER_RUNTIME ASSISTED",
+    ]
+    assert verify_log("\n".join(natural_assisted_lines) + "\n") != []
+
+
+def test_classify_outcomes():
+    classify = _verifier_module().classify
+    delivered_log = "\n".join(
+        line for line in FULL_LOG_LINES
+        if line.startswith("P2_WATERWRAITH_POD_RECEIPT ")
+    ) + "\n"
+    assert classify(delivered_log) == "delivered"
+    assisted_log = ("P2_WATERWRAITH_SQUAD_ASSIST carriers=20 assisted=1\n"
+                    + delivered_log)
+    assert classify(assisted_log) == "assisted"
+    blocked_log = "\n".join(
+        line for line in BLOCKED_LOG_LINES
+        if line.startswith("P2_WATERWRAITH_CARRY_UNRESOLVED ")
+    ) + "\n"
+    assert classify(blocked_log) == "blocked"
