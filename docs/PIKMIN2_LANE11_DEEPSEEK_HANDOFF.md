@@ -314,3 +314,172 @@ py -3.12 output/deepseek-wave/slot.py run gl l11 -- py -3.12 -m experimental.pik
 - `pc_p2_bulbmin_should_save` is now superseded at the live checkpoint by the
   transition; it remains as the per-Piki semantic predicate covered by
   `tools/test_p2_bulbmin_cave_filter.cpp`.
+
+## Slice 3
+
+**Goal:** fold the integrator's slice-2 review findings and start gate 6 natural
+(Mother Bulbmin through the ordinary generator sidecar + the captain's real
+whistle).
+
+**Concrete change:**
+
+1. `pc_p2_cave_checkpoint` now computes the Bulbmin drop set **non-mutatingly**
+   via a new `pc_p2_bulbmin_transition_removes` and commits the mutating
+   `pc_p2_bulbmin_transition` only **after `writeTransfer` succeeds**, closing the
+   retry hole a failed write previously left (removed wild bodies became
+   untracked and were kept on retry). `P2BulbminFlock` gains a const
+   `removedOn`, the bridge an inline `transitionRemoves`, and
+   `tools/test_p2_bulbmin_mother.cpp` adds `test_transition_removes_is_nonmutating`
+   (the failing-write contract: the non-mutating query returns the same drop set
+   twice without erasing, and only the commit erases).
+2. Deleted the dead engine wrapper `pc_p2_bulbmin_should_save(const Piki*, bool)`
+   (`pc_p2_bulbmin.cpp:185`). The engine-free policy predicate
+   `p2_bulbmin_should_save(int, int)` stays as a contract-only mirror, kept alive
+   by `tools/test_p2_bulbmin_cave_filter.cpp`.
+3. Added observable natural-recruitment markers on the already-wired natural path:
+   `P2_BULBMIN_MOTHER_BIRTH model=.. dependents=N wild=W recruited=R`
+   (`pc_p2_bulbmin_attach_mother_ex`) and
+   `P2_BULBMIN_WHISTLE recruited=N wild=W recruited_total=R`
+   (`pc_p2_bulbmin_call_pikis`, the navi.cpp real-whistle hook). No behavior change;
+   these make gate 6 measurable.
+4. New root harness `experimental/pikmin2_bulbmin_natural_runtime.py`
+   (validator + run scaffold) and `tests/test_pikmin2_bulbmin_natural_runtime.py`
+   (six source-log unit tests + one PIKMIN_NATIVE_ROOT wiring test); the cave-filter
+   test now asserts the compute-before-write/commit-after-write ordering and the
+   removed dead wrapper.
+
+### Ordered commits
+
+| Branch | Commit | Subject |
+|---|---|---|
+| native `deepseek/p2-l11-native` | `94b6a79439e3748d4af0d73eca95ddd5c2cefcc5` | lane11: non-mutating Bulbmin drop set + commit after write; drop dead pc_p2_bulbmin_should_save (#131) |
+| native `deepseek/p2-l11-native` | `952ba1a5c5b5e95f9f64eefb1e961d2f686031dd` | lane11: observable natural recruitment markers (mother birth + real-whistle recruit counts) (#131) |
+| root `deepseek/p2-l11` | `f897409d577c7a6784fc42a91f86aa13e0a6d356` | lane11: cave-filter test proves non-mutating compute + commit-after-write and dead-wrapper removal (#131) |
+| root `deepseek/p2-l11` | `ef0f75052c95f6ca5a0896424de7e12ebd603ad1` | lane11: natural Mother Bulbmin real-whistle gate 6 validator + tests (#131) |
+
+Dirty state: none (both clean).
+
+### Interfaces / hooks touched
+
+- `pc_port/pc_p2_bulbmin_policy.h` — const `P2BulbminFlock::removedOn` mirroring
+  `applyTransition`'s removal rule without erasing.
+- `pc_port/pc_p2_bulbmin.h/.cpp` — `P2BulbminBridge::transitionRemoves` (inline)
+  and live `pc_p2_bulbmin_transition_removes`; `pc_p2_bulbmin_should_save` removed;
+  two natural-path log lines added to `pc_p2_bulbmin_attach_mother_ex` and
+  `pc_p2_bulbmin_call_pikis`.
+- `pc_port/pc_p2_cave.cpp` (lane-11-owned carrier) — checkpoint reorder: compute
+  drop set, build squad, write transfer, then commit the ledger mutation.
+- `tools/test_p2_bulbmin_mother.cpp` — non-mutating/commit contract stage.
+
+No shared engine file (`teki.h`, `tekiinteraction.cpp`, `tekibteki.cpp`,
+`tekimgr.cpp`, `gameCoreSection.cpp`, `navi.cpp`, `pc_p2_preview.cpp`) was edited;
+the `navi.cpp` real-whistle hook and `pc_p2_preview.cpp` mother auto-attach were
+already present from prior slices.
+
+### Build evidence (`output/dsw/l11-build-evidence.txt`)
+
+- Clean build at native `952ba1a5`, `dirty=no`,
+  `[2/2] Linking CXX executable bin\nectar.exe`, `ninja -n` → `no work to do`
+  (`seconds=80`).
+- `nectar.exe` SHA-256 `e865b126f53ef28787c9631bdf3f42784e5367728b4d60cff1d9eaddb974785b`.
+- `nm -C` shows `T pc_p2_bulbmin_transition` and (in the object)
+  `T pc_p2_bulbmin_transition_removes`; `pc_p2_bulbmin_should_save` is absent.
+  `strings` shows `P2_BULBMIN_MOTHER_BIRTH` and `P2_BULBMIN_WHISTLE`.
+
+### Fixture adoption / six arena gates (natural gate 6)
+
+The engine wiring for natural gate 6 already exists (mother auto-attach from the
+Kochappy generator sidecar in `pc_p2_preview.cpp`, the captain's real whistle via
+`navi.cpp` → `pc_p2_bulbmin_call_pikis`, and the descend/exit transition filter in
+`pc_p2_cave.cpp`). This slice adds the observable markers and the validator.
+
+| Gate | Result | Evidence |
+|---|---|---|
+| 1. Identity + spawn | source-backed (mother stand-in labeled) | Kochappy actor + bridge `P2_BULBMIN_READY`; no LeafChappy actor |
+| 2. Autonomous movement | source-backed N/A | no mother actor this slice |
+| 3. Attacks / receivers | source-backed N/A | hazard immunity unchanged (lane 10/14) |
+| 4. Death + corpse | source-backed N/A | Bulbmin death is ordinary Piki death |
+| 5. Transport + reward | source-backed N/A | Bulbmin are not carried |
+| 6. Cleanup + re-entry | **engine contract PASS (unit) / live GL BLOCKED** | `tools/test_p2_bulbmin_mother.cpp` proves descend drops wild + exit drops all tracked; live GL run blocked on the lane-13 Kochappy bank (see blockers) |
+
+Natural vs injected: the recruitment is the captain's real whistle (navi.cpp
+hook), the mother birth is the generator-sidecar auto-attach, and the drop is the
+live checkpoint filter — none are injected birth/whistle API calls. A live GL run
+is not claimed; it is blocked on assets, not on logic.
+
+### Subagent usage
+
+This session had no `task`/subagent tool available, so the three delegated tasks
+could not be spawned. The source audit (pc_p2_cave/pc_p2_bulbmin/pc_p2_kochappy
+read-through), the candidate inventory
+(`grep` for `pc_p2_bulbmin_*` callers, the Kochappy bank/arena harnesses, and the
+missing-asset check under `output/`), and the pytest scaffolding
+(`tests/test_pikmin2_bulbmin_natural_runtime.py`, the cave-filter test update)
+were all done inline with the read/grep tools. Net: no time saved by subagents;
+the shared-host restriction (three subagents max) was moot. Honest negative
+result: the audit/inventory were still necessary and the absence of the
+Chappy-family bank under `output/` (no `dwarf-red.bmd`, `kochappy-profile.json`,
+`kochappy_*.mod`) was discovered manually — exactly the check an `explore`
+inventory would have returned.
+
+### Tests run
+
+```
+py -3.12 -m pytest tests/test_pikmin2_bulbmin_natural_runtime.py \
+                    tests/test_pikmin2_bulbmin_cave_filter.py \
+                    tests/test_pikmin2_bulbmin_transition_runtime.py -q
+        -> 18 passed
+py -3.12 -m pytest tests/test_pikmin2_bulbmin_{bridge,mother,cave_filter,transition,natural}_runtime.py \
+                    tests/test_pikmin2_campaign_bulbmin.py \
+                    tests/test_pikmin2_cave_transfer.py \
+                    tests/test_pikmin2_cave_restart_runtime.py -q
+        -> 29 passed, 1 skipped
+```
+
+(`PIKMIN_NATIVE_ROOT=C:/Users/alari/pikmin-randomizer/output/dsw/native-l11`,
+MinGW on PATH.) The engine-free tool tests also compile and pass directly:
+`tools/test_p2_bulbmin_mother.cpp` → `PASS P2_BULBMIN_MOTHER`,
+`tools/test_p2_bulbmin_cave_filter.cpp` → `PASS P2_BULBMIN_CAVE_FILTER`.
+
+The pre-existing failure
+`tests/test_pikmin2_lanes_1012_policies.py::test_elemental_receivers_consult_species_capability_matrix`
+remains stale on the wave and is **lane 10's** (`p2_species_immune` →
+`p2_hazard_reaction` migration); not touched here.
+
+### Assumptions
+
+- "Every tracked Bulbmin is removed" on exit is a contract over the *tracked*
+  ledger. In the natural flow the descent already dropped the wild dependents and
+  the whistled bodies become free Pikmin after the schema-3 restore, so the exit
+  move runs over zero tracked dependents (`removed=0`); the all-tracked-removed
+  guarantee is asserted at the policy/tool level, not via a fabricated GL run.
+- `experimental/pikmin2_bulbmin_natural_runtime.run()` is an orchestration
+  scaffold: it stages the cave floor (+ Kochappy bank) and runs the two processes,
+  but the replacement-main `RoomApp` fixture that injects the captain's whistle
+  *input* (the real Navi whistle path, not the API) and then invokes the
+  checkpoint is still to be written. Completing it needs the Kochappy bank to
+  validate, so it remains gated on the same lane-13 asset blocker.
+
+### Remaining blockers (named provider)
+
+- **Chappy-family bank + reference import (lane 13, #120):** `pikmin2_kochappy_bank`
+  needs `kochappy-profile.json`, `dwarf-red.bmd` and `source-animation/*.bca`; none
+  exist under `output/`, so the natural gate-6 GL run cannot register the Kochappy
+  mother stand-in. Once lane 13 stages these, the reproduction below is unblocked.
+
+### Exact reproduction
+
+```powershell
+$env:PYTHONUTF8='1'; $env:PIKMIN_NATIVE_ROOT='C:/Users/alari/pikmin-randomizer/output/dsw/native-l11'
+$env:PATH='C:\msys64\mingw64\bin;'+$env:PATH
+py -3.12 -m pytest tests/test_pikmin2_bulbmin_natural_runtime.py tests/test_pikmin2_bulbmin_cave_filter.py -q
+# live natural gate 6 (GL slot) once the lane-13 Kochappy bank exists:
+py -3.12 output/deepseek-wave/slot.py run gl l11 -- py -3.12 -m experimental.pikmin2_bulbmin_natural_runtime run `
+  --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets `
+  --imported output/dsw/l11-out/imported `
+  --bank <lane13 kochappy bank dir> `
+  --treasure output/dsw/l11-out/pod/treasure.mod `
+  --pod output/dsw/l11-out/pod --purple output/dsw/l11-out/purple `
+  --exe output/dsw/l11-out/tx-fixture/fixture.exe `
+  --output output/dsw/l11-out/natural-run --seconds 75
+```
