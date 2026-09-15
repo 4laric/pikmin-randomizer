@@ -120,3 +120,103 @@ Net: saved substantive read/verification time; the correction itself was native 
 ```
 py -3.12 scripts/test_p2_bridge_spawn.py C:/Users/alari/pikmin-randomizer/output/dsw/native-l03-build/pc_randomizer_probe.exe
 ```
+
+## Slice 2
+
+Chose the slice "prove the seed bridge survives a real Generator write/read round
+trip and binds one live actor". Outcome: the **round-trip proof is committed and
+passing** (probe-level, byte-faithful SLT1 cache record); the **live-actor spawn
+is BLOCKED** on the room-placement catalogue (lane 04) and the family adapter
+keying (lane 13/05). Status is therefore `BLOCKED slice2`.
+
+### What changed and why
+
+- The fix1 handoff claimed the seed bridge was "reload-stable"; review correctly
+  noted the demonstrator only did `set_generator_id(0)` + rebind, never the SLT1
+  `ramMode` cache record that `Generator::write`/`read` serialize when
+  `pc_randomizer_p2_bridge()` is set. This slice closes that gap at the probe
+  level by round-tripping the exact SLT1 record bytes (big-endian magic
+  `0x534c5431` then the spawn-slot uid) and proving the uid recovers and
+  re-resolves to the same source after a cache reload. It does not instantiate
+  the `Generator` class itself: the probe links only `pc_randomizer.*`, and
+  `Generator` drags in the whole game. That literal test belongs in a runtime
+  fixture (see blockers).
+- `scripts/test_p2_bridge_spawn.py` now drives both `--enemy-p2-spawn-probe` and
+  the new `--enemy-p2-roundtrip-probe`, asserting the parsed bindings are
+  identical to the seed's `native_bindings` (`binding_targets_for_sources([45,44])`).
+- New `experimental/pikmin2_seed_roundtrip.py` + `tests/test_pikmin2_seed_roundtrip.py`:
+  a pure-Python gate-1 validator that flips to failure when `P2_SEED_RESOLVE` is
+  stripped from an otherwise-identical captured log (or a non-cohort source
+  appears), plus a source-text pin of the emission/cache sites that honours
+  `PIKMIN_NATIVE_ROOT` and skips cleanly without it. No lane paths appear in
+  code, tests or docs.
+
+### Source IDs / files owned (slice 2)
+
+- Snow = source 45 (`YellowKochappy`), Dwarf Orange = source 44 (`BlueKochappy`).
+- Root: `experimental/pikmin2_seed_roundtrip.py`, `tests/test_pikmin2_seed_roundtrip.py`,
+  `scripts/test_p2_bridge_spawn.py` (extended).
+- Native: `pc_port/pc_randomizer_probe.cpp` (new round-trip probe mode only).
+
+### Ordered commits (slice 2)
+
+Root `deepseek/p2-l03` (base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`):
+- `4ef052a` lane03: P2 seed round-trip validator + SLT1 cache probe coverage (#439)
+
+Native `deepseek/p2-l03-native` (base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`):
+- `95142888` lane03: SLT1 ramMode/cache round-trip probe for the P2 seed bridge (#439)
+
+Both worktrees clean after these commits.
+
+### Build evidence (output/dsw/l03-build-evidence.txt)
+
+- probe: native `95142888b15ae2ee9752596490022c083269714e` dirty=no,
+  `sha256 8ef24228972652b256560d0843f39254d2c46be5290c3b559dcf3da7bc2bfc36`,
+  `ninja -n` = "ninja: no work to do."
+
+### Fixture adoption
+
+N/A for GL (no `pikmin_pc` build or `slot.py run gl` this slice). Round-trip
+evidence is probe stdout saved to `C:/Users/alari/pikmin-randomizer/output/dsw/l03-out/p2_roundtrip_probe.txt`
+and `p2_spawn_probe.txt` (both show 49 `target=<uid>` binds).
+
+### Six-gate table (slice 2 delta)
+
+| Gate | Result | Label |
+|---|---|---|
+| 1 Exact identity + spawn | UNTESTED | `P2_SEED_RESOLVE` still reaches birth; no live bound actor (room path uncataloged + adapter `_70`-keyed). |
+| Persistence | PASS (probe) | SLT1 `ramMode` cache record round-trips byte-for-byte; uid recovers and re-resolves after reload. |
+
+### Tests run (slice 2)
+
+- `PIKMIN_NATIVE_ROOT=<native-root> py -3.12 -m pytest tests/test_pikmin2_seed_roundtrip.py tests/test_pikmin2_seed_bridge.py tests/test_pikmin2_seed_generation.py -q` → **36 passed**.
+- `py -3.12 scripts/test_p2_bridge_spawn.py <native-build>/pc_randomizer_probe.exe` → **passed** (49 uids resolve + survive round trip).
+
+### Assumptions / blockers (provider lane)
+
+- The room fixture loads `stages/chal0/default.gen`; the native spawn catalogue
+  (`pc_randomizer_spawn_catalog.h`) only lists the campaign `.gen` files
+  (`0.gen`, `1-29.gen`, `1.gen`..`13.gen`). `pc_randomizer_bind_generator` can
+  only derive a spawn uid for catalogued slots, so an ENEMY_P2 seed cannot target
+  a room Chappy today. Lane 04 must add room-course generator slots to the
+  placement/spawn catalogue before the room can birth a bound actor.
+- The family adapter (`pc_p2_dwarf_orange_setup`) selects actors by
+  `mGenerator->_70` from `p2-dwarf-orange-actors.txt`, not by the spawn-slot uid
+  the seed bridge keys on. Lane 13/05 must switch that selection (or publish a
+  `_70`↔spawn-uid calibration) for the live binding to reach a real actor.
+
+### Subagent usage (honest)
+
+The `task` subagent tool documented in the brief was not present in this
+environment, so I could not spawn the three parallel subagents; I performed the
+equivalent work directly (source audit of `generator.cpp`/`pc_randomizer.cpp`,
+candidate inventory of the Snow/Dwarf-Orange adapters, and the test scaffolding)
+and it went into the commits above. Net effect of this experiment for this lane:
+negative — no subagent parallelism was available, and the read-heavy
+archaeology consumed the bulk of a long-context session.
+
+### Exact reproduction command (slice 2)
+
+```
+py -3.12 scripts/test_p2_bridge_spawn.py C:/Users/alari/pikmin-randomizer/output/dsw/native-l03-build/pc_randomizer_probe.exe
+```
