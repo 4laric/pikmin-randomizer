@@ -944,7 +944,7 @@
         "attacks_receivers": "PASS",
         "death_corpse": "PASS",
         "transport_reward": "PASS",
-        "cleanup_reentry": "UNTESTED"
+        "cleanup_reentry": "PASS"
       },
       "delivery_receipt": "corpse:mamuta:221001 (P2_POD_RECEIPT id=corpse:mamuta:221001 value=2 new=1 pokos=2) output/dsw/l19-out/mamuta-pod-deliver-01/e3e978a725c54b80baf677104a51d471/native.log:902"
     },
