@@ -1,22 +1,23 @@
-"""ElecBug (28) natural press-to-flip -> lethal-death runtime — no injected state.
+"""ElecBug (28) staged-press-flip -> natural lethal-death runtime — no injected health.
 
 Sibling of :mod:`experimental.pikmin2_sokkuri_natural_runtime.py`; closes the
-Anode Beetle's natural chain (#408/#165/#407) with **no** injected health or
-press:
+Anode Beetle's chain (#408/#165/#407) with **no** injected health:
 
 * a paired 2-ElecBug isolated roster lets the pair discharge naturally (Yellow
   parked in the sweep proves ``P2_ELECBUG_IMMUNE ... pikmin=yellow species=2``);
-* a Purple is teleported onto the beetle with a forced downward velocity (P1-derived staged landing; not a thrown Pikmin) on one beetle; the family-local
-  ``pc_p2_elecbug_check_landing_press`` probe (source ``pressCallBack``
-  adaptation) flips it into Reverse naturally (``P2_ELECBUG_FLIP`` +
-  ``state=reverse`` + ``P2_ELECBUG_NATURAL_PRESS``);
+* a Purple is teleported onto the beetle with a forced downward velocity
+  (P1-derived **staged** landing; not a thrown Pikmin) on one beetle; the
+  family-local ``pc_p2_elecbug_check_landing_press`` probe (source
+  ``pressCallBack`` adaptation) flips it into Reverse (``P2_ELECBUG_FLIP`` +
+  ``state=reverse`` + ``P2_ELECBUG_NATURAL_PRESS``, labelled ``flip=staged-press``
+  — the press is not itself natural combat);
 * while reversed the beetle is vulnerable and the free-mode squad drains its 500
   HP through the real receiver (``P2_ELECBUG_HIT`` steps) to
-  ``P2_ELECBUG_DEAD ... health=0``;
+  ``P2_ELECBUG_DEAD ... health=0`` — **death is natural**;
 * corpse -> ``pc_p2_elecbug_forget`` -> generator re-bind follow.
 
-No enemy stat is changed and extinction is not disabled. The Purple species is
-deployed at runtime via the lane-11 ``pc_p2_set_species`` storage
+No enemy health/stat is changed and extinction is not disabled. The Purple
+species is deployed at runtime via the lane-11 ``pc_p2_set_species`` storage
 (P1-derived: the P1 host has no Purple hipdrop state, so the press is a
 documented family-local landing probe).
 """
@@ -47,9 +48,9 @@ ELECBUG_B_POSITION = (-160.0, 30.0, 1850.0)
 CONTROL_POSITION = (240.0, 30.0, 1500.0)
 
 REQUIRED_CHECKS = ('identity', 'window', 'live_squad', 'deploy', 'natural_flip',
-                   'vulnerability_damage', 'natural_death', 'yellow_immunity',
-                   'no_inject', 'corpse', 'cleanup', 'reentry', 'completion',
-                   'no_extinction')
+                   'staged_press', 'vulnerability_damage', 'natural_death',
+                   'yellow_immunity', 'no_inject', 'corpse', 'cleanup', 'reentry',
+                   'completion', 'no_extinction')
 
 GOOD_LOG = '\n'.join([
     'P2_ELECBUG_BIND generator=346002 source_id=28 visual_only=0',
@@ -69,7 +70,7 @@ GOOD_LOG = '\n'.join([
     'P2_ELECBUG_NATURAL_CORPSE pellet=1',
     'P2_ELECBUG_NATURAL_FORGET count=1',
     'P2_ELECBUG_NATURAL_REENTRY old=0x1 new=0x2 stale=0 fresh=1 count=2',
-    'PASS P2_ELECBUG_NATURAL_RUNTIME flip=natural death=natural immunity=yellow '
+    'PASS P2_ELECBUG_NATURAL_RUNTIME flip=staged-press death=natural immunity=yellow '
     'corpse=1 cleanup=1 reentry=1 injected=0',
 ])
 
@@ -101,6 +102,9 @@ def validate(text, code=0):
         r'P2_ELECBUG_NATURAL_REENTRY old=\S+ new=\S+ stale=0 fresh=1 count=2', text)
     pass_line = re.search(r'PASS P2_ELECBUG_NATURAL_RUNTIME[^\n]*', text)
     extinction = re.search(r'Extinction', text, re.IGNORECASE)
+    staged_press = 'flip=staged-press' in text and 'flip=natural' not in text
+    blocked = re.search(r'natural death timeout \(health stalled\)', text)
+    blocked_marker = re.search(r'P2_ELECBUG_NATURAL_BLOCKED health=([\d.]+) squad=(\d+)', text)
 
     checks = dict(
         identity=bool(bind),
@@ -108,6 +112,7 @@ def validate(text, code=0):
         live_squad=int(ready.group(1)) >= 1 if ready else False,
         deploy=int(deploy.group(1)) >= 1 if deploy else False,
         natural_flip=bool(flip) and bool(reverse) and bool(natural_press),
+        staged_press=staged_press,
         vulnerability_damage=bool(hits),
         natural_death=bool(dead),
         yellow_immunity=bool(immune_yellow),
@@ -119,8 +124,14 @@ def validate(text, code=0):
         no_extinction=extinction is None,
     )
     passed = code == 0 and all(checks[name] for name in REQUIRED_CHECKS)
+    blocking_reason = None
+    if blocked or blocked_marker:
+        floors = [float(v) for v in re.findall(r'P2_ELECBUG_NATURAL_OBSERVE tick=\d+ health=([\d.]+)', text)]
+        blocking_reason = (
+            f'beetle not drained: health_floor={min(floors) if floors else None} '
+            f'(life=500), P2_ELECBUG_HIT hits={len(hits)}')
     return dict(passed=passed, checks=checks, exit_code=code,
-                hit_values=[float(v) for v in hits])
+                hit_values=[float(v) for v in hits], blocking_reason=blocking_reason)
 
 
 APP = r'''class RoomApp : public PlugPikiApp {
@@ -169,7 +180,9 @@ public:int idle() override {
     if(stage==2){
         const char* sa=stateOf(a);const char* sb=stateOf(b);
         if(!dischargeSeen&&(isDischarging(sa)||isDischarging(sb))){dischargeSeen=true;std::printf("P2_ELECBUG_NATURAL_DISCHARGE tick=%d\n",observed);std::fflush(stdout);}
-        if(dischargeSeen&&++dischargeWait>=45){stage=3;}
+        // Wait for the discharge to fully end before the first staged landing so
+        // the Purple is not pressed and shocked while A is still discharging.
+        if(dischargeSeen&&!isDischarging(sa)&&!isDischarging(sb)){stage=3;}
         require(observed<3600,"pair never discharged");
         return result;
     }
@@ -193,9 +206,14 @@ public:int idle() override {
             std::printf("P2_ELECBUG_NATURAL_FLIPPED tick=%d\n",observed);std::fflush(stdout);
             int k=0;Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(!p||!p->isAlive()||p==purple||p==yellow)continue;float ang=float(k)*6.2831853f/18.f;Vector3f pt=a->getPosition()+Vector3f(14.f*std::sin(ang),0.f,14.f*std::cos(ang));pt.y=mapMgr->getMinY(pt.x,pt.z,true);p->resetPosition(pt);p->changeMode(PikiMode::FreeMode,n);++k;}
         }
-        // Barrage: re-stage the Purple landing so the beetle stays flipped whenever
-        // it recovers (source pressCallBack also breaks any re-formed partner link).
-        if(a->mHealth>0.0f&&!isDead(sa)&&observed%25==0){
+        // Re-designate a live Purple if the current one was shocked to death, so the
+        // barrage can keep the beetle flipped through recovery without injecting.
+        if(purple&&!purple->isAlive()){
+            Iterator it(pikiMgr);CI_LOOP(it){Piki* p=static_cast<Piki*>(*it);if(p&&p->isAlive()&&pc_p2_species(p)==P2SpeciesRed){pc_p2_set_species(p,P2SpeciesPurple);purple=p;std::printf("P2_ELECBUG_NATURAL_REDESIGNATE tick=%d purple=1\n",observed);std::fflush(stdout);break;}}
+        }
+        // Barrage: re-stage the Purple landing (only while A is not discharging, so
+        // the Purple is never pressed into a live discharge).
+        if(a->mHealth>0.0f&&!isDead(sa)&&!isDischarging(sa)&&purple&&purple->isAlive()&&observed%25==0){
             Vector3f onto=a->getPosition();onto.y=mapMgr->getMinY(onto.x,onto.z,true);
             purple->resetPosition(onto);
             purple->mVelocity=Vector3f(0.0f,-100.0f,0.0f);
@@ -205,6 +223,7 @@ public:int idle() override {
             std::printf("P2_ELECBUG_NATURAL_DIED tick=%d health=%.2f\n",observed,a->mHealth);std::fflush(stdout);stage=5;return result;
         }
         if(observed%60==0){std::printf("P2_ELECBUG_NATURAL_OBSERVE tick=%d health=%.2f state=%s squad=%d\n",observed,a->mHealth,sa?sa:"null",aliveTotal());std::fflush(stdout);}
+        if(observed>=7080){std::printf("P2_ELECBUG_NATURAL_BLOCKED health=%.2f squad=%d\n",minHealth,aliveTotal());std::fflush(stdout);}
         require(observed<7200,"natural death timeout (health stalled)");
         return result;
     }
@@ -229,7 +248,7 @@ public:int idle() override {
         std::fflush(stdout);stage=7;return result;
     }
     if(stage==7){
-        std::puts("PASS P2_ELECBUG_NATURAL_RUNTIME flip=natural death=natural immunity=yellow corpse=1 cleanup=1 reentry=1 injected=0");
+        std::puts("PASS P2_ELECBUG_NATURAL_RUNTIME flip=staged-press death=natural immunity=yellow corpse=1 cleanup=1 reentry=1 injected=0");
         std::fflush(stdout);std::_Exit(0);
     }
     std::fflush(stdout);return result;
