@@ -19,11 +19,15 @@
 #include "pc_p2_groink_arena.h"
 #include "pc_p2_groink_map_trace.h"
 #include "pc_p2_groink_clock.h"
+#include "pc_p2_groink_teki.h"
+#include "teki.h"
+#include "Generator.h"
 #include "settings/pc_settings.h"
 #include "settings/pc_settings_p2d.h"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 #include <vector>
 
 namespace {
@@ -50,8 +54,12 @@ void capture(const char* path) {
 
 struct WallProbe { bool valid = false; P2GroinkVec3 center{}, velocity{}; };
 
+bool sCarcassAutomaticBinding = false;
+
 class GroinkApp final : public PlugPikiApp {
     int frames = 0, sourceTicks = 0;
+    bool carcassArmed = false;
+    int carcassTicks = 0;
     bool setup = false, probes = false, fired = false, flightCapture = false, flightCaptured = false, terminalCapture = false;
     P2GroinkMapTrace trace;
     P2GroinkSourceClock clock;
@@ -62,6 +70,47 @@ public:
         require(++frames < 1800, "timeout");
         if (gameflow.mMoviePlayer && gameflow.mMoviePlayer->mIsActive) {
             clock.reset(); gameflow.mMoviePlayer->requestSkip(); return result;
+        }
+        if (sCarcassAutomaticBinding) {
+            if (!tekiMgr) return result;
+            // Once armed, the BTeki::update hook drives the carcass through the
+            // Frog's own corpse pellet (LeaveCorpse). The Frog's generator clears
+            // on death, so re-locating it by generator here is unreliable; poll the
+            // process-wide birth tally, which survives the pellet-kill forget.
+            if (carcassArmed) {
+                ++carcassTicks;
+                if (pc_p2_groink_teki_total_births() >= 1) {
+                    std::printf("P2_GROINK_CARCASS_BIRTH_PASS ticks=%d total_births=%d\n",
+                        carcassTicks, pc_p2_groink_teki_total_births());
+                    std::puts("PASS GROINK_RUNTIME carcass_automatic_binding");
+                    std::fflush(stdout); std::_Exit(0);
+                }
+                if (carcassTicks >= 1200) {
+                    std::printf("P2_GROINK_CARCASS_TIMEOUT ticks=%d total_births=%d\n",
+                        carcassTicks, pc_p2_groink_teki_total_births());
+                    std::fflush(stdout);
+                    std::_Exit(1);
+                }
+                return result;
+            }
+            BTeki* frog = nullptr;
+            Iterator it(tekiMgr); CI_LOOP(it) {
+                Teki* teki = static_cast<Teki*>(*it);
+                if (teki && teki->mTekiType == TEKI_Frog && teki->mGenerator && teki->mGenerator->_70 == 201001u) {
+                    frog = static_cast<BTeki*>(teki);
+                    break;
+                }
+            }
+            if (!frog) return result;
+            require(pc_p2_groink_teki_is_bound(frog), "finalSetup sidecar bound generated Frog");
+            // Isolated preview pauses ordinary Pikmin combat, so no natural squad
+            // kill can run. Force the death funnel once and label it injected.
+            frog->mHealth = 0.0f;
+            frog->pcEscapeNow();
+            carcassArmed = true;
+            std::puts("P2_GROINK_CARCASS_KILL_INJECTED host=generated_Frog generator=201001 method=pcEscapeNow health_write=1");
+            std::fflush(stdout);
+            return result;
         }
         if (!pc_p2_preview_ready() || !naviMgr || !naviMgr->getNavi() || gameflow.mPauseAll || gameflow.mIsUIOverlayActive) { clock.reset(); return result; }
         Navi* n = naviMgr->getNavi();
@@ -130,6 +179,9 @@ private:
 
 int main(int argc, char** argv) {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1); SDL_SetMainReady(); pc_gpu_preference_apply();
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--carcass-automatic-binding") sCarcassAutomaticBinding = true;
+    }
     _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1"); pc_bbft_init(argc, argv);
     require(pc_pikipelago_room_preview(), "requires --experimental-pikmin2-room");
     require(pc_window_init("Groink weighted runtime fixture", 960, 540), "window init");

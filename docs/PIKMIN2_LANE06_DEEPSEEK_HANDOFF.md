@@ -523,29 +523,37 @@ Added the free-mode requirement to the Pod contract (both the header block and
 reference fixtures must release the squad (`Navi::releasePikis` /
 `Piki::changeMode(FreeMode)`).
 
-### Item 3 (end-to-end GL reference) — BLOCKED
+### Item 3 (end-to-end GL reference) — BLOCKED (updated after wave merge)
 
-A fresh corpse -> Pod -> `pc_p2_preview_deliver` -> family receipt GL run could not
-be produced this slice from lane 06's worktree:
+Merged the wave back into both branches (`claude/p2-deepseek-wave` → root
+`37785c2`; `claude/p2-deepseek-wave-native` → native `fd890d77`), which brings
+lane 19's `experimental/pikmin2_mamuta_install.py` fix `f4c29aa` (writes the
+`miulin_wait/dead/attack1.mod` singles `pc_p2_mamuta.cpp:30-32 load()` needs),
+resolving the earlier "invalid profile" exit. The arena/install modules are now
+identical to the wave; the only remaining blocker is runtime flakiness.
 
-- **Waterwraith (lane 31, the requested view-less corpse):** the stand-in
-  `newNumberPellet` has `mPelletView == nullptr`; lane 31's own wave runs record
-  `P2_WATERWRAITH_CARRY_UNRESOLVED … no_natural_carry` /
-  `P2_WATERWRAITH_CARRY_BLOCKED … viewless_number_pellet_mPelletView_null` (carry is
-  formation-mode locked); fixing it needs a free-mode release in lane 31's fixture,
-  which is beyond lane 06's module boundary.
-- **Mamuta (lane 19, the proven corpse-leaving family on the wave):** `l19-out` has
-  the prebuilt natural fixture + `imported/` + `pod/`, but running it from lane 06's
-  root exits 3 with `P2_MAMUTA invalid profile` (`pc_port/pc_p2_mamuta.cpp:29` →
-  `loadModel` `assets/dataDir/courses/pikmin2room/<name>.mod`): lane 06's
-  `experimental/pikmin2_mamuta_arena.prepare` does not stage the Miulin `.mod` model
-  clips (lane 19's branch does); that module is lane 19's and is not edited here.
+Four fresh natural Mamuta runs this slice (`output/dsw/l06-out/mamuta-reference-{2,3,4,5}`)
+stage cleanly (`P2_MAMUTA_POD_READY`, `pod_ready=PASS`) and launch, but each blocks
+on the pre-kill captain-down path before a corpse is produced:
 
-Consequence: the `99 BlackMan` six-gate table in this handoff is superseded — the
-Waterwraith receipt is now lane 31's, so the transport/reward rows stay
-`UNTESTED (injected)`/`PARTIAL` with no lane-06 evidence, and no positive
-`P2_POD_RECEIPT id=corpse:…` run is claimed. The Onion-path reference is unchanged
-(`44 BlueKochappy` table, `delivery-run-fix2b`).
+- `P2_MAMUTA_POD_CAPTAIN_DOWN tick≈485 health=0.0` then
+  `P2_MAMUTA_POD_PLANTED planted=1`, `P2_MAMUTA_POD_RESULT died=0 corpse=0 carried=0`
+  (`natural_kill=BLOCKED(captain_down)`), `min_distance` 11.9–20.6 — the freed
+  captain walks into the Miurin bury band (`vertical_band=20`, rules) before the
+  ring squad kills it. The approach is a physical walk, so it is not deterministic;
+  lane 19's stored natural PASS (`l19-out/mamuta-pod-deliver-03/…/native.log:894`,
+  `P2_POD_RECEIPT id=corpse:mamuta:221001 value=2 new=1`) shows the chain works but
+  could not be reproduced from lane 06 under this host's timing.
+
+- Waterwraith alternative: still open on the wave (no free-mode release in
+  `tools/p2_waterwraith_encounter_runtime.cpp`; grep found no `changeMode`/
+  `releasePikis`), so it cannot yield a natural carry this slice either.
+
+Consequence: no positive `P2_POD_RECEIPT id=corpse:…` run is claimed this slice; the
+provider contract's Pod path is documented (with the free-mode requirement, now also
+in `pc_p2_receipt_host.h`) and the deterministic provider work is merged. The `99
+BlackMan` six-gate table remains lane 31-owned; the `44 BlueKochappy` Onion-path
+reference (`delivery-run-fix2b`) is unchanged.
 
 ### Checker output (after fix3)
 
@@ -590,3 +598,31 @@ Root (`deepseek/p2-l06`): `787eb72` repo-path fix + de-tautologized two-path tes
 - `general` #3 (de-tautologize the two-path test): used as-is — rewrote
   `test_two_paths_pod_vs_onion_vocabulary_do_not_collide` to assert via the real helpers
   + `validate` (44 passed); I committed it with the doc fixes.
+
+## Slice 3 fixes (fix3b) — wave merge + free-mode header + reference retry
+
+Merged both wave branches (root `37785c2`, native `fd890d77`), which resolves the
+Mamuta install/staging half of the item-3 blocker. Added the free-mode natural-pickup
+requirement to `pc_port/pc_p2_receipt_host.h` (previously only in the root doc).
+Added the Mamuta Pod reference receipt-shape test.
+
+Commits:
+- Root `deepseek/p2-l06`: `37785c2` (ff to wave), `349fb3a` Mamuta reference test.
+- Native `deepseek/p2-l06-native`: `fd890d77` (ff to wave), `6a8d33d3` free-mode header.
+
+Build/test: production `nectar.exe` SHA-256 `76badca1bc2ac7f11a6b31ce4622a8c139f999ade5067c6fd77a724eb3341fb9`
+(native `6a8d33d3`, dirty=no, ninja no-work); pytest `45 passed, 19 subtests`.
+
+### Subagent usage (fix3b)
+
+- `explore` #1 (Mamuta install/fixture audit): used as-is — pinned `experimental/pikmin2_mamuta_install.py`
+  `f4c29aa` (writes `miulin_{wait,dead,attack1}.mod` singles) and the fixture's
+  `changeMode(FreeMode)` ring deploy; this is exactly why the pre-merge setup
+  exited 3 and why the post-merge staging is clean.
+- `explore` #2 (post-wave inventory + baseline): used as-is — confirmed lane 31's
+  free-mode fixture is still absent, the historical natural Mamuta PASS evidence
+  (`l19-out/mamuta-pod-deliver-03/…/native.log:894`), the header-free-mode gap, and
+  the 45-test baseline.
+- `general` #3 (Mamuta reference receipt-shape test): used as-is — added
+  `test_mamuta_pod_reference_receipt_shapes_through_provider`; committed with the
+  handoff update.
