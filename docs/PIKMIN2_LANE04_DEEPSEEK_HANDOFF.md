@@ -658,3 +658,101 @@ PIKMIN_NATIVE_ROOT=C:/Users/alari/pikmin-randomizer/output/dsw/native-wave py -3
 No `task` tool is present, so this slice was done solo, as the slice-3 handoff
 already noted.
 
+## Slice 5
+
+Bounded slice: **the live three-marker run.** Slice 4 committed the
+co-occurrence validator but the live room run was blocked; this slice lands it on
+the merged wave native (lane 03's `p2-placement-slots.txt` join under
+`pc_randomizer_p2_bridge`, native `0f8decd4`).
+
+### What changed
+
+- **Native**: `deepseek/p2-l04-native` was fast-forwarded onto
+  `claude/p2-deepseek-wave-native` (now at `b948ce002267…`), bringing lane 03's
+  `pc_randomizer_bind_generator` ← `p2-placement-slots.txt` join and
+  `P2_SEED_RESOLVE` at `GenObjectTeki::birth`. No new native commit (FF-merge);
+  the lane-04 probe/sidecar commits were already ancestors of the wave.
+- **Root** (`experimental/pikmin2_seed_placement.py`): added
+  `ARENA_GENERATORS = (211001, 211002)`; docstring lane references removed.
+- **Root** (`scripts/run_p2_seed_placement.py`): rewritten — marks BOTH arena
+  generators in `p2-dwarf-orange-actors.txt`, writes `zip(ARENA_GENERATORS,
+  seed_slots)` sidecar pairs, writes the `ENEMY_P2` bootstrap and runs with
+  `--randomizer-seed`, then runs `validate_cooccurrence` on the real log and
+  records it. Docstring has no lane names.
+- **Root** (`experimental/pikmin2_seed_placement_native.py` +
+  `tests/test_p2_seed_placement_native.py`): docstring lane references removed;
+  added `test_validator_passes_on_two_generator_chain` (both generators close).
+
+### Live run (one log, both generators, all three markers)
+
+Run dir `output/dsw/l04-out/f25dc172c63e4a22bc4c507dd277ac81`:
+
+```
+P2_PLACEMENT_SLOT generator=211001 slot=1911597745 actor=3 xyz=1 terrain=ground route=1 route_distance=61.2 x=-150.000 y=30.000 z=1850.000 water_depth=0.00
+P2_PLACEMENT_SLOT generator=211002 slot=4063112254 actor=3 xyz=1 terrain=ground route=1 route_distance=129.3 x=150.000 y=30.000 z=1550.000 water_depth=0.00
+P2_SEED_RESOLVE source_id=44 target=1911597745 original_type=3 x=-150.0 z=1850.0
+P2_SEED_RESOLVE source_id=44 target=4063112254 original_type=3 x=150.0 z=1550.0
+P2_ENEMY_READY species=BlueKochappy source_id=44 ... generator=211001 x=-150.0000000 ...
+P2_ENEMY_READY species=BlueKochappy source_id=44 ... generator=211002 x=150.0000000 ...
+```
+
+`validate_cooccurrence` on that log → `ok=true`, `generator=211001`,
+`slot=1911597745`, `source=44` (closed `generator → slot → source` + birth chain).
+`markers_are_binding_members=true` (marker slots `{1911597745, 4063112254}` ⊆
+the seed's binding set `{1911597745, 4063112254, 4224027716}`).
+
+### Build evidence (clean)
+
+```
+2026-09-14T22:29:12 lane=l04 target=pikmin_pc native=b948ce002267b850157afb8d20feebfa74d1a3e0 dirty=no build_dir=C:\Users\alari\pikmin-randomizer\output\dsw\native-l04-build exe=C:\Users\alari\pikmin-randomizer\output\dsw\native-l04-build\bin\nectar.exe sha256=e5ca8189c85004ff3e91d480b46e67a550c8a760435bc47b29d9e99b4a388f13 ninja_n="ninja: no work to do." seconds=95
+```
+
+### Tests (PIKMIN_NATIVE_ROOT only)
+
+```
+PIKMIN_NATIVE_ROOT=C:/Users/alari/pikmin-randomizer/output/dsw/native-l04 py -3.12 -m pytest tests/test_p2_seed_placement_native.py -q
+10 passed
+```
+
+Full placement suite (no native root): `87 passed, 2 skipped, 17 subtests`
+(the 2 skips are the `PIKMIN_NATIVE_ROOT`-guarded source pins).
+
+### Assumptions
+
+- Both arena generators resolve and birth as source 44 (BlueKochappy) — the
+  second generator is marked in the dwarf-orange actor list so the full binding
+  set (not a single picked slot) closes the three-marker chain in one run. Source
+  45 (Snow) is not staged because the Snow bank/install path is separate and out
+  of scope for this bound slice.
+- The Snow/Dwarf Orange acceptance and the admitted cohort remain injected
+  (deny-by-default ledger/catalog), labelled as such.
+
+### Commits (this slice)
+
+- Native: **FF-merge only** — `deepseek/p2-l04-native` now at
+  `b948ce002267b850157afb8d20feebfa74d1a3e0` (== `claude/p2-deepseek-wave-native`
+  tip); no new lane-04 native commit.
+- Root: `b57286061c82e19729a19052e3b990df0e25e2cd`
+  `lane04: slice 5 - both arena generators resolve and birth in one three-marker run (#440)`.
+
+### One exact reproduction command
+
+```
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l04 -- \
+  py -3.12 scripts/run_p2_seed_placement.py \
+    --assets "C:/Users/alari/bbft/dist/cohesion/pikmin/assets" \
+    --bank "C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-bank" \
+    --profile "C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-ref" \
+    --exe "C:/Users/alari/pikmin-randomizer/output/dsw/native-l04-build/bin/nectar.exe" \
+    --output "C:/Users/alari/pikmin-randomizer/output/dsw/l04-out" \
+    --seed p2-seed-placement-live
+```
+(run from `C:/Users/alari/pikmin-randomizer/output/dsw/l04-root`.)
+
+## Subagent usage (slice 5)
+
+The slice-5 brief did not mandate subagents ("work solo if the task tool is
+absent"). I did this slice solo: the one bounded task was the two-generator
+sidecar write, the bootstrap run, and recording `validate_cooccurrence` on the
+real log, which I completed directly.
+
