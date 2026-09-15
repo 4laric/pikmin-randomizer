@@ -134,7 +134,9 @@ GATE_STATES = {
     'walk_to_target': 'blocked: horizontal walkToTarget not integrated; carrier is pinned',
     'flick_effect_routing': 'blocked: flickStickPikmin knockback/damage host-owned, not routed',
     'retail_keyframe_timings': 'partial: profile timing stand-ins, not retail .bca durations (#128)',
-    'animated_capture_joint': 'partial: unit-level followJoint/yaw transform; runtime P2_BOMBSARAI_JOINT_FOLLOW not yet observed',
+    'animated_capture_joint': 'pass: captured payload rides the moving carrier '
+                             '(P2_BOMBSARAI_JOINT_FOLLOW observed at runtime in '
+                             'all three scenarios, run2 log)',
     'multi_carrier_pool': 'blocked: shared Bomb manager limit under concurrent carriers open',
     'induction_ip02': 'blocked: bomb-on-bomb induction (ip02=15) not modeled',
     'save_resume': 'blocked: no BombSarai/Bomb serialization; carried/in-flight/armed persistence open',

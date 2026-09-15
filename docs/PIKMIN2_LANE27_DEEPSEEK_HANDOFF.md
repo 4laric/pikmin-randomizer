@@ -153,3 +153,116 @@ assertion is compile-verified but not yet run against retail room geometry.
 g++ -std=gnu++17 -Wall -Wextra -Werror -Ipc_port tools/p2_bombsarai_joint_test.cpp pc_port/pc_p2_bombsarai_bomb.cpp -o p2_bombsarai_joint_test.exe
 ./p2_bombsarai_joint_test.exe   # exits 0: PASS (transform + followJoint)
 ```
+
+## Slice 2 — runtime joint follow + real carrier chain
+
+Scope: execute the three scenario profiles on the pinned arena and observe the
+animated capture joint, the source lob release, blast routing and dead-carrier
+teardown at runtime (960x540, live 20-red squad). The converted room was not at
+the claimed absolute path on this host, so it was regenerated locally from the
+verified discs/inputs.
+
+Ruby/native commits (base `74533062`, clean):
+
+- `0debc442` — `lane27: runtime fixture centred 960x540 room-preview startup (#244)`
+  (replacement-main fixture now does the equivalent `pc_main.cpp` experimental-room
+  startup: default 960x540, `PIKMIN_P2_ROOM_WINDOW=WxH` override, windowed mode +
+  `pc_window_center` after settings).
+
+Ruby/root commits (base `2b7fadb`, clean):
+
+- (this commit) — runtime-log validator + test, gate flipped to PASS, Slice 2 handoff.
+
+### Room regeneration (reproducible)
+
+```powershell
+py -3.12 -m experimental.pikmin2_assets --iso "C:/Users/alari/Downloads/PIKMIN2 for GAMECUBE.iso" --output <out>/extract105
+py -3.12 -m experimental.pikmin2_convert <out>/extract105/arc/view.bmd <out>/room105/render.mod --y-offset -1
+py -3.12 -m experimental.pikmin2_convert <out>/extract105/treasure/bolt.bmd <out>/room105/treasure.mod --approximate-materials
+py -3.12 -m experimental.pikmin2_collision --texts <out>/extract105/texts --mod <out>/room105/render.mod --output <out>/room105/room.mod --cap-exits
+cp <out>/room105/room.route.ini <out>/room105/room.ini
+```
+Staged with `scripts/preview_pikmin2_room.prepare` (P1 asset root
+`C:/Users/alari/bbft/dist/cohesion/pikmin/assets`, converted `room105` above)
+into `output/dsw/l27-out/arena/de5c88bf59f44e81a941146078531160`, then the three
+scenario profiles copied into that run directory. The staged `room.mod` (route-
+embedded) is 80,471 bytes, matching the sibling lanes' converted size.
+
+### Runtime evidence (executed, exit 0)
+
+Fixture build `output/dsw/l27-out/fixture2` via `scripts/build_pikmin2_fixture.py`
+(`provenance.json` status `built`; `expected-native-head` 74533062). Executable
+SHA-256 `33a03f7b0df36c833a463bc1fb4ff10ccca68ecc31bc629266178e9ced851a64`.
+Run under `slot.py run gl l27` at `PIKMIN_P2_ROOM_WINDOW=960x540`, log
+`output/dsw/l27-out/bombsarai-runtime-run2.log`
+(SHA-256 `63c54e798d049c519ad081e206aac4a894b0c9074dc28f5c6f13368c2da92c32`).
+
+Verbatim key lines:
+
+```
+[PC Port] SDL2 Window & OpenGL Context initialized successfully (960x540)
+[Pikipelago] P2_ROOM_PREVIEW room=room_4x4a_4_conc red=20 isolated=1
+P2_BOMBSARAI_ARENA_READY pinned=1 fsm=1 no_ai=1 no_visual_assets=1 joint_follow=1 receivers=4 pool=2 events=2
+P2_BOMBSARAI_SCENARIO_BEGIN scenario=approach
+P2_BOMBSARAI_FSM_SUPPLY scenario=approach tick=15
+P2_BOMBSARAI_JOINT_FOLLOW scenario=approach travel_y=12.342 min=40.730 max=53.073
+P2_BOMBSARAI_FSM_THROW scenario=approach kind=Release tick=46
+P2_BOMBSARAI_BLAST scenario=approach ticks=104 traces=9 floors=1 walls=0 hits=3 carrier_dead=0
+P2_BOMBSARAI_HIT scenario=approach id=501 kind=0 damage=500.000 self=1 token=0
+P2_BOMBSARAI_HIT scenario=approach id=502 kind=1 damage=10.000 self=0 token=9001
+P2_BOMBSARAI_HIT scenario=approach id=503 kind=2 damage=10.000 self=0 token=9001
+P2_BOMBSARAI_SCENARIO_PASS scenario=approach
+P2_BOMBSARAI_JOINT_FOLLOW scenario=purple travel_y=25.201 min=27.872 max=53.073
+P2_BOMBSARAI_FSM_THROW scenario=purple kind=Fall tick=55
+P2_BOMBSARAI_BLAST scenario=purple ticks=117 traces=17 floors=0 walls=0 hits=3 carrier_dead=0
+P2_BOMBSARAI_JOINT_FOLLOW scenario=death travel_y=12.342 min=40.730 max=53.073
+P2_BOMBSARAI_FSM_THROW scenario=death kind=Death tick=45
+P2_BOMBSARAI_BLAST scenario=death ticks=100 traces=5 floors=1 walls=0 hits=3 carrier_dead=1
+P2_BOMBSARAI_HIT scenario=death id=502 kind=1 damage=10.000 self=1 token=0
+P2_BOMBSARAI_HIT scenario=death id=503 kind=2 damage=10.000 self=1 token=0
+PASS BOMBSARAI_RUNTIME
+```
+
+Reading: the captured payload rides the carrier hover bob in all three scenarios
+(`JOINT_FOLLOW` travel 12.3–25.2 units), the Release lob fires at tick 46 (source
+KEYEVENT_2 stand-in), blast routes teki 500 / navi+piki 10 to the three receivers,
+and the death scenario's died carrier (`carrier_dead=1`) attributes navi/piki
+damage to the bomb itself (`self=1 token=0`). The `animated_capture_joint` gate is
+now `pass` on this log line.
+
+### Six arena gates (slice 2)
+
+| Gate | Status | Evidence / label |
+|---|---|---|
+| 1 Exact identity and spawn | source-backed N/A | Still the pinned opt-in profile; no ordinary BombSarai actor registered. |
+| 2 Autonomous movement and animation | PASS (joint-follow observed) | `P2_BOMBSARAI_JOINT_FOLLOW` in all three scenarios on the hover-moving carrier. |
+| 3 Attacks and receivers | PARTIAL | Blast routes to instrumented profile receivers (teki 500/navi+piki 10); live creatures still lane 10. |
+| 4 Death and corpse | PARTIAL | Death scenario executes zero-velocity drop + dead-carrier attribution; no live corpse/transport. |
+| 5 Actual transport and reward | source-backed N/A | Out of slice scope. |
+| 6 Cleanup and re-entry | UNTESTED | Arena reset per scenario (three scenarios in one process); no scene exit/re-entry run. |
+
+Natural vs injected: the carrier/receivers/event script remain **injected**; the
+joint follow, lob, blast and death-drop attribution are natural policy behaviour
+now observed at runtime. This is not an ordinary-actor or live-creature PASS.
+
+### Subagent usage
+
+- `explore` #1 (source audit): returned a complete FSM/parameter/receiver table
+  and the joint/velocity/fuse facts. Used as-is; confirms no local decomp checkout
+  exists (docs are the authoritative source).
+- `explore` #2 (candidate inventory): returned the per-file inventory and the exact
+  runtime-marker list; used as-is to write the validator and to confirm the FSM doc
+  marker stream was one revision stale.
+- `general` #3 (harness/tests): created
+  `experimental/pikmin2_bombsarai_runtime_log.py` +
+  `tests/test_pikmin2_bombsarai_runtime_log.py` (6 passed). Used as-is; I then ran
+  the validator against the real run2 log (parsed all three scenarios correctly).
+Net: roughly saved the manual grep/inventory and test-scaffolding effort (est. ~20–30
+min); the subagent results required no corrections.
+
+### Remaining (unchanged from slice 1 + confirmed)
+
+- Ordinary BombSarai actor + live creature damage: lane 10 (`#408`).
+- Horizontal `walkToTarget` autonomy: next slice (TEKI-proxy pattern).
+- Multi-carrier ownership / dead-carrier attribution with real carriers: next slice.
+- Real skeletal joint + keyframe timings + visual assets: converter #128 / lane 09.
