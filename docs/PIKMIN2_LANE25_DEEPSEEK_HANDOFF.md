@@ -31,7 +31,9 @@ Root base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`:
 1. `26fc84e` lane25: validator + docs for applied Crawbster vulnerability window (#174, #376)
 2. `a87706f` lane25: validator + docs for real Crawbster Rock/Egg hazard births (#174, #376)
 3. `841f40e` lane25: record DangoMushi vulnerability + Rock/Egg births handoff (#174)
-4. `lane25: review fixes for Crawbster hazard host` (fix1; validator egg-gate note + docs re-pinned; head after this commit)
+4. `eab90c6` lane25: review fixes for Crawbster hazard host (#174)
+5. `0074d3d` lane25: note fixture timer-termination quirk in handoff (#174)
+   (root head `0074d3dd8ce1df96034295ffef7f4f2734c1e1c8`)
 
 Native base `b805d9c626e4f4558c95aef7cac311a5d9a2068f` (fix1, rewritten unpushed series):
 
