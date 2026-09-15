@@ -154,3 +154,62 @@ def king_creature_validate(text, code):
         scope='Un-injected Emperor Bulblax bound to a generated host Teki, killed by free Pikmin '
               'with a Pod corpse receipt; no staging or injection channels present',
     )
+
+
+def queen_creature_validate(text, code):
+    """Validate an un-injected Empress Bulblax (enemy 30) creature run.
+
+    The Bulblax is bound to a generated host Teki and killed by free Pikmin,
+    producing a Pod corpse receipt, with no staging or injection markers.
+    """
+    staging = ('NAVI_HEAL', 'REPIN', 'NAVI_SUSTAIN', 'GUARD_PIKMIN',
+               'P2_QUEEN_INJECT', 'P2_KING_INJECT',
+               'P2_QUEEN_TEKI_FORCED_TRANSPORT', 'P2_QUEEN_TEKI_TRANSPORT_INJECT')
+    checks = dict(
+        completion=code == 0 and 'PASS P2_QUEEN_CREATURE_RUNTIME' in text,
+        teki_ready=bool(re.search(r'P2_QUEEN_TEKI_READY generator=\d+ type=\d+', text)),
+        attached=bool(re.search(r'P2_QUEEN_TEKI_ATTACHED generator=\d+ attached=[1-9]\d*', text)),
+        flick=bool(re.search(r'P2_QUEEN_TEKI_FLICK generator=\d+', text)),
+        lethal=bool(re.search(r'P2_QUEEN_TEKI_CORPSE generator=\d+ health=0.0', text)),
+        pod_receipt=bool(re.search(r'P2_POD_RECEIPT id=corpse:queen:\d+', text)),
+        no_staging=not any(marker in text for marker in staging),
+    )
+    failed = sorted(name for name, ok in checks.items() if not ok)
+    return dict(
+        passed=not failed,
+        failed=failed,
+        checks=checks,
+        exit_code=code,
+        scope='Un-injected Empress Bulblax bound to a generated host Teki, killed by free Pikmin '
+               'with a Pod corpse receipt; no staging or injection channels present',
+    )
+
+
+def queen_transport_validate(text, code):
+    """Validate an un-injected Empress Bulblax (enemy 30) transport run.
+
+    The Queen dies naturally with zero health, leaves a carcass/transport
+    marker, and the Pod issues a queen corpse receipt, with no staging or
+    injection markers.
+    """
+    staging = ('NAVI_HEAL', 'REPIN', 'NAVI_SUSTAIN', 'GUARD_PIKMIN',
+               'P2_KING_INJECT', 'P2_QUEEN_INJECT',
+               'P2_KING_TEKI_FORCED_TRANSPORT', 'P2_QUEEN_TEKI_FORCED_TRANSPORT',
+               'P2_QUEEN_TEKI_TRANSPORT_INJECT')
+    checks = dict(
+        completion=code == 0 and 'PASS P2_QUEEN_TRANSPORT_RUNTIME' in text,
+        ready=bool(re.search(r'P2_QUEEN_READY id=\d+ enemy=30', text)),
+        natural_death=bool(re.search(r'P2_QUEEN_STATE .* to=0 health=0(\.0)?', text)),
+        corpse=bool(re.search(r'P2_QUEEN_TEKI_CORPSE|P2_QUEEN_CARRY', text)),
+        no_staging=not any(marker in text for marker in staging),
+        pod_receipt=bool(re.search(r'P2_POD_RECEIPT id=corpse:queen:\d+', text)),
+    )
+    failed = sorted(name for name, ok in checks.items() if not ok)
+    return dict(
+        passed=not failed,
+        failed=failed,
+        checks=checks,
+        exit_code=code,
+        scope='Un-injected Empress Bulblax natural death with carcass transport '
+               'and a Pod queen corpse receipt; no staging or injection channels present',
+    )

@@ -255,5 +255,92 @@ class KingCreatureValidatorTests(unittest.TestCase):
         self.assertIn('no_staging', evidence['failed'])
 
 
+_QC_TEKI_READY = 'P2_QUEEN_TEKI_READY generator=221020 type=3'
+_QC_ATTACHED = 'P2_QUEEN_TEKI_ATTACHED generator=221020 attached=9 blows=34 stuck=9 tier=0 flick=1'
+_QC_FLICK = 'P2_QUEEN_TEKI_FLICK generator=221020 shaken=34 blown_threshold=30 stuck_threshold=5'
+_QC_CORPSE = 'P2_QUEEN_TEKI_CORPSE generator=221020 health=0.0 carcass_pellet=1 cleanup_engine=1'
+_QC_POD_RECEIPT = 'P2_POD_RECEIPT id=corpse:queen:221020 value=15 new=1 pokos=15 seeds=0'
+_QC_PASS = 'PASS P2_QUEEN_CREATURE_RUNTIME'
+
+
+def queen_creature_log(*extra):
+    return '\n'.join([
+        _QC_TEKI_READY,
+        _QC_ATTACHED,
+        _QC_FLICK,
+        _QC_CORPSE,
+        _QC_POD_RECEIPT,
+        _QC_PASS,
+        *extra,
+    ]) + '\n'
+
+
+class QueenCreatureValidatorTests(unittest.TestCase):
+    def test_pass(self):
+        evidence = g.queen_creature_validate(queen_creature_log(), 0)
+        self.assertTrue(evidence['passed'], evidence)
+        self.assertEqual(evidence['failed'], [])
+
+    def test_missing_receipt_fails(self):
+        text = '\n'.join([
+            _QC_TEKI_READY,
+            _QC_ATTACHED,
+            _QC_FLICK,
+            _QC_CORPSE,
+            _QC_PASS,
+        ]) + '\n'
+        evidence = g.queen_creature_validate(text, 0)
+        self.assertIn('pod_receipt', evidence['failed'])
+
+    def test_forced_transport_fails(self):
+        evidence = g.queen_creature_validate(
+            queen_creature_log('P2_QUEEN_TEKI_FORCED_TRANSPORT generator=221020 mode=Transport'), 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('no_staging', evidence['failed'])
+
+
+_QT_READY = 'P2_QUEEN_READY id=230010 enemy=30 variant=default'
+_QT_DEATH = 'P2_QUEEN_STATE id=230010 from=2 to=0 health=0'
+_QT_CORPSE = 'P2_QUEEN_TEKI_CORPSE generator=221020 health=0.0 carcass_pellet=1 cleanup_engine=1'
+_QT_POD_RECEIPT = 'P2_POD_RECEIPT id=corpse:queen:221020 value=15 new=1 pokos=15 seeds=0'
+_QT_PASS = 'PASS P2_QUEEN_TRANSPORT_RUNTIME'
+
+
+def queen_transport_log(*extra):
+    return '\n'.join([
+        _QT_READY,
+        _QT_DEATH,
+        _QT_CORPSE,
+        _QT_POD_RECEIPT,
+        _QT_PASS,
+        *extra,
+    ]) + '\n'
+
+
+class QueenTransportValidatorTests(unittest.TestCase):
+    def test_pass(self):
+        evidence = g.queen_transport_validate(queen_transport_log(), 0)
+        self.assertTrue(evidence['passed'], evidence)
+        self.assertEqual(evidence['failed'], [])
+
+    def test_captain_carry_fails_pod_receipt(self):
+        text = '\n'.join([
+            _QT_READY,
+            _QT_DEATH,
+            _QT_CORPSE,
+            'P2_POD_CAPTAIN_RETURN id=captain:0 value=0',
+            _QT_PASS,
+        ]) + '\n'
+        evidence = g.queen_transport_validate(text, 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('pod_receipt', evidence['failed'])
+
+    def test_repin_staging_fails_no_staging(self):
+        evidence = g.queen_transport_validate(
+            queen_transport_log('REPIN tick=999 squad=red'), 0)
+        self.assertFalse(evidence['passed'])
+        self.assertIn('no_staging', evidence['failed'])
+
+
 if __name__ == '__main__':
     unittest.main()
