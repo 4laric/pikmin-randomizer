@@ -25,7 +25,7 @@ def king_free_mode_validate(text, code):
         no_injection=not any(marker in text for marker in (
             'P2_KING_INJECT', 'P2_KING_BOMB_READY', 'P2_KING_BOMB_EXTERNAL',
             'P2_KING_INJECT_FLICK', 'P2_KING_INJECT_KILL')),
-        no_staging=not any(marker in text for marker in ('NAVI_HEAL', 'REPIN')),
+        no_staging=not any(marker in text for marker in ('NAVI_HEAL', 'REPIN', 'NAVI_SUSTAIN', 'GUARD_PIKMIN')),
         armed='P2_KING_FREEMODE_ARMED deploy_once=1 no_injection=1' in text,
     )
     killed = bool(re.search(r'P2_KING_DEAD_KEY id=230020 frame=185 kill=1', text))
@@ -91,7 +91,7 @@ def queen_free_mode_validate(text, code):
     The squad is deployed exactly once and not re-pinned each tick, and the
     captain is never health-refilled, so the outcome may be a natural kill or an
     honest health floor; either is accepted as long as the matching marker is
-    reported and no staging marker (NAVI_HEAL/REPIN) is present.
+    reported and no staging marker (NAVI_HEAL/REPIN/NAVI_SUSTAIN/GUARD_PIKMIN) is present.
     """
     checks = dict(
         completion=code == 0 and (
@@ -100,7 +100,7 @@ def queen_free_mode_validate(text, code):
         ready=bool(re.search(r'P2_QUEEN_READY id=230010 enemy=30 variant=default', text)),
         no_injection=not any(marker in text for marker in
                              ('P2_QUEEN_INJECT', 'P2_QUEEN_INJECT_LARVA')),
-        no_staging=not any(marker in text for marker in ('NAVI_HEAL', 'REPIN')),
+        no_staging=not any(marker in text for marker in ('NAVI_HEAL', 'REPIN', 'NAVI_SUSTAIN', 'GUARD_PIKMIN')),
         armed='P2_QUEEN_FREEMODE_ARMED deploy_once=1 no_injection=1' in text,
     )
     killed = bool(re.search(r'P2_QUEEN_STATE id=230010 from=\d+ to=0 health=0', text))
