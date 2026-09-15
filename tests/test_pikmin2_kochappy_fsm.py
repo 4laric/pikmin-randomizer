@@ -102,9 +102,9 @@ int main()
 def test_compiled_fsm_policy(tmp_path, name):
     compiler = shutil.which('g++') or ('C:/msys64/mingw64/bin/g++.exe'
                                        if Path('C:/msys64/mingw64/bin/g++.exe').exists() else None)
-    candidates = [ROOT / 'native' / 'pc_port',
-                  ROOT / 'output' / 'native-lane13-orange-fsm' / 'pc_port',
-                  ROOT.parent / 'native-lane13-orange-fsm' / 'pc_port']
+    candidates = [ROOT / 'native' / 'pc_port']
+    if os.environ.get('PIKMIN_NATIVE_ROOT'):
+        candidates.insert(0, Path(os.environ['PIKMIN_NATIVE_ROOT']) / 'pc_port')
     if os.environ.get('P2_NATIVE_PC_PORT'):
         candidates.insert(0, Path(os.environ['P2_NATIVE_PC_PORT']))
     include = next((c for c in candidates if (c / name).is_file()), None)
