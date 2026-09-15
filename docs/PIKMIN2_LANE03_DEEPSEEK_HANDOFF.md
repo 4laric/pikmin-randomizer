@@ -1,110 +1,119 @@
-# Lane 03 deepseek handoff — ordinary P2 enemy spawn-binding seam (#439)
+# Lane 03 deepseek handoff (fix1) — ENEMY_P2 spawn-binding resolution, parser + resolution only (#439)
 
-Lane 03 (Seed/native bridge), DeepSeek worker. Slice: the remaining "ordinary
-target-to-live-actor spawn binding" — wire the seed's `ENEMY_P2` target→source
-binding into the actual enemy birth so a bound generator resolves to its P2 source
-id on the ordinary spawn path (hosted by the Snow/Dwarf-Orange cohort,
-`YellowKochappy`=45 / `BlueKochappy`=44, both on native `TEKI_Chappy`=3).
+Lane 03 (Seed/native bridge), DeepSeek worker. Fix1 corrects a review finding: the
+prior slice keyed the seed's `ENEMY_P2` target on `Generator::_70` (a raw ID32 tag
+read only on the non-ram file path), which can never match lane 04's target
+contract. The binding now keys on the **spawn-slot uid** (`pc_randomizer_generator_id`
+via `pc_randomizer_bind_generator`), exactly the value lane 04 emits as
+`str(slot['uid'])`.
+
+Title is now **"parser + resolution only"**: the resolved source id reaches the
+ordinary `GenObjectTeki::birth` path and is emitted as a `P2_SEED_RESOLVE` marker,
+but nothing yet creates a live bound actor, so game gate A stays UNTESTED.
 
 ## Source IDs / files owned
 
 - Snow Bulborb = source 45 (`YellowKochappy`), Dwarf Orange = source 44
-  (`BlueKochappy`). Host `TEKI_Chappy`=3.
-- Root owned: `experimental/pikmin2_seed_bridge.py` (unchanged this slice),
-  `scripts/test_p2_bridge_spawn.py` (new), `tests/test_pikmin2_seed_spawn_binding.py`
-  (new), `docs/PIKMIN2_SEED_BRIDGE.md` (updated).
-- Native owned: `pc_port/pc_randomizer.{h,cpp}`, `pc_port/pc_randomizer_probe.cpp`.
-  Narrow additive hook: `src/plugPikiNakata/genteki.cpp` (labeled `P2_SEED_BIND`).
+  (`BlueKochappy`), host `TEKI_Chappy`=3.
+- Root: `experimental/pikmin2_seed_bridge.py` (unchanged), `scripts/test_p2_bridge_spawn.py`
+  (rewritten to use `binding_targets_for_sources([45,44])`), `docs/PIKMIN2_SEED_BRIDGE.md`.
+  `tests/test_pikmin2_seed_spawn_binding.py` was **dropped** (redundant with
+  `tests/test_pikmin2_seed_bridge.py`).
+- Native: `pc_port/pc_randomizer.{h,cpp}`, `pc_port/pc_randomizer_probe.cpp`; narrow
+  additive hook in `src/plugPikiNakata/genteki.cpp`.
 
 ## Ordered commits
 
 Root base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91` (branch `deepseek/p2-l03`):
-- `7a60dc8` lane03: ordinary P2 enemy spawn-binding tests and doc (#439)
+- `7a60dc8` lane03: ordinary P2 enemy spawn-binding tests and doc (#439)  [superseded test file dropped in fix1]
+- `8056354` lane03: deepseek handoff (#439)
+- `…` lane03: review fixes — spawn-binding keys on spawn-slot uid (#439)  [fix1]
 
 Native base `b805d9c626e4f4558c95aef7cac311a5d9a2068f` (branch `deepseek/p2-l03-native`):
-- `8411ad37` lane03: ordinary P2 enemy spawn-binding resolution via generator _70 (#439)
+- `8411ad37` lane03: ordinary P2 enemy spawn-binding resolution via generator _70 (#439)  [superseded]
+- `30eee29f` lane03: review fixes — key ENEMY_P2 bindings on the spawn-slot uid, not Generator::_70 (#439)
 
 Both worktrees clean at handoff.
 
 ## Interfaces / hooks touched and why
 
-- `pc_randomizer_p2_source_for_id(unsigned long generator_id)` (new): stringifies
-  a generator's `_70` ID32 and returns `pc_randomizer_p2_source(...)`; 0 when
-  unbound. Keeps `pc_randomizer.cpp` free of `Generator.h`.
-- `GenObjectTeki::birth` (`genteki.cpp`): narrow additive hook, gated on
-  `pc_randomizer_p2_bridge()`, emitting `P2_SEED_BIND source_id=<n> target=<_70>
-  original_type=<t> x=.. z=..` at the bound generator's ordinary spawn. This is
-  the previously-missing "ordinary target→live-actor binding" seam that nothing in
-  `src/` consumed before (confirmed by source audit: `pc_randomizer_p2_*` had zero
-  `src/` references).
-- `pc_randomizer_probe --enemy-p2-spawn-probe --enemy-p2-target <id>` (new): asserts
-  bound/unbound resolution.
-
-No new generic subsystem; reuses the existing `p2Bindings` map and the `_70`
-per-generator identity the Snow/Dwarf-Orange family sidecars already select by.
+- `pc_randomizer_set_generator_id` / `pc_randomizer_bind_generator`: the
+  `!pc_randomizer_spawn_slots()` early-outs now also allow `pc_randomizer_p2_bridge()`,
+  so the generator→spawn-uid map is populated under `ENEMY_P2` (which forbids the P1
+  slot layouts; `pc_randomizer_spawn_slots()` is false and the map used to stay empty).
+- `pc_randomizer_p2_source_for_id(unsigned long)`: stringifies a spawn-slot uid and
+  returns `pc_randomizer_p2_source(...)` (0 when unbound).
+- `GenObjectTeki::birth`: emits `P2_SEED_RESOLVE source_id=<n> target=<uid>
+  original_type=<t> x=.. z=..` via `pc_randomizer_generator_id(info.mGenerator)`.
+  Resolution marker only — not a bound actor.
+- `pc_randomizer_probe --enemy-p2-spawn-probe`: re-derives and re-resolves every bound
+  slot uid across an unset+rebind (cache reload), asserting reload stability.
 
 ## Build evidence (output/dsw/l03-build-evidence.txt)
 
-- probe: `sha256 2251cf06a581f65ddb07ef2e8eab4542d9e6d6abb8cea4d032c802f1da1d690c`
-  (built from the identical pre-commit tree, native `b805d9c6` dirty=yes).
-- `pikmin_pc`: native `8411ad37ec75825f3329a5912e43e4398ab36440`, dirty=no, exe
-  `bin/nectar.exe`, `sha256 6b79bb2d2a4e22cbc8503a6e60fe44d6df8649fff52851df4d0455ca23eae063`,
-  `ninja -n` = "ninja: no work to do.", 603/603 objects linked, 126s.
+- probe: native `30eee29f283e86678f382da710c1fbc826ef6068` dirty=no,
+  `sha256 d43844d960b09bd2543ab4261eb578dd7504e6a62770c0ab4b34d8660f618fd5`,
+  `ninja -n` = "ninja: no work to do."
+- `pikmin_pc`: native `30eee29f283e86678f382da710c1fbc826ef6068` dirty=no,
+  `bin/nectar.exe`, `sha256 236a878611b3bcfb54e590488b59ab936adb195a3a00d62d74aeb9fb1aaae476`,
+  `ninja -n` = "ninja: no work to do."
 
 ## Fixture adoption
 
-N/A for this slice: the deliverable is the probe-level seed→spawn-binding seam, not
-a GL/runtime acceptance run. The produced `pikmin_pc` inherits the base's
-960×540 centred-window startup, but no real-GL fixture was launched (no GL slot
-consumed). The natural Snow/Dwarf-Orange render is a lane 05/13 gate, not this slice.
+N/A (probe-level slice; no GL/input run). The produced `pikmin_pc` inherits the base's
+960×540 centred-window startup but was not launched.
 
 ## Six-gate table (natural vs injected)
 
 | Gate | Result | Label |
 |---|---|---|
-| 1 Exact identity + spawn | PASS (seam) | INJECTED/parser: `ENEMY_P2` → generator `_70` → source 45/44 resolved at ordinary `birth`; probe asserts bound/unbound. Natural live render UNTESTED. |
+| 1 Exact identity + spawn | UNTESTED | Parser+resolution only: `ENEMY_P2` → spawn-slot uid → source 45/44 resolves at ordinary `birth` (`P2_SEED_RESOLVE`). No live bound actor created. |
 | 2 Autonomous movement/animation | UNTESTED | lane 13 family render. |
 | 3 Attacks and receivers | UNTESTED | lanes 10/13. |
 | 4 Death and corpse | UNTESTED | lane 13. |
 | 5 Transport and reward | UNTESTED | lane 06. |
 | 6 Cleanup and re-entry | UNTESTED | lane 07. |
-| Persistence | PASS (protocol) | same seed/slot → identical layout/bindings across restart (`test_pikmin2_seed_generation.py`); native `ENEMY_P2` is deterministic. Not a save/reward persistence claim. |
+| Persistence | PASS (protocol) | same seed/slot → identical layout/bindings across restart; native resolution is deterministic and reload-stable (unset+rebind re-resolves in the probe). |
 
 ## Tests run
 
-- `py -3.12 -m pytest tests/test_pikmin2_seed_spawn_binding.py -q` → 7 passed.
-- `py -3.12 -m pytest tests/test_pikmin2_seed_bridge.py tests/test_pikmin2_seed_generation.py tests/test_pikmin2_seed_spawn_binding.py -q` → 37 passed.
-- `py -3.12 scripts/test_p2_bridge_spawn.py <probe>` → passed (`ENEMY_P2_SPAWN_PASS`).
-- `py -3.12 scripts/test_p2_generated_session.py <probe>` → passed (no regression).
-- `py -3.12 scripts/test_p2_bridge_native.py <probe>` → FAILS; pre-existing stale
-  script that never passes `--enemy-p2-expect` (probe asserts `expected > 0`). Not
-  introduced by this slice; superseded by `test_p2_generated_session.py`.
+- `py -3.12 scripts/test_p2_bridge_spawn.py <probe>` → **passed**: 49 real lane-04 uids
+  (`binding_targets_for_sources([45,44])`) resolve to the seed's Snow/Dwarf-Orange
+  sources end to end; stdout saved to `output/dsw/l03-out/p2_spawn_probe.txt`.
+- `py -3.12 scripts/test_p2_generated_session.py <probe>` → **passed** (no regression);
+  stdout saved to `output/dsw/l03-out/p2_generated_session.txt`.
+- `py -3.12 -m pytest tests/test_pikmin2_seed_bridge.py tests/test_pikmin2_seed_generation.py -q`
+  → **30 passed** (redundant `test_pikmin2_seed_spawn_binding.py` removed).
+- `py -3.12 scripts/test_p2_bridge_native.py <probe>` → still fails; pre-existing stale
+  script (never passes `--enemy-p2-expect`) superseded by `test_p2_generated_session.py`.
 
 ## Assumptions
 
-- The seed's binding target token is the **decimal string of the bound dwarf
-  generator's own `_70` ID32**; lane 04 supplies those concrete values.
-- Snow/Dwarf-Orange visual replacement + the `assets/p2-snow-all-dwarfs.txt`
-  all-dwarfs opt-in remain lane 05/13; this slice only makes the spawn identity
-  seed-resolvable, it does not retire the marker-file opt-in.
+- Lane 04's contract (`str(slot['uid'])`, `randomizer/p2_placement_catalog.py`) is the
+  authoritative target token; `Generator::_70` is a fixture-stamped ID tag, not stable
+  across cache reload, and not the placement key.
+- Creating a live bound actor is lane 13/05 work: their `-actors.txt`/vehicle selection
+  is `_70`-keyed today and must switch to the spawn-slot uid.
 
 ## Remaining blockers (provider lane)
 
-- Lane 02: admission set empty → no generated-session live spawn yet.
-- Lane 04: placement blocked (`_70` target values + XYZ/terrain/route evidence).
-- Lane 05/13: Snow/Dwarf-Orange bank staging + per-generator selective family bind
-  consuming `P2_SEED_BIND`.
+- Lane 02: admission set empty.
+- Lane 04: placement evidence (`_70`→spawn-uid calibration already consistent; XYZ/route
+  evidence pending).
+- Lane 13/05: a real birth consumer (`pc_p2_kochappy_fsm` for Dwarf Orange; the Snow
+  campaign seam) must consume the resolved source id at the spawn-slot uid.
 
 ## Subagent usage
 
-- `explore` #1 (source audit): confirmed the gap (zero `src/` consumers of
-  `pc_randomizer_p2_*`) and identified `Generator::_70` as the correct per-generator
-  live-spawn key. Used as-is.
-- `explore` #2 (candidate inventory): mapped all existing bridge/family/fixture
-  markers and reusable pieces. Used as-is.
-- `general` #3 (pytest): wrote `tests/test_pikmin2_seed_spawn_binding.py` (7 passed).
-  Used as-is; only a docstring corrected (target is `_70`, not spawn-catalog uid).
-Net: saved substantial read-time (~2.5h of manual grep/read collapsed); results used directly.
+- `explore` #1 (source audit): confirmed the reviewer's `_70`-vs-uid finding with exact
+  citations (generator.cpp:748-755/830-833, p2_placement_catalog.py:346, spawn uid = crc32).
+  Used as-is; directly drove the correction.
+- `explore` #2 (candidate inventory): named `pc_p2_kochappy_fsm`/Snow-campaign as the
+  future consumer and confirmed `test_pikmin2_seed_spawn_binding.py` redundancy. Used as-is.
+- `general` #3 (test rewrite): rewrote `scripts/test_p2_bridge_spawn.py` to use
+  `binding_targets_for_sources([45,44])` (49 real uids) and verified py_compile + layout.
+  Used as-is; I ran it against the rebuilt probe (it passed).
+Net: saved substantive read/verification time; the correction itself was native work I did directly.
 
 ## Exact reproduction command
 
