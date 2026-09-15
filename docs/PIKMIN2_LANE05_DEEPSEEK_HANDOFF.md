@@ -19,6 +19,8 @@ Parent issue: [#442](https://github.com/4laric/pikmin-randomizer/issues/442). Im
   2. `642e398` — `lane05: document identity-to-runtime binding layer (#442)`
   3. `9a3b647` — `lane05: handoff (identity-to-runtime binding) (#442)`
   4. `021fafa` — `lane05: review fixes - session cache, validate hook, source-id agreement (#442)`
+  5. `dfb83a3` — `lane05: handoff after review fixes (#442)`
+  6. `545edbe` — `lane05: review fixes 2 - launcher cache-replay test + probe log paths (#442)`
 - **Native** branch `deepseek/p2-l05-native`, base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`. **No changes** (`git status` clean). Lane 05 required no native edits: the `ENEMY_P2` parser/roster seam is already integrated (lane 03), and the native Dwarf Orange config reader (`pc_port/pc_p2_dwarf_orange.cpp`, reads `p2-dwarf-orange-*.txt`) already exists in the maintained line.
 
 ## Interfaces/hooks touched and why
@@ -56,11 +58,11 @@ Not applicable to this slice and reported honestly: lane 05 made no real-GL runt
 
 ## Tests run and results
 
-- `py -3.12 -m pytest tests/test_pikmin2_install_binding.py -q` → **16 passed**.
+- `py -3.12 -m pytest tests/test_pikmin2_install_binding.py -q` → **17 passed** (includes `test_launch_replays_from_session_cache`, which calls `runner.launch` twice on one session, deletes the sources in between, and asserts the second run's `p2-binding-receipt.json` is `cached: true` with byte-identical actors/model files).
 - `py -3.12 -m pytest tests/test_pikmin2_install_binding.py tests/test_pikmin2_family_install.py tests/test_pikmin2_staging.py tests/test_pikmin2_session_staging.py tests/test_pikmin2_seed_bridge.py tests/test_pikmin2_seed_generation.py tests/test_pikmin2_dwarf_orange.py tests/test_pikmin2_dwarf_orange_install.py tests/test_pikmin2_roster.py tests/test_pikmin2_kochappy_bank.py tests/test_pikmin2_kochappy_arena.py -q` → **140 passed, 1 failed** (the one failure is the pre-existing `test_pikmin2_kochappy_bank.py::test_compiled_family_policy`, which compiles C++ against `l05-root/native/pc_port` — the root worktree has no `native/` directory by design; unrelated to this slice).
 - Regression smoke on launcher-adjacent suites (`test_p2_placement`, `test_ap_reconnect`, `test_emperor_goal`, `test_all_areas`, `test_death_link`) → **65 passed, 17 subtests**.
-- `py -3.12 scripts/test_p2_generated_session.py <build>/pc_randomizer_probe.exe` → **passed** (real `ENEMY_P2` bootstrap, native parse/bind, content stage+cache, 5 rejection cases); log saved to `output/dsw/l05-out/p2-generated-session.txt`.
-- `py -3.12 scripts/probe_p2_install_binding.py --output output/dsw/l05-out` → **passed**: generated `p2_layout` seed → `runner.launch --p2-content` → real Dwarf Orange adapter (15 room models) → second launch replays from the session cache with `cached=True` (fresh flags `[False, True]`); log `output/dsw/l05-out/probe-install-binding.txt`.
+- `py -3.12 scripts/test_p2_generated_session.py <build>/pc_randomizer_probe.exe` → **passed** (real `ENEMY_P2` bootstrap, native parse/bind, content stage+cache, 5 rejection cases); log at `C:/Users/alari/pikmin-randomizer/output/dsw/l05-out/p2-generated-session.txt`.
+- `py -3.12 scripts/probe_p2_install_binding.py --output <out>` → **passed**: generated `p2_layout` seed → `runner.launch --p2-content` → real Dwarf Orange adapter (15 room models) → second launch replays from the session cache with `cached=True` (fresh flags `[False, True]`); log at `C:/Users/alari/pikmin-randomizer/output/dsw/l05-out/probe-install-binding.txt`.
 
 ## Assumptions
 
@@ -91,3 +93,9 @@ This fix slice delegated three tasks:
 - **#3 — test authoring (general):** wrote/updated `tests/test_pikmin2_install_binding.py`: renamed the seed, used a distinct generator id, added an autouse `_isolate_overrides` fixture, and added four new tests (source-id mismatch, real dwarf-orange adapter, validate-hook fail-closed, session-cache replay). The real-adapter test passed immediately; the other three failed only because the contract land (source-id agreement, `validate` hook, `cache_dir`) did not exist yet — exactly the intended TDD separation. I implemented to the contract and all 16 pass. One subagent-authored assertion (order-sensitive `cached == [False,True]` on unsorted token globs) surfaced in my probe script, not the tests; I corrected the probe to use `sorted(cached)`.
 
 Estimate: the two explores saved ~30 min of my own contract/layout reading; the test-first split made the three contract gaps explicit before I wrote production code. Cost was minimal reconciliation (one order-sensitive assertion, one `_OVERRIDES`-aware `_validator` fix for fake-registered tests).
+
+### fix2 pass (review follow-up)
+
+- **#1 explore — log paths + line numbers:** confirmed the two probe logs live under the worktree-relative (gitignored) `output/dsw/l05-out/` and that the absolute `C:/Users/alari/pikmin-randomizer/output/dsw/l05-out/` was empty, and returned the exact `pytest.raises` args to tighten. Used as-is to copy the logs to the absolute path and cite it.
+- **#2 explore — launcher session-cache mechanics:** confirmed `session.directory`/`run.directory` split, the cache marker path, `_replay_from_cache` `cached=True`, `_content_files` exclusions, and that a fake override skips `validate`. Used as-is to write a correct `test_launch_replays_from_session_cache` (order-independent `cached` assertion).
+- **#3 general — test edits:** wrote `test_launch_replays_from_session_cache` and tightened `test_install_layout_source_id_mismatch_rejected` to `pytest.raises(StagingError)`; 17 passed. Used as-is.
