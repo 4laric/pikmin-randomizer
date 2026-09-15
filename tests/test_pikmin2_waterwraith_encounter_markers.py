@@ -16,8 +16,8 @@ FULL_LOG_LINES = [
     "P2_WATERWRAITH_POD_RECEIPT generator=0 deliveries=1",
     "P2_WATERWRAITH_ENCOUNTER_DELIVERED deliveries=1",
     "P2_WATERWRAITH_ENCOUNTER_DEATH_REENTRY ready=1 attached=1",
-    ("P2_WATERWRAITH_ENCOUNTER_PASS stuns=1 hits=63 crushes=18 damage=3780.0 "
-     "zeroed=1 child_removed=1 body_zeroed=1 treasure=1 kill=1 delivered=1"),
+     ("P2_WATERWRAITH_ENCOUNTER_PASS stuns=1 hits=55 crushes=18 damage=3300.0 "
+      "zeroed=1 child_removed=1 body_zeroed=1 treasure=1 kill=1 delivered=1"),
     "PASS WATERWRAITH_ENCOUNTER_RUNTIME",
 ]
 
@@ -36,8 +36,8 @@ BLOCKED_LOG_LINES = [
     "P2_WATERWRAITH_CARRY_SETUP",
     "P2_WATERWRAITH_CARRY_UNRESOLVED frame=2400 max_carriers=0 deliveries=0",
     "P2_WATERWRAITH_ENCOUNTER_DEATH_REENTRY ready=1 attached=1",
-    ("P2_WATERWRAITH_ENCOUNTER_PASS stuns=1 hits=63 crushes=18 damage=3780.0 "
-     "zeroed=1 child_removed=1 body_zeroed=1 treasure=1 kill=1 delivered=0"),
+     ("P2_WATERWRAITH_ENCOUNTER_PASS stuns=1 hits=55 crushes=18 damage=3300.0 "
+      "zeroed=1 child_removed=1 body_zeroed=1 treasure=1 kill=1 delivered=0"),
     "BLOCKED WATERWRAITH_ENCOUNTER_RUNTIME carry=no_natural_carry",
 ]
 BLOCKED_LOG = "\n".join(BLOCKED_LOG_LINES) + "\n"
@@ -60,11 +60,16 @@ def _verifier_module():
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    if "P2_WATERWRAITH_CARRY_SETUP" not in source.read_text(encoding="utf-8"):
+        pytest.skip("exported engine verifier lacks the carry markers; set PIKMIN_NATIVE_ROOT")
     return module
 
 
 def _log_without(removed):
-    return "\n".join(line for line in FULL_LOG_LINES if line != removed) + "\n"
+    for lines in (FULL_LOG_LINES, BLOCKED_LOG_LINES):
+        if removed in lines:
+            return "\n".join(line for line in lines if line != removed) + "\n"
+    return "\n".join(FULL_LOG_LINES) + "\n"
 
 
 def test_valid_log_passes():
@@ -82,6 +87,7 @@ def test_blocked_log_passes():
     "P2_WATERWRAITH_CORPSE pos=0.000,40.000,229.667 registered=1 standin=number_pellet",
     "P2_WATERWRAITH_FINISHED tick=64 bodyHealth=0.0",
     "P2_WATERWRAITH_CARRY_SETUP",
+    "P2_WATERWRAITH_CARRY_UNRESOLVED frame=2400 max_carriers=0 deliveries=0",
     "P2_WATERWRAITH_POD_RECEIPT generator=0 deliveries=1",
     "P2_WATERWRAITH_ENCOUNTER_DELIVERED deliveries=1",
     "P2_WATERWRAITH_ENCOUNTER_DEATH_REENTRY ready=1 attached=1",
