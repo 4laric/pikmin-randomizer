@@ -50,7 +50,7 @@ already an ancestor of the wave branches).
 
 Root — `git log codex/p2-main-review..HEAD` (base `codex/p2-main-review`):
 1. `e35187b8` lane15: review fixes 4 - gate 2 PARTIAL, gate 5 N/A (nectar), moved gate state=move (#166)
-2. `<fix5>` lane15: review fixes 5 - gate 6 evidence, commit lists, GATE_STATUS drift test (#166)
+2. `3f67f1a4` lane15: review fixes 5 - gate 6 PASS, commit lists, GATE_STATUS drift test, handoff hygiene (#166)
 
 Native — `git log claude/p2-deepseek-wave-native..HEAD` (base `claude/p2-deepseek-wave-native`):
 1. `c820395b` lane15: review fixes 5 - forget marker + two-appear-cycle fixture (#166)
