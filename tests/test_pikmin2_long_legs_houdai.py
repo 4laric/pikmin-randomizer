@@ -1,6 +1,6 @@
 """Flip-tests for the Houdai (Man-at-Legs) natural-combat gate in ``validate()``.
 
-The family-owner lifecycle log is verifiying a new slice: Houdai (312001)
+The family-owner lifecycle log is verifying a new slice: Houdai (312001)
 natural combat damage, shell firing/hits, natural death, and the absence of any
 fixture-injected Houdai lethality. These tests drive the synthetic ``validate()``
 contract only: they flip one marker at a time out of a complete passing log and
@@ -39,17 +39,17 @@ GOOD_LOG = '\n'.join([
     'reentry=2 stale=0 duplicate_reward=0',
 ])
 
-NOUDai_KEYS = ('houdai_natural_damage', 'houdai_shell_fires', 'houdai_shell_hits',
+HOUDAI_KEYS = ('houdai_natural_damage', 'houdai_shell_fires', 'houdai_shell_hits',
                'houdai_natural_death', 'houdai_no_inject')
 
 
 def test_validate_returns_dict_with_all_houdai_checks_true():
     result = validate(GOOD_LOG, code=0)
     assert isinstance(result, dict)
-    for key in NOUDai_KEYS:
+    for key in HOUDAI_KEYS:
         assert key in result['checks'], key
         assert result['checks'][key] is True, key
-    for key in NOUDai_KEYS:
+    for key in HOUDAI_KEYS:
         assert result['gates'][key] == 'pass', key
 
 
@@ -94,6 +94,14 @@ def test_houdai_dead_output_requires_positive_prior_health():
         'P2_LONG_LEGS_DEAD species=Houdai generator=312001 health=0 prior_health=10.0',
         'P2_LONG_LEGS_DEAD species=Houdai generator=312001 health=0 prior_health=0.0')
     assert validate(changed, code=0)['checks']['houdai_natural_death'] is False
+
+
+def test_houdai_damage_rejects_implausible_delta():
+    assert validate(GOOD_LOG, code=0)['checks']['houdai_natural_damage'] is True
+    variant = GOOD_LOG.replace(
+        'P2_LONG_LEGS_DAMAGE species=Houdai generator=312001 health=80.0 prior=100.0',
+        'P2_LONG_LEGS_DAMAGE species=Houdai generator=312001 health=130.0 prior=600.0')
+    assert validate(variant, code=0)['checks']['houdai_natural_damage'] is False
 
 
 def test_houdai_no_inject_stays_true_without_houdai_inject():

@@ -305,9 +305,12 @@ def validate(text, code=0):
     noreward = bool(re.search(r'P2_LL_NOREWARD pod=0 pokos=-1 fresh_corpses=0', text))
     # Slice 2: Houdai natural combat in its source damage window, shell firing
     # and natural death, with no fixture-injected Houdai lethality.
-    houdai_natural_damage = bool(re.search(
+    houdai_damage_re = re.compile(
         r'P2_LONG_LEGS_DAMAGE species=Houdai generator=312001 '
-        r'health=(?!0+(?:\.0+)?\s)\d+(\.\d+)? prior=(?!0+(?:\.0+)?\s)\d+(\.\d+)?', text))
+        r'health=(\d+(?:\.\d+)?) prior=(\d+(?:\.\d+)?)')
+    houdai_natural_damage = any(
+        float(m.group(1)) > 0 and 0 < float(m.group(2)) - float(m.group(1)) <= 30
+        for m in houdai_damage_re.finditer(text))
     houdai_shell_fires = bool(re.search(r'P2_LONG_LEGS_SHELL species=Houdai generator=312001', text))
     houdai_shell_hits = bool(re.search(r'P2_LONG_LEGS_SHELL_HIT species=Houdai generator=312001 pikmin=[1-9]\d*', text))
     houdai_natural_death = (bool(re.search(r'P2_LL_NATURAL_DEATH houdai=1', text))
@@ -348,7 +351,7 @@ def validate(text, code=0):
         delivery_reward='untested',
         cleanup='pass' if cleanup else 'fail',
         reentry='pass' if reentry else 'fail',
-        houdai_natural_damage='pass' if houdai_natural_damage else 'unmeasured',
+        houdai_natural_damage='pass' if houdai_natural_damage else 'fail',
         houdai_shell_fires='pass' if houdai_shell_fires else 'fail',
         houdai_shell_hits='pass' if houdai_shell_hits else 'fail',
         houdai_natural_death='pass' if houdai_natural_death else 'fail',
