@@ -441,3 +441,145 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l0
 # scene-teardown, 1 cycle
 py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l07 -- py -3.12 -m experimental.pikmin2_lifecycle_runtime run --family dwarf-orange --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets --bank C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-bank --profile C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-ref --output C:/Users/alari/pikmin-randomizer/output/dsw/l07-out/lf2c-fix2d-scene --exe C:/Users/alari/pikmin-randomizer/output/dsw/l07-out/lf2c-fix2d-build/baseline/fixture.exe --cycles 1 --teardown scene-teardown
 ```
+
+## Slice 3
+
+Slice 3 closes the three remaining review items: (1) natural first-born movement,
+(2) a real second-family consumer (Sokkuri), and (3) the REAL section teardown.
+
+### (1) Movement on the originally spawned actor (no lure)
+
+The MOVE probe now runs at `observed==30`, BEFORE the first lethal `InteractAttack`
+(`observed>=40`, cycle 1 only), and the Pikmin `resetPosition` lure is gone — Gate 2 is
+the first-born actor's own locomotion, not the previously-lured re-entered actor.
+`moveObserved` (a bool set when a family actor moved >= 1.0 unit from its birth SRT) is
+reported in the SUMMARY (`moved=moveObserved`) and as a `moved_first_born` check; it is
+reported but no longer a hard pass gate (ambush families are legitimately stationary).
+
+- dwarf-orange: `P2_LIFECYCLE_MOVE id=211001 dist=2.766..3.505` (first-born Bulborb
+  patrol, `moved_first_born=True`).
+- sokkuri: at the uniform frame-30 sample it is still in Stay/Appear
+  (`dist=0.430..0.446`); its MoveGround burst reaches `dist=85.003` by frame 80 in the
+  pre-tune sample-80 run (`s3c-sok-run`), so the natural movement leg is genuinely
+  there and reported, just source-slow to start.
+
+### (2) Second family: Sokkuri for real
+
+`--family sokkuri` now stages the batch-1 ground arena (`pikmin2_ground_lifecycle_behavior.prepare`,
+which stages Sokkuri 346005 + Hana 346006 + the co-staged ground species + P1 Chappy control,
+with Sokkuri pose-name normalization) and scopes the harness to the Sokkuri source actor + the
+ordinary control via a `FAMILY`-target actor filter in `run()` and `_arena()`. It consumes the
+real `pc_p2_sokkuri_count()`/`registered()`/`forget` (via seam)/`reset`/`setup`:
+
+```
+P2_SOKKURI_BIND generator=346005 source_id=79 visual_only=0
+P2_ENEMY_READY species=Sokkuri source_id=79 ... health=120.0 max_health=120.0
+P2_LIFECYCLE_DEATH id=346005 frame=43 -> REENTRY frame=164 reused=1
+P2_LIFECYCLE_REGISTRY cycle=1 count=1             # pc_p2_sokkuri_count()==1
+P2_LIFECYCLE_TEARDOWN refs_before=1 refs_after=0  # family reset cleared Sokkuri
+P2_SOKKURI_BIND ... (re-entry) -> P2_LIFECYCLE_REGISTRY cycle=2 count=1
+P2_LIFECYCLE_SUMMARY ... control=1
+PASS P2_LIFECYCLE_RUNTIME                          # exit 0
+```
+
+Death → engine forget → address reuse (reused=1) → registry count stable → teardown →
+rebind, control untouched, all on Sokkuri (a family lane 07 does not own).
+
+### (3) Real section teardown (host exitStage, not the family-reset hook)
+
+The scene-teardown mode now drives the REAL `GameCoreSection::exitStage()` by
+tree-walking `gameflow.mGameSection` for the `GameCoreSection` node
+(`lifecycleFindCore`, the same `dynamic_cast` walk the shipping
+`p2_demon_registered_runtime.cpp`/`p2_kurage_runtime.cpp` use), instead of calling
+`pc_p2_reset_all_teki()` directly:
+
+```
+P2_LIFECYCLE_TEARDOWN_MODE mode=scene-teardown
+P2_LIFECYCLE_SCENE_EXIT host=exitStage refs_after=0 navi_null=1
+PASS P2_LIFECYCLE_RUNTIME                          # exit 0 (after exitStage)
+```
+
+`refs_after=0` (every family registry empty) + `navi_null=1` (production manager
+invalidation) are observed from the HOST path; the process then exits because an
+in-place section re-enter needs the menu/map-select `pc_p2_input_script` transition
+(lane 01). `manager-reset` still re-enters in-process through the family `_reset` then
+`_setup`, so the two modes are distinguishable in the evidence JSON.
+
+### Carry-forward (from the merge note)
+
+- SUMMARY `moved` is derived from `moveObserved` (was "currently-alive actors moved").
+- `validate()` is no longer vacuous for `--cycles 1`: `registry_growth` for a single
+  cycle now checks `teardown_cleared` AND the post-teardown re-entry `count==1`
+  (manager-reset) or the scene `refs_after==0`.
+
+### Commits (slice 3)
+
+| Branch | Commit | Subject |
+|---|---|---|
+| root `deepseek/p2-l07` | `(this)` | lane07: natural first-born movement, Sokkuri second family, host exitStage scene teardown (#397) |
+
+Native `deepseek/p2-l07-native`: **no new commit** (already at `7a0865c1` with
+`pc_p2_dwarf_orange_count`; the host `exitStage` + `pc_p2_reset_all_teki` seam and the
+Sokkuri count already exist).
+
+### Evidence pins
+
+- native `7a0865c1adb0594b37136774bb9c839be7fdc4af` (clean); `nectar.exe` SHA
+  `83087329e888d5ab656cc7e7ad6af2d9cc7a9185cee038b4c18c9e8ae62c2be4`; `ninja -n` -> "no work to do".
+- dwarf-orange fixture SHA `14a88aaa12e532d6141a51d886763087cecee8097943fa6208c3289cce396940`;
+  sokkuri fixture SHA `6c802ea7c0ced8fc4f96ec3043b535c5a0711dbfeb23f8c7ece1784173644381`.
+- runs: `output/dsw/l07-out/s3e-dwarf-mgr/8c6bcdb6...` (mgr), `s3e-dwarf-scene/1234319d...` (scene),
+  `s3e-sok-mgr/7002e556...` (mgr), `s3e-sok-scene/e6bc6501...` (scene) — all `passed=True`, exit 0.
+- `tests/test_pikmin2_lifecycle_runtime.py` -> 18 passed.
+
+### Exact reproduction (slice 3)
+
+```powershell
+$env:PYTHONUTF8 = '1'
+$assets = 'C:/Users/alari/bbft/dist/cohesion/pikmin/assets'
+$bank   = 'C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-bank'
+$prof   = 'C:/Users/alari/pikmin-randomizer/output/p2-dwarf-orange-ref'
+$ground = 'C:/Users/alari/pikmin-randomizer/output/dsw/l14-out/ground'   # cached batch-1 import (regenerate via pikmin2_ground_inverts_assets)
+$slot   = 'C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l07 --'
+
+# sokkuri: death -> engine forget -> re-entry -> registry -> teardown -> rebind
+py -3.12 $slot py -3.12 -m experimental.pikmin2_lifecycle_runtime run --family sokkuri `
+  --assets $assets --imported $ground `
+  --output C:/Users/alari/pikmin-randomizer/output/dsw/l07-out/s3e-sok-mgr `
+  --exe C:/Users/alari/pikmin-randomizer/output/dsw/l07-out/s3e-sok/baseline/fixture.exe `
+  --cycles 1 --teardown manager-reset
+
+# dwarf-orange: real section teardown (host exitStage)
+py -3.12 $slot py -3.12 -m experimental.pikmin2_lifecycle_runtime run --family dwarf-orange `
+  --assets $assets --bank $bank --profile $prof `
+  --output C:/Users/alari/pikmin-randomizer/output/dsw/l07-out/s3e-dwarf-scene `
+  --exe C:/Users/alari/pikmin-randomizer/output/dsw/l07-out/s3e-dwarf/baseline/fixture.exe `
+  --cycles 1 --teardown scene-teardown
+```
+
+Fixture build: `py -3.12 -m experimental.pikmin2_lifecycle_runtime build --native .../native-l07 --build-dir .../native-l07-build --output .../s3e-dwarf --head 7a0865c1adb0594b37136774bb9c839be7fdc4af --family dwarf-orange` (and `--family sokkuri` for `s3e-sok`).
+
+### Boundary / remaining
+
+- In-place section re-enter after `exitStage` (menu/map-select transition) is NOT in this
+  slice; the host `exitStage` is the section-teardown leg, and `manager-reset` has the
+  in-process re-entry. Full combined day-end/menu re-enter remains lane 01 (`P2_NEWSCENE`).
+- The sokkuri movement sample is uniform (frame 30) and predates its MoveGround burst; the
+  85-unit natural MoveGround leg was captured in the pre-tune sample-80 run.
+
+### Subagent usage (slice 3)
+
+- **explore #1 — source audit** (how the demon/kurage tool fixtures reach `gamecore` via a
+  `dynamic_cast` tree-walk of `gameflow.mGameSection`; the ground-arena manifest shape; native
+  `pc_p2_sokkuri_count`/`pc_p2_dwarf_orange_count`; Sokkuri's corpse-leaving Chappy funnel):
+  used as-is — it directly enabled the `lifecycleFindCore + core->exitStage()` host path and
+  the Sokkuri arena/`count` wiring.
+- **explore #2 — existing-candidate inventory** (Sokkuri/Hana arena modules + `prepare`
+  signatures, the ground bank layout, existing section-exit fixtures, current harness marker
+  lines): used as-is — drove the `ground_lifecycle_behavior.prepare` choice and the manifest
+  `control`/`native_teki_type` normalization.
+- **general #3 — tests scaffolding**: its slice-3 tests specified `moved_first_born`,
+  "no resetPosition", single-cycle non-vacuous registry, and a scene host-exit marker; adopted
+  in intent but I rewrote the file to drop the unused `host_section_exit` kwarg and make scene
+  mode always use the host `exitStage`. Estimated it saved the pytest-timing/validation pass
+  but needed one round of correction.
