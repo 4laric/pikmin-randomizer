@@ -240,27 +240,20 @@ lane-04 "arena-only, no catalog join" state from the fix round.
 
 ### (b) P2-identity placement
 
+> **CORRECTED BY fix2** — the slot below (`648204418`, Stage 3 / Distant Spring)
+> was a stage-mismatch bug: Impact Site arena evidence was stamped onto a
+> Distant Spring catalog slot. See the fix2 section; the accepted slot is now
+> the stage-0 `impact_7_1764` (`513430982`).
+
 Staged a Dwarf Orange (BlueKochappy source 44) two-actor original Impact Site
 arena via lane-13's stager (`experimental.pikmin2_dwarf_orange_runtime.prepare`,
 bank `output/p2-dwarf-orange-bank`, profile `output/p2-dwarf-orange-ref`,
-generators `211001` source + `211002` control) and wrote the sidecar mapping
-`211001 -> 648204418`. The chosen catalog slot is the first `dwarf`-cohort
-campaign slot by uid (impact/perplexing-pool; see the deterministic select in
-`scripts/run_p2_catalog_placement.py::choose_slot_uid`). Running the private
-build under the GL slot produced a genuine P2-identity spawn **with** native
-terrain/route evidence:
-
-```
-P2_ENEMY_READY species=BlueKochappy source_id=44 native_family=Chappy generator=211001 x=-150.0000000 y=30.0000000 z=1850.0000000 health=250.0 max_health=250.0 behavior=P1 purple_stun=bluekochappy_5s
-P2_PLACEMENT_SLOT generator=211001 slot=648204418 actor=3 xyz=1 terrain=ground route=1 route_distance=61.2 water_depth=0.00
-P2_PLACEMENT_SLOT generator=211002 slot=0 actor=3 xyz=1 terrain=ground route=1 route_distance=129.3 water_depth=0.00
-P2_PLACEMENT_PROBE actors=2 evidence_slots=2
-[PC Port] Experimental preview window set to 960x540 windowed and centered
-```
-
-Audit result (report.json): `catalog_join=true`, `matched_slot_uids=[648204418]`,
-and `injected_legal_admitted = {BlueKochappy:[648204418], YellowKochappy:[648204418]}`
-(clearly-labelled profile-gate injection; natural slot evidence is native).
+generators `211001` source + `211002` control) and wrote a sidecar mapping. The
+original choice (first `dwarf`-cohort campaign slot) was WRONG — it selected a
+Stage 3 slot while the arena is on the Stage 0 practice/Impact Site map. Running
+the private build under the GL slot produced a genuine P2-identity spawn **with**
+native terrain/route evidence; the evidence join was then corrected to a
+stage-matching slot (see fix2).
 
 ### Gate 1 (updated)
 
@@ -323,3 +316,72 @@ py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l0
   reported 7 failures against the old module contract before I rewrote
   `p2_placement_probe.py` to match; they now pass). Honest negative mid-state,
   final result retained unchanged.
+
+## Slice 2 review fixes (fix2)
+
+Fixes the six review items on the slice-2 join. All blocking.
+
+1. **Stage-matched slot / stage guard.** `choose_slot` (renamed from
+   `choose_slot_uid`) now selects a campaign slot whose `stage` matches the
+   staged map (`practice` = Impact Site = stage 0) and is constrained to the
+   `ground` cohort (BlueKochappy's host cohort). Deterministic pick by
+   `(first_day, uid)` → **`impact_7_1764` uid `513430982`** (stage 0). The
+   prior `648204418` (stage 3, Distant Spring) is corrected. `run_audit` now
+   hard-fails when a mapped slot's catalog `stage` differs from `arena_stage`,
+   and the sampled actor `position` is recorded beside each mapping entry.
+2. **`run_audit` tests.** New `tests/test_p2_placement_audit.py` (5 tests)
+   covers unmatched-uid `SystemExit`, matched stamping, stage-mismatch refusal,
+   arena-only fallback, and the unmapped guard.
+3. **Unmapped-generator guard.** `build_probe` reports `unmapped_generators`
+   explicitly; `run_audit` fails unless `--allow-unmapped`/`allow_unmapped`.
+   The arena runner passes `allow_unmapped=True` (the `211002` P1 Chappy
+   control is intentionally unmapped) and reports it.
+4. **Runner CLI.** `--assets/--bank/--profile` are now required (no user-
+   absolute module constants); the docstring no longer embeds lane/build paths.
+5. **Parser tolerance.** `capture_markers` is token-based: `slot`,
+   `route_distance`, and `x/y/z` are optional; `generator`/`uid` both accepted;
+   required keys are `generator|uid`, `xyz`, `terrain`, `route`, `water_depth`.
+   Slice-1 logs (no `slot`) now parse instead of silently yielding zero slots.
+6. **No uid overload.** `build_probe` emits `mapping` (`{generator, slot,
+   xyz, terrain, route, position}`) and a stamp-only `slots` keyed by the
+   catalog `slot` uid; unmasked generators are NOT overloaded onto `uid`.
+7. **Positional marker + rerun.** The native probe now emits
+   `x=.. y=.. z=..`; the run was redone on committed native head.
+
+Fresh corrected run (committed head `b446f0b1`, exe sha256
+`8b6d9967…73f4`), run dir `output/dsw/l04-out/a1c71372ec9f4b6bacee4725b46dee0b`:
+
+```
+P2_ENEMY_READY species=BlueKochappy source_id=44 native_family=Chappy generator=211001 x=-150.0000000 y=30.0000000 z=1850.0000000 health=250.0 max_health=250.0 behavior=P1 purple_stun=bluekochappy_5s
+P2_PLACEMENT_SLOT generator=211001 slot=513430982 actor=3 xyz=1 terrain=ground route=1 route_distance=61.2 x=-150.000 y=30.000 z=1850.000 water_depth=0.00
+P2_PLACEMENT_SLOT generator=211002 slot=0 actor=3 xyz=1 terrain=ground route=1 route_distance=129.3 x=150.000 y=30.000 z=1550.000 water_depth=0.00
+P2_PLACEMENT_PROBE actors=2 evidence_slots=2
+[PC Port] Experimental preview window set to 960x540 windowed and centered
+```
+
+report.json: `catalog_join=true`, `arena_stage=0`, `matched_slot_uids=[513430982]`,
+`unmapped_generators=[211002]`, `mapping` records `position [-150.0,30.0,1850.0]`
+beside the slot, and `injected_legal_admitted = {BlueKochappy:[513430982],
+YellowKochappy:[513430982]}`.
+
+Build evidence (clean):
+
+```
+2026-09-14T21:09:27 lane=l04 target=pikmin_pc native=b446f0b1147a5052c67d6aff4df83965c96ff405 dirty=no build_dir=C:\Users\alari\pikmin-randomizer\output\dsw\native-l04-build exe=C:\Users\alari\pikmin-randomizer\output\dsw\native-l04-build\bin\nectar.exe sha256=8b6d9967c95d5b7af98e43d0f8a5e00fb3959bdaf273e2162022f36c01a373f4 ninja_n="ninja: no work to do." seconds=0
+```
+
+Tests: `py -3.12 -m pytest tests/test_p2_placement_probe.py
+tests/test_p2_placement_audit.py tests/test_p2_placement_native.py
+tests/test_p2_placement.py -q` → `79 passed, 17 subtests passed`.
+
+Commits (this fix round):
+
+- Native: `b446f0b1147a5052c67d6aff4df83965c96ff405`
+  `lane04: review fixes 2 - emit sampled position in placement probe marker (#440)`
+- Root: `4b9a4c5` `lane04: review fixes 2 - stage-matched join, unmapped guard, positional marker, audit tests (#440)`
+
+Subagent-usage note: slice-2 explore #1's "min-uid dwarf slot" rule was the
+cause of the stage bug (a delegated selection rule adopted without cross-checking
+the slot's stage against the arena). fix2 re-derived the rule from
+`campaign_data`/`levels.py` (practice==stage 0) and guards it in `run_audit`, so
+a delegated choice can no longer pass through a stage mismatch unnoticed.
