@@ -81,7 +81,8 @@ ALL_FALSE = {
 
 
 def test_happy_path_parses_all_scenarios():
-    result = validate_markers(build_canonical_log())
+    result = validate_markers(build_canonical_log(),
+                              scenarios=('approach', 'purple', 'death'))
     assert result["passed"] is True
     assert set(result["scenarios"]) == set(EXPECTED)
     for name, (kind, hits, dead, travel_y) in EXPECTED.items():
@@ -96,8 +97,15 @@ def test_happy_path_parses_all_scenarios():
         assert entry["scenario_pass"] is True
 
 
-def test_empty_log_returns_all_false_structure():
+def test_default_scenarios_are_all_five():
     result = validate_markers("")
+    assert set(result["scenarios"]) == {
+        "approach", "purple", "death", "multi", "deadflight"
+    }
+
+
+def test_empty_log_returns_all_false_structure():
+    result = validate_markers("", scenarios=('approach', 'purple', 'death'))
     assert result["passed"] is False
     assert set(result["scenarios"]) == set(EXPECTED)
     for entry in result["scenarios"].values():
@@ -106,7 +114,7 @@ def test_empty_log_returns_all_false_structure():
 
 def test_missing_pass_line_still_populates_scenarios():
     log = build_canonical_log().replace("PASS BOMBSARAI_RUNTIME", "")
-    result = validate_markers(log)
+    result = validate_markers(log, scenarios=('approach', 'purple', 'death'))
     assert result["passed"] is False
     approach = result["scenarios"]["approach"]
     assert approach["joint_follow"] is True
@@ -115,7 +123,8 @@ def test_missing_pass_line_still_populates_scenarios():
 
 
 def test_death_scenario_reports_carrier_dead_and_death_kind():
-    result = validate_markers(build_canonical_log())
+    result = validate_markers(build_canonical_log(),
+                              scenarios=('approach', 'purple', 'death'))
     death = result["scenarios"]["death"]
     assert death["carrier_dead"] is True
     assert death["throw_kind"] == "Death"
@@ -126,7 +135,7 @@ def test_malformed_numeric_field_is_tolerated():
     log = log.replace("hits=3 carrier_dead=0", "hits=three carrier_dead=0", 1)
     log = log.replace("scenario=approach travel_y=40.0",
                       "scenario=approach travel_y=NOPE", 1)
-    result = validate_markers(log)
+    result = validate_markers(log, scenarios=('approach', 'purple', 'death'))
     approach = result["scenarios"]["approach"]
     assert approach["hit_count"] is None
     assert approach["travel_y"] is None
@@ -187,23 +196,23 @@ def test_multi_carrier_separates_tokens():
 def build_dead_carrier_log():
     """Dead carrier whose in-flight bomb still blasts (carrier_valid=0)."""
     return "\n".join([
-        "P2_BOMBSARAI_SCENARIO_BEGIN scenario=dead",
-        "P2_BOMBSARAI_FSM_SUPPLY scenario=dead carrier=0 tick=18",
-        "P2_BOMBSARAI_JOINT_FOLLOW scenario=dead carrier=0 travel_y=30.0 "
+        "P2_BOMBSARAI_SCENARIO_BEGIN scenario=deadflight",
+        "P2_BOMBSARAI_FSM_SUPPLY scenario=deadflight carrier=0 tick=18",
+        "P2_BOMBSARAI_JOINT_FOLLOW scenario=deadflight carrier=0 travel_y=30.0 "
         "travel_xz=5.0 min=20.0 max=40.0",
-        "P2_BOMBSARAI_FSM_THROW scenario=dead carrier=0 kind=Release tick=60",
-        "P2_BOMBSARAI_BLAST scenario=dead carrier=0 token=9001 carrier_valid=0 "
+        "P2_BOMBSARAI_FSM_THROW scenario=deadflight carrier=0 kind=Release tick=60",
+        "P2_BOMBSARAI_BLAST scenario=deadflight carrier=0 token=9001 carrier_valid=0 "
         "ticks=80 traces=6 floors=1 walls=1 hits=3 carrier_dead=1",
-        "P2_BOMBSARAI_HIT scenario=dead id=501 kind=0 damage=45.000 self=1 token=0",
-        "P2_BOMBSARAI_HIT scenario=dead id=502 kind=1 damage=30.000 self=1 token=0",
-        "P2_BOMBSARAI_SCENARIO_PASS scenario=dead",
+        "P2_BOMBSARAI_HIT scenario=deadflight id=501 kind=0 damage=45.000 self=1 token=0",
+        "P2_BOMBSARAI_HIT scenario=deadflight id=502 kind=1 damage=30.000 self=1 token=0",
+        "P2_BOMBSARAI_SCENARIO_PASS scenario=deadflight",
         "PASS BOMBSARAI_RUNTIME",
     ]) + "\n"
 
 
 def test_dead_carrier_records_token_and_invalid_carrier():
-    result = validate_markers(build_dead_carrier_log(), scenarios=("dead",))
-    carriers = result["scenarios"]["dead"]["carriers"]
+    result = validate_markers(build_dead_carrier_log(), scenarios=("deadflight",))
+    carriers = result["scenarios"]["deadflight"]["carriers"]
     assert set(carriers) == {0}
     c0 = carriers[0]
     assert c0["blast_token"] == 9001

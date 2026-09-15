@@ -110,7 +110,8 @@ def _scenarios(names):
     return {name: _blank() for name in names}
 
 
-def validate_markers(log_text, scenarios=('approach', 'purple', 'death')):
+def validate_markers(log_text,
+                     scenarios=('approach', 'purple', 'death', 'multi', 'deadflight')):
     """Parse the native fixture marker stream.
 
     Returns ``{"passed": bool, "scenarios": {...}}``. A missing/empty log

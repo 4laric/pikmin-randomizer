@@ -500,3 +500,98 @@ own context directly instead of being delegated.
   `build_pikmin2_fixture.py:307` remains open (needs a fixture rebuild/run).
 - Named providers unchanged: lane 10 receivers (#408), lane 06/20 shared Bomb
   manager, converter #128 / lane 09 visuals.
+
+## Slice 4 (continued) — runtime re-verified; core binding blocked at the host
+
+Review follow-up processed. The reviewer's two open items are closed: (a) the
+fixture scenario table now survives fix #2, and (b) the GL fixture was re-run on
+the new head and passes cleanly (no double-step artifact).
+
+### Ordered commits (both branches clean)
+
+Native branch `deepseek/p2-l27-native`:
+
+1. `4265bdfb` — `lane27: profile pool capacity — single-carrier scenarios pool=1 (re-supply exhausts), multi drops exact throw count (#244)`
+
+Root branch `deepseek/p2-l27`:
+
+1. `441d80f` — `lane27: validator defaults to all five scenarios; per-file sha256 provenance (#244)`
+
+### Review resolution
+
+- **Scenario table / fix #2:** the bomber's FSM re-enters Supply ~every 25 ticks,
+  but with fix #2 a capacity-2 pool lets the first bomb stay in flight while the
+  carrier re-supplies and re-throws before the ~200-tick detonation, tripping the
+  old `throwSeen == throws` / `records == expectedBlasts` asserts. Resolution:
+  the profile now carries an optional `pool <n>` line (default 2); the four
+  single-carrier profiles set `pool 1` so the post-throw re-supply exhausts (one
+  throw, one blast), and the `multi` profile keeps `pool 2` and its exact-throw
+  assertion is dropped (`throws={-1,-1}`) because the multi gate is per-token
+  blast attribution, not throw count. Pool-exhaustion-under-one-carrier remains
+  covered by the unit test (second supply while in flight → succeeds; third →
+  exhausts).
+- **Validator default five:** `validate_markers` now defaults to
+  `('approach','purple','death','multi','deadflight')`; two existing tests pass
+  the old 3-tuple explicitly and a new `test_default_scenarios_are_all_five`
+  asserts the default. `build_dead_carrier_log` renamed `dead` → `deadflight`.
+- **Per-file sha256 provenance:** `scripts/build_pikmin2_fixture.py` `git_state`
+  now records `tracked_modified_sha256` (relative path → content hash of each
+  tracked-modified source) instead of the non-reproducing `git diff --binary
+  HEAD` hash.
+
+### GL runtime re-run (executed, exit 0, no double-step)
+
+Fixture `output/dsw/l27-out/fixture4` (`provenance.json` status `built`, head
+`4265bdfb034c37c5b7d36001d32bc1b8cbe01f08`, `tracked_modified_sha256` `{}`), log
+`output/dsw/l27-out/bombsarai-runtime-run4.log`
+(sha256 `d2112e1919a85af5b68e4d7e4e8c126b2d155fc67dad7037eed42599de0c89bb`). Run
+under `slot.py run gl l27` at `PIKMIN_P2_ROOM_WINDOW=960x540`, `PYTHONUTF8=1`,
+exit 0.
+
+Key lines (selection; the `scenarioTicks` are now real source ticks — Supply
+`tick=30`, not the double-stepped `15`):
+
+```
+P2_BOMBSARAI_ARENA_READY ... carriers=1 receivers=4 pool=1 events=0
+P2_BOMBSARAI_FSM_SUPPLY scenario=approach carrier=0 tick=30
+P2_BOMBSARAI_FSM_THROW scenario=approach carrier=0 kind=Release tick=46
+P2_BOMBSARAI_BLAST scenario=approach carrier=0 token=9001 carrier_valid=1 ticks=207 ... hits=3 carrier_dead=0
+P2_BOMBSARAI_SCENARIO_PASS scenario=approach
+... (purple Fall tick=55; death Death tick=45 carrier_dead=1;
+     multi two carriers Release tick=46, tokens 9001/9002, pool=2;
+     deadflight Release tick=46, blast carrier_valid=0 carrier_dead=1)
+PASS BOMBSARAI_RUNTIME
+```
+
+Reading: the double-step is gone (Supply at tick 30, Release lob at 46, blast at
+207 vs the run3 `15`/`46`/`207` double-step artifact). `pool=1` single-carrier
+scenarios issue exactly one throw and one blast; the `multi` scenario (pool=2)
+attributes tokens 9001/9002 with no cross-attribution. The validator parses the
+real run4 log under its new five-scenario default: `passed=True`, multi carriers
+`{0,1}` tokens `[9001,9002]`. Root pytest now **12 passed**.
+
+### Core deliverable — blocked at the generated-actor host (file:line)
+
+The ordinary *generated* BombSarai binding is genuinely blocked in this worktree:
+
+1. **No generated Dirigibug host.** The engine's `TekiTypes` enum exposes only
+   P1 enemy types (`include/teki.h:101-139`, `TEKI_TypeCount=35`); the Careening
+   Dirigibug is P2 EnemyID 58 and has no teki type. The family-sidecar binding
+   finds its host through `tekiMgr` + `mGenerator->_70` + `mTekiType`
+   (`pc_port/pc_p2_kurage_teki.cpp:146-152`), so there is no generated actor to
+   bind; the lane-27 seam is still the pinned opt-in arena, explicitly "no actor
+   registry, AI perception..." (`pc_port/pc_p2_bombsarai_arena.h:25-27`).
+2. **No lane-20 carrier-acquirable Bomb primitive.** The bomb-rock lifecyle is
+   lane 27's own isolated `pc_p2_bombsarai_bomb.*`; the only cross-family
+   consumer is `pc_p2_bombotakara.cpp:90-101` consuming the lane-27 *blast*
+   primitive (reverse direction). Lane 20's shared primitives
+   (`pc_p2_projectiles/rock_hazard/egg_hazard/cannon_stone/kabuto_cannon`) hold
+   no carrier-acquirable Bomb rock.
+3. **Corpse/receipt seams (06/07)** are provider-lane work not yet wired to this
+   family in the worktree.
+
+Furthest natural marker reached: the pinned-arena carrier FSM + bomb + blast +
+multi-carrier + dead-carrier chain, now pool-corrected and runtime-verified on
+run4. The next step requires a generated Dirigibug proxy host (lane 02/03/05
+admission + a carrier teki type) and the lane-20 Bomb actor — named providers,
+not lane-27 edits.
