@@ -106,6 +106,20 @@ def test_capture_ignores_malformed_and_captures_window_summary():
     assert summary == ['P2_PLACEMENT_PROBE actors=1 evidence_slots=1']
 
 
+def test_bridge_source_summary_keeps_birth_marker_join():
+    text = (
+        GROUND_211001
+        + 'P2_PLACEMENT_PROBE actors=0 evidence_slots=0 source=birth_hook\n'
+    )
+    slots, _, summary = probe.capture_markers(text)
+    assert [(slot['generator'], slot['slot']) for slot in slots] == [(211001, 648204418)]
+    assert summary == ['P2_PLACEMENT_PROBE actors=0 evidence_slots=0 source=birth_hook']
+    doc = probe.build_probe(text)
+    assert doc['catalog_join'] is True
+    assert doc['mapping'][0]['generator'] == 211001
+    assert doc['slots'] == [{'uid': 648204418, 'xyz': True, 'terrain': True, 'route': True}]
+
+
 def test_build_probe_catalog_join():
     text = (
         GROUND_211001

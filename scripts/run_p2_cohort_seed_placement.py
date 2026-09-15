@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import experimental.pikmin2_seed_placement as placement
 from experimental.pikmin2_seed_placement_native import validate_cooccurrence
+from randomizer import p2_placement_probe
 
 ORANGE_GENERATOR = 211001
 SNOW_GENERATOR = 5001
@@ -123,12 +124,14 @@ def main():
     log, code = _run_native(args.exe, stage, bootstrap, args.timeout)
     text = log.read_text(encoding='utf-8', errors='replace')
     co_occurrence = validate_cooccurrence(text)
+    _, _, probe_summary = p2_placement_probe.capture_markers(text)
     report = {
         'run': str(stage),
         'seed': args.seed,
         'arena_stage': placement.ARENA_STAGE,
         'sidecar_pairs': [[g, u] for g, u in pairs],
         'placement_lines': _lines(text, 'P2_PLACEMENT_SLOT'),
+        'placement_probe_summary': probe_summary,
         'resolve_lines': _lines(text, 'P2_SEED_RESOLVE'),
         'ready_lines': _lines(text, 'P2_ENEMY_READY'),
         'validate_cooccurrence': {
