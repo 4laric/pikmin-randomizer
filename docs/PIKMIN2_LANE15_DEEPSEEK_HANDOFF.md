@@ -51,7 +51,7 @@ Root (base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`):
 6. `043740e` lane15: fix handoff commit list (#166)
 7. `b984e86` lane15: slice3 - place wisp over the red squad for a natural drop; add moved gate (#166)
 8. `55cf8db` lane15: slice3 handoff - Move stall fixed, drop blocked (no throw), probe delivered (#166)
-9. `(fix3)` lane15: review fixes 3 - ingestible gate table, drop evidence, commit list (#166)
+9. `47e2e088` lane15: review fixes 3 - ingestible gate table, natural drop evidence, full_chain gate (#166)
 
 Native (base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`):
 1. `d1a579f3` lane15: Qurione carries real Egg reward via lane-20 P2Egg policy (#166)
