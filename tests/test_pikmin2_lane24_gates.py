@@ -1,0 +1,132 @@
+"""Tests for experimental/pikmin2_lane24_gates (King free-mode / Queen natural).
+
+Synthetic native-log fixtures exercise the pure-Python validators' gate logic
+without requiring the native room process.
+"""
+import unittest
+
+from experimental import pikmin2_lane24_gates as g
+
+
+_KING_BASELINE = 'P2_KING_FREEMODE_BASELINE red=20'
+_KING_ARMED = 'P2_KING_FREEMODE_ARMED deploy_once=1 no_injection=1'
+_KING_READY = 'P2_KING_READY id=230020 enemy=53 variant=default'
+_KING_COMBAT = 'P2_KING_COMBAT_DAMAGE id=230020 stuck=2 damage=5.0 health=620.0 interval=20'
+_KING_DEAD = 'P2_KING_DEAD_KEY id=230020 frame=185 kill=1'
+_KING_PASS_DEATH = 'PASS P2_KING_FREEMODE_DEATH'
+_KING_FLOOR = 'P2_KING_FREEMODE_FLOOR tick=10800'
+
+
+def king_log(*extra):
+    return '\n'.join([
+        _KING_BASELINE,
+        _KING_ARMED,
+        _KING_READY,
+        _KING_COMBAT,
+        *extra,
+    ]) + '\n'
+
+
+class KingFreeModeTests(unittest.TestCase):
+    def test_kill_happy_path_passes(self):
+        evidence = g.king_free_mode_validate(
+            king_log(_KING_DEAD, _KING_PASS_DEATH), 0)
+        self.assertTrue(evidence['passed'], evidence)
+        self.assertTrue(evidence['killed'])
+        self.assertTrue(evidence['checks']['consistent'])
+
+    def test_floor_happy_path_passes(self):
+        evidence = g.king_free_mode_validate(
+            king_log(_KING_FLOOR), 0)
+        self.assertTrue(evidence['passed'], evidence)
+        self.assertFalse(evidence['killed'])
+        self.assertEqual(evidence['health_floor'], 620.0)
+        self.assertTrue(evidence['consistent'])
+
+    def test_floor_without_floor_marker_fails(self):
+        evidence = g.king_free_mode_validate(king_log(), 0)
+        self.assertFalse(evidence['checks']['consistent'])
+        self.assertFalse(evidence['passed'])
+
+    def test_injection_marker_fails_no_injection(self):
+        evidence = g.king_free_mode_validate(
+            king_log(_KING_DEAD, _KING_PASS_DEATH,
+                     'P2_KING_INJECT id=230020 tick=5 force=Kill fixture=1'), 0)
+        self.assertFalse(evidence['checks']['no_injection'])
+        self.assertFalse(evidence['passed'])
+
+
+_QUEEN_READY = 'P2_QUEEN_READY id=230010 enemy=30 variant=default'
+_QUEEN_BIRTH_1 = 'P2_QUEEN_LARVA id=230010 xyz=-120.0,30.0,1800.0 born=1'
+_QUEEN_BIRTH_2 = 'P2_QUEEN_LARVA id=230010 xyz=-120.0,30.0,1800.0 born=2'
+_QUEEN_BITE = ('P2_QUEEN_LARVA_ATTACK id=230010 damage=2 '
+               'captain_before=100.0 captain_health=98.0')
+_QUEEN_DEATH = 'P2_QUEEN_STATE id=230010 from=2 to=0 health=0'
+_QUEEN_RELEASE = 'P2_QUEEN_DEATH_LARVA_RELEASE id=230010 released=2'
+_QUEEN_PASS = 'PASS P2_QUEEN_NATURAL_RUNTIME'
+
+
+def queen_log(*extra):
+    return '\n'.join([
+        _QUEEN_READY,
+        _QUEEN_BIRTH_1,
+        _QUEEN_BIRTH_2,
+        _QUEEN_BITE,
+        _QUEEN_DEATH,
+        _QUEEN_RELEASE,
+        _QUEEN_PASS,
+        *extra,
+    ]) + '\n'
+
+
+class QueenNaturalTests(unittest.TestCase):
+    def test_happy_path_passes(self):
+        evidence = g.queen_natural_validate(queen_log(), 0)
+        self.assertTrue(evidence['passed'], evidence)
+        self.assertTrue(evidence['checks']['birth'])
+
+    def test_duplicate_birth_fails_birth(self):
+        text = '\n'.join([
+            _QUEEN_READY,
+            _QUEEN_BIRTH_1,
+            'P2_QUEEN_LARVA id=230010 xyz=-120.0,30.0,1800.0 born=1',
+            _QUEEN_BITE,
+            _QUEEN_DEATH,
+            _QUEEN_RELEASE,
+            _QUEEN_PASS,
+        ]) + '\n'
+        evidence = g.queen_natural_validate(text, 0)
+        self.assertFalse(evidence['checks']['birth'])
+        self.assertFalse(evidence['passed'])
+
+    def test_bite_without_health_drop_fails_bite(self):
+        text = '\n'.join([
+            _QUEEN_READY,
+            _QUEEN_BIRTH_1,
+            _QUEEN_BIRTH_2,
+            'P2_QUEEN_LARVA_ATTACK id=230010 damage=2 '
+            'captain_before=100.0 captain_health=100.0',
+            _QUEEN_DEATH,
+            _QUEEN_RELEASE,
+            _QUEEN_PASS,
+        ]) + '\n'
+        evidence = g.queen_natural_validate(text, 0)
+        self.assertFalse(evidence['checks']['bite'])
+        self.assertFalse(evidence['passed'])
+
+    def test_missing_death_release_fails(self):
+        text = '\n'.join([
+            _QUEEN_READY,
+            _QUEEN_BIRTH_1,
+            _QUEEN_BIRTH_2,
+            _QUEEN_BITE,
+            _QUEEN_DEATH,
+            _QUEEN_PASS,
+        ]) + '\n'
+        evidence = g.queen_natural_validate(text, 0)
+        self.assertFalse(evidence['checks']['death_release'])
+        self.assertFalse(evidence['passed'])
+
+
+if __name__ == '__main__':
+    unittest.main()
