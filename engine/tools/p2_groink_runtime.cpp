@@ -22,6 +22,7 @@
 #include "pc_p2_groink_map_trace.h"
 #include "pc_p2_groink_clock.h"
 #include "pc_p2_groink_teki.h"
+#include "pc_p2_teki_lifetime.h"
 #include "teki.h"
 #include "Generator.h"
 #include "settings/pc_settings.h"
@@ -61,6 +62,7 @@ struct WallProbe { bool valid = false; P2GroinkVec3 center{}, velocity{}; };
 bool sCarcassAutomaticBinding = false;
 bool sCarcassTransport = false;
 bool sGroinkLive = false;
+bool sGroinkReentry = false;
 
 // Lane 21 live-host witness (#198): per-Piki health/FSM-state snapshot so the
 // landing press (a real InteractPress receiver) can be cited with the target's
@@ -80,6 +82,13 @@ class GroinkApp final : public PlugPikiApp {
     int liveTicks = 0, liveHealthDrops = 0, liveStateChanges = 0;
     float liveTravel = 0.0f, liveLastX = 0.0f, liveLastZ = 0.0f;
     std::map<const Piki*, LivePikiSample> livePrevPiki;
+    // Lane 21 gate-6 cleanup/re-entry rehearsal state.
+    BTeki* reentryHost = nullptr;
+    Generator* reentryGenerator = nullptr;
+    void* reentryOldHost = nullptr;
+    BTeki* reentryFresh = nullptr;
+    int reentryTicks = 0;
+    int reentryPhase = 0;
 public:
     int idle() override {
         int result = PlugPikiApp::idle();
@@ -159,6 +168,116 @@ public:
                 std::puts("PASS GROINK_RUNTIME groink_live");
                 std::fflush(stdout); std::_Exit(0);
             }
+            return result;
+        }
+        // Lane 21 gate-6 cleanup/re-entry rehearsal (#198). The generated Frog at
+        // 201001 is killed by the free-mode squad; its own carcass policy then
+        // forgets the sidecar binding through the real death funnel (pellet kill).
+        // From there the fixture drives the exact stage-boundary teardown
+        // (pc_p2_reset_all_teki), a real generator rebirth (mGenType->init) and the
+        // real lane setup re-bind, proving a fresh binding with no stale pointer.
+        if (sGroinkReentry) {
+            if (!tekiMgr || !naviMgr || !pikiMgr) return result;
+            Navi* n = naviMgr->getNavi();
+            if (!n) return result;
+            if (!reentryHost) {
+                Iterator it(tekiMgr); CI_LOOP(it) {
+                    Teki* teki = static_cast<Teki*>(*it);
+                    if (teki && teki->mTekiType == TEKI_Frog && teki->mGenerator
+                        && teki->mGenerator->_70 == 201001u) {
+                        reentryHost = static_cast<BTeki*>(teki);
+                        break;
+                    }
+                }
+                if (!reentryHost) return result;
+                require(pc_p2_groink_teki_is_bound(reentryHost), "finalSetup sidecar bound generated Frog");
+                reentryGenerator = pc_p2_groink_teki_generator_object();
+                require(reentryGenerator != nullptr, "bound actor generator not captured");
+                reentryOldHost = static_cast<void*>(reentryHost);
+                std::puts("P2_GROINK_CARCASS_HOST_BOUND host=generated_Frog generator=201001 kill=free_mode_squad health_write=0 host_life_clamp=120 parameter_override=1");
+                std::printf("P2_GROINK_REENTRY_BEGIN old=%p generator=%u bound=1\n",
+                            reentryOldHost, reentryGenerator->_70);
+                std::fflush(stdout);
+            }
+            ++reentryTicks;
+            if (reentryPhase == 0) {
+                // Natural free-mode kill (lane 19 ring recipe); no health write.
+                require(pc_p2_groink_teki_is_bound(reentryHost), "binding live during the natural kill");
+                if (reentryHost->isAlive()) {
+                    Vector3f park(reentryHost->mSRT.t.x, 0.0f, reentryHost->mSRT.t.z + 40.0f);
+                    park.y = mapMgr->getMinY(park.x, park.z, true);
+                    n->resetPosition(park);
+                    if (reentryTicks == 1 || reentryTicks % 120 == 0) ringReds(n, reentryHost);
+                } else {
+                    std::printf("P2_GROINK_REENTRY_DEATH tick=%d reds=%d\n",
+                                reentryTicks, aliveReds());
+                    std::fflush(stdout);
+                    reentryPhase = 1;
+                    return result;
+                }
+                if (reentryTicks % 60 == 0) {
+                    std::printf("P2_GROINK_REENTRY_KILL tick=%d health=%.1f bound=1 reds=%d\n",
+                                reentryTicks, pc_p2_groink_teki_health(reentryHost), aliveReds());
+                    std::fflush(stdout);
+                }
+                require(reentryTicks < 2400, "natural kill did not complete");
+                return result;
+            }
+            if (reentryPhase == 1) {
+                // Wait for the death-funnel forget. The actor may already be freed,
+                // so only the pointer-keyed probe is read (never dereferenced).
+                if (!pc_p2_groink_teki_is_bound(reentryHost)) {
+                    require(pc_p2_groink_teki_forget_count() >= 1,
+                            "natural death-funnel forget marker missing");
+                    std::printf("P2_GROINK_REENTRY_FORGOTTEN tick=%d forget=%u bound=0\n",
+                                reentryTicks, pc_p2_groink_teki_forget_count());
+                    std::fflush(stdout);
+                    reentryPhase = 2;
+                    return result;
+                }
+                if (reentryTicks % 60 == 0) {
+                    std::printf("P2_GROINK_REENTRY_WAIT_FORGET tick=%d bound=1\n", reentryTicks);
+                    std::fflush(stdout);
+                }
+                require(reentryTicks < 2400, "natural death-funnel forget did not complete");
+                return result;
+            }
+            // Phase 2: real generator rebirth, stage-boundary teardown, re-bind.
+            require(!pc_p2_groink_teki_is_bound(reentryHost),
+                    "stale death-funnel binding survived before the rebirth");
+            const unsigned forgetBefore = pc_p2_groink_teki_forget_count();
+            const unsigned resetBefore = pc_p2_groink_teki_reset_count();
+            reentryGenerator->mGenType->init(reentryGenerator);
+            reentryFresh = static_cast<BTeki*>(reentryGenerator->mLatestSpawnCreature);
+            require(reentryFresh != nullptr, "generator rebirth produced no actor");
+            // No recycled-address credit: the death-funnel forget erased the stale
+            // key, so even when the allocator hands the fresh actor the old address
+            // it is NOT bound until the lane setup explicitly re-binds it.
+            require(!pc_p2_groink_teki_is_bound(reentryFresh),
+                    "recycled address inherited a stale binding");
+            const bool recycled = static_cast<void*>(reentryFresh) == reentryOldHost;
+            std::printf("P2_GROINK_REENTRY_REBIRTH new=%p recycled=%d stale_bound=0\n",
+                        static_cast<void*>(reentryFresh), recycled ? 1 : 0);
+            std::fflush(stdout);
+            // Pre-reset bind so the stage-boundary teardown clears a live registration.
+            pc_p2_groink_teki_setup();
+            require(pc_p2_groink_teki_is_bound(reentryFresh), "pre-reset re-bind bound the fresh actor");
+            require(pc_p2_groink_teki_bound_count() == 1, "pre-reset re-bind binds exactly one actor");
+            // Real stage-boundary teardown (GameCoreSection::exitStage calls this).
+            pc_p2_reset_all_teki();
+            require(pc_p2_groink_teki_bound_count() == 0, "reset cleared the binding");
+            require(!pc_p2_groink_teki_is_bound(reentryFresh), "reset dropped the fresh binding");
+            // Re-entry: the real lane setup re-binds the fresh actor, no stale entry.
+            pc_p2_groink_teki_setup();
+            require(pc_p2_groink_teki_is_bound(reentryFresh), "re-entry re-bound the fresh actor");
+            require(pc_p2_groink_teki_bound_count() == 1, "re-entry binds exactly one actor");
+            std::printf("P2_GROINK_REENTRY old=%p new=%p stale_bound=0 rebound=1 recycled=%d forget_total=%u reset_total=%u delta_forget=%u delta_reset=%u\n",
+                        reentryOldHost, static_cast<void*>(reentryFresh), recycled ? 1 : 0,
+                        pc_p2_groink_teki_forget_count(), pc_p2_groink_teki_reset_count(),
+                        pc_p2_groink_teki_forget_count() - forgetBefore,
+                        pc_p2_groink_teki_reset_count() - resetBefore);
+            std::puts("PASS GROINK_RUNTIME groink_reentry");
+            std::fflush(stdout); std::_Exit(0);
             return result;
         }
         if (sCarcassAutomaticBinding || sCarcassTransport) {
@@ -356,6 +475,7 @@ int main(int argc, char** argv) {
         if (std::string(argv[i]) == "--carcass-automatic-binding") sCarcassAutomaticBinding = true;
         if (std::string(argv[i]) == "--carcass-transport") sCarcassTransport = true;
         if (std::string(argv[i]) == "--groink-live") sGroinkLive = true;
+        if (std::string(argv[i]) == "--groink-reentry") sGroinkReentry = true;
     }
     _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1"); pc_bbft_init(argc, argv);
     require(pc_pikipelago_room_preview(), "requires --experimental-pikmin2-room");

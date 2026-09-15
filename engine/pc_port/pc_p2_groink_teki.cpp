@@ -33,6 +33,14 @@ struct Binding {
 };
 std::map<BTeki*, Binding> s;
 
+// (#198 gate 6) Lifecycle observation for the cleanup/re-entry rehearsal. The
+// bound actor's generator is captured at bind time so a fixture can drive the
+// real `mGenType->init()` rebirth after the natural death forget; the counters
+// surface the real forget/reset seams without re-reading a torn-down binding.
+Generator* sGeneratorObj = nullptr;
+unsigned sForgetCount = 0;
+unsigned sResetCount = 0;
+
 // Lane 21 transport tail (mirrors the lane-27 landed recipe). After a natural
 // free-mode squad kill the bound host's own corpse pellet is held at the kill
 // site, the captain is parked beyond the 250u join-party range, and the
@@ -158,10 +166,30 @@ const Binding* find(const BTeki* t) {
 constexpr float kHostLifeClamp = 120.0f;
 } // namespace
 
-void pc_p2_groink_teki_reset() { s.clear(); sTail = CarcassTail{}; }
+void pc_p2_groink_teki_reset()
+{
+    const int boundBefore = int(s.size());
+    s.clear();
+    sTail = CarcassTail{};
+    sGeneratorObj = nullptr;
+    ++sResetCount;
+    if (boundBefore > 0) {
+        std::printf("P2_GROINK_TEKI_RESET bound_before=%d bound_after=%d count=%u\n",
+                    boundBefore, int(s.size()), sResetCount);
+        std::fflush(stdout);
+    }
+}
 
-void pc_p2_groink_teki_forget(BTeki* t) {
-    if (t) s.erase(t);
+void pc_p2_groink_teki_forget(BTeki* t)
+{
+    if (!t) return;
+    const bool wasBound = s.erase(t) > 0;
+    if (wasBound) {
+        ++sForgetCount;
+        std::printf("P2_GROINK_TEKI_FORGET bound=1 remaining=%d count=%u\n",
+                    int(s.size()), sForgetCount);
+        std::fflush(stdout);
+    }
 }
 
 bool pc_p2_groink_teki_is_bound(const BTeki* t) { return t && find(t) != nullptr; }
@@ -178,6 +206,10 @@ int pc_p2_groink_teki_births(const BTeki* t) {
     return b ? b->births : 0;
 }
 int pc_p2_groink_teki_total_births() { return p2_groink_carcass_total_births(); }
+unsigned pc_p2_groink_teki_forget_count() { return sForgetCount; }
+unsigned pc_p2_groink_teki_reset_count() { return sResetCount; }
+int pc_p2_groink_teki_bound_count() { return int(s.size()); }
+Generator* pc_p2_groink_teki_generator_object() { return sGeneratorObj; }
 bool pc_p2_groink_receipt(PelletView* view, unsigned& generator) {
     if (!view) return false;
     const Binding* b = find(static_cast<BTeki*>(view));
@@ -219,6 +251,7 @@ void pc_p2_groink_teki_setup() {
             continue;
         }
         s.emplace(static_cast<BTeki*>(t), Binding{gen, type, cfg.carcass, {}, false, false, false, false, 0, cfg.transport});
+        sGeneratorObj = t->mGenerator; // (#198 gate 6 rebirth probe)
         std::printf("P2_GROINK_CARCASS_READY generator=%u type=%d gauge_delay=%.3f recovery=%.3f max_health=%.3f\n",
                     gen, type, cfg.carcass.gaugeDelay, cfg.carcass.recoverySeconds, cfg.carcass.maxHealth);
     }
