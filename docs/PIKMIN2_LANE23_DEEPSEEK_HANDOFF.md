@@ -290,3 +290,151 @@ $env:PYTHONUTF8='1'
 $env:PIKMIN_P2_ROOM_WINDOW='960x540'
 py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l23 -- py -3.12 -m experimental.pikmin2_pom_runtime run --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets --imported C:/Users/alari/pikmin-randomizer/output/dsw/l23-out/flora-bank --output C:/Users/alari/pikmin-randomizer/output/dsw/l23-out/pom-runtime-3 --exe C:/Users/alari/pikmin-randomizer/output/dsw/l23-out/pom-fixture-3/build/fixture.exe
 ```
+
+## Slice 3
+
+Slice 3 closes the slice-2 draw gaps: **both buds drawn in every FSM pose, from
+a confirmed draw.** RedPom had been camera-culled at x=-120 and only wait/shot/
+dead, not open/swing/close, were observable on the single Queen that did draw.
+The DRAW print also fired before the batch-2 clip-selection, so a pose could be
+claimed without the forced clip being found in the bank.
+
+### Source IDs and files owned
+
+Candypop Buds (`BluePom` 3 .. `RandPom` 8, base `Pom` 82), unchanged identity
+set from slice 1/2. New/changed files:
+
+- Native: `pc_port/pc_p2_pom.h`, `pc_port/pc_p2_pom.cpp` (source-timed six-state
+  walk, confirmed-draw report, per-pose draw logging, host anchor at the planted
+  point, dropped the unused `pc_p2_pom_bound`); one shared-file hook
+  `pc_port/pc_p2_batch2.cpp` (`pc_p2_pom_report_draw` after the bank-clip check,
+  committed separately).
+- Root: `experimental/pikmin2_pom_runtime.py` (validator now requires a
+  confirmed `P2_POM_DRAW` for BOTH generators in all six poses; both buds moved
+  in-frame; REDPOM exhausts its budget so it too reaches `dead`;
+  `tests/test_pikmin2_pom_runtime.py` (per-pose flip tests), this doc.
+
+### Ordered commits and dirty state
+
+Root branch `deepseek/p2-l23` (base `ef1cace`, previous head `6aec967`):
+
+1. `6b71122` — `lane23: slice 3 — both buds draw every FSM pose from a confirmed draw; validator + per-pose flip tests (#448)`
+2. (this handoff commit)
+
+Native branch `deepseek/p2-l23-native` (base `b805d9c6`, previous head `7d1c6854`):
+
+1. `89d5cc22` — `lane23: slice 3 — observable source-timed FSM pose walk and confirmed-draw report (#448)`
+2. `4f0ee053` — `lane23: batch2 hook — report a Pom draw only after the forced clip is found in the bank (#448)` (separate hook commit)
+3. `d94a6854` — `lane23: per-pose draw logging so later FSM poses are not capped out of the log (#448)`
+4. `b82dc0a9` — `lane23: anchor the bound Chappy host at the bud's planted point so both buds stay in-frame (#448)`
+
+Both worktrees clean at handoff.
+
+### Interfaces / hooks touched and why
+
+- `pc_p2_pom_clip` no longer prints; it only feeds the FSM clip/phase. New
+  `pc_p2_pom_report_draw(const BTeki*)` records the "confirmed" draw; the
+  batch-2 chain calls it only after `bank.clips.count(forced)` succeeds (i.e.
+  the selected clip really exists), so a `P2_POM_DRAW` line claims a rendered
+  pose. `pc_p2_pom_bound()` (uncalled) removed.
+- `stepBuds` reworked into an explicit source-timed walk (Pom.h:120): `Wait`
+  arms to `Open` once the Wait clip is drawn; every touch is a transient `Swing`
+  that returns to `Open`; `Open` closes after the remain-open window or a spent
+  budget; `Close` routes to `Shot` (or reopen); `Shot` settles its owed sprouts
+  then reopens, or dies once the budget is spent. Each state spans at least one
+  behavior step, so open/swing/close are now observable instead of collapsing
+  into one tick.
+- `bindHosts` re-anchors each bound Chappy host at its sidecar point
+  (`teki->mSRT.t.set(...)`), matching the source "dropped buds land exactly on
+  their point". The conversion slot is already `slotPosition()`, so host and
+  receptor coincide.
+- Per-pose draw logging: the first 8 draws of each pose are logged (`draws`
+  stays monotonic), so a long open wait can no longer exhaust a global draw cap
+  and starve the later poses.
+
+### Build / fixture / runtime evidence
+
+- Native `b82dc0a9d94c93782eaacaab5b20c72afb7f8e0f`, clean. Main `nectar.exe`
+  SHA-256 `E60F11C120456EB18DDB1FFC4E40C2400CAFE4D7F73469783073F1125CA51AB6`,
+  `ninja -n pikmin_pc` "no work to do".
+- Fixture `output/dsw/l23-out/pom-fixture-7/build/fixture.exe` SHA-256
+  `F85318FD57E0FD2AB56510A910D8627893CA762B972F1CFB9EBCF3AF56A202F1`,
+  `provenance.json` status `built`, expected native head `b82dc0a9`.
+- GL run `output/dsw/l23-out/pom-runtime-7/pom/c66e6016f6fd4d98813400f4a26ad1a2`
+  PASS (exit 0), no leftover process, 960×540 centred window observed. Both buds
+  now draw all six poses:
+
+```text
+P2_POM_BIND generator=353003 species=RedPom source_id=4 host=teki type=3
+P2_POM_BIND generator=353007 species=RandPom source_id=8 host=teki type=3
+P2_POM_STATE generator=353003 species=RedPom from=wait to=open
+P2_POM_STATE generator=353003 species=RedPom from=open to=swing   (.. swing->open -> close -> shot -> dead)
+P2_POM_STATE generator=353007 species=RandPom from=wait to=open
+P2_POM_STATE generator=353007 species=RandPom from=open to=swing  (.. swing->open -> close -> shot -> dead)
+P2_POM_SPROUT generator=353003 species=RedPom count=6 colour=1 body=1 leaf=1
+P2_POM_DEAD generator=353003 species=RedPom used=5 refunds=1 corpse=0 budget=5
+P2_POM_CONSERVATION generator=353003 species=RedPom used=5 refunds=1 requested=6 born=6 dead_pikis=0 loss_counted=0
+P2_POM_DEAD generator=353007 species=RandPom used=1 refunds=0 corpse=0 budget=1
+P2_POM_CONSERVATION generator=353007 species=RandPom used=1 refunds=0 requested=9 born=9 dead_pikis=0 loss_counted=0
+PASS P2_POM_NATIVE bind_draw_fsm_walk
+```
+
+Both buds emit `P2_POM_DRAW` for `wait/open/swing/close/shot/dead` (RedPom 21
+lines, RandPom 19 lines). RedPom's sprout count changed from 2 (slice 2) to 6
+because it now accepts five Pikmin to exhaust `ip01=5` (plus one refund).
+
+### Gates that changed
+
+- Gate 2 (movement/animation): the drawn walk is now the full six-pose FSM on
+  **both** buds, from a confirmed draw. (Still static/bind pose, no skeletal
+  playback — lane 09.)
+- Gate 1 / 4 / 5 / 6: unchanged — exact identity/bind, budget-only death,
+  conservation `loss_counted=0`, `forget` on despawn — now also evidenced for
+  RedPom (it dies with `used=5 refunds=1`).
+
+### Subagent usage
+
+The wave brief required spawning three `task` subagents (2 explore + 1 general)
+for source audit, candidate inventory, and test scaffolding, but **no `task`
+tool is available in this session's toolset**, so nothing was delegated. All
+lane-23 slice-3 work — native FSM rework, host anchor, confirmed-draw hook,
+validator/tests, build, GL run and this handoff — was done inline. Net: this was
+a dependency-of-the-brief miss, not a choice; the read-heavy audit and test
+scaffolding that subagents would have absorbed were instead done directly, and
+the slice still completed end-to-end.
+
+### Remaining blockers (provider lane)
+
+- Drawn model is a static bind pose; skeletal playback/material fidelity → lane 09 (#429).
+- Ordinary generated-session spawn binding (flora arena is an engineered
+  placement vehicle) → lanes 03/04/05.
+- Onion/AP seed accounting for sprouts → lane 06.
+- Spectralid sentinel spawn → lane 15 (untouched).
+
+### Fixture adoption (fan-out baseline)
+
+- 960×540 centred window observed (`Experimental preview window set to 960x540
+  windowed and centered`), `PIKMIN_P2_ROOM_WINDOW=960x540` and `PYTHONUTF8=1`.
+- Live starting squad: the batch-2 flora arena overlay supplies 20 red Pikmin;
+  the fixture colors seven (1 red refund + 5 blue accepts + 1 yellow) and the
+  guard injection is labeled. `P2_POM_FIXTURE_PLAN injected=7` and
+  `P2_POM_FIXTURE_SPROUTS n=15` confirm live actors and births.
+
+### Tests run
+
+```text
+py -3.12 -m pytest tests/test_pikmin2_pom_runtime.py -q          # 7 passed
+py -3.12 -m pytest tests/ -q -k "pom or flora or plant"          # 131 passed, 44 subtests
+```
+
+The `drawn` check now requires both generators × six poses; `test_validate_pass_and_fail`
+carries a flip test per pose (removing either bud's draw for a pose fails).
+
+### Reproduction
+
+```powershell
+$env:PATH='C:\msys64\mingw64\bin;'+$env:PATH
+$env:PYTHONUTF8='1'
+$env:PIKMIN_P2_ROOM_WINDOW='960x540'
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l23 -- py -3.12 -m experimental.pikmin2_pom_runtime run --assets C:/Users/alari/bbft/dist/cohesion/pikmin/assets --imported C:/Users/alari/pikmin-randomizer/output/dsw/l23-out/flora-bank --output C:/Users/alari/pikmin-randomizer/output/dsw/l23-out/pom-runtime-7 --exe C:/Users/alari/pikmin-randomizer/output/dsw/l23-out/pom-fixture-7/build/fixture.exe
+```
