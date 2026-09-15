@@ -62,12 +62,12 @@
         "cleanup_reentry": "PASS"
       },
       "eligibility": "candidate",
-      "eligibility_reason": "opt-in source KochappyBase FSM; natural combat/death/carry and both natural-death cleanup and manager re-entry observed; natural corpse-to-Pod reward delivery blocked by the shared #397 preview movie-flow gap",
+      "eligibility_reason": "opt-in source KochappyBase FSM; natural combat/death/carry and both natural-death cleanup and manager re-entry observed; natural corpse-to-Pod reward delivery still blocked (see lane-13 handoff)",
       "notes": [
         "Dwarf Orange Bulborb (BlueKochappy 44): full source-state FSM on the maintained native line; opt-in via p2-dwarf-orange-fsm.txt.",
-        "Gates 1-4 natural on the wave: one 250 HP run logs bite + P2_KOCHAPPY_EAT eaten=1 + P2_KOCHAPPY_SWALLOW swallowed=1 + P2_KOCHAPPY_DEAD + P2_KOCHAPPY_CORPSE (output/dsw/l13-out/s2-run/native.log).",
-        "cleanup_reentry PASS: natural-death cleanup (doKill funnel -> P2_DWARF_ORANGE_FORGET + P2_KOCHAPPY_FSM_FORGET, output/dsw/l13-out/s2-cleanup-run/native.log) AND manager re-entry (old_registry=clear before_setup=130 new_red=250 control=130 birth=pass, output/dsw/l13-out/s3-reentry-run2/native.log).",
-        "transport_reward BLOCKED: natural Pikmin corpse carry observed (544.6 units, output/dsw/l13-out/s2-cleanup-run) and the Pod corpse-receipt branch registers the Chappy corpse (P2_POD_CORPSES_REBOUND after=2, output/dsw/l13-out/s3-pod-run), but a natural carried-into-Pod receipt was not observed: the Pod+combat observer trips the #397 preview movie-flow (P2_POD_CAPTAIN_RETURN). P2Economy exactly-once is unit-proven.",
+        "Gates 1-4 natural on the wave: one 250 HP run logs bite + P2_KOCHAPPY_EAT eaten=1 + P2_KOCHAPPY_DEAD + P2_KOCHAPPY_CORPSE; see docs/PIKMIN2_LANE13_DEEPSEEK_HANDOFF.md six-gate table.",
+        "cleanup_reentry PASS: natural-death cleanup (doKill funnel -> P2_DWARF_ORANGE_FORGET + P2_KOCHAPPY_FSM_FORGET) and manager re-entry (old_registry=clear new_red=250 control=130 birth=pass); see docs/PIKMIN2_LANE13_DEEPSEEK_HANDOFF.md.",
+        "transport_reward BLOCKED: natural Pikmin corpse carry observed (544.6 units) and the Pod corpse-receipt branch pre-registers both Chappy actors, but a natural carried-into-Pod receipt has not yet completed; see docs/PIKMIN2_LANE13_DEEPSEEK_HANDOFF.md.",
         "Not admitted: candidate evidence only, not a randomizer admission PASS (#120/#186)."
       ]
     },

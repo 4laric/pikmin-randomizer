@@ -420,16 +420,19 @@ wired but not separately re-run for 44.
   `experimental/pikmin2_dwarf_orange_pod.py` records the block; its gate is honest `passed:false`
   with `receipt=false`.
 
-### Six-gate table (source 44) — for lane 02 ingestion
+### Six-gate table — for lane 02 ingestion
 
-| gate | status | evidence |
-|---|---|---|
-| identity_spawn | PASS | `P2_ENEMY_READY species=BlueKochappy source_id=44`, 64-pose bank — `output/dsw/l13-out/s2-run/native.log` |
-| movement_animation | PASS | FSM wait/turn/walk/attack — `output/dsw/l13-out/s2-run/native.log:1040` |
-| attacks_receivers | PASS | `P2_KOCHAPPY_EAT … eaten=1 slot=1` + `P2_KOCHAPPY_SWALLOW … swallowed=1 white=0` — `output/dsw/l13-out/s2-run/native.log:1040,1333` |
-| death_corpse | PASS | `P2_KOCHAPPY_DEAD … health=0.0` → `P2_KOCHAPPY_CORPSE` — `output/dsw/l13-out/s2-run/native.log:1615,1958` |
-| transport_reward | BLOCKED | transport PASS (544.6-unit carry — `output/dsw/l13-out/s2-cleanup-run/native.log:3051`); receipt branch registers corpse (rebind after=2 — `output/dsw/l13-out/s3-pod-run/native.log:710`); natural corpse›Pod delivery blocked by #397 movie flow |
-| cleanup_reentry | PASS | `P2_DWARF_ORANGE_FORGET`+`P2_KOCHAPPY_FSM_FORGET` — `output/dsw/l13-out/s2-cleanup-run/native.log:3048-3049`; re-entry `new_red=250 control=130 birth=pass` — `output/dsw/l13-out/s3-reentry-run2/native.log:1209` |
+## Concrete source ID
+- Source ID: 44 `BlueKochappy`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | `P2_ENEMY_READY species=BlueKochappy source_id=44 … source_FSM=implemented`, 64-pose `P2_DWARF_ORANGE_BANK` — `output/dsw/l13-out/s2-run/native.log:835-836` | natural |
+| 2. Autonomous movement and animation | PASS (natural) | FSM states `wait/turn/walk/attack` sampled — `output/dsw/l13-out/s2-run/native.log:987` | natural |
+| 3. Attacks and receivers | PASS (natural) | `P2_KOCHAPPY_EAT … eaten=1 slot=1` and `P2_KOCHAPPY_SWALLOW … swallowed=1 white=0` — `output/dsw/l13-out/s2-run/native.log:1040,1333` | natural |
+| 4. Death and corpse | PASS (natural) | `P2_KOCHAPPY_DEAD … health=0.0` then `P2_KOCHAPPY_CORPSE … native=host_escape_now` — `output/dsw/l13-out/s2-run/native.log:1615,1958` | natural |
+| 5. Actual transport and reward | BLOCKED (natural) | natural carry observed (544.6 units, `output/dsw/l13-out/s2-cleanup-run/native.log:3051`); Pod pre-registers both arena actors (`P2_POD_CORPSES_REBOUND after=2`) but the corpse never entered transport in the Pod scene in the initial run — re-run via the ring-deploy fixture | natural |
+| 6. Cleanup and re-entry | PASS (natural) | `P2_DWARF_ORANGE_FORGET` + `P2_KOCHAPPY_FSM_FORGET` on the death funnel — `output/dsw/l13-out/s2-cleanup-run/native.log:3048-3049`; manager re-entry `old_registry=clear … new_red=250 control=130 birth=pass` — `output/dsw/l13-out/s3-reentry-run2/native.log:1209,1505` | natural (squad throttled to 2 by fixture) |
 
 Snow (45) run was not re-run (not cheap: separate Snow arena/bank/profile pipeline); skipped.
 
@@ -459,7 +462,7 @@ Fixtures (`status=built`): reentry `output/dsw/l13-out/s3-reentry-fixture2` and 
 `PIKMIN_NATIVE_ROOT=…/native-l13 py -3.12 -m pytest tests/test_pikmin2_kochappy_fsm.py
 tests/test_pikmin2_dwarf_orange_fsm_witness.py tests/test_pikmin2_dwarf_orange_cleanup.py
 tests/test_pikmin2_dwarf_orange_chain.py tests/test_pikmin2_dwarf_orange_pod.py
-tests/test_pikmin2_enemy_roster.py -q` -> 34 passed, 1 skipped.
+tests/test_pikmin2_enemy_roster.py -q` -> **35 passed** (MinGW on PATH).
 
 ### Remaining blockers (naming provider lanes)
 

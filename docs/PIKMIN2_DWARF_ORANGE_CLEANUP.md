@@ -40,49 +40,34 @@ the free squad stalls), which are already recorded in the delivery slice.
 > Wave-line re-run (DeepSeek lane 13, slice 2): the cleanup witness above was
 > cherry-picked unchanged and re-run on the current wave pair (root
 > `deepseek/p2-l13`, native `deepseek/p2-l13-native` @ `261ee541`). Result
-> `output/dsw/l13-out/s2-cleanup-run/evidence.json`: `passed=true`, exit 0, all
-> eight checks true — `P2_DWARF_ORANGE_FORGET`/`P2_KOCHAPPY_FSM_FORGET` on the
-> `doKill` funnel after a 544.6-unit natural corpse carry. The private Codex
-> paths below are historical provenance, not the wave-line result.
+> `passed=true`, exit 0, all eight checks true — `P2_DWARF_ORANGE_FORGET` and
+> `P2_KOCHAPPY_FSM_FORGET` on the `doKill` funnel after a 544.6-unit natural
+> corpse carry. Exact run/log/executable pins for that re-run are recorded in
+> `docs/PIKMIN2_LANE13_DEEPSEEK_HANDOFF.md` (slice 2); the historical Codex
+> provenance described here predates that re-run.
 
-Native worktree `output/native-lane13-orange-fsm2`, branch
-`opencode/p2-lane13-orange-fsm2`, based on the approved maintained baseline
-`b805d9c6` (the version that already contains `pc_p2_dwarf_orange`,
-`pc_p2_kochappy_fsm` and `pc_p2_teki_lifetime`). Ordered commits:
+The native forget-signal slice is family-local only: `pc_p2_dwarf_orange_forget`
+and `pc_p2_kochappy_fsm_forget` erase their registration maps and print
+`P2_DWARF_ORANGE_FORGET` / `P2_KOCHAPPY_FSM_FORGET` when a registered actor is
+actually erased (generator is already detached by `dieSoon()`). The full-state
+FSM was previously un-ported on the maintained line, which carried only the
+five-state opt-in slice; the three cherry-picks apply cleanly because the Dwarf
+Orange module is byte-identical between the base `b805d9c6` and the worker
+candidate.
 
-- `8781664f` full KochappyBase Turn/TurnToHome/GoHome/Press states and Dead path
-  (cherry-pick of the worker `940914d5`)
-- `95996820` apply queued Pikmin damage inside the FSM (`d3ffb3c4`)
-- `e6ceceac` finalize the FSM Dead carcass outside `doAI` (`d9ea68c9`)
-- `d847df2d` signal the Dwarf Orange family cleanup on the natural death funnel
-
-The full-state FSM was previously un-ported on the maintained line, which
-carried only the five-state opt-in slice. The three cherry-picks apply cleanly
-because the Dwarf Orange module is byte-identical between `b805d9c6` and the
-worker native candidate `2e3941c8`.
-
-Private build `output/native-lane13-orange-fsm2-build`, Ninja / MinGW
-`g++ 16.2.0`, `Release`, `PIKMIN_NATIVE_JAUDIO=ON`, `-j 6`.
-`[N/N] Linking CXX executable bin\nectar.exe`, exit 0; `bin/nectar.exe`
-SHA-256 `1BEA8E95BB1AAC301A8E5991C5048C717656B1EAC0BF501D20FC8FB63C25EC85`.
-
-Cleanup fixture `output/p2-lane13-orange-fsm2-cleanup-fixture/baseline/fixture.exe`,
-built by `scripts/build_pikmin2_fixture.py` from the same private build
-(`status=built`, `ninja: no work to do` freshness checks), SHA-256
-`E88725A049ECB649ADFAC9399BF4B939EAA0B813867D8D52137B39C5437E724A`.
+Build provenance (historical): Ninja / MinGW `g++ 16.2.0`, `Release`,
+`PIKMIN_NATIVE_JAUDIO=ON`, `-j 6`; `ninja -n` → `ninja: no work to do.`; cleanup
+fixture built by `scripts/build_pikmin2_fixture.py` (`status=built`).
+Exact commit/SHA pins are in the lane-13 handoff, not repeated here.
 
 ## 3. Runtime evidence (960x540 centred window)
 
-Arena: a private copy of the FSM-on Dwarf Orange arena
-(`output/p2-lane13-orange-fsm-run-on/bd2b9fff954a474b88a7f6e467314cfc`, which
-already carries `p2-dwarf-orange-fsm.txt` and the converted `dwarf_orange` bank),
-staged into `output/p2-lane13-orange-fsm2-cleanup-arena5`. One source actor
-(`211001`), one P1 Chappy control (`211002`), 20 free reds.
+Arena: one source Dwarf Orange actor (`211001`), one P1 Chappy control
+(`211002`), 20 free reds, `p2-dwarf-orange-fsm.txt` opt-in and the converted
+`dwarf_orange` pose bank. Witness marker set (this is the exact evidence the
+gate-E PASS is built on):
 
-Report `output/p2-lane13-orange-fsm2-cleanup-final/evidence.json`: `passed=true`,
-`exit_code=0`, all eight checks true. Log
-`output/p2-lane13-orange-fsm2-cleanup-final/native.log` sha256
-`80EC2F09FF3A2B204DAAFF055CDFFF742B20B23A3608726B22FC68377E6D805E`.
+
 
 Witness lines:
 
