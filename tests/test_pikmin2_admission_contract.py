@@ -1,18 +1,12 @@
 """Admission-contract tests for ``experimental.pikmin2_enemy_roster`` (lane 02).
 
-Pins the five-gate admission contract another worker is adding on top of the
-eligibility ledger: what counting a ``delivery_receipt`` and five PASS gates
-means for ``admission_requirements``, ``admission_contract`` and
-``admitted_ids``, and how ``write_admission`` commits/demotes eligibility in
-the evidence JSON.
-
-The API under test (``ADMISSION_GATES``, ``RosterEntry.delivery_receipt``,
-``admission_requirements``, ``admission_contract``, ``write_admission`` and the
-new ``admitted_ids`` semantics) does not exist yet: this module will fail to
-import until it lands. Synthetic tests build rosters purely through the existing
-``parse_enum_header`` / ``parse_info_table`` / ``build_entries`` / ``resolve_ids``
-/ ``snapshot_payload`` / ``entries_from_payload`` helpers (Pelplant=0, Frog=17,
-Egg=37), so they never mutate the committed roster or evidence.
+Pins the five-gate admission contract on top of the eligibility ledger:
+``admission_requirements`` (natural-PASS + delivery-receipt enforcement),
+``admission_contract``, ``admitted_ids`` and ``write_admission``. Synthetic tests
+build rosters purely through ``parse_enum_header``/``parse_info_table``/
+``build_entries``/``resolve_ids``/``snapshot_payload``/``entries_from_payload``
+(Pelplant=0, Frog=17, Egg=37), so they never mutate the committed roster or
+evidence.
 """
 import json
 
@@ -97,7 +91,7 @@ def _pass_gates():
 def _frog_overlay(**overrides):
     overlay = {
         "gates": _pass_gates(),
-        "delivery_receipt": "SEED-17",
+        "delivery_receipt": "corpse:frog:1 goal=1",
         "eligibility": "candidate",
     }
     overlay.update(overrides)
@@ -112,7 +106,7 @@ def _req_entry(**overrides):
         "common_name": "Yellow Wollywog",
         "classification": "enemy",
         "gates": _pass_gates(),
-        "delivery_receipt": "SEED-17",
+        "delivery_receipt": "corpse:frog:1 goal=1",
     }
     kw.update(overrides)
     return RosterEntry(**kw)
@@ -134,6 +128,39 @@ def test_admission_requirements_reports_exact_gate():
 
 def test_admission_requirements_reports_transport_reward():
     assert admission_requirements(_req_entry(delivery_receipt=None)) == ["transport_reward"]
+
+
+def test_admission_requirements_rejects_blank_or_garbage_receipt():
+    # A whitespace-only receipt is treated as absent.
+    assert admission_requirements(_req_entry(delivery_receipt=" ")) == ["transport_reward"]
+    # An arbitrary string that is neither a lane-06 key nor a doc/log citation.
+    assert admission_requirements(_req_entry(delivery_receipt="x")) == ["transport_reward:invalid_receipt"]
+
+
+def test_admission_requirements_accepts_receipt_keys_and_citations():
+    assert admission_requirements(_req_entry(delivery_receipt="corpse:frog:1 goal=1")) == []
+    assert admission_requirements(_req_entry(delivery_receipt="onion:frog:1")) == []
+    assert admission_requirements(_req_entry(delivery_receipt="receipt:frog:1")) == []
+    assert admission_requirements(_req_entry(delivery_receipt="PIKMIN2_FROG_DELIVERY.md")) == []
+    assert admission_requirements(_req_entry(delivery_receipt="output/p2-frog/native.log")) == []
+
+
+def test_admission_requirements_flags_non_natural_pass():
+    entry = _req_entry(
+        notes=("PASS via injected health write", "proxy fixture-only registration"),
+        eligibility_reason="forced vehicle/visual display host",
+    )
+    assert admission_requirements(entry) == [f"{gate}:injected" for gate in ADMISSION_GATES]
+
+
+def test_admission_contract_rejects_injected_evidence_even_with_all_pass():
+    roster = _roster({"17": _frog_overlay(
+        notes=["PASS via injected health write", "proxy fixture-only registration"],
+        delivery_receipt="proxy: forced Onion suck (injected)",
+    )})
+    contract = admission_contract(roster)
+    assert contract["admitted"] == []
+    assert 17 in contract["blocking"]
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +186,7 @@ def test_admission_contract_blocks_partial_and_lists_gates():
 def test_admission_contract_ignores_non_seedable_roles():
     overlay = {
         "gates": _pass_gates(),
-        "delivery_receipt": "SEED-0",
+        "delivery_receipt": "onion:pelplant:1",
         "eligibility": "candidate",
     }
     roster = _roster({"0": overlay})
@@ -206,7 +233,7 @@ def test_write_admission_round_trip(tmp_path):
     snek_gates["death_corpse"] = "UNTESTED"
     snek = {
         "gates": snek_gates,
-        "delivery_receipt": "SEED-41",
+        "delivery_receipt": "corpse:snek:1 goal=1",
         "eligibility": "admitted",
     }
     roster = entries_from_payload(
@@ -217,3 +244,26 @@ def test_write_admission_round_trip(tmp_path):
     written2 = json.loads(path2.read_text(encoding="utf-8"))
     assert written2["entries"]["17"]["eligibility"] == "admitted"
     assert written2["entries"]["41"]["eligibility"] == "candidate"
+
+
+def test_write_admission_fresh_path_keeps_fields(tmp_path):
+    real = load_and_validate()
+    path = tmp_path / "fresh.json"
+    write_admission(real, path=path)
+    written = json.loads(path.read_text(encoding="utf-8"))
+    assert isinstance(written.get("fields"), dict)
+    assert "delivery_receipt" in written["fields"]
+
+
+def test_admit_check_cli_exit_codes(capsys):
+    import scripts.audit_pikmin2_roster as audit
+    # Sokkuri (79) has A/B/C natural PASS but death/cleanup/transport open -> blocked.
+    assert audit.main(["--admit-check", "79"]) == 1
+    out = capsys.readouterr().out
+    assert "death_corpse" in out
+    # A plant identity is refused for its role.
+    assert audit.main(["--admit-check", "0"]) == 1
+    # An unknown id fails closed.
+    assert audit.main(["--admit-check", "99999"]) == 1
+    # Repeatable across ids still fails closed.
+    assert audit.main(["--admit-check", "79", "--admit-check", "0"]) == 1

@@ -21,6 +21,7 @@ Design contract (agreed input to lanes 03/04/05)
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -29,6 +30,19 @@ SCHEMA = "p2-enemy-roster-1"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ROSTER_PATH = REPO_ROOT / "docs" / "PIKMIN2_ENEMY_ROSTER.json"
 EVIDENCE_PATH = REPO_ROOT / "docs" / "PIKMIN2_ENEMY_ROSTER_EVIDENCE.json"
+
+# Schema documentation block copied into a freshly synthesized evidence overlay
+# so write_admission never emits an overlay missing the field descriptions.
+EVIDENCE_FIELDS = {
+    "native_module": "engine/pc_port module implementing the identity, or null",
+    "owner_lane": "family/shared lane that owns the identity",
+    "gates": "map of the six gate IDs to PASS/FAIL/BLOCKED/UNTESTED/N/A; a PASS needs root/native/exe pins, inputs and observed result",
+    "delivery_receipt": "citation of an actual transport/reward delivery for gate 5 (transport_reward), or null; required for admission",
+    "eligibility": "denied | candidate | admitted | excluded",
+    "eligibility_reason": "short justification",
+    "source": "list of docs/PIKMIN2_*.md filenames the evidence is transcribed from",
+    "notes": "free-form review notes (natural vs injected labels)",
+}
 
 # Six arena gates every admitted identity must eventually report.
 GATE_IDS = (
@@ -51,6 +65,22 @@ ADMISSION_GATES = (
     "cleanup_reentry",
 )
 GATE_STATUS = ("PASS", "FAIL", "BLOCKED", "UNTESTED", "N/A")
+
+# A row whose notes/eligibility_reason carry any of these markers is treated as
+# non-natural evidence: a PASS on an admission gate in such a row is refused as
+# "<gate>:injected" rather than accepted as natural. This is the enforced version
+# of the "only natural PASS admits" rule (it is not merely assumed by construction).
+NONNATURAL_MARKERS = re.compile(
+    r"inject|\bproxy\b|fixture-only|\bforced\b|\bvehicle\b|\bvisual\b|\bhost\b|\bdisplay\b",
+    re.IGNORECASE,
+)
+
+# A delivery_receipt is a durable citation matching lane 06's per-identity scheme:
+# either an ``onion:``/``corpse:``/``receipt:`` key, or a doc/log citation (a
+# filename with a recognized extension or a path separator). A blank or arbitrary
+# string is refused.
+RECEIPT_KEY_PREFIXES = ("onion:", "corpse:", "receipt:")
+RECEIPT_CITATION_MARKERS = (".md", ".log", ".txt", ".json", "/", "\\")
 
 CLASSIFICATIONS = (
     "enemy",
@@ -327,18 +357,43 @@ def identity_role(entry: RosterEntry) -> str:
     return "source"
 
 
+def _nonnatural_evidence(entry: RosterEntry) -> bool:
+    """True when the row's notes/reason carry injected/proxy/display markers."""
+    text = " ".join([entry.eligibility_reason or ""] + list(entry.notes))
+    return NONNATURAL_MARKERS.search(text) is not None
+
+
+def _receipt_shaped(text: str) -> bool:
+    value = text.strip()
+    if not value:
+        return False
+    if value.startswith(RECEIPT_KEY_PREFIXES):
+        return True
+    return any(marker in value for marker in RECEIPT_CITATION_MARKERS)
+
+
 def admission_requirements(entry: RosterEntry) -> list[str]:
     """Exact list of admission gaps for one identity, empty when it qualifies.
 
-    The admission contract requires a *natural* PASS on each gate in
-    :data:`ADMISSION_GATES` and a cited ``delivery_receipt`` proving the actual
-    transport/reward of gate 5 (``transport_reward``). A gate recorded PASS is
-    by construction natural (non-natural observations are transcribed as
-    UNTESTED/BLOCKED); gate 5 is admitted by the receipt, not a gate status.
+    The contract requires a *natural* PASS on each gate in :data:`ADMISSION_GATES`
+    and a ``delivery_receipt`` matching lane 06's scheme for ``transport_reward``.
+    A PASS is accepted only when the row's notes/reason carry no
+    :data:`NONNATURAL_MARKERS`; otherwise the gate is reported as ``<gate>:injected``.
+    A blank or malformed receipt is reported as ``transport_reward`` or
+    ``transport_reward:invalid_receipt`` respectively.
     """
-    missing = [gate for gate in ADMISSION_GATES if entry.gates.get(gate) != "PASS"]
-    if not entry.delivery_receipt:
+    nonnatural = _nonnatural_evidence(entry)
+    missing: list[str] = []
+    for gate in ADMISSION_GATES:
+        if entry.gates.get(gate) != "PASS":
+            missing.append(gate)
+        elif nonnatural:
+            missing.append(f"{gate}:injected")
+    receipt = (entry.delivery_receipt or "").strip()
+    if not receipt:
         missing.append("transport_reward")
+    elif not _receipt_shaped(receipt):
+        missing.append("transport_reward:invalid_receipt")
     return missing
 
 
@@ -402,13 +457,12 @@ def write_admission(roster: list[RosterEntry], path=None) -> dict:
                 entries[key]["eligibility_reason"] = (
                     "admission contract no longer satisfied: "
                     + ", ".join(contract["blocking"].get(source_id, ["unknown"])))
-            else:
-                entries[key]["eligibility"] = entry.eligibility
     else:
         # Fresh path: synthesize a full overlay from the roster for each entry.
         doc = {"schema": f"{SCHEMA}-evidence",
                "note": "Eligibility overlay for the canonical P2 roster. Written by "
                        "write_admission; see docs/PIKMIN2_ENEMY_ROSTER.md.",
+               "fields": EVIDENCE_FIELDS,
                "entries": {}}
         entries = doc["entries"]
         for entry in roster:
