@@ -40,6 +40,7 @@ def _isolate_overrides(monkeypatch):
 
 
 DWARF_ORANGE_CLIPS = {"wait1": 75, "move1": 55, "attack": 90, "dead": 90, "flick": 80}
+SNOW_CLIPS = {"wait1": 75, "move1": 55, "attack": 90, "dead": 90, "flick": 80}
 MODEL_CHUNKS = ((32, b"material"), (34, b"texture"), (48, b"event"), (65535, b""))
 
 
@@ -92,10 +93,36 @@ def make_dwarf_orange_source(content_root):
     return source
 
 
+def make_snow_source(content_root):
+    source = content_root / "YellowKochappy"
+    source.mkdir(parents=True)
+
+    data = model_bytes()
+    motions = {}
+    rows = ["P2_SNOW_2"]
+    for name, duration in SNOW_CLIPS.items():
+        frames = [0, duration // 2, duration - 1]
+        motions[name] = {"poses": 3, "source_frames": duration, "frames": frames}
+        rows.append(f"{name} 3 {duration} 0 {duration // 2} {duration - 1}")
+        for index in range(3):
+            (source / f"snow_{name}_{index:02}.mod").write_bytes(data)
+    (source / "p2-snow.txt").write_text("\n".join(rows) + "\n", encoding="ascii")
+    snow_json = {"schema": 1, "species": "YellowKochappy", "motions": motions}
+    (source / "snow.json").write_text(json.dumps(snow_json), encoding="utf-8")
+    return source
+
+
 def test_resolve_family_int_and_enum():
     assert family_install.resolve_family(44) == "dwarf_orange"
     assert family_install.resolve_family("BlueKochappy") == "dwarf_orange"
     assert family_install.resolve_family("bluekochappy") == "dwarf_orange"
+
+
+def test_resolve_family_snow():
+    assert family_install.resolve_family(45) == "snow"
+    assert family_install.resolve_family("YellowKochappy") == "snow"
+    assert family_install.resolve_family("yellowkochappy") == "snow"
+    assert family_install.resolve_family("BlueKochappy") == "dwarf_orange"
 
 
 def test_resolve_family_unknown_identity():
@@ -428,3 +455,113 @@ def test_install_layout_session_cache_replay(tmp_path):
     assert len(calls) == 1
     assert replay.get("cached") is True
     assert (run2 / "installed.txt").is_file()
+
+
+def test_install_layout_real_snow_adapter(tmp_path):
+    content_root = tmp_path / "content"
+    make_snow_source(content_root)
+    run = tmp_path / "run"
+    retail = tmp_path / "retail"
+    (retail / "dataDir" / "stages").mkdir(parents=True)
+
+    layout = layout_with(binding(source_id=45, enum_name="YellowKochappy"))
+    receipt = family_install.install_layout(
+        run, layout, content_root,
+        actor_bindings={"gen-001": 211045}, retail_assets=retail)
+
+    assert receipt["receipts"]["gen-001"]
+    actors_txt = run / "p2-snow-actors.txt"
+    assert actors_txt.is_file()
+    assert "211045" in actors_txt.read_text(encoding="ascii")
+    assert (run / "p2-snow.txt").is_file()
+    room = run / "assets" / "dataDir" / "courses" / "pikmin2room"
+    assert len(list(room.glob("snow_*.mod"))) == 15
+
+
+def test_install_layout_two_families_staged_together(tmp_path):
+    content_root = tmp_path / "content"
+    make_dwarf_orange_source(content_root)
+    make_snow_source(content_root)
+    run = tmp_path / "run"
+    retail = tmp_path / "retail"
+    (retail / "dataDir" / "stages").mkdir(parents=True)
+
+    layout = layout_with(
+        binding(target="gen-001", source_id=44, enum_name="BlueKochappy"),
+        binding(target="gen-002", source_id=45, enum_name="YellowKochappy"),
+    )
+    family_install.install_layout(
+        run, layout, content_root,
+        actor_bindings={"gen-001": 211001, "gen-002": 211045},
+        retail_assets=retail)
+
+    assert (run / "p2-dwarf-orange-actors.txt").is_file()
+    assert (run / "p2-snow-actors.txt").is_file()
+    room = run / "assets" / "dataDir" / "courses" / "pikmin2room"
+    assert len(list(room.glob("dwarf_orange_*.mod"))) == 15
+    assert len(list(room.glob("snow_*.mod"))) == 15
+    assert len(list(room.glob("*.mod"))) == 30
+
+
+def test_install_layout_rejects_wrong_source_hash_before_tree(tmp_path):
+    content_root = tmp_path / "content"
+    make_dwarf_orange_source(content_root)
+    bank_json = content_root / "BlueKochappy" / "bank" / BANK_JSON
+    metadata = json.loads(bank_json.read_text(encoding="utf-8"))
+    metadata["reference_sha256"] = "0" * 64
+    bank_json.write_text(json.dumps(metadata), encoding="utf-8")
+    run = tmp_path / "run"
+    retail = tmp_path / "retail"
+    (retail / "dataDir" / "stages").mkdir(parents=True)
+
+    layout = layout_with(binding(source_id=44, enum_name="BlueKochappy"))
+    with pytest.raises(StagingError):
+        family_install.install_layout(
+            run, layout, content_root,
+            actor_bindings={"gen-001": 211001}, retail_assets=retail)
+    assert not (run / "assets").exists()
+
+
+def test_interrupted_cache_staging_fails_safe(tmp_path, monkeypatch):
+    content_root = tmp_path / "content"
+    make_source_dir(content_root, "BlueKochappy")
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    run1 = tmp_path / "run1"
+    run2 = tmp_path / "run2"
+
+    def fake_installer(source_arg, run_arg, actors):
+        for name in ("a.txt", "b.txt", "c.txt"):
+            (Path(run_arg) / name).write_text(name)
+        return {"ok": True}
+
+    family_install.register("dwarf_orange", fake_installer)
+
+    real_copyfile = family_install.shutil.copyfile
+    calls = {"n": 0}
+
+    def flaky_copyfile(src, dst, *args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("simulated interrupt")
+        return real_copyfile(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(family_install.shutil, "copyfile", flaky_copyfile)
+
+    layout = layout_with(binding(source_id=44, enum_name="BlueKochappy"))
+    with pytest.raises(RuntimeError):
+        family_install.install_layout(
+            run1, layout, content_root,
+            actor_bindings={"gen-001": 211001}, cache_dir=cache)
+
+    assert list(cache.glob("p2bind-*/cache-receipt.json")) == []
+
+    monkeypatch.setattr(family_install.shutil, "copyfile", real_copyfile)
+    receipt = family_install.install_layout(
+        run2, layout, content_root,
+        actor_bindings={"gen-001": 211001}, cache_dir=cache)
+
+    assert receipt.get("cached") is not True
+    assert (run2 / "a.txt").is_file()
+    assert (run2 / "b.txt").is_file()
+    assert (run2 / "c.txt").is_file()

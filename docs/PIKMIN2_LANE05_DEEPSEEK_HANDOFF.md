@@ -99,3 +99,46 @@ Estimate: the two explores saved ~30 min of my own contract/layout reading; the 
 - **#1 explore — log paths + line numbers:** confirmed the two probe logs live under the worktree-relative (gitignored) `output/dsw/l05-out/` and that the absolute `C:/Users/alari/pikmin-randomizer/output/dsw/l05-out/` was empty, and returned the exact `pytest.raises` args to tighten. Used as-is to copy the logs to the absolute path and cite it.
 - **#2 explore — launcher session-cache mechanics:** confirmed `session.directory`/`run.directory` split, the cache marker path, `_replay_from_cache` `cached=True`, `_content_files` exclusions, and that a fake override skips `validate`. Used as-is to write a correct `test_launch_replays_from_session_cache` (order-independent `cached` assertion).
 - **#3 general — test edits:** wrote `test_launch_replays_from_session_cache` and tightened `test_install_layout_source_id_mismatch_rejected` to `pytest.raises(StagingError)`; 17 passed. Used as-is.
+
+## Slice 2
+
+Second bounded slice: **second family adapter (Snow) + interrupted-staging / wrong-source fail-safe**.
+
+### Source IDs and files
+
+- **Second real consumer:** Snow Bulborb — `YellowKochappy`, source id **45** (`common_name` "Snow Bulborb"), family lane 13. Staged through lane 13's existing Snow stager `experimental/pikmin2_enemy.install(imported, run, generator_ids)` (flat bank: `snow.json` + `p2-snow.txt` + `snow_*.mod`), consumed as-is.
+- **Changes:**
+  - `experimental/pikmin2_family_install.py` — added `IDENTITY_FAMILY` entries (45/`yellowkochappy` → `snow`), the `snow` adapter (`_adapt_snow`/`_validate_snow`), and strengthened `_validate_dwarf_orange` to reject a bank whose identity or `reference_sha256` does not match its profile (before any asset tree).
+  - `tests/test_pikmin2_install_binding.py` — added `make_snow_source` + `SNOW_CLIPS`, and tests: `test_resolve_family_snow`, `test_install_layout_real_snow_adapter`, `test_install_layout_two_families_staged_together`, `test_install_layout_rejects_wrong_source_hash_before_tree`, `test_interrupted_cache_staging_fails_safe` (22 total).
+  - `scripts/probe_p2_install_binding.py` — extended to stage BOTH identities through `runner.launch` (fresh + cached replay) and to prove wrong-source fail-closed at the launcher; log under the ABSOLUTE `C:/Users/alari/pikmin-randomizer/output/dsw/l05-out/`.
+  - `docs/PIKMIN2_CONTENT_STAGING.md` — documented the Snow adapter, the strengthened validate (identity + reference hash) and the write-last cache marker.
+
+### Deliverables (a/b/c)
+
+- **(a) Snow adapter** — `resolve_family(45|YellowKochappy) == "snow"`; `_validate_snow` checks `snow.json`/`p2-snow.txt` presence and `schema==1` + `species=="YellowKochappy"`; `_adapt_snow` unpacks `(generator, species)` and delegates to `pikmin2_enemy.install`, returning a small receipt (the family installer returns `None`). Real-adapter test passes; a single `install_layout` call stages Dwarf Orange + Snow together (30 room models, both `p2-*-actors.txt`).
+- **(b) Interrupted staging fails safe** — `test_interrupted_cache_staging_fails_safe` injects a `copyfile` failure on the 2nd file during `_populate_cache`; the cache marker (`p2bind-*/cache-receipt.json`) is written last, so the interrupted run leaves no marker, and the next launch treats it as a miss and does a fresh install (all three files present). Partial tree is neither reused nor left corrupting the result.
+- **(c) Wrong-source rejection at launcher level** — `_validate_dwarf_orange` now rejects a bank with a wrong `reference_sha256` (or wrong identity); the probe tampers the bank's `reference_sha256`, `runner.launch` raises `StagingError`, and no `runs/*/assets` tree is created (`bad-session asset trees: 0`).
+
+### Tests run
+
+- `py -3.12 -m pytest tests/test_pikmin2_install_binding.py -q` → **22 passed**.
+- Broader lane-05/adjacent subset (install_binding, family_install, staging, session_staging, seed_bridge, seed_generation, dwarf_orange, dwarf_orange_install, enemy, animation, snow_policy, roster) → **165 passed, 2 failed** — both failures are the pre-existing root-`native/` C++ compile tests (`test_pikmin2_animation.py::test_native_playback_and_validation`, `test_pikmin2_snow_policy.py::test_native_policy_isolation_and_recycled_address_teardown`); the root worktree has no `native/` by design.
+- `py -3.12 scripts/probe_p2_install_binding.py --output C:/Users/alari/pikmin-randomizer/output/dsw/l05-out` → **passed** (log `C:/Users/alari/pikmin-randomizer/output/dsw/l05-out/probe-install-binding.txt`): two bindings (`YellowKochappy`, `BlueKochappy`), two launches cached `[False, True]`, 15+15 room models, both actor files, wrong-source fail-closed with 0 asset trees.
+
+### Six-gate update
+
+Still an installation/provider lane: identity→content binding for BOTH cohort dwarfs is now PASS at the content/staging level; live native gameplay gates (spawn/movement/combat/death/transport/cleanup) remain source-backed N/A here and belong to family lane 13 + independent QA (33). No admission claim is made (lane 02's admission set is still empty; the probe monkeypatches `admitted_ids` to `[44, 45]`).
+
+### Remaining blockers
+
+- **Lane 02 (#438):** empty admission set — no real accepted `p2_layout`; probes/tests monkeypatch `admitted_ids`.
+- **Lane 13 / family:** produce the real banks (Dwarf Orange + Snow) and accept the native actor binding (native readers `pc_p2_dwarf_orange.cpp` / `pc_p2_enemy.cpp` already exist) so the staged content is consumed by live actors.
+- **Lane 01:** export/merge the launcher/`experimental` changes into the maintained line.
+
+### Subagent usage (slice 2)
+
+- **#1 explore — Snow bank/installer source audit:** extracted `pikmin2_enemy.install`'s required inputs (flat `snow.json`/`p2-snow.txt`/`snow_*.mod`), its `ValueError`s, that it performs NO reference-hash check (unlike Dwarf Orange), the `parse_bank`/`validate_files` formats, and the existing synthetic Snow fixture in `tests/test_pikmin2_animation.py`. Used as-is; drove `_adapt_snow`/`_validate_snow` and the synthetic `make_snow_source`.
+- **#2 explore — Snow candidate + adapter inventory:** inventoried every Snow/`YellowKochappy` module/test/doc/native reader, confirmed `IDENTITY_FAMILY`/`ADAPTERS` shapes, the flat-vs-bank/profile layout difference, and the one-sided sibling overlap checks. Used as-is; avoided reimplementing `pikmin2_enemy`.
+- **#3 general — test authoring:** wrote the 5 new tests + `make_snow_source` + `SNOW_CLIPS`; 4 failed initially only because the Snow adapter and the strengthened dwarf-orange validate did not exist yet, and `test_interrupted_cache_staging_fails_safe` passed immediately (marker written last already). Used as-is (one of #3's assertions — Snow receipt `is truthy` — required me to make `_adapt_snow` return a receipt instead of `None`, which is the correct adapter contract anyway).
+
+Estimate: the two explores saved ~25 min of Snow-layout/validation reading; the test-first split made the adapter + validate strengthening gaps explicit before I touched production code. Cost: one reconciliation (Snow receipt must be non-`None`).

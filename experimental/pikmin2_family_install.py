@@ -12,10 +12,10 @@ before they can be consumed here.
 
 The binding layer (:func:`resolve_family`, :func:`install_layout`) maps a seed's
 ``p2_layout`` bindings (source id / enum name) to a family installer and stages
-each identity's content into the run tree. The Dwarf Orange Bulborb
-(``BlueKochappy``, source id 44) is the first real adapter; content roots are
-identity-keyed so the launcher can install a generated session without per-family
-manual copying.
+each identity's content into the run tree. The first real adapters are Dwarf
+Orange Bulborb (``BlueKochappy``, source id 44) and Snow Bulborb
+(``YellowKochappy``, source id 45); content roots are identity-keyed so the
+launcher can install a generated session without per-family manual copying.
 """
 import argparse
 import hashlib
@@ -64,23 +64,38 @@ _OVERRIDES = {}
 # Identity-to-family mapping for the binding layer. Only identities whose family
 # already has a lane 05 installer/adapter are registered; anything else resolves
 # to a clear failure instead of silently binding to a P1 analogue.
-IDENTITY_FAMILY = {44: 'dwarf_orange', 'bluekochappy': 'dwarf_orange'}
+IDENTITY_FAMILY = {
+    44: 'dwarf_orange', 'bluekochappy': 'dwarf_orange',
+    45: 'snow', 'yellowkochappy': 'snow',
+}
 
 
 def _validate_dwarf_orange(source):
     """Pre-flight check for the Dwarf Orange identity content (source only).
 
     Mirrors the source-side requirements of ``pikmin2_dwarf_orange_install.plan``
-    so a wrong/missing source is rejected before any ``<run>/assets`` destination
-    is prepared; ``install`` re-checks the full contract and remains authoritative.
+    (identity + reference binding) so a wrong/missing source is rejected before
+    any ``<run>/assets`` destination is prepared; ``install`` re-checks the full
+    contract and remains authoritative.
     """
+    from experimental import pikmin2_dwarf_orange_install as dwarf
     source = Path(source)
-    bank = source / 'bank'
-    profile = source / 'profile'
-    if not (bank / 'dwarf-orange-bank.json').is_file():
-        raise StagingError(f'Dwarf Orange bank missing for identity content: {bank / "dwarf-orange-bank.json"}')
-    if not (profile / 'dwarf-orange-profile.json').is_file():
-        raise StagingError(f'Dwarf Orange profile missing for identity content: {profile / "dwarf-orange-profile.json"}')
+    bank_json = source / 'bank' / 'dwarf-orange-bank.json'
+    profile_json = source / 'profile' / 'dwarf-orange-profile.json'
+    if not bank_json.is_file():
+        raise StagingError(f'Dwarf Orange bank missing for identity content: {bank_json}')
+    if not profile_json.is_file():
+        raise StagingError(f'Dwarf Orange profile missing for identity content: {profile_json}')
+    try:
+        metadata = json.loads(bank_json.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError, ValueError) as error:
+        raise StagingError(f'Dwarf Orange bank unreadable for identity content: {bank_json}') from error
+    if (metadata.get('schema'), metadata.get('species'), metadata.get('source_id'),
+            metadata.get('health')) != (1, 'BlueKochappy', 44, 250):
+        raise StagingError(f'Dwarf Orange bank identity mismatch for identity content: {bank_json}')
+    reference = metadata.get('reference_sha256')
+    if not reference or reference != dwarf.sha(profile_json.read_bytes()):
+        raise StagingError(f'Dwarf Orange bank bound to a different source import: {bank_json}')
 
 
 def _adapt_dwarf_orange(source, run, actors):
@@ -94,10 +109,41 @@ def _adapt_dwarf_orange(source, run, actors):
                          [generator for generator, _species in actors])
 
 
+def _validate_snow(source):
+    """Pre-flight check for the Snow (YellowKochappy) identity content.
+
+    Snow uses ``pikmin2_enemy``'s flat bank layout (``snow.json`` + ``p2-snow.txt``
+    + ``snow_*.mod``); the identity and bank files must exist and declare Snow.
+    """
+    source = Path(source)
+    snow_json = source / 'snow.json'
+    if not snow_json.is_file():
+        raise StagingError(f'Snow import missing for identity content: {snow_json}')
+    if not (source / 'p2-snow.txt').is_file():
+        raise StagingError(f'Snow bank config missing for identity content: {source / "p2-snow.txt"}')
+    try:
+        metadata = json.loads(snow_json.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError, ValueError) as error:
+        raise StagingError(f'Snow import unreadable for identity content: {snow_json}') from error
+    if metadata.get('schema') != 1 or metadata.get('species') != 'YellowKochappy':
+        raise StagingError(f'Snow import identity mismatch for identity content: {snow_json}')
+
+
+def _adapt_snow(source, run, actors):
+    """Adapter for the Snow (YellowKochappy) installer (flat ``pikmin2_enemy`` bank)."""
+    from experimental import pikmin2_enemy as snow
+    generators = [generator for generator, _species in actors]
+    snow.install(Path(source), Path(run), generators)
+    return dict(species='YellowKochappy', source_id=45, generators=generators)
+
+
 # Bespoke-family adapters, exposed alongside the shared-contract installers.
 # Each adapter carries an optional ``validate(source)`` pre-flight hook run by
 # ``install_layout`` before any destination write.
-ADAPTERS = {'dwarf_orange': {'install': _adapt_dwarf_orange, 'validate': _validate_dwarf_orange}}
+ADAPTERS = {
+    'dwarf_orange': {'install': _adapt_dwarf_orange, 'validate': _validate_dwarf_orange},
+    'snow': {'install': _adapt_snow, 'validate': _validate_snow},
+}
 
 
 def available():
