@@ -287,6 +287,7 @@ def run_session(session_dir, seed_name, assets, imported, output, exe,
     from randomizer.seed import generate
     from randomizer.session import Session
     output = Path(output)
+    session_dir = Path(session_dir)
     output.mkdir(parents=True, exist_ok=True)
     manifest = generate(seed_name, "ap", expanded=True, all_areas=True,
                         collection_checks=True, starting_flarlic=10)
