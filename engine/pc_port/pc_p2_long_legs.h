@@ -21,6 +21,10 @@ bool pc_p2_long_legs_registered(BTeki*);
 // only while a registered Long Legs has passed its landing immunity gate
 // (Wait/Flick/Walk/Shot), false during Stay/Land or when unregistered.
 bool pc_p2_long_legs_damageable(const BTeki*);
+// Read-only fixture accessor: current FSM state name for a registered Long
+// Legs ("unregistered" otherwise), so the walk fixture can re-visit a still
+// dormant BigFoot with the staged captain instead of touching the actor.
+const char* pc_p2_long_legs_state_name(const BTeki*);
 // Source damage receiver (Houdai.cpp damageCallBack + EB_BitterImmune): true when
 // a registered Long Legs must reject this InteractAttack because it is still
 // bitter-immune (Stay or Land). False for unregistered actors so the shared
