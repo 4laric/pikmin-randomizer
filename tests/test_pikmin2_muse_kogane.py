@@ -13,7 +13,7 @@ TARGET = kogane.TARGET
 PASS_MARKER = kogane.PASS_MARKER
 
 
-def _throw_log(completion=True, flips=(1, 2, 3), drops=None, forced=False):
+def _throw_log(completion=True, flips=(1, 2, 3), drops=None, forced=False, throw_rows=(1, 2, 3)):
     rows = ['P2_KOGANE_BIRTH id=%d type=3 x=0.000 y=30.000 z=0.000' % i
             for i in (219001, 219002, 219003, 219004)]
     if not forced:
@@ -23,8 +23,7 @@ def _throw_log(completion=True, flips=(1, 2, 3), drops=None, forced=False):
     if forced:
         rows.append('P2_KOGANE_NATURAL_COMMAND attackers=5')
     else:
-        rows += ['P2_KOGANE_THROW n=%d generator=219001 dist=150.0' % n
-                 for n in (1, 2, 3)]
+        rows += ['P2_KOGANE_THROW n=%d generator=219001 dist=150.0' % n for n in throw_rows]
     table = drops if drops is not None else {1: (1, 1, 0), 2: (0, 0, 2), 3: (0, 0, 3)}
     for f in flips:
         rows.append('P2_KOGANE_NATURAL_ATTACK generator=219001 source_id=9 flip=%d' % f)
@@ -87,8 +86,23 @@ def test_validate_rejects_forced_ai_log_with_identical_flips():
     evidence = kogane.validate_natural_throw(_throw_log(forced=True), 0, _tracked_fixture())
     assert not evidence['passed']
     assert not evidence['checks']['staged_once']
-    assert not evidence['checks']['throws_sequential']
+    assert not evidence['checks']['throw_stimulus']
     assert not evidence['checks']['no_forced_markers']
+
+
+def test_validate_accepts_latched_two_throw_chain():
+    # Observed natural shape: 2 genuine throws, 3 recover-gated flips from the
+    # engaged Pikmin's own attack loop, then escape. Every flip follows the
+    # first throw.
+    evidence = kogane.validate_natural_throw(_throw_log(throw_rows=(1, 2)), 0, _tracked_fixture())
+    assert evidence['passed'], evidence['checks']
+    assert evidence['throws'] == [1, 2]
+
+
+def test_validate_rejects_flips_before_any_throw():
+    evidence = kogane.validate_natural_throw(_throw_log(throw_rows=()), 0, _tracked_fixture())
+    assert not evidence['passed']
+    assert not evidence['checks']['throw_stimulus']
 
 
 def test_validate_rejects_incomplete_flip_chain():

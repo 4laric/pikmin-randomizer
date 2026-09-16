@@ -121,13 +121,22 @@ def validate_natural_throw(text, code, fixture_text=None):
     escapes = sorted(int(g) for g in re.findall(r'P2_KOGANE_ESCAPE generator=(\d+)', text))
     target_flips = [f for g, f in flips if g == TARGET]
     target_naturals = [f for g, f in naturals if g == TARGET]
+    # Throw stimulus is temporal, not one-per-flip: a latched Pikmin's own
+    # attack loop legitimately lands several recover-gated flips per throw
+    # (observed: 2 throws -> 3 flips -> escape). Every TARGET flip must come
+    # strictly after the first genuine throw-release event.
+    throw_pos = [m.start() for m in re.finditer(r'P2_KOGANE_THROW n=\d+ generator=219001', text)]
+    flip_pos = [m.start() for m in re.finditer(
+        r'P2_KOGANE_FLIP generator=219001 source_id=9 flip=\d', text)]
     checks = dict(
         fixture_audit=audit['passed'],
         completion=code == 0 and PASS_MARKER in text,
         births=births == list(IDS),
         staged_once=len(staged) == 1,
         starting_squad=[int(s) for s in squad] == [20],
-        throws_sequential=throws == list(range(1, len(throws) + 1)) and len(throws) >= 3,
+        throw_stimulus=(throws == list(range(1, len(throws) + 1)) and len(throws) >= 1
+                        and len(flip_pos) == 3
+                        and all(f > throw_pos[0] for f in flip_pos)),
         natural_attacks=target_naturals == [1, 2, 3],
         flips=target_flips == [1, 2, 3],
         drop_tables=all(drops.get((TARGET, f)) == EXPECTED_DROPS_9[f] for f in (1, 2, 3)),
