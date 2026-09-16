@@ -191,3 +191,11 @@ py -3.12 -m unittest tests.test_pikmin2_workflow tests.test_pikmin2_controller t
 Tests inject duplicate events, stale generations/decisions, missing terminal outcomes,
 rate limits, uncertain spawn, crashes around registration, live children, immutable
 publications and actual Git ancestry. They do not certify any native gameplay gate.
+
+## Headless worker recovery (#568)
+
+Enable `terminal_idle_recovery: {"enabled": true, "quiet_seconds": 60}` in the local controller configuration to release managed CLI children that remain alive after their exact session reports `exiting loop`. Recovery requires a quiet completed boundary, verified runner/child identities and ancestry, no active or unknown lease, and no tool descendants. It ignores only the known periodic cleanup message. Windows process creation times distinguish reused parent PIDs. The runner writes its real exit result; cleanup never creates an acceptance or terminal lane outcome.
+
+Same-session recovery preserves the pool assignment and records its launch history after verifying the previous execution exited. `Registry.reconcile_pool_recovery(action_id)` can apply that same fenced link to an already-bound recovery during deployment. Completion uses valid recorded integration/review evidence before fallback evidence; changed hashes remain invalid.
+
+Unattended worker configurations should deny unknown external directories immediately, explicitly allow their authorized private workspace and necessary application temporary directory, and retain edit exclusions for shared/original checkouts. A permission-wait recovery requires independent idle-process verification; terminal-loop recovery does not treat a permission request as a completed loop.
