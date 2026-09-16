@@ -1,34 +1,44 @@
-"""Muse packaging lane (#493): candidate-only generated-session content staging.
+"""Muse packaging lane: candidate-only generated-session content staging.
 
-Covers the four near-ADMIT candidate identities whose only missing gate is
-``identity_spawn``: Fuefuki (41), Kurage (57), BombSarai (58) and MiniHoudai
-(78). Parent family/dependency issue #442; wave #491.
+Covers the near-ADMIT candidate identities whose only missing gate is
+identity_spawn: Fuefuki (41), Kurage (57), BombSarai (58), MiniHoudai
+(78), plus Waterwraith BlackMan (99) with its owned Tyre helper (98).
+Parent family/dependency issue #442; wave #491; waterwraith provider
+scope #576 (consumer #572).
 
 Design (honest local candidate staging only):
 
-- Candidate-only: every binding in the layout must be one of the four
+- Candidate-only: every binding in the layout must be one of the
   candidate identities. Anything else fails closed; this command never stages
   ordinary-pool content and never touches admission allowlists/flags.
 - Family installers are used as-is, never forked:
-  - Source 58 delegates to :func:`experimental.pikmin2_family_install.install_layout`
-    (the existing shared-contract ``pikmin2_bombsarai_install`` module, now
-    mapped in ``IDENTITY_FAMILY``). Its manifest/pose hash checks stay
+  - Source 58 delegates to :func:experimental.pikmin2_family_install.install_layout
+    (the existing shared-contract pikmin2_bombsarai_install module, now
+    mapped in IDENTITY_FAMILY). Its manifest/pose hash checks stay
     authoritative inside that installer.
-  - Sources 41/57/78 have no shared-signature family installer (Fuefuki is
-    bespoke ``install(run_dir)``-only; the flying installer covers 29/55/77;
-    the cannon installer covers 97 FminiHoudai, not 78 MiniHoudai), so they
+  - Sources 41/57/78/99 have no shared-signature family installer (Fuefuki is
+    bespoke install(run_dir)-only; the flying installer covers 29/55/77;
+    the cannon installer covers 97 FminiHoudai, not 78 MiniHoudai; the
+    batch-2 waterwraith installer is bespoke install(imported, run,
+    actors)-only and its family runner stays with consumer #572), so they
     stage as hash-verified candidate sidecars: a validated
-    ``<content_root>/<Enum>/identity.json`` copy plus a generator actors file.
+    <content_root>/<Enum>/identity.json copy plus a generator actors file.
     No asset conversion, no resolve markers, no admission claims.
-- Placement contract (shared with muse-placement l52/#492): the seed's
-  ``p2_layout`` bindings ``{"target", "source_id", "enum_name"}`` plus
-  ``actor_bindings`` mapping every ``target`` token to its int native
+  - Source 98 (Tyre) is an owned boss helper, never an independent seeded
+    identity: a 98 binding stages only alongside a 99 binding on the same
+    target with the same generator, and its sidecar records owner linkage.
+- Placement contract (shared with muse-placement l52): the seed's
+  p2_layout bindings {target, source_id, enum_name} plus
+  actor_bindings mapping every target token to its int native
   generator id. Source id and enum name must agree; a missing/non-int
-  generator mapping fails closed.
-- Cache replay mirrors the family binding: ``cache_dir/p2muse-<plan digest>``
+  generator mapping fails closed. No generated slot UID is prescribed
+  here: slot acceptance for 99 awaits the placement99 provider contract,
+  recorded on the receipt as pending; duplicate generator ids across
+  independent actors are refused (helpers share their owner's actor).
+- Cache replay mirrors the family binding: cache_dir/p2muse-<plan digest>
   materializes sidecars without re-reading sources; a matching run receipt is
-  a replay (``cached=True``). The 58 subset reuses the family ``p2bind-``
-  cache through the delegated ``install_layout`` call.
+  a replay (cached=True). The 58 subset reuses the family p2bind-
+  cache through the delegated install_layout call.
 
 This module never grants ADMIT and never writes admission markers.
 """
@@ -42,14 +52,26 @@ from pathlib import Path
 
 from experimental.pikmin2_staging import StagingError
 
-CANDIDATES = {41: 'Fuefuki', 57: 'Kurage', 58: 'BombSarai', 78: 'MiniHoudai'}
+CANDIDATES = {41: 'Fuefuki', 57: 'Kurage', 58: 'BombSarai', 78: 'MiniHoudai',
+              99: 'BlackMan'}
 CANDIDATE_BY_NAME = {name.lower(): source_id for source_id, name in CANDIDATES.items()}
 FULL_INSTALL_IDS = frozenset({58})
-SIDECAR_IDS = frozenset({41, 57, 78})
+SIDECAR_IDS = frozenset({41, 57, 78, 99})
+
+# Owned boss helper (Waterwraith rollers): never an independent seeded
+# identity. Staged only as owner linkage under a same-target BlackMan99
+# binding (provider scope #576; family runner stays with consumer #572).
+HELPER_SOURCE = 98
+HELPER_ENUM = 'Tyre'
+HELPER_OWNER = {98: 99}
 
 RECEIPT = 'p2-muse-packaging-receipt.json'
 CACHE_KEY_PREFIX = 'p2muse-'
 CACHE_RECEIPT = 'cache-receipt.json'
+# Slot acceptance for 99 is not prescribed by this provider: no accepted
+# generated-slot UID exists until the placement99 provider publishes its
+# contract. Recorded on receipts that stage 99/98, never a bind claim.
+SLOT_ACCEPTANCE_PENDING = 'pending-placement99-provider'
 
 
 def _actors_header(enum_name):
@@ -65,18 +87,12 @@ def identity_filename(enum_name):
 
 
 def actors_text(enum_name, pairs):
-    """Canonical actors sidecar: ``<header> <count>`` then one gen per line."""
     rows = [f'{_actors_header(enum_name)} {len(pairs)}']
     rows += [f'{generator} {species}' for generator, species in pairs]
     return ('\n'.join(rows) + '\n').encode('ascii')
 
 
 def _check_candidate_agreement(target, source_id, enum_name):
-    """Require the binding to name one candidate identity, coherently.
-
-    Both the source id and the enum name must resolve to the same candidate;
-    a mismatch fails closed instead of staging under either half.
-    """
     if isinstance(enum_name, str):
         enum_key = enum_name.strip().lower()
     else:
@@ -91,8 +107,17 @@ def _check_candidate_agreement(target, source_id, enum_name):
     return by_name
 
 
+def _check_waterwraith_helper(target, source_id, enum_name):
+    if source_id != HELPER_SOURCE:
+        return None
+    if not isinstance(enum_name, str) or enum_name.strip().lower() != HELPER_ENUM.lower():
+        raise StagingError(
+            f'binding {target!r}: source id {source_id!r} disagrees with '
+            f'enum {enum_name!r} (expected {HELPER_ENUM!r})')
+    return HELPER_OWNER[HELPER_SOURCE]
+
+
 def _read_identity_source(source_dir, source_id, enum_name):
-    """Load and validate ``identity.json`` for a sidecar identity."""
     path = Path(source_dir) / 'identity.json'
     if not path.is_file():
         raise StagingError(f'missing identity source for {enum_name!r}: {path}')
@@ -105,6 +130,15 @@ def _read_identity_source(source_dir, source_id, enum_name):
             or metadata.get('enum_name') != enum_name):
         raise StagingError(f'identity source mismatch for {enum_name!r}: {path}')
     return path
+
+
+def _actor_generator(actor_bindings, target):
+    try:
+        return int(actor_bindings[target])
+    except KeyError:
+        raise StagingError(f'no actor generator binding for target {target!r}') from None
+    except (TypeError, ValueError):
+        raise StagingError(f'actor generator for target {target!r} must be an int') from None
 
 
 def _plan_digest(bindings, actor_bindings):
@@ -159,15 +193,6 @@ def _replay_sidecars(run, cache_root, marker):
 
 def stage_candidates(run, layout, content_root, actor_bindings=None,
                      retail_assets=None, cache_dir=None):
-    """Stage a candidate-only layout into ``run`` and return the aggregate receipt.
-
-    ``layout`` is the seed's ``p2_layout`` mapping; every binding must name one
-    of the four candidate identities. ``content_root`` holds per-identity
-    sources (``<content_root>/<EnumName>``). For source 58 that is the
-    bombsarai import (``bombsarai.json``); for 41/57/78 it holds
-    ``identity.json``. ``actor_bindings`` maps every binding ``target`` to its
-    int native generator id (placement contract shared with l52).
-    """
     run = Path(run)
     content_root = Path(content_root)
     bindings = (layout or {}).get('bindings')
@@ -178,8 +203,6 @@ def stage_candidates(run, layout, content_root, actor_bindings=None,
 
     cache_root = Path(cache_dir) / (CACHE_KEY_PREFIX + plan_digest) if cache_dir is not None else None
     if cache_root is not None and (cache_root / CACHE_RECEIPT).is_file():
-        # Cache replay must not re-read sources; delegate the 58 subset to the
-        # family cache path as well (it replays from its own p2bind- marker).
         full = [b for b in bindings if b.get('source_id') == 58]
         family_receipt = None
         if full:
@@ -208,21 +231,52 @@ def stage_candidates(run, layout, content_root, actor_bindings=None,
             return dict(existing, cached=True)
         raise StagingError('conflicting or partial muse packaging install detected; refusing to restage')
 
+    # Owned-helper pre-pass (Tyre98): collect same-target BlackMan99 owners.
+    # Helpers never stage independently; each needs its owner in this layout
+    # with the same generator (shared actor, not a second spawn).
+    owner_generators = {}
+    for binding in bindings:
+        if binding.get('source_id') != 99:
+            continue
+        owner_target = binding.get('target')
+        _check_candidate_agreement(owner_target, 99, binding.get('enum_name'))
+        owner_generators[owner_target] = _actor_generator(actor_bindings, owner_target)
+
     # Validate every binding before writing anything.
     full = []
     sidecar_plans = []
     grouped = {}
+    helper_targets = []
+    helper_generators = []
+    helper_info = None
     for binding in bindings:
         target = binding.get('target')
         source_id = binding.get('source_id')
         enum_name = binding.get('enum_name')
+        if _check_waterwraith_helper(target, source_id, enum_name) is not None:
+            generator = _actor_generator(actor_bindings, target)
+            owner = owner_generators.get(target)
+            if owner is None:
+                raise StagingError(
+                    f'Tyre helper for target {target!r} has no same-target '
+                    f'BlackMan99 owner; helpers never stage independently')
+            if target in helper_targets:
+                raise StagingError(f'duplicate Tyre helper binding for target {target!r}')
+            helper_source = content_root / HELPER_ENUM
+            if not helper_source.is_dir():
+                raise StagingError(f'missing content source for {HELPER_ENUM!r}: {helper_source}')
+            identity_path = _read_identity_source(helper_source, HELPER_SOURCE, HELPER_ENUM)
+            with identity_path.open('rb') as stream:
+                helper_sha = hashlib.file_digest(stream, 'sha256').hexdigest()
+            if helper_info is None:
+                helper_info = {'source': helper_source, 'source_sha': helper_sha}
+            elif helper_info['source_sha'] != helper_sha:
+                raise StagingError('Tyre helper identity source changed while staging')
+            helper_targets.append(target)
+            helper_generators.append(generator)
+            continue
         resolved = _check_candidate_agreement(target, source_id, enum_name)
-        try:
-            generator = int(actor_bindings[target])
-        except KeyError:
-            raise StagingError(f'no actor generator binding for target {target!r}') from None
-        except (TypeError, ValueError):
-            raise StagingError(f'actor generator for target {target!r} must be an int') from None
+        generator = _actor_generator(actor_bindings, target)
         if resolved in FULL_INSTALL_IDS:
             full.append(binding)
         else:
@@ -236,8 +290,9 @@ def stage_candidates(run, layout, content_root, actor_bindings=None,
                                           'source': source})
             grouped[resolved]['generators'].append((generator, CANDIDATES[resolved]))
             sidecar_plans.append((target, resolved))
-    # Duplicate generator ids across the candidate set are refused: the native
-    # generator seam (lane 03/04 ENEMY_P2) addresses one actor per generator.
+    # Duplicate generator ids across independent actors are refused: the native
+    # generator seam addresses one actor per generator. Helper rows share
+    # their owner's actor by construction and are exempt here.
     seen = {}
     for target, resolved in sidecar_plans:
         generator = int(actor_bindings[target])
@@ -262,8 +317,9 @@ def stage_candidates(run, layout, content_root, actor_bindings=None,
             run, {'bindings': full}, content_root, subset_actors,
             retail_assets, cache_dir)
 
-    # Stage sidecars (41/57/78) deterministically: identity copy + actors file
-    # per identity. Writes happen only after all validation above succeeded.
+    # Stage sidecars deterministically: identity copy + actors file per
+    # identity, then the owned-helper sidecar. Writes happen only after all
+    # validation above succeeded.
     sidecars = {}
     written = []
     try:
@@ -291,6 +347,32 @@ def stage_candidates(run, layout, content_root, actor_bindings=None,
                 'identity_file': identity_rel,
                 'identity_sha256': staged_sha,
             }
+        helpers = {}
+        if helper_targets:
+            pairs = sorted((generator, HELPER_ENUM)
+                           for generator in helper_generators)
+            actors_payload = actors_text(HELPER_ENUM, pairs)
+            actors_rel = actors_filename(HELPER_ENUM)
+            (run / actors_rel).write_bytes(actors_payload)
+            written.append(actors_rel)
+            identity_src = helper_info['source'] / 'identity.json'
+            identity_rel = identity_filename(HELPER_ENUM)
+            (run / identity_rel).write_bytes(identity_src.read_bytes())
+            written.append(identity_rel)
+            with (run / identity_rel).open('rb') as stream:
+                staged_sha = hashlib.file_digest(stream, 'sha256').hexdigest()
+            if staged_sha != helper_info['source_sha']:
+                raise StagingError(f'identity sidecar changed while staging: {identity_rel}')
+            helpers[HELPER_ENUM] = {
+                'source_id': HELPER_SOURCE,
+                'owner_source_id': 99,
+                'owner_targets': sorted(helper_targets),
+                'generators': [g for g, _ in pairs],
+                'actors_file': actors_rel,
+                'actors_sha256': hashlib.sha256(actors_payload).hexdigest(),
+                'identity_file': identity_rel,
+                'identity_sha256': staged_sha,
+            }
     except BaseException:
         for rel in written:
             (run / rel).unlink(missing_ok=True)
@@ -303,6 +385,9 @@ def stage_candidates(run, layout, content_root, actor_bindings=None,
                      sidecars=sidecars,
                      family_receipt=family_receipt, files=files,
                      admission='none')
+    if helpers:
+        aggregate['helpers'] = helpers
+        aggregate['slot_acceptance'] = SLOT_ACCEPTANCE_PENDING
     receipt_path.write_text(json.dumps(aggregate, indent=2, sort_keys=True) + '\n', encoding='utf-8')
     if cache_root is not None:
         tree = cache_root / 'tree'
@@ -320,7 +405,6 @@ def stage_candidates(run, layout, content_root, actor_bindings=None,
 
 
 def verify_staging(run, layout=None, actor_bindings=None):
-    """Reload a staged run and prove every sidecar matches its receipt."""
     run = Path(run)
     receipt_path = run / RECEIPT
     receipt = json.loads(receipt_path.read_text(encoding='utf-8'))
@@ -344,7 +428,27 @@ def verify_staging(run, layout=None, actor_bindings=None):
             raise StagingError('staged plan digest does not match the given layout/bindings')
         for binding in bindings:
             target = binding.get('target')
-            resolved = _check_candidate_agreement(target, binding.get('source_id'),
+            source_id = binding.get('source_id')
+            if _check_waterwraith_helper(target, source_id,
+                                         binding.get('enum_name')) is not None:
+                owners = [b for b in bindings
+                          if b.get('target') == target and b.get('source_id') == 99]
+                if not owners:
+                    raise StagingError(
+                        f'Tyre helper for target {target!r} has no same-target '
+                        f'BlackMan99 owner')
+                generator = int(actor_bindings[target])
+                tokens = (run / actors_filename(HELPER_ENUM)).read_text(
+                    encoding='ascii').split()
+                header = _actors_header(HELPER_ENUM)
+                if len(tokens) < 2 or tokens[0] != header or int(tokens[1]) != (len(tokens) - 2) // 2:
+                    raise StagingError(f'actors sidecar malformed: {actors_filename(HELPER_ENUM)}')
+                ids = [int(tokens[i]) for i in range(2, len(tokens), 2)]
+                if generator not in ids:
+                    raise StagingError(
+                        f'helper generator for target {target!r} missing from staged sidecar')
+                continue
+            resolved = _check_candidate_agreement(target, source_id,
                                                   binding.get('enum_name'))
             if resolved in FULL_INSTALL_IDS:
                 continue
