@@ -208,6 +208,17 @@ class ControllerTests(unittest.TestCase):
         self.controller.apply_decisions(packet,[decision])
         self.assertEqual(len(self.reg.control_status()['decisions']),1)
 
+    def test_large_model_response_executes_bounded_batch_without_discarding_all(self):
+        notices={};decisions=[]
+        for n in range(25):
+            key=self.reg.notice('consumer','diagnosis',{'n':n})
+            notices[key]=self.reg.control_status()['notices'][key]
+            decisions.append(dict(notice=key,action='notify',reason='Finding '+str(n)))
+        packet=dict(id='batch',notices=notices,lanes={'consumer':self.reg.status()['lanes']['consumer']})
+        self.controller.apply_decisions(packet,decisions)
+        self.assertEqual(len(self.reg.control_status()['decisions']),20)
+        self.assertEqual(sum(n['status']=='pending' for n in self.reg.control_status()['notices'].values()),5)
+
     def test_changed_publication_keeps_previous_evidence_immutable(self):
         self.ready_dependency()
         self.config['publications']=[dict(producer='provider',path=str(self.log),description='contract')]

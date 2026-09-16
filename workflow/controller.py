@@ -226,8 +226,9 @@ class Controller:
                         'progress': lane['progress_detail'], 'output': entry['output']})
 
     def apply_decisions(self, packet, decisions):
-        require(isinstance(decisions, list) and len(decisions) <= 20, 'Bounded decision list required')
-        for decision in decisions:
+        require(isinstance(decisions, list) and len(decisions) <= 100, 'Bounded decision list required')
+        # Execute a bounded batch; excess events remain pending for the next packet.
+        for decision in decisions[:20]:
             require(isinstance(decision, dict), 'Decision object required')
             notice_id = decision.get('notice')
             require(notice_id in packet['notices'], 'Decision must reference an offered event')
@@ -334,7 +335,9 @@ class Controller:
                 path = local_path(self.reg.root, self.config['lanes'][key]['output']) / name
                 if path.is_file():
                     lane['available_evidence'].append(dict(path=str(path), sha256=digest(path)))
+        pending = dict(list(pending.items())[:12])
         packet = dict(notices=pending, lanes=lanes, artifacts=c['artifacts'], resources=state['metrics']['resource_waits'],
+                      previous_error=c.get('shepherd_error'),
                       policy='No ADMIT, source edits, merges or process kills. Existing integrator is sole promotion owner.')
         packet['id'] = fingerprint(packet)
         if packet['id'] == c.get('shepherd_packet'): return
@@ -348,6 +351,7 @@ class Controller:
         write(directory / 'opencode.json', model_config)
         prompt = (f"You are the one smart workflow shepherd. Read {directory / 'packet.json'} and relevant evidence read-only. "
             "Return ONLY a JSON array as your final text response; the runner saves it. Do not write files. Each item: notice (exact ID), action "
+            "Use at most one decision per notice and at most 20 decisions total. "
             "(resume|blocked|review-ready|notify|request-slice), reason. blocked/review-ready also evidence {path,sha256}; blocked needs dependencies. "
             "request-slice needs title, scope, acceptance (list), owned_files (list); use it for a bounded shared blocker needing its own assigned issue. "
             "Use existing hashes from records; do not fabricate. Resume only stopped workers, preserving completed source. "
