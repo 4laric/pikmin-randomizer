@@ -192,8 +192,6 @@ Tests inject duplicate events, stale generations/decisions, missing terminal out
 rate limits, uncertain spawn, crashes around registration, live children, immutable
 publications and actual Git ancestry. They do not certify any native gameplay gate.
 
-## Headless worker recovery (#568)
-
 ## Model throttling and fallback (#579)
 
 Configure the authorized ordered `models` chain, for example Muse followed by
@@ -207,7 +205,7 @@ does not guarantee a separate upstream quota; if both models throttle, both wait
 the delay to the cap; a 30-minute quiet period resets escalation. Attempt IDs
 make penalties replay-safe. Retries preserve sessions, instructions and dispatch
 priority, prefer another authorized model, and retain cooled models for later.
-Exhausted pre-tool retries enter reconciliation with evidence; post-tool recovery
+Exhausted exited-worker retries enter reconciliation with evidence; live post-tool recovery
 retains its existing stricter per-head budget and completed-tool safety checks.
 
 `model_launch_spacing` defaults to 15 seconds between new launches of each model,
@@ -216,7 +214,7 @@ This paces launches, not individual model requests inside an active worker.
 Deployment must update pending intents as well as configuration; existing running
 workers keep their current model until a safely fenced continuation.
 
-## Headless worker recovery details
+## Headless worker recovery (#568)
 
 Enable `terminal_idle_recovery: {"enabled": true, "quiet_seconds": 60}` in the local controller configuration to release managed CLI children that remain alive after their exact session reports `exiting loop`. Recovery requires a quiet completed boundary, verified runner/child identities and ancestry, no active or unknown lease, and no tool descendants. It ignores only the known periodic cleanup message. Windows process creation times distinguish reused parent PIDs. The runner writes its real exit result; cleanup never creates an acceptance or terminal lane outcome.
 

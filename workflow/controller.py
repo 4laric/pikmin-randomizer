@@ -157,7 +157,7 @@ class Controller:
             lane = self.reg.status()['lanes'][item['lane']]
             if lane['state'] in ('done', 'blocked', 'review_ready', 'handoff_ready', 'integrating'):
                 self.mark_exited(item['id']); continue
-            if result['kind'] == 'rate_limit':
+            if result['kind'] == 'rate_limit' or result.get('rate_limit'):
                 policy = self.config.get('model_rate_limit', {})
                 self.reg.model_rate_limit(item['model'], item['id'],
                     initial=policy.get('initial_seconds', 30), maximum=policy.get('max_seconds', 300),

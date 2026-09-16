@@ -177,6 +177,16 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(len(self.reg.control_status()['launches']), 1)
         self.assertEqual(self.reg.status()['lanes']['consumer']['state'], 'reconciling')
 
+    def test_rate_limit_after_tools_exited_keeps_same_session(self):
+        self.config['models'] = ['go/muse', 'go/deepseek']
+        item = self.plan(); self.controller.dispatch(item); self.reg.probe = lambda _: 'dead'
+        write(self.controller.launch_directory(item['id'])/'result.json',
+              {'kind':'exit', 'rate_limit':True, 'tools_started':True, 'exit_code':1})
+        self.controller.complete_runs()
+        retry = list(self.reg.control_status()['launches'].values())[-1]
+        self.assertEqual(retry['session'], item['session'])
+        self.assertEqual(self.reg.select_model(retry['models']), 'go/deepseek')
+
     def test_launch_pacing_survives_controller_restart(self):
         item = self.plan(); self.controller.dispatch(item)
         restarted = Controller(self.reg, self.config, spawn=lambda _: self.fail('Duplicate spawn'), memory=lambda:60)
