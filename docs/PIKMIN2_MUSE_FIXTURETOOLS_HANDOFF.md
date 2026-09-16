@@ -42,7 +42,10 @@ Root branch `codex/muse-l67-fixturetools` (base `72a2c450d7b9040545de4a440c2c32e
 - `32106f16a16f9b23d808f3a87300512268e97dbb` lane67: fixture-build preflight adapter + focused tests (#507)
 - `13a88cdc41602534299229d2ae4213c0255ee5b9` lane67: fixturetools handoff doc (#507)
 - `1633aa1523ba79895f2c94b67c915313b60d37e6` lane67: record native commit hash in handoff (#507)
-- (this commit) lane67: finalize ordered handoff commit list (#507)
+- `9f2c3beb19d8c06bd330353d8cba7c25980f48e8` lane67: list ordered doc commits in handoff (#507)
+- `e61003a739a7e00ef3e9ca1c8e2a5ac5071f010b` lane67: finalize ordered commit list in handoff (#507)
+- `c074b769c3199bdf022282b09f34c1a4641b2e19` lane67: finalize ordered handoff commit list (#507)
+- (this commit) lane67: complete ordered handoff commit list (#507)
 
 Native branch `codex/muse-l67-fixturetools-native` (base `7b9ecaa668fd55332073446cdbdaf6424b209ea7`):
 
