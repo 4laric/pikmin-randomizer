@@ -11,8 +11,8 @@ import uuid
 from .handoff import GATES, digest, local_path, nonempty, require, source_record, validate_handoff
 from .processes import identify, probe
 
-STATES = {'ready', 'running', 'waiting_resource', 'blocked', 'handoff_ready', 'integrating', 'done'}
-ACTIVE = {'ready', 'running', 'waiting_resource', 'blocked'}
+STATES = {'ready', 'running', 'waiting_resource', 'blocked', 'handoff_ready', 'integrating', 'done', 'review_ready', 'reconciling'}
+ACTIVE = {'ready', 'running', 'waiting_resource', 'blocked', 'reconciling'}
 TRANSITIONS = {
     'ready': {'running', 'blocked'},
     'running': {'waiting_resource', 'blocked'},
@@ -20,6 +20,8 @@ TRANSITIONS = {
     'blocked': {'ready', 'running'},
     'handoff_ready': {'running', 'integrating'},
     'integrating': {'running', 'handoff_ready'},
+    'review_ready': {'running', 'integrating', 'blocked'},
+    'reconciling': {'running', 'blocked', 'ready'},
     'done': set(),
 }
 DEFAULTS = dict(max_heavy_builds=2, heartbeat_seconds=300, progress_seconds=1800,
@@ -30,7 +32,10 @@ def new_id():
     return uuid.uuid4().hex
 
 
-class Registry:
+from .control import ControlMixin
+
+
+class Registry(ControlMixin):
     def __init__(self, path, root, *, clock=time.time, process_probe=probe):
         self.path, self.root = Path(path).resolve(), Path(root).resolve()
         require(self.path.is_relative_to(self.root / 'output'), 'Registry must be under workspace output/')
@@ -90,8 +95,8 @@ class Registry:
                   if l['lane'] != lane['lane'] and l['worker_id'] == lane['worker_id']]
         if lane['state'] in ACTIVE:
             require(not any(l['state'] in ACTIVE for l in others), 'Worker already has one active slice')
-        if lane['state'] in ('handoff_ready', 'integrating'):
-            require(not any(l['state'] in ('handoff_ready', 'integrating') for l in others),
+        if lane['state'] in ('handoff_ready', 'review_ready', 'integrating'):
+            require(not any(l['state'] in ('handoff_ready', 'review_ready', 'integrating') for l in others),
                     'Worker already has one ready/integrating handoff')
 
     def register(self, data):
@@ -303,7 +308,7 @@ class Registry:
         with self.transaction() as state:
             results = []
             for key, lane in state['lanes'].items():
-                if lane['state'] in ('done', 'handoff_ready', 'integrating'):
+                if lane['state'] in ('done', 'handoff_ready', 'review_ready', 'reconciling', 'integrating'):
                     continue
                 kind, reason = None, None
                 settings = state['settings']
@@ -393,6 +398,7 @@ class Registry:
                     'Only running/ready/integrating slices can submit a handoff')
             data = json.loads(path.read_text(encoding='utf-8'))
             result = validate_handoff(self.root, data, lane)
+            require(data.get('kind') != 'review', 'Use finish review-ready for reviews; reviews are not implementation handoffs')
             require(result['slice_passed'], 'Assigned slice criteria must pass before ready handoff')
             lane.update(state='handoff_ready', handoff_at=lane['handoff_at'] or self.clock(), progress_at=self.clock(),
                         revision=revision + 1, handoff=dict(path=str(path), sha256=digest(path), result=result))
@@ -433,7 +439,7 @@ class Registry:
     def status(self):
         with self.transaction() as state:
             now = self.clock()
-            handoffs = [l for l in state['lanes'].values() if l['state'] in ('handoff_ready', 'integrating')]
+            handoffs = [l for l in state['lanes'].values() if l['state'] in ('handoff_ready', 'review_ready', 'integrating')]
             backlog = (len(handoffs) >= state['settings']['handoff_limit'] or any(
                 now - l['handoff_at'] >= state['settings']['handoff_age_seconds'] for l in handoffs))
             waits = [e['wait_seconds'] for e in state['events'] if 'wait_seconds' in e]
