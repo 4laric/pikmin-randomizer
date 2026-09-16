@@ -15,6 +15,7 @@
 // No other lane's module is modified; every hook is a no-op for unregistered
 // actors.
 #include "pc_p2_sokkuri.h"
+#include "pc_randomizer.h"
 #include "teki.h"
 #include "Interactions.h"
 #include "Piki.h"
@@ -270,6 +271,10 @@ void pc_p2_sokkuri_reset() {
 }
 
 void pc_p2_sokkuri_forget(BTeki* actor) {
+    // Lane 06 single-use binding: drop the ordinary-delivery source so a
+    // recycled actor address can never inherit source 79. The central
+    // pc_p2_forget_teki seam also clears it; this is idempotent.
+    pc_randomizer_p2_forget_source(static_cast<PelletView*>(actor));
     actors.erase(static_cast<PelletView*>(actor));
 }
 
@@ -404,6 +409,15 @@ void pc_p2_sokkuri_setup() {
         s.targetPosition = s.home;
         actor->mHealth = LIFE;
         enter(s, SOKKURI_STAY, "appear1");
+        // Ordinary-delivery bridge (lane 06 contract, #495): bind source 79 to
+        // this live actor so GoalItem::suckMe can grant onion:p2:79 exactly once
+        // through pc_randomizer_p2_corpse_delivered. Rejected (unbindable id)
+        // is logged by the callee, never fatal. Single-use: consumed on
+        // delivery and cleared on forget/recycle.
+        pc_randomizer_p2_bind_source(static_cast<PelletView*>(actor), 79,
+                                     actor->mGenerator->_70);
+        std::printf("P2_SOKKURI_DELIVERY_BIND generator=%u source_id=79\n",
+                    actor->mGenerator->_70);
         std::printf("P2_SOKKURI_BIND generator=%u source_id=79 visual_only=0\n",
                     actor->mGenerator->_70);
         const Vector3f pos = actor->getPosition();
