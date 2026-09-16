@@ -131,12 +131,15 @@ def pool_tick(controller):
             reg.complete_assignment(assignment['id'], evidence)
         except (Rejected, OSError, ValueError, TypeError) as exc:
             reg.notice(assignment['lane'], 'pool_completion_blocked', {'error': str(exc)})
+    from .autofill import autofill_tick, autofill_status
+    autofill_tick(controller)
+    pool = reg.scheduling_status()
     if controller.capacity():
         from .scheduling import job_priority
         def priority(worker):
             return min((job_priority(j) for j in pool['jobs'].values()
                         if j['status'] in ('queued', 'assigned') and j['worker_id'] == worker['worker_id']),
-                       default=(99, 99, 0, worker['worker_id']))
+                       default=(99, 99, 99, 0, worker['worker_id']))
         for worker in sorted(pool['workers'].values(), key=priority):
             try:
                 assignment = reg.assign_job(worker['worker_id'], controller.memory())
@@ -175,6 +178,7 @@ def pool_tick(controller):
         except (Rejected, OSError, ValueError) as exc:
             write(controller.base / 'cost-error.json', {'at': reg.clock(), 'error': str(exc)})
     status = reg.throughput_status(ram_percent=controller.memory())
+    status['autofill'] = autofill_status(reg)
     write(controller.base / 'throughput.json', status)
     from .dashboard import render_dashboard
     target = controller.base / 'throughput.html'

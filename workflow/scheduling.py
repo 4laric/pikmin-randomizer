@@ -14,11 +14,13 @@ ROLES = {'implementation', 'review', 'repair', 'integration', 'qa'}
 PRIORITY = {'repair': 0, 'review': 1, 'integration': 2, 'qa': 3, 'implementation': 4}
 OPEN = {'assigned', 'dispatched'}
 WORK_CLASSES = {'existing': 0, 'expansion': 1}
+FOCUS = {'enemy_acceptance': 0, 'existing_content': 1, 'expansion': 2}
 
 
 def job_priority(job):
     """Finish actionable existing slices before new content, then use role/FIFO."""
-    return (WORK_CLASSES[job.get('work_class', 'existing')], PRIORITY[job['role']],
+    return (WORK_CLASSES[job.get('work_class', 'existing')],
+            FOCUS[job.get('focus', 'existing_content')], PRIORITY[job['role']],
             job.get('queued_at', 0), job['id'])
 
 
@@ -86,11 +88,14 @@ class SchedulingMixin:
         record.setdefault('capabilities', [])
         record.setdefault('heavy', False)
         record.setdefault('work_class', 'existing')
+        if 'focus' in record:
+            require(isinstance(record['focus'], str) and record['focus'] in FOCUS, 'Unknown job focus')
+            require((record['focus'] == 'expansion') == (record['work_class'] == 'expansion'), 'Focus/work class mismatch')
         require(isinstance(record['work_class'], str) and record['work_class'] in WORK_CLASSES, 'work_class must be existing or expansion')
         require(type(record['heavy']) is bool, 'heavy must be boolean')
         require(isinstance(record['capabilities'], list) and all(nonempty(c) for c in record['capabilities']),
                 'Capabilities must be strings')
-        require(set(record) <= {'id', 'lane', 'issue', 'workstream', 'role', 'instruction', 'capabilities', 'heavy', 'work_class'},
+        require(set(record) <= {'id', 'lane', 'issue', 'workstream', 'role', 'instruction', 'capabilities', 'heavy', 'work_class', 'focus'},
                 'Unknown job fields')
         with self.transaction() as state:
             data = self.scheduling(state)
@@ -268,7 +273,8 @@ class SchedulingMixin:
                           reason='pool:' + item['id'], instruction=item['instruction'], models=models,
                           model_index=0, version=None, session=lane['task_id'].removeprefix('opencode:'),
                           status='intent', process=None, created_at=self.clock(), attempts=0,
-                          work_class=data['jobs'][item['job']].get('work_class', 'existing'))
+                          work_class=data['jobs'][item['job']].get('work_class', 'existing'),
+                          focus=data['jobs'][item['job']].get('focus', 'existing_content'))
             c['launches'][identity] = launch
             item.update(launch_id=identity, status='dispatched')
             self.event(state, 'launch_intent', lane['lane'], action=identity)

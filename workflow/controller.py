@@ -85,6 +85,11 @@ class Controller:
     def available(self, key):
         """Adopt only after a legacy supervisor and worker have both stopped."""
         entry = self.config['lanes'][key]
+        if entry.get('autofill_proof'):
+            from .autofill import launch_files_unchanged
+            if not launch_files_unchanged(self.reg, entry):
+                self.reg.notice(key, 'autofill_launch_files_changed', {'reason': 'Pinned launch bytes changed or missing'})
+                return False
         owners = entry.get('legacy_supervisors', [])
         return all(self.reg.probe(owner) == 'dead' for owner in owners)
 
@@ -403,7 +408,8 @@ class Controller:
                 downstream = sum(item['lane'] in other['dependencies'] for other in lanes.values() if other['state'] != 'done')
                 # Legacy/dependency/recovery intents default to existing work.
                 work_class = 1 if item.get('work_class') == 'expansion' else 0
-                return (work_class, -downstream, len(lane.get('closes_gates', [])) or 99, item['created_at'])
+                focus = {'enemy_acceptance': 0, 'existing_content': 1, 'expansion': 2}.get(item.get('focus'), 1)
+                return (work_class, focus, -downstream, len(lane.get('closes_gates', [])) or 99, item['created_at'])
             for item in sorted(self.reg.control_status()['launches'].values(), key=priority):
                 if item['status'] in ('intent', 'spawned'):
                     if not self.reg.select_model(item['models']) or not self.available(item['lane']): continue

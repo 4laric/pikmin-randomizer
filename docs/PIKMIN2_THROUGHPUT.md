@@ -298,3 +298,97 @@ Use queue age and role demand to add authorized workers where ready work is
 accumulating. Add implementation, review, repair, integration, and QA capacity as
 appropriate while respecting each workstream's one integration writer, 90% RAM
 ceiling, and two shared heavy-build slots.
+
+## 8. Keep acceptance work staffed without another approval round
+
+The user has authorized ongoing paid worker reuse and available capacity. Within
+that scope, the configured planner prepares the next concrete assignment;
+ordinary bounded items do not need another per-item user approval. Issue-first
+ownership, private worktrees, source review and the existing runtime acceptance
+rules still apply. The controller remains the sole dispatcher.
+
+The unattended order is **existing enemy acceptance work, existing content work,
+then content expansion**. Use the explicit backlog priorities `enemy_acceptance`,
+`existing_content`, and `expansion`. An enemy assignment must identify the exact
+source identity and missing gates, such as transport/reward or cleanup/reentry.
+An imported model, review acknowledgement, tooling test, or one admitted variant
+cannot stand in for an entire family's gameplay completion. No automatic ADMIT
+is granted by refill, pool completion, or integration metrics.
+
+Enable the adapter inside the existing controller's `throughput` configuration:
+
+```json
+{
+  "autofill": {
+    "enabled": true,
+    "manifest": "output/workflow/acceptance-backlog.json",
+    "refill_cooldown_seconds": 900,
+    "planner_lane": "acceptance-backlog-planner",
+    "planner_cooldown_seconds": 900,
+    "low_watermark": 4
+  }
+}
+```
+
+The path is illustrative; use the actual prepared manifest under the canonical
+workspace's `output/`. The manifest envelope has `schema: 1`,
+`repository: "4laric/pikmin-randomizer"`, `assignee: "4laric"`, and an `items` list.
+Each item carries its stable `id`, priority, workstream, role/capabilities, heavy
+flag, instruction, lane/source record, prepared launch inputs with brief/config
+SHA-256 hashes, and hashed issue proof with the exact issue-body hash. Use the validator's current schema when
+preparing inputs; unresolved validation is a visible blocker, not permission to
+invent missing evidence. The configured refill cooldown defaults to 900 seconds
+and is bounded below at 60 seconds. The registered acceptance backlog planner
+(#570, `acceptance-backlog-planner`) supplies the next concrete scopes through the
+same issue-first and sole-controller protocol. Its separate cooldown defaults to
+900 seconds (minimum 300); `low_watermark` defaults to four. An enemy-work shortage
+can request planning even when content expansion has a large remaining backlog.
+
+The configured planner is the single writer of the autofill manifest, a queue
+of prepared, issue-backed scopes. The integrator reviews source acceptance and
+handoff proposals. If no planner is configured, designate the integrator as the
+sole fallback writer; never run concurrent manifest writers. Before appending an
+item, inspect the current handoff, open issue and existing ownership; continue existing useful work before
+creating another slice. Each new scope needs an assigned GitHub issue, precise
+owned paths and acceptance, an existing workstream integration owner, source
+commit and dirty-state pins, an actual private worktree, a brief and provider
+configuration, documented prerequisites, and explicit capabilities. Queue only
+actionable scopes: resolve prerequisites first, or prepare a useful bounded
+provider/consumer assignment that can proceed independently. Prepare those inputs
+first; a title or a proposed issue alone is not dispatchable work. Preserve existing
+manifest item identities and specifications; append a fresh item for a changed
+scope so provisioning can be replayed without a duplicate lane or job.
+
+On each controller pass, eligible entries can fill confirmed stopped, authorized
+pool workers through their existing sessions. Live or unknown owners, conflicting
+paths, unavailable integration owners, unprepared inputs, RAM hysteresis, and
+heavy-build capacity remain hard constraints. A blocked enemy item does not
+consume all spare capacity when an independent eligible content item is ready.
+No second supervisor, fabricated process identity, or direct runtime launch is
+part of this protocol.
+
+When capacity has no eligible prepared scope, the controller records starvation.
+With a configured planner it requests a planner wake; otherwise it emits a durable
+refill request to the designated integrator. Requests repeat at the applicable
+cooldown while the shortage persists; a previous notice is not permanent
+suppression. The single manifest writer must append the next fully prepared scopes
+or record the concrete blocking dependency and its owner. Completion reports
+should include a bounded follow-on proposal grounded in observed remaining gates
+and reusable evidence. Recheck ownership and prerequisite changes before planning;
+do not repeatedly relaunch the same blocked work without a useful next action.
+Only validated, assigned, prepared scopes enter the queue. The user has authorized
+routine issue-backed follow-ons; enemy ADMIT retains its existing approval gate.
+
+The dashboard's **Acceptance backlog** section reports the observed ready backlog,
+running or resource-waiting enemy work, confirmed idle authorized workers, blocked
+reasons, manifest errors and latest refill request. Queue starvation means eligible
+capacity has waited for prepared work. Missing observations display `Unavailable`;
+zero is displayed only when the controller actually reports zero. The item summary
+shows at most ten blocked scopes plus the additional count; inspect the complete
+JSON status for the full list. A disabled autofill adapter is identified explicitly.
+
+**Integrated slices / hour** measures accepted implementation output from registry
+integration records. It does not count review acknowledgements or enemy admissions.
+The dashboard does not currently have an authoritative enemy-admission metric and
+says so explicitly. Assess family progress using the source-identity admission
+ledger and its gate evidence, independently of worker utilization or slice rate.
