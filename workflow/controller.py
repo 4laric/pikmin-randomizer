@@ -282,7 +282,7 @@ class Controller:
         model = self.reg.select_model(config['models'])
         if not model: return
         state = self.reg.status()
-        lanes = {k: {f: v.get(f) for f in ('generation', 'state', 'progress_at', 'progress_detail', 'root', 'native', 'dependencies', 'next_action')}
+        lanes = {k: {f: v.get(f) for f in ('generation', 'state', 'progress_at', 'progress_detail', 'root', 'native', 'dependencies', 'next_action', 'closes_gates')}
                  for k, v in state['lanes'].items() if k in self.config['lanes']}
         packet = dict(notices=pending, lanes=lanes, artifacts=c['artifacts'], resources=state['metrics']['resource_waits'],
                       policy='No ADMIT, source edits, merges or process kills. Existing integrator is sole promotion owner.')
@@ -320,7 +320,12 @@ class Controller:
             if item['status'] == 'running' and not (self.launch_directory(item['id']) / 'start.json').exists():
                 self.dispatch(item)
         if self.capacity():
-            for item in self.reg.control_status()['launches'].values():
+            lanes = self.reg.status()['lanes']
+            def priority(item):
+                lane = lanes[item['lane']]
+                downstream = sum(item['lane'] in other['dependencies'] for other in lanes.values() if other['state'] != 'done')
+                return (-downstream, len(lane.get('closes_gates', [])) or 99, item['created_at'])
+            for item in sorted(self.reg.control_status()['launches'].values(), key=priority):
                 if item['status'] in ('intent', 'spawned'):
                     if not self.reg.select_model(item['models']) or not self.available(item['lane']): continue
                     self.dispatch(item)

@@ -19,7 +19,7 @@ def main(argv=None):
     parser.add_argument('--request', type=Path, help='UTF-8 JSON arguments; paths resolve against --root')
     parser.add_argument('command', choices=('init', 'register', 'heartbeat', 'checkpoint', 'failure',
                         'acquire', 'renew', 'release', 'cancel-request', 'watchdog', 'claim-action',
-                        'complete-action', 'finish', 'publish', 'receipt', 'control-status', 'handoff', 'validate-handoff', 'integrate', 'status', 'process'))
+                        'complete-action', 'finish', 'accept-review', 'publish', 'receipt', 'control-status', 'handoff', 'validate-handoff', 'integrate', 'status', 'process'))
     args = parser.parse_args(argv)
     try:
         data = json.loads(args.request.read_text(encoding='utf-8-sig')) if args.request else {}

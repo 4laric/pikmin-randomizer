@@ -73,7 +73,7 @@ class ControlMixin:
         require(nonempty(version) and nonempty(description), 'Artifact version and contract required')
         with self.transaction() as state:
             lane = self.lane(state, producer)
-            require(lane['state'] == 'done', 'Provider must be integrated before publication')
+            require(lane['state'] == 'done' and lane.get('integration'), 'Provider must be integrated before publication')
             c = self.control(state)
             item = dict(producer=producer, version=version, evidence=evidence, description=description)
             key = producer + ':' + version
@@ -83,6 +83,22 @@ class ControlMixin:
             if previous is None:
                 self.event(state, 'artifact_published', producer, version=version)
             return item
+
+    def accept_review(self, key, generation, summary, evidence):
+        """Integrator acknowledges a completed review without promoting gameplay gates."""
+        self.evidence(evidence)
+        require(nonempty(summary), 'Review disposition required')
+        with self.transaction() as state:
+            lane = self.lane(state, key, generation)
+            record = dict(summary=summary, evidence=evidence)
+            if lane['state'] == 'done':
+                require(lane.get('review_disposition') == record, 'Conflicting review disposition')
+                return lane
+            require(lane['state'] == 'review_ready' and lane.get('review'), 'Completed review required')
+            validate_review(self.root, lane['review'], lane)
+            lane.update(state='done', review_disposition=record, revision=lane['revision'] + 1)
+            self.event(state, 'review_accepted', key)
+            return lane
 
     def receipt(self, key, generation, record, root_worktree, native_worktree=None):
         """Verify an existing integration, then replay its completion safely."""

@@ -80,6 +80,9 @@ They do not declare new gameplay gates, executable provenance or build acceptanc
 A review can assess historical evidence in its conclusion without pretending to
 have launched a new fixture. `review_ready` and `reconciling` do not trigger the
 old watchdog restart recommendation. Runtime handoff requirements remain intact.
+The integrator closes a reviewed slice with `accept-review` and JSON fields
+`key`, `generation`, `summary`, `evidence`. This disposition is idempotent and does
+not count as source integration or permit publication of an integrated dependency.
 
 A clean OpenCode exit without a terminal outcome is reconciliation, not a crash.
 The shepherd inspects preserved work before offering a continuation. Two unsuccessful

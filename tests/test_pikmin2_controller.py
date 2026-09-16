@@ -46,7 +46,9 @@ class ControllerTests(unittest.TestCase):
             state['lanes'][key]['state'] = 'running'
 
     def ready_dependency(self, version='v1'):
-        with self.reg.transaction() as state: state['lanes']['provider']['state'] = 'done'
+        with self.reg.transaction() as state:
+            state['lanes']['provider']['state'] = 'done'
+            state['lanes']['provider']['integration'] = {'root_commit': 'a'*40}
         self.reg.publish('provider', version, self.ev, 'verified candidate')
         lane = self.reg.status()['lanes']['consumer']
         self.reg.finish('consumer', lane['generation'], 'blocked', 'need provider', self.ev, ['provider'])
@@ -92,6 +94,13 @@ class ControllerTests(unittest.TestCase):
         lane=self.reg.finish('consumer',1,'review-ready','reviewed',self.ev)
         data=lane['review'];data['fresh_runtime']=True
         with self.assertRaises(Rejected):validate_review(self.root,data,lane)
+
+    def test_review_acknowledgement_does_not_publish_source_or_count_integration(self):
+        self.reg.finish('consumer',1,'review-ready','reviewed',self.ev)
+        self.reg.accept_review('consumer',1,'review received',self.ev)
+        self.reg.accept_review('consumer',1,'review received',self.ev)
+        self.assertEqual(self.reg.status()['metrics']['completed_slices'],0)
+        with self.assertRaises(Rejected):self.reg.publish('consumer','v1',self.ev,'not a source integration')
 
     def test_missing_terminal_outcome_is_reconciliation(self):
         item=self.plan();self.controller.dispatch(item)
