@@ -26,7 +26,34 @@ class SelectedUnitTests(unittest.TestCase):
         d['caves'][0]['floors'][0]['unit_candidates']=[]
         with self.assertRaises(ValueError):select(c,d,'test')
 
-    def test_water_failure_is_recorded_not_approximated(self):
+    def test_water_volume_is_converted_with_sidecar(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);c,d=inputs();cp=root/'catalog.json';dp=root/'deps.json'
+            cp.write_text(json.dumps(c));d['catalog_sha256']=hashlib.sha256(cp.read_bytes()).hexdigest();dp.write_text(json.dumps(d))
+            iso=root/'disc';iso.write_bytes(b'ab')
+            files={'user/Mukki/mapunits/arc/room/arc.szs':(0,1),'user/Mukki/mapunits/arc/room/texts.szs':(1,1)}
+            water=b'0\n{\n 1 -100 -20 -100 100 -2 100\n}\n'
+            def archive(data):return {'view.bmd':b'x'} if data==b'a' else {'waterbox.txt':water}
+            room=dict(vertices=[],triangles=[],planes=[],mapcodes=[],routes=[],spawns=[],
+                      bounds={'min':[-200.,-50.,-200.],'max':[200.,50.,200.]})
+            def fake_convert(source,output,*args,**kwargs):
+                Path(output).write_bytes(b'render');return {'vertices':0,'triangles':0,'shapes':0,'textures':0}
+            with patch('experimental.pikmin2_selected_units.disc_files',return_value=files),\
+                 patch('experimental.pikmin2_selected_units.archive_files',side_effect=archive),\
+                 patch('experimental.pikmin2_selected_units.convert',side_effect=fake_convert) as converter,\
+                 patch('experimental.pikmin2_selected_units.decode_room',return_value=room),\
+                 patch('experimental.pikmin2_selected_units.attach_collision',return_value=b'room'):
+                result=import_units(iso,cp,dp,root/'out','test',False)
+                unit=result['units']['room']
+                self.assertEqual(unit['status'],'converted');self.assertTrue(unit['assembly_ready'])
+                self.assertEqual(unit['water']['count'],1)
+                self.assertEqual(unit['water']['surface'],-2.0)
+                self.assertFalse(unit['water']['native_consumer_implemented'])
+                converter.assert_called_once()
+                self.assertTrue((root/'out/units/room/water.json').exists())
+                self.assertTrue((root/'out/units/room/room.mod').exists())
+
+    def test_malformed_water_volume_is_recorded_not_approximated(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);c,d=inputs();cp=root/'catalog.json';dp=root/'deps.json'
             cp.write_text(json.dumps(c));d['catalog_sha256']=hashlib.sha256(cp.read_bytes()).hexdigest();dp.write_text(json.dumps(d))
@@ -37,7 +64,7 @@ class SelectedUnitTests(unittest.TestCase):
                 result=import_units(iso,cp,dp,root/'out','test',True)
                 unit=result['units']['room']
                 self.assertEqual(unit['status'],'unsupported');self.assertFalse(unit['assembly_ready'])
-                self.assertIn('Water-volume',unit['failure']);converter.assert_not_called()
+                self.assertIn('waterbox',unit['failure'].lower());converter.assert_not_called()
                 self.assertFalse((root/'out/units/room/room.mod').exists())
                 with self.assertRaises(FileExistsError):import_units(iso,cp,dp,root/'out','test')
 
