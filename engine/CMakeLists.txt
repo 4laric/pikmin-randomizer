@@ -203,6 +203,7 @@ set(PC_PORT_SOURCES
     pc_port/pc_p2_queen.cpp
     pc_port/pc_p2_king.cpp
     pc_port/pc_p2_king_teki.cpp
+    pc_port/pc_p2_queen_teki.cpp
     pc_port/pc_p2_breadbug_actor.cpp
     pc_port/pc_p2_breadbug_contest_host.cpp
     pc_port/pc_p2_giant_breadbug_actor.cpp

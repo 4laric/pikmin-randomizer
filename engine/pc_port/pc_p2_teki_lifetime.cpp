@@ -46,6 +46,7 @@
 #include "pc_p2_mamuta.h"
 #include "pc_p2_onikurage_teki.h"
 #include "pc_p2_king_teki.h"
+#include "pc_p2_queen_teki.h"
 #include "pc_p2_projectiles.h"
 #include "pc_p2_queen.h"
 #include "pc_p2_qurione.h"
@@ -92,6 +93,7 @@ void pc_p2_forget_teki(BTeki* actor)
 	pc_p2_onikurage_teki_forget(actor);
 	pc_p2_bombsarai_teki_forget(actor);
 	pc_p2_king_teki_forget(actor);
+	pc_p2_queen_teki_forget(actor);
 	pc_p2_batch2_forget(actor);
 	pc_p2_projectiles_forget(actor);
 	pc_p2_sokkuri_forget(actor);
@@ -157,6 +159,7 @@ pc_p2_sarai_manager_reset();
 	pc_p2_onikurage_teki_reset();
 	pc_p2_bombsarai_teki_reset();
 	pc_p2_king_teki_reset();
+	pc_p2_queen_teki_reset();
 	pc_p2_batch2_reset();
 	pc_p2_projectiles_reset();
 	pc_p2_sokkuri_reset();
