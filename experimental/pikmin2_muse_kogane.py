@@ -159,7 +159,7 @@ def run(assets, bank, output, exe):
     fixture_text = fixture_path().read_text(encoding='utf-8')
     run_fixture_base(assets, bank, output, exe, sidecar=native_sidecar(bank),
                      validator=lambda text, code: validate_natural_throw(text, code, fixture_text))
-    stage_dirs = sorted(Path(output).resolve().glob('*/native.log'))
+    stage_dirs = sorted(Path(output).resolve().rglob('native.log'))
     if stage_dirs:
         stage = stage_dirs[-1].parent
         evidence = json.loads((stage / 'runtime-evidence.json').read_text(encoding='utf-8'))
