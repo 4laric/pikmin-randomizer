@@ -33,9 +33,10 @@ def new_id():
 
 
 from .control import ControlMixin
+from .remote import RemoteMixin, check_remote_ownership
 
 
-class Registry(ControlMixin):
+class Registry(ControlMixin, RemoteMixin):
     def __init__(self, path, root, *, clock=time.time, process_probe=probe):
         self.path, self.root = Path(path).resolve(), Path(root).resolve()
         require(self.path.is_relative_to(self.root / 'output'), 'Registry must be under workspace output/')
@@ -128,6 +129,7 @@ class Registry(ControlMixin):
                     failure_streak=0, recovery_count=0, failure_fingerprint=None, handoff=None, integrated_at=None)
         with self.transaction() as state:
             require(data['lane'] not in state['lanes'], 'Lane ID already registered')
+            check_remote_ownership(state, data['issue'], data['owned_files'])
             for other in state['lanes'].values():
                 if other['state'] != 'done':
                     require(other['issue'] != data['issue'], 'Issue already has an unfinished lane')

@@ -288,3 +288,8 @@ fixture-build tests pass. A separate Windows smoke completed 21 CLI operations,
 including live/dead lease release, handoff-to-integration, duplicate recovery claims,
 idempotent recovery completion and stale-generation rejection. Local evidence:
 `output/workflow-coordination/cli-smoke/commands.json` and `status.json`.
+# Optional additional Mac worker
+
+See [Mac worker onboarding and fenced remote jobs](PIKMIN2_MAC_WORKER.md) for the
+opt-in worker path. It keeps the registry and native validation on Windows, adds
+capability-aware issue-backed jobs, and does not migrate active lanes.
