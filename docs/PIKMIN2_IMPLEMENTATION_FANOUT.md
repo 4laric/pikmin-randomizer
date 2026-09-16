@@ -182,3 +182,61 @@ after integration and runs `scripts/export_native_source.py`. Native origin push
 follow [AGENTS.md](../AGENTS.md#git-push-policy); main/default and p2-integration
 branches remain protected. Keep assets, builds, logs, saves and runtime state local under `output/`;
 do not modify the parallel original BBFT or decomp/research checkouts or relink AP.
+
+## Mandatory captain safety (#632; active lanes included)
+
+Before the next runtime run, add the fixture-only canonical helper
+`scripts/p2_fixture_captain_guard.h` (absolute include or hash-recorded local copy),
+or an equivalent tested guard. It never changes health or production behavior.
+Once the captain has initialized, call the guard immediately after the engine
+idle step and BEFORE movie/pause/UI early returns, readiness gates, observation
+counters, or PASS markers. Check all three independent signals:
+
+```cpp
+Navi* n = naviMgr ? naviMgr->getNavi() : nullptr;
+if (n) {
+    p2_fixture_require_captain(GameStat::orimaDead,
+        n->getCurrState() && n->getCurrState()->getID() == NAVISTATE_Dead,
+        n->mHealth, observed);
+}
+// Only now process pause/movie/UI and increment observed ticks.
+```
+
+Include the pinned engine's GameStat/Navi/NaviState declarations. This helper
+prints P2_FIXTURE_CAPTAIN_DOWN and exits 86 (BLOCKED), including nonfinite HP.
+Do not skip death checks just because a movie or pause is active. An initialized
+captain disappearing unexpectedly likewise blocks observation, rather than
+counting ticks. A timeout alone does not explain whether gameplay advanced.
+
+Park the captain outside the tested enemy's actual attack reach for enemy death,
+transport and re-entry tests where captain hits are irrelevant. Do not move him
+away when captain targeting/damage is the test. Do not introduce blanket health
+refills, revive/clear death flags, disable extinction, or change production rules.
+Protection is permitted only as explicitly labelled fixture instrumentation for
+isolated observations; record its mechanism and exclude it from captain-damage,
+survival and unmodified-combat acceptance. Separate unprotected runs prove those.
+
+Record child issue, fixture/guard hashes, placement/protection policy, rebuilt
+executable hash, a negative captain-down guard test, and fresh runtime log. Existing
+runs are not retroactively protected. Interrupted logs are diagnostic evidence;
+mark unfinished gates BLOCKED/UNTESTED. Preserve earlier PASS evidence using its
+separate original successful run. Handoff validation rejects captain-down log
+references supporting PASS gates or PASS slice criteria. It does not infer safety
+from absence of a marker in an old, uninstrumented fixture. Reviewers must verify
+adoption before accepting fresh runtime claims. Death-specific tests may cite the
+interruption as a labelled negative test, not as general gameplay completion.
+
+For affected active lanes, the controller sets a captain-safety adoption requirement
+and writes `captain-safety-required.md` in their runtime output plus an integrator
+review notice. A runtime handoff must add:
+
+```json
+"captain_safety": {"policy": "unprotected", "evidence": ["guard_source", "guard_negative_test", "fresh_runtime_log"]}
+```
+
+inside `fixture_adoption`, with keys resolving to hashed handoff evidence. The
+reviewer checks the source call order and each evidence role; merely supplying
+keys does not prove adoption. Use `protected_observation` only for the isolated,
+labelled case described above. Its attack/receiver PASS is rejected. Existing
+already-submitted handoffs are not rewritten; apply the requirement before the
+next run. Subsequent controller dispatches repeat the instructions explicitly.

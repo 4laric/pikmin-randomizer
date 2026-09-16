@@ -119,17 +119,30 @@ def validate_handoff(root, data, lane=None):
             require(gate['method'] == 'source', 'N/A must be source-backed')
         if gate['status'] == 'PASS':
             require(gate['method'] in ('natural', 'injected'), 'PASS needs observed method')
+            from .fixture_health import require_uninterrupted
+            require_uninterrupted(paths, gate['evidence'], name)
     criteria = data.get('slice_acceptance')
     require(isinstance(criteria, list) and criteria, 'Slice acceptance required')
     for item in criteria:
         require(isinstance(item, dict) and nonempty(item.get('criterion')) and item.get('status') in RESULTS,
                 'Invalid slice criterion')
         refs(item.get('evidence'), 'slice criterion')
+        if item['status'] == 'PASS':
+            from .fixture_health import require_uninterrupted
+            require_uninterrupted(paths, item['evidence'], 'slice criterion')
     if lane:
         require([i['criterion'] for i in criteria] == lane['acceptance'], 'Slice criteria differ from claim')
 
     adoption = data.get('fixture_adoption')
     require(isinstance(adoption, dict), 'Fixture adoption required')
+    if data['kind'] == 'runtime' and lane and lane.get('fixture_captain_guard_required'):
+        safety = adoption.get('captain_safety', {})
+        require(safety.get('policy') in ('unprotected', 'protected_observation'),
+                'Captain safety adoption required for this lane (#632)')
+        refs(safety.get('evidence'), 'captain safety source, negative test and fresh run')
+        if safety['policy'] == 'protected_observation':
+            require(gates['attacks_receivers']['status'] != 'PASS',
+                    'Protected observation cannot substantiate attack/receiver acceptance')
     if data['kind'] == 'tooling':
         require(adoption.get('status') == 'N/A' and nonempty(adoption.get('reason')),
                 'Tooling requires explicit fixture non-applicability')

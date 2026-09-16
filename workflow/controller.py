@@ -151,6 +151,10 @@ class Controller:
             f"{entry['output']}/session-ready.json. Require attempt_id={item['id']} and generation={lane['generation']} "
             "before edits. This continuation supersedes old missing-dependency instructions. Preserve committed work. "
             + item['instruction'] + '\nUse the canonical registry and private worktrees, common leased builds; no ADMIT writes. '
+            'Before any runtime acceptance run, adopt canonical docs/PIKMIN2_IMPLEMENTATION_FANOUT.md captain safety #632: '
+            'check orimaDead, NaviDead and HP<=1 before pause/movie returns or observed ticks; emit CAPTAIN_DOWN and exit BLOCKED. '
+            'Use scripts/p2_fixture_captain_guard.h or equivalent tested guard. Park captain outside attack reach when not testing captain hits. '
+            'No blanket invincibility; protected observation is labelled and cannot prove captain damage. Record adoption and guard/source hashes. '
             'Do not spawn agents. Before exiting use workflow finish with blocked, review-ready, or implementation-ready. '
             f"CLI: {sys.executable} {Path(__file__).resolve().parents[1] / 'scripts/pikmin2_workflow.py'} "
             f"--root {self.reg.root} --request <json> finish. Required JSON: key, generation, outcome, summary, "
@@ -440,6 +444,8 @@ class Controller:
         # is disabled, including recovery/dependency work earlier in this tick.
         with self.reg.transaction() as state:
             self.config['lanes'].update(state.get('throughput_runtime', {}).get('launch_specs', {}))
+        from .fixture_policy import tick as fixture_policy
+        fixture_policy(self)
         from .provider_recovery import recover
         recover(self)
         from .terminal_cleanup import tick as clean_terminal
