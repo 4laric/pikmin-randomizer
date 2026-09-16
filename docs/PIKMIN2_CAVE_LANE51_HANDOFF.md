@@ -1,5 +1,11 @@
 # Lane 51 — Item-5 independent QA checker + evidence audit (parent #468, lane issue #489)
 
+> Generation-1 record below is preserved as written. Generation 2 (same
+> session `ses_f57d3a2ffffeFz7p5aqD2xsqzw`, attempt
+> `d405ac21…9ebe73f`) resumes after muse-cave50 finished: see
+> [Generation-2 re-sweep on the frozen pin](#generation-2-re-sweep-on-the-frozen-pin)
+> at the end.
+
 Lane 51 / opencode Muse Spark 1.3 contributor session `ses_f57d3a2ffffeFz7p5aqD2xsqzw` /
 parent spec #468, lane issue #489.
 Mode: **Independent QA preparation**. QA/report tooling only; no production
@@ -228,3 +234,170 @@ py -3.12 -m experimental.pikmin2_cave_item5_qa --log C:/Users/alari/pikmin-rando
 Expect `carry_blocked_closed=FAIL` (`no_carrying_block_observed`),
 `gate_open_credit=MISSING` (`no_gate_open`), exit 1 — the precise open
 sub-part lane 50 still has to demonstrate.
+
+## Generation-2 re-sweep on the frozen pin
+
+Same session, generation 2. muse-cave50 is done and integrated
+(`output/workflow/throughput-workers/l77/dependency-cave51.json`): frozen
+pins root `13e1d1bb423a04edb9951563ef7b22288c613784` / native
+`6403debc6946bd090f8a63b5f44ae0dc5d8cf4fc`, exe
+`164fb32f9cdf64b99aa0a24723fee0ba6f6c1397675b8f0ab50e39d6c17e3160`;
+approved review `output/workflow/throughput-workers/l77/handoff-cave50-approved.json`.
+
+### Pin verification and merges (private worktrees only)
+
+- `merge-base --is-ancestor`: root base `c4d3c9b9` ∈ pin `13e1d1bb` ✓;
+  native base `6da0364f` ∈ pin `6403debc` ✓ (lane commits not in pin, as
+  expected — QA tooling stays on the lane branch).
+- Merged into lane branches, no conflicts, all prior work preserved:
+  - root `c908a8b0 lane51: merge frozen cave pin 13e1d1bb (lanes 48/49/50)
+    for item-5 re-sweep (#489)` (15 files: l48 validator, l49 water
+    converter, l50 gates bridge + tests, l50 handoff).
+  - native `b1f6c836 lane51: merge frozen cave pin 6403debc (lanes 48/49/50)
+    for item-5 re-sweep (#489)` (12 files: bud actor, carry module, hooks,
+    one-consumer tests, fixture dispatch).
+
+### Private build (canonical lease, generation 2)
+
+- Build dir `output/msw/native-cave51-paid-build`, native `b1f6c836`:
+  configure + `pikmin_pc` exit 0
+  (`build-1789543154954806800.log`, sha256 `57009ebd…85268d`); exe
+  `bin/nectar.exe` sha256 `32016334…33c8c9`; `ninja -n` no-work in sequence.
+- Deviation recorded: the leased configure leaves
+  `CMAKE_CXX_COMPILER:UNINITIALIZED=g++` (bare), which the provenance builder
+  resolves against the build dir and rejects (`Missing input: …/g++`).
+  Reconfigured once with the identical flags but absolute compiler paths
+  (matching l50's cache); heavy build itself stayed on the lease
+  (`build-1789543529677853000.log`, sha256 `eee20788…42076d7`; exe sha256
+  `aeee50f7…7718395`; `ninja -n` no-work). `pikmin_pc` is byte-stable across
+  the fixture experiment below (same exe hash — the `.inc` is fixture-only).
+- Fixture A (unedited pin `b1f6c836`): `fixture-a/fixture.exe` sha256
+  `c9371b1e…356b9ee`, provenance `built`.
+- Fixture B (pin + natural-open experiment `babbdddb`, see below):
+  `fixture-b/fixture.exe` sha256 recorded in provenance, status `built`.
+
+### Fresh arenas (current overlay, 960×540 observed)
+
+- Base: `py -3.12 scripts/preview_pikmin2_room.py --assets
+  <P1 asset root> --converted <l50 stage/converted> --output
+  output/workflow/paid-scale/l51/stage/arena` twice (Run A
+  `767729c246864ca59009a07d10af4340`, Run B salt-0
+  `f02dd06781484d398e954542d8577d9c`, Run B salt-7
+  `b0b60ace3ef94df7bfd8afae95b00be0`). `default.gen` carries the 20-ikip
+  squad and is byte-identical to l50's pinned arena (`2f6fd495…`, cf.
+  `output/workflow/paid-scale/l50/handoff/arena.json`).
+- Cave layer copied from l50's pinned arena and hash-verified (10/10 files
+  match `arena.json`: entry/rooms/geometry/items/gates, pod/dry-room/e-gate/
+  treasure mods). Configs: geometry/items/gates/entry byte-identical to the
+  pin run; rooms re-bridged fresh from the lane-41 layout
+  (`experimental.pikmin2_cave_rooms --salt 0/7` — salt-0 output byte-identical
+  to l48's rooms file). Fresh ledgers carry only the `P2_RECEIPTS_1` header
+  (an empty ledger file makes `pc_p2_receipt_host_open` fail with
+  `open_failed=1` — observed once, fixed, recorded).
+- Window: every run logs `Experimental preview window set to 960x540
+  windowed and centered`; live squad restores 20 reds from
+  `p2-cave-entry.txt`; carriers act within seconds; no extinction screen.
+
+### Run A — exact pin reproduction (no lane edits beyond the merge)
+
+Fixture A + l50-identical configs in the fresh Run-A arena. Reproduces l50's
+approved loop on the lane build: `block_assign` → `blocked
+(carriers_dropped=1, new=0)` → staged `open_stage` → `OPEN` ×2 →
+`credit_release` → `RECEIPT new=1` (one ledger row) → water `BLOCKED
+carrying=1`. Checker verdict (`audit/pin-repro.json`): block PASS, open
+**STAGED_OPEN**, water PASS, geometry REAL, acquisition/timeline MISSING —
+the pin behaves as approved, and the yellow is staged as l50 declared.
+
+### Natural-open experiment (fixture-main-only edit, needs #186 review)
+
+`native/tools/preview_p2_cave.inc` is included solely by
+`tools/preview_p2_room.cpp` (fixture/preview main), never by production
+`pc_port` — `pikmin_pc` is bit-identical with and without the change. Commit
+`babbdddb lane51: natural-open experiment in carry fixture (needs #186
+review) (#489)` (+75/−2, separately labelled, this branch only):
+
+- After the closed-gate block is proven, a red is thrown into the seeded
+  yellow bud through the ordinary path (verbatim `caveBudFixture` recipe);
+  the resulting live yellow is placed at the elec door (`open_stage
+  natural=1`). Floors without a seeded yellow bud keep lane-50's staged
+  recolour (explicit `staged=1` fallback).
+- Fresh/timeline logging added to the carry fixture (`fresh_floor_no_abilities`
+  at assign, `come_back_with_yellow` at the natural grant, staged blue +
+  `return_with_yellow_and_blue` at credit — the l48 compromise, blue
+  explicitly `staged=1`).
+- Shared-review status: **requested** on #186 (not yet approved); integration
+  must approve before merging this file.
+
+### Run B — single-run natural loop (salt 0 and salt 7)
+
+Fixture B + bud rooms + pin-identical gates/geometry/items in fresh arenas:
+
+| Marker | salt 0 (`f02dd067…`) | salt 7 (`b0b60ace…`) |
+|---|---|---|
+| Window | 960x540 centered | 960x540 centered |
+| `BUD_ACTOR` | yellow seg 0 (120,48) spawned=1 | yellow seg 0 (**144,51** — rerolled) |
+| Block | `carriers_dropped=1 new=0` | `carriers_dropped=1 new=0` |
+| Convert | ACCEPT/used=1/budget=5, SPROUT natural=1 | same |
+| Grant | yellow `natural_acquire=1 staged=0` | same |
+| Open | `open_stage natural=1`, OPEN ×2 | same |
+| Credit | `RECEIPT new=1`, then durable `new=0 new=0`, one ledger row | same |
+| Water | `BLOCKED carrying=1` (elec + water) | same |
+| Timeline | fresh → yellow → full (blue staged) | same |
+| Fixture exit | **0, `PASS cave carry`** | **0, `PASS cave carry`** |
+| Checker | `pass=true`, **NATURAL**, `remaining=[]` (`audit/natural-loop.json`) | `pass=true`, **NATURAL** (`audit/natural-loop-salt7.json`) |
+| C++ gate | exit 0 | exit 0 |
+
+Re-roll invariance is now **live**, not model-level: same seeded table, two
+salts, different bud positions, identical requirements and loop. Root suite:
+53 passed (`test_pikmin2_cave_item5_qa` 19 + lane-50 gates 23 + lane-48
+natural 11) on the merged pin.
+
+### Cave contract 1–6, final (natural vs injected, single-run evidence)
+
+| # | Contract item | Result | Evidence class |
+|---|---|---|---|
+| 1 | Generation invariant | PASS — engine layouts, `generation_pass=true` (41/48) | natural (prior lanes) |
+| 2 | Seed determinism | PASS — 468001 vs 468002 differ; conversions byte-identical | natural (prior lanes) |
+| 3 | Re-roll invariance | **PASS live** — salt 0 vs 7, same table/loop, rerolled bud pos | **natural (this slice)** |
+| 4 | Reachability | PASS — 4 blocking doors only; hole behind required gates | natural plan + live block |
+| 5 | End-to-end loop | **PASS** — red blocked (`new=0`), bud-converted yellow opens both elec gates, natural carry credits exactly once, water filters red | **natural yellow/open/credit; staged blue** |
+| 6 | Failure handling | PASS — negative controls + fail-closed parsers/plan/drift | tests + live setup |
+
+Six arena gates for the workflow handoff: identity PASS (natural spawn of 3
+Pellet actors, 4 door volumes, seeded bud actor; injected placement),
+movement PASS (natural Transport-AI carries), receivers PASS (natural
+Denki/Bubble reactions on injected carriers), death PASS (natural
+DenkiDying + drop; corpse source-backed N/A), transport PASS (natural
+free-mode carry, exactly-once receipt), cleanup UNTESTED (no restart run).
+
+### Known limitations and findings filed
+
+- Blue stays staged (no blue bud on `forest_1` floor 1); water treasure is
+  blocked-but-never-collected; hole entry is model-projected, not physically
+  walked. Same boundary as lanes 44/48.
+- Bridge finding for lane 50 / integration: `experimental.pikmin2_cave_gates`
+  maps **kind=bud + hazard=elec → carry_block=elec**, i.e. a zap volume would
+  sit on the conversion slot (this run used l50's 6-door plan, which the
+  native setup accepts against 7-unit bud rooms — validation is
+  plan-doors ⊆ rooms-units). Buds are keys, not gates; recommend kind-aware
+  mapping (`bud → none`) at integration.
+- l50's water nodes still use the dry-unit reuse, not l49's real
+  `room_kingchap_b_tsuchi` mesh (geometry reports `real` either way).
+- Remaining: restart/re-entry run, live cross-seed, #186 approval of the
+  fixture experiment + carry/bud shared hooks, integration.
+
+### ONE exact reproduction command (Run B salt 0)
+
+From `output/workflow/paid-scale/l51/stage/arena/f02dd06781484d398e954542d8577d9c/`
+with `PIKMIN_P2_ROOM_WINDOW=960x540`, `PYTHONUTF8=1`,
+`PIKMIN_CAVE_ROOMS/GEOMETRY/ITEMS/GATES=p2-cave-*.txt`,
+`PIKMIN_P2_ITEM_RECEIPT_PATH=p2-cave-item-receipts.txt` (header-only ledger)
+and MinGW on `PATH`, run fixture B:
+
+```text
+fixture.exe --experimental-pikmin2-room
+```
+
+Expect `BUD_ACTOR spawned=1`, `BLOCKED … carrying=1` with `new=0`, `SPROUT
+… natural=1`, `GRANT … natural_acquire=1 staged=0`, `OPEN` ×2, `RECEIPT …
+new=1` then durable `new=0`, `water_blocked`, `PASS cave carry`, exit 0.
