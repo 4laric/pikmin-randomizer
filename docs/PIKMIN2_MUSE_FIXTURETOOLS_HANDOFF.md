@@ -44,7 +44,7 @@ Root branch `codex/muse-l67-fixturetools` (base `72a2c450d7b9040545de4a440c2c32e
 
 Native branch `codex/muse-l67-fixturetools-native` (base `7b9ecaa668fd55332073446cdbdaf6424b209ea7`):
 
-- `NATIVECOMMIT` lane67: stdlib-only preflight self-check fixture (#507)
+- `7b4d63d93d4b096badfe146c34eafb5a612a47ce` lane67: stdlib-only preflight self-check fixture (#507)
 
 ## Failure analysis (read-only evidence)
 
