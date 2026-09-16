@@ -60,6 +60,14 @@ class DeliveryTests(unittest.TestCase):
             self.reg.dispose_review('one', 1, updated['revision'], 'approved-1', original,
                                     'shared.cpp', 'rejected', 'reviewer', self.evidence)
 
+    def test_frozen_submission_survives_original_log_rotation(self):
+        lane = self.ready(runtime=True)
+        snapshot = self.reg.snapshot_handoff('one', 1, lane['revision'], 'integration-v1')
+        lane = self.reg.submit_handoff('one', 1, lane['revision'], snapshot['handoff']['path'])
+        self.log.write_text('original log rotated after submission')
+        self.assertTrue(self.reg.check_handoff(lane)['slice_passed'])
+        self.assertEqual(lane['handoff']['sha256'], snapshot['handoff']['sha256'])
+
     def test_disposition_fences_owner_generation_revision_and_source(self):
         lane = self.ready(reviews=True)
         def apply(generation=1, revision=lane['revision'], sha=lane['handoff']['sha256']):

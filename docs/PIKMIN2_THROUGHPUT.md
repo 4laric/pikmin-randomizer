@@ -227,6 +227,19 @@ checks every retained file hash. Original log rotation does not destroy the froz
 evidence. Changed frozen bytes, conflicting versions, and stale ownership fail
 closed. New evidence requires a new handoff/version, never an edited old bundle.
 
+To make normal integration validate the frozen copy, the lane owner/integrator
+submits the returned `handoff.path` through the existing `handoff` command with
+the current generation/revision. Do this while the slice is `handoff_ready` or
+`integrating`, after coordinating with its stopped producer; do not reopen done
+lanes. Archiving alone leaves the original submission pointer unchanged.
+
+```json
+{"key":"cave-50","generation":1,"revision":9,"path":"output/workflow/delivery/<content-hash>/handoff.json"}
+```
+
+The normal validator then consumes the copied evidence and still checks the
+same source identity, shared reviews, fixture provenance and slice criteria.
+
 ## 7. Batch compatible integrations and measure useful output
 
 A named live integrator may claim up to 16 fully reviewed `handoff_ready` slices
