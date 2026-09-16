@@ -18,6 +18,11 @@
 //
 // It owns no actor, map or lifetime; the register seam owns the actor and calls
 // this once per source tick. Cleanup/teardown stays with the register seam.
+//
+// Muse l63 (#503): this consumer also feeds the actor-owned movement driver
+// each tick (live active-captain XZ for the source escape chase; podValid
+// stays false on this host) and emits the BIRTH/STEER observation markers the
+// muse observer verifies. It synthesizes no positions and injects no state.
 
 #include "pc_p2_waterwraith_actor.h"
 
@@ -34,6 +39,13 @@ struct P2WaterwraithEncounterStats {
     bool bodyZeroed = false;     // dismounted wraith body health reached zero
     bool treasureReleased = false; // source Dead KEYEVENT_5
     bool killed = false;         // source Dead KEYEVENT_END (kill requested)
+    // Autonomous driver observation (muse l63, #503).
+    std::uint64_t steerTicks = 0; // ticks with an actor-owned steer target
+    std::uint64_t chaseTicks = 0; // ticks steering to the live captain
+    bool birthRecorded = false;  // first-observation anchor stored
+    float birthX = 0.0f;         // planar anchor for travel measurement
+    float birthZ = 0.0f;
+    float travel = 0.0f;         // planar travel from the anchor
 };
 
 void pc_p2_waterwraith_encounter_reset();

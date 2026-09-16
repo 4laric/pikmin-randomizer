@@ -17,6 +17,10 @@ constexpr int kMaxTargets = 64;
 
 P2WaterwraithEncounterStats sStats;
 bool sStunEdge = false;
+// Last reported actor-owned steering state (muse l63, #503).
+P2WaterwraithSteerMode sLastSteerMode = P2WWSTEER_Hold;
+P2WaterwraithMotion sLastMotion = P2WWMOTION_None;
+bool sTiredEdge = false;
 
 bool hitRange(float ax, float az, float bx, float bz, float radius)
 {
@@ -28,6 +32,9 @@ void pc_p2_waterwraith_encounter_reset()
 {
     sStats = P2WaterwraithEncounterStats();
     sStunEdge = false;
+    sLastSteerMode = P2WWSTEER_Hold;
+    sLastMotion = P2WWMOTION_None;
+    sTiredEdge = false;
 }
 
 bool pc_p2_waterwraith_encounter_ready()
@@ -46,6 +53,31 @@ void pc_p2_waterwraith_encounter_step(P2WaterwraithActor& actor, P2WaterwraithAc
     P2WaterwraithRig& rig = actor.rig();
 
     ++sStats.ticks;
+
+    // Autonomous driver feeds (muse l63, #503). The live active-captain XZ is
+    // the source walkFunc chase target (:874); read from the live engine with
+    // the same natural pattern as the crush attribution below, never
+    // synthesized. This host exposes no live Pod position, so podValid stays
+    // false and pod-seek remains engine-free verified.
+    in.captainValid = false;
+    in.podValid = false;
+    if (naviMgr && naviMgr->getActiveNavi()) {
+        Navi* captain = naviMgr->getActiveNavi();
+        if (captain && captain->isAlive()) {
+            const Vector3f captainPos = captain->getPosition();
+            in.captainValid = true;
+            in.captainX = captainPos.x;
+            in.captainZ = captainPos.z;
+        }
+    }
+
+    // Observed birth state (muse l63, #503): report the actual actor birth
+    // (phase + Tyre child attachment + source IDs) once, from live state.
+    if (sStats.ticks == 1) {
+        const bool attached = rig.alive() && rig.attachedToOwner();
+        std::printf("P2_WATERWRAITH_BIRTH phase=%s attached=%d id=99 helper=98\n",
+                    P2WaterwraithActor::phaseName(actor.phase()), attached ? 1 : 0);
+    }
 
     const bool attached = rig.alive() && rig.attachedToOwner();
     const bool damageable = attached && rig.damageable();
@@ -184,5 +216,56 @@ void pc_p2_waterwraith_encounter_step(P2WaterwraithActor& actor, P2WaterwraithAc
             std::printf("P2_WATERWRAITH_KILL tick=%llu\n",
                         static_cast<unsigned long long>(sStats.ticks));
         }
+    }
+
+    // Movement observation (muse l63, #503): report the actor-owned steering
+    // state set by the last policy tick plus planar travel from the first
+    // observation. Emitted on mode/motion change and every 60 ticks.
+    const P2WaterwraithVec3 observed = actor.position();
+    if (!sStats.birthRecorded) {
+        sStats.birthRecorded = true;
+        sStats.birthX = observed.x;
+        sStats.birthZ = observed.z;
+    }
+    const float travelX = observed.x - sStats.birthX;
+    const float travelZ = observed.z - sStats.birthZ;
+    sStats.travel = std::sqrt(travelX * travelX + travelZ * travelZ);
+    const P2WaterwraithSteerMode steerMode = actor.steerMode();
+    const P2WaterwraithMotion motion = actor.lastMotion();
+    if (steerMode != P2WWSTEER_Hold) {
+        ++sStats.steerTicks;
+    }
+    if (steerMode == P2WWSTEER_Chase) {
+        ++sStats.chaseTicks;
+    }
+    if (steerMode != sLastSteerMode || motion != sLastMotion || (sStats.ticks % 60u) == 0u) {
+        const char* band = "-";
+        if (in.captainValid && steerMode == P2WWSTEER_Chase) {
+            const float chaseDx = in.captainX - observed.x;
+            const float chaseDz = in.captainZ - observed.z;
+            const float chaseD2 = chaseDx * chaseDx + chaseDz * chaseDz;
+            band = chaseD2 > 640000.0f ? "far" : (chaseD2 > 160000.0f ? "mid" : "near");
+        }
+        std::printf("P2_WATERWRAITH_STEER tick=%llu mode=%s motion=%s band=%s travel=%.1f escape=%d\n",
+                    static_cast<unsigned long long>(sStats.ticks),
+                    P2WaterwraithActor::steerModeName(steerMode),
+                    P2WaterwraithActor::motionName(motion), band, sStats.travel,
+                    actor.escapePhase());
+        sLastSteerMode = steerMode;
+        sLastMotion = motion;
+    }
+    // Wind-down + cadence edges (muse l63, #503): report the autonomous
+    // Tired entry and each route-refresh request once, from live actor state.
+    if (actor.phase() == P2BM_Tired && !sTiredEdge) {
+        sTiredEdge = true;
+        std::printf("P2_WATERWRAITH_TIRED tick=%llu\n",
+                    static_cast<unsigned long long>(sStats.ticks));
+    } else if (actor.phase() != P2BM_Tired) {
+        sTiredEdge = false;
+    }
+    if (actor.routeRefreshPending()) {
+        actor.ackRouteRefresh();
+        std::printf("P2_WATERWRAITH_ROUTE_REFRESH tick=%llu\n",
+                    static_cast<unsigned long long>(sStats.ticks));
     }
 }

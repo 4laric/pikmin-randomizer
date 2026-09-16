@@ -4,11 +4,15 @@
 
 // State semantics transcribed from BlackManState.cpp / blackMan.cpp at research
 // revision 632af937. Deliberate, documented simplifications:
-// - Locomotion is host-driven (route waypoints), not the retained-assembly
-//   `walkFunc`/`findNextRoutePoint` pathfinder. The two-step timer and speeds
-//   are carried from the proper parms.
+// - Muse l63 (#503) ports the walkFunc autonomous driver around the retained-
+//   assembly map-graph search: the actor owns target selection (captain chase
+//   > pod approach > seam route fallback), the escape bands/timer/smoothing,
+//   the pod motion choice, the route-find cadence counters (the seam answers
+//   routeRefreshRequested) and turn damping. The two-step timer and speeds are
+//   carried from the proper parms.
 // - Clip playback and key-event effects are host-owned; the policy emits the
-//   action request booleans and the key pulses drive the source branches.
+//   action request booleans (plus motion requests) and the key pulses drive
+//   the source branches.
 // - Timer-expiry branches (freeze/bend/tired) complete the motion in the tick
 //   the counter passes the source length; a host `animEnd` pulse does the same.
 // - The Tyre death order is split into explicit host pulses
@@ -50,6 +54,21 @@ void P2WaterwraithActor::reset(const P2WaterwraithActorParms& parms)
     mFacing   = 0.0f;
     mScale    = 1.0f;
 
+    // Autonomous driver birth state (source onInit :177-188, :239-241):
+    // escape axis from the start parm, timers zeroed, home/last-route at the
+    // birth position. The seam places the actor before ticking; reset-from-
+    // origin keeps the cadence counters well-defined either way.
+    mEscapePhase            = parms.startEscapePhase;
+    mEscapeTimer            = 0;
+    mEscapeMoveSpeed        = 0.0f;
+    mRouteFindTimer         = 0;
+    mRouteFindCooldownTimer = 0;
+    mHomePosition           = mPosition;
+    mLastRoutePos           = mPosition;
+    mSteerMode              = P2WWSTEER_Hold;
+    mLastMotion             = P2WWMOTION_None;
+    mRouteRefreshPending    = false;
+
     mWaypointCount = 0;
     mWaypointIndex = 0;
 
@@ -82,6 +101,30 @@ const char* P2WaterwraithActor::phaseName(P2BlackManPhase phase)
     case P2BM_Flick: return "flick";
     case P2BM_Recover: return "recover";
     case P2BM_Tired: return "tired";
+    }
+    return "?";
+}
+
+const char* P2WaterwraithActor::steerModeName(P2WaterwraithSteerMode mode)
+{
+    switch (mode) {
+    case P2WWSTEER_Hold: return "hold";
+    case P2WWSTEER_Route: return "route";
+    case P2WWSTEER_Chase: return "chase";
+    case P2WWSTEER_PodSeek: return "podseek";
+    }
+    return "?";
+}
+
+const char* P2WaterwraithActor::motionName(P2WaterwraithMotion motion)
+{
+    switch (motion) {
+    case P2WWMOTION_None: return "none";
+    case P2WWMOTION_Wait: return "wait";
+    case P2WWMOTION_Walk: return "walk";
+    case P2WWMOTION_Run: return "run";
+    case P2WWMOTION_Move: return "move";
+    case P2WWMOTION_Through: return "through";
     }
     return "?";
 }
@@ -177,50 +220,131 @@ void P2WaterwraithActor::beginEscape(P2WaterwraithActorOutput& out)
 {
     // Source `isTyreDead` (:4054) sets EB_Invulnerable and drops mTyre; the rig
     // models that as dismount(). The wraith animation is tyre_getoff.
+    // Muse l63: the same source block arms the captain chase
+    // (mEscapePhase = 2, :4060), previously missing here.
     out.dismountRequested = true;
     out.collisionStOff    = true;
     if (mRig.attachedToOwner()) {
         mRig.dismount();
     }
+    mEscapePhase = 2;
+    mEscapeTimer = 0;
     enter(P2BM_Escape, out);
 }
 
-void P2WaterwraithActor::updateLocomotion(float delta)
+void P2WaterwraithActor::updateLocomotion(float delta, P2WaterwraithActorOutput& out)
 {
-    mVelocity = P2WaterwraithVec3{};
-    if (mPhase == P2BM_Walk && mWaypointCount > 0 && mWaypointIndex < mWaypointCount) {
-        const P2WaterwraithVec3 target = mWaypoints[mWaypointIndex].position;
-        const float dx                 = target.x - mPosition.x;
-        const float dz                 = target.z - mPosition.z;
-        const float dist               = std::sqrt(dx * dx + dz * dz);
-        if (dist <= mParms.waypointGoalRadius) {
-            ++mWaypointIndex; // reached -> host supplies/finds the next waypoint
-        } else {
-            const float desired = std::atan2(dx, dz); // source forward = (sin, cos)
-            float diff          = desired - mFacing;
+    mVelocity  = P2WaterwraithVec3{};
+    mSteerMode = P2WWSTEER_Hold;
+    if (mPhase != P2BM_Walk) {
+        pushRig();
+        return;
+    }
+
+    // Actor-owned target selection (muse l63, #503). Priority mirrors source
+    // walkFunc: the escape chase (captain XZ, :873-929) outranks the pod
+    // approach (:930-973), which outranks the seam-supplied route fallback.
+    P2WaterwraithVec3 target = mPosition;
+    bool haveTarget           = false;
+    float moveSpeed           = currentSpeed();
+    float turnRate            = mParms.rotationSpeed;
+    float maxStep             = mParms.maxRotationStep;
+    if (mEscapePhase == 2 && mCaptainValid) {
+        target      = P2WaterwraithVec3{ mCaptainX, mPosition.y, mCaptainZ };
+        haveTarget  = true;
+        mSteerMode  = P2WWSTEER_Chase;
+        moveSpeed   = mEscapeMoveSpeed; // smoothed chase speed (:926-927)
+        turnRate    = mParms.escapeRotationSpeed; // :928-929
+        maxStep     = mParms.maxEscapeRotationStep;
+    } else if (mEscapePhase == 4 && mPodValid) {
+        target      = P2WaterwraithVec3{ mPodX, mPosition.y, mPodZ };
+        haveTarget  = true;
+        mSteerMode  = P2WWSTEER_PodSeek;
+        moveSpeed   = mParms.podMoveSpeed; // :968-969 (pathfinder leg omitted)
+    } else if (mWaypointCount > 0 && mWaypointIndex < mWaypointCount) {
+        target      = mWaypoints[mWaypointIndex].position;
+        haveTarget  = true;
+        mSteerMode  = P2WWSTEER_Route;
+    }
+
+    if (haveTarget) {
+        const float dx   = target.x - mPosition.x;
+        const float dz   = target.z - mPosition.z;
+        const float dist = std::sqrt(dx * dx + dz * dz);
+        bool arrived     = false;
+        if (mSteerMode == P2WWSTEER_Route && dist <= mParms.waypointGoalRadius) {
+            ++mWaypointIndex; // reached -> seam supplies the next waypoint
+            arrived = true;
+        }
+        if (!arrived && dist > 0.0f) {
+            const float prevFacing = mFacing;
+            const float desired    = std::atan2(dx, dz); // source forward = (sin, cos)
+            float diff             = desired - mFacing;
             while (diff > kPi) {
                 diff -= 2.0f * kPi;
             }
             while (diff < -kPi) {
                 diff += 2.0f * kPi;
             }
-            float step = diff * mParms.rotationSpeed;
-            if (step > mParms.maxRotationStep) {
-                step = mParms.maxRotationStep;
+            float step = diff * turnRate;
+            if (step > maxStep) {
+                step = maxStep;
             }
-            if (step < -mParms.maxRotationStep) {
-                step = -mParms.maxRotationStep;
+            if (step < -maxStep) {
+                step = -maxStep;
             }
             mFacing += step;
 
-            const float speed = currentSpeed();
-            mVelocity.x       = std::sin(mFacing) * speed;
-            mVelocity.z       = std::cos(mFacing) * speed;
+            mVelocity.x = std::sin(mFacing) * moveSpeed;
+            mVelocity.z = std::cos(mFacing) * moveSpeed;
+            // Turn damping (source :1024-1027, "SICK DRIFTS"): halve the
+            // planar velocity while turning, before integrating so the stored
+            // position matches the stored velocity.
+            float angDist = desired - prevFacing;
+            while (angDist > kPi) {
+                angDist -= 2.0f * kPi;
+            }
+            while (angDist < -kPi) {
+                angDist += 2.0f * kPi;
+            }
+            if (angDist > 0.25f || angDist < -0.25f || (mFacing - prevFacing) > 0.05f
+                || (prevFacing - mFacing) > 0.05f) {
+                mVelocity.x *= 0.5f;
+                mVelocity.z *= 0.5f;
+            }
             mPosition.x += mVelocity.x * delta;
             mPosition.z += mVelocity.z * delta;
         }
     }
+
+    // Route-find cadence (source :997-1007): every 60 ticks near the last
+    // route position, arm the 120-tick timer and ask the seam for the next
+    // waypoint (the engine-free stand-in for findNextRoutePoint).
+    if (mRouteFindTimer == 0) {
+        ++mRouteFindCooldownTimer;
+        if (mRouteFindCooldownTimer > 60) {
+            const float hx = mPosition.x - mLastRoutePos.x;
+            const float hz = mPosition.z - mLastRoutePos.z;
+            if (hx * hx + hz * hz < 100.0f) { // within 10 (:1000)
+                mRouteFindTimer           = 120;
+                out.routeRefreshRequested = true;
+                mRouteRefreshPending      = true;
+            }
+            mLastRoutePos           = mPosition;
+            mRouteFindCooldownTimer = 0;
+        }
+    }
     pushRig();
+}
+
+void P2WaterwraithActor::observeDriver(const P2WaterwraithActorInput& in)
+{
+    mCaptainValid = in.captainValid;
+    mCaptainX     = in.captainX;
+    mCaptainZ     = in.captainZ;
+    mPodValid     = in.podValid;
+    mPodX         = in.podX;
+    mPodZ         = in.podZ;
 }
 
 void P2WaterwraithActor::execWalk(const P2WaterwraithActorInput& in, P2WaterwraithActorOutput& out)
@@ -255,6 +379,60 @@ void P2WaterwraithActor::execWalk(const P2WaterwraithActorInput& in, P2Waterwrai
     if (in.tired) {
         enter(P2BM_Tired, out);
         return;
+    }
+
+    // Start-phase snap (source :955-964): while the roller is attached and the
+    // escape axis drifted from the start parm, re-adopt it. Phase 4 stops the
+    // pathfinder, so movement pauses for the pod branch below.
+    if (mRig.attachedToOwner() && mEscapePhase != mParms.startEscapePhase) {
+        mEscapePhase = mParms.startEscapePhase;
+        if (mEscapePhase == 4) {
+            mVelocity = P2WaterwraithVec3{};
+        }
+    }
+
+    // Autonomous escape chase (source :873-929, muse l63 #503). Runs only with
+    // a live captain observation; otherwise the route fallback steers below.
+    // Distance bands select the clip-player motion request; the close band
+    // runs the escape timer and winds down to Tired past ip05 (:909-911).
+    if (mEscapePhase == 2 && mCaptainValid) {
+        const float dx      = mCaptainX - mPosition.x;
+        const float dz      = mCaptainZ - mPosition.z;
+        const float sqrDist = dx * dx + dz * dz;
+        float turnSpeed     = mParms.escapeSpeed;
+        if (sqrDist > 800.0f * 800.0f) {
+            mEscapeTimer       = 0;
+            out.motionRequest  = P2WWMOTION_Wait; // WRAITHANIM_Wait
+            turnSpeed          = 0.0f; // :918-920 stand still while far
+            mLastMotion        = P2WWMOTION_Wait;
+        } else if (sqrDist > 400.0f * 400.0f) {
+            mEscapeTimer      = 0;
+            out.motionRequest = P2WWMOTION_Walk; // WRAITHANIM_Walk
+            turnSpeed         = mParms.walkingSpeed; // :922-924
+            mLastMotion       = P2WWMOTION_Walk;
+        } else {
+            ++mEscapeTimer;
+            out.motionRequest = P2WWMOTION_Run; // WRAITHANIM_Run
+            mLastMotion       = P2WWMOTION_Run;
+            if (mEscapeTimer > mParms.continuousEscapeTimerLength) {
+                enter(P2BM_Tired, out);
+                return;
+            }
+        }
+        mEscapeMoveSpeed += (turnSpeed - mEscapeMoveSpeed) * 0.2f; // :926
+    } else if (mEscapePhase != 2 && mPodValid) {
+        // Pod motion choice (source :930-953): Through within 100, else Move.
+        // Steering to the Pod itself happens in updateLocomotion for phase 4.
+        const float dx      = mPodX - mPosition.x;
+        const float dz      = mPodZ - mPosition.z;
+        const float sqrDist = dx * dx + dz * dz;
+        if (sqrDist < 100.0f * 100.0f) {
+            out.motionRequest = P2WWMOTION_Through; // WRAITHANIM_Through
+            mLastMotion       = P2WWMOTION_Through;
+        } else {
+            out.motionRequest = P2WWMOTION_Move; // WRAITHANIM_Move
+            mLastMotion       = P2WWMOTION_Move;
+        }
     }
 
     ++mStepTimer;
@@ -424,6 +602,16 @@ void P2WaterwraithActor::tick(const P2WaterwraithActorInput& in, P2WaterwraithAc
         return;
     }
 
+    // Route-find timer decrement (source doSimulation :454-458): per-frame in
+    // every phase, clamped at zero. The Walk cadence evaluates it in
+    // updateLocomotion.
+    if (mRouteFindTimer > 0) {
+        --mRouteFindTimer;
+    }
+
+    // Stash the live driver observations for the chase/pod branches.
+    observeDriver(in);
+
     // Tyre-child lifecycle triggers (the actor owns the child).
     if (in.landFloorContact) {
         mRig.landFloorContact();
@@ -464,7 +652,7 @@ void P2WaterwraithActor::tick(const P2WaterwraithActorInput& in, P2WaterwraithAc
     case P2BM_Tired: execTired(in, out); break;
     }
 
-    updateLocomotion(delta);
+    updateLocomotion(delta, out);
     refreshHealthFlags();
     out.state = mPhase;
 }
