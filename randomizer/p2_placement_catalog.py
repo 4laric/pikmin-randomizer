@@ -546,10 +546,17 @@ def binding_targets_for_sources(source_ids, document=None):
     lane04 = {source_id: identity for identity, source_id in candidate_source_ids().items()}
     muse = {source_id: identity for identity, source_id in muse_candidate_source_ids().items()}
     uses_muse = any(source_id in MUSE_CANDIDATE_IDS for source_id in source_ids)
+    muse_names = {identity for _, identity, *_ in MUSE_CANDIDATE_SPECS}
     if uses_muse:
         # Constraint targets only; the caller's document still supplies the
         # accepted placement evidence checked later by resolve_placement_layout.
-        document = build_muse_document()
+        # Substitute the base+muse document only when the caller passed a
+        # non-empty document that lacks the muse profiles; an empty document
+        # stays empty so the cohort still fails closed.
+        provided_has_muse = bool(document) and any(
+            profile.get('identity') in muse_names for profile in document.get('profiles', []))
+        if document is None or (document.get('slots') and not provided_has_muse):
+            document = build_muse_document()
     elif document is None:
         document = build_document()
     identities = []
