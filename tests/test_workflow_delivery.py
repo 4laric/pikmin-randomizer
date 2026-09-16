@@ -6,11 +6,10 @@ import unittest
 from workflow.delivery import DeliveryMixin
 from workflow.handoff import Rejected, digest
 from workflow.registry import Registry
-import test_pikmin2_workflow as baseline
+from tests import test_pikmin2_workflow as baseline
 
 
-class DeliveryRegistry(DeliveryMixin, Registry):
-    pass
+DeliveryRegistry = Registry
 
 
 class DeliveryTests(unittest.TestCase):

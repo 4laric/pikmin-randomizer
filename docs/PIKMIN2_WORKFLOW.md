@@ -3,6 +3,8 @@
 Current workflow, 2026-09-15. Implementation: #490; coordination: #186.
 Owner: Codex through shared GitHub account `4laric`.
 
+Throughput extension (#524): [worker pool, frozen delivery, batching and dashboard](PIKMIN2_THROUGHPUT.md).
+
 Self-healing execution extension (#508): [controller and smart shepherd](PIKMIN2_CONTROLLER.md).
 It adds terminal `finish` outcomes, review-only evidence, durable integration receipts,
 versioned dependency wakeups, fenced OpenCode dispatch and provider fallback. Use the

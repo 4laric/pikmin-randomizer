@@ -383,9 +383,15 @@ class Controller:
         return decisions
 
     def tick(self):
+        # Existing pooled runs must remain replayable even after pool scheduling
+        # is disabled, including recovery/dependency work earlier in this tick.
+        with self.reg.transaction() as state:
+            self.config['lanes'].update(state.get('throughput_runtime', {}).get('launch_specs', {}))
         from .provider_recovery import recover
         recover(self)
         self.receipts(); self.complete_runs(); self.dependencies(); self.observe()
+        from .throughput_controller import pool_tick
+        pool_tick(self)
         # Complete a previously bound launch after a crash before writing start.json.
         for item in self.reg.control_status()['launches'].values():
             if item['status'] == 'running' and not (self.launch_directory(item['id']) / 'start.json').exists():

@@ -34,9 +34,12 @@ def new_id():
 
 from .control import ControlMixin
 from .remote import RemoteMixin, check_remote_ownership
+from .delivery import DeliveryMixin
+from .scheduling import SchedulingMixin
+from .batching import BatchingMixin
 
 
-class Registry(ControlMixin, RemoteMixin):
+class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, RemoteMixin):
     def __init__(self, path, root, *, clock=time.time, process_probe=probe):
         self.path, self.root = Path(path).resolve(), Path(root).resolve()
         require(self.path.is_relative_to(self.root / 'output'), 'Registry must be under workspace output/')
@@ -53,7 +56,9 @@ class Registry(ControlMixin, RemoteMixin):
             state = json.loads(row[0])
             require(state['schema'] == 1 and state['root'] == str(self.root), 'Registry workspace/schema mismatch')
             yield state
-            db.execute('UPDATE registry SET body=? WHERE id=1', (json.dumps(state),))
+            encoded = json.dumps(state)
+            if encoded != row[0]:
+                db.execute('UPDATE registry SET body=? WHERE id=1', (encoded,))
             db.commit()
         except BaseException:
             db.rollback()
@@ -80,7 +85,40 @@ class Registry(ControlMixin, RemoteMixin):
             db.close()
 
     def event(self, state, kind, lane, **detail):
+        state['wake_revision'] = state.get('wake_revision', len(state['events'])) + 1
         state['events'].append(dict(at=self.clock(), kind=kind, lane=lane, **detail))
+
+    def throughput_status(self, window_seconds=3600, ram_percent=None):
+        from .analytics import throughput_metrics, staffing_recommendations
+        with self.transaction() as state:
+            return dict(at=self.clock(), throughput=state.get('throughput', {}),
+                        metrics=throughput_metrics(state, self.clock(), window_seconds=window_seconds),
+                        staffing=staffing_recommendations(state, self.clock(), ram_percent=ram_percent))
+
+    def configure_lane_launch(self, key, root, output, brief, config, legacy_supervisors=None):
+        """Attach local launch paths to an issue-backed pool lane without restarting service."""
+        paths = {name: local_path(self.root, value) for name, value in
+                 dict(root=root, output=output, brief=brief, config=config).items()}
+        require(paths['root'].is_dir() and paths['brief'].is_file() and paths['config'].is_file(),
+                'Prepared worktree, brief and provider config required')
+        require(paths['output'].is_relative_to(self.root / 'output'), 'Private output required')
+        owners = legacy_supervisors or []
+        require(isinstance(owners, list) and all(isinstance(p, dict) and
+                set(('host', 'pid', 'started')) <= p.keys() for p in owners), 'Process identities required')
+        record = {name: str(path) for name, path in paths.items()} | {'legacy_supervisors': owners}
+        with self.transaction() as state:
+            lane = self.lane(state, key)
+            require(paths['root'] == local_path(self.root, lane['root']['worktree']),
+                    'Launch worktree must match issue lane source')
+            specs = state.setdefault('throughput_runtime', {}).setdefault('launch_specs', {})
+            if specs.get(key) == record:
+                return record
+            require(self.recovery_safe(state, lane), 'Do not change launch paths of live execution')
+            require(not any(i['lane'] == key and i['status'] in ('intent', 'spawned', 'running')
+                            for i in self.control(state)['launches'].values()), 'Launch already in flight')
+            specs[key] = record
+            self.event(state, 'launch_spec_configured', key)
+            return record
 
     def lane(self, state, key, generation=None, revision=None):
         require(key in state['lanes'], 'Unknown lane: ' + key)

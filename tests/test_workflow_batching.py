@@ -3,14 +3,13 @@ import concurrent.futures
 import json
 import unittest
 
-import test_pikmin2_workflow as fixtures
+from tests import test_pikmin2_workflow as fixtures
 from workflow.batching import BatchingMixin
 from workflow.handoff import Rejected
 from workflow.registry import Registry
 
 
-class BatchRegistry(BatchingMixin, Registry):
-    pass
+BatchRegistry = Registry
 
 
 class BatchTests(unittest.TestCase):

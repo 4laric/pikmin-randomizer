@@ -10,6 +10,7 @@ from workflow.controller import Controller
 from workflow.registry import Registry
 from workflow.processes import identify
 from workflow.runner import write
+from workflow.wakeup import EventWaiter
 import os
 
 
@@ -23,6 +24,11 @@ def main():
     registry = Registry(args.root / 'output/workflow/registry.sqlite3', args.root)
     registry.controller_claim(identify(os.getpid()))
     controller = Controller(registry, config)
+    watched = [args.config, controller.base / 'WAKE']
+    if config.get('integrator_inbox'):
+        watched.append(args.root / config['integrator_inbox'])
+    watched.extend(args.root / path for path in config.get('receipts', []))
+    waiter = EventWaiter(registry.path, watched, controller.base / 'STOP')
     while not (controller.base / 'STOP').exists():
         try:
             controller.tick()
@@ -32,7 +38,7 @@ def main():
             print(str(exc), file=sys.stderr, flush=True)
             if args.once: return 1
         if args.once: return 0
-        time.sleep(max(5, min(60, config.get('interval', 30))))
+        waiter.wait(max(1, min(30, config.get('interval', 15))))
     return 0
 
 

@@ -10,8 +10,7 @@ from workflow.registry import Registry
 from workflow.scheduling import SchedulingMixin
 
 
-class PoolRegistry(SchedulingMixin, Registry):
-    pass
+PoolRegistry = Registry
 
 
 class SchedulingTests(unittest.TestCase):
