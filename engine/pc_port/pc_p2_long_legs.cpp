@@ -41,6 +41,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <map>
 #include <set>
@@ -74,6 +75,14 @@ struct ActorState {
     bool damageable = false;        // source damage window (Wait/Flick/Walk/Shot)
     bool bitterImmune = true;       // Stay/Land immunity
     float shotLoopAccum = 0.0f;     // Man-at-Legs attack-loop shell cadence
+    Vector3f homePos;               // spawn position (source mHomePosition)
+    Vector3f walkTarget;            // source mTargetPosition for the current Walk
+    Vector3f walkStart;             // position at Walk entry (displacement measure)
+    float walkDistance = 0.0f;      // accumulated body translation this Walk
+    float walkSeconds = 0.0f;       // time spent in the current Walk
+    bool hasWalkTarget = false;
+    float lastMoveRatio = 1.0f;     // measured translation ratio fed to crushGate
+    bool homeRecorded = false;
 };
 
 std::map<BTeki*, ActorState> actors;      // actor -> species + policy state
@@ -180,6 +189,34 @@ Creature* nearestTarget(const Vector3f& pos, float radius) {
         }
     }
     return best;
+}
+
+// Source Houdai::getTargetPosition default (Houdai.cpp:313-349, via
+// setTargetPattern: nearest navi or piki), consumed by StateWalk::init
+// (HoudaiState.cpp:340-350, startIKMotion + getTargetPosition). The port has no
+// IKSystemMgr, so the chosen target drives body translation at the source
+// species speed instead of an IK motion; the target rule itself is source.
+// A live target is taken as-is (source takes the Pikmin position); a missing
+// target falls back to the source random territory-ring point around home
+// (homeRadius + rand*(territory-homeRadius)).
+Vector3f pickWalkTarget(const Vector3f& pos, const Vector3f& home,
+                        const P2LongLegsFsmParms& parms)
+{
+    Creature* prey = nearestTarget(pos, parms.territoryRadius);
+    if (prey) {
+        Vector3f target = prey->getPosition();
+        const float dx = target.x - home.x, dz = target.z - home.z;
+        const float dist = std::sqrt(dx * dx + dz * dz);
+        if (dist > parms.territoryRadius && dist > 1.0e-6f) {
+            target.x = home.x + dx / dist * parms.territoryRadius;
+            target.z = home.z + dz / dist * parms.territoryRadius;
+        }
+        return target;
+    }
+    const float range = parms.territoryRadius - parms.homeRadius;
+    const float leg = parms.homeRadius + (range > 0.0f && gsys ? gsys->getRand(range) : 0.0f);
+    const float ang = gsys ? gsys->getRand(6.2831853f) : 0.0f;
+    return Vector3f(home.x + leg * std::sin(ang), home.y, home.z + leg * std::cos(ang));
 }
 
 int countPikiWithin(const Vector3f& pos, float radius) {
@@ -411,6 +448,8 @@ void pc_p2_long_legs_setup() {
         state.generator = generator;
         state.parms = p2LongLegsParmsFor(speciesEnum(match->second));
         state.fsm.reset(state.parms);
+        state.homePos = teki->getPosition(); // source mHomePosition: spawn point
+        state.homeRecorded = true;
         state.lastHealth = teki->mHealth;
         state.lastPositiveHealth = teki->mHealth;
         speciesUsed.insert(match->second);
@@ -495,6 +534,12 @@ void pc_p2_long_legs_update(BTeki* actor) {
 
     P2LongLegsFsmInput in;
     in.health = actor->mHealth;
+    // Measured body-translation ratio from the previous tick drives the source
+    // crush gate (IKSystemMgr::isCollisionCheck: a foot presses only while
+    // descending/planting with a move ratio above 1). Without leg state the
+    // planting edge is never synthesized, so Walk crush stays closed; the ratio
+    // is still observed for the movement evidence.
+    in.ikMoveRatio = state.lastMoveRatio;
     // A health decrease this tick is the source damage edge; it postpones the
     // Houdai gun by resetting the shot cooldown (Houdai.cpp).
     if (actor->mHealth > 0.0f && actor->mHealth < state.lastHealth) {
@@ -532,6 +577,50 @@ void pc_p2_long_legs_update(BTeki* actor) {
 
     P2LongLegsFsmOutput out;
     state.fsm.update(in, out);
+    const P2LongLegsState after = state.fsm.state();
+    // Source StateWalk (HoudaiState.cpp:340-375, BigFoot/Damagumo equivalents):
+    // startIKMotion toward getTargetPosition for mStateDuration, with no walk
+    // animation (family-wide). The port has no IKSystemMgr and no leg joints, so
+    // the source target rule + species speed drive BODY translation here while
+    // the legs stay bind-pose (documented approximation). Translation runs only
+    // in FSM Walk; every other state leaves the actor where it stands.
+    if (after == P2LongLegsState::Walk && before != P2LongLegsState::Walk) {
+        if (!state.homeRecorded) { state.homePos = pos; state.homeRecorded = true; }
+        state.walkTarget = pickWalkTarget(pos, state.homePos, state.parms);
+        state.walkStart = pos;
+        state.walkDistance = 0.0f;
+        state.walkSeconds = 0.0f;
+        state.hasWalkTarget = true;
+        std::printf("P2_LONG_LEGS_WALK species=%s generator=%u from=%.1f,%.1f to=%.1f,%.1f speed=%.1f\n",
+                    state.species.c_str(), state.generator, pos.x, pos.z,
+                    state.walkTarget.x, state.walkTarget.z, state.parms.speed);
+        std::fflush(stdout);
+    }
+    if (after == P2LongLegsState::Walk && state.hasWalkTarget) {
+        const float dx = state.walkTarget.x - pos.x, dz = state.walkTarget.z - pos.z;
+        const float dist = std::sqrt(dx * dx + dz * dz);
+        const float maxStep = state.parms.speed * dt;
+        const float step = dist < maxStep ? dist : maxStep;
+        state.lastMoveRatio = maxStep > 1.0e-6f ? step / maxStep : 1.0f;
+        state.walkSeconds += dt;
+        if (step > 1.0e-6f && dist > 1.0e-6f) {
+            const Vector3f next(pos.x + dx / dist * step, pos.y, pos.z + dz / dist * step);
+            actor->resetPosition(next);
+            // Registered actors are TEKI_Chappy placement vehicles (setup fails
+            // otherwise), so the Teki facing control is available.
+            static_cast<Teki*>(actor)->setDirection(std::atan2(dx, dz));
+            state.walkDistance += step;
+        }
+    } else {
+        state.lastMoveRatio = 1.0f;
+        if (before == P2LongLegsState::Walk && state.hasWalkTarget) {
+            std::printf("P2_LONG_LEGS_WALK_END species=%s generator=%u distance=%.1f seconds=%.2f\n",
+                        state.species.c_str(), state.generator,
+                        state.walkDistance, state.walkSeconds);
+            std::fflush(stdout);
+            state.hasWalkTarget = false;
+        }
+    }
     if (state.fsm.state() != before) {
         state.animSeconds = 0.0f;
         state.key2Fired = false;
