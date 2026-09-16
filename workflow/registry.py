@@ -1,0 +1,460 @@
+"""Transactional, single-host lane registry. No builds, task dispatch or kills."""
+from contextlib import contextmanager
+import copy
+import json
+from pathlib import Path, PurePosixPath
+import re
+import sqlite3
+import time
+import uuid
+
+from .handoff import GATES, digest, local_path, nonempty, require, source_record, validate_handoff
+from .processes import identify, probe
+
+STATES = {'ready', 'running', 'waiting_resource', 'blocked', 'handoff_ready', 'integrating', 'done'}
+ACTIVE = {'ready', 'running', 'waiting_resource', 'blocked'}
+TRANSITIONS = {
+    'ready': {'running', 'blocked'},
+    'running': {'waiting_resource', 'blocked'},
+    'waiting_resource': {'running', 'blocked'},
+    'blocked': {'ready', 'running'},
+    'handoff_ready': {'running', 'integrating'},
+    'integrating': {'running', 'handoff_ready'},
+    'done': set(),
+}
+DEFAULTS = dict(max_heavy_builds=2, heartbeat_seconds=300, progress_seconds=1800,
+                failure_limit=3, handoff_limit=2, handoff_age_seconds=3600)
+
+
+def new_id():
+    return uuid.uuid4().hex
+
+
+class Registry:
+    def __init__(self, path, root, *, clock=time.time, process_probe=probe):
+        self.path, self.root = Path(path).resolve(), Path(root).resolve()
+        require(self.path.is_relative_to(self.root / 'output'), 'Registry must be under workspace output/')
+        self.clock, self.probe = clock, process_probe
+
+    @contextmanager
+    def transaction(self):
+        require(self.path.is_file(), 'Registry missing; run init first')
+        db = sqlite3.connect(self.path, timeout=30)
+        try:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT body FROM registry WHERE id=1').fetchone()
+            require(row is not None, 'Registry not initialized')
+            state = json.loads(row[0])
+            require(state['schema'] == 1 and state['root'] == str(self.root), 'Registry workspace/schema mismatch')
+            yield state
+            db.execute('UPDATE registry SET body=? WHERE id=1', (json.dumps(state),))
+            db.commit()
+        except BaseException:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+    def init(self, settings=None):
+        settings = settings or {}
+        require(set(settings) <= set(DEFAULTS), 'Unknown setting')
+        require(all(type(v) is int and v > 0 for v in settings.values()), 'Settings must be positive integers')
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        db = sqlite3.connect(self.path, timeout=30)
+        try:
+            db.execute('BEGIN IMMEDIATE')
+            db.execute('CREATE TABLE IF NOT EXISTS registry (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL)')
+            require(db.execute('SELECT id FROM registry').fetchone() is None, 'Registry already initialized')
+            state = dict(schema=1, root=str(self.root), settings=DEFAULTS | settings,
+                         lanes={}, leases={}, queue={}, actions={}, events=[])
+            db.execute('INSERT INTO registry VALUES (1, ?)', (json.dumps(state),))
+            db.commit()
+            return state['settings']
+        finally:
+            db.close()
+
+    def event(self, state, kind, lane, **detail):
+        state['events'].append(dict(at=self.clock(), kind=kind, lane=lane, **detail))
+
+    def lane(self, state, key, generation=None, revision=None):
+        require(key in state['lanes'], 'Unknown lane: ' + key)
+        lane = state['lanes'][key]
+        if generation is not None:
+            require(lane['generation'] == generation, 'Stale ownership generation')
+        if revision is not None:
+            require(lane['revision'] == revision, 'Stale lane revision; read status before retrying')
+        return lane
+
+    def check_wip(self, state, lane):
+        others = [l for l in state['lanes'].values()
+                  if l['lane'] != lane['lane'] and l['worker_id'] == lane['worker_id']]
+        if lane['state'] in ACTIVE:
+            require(not any(l['state'] in ACTIVE for l in others), 'Worker already has one active slice')
+        if lane['state'] in ('handoff_ready', 'integrating'):
+            require(not any(l['state'] in ('handoff_ready', 'integrating') for l in others),
+                    'Worker already has one ready/integrating handoff')
+
+    def register(self, data):
+        data = copy.deepcopy(data)
+        for key in ('lane', 'owner', 'worker_id', 'task_id', 'scope', 'target_level', 'next_action', 'milestone'):
+            require(nonempty(data.get(key)), key + ' required')
+        require(re.fullmatch(r'[a-z0-9][a-z0-9_-]*', data['lane']), 'Use a stable lowercase lane ID')
+        require(type(data.get('issue')) is int and data['issue'] > 0, 'Issue required before claim')
+        for key in ('owned_files', 'acceptance'):
+            require(isinstance(data.get(key), list) and data[key] and all(nonempty(v) for v in data[key]),
+                    key + ' required')
+        require(len(set(data['owned_files'])) == len(data['owned_files']), 'Duplicate owned file')
+        require(isinstance(data.get('closes_gates', []), list) and
+                all(g in GATES for g in data.get('closes_gates', [])), 'Unknown intended acceptance gate')
+        data.setdefault('closes_gates', [])
+        for name in data['owned_files']:
+            require(not Path(name).is_absolute() and '..' not in Path(name).parts and '\\' not in name and
+                    ':' not in name and str(PurePosixPath(name)) == name,
+                    'Owned files use normalized repository-relative paths')
+        source_record(data.get('root'), 'root')
+        if data.get('native') is not None:
+            source_record(data['native'], 'native')
+        require(type(data.get('pid')) is int, 'Long-lived worker PID required')
+        process = identify(data.pop('pid'))
+        data.update(state='ready', revision=1, generation=1, process=process, dependencies=[],
+                    created_at=self.clock(), started_at=None, heartbeat_at=self.clock(),
+                    progress_at=self.clock(), progress_detail='Registered', handoff_at=None,
+                    progress_evidence=None,
+                    failure_streak=0, recovery_count=0, failure_fingerprint=None, handoff=None, integrated_at=None)
+        with self.transaction() as state:
+            require(data['lane'] not in state['lanes'], 'Lane ID already registered')
+            for other in state['lanes'].values():
+                if other['state'] != 'done':
+                    require(other['issue'] != data['issue'], 'Issue already has an unfinished lane')
+                    require(not ({f.casefold() for f in other['owned_files']} &
+                                 {f.casefold() for f in data['owned_files']}), 'Owned files overlap another lane')
+            self.check_wip(state, data)
+            state['lanes'][data['lane']] = data
+            self.event(state, 'registered', data['lane'])
+            return data
+
+    def heartbeat(self, key, generation):
+        with self.transaction() as state:
+            lane = self.lane(state, key, generation)
+            require(lane['state'] != 'done', 'Lane is done')
+            lane['heartbeat_at'] = self.clock()
+            # Liveness updates do not change revision or progress.
+            return {'heartbeat_at': lane['heartbeat_at'], 'revision': lane['revision']}
+
+    def checkpoint(self, key, generation, revision, changes, progress=None):
+        require(set(changes) <= {'state', 'next_action', 'dependencies', 'root', 'native'}, 'Unknown checkpoint field')
+        with self.transaction() as state:
+            lane = self.lane(state, key, generation, revision)
+            require(lane['state'] != 'done', 'Lane is done')
+            target = changes.get('state', lane['state'])
+            require(target == lane['state'] or target in TRANSITIONS[lane['state']], 'Invalid state transition')
+            if target == 'integrating':
+                self.check_handoff(lane)
+            if 'dependencies' in changes:
+                require(isinstance(changes['dependencies'], list) and
+                        all(nonempty(x) for x in changes['dependencies']), 'Dependencies must be lane IDs or issue references')
+                require(key not in changes['dependencies'], 'Lane cannot depend on itself')
+            for repo in ('root', 'native'):
+                if repo in changes:
+                    require(target in ACTIVE, 'Resume implementation before changing source identity')
+                    if changes[repo] is not None or repo == 'root':
+                        source_record(changes[repo], repo)
+            if 'next_action' in changes:
+                require(nonempty(changes['next_action']), 'Next action cannot be empty')
+            lane.update(changes)
+            if target == 'blocked':
+                require(lane['dependencies'], 'Blocked lane needs dependency/issue reference')
+            if target == 'waiting_resource':
+                require(any(q['lane'] == key and q['generation'] == generation for q in state['queue'].values()),
+                        'Waiting resource requires an actual queued request')
+            self.check_wip(state, lane)
+            if target == 'running' and lane['started_at'] is None:
+                lane['started_at'] = self.clock()
+            if target in ACTIVE:
+                lane['handoff'] = None
+                lane['handoff_at'] = None
+            if progress is not None:
+                require(isinstance(progress, dict) and nonempty(progress.get('summary')),
+                        'Meaningful progress requires a summary and hashed evidence')
+                evidence = local_path(self.root, progress.get('path'))
+                require(evidence.is_file() and digest(evidence) == progress.get('sha256'), 'Progress evidence missing/changed')
+                require(lane['progress_evidence'] is None or lane['progress_evidence']['sha256'] != progress['sha256'],
+                        'Unchanged evidence is not new progress')
+                lane['progress_at'], lane['progress_detail'] = self.clock(), progress['summary']
+                lane['progress_evidence'] = progress
+                lane['failure_streak'], lane['failure_fingerprint'] = 0, None
+                lane['recovery_count'] = 0
+                self.event(state, 'progress', key, evidence=progress)
+            lane['revision'] += 1
+            self.event(state, 'checkpoint', key, execution_state=target)
+            return lane
+
+    def failure(self, key, generation, attempt_id, fingerprint, evidence):
+        require(nonempty(attempt_id) and nonempty(fingerprint), 'Attempt ID and stable failure fingerprint required')
+        path = local_path(self.root, evidence.get('path'))
+        require(path.is_file() and digest(path) == evidence.get('sha256'), 'Failure evidence missing/changed')
+        with self.transaction() as state:
+            lane = self.lane(state, key, generation)
+            prior = [e for e in state['events'] if e['kind'] == 'failure' and e['lane'] == key and e['attempt_id'] == attempt_id]
+            if prior:
+                require(prior[0]['fingerprint'] == fingerprint and prior[0]['evidence'] == evidence,
+                        'Attempt ID reused for a different failure')
+                return {'duplicate': True, 'failure_streak': lane['failure_streak']}
+            lane['failure_streak'] = lane['failure_streak'] + 1 if lane['failure_fingerprint'] == fingerprint else 1
+            lane['failure_fingerprint'] = fingerprint
+            self.event(state, 'failure', key, attempt_id=attempt_id, fingerprint=fingerprint, evidence=evidence)
+            return {'duplicate': False, 'failure_streak': lane['failure_streak']}
+
+    def resource(self, name):
+        if name in ('maintained-build-export', 'shared-runtime'):
+            return name
+        require(name.startswith('build:'), 'Resource must be maintained-build-export, shared-runtime or build:<path>')
+        path = local_path(self.root, name[6:])
+        require(path.is_relative_to(self.root / 'output') and path != self.root / 'output',
+                'Private build must be under output/')
+        return 'build:' + str(path).casefold()
+
+    @staticmethod
+    def heavy(resource):
+        return resource == 'maintained-build-export' or resource.startswith('build:')
+
+    def acquire(self, key, generation, resource, pid, ttl=300):
+        resource = self.resource(resource)
+        require(type(ttl) is int and 1 <= ttl <= 3600, 'Lease TTL must be 1–3600 seconds')
+        identity = identify(pid)
+        with self.transaction() as state:
+            lane = self.lane(state, key, generation)
+            require(lane['state'] != 'done', 'Lane is done')
+            # Expiry alone never proves that the protected process has stopped.
+            for name, lease in list(state['leases'].items()):
+                if lease['expires_at'] <= self.clock() and self.probe(lease['process']) == 'dead':
+                    self.event(state, 'lease_reaped', lease['lane'], resource=name)
+                    del state['leases'][name]
+            existing = state['leases'].get(resource)
+            if existing and existing['lane'] == key and existing['generation'] == generation:
+                require(existing['process'] == identity, 'Lease already held by a different process')
+                return {'acquired': True, 'lease': existing}
+            request_id = f'{key}:{generation}:{resource}'
+            # A dead waiter must not block the queue forever. Unknown/live waiters
+            # retain their place until explicitly cancelled.
+            for queued_id, queued in list(state['queue'].items()):
+                if self.clock() - queued['requested_at'] > state['settings']['heartbeat_seconds'] and self.probe(queued['process']) == 'dead':
+                    self.event(state, 'request_reaped', queued['lane'], wait_seconds=self.clock() - queued['requested_at'])
+                    del state['queue'][queued_id]
+            request = state['queue'].setdefault(request_id, dict(id=request_id, lane=key,
+                generation=generation, resource=resource, requested_at=self.clock(), process=identity))
+            require(request['process'] == identity, 'Cancel previous queued request before changing process')
+            # FIFO for an exclusive resource and for the aggregate heavy-build pool.
+            earlier = [q for q in state['queue'].values() if q['id'] != request_id and
+                       (q['requested_at'], q['id']) < (request['requested_at'], request_id) and
+                       q['resource'] not in state['leases'] and
+                       (q['resource'] == resource or (self.heavy(resource) and self.heavy(q['resource'])))]
+            count = sum(self.heavy(r) for r in state['leases'])
+            if existing or earlier or (self.heavy(resource) and count >= state['settings']['max_heavy_builds']):
+                return {'acquired': False, 'request': request, 'reason': 'held, earlier request, or build capacity'}
+            lease = dict(token=new_id(), lane=key, generation=generation, resource=resource,
+                         process=identity, acquired_at=self.clock(), expires_at=self.clock() + ttl)
+            state['leases'][resource] = lease
+            del state['queue'][request_id]
+            self.event(state, 'lease_acquired', key, resource=resource,
+                       wait_seconds=self.clock() - request['requested_at'])
+            return {'acquired': True, 'lease': lease}
+
+    def renew(self, key, generation, resource, token, ttl=300):
+        resource = self.resource(resource)
+        require(type(ttl) is int and 1 <= ttl <= 3600, 'Lease TTL must be 1–3600 seconds')
+        with self.transaction() as state:
+            self.lane(state, key, generation)
+            lease = state['leases'].get(resource)
+            require(lease and (lease['lane'], lease['generation'], lease['token']) == (key, generation, token),
+                    'Lease token/owner mismatch')
+            require(self.probe(lease['process']) == 'alive', 'Lease owner is not confirmed alive')
+            lease['expires_at'] = self.clock() + ttl
+            return lease
+
+    def release(self, key, generation, resource, token):
+        resource = self.resource(resource)
+        with self.transaction() as state:
+            self.lane(state, key, generation)
+            lease = state['leases'].get(resource)
+            require(lease and (lease['lane'], lease['generation'], lease['token']) == (key, generation, token),
+                    'Lease token/owner mismatch')
+            require(self.probe(lease['process']) == 'dead', 'Protected process must stop before lease release')
+            del state['leases'][resource]
+            self.event(state, 'lease_released', key, resource=resource)
+            return {'released': resource}
+
+    def cancel_request(self, key, generation, request_id):
+        with self.transaction() as state:
+            self.lane(state, key, generation)
+            request = state['queue'].get(request_id)
+            require(request and request['lane'] == key and request['generation'] == generation, 'Request owner mismatch')
+            del state['queue'][request_id]
+            self.event(state, 'request_cancelled', key, wait_seconds=self.clock() - request['requested_at'])
+            return {'cancelled': request_id}
+
+    def recovery_safe(self, state, lane):
+        return self.probe(lane['process']) == 'dead' and all(
+            self.probe(lease['process']) == 'dead' for lease in state['leases'].values()
+            if lease['lane'] == lane['lane'])
+
+    def watchdog(self):
+        """Persist deduplicated recommendations. Never launch or terminate a task."""
+        with self.transaction() as state:
+            results = []
+            for key, lane in state['lanes'].items():
+                if lane['state'] in ('done', 'handoff_ready', 'integrating'):
+                    continue
+                kind, reason = None, None
+                settings = state['settings']
+                if lane['failure_streak'] >= settings['failure_limit']:
+                    kind, reason = 'escalate', 'Repeated failure: ' + str(lane['failure_fingerprint'])
+                elif lane['recovery_count'] >= settings['failure_limit']:
+                    kind, reason = 'escalate', 'Recovery budget exhausted without meaningful progress'
+                elif lane['state'] in ('blocked', 'waiting_resource'):
+                    if self.clock() - lane['progress_at'] >= settings['progress_seconds']:
+                        kind, reason = 'check_dependency', 'Inspect dependency or resource wait; do not restart'
+                elif self.recovery_safe(state, lane):
+                    kind, reason = 'recover', 'Recorded worker and protected processes confirmed stopped'
+                elif self.clock() - lane['progress_at'] >= 2 * settings['progress_seconds']:
+                    kind, reason = 'escalate', 'No meaningful progress after the diagnosis budget'
+                elif self.clock() - lane['progress_at'] >= settings['progress_seconds']:
+                    kind, reason = 'checkpoint', 'No meaningful progress; diagnose before restarting'
+                elif self.clock() - lane['heartbeat_at'] >= settings['heartbeat_seconds']:
+                    kind, reason = 'checkpoint', 'Missed heartbeat; ownership remains unchanged'
+                if kind is None:
+                    continue
+                # One action of each kind per ownership generation and progress checkpoint.
+                dedupe = f'{key}:{lane["generation"]}:{lane["progress_at"]}:{kind}'
+                action = next((a for a in state['actions'].values() if a['dedupe'] == dedupe), None)
+                if action is None:
+                    action = dict(id=new_id(), dedupe=dedupe, lane=key, generation=lane['generation'],
+                                  progress_at=lane['progress_at'], kind=kind, reason=reason,
+                                  status='pending', created_at=self.clock(), consumer=None)
+                    state['actions'][action['id']] = action
+                    self.event(state, 'watchdog_action', key, action=action['id'], action_kind=kind)
+                results.append(action)
+            return results
+
+    def claim_action(self, action_id, consumer):
+        require(nonempty(consumer), 'Dispatcher identity required')
+        with self.transaction() as state:
+            require(action_id in state['actions'], 'Unknown action')
+            action = state['actions'][action_id]
+            lane = self.lane(state, action['lane'], action['generation'])
+            require(action['progress_at'] == lane['progress_at'], 'Action superseded by progress')
+            require(action['status'] == 'pending', 'Action already claimed/completed; reconcile instead of redispatching')
+            if action['kind'] == 'recover':
+                require(lane['state'] in ('ready', 'running') and self.recovery_safe(state, lane),
+                        'Recovery no longer safe')
+                require(lane['failure_streak'] < state['settings']['failure_limit'] and
+                        lane['recovery_count'] < state['settings']['failure_limit'], 'Recovery budget exhausted')
+                require(not any(a['lane'] == lane['lane'] and a['kind'] == 'recover' and a['status'] == 'claimed'
+                                for a in state['actions'].values()), 'Recovery already in flight')
+            action.update(status='claimed', consumer=consumer, claimed_at=self.clock())
+            return action
+
+    def complete_action(self, action_id, consumer, outcome, replacement=None):
+        require(nonempty(outcome), 'Outcome/checkpoint reference required')
+        with self.transaction() as state:
+            require(action_id in state['actions'], 'Unknown action')
+            action = state['actions'][action_id]
+            if action['status'] == 'completed':
+                require(action['consumer'] == consumer and action['outcome'] == outcome and
+                        action.get('replacement') == replacement, 'Conflicting action replay')
+                return action
+            require(action['status'] == 'claimed' and action['consumer'] == consumer, 'Claim action before completing')
+            lane = self.lane(state, action['lane'], action['generation'])
+            if action['kind'] == 'recover':
+                require(isinstance(replacement, dict) and nonempty(replacement.get('task_id')) and
+                        type(replacement.get('pid')) is int, 'Recovery needs known replacement task ID and PID')
+                require(lane['state'] in ('ready', 'running') and self.recovery_safe(state, lane),
+                        'Previous execution must remain stopped')
+                identity = identify(replacement['pid'])
+                lane.update(generation=lane['generation'] + 1, revision=lane['revision'] + 1,
+                            task_id=replacement['task_id'], process=identity, state='ready',
+                            recovery_count=lane['recovery_count'] + 1,
+                            heartbeat_at=self.clock(), progress_at=self.clock(),
+                            progress_detail='Recovered from checkpoint: ' + outcome)
+                # Only confirmed-dead old leases can reach here.
+                state['leases'] = {k: v for k, v in state['leases'].items() if v['lane'] != lane['lane']}
+                state['queue'] = {k: v for k, v in state['queue'].items() if v['lane'] != lane['lane']}
+            else:
+                require(replacement is None, 'Only recover actions may replace execution')
+            action.update(status='completed', outcome=outcome, replacement=replacement, completed_at=self.clock())
+            self.event(state, 'action_completed', lane['lane'], action=action_id)
+            return action
+
+    def submit_handoff(self, key, generation, revision, path):
+        path = local_path(self.root, path)
+        with self.transaction() as state:
+            lane = self.lane(state, key, generation, revision)
+            require(lane['state'] in ('running', 'handoff_ready', 'integrating'),
+                    'Only running/ready/integrating slices can submit a handoff')
+            data = json.loads(path.read_text(encoding='utf-8'))
+            result = validate_handoff(self.root, data, lane)
+            require(result['slice_passed'], 'Assigned slice criteria must pass before ready handoff')
+            lane.update(state='handoff_ready', handoff_at=lane['handoff_at'] or self.clock(), progress_at=self.clock(),
+                        revision=revision + 1, handoff=dict(path=str(path), sha256=digest(path), result=result))
+            self.check_wip(state, lane)
+            self.event(state, 'handoff_ready', key)
+            return lane
+
+    def check_handoff(self, lane):
+        require(lane['handoff'], 'Handoff required')
+        path = Path(lane['handoff']['path'])
+        require(path.is_file() and digest(path) == lane['handoff']['sha256'], 'Handoff changed after submission')
+        result = validate_handoff(self.root, json.loads(path.read_text(encoding='utf-8')), lane)
+        require(result['slice_passed'], 'Assigned slice criteria no longer pass')
+        return result
+
+    def integrate(self, key, generation, revision, record):
+        with self.transaction() as state:
+            lane = self.lane(state, key, generation, revision)
+            require(lane['state'] == 'integrating', 'Begin integration before recording completion')
+            result = self.check_handoff(lane)
+            require(not result['pending_reviews'], 'Resolve shared reviews before integration')
+            for name in ('root_commit',):
+                require(re.fullmatch(r'[0-9a-f]{40}', record.get(name, '')), 'Full integrated root commit required')
+            if lane['native'] is not None:
+                require(re.fullmatch(r'[0-9a-f]{40}', record.get('native_commit', '')) and
+                        isinstance(record.get('native_dirty'), str) and nonempty(record.get('export_evidence')),
+                        'Native commit, dirty state and export evidence required')
+            path = local_path(self.root, record.get('validation_path'))
+            require(path.is_file() and digest(path) == record.get('validation_sha256'), 'Integration validation evidence mismatch')
+            if lane['native'] is not None:
+                export = local_path(self.root, record['export_evidence'])
+                require(export.is_file() and digest(export) == record.get('export_sha256'),
+                        'Export evidence missing/changed')
+            lane.update(state='done', integrated_at=self.clock(), revision=revision + 1, integration=record)
+            self.event(state, 'integrated', key, lead_seconds=self.clock() - (lane['started_at'] or lane['created_at']))
+            return lane
+
+    def status(self):
+        with self.transaction() as state:
+            now = self.clock()
+            handoffs = [l for l in state['lanes'].values() if l['state'] in ('handoff_ready', 'integrating')]
+            backlog = (len(handoffs) >= state['settings']['handoff_limit'] or any(
+                now - l['handoff_at'] >= state['settings']['handoff_age_seconds'] for l in handoffs))
+            waits = [e['wait_seconds'] for e in state['events'] if 'wait_seconds' in e]
+            leads = [e['lead_seconds'] for e in state['events'] if e['kind'] == 'integrated']
+            milestones = {}
+            for lane in state['lanes'].values():
+                result = lane['handoff']['result'] if lane['handoff'] else None
+                milestones.setdefault(lane['milestone'], []).append(dict(lane=lane['lane'],
+                    state=lane['state'], outstanding_gates=result['outstanding_gates'] if result else 'not_reported'))
+            ready = [l for l in state['lanes'].values() if l['state'] == 'ready' and all(
+                d in state['lanes'] and state['lanes'][d]['state'] == 'done' for d in l['dependencies'])]
+            priority = sorted(ready, key=lambda l: (-sum(l['lane'] in other['dependencies']
+                              for other in state['lanes'].values() if other['state'] != 'done'),
+                              -len(l['closes_gates']), l['created_at']))
+            return dict(lanes=state['lanes'], leases=state['leases'], requests=list(state['queue'].values()),
+                        actions=list(state['actions'].values()), settings=state['settings'],
+                        metrics=dict(handoff_queue=[dict(lane=l['lane'], age_seconds=now-l['handoff_at']) for l in handoffs],
+                            resource_waits=[dict(id=q['id'], age_seconds=now-q['requested_at']) for q in state['queue'].values()],
+                            completed_wait_seconds=waits, integrated_lead_seconds=leads,
+                            failure_attempts=sum(e['kind'] == 'failure' for e in state['events']),
+                            completed_slices=len(leads), milestones=milestones),
+                        dispatch=dict(pause_new_slices=backlog,
+                            reason='Clear integration backlog' if backlog else 'Prioritize ready dependencies and milestone gates',
+                            suggested_lanes=[] if backlog else [l['lane'] for l in priority]))
