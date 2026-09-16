@@ -65,6 +65,16 @@ _OVERRIDES = {}
 # Identity-to-family mapping for the binding layer. Only identities whose family
 # already has a lane 05 installer/adapter are registered; anything else resolves
 # to a clear failure instead of silently binding to a P1 analogue.
+#
+# Muse packaging lane (#493): source 58 (BombSarai) reuses the existing shared-
+# contract ``experimental.pikmin2_bombsarai_install`` module as-is through this
+# mapping. Sources 41 (Fuefuki), 57 (Kurage) and 78 (MiniHoudai) have no shared-
+# signature family installer (Fuefuki is bespoke ``install(run_dir)``-only;
+# flying covers 29/55/77 and cannon covers 97 FminiHoudai, not these three), so
+# they intentionally stay unmapped here and stage through the candidate-only
+# ``experimental.pikmin2_muse_packaging`` sidecar path instead of a forced
+# family binding. See MUSE_CANDIDATE_IDS below.
+MUSE_CANDIDATE_IDS = frozenset({41, 57, 58, 78})
 IDENTITY_FAMILY = {
     44: 'dwarf_orange', 'bluekochappy': 'dwarf_orange',
     45: 'snow', 'yellowkochappy': 'snow',
@@ -78,6 +88,9 @@ IDENTITY_FAMILY = {
     60: 'dweevil', 'waterotakara': 'dweevil',
     61: 'dweevil', 'gasotakara': 'dweevil',
     62: 'dweevil', 'elecotakara': 'dweevil',
+    # Muse packaging lane (#493): BombSarai (Careening Dirigibug, source 58)
+    # reuses the existing shared-contract bombsarai installer as-is.
+    58: 'bombsarai', 'bombsarai': 'bombsarai',
 }
 
 
