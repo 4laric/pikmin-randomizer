@@ -401,7 +401,9 @@ class Controller:
             def priority(item):
                 lane = lanes[item['lane']]
                 downstream = sum(item['lane'] in other['dependencies'] for other in lanes.values() if other['state'] != 'done')
-                return (-downstream, len(lane.get('closes_gates', [])) or 99, item['created_at'])
+                # Legacy/dependency/recovery intents default to existing work.
+                work_class = 1 if item.get('work_class') == 'expansion' else 0
+                return (work_class, -downstream, len(lane.get('closes_gates', [])) or 99, item['created_at'])
             for item in sorted(self.reg.control_status()['launches'].values(), key=priority):
                 if item['status'] in ('intent', 'spawned'):
                     if not self.reg.select_model(item['models']) or not self.available(item['lane']): continue

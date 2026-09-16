@@ -44,7 +44,12 @@ rest of the existing configuration and its configured paid Muse model identifier
 ```
 
 Pool assignment independently refuses new work at RAM >=90%. Hysteresis resumes
-controller dispatch at <=87%. RAM is a ceiling, not a utilization target. Preserve
+controller dispatch at <=87%. Fill available capacity with eligible work, following
+**existing work > new content > idle**. New content jobs set `work_class: "expansion"`;
+omitted fields and legacy/dependency/recovery intents default to `existing`.
+Work class precedes role priority. Running or blocked existing work does not
+prevent independent expansion from using spare capacity; live workers are not
+preempted. See the [complete content lane plan](PIKMIN_CONTENT_IMPORT_LANES.md). Preserve
 the registry's **two heavy-build slots**; assigning a heavy job reserves capacity
 but does not replace the actual exclusive build lease. Private runtimes remain
 exempt from shared-runtime reservations. The existing fenced runner dispatches

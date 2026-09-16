@@ -107,10 +107,11 @@ def pool_tick(controller):
             except Rejected as exc:
                 reg.notice(assignment['lane'], 'pool_completion_blocked', {'error': str(exc)})
     if controller.capacity():
-        from .scheduling import PRIORITY
+        from .scheduling import job_priority
         def priority(worker):
-            return min((PRIORITY[j['role']] for j in pool['jobs'].values()
-                        if j['status'] == 'queued' and j['worker_id'] == worker['worker_id']), default=99)
+            return min((job_priority(j) for j in pool['jobs'].values()
+                        if j['status'] in ('queued', 'assigned') and j['worker_id'] == worker['worker_id']),
+                       default=(99, 99, 0, worker['worker_id']))
         for worker in sorted(pool['workers'].values(), key=priority):
             try:
                 assignment = reg.assign_job(worker['worker_id'], controller.memory())

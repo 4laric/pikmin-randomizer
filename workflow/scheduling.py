@@ -13,6 +13,13 @@ from .handoff import nonempty, require
 ROLES = {'implementation', 'review', 'repair', 'integration', 'qa'}
 PRIORITY = {'repair': 0, 'review': 1, 'integration': 2, 'qa': 3, 'implementation': 4}
 OPEN = {'assigned', 'dispatched'}
+WORK_CLASSES = {'existing': 0, 'expansion': 1}
+
+
+def job_priority(job):
+    """Finish actionable existing slices before new content, then use role/FIFO."""
+    return (WORK_CLASSES[job.get('work_class', 'existing')], PRIORITY[job['role']],
+            job.get('queued_at', 0), job['id'])
 
 
 class SchedulingMixin:
@@ -78,16 +85,18 @@ class SchedulingMixin:
         require(record['role'] in ROLES, 'Unknown job role')
         record.setdefault('capabilities', [])
         record.setdefault('heavy', False)
+        record.setdefault('work_class', 'existing')
+        require(isinstance(record['work_class'], str) and record['work_class'] in WORK_CLASSES, 'work_class must be existing or expansion')
         require(type(record['heavy']) is bool, 'heavy must be boolean')
         require(isinstance(record['capabilities'], list) and all(nonempty(c) for c in record['capabilities']),
                 'Capabilities must be strings')
-        require(set(record) <= {'id', 'lane', 'issue', 'workstream', 'role', 'instruction', 'capabilities', 'heavy'},
+        require(set(record) <= {'id', 'lane', 'issue', 'workstream', 'role', 'instruction', 'capabilities', 'heavy', 'work_class'},
                 'Unknown job fields')
         with self.transaction() as state:
             data = self.scheduling(state)
             old = data['jobs'].get(record['id'])
             if old:
-                require(all(old[k] == v for k, v in record.items()), 'Job ID already has different scope')
+                require(all(old.get(k, 'existing' if k == 'work_class' else None) == v for k, v in record.items()), 'Job ID already has different scope')
                 return old
             lane = self.lane(state, record['lane'])
             require(lane['issue'] == record['issue'], 'Job must match registered issue scope')
@@ -119,7 +128,7 @@ class SchedulingMixin:
                 return existing
             if ram_percent >= 90:
                 return None
-            jobs = sorted(data['jobs'].values(), key=lambda j: (PRIORITY[j['role']], j['queued_at'], j['id']))
+            jobs = sorted(data['jobs'].values(), key=job_priority)
             for job in jobs:
                 if job['status'] != 'queued' or job['worker_id'] != worker_id:
                     continue
@@ -258,7 +267,8 @@ class SchedulingMixin:
             launch = dict(id=identity, lane=lane['lane'], generation=lane['generation'],
                           reason='pool:' + item['id'], instruction=item['instruction'], models=models,
                           model_index=0, version=None, session=lane['task_id'].removeprefix('opencode:'),
-                          status='intent', process=None, created_at=self.clock(), attempts=0)
+                          status='intent', process=None, created_at=self.clock(), attempts=0,
+                          work_class=data['jobs'][item['job']].get('work_class', 'existing'))
             c['launches'][identity] = launch
             item.update(launch_id=identity, status='dispatched')
             self.event(state, 'launch_intent', lane['lane'], action=identity)
