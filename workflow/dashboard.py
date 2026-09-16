@@ -62,7 +62,7 @@ def render_dashboard(report):
         warning = '<p class="warning" role="status">Queue starvation: eligible capacity has waited ' + escape(number(starving / 60, ' min')) + ' for prepared work. Prepared backlog refill required.</p>'
     elif autofill.get('last_manifest_error') or autofill.get('last_planner_error'):
         warning = '<p class="warning" role="status">Backlog preparation needs attention. See the recorded reason below.</p>'
-    sections = [('Acceptance backlog', backlog), ('Metrics', report.get('metrics', {})), ('Staffing', report.get('staffing', {}))]
+    sections = [('Queue pressure', report.get('queue_pressure', {})), ('Acceptance backlog', backlog), ('Metrics', report.get('metrics', {})), ('Staffing', report.get('staffing', {}))]
     sections += [(name.title(), throughput.get(name, {})) for name in
                  ('workstreams', 'workers', 'jobs', 'assignments', 'batches')]
     body = ''.join('<section><h2>' + escape(name) + '</h2>' +

@@ -84,11 +84,18 @@ def tick(controller, settings, issue_reader):
     require(len({h['scope'] for h in helpers}) == len(helpers), 'Duplicate planner partition')
     with reg.transaction() as state:
         records = copy.deepcopy(_state(state).setdefault('planner_pool', {}).setdefault('scopes', {}))
+        pressure=copy.deepcopy(state.get('queue_pressure',{}).get('stages',{}))
+    from .queue_pressure import support_work
+    support={h['scope']:support_work(reg,h) for h in helpers if h.get('kind')=='integration_support'}
+    def demanded(h):
+        if h.get('kind')=='integration_support':
+            work=support[h['scope']]
+            return bool(work) and fingerprint(work)!=records.get(h['scope'],{}).get('support_snapshot')
+        return (review_pending(reg,settings,h) if h.get('kind')=='publication' else
+                not (h.get('defer_for_review') and review_pending(reg,settings,{'review_inboxes':h['defer_for_review']})))
     helpers = [h for h in helpers if
                (h['scope'] in records and 'completed_at' not in records[h['scope']]) or
-               (review_pending(reg, settings, h) if h.get('kind') == 'publication' else
-                not (h.get('defer_for_review') and review_pending(reg, settings,
-                     {'review_inboxes': h['defer_for_review']})))]
+               demanded(h)]
     # Receiving a report accepts no proposed implementation or gameplay gate.
     for scope, record in records.items():
         lane = reg.status()['lanes'].get(record['spec']['lane']['lane'])
@@ -103,6 +110,9 @@ def tick(controller, settings, issue_reader):
             with reg.transaction() as state:
                 live = _state(state)['planner_pool']['scopes'][scope]
                 live.setdefault('completed_at', reg.clock())
+                for target in live.get('support_targets',[]):
+                    state.setdefault('integration_support_reviewed',{})[fingerprint(target)]={
+                        'reviewer':lane['lane'],'at':reg.clock()}
                 _state(state)['items'][record['spec']['id']].update(status='completed', ready=False)
     with reg.transaction() as state:
         data = _state(state)
@@ -123,8 +133,11 @@ def tick(controller, settings, issue_reader):
     if not controller.capacity() or not 0 <= controller.memory() < 90: return
     # Never-used shards precede repeated turns, so fast no-work reports cannot
     # continually reclaim workers ahead of untouched backlog partitions.
-    for helper in sorted(helpers, key=lambda h: (h.get('kind') != 'publication',
-                                                records.get(h['scope'], {}).get('started_at', 0))):
+    def staffing_priority(h):
+        stage={'publication':'publication','integration_support':'integration'}.get(h.get('kind'))
+        return (0 if stage else 1,-pressure.get(stage,{}).get('pressure',0),
+                records.get(h['scope'],{}).get('started_at',0))
+    for helper in sorted(helpers, key=staffing_priority):
         scope = helper['scope']
         record = records.get(scope)
         pending = record and 'completed_at' not in record
@@ -143,7 +156,12 @@ def tick(controller, settings, issue_reader):
             cycle = (record or {}).get('cycle', 0) + 1
             spec['id'] += '-cycle-' + str(cycle)
             spec['lane']['lane'] += '-cycle-' + str(cycle)
-            if helper.get('kind') == 'publication':
+            if helper.get('kind') == 'integration_support':
+                spec['instruction'] += (' Integration review support: review this frozen queue snapshot: '+
+                    json.dumps(support[scope])+'. Verify current handoff pins before reviewing. '
+                    'Prepare a hashed review packet for the existing integrator; no merges, shared edits, '
+                    'builds, approval impersonation or ADMIT. Finish review-ready. Existing owner retains integration.')
+            elif helper.get('kind') == 'publication':
                 spec['instruction'] += (' Publication review partition: ' + scope +
                     '. Review existing immutable proposals only. Publish solely through canonical '
                     'workflow.planner_pool.merge_proposals; retry manifest-change conflicts from fresh state. '
@@ -166,6 +184,9 @@ def tick(controller, settings, issue_reader):
             with reg.transaction() as state:
                 data = _state(state)
                 data['planner_pool']['scopes'][scope] = dict(spec=spec, cycle=cycle, started_at=reg.clock())
+                if helper.get('kind')=='integration_support':
+                    data['planner_pool']['scopes'][scope]['support_snapshot']=fingerprint(support[scope])
+                    data['planner_pool']['scopes'][scope]['support_targets']=support[scope]
                 data['items'][spec['id']] = dict(spec_hash=fingerprint(spec), priority=spec['priority'],
                     lane=spec['lane']['lane'], phase='pending', status='pending', ready=False, planner_helper=True)
             active += 1

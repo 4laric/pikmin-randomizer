@@ -68,6 +68,9 @@ def validate_spec(reg, spec, issue_reader=github_issue, *, verified=False):
     require(isinstance(lane.get('owned_files'), list) and lane['owned_files'] and
             all(isinstance(f, str) and f for f in lane['owned_files']), 'Explicit owned file strings required')
     require(type(lane.get('issue')) is int and lane['issue'] > 0, 'Explicit issue required')
+    require(isinstance(lane.get('lane'), str) and lane['lane'].strip(), 'Explicit lane name required')
+    require(lane.get('target_level') != 'runtime' or lane.get('native') is not None,
+            'Runtime acceptance requires a prepared private native source worktree')
     for label in ('root', 'native'):
         source = lane.get(label)
         if source is None and label == 'native':
@@ -432,7 +435,10 @@ def autofill_tick(controller, *, issue_reader=github_issue):
         if not controller.capacity() or not 0 <= controller.memory() < 90:
             return
         admitted = False
-        for spec in sorted(items, key=lambda i: (PRIORITIES.get(i.get('priority'), 99), i['id'])):
+        from .queue_pressure import dependents
+        lanes=reg.status()['lanes']
+        for spec in sorted(items, key=lambda i: (PRIORITIES.get(i.get('priority'), 99),
+                -dependents(lanes,i['lane']['lane'],i['lane']['issue']),i['id'])):
             try:
                 if _prepare(controller, spec, issue_reader):
                     admitted = True

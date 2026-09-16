@@ -515,3 +515,27 @@ preserve all work, and create a private native worktree from an integration-appr
 pin only when actually missing. It checkpoints source identity and uses normal
 private build leases and mandatory runtime fixtures. This does not bypass external
 review, change acceptance, reset the coordinator or grant ADMIT.
+
+## Queue-aware support (#624)
+
+With `queue_pressure.enabled`, the controller observes publication, integration and
+runtime queues every tick, sampling arrivals/departures/completions at most once
+per minute over one hour. Initial observations are a baseline, not arrivals.
+Rates are marked warming up for five minutes. Departures are not acceptance;
+completion counts require a done lane. Oldest age and explicit lane/issue dependency
+fan-out contribute to a transparent pressure score (depth + age capped at 12 +
+downstream + twice positive sampled growth). See dashboard Queue pressure and
+controller/queue-pressure.json. Measurements guide staffing, not CPU utilization.
+
+Idle support helpers rank by stage pressure ahead of discovery; ready implementation
+still reserves workers first. Two issue-backed integration-support partitions (#625,
+#626) prepare advisory pinned handoff review packets for the existing integrator.
+They review up to three targets per turn; completed report targets are remembered by
+source/handoff fingerprint so unchanged packets do not consume repeat turns. Changed
+pins or new handoffs create new demand. No helper merges, grants shared approval,
+builds, or admits enemies. Active lanes are not preempted.
+
+Within existing enemy/content/expansion priority classes, autofill prefers prepared
+providers with more explicit downstream dependents. Preflight now rejects missing
+lane names and runtime proposals without a prepared private native source worktree;
+review feedback routes these failures to preparation repair before assignment.

@@ -417,6 +417,11 @@ class Controller:
         self.receipts(); self.complete_runs(); self.dependencies(); self.observe()
         from .setup_healing import tick as heal_setup
         heal_setup(self)
+        from .queue_pressure import update as update_pressure
+        try:
+            update_pressure(self)
+        except (Rejected,OSError,ValueError,KeyError,TypeError) as exc:
+            write(self.base/'queue-pressure-error.json',dict(at=self.reg.clock(),error=str(exc)))
         from .throughput_controller import pool_tick
         pool_tick(self)
         # Complete a previously bound launch after a crash before writing start.json.

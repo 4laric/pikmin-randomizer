@@ -179,6 +179,8 @@ def pool_tick(controller):
             write(controller.base / 'cost-error.json', {'at': reg.clock(), 'error': str(exc)})
     status = reg.throughput_status(ram_percent=controller.memory())
     status['autofill'] = autofill_status(reg)
+    with reg.transaction() as state:
+        status['queue_pressure']={k:v for k,v in state.get('queue_pressure',{}).items() if k!='history'}
     write(controller.base / 'throughput.json', status)
     from .dashboard import render_dashboard
     target = controller.base / 'throughput.html'
