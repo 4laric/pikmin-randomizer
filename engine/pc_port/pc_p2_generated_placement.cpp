@@ -65,9 +65,9 @@ void pc_p2_generated_placement_reset()
     g_museBound = 0;
 }
 
-static bool museBind(BTeki* actor, unsigned sourceId, unsigned seedTargetUid, unsigned generatorId)
+static bool recordBind(BTeki* actor, unsigned accepted, unsigned sourceId,
+                       unsigned seedTargetUid, unsigned generatorId)
 {
-    const unsigned accepted = pc_p2_generated_placement_muse_slot(sourceId);
     if (!actor || !sourceId || !seedTargetUid || !accepted) {
         std::printf("P2_GENERATED_PLACEMENT source_id=%u target=%u generator=%u bound=0 reason=bad-request\n",
                     sourceId, seedTargetUid, generatorId);
@@ -93,6 +93,16 @@ static bool museBind(BTeki* actor, unsigned sourceId, unsigned seedTargetUid, un
     // family sidecar path still owns behavior. Callers must not read bound=1
     // as a family FSM claim.
     return false;
+}
+
+static bool museBind(BTeki* actor, unsigned sourceId, unsigned seedTargetUid, unsigned generatorId)
+{
+    return recordBind(actor, pc_p2_generated_placement_muse_slot(sourceId), sourceId, seedTargetUid, generatorId);
+}
+
+static bool waterwraithBind(BTeki* actor, unsigned sourceId, unsigned seedTargetUid, unsigned generatorId)
+{
+    return recordBind(actor, pc_p2_generated_placement_waterwraith_slot(sourceId), sourceId, seedTargetUid, generatorId);
 }
 
 bool pc_p2_generated_placement_bind(BTeki* actor, unsigned sourceId, unsigned seedTargetUid, unsigned generatorId)
@@ -121,6 +131,8 @@ bool pc_p2_generated_placement_bind(BTeki* actor, unsigned sourceId, unsigned se
     case 58: // Careening Dirigibug (BombSarai); muse observer lane 59.
     case 78: // Gatling Groink (MiniHoudai); muse observer lane 60.
         return museBind(actor, sourceId, seedTargetUid, generatorId);
+    case 99: // Waterwraith (BlackMan); provider #575, consumer lane 572.
+        return waterwraithBind(actor, sourceId, seedTargetUid, generatorId);
     default:
         return false;
     }
