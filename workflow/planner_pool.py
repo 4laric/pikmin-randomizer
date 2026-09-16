@@ -92,12 +92,16 @@ def tick(controller, settings, issue_reader):
                               i.get('lane') not in state['lanes'] for i in data['items'].values())
         idle = len(_workers(reg, state))
         deficit = max(0, settings.get('low_watermark', 8) - ready)
+        planning_demand = (len(helpers) if config.get('use_idle_capacity') else
+                           math.ceil(deficit / max(1, config.get('items_per_helper', 4))))
         target = min(config.get('max_active', 3), len(helpers),
-                     math.ceil(deficit / max(1, config.get('items_per_helper', 4))),
+                     planning_demand,
                      max(0, idle + active - unclaimed_ready - config.get('reserve_workers', 2)))
         pool.update(enabled=True, active=active, target=target, ready_backlog=ready, updated_at=reg.clock())
     if not controller.capacity() or not 0 <= controller.memory() < 90: return
-    for helper in helpers:
+    # Never-used shards precede repeated turns, so fast no-work reports cannot
+    # continually reclaim workers ahead of untouched backlog partitions.
+    for helper in sorted(helpers, key=lambda h: records.get(h['scope'], {}).get('started_at', 0)):
         scope = helper['scope']
         record = records.get(scope)
         pending = record and 'completed_at' not in record

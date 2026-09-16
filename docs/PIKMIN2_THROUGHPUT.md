@@ -428,3 +428,34 @@ integration records. It does not count review acknowledgements or enemy admissio
 The dashboard does not currently have an authoritative enemy-admission metric and
 says so explicitly. Assess family progress using the source-identity admission
 ledger and its gate evidence, independently of worker utilization or slice rate.
+# Idle-capacity planning shards (#586)
+
+Set `planner_pool.use_idle_capacity: true` to fill otherwise-idle eligible workers
+up to `max_active` and the number of distinct helper templates. Unclaimed ready
+implementation still reserves workers first; RAM, launch pacing and model cooldowns
+continue to apply. `reserve_workers: 0` permits all remaining eligible capacity.
+Untouched shards precede repeat turns. Turns are bounded and return workers after
+a hashed review report; a planning report is not gameplay acceptance.
+
+The deployed catalog under `output/workflow/autofill/planning-shards/catalog.json`
+divides enemy identity groups, dungeon regions, overworld stages, challenge stages
+and shared providers into 24 assigned issue-backed scopes. Old broad planners must
+exit before activation (`wait_for_launches`). Only the coordinator publishes the
+shared manifest using `merge_proposals`; helpers stage immutable proposals.
+
+Before overlapping research or issue preparation, use `workflow.planner_claims`
+against the canonical shared registry. Atomically claim `topic:<canonical-name>`,
+`issue:<number>`, `provider:<catalog-name>` and `file:<repository-relative-path>`.
+Case/slash aliases and file ancestor overlaps conflict. Claims require the current
+live lane generation; batches are all-or-none. Claims never expire or transfer
+automatically. This cooperative protocol complements actual implementation scope
+checks and depends on using the catalog's common vocabulary.
+
+CLI: `py -3.12 -m workflow.planner_claims --root ABS_ROOT --request ABS_JSON claim`
+(also `inspect` and `release`). Requests contain `lane`, `generation`, `resources`.
+A live owner may release unused claims. Proposal claims remain until the registered
+live `acceptance-backlog-planner` coordinator reviews them, records hashed disposition,
+and confirms the owner and protected children stopped. Its release request adds
+`coordinator: {lane: acceptance-backlog-planner, generation: N}` and
+`disposition: {path: ABS_REPORT, sha256: HASH}`. Dispose before rebinding a generation;
+unknown process state or in-flight dispatch must not be bypassed.

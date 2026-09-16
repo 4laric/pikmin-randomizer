@@ -62,6 +62,31 @@ class PlannerPoolTests(unittest.TestCase):
         self.template.write_text('{}')
         with self.assertRaises(Rejected): self.tick()
 
+    def test_idle_fill_ignores_low_watermark_but_reserves_unclaimed_work(self):
+        self.f.second_worker()
+        self.settings['planner_pool'].update(use_idle_capacity=True)
+        self.settings['low_watermark']=1
+        with self.reg.transaction() as s:
+            _state(s)['items']['implementation']=dict(ready=True,lane='not-provisioned')
+        self.tick()
+        self.assertEqual(len(self.reg.scheduling_status()['jobs']),1)
+
+    def test_idle_fill_uses_all_available_workers_for_distinct_shards(self):
+        self.f.second_worker()
+        other=self.f.make_spec('more-helper',904)
+        path=self.f.out/'more-template.json'; write(path,other)
+        self.settings['planner_pool'].update(use_idle_capacity=True)
+        self.settings['planner_pool']['helpers'].append(dict(scope='more',template=str(path),sha256=digest(path)))
+        self.settings['low_watermark']=1
+        self.tick(); self.tick(); self.tick()
+        self.assertEqual(len(self.reg.scheduling_status()['jobs']),2)
+
+    def test_idle_fill_cannot_take_workers_needed_for_implementation(self):
+        self.settings['planner_pool'].update(use_idle_capacity=True)
+        with self.reg.transaction() as s:
+            _state(s)['items']['implementation']=dict(ready=True,lane='not-provisioned')
+        self.tick(); self.assertFalse(self.reg.scheduling_status()['jobs'])
+
     def test_legacy_coordinator_must_exit_before_partition_handover(self):
         self.settings['planner_pool']['wait_for_launches']=['old']
         with self.reg.transaction() as s:
