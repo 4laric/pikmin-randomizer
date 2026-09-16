@@ -186,7 +186,7 @@ class SchedulingMixin:
                 heavy_lanes = {v['lane'] for v in heavy_leases}
                 pending = pending_heavy_lanes(state, data, self.probe)
                 pending.difference_update(heavy_lanes)
-                if job['heavy'] and lane['lane'] not in heavy_lanes and len(heavy_leases) + len(pending) >= state['settings']['max_heavy_builds']:
+                if not state.get('build_capacity', {}).get('lease_only') and job['heavy'] and lane['lane'] not in heavy_lanes and len(heavy_leases) + len(pending) >= state['settings']['max_heavy_builds']:
                     continue
                 item = dict(id=uuid.uuid4().hex, job=job['id'], lane=lane['lane'], worker_id=worker_id,
                             generation=lane['generation'], revision=lane['revision'], instruction=job['instruction'],
@@ -270,7 +270,7 @@ class SchedulingMixin:
                 'Lane state or dependency changed')
         require(self.recovery_safe(state, lane), 'Lane or protected child is live/unknown')
         self.check_wip(state, lane)
-        if item['heavy']:
+        if item['heavy'] and not state.get('build_capacity', {}).get('lease_only'):
             leases = [v for r, v in state['leases'].items() if self.heavy(r)]
             pending = pending_heavy_lanes(state, data, self.probe)
             pending.add(lane['lane'])  # This validation intends to resume heavy work.

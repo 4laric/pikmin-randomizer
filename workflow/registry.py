@@ -295,7 +295,9 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
                        q['resource'] not in state['leases'] and
                        (q['resource'] == resource or (self.heavy(resource) and self.heavy(q['resource'])))]
             count = sum(self.heavy(r) for r in state['leases'])
-            if existing or earlier or (self.heavy(resource) and count >= state['settings']['max_heavy_builds']):
+            from .build_capacity import admission_paused
+            if existing or earlier or (self.heavy(resource) and
+                    (count >= state['settings']['max_heavy_builds'] or admission_paused(state, self.clock()))):
                 return {'acquired': False, 'request': request, 'reason': 'held, earlier request, or build capacity'}
             lease = dict(token=new_id(), lane=key, generation=generation, resource=resource,
                          process=identity, acquired_at=self.clock(), expires_at=self.clock() + ttl)

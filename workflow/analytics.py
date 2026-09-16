@@ -43,6 +43,15 @@ def _build_utilization(state, now, start):
     seconds = sum(max(0, min(end, now) - max(begin, start)) for begin, end in intervals)
     cap = state.get('settings', {}).get('max_heavy_builds')
     denominator = (now - start) * cap if _number(cap) and cap > 0 else None
+    changes = [e for e in events if e.get('kind') == 'build_capacity_changed']
+    if changes:
+        current, cursor, denominator = changes[0]['previous'], start, 0
+        for event in changes:
+            if event['at'] > start:
+                denominator += (event['at'] - cursor) * current
+                cursor = event['at']
+            current = event['capacity']
+        denominator += (now - cursor) * current
     return dict(leased_seconds=seconds, capacity_slots=cap,
                 utilization_percent=100 * seconds / denominator if denominator else None,
                 basis='recorded lease intervals; reservation time, not CPU use')
@@ -122,9 +131,13 @@ def staffing_recommendations(state, now, ram_percent=None, ram_ceiling_percent=9
     leased_lanes = {lease.get('lane') for lease in heavy_leases}
     from .scheduling import pending_heavy_lanes
     reservations = pending_heavy_lanes(state, state.get('throughput', {}), process_probe)
-    occupied = len(heavy_leases) + len(reservations - leased_lanes)
+    lease_only = state.get('build_capacity', {}).get('lease_only', False)
+    occupied = len(heavy_leases) + (0 if lease_only else len(reservations - leased_lanes))
     cap = state.get('settings', {}).get('max_heavy_builds', 0)
     slots = max(0, cap - occupied) if _number(cap) else None
+    from .build_capacity import admission_paused
+    paused = admission_paused(state, now)
+    if paused: slots = 0
     recommendations = []
     for role, count in sorted(ready.items()):
         action = 'staff'
@@ -133,9 +146,11 @@ def staffing_recommendations(state, now, ram_percent=None, ram_ceiling_percent=9
             action, reason = 'measure', 'RAM observation required before automatic dispatch'
         elif ram_percent >= ram_ceiling_percent:
             action, reason = 'wait_ram', 'RAM is at or above dispatch ceiling'
-        elif heavy_ready.get(role, 0) == count and slots == 0:
+        elif not lease_only and heavy_ready.get(role, 0) == count and slots == 0:
             action, reason = 'prepare', 'Heavy slots occupied; prepare work while builds finish'
         recommendations.append(dict(role=role, ready_jobs=count, ready_heavy_jobs=heavy_ready.get(role, 0),
                                     active_jobs=roles.get(role, 0), action=action, reason=reason))
     return dict(ram_percent=ram_percent, ram_ceiling_percent=ram_ceiling_percent, heavy_slots_available=slots,
+                heavy_leases=len(heavy_leases), heavy_capacity=cap,
+                heavy_preparing_lanes=len(reservations - leased_lanes), build_admission_paused=paused,
                 recommendations=recommendations)

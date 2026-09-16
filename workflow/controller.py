@@ -406,6 +406,8 @@ class Controller:
         return decisions
 
     def tick(self):
+        from .build_capacity import update as update_build_capacity
+        update_build_capacity(self)
         # Existing pooled runs must remain replayable even after pool scheduling
         # is disabled, including recovery/dependency work earlier in this tick.
         with self.reg.transaction() as state:

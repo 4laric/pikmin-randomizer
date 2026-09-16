@@ -192,6 +192,28 @@ Tests inject duplicate events, stale generations/decisions, missing terminal out
 rate limits, uncertain spawn, crashes around registration, live children, immutable
 publications and actual Git ancestry. They do not certify any native gameplay gate.
 
+## Elastic build admission (#580)
+
+Enable `build_capacity: {"enabled": true, "base": 2, "maximum": 4,
+"ramp_seconds": 60}` in the controller configuration. The controller durably
+enables lease-only admission: heavy assignments can prepare and dispatch while
+actual build leases occupy the pool. All compilation/link jobs must still acquire
+the canonical registry lease before starting. Directory exclusivity, FIFO,
+process fencing, and maintained-build ownership remain enforced.
+
+The controller raises the cap one slot per minute, up to four, when RAM is below
+80% and builds are queued, or idle workers coexist with enough active heavy lanes.
+At 87% RAM it pauses new build grants and lowers the target to two; grants resume
+below or at 82%. Existing leases are never revoked. Samples older than 60 seconds
+pause new heavy grants until the controller refreshes them. Lane dispatch retains
+the separate 90% RAM ceiling. Low demand returns the target to two.
+
+The dashboard separates leases held, preparing lanes, concurrency limit and
+currently available grants. Historical utilization uses capacity-change events.
+The policy and lease-only mode persist in the registry; removing configuration
+does not silently disable the stale-sample guard. Reconfiguration needs an explicit
+reviewed migration. The cap is a cooperative limit, not an OS memory guarantee.
+
 ## Model throttling and fallback (#579)
 
 Configure the authorized ordered `models` chain, for example Muse followed by

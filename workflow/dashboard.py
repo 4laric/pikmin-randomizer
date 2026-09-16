@@ -22,6 +22,10 @@ def render_dashboard(report):
         ('RAM used', number(staffing.get('ram_percent'), '%')),
         ('Heavy build utilization', number(metrics.get('heavy_build', {}).get('utilization_percent'), '%')),
         ('Heavy slots available', number(staffing.get('heavy_slots_available'))),
+        ('Build leases held', number(staffing.get('heavy_leases'))),
+        ('Build concurrency limit', number(staffing.get('heavy_capacity'))),
+        ('Build lanes preparing', number(staffing.get('heavy_preparing_lanes'))),
+        ('New build admission', 'Paused' if staffing.get('build_admission_paused') else 'Open'),
     ]
     autofill = report.get('autofill')
     autofill = autofill if isinstance(autofill, dict) else {}
