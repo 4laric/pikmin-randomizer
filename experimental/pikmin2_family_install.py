@@ -91,6 +91,11 @@ IDENTITY_FAMILY = {
     # Muse packaging lane (#493): BombSarai (Careening Dirigibug, source 58)
     # reuses the existing shared-contract bombsarai installer as-is.
     58: 'bombsarai', 'bombsarai': 'bombsarai',
+    # Admission 2026-09-16 (#530 defect D1): Miulin (Mamuta, source 54) reuses
+    # the existing shared-contract mamuta installer. Kurage (57) and MiniHoudai
+    # (78) intentionally stay unmapped and stage through the candidate-only
+    # pikmin2_muse_packaging sidecar path (recorded limitation).
+    54: 'mamuta', 'miulin': 'mamuta',
 }
 
 
