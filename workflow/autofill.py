@@ -132,6 +132,7 @@ def autofill_status(reg):
              reg.recovery_safe(state, state['lanes'][i['lane']]))) for i in data['items'].values())
         data['pending_count'] = sum(i.get('phase') == 'pending' for i in data['items'].values())
         data['active_enemy_count'] = sum(item.get('priority') == 'enemy_acceptance' and
+            not item.get('planner_helper') and
             item.get('phase') in ('provisioned', 'configured', 'enqueued') and
             state['lanes'].get(item.get('lane'), {}).get('state') in ('running', 'waiting_resource') for item in data['items'].values())
         since = data.get('needs_refill_since')
@@ -193,7 +194,7 @@ def _prepare(controller, spec, issue_reader):
         require(stream is not None, 'Workstream integration owner is missing')
         owner = reg.lane(state, stream['owner_lane'])
         require(owner['state'] != 'done' and reg.probe(owner['process']) == 'alive', 'Integration owner unavailable')
-        if spec['heavy']:
+        if spec['heavy'] and not state.get('build_capacity', {}).get('lease_only'):
             held = [v for r, v in state['leases'].items() if reg.heavy(r)]
             pending = pending_heavy_lanes(state, pool, reg.probe)
             pending.difference_update(v['lane'] for v in held)
@@ -299,7 +300,7 @@ def _refresh_readiness(controller, items, issue_reader):
                 else:
                     require(_workers(reg, state, spec), 'No eligible authorized stopped worker')
                     _check_conflicts(controller, state, spec)
-                if spec.get('heavy'):
+                if spec.get('heavy') and not state.get('build_capacity', {}).get('lease_only'):
                     held = [v for r,v in state['leases'].items() if reg.heavy(r)]
                     pending = pending_heavy_lanes(state, reg.scheduling(state), reg.probe)
                     pending.difference_update(v['lane'] for v in held)
@@ -337,7 +338,7 @@ def _planner_tick(controller, settings, manifest_hash):
                 return True
             return lane['state'] == 'ready' and reg.recovery_safe(state, lane)
         backlog = sum(ready(i) for i in data['items'].values())
-        enemies = sum(i['priority'] == 'enemy_acceptance' and
+        enemies = sum(not i.get('planner_helper') and i['priority'] == 'enemy_acceptance' and
                       (ready(i) or (i.get('phase') in ('provisioned', 'configured', 'enqueued') and
                        state['lanes'].get(i['lane'], {}).get('state') in ('running', 'handoff_ready', 'review_ready', 'integrating')))
                       for i in data['items'].values())
@@ -362,12 +363,21 @@ def _planner_tick(controller, settings, manifest_hash):
     require(key in controller.config['lanes'] and controller.available(key), 'Prepared planner launch configuration unavailable')
     brief = _private(reg, controller.config['lanes'][key]['brief'])
     require(brief.is_file(), 'Planner brief missing')
+    parallel = settings.get('planner_pool', {}).get('enabled')
+    partition_directive = (
+        'PARALLEL PLANNING MODE: you are the sole manifest coordinator. Read your updated brief first. '
+        'Helpers exclusively own discovery/issue creation in enemy acceptance, dungeons, and overworld/challenge. '
+        'Do not independently prepare scopes in those partitions. Consume their staged proposals using '
+        'canonical workflow.planner_pool.merge_proposals; validate issue scope, ownership and source proofs. '
+        'Record accepted/rejected proposal paths in your cycle report. Never overwrite helper inboxes. '
+        if parallel else '')
     launch = reg.plan_launch(key, 'autofill-planner:' + previous['id'],
-        'Read your configured backlog-planner brief at ' + str(brief) + '. Capacity needs explicit prepared next-gate scopes. '
+        partition_directive + 'Read your configured backlog-planner brief at ' + str(brief) + '. Capacity needs explicit prepared next-gate scopes. '
         'Inspect autofill last_manifest_error first; if malformed/unreadable, diagnose and repair the manifest from '
         'immutable recorded specs without changing accepted scopes. '
-        'Prioritize uncompleted enemy acceptance gates, then existing content, then expansion. Inspect live ownership; '
-        'create assigned issue-first bounded specs with exact prepared private git pins and immutable issue proofs, '
+        'Prioritize uncompleted enemy acceptance gates, then existing content, then expansion. Inspect live ownership; ' +
+        ('validate helper-prepared issue-first bounded specs with exact private git pins and immutable issue proofs, ' if parallel else
+         'create assigned issue-first bounded specs with exact prepared private git pins and immutable issue proofs, ') +
         'then atomically append fresh IDs to ' + str(_private(reg, settings['manifest'])) + '. '
         'Do not grant ADMIT, duplicate active owners, enqueue workers, or alter existing immutable specs. '
         'Record evidence and finish BLOCKED awaiting the next controller refill demand. '
@@ -430,6 +440,12 @@ def autofill_tick(controller, *, issue_reader=github_issue):
             except (Rejected, OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.SubprocessError) as exc:
                 _blocked(reg, spec['id'], exc)
         _refresh_readiness(controller, items, issue_reader)
+        try:
+            from .planner_pool import tick as planner_pool_tick
+            planner_pool_tick(controller, settings, issue_reader)
+        except (Rejected, OSError, ValueError, KeyError, TypeError) as exc:
+            with reg.transaction() as state:
+                _state(state).setdefault('planner_pool', {})['error'] = str(exc)
         with reg.transaction() as state:
             data = _state(state)
             idle = bool(_workers(reg, state))

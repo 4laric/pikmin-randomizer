@@ -29,6 +29,9 @@ def render_dashboard(report):
     ]
     autofill = report.get('autofill')
     autofill = autofill if isinstance(autofill, dict) else {}
+    planning = autofill.get('planner_pool', {})
+    cards.append(('Planning helpers active / target',
+                  str(planning.get('active', 0)) + ' / ' + str(planning.get('target', 0))))
     for label, key in (('Ready backlog', 'ready_count'), ('Active enemy work', 'active_enemy_count'),
                        ('Idle authorized workers', 'idle_workers_count')):
         value = autofill.get(key)
@@ -39,6 +42,9 @@ def render_dashboard(report):
     if autofill:
         status = 'Disabled' if autofill.get('enabled') is False else 'Observed'
     backlog = {'status': status, 'last_observed': autofill.get('updated_at'),
+               'planner_helpers': {scope: {'lane': value.get('spec', {}).get('lane', {}).get('lane'),
+                    'cycle': value.get('cycle'), 'completed_at': value.get('completed_at'), 'error': value.get('error')}
+                    for scope, value in planning.get('scopes', {}).items()},
                'manifest_error': autofill.get('last_manifest_error'),
                'last_refill_request': autofill.get('last_refill_request'),
                'last_planner_request': autofill.get('last_planner_request'),

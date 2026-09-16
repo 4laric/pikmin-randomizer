@@ -1,5 +1,41 @@
 # Throughput operations
 
+## Parallel planning pool (#581)
+
+`throughput.autofill.planner_pool` configures up to three bounded helper turns,
+partitioned into enemy acceptance/provider gaps, dungeons, and overworld/challenge.
+Each entry in `helpers` supplies a unique `scope`, private immutable autofill
+`template` path and its `sha256`. Templates are issue-backed, non-heavy reviews
+with private clean planning worktrees and no native implementation source.
+
+The controller derives a helper target from ready-backlog deficit, available
+approved stopped workers, `items_per_helper` (live: 3), `max_active` (3), and
+`reserve_workers` (2). Ready implementation consumes workers first. It provisions
+at most one helper per tick through ordinary ownership/launch checks. Scopes cannot
+overlap themselves; cycle IDs and stored specs make restart replay idempotent.
+At high backlog no new helpers launch; running bounded turns finish normally.
+`cooldown_seconds` (live: 900) prevents immediate repeat planning of one partition.
+
+Helpers stage immutable complete spec proposals in separate partition inboxes,
+finish `review-ready` with a hashed report, and perform no source implementation,
+build, dispatch, manifest publication or ADMIT. After the worker and protected
+children stop, the controller acknowledges only the planning report; ordinary
+pool completion returns the worker for implementation. This does not accept any
+proposed slice or increment accepted implementation/gameplay metrics.
+
+The existing planner remains the sole coordinator and manifest writer. It reads
+helper proposals and calls canonical `workflow.planner_pool.merge_proposals(reg,
+manifest_path, proposal_path)`. Publication verifies fresh issue assignment and
+body hashes, private source/launch proofs, active ownership, and pending proposal
+issue/lane/file/worktree/output collisions. Appends are serialized with registry
+transactions, detect manifest changes, preserve a backup and replay unchanged
+IDs without duplication. Invalid proposals remain unpublished. The coordinator
+does not independently create scopes owned by helpers.
+
+Dashboard helper counts are separate from active enemy implementation. Lease-only
+build mode also applies at autofill readiness and provisioning, so preparation
+cannot silently consume build slots before the ordinary scheduler sees it.
+
 Implementation: #524–#527. Owner: Codex through shared GitHub account `4laric`.
 This extends [the workflow operating contract](PIKMIN2_WORKFLOW.md) and
 [controller contract](PIKMIN2_CONTROLLER.md); it does not replace their fencing,
