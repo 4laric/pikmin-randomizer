@@ -7,19 +7,25 @@ three independent birth markers a natural generated spawn must emit:
 1. Source-ID resolve (``src/plugPikiNakata/genteki.cpp`` ``GenObjectTeki::birth``):
    ``P2_SEED_RESOLVE source_id=57 target=<uid> ...`` — the ENEMY_P2 seed
    binding resolved generator uid ``<uid>`` to source 57.
-2. Generated placement (``native/pc_port/pc_p2_generated_placement.cpp``):
-   ``P2_GENERATED_PLACEMENT source_id=57 target=<uid> bound=1`` — the spawned
-   P1 stand-in actor was claimed for identity 57 on seed target ``<uid>``.
-   (Owned by muse-placement l52/#492; currently only source IDs 23/59-62
-   have a bind case, so this marker is absent for 57 until that lands.)
+2. Generated placement (``native/pc_port/pc_p2_generated_placement.cpp``,
+   reviewed muse-placement l52/#492, consumed as candidate 406d2b8b/558d12af):
+   ``P2_GENERATED_PLACEMENT source_id=57 target=<uid> generator=<gen> bound=1``
+   — the spawned P1 stand-in actor was accepted for identity 57 on seed
+   target ``<uid>`` (engine generator ``<gen>``). The bind records the
+   (actor, source, target, generator) triple and returns false, so the
+   family sidecar still owns behavior; ``bound=1`` is placement acceptance,
+   not a family FSM claim. Only the accepted slot ``689702860``
+   (Navel frog-cohort slot, ``MUSE_GENERATED_SLOTS`` mirror) passes.
 3. Kurage binding (``native/pc_port/pc_p2_kurage_teki.cpp``):
    ``P2_KURAGE_TEKI_READY generator=<gen> ...`` plus
    ``P2_KURAGE_CORPSE_READY generator=<gen> ... receipt=corpse:kurage:<gen>``.
 
 The verdict is PASS only when all three markers are present, name source 57,
-agree on one slot/generator, and carry no injected-birth taint
-(``injected``/``health_zero`` tokens). Anything else fails closed with the
-exact missing/mismatched reason. In particular the legacy
+agree on the accepted slot uid (resolve target == placement target ==
+``689702860``), tie the same engine generator (placement generator ==
+teki generator == corpse receipt generator), and carry no injected-birth
+taint (``injected``/``health_zero`` tokens). Anything else fails closed with
+the exact missing/mismatched reason. In particular the legacy
 ``p2-kurage-teki.txt`` sidecar auto-bind (historical generator 201001,
 ``P2_KURAGE_TEKI_READY`` with no resolve/placement markers) is reported as
 ``auto-bind without generated markers`` — never as a generated identity.
@@ -33,6 +39,13 @@ import re
 SOURCE_ID = 57
 SPECIES = 'Kurage'
 
+# Reviewed generated slot for Kurage57 (muse-placement l52/#492
+# ``MUSE_GENERATED_SLOTS``, mirrored in
+# ``pc_p2_generated_placement_muse_slot``): Navel frog-cohort slot
+# navel_0-29_1473. Only this uid is a real generated slot for 57; any other
+# target is ``slot-not-accepted`` FAIL.
+ACCEPTED_SLOT = '689702860'
+
 # Historical sidecar auto-bind generator used by the legacy l29 slices
 # (``p2-kurage-teki.txt`` ``P2_KURAGE_TEKI_1 1`` + ``201001 0``). A TEKI_READY
 # line for this generator proves the old private-adapter path, not a
@@ -41,9 +54,14 @@ LEGACY_AUTO_BIND_GENERATOR = '201001'
 
 _RE_RESOLVE = re.compile(
     r'P2_SEED_RESOLVE\s+source_id=(?P<source>\d+)\s+target=(?P<target>\d+)')
+# Reviewed l52 marker carries the engine generator between target and bound:
+# ``P2_GENERATED_PLACEMENT source_id=57 target=<uid> generator=<gen> bound=1``.
+# The generator group is optional so pre-contract markers still parse (and
+# then fall back to the strict target==generator check below).
 _RE_PLACEMENT = re.compile(
     r'P2_GENERATED_PLACEMENT\s+source_id=(?P<source>\d+)\s+'
-    r'target=(?P<target>\d+)\s+bound=(?P<bound>[01])\b')
+    r'target=(?P<target>\d+)(?:\s+generator=(?P<placed_gen>\d+))?\s+'
+    r'bound=(?P<bound>[01])\b')
 _RE_TEKI_READY = re.compile(
     r'P2_KURAGE_TEKI_READY\s+generator=(?P<generator>\d+)')
 _RE_CORPSE_READY = re.compile(
@@ -75,6 +93,7 @@ def validate_generated_birth(log_text):
     lines = log_text.splitlines()
     resolve_targets = []
     placement_targets = []
+    placement_generators = []
     placement_refused = []
     teki_generators = []
     corpse_generators = []
@@ -94,6 +113,7 @@ def validate_generated_birth(log_text):
             elif match.group('source') == str(SOURCE_ID):
                 if match.group('bound') == '1':
                     placement_targets.append(match.group('target'))
+                    placement_generators.append(match.group('placed_gen'))
                 else:
                     placement_refused.append(match.group('target'))
         match = _RE_TEKI_READY.search(line)
@@ -135,7 +155,7 @@ def validate_generated_birth(log_text):
                     % (SOURCE_ID, placement_refused[0]))
         return ('FAIL',
                 'missing P2_GENERATED_PLACEMENT source_id=%d bound=1 '
-                '(muse-placement l52/#492 has not landed the case-57 bind yet)'
+                '(expected from reviewed muse-placement l52 bind) '
                 % SOURCE_ID)
 
     if not teki_generators:
@@ -151,6 +171,13 @@ def validate_generated_birth(log_text):
                    sorted(set(placement_targets), key=int)))
     slot = next(iter(slots))
 
+    # Only the reviewed accepted slot is a real generated slot for 57.
+    if slot != ACCEPTED_SLOT:
+        return ('FAIL',
+                'slot-not-accepted: slot=%s is not the reviewed Kurage57 '
+                'generated slot %s (muse-placement l52/#492)'
+                % (slot, ACCEPTED_SLOT))
+
     generators = set(teki_generators) | set(corpse_generators)
     if len(generators) > 1:
         return ('FAIL',
@@ -159,13 +186,22 @@ def validate_generated_birth(log_text):
                    sorted(set(corpse_generators), key=int)))
     generator = next(iter(generators))
 
-    # The resolve/placement ``target`` is the seed slot uid
-    # (``pc_randomizer_generator_id``); the Kurage binding logs the engine
-    # generator field (``mGenerator->_70``). Both are emitted for the same
-    # spawned actor, so a correlated birth must name one value. If the future
-    # l52 bind logs an explicit ``seed_target`` alongside a differing engine
-    # generator, this check names the pair instead of passing silently.
-    if generator != slot:
+    # Triple-chain tie: the placement record names the engine generator of
+    # the same spawned actor the Kurage sidecar bound. New-contract markers
+    # carry it explicitly; pre-contract markers (no generator field) fall
+    # back to the strict slot==generator check.
+    placed_gens = {g for g in placement_generators if g is not None}
+    if placed_gens:
+        if len(placed_gens) > 1:
+            return ('FAIL',
+                    'placement generator disagreement: %s'
+                    % sorted(placed_gens, key=int))
+        placed_gen = next(iter(placed_gens))
+        if placed_gen != generator:
+            return ('FAIL',
+                    'actor disagreement: placement generator=%s Kurage generator=%s; '
+                    'same spawned actor required' % (placed_gen, generator))
+    elif generator != slot:
         return ('FAIL',
                 'slot/generator disagreement: seed slot=%s Kurage generator=%s; '
                 'same spawned actor required' % (slot, generator))
@@ -182,8 +218,9 @@ def validate_generated_birth(log_text):
                     % (slot, line.strip()[:160]))
 
     return ('PASS',
-            'generated Kurage57 birth: slot/generator=%s resolve+placement+teki+corpse agree'
-            % slot)
+            'generated Kurage57 birth: slot=%s generator=%s '
+            'resolve+placement+teki+corpse agree'
+            % (slot, generator))
 
 
 def is_generated_identity(log_text):
