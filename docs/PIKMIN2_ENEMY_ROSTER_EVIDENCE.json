@@ -212,7 +212,7 @@
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
-        "attacks_receivers": "UNTESTED",
+        "attacks_receivers": "PASS",
         "death_corpse": "PASS",
         "transport_reward": "UNTESTED",
         "cleanup_reentry": "PASS"
