@@ -173,8 +173,9 @@ class DeliveryTests(unittest.TestCase):
         self.assertEqual([], self.reg.candidate_qa_ready())
         state = self.reg.status()
         self.assertEqual(['one'], state['lanes']['two']['dependencies'])
-        self.assertEqual(1, len(state['control']['launches']))
+        self.assertEqual(1, len(self.reg.control_status()['launches']))
 
 
 if __name__ == '__main__':
     unittest.main()
+
