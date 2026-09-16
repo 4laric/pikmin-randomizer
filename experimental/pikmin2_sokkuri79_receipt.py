@@ -168,7 +168,7 @@ def prepare(assets, imported, output):
         Path(os.environ.get("PIKMIN_P2_POD_PACKAGE", "")),
         Path(__file__).resolve().parents[2] / "dsw" / "l19-out" / "pod",
     ])
-    stage_cargo(run, Path(assets), load_pod_package(package))
+    stage_cargo(run, Path(assets), package)
     return run
 
 
