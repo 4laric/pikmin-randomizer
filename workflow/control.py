@@ -120,6 +120,50 @@ class ControlMixin:
             lane = self.checkpoint(key, generation, lane['revision'], {'state': 'integrating'})
         return self.integrate(key, generation, lane['revision'], record)
 
+    def reconcile_handoff(self, key, generation, revision, summary, evidence):
+        """Return a blocked lane with a still-valid handoff to handoff_ready.
+
+        Fenced clerical repair for lanes parked in blocked by a terminal
+        outcome while a validated handoff was awaiting integration (no
+        supported checkpoint transition covers blocked->handoff_ready, and
+        blocked->running would destroy the handoff). Fails closed unless:
+        fresh generation/revision, recorded worker confirmed dead (live or
+        uninspectable owners are refused so a live lane is never raced), no
+        live/unknown lease or queued request for this lane/generation, no
+        in-flight controller launch for this lane/generation, and the
+        submitted handoff file plus every referenced evidence hash still
+        revalidates. Preserves the handoff record, source identities and
+        pending shared reviews; integrate() still refuses until the
+        integrator approves outstanding reviews through a new handoff.
+        """
+        require(nonempty(summary), 'Reconcile summary required')
+        self.evidence(evidence)
+        with self.transaction() as state:
+            lane = self.lane(state, key, generation, revision)
+            require(lane['state'] == 'blocked', 'Only blocked lanes can reconcile a handoff')
+            require(lane.get('handoff'), 'Blocked lane carries no submitted handoff')
+            require(self.probe(lane['process']) == 'dead', 'Recorded worker is not confirmed stopped')
+            for name, lease in state['leases'].items():
+                if lease['lane'] == key and lease['generation'] == generation:
+                    require(self.probe(lease['process']) == 'dead', 'Live/uninspectable lease held: ' + name)
+            for queued_id, queued in state['queue'].items():
+                if queued['lane'] == key and queued['generation'] == generation:
+                    require(self.probe(queued['process']) == 'dead', 'Live/uninspectable request queued: ' + queued_id)
+            launches = self.control(state).get('launches', {})
+            require(not any(item['lane'] == key and item['generation'] == generation and
+                            item['status'] in ('intent', 'spawned', 'running')
+                            for item in launches.values()), 'Controller dispatch in flight for this lane')
+            result = self.check_handoff(lane)
+            lane.update(state='handoff_ready', revision=revision + 1,
+                        outcome=None, dependencies=[],
+                        next_action=summary, progress_at=self.clock(), progress_detail=summary,
+                        reconcile=dict(summary=summary, evidence=evidence, at=self.clock(),
+                                       pending_reviews=result['pending_reviews'],
+                                       outstanding_gates=result['outstanding_gates']))
+            self.check_wip(state, lane)
+            self.event(state, 'handoff_reconciled', key)
+            return lane
+
     def notice(self, key, kind, detail):
         with self.transaction() as state:
             c = self.control(state)
