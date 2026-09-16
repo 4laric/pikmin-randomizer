@@ -59,6 +59,8 @@ def review_pending(reg, settings, helper):
     known = {s['id']: s for s in manifest['items']}
     for directory in helper.get('review_inboxes', []):
         for path in _private(reg, directory).glob('proposals-*.json'):
+            from .proposal_feedback import feedback
+            if feedback(reg, path): continue
             try:
                 items = json.loads(path.read_text(encoding='utf-8-sig'))['items']
                 if any(known.get(s.get('id')) != s for s in items): return True
@@ -147,6 +149,16 @@ def tick(controller, settings, issue_reader):
                     'workflow.planner_pool.merge_proposals; retry manifest-change conflicts from fresh state. '
                     'No raw manifest writes, implementation, launches or ADMIT. Finish review-ready with hashed decisions.')
             else:
+                from .proposal_feedback import feedback
+                for directory in helper.get('defer_for_review', []):
+                    for proposal in _private(reg, directory).glob('proposals-*.json'):
+                        decision = feedback(reg, proposal)
+                        if decision:
+                            spec['instruction'] += (' PRIOR REVIEW FEEDBACK: ' + json.dumps(decision) +
+                                '. For repair, prioritize a corrected uniquely named immutable proposal '
+                                'and validate the full schema; do not alter old bytes. For dependency, '
+                                'advance the existing named dependency through its owner; do not create '
+                                'a duplicate scope or re-review the unchanged proposal. Read the hashed report.')
                 spec['instruction'] += (' Planning partition: ' + scope +
                 '. Stage proposals only in your configured partition; never write the shared manifest. '
                 'Finish review-ready with a hashed planning report even when no actionable scope exists. '

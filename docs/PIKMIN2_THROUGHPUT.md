@@ -483,3 +483,18 @@ Helpers report hashed decisions and release their own claims. Coordinator #570
 retains cross-shard arbitration, old inbox work and original planner-claim disposition.
 Malformed/rejected proposals require explicit reasons; helpers cannot invent missing
 specs, modify accepted scopes, integrate source or grant ADMIT.
+
+## Review feedback routing (#622)
+
+Reviewers record repair/dependency dispositions through canonical
+`workflow.proposal_feedback.record(reg, lane, generation, proposal, sha256,
+outcome, reason, evidence, wait_for_lanes=None)`. Evidence is a hashed report;
+proposal bytes and registered reviewer generation are fenced. Completed reviewers
+can import only the exact report already registered as their review evidence.
+
+Unchanged rejected bytes no longer generate review demand. Repair feedback is
+injected into the next shard planning turn, requiring a corrected uniquely named
+proposal. Dependency feedback names actual registry lanes and suppresses review
+until all reach done. New proposal bytes/files wake normal validation. Nothing
+expires on a timer, grants acceptance or bypasses the publication validator.
+Current queued turns may finish, but new identical review cycles are suppressed.
