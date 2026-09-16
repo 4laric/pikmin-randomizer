@@ -57,16 +57,39 @@ native `ce89a039f3d37e2f6c551b7dbb32e0864115a56c`.
   the same run: `pikmin2_elecbug28_receipt.py` `run_session` + `validate`.
 - Honest six-gate evidence, no ADMIT: this document plus the handoff.
 
-## Runtime status
+## Runtime status (fresh, this slice)
 
-The receipt runs are produced by `experimental/pikmin2_elecbug28_receipt.py`
-(a private replacement-main fixture, released only with a validated
-session ledger). Per the #578 integrator ruling, a fixture-staged private
-course is **not** natural story gameplay: the receipt line is real and the
-haul markers are natural inside the arena, but gate 5 `transport_reward` is
-reported with the staged boundary made explicit and is left for the
-integrator to rule, exactly as #578 was. `haul alone never closes transport`;
-the receipt line is required.
+Two leased runs of the private replacement-main receipt fixture, same seed
+`b0776d86120acdd6caf81a95965e45245e69061eb061cc89ff034b1f16228f10`, one
+shared session ledger (`campaign/p2-delivery-receipts.txt`,
+`output/workflow/autofill/enemy-elecbug28-receipt/runs/campaign/`):
+
+- run1 `runs/run1/17f3886b3ecf4338a3e0fcfc7d115e5b/` (`capture/native.log`
+  sha256 `9a76173c42a8bf1017a525ff59e45d93234dcd8229271d1bd09819fbb16a3312`):
+  `P2_ELECBUG_DELIVERY_BIND generator=346002 source_id=28`,
+  `...=346010...`, `P2_ELECBUG28_FLIPPED tick=195`,
+  `P2_ELECBUG28_DIED tick=314 health=0.00`,
+  `P2_ELECBUG28_CORPSE pellet=1 tick=411 deployed=19`,
+  `P2_ORDINARY_P2_RECEIPT seed=b0776d86... id=onion:p2:28:0 generator=346002 new=1`,
+  `P2_ELECBUG28_DELIVERED_TO_GOAL tick=957 moved=557.50`.
+- run2 `runs/run2/b08a14f8532c42e7baabf7c4bb5ff26d/` (`capture/native.log`
+  sha256 `9ad54a2688d74dc15f705725d4291bb77264bc695526c0b0e29fea54e752626f`):
+  `... id=onion:p2:28:0 generator=346002 new=0`.
+- Window `Experimental preview window set to 960x540 windowed and centered`;
+  20-Pikmin starting squad; no `Extinction` in either log.
+- Fixture `fixture-session/fixture.exe`; private build
+  `output/autofill-native-585-build` at native `b687dba9` (clean),
+  `nectar.exe` sha256 `e72ed7d10bea05d8ed1dfb97691d12deae389d02fd70f0dc28cab98ef0dc9576`.
+
+Honesty boundary (same standard the integrator applied to #578): the arena is
+a private instrumented replacement-main course and the fixture enables the
+randomizer session itself, so this is **fixture-staged**, not natural story
+gameplay. The receipt line is real and the death/corpse/haul are natural
+inside the arena, but gate 5 `transport_reward` is therefore **not** claimed
+as a natural gameplay PASS here; it is left UNTESTED (staged) for the
+integrator's ruling exactly as #578 was. The staged Purple press is labelled
+`flip=staged-press`. `haul alone never closes transport`; the receipt line is
+required, and it was observed.
 
 ## Verification
 
