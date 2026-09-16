@@ -1,3 +1,24 @@
+# Muse admission wave: current execution policy (2026-09-15, #491)
+
+This section supersedes historical conflicting workflow details below. Read the
+maintained C:/Users/alari/pikmin-randomizer/AGENTS.md and docs/PIKMIN2_WORKFLOW.md.
+Use the SINGLE C:/Users/alari/pikmin-randomizer/output/workflow/registry.sqlite3
+through the maintained CLI with --root C:/Users/alari/pikmin-randomizer.
+Native origin pushes are allowed on work branches, never default/main/master or
+p2-integration or */p2-integration; never tags/force. Private runtime is exempt
+from GL reservation. All heavy builds use the Muse wave leased runner and private
+build directory. Keep one primary contributor per lane; no nested subagents in
+this bounded ten-contributor launch. Do not edit the maintained root/native,
+legacy worker worktrees, research checkouts, admission allowlists or seed defaults.
+The live existing integrator owns promotion; submit candidate commits/evidence.
+For ADMIT candidate evidence, natural gameplay is required; injected state/health,
+forced transport and synthetic markers cannot close a natural admission gate.
+The assigned brief names exact files and the workflow generation. Register before
+edits, maintain meaningful checkpoints, validate handoffs, and stop at one ready
+handoff or a documented dependency. King WarCry has passed; do not redo it.
+
+## Historical wave notes (read as history where they conflict above)
+
 # Pikmin Randomizer track
 
 For P2 parallel work, follow [the current workflow](docs/PIKMIN2_WORKFLOW.md). Family owners implement and validate end-to-end in private worktrees, including routine additive native hooks and private builds. Earlier blanket requirements to stop for integration permission after each batch are superseded. Coordinate changes to shared semantics with the affected owner; serialize only maintained checkout/build/export writes and final integration.

@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "kind": "runtime",
+  "lane": "species-receivers",
+  "owner": "Codex through shared account 4laric",
+  "task_id": "ACTUAL_TASK_ID",
+  "generation": 1,
+  "issue": 0,
+  "parent_issue": 186,
+  "scope": "COPY_EXACT_REGISTERED_SCOPE",
+  "target_level": "P2 mechanics",
+  "next_action": "Review and integrate the bounded receiver slice",
+  "owned_files": ["native/pc_port/REPLACE_WITH_OWNED_FILE.cpp"],
+  "changed_files": ["native/pc_port/REPLACE_WITH_OWNED_FILE.cpp"],
+  "root": {
+    "base": "FULL_ROOT_BASE_COMMIT",
+    "commits": ["FULL_ROOT_HEAD_COMMIT"],
+    "head": "FULL_ROOT_HEAD_COMMIT",
+    "dirty": "RECORDED_DIRTY_STATE",
+    "worktree": "output/REPLACE_ROOT_WORKTREE"
+  },
+  "native": {
+    "base": "FULL_NATIVE_BASE_COMMIT",
+    "commits": ["FULL_NATIVE_HEAD_COMMIT"],
+    "head": "FULL_NATIVE_HEAD_COMMIT",
+    "dirty": "RECORDED_DIRTY_STATE",
+    "worktree": "output/REPLACE_NATIVE_WORKTREE"
+  },
+  "source_mapping": [{"description": "REPLACE_WITH_SOURCE_STATE_EVENT_RECEIVER_MAPPING", "evidence": ["source"]}],
+  "tests": [{"command": "REPLACE_WITH_EXACT_TEST_COMMAND", "exit_code": 0, "evidence": ["checks"]}],
+  "shared_reviews": [],
+  "remaining_work": ["REPLACE_WITH_UNPROVEN_BEHAVIOR_OR_EMPTY_LIST"],
+  "slice_acceptance": [{"criterion": "COPY_EXACT_ISSUE_ACCEPTANCE_CRITERION", "status": "UNTESTED", "evidence": ["checks"]}],
+  "gates": {
+    "identity_spawn": {"status": "UNTESTED", "method": "unobserved", "detail": "Record exact identity/spawn evidence"},
+    "movement_animation": {"status": "UNTESTED", "method": "unobserved", "detail": "Record autonomous movement and animation evidence"},
+    "attacks_receivers": {"status": "UNTESTED", "method": "unobserved", "detail": "Record natural or injected method explicitly"},
+    "death_corpse": {"status": "UNTESTED", "method": "unobserved", "detail": "Record death/corpse evidence"},
+    "transport_reward": {"status": "UNTESTED", "method": "unobserved", "detail": "Record actual delivery and reward evidence"},
+    "cleanup_reentry": {"status": "UNTESTED", "method": "unobserved", "detail": "State manager-subset versus full-scene boundary"}
+  },
+  "fixture_adoption": {
+    "status": "UNTESTED",
+    "window": ["adoption"],
+    "live_squad": ["adoption"],
+    "active_gameplay": ["adoption"],
+    "no_immediate_extinction": ["adoption"],
+    "fresh_arena": ["arena"],
+    "overlay_source": ["source"],
+    "window_source": ["source"],
+    "assets_config": ["arena"]
+  },
+  "build": {
+    "directory": "output/REPLACE_PRIVATE_BUILD_DIRECTORY",
+    "command": "REPLACE_WITH_EXACT_BUILD_COMMAND",
+    "exit_code": 0,
+    "evidence": ["build-log"],
+    "dry_run": ["dry-run"],
+    "dry_run_exit_code": 0,
+    "executable": "exe",
+    "replacement_main": true,
+    "provenance": "provenance"
+  },
+  "evidence": {
+    "source": {"path": "output/REPLACE/source-mapping.md", "sha256": "SHA256"},
+    "checks": {"path": "output/REPLACE/checks.log", "sha256": "SHA256"},
+    "adoption": {"path": "output/REPLACE/adoption.md", "sha256": "SHA256"},
+    "arena": {"path": "output/REPLACE/arena.json", "sha256": "SHA256"},
+    "build-log": {"path": "output/REPLACE/build.log", "sha256": "SHA256"},
+    "dry-run": {"path": "output/REPLACE/dry-run.log", "sha256": "SHA256"},
+    "exe": {"path": "output/REPLACE/fixture.exe", "sha256": "SHA256"},
+    "provenance": {"path": "output/REPLACE/provenance.json", "sha256": "SHA256"}
+  }
+}
