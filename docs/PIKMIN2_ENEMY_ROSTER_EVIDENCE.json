@@ -1003,12 +1003,14 @@
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
         "death_corpse": "PASS",
-        "transport_reward": "UNTESTED",
+        "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "corpse:kurage:689702860 (P2_POD_RECEIPT id=corpse:kurage:689702860 value=2 new=1 pokos=2 seeds=0) output/muse-wave/l58/kurage-genesis/430c465ce7ae4838a9e57b2921197afc/run.log:858",
       "notes": [
         "Kurage (Lesser Spotted Jellyfloat): ingestion admit/mouth/stomach/kill16s/shrink/bitter PASS (natural); owner-death eject PASS (natural) for Kurage; Greater captain capture remains open.",
-        "Mixed-scene 60fps budget NOT met (33.45ms baseline); transport/reward + re-entry remain (#243)."
+        "Mixed-scene 60fps budget NOT met (33.45ms baseline); transport/reward + re-entry remain (#243).",
+        "Natural generated-slot transport/reward receipt corpse:kurage:689702860 (P2_POD_RECEIPT value=2 new=1) in the muse-l58 generated-birth run (output/muse-wave/l58/kurage-genesis/430c465ce7ae4838a9e57b2921197afc/run.log:858); identity_spawn closed on the reviewed l52 accepted slot."
       ]
     },
     "58": {
