@@ -40,7 +40,8 @@ lane build; it only adds four reserved files and private-output evidence.
 Root branch `codex/muse-l67-fixturetools` (base `72a2c450d7b9040545de4a440c2c32e2173ea6fa`):
 
 - `32106f16a16f9b23d808f3a87300512268e97dbb` lane67: fixture-build preflight adapter + focused tests (#507)
-- (this commit) lane67: fixturetools handoff doc (#507)
+- `13a88cdc41602534299229d2ae4213c0255ee5b9` lane67: fixturetools handoff doc (#507)
+- (this commit) lane67: record native commit hash in handoff (#507)
 
 Native branch `codex/muse-l67-fixturetools-native` (base `7b9ecaa668fd55332073446cdbdaf6424b209ea7`):
 
