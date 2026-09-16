@@ -13,3 +13,8 @@ void pc_p2_breadbug_actor_probe_carriers(int count);
 // Revisit: re-arm every active contest (onRevisit + handle release). The durable
 // receipt ledger is untouched, so a later steal re-grant is refused (duplicate).
 void pc_p2_breadbug_actor_probe_revisit();
+// Read-only lifecycle introspection for the natural death/rebirth fixture:
+// number of currently-live tracked actors, and whether a pointer is tracked.
+// No behavior change; never mutates the registry.
+int pc_p2_breadbug_actor_tracked_count();
+bool pc_p2_breadbug_actor_is_tracked(BTeki*);

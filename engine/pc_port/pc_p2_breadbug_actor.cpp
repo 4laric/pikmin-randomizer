@@ -39,8 +39,12 @@ const int CONTEST_MIN_THRESHOLD=1,CONTEST_MAX_THRESHOLD=2;
 const float CONTEST_FREEZE_SECONDS=0.5f;
 const int CONTEST_REQUIRED_CARRIERS=1,CONTEST_MAX_CARRIERS=0;
 struct Motion {int duration=0;std::vector<int> frames;std::vector<Shape*> shapes;};
-struct BreadbugProxyActor {unsigned id;unsigned started;int lastMotion=-1;bool logged=false;int loggedCargo=-99;bool lastHeld=false;int lastCarriers=-1;int contestHandle=0;int lastOutcome=-1;bool ownerDiedLogged=false;};
+struct BreadbugProxyActor {unsigned id;unsigned started;int lastMotion=-1;bool logged=false;int loggedCargo=-99;bool lastHeld=false;int lastCarriers=-1;int contestHandle=0;int lastOutcome=-1;bool ownerDiedLogged=false;bool deathLogged=false;};
 std::map<BTeki*,BreadbugProxyActor> actors;Motion motions[2];
+// Generator ids the last setup() opted in. File-static (not setup-local) so the
+// per-tick rebirth scan can re-register a generator rebirth without a manager
+// recreation; cleared by reset() so no stale stage identity survives teardown.
+std::set<unsigned> wantedIds;
 Motion cargoMotions[2];bool cargoEnabled=false;int probeCarriers=-1;
 const char* reasonName(int r){switch(r){case 1:return "interrupted";case 2:return "owner_died";case 3:return "carrier_lost";case 4:return "timeout";case 5:return "revisit";default:return "none";}}
 void fail(){std::fputs("P2_BREADBUG_ACTOR invalid P1 proxy profile\n",stderr);std::abort();}
@@ -54,10 +58,14 @@ Shape* load(const std::string& name){
  for(int i=0;i<shape->mTexAttrCount;++i)if(shape->mTexAttrList[i].mTexture)shape->mTexAttrList[i].mTexture->attach();return shape;
 }
 }
-void pc_p2_breadbug_actor_reset(){actors.clear();for(auto& motion:motions)motion=Motion{};for(auto& motion:cargoMotions)motion=Motion{};cargoEnabled=false;probeCarriers=-1;pc_p2_breadbug_contest_reset_all();}
+void pc_p2_breadbug_actor_reset(){actors.clear();wantedIds.clear();for(auto& motion:motions)motion=Motion{};for(auto& motion:cargoMotions)motion=Motion{};cargoEnabled=false;probeCarriers=-1;pc_p2_breadbug_contest_reset_all();}
 void pc_p2_breadbug_actor_forget(BTeki* actor){
  auto found=actors.find(actor);if(found==actors.end())return;
  auto& state=found->second;
+ // Lifecycle observability: the real death funnel (BTeki::doKill) and pool
+ // slot reuse (TekiMgr::newTeki) both pass through here. dead_state tells
+ // them apart: >=1 is the death funnel, 0 is slot reuse of a live actor.
+ std::printf("P2_BREADBUG_ACTOR_FORGET generator=%u had_handle=%d dead_state=%d\n",state.id,int(state.contestHandle!=0),actor->mDeadState);
  if(state.contestHandle){if(!state.ownerDiedLogged)pc_p2_breadbug_contest_owner_died(state.contestHandle);pc_p2_breadbug_contest_destroy(state.contestHandle);state.contestHandle=0;} // no handle leak on despawn
  actors.erase(found);
 }
@@ -87,14 +95,14 @@ void pc_p2_breadbug_actor_setup(){
   for(int i=0;i<count;++i){int frame;if(!(in>>frame)||frame<0||frame>=motion.duration||(i&&frame<=motion.frames.back()))fail();motion.frames.push_back(frame);}
   if(motion.frames.front()!=0||motion.frames.back()!=motion.duration-1)fail();
  }
- int count;if(!(in>>count)||count<1||count>8)fail();std::set<unsigned> wanted;
- for(int i=0;i<count;++i){unsigned long long id;int kind;if(!(in>>id>>kind)||id>0xffffffffULL||kind!=TEKI_Collec||!wanted.insert(unsigned(id)).second)fail();}
+ int count;if(!(in>>count)||count<1||count>8)fail();wantedIds.clear();
+ for(int i=0;i<count;++i){unsigned long long id;int kind;if(!(in>>id>>kind)||id>0xffffffffULL||kind!=TEKI_Collec||!wantedIds.insert(unsigned(id)).second)fail();}
  if(in>>word)fail();std::set<unsigned> found;
- Iterator it(tekiMgr);CI_LOOP(it){Teki* actor=static_cast<Teki*>(*it);if(!actor||!actor->mGenerator)continue;unsigned id=actor->mGenerator->_70;if(!wanted.count(id))continue;
+ Iterator it(tekiMgr);CI_LOOP(it){Teki* actor=static_cast<Teki*>(*it);if(!actor||!actor->mGenerator)continue;unsigned id=actor->mGenerator->_70;if(!wantedIds.count(id))continue;
   if(actor->mTekiType!=TEKI_Collec||!found.insert(id).second)fail();actors.emplace(actor,BreadbugProxyActor{id,SDL_GetTicks()});
   std::printf("P2_BREADBUG_ACTOR_READY generator=%u native_type=8 xyz=%.6f,%.6f,%.6f behavior=P1_Collec_proxy\n",id,actor->mSRT.t.x,actor->mSRT.t.y,actor->mSRT.t.z);
  }
- if(found!=wanted)fail();
+ if(found!=wantedIds)fail();
  if(!pc_p2_breadbug_contest_open("p2-breadbug-contest-receipts.txt"))fail();
  for(int k=0;k<2;++k)for(size_t i=0;i<motions[k].frames.size();++i){char name[80];std::snprintf(name,sizeof(name),"breadbug_actor_%s_%02u.mod",k?"move":"wait",unsigned(i));motions[k].shapes.push_back(load(name));}
  std::ifstream bank("p2-breadbug-cargo.txt");if(bank){
@@ -117,6 +125,17 @@ void pc_p2_breadbug_actor_tick(){
   BTeki* actor=entry.first;auto& state=entry.second;
   Pellet* held=actor->getCreaturePointer(2)&&actor->getCreaturePointer(2)->isObjType(OBJTYPE_Pellet)?static_cast<Pellet*>(actor->getCreaturePointer(2)):nullptr;
   if(actor->mDeadState || !actor->isAlive()){
+   if(!state.deathLogged){
+    state.deathLogged=true;
+    // Residual death observation: the real funnel (BTeki::doKill) erases this
+    // entry through forget() before the next tick, so reaching here means
+    // death bypassed doKill (labelled injection) or forget has not run yet.
+    // corpse reads the dieSoon() product (becomePellet sets mPellet for
+    // LeaveCorpse types such as Collec); held reads the pre-release pointer.
+    Creature* deadHeld=actor->getCreaturePointer(2);
+    const int heldIsPellet=deadHeld&&deadHeld->isObjType(OBJTYPE_Pellet)?1:0;
+    std::printf("P2_BREADBUG_ACTOR_DEATH generator=%u corpse=%d held=%d\n",state.id,int(actor->mPellet!=nullptr),heldIsPellet);
+   }
    if(state.contestHandle&&!state.ownerDiedLogged){
     state.ownerDiedLogged=true;
     if(held){held->endStickTeki(actor);}actor->clearCreaturePointer(2);actor->stopParticleGenerator(2);
@@ -178,7 +197,39 @@ void pc_p2_breadbug_actor_tick(){
    }
   }
  }
+ // Natural re-entry scan: a generator rebirth after death is a live TEKI_Collec
+ // carrying a wanted generator id that this registry no longer tracks LIVE.
+ // (A dead entry persists in the map for LeaveCorpse deaths because no doKill
+ // runs; only live bindings count.) Re-register it here so cleanup/re-entry
+ // evidences without a manager recreation (no reset/setup call) and without
+ // touching another family. Stale dead same-id entries are erased inside
+ // (replaced_stale=1) so exactly one live binding results.
+ size_t liveTracked=0;
+ for(auto& entry:actors){BTeki* known=entry.first;if(known&&!known->mDeadState&&known->isAlive())++liveTracked;}
+ if(liveTracked<wantedIds.size()&&tekiMgr){
+  Iterator scan(tekiMgr);CI_LOOP(scan){
+   Teki* cand=static_cast<Teki*>(*scan);
+   if(!cand||!cand->mGenerator)continue;
+   const unsigned id=cand->mGenerator->_70;
+   if(!wantedIds.count(id))continue;
+   if(cand->mTekiType!=TEKI_Collec)continue;
+   if(cand->mDeadState||!cand->isAlive())continue;
+   if(actors.find(cand)!=actors.end())continue;
+   bool replaced=false,duplicate=false;
+   for(auto jt=actors.begin();jt!=actors.end();){
+    if(jt->second.id!=id){++jt;continue;}
+    BTeki* old=jt->first;
+    if(old&&!old->mDeadState&&old->isAlive()){duplicate=true;break;}
+    jt=actors.erase(jt);replaced=true;
+   }
+   if(duplicate){std::printf("P2_BREADBUG_ACTOR_DUPLICATE generator=%u\n",id);continue;}
+   actors.emplace(cand,BreadbugProxyActor{id,SDL_GetTicks()});
+   std::printf("P2_BREADBUG_ACTOR_REBIRTH generator=%u native_type=8 xyz=%.6f,%.6f,%.6f replaced_stale=%d\n",id,cand->mSRT.t.x,cand->mSRT.t.y,cand->mSRT.t.z,int(replaced));
+  }
+ }
 }
+int pc_p2_breadbug_actor_tracked_count(){int n=0;for(auto& entry:actors){BTeki* actor=entry.first;if(actor&&!actor->mDeadState&&actor->isAlive())++n;}return n;}
+bool pc_p2_breadbug_actor_is_tracked(BTeki* actor){return actor&&actors.find(actor)!=actors.end();}
 bool pc_p2_breadbug_actor_draw(BTeki* actor,Graphics& gfx,const Matrix4f& view){
  auto found=actors.find(actor);if(found==actors.end()||!actor->isAlive()||!gfx.mCamera)return false;
  auto& state=found->second;
