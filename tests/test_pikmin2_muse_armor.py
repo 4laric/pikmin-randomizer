@@ -12,6 +12,7 @@ from experimental.pikmin2_muse_armor import (
 GOOD_LOG = """\
 Experimental preview window set to 960x540 windowed and centered
 P2_ARMOR_BIND generator=346001 source_id=15 visual_only=0
+P2_MUSE_ARMOR_WINDOW bittered=1 source=armor_module_input
 P2_MUSE_ARMOR_READY squad=20 armor_gen=346001 health=300.00
 P2_ARMOR_RECEIVER generator=346001 decision=accept reason=weakpoint part=none bittered=0 weakpoint=dm1
 P2_ARMOR_RECEIVER generator=346001 decision=accept reason=weakpoint part=none bittered=0 weakpoint=dm1

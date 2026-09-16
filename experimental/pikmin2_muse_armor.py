@@ -58,6 +58,7 @@ REENTRY_RE = re.compile(r'P2_MUSE_ARMOR_REENTRY old=\S+ new=\S+ stale=0 fresh=1 
 INJECT_RE = re.compile(r'P2_MUSE_ARMOR_INJECT|P2_LIFECYCLE_INJECT')
 DRAIN_RE = re.compile(r'P2_MUSE_ARMOR_DRAIN events=(\d+) min=([\d.]+) start=([\d.]+)')
 WINDOW_RE = re.compile(r'Experimental preview window set to 960x540 windowed and centered')
+STAGED_WINDOW_RE = re.compile(r'P2_MUSE_ARMOR_WINDOW bittered=1 source=armor_module_input')
 DEFAULT_MAX_HEALTH = 300.0  # pc_p2_armor.cpp LIFE
 
 # Verbatim markers that would indicate a fixture health/transport write. The
@@ -107,6 +108,7 @@ def validate(text, code=0):
         binds=binds,
         window=window,
         live_squad=squad >= 1,
+        staged_damage_window=bool(STAGED_WINDOW_RE.search(text)),
         natural_death=natural_death and dead and drain_connects and no_inject,
         corpse=corpse,
         natural_carry=natural_carry,
@@ -249,6 +251,70 @@ def instrument(source, app=None):
     return includes + source[:start] + app + source[end:]
 
 
+def _expand_response_line(line, build):
+    """Splice on-disk @response-file contents into one Ninja command line."""
+    def replace(match):
+        path = match.group(1) or match.group(2)
+        resolved = Path(path.replace("\\", "/"))
+        if not resolved.is_absolute():
+            resolved = (Path(build) / resolved).resolve()
+        if not resolved.is_file():
+            raise ValueError("Missing Ninja response file: " + path)
+        return resolved.read_text(encoding="utf-8", errors="replace").strip()
+    return re.sub(r'@(?:"([^"]+)"|(\S+))', replace, line)
+
+
+def _expand_response_files(commands, build):
+    """Expand Ninja response files the way the newer integration builder does.
+
+    Bounded compatibility shim for the lane's pinned/canonical
+    `scripts/build_pikmin2_fixture.py`, whose `windows_args` rejects the
+    `@CMakeFiles\\*.rsp` token the host toolchain emits for the `pikmin_pc`
+    link/archive steps. Ninja deletes rsp files after a run, so expansion asks
+    Ninja itself via `-t compdb` / `-t compdb -x` and falls back to reading an
+    on-disk rsp when present. The shared builder is NOT edited: `build()`
+    wraps only its `select_commands` call for the duration of this build.
+    """
+    if not any("@" in line and ".rsp" in line for line in commands):
+        return commands
+    from scripts import build_pikmin2_fixture as builder
+    cache = {}
+    for line in (Path(build) / "CMakeCache.txt").read_text(encoding="utf-8").splitlines():
+        if line and not line.startswith(("#", "//")) and "=" in line:
+            key, value = line.split("=", 1)
+            cache[key.split(":")[0]] = value
+    ninja = cache["CMAKE_MAKE_PROGRAM"]
+    databases = []
+    for options in ([], ["-x"]):
+        code, data = builder.run([ninja, "-t", "compdb", *options], build)
+        if code:
+            raise ValueError("Ninja cannot expand response files through compdb")
+        databases.append(json.loads(data))
+    raw, expanded = databases
+    if len(raw) != len(expanded):
+        raise ValueError("Ninja graph changed during response expansion")
+    replacements = {}
+    for before, after in zip(raw, expanded):
+        if (before["file"], before["output"]) != (after["file"], after["output"]):
+            raise ValueError("Ninja graph changed during response expansion")
+        replacements[before["command"]] = after["command"]
+    lines = []
+    for line in commands:
+        if "@" in line and ".rsp" in line:
+            replacement = replacements.get(line)
+            if replacement is not None and "@" not in replacement.split()[-1:]:
+                if not ("@" in replacement and ".rsp" in replacement):
+                    line = replacement
+                else:
+                    line = _expand_response_line(line, build)
+            else:
+                line = _expand_response_line(line, build)
+            if "@" in line and ".rsp" in line:
+                raise ValueError("Ninja response command is missing or unexpanded")
+        lines.append(line)
+    return lines
+
+
 def build(native, build_dir, output, head, fixture_cpp, resume=False):
     """Build the private instrumented Armor fixture (never a run)."""
     from scripts import build_pikmin2_fixture as builder
@@ -271,7 +337,19 @@ def build(native, build_dir, output, head, fixture_cpp, resume=False):
     else:
         output.mkdir(parents=True, exist_ok=False)
         room.write_text(source)
-        record = builder.build_fixture(build_dir, native, room, output / 'baseline', head)
+        # See _expand_response_line: wrap only the canonical builder's command
+        # parsing so on-disk Ninja response files are spliced before the shared
+        # windows_args check. The shared script is untouched.
+        original_select = builder.select_commands
+
+        def expanded_select(commands, src, bld):
+            return original_select(_expand_response_files(commands, bld), src, bld)
+
+        builder.select_commands = expanded_select
+        try:
+            record = builder.build_fixture(build_dir, native, room, output / 'baseline', head)
+        finally:
+            builder.select_commands = original_select
     compile_cmd = list(record['commands'][-2])
     compile_cmd[builder.option_index(compile_cmd, '-o')] = str(output / 'room.obj')
     compile_cmd[builder.option_index(compile_cmd, '-MF')] = str(output / 'room.d')
