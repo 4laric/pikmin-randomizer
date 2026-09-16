@@ -49,6 +49,7 @@ Root branch `codex/muse-l57-fuefuki` (base `72a2c450d7b9040545de4a440c2c32e2173e
 - `08bd181915084a925eeb1005e020619cc2161f01` cherry-pick packaging `3131b76` (#493, reviewed; zero conflicts)
 - `d5e78523729b6927964df77d2989fa936902a577` cherry-pick packaging `f82171d` (#493, reviewed; zero conflicts)
 - `5ef3ebdabfeb6d23a7f41459211babd42f8041ba` lane57: genesis generated-birth run + gate-1 evidence (#497)
+- `579305fb043f84c8ceae925b9eb544b293d30dc1` lane57: pin genesis handoff commit hash (#497)
 
 Native branch `codex/muse-l57-fuefuki-native` (base `7b9ecaa668fd55332073446cdbdaf6424b209ea7`):
 
