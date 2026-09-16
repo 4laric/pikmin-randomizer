@@ -1,1 +1,1 @@
-﻿543 content_lanes tests + 187 subtests pass; +5 P0 lanes (ch_MIYA_oopan #554, ch_mat_flier #559, ch_mat_route_rover #561, p1-challenge-spring #566, p1-challenge-trial #567); check_content_import_lanes PASS 53 lanes
+﻿629 content_lanes tests + 200 subtests pass; +4 P0 lanes (ch_nari_07whitepurple #553, ch_mat_t_hunter_otakara #555, ch_miya_trap #560, ch_mat_crawler #562); check_content_import_lanes PASS 53 lanes
