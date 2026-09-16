@@ -172,3 +172,63 @@ inline bool readConfig(std::istream& in, Config& out) {
 }
 
 } // namespace p2bombotakara
+
+// ---------------------------------------------------------------------------
+// Muse l61 (#501) natural-observation helpers (additive, engine-free).
+// ---------------------------------------------------------------------------
+//
+// The lane-22 sidecar stages its Bomb stub through p2-bombotakara-native.txt
+// plus p2-bombotakara-inject.txt trigger writes; both files are labeled
+// injections and can never close a natural gate. The natural BombOtakara93
+// closure instead requires, in one run:
+//
+//   * a real family generator identity chain: P2_OTAKARA_BIND with
+//     source_id=93 on a live Teki actor (the integrated lane-22 Otakara
+//     runner already binds BombOtakara for identity and reports
+//     attack=payload_delegated);
+//   * an observed bomb attachment on the source `otakara` joint:
+//     P2_BOMBOTAKARA_ATTACH generator=<carrier> payload=<bomb> joint=otakara;
+//   * an observed blast routed through the shared lane-20 primitive to live
+//     receivers: P2_BOMBOTAKARA_BLAST ... shared_primitive=1 with
+//     receivers>=1, hits>=1 and pikmin_hits>=1, followed by real InteractBomb
+//     delivery (P2_BOMBOTAKARA_BOMB_HIT accepted=1).
+//
+// These helpers classify log markers only; they stage nothing, inject no
+// health/state/transport, and change no elemental59-62 default.
+namespace p2bombotakara_natural {
+
+inline constexpr unsigned kBombOtakaraSourceId = 93;
+
+// Injected-marker substrings: any log containing one of these is reported as
+// injected diagnostic evidence, never as a natural PASS.
+inline bool isInjectedMarker(const std::string& line) {
+    static const char* kMarkers[] = {
+        "P2_BOMBOTAKARA_INJECT",
+        "p2-bombotakara-inject",
+        "injection=1",
+        "P2_BOMBOTAKARA_FIXTURE_GUARD_PIKMIN",
+        "P2_BOMBOTAKARA_DEATH_INJECT",
+        "P2_OTAKARA_DEATH_INJECT",
+    };
+    for (const char* marker : kMarkers) {
+        if (line.find(marker) != std::string::npos) return true;
+    }
+    return false;
+}
+
+// Real family generator identity: nonzero 32-bit generator on the Otakara
+// bind line with source_id=93. A globally admitted generated slot is never
+// authorized here; the caller supplies the concrete family generator.
+inline bool isNaturalIdentityBind(unsigned generator, int sourceId) {
+    return generator != 0 && sourceId == int(kBombOtakaraSourceId);
+}
+
+// Natural blast routing: the shared primitive ran against live receivers and
+// delivered at least one hit, including at least one Pikmin hit via the real
+// InteractBomb receiver path. Zero-receiver or zero-hit blasts prove routing
+// code ran, not natural combat.
+inline bool isNaturalBlastRouting(int receivers, int hits, int pikminHits, bool sharedPrimitive) {
+    return sharedPrimitive && receivers >= 1 && hits >= 1 && pikminHits >= 1;
+}
+
+} // namespace p2bombotakara_natural

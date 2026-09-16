@@ -19,3 +19,15 @@ int pc_p2_bombotakara_armed_count();
 int pc_p2_bombotakara_detonated_count();
 int pc_p2_bombotakara_suppressed_count();
 int pc_p2_bombotakara_blast_count();
+
+// Muse l61 (#501) natural-observation seam (additive; no shared-hook change).
+//
+// The integrated lane-22 Otakara runner binds the BombOtakara93 carrier actor
+// by real family generator ID. Once that bind exists, the fixture observes
+// (never injects) the source `otakara`-joint attachment and the shared
+// lane-20 blast routing to live receivers. These entry points only log
+// observation markers; they write no health/state/transport and leave the
+// elemental59-62 defaults untouched.
+void pc_p2_bombotakara_note_attach_natural(unsigned generator, unsigned payload);
+void pc_p2_bombotakara_note_bomb_hit_natural(unsigned generator, unsigned payload,
+                                             int colour, int accepted, int targetState);
