@@ -93,7 +93,11 @@ def release(reg, lane, generation, resources, *, disposition=None, coordinator=N
     keys = _resources(resources)
     require(type(generation) is int, 'Integer generation required')
     with reg.transaction() as state:
-        owner = reg.lane(state, lane, generation)
+        # Recovery may advance the lane while persistent claims still belong to
+        # its old generation. Only coordinator disposition may address that old
+        # generation; current AND original processes must pass the checks below.
+        owner = reg.lane(state, lane, generation if coordinator is None else None)
+        require(generation <= owner['generation'], 'Future claim generation')
         claims = state.setdefault('planning_claims', {})
         for key in keys:
             require(key not in claims or _owner(claims[key], lane, generation),

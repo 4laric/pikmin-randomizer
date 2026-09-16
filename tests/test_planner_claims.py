@@ -133,6 +133,38 @@ class PlanningClaimsTests(unittest.TestCase):
                 self.dispose()
         self.assertEqual(len(inspect_claims(self.reg)), 1)
 
+    def test_historical_generation_disposition_requires_all_processes_stopped(self):
+        claim(self.reg, 'a', 1, ['topic:enemy-9'])
+        with self.reg.transaction() as state:
+            state['lanes']['a']['generation'] = 2
+        self.stop()
+        # Current owner is stopped, but the independently recorded old process
+        # remains alive. Neither a stale worker nor coordinator may bypass it.
+        with self.reg.transaction() as state:
+            state['planning_claims']['topic:enemy-9']['process']['health'] = 'alive'
+        with self.assertRaises(Rejected):
+            release(self.reg, 'a', 1, ['topic:enemy-9'])
+        with self.assertRaises(Rejected):
+            self.dispose()
+        with self.reg.transaction() as state:
+            state['planning_claims']['topic:enemy-9']['process']['health'] = 'unknown'
+        with self.assertRaises(Rejected):
+            self.dispose()
+        with self.reg.transaction() as state:
+            state['planning_claims']['topic:enemy-9']['process']['health'] = 'dead'
+        self.stop(health='alive')
+        with self.reg.transaction() as state:
+            state['planning_claims']['topic:enemy-9']['process']['health'] = 'dead'
+        with self.assertRaises(Rejected):
+            self.dispose()
+        self.stop()
+        with self.assertRaises(Rejected):
+            release(self.reg, 'a', 2, ['topic:enemy-9'],
+                    coordinator=self.coordinator, disposition=self.evidence)
+        with self.assertRaises(Rejected):
+            release(self.reg, 'a', 1, ['topic:enemy-9'], coordinator=self.coordinator)
+        self.assertEqual(self.dispose(), {'released': ['topic:enemy-9']})
+
     def test_dead_and_unknown_claimants_rejected(self):
         for health in ('dead', 'unknown'):
             self.stop(health=health, state='running')

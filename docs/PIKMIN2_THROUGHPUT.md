@@ -457,5 +457,8 @@ A live owner may release unused claims. Proposal claims remain until the registe
 live `acceptance-backlog-planner` coordinator reviews them, records hashed disposition,
 and confirms the owner and protected children stopped. Its release request adds
 `coordinator: {lane: acceptance-backlog-planner, generation: N}` and
-`disposition: {path: ABS_REPORT, sha256: HASH}`. Dispose before rebinding a generation;
-unknown process state or in-flight dispatch must not be bypassed.
+`disposition: {path: ABS_REPORT, sha256: HASH}`. Prefer disposition before rebinding. After automatic recovery, the coordinator may
+explicitly dispose an older claim generation: pass the generation recorded on the
+claim, and verify both the current terminal owner and original claim processes are
+stopped. Worker release remains current-generation fenced. Unknown process state
+or in-flight dispatch must not be bypassed.
