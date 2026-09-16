@@ -1,6 +1,7 @@
 """One durable launch attempt. Does not interpret completion or restart workers."""
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -15,6 +16,19 @@ def write(path, value):
     temporary = path.with_name(path.name + '.tmp')
     temporary.write_text(json.dumps(value, indent=2), encoding='utf-8')
     os.replace(temporary, path)
+
+
+def decisions_from_text(text):
+    value = text.strip()
+    if value.startswith('```'):
+        match = re.fullmatch(r'```(?:json)?\s*([\s\S]*?)\s*```', value)
+        if not match: return None
+        value = match.group(1)
+    try:
+        result = json.loads(value)
+    except ValueError:
+        return None
+    return result if isinstance(result, list) else None
 
 
 def main(directory):
@@ -66,6 +80,10 @@ def main(directory):
                         activity['session'] = event['sessionID']
                     if event.get('type') == 'tool_use':
                         activity['tools_started'] = True
+                    if data.get('read_only_shepherd') and event.get('type') == 'text':
+                        decisions = decisions_from_text(event.get('part', {}).get('text', ''))
+                        if decisions is not None:
+                            write(out / 'decisions.json', decisions)
                     write(out / 'activity.json', dict(activity, at=time.time()))
         threads = [threading.Thread(target=f, daemon=True) for f in (stderr, stdout)]
         for thread in threads: thread.start()

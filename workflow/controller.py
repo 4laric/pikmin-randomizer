@@ -26,6 +26,33 @@ def ram_percent():
     return 100 * (1 - int(values['MemAvailable'].split()[0]) / int(values['MemTotal'].split()[0]))
 
 
+def recent_activity(directory):
+    """Small bounded excerpts; the shepherd need not discover the lane's log layout."""
+    directory = Path(directory)
+    result = {}
+    for pattern, label in [('run-*.jsonl', 'events'), ('run-*.err', 'errors')]:
+        files = list(directory.glob(pattern))
+        if not files: continue
+        path = max(files, key=lambda p: p.stat().st_mtime)
+        with path.open('rb') as stream:
+            stream.seek(max(0, path.stat().st_size - 8192))
+            text = stream.read().decode('utf-8', errors='replace')
+        if label == 'events':
+            events = []
+            for line in text.splitlines():
+                try: events.append(json.loads(line))
+                except ValueError: pass
+            compact = []
+            for event in events[-3:]:
+                part = event.get('part', {})
+                compact.append(dict(type=event.get('type'), tool=part.get('tool'),
+                    text=str(part.get('text', part.get('state', {}).get('title', '')))[:600]))
+            result[label] = compact
+        else: result[label] = text[-1200:]
+        result[label + '_path'] = str(path)
+    return result
+
+
 class Controller:
     def __init__(self, registry, config, *, spawn=None, memory=ram_percent):
         self.reg, self.config, self.memory = registry, config, memory
@@ -284,6 +311,10 @@ class Controller:
         state = self.reg.status()
         lanes = {k: {f: v.get(f) for f in ('generation', 'state', 'progress_at', 'progress_detail', 'root', 'native', 'dependencies', 'next_action', 'closes_gates')}
                  for k, v in state['lanes'].items() if k in self.config['lanes']}
+        for key, lane in lanes.items():
+            lane['worker_status'] = self.reg.probe(state['lanes'][key]['process'])
+            lane['legacy_supervisor_stopped'] = self.available(key)
+            lane['recent_activity'] = recent_activity(self.config['lanes'][key]['output'])
         packet = dict(notices=pending, lanes=lanes, artifacts=c['artifacts'], resources=state['metrics']['resource_waits'],
                       policy='No ADMIT, source edits, merges or process kills. Existing integrator is sole promotion owner.')
         packet['id'] = fingerprint(packet)
@@ -294,10 +325,10 @@ class Controller:
         # Smart model reads evidence and emits commands. Controller validates and executes them.
         model_config = dict(model=model, permission={'*': 'deny', 'read': 'allow', 'glob': 'allow',
             'grep': 'allow', 'list': 'allow', 'external_directory': {str(self.reg.root) + '/**': 'allow'},
-            'edit': {'*': 'deny', str(directory / 'decisions.json'): 'allow'}})
+            'edit': 'deny'})
         write(directory / 'opencode.json', model_config)
         prompt = (f"You are the one smart workflow shepherd. Read {directory / 'packet.json'} and relevant evidence read-only. "
-            f"Write a JSON array to {directory / 'decisions.json'}. Each item: notice (exact ID), action "
+            "Return ONLY a JSON array as your final text response; the runner saves it. Do not write files. Each item: notice (exact ID), action "
             "(resume|blocked|review-ready|notify|request-slice), reason. blocked/review-ready also evidence {path,sha256}; blocked needs dependencies. "
             "request-slice needs title, scope, acceptance (list), owned_files (list); use it for a bounded shared blocker needing its own assigned issue. "
             "Use existing hashes from records; do not fabricate. Resume only stopped workers, preserving completed source. "

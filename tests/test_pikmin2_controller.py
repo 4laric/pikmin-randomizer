@@ -14,7 +14,7 @@ from workflow.controller import Controller
 from workflow.handoff import Rejected, digest, validate_review
 from workflow.processes import identify
 from workflow.registry import Registry
-from workflow.runner import write
+from workflow.runner import write, decisions_from_text
 
 
 class ControllerTests(unittest.TestCase):
@@ -257,6 +257,12 @@ class ControllerTests(unittest.TestCase):
         replay=subprocess.run([sys.executable,'-m','workflow.runner',str(directory)],capture_output=True,timeout=15)
         self.assertNotEqual(replay.returncode,0)
         self.assertEqual(json.loads((directory/'result.json').read_text()),result)
+
+    def test_shepherd_transport_requires_a_complete_json_array(self):
+        self.assertEqual(decisions_from_text('```json\n[{"action":"notify"}]\n```'),[{'action':'notify'}])
+        self.assertEqual(decisions_from_text('[]'),[])
+        self.assertIsNone(decisions_from_text('Explanation, then [{"action":"resume"}]'))
+        self.assertIsNone(decisions_from_text('{"action":"resume"}'))
 
 
 if __name__=='__main__':unittest.main()

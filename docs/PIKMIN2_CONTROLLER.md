@@ -8,8 +8,8 @@ acceptance or grant ADMIT. The existing integrator remains the sole promotion ow
 
 The deterministic controller owns dispatch, dependency wakeups, provider cooldowns,
 outcome reconciliation and delivery. One smart OpenCode session reads changed-event
-packets and emits bounded decisions. It has read access to evidence and write access
-only to its decision file: no shell, source edits, builds or nested agents.
+packets and emits bounded decisions as JSON in its final response. The runner saves
+the response: the model has no edit permission, shell, builds or nested agents.
 
 The shepherd can resume a stopped contributor with a revised instruction, record
 a supported blocked/review outcome, notify the integrator, or request a bounded
