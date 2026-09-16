@@ -186,9 +186,9 @@ def test_admitted_ids_env_has_no_override(monkeypatch):
     # override was removed; the strict contract is canonical and env-inert.
     roster = load_and_validate()
     monkeypatch.setenv("PIKMIN_P2_ADMITTED_IDS", "79")
-    assert admitted_ids(roster) == [23, 44, 59, 60, 61, 62]
+    assert admitted_ids(roster) == [23, 44, 54, 57, 59, 60, 61, 62, 78]
     monkeypatch.setenv("PIKMIN_P2_CANDIDATE_SCOPE", "private-snow-candidate-v1")
-    assert admitted_ids(roster) == [23, 44, 59, 60, 61, 62]
+    assert admitted_ids(roster) == [23, 44, 54, 57, 59, 60, 61, 62, 78]
 
 
 def test_admission_set_admits_only_seedable_randomizable():
@@ -311,4 +311,5 @@ def test_opt_in_cohort_feeds_private_validation_path_only():
     assert admitted_ids(roster) == [23, 44, 54, 57, 59, 60, 61, 62, 78]
     admitted_layout = resolve_admitted_layout("seed-l02", "Player1", tuple(f"gen-{c}" for c in "abcdefghi"), roster)
     assert {binding["source_id"] for binding in admitted_layout["bindings"]} == {23, 44, 54, 57, 59, 60, 61, 62, 78}
+
 
