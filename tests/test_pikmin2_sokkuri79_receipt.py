@@ -83,6 +83,23 @@ class ReceiptTests(unittest.TestCase):
         result = self.validate(text, 1)
         self.assertFalse(result["checks"]["receipt"])
 
+    def test_instrument_enables_session_from_main(self):
+        base = ("class RoomApp : public PlugPikiApp {\n"
+                "};\n"
+                "int main(int argc,char** argv) {\n"
+                "  pc_bbft_init(argc,argv);\n"
+                "  gsys->run(new RoomApp());return 0;\n"
+                "}\n")
+        out = R.instrument(base, app="class Receipt { };\n")
+        self.assertIn("if(!pc_randomizer_enabled())pc_randomizer_init(argc,argv);", out)
+
+    def test_instrument_rejects_missing_session_anchor(self):
+        base = ("class RoomApp : public PlugPikiApp {\n"
+                "};\n"
+                "int main(int argc,char** argv) { return 0; }\n")
+        with self.assertRaisesRegex(ValueError, "pc_bbft_init"):
+            R.instrument(base, app="class Receipt { };\n")
+
     def test_no_carcass_audit(self):
         ok = R.check_ordinary_corpse_source(RETAIL)
         self.assertTrue(ok["passed"], ok)
