@@ -1379,22 +1379,24 @@
       "native_module": "pc_p2_sokkuri",
       "owner_lane": "14",
       "eligibility": "candidate",
-      "eligibility_reason": "native source FSM + flick/press receivers present; lifecycle and reward gates unverified on the pinned pair",
+      "eligibility_reason": "native source FSM + flick/press receivers present; transport/reward ordinary receipt observed on the pinned pair; other gates from prior evidence",
       "source": [
         "PIKMIN2_SOKKURI_NATIVE.md"
       ],
       "notes": [
         "Candidate mechanics require per-gate evidence pinned to the accepted root/native pair; this ledger does not assert a combined runtime PASS.",
-        "Open: water/press/death, transport/reward, cleanup/re-entry (#165/#407)."
+        "Open: water/press/death, transport/reward, cleanup/re-entry (#165/#407).",
+        "Gate 5 transport_reward credited from the #578 two-run ordinary receipt: run1 onion:p2:79:0 new=1 (native.log:1307), run2 duplicate new=0 (native.log:1346), with a natural 567.61u combat-carried haul to the container; remaining gates unchanged from prior evidence."
       ],
       "gates": {
         "identity_spawn": "PASS",
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
         "death_corpse": "PASS",
-        "transport_reward": "UNTESTED",
+        "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
-      }
+      },
+      "delivery_receipt": "onion:p2:79:0 (P2_ORDINARY_P2_RECEIPT new=1 then duplicate new=0) output/workflow/autofill/enemy-sokkuri79-receipt/runs/run1/b643942fa892401b879fc70ce3f0da4b/capture/native.log:1307"
     },
     "82": {
       "native_module": "pc_p2_pom",
