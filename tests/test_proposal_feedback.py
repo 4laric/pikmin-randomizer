@@ -1,5 +1,5 @@
 import unittest
-from tests.test_planner_pool import PlannerPoolTests
+from tests import test_planner_pool as fixtures
 from workflow.proposal_feedback import record
 from workflow.planner_pool import review_pending
 from workflow.handoff import digest, Rejected
@@ -8,13 +8,13 @@ from workflow.runner import write
 
 class FeedbackTests(unittest.TestCase):
     def setUp(self):
-        self.f=PlannerPoolTests();self.f.setUp();self.addCleanup(self.f.doCleanups)
+        self.f=fixtures.PlannerPoolTests();self.f.setUp();self.addCleanup(self.f.doCleanups)
         self.reg=self.f.reg
         self.path=self.f.f.out/'proposals-rejected.json'
         write(self.path,dict(items=[self.f.f.make_spec('unpublished',905)]))
         self.helper=dict(review_inboxes=[str(self.f.f.out)])
         with self.reg.transaction() as s:
-            s['lanes']['publication-review-test']=dict(generation=1,state='running',process={'health':'alive'})
+            s['lanes']['publication-review-test']=dict(generation=1,state='running',worker_id='review-worker',process={'health':'alive'})
         self.args=dict(lane='publication-review-test',generation=1,proposal=str(self.path),
             sha256=digest(self.path),outcome='repair',reason='Missing lane name',evidence=self.f.f.f.evidence)
 
