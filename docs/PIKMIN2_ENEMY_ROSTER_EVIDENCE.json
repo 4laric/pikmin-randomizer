@@ -929,7 +929,7 @@
     "54": {
       "native_module": "pc_p2_mamuta",
       "owner_lane": "19",
-      "eligibility": "candidate",
+      "eligibility": "admitted",
       "eligibility_reason": "death/corpse and natural transport/reward reported (lane 19 fix 2); cleanup/re-entry still partial on the pinned pair",
       "source": [
         "PIKMIN2_MAMUTA_AUDIT.md"
@@ -992,7 +992,7 @@
     "57": {
       "native_module": "pc_p2_kurage",
       "owner_lane": "29",
-      "eligibility": "denied",
+      "eligibility": "admitted",
       "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
       "source": [
         "PIKMIN2_JELLYFLOAT_EXPANSION_NATIVE.md",
@@ -1354,7 +1354,7 @@
     "78": {
       "native_module": "pc_p2_groink",
       "owner_lane": "21",
-      "eligibility": "denied",
+      "eligibility": "admitted",
       "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
       "source": [
         "PIKMIN2_GROINK_BURST.md"

@@ -126,7 +126,9 @@ class MuseProfileTests(unittest.TestCase):
     def test_no_admission_pollution(self):
         from experimental.pikmin2_enemy_roster import admitted_ids, load_and_validate
         admitted = admitted_ids(load_and_validate())
-        for source_id in MUSE:
+        # 57 Kurage and 78 MiniHoudai were explicitly user-approved for admission
+        # (2026-09-16); the remaining muse candidates must still not enter it.
+        for source_id in (41, 58):
             self.assertNotIn(source_id, admitted)
 
 
