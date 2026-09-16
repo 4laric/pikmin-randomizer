@@ -88,12 +88,12 @@ log (DEAD row, no throws) is rejected by the validator (unit-tested).
 ## Ordered commits (dirty: clean on both)
 
 Root (`codex/shard-enemies-6-umimushi71-observer`, base `8ff3001e4e469cf9d33430e0ff769c15738270e3`):
-- TBD1 observer fixture/runner/tests/doc + death-pass negative evidence
+- 24d4de9e observer fixture/runner/tests/doc + death-pass negative evidence
 
 Native (`codex/shard-enemies-6-umimushi71-observer-native`, base `6a87eb2994b66355b05ce40bf3a8823884236299`):
-- TBD2 observer fixture fragment (+ funnel drive + captain guard)
+- e993e8fb observer fixture fragment (+ funnel drive + captain guard)
 
-Heads: root TBD / native TBD; handoff head is this doc commit.
+Heads: root 24d4de9e / native e993e8fb (doc finalized in follow-up commit); handoff head is this doc commit.
 
 ## Interfaces / hooks touched
 
