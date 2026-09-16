@@ -309,12 +309,18 @@ class Controller:
         model = self.reg.select_model(config['models'])
         if not model: return
         state = self.reg.status()
-        lanes = {k: {f: v.get(f) for f in ('generation', 'state', 'progress_at', 'progress_detail', 'root', 'native', 'dependencies', 'next_action', 'closes_gates')}
+        lanes = {k: {f: v.get(f) for f in ('generation', 'state', 'progress_at', 'progress_detail', 'progress_evidence',
+                     'root', 'native', 'dependencies', 'next_action', 'closes_gates', 'outcome', 'handoff', 'issue', 'scope')}
                  for k, v in state['lanes'].items() if k in self.config['lanes']}
         for key, lane in lanes.items():
             lane['worker_status'] = self.reg.probe(state['lanes'][key]['process'])
             lane['legacy_supervisor_stopped'] = self.available(key)
             lane['recent_activity'] = recent_activity(self.config['lanes'][key]['output'])
+            lane['available_evidence'] = []
+            for name in ('contributor-status.md', 'handoff.json', 'reconciliation.json', 'dependency-ready.json'):
+                path = local_path(self.reg.root, self.config['lanes'][key]['output']) / name
+                if path.is_file():
+                    lane['available_evidence'].append(dict(path=str(path), sha256=digest(path)))
         packet = dict(notices=pending, lanes=lanes, artifacts=c['artifacts'], resources=state['metrics']['resource_waits'],
                       policy='No ADMIT, source edits, merges or process kills. Existing integrator is sole promotion owner.')
         packet['id'] = fingerprint(packet)
