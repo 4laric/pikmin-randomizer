@@ -15,14 +15,30 @@ dependencies #136, #137, #129, #130, #131.
   color index 2, maturity index 0); floor timer 180 s within a 350 s legacy
   budget; 1 bitter + 2 spicy sprays; `treasure_count_field` 0.
 
-## Actual-source status
+## Actual-source decode (observed, this slice)
 
-Actual source bytes were **unavailable** in this slice: no local US GPVE01 rev 0
-disc image exists in the environment (searched `output/`, home top level; the
-room-preview workflow expects a user-supplied `PATH/PIKMIN2.iso`). The adapter
-therefore reports `MissingSourcePrerequisite` naming that exact prerequisite
-and never synthesizes values. Hash validation and resource closure against real
-bytes are P1-unblocking work, not claimed here.
+Local legal source `assets/disc/PIKMIN2 for GAMECUBE.iso` (read-only) contains
+the entry: **1267 bytes, sha256 `b8d232f4…bb8d85` — matches the pinned
+canonical hash.** Decoded shift_jis (1184 chars) through the shared parser
+(`experimental.pikmin2_cave_catalog.parse`) with retail ID sets (100 enemy IDs
+from `native/pikmin2-research/.../enemyInfo.cpp`, 201 treasure IDs from
+`pelletlist_us.szs`): **1 definition, floor span 1–1 — complete floor
+coverage.** Full manifest: lane output `decode.json` (sha256 `7d89054c…3285a`).
+
+Floor 1 roster (definition weights, not placements): `Tank_key`,
+2× `Jigumo_silver_medal`, `Frog_turi_uki`, 3× `Catfish_wadou_kaichin`, plants
+`Clover`/`Zenmai`/`Clover` (target counts 5/5/5); treasures `kan`,
+`dia_c_green`; one `gate` (life 4000.0, weight 11); cap block present with
+count 0. Floor parameters: `f008` pool `1_MAT_ike_kusachi.txt`, lighting
+`kusachi_light_cha.ini`, unit root `hiroba`.
+
+Resource closure: pool file present in disc; 8 unit definitions
+(`cap_kusachi`, `item_cap_kusachi`, `way3_kusachi`, `way4_kusachi`,
+`wayl_kusachi`, `way2_kusachi`, `way2x2_kusachi`, `room_ike_kusachi`); all
+`arc.szs`/`texts.szs` unit assets present — **zero missing unit assets.**
+Unsupported-actor assessment for P1: Tank (Armored Cannon Beetle larva),
+Jigumo (Beady Long Legs), Frog (Wollywog) and Catfish (Water Dumple) are
+engine-owned species outside this lane; no fallback behavior fabricated here.
 
 ## Adapter (`experimental/content_lanes/p2-challenge-ch_nari_01kusachi.py`)
 
@@ -30,8 +46,9 @@ Isolated per-lane boundary reusing the existing shared parser
 (`experimental.pikmin2_cave_catalog.parse` — not forked, not edited):
 
 - `source_identity()` — pinned identity + catalogued metadata.
-- `locate_source(roots)` — finds the disc-relative path or raises the exact
-  missing-disc prerequisite.
+- `locate_source(roots)` / `read_disc_source(iso_path)` — find the
+  disc-relative path or read the pinned bytes via the existing disc reader;
+  absent image/entry raises the exact missing-disc prerequisite.
 - `verify_source_bytes(data)` — fail-closed sha256 check vs the pinned hash.
 - `decode_stage(text, enemy_ids, treasure_ids)` — shared parse plus the
   1-floor coverage check; malformed input raises `StageDecodeError`.
@@ -52,19 +69,19 @@ unverified packet contents; packet write round-trip with sha256.
 
 ## Blockers for P1 (exact)
 
-1. Local legal source: owned US Pikmin 2 GPVE01 rev 0 disc image exposing the
-   pinned path/hash (see prerequisite string in adapter).
-2. Runtime framework #136 (Challenge timing/keys/scores/retry semantics) and
+1. Runtime framework #136 (Challenge timing/keys/scores/retry semantics) and
    content #137 acceptance pins.
-3. Generator/actor owners #129, #130, #131 for floor construction and species
+2. Generator/actor owners #129, #130, #131 for floor construction and species
    admission; unresolved enemy admission blocks promotion, not P0.
-4. Integrator cherry-picks only the three reserved files into its chosen
+3. Integrator cherry-picks only the three reserved files into its chosen
    integration branch; never merge this worktree's history into species wave.
 
 ## Evidence
 
 - Focused test log: `output/workflow/content-expansion/p2-challenge-ch_nari_01kusachi/checks.log`
   (command below, exit 0).
+- Real decode manifest: `output/workflow/content-expansion/p2-challenge-ch_nari_01kusachi/decode.json`
+  (1267-byte hash-verified source, full roster/closure).
 - Implementation packet: generated at handoff time under the lane output dir;
   delivery copy `output/deepseek-wave/inbox/content-533-p0.md`.
 

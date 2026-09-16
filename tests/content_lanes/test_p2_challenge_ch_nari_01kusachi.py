@@ -2,8 +2,9 @@
 
 Pure unit tests: no disc image, no native build, no runtime. Synthetic
 caveinfo documents below exercise the shared-parser boundary only and are
-never presented as source evidence; actual source bytes were unavailable, so
-every positive path asserts the adapter reports hash/closure status honestly.
+never presented as source evidence; the real hash-verified decode lives in
+the lane output decode.json, and the unverified-packet test pins the
+adapter's honest reporting when bytes are absent.
 """
 import importlib.util
 import json

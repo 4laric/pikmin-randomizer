@@ -7,15 +7,20 @@ copy is available, and decodes the stage through the EXISTING shared parser
 (experimental.pikmin2_cave_catalog.parse) without forking it. No placements,
 no gameplay, no shared-file edits.
 
-Actual source bytes were unavailable in this P0 slice (no local GPVE01 disc
-image in the environment); every function reports that boundary explicitly
-instead of inventing values. Catalogued metadata below is baseline, not a
+Actual source bytes were verified against the local legal disc image
+(assets/disc/PIKMIN2 for GAMECUBE.iso): 1267 bytes, sha256 matches the pinned
+canonical hash, 1 definition / 1 floor decoded through the shared parser with
+complete resource closure (pool 1_MAT_ike_kusachi.txt, 8 units, no missing
+unit assets). See docs/content_lanes/p2-challenge-ch_nari_01kusachi.md. When
+bytes are absent the functions below still report the exact prerequisite
+instead of inventing values. Catalogued metadata is baseline, not a
 reimplementation: values are asserted against the canonical JSON files.
 """
 import hashlib
 import json
 from pathlib import Path
 
+from experimental.pikmin2_assets import disc_files
 from experimental.pikmin2_cave_catalog import parse as parse_caveinfo
 
 CAVE_ID = 'ch_NARI_01kusachi'
@@ -71,6 +76,26 @@ def locate_source(search_roots):
         if candidate.is_file():
             return candidate
     raise MissingSourcePrerequisite(MISSING_SOURCE_PREREQUISITE)
+
+
+def read_disc_source(iso_path):
+    """Read the pinned caveinfo bytes from a local GPVE01 disc image.
+
+    Reuses experimental.pikmin2_assets.disc_files (not modified). Raises
+    MissingSourcePrerequisite when the image or entry is absent.
+    """
+    try:
+        catalog = disc_files(Path(iso_path))
+        at, size = catalog[SOURCE_PATH]
+    except (OSError, ValueError, KeyError) as exc:
+        raise MissingSourcePrerequisite(
+            MISSING_SOURCE_PREREQUISITE + ' (lookup failed: %s)' % exc) from exc
+    with open(iso_path, 'rb') as disc:
+        disc.seek(at)
+        data = disc.read(size)
+    if len(data) != size:
+        raise StageDecodeError('Truncated disc source for %s' % CAVE_ID)
+    return data
 
 
 def verify_source_bytes(data):
