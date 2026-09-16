@@ -445,6 +445,9 @@ int main(int argc, char** argv)
     pc_bbft_init(argc, argv);
     require(pc_pikipelago_room_preview(), "room");
     require(pc_window_init("Sarai host fixture", 960, 540), "window");
+    pc_settings_init();
+    pc_window_set_display_mode(0);
+    pc_window_set_window_size(960, 540);
     pc_window_center();
     {
         SDL_Window* window = SDL_GL_GetCurrentWindow();
@@ -459,7 +462,6 @@ int main(int argc, char** argv)
             width, height, x, y, bounds.w, bounds.h, int(centered));
         std::fflush(stdout);
     }
-    pc_settings_init();
     gsys->Initialise();
     pc_settings_p2d_init();
     nodeMgr = new NodeMgr();

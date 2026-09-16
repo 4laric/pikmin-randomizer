@@ -775,7 +775,7 @@
       ],
       "notes": [
         "Snow success does not admit all Bulborbs; report revival/elemental variants separately (#120).",
-        "Open: natural death/carry/revisit and variant rules."
+        "Open: natural death/carry/revisit and variant rules. No natural delivery_receipt anywhere; the Codex-line admission was flag-based and is not canonical (directive 008)."
       ],
       "gates": {
         "identity_spawn": "PASS",

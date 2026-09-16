@@ -41,8 +41,8 @@ LEGACY_MODES = [
 ]
 
 
-def load_preview():
-    spec = importlib.util.spec_from_file_location('preview', ROOT / 'scripts/preview_pikmin2_room.py')
+def load_preview(root):
+    spec = importlib.util.spec_from_file_location('preview', root / 'scripts/preview_pikmin2_room.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -78,6 +78,9 @@ def run_modes(session, modes):
     exe = session / 'fixture.exe'
     for label, mode, extra in modes:
         env = dict(env_base)
+        for key in ('PIKMIN_DEMON_ORDINARY', 'PIKMIN_DEMON_ORDINARY_GENERATOR',
+                    'PIKMIN_DEMON_ORDINARY_TYPE', 'PIKMIN_DEMON_ORDINARY_LEGACY_PLACEHOLDER'):
+            env.pop(key, None)
         env['DEMON_HOST_MODE'] = mode
         env.update(extra)
         try:
@@ -90,7 +93,7 @@ def run_modes(session, modes):
             err = exc.stderr.decode('utf-8', 'replace') if isinstance(exc.stderr, bytes) else (exc.stderr or '')
         (session / (label + '.out')).write_text(out, encoding='utf-8')
         (session / (label + '.err')).write_text(err, encoding='utf-8')
-        passed = 'PASS DEMON_HOST' in out
+        passed = rc == 0 and 'PASS DEMON_HOST' in out and 'FAIL DEMON_HOST' not in out
         failed = 'FAIL DEMON_HOST' in out
         marker = next((line.strip() for line in out.splitlines()
                        if 'PASS DEMON_HOST' in line or 'FAIL DEMON_HOST' in line), '')
@@ -121,11 +124,12 @@ def main():
     parser.add_argument('--converted', type=Path, default=ROOT / 'output/pikmin2-room105')
     parser.add_argument('--ref', type=Path,
                         default=ROOT / 'output/demon-adopt-run-02/b2c84a2164a04445950f4719d9574f48')
+    parser.add_argument('--root', type=Path, required=True, help='Reviewed randomizer root containing the current room stager')
     parser.add_argument('--fixture', type=Path, required=True)
     parser.add_argument('--outdir', type=Path, required=True)
     args = parser.parse_args()
 
-    preview = load_preview()
+    preview = load_preview(args.root.resolve())
     dedicated = stage_arena(preview, args.assets, args.converted, args.outdir / 'dedicated',
                             args.ref, args.fixture, dedicated=True)
     legacy = stage_arena(preview, args.assets, args.converted, args.outdir / 'legacy',

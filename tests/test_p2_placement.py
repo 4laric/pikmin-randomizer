@@ -315,10 +315,14 @@ class PlacementCatalogTests(unittest.TestCase):
         report = compatibility_report(document)
         compatibility_by_id = report['identity_compatibility']
         self.assertEqual(report['slots_evaluated'], len(catalog.CAMPAIGN_SLOTS))
-        # Jigumo needs a nest anchor the campaign table does not expose.
-        self.assertEqual(report['unplaceable_identities'], ['Jigumo'])
+        # Jigumo needs a nest anchor the campaign table does not expose, and
+        # TamagoMushi is a lane-14 group identity whose helper_budget (10) exceeds
+        # every slot's helper_capacity (default 0) until slots model it.
+        self.assertEqual(report['unplaceable_identities'], ['Jigumo', 'TamagoMushi'])
         jigumo_reasons = [row['reason'] for row in compatibility_by_id['Jigumo']['top_incompatible_reasons']]
         self.assertIn('slot lacks a home/nest anchor', jigumo_reasons)
+        tamago_reasons = [row['reason'] for row in compatibility_by_id['TamagoMushi']['top_incompatible_reasons']]
+        self.assertIn('helper budget 10 exceeds slot capacity 0', tamago_reasons)
         # A grub identity cannot land in the ground or aquatic cohorts.
         self.assertEqual(compatibility_by_id['UjiA']['compatible_slots'], 10)
         self.assertEqual(compatibility_by_id['Chappy']['compatible_slots'], 33)

@@ -125,6 +125,37 @@ class EvaluateTests(unittest.TestCase):
         self.assertNotIn("stale-pin", cell["reason"])
 
 
+class PinEnforcementTests(unittest.TestCase):
+    def test_matching_pin_passes(self):
+        pin = {"root_commit": "a" * 40, "native_commit": "f" * 40,
+               "build_sha256": "b" * 64}
+        cell = qa.evaluate_cell([record(native_commit="f" * 40)], "natural_fight",
+                                "baseline_cohort", pin=pin)
+        self.assertEqual(cell["status"], qa.PASS)
+
+    def test_root_commit_mismatch_blocks(self):
+        pin = {"root_commit": "d" * 40}
+        cell = qa.evaluate_cell([record()], "natural_fight", "baseline_cohort", pin=pin)
+        self.assertEqual(cell["status"], qa.BLOCKED)
+        self.assertIn("does not match the pinned baseline", cell["reason"])
+
+    def test_native_commit_mismatch_blocks(self):
+        pin = {"native_commit": "e" * 40}
+        cell = qa.evaluate_cell([record(native_commit="f" * 40)], "natural_fight",
+                                "baseline_cohort", pin=pin)
+        self.assertEqual(cell["status"], qa.BLOCKED)
+
+    def test_build_hash_mismatch_blocks(self):
+        pin = {"build_sha256": "9" * 64}
+        cell = qa.evaluate_cell([record()], "natural_fight", "baseline_cohort", pin=pin)
+        self.assertEqual(cell["status"], qa.BLOCKED)
+        self.assertIn("executable hash", cell["reason"])
+
+    def test_empty_pin_is_not_enforced(self):
+        cell = qa.evaluate_cell([record()], "natural_fight", "baseline_cohort", pin={})
+        self.assertEqual(cell["status"], qa.PASS)
+
+
 class ValidationTests(unittest.TestCase):
     def test_validate_record_reports_every_problem(self):
         problems = qa.validate_record({"id": "", "stage": "nope", "scenario": "nope",
@@ -160,7 +191,7 @@ class LoadingTests(unittest.TestCase):
 
 class ReportTests(unittest.TestCase):
     def test_markdown_contains_stage_tables_and_summary(self):
-        report = qa.build_report([record()], pin={"root_commit": "x" * 40})
+        report = qa.build_report([record()], pin={"root_commit": "a" * 40})
         markdown = qa.to_markdown(report)
         self.assertIn("natural_fight", markdown)
         self.assertIn("PASS", markdown)
@@ -255,3 +286,10 @@ class ImportTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_missing_native_commit_cannot_satisfy_pinned_report():
+    rec = record()
+    rec.pop("native_commit", None)
+    problems = qa._provenance_problems(rec, {"native_commit": "a" * 40})
+    assert any("native commit" in reason for reason in problems)

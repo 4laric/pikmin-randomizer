@@ -45,6 +45,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("exe", type=Path)
     exe = parser.parse_args().exe.resolve(strict=True)
+    env = dict(os.environ)
+    mingw = Path(r"C:\msys64\mingw64\bin")
+    if mingw.is_dir():  # MinGW runtime DLLs for the private probe build.
+        env["PATH"] = str(mingw) + os.pathsep + env.get("PATH", "")
     manifest = generate("p2-native", collection_checks=True)
     layout = resolve_layout("p2-native", "Player1", ("gen-001", "gen-002"), (79, 30))
     first, second = layout["bindings"]

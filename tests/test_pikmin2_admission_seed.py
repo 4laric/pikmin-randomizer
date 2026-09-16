@@ -1,8 +1,8 @@
-"""Admission-gated seed pool wiring tests (lane 02, #438, slice 4).
+﻿"""Admission-gated seed pool wiring tests (lane 02, #438, slice 4).
 
 Proves the lane 02 admission contract actually gates the seedable P2 identity
 pool that lane 03's seed bridge reads: an identity reaches a generated P2 seed
-only when ``admission_requirements(entry)`` is empty on the ledger — natural
+only when ``admission_requirements(entry)`` is empty on the ledger â€” natural
 PASS on gates 1-4 + 6 plus a cited delivery receipt for gate 5. A partially
 passed sibling stays blocked, and stripping the receipt drops the identity back
 out (fail closed). Synthetic rosters are built purely through

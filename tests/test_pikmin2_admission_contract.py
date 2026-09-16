@@ -1,4 +1,4 @@
-"""Admission-contract tests for ``experimental.pikmin2_enemy_roster`` (lane 02).
+﻿"""Admission-contract tests for ``experimental.pikmin2_enemy_roster`` (lane 02).
 
 Pins the five-gate admission contract on top of the eligibility ledger:
 ``admission_requirements`` (natural-PASS + delivery-receipt enforcement),

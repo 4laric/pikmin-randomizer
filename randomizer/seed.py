@@ -1,7 +1,9 @@
 """Strict, deterministic identity-placement milestone; no unproven relocation."""
 import hashlib
 import json
+import os
 from collections import Counter
+from pathlib import Path
 from .catalog import (GAME, NAMES, PART_IDS, LOCATION_IDS, UNLOCKS,
                       REPAIR, REPAIR_COUNT, CHECK_REQUIREMENTS, active_names, ALL_LOCATION_IDS,
                       can_reach, can_reach_manifest, progression_pool, item_pool, START_AREAS, ALL_AREA_LOCATION_IDS, ALL_PART_IDS, COLLECTION_LOCATION_IDS, PERMANENT_LOCATION_IDS, MODERN_LOCATION_IDS, modern_names)
@@ -9,6 +11,43 @@ from .catalog import (GAME, NAMES, PART_IDS, LOCATION_IDS, UNLOCKS,
 EXPANDED_CAPABILITIES = ["flarlic-v1", "population-v1", "bestiary-v1", "exploration-v1"]
 
 CAPABILITIES = ["identity-placement-v1", "foh-day2-v1", "repair-goal-v1", "repeat-day29-v1"]
+
+ADMITTED_PLACEMENT_FILENAME = "PIKMIN2_ADMITTED_PLACEMENT.json"
+
+
+def _default_admitted_placement():
+    """Committed lane 04 accepted-placement document for the admitted cohort.
+
+    Admitted P2 enemies are eligible for placement behind the ``p2_enemies`` /
+    AP ``p2_enemy_randomizer`` option. When no explicit document is supplied this
+    finds the committed accepted-placement document (repo ``docs/``, a
+    ``PIKMIN2_ADMITTED_PLACEMENT`` path override, or the packaged apworld data
+    file). It is deliberately fail-closed: an empty or unaccepted admitted set is
+    still rejected by ``resolve_placement_layout``.
+    """
+    candidates = []
+    override = os.environ.get("PIKMIN2_ADMITTED_PLACEMENT")
+    if override:
+        candidates.append(Path(override))
+    try:
+        candidates.append(Path(__file__).resolve().parents[1] / "docs" / ADMITTED_PLACEMENT_FILENAME)
+    except (NameError, OSError):
+        pass
+    candidates.append(Path.cwd() / "docs" / ADMITTED_PLACEMENT_FILENAME)
+    for candidate in candidates:
+        if candidate.is_file():
+            return json.loads(candidate.read_text(encoding="utf-8"))
+    try:
+        from importlib.resources import files
+        package = __package__ or ""
+        if package.startswith("pikmin_randomizer"):
+            resource = files(package) / "data" / ADMITTED_PLACEMENT_FILENAME
+            return json.loads(resource.read_text(encoding="utf-8"))
+    except (ImportError, ModuleNotFoundError, FileNotFoundError, TypeError):
+        pass
+    raise ValueError(
+        "P2 enemies require the committed admitted-placement document "
+        f"(docs/{ADMITTED_PLACEMENT_FILENAME}); set PIKMIN2_ADMITTED_PLACEMENT to override")
 
 
 def canonical(value):
@@ -205,7 +244,10 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         if result['schema'] != 9:
             raise ValueError("P2 enemies require the modern schema-9 catalog")
         if p2_placement is None:
-            raise ValueError("P2 enemies require a lane 04 placement document (no arbitrary targets)")
+            # Admitted enemies are eligible for placement behind the p2_enemies
+            # option; the committed accepted-placement document supplies the legal
+            # targets and resolve_placement_layout still fails closed.
+            p2_placement = _default_admitted_placement()
         result['p2_layout'] = resolve_placement_layout(result['seed'], slot, p2_placement, load_and_validate())
         result['capabilities'].append('p2-enemy-bridge-v1')
     validate(result)

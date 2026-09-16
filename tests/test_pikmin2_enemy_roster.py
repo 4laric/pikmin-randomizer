@@ -170,7 +170,7 @@ def test_identity_roles_real_roster():
     assert all(identity_role(entry) in ROLES for entry in roster.values())
 
 
-def test_admission_defaults_deny_and_is_empty():
+def test_admission_defaults_deny_except_reviewed_pair():
     roster = load_and_validate()
     admission = admission_set(roster)
     assert admission.admitted == (23, 44, 54, 57, 59, 60, 61, 62, 78)
@@ -179,6 +179,16 @@ def test_admission_defaults_deny_and_is_empty():
     assert sum(admission.by_role.values()) == len(roster)
     with pytest.raises(RosterError):
         require_admitted(roster, 79)
+
+
+def test_admitted_ids_env_has_no_override(monkeypatch):
+    # Directive 008: the stale PIKMIN_P2_CANDIDATE_SCOPE/PIKMIN_P2_ADMITTED_IDS
+    # override was removed; the strict contract is canonical and env-inert.
+    roster = load_and_validate()
+    monkeypatch.setenv("PIKMIN_P2_ADMITTED_IDS", "79")
+    assert admitted_ids(roster) == [23, 44, 54, 57, 59, 60, 61, 62, 78]
+    monkeypatch.setenv("PIKMIN_P2_CANDIDATE_SCOPE", "private-snow-candidate-v1")
+    assert admitted_ids(roster) == [23, 44, 54, 57, 59, 60, 61, 62, 78]
 
 
 def test_admission_set_admits_only_seedable_randomizable():
@@ -268,8 +278,6 @@ def test_opt_in_validation_cohort_validates_and_does_not_admit():
     assert admitted_ids(roster) == [23, 44, 54, 57, 59, 60, 61, 62, 78]  # 23 Sarai; 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (admitted 2026-09-15); 54 Miulin, 57 Kurage, 78 MiniHoudai (admitted 2026-09-16)
     with pytest.raises(RosterError):
         require_admitted(roster, 45)
-    with pytest.raises(RosterError):
-        require_admitted(roster, 45)
 
 
 def test_opt_in_validation_cohort_rejects_invalid_input():
@@ -303,4 +311,5 @@ def test_opt_in_cohort_feeds_private_validation_path_only():
     assert admitted_ids(roster) == [23, 44, 54, 57, 59, 60, 61, 62, 78]
     admitted_layout = resolve_admitted_layout("seed-l02", "Player1", tuple(f"gen-{c}" for c in "abcdefghi"), roster)
     assert {binding["source_id"] for binding in admitted_layout["bindings"]} == {23, 44, 54, 57, 59, 60, 61, 62, 78}
+
 

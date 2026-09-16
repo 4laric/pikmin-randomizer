@@ -779,8 +779,10 @@ def admission_set(roster: list[RosterEntry]) -> AdmissionSet:
 def admitted_ids(roster: list[RosterEntry]) -> list[int]:
     """Ordered source IDs a consumer may seed; empty while nothing is admitted.
 
-    Derived from :func:`admission_contract`, so an identity is admitted only when
-    its ledger row carries the five natural PASSes and a delivery receipt.
+    Derived from :func:`admission_contract` — a seedable identity earns it only
+    with a natural PASS on each :data:`ADMISSION_GATES` gate plus a cited
+    delivery receipt for ``transport_reward``. There is no flag or environment
+    override: the strict contract is canonical (directive 008).
     """
     return admission_contract(roster)["admitted"]
 
