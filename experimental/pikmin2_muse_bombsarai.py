@@ -22,6 +22,17 @@ source 58) is NOT a generated BombSarai identity and never correlates.
 Without a placement record the verdict is ``placement-pending`` (BLOCKED),
 never PASS. Dependency-free except for the optional lane-27 import, which
 degrades to a local minimal parse when unavailable.
+
+Generation-2 addition (consuming reviewed #492/#493 candidates):
+``validate_generated_birth`` derives every leg from one native log using the
+real marker contract — ``P2_SEED_RESOLVE source_id=58 target=<uid>`` (seed
+bridge), ``P2_GENERATED_PLACEMENT source_id=58 target=<uid> generator=<g>
+bound=1`` (muse-placement native bind path, accepted uid 1787125272), and
+the lane-27 ``P2_BOMBSARAI_TEKI_READY``/``SUPPLY`` binding markers on the
+same generator ``<g>``. It reuses the cherry-picked
+``experimental.pikmin2_muse_placement.observe_identity`` (never forked) for
+the resolve/bind/accepted-slot leg and adds only the generator cross-check
+to the teki vehicle leg.
 """
 import math
 import re
@@ -37,6 +48,11 @@ _MARKER_GENERATOR_RE = re.compile(
     r"^P2_BOMBSARAI_TEKI_(READY|SUPPLY|THROW|BLAST|DEAD)\b.*\bgenerator=(\d+)"
 )
 _INT_FIELD_RE = re.compile(r"\b(source_id|generator|slot|type)\s*=\s*(\d+)")
+# Real native bind marker for source 58 (muse-placement #492 bind path).
+_BIND_58_RE = re.compile(
+    r"^P2_GENERATED_PLACEMENT\s+source_id=58\s+target=(\d+)"
+    r"(?:\s+generator=(\d+))?\s+bound=(\d)"
+)
 
 
 def parse_placement_record(record):
@@ -96,6 +112,103 @@ def _lane27_gates(log_text):
     except ImportError:
         return None
     return validate_teki_markers(log_text)
+
+
+def _placement_row(log_text):
+    """Run the muse-placement observer for source 58 (reused, never forked)."""
+    try:
+        from experimental.pikmin2_muse_placement import observe_identity
+    except ImportError:
+        return None
+    return observe_identity(log_text, BOMBSARAI_SOURCE_ID)
+
+
+def _bind_58_generator(log_text):
+    """Last bound=1 ``P2_GENERATED_PLACEMENT`` generator for source 58.
+
+    Returns ``(target_uid, generator)`` or ``(None, None)`` when no bound
+    marker exists. A bound=0 marker is a fail-closed refusal, never a bind.
+    """
+    found = (None, None)
+    if not log_text:
+        return found
+    for line in log_text.splitlines():
+        match = _BIND_58_RE.match(line.strip())
+        if not match or match.group(3) != "1":
+            continue
+        target = int(match.group(1))
+        generator = int(match.group(2)) if match.group(2) else None
+        found = (target, generator)
+    return found
+
+
+def validate_generated_birth(log_text):
+    """Validate the generated birth for BombSarai 58 from one native log.
+
+    Every leg is derived from real markers: ``P2_SEED_RESOLVE`` (seed
+    bridge), ``P2_GENERATED_PLACEMENT ... bound=1`` on the accepted slot
+    (muse-placement bind path), and ``P2_BOMBSARAI_TEKI_READY``/``SUPPLY``
+    (lane-27 vehicle binding) on the SAME generator the bind marker names.
+    Returns ``{"legs": {...bool...}, "correlated": bool, "reason": str,
+    "generators": {...}, "uids": {...}, "placement": row|None,
+    "lane27": {...}|None}``. ``reason`` names the exact failing leg:
+    ``no-ready`` / ``seed-unresolved`` / ``placement-refused`` /
+    ``slot-mismatch`` / ``generator-mismatch`` / ``supply-missing`` /
+    ``correlated``. Never correlates without all six legs.
+    """
+    legs = {"actor_bound": False, "supplied": False,
+            "seed_resolved": False, "placement_bound": False,
+            "slot_accepted": False, "generator_agree": False}
+    text = log_text or ""
+    binding = _binding_generators(text)
+    ready = binding.get("READY", [])
+    bound_generator = ready[0] if ready else None
+    if ready:
+        legs["actor_bound"] = True
+    if bound_generator is not None and bound_generator in binding.get(
+            "SUPPLY", []):
+        legs["supplied"] = True
+
+    row = _placement_row(text)
+    resolved_uid = row["resolved_uid"] if row else None
+    row_bound_uid = row["bound_uid"] if row else None
+    if resolved_uid is not None:
+        legs["seed_resolved"] = True
+    if row and row["bound"]:
+        legs["placement_bound"] = True
+    if row and row["correlated"]:
+        legs["slot_accepted"] = True
+
+    bind_target, bind_generator = _bind_58_generator(text)
+    if (bound_generator is not None and bind_generator is not None
+            and bind_generator == bound_generator):
+        legs["generator_agree"] = True
+
+    if not ready:
+        reason = "no-ready"
+    elif not legs["seed_resolved"]:
+        reason = "seed-unresolved"
+    elif not legs["placement_bound"]:
+        reason = "placement-refused"
+    elif not legs["slot_accepted"]:
+        reason = "slot-mismatch"
+    elif not legs["generator_agree"]:
+        reason = "generator-mismatch"
+    elif not legs["supplied"]:
+        reason = "supply-missing"
+    else:
+        reason = "correlated"
+    return {"legs": legs,
+            "correlated": reason == "correlated",
+            "reason": reason,
+            "generators": {"bound": bound_generator,
+                           "placement": bind_generator},
+            "uids": {"resolved": resolved_uid,
+                     "bound": row_bound_uid,
+                     "placement_target": bind_target,
+                     "accepted": (row["accepted_uid"] if row else None)},
+            "placement": row,
+            "lane27": _lane27_gates(text)}
 
 
 def validate_correlated_birth(log_text, placement=None):
