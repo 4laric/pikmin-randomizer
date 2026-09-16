@@ -3,7 +3,9 @@
 Parent #165; wave #491; integration #437/#186.
 Implementation owner: Codex through shared account `4laric`; executing
 contributor: Muse Spark 1.3 via OpenCode (`opencode/muse-spark-1.3-contributor-free`),
-lane muse-ground (l55). Attempt `8d1876545742497fbd8c305f2c58ef35`, generation 1.
+lane muse-ground (l55). Attempt `e26dabd396e6cdf6e1e3f3512bbe476f1e908ce5ba74d55a0b4ab1655092ae80`, generation 3
+(recovery of the same session after the free provider stalled; prior slice
+preserved, not redone).
 
 ## Slice delivered
 
@@ -31,6 +33,60 @@ run — see remaining work).
 ElecBug28: no module change this slice (scope ordering). Its gate rows below
 preserve lane-14 evidence without relabelling.
 
+## Slice 2 — natural death/corpse/haul observation (generation 3)
+
+**Concrete slice:** build the slice-1 fixture source and observe what free
+Pikmin do with a naturally killed Sokkuri corpse — no health/state writes, no
+Transport injection, no `suckMe` fallback (the fixture contains neither code
+path). Two preserved gen-2 native commits complete the fixture:
+`7ab1262b` (`pc_p2_preview.h` include + doc refresh) and `54e018f7`
+(preview-room entrypoint guard + equivalent 960x540 centred-window block, per
+the fan-out custom-fixture rule).
+
+**Fixture adoption (this slice, all fields):**
+
+```text
+Fixture baseline adoption
+Child issue / lane / implementation owner: #495 / muse-ground (l55) / Codex through shared 4laric (Muse Spark 1.3)
+Root commit + dirty state / overlay source: 0fea5ec5 clean / scripts/preview_pikmin2_room.py (ensure_pikmin_squad present)
+Native commit + dirty state / worktree / private build directory: 54e018f7 clean / output/msw/native-l55 / output/msw/native-l55-build
+Squad change present / window change present (ancestry or source evidence): overlay ensure_pikmin_squad=True (source); native pc_main 960x540 + pc_window_center=True (source); fixture own entrypoint mirrors preview_p2_room window block (54e018f7)
+Fresh arena command / run directory / asset and config hashes: experimental.pikmin2_sokkuri_natural_runtime.prepare(assets, dsw/l14-out/ground, output/muse-wave/l55/arena-carry2) / arena-carry2/6efb254a98c84685accb348d6157eb33 (arena.json sha256 46de181b945bc9ab33d62cdfd285a6cb3363ecd6bf39b1299bf5ba2bf5520b5e)
+Executable SHA-256 / fixture provenance status if applicable: fixture-carry3/fixture.exe e2468b5e3e6b9bc4e47024a10fda83d98ccc270fd55b51dc38da0d4edc135496 / provenance.json status built vs expected head 54e018f7
+Window setting / observed size and centring evidence: PIKMIN_P2_ROOM_WINDOW=960x540, SDL_AUDIODRIVER=dummy / run-carry3/capture/native.log:7 windowed and centered
+Live starting Pikmin / active gameplay / no immediate extinction evidence: run-carry3/capture/native.log:235 Direct boot 20 reds; :794 READY squad=20; no Extinction marker in 1049 lines
+PASS, FAIL, or BLOCKED; remaining work: PARTIAL PASS (natural chain observed; no terminal fixture PASS line — see limits)
+```
+
+**Runtime evidence (run-carry3, `output/muse-wave/l55/run-carry3/capture/native.log`,
+1049 lines, SHA-256 `5dd85ff8b9e9c32c411f3119ea091f30781efe2f863761ac81be34d8db380a29`;
+replicated in run-carry2 up to tick 7740, UTF-16 raw log + `.utf8.log` decoded copy):**
+
+- `:776`–`:778` bind chain: `P2_SOKKURI_DELIVERY_BIND` + `P2_SOKKURI_BIND`
+  (source 79) + `P2_ENEMY_READY` (120 HP, native FSM).
+- `:797`–`:847` seven `P2_SOKKURI_DAMAGE` hits 105.0 → 15.0 (real
+  InteractAttack drain, no writes anywhere in fixture/native path).
+- `:851` `P2_SOKKURI_DEAD ... prior_health=15.0` (combat-culminated, small prior).
+- `:862` `P2_MUSE_GROUND_CORPSE pellet=1`.
+- `:876`–`:914`+ 53 natural carry rows, first `tick=480 moved=62.11`,
+  max `tick=960 moved=573.55`: free Pikmin grasped the corpse and hauled it
+  ~573 units from the death site, then stalled (cargo-free arena has no
+  Onion — carriers run out of route; expected, reported, not a defect).
+- No `P2_ORDINARY_P2_RECEIPT` (preview room runs without the randomizer
+  session, so `pc_randomizer_p2_corpse_delivered` correctly returns false) —
+  gate 5 stays UNTESTED; the haul is carry evidence only, never a reward claim.
+- Validator: `experimental.pikmin2_muse_ground.validate(run-carry3 log)` →
+  `identity=1 damage=1 death=1 corpse=1 receipt=0 carry=0 haul=573.5
+  transport=untested` ("natural haul movement observed but no ordinary
+  onion:p2:79 receipt").
+
+**Limits (honest):** both runs exited cleanly (SDL shutdown, exit 0) before
+the fixture's `observed>9000` terminal line — run-carry2 at tick 7740,
+run-carry3 at tick 3600 — with no extinction, no FAIL, and no sunset marker
+found; the early-session-end cause is unestablished. No terminal
+`PASS P2_MUSE_GROUND_RUNTIME` line is claimed. run-carry1 (pre-entrypoint-fix
+exe) is VOID: it booted the title flow and logged zero P2 markers.
+
 ## Ordered commits
 
 Root base `72a2c450d7b9040545de4a440c2c32e2173ea6fa`; native base
@@ -39,8 +95,11 @@ Root base `72a2c450d7b9040545de4a440c2c32e2173ea6fa`; native base
 | Branch | Commit | Subject |
 |---|---|---|
 | native `codex/muse-l55-ground-native` | `ecc80b72` | lane55: bind Sokkuri79 ordinary delivery source + muse-ground fixture source (#495) |
+| native `codex/muse-l55-ground-native` | `7ab1262b` | lane55: muse-ground fixture preview include + doc refresh (#495) |
+| native `codex/muse-l55-ground-native` | `54e018f7` | lane55: muse-ground fixture preview entrypoint + window block (#495) |
 | root `codex/muse-l55-ground` | `50f6e89a` | lane55: Sokkuri79 delivery observer/validator + unit tests (#495) |
-| root `codex/muse-l55-ground` | (this handoff) | lane55: Sokkuri79 delivery-bridge handoff (#495) |
+| root `codex/muse-l55-ground` | `0fea5ec5` | lane55: Sokkuri79 delivery-bridge handoff docs (#495) |
+| root `codex/muse-l55-ground` | (this handoff) | lane55: Sokkuri79 natural haul observation + validator carry parsing (#495) |
 
 Dirty state: none (both clean).
 
@@ -85,18 +144,20 @@ Leased heavy-build runner
 
 ## Fixture adoption evidence
 
-No runtime acceptance run this slice: no fresh arena was generated, no
-executable was launched, no window/squad observation is claimed. The
-replacement-main source exists (`native/tools/p2_muse_ground_fixture.cpp`)
-but has no `built` provenance yet. The next slice regenerates a NEW private
-arena with the current overlay/starting squad, builds the fixture through the
-leased wrapper, and verifies 960x540 centred startup, live Pikmin, and no
-immediate extinction before any carry observation. Honest status: UNTESTED,
-not adopted.
+Adopted this slice — see the slice-2 adoption record above (fresh
+arena-carry2, fixture-carry3 `built` provenance, 960x540 observed at
+run-carry3 log:7, 20 live reds, no extinction). Prior-slice "UNTESTED, not
+adopted" status is superseded by that record; runtime claims cite
+run-carry3/capture/native.log line numbers.
 
 ## Tests
 
-- `py -3.12 -m pytest tests/test_pikmin2_muse_ground.py -q` → **10 passed**.
+- `py -3.12 -m pytest tests/test_pikmin2_muse_ground.py -q` → **12 passed**
+  (slice 2 adds haul-observation parsing tests: haul-without-receipt stays
+  UNTESTED with the max-haul distance in the reason; sub-threshold movement
+  is not evidence).
+  Log: `C:\Users\alari\pikmin-randomizer\output\muse-wave\l55\pytest-muse-ground2.log`
+  (SHA-256 `2675629be57902242564d4f0eeaef6105dbb3081bf5ce3fd27b6a25e02cf9c4b`).
   Log: `C:\Users\alari\pikmin-randomizer\output\muse-wave\l55\pytest-muse-ground.log`
   (SHA-256 `1f9fb0ce1e1c43148f35a905389b3e5fad27d0995fe930449aced89d879ff400`).
 - Covers: natural death chain stays untransported without receipt;
@@ -123,7 +184,7 @@ downgraded or upgraded without findings in this slice.
 | 2. Autonomous movement and animation | PASS (natural) | docs/PIKMIN2_LANE14_DEEPSEEK_HANDOFF.md natural-run2 native.log:826 | natural |
 | 3. Attacks and receivers | PASS (natural) | docs/PIKMIN2_LANE14_DEEPSEEK_HANDOFF.md natural-run2 native.log:801 | natural |
 | 4. Death and corpse | PASS (natural) | docs/PIKMIN2_LANE14_DEEPSEEK_HANDOFF.md natural-run2 native.log:904 | natural |
-| 5. Actual transport and reward | UNTESTED | no natural carry plus onion:p2:79 receipt runtime yet; validator at experimental/pikmin2_muse_ground.py refuses receipt-only PASS | natural |
+| 5. Actual transport and reward | UNTESTED | natural haul observed output/muse-wave/l55/run-carry3/capture/native.log:876 (first natural move) and :914 (max 573.55 units); no onion:p2:79 receipt in preview room (randomizer session absent by design) | natural |
 | 6. Cleanup and re-entry | UNTESTED | injected (cleanup natural; re-entry would be forced re-bind, not full scene re-entry) | injected |
 
 ### Concrete source ID
@@ -151,20 +212,25 @@ from the lane root → exit 0, no refused PASS rows (verified before handoff).
   no P1 double-credit) is taken as the delivery mechanism; this slice wires
   the family side only and does not re-prove the provider.
 - The Skitter Leaf is harmless; natural lethal death needs the free squad to
-  fully drain 120 HP (proven in lane-14 natural-run2, not re-run here).
+  fully drain 120 HP (proven in lane-14 natural-run2, replicated in
+  run-carry2/run-carry3: 7 hits 105→15, prior 15.0).
+- The cargo-free arena has no Onion, so hauled corpses stall once carriers run
+  out of route (~573 units); the stall is reported, not a defect.
 
 ## Remaining blockers / next step
 
-1. Natural carry + exactly-once receipt runtime (owner: this lane, next
-   slice): generate a NEW private arena with the current overlay/starting
-   squad, build `native/tools/p2_muse_ground_fixture.cpp` through the leased
-   wrapper, observe free-mode grasp/haul of the Sokkuri corpse with no
-   `suckMe` fallback, and capture `P2_ORDINARY_P2_RECEIPT ... onion:p2:79 ...
-   new=1` plus a duplicate `new=0` across restart. No dependency blocks this;
-   no new shared hook is expected unless the carry observation reveals a real
-   receiver/route defect (then a focused request to #491).
+1. Exactly-once `onion:p2:79` receipt (owner: this lane, next slice): the
+   natural haul is proven; what remains is driving a hauled Sokkuri corpse
+   through the real ordinary Onion endpoint with the family bind in a
+   randomizer-enabled session and capturing `new=1` plus duplicate `new=0`
+   across restart. No dependency blocks this; no new shared hook is expected
+   unless that run reveals a real receiver/route defect (then a focused
+   request to #491).
 2. Full natural scene re-entry beyond generator recreation (lifetime lane
    concern, #397/07): not claimed here; gate 6 stays UNTESTED honestly.
+   (Both carry runs also exited before the fixture's terminal line with no
+   extinction/FAIL; early-session-end cause unestablished — recorded, not
+   claimed.)
 3. ElecBug28 delivery/re-entry only after the Sokkuri slice completes (brief
    ordering); its module is untouched.
 

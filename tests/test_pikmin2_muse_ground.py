@@ -106,6 +106,34 @@ class MuseGroundValidatorTests(unittest.TestCase):
         self.assertIn("transport=untested", gate_summary(validate(RECEIPT_ONLY_LOG)))
         self.assertIn("transport=pass", gate_summary(validate(CARRY_LOG)))
 
+    def test_haul_observation_without_receipt_stays_untested(self):
+        from experimental.pikmin2_muse_ground import parse_carry_observations
+
+        log = NATURAL_DEATH_LOG + (
+            "P2_MUSE_GROUND_READY squad=20 sokkuri_gen=346005 source=79\n"
+            "P2_MUSE_GROUND_CORPSE pellet=1 tick=362\n"
+            "P2_MUSE_GROUND_CARRY tick=480 moved=62.11 natural=1\n"
+            "P2_MUSE_GROUND_CARRY tick=960 moved=573.55 natural=1\n"
+        )
+        r = validate(log)
+        self.assertEqual(
+            parse_carry_observations(log), [(480, 62.11, 1), (960, 573.55, 1)]
+        )
+        self.assertTrue(r["checks"]["natural_haul_observed"])
+        self.assertTrue(r["checks"]["live_squad"])
+        self.assertAlmostEqual(r["max_natural_haul"], 573.55)
+        # Carry movement is evidence, never a transport PASS without receipt.
+        self.assertEqual(r["transport_gate"], "untested")
+        self.assertIn("573.5", r["transport_reason"])
+
+    def test_small_haul_below_threshold_is_not_evidence(self):
+        log = NATURAL_DEATH_LOG + (
+            "P2_MUSE_GROUND_CARRY tick=300 moved=0.74 natural=0\n"
+        )
+        r = validate(log)
+        self.assertFalse(r["checks"]["natural_haul_observed"])
+        self.assertEqual(r["max_natural_haul"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()
