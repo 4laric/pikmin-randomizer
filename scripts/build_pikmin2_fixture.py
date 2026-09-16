@@ -108,6 +108,58 @@ def absolute(value, root):
     return (path if path.is_absolute() else root / path).resolve()
 
 
+def expand_response_line(line, build):
+    """Splice the on-disk content of any @response file in a Ninja command line.
+
+    `ninja -t commands` emits CMake/Ninja link and archive commands with a
+    literal `@<file>.rsp`; those rules are not in the compilation database, so
+    the file must be read directly. The build already wrote it.
+    """
+    def replace(match):
+        path = match.group(1) or match.group(2)
+        resolved = absolute(path, build)
+        if not resolved.is_file():
+            raise BuildRejected('Missing Ninja response file: ' + path)
+        return resolved.read_text(encoding='utf-8', errors='replace').strip()
+
+    return re.sub(r'@"([^"]+)"|@([^\s"@]+\.rsp)', replace, line)
+
+
+def expand_response_files(text, ninja, build):
+    """Ask Ninja to expand its own response content, preserving link order."""
+    if not any('@' in line and '.rsp' in line for line in text.splitlines()):
+        return text
+    databases = []
+    for options in ([], ['-x']):
+        code, data = run([str(ninja), '-t', 'compdb', *options], build)
+        if code:
+            raise BuildRejected('Ninja cannot expand response files through compdb')
+        try:
+            databases.append(json.loads(data))
+        except (ValueError, TypeError) as error:
+            raise BuildRejected('Invalid Ninja compilation database') from error
+    raw, expanded = databases
+    if len(raw) != len(expanded):
+        raise BuildRejected('Ninja graph changed during response expansion')
+    replacements = {}
+    for before, after in zip(raw, expanded):
+        if (before['file'], before['output']) != (after['file'], after['output']):
+            raise BuildRejected('Ninja graph changed during response expansion')
+        replacements[before['command']] = after['command']
+    lines = []
+    for line in text.splitlines():
+        if '@' in line and '.rsp' in line:
+            replacement = replacements.get(line)
+            if replacement is not None and not ('@' in replacement and '.rsp' in replacement):
+                line = replacement
+            else:
+                line = expand_response_line(line, build)
+            if '@' in line and '.rsp' in line:
+                raise BuildRejected('Ninja response command is missing or unexpanded')
+        lines.append(line)
+    return '\n'.join(lines)
+
+
 def select_commands(commands, source, build):
     main = (source / 'pc_port/pc_main.cpp').resolve()
     compiles, links, objects = [], [], set()
@@ -227,6 +279,21 @@ def run(args, cwd, env=None):
     return completed.returncode, completed.stdout
 
 
+def run_command(command, build, env, output, phase):
+    """Run a compiler/linker command, using a response file when the argv is too
+    long for the Windows CreateProcess limit (which is why CMake emits one)."""
+    length = sum(len(str(arg)) + 1 for arg in command)
+    if length <= 7000:
+        return run(command, build, env)
+    response = (output / (phase + '.rsp')).resolve()
+    # GCC response files treat backslash as an escape, so quote and double it.
+    lines = []
+    for arg in command[1:]:
+        lines.append('"' + str(arg).replace('\\', '\\\\').replace('"', '\\"') + '"')
+    response.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    return run([command[0], '@' + str(response)], build, env)
+
+
 def require_fresh(ninja, build, record):
     code, text = run([str(ninja), '-n', '-d', 'explain', 'pikmin_pc'], build)
     record.append(dict(returncode=code, output=text))
@@ -235,14 +302,30 @@ def require_fresh(ninja, build, record):
 
 
 def git_state(source):
-    values = {}
-    for key, args in [('head', ['rev-parse', 'HEAD']), ('status', ['status', '--porcelain=v1', '--untracked-files=normal']),
-                      ('tracked_diff', ['diff', '--binary', 'HEAD'])]:
+    def git(args):
         code, text = run(['git', '-C', str(source)] + args, source)
         if code:
             raise BuildRejected('Cannot read native Git state')
-        values[key + ('_sha256' if key == 'tracked_diff' else '')] = (
-            hashlib.sha256(text.encode('utf-8')).hexdigest() if key == 'tracked_diff' else text.strip())
+        return text
+
+    values = {
+        'head': git(['rev-parse', 'HEAD']).strip(),
+        'status': git(['status', '--porcelain=v1', '--untracked-files=normal']).strip(),
+    }
+    # Per-file sha256 of every tracked-modified source (relative path -> content
+    # hash). A single hash of `git diff --binary HEAD` does not reproduce from
+    # the committed state (the diff empties once the work is committed), so
+    # hashing each tracked-modified file's content is the reproducible identity.
+    tracked_modified = {}
+    for relative in git(['diff', '--name-only', 'HEAD']).splitlines():
+        relative = relative.strip()
+        if not relative:
+            continue
+        path = source / relative
+        if not path.is_file():
+            raise BuildRejected('Tracked-modified path is not a file: ' + relative)
+        tracked_modified[relative] = sha256(path)
+    values['tracked_modified_sha256'] = tracked_modified
     return values
 
 
@@ -335,6 +418,8 @@ def build_fixture(build, source, fixture, output, expected_head, check_only=Fals
         if code:
             raise BuildRejected('Cannot obtain Ninja commands')
         (output / 'native-commands.txt').write_text(text, encoding='utf-8')
+        text = expand_response_files(text, ninja, build)
+        (output / 'native-commands-expanded.txt').write_text(text, encoding='utf-8')
         compile_args, link_args, main_object, objects = select_commands(text.splitlines(), source, build)
         if absolute(compile_args[0], build) != compiler:
             raise BuildRejected('Ninja compiler differs from CMake cache')
@@ -410,7 +495,7 @@ def build_fixture(build, source, fixture, output, expected_head, check_only=Fals
         rewritten[option_index(rewritten, '-o')] = str(output / 'fixture.exe')
         for phase, command in [('compile', compile_args), ('link', rewritten)]:
             record['commands'].append(command)
-            code, text = run(command, build, env)
+            code, text = run_command(command, build, env, output, phase)
             (output / (phase + '.log')).write_text(text, encoding='utf-8')
             if code:
                 raise BuildRejected('Fixture ' + phase + ' failed; see ' + phase + '.log')
