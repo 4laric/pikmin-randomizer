@@ -30,8 +30,10 @@ def render_dashboard(report):
     autofill = report.get('autofill')
     autofill = autofill if isinstance(autofill, dict) else {}
     planning = autofill.get('planner_pool', {})
-    cards.append(('Planning helpers active / target',
+    cards.append(('Helper reservations / target',
                   str(planning.get('active', 0)) + ' / ' + str(planning.get('target', 0))))
+    for key in ('running', 'queued', 'report_ready', 'recovery'):
+        cards.append(('Helpers ' + key.replace('_', ' '), str(planning.get(key, 0))))
     for label, key in (('Ready backlog', 'ready_count'), ('Ready awaiting worker', 'awaiting_worker_count'), ('Active enemy work', 'active_enemy_count'),
                        ('Idle authorized workers', 'idle_workers_count')):
         value = autofill.get(key)

@@ -141,7 +141,9 @@ class Controller:
             self.reg.notice(item['lane'], 'runner_stopped_before_binding', {'action': item['id']})
             return
         lane = self.reg.bind_launch(item['id'], identity)
-        entry = self.config['lanes'][item['lane']]
+        entry = dict(self.config['lanes'][item['lane']])
+        for field in ('root', 'output', 'brief', 'config'):
+            entry[field] = str(local_path(self.reg.root, entry[field]))
         ready = dict(attempt_id=item['id'], lane=item['lane'], generation=lane['generation'],
                      revision=lane['revision'], task_id=lane['task_id'], pid=identity['pid'], session=item['session'])
         write(local_path(self.reg.root, entry['output']) / 'session-ready.json', ready)
@@ -440,6 +442,8 @@ class Controller:
             self.config['lanes'].update(state.get('throughput_runtime', {}).get('launch_specs', {}))
         from .provider_recovery import recover
         recover(self)
+        from .terminal_cleanup import tick as clean_terminal
+        clean_terminal(self)
         self.receipts(); self.complete_runs(); self.dependencies(); self.observe()
         from .setup_healing import tick as heal_setup
         heal_setup(self)
@@ -469,12 +473,15 @@ class Controller:
                 focus = {'enemy_acceptance': 0, 'existing_content': 1, 'expansion': 2}.get(item.get('focus'), 1)
                 helper=item['lane'].startswith(('planning-','publication-review-','integration-support-'))
                 return (work_class, helper, focus, -downstream, len(lane.get('closes_gates', [])) or 99, item['created_at'])
+            launched = 0
+            burst = min(4, max(1, self.config.get('launches_per_tick', 1)))
             for item in sorted(self.reg.control_status()['launches'].values(), key=priority):
                 if item['status'] in ('intent', 'spawned'):
                     if not self.reg.select_model(item['models']) or not self.available(item['lane']): continue
                     progressed=self.dispatch(item)
-                    # One new launch per tick; avoid crossing the RAM band in a batch.
-                    if progressed:break
+                    if progressed:
+                        launched += 1
+                        if launched >= burst or not self.capacity(): break
         self.shepherd()
         self.deliver_notifications()
         write(self.base / 'status.json', dict(at=self.reg.clock(), control=self.reg.control_status()))

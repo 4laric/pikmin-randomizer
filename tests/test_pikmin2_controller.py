@@ -56,6 +56,15 @@ class ControllerTests(unittest.TestCase):
     def plan(self):
         return self.reg.plan_launch('consumer', 'test', 'Inspect previous work', self.config['models'])
 
+    def test_dispatch_resolves_relative_paths_before_runner_changes_directory(self):
+        self.config['lanes']['consumer'] = dict(root='output/lane', output='output/lane',
+                                               brief='output/lane/review.txt', config='output/lane/review.txt')
+        item=self.plan();self.controller.dispatch(item)
+        start=json.loads((self.controller.launch_directory(item['id'])/'start.json').read_text())
+        self.assertEqual(Path(start['worktree']),self.out)
+        self.assertEqual(Path(start['config']),self.log)
+        self.assertIn(str(self.log),start['prompt'])
+
     def test_duplicate_dependency_event_plans_once(self):
         self.ready_dependency(); self.controller.dependencies(); self.controller.dependencies()
         self.assertEqual(len(self.reg.control_status()['launches']), 1)

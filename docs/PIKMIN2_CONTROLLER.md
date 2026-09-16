@@ -262,3 +262,21 @@ process, no execution evidence, no claims or leases, and compatible worker roles
 and capabilities. Any launch attempt, binding, process or launch-directory artifact
 prevents reclamation; normal recovery handles uncertain startup. Running helpers
 finish normally. Implementation takes the released worker before helper refill.
+
+### Terminal cleanup and capacity dispatch (#631)
+
+With terminal_cleanup.enabled, completed review/handoff producers may have their
+lingering OpenCode child retired after a five-minute grace period. The controller
+requires the matching session exit-loop, no later activity except service cleanup,
+valid immutable outcome evidence, matching generation and process identity, no
+productive descendants, and no live or unknown independent resource owner. Only
+that child is stopped; its runner records the actual exit. No acceptance or age
+reset is synthesized. Unknown states remain protected. Windows termination checks
+creation time and stops through the same process handle.
+
+Dashboard helper reservations are split into running, queued, report-ready and
+recovery counts. launches_per_tick may be raised from 1 to 2 (hard maximum 4)
+to activate additional paid workers; model pacing and measured RAM admission are
+rechecked. Existing implementation/recovery retains priority over helper discovery.
+Prepared relative paths are resolved against the canonical workspace before the
+runner changes directory, preventing failed starts such as PanModoki #220.

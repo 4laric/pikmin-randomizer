@@ -141,6 +141,16 @@ def autofill_status(reg):
             (i['lane'] not in state['lanes'] or (state['lanes'][i['lane']]['state'] == 'ready' and
              reg.recovery_safe(state, state['lanes'][i['lane']]))) for i in data['items'].values())
         data['awaiting_worker_count'] = sum(bool(i.get('ready') and i.get('awaiting_worker')) for i in data['items'].values())
+        helpers = dict(running=0, queued=0, report_ready=0, recovery=0)
+        for record in data.get('planner_pool', {}).get('scopes', {}).values():
+            if 'completed_at' in record: continue
+            lane = state['lanes'].get(record['spec']['lane']['lane'], {})
+            if lane.get('state') == 'review_ready': bucket = 'report_ready'
+            elif lane.get('state') == 'ready': bucket = 'queued'
+            elif lane.get('state') == 'running' and reg.probe(lane['process']) == 'alive': bucket = 'running'
+            else: bucket = 'recovery'
+            helpers[bucket] += 1
+        data.setdefault('planner_pool', {}).update(helpers)
         data['pending_count'] = sum(i.get('phase') == 'pending' for i in data['items'].values())
         data['active_enemy_lanes'] = active_enemy_lanes(state, data['items'])
         data['active_enemy_count'] = len(data['active_enemy_lanes'])
