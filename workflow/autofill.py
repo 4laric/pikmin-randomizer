@@ -334,10 +334,15 @@ def _planner_tick(controller, settings, manifest_hash):
         if not data.get('last_manifest_error') and backlog >= max(1, settings.get('low_watermark', 4)) and enemies:
             return False
         lane = reg.lane(state, key)
-        require(lane['state'] in ('ready', 'blocked', 'reconciling', 'running') and reg.recovery_safe(state, lane),
-                'Backlog planner is live, unknown, or not resumable')
-        require(not any(a['lane'] == key and a['status'] in ('intent', 'spawned', 'running')
-                        for a in state.get('control', {}).get('launches', {}).values()), 'Backlog planner dispatch already in flight')
+        require(lane['state'] in ('ready', 'blocked', 'reconciling', 'running'), 'Backlog planner is not resumable')
+        health = reg.probe(lane['process'])
+        require(health in ('alive', 'dead'), 'Backlog planner process identity is unknown')
+        in_flight = any(a['lane'] == key and a['status'] in ('intent', 'spawned', 'running')
+                        for a in state.get('control', {}).get('launches', {}).values())
+        if health == 'alive' or in_flight:
+            data['last_planner_error'] = None
+            return False  # Expected ongoing work; never a recovery error.
+        require(reg.recovery_safe(state, lane), 'Backlog planner protected child is live or unknown')
         previous = data.get('last_planner_request')
         if previous and previous.get('status') == 'planned' and reg.clock() - previous['at'] < cooldown:
             return False

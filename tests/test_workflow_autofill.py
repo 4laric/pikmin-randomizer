@@ -206,6 +206,25 @@ class AutofillTests(unittest.TestCase):
         self.now+=301;self.tick();self.assertEqual(len(self.reg.control_status()['launches']),2)
         self.assertFalse(list(self.inbox.glob('*.md')))
 
+    def test_planner_live_or_inflight_is_normal_but_unknown_stays_visible(self):
+        self.save([]);self.planner();self.tick()
+        for health, expected_error in (('dead', None), ('alive', None), ('unknown', 'unknown')):
+            with self.subTest(health=health):
+                with self.reg.transaction() as state:
+                    state['lanes']['planner']['process']['health']=health
+                    state['throughput_runtime']['autofill']['last_planner_error']='stale error'
+                self.tick()
+                error=autofill_status(self.reg).get('last_planner_error')
+                if expected_error is None:
+                    self.assertIsNone(error)
+                else:
+                    self.assertIn(expected_error,error)
+                self.assertEqual(len(self.reg.control_status()['launches']),1)
+        with self.reg.transaction() as state:
+            state['lanes']['planner'].update(state='done')
+        self.tick()
+        self.assertIn('not resumable',autofill_status(self.reg)['last_planner_error'])
+
     def test_content_backlog_cannot_suppress_enemy_planner(self):
         self.planner()
         content=[self.make_spec('content'+str(i),901+i,'expansion') for i in range(6)]
