@@ -1,4 +1,4 @@
-"""Canonical admitted-cohort placement (merged line).
+﻿"""Canonical admitted-cohort placement (merged line).
 
 Reconciled 2026-09-15 after the wave's lane-04 accepted-placement document and
 the generated-placement bridge landed: the admitted cohort (23,44,59-62) now has
@@ -16,7 +16,7 @@ from randomizer.p2_placement import audit, normalize_profile
 from randomizer.seed import generate
 
 PLACEMENT = Path(__file__).resolve().parents[1] / 'docs/PIKMIN2_ADMITTED_PLACEMENT.json'
-IDENTITIES = {'Sarai', 'BlueKochappy', 'FireOtakara', 'WaterOtakara', 'GasOtakara', 'ElecOtakara'}
+IDENTITIES = {'Sarai', 'BlueKochappy', 'Miulin', 'Kurage', 'FireOtakara', 'WaterOtakara', 'GasOtakara', 'ElecOtakara', 'MiniHoudai'}
 
 
 def document():
@@ -31,10 +31,10 @@ def test_reviewed_pairs_only():
 
 @pytest.mark.parametrize('seed', ['cohort-a', 'cohort-b', 'cohort-c', 'cohort-d'])
 def test_product_generation_seeds_the_admitted_cohort(seed):
-    assert admitted_ids(load_and_validate()) == [23, 44, 59, 60, 61, 62]
+    assert admitted_ids(load_and_validate()) == [23, 44, 54, 57, 59, 60, 61, 62, 78]
     manifest = generate(seed, p2_enemies=True, p2_placement=document())
     bound = {binding['source_id'] for binding in manifest['p2_layout']['bindings']}
-    assert bound == {23, 44, 59, 60, 61, 62}
+    assert bound == {23, 44, 54, 57, 59, 60, 61, 62, 78}
 
 
 def test_p2_enemies_defaults_to_the_committed_document():
@@ -43,7 +43,7 @@ def test_p2_enemies_defaults_to_the_committed_document():
     explicit = generate('admitted-default', p2_enemies=True, p2_placement=document())
     assert default['p2_layout'] == explicit['p2_layout']
     bound = {binding['source_id'] for binding in default['p2_layout']['bindings']}
-    assert bound == {23, 44, 59, 60, 61, 62}
+    assert bound == {23, 44, 54, 57, 59, 60, 61, 62, 78}
 
 
 def test_lost_accepted_slot_fails_closed():
@@ -67,3 +67,4 @@ def test_invalid_pair_approval_rejected(uids):
     with pytest.raises(ValueError, match='accepted_slot_uids'):
         normalize_profile({'identity': 'BlueKochappy', 'terrains': ['ground'],
                            'accepted_slot_uids': uids})
+

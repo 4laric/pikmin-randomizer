@@ -29,17 +29,20 @@ ADMITTED_PLACEMENT_DOC = Path(os.path.dirname(os.path.dirname(os.path.abspath(__
 IDENTITY_BY_SOURCE = {
     23: 'Sarai',
     44: 'BlueKochappy',
+    54: 'Miulin',
+    57: 'Kurage',
     59: 'FireOtakara',
     60: 'WaterOtakara',
     61: 'GasOtakara',
     62: 'ElecOtakara',
+    78: 'MiniHoudai',
 }
 
 
 def admitted_set():
     roster = load_and_validate()
     admitted = admitted_ids(roster)
-    assert admitted == [23, 44, 59, 60, 61, 62]
+    assert admitted == [23, 44, 54, 57, 59, 60, 61, 62, 78]
     return roster, admitted
 
 
@@ -49,7 +52,7 @@ def accepted_document():
     Labelled test-fixture acceptance: it does not claim a native run accepted the
     slots, only that the accepted-placement mechanism binds the admitted cohort.
     """
-    document = json.loads(json.dumps(catalog.build_document()))
+    document = json.loads(json.dumps(catalog.build_muse_document()))
     ground = [slot for slot in document['slots'] if slot['terrain'] == 'ground']
     assert ground
     uids = sorted(slot['uid'] for slot in ground)

@@ -535,13 +535,30 @@ def binding_targets(identities, document=None, targets=None):
 
 
 def binding_targets_for_sources(source_ids, document=None):
-    """Return binding targets for a lane-02 source-id cohort (non-boss)."""
-    by_source = {source_id: identity for identity, source_id in candidate_source_ids().items()}
+    """Return binding targets for a lane-02 source-id cohort (non-boss).
+
+    Accepts both lane-04 candidates and the muse #492 candidate cohort
+    (41/57/58/78). A cohort that contains any muse candidate is evaluated
+    against the base+muse document, because the default lane-04 document does
+    not carry the muse profiles; a lane-04-only cohort keeps the caller's
+    document (or the default lane-04 document) unchanged.
+    """
+    lane04 = {source_id: identity for identity, source_id in candidate_source_ids().items()}
+    muse = {source_id: identity for identity, source_id in muse_candidate_source_ids().items()}
+    uses_muse = any(source_id in MUSE_CANDIDATE_IDS for source_id in source_ids)
+    if uses_muse:
+        # Constraint targets only; the caller's document still supplies the
+        # accepted placement evidence checked later by resolve_placement_layout.
+        document = build_muse_document()
+    elif document is None:
+        document = build_document()
     identities = []
     for source_id in source_ids:
-        identity = by_source.get(source_id)
-        if identity is None or identity not in {name for _, name, *_ in CANDIDATE_SPECS}:
-            raise ValueError(f'source id {source_id} is not a non-boss lane-04 candidate')
+        identity = lane04.get(source_id) or muse.get(source_id)
+        if identity is None or (identity not in {name for _, name, *_ in CANDIDATE_SPECS}
+                                and source_id not in MUSE_CANDIDATE_IDS):
+            raise ValueError(
+                f'source id {source_id} is not a non-boss lane-04 or muse #492 candidate')
         identities.append(identity)
     return binding_targets(identities, document=document)
 

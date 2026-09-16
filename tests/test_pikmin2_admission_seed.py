@@ -126,7 +126,7 @@ def test_stripping_receipt_drops_identity_from_seed_pool():
 
 def test_real_ledger_seed_pool_is_deny_by_default():
     roster = load_and_validate()
-    assert admitted_ids(roster) == [23, 44, 59, 60, 61, 62]  # 44/45 Kochappy cohort; 59-62 Otakara elemental Dweevils (2026-09-15)
+    assert admitted_ids(roster) == [23, 44, 54, 57, 59, 60, 61, 62, 78]  # 23 Sarai; 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (admitted 2026-09-15); 54 Miulin, 57 Kurage, 78 MiniHoudai (admitted 2026-09-16)
     # The product generator still fails closed when the placement document accepts only
     # identities outside the admitted set.
     with pytest.raises(SeedBridgeError):
