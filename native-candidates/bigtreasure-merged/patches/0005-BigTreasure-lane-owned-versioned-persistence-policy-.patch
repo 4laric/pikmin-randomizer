@@ -1,0 +1,1342 @@
+From b35ea3a75076e64655bc2c975bca4b26a2f5f296 Mon Sep 17 00:00:00 2001
+From: 4laric <4laric@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 05:58:29 -0400
+Subject: [PATCH 5/8] BigTreasure: lane-owned versioned persistence policy +
+ fixture (#246)
+
+Engine-free fixed-size record (magic + schema version + CRC-32) serializing
+the audit's open persistence surfaces: 4 weapon attached flags + healths +
+Louie, the FSM phase/chosen/pending/awaiting flags, the attack-pool ledger
+(started/in-flight/elecMaxNodes) and an explicit dropped-weapon cargo ledger
+with pop velocities so a restore neither re-captures a pellet nor duplicates
+its reward. Fail-closed restore rejects wrong magic/version/size, truncation,
+bad checksum, NaN/out-of-range values and invariant violations without partial
+mutation; enforces 1 + maxDischarge <= 17, health in [0,6000] and in-flight
+within capacity.
+
+Lane proposal only: not wired into the game save path; submitted for lane
+06/01 shared-save review. Adds one additive CMake TU line and a
+serialization-only friend bridge; no hooks or runtime behavior change.
+---
+ CMakeLists.txt                     |   1 +
+ pc_port/pc_p2_bigtreasure.h        |   8 +
+ pc_port/pc_p2_bigtreasure_fsm.h    |   4 +
+ pc_port/pc_p2_bigtreasure_save.cpp | 497 ++++++++++++++++++++++++++
+ pc_port/pc_p2_bigtreasure_save.h   | 195 +++++++++++
+ tools/p2_bigtreasure_save_test.cpp | 545 +++++++++++++++++++++++++++++
+ 6 files changed, 1250 insertions(+)
+ create mode 100644 pc_port/pc_p2_bigtreasure_save.cpp
+ create mode 100644 pc_port/pc_p2_bigtreasure_save.h
+ create mode 100644 tools/p2_bigtreasure_save_test.cpp
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 0a4c433b..1b587db3 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -219,6 +219,7 @@ set(PC_PORT_SOURCES
+     pc_port/pc_p2_bigtreasure_map_trace.cpp
+     pc_port/pc_p2_bigtreasure_motion.cpp
+     pc_port/pc_p2_bigtreasure_visual.cpp
++    pc_port/pc_p2_bigtreasure_save.cpp
+     pc_port/pc_randomizer.cpp
+     pc_port/pc_main.cpp
+     pc_port/pc_window.cpp
+diff --git a/pc_port/pc_p2_bigtreasure.h b/pc_port/pc_p2_bigtreasure.h
+index abf67101..b9d7d63b 100644
+--- a/pc_port/pc_p2_bigtreasure.h
++++ b/pc_port/pc_p2_bigtreasure.h
+@@ -135,6 +135,11 @@ public:
+     std::size_t defeat(P2BigTreasureDropEvent* outDrops, std::size_t maxDrops);
+ 
+ private:
++    // Lane 32 persistence proposal (#246): engine-free serialization access
++    // defined in pc_p2_bigtreasure_save.cpp. This grants no runtime hooks and
++    // is not wired into the game save path.
++    friend struct P2BigTreasureSaveAccess;
++
+     bool mAttached[P2BTWEAPON_Count];
+     float mHealth[P2BTWEAPON_Count];
+     bool mLouieAttached;
+@@ -211,6 +216,9 @@ public:
+     void defeat();
+ 
+ private:
++    // Lane 32 persistence proposal (#246): see P2BigTreasureOwnership above.
++    friend struct P2BigTreasureSaveAccess;
++
+     int poolIndex(int element) const;
+     bool mStarted[P2BTWEAPON_Count];
+     int mInFlight[P2BTWEAPON_Count];
+diff --git a/pc_port/pc_p2_bigtreasure_fsm.h b/pc_port/pc_p2_bigtreasure_fsm.h
+index f775a7ee..4fa7686a 100644
+--- a/pc_port/pc_p2_bigtreasure_fsm.h
++++ b/pc_port/pc_p2_bigtreasure_fsm.h
+@@ -77,6 +77,10 @@ public:
+     static const char* stateName(P2BigTreasurePhase state);
+ 
+ private:
++    // Lane 32 persistence proposal (#246): engine-free serialization access
++    // defined in pc_p2_bigtreasure_save.cpp. Not wired into the game save path.
++    friend struct P2BigTreasureSaveAccess;
++
+     void enter(P2BigTreasurePhase next, P2BigTreasureFsmOutput& out);
+ 
+     void execDead(const P2BigTreasureFsmInput& in, P2BigTreasureFsmOutput& out);
+diff --git a/pc_port/pc_p2_bigtreasure_save.cpp b/pc_port/pc_p2_bigtreasure_save.cpp
+new file mode 100644
+index 00000000..4be09032
+--- /dev/null
++++ b/pc_port/pc_p2_bigtreasure_save.cpp
+@@ -0,0 +1,497 @@
++#include "pc_p2_bigtreasure_save.h"
++
++#include <cmath>
++#include <cstring>
++
++namespace {
++
++constexpr int kFsmStateCount = 12;
++constexpr std::uint8_t kWeaponMask = 0x0Fu;
++
++bool validPhase(int phase)
++{
++    return phase >= 0 && phase < kFsmStateCount;
++}
++
++int poolCapacity(int element)
++{
++    switch (element) {
++    case P2BTWEAPON_Fire: return P2BigTreasureAttackPools::kFireCapacity;
++    case P2BTWEAPON_Gas: return P2BigTreasureAttackPools::kGasCapacity;
++    case P2BTWEAPON_Water: return P2BigTreasureAttackPools::kWaterCapacity;
++    case P2BTWEAPON_Elec: return P2BigTreasureAttackPools::kElecCapacity;
++    default: return 0;
++    }
++}
++
++bool finiteVec(const P2BigTreasureVec3& v)
++{
++    return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
++}
++
++bool zeroVec(const P2BigTreasureVec3& v)
++{
++    return v.x == 0.0f && v.y == 0.0f && v.z == 0.0f;
++}
++
++std::uint32_t floatBits(float value)
++{
++    std::uint32_t bits = 0;
++    std::memcpy(&bits, &value, sizeof(bits));
++    return bits;
++}
++
++float bitsFloat(std::uint32_t bits)
++{
++    float value = 0.0f;
++    std::memcpy(&value, &bits, sizeof(value));
++    return value;
++}
++
++void putU8(std::uint8_t* out, std::uint8_t value)
++{
++    out[0] = value;
++}
++
++std::uint8_t getU8(const std::uint8_t* in)
++{
++    return in[0];
++}
++
++void putU16(std::uint8_t* out, std::uint16_t value)
++{
++    out[0] = static_cast<std::uint8_t>(value & 0xFFu);
++    out[1] = static_cast<std::uint8_t>((value >> 8) & 0xFFu);
++}
++
++std::uint16_t getU16(const std::uint8_t* in)
++{
++    return static_cast<std::uint16_t>(in[0]) | static_cast<std::uint16_t>(in[1] << 8);
++}
++
++void putU32(std::uint8_t* out, std::uint32_t value)
++{
++    out[0] = static_cast<std::uint8_t>(value & 0xFFu);
++    out[1] = static_cast<std::uint8_t>((value >> 8) & 0xFFu);
++    out[2] = static_cast<std::uint8_t>((value >> 16) & 0xFFu);
++    out[3] = static_cast<std::uint8_t>((value >> 24) & 0xFFu);
++}
++
++std::uint32_t getU32(const std::uint8_t* in)
++{
++    return static_cast<std::uint32_t>(in[0]) | (static_cast<std::uint32_t>(in[1]) << 8)
++           | (static_cast<std::uint32_t>(in[2]) << 16) | (static_cast<std::uint32_t>(in[3]) << 24);
++}
++
++void putF32(std::uint8_t* out, float value)
++{
++    putU32(out, floatBits(value));
++}
++
++float getF32(const std::uint8_t* in)
++{
++    return bitsFloat(getU32(in));
++}
++
++void putVec3(std::uint8_t* out, const P2BigTreasureVec3& value)
++{
++    putF32(out + 0, value.x);
++    putF32(out + 4, value.y);
++    putF32(out + 8, value.z);
++}
++
++P2BigTreasureVec3 getVec3(const std::uint8_t* in)
++{
++    P2BigTreasureVec3 value;
++    value.x = getF32(in + 0);
++    value.y = getF32(in + 4);
++    value.z = getF32(in + 8);
++    return value;
++}
++
++std::uint8_t weaponMask(const bool (&flags)[P2BTWEAPON_Count])
++{
++    std::uint8_t mask = 0;
++    for (int i = 0; i < P2BTWEAPON_Count; ++i) {
++        if (flags[i]) {
++            mask = static_cast<std::uint8_t>(mask | (1u << i));
++        }
++    }
++    return mask;
++}
++
++} // namespace
++
++// Friend bridge: only this translation unit can see the private policy state.
++// Every mutation goes through apply_state, which validates first.
++struct P2BigTreasureSaveAccess {
++    static void capture(const P2BigTreasureOwnership& ownership, const P2BigTreasureFsm& fsm,
++                        const P2BigTreasureAttackPools& pools, P2BigTreasureSaveData& out)
++    {
++        for (int i = 0; i < P2BTWEAPON_Count; ++i) {
++            out.weaponAttached[i] = ownership.mAttached[i];
++            out.weaponHealth[i]   = ownership.mHealth[i];
++        }
++        out.louieAttached = ownership.mLouieAttached;
++
++        out.phase              = fsm.mState;
++        out.chosenWeapon       = fsm.mChosenWeapon;
++        out.awaitingWeaponPick = fsm.mAwaitingWeaponPick;
++        out.pendingNext        = fsm.mPendingNext;
++        out.waitingForIK       = fsm.mWaitingForIK;
++        out.stateTimer         = fsm.mStateTimer;
++
++        for (int i = 0; i < P2BTWEAPON_Count; ++i) {
++            out.poolStarted[i]  = pools.mStarted[i];
++            out.poolInFlight[i] = pools.mInFlight[i];
++        }
++        out.elecMaxNodes = pools.mElecMaxNodes;
++    }
++
++    static void apply(const P2BigTreasureSaveData& data, P2BigTreasureOwnership& ownership,
++                      P2BigTreasureFsm& fsm, P2BigTreasureAttackPools& pools)
++    {
++        for (int i = 0; i < P2BTWEAPON_Count; ++i) {
++            ownership.mAttached[i] = data.weaponAttached[i];
++            ownership.mHealth[i]   = data.weaponHealth[i];
++        }
++        ownership.mLouieAttached = data.louieAttached;
++
++        fsm.mState              = data.phase;
++        fsm.mChosenWeapon       = data.chosenWeapon;
++        fsm.mAwaitingWeaponPick = data.awaitingWeaponPick;
++        fsm.mPendingNext        = data.pendingNext;
++        fsm.mWaitingForIK       = data.waitingForIK;
++        fsm.mStateTimer         = data.stateTimer;
++
++        for (int i = 0; i < P2BTWEAPON_Count; ++i) {
++            pools.mStarted[i]  = data.poolStarted[i];
++            pools.mInFlight[i] = data.poolInFlight[i];
++        }
++        pools.mElecMaxNodes = data.elecMaxNodes;
++    }
++};
++
++void p2_bigtreasure_save_capture_state(const P2BigTreasureOwnership& ownership,
++                                       const P2BigTreasureFsm& fsm,
++                                       const P2BigTreasureAttackPools& pools,
++                                       const P2BigTreasureDroppedCargo& cargo,
++                                       P2BigTreasureSaveData& out)
++{
++    out = P2BigTreasureSaveData{};
++    P2BigTreasureSaveAccess::capture(ownership, fsm, pools, out);
++    out.cargo = cargo;
++    // A weapon that is not loose cargo has no pop velocity to persist.
++    for (int i = 0; i < P2BTWEAPON_Count; ++i) {
++        if (!out.cargo.weaponDropped[i]) {
++            out.cargo.weaponVelocity[i] = P2BigTreasureVec3{};
++        }
++    }
++    if (!out.cargo.louieDropped) {
++        out.cargo.louieVelocity = P2BigTreasureVec3{};
++    }
++}
++
++bool p2_bigtreasure_save_validate(const P2BigTreasureSaveData& data)
++{
++    if (!validPhase(static_cast<int>(data.phase))
++        || !validPhase(static_cast<int>(data.pendingNext))) {
++        return false;
++    }
++    if (data.chosenWeapon < -1 || data.chosenWeapon >= P2BTWEAPON_Count) {
++        return false;
++    }
++    if (!std::isfinite(data.stateTimer)) {
++        return false;
++    }
++    if (data.elecMaxNodes < 0
++        || p2_bigtreasure_save::kElecAnchorNodes + data.elecMaxNodes
++               > p2_bigtreasure_save::kElecPoolCapacity) {
++        return false;
++    }
++    for (int i = 0; i < P2BTWEAPON_Count; ++i) {
++        if (!std::isfinite(data.weaponHealth[i])) {
++            return false;
++        }
++        if (data.weaponHealth[i] < 0.0f
++            || data.weaponHealth[i] > P2BigTreasureOwnership::kWeaponMaxHealth) {
++            return false;
++        }
++        // Detached weapons are always reset to zero health on release.
++        if (!data.weaponAttached[i] && data.weaponHealth[i] != 0.0f) {
++            return false;
++        }
++        // A pellet cannot simultaneously be captured and loose cargo.
++        if (data.weaponAttached[i] && data.cargo.weaponDropped[i]) {
++            return false;
++        }
++        if (data.poolInFlight[i] < 0 || data.poolInFlight[i] > poolCapacity(i)) {
++            return false;
++        }
++        if (!finiteVec(data.cargo.weaponVelocity[i])) {
++            return false;
++        }
++        if (!data.cargo.weaponDropped[i] && !zeroVec(data.cargo.weaponVelocity[i])) {
++            return false;
++        }
++    }
++    if (data.chosenWeapon >= 0 && !data.weaponAttached[data.chosenWeapon]) {
++        return false;
++    }
++    if (data.louieAttached && data.cargo.louieDropped) {
++        return false;
++    }
++    if (!finiteVec(data.cargo.louieVelocity)) {
++        return false;
++    }
++    if (!data.cargo.louieDropped && !zeroVec(data.cargo.louieVelocity)) {
++        return false;
++    }
++    return true;
++}
++
++bool p2_bigtreasure_save_apply_state(const P2BigTreasureSaveData& data,
++                                     P2BigTreasureOwnership& ownership,
++                                     P2BigTreasureFsm& fsm,
++                                     P2BigTreasureAttackPools& pools,
++                                     P2BigTreasureDroppedCargo& cargo)
++{
++    if (!p2_bigtreasure_save_validate(data)) {
++        return false;
++    }
++    P2BigTreasureSaveAccess::apply(data, ownership, fsm, pools);
++    cargo = data.cargo;
++    return true;
++}
++
++bool p2_bigtreasure_save_encode(const P2BigTreasureSaveData& data, std::uint8_t* out,
++                                std::size_t outCapacity, std::size_t* outSize)
++{
++    if (!out || !outSize || outCapacity < p2_bigtreasure_save::kRecordSize) {
++        return false;
++    }
++    std::memset(out, 0, p2_bigtreasure_save::kRecordSize);
++    putU32(out + p2_bigtreasure_save::kHeaderOffsetMagic, p2_bigtreasure_save::kMagic);
++    putU16(out + p2_bigtreasure_save::kHeaderOffsetVersion,
++           p2_bigtreasure_save::kSchemaVersion);
++    putU16(out + p2_bigtreasure_save::kHeaderOffsetRecordSize,
++           static_cast<std::uint16_t>(p2_bigtreasure_save::kRecordSize));
++    putU32(out + p2_bigtreasure_save::kHeaderOffsetPayloadSize,
++           static_cast<std::uint32_t>(p2_bigtreasure_save::kPayloadSize));
++
++    std::uint8_t* payload = out + p2_bigtreasure_save::kHeaderSize;
++    putU8(payload + p2_bigtreasure_save::kPayloadOffsetAttachedMask,
++          weaponMask(data.weaponAttached));
++    putU8(payload + p2_bigtreasure_save::kPayloadOffsetLouieAttached,
++          data.louieAttached ? 1u : 0u);
++    for (int i = 0; i < P2BTWEAPON_Count; ++i) {
++        putF32(payload + p2_bigtreasure_save::kPayloadOffsetWeaponHealth + 4 * i,
++               data.weaponHealth[i]);
++    }
++    putU8(payload + p2_bigtreasure_save::kPayloadOffsetPhase,
++          static_cast<std::uint8_t>(data.phase));
++    putU8(payload + p2_bigtreasure_save::kPayloadOffsetChosenWeapon,
++          static_cast<std::uint8_t>(static_cast<std::int8_t>(data.chosenWeapon)));
++    putU8(payload + p2_bigtreasure_save::kPayloadOffsetAwaitingPick,
++          data.awaitingWeaponPick ? 1u : 0u);
++    putU8(payload + p2_bigtreasure_save::kPayloadOffsetPendingNext,
++          static_cast<std::uint8_t>(data.pendingNext));
++    putU8(payload + p2_bigtreasure_save::kPayloadOffsetWaitingForIK,
++          data.waitingForIK ? 1u : 0u);
++    putF32(payload + p2_bigtreasure_save::kPayloadOffsetStateTimer, data.stateTimer);
++
++    putU8(payload + p2_bigtreasure_save::kPayloadOffsetPoolStartedMask,
++          weaponMask(data.poolStarted));
++    for (int i = 0; i < P2BTWEAPON_Count; ++i) {
++        putU8(payload + p2_bigtreasure_save::kPayloadOffsetPoolInFlight + i,
++              static_cast<std::uint8_t>(data.poolInFlight[i]));
++    }
++    putU8(payload + p2_bigtreasure_save::kPayloadOffsetElecMaxNodes,
++          static_cast<std::uint8_t>(data.elecMaxNodes));
++
++    putU8(payload + p2_bigtreasure_save::kPayloadOffsetDroppedMask,
++          weaponMask(data.cargo.weaponDropped));
++    putU8(payload + p2_bigtreasure_save::kPayloadOffsetLouieDropped,
++          data.cargo.louieDropped ? 1u : 0u);
++    for (int i = 0; i < P2BTWEAPON_Count; ++i) {
++        putVec3(payload + p2_bigtreasure_save::kPayloadOffsetWeaponDropVel + 12 * i,
++                data.cargo.weaponVelocity[i]);
++    }
++    putVec3(payload + p2_bigtreasure_save::kPayloadOffsetLouieDropVel,
++            data.cargo.louieVelocity);
++
++    putU32(out + p2_bigtreasure_save::kRecordSize - p2_bigtreasure_save::kChecksumSize,
++           p2_bigtreasure_save_crc32(out, p2_bigtreasure_save::kRecordSize
++                                              - p2_bigtreasure_save::kChecksumSize));
++    *outSize = p2_bigtreasure_save::kRecordSize;
++    return true;
++}
++
++bool p2_bigtreasure_save_decode(const std::uint8_t* data, std::size_t size,
++                                P2BigTreasureSaveData& out)
++{
++    if (!data || size != p2_bigtreasure_save::kRecordSize) {
++        return false;
++    }
++    if (getU32(data + p2_bigtreasure_save::kHeaderOffsetMagic)
++        != p2_bigtreasure_save::kMagic) {
++        return false;
++    }
++    if (getU16(data + p2_bigtreasure_save::kHeaderOffsetVersion)
++        != p2_bigtreasure_save::kSchemaVersion) {
++        return false;
++    }
++    if (getU16(data + p2_bigtreasure_save::kHeaderOffsetRecordSize)
++        != p2_bigtreasure_save::kRecordSize) {
++        return false;
++    }
++    if (getU32(data + p2_bigtreasure_save::kHeaderOffsetPayloadSize)
++        != p2_bigtreasure_save::kPayloadSize) {
++        return false;
++    }
++    const std::uint32_t stored =
++        getU32(data + p2_bigtreasure_save::kRecordSize - p2_bigtreasure_save::kChecksumSize);
++    if (stored != p2_bigtreasure_save_crc32(data, p2_bigtreasure_save::kRecordSize
++                                                      - p2_bigtreasure_save::kChecksumSize)) {
++        return false;
++    }
++
++    const std::uint8_t* payload = data + p2_bigtreasure_save::kHeaderSize;
++    // Reserved bytes are written as zero and must stay zero (fail-closed).
++    if (getU8(payload + p2_bigtreasure_save::kPayloadOffsetReserved0) != 0
++        || getU8(payload + p2_bigtreasure_save::kPayloadOffsetPoolReserved0) != 0
++        || getU8(payload + p2_bigtreasure_save::kPayloadOffsetPoolReserved1) != 0
++        || getU8(payload + p2_bigtreasure_save::kPayloadOffsetCargoReserved) != 0
++        || getU8(payload + p2_bigtreasure_save::kPayloadOffsetCargoReserved + 1) != 0) {
++        return false;
++    }
++
++    P2BigTreasureSaveData parsed;
++    const std::uint8_t attachedMask =
++        getU8(payload + p2_bigtreasure_save::kPayloadOffsetAttachedMask);
++    if (attachedMask & static_cast<std::uint8_t>(~kWeaponMask)) {
++        return false;
++    }
++    for (int i = 0; i < P2BTWEAPON_Count; ++i) {
++        parsed.weaponAttached[i] = (attachedMask & (1u << i)) != 0;
++    }
++    const std::uint8_t louieAttached =
++        getU8(payload + p2_bigtreasure_save::kPayloadOffsetLouieAttached);
++    if (louieAttached > 1u) {
++        return false;
++    }
++    parsed.louieAttached = louieAttached != 0;
++    for (int i = 0; i < P2BTWEAPON_Count; ++i) {
++        parsed.weaponHealth[i] =
++            getF32(payload + p2_bigtreasure_save::kPayloadOffsetWeaponHealth + 4 * i);
++    }
++
++    const std::uint8_t phase = getU8(payload + p2_bigtreasure_save::kPayloadOffsetPhase);
++    if (!validPhase(phase)) {
++        return false;
++    }
++    parsed.phase = static_cast<P2BigTreasurePhase>(phase);
++    const std::int8_t chosen = static_cast<std::int8_t>(
++        getU8(payload + p2_bigtreasure_save::kPayloadOffsetChosenWeapon));
++    if (chosen < -1 || chosen >= P2BTWEAPON_Count) {
++        return false;
++    }
++    parsed.chosenWeapon = chosen;
++    const std::uint8_t awaiting =
++        getU8(payload + p2_bigtreasure_save::kPayloadOffsetAwaitingPick);
++    if (awaiting > 1u) {
++        return false;
++    }
++    parsed.awaitingWeaponPick = awaiting != 0;
++    const std::uint8_t pending =
++        getU8(payload + p2_bigtreasure_save::kPayloadOffsetPendingNext);
++    if (!validPhase(pending)) {
++        return false;
++    }
++    parsed.pendingNext = static_cast<P2BigTreasurePhase>(pending);
++    const std::uint8_t waiting =
++        getU8(payload + p2_bigtreasure_save::kPayloadOffsetWaitingForIK);
++    if (waiting > 1u) {
++        return false;
++    }
++    parsed.waitingForIK = waiting != 0;
++    parsed.stateTimer = getF32(payload + p2_bigtreasure_save::kPayloadOffsetStateTimer);
++
++    const std::uint8_t startedMask =
++        getU8(payload + p2_bigtreasure_save::kPayloadOffsetPoolStartedMask);
++    if (startedMask & static_cast<std::uint8_t>(~kWeaponMask)) {
++        return false;
++    }
++    for (int i = 0; i < P2BTWEAPON_Count; ++i) {
++        parsed.poolStarted[i] = (startedMask & (1u << i)) != 0;
++        parsed.poolInFlight[i] =
++            getU8(payload + p2_bigtreasure_save::kPayloadOffsetPoolInFlight + i);
++    }
++    parsed.elecMaxNodes =
++        getU8(payload + p2_bigtreasure_save::kPayloadOffsetElecMaxNodes);
++
++    const std::uint8_t droppedMask =
++        getU8(payload + p2_bigtreasure_save::kPayloadOffsetDroppedMask);
++    if (droppedMask & static_cast<std::uint8_t>(~kWeaponMask)) {
++        return false;
++    }
++    for (int i = 0; i < P2BTWEAPON_Count; ++i) {
++        parsed.cargo.weaponDropped[i] = (droppedMask & (1u << i)) != 0;
++    }
++    const std::uint8_t louieDropped =
++        getU8(payload + p2_bigtreasure_save::kPayloadOffsetLouieDropped);
++    if (louieDropped > 1u) {
++        return false;
++    }
++    parsed.cargo.louieDropped = louieDropped != 0;
++    for (int i = 0; i < P2BTWEAPON_Count; ++i) {
++        parsed.cargo.weaponVelocity[i] = getVec3(
++            payload + p2_bigtreasure_save::kPayloadOffsetWeaponDropVel + 12 * i);
++    }
++    parsed.cargo.louieVelocity =
++        getVec3(payload + p2_bigtreasure_save::kPayloadOffsetLouieDropVel);
++
++    if (!p2_bigtreasure_save_validate(parsed)) {
++        return false;
++    }
++    out = parsed;
++    return true;
++}
++
++bool p2_bigtreasure_save_capture(const P2BigTreasureOwnership& ownership,
++                                 const P2BigTreasureFsm& fsm,
++                                 const P2BigTreasureAttackPools& pools,
++                                 const P2BigTreasureDroppedCargo& cargo,
++                                 std::uint8_t* out, std::size_t outCapacity,
++                                 std::size_t* outSize)
++{
++    P2BigTreasureSaveData data;
++    p2_bigtreasure_save_capture_state(ownership, fsm, pools, cargo, data);
++    return p2_bigtreasure_save_encode(data, out, outCapacity, outSize);
++}
++
++bool p2_bigtreasure_save_restore(const std::uint8_t* data, std::size_t size,
++                                 P2BigTreasureOwnership& ownership,
++                                 P2BigTreasureFsm& fsm,
++                                 P2BigTreasureAttackPools& pools,
++                                 P2BigTreasureDroppedCargo& cargo)
++{
++    P2BigTreasureSaveData dataSnapshot;
++    if (!p2_bigtreasure_save_decode(data, size, dataSnapshot)) {
++        return false;
++    }
++    return p2_bigtreasure_save_apply_state(dataSnapshot, ownership, fsm, pools, cargo);
++}
++
++std::uint32_t p2_bigtreasure_save_crc32(const std::uint8_t* data, std::size_t size)
++{
++    std::uint32_t crc = 0xFFFFFFFFu;
++    for (std::size_t i = 0; i < size; ++i) {
++        crc ^= data[i];
++        for (int bit = 0; bit < 8; ++bit) {
++            const std::uint32_t mask = 0u - (crc & 1u);
++            crc = (crc >> 1) ^ (0xEDB88320u & mask);
++        }
++    }
++    return ~crc;
++}
+diff --git a/pc_port/pc_p2_bigtreasure_save.h b/pc_port/pc_p2_bigtreasure_save.h
+new file mode 100644
+index 00000000..9e869a4c
+--- /dev/null
++++ b/pc_port/pc_p2_bigtreasure_save.h
+@@ -0,0 +1,195 @@
++#pragma once
++
++#include "pc_p2_bigtreasure_attacks.h"
++#include "pc_p2_bigtreasure_fsm.h"
++
++#include <cstddef>
++#include <cstdint>
++
++// ---------------------------------------------------------------------------
++// Pikmin 2 Titan Dweevil (BigTreasure) persistence policy -- lane 32, #246/#175
++//
++// Engine-free, versioned, fixed-size, endian-stable serialization of the
++// lane-owned BigTreasure state. This closes the audit's persistence gap
++// (PIKMIN2_BIGTREASURE_AUDIT.md, open question Q4: "no BigTreasure
++// doSave/serialization override found ... weapon HP, knocked-off weapon cargo
++// state and boss state across cave-floor/day transitions are unresolved").
++//
++// *** LANE PROPOSAL ONLY -- NOT WIRED INTO THE GAME SAVE PATH ***
++// This module is deliberately standalone: it touches no engine save file, no
++// RandomAccessStream, no shared save block and no hook. It is submitted for
++// the lane 06/01 shared-save review before any integration. The root save
++// format, block offset, ordering and checksum coverage are owned by the shared
++// save contract; this record is only the lane's proposed per-actor payload.
++//
++// What is serialized (the three audit-flagged surfaces):
++//   * Ownership: 4 weapon attached flags + per-weapon HP + Louie attached.
++//   * FSM: phase, chosen weapon, pending-next phase, awaiting-pick flag,
++//     waiting-for-IK flag and the state timer.
++//   * Attack-pool ledger: per-element started flags, in-flight counts and the
++//     elec max-discharge count.
++//   * "Dropped weapon cargo" ledger: which weapons (and Louie) were released
++//     as loose cargo, with their pop velocity, so a restore neither re-captures
++//     a dropped pellet nor duplicates its delivery reward.
++//
++// Fail-closed by construction: `decode`/`restore` reject wrong magic, wrong
++// schema version, truncated/oversized input, a bad CRC-32, non-finite floats,
++// out-of-range values and every invariant violation below. Restore stages the
++// parsed state in a local snapshot and only mutates the live objects after the
++// whole record validates, so a rejected restore performs no partial mutation.
++//
++// Range conventions: floats are IEEE-754 bit patterns in little-endian order,
++// so the same bytes decode on any host endianness. The schema is frozen by
++// `kSchemaVersion`; bump it for any layout change.
++
++namespace p2_bigtreasure_save {
++
++// File header: magic + schema version + sizes. All integers little-endian.
++constexpr std::size_t kHeaderOffsetMagic       = 0;  // 4 bytes
++constexpr std::size_t kHeaderOffsetVersion     = 4;  // 2 bytes
++constexpr std::size_t kHeaderOffsetRecordSize  = 6;  // 2 bytes
++constexpr std::size_t kHeaderOffsetPayloadSize = 8;  // 4 bytes
++constexpr std::size_t kHeaderSize              = 12;
++
++// Payload field offsets, relative to the start of the payload.
++constexpr std::size_t kPayloadOffsetAttachedMask     = 0;   // u8 bitmask
++constexpr std::size_t kPayloadOffsetLouieAttached    = 1;   // u8 0/1
++constexpr std::size_t kPayloadOffsetWeaponHealth     = 2;   // 4 x f32
++constexpr std::size_t kPayloadOffsetPhase            = 18;  // enum byte
++constexpr std::size_t kPayloadOffsetChosenWeapon     = 19;  // i8, -1 = none
++constexpr std::size_t kPayloadOffsetAwaitingPick     = 20;  // u8 0/1
++constexpr std::size_t kPayloadOffsetPendingNext      = 21;  // enum byte
++constexpr std::size_t kPayloadOffsetWaitingForIK     = 22;  // u8 0/1
++constexpr std::size_t kPayloadOffsetReserved0        = 23;  // u8, 0
++constexpr std::size_t kPayloadOffsetStateTimer       = 24;  // f32
++constexpr std::size_t kPayloadOffsetPoolStartedMask  = 28;  // u8 bitmask
++constexpr std::size_t kPayloadOffsetPoolReserved0    = 29;  // u8, 0
++constexpr std::size_t kPayloadOffsetPoolInFlight     = 30;  // 4 x u8
++constexpr std::size_t kPayloadOffsetElecMaxNodes     = 34;  // u8
++constexpr std::size_t kPayloadOffsetPoolReserved1    = 35;  // u8, 0
++constexpr std::size_t kPayloadOffsetDroppedMask      = 36;  // u8 bitmask
++constexpr std::size_t kPayloadOffsetLouieDropped     = 37;  // u8 0/1
++constexpr std::size_t kPayloadOffsetCargoReserved    = 38;  // 2 x u8, 0
++constexpr std::size_t kPayloadOffsetWeaponDropVel    = 40;  // 4 x vec3 (f32 x3)
++constexpr std::size_t kPayloadOffsetLouieDropVel     = 88;  // vec3
++constexpr std::size_t kPayloadSize                   = 100;
++
++constexpr std::size_t kChecksumSize = 4; // CRC-32 over header+payload
++constexpr std::size_t kRecordSize   = kHeaderSize + kPayloadSize + kChecksumSize;
++
++// 'P','2','B','T' in file order (little-endian u32 0x54423250).
++constexpr std::uint32_t kMagic         = 0x54423250u;
++constexpr std::uint16_t kSchemaVersion = 1;
++
++// Hard invariant from the source elec chain setup (BigTreasureAttack.cpp:1074,
++// :2712-2747): one invisible anchor node plus maxDischarge visible nodes must
++// fit the 17-node pool.
++constexpr int kElecAnchorNodes = 1;
++constexpr int kElecPoolCapacity = P2BigTreasureAttackPools::kElecCapacity;
++
++} // namespace p2_bigtreasure_save
++
++// Dropped-weapon cargo ledger. Weapons released by `update` (HP knock-off) or
++// by defeat are loose cargo from that point on: their reward is already being
++// paid out by the generic pellet path, so a restored game must not re-capture
++// them or grant the reward twice. `weaponDropped[i]`/`louieDropped` record that
++// release; the velocity is the source pop the pellet inherited.
++struct P2BigTreasureDroppedCargo {
++    bool weaponDropped[P2BTWEAPON_Count] = {};
++    bool louieDropped = false;
++    P2BigTreasureVec3 weaponVelocity[P2BTWEAPON_Count] = {};
++    P2BigTreasureVec3 louieVelocity = {};
++};
++
++// Logical snapshot of every field the lane persists. Plain data so fixtures can
++// build exact states and inspect restored ones without touching internals.
++struct P2BigTreasureSaveData {
++    // Ownership
++    bool weaponAttached[P2BTWEAPON_Count] = {};
++    float weaponHealth[P2BTWEAPON_Count] = {};
++    bool louieAttached = false;
++
++    // FSM (P2BigTreasureFsm private state)
++    P2BigTreasurePhase phase = P2BT_Dead;
++    int chosenWeapon = -1; // -1 = BIGATTACK_NULL / awaiting pick
++    bool awaitingWeaponPick = false;
++    P2BigTreasurePhase pendingNext = P2BT_Dead;
++    bool waitingForIK = false;
++    float stateTimer = 0.0f;
++
++    // Attack-pool ledger
++    bool poolStarted[P2BTWEAPON_Count] = {};
++    int poolInFlight[P2BTWEAPON_Count] = {};
++    int elecMaxNodes = 0;
++
++    // Dropped weapon cargo
++    P2BigTreasureDroppedCargo cargo;
++};
++
++// Explicit invariant check. Returns true only when every field is in range and
++// cross-field invariants hold:
++//   * phases are registered states (0..11); chosen weapon is -1 or 0..3;
++//   * healths are finite and within [0, kWeaponMaxHealth] (6000); a detached
++//     weapon has exactly zero health;
++//   * a weapon cannot be attached and dropped at the same time;
++//   * in-flight counts are within their per-element pool capacities
++//     (fire 8, gas 200, water 16, elec 17);
++//   * the elec discharge count satisfies 1 + maxDischarge <= 17;
++//   * a chosen weapon is attached, state timer and velocities are finite.
++// `apply_state`/`decode`/`restore` all run this before touching any object.
++bool p2_bigtreasure_save_validate(const P2BigTreasureSaveData& data);
++
++// Reads the live policy objects into `out`. Normalizes cargo velocities for
++// entries that are not marked dropped to exactly zero.
++void p2_bigtreasure_save_capture_state(const P2BigTreasureOwnership& ownership,
++                                       const P2BigTreasureFsm& fsm,
++                                       const P2BigTreasureAttackPools& pools,
++                                       const P2BigTreasureDroppedCargo& cargo,
++                                       P2BigTreasureSaveData& out);
++
++// Validates `data` and only then writes every policy object. On failure the
++// inputs are left untouched (no partial mutation) and false is returned.
++bool p2_bigtreasure_save_apply_state(const P2BigTreasureSaveData& data,
++                                     P2BigTreasureOwnership& ownership,
++                                     P2BigTreasureFsm& fsm,
++                                     P2BigTreasureAttackPools& pools,
++                                     P2BigTreasureDroppedCargo& cargo);
++
++// Serializes `data` to the fixed-size little-endian record. `encode` does not
++// range-check the payload (that is the restore side's job) so fixtures can
++// deliberately serialize out-of-range/NaN values; it only fails when the
++// output buffer is too small or `outSize`/`out` are null. Always writes exactly
++// p2_bigtreasure_save::kRecordSize bytes.
++bool p2_bigtreasure_save_encode(const P2BigTreasureSaveData& data,
++                                std::uint8_t* out, std::size_t outCapacity,
++                                std::size_t* outSize);
++
++// Parses and fully validates a record. Fail-closed: returns false on wrong
++// magic, wrong version, wrong size, bad CRC-32, reserved bytes set, non-finite
++// values, out-of-range values or any invariant violation. `out` is untouched
++// on failure.
++bool p2_bigtreasure_save_decode(const std::uint8_t* data, std::size_t size,
++                                P2BigTreasureSaveData& out);
++
++// Primary capture/restore: live policy objects <-> record bytes.
++bool p2_bigtreasure_save_capture(const P2BigTreasureOwnership& ownership,
++                                 const P2BigTreasureFsm& fsm,
++                                 const P2BigTreasureAttackPools& pools,
++                                 const P2BigTreasureDroppedCargo& cargo,
++                                 std::uint8_t* out, std::size_t outCapacity,
++                                 std::size_t* outSize);
++
++bool p2_bigtreasure_save_restore(const std::uint8_t* data, std::size_t size,
++                                 P2BigTreasureOwnership& ownership,
++                                 P2BigTreasureFsm& fsm,
++                                 P2BigTreasureAttackPools& pools,
++                                 P2BigTreasureDroppedCargo& cargo);
++
++// CRC-32 (IEEE 802.3, reflected, poly 0xEDB88320) over the given bytes. Exposed
++// so a fixture can repair the checksum after tampering with a record to test
++// the value-range checks separately from the checksum check.
++std::uint32_t p2_bigtreasure_save_crc32(const std::uint8_t* data, std::size_t size);
++
++// Friend bridge granting the free functions above access to the private policy
++// members. Defined in pc_p2_bigtreasure_save.cpp; never exposed in a header.
++struct P2BigTreasureSaveAccess;
+diff --git a/tools/p2_bigtreasure_save_test.cpp b/tools/p2_bigtreasure_save_test.cpp
+new file mode 100644
+index 00000000..f0eb6e38
+--- /dev/null
++++ b/tools/p2_bigtreasure_save_test.cpp
+@@ -0,0 +1,545 @@
++// Standalone engine-free fixture for the BigTreasure persistence proposal
++// (pc_port/pc_p2_bigtreasure_save.h/.cpp), lane 32 #246/#175. It exercises the
++// versioned fixed-size record, fail-closed restore and the resolution of the
++// audit's persistence gap (weapon HP, dropped-weapon cargo and boss state).
++// Build (MinGW):
++//   g++ -std=gnu++17 -Wall -Wextra -Werror -Ipc_port tools/p2_bigtreasure_save_test.cpp pc_port/pc_p2_bigtreasure_save.cpp pc_port/pc_p2_bigtreasure.cpp pc_port/pc_p2_bigtreasure_fsm.cpp pc_port/pc_p2_bigtreasure_attacks.cpp -o output/p2_bigtreasure_save_test.exe
++
++#include "pc_p2_bigtreasure_save.h"
++
++#include <cassert>
++#include <cmath>
++#include <cstdint>
++#include <cstdio>
++#include <cstring>
++#include <limits>
++
++namespace {
++
++using p2_bigtreasure_save::kHeaderSize;
++using p2_bigtreasure_save::kPayloadSize;
++using p2_bigtreasure_save::kRecordSize;
++using p2_bigtreasure_save::kSchemaVersion;
++
++bool near(float a, float b)
++{
++    return std::fabs(a - b) <= 1.0e-5f;
++}
++
++bool sameVec(const P2BigTreasureVec3& a, const P2BigTreasureVec3& b)
++{
++    return near(a.x, b.x) && near(a.y, b.y) && near(a.z, b.z);
++}
++
++bool sameData(const P2BigTreasureSaveData& a, const P2BigTreasureSaveData& b)
++{
++    for (int i = 0; i < P2BTWEAPON_Count; ++i) {
++        if (a.weaponAttached[i] != b.weaponAttached[i]) return false;
++        if (!near(a.weaponHealth[i], b.weaponHealth[i])) return false;
++        if (a.poolStarted[i] != b.poolStarted[i]) return false;
++        if (a.poolInFlight[i] != b.poolInFlight[i]) return false;
++        if (a.cargo.weaponDropped[i] != b.cargo.weaponDropped[i]) return false;
++        if (!sameVec(a.cargo.weaponVelocity[i], b.cargo.weaponVelocity[i])) return false;
++    }
++    if (a.louieAttached != b.louieAttached) return false;
++    if (a.phase != b.phase) return false;
++    if (a.chosenWeapon != b.chosenWeapon) return false;
++    if (a.awaitingWeaponPick != b.awaitingWeaponPick) return false;
++    if (a.pendingNext != b.pendingNext) return false;
++    if (a.waitingForIK != b.waitingForIK) return false;
++    if (!near(a.stateTimer, b.stateTimer)) return false;
++    if (a.elecMaxNodes != b.elecMaxNodes) return false;
++    if (a.cargo.louieDropped != b.cargo.louieDropped) return false;
++    if (!sameVec(a.cargo.louieVelocity, b.cargo.louieVelocity)) return false;
++    return true;
++}
++
++P2BigTreasureSaveData fullLoadout()
++{
++    P2BigTreasureSaveData data;
++    for (int i = 0; i < P2BTWEAPON_Count; ++i) {
++        data.weaponAttached[i] = true;
++        data.weaponHealth[i]   = P2BigTreasureOwnership::kWeaponMaxHealth;
++    }
++    data.louieAttached = true;
++    data.elecMaxNodes  = 15;
++    return data;
++}
++
++// Drives the real engine-free FSM to PreAttack and feeds a host weapon pick, so
++// the captured `chosenWeapon`/`awaitingWeaponPick` come from live policy state
++// rather than a hand-built snapshot.
++void arriveAtChosenPreAttack(P2BigTreasureFsm& fsm, int chosen)
++{
++    fsm.reset(P2BigTreasureFsmParms{});
++    P2BigTreasureFsmOutput out;
++
++    P2BigTreasureFsmInput in;
++    in.hasTarget      = true;
++    in.bootDemoPlayed = true;
++    in.health         = P2BigTreasureOwnership::kWeaponMaxHealth;
++    int guard = 0;
++    while (fsm.state() != P2BT_Land && guard++ < 400) {
++        fsm.update(in, out);
++    }
++    assert(fsm.state() == P2BT_Land);
++
++    in = P2BigTreasureFsmInput{};
++    in.animEnd       = true;
++    in.hasAnyWeapon  = true;
++    in.health        = P2BigTreasureOwnership::kWeaponMaxHealth;
++    fsm.update(in, out);
++    assert(fsm.state() == P2BT_ItemWalk);
++
++    in = P2BigTreasureFsmInput{};
++    in.attackLimitTime = true;
++    in.hasAnyWeapon    = true;
++    in.health          = P2BigTreasureOwnership::kWeaponMaxHealth;
++    fsm.update(in, out);
++
++    in = P2BigTreasureFsmInput{};
++    in.finishIKMotion = true;
++    in.health         = P2BigTreasureOwnership::kWeaponMaxHealth;
++    fsm.update(in, out);
++    assert(fsm.state() == P2BT_PreAttack);
++    assert(fsm.chosenWeapon() == -1); // awaiting the host pick
++
++    in = P2BigTreasureFsmInput{};
++    in.chosenWeapon                 = chosen;
++    in.weaponAttached[chosen]       = true;
++    in.hasAnyWeapon                 = true;
++    in.health                       = P2BigTreasureOwnership::kWeaponMaxHealth;
++    fsm.update(in, out);
++    assert(fsm.chosenWeapon() == chosen);
++}
++
++void testLayoutStability()
++{
++    static_assert(kRecordSize == 116, "frozen record size");
++    static_assert(kPayloadSize == 100, "frozen payload size");
++    static_assert(kSchemaVersion == 1, "frozen schema version");
++    static_assert(p2_bigtreasure_save::kMagic == 0x54423250u, "frozen magic");
++
++    const P2BigTreasureSaveData data = fullLoadout();
++    std::uint8_t record[kRecordSize] = {};
++    std::size_t size = 0;
++    assert(p2_bigtreasure_save_encode(data, record, sizeof(record), &size));
++    assert(size == kRecordSize);
++    assert(record[0] == 'P' && record[1] == '2' && record[2] == 'B' && record[3] == 'T');
++    assert(record[4] == 1 && record[5] == 0);          // version LE
++    assert(record[6] == 116 && record[7] == 0);        // record size LE
++    assert(record[8] == 100 && record[9] == 0);        // payload size LE
++    assert(record[10] == 0 && record[11] == 0);
++
++    // Capacity/null guards.
++    assert(!p2_bigtreasure_save_encode(data, record, kRecordSize - 1, &size));
++    assert(!p2_bigtreasure_save_encode(data, nullptr, sizeof(record), &size));
++    assert(!p2_bigtreasure_save_encode(data, record, sizeof(record), nullptr));
++    std::puts("PASS save_layout_stability");
++}
++
++void testFullLoadoutRoundTrip()
++{
++    P2BigTreasureOwnership ownership;
++    for (int i = 0; i < P2BTWEAPON_Count; ++i) ownership.attachWeapon(i);
++    ownership.attachLouie();
++    P2BigTreasureFsm fsm;
++    fsm.reset(P2BigTreasureFsmParms{});
++    P2BigTreasureAttackPools pools;
++    P2BigTreasureDroppedCargo cargo;
++
++    P2BigTreasureSaveData before;
++    p2_bigtreasure_save_capture_state(ownership, fsm, pools, cargo, before);
++
++    std::uint8_t record[kRecordSize] = {};
++    std::size_t size = 0;
++    assert(p2_bigtreasure_save_capture(ownership, fsm, pools, cargo, record, sizeof(record),
++                                       &size));
++    assert(size == kRecordSize);
++
++    P2BigTreasureSaveData decoded;
++    assert(p2_bigtreasure_save_decode(record, size, decoded));
++    assert(sameData(before, decoded));
++
++    P2BigTreasureOwnership restoredOwnership;
++    P2BigTreasureFsm restoredFsm;
++    restoredFsm.reset(P2BigTreasureFsmParms{});
++    P2BigTreasureAttackPools restoredPools;
++    P2BigTreasureDroppedCargo restoredCargo;
++    assert(p2_bigtreasure_save_restore(record, size, restoredOwnership, restoredFsm,
++                                       restoredPools, restoredCargo));
++    assert(restoredOwnership.weaponCount() == 4);
++    assert(restoredOwnership.louieAttached());
++    for (int i = 0; i < P2BTWEAPON_Count; ++i) {
++        assert(near(restoredOwnership.weaponHealth(i), P2BigTreasureOwnership::kWeaponMaxHealth));
++    }
++    assert(restoredFsm.state() == P2BT_Stay);
++
++    P2BigTreasureSaveData after;
++    p2_bigtreasure_save_capture_state(restoredOwnership, restoredFsm, restoredPools, restoredCargo,
++                                      after);
++    assert(sameData(before, after));
++    std::puts("PASS save_full_loadout_roundtrip");
++}
++
++void testKnockOffCargoLedger()
++{
++    P2BigTreasureOwnership ownership;
++    for (int i = 0; i < P2BTWEAPON_Count; ++i) ownership.attachWeapon(i);
++    ownership.attachLouie();
++    assert(ownership.addWeaponDamage(P2BTWEAPON_Fire, P2BigTreasureOwnership::kWeaponMaxHealth,
++                                     false));
++    P2BigTreasureDropEvent drops[P2BTWEAPON_Count + 1] = {};
++    assert(ownership.update(drops, P2BTWEAPON_Count + 1) == 1);
++    assert(drops[0].weapon == P2BTWEAPON_Fire);
++    assert(!drops[0].isLouie);
++    assert(near(drops[0].velocity.y, P2BigTreasureOwnership::kKnockOffPopY));
++
++    P2BigTreasureDroppedCargo cargo;
++    cargo.weaponDropped[P2BTWEAPON_Fire] = true;
++    cargo.weaponVelocity[P2BTWEAPON_Fire] = drops[0].velocity;
++
++    P2BigTreasureFsm fsm;
++    fsm.reset(P2BigTreasureFsmParms{});
++    P2BigTreasureAttackPools pools;
++
++    std::uint8_t record[kRecordSize] = {};
++    std::size_t size = 0;
++    assert(p2_bigtreasure_save_capture(ownership, fsm, pools, cargo, record, sizeof(record),
++                                       &size));
++
++    P2BigTreasureOwnership restoredOwnership;
++    P2BigTreasureFsm restoredFsm;
++    restoredFsm.reset(P2BigTreasureFsmParms{});
++    P2BigTreasureAttackPools restoredPools;
++    P2BigTreasureDroppedCargo restoredCargo;
++    assert(p2_bigtreasure_save_restore(record, size, restoredOwnership, restoredFsm,
++                                       restoredPools, restoredCargo));
++
++    // The knocked-off weapon is not re-captured and its reward ledger survives.
++    assert(restoredOwnership.weaponCount() == 3);
++    assert(!restoredOwnership.isWeaponAttached(P2BTWEAPON_Fire));
++    assert(restoredCargo.weaponDropped[P2BTWEAPON_Fire]);
++    assert(!restoredCargo.weaponDropped[P2BTWEAPON_Elec]);
++    assert(sameVec(restoredCargo.weaponVelocity[P2BTWEAPON_Fire], drops[0].velocity));
++    assert(!restoredOwnership.isBodyExposed());
++
++    // A dropped and re-attached pellet is contradictory and must be rejected.
++    P2BigTreasureSaveData inconsistent;
++    p2_bigtreasure_save_capture_state(restoredOwnership, restoredFsm, restoredPools, restoredCargo,
++                                      inconsistent);
++    inconsistent.weaponAttached[P2BTWEAPON_Fire] = true;
++    inconsistent.weaponHealth[P2BTWEAPON_Fire] = P2BigTreasureOwnership::kWeaponMaxHealth;
++    assert(!p2_bigtreasure_save_validate(inconsistent));
++
++    // Louie release is tracked independently.
++    P2BigTreasureDroppedCargo louieCargo;
++    louieCargo.louieDropped = true;
++    louieCargo.louieVelocity = P2BigTreasureVec3{ 0.0f, P2BigTreasureOwnership::kLouiePopY, 0.0f };
++    P2BigTreasureOwnership louieOwnership;
++    assert(louieOwnership.releaseLouie(nullptr) == false); // not attached yet
++    P2BigTreasureSaveData louieData = fullLoadout();
++    louieData.louieAttached = false;
++    louieData.cargo = louieCargo;
++    assert(p2_bigtreasure_save_validate(louieData));
++    P2BigTreasureSaveData badLouie = louieData;
++    badLouie.louieAttached = true; // both attached and dropped
++    assert(!p2_bigtreasure_save_validate(badLouie));
++    std::puts("PASS save_knockoff_cargo_ledger");
++}
++
++void testFsmFieldsRoundTrip()
++{
++    P2BigTreasureSaveData data = fullLoadout();
++    data.phase              = P2BT_PreAttack;
++    data.chosenWeapon       = -1;
++    data.awaitingWeaponPick = true;
++    data.pendingNext        = P2BT_Walk;
++    data.waitingForIK       = true;
++    data.stateTimer         = 1.5f;
++    assert(p2_bigtreasure_save_validate(data));
++
++    P2BigTreasureOwnership ownership;
++    P2BigTreasureFsm fsm;
++    fsm.reset(P2BigTreasureFsmParms{});
++    P2BigTreasureAttackPools pools;
++    P2BigTreasureDroppedCargo cargo;
++    assert(p2_bigtreasure_save_apply_state(data, ownership, fsm, pools, cargo));
++    assert(fsm.state() == P2BT_PreAttack);
++    assert(fsm.chosenWeapon() == -1);
++
++    P2BigTreasureSaveData after;
++    p2_bigtreasure_save_capture_state(ownership, fsm, pools, cargo, after);
++    assert(after.phase == P2BT_PreAttack);
++    assert(after.chosenWeapon == -1);
++    assert(after.awaitingWeaponPick);
++    assert(after.pendingNext == P2BT_Walk);
++    assert(after.waitingForIK);
++    assert(near(after.stateTimer, 1.5f));
++
++    // Drive the real FSM to a chosen weapon and re-capture.
++    P2BigTreasureFsm attacking;
++    arriveAtChosenPreAttack(attacking, P2BTWEAPON_Gas);
++    P2BigTreasureSaveData chosen;
++    p2_bigtreasure_save_capture_state(ownership, attacking, pools, cargo, chosen);
++    assert(chosen.chosenWeapon == P2BTWEAPON_Gas);
++    assert(!chosen.awaitingWeaponPick);
++    assert(chosen.phase == P2BT_PreAttack);
++
++    // The natural death path persists as the Dead phase.
++    P2BigTreasureFsm dead;
++    dead.reset(P2BigTreasureFsmParms{});
++    P2BigTreasureFsmInput kill;
++    kill.killed = true;
++    P2BigTreasureFsmOutput killOut;
++    dead.update(kill, killOut);
++    assert(dead.state() == P2BT_Dead);
++    P2BigTreasureSaveData deadData;
++    p2_bigtreasure_save_capture_state(ownership, dead, pools, cargo, deadData);
++    assert(deadData.phase == P2BT_Dead);
++    std::puts("PASS save_fsm_fields_roundtrip");
++}
++
++void testAttackPoolLedgerRoundTrip()
++{
++    P2BigTreasureAttackPools pools;
++    assert(pools.start(P2BTWEAPON_Elec));
++    assert(pools.emit(P2BTWEAPON_Elec));
++    assert(pools.emit(P2BTWEAPON_Elec));
++    assert(pools.emit(P2BTWEAPON_Elec));
++    assert(pools.start(P2BTWEAPON_Water));
++    assert(pools.emit(P2BTWEAPON_Water));
++    assert(pools.emit(P2BTWEAPON_Water));
++    assert(pools.start(P2BTWEAPON_Fire));
++    assert(pools.setElecMaxDischarge(16));
++
++    P2BigTreasureOwnership ownership;
++    P2BigTreasureFsm fsm;
++    fsm.reset(P2BigTreasureFsmParms{});
++    P2BigTreasureDroppedCargo cargo;
++
++    std::uint8_t record[kRecordSize] = {};
++    std::size_t size = 0;
++    assert(p2_bigtreasure_save_capture(ownership, fsm, pools, cargo, record, sizeof(record),
++                                       &size));
++
++    P2BigTreasureOwnership restoredOwnership;
++    P2BigTreasureFsm restoredFsm;
++    restoredFsm.reset(P2BigTreasureFsmParms{});
++    P2BigTreasureAttackPools restoredPools;
++    P2BigTreasureDroppedCargo restoredCargo;
++    assert(p2_bigtreasure_save_restore(record, size, restoredOwnership, restoredFsm,
++                                       restoredPools, restoredCargo));
++    assert(restoredPools.isStarted(P2BTWEAPON_Elec));
++    assert(restoredPools.isStarted(P2BTWEAPON_Water));
++    assert(restoredPools.isStarted(P2BTWEAPON_Fire));
++    assert(!restoredPools.isStarted(P2BTWEAPON_Gas));
++    assert(restoredPools.inFlight(P2BTWEAPON_Elec) == 3);
++    assert(restoredPools.inFlight(P2BTWEAPON_Water) == 2);
++    assert(restoredPools.inFlight(P2BTWEAPON_Fire) == 0);
++
++    P2BigTreasureSaveData after;
++    p2_bigtreasure_save_capture_state(restoredOwnership, restoredFsm, restoredPools, restoredCargo,
++                                      after);
++    assert(after.elecMaxNodes == 16);
++    assert(after.poolInFlight[P2BTWEAPON_Elec] == 3);
++    assert(after.poolInFlight[P2BTWEAPON_Water] == 2);
++    std::puts("PASS save_attack_pool_ledger_roundtrip");
++}
++
++void testRejections()
++{
++    const P2BigTreasureSaveData good = fullLoadout();
++    std::uint8_t record[kRecordSize] = {};
++    std::size_t size = 0;
++    assert(p2_bigtreasure_save_encode(good, record, sizeof(record), &size));
++
++    P2BigTreasureOwnership ownership;
++    P2BigTreasureFsm fsm;
++    fsm.reset(P2BigTreasureFsmParms{});
++    P2BigTreasureAttackPools pools;
++    P2BigTreasureDroppedCargo cargo;
++
++    // Wrong magic.
++    {
++        std::uint8_t copy[kRecordSize];
++        std::memcpy(copy, record, kRecordSize);
++        copy[0] = static_cast<std::uint8_t>(copy[0] ^ 0xFFu);
++        assert(!p2_bigtreasure_save_restore(copy, kRecordSize, ownership, fsm, pools, cargo));
++    }
++    // Wrong version.
++    {
++        std::uint8_t copy[kRecordSize];
++        std::memcpy(copy, record, kRecordSize);
++        copy[4] = 2;
++        copy[5] = 0;
++        assert(!p2_bigtreasure_save_restore(copy, kRecordSize, ownership, fsm, pools, cargo));
++    }
++    // Wrong header record size.
++    {
++        std::uint8_t copy[kRecordSize];
++        std::memcpy(copy, record, kRecordSize);
++        copy[6] = 0;
++        assert(!p2_bigtreasure_save_restore(copy, kRecordSize, ownership, fsm, pools, cargo));
++    }
++    // Truncated and oversized.
++    assert(!p2_bigtreasure_save_restore(record, kRecordSize - 1, ownership, fsm, pools, cargo));
++    assert(!p2_bigtreasure_save_restore(record, kRecordSize + 1, ownership, fsm, pools, cargo));
++    assert(!p2_bigtreasure_save_restore(nullptr, kRecordSize, ownership, fsm, pools, cargo));
++    // Corrupt checksum (payload byte flipped, CRC untouched).
++    {
++        std::uint8_t copy[kRecordSize];
++        std::memcpy(copy, record, kRecordSize);
++        copy[kHeaderSize + 2] = static_cast<std::uint8_t>(copy[kHeaderSize + 2] ^ 0x01u);
++        assert(!p2_bigtreasure_save_restore(copy, kRecordSize, ownership, fsm, pools, cargo));
++    }
++
++    // These encode fine (encode does not range-check) but restore rejects.
++    auto rejects = [&](const P2BigTreasureSaveData& data) {
++        std::uint8_t bad[kRecordSize] = {};
++        std::size_t badSize = 0;
++        assert(p2_bigtreasure_save_encode(data, bad, sizeof(bad), &badSize));
++        assert(!p2_bigtreasure_save_restore(bad, badSize, ownership, fsm, pools, cargo));
++    };
++    {
++        P2BigTreasureSaveData data = good;
++        data.weaponHealth[0] = std::numeric_limits<float>::quiet_NaN();
++        rejects(data);
++    }
++    {
++        P2BigTreasureSaveData data = good;
++        data.weaponHealth[0] = 6000.5f;
++        rejects(data);
++    }
++    {
++        P2BigTreasureSaveData data = good;
++        data.weaponHealth[0] = -1.0f;
++        rejects(data);
++    }
++    {
++        P2BigTreasureSaveData data = good;
++        data.elecMaxNodes = 17; // 1 + 17 > 17
++        rejects(data);
++    }
++    {
++        P2BigTreasureSaveData data = good;
++        data.poolInFlight[P2BTWEAPON_Fire] = 9; // capacity 8
++        rejects(data);
++    }
++    {
++        P2BigTreasureSaveData data = good;
++        data.phase = static_cast<P2BigTreasurePhase>(99);
++        rejects(data);
++    }
++    {
++        P2BigTreasureSaveData data = good;
++        data.chosenWeapon = 4;
++        rejects(data);
++    }
++    {
++        P2BigTreasureSaveData data = good;
++        data.weaponAttached[P2BTWEAPON_Elec] = false; // detached with health 6000
++        rejects(data);
++    }
++    std::puts("PASS save_rejections");
++}
++
++void testNoPartialMutationOnReject()
++{
++    P2BigTreasureOwnership ownership;
++    ownership.attachWeapon(P2BTWEAPON_Elec);
++    ownership.attachLouie();
++    P2BigTreasureFsm fsm;
++    fsm.reset(P2BigTreasureFsmParms{});
++    P2BigTreasureAttackPools pools;
++    assert(pools.start(P2BTWEAPON_Fire));
++    assert(pools.emit(P2BTWEAPON_Fire));
++    assert(pools.emit(P2BTWEAPON_Fire));
++    P2BigTreasureDroppedCargo cargo;
++
++    P2BigTreasureSaveData before;
++    p2_bigtreasure_save_capture_state(ownership, fsm, pools, cargo, before);
++
++    // Reject via bad checksum.
++    std::uint8_t record[kRecordSize] = {};
++    std::size_t size = 0;
++    assert(p2_bigtreasure_save_encode(before, record, sizeof(record), &size));
++    record[kHeaderSize + 4] = static_cast<std::uint8_t>(record[kHeaderSize + 4] ^ 0x80u);
++    assert(!p2_bigtreasure_save_restore(record, size, ownership, fsm, pools, cargo));
++
++    P2BigTreasureSaveData afterChecksum;
++    p2_bigtreasure_save_capture_state(ownership, fsm, pools, cargo, afterChecksum);
++    assert(sameData(before, afterChecksum));
++    assert(ownership.weaponCount() == 1);
++    assert(ownership.isWeaponAttached(P2BTWEAPON_Elec));
++    assert(pools.isStarted(P2BTWEAPON_Fire));
++    assert(pools.inFlight(P2BTWEAPON_Fire) == 2);
++
++    // Reject via a valid checksum but an out-of-range value.
++    P2BigTreasureSaveData outOfRange = before;
++    outOfRange.poolInFlight[P2BTWEAPON_Fire] = 9;
++    std::uint8_t bad[kRecordSize] = {};
++    std::size_t badSize = 0;
++    assert(p2_bigtreasure_save_encode(outOfRange, bad, sizeof(bad), &badSize));
++    assert(p2_bigtreasure_save_crc32(bad, kRecordSize - 4)
++           == (static_cast<std::uint32_t>(bad[kRecordSize - 4])
++               | (static_cast<std::uint32_t>(bad[kRecordSize - 3]) << 8)
++               | (static_cast<std::uint32_t>(bad[kRecordSize - 2]) << 16)
++               | (static_cast<std::uint32_t>(bad[kRecordSize - 1]) << 24)));
++    assert(!p2_bigtreasure_save_restore(bad, badSize, ownership, fsm, pools, cargo));
++
++    P2BigTreasureSaveData afterRange;
++    p2_bigtreasure_save_capture_state(ownership, fsm, pools, cargo, afterRange);
++    assert(sameData(before, afterRange));
++    std::puts("PASS save_no_partial_mutation_on_reject");
++}
++
++void testInvariantEnforced()
++{
++    P2BigTreasureSaveData data = fullLoadout();
++    assert(p2_bigtreasure_save_validate(data));
++
++    data.elecMaxNodes = 16;
++    assert(p2_bigtreasure_save_validate(data)); // 1 + 16 == 17 allowed
++    data.elecMaxNodes = 17;
++    assert(!p2_bigtreasure_save_validate(data));
++    data.elecMaxNodes = -1;
++    assert(!p2_bigtreasure_save_validate(data));
++
++    data.elecMaxNodes = 15;
++    data.weaponHealth[P2BTWEAPON_Fire] = 6000.0f;
++    assert(p2_bigtreasure_save_validate(data));
++    data.weaponHealth[P2BTWEAPON_Fire] = 6000.5f;
++    assert(!p2_bigtreasure_save_validate(data));
++    data.weaponHealth[P2BTWEAPON_Fire] = 3000.0f;
++    assert(p2_bigtreasure_save_validate(data));
++
++    data.weaponHealth[P2BTWEAPON_Fire] = 6000.0f;
++    data.poolInFlight[P2BTWEAPON_Fire] = 8;
++    assert(p2_bigtreasure_save_validate(data));
++    data.poolInFlight[P2BTWEAPON_Fire] = 9;
++    assert(!p2_bigtreasure_save_validate(data));
++    data.poolInFlight[P2BTWEAPON_Fire] = 0;
++
++    data.phase = static_cast<P2BigTreasurePhase>(12);
++    assert(!p2_bigtreasure_save_validate(data));
++    data.phase = P2BT_Attack;
++    assert(p2_bigtreasure_save_validate(data));
++    std::puts("PASS save_invariant_enforced");
++}
++
++} // namespace
++
++int main()
++{
++    testLayoutStability();
++    testFullLoadoutRoundTrip();
++    testKnockOffCargoLedger();
++    testFsmFieldsRoundTrip();
++    testAttackPoolLedgerRoundTrip();
++    testRejections();
++    testNoPartialMutationOnReject();
++    testInvariantEnforced();
++    std::puts("PASS BIGTREASURE_SAVE");
++    return 0;
++}
+-- 
+2.55.0.windows.3
+

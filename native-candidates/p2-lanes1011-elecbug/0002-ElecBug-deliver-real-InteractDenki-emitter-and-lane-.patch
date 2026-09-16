@@ -1,0 +1,191 @@
+From c94cd61035f601f945622457e6a7e691b69f99fe Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 09:09:17 -0400
+Subject: [PATCH 2/5] ElecBug: deliver real InteractDenki emitter and lane-11
+ immunity (#165/#407/#170)
+
+---
+ pc_port/pc_p2_elecbug.cpp | 93 +++++++++++++++++++++++++--------------
+ pc_port/pc_p2_elecbug.h   |  8 ++--
+ 2 files changed, 66 insertions(+), 35 deletions(-)
+
+diff --git a/pc_port/pc_p2_elecbug.cpp b/pc_port/pc_p2_elecbug.cpp
+index df1240bc..47cc38f6 100644
+--- a/pc_port/pc_p2_elecbug.cpp
++++ b/pc_port/pc_p2_elecbug.cpp
+@@ -18,15 +18,19 @@
+ // Port adaptations (recorded, not retail-faithful):
+ //   * Partner selection is nearest-first (the source picks uniformly at random
+ //     among candidates within 300 units).
+-//   * Between-beetle Denki geometry is resolved as a single nearest non-Yellow
++//   * Between-beetle Denki geometry is resolved as a single nearest shockable
+ //     Pikmin within the discharge radius of either linked beetle, shocked once
+-//     per discharge. The P1 engine has no InteractDenki, so the electrical
+-//     receiver uses InteractKill.
++//     per discharge. The emitter now delivers the real lane-10 `InteractDenki`
++//     receiver (not InteractKill), so the source Yellow/Bulbmin exclusion is
++//     enforced by the lane-11 species capability matrix exactly as the receiver
++//     does; a non-immune target transits PIKISTATE_DenkiDying.
+ //   * Charge and ChildCharge durations are port values (source hard-codes
+ //     mStateTimer > 3.0 / > 1.0; Return ends on animation end).
+ //   * View angle is a full hemisphere.
+ // No other lane's module is modified; every hook is a no-op for unregistered actors.
+ #include "pc_p2_elecbug.h"
++#include "pc_p2_species.h"
++#include "pc_p2_hazard_emitter.h"
+ #include "teki.h"
+ #include "Interactions.h"
+ #include "Piki.h"
+@@ -158,14 +162,22 @@ bool targetInSight(const Vector3f& pos) {
+     }
+     return false;
+ }
+-Piki* nearestNonYellow(const Vector3f& pos, float radius) {
++// A Pikmin is shockable exactly when the lane-10 electric receiver would accept
++// it: the lane-11 capability matrix rejects electric-immune species (Yellow,
++// Bulbmin) and everything else transits PIKISTATE_DenkiDying. Deriving the
++// emitter's target from the receiver's own decision keeps the two in lockstep.
++bool elecShockable(const Piki* p) {
++    if (!p || !p->isAlive()) return false;
++    return p2_emitter_accepts(pc_p2_species(p), P2HazardElectric, p->gasInvicible());
++}
++Piki* nearestShockable(const Vector3f& pos, float radius) {
+     Piki* best = nullptr;
+     float bestSq = radius * radius;
+     if (pikiMgr) {
+         Iterator it(pikiMgr);
+         CI_LOOP(it) {
+             Piki* p = static_cast<Piki*>(*it);
+-            if (!p || !p->isAlive() || p->mColor == Yellow) continue;
++            if (!elecShockable(p)) continue;
+             const float d = distXZ(p->getPosition(), pos);
+             if (d < radius && d * d < bestSq) { bestSq = d * d; best = p; }
+         }
+@@ -173,11 +185,11 @@ Piki* nearestNonYellow(const Vector3f& pos, float radius) {
+     return best;
+ }
+ // The source StateDischarge::checkInteract sweeps the Denki line between the two
+-// linked beetles. The P1 host has no InteractDenki, so the receiver is the
+-// nearest non-Yellow Pikmin to either end of the pair.
+-Piki* nearestNonYellowPair(const Vector3f& pos, const BTeki* partner, float radius) {
+-    Piki* best = nearestNonYellow(pos, radius);
+-    if (!best && partner) best = nearestNonYellow(partner->getPosition(), radius);
++// linked beetles. The emitter resolves the nearest shockable Pikmin to either
++// end of the pair and delivers the real lane-10 InteractDenki receiver.
++Piki* nearestShockablePair(const Vector3f& pos, const BTeki* partner, float radius) {
++    Piki* best = nearestShockable(pos, radius);
++    if (!best && partner) best = nearestShockable(partner->getPosition(), radius);
+     return best;
+ }
+ const char* colorName(unsigned color) {
+@@ -189,18 +201,20 @@ const char* colorName(unsigned color) {
+     }
+ }
+ // Source InteractDenki::actPiki excludes Yellow/Bulbmin from the discharge. The
+-// P1 host has no InteractDenki, so the exclusion is enforced by nearestNonYellow;
+-// this probe exists only to emit the immunity marker when a Yellow is actually
+-// inside the sweep radius but is deliberately not shocked.
+-bool anyYellowInRange(const Vector3f& pos, float radius) {
+-    if (!pikiMgr) return false;
++// receiver and the emitter both consult the lane-11 matrix, so this probe only
++// reports which immune species is inside the sweep and was deliberately
++// rejected, for the immunity evidence marker. Returns -1 when none is in range.
++int anyElecImmuneInRange(const Vector3f& pos, float radius) {
++    if (!pikiMgr) return -1;
+     Iterator it(pikiMgr);
+     CI_LOOP(it) {
+         Piki* p = static_cast<Piki*>(*it);
+-        if (!p || !p->isAlive() || p->mColor != Yellow) continue;
+-        if (distXZ(p->getPosition(), pos) < radius) return true;
++        if (!p || !p->isAlive()) continue;
++        const int species = pc_p2_species(p);
++        if (!p2_species_immune(species, P2HazardElectric)) continue;
++        if (distXZ(p->getPosition(), pos) < radius) return species;
+     }
+-    return false;
++    return -1;
+ }
+ void enter(ElecBug& s, State state, const char* clip) {
+     s.state = state;
+@@ -348,11 +362,16 @@ bool pc_p2_elecbug_pressed(BTeki* teki, Creature* presser) {
+     if (s->state == ELEC_DISCHARGE || s->state == ELEC_CHILDISCHARGE) {
+         Piki* piki = (presser && presser->isPiki()) ? static_cast<Piki*>(presser) : nullptr;
+         if (piki && piki->isAlive()) {
+-            if (piki->mColor == Yellow) {
+-                std::printf("P2_ELECBUG_PRESS_IMMUNE generator=%u source_id=28 pikmin=yellow\n",
+-                            genOf(teki));
++            const int species = pc_p2_species(piki);
++            if (p2_species_immune(species, P2HazardElectric)) {
++                std::printf("P2_ELECBUG_PRESS_IMMUNE generator=%u source_id=28 pikmin=%s species=%d\n",
++                            genOf(teki), species == P2SpeciesBulbmin ? "bulbmin" : "yellow", species);
+             } else {
+-                piki->stimulate(InteractKill(teki, 0));
++                Vector3f dir(piki->getPosition().x - teki->getPosition().x, 0.0f,
++                             piki->getPosition().z - teki->getPosition().z);
++                piki->stimulate(InteractDenki(teki, 1.0f, &dir));
++                std::printf("P2_ELECBUG_PRESS_DENKI generator=%u source_id=28 pikmin=1 target=%d\n",
++                            genOf(teki), species);
+                 std::printf("P2_ELECBUG_PRESS_SHOCK generator=%u source_id=28 pikmin=1 color=%s\n",
+                             genOf(teki), colorName(piki->mColor));
+             }
+@@ -588,23 +607,33 @@ void pc_p2_elecbug_update(BTeki* actor) {
+             break;
+         }
+         if (!s.shockedThisDischarge) {
+-            Piki* piki = nearestNonYellowPair(pos, s.partner, ELEC_RADIUS);
++            Piki* piki = nearestShockablePair(pos, s.partner, ELEC_RADIUS);
+             if (piki) {
+                 s.shockedThisDischarge = true;
+-                piki->stimulate(InteractKill(actor, 0));
++                const Vector3f target = piki->getPosition();
++                Vector3f dir(target.x - pos.x, 0.0f, target.z - pos.z);
++                piki->stimulate(InteractDenki(actor, 1.0f, &dir));
++                std::printf("P2_ELECBUG_DENKI generator=%u source_id=28 emitter=sweep target=%d shockable=1\n",
++                            generator, pc_p2_species(piki));
+                 std::printf("P2_ELECBUG_SHOCK generator=%u pikmin=1 color=%s\n", generator,
+                             colorName(piki->mColor));
+                 std::fflush(stdout);
+             }
+         }
+-        // Emit the immunity marker when a Yellow Pikmin is inside the sweep but
+-        // is deliberately skipped by the source Yellow/Bulbmin exclusion.
+-        if (!s.immuneLogged
+-                && (anyYellowInRange(pos, ELEC_RADIUS)
+-                    || (s.partner && anyYellowInRange(s.partner->getPosition(), ELEC_RADIUS)))) {
+-            s.immuneLogged = true;
+-            std::printf("P2_ELECBUG_IMMUNE generator=%u source_id=28 pikmin=yellow\n", generator);
+-            std::fflush(stdout);
++        // Emit the immunity marker when an electric-immune Pikmin is inside the
++        // sweep but is deliberately rejected by the source Yellow/Bulbmin gate.
++        if (!s.immuneLogged) {
++            int immuneSpecies = anyElecImmuneInRange(pos, ELEC_RADIUS);
++            if (immuneSpecies < 0 && s.partner) {
++                immuneSpecies = anyElecImmuneInRange(s.partner->getPosition(), ELEC_RADIUS);
++            }
++            if (immuneSpecies >= 0) {
++                s.immuneLogged = true;
++                std::printf("P2_ELECBUG_IMMUNE generator=%u source_id=28 pikmin=%s species=%d\n",
++                            generator, immuneSpecies == P2SpeciesBulbmin ? "bulbmin" : "yellow",
++                            immuneSpecies);
++                std::fflush(stdout);
++            }
+         }
+         if (s.stateTime >= DISCHARGE_TIME) {
+             breakLink(actor, s);
+diff --git a/pc_port/pc_p2_elecbug.h b/pc_port/pc_p2_elecbug.h
+index 25dfedfc..f61893a1 100644
+--- a/pc_port/pc_p2_elecbug.h
++++ b/pc_port/pc_p2_elecbug.h
+@@ -26,7 +26,9 @@ const char* pc_p2_elecbug_state_name(const BTeki*);
+ bool pc_p2_elecbug_attacked(Teki*);
+ // Press receiver: breaks any active partner link, then flips a live,
+ // non-bithered, non-reversed beetle into Reverse (P2_ELECBUG_FLIP, then
+-// P2_ELECBUG_STATE state=reverse). Pressing an actively discharging beetle also sends Denki
+-// to the pressing Pikmin: P2_ELECBUG_PRESS_SHOCK for a non-Yellow, and
+-// P2_ELECBUG_PRESS_IMMUNE for an excluded Yellow.
++// P2_ELECBUG_STATE state=reverse). Pressing an actively discharging beetle also
++// delivers the real lane-10 InteractDenki receiver to the pressing Pikmin
++// (P2_ELECBUG_PRESS_DENKI): P2_ELECBUG_PRESS_SHOCK for a shockable species and
++// P2_ELECBUG_PRESS_IMMUNE for an electric-immune Yellow/Bulbmin, decided by the
++// lane-11 capability matrix.
+ bool pc_p2_elecbug_pressed(BTeki*, Creature*);

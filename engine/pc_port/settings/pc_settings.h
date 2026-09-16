@@ -79,6 +79,8 @@ void pc_newgame_prompt_open(void);
 bool pc_newgame_prompt_active(void);
 void pc_newgame_prompt_draw(void);
 int  pc_newgame_prompt_result(void);
+/// True after accept on the second prompt if Hard was chosen.
+bool pc_newgame_prompt_chose_hard(void);
 
 /// Debug shortcuts F5 and F6, off by default.
 int pc_settings_get_debug_keys(void);

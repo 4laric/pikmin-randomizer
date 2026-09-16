@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "lane": 31,
+  "issue": 443,
+  "parent_issue": 175,
+  "title": "Waterwraith actor registered in the room-preview tick/draw (engine-driven)",
+  "kind": "integration-ready",
+  "native": {
+    "base": "e8da82aa938c33d9d5564bfdc75bc9c5fd150a8c",
+    "base_branch": "opencode/p2-lane31-actor",
+    "head": "a4526e6a5cb96d1d89e8687fcdd777845de9aa92",
+    "local_branch": "opencode/p2-lane31-register",
+    "pushed": false,
+    "dirty_state": "clean",
+    "note": "Engine-driven: the fixture does not call the register API; the real room-preview tick/draw drives the actor. Native origin/upstream not pushed."
+  },
+  "commits": ["a4526e6a5cb96d1d89e8687fcdd777845de9aa92"],
+  "files": [
+    "pc_port/pc_p2_waterwraith_register.h",
+    "pc_port/pc_p2_waterwraith_register.cpp",
+    "tools/p2_waterwraith_register_runtime.cpp",
+    "tools/p2_waterwraith_register_runtime_run.py",
+    "CMakeLists.txt",
+    "pc_port/pc_p2_hardlanes.cpp"
+  ],
+  "patches": {
+    "full": {
+      "path": "native-candidates/waterwraith-register/waterwraith-register-full.patch",
+      "size": 30848,
+      "sha256": "a63b6bed157b17d246b603e53c9ee5416055787f444726913a010f1e71cf8c74"
+    },
+    "series": [
+      {
+        "path": "native-candidates/waterwraith-register/patches/0001-Waterwraith-register-source-correct-actor-in-room-pr.patch",
+        "sha256": "b94eb6716f682e03fedab51cc89bf2cf828393538ded82026bdd0461a28d6847"
+      }
+    ]
+  },
+  "shared_hooks_for_lane_01": [
+    "pc_port/pc_p2_hardlanes.cpp: include pc_p2_waterwraith_register.h",
+    "pc_p2_hardlanes_reset(): pc_p2_waterwraith_register_reset()",
+    "pc_p2_hardlanes_setup(): pc_p2_waterwraith_register_setup(\"p2-waterwraith-actor.txt\") (inside the experimental-room gate; no-op when the profile is absent)",
+    "pc_p2_hardlanes_update()/pc_p2_hardlanes_draw(): _tick/_draw",
+    "All tagged 'Waterwraith (#443 / #175) - lane 31 additive hook'."
+  ],
+  "runtime": {
+    "private_build": "output/native-lane31-register-build",
+    "production_executable_sha256": "3c5434b986a1eb0bc9ebdca8cef518dcd19b959eea003e98e3bcba136213c14f",
+    "ninja_dry_run": "ninja: no work to do.",
+    "fixture_dir": "output/lane31-register-fixture-01",
+    "fixture_executable_sha256": "d76c52463deb753c67fa855912bca8e19788e9a36132ad6a418204692dca22c1",
+    "run_dir": "output/lane31-register-runtime-01/65c2a272e7704db0838146aafce10b3a",
+    "status": "passed",
+    "markers": [
+      "P2_HARDLANES_READY family=Waterwraith register=1 placement=fixed",
+      "P2_WATERWRAITH_REGISTER_WINDOW size=960x540",
+      "P2_WATERWRAITH_REGISTER_READY",
+      "P2_WATERWRAITH_REGISTER_PASS ticks=90 distance=349.667 roll=63.2400",
+      "PASS WATERWRAITH_REGISTER_RUNTIME"
+    ]
+  },
+  "limitations": [
+    "Fixed placement + single host route; no spawn-table registration, no source Map/AI/receiver wiring.",
+    "Locomotion is host-driven; retained-asm walkFunc/findNextRoutePoint not ported. Animation is baked sampled poses.",
+    "Visual bank is best-effort: a missing profile still registers the actor but draws 0 species."
+  ]
+}

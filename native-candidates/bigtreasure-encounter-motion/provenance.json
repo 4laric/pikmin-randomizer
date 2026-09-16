@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "lane": 32,
+  "issue": 246,
+  "parent_issue": 175,
+  "title": "BigTreasure full encounter (element attacks, receiver hits, death/finale) + wider motion staging",
+  "kind": "integration-ready",
+  "native": {
+    "base": "d288dd7b7771b4fe6c45bdc35ace37bb3ff986de",
+    "base_branch": "opencode/p2-lane32-integ",
+    "head": "343c1bab531a22cff73adac0a6a4e1729419903b",
+    "local_branch": "opencode/p2-lane32-merged",
+    "pushed": false,
+    "dirty_state": "clean",
+    "note": "Merge of opencode/p2-lane32-encounter (eb658d23) and opencode/p2-bigtreasure-motion (73b07690); the merge was conflict-free. Native origin/upstream not pushed."
+  },
+  "commits": ["d19fb551", "eb658d23", "73b07690", "343c1bab531a22cff73adac0a6a4e1729419903b (merge)"],
+  "files": [
+    "tools/p2_bigtreasure_runtime.cpp",
+    "tools/p2_bigtreasure_runtime_run.py",
+    "pc_port/pc_p2_bigtreasure_attacks.h",
+    "pc_port/pc_p2_bigtreasure_attacks.cpp",
+    "pc_port/pc_p2_bigtreasure_visual.h",
+    "pc_port/pc_p2_bigtreasure_visual.cpp"
+  ],
+  "patches": {
+    "full": {
+      "path": "native-candidates/bigtreasure-encounter-motion/bigtreasure-encounter-motion-full.patch",
+      "size": 21689,
+      "sha256": "45cd84585d5c488231ca6e76824811e885bf436a4f6ca9d9d4ad126d4c4a91da"
+    },
+    "series": [
+      {
+        "path": "native-candidates/bigtreasure-encounter-motion/patches/0001-BigTreasure-full-real-GL-encounter-with-element-atta.patch",
+        "sha256": "cc1e7789ba3c28e0e81dbfc0007cdc74833ee45b40f51411fb5ab806357ab358"
+      },
+      {
+        "path": "native-candidates/bigtreasure-encounter-motion/patches/0002-BigTreasure-attacks-expose-gas-node-extent-ratio-for.patch",
+        "sha256": "4db99cfd8b7c404d6868f17360b67d2c020bd3f67c468747c46b609bc19f7350"
+      },
+      {
+        "path": "native-candidates/bigtreasure-encounter-motion/patches/0003-BigTreasure-stage-and-play-a-wider-clip-subset-in-th.patch",
+        "sha256": "1f6a2d223226079ce0239499e967af60ab3e58fd60cd893ff9b976f17d6ca739"
+      }
+    ]
+  },
+  "runtime": {
+    "private_build": "output/native-lane32-merged-build",
+    "production_executable_sha256": "c94252a8803c34308d6f9ecf6d1b358796ad41ec6a5bbc255e25e77e7271b03f",
+    "ninja_dry_run": "ninja: no work to do.",
+    "fixture_dir": "output/lane32-merged-fixture-01",
+    "fixture_executable_sha256": "3132d200fb443243514eff9f9e611c87a919adcef9b5a5d0501f76347c990be2",
+    "run_dir": "output/lane32-merged-runtime-01/c452924b369c4892b7af09089f6bd8f3",
+    "status": "passed",
+    "visual_stage": "output/bigtreasure-visual-stage-03 (10 clips)",
+    "markers": [
+      "P2_BIGTREASURE_HOST_SEAM_PASS ticks=361 attacks=1 events=5",
+      "P2_BIGTREASURE_FSMHOST_FULL_PASS knockoffs=4 weapons=0 phase=DropItem transitions=4",
+      "P2_BIGTREASURE_ENCOUNTER_PASS knockoffs=4 hits=4 phase=Dead events=5",
+      "P2_BIGTREASURE_MOTION_PASS clips=8 events=146",
+      "P2_BIGTREASURE_VISUAL_HEAP free_kb=243773",
+      "PASS BIGTREASURE_RUNTIME"
+    ]
+  },
+  "limitations": [
+    "Fire/gas policies have no map trace in their source tick; their emit anchors are placed on the real map floor via getMinY, while elec/water are stepped through P2BigTreasureMapTrace.",
+    "Encounter hits are registered on a host-side health sink (stand-in for the lane-10 receiver adapter), one deterministic hit per weapon.",
+    "Motion staging is bounded by the fixture per-clip source-length cap and idle timeout, not the 96 MB stage budget; 10 clips staged, 8 advanced."
+  ]
+}

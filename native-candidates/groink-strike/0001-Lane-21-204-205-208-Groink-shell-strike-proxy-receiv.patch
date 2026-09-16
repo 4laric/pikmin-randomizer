@@ -1,0 +1,1210 @@
+From 67298b078cb437fb2074c9e8a5c5a127daf0ee88 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 03:28:47 -0400
+Subject: [PATCH 1/2] Lane 21 (#204/#205/#208): Groink shell strike -> proxy
+ receiver health/death + standalone tests
+
+---
+ pc_port/pc_p2_cannon_stone.h          | 224 ++++++++++++++++++++++
+ pc_port/pc_p2_groink_strike.cpp       |  36 ++++
+ pc_port/pc_p2_groink_strike.h         |  48 +++++
+ pc_port/pc_p2_projectile_receiver.cpp | 152 +++++++++++++++
+ pc_port/pc_p2_projectile_receiver.h   |  97 ++++++++++
+ pc_port/pc_p2_rock_hazard.h           | 259 ++++++++++++++++++++++++++
+ tools/p2_groink_strike_test.cpp       | 212 +++++++++++++++++++++
+ tools/p2_groink_target_runtime.cpp    |  60 ++++++
+ 8 files changed, 1088 insertions(+)
+ create mode 100644 pc_port/pc_p2_cannon_stone.h
+ create mode 100644 pc_port/pc_p2_groink_strike.cpp
+ create mode 100644 pc_port/pc_p2_groink_strike.h
+ create mode 100644 pc_port/pc_p2_projectile_receiver.cpp
+ create mode 100644 pc_port/pc_p2_projectile_receiver.h
+ create mode 100644 pc_port/pc_p2_rock_hazard.h
+ create mode 100644 tools/p2_groink_strike_test.cpp
+
+diff --git a/pc_port/pc_p2_cannon_stone.h b/pc_port/pc_p2_cannon_stone.h
+new file mode 100644
+index 00000000..d3ae922b
+--- /dev/null
++++ b/pc_port/pc_p2_cannon_stone.h
+@@ -0,0 +1,224 @@
++#pragma once
++
++#include <cstdint>
++
++// Isolated Armored/Decorated Cannon Beetle Larva Stone projectile policy.
++// The Stone is Game::Rock::Obj with mRockType == EnemyID_Stone (74), fired by
++// Kabuto (75) / Rkabuto (95) through Obj::createStoneAttack. It deliberately
++// has no engine, map, creature, sound or effect dependency: a future host
++// integration owns terrain movement, target enumeration, receiver stimulation
++// and the firing Kabuto FSM. The host owns actual locomotion; this policy owns
++// the source state machine, steering command, contact classification and
++// strike/destruction events.
++//
++// Source reference: projectPiki/pikmin2 revision
++// 632af93787b9c95b63f0c13be32b161375ce3a96 (US GPVE01 rev 0):
++//   src/plugProjectNishimuraU/Rock.cpp / RockState.cpp,
++//   src/plugProjectNishimuraU/Kabuto.cpp (createStoneAttack),
++//   include/Game/Entities/Rock.h / Kabuto.h.
++// See docs/PIKMIN2_CANNON_STONE_PROJECTILE.md for the contract.
++
++struct P2CannonStoneVec3 {
++    float x = 0.0f;
++    float y = 0.0f;
++    float z = 0.0f;
++};
++
++// mRockType (Rock.h:116). This slice models the fired Stone; the falling/
++// rolling Rock variant's Wait/Appear/Fall/DropWait states are a separate
++// bounded slice and are NOT implemented here. The variant is still carried so
++// the source Rock-vs-Rock mutual-collision branch can be classified.
++enum class P2CannonStoneVariant { Stone, Rock };
++
++// Lifecycle phases, mapped to the Rock FSM (Rock.h:178-186):
++//   Move   = ROCK_Move. Stone onInit starts directly here (Rock.cpp:88-93):
++//            initMoveVelocity then ROCK_Move; no Wait/Appear/Fall for Stone.
++//            updateMoveVelocity + moveRockScaleUp + timer run each tick; health
++//            <= 0 or timer > 15 s transits to Dead (RockState.cpp:229-241).
++//   Dead   = ROCK_Dead. Target velocity zeroed and the dead motion started
++//            (RockState.cpp:261-269); atari is disabled and the object is
++//            constrained on the first exec (RockState.cpp:275-286).
++//   Killed = kill(nullptr) after the Dead animation's KEYEVENT_END
++//            (RockState.cpp:283-285). The host frees/reuses the slot.
++enum class P2CannonStonePhase { Inactive, Move, Dead, Killed };
++
++// Contact classification for collisionCallback (Rock.cpp:204-238). NaviPiki is
++// `other->isNavi() || other->isPiki()`; everything else that is not a Teki is
++// still non-Navi/Piki and forces health to zero.
++enum class P2CannonStoneContactKind { NaviPiki, Teki, Other };
++
++enum class P2CannonStoneStrikeKind { None, Press, Attack };
++
++// Host-supplied parameters. Values fixed by the source are compile-time
++// constants on P2CannonStone; the rest are parm/host inputs and are never
++// invented by the policy.
++struct P2CannonStoneConfig {
++    P2CannonStoneVariant variant = P2CannonStoneVariant::Stone;
++    float moveSpeed = 0.0f;         // general mMoveSpeed (Stone fp06 disc 250)
++    float searchRumbleSpeed = 0.0f; // proper fp01 (disc 100); homing move speed
++    float turnSpeed = 0.0f;         // general mTurnSpeed (per-update fraction)
++    float maxTurnAngle = 0.0f;      // general mMaxTurnAngle (degrees)
++    float attackDamage = 0.0f;      // general mAttackDamage (InteractPress)
++    float sightRadius = 0.0f;       // general mSightRadius (homing search range)
++    float collisionRadius = 0.0f;   // trace sphere radius (Rock 40 / child 27)
++    float health = 0.0f;            // general mHealth (Stone disc 99999)
++};
++
++// Host target snapshot for the homing branch. The host picks the active Navi
++// or the nearest Pikmin/Navi within mSightRadius and the 180-degree search
++// angle (Rock.cpp:370-386; 180 degrees = unrestricted, see
++// kHomingSearchAngleDegrees). The policy only steers. hasTarget=false mirrors
++// the source's no-target fallback (targetPos = position + mTargetVelocity).
++struct P2CannonStoneTarget {
++    bool hasTarget = false;
++    P2CannonStoneVec3 position;
++};
++
++// Called once per 30 Hz source tick while the Stone is in Move. The host
++// applies the policy's target velocity with the engine creature physics and
++// returns the resulting position/velocity. `wall` mirrors wallCallback
++// (Rock.cpp:244-249) and interrupts Move into Dead. Return false only when no
++// trace was performed (the policy then integrates target velocity itself).
++struct P2CannonStoneTraceResult {
++    P2CannonStoneVec3 position;
++    P2CannonStoneVec3 velocity;
++    bool wall = false;
++};
++
++typedef bool (*P2CannonStoneTraceFn)(void* context, const P2CannonStoneVec3& position,
++                                     const P2CannonStoneVec3& targetVelocity, float delta,
++                                     float radius, P2CannonStoneTraceResult& result);
++
++// One recorded hit. Press is InteractPress on a grounded Navi/Piki, attributed
++// to mSourceEnemy when set and to the Stone itself otherwise (Rock.cpp:212-219).
++// Attack is InteractAttack with the source-fixed 250 damage (Rock.cpp:221-223).
++struct P2CannonStoneStrike {
++    P2CannonStoneStrikeKind kind = P2CannonStoneStrikeKind::None;
++    float damage = 0.0f;
++    std::uint64_t targetToken = 0;
++    std::uint64_t attributedToken = 0;
++    bool attributedToSource = false;
++};
++
++struct P2CannonStoneContactResult {
++    bool ignored = false;                // source-enemy atari grace (Rock.cpp:298-304)
++    bool strikeEmitted = false;
++    P2CannonStoneStrike strike;
++    bool healthZeroed = false;           // !isNaviOrPiki contact forces mHealth = 0
++    bool selfCollisionSuppressed = false; // Rock-vs-Rock setCollEvent suppression
++};
++
++class P2CannonStone {
++public:
++    static constexpr float kSourceDelta = 1.0f / 30.0f;
++    static constexpr float kMoveTimeoutSeconds = 15.0f;   // RockState.cpp:238
++    static constexpr float kRollScaleUpPerSecond = 5.0f;  // Rock.cpp:336-337
++    static constexpr float kInitialScale = 0.0001f;       // Rock.cpp:53
++    static constexpr float kAtariGraceSeconds = 1.0f;     // Rock.cpp:300
++    // getNearestPikminOrNavi searchAngle in degrees (Rock.cpp:376). 180 = PI
++    // radians, which passes every horizontal angle (enemyAction.cpp:21,45).
++    static constexpr float kHomingSearchAngleDegrees = 180.0f;
++    static constexpr float kTekiAttackDamage = 250.0f;    // Rock.cpp:222
++    static constexpr float kNonHomingCurrentWeight = 0.01f; // Rock.cpp:391-393
++    static constexpr float kNonHomingTargetWeight = 0.99f;
++
++    void reset(const P2CannonStoneConfig& config);
++
++    // createStoneAttack birth (Kabuto.cpp:268-290) + Stone onInit
++    // (Rock.cpp:88-93). `mouthPosition` must already include the source's
++    // +25 y mouth offset (see mouthBirthPosition). faceDir is the firing
++    // Kabuto's facing; homing is true only for Rkabuto. sourceToken is the
++    // firing enemy (0 = none); selfToken identifies this Stone for Press
++    // attribution. Returns false on invalid input or if not Inactive.
++    bool birth(const P2CannonStoneVec3& mouthPosition, float faceDir, bool homing,
++               std::uint64_t sourceToken, std::uint64_t selfToken);
++
++    // One 30 Hz source update (ROCK_Move). delta must equal kSourceDelta.
++    // `target` is the host's homing snapshot; it is ignored by the non-homing
++    // branch. Transits Move -> Dead on wall contact, health <= 0 or the 15 s
++    // timeout.
++    bool update(float delta, const P2CannonStoneTarget& target,
++                P2CannonStoneTraceFn trace = nullptr, void* traceContext = nullptr);
++
++    // collisionCallback (Rock.cpp:204-238). The host classifies the colliding
++    // creature and its grounded state. Records a strike, forces health to zero
++    // for non-Navi/Piki contacts and reports Rock-vs-Rock suppression.
++    P2CannonStoneContactResult contact(P2CannonStoneContactKind kind, bool targetOnFloor,
++                                       bool targetIsRock, std::uint64_t targetToken);
++
++    // wallCallback (Rock.cpp:244-249): Move -> Dead.
++    bool notifyWallContact();
++
++    // hipdropCallBack (Rock.cpp:190-198): Move -> Dead unless bittered.
++    bool notifyHipdrop(bool bittered);
++
++    // Dead state (RockState.cpp:275-286): once the host reports the dead
++    // animation's KEYEVENT_END, request kill(nullptr). Returns true exactly
++    // once on Dead -> Killed; false in any other phase.
++    bool finishDeath();
++
++    P2CannonStonePhase phase() const { return mPhase; }
++    bool isAlive() const { return mPhase == P2CannonStonePhase::Move; }
++    bool homing() const { return mHoming; }
++    float faceDir() const { return mFaceDir; }
++    float timer() const { return mTimer; }
++    float scale() const { return mScale; }
++    float health() const { return mHealth; }
++    bool hasHealthZeroed() const { return mHealthZeroed; }
++    std::uint64_t sourceToken() const { return mSourceToken; }
++    std::uint64_t selfToken() const { return mSelfToken; }
++    const P2CannonStoneVec3& position() const { return mPosition; }
++    const P2CannonStoneVec3& velocity() const { return mVelocity; }
++    const P2CannonStoneVec3& targetVelocity() const { return mTargetVelocity; }
++
++    // True while a collision with the source enemy must be ignored
++    // (ignoreAtari, Rock.cpp:298-304).
++    bool shouldIgnoreAtari(std::uint64_t targetToken) const;
++
++    // Source birth helpers, exposed for the host/fixtures:
++    // worldMat mouth joint position + (0, 25, 0) (Kabuto.cpp:276).
++    static P2CannonStoneVec3 mouthBirthPosition(const P2CannonStoneVec3& mouthJointWorldPos);
++    // getDirection(faceDir) * moveSpeed (Rock.cpp:356-362, trig.h:182-186).
++    static P2CannonStoneVec3 initialVelocity(float faceDir, float moveSpeed);
++
++private:
++    void enterDead();
++    void steerTo(const P2CannonStoneVec3& targetPos);
++
++    P2CannonStoneConfig mConfig;
++    P2CannonStonePhase mPhase = P2CannonStonePhase::Inactive;
++    P2CannonStoneVec3 mPosition;
++    P2CannonStoneVec3 mVelocity;       // last traced/actual velocity
++    P2CannonStoneVec3 mTargetVelocity; // steering command
++    float mFaceDir = 0.0f;
++    float mTimer = 0.0f;
++    float mScale = kInitialScale;
++    float mHealth = 0.0f;
++    bool mHoming = false;
++    bool mHealthZeroed = false;
++    std::uint64_t mSourceToken = 0;
++    std::uint64_t mSelfToken = 0;
++};
++
++// Fixed-capacity supply pool over the Rock manager's shared object array
++// (RockMgr.cpp:101-115). The host configures the real manager limit, which is
++// shared with falling Rock objects. Failed supply returns nullptr with no
++// partial state, mirroring the source's silent tolerance of a failed birth
++// (Kabuto.cpp:281-288).
++class P2CannonStonePool {
++public:
++    explicit P2CannonStonePool(int capacity) : mCapacity(capacity > 0 ? capacity : 0) {}
++
++    P2CannonStone* spawn(const P2CannonStoneVec3& mouthPosition, float faceDir, bool homing,
++                         std::uint64_t sourceToken, std::uint64_t selfToken,
++                         const P2CannonStoneConfig& config);
++
++    int capacity() const { return mCapacity; }
++    int activeCount() const;
++
++private:
++    static constexpr int kMaxStones = 16;
++    int mCapacity;
++    P2CannonStone mStones[kMaxStones];
++    bool mUsed[kMaxStones] = {};
++};
+diff --git a/pc_port/pc_p2_groink_strike.cpp b/pc_port/pc_p2_groink_strike.cpp
+new file mode 100644
+index 00000000..304e4dfc
+--- /dev/null
++++ b/pc_port/pc_p2_groink_strike.cpp
+@@ -0,0 +1,36 @@
++#include "pc_p2_groink_strike.h"
++
++P2GroinkStrikeResult p2_groink_apply_strike(P2ProjectileReceiverRegistry& registry,
++                                            const P2GroinkStrikeInput& input,
++                                            const P2GroinkHitCandidate& candidate)
++{
++    P2GroinkStrikeResult result;
++    const P2GroinkHitCommand command = p2_groink_classify_hit(input.hit, candidate);
++    result.valid = command.valid;
++    result.insideSweep = command.insideSweep;
++    result.kind = command.kind;
++    result.damage = command.damage;
++    result.impulse = command.impulse;
++    if (!command.valid || command.kind == P2GroinkHitKind::None) {
++        return result;
++    }
++
++    if (command.kind == P2GroinkHitKind::Bomb) {
++        // The classifier's damage is authoritative; InteractAttack is the
++        // source-compatible Bomb receiver entry point for this proxy.
++        const P2ProjectileReceiverHit hit = registry.applyStrike(
++            P2ProjectileReceiverStrikeKind::InteractAttack, command.damage,
++            input.targetToken, input.attributedToken);
++        result.applied = hit.applied;
++        result.died = hit.died;
++        result.health = hit.health;
++    } else {
++        // Wind: report the receiver state without mutating it. A None-kind
++        // strike performs no damage and returns the current health.
++        const P2ProjectileReceiverHit hit = registry.applyStrike(
++            P2ProjectileReceiverStrikeKind::None, 0.0f, input.targetToken,
++            input.attributedToken);
++        result.health = hit.health;
++    }
++    return result;
++}
+diff --git a/pc_port/pc_p2_groink_strike.h b/pc_port/pc_p2_groink_strike.h
+new file mode 100644
+index 00000000..7d3dab3e
+--- /dev/null
++++ b/pc_port/pc_p2_groink_strike.h
+@@ -0,0 +1,48 @@
++#pragma once
++
++#include "pc_p2_groink_hit.h"
++#include "pc_p2_projectile_receiver.h"
++
++#include <cstdint>
++
++// Private Groink shell-strike -> health bridge (#205 receiver half). It is the
++// only new host seam between the engine-free shell classifier and the lane-20
++// proxy receiver: classify the supplied sweep, then map a Bomb command onto a
++// proxy InteractAttack. Damage is never re-derived here; it is exactly the
++// classifier command's value.
++//
++// Vendored dependency (copied byte-identical, not modified):
++//   pc_port/pc_p2_projectile_receiver.{h,cpp}  from native lane
++//   `opencode/p2-projectiles-integration` @ be8037af5e1d50dcd0d96333d48761cf52e27f84
++//     pc_p2_projectile_receiver.h   sha256 d127e060b85fa53e5f8e72fbc6de91505ac3e25d06a90791d51149c8743b0cbc
++//     pc_p2_projectile_receiver.cpp sha256 4dd711b3ef71c09a86372b273cff378d8efb38b8e9b0a925178f7cadef5de56b
++//   Its required type headers are vendored the same way:
++//     pc_p2_cannon_stone.h          sha256 abf3ea470f80a394ba6673a1e98223251416ed69ffce5b0c39251d0eb56e1508
++//     pc_p2_rock_hazard.h           sha256 a99cc889068a6f5b662e9c8b6568622010803eb991b8336c1dae837760eef4c7
++//
++// The receiver owns no impulse field, so the classifier's knockback vector is
++// carried through the result unchanged for the host to apply separately.
++
++struct P2GroinkStrikeInput {
++    P2GroinkHitInput hit;
++    std::uint64_t targetToken = 0;
++    std::uint64_t attributedToken = 0;
++};
++
++struct P2GroinkStrikeResult {
++    bool valid = false;
++    bool insideSweep = false;
++    P2GroinkHitKind kind = P2GroinkHitKind::None;
++    float damage = 0.0f;
++    P2GroinkVec3 impulse;
++    bool applied = false;
++    bool died = false;
++    float health = 0.0f;
++};
++
++// Bomb -> InteractAttack with the classifier's damage applied to targetToken;
++// Wind -> no receiver health change, impulse carried through; None/invalid ->
++// no-op. `applied` and `died` come from the receiver's single-strike report.
++P2GroinkStrikeResult p2_groink_apply_strike(P2ProjectileReceiverRegistry& registry,
++                                            const P2GroinkStrikeInput& input,
++                                            const P2GroinkHitCandidate& candidate);
+diff --git a/pc_port/pc_p2_projectile_receiver.cpp b/pc_port/pc_p2_projectile_receiver.cpp
+new file mode 100644
+index 00000000..dfc8ed97
+--- /dev/null
++++ b/pc_port/pc_p2_projectile_receiver.cpp
+@@ -0,0 +1,152 @@
++#include "pc_p2_projectile_receiver.h"
++
++const char* p2ProjectileReceiverStrikeKindName(P2ProjectileReceiverStrikeKind kind)
++{
++    switch (kind) {
++    case P2ProjectileReceiverStrikeKind::None: return "None";
++    case P2ProjectileReceiverStrikeKind::InteractPress: return "InteractPress";
++    case P2ProjectileReceiverStrikeKind::InteractAttack: return "InteractAttack";
++    }
++    return "?";
++}
++
++P2ProjectileReceiver::P2ProjectileReceiver(std::uint64_t token, float maxHealth)
++    : mToken(token), mMaxHealth(maxHealth > 0.0f ? maxHealth : 0.0f),
++      mHealth(mMaxHealth), mAlive(mMaxHealth > 0.0f)
++{
++}
++
++float P2ProjectileReceiver::applyDamage(float damage)
++{
++    if (!mAlive || !(damage > 0.0f)) {
++        return 0.0f;
++    }
++    const float applied = damage < mHealth ? damage : mHealth;
++    mHealth -= applied;
++    if (mHealth <= 0.0f) {
++        mHealth = 0.0f;
++        mAlive = false;
++    }
++    return applied;
++}
++
++void P2ProjectileReceiverRegistry::reset()
++{
++    for (int i = 0; i < kMaxReceivers; ++i) {
++        mReceivers[i] = P2ProjectileReceiver();
++    }
++    mCount = 0;
++    mAny = P2ProjectileReceiver();
++    mHasAny = false;
++}
++
++bool P2ProjectileReceiverRegistry::add(std::uint64_t token, float maxHealth)
++{
++    if (token == 0 || !(maxHealth > 0.0f) || mCount >= kMaxReceivers || find(token)) {
++        return false;
++    }
++    mReceivers[mCount++] = P2ProjectileReceiver(token, maxHealth);
++    return true;
++}
++
++bool P2ProjectileReceiverRegistry::addAny(float maxHealth)
++{
++    if (mHasAny || !(maxHealth > 0.0f)) {
++        return false;
++    }
++    mAny = P2ProjectileReceiver(0, maxHealth);
++    mHasAny = true;
++    return true;
++}
++
++P2ProjectileReceiver* P2ProjectileReceiverRegistry::find(std::uint64_t token)
++{
++    for (int i = 0; i < mCount; ++i) {
++        if (mReceivers[i].token() == token) {
++            return &mReceivers[i];
++        }
++    }
++    return nullptr;
++}
++
++const P2ProjectileReceiver* P2ProjectileReceiverRegistry::find(std::uint64_t token) const
++{
++    for (int i = 0; i < mCount; ++i) {
++        if (mReceivers[i].token() == token) {
++            return &mReceivers[i];
++        }
++    }
++    return nullptr;
++}
++
++int P2ProjectileReceiverRegistry::aliveCount() const
++{
++    int alive = mHasAny && mAny.alive() ? 1 : 0;
++    for (int i = 0; i < mCount; ++i) {
++        alive += mReceivers[i].alive() ? 1 : 0;
++    }
++    return alive;
++}
++
++P2ProjectileReceiverHit P2ProjectileReceiverRegistry::applyStrike(
++    P2ProjectileReceiverStrikeKind kind, float damage, std::uint64_t targetToken,
++    std::uint64_t attributedToken)
++{
++    P2ProjectileReceiverHit hit;
++    hit.kind = kind;
++    hit.damage = damage;
++    hit.targetToken = targetToken;
++    hit.attributedToken = attributedToken;
++
++    P2ProjectileReceiver* receiver = find(targetToken);
++    if (!receiver && mHasAny) {
++        receiver = &mAny;
++    }
++    if (!receiver) {
++        return hit;
++    }
++    hit.known = true;
++    hit.health = receiver->health();
++    if (kind == P2ProjectileReceiverStrikeKind::None || !(damage > 0.0f)) {
++        return hit;
++    }
++
++    const bool wasAlive = receiver->alive();
++    hit.appliedDamage = receiver->applyDamage(damage);
++    hit.applied = hit.appliedDamage > 0.0f;
++    hit.health = receiver->health();
++    hit.died = wasAlive && !receiver->alive();
++    return hit;
++}
++
++P2ProjectileReceiverHit P2ProjectileReceiverRegistry::applyStrike(
++    const P2CannonStoneContactResult& result)
++{
++    if (!result.strikeEmitted) {
++        return P2ProjectileReceiverHit{};
++    }
++    P2ProjectileReceiverStrikeKind kind = P2ProjectileReceiverStrikeKind::None;
++    if (result.strike.kind == P2CannonStoneStrikeKind::Press) {
++        kind = P2ProjectileReceiverStrikeKind::InteractPress;
++    } else if (result.strike.kind == P2CannonStoneStrikeKind::Attack) {
++        kind = P2ProjectileReceiverStrikeKind::InteractAttack;
++    }
++    return applyStrike(kind, result.strike.damage, result.strike.targetToken,
++                       result.strike.attributedToken);
++}
++
++P2ProjectileReceiverHit P2ProjectileReceiverRegistry::applyStrike(
++    const P2RockHazardContactResult& result)
++{
++    if (!result.strikeEmitted) {
++        return P2ProjectileReceiverHit{};
++    }
++    P2ProjectileReceiverStrikeKind kind = P2ProjectileReceiverStrikeKind::None;
++    if (result.strike.kind == P2RockHazardStrikeKind::Press) {
++        kind = P2ProjectileReceiverStrikeKind::InteractPress;
++    } else if (result.strike.kind == P2RockHazardStrikeKind::Attack) {
++        kind = P2ProjectileReceiverStrikeKind::InteractAttack;
++    }
++    return applyStrike(kind, result.strike.damage, result.strike.targetToken,
++                       result.strike.attributedToken);
++}
+diff --git a/pc_port/pc_p2_projectile_receiver.h b/pc_port/pc_p2_projectile_receiver.h
+new file mode 100644
+index 00000000..14547c07
+--- /dev/null
++++ b/pc_port/pc_p2_projectile_receiver.h
+@@ -0,0 +1,97 @@
++#pragma once
++
++#include "pc_p2_cannon_stone.h"
++#include "pc_p2_rock_hazard.h"
++
++#include <cstdint>
++
++// Private proxy receiver for lane 20 (parent #169 / #413 / #425).
++//
++// Host-owned health sink for already-computed projectile strikes. It mirrors
++// the source InteractPress / InteractAttack application without dereferencing
++// any engine Creature, so the `pc_p2_projectiles` contract that engine target
++// health is never mutated stays true. Real engine receiver wiring and shared
++// damage semantics (#186 review) remain unimplemented; this only proves the
++// strike -> receiver half of the lane.
++//
++// Damage is never re-derived: callers pass the amount the Stone/Rock contact
++// policy already produced. Kind names match the source audit: InteractPress for
++// a grounded Navi/Pikmin, InteractAttack (source-fixed 250) for a Teki.
++
++enum class P2ProjectileReceiverStrikeKind { None, InteractPress, InteractAttack };
++
++const char* p2ProjectileReceiverStrikeKindName(P2ProjectileReceiverStrikeKind kind);
++
++// One applied-strike report. known=false means no receiver is registered for
++// targetToken (a no-op). applied=false means the receiver was already dead or
++// the strike carried no positive damage. appliedDamage is clamped to the
++// remaining health. died=true is set only on the single strike that reaches
++// zero, so a host can emit its death marker exactly once.
++struct P2ProjectileReceiverHit {
++    bool known = false;
++    bool applied = false;
++    bool died = false;
++    P2ProjectileReceiverStrikeKind kind = P2ProjectileReceiverStrikeKind::None;
++    float damage = 0.0f;
++    float appliedDamage = 0.0f;
++    float health = 0.0f;
++    std::uint64_t targetToken = 0;
++    std::uint64_t attributedToken = 0;
++};
++
++class P2ProjectileReceiver {
++public:
++    P2ProjectileReceiver() = default;
++    P2ProjectileReceiver(std::uint64_t token, float maxHealth);
++
++    std::uint64_t token() const { return mToken; }
++    float maxHealth() const { return mMaxHealth; }
++    float health() const { return mHealth; }
++    bool alive() const { return mAlive; }
++
++    // Removes `damage`, clamping at zero, and returns the amount removed. A dead
++    // receiver or a non-positive amount removes nothing.
++    float applyDamage(float damage);
++
++private:
++    std::uint64_t mToken = 0;
++    float mMaxHealth = 0.0f;
++    float mHealth = 0.0f;
++    bool mAlive = false;
++};
++
++// Fixed-capacity registry keyed by target token. The host populates it from
++// `receiver <token> <maxHealth>` config rows.
++class P2ProjectileReceiverRegistry {
++public:
++    static constexpr int kMaxReceivers = 16;
++
++    void reset();
++    bool add(std::uint64_t token, float maxHealth);
++    // Registers a single wildcard sink for tokens with no exact receiver. It is
++    // required for a real runtime demo because engine creature tokens are runtime
++    // pointers an arena config cannot name in advance.
++    bool addAny(float maxHealth);
++    P2ProjectileReceiver* find(std::uint64_t token);
++    const P2ProjectileReceiver* find(std::uint64_t token) const;
++    int count() const { return mCount; }
++    int aliveCount() const;
++
++    // Core entry point. Looks up targetToken and applies `damage`; kind and
++    // attributedToken are carried into the report for the host's markers. An
++    // unknown token or kind None is a no-op.
++    P2ProjectileReceiverHit applyStrike(P2ProjectileReceiverStrikeKind kind, float damage,
++                                        std::uint64_t targetToken,
++                                        std::uint64_t attributedToken);
++
++    // Contract overloads. A contact with no strike emits nothing, so a
++    // non-strike contact can never apply damage to the proxy.
++    P2ProjectileReceiverHit applyStrike(const P2CannonStoneContactResult& result);
++    P2ProjectileReceiverHit applyStrike(const P2RockHazardContactResult& result);
++
++private:
++    P2ProjectileReceiver mReceivers[kMaxReceivers];
++    int mCount = 0;
++    P2ProjectileReceiver mAny;
++    bool mHasAny = false;
++};
+diff --git a/pc_port/pc_p2_rock_hazard.h b/pc_port/pc_p2_rock_hazard.h
+new file mode 100644
+index 00000000..5bd00c35
+--- /dev/null
++++ b/pc_port/pc_p2_rock_hazard.h
+@@ -0,0 +1,259 @@
++#pragma once
++
++#include <cstdint>
++
++// Isolated falling Rock (EnemyID 19) hazard FSM policy. Game::Rock::Obj /
++// Rock::Mgr manage both the falling Rock (19) and the fired Stone (74) in one
++// shared object array (RockMgr.cpp:101-115). This slice owns only the
++// Rock-only states ROCK_Wait / ROCK_Appear / ROCK_DropWait / ROCK_Fall plus
++// the shared ROCK_Dead / onKill teardown. The Stone's rolling ROCK_Move
++// projectile path is a separate FSM group and stays in pc_p2_cannon_stone.*
++// (#406); it is neither implemented nor modified here.
++//
++// The policy deliberately has no engine, map, creature, sound or effect
++// dependency: a future host integration owns map/creature physics, Wait target
++// detection, receiver stimulation, shadow/effect/sound and the animation bank.
++// The host supplies movement traces, detection results and the random cull
++// timer through explicit input and function-pointer contracts.
++//
++// Source reference: projectPiki/pikmin2 revision
++// 632af93787b9c95b63f0c13be32b161375ce3a96 (US GPVE01 rev 0):
++//   src/plugProjectNishimuraU/Rock.cpp (onInit/onKill collisionCallback/
++//   fallRockScaleUp/wallCallback/hipdropCallBack),
++//   src/plugProjectNishimuraU/RockState.cpp (Wait/Appear/DropWait/Fall/Dead),
++//   include/Game/Entities/Rock.h.
++// See docs/PIKMIN2_ROCK_HAZARD.md for the contract.
++
++struct P2RockHazardVec3 {
++    float x = 0.0f;
++    float y = 0.0f;
++    float z = 0.0f;
++};
++
++// Phases mapped to the source Rock FSM (Rock.h:178-186). Inactive is the
++// reset state. Wait/Appear/DropWait/Fall are the four Rock-only falling states
++// this slice owns. Dead is the shared teardown state (RockState.cpp:261-286);
++// Killed is kill(nullptr) after the Dead animation's KEYEVENT_END
++// (RockState.cpp:283-285). ROCK_Move is not reachable for EnemyID_Rock
++// (Rock.cpp:71-93 starts Move only for EnemyID_Stone) and is out of scope.
++enum class P2RockHazardPhase { Inactive, Wait, Appear, DropWait, Fall, Dead, Killed };
++
++// Contact classification for collisionCallback (Rock.cpp:204-238). NaviPiki is
++// `other->isNavi() || other->isPiki()`; Teki is `other->isTeki()`; everything
++// else is Other. Both Teki and Other force mHealth to zero (notFakePiki).
++enum class P2RockHazardContactKind { NaviPiki, Teki, Other };
++
++enum class P2RockHazardStrikeKind { None, Press, Attack };
++
++// Last animation requested through startMotion (Rock.h:159-163).
++enum class P2RockHazardMotion { None, Run, Dead };
++
++// Host/converter parameters. The fall/scale parms are the Rock onInit
++// initial-setting values (Rock.cpp:36-41): mFallSpeed = general mSearchDistance,
++// mFallOffset = general mSearchHeight, mScaleUpRate = general mSearchAngle.
++// They are host inputs and are never invented by the policy.
++struct P2RockHazardConfig {
++    float fallSpeed = 0.0f;       // Rock.cpp:38
++    float fallOffset = 0.0f;      // Rock.cpp:39
++    float scaleUpRate = 0.0f;     // Rock.cpp:40, mScaleUpRate per source second
++    float sightRadius = 0.0f;     // general mSightRadius (Wait detection, RockState.cpp:58)
++    float attackDamage = 0.0f;    // general mAttackDamage (InteractPress, Rock.cpp:218)
++    float collisionRadius = 0.0f; // host fall trace sphere radius
++    float health = 0.0f;          // general mHealth
++};
++
++// Host Wait-detection snapshot. The host runs EnemyFunc::isThereOlimar then
++// EnemyFunc::isTherePikmin at mSightRadius (RockState.cpp:59-65); the policy
++// only evaluates the result and never enumerates creatures.
++struct P2RockHazardDetection {
++    bool olimarInSight = false;
++    bool pikminInSight = false;
++};
++
++// Host Fall trace. floorTriangle mirrors enemy->mFloorTriangle and colliding
++// mirrors EB_Colliding (RockState.cpp:184-188). Return false only when no
++// trace was performed (the policy then integrates the source fall velocity).
++struct P2RockHazardTraceResult {
++    P2RockHazardVec3 position;
++    P2RockHazardVec3 velocity;
++    bool floorTriangle = false;
++    bool colliding = false;
++};
++
++typedef bool (*P2RockHazardTraceFn)(void* context, const P2RockHazardVec3& position,
++                                    const P2RockHazardVec3& velocity, float delta,
++                                    float radius, P2RockHazardTraceResult& result);
++
++// onInit inputs (Rock.cpp:47-94). dropGroupNone is mDropGroup == EDG_None;
++// timedAppear is mExistDuration != 0; initialTimer is the host-supplied
++// randWeightFloat(1.5) result used only on the timed path (Rock.cpp:73-76).
++// sourceToken is mSourceEnemy (0 = none), used for Press attribution and the
++// 1 s atari grace; selfToken identifies this Rock for Attack/Press self
++// attribution.
++struct P2RockHazardInit {
++    P2RockHazardVec3 position;
++    bool dropGroupNone = true;
++    bool timedAppear = false;
++    float initialTimer = 0.0f;
++    std::uint64_t sourceToken = 0;
++    std::uint64_t selfToken = 0;
++};
++
++// One recorded hit. Press is InteractPress on a grounded Navi/Piki attributed
++// to mSourceEnemy when set and to the Rock otherwise (Rock.cpp:210-220).
++// Attack is InteractAttack with the source-fixed 250 damage (Rock.cpp:221-223).
++struct P2RockHazardStrike {
++    P2RockHazardStrikeKind kind = P2RockHazardStrikeKind::None;
++    float damage = 0.0f;
++    std::uint64_t targetToken = 0;
++    std::uint64_t attributedToken = 0;
++    bool attributedToSource = false;
++};
++
++struct P2RockHazardContactResult {
++    bool ignored = false;                 // source-enemy atari grace (Rock.cpp:298-304)
++    bool strikeEmitted = false;
++    P2RockHazardStrike strike;
++    bool healthZeroed = false;            // non-Navi/Piki contact forces mHealth = 0
++    bool selfCollisionSuppressed = false; // Rock-vs-Rock setCollEvent suppression
++};
++
++class P2RockHazard {
++public:
++    static constexpr float kSourceDelta = 1.0f / 30.0f;
++    static constexpr float kAppearTimerSeconds = 1.5f;    // RockState.cpp:53
++    static constexpr float kInitialHiddenScale = 0.0001f; // Rock.cpp:51-55
++    static constexpr float kAtariGraceSeconds = 1.0f;     // Rock.cpp:300
++    static constexpr float kTekiAttackDamage = 250.0f;    // Rock.cpp:222
++    static constexpr float kCullTimerRange = 1.5f;        // randWeightFloat(1.5), Rock.cpp:75
++
++    void reset(const P2RockHazardConfig& config);
++
++    // Falling-Rock onInit (Rock.cpp:47-94). dropGroupNone starts ROCK_Wait with
++    // the 0.0001 hidden scale (Rock.cpp:51-55,78-80); otherwise ROCK_DropWait
++    // (Rock.cpp:82-84). timedAppear disables EB_Cullable and seeds mTimer with
++    // the host randWeightFloat(1.5) value (Rock.cpp:73-76). The shadow is
++    // removed on both branches (Rock.cpp:86). Returns false on invalid input
++    // or if the phase is not Inactive, leaving the state untouched.
++    bool onInit(const P2RockHazardInit& init);
++
++    // One 30 Hz source update. delta must equal kSourceDelta. Wait runs the
++    // timer/detection branch (RockState.cpp:48-71), Appear runs fallRockScaleUp
++    // (Rock.cpp:310-327), DropWait transits immediately (RockState.cpp:147-150)
++    // and Fall applies the (0, -mFallSpeed, 0) velocity and dies on a floor
++    // triangle or EB_Colliding (RockState.cpp:170-204).
++    bool update(float delta, const P2RockHazardDetection& detection,
++                P2RockHazardTraceFn trace = nullptr, void* traceContext = nullptr);
++
++    // collisionCallback (Rock.cpp:204-238). The host classifies the colliding
++    // creature and its grounded state. Records a strike, forces health to zero
++    // for non-Navi/Piki contacts, sets EB_Colliding unless suppressed and
++    // reports Rock-vs-Rock suppression. Only fires while atari is enabled.
++    P2RockHazardContactResult contact(P2RockHazardContactKind kind, bool targetOnFloor,
++                                      bool targetIsRock, std::uint64_t targetToken);
++
++    // wallCallback (Rock.cpp:244-249) and hipdropCallBack (Rock.cpp:190-198)
++    // transit to Dead only from ROCK_Move. The falling Rock never reaches
++    // ROCK_Move, so both always return false for this FSM; they exist so a host
++    // sharing the Obj callbacks can route them without branching on identity.
++    bool notifyWallContact();
++    bool notifyHipdrop(bool bittered);
++
++    // StateDead::exec (RockState.cpp:275-286): once the host reports the dead
++    // animation's KEYEVENT_END, request kill(nullptr). Returns true exactly
++    // once on Dead -> Killed; false in any other phase.
++    bool finishDeath();
++
++    P2RockHazardPhase phase() const { return mPhase; }
++    bool isAlive() const
++    {
++        return mPhase == P2RockHazardPhase::Wait || mPhase == P2RockHazardPhase::Appear
++            || mPhase == P2RockHazardPhase::DropWait || mPhase == P2RockHazardPhase::Fall;
++    }
++    const P2RockHazardVec3& position() const { return mPosition; }
++    const P2RockHazardVec3& velocity() const { return mVelocity; }
++    const P2RockHazardVec3& targetVelocity() const { return mTargetVelocity; }
++    float scale() const { return mScale; }
++    float timer() const { return mTimer; }
++    float health() const { return mHealth; }
++    std::uint64_t sourceToken() const { return mSourceToken; }
++    std::uint64_t selfToken() const { return mSelfToken; }
++
++    // Source event flags, exposed for the host and fixtures.
++    bool atari() const { return mAtari; }
++    bool untargetable() const { return mUntargetable; }
++    bool hardConstrained() const { return mHardConstrained; }
++    bool animating() const { return mAnimating; }
++    bool modelHidden() const { return mModelHidden; }
++    bool cullable() const { return mCullable; }
++    bool cullSound() const { return mCullSound; }
++    bool shadow() const { return mShadow; }
++    bool shadowForcedVisible() const { return mShadowForced; }
++    bool fallEffectActive() const { return mFallEffect; }
++    bool deadEffectCreated() const { return mDeadEffect; }
++    bool animationCullingOff() const { return mAnimationCullingOff; }
++    bool colliding() const { return mColliding; }
++    P2RockHazardMotion motion() const { return mMotion; }
++    bool motionStopped() const { return mMotionStopped; }
++
++    // ignoreAtari (Rock.cpp:298-304): ignore mSourceEnemy while mTimer < 1.0.
++    bool shouldIgnoreAtari(std::uint64_t targetToken) const;
++
++private:
++    void enterAppear();
++    void enterFallFromAppear();
++    void enterFallFromDropWait();
++    void enterFall(); // shared Fall init
++    void enterDead();
++
++    P2RockHazardConfig mConfig;
++    P2RockHazardPhase mPhase = P2RockHazardPhase::Inactive;
++    P2RockHazardVec3 mPosition;
++    P2RockHazardVec3 mVelocity;
++    P2RockHazardVec3 mTargetVelocity;
++    float mScale = 1.0f;
++    float mTimer = 0.0f;
++    float mHealth = 0.0f;
++    bool mTimedAppear = false;
++    std::uint64_t mSourceToken = 0;
++    std::uint64_t mSelfToken = 0;
++    bool mAtari = true;
++    bool mUntargetable = false;
++    bool mHardConstrained = false;
++    bool mAnimating = true;
++    bool mModelHidden = false;
++    bool mCullable = true;
++    bool mCullSound = true;
++    bool mShadow = false;
++    bool mShadowForced = false;
++    bool mFallEffect = false;
++    bool mDeadEffect = false;
++    bool mAnimationCullingOff = false;
++    bool mColliding = false;
++    P2RockHazardMotion mMotion = P2RockHazardMotion::None;
++    bool mMotionStopped = false;
++};
++
++// Fixed-capacity pool over the falling-Rock subset of the shared Rock manager
++// array (RockMgr.cpp:101-115). The host configures the real shared limit; the
++// pool models only slot supply/exhaustion/reuse. Exhaustion returns nullptr
++// with no partial state, matching the source's silent tolerance of a failed
++// birth.
++class P2RockHazardPool {
++public:
++    explicit P2RockHazardPool(int capacity) : mCapacity(capacity > 0 ? capacity : 0) {}
++
++    P2RockHazard* spawn(const P2RockHazardInit& init, const P2RockHazardConfig& config);
++    P2RockHazard* spawn(const P2RockHazardVec3& position, bool dropGroupNone, bool timedAppear,
++                        float initialTimer, std::uint64_t sourceToken, std::uint64_t selfToken,
++                        const P2RockHazardConfig& config);
++
++    int capacity() const { return mCapacity; }
++    int activeCount() const;
++
++private:
++    static constexpr int kMaxRocks = 16;
++    int mCapacity;
++    P2RockHazard mRocks[kMaxRocks];
++    bool mUsed[kMaxRocks] = {};
++};
+diff --git a/tools/p2_groink_strike_test.cpp b/tools/p2_groink_strike_test.cpp
+new file mode 100644
+index 00000000..da25de53
+--- /dev/null
++++ b/tools/p2_groink_strike_test.cpp
+@@ -0,0 +1,212 @@
++// Standalone engine-free fixture for the Groink shell-strike -> proxy receiver
++// bridge (pc_port/pc_p2_groink_strike.h/.cpp). It links only the pure Groink
++// classifier and the vendored lane-20 receiver; no engine headers are used.
++// Build (MinGW):
++//   g++ -std=c++17 -Wall -Wextra -Werror -Ipc_port tools/p2_groink_strike_test.cpp pc_port/pc_p2_groink_strike.cpp pc_port/pc_p2_groink_hit.cpp pc_port/pc_p2_projectile_receiver.cpp -o <private-output>/p2_groink_strike_test.exe
++
++#include "pc_p2_groink_strike.h"
++
++#include <cassert>
++#include <cmath>
++#include <cstdio>
++#include <cstdint>
++#include <limits>
++
++namespace {
++constexpr std::uint64_t kNaviToken = 0x1001ULL;
++constexpr std::uint64_t kOwnerToken = 0x3003ULL;
++constexpr std::uint64_t kRuntimeToken = 0xDEADBEEFCAFEULL;
++
++bool near(float actual, float expected, float epsilon = 0.001f)
++{
++    return std::fabs(actual - expected) <= epsilon;
++}
++
++// Source-compatible sweep with the shell damage and no terminal explosion; a
++// Captain at the prism center receives a Bomb with the classifier's damage.
++P2GroinkHitInput bombSweep(float damage)
++{
++    P2GroinkHitInput hit;
++    hit.start = { 0.0f, 0.0f, 0.0f };
++    hit.end = { 0.0f, 0.0f, 10.0f };
++    hit.radius = 2.0f;
++    hit.terminalRadius = 10.0f;
++    hit.damage = damage;
++    hit.terminal = false;
++    return hit;
++}
++
++P2GroinkHitCandidate captain(float x, float z)
++{
++    return P2GroinkHitCandidate{ { x, 0.0f, z }, P2GroinkCandidateKind::Captain, true, false, 4.0f };
++}
++
++// Terminal sweep whose end falloff lies outside the strict prism: the same
++// candidate is a Wind at the terminal end instead of a Bomb.
++P2GroinkHitInput windSweep(float damage)
++{
++    P2GroinkHitInput hit = bombSweep(damage);
++    hit.terminal = true;
++    return hit;
++}
++
++void testBombAppliesDamageThenDiesOnce()
++{
++    P2ProjectileReceiverRegistry registry;
++    assert(registry.add(kNaviToken, 20.0f));
++
++    P2GroinkStrikeInput input;
++    input.hit = bombSweep(10.0f);
++    input.targetToken = kNaviToken;
++    input.attributedToken = kOwnerToken;
++
++    const P2GroinkStrikeResult first =
++        p2_groink_apply_strike(registry, input, captain(1.0f, 5.0f));
++    assert(first.valid && first.insideSweep && first.kind == P2GroinkHitKind::Bomb);
++    assert(near(first.damage, 10.0f)); // exactly the classifier damage
++    assert(first.applied && !first.died);
++    assert(near(first.health, 10.0f));
++    assert(near(registry.find(kNaviToken)->health(), 10.0f));
++
++    const P2GroinkStrikeResult killing =
++        p2_groink_apply_strike(registry, input, captain(1.0f, 5.0f));
++    assert(killing.applied && killing.died);
++    assert(near(killing.health, 0.0f));
++    assert(!registry.find(kNaviToken)->alive());
++
++    // The dead receiver applies nothing and never reports a second death.
++    const P2GroinkStrikeResult after =
++        p2_groink_apply_strike(registry, input, captain(1.0f, 5.0f));
++    assert(!after.applied && !after.died);
++    assert(near(after.health, 0.0f));
++}
++
++void testWindPreservesImpulseWithoutHealthChange()
++{
++    P2ProjectileReceiverRegistry registry;
++    assert(registry.add(kNaviToken, 20.0f));
++
++    P2GroinkStrikeInput input;
++    input.hit = windSweep(10.0f);
++    input.targetToken = kNaviToken;
++    input.attributedToken = kOwnerToken;
++
++    const P2GroinkStrikeResult result =
++        p2_groink_apply_strike(registry, input, captain(2.0f, 10.0f));
++    assert(result.valid && !result.insideSweep && result.kind == P2GroinkHitKind::Wind);
++    assert(!result.applied && !result.died);
++    assert(near(result.impulse.x, 135.0f) && near(result.impulse.y, 0.0f)
++           && near(result.impulse.z, 0.0f));
++    // Wind must not touch receiver health.
++    assert(near(registry.find(kNaviToken)->health(), 20.0f));
++    assert(near(result.health, 20.0f));
++}
++
++void testNonStrikeCasesAreNoOps()
++{
++    P2ProjectileReceiverRegistry registry;
++    assert(registry.add(kNaviToken, 20.0f));
++
++    P2GroinkStrikeInput input;
++    input.hit = bombSweep(10.0f);
++    input.targetToken = kNaviToken;
++
++    // Dead candidate: classifier suppresses before any strike.
++    P2GroinkHitCandidate dead = captain(1.0f, 5.0f);
++    dead.alive = false;
++    const P2GroinkStrikeResult deceased = p2_groink_apply_strike(registry, input, dead);
++    assert(deceased.valid && deceased.kind == P2GroinkHitKind::None && !deceased.applied);
++
++    // Degenerate sweep (zero length) is never a strike.
++    input.hit.end = input.hit.start;
++    input.hit.terminal = true;
++    const P2GroinkStrikeResult degenerate =
++        p2_groink_apply_strike(registry, input, captain(0.0f, 0.0f));
++    assert(degenerate.valid && !degenerate.insideSweep
++           && degenerate.kind == P2GroinkHitKind::None && !degenerate.applied);
++
++    // Nonfinite input is invalid with no command.
++    input.hit.start.x = std::numeric_limits<float>::quiet_NaN();
++    const P2GroinkStrikeResult invalid =
++        p2_groink_apply_strike(registry, input, captain(0.0f, 0.0f));
++    assert(!invalid.valid && invalid.kind == P2GroinkHitKind::None && !invalid.applied);
++
++    assert(near(registry.find(kNaviToken)->health(), 20.0f));
++}
++
++void testRepeatedStrikesClampAtZero()
++{
++    P2ProjectileReceiverRegistry registry;
++    assert(registry.add(kNaviToken, 20.0f));
++
++    P2GroinkStrikeInput input;
++    input.hit = bombSweep(15.0f);
++    input.targetToken = kNaviToken;
++
++    const P2GroinkStrikeResult first =
++        p2_groink_apply_strike(registry, input, captain(1.0f, 5.0f));
++    assert(first.applied && !first.died && near(first.health, 5.0f));
++
++    // The overkill strike clamps the removal to the remaining health and is the
++    // only one that reports died.
++    const P2GroinkStrikeResult killing =
++        p2_groink_apply_strike(registry, input, captain(1.0f, 5.0f));
++    assert(killing.applied && killing.died && near(killing.health, 0.0f));
++    assert(near(registry.find(kNaviToken)->health(), 0.0f));
++
++    const P2GroinkStrikeResult after =
++        p2_groink_apply_strike(registry, input, captain(1.0f, 5.0f));
++    assert(!after.applied && !after.died && near(after.health, 0.0f));
++}
++
++void testWildcardSinkUnknownRuntimeToken()
++{
++    P2ProjectileReceiverRegistry registry;
++    assert(registry.addAny(25.0f));
++
++    P2GroinkStrikeInput input;
++    input.hit = bombSweep(10.0f);
++    input.targetToken = kRuntimeToken; // not registered exactly
++    input.attributedToken = kOwnerToken;
++
++    const P2GroinkStrikeResult result =
++        p2_groink_apply_strike(registry, input, captain(1.0f, 5.0f));
++    assert(result.valid && result.kind == P2GroinkHitKind::Bomb);
++    assert(result.applied && !result.died);
++    assert(near(result.health, 15.0f));
++}
++
++void testExactTokenTakesPrecedenceOverWildcard()
++{
++    P2ProjectileReceiverRegistry registry;
++    assert(registry.addAny(100.0f));
++    assert(registry.add(kNaviToken, 5.0f));
++
++    P2GroinkStrikeInput input;
++    input.hit = bombSweep(10.0f);
++    input.targetToken = kNaviToken;
++
++    const P2GroinkStrikeResult exact =
++        p2_groink_apply_strike(registry, input, captain(1.0f, 5.0f));
++    assert(exact.applied && exact.died && near(exact.health, 0.0f));
++    assert(near(registry.find(kNaviToken)->health(), 0.0f));
++
++    // The wildcard sink keeps its own untouched health for unknown tokens.
++    input.targetToken = kRuntimeToken;
++    const P2GroinkStrikeResult wildcard =
++        p2_groink_apply_strike(registry, input, captain(1.0f, 5.0f));
++    assert(wildcard.applied && !wildcard.died && near(wildcard.health, 90.0f));
++}
++} // namespace
++
++int main()
++{
++    testBombAppliesDamageThenDiesOnce();
++    testWindPreservesImpulseWithoutHealthChange();
++    testNonStrikeCasesAreNoOps();
++    testRepeatedStrikesClampAtZero();
++    testWildcardSinkUnknownRuntimeToken();
++    testExactTokenTakesPrecedenceOverWildcard();
++    std::puts("p2_groink_strike_test PASS");
++    return 0;
++}
+diff --git a/tools/p2_groink_target_runtime.cpp b/tools/p2_groink_target_runtime.cpp
+index 2cbc57de..8657634d 100644
+--- a/tools/p2_groink_target_runtime.cpp
++++ b/tools/p2_groink_target_runtime.cpp
+@@ -25,6 +25,7 @@
+ #include "settings/pc_settings_p2d.h"
+ #include <cmath>
+ #include <cstdio>
++#include <cstdint>
+ #include <cstdlib>
+ #include <vector>
+ #include <fstream>
+@@ -34,6 +35,12 @@
+ #include "../pc_port/pc_p2_groink_attack.cpp"
+ #include "../pc_port/pc_p2_groink_events.h"
+ #include "../pc_port/pc_p2_groink_target.cpp"
++// Lane-21 shell strike -> proxy receiver bridge plus its vendored lane-20
++// dependency, snapshotted into this same translation unit.
++#include "../pc_port/pc_p2_groink_strike.h"
++#include "../pc_port/pc_p2_groink_hit.cpp"
++#include "../pc_port/pc_p2_projectile_receiver.cpp"
++#include "../pc_port/pc_p2_groink_strike.cpp"
+ 
+ namespace {
+ void require(bool value, const char* message) {
+@@ -60,6 +67,13 @@ void capture(const char* path) {
+ 
+ struct WallProbe { bool valid = false; P2GroinkVec3 center{}, velocity{}; };
+ 
++// Source MiniHoudai parameters for the shell sweep. The profile's attack radius
++// is 15; the terminal falloff radius is the source attack hit angle (65). The
++// proxy health is deliberately small so repeated terminal strikes reach zero.
++constexpr float kShellDamage = 10.0f;
++constexpr float kShellTerminalRadius = 65.0f;
++constexpr float kProxyHealth = 25.0f;
++
+ class GroinkAttackApp final : public PlugPikiApp {
+     int frames = 0, sourceTicks = 0;
+     bool setup = false, probes = false, fired = false, flightCapture = false, flightCaptured = false, terminalCapture = false;
+@@ -79,6 +93,10 @@ class GroinkAttackApp final : public PlugPikiApp {
+     P2GroinkVec3 owner, target;
+     float search = 0, radius = 0, angle = 0;
+     unsigned emitted = 0, impacts = 0, primaryImpacts = 0;
++    P2ProjectileReceiverRegistry proxy;
++    unsigned receiverHits = 0, receiverDeaths = 0;
++    bool receiverHealthDecreased = false, strikePlacementPrinted = false;
++    float lastReceiverHealth = kProxyHealth;
+     const std::array<P2GroinkVec3,3> spread{{{0.5f,0.5f,0.5f},{0,0.5f,0},{1,0.5f,1}}};
+ public:
+     int idle() override {
+@@ -93,6 +111,7 @@ public:
+             n->resetPosition(Vector3f(0, 0, 100)); n->mFaceDirection = 0; n->mSRT.r.set(0, 0, 0);
+             trace.reset(mapMgr);
+             require(pc_p2_groink_arena_setup("p2-groink-arena.txt"), "arena setup"); loadProfile();
++            require(proxy.addAny(kProxyHealth), "proxy receiver");
+             require(owner.x==0 && owner.z==0,"target fixture requires center floor stage");
+             auto selected=queryNavi();
+             require(selected.found,"initial live Navi acquisition");
+@@ -114,6 +133,42 @@ public:
+                 require(hit.step.valid && (hit.step.reason == P2GroinkTerminalReason::Floor || hit.step.reason == P2GroinkTerminalReason::Wall), "non-terrain terminal");
+                 ++impacts; primaryImpacts += hit.primary;
+                 std::printf("P2_GROINK_VOLLEY_IMPACT tick=%d slot=%u primary=%d reason=%d xyz=%.3f,%.3f,%.3f\n",sourceTicks,unsigned(hit.slot),hit.primary,int(hit.step.reason),hit.step.end.x,hit.step.end.y,hit.step.end.z);
++                // Fixture-pinned placement: this is a placement fixture, not
++                // natural pursuit. The live Navi is temporarily put on the
++                // retained terminal sweep so the receiver bridge is actually
++                // exercised; the canonical targeting pin is restored after.
++                const P2GroinkVec3 mid{(hit.step.start.x+hit.step.end.x)*0.5f,
++                                       (hit.step.start.y+hit.step.end.y)*0.5f,
++                                       (hit.step.start.z+hit.step.end.z)*0.5f};
++                n->resetPosition(Vector3f(mid.x,mid.y,mid.z));
++                if (!strikePlacementPrinted) {
++                    std::puts("P2_GROINK_STRIKE_PLACEMENT fixture_pinned=1 reason=terminal_sweep_midpoint");
++                    strikePlacementPrinted = true;
++                }
++                const Vector3f naviPos = n->getPosition();
++                const P2GroinkHitCandidate candidate{{naviPos.x,naviPos.y,naviPos.z},
++                    P2GroinkCandidateKind::Captain,n->isAlive(),false,radius};
++                P2GroinkStrikeInput strike;
++                strike.hit.start = hit.step.start; strike.hit.end = hit.step.end;
++                strike.hit.radius = radius; strike.hit.terminalRadius = kShellTerminalRadius;
++                strike.hit.damage = kShellDamage; strike.hit.terminal = true;
++                const std::uint64_t token = reinterpret_cast<std::uint64_t>(n);
++                strike.targetToken = token; strike.attributedToken = token;
++                const P2GroinkStrikeResult receipt = p2_groink_apply_strike(proxy,strike,candidate);
++                if (receipt.kind != P2GroinkHitKind::None) {
++                    ++receiverHits;
++                    std::printf("P2_GROINK_RECEIVER_HIT token=%llu kind=%s damage=%.3f health=%.3f\n",
++                        (unsigned long long)token,
++                        receipt.kind == P2GroinkHitKind::Bomb ? "Bomb" : "Wind",
++                        receipt.damage, receipt.health);
++                    if (receipt.applied && receipt.health < lastReceiverHealth) receiverHealthDecreased = true;
++                    lastReceiverHealth = receipt.health;
++                }
++                if (receipt.died) {
++                    ++receiverDeaths;
++                    std::printf("P2_GROINK_RECEIVER_DEAD token=%llu\n",(unsigned long long)token);
++                }
++                n->resetPosition(Vector3f(relocated?100.0f:0.0f,0,100));
+             }
+             if (cycles < 2) {
+                 P2GroinkAttackInput input;
+@@ -205,6 +260,11 @@ public:
+             std::puts("P2_GROINK_ATTACK_CYCLES_PASS cycles=2 fire_frame=26 previous_tick_latch=1");
+             require(acquisitions==2 && exited,"target acquisition/exit accounting");
+             std::puts("P2_GROINK_LIVE_TARGET_PASS acquisitions=2 repeat=1 exit_path=1 single_navi_roster=1 relocation_injected=1 placement_pinned=1");
++            require(receiverHits > 0,"no classified receiver strike");
++            require(receiverHealthDecreased,"proxy health did not decrease after a Bomb strike");
++            require(receiverDeaths == 1,"proxy died marker did not fire exactly once");
++            std::printf("P2_GROINK_STRIKE_PASS hits=%u deaths=%u health_start=%.3f health_end=%.3f placement=fixture_pinned\n",
++                receiverHits,receiverDeaths,kProxyHealth,lastReceiverHealth);
+             std::puts("PASS GROINK_VOLLEY_RUNTIME"); std::fflush(stdout); std::_Exit(0);
+         }
+     }
+-- 
+2.55.0.windows.3
+

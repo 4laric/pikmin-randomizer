@@ -1,3 +1,43 @@
+#include "pc_p2_demon_host.h"
+#include "pc_p2_sarai_manager.h"
+#include "pc_p2_umimushi.h"
+#include "pc_p2_jigumo.h"
+#include "pc_p2_snakejoint.h"
+#include "pc_p2_dangomushi.h"
+#include "pc_p2_hanachirashi.h"
+#include "pc_p2_catfish.h"
+#include "pc_p2_mar.h"
+#include "pc_p2_tadpole.h"
+#include "pc_p2_hana.h"
+#include "pc_p2_kurage_teki.h"
+#include "pc_p2_groink_teki.h"
+#include "pc_p2_teki_lifetime.h"
+#include "pc_p2_onikurage_teki.h"
+#include "pc_p2_bombsarai_teki.h"
+#include "pc_p2_king_teki.h"
+#include "pc_p2_frog.h"
+#include "pc_p2_kogane.h"
+#include "pc_p2_mamuta.h"
+#include "pc_p2_tank.h"
+#include "pc_p2_qurione.h"
+#include "pc_p2_shijimi.h"
+#include "pc_p2_kochappy_fsm.h"
+#ifdef PIKI_PC_PORT
+#include "pc_p2_enemy.h"
+#include "pc_p2_sheargrub.h"
+#include "pc_p2_breadbug_actor.h"
+#include "pc_p2_giant_breadbug_actor.h"
+#include "pc_p2_batch2.h"
+#include "pc_p2_sokkuri.h"
+#include "pc_p2_armor.h"
+#include "pc_p2_elecbug.h"
+#include "pc_p2_tamago.h"
+#include "pc_p2_imomushi.h"
+#include "pc_p2_otakara.h"
+#include "pc_p2_batch3.h"
+#include "pc_p2_long_legs.h"
+#include "pc_p2_hardlanes.h"
+#endif
 #include "pc_randomizer.h"
 #include "FlowController.h"
 #include "MoviePlayer.h"
@@ -132,6 +172,9 @@ void BTeki::viewDraw(Graphics& gfx, immut Matrix4f& mat)
 	gfx.useMatrix(Matrix4f::ident, 0);
 	mTekiAnimator->updateContext();
 	mTekiShape->mShape->updateAnim(gfx, mat, nullptr, this);
+#ifdef PIKI_PC_PORT
+    if (!pc_p2_demon_manager_draw_actor(this, gfx, mat, true) && !pc_p2_sarai_manager_draw_actor(this, gfx, mat, true) && !pc_p2_kogane_draw(this, gfx, mat, true) && !pc_p2_mamuta_draw(this, gfx, mat, true) && !pc_p2_frog_draw(this, gfx, mat, true) && !pc_p2_qurione_draw(this, gfx, mat, true) && !pc_p2_shijimi_draw(this, gfx, mat, true) && !pc_p2_dwarf_orange_draw(this, gfx, mat, true) && !pc_p2_kochappy_draw(this, gfx, mat, true) && !pc_p2_sheargrub_draw(this, gfx, mat, true) && !pc_p2_snow_draw(this, gfx, mat, true) && !pc_p2_batch2_draw(this, gfx, mat, true) && !pc_p2_batch3_draw(this, gfx, mat, true) && !pc_p2_long_legs_draw(this, gfx, mat, true))
+#endif
 	mTekiShape->mShape->drawshape(gfx, *gfx.mCamera, nullptr);
 }
 
@@ -291,7 +334,7 @@ void BTeki::reset()
 	mReturnStateID    = 0;
 	mActionStateId    = 0;
 	mCurrentQueueId   = 0;
-	mHealth           = getParameterF(TPF_Life);
+	mHealth           = getMaxLife();
 	mStoredDamage     = 0.0f;
 	mDamageCount      = 0.0f;
 	_344              = -1;
@@ -432,10 +475,45 @@ void BTeki::startAI(int)
 void BTeki::update()
 {
 	Creature::update();
+	pc_p2_demon_manager_update_actor(this);
+	pc_p2_sarai_manager_update_actor(this);
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	pc_p2_sokkuri_update(this);
+	pc_p2_armor_update(this);
+	pc_p2_otakara_update(this);
+	pc_p2_kurage_teki_tick(this);
+	pc_p2_groink_teki_tick(this);
+	pc_p2_onikurage_teki_tick(this);
+	pc_p2_bombsarai_teki_tick(this);
+	pc_p2_kogane_update(this);
+	pc_p2_king_teki_tick(this);
+	// Lane 28 (#245): ground the Fuefuki vehicle host + register its carcass. Runs
+	// after Creature::update()'s strategy act()/moveNew() so the ground pin is the
+	// last write of the frame; no-op for every actor not bound as the vehicle.
+	pc_p2_hardlanes_fuefuki_actor(this);
+    pc_p2_snow_update(this,NSystem::getFrameTime());
+    pc_p2_long_legs_update(this);
+	pc_p2_shijimi_update(this);
+	pc_p2_qurione_update(this);
+	pc_p2_elecbug_update(this);
+	pc_p2_tamago_update(this);
+	pc_p2_umimushi_update(this);
+	pc_p2_jigumo_update(this);
+	pc_p2_snakejoint_update(this);
+	pc_p2_dangomushi_update(this);
+	pc_p2_hanachirashi_update(this);
+	pc_p2_catfish_update(this);
+	pc_p2_mar_update(this);
+	pc_p2_tadpole_update(this);
+	pc_p2_frog_update(this);
+	pc_p2_hana_update(this);
+	pc_p2_imomushi_update(this);
+	pc_p2_kochappy_fsm_update(this);
+#endif
 	if (mDeadState == 0) {
 		updateTimers();
 		if (mHealth > 0.0f) {
-			f32 max = getParameterF(TPF_Life);
+			f32 max = getMaxLife();
 			f32 inc = getParameterF(TPF_LifeRecoverRate);
 			mHealth += NSystem::getFrameTime() * (max * inc);
 
@@ -539,6 +617,20 @@ void BTeki::animationKeyUpdated(immut PaniAnimKeyEvent& event)
 void BTeki::doAI()
 {
 	STACK_PAD_VAR(2);
+#ifdef PIKI_PC_PORT
+	if (pc_p2_shijimi_suppress_ai(this)) {
+		return;
+	}
+	if (pc_p2_kochappy_fsm_suppress_ai(this)) {
+		return;
+	}
+	if (pc_p2_frog_suppress_ai(this)) {
+		return;
+	}
+#endif
+	if (pc_p2_qurione_suppress_ai(this)) {
+		return;
+	}
 	if (!mDeadState && (AIPerf::optLevel < 3 || mOptUpdateContext.updatable())) {
 		TekiStrategy* strat = getStrategy();
 		strat->act(*static_cast<Teki*>(this));
@@ -593,7 +685,8 @@ void BTeki::die()
             && gameflow.mMoviePlayer && !gameflow.mMoviePlayer->mIsActive);
     }
 
-	mDeadState = 1;
+    mDeadState = 1;
+    pc_p2_otakara_died(this); // lane-22 host death-seam hook; no-op for unregistered actors
 }
 
 /**
@@ -667,6 +760,11 @@ void BTeki::becomeCorpse()
 void BTeki::doKill()
 {
 	PRINT_NAKATA("BTeki::doKill:%08x\n", this);
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+	// Actor-lifetime seam (#397/#186): clear this actor's P2 family
+	// registrations on the real death funnel, not only on pool-address reuse.
+	pc_p2_forget_teki(this);
+#endif
 	if (tekiOptUpdateMgr) {
 		mOptUpdateContext.exit();
 	}
@@ -1276,6 +1374,11 @@ bool BTeki::attackableCreature(Creature& target)
 		return false;
 	}
 
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    bool sourceEntry=false;
+    if(pc_p2_snow_attackable(this,target,sourceEntry))return sourceEntry;
+#endif
+
 	if (!contactCreature(target)) {
 		return false;
 	}
@@ -1314,6 +1417,11 @@ bool BTeki::moveToward(immut Vector3f& target, f32 speed)
  */
 bool BTeki::turnToward(f32 targetAngle, f32 turnSpeed)
 {
+#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
+    bool sourceArrived=false;
+    if(pc_p2_snow_turn(this,targetAngle,turnSpeed*NSystem::getFrameTime(),sourceArrived))return sourceArrived;
+#endif
+
 	f32 faceDir   = NMathF::roundAngle(getDirection());
 	f32 nearerDir = NMathF::calcNearerDirection(faceDir, targetAngle);
 	f32 speed     = turnSpeed * NSystem::getFrameTime();
@@ -1698,6 +1806,11 @@ int BTeki::getFlickDamageCount(int pikiCount)
  */
 void BTeki::eventPerformed(immut TekiEvent& event)
 {
+#ifdef PIKI_PC_PORT
+	if (pc_p2_giant_breadbug_actor_press(this, event)) {
+		return;
+	}
+#endif
 	TekiStrategy* tekiEvent = getStrategy();
 	tekiEvent->eventPerformed(event);
 }
@@ -1768,6 +1881,7 @@ bool BTeki::interactDefault(immut TekiInteractionKey& key)
 
 		_344 = attack->getDamagePortion();
 		mStoredDamage += attack->mDamage;
+		pc_p2_otakara_attack(this, attack->mOwner, "InteractAttack");
 		if (getTekiOption(TEKIOPT_DamageCountable)) {
 			mDamageCount++;
 		}
@@ -1899,7 +2013,7 @@ WayPoint* BTeki::getRouteWayPoint(int idx)
  */
 void BTeki::updateLifeGauge()
 {
-	mLifeGauge.updValue(mHealth, getParameterF(TPF_Life));
+	mLifeGauge.updValue(mHealth, getMaxLife());
 }
 
 /**
@@ -1997,6 +2111,9 @@ void BTeki::drawTekiShape(Graphics& gfx)
 			mAnimatedMaterials.animate(nullptr);
 		}
 
+#ifdef PIKI_PC_PORT
+        if (!pc_p2_demon_manager_draw_actor(this, gfx, onCamMtx, false) && !pc_p2_sarai_manager_draw_actor(this, gfx, onCamMtx, false) && !pc_p2_kurage_teki_draw(this, gfx, onCamMtx, false) && !pc_p2_onikurage_teki_draw(this, gfx, onCamMtx, false) && !pc_p2_king_teki_draw(this, gfx, onCamMtx, false) && !pc_p2_kogane_draw(this, gfx, onCamMtx, false) && !pc_p2_mamuta_draw(this, gfx, onCamMtx) && !pc_p2_frog_draw(this, gfx, onCamMtx) && !pc_p2_tank_draw(this, gfx, onCamMtx) && !pc_p2_qurione_draw(this, gfx, onCamMtx, false) && !pc_p2_shijimi_draw(this, gfx, onCamMtx, false) && !pc_p2_giant_breadbug_actor_draw(this, gfx, onCamMtx) && !pc_p2_breadbug_actor_draw(this, gfx, onCamMtx) && !pc_p2_dwarf_orange_draw(this, gfx, onCamMtx) && !pc_p2_kochappy_draw(this, gfx, onCamMtx) && !pc_p2_sheargrub_draw(this, gfx, onCamMtx) && !pc_p2_snow_draw(this, gfx, onCamMtx) && !pc_p2_batch2_draw(this, gfx, onCamMtx) && !pc_p2_batch3_draw(this, gfx, onCamMtx) && !pc_p2_long_legs_draw(this, gfx, onCamMtx))
+#endif
 		mTekiShape->mShape->drawshape(gfx, *gfx.mCamera, &mAnimatedMaterials);
 		if (lightType == 1) {
 			gfx.calcLighting(1.0f);

@@ -60,7 +60,7 @@ def main(exe, assets, output, expanded=False, starting_area='forest', seed='star
                     wait(f"PIKMIN_{item.split()[0].upper()}_ONION_GRANTED starter=5")
             wait(f"PIKMIN_AREA_ACCESS impact={int(session.manifest['schema'] >= 5)} forest=1 navel=1 spring=1 trial=1")
             session.receive(len(grants), [ITEM_IDS[REPAIR]] * 25)
-            wait("GOAL: Ship repaired!")
+            wait("GOAL: Seed complete.")
             run.poll()
             expected = {'Population: 20 total Pikmin' if collection_checks else 'Population: 20 Pikmin in the field', f'Explore: {area} - Land'} if expanded else set()
             if session.manifest.get('permanent_checks', session.manifest['schema'] == 8):
@@ -69,6 +69,11 @@ def main(exe, assets, output, expanded=False, starting_area='forest', seed='star
             if session.manifest.get('no_exploration'): expected.discard(f'Explore: {area} - Land')
             if not collection_checks and initial_field < 20:
                 expected.discard('Population: 20 Pikmin in the field')
+            if session.manifest.get('color_population'):
+                from randomizer.catalog import population_checks
+                expected = {name for name in expected if not name.startswith('Population:')}
+                expected |= {name for name, (entry_color, count) in population_checks(session.manifest).items()
+                             if count <= (initial_field if entry_color.lower() == color else 5)}
             if collection_fixture:
                 from randomizer.catalog import TOTAL_POPULATION
                 expected |= set(TOTAL_POPULATION) | {'Bestiary: Deliver Dwarf Bulborb'}

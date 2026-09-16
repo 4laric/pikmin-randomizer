@@ -1,3 +1,15 @@
+#include "pc_p2_purple_flight.h"
+#include "pc_p2_kurage_visual.h"
+#include "pc_p2_teki_lifetime.h"
+#include "pc_p2_kurage_teki.h"
+#include "pc_p2_onikurage_teki.h"
+#include "pc_p2_bombsarai_teki.h"
+#include "pc_p2_groink_teki.h"
+#include "pc_p2_king_teki.h"
+#if defined(PIKI_PC_PORT)
+#include "pc_p2_demon_drop_state.h"
+#include "pc_p2_demon_bridge.h"
+#endif
 #if defined(PIKMIN_RANDOMIZER_TEST_HOOKS)
 #include "pc_randomizer_campaign_catalog.h"
 #endif
@@ -8,6 +20,32 @@
 #include "WorkObject.h"
 #include "GameCoreSection.h"
 #include "pc_bbft.h"
+#include "pc_p2_preview.h"
+#include "pc_p2_enemy.h"
+#include "pc_p2_dwarf_orange.h"
+#include "pc_p2_demon_host.h"
+#include "pc_p2_sarai_manager.h"
+#include "pc_p2_cave.h"
+#include "pc_p2_kurage_receiver.h"
+#include "pc_p2_captain.h"
+#include "pc_p2_second_captain.h"
+#include "pc_p2_breadbug_visual.h"
+#include "pc_p2_giant_breadbug_visual.h"
+#include "pc_p2_giant_breadbug_actor.h"
+#include "pc_p2_breadbug_actor.h"
+#include "pc_p2_bulblax_visual.h"
+#include "pc_p2_queen.h"
+#include "pc_p2_king.h"
+#include "pc_p2_dweevil.h"
+#include "pc_p2_bombotakara.h"
+#include "pc_p2_tank.h"
+#include "pc_p2_hiba.h"
+#include "pc_p2_flora_actor.h"
+#include "pc_p2_pom.h"
+#include "pc_p2_plant.h"
+#include "pc_p2_tamago.h"
+#include "pc_p2_hardlanes.h"
+#include "pc_p2_projectiles.h"
 #include "pc_randomizer.h"
 #include "MapCode.h"
 #include <fstream>
@@ -839,11 +877,30 @@ void GameCoreSection::prepareBadEnd()
 void GameCoreSection::exitStage()
 {
 #if defined(PIKI_PC_PORT)
+	pc_demon_drop_scene_exit();
+	pc_demon_scene_exit();
+#endif
+#if defined(PIKI_PC_PORT)
 	// Stale focus would keep depth of field running on the file-select and
 	// title screens: those frames have no HUD ortho, so the pass hits the UI.
 	pc_gfx_set_dof_focus(0.0f);
+	// Release while all stage creatures and managers are still valid.
+	pc_p2_kurage_receiver_reset();
+	pc_p2_kurage_teki_reset();
+	pc_p2_onikurage_teki_reset();
+	pc_p2_king_teki_reset();
+	pc_p2_kurage_visual_reset();
+	// Actor-lifetime seam (#397/#186): clear every remaining P2 family
+	// registration map so a finished stage cannot retain a stale BTeki* key
+	// pointing into the TekiMgr that is about to be destroyed. Previously only
+	// the kurage families were released here.
+	pc_p2_purple_flight_reset(); // Restore live Pikmin flags before the stage heap is released.
+	pc_p2_reset_all_teki();
 #endif
 	demoEventMgr = nullptr;
+	// Lane 12 (#130): drop the live captain/squad binding before the NaviMgr and
+	// stage-heap objects are destroyed, matching the shared lifetime seam.
+	pc_p2_captain::teardown();
 	naviMgr      = nullptr;
 	playerState->exitCourse();
 	seSystem->exitCourse();
@@ -977,7 +1034,47 @@ void GameCoreSection::initStage()
 
 	PRINT("--------------- GeneratorCache : preload start\n");
 	memStat->start("genCache");
-	const bool hasAuthoritativeStageCache = generatorCache->preload(flowCont.mCurrentStage->mStageIndex);
+#if defined(PIKMIN_RANDOMIZER_TEST_HOOKS)
+	// lane-03 (#439): room generator-cache resume. Load the serialized cache
+	// written by a prior PIKMIN_P2_CACHE_SAVE boot, then preload keyed by the
+	// room's mStageID (STAGE_Practice = 0; the stage-list mStageIndex for chal0
+	// has no GeneratorCache entry). The ramMode Generator::read here restores the
+	// SLT1 spawn-slot uid that ordinary birth then re-resolves.
+	if (pc_pikipelago_room_preview() && std::getenv("PIKMIN_P2_CACHE_RESUME")) {
+		std::ifstream in("p2-gencache.bin", std::ios::binary | std::ios::ate);
+		if (in) {
+			std::streamsize size = in.tellg();
+			in.seekg(0);
+			static char card[0x8000];
+			if (size > 0 && size <= (std::streamsize)sizeof(card)) {
+				in.read(card, size);
+				RamStream stream(card, static_cast<int>(size));
+				generatorCache->loadCard(stream);
+			}
+			std::printf("P2_GENCACHE_RESUME stage_id=%u bytes=%lld bridge=%d bindings=%u\n",
+			            flowCont.mCurrentStage->mStageID, (long long)size,
+			            int(pc_randomizer_p2_bridge()), pc_randomizer_p2_binding_count());
+		}
+	}
+#endif
+	const u32 genCacheStage =
+#if defined(PIKMIN_RANDOMIZER_TEST_HOOKS)
+		(pc_pikipelago_room_preview() && std::getenv("PIKMIN_P2_CACHE_RESUME"))
+			? flowCont.mCurrentStage->mStageID : flowCont.mCurrentStage->mStageIndex;
+#else
+		flowCont.mCurrentStage->mStageIndex;
+#endif
+	const bool hasAuthoritativeStageCache = generatorCache->preload(genCacheStage);
+#if defined(PIKMIN_RANDOMIZER_TEST_HOOKS)
+	if (pc_pikipelago_room_preview() && std::getenv("PIKMIN_P2_CACHE_RESUME")) {
+		Generator* g;
+		FOREACH_NODE_REUSE(Generator, generatorList->mGenListHead->mChild, g) {
+			std::printf("P2_GENCACHE_DUMP _70=%u uid=%u alive=%d day=%d ram=%d\n",
+			            unsigned(g->_70), pc_randomizer_generator_id(g),
+			            int(g->mAliveCount), int(g->mLatestSpawnDay), int(g->readFromRam()));
+		}
+	}
+#endif
 	memStat->end("genCache");
 	PRINT("--------------- GeneratorCache : preload done\n");
 
@@ -1042,15 +1139,26 @@ void GameCoreSection::initStage()
 	bool useDay     = false;
 	bool useInit    = false;
 	bool usePlant   = false;
+#if defined(PIKMIN_RANDOMIZER_TEST_HOOKS)
+	// lane-03 (#439): on a room cache-resume boot, the generator list already
+	// came from preload; skipping the default.gen disk read avoids duplicate
+	// room actors binding the same _70.
+	const bool resumeRoomCache = pc_pikipelago_room_preview() && std::getenv("PIKMIN_P2_CACHE_RESUME");
+#else
+	const bool resumeRoomCache = false;
+#endif
 	sprintf(path2, "%sdefault.gen", path);
-	RandomAccessStream* data = gsys->openFile(path2);
+	// On a room cache-resume boot, skip the disk default.gen entirely (the
+	// generator list already came from GeneratorCache::preload); do not even
+	// open the stream, so it is neither leaked nor double-read.
+	RandomAccessStream* data = resumeRoomCache ? nullptr : gsys->openFile(path2);
 	if (data) {
 		PRINT("DEFAULT GEN LOADED **********************************\n");
 		generatorMgr->read(*data, false);
 		data->close();
 		generatorMgr->updateUseList();
 		useDefault = true;
-	} else {
+	} else if (!resumeRoomCache) {
 		PRINT("*** NO GENERATOR FILE\n");
 		mNavi->mSRT.t.set(0.0f, 0.0f, 0.0f);
 		mNavi->mDayEndPosition = mNavi->mSRT.t;
@@ -1173,7 +1281,7 @@ void GameCoreSection::initStage()
 	generatorList->createRamGenerators();
 
 	memStat->start("genCache");
-	generatorCache->load(flowCont.mCurrentStage->mStageIndex);
+	generatorCache->load(genCacheStage);
 	memStat->end("genCache");
 
 	if (useDay) {
@@ -1203,7 +1311,7 @@ void GameCoreSection::initStage()
 	}
 
 	attentionCamera = new AttentionCamera;
-	cameraMgr->startCamera(naviMgr->getNavi());
+	cameraMgr->startCamera(naviMgr->getActiveNavi());
 	cameraMgr->update();
 	mNavi->mIsCursorVisible = TRUE;
 
@@ -1266,7 +1374,7 @@ void GameCoreSection::initStage()
 		DCFlushRange(controllerBuffer->mBufferAddr, data2->getLength());
 	}
 
-	naviMgr->getNavi(0)->startKontroller();
+	naviMgr->getActiveNavi()->startKontroller();
 	PRINT("init stage done\n");
 }
 
@@ -1333,6 +1441,31 @@ void GameCoreSection::finalSetup()
 		}
 	}
 
+	// Lane 12 (#130): finish the second captain's live setup now that the first
+	// captain's spawn position, the shared camera and every stage manager exist.
+	// The second Navi was birthed (create(2)) during initStage; here it is
+	// init'd and reset beside the active captain (the same sequence the first
+	// captain goes through), so the survivor path can rebind active/camera/
+	// whistle/throw to it when slot 0 goes down.
+	if (naviMgr->hasSecondNavi()) {
+		Navi* firstNavi = naviMgr->getActiveNavi();
+		Navi* secondNavi = naviMgr->getOtherNavi(firstNavi);
+		if (firstNavi && secondNavi) {
+			secondNavi->init(firstNavi->mSRT.t);
+			secondNavi->mSRT.r = firstNavi->mSRT.r;
+			secondNavi->mFaceDirection = firstNavi->mFaceDirection;
+			secondNavi->reset();
+			secondNavi->mNaviCamera = mNavi->mNaviCamera;
+			secondNavi->mStateMachine->transit(secondNavi, NAVISTATE_Starting);
+			// Lane 12 (#130): NaviStartingState::init re-centres the Navi on the
+			// ship, so apply the slot offset AFTER the Starting transition or the
+			// two captains stack at the same point.
+			secondNavi->mSRT.t.x += 40.0f;
+			secondNavi->mSRT.t.z += 40.0f;
+			secondNavi->startKontroller();
+		}
+	}
+
 	UfoItem* ufo = itemMgr->getUfo();
 	if (ufo) {
 		if (!playerState->isTutorial()) {
@@ -1354,6 +1487,18 @@ void GameCoreSection::finalSetup()
 		workObjectMgr->finalSetup();
 	}
 
+	pc_p2_kurage_teki_setup();
+	pc_p2_onikurage_teki_setup();
+	pc_p2_bombsarai_teki_setup();
+	pc_p2_groink_teki_setup();
+	pc_p2_king_teki_setup();
+	pc_p2_demon_manager_setup();
+	pc_p2_sarai_manager_setup();
+	pc_p2_preview_setup();
+	pc_p2_snow_campaign_setup();
+	pc_p2_dwarf_orange_campaign_setup();
+	// Actor-lifetime (#397): mark the new scene ready for lifecycle fixtures.
+	pc_p2_scene_begin();
 	PRINT("====================== FINAL SETUP DONE ======================\n");
 }
 
@@ -1482,8 +1627,22 @@ GameCoreSection::GameCoreSection(Controller* controller, MapMgr* mgr, Camera& ca
 	PRINT("================== NAVI ===================\n");
 	memStat->start("navi");
 	naviMgr = new NaviMgr();
-	naviMgr->create(1);
+	// Lane 12 (#130): opt-in second captain. navi_capacity() is 1 unless
+	// PIKMIN_P2_SECOND_CAPTAIN is set (the live gate now defaults open); normal
+	// single-captain play is unchanged because the request defaults off.
+	int naviCapacity = pc_p2_captain::navi_capacity();
+	if (naviCapacity > 1 && !pc_p2_captain::prepare_second_captain_assets(naviMgr)) {
+		naviCapacity = 1;
+	}
+	naviMgr->create(naviCapacity);
 	mNavi = static_cast<Navi*>(naviMgr->birth());
+	if (naviCapacity > 1) pc_p2_captain::birth_second_captain(naviMgr);
+	// Lane 12 (#130): bind the live slot-0 captain/squad adapter now that the
+	// Navi object exists, so a captor family can resolve target identity and
+	// claim/release through pc_p2_captain against the real NaviMgr/PikiMgr.
+	// Idempotent; with one Navi the zero-control guard keeps only-captain
+	// capture refused, exactly as the source refuses to strand the player.
+	pc_p2_captain::setup_from_navi_mgr();
 	PRINT("********* navi ==== %x\n", mNavi);
 	gameflow.addGenNode("naviMgr", naviMgr);
 	memStat->end("navi");
@@ -1579,7 +1738,9 @@ GameCoreSection::GameCoreSection(Controller* controller, MapMgr* mgr, Camera& ca
  * F5 stocks 20 red Pikmin in the Onion, up to the configured limit: reaching a
  * few hundred the honest way takes far too long to iterate on. F6 pushes the
  * clock on by an in-game hour, so a change to the day length can be judged
- * without sitting through it.
+ * without sitting through it. F7 ends the day with the Main Engine recovered
+ * and 20 Pikmin banked, so testing anything past the first level does not mean
+ * playing the first level again.
  */
 static void pcDebugKeys()
 {
@@ -1643,6 +1804,51 @@ static void pcDebugKeys()
 		fflush(stderr);
 	}
 	hourWasDown = hourDown;
+
+	// F7 finishes the day outright: the Main Engine counted as recovered and
+	// the Onion topped up to 20 red Pikmin. Only the trigger is set here --
+	// NewPikiGameModeState picks it up and runs the real end-of-day path, so
+	// the cutscene, the results screen and the save prompt all behave as if
+	// the day had ended on its own.
+	static bool skipWasDown = false;
+	const bool skipDown     = keys != nullptr && keys[SDL_SCANCODE_F7] != 0;
+	if (skipDown && !skipWasDown) {
+		if (gameflow.mIsDayEndActive || gameflow.mIsDayEndTriggered) {
+			fprintf(stderr, "[DEBUG] the day is already ending\n");
+		} else {
+			// Keyed by model ID, and PlayerState refuses a duplicate itself.
+			// "Invisible" because the part is granted rather than carried in,
+			// which is also what keeps this quiet in stages that have no
+			// Main Engine pellet to register.
+			if (!playerState->hasUfoParts(UFOID_MainEngine)) {
+				playerState->getUfoParts(UFOID_MainEngine, true);
+			}
+
+			// The same three places F5 touches, for the same reasons.
+			GoalItem* onion = itemMgr ? itemMgr->getContainer(Red) : nullptr;
+			if (onion == nullptr) {
+				fprintf(stderr, "[DEBUG] no red Onion here; ending the day without stocking\n");
+			} else {
+				const int limit   = pc_settings_get_piki_limit();
+				const int already = int(GameStat::allPikis);
+				int added         = 20 - already; // top up to 20, do not add 20
+				if (already + added > limit) {
+					added = limit - already;
+				}
+				if (added > 0) {
+					pikiInfMgr.mPikiCounts[Red][Leaf] += added;
+					onion->mHeldPikis[Leaf] += added;
+					GameStat::containerPikis.add(Red, added);
+					GameStat::update();
+				}
+			}
+
+			gameflow.mIsDayEndTriggered = TRUE;
+			fprintf(stderr, "[DEBUG] tutorial skipped: Main Engine recovered, ending the day\n");
+		}
+		fflush(stderr);
+	}
+	skipWasDown = skipDown;
 }
 #endif
 
@@ -1673,6 +1879,8 @@ void GameCoreSection::update()
 		bugPrintBuffer->update();
 #endif
 	}
+	pc_p2_hardlanes_update();
+	pc_p2_projectiles_update();
 
 	if (GameStat::allPikis == 0 && GameStat::maxPikis > 0) {
 		Navi* navi = mNavi;
@@ -1691,7 +1899,9 @@ void GameCoreSection::update()
 	}
 
 
-	Piki* nextThrowPiki = naviMgr->getNavi()->mNextThrowPiki;
+	Navi* activeThrowNavi = naviMgr->getActiveNavi();
+	if (!activeThrowNavi) activeThrowNavi = naviMgr->getNavi();
+	Piki* nextThrowPiki = activeThrowNavi->mNextThrowPiki;
 	int encodedNextThrowType;
 	if (nextThrowPiki) {
 		int color = nextThrowPiki->mColor;
@@ -1724,6 +1934,11 @@ void GameCoreSection::update()
 	zen::pGameInfo->mTotalPikiNum         = GameStat::allPikis;
 	zen::pGameInfo->mMapPikiNum           = GameStat::mapPikis;
 	zen::pGameInfo->mFormationPikiNum     = GameStat::formationPikis;
+	pc_p2_queen_update();
+	pc_p2_king_update();
+	pc_p2_hiba_update();
+	pc_p2_dweevil_update();
+	pc_p2_bombotakara_update();
 	Node::update();
 }
 
@@ -2076,6 +2291,9 @@ static void randomizerApplyBenefits(Navi* navi, MapMgr* map)
 
 void GameCoreSection::updateAI()
 {
+    pc_p2_cave_tick();
+    pc_p2_giant_breadbug_actor_tick();
+    pc_p2_breadbug_actor_tick();
     if (pc_randomizer_expanded()) {
         AICONST.mMaxPikisOnField(pc_randomizer_field_capacity());
         const bool active = !gameflow.mMoviePlayer->mIsActive && !gameflow.mPauseAll
@@ -2228,6 +2446,48 @@ void GameCoreSection::updateAI()
         }
     }
 #if defined(PIKMIN_RANDOMIZER_TEST_HOOKS)
+    // lane-03 (#439): room generator-cache writer. Serializes the live room
+    // generators through the real day-end cache path (beginSave/saveGenerator/
+    // endSave) and writes the whole cache via saveCard to p2-gencache.bin, then
+    // exits. TEST_HOOKS + room-preview + env-gated so no exit path ships in a
+    // production build.
+    if (pc_pikipelago_room_preview() && std::getenv("PIKMIN_P2_CACHE_SAVE") && generatorList) {
+        static bool saved = false;
+        if (!saved) {
+            saved = true;
+            const u32 stage = flowCont.mCurrentStage->mStageID;  // 0 = STAGE_Practice for the room
+            generatorCache->beginSave(stage);
+            int gens = 0;
+            Generator* gen;
+            FOREACH_NODE_REUSE(Generator, generatorList->mGenListHead->mChild, gen)
+            {
+                std::printf("P2_GENCACHE_SCAN generator=%u flags=%u dayLimit=%d currentDay=%d\n",
+                            unsigned(gen->_70), unsigned(gen->mCarryOverFlags),
+                            int(gen->mDayLimit), int(gameflow.mWorldClock.mCurrentDay));
+                if (gen->mCarryOverFlags & GENCARRY_SaveGenerator) {
+                    generatorCache->saveGenerator(gen);
+                    ++gens;
+                }
+            }
+            generatorCache->endSave();
+            // saveCard writes 4 + 4 + GENCACHE_HEAP_SIZE + STAGE_COUNT*(1+9*4)
+            // bytes; bound the buffer so a growth cannot silently overflow it.
+            static char card[0x8000];
+            RamStream stream(card, sizeof(card));
+            generatorCache->saveCard(stream);
+            if (stream.getPosition() <= 0 || stream.getPosition() >= (int)sizeof(card)) {
+                std::fprintf(stderr, "[PC Generator] gen-cache record %d bytes does not fit the %zu-byte buffer\n",
+                             stream.getPosition(), sizeof(card));
+                std::abort();
+            }
+            std::ofstream out("p2-gencache.bin", std::ios::binary | std::ios::trunc);
+            out.write(card, stream.getPosition());
+            out.close();
+            std::printf("P2_GENCACHE_SAVE stage=%u generators=%d bytes=%d\n", stage, gens, stream.getPosition());
+            std::fflush(stdout);
+            std::exit(gens ? 0 : 1);
+        }
+    }
     const char* scripted = std::getenv("PIKMIN_RANDOMIZER_TEST_SCRIPT");
     const char* background = std::getenv("PIKMIN_RANDOMIZER_TEST_BACKGROUND");
     if (pc_randomizer_ready() && scripted && !std::strcmp(scripted, "spawn-audit")
@@ -2252,7 +2512,7 @@ void GameCoreSection::updateAI()
             for (int i = 0; i < count; ++i) {
                 const int offset = input->getPosition();
                 Generator* gen = new Generator(); gen->read(*input);
-                pc_randomizer_bind_generator(gen, stage, file.c_str(), offset);
+                pc_randomizer_bind_generator(gen, stage, file.c_str(), offset, gen->_70);
                 if (!gen->mGenObject) continue;
                 const bool teki = gen->mGenObject->mID == 'teki', boss = gen->mGenObject->mID == 'boss';
                 if (!teki && !boss) continue;
@@ -2821,10 +3081,17 @@ void GameCoreSection::updateAI()
 				plantMgr->update();
 				gsys->mTimer->start("teki", true);
 				if (tekiMgr && !gameflow.mMoviePlayer->mIsActive) {
+#if defined(PIKI_PC_PORT)
+					pc_p2_bulblax_visual_update(gsys->getFrameTime());
+#endif
 					tekiMgr->update();
 				}
 				gsys->mTimer->stop("teki");
 				pelletMgr->update();
+				pc_p2_flora_tick();
+				pc_p2_pom_tick();
+				pc_p2_plant_tick();
+				pc_p2_tamago_tick();
 			}
 		}
 	}
@@ -2882,6 +3149,7 @@ void GameCoreSection::draw(Graphics& gfx)
 
 	gfx.useMatrix(Matrix4f::ident, 0);
 	gfx.calcLighting(1.0f);
+	pc_p2_hardlanes_draw(gfx);
 	if (mDrawHideType != 8) {
 		mMapMgr->refresh(gfx);
 	}
@@ -2975,6 +3243,13 @@ void GameCoreSection::draw(Graphics& gfx)
 	if (AIPerf::showRoute) {
 		routeMgr->refresh(gfx);
 	}
+	pc_p2_cave_draw_transition(gfx);
+	pc_p2_breadbug_visual_draw(gfx);
+	pc_p2_giant_breadbug_visual_draw(gfx);
+	pc_p2_bulblax_visual_draw(gfx);
+	pc_p2_queen_draw(gfx);
+	pc_p2_king_draw(gfx);
+	pc_p2_tank_draw_water(gfx);
 }
 
 /**

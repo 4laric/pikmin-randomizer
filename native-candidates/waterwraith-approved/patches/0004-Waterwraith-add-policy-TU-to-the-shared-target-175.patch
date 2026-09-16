@@ -1,0 +1,24 @@
+From 141db152302ce790ec221e47972753d93ac79440 Mon Sep 17 00:00:00 2001
+From: 4laric <4laric@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 03:14:49 -0400
+Subject: [PATCH 04/10] Waterwraith: add policy TU to the shared target (#175)
+
+---
+ CMakeLists.txt | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 58623d4e..146c7220 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -190,6 +190,7 @@ set(PC_PORT_SOURCES
+     pc_port/pc_p2_mamuta.cpp
+     pc_port/pc_p2_mamuta_rules.cpp
+     pc_port/pc_p2_tank.cpp
++    pc_port/pc_p2_waterwraith.cpp
+     pc_port/pc_p2_waterwraith_visual.cpp
+     pc_port/pc_p2_waterwraith_host.cpp
+     pc_port/pc_p2_qurione.cpp
+-- 
+2.55.0.windows.3
+

@@ -1,0 +1,517 @@
+From 1d16e381c351057c6c94147a75a0133df5f8b7c3 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 03:20:05 -0400
+Subject: [PATCH 12/17] Drive the Bulbmin bridge from the Chappy-family
+ registration (#131)
+
+Lane 11 turned the inert Bulbmin ledger into an opt-in driver:
+
+* pc_p2_bulbmin_drive_birth() / attach_mother() run the source
+  LeafChappy::birthChildren() ten-dependent loop through pikiMgr->birth()
+  and the existing Kochappy registration, which is the mother stand-in.
+* The real Navi::callPikis whistle path recruits wild dependents in place
+  and claims the bound lane-12 captain ownership table (slot 0).
+* Death/reuse hooks: pc_p2_bulbmin_leader_died()/proxy_forget() release
+  only wild dependents from the forgotten Chappy actor; PikiMgr::birth()
+  forgets a recycled slot's stale dependent id.
+* Engine-free P2BulbminDriver mirrors the loop; the bridge test proves ten
+  capped dependents, whistle recruitment, leader-death release and the cave
+  descend/exit filter.
+
+Inert without PIKMIN_P2_BULBMIN/p2-bulbmin.txt; no live LeafChappy actor is
+claimed (missing piki_kochappy model).
+---
+ pc_port/pc_p2_bulbmin.cpp        | 97 +++++++++++++++++++++++++++++++-
+ pc_port/pc_p2_bulbmin.h          | 84 ++++++++++++++++++++++++++-
+ pc_port/pc_p2_captain.h          |  6 ++
+ pc_port/pc_p2_kochappy.cpp       |  4 +-
+ pc_port/pc_p2_kochappy.h         |  3 +
+ pc_port/pc_p2_preview.cpp        |  4 ++
+ src/plugPikiKando/navi.cpp       |  9 +++
+ src/plugPikiKando/pikiMgr.cpp    | 14 ++++-
+ tools/test_p2_bulbmin_bridge.cpp | 84 +++++++++++++++++++++++++++
+ 9 files changed, 298 insertions(+), 7 deletions(-)
+
+diff --git a/pc_port/pc_p2_bulbmin.cpp b/pc_port/pc_p2_bulbmin.cpp
+index 15b4a6dd..df6f2c63 100644
+--- a/pc_port/pc_p2_bulbmin.cpp
++++ b/pc_port/pc_p2_bulbmin.cpp
+@@ -1,4 +1,5 @@
+ #include "pc_p2_bulbmin.h"
++#include "pc_p2_captain.h"
+ #include "pc_p2_species.h"
+ #include "pc_p2_preview.h"
+ #include "pc_bbft.h"
+@@ -24,6 +25,10 @@ std::unordered_map<Piki*, std::uint32_t> idOfPiki;
+ std::unordered_map<std::uint32_t, Piki*> pikiOfId;
+ std::uint32_t nextId = 1;
+ 
++// The Chappy-family actor currently standing in for the missing LeafChappy
++// mother. Only ever compared, never dereferenced.
++void* proxyMother = nullptr;
++
+ std::uint32_t idFor(Piki* piki) {
+     auto found = idOfPiki.find(piki);
+     if (found != idOfPiki.end()) return found->second;
+@@ -41,6 +46,7 @@ void pc_p2_bulbmin_reset() {
+     idOfPiki.clear();
+     pikiOfId.clear();
+     nextId = 1;
++    proxyMother = nullptr;
+     active = false;
+ }
+ 
+@@ -75,8 +81,16 @@ void pc_p2_bulbmin_setup() {
+         std::abort();
+     }
+     active = true;
+-    std::printf("P2_BULBMIN_READY mother_epoch=%llu dependents=%d behavior=policy_ledger live_spawn=unregistered\n",
+-                static_cast<unsigned long long>(config.motherEpoch), config.maxDependents);
++    // Wire the recruited body to the lane-12 captain ownership table when the
++    // live adapter is available (single-captain slot 0). With no NaviMgr the
++    // whistle still converts the body in place.
++    if (pc_p2_captain::setup_from_navi_mgr()) {
++        if (P2CaptainAdapter* captainAdapter = pc_p2_captain::adapter())
++            bridge.bindCaptains(captainAdapter->ownershipTable());
++    }
++    std::printf("P2_BULBMIN_READY mother_epoch=%llu dependents=%d behavior=policy_ledger live_spawn=kochappy_proxy captain_table=%d\n",
++                static_cast<unsigned long long>(config.motherEpoch), config.maxDependents,
++                bridge.hasCaptains() ? 1 : 0);
+     std::fflush(stdout);
+ }
+ 
+@@ -117,7 +131,8 @@ bool pc_p2_bulbmin_whistle(Piki* bulbmin) {
+     if (!active || !bulbmin) return false;
+     const auto found = idOfPiki.find(bulbmin);
+     if (found == idOfPiki.end()) return false;
+-    const P2BulbminCommand command = bridge.whistle(found->second, P2CaptainInvalid);
++    const int captain = bridge.hasCaptains() ? P2CaptainA : P2CaptainInvalid;
++    const P2BulbminCommand command = bridge.whistle(found->second, captain);
+     if (!command.accepted) return false;
+     bulbmin->mLeaderCreature = nullptr;
+     if (naviMgr) {
+@@ -150,3 +165,79 @@ std::vector<std::uint32_t> pc_p2_bulbmin_transition(P2BulbminCaveTransition move
+ void pc_p2_bulbmin_bind_captain_table(P2CaptainOwnershipTable* ownership) {
+     bridge.bindCaptains(ownership);
+ }
++
++int pc_p2_bulbmin_dependent_count() {
++    return active ? bridge.dependentCount() : 0;
++}
++
++namespace {
++// Context handed to the driver's spawn callback for one birthChildren() pass.
++struct DriveContext {
++    Creature* leader = nullptr;
++    Vector3f position;
++    float faceDir = 0.0f;
++};
++DriveContext driveContext;
++
++std::uint32_t driveSpawn(void*, int index) {
++    Piki* p = pc_p2_bulbmin_birth_dependent(driveContext.leader, driveContext.position,
++                                            driveContext.faceDir, index);
++    return p ? idFor(p) : 0;
++}
++} // namespace
++
++int pc_p2_bulbmin_drive_birth(Creature* leader, const Vector3f& leaderPos,
++                              float faceDir, int requested) {
++    if (!active) return 0;
++    P2BulbminDriver driver;
++    if (!driver.bind(&bridge, &driveSpawn, nullptr)) return 0;
++    driveContext.leader = leader;
++    driveContext.position = leaderPos;
++    driveContext.faceDir = faceDir;
++    return driver.birthFlock(requested);
++}
++
++int pc_p2_bulbmin_attach_mother(Creature* mother) {
++    if (!active || !mother || proxyMother) return 0;
++    proxyMother = mother;
++    return pc_p2_bulbmin_drive_birth(mother, mother->getPosition(),
++                                     mother->mFaceDirection,
++                                     bridge.settings().maxDependents);
++}
++
++int pc_p2_bulbmin_call_pikis(Navi* navi, float radius) {
++    if (!active || !navi || !pikiMgr || radius <= 0.0f) return 0;
++    const float radius2 = radius * radius;
++    int recruited = 0;
++    Iterator it(pikiMgr);
++    CI_LOOP(it) {
++        Piki* p = static_cast<Piki*>(*it);
++        if (!p || !p->isAlive()) continue;
++        const auto found = idOfPiki.find(p);
++        if (found == idOfPiki.end()) continue;
++        if (bridge.phaseOf(found->second) != P2BulbminWild) continue;
++        const Vector3f delta = p->mSRT.t - navi->mCursorWorldPos;
++        if (delta.x * delta.x + delta.z * delta.z >= radius2) continue;
++        if (pc_p2_bulbmin_whistle(p)) ++recruited;
++    }
++    return recruited;
++}
++
++int pc_p2_bulbmin_leader_died() {
++    if (!active) return 0;
++    const std::vector<std::uint32_t> released = bridge.leaderDied();
++    for (const std::uint32_t id : released) {
++        auto found = pikiOfId.find(id);
++        if (found == pikiOfId.end()) continue;
++        if (found->second) found->second->mLeaderCreature = nullptr;
++        idOfPiki.erase(found->second);
++        pikiOfId.erase(found);
++    }
++    return static_cast<int>(released.size());
++}
++
++void pc_p2_bulbmin_proxy_forget(BTeki* mother) {
++    if (!active || !mother || proxyMother != static_cast<void*>(mother)) return;
++    pc_p2_bulbmin_leader_died();
++    proxyMother = nullptr;
++}
+diff --git a/pc_port/pc_p2_bulbmin.h b/pc_port/pc_p2_bulbmin.h
+index 912ca49a..0f72d8ba 100644
+--- a/pc_port/pc_p2_bulbmin.h
++++ b/pc_port/pc_p2_bulbmin.h
+@@ -82,6 +82,64 @@ public:
+     std::size_t wildCount() const { return flock.wildCount(); }
+     std::size_t recruitedCount() const { return flock.recruitedCount(); }
+     int phaseOf(std::uint32_t id) const { return flock.phaseOf(id); }
++    bool hasCaptains() const { return captains != nullptr; }
++};
++
++// Engine-free birth driver. The live hook in pc_p2_bulbmin.cpp binds a spawn
++// callback that creates one body through pikiMgr->birth() and registers it in
++// the bridge; the unit test binds a double. A callback returns the nonzero
++// ledger id it registered (0 when the engine has no free body or the cap is
++// reached), so the driver stays a faithful, testable model of the source
++// LeafChappy::birthChildren() loop.
++using P2BulbminSpawnFn = std::uint32_t (*)(void* context, int index);
++
++class P2BulbminDriver {
++    P2BulbminBridge* bridge = nullptr;
++    P2BulbminSpawnFn spawn = nullptr;
++    void* context = nullptr;
++    int born = 0;
++
++public:
++    bool bind(P2BulbminBridge* target, P2BulbminSpawnFn spawner, void* spawnContext) {
++        if (!target || !target->enabled() || !spawner) return false;
++        bridge = target;
++        spawn = spawner;
++        context = spawnContext;
++        born = 0;
++        return true;
++    }
++    bool bound() const { return bridge != nullptr; }
++    int bornCount() const { return born; }
++
++    // Birth up to `requested` dependents (default and hard bound: the source
++    // ten). Stops at the first callback that returns 0, which is how both the
++    // configured cap and a full engine field surface.
++    int birthFlock(int requested = P2BULBMIN_MAX_DEPENDENTS) {
++        if (!bridge) return 0;
++        if (requested < 0) requested = 0;
++        if (requested > P2BULBMIN_MAX_DEPENDENTS) requested = P2BULBMIN_MAX_DEPENDENTS;
++        int made = 0;
++        for (int i = 0; i < requested; ++i) {
++            const std::uint32_t id = spawn(context, i);
++            if (!id || bridge->phaseOf(id) < 0) break;
++            ++made;
++        }
++        born += made;
++        return made;
++    }
++
++    P2BulbminCommand whistle(std::uint32_t id, int captain = P2CaptainInvalid) {
++        return bridge ? bridge->whistle(id, captain) : P2BulbminCommand{};
++    }
++    // Detaches the wild flock; the caller mirrors the release into the engine.
++    std::vector<std::uint32_t> leaderDied() {
++        if (!bridge) return {};
++        born = 0;
++        return bridge->leaderDied();
++    }
++    P2BulbminTransitionOut transition(P2BulbminCaveTransition move) {
++        return bridge ? bridge->transition(move) : P2BulbminTransitionOut{};
++    }
+ };
+ 
+ inline bool p2_bulbmin_read(std::istream& in, P2BulbminConfig& out) {
+@@ -170,6 +228,8 @@ inline P2BulbminTransitionOut P2BulbminBridge::transition(P2BulbminCaveTransitio
+ 
+ class Piki;
+ class Creature;
++class Navi;
++class BTeki;
+ 
+ // Live engine bridge. No-op unless opted in.
+ void pc_p2_bulbmin_setup();
+@@ -181,8 +241,7 @@ bool pc_p2_bulbmin_active();
+ bool pc_p2_bulbmin_birth(Piki* bulbmin);
+ // Source LeafChappy::birthChildren: birth a body through pikiMgr, bind it to
+ // `leader` and the configured epoch, and place it behind the mother. Returns
+-// nullptr when there is no live manager/scene. Compile-backed only: no
+-// LeafChappy actor calls it yet (see the contract doc).
++// nullptr when there is no live manager/scene.
+ Piki* pc_p2_bulbmin_birth_dependent(Creature* leader, const struct Vector3f& motherPos,
+                                     float faceDir, int index);
+ // Whistle/recruit entry: converts the body in place and reassigns captain
+@@ -195,3 +254,24 @@ std::vector<std::uint32_t> pc_p2_bulbmin_transition(P2BulbminCaveTransition move
+ // Optional handoff target for whistle; another lane can bind its captain
+ // ownership table so recruited Bulbmin join the squad.
+ void pc_p2_bulbmin_bind_captain_table(P2CaptainOwnershipTable* ownership);
++
++// Opt-in driver entrypoint (source LeafChappy::birthChildren). Births up to
++// `requested` dependents (source ten) behind `leader` through pikiMgr->birth()
++// and the bridge ledger. No-op returning 0 when inert or no live scene.
++int pc_p2_bulbmin_drive_birth(Creature* leader, const struct Vector3f& leaderPos,
++                              float faceDir, int requested = P2BULBMIN_MAX_DEPENDENTS);
++// Use the existing Chappy-family (Kochappy) registration as the mother
++// stand-in: births the source flock once for that actor. Returns dependents
++// born (0 when inert, already attached, or no actor). This is the engine double
++// for a missing LeafChappy actor; see docs/PIKMIN2_BULBMIN_CONTRACT.md.
++int pc_p2_bulbmin_attach_mother(Creature* mother);
++// Real Navi::callPikis whistle hook: recruits every wild dependent of `navi`
++// within `radius`, claiming through the bound captain table when present.
++int pc_p2_bulbmin_call_pikis(Navi* navi, float radius);
++// Mother death/removal: release only wild dependents and detach them from the
++// dead leader. Whistled members keep their captain ownership. Returns released.
++int pc_p2_bulbmin_leader_died();
++// Chappy-family slot reuse/death (TekiMgr forget): release the flock when the
++// forgotten actor was the mother stand-in.
++void pc_p2_bulbmin_proxy_forget(BTeki* mother);
++int pc_p2_bulbmin_dependent_count();
+diff --git a/pc_port/pc_p2_captain.h b/pc_port/pc_p2_captain.h
+index a6145deb..8e4bcc84 100644
+--- a/pc_port/pc_p2_captain.h
++++ b/pc_port/pc_p2_captain.h
+@@ -95,6 +95,12 @@ public:
+     bool ownsActor(std::uint32_t actor) const { return mTable.isOwned(actor); }
+     int ownerOfActor(std::uint32_t actor) const { return mTable.ownerOf(actor); }
+ 
++    // The live shared ownership table, so a sibling lane can claim/release
++    // through the same domain (used by the lane-11 Bulbmin whistle handoff).
++    // Null until bind(); callers must not retain it past teardown().
++    P2CaptainOwnershipTable* ownershipTable() { return mBound ? &mTable : nullptr; }
++    const P2CaptainOwnershipTable* ownershipTable() const { return mBound ? &mTable : nullptr; }
++
+     // Register every present captain (slot 0 only on this port) and adopt the
+     // squad's existing Piki::mNavi ownership. Returns false when no captain is
+     // present. Safe to call once per scene after bind().
+diff --git a/pc_port/pc_p2_kochappy.cpp b/pc_port/pc_p2_kochappy.cpp
+index 5bf587fe..acb9c24c 100644
+--- a/pc_port/pc_p2_kochappy.cpp
++++ b/pc_port/pc_p2_kochappy.cpp
+@@ -1,6 +1,7 @@
+ #include "pc_p2_kochappy.h"
+ #include "pc_p2_kochappy_policy.h"
+ #include "pc_p2_kochappy_stun.h"
++#include "pc_p2_bulbmin.h"
+ #include "pc_p2_enemy.h"
+ #include "pc_p2_sheargrub.h"
+ #include "teki.h"
+@@ -24,10 +25,11 @@ p2kochappy::Health health;
+ bool logged[2]={false,false};
+ }
+ void pc_p2_kochappy_reset(){clips.clear();timing.clear();actors.clear();health.reset();pc_p2_kochappy_stun_reset();logged[0]=logged[1]=false;}
+-void pc_p2_kochappy_forget(BTeki* actor){actors.erase(static_cast<PelletView*>(actor));health.forget(actor);pc_p2_kochappy_stun_forget(actor);}
++void pc_p2_kochappy_forget(BTeki* actor){pc_p2_bulbmin_proxy_forget(actor);actors.erase(static_cast<PelletView*>(actor));health.forget(actor);pc_p2_kochappy_stun_forget(actor);}
+ float pc_p2_kochappy_max_health(const BTeki* actor,float fallback){return health.life(actor,fallback);}
+ const char* pc_p2_kochappy_name(PelletView* actor){return actors.count(actor)?"Dwarf Red Bulborb":nullptr;}
+ bool pc_p2_kochappy_registered(const BTeki* actor){return actors.count(const_cast<BTeki*>(actor))!=0;}
++BTeki* pc_p2_kochappy_first_registered(){return actors.empty()?nullptr:static_cast<BTeki*>(*actors.begin());}
+ void pc_p2_kochappy_setup(){
+     pc_p2_kochappy_reset();
+     std::ifstream profile("p2-kochappy-profile.txt"),bank("p2-kochappy-bank.txt"),bindings("p2-kochappy-actors.txt");
+diff --git a/pc_port/pc_p2_kochappy.h b/pc_port/pc_p2_kochappy.h
+index d158119f..9d51bc0f 100644
+--- a/pc_port/pc_p2_kochappy.h
++++ b/pc_port/pc_p2_kochappy.h
+@@ -10,3 +10,6 @@ float pc_p2_kochappy_max_health(const BTeki*,float fallback);
+ const char* pc_p2_kochappy_name(PelletView*);
+ bool pc_p2_kochappy_draw(BTeki*,Graphics&,const Matrix4f&,bool corpse=false);
+ bool pc_p2_kochappy_registered(const BTeki*);
++// First registered Kochappy actor, used as the lane-11 Mother Bulbmin
++// stand-in. Null when no Kochappy actor is registered.
++BTeki* pc_p2_kochappy_first_registered();
+diff --git a/pc_port/pc_p2_preview.cpp b/pc_port/pc_p2_preview.cpp
+index a0f1c070..9732377a 100644
+--- a/pc_port/pc_p2_preview.cpp
++++ b/pc_port/pc_p2_preview.cpp
+@@ -210,6 +210,10 @@ void pc_p2_preview_setup() {
+     pc_p2_white_setup();
+     pc_p2_white_poison_setup();
+     pc_p2_bulbmin_setup();
++    // Lane-11 opt-in driver: use the existing Chappy-family registration as the
++    // Mother Bulbmin stand-in (no-op unless PIKMIN_P2_BULBMIN/p2-bulbmin.txt is
++    // set and a Kochappy actor is registered).
++    pc_p2_bulbmin_attach_mother(static_cast<Creature*>(pc_p2_kochappy_first_registered()));
+     pc_p2_cave_setup();
+     gsys->setHeap(previousHeap);
+     const float points[][2]={{-85,0},{-175,-100},{185,-180},{-220,-180}};
+diff --git a/src/plugPikiKando/navi.cpp b/src/plugPikiKando/navi.cpp
+index 36aa1cf6..eef9891f 100644
+--- a/src/plugPikiKando/navi.cpp
++++ b/src/plugPikiKando/navi.cpp
+@@ -3,6 +3,7 @@
+ #include "pc_p2_purple_flight.h"
+ #include "pc_p2_white.h"
+ #include "pc_p2_species.h"
++#include "pc_p2_bulbmin.h"
+ #include "Navi.h"
+ #include "pc_randomizer.h"
+ #include <cstdlib>
+@@ -1224,6 +1225,14 @@ void Navi::callPikis(f32 radius, bool recallWorkers)
+ 		}
+ 	}
+ 
++#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
++	// Lane-11 Bulbmin: a captain whistle converts wild dependents in place and
++	// hands them to the bound captain table. Inert unless opted in.
++	if (pc_p2_bulbmin_active()) {
++		pc_p2_bulbmin_call_pikis(this, radius);
++	}
++#endif
++
+ 	Iterator iterSprout(itemMgr->getPikiHeadMgr());
+ 	CI_LOOP(iterSprout)
+ 	{
+diff --git a/src/plugPikiKando/pikiMgr.cpp b/src/plugPikiKando/pikiMgr.cpp
+index 173cc627..5d45035f 100644
+--- a/src/plugPikiKando/pikiMgr.cpp
++++ b/src/plugPikiKando/pikiMgr.cpp
+@@ -8,6 +8,10 @@
+ #include "PikiAI.h"
+ #include "gameflow.h"
+ #include "sysNew.h"
++#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
++#include "Piki.h"
++#include "pc_p2_bulbmin.h"
++#endif
+ 
+ PikiMgr* pikiMgr;
+ bool PikiMgr::containerDebug;
+@@ -49,7 +53,15 @@ Creature* PikiMgr::birth()
+ 		return nullptr;
+ 	}
+ 
+-	return MonoObjectMgr::birth();
++	Creature* born = MonoObjectMgr::birth();
++#if defined(PIKI_PC_PORT) && PIKI_PC_PORT
++	// Lane-11 Bulbmin: a recycled slot must not inherit the previous
++	// occupant's dependent id/leader. Inert unless opted in.
++	if (born) {
++		pc_p2_bulbmin_forget(static_cast<Piki*>(born));
++	}
++#endif
++	return born;
+ }
+ 
+ /**
+diff --git a/tools/test_p2_bulbmin_bridge.cpp b/tools/test_p2_bulbmin_bridge.cpp
+index 97e9d2af..460def2a 100644
+--- a/tools/test_p2_bulbmin_bridge.cpp
++++ b/tools/test_p2_bulbmin_bridge.cpp
+@@ -111,6 +111,89 @@ static void test_birth_and_recruitment() {
+     assert(orphan.recruitedCount() == 1);
+ }
+ 
++// Engine double: the driver's spawn callback creates one body and registers it
++// in the bridge, exactly like the live pikiMgr->birth() hook. Returns 0 when
++// the bridge refuses (configured cap reached), which stops the flock.
++struct SpawnDouble {
++    P2BulbminBridge* bridge;
++    std::uint32_t nextId;
++};
++
++static std::uint32_t spawn_double(void* context, int) {
++    SpawnDouble* engine = static_cast<SpawnDouble*>(context);
++    const std::uint32_t id = engine->nextId++;
++    return engine->bridge->birth(id).accepted ? id : 0;
++}
++
++static void test_driver() {
++    P2BulbminBridge bridge;
++    P2CaptainOwnershipTable table;
++    P2BulbminConfig config;
++    config.motherEpoch = 300;
++    config.maxDependents = P2BULBMIN_MAX_DEPENDENTS;
++    assert(bridge.setup(config, &table));
++
++    SpawnDouble engine = {&bridge, 7000};
++    P2BulbminDriver driver;
++    assert(driver.bind(&bridge, &spawn_double, &engine));
++    assert(driver.bound());
++
++    // Source LeafChappy::birthChildren spawns exactly ten dependents, no eleventh.
++    assert(driver.birthFlock(10) == 10);
++    assert(driver.birthFlock(1) == 0);
++    assert(driver.bornCount() == 10);
++    assert(bridge.dependentCount() == 10 && bridge.wildCount() == 10);
++
++    // Whistle through the driver recruits in place and claims the captain.
++    P2BulbminCommand recruited = driver.whistle(7003, P2CaptainA);
++    assert(recruited.accepted && recruited.phase == P2BulbminRecruited);
++    assert(table.isOwned(7003) && table.ownerOf(7003) == P2CaptainA);
++
++    // Leader death releases only the nine wild dependents; the whistled body
++    // keeps its captain ownership and survives.
++    std::vector<std::uint32_t> released = driver.leaderDied();
++    assert(released.size() == 9);
++    assert(bridge.size() == 1 && bridge.recruitedCount() == 1);
++    assert(bridge.phaseOf(7003) == P2BulbminRecruited && table.isOwned(7003));
++    assert(driver.bornCount() == 0);
++
++    // A configured cap below ten bounds the flock even when ten are requested.
++    P2BulbminBridge capped;
++    P2BulbminConfig small;
++    small.motherEpoch = 301;
++    small.maxDependents = 3;
++    assert(capped.setup(small));
++    SpawnDouble cappedEngine = {&capped, 8000};
++    P2BulbminDriver cappedDriver;
++    assert(cappedDriver.bind(&capped, &spawn_double, &cappedEngine));
++    assert(cappedDriver.birthFlock(10) == 3);
++    assert(capped.dependentCount() == 3 && capped.wildCount() == 3);
++
++    // Cave save filter through the driver: a floor descent keeps only the one
++    // whistled Bulbmin; a full cave exit removes every Bulbmin.
++    P2BulbminBridge cave;
++    P2BulbminConfig caveConfig;
++    caveConfig.motherEpoch = 400;
++    caveConfig.maxDependents = 10;
++    assert(cave.setup(caveConfig));
++    SpawnDouble caveEngine = {&cave, 9000};
++    P2BulbminDriver caveDriver;
++    assert(caveDriver.bind(&cave, &spawn_double, &caveEngine));
++    assert(caveDriver.birthFlock(10) == 10);
++    assert(caveDriver.whistle(9000, P2CaptainA).accepted);
++    P2BulbminTransitionOut down = caveDriver.transition(P2BulbminDescendFloor);
++    assert(down.kept.size() == 1 && down.removed.size() == 9 && down.recruitedKept == 1);
++    P2BulbminTransitionOut exitOut = caveDriver.transition(P2BulbminExitCave);
++    assert(exitOut.kept.empty() && exitOut.removed.size() == 1 && cave.size() == 0);
++
++    // An inert bridge cannot bind a driver.
++    P2BulbminBridge inert;
++    P2BulbminDriver inertDriver;
++    SpawnDouble inertEngine = {&inert, 1};
++    assert(!inertDriver.bind(&inert, &spawn_double, &inertEngine));
++    assert(!inertDriver.bound() && inertDriver.birthFlock(10) == 0);
++}
++
+ static void test_cave_transition() {
+     P2BulbminBridge bridge;
+     P2BulbminConfig config;
+@@ -140,6 +223,7 @@ static void test_cave_transition() {
+ int main() {
+     test_parse();
+     test_birth_and_recruitment();
++    test_driver();
+     test_cave_transition();
+     std::puts("PASS P2_BULBMIN_BRIDGE");
+     return 0;
+-- 
+2.55.0.windows.3
+

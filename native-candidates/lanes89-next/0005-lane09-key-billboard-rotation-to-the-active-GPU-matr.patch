@@ -1,0 +1,490 @@
+From 8c9a6cbf7935fb57fcfbe82ddbc6e0c4b2ecdb09 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 10:18:07 -0400
+Subject: [PATCH 5/5] lane09: key billboard rotation to the active GPU matrix
+ (#429)
+
+---
+ pc_port/pc_p2_billboard.h      |  53 +++++------
+ pc_port/pc_p2_billboard_draw.h |  53 ++++++-----
+ src/sysCore/oglGraphics.cpp    |  22 ++---
+ src/sysDolphin/dgxGraphics.cpp |  21 ++---
+ tools/test_p2_billboard.cpp    | 168 ++++++++++++---------------------
+ 5 files changed, 132 insertions(+), 185 deletions(-)
+
+diff --git a/pc_port/pc_p2_billboard.h b/pc_port/pc_p2_billboard.h
+index 301be83c..ac3a460a 100644
+--- a/pc_port/pc_p2_billboard.h
++++ b/pc_port/pc_p2_billboard.h
+@@ -1,52 +1,43 @@
+ #pragma once
+-// Camera-facing billboard rotation for flagged MOD meshes (#429, parent #128).
++// Camera-facing billboard math for flagged MOD meshes (#429, parent #128).
+ //
+-// The converted MOD format bakes all geometry through its joints, so a
+-// billboard shape is emitted pivot-centred and re-placed by the joint's
+-// translation. At draw time the draw matrix for a flagged mesh keeps the
+-// joint's translation/scale but replaces its rotation with the inverse of the
+-// combined model*view rotation, so the mesh faces the camera in view space.
++// The PC port renders a shape's vertices on the CPU through its per-joint
++// matrices and then applies the "active" matrix (the matrix last passed to
++// Graphics::useMatrix) on the GPU. Callers differ: some bake lookAt*model into
++// the joint matrices and use an identity active matrix, others keep model-space
++// joints and apply lookAt*model on the GPU. Both reduce to one rule:
++//
++//     final = active * joint;   we want final's rotation to be screen-aligned.
++//
++// So the flagged mesh's draw matrix keeps the joint's pivot translation and
++// uniform scale but takes the rotation `scale * active.rotation^T`.
+ //
+ // This header is engine-independent (plain 3x3 floats) so the standalone probe
+-// shares the exact same math as the renderer.
++// shares the exact same rotation math as the renderer.
+ #include <cmath>
+ 
+ namespace p2billboard {
+ 
+-// out = normalized((model * view).rotation)^T.
+-//
+-// `model` and `view` are row-major 3x3 rotation extracts of the active model
+-// matrix and the camera view matrix. Returns false (leaving `out` untouched)
+-// when a basis column degenerates, in which case the caller keeps the plain
+-// joint matrix.
+-inline bool facingRotation(float out[3][3], const float model[3][3], const float view[3][3]) {
+-    // combined = view * model
+-    float combined[3][3];
+-    for (int i = 0; i < 3; ++i) {
+-        for (int j = 0; j < 3; ++j) {
+-            combined[i][j] = view[i][0] * model[0][j]
+-                           + view[i][1] * model[1][j]
+-                           + view[i][2] * model[2][j];
+-        }
+-    }
+-    // Normalize each basis column so any model/joint scale survives while the
+-    // orientation is orthonormalised.
++// out = scale * normalised(active).rotation^T. Returns false (leaving `out`
++// untouched) when an active basis column degenerates; the caller then keeps the
++// plain joint matrix.
++inline bool screenRotation(float out[3][3], const float active[3][3], float scale) {
++    float basis[3][3];
+     for (int j = 0; j < 3; ++j) {
+-        const float norm = combined[0][j] * combined[0][j]
+-                         + combined[1][j] * combined[1][j]
+-                         + combined[2][j] * combined[2][j];
++        const float norm = active[0][j] * active[0][j]
++                         + active[1][j] * active[1][j]
++                         + active[2][j] * active[2][j];
+         if (norm < 1e-12f) {
+             return false;
+         }
+         const float inv = 1.0f / std::sqrt(norm);
+         for (int i = 0; i < 3; ++i) {
+-            combined[i][j] *= inv;
++            basis[i][j] = active[i][j] * inv;
+         }
+     }
+-    // Inverse of an orthonormal rotation is its transpose.
+     for (int i = 0; i < 3; ++i) {
+         for (int j = 0; j < 3; ++j) {
+-            out[i][j] = combined[j][i];
++            out[i][j] = scale * basis[j][i];
+         }
+     }
+     return true;
+diff --git a/pc_port/pc_p2_billboard_draw.h b/pc_port/pc_p2_billboard_draw.h
+index 6bfab602..4490c88e 100644
+--- a/pc_port/pc_p2_billboard_draw.h
++++ b/pc_port/pc_p2_billboard_draw.h
+@@ -1,11 +1,12 @@
+ #pragma once
+ // Engine-side billboard draw helpers (#429, parent #128).
+ //
+-// The PC port renders shapes through the OGL/DGX draw backends, not
+-// Joint::render. A flagged mesh's per-dependency draw matrix is replaced by
+-// `joint * facing` where `facing` cancels the combined model*view rotation, so
+-// the pivot-centred billboard geometry faces the camera. The alignment helpers
+-// also feed a small counter the private GL fixture reads to prove the path ran.
++// The PC port renders shapes through the OGL/DGX backends, not Joint::render.
++// A flagged mesh's per-dependency draw matrix keeps the joint's pivot
++// translation and uniform scale but takes a screen-aligned rotation derived
++// from the matrix the GPU will apply, so the pivot-centred billboard geometry
++// faces the camera. The alignment helpers feed a counter the private GL fixture
++// reads to prove the path ran.
+ #include "Matrix4f.h"
+ #include "pc_p2_billboard.h"
+ 
+@@ -13,38 +14,46 @@
+ 
+ namespace p2billboard {
+ 
+-// out = joint * normalized((model*view).rotation)^T. False leaves `out`
+-// untouched and the caller keeps the plain joint matrix.
+-inline bool facingMatrix(Matrix4f& out, const Matrix4f& joint, const Matrix4f& model,
+-                         const Matrix4f& view) {
+-    float m3[3][3];
+-    float v3[3][3];
+-    float r3[3][3];
++// `out` = `joint` with its 3x3 replaced by scale * active.rotation^T, so
++// `active * out` is screen-aligned (rotation = scale * I) and keeps the joint's
++// pivot translation. False leaves `out` untouched.
++inline bool billboardFromJoint(Matrix4f& out, const Matrix4f& joint, const Matrix4f& active) {
++    float scale = 0.f;
++    for (int j = 0; j < 3; ++j) {
++        const float norm = std::sqrt(joint.mMtx[0][j] * joint.mMtx[0][j]
++                                     + joint.mMtx[1][j] * joint.mMtx[1][j]
++                                     + joint.mMtx[2][j] * joint.mMtx[2][j]);
++        if (!(norm > 1e-6f)) {
++            return false;
++        }
++        scale += norm;
++    }
++    scale /= 3.f;
++
++    float active3[3][3];
+     for (int i = 0; i < 3; ++i) {
+         for (int j = 0; j < 3; ++j) {
+-            m3[i][j] = model.mMtx[i][j];
+-            v3[i][j] = view.mMtx[i][j];
++            active3[i][j] = active.mMtx[i][j];
+         }
+     }
+-    if (!facingRotation(r3, m3, v3)) {
++    float rotation[3][3];
++    if (!screenRotation(rotation, active3, scale)) {
+         return false;
+     }
+-    Matrix4f rot;
+-    rot.makeIdentity();
++    out = joint;
+     for (int i = 0; i < 3; ++i) {
+         for (int j = 0; j < 3; ++j) {
+-            rot.mMtx[i][j] = r3[i][j];
++            out.mMtx[i][j] = rotation[i][j];
+         }
+     }
+-    joint.multiplyTo(rot, out);
+     return true;
+ }
+ 
+-// Max off-diagonal magnitude of the column-normalised rotation of `view*mesh`.
++// Max off-diagonal magnitude of the column-normalised rotation of `active*mesh`.
+ // ~0 means the mesh is screen-aligned; used as the GL-fixture assertion.
+-inline float offDiagonal(const Matrix4f& view, const Matrix4f& mesh) {
++inline float offDiagonal(const Matrix4f& active, const Matrix4f& mesh) {
+     Matrix4f final;
+-    view.multiplyTo(mesh, final);
++    active.multiplyTo(mesh, final);
+     float column[3][3];
+     for (int j = 0; j < 3; ++j) {
+         const float norm = std::sqrt(final.mMtx[0][j] * final.mMtx[0][j]
+diff --git a/src/sysCore/oglGraphics.cpp b/src/sysCore/oglGraphics.cpp
+index 614d87ce..0ec8a309 100644
+--- a/src/sysCore/oglGraphics.cpp
++++ b/src/sysCore/oglGraphics.cpp
+@@ -695,22 +695,20 @@ void OGLGraphics::drawSingleMatpoly(Shape* model, Joint::MatPoly* matPoly)
+ 		}
+ 
+ 		// Opt-in camera-facing billboard (#429): replace the mesh's draw matrix
+-		// with joint * inverse(model*view rotation). Geometry is pivot-centred so
+-		// concatenation keeps the authored placement.
+-		if ((mesh.mFeatureFlags & Mesh::FeatureFlags::Billboard) && mLastModelMatrix && mCamera) {
++		// with one that is screen-aligned under the active GPU matrix. Geometry
++		// is pivot-centred so the joint translation keeps the authored placement.
++		if ((mesh.mFeatureFlags & Mesh::FeatureFlags::Billboard) && mActiveMatrix) {
+ 			for (int depListIdx = 0; depListIdx < mtxGroup.mDepLength && depListIdx < 10; ++depListIdx) {
+ 				if (!animMatrices[depListIdx]) {
+ 					continue;
+ 				}
+-				if (p2billboard::facingMatrix(billboardMatrices[depListIdx], *animMatrices[depListIdx],
+-				                              *mLastModelMatrix, mCamera->mLookAtMtx)) {
+-					if (mActiveMatrix) {
+-						const float off = p2billboard::offDiagonal(*mActiveMatrix, billboardMatrices[depListIdx]);
+-						p2billboard::Stats& stats = p2billboard::stats();
+-						++stats.draws;
+-						if (off > stats.max_offdiagonal) {
+-							stats.max_offdiagonal = off;
+-						}
++				if (p2billboard::billboardFromJoint(billboardMatrices[depListIdx], *animMatrices[depListIdx],
++				                                    *mActiveMatrix)) {
++					const float off = p2billboard::offDiagonal(*mActiveMatrix, billboardMatrices[depListIdx]);
++					p2billboard::Stats& stats = p2billboard::stats();
++					++stats.draws;
++					if (off > stats.max_offdiagonal) {
++						stats.max_offdiagonal = off;
+ 					}
+ 					animMatrices[depListIdx] = &billboardMatrices[depListIdx];
+ 				}
+diff --git a/src/sysDolphin/dgxGraphics.cpp b/src/sysDolphin/dgxGraphics.cpp
+index 3d964f01..7cfa4352 100644
+--- a/src/sysDolphin/dgxGraphics.cpp
++++ b/src/sysDolphin/dgxGraphics.cpp
+@@ -1432,9 +1432,9 @@ void DGXGraphics::drawSingleMatpoly(Shape* model, Joint::MatPoly* matPoly)
+ 			}
+ 		}
+ 
+-		// Opt-in camera-facing billboard (#429): re-upload the draw matrix as
+-		// joint * inverse(model*view rotation) for flagged meshes.
+-		if ((mesh.mFeatureFlags & Mesh::FeatureFlags::Billboard) && mLastModelMatrix && mCamera) {
++		// Opt-in camera-facing billboard (#429): re-upload the draw matrix as the
++		// pivot-preserving, screen-aligned matrix for flagged meshes.
++		if ((mesh.mFeatureFlags & Mesh::FeatureFlags::Billboard) && viewMtx) {
+ 			for (int depListIdx = 0; depListIdx < group.mDepLength && depListIdx < 10; ++depListIdx) {
+ 				int depMtxIdx = group.mDepList[depListIdx];
+ 				if (depMtxIdx == -1) {
+@@ -1449,16 +1449,13 @@ void DGXGraphics::drawSingleMatpoly(Shape* model, Joint::MatPoly* matPoly)
+ 				} else {
+ 					joint = &model->mJointList[vtxMtx.mIndex].mAnimMatrix;
+ 				}
+-				if (p2billboard::facingMatrix(billboardMatrices[depListIdx], *joint, *mLastModelMatrix,
+-				                              mCamera->mLookAtMtx)) {
++				if (p2billboard::billboardFromJoint(billboardMatrices[depListIdx], *joint, *viewMtx)) {
+ 					useMatrixQuick(billboardMatrices[depListIdx], depListIdx);
+-					if (viewMtx) {
+-						const float off = p2billboard::offDiagonal(*viewMtx, billboardMatrices[depListIdx]);
+-						p2billboard::Stats& stats = p2billboard::stats();
+-						++stats.draws;
+-						if (off > stats.max_offdiagonal) {
+-							stats.max_offdiagonal = off;
+-						}
++					const float off = p2billboard::offDiagonal(*viewMtx, billboardMatrices[depListIdx]);
++					p2billboard::Stats& stats = p2billboard::stats();
++					++stats.draws;
++					if (off > stats.max_offdiagonal) {
++						stats.max_offdiagonal = off;
+ 					}
+ 				}
+ 			}
+diff --git a/tools/test_p2_billboard.cpp b/tools/test_p2_billboard.cpp
+index 611a3eab..fa6190da 100644
+--- a/tools/test_p2_billboard.cpp
++++ b/tools/test_p2_billboard.cpp
+@@ -2,10 +2,10 @@
+ //
+ // Build: g++ -std=c++17 -Wall -Wextra -Werror tools/test_p2_billboard.cpp -o p2_billboard.exe
+ //
+-// The renderer builds a flagged mesh's draw matrix as joint * rot where
+-// rot = normalized(view*model)^T. This proves that concatenation makes the
+-// flagged mesh screen-aligned in view space while preserving scale, and that
+-// degenerate bases are rejected instead of producing NaNs.
++// The renderer replaces a flagged mesh's draw matrix with one whose rotation is
++// `scale * active.rotation^T`, keeping the joint pivot translation. This proves
++// that `active * billboard` is screen-aligned with the joint scale, the pivot
++// lands where the active matrix puts it, and degenerate bases are rejected.
+ #include "../pc_port/pc_p2_billboard.h"
+ 
+ #include <cmath>
+@@ -49,10 +49,10 @@ void rotY(float m[3][3], float a) {
+     m[2][2] = std::cos(a);
+ }
+ 
+-bool isIdentity(const float m[3][3]) {
++bool isScaledIdentity(const float m[3][3], float scale) {
+     for (int i = 0; i < 3; ++i) {
+         for (int j = 0; j < 3; ++j) {
+-            if (!near(m[i][j], (i == j) ? 1.f : 0.f)) {
++            if (!near(m[i][j], (i == j) ? scale : 0.f)) {
+                 return false;
+             }
+         }
+@@ -60,144 +60,96 @@ bool isIdentity(const float m[3][3]) {
+     return true;
+ }
+ 
+-void testIdentityModelView() {
+-    float model[3][3], view[3][3], out[3][3];
+-    ident(model);
+-    ident(view);
+-    check(p2billboard::facingRotation(out, model, view), "identity accepted");
+-    check(isIdentity(out), "identity model/view -> identity facing");
++void testIdentityActive() {
++    float active[3][3], out[3][3];
++    ident(active);
++    check(p2billboard::screenRotation(out, active, 1.0f), "identity active accepted");
++    check(isScaledIdentity(out, 1.0f), "identity active -> identity rotation");
+ }
+ 
+ void testRotationCancelled() {
+-    float model[3][3], view[3][3], out[3][3], combined[3][3], product[3][3];
+-    float yaw[3][3], pitch[3][3];
+-    // model = yaw(0.7)
+-    rotY(model, 0.7f);
+-    // view = pitch(0.4) * yaw(-0.3)
+-    rotY(yaw, -0.3f);
+-    ident(pitch);
+-    pitch[1][1] = std::cos(0.4f);
+-    pitch[1][2] = -std::sin(0.4f);
+-    pitch[2][1] = std::sin(0.4f);
+-    pitch[2][2] = std::cos(0.4f);
+-    matmul(view, pitch, yaw);
+-
+-    check(p2billboard::facingRotation(out, model, view), "rotated basis accepted");
+-
+-    matmul(combined, view, model);
+-    matmul(product, combined, out);
+-    check(isIdentity(product), "view*model*facing is rotation-free");
+-}
+-
+-void testScalePreserved() {
+-    float model[3][3], view[3][3], out[3][3];
+-    ident(model);
+-    rotY(model, 0.9f);
+-    // Uniform scale commutes with the rotation and must survive.
+-    for (int i = 0; i < 3; ++i) {
+-        for (int j = 0; j < 3; ++j) {
+-            model[i][j] *= 2.5f;
+-        }
+-    }
+-    ident(view);
+-    check(p2billboard::facingRotation(out, model, view), "scaled basis accepted");
+-    // out is orthonormal (unit columns) so the draw keeps the model's scale.
+-    for (int j = 0; j < 3; ++j) {
+-        const float n = std::sqrt(out[0][j] * out[0][j] + out[1][j] * out[1][j]
+-                                  + out[2][j] * out[2][j]);
+-        check(near(n, 1.f), "facing columns are unit length");
+-    }
++    float active[3][3], out[3][3], product[3][3];
++    rotY(active, 0.7f);
++    check(p2billboard::screenRotation(out, active, 2.0f), "rotated active accepted");
++    matmul(product, active, out);
++    check(isScaledIdentity(product, 2.0f), "active * rotation is scaled identity");
+ }
+ 
+ void testDegenerateRejected() {
+-    float model[3][3], view[3][3], out[3][3];
+-    ident(model);
+-    ident(view);
+-    model[0][1] = model[1][1] = model[2][1] = 0.f;  // collapse a model column
+-    // Zero the combined column by zeroing the corresponding view column too.
+-    view[0][1] = view[1][1] = view[2][1] = 0.f;
+-    check(!p2billboard::facingRotation(out, model, view), "degenerate basis rejected");
++    float active[3][3], out[3][3];
++    ident(active);
++    active[0][1] = active[1][1] = active[2][1] = 0.f;  // collapse a column
++    check(!p2billboard::screenRotation(out, active, 1.0f), "degenerate active rejected");
+ }
+ 
+-// --- Full 4x4 composition: joint translation/pivot handling -----------------
+-// Mirrors the renderer: B = joint * R, and the final draw matrix is
+-// view * model * B. A flagged mesh must end up screen-aligned (rotation = s*I)
+-// and placed at the joint's pivot transformed by view*model.
++// Full 4x4 composition: final = active * billboard(joint, active) must be
++// screen-aligned and place the joint pivot at active * pivot.
++void testPivotComposition() {
++    float active3[3][3], rot[3][3];
++    rotY(active3, 0.6f);
++    const float s = 0.8f;
++    const float px = -4.f, py = 46.f, pz = 0.f;
+ 
+-using M4 = float[4][4];
++    check(p2billboard::screenRotation(rot, active3, s), "composition rotation");
+ 
+-void ident4(M4 m) {
++    // billboard = T(p) * rot
++    float billboard[4][4];
+     for (int i = 0; i < 4; ++i) {
+         for (int j = 0; j < 4; ++j) {
+-            m[i][j] = (i == j) ? 1.f : 0.f;
++            billboard[i][j] = (i == j) ? 1.f : 0.f;
+         }
+     }
+-}
++    for (int i = 0; i < 3; ++i) {
++        for (int j = 0; j < 3; ++j) {
++            billboard[i][j] = rot[i][j];
++        }
++    }
++    billboard[0][3] = px;
++    billboard[1][3] = py;
++    billboard[2][3] = pz;
+ 
+-void mul4(M4 out, const M4 a, const M4 b) {
++    // active = rotation with zero translation
++    float active[4][4];
+     for (int i = 0; i < 4; ++i) {
+         for (int j = 0; j < 4; ++j) {
+-            float sum = 0.f;
+-            for (int k = 0; k < 4; ++k) {
+-                sum += a[i][k] * b[k][j];
+-            }
+-            out[i][j] = sum;
++            active[i][j] = (i == j) ? 1.f : 0.f;
+         }
+     }
+-}
+-
+-void fromRot3(M4 out, const float r[3][3]) {
+-    ident4(out);
+     for (int i = 0; i < 3; ++i) {
+         for (int j = 0; j < 3; ++j) {
+-            out[i][j] = r[i][j];
++            active[i][j] = active3[i][j];
+         }
+     }
+-}
+ 
+-void testPivotComposition() {
+-    float model3[3][3], view3[3][3], facing[3][3];
+-    rotY(model3, 0.8f);
+-    rotY(view3, -0.5f);
+-
+-    M4 model, view, joint, rot, billboard, vm, product;
+-    fromRot3(model, model3);
+-    fromRot3(view, view3);
+-    ident4(joint);
+-    const float s = 0.8f;
+-    const float px = -4.f, py = 46.f, pz = 0.f;
+-    // joint = T(p) * S(s)
+-    joint[0][0] = joint[1][1] = joint[2][2] = s;
+-    joint[0][3] = px;
+-    joint[1][3] = py;
+-    joint[2][3] = pz;
+-
+-    check(p2billboard::facingRotation(facing, model3, view3), "composition facing");
+-    fromRot3(rot, facing);
+-    mul4(billboard, joint, rot);
+-    mul4(vm, view, model);
+-    mul4(product, vm, billboard);
+-
+-    // Screen-aligned: rotation part is s*I.
++    float final[4][4];
++    for (int i = 0; i < 4; ++i) {
++        for (int j = 0; j < 4; ++j) {
++            float sum = 0.f;
++            for (int k = 0; k < 4; ++k) {
++                sum += active[i][k] * billboard[k][j];
++            }
++            final[i][j] = sum;
++        }
++    }
++
++    float final3[3][3];
+     for (int i = 0; i < 3; ++i) {
+         for (int j = 0; j < 3; ++j) {
+-            check(near(product[i][j], (i == j) ? s : 0.f),
+-                  "composed draw matrix is screen-aligned with joint scale");
++            final3[i][j] = final[i][j];
+         }
+     }
+-    // Translation is (view*model) applied to the pivot.
++    check(isScaledIdentity(final3, s), "active*billboard is screen-aligned with joint scale");
+     for (int i = 0; i < 3; ++i) {
+-        const float want = vm[i][0] * px + vm[i][1] * py + vm[i][2] * pz + vm[i][3];
+-        check(near(product[i][3], want), "billboard pivot placed by view*model");
++        const float want = active3[i][0] * px + active3[i][1] * py + active3[i][2] * pz;
++        check(near(final[i][3], want), "billboard pivot placed by the active matrix");
+     }
+ }
+ 
+ }  // namespace
+ 
+ int main() {
+-    testIdentityModelView();
++    testIdentityActive();
+     testRotationCancelled();
+-    testScalePreserved();
+     testDegenerateRejected();
+     testPivotComposition();
+     if (failures == 0) {
+-- 
+2.55.0.windows.3
+

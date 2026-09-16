@@ -1,0 +1,819 @@
+From 4c3b32e6e3bc5a7ba1fbda4a841f58c209e5cdb9 Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 08:58:18 -0400
+Subject: [PATCH 2/5] rewards: native exactly-once receipt + cargo-contest
+ provider surface (#441)
+
+Add the engine-free provider surface requested by lane 18 (#441/#220):
+
+- pc_port/pc_p2_receipt.h: versioned ordinary/pod receipt vocabulary,
+  exactly-once ReceiptLedger over a persistence backend, memory and durable
+  atomic-file adapters, descriptor validation and ordinary/pod reconciliation
+  that refuses a pod-only source covering an ordinary check.
+- pc_port/pc_p2_cargo_contest.h: the agreed cargo-contest transition table
+  (Held/Stolen/ReleasedToSource + release reason), carrier tokens instead of
+  engine pointers (no dangling helper), cleared on release/death/interruption/
+  revisit/reset, and an exactly-once receipt hook into the shared ledger.
+- tools/p2_receipt_test.cpp and tools/p2_cargo_contest_test.cpp exercise
+  replay/restart, corruption rejection, the ordinary/pod split and a
+  small-Breadbug-style contest consumer.
+---
+ CMakeLists.txt                  |  12 ++
+ pc_port/pc_p2_cargo_contest.h   | 161 ++++++++++++++++
+ pc_port/pc_p2_receipt.h         | 325 ++++++++++++++++++++++++++++++++
+ tools/p2_cargo_contest_test.cpp | 129 +++++++++++++
+ tools/p2_receipt_test.cpp       | 123 ++++++++++++
+ 5 files changed, 750 insertions(+)
+ create mode 100644 pc_port/pc_p2_cargo_contest.h
+ create mode 100644 pc_port/pc_p2_receipt.h
+ create mode 100644 tools/p2_cargo_contest_test.cpp
+ create mode 100644 tools/p2_receipt_test.cpp
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 6dcfd1be..304e5c3b 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -695,6 +695,18 @@ target_include_directories(p2_dangomushi_hazard_test PRIVATE pc_port)
+ target_compile_options(p2_dangomushi_hazard_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+ add_test(NAME p2_dangomushi_hazard_test COMMAND p2_dangomushi_hazard_test)
+ 
++add_executable(p2_receipt_test
++    tools/p2_receipt_test.cpp)
++target_include_directories(p2_receipt_test PRIVATE pc_port)
++target_compile_options(p2_receipt_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
++add_test(NAME p2_receipt_test COMMAND p2_receipt_test ${CMAKE_CURRENT_BINARY_DIR}/p2_receipt_test_dir)
++
++add_executable(p2_cargo_contest_test
++    tools/p2_cargo_contest_test.cpp)
++target_include_directories(p2_cargo_contest_test PRIVATE pc_port)
++target_compile_options(p2_cargo_contest_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
++add_test(NAME p2_cargo_contest_test COMMAND p2_cargo_contest_test)
++
+ add_executable(pc_render_phase_test
+     pc_port/timing/pc_render_phase_test.cpp
+     pc_port/timing/pc_render_phase.cpp)
+diff --git a/pc_port/pc_p2_cargo_contest.h b/pc_port/pc_p2_cargo_contest.h
+new file mode 100644
+index 00000000..a615857d
+--- /dev/null
++++ b/pc_port/pc_p2_cargo_contest.h
+@@ -0,0 +1,161 @@
++#pragma once
++
++// Lane 18 provider surface: the P2 cargo contest and its exactly-once receipt
++// hook (lane 06 owns the shared receipt vocabulary in pc_p2_receipt.h).
++//
++// Requested by #441 / #220: a small PanModoki or nest must not fork the contest
++// logic embedded in pc_p2_giant_breadbug_actor.cpp. Family modules supply only
++// per-species parameters; this header owns the transition table.
++//
++// Lifetime: contest state is owned by the cargo. Carriers are passed in by
++// value-token each update and never stored, so a recycled engine address cannot
++// leave a dangling helper pointer. State is cleared on release, death,
++// interruption, revisit and reset. Helpers/aliases never earn a receipt: the
++// receipt identity is the cargo identity only.
++
++#include <algorithm>
++#include <string>
++#include <vector>
++
++#include "pc_p2_receipt.h"
++
++enum class P2ContestOutcome { Held, Stolen, ReleasedToSource };
++
++enum class P2ReleaseReason {
++	None,
++	Interrupted,
++	OwnerDied,
++	CarrierLost,
++	Timeout,
++	Revisit,
++	Reset
++};
++
++struct P2ContestCarrier {
++	std::string token; // stable identity, not an engine pointer
++	int strength = 0;
++};
++
++struct P2CargoContestConfig {
++	std::string identity;        // cargo/reward identity key
++	std::string sourceToken;     // owning source/nest token
++	int minThreshold = 1;        // strength needed to hold
++	int maxThreshold = 0;        // strength that forces a steal; 0 = no cap
++	float freezeSeconds = 0.0f;  // 0 = no timeout
++	int requiredCarriers = 1;    // minimum distinct carriers to hold
++	int maxCarriers = 1;         // ordered carriers considered; 0 = unbounded
++};
++
++class P2CargoContest {
++public:
++	explicit P2CargoContest(P2CargoContestConfig config)
++		: mConfig(std::move(config)), mStarted(false), mResult(P2ContestOutcome::Held),
++		  mReason(P2ReleaseReason::None), mReceiptGranted(false) {}
++
++	void begin(float nowSeconds)
++	{
++		mStarted = true;
++		mStartSeconds = nowSeconds;
++		mResult = P2ContestOutcome::Held;
++		mReason = P2ReleaseReason::None;
++		mReceiptGranted = false;
++	}
++
++	// Evaluate one simulation step. `carriers` is consumed by value; nothing is
++	// retained past this call. Returns the current outcome.
++	P2ContestOutcome update(float nowSeconds, const std::vector<P2ContestCarrier>& carriers)
++	{
++		if (!mStarted) {
++			return P2ContestOutcome::Held;
++		}
++		if (mResult != P2ContestOutcome::Held) {
++			return mResult;
++		}
++		long long strength = 0;
++		int count = 0;
++		const int limit = mConfig.maxCarriers > 0
++			? std::min<int>(mConfig.maxCarriers, static_cast<int>(carriers.size()))
++			: static_cast<int>(carriers.size());
++		for (int i = 0; i < limit; ++i) {
++			if (!P2Receipt::validToken(carriers[i].token, 128)) {
++				throw std::runtime_error("Invalid contest carrier token");
++			}
++			strength += std::max(0, carriers[i].strength);
++			if (carriers[i].strength > 0) {
++				++count;
++			}
++		}
++		if (mConfig.maxThreshold > 0 && strength >= mConfig.maxThreshold) {
++			mResult = P2ContestOutcome::Stolen;
++			mReason = P2ReleaseReason::None;
++			return mResult;
++		}
++		if (count < mConfig.requiredCarriers) {
++			// Not enough carriers: hold unless the freeze window lapses.
++			if (mConfig.freezeSeconds > 0.0f && nowSeconds - mStartSeconds >= mConfig.freezeSeconds) {
++				mResult = P2ContestOutcome::ReleasedToSource;
++				mReason = P2ReleaseReason::Timeout;
++			}
++			return mResult;
++		}
++		if (strength < mConfig.minThreshold) {
++			return P2ContestOutcome::Held;
++		}
++		return P2ContestOutcome::Held;
++	}
++
++	// Cargo returns to its source on death, interruption or explicit release.
++	void release(P2ReleaseReason reason)
++	{
++		if (mResult == P2ContestOutcome::Stolen) {
++			return;
++		}
++		mResult = P2ContestOutcome::ReleasedToSource;
++		mReason = reason;
++	}
++
++	void interrupt() { release(P2ReleaseReason::Interrupted); }
++	void onOwnerDied() { release(P2ReleaseReason::OwnerDied); }
++	void onCarrierLost() { release(P2ReleaseReason::CarrierLost); }
++	void onRevisit() { release(P2ReleaseReason::Revisit); }
++
++	void reset()
++	{
++		mStarted = false;
++		mResult = P2ContestOutcome::Held;
++		mReason = P2ReleaseReason::None;
++		mReceiptGranted = false;
++	}
++
++	P2ContestOutcome result() const { return mResult; }
++	P2ReleaseReason reason() const { return mReason; }
++	const std::string& identity() const { return mConfig.identity; }
++	const std::string& sourceToken() const { return mConfig.sourceToken; }
++	bool receiptGranted() const { return mReceiptGranted; }
++
++	// Exactly-once receipt for a successful steal. A repeated call for the same
++	// cargo grants nothing; the ledger persists across reload/restart.
++	bool grantReceipt(P2Receipt::ReceiptLedger& ledger, const std::string& seed,
++		const std::string& slotOrActor, const std::string& encounter)
++	{
++		if (mResult != P2ContestOutcome::Stolen) {
++			throw std::runtime_error("Receipt only follows a stolen cargo");
++		}
++		if (mReceiptGranted) {
++			return false;
++		}
++		const bool granted = ledger.grant(seed, mConfig.identity, slotOrActor, encounter);
++		if (granted) {
++			mReceiptGranted = true;
++		}
++		return granted;
++	}
++
++private:
++	P2CargoContestConfig mConfig;
++	bool mStarted;
++	float mStartSeconds = 0.0f;
++	P2ContestOutcome mResult;
++	P2ReleaseReason mReason;
++	bool mReceiptGranted;
++};
+diff --git a/pc_port/pc_p2_receipt.h b/pc_port/pc_p2_receipt.h
+new file mode 100644
+index 00000000..327be747
+--- /dev/null
++++ b/pc_port/pc_p2_receipt.h
+@@ -0,0 +1,325 @@
++#pragma once
++
++// Lane 06 shared reward/cargo receipt contract (native C++ counterpart of
++// experimental/pikmin2_receipts.py). Engine-free: no engine types, no retail
++// asset, no save-file layout. It defines the one vocabulary that family drop
++// endpoints and the cargo-contest provider (lane 18) agree on, so an ordinary
++// Onion/AP reward can never be confused with the experimental Research Pod
++// economy.
++//
++// This header is the provider surface requested by #441 / lane 18. It is not a
++// source family drop and it does not write the native save: native save mutation
++// stays coordinated with lane 01. See docs/PIKMIN2_REWARD_RECEIPTS.md.
++
++#include <algorithm>
++#include <cstddef>
++#include <cstdio>
++#include <fstream>
++#include <map>
++#include <set>
++#include <sstream>
++#include <stdexcept>
++#include <string>
++#include <tuple>
++#include <vector>
++
++#ifdef _WIN32
++#define WIN32_LEAN_AND_MEAN
++#ifndef NOMINMAX
++#define NOMINMAX
++#endif
++#include <windows.h>
++#endif
++
++namespace P2Receipt {
++
++// Ordinary P1 Onion/AP behaviour must never share a ledger with the
++// experimental Research Pod/Poko economy.
++enum class Ledger { Onion, Ap, Pod };
++
++inline const char* ledgerTag(Ledger ledger)
++{
++	switch (ledger) {
++	case Ledger::Onion: return "onion";
++	case Ledger::Ap: return "ap";
++	default: return "pod";
++	}
++}
++
++inline bool ordinary(Ledger ledger) { return ledger != Ledger::Pod; }
++
++// Stable token validators mirroring the Python contract. An identity is the
++// reward/source key; the other three fields are the grant-event coordinates.
++inline bool validToken(const std::string& value, std::size_t limit)
++{
++	if (value.empty() || value.size() > limit) {
++		return false;
++	}
++	for (char c : value) {
++		const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
++			|| (c >= '0' && c <= '9') || c == '_' || c == ':' || c == '/' || c == '-' || c == '.';
++		if (!ok) {
++			return false;
++		}
++	}
++	return true;
++}
++
++inline std::string identity(const std::string& value)
++{
++	if (!validToken(value, 90)) {
++		throw std::runtime_error("Invalid reward identity");
++	}
++	return value;
++}
++
++inline std::string coordinate(const std::string& value)
++{
++	if (!validToken(value, 128)) {
++		throw std::runtime_error("Invalid receipt coordinate");
++	}
++	return value;
++}
++
++// Exactly-once key = (seed, identity, slot_or_actor, encounter).
++using Key = std::tuple<std::string, std::string, std::string, std::string>;
++
++inline Key receiptKey(const std::string& seed, const std::string& reward,
++	const std::string& slotOrActor, const std::string& encounter)
++{
++	return Key(coordinate(seed), identity(reward), coordinate(slotOrActor), coordinate(encounter));
++}
++
++// Persistence boundary. Concrete backends must round-trip the sorted key list
++// and reject malformed / duplicate state rather than silently resetting it.
++class ReceiptPersistence {
++public:
++	virtual ~ReceiptPersistence() = default;
++	virtual bool load(std::vector<Key>& out) = 0;
++	virtual void store(const std::vector<Key>& keys) = 0;
++};
++
++class MemoryReceiptPersistence : public ReceiptPersistence {
++public:
++	MemoryReceiptPersistence() = default;
++	explicit MemoryReceiptPersistence(std::vector<Key> keys) : mKeys(std::move(keys)) {}
++
++	bool load(std::vector<Key>& out) override
++	{
++		out = mKeys;
++		return true;
++	}
++
++	void store(const std::vector<Key>& keys) override { mKeys = keys; }
++
++private:
++	std::vector<Key> mKeys;
++};
++
++// Durable ordinary receipt state. This is an ordinary sidecar text file, NOT the
++// Pikmin save/memory-card layout: native save mutation stays with lane 01.
++// Writes go to a temp sibling and are atomically renamed, so an interrupted
++// write leaves the previous good file untouched.
++class FileReceiptPersistence : public ReceiptPersistence {
++public:
++	explicit FileReceiptPersistence(std::string path) : mPath(std::move(path)) {}
++
++	bool load(std::vector<Key>& out) override
++	{
++		out.clear();
++		std::ifstream input(mPath);
++		if (!input.is_open()) {
++			return true; // missing file starts empty
++		}
++		std::string header;
++		if (!(input >> header) || header != "P2_RECEIPTS_1") {
++			throw std::runtime_error("Invalid P2 receipt header");
++		}
++		std::set<Key> seen;
++		std::string seed, reward, slot, encounter;
++		while (input >> seed >> reward >> slot >> encounter) {
++			const Key key = receiptKey(seed, reward, slot, encounter);
++			if (!seen.insert(key).second) {
++				throw std::runtime_error("Duplicate persisted receipt");
++			}
++			out.push_back(key);
++		}
++		if (!input.eof()) {
++			throw std::runtime_error("Cannot read P2 receipt state");
++		}
++		return true;
++	}
++
++	void store(const std::vector<Key>& keys) override
++	{
++		std::ostringstream data;
++		data << "P2_RECEIPTS_1\n";
++		for (const Key& key : keys) {
++			data << std::get<0>(key) << ' ' << std::get<1>(key) << ' '
++				<< std::get<2>(key) << ' ' << std::get<3>(key) << '\n';
++		}
++		const std::string temporary = mPath + ".tmp";
++		{
++			std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
++			if (!output.is_open()) {
++				throw std::runtime_error("Cannot create P2 receipt temporary file");
++			}
++			output << data.str();
++			output.flush();
++			if (!output) {
++				throw std::runtime_error("Cannot flush P2 receipt state");
++			}
++		}
++#ifdef _WIN32
++		if (!::MoveFileExA(temporary.c_str(), mPath.c_str(),
++			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
++			throw std::runtime_error("Cannot replace P2 receipt state");
++		}
++#else
++		if (std::rename(temporary.c_str(), mPath.c_str()) != 0) {
++			throw std::runtime_error("Cannot replace P2 receipt state");
++		}
++#endif
++	}
++
++private:
++	std::string mPath;
++};
++
++// Exactly-once receipts over a persistence backend. `grant` returns true only
++// for the first occurrence of a key; `reload` models a process restart over the
++// same backend and never re-grants a persisted key.
++class ReceiptLedger {
++public:
++	explicit ReceiptLedger(ReceiptPersistence& persistence) : mPersistence(persistence) { reload(); }
++
++	std::size_t size() const { return mKeys.size(); }
++
++	bool has(const std::string& seed, const std::string& reward,
++		const std::string& slotOrActor, const std::string& encounter) const
++	{
++		return mKeys.count(receiptKey(seed, reward, slotOrActor, encounter)) != 0;
++	}
++
++	// Returns true only for the first occurrence of this grant event.
++	bool grant(const std::string& seed, const std::string& reward,
++		const std::string& slotOrActor, const std::string& encounter)
++	{
++		const Key key = receiptKey(seed, reward, slotOrActor, encounter);
++		if (!mKeys.insert(key).second) {
++			return false;
++		}
++		try {
++			persist();
++		} catch (...) {
++			mKeys.erase(key);
++			throw;
++		}
++		return true;
++	}
++
++	void reload()
++	{
++		std::vector<Key> loaded;
++		mPersistence.load(loaded);
++		std::set<Key> next;
++		for (const Key& key : loaded) {
++			if (!next.insert(key).second) {
++				throw std::runtime_error("Duplicate persisted receipt");
++			}
++		}
++		mKeys = std::move(next);
++	}
++
++private:
++	void persist()
++	{
++		std::vector<Key> keys(mKeys.begin(), mKeys.end());
++		std::sort(keys.begin(), keys.end());
++		mPersistence.store(keys);
++	}
++
++	ReceiptPersistence& mPersistence;
++	std::set<Key> mKeys;
++};
++
++// One validated reward descriptor. `drop` stays a string so family lanes carry
++// the source meaning without this shared header owning it.
++struct Descriptor {
++	std::string version = "p2-reward-descriptor-v1";
++	std::string identity;
++	std::string family;
++	std::string drop;   // corpse | pellet | treasure | none
++	Ledger ledger = Ledger::Onion;
++};
++
++inline Descriptor validateDescriptor(const Descriptor& in)
++{
++	if (in.version != "p2-reward-descriptor-v1") {
++		throw std::runtime_error("Unknown reward descriptor version");
++	}
++	Descriptor out = in;
++	out.identity = P2Receipt::identity(in.identity);
++	if (!validToken(in.family, 40)) {
++		throw std::runtime_error("Invalid reward family lane");
++	}
++	if (in.drop != "corpse" && in.drop != "pellet" && in.drop != "treasure" && in.drop != "none") {
++		throw std::runtime_error("Invalid reward drop kind");
++	}
++	return out;
++}
++
++struct ReconcileResult {
++	bool ok = false;
++	std::vector<std::string> ordinarySources;
++	std::vector<std::string> experimentalSources;
++	std::vector<std::string> missingSources;
++	std::vector<std::string> podLeaks;
++};
++
++// Every expected ordinary check must have an ordinary source; a Pod-only
++// descriptor covering one is a leak and is refused (mirrors the Python
++// `reconcile(..., refuse_pod_leaks=True)` default).
++inline ReconcileResult reconcileOrdinary(const std::vector<Descriptor>& descriptors,
++	const std::vector<std::string>& expectedChecks)
++{
++	std::map<std::string, Descriptor> byIdentity;
++	std::set<std::string> expected;
++	for (const Descriptor& raw : descriptors) {
++		const Descriptor descriptor = validateDescriptor(raw);
++		if (!byIdentity.emplace(descriptor.identity, descriptor).second) {
++			throw std::runtime_error("Duplicate reward identity");
++		}
++	}
++	ReconcileResult result;
++	for (const std::string& check : expectedChecks) {
++		const std::string key = identity(check);
++		if (!expected.insert(key).second) {
++			throw std::runtime_error("Duplicate expected check");
++		}
++		const auto found = byIdentity.find(key);
++		if (found == byIdentity.end()) {
++			result.missingSources.push_back(key);
++		} else if (!ordinary(found->second.ledger)) {
++			result.podLeaks.push_back(key);
++		}
++	}
++	for (const auto& entry : byIdentity) {
++		if (ordinary(entry.second.ledger)) {
++			result.ordinarySources.push_back(entry.first);
++		} else {
++			result.experimentalSources.push_back(entry.first);
++		}
++	}
++	if (!result.podLeaks.empty()) {
++		std::string message = "Pod-only reward leaks into ordinary ledger:";
++		for (const std::string& leak : result.podLeaks) {
++			message += " " + leak;
++		}
++		throw std::runtime_error(message);
++	}
++	result.ok = result.missingSources.empty() && result.podLeaks.empty();
++	return result;
++}
++
++} // namespace P2Receipt
+diff --git a/tools/p2_cargo_contest_test.cpp b/tools/p2_cargo_contest_test.cpp
+new file mode 100644
+index 00000000..0e8c8449
+--- /dev/null
++++ b/tools/p2_cargo_contest_test.cpp
+@@ -0,0 +1,129 @@
++#include "pc_p2_cargo_contest.h"
++
++#include <cassert>
++#include <cstdio>
++#include <stdexcept>
++#include <string>
++#include <vector>
++
++template <class F> bool throws(F f)
++{
++	try {
++		f();
++	} catch (const std::runtime_error&) {
++		return true;
++	}
++	return false;
++}
++
++static P2CargoContestConfig config()
++{
++	P2CargoContestConfig cfg;
++	cfg.identity = "nest:panmodoki:1";
++	cfg.sourceToken = "nest:1";
++	cfg.minThreshold = 3;
++	cfg.maxThreshold = 10;
++	cfg.freezeSeconds = 5.0f;
++	cfg.requiredCarriers = 2;
++	cfg.maxCarriers = 4;
++	return cfg;
++}
++
++int main()
++{
++	using Carrier = P2ContestCarrier;
++
++	// Hold until enough carriers, then time out back to the source.
++	{
++		P2CargoContest contest(config());
++		contest.begin(0.0f);
++		const std::vector<Carrier> none;
++		const std::vector<Carrier> one = {Carrier{"piki:1", 5}};
++		assert(contest.update(0.0f, none) == P2ContestOutcome::Held);
++		assert(contest.update(1.0f, one) == P2ContestOutcome::Held);
++		assert(contest.update(6.0f, one) == P2ContestOutcome::ReleasedToSource);
++		assert(contest.reason() == P2ReleaseReason::Timeout);
++	}
++
++	// Two carriers above the minimum hold; enough strength steals.
++	{
++		P2CargoContest contest(config());
++		contest.begin(0.0f);
++		const std::vector<Carrier> twoWeak = {Carrier{"piki:1", 2}, Carrier{"piki:2", 2}};
++		const std::vector<Carrier> twoStrong = {Carrier{"piki:1", 6}, Carrier{"piki:2", 6}};
++		assert(contest.update(0.0f, twoWeak) == P2ContestOutcome::Held);
++		assert(contest.update(1.0f, twoStrong) == P2ContestOutcome::Stolen);
++
++		// Exactly-once receipt across a reload of the shared ledger.
++		P2Receipt::MemoryReceiptPersistence memory;
++		P2Receipt::ReceiptLedger ledger(memory);
++		assert(contest.grantReceipt(ledger, "seedZ", "cargo9", "enc0"));
++		assert(!contest.grantReceipt(ledger, "seedZ", "cargo9", "enc0"));
++		assert(contest.receiptGranted());
++		assert(ledger.size() == 1);
++		ledger.reload();
++		assert(!ledger.grant("seedZ", "nest:panmodoki:1", "cargo9", "enc0"));
++		assert(ledger.size() == 1);
++	}
++
++	// Death / interruption / revisit return the cargo to its source.
++	{
++		P2CargoContest contest(config());
++		contest.begin(0.0f);
++		const std::vector<Carrier> twoWeak = {Carrier{"piki:1", 2}, Carrier{"piki:2", 2}};
++		contest.update(0.0f, twoWeak);
++		contest.onOwnerDied();
++		assert(contest.result() == P2ContestOutcome::ReleasedToSource);
++		assert(contest.reason() == P2ReleaseReason::OwnerDied);
++	}
++
++	{
++		P2CargoContest contest(config());
++		contest.begin(0.0f);
++		contest.interrupt();
++		assert(contest.reason() == P2ReleaseReason::Interrupted);
++		contest.reset();
++		assert(contest.result() == P2ContestOutcome::Held);
++		assert(contest.reason() == P2ReleaseReason::None);
++	}
++
++	// Reset clears the receipt latch but not the shared durable ledger.
++	{
++		P2CargoContest contest(config());
++		contest.begin(0.0f);
++		const std::vector<Carrier> twoStrong = {Carrier{"piki:1", 6}, Carrier{"piki:2", 6}};
++		contest.update(0.0f, twoStrong);
++		contest.reset();
++		assert(!contest.receiptGranted());
++	}
++
++	// A receipt is only available after a steal.
++	{
++		P2CargoContest contest(config());
++		contest.begin(0.0f);
++		P2Receipt::MemoryReceiptPersistence memory;
++		P2Receipt::ReceiptLedger ledger(memory);
++		assert(throws([&] { contest.grantReceipt(ledger, "seed", "a", "b"); }));
++	}
++
++	// Invalid carrier tokens are rejected; maxCarriers bounds what is inspected.
++	{
++		P2CargoContest contest(config());
++		contest.begin(0.0f);
++		const std::vector<Carrier> bad = {Carrier{"bad token", 1}};
++		assert(throws([&] { contest.update(0.0f, bad); }));
++	}
++
++	{
++		P2CargoContestConfig bounded = config();
++		bounded.maxCarriers = 1;
++		P2CargoContest contest(bounded);
++		contest.begin(0.0f);
++		// The out-of-range carrier is never inspected, so its token is irrelevant.
++		const std::vector<Carrier> mixed = {Carrier{"piki:1", 1}, Carrier{"bad token", 100}};
++		assert(contest.update(0.0f, mixed) == P2ContestOutcome::Held);
++	}
++
++	std::printf("PASS p2_cargo_contest_test\n");
++	return 0;
++}
+diff --git a/tools/p2_receipt_test.cpp b/tools/p2_receipt_test.cpp
+new file mode 100644
+index 00000000..c691b58b
+--- /dev/null
++++ b/tools/p2_receipt_test.cpp
+@@ -0,0 +1,123 @@
++#include "pc_p2_receipt.h"
++
++#include <cassert>
++#include <cstdio>
++#include <filesystem>
++#include <stdexcept>
++#include <string>
++#include <vector>
++
++using namespace P2Receipt;
++
++template <class F> bool throws(F f)
++{
++	try {
++		f();
++	} catch (const std::runtime_error&) {
++		return true;
++	}
++	return false;
++}
++
++int main(int argc, char** argv)
++{
++	assert(argc == 2);
++	(void)argc;
++	std::filesystem::path directory = argv[1];
++	std::filesystem::create_directories(directory);
++
++	// Token validation mirrors the Python identity/coordinate contract.
++	assert(identity("corpse:floor1:5000") == "corpse:floor1:5000");
++	assert(throws([] { identity("bad id"); }));
++	assert(throws([] { identity(""); }));
++	assert(throws([] { coordinate(std::string(129, 'a')); }));
++
++	// Exactly-once in memory, stable across reload.
++	MemoryReceiptPersistence memory;
++	ReceiptLedger ledger(memory);
++	assert(ledger.grant("seed1", "corpse:1", "slot7", "enc0"));
++	assert(!ledger.grant("seed1", "corpse:1", "slot7", "enc0"));
++	assert(ledger.size() == 1);
++	ledger.reload();
++	assert(ledger.has("seed1", "corpse:1", "slot7", "enc0"));
++	assert(!ledger.grant("seed1", "corpse:1", "slot7", "enc0")); // not re-granted
++	assert(ledger.grant("seed1", "corpse:2", "slot8", "enc0"));  // genuinely new
++	assert(ledger.size() == 2);
++
++	// A different encounter is a genuinely new grant event.
++	assert(ledger.grant("seed1", "corpse:1", "slot7", "enc1"));
++
++	// Durable ordinary sidecar: a fresh ledger over the same file sees prior
++	// receipts and refuses to repeat them (process restart).
++	const std::string file = (directory / "receipts.txt").string();
++	{
++		FileReceiptPersistence disk(file);
++		ReceiptLedger first(disk);
++		assert(first.size() == 0);
++		assert(first.grant("seedX", "treasure:dia_a_red", "actor3", "enc0"));
++		assert(!first.grant("seedX", "treasure:dia_a_red", "actor3", "enc0"));
++	}
++	{
++		FileReceiptPersistence disk(file);
++		ReceiptLedger restarted(disk);
++		assert(restarted.size() == 1);
++		assert(!restarted.grant("seedX", "treasure:dia_a_red", "actor3", "enc0"));
++		assert(restarted.grant("seedX", "treasure:dia_a_red", "actor4", "enc0"));
++	}
++
++	// Corrupt durable state is rejected rather than silently reset.
++	const std::string corrupt = (directory / "corrupt.txt").string();
++	{
++		FILE* handle = std::fopen(corrupt.c_str(), "wb");
++		assert(handle);
++		const char* text = "P2_RECEIPTS_1\na b c d\na b c d\n";
++		assert(std::fwrite(text, 1, std::string(text).size(), handle) == std::string(text).size());
++		std::fclose(handle);
++	}
++	assert(throws([&] {
++		FileReceiptPersistence disk(corrupt);
++		std::vector<Key> keys;
++		disk.load(keys);
++	}));
++
++	// Descriptor validation and ordinary/pod reconciliation.
++	Descriptor corpse;
++	corpse.identity = "corpse:floor1:5000";
++	corpse.family = "lane-13-bulborbs";
++	corpse.drop = "corpse";
++	corpse.ledger = Ledger::Ap;
++	const Descriptor valid = validateDescriptor(corpse);
++	assert(valid.identity == corpse.identity);
++	assert(throws([] {
++		Descriptor bad;
++		bad.version = "nope";
++		bad.identity = "x";
++		bad.family = "f";
++		bad.drop = "corpse";
++		validateDescriptor(bad);
++	}));
++	assert(throws([] {
++		Descriptor bad;
++		bad.identity = "x";
++		bad.family = "f";
++		bad.drop = "coin";
++		validateDescriptor(bad);
++	}));
++
++	const ReconcileResult ok = reconcileOrdinary({valid}, {"corpse:floor1:5000"});
++	assert(ok.ok);
++	assert(ok.ordinarySources.size() == 1);
++	assert(ok.missingSources.empty());
++
++	const ReconcileResult missing = reconcileOrdinary({valid}, {"corpse:floor1:5000", "treasure:dia_blue"});
++	assert(!missing.ok);
++	assert(missing.missingSources.size() == 1 && missing.missingSources[0] == "treasure:dia_blue");
++
++	Descriptor pod = valid;
++	pod.identity = "corpse:floor1:5000";
++	pod.ledger = Ledger::Pod;
++	assert(throws([&] { reconcileOrdinary({pod}, {"corpse:floor1:5000"}); }));
++
++	std::printf("PASS p2_receipt_test\n");
++	return 0;
++}
+-- 
+2.55.0.windows.3
+

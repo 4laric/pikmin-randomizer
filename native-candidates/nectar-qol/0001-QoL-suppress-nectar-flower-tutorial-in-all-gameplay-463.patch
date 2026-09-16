@@ -1,0 +1,29 @@
+From cc4f62050548dfc0e7cad52e433c7674898066ad Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 16:32:03 -0400
+Subject: [PATCH] QoL: suppress nectar flower tutorial in all gameplay (#463)
+
+---
+ src/plugPikiKando/pikiState.cpp | 6 ++----
+ 1 file changed, 2 insertions(+), 4 deletions(-)
+
+diff --git a/src/plugPikiKando/pikiState.cpp b/src/plugPikiKando/pikiState.cpp
+index efd7f355..760f6ae7 100644
+--- a/src/plugPikiKando/pikiState.cpp
++++ b/src/plugPikiKando/pikiState.cpp
+@@ -2490,10 +2490,8 @@ void PikiGrowupState::procAnimMsg(Piki* piki, MsgAnim* msg)
+ 		seSystem->playPikiSound(SEF_PIKI_GROW4, piki->mSRT.t);
+ 		piki->setFlower(Flower);
+ 		playerState->mResultFlags.setOn(zen::RESFLAG_PikminSeeds);
+-		if (!playerState->mDemoFlags.isFlag(DEMOFLAG_FirstNectar) && !gameflow.mMoviePlayer->mIsActive && piki->aiCullable()) {
+-			playerState->mDemoFlags.setFlagOnly(DEMOFLAG_FirstNectar);
+-			gameflow.mGameInterface->message(MOVIECMD_TextDemo, zen::ogScrTutorialMgr::TUT_Mitu);
+-		}
++		// QoL: nectar upgrades never interrupt gameplay with the flower tutorial.
++		playerState->mDemoFlags.setFlagOnly(DEMOFLAG_FirstNectar);
+ 		if (piki->mMode == PikiMode::FormationMode) {
+ 			piki->mNavi->mPlateMgr->changeFlower(piki);
+ 		}
+-- 
+2.55.0.windows.3
+

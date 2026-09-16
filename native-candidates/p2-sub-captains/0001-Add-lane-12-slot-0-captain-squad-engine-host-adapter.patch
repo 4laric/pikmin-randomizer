@@ -1,0 +1,771 @@
+From fd40992c390b9e96e4f7a8f2b92019ac4eee3efc Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 02:58:09 -0400
+Subject: [PATCH] Add lane-12 slot-0 captain/squad engine host adapter (#130)
+
+---
+ CMakeLists.txt                    |   1 +
+ pc_port/pc_p2_captain.cpp         | 170 +++++++++++++++++
+ pc_port/pc_p2_captain.h           | 304 ++++++++++++++++++++++++++++++
+ pc_port/pc_p2_captain_policy.h    |  12 ++
+ tools/test_p2_captain_adapter.cpp | 225 ++++++++++++++++++++++
+ 5 files changed, 712 insertions(+)
+ create mode 100644 pc_port/pc_p2_captain.cpp
+ create mode 100644 pc_port/pc_p2_captain.h
+ create mode 100644 tools/test_p2_captain_adapter.cpp
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index bc32ae08..431c73b0 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -163,6 +163,7 @@ endif()
+ set(PC_PORT_SOURCES
+     pc_port/pc_bbft.cpp
+     pc_port/pc_p2_preview.cpp
++    pc_port/pc_p2_captain.cpp
+     pc_port/pc_p2_economy.cpp
+     pc_port/pc_p2_purple.cpp
+     pc_port/pc_p2_purple_motion.cpp
+diff --git a/pc_port/pc_p2_captain.cpp b/pc_port/pc_p2_captain.cpp
+new file mode 100644
+index 00000000..5ba4bd7d
+--- /dev/null
++++ b/pc_port/pc_p2_captain.cpp
+@@ -0,0 +1,170 @@
++#include "pc_p2_captain.h"
++
++#include "NaviMgr.h"
++#include "Piki.h"
++#include "PikiMgr.h"
++
++#include <unordered_map>
++
++// Lane 12 engine glue (#130): binds P2CaptainAdapter to the live P1
++// Navi/NaviMgr/PikiMgr. This is the only translation unit that needs engine
++// headers; the adapter logic is header-only and engine-free.
++//
++// Single-captain binding: captain slot 0 is the live `naviMgr->getNavi(0)`
++// (Navi::mNaviID == 0); slot 1 is always absent. There is no
++// NaviMgr::getActiveNavi / getAliveOrima / getDeadOrima on this port, so the
++// adapter's own P2CaptainPolicy is the source of truth for active/captured
++// bookkeeping and it mirrors Piki::mNavi writes back into the engine.
++
++namespace {
++
++// Stable nonzero actor ids for live Piki pointers. The registry is cleared by
++// teardown(). A freed-then-reused pointer inside one scene can inherit an id;
++// captor families must release a captive before its actor is destroyed (the
++// same lifetime rule the source captor FSMs follow).
++std::unordered_map<void*, std::uint32_t> g_actorIds;
++std::uint32_t g_nextActorId = 1;
++
++std::uint32_t actor_id_for(void* actor)
++{
++    if (!actor) return 0;
++    auto it = g_actorIds.find(actor);
++    if (it != g_actorIds.end()) return it->second;
++    std::uint32_t id = g_nextActorId++;
++    if (!id) id = g_nextActorId++; // never hand out 0, the free/unowned sentinel
++    g_actorIds[actor] = id;
++    return id;
++}
++
++void* live_captain_at(void*, int slot)
++{
++    if (!naviMgr || slot != P2CaptainA) return nullptr;
++    return static_cast<void*>(naviMgr->getNavi(0));
++}
++
++float live_get_health(void*, void* captain)
++{
++    if (!captain) return 0.0f;
++    return static_cast<Navi*>(captain)->mHealth;
++}
++
++void live_set_health(void*, void* captain, float health)
++{
++    if (!captain) return;
++    static_cast<Navi*>(captain)->mHealth = health;
++}
++
++std::uint32_t live_actor_id(void*, void* actor) { return actor_id_for(actor); }
++
++int live_owner_slot(void* context, void* actor)
++{
++    (void)context;
++    if (!actor) return P2CaptainInvalid;
++    Navi* owner = static_cast<Piki*>(actor)->mNavi;
++    if (!owner) return P2CaptainInvalid;
++    return owner->mNaviID == P2CaptainA ? P2CaptainA : P2CaptainInvalid;
++}
++
++void live_set_owner_slot(void* context, void* actor, int slot)
++{
++    (void)context;
++    if (!actor || !naviMgr) return;
++    Piki* piki = static_cast<Piki*>(actor);
++    piki->mNavi = (slot == P2CaptainA) ? naviMgr->getNavi(0) : nullptr;
++}
++
++int live_enumerate(void*, P2PikiHandle* out, int capacity)
++{
++    if (!pikiMgr || !out || capacity <= 0) return 0;
++    int count = 0;
++    Iterator it(pikiMgr);
++    CI_LOOP(it)
++    {
++        if (count >= capacity) break;
++        out[count++] = static_cast<void*>(static_cast<Piki*>(*it));
++    }
++    return count;
++}
++
++P2CaptainHostOps live_ops()
++{
++    P2CaptainHostOps ops;
++    ops.captainAt    = &live_captain_at;
++    ops.getHealth    = &live_get_health;
++    ops.setHealth    = &live_set_health;
++    ops.actorId      = &live_actor_id;
++    ops.ownerSlot    = &live_owner_slot;
++    ops.setOwnerSlot = &live_set_owner_slot;
++    ops.enumerate    = &live_enumerate;
++    return ops;
++}
++
++P2CaptainAdapter& live_adapter()
++{
++    static P2CaptainAdapter instance;
++    return instance;
++}
++
++} // namespace
++
++namespace pc_p2_captain {
++
++bool setup_from_navi_mgr()
++{
++    P2CaptainAdapter& adapter = live_adapter();
++    if (adapter.bound()) return true;
++    if (!naviMgr || !naviMgr->getNavi(0)) return false;
++    if (!adapter.bind(live_ops())) return false;
++    if (!adapter.setup()) {
++        adapter.teardown();
++        return false;
++    }
++    return true;
++}
++
++void teardown()
++{
++    P2CaptainAdapter& adapter = live_adapter();
++    adapter.teardown();
++    g_actorIds.clear();
++    g_nextActorId = 1;
++}
++
++P2CaptainAdapter* adapter() { return live_adapter().bound() ? &live_adapter() : nullptr; }
++
++float health(int captain) { return live_adapter().health(captain); }
++
++bool set_health(int captain, float value) { return live_adapter().setHealth(captain, value); }
++
++bool capture_captain(int captain, std::uint64_t captorEpoch)
++{
++    return live_adapter().captureCaptain(captain, captorEpoch);
++}
++
++bool release_captain(int captain, std::uint64_t captorEpoch)
++{
++    return live_adapter().releaseCaptain(captain, captorEpoch);
++}
++
++bool switch_active(int captain) { return live_adapter().switchActive(captain); }
++
++bool reload() { return live_adapter().reload(); }
++
++int adopt_squad() { return live_adapter().adoptSquad(); }
++
++bool capture_actor(std::uint64_t captorEpoch, P2PikiHandle piki)
++{
++    return live_adapter().captureActor(captorEpoch, piki);
++}
++
++bool release_actor(std::uint64_t captorEpoch, P2PikiHandle piki, int toCaptain)
++{
++    return live_adapter().releaseActor(captorEpoch, piki, toCaptain);
++}
++
++std::vector<std::uint32_t> drop_captured(std::uint64_t captorEpoch)
++{
++    return live_adapter().dropAllCaptured(captorEpoch);
++}
++
++} // namespace pc_p2_captain
+diff --git a/pc_port/pc_p2_captain.h b/pc_port/pc_p2_captain.h
+new file mode 100644
+index 00000000..a6145deb
+--- /dev/null
++++ b/pc_port/pc_p2_captain.h
+@@ -0,0 +1,304 @@
++#pragma once
++#include "pc_p2_captain_policy.h"
++#include <cmath>
++#include <cstdint>
++
++// Lane 12 engine-facing captain / squad ownership host adapter (#130).
++//
++// pc_p2_captain_policy.h is the stable two-captain contract captor families
++// build against. This file is the seam that binds that contract to a concrete
++// engine without taking an engine dependency:
++//
++//   * P2CaptainHostOps is the set of engine facts the adapter needs (captain
++//     handle, health, Pikmin identity, Piki::mNavi ownership, squad
++//     enumeration). pc_p2_captain.cpp implements it against the live P1
++//     Navi / PikiMgr globals; the standalone adapter test binds doubles.
++//   * P2CaptainAdapter is the engine-free driver: it owns the ownership table
++//     and P2CaptainPolicy, adopts the live squad, and mirrors captain
++//     captures and captor-held actors back into the engine callbacks.
++//
++// Current-port reality (single captain) is deliberate and bounded:
++//   * NaviMgr has exactly one Navi (`NaviMgr::getNavi()`), created with
++//     `Navi::mNaviID == 0`; there is no NaviMgr::getActiveNavi /
++//     getAliveOrima / getDeadOrima / mNaviDeadFlags.
++//   * Navi health is the inherited `Creature::mHealth` (Navi.h includes
++//     Creature.h; `Navi::mHealth` is Creature's, not a Navi member).
++//   * Piki ownership is `Piki::mNavi` (Piki.h:318).
++// So this adapter binds slot 0 (P2CaptainA) and leaves slot 1 absent. That is
++// not a shortcut: the contract's zero-control guard means capture of the only
++// captain and switchActive(1) must be refused, exactly as the source refuses
++// to strand the player. A real second captain requires engine changes listed
++// in docs/PIKMIN2_CAPTAIN_SQUAD_CONTRACT.md; until then this is slot-0 only.
++
++// Opaque engine handles (Navi*, Piki*). Never dereferenced by the adapter.
++using P2CaptainHandle = void*;
++using P2PikiHandle = void*;
++
++// Upper bound on one enumeration/adoption pass. The P1 field cap is far lower.
++constexpr int P2_CAPTAIN_ADOPT_CAPACITY = 256;
++
++struct P2CaptainHostOps {
++    void* context = nullptr;
++
++    // Captain slot -> live captain object, or null when the slot is absent.
++    P2CaptainHandle (*captainAt)(void* context, int slot) = nullptr;
++    float (*getHealth)(void* context, P2CaptainHandle captain) = nullptr;
++    void (*setHealth)(void* context, P2CaptainHandle captain, float health) = nullptr;
++
++    // Stable nonzero actor id for a Pikmin (or carried actor); 0 if unknown.
++    std::uint32_t (*actorId)(void* context, P2PikiHandle actor) = nullptr;
++    // Current owning captain slot, or P2CaptainInvalid when free/unowned.
++    int (*ownerSlot)(void* context, P2PikiHandle actor) = nullptr;
++    // Write the actor's owner slot back into the engine (Piki::mNavi).
++    void (*setOwnerSlot)(void* context, P2PikiHandle actor, int slot) = nullptr;
++
++    // Enumerate live squad actors for adoption. Returns the count written to
++    // `out` (truncated to capacity), or -1 on failure.
++    int (*enumerate)(void* context, P2PikiHandle* out, int capacity) = nullptr;
++};
++
++// One per loaded scene. Bind, setup(), then let captor families drive it.
++class P2CaptainAdapter {
++    P2CaptainOwnershipTable mTable;
++    P2CaptainPolicy mPolicy;
++    P2CaptainHostOps mHost;
++    bool mBound = false;
++
++    bool liveCaptain(int slot, P2CaptainHandle& out) const
++    {
++        out = nullptr;
++        if (!mHost.captainAt || slot < 0 || slot >= P2CaptainCount) return false;
++        out = mHost.captainAt(mHost.context, slot);
++        return out != nullptr;
++    }
++
++public:
++    // Requires every callback. A partially-bound adapter is refused rather
++    // than silently skipping engine writes.
++    bool bind(const P2CaptainHostOps& ops)
++    {
++        if (mBound || !ops.captainAt || !ops.getHealth || !ops.setHealth || !ops.actorId
++            || !ops.ownerSlot || !ops.setOwnerSlot || !ops.enumerate)
++            return false;
++        mHost  = ops;
++        mPolicy = P2CaptainPolicy();
++        if (!mPolicy.bind(&mTable)) return false;
++        mBound = true;
++        return true;
++    }
++
++    bool bound() const { return mBound; }
++    P2CaptainPolicy& policy() { return mPolicy; }
++    const P2CaptainPolicy& policy() const { return mPolicy; }
++
++    // Read-only view of the shared ownership table, for consumers/tests.
++    bool ownsActor(std::uint32_t actor) const { return mTable.isOwned(actor); }
++    int ownerOfActor(std::uint32_t actor) const { return mTable.ownerOf(actor); }
++
++    // Register every present captain (slot 0 only on this port) and adopt the
++    // squad's existing Piki::mNavi ownership. Returns false when no captain is
++    // present. Safe to call once per scene after bind().
++    bool setup()
++    {
++        if (!mBound) return false;
++        int presentCount = 0;
++        for (int c = 0; c < P2CaptainCount; ++c) {
++            P2CaptainHandle handle = nullptr;
++            if (liveCaptain(c, handle)) {
++                float hp = mHost.getHealth(mHost.context, handle);
++                if (!std::isfinite(hp) || hp < 0.0f) return false;
++                if (!mPolicy.configure(c, hp, true)) return false;
++                ++presentCount;
++            } else {
++                if (!mPolicy.configure(c, 0.0f, false)) return false;
++            }
++        }
++        if (presentCount == 0) return false;
++        adoptSquad();
++        return true;
++    }
++
++    // Claim every enumerated actor whose current engine owner is a captain.
++    // Returns the number adopted, or -1 on enumeration failure.
++    int adoptSquad()
++    {
++        if (!mBound) return -1;
++        P2PikiHandle actors[P2_CAPTAIN_ADOPT_CAPACITY];
++        int count = mHost.enumerate(mHost.context, actors, P2_CAPTAIN_ADOPT_CAPACITY);
++        if (count < 0) return -1;
++        int adopted = 0;
++        for (int i = 0; i < count; ++i) {
++            std::uint32_t id = mHost.actorId(mHost.context, actors[i]);
++            if (!id) continue;
++            int owner = mHost.ownerSlot(mHost.context, actors[i]);
++            if (!P2CaptainOwnershipTable::isCaptain(owner)) continue;
++            if (mPolicy.claim(owner, id)) ++adopted;
++        }
++        return adopted;
++    }
++
++    // Push the policy's ownership back into the engine (Piki::mNavi). Used
++    // after a captain capture transfers a squad, and by reload/teardown.
++    bool syncOwnership()
++    {
++        if (!mBound) return false;
++        P2PikiHandle actors[P2_CAPTAIN_ADOPT_CAPACITY];
++        int count = mHost.enumerate(mHost.context, actors, P2_CAPTAIN_ADOPT_CAPACITY);
++        if (count < 0) return false;
++        for (int i = 0; i < count; ++i) {
++            std::uint32_t id = mHost.actorId(mHost.context, actors[i]);
++            if (!id) continue;
++            int owner = mTable.ownerOf(id);
++            mHost.setOwnerSlot(mHost.context, actors[i],
++                               P2CaptainOwnershipTable::isCaptain(owner) ? owner : P2CaptainInvalid);
++        }
++        return true;
++    }
++
++    // --- Health (engine is authoritative for the live Navi value) ---
++
++    float health(int captain) const { return mPolicy.health(captain); }
++
++    bool setHealth(int captain, float value)
++    {
++        if (!mBound || !P2CaptainOwnershipTable::isCaptain(captain) || !std::isfinite(value)
++            || value < 0.0f || !mPolicy.present(captain))
++            return false;
++        P2CaptainHandle handle = nullptr;
++        if (liveCaptain(captain, handle)) mHost.setHealth(mHost.context, handle, value);
++        return mPolicy.setHealth(captain, value);
++    }
++
++    // Pull the live engine health back into the policy without changing phase.
++    bool refresh()
++    {
++        if (!mBound) return false;
++        for (int c = 0; c < P2CaptainCount; ++c) {
++            P2CaptainHandle handle = nullptr;
++            if (!liveCaptain(c, handle)) continue;
++            float hp = mHost.getHealth(mHost.context, handle);
++            if (!std::isfinite(hp) || hp < 0.0f) return false;
++            if (!mPolicy.setHealth(c, hp)) return false;
++        }
++        return true;
++    }
++
++    // --- Captain-level control ---
++
++    int activeCaptain() const { return mPolicy.activeCaptain(); }
++
++    bool switchActive(int target)
++    {
++        if (!mBound) return false;
++        return mPolicy.switchActive(target);
++    }
++
++    // Captor ingest of a captain. On success the captive's squad is
++    // transferred in-policy and mirrored into the engine.
++    bool captureCaptain(int captain, std::uint64_t captorEpoch)
++    {
++        if (!mBound || !mPolicy.capture(captain, captorEpoch)) return false;
++        syncOwnership();
++        return true;
++    }
++
++    bool releaseCaptain(int captain, std::uint64_t captorEpoch)
++    {
++        if (!mBound) return false;
++        return mPolicy.releaseCaptured(captain, captorEpoch);
++    }
++
++    // --- Captor-held actors (Pikmin / carried items) ---
++
++    bool captureActor(std::uint64_t captorEpoch, P2PikiHandle actor)
++    {
++        if (!mBound) return false;
++        std::uint32_t id = mHost.actorId(mHost.context, actor);
++        if (!id || !mPolicy.captureActor(captorEpoch, id)) return false;
++        mHost.setOwnerSlot(mHost.context, actor, P2CaptainInvalid);
++        return true;
++    }
++
++    bool releaseActor(std::uint64_t captorEpoch, P2PikiHandle actor, int toCaptain)
++    {
++        if (!mBound) return false;
++        std::uint32_t id = mHost.actorId(mHost.context, actor);
++        if (!id || !mPolicy.releaseActor(captorEpoch, id, toCaptain)) return false;
++        int owner = mTable.ownerOf(id);
++        mHost.setOwnerSlot(mHost.context, actor,
++                           P2CaptainOwnershipTable::isCaptain(owner) ? owner : P2CaptainInvalid);
++        return true;
++    }
++
++    // Captor death/interruption: free everything it held and mirror the freed
++    // state (whistle-reclaimable, never deleted) into the engine.
++    std::vector<std::uint32_t> dropAllCaptured(std::uint64_t captorEpoch)
++    {
++        std::vector<std::uint32_t> out;
++        if (!mBound) return out;
++        out = mPolicy.dropAllCaptured(captorEpoch);
++        syncOwnership();
++        return out;
++    }
++
++    std::size_t captiveCount() const { return mPolicy.captiveCount(); }
++
++    // --- Lifecycle ---
++
++    // Scene reload/checkpoint. Clears transient captures, restores each captive
++    // to its previous captain and re-reads live health; owned actors are
++    // conserved.
++    bool reload()
++    {
++        if (!mBound) return false;
++        mPolicy.reload();
++        refresh();
++        return syncOwnership();
++    }
++
++    // Drop the engine binding and free all policy bookkeeping. Does not touch
++    // the live Navi/Piki objects (they are owned by the engine). After this the
++    // adapter may be bound again with bind().
++    void teardown()
++    {
++        if (!mBound) return;
++        mPolicy.cancel();
++        mTable.invalidateDomain();
++        mPolicy = P2CaptainPolicy();
++        mHost  = P2CaptainHostOps();
++        mBound = false;
++    }
++};
++
++// ---------------------------------------------------------------------------
++// Engine glue, implemented in pc_p2_captain.cpp against the live P1
++// Navi/NaviMgr/PikiMgr. This is opt-in: nothing here runs unless a caller
++// invokes setup_from_navi_mgr(). The engine-free adapter test above does not
++// reference these symbols, so it does not link pc_p2_captain.cpp.
++namespace pc_p2_captain {
++
++// Bind a process-wide adapter to the live naviMgr and adopt the current squad.
++// Returns false when there is no live NaviMgr/Navi. Idempotent: a second call
++// returns true without re-adopting.
++bool setup_from_navi_mgr();
++
++// Drop the live binding (call before scene/manager teardown).
++void teardown();
++
++// The live adapter after a successful setup_from_navi_mgr(), else null.
++P2CaptainAdapter* adapter();
++
++float health(int captain);
++bool set_health(int captain, float value);
++bool capture_captain(int captain, std::uint64_t captorEpoch);
++bool release_captain(int captain, std::uint64_t captorEpoch);
++bool switch_active(int captain);
++bool reload();
++int adopt_squad();
++
++// Captor-held squad actor (Piki*) operations. `piki` is a live Piki*.
++bool capture_actor(std::uint64_t captorEpoch, P2PikiHandle piki);
++bool release_actor(std::uint64_t captorEpoch, P2PikiHandle piki, int toCaptain);
++std::vector<std::uint32_t> drop_captured(std::uint64_t captorEpoch);
++
++} // namespace pc_p2_captain
+diff --git a/pc_port/pc_p2_captain_policy.h b/pc_port/pc_p2_captain_policy.h
+index d3992f9a..a40c7489 100644
+--- a/pc_port/pc_p2_captain_policy.h
++++ b/pc_port/pc_p2_captain_policy.h
+@@ -216,6 +216,18 @@ public:
+     }
+     bool controllable(int captain) const { return aliveIdle(captain); }
+ 
++    // Raw health override for the engine-facing host adapter
++    // (pc_p2_captain.h), which is authoritative for the live Navi value. This
++    // does not change phase: use damage() for knockout and revive() for
++    // coming back. Refuses absent slots and non-finite/negative values.
++    bool setHealth(int captain, float health) {
++        if (!bound() || !P2CaptainOwnershipTable::isCaptain(captain)
++            || !slots[captain].present || !std::isfinite(health) || health < 0.0f)
++            return false;
++        slots[captain].health = health;
++        return true;
++    }
++
+     // Source NaviMgr::getActiveNavi switch. Refuses a captain that is absent,
+     // captured or down. Owned actors stay with their owners; no transfer and
+     // no loss.
+diff --git a/tools/test_p2_captain_adapter.cpp b/tools/test_p2_captain_adapter.cpp
+new file mode 100644
+index 00000000..93bec5ff
+--- /dev/null
++++ b/tools/test_p2_captain_adapter.cpp
+@@ -0,0 +1,225 @@
++#include "pc_p2_captain.h"
++#include <cassert>
++#include <cstdint>
++#include <cstdio>
++
++// Lane 12 engine-facing adapter test (#130). This is NOT a live Navi runtime.
++// Every engine fact comes from an in-process double supplied through
++// P2CaptainHostOps: two fake Pikmin actors and a fake Navi whose health,
++// mNavi owner slot and setHealth/setOwner call counts are observable. The
++// adapter policy/ownership/health-mirroring semantics under test are the same
++// code the live pc_p2_captain.cpp drives; only the engine callbacks differ.
++
++namespace {
++
++struct FakeNavi {
++    float health = 0.0f;
++};
++
++// ownerSlot: P2CaptainInvalid means free/unowned (the fake's "mNavi == null").
++struct FakePiki {
++    std::uint32_t id = 0;
++    int ownerSlot = P2CaptainInvalid;
++};
++
++struct FakeScene {
++    FakeNavi navi0;
++    FakeNavi navi1;
++    bool captain0Present = true;
++    bool twoCaptains = false;
++    FakePiki pikiA;
++    FakePiki pikiB;
++    int setHealthCalls = 0;
++    int setOwnerCalls = 0;
++};
++
++P2CaptainHandle fake_captain_at(void* ctx, int slot)
++{
++    FakeScene* s = static_cast<FakeScene*>(ctx);
++    if (slot == P2CaptainA) return s->captain0Present ? static_cast<void*>(&s->navi0) : nullptr;
++    if (slot == P2CaptainB) return s->twoCaptains ? static_cast<void*>(&s->navi1) : nullptr;
++    return nullptr;
++}
++
++float fake_get_health(void*, P2CaptainHandle captain)
++{
++    return static_cast<FakeNavi*>(captain)->health;
++}
++
++void fake_set_health(void* ctx, P2CaptainHandle captain, float value)
++{
++    static_cast<FakeScene*>(ctx)->setHealthCalls++;
++    static_cast<FakeNavi*>(captain)->health = value;
++}
++
++std::uint32_t fake_actor_id(void*, P2PikiHandle actor) { return static_cast<FakePiki*>(actor)->id; }
++
++int fake_owner_slot(void*, P2PikiHandle actor) { return static_cast<FakePiki*>(actor)->ownerSlot; }
++
++void fake_set_owner_slot(void* ctx, P2PikiHandle actor, int slot)
++{
++    static_cast<FakeScene*>(ctx)->setOwnerCalls++;
++    static_cast<FakePiki*>(actor)->ownerSlot = slot;
++}
++
++int fake_enumerate(void* ctx, P2PikiHandle* out, int capacity)
++{
++    FakeScene* s = static_cast<FakeScene*>(ctx);
++    int count = 0;
++    if (count < capacity) out[count++] = static_cast<void*>(&s->pikiA);
++    if (count < capacity) out[count++] = static_cast<void*>(&s->pikiB);
++    return count;
++}
++
++P2CaptainHostOps fake_ops(FakeScene& scene)
++{
++    P2CaptainHostOps ops;
++    ops.context      = &scene;
++    ops.captainAt    = &fake_captain_at;
++    ops.getHealth    = &fake_get_health;
++    ops.setHealth    = &fake_set_health;
++    ops.actorId      = &fake_actor_id;
++    ops.ownerSlot    = &fake_owner_slot;
++    ops.setOwnerSlot = &fake_set_owner_slot;
++    ops.enumerate    = &fake_enumerate;
++    return ops;
++}
++
++void test_single_captain_slot0(FakeScene& scene)
++{
++    P2CaptainAdapter adapter;
++
++    // A partial host is refused rather than silently skipping engine writes.
++    P2CaptainHostOps partial;
++    partial.captainAt = &fake_captain_at;
++    assert(!adapter.bind(partial));
++
++    assert(adapter.bind(fake_ops(scene)));
++    assert(adapter.setup());
++    assert(adapter.policy().activeCaptain() == P2CaptainA);
++    assert(adapter.policy().present(P2CaptainA));
++    assert(!adapter.policy().present(P2CaptainB));
++    assert(!adapter.policy().controllable(P2CaptainB));
++
++    // setup() adopted the live Piki::mNavi ownership into slot 0.
++    assert(adapter.ownsActor(101) && adapter.ownsActor(102));
++    assert(adapter.ownerOfActor(101) == P2CaptainA);
++    assert(adapter.health(P2CaptainA) == 75.0f);
++
++    // Single-captain reality: no switch, and capture of the only captain is
++    // refused because it would strand the player with zero control.
++    assert(!adapter.switchActive(P2CaptainA));
++    assert(!adapter.switchActive(P2CaptainB));
++    assert(!adapter.captureCaptain(P2CaptainA, 5));
++    assert(adapter.policy().phase(P2CaptainA) == P2CaptainPhase::Active);
++
++    // Health set writes through to the engine and mirrors into the policy.
++    assert(adapter.setHealth(P2CaptainA, 42.0f));
++    assert(scene.navi0.health == 42.0f);
++    assert(adapter.health(P2CaptainA) == 42.0f);
++    assert(scene.setHealthCalls == 1);
++    assert(!adapter.setHealth(P2CaptainB, 10.0f)); // absent slot
++    assert(!adapter.setHealth(P2CaptainA, -1.0f)); // invalid value
++
++    // refresh() pulls the engine value back in without changing phase.
++    scene.navi0.health = 90.0f;
++    assert(adapter.refresh());
++    assert(adapter.health(P2CaptainA) == 90.0f);
++
++    // A captor grabs a Pikmin: it leaves captain ownership and the engine
++    // ownership is cleared. Stale captor epochs cannot release it.
++    assert(adapter.captureActor(900, &scene.pikiA));
++    assert(adapter.captiveCount() == 1);
++    assert(scene.pikiA.ownerSlot == P2CaptainInvalid);
++    assert(!adapter.ownsActor(101));
++    assert(adapter.ownsActor(102));
++    assert(!adapter.captureActor(901, &scene.pikiA));      // no double capture
++    assert(!adapter.releaseActor(902, &scene.pikiA, P2CaptainA)); // stale epoch
++    assert(adapter.releaseActor(900, &scene.pikiA, P2CaptainA));
++    assert(scene.pikiA.ownerSlot == P2CaptainA);
++    assert(adapter.ownsActor(101));
++
++    // Captor death frees held actors to the ground (engine owner cleared).
++    assert(adapter.captureActor(910, &scene.pikiB));
++    assert(scene.pikiB.ownerSlot == P2CaptainInvalid);
++    std::vector<std::uint32_t> dropped = adapter.dropAllCaptured(910);
++    assert(dropped.size() == 1 && dropped[0] == 102);
++    assert(scene.pikiB.ownerSlot == P2CaptainInvalid);
++    assert(adapter.captiveCount() == 0);
++
++    // reload() restores a captive to its previous captain in the engine and
++    // conserves the squad.
++    assert(adapter.policy().claim(P2CaptainA, 102));
++    scene.pikiB.ownerSlot = P2CaptainA;
++    assert(adapter.ownsActor(102));
++    assert(adapter.captureActor(904, &scene.pikiB));
++    assert(scene.pikiB.ownerSlot == P2CaptainInvalid);
++    assert(adapter.reload());
++    assert(scene.pikiB.ownerSlot == P2CaptainA);
++    assert(adapter.captiveCount() == 0);
++    assert(adapter.ownsActor(102));
++
++    // teardown drops the binding and all policy bookkeeping; rebinding works.
++    adapter.teardown();
++    assert(!adapter.bound());
++    assert(!adapter.ownsActor(102));
++    assert(adapter.bind(fake_ops(scene)));
++    assert(adapter.setup());
++}
++
++// The adapter is engine-generic: a host that exposes a second captain exercises
++// the capture/transfer path that the single-captain port cannot reach. This is
++// still an engine double, not live two-captain runtime.
++void test_two_captain_transfer_double(FakeScene& scene)
++{
++    P2CaptainAdapter adapter;
++    assert(adapter.bind(fake_ops(scene)));
++    assert(adapter.setup());
++    assert(adapter.activeCaptain() == P2CaptainA);
++
++    assert(adapter.switchActive(P2CaptainB));
++    assert(adapter.activeCaptain() == P2CaptainB);
++    assert(adapter.policy().phase(P2CaptainA) == P2CaptainPhase::Idle);
++
++    // B owns 102: capture B hands 102 to A and mirrors it into the engine.
++    adapter.policy().abandon(P2CaptainA, 102);
++    scene.pikiB.ownerSlot = P2CaptainB;
++    assert(adapter.adoptSquad() >= 0);
++    assert(adapter.ownerOfActor(102) == P2CaptainB);
++    assert(adapter.captureCaptain(P2CaptainB, 77));
++    assert(adapter.policy().phase(P2CaptainB) == P2CaptainPhase::Captured);
++    assert(adapter.activeCaptain() == P2CaptainA);
++    assert(adapter.ownerOfActor(102) == P2CaptainA);
++    assert(scene.pikiB.ownerSlot == P2CaptainA);
++    assert(adapter.ownsActor(101) && adapter.ownsActor(102));
++
++    // Once B is down, the last controllable captain cannot be captured.
++    assert(!adapter.captureCaptain(P2CaptainA, 78));
++    assert(adapter.releaseCaptain(P2CaptainB, 77));
++    assert(adapter.policy().phase(P2CaptainB) == P2CaptainPhase::Idle);
++}
++
++} // namespace
++
++int main()
++{
++    {
++        FakeScene scene;
++        scene.navi0.health = 75.0f;
++        scene.pikiA = FakePiki{101, P2CaptainA};
++        scene.pikiB = FakePiki{102, P2CaptainA};
++        test_single_captain_slot0(scene);
++    }
++    {
++        FakeScene scene;
++        scene.navi0.health = 100.0f;
++        scene.navi1.health = 100.0f;
++        scene.twoCaptains = true;
++        scene.pikiA = FakePiki{101, P2CaptainA};
++        scene.pikiB = FakePiki{102, P2CaptainA};
++        test_two_captain_transfer_double(scene);
++    }
++
++    std::puts("PASS P2_CAPTAIN_ADAPTER");
++    return 0;
++}
+-- 
+2.55.0.windows.3
+

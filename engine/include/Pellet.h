@@ -408,7 +408,7 @@ public:
 	u8 _558[0x4];                         // _558, unknown
 	PelletConfig* mConfig;                // _55C
 	f32 mMotionSpeed;                     // _560
-	int mSlotFlags[3];                    // _564
+	int mSlotFlags[4];                    // 128 physical slots; P2 Atlas declares 101.
 	u16 mCarrierCounter;                  // _570, carrying strength; attachment slots still count bodies
 	CollInfo* mPelletCollInfo;            // _574
 	SearchData mSearchData[4];            // _578

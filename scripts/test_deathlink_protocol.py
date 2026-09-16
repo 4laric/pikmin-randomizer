@@ -29,6 +29,9 @@ with tempfile.TemporaryDirectory() as d:
                 assert s.data['pikmin_deaths'] == 3, s.data
                 # Five links at once: the native queue is bounded to three.
                 for _ in range(5): s.receive_death_link()
+                # MinGW filesystem timestamps can have one-second resolution.
+                # Unlike the live runner, this probe publishes only once.
+                time.sleep(1.1)
                 r.write_state(True)
             if 'DEATHLINK_PASS' in line or 'DEATHLINK_TIMEOUT' in line: break
         out = ''.join(lines) + probe.communicate(timeout=15)[0]

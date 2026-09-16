@@ -1,0 +1,58 @@
+From 714fb299c0d55d87637b006c0684d33c381ef19e Mon Sep 17 00:00:00 2001
+From: 4laric <4laric@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 08:27:08 -0400
+Subject: [PATCH 8/8] BigTreasure: raise the runtime harness watchdog for full
+ 1:1 motion playback (#246)
+
+---
+ tools/p2_bigtreasure_runtime_run.py | 16 +++++++++++++---
+ 1 file changed, 13 insertions(+), 3 deletions(-)
+
+diff --git a/tools/p2_bigtreasure_runtime_run.py b/tools/p2_bigtreasure_runtime_run.py
+index ad2ea648..cf8b1e6c 100644
+--- a/tools/p2_bigtreasure_runtime_run.py
++++ b/tools/p2_bigtreasure_runtime_run.py
+@@ -19,6 +19,13 @@ import subprocess
+ import traceback
+ 
+ 
++# Harness watchdog only; the fixture's own 3600-frame idle cap (~120 s at
++# 30 Hz) remains the real limiter. The full 29-clip motion phase runs source
++# clips 1:1 with the fixture in exclusive control, so the whole session needs
++# ~83 s of wall clock.
++FIXTURE_TIMEOUT_SECONDS = 240
++
++
+ def sha256(path):
+     digest = hashlib.sha256()
+     with path.open("rb") as source:
+@@ -223,12 +230,14 @@ def main():
+         command = [str(executable), "--experimental-pikmin2-room"]
+         record["command"] = command
+         # Inherit the caller's PATH and all other environment values unchanged.
+-        result = subprocess.run(command, cwd=run, env=dict(os.environ), timeout=75,
++        result = subprocess.run(command, cwd=run, env=dict(os.environ),
++                                timeout=FIXTURE_TIMEOUT_SECONDS,
+                                 text=True, encoding="utf-8", errors="replace",
+                                 capture_output=True)
+         (run / "stdout.log").write_text(result.stdout, encoding="utf-8")
+         (run / "stderr.log").write_text(result.stderr, encoding="utf-8")
+-        record["subprocess"] = {"returncode": result.returncode, "timeout_seconds": 75,
++        record["subprocess"] = {"returncode": result.returncode,
++                                "timeout_seconds": FIXTURE_TIMEOUT_SECONDS,
+                                 "stdout": file_record(run / "stdout.log"),
+                                 "stderr": file_record(run / "stderr.log")}
+         errors = verify_log(result.stdout + "\n" + result.stderr)
+@@ -249,7 +258,8 @@ def main():
+         if not errors:
+             record["status"] = "passed"
+     except subprocess.TimeoutExpired as error:
+-        record["errors"].append("fixture timed out after 75 seconds")
++        record["errors"].append(
++            f"fixture timed out after {FIXTURE_TIMEOUT_SECONDS} seconds")
+         if run is not None:
+             for name, value in (("stdout.log", error.stdout), ("stderr.log", error.stderr)):
+                 if isinstance(value, bytes):
+-- 
+2.55.0.windows.3
+

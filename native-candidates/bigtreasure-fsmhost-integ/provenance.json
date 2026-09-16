@@ -1,0 +1,78 @@
+{
+  "schema": 1,
+  "lane": 32,
+  "issue": 246,
+  "parent_issue": 175,
+  "title": "BigTreasure FSM host binding — integration-ready series on the lane-01 reconciled native line",
+  "kind": "integration-ready",
+  "note": "This bundle rebases the lane-32 fsmhost slice onto the lane-01 reconciled native head (Batch D, #437). The window baseline is already present in that line (9f179c88), so the equivalent cherry-pick was empty and skipped.",
+  "native": {
+    "base": "90d87f53",
+    "base_subject": "pc_port: additive corpse-registry rebind for the reward lifecycle fixture (#397)",
+    "base_branch": "opencode/p2-lane01-hardlanes",
+    "head": "d288dd7b7771b4fe6c45bdc35ace37bb3ff986de",
+    "local_branch": "opencode/p2-lane32-integ",
+    "pushed": false,
+    "dirty_state": "clean",
+    "note": "Native origin and upstream were not pushed. The branch is available locally to lane 01 in the shared native repository."
+  },
+  "commits": [
+    "1acc4481",
+    "149ce1b5",
+    "aa1eefc4",
+    "d288dd7b"
+  ],
+  "files": [
+    "pc_port/pc_p2_bigtreasure_fsmhost.h",
+    "pc_port/pc_p2_bigtreasure_fsmhost.cpp",
+    "tools/p2_bigtreasure_fsmhost_test.cpp",
+    "CMakeLists.txt",
+    "tools/p2_bigtreasure_runtime.cpp",
+    "tools/p2_bigtreasure_runtime_run.py"
+  ],
+  "patches": {
+    "full": {
+      "path": "native-candidates/bigtreasure-fsmhost-integ/bigtreasure-fsmhost-integ-full.patch",
+      "size": 24422,
+      "sha256": "b2a3c0544db26ab21ebed6fc1db9be47bc6e0ebdd092cd96fcc9232d24a58fbf"
+    },
+    "series": [
+      {
+        "path": "native-candidates/bigtreasure-fsmhost-integ/patches/0001-BigTreasure-FSM-host-binding-with-real-weapon-damage.patch",
+        "sha256": "5ef161a5bfd83d8533d6c2ed761d9ae854a6d0eae3e6ac843bc4e211d64c5188"
+      },
+      {
+        "path": "native-candidates/bigtreasure-fsmhost-integ/patches/0002-BigTreasure-real-GL-FSM-host-fixture-phase-960x540-w.patch",
+        "sha256": "efc5370e5ad047eaed75a208f8d1780cc7a16483bd83a6b748a321245cdf6c9b"
+      },
+      {
+        "path": "native-candidates/bigtreasure-fsmhost-integ/patches/0003-BigTreasure-adopt-mandatory-960x540-centered-experim.patch",
+        "sha256": "9c5f5d12821be5902d9d5f0b8ba52ff108da02919036940d8e52c7c07d3d6c2b"
+      },
+      {
+        "path": "native-candidates/bigtreasure-fsmhost-integ/patches/0004-BigTreasure-full-four-weapon-knock-off-progression-i.patch",
+        "sha256": "a2d3a6b2e0a338baa3f61a8ff86edc65f85b5ceb82227fcdde5fbd61dd01d994"
+      }
+    ]
+  },
+  "runtime": {
+    "private_build": "output/native-lane32-integ-build",
+    "configuration": "Ninja, Release, PIKMIN_NATIVE_JAUDIO=ON, PIKMIN_NATIVE_OPTIMIZE=OFF, PIKMIN_RANDOMIZER_TEST_HOOKS=OFF",
+    "production_executable_sha256": "ab078d117e6226b31e09ec044a49eda2c8c39f505f761cb91738cfff9a1b5ffe",
+    "ninja_dry_run": "ninja: no work to do.",
+    "fixture_dir": "output/lane32-integ-fixture-01",
+    "fixture_executable_sha256": "367e50593fc08d8a4f34eeb00912a89bb658bf7dd5d9c6596e548ac906fbe449",
+    "run_dir": "output/lane32-integ-runtime-01/2d0df22bd44b43f4bb5f67bf9630feb0",
+    "status": "passed",
+    "markers": [
+      "P2_BIGTREASURE_WINDOW size=960x540 pos=373,263",
+      "P2_BIGTREASURE_HOST_SEAM_PASS ticks=361 attacks=1 events=5",
+      "P2_BIGTREASURE_FSMHOST_FULL_PASS knockoffs=4 weapons=0 phase=DropItem transitions=4",
+      "PASS BIGTREASURE_RUNTIME"
+    ]
+  },
+  "requested_of_lane_01": [
+    "cherry-pick/merge 1acc4481..d288dd7b from opencode/p2-lane32-integ (or apply the full patch) onto the maintained reconciliation line; the only shared-file edit is the additive CMakeLists.txt TU line, resolved additively in this branch.",
+    "no export or maintained-build changes were made here; the shared build remains lane 01-owned."
+  ]
+}

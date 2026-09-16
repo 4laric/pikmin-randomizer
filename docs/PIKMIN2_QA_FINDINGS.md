@@ -1,0 +1,11 @@
+# Kimi QA findings and surface identity correction
+
+The independent report is tracked in [#184](https://github.com/4laric/pikmin-randomizer/issues/184), with local evidence in `output/qa/2026-09-12-run1/QA_REPORT.md`. It covers startup, floor-entry restore, interrupted resumes, preserved checkpoint/receipt state, and malformed or mismatched input rejection using fixed executables. It does **not** establish the physical F6/confirmation loop, completion of both floors, geyser return, post-return restart, or position round-trip accuracy. Those remain manual acceptance gates.
+
+[#185](https://github.com/4laric/pikmin-randomizer/issues/185) demonstrated that changing `--treasure` passed the resume identity guard. Inspection adds a nuance: surface staging subsequently replaces that temporary model with `pod1/treasure.mod`, so the reproduced argument gap does not prove a different final displayed treasure. More materially, the actual source surface render and entrance pocket collision, water and manifest were omitted too.
+
+Both manual launchers now request `P2_SURFACE_CONTENT_1` identity binding: the existing cave hash plus the requested treasure bytes, `source_import/surface-render.mod`, and `pocket/entrance-pocket.json`, `entrance-collision.json`, and `surface-water.json`. Labels and file bytes determine identity; absolute locations do not. Generic cave-only NativeContent callers retain their previous identity. This is the bounded surface input contract, not a claim to hash every shared P1 installation asset or executable.
+
+Old surface sessions have an older identity and are refused with an explicit legacy/content-change message. Saves and entry/loop commands are preserved; no automatic migration or hash rewrite occurs. Use the original launcher and bundle for an old session, or a new output directory for the updated contract. One-trip rejection now occurs before a launch provenance record is written.
+
+Validation: four new tests cover same-path byte changes for all five inputs, identical bytes at a different treasure path, unchanged cave-only API, and both launchers refusing changed/legacy identities before launching while retaining checkpoints/commands. Twelve existing manual/repeat tests also pass. No native changes or new gameplay acceptance are claimed.

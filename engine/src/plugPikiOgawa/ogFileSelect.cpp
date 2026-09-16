@@ -56,7 +56,7 @@ public:
 protected:
 	virtual void drawSelf(int x, int y, immut Matrix4f* view)
 	{
-		if (!pc_permadeath_slot(mSlot)) {
+		if (!pc_permadeath_slot(mSlot) && !pc_hardmode_slot(mSlot)) {
 			return;
 		}
 		P2DPicture::drawSelf(x, y, view);
@@ -69,7 +69,12 @@ protected:
 		P2DPrint print(&mFont, 0, 0, Colour(255, 255, 255, getAlpha()), Colour(255, 230, 180, getAlpha()));
 		print.setFontSize(15, 24);
 		print.locate(x, y);
-		print.printReturn("PERMADEATH", getWidth(), getHeight(), TBOXHBIND_Center, TBOXVBIND_Center, 0, 0);
+		const char* label = "HARD";
+		if (pc_permadeath_slot(mSlot) && pc_hardmode_slot(mSlot))
+			label = "HARD + PERMA";
+		else if (pc_permadeath_slot(mSlot))
+			label = "PERMADEATH";
+		print.printReturn(label, getWidth(), getHeight(), TBOXHBIND_Center, TBOXVBIND_Center, 0, 0);
 	}
 
 private:

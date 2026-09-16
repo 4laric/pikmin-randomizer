@@ -1,0 +1,489 @@
+diff --git a/pc_port/pc_p2_bigtreasure_attacks.cpp b/pc_port/pc_p2_bigtreasure_attacks.cpp
+index b4f6f46c..83d46f48 100644
+--- a/pc_port/pc_p2_bigtreasure_attacks.cpp
++++ b/pc_port/pc_p2_bigtreasure_attacks.cpp
+@@ -188,6 +188,11 @@ float P2BigTreasureGasPolicy::armAngle(int arm) const
+     return (arm >= 0 && arm < mParams.armNum) ? mArmAngles[arm] : 0.0f;
+ }
+ 
++float P2BigTreasureGasPolicy::nodeRatio(int index) const
++{
++    return (index >= 0 && index < mNodeCount) ? mRatios[index] : 0.0f;
++}
++
+ int P2BigTreasureGasPolicy::tick(float delta, bool bittered)
+ {
+     int recycled = 0;
+diff --git a/pc_port/pc_p2_bigtreasure_attacks.h b/pc_port/pc_p2_bigtreasure_attacks.h
+index 4b195283..c8ce2a9e 100644
+--- a/pc_port/pc_p2_bigtreasure_attacks.h
++++ b/pc_port/pc_p2_bigtreasure_attacks.h
+@@ -137,6 +137,7 @@ public:
+     bool isStarted() const { return mStarted; }
+     int nodeCount() const { return mNodeCount; }
+     float armAngle(int arm) const;
++    float nodeRatio(int index) const; // source node extent ratio (BTA :1315+)
+     bool isClockwise() const { return mClockwise; }
+ 
+     // `bittered` freezes arm rotation (BTA :1440-1457).
+diff --git a/pc_port/pc_p2_bigtreasure_visual.cpp b/pc_port/pc_p2_bigtreasure_visual.cpp
+index d0eab285..3dcd1d75 100644
+--- a/pc_port/pc_p2_bigtreasure_visual.cpp
++++ b/pc_port/pc_p2_bigtreasure_visual.cpp
+@@ -253,6 +253,11 @@ bool pc_p2_bigtreasure_visual_setup(const char* profilePath)
+     sVisual.ready      = true;
+     std::printf("P2_BIGTREASURE_VISUAL_READY clips=%d pellets=%d pellet_debug=%d\n",
+                 sVisual.clipCount, sVisual.pelletCount, sVisual.debugCount);
++    // Additive (#246 motion staging): record the App-heap headroom left after
++    // loading the staged pose bank. The full 29-clip/171-pose stage does not
++    // fit the room-preview App heap, so the stage subset is chosen against it.
++    std::printf("P2_BIGTREASURE_VISUAL_HEAP free_kb=%d\n",
++                gsys->getHeap(SYSHEAP_App)->getFree() / 1024);
+     return true;
+ }
+ 
+@@ -311,6 +316,19 @@ const char* pc_p2_bigtreasure_visual_active_clip()
+     return sVisual.active ? sVisual.active->name.c_str() : nullptr;
+ }
+ 
++int pc_p2_bigtreasure_visual_clip_count()
++{
++    return sVisual.ready ? sVisual.clipCount : 0;
++}
++
++const char* pc_p2_bigtreasure_visual_clip_name(int index)
++{
++    if (index < 0 || index >= sVisual.clipCount) {
++        return nullptr;
++    }
++    return sVisual.clips[index].name.c_str();
++}
++
+ int pc_p2_bigtreasure_visual_pose_index()
+ {
+     if (!sVisual.active) {
+diff --git a/pc_port/pc_p2_bigtreasure_visual.h b/pc_port/pc_p2_bigtreasure_visual.h
+index ab04d9a2..72d3e475 100644
+--- a/pc_port/pc_p2_bigtreasure_visual.h
++++ b/pc_port/pc_p2_bigtreasure_visual.h
+@@ -44,6 +44,12 @@ int pc_p2_bigtreasure_visual_update(float sourceFrames);
+ 
+ const P2BigTreasureVisualEvent* pc_p2_bigtreasure_visual_events(int* count);
+ const char* pc_p2_bigtreasure_visual_active_clip();
++
++// Additive (#246 motion staging): enumerate the loaded clip bank so a host
++// can drive every staged clip, not just the two hard-coded ones.
++int pc_p2_bigtreasure_visual_clip_count();
++const char* pc_p2_bigtreasure_visual_clip_name(int index);
++
+ int pc_p2_bigtreasure_visual_pose_index();
+ bool pc_p2_bigtreasure_visual_completed();
+ int pc_p2_bigtreasure_visual_pellet_count();  // converted pellets drawn
+diff --git a/tools/p2_bigtreasure_runtime.cpp b/tools/p2_bigtreasure_runtime.cpp
+index 78f3c688..c691fa58 100644
+--- a/tools/p2_bigtreasure_runtime.cpp
++++ b/tools/p2_bigtreasure_runtime.cpp
+@@ -86,11 +86,32 @@ struct WallProbe {
+     P2BigTreasureVec3 center{}, velocity{};
+ };
+ 
++// Minimal host-side damage receiver for the encounter phase: a health pool
++// that the fixture decrements when a real element policy registers a hit.
++// Stands in for the Pikmin/Navi receiver adapter (lane 10) so the attack
++// geometry has an observable target.
++struct EncounterReceiverSink {
++    float health = P2BigTreasureOwnership::kWeaponMaxHealth;
++    int hits = 0;
++
++    void apply(float damage)
++    {
++        health -= damage;
++        ++hits;
++    }
++};
++
+ class BigTreasureApp final : public PlugPikiApp {
+     int frames = 0;
+-    int phase = 0; // 0 probes pending, 1 wait1 playback, 2 dead playback, 3 done
++    int phase = 0; // 0 probes pending, 1 wait1 playback, 2 dead playback, 3 dead
++                   // capture, 4 extra-clip motion playback, 5 exit
+     int visualFrames = 0;
+     int wait1Events = 0;
++    int motionIndex = 0;
++    int motionClips = 0;
++    int motionEvents = 0;
++    int motionBase = 0;
++    int motionFrames = 0;
+     bool setup = false, wait1Captured = false, deadCaptured = false;
+     float ground = 0.0f;
+     P2BigTreasureMapTrace trace;
+@@ -136,6 +157,7 @@ public:
+             runWaterProbe();
+             runHostSeam();
+             runFsmHost();
++            runEncounter();
+             startVisual();
+             phase = 1;
+             break;
+@@ -145,6 +167,9 @@ public:
+         case 2:
+             stepDead();
+             break;
++        case 4:
++            stepMotion();
++            break;
+         default:
+             break;
+         }
+@@ -168,6 +193,10 @@ public:
+         if (phase == 3 && !deadCaptured) {
+             capture("bigtreasure-dead.ppm");
+             deadCaptured = true;
++            startMotion();
++            phase = 4;
++        }
++        if (phase == 5) {
+             std::puts("PASS BIGTREASURE_RUNTIME");
+             std::fflush(stdout);
+             std::_Exit(0);
+@@ -430,6 +459,237 @@ private:
+                     P2BigTreasureFsm::stateName(fsmHost.phase()), transitions);
+     }
+ 
++    // Starts the real element controller for `weapon` and steps it against the
++    // real P1 map through P2BigTreasureMapTrace (the runElecProbe/runWaterProbe
++    // pattern), returning true once its source hit geometry registers against
++    // the host-side receiver sink. Fire and gas are self-contained source
++    // policies (no map trace in their tick); their emit anchor is placed on the
++    // real map floor. Elec/water consume the real trace/ground callbacks.
++    bool encounterElementHit(int weapon, float ground)
++    {
++        if (weapon == P2BTWEAPON_Elec) {
++            P2BigTreasureElecPolicy elec;
++            const P2BigTreasureElecParams params =
++                p2_bigtreasure_elec_params(P2BigTreasureOwnership::kWeaponMaxHealth, 0.25f);
++            const P2BigTreasureVec3 joint{ 0, ground + 100, 0 };
++            const float zero[P2BigTreasureElecPolicy::kCapacity] = {};
++            if (!elec.start(params, joint, 0.0f, zero, zero, zero)) {
++                return false;
++            }
++            for (int tick = 0; tick < 300; ++tick) {
++                int bounces = 0;
++                elec.tick(kDt, joint, P2BigTreasureMapTrace::trace, &trace, &bounces);
++                for (int a = 0; a < P2BigTreasureElecPolicy::kCapacity; ++a) {
++                    const P2BigTreasureElecNode& node = elec.node(a);
++                    if (!node.active || node.connected < 0) {
++                        continue;
++                    }
++                    const P2BigTreasureElecNode& partner = elec.node(node.connected);
++                    if (!partner.active) {
++                        continue;
++                    }
++                    const P2BigTreasureVec3 target{ (node.position.x + partner.position.x) * 0.5f,
++                                                    (node.position.y + partner.position.y) * 0.5f,
++                                                    (node.position.z + partner.position.z) * 0.5f };
++                    if (P2BigTreasureElecPolicy::chainHit(node.position, partner.position, target)) {
++                        elec.finish();
++                        return true;
++                    }
++                }
++            }
++            elec.finish();
++            return false;
++        }
++        if (weapon == P2BTWEAPON_Fire) {
++            P2BigTreasureFirePolicy fire;
++            const P2BigTreasureFireParams params =
++                p2_bigtreasure_fire_params(P2BigTreasureOwnership::kWeaponMaxHealth);
++            if (!fire.start(params)) {
++                return false;
++            }
++            const P2BigTreasureVec3 emit{ 0, ground + 60, 0 };
++            const P2BigTreasureVec3 dir{ 0, 0, 1 };
++            for (int tick = 0; tick < 3; ++tick) {
++                fire.tick(kDt);
++            }
++            const float ratio = fire.nodeRatio(0);
++            const float scale = ratio * (params.scale * P2BigTreasureFirePolicy::kExtent);
++            const P2BigTreasureVec3 target{ emit.x + dir.x * scale, emit.y + dir.y * scale - 25.0f,
++                                            emit.z + dir.z * scale };
++            return fire.nodeHit(0, emit, dir, target);
++        }
++        if (weapon == P2BTWEAPON_Gas) {
++            P2BigTreasureGasPolicy gas;
++            const P2BigTreasureGasParams params =
++                p2_bigtreasure_gas_params(P2BigTreasureOwnership::kWeaponMaxHealth, 0.25f);
++            if (!gas.start(params, 0.0f, true)) {
++                return false;
++            }
++            const P2BigTreasureVec3 emit{ 0, ground + 60, 0 };
++            for (int tick = 0; tick < 15; ++tick) {
++                gas.tick(kDt, false);
++            }
++            const float ratio = gas.nodeRatio(0);
++            const float angle = gas.armAngle(0);
++            const P2BigTreasureVec3 target{
++                emit.x + std::sin(angle) * (P2BigTreasureGasPolicy::kExtent * ratio),
++                emit.y - 15.0f,
++                emit.z + std::cos(angle) * (P2BigTreasureGasPolicy::kExtent * ratio)
++            };
++            return gas.nodeHit(emit, 0, ratio, target);
++        }
++        if (weapon == P2BTWEAPON_Water) {
++            P2BigTreasureWaterPolicy water;
++            if (!water.start(p2_bigtreasure_water_params(P2BigTreasureOwnership::kWeaponMaxHealth))) {
++                return false;
++            }
++            const P2BigTreasureVec3 emit{ 0, ground + 100, 0 };
++            const P2BigTreasureVec3 target{ 0, ground, 200 };
++            if (!water.emitShot(emit, target, 0.0f, 0.0f, kDt)) {
++                return false;
++            }
++            for (int tick = 0; tick < 5; ++tick) {
++                int hits = 0;
++                water.tick(kDt, P2BigTreasureMapTrace::ground, &trace, &hits);
++                for (int i = 0; i < P2BigTreasureWaterPolicy::kCapacity; ++i) {
++                    if (water.node(i).active
++                        && water.nodeHit(i, water.node(i).position, false)) {
++                        water.defeat();
++                        return true;
++                    }
++                }
++            }
++            water.defeat();
++            return false;
++        }
++        return false;
++    }
++
++    void runEncounter()
++    {
++        // Full encounter on the real map: for each of the four weapons drive
++        // the FSM to Attack, start the real element controller (stepped against
++        // the P1 map through P2BigTreasureMapTrace) and register a real hit on
++        // the host-side receiver sink, then apply weapon damage to zero and
++        // knock the weapon off. After the body is exposed, kill the boss
++        // (killed -> Dead, KEYEVENT_100 finale release, KEYEVENT_END kill) and
++        // run the deterministic teardown.
++        require(p2_bigtreasure_host_setup("p2-bigtreasure-host.txt", seam), "encounter setup");
++        trace.reset(mapMgr);
++        const float ground = mapMgr->getMinY(0, 0, false);
++        require(std::isfinite(ground), "encounter ground");
++
++        P2BigTreasureFsmHost fsmHost;
++        P2BigTreasureFsmParms parms;
++        fsmHost.reset(parms);
++        P2BigTreasureFsmHostInput in;
++        P2BigTreasureFsmHostOutput out;
++        EncounterReceiverSink sink;
++
++        // Stay -> Land (target detection), Land -> ItemWalk, ItemWalk ->
++        // PreAttack (attack limit / IK finish), mirroring the FSM-host phase.
++        in.hasTarget = true;
++        int guard = 0;
++        while (fsmHost.phase() != P2BT_Land && guard++ < 400) {
++            fsmHost.tick(seam, in, out);
++        }
++        require(fsmHost.phase() == P2BT_Land, "encounter Stay->Land");
++        in = P2BigTreasureFsmHostInput{};
++        in.hasTarget = true;
++        in.animEnd = true;
++        fsmHost.tick(seam, in, out);
++        require(fsmHost.phase() == P2BT_ItemWalk, "encounter Land->ItemWalk");
++        in = P2BigTreasureFsmHostInput{};
++        in.hasTarget = true;
++        in.attackLimitTime = true;
++        fsmHost.tick(seam, in, out);
++        in = P2BigTreasureFsmHostInput{};
++        in.hasTarget = true;
++        in.finishIKMotion = true;
++        fsmHost.tick(seam, in, out);
++        require(fsmHost.phase() == P2BT_PreAttack, "encounter ItemWalk->PreAttack");
++
++        static const int kExpectedOrder[P2BTWEAPON_Count] = {
++            P2BTWEAPON_Elec, P2BTWEAPON_Fire, P2BTWEAPON_Gas, P2BTWEAPON_Water
++        };
++        std::size_t events = 0;
++        int hits = 0;
++        for (int remaining = P2BTWEAPON_Count; remaining >= 1; --remaining) {
++            // PreAttack -> Attack (the pick already ran on PreAttack entry).
++            in = P2BigTreasureFsmHostInput{};
++            in.animEnd = true;
++            fsmHost.tick(seam, in, out);
++            require(fsmHost.phase() == P2BT_Attack, "encounter PreAttack->Attack");
++            const int weapon = fsmHost.chosenWeapon();
++            require(weapon == kExpectedOrder[P2BTWEAPON_Count - remaining],
++                    "encounter weapon order");
++            require(seam.ownership.isWeaponAttached(weapon), "encounter weapon attached");
++
++            // Attack KEYEVENT_2: startAttack -> pools.start(chosenWeapon).
++            in = P2BigTreasureFsmHostInput{};
++            in.keyEvent2 = true;
++            fsmHost.tick(seam, in, out);
++            require(out.fsm.startAttack && seam.director.pools.isStarted(weapon),
++                    "encounter attack started");
++
++            // Real element controller against the real P1 map; one registered
++            // hit on the receiver sink.
++            require(encounterElementHit(weapon, ground), "encounter element hit");
++            sink.apply(P2BigTreasureOwnership::kWeaponMaxHealth);
++            ++hits;
++            require(sink.hits == hits, "encounter receiver sink");
++
++            // Apply weapon damage to zero and knock the weapon off; the FSM
++            // observes the reduced loadout and re-picks (or drops to DropItem).
++            P2BigTreasureFsmHostInput damage;
++            damage.damage = P2BigTreasureOwnership::kWeaponMaxHealth;
++            damage.damageWeapon = weapon;
++            fsmHost.tick(seam, damage, out);
++            require(out.damageResult == P2BTDMG_Weapon, "encounter damage routing");
++            require(out.knockedOff == 1, "encounter knock-off");
++            events += static_cast<std::size_t>(out.knockedOff);
++            require(!seam.ownership.isWeaponAttached(weapon), "encounter weapon released");
++            if (remaining > 1) {
++                require(fsmHost.phase() == P2BT_PreAttack, "encounter re-pick phase");
++            }
++        }
++        require(hits == P2BTWEAPON_Count, "encounter hit count");
++        require(fsmHost.knockOffs() == P2BTWEAPON_Count, "encounter knock-off count");
++        require(seam.ownership.isBodyExposed(), "encounter body exposed");
++        require(fsmHost.phase() == P2BT_DropItem, "encounter DropItem with no weapons");
++
++        // Body damage is accepted once every weapon is gone.
++        P2BigTreasureFsmHostInput body;
++        body.damage = 250.0f;
++        body.damageWeapon = -1;
++        fsmHost.tick(seam, body, out);
++        require(out.damageResult == P2BTDMG_Body, "encounter body damage");
++
++        // Boss death: onKill -> Dead, KEYEVENT_100 throwupItem + releaseLoozy,
++        // KEYEVENT_END kill, then the deterministic host teardown.
++        P2BigTreasureFsmHostInput kill;
++        kill.killed = true;
++        fsmHost.tick(seam, kill, out);
++        require(fsmHost.phase() == P2BT_Dead, "encounter killed->Dead");
++        kill = P2BigTreasureFsmHostInput{};
++        kill.keyEvent100 = true;
++        fsmHost.tick(seam, kill, out);
++        require(out.fsm.throwupItem && out.fsm.releaseLoozy, "encounter finale release");
++        events += 1; // Louie's source (0,150,0) release at KEYEVENT_100
++        kill = P2BigTreasureFsmHostInput{};
++        kill.animEnd = true;
++        fsmHost.tick(seam, kill, out);
++        require(out.fsm.killRequested, "encounter animEnd kill");
++        P2BigTreasureDropEvent drops[P2BTWEAPON_Count + 1] = {};
++        events += p2_bigtreasure_host_defeat(seam, drops, P2BTWEAPON_Count + 1);
++        require(fsmHost.phase() == P2BT_Dead, "encounter final phase");
++        require(events >= P2BTWEAPON_Count, "encounter teardown events");
++        std::printf("P2_BIGTREASURE_ENCOUNTER_PASS knockoffs=%llu hits=%d phase=%s events=%llu\n",
++                    (unsigned long long)fsmHost.knockOffs(), hits,
++                    P2BigTreasureFsm::stateName(fsmHost.phase()),
++                    (unsigned long long)events);
++    }
++
+     void startVisual()
+     {
+         require(pc_p2_bigtreasure_visual_setup("p2-bigtreasure-visual.txt"), "visual setup");
+@@ -497,6 +757,71 @@ private:
+                     visualFrames, count - base, events[base + 10].frame);
+         phase = 3;
+     }
++
++    // Additive (#246 motion staging): after wait1/dead, replay every other
++    // clip staged in the generated profile through the vendored retail event
++    // player. The clip list comes from the stage subset, so widening the stage
++    // widens playback without touching this fixture; the dispatch log is the
++    // same bounded event bank wait1/dead already use.
++    void startMotion()
++    {
++        motionIndex = 0;
++        motionClips = 0;
++        motionEvents = 0;
++        motionFrames = 0;
++        int count = 0;
++        pc_p2_bigtreasure_visual_events(&count);
++        motionBase = count;
++        if (!beginMotionClip()) {
++            finishMotion();
++        }
++    }
++
++    bool beginMotionClip()
++    {
++        while (motionIndex < pc_p2_bigtreasure_visual_clip_count()) {
++            const char* name = pc_p2_bigtreasure_visual_clip_name(motionIndex++);
++            if (!name || std::strcmp(name, "wait1") == 0 || std::strcmp(name, "dead") == 0) {
++                continue;
++            }
++            if (pc_p2_bigtreasure_visual_clip(name)) {
++                motionFrames = 0;
++                return true;
++            }
++        }
++        return false;
++    }
++
++    void stepMotion()
++    {
++        require(pc_p2_bigtreasure_visual_update(1.0f) >= 0, "motion update");
++        ++motionFrames;
++        // Looping clips (0/1 loop markers) never report completion, so bound
++        // each clip at one source length before advancing to the next.
++        if (!pc_p2_bigtreasure_visual_completed() && motionFrames < 240) {
++            return;
++        }
++        int count = 0;
++        pc_p2_bigtreasure_visual_events(&count);
++        const int pose = pc_p2_bigtreasure_visual_pose_index();
++        if (pose > 0 || count > motionBase) {
++            ++motionClips;
++        }
++        if (!beginMotionClip()) {
++            finishMotion();
++        }
++    }
++
++    void finishMotion()
++    {
++        int count = 0;
++        pc_p2_bigtreasure_visual_events(&count);
++        motionEvents = count - motionBase;
++        require(motionClips >= 3, "motion clip advances");
++        std::printf("P2_BIGTREASURE_MOTION_PASS clips=%d events=%d\n", motionClips,
++                    motionEvents);
++        phase = 5;
++    }
+ };
+ } // namespace
+ 
+diff --git a/tools/p2_bigtreasure_runtime_run.py b/tools/p2_bigtreasure_runtime_run.py
+index ed9e0053..03ce7d36 100644
+--- a/tools/p2_bigtreasure_runtime_run.py
++++ b/tools/p2_bigtreasure_runtime_run.py
+@@ -104,6 +104,13 @@ def verify_log(text):
+     elif (int(fsmhost.group(1)) != 4 or int(fsmhost.group(2)) != 0
+           or fsmhost.group(3) != "DropItem" or int(fsmhost.group(4)) != 4):
+         errors.append(f"fsmhost four-weapon phase progression not observed: {fsmhost.groups()}")
++    encounter = re.search(r"^P2_BIGTREASURE_ENCOUNTER_PASS\s+knockoffs=(\d+)\s+hits=(\d+)\s+"
++                          r"phase=(\w+)\s+events=(\d+)\s*$", text, flags=re.MULTILINE)
++    if not encounter:
++        errors.append("missing encounter PASS marker")
++    elif (int(encounter.group(1)) != 4 or int(encounter.group(2)) < 4
++          or encounter.group(3) != "Dead" or int(encounter.group(4)) < 4):
++        errors.append(f"encounter did not complete the full boss fight: {encounter.groups()}")
+     visual = re.search(r"^P2_BIGTREASURE_VISUAL_READY\s+clips=(\d+)\s+pellets=(\d+)\s+"
+                        r"pellet_debug=(\d+)\s*$", text, flags=re.MULTILINE)
+     if not visual:
+@@ -126,6 +133,12 @@ def verify_log(text):
+         errors.append("missing dead playback marker")
+     elif int(dead.group(2)) != 12 or int(dead.group(3)) != 320:
+         errors.append(f"dead playback did not fire all authored events: {dead.groups()}")
++    motion = re.search(r"^P2_BIGTREASURE_MOTION_PASS\s+clips=(\d+)\s+events=(\d+)\s*$", text,
++                       flags=re.MULTILINE)
++    if not motion:
++        errors.append("missing extra-clip motion playback marker")
++    elif int(motion.group(1)) < 3:
++        errors.append(f"motion playback advanced fewer than 3 staged clips: {motion.groups()}")
+     if "PASS BIGTREASURE_RUNTIME" not in text:
+         errors.append("missing runtime PASS marker")
+     return errors

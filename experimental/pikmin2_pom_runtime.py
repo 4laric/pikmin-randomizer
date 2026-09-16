@@ -1,0 +1,396 @@
+"""#448 Candypop Bud native fixture: build, stage, run, validate.
+
+Mirrors experimental/pikmin2_flora_runtime.py. The fixture boots the opt-in
+pc_port/pc_p2_pom.cpp actor from a strict p2-pom.txt sidecar: one RedPom, one
+RandPom Queen and one nonspawnable base Pom. The native module anchors each
+bound Chappy host at its sidecar point (both buds stay in the default camera
+view) and drives a source-timed six-state walk; the fixture throws Pikmin so the
+RedPom exhausts its lifetime budget (ip01=5) while the Queen takes one accept
+(ip11=1), and both buds draw wait/open/swing/close/shot/dead. The run is
+wall-clock bounded and self-terminates with PASS or an explicit
+`P2_POM_RUNTIME_BLOCKED <gate> reason=...`; it never hangs.
+
+The base Pom row is only an explicit rejection check; it is never bound. The
+fixture does not claim engine-Pom-FSM or Onion-side behaviour.
+"""
+import argparse
+import json
+import os
+import re
+import struct
+import subprocess
+import uuid
+from pathlib import Path
+
+from scripts import build_pikmin2_fixture as builder
+from scripts.preview_pikmin2_room import generator, overlay, records
+from experimental.pikmin2_generator_pose import write_position
+from experimental.pikmin2_batch2_core import prepare as batch2_prepare
+from experimental.pikmin2_batch2_families import FAMILIES
+
+SPECIES = ('BluePom', 'RedPom', 'YellowPom', 'BlackPom', 'WhitePom', 'RandPom', 'Pom')
+# The buds bind the batch-2 `flora` family Chappy placement vehicles generated
+# by the flora arena. Generators match FAMILIES['flora'] arena_ids: 353002
+# BluePom .. 353007 RandPom (353001 is Pelplant, 353008 the P1 Chappy control).
+# The native module re-anchors each bound host at its sidecar point, so REDPOM_POS
+# / RANDPOM_POS put both buds in the default camera view (slice 3 moved RedPom out
+# of the culled x=-120 spot). The base Pom (82) is not in the arena and is a
+# rejection probe only.
+REDPOM = 353003
+RANDPOM = 353007
+BASEPOM = 353099
+REDPOM_POS = (360.0, 30.0, 1830.0)
+RANDPOM_POS = (360.0, 30.0, 1870.0)
+
+# Source six-state FSM (Pom.h:153-161). Slice 3 requires a confirmed P2_POM_DRAW
+# for BOTH buds (RedPom, RandPom) in every pose.
+DRAW_POSES = ('wait', 'open', 'swing', 'close', 'shot', 'dead')
+
+APP = r'''#include "GameStat.h"
+#include "Piki.h"
+#include "PikiMgr.h"
+#include "PikiAI.h"
+#include "PikiState.h"
+#include "PikiHeadItem.h"
+#include "Navi.h"
+#include "NaviMgr.h"
+#include "ItemMgr.h"
+#include <cstdio>
+#include <cstdlib>
+#include <fstream>
+#include <vector>
+
+class RoomApp : public PlugPikiApp {
+	int frames = 0, ready = 0, phase = 0;
+	unsigned startTick = 0;
+	bool hold = false;
+	struct Inject { Piki* piki; float x, y, z; };
+	std::vector<Inject> plan;
+	int injected = 0;
+	void blocked(const char* gate, const char* reason) {
+		std::printf("P2_POM_RUNTIME_BLOCKED %s reason=%s\n", gate, reason);
+		std::fflush(nullptr);
+		std::_Exit(0);
+	}
+	static bool fly(Piki* piki, float x, float y, float z) {
+		if (!piki || !piki->isAlive()) {
+			return false;
+		}
+		piki->mSRT.t.set(x, y, z);
+		piki->mFSM->transit(piki, PIKISTATE_Flying);
+		return true;
+	}
+public:
+	int idle() override {
+		int result = PlugPikiApp::idle();
+		require(++frames < 12000, "Pom startup timeout");
+		if (gameflow.mMoviePlayer && gameflow.mMoviePlayer->mIsActive) {
+			gameflow.mMoviePlayer->requestSkip();
+			return result;
+		}
+		if (!pc_p2_preview_cargo_free_ready() || !naviMgr || !pikiMgr || !itemMgr) {
+			return result;
+		}
+		Navi* n = naviMgr->getNavi();
+		if (!n || gameflow.mPauseAll || gameflow.mIsUIOverlayActive) {
+			return result;
+		}
+		{
+			static bool guardLogged = false;
+			if ((int)GameStat::allPikis == 0) {
+				GameStat::allPikis.set(1, Red);
+				if (!guardLogged) {
+					guardLogged = true;
+					std::puts("P2_POM_FIXTURE_GUARD_PIKMIN injection=1");
+				}
+			}
+		}
+		if (ready == 1) {
+			for (int i = 0; i < DEMOFLAG_COUNT; ++i) {
+				playerState->mDemoFlags.setFlagOnly(i);
+			}
+			std::ifstream holding("pom-keep-open.txt");
+			hold = bool(holding);
+		}
+		if (++ready < 10) {
+			return result;
+		}
+		if (!startTick) {
+			startTick = SDL_GetTicks();
+		}
+		if (SDL_GetTicks() - startTick > 100000) {
+			blocked("sprout", "wall_clock_ceiling");
+		}
+		if (phase == 0) {
+			// Both buds driven naturally: RedPom exhausts its lifetime budget
+			// (ip01 = 5) with one own-colour refund plus five accepts; the Queen
+			// (ip11 = 1) takes one accept. Together they walk
+			// wait/open/swing/close/shot/dead. The native module anchors each
+			// bound Chappy host at its sidecar point, so both buds sit in the
+			// default camera view (neither is culled).
+			std::vector<Piki*> alive;
+			Iterator it(pikiMgr);
+			CI_LOOP(it) {
+				Piki* p = static_cast<Piki*>(*it);
+				if (p && p->isAlive()) {
+					alive.push_back(p);
+				}
+			}
+			require(alive.size() >= 7, "Pom fixture needs at least seven Pikmin");
+			alive[0]->setColor(Red);
+			for (int i = 1; i <= 5; ++i) {
+				alive[i]->setColor(Blue);
+			}
+			alive[6]->setColor(Yellow);
+			plan.push_back({alive[0], 360.0f, 30.0f, 1830.0f});   // RedPom, own colour -> refund
+			for (int i = 1; i <= 5; ++i) {
+				plan.push_back({alive[i], 360.0f, 30.0f, 1830.0f}); // RedPom accept -> exhaust budget
+			}
+			plan.push_back({alive[6], 360.0f, 30.0f, 1870.0f});    // RandPom Queen -> accept
+			std::printf("P2_POM_FIXTURE_PLAN injected=%u\n", unsigned(plan.size()));
+			phase = 1;
+		} else if (phase == 1) {
+			// Re-drive the flying state until the module consumes each Pikmin.
+			bool allConsumed = true;
+			for (Inject& inject : plan) {
+				if (inject.piki->isAlive()) {
+					allConsumed = false;
+					fly(inject.piki, inject.x, inject.y, inject.z);
+				}
+			}
+			if (allConsumed && !plan.empty()) {
+				phase = 2;
+				startTick = SDL_GetTicks();
+			}
+		} else if (phase == 2) {
+			// Wait out the fp01 close and the Queen shot before ending.
+			if (SDL_GetTicks() - startTick > 4000) {
+				int sprouts = 0;
+				Iterator heads(itemMgr->getPikiHeadMgr());
+				CI_LOOP(heads) {
+					PikiHeadItem* head = static_cast<PikiHeadItem*>(*heads);
+					if (head && head->isAlive()) {
+						++sprouts;
+					}
+				}
+				std::printf("P2_POM_FIXTURE_SPROUTS n=%d\n", sprouts);
+				if (sprouts <= 0) {
+					blocked("sprout", "no_leaf_sprout");
+				}
+				capture("p2-pom-sprouts.ppm");
+				std::puts("PASS P2_POM_NATIVE bind_draw_fsm_walk");
+				std::fflush(nullptr);
+				if (!hold) {
+					std::_Exit(0);
+				}
+			}
+		}
+		std::fflush(stdout);
+		return result;
+	}
+};
+'''
+
+INCLUDES = ('#include <cstdio>\n#include <cstdlib>\n#include <fstream>\n'
+            '#include "pc_p2_pom.h"\n'
+            '#include "pc_p2_pom_policy.h"\n')
+
+
+def instrument(source):
+    start = source.index('class RoomApp : public PlugPikiApp {')
+    end = source.index('int main(', start)
+    return INCLUDES + source[:start] + APP + source[end:]
+
+
+def pom_sidecar(specs):
+    """Strict P2_POM_1 text, mirroring pc_p2_pom_policy.h."""
+    if not isinstance(specs, (list, tuple)) or not 1 <= len(specs) <= 64:
+        raise ValueError('Invalid Candypop record count')
+    lines = ['P2_POM_1 %d' % len(specs)]
+    seen = set()
+    for spec in specs:
+        generator_id = spec['generator']
+        if not isinstance(generator_id, int) or not 0 <= generator_id <= 0xffffffff:
+            raise ValueError('Invalid Candypop generator')
+        if generator_id in seen:
+            raise ValueError('Duplicate Candypop generator')
+        seen.add(generator_id)
+        if spec['species'] not in SPECIES:
+            raise ValueError('Invalid Candypop species')
+        for axis in ('x', 'y', 'z'):
+            value = spec[axis]
+            if not isinstance(value, (int, float)) or value != value or abs(value) > 100000:
+                raise ValueError('Invalid Candypop position')
+        lines.append('%d %s %s %s %s' % (generator_id, spec['species'], spec['x'], spec['y'], spec['z']))
+    return ('\n'.join(lines) + '\n').encode('ascii')
+
+
+def pom_inject(entries):
+    """Labeled P2_POM_INJECT_1 capacity-pressure fixture channel.
+
+    Each row forces the module's next `fail_births` itemMgr sprout births for
+    that generator to fail, proving the retry/conservation path. Never present
+    in a normal run.
+    """
+    if not isinstance(entries, (list, tuple)) or not 0 <= len(entries) <= 64:
+        raise ValueError('Invalid Candypop injection count')
+    lines = ['P2_POM_INJECT_1 %d' % len(entries)]
+    seen = set()
+    for entry in entries:
+        generator_id = entry['generator']
+        if not isinstance(generator_id, int) or not 0 <= generator_id <= 0xffffffff:
+            raise ValueError('Invalid injection generator')
+        if generator_id in seen:
+            raise ValueError('Duplicate injection generator')
+        seen.add(generator_id)
+        fails = entry['fail_births']
+        if not isinstance(fails, int) or not 0 <= fails <= 100000:
+            raise ValueError('Invalid injection failure count')
+        lines.append('%d %d' % (generator_id, fails))
+    return ('\n'.join(lines) + '\n').encode('ascii')
+
+
+def build(native, build_dir, output, head):
+    output = output.resolve()
+    output.mkdir(parents=True, exist_ok=False)
+    room = output / 'room.cpp'
+    room.write_text(instrument((native / 'tools/preview_p2_room.cpp').read_text(encoding='utf-8')), encoding='utf-8')
+    return builder.build_fixture(build_dir, native, room, output / 'build', head)
+
+
+def stage(assets, imported, output):
+    """Stage the batch-2 flora arena (Chappy placement vehicles + converted Pom
+    bank) and add the strict p2-pom.txt behavior sidecar: one RedPom, one
+    RandPom Queen bound to their arena generators, plus a nonspawnable base Pom
+    rejection probe. The native module re-anchors each bound host at its sidecar
+    point, so both buds stay in-frame and emit P2_POM_BIND and a confirmed
+    P2_POM_DRAW for every FSM pose through the batch-2 draw chain."""
+    assets = Path(assets).resolve()
+    imported = Path(imported).resolve()
+    output = Path(output).resolve()
+    run = batch2_prepare(FAMILIES['flora'], assets, imported, output)
+    specs = [
+        dict(generator=REDPOM, species='RedPom', x=REDPOM_POS[0], y=REDPOM_POS[1], z=REDPOM_POS[2]),
+        dict(generator=RANDPOM, species='RandPom', x=RANDPOM_POS[0], y=RANDPOM_POS[1], z=RANDPOM_POS[2]),
+        dict(generator=BASEPOM, species='Pom', x=0.0, y=30.0, z=1850.0),
+    ]
+    (run / 'p2-pom.txt').write_bytes(pom_sidecar(specs))
+    (run / 'p2-pom-inject.txt').write_bytes(pom_inject([dict(generator=RANDPOM, fail_births=2)]))
+    (run / 'pom-stage.json').write_bytes((json.dumps(
+        dict(scene='batch-2 flora Chappy vehicles bound to the Candypop buds',
+             redpom=REDPOM, randpom=RANDPOM, basepom=BASEPOM,
+             redpom_pos=list(REDPOM_POS), randpom_pos=list(RANDPOM_POS),
+             sidecar='p2-pom.txt', sidecar_sha256=builder.sha256(run / 'p2-pom.txt'),
+             inject='p2-pom-inject.txt', inject_sha256=builder.sha256(run / 'p2-pom-inject.txt'),
+             inject_note='labeled capacity-exhaustion probe for the Queen'), indent=2) + '\n').encode())
+
+    required = {run / 'p2-pom.txt', run / 'p2-pom-inject.txt',
+                run / 'p2-flora-actors.txt', run / 'p2-flora-bank.txt',
+                run / 'assets/dataDir/stages/chal0.ini', run / 'assets/dataDir/stages/chal0/default.gen',
+                run / 'assets/dataDir/courses/practice/practice.mod'}
+    missing = sorted(str(p) for p in required if not p.is_file())
+    if missing:
+        raise ValueError('Pom staging incomplete; missing: ' + ', '.join(missing))
+    return run
+
+
+def validate(text, code):
+    required = dict(
+        completion=code == 0 and 'PASS P2_POM_NATIVE' in text,
+        ready=bool(re.search(r'P2_POM_READY generator=%d species=RedPom' % REDPOM, text))
+              and bool(re.search(r'P2_POM_READY generator=%d species=RandPom' % RANDPOM, text)),
+        base_rejection=bool(re.search(r'P2_POM_BASE_REJECTED generator=%d species=Pom source_id=82' % BASEPOM, text)),
+        accept=bool(re.search(r'P2_POM_ACCEPT generator=%d ' % REDPOM, text))
+               and bool(re.search(r'P2_POM_ACCEPT generator=%d ' % RANDPOM, text)),
+        refund=bool(re.search(r'P2_POM_REFUND generator=%d ' % REDPOM, text)),
+        close=bool(re.search(r'P2_POM_CLOSE generator=%d .*outcome=shot' % REDPOM, text))
+              and bool(re.search(r'P2_POM_CLOSE generator=%d .*outcome=shot' % RANDPOM, text)),
+        sprout=bool(re.search(r'P2_POM_SPROUT generator=%d species=RandPom count=9 .*leaf=1' % RANDPOM, text)),
+        sprout_colour=bool(re.search(r'P2_POM_SPROUT generator=%d species=RandPom count=9 colour=[012] body=[012] ' % RANDPOM, text))
+                     and bool(re.search(r'P2_POM_SPROUT generator=%d species=RedPom count=6 colour=1 body=1 ' % REDPOM, text)),
+        sprout_retry=bool(re.search(r'P2_POM_SPROUT_RETRY generator=%d species=RandPom .*item_capacity=1 forced=1' % RANDPOM, text)),
+        sprout_settled=bool(re.search(r'P2_POM_SPROUT_SETTLED generator=%d species=RandPom requested=9 born=9 conservation=1' % RANDPOM, text)),
+        state_walk=all(re.search(r'P2_POM_STATE generator=%d species=RandPom from=\w+ to=%s' % (RANDPOM, s), text)
+                       for s in ('open', 'swing', 'close', 'shot', 'dead')),
+        dead=bool(re.search(r'P2_POM_DEAD generator=%d species=RandPom used=1 refunds=0 corpse=0 budget=1' % RANDPOM, text))
+             and bool(re.search(r'P2_POM_DEAD generator=%d species=RedPom used=5 refunds=1 corpse=0 budget=5' % REDPOM, text)),
+        conservation=bool(re.search(r'P2_POM_CONSERVATION generator=%d species=RandPom used=1 refunds=0 requested=9 born=9 '
+                                    r'dead_pikis=\d+ loss_counted=0' % RANDPOM, text))
+                     and bool(re.search(r'P2_POM_CONSERVATION generator=%d species=RedPom used=5 refunds=1 requested=6 born=6 '
+                                        r'dead_pikis=\d+ loss_counted=0' % REDPOM, text)),
+        bind=bool(re.search(r'P2_POM_BIND generator=%d species=RedPom source_id=4 host=teki type=\d+' % REDPOM, text))
+             and bool(re.search(r'P2_POM_BIND generator=%d species=RandPom source_id=8 host=teki type=\d+' % RANDPOM, text)),
+        drawn=all(re.search(r'P2_POM_DRAW generator=%d species=RedPom pose=%s draws=[1-9]\d*' % (REDPOM, pose), text)
+                  for pose in DRAW_POSES)
+              and all(re.search(r'P2_POM_DRAW generator=%d species=RandPom pose=%s draws=[1-9]\d*' % (RANDPOM, pose), text)
+                      for pose in DRAW_POSES),
+        invulnerable=text.count('P2_POM_INVULNERABLE ') >= 2,
+        no_rewards='P2_CARGO_READY' not in text and 'P2_POD_RECEIPT' not in text,
+    )
+    failed = sorted(name for name, ok in required.items() if not ok)
+    blocked = sorted(name for name in ('ready', 'accept', 'refund', 'close', 'sprout')
+                     if ('P2_POM_RUNTIME_BLOCKED %s' % name) in text)
+    return dict(passed=not failed, failed=failed, checks=required, blocked=blocked, exit_code=code,
+                scope='batch-2 Chappy-vehicle Candypop buds: confirmed bind+draw for both buds in every FSM pose, plus death/conservation; base-Pom rejection and capacity-pressure inject are labeled probes')
+
+
+def pid_running(pid):
+    out = subprocess.run(['tasklist', '/FI', 'PID eq %d' % pid, '/FO', 'CSV', '/NH'],
+                         capture_output=True, text=True).stdout
+    return str(pid) in out
+
+
+def run(assets, imported, output, exe):
+    output = Path(output)
+    output.mkdir(parents=True, exist_ok=True)
+    directory = stage(assets, imported, output / 'pom')
+    env = dict(os.environ, PATH='C:/msys64/mingw64/bin;' + os.environ.get('PATH', ''), SDL_AUDIODRIVER='dummy', PIKMIN_P2_ROOM_WINDOW='960x540')
+    with (directory / 'native.log').open('w') as log:
+        process = subprocess.Popen([str(Path(exe).resolve()), '--experimental-pikmin2-room'], cwd=directory,
+                                   env=env, stdout=log, stderr=subprocess.STDOUT)
+        try:
+            code = process.wait(timeout=180)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+            code = 'timeout'
+    text = (directory / 'native.log').read_text(errors='replace')
+    evidence = validate(text, code)
+    evidence['directory'] = str(directory)
+    evidence['exe'] = builder.snapshot([Path(exe)])
+    evidence['leftover_pid'] = process.pid if pid_running(process.pid) else None
+    evidence['no_leftover_process'] = evidence['leftover_pid'] is None
+    evidence['passed'] = evidence['passed'] and evidence['no_leftover_process']
+    (output / 'result.json').write_text(json.dumps(evidence, indent=2))
+    print('pom', evidence['passed'], directory, flush=True)
+    return evidence
+
+
+def play(assets, imported, output, exe):
+    directory = stage(assets, imported, output)
+    (directory / 'pom-keep-open.txt').write_bytes(b'Candypop fixture; close window to exit.\n')
+    print('Candypop fixture.\n' + str(directory), flush=True)
+    env = dict(os.environ, PATH='C:/msys64/mingw64/bin;' + os.environ.get('PATH', ''), SDL_AUDIODRIVER='dummy', PIKMIN_P2_ROOM_WINDOW='960x540')
+    with (directory / 'native.log').open('w') as log:
+        return subprocess.run([str(Path(exe).resolve()), '--experimental-pikmin2-room'], cwd=directory, env=env,
+                              stdout=log, stderr=subprocess.STDOUT).returncode
+
+
+if __name__ == '__main__':
+    p = argparse.ArgumentParser()
+    sub = p.add_subparsers(dest='command', required=True)
+    b = sub.add_parser('build')
+    for key in ('native', 'build-dir', 'output'):
+        b.add_argument('--' + key, type=Path, required=True)
+    b.add_argument('--head', required=True)
+    for parser in (sub.add_parser('run'), sub.add_parser('play')):
+        for key in ('assets', 'imported', 'output', 'exe'):
+            parser.add_argument('--' + key, type=Path, required=True)
+    a = p.parse_args()
+    if a.command == 'build':
+        build(a.native.resolve(), a.build_dir.resolve(), a.output, a.head)
+    elif a.command == 'run':
+        evidence = run(a.assets, a.imported, a.output, a.exe)
+        raise SystemExit(0 if evidence['passed'] else 1)
+    else:
+        raise SystemExit(play(a.assets, a.imported, a.output, a.exe))

@@ -1,0 +1,710 @@
+From a62a89313a67f59b943a9e1212209c3a526e8308 Mon Sep 17 00:00:00 2001
+From: Codex <4laric@users.noreply.github.com>
+Date: Sun, 13 Sep 2026 20:18:23 -0400
+Subject: [PATCH] pc_p2_long_legs_fsm: source Long Legs
+ lifecycle/foot-crush/Man-at-Legs gun policy + standalone test (#173, #312)
+
+---
+ CMakeLists.txt                  |   8 +
+ pc_port/pc_p2_long_legs_fsm.cpp | 247 ++++++++++++++++++++++++++++++
+ pc_port/pc_p2_long_legs_fsm.h   | 138 +++++++++++++++++
+ tools/p2_long_legs_fsm_test.cpp | 262 ++++++++++++++++++++++++++++++++
+ 4 files changed, 655 insertions(+)
+ create mode 100644 pc_port/pc_p2_long_legs_fsm.cpp
+ create mode 100644 pc_port/pc_p2_long_legs_fsm.h
+ create mode 100644 tools/p2_long_legs_fsm_test.cpp
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index bc32ae08..9d0e2b1e 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -205,6 +205,7 @@ set(PC_PORT_SOURCES
+     pc_port/pc_p2_bigtreasure_motion.cpp
+     pc_port/pc_p2_bigtreasure_visual.cpp
+     pc_port/pc_p2_long_legs.cpp
++    pc_port/pc_p2_long_legs_fsm.cpp
+     pc_port/pc_randomizer.cpp
+     pc_port/pc_main.cpp
+     pc_port/pc_window.cpp
+@@ -655,6 +656,13 @@ add_executable(pc_render_phase_test
+ target_compile_options(pc_render_phase_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+ add_test(NAME pc_render_phase_test COMMAND pc_render_phase_test)
+ 
++add_executable(p2_long_legs_fsm_test
++    tools/p2_long_legs_fsm_test.cpp
++    pc_port/pc_p2_long_legs_fsm.cpp)
++target_include_directories(p2_long_legs_fsm_test PRIVATE pc_port)
++target_compile_options(p2_long_legs_fsm_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
++add_test(NAME p2_long_legs_fsm_test COMMAND p2_long_legs_fsm_test)
++
+ add_executable(pc_visual_snapshot_test
+     pc_port/timing/pc_visual_snapshot_test.cpp
+     pc_port/timing/pc_visual_snapshot.cpp)
+diff --git a/pc_port/pc_p2_long_legs_fsm.cpp b/pc_port/pc_p2_long_legs_fsm.cpp
+new file mode 100644
+index 00000000..bb931c6c
+--- /dev/null
++++ b/pc_port/pc_p2_long_legs_fsm.cpp
+@@ -0,0 +1,247 @@
++#include "pc_p2_long_legs_fsm.h"
++
++P2LongLegsFsmParms p2LongLegsParmsFor(P2LongLegsSpecies species)
++{
++    P2LongLegsFsmParms p;
++    p.species = species;
++    switch (species) {
++    case P2LongLegsSpecies::Damagumo:
++        p.maxHealth = 1300.0f;
++        p.speed = 100.0f;
++        p.territoryRadius = 400.0f;
++        p.pressDamage = 10.0f;
++        p.waitMinSeconds = 1.75f; p.waitMaxSeconds = 3.5f;
++        p.walkMinSeconds = 3.25f; p.walkMaxSeconds = 6.5f;
++        p.hasShotGun = false;
++        p.deathChildren = 25; // ShijimiChou when no treasure is held
++        break;
++    case P2LongLegsSpecies::Houdai:
++        p.maxHealth = 2800.0f;
++        p.speed = 250.0f;
++        p.territoryRadius = 800.0f; // mLastToTerritory becomes 130 in Hole of Heroes
++        p.pressDamage = 0.0f;       // no press code at all
++        p.waitMinSeconds = 1.5f; p.waitMaxSeconds = 3.0f;
++        p.walkMinSeconds = 3.5f; p.walkMaxSeconds = 7.0f;
++        p.hasShotGun = true;
++        p.deathChildren = 0;
++        break;
++    case P2LongLegsSpecies::BigFoot:
++        p.maxHealth = 10000.0f;
++        p.speed = 70.0f;
++        p.territoryRadius = 310.0f;
++        p.pressDamage = 10.0f;
++        p.waitMinSeconds = 5.0f; p.waitMaxSeconds = 5.0f; // fixed 5 s
++        p.walkMinSeconds = 10.0f; p.walkMaxSeconds = 10.0f; // mNormalTravelTime fp20
++        p.walkPostFlickSeconds = 5.0f; // mPostShakeTravelTime fp21 disc
++        p.hasShotGun = false;
++        p.deathChildren = 30; // Mitites, ball form, when no treasure is held
++        break;
++    }
++    return p;
++}
++
++const char* P2LongLegsFsm::stateName(P2LongLegsState state)
++{
++    switch (state) {
++    case P2LongLegsState::Dead: return "Dead";
++    case P2LongLegsState::Stay: return "Stay";
++    case P2LongLegsState::Land: return "Land";
++    case P2LongLegsState::Wait: return "Wait";
++    case P2LongLegsState::Flick: return "Flick";
++    case P2LongLegsState::Walk: return "Walk";
++    case P2LongLegsState::Shot: return "Shot";
++    }
++    return "?";
++}
++
++const char* P2LongLegsFsm::speciesName(P2LongLegsSpecies species)
++{
++    switch (species) {
++    case P2LongLegsSpecies::Damagumo: return "Damagumo";
++    case P2LongLegsSpecies::Houdai: return "Houdai";
++    case P2LongLegsSpecies::BigFoot: return "BigFoot";
++    }
++    return "?";
++}
++
++void P2LongLegsFsm::reset(const P2LongLegsFsmParms& parms)
++{
++    mParms = parms;
++    mState = P2LongLegsState::Stay;
++    mStateTimer = 0.0f;
++    mChosenSeconds = 0.0f;
++    mShotCooldown = 0.0f;
++    mBurstTimer = 0.0f;
++    mBurstOn = false;
++    mAimTimer = 0.0f;
++    mFeetFired = false;
++    mEnraged = false;
++}
++
++bool P2LongLegsFsm::crushGate(const P2LongLegsFsmInput& input) const
++{
++    // Source: a foot presses only while descending or planting with a move
++    // ratio above 1 (IKSystemMgr::isCollisionCheck). A resting foot is
++    // harmless, and Houdai has no press code.
++    return mParms.pressDamage > 0.0f && input.footDescendingOrPlanting
++        && input.ikMoveRatio > 1.0f;
++}
++
++float P2LongLegsFsm::pickWaitSeconds(const P2LongLegsFsmInput& input) const
++{
++    const float roll = input.roll < 0.0f ? 0.0f : (input.roll > 1.0f ? 1.0f : input.roll);
++    return mParms.waitMinSeconds + roll * (mParms.waitMaxSeconds - mParms.waitMinSeconds);
++}
++
++float P2LongLegsFsm::pickWalkSeconds(const P2LongLegsFsmInput& input) const
++{
++    if (mParms.species == P2LongLegsSpecies::BigFoot && mEnraged
++            && mParms.walkPostFlickSeconds > 0.0f)
++        return mParms.walkPostFlickSeconds;
++    const float roll = input.roll < 0.0f ? 0.0f : (input.roll > 1.0f ? 1.0f : input.roll);
++    return mParms.walkMinSeconds + roll * (mParms.walkMaxSeconds - mParms.walkMinSeconds);
++}
++
++void P2LongLegsFsm::enter(P2LongLegsState next, const P2LongLegsFsmInput& input,
++                          P2LongLegsFsmOutput& output)
++{
++    mState = next;
++    mStateTimer = 0.0f;
++    mBurstTimer = 0.0f;
++    output.entered = true;
++    switch (next) {
++    case P2LongLegsState::Wait:
++        mChosenSeconds = pickWaitSeconds(input);
++        output.chosenSeconds = mChosenSeconds;
++        break;
++    case P2LongLegsState::Walk:
++        mChosenSeconds = pickWalkSeconds(input);
++        output.chosenSeconds = mChosenSeconds;
++        output.enragedWalk = mParms.species == P2LongLegsSpecies::BigFoot && mEnraged;
++        break;
++    case P2LongLegsState::Shot:
++        mBurstOn = true;
++        mAimTimer = 0.0f;
++        mShotCooldown = 0.0f;
++        break;
++    case P2LongLegsState::Dead:
++        if (input.holdingTreasure) {
++            output.dropTreasure = true; // thrown straight down from kosi
++        } else {
++            output.birthChildren = mParms.deathChildren;
++        }
++        break;
++    default:
++        break;
++    }
++}
++
++void P2LongLegsFsm::update(const P2LongLegsFsmInput& input, P2LongLegsFsmOutput& output)
++{
++    output = P2LongLegsFsmOutput();
++    output.state = mState;
++
++    if (mState == P2LongLegsState::Dead)
++        return;
++
++    // Death is terminal and bypasses the normal state machine; the held
++    // treasure is dropped, otherwise the no-treasure child burst is requested.
++    if (input.killed) {
++        enter(P2LongLegsState::Dead, input, output);
++        output.state = mState;
++        return;
++    }
++
++    if (input.damageTaken) {
++        mShotCooldown = 0.0f; // taking damage postpones the gun (Houdai.cpp)
++    } else if (mState != P2LongLegsState::Shot) {
++        mShotCooldown += kSourceDelta;
++    }
++
++    mStateTimer += kSourceDelta;
++    mBurstTimer += kSourceDelta;
++
++    switch (mState) {
++    case P2LongLegsState::Stay:
++        if (input.wakeTargetNearby)
++            enter(P2LongLegsState::Land, input, output);
++        break;
++
++    case P2LongLegsState::Land:
++        if (input.landingKey2 && !mFeetFired) {
++            mFeetFired = true;
++            output.feetFired = true;
++            output.footCrush = mParms.pressDamage > 0.0f; // key 2 fires all four feet
++        }
++        if (input.animEnd)
++            enter(P2LongLegsState::Wait, input, output);
++        break;
++
++    case P2LongLegsState::Wait:
++        if (input.pikminAccumulating) {
++            enter(P2LongLegsState::Flick, input, output);
++        } else if (mParms.hasShotGun && mShotCooldown >= mParms.burstCooldownSeconds) {
++            enter(P2LongLegsState::Shot, input, output);
++        } else if (mStateTimer >= mChosenSeconds) {
++            enter(P2LongLegsState::Walk, input, output);
++        }
++        break;
++
++    case P2LongLegsState::Flick:
++        if (input.flickKey2)
++            output.shake = true;
++        if (input.animEnd) {
++            if (mParms.hasShotGun) {
++                enter(P2LongLegsState::Shot, input, output); // always after a Flick
++            } else {
++                if (mParms.species == P2LongLegsSpecies::BigFoot)
++                    mEnraged = true; // set when Flick ends
++                enter(P2LongLegsState::Wait, input, output);
++            }
++        }
++        break;
++
++    case P2LongLegsState::Walk:
++        output.footCrush = crushGate(input);
++        if (input.pikminAccumulating) {
++            enter(P2LongLegsState::Flick, input, output);
++        } else if (mStateTimer >= mChosenSeconds) {
++            if (mParms.species == P2LongLegsSpecies::BigFoot)
++                mEnraged = false; // cleared when the next Walk ends
++            enter(P2LongLegsState::Wait, input, output);
++        }
++        break;
++
++    case P2LongLegsState::Shot: {
++        mAimTimer += kSourceDelta;
++        if (mBurstOn) {
++            if (mBurstTimer >= mParms.burstOnSeconds) {
++                mBurstOn = false;
++                mBurstTimer = 0.0f;
++            } else if (input.shotLoop) {
++                output.fireShell = true; // one shell per attack loop, from the muzzle
++            }
++        } else if (mBurstTimer >= mParms.burstOffSeconds) {
++            mBurstOn = true;
++            mBurstTimer = 0.0f;
++        }
++        if (input.animEnd || mAimTimer >= mParms.maxAimSeconds)
++            enter(P2LongLegsState::Wait, input, output);
++        break;
++    }
++
++    default:
++        break;
++    }
++
++    // Derived after the transition so a landing-key-2 tick reports the new
++    // damage window immediately.
++    output.bitterImmune = mState == P2LongLegsState::Stay
++        || (mState == P2LongLegsState::Land && !mFeetFired);
++    output.damageable = (mState == P2LongLegsState::Wait || mState == P2LongLegsState::Flick
++                         || mState == P2LongLegsState::Walk || mState == P2LongLegsState::Shot)
++        || (mState == P2LongLegsState::Land && mFeetFired);
++    output.enragedWalk = mParms.species == P2LongLegsSpecies::BigFoot && mEnraged
++        && mState == P2LongLegsState::Walk;
++    output.state = mState;
++}
+diff --git a/pc_port/pc_p2_long_legs_fsm.h b/pc_port/pc_p2_long_legs_fsm.h
+new file mode 100644
+index 00000000..168c087b
+--- /dev/null
++++ b/pc_port/pc_p2_long_legs_fsm.h
+@@ -0,0 +1,138 @@
++#pragma once
++
++// Engine-free Long Legs family source policy (#173/#312), mirroring the shared
++// IK-leg walk schedule and per-species state machines of Damagumo (56, Beady
++// Long Legs), Houdai (66, Man-at-Legs) and BigFoot (69, Raging Long Legs).
++//
++// Source: docs/PIKMIN2_LONG_LEGS_AUDIT.md (US GPVE01 rev 0), state machines in
++// src/plugProjectNishimuraU/{Damagumo,Houdai,BigFoot}State.cpp. This unit is a
++// pure policy: the host owns IKSystemMgr, joint shadows, tube collision, the
++// shot-gun shell pool, animation key events, random-number state and all
++// creature effects. The host feeds per-tick inputs and performs the requested
++// effects; the policy never dereferences a game object.
++//
++// The Long Legs family has no walk animation. Movement, foot crush and stomp
++// are IK-driven; the policy therefore schedules leg activity and gates the
++// crush exactly as the source collision check does (a foot only presses while
++// descending or planting with a move ratio above 1). Shells are requested as
++// events and must be consumed by lane 20's projectile contract, not spawned
++// here.
++
++enum class P2LongLegsSpecies {
++    Damagumo = 56,  // Beady Long Legs
++    Houdai = 66,    // Man-at-Legs
++    BigFoot = 69,   // Raging Long Legs
++};
++
++enum class P2LongLegsState {
++    Dead = 0,  // source Dead 0
++    Stay = 1,  // dormant, model hidden, bitter-immune
++    Land = 2,  // landing animation; key 2 removes immunity and fires feet
++    Wait = 3,
++    Flick = 4, // shake-off when Pikmin accumulate
++    Walk = 5,
++    Shot = 6,  // Houdai only
++};
++
++// Retail disc values from the audit; headers differ where noted. Nothing here
++// is invented: fields the audit does not state are left at the source audit's
++// documented default and marked. `pressDamage` 0 means the species has no foot
++// press code (Houdai).
++struct P2LongLegsFsmParms {
++    P2LongLegsSpecies species = P2LongLegsSpecies::Damagumo;
++    float maxHealth = 1300.0f;        // Damagumo disc
++    float speed = 100.0f;             // Damagumo disc
++    float privateRadius = 75.0f;      // all three disc
++    float territoryRadius = 400.0f;   // Damagumo disc
++    float homeRadius = 75.0f;         // all three disc
++    float pressDamage = 10.0f;        // Damagumo 10; Houdai 0 (no press)
++    bool hasShotGun = false;          // Houdai true
++    float waitMinSeconds = 1.75f;     // Damagumo; Houdai 1.5; BigFoot fixed 5
++    float waitMaxSeconds = 3.5f;      // Damagumo; Houdai 3.0; BigFoot fixed 5
++    float walkMinSeconds = 3.25f;     // Damagumo; Houdai 3.5; BigFoot 10 normal
++    float walkMaxSeconds = 6.5f;      // Damagumo; Houdai 7.0; BigFoot 10 normal
++    float walkPostFlickSeconds = 0.0f; // BigFoot 5 s post-shake travel (fp21); 0 = unused
++    // Man-at-Legs gun (HoudaiShotGun.cpp). The audit reuses general parameters
++    // as seconds; values are the disc overrides.
++    float burstCooldownSeconds = 50.0f; // mSearchHeight reused as seconds
++    float burstOnSeconds = 2.5f;        // mMaxShootingOn disc
++    float burstOffSeconds = 1.0f;       // mMaxShootingOff disc
++    float maxAimSeconds = 120.0f;       // mSearchAngle reused as seconds
++    int shellPool = 10;                 // fixed shell pool
++    float shellDamage = 10.0f;          // disc
++    float shellFriendlyDamage = 500.0f; // other enemies
++    float shellSpeed = 600.0f;
++    int deathChildren = 0;              // ShijimiChou x25 (Damagumo), Mitites x30 (BigFoot)
++    bool damageRequiresStuck = true;    // US build: only stuck Pikmin damage
++};
++
++P2LongLegsFsmParms p2LongLegsParmsFor(P2LongLegsSpecies species);
++
++// One 30 Hz source tick of host-fed inputs. The animation keyframe pulses
++// (animEnd, landingKey2, flickKey2, shotLoop) are edges consumed this tick.
++struct P2LongLegsFsmInput {
++    float health = 0.0f;
++    bool wakeTargetNearby = false;   // captain/Pikmin inside mPrivateRadius
++    bool animEnd = false;            // state animation END key
++    bool landingKey2 = false;        // landing key 2: immunity off, all feet fire
++    bool flickKey2 = false;          // flick key 2: shake executes
++    bool pikminAccumulating = false; // isStartFlick
++    bool damageTaken = false;        // resets Houdai shot cooldown
++    bool holdingTreasure = false;    // boss holds a treasure (death drop)
++    bool killed = false;             // host kill event
++    bool hasTargetInTerritory = false; // walk target selection/validity
++    float ikMoveRatio = 1.0f;        // IK leg move ratio for the crush gate
++    bool footDescendingOrPlanting = false; // a foot is descending/planting
++    bool shotLoop = false;           // Attack animation loop boundary (fire one)
++    float roll = 0.0f;               // host uniform [0,1) for duration selection
++};
++
++struct P2LongLegsFsmOutput {
++    P2LongLegsState state = P2LongLegsState::Stay;
++    bool entered = false;            // state entered this tick
++    float chosenSeconds = 0.0f;      // Wait/Walk duration chosen on entry
++    bool footCrush = false;          // press/stomp applies this tick
++    bool feetFired = false;          // landing key 2 fires all four feet
++    bool shake = false;              // Flick key 2 shake-off
++    bool fireShell = false;          // Houdai: emit one shell (lane 20 contract)
++    bool dropTreasure = false;       // death with a held treasure
++    int birthChildren = 0;           // death with no treasure
++    bool enragedWalk = false;        // BigFoot one-cycle rage walk
++    bool bitterImmune = false;       // Stay, or Land before key 2
++    bool damageable = false;         // awake and past the landing immunity gate
++};
++
++class P2LongLegsFsm {
++public:
++    static constexpr float kSourceDelta = 1.0f / 30.0f;
++
++    void reset(const P2LongLegsFsmParms& parms);
++
++    // One 30 Hz source update. Exactly one output per call.
++    void update(const P2LongLegsFsmInput& input, P2LongLegsFsmOutput& output);
++
++    P2LongLegsState state() const { return mState; }
++    float stateSeconds() const { return mStateTimer; }
++    float shotCooldownSeconds() const { return mShotCooldown; }
++    bool landingFiredFeet() const { return mFeetFired; }
++    bool enraged() const { return mEnraged; }
++    static const char* stateName(P2LongLegsState state);
++    static const char* speciesName(P2LongLegsSpecies species);
++
++private:
++    void enter(P2LongLegsState next, const P2LongLegsFsmInput& input, P2LongLegsFsmOutput& output);
++    bool crushGate(const P2LongLegsFsmInput& input) const;
++    float pickWaitSeconds(const P2LongLegsFsmInput& input) const;
++    float pickWalkSeconds(const P2LongLegsFsmInput& input) const;
++
++    P2LongLegsFsmParms mParms;
++    P2LongLegsState mState = P2LongLegsState::Stay;
++    float mStateTimer = 0.0f;
++    float mChosenSeconds = 0.0f;
++    float mShotCooldown = 0.0f;   // mShotGunBurstTimer
++    float mBurstTimer = 0.0f;
++    bool mBurstOn = false;
++    float mAimTimer = 0.0f;
++    bool mFeetFired = false;      // landing key 2 passed
++    bool mEnraged = false;        // BigFoot one-cycle rage flag
++};
+diff --git a/tools/p2_long_legs_fsm_test.cpp b/tools/p2_long_legs_fsm_test.cpp
+new file mode 100644
+index 00000000..911c3ff7
+--- /dev/null
++++ b/tools/p2_long_legs_fsm_test.cpp
+@@ -0,0 +1,262 @@
++#include "pc_p2_long_legs_fsm.h"
++
++#include <cassert>
++#include <cstdio>
++
++// Standalone lifecycle fixture for the lane-owned Long Legs source policy.
++// Engine-free: every IK, animation, projectile and creature effect is scripted
++// here. Source citations are to docs/PIKMIN2_LONG_LEGS_AUDIT.md (US GPVE01 rev 0)
++// and the Damagumo/Houdai/BigFoot state machines.
++
++namespace {
++using S = P2LongLegsState;
++using Species = P2LongLegsSpecies;
++
++P2LongLegsFsmInput baseInput()
++{
++    P2LongLegsFsmInput in;
++    in.health = 1000.0f;
++    in.ikMoveRatio = 1.0f; // resting unless a test overrides
++    return in;
++}
++
++P2LongLegsFsmOutput run(P2LongLegsFsm& fsm, P2LongLegsFsmInput in, int ticks)
++{
++    P2LongLegsFsmOutput out;
++    for (int i = 0; i < ticks; ++i) fsm.update(in, out);
++    return out;
++}
++}
++
++int main()
++{
++    // Damagumo lifecycle: Stay (dormant) --wake--> Land --END--> Wait --timer-->
++    // Walk; accumulating Pikmin interrupts with Flick, ending back in Wait.
++    {
++        P2LongLegsFsm fsm;
++        fsm.reset(p2LongLegsParmsFor(Species::Damagumo));
++        assert(fsm.state() == S::Stay);
++
++        P2LongLegsFsmInput in = baseInput();
++        P2LongLegsFsmOutput out;
++        fsm.update(in, out);
++        assert(fsm.state() == S::Stay && out.bitterImmune && !out.damageable);
++
++        in.wakeTargetNearby = true;
++        fsm.update(in, out);
++        assert(out.entered && fsm.state() == S::Land);
++        in.wakeTargetNearby = false;
++        fsm.update(in, out);
++        assert(out.bitterImmune && !out.damageable); // immunity holds until key 2
++        in.landingKey2 = true;
++        fsm.update(in, out);
++        assert(out.feetFired && out.footCrush); // key 2 fires all four feet
++        assert(out.damageable && !out.bitterImmune);
++        in.landingKey2 = false;
++        in.animEnd = true;
++        fsm.update(in, out);
++        assert(out.entered && fsm.state() == S::Wait);
++        assert(out.chosenSeconds >= 1.75f && out.chosenSeconds <= 3.5f);
++
++        in.animEnd = false;
++        in.pikminAccumulating = true;
++        fsm.update(in, out);
++        assert(out.entered && fsm.state() == S::Flick);
++        in.pikminAccumulating = false;
++        in.flickKey2 = true;
++        fsm.update(in, out);
++        assert(out.shake);
++        in.flickKey2 = false;
++        in.animEnd = true;
++        fsm.update(in, out);
++        assert(out.entered && fsm.state() == S::Wait);
++    }
++
++    // Wait duration honours the host roll; Walk advances on its own timer.
++    {
++        P2LongLegsFsm fsm;
++        fsm.reset(p2LongLegsParmsFor(Species::Damagumo));
++        P2LongLegsFsmInput in = baseInput();
++        in.wakeTargetNearby = true;
++        P2LongLegsFsmOutput out;
++        fsm.update(in, out); // Land
++        in.wakeTargetNearby = false;
++        in.animEnd = true;
++        fsm.update(in, out); // Wait
++        assert(fsm.state() == S::Wait);
++        assert(out.chosenSeconds == 1.75f); // roll defaults to 0 -> waitMin
++        in.animEnd = false;
++        out = run(fsm, in, 53); // 1.77 s
++        assert(fsm.state() == S::Walk);
++        assert(fsm.stateSeconds() < 0.1f);
++        out = run(fsm, in, 98); // 3.27 s -> crosses walkMin 3.25 s
++        assert(fsm.state() == S::Wait);
++    }
++
++    // Foot crush: only while descending/planting with move ratio above 1, and
++    // only for species with press code (Houdai never presses).
++    {
++        P2LongLegsFsm fsm;
++        fsm.reset(p2LongLegsParmsFor(Species::Damagumo));
++        P2LongLegsFsmInput in = baseInput();
++        P2LongLegsFsmOutput out;
++        in.wakeTargetNearby = true; fsm.update(in, out);
++        in.wakeTargetNearby = false; in.animEnd = true; fsm.update(in, out); // Wait
++        in.animEnd = false; run(fsm, in, 60); // -> Walk (roll 0 -> 3.25 s)
++        assert(fsm.state() == S::Walk);
++        in.footDescendingOrPlanting = false; in.ikMoveRatio = 2.0f;
++        fsm.update(in, out);
++        assert(!out.footCrush); // a resting foot is harmless
++        in.footDescendingOrPlanting = true; in.ikMoveRatio = 1.5f;
++        fsm.update(in, out);
++        assert(out.footCrush);
++        in.ikMoveRatio = 1.0f;
++        fsm.update(in, out);
++        assert(!out.footCrush); // ratio must be above 1
++    }
++    {
++        P2LongLegsFsm fsm;
++        fsm.reset(p2LongLegsParmsFor(Species::Houdai));
++        P2LongLegsFsmInput in = baseInput();
++        P2LongLegsFsmOutput out;
++        in.wakeTargetNearby = true; fsm.update(in, out);
++        in.wakeTargetNearby = false; in.animEnd = true; fsm.update(in, out); // Wait
++        in.animEnd = false; run(fsm, in, 100); // -> Walk
++        assert(fsm.state() == S::Walk);
++        in.footDescendingOrPlanting = true; in.ikMoveRatio = 2.0f;
++        fsm.update(in, out);
++        assert(!out.footCrush); // Houdai legs never damage
++    }
++
++    // Death: held treasure drops straight down; otherwise the no-treasure child
++    // burst is requested. No carcass and Death is terminal.
++    {
++        P2LongLegsFsm fsm;
++        fsm.reset(p2LongLegsParmsFor(Species::Damagumo));
++        P2LongLegsFsmInput in = baseInput();
++        P2LongLegsFsmOutput out;
++        in.holdingTreasure = true;
++        in.killed = true;
++        fsm.update(in, out);
++        assert(out.entered && fsm.state() == S::Dead);
++        assert(out.dropTreasure && out.birthChildren == 0);
++        in.killed = false; in.holdingTreasure = false;
++        out = run(fsm, in, 60);
++        assert(fsm.state() == S::Dead && out.birthChildren == 0);
++    }
++    {
++        P2LongLegsFsm fsm;
++        fsm.reset(p2LongLegsParmsFor(Species::Damagumo));
++        P2LongLegsFsmInput in = baseInput();
++        P2LongLegsFsmOutput out;
++        in.killed = true;
++        fsm.update(in, out);
++        assert(out.birthChildren == 25 && !out.dropTreasure); // 25 Shijimi
++    }
++    {
++        P2LongLegsFsm fsm;
++        fsm.reset(p2LongLegsParmsFor(Species::BigFoot));
++        P2LongLegsFsmInput in = baseInput();
++        P2LongLegsFsmOutput out;
++        in.killed = true;
++        fsm.update(in, out);
++        assert(out.birthChildren == 30); // 30 Mitites
++    }
++
++    // Houdai Shot: always entered after a Flick; one shell per attack loop while
++    // the burst is on, then the off window pauses fire until it re-arms.
++    {
++        P2LongLegsFsm fsm;
++        fsm.reset(p2LongLegsParmsFor(Species::Houdai));
++        P2LongLegsFsmInput in = baseInput();
++        P2LongLegsFsmOutput out;
++        in.wakeTargetNearby = true; fsm.update(in, out); // Land
++        in.wakeTargetNearby = false; in.animEnd = true; fsm.update(in, out); // Wait
++        in.animEnd = false;
++        in.pikminAccumulating = true; fsm.update(in, out); // Flick
++        assert(fsm.state() == S::Flick);
++        in.pikminAccumulating = false;
++        in.animEnd = true; fsm.update(in, out); // Flick END -> Shot
++        assert(out.entered && fsm.state() == S::Shot);
++
++        in.animEnd = false;
++        in.shotLoop = true;
++        fsm.update(in, out);
++        assert(out.fireShell); // burst on, loop boundary fires
++
++        // Cross the 2.5 s burst-on window; while off, loop boundaries are silent.
++        out = run(fsm, in, 76);
++        assert(fsm.state() == S::Shot);
++        out = run(fsm, in, 10); // inside the 1.0 s off window
++        assert(!out.fireShell);
++        out = run(fsm, in, 25); // off window elapsed, burst re-arms
++        fsm.update(in, out);
++        assert(out.fireShell);
++
++        in.shotLoop = false;
++        in.animEnd = true;
++        fsm.update(in, out);
++        assert(out.entered && fsm.state() == S::Wait);
++    }
++
++    // Houdai Shot also opens from Wait when the burst cooldown reaches the
++    // reused mSearchHeight (50 s), and taking damage resets that cooldown.
++    {
++        P2LongLegsFsm fsm;
++        fsm.reset(p2LongLegsParmsFor(Species::Houdai));
++        P2LongLegsFsmInput in = baseInput();
++        P2LongLegsFsmOutput out;
++        in.wakeTargetNearby = true; fsm.update(in, out); // Land
++        in.wakeTargetNearby = false; in.animEnd = true; fsm.update(in, out); // Wait
++        in.animEnd = false;
++        run(fsm, in, 1400); // 46.7 s < 50 s
++        assert(fsm.state() != S::Shot);
++        assert(fsm.shotCooldownSeconds() < 50.0f);
++        in.damageTaken = true;
++        fsm.update(in, out);
++        assert(fsm.shotCooldownSeconds() == 0.0f);
++        in.damageTaken = false;
++        bool shot = false;
++        for (int i = 0; i < 1800 && !shot; ++i) { // <= 60 s from the reset
++            fsm.update(in, out);
++            if (fsm.state() == S::Shot) shot = true;
++        }
++        assert(shot); // ~50 s cooldown, allowing Wait/Walk cycle slack
++    }
++
++    // BigFoot: fixed 5 s Wait, one-cycle rage set when Flick ends, post-shake
++    // walk of 5 s, then rage cleared.
++    {
++        P2LongLegsFsm fsm;
++        fsm.reset(p2LongLegsParmsFor(Species::BigFoot));
++        P2LongLegsFsmInput in = baseInput();
++        P2LongLegsFsmOutput out;
++        in.wakeTargetNearby = true; fsm.update(in, out); // Land
++        in.wakeTargetNearby = false; in.animEnd = true; fsm.update(in, out); // Wait
++        assert(out.chosenSeconds == 5.0f);
++        in.animEnd = false;
++        in.pikminAccumulating = true; fsm.update(in, out); // Flick
++        assert(fsm.state() == S::Flick);
++        in.pikminAccumulating = false;
++        in.animEnd = true; fsm.update(in, out); // Flick END -> Wait, rage set
++        assert(fsm.enraged());
++        in.animEnd = false;
++        P2LongLegsFsmOutput walkOut;
++        bool walked = false;
++        for (int i = 0; i < 200 && !walked; ++i) { // fixed 5 s Wait
++            fsm.update(in, walkOut);
++            if (fsm.state() == S::Walk) walked = true;
++        }
++        assert(walked);
++        assert(walkOut.chosenSeconds == 5.0f && walkOut.enragedWalk); // post-shake travel
++        bool waited = false;
++        for (int i = 0; i < 200 && !waited; ++i) { // 5 s post-shake Walk
++            fsm.update(in, out);
++            if (fsm.state() == S::Wait) waited = true;
++        }
++        assert(waited && !fsm.enraged());
++    }
++
++    std::puts("PASS LONG_LEGS_FSM");
++    return 0;
++}
+-- 
+2.55.0.windows.3
+

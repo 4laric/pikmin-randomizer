@@ -1,7 +1,9 @@
 """Strict, deterministic identity-placement milestone; no unproven relocation."""
 import hashlib
 import json
+import os
 from collections import Counter
+from pathlib import Path
 from .catalog import (GAME, NAMES, PART_IDS, LOCATION_IDS, UNLOCKS,
                       REPAIR, REPAIR_COUNT, CHECK_REQUIREMENTS, active_names, ALL_LOCATION_IDS,
                       can_reach, can_reach_manifest, progression_pool, item_pool, START_AREAS, ALL_AREA_LOCATION_IDS, ALL_PART_IDS, COLLECTION_LOCATION_IDS, PERMANENT_LOCATION_IDS, MODERN_LOCATION_IDS, modern_names)
@@ -9,6 +11,43 @@ from .catalog import (GAME, NAMES, PART_IDS, LOCATION_IDS, UNLOCKS,
 EXPANDED_CAPABILITIES = ["flarlic-v1", "population-v1", "bestiary-v1", "exploration-v1"]
 
 CAPABILITIES = ["identity-placement-v1", "foh-day2-v1", "repair-goal-v1", "repeat-day29-v1"]
+
+ADMITTED_PLACEMENT_FILENAME = "PIKMIN2_ADMITTED_PLACEMENT.json"
+
+
+def _default_admitted_placement():
+    """Committed lane 04 accepted-placement document for the admitted cohort.
+
+    Admitted P2 enemies are eligible for placement behind the ``p2_enemies`` /
+    AP ``p2_enemy_randomizer`` option. When no explicit document is supplied this
+    finds the committed accepted-placement document (repo ``docs/``, a
+    ``PIKMIN2_ADMITTED_PLACEMENT`` path override, or the packaged apworld data
+    file). It is deliberately fail-closed: an empty or unaccepted admitted set is
+    still rejected by ``resolve_placement_layout``.
+    """
+    candidates = []
+    override = os.environ.get("PIKMIN2_ADMITTED_PLACEMENT")
+    if override:
+        candidates.append(Path(override))
+    try:
+        candidates.append(Path(__file__).resolve().parents[1] / "docs" / ADMITTED_PLACEMENT_FILENAME)
+    except (NameError, OSError):
+        pass
+    candidates.append(Path.cwd() / "docs" / ADMITTED_PLACEMENT_FILENAME)
+    for candidate in candidates:
+        if candidate.is_file():
+            return json.loads(candidate.read_text(encoding="utf-8"))
+    try:
+        from importlib.resources import files
+        package = __package__ or ""
+        if package.startswith("pikmin_randomizer"):
+            resource = files(package) / "data" / ADMITTED_PLACEMENT_FILENAME
+            return json.loads(resource.read_text(encoding="utf-8"))
+    except (ImportError, ModuleNotFoundError, FileNotFoundError, TypeError):
+        pass
+    raise ValueError(
+        "P2 enemies require the committed admitted-placement document "
+        f"(docs/{ADMITTED_PLACEMENT_FILENAME}); set PIKMIN2_ADMITTED_PLACEMENT to override")
 
 
 def canonical(value):
@@ -42,16 +81,17 @@ class SeedRandom:
         return values
 
 
-def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, death_link=False, death_link_pikmin=10):
+def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None):
     if type(bomb_rock_weight) is not int or not 0 <= bomb_rock_weight <= 10: raise ValueError("bomb_rock_weight must be 0..10")
     if type(bomb_trap_weight) is not int or not 0 <= bomb_trap_weight <= 10: raise ValueError("bomb_trap_weight must be 0..10")
     if type(progg_trap_weight) is not int or not 0 <= progg_trap_weight <= 10: raise ValueError("progg_trap_weight must be 0..10")
+    if type(prerelease_trap_weight) is not int or not 0 <= prerelease_trap_weight <= 10: raise ValueError("prerelease_trap_weight must be 0..10")
     if type(death_link) is not bool: raise ValueError("invalid death_link")
     if type(death_link_pikmin) is not int or not 1 <= death_link_pikmin <= 100: raise ValueError("death_link_pikmin must be 1..100")
     if death_link:
         if legacy_checks: raise ValueError("death link requires modern checks")
         collection_checks = True
-    if bomb_rock_weight or bomb_trap_weight or progg_trap_weight:
+    if bomb_rock_weight or bomb_trap_weight or progg_trap_weight or prerelease_trap_weight:
         if legacy_checks: raise ValueError("bomb deliveries require modern checks")
         collection_checks = True
     from .stats import validate_roll_bounds, validate_upgrade_limits
@@ -72,6 +112,14 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         collection_checks = miniboss_enemies = True
     if type(combined_captain) is not bool: raise ValueError("invalid combined_captain")
     if combined_captain: collection_checks = True
+    if type(p2_enemies) is not bool: raise ValueError("invalid p2_enemies")
+    if p2_placement is not None and type(p2_placement) is not dict:
+        raise ValueError("p2_placement must be a placement document mapping")
+    if p2_enemies:
+        if legacy_checks: raise ValueError("P2 enemies require modern checks")
+        if enemy_shuffle or per_spawn_enemies or group_spawn_enemies or miniboss_enemies or campaign_enemies:
+            raise ValueError("P2 enemies are mutually exclusive with P1 enemy layouts")
+        collection_checks = True
     if goal_mode not in ("repairs", "emperor_bulblax"): raise ValueError("invalid goal_mode")
     if goal_mode == "emperor_bulblax": collection_checks = True
     if progressive_color_stats: permanent_checks = True  # 36 upgrades need the larger check pool.
@@ -153,6 +201,9 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         if progg_trap_weight:
             result['progg_trap_weight'] = progg_trap_weight
             result['capabilities'].append('progg-ambush-v1')
+        if prerelease_trap_weight:
+            result['prerelease_trap_weight'] = prerelease_trap_weight
+            result['capabilities'].append('prerelease-trap-v1')
         if per_spawn_enemies:
             from .enemy_slots import resolve_spawn_layout, spawn_sources
             result['spawn_layout'] = resolve_spawn_layout(result['seed'], slot, miniboss_enemies)
@@ -181,6 +232,24 @@ def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area
         result["death_link"] = True
         result["death_link_pikmin"] = death_link_pikmin
         result["capabilities"].append("death-link-v1")
+    if p2_enemies:
+        # Opt-in experimental bridge: the admitted cohort comes from lane 02, the
+        # ordered binding targets from lane 04. Fail closed while nothing is
+        # admitted. Kept behind a lazy import so ordinary seeds never load the
+        # experimental roster.
+        from experimental.pikmin2_enemy_roster import load_and_validate
+        # Product path: legal targets come only from the lane 04 placement contract.
+        # Explicit-cohort binding stays a diagnostic bridge API, not a seed option.
+        from experimental.pikmin2_seed_bridge import resolve_placement_layout
+        if result['schema'] != 9:
+            raise ValueError("P2 enemies require the modern schema-9 catalog")
+        if p2_placement is None:
+            # Admitted enemies are eligible for placement behind the p2_enemies
+            # option; the committed accepted-placement document supplies the legal
+            # targets and resolve_placement_layout still fails closed.
+            p2_placement = _default_admitted_placement()
+        result['p2_layout'] = resolve_placement_layout(result['seed'], slot, p2_placement, load_and_validate())
+        result['capabilities'].append('p2-enemy-bridge-v1')
     validate(result)
     return result
 
@@ -268,6 +337,10 @@ def validate(m):
         expected.add('progg_trap_weight')
         if type(m['progg_trap_weight']) is not int or not 1 <= m['progg_trap_weight'] <= 10 or not m.get('benefit_items'):
             raise ValueError('invalid progg_trap_weight')
+    if type(m) is dict and 'prerelease_trap_weight' in m:
+        expected.add('prerelease_trap_weight')
+        if type(m['prerelease_trap_weight']) is not int or not 1 <= m['prerelease_trap_weight'] <= 10 or not m.get('benefit_items'):
+            raise ValueError('invalid prerelease_trap_weight')
     if type(m) is dict and 'combined_captain' in m:
         expected.add('combined_captain')
         if m['combined_captain'] is not True or not m.get('benefit_items'): raise ValueError('invalid combined_captain')
@@ -293,6 +366,22 @@ def validate(m):
         validate_upgrade_limits(m['stat_upgrade_counts'])
         if not m.get('progressive_color_stats') or 'progressive-color-stats-v2' not in m.get('capabilities', []):
             raise ValueError('custom upgrade counts require progressive stats v2')
+    if type(m) is dict and 'p2_layout' in m:
+        expected.add('p2_layout')
+        from experimental.pikmin2_enemy_roster import load_and_validate
+        from experimental.pikmin2_seed_bridge import (SeedBridgeError, admitted_ids,
+                                                      validate_layout as validate_p2_layout)
+        if (m.get('schema') != 9 or m.get('enemy_mask') != 0
+                or any(key in m for key in ('spawn_layout', 'group_layout', 'campaign_layout'))):
+            raise ValueError('p2_layout is mutually exclusive with P1 enemy layouts and requires schema 9')
+        if 'p2-enemy-bridge-v1' not in m.get('capabilities', []):
+            raise ValueError('p2_layout requires the p2-enemy-bridge-v1 capability')
+        try:
+            roster = load_and_validate()
+            # Product path: a loaded seed must still satisfy the *current* admission set.
+            validate_p2_layout(m['p2_layout'], roster, admitted=admitted_ids(roster))
+        except SeedBridgeError as exc:
+            raise ValueError(f'invalid p2_layout: {exc}')
     if type(m) is not dict or set(m) != expected:
         raise ValueError("manifest fields do not match schema 1")
     if type(m["schema"]) is not int or m["schema"] not in (1, 2, 3, 4, 5, 6, 7, 8, 9):
@@ -342,6 +431,7 @@ def validate(m):
         if m.get('bomb_rock_weight'): fixed['capabilities'] += ['bomb-delivery-v1']
         if m.get('bomb_trap_weight'): fixed['capabilities'] += ['bomb-ambush-v1']
         if m.get('progg_trap_weight'): fixed['capabilities'] += ['progg-ambush-v1']
+        if m.get('prerelease_trap_weight'): fixed['capabilities'] += ['prerelease-trap-v1']
     if 'spawn_layout' in m:
         fixed['capabilities'] += ['enemy-slots-v1']
     if 'group_layout' in m:
@@ -352,6 +442,7 @@ def validate(m):
         fixed['capabilities'] += ['miniboss-slots-v1']
     if m.get("goal_mode") == "emperor_bulblax": fixed["capabilities"].append("emperor-goal-v1")
     if m.get("death_link"): fixed["capabilities"].append("death-link-v1")
+    if m.get('p2_layout'): fixed['capabilities'].append('p2-enemy-bridge-v1')
     for key, value in fixed.items():
         if type(m[key]) is not type(value) or m[key] != value:
             raise ValueError(f"unsupported {key}: {m[key]!r}")

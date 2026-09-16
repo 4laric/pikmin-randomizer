@@ -1,0 +1,13 @@
+P2_BOMBSARAI_ARENA_1
+carrier -100 120 0 0 9001
+joint 0 -40 0
+hover 70 2.5 20 1.5 1.0
+bomb 18.666667 4.5 30 15 90 50 500 10
+receivers 2
+receiver 502 navi -100 15 -40 1 0
+receiver 503 piki 100 15 -40 1 0
+path -130 0 -70 0
+carrier2 100 120 0 0 9002
+joint2 0 -40 0
+path2 70 0 130 0
+pool 2

@@ -1,0 +1,60 @@
+From 05ee72d750340dc5cbe7a44bfff115c2d4e3f1fc Mon Sep 17 00:00:00 2001
+From: Alaric McKenzie-Boone <alaric.mckenzie.boone@gmail.com>
+Date: Mon, 14 Sep 2026 02:59:24 -0400
+Subject: [PATCH 11/17] Keep P2 electric/gas receivers through LTO until
+ emitters reference them
+
+---
+ src/plugPikiKando/interactBattle.cpp | 10 ++++++++--
+ src/plugPikiKando/navi.cpp           |  4 +++-
+ 2 files changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/src/plugPikiKando/interactBattle.cpp b/src/plugPikiKando/interactBattle.cpp
+index 14475f4a..63675e99 100644
+--- a/src/plugPikiKando/interactBattle.cpp
++++ b/src/plugPikiKando/interactBattle.cpp
+@@ -216,8 +216,11 @@ bool InteractFire::actPiki(Piki* piki) immut
+  * existing lethal path (`PIKISTATE_Dying`) and the missing P2 state is logged
+  * and recorded as the blocker. The routing is matrix-driven, so P2 Bulbmin is
+  * covered without a separate colour test.
++ *
++ * `__attribute__((used))`: no gas/denki emitter references this receiver yet,
++ * so LTO would otherwise dead-strip it (and its P2_RECV_ log) from the link.
+  */
+-bool InteractDenki::actPiki(Piki* piki) immut
++__attribute__((used)) bool InteractDenki::actPiki(Piki* piki) immut
+ {
+ 	if (!piki->isAlive()) {
+ 		return false;
+@@ -249,8 +252,11 @@ bool InteractDenki::actPiki(Piki* piki) immut
+  * existing panic-style path (`PIKISTATE_Fired`) and both missing inputs are
+  * logged and recorded as the blocker. Routing stays matrix-driven so P2
+  * Bulbmin is covered.
++ *
++ * `__attribute__((used))` keeps the receiver and its P2_RECV_ log in the link
++ * until a gas emitter references it (see InteractDenki::actPiki above).
+  */
+-bool InteractGas::actPiki(Piki* piki) immut
++__attribute__((used)) bool InteractGas::actPiki(Piki* piki) immut
+ {
+ 	if (!piki->isAlive()) {
+ 		return false;
+diff --git a/src/plugPikiKando/navi.cpp b/src/plugPikiKando/navi.cpp
+index 88d8bf87..36aa1cf6 100644
+--- a/src/plugPikiKando/navi.cpp
++++ b/src/plugPikiKando/navi.cpp
+@@ -2577,8 +2577,10 @@ bool InteractWind::actNavi(Navi* navi) immut
+  * the captain with the source force/direction unless Olimar has the Dream
+  * Material. The port has no Dream Material gate, so this mirrors the existing
+  * `InteractFire::actNavi`/`InteractBubble::actNavi` flick behavior.
++ *
++ * `__attribute__((used))` keeps it in the link until a denki emitter exists.
+  */
+-bool InteractDenki::actNavi(Navi* navi) immut
++__attribute__((used)) bool InteractDenki::actNavi(Navi* navi) immut
+ {
+ 	if (navi->mStateMachine->getNaviState(navi)->invincible(navi)) {
+ 		return false;
+-- 
+2.55.0.windows.3
+

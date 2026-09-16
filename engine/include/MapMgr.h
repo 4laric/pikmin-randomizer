@@ -193,6 +193,9 @@ public:
 	CollGroup* getCollGroupList(f32 x, f32 z, bool includePlatColl);
 	f32 getMinY(f32 x, f32 z, bool includePlatColl);
 	f32 getMaxY(f32 x, f32 z, bool includePlatColl);
+#if defined(PIKI_PC_PORT)
+	CollTriInfo* getStaticGroundBelow(f32 x, f32 z, f32 ceiling, f32& height);
+#endif
 	CollTriInfo* getCurrTri(f32 x, f32 z, bool includePlatColl);
 	f32 findEdgePenetration(CollTriInfo& tri, immut Vector3f* vertexList, immut Vector3f& sphereCenter, f32 sphereRadius,
 	                        Vector3f& outNormal);

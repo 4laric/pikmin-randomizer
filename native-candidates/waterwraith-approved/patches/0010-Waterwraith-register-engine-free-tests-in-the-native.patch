@@ -1,0 +1,47 @@
+From 6e34bd4b7ea05f8a9a173faed609b885415630af Mon Sep 17 00:00:00 2001
+From: 4laric <4laric@users.noreply.github.com>
+Date: Mon, 14 Sep 2026 10:13:29 -0400
+Subject: [PATCH 10/10] Waterwraith: register engine-free tests in the native
+ ctest gate (#443)
+
+---
+ CMakeLists.txt | 23 +++++++++++++++++++++++
+ 1 file changed, 23 insertions(+)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index cfe49fec..a6790aac 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -710,6 +710,29 @@ target_include_directories(p2_dangomushi_hazard_test PRIVATE pc_port)
+ target_compile_options(p2_dangomushi_hazard_test PRIVATE ${NATIVE_COMPILE_OPTIONS})
+ add_test(NAME p2_dangomushi_hazard_test COMMAND p2_dangomushi_hazard_test)
+ 
++# Lane 31 (#443 / #175) engine-free Waterwraith/Tyre tests. -UNDEBUG keeps the
++# assert-based fixtures active in the Release native gate.
++add_executable(p2_waterwraith_policy_test
++    tools/p2_waterwraith_test.cpp
++    pc_port/pc_p2_waterwraith.cpp)
++target_include_directories(p2_waterwraith_policy_test PRIVATE pc_port)
++target_compile_options(p2_waterwraith_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
++add_test(NAME p2_waterwraith_policy_test COMMAND p2_waterwraith_policy_test)
++
++add_executable(p2_waterwraith_actor_test
++    tools/p2_waterwraith_actor_test.cpp
++    pc_port/pc_p2_waterwraith_actor.cpp
++    pc_port/pc_p2_waterwraith.cpp)
++target_include_directories(p2_waterwraith_actor_test PRIVATE pc_port)
++target_compile_options(p2_waterwraith_actor_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
++add_test(NAME p2_waterwraith_actor_test COMMAND p2_waterwraith_actor_test)
++
++add_executable(p2_waterwraith_attack_policy_test
++    tools/p2_waterwraith_attack_policy_test.cpp)
++target_include_directories(p2_waterwraith_attack_policy_test PRIVATE pc_port)
++target_compile_options(p2_waterwraith_attack_policy_test PRIVATE ${NATIVE_COMPILE_OPTIONS} -UNDEBUG)
++add_test(NAME p2_waterwraith_attack_policy_test COMMAND p2_waterwraith_attack_policy_test)
++
+ add_executable(pc_render_phase_test
+     pc_port/timing/pc_render_phase_test.cpp
+     pc_port/timing/pc_render_phase.cpp)
+-- 
+2.55.0.windows.3
+

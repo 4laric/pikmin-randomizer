@@ -7,10 +7,31 @@
 #include "sysNew.h"
 #include "teki.h"
 #include "pc_randomizer.h"
+#include "pc_p2_enemy.h"
+#include "pc_p2_generated_placement.h"
 #include <cstdio>
 
 static bool randomizerProtected(TekiPersonality* personality) {
     return personality->mID.mId != 'none' || personality->getI(TekiPersonality::INT_Parameter0) != 0;
+}
+
+// Generated P2 spawn connection: a live generator whose placement target is
+// bound by the ENEMY_P2 bridge spawns its reviewed native host instead of the P1
+// permutation. Unsupported bound identities fail closed.
+static bool p2NativeHost(unsigned source, int& type) {
+    if (source == 45) { type = TEKI_Chappy; return true; } // Snow Bulborb (YellowKochappy)
+    if (source == 44) { type = TEKI_Chappy; return true; } // Dwarf Orange (BlueKochappy)
+    return false;
+}
+
+static int randomizerReplacement(int original, bool protectedSpawn, Generator* generator) {
+    const unsigned source = pc_randomizer_p2_bound_source(generator);
+    if (!source) return pc_randomizer_enemy_for_generator(original, protectedSpawn, generator);
+    // Protected retail generators must not be replaced by a P2 layout.
+    if (protectedSpawn) pc_randomizer_bad_p2_host();
+    int host = 0;
+    if (!p2NativeHost(source, host)) pc_randomizer_bad_p2_host();
+    return host;
 }
 
 /**
@@ -86,7 +107,7 @@ void GenObjectTeki::updateUseList(Generator* generator, int)
 
 	tekiMgr->mUsingType[mTekiType] = true;
     // Keep original generator identity; reserve replacement assets before birth.
-    const int replacement = pc_randomizer_enemy_for_generator(mTekiType, randomizerProtected(mPersonality), generator);
+    const int replacement = randomizerReplacement(mTekiType, randomizerProtected(mPersonality), generator);
     tekiMgr->mUsingType[replacement] = true;
     // Replacements may spawn their own actors (Cannon Beetle boulders).
     const int replacementSpawn = tekiMgr->mTekiParams[replacement]->getI(TPI_SpawnType);
@@ -110,7 +131,7 @@ void GenObjectTeki::updateUseList(Generator* generator, int)
 Creature* GenObjectTeki::birth(BirthInfo& info)
 {
     const bool protectedSpawn = randomizerProtected(mPersonality);
-    const int replacement = pc_randomizer_enemy_for_generator(mTekiType, protectedSpawn, info.mGenerator);
+    const int replacement = randomizerReplacement(mTekiType, protectedSpawn, info.mGenerator);
 	Teki* teki = tekiMgr->newTeki(replacement);
 	if (!teki) {
 		return nullptr;
@@ -128,10 +149,23 @@ Creature* GenObjectTeki::birth(BirthInfo& info)
 	}
 
 	teki->mRebirthDay = info.mGenerator->getRebirthDay();
+    // Bind the reviewed P2 host for this exact live generator (generated bridge).
+    pc_p2_generated_bind(teki, info.mGenerator);
     if (pc_randomizer_spawn_slots())
         std::printf("ENEMY_SLOT_BIRTH uid=%u original=%d actual=%d\n", pc_randomizer_generator_id(info.mGenerator), mTekiType, replacement);
     if (pc_randomizer_enemy_shuffle())
         std::printf("[Pikmin Randomizer] ENEMY_SPAWN original=%d actual=%d protected=%d x=%.1f z=%.1f\n", mTekiType, replacement, int(protectedSpawn), info.mPosition.x, info.mPosition.z);
+    if (pc_randomizer_p2_bridge() && info.mGenerator) {
+        const unsigned uid = pc_randomizer_generator_id(info.mGenerator);
+        const unsigned source = pc_randomizer_p2_source_for_id(uid);
+        if (source) {
+            std::printf("P2_SEED_RESOLVE source_id=%u target=%u original_type=%d x=%.1f z=%.1f\n",
+                        source, uid, int(mTekiType), info.mPosition.x, info.mPosition.z);
+            // Generated placement (lane 03/04): claim the spawned actor for its
+            // seeded P2 identity module instead of leaving it as a P1 stand-in.
+            pc_p2_generated_placement_bind(static_cast<BTeki*>(teki), source, uid, info.mGenerator->_70);
+        }
+    }
 	return teki;
 }
 

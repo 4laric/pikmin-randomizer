@@ -1,0 +1,451 @@
+"""Tests for scripts.ingest_p2_handoff_gates (lane 02, #438, slice 5).
+
+Covers the handoff six-gate ingestion contract on two synthetic handoffs (one
+clean, one carrying an injected PASS and an uncited PASS), the parser helpers and
+the merge-only ``--apply`` path. Synthetic rosters are built purely through the
+``experimental.pikmin2_enemy_roster`` source helpers; no committed evidence JSON
+or native sources are touched.
+"""
+import json
+
+from experimental.pikmin2_enemy_roster import (
+    ADMISSION_GATES,
+    build_entries,
+    entries_from_payload,
+    parse_enum_header,
+    parse_info_table,
+    resolve_ids,
+    snapshot_payload,
+)
+from scripts.ingest_p2_handoff_gates import (
+    apply_ingested_gates,
+    ingest,
+    parse_gate_table,
+    parse_identities,
+)
+
+SYNTHETIC_HEADER = """
+struct EnemyTypeID {
+enum EEnemyTypeID {
+\tEnemyID_NULL     = -1, // ID not set
+\tEnemyID_Pelplant = 0,\t  // Pellet Posy
+\tEnemyID_Frog     = 17,  // Yellow Wollywog
+\tEnemyID_Egg      = 37,  // Egg
+\tEnemyID_COUNT,
+};
+};
+"""
+
+SYNTHETIC_TABLE = """
+EnemyInfo gEnemyInfo[] = {
+//  name   ID   parent   members flags   model anim animgr texture param collision stone childID childNum droptype
+\t{"Pelplant", EnemyTypeID::EnemyID_Pelplant, -1, 1, (EFlag_CanBeSpawned | 2 | EFlag_UseOwnID), "Pelplant", "Pelplant", "Pelplant", "Pelplant", "Pelplant", "Pelplant", "Pelplant", -1, 0, BDT_Empty},
+\t{"Frog", EnemyTypeID::EnemyID_Frog, -1, 1, (EFlag_DayEndMax4 | EFlag_CanBeSpawned | 2 | EFlag_UseOwnID), "", "", "", "", "", "", "", EnemyTypeID::EnemyID_Egg, 10, BDT_Strong},
+\t{"Egg", EnemyTypeID::EnemyID_Egg, -1, 1, (EFlag_HasNoInfo | EFlag_CanBeSpawned | 2 | EFlag_UseOwnID), "", "", "", "", "", "", "", -1, 0, BDT_Empty},
+};
+"""
+
+
+def _roster():
+    enums = parse_enum_header(SYNTHETIC_HEADER)
+    tables = parse_info_table(SYNTHETIC_TABLE)
+    payload = snapshot_payload(resolve_ids(build_entries(enums, tables)), "synthetic")
+    return entries_from_payload(payload)
+
+
+TWO_SOURCE_HEADER = """
+struct EnemyTypeID {
+enum EEnemyTypeID {
+\tEnemyID_NULL     = -1, // ID not set
+\tEnemyID_Frog     = 17,  // Yellow Wollywog
+\tEnemyID_Snek     = 41,  // Synthetic source enemy
+\tEnemyID_COUNT,
+};
+};
+"""
+
+TWO_SOURCE_TABLE = """
+EnemyInfo gEnemyInfo[] = {
+//  name   ID   parent   members flags   model anim animgr texture param collision stone childID childNum droptype
+\t{"Frog", EnemyTypeID::EnemyID_Frog, -1, 1, (EFlag_DayEndMax4 | EFlag_CanBeSpawned | 2 | EFlag_UseOwnID), "", "", "", "", "", "", "", -1, 0, BDT_Strong},
+\t{"Snek", EnemyTypeID::EnemyID_Snek, -1, 1, (EFlag_DayEndMax4 | EFlag_CanBeSpawned | 2 | EFlag_UseOwnID), "", "", "", "", "", "", "", -1, 0, BDT_Strong},
+};
+"""
+
+
+def _two_roster():
+    enums = parse_enum_header(TWO_SOURCE_HEADER)
+    tables = parse_info_table(TWO_SOURCE_TABLE)
+    payload = snapshot_payload(resolve_ids(build_entries(enums, tables)), "synthetic")
+    return entries_from_payload(payload)
+
+
+CLEAN_HANDOFF = """# Lane 99 handoff (clean synthetic)
+
+## Concrete source ID
+- Source enemy ID: 17 `Frog`.
+
+## Six arena gates (natural vs injected)
+
+| Gate | Result | Evidence |
+|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md spawn binding observed |
+| 2. Autonomous movement and animation | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md leap animation |
+| 3. Attacks and receivers | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md crush receiver |
+| 4. Death and corpse | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md corpse drop |
+| 5. Actual transport and reward | PASS (natural) | corpse:frog:1 goal=1 |
+| 6. Cleanup and re-entry | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md re-entry |
+"""
+
+INJECTED_HANDOFF = """# Lane 99 handoff (injected synthetic)
+
+## Concrete source ID
+- Source enemy ID: 17 `Frog`.
+
+## Six arena gates
+
+| Gate | Result | Evidence |
+|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md spawn binding observed |
+| 2. Autonomous movement and animation | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md leap animation |
+| 3. Attacks and receivers | PASS (injected) | docs/PIKMIN2_FROG_IMPORT.md forced health write |
+| 4. Death and corpse | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md corpse drop |
+| 5. Actual transport and reward | PASS (natural) | corpse:frog:1 goal=1 |
+| 6. Cleanup and re-entry | PASS | observed reset at runtime (no citation) |
+"""
+
+
+def test_clean_handoff_advances_every_gate():
+    (row,) = ingest(CLEAN_HANDOFF, _roster())
+    assert row["source_id"] == 17 and row["enum_name"] == "Frog" and row["role"] == "source"
+    assert set(row["advances"]) == set(ADMISSION_GATES) | {"transport_reward"}
+    assert row["refused"] == {}
+    assert row["blocking"] == []
+
+
+def test_injected_and_uncited_pass_are_refused():
+    (row,) = ingest(INJECTED_HANDOFF, _roster())
+    assert row["refused"]["attacks_receivers"] == "injected"
+    assert row["refused"]["cleanup_reentry"] == "uncited"
+    assert "attacks_receivers" not in row["advances"]
+    assert "cleanup_reentry" not in row["advances"]
+    assert "attacks_receivers" in row["blocking"]
+    assert "cleanup_reentry" in row["blocking"]
+    # Refusing the two bad PASSes keeps the identity out of the admitted set.
+    assert row["blocking"]  # non-empty; the contract is not satisfied
+
+
+def test_gate_table_maps_numbers_to_gate_ids():
+    table = parse_gate_table(CLEAN_HANDOFF)
+    assert set(table) == {1, 2, 3, 4, 5, 6}
+    assert table[5]["evidence"] == "corpse:frog:1 goal=1"
+    assert table[1]["evidence"].startswith("docs/PIKMIN2_FROG_IMPORT.md")
+
+
+def test_identities_are_roster_verified():
+    assert parse_identities(CLEAN_HANDOFF, _roster()) == [(17, "Frog")]
+    # A helper (Egg=37 is a projectile here) is still parsed by id.
+    text = "# x\nSource enemy ID: 37 `Egg`.\n"
+    assert parse_identities(text, _roster()) == [(37, "Egg")]
+
+
+def test_non_seedable_identity_is_skipped():
+    text = "# x\nSource enemy ID: 0 `Pelplant`.\n\n## Six arena gates\n\n"
+    text += "| Gate | Result | Evidence |\n|---|---|---|\n"
+    text += "| 1. Exact identity and spawn | PASS | docs/PIKMIN2_FLORA_NATIVE.md |\n"
+    (row,) = ingest(text, _roster())
+    assert row.get("skipped") is True
+    assert row["role"] == "plant"
+    assert row["advances"] == []
+
+
+def test_apply_merges_gates_only_into_existing_rows(tmp_path):
+    (row,) = ingest(CLEAN_HANDOFF, _roster())
+    ledger = tmp_path / "ev.json"
+    ledger.write_text(json.dumps({
+        "entries": {
+            "17": {"gates": {gate: "UNTESTED" for gate in ADMISSION_GATES},
+                   "eligibility": "candidate"},
+        },
+    }), encoding="utf-8")
+    changed = apply_ingested_gates([row], ledger)
+    assert changed[0][0] == "17"
+    doc = json.loads(ledger.read_text(encoding="utf-8"))
+    assert doc["entries"]["17"]["gates"]["identity_spawn"] == "PASS"
+    # transport_reward is a manual lane-06 receipt, never persisted here.
+    assert "transport_reward" not in doc["entries"]["17"]["gates"]
+    # eligibility never changes (deny-by-default preserved).
+    assert doc["entries"]["17"]["eligibility"] == "candidate"
+
+
+def test_apply_never_fabricates_a_missing_row(tmp_path):
+    (row,) = ingest(CLEAN_HANDOFF, _roster())
+    ledger = tmp_path / "ev.json"
+    ledger.write_text(json.dumps({"entries": {}}), encoding="utf-8")
+    assert apply_ingested_gates([row], ledger) == []
+    assert json.loads(ledger.read_text(encoding="utf-8"))["entries"] == {}
+
+
+def test_plain_pass_with_injected_evidence_marker_is_refused():
+    text = ("# x\nSource ID: 17 `Frog`.\n\n## Six arena gates\n\n"
+            "| Gate | Result | Evidence |\n|---|---|---|\n"
+            "| 1. Exact identity and spawn | PASS | docs/PIKMIN2_FROG_IMPORT.md forced health write |\n")
+    (row,) = ingest(text, _roster())
+    assert row["refused"]["identity_spawn"] == "injected"
+    assert "identity_spawn" not in row["advances"]
+    assert "identity_spawn" in row["blocking"]
+
+
+TWO_IDENTITY_HANDOFF = """# Lane 99 two identities
+## Concrete source ID
+- Source ID: 17 `Frog`.
+
+## Six arena gates
+| Gate | Result | Evidence |
+|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md spawn |
+| 2. Autonomous movement and animation | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md leap |
+| 3. Attacks and receivers | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md crush |
+| 4. Death and corpse | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md corpse |
+| 5. Actual transport and reward | PASS (natural) | corpse:frog:1 goal=1 |
+| 6. Cleanup and re-entry | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md reentry |
+
+Snek (41) shares the base but is not the subject of this table.
+"""
+
+
+def test_multi_identity_binds_table_to_named_owner_only(tmp_path):
+    rows = ingest(TWO_IDENTITY_HANDOFF, _two_roster())
+    by_sid = {row["source_id"]: row for row in rows}
+    assert set(by_sid) == {17, 41}
+    frog = by_sid[17]
+    assert set(frog["advances"]) == set(ADMISSION_GATES) | {"transport_reward"}
+    assert not frog.get("shared")
+    snek = by_sid[41]
+    assert snek.get("shared") is True
+    assert snek["advances"] == []
+    assert snek["blocking"] == list(ADMISSION_GATES) + ["transport_reward"]
+    # --apply never writes a sibling whose table belongs to another identity.
+    ledger = tmp_path / "ev.json"
+    ledger.write_text(json.dumps({"entries": {
+        "17": {"gates": {}, "eligibility": "candidate"},
+        "41": {"gates": {}, "eligibility": "candidate"},
+    }}), encoding="utf-8")
+    changed = apply_ingested_gates(rows, ledger)
+    assert [key for key, _ in changed] == ["17"]
+    doc = json.loads(ledger.read_text(encoding="utf-8"))
+    assert doc["entries"]["17"]["gates"]["identity_spawn"] == "PASS"
+    assert doc["entries"]["41"]["gates"] == {}
+
+
+def test_status_token_is_start_anchored():
+    from scripts.ingest_p2_handoff_gates import _status_token
+    assert _status_token("FAIL (was PASS earlier)") == "FAIL"
+    assert _status_token("BYPASSED") == "UNTESTED"
+    assert _status_token("**PASS (natural)**") == "PASS"
+    assert _status_token("PARTIAL (inherited)") == "PARTIAL"
+
+
+def test_escaped_pipe_is_not_a_cell_boundary():
+    from scripts.ingest_p2_handoff_gates import _split_row
+    cells = _split_row("| 2 | PASS | `P2_BATCH2_DRAW key=dweevil\\|FireOtakara clip=attack1` |")
+    assert cells == ["2", "PASS", "`P2_BATCH2_DRAW key=dweevil|FireOtakara clip=attack1`"]
+
+
+def test_citation_requires_extension_or_known_root_path():
+    from scripts.ingest_p2_handoff_gates import _has_citation
+    assert _has_citation("docs/PIKMIN2_FROG_IMPORT.md spawn")
+    assert _has_citation("output/p2-frog/native.log")
+    assert _has_citation("docs/foo")          # root + one segment = two segments
+    assert not _has_citation("12/16 frames")
+    assert not _has_citation("frame=12 / frame=20")
+    assert not _has_citation("P2_OTAKARA_BIND generator=349001")
+    assert not _has_citation("health=150.0")
+    # placeholders from the checker hint must never count as a citation
+    assert not _has_citation("output/<lane-out>/<run>/native.log:NNN")
+    assert not _has_citation("output/p2/x/native.log:NNN")
+
+
+HEADING_BOUND_HANDOFF = """# x
+## Concrete source ID
+- Source ID: 17 `Frog`.
+
+## Snek (41)
+| Gate | Result | Evidence |
+|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md spawn |
+| 2. Autonomous movement and animation | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md leap |
+| 3. Attacks and receivers | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md crush |
+| 4. Death and corpse | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md corpse |
+| 5. Actual transport and reward | PASS (natural) | corpse:snek:1 goal=1 |
+| 6. Cleanup and re-entry | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md reentry |
+"""
+
+
+def test_table_binds_to_nearest_identity_heading():
+    rows = ingest(HEADING_BOUND_HANDOFF, _two_roster())
+    by_sid = {row["source_id"]: row for row in rows}
+    assert set(by_sid) == {17, 41}
+    # The table sits under "## Snek (41)", so Snek owns it even though Frog is
+    # named by a Source-ID line earlier in the document.
+    assert set(by_sid[41]["advances"]) == set(ADMISSION_GATES) | {"transport_reward"}
+    assert not by_sid[41].get("shared")
+    assert by_sid[17].get("shared") is True
+    assert by_sid[17]["advances"] == []
+
+
+def test_report_generator_is_deterministic():
+    from scripts.ingest_p2_handoff_gates import build_advance_report, render_advance_report
+    docs = [("L99-clean.md", CLEAN_HANDOFF), ("L99-injected.md", INJECTED_HANDOFF)]
+    report = build_advance_report(docs, _roster())
+    again = build_advance_report(docs, _roster())
+    rendered = render_advance_report(report, "claude/p2-deepseek-wave")
+    assert rendered == render_advance_report(again, "claude/p2-deepseek-wave")
+    assert report["total"] == 1            # both handoffs name Frog (17)
+    assert report["identities"][0]["source_id"] == 17
+    assert report["identities"][0]["shared"] is False   # both bind a Frog table
+    assert sum(report["summary"].values()) == report["total"]
+    assert set(report["summary"]) == set(range(7))
+    # Every input handoff is accounted for in the "Handoffs read" section.
+    assert set(report["handoffs"]) == {"L99-clean.md", "L99-injected.md"}
+    assert all(name in rendered for name in ("L99-clean.md", "L99-injected.md"))
+
+
+def test_shared_flag_is_false_when_any_handoff_binds():
+    from scripts.ingest_p2_handoff_gates import build_advance_report
+    # Frog owns a table in the clean handoff but is only a named sibling (no
+    # table) in the second -> any binding makes it a real candidate.
+    sibling = ("# x\nSource ID: 17 `Frog`.\nSnek (41) shares the base.\n")
+    report = build_advance_report([("owner.md", CLEAN_HANDOFF), ("other.md", sibling)], _two_roster())
+    frog = next(row for row in report["identities"] if row["source_id"] == 17)
+    assert frog["shared"] is False
+    snek = next(row for row in report["identities"] if row["source_id"] == 41)
+    assert snek["shared"] is True
+
+
+def test_double_backslash_before_pipe_is_a_separator():
+    from scripts.ingest_p2_handoff_gates import _split_row
+    # "b \\| c": a literal backslash followed by a real pipe -> three cells,
+    # not an escaped pipe joined into the second cell.
+    cells = _split_row(r"| a | b \\| c |")
+    assert cells == ["a", "b \\", "c"]
+
+
+STATUS_HANDOFF = """# Lane with a Status column
+## Concrete source ID
+- Source ID: 17 `Frog`.
+
+## Six arena gates
+| Gate | Status | Evidence / label |
+|---|---|---|
+| 1 Exact identity and spawn | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md spawn |
+| 2 Autonomous movement and animation | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md leap |
+| 3 Attacks and receivers | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md crush |
+| 4 Death and corpse | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md corpse |
+| 5 Actual transport and reward | PASS | corpse:frog:1 goal=1 |
+| 6 Cleanup and re-entry | PASS (natural) | docs/PIKMIN2_FROG_IMPORT.md reentry |
+"""
+
+
+def test_status_column_is_accepted_as_result():
+    from scripts.ingest_p2_handoff_gates import parse_gate_table
+    table = parse_gate_table(STATUS_HANDOFF)
+    assert set(table) == set(range(1, 7))
+    (row,) = ingest(STATUS_HANDOFF, _roster())
+    assert set(row["advances"]) == set(ADMISSION_GATES) | {"transport_reward"}
+
+
+def test_identity_parse_accepts_cited_real_forms():
+    from experimental.pikmin2_enemy_roster import load_and_validate
+    from scripts.ingest_p2_handoff_gates import parse_identities
+    roster = load_and_validate()
+    cases = [
+        ("Empress Bulblax (Queen, enemy ID 30)", [(30, "Queen")]),
+        ("Emperor Bulblax (KingChappy, enemy 53).", [(53, "KingChappy")]),
+        ("One concrete source ID (DangoMushi 94,", [(94, "DangoMushi")]),
+        ("Concrete source enemy ID: 73 BigTreasure (Titan Dweevil).",
+         [(73, "BigTreasure")]),
+        ("Source IDs owned: Houdai 66 (Man-at-Legs) and BigFoot 69",
+         [(66, "Houdai"), (69, "BigFoot")]),
+        ("Source IDs owned: Kabuto 75, Rkabuto 95, Fkabuto 96; Stone 74 /",
+         [(74, "Stone"), (75, "Kabuto"), (95, "Rkabuto"), (96, "Fkabuto")]),
+        ("Dwarf Orange Bulborb — `BlueKochappy`, source id **44** (enum `BlueKochappy`)",
+         [(44, "BlueKochappy")]),
+        ("the Greater Jellyfloat (OniKurage, P2 id 72) captain-capture path",
+         [(72, "OniKurage")]),
+    ]
+    for line, expected in cases:
+        assert parse_identities(line, roster) == expected
+
+
+def test_parse_identities_rejects_phantom_numbers():
+    from experimental.pikmin2_enemy_roster import load_and_validate
+    from scripts.ingest_p2_handoff_gates import parse_identities
+    roster = load_and_validate()
+    for text in (
+        "54 Queen poses",       # "Queen" is 30; the number 54 must not rename Miulin
+        "batch-2 Chappy host",  # "batch-2" is a module label, not Chappy id 2
+        "Pikmin 2 Frog",        # "2 Frog" must not become (2, Chappy)
+        "tick 80 Kogane",       # Kogane is 9, not 80/Tukushi
+        "wave/3 Frog",          # "/3" must not detach 3 -> BluePom
+    ):
+        assert parse_identities(text, roster) == []
+
+
+def test_checker_accepts_clean_handoff():
+    from scripts.check_p2_handoff_gates import check_handoff
+    check = check_handoff(CLEAN_HANDOFF, _roster())
+    assert check["had_refusal"] is False
+    (row,) = check["rows"]
+    assert row["verdict"] == "checked"
+    assert all(gate["verdict"] == "accepted" for gate in row["gates"])
+
+
+def test_checker_refuses_injected_and_uncited_rows():
+    from scripts.check_p2_handoff_gates import check_handoff
+    check = check_handoff(INJECTED_HANDOFF, _roster())
+    assert check["had_refusal"] is True
+    (row,) = check["rows"]
+    by_gate = {gate["gate"]: gate for gate in row["gates"]}
+    assert by_gate["attacks_receivers"]["verdict"] == "refused:injected"
+    assert by_gate["cleanup_reentry"]["verdict"] == "refused:uncited"
+    # Every refused row carries a concrete fix.
+    assert by_gate["attacks_receivers"]["fix"]
+    assert "Evidence cell" in by_gate["cleanup_reentry"]["fix"]
+
+
+def test_checker_flip_bad_status_token_is_refused():
+    from scripts.check_p2_handoff_gates import check_handoff
+    # A misplaced PASS token is a real refusal (a PASS row stated unclearly).
+    text = ("# x\nSource ID: 17 `Frog`.\n\n## Six arena gates\n\n"
+            "| Gate | Result | Evidence |\n|---|---|---|\n"
+            "| 1. Exact identity and spawn | was PASS earlier | docs/PIKMIN2_FROG_IMPORT.md spawn |\n")
+    check = check_handoff(text, _roster())
+    assert check["had_refusal"] is True
+    (row,) = check["rows"]
+    assert row["gates"][0]["verdict"] == "refused:bad status"
+    assert "move `PASS`" in row["gates"][0]["fix"]
+
+
+def test_checker_downgrades_non_pass_bad_status_to_warning():
+    from scripts.check_p2_handoff_gates import check_handoff
+    # A misplaced non-PASS token, or no token at all, is only a warning.
+    for result in ("source-backed N/A (unchanged)", "proxy artifact"):
+        text = ("# x\nSource ID: 17 `Frog`.\n\n## Six arena gates\n\n"
+                "| Gate | Result | Evidence |\n|---|---|---|\n"
+                f"| 1. Exact identity and spawn | {result} | docs/PIKMIN2_FROG_IMPORT.md spawn |\n")
+        check = check_handoff(text, _roster())
+        assert check["had_refusal"] is False
+        (row,) = check["rows"]
+        assert row["gates"][0]["verdict"] == "warn:bad status"
+
+
+def test_checker_cli_exit_codes(tmp_path):
+    from scripts.check_p2_handoff_gates import main
+    clean = tmp_path / "clean.md"
+    clean.write_text(CLEAN_HANDOFF, encoding="utf-8")
+    injected = tmp_path / "injected.md"
+    injected.write_text(INJECTED_HANDOFF, encoding="utf-8")
+    assert main([str(clean)]) == 0
+    assert main([str(injected)]) == 1
+    assert main([str(tmp_path / "missing.md")]) == 2
