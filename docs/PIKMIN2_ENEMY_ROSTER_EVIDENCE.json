@@ -713,12 +713,12 @@
         "PIKMIN2_BREADBUG_ACTOR_RUNTIME.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
-        "movement_animation": "UNTESTED",
-        "attacks_receivers": "UNTESTED",
-        "death_corpse": "UNTESTED",
+        "identity_spawn": "PASS",
+        "movement_animation": "PASS",
+        "attacks_receivers": "PASS",
+        "death_corpse": "PASS",
         "transport_reward": "UNTESTED",
-        "cleanup_reentry": "UNTESTED"
+        "cleanup_reentry": "PASS"
       },
       "notes": [
         "PanModoki (Breadbug): actor/proxy + contested cargo; natural contested cargo/nest ownership/reward remain (#168/#220)."
