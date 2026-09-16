@@ -62,3 +62,12 @@ class PlannerReclaimTests(unittest.TestCase):
             _state(s)['items']['implementation']['ready']=True
             self.reg.scheduling(s)['workers']['one']['capabilities']=[]
         self.assertIsNone(reclaim_for(self.controller,self.spec))
+
+    def test_missing_milestone_is_not_ready_and_cannot_reclaim(self):
+        from workflow.control import fingerprint
+        del self.spec['lane']['milestone']
+        with self.reg.transaction() as s:
+            _state(s)['items']['implementation']['spec_hash']=fingerprint(self.spec)
+        _refresh_readiness(self.controller,[self.spec],self.reader)
+        self.assertFalse(autofill_status(self.reg)['items']['implementation']['ready'])
+        self.assertIsNone(reclaim_for(self.controller,self.spec))

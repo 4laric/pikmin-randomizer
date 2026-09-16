@@ -65,6 +65,13 @@ def validate_spec(reg, spec, issue_reader=github_issue, *, verified=False):
     lane = spec['lane']
     require(isinstance(lane, dict) and 'owner' not in lane and 'worker_id' not in lane and 'task_id' not in lane,
             'Worker identity must be inherited, not invented')
+    lane_fields = {'lane', 'issue', 'scope', 'target_level', 'next_action', 'milestone',
+                   'owned_files', 'acceptance', 'root', 'native'}
+    require(lane_fields <= set(lane) <= lane_fields | {'closes_gates'}, 'Explicit slice fields required')
+    for field in ('lane', 'scope', 'target_level', 'next_action', 'milestone'):
+        require(isinstance(lane[field], str) and lane[field].strip(), field + ' required')
+    require(isinstance(lane['acceptance'], list) and lane['acceptance'] and
+            all(isinstance(v, str) and v.strip() for v in lane['acceptance']), 'acceptance required')
     require(isinstance(lane.get('owned_files'), list) and lane['owned_files'] and
             all(isinstance(f, str) and f for f in lane['owned_files']), 'Explicit owned file strings required')
     require(type(lane.get('issue')) is int and lane['issue'] > 0, 'Explicit issue required')
