@@ -57,7 +57,8 @@ def process_table():
     if os.name != 'nt':
         raise OSError('Automatic provider-stop inspection currently supports Windows only')
     result = subprocess.run(['powershell', '-NoProfile', '-Command',
-        'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name | ConvertTo-Json -Compress'],
+        'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,'
+        '@{Name="Started";Expression={if ($_.CreationDate) {$_.CreationDate.ToUniversalTime().ToFileTimeUtc().ToString()}}} | ConvertTo-Json -Compress'],
         capture_output=True, text=True, timeout=20, creationflags=subprocess.CREATE_NO_WINDOW)
     if result.returncode:
         raise OSError('Cannot inspect process descendants')
@@ -69,9 +70,24 @@ def safe_descendants(owners, rows):
     allowed = {p['pid'] for p in owners}
     if not allowed.issubset({p['ProcessId'] for p in rows}):
         return False
+    def started(value):
+        # Win32 creation FILETIME, not a wall-clock guess; absent/malformed data
+        # cannot exclude descendants and therefore remains conservative.
+        if isinstance(value, str) and value.isdecimal() and int(value) > 0:
+            return int(value)
+        return None
+    # CIM timestamps retain microseconds; GetProcessTimes retains 100ns ticks.
+    births = {p['ProcessId']: started(p.get('Started')) for p in rows}
+    for owner in owners:
+        expected, actual = started(owner.get('started')), births.get(owner['pid'])
+        if expected is not None and actual is not None and expected // 10 != actual // 10:
+            return False
     descendants = set(allowed)
     while True:
-        extra = {p['ProcessId'] for p in rows if p['ParentProcessId'] in descendants}
+        extra = {p['ProcessId'] for p in rows if p['ParentProcessId'] in descendants
+                 and not (births.get(p['ParentProcessId']) is not None
+                          and births.get(p['ProcessId']) is not None
+                          and births[p['ProcessId']] < births[p['ParentProcessId']])}
         if extra.issubset(descendants):
             break
         descendants.update(extra)

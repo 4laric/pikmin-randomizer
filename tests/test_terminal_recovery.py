@@ -4,7 +4,7 @@ import os
 import unittest
 
 from tests import test_pikmin2_controller as fixtures
-from workflow.provider_recovery import recover, recover_terminal
+from workflow.provider_recovery import recover, recover_terminal, safe_descendants
 from workflow.runner import write
 
 
@@ -156,6 +156,32 @@ class TerminalRecoveryTests(unittest.TestCase):
         self.controller.config['terminal_idle_recovery']['enabled'] = True
         recover(self.controller, table=self.rows, stop=self.stop)
         self.assertEqual(self.stopped, [self.child])
+
+    def test_recycled_parent_pid_does_not_claim_older_watchdog(self):
+        owners = [dict(self.runner, started='200'), dict(self.child, started='201')]
+        rows = [dict(self.rows()[0], Started='200'), dict(self.rows()[1], Started='201'),
+                dict(self.rows()[2], Started='202'),
+                dict(ProcessId=900, ParentProcessId=700, Name='powershell.exe', Started='100'),
+                dict(ProcessId=901, ParentProcessId=900, Name='opencode.exe', Started='150')]
+        self.assertTrue(safe_descendants(owners, rows))
+        rows[-2]['Started'] = '203'
+        self.assertFalse(safe_descendants(owners, rows))
+
+    def test_missing_or_malformed_creation_time_cannot_exclude_busy_child(self):
+        owners = [dict(self.runner, started='200'), dict(self.child, started='201')]
+        rows = [dict(self.rows()[0], Started='200'), dict(self.rows()[1], Started='201'),
+                dict(ProcessId=900, ParentProcessId=700, Name='powershell.exe', Started='100')]
+        for missing in (None, '', 'yesterday', -1):
+            rows[-1]['Started'] = missing
+            self.assertFalse(safe_descendants(owners, rows))
+        rows[-1]['Started'] = '100'
+        rows[0].pop('Started')
+        self.assertFalse(safe_descendants(owners, rows))
+
+    def test_recycled_owner_pid_refuses_tree(self):
+        owners = [dict(self.runner, started='200'), dict(self.child, started='201')]
+        rows = [dict(self.rows()[0], Started='300'), dict(self.rows()[1], Started='301')]
+        self.assertFalse(safe_descendants(owners, rows))
 
     def test_fresh_stdout_or_unrecognized_identity_blocks(self):
         os.utime(self.events, (1999, 1999))
