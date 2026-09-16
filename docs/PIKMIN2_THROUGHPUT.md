@@ -539,3 +539,13 @@ Within existing enemy/content/expansion priority classes, autofill prefers prepa
 providers with more explicit downstream dependents. Preflight now rejects missing
 lane names and runtime proposals without a prepared private native source worktree;
 review feedback routes these failures to preparation repair before assignment.
+
+## Unbound dispatch recovery (#627)
+
+An intent whose runner explicitly ended registration_timeout can be retried only
+with null bound process, confirmed-dead runner, absent start.json/child.json and a
+recovery-safe lane. Archive the exact launch directory inside its verified parent;
+reuse the durable intent and session with at most three such retries. Never infer
+safety from age alone. Non-progressing intents no longer monopolize dispatch.
+Within existing/expansion priority, assigned implementation/recovery launches precede
+planning/publication/integration-support helpers; RAM and model pacing still apply.

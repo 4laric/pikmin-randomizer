@@ -93,9 +93,32 @@ class Controller:
         owners = entry.get('legacy_supervisors', [])
         return all(self.reg.probe(owner) == 'dead' for owner in owners)
 
+    def recover_unbound(self, item, directory):
+        """Retry only a proven registration timeout before any child could start."""
+        result=directory/'result.json';runner=directory/'runner.json'
+        if not result.exists() or not runner.exists():return False
+        if json.loads(result.read_text()).get('kind')!='registration_timeout':return False
+        with self.reg.transaction() as state:
+            current=self.reg.control(state)['launches'][item['id']]
+            if current['status']!='intent' or current.get('process') or current.get('unbound_retries',0)>=3:return False
+            if (directory/'start.json').exists() or (directory/'child.json').exists():return False
+            identity=json.loads(runner.read_text())
+            if self.reg.probe(identity)!='dead':return False
+            if not self.reg.recovery_safe(state,state['lanes'][item['lane']]):return False
+            parent=(self.base/'launches').resolve()
+            require(directory.resolve().parent==parent,'Unbound recovery directory outside launches')
+            archive=parent/(item['id']+'.unbound-'+fingerprint(identity))
+            require(archive.resolve().parent==parent and not archive.exists(),'Recovery archive collision')
+            directory.rename(archive)
+            current['unbound_retries']=current.get('unbound_retries',0)+1
+            self.reg.event(state,'unbound_runner_recovered',item['lane'],action=item['id'],archive=str(archive))
+        return True
+
     def dispatch(self, item):
         if not self.available(item['lane']): return
-        directory = self.launch_directory(item['id']); directory.mkdir(parents=True, exist_ok=True)
+        directory = self.launch_directory(item['id'])
+        self.recover_unbound(item,directory)
+        directory.mkdir(parents=True, exist_ok=True)
         if (directory / 'start.json').exists(): return
         # A model recorded before start.json is a durable launch reservation.
         current = self.reg.control_status()['launches'][item['id']]
@@ -103,14 +126,16 @@ class Controller:
         if model is None: return
         # Persist spawn intent before Popen. Uncertain windows are reconciled, never retried blindly.
         marker = directory / 'spawn.json'
+        spawned=False
         if not marker.exists():
             write(marker, {'action': item['id'], 'at': self.reg.clock()})
             self.spawn(directory)
+            spawned=True
         identity_file = directory / 'runner.json'
         if not identity_file.exists():
             if self.reg.clock() - json.loads(marker.read_text())['at'] > 120:
                 self.reg.notice(item['lane'], 'uncertain_dispatch', {'action': item['id'], 'directory': str(directory)})
-            return
+            return spawned
         identity = json.loads(identity_file.read_text())
         if probe(identity) != 'alive':
             self.reg.notice(item['lane'], 'runner_stopped_before_binding', {'action': item['id']})
@@ -135,6 +160,7 @@ class Controller:
             c.setdefault('model_launch_after', {})[model] = self.reg.clock() + self.config.get('model_launch_spacing', 15)
         write(directory / 'start.json', dict(action_id=item['id'], executable=self.config['executable'],
             worktree=entry['root'], config=entry['config'], model=model, session=item['session'], prompt=prompt))
+        return True
 
     def complete_runs(self):
         for item in self.reg.control_status()['launches'].values():
@@ -436,13 +462,14 @@ class Controller:
                 # Legacy/dependency/recovery intents default to existing work.
                 work_class = 1 if item.get('work_class') == 'expansion' else 0
                 focus = {'enemy_acceptance': 0, 'existing_content': 1, 'expansion': 2}.get(item.get('focus'), 1)
-                return (work_class, focus, -downstream, len(lane.get('closes_gates', [])) or 99, item['created_at'])
+                helper=item['lane'].startswith(('planning-','publication-review-','integration-support-'))
+                return (work_class, helper, focus, -downstream, len(lane.get('closes_gates', [])) or 99, item['created_at'])
             for item in sorted(self.reg.control_status()['launches'].values(), key=priority):
                 if item['status'] in ('intent', 'spawned'):
                     if not self.reg.select_model(item['models']) or not self.available(item['lane']): continue
-                    self.dispatch(item)
+                    progressed=self.dispatch(item)
                     # One new launch per tick; avoid crossing the RAM band in a batch.
-                    break
+                    if progressed:break
         self.shepherd()
         self.deliver_notifications()
         write(self.base / 'status.json', dict(at=self.reg.clock(), control=self.reg.control_status()))

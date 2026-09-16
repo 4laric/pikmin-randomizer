@@ -60,6 +60,32 @@ class ControllerTests(unittest.TestCase):
         self.ready_dependency(); self.controller.dependencies(); self.controller.dependencies()
         self.assertEqual(len(self.reg.control_status()['launches']), 1)
 
+    def test_unbound_timeout_archives_dead_runner_and_reuses_intent(self):
+        item=self.plan();directory=self.controller.launch_directory(item['id']);directory.mkdir(parents=True)
+        write(directory/'runner.json',{'pid':-123,'started':'old'})
+        write(directory/'result.json',{'kind':'registration_timeout'})
+        write(directory/'spawn.json',{'at':0})
+        self.assertTrue(self.controller.dispatch(item))
+        self.assertEqual(self.reg.control_status()['launches'][item['id']]['status'],'running')
+        self.assertEqual(len(list(directory.parent.glob(item['id']+'.unbound-*'))),1)
+        self.assertEqual(len(self.spawns),1)
+
+    def test_unbound_recovery_refuses_possible_child_or_live_runner(self):
+        item=self.plan();directory=self.controller.launch_directory(item['id']);directory.mkdir(parents=True)
+        write(directory/'runner.json',self.identity);write(directory/'result.json',{'kind':'registration_timeout'})
+        self.assertFalse(self.controller.recover_unbound(item,directory))
+        write(directory/'runner.json',{'pid':-123})
+        for name in ('child.json','start.json'):
+            write(directory/name,{})
+            self.assertFalse(self.controller.recover_unbound(item,directory))
+            (directory/name).unlink()
+
+    def test_unbound_recovery_has_retry_budget(self):
+        item=self.plan();directory=self.controller.launch_directory(item['id']);directory.mkdir(parents=True)
+        write(directory/'runner.json',{'pid':-123});write(directory/'result.json',{'kind':'registration_timeout'})
+        with self.reg.transaction() as s:s['control']['launches'][item['id']]['unbound_retries']=3
+        self.assertFalse(self.controller.recover_unbound(item,directory))
+
     def test_same_version_not_resumed_after_consumption(self):
         self.ready_dependency(); self.controller.dependencies()
         item = next(iter(self.reg.control_status()['launches'].values())); self.controller.dispatch(item)
