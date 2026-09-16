@@ -256,6 +256,8 @@ def run_once(session, assets, imported, output, exe, seconds, label):
     """One session-enabled receipt run: fresh arena + bootstrap in one dir."""
     from randomizer.runner import NativeRun
     from randomizer.session import atomic_write
+    os.environ["PATH"] = r"C:\msys64\mingw64\bin;" + os.environ.get("PATH", "")
+    os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
     from experimental.pikmin2_animation_profile import capture_command
     native_run = NativeRun(session)
     arena = prepare(Path(assets), Path(imported), Path(output))
