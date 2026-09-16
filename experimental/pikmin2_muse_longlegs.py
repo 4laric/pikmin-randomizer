@@ -328,6 +328,14 @@ def build(native, build_dir, output, head, fixture_cpp, resume=False):
     audit['artifacts'] = builder.snapshot([output / 'fixture.exe', output / 'room.obj'])
     audit['status'] = 'built'
     (output / 'instrumentation.json').write_text(json.dumps(audit, indent=2) + '\n')
+    # Record the linked fixture executable as a provenance artifact keyed by its
+    # real path, so a handoff can prove the RUN exe (not just the baseline
+    # compile-check artifact) came from this exact native head. Done by the
+    # build itself, never hand-edited afterward.
+    record = json.loads((output / 'baseline/provenance.json').read_text())
+    record.setdefault('artifacts', {})[str(output / 'fixture.exe')] = dict(
+        audit['artifacts'][str(output / 'fixture.exe')], role='linked-run-executable')
+    (output / 'baseline/provenance.json').write_text(json.dumps(record, indent=2) + '\n')
 
 
 def run(assets, imported, output, exe, seconds=200):
