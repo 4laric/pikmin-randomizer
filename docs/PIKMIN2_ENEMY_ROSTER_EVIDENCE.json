@@ -214,12 +214,13 @@
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
         "death_corpse": "PASS",
-        "transport_reward": "UNTESTED",
+        "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "onion:enemy:9 (P2_KOGANE_COLLECT collect1 drink5 onion_receipt3) output/dsw/l17-out/fix4-cross/stages/08b36a21ef504eaa8af9d4ac13e45a8b/native-pass0.log:793",
       "notes": [
-        "Kogane (Iridescent Flint Beetle): pc_p2_kogane family vehicle; hit-triggered drops with finite counts + restart dedupe remain (#168/#219).",
-        "Natural hit/drop limits and reload unchanged; no per-identity receiver acceptance."
+        "Kogane (Iridescent Flint Beetle): pc_p2_kogane family actor module; hit-triggered drops with finite counts + restart dedupe remain (#168/#219).",
+        "Natural hit/drop limits and reload unchanged; receiver gate closed by the natural-throw path in the muse l54 throw-run (native.log:751/:899/:903-:905/:921/:926/:930/:932); death is source-backed N/A (retail FSM has no Dead state; Disappear recycles); onion reward receipt from the preserved lane-17 collect run."
       ]
     },
     "10": {
