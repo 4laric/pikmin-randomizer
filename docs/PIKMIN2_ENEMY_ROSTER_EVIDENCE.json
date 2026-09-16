@@ -753,7 +753,7 @@
         "PIKMIN2_HARD_LANES_HANDOFF.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
+        "identity_spawn": "PASS",
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
         "death_corpse": "PASS",
