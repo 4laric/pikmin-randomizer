@@ -29,6 +29,7 @@
 //   * View angle is a full hemisphere.
 // No other lane's module is modified; every hook is a no-op for unregistered actors.
 #include "pc_p2_elecbug.h"
+#include "pc_randomizer.h"
 #include "pc_p2_species.h"
 #include "pc_p2_hazard_emitter.h"
 #include "teki.h"
@@ -325,6 +326,10 @@ void pc_p2_elecbug_reset() {
 unsigned long pc_p2_elecbug_count() { return (unsigned long)actors.size(); }
 bool pc_p2_elecbug_registered(BTeki* actor) { return actors.count(static_cast<PelletView*>(actor)) != 0; }
 void pc_p2_elecbug_forget(BTeki* actor) {
+    // Lane 06 single-use binding: drop the ordinary-delivery source so a
+    // recycled actor address can never inherit source 28. The central
+    // pc_p2_forget_teki seam also clears it; this is idempotent.
+    pc_randomizer_p2_forget_source(static_cast<PelletView*>(actor));
     ElecBug* s = lookup(actor);
     if (s && s->partner) breakLink(actor, *s);
     actors.erase(static_cast<PelletView*>(actor));
@@ -514,6 +519,15 @@ void pc_p2_elecbug_setup() {
         s.heading = actor->getDirection();
         actor->mHealth = LIFE;
         enter(s, ELEC_WAIT, "wait");
+        // Ordinary-delivery bridge (lane 06 contract, #585): bind source 28 to
+        // this live actor so GoalItem::suckMe can grant onion:p2:28 exactly once
+        // through pc_randomizer_p2_corpse_delivered. Rejected (unbindable id)
+        // is logged by the callee, never fatal. Single-use: consumed on
+        // delivery and cleared on forget/recycle.
+        pc_randomizer_p2_bind_source(static_cast<PelletView*>(actor), 28,
+                                     actor->mGenerator->_70);
+        std::printf("P2_ELECBUG_DELIVERY_BIND generator=%u source_id=28\n",
+                    actor->mGenerator->_70);
         std::printf("P2_ELECBUG_BIND generator=%u source_id=28 visual_only=0\n",
                     actor->mGenerator->_70);
         const Vector3f pos = actor->getPosition();
