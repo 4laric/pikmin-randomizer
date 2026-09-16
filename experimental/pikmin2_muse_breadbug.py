@@ -43,7 +43,7 @@ GENERATOR = 186081
 CONTROL = 186082
 
 SCOPE = ('Breadbug38 natural lifecycle: P1-proxy movement sample, natural '
-         'captain-thrown red kill, death-funnel forget, corpse pellet, generator '
+         'captain-thrown red kill, corpse pellet, generator '
          'rebirth re-registration without manager recreation; P2 FSM motion, '
          'cargo contest and transport reward are lane-18 accepted behavior '
          'preserved by reference, not re-claimed here')
