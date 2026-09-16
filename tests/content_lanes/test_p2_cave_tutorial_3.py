@@ -1,9 +1,22 @@
 """Focused P0 tests for the tutorial_3 import-contract adapter (issue #153)."""
+import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
 
-import experimental.content_lanes.p2_cave_tutorial_3 as t3
+# The reserved adapter is loaded by file path so the reserved hyphenated
+# filename needs no package re-export; the integrator's tree provides
+# experimental/content_lanes/__init__.py when it lands content lanes.
+_ADAPTER = importlib.util.spec_from_file_location(
+    'p2_cave_tutorial_3_adapter',
+    Path(__file__).resolve().parents[2] / 'experimental' / 'content_lanes' / 'p2-cave-tutorial_3.py')
+t3 = importlib.util.module_from_spec(_ADAPTER)
+_ADAPTER.loader.exec_module(t3)
+
+# Verified local retail source (read-only); live tests skip cleanly if absent.
+ISO = Path(r'C:\Users\alari\Downloads\PIKMIN2 for GAMECUBE.iso')
+DECOMP = Path(r'C:\Users\alari\pikmin-randomizer\native\pikmin2-research')
+LIVE = ISO.is_file() and (DECOMP / 'src/plugProjectYamashitaU/enemyInfo.cpp').is_file()
 
 ENEMIES = {'Chappy', 'KareOoinu_s', 'Rkabuto'}
 TREASURES = {'gem_one', 'map01'}
@@ -198,6 +211,83 @@ class PacketTests(unittest.TestCase):
         self.assertTrue(packet['blockers'])
         self.assertTrue(any('#129' in blocker for blocker in packet['blockers']))
         self.assertEqual(packet['unsupported'], dict(enemies=[], treasures=[]))
+
+
+class LiveDecodeTests(unittest.TestCase):
+    """Live decode against the verified local retail ISO; skips cleanly if absent."""
+
+    @unittest.skipUnless(LIVE, 'local retail ISO or decomp reference not present')
+    def test_live_decode_covers_eight_floors(self):
+        result = t3.decode_live(ISO, DECOMP)
+        self.assertEqual(result['parsed']['floor_count'], 8)
+        self.assertEqual(t3.occupied_floors(result['parsed']), list(range(1, 9)))
+        report = t3.baseline_agreement(result['parsed'])
+        self.assertTrue(all(row['agrees'] for row in report), report)
+
+    @unittest.skipUnless(LIVE, 'local retail ISO or decomp reference not present')
+    def test_live_observed_hashes_recorded(self):
+        result = t3.decode_live(ISO, DECOMP)
+        self.assertRegex(result['cave_sha256'], r'^[0-9a-f]{64}$')
+        self.assertGreater(result['cave_bytes'], 0)
+        self.assertEqual(len(result['unit_pools']), 8)
+        for name, info in result['unit_pools'].items():
+            self.assertRegex(info['sha256'], r'^[0-9a-f]{64}$', name)
+            self.assertGreater(info['bytes'], 0)
+            self.assertTrue(info['units'])
+
+    @unittest.skipUnless(LIVE, 'local retail ISO or decomp reference not present')
+    def test_live_unit_arc_texts_closure_complete(self):
+        result = t3.decode_live(ISO, DECOMP)
+        for name, info in result['unit_pools'].items():
+            self.assertEqual(info['missing_assets'], [], name)
+
+    @unittest.skipUnless(LIVE, 'local retail ISO or decomp reference not present')
+    def test_live_packet_is_metadata_only(self):
+        packet = t3.live_packet(ISO, DECOMP)
+        self.assertTrue(packet['baseline_agrees'])
+        self.assertTrue(packet['unit_closure_complete'])
+        self.assertTrue(packet['decoded_from_source'])
+        self.assertFalse(packet['playable'])
+        self.assertFalse(packet['retail_generation'])
+        self.assertEqual(packet['schema'], t3.SCHEMA)
+        self.assertEqual(packet['unsupported'], dict(enemies=[], treasures=[]))
+        self.assertGreater(packet['enemy_catalog_size'], 50)
+        self.assertGreater(packet['treasure_catalog_size'], 50)
+        rows = [row for floor in packet['floors'] for row in floor['enemies']]
+        self.assertEqual(len(rows), 72)
+        self.assertTrue(all(row['placement'] is None for row in rows))
+        self.assertTrue(all(row['runtime_status'] == 'unsupported' for row in rows))
+
+
+class ReferenceBoundaryTests(unittest.TestCase):
+    def test_missing_decomp_prerequisite(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, 'decomp enemyInfo.cpp'):
+                t3.read_reference_sets(directory, 'missing.iso')
+
+    def test_unit_asset_closure_flags_every_missing_member(self):
+        missing = t3.unit_asset_closure({}, [dict(name='room_a')])
+        self.assertEqual(missing, [t3.BASE + '/arc/room_a/arc.szs',
+                                   t3.BASE + '/arc/room_a/texts.szs'])
+
+    def test_unit_asset_closure_clean_when_present(self):
+        index = {t3.BASE + '/arc/room_a/arc.szs': (0, 1),
+                 t3.BASE + '/arc/room_a/texts.szs': (0, 1)}
+        self.assertEqual(t3.unit_asset_closure(index, [dict(name='room_a')]), [])
+
+    def test_read_member_missing_is_exact(self):
+        with self.assertRaisesRegex(ValueError, 'absent from ISO'):
+            t3.read_member('x.iso', {}, t3.SOURCE_PATH)
+
+    def test_decode_live_rejects_non_retail_bytes(self):
+        with tempfile.NamedTemporaryFile(suffix='.iso', delete=False) as handle:
+            handle.write(b'\x00' * 0x500)
+            path = handle.name
+        try:
+            with self.assertRaisesRegex(ValueError, 'US GPVE01'):
+                t3.decode_live(path, DECOMP if LIVE else 'missing')
+        finally:
+            Path(path).unlink()
 
 
 if __name__ == '__main__':

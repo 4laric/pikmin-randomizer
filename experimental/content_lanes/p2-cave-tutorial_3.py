@@ -15,9 +15,13 @@ Raw `source_token` multisets (not tokenized ids) are compared so no
 TekiInfo split/case assumption is baked in here.
 """
 import hashlib
+import re
 from pathlib import Path
 
+from experimental.pikmin2_assets import archive_files, disc_files
+from experimental.pikmin2_cave import BASE, unit_definition
 from experimental.pikmin2_cave_catalog import parse as parse_cave
+from experimental.pikmin2_pod import pellet_catalog
 
 CAVE_ID = 'tutorial_3'
 SOURCE_PATH = 'user/Mukki/mapunits/caveinfo/tutorial_3.txt'
@@ -221,7 +225,6 @@ def read_iso_entry(iso_path, member=SOURCE_PATH):
     member. The standard runtime ISO in this workspace is a source-test
     image, not a retail disc: callers must supply a real one.
     """
-    from experimental.pikmin2_assets import disc_files
     iso = Path(iso_path)
     if not iso.is_file():
         raise ValueError('Missing prerequisite: retail ISO not present: ' + str(iso))
@@ -230,15 +233,109 @@ def read_iso_entry(iso_path, member=SOURCE_PATH):
     except ValueError:
         raise ValueError('Missing prerequisite: ISO is not US GPVE01 revision 0: '
                          + str(iso))
+    return read_member(iso, index, member)
+
+
+def read_member(iso, index, member):
+    """Read one ISO member by disc index; exact error when absent/truncated."""
     if member not in index:
         raise ValueError('Missing prerequisite: %s absent from ISO' % member)
-    with iso.open('rb') as disc:
-        offset, size = index[member]
+    offset, size = index[member]
+    with Path(iso).open('rb') as disc:
         disc.seek(offset)
         data = disc.read(size)
     if len(data) != size:
         raise ValueError('Truncated ISO member: ' + member)
     return data
+
+
+def read_reference_sets(decomp_root, iso):
+    """Authoritative enemy/treasure id sets: decomp header + local disc configs.
+
+    Enemy ids come from the read-only decomp `enemyInfo.cpp` gEnemyInfo table;
+    treasure ids come from the on-disc pellet configs decoded by the shared
+    `pellet_catalog` parser. Missing either source is an exact prerequisite.
+    """
+    enemy_source = Path(decomp_root) / 'src/plugProjectYamashitaU/enemyInfo.cpp'
+    if not enemy_source.is_file():
+        raise ValueError('Missing prerequisite: decomp enemyInfo.cpp not present: '
+                         + str(enemy_source))
+    enemy_ids = set(re.findall(r'\{"([A-Za-z0-9_]+)"', enemy_source.read_bytes().decode('utf-8')))
+    if not enemy_ids:
+        raise ValueError('No enemy ids parsed from decomp enemyInfo.cpp')
+    index = disc_files(Path(iso))
+    archive = archive_files(read_member(iso, index,
+                                        'user/Abe/Pellet/us/pelletlist_us.szs'))
+    treasure_ids = set()
+    for name in ('otakara_config.txt', 'item_config.txt'):
+        if name not in archive:
+            raise ValueError('Missing prerequisite: pellet config absent: ' + name)
+        treasure_ids.update(pellet_catalog(archive[name].decode('shift_jis')))
+    if not treasure_ids:
+        raise ValueError('No treasure ids parsed from pellet configs')
+    return enemy_ids, treasure_ids
+
+
+def unit_asset_closure(index, units, base=BASE):
+    """Every unit's arc.szs/texts.szs must exist on the disc; explicit missing list."""
+    missing = []
+    for unit in units:
+        for suffix in ('arc.szs', 'texts.szs'):
+            member = '%s/arc/%s/%s' % (base, unit['name'], suffix)
+            if member not in index:
+                missing.append(member)
+    return missing
+
+
+def decode_live(iso, decomp_root):
+    """Complete tutorial_3 decode from actual disc bytes (reuses shared parsers).
+
+    Returns the shared-parser result plus observed sha256/bytes for the cave
+    definition and every referenced unit pool, and the arc/texts closure list
+    per pool. Nothing here fabricates runtime placements.
+    """
+    iso = Path(iso)
+    index = disc_files(iso)
+    enemy_ids, treasure_ids = read_reference_sets(decomp_root, iso)
+    cave_raw = read_member(iso, index, SOURCE_PATH)
+    parsed = decode_source(cave_raw.decode('shift_jis'), enemy_ids, treasure_ids)
+    validate_floor_coverage(parsed)
+    pools = {}
+    for floor in parsed['floors']:
+        pool = floor['parameters']['f008']
+        if pool in pools:
+            continue
+        pool_path = BASE + '/units/' + pool
+        pool_raw = read_member(iso, index, pool_path)
+        units = unit_definition(pool_raw.decode('shift_jis'))
+        pools[pool] = dict(source=pool_path, sha256=sha256_bytes(pool_raw),
+                           bytes=len(pool_raw), units=[u['name'] for u in units],
+                           missing_assets=unit_asset_closure(index, units))
+    return dict(parsed=parsed, enemy_ids=enemy_ids, treasure_ids=treasure_ids,
+                cave_path=SOURCE_PATH, cave_sha256=sha256_bytes(cave_raw),
+                cave_bytes=len(cave_raw), unit_pools=pools)
+
+
+def live_packet(iso, decomp_root):
+    """Metadata packet for the completed source decode; still no playability."""
+    result = decode_live(iso, decomp_root)
+    parsed = result['parsed']
+    packet = summarize(parsed, result['cave_sha256'],
+                       result['enemy_ids'], result['treasure_ids'])
+    packet.update(
+        schema=SCHEMA,
+        source_bytes=result['cave_bytes'],
+        enemy_catalog_size=len(result['enemy_ids']),
+        treasure_catalog_size=len(result['treasure_ids']),
+        unit_pools={name: dict(info) for name, info in result['unit_pools'].items()},
+        unit_closure_complete=all(not info['missing_assets']
+                                  for info in result['unit_pools'].values()),
+        decoded_from_source=True,
+        limitations=packet['limitations'] + [
+            'Observed hashes pin the local retail ISO copy; they are not plan '
+            'pins (the lane entry keeps source_sha256 null).',
+        ])
+    return packet
 
 
 def native_framework_blockers():
@@ -252,7 +349,8 @@ def native_framework_blockers():
         '#132 surface days/saves/progression: stable course/floor identity '
         'and schedules preserved from source, not redefined here',
         'Unit pool arc/texts closure per floor (BASE/units/<pool> + arc '
-        'members): unverified until retail ISO bytes are available',
+        'members): verified against the local retail ISO; any future missing '
+        'member is reported as an explicit blocker, not inferred',
     ]
 
 
