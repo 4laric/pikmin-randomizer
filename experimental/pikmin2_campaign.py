@@ -16,7 +16,13 @@ SPECIES = ('blue', 'red', 'yellow', 'purple', 'white', 'bulbmin')
 # v1 Blue/Red/Yellow/Purple, v2 + White, v3 + Bulbmin.
 SPECIES_SCHEMA = {'blue': 1, 'red': 1, 'yellow': 1, 'purple': 1, 'white': 2, 'bulbmin': 3}
 TRANSFER_PREFIX = 'P2_CAVE_TRANSFER_'
+CHAIN_PREFIX = 'P2_CAVE_CHAIN '
 EXIT_TRANSITION = 42
+# Absolute floor-id ceiling, mirrors native P2CaveMaxFloors
+# (pc_p2_cave_transfer.h). The supervisor additionally enforces each cave's
+# own floor count through the `floors` parameter below (default 2 preserves
+# the legacy Emergence loop byte-for-byte).
+MAX_FLOORS = 16
 
 
 def squad_valid(squad):
@@ -29,16 +35,18 @@ def squad_valid(squad):
             raise ValueError('Invalid cave Pikmin')
 
 
-def validate(state):
+def validate(state, floors=2):
     if not isinstance(state, dict) or set(state) != {'schema', 'content', 'revision', 'status', 'floor', 'squad', 'health', 'receipts'}:
         raise ValueError('Invalid cave checkpoint fields')
+    if type(floors) is not int or not 2 <= floors <= MAX_FLOORS:
+        raise ValueError('Invalid cave floor count')
     if state['schema'] != 1 or type(state['schema']) is not int:
         raise ValueError('Unsupported cave checkpoint')
     if not isinstance(state['content'], str) or len(state['content']) != 64 or any(c not in '0123456789abcdef' for c in state['content']):
         raise ValueError('Invalid cave content identity')
-    if type(state['revision']) is not int or not 0 <= state['revision'] <= 2:
+    if type(state['revision']) is not int or not 0 <= state['revision'] <= floors:
         raise ValueError('Invalid cave revision')
-    if type(state['floor']) is not int or state['floor'] not in (1, 2) or state['status'] not in ('active', 'exited', 'failed'):
+    if type(state['floor']) is not int or not 1 <= state['floor'] <= floors or state['status'] not in ('active', 'exited', 'failed'):
         raise ValueError('Invalid cave destination')
     squad_valid(state['squad'])
     if type(state['health']) not in (int, float) or not math.isfinite(state['health']) or not 0 <= state['health'] <= 1:
@@ -48,7 +56,7 @@ def validate(state):
     if state['status'] == 'failed' and state['squad']:
         raise ValueError('Failed cave checkpoint has survivors')
     expected = state['floor'] - 1 if state['status'] == 'active' else state['floor']
-    if state['revision'] != expected or (state['status'] == 'exited' and state['floor'] != 2):
+    if state['revision'] != expected or (state['status'] == 'exited' and state['floor'] != floors):
         raise ValueError('Invalid cave checkpoint phase')
     if not isinstance(state['receipts'], dict) or len(state['receipts']) > 1024:
         raise ValueError('Invalid cave receipts')
@@ -67,14 +75,14 @@ def initial(content):
                          squad=[dict(species='red', maturity=0) for _ in range(20)], health=1.0, receipts={}))
 
 
-def load(path, content):
+def load(path, content, floors=2):
     def unique(pairs):
         result = {}
         for key, value in pairs:
             if key in result: raise ValueError('Duplicate checkpoint field')
             result[key] = value
         return result
-    state = validate(json.loads(path.read_text(encoding='utf-8'), object_pairs_hook=unique))
+    state = validate(json.loads(path.read_text(encoding='utf-8'), object_pairs_hook=unique), floors)
     if state['content'] != content:
         raise ValueError('Cave assets/layout changed; preserve this save and use its original bundle')
     return state
@@ -100,11 +108,17 @@ def entry_schema(squad):
     return max([1] + [SPECIES_SCHEMA[p['species']] for p in squad])
 
 
-def entry_text(state, token):
-    validate(state)
+def entry_text(state, token, floors=2):
+    validate(state, floors)
     schema = entry_schema(state['squad'])
-    return (f'P2_CAVE_ENTRY_{schema}\n{token}\n{state["floor"]} {state["health"]:.9g} {len(state["squad"])}\n'
+    text = (f'P2_CAVE_ENTRY_{schema}\n{token}\n{state["floor"]} {state["health"]:.9g} {len(state["squad"])}\n'
             + ''.join(f'{SPECIES.index(p["species"])} {p["maturity"]}\n' for p in state['squad']))
+    if state['floor'] > 2:
+        # Multi-floor identity link (issue #132): the native chained entry
+        # parser consumes this; legacy readers reject it as trailing data.
+        # Floors 1-2 emit byte-identical legacy text.
+        text += f'{CHAIN_PREFIX}{state["floor"]} {state["revision"]}\n'
+    return text
 
 
 def transfer_schema(header):
@@ -117,9 +131,9 @@ def transfer_schema(header):
     return int(digits)
 
 
-def transition(state, token, text, receipts, allowed):
+def transition(state, token, text, receipts, allowed, floors=2):
     """Validate a single native boundary event before replacing the checkpoint."""
-    validate(state)
+    validate(state, floors)
     if state['status'] != 'active': raise ValueError('Cave already ended')
     lines = text.splitlines()
     if len(lines) < 3 or lines[1] != token:
@@ -128,10 +142,35 @@ def transition(state, token, text, receipts, allowed):
     words = lines[2].split()
     if len(words) != 3: raise ValueError('Invalid transfer header')
     floor, health, count = int(words[0]), float(words[1]), int(words[2])
-    if floor != state['floor'] or not 0 <= count <= len(state['squad']) or len(lines) != 3 + count:
+    if floor != state['floor'] or not 0 <= count <= len(state['squad']):
+        raise ValueError('Invalid transfer floor/population')
+    if floor < 1 or floor > floors:
+        raise ValueError('Invalid transfer floor/population')
+    body, rest = lines[3:3 + count], lines[3 + count:]
+    chain_revision = None
+    if rest:
+        # Multi-floor identity link (issue #132): exactly one chain line
+        # repeating the header floor. Anything else in the tail, including a
+        # legacy reader's view of this payload, fails closed here; legacy
+        # payloads have an empty tail and behave byte-identically.
+        if len(rest) != 1: raise ValueError('Invalid transfer floor/population')
+        words = rest[0].split()
+        if len(words) != 3 or words[0] + ' ' != CHAIN_PREFIX:
+            raise ValueError('Invalid transfer floor/population')
+        try:
+            chain_floor, chain_revision = int(words[1]), int(words[2])
+        except ValueError:
+            raise ValueError('Invalid transfer floor/population')
+        if chain_floor != floor or chain_revision < 0:
+            raise ValueError('Invalid transfer floor/population')
+        if chain_revision != state['revision']:
+            raise ValueError('Cave revision chain broken')
+    if floor > 2 and chain_revision is None:
+        # Mirror the native legacy parser, which caps unchained payloads at
+        # floor 2: beyond floor 2 the chain line is mandatory, never optional.
         raise ValueError('Invalid transfer floor/population')
     squad = []
-    for line in lines[3:]:
+    for line in body:
         words = line.split()
         if len(words) != 2: raise ValueError('Invalid transfer Pikmin')
         color, maturity = map(int, words)
@@ -148,11 +187,11 @@ def transition(state, token, text, receipts, allowed):
     after = Counter(p['species'] for p in squad)
     if any(after[c] > before[c] for c in SPECIES[:3]) or after['purple'] > before['purple'] + (10 if floor == 2 else 0):
         raise ValueError('Unexpected cave species increase')
-    status = 'failed' if not squad or health <= 0 else 'active' if floor == 1 else 'exited'
+    status = 'failed' if not squad or health <= 0 else 'active' if floor < floors else 'exited'
     if status == 'failed': squad = []
     next_state = dict(state, revision=state['revision'] + 1, status=status,
-                      floor=2 if status == 'active' else floor, health=health, squad=squad, receipts=dict(receipts))
-    return validate(next_state)
+                      floor=floor + 1 if status == 'active' else floor, health=health, squad=squad, receipts=dict(receipts))
+    return validate(next_state, floors)
 
 
 def content_identity(imported, pods, purple, transitions=None, snow=None, roster=None, visuals=None):
