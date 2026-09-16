@@ -443,6 +443,11 @@ class Controller:
         self.receipts(); self.complete_runs(); self.dependencies(); self.observe()
         from .setup_healing import tick as heal_setup
         heal_setup(self)
+        from .shared_review_routing import tick as route_shared_reviews
+        try:
+            route_shared_reviews(self)
+        except (Rejected,OSError,ValueError,KeyError,TypeError) as exc:
+            write(self.base/'shared-review-routing-error.json',dict(at=self.reg.clock(),error=str(exc)))
         from .queue_pressure import update as update_pressure
         try:
             update_pressure(self)

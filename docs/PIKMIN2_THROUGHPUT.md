@@ -558,3 +558,15 @@ registry settings.enemy_acceptance_lanes provides explicit audited semantic over
 for immutable proposals mislabeled existing_content (Armor15 and Tadpole27).
 The dashboard lists counted lane IDs. This does not alter scheduling, published
 proposal bytes or family admission. Queued/blocked/done lanes are not counted.
+
+## Shared-review decision routing (#629)
+
+`shared_review_routing` maps exact shared files to registered decision owners.
+Pending handoff reviews produce durable decision packets in the existing integrator
+inbox; packet consumption is not approval. Unresolved consumed packets are reissued
+after ten minutes, deduplicated by producer generation/file/source pins. Tasks resolve
+only when the request disappears through disposition or source supersession. Unknown
+files receive no invented owner. For #129/#132, #186 delegates focused file review to
+the existing species integration lead; the reviewer must inspect pins/tests and record
+approve/request-changes evidence through dispose_review, retaining stopped-producer
+fences. The healthy coordinator/integrator is not restarted or duplicated.
