@@ -158,6 +158,34 @@ MUSE_GENERATED_SLOTS = {
 
 MUSE_CANDIDATE_IDS = frozenset(MUSE_GENERATED_SLOTS)
 
+# Provider slice (#575): candidate-only generated-placement profile for
+# Waterwraith BlackMan99 so consumer #572 can attempt a real gate1. This table
+# is deliberately SEPARATE from the #492 muse table so `MUSE_CANDIDATE_IDS`
+# stays {41,57,58,78} and every existing muse/placement test keeps its meaning.
+#
+# Slot choice (one defensible real production slot; never a fixed-encounter
+# UID): 568677317 navel_0-29_645, stage-2 Navel water-cavern generator, ground
+# cohort, unprotected, renewable (respawn_days 5), corpse route, radius 100.
+# Rationale: Waterwraith is the water-cavern boss and this is the lowest-UID
+# unused ground slot in the water-themed Navel cohort that already satisfies
+# the ground + corpse-route contract.
+# Vehicle: the lane-31 Waterwraith register seam owns behavior; this native arm
+# only records placement acceptance (bound=1), exactly like #492.
+# Tyre98 is the BlackMan manager child (enemyInfo.cpp child_count 1); it is
+# never an independently seeded identity and helper_budget stays 0.
+# Fields: source_id, identity, family_lane, consumer_lane, terrains,
+# accepted_slot_uid, vehicle.
+WATERWRAITH_CANDIDATE_SPEC = (
+    99, "BlackMan", 31, 572, ["ground"], 568677317, "WaterwraithHost",
+)
+
+WATERWRAITH_GENERATED_SLOTS = {
+    WATERWRAITH_CANDIDATE_SPEC[0]: WATERWRAITH_CANDIDATE_SPEC[5]
+}
+
+WATERWRAITH_CANDIDATE_IDS = frozenset(WATERWRAITH_GENERATED_SLOTS)
+WATERWRAITH_HELPER_IDS = frozenset({98})  # Tyre: manager child, never seeded
+
 # Candidate source_ids that are bosses and therefore require a lane-04 encounter
 # descriptor instead of a universal replacement profile. Tracked here so the
 # cohort is complete without silently admitting them.
@@ -451,6 +479,129 @@ def binding_targets_for_muse_sources(source_ids, document=None):
             raise ValueError(f'source id {source_id} is not a muse #492 candidate')
         identities.append(identity)
     return binding_targets(identities, document=document)
+
+
+def waterwraith_candidate_profile():
+    """Return the default-deny placement profile for Waterwraith BlackMan99.
+
+    Mirrors `muse_candidate_profiles()`: one defensible accepted slot, empty
+    `accepted_gates` so `evaluate` still denies every pair, and no boss
+    encounter descriptor requirement (the generated-placement vehicle path is
+    the same one #492 uses; boss arena descriptors are a lane-04 aquatic-boss
+    concept and the campaign table carries no boss arena slot).
+    """
+    (source_id, identity, family_lane, consumer_lane, terrains, slot_uid,
+     vehicle) = WATERWRAITH_CANDIDATE_SPEC
+    return _placement.normalize_profile({
+        "identity": identity,
+        "terrains": list(terrains),
+        "family_lane": family_lane,
+        "requires_corpse_route": True,
+        "accepted_gates": [],
+        "accepted_slot_uids": [slot_uid],
+        "helper_budget": 0,
+        "notes": ("P2 source_id %d; provider slice #575; family lane %d / "
+                  "consumer lane %d; vehicle %s; accepted generated slot %d; "
+                  "Tyre98 is a manager child, never a seeded identity; native "
+                  "placement gate pending consumer lane %d."
+                  % (source_id, family_lane, consumer_lane, vehicle, slot_uid,
+                     consumer_lane)),
+    })
+
+
+def waterwraith_candidate_source_ids():
+    """Map the Waterwraith identity to its lane-02 source id."""
+    return {WATERWRAITH_CANDIDATE_SPEC[1]: WATERWRAITH_CANDIDATE_SPEC[0]}
+
+
+def waterwraith_accepted_slot(source_id=WATERWRAITH_CANDIDATE_SPEC[0]):
+    """Accepted generated slot for Waterwraith99, or None for any other id."""
+    return WATERWRAITH_GENERATED_SLOTS.get(source_id)
+
+
+def build_waterwraith_document(slots=None, include_bosses=False):
+    """Return a validated document with base + muse + Waterwraith profiles.
+
+    `build_document()` and `build_muse_document()` are unchanged; this parallel
+    document is what consumer #572 consumes for the source99 cohort.
+    """
+    if slots is None:
+        slots = all_slots()
+    profiles = candidate_profiles() + muse_candidate_profiles()
+    profiles = profiles + [waterwraith_candidate_profile()]
+    document = {
+        "schema": SCHEMA,
+        "slots": list(slots),
+        "profiles": profiles,
+        "notes": ("Lane-04 concrete candidate slots plus muse #492 candidate-only "
+                  "profiles for 41/57/58/78 and the #575 Waterwraith99 profile; "
+                  "default deny."),
+    }
+    if include_bosses:
+        document["profiles"] = profiles + boss_profiles()
+        document["encounters"] = boss_encounters()
+    return _placement.validate_document(document)
+
+
+def binding_targets_for_waterwraith(source_id=WATERWRAITH_CANDIDATE_SPEC[0],
+                                    document=None):
+    """Constraint-compatible uid targets for Waterwraith99, or raise."""
+    by_source = {sid: name
+                 for name, sid in waterwraith_candidate_source_ids().items()}
+    identity = by_source.get(source_id)
+    if source_id not in WATERWRAITH_CANDIDATE_IDS or identity is None:
+        raise ValueError("source id %r is not the #575 Waterwraith candidate" % (source_id,))
+    if document is None:
+        document = build_waterwraith_document()
+    return binding_targets([identity], document=document)
+
+
+def waterwraith_generated_triple(log_text):
+    """Real generation-to-seed source99-to-bind correlation API.
+
+    Parses one engine log and reports the correlated triple #572 needs:
+    `P2_SEED_RESOLVE source_id=99 target=<uid>` and a matching
+    `P2_GENERATED_PLACEMENT source_id=99 target=<uid> generator=<g> bound=1`
+    on the SAME target uid. A bound=0 refusal, a missing leg, a target
+    mismatch or a different source id yields correlated False with the exact
+    reason. Pure text function; it emits nothing and never fabricates a marker.
+    """
+    import re as _re
+    source_id = WATERWRAITH_CANDIDATE_SPEC[0]
+    resolve_re = _re.compile(r"P2_SEED_RESOLVE source_id=(\d+) target=(\d+)")
+    bind_re = _re.compile(
+        r"P2_GENERATED_PLACEMENT source_id=(\d+) target=(\d+)"
+        r"(?: generator=(\d+))? bound=(\d)(?: reason=(\S+))?")
+    resolve = None
+    bind = None
+    for line in (log_text or "").splitlines():
+        found = resolve_re.search(line)
+        if found and int(found.group(1)) == source_id:
+            resolve = int(found.group(2))
+        found = bind_re.search(line)
+        if found and int(found.group(1)) == source_id:
+            bind = (int(found.group(2)), int(found.group(3) or 0),
+                    found.group(4), found.group(5))
+    reason = None
+    if resolve is None and bind is None:
+        reason = "no-source99-legs"
+    elif resolve is None:
+        reason = "missing-seed-resolve"
+    elif bind is None:
+        reason = "missing-generated-placement"
+    elif bind[2] != "1":
+        reason = "bind-refused:" + (bind[3] or "unbound")
+    elif bind[0] != resolve:
+        reason = "resolve-bind-uid-mismatch"
+    return {
+        "source_id": source_id,
+        "resolved_uid": resolve,
+        "bound_uid": bind[0] if bind else None,
+        "generator": bind[1] if bind else None,
+        "accepted_uid": WATERWRAITH_GENERATED_SLOTS[source_id],
+        "correlated": reason is None,
+        "reason": reason,
+    }
 
 
 def targets_by_identity(document=None):
