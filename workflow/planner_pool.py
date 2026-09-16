@@ -88,11 +88,13 @@ def tick(controller, settings, issue_reader):
         records = copy.deepcopy(pool['scopes'])
         active = sum('completed_at' not in record for record in records.values())
         ready = sum(bool(i.get('ready')) and not i.get('planner_helper') for i in data['items'].values())
+        unclaimed_ready = sum(bool(i.get('ready')) and not i.get('planner_helper') and
+                              i.get('lane') not in state['lanes'] for i in data['items'].values())
         idle = len(_workers(reg, state))
         deficit = max(0, settings.get('low_watermark', 8) - ready)
         target = min(config.get('max_active', 3), len(helpers),
                      math.ceil(deficit / max(1, config.get('items_per_helper', 4))),
-                     max(0, idle + active - ready - config.get('reserve_workers', 2)))
+                     max(0, idle + active - unclaimed_ready - config.get('reserve_workers', 2)))
         pool.update(enabled=True, active=active, target=target, ready_backlog=ready, updated_at=reg.clock())
     if not controller.capacity() or not 0 <= controller.memory() < 90: return
     for helper in helpers:

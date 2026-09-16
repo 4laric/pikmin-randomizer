@@ -89,6 +89,14 @@ class PlannerPoolTests(unittest.TestCase):
         self.assertEqual(len(self.reg.scheduling_status()['jobs']),1)
         with self.reg.transaction() as s: self.assertEqual(_state(s)['planner_pool']['target'],0)
 
+    def test_already_claimed_ready_work_does_not_double_reserve_idle_workers(self):
+        self.f.second_worker()
+        self.settings['planner_pool']['reserve_workers']=1
+        with self.reg.transaction() as s:
+            _state(s)['items']['claimed']=dict(ready=True,lane='owner')
+        self.tick()
+        self.assertEqual(len(self.reg.scheduling_status()['jobs']),1)
+
     def test_serial_publication_idempotent_and_conflict_checked(self):
         spec=self.f.make_spec('proposal',901)
         proposal=self.f.out/'proposal.json';write(proposal,dict(items=[spec]))
