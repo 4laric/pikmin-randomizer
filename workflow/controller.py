@@ -415,6 +415,8 @@ class Controller:
         from .provider_recovery import recover
         recover(self)
         self.receipts(); self.complete_runs(); self.dependencies(); self.observe()
+        from .setup_healing import tick as heal_setup
+        heal_setup(self)
         from .throughput_controller import pool_tick
         pool_tick(self)
         # Complete a previously bound launch after a crash before writing start.json.

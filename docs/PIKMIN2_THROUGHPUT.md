@@ -498,3 +498,20 @@ proposal. Dependency feedback names actual registry lanes and suppresses review
 until all reach done. New proposal bytes/files wake normal validation. Nothing
 expires on a timer, grants acceptance or bypasses the publication validator.
 Current queued turns may finish, but new identical review cycles are suppressed.
+
+## Setup and claim maintenance (#623)
+
+`setup_healing.enabled` adds bounded controller maintenance without replacing the
+healthy coordinator. Stopped planner claims can be disposed automatically only
+when every immutable proposal in that shard is identical to published specs or
+has hashed explicit review feedback. The controller records a hashed disposition
+and invokes the existing release API, retaining current/original process, child,
+launch and generation checks. Undecided proposals remain protected.
+
+Blocked runtime lanes whose recorded blocker explicitly identifies absent native
+setup receive one ordinary same-owner recovery launch per source/blocker fingerprint.
+The worker must recheck current source records (which may already be repaired),
+preserve all work, and create a private native worktree from an integration-approved
+pin only when actually missing. It checkpoints source identity and uses normal
+private build leases and mandatory runtime fixtures. This does not bypass external
+review, change acceptance, reset the coordinator or grant ADMIT.
