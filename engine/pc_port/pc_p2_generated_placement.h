@@ -48,6 +48,31 @@ inline unsigned pc_p2_generated_placement_muse_slot(unsigned sourceId)
     }
 }
 
+// Provider slice (#575): candidate-only generated-placement binding for
+// Waterwraith BlackMan99 (consumer #572). The #492 muse predicate/slot table
+// above is intentionally UNCHANGED (99 stays a non-muse candidate), so the
+// existing p2_muse_placement_fixture reject-99 assertion still holds. This is
+// a parallel contract with its own accepted slot and its own catalog mirror
+// (`randomizer/p2_placement_catalog.py` WATERWRAITH_GENERATED_SLOTS); the
+// root/native sync test fails on drift.
+//
+// Slot 568677317 = `navel_0-29_645`, stage-2 Navel ground generator,
+// unprotected, renewable (respawn 5), corpse route, radius 100. Vehicle:
+// lane-31 Waterwraith register seam owns behavior; the bind arm only records
+// placement acceptance (bound=1), exactly like the #492 muse path.
+static const unsigned WATERWRAITH_GENERATED_SLOT_BLACKMAN99 = 568677317u;
+
+// True only for source id 99.
+inline bool pc_p2_generated_placement_is_waterwraith_candidate(unsigned sourceId)
+{
+    return sourceId == 99;
+}
+// Accepted generated slot for the Waterwraith candidate, or 0 for any other id.
+inline unsigned pc_p2_generated_placement_waterwraith_slot(unsigned sourceId)
+{
+    return sourceId == 99 ? WATERWRAITH_GENERATED_SLOT_BLACKMAN99 : 0u;
+}
+
 // Registry queries for fixtures and gate observers. A record exists only for
 // a placement-accepted muse bind; rejected binds leave no record.
 bool pc_p2_generated_placement_is_bound(const BTeki* actor);
