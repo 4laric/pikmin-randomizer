@@ -614,9 +614,10 @@ void pc_p2_long_legs_update(BTeki* actor) {
     } else {
         state.lastMoveRatio = 1.0f;
         if (before == P2LongLegsState::Walk && state.hasWalkTarget) {
-            std::printf("P2_LONG_LEGS_WALK_END species=%s generator=%u distance=%.1f seconds=%.2f\n",
+            std::printf("P2_LONG_LEGS_WALK_END species=%s generator=%u distance=%.1f seconds=%.2f start=%.1f,%.1f end=%.1f,%.1f\n",
                         state.species.c_str(), state.generator,
-                        state.walkDistance, state.walkSeconds);
+                        state.walkDistance, state.walkSeconds,
+                        state.walkStart.x, state.walkStart.z, pos.x, pos.z);
             std::fflush(stdout);
             state.hasWalkTarget = false;
         }
@@ -685,6 +686,12 @@ bool pc_p2_long_legs_damageable(const BTeki* actor) {
     auto entry = actors.find(const_cast<BTeki*>(actor));
     if (entry == actors.end()) return false;
     return entry->second.damageable;
+}
+
+const char* pc_p2_long_legs_state_name(const BTeki* actor) {
+    auto entry = actors.find(const_cast<BTeki*>(actor));
+    if (entry == actors.end()) return "unregistered";
+    return P2LongLegsFsm::stateName(entry->second.fsm.state());
 }
 
 bool pc_p2_long_legs_receiver_rejects(Teki* teki, const InteractAttack* /*attack*/) {

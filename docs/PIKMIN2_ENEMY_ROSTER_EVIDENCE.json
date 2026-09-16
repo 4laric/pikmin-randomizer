@@ -1214,7 +1214,7 @@
       ],
       "gates": {
         "identity_spawn": "PASS",
-        "movement_animation": "UNTESTED",
+        "movement_animation": "PASS",
         "attacks_receivers": "PASS",
         "death_corpse": "PASS",
         "transport_reward": "UNTESTED",

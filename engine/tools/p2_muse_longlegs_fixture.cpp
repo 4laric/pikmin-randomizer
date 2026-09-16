@@ -81,10 +81,13 @@ public:int idle() override {
         if(observed==wakeTick+8){Vector3f wake(houdai->mSRT.t.x,0,houdai->mSRT.t.z-70.0f);wake.y=mapMgr->getMinY(wake.x,wake.z,true);
             n->resetPosition(wake);std::puts("P2_MUSE_WALK_WAKE captain=1");}
         if(observed==wakeTick+16){n->resetPosition(captainOrigin);std::puts("P2_MUSE_WALK_RETREAT captain=1");}
-        if(observed%300==0)std::printf("P2_MUSE_WALK_POS houdai=%.1f,%.1f bigfoot=%.1f,%.1f\n",houdai->mSRT.t.x,houdai->mSRT.t.z,bigfoot->mSRT.t.x,bigfoot->mSRT.t.z);
-        // 1500 observed ticks (~50 s at 30 fps): Houdai needs at most one
-        // Wait(3 s)+Walk(7 s) cycle; BigFoot one Land+Wait(5 s)+Walk(10 s) cycle.
-        if(observed>=1500){Vector3f clump(houdai->mSRT.t.x,0,houdai->mSRT.t.z);clump.y=mapMgr->getMinY(clump.x,clump.z,true);
+        if(observed==wakeTick+1500){const char* bs=pc_p2_long_legs_state_name(bigfoot); std::printf("P2_MUSE_WALK_BIGFOOT_STATE state=%s tick=%d\n",bs,observed);std::fflush(stdout);} if(observed%300==0)std::printf("P2_MUSE_WALK_POS houdai=%.1f,%.1f bigfoot=%.1f,%.1f\n",houdai->mSRT.t.x,houdai->mSRT.t.z,bigfoot->mSRT.t.x,bigfoot->mSRT.t.z);
+        // 4500 observed ticks (BigFoot69 follow-on #574: its source cycle is
+        // Land 0.6 s + fixed Wait 5 s + Walk 10 s and the old 1500-tick window
+        // never contained a Walk): Houdai needs at most one Wait(3 s)+Walk(7 s)
+        // cycle; BigFoot one Land+Wait(5 s)+Walk(10 s) cycle with margin for a
+        // late wake at any render frame rate.
+        if(observed>=4500){Vector3f clump(houdai->mSRT.t.x,0,houdai->mSRT.t.z);clump.y=mapMgr->getMinY(clump.x,clump.z,true);
             int a=clumpAttack(houdai,clump);std::printf("P2_MUSE_WALK_ATTACK attack=%d\n",a);std::fflush(stdout);stage=2;return result;}
         return result;
     }
@@ -98,7 +101,7 @@ public:int idle() override {
         if(observed%100==0&&pc_p2_long_legs_damageable(houdai)){Vector3f clump(houdai->mSRT.t.x,0,houdai->mSRT.t.z);clump.y=mapMgr->getMinY(clump.x,clump.z,true);clumpAttack(houdai,clump);}
         if(observed%90==0){int live=0,atk=0;Iterator q(pikiMgr);CI_LOOP(q){Piki* v=static_cast<Piki*>(*q);if(!v->isAlive())continue;++live;if(v->mMode==PikiMode::AttackMode)++atk;}
             std::printf("P2_MUSE_WALK_HOUDAI_HP health=%.2f squad=%d atk=%d dmg=%d events=%d tick=%d\n",houdai->mHealth,live,atk,int(pc_p2_long_legs_damageable(houdai)),houdaiDropEvents,observed);std::fflush(stdout);}
-        if(observed>=9000){std::puts("FAIL P2_MUSE_LONGLEGS_WALK drain_timeout");std::fflush(stdout);std::_Exit(1);}
+        if(observed>=15000){std::puts("FAIL P2_MUSE_LONGLEGS_WALK drain_timeout");std::fflush(stdout);std::_Exit(1);}
         return result;
     }
     if(stage==3){
