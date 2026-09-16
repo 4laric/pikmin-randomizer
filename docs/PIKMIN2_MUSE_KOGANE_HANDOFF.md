@@ -124,8 +124,13 @@ Heads: root `4bd0bee18839c93c41507f14315fd2e89276ab05`, native
   Production exe `bin/nectar.exe` sha256
   `90196a8336d40787b1ed93577e14aaa09d5746645d7ca4120e84a4eef391cac2`.
 - Fixture `fixture-throw1` provenance `built` for expected head
-  `da6f68680f8748519dd97fe124db531d422be91f`; `fixture.exe` sha256
-  `273b464489eb3bf0df6026d1a97b8b5bb06e96be8d65812e50f99c122c41ea59`.
+  `da6f68680f8748519dd97fe124db531d422be91f`. Two linked artifacts, both
+  hashed: the provenance-tracked baseline link `baseline/fixture.exe` sha256
+  `d4c8d4942f8ac883443499fb59b7819eae4fee8a7a04d27b7da94acea388a32b`
+  (instrumented room main), and the final room+tutorial link `fixture.exe`
+  sha256 `273b464489eb3bf0df6026d1a97b8b5bb06e96be8d65812e50f99c122c41ea59`
+  -- the binary that ran the acceptance pass (also pinned in
+  `runtime-evidence.json` and `instrumentation.json`).
 
 ## Fixture baseline adoption
 
