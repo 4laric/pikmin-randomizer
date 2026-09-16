@@ -1,1 +1,1 @@
-﻿441 content_lanes tests + plan tests pass; ch_nari_06start3hard added
+﻿543 content_lanes tests + 187 subtests pass; +5 P0 lanes (ch_MIYA_oopan #554, ch_mat_flier #559, ch_mat_route_rover #561, p1-challenge-spring #566, p1-challenge-trial #567); check_content_import_lanes PASS 53 lanes
