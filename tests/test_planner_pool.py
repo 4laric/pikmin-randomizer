@@ -134,6 +134,49 @@ class PlannerPoolTests(unittest.TestCase):
         with self.assertRaises(Rejected): merge_proposals(self.reg,self.f.manifest,proposal,reader)
         self.assertEqual(len(json.loads(self.f.manifest.read_text())['items']),2)
 
+    def test_publication_helper_requires_unpublished_work(self):
+        helper=self.settings['planner_pool']['helpers'][0]
+        helper.update(kind='publication', review_inboxes=[str(self.f.out)])
+        self.settings['planner_pool']['use_idle_capacity']=True
+        self.tick(); self.assertFalse(self.reg.scheduling_status()['jobs'])
+        write(self.f.out/'proposals-a.json',dict(items=[self.f.spec]))
+        self.tick(); self.assertFalse(self.reg.scheduling_status()['jobs'])
+        proposal=self.f.make_spec('unpublished',902)
+        write(self.f.out/'proposals-a.json',dict(items=[proposal]))
+        self.tick(); self.assertEqual(len(self.reg.scheduling_status()['jobs']),1)
+        with self.reg.transaction() as s:
+            instruction=_state(s)['planner_pool']['scopes']['enemies']['spec']['instruction']
+        self.assertIn('merge_proposals',instruction)
+        self.assertNotIn('never write the shared manifest',instruction)
+
+    def test_publication_precedes_unstarted_discovery(self):
+        spec=self.f.make_spec('review-helper',903)
+        path=self.f.out/'review-template.json';write(path,spec)
+        write(self.f.out/'proposals-a.json',dict(items=[self.f.make_spec('unpublished',904)]))
+        self.settings['planner_pool']['helpers'].append(dict(scope='review',kind='publication',
+            review_inboxes=[str(self.f.out)],template=str(path),sha256=digest(path)))
+        self.tick()
+        self.assertIn('review-helper-cycle-1',self.reg.status()['lanes'])
+        self.assertNotIn('next-cycle-1',self.reg.status()['lanes'])
+
+    def test_discovery_defers_while_its_proposals_await_review(self):
+        self.settings['planner_pool']['helpers'][0]['defer_for_review']=[str(self.f.out)]
+        write(self.f.out/'proposals-a.json',dict(items=[self.f.make_spec('unpublished',904)]))
+        self.tick(); self.assertFalse(self.reg.scheduling_status()['jobs'])
+
+    def test_publication_race_retries_without_losing_other_append(self):
+        first=self.f.make_spec('first',901);second=self.f.make_spec('second',902)
+        a=self.f.out/'first.json';b=self.f.out/'second.json'
+        write(a,dict(items=[first]));write(b,dict(items=[second]))
+        def concurrent_reader(number):
+            merge_proposals(self.reg,self.f.manifest,b,lambda n:self.f.remote[n])
+            return self.f.remote[number]
+        with self.assertRaisesRegex(Rejected,'Manifest changed'):
+            merge_proposals(self.reg,self.f.manifest,a,concurrent_reader)
+        self.assertEqual(merge_proposals(self.reg,self.f.manifest,a,lambda n:self.f.remote[n]),['first'])
+        self.assertEqual({s['id'] for s in json.loads(self.f.manifest.read_text())['items']},
+                         {self.f.spec['id'],'first','second'})
+
     def test_lease_only_autofill_ignores_preparation_reservations(self):
         self.f.spec['heavy']=True
         self.f.save([self.f.spec])

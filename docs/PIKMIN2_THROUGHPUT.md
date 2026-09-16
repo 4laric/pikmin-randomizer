@@ -462,3 +462,24 @@ explicitly dispose an older claim generation: pass the generation recorded on th
 claim, and verify both the current terminal owner and original claim processes are
 stopped. Worker release remains current-generation fenced. Unknown process state
 or in-flight dispatch must not be bypassed.
+
+## Parallel publication helpers (#617)
+
+Idle worker capacity can review staged proposals before discovering new work.
+Planner-pool helper entries with `kind: publication` and `review_inboxes` run only
+while immutable `proposals-*.json` files contain unpublished or differing items.
+They sort before discovery helpers. Discovery entries can set `defer_for_review`
+to their inbox paths, suppressing repeat discovery until existing proposals publish.
+Current bounded turns finish normally; ready implementation retains first call on
+workers. The live pool has four review groups, issues #618–#621.
+
+Publication helpers claim their review partition, validate complete source/issue/
+ownership evidence, then call canonical `merge_proposals`. This supersedes the
+older sole-coordinator publication restriction for these explicitly assigned helpers.
+Only the actual append is serialized: SQLite protects the write, changed manifests
+reject the stale attempt, and helpers reread/revalidate before bounded retry.
+Identical published IDs replay safely. Raw manifest writes remain forbidden.
+Helpers report hashed decisions and release their own claims. Coordinator #570
+retains cross-shard arbitration, old inbox work and original planner-claim disposition.
+Malformed/rejected proposals require explicit reasons; helpers cannot invent missing
+specs, modify accepted scopes, integrate source or grant ADMIT.

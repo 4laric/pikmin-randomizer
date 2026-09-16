@@ -52,6 +52,21 @@ def merge_proposals(reg, manifest_path, proposal_path, issue_reader=None):
     return [s['id'] for s in added]
 
 
+def review_pending(reg, settings, helper):
+    """Review demand comes from unpublished immutable inbox items, not idle time."""
+    from .autofill import _private
+    manifest = json.loads(_private(reg, settings['manifest']).read_text(encoding='utf-8-sig'))
+    known = {s['id']: s for s in manifest['items']}
+    for directory in helper.get('review_inboxes', []):
+        for path in _private(reg, directory).glob('proposals-*.json'):
+            try:
+                items = json.loads(path.read_text(encoding='utf-8-sig'))['items']
+                if any(known.get(s.get('id')) != s for s in items): return True
+            except (ValueError, KeyError, TypeError, AttributeError):
+                return True  # A reviewer must disposition malformed input too.
+    return False
+
+
 def tick(controller, settings, issue_reader):
     from .autofill import _private, _workers, _state, _prepare
     reg = controller.reg
@@ -67,6 +82,11 @@ def tick(controller, settings, issue_reader):
     require(len({h['scope'] for h in helpers}) == len(helpers), 'Duplicate planner partition')
     with reg.transaction() as state:
         records = copy.deepcopy(_state(state).setdefault('planner_pool', {}).setdefault('scopes', {}))
+    helpers = [h for h in helpers if
+               (h['scope'] in records and 'completed_at' not in records[h['scope']]) or
+               (review_pending(reg, settings, h) if h.get('kind') == 'publication' else
+                not (h.get('defer_for_review') and review_pending(reg, settings,
+                     {'review_inboxes': h['defer_for_review']})))]
     # Receiving a report accepts no proposed implementation or gameplay gate.
     for scope, record in records.items():
         lane = reg.status()['lanes'].get(record['spec']['lane']['lane'])
@@ -101,7 +121,8 @@ def tick(controller, settings, issue_reader):
     if not controller.capacity() or not 0 <= controller.memory() < 90: return
     # Never-used shards precede repeated turns, so fast no-work reports cannot
     # continually reclaim workers ahead of untouched backlog partitions.
-    for helper in sorted(helpers, key=lambda h: records.get(h['scope'], {}).get('started_at', 0)):
+    for helper in sorted(helpers, key=lambda h: (h.get('kind') != 'publication',
+                                                records.get(h['scope'], {}).get('started_at', 0))):
         scope = helper['scope']
         record = records.get(scope)
         pending = record and 'completed_at' not in record
@@ -120,7 +141,13 @@ def tick(controller, settings, issue_reader):
             cycle = (record or {}).get('cycle', 0) + 1
             spec['id'] += '-cycle-' + str(cycle)
             spec['lane']['lane'] += '-cycle-' + str(cycle)
-            spec['instruction'] += (' Planning partition: ' + scope +
+            if helper.get('kind') == 'publication':
+                spec['instruction'] += (' Publication review partition: ' + scope +
+                    '. Review existing immutable proposals only. Publish solely through canonical '
+                    'workflow.planner_pool.merge_proposals; retry manifest-change conflicts from fresh state. '
+                    'No raw manifest writes, implementation, launches or ADMIT. Finish review-ready with hashed decisions.')
+            else:
+                spec['instruction'] += (' Planning partition: ' + scope +
                 '. Stage proposals only in your configured partition; never write the shared manifest. '
                 'Finish review-ready with a hashed planning report even when no actionable scope exists. '
                 'No implementation, builds, worker launches or ADMIT. Respect coordinator ownership partition.')

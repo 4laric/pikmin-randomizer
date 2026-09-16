@@ -365,7 +365,7 @@ def _planner_tick(controller, settings, manifest_hash):
     require(brief.is_file(), 'Planner brief missing')
     parallel = settings.get('planner_pool', {}).get('enabled')
     partition_directive = (
-        'PARALLEL PLANNING MODE: you are the sole manifest coordinator. Read your updated brief first. '
+        'PARALLEL PLANNING MODE: you coordinate manifest publication and claim disposition. Read your updated brief first. '
         'Helpers exclusively own discovery/issue creation in enemy acceptance, dungeons, and overworld/challenge. '
         'Do not independently prepare scopes in those partitions. Consume their staged proposals using '
         'canonical workflow.planner_pool.merge_proposals; validate issue scope, ownership and source proofs. '
