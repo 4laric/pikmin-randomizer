@@ -13,8 +13,12 @@ host log for:
   ``P2_MUSE_BREADBUG_INJECTED`` marker fails the gate). A prior free-mode
   ring revision dealt zero damage in 2400 ticks, so idle pursuit is not
   claimed; thrown Pikmin latch through ordinary engine behavior.
-- death-funnel cleanup: the family ``P2_BREADBUG_ACTOR_FORGET`` marker with
-  ``dead_state>=1`` (BTeki::doKill -> pc_p2_forget_teki, not slot reuse),
+- death-funnel cleanup: for a LeaveCorpse natural death BTeki::doKill never
+  runs, so no ``P2_BREADBUG_ACTOR_FORGET`` fires; the dead entry persists
+  until the rebirth scan replaces it (``replaced_stale=1``) or the stage
+  resets. The observer REPORTS funnel absence instead of claiming it: any
+  ``FORGET ... dead_state>=1`` before ``REBIRTH_BEGIN`` would count, a later
+  one is pool slot reuse, not the death funnel.
 - corpse: live pellet(s) bound to the dead actor (``mPellet`` at
   ``mDeadState==2`` plus the pelletMgr ``mPelletView`` scan),
 - re-entry: a ``P2_BREADBUG_ACTOR_REBIRTH`` registration from the per-tick
@@ -53,8 +57,10 @@ _PATTERNS = {
     'ready': re.compile(r'^P2_BREADBUG_ACTOR_READY generator=(\d+) native_type=(\d+) xyz=([-\d.,]+)'),
     'forget': re.compile(r'^P2_BREADBUG_ACTOR_FORGET generator=(\d+) had_handle=(\d+) dead_state=(\d+)'),
     'death': re.compile(r'^P2_BREADBUG_ACTOR_DEATH generator=(\d+) corpse=(\d+) held=(\d+)'),
-    'rebirth': re.compile(r'^P2_BREADBUG_ACTOR_REBIRTH generator=(\d+) native_type=(\d+) replaced_stale=(\d+)'),
+    'rebirth': re.compile(r'^P2_BREADBUG_ACTOR_REBIRTH generator=(\d+) native_type=(\d+) xyz=([-\d.,]+) replaced_stale=(\d+)'),
     'move': re.compile(r'^P2_MUSE_BREADBUG_MOVE frame=(\d+) displacement=([-\d.eE+]+) moving=(\d+)'),
+    'moved': re.compile(r'^P2_MUSE_BREADBUG_MOVED displacement=([-\d.eE+]+) moving=(\d+)'),
+    'throw': re.compile(r'^P2_MUSE_BREADBUG_THROW tick=(\d+) reds=(\d+) health=([-\d.eE+]+)'),
     'ring': re.compile(r'^P2_MUSE_BREADBUG_RING tick=(\d+) reds=(\d+) health=([-\d.eE+]+)'),
     'kill': re.compile(r'^P2_MUSE_BREADBUG_KILL_NATURAL tick=(\d+)'),
     'corpse': re.compile(r'^P2_MUSE_BREADBUG_CORPSE bodies=(\d+) via_mpellet=(\d+)'),
@@ -70,7 +76,7 @@ def parse_muse_breadbug(text, generator=GENERATOR):
     """Parse a host log into lifecycle events for one generator id."""
     events = {
         'ready': [], 'forget': [], 'death': [], 'rebirth': [],
-        'moves': [], 'rings': [], 'kill': None, 'corpse': None,
+        'moves': [], 'moved': None, 'throws': [], 'rings': [], 'kill': None, 'corpse': None,
         'rebirth_begin': None, 'rebirth_new': None, 'injected': [],
         'draw': False, 'window': WINDOW_LINE in text, 'pass_marker': False,
     }
@@ -91,12 +97,22 @@ def parse_muse_breadbug(text, generator=GENERATOR):
         m = _PATTERNS['rebirth'].match(line)
         if m and int(m.group(1)) == generator:
             events['rebirth'].append({'line': lineno, 'native_type': int(m.group(2)),
-                                      'replaced_stale': int(m.group(3))})
+                                      'xyz': m.group(3), 'replaced_stale': int(m.group(4))})
             continue
         m = _PATTERNS['move'].match(line)
         if m:
             events['moves'].append({'line': lineno, 'frame': int(m.group(1)),
                                     'displacement': float(m.group(2)), 'moving': int(m.group(3))})
+            continue
+        m = _PATTERNS['moved'].match(line)
+        if m and events['moved'] is None:
+            events['moved'] = {'line': lineno, 'displacement': float(m.group(1)),
+                               'moving': int(m.group(2))}
+            continue
+        m = _PATTERNS['throw'].match(line)
+        if m:
+            events['throws'].append({'line': lineno, 'tick': int(m.group(1)),
+                                     'reds': int(m.group(2)), 'health': float(m.group(3))})
             continue
         m = _PATTERNS['ring'].match(line)
         if m:
@@ -132,14 +148,23 @@ def parse_muse_breadbug(text, generator=GENERATOR):
 
 
 def validate_muse_breadbug(events):
-    """Check the six lifecycle gates. Every failure names its exact cause."""
+    """Check the lifecycle gates. Every failure names its exact cause.
+
+    The death funnel is REPORTED, not gated: a LeaveCorpse natural death never
+    reaches BTeki::doKill, so no per-actor forget exists to observe. Only a
+    FORGET with dead_state>=1 strictly before REBIRTH_BEGIN counts as funnel
+    evidence (a later one is pool slot reuse at generator rebirth).
+    """
     checks = {}
     reasons = []
 
     moves = events['moves']
     best = max([m['displacement'] for m in moves], default=0.0)
     moving = max([m['moving'] for m in moves], default=0)
-    checks['movement_sample'] = bool(moves) and best > MOVE_DISPLACEMENT_MIN and moving >= MOVE_FRAMES_MIN
+    if events['moved'] is not None:
+        best = max(best, events['moved']['displacement'])
+        moving = max(moving, events['moved']['moving'])
+    checks['movement_sample'] = (bool(moves) or events['moved'] is not None) and best > MOVE_DISPLACEMENT_MIN and moving >= MOVE_FRAMES_MIN
     if not checks['movement_sample']:
         reasons.append('movement: displacement=%.2f moving=%d, need >%.0f and >=%d (P1 proxy only)' % (
             best, moving, MOVE_DISPLACEMENT_MIN, MOVE_FRAMES_MIN))
@@ -153,23 +178,18 @@ def validate_muse_breadbug(events):
         reasons.append('natural_kill: kill=%s injected=%d rings=%d health_fell=%s' % (
             events['kill'] is not None, len(events['injected']), len(rings), health_fell))
 
-    funnel = [f for f in events['forget'] if f['dead_state'] >= 1]
-    checks['death_funnel'] = bool(funnel)
-    if not checks['death_funnel']:
-        reasons.append('death_funnel: no FORGET with dead_state>=1 (forget=%d)' % len(events['forget']))
-
     corpse = events['corpse']
     checks['corpse'] = corpse is not None and corpse['bodies'] >= 1 and corpse['via_mpellet'] == 1
     if not checks['corpse']:
         reasons.append('corpse: %s (need bodies>=1 via mPellet at mDeadState==2)' % (corpse,))
 
     rebirths = events['rebirth']
-    checks['rebirth'] = (len(rebirths) == 1 and rebirths[0]['replaced_stale'] == 0
-                         and len(events['ready']) == 1 and events['rebirth_begin'] is not None
+    checks['rebirth'] = (len(rebirths) == 1 and len(events['ready']) == 1
+                         and events['rebirth_begin'] is not None
                          and events['rebirth_new'] is not None)
     if not checks['rebirth']:
         reasons.append('rebirth: rebirths=%d ready=%d begin=%s new=%s (need exactly one '
-                       'REBIRTH with replaced_stale=0 and a single READY: no manager recreation)' % (
+                       'REBIRTH and a single READY: no manager recreation)' % (
                            len(rebirths), len(events['ready']),
                            events['rebirth_begin'] is not None, events['rebirth_new'] is not None))
 
@@ -178,8 +198,16 @@ def validate_muse_breadbug(events):
         reasons.append('single_death: kill=%s death_markers=%d' % (
             events['kill'] is not None, len(events['death'])))
 
+    begin_line = events['rebirth_begin']['line'] if events['rebirth_begin'] else None
+    funnel = [f for f in events['forget']
+              if f['dead_state'] >= 1 and (begin_line is None or f['line'] < begin_line)]
+    funnel_observed = bool(funnel)
+    replaced_stale = rebirths[0]['replaced_stale'] if len(rebirths) == 1 else None
+
     passed = all(checks.values())
-    return {'checks': checks, 'passed': passed, 'reasons': reasons}
+    return {'checks': checks, 'passed': passed, 'reasons': reasons,
+            'funnel_observed': funnel_observed, 'forget_count': len(events['forget']),
+            'replaced_stale': replaced_stale, 'throw_count': len(events['throws'])}
 
 
 def validate(text, generator=GENERATOR):
@@ -193,6 +221,10 @@ def validate(text, generator=GENERATOR):
         'gates': result['checks'],
         'reasons': result['reasons'],
         'passed': result['passed'],
+        'funnel_observed': result['funnel_observed'],
+        'forget_count': result['forget_count'],
+        'replaced_stale': result['replaced_stale'],
+        'throw_count': result['throw_count'],
         'live_visual': events['draw'],
         'standard_window': events['window'],
         'scope': SCOPE,
