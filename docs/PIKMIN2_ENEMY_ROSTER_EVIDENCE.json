@@ -1360,16 +1360,18 @@
         "PIKMIN2_GROINK_BURST.md"
       ],
       "gates": {
-        "identity_spawn": "UNTESTED",
+        "identity_spawn": "PASS",
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
         "death_corpse": "PASS",
-        "transport_reward": "UNTESTED",
+        "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "corpse:groink:201001 (P2_POD_RECEIPT id=corpse:groink:201001 value=2 new=1 pokos=2 seeds=0) output/dsw/l21-out/run-carcass-transport3/native.log:1378",
       "notes": [
         "MiniHoudai (Gatling Groink): targeting/burst/muzzle/strike modules present; natural moving hits + shell/revival + carcass remain (#198/#204-#210).",
-        "FminiHoudai=97 (pedestal) has no dedicated module yet; tracked as a gap."
+        "FminiHoudai=97 (pedestal) has no dedicated module yet; tracked as a gap.",
+        "identity_spawn closed on the reviewed l52 accepted slot 328297937 (muse-l60 generated birth native.log:592-594); natural transport/reward receipt corpse:groink:201001 from the preserved l21 carcass-transport run (output/dsw/l21-out/run-carcass-transport3/native.log:1378)."
       ]
     },
     "79": {
