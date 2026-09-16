@@ -135,3 +135,60 @@ class ForestAdapterTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class RealSourceTests(unittest.TestCase):
+    """Real-bytes path against the supported local ISO (no synthetic data)."""
+
+    ISO = Path("C:/Users/alari/Downloads/PIKMIN2 for GAMECUBE.iso")
+    PIN_SHA = "4de9008c99e799b99b2746c0156846eeb7ad50895ad110fc7f2070db6de1fff8"
+    PIN_BYTES = 3275
+    PIN_TAGS = ["f_01", "f_02", "f_03", "f_04", "test"]
+
+    @classmethod
+    def setUpClass(cls):
+        found = forest.locate_source(cls.ISO)
+        if not found["available"]:
+            raise unittest.SkipTest(found["prerequisite"])
+        from experimental.pikmin2_assets import disc_files
+        catalog = disc_files(cls.ISO)
+        at, size = catalog["user/Abe/stages.txt"]
+        with cls.ISO.open("rb") as handle:
+            handle.seek(at)
+            cls.raw = handle.read(size)
+        cls.packet = forest.build_manifest(
+            cls.raw.decode("shift_jis"), forest.sha256_bytes(cls.raw))
+
+    def test_source_hash_and_size_pinned(self):
+        self.assertEqual(len(self.raw), self.PIN_BYTES)
+        self.assertEqual(forest.sha256_bytes(self.raw), self.PIN_SHA)
+        self.assertEqual(self.packet["stages_sha256"], self.PIN_SHA)
+
+    def test_five_forest_caves_in_order(self):
+        tags = [link["cave_tag"] for link in self.packet["cave_links"]]
+        self.assertEqual(tags, self.PIN_TAGS)
+        self.assertEqual(self.packet["cave_count"], 5)
+        self.assertTrue(forest.validate_manifest(self.packet))
+
+    def test_closure_lists_cave_definitions(self):
+        paths = [row["path"] for row in self.packet["resource_closure"]]
+        self.assertEqual(paths[0], "user/Abe/stages.txt")
+        for name in ("forest_1.txt", "forest_4.txt"):
+            self.assertTrue(any(name in p for p in paths), name)
+
+    def test_decode_source_file_helper(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "stages.txt"
+            target.write_bytes(self.raw)
+            packet = forest.decode_source_file(target)
+            self.assertEqual(packet["stages_sha256"], self.PIN_SHA)
+            self.assertEqual(packet["cave_count"], 5)
+
+    def test_decode_source_file_missing_raises(self):
+        with self.assertRaises((OSError, ValueError)):
+            forest.decode_source_file(Path("C:/nonexistent/stages.txt"))
+
+    def test_locate_source_reports_prerequisite(self):
+        found = forest.locate_source(Path("C:/nonexistent/pikmin2.iso"))
+        self.assertFalse(found["available"])
+        self.assertIn("user/Abe/stages.txt", found["prerequisite"])

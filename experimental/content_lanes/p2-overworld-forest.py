@@ -143,6 +143,29 @@ def validate_manifest(manifest):
     return True
 
 
+DEFAULT_ISO = Path("C:/Users/alari/Downloads/PIKMIN2 for GAMECUBE.iso")
+
+
+def locate_source(iso_path=None):
+    """Locate the legal retail ISO, or report the exact prerequisite."""
+    iso = Path(iso_path) if iso_path is not None else DEFAULT_ISO
+    if not iso.is_file():
+        return {"available": False, "iso": None,
+                "prerequisite": MISSING_PREREQUISITE}
+    return {"available": True, "iso": str(iso), "prerequisite": None}
+
+
+def decode_source_file(path):
+    """Decode a real extracted stages.txt file into a hashed manifest.
+
+    Reads raw bytes, records the observed input sha256, decodes shift_jis
+    with the shared framing and builds the manifest. Raises ValueError on
+    missing/unreadable input or malformed content.
+    """
+    raw = Path(path).read_bytes()
+    return build_manifest(raw.decode("shift_jis"), sha256_bytes(raw))
+
+
 def missing_prerequisite():
     return MISSING_PREREQUISITE
 
