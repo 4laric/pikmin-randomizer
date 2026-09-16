@@ -26,13 +26,14 @@
 //   Tired  -> Walk                             (StateTired :642)
 //   Dead: KEYEVENT_5 releases the held treasure, KEYEVENT_END kills (:152).
 //
-// Retained-assembly caveat: the source `walkFunc`/`findNextRoutePoint`/joint
-// callbacks sit beside retained PowerPC assembly and their evaluation order is
-// inferred (assets audit sec.0). This policy therefore does NOT port the
-// retained-assembly pathfinding; locomotion is a HOST-DRIVEN route (the host
-// supplies/updates waypoints) advanced at the source retail travel speed fp05
-// = 120 with a documented two-step timer (ip01 retail 0, so the first step is
-// effectively instantaneous). No claim of natural-Map navigation is made.
+// Retained-assembly caveat: the source `findNextRoutePoint` map-graph search
+// beside retained PowerPC assembly is not ported; the map-graph leg itself
+// stays a seam-supplied waypoint list. Muse l63 (#503) ports everything else
+// around it: the actor owns target selection (captain chase > pod approach >
+// route fallback), the escape distance bands/timer/smoothing, the pod motion
+// choice, the route-find cadence counters (the seam answers
+// routeRefreshRequested with the next waypoint) and turn damping. No claim of
+// natural-Map graph navigation is made.
 //
 // Damage model (structural, not a receiver). The RIDING ROLLER accepts only
 // Purple hits, and only while `P2WaterwraithRig::damageable()` is true (frozen);
@@ -60,6 +61,31 @@ struct P2WaterwraithWaypoint {
     P2WaterwraithVec3 position{};
 };
 
+// Actor-owned steering target selection (muse l63, #503). The actor picks its
+// own target per source walkFunc (blackMan.cpp:831-1027, research 632af937):
+//   Chase   : escapePhase 2 steers to the live captain XZ (:873-929).
+//   PodSeek : escapePhase 4 steers to the Pod XZ (:930-973).
+//   Route   : last-resort fallback to the host-supplied waypoint list.
+//   Hold    : no valid target (stand still).
+enum P2WaterwraithSteerMode {
+    P2WWSTEER_Hold = 0,
+    P2WWSTEER_Route = 1,
+    P2WWSTEER_Chase = 2,
+    P2WWSTEER_PodSeek = 3,
+};
+
+// Motion request for the host clip player (source startMotion analogues in
+// walkFunc: WRAITHANIM_Wait/Walk/Run/Move/Through). The policy emits one per
+// tick; the host player deduplicates. None = no request this tick.
+enum P2WaterwraithMotion {
+    P2WWMOTION_None = 0,
+    P2WWMOTION_Wait = 1,
+    P2WWMOTION_Walk = 2,
+    P2WWMOTION_Run = 3,
+    P2WWMOTION_Move = 4,
+    P2WWMOTION_Through = 5,
+};
+
 // Build-time defaults mirror the source headers; disc/retail values are noted.
 struct P2WaterwraithActorParms {
     float bodyMaxHealth = 1500.0f;    // BlackMan general fp00 (retail 1500)
@@ -74,6 +100,13 @@ struct P2WaterwraithActorParms {
     int continuousEscapeTimerLength = 200; // proper ip05
     int standStillTimerLength = 200;  // proper ip06
     float properRotationSpeed = 25.0f;     // Tyre fp01 (retail 25.0)
+    // Autonomous driver parms (muse l63, #503; header defaults from BlackMan.h).
+    int startEscapePhase = 1;        // C_PARMS mStartPhase (retail 1; 2 = chase, 4 = pod-seek)
+    float escapeSpeed = 10.0f;       // proper fp02 (retail 10)
+    float escapeRotationSpeed = 0.1f;    // proper fp03 (retail 0.1)
+    float maxEscapeRotationStep = 10.0f; // proper fp04 (retail 10)
+    float walkingSpeed = 10.0f;      // proper fp11 (retail 10)
+    float podMoveSpeed = 10.0f;      // proper fp01 (retail 10)
     P2BlackManPhase startPhase = P2BM_Fall; // onInit: Fall unless cave y_01 (:168)
 };
 
@@ -87,6 +120,18 @@ struct P2WaterwraithActorInput {
     bool hardFall = false;        // Fall: hard-constraint termination -> Recover
     bool rollerlessQuake = false; // Walk/Tired with no child -> Freeze stun
     bool tired = false;           // Walk escape-phase wind-down -> Tired
+    // Autonomous driver feeds (muse l63, #503). Positions are XZ plane values
+    // read from live engine state by the encounter each tick (captain = active
+    // Navi, the source walkFunc chase target :874); the actor owns all target
+    // selection, bands, timers and smoothing. podValid stays false on this
+    // host (no live Pod position exists) so pod-seek remains engine-free
+    // verified until a Pod position source lands.
+    bool captainValid = false; // live active-captain XZ available
+    float captainX = 0.0f;
+    float captainZ = 0.0f;
+    bool podValid = false; // live Pod XZ available (false on this host)
+    float podX = 0.0f;
+    float podZ = 0.0f;
     // Tyre-child triggers (the actor owns the child and applies these to the rig).
     bool landFloorContact = false; // Tyre Land -> Freeze
     bool quakeFreeze = false;      // Tyre Move -> Freeze
@@ -124,6 +169,10 @@ struct P2WaterwraithActorOutput {
     bool moveRestartRequested = false;
     bool finishMotionRequested = false;
     bool fanfare = false; // Fall KEYEVENT_2 / Recover KEYEVENT_5 on final floor
+    // Autonomous driver outputs (muse l63, #503).
+    P2WaterwraithMotion motionRequest = P2WWMOTION_None; // clip-player request
+    bool routeRefreshRequested = false; // route cadence fired: source would
+        // call findNextRoutePoint (:1001); the seam supplies the next waypoint
 };
 
 class P2WaterwraithActor {
@@ -172,6 +221,19 @@ public:
     bool twoStepActive() const { return mStepPhase != 0; }
     int stepTimer() const { return mStepTimer; }
 
+    // Autonomous driver state (muse l63, #503; source walkFunc :873-1007).
+    int escapePhase() const { return mEscapePhase; }
+    P2WaterwraithSteerMode steerMode() const { return mSteerMode; }
+    P2WaterwraithMotion lastMotion() const { return mLastMotion; }
+    static const char* steerModeName(P2WaterwraithSteerMode mode);
+    static const char* motionName(P2WaterwraithMotion motion);
+    int escapeTimer() const { return mEscapeTimer; }
+    float escapeMoveSpeed() const { return mEscapeMoveSpeed; }
+    // Sticky route-refresh edge for the seam marker (set when the cadence
+    // fires alongside out.routeRefreshRequested; cleared by ack).
+    bool routeRefreshPending() const { return mRouteRefreshPending; }
+    void ackRouteRefresh() { mRouteRefreshPending = false; }
+
     P2WaterwraithVec3 position() const { return mPosition; }
     P2WaterwraithVec3 velocity() const { return mVelocity; }
     float facing() const { return mFacing; }
@@ -188,7 +250,8 @@ private:
 
     void enter(P2BlackManPhase next, P2WaterwraithActorOutput& out);
     void beginEscape(P2WaterwraithActorOutput& out);
-    void updateLocomotion(float delta);
+    void updateLocomotion(float delta, P2WaterwraithActorOutput& out);
+    void observeDriver(const P2WaterwraithActorInput& in);
     void pushRig();
     void refreshHealthFlags();
 
@@ -212,6 +275,27 @@ private:
     int mPostFlickState = 0; // P2BlackManPhase to resume after Flick
     int mStepPhase = 0;
     int mStepTimer = 0;
+    // Autonomous driver (muse l63, #503): source mEscapePhase axis (distinct
+    // from the FSM phase), escape chase timer/speed (:873-929), route-find
+    // cadence (:997-1007) and actor-owned target selection.
+    int mEscapePhase = 1;
+    int mEscapeTimer = 0;
+    float mEscapeMoveSpeed = 0.0f;
+    int mRouteFindTimer = 0;
+    int mRouteFindCooldownTimer = 0;
+    P2WaterwraithVec3 mHomePosition{};
+    P2WaterwraithVec3 mLastRoutePos{};
+    P2WaterwraithSteerMode mSteerMode = P2WWSTEER_Hold;
+    P2WaterwraithMotion mLastMotion = P2WWMOTION_None;
+    bool mRouteRefreshPending = false;
+    // Latest live driver observations stashed from the tick input (captain =
+    // active Navi XZ, pod = Pod XZ) for the chase/pod branches.
+    bool mCaptainValid = false;
+    float mCaptainX = 0.0f;
+    float mCaptainZ = 0.0f;
+    bool mPodValid = false;
+    float mPodX = 0.0f;
+    float mPodZ = 0.0f;
     bool mRollerPinched = false;
     bool mRollerZeroed = false;
     bool mBodyPinched = false;
