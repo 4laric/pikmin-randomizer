@@ -113,3 +113,47 @@ real generated run log through both runners, and report the gate-1 verdict
 per identity. Fixture adoption (fresh arena, 960x540, starting squad) is N/A
 for this tooling-only slice: no runtime claim is made. Tooling-only handoff;
 native `null` claim is consistent (no engine change, stdlib checker only).
+
+## Continuation (gen 3): dependencies consumed and audited adversarially
+
+Both `dependency-ready.json` records are now published (reviewed by the
+legacy integrator l01): placement root `bd97334a` + native `4765885b`
+(#492), packaging roots `3131b76d` then `f82171d4` (#493, root-only).
+Consumed verbatim into the private worktrees in that exact order; ancestry
+was checked first (none present) and all four cherry-picks applied clean
+with no conflicts and no overlap with identityqa-owned files:
+
+- root: `684fd512` (placement #492), `7c07444c` + `d60dad8d` (packaging #493)
+- native: `05b48ace` (placement-native #492)
+
+No broad wave merge; family consumers (l57-l60) own real generated-birth
+validation. This lane's adversarial findings against the REAL candidates
+(`tests/test_pikmin2_muse_identityqa.py::MuseIdentityqaRealCandidateTests`,
+6 tests, all passing alongside the 21 original tests):
+
+1. **Refusal veto (runner defect found and fixed).** A native
+   `P2_GENERATED_PLACEMENT ... bound=0 reason=slot-rejected` marker for the
+   same target used to be ignored when placement-slot/resolve/binding legs
+   were otherwise consistent — both the Python runner and the C++ checker
+   have been fixed so a `bound=0` refusal vetoes that target
+   (`sample-refuse.log`: both exit/return FAIL).
+2. **Real marker format tolerance.** The native bind emits
+   `... target=<uid> generator=<gen> bound=<0|1>`; the Python bind regex now
+   tolerates the optional `generator=` field (previously a real refusal line
+   would not even parse).
+3. **Accepted-slot composition requirement.** A uid-consistent triple on a
+   NON-accepted slot passes this runner alone (it knows no allowlist) while
+   the real placement observer reports `slot-not-accepted`: the audit
+   verdict is the pair, fail closed. Conversely a binding-generator
+   mismatch on an accepted uid stays correlated in the placement observer
+   and is caught only by this runner's generator leg.
+4. **Real packaging staging.** All four candidates stage via the real
+   `stage_candidates` into a temp run; tampering one staged sidecar makes
+   the real `verify_staging` raise, mapped to a stale/missing finding; a
+   conflicting restage with different bindings is refused by the real
+   stager.
+
+Gate 1 stays BLOCKED for all four identities: no natural generated birth
+has been observed (that evidence belongs to the consumer lanes l57-l60 with
+their family sidecars). No runtime claim is made anywhere in this handoff;
+no ADMIT writes; no admission-flag edits.

@@ -79,7 +79,7 @@ _RE_RESOLVE_ALT = re.compile(
     r"P2_SEED_RESOLVE\S*\s+source_id=(?P<source>\d+)\s+target_id=(?P<target>\d+)")
 _RE_PLACEMENT = re.compile(
     r"P2_GENERATED_PLACEMENT\s+source_id=(?P<source>\d+)\s+"
-    r"target=(?P<target>\d+)\s+bound=(?P<bound>[01])\b")
+    r"target=(?P<target>\d+)(?:\s+generator=\d+)?\s+bound=(?P<bound>[01])\b")
 _RE_SLOT = re.compile(
     r"P2_PLACEMENT_SLOT\s+generator=(?P<generator>\d+)\s+slot=(?P<slot>\d+)")
 _RE_GENERATOR = re.compile(r"(?:generator|gen|generator_id)=(\d+)")
@@ -243,7 +243,12 @@ def audit_log(text, source_id):
                       {s["slot"] for s in slots}, key=int)))
 
     # Correlate one triple: agreed slot + agreed generator + legal terrain.
+    # A bound=0 refusal for the same target vetoes the verdict even when
+    # placement-slot/resolve/binding legs are otherwise consistent: the
+    # native registry rejected this exact spawn.
     match = None
+    refused_slots = set(placement_refused)
+    vetoed = set()
     for slot in slots:
         if slot["slot"] == "0":
             findings.append(
@@ -251,6 +256,14 @@ def audit_log(text, source_id):
                 "no legal-slot profile" % slot["line"])
             continue
         if slot["slot"] not in resolve_targets:
+            continue
+        if slot["slot"] in refused_slots and slot["slot"] not in vetoed:
+            findings.append(
+                "generator-slot: native refusal (bound=0) for source_id=%d "
+                "target=%s vetoes the correlated triple on placement line %d"
+                % (source_id, slot["slot"], slot["line"]))
+            vetoed.add(slot["slot"])
+        if slot["slot"] in refused_slots:
             continue
         if (placement_targets and slot["slot"] not in placement_targets
                 and slot["slot"] in set(resolve_targets)):
@@ -286,11 +299,14 @@ def audit_log(text, source_id):
     # Placement-leg-free correlation (resolve + generated-placement + binding
     # agree on one slot when no P2_PLACEMENT_SLOT line names it): still FAIL
     # for gate1 because terrain/route evidence is missing, but report why.
-    if match is None and agreed_slots and own_binding_gens:
+    # Refused slots are excluded: their veto finding above already explains
+    # why the gate stays closed.
+    free_slots = [s for s in agreed_slots if s not in refused_slots]
+    if match is None and free_slots and own_binding_gens:
         findings.append(
             "unsupported-terrain: slot=%s correlates resolve+placement+"
             "binding but no P2_PLACEMENT_SLOT line proves terrain/route; "
-            "gate1 stays closed" % sorted(agreed_slots, key=int)[0])
+            "gate1 stays closed" % sorted(free_slots, key=int)[0])
 
     # Injected taint always fails and is labelled.
     if taint_lines:
