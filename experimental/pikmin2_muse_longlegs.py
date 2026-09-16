@@ -223,7 +223,19 @@ def position_override():
 
 
 def prepare(assets, imported, output):
-    """Stage a fresh walk-observation arena (cargo-free, no Pod)."""
+    """Stage a fresh walk-observation arena.
+
+    The Pod package is staged (same lane-19 derived path lane26 uses) ONLY so
+    ``pc_p2_preview_ready()`` (room preview + previewShape + previewTreasure)
+    goes true and the fixture can observe. The Pod anchor is present but unused:
+    this run performs no carry, claims no receipt, and gate 5 stays source-backed
+    N/A (EB_LeaveCarcass). Documented here so the anchor is never mistaken for
+    reward evidence.
+    """
+    from experimental.pikmin2_mamuta_rules import load_pod_package, stage_cargo
+    pod_package = os.environ.get(
+        'PIKMIN_P2_POD_PACKAGE',
+        str(Path(__file__).resolve().parents[2] / 'l19-out' / 'pod'))
     from experimental.pikmin2_long_legs_lifecycle import (
         BIGFOOT_INDEX, HOUDAI_INDEX)
     cfg = dict(CFG)
@@ -234,6 +246,7 @@ def prepare(assets, imported, output):
     run = _prepare(cfg, Path(assets), Path(imported), Path(output),
                    installer=install, verifier=verify_install)
     convert_visual(run / 'assets/dataDir/courses/pikmin2room')
+    stage_cargo(run, Path(assets), load_pod_package(pod_package))
     (run / 'muse-longlegs-override.json').write_text(
         json.dumps(position_override(), indent=2) + '\n')
     (run / 'pikmin_settings.conf').write_text('disableTutorials = 0\n')
