@@ -212,11 +212,20 @@ def recover(controller, *, table=process_table, stop=stop_exact):
                 continue
             if journal['launch']:
                 controller.mark_exited(journal['launch'])
+            retry_models = list(models)
+            failed_model = control['launches'].get(journal['launch'], {}).get('model')
+            if failed_model:
+                policy = controller.config.get('model_rate_limit', {})
+                reg.model_rate_limit(failed_model, journal['launch'],
+                    initial=policy.get('initial_seconds', 30), maximum=policy.get('max_seconds', 300),
+                    reset_after=policy.get('reset_after_seconds', 1800))
+                retry_models = [m for m in models if m != failed_model]
+                if failed_model in models: retry_models.append(failed_model)
             item = reg.plan_launch(key, 'provider-stall:' + identity,
                 'Recover the same session after an idle provider rate-limit failure. '
                 'Inspect existing checkpoints, edits and commits; preserve completed work. '
                 'Continue only the assigned slice and record a terminal outcome. '
-                'Read docs/PIKMIN2_IMPLEMENTATION_FANOUT.md before the next runtime acceptance.', models)
+                'Read docs/PIKMIN2_IMPLEMENTATION_FANOUT.md before the next runtime acceptance.', retry_models)
             with reg.transaction() as db:
                 reg.control(db).setdefault('provider_recoveries', {})[identity] = dict(journal, status='planned', action=item['id'])
         except (OSError, ValueError) as exc:

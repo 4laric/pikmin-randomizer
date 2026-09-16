@@ -278,4 +278,23 @@ class ControlMixin:
 
     def select_model(self, models):
         c = self.control_status()
-        return next((m for m in models if c['providers'].get(m.split('/')[0], 0) <= self.clock()), None)
+        now = self.clock()
+        return next((m for m in models if c['providers'].get(m.split('/')[0], 0) <= now
+                     and c.get('model_limits', {}).get(m, {}).get('until', 0) <= now
+                     and c.get('model_launch_after', {}).get(m, 0) <= now), None)
+
+    def model_rate_limit(self, model, action, *, initial=30, maximum=300, reset_after=1800):
+        """Persist one adaptive penalty per failed attempt, including across replay."""
+        with self.transaction() as state:
+            c = self.control(state)
+            records = c.setdefault('model_limit_attempts', {})
+            if action in records:
+                return records[action]
+            now = self.clock()
+            previous = c.setdefault('model_limits', {}).get(model, {})
+            count = previous.get('count', 0) if now - previous.get('at', 0) < reset_after else 0
+            seconds = min(maximum, initial * 2 ** min(count, 16))
+            record = dict(model=model, count=count + 1, at=now, until=now + seconds, seconds=seconds)
+            c['model_limits'][model] = record
+            records[action] = record
+            return record

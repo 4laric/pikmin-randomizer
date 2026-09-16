@@ -96,6 +96,11 @@ class Controller:
     def dispatch(self, item):
         if not self.available(item['lane']): return
         directory = self.launch_directory(item['id']); directory.mkdir(parents=True, exist_ok=True)
+        if (directory / 'start.json').exists(): return
+        # A model recorded before start.json is a durable launch reservation.
+        current = self.reg.control_status()['launches'][item['id']]
+        model = current.get('model') or self.reg.select_model(item['models'])
+        if model is None: return
         # Persist spawn intent before Popen. Uncertain windows are reconciled, never retried blindly.
         marker = directory / 'spawn.json'
         if not marker.exists():
@@ -112,8 +117,6 @@ class Controller:
             return
         lane = self.reg.bind_launch(item['id'], identity)
         entry = self.config['lanes'][item['lane']]
-        model = self.reg.select_model(item['models'])
-        if model is None: return  # No work begins while providers cool down.
         ready = dict(attempt_id=item['id'], lane=item['lane'], generation=lane['generation'],
                      revision=lane['revision'], task_id=lane['task_id'], pid=identity['pid'], session=item['session'])
         write(local_path(self.reg.root, entry['output']) / 'session-ready.json', ready)
@@ -127,7 +130,9 @@ class Controller:
             'evidence {path,sha256}; blocked also dependencies; implementation-ready also path to full handoff. '
             'Review-ready records review of existing evidence without claiming a new runtime run.')
         with self.reg.transaction() as state:
-            self.reg.control(state)['launches'][item['id']]['model'] = model
+            c = self.reg.control(state)
+            c['launches'][item['id']]['model'] = model
+            c.setdefault('model_launch_after', {})[model] = self.reg.clock() + self.config.get('model_launch_spacing', 15)
         write(directory / 'start.json', dict(action_id=item['id'], executable=self.config['executable'],
             worktree=entry['root'], config=entry['config'], model=model, session=item['session'], prompt=prompt))
 
@@ -153,10 +158,23 @@ class Controller:
             if lane['state'] in ('done', 'blocked', 'review_ready', 'handoff_ready', 'integrating'):
                 self.mark_exited(item['id']); continue
             if result['kind'] == 'rate_limit':
-                self.reg.cool_provider(item['model'].split('/')[0], self.config.get('provider_cooldown', 900))
-                remaining = [m for m in item['models'] if m != item['model']]
-                if remaining:
-                    self.reg.plan_launch(item['lane'], 'provider fallback:' + item['id'], item['instruction'], remaining, item['version'])
+                policy = self.config.get('model_rate_limit', {})
+                self.reg.model_rate_limit(item['model'], item['id'],
+                    initial=policy.get('initial_seconds', 30), maximum=policy.get('max_seconds', 300),
+                    reset_after=policy.get('reset_after_seconds', 1800))
+                retries = item.get('rate_limit_retries', 0)
+                if retries < policy.get('max_retries', 8):
+                    # Keep every authorized choice: exhausted models become eligible
+                    # after cooling, without dropping a single-model lane on the floor.
+                    models = list(dict.fromkeys(item['models'] + self.config.get('models', [])))
+                    models = [m for m in models if m != item['model']] + [item['model']]
+                    follow = self.reg.plan_launch(item['lane'], 'provider fallback:' + item['id'],
+                        item['instruction'], models, item['version'])
+                    with self.reg.transaction() as state:
+                        planned = self.reg.control(state)['launches'][follow['id']]
+                        planned['rate_limit_retries'] = retries + 1
+                        for field in ('focus', 'work_class'):
+                            if field in item: planned[field] = item[field]
                     self.mark_exited(item['id'])
                     continue
             evidence = dict(path=str(result_path), sha256=digest(result_path))

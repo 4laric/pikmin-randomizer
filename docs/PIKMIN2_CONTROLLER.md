@@ -194,6 +194,30 @@ publications and actual Git ancestry. They do not certify any native gameplay ga
 
 ## Headless worker recovery (#568)
 
+## Model throttling and fallback (#579)
+
+Configure the authorized ordered `models` chain, for example Muse followed by
+`opencode-go/deepseek-v4.1-flash`, and the same chain in `provider_stall_recovery.models`.
+Observed worker rate limits cool only the failed model. Explicit provider-wide
+cooldowns remain supported for confirmed provider-wide incidents. A model switch
+does not guarantee a separate upstream quota; if both models throttle, both wait.
+
+`model_rate_limit` defaults to `initial_seconds: 30`, `max_seconds: 300`,
+`reset_after_seconds: 1800`, and `max_retries: 8`. Consecutive throttles double
+the delay to the cap; a 30-minute quiet period resets escalation. Attempt IDs
+make penalties replay-safe. Retries preserve sessions, instructions and dispatch
+priority, prefer another authorized model, and retain cooled models for later.
+Exhausted pre-tool retries enter reconciliation with evidence; post-tool recovery
+retains its existing stricter per-head budget and completed-tool safety checks.
+
+`model_launch_spacing` defaults to 15 seconds between new launches of each model,
+persisted across controller restarts. Existing local tools/builds keep running.
+This paces launches, not individual model requests inside an active worker.
+Deployment must update pending intents as well as configuration; existing running
+workers keep their current model until a safely fenced continuation.
+
+## Headless worker recovery details
+
 Enable `terminal_idle_recovery: {"enabled": true, "quiet_seconds": 60}` in the local controller configuration to release managed CLI children that remain alive after their exact session reports `exiting loop`. Recovery requires a quiet completed boundary, verified runner/child identities and ancestry, no active or unknown lease, and no tool descendants. It ignores only the known periodic cleanup message. Windows process creation times distinguish reused parent PIDs. The runner writes its real exit result; cleanup never creates an acceptance or terminal lane outcome.
 
 Same-session recovery preserves the pool assignment and records its launch history after verifying the previous execution exited. `Registry.reconcile_pool_recovery(action_id)` can apply that same fenced link to an already-bound recovery during deployment. Completion uses valid recorded integration/review evidence before fallback evidence; changed hashes remain invalid.

@@ -125,6 +125,73 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(self.reg.select_model(['free/other','paid/muse']),'paid/muse')
         self.now+=51;self.assertEqual(self.reg.select_model(['free/other','paid/muse']),'free/other')
 
+    def test_same_provider_fallback_keeps_session_and_priority(self):
+        self.config['models'] = ['go/muse', 'go/deepseek']
+        item = self.plan()
+        with self.reg.transaction() as state:
+            self.reg.control(state)['launches'][item['id']]['focus'] = 'enemy_acceptance'
+        self.controller.dispatch(item); self.reg.probe = lambda _: 'dead'
+        write(self.controller.launch_directory(item['id'])/'result.json', {'kind':'rate_limit'})
+        self.controller.complete_runs(); self.controller.complete_runs()
+        items = list(self.reg.control_status()['launches'].values())
+        self.assertEqual(len(items), 2)
+        self.assertEqual(items[-1]['session'], item['session'])
+        self.assertEqual(items[-1]['focus'], 'enemy_acceptance')
+        self.assertEqual(self.reg.select_model(items[-1]['models']), 'go/deepseek')
+        self.assertEqual(self.reg.control_status()['model_limits']['go/muse']['count'], 1)
+        self.assertFalse(self.reg.control_status()['providers'])
+
+    def test_adaptive_penalty_replay_cap_and_quiet_reset(self):
+        for index, seconds in enumerate([30, 60, 120, 240, 300, 300]):
+            result = self.reg.model_rate_limit('go/muse', str(index))
+            self.assertEqual(result['seconds'], seconds)
+            self.assertEqual(self.reg.model_rate_limit('go/muse', str(index)), result)
+            self.now += seconds
+        self.now += 1801
+        self.assertEqual(self.reg.model_rate_limit('go/muse', 'fresh')['seconds'], 30)
+
+    def test_both_models_cooling_then_earliest_recovers(self):
+        self.reg.model_rate_limit('go/muse', 'one', initial=60)
+        self.reg.model_rate_limit('go/deepseek', 'two')
+        self.assertIsNone(self.reg.select_model(['go/muse', 'go/deepseek']))
+        self.now += 31
+        self.assertEqual(self.reg.select_model(['go/muse', 'go/deepseek']), 'go/deepseek')
+
+    def test_single_model_rate_limit_retains_delayed_retry(self):
+        self.config['models'] = ['go/muse']
+        item = self.plan(); self.controller.dispatch(item); self.reg.probe = lambda _: 'dead'
+        write(self.controller.launch_directory(item['id'])/'result.json', {'kind':'rate_limit'})
+        self.controller.complete_runs()
+        retry = list(self.reg.control_status()['launches'].values())[-1]
+        self.assertEqual(retry['status'], 'intent')
+        self.assertIsNone(self.reg.select_model(retry['models']))
+        self.now += 31
+        self.assertEqual(self.reg.select_model(retry['models']), 'go/muse')
+
+    def test_retry_budget_exhaustion_requires_reconciliation(self):
+        item = self.plan(); self.controller.dispatch(item); self.reg.probe = lambda _: 'dead'
+        with self.reg.transaction() as state:
+            self.reg.control(state)['launches'][item['id']]['rate_limit_retries'] = 8
+        write(self.controller.launch_directory(item['id'])/'result.json', {'kind':'rate_limit'})
+        self.controller.complete_runs()
+        self.assertEqual(len(self.reg.control_status()['launches']), 1)
+        self.assertEqual(self.reg.status()['lanes']['consumer']['state'], 'reconciling')
+
+    def test_launch_pacing_survives_controller_restart(self):
+        item = self.plan(); self.controller.dispatch(item)
+        restarted = Controller(self.reg, self.config, spawn=lambda _: self.fail('Duplicate spawn'), memory=lambda:60)
+        restarted.dispatch(item)
+        self.assertEqual(self.reg.select_model(['free/muse']), None)
+        self.now += 16
+        self.assertEqual(self.reg.select_model(['free/muse']), 'free/muse')
+
+    def test_cooling_model_does_not_spawn_or_bind(self):
+        self.config['models'] = ['go/muse']
+        item = self.plan(); self.reg.model_rate_limit('go/muse', 'prior')
+        self.controller.dispatch(item)
+        self.assertFalse(self.spawns)
+        self.assertEqual(self.reg.control_status()['launches'][item['id']]['status'], 'intent')
+
     def test_intent_replay_idempotent(self):
         first=self.plan();second=self.plan();self.assertEqual(first['id'],second['id'])
 
