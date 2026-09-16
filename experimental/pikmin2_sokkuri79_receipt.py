@@ -15,6 +15,7 @@ health/state writes and no forget/re-entry. Gate 6 stays UNTESTED.
 """
 
 import argparse
+import functools
 import json
 import os
 import re
@@ -158,8 +159,10 @@ def prepare(assets, imported, output):
     from experimental.pikmin2_sokkuri_behavior import normalize_pose_names
     from experimental.pikmin2_mamuta_rules import (
         find_pod_package, load_pod_package, stage_cargo)
-    run = _prepare(sokkuri_only_cfg(), Path(assets), Path(imported),
-                   Path(output), installer=install, verifier=verify_install)
+    cfg = sokkuri_only_cfg()
+    run = _prepare(cfg, Path(assets), Path(imported), Path(output),
+                   installer=functools.partial(install, cfg),
+                   verifier=functools.partial(verify_install, cfg))
     normalize_pose_names(run)
     package = find_pod_package([
         Path(os.environ.get("PIKMIN_P2_POD_PACKAGE", "")),
