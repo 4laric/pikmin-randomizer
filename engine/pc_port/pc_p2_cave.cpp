@@ -1,4 +1,5 @@
 #include "pc_p2_cave.h"
+#include "pc_p2_cave_generate.h"
 #include "pc_p2_cave_nav_diagnostics.h"
 #include "pc_p2_cave_anchor.h"
 #include "pc_p2_cave_entry_policy.h"
@@ -141,6 +142,7 @@ void pc_p2_cave_setup(){
         std::printf("P2_CAVE_VISUAL_READY kind=%s vertices=%d\n",kind.c_str(),transitionShape->mVertexCount);
     }
     std::printf("P2_CAVE_READY floor=%d survivors=%d health=%.9g\n",floor,count,health);std::fflush(stdout);
+    pc_p2_cave_generate_run(); // lane cave-generate-provider (#129): opt-in manifest sidecar only; reviewed hook, pending #186
     if(beasts && floor>=3){std::printf("P2_BEASTS_ENTRY_READY floor=%d token=%s descent=disabled\n",floor,token.c_str());std::fflush(stdout);}
 }
 void pc_p2_cave_request(){if(active() && !(beasts && floorId>=3))requested=true;}
