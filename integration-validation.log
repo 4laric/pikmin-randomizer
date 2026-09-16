@@ -1,1 +1,1 @@
-﻿673 content_lanes tests + 200 subtests pass; +3 P0 lanes (ch_muki_bombing #556, ch_nari_09suikomi #558, p1-challenge-navel #563); check_content_import_lanes PASS 53 lanes
+﻿689 content_lanes tests + 210 subtests pass; +1 P0 lane (ch_nari_08tobasare #557); check_content_import_lanes PASS 53 lanes
