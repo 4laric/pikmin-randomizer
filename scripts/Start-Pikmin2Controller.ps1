@@ -17,6 +17,7 @@ while (-not (Test-Path -LiteralPath $stopPath)) {
     -RedirectStandardError (Join-Path $outputPath 'controller.stderr.log')
   # Start-Process -Wait waits for descendants too (including independent agents).
   # Wait only for the controller so a crash can be reconciled while its workers live.
+  $null = $child.Handle # Retain the handle so PowerShell exposes the real exit code.
   $child.WaitForExit()
   if ($child.ExitCode -eq 0) { break }
   $failures += 1
