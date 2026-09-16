@@ -549,3 +549,12 @@ reuse the durable intent and session with at most three such retries. Never infe
 safety from age alone. Non-progressing intents no longer monopolize dispatch.
 Within existing/expansion priority, assigned implementation/recovery launches precede
 planning/publication/integration-support helpers; RAM and model pacing still apply.
+
+## Enemy activity classification (#628)
+
+Dashboard active_enemy_lanes/count uses distinct running/waiting-resource
+implementation lanes, excluding helpers. Scheduling priority is the legacy default;
+registry settings.enemy_acceptance_lanes provides explicit audited semantic overrides
+for immutable proposals mislabeled existing_content (Armor15 and Tadpole27).
+The dashboard lists counted lane IDs. This does not alter scheduling, published
+proposal bytes or family admission. Queued/blocked/done lanes are not counted.

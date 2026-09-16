@@ -42,6 +42,7 @@ def render_dashboard(report):
     if autofill:
         status = 'Disabled' if autofill.get('enabled') is False else 'Observed'
     backlog = {'status': status, 'last_observed': autofill.get('updated_at'),
+               'active_enemy_lanes': autofill.get('active_enemy_lanes', []),
                'planner_helpers': {scope: {'lane': value.get('spec', {}).get('lane', {}).get('lane'),
                     'cycle': value.get('cycle'), 'completed_at': value.get('completed_at'), 'error': value.get('error')}
                     for scope, value in planning.get('scopes', {}).items()},

@@ -134,13 +134,21 @@ def autofill_status(reg):
             (i['lane'] not in state['lanes'] or (state['lanes'][i['lane']]['state'] == 'ready' and
              reg.recovery_safe(state, state['lanes'][i['lane']]))) for i in data['items'].values())
         data['pending_count'] = sum(i.get('phase') == 'pending' for i in data['items'].values())
-        data['active_enemy_count'] = sum(item.get('priority') == 'enemy_acceptance' and
-            not item.get('planner_helper') and
-            item.get('phase') in ('provisioned', 'configured', 'enqueued') and
-            state['lanes'].get(item.get('lane'), {}).get('state') in ('running', 'waiting_resource') for item in data['items'].values())
+        data['active_enemy_lanes'] = active_enemy_lanes(state, data['items'])
+        data['active_enemy_count'] = len(data['active_enemy_lanes'])
         since = data.get('needs_refill_since')
         data['starvation_seconds'] = max(0, reg.clock() - since) if since is not None else 0
         return data
+
+
+def active_enemy_lanes(state, items):
+    """Acceptance domain can differ from immutable scheduling priority."""
+    classified=set(state.get('settings',{}).get('enemy_acceptance_lanes',[]))
+    return sorted({item['lane'] for item in items.values()
+        if (item.get('priority')=='enemy_acceptance' or item.get('lane') in classified)
+        and not item.get('planner_helper')
+        and item.get('phase') in ('provisioned','configured','enqueued')
+        and state['lanes'].get(item.get('lane'),{}).get('state') in ('running','waiting_resource')})
 
 
 def _blocked(reg, identity, reason):

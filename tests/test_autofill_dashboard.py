@@ -5,6 +5,17 @@ from workflow.dashboard import render_dashboard
 
 
 class AutofillDashboardTests(unittest.TestCase):
+    def test_enemy_domain_override_preserves_state_and_helper_filters(self):
+        from workflow.autofill import active_enemy_lanes
+        state={'settings':{'enemy_acceptance_lanes':['armor','tadpole','helper']},'lanes':{
+            'armor':{'state':'running'},'tadpole':{'state':'ready'},'helper':{'state':'running'},
+            'enemy':{'state':'waiting_resource'},'blocked':{'state':'blocked'}}}
+        items={k:dict(lane=k,phase='enqueued',priority='existing_content') for k in ('armor','tadpole','helper')}
+        items['helper']['planner_helper']=True
+        items['duplicate']=dict(items['armor'])
+        for k in ('enemy','blocked'):items[k]=dict(lane=k,phase='enqueued',priority='enemy_acceptance')
+        self.assertEqual(active_enemy_lanes(state,items),['armor','enemy'])
+
     def report(self):
         return {'at': 1000, 'metrics': {'accepted_slices_per_hour': 4.0}, 'autofill': {
             'enabled': True, 'ready_count': 3, 'idle_workers_count': 2, 'active_enemy_count': 1,
