@@ -344,3 +344,24 @@ int pc_p2_bombotakara_detonated_count() {
 
 int pc_p2_bombotakara_suppressed_count() { return suppressedCount; }
 int pc_p2_bombotakara_blast_count() { return blastCount; }
+
+// Muse l61 (#501) natural-observation seam. Observation only: the caller has
+// already bound the carrier through the real family generator chain
+// (P2_OTAKARA_BIND source_id=93) and observed the payload on the source
+// `otakara` joint / the shared-primitive blast against live receivers. No
+// health, state, transport, kill or receiver call happens here.
+void pc_p2_bombotakara_note_attach_natural(unsigned generator, unsigned payload) {
+    if (generator == 0) return;
+    std::printf("P2_BOMBOTAKARA_ATTACH generator=%u payload=%u joint=otakara natural=1\n",
+                generator, payload);
+    std::fflush(stdout);
+}
+
+void pc_p2_bombotakara_note_bomb_hit_natural(unsigned generator, unsigned payload,
+                                             int colour, int accepted, int targetState) {
+    if (generator == 0) return;
+    std::printf("P2_BOMBOTAKARA_BOMB_HIT generator=%u payload=%u pikmin=%d accepted=%d "
+                "target_state=%d interaction=InteractBomb natural=1\n",
+                generator, payload, colour, accepted, targetState);
+    std::fflush(stdout);
+}
