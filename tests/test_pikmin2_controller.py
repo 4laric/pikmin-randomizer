@@ -189,11 +189,11 @@ class ControllerTests(unittest.TestCase):
 
     def test_review_routing_preserves_existing_implementation_handoff(self):
         with self.reg.transaction() as state:
-            state['lanes']['consumer'].update(state='handoff_ready',handoff={'path':'preserve'},handoff_at=self.now)
+            state['lanes']['consumer'].update(state='handoff_ready',handoff={'path':'preserve','result':{'outstanding_gates':[]}},handoff_at=self.now)
         packet,notice=self.decision_packet()
         self.controller.apply_decisions(packet,[dict(notice=notice,action='review-ready',reason='Route this handoff')])
         lane=self.reg.status()['lanes']['consumer']
-        self.assertEqual(lane['state'],'handoff_ready');self.assertEqual(lane['handoff'],{'path':'preserve'})
+        self.assertEqual(lane['state'],'handoff_ready');self.assertEqual(lane['handoff']['path'],'preserve')
 
     def test_completed_while_model_thinks_is_not_reopened(self):
         packet,notice=self.decision_packet()
