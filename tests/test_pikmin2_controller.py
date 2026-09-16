@@ -182,6 +182,32 @@ class ControllerTests(unittest.TestCase):
         with self.reg.transaction() as state:state['lanes']['consumer']['progress_at']+=1
         with self.assertRaises(Rejected):self.controller.apply_decisions(packet,[{'notice':'a','action':'notify','reason':'review'}])
 
+    def decision_packet(self):
+        notice=self.reg.notice('consumer','integration_needed',{'reason':'test'})
+        lane=self.reg.status()['lanes']['consumer']
+        return dict(id='packet',notices={notice:self.reg.control_status()['notices'][notice]},lanes={'consumer':lane}),notice
+
+    def test_review_routing_preserves_existing_implementation_handoff(self):
+        with self.reg.transaction() as state:
+            state['lanes']['consumer'].update(state='handoff_ready',handoff={'path':'preserve'},handoff_at=self.now)
+        packet,notice=self.decision_packet()
+        self.controller.apply_decisions(packet,[dict(notice=notice,action='review-ready',reason='Route this handoff')])
+        lane=self.reg.status()['lanes']['consumer']
+        self.assertEqual(lane['state'],'handoff_ready');self.assertEqual(lane['handoff'],{'path':'preserve'})
+
+    def test_completed_while_model_thinks_is_not_reopened(self):
+        packet,notice=self.decision_packet()
+        with self.reg.transaction() as state:state['lanes']['consumer']['state']='done'
+        self.controller.apply_decisions(packet,[dict(notice=notice,action='review-ready',reason='Outdated advice')])
+        self.assertEqual(self.reg.status()['lanes']['consumer']['state'],'done')
+        self.assertEqual(next(iter(self.reg.control_status()['decisions'].values()))['action'],'superseded')
+
+    def test_same_notice_in_later_packet_is_not_delivered_twice(self):
+        packet,notice=self.decision_packet();decision=dict(notice=notice,action='notify',reason='Review')
+        self.controller.apply_decisions(packet,[decision]);packet['id']='another-packet'
+        self.controller.apply_decisions(packet,[decision])
+        self.assertEqual(len(self.reg.control_status()['decisions']),1)
+
     def test_changed_publication_keeps_previous_evidence_immutable(self):
         self.ready_dependency()
         self.config['publications']=[dict(producer='provider',path=str(self.log),description='contract')]
@@ -264,6 +290,8 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(decisions_from_text('[]'),[])
         self.assertIsNone(decisions_from_text('Explanation, then [{"action":"resume"}]'))
         self.assertIsNone(decisions_from_text('{"action":"resume"}'))
+        self.assertEqual(decisions_from_text('Reasoning summary.\n```json\n[]\n```'),[])
+        self.assertIsNone(decisions_from_text('```json\n[]\n```\n```json\n[]\n```'))
 
 
 if __name__=='__main__':unittest.main()

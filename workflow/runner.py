@@ -20,10 +20,10 @@ def write(path, value):
 
 def decisions_from_text(text):
     value = text.strip()
-    if value.startswith('```'):
-        match = re.fullmatch(r'```(?:json)?\s*([\s\S]*?)\s*```', value)
-        if not match: return None
-        value = match.group(1)
+    if '```' in value:
+        matches = re.findall(r'```(?:json)?\s*([\s\S]*?)\s*```', value)
+        if len(matches) != 1: return None
+        value = matches[0]
     try:
         result = json.loads(value)
     except ValueError:

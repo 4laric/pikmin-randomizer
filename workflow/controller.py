@@ -10,7 +10,7 @@ import time
 from .control import fingerprint
 from .handoff import digest, local_path, require, Rejected
 from .processes import identify, probe
-from .runner import write
+from .runner import write, decisions_from_text
 
 
 def ram_percent():
@@ -232,16 +232,27 @@ class Controller:
             notice_id = decision.get('notice')
             require(notice_id in packet['notices'], 'Decision must reference an offered event')
             notice = packet['notices'][notice_id]; key = notice['lane']
+            latest_notice = self.reg.control_status()['notices'].get(notice_id)
+            if latest_notice and latest_notice['status'] != 'pending': continue
             require(decision.get('action') in ('resume', 'blocked', 'review-ready', 'notify', 'request-slice'), 'Action not allowed')
             require(key in self.config['lanes'] or decision['action'] == 'notify', 'Unknown lane')
             identity = fingerprint([packet['id'], decision])
             if identity in self.reg.control_status()['decisions']: continue
             current = self.reg.status()['lanes'].get(key)
             offered = packet['lanes'].get(key)
+            if current and current['state'] == 'done':
+                with self.reg.transaction() as state:
+                    c = self.reg.control(state)
+                    c['decisions'][identity] = dict(action='superseded', reason='Slice completed while shepherd evaluated', notice=notice_id)
+                    c['notices'][notice_id]['status'] = 'resolved'
+                continue
             if current and offered:
                 require(current['generation'] == offered['generation'] and current['progress_at'] == offered['progress_at'],
                         'Lane changed since decision packet; re-evaluate')
             require(nonempty_text(decision.get('reason')), 'Decision reason required')
+            if decision['action'] == 'review-ready' and current['state'] in ('handoff_ready', 'integrating'):
+                # Routing an existing implementation handoff must never downgrade its state/evidence.
+                decision = dict(decision, action='notify', preserved_implementation_handoff=True)
             if decision['action'] == 'resume':
                 require(self.available(key), 'Legacy supervisor still owns this lane')
                 require(self.reg.recovery_safe(self.reg.status(), current), 'Cannot resume live/unknown execution')
@@ -287,6 +298,8 @@ class Controller:
             if child.exists() and probe(json.loads(child.read_text())) != 'dead': return
             outcome = json.loads(result.read_text())
             response = directory / 'decisions.json'
+            if not response.exists():
+                self.capture_decisions(directory)
             error = None
             if response.exists():
                 try: self.apply_decisions(active['packet'], json.loads(response.read_text(encoding='utf-8-sig')))
@@ -349,6 +362,18 @@ class Controller:
             self.reg.control(state)['shepherd'] = dict(id=identity, packet=packet, start=start, at=self.reg.clock())
         write(directory / 'spawn.json', {'action': identity, 'at': self.reg.clock()})
         self.spawn(directory)
+
+    def capture_decisions(self, directory):
+        events = directory / 'events.jsonl'
+        last_text = ''
+        if events.exists():
+            for line in events.read_text(encoding='utf-8').splitlines():
+                try: event = json.loads(line)
+                except ValueError: continue
+                if event.get('type') == 'text': last_text = event.get('part', {}).get('text', '')
+        decisions = decisions_from_text(last_text)
+        if decisions is not None: write(directory / 'decisions.json', decisions)
+        return decisions
 
     def tick(self):
         self.receipts(); self.complete_runs(); self.dependencies(); self.observe()
