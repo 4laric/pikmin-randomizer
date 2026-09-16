@@ -35,6 +35,7 @@ END = ("P2_LONG_LEGS_WALK_END species=BigFoot generator=312002 distance=161.0 "
 HOUDAI_END = ("P2_LONG_LEGS_WALK_END species=Houdai generator=312001 distance=38.5 "
               "seconds=0.16 start=149.8,1846.1 end=168.1,1813.3")
 DEATH = "P2_MUSE_WALK_NATURAL_DEATH houdai=1 health=0.00 tick=1600"
+HB = "P2_MUSE_WALK_HB frames=600 stage=1 observed=596 live=20 navimgr=1 naviobj=1 pikimgr=1"
 PASS_LINE = "PASS P2_MUSE_LONGLEGS_WALK walk+Houdai-drain"
 
 CARCASS_ROOT = "C:/Users/alari/pikmin-randomizer/native/pikmin2-research"
@@ -42,7 +43,7 @@ CARCASS_ROOT = "C:/Users/alari/pikmin-randomizer/native/pikmin2-research"
 
 def good_log():
     return "\n".join([READY, BIND.strip(), WAKE, STATE_WALK, WALK, END,
-                      HOUDAI_END, DEATH, SESSION, WINDOW, PASS_LINE,
+                      HOUDAI_END, DEATH, SESSION, WINDOW, PASS_LINE, HB,
                       "disableEvent(0, EB_LeaveCarcass) present"]) + "\n"
 
 

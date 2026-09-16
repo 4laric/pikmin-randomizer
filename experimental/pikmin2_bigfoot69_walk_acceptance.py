@@ -92,7 +92,14 @@ def check_bigfoot_walk(text):
     if not bigfoot:
         return dict(passed=False, reason="no BigFoot WALK_END marker")
     budget = SOURCE_SPEED["BigFoot"] * 1.25
-    best = max(bigfoot, key=lambda e: e["distance"])
+    # Score by NET body displacement: the slice measures translation, and the
+    # net/start-end positions separate source-rule motion from residual host
+    # drift. Owned steps must still sit inside the source speed budget (which
+    # rejects teleports), but rank by what the body actually did.
+    scored = [e for e in bigfoot if e["net"] is not None]
+    if not scored:
+        return dict(passed=False, reason="no BigFoot WALK_END with net positions")
+    best = max(scored, key=lambda e: e["net"])
     avg = best["distance"] / best["seconds"] if best["seconds"] > 0 else float("inf")
     detail = dict(distance=best["distance"], seconds=best["seconds"], avg=avg,
                   net=best["net"], budget=budget)
@@ -168,8 +175,14 @@ def validate(text, retail_root=None):
     window = bool(re.search(
         r"Experimental preview window set to 960x540 windowed and centered", text))
     no_inject = "P2_LL_INJECT" not in text
-    session = (bool(re.search(r"P2_MUSE_WALK_SESSION navi=1\b", text))
+    # Active gameplay baseline: centred window, live squad at READY, no
+    # extinction screen, and advancing heartbeat frames. The stage-3 SESSION
+    # line only prints after the bonus Houdai drain tail, so it is reported
+    # separately and never gates the walk evidence.
+    hb = bool(re.search(r"P2_MUSE_WALK_HB frames=\d+ stage=\d+ observed=\d+ live=(\d+)", text))
+    session = (window and squad >= 1 and hb
                and not re.search(r"Extinction", text, re.IGNORECASE))
+    session_line = bool(re.search(r"P2_MUSE_WALK_SESSION navi=1\b", text))
     houdai_death = (bool(re.search(r"P2_MUSE_WALK_NATURAL_DEATH houdai=1", text))
                     and no_inject)
     completion = "PASS P2_MUSE_LONGLEGS_WALK" in text
@@ -184,6 +197,7 @@ def validate(text, retail_root=None):
         no_inject=no_inject,
         houdai_death=houdai_death,
         session=session,
+        session_line=session_line,
         completion=completion,
     )
     # Slice gates on the walk evidence. The Houdai drain tail still runs in
