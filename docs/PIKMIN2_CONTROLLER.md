@@ -246,3 +246,19 @@ Unattended worker configurations should deny unknown external directories immedi
 
 
 Heavy assignment reservations pause only when a lane is `blocked`, `review_ready`, `handoff_ready`, or `done` and its worker and every protected lease process are confirmed stopped. This frees prospective build capacity for dependency producers; it does not release any actual resource lease, change worker ownership, complete an assignment, or accept evidence. Live or unknown workers and protected children retain their reservations. Actual build leases always count separately toward the shared cap, including multiple leases held by one lane, and resuming a heavy assignment must reserve capacity again.
+
+
+### Prepared work and queued planner reservations (#630)
+
+Ready backlog measures validated work independently of idle workers. The separate
+Ready awaiting worker card counts prepared items awaiting compatible capacity.
+The sole controller may yield a never-started planner reservation to prepared
+implementation, in the existing implementation priority order. This is a recorded
+cancellation before execution, not a completed plan or accepted slice. The helper
+partition remains eligible for a later cycle after its normal cooldown.
+
+Reclamation requires generation 1, ready state, confirmed stopped inherited
+process, no execution evidence, no claims or leases, and compatible worker roles
+and capabilities. Any launch attempt, binding, process or launch-directory artifact
+prevents reclamation; normal recovery handles uncertain startup. Running helpers
+finish normally. Implementation takes the released worker before helper refill.

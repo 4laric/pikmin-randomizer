@@ -32,7 +32,7 @@ def render_dashboard(report):
     planning = autofill.get('planner_pool', {})
     cards.append(('Planning helpers active / target',
                   str(planning.get('active', 0)) + ' / ' + str(planning.get('target', 0))))
-    for label, key in (('Ready backlog', 'ready_count'), ('Active enemy work', 'active_enemy_count'),
+    for label, key in (('Ready backlog', 'ready_count'), ('Ready awaiting worker', 'awaiting_worker_count'), ('Active enemy work', 'active_enemy_count'),
                        ('Idle authorized workers', 'idle_workers_count')):
         value = autofill.get(key)
         cards.append((label, str(value) if type(value) is int and value >= 0 else 'Unavailable'))

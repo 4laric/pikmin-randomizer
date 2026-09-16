@@ -342,7 +342,7 @@ class SchedulingMixin:
         with self.transaction() as state:
             data = self.scheduling(state)
             previous = self.lane(state, previous_lane)
-            require(previous['state'] == 'done' and (previous.get('integration') or previous.get('review_disposition')),
+            require(previous['state'] == 'done' and (previous.get('integration') or previous.get('review_disposition') or previous.get('cancelled_before_start')),
                     'Previous slice must have an applied disposition')
             require(previous['owner'] == record['owner'], 'Pool provisioning cannot change implementation owner')
             require(previous['worker_id'] in data['workers'], 'Worker is not authorized for pool reuse')

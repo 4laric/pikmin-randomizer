@@ -121,7 +121,7 @@ def _workers(reg, state, spec=None):
                for a in state.get('control', {}).get('launches', {}).values()):
             continue
         latest = max(lanes, key=lambda l: (l['created_at'], l['lane']))
-        if latest.get('integration') or latest.get('review_disposition'):
+        if latest.get('integration') or latest.get('review_disposition') or latest.get('cancelled_before_start'):
             candidates.append(latest)
     return sorted(candidates, key=lambda l: (l['worker_id'], l['lane']))
 
@@ -133,6 +133,7 @@ def autofill_status(reg):
         data['ready_count'] = sum(i.get('ready', False) and
             (i['lane'] not in state['lanes'] or (state['lanes'][i['lane']]['state'] == 'ready' and
              reg.recovery_safe(state, state['lanes'][i['lane']]))) for i in data['items'].values())
+        data['awaiting_worker_count'] = sum(bool(i.get('ready') and i.get('awaiting_worker')) for i in data['items'].values())
         data['pending_count'] = sum(i.get('phase') == 'pending' for i in data['items'].values())
         data['active_enemy_lanes'] = active_enemy_lanes(state, data['items'])
         data['active_enemy_count'] = len(data['active_enemy_lanes'])
@@ -289,6 +290,7 @@ def _refresh_readiness(controller, items, issue_reader):
             with reg.transaction() as state:
                 item = _state(state)['items'][identity]
                 item['ready'] = False
+                item['awaiting_worker'] = False
                 require(item['spec_hash'] == fingerprint(spec), 'Previously published spec changed')
                 if item['status'] == 'completed':
                     continue
@@ -309,7 +311,6 @@ def _refresh_readiness(controller, items, issue_reader):
                     require(item.get('previous_lane') == lane.get('previous_lane'), 'Lane is not this refill item')
                     require(launch_files_unchanged(reg, _launch(spec)), 'Launch files changed')
                 else:
-                    require(_workers(reg, state, spec), 'No eligible authorized stopped worker')
                     _check_conflicts(controller, state, spec)
                 if spec.get('heavy') and not state.get('build_capacity', {}).get('lease_only'):
                     held = [v for r,v in state['leases'].items() if reg.heavy(r)]
@@ -323,7 +324,9 @@ def _refresh_readiness(controller, items, issue_reader):
                 validate_spec(reg, spec, issue_reader, verified=verified)
             with reg.transaction() as state:
                 item = _state(state)['items'][identity]
-                item.update(ready=True, reason=None, status='queued' if lane else 'pending', updated_at=reg.clock())
+                waiting = lane is None and not _workers(reg, state, spec)
+                item.update(ready=True, awaiting_worker=waiting, reason='Awaiting compatible worker' if waiting else None,
+                            status='queued' if lane else 'pending', updated_at=reg.clock())
                 if lane is None and not verified:
                     item['readiness_verified_at'] = reg.clock()
         except (Rejected, OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.SubprocessError) as exc:
@@ -442,12 +445,15 @@ def autofill_tick(controller, *, issue_reader=github_issue):
                     data['items'][identity].update(status='completed', ready=False, updated_at=reg.clock())
         if not controller.capacity() or not 0 <= controller.memory() < 90:
             return
+        _refresh_readiness(controller, items, issue_reader)
         admitted = False
         from .queue_pressure import dependents
         lanes=reg.status()['lanes']
         for spec in sorted(items, key=lambda i: (PRIORITIES.get(i.get('priority'), 99),
                 -dependents(lanes,i['lane']['lane'],i['lane']['issue']),i['id'])):
             try:
+                from .planner_reclaim import reclaim_for
+                reclaim_for(controller, spec)
                 if _prepare(controller, spec, issue_reader):
                     admitted = True
                     break  # At most one newly provisioned slice per tick.

@@ -98,6 +98,7 @@ def tick(controller, settings, issue_reader):
                demanded(h)]
     # Receiving a report accepts no proposed implementation or gameplay gate.
     for scope, record in records.items():
+        if record.get('cancelled_before_start'): continue
         lane = reg.status()['lanes'].get(record['spec']['lane']['lane'])
         if lane and lane['state'] == 'review_ready':
             with reg.transaction() as state:
