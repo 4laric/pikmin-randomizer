@@ -12,9 +12,12 @@ New-Item -ItemType Directory -Force -Path $outputPath | Out-Null
 $failures = 0
 while (-not (Test-Path -LiteralPath $stopPath)) {
   $arguments = @("`"$implementation`"", '--root', "`"$WorkspaceRoot`"", '--config', "`"$Config`"")
-  $child = Start-Process -FilePath $Python -ArgumentList $arguments -PassThru -Wait -WindowStyle Hidden `
+  $child = Start-Process -FilePath $Python -ArgumentList $arguments -PassThru -WindowStyle Hidden `
     -RedirectStandardOutput (Join-Path $outputPath 'controller.stdout.log') `
     -RedirectStandardError (Join-Path $outputPath 'controller.stderr.log')
+  # Start-Process -Wait waits for descendants too (including independent agents).
+  # Wait only for the controller so a crash can be reconciled while its workers live.
+  $child.WaitForExit()
   if ($child.ExitCode -eq 0) { break }
   $failures += 1
   Start-Sleep -Seconds ([Math]::Min(300, 15 * $failures))
