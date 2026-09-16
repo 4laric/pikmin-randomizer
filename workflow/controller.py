@@ -241,6 +241,9 @@ class Controller:
             if identity in self.reg.control_status()['decisions']: continue
             current = self.reg.status()['lanes'].get(key)
             offered = packet['lanes'].get(key)
+            if any(j['lane'] == key and j['status'] == 'stopping'
+                   for j in self.reg.control_status().get('provider_recoveries', {}).values()):
+                continue  # Deterministic recovery owns this process transition.
             if current and current['state'] == 'done':
                 with self.reg.transaction() as state:
                     c = self.reg.control(state)
@@ -380,6 +383,8 @@ class Controller:
         return decisions
 
     def tick(self):
+        from .provider_recovery import recover
+        recover(self)
         self.receipts(); self.complete_runs(); self.dependencies(); self.observe()
         # Complete a previously bound launch after a crash before writing start.json.
         for item in self.reg.control_status()['launches'].values():

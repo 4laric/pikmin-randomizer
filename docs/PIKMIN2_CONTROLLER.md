@@ -129,7 +129,40 @@ replacement even if its parent disappeared.
 Pre-tool rate limiting cools down the provider globally (default 15 minutes) and
 falls back through the configured model chain in the same session after the old
 process stops. Once tools have run, the controller does not kill the process to
-switch providers. Every attempted endpoint is tried at most once in that chain.
+switch providers unless the guarded idle-provider recovery below is enabled.
+Every attempted endpoint is tried at most once in that chain.
+
+### Provider stalls after completed tools (#510)
+
+Enable this Windows controller policy to recover the idle-after-rate-limit case:
+
+```json
+"provider_stall_recovery": {
+  "enabled": true,
+  "quiet_seconds": 180,
+  "max_attempts_per_head": 2,
+  "models": ["opencode-go/muse-spark-1.3-contributor"]
+}
+```
+
+The controller requires a timestamped rate-limit error newer than the last JSON
+event, a completed step and completed/error tool records, and at least three
+minutes without new events. It verifies exact process identities, enumerates
+descendants, and refuses to stop any owner with a live/unknown resource lease or
+any child other than the known supervisor/worker and console hosts. It repeats
+activity and descendant checks before each stop. Unknown inspection fails closed.
+This is recovery at an observed idle boundary, not permission to interrupt tools.
+
+The policy covers both registered legacy supervisors and managed runner children.
+It journals intent before stopping supervisors and then the worker, verifies their
+death on a later tick, and queues the same OpenCode session and private worktrees
+on the configured paid endpoint. Windows termination validates creation time on
+the same process handle used for termination. Controller restarts replay the
+journal; the shepherd cannot override an in-progress recovery. Two automatic
+recoveries per recorded source head exhaust the budget and leave an attention
+notice. Handoffs, completed lanes, and blocked review outcomes are never restarted.
+Inspect `control.provider_recoveries` for the evidence, identities and replacement
+launch. This policy is Windows-specific; other hosts require a process adapter.
 
 The smart shepherd wakes for changed notices, at most once every two minutes, with
 one active invocation. Three failed calls for an unchanged event set open a circuit
@@ -152,7 +185,7 @@ recovery. Deployment can use a pinned tooling checkout against the canonical reg
 Validation:
 
 ```powershell
-py -3.12 -m unittest tests.test_pikmin2_workflow tests.test_pikmin2_controller tests.test_pikmin2_fixture_build -q
+py -3.12 -m unittest tests.test_pikmin2_workflow tests.test_pikmin2_controller tests.test_pikmin2_fixture_build tests.test_provider_recovery -q
 ```
 
 Tests inject duplicate events, stale generations/decisions, missing terminal outcomes,
