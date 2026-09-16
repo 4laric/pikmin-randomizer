@@ -94,7 +94,7 @@ observed 960x540 centered window, live squad, active gameplay, no extinction.
 ## Runtime evidence (private real-GL, 960x540)
 
 Accepted run `output/muse-wave/l64/run-1aba5b04b/host.log` (sha256
-`2e9ada21838d0d903d0926fe6f6bcb1db56c178af40722a14716376f57c1ee04`;
+`85683dcb3f935276d54dfc128f2bcf382f347f555b0b6ce18eeec211e3ead7f0`;
 log-line citations below are into this file):
 
 - `:7` standard centered-window line; `:236` live 20-red squad.
