@@ -242,7 +242,7 @@ class ControllerTests(unittest.TestCase):
 
     def test_real_runner_waits_for_registration_and_rejects_duplicate(self):
         directory=self.root/'output/runner';directory.mkdir()
-        (self.root/'run').write_text("import json\nprint(json.dumps({'type':'step_start','sessionID':'known-session'}))\n")
+        (self.root/'run').write_text("import json\nprint(json.dumps({'type':'step_start','sessionID':'known-session'}))\nprint(json.dumps({'type':'text','part':{'text':'[]'}}))\n")
         proc=subprocess.Popen([sys.executable,'-m','workflow.runner',str(directory)],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
         self.addCleanup(lambda: proc.kill() if proc.poll() is None else None)
         for _ in range(50):
@@ -251,9 +251,10 @@ class ControllerTests(unittest.TestCase):
         self.assertTrue((directory/'runner.json').exists())
         self.assertFalse((directory/'child.json').exists())
         write(directory/'start.json',dict(executable=sys.executable,worktree=str(self.root),config=str(self.log),
-            model='fake/model',session='known-session',prompt='test',action_id='test'))
+            model='fake/model',session='known-session',prompt='test',action_id='test',read_only_shepherd=True))
         _,err=proc.communicate(timeout=15);self.assertEqual(proc.returncode,0,err)
         result=json.loads((directory/'result.json').read_text());self.assertEqual(result['session'],'known-session')
+        self.assertEqual(json.loads((directory/'decisions.json').read_text()),[])
         replay=subprocess.run([sys.executable,'-m','workflow.runner',str(directory)],capture_output=True,timeout=15)
         self.assertNotEqual(replay.returncode,0)
         self.assertEqual(json.loads((directory/'result.json').read_text()),result)
