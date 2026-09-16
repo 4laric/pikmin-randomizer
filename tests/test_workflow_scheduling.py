@@ -199,6 +199,50 @@ class SchedulingTests(unittest.TestCase):
         with self.assertRaises(Rejected):
             self.reg.set_workstream('p2', 'owner', ['invented'])
 
+    def prepare_second_heavy_worker(self):
+        self.reg.enqueue_job(self.job(heavy=True))
+        first=self.reg.assign_job('one',60)
+        self.add_lane('two')
+        self.reg.register_pool_worker('two',['review'],['python'],'orchestrator')
+        self.reg.enqueue_job(self.job('two',heavy=True))
+        return first
+
+    def test_stopped_blocked_heavy_assignment_does_not_deadlock_producer(self):
+        first=self.prepare_second_heavy_worker()
+        with self.reg.transaction() as state:
+            state['lanes']['one'].update(state='blocked',dependencies=['two'])
+        self.assertIsNotNone(self.reg.assign_job('two',60))
+        assignment=self.reg.scheduling_status()['assignments'][first['id']]
+        self.assertEqual(assignment['status'],'assigned')
+        self.assertEqual(self.reg.status()['lanes']['one']['worker_id'],'one')
+        self.assertFalse(self.reg.status()['leases'])
+        with self.reg.transaction() as state:
+            state['lanes']['one']['dependencies']=[]
+        with self.assertRaises(Rejected):
+            self.reg.plan_assignment(first['id'],['paid/muse'],60)
+
+    def test_live_blocked_and_unknown_protected_child_keep_heavy_reservation(self):
+        self.prepare_second_heavy_worker()
+        for health in ('alive','unknown'):
+            with self.reg.transaction() as state:
+                state['lanes']['one'].update(state='blocked',dependencies=['two'])
+                state['lanes']['one']['process']['health']=health
+            self.assertIsNone(self.reg.assign_job('two',60))
+        with self.reg.transaction() as state:
+            state['lanes']['one']['process']['health']='dead'
+            state['leases']['shared-runtime']={'lane':'one','process':{'health':'unknown'}}
+        self.assertIsNone(self.reg.assign_job('two',60))
+
+    def test_two_real_build_leases_still_exhaust_two_slot_budget(self):
+        self.prepare_second_heavy_worker()
+        with self.reg.transaction() as state:
+            state['settings']['max_heavy_builds']=2
+            state['lanes']['one'].update(state='blocked',dependencies=['two'])
+            state['leases']['build:a']={'lane':'one','process':{'health':'dead'}}
+            state['leases']['build:b']={'lane':'one','process':{'health':'dead'}}
+        self.assertIsNone(self.reg.assign_job('two',60))
+        self.assertEqual(len(self.reg.status()['leases']),2)
+
     def test_protected_child_and_dependencies_block_dispatch(self):
         assignment = self.claim()
         with self.reg.transaction() as state:

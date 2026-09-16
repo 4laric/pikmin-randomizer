@@ -288,6 +288,24 @@ class AutofillTests(unittest.TestCase):
         self.tick()
         self.assertIn('Invalid autofill manifest',autofill_status(self.reg)['last_manifest_error'])
 
+    def test_own_heavy_reservation_is_ready_then_reports_real_execution_state(self):
+        self.spec['heavy']=True;self.save([self.spec]);self.tick()
+        assignment=self.reg.assign_job('one',60)
+        self.assertIsNotNone(assignment)
+        self.tick()
+        item=autofill_status(self.reg)['items']['next']
+        self.assertTrue(item['ready'])
+        self.assertIsNone(item['reason'])
+        for state_name in ('running','waiting_resource','handoff_ready','review_ready'):
+            with self.reg.transaction() as state:
+                state['lanes']['next'].update(state=state_name,handoff_at=self.now)
+                state['throughput_runtime']['autofill']['items']['next'].update(status='blocked',reason='Heavy build slots full')
+            self.tick()
+            item=autofill_status(self.reg)['items']['next']
+            self.assertEqual(item['status'],state_name)
+            self.assertIsNone(item['reason'])
+            self.assertFalse(item['ready'])
+
     def test_invalid_json_wakes_fenced_planner_for_repair(self):
         self.planner();self.manifest.write_text('{invalid json')
         self.tick();self.tick()

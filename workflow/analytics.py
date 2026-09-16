@@ -97,7 +97,7 @@ def throughput_metrics(state, now, window_seconds=3600):
                            basis='reported spend in window / integrated implementation slices; unreported spend unknown'))
 
 
-def staffing_recommendations(state, now, ram_percent=None, ram_ceiling_percent=90):
+def staffing_recommendations(state, now, ram_percent=None, ram_ceiling_percent=90, *, process_probe=None):
     finite_number(now, 'now', minimum=0)
     finite_number(ram_ceiling_percent, 'ram_ceiling_percent', minimum=0)
     require(ram_ceiling_percent <= 100, 'RAM ceiling exceeds 100')
@@ -120,8 +120,8 @@ def staffing_recommendations(state, now, ram_percent=None, ram_ceiling_percent=9
             roles[role] = roles.get(role, 0) + 1
     heavy_leases = [lease for resource, lease in state.get('leases', {}).items() if _heavy(resource)]
     leased_lanes = {lease.get('lane') for lease in heavy_leases}
-    reservations = {a.get('lane') for a in state.get('throughput', {}).get('assignments', {}).values()
-                    if a.get('heavy') and a.get('status') in ('assigned', 'dispatched')}
+    from .scheduling import pending_heavy_lanes
+    reservations = pending_heavy_lanes(state, state.get('throughput', {}), process_probe)
     occupied = len(heavy_leases) + len(reservations - leased_lanes)
     cap = state.get('settings', {}).get('max_heavy_builds', 0)
     slots = max(0, cap - occupied) if _number(cap) else None

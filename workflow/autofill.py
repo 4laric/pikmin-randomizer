@@ -12,6 +12,7 @@ import subprocess
 from .control import fingerprint
 from .handoff import Rejected, digest, local_path, require, source_record
 from .runner import write
+from .scheduling import pending_heavy_lanes
 
 PRIORITIES = {'enemy_acceptance': 0, 'existing_content': 1, 'expansion': 2}
 
@@ -194,9 +195,11 @@ def _prepare(controller, spec, issue_reader):
         require(owner['state'] != 'done' and reg.probe(owner['process']) == 'alive', 'Integration owner unavailable')
         if spec['heavy']:
             held = [v for r, v in state['leases'].items() if reg.heavy(r)]
-            pending = {a['lane'] for a in pool['assignments'].values() if a['status'] in ('assigned', 'dispatched') and a['heavy']}
+            pending = pending_heavy_lanes(state, pool, reg.probe)
             pending.difference_update(v['lane'] for v in held)
-            require(len(held) + len(pending) < state['settings']['max_heavy_builds'], 'Heavy build slots full')
+            own = spec['lane']['lane'] in (pending | {v['lane'] for v in held})
+            required = len(held) + len(pending) + (0 if own else 1)
+            require(required <= state['settings']['max_heavy_builds'], 'Heavy build slots full')
         if not item.get('previous_lane'):
             require(spec['lane']['lane'] not in state['lanes'], 'Lane already exists outside this refill')
             _check_conflicts(controller, state, spec)
@@ -277,6 +280,12 @@ def _refresh_readiness(controller, items, issue_reader):
                 require(item['spec_hash'] == fingerprint(spec), 'Previously published spec changed')
                 if item['status'] == 'completed':
                     continue
+                lane = state['lanes'].get(item['lane'])
+                if lane is not None and item.get('previous_lane') == lane.get('previous_lane') and lane['state'] != 'ready':
+                    item.update(status={'done': 'completed'}.get(lane['state'], lane['state']),
+                                reason=lane.get('next_action') if lane['state'] in ('blocked', 'reconciling') else None,
+                                updated_at=reg.clock())
+                    continue
                 stream = reg.scheduling(state)['workstreams'].get(spec.get('workstream'))
                 require(stream is not None, 'No integration owner')
                 owner = reg.lane(state, stream['owner_lane'])
@@ -292,10 +301,11 @@ def _refresh_readiness(controller, items, issue_reader):
                     _check_conflicts(controller, state, spec)
                 if spec.get('heavy'):
                     held = [v for r,v in state['leases'].items() if reg.heavy(r)]
-                    pending = {a['lane'] for a in reg.scheduling(state)['assignments'].values()
-                               if a['status'] in ('assigned','dispatched') and a['heavy']}
+                    pending = pending_heavy_lanes(state, reg.scheduling(state), reg.probe)
                     pending.difference_update(v['lane'] for v in held)
-                    require(len(held)+len(pending) < state['settings']['max_heavy_builds'], 'Heavy build slots full')
+                    own = lane is not None and lane['lane'] in (pending | {v['lane'] for v in held})
+                    required = len(held) + len(pending) + (0 if own else 1)
+                    require(required <= state['settings']['max_heavy_builds'], 'Heavy build slots full')
                 verified = item['status'] != 'blocked' and item.get('readiness_verified_at') is not None and reg.clock()-item['readiness_verified_at'] < 86400
             if lane is None:
                 validate_spec(reg, spec, issue_reader, verified=verified)

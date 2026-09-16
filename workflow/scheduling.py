@@ -24,6 +24,31 @@ def job_priority(job):
             job.get('queued_at', 0), job['id'])
 
 
+def pending_heavy_lanes(state, pool, process_probe=None):
+    """Execution reservations only; real build leases are always counted separately.
+
+    A stopped terminal-for-build slice retains its worker/assignment ownership,
+    but must not reserve scarce build capacity while awaiting another producer.
+    Unknown execution or protected children remain conservative reservations.
+    """
+    if process_probe is None:
+        from .processes import probe
+        process_probe = probe
+    pending = set()
+    for assignment in pool.get('assignments', {}).values():
+        if not assignment.get('heavy') or assignment.get('status') not in OPEN:
+            continue
+        key = assignment['lane']
+        lane = state.get('lanes', {}).get(key, {})
+        stopped_terminal = (lane.get('state') in ('blocked', 'review_ready', 'handoff_ready', 'done') and
+            process_probe(lane.get('process', {})) == 'dead' and
+            all(process_probe(lease.get('process', {})) == 'dead' for lease in state.get('leases', {}).values()
+                if lease.get('lane') == key))
+        if not stopped_terminal:
+            pending.add(key)
+    return pending
+
+
 class SchedulingMixin:
     @staticmethod
     def scheduling(state):
@@ -159,7 +184,7 @@ class SchedulingMixin:
                 # Count each assigned lane once even after it acquires its build lease.
                 heavy_leases = [v for r, v in state['leases'].items() if self.heavy(r)]
                 heavy_lanes = {v['lane'] for v in heavy_leases}
-                pending = {a['lane'] for a in data['assignments'].values() if a['status'] in OPEN and a['heavy']}
+                pending = pending_heavy_lanes(state, data, self.probe)
                 pending.difference_update(heavy_lanes)
                 if job['heavy'] and lane['lane'] not in heavy_lanes and len(heavy_leases) + len(pending) >= state['settings']['max_heavy_builds']:
                     continue
@@ -247,7 +272,8 @@ class SchedulingMixin:
         self.check_wip(state, lane)
         if item['heavy']:
             leases = [v for r, v in state['leases'].items() if self.heavy(r)]
-            pending = {a['lane'] for a in data['assignments'].values() if a['status'] in OPEN and a['heavy']}
+            pending = pending_heavy_lanes(state, data, self.probe)
+            pending.add(lane['lane'])  # This validation intends to resume heavy work.
             pending.difference_update(v['lane'] for v in leases)
             require(len(leases) + len(pending) <= state['settings']['max_heavy_builds'], 'Heavy-build capacity exhausted')
         return item
