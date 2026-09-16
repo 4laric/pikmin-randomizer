@@ -157,18 +157,15 @@ def prepare(assets, imported, output):
     from experimental.pikmin2_batch2_core import prepare as _prepare
     from experimental.pikmin2_batch2_core import install, verify_install
     from experimental.pikmin2_sokkuri_behavior import normalize_pose_names
-    from experimental.pikmin2_mamuta_rules import (
-        find_pod_package, load_pod_package, stage_cargo)
     cfg = sokkuri_only_cfg()
     run = _prepare(cfg, Path(assets), Path(imported), Path(output),
                    installer=functools.partial(install, cfg),
                    verifier=functools.partial(verify_install, cfg))
     normalize_pose_names(run)
-    package = find_pod_package([
-        Path(os.environ.get("PIKMIN_P2_POD_PACKAGE", "")),
-        Path(__file__).resolve().parents[2] / "dsw" / "l19-out" / "pod",
-    ])
-    stage_cargo(run, Path(assets), package)
+    # Cargo-free on purpose (#578): staging the Pod would make
+    # pc_p2_preview_deliver claim the Sokkuri corpse as corpse:<gen> before
+    # GoalItem::suckMe, so the randomizer ordinary endpoint would never run.
+    # The room's Red container still exists as the carriers' goal.
     return run
 
 
@@ -182,7 +179,21 @@ def instrument(source, app=None):
     end = source.index("int main(", start)
     includes = ('#include <cstring>\n#include "Generator.h"\n#include "pc_p2_sokkuri.h"\n'
                 '#include "pc_p2_preview.h"\n#include "pc_randomizer.h"\n#include "ItemMgr.h"\n')
-    return includes + source[:start] + app + source[end:]
+    spliced = includes + source[:start] + app + source[end:]
+    # #578: the room preview's pc_bbft_init takes the lane-03 bridge-only path
+    # (pc_randomizer_p2_room_bootstrap: bindings only, no session, "the preview
+    # never holds"), so pc_randomizer_init is never reached and
+    # pc_randomizer_p2_corpse_delivered can never grant. This replacement-main
+    # fixture enables the full session itself from the SAME argv, before
+    # gsys->run(), so the real ordinary Onion endpoint is live in the room.
+    anchor = "pc_bbft_init(argc,argv);"
+    if spliced.count(anchor) != 1:
+        raise ValueError("expected exactly one pc_bbft_init call in main")
+    spliced = spliced.replace(
+        anchor,
+        anchor + "if(!pc_randomizer_enabled())pc_randomizer_init(argc,argv);",
+        1)
+    return spliced
 
 
 def build(native, build_dir, output, head, fixture_cpp, resume=False):
@@ -263,6 +274,10 @@ def run_once(session, assets, imported, output, exe, seconds, label):
     arena = prepare(Path(assets), Path(imported), Path(output))
     (arena / "bootstrap.txt").write_text(
         (native_run.directory / "bootstrap.txt").read_text())
+    # pc_randomizer_init validates state.txt immediately; write it once
+    # synchronously so ready is true from the first frame, then keep it fresh.
+    atomic_write(arena / "state.txt",
+                 session.native_state(native_run.token, True))
     done = threading.Event()
 
     def refresh():
