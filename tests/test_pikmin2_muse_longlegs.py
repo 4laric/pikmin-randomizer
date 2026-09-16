@@ -51,6 +51,14 @@ def test_missing_walk_end_fails_walk_gate():
     assert result['gates']['houdai_death'] == 'pass'
 
 
+def test_short_full_speed_walk_passes():
+    # run4 shape: Flick-interrupted Walk, 38.5u in 0.16s (~240 u/s, source 250).
+    log = GOOD_LOG.replace('distance=120.0 seconds=0.60', 'distance=38.5 seconds=0.16')
+    result = validate(log)
+    assert result['passed'] is True
+    assert result['gates']['walk_translation'] == 'pass'
+
+
 def test_pinned_walk_fails_translation():
     log = GOOD_LOG.replace('distance=120.0 seconds=0.60', 'distance=0.0 seconds=3.50')
     result = validate(log)

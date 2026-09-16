@@ -44,8 +44,11 @@ BIGFOOT_GEN = 312002
 # Source disc speeds carried by the owned FSM policy (p2LongLegsParmsFor).
 SOURCE_SPEED = {'Houdai': 250.0, 'BigFoot': 70.0, 'Damagumo': 100.0}
 # Minimum real displacement per Walk that counts as autonomous translation.
-# Houdai covers 50 units in 0.2 s at source speed; anything below is staging noise.
-MIN_WALK_DISTANCE = 50.0
+# A Walk ends early — and source-correctly — the moment Pikmin accumulate within
+# 60u (Flick interrupt), so a full-speed walk can be short: 25u still exceeds any
+# staging jitter and the speed-budget check below rejects teleports. run4 proved
+# 38.5u in 0.16s (240 u/s ~= source 250) on a Flick-interrupted Walk.
+MIN_WALK_DISTANCE = 25.0
 
 WALK_RE = re.compile(
     r'P2_LONG_LEGS_WALK species=(\w+) generator=(\d+) '
