@@ -7,9 +7,12 @@ host log for:
 
 - autonomous P1-proxy movement sampling (displacement + native-velocity
   frames; P2 FSM motion is absent and is never claimed),
-- a natural squad kill: free-mode reds ringed around the actor, health falls
-  through the real receiver path with zero fixture health writes and no
-  ``die()`` call (any ``P2_MUSE_BREADBUG_INJECTED`` marker fails the gate),
+- a natural squad kill: captain-thrown reds through the real Navi::throwPiki
+  player-controller event path; health falls through the real receiver path
+  with zero fixture health writes and no ``die()`` call (any
+  ``P2_MUSE_BREADBUG_INJECTED`` marker fails the gate). A prior free-mode
+  ring revision dealt zero damage in 2400 ticks, so idle pursuit is not
+  claimed; thrown Pikmin latch through ordinary engine behavior.
 - death-funnel cleanup: the family ``P2_BREADBUG_ACTOR_FORGET`` marker with
   ``dead_state>=1`` (BTeki::doKill -> pc_p2_forget_teki, not slot reuse),
 - corpse: live pellet(s) bound to the dead actor (``mPellet`` at
@@ -36,7 +39,7 @@ GENERATOR = 186081
 CONTROL = 186082
 
 SCOPE = ('Breadbug38 natural lifecycle: P1-proxy movement sample, natural '
-         'free-mode squad kill, death-funnel forget, corpse pellet, generator '
+         'captain-thrown red kill, death-funnel forget, corpse pellet, generator '
          'rebirth re-registration without manager recreation; P2 FSM motion, '
          'cargo contest and transport reward are lane-18 accepted behavior '
          'preserved by reference, not re-claimed here')
