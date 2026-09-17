@@ -95,3 +95,40 @@ No shared parser/schema, species, native, admission or other-lane edits.
 
 P0 implementation packet reviewed and tested. Full content acceptance and
 dependencies stay OPEN. No claim of playability. No ADMIT.
+## P1 runtime import (floor-1, issue #561)
+
+P1 extends the P0 adapter in place (P0 sections above unchanged) with a
+runtime import path for the single floor:
+
+- Actual retail `ch_MAT_route_rover.txt` bytes re-extracted from the local
+  legal ISO and hash-verified against the inventory pin
+  (`e03eb33a...ea12cb79`, 1123 bytes). Decoded floor roster: KumaChappy x3
+  (weight 10/type 1 each, roster minimum 1 each), KumaKochappy x2 (weight 20/
+  type 0 each, minimum 2 each); treasures diamond_red, diamond_red_l,
+  diamond_green_l, flask (weight 10 each); unit pool
+  `1_units_bunki_2_tile.txt` (7 units, all arc/texts assets present).
+- Starting squad positional from the pinned matrix: species 0/1/2
+  (Blue/Red/Yellow per the framework COLORS order) x 20 flower each, 60
+  total; 90 s floor timer; 2 bitter + 2 spicy sprays.
+- Staged run layout: `p2-cave-entry.txt` (60 restore lines),
+  `p2-cave-generate.txt` (pool + 7 units, one 7x7 room, zero doors/links,
+  spawns KumaChappy 3 + KumaKochappy 4, anchor hole as a staged marker-only
+  choice), markers template with `P2_ROUTE_ROVER_*` lines, run-config.json.
+- Runtime evidence (hashed logs under the lane output dir): private leased
+  build with provenance + Ninja no-work, fresh arena with live squad,
+  observed 960x540 centred window, generate/restore/nav markers parsed with
+  `p1_parse_markers` (absent markers stay absent, never defaulted).
+- Captain safety #632 adopted: canonical `scripts/p2_fixture_captain_guard.h`
+  recorded by hash; orimaDead/deadState/HP<=1 checks with CAPTAIN_DOWN +
+  BLOCKED exit policy; captain parked (no input) during observation; no
+  blanket invincibility. Protected observations cannot prove captain damage.
+- Gates are PASS only where real markers prove them; everything else stays
+  UNTESTED (never upgraded from P0). No playability claim beyond observed
+  evidence; no ADMIT.
+
+## P1 remaining work
+
+Higher floors: none (single-floor stage). P2 persistence (save/reload,
+death/extinction, reentry, receipts, deterministic replay, no leakage),
+spray/receipt semantics, TheKey/hole/geyser completion, scoring and retry
+stay OPEN with owners #136/#137/#132/#140 and family lanes.
