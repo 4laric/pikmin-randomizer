@@ -174,6 +174,29 @@ class TestPayloadObserver(unittest.TestCase):
         self.assertFalse(v["gate3_blast_provider_linked"])
         self.assertFalse(v["stub_present"])
 
+    def test_joint_capture_completes_gate1_candidate(self):
+        text = (
+            "P2_BOMB_MGR_BIND generator=349005 source_id=36 visual_only=0\n"
+            "P2_BOMB_ENGINE_BIRTH generator=349005 source_id=36 slot=0 generation=1 "
+            "x=60.0 y=30.0 z=1850.0 health=150.0 engine_driven=1\n"
+            "[Pikipelago] P2_OTAKARA_JOINT_CAPTURE generator=349005 teki=3 joints=17\n"
+        )
+        v = self._validate(text)
+        self.assertEqual(list(v["engine_birth"]), ["349005"])
+        self.assertEqual(v["joint_capture"], {"349005": 17})
+        self.assertTrue(v["gate1_birth_joint_candidate"])
+        self.assertFalse(v["gate3_blast_provider_linked"])
+
+    def test_joint_absent_keeps_gate1_strict(self):
+        text = (
+            "P2_BOMB_ENGINE_BIRTH generator=349005 source_id=36 slot=0 generation=1 "
+            "x=60.0 y=30.0 z=1850.0 health=150.0 engine_driven=1\n"
+            "[Pikipelago] P2_OTAKARA_JOINT_ABSENT carriers=0\n"
+        )
+        v = self._validate(text)
+        self.assertTrue(v["joint_absent"])
+        self.assertFalse(v["gate1_birth_joint_candidate"])
+
     def test_cli_exit_codes(self):
         for text, code in ((REQUEST_ONLY, 2), (FUTURE_NATURAL, 0), (STUB_ONLY, 1)):
             path = _write_tmp(text)

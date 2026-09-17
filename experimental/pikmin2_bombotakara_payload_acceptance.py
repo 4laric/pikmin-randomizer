@@ -94,6 +94,9 @@ HIT_RE = re.compile(
     r"P2_BOMBOTAKARA_BOMB_HIT generator=(\d+) payload=(\d+) .*accepted=(\d+) .*interaction=InteractBomb natural=1")
 ENGINE_BIRTH_RE = re.compile(
     r"P2_BOMB_ENGINE_BIRTH generator=(\d+) source_id=(\d+) .*engine_driven=1")
+JOINT_CAPTURE_RE = re.compile(
+    r"P2_OTAKARA_JOINT_CAPTURE generator=(\d+) teki=(\d+) joints=(\d+)")
+JOINT_ABSENT_RE = re.compile(r"P2_OTAKARA_JOINT_ABSENT carriers=0")
 MGR_BIND_RE = re.compile(
     r"P2_BOMB_MGR_BIND generator=(\d+) source_id=(\d+)")
 ATTACH_L61_RE = re.compile(
@@ -121,6 +124,8 @@ def validate(path: str | Path) -> dict:
         "accepted_provider": {},
         "engine_birth": {},
         "mgr_bind": {},
+        "joint_capture": {},
+        "joint_absent": False,
     }
     try:
         lines = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
@@ -158,6 +163,11 @@ def validate(path: str | Path) -> dict:
         m = MGR_BIND_RE.search(line)
         if m:
             verdict["mgr_bind"][m.group(1)] = m.group(2)
+        m = JOINT_CAPTURE_RE.search(line)
+        if m and int(m.group(3)) >= 1:
+            verdict["joint_capture"][m.group(1)] = int(m.group(3))
+        if JOINT_ABSENT_RE.search(line):
+            verdict["joint_absent"] = True
         m = DETONATED_RE.search(line)
         if m:
             gen = m.group(1)
@@ -193,6 +203,10 @@ def validate(path: str | Path) -> dict:
     verdict["accepted_provider"] = accepted_provider_verdict("\n".join(lines))
     verdict["gate1_attach_provider_linked"] = bool(
         verdict["captured_attached"]) and not verdict["injected"]
+    verdict["gate1_birth_joint_candidate"] = bool(
+        verdict["engine_birth"] and verdict["joint_capture"]
+        and set(verdict["engine_birth"]) & set(verdict["joint_capture"])
+        and not verdict["injected"] and not verdict["stub_present"])
     verdict["gate3_blast_provider_linked"] = bool(
         verdict["blast_natural"] and verdict["hit_natural"]
         and not verdict["exactly_once_violations"]
@@ -211,6 +225,9 @@ def main(argv: list) -> int:
         verdict["stub_present"], len(verdict["injected"])))
     print("engine_birth=%s mgr_bind=%s" % (
         sorted(verdict["engine_birth"]), verdict["mgr_bind"]))
+    print("joint_capture=%s joint_absent=%s gate1_birth_joint_candidate=%s" % (
+        verdict["joint_capture"], verdict["joint_absent"],
+        verdict.get("gate1_birth_joint_candidate")))
     print("gate1_provider_linked=%s gate3_provider_linked=%s" % (
         verdict["gate1_attach_provider_linked"],
         verdict["gate3_blast_provider_linked"]))
