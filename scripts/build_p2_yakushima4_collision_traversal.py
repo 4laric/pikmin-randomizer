@@ -452,13 +452,15 @@ def phase_configure(native, build, ninja_dir, log_path):
           "-DCMAKE_C_COMPILER=gcc", "-DCMAKE_CXX_COMPILER=g++",
           "-DCMAKE_MAKE_PROGRAM=" + str(Path(ninja_dir) / "ninja.exe"),
           "-DCMAKE_BUILD_TYPE=Release", "-DPIKMIN_NATIVE_JAUDIO=ON",
-          "-DPIKMIN_NATIVE_OPTIMIZE=OFF"]],
+          "-DPIKMIN_NATIVE_OPTIMIZE=OFF",
+          "-DP2_CHALLENGE_GUARD_INCLUDE_DIR="
+          + str(CANONICAL_ROOT / "scripts")]],
         native, log_path, env=child_env(ninja_dir))
 
 
 def phase_build(build, log_path, ninja_dir):
     build = Path(build)
-    code = run_under_lease(
+    return run_under_lease(
         "build:" + str(build.resolve()),
         [["cmake", "--build", str(build), "--target", "pikmin_pc", "-j", "6"],
          ["cmake", "--build", str(build), "--target", "pikmin_pc",
