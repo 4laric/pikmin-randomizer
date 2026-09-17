@@ -493,6 +493,7 @@ def phase_single_tu(native, build, log_path, ninja_dir):
     compile_args, _link, _main, _objects = builder.select_commands(
         commands, native, build)
     args = builder.fixture_compile(compile_args, fixture, output, native)
+    args.append("-I" + str(resolve_guard().parent))
     proc = subprocess.run(
         args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
         encoding="utf-8", errors="replace", timeout=600,
@@ -559,8 +560,9 @@ def source_hashes(caveinfo, units):
 
 
 def phase_guardcheck(exe, compiler, guard_dir, log_path, expected_links_rows,
-                     expected_counts):
-    code, text = run_exe(exe)
+                     expected_counts, staging=None):
+    code, text = run_exe(exe, argv=("--units=" + UNITS_STAGE_NAME,),
+                         cwd=staging)
     verdict = interpret_exit(code, text, expected_links_rows, expected_counts)
     if verdict["verdict"] != "pass":
         raise RuntimeError("Live self-test failed: "
@@ -709,9 +711,11 @@ def main(argv=None):
             expected_counts = expected_traversal(units_text)
             compiler = Path("C:/msys64/mingw64/bin/g++.exe")
             guard = resolve_guard(args.guard_dir)
+            staging = stage_units(out, units)
             code = phase_guardcheck(exe, compiler, guard.parent,
                                     out / "guardcheck.log",
-                                    expected_links_rows, expected_counts)
+                                    expected_links_rows, expected_counts,
+                                    staging=staging)
         elif phase == "run":
             if exe is None:
                 raise SystemExit("run needs --exe or a prior fixture phase")
