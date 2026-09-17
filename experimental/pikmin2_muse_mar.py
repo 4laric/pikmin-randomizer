@@ -125,7 +125,8 @@ def validate(text, code=0):
                      and 0.0 < drain_min < drain_start and drain_start > 0.0
                      and len(blows) >= 1)
     corpse = CORPSE_RE.search(text)
-    corpse_ok = bool(corpse) and (mar_generator is None or corpse.group(2) == mar_generator)
+    corpse_ok = (bool(corpse) and int(corpse.group(1)) >= 1
+                 and (mar_generator is None or corpse.group(2) == mar_generator))
     carry = [int(n) for n in CARRY_RE.findall(text)]
     receipt = RECEIPT_RE.search(text)
     same_generator_receipt = bool(receipt) and (mar_generator is not None
