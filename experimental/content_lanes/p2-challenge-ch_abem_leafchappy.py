@@ -18,6 +18,9 @@ P0 convention for the stage key). Nothing here boots an engine, spawns an
 actor, or claims a gate: runtime observation belongs to the guarded run,
 which reports exactly what it sees.
 """
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parents[2]))
 import hashlib
 import json
 from pathlib import Path
