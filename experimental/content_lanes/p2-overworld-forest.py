@@ -177,12 +177,23 @@ def main(argv=None):
                         help="path to extracted user/Abe/stages.txt")
     parser.add_argument("--output", type=Path, default=None,
                         help="write manifest JSON here (otherwise stdout)")
+    parser.add_argument("--p1-run", type=Path, default=None,
+                        help="stage the manifest into DIR and drive P1 boundaries")
     args = parser.parse_args(argv)
     if args.stages is None:
         raise SystemExit("missing prerequisite: " + MISSING_PREREQUISITE)
     raw = args.stages.read_bytes()
     text = raw.decode("shift_jis")
     manifest = build_manifest(text, sha256_bytes(raw))
+    if args.p1_run is not None:
+        staged = stage_p1_run(manifest, args.p1_run)
+        report = drive_session_boundaries(args.p1_run)
+        (args.p1_run / "boundary-report.json").write_text(
+            json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        for name, result in report["boundaries"].items():
+            print("%s: %s" % (name, result["verdict"]))
+        print("contract_source=%s" % report["contract_source"])
+        return 0
     payload = json.dumps(manifest, indent=2, sort_keys=True) + "\n"
     if args.output is None:
         print(payload, end="")
@@ -190,6 +201,176 @@ def main(argv=None):
         args.output.write_text(payload, encoding="utf-8")
     return 0
 
+
+
+# ---------------------------------------------------------------------------
+# P1 runtime import path (lane p2-overworld-forest-p1-surface-session, #149).
+#
+# Consumes the integrated generic contract surface-session-provider-contract
+# (#132, schema p2-surface-session-1) WITHOUT forking or vendoring it. The
+# loader resolves the checker from the live checkout when integrated there,
+# else byte-exact from the canonical git object store at the pinned
+# content-line commit (blob hash verified). When neither source can supply
+# it, callers get the exact pin gap (P1GapError), never invented semantics.
+# ---------------------------------------------------------------------------
+
+import copy
+import subprocess
+import types
+
+CONTENT_PIN = "3a6b34e38075a60c7f60de5e2add768e5efdc8b4"
+CONTRACT_PATH = "experimental/pikmin2_surface_session_contract.py"
+CONTRACT_BLOB_SHA256 = "3ba71fe92a8989180358cbb1617cf040e3ebf9a25aac1754cec25a1e192460f1"
+CONTRACT_SCHEMA = "p2-surface-session-1"
+CANONICAL_ROOT = Path("C:/Users/alari/pikmin-randomizer")
+
+P1_MISSING_CONTRACT = (
+    "p2-surface-session-1 checker unavailable: not integrated in this "
+    "checkout, and content pin 3a6b34e38075a60c7f60de5e2add768e5efdc8b4 "
+    "cannot supply experimental/pikmin2_surface_session_contract.py "
+    "(blob 3ba71fe92a8989180358cbb1617cf040e3ebf9a25aac1754cec25a1e192460f1)."
+)
+
+
+class P1GapError(ValueError):
+    """A P1 prerequisite pin cannot be supplied; nothing is invented."""
+
+
+def load_surface_contract():
+    """Resolve the real p2-surface-session-1 checker module (never a fork).
+
+    Returns (module, source) where source is "tree" or "pin:<commit>".
+    Raises P1GapError with exact pins when neither source can supply it.
+    """
+    try:
+        from experimental import pikmin2_surface_session_contract as live
+    except ImportError:
+        live = None
+    if live is not None and getattr(live, "SCHEMA", None) == CONTRACT_SCHEMA:
+        return live, "tree"
+    proc = subprocess.run(
+        ["git", "-C", str(CANONICAL_ROOT), "show",
+         "%s:%s" % (CONTENT_PIN, CONTRACT_PATH)],
+        capture_output=True)
+    if proc.returncode != 0:
+        raise P1GapError(P1_MISSING_CONTRACT)
+    blob = proc.stdout
+    if sha256_bytes(blob) != CONTRACT_BLOB_SHA256:
+        raise P1GapError(
+            "surface contract bytes drifted at pin %s; refusing substitute "
+            "semantics." % CONTENT_PIN)
+    module = types.ModuleType("pikmin2_surface_session_contract_pinned")
+    exec(compile(blob, CONTRACT_PATH, "exec"), module.__dict__)
+    if getattr(module, "SCHEMA", None) != CONTRACT_SCHEMA:
+        raise P1GapError("pinned contract has unexpected schema")
+    return module, "pin:" + CONTENT_PIN
+
+
+def boundary_scripts(manifest):
+    """Event scripts per boundary, grounded in manifest cave links."""
+    validate_manifest(manifest)
+    first_tag = manifest["cave_links"][0]["cave_tag"]
+    return {
+        "day_transition": [
+            {"type": "begin_day", "day": 2},
+            {"type": "sunset", "time_of_day": 1.0},
+            {"type": "save"},
+            {"type": "reload"},
+            {"type": "begin_day", "day": 3},
+        ],
+        "receipt_replay": [
+            {"type": "deliver_receipt", "identity": "cave:" + first_tag,
+             "slot": "surface:1", "encounter": "surface"},
+            {"type": "deliver_receipt", "identity": "cave:" + first_tag,
+             "slot": "surface:1", "encounter": "surface"},
+        ],
+        "exit_reentry": [
+            {"type": "exit_cave"},
+            {"type": "enter_cave", "cave_id": first_tag, "floor": 1},
+            {"type": "exit_cave", "cave_pokos": 0},
+            {"type": "enter_cave", "cave_id": first_tag, "floor": 1},
+        ],
+    }
+
+
+_EXPECTED_STEPS = {
+    "day_transition": [True, True, True, True, True],
+    "receipt_replay": [True, False],
+    "exit_reentry": [False, True, True, True],
+}
+
+
+def stage_p1_run(manifest, run_dir):
+    """Stage a validated P0 manifest into a private P1 run layout."""
+    validate_manifest(manifest)
+    checker, source = load_surface_contract()
+    run = Path(run_dir)
+    run.mkdir(parents=True, exist_ok=True)
+    seed = checker.blank_session(course=COURSE, day=1)
+    scripts = boundary_scripts(manifest)
+    manifest_path = run / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    seed_path = run / "session-seed.json"
+    seed_path.write_text(
+        json.dumps(seed, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    bounds_path = run / "boundaries.json"
+    bounds_path.write_text(
+        json.dumps(scripts, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return {
+        "run_dir": str(run),
+        "manifest": str(manifest_path),
+        "manifest_sha256": sha256_bytes(manifest_path.read_bytes()),
+        "seed": str(seed_path),
+        "seed_sha256": sha256_bytes(seed_path.read_bytes()),
+        "boundaries": str(bounds_path),
+        "boundaries_sha256": sha256_bytes(bounds_path.read_bytes()),
+        "contract_source": source,
+        "contract_schema": checker.SCHEMA,
+    }
+
+
+def drive_session_boundaries(run_dir):
+    """Drive the real checker over staged boundaries; report verdicts.
+
+    Existing checker behavior and missing native integration are reported
+    separately: a boundary passes only when every observed step matches the
+    contract-expected outcome; native-backed requests are recorded missing.
+    """
+    checker, source = load_surface_contract()
+    run = Path(run_dir)
+    try:
+        manifest = json.loads((run / "manifest.json").read_text(encoding="utf-8"))
+        seed = json.loads((run / "session-seed.json").read_text(encoding="utf-8"))
+        scripts = json.loads((run / "boundaries.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise P1GapError("private run layout unreadable at %s: %s" % (run, exc))
+    validate_manifest(manifest)
+    report = {"contract_source": source, "contract_schema": checker.SCHEMA,
+              "boundaries": {}, "missing_integration": {}, "wake": {}}
+    for name, events in scripts.items():
+        expected = _EXPECTED_STEPS.get(name)
+        if expected is None or len(expected) != len(events):
+            raise P1GapError("boundary script %r is not contract-shaped" % name)
+        state = copy.deepcopy(seed)
+        steps = []
+        for event in events:
+            ok, new_state, reason = checker.check_transition(state, event)
+            steps.append({"event": event, "ok": ok, "reason": reason})
+            if ok:
+                state = new_state
+        observed = [step["ok"] for step in steps]
+        verdict = ("pass" if observed == expected
+                   else "FAIL: observed %s, contract expects %s" % (observed, expected))
+        report["boundaries"][name] = {"steps": steps, "verdict": verdict}
+    for name in checker.MISSING_INTEGRATION:
+        ok, _ignored, reason = checker.request_integration(name)
+        report["missing_integration"][name] = {"ok": ok, "reason": reason}
+    wake = checker.wake_criteria(COURSE)
+    wake["course_record_decoded"] = True
+    wake["cave_entrances_known"] = True
+    report["wake"] = wake
+    return report
 
 if __name__ == "__main__":
     raise SystemExit(main())

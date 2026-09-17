@@ -192,3 +192,111 @@ class RealSourceTests(unittest.TestCase):
         found = forest.locate_source(Path("C:/nonexistent/pikmin2.iso"))
         self.assertFalse(found["available"])
         self.assertIn("user/Abe/stages.txt", found["prerequisite"])
+
+class P1ContractLoaderTests(unittest.TestCase):
+    """The real p2-surface-session-1 checker resolves pinned, never forked."""
+
+    def test_contract_pins(self):
+        self.assertEqual(forest.CONTRACT_SCHEMA, "p2-surface-session-1")
+        self.assertEqual(forest.CONTENT_PIN,
+                         "3a6b34e38075a60c7f60de5e2add768e5efdc8b4")
+        self.assertEqual(forest.CONTRACT_BLOB_SHA256,
+                         "3ba71fe92a8989180358cbb1617cf040e3ebf9a25aac1754cec25a1e192460f1")
+
+    def test_load_real_contract(self):
+        checker, source = forest.load_surface_contract()
+        self.assertEqual(checker.SCHEMA, "p2-surface-session-1")
+        self.assertTrue(source == "tree" or source.startswith("pin:"))
+        self.assertIn("begin_day", checker.EVENTS)
+        self.assertEqual(len(checker.MISSING_INTEGRATION), 4)
+
+    def test_gap_names_exact_pins(self):
+        saved = forest.CONTENT_PIN
+        forest.CONTENT_PIN = "0" * 40
+        try:
+            with self.assertRaisesRegex(forest.P1GapError, "checker unavailable"):
+                forest.load_surface_contract()
+        finally:
+            forest.CONTENT_PIN = saved
+
+    def test_malformed_event_raises_contract_error(self):
+        checker, _source = forest.load_surface_contract()
+        state = checker.blank_session(course="forest", day=1)
+        with self.assertRaises(ValueError):
+            checker.check_transition(state, {"no": "type"})
+        with self.assertRaises(ValueError):
+            checker.blank_session(course="forest", day=0)
+
+
+class P1StageDriveTests(unittest.TestCase):
+    """Stage the real manifest and drive real checker boundaries."""
+
+    ISO = Path("C:/Users/alari/Downloads/PIKMIN2 for GAMECUBE.iso")
+
+    @classmethod
+    def setUpClass(cls):
+        found = forest.locate_source(cls.ISO)
+        if not found["available"]:
+            raise unittest.SkipTest(found["prerequisite"])
+        from experimental.pikmin2_assets import disc_files
+        catalog = disc_files(cls.ISO)
+        at, size = catalog["user/Abe/stages.txt"]
+        with cls.ISO.open("rb") as handle:
+            handle.seek(at)
+            raw = handle.read(size)
+        cls.manifest = forest.build_manifest(
+            raw.decode("shift_jis"), forest.sha256_bytes(raw))
+
+    def test_stage_layout(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            staged = forest.stage_p1_run(self.manifest, Path(tmp) / "run")
+            for key in ("manifest", "seed", "boundaries"):
+                self.assertTrue(Path(staged[key]).is_file(), key)
+            seed = json.loads(Path(staged["seed"]).read_text(encoding="utf-8"))
+            self.assertEqual(seed["course"], "forest")
+            self.assertEqual(seed["day"], 1)
+            self.assertEqual(staged["contract_schema"], "p2-surface-session-1")
+            back = json.loads(Path(staged["manifest"]).read_text(encoding="utf-8"))
+            self.assertEqual(back["stages_sha256"], self.manifest["stages_sha256"])
+            self.assertEqual(back["cave_count"], 5)
+
+    def test_drive_boundaries_pass(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp) / "run"
+            forest.stage_p1_run(self.manifest, run)
+            report = forest.drive_session_boundaries(run)
+            for name, result in report["boundaries"].items():
+                self.assertEqual(result["verdict"], "pass", name)
+            for name, missing in report["missing_integration"].items():
+                self.assertFalse(missing["ok"], name)
+                self.assertIn("missing native integration", missing["reason"])
+            self.assertTrue(report["wake"]["course_record_decoded"])
+            self.assertTrue(report["wake"]["cave_entrances_known"])
+            self.assertFalse(report["wake"]["ready"])
+
+    def test_drive_missing_layout_fails_closed(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(forest.P1GapError):
+                forest.drive_session_boundaries(Path(tmp) / "nope")
+
+    def test_stage_rejects_bad_manifest(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                forest.stage_p1_run({"schema": 1}, Path(tmp) / "run")
+
+    def test_tampered_script_fails_closed(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp) / "run"
+            forest.stage_p1_run(self.manifest, run)
+            scripts = json.loads((run / "boundaries.json").read_text(encoding="utf-8"))
+            scripts["receipt_replay"][1]["slot"] = "surface:2"
+            (run / "boundaries.json").write_text(
+                json.dumps(scripts), encoding="utf-8")
+            report = forest.drive_session_boundaries(run)
+            verdict = report["boundaries"]["receipt_replay"]["verdict"]
+            self.assertTrue(verdict.startswith("FAIL"), verdict)
