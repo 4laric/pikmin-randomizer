@@ -154,3 +154,34 @@ Scope honesty: host-state simulation only. No live squad, no 960x540 window,
 no collision/routes/actors observed; all six gates stay UNTESTED. The
 game-linked P2 stage boot (engine loads the cave floors with squad/actors)
 remains the open gap.
+
+## Consumer verification of #695 (game-linked no-cargo boot, generation 6)
+
+Consumed the accepted `preview-no-cargo-room-bolt-native` (#695) prerequisite:
+fast-forward merge of native `4a69502e` (the #679 + #695 preview reconciliation)
+into the private native worktree (merge `2528320f`), and cherry-pick of root
+`70596749` (fixture build/run helper) as `c485a321`. No conflicts.
+
+Independently rebuilt `pikmin_pc` in the leased private build directory and
+built the fixture with the accepted helper (exe sha256
+`007b03f5c8e3b8d81ef713eb1c75a8cab39d0a60dca1f18843f421b22e32a48b`); guard
+self-test PASS (7 rows), negative guard exit 86.
+
+Ran the previously-failing scenario (two generator-less room `pr05` bolts, no
+cargo) with my own binary in `output/preview-nocargo-runs/nocargo-two`: exit 0,
+window `960x540 centered=1`, `P2_PREVIEW_PR05 room_bolts=2 staged=0 cargo=0`,
+`P2_ROOM_READY treasure=bolt`, `P2_NOCARGO_RECONCILIATION_PASS treasure=1
+squad_alive=20 observed=600`, `PASS NOCARGO_RECONCILIATION`, no
+`P2_FIXTURE_CAPTAIN_DOWN`. Control: `nocargo-staged-double` (illegal two staged
+bolts) still aborts exit 3 with `P2 preview: duplicate treasure`; `nocargo-one`
+PASS. This is a game-linked boot with a live starting squad under #632.
+
+Reported via `workflow.consumer_verification` (verification `c0c9a24b`) with
+`passed=true`, `prerequisite_resolved=true`; evidence
+`consumer-verify-nocargo-two.log` sha256
+`18ef627a7d30545cc373ca93d954696a861ce51a5e6483deabdbd9012f2a9340`.
+
+Remaining gap (unchanged, stage-specific): the engine still cannot boot the
+decoded `ch_MAT_crawler` challenge floors with its own squad/actors; the only
+game-linked challenge boot available is the fixed preview room. Six gates stay
+UNTESTED.
