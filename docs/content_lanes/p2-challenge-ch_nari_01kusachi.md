@@ -223,3 +223,37 @@ Scope honesty: the bridge emits arena/actor/squad BINDINGS as weighted
 definitions, never live placements or coordinates, and no boot with live
 engine content exists yet. Squad, collision, routes and actors remain
 unobserved; all six gates UNTESTED; no playability claim.
+## Generation-6 content boot (integrated #695 preview reconciliation)
+
+The accepted #695 native preview reconciliation was merged into this lane's
+private native worktree (base `ab81cf5d`: #675 hook `328c214e` + #695
+`4a69502e`, clean `ort` merge, head `d8f61358`). A fresh leased private build
+(`output/p1-kusachi-gen6-build`, exe sha256
+`0291dc712e6c7764e9c38b6c35574568722e6c9a7aff24a9d7b3a7c83551dc23`,
+`ninja: no work to do.`) and a private fixture build (provenance `built`,
+expected == observed head `d8f61358`, fixture sha256
+`85132b2d5ca870500a06964fe104aaae4d374f2a3aa29d1547d2ba1184f8be4a`) were
+run under the canonical guard (canonical `scripts/p2_fixture_captain_guard.h`
+sha256 `d2f678c9...`, vendored verbatim by the #675 fixture; no CAPTAIN_DOWN).
+
+Observed in `prepared/p1-kusachi-output/run-kusachi-gen6/native.log` (exit 0,
+1.76 s), where the same boot previously aborted at
+`pc_p2_preview.cpp:128` "duplicate treasure":
+
+- `P2_ROOM_PREVIEW room=room_4x4a_4_conc red=20 isolated=1` - live starting
+  squad (20 red) on the isolated room preview.
+- `P2_PREVIEW_PR05 room_bolts=0 staged=1 cargo=0` - one staged pr05
+  treasure, no cargo, no duplicate abort.
+- `P2_ROOM_GROUND` (4 samples) - real collision/ground queries.
+- `P2_PLACEMENT_SLOT ... route_distance=805.3` / `P2_PLACEMENT_PROBE
+  actors=1` - one actor with a route probe.
+- `P2_ROOM_READY treasure=bolt carry=5 repairs=1` and
+  `P2_CHALLENGE_STAGE_WINDOW size=960x540 pos=373,263 centered=1`.
+
+Residual gap (owner/runtime business, explicitly outside this slice per the
+recovery check): the fixture still reports
+`P2_CHALLENGE_STAGE_GATES all=UNTESTED content_wired=0` - the kusachi
+stage-specific roster/actor content is not wired; the boot exercises the
+generic room preview with the 20-red starting overlay, not the 50-blue
+kusachi roster. Squad-of-record, stage actors, routes and the six gates
+therefore remain UNTESTED and no playability claim is made.
