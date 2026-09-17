@@ -1,4 +1,4 @@
-﻿"""Payload acceptance observer for BombOtakara93 provider seam (#573).
+"""Payload acceptance observer for BombOtakara93 provider seam (#573).
 
 Pure log classifier (launches/stages/touches nothing). It independently
 re-derives the provider-driven natural chain from a fixture native.log:
@@ -26,6 +26,31 @@ import json
 import re
 import sys
 from pathlib import Path
+
+# Adopted prerequisite (#577, integrated via the #614 wave pin root 268494fb):
+# the accepted provider owns the consumer log grammar
+# BIRTH/ATTACH/DETACH/DETONATE/BLAST. Delegate to it instead of keeping a
+# second divergent grammar here.
+try:
+    from experimental import pikmin2_bomb_payload_provider as accepted_provider
+except ImportError:  # pragma: no cover - provider absent in a bare checkout
+    accepted_provider = None
+
+ACCEPTED_PROVIDER_SCHEMA = "p2-bomb-payload-actor/1"
+
+
+def accepted_provider_verdict(text: str) -> dict:
+    """Run the accepted provider's consumer-grammar validator."""
+    if accepted_provider is None:
+        return {"available": False, "verdict": False, "problems": ["provider-absent"]}
+    result = accepted_provider.validate_log(text)
+    return {
+        "available": True,
+        "schema": ACCEPTED_PROVIDER_SCHEMA,
+        "verdict": bool(result["verdict"]),
+        "problems": list(result["problems"]),
+        "carriers": len(result["carriers"]),
+    }
 
 INJECTED_MARKERS = (
     "P2_BOMBOTAKARA_INJECT",
@@ -83,6 +108,7 @@ def validate(path: str | Path) -> dict:
         "injected": [],
         "gate1_attach_provider_linked": False,
         "gate3_blast_provider_linked": False,
+        "accepted_provider": {},
     }
     try:
         lines = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
@@ -146,6 +172,7 @@ def validate(path: str | Path) -> dict:
                     tag = "%d:post-gone-event gen=%s" % (i, gen)
                     if tag not in verdict["stale_violations"]:
                         verdict["stale_violations"].append(tag)
+    verdict["accepted_provider"] = accepted_provider_verdict("\n".join(lines))
     verdict["gate1_attach_provider_linked"] = bool(
         verdict["captured_attached"]) and not verdict["injected"]
     verdict["gate3_blast_provider_linked"] = bool(
@@ -167,6 +194,10 @@ def main(argv: list) -> int:
     print("gate1_provider_linked=%s gate3_provider_linked=%s" % (
         verdict["gate1_attach_provider_linked"],
         verdict["gate3_blast_provider_linked"]))
+    ap = verdict.get("accepted_provider", {})
+    print("accepted_provider available=%s schema=%s verdict=%s carriers=%d problems=%s"
+          % (ap.get("available"), ap.get("schema"), ap.get("verdict"),
+             ap.get("carriers", 0), ",".join(ap.get("problems", [])) or "-"))
     for key in ("exactly_once_violations", "stale_violations"):
         for item in verdict[key]:
             print("VIOLATION %s" % item)

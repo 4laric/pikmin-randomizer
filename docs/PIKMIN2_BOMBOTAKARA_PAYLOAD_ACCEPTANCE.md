@@ -118,6 +118,62 @@ The independent observer reports `VERDICT BLOCKED no_bomb_mgr_birth` on
 this log (exit 2 by design), with gates 1/3 unlinked and zero
 exactly-once/stale violations.
 
+## Generation 3 reassessment: integrated prerequisite adopted (#614 -> #577)
+
+The controller reported a newly integrated prerequisite, #614
+(provider-held-object-api), wave pin root `268494fb` / native `6a87eb29`. That
+pin also carries the accepted **#577 `p2-bomb-payload-actor/1`** provider
+(merged into the wave earlier), which is the prerequisite this slice actually
+names. Reassessment result, evidence-pinned:
+
+- **Adopted and verified intact in the private worktrees.** The accepted
+  provider's own proof passes here: standalone
+  `p2_bomb_payload_actor_test` -> `PASS P2_BOMB_PAYLOAD_ACTOR checks=65`;
+  `pytest tests/test_pikmin2_bomb_payload_provider.py` -> 10 passed.
+- **It does not close gates 1/3.** The accepted provider is an engine-free
+  lifecycle pool plus consumer log grammar. Its doc (section "Shared-hook
+  request") explicitly excludes "Real engine-actor birth for EnemyID_Bomb
+  payloads (teki birth path for a Bomb type)" and any shared hook. It is a
+  standalone tooling provider with **no `CMakeLists.txt` membership** (confirmed
+  against the pin), so no family translation unit can call the pool's
+  out-of-line methods at runtime without a shared build-membership change.
+- **Adapter adoption (de-duplication).** `kContract` is now the accepted schema
+  `p2-bomb-payload-actor/1`; `p2bombotakara_provider::matchesAcceptedProvider()`
+  compile-checks agreement with the accepted pinned defaults and trigger
+  vocabulary; the root acceptance test now links the **real** accepted pool and
+  the real shared blast router and asserts exactly-once detonation,
+  duplicate-carrier refusal, pinned blast fields and reset-epoch retirement.
+  The observer now delegates consumer-grammar validation to
+  `experimental.pikmin2_bomb_payload_provider.validate_log` instead of keeping a
+  second grammar. The family-local stand-in machine remains only because the
+  accepted pool is not linked into the game target.
+- **Captain safety #632 adopted.** The canonical guard
+  `scripts/p2_fixture_captain_guard.h` (sha256
+  `d2f678c9eda75e151eb534077dff9e30ad36ae4796881d971bbd09945f3c3474`) is
+  vendored verbatim and called before movie/pause early returns; the captain is
+  parked at (60, 30, 1200); `P2_FIXTURE_CAPTAIN_DOWN` exits 86 (BLOCKED).
+  Protected observation cannot prove captain damage.
+
+### Concrete remaining gaps (still BLOCKED)
+
+1. **Real engine actor birth for EnemyID_Bomb** (primary). Issue #616
+   (`provider-bomb-mgr-birth`) implements exactly this seam on top of the #577
+   API with a green live run, but the registry records it `review-ready`, not
+   integrated: `integration` and `handoff` are both null, and its request for an
+   **#186 shared-hook review is unresolved**. Its prepared worktree no longer
+   exists. Per the recovery brief, unresolved shared reviews remain gates.
+2. **Provider link membership** (secondary, newly identified). Consuming the
+   accepted #577 pool at runtime requires `pc_port/pc_p2_bomb_payload_actor.cpp`
+   in the game target's `CMakeLists.txt` membership (a shared file, not owned
+   here); the pin deliberately ships it standalone. This needs the same #186
+   review or integrator discretion.
+3. **Generated-placement dynamic bridge admits sources 59-62 only** (secondary).
+   The bound carrier actor is real (generator 349005, TEKI_Chappy, censused),
+   but `pc_p2_otakara_bind_dynamic` refuses source 93; extending it is a
+   one-line change in `pc_p2_otakara.cpp` requiring #186 review.
+
+No new runtime PASS is claimed; the six-gate table above is unchanged.
+
 ## Remaining work (proposed next bounded scope)
 
 Port (or provider-wrap) the Bomb enemy manager + birth path under #169

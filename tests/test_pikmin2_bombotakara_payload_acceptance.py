@@ -124,6 +124,40 @@ class TestPayloadObserver(unittest.TestCase):
         self.assertFalse(v["provider_request"])
         self.assertFalse(v["gate1_attach_provider_linked"])
 
+    def test_accepted_provider_grammar_delegation(self):
+        # Adopted prerequisite (#577): the accepted provider owns the consumer
+        # grammar; a well-formed accepted-vocabulary log must validate there.
+        accepted = (
+            "P2_BOMB_PAYLOAD_BIRTH carrier=41001 slot=0 gen=1\n"
+            "P2_BOMB_PAYLOAD_ATTACH carrier=41001 joint=otakara\n"
+            "P2_BOMB_PAYLOAD_DETONATE carrier=41001 trigger=contact detonated=1\n"
+            "P2_BOMB_PAYLOAD_BLAST carrier=41001 receivers=5 hits=4\n"
+        )
+        result = observer.accepted_provider_verdict(accepted)
+        if not result["available"]:
+            self.skipTest("accepted provider module unavailable")
+        self.assertTrue(result["verdict"], result["problems"])
+        self.assertEqual(result["carriers"], 1)
+        self.assertEqual(result["schema"], "p2-bomb-payload-actor/1")
+
+    def test_observer_reports_accepted_provider_slot(self):
+        v = self._validate(REQUEST_ONLY)
+        self.assertIn("accepted_provider", v)
+        self.assertIn("available", v["accepted_provider"])
+        self.assertFalse(v["gate1_attach_provider_linked"])
+
+    def test_accepted_provider_rejects_injected_log(self):
+        accepted = (
+            "P2_BOMB_PAYLOAD_BIRTH carrier=41001 slot=0 gen=1\n"
+            "P2_BOMB_PAYLOAD_ATTACH carrier=41001 joint=otakara\n"
+            "P2_BOMB_PAYLOAD_INJECT injected=1\n"
+        )
+        result = observer.accepted_provider_verdict(accepted)
+        if not result["available"]:
+            self.skipTest("accepted provider module unavailable")
+        self.assertFalse(result["verdict"])
+        self.assertTrue(any("injected" in p for p in result["problems"]))
+
     def test_cli_exit_codes(self):
         for text, code in ((REQUEST_ONLY, 2), (FUTURE_NATURAL, 0), (STUB_ONLY, 1)):
             path = _write_tmp(text)
@@ -143,7 +177,40 @@ PROVIDER_TU = r"""
 #include <cstdio>
 using namespace p2bombotakara_provider;
 int main() {
-    assert(std::string(kContract) == "p2-bomb-payload-provider-1");
+    assert(std::string(kContract) == "p2-bomb-payload-actor/1");
+    assert(kProviderIssue == 577 && kConsumerIssue == 573);
+    // Adoption: the accepted provider contract must agree with this adapter.
+    assert(matchesAcceptedProvider());
+    {
+        // Real accepted lifecycle from the adopted prerequisite (#577): the
+        // family adapter's expectations (exactly-once, stale-handle refusal,
+        // carrier-loss release, reset epoch) must match the real pool.
+        P2BombPayloadPool pool(2);
+        const P2BombPayloadConfig cfg;
+        P2BombSaraiVec3 joint;
+        joint.x = 1.0f; joint.y = 2.0f; joint.z = 3.0f;
+        P2BombPayloadHandle h = pool.birth(41001, joint, cfg);
+        assert(p2_bomb_payload_handle_valid(h));
+        assert(pool.isLive(h));
+        assert(pool.activeCount() == 1);
+        // Duplicate live carrier refused (source keeps one mTargetCreature).
+        P2BombPayloadHandle dup = pool.birth(41001, joint, cfg);
+        assert(!p2_bomb_payload_handle_valid(dup));
+        // Pinned retail defaults recorded on the blast.
+        const bool first = pool.detonate(h, P2BombPayloadTrigger::Contact, nullptr, nullptr);
+        assert(first && pool.blastCount() == 1);
+        assert(pool.hasBlast(h));
+        const P2BombSaraiBlastEvent& ev = pool.lastBlast(h);
+        assert(ev.radius == 90.0f && ev.tekiDamage == 500.0f);
+        assert(ev.halfHeight == 50.0f && ev.naviPikiDamage == 10.0f);
+        // Exactly-once: a second detonation is suppressed.
+        assert(!pool.detonate(h, P2BombPayloadTrigger::Death, nullptr, nullptr));
+        assert(pool.suppressedCount() == 1 && pool.blastCount() == 1);
+        // Interruption/reset retires the handle: no stale payload.
+        pool.reset();
+        assert(!pool.isLive(h));
+        assert(pool.birth(41002, joint, cfg).generation != 0);
+    }
     assert(std::string(kMissingReason) == "no_bomb_mgr_birth");
     PayloadOwnership own;
     assert(own.state() == PayloadState::AwaitingBirth);
@@ -187,10 +254,22 @@ class TestProviderOwnershipNative(unittest.TestCase):
             exe = tmp / "provider_check.exe"
             env = dict(os.environ)
             env["PATH"] = r"C:\msys64\mingw64\bin;" + env.get("PATH", "")
+            # Adopted prerequisite (#577, integrated via #614 pin native
+            # 6a87eb29): link the accepted provider + the shared blast router
+            # so this test proves the family adapter consumes the REAL
+            # accepted lifecycle, not a lookalike.
+            provider_cpp = NATIVE / "pc_port" / "pc_p2_bomb_payload_actor.cpp"
+            blast_cpp = NATIVE / "pc_port" / "pc_p2_bombsarai_blast.cpp"
+            sources = [str(src)]
+            for extra in (provider_cpp, blast_cpp):
+                if extra.is_file():
+                    sources.append(str(extra))
+                else:
+                    self.skipTest("accepted provider TU missing: %s" % extra)
             build = subprocess.run(
                 [str(MINGW_GXX), "-std=c++17", "-O1", "-Wall", "-Wextra",
-                 "-Werror", "-I", str(NATIVE / "pc_port"), str(src),
-                 "-o", str(exe)],
+                 "-Werror", "-I", str(NATIVE / "pc_port")] + sources +
+                ["-o", str(exe)],
                 capture_output=True, text=True, timeout=180, env=env)
             self.assertEqual(build.returncode, 0, build.stderr[-2000:])
             run = subprocess.run([str(exe)], capture_output=True, text=True,
