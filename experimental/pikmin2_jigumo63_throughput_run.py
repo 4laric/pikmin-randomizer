@@ -92,6 +92,53 @@ def stage(assets: Path, output: Path) -> Path:
     return run
 
 
+def stage(assets: Path, output: Path) -> Path:
+    import math
+    assets = assets.resolve()
+    source = assets / "dataDir/stages/practice/default.gen"
+    data = source.read_bytes()
+    entries = records(source)
+    raw = generator(assets)
+    starts = [m.start() for m in re.finditer(b"    0.0v", raw)]
+    rows = [raw[a:(starts[i + 1] if i + 1 < len(starts) else len(raw))] for i, a in enumerate(starts)]
+    enemy = next(r for r in rows if r[72:76] == b"iket")
+    piki = next(r for r in rows if r[72:76] == b"ikip")
+    row = bytearray(enemy)
+    struct.pack_into("<I", row, 8, CARRIER_GEN)
+    row[16:48] = b"Jigumo63".ljust(32, b"\0")
+    row[80] = 3
+    row[81] = 0
+    row[82] = 0
+    struct.pack_into("<f", row, 119, 0.0)
+    write_position(row, [34.0, 30.0, 1896.0])
+    entries.append(bytes(row))
+    for i in range(SQUAD):
+        r = bytearray(piki)
+        struct.pack_into("<I", r, 8, 235200 + i)
+        r[16:48] = b"Jigumo63 squad".ljust(32, b"\0")
+        ang = 2.0 * math.pi * i / SQUAD
+        write_position(r, [34.0 + 40.0 * math.sin(ang), 30.0, 1896.0 + 40.0 * math.cos(ang)])
+        struct.pack_into(">I", r, 92, 1)
+        entries.append(bytes(r))
+    data = data[:20] + struct.pack(">I", len(entries)) + b"".join(entries)
+    run = Path(output).resolve() / uuid.uuid4().hex
+    run.mkdir(parents=True)
+    empty = data[:20] + struct.pack(">I", 0)
+    overrides = {"dataDir/stages/chal0.ini": (assets / "dataDir/stages/practice.ini").read_bytes(),
+                 "dataDir/stages/chal0/default.gen": data}
+    for p in (assets / "dataDir/stages/chal0").glob("*.gen"):
+        overrides.setdefault("dataDir/stages/chal0/" + p.name, empty)
+    overlay(assets, run / "assets", overrides)
+    (run / "p2-cargo-free.txt").write_bytes(b"P2_CARGO_FREE_1\n")
+    (run / "p2-aquatic-actors.txt").write_text(
+        "P2_AQUATIC_ACTORS_1\n1\n%d Jigumo\n" % CARRIER_GEN, encoding="utf-8")
+    (run / "jigumo573-stage.json").write_text(json.dumps(
+        dict(scene="original P1 practice course", interactive=True, window="960x540",
+             carrier=dict(generator=CARRIER_GEN, vehicle="TEKI_Chappy", template="iket"),
+             starting_squad={"red": SQUAD}, stub_files="never written (sidecar inert)"),
+        indent=1) + "\n", encoding="utf-8")
+    return run
+
 def validate(text: str) -> dict:
     """Classify a run log. JSON-serializable verdict; no gate PASS claimed."""
     verdict: dict = {
