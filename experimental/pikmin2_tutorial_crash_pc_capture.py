@@ -358,7 +358,7 @@ def main(argv=None):
         record["resolve_detail"] = args.resolve_detail
         with open(rec_path, "w", encoding="utf-8") as stream:
             stream.write(json.dumps(record, indent=1, sort_keys=True))
-            stream.write("\\n")
+            stream.write(chr(10))
         packet, verdict = build_packet(record, out_dir)
         print("RESOLVED verdict=%s" % verdict)
         return 0 if verdict == "COLLAPSED-EXE-FUNCTION" else 1
