@@ -36,6 +36,10 @@ Native (`output/.../challenge-stage-table-extension-native-native`):
   kusachi never resolves here (engine owns it).
 - `tools/p2_challenge_stage_table_ext_fixture.cpp` — guarded replacement-main
   fixture (unity-includes the ext TU, so no CMake edit).
+  Readiness is 600 guarded live ticks with a live squad recorded
+  (a preview treasure is not staged, so `pc_p2_preview_ready()` is not
+  the gate); the window check accepts centered-on-any-display to stay
+  robust to SDL display-index attribution on scaled setups.
 
 Root (`output/.../challenge-stage-table-extension-native-root`):
 - `scripts/build_p2_challenge_stage_table_ext.py` — stage + build + run + validate.
