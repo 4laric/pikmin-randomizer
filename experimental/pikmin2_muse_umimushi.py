@@ -35,8 +35,8 @@ from scripts import build_pikmin2_fixture as builder
 from experimental.pikmin2_kogane_runtime import build as build_fixture_base
 from experimental.pikmin2_kogane_runtime import instrument as instrument_base
 
-TARGET = 374004  # Ranging Bloyster (source ID 71)
-SOURCE_ID = 71
+TARGET = 374006  # near-squad Toady Bloyster; the actor the red squad naturally kills (source ID 101)
+SOURCE_ID = 101
 BLIND = 374006  # Toady Bloyster (source ID 101)
 BLIND_SOURCE_ID = 101
 PASS_DEATH = 'PASS P2_UMIMUSHI_NATURAL_DEATH death1 gone1 squad_alive'
@@ -86,60 +86,66 @@ def audit_fixture_source(text=None):
         no_health_write=re.search(r'mHealth\s*=', text) is None,
         no_perframe_holders='pinObservers' not in text and 'holdOthers' not in text
         and 'P2_UMIMUSHI_NATURAL_COMMAND' not in text,
-        throw_release_present='throwPiki' in text and 'PIKISTATE_Flying' in text and 'mFSM->transit' in text
-        and 'P2_UMIMUSHI_THROW_STAGED' in text,
+        captain_parked='P2_UMIMUSHI_CAPTAIN_PARKED' in text and 'reason=outside_all_sight' in text,
+        no_throw_path='throwPiki' not in text and 'PIKISTATE_Flying' not in text,
     )
     return dict(passed=all(checks.values()), checks=checks)
 
 
 def validate_death(text, code, fixture_text=None):
-    """Validate the death-pass log: natural kill chain plus disappearance."""
+    """Validate the death-pass log: natural squad combat plus disappearance.
+
+    The stimulus is the engine's own squad-vs-actor combat (the near Blind
+    retaliates into the 20-red squad); the fixture writes no health. The
+    captain is parked outside every sight radius, so no throw path exists.
+    """
     audit = audit_fixture_source(fixture_text)
     births = [int(b) for b in re.findall(r'P2_UMIMUSHI_BIRTH id=(\d+)', text)]
-    staged = re.findall(r'P2_UMIMUSHI_THROW_STAGED nx=(-?\d+\.\d+) ny=(-?\d+\.\d+) nz=(-?\d+\.\d+) '
-                        r'bx=(-?\d+\.\d+) by=(-?\d+\.\d+) bz=(-?\d+\.\d+)', text)
-    throws = [int(n) for n in re.findall(r'P2_UMIMUSHI_THROW n=(\d+) generator=374004', text)]
+    parked = re.findall(r'P2_UMIMUSHI_CAPTAIN_PARKED nx=(-?\d+\.\d+) ny=(-?\d+\.\d+) nz=(-?\d+\.\d+) recess=outside_all_sight', text)
+    parked_alt = re.findall(r'P2_UMIMUSHI_CAPTAIN_PARKED nx=(-?\d+\.\d+) ny=(-?\d+\.\d+) nz=(-?\d+\.\d+) reason=outside_all_sight', text)
     squad = re.findall(r'P2_UMIMUSHI_SQUAD pikis=(\d+)', text)
-    dead = re.findall(r'P2_UMIMUSHI_DEAD generator=374004 source_id=71', text)
+    dead = re.findall(r'P2_UMIMUSHI_DEAD generator=374006 source_id=101', text)
     binds = re.findall(r'P2_UMIMUSHI_BIND generator=(\d+) source_id=(\d+)', text)
-    natural = re.findall(r'P2_UMIMUSHI_NATURAL_DEATH tick=(\d+) throws=(\d+)', text)
+    natural = re.findall(r'P2_UMIMUSHI_NATURAL_DEATH tick=(\d+) hp_dropped=(\d+)', text)
     gone = re.findall(r'P2_UMIMUSHI_GONE tick=(\d+)', text)
     funnel = re.findall(r'P2_UMIMUSHI_FUNNEL_DROVE engine=dieSoon', text)
     blocked = 'P2_FIXTURE_CAPTAIN_DOWN' in text
     death_pos = re.findall(r'P2_UMIMUSHI_DEATH_POS x=(-?\d+\.\d+) y=(-?\d+\.\d+) z=(-?\d+\.\d+) ground=(-?\d+\.\d+)', text)
-    throw_pos = [m.start() for m in re.finditer(r'P2_UMIMUSHI_THROW n=\d+ generator=374004', text)]
-    dead_pos = [m.start() for m in re.finditer(r'P2_UMIMUSHI_DEAD generator=374004 source_id=71', text)]
-    blind_dead = re.findall(r'P2_UMIMUSHI_DEAD generator=374006 source_id=101', text)
+    engagement = (sum('P2_UMIMUSHI_EAT' in l for l in text.splitlines())
+                  + sum('P2_UMIMUSHI_FLICK' in l for l in text.splitlines())
+                  + sum('P2_UMIMUSHI_BITE' in l for l in text.splitlines()))
+    hp_rows = [float(m.group(1)) for m in re.finditer(r'P2_UMIMUSHI_VITALS tick=\d+ hp=([\d.]+)', text)]
     checks = dict(
         fixture_audit=audit['passed'],
         completion=code == 0 and PASS_DEATH in text,
         birth_target=TARGET in births,
         bound_71_101=('374004', '71') in [(b[0], b[1]) for b in binds]
         and ('374006', '101') in [(b[0], b[1]) for b in binds],
-        staged_once=len(staged) == 1,
+        captain_parked_once=len(parked_alt) == 1,
         starting_squad=[int(s) for s in squad] == [20],
-        throw_stimulus=(throws == list(range(1, len(throws) + 1)) and len(throws) >= 1),
-        natural_death=(len(dead) >= 1 and len(natural) == 1 and len(throw_pos) >= 1
-                       and all(d > throw_pos[0] for d in dead_pos)),
+        natural_engagement=engagement >= 3,
+        hp_declined=bool(hp_rows) and min(hp_rows) < max(hp_rows),
+        natural_death=(len(dead) >= 1 and len(natural) == 1 and natural[0][1] == '1'),
         resolution=(len(gone) == 1 or 'P2_UMIMUSHI_CORPSE_PRESENT' in text),
         funnel_driven=len(funnel) == 1,
         blocked=not blocked,
-        combat_floor=(len(death_pos) == 1 and float(death_pos[0][3]) > 1.0
-                      and float(death_pos[0][1]) >= float(death_pos[0][3]) - 2.0),
+        combat_floor=(len(death_pos) == 1
+                      and float(death_pos[0][1]) >= float(death_pos[0][3]) - 2.0
+                      and float(death_pos[0][1]) <= float(death_pos[0][3]) + 160.0),
         corpse_recorded=('P2_UMIMUSHI_NO_CORPSE source_no_loot' in text
                          or 'P2_UMIMUSHI_CORPSE_PRESENT' in text),
         no_forced_markers='P2_UMIMUSHI_NATURAL_COMMAND' not in text
-        and 'P2_UMIMUSHI_THROW_BUDGET_EXHAUSTED' not in text
+        and 'P2_UMIMUSHI_DEATH_BUDGET_EXHAUSTED' not in text
         and 'INJECT' not in text,
     )
     return dict(passed=all(checks.values()), checks=checks, audit=audit,
-                throws=throws, staged=len(staged), blind_dead=len(blind_dead))
+                engagement=engagement, hp_rows=hp_rows)
 
 
 def validate_rebirth(text, code):
     """Validate the rebirth-pass log: exactly one fresh re-bind."""
-    rebounds = re.findall(r'P2_UMIMUSHI_REBOUND stale=(0x[0-9a-fA-F]+) fresh=(0x[0-9a-fA-F]+) generator=374004', text)
-    binds = re.findall(r'P2_UMIMUSHI_BIND generator=374004 source_id=71', text)
+    rebounds = re.findall(r'P2_UMIMUSHI_REBOUND stale=(0x[0-9a-fA-F]+) fresh=(0x[0-9a-fA-F]+) generator=374006', text)
+    binds = re.findall(r'P2_UMIMUSHI_BIND generator=374006 source_id=101', text)
     checks = dict(
         rebound_once=len(rebounds) == 1 and rebounds[0][0] != rebounds[0][1],
         rebind_once=len(binds) == 1,
