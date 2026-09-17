@@ -163,3 +163,154 @@ def test_write_packet_round_trips(tmp_path):
     import hashlib
     assert record['sha256'] == hashlib.sha256(path.read_bytes()).hexdigest()
     assert json.loads(path.read_text(encoding='utf-8'))['identity']['cave_id'] == CAVE_ID
+
+
+# ---------------------------------------------------------------------------
+# P1 staging tests (lane p2-challenge-ch_nari_01kusachi-p1, issue #533).
+#
+# Hermetic: synthetic packets/caves only; the real hash-verified decode stays
+# in the lane output. No runtime is launched by these tests.
+# ---------------------------------------------------------------------------
+
+P1_ACTOR = _adapter
+stage_run_layout = _adapter.stage_run_layout
+verify_run_layout = _adapter.verify_run_layout
+parse_marker_log = _adapter.parse_marker_log
+guard_hashes = _adapter.guard_hashes
+squad_list = _adapter.squad_list
+EXPECTED_ROSTER = _adapter.EXPECTED_ROSTER
+P1_UNSUPPORTED = _adapter.UNSUPPORTED_CHALLENGE_SEMANTICS
+
+
+def p1_cave():
+    return {'floor_count': 1, 'definition_count': 1, 'floors': [
+        dict(first_floor=1, last_floor=1, parameters={'f008': 'testpool'},
+             enemies=[dict(enemy_id='Bulborb')],
+             treasures=[dict(treasure_id='MiracleGas')])]}
+
+
+def p1_packet():
+    verification = dict(source_path=SOURCE_PATH, sha256=SOURCE_SHA256, verified=True)
+    return build_import_packet(decode_stage(ONE_FLOOR, ENEMIES, TREASURES), verification)
+
+
+def test_squad_list_flattens_roster():
+    rows = squad_list(EXPECTED_ROSTER)
+    assert rows == [{'color': 0, 'maturity': 2, 'count': 50}]
+    for bad in ([[0, 0]], [[0, 0, -1]] + [[0, 0, 0]] * 6):
+        try:
+            squad_list(bad)
+        except StageDecodeError:
+            continue
+        raise AssertionError('expected StageDecodeError')
+
+
+def test_stage_run_layout_round_trips(tmp_path):
+    paths = stage_run_layout(p1_packet(), tmp_path / 'run', cave=p1_cave())
+    assert sorted(paths) == ['markers.txt', 'run-config.json', 'squad.json', 'stage-manifest.json']
+    manifest = verify_run_layout(tmp_path / 'run')
+    assert manifest['squad_total'] == 50
+    assert manifest['floor_seconds'] == [180.0]
+    assert manifest['ui_index'] == 3
+    assert manifest['floors'][0]['unit_pool'] == 'testpool'
+    assert manifest['floors'][0]['enemies'] == ['Bulborb']
+    assert manifest['floors'][0]['treasures'] == ['MiracleGas']
+    assert 'challenge_host_mode' in manifest['unsupported_semantics']
+    assert manifest['unsupported_semantics'] == list(P1_UNSUPPORTED)
+    assert manifest['generated'] is False
+
+
+def test_stage_without_cave_uses_closure(tmp_path):
+    stage_run_layout(p1_packet(), tmp_path / 'run')
+    manifest = verify_run_layout(tmp_path / 'run')
+    assert manifest['floors'][0]['unit_pool'] == 'testpool'
+    assert manifest['floors'][0]['enemies'] == []
+
+
+def test_staging_divergences_fail_closed(tmp_path):
+    packet = p1_packet()
+    packet['floor_coverage']['decoded_floor_count'] = 2
+    try:
+        stage_run_layout(packet, tmp_path / 'run')
+    except StageDecodeError:
+        pass
+    else:
+        raise AssertionError('expected StageDecodeError for floor divergence')
+    packet = p1_packet()
+    packet['identity']['floor_seconds'] = []
+    try:
+        stage_run_layout(packet, tmp_path / 'run2')
+    except StageDecodeError:
+        pass
+    else:
+        raise AssertionError('expected StageDecodeError for timer divergence')
+    packet = p1_packet()
+    packet['floor_coverage']['expected_floors'] = 2
+    try:
+        stage_run_layout(packet, tmp_path / 'run3')
+    except StageDecodeError:
+        pass
+    else:
+        raise AssertionError('expected StageDecodeError for expected-floor divergence')
+
+
+def test_stage_layout_missing_or_malformed(tmp_path):
+    for bad in ({}, dict(schema=2, issue=533, identity=dict(cave_id=CAVE_ID)),
+                dict(schema=1, issue=999, identity=dict(cave_id=CAVE_ID)),
+                dict(schema=1, issue=533, identity=dict(cave_id='ch_OTHER'))):
+        try:
+            stage_run_layout(bad, tmp_path / ('bad%d' % len(str(bad))))
+        except StageDecodeError:
+            continue
+        raise AssertionError('expected StageDecodeError for %r' % (bad,))
+    try:
+        verify_run_layout(tmp_path / 'absent')
+    except StageDecodeError:
+        pass
+    else:
+        raise AssertionError('expected StageDecodeError for absent layout')
+
+
+def test_parse_marker_log_accepts_full_run():
+    text = ('P2_KUSACHI_WINDOW size=960x540\nP2_KUSACHI_SQUAD count=50\n'
+            'P2_KUSACHI_FLOOR_READY floor=1\n'
+            'P2_KUSACHI_ACTOR id=Bulborb x=1.0 z=-2.0\n'
+            'P2_KUSACHI_PASS floors=1 actors=1\n')
+    observed = parse_marker_log(text)
+    assert observed['window'] == (960, 540) and observed['squad'] == 50
+    assert observed['floors'] == [1] and observed['actors'][0]['id'] == 'Bulborb'
+    assert observed['pass_summary'] == dict(floors=1, actors=1)
+
+
+def test_parse_marker_log_rejects_missing_and_bad_window():
+    for text in ('', 'P2_KUSACHI_WINDOW size=960x540\n',
+                 'P2_KUSACHI_WINDOW size=800x600\nP2_KUSACHI_SQUAD count=50\n'
+                 'P2_KUSACHI_FLOOR_READY floor=1\nP2_KUSACHI_PASS floors=1 actors=0\n',
+                 'P2_KUSACHI_WINDOW size=960x540\nP2_KUSACHI_SQUAD count=50\n'
+                 'P2_KUSACHI_PASS floors=1 actors=0\n'):
+        try:
+            parse_marker_log(text)
+        except StageDecodeError:
+            continue
+        raise AssertionError('expected StageDecodeError for %r' % text[:30])
+
+
+def test_guard_hashes_records_canonical_header():
+    # Pin gap, recorded honestly: the #632 guard header was added AFTER this
+    # lane's pinned root base (b08e3bdc), so it is consumed read-only from the
+    # canonical workspace, never vendored into the pinned tree.
+    canonical = Path('C:/Users/alari/pikmin-randomizer')
+    if not (canonical / 'scripts/p2_fixture_captain_guard.h').is_file():
+        return  # canonical workspace unavailable: no hash to assert
+    record = guard_hashes(canonical)
+    assert record['guard_path'] == 'scripts/p2_fixture_captain_guard.h'
+    assert record['guard_sha256'] == 'd2f678c9eda75e151eb534077dff9e30ad36ae4796881d971bbd09945f3c3474'
+    assert record['source_sha256'] == SOURCE_SHA256
+    assert record['policy_required'] is True
+    assert not (ROOT / 'scripts/p2_fixture_captain_guard.h').exists()
+    try:
+        guard_hashes(ROOT / 'nonexistent-root')
+    except StageDecodeError:
+        pass
+    else:
+        raise AssertionError('expected StageDecodeError for missing guard')

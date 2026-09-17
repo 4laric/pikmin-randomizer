@@ -88,3 +88,82 @@ unverified packet contents; packet write round-trip with sha256.
 ```powershell
 py -3.12 -m pytest tests/content_lanes/test_p2_challenge_ch_nari_01kusachi.py -q
 ```
+
+---
+
+# ch_NARI_01kusachi P1 runtime import (issue #533, lane p2-challenge-ch_nari_01kusachi-p1)
+
+Implementation owner: Codex through shared account `4laric`. This section
+extends the P0 packet above with the P1 private runtime import slice. The P0
+decode helpers are reused unchanged (no forked parser).
+
+## P1 staging (`stage_run_layout` / `verify_run_layout`)
+
+The decoded P0 packet is staged into a private run layout:
+
+- `stage-manifest.json`: floor rows (unit pool, decoded enemy/treasure tokens
+  when the decoded cave is supplied), squad rows, timers, legacy budget,
+  sprays, UI index, unsupported semantics and the source hash. Weights remain
+  definition inputs; nothing is placed.
+- `squad.json`: the starting squad (50 blue leaf; native color 2, maturity 0).
+- `run-config.json`: `window: 960x540`, squad source, unsupported list.
+- `markers.txt`: the required receipt-parseable marker contract
+  (`P2_KUSACHI_WINDOW`, `P2_KUSACHI_SQUAD`, `P2_KUSACHI_FLOOR_READY`,
+  `P2_KUSACHI_ACTOR`, `P2_KUSACHI_PASS`).
+
+Staging fails closed on any packet divergence (identity, floor coverage,
+timers, pool/floor count). `verify_run_layout` re-checks a staged layout
+without trusting it; `parse_marker_log` accepts only a full, correctly
+centred (960x540) marker log and fails closed otherwise.
+
+## Unsupported semantics (recorded, not claimed)
+
+`challenge_host_mode`, `coop_2p`, `key_completion`, `result_screen` —
+mirrored from the contract consumer
+(`docs/PIKMIN2_CHALLENGE2_CONTRACT_CONSUMER.md`). No host-mode
+implementation lane exists in this tree; a staged run exercises the cave
+path only, never Challenge-mode rules.
+
+## Captain safety (#632) — adoption pin gap
+
+The canonical guard `scripts/p2_fixture_captain_guard.h` (sha256
+`d2f678c9eda75e151eb534077dff9e30ad36ae4796881d971bbd09945f3c3474`) was
+added AFTER this lane's pinned root base `b08e3bdc`, so it is NOT present in
+the pinned tree. It is consumed read-only from the canonical workspace and
+its hash recorded by `guard_hashes()`; it is never vendored into the pinned
+base and no fake guard provider is created. Any future runtime run must adopt
+it (or a tested equivalent) with orimaDead/NaviDead/HP<=1 checks,
+CAPTAIN_DOWN + BLOCKED exit, a parked captain and labelled protection.
+
+## Runtime evidence and exact blocker
+
+**No runtime observation was possible this slice; all six gates stay
+UNTESTED and no playability is claimed.** Root cause, verified in source:
+
+- The only challenge boot path in this native pin is
+  `--experimental-challenge-level 0-4` (`pc_port/pc_bbft.cpp:47-51`), which
+  selects the five P1 stage inis `stages/chal0..chal4.ini` — NOT P2 challenge
+  caveinfo stages such as `ch_NARI_01kusachi`.
+- The P2 challenge guarded fixture that exists
+  (`native/tools/p2_challenge_guarded_boot_fixture.cpp`, lane #649) also
+  boots `--experimental-challenge-level <0-4>`; it emits no `P2_KUSACHI_*`
+  markers and cannot select this stage.
+- The generic challenge host-mode consumer (`challenge-host-mode`, issue
+  #651) is BLOCKED on `#186` shared-owner review: registering its fixture in
+  the maintained CMake/CTest is a shared edit. Its owned files are not this
+  lane's to edit.
+- This lane owns only its three content-lane files (no native fixture), so it
+  cannot add a stage-boot fixture itself without a shared-owner change.
+- The cave path (#642 fixture + `pikmin2_cave_runtime_inputs.py`) boots
+  caveinfo floors but requires a generator sidecar from the cave-generation
+  provider (#129) and emits `P2_CAVE_*` markers, not this lane's contract.
+
+Consequently a "private runtime boot with live starting squad, centred
+960x540 startup and observed collision/routes/actors" cannot be produced for
+this stage until a stage-selectable challenge boot fixture is registered.
+Exact remaining dependency: **#186** (shared-owner review/registration of the
+challenge host-mode fixture, lane #651) or an equivalent shared-owner
+decision to register a P2-challenge-stage boot fixture. A fresh heavy private
+build was deliberately not spent: it cannot observe the stage without that
+fixture and would consume the shared heavy-build budget with no acceptance
+value.
