@@ -73,6 +73,7 @@ Guard logic without assets or a display (both exit-code asserted):
 
     <build>/p2_cave_guarded_boot.exe --guard-self-test       # exit 0, 7/7 rows
     <build>/p2_cave_guarded_boot.exe --guard-negative-test  # exit 86, CAPTAIN_DOWN, no PASS
+    py -3.12 scripts/build_p2_cave_guarded_boot_fixture.py --verify-negative  # wrapper: exit 0 iff exit-86 + marker + no-PASS all hold
 
     <build>/p2_cave_guarded_boot.exe --guard-self-test
 
