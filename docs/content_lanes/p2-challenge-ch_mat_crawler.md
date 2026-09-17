@@ -185,3 +185,26 @@ Remaining gap (unchanged, stage-specific): the engine still cannot boot the
 decoded `ch_MAT_crawler` challenge floors with its own squad/actors; the only
 game-linked challenge boot available is the fixed preview room. Six gates stay
 UNTESTED.
+
+## Gen-7 consumer verification: re-link integrated #672 boot input
+
+The gen-5 #672 boot fixture was linked at native `69738be3`, before the #695
+merge, so its link was stale against the current integrated tree. Re-linked at
+native `2528320f` with the accepted #672 harness (fixture exe
+`bf3f9ebbe96d2502d6a451a955d1a74ae65e26a59cd1cbe14662b1457448e220`; guard
+self-test exit 0, negative exit 86). `fixture.exe 29` (ch_MAT_crawler,
+ui_index 29) exit 0: SQUAD_APPLIED population=60 bitter=3 spicy=4, BOOT
+170.0 s, three TICKs to 140.0 s, FLOOR_ADVANCE floor=1 120.0 s, RETRY reset,
+DONE score=720, no captain-down. Corroborated the engine-linked #695 no-cargo
+boot at gen 7 (exit 0, 960x540 centred, READY, PASS).
+
+Reported via `workflow.consumer_verification` (verification `232bfac7`) with
+`passed=true`, `prerequisite_resolved=true`; evidence `consumer-verify-gen7.log`
+sha256 `a4bbf5e509bbc2d904e469d3a2e7cd679049f0c410e512102ee4062f24cb17e1`.
+The #672 boot input is a simulated host-state hook, not engine/runtime; the
+engine/runtime evidence is the #695 game-linked boot.
+
+Stage-specific remainder now waits on #694 (`challenge-content-loading-boot-native`,
+native content-loading boot path for arena/actors/squad): it is lane-done but has
+no integrated receipt or compiled evidence yet, so no ch_MAT_crawler floor
+content is booted. Gates UNTESTED.
