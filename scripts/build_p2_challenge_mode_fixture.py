@@ -136,10 +136,15 @@ def build_negative(compiler, guard_dir, workdir):
     return exe
 
 
-def run_exe(exe, timeout=300):
+def run_exe(exe, timeout=300, path_prepend=None):
+    env = dict(os.environ)
+    env["PATH"] = ("C:/msys64/mingw64/bin;"
+                   + (str(path_prepend) + ";" if path_prepend else "")
+                   + env.get("PATH", ""))
     proc = subprocess.run(
         [str(exe)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, encoding="utf-8", errors="replace", timeout=timeout,
+        env=env,
         creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     return proc.returncode, proc.stdout
 
