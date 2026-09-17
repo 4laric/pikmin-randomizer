@@ -1,9 +1,12 @@
 # p2-cave-yakushima_4 P1 floor-1 runtime import (#161)
 
-Lane `shard-caves-yakushima-yakushima4-p1`, generation 2, issue #161 (parent
+Lane `shard-caves-yakushima-yakushima4-p1`, generation 3, issue #161 (parent
 #531; existing content owner #137). Pins: root `36b86839`, native `a95040b6`.
-Outcome: **P1 floor-1 staging/observation contract delivered; runtime boot
-BLOCKED on a concrete pin-prerequisite gap**. No ADMIT, no false PASS, issue
+The generation-2 pin-prerequisite gap is **RESOLVED** by integrating the
+accepted prerequisite commits into this private worktree (see below); real
+floor-1 unit staging is now observed through the accepted #129 generator.
+Outcome: **P1 contract + real unit staging observed; the render/collision
+boot with a live guarded squad remains open**. No ADMIT, no false PASS, issue
 #161 stays OPEN.
 
 ## What is delivered (reserved files only)
@@ -23,10 +26,22 @@ BLOCKED on a concrete pin-prerequisite gap**. No ADMIT, no false PASS, issue
   staging writer + boot checker (`-Wall -Wextra -Werror`), never linked into a
   game target.
 
-## Blocking prerequisite (verified, not assumed)
+## Prerequisite resolution (generation 3)
 
-The lane brief states the P0 packet and the #129/#132 provider contracts are
-done+integrated at these pins. They are not present in the pinned worktrees:
+Accepted prerequisite commits were cherry-picked into this lane's private
+worktrees only (no shared checkout edits), preserving provenance:
+
+- native: `21caef9a` (cave generator consumer landing, #129) -> `7188454c`.
+  Ports the accepted `e44b5d70` `pc_p2_cave_generate.h/.cpp` byte-identical and
+  wires the reviewed `pc_p2_cave.cpp` hook + CMake line on baseline `a95040b6`.
+- root: `ad4a34e5` (P0 adapter) and `60b8caad` (consumer landing doc).
+
+The provider presence probe from the Python adapter now reports
+`native_provider_files_present: true`, so the staging path is executable.
+
+## Original gap this resolves
+
+The generation-2 lane was blocked because the pins lacked:
 
 | Required at pin | State |
 |---|---|

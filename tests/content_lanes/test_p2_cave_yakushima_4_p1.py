@@ -107,6 +107,50 @@ class StagingContractTests(unittest.TestCase):
             self.assertTrue(any("unit-staging consumer" in b for b in packet["blockers"]))
 
 
+class SidecarContractTests(unittest.TestCase):
+    UNITS = [
+        {"name": "room_4x4g_water_4_conc", "cells": [4, 4], "kind": 1,
+         "doors": [{"id": 0, "direction": 2, "links": [{"distance": 170.0, "door": 1}]},
+                   {"id": 1, "direction": 3, "links": [{"distance": 170.0, "door": 0}]}]},
+        {"name": "way2_conc", "cells": [1, 1], "kind": 2, "doors": []},
+    ]
+
+    def plan(self):
+        return {"unit_pool": m.UNIT_POOL_FLOOR1, "enemy_definitions": 2,
+                "treasure_definitions": 1, "treasure_ids": ["baum_kuchen_s"]}
+
+    def test_sidecar_real_shape(self):
+        side = m.build_generate_sidecar(self.plan(), self.UNITS)
+        lines = side.splitlines()
+        self.assertEqual(lines[0], "P2_CAVE_GENERATE_1")
+        self.assertEqual(lines[1], "pool 2_units_gw_l_conc.txt 2")
+        self.assertIn("unit 0 room_4x4g_water_4_conc 4 4 1", lines)
+        self.assertIn("rooms 2", lines)
+        self.assertIn("room 1 1 0 0 0 0", lines)
+        self.assertIn("doors 2", lines)
+        self.assertIn("door 0 0 2", lines)
+        self.assertIn("links 2", lines)
+        self.assertIn("link 0 0 0 1 170.000", lines)
+        self.assertIn("spawn baum_kuchen_s 1", lines)
+        self.assertTrue(lines[-1].startswith("anchor "))
+
+    def test_sidecar_uses_real_roster_ids_and_counts(self):
+        roster = {"enemies": [{"enemy_id": "BlackMan", "minimum_count": 1},
+                              {"enemy_id": "Zenmai", "target_count": 9}],
+                  "treasures": [{"treasure_id": "chocoichigo", "minimum_count": 1}]}
+        side = m.build_generate_sidecar(self.plan(), self.UNITS, roster)
+        self.assertIn("spawn BlackMan 1", side)
+        self.assertIn("spawn Zenmai 9", side)
+        self.assertIn("spawn chocoichigo 1", side)
+        self.assertNotIn("enemyDefinition", side)
+
+    def test_sidecar_bad_anchor_and_empty_units_rejected(self):
+        with self.assertRaises(m.StagingError):
+            m.build_generate_sidecar(self.plan(), self.UNITS, anchor="ladder")
+        with self.assertRaises(m.StagingError):
+            m.build_generate_sidecar(self.plan(), [])
+
+
 class ObservationContractTests(unittest.TestCase):
     READY = "P2_CAVE_READY floor=1 survivors=20 health=1"
     NAV = ("P2_CAVE_NAV seq=1 floor=1 captain=1 x=1.0 y=2.0 z=3.0 heading_rad=0.0 "

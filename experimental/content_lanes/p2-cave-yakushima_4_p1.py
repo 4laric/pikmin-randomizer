@@ -202,6 +202,100 @@ def validate_observation(events):
     }
 
 
+def decode_unit_pool(iso_path=None, pool=UNIT_POOL_FLOOR1):
+    """Decode the real floor-1 unit pool from the supported ISO.
+
+    Reuses the shared experimental.pikmin2_cave.unit_definition decoder; no
+    values are invented. Requires the legal local ISO and fails closed.
+    """
+    from experimental.pikmin2_assets import disc_files
+    from experimental.pikmin2_cave import BASE, unit_definition
+
+    iso = Path(iso_path) if iso_path else Path("C:/Users/alari/Downloads/PIKMIN2 for GAMECUBE.iso")
+    if not iso.is_file():
+        raise StagingError("missing legal local ISO for unit pool decode")
+    path = BASE + "/units/" + pool
+    catalog = disc_files(iso)
+    if path not in catalog:
+        raise StagingError("unit pool absent from ISO: " + path)
+    with iso.open("rb") as handle:
+        at, size = catalog[path]
+        handle.seek(at)
+        data = handle.read(size)
+    if len(data) != size:
+        raise StagingError("truncated unit pool: " + path)
+    return unit_definition(data.decode("shift_jis"))
+
+
+def decode_floor1_roster(iso_path=None, research_root=None):
+    """Reuse the pinned P0 adapter to decode the real floor-1 enemy/treasure rows.
+
+    Loaded by path because the adapter file name uses hyphens; nothing is
+    duplicated and no id is invented.
+    """
+    import importlib.util
+
+    adapter = Path(__file__).resolve().parents[2] / "experimental/content_lanes/p2-cave-yakushima_4.py"
+    if not adapter.is_file():
+        raise StagingError("P0 adapter absent: " + str(adapter))
+    spec = importlib.util.spec_from_file_location("p2_cave_yakushima_4_p0", adapter)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    parsed = module.decode(iso_path, research_root)
+    floor = parsed["floors"][0]
+    return {"enemies": floor["enemies"], "treasures": floor["treasures"],
+            "source_sha256": parsed["source_sha256"]}
+
+
+def build_generate_sidecar(plan, units, roster=None, anchor="hole"):
+    """Emit the p2-cave-generate.txt manifest from real decoded rows.
+
+    pool/units/doors/links come from the real unit pool; spawns are the real
+    floor roster as roster-minimum intents (count=1, never a final spawn
+    list); rooms stage each pool unit once at the origin with a labelled
+    engineering transform because no authored yakushima_4 room graph is
+    available (that decode stays a recorded sub-dependency, never invented).
+    """
+    if anchor not in ("hole", "geyser"):
+        raise StagingError("anchor must be hole or geyser")
+    if not units:
+        raise StagingError("unit pool decoded empty")
+    lines = ["P2_CAVE_GENERATE_1", "pool %s %d" % (plan["unit_pool"], len(units))]
+    for idx, unit in enumerate(units):
+        w, d = unit["cells"]
+        lines.append("unit %d %s %d %d %d" % (idx, unit["name"], int(w), int(d), int(unit["kind"])))
+    lines.append("rooms %d" % len(units))
+    for idx in range(len(units)):
+        lines.append("room %d %d 0 0 0 0" % (idx, idx))
+    doors = [(idx, int(door["id"]), int(door["direction"]))
+             for idx, unit in enumerate(units) for door in unit["doors"]]
+    lines.append("doors %d" % len(doors))
+    for unit_idx, door_id, direction in doors:
+        lines.append("door %d %d %d" % (unit_idx, door_id, direction))
+    links = []
+    for idx, unit in enumerate(units):
+        for door in unit["doors"]:
+            for link in door["links"]:
+                links.append((idx, int(door["id"]), idx, int(link["door"]), float(link["distance"])))
+    lines.append("links %d" % len(links))
+    for unit_idx, door_id, peer_unit, peer_door, dist in links:
+        lines.append("link %d %d %d %d %.3f" % (unit_idx, door_id, peer_unit, peer_door, dist))
+    if roster is not None:
+        def minimum(row):
+            return int(row.get("minimum_count", row.get("target_count", 1)))
+        spawns = ["spawn %s %d" % (row["enemy_id"], minimum(row))
+                  for row in roster["enemies"]]
+        spawns += ["spawn %s %d" % (row["treasure_id"], minimum(row))
+                   for row in roster["treasures"]]
+    else:
+        spawns = ["spawn %s 1" % tid for tid in plan["treasure_ids"]]
+        spawns += ["spawn enemyDefinition%d 1" % i for i in range(plan["enemy_definitions"])]
+    lines.append("spawns %d" % len(spawns))
+    lines.extend(spawns)
+    lines.append("anchor %s" % anchor)
+    return "\n".join(lines) + "\n"
+
+
 def main(argv=None):
     import argparse
 
