@@ -128,9 +128,23 @@ class AdapterTests(unittest.TestCase):
             self.assertEqual(provenance["cave"], "tutorial_3")
 
     def test_missing_shared_builder_refused(self):
+        # Integrator compat (#636): the #642 shared builder has since landed
+        # on this line, so absence is simulated to keep the fail-closed
+        # branch covered instead of asserting on line state.
+        import unittest.mock as mock
+        from pathlib import Path
+        real_is_file = Path.is_file
+
+        def fake_is_file(self):
+            if self.name == "pikmin2_cave_runtime_inputs.py":
+                return False
+            return real_is_file(self)
+
         with tempfile.TemporaryDirectory() as tmp:
-            with self.assertRaises(FileNotFoundError):
-                adapter.build_runtime_inputs(adapter.staging_plan(PACKET), tmp)
+            with mock.patch.object(Path, "is_file", fake_is_file):
+                with self.assertRaises(FileNotFoundError):
+                    adapter.build_runtime_inputs(
+                        adapter.staging_plan(PACKET), tmp)
 
 
 if __name__ == "__main__":
