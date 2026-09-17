@@ -192,3 +192,55 @@ class GenerateConformanceTests(unittest.TestCase):
         self.assertTrue(any("malformed sidecar" in p for p in problems))
         with self.assertRaises(ValueError):
             self.mod.parse_generate_sidecar(None)
+
+
+SYNTHETIC_UNIT_DEFS = [
+    {"name": "room_cent3_4_tsuchi", "cells": [100, 100], "kind": 1,
+     "doors": [{"id": 0, "direction": 0, "links": [{"door": 0, "distance": 10.5}]}]},
+    {"name": "way3_tsuchi", "cells": [50, 50], "kind": 0, "doors": []},
+]
+
+
+class GenerateSidecarTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = load_adapter()
+
+    def packet(self):
+        path = Path(tempfile.mkdtemp()) / "packet.json"
+        path.write_text(json.dumps(synthetic_packet()), encoding="utf-8")
+        return path
+
+    def test_generated_sidecar_round_trips_through_conformance(self):
+        packet = self.mod.load_packet(self.packet())
+        text = self.mod.generate_sidecar(packet, SYNTHETIC_UNIT_DEFS, anchor="hole")
+        parsed = self.mod.parse_generate_sidecar(text)
+        self.assertEqual(parsed["pool"], "1_units_cent3_tsuchi.txt")
+        self.assertEqual(len(parsed["units"]), 2)
+        self.assertEqual(parsed["anchor"], "hole")
+        self.assertEqual([s["id"] for s in parsed["spawns"]], ["UjiB"])
+        problems, notes = self.mod.check_generate_against_floor_one(packet, text)
+        self.assertEqual(problems, [])
+        self.assertTrue(any("STAGED room topology" in n for n in notes))
+
+    def test_missing_unit_defs_and_unknown_unit_rejected(self):
+        packet = self.mod.load_packet(self.packet())
+        with self.assertRaises(ValueError):
+            self.mod.generate_sidecar(packet, [])
+        with self.assertRaises(ValueError):
+            self.mod.generate_sidecar(packet, [{"name": "invented", "cells": [10, 10], "doors": []}])
+
+    def test_bad_cells_and_anchor_rejected(self):
+        packet = self.mod.load_packet(self.packet())
+        with self.assertRaises(ValueError):
+            self.mod.generate_sidecar(packet, [{"name": "room_cent3_4_tsuchi", "cells": [0, 10], "doors": []}])
+        with self.assertRaises(ValueError):
+            self.mod.generate_sidecar(packet, SYNTHETIC_UNIT_DEFS, anchor="volcano")
+
+    def test_write_sidecar_emits_file_and_hash(self):
+        out = Path(tempfile.mkdtemp())
+        result = self.mod.write_generate_sidecar(self.packet(), SYNTHETIC_UNIT_DEFS, out)
+        self.assertTrue(Path(result["path"]).is_file())
+        self.assertEqual(len(result["sha256"]), 64)
+        self.assertEqual(result["spawns"], 1)
+        self.assertTrue(any("target deviation: Clover" in n for n in result["notes"]))

@@ -342,3 +342,92 @@ def check_generate_against_floor_one(packet, sidecar_text):
             if got != row["target_count"]:
                 notes.append("target deviation: %s staged %d vs P0 target %d" % (row["enemy_id"], got, row["target_count"]))
     return (problems, notes)
+
+
+def generate_sidecar(packet, unit_defs, anchor="hole", room_offset_step=600.0):
+    """Emit a strict p2-cave-generate.txt sidecar candidate for floor 1.
+
+    Pool and spawn counts come from the P0 floor-1 decode (retail-derived);
+    unit geometry (w/d/kind/doors) comes from ``unit_defs`` supplied by the
+    caller, decoded from the pinned unit blob with the shared
+    ``experimental.pikmin2_cave.unit_definition`` parser. Room placement
+    (one room per unit, spaced along +x, turn=i%4) and the anchor kind are
+    explicitly STAGED harness shaping, never claimed as retail semantics.
+    """
+    floor = floor_one(packet)
+    pool_units = list(unit_defs or [])
+    if not pool_units:
+        raise ValueError("unit_defs required (decode the pinned unit blob)")
+    if anchor not in ("hole", "geyser"):
+        raise ValueError("anchor must be hole|geyser")
+    known_units = set(floor.get("unit_names") or [])
+    units, doors, links = [], [], []
+    for unit in pool_units:
+        name = unit.get("name")
+        cells = unit.get("cells")
+        if name not in known_units:
+            raise ValueError("unit not in floor-1 decode: %r" % name)
+        if not isinstance(cells, (list, tuple)) or len(cells) != 2 or min(cells) <= 0:
+            raise ValueError("bad unit cells for %r" % name)
+        idx = len(units)
+        units.append({"name": name, "w": int(cells[0]), "d": int(cells[1]),
+                      "kind": int(unit.get("kind", 0))})
+        for door in unit.get("doors") or []:
+            doors.append({"unit": idx, "id": int(door["id"]),
+                          "dir": int(door["direction"])})
+            for peer in door.get("links") or []:
+                links.append({"unit": idx, "door": int(door["id"]),
+                              "peer_unit": idx, "peer_door": int(peer["door"]),
+                              "dist": float(peer["distance"])})
+    minima = {}
+    for row in floor.get("enemies") or []:
+        minimum = row.get("minimum_count")
+        if minimum is not None and minimum >= 1:
+            minima[row["enemy_id"]] = minima.get(row["enemy_id"], 0) + minimum
+    if not minima:
+        raise ValueError("floor_1 has no positive roster minima")
+    spawns = [{"id": enemy_id, "count": count}
+              for enemy_id, count in sorted(minima.items())]
+    rooms = [{"unit": i, "turn": i % 4, "offset": [i * room_offset_step, 0.0, 0.0]}
+             for i in range(len(units))]
+    manifest = {"pool": floor.get("unit_pool"), "units": units, "rooms": rooms,
+                "doors": doors, "links": links, "spawns": spawns,
+                "anchor": anchor}
+    return render_generate_sidecar(manifest)
+
+
+def render_generate_sidecar(manifest):
+    out = [SIDECAR_VERSION_GENERATE, "pool %s %d" % (manifest["pool"], len(manifest["units"]))]
+    for i, unit in enumerate(manifest["units"]):
+        out.append("unit %d %s %g %g %d" % (i, unit["name"], unit["w"], unit["d"], unit["kind"]))
+    out.append("rooms %d" % len(manifest["rooms"]))
+    for i, room in enumerate(manifest["rooms"]):
+        out.append("room %d %d %d %g %g %g" % (i, room["unit"], room["turn"], *[float(v) for v in room["offset"]]))
+    out.append("doors %d" % len(manifest["doors"]))
+    for door in manifest["doors"]:
+        out.append("door %d %d %d" % (door["unit"], door["id"], door["dir"]))
+    out.append("links %d" % len(manifest["links"]))
+    for link in manifest["links"]:
+        out.append("link %d %d %d %d %g" % (link["unit"], link["door"], link["peer_unit"], link["peer_door"], link["dist"]))
+    out.append("spawns %d" % len(manifest["spawns"]))
+    for spawn in manifest["spawns"]:
+        out.append("spawn %s %d" % (spawn["id"], spawn["count"]))
+    out.append("anchor %s" % manifest["anchor"])
+    return "\n".join(out) + "\n"
+
+
+def write_generate_sidecar(packet_path, unit_defs, output_dir, anchor="hole"):
+    import hashlib
+    packet = load_packet(packet_path)
+    text = generate_sidecar(packet, unit_defs, anchor=anchor)
+    parsed = parse_generate_sidecar(text)
+    problems, notes = check_generate_against_floor_one(packet, text)
+    if problems:
+        raise ValueError("generated sidecar failed conformance: " + "; ".join(problems))
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / "p2-cave-generate.txt"
+    path.write_text(text, encoding="utf-8")
+    return {"path": str(path), "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            "rooms": len(parsed["rooms"]), "spawns": len(parsed["spawns"]),
+            "units": len(parsed["units"]), "anchor": parsed["anchor"], "notes": notes}

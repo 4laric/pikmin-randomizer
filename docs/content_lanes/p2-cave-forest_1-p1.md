@@ -66,3 +66,23 @@ p2_forest1_p1_fixture.exe <private out>/p2-forest1-floor1.txt
   `5082b1e2...`, absent from every reachable checkout) plus staged room
   topology and anchor kind. The runtime floor-1 boot remains BLOCKED on the
   replacement-main fixture + leased build + captain guard #632.
+
+## Gen-5 update (sidecar generation + provider harness consumed)
+
+- Reviewed integrated `cave-generate-provider` (#129, native e44b5d70): its
+  header is the same module the consumer landing ports; its root-side proving
+  harness `experimental/pikmin2_cave_generate_proving.py` defines
+  `manifest_from_packet(packet, floor, unit_defs)` + marker verification.
+- Added the consumer-side mirror to this adapter: `generate_sidecar`,
+  `render_generate_sidecar` and `write_generate_sidecar`. Pool and spawn
+  counts come from the P0 floor-1 decode; unit geometry comes from
+  `unit_defs`; rooms (one per unit, +x spaced, turn=i%4) and anchor kind are
+  explicitly STAGED harness shaping.
+- Round-trip is tested: generated sidecar parses under the strict reader and
+  passes `check_generate_against_floor_one` (18 tests pass).
+- Remaining gap (unchanged, now singular): the pinned unit blob
+  `1_units_cent3_tsuchi.txt` (sha 5082b1e2...) must be decoded with the
+  shared `unit_definition` parser to supply real `unit_defs`. Absent from all
+  reachable checkouts, so no sidecar is generated for the real floor. Runtime
+  floor-1 boot additionally needs the replacement-main fixture under lease,
+  #632 captain guard and an observed 960x540 boot.
