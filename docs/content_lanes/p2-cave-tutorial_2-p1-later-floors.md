@@ -40,3 +40,25 @@ markers, floor-parameterised for floors 2-9.
 ## Verification
 
 `py -3.12 -m unittest tests.content_lanes.test_p2_cave_tutorial_2_p1_later_floors` -> 9 passed.
+
+
+## Runtime evidence (floor 2 boot PASS; floors 3-9 blocked)
+
+- Private leased build of native pin plus accepted #129 consumer landing
+  (cherry-pick 21caef9a): exe `output/tutorial2-later-floors-build/p2_tutorial2_p1_later_floors.exe`;
+  guard self-test 7/7 exit 0; negative exit 86 `P2_FIXTURE_CAPTAIN_DOWN`.
+- Floor-2 headed guarded boot PASS: 960x540 centred window,
+  `P2_CAVE_READY floor=2 survivors=20`, engine-consumed unit staging
+  (`P2_CAVE_GENERATE_POOL pool=2_MAT_h335_h447_metal.txt`, real spawn ids
+  BombSarai/Sarai/Bomb/Daiodo, `P2_CAVE_GENERATE_PASS rooms=1 spawns=5`),
+  `P2_TUTORIAL2_LATER_PASS floor=2 squad_alive=20`, `PASS TUTORIAL2_LATER`.
+- Floors 3-8 BLOCKED (mechanism, not data): the native entry policy admits
+  floors 1-2 only, and `pc_p2_cave.cpp` descends solely from floor 1
+  (`floorId==1?"Descend":"Leave cave"`), so no engine path reaches floors
+  3+. Their staging plans validate clean and are committed for the future
+  path.
+- Floor 9 BLOCKED (same mechanism plus the open P0 light_a cargo
+  `Houdai_light_a unknown_cargo`, which this slice refuses to invent).
+- Persistence round-trip BLOCKED: needs the floor-1 lane descend handoff
+  (descend originates on floor 1, owned by the DONE floor-1 lane); recorded
+  here as an exact cross-lane dependency, not duplicated.
