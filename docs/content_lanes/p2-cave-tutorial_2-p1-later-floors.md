@@ -62,3 +62,19 @@ markers, floor-parameterised for floors 2-9.
 - Persistence round-trip BLOCKED: needs the floor-1 lane descend handoff
   (descend originates on floor 1, owned by the DONE floor-1 lane); recorded
   here as an exact cross-lane dependency, not duplicated.
+
+
+## Runtime evidence (floors 2-8 boot PASS; floor 9 + persistence blocked)
+
+- Private leased build with the adapted #757 descend policy (ENTRY_4 floors
+  3-8): guard self-test 7/7 exit 0; negative exit 86 `P2_FIXTURE_CAPTAIN_DOWN`.
+- Headed guarded boots, one fresh arena per floor (20-squad baseline,
+  single pr05, canonical runner): floors 2-8 ALL PASS with `P2_CAVE_READY
+  floor=N survivors=20`, engine-consumed unit staging with real spawn ids,
+  and `P2_TUTORIAL2_LATER_PASS squad_alive=20` + `PASS TUTORIAL2_LATER`.
+  Spawn counts: f2=5, f3=6, f4=3, f5=4, f6=7, f7=6, f8=4.
+- Floor 9 BLOCKED: `Houdai_light_a unknown_cargo` refused by the adapter
+  (open P0 light_a blocker, not invented).
+- Persistence round-trip BLOCKED: needs the floor-1 lane descend handoff
+  (descend originates on floor 1); recorded as an exact cross-lane
+  dependency, not duplicated.
