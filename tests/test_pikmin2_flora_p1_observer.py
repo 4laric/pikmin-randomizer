@@ -19,7 +19,7 @@ GOOD = chr(10).join([
     "P2_FLORA_P1_WINDOW size=960x540 pos=100,100 display=1920x1080 centered=1",
     "P2_FLORA_P1_SQUAD pikis=20 colors=Red,Blue,Yellow,Purple,White",
     session("Clover"), session("Tukushi"), session("Chiyogami"),
-    "P2_FLORA_P1_DONE failures=0",
+    "P2_FLORA_P1_DONE failures=0 squad_left=3",
     "PASS P2_FLORA_P1_RUN sessions=3",
 ]) + chr(10)
 
@@ -82,6 +82,18 @@ class FloraObserverTests(unittest.TestCase):
         self.assertEqual(obs.compute_score(42, 120.5, 15), 690)
         with self.assertRaises(obs.ObserverError):
             obs.compute_score(-1, 10.0, 1)
+
+    def test_done_with_squad_left_parses(self):
+        parsed = obs.parse(GOOD)
+        self.assertEqual(parsed["dones"], [0])
+        self.assertEqual(parsed["squads"], [(20, "Red,Blue,Yellow,Purple,White")])
+
+    def test_done_missing_squad_left_parses(self):
+        text = GOOD.replace("P2_FLORA_P1_DONE failures=0 squad_left=3", "P2_FLORA_P1_DONE failures=0")
+        parsed = obs.parse(text)
+        self.assertEqual(parsed["dones"], [0])
+        ok, _ = obs.check_run(parsed)
+        self.assertTrue(ok)
 
     def test_gate_status(self):
         gates = obs.gate_status(GOOD)

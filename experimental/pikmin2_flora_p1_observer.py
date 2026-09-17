@@ -35,7 +35,7 @@ KEY_PREFIX = "p2_challenge"
 KEY_FIELDS = ("save", "load", "clear", "highscore", "unlock")
 SQUAD_RE = re.compile(r"^P2_FLORA_P1_SQUAD pikis=(\d+) colors=([A-Za-z,]+)$")
 SESSION_RE = re.compile(r"^P2_FLORA_P1_SESSION identity=(\w+) converted=(\d+) received=(\d+) hauled=(\d+)$")
-DONE_RE = re.compile(r"^P2_FLORA_P1_DONE failures=(\d+)$")
+DONE_RE = re.compile(r"^P2_FLORA_P1_DONE failures=(\d+)(?: squad_left=\d+)?$")
 PASS_RE = re.compile(r"^PASS P2_FLORA_P1_RUN sessions=3$")
 WINDOW_RE = re.compile(r"^P2_FLORA_P1_WINDOW size=960x540 .*centered=1$")
 CAPTAIN_DOWN = "P2_FIXTURE_CAPTAIN_DOWN"
