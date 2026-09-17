@@ -116,3 +116,24 @@ Remaining concrete gap: a family-side (or approved lifecycle) driver that
 (b) observes the host corpse pellet, and (c) performs a stage-boundary reset
 plus generator rebirth with re-bind. That is a family-module change requiring
 existing-owner review on #376; not requested here.
+
+
+## Generation-4 reassessment (attempt 124b128b)
+
+The prerequisite set was inspected again, including the newly added
+`shard-enemies-5-bluekochappy44-observer` (#461, done, tooling-only: three
+Python observer files, native null). None of the four integrated
+prerequisites provides the missing DangoMushi production driver:
+
+- `shard-enemies-1-snagret70-p0` (#376): SnakeWhole70 P0 source audit
+  (Python tooling).
+- `enemy-elecbug28-gate5-adjudication` (#585): tooling adjudication (native null).
+- `shard-enemies-1-pom-actor-provider` (#448): Candypop pom actor-birth seam
+  (native `c2790169`), unrelated to DangoMushi death/cleanup.
+- `shard-enemies-5-bluekochappy44-observer` (#461): tooling observer (native null).
+
+No registry lane or new artifact drives a natural free-squad death + host
+corpse + stage-boundary reset + generator rebirth for DangoMushi. The
+dependency is still unresolved; no prerequisite merge was needed (none touches
+this slice's files). Observed worktrees remain clean at root `b8c52bde` /
+native `e663a45f`.
