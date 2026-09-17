@@ -63,6 +63,12 @@ PINS = {
         "blob": "17afe849198f998757a645957ceafeaa4ba42205",
         "sha256": "7a3f7b85ec34ceb8bdc415e27e59ac6d398da060fe6ed35b2a283a4224826ef1",
     },
+    "consumer_doc": {
+        "commit": "2ae0fe613ba577751e28e1d0c97014f66f7aa5b0",
+        "path": "docs/content_lanes/p2-challenge-ch_mat_route_rover.md",
+        "blob": "5103075899ac0e857858be842f5053cbaff751e6",
+        "sha256": "db82b2694eda244dae1b5cbd09fc28cf845503da7a1a61af5999be1c639fe92c",
+    },
 }
 
 REQUIRED_ANCHORS = {
@@ -73,6 +79,9 @@ REQUIRED_ANCHORS = {
     "contract_mod": {
         134: "surface_saves_132': 'Day/save persistence incl. challenge clear flags and highscores",
         158: "saves_unlocks='#132'",
+    },
+    "consumer_doc": {
+        1: "p2-challenge-ch_mat_route_rover import contract (P0, issue #561)",
     },
 }
 
