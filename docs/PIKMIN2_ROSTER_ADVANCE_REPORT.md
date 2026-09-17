@@ -49,8 +49,8 @@ Regenerate with:
 
 | Gates away from admission | Identities |
 |---:|---:|
-| 0 | 7 |
-| 1 | 7 |
+| 0 | 8 |
+| 1 | 6 |
 | 2 | 5 |
 | 3 | 4 |
 | 4 | 2 |
@@ -143,8 +143,8 @@ Seedable (`source`/`variant`) identities named across handoffs: 55
 
 ### 30 Queen (source)
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE09_DEEPSEEK_HANDOFF.md, PIKMIN2_LANE24_DEEPSEEK_HANDOFF.md
-- advances: identity_spawn, movement_animation, attacks_receivers, death_corpse, cleanup_reentry
-- blocking: transport_reward
+- advances: identity_spawn, movement_animation, attacks_receivers, death_corpse, transport_reward, cleanup_reentry
+- blocking: (none)
 
 ### 32 Demon (source) - shared table, excluded
 - handoffs: PIKMIN2_LANE02_DEEPSEEK_HANDOFF.md
