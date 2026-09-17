@@ -1,4 +1,4 @@
-# P2 Challenge 04 ch_NARI_01kusachi — P0 import contract (lane p2-challenge-ch_nari_01kusachi, #533)
+﻿# P2 Challenge 04 ch_NARI_01kusachi â€” P0 import contract (lane p2-challenge-ch_nari_01kusachi, #533)
 
 Owner: Codex through shared account `4laric`. Parent content #137; coordination #531.
 Phase: **P0 only**. No claim of playability; P1/P2 remain OPEN with runtime
@@ -18,15 +18,15 @@ dependencies #136, #137, #129, #130, #131.
 ## Actual-source decode (observed, this slice)
 
 Local legal source `assets/disc/PIKMIN2 for GAMECUBE.iso` (read-only) contains
-the entry: **1267 bytes, sha256 `b8d232f4…bb8d85` — matches the pinned
+the entry: **1267 bytes, sha256 `b8d232f4â€¦bb8d85` â€” matches the pinned
 canonical hash.** Decoded shift_jis (1184 chars) through the shared parser
 (`experimental.pikmin2_cave_catalog.parse`) with retail ID sets (100 enemy IDs
 from `native/pikmin2-research/.../enemyInfo.cpp`, 201 treasure IDs from
-`pelletlist_us.szs`): **1 definition, floor span 1–1 — complete floor
-coverage.** Full manifest: lane output `decode.json` (sha256 `7d89054c…3285a`).
+`pelletlist_us.szs`): **1 definition, floor span 1â€“1 â€” complete floor
+coverage.** Full manifest: lane output `decode.json` (sha256 `7d89054câ€¦3285a`).
 
 Floor 1 roster (definition weights, not placements): `Tank_key`,
-2× `Jigumo_silver_medal`, `Frog_turi_uki`, 3× `Catfish_wadou_kaichin`, plants
+2Ã— `Jigumo_silver_medal`, `Frog_turi_uki`, 3Ã— `Catfish_wadou_kaichin`, plants
 `Clover`/`Zenmai`/`Clover` (target counts 5/5/5); treasures `kan`,
 `dia_c_green`; one `gate` (life 4000.0, weight 11); cap block present with
 count 0. Floor parameters: `f008` pool `1_MAT_ike_kusachi.txt`, lighting
@@ -35,7 +35,7 @@ count 0. Floor parameters: `f008` pool `1_MAT_ike_kusachi.txt`, lighting
 Resource closure: pool file present in disc; 8 unit definitions
 (`cap_kusachi`, `item_cap_kusachi`, `way3_kusachi`, `way4_kusachi`,
 `wayl_kusachi`, `way2_kusachi`, `way2x2_kusachi`, `room_ike_kusachi`); all
-`arc.szs`/`texts.szs` unit assets present — **zero missing unit assets.**
+`arc.szs`/`texts.szs` unit assets present â€” **zero missing unit assets.**
 Unsupported-actor assessment for P1: Tank (Armored Cannon Beetle larva),
 Jigumo (Beady Long Legs), Frog (Wollywog) and Catfish (Water Dumple) are
 engine-owned species outside this lane; no fallback behavior fabricated here.
@@ -43,18 +43,18 @@ engine-owned species outside this lane; no fallback behavior fabricated here.
 ## Adapter (`experimental/content_lanes/p2-challenge-ch_nari_01kusachi.py`)
 
 Isolated per-lane boundary reusing the existing shared parser
-(`experimental.pikmin2_cave_catalog.parse` — not forked, not edited):
+(`experimental.pikmin2_cave_catalog.parse` â€” not forked, not edited):
 
-- `source_identity()` — pinned identity + catalogued metadata.
-- `locate_source(roots)` / `read_disc_source(iso_path)` — find the
+- `source_identity()` â€” pinned identity + catalogued metadata.
+- `locate_source(roots)` / `read_disc_source(iso_path)` â€” find the
   disc-relative path or read the pinned bytes via the existing disc reader;
   absent image/entry raises the exact missing-disc prerequisite.
-- `verify_source_bytes(data)` — fail-closed sha256 check vs the pinned hash.
-- `decode_stage(text, enemy_ids, treasure_ids)` — shared parse plus the
+- `verify_source_bytes(data)` â€” fail-closed sha256 check vs the pinned hash.
+- `decode_stage(text, enemy_ids, treasure_ids)` â€” shared parse plus the
   1-floor coverage check; malformed input raises `StageDecodeError`.
-- `resource_closure(cave)` — lists `f008` unit-pool references as unresolved
+- `resource_closure(cave)` â€” lists `f008` unit-pool references as unresolved
   without source bytes.
-- `build_import_packet` / `write_packet` — JSON implementation packet under
+- `build_import_packet` / `write_packet` â€” JSON implementation packet under
   ignored output with verification status, floor coverage, blockers and the
   definition-not-placement limitations.
 
@@ -118,13 +118,13 @@ centred (960x540) marker log and fails closed otherwise.
 
 ## Unsupported semantics (recorded, not claimed)
 
-`challenge_host_mode`, `coop_2p`, `key_completion`, `result_screen` —
+`challenge_host_mode`, `coop_2p`, `key_completion`, `result_screen` â€”
 mirrored from the contract consumer
 (`docs/PIKMIN2_CHALLENGE2_CONTRACT_CONSUMER.md`). No host-mode
 implementation lane exists in this tree; a staged run exercises the cave
 path only, never Challenge-mode rules.
 
-## Captain safety (#632) — adoption pin gap
+## Captain safety (#632) â€” adoption pin gap
 
 The canonical guard `scripts/p2_fixture_captain_guard.h` (sha256
 `d2f678c9eda75e151eb534077dff9e30ad36ae4796881d971bbd09945f3c3474`) was
@@ -149,7 +149,7 @@ worktree with no conflicts):
 
 - The only challenge boot path in this native pin is
   `--experimental-challenge-level 0-4` (`pc_port/pc_bbft.cpp:47-51`), which
-  selects the five P1 stage inis `stages/chal0..chal4.ini` — NOT P2 challenge
+  selects the five P1 stage inis `stages/chal0..chal4.ini` â€” NOT P2 challenge
   caveinfo stages such as `ch_NARI_01kusachi`.
 - The P2 challenge guarded fixture that exists
   (`native/tools/p2_challenge_guarded_boot_fixture.cpp`, lane #649) also
@@ -201,7 +201,7 @@ P2 challenge stage content:
   chain with `content_wired=0` by design.
 
 Remaining gap (exact): **P2 challenge stage content wiring** (arena geometry,
-actors, starting squad) for a boot — no producer lane owns it — plus the
+actors, starting squad) for a boot â€” no producer lane owns it â€” plus the
 maintained CMake/CTest registration packet #661 still open under #186
 review. Squad, collision, routes and actors remain unobserved; all six gates
 UNTESTED; no playability claim.
@@ -268,3 +268,24 @@ recorded passed + prerequisite_resolved. Evidence:
 `prepared/p1-kusachi-output/gen7-runtime-evidence.json` (sha256
 `0d08fd1b950fd155f6c1e0bfc999aeecdeddb1a4cf2c818c2584f9362e8102f4`). The
 residual gap below is unchanged and still owner/runtime business.
+### Generation-8 content-wired boot (integrated #728, verification c3ce67df)
+
+The accepted #728 content-wiring prerequisite was brought into this lane's
+private native worktree (cherry-picked verbatim: content module + kusachi
+fixture from `0c3e0734`, params struct from #722 `57805f0d`; only the
+pc_bbft.cpp hook/call placement adapted to this line's #675 table site; no
+new native authorship claimed) and committed as `704bad6c`. A fresh leased
+`pikmin_pc` build (exe `c5cb1520...`, `ninja: no work to do.`))
+plus a private fixture build (provenance `built`, expected == observed head
+`704bad6c`, fixture exe
+`5deab31614a7448f9e07e4e3ec174220cf6b1bb2b2a7bbe1511f673cccfdcbae`)
+were run under the canonical guard (no CAPTAIN_DOWN).
+
+Observed in `prepared/p1-kusachi-output/run-kusachi-gen8-content-v2/native.log`
+(exit 0): `P2_CHALLENGE_CONTENT_WIRED wired=20 total=20 target_color=0
+cave=ch_NARI_01kusachi` and `PASS KUSACHI_CONTENT_WIRING observed=1 wired=20`.
+Native `PikiColor { Blue = 0, ... }` proves target 0 is BLUE, so the 20 live
+reds from the room overlay were genuinely converted to the kusachi roster
+color (not a vacuous all-red count); centred 960x540 window held. Gates stay
+UNTESTED (binding is color conversion, not species behavior); no playability
+claim, no ADMIT, no ledger writes.
