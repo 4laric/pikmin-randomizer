@@ -6,6 +6,8 @@ no package-marker files outside its three reserved paths; standardizing
 integrator.
 """
 import importlib.util
+import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -25,6 +27,9 @@ SOURCE_SHA256 = _adapter.SOURCE_SHA256
 HashMismatch = _adapter.HashMismatch
 SourceMissing = _adapter.SourceMissing
 UnsupportedDefinition = _adapter.UnsupportedDefinition
+validate_p1_manifest = _adapter.validate_p1_manifest
+stage_run_layout = _adapter.stage_run_layout
+p1_main = _adapter.p1_main
 asset_closure = _adapter.asset_closure
 decode_full = _adapter.decode_full
 decode_text = _adapter.decode_text
@@ -195,6 +200,117 @@ class ClosureContractTests(unittest.TestCase):
         self.assertIn("not final spawn instances", repr(contract["limitations"]))
         self.assertEqual(contract["timer_roster_spray_baseline"], BASELINE)
 
+class P1ImportTests(unittest.TestCase):
+    """P1 import path for ch_NARI_07whitepurple (lane p2-challenge-ch-nari-07whitepurple-p1).
 
-if __name__ == "__main__":
+    Synthetic harness manifests (labeled here, never source evidence) that
+    preserve the pinned contract: 2 floors, timers [170.0, 170.0], squad
+    total 30 purples at [4][0], sprays 0/3, ui_index 20.
+    """
+
+    def manifest(self, **over):
+        m = {
+            "schema": "p2-challenge-ch_nari_07whitepurple-p0/1",
+            "cave_id": "ch_NARI_07whitepurple",
+            "floors": [
+                {"unit_pool": "whitepurple-floor1-pool",
+                 "enemies": [{"source_token": "PurpleA"}],
+                 "treasures": [{"treasure_id": "purple_key"}]},
+                {"unit_pool": "whitepurple-floor2-pool",
+                 "enemies": [{"source_token": "PurpleB"}],
+                 "treasures": []},
+            ],
+            "starting_roster": [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0],
+                                [30, 0, 0], [0, 0, 0], [0, 0, 0]],
+            "floor_seconds": [170.0, 170.0],
+            "sprays": {"bitter": 0, "spicy": 3},
+            "ui_index": 20,
+        }
+        m.update(over)
+        return m
+
+    def test_validate_ok(self):
+        out = validate_p1_manifest(self.manifest())
+        self.assertEqual(out["cave_id"], "ch_NARI_07whitepurple")
+        self.assertEqual(out["squad_total"], 30)
+        self.assertEqual(len(out["floors"]), 2)
+        self.assertEqual(out["floor_seconds"], [170.0, 170.0])
+
+    def test_wrong_cave_rejected(self):
+        with self.assertRaises(UnsupportedDefinition):
+            validate_p1_manifest(self.manifest(cave_id="ch_OTHER"))
+
+    def test_floor_count_rejected(self):
+        m = self.manifest()
+        m["floors"] = m["floors"][:1]
+        with self.assertRaises(UnsupportedDefinition):
+            validate_p1_manifest(m)
+
+    def test_empty_enemies_rejected(self):
+        m = self.manifest()
+        m["floors"][0]["enemies"] = []
+        with self.assertRaises(UnsupportedDefinition):
+            validate_p1_manifest(m)
+
+    def test_missing_unit_pool_rejected(self):
+        m = self.manifest()
+        del m["floors"][1]["unit_pool"]
+        with self.assertRaises(UnsupportedDefinition):
+            validate_p1_manifest(m)
+
+    def test_wrong_squad_total_rejected(self):
+        m = self.manifest()
+        m["starting_roster"][4][0] = 29
+        with self.assertRaises(UnsupportedDefinition):
+            validate_p1_manifest(m)
+
+    def test_missing_pinned_cell_rejected(self):
+        m = self.manifest()
+        m["starting_roster"][4][0] = 0
+        m["starting_roster"][0][0] = 30
+        with self.assertRaises(UnsupportedDefinition):
+            validate_p1_manifest(m)
+
+    def test_bad_timer_rejected(self):
+        with self.assertRaises(UnsupportedDefinition):
+            validate_p1_manifest(self.manifest(floor_seconds=[170.0, 169.0]))
+
+    def test_wrong_sprays_rejected(self):
+        with self.assertRaises(UnsupportedDefinition):
+            validate_p1_manifest(self.manifest(sprays={"bitter": 0, "spicy": 0}))
+
+    def test_wrong_ui_rejected(self):
+        with self.assertRaises(UnsupportedDefinition):
+            validate_p1_manifest(self.manifest(ui_index=0))
+
+    def test_stage_run_layout_writes_three_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "run"
+            result = stage_run_layout(self.manifest(), out)
+            self.assertEqual(result["cave_id"], "ch_NARI_07whitepurple")
+            self.assertEqual(len(result["files"]), 3)
+            for name in ("stage-manifest.json", "p1-input-package.json", "run-plan.json"):
+                self.assertIn(name, result["files"])
+                self.assertTrue((out / name).is_file())
+            package = json.loads((out / "p1-input-package.json").read_text())
+            self.assertEqual(package["schema"], "p2-challenge-ch-nari-07whitepurple-p1-v1")
+            self.assertEqual(package["squad_total"], 30)
+
+    def test_stage_run_layout_rejects_bad_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(UnsupportedDefinition):
+                stage_run_layout({"cave_id": "nope"}, Path(tmp))
+
+    def test_p1_main_missing_file_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(UnsupportedDefinition):
+                p1_main(Path(tmp) / "absent.json", Path(tmp) / "out")
+
+    def test_p1_main_end_to_end(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "manifest.json"
+            src.write_text(json.dumps(self.manifest()), encoding="utf-8")
+            result = p1_main(src, Path(tmp) / "run")
+            self.assertEqual(result["floors"], 2)
+if __name__ == '__main__':
     unittest.main()

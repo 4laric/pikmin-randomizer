@@ -91,3 +91,27 @@ recorded without spawns, malformed/missing fail-closed on synthetic and real
 bytes, shared-parser wiring, closure and no-placement contract). Log:
 `output/workflow/autofill/p2-challenge-ch_nari_07whitepurple/checks-p0.log`.
 Reviewed packet: `.../contract-p0.json`.
+## P1 import path (lane p2-challenge-ch-nari-07whitepurple-p1; no re-implementation)
+
+`validate_p1_manifest()` checks a P0 manifest carries everything the P1
+runtime import needs (2 decoded floors with unit pools + enemy/treasure
+rosters, 7-row starting roster totalling 30 purples at [4][0], timers
+[170.0, 170.0], sprays bitter 0 / spicy 3, ui_index 20) and normalizes a
+staging dict; anything else raises fail-closed via `UnsupportedDefinition`.
+`stage_run_layout()` writes a private run layout: `stage-manifest.json`
+(validated copy), `p1-input-package.json` (stage key, floors, squad total 30,
+timers, sprays, ui 20) and `run-plan.json` (ordered observation plan: fresh
+arena + starting-Pikmin overlay + centred 960x540 boot, captain guard FIRST
+with orimaDead/NaviDead/HP<=1 and CAPTAIN_DOWN + BLOCKED, live-squad check,
+collision/routes/actors markers, honest six-gate evidence). `p1_main()` drives
+it from a manifest file; `main()` is a thin CLI. All decode helpers are the
+P0 ones in this same file; no parser was forked.
+
+P1 validation evidence: `P1ImportTests`, 14 focused tests (valid manifest,
+wrong cave, floor count, empty enemies, missing unit pool, wrong squad total,
+missing pinned cell, bad timer, wrong sprays, wrong ui, three-file layout
+write + package schema/squad assertions, bad-manifest and missing-file
+rejections, end-to-end `p1_main`), all green alongside the 13 P0 tests
+(27 passed total). No runtime run, no build, no shared edits; all six gates
+UNTESTED. The runtime boot (leased build, fresh arena, guard adoption, live
+observation) remains explicitly future work once the host toolchain recovers.
