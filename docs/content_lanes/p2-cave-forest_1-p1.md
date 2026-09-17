@@ -1,0 +1,51 @@
+# forest_1 P1 floor-1 staging plan (lane shard-caves-forest-forest1-p1, #154)
+
+Parent #586 (planning fanout); planning shard #594; content integration #531.
+Implementation owner: Codex through shared GitHub account `4laric`.
+BOUNDED P1 slice: forest_1 floor 1 only. Full P2 acceptance stays open; no ADMIT.
+
+## What this slice delivers
+
+A deterministic, placement-free floor-1 STAGING PLAN derived from the DONE
+forest_1 P0 packet (`shard-caves-forest-forest1-p0`), plus an
+engine-independent native fixture that validates the plan's invariants.
+
+- `experimental/content_lanes/p2-cave-forest_1_p1.py` consumes the P0 packet
+  read-only (`load_packet` strict schema/cave/floor-coverage checks), extracts
+  the floor-1 decode (`staging_plan`) and emits
+  `p2-forest1-floor1.json` (handoff) and `p2-forest1-floor1.txt`
+  (line-oriented sidecar). `validate_plan` enforces: no `generated` claim, no
+  invented `placements`, a present unit pool + sha, unique units, well-formed
+  enemy rows (a minimum or target count, non-negative ints, source-token
+  names) and optional unit-asset closure.
+- `native/tools/p2_forest1_p1_fixture.cpp` is additive and engine-independent
+  (no engine headers, never linked into a game target). It parses the sidecar
+  and re-checks the same invariants, emitting
+  `P2_FOREST1_P1_PLAN` and `PASS P2_FOREST1_P1_STAGING_PLAN`.
+
+## Round trip
+
+```
+py -3.12 experimental/content_lanes/p2-cave-forest_1_p1.py \
+  --packet <P0 packet.json> --output <private out>
+g++ -std=c++17 tools/p2_forest1_p1_fixture.cpp -o p2_forest1_p1_fixture.exe
+p2_forest1_p1_fixture.exe <private out>/p2-forest1-floor1.txt
+```
+
+## Honest scope and remaining blockers
+
+- This validates the STAGING PLAN. It does not boot the game, spawn actors,
+  or prove real collision/routes/unit staging; no runtime floor-1 boot has
+  been observed in this slice. The four arena gates remain UNTESTED.
+- Missing runtime prerequisite: a cave replacement-main runtime fixture built
+  through the leased private build (`scripts/build_pikmin2_fixture.py`) that
+  boots forest_1 floor 1 with the current preview overlay and observes
+  960x540 centred startup, live squad and active gameplay, adopting captain
+  safety #632 (`scripts/p2_fixture_captain_guard.h`: orimaDead/NaviDead/
+  HP<=1 before pause/movie returns or observation ticks, `CAPTAIN_DOWN` +
+  BLOCKED exit, parked captain, negative guard test).
+- Provider blockers stay with their owners: #129 (caves), #128 (assets),
+  #131 (species), #132 (saves), #140/#144/#145/#146. Unadmitted floor roster
+  members block promotion, not this preparatory plan.
+- Floors 2-5, persistence, retreat/extinction/reload and natural collection
+  remain OPEN.

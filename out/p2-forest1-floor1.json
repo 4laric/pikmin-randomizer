@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "lane": "shard-caves-forest-forest1-p1",
+  "cave_id": "forest_1",
+  "source": "user/Mukki/mapunits/caveinfo/forest_1.txt",
+  "source_sha256": "c0dccd032e576bdc9234ad04fc44b7081c6f36b52e50cb66ed48fe9e6f54cf88",
+  "unit_pool": "1_units_cent3_tsuchi.txt",
+  "unit_pool_sha256": "5082b1e21275b51b3b32ef0978e62b5de2c2339750fdf6ba30e60fdde9d89fff",
+  "unit_names": [
+    "item_cap_tsuchi",
+    "way3_tsuchi",
+    "way4_tsuchi",
+    "wayl_tsuchi",
+    "way2_tsuchi",
+    "way2x2_tsuchi",
+    "room_cent3_4_tsuchi"
+  ],
+  "unit_assets": [
+    "item_cap_tsuchi/arc.szs",
+    "item_cap_tsuchi/texts.szs",
+    "way3_tsuchi/arc.szs",
+    "way3_tsuchi/texts.szs",
+    "way4_tsuchi/arc.szs",
+    "way4_tsuchi/texts.szs",
+    "wayl_tsuchi/arc.szs",
+    "wayl_tsuchi/texts.szs",
+    "way2_tsuchi/arc.szs",
+    "way2_tsuchi/texts.szs",
+    "way2x2_tsuchi/arc.szs",
+    "way2x2_tsuchi/texts.szs",
+    "room_cent3_4_tsuchi/arc.szs",
+    "room_cent3_4_tsuchi/texts.szs"
+  ],
+  "enemies": [
+    {
+      "enemy_id": "UjiB",
+      "carried_treasure": null,
+      "minimum_count": 4,
+      "selection_weight": 0,
+      "target_count": null
+    },
+    {
+      "enemy_id": "UjiA",
+      "carried_treasure": null,
+      "minimum_count": 2,
+      "selection_weight": 0,
+      "target_count": null
+    },
+    {
+      "enemy_id": "UjiA",
+      "carried_treasure": null,
+      "minimum_count": 2,
+      "selection_weight": 0,
+      "target_count": null
+    },
+    {
+      "enemy_id": "UjiA",
+      "carried_treasure": null,
+      "minimum_count": 2,
+      "selection_weight": 0,
+      "target_count": null
+    },
+    {
+      "enemy_id": "Clover",
+      "carried_treasure": null,
+      "minimum_count": null,
+      "selection_weight": null,
+      "target_count": 4
+    },
+    {
+      "enemy_id": "Tukushi",
+      "carried_treasure": null,
+      "minimum_count": null,
+      "selection_weight": null,
+      "target_count": 2
+    },
+    {
+      "enemy_id": "KareOoinu_s",
+      "carried_treasure": null,
+      "minimum_count": null,
+      "selection_weight": null,
+      "target_count": 2
+    }
+  ],
+  "treasures": [
+    "juji_key_fc"
+  ],
+  "gates": [],
+  "cap_count": 0,
+  "generated": false,
+  "placements": [],
+  "limitations": [
+    "Weighted rows are definitions, not spawn instances or placements.",
+    "No seeded topology, hole selection or radial distribution is generated.",
+    "Floors 2-5, persistence and gameplay sign-off remain out of scope."
+  ]
+}
