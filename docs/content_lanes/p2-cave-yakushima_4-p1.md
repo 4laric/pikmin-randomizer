@@ -135,3 +135,34 @@ an engine-internal pre-stage stall outside my four reserved files and outside
 every integrated provider. All six gates stay UNTESTED. The exact remaining
 gap is a diagnosed engine boot stall, plus the authored yakushima_4 room
 graph for a genuine collision claim.
+
+
+## Generation 10: generic boot blocker CLEARED; real floor-1 guarded boot PASS
+
+Adopted the canonical runner `scripts/run_pikmin2_cave_fixture.py` (#671) and
+regenerated this lane's arena with the current 20-Pikmin squad while preserving
+the real P0-derived cave sidecar. The generic pre-stage stall was a fixture
+construction defect (directory junctions to ordinary files made `consFont.bti`
+unreadable), not an engine defect.
+
+Real runtime evidence on the UNCHANGED private executable
+`a9d82b1f87d0609caf72be6a23dd725d5379296b8c03044851dd6874d201005b`:
+
+- Positive (`out/laneresult-1`): exit 0, 2.25s, `baseline_smoke_only:false`.
+  `P2_CAVE_GUARDED_WINDOW size=960x540 centered=1`; `P2_CAVE_READY floor=1
+  survivors=20`; the full real `P2_CAVE_GENERATE_*` staging from the actual
+  unit pool `2_units_gw_l_conc.txt` and roster (BlackMan, FireChappy, Tank,
+  Hiba x5, Zenmai 9; baum_kuchen_s, chocoichigo); `P2_CAVE_GENERATE_PASS
+  rooms=8 spawns=10 links=36 anchor=hole`; `P2_CAVE_GUARDED_ENTRY_READY
+  floor=1 observed=1`; `P2_CAVE_GUARDED_BOOT_PASS floor=1 squad_alive=20`;
+  `PASS CAVE_GUARDED_BOOT`.
+- Negative (`out/lane-negative-1`, `FORCE_CAPTAIN_DOWN=1`): raw exit 86,
+  `P2_FIXTURE_CAPTAIN_DOWN`, no boot PASS.
+- Arena `2f6fd495...`, entry `28127be7...`, sidecar `aa8f9986...`; guard
+  header `d2f678c9...` vendored verbatim.
+
+This clears the generic cave-boot dependency only. It does NOT establish
+yakushima_4 authored geometry or collision, higher floors or persistence: no
+`P2_CAVE_NAV` route samples were produced, and the staged room graph is the
+real unit pool placed at identity, not the authored yakushima_4 room layout.
+Those remain the actual outstanding requirements.
