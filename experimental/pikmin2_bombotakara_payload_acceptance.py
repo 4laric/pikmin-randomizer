@@ -31,6 +31,12 @@ from pathlib import Path
 # the accepted provider owns the consumer log grammar
 # BIRTH/ATTACH/DETACH/DETONATE/BLAST. Delegate to it instead of keeping a
 # second divergent grammar here.
+# Invoked as a script (python experimental/...) puts only this directory on
+# sys.path, so add the repository root before the package import.
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
 try:
     from experimental import pikmin2_bomb_payload_provider as accepted_provider
 except ImportError:  # pragma: no cover - provider absent in a bare checkout
