@@ -117,3 +117,40 @@ build, fixture provenance, fresh arena with the starting-Pikmin overlay,
 960x540 centred startup, captain-safety #632 adoption with guard/source
 hashes, and the observed marker log (or the exact defect if the boot cannot
 complete). Six gates stay UNTESTED unless genuinely observed.
+
+## P1 host-state boot (observed, generation 5)
+
+Consumed the accepted `challenge-boot-native-fixture` (#672) prerequisite into
+the private native worktree: fast-forwarded `fb6419d5` (native base
+`ab81cf5d`, validation receipt
+`output/workflow/integration-recovery/species-owner/challenge-boot-batch-validation.log`
+sha256 `80b05eed3bfb5250546f1c9920d550353ed857405432197888de07d454dd90fd`),
+then added the `ch_MAT_crawler` stage entry from the live P0 decode
+(ui 29, 2 floors 170.0/120.0 s, roster `[[0,0,30],[0,0,30],...]`, bitter 3,
+spicy 4) as native commit `69738be3` (private worktree only, not a shared
+edit). The #651 host-mode module TU is unchanged.
+
+Leased private build in `output/shard-challenge-0-p1crawler-build` via the
+canonical #672 harness (`configure`, `build` pikmin_pc 618/618 with
+`ninja -n` no-work, `fixture`, `guardcheck`): fixture exe sha256
+`735fc0c2d77a69cb98a73759e12e37a1049bbda6b85b8e48181a2c949c043c45`.
+Captain safety #632 adopted: canonical
+`scripts/p2_fixture_captain_guard.h` sha256
+`d2f678c9eda75e151eb534077dff9e30ad36ae4796881d971bbd09945f3c3474`
+consumed read-only via `CPLUS_INCLUDE_PATH` (never copied); guard runs before
+every observed tick; live self-test exit 0 with ordered
+BOOT..TICK(x3)..DONE markers; compiled negative guard path exits 86 with
+`P2_FIXTURE_CAPTAIN_DOWN` and no PASS.
+
+Observed run (`challenge-boot/run-ui29.log`, leased binary, `ui=29`, exit 0):
+`SQUAD_APPLIED`/`BOOT` (population 60, bitter 3, spicy 4, floor 0, 170 s),
+three `TICK`s (170 -> 140 s), `FLOOR_ADVANCE` (floor 1, 120 s),
+`RETRY_RESET`/`RETRY_STATE` (floor 0, 170 s), `P2_CHALLENGE_BOOT_DONE`
+(end=none, score 720). The #651 consumer provably drives this stage's decoded
+contract fields (stage select, squad/spray application, per-floor mTimeLimit,
+descend, retry).
+
+Scope honesty: host-state simulation only. No live squad, no 960x540 window,
+no collision/routes/actors observed; all six gates stay UNTESTED. The
+game-linked P2 stage boot (engine loads the cave floors with squad/actors)
+remains the open gap.
