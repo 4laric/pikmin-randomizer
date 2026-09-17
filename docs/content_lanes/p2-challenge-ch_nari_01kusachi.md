@@ -182,3 +182,26 @@ heavy private build was deliberately not repeated: the accepted
 prerequisite binary was verified (hash + provenance head == merged head,
 source files byte-identical modulo checkout line endings) and reused
 read-only, so rebuilding identical source would only duplicate work.
+
+## Generation-4 reassessment (integrated #656 did not clear the gap)
+
+The newly integrated prerequisite `p2-challenge-host-mode-build-harness`
+(#656, root `d061a464`, native `f698955a`) was inspected and does NOT wire
+P2 challenge stage content:
+
+- its fixture `native/tools/p2_challenge_mode_fixture.cpp` embeds a hardcoded
+  `ch_MUKI_metal` stage entry and runs a pure host-mode state machine
+  (BOOT/TICK/RETRY); the harness doc scopes it as "game-linked build, not
+  engine boot/gameplay", all six gates UNTESTED;
+- `native/pc_port/pc_p2_challenge_mode.cpp` is a 33-line state machine with
+  zero engine manager/spawn/loadShape references;
+- native `f698955a` is on a divergent line (not an ancestor of this lane's
+  head `328c214e`), so no prerequisite merge was necessary or performed;
+- the #669/#675 boot path already observed this slice's window/selection
+  chain with `content_wired=0` by design.
+
+Remaining gap (exact): **P2 challenge stage content wiring** (arena geometry,
+actors, starting squad) for a boot — no producer lane owns it — plus the
+maintained CMake/CTest registration packet #661 still open under #186
+review. Squad, collision, routes and actors remain unobserved; all six gates
+UNTESTED; no playability claim.
