@@ -1,4 +1,4 @@
-"""Focused P0 contract tests for the ch_NARI_06start3hard adapter (#549).
+"""Focused P0+P1 tests for the ch_NARI_06start3hard adapter (#549).
 
 The adapter module is loaded from its file path (no package init is owned by
 this lane) and exercised against the real pinned sources: the lane-plan
@@ -170,6 +170,196 @@ class Nari06ContractTests(unittest.TestCase):
             corrupt.write_text("{not json", encoding="utf-8")
             with self.assertRaises(ValueError):
                 ADAPTER.load_json(corrupt)
+
+
+_FLOOR_MANIFEST = ADAPTER.floor_manifest
+_CONTENT_SIDECAR = ADAPTER.content_sidecar
+_GENERATE_SIDECAR = ADAPTER.generate_sidecar
+_PREVIEW_RECORD = ADAPTER.preview_record
+_STAGE_RUN_LAYOUT = ADAPTER.stage_run_layout
+_STAGE_MANIFEST_RECORD = ADAPTER.stage_manifest_record
+_PARSE_RUN_MARKERS = ADAPTER.parse_run_markers
+_VERIFY_RECEIPT = ADAPTER.verify_receipt
+_P1_WINDOW = ADAPTER.P1_WINDOW
+_RUN_LAYOUT_FILES = ADAPTER.RUN_LAYOUT_FILES
+_CHECK_LANE_ENTRY = ADAPTER.check_lane_entry
+
+
+def p1_cave():
+    return dict(
+        cave_id="ch_NARI_06start3hard", floor_count=3, floors=[
+            dict(first_floor=1, last_floor=1,
+                 parameters={"f008": "1_units_big2_kusachi.txt", "f007": "0"},
+                 enemies=[dict(source_token="RandPom", enemy_id="RandPom"),
+                          dict(source_token="Hana_silver_medal", enemy_id="Hana"),
+                          dict(source_token="Ooinu_s", enemy_id="Ooinu_s")],
+                 treasures=[dict(treasure_id="key", source_weight=10)],
+                 gates=[], caps=[]),
+            dict(first_floor=2, last_floor=2,
+                 parameters={"f008": "1_NARI_4x4b_conc.txt", "f007": "1"},
+                 enemies=[dict(source_token="RandPom", enemy_id="RandPom"),
+                          dict(source_token="Chappy_be_dama_red_l", enemy_id="Chappy")],
+                 treasures=[dict(treasure_id="key", source_weight=10),
+                            dict(treasure_id="gold_medal", source_weight=10)],
+                 gates=[dict(empty=False)], caps=[]),
+            dict(first_floor=3, last_floor=3,
+                 parameters={"f008": "3_units_d_f_ujikou_tile.txt", "f007": "0"},
+                 enemies=[dict(source_token="Tank_key", enemy_id="Tank"),
+                          dict(source_token="Hiba", enemy_id="Hiba")],
+                 treasures=[dict(treasure_id="bell_red", source_weight=10)],
+                 gates=[], caps=[])])
+
+
+def p1_stage():
+    return dict(cave_file="ch_NARI_06start3hard.txt",
+                pikmin=[[0, 0, 0], [0, 0, 4],
+                        [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
+                legacy_time=450.0, bitter_sprays=2, spicy_sprays=3, floors=3,
+                treasure_count=0, ui_index=16, floor_seconds=[100.0, 150.0, 180.0])
+
+
+def p1_closure():
+    return [dict(floor=1, unit_pool="1_units_big2_kusachi.txt",
+                 units=["item_cap_kusachi", "room_big2_kusachi"]),
+            dict(floor=2, unit_pool="1_NARI_4x4b_conc.txt",
+                 units=["room_4x4b_4_conc"]),
+            dict(floor=3, unit_pool="3_units_d_f_ujikou_tile.txt",
+                 units=["room_4x4d_4_tile"])]
+
+
+LOG_GOOD = "\n".join([
+    "[PC Port] SDL2 Window & OpenGL Context initialized successfully (960x540)",
+    "P2_CHALLENGE_CONTENT_SELECTED cave=ch_NARI_06start3hard floor=1",
+    "P2_CHALLENGE_CONTENT_SPAWN_COVERED id=RandPom count=1",
+    "P2_CHALLENGE_CONTENT_SPAWN_COVERED id=key count=1",
+    "P2_CHALLENGE_CONTENT_READY cave=ch_NARI_06start3hard floor=1 squad=4",
+    "P2_CHALLENGE_CONTENT_LIVE squad=4 actors=1 tick=2",
+    "P2_ROOM_GROUND x=-85.0 z=0.0 y=0.000",
+    "P2_PLACEMENT_PROBE actors=1 evidence_slots=1",
+    "PASS P2_CHALLENGE_CONTENT_RUN content=1",
+])
+LOG_CAPTAIN = LOG_GOOD + "\nP2_FIXTURE_CAPTAIN_DOWN tick=4 hp=0.500 outcome=BLOCKED"
+LOG_NO_COLLISION = "\n".join(line for line in LOG_GOOD.splitlines()
+                             if "P2_ROOM_GROUND" not in line)
+
+
+class P1StagingTests(unittest.TestCase):
+    def test_floor_manifest_aggregates_and_sorts(self):
+        manifest = _FLOOR_MANIFEST(p1_cave(), 0)
+        self.assertEqual(manifest["unit_pool"], "1_units_big2_kusachi.txt")
+        self.assertEqual(manifest["anchor"], "hole")
+        self.assertEqual(manifest["spawns"],
+                         [{"id": "Hana_silver_medal", "count": 1},
+                          {"id": "Ooinu_s", "count": 1},
+                          {"id": "RandPom", "count": 1},
+                          {"id": "key", "count": 1}])
+
+    def test_anchor_maps_geyser(self):
+        self.assertEqual(_FLOOR_MANIFEST(p1_cave(), 1)["anchor"], "geyser")
+
+    def test_content_sidecar_exact(self):
+        manifest = _FLOOR_MANIFEST(p1_cave(), 0)
+        self.assertEqual(_CONTENT_SIDECAR(manifest),
+                         "P2_CHALLENGE_CONTENT_1\n"
+                         "stage ch_NARI_06start3hard 1\n"
+                         "pool 1_units_big2_kusachi.txt\n"
+                         "spawn Hana_silver_medal 1\nspawn Ooinu_s 1\n"
+                         "spawn RandPom 1\nspawn key 1\n"
+                         "anchor hole\n")
+        self.assertEqual(_GENERATE_SIDECAR(manifest),
+                         "spawn Hana_silver_medal 1\nspawn Ooinu_s 1\n"
+                         "spawn RandPom 1\nspawn key 1\n")
+
+    def test_preview_record_room_choice(self):
+        self.assertEqual(_PREVIEW_RECORD(["way3_kusachi", "room_big2_kusachi"])["room"],
+                         "room_big2_kusachi")
+        self.assertEqual(_PREVIEW_RECORD(["way3_kusachi"])["room"], "way3_kusachi")
+        self.assertTrue(_PREVIEW_RECORD(["room_big2_kusachi"])["experimental"])
+        with self.assertRaises(ValueError):
+            _PREVIEW_RECORD([])
+
+    def test_stage_run_layout_writes_and_hashes(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            layout = _STAGE_RUN_LAYOUT(p1_cave(), p1_stage(), "a" * 64, "b" * 64,
+                                       p1_closure(), tmp, write=True)
+            self.assertEqual(layout["files"], sorted(_RUN_LAYOUT_FILES))
+            self.assertEqual(layout["window"], _P1_WINDOW)
+            self.assertEqual(layout["boot_floor"]["floor"], 1)
+            for name, digest in layout["sha256"].items():
+                self.assertEqual(len(digest), 64)
+            stored = Path(tmp, "p2-challenge-content.txt").read_text(encoding="utf-8")
+            self.assertIn("stage ch_NARI_06start3hard 1", stored)
+            record = json.loads(Path(tmp, "stage-manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(record["ui_index"], 16)
+            self.assertEqual(record["floor_seconds"], [100.0, 150.0, 180.0])
+            self.assertEqual(record["legacy_time"], 450.0)
+            self.assertEqual(record["starting_pikmin"], 4)
+            self.assertEqual(record["preview_window"], "960x540")
+            self.assertEqual(record["floors"][0]["unit_pool"],
+                             "1_units_big2_kusachi.txt")
+
+    def test_stage_run_layout_fails_closed(self):
+        with self.assertRaises(ValueError):
+            _STAGE_RUN_LAYOUT(dict(floors=[]), p1_stage(), "a" * 64, "b" * 64, [], None, write=False)
+        bad = p1_cave()
+        bad["floors"][0]["parameters"].pop("f008")
+        with self.assertRaises(ValueError):
+            _FLOOR_MANIFEST(bad, 0)
+        bad = p1_cave()
+        bad["floors"][0]["enemies"] = []
+        bad["floors"][0]["treasures"] = []
+        with self.assertRaises(ValueError):
+            _FLOOR_MANIFEST(bad, 0)
+        with self.assertRaises(ValueError):
+            _FLOOR_MANIFEST(p1_cave(), 5)
+
+    def test_lane_entry_check_reads_real_document(self):
+        lanes = str(ROOT / "docs" / "PIKMIN_CONTENT_IMPORT_LANES.json")
+        self.assertTrue(_CHECK_LANE_ENTRY(lanes))
+        with self.assertRaises(ValueError):
+            ADAPTER.check_lane_entry("C:/nonexistent-lanes.json")
+
+
+class P1ReceiptTests(unittest.TestCase):
+    def test_parse_markers_positive(self):
+        markers = _PARSE_RUN_MARKERS(LOG_GOOD)
+        self.assertTrue(markers["content_selected"])
+        self.assertTrue(markers["ready"])
+        self.assertTrue(markers["live"])
+        self.assertTrue(markers["pass_run"])
+        self.assertTrue(markers["window_960x540"])
+        self.assertFalse(markers["captain_down"])
+        self.assertEqual(len(markers["spawn_covered"]), 2)
+        self.assertEqual(len(markers["collision"]), 1)
+        self.assertEqual(len(markers["actors"]), 1)
+        self.assertEqual(markers["stage"], "ch_NARI_06start3hard")
+
+    def test_parse_markers_negative(self):
+        markers = _PARSE_RUN_MARKERS(LOG_NO_COLLISION)
+        self.assertFalse(markers["collision"])
+        markers = _PARSE_RUN_MARKERS(LOG_CAPTAIN)
+        self.assertTrue(markers["captain_down"])
+        empty = _PARSE_RUN_MARKERS("")
+        self.assertFalse(empty["content_selected"])
+
+    def test_verify_receipt_positive(self):
+        report = _VERIFY_RECEIPT(_PARSE_RUN_MARKERS(LOG_GOOD))
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["collision_probes"], 1)
+        self.assertEqual(report["actor_probes"], 1)
+
+    def test_verify_receipt_fails_closed(self):
+        with self.assertRaises(ValueError):
+            _VERIFY_RECEIPT(_PARSE_RUN_MARKERS(LOG_CAPTAIN))
+        with self.assertRaises(ValueError):
+            _VERIFY_RECEIPT(_PARSE_RUN_MARKERS(LOG_NO_COLLISION))
+        with self.assertRaises(ValueError):
+            _VERIFY_RECEIPT(_PARSE_RUN_MARKERS("P2_CHALLENGE_CONTENT_SELECTED only"))
+        markers = _PARSE_RUN_MARKERS(LOG_GOOD)
+        markers["actors"] = []
+        with self.assertRaises(ValueError):
+            _VERIFY_RECEIPT(markers)
 
 
 if __name__ == "__main__":
