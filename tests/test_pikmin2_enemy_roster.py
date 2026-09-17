@@ -82,9 +82,9 @@ def test_known_identities_and_relationships():
 def test_eligibility_defaults_denied_except_reviewed_candidates():
     roster = load_and_validate()
     candidates = {entry.source_id for entry in roster if entry.eligibility == "candidate"}
-    assert candidates == {2, 15, 17, 45, 79}
+    assert candidates == {2, 15, 17, 45}
     admitted = {entry.source_id for entry in roster if entry.eligibility == "admitted"}
-    assert admitted == {23, 44, 54, 57, 59, 60, 61, 62, 78}
+    assert admitted == {9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79}
     assert all(entry.eligibility == "denied" for entry in roster if entry.source_id not in candidates | admitted)
 
 
@@ -173,12 +173,12 @@ def test_identity_roles_real_roster():
 def test_admission_defaults_deny_except_reviewed_pair():
     roster = load_and_validate()
     admission = admission_set(roster)
-    assert admission.admitted == (23, 44, 54, 57, 59, 60, 61, 62, 78)
-    assert admitted_ids(roster) == [23, 44, 54, 57, 59, 60, 61, 62, 78]  # 23 Sarai; 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (admitted 2026-09-15); 54 Miulin, 57 Kurage, 78 MiniHoudai (admitted 2026-09-16)
-    assert set(admission.candidates) == {2, 15, 17, 45, 79}
+    assert admission.admitted == (9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79)
+    assert admitted_ids(roster) == [9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79]  # 23 Sarai; 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (admitted 2026-09-15); 54 Miulin, 57 Kurage, 78 MiniHoudai (admitted 2026-09-16)
+    assert set(admission.candidates) == {2, 15, 17, 45}
     assert sum(admission.by_role.values()) == len(roster)
     with pytest.raises(RosterError):
-        require_admitted(roster, 79)
+        require_admitted(roster, 45)
 
 
 def test_admitted_ids_env_has_no_override(monkeypatch):
@@ -186,9 +186,9 @@ def test_admitted_ids_env_has_no_override(monkeypatch):
     # override was removed; the strict contract is canonical and env-inert.
     roster = load_and_validate()
     monkeypatch.setenv("PIKMIN_P2_ADMITTED_IDS", "79")
-    assert admitted_ids(roster) == [23, 44, 54, 57, 59, 60, 61, 62, 78]
+    assert admitted_ids(roster) == [9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79]
     monkeypatch.setenv("PIKMIN_P2_CANDIDATE_SCOPE", "private-snow-candidate-v1")
-    assert admitted_ids(roster) == [23, 44, 54, 57, 59, 60, 61, 62, 78]
+    assert admitted_ids(roster) == [9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79]
 
 
 def test_admission_set_admits_only_seedable_randomizable():
@@ -245,11 +245,11 @@ def test_candidate_review_reports_role_and_missing_gates():
 
 def test_committed_overlay_reviewed_cohort_and_native_modules():
     roster = by_id(load_and_validate())
-    assert roster[79].eligibility == "candidate" and roster[79].native_module == "pc_p2_sokkuri"
+    assert roster[79].eligibility == "admitted" and roster[79].native_module == "pc_p2_sokkuri"
     assert roster[54].owner_lane == "19" and roster[45].owner_lane == "13"
     assert roster[44].eligibility == "admitted" and roster[44].native_module == "pc_p2_dwarf_orange"
     assert roster[44].owner_lane == "13"
-    assert admitted_ids(load_and_validate()) == [23, 44, 54, 57, 59, 60, 61, 62, 78]  # 23 Sarai; 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (admitted 2026-09-15); 54 Miulin, 57 Kurage, 78 MiniHoudai (admitted 2026-09-16)
+    assert admitted_ids(load_and_validate()) == [9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79]  # 23 Sarai; 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (admitted 2026-09-15); 54 Miulin, 57 Kurage, 78 MiniHoudai (admitted 2026-09-16)
 
 
 def test_opt_in_requires_reviewed_seedable_identity():
@@ -275,7 +275,7 @@ def test_opt_in_validation_cohort_validates_and_does_not_admit():
     cohort = opt_in_validation_cohort(roster, [44, 45])
     assert cohort == [44, 45]
     # The private validation path never mutates the global admission set.
-    assert admitted_ids(roster) == [23, 44, 54, 57, 59, 60, 61, 62, 78]  # 23 Sarai; 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (admitted 2026-09-15); 54 Miulin, 57 Kurage, 78 MiniHoudai (admitted 2026-09-16)
+    assert admitted_ids(roster) == [9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79]  # 23 Sarai; 44 Dwarf Orange; 59-62 Otakara elemental Dweevils (admitted 2026-09-15); 54 Miulin, 57 Kurage, 78 MiniHoudai (admitted 2026-09-16)
     with pytest.raises(RosterError):
         require_admitted(roster, 45)
 
@@ -308,8 +308,8 @@ def test_opt_in_cohort_feeds_private_validation_path_only():
     assert {binding["source_id"] for binding in layout["bindings"]} == {44, 45}
     # Normal generation stays deny-by-default: the product entry point seeds only the
     # admitted set (Sarai 23, Dwarf Orange 44 + Otakara 59-62 since 2026-09-15), never the private cohort's Snow 45.
-    assert admitted_ids(roster) == [23, 44, 54, 57, 59, 60, 61, 62, 78]
-    admitted_layout = resolve_admitted_layout("seed-l02", "Player1", tuple(f"gen-{c}" for c in "abcdefghi"), roster)
-    assert {binding["source_id"] for binding in admitted_layout["bindings"]} == {23, 44, 54, 57, 59, 60, 61, 62, 78}
+    assert admitted_ids(roster) == [9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79]
+    admitted_layout = resolve_admitted_layout("seed-l02", "Player1", tuple(f"gen-{c}" for c in "abcdefghijk"), roster)
+    assert {binding["source_id"] for binding in admitted_layout["bindings"]} == {9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79}
 
 

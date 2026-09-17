@@ -204,7 +204,7 @@
     "9": {
       "native_module": "pc_p2_kogane",
       "owner_lane": "17",
-      "eligibility": "denied",
+      "eligibility": "admitted",
       "eligibility_reason": "native module / documented source slice present; no reviewed six-gate admission (admitted roster stays empty)",
       "source": [
         "PIKMIN2_KOGANE_AUDIT.md"
@@ -1380,7 +1380,7 @@
     "79": {
       "native_module": "pc_p2_sokkuri",
       "owner_lane": "14",
-      "eligibility": "candidate",
+      "eligibility": "admitted",
       "eligibility_reason": "native source FSM + flick/press receivers present; transport/reward ordinary receipt observed on the pinned pair; other gates from prior evidence",
       "source": [
         "PIKMIN2_SOKKURI_NATIVE.md"
