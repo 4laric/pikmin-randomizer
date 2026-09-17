@@ -174,6 +174,36 @@ names. Reassessment result, evidence-pinned:
 
 No new runtime PASS is claimed; the six-gate table above is unchanged.
 
+## Generation 10: engine-driven birth OBSERVED (consumer verification passed)
+
+Integrated #691 (`bomb-engine-birth-real-native`, native `95172ea4`) and drove
+its engine poll from the seam fixture against the live carrier actor:
+
+- Run `output/workflow/autofill/enemy-bombotakara93-payload/run-573/bombotakara573/c81ff61e1ade46d48ad44874d5f55d49/native.log`
+  (exit 0, 916 lines; fixture provenance `built` at native `076883b2`):
+- `:729 P2_BOMB_MGR_BIND generator=349005 source_id=36 visual_only=0`
+- `:732 P2_BOMB_ENGINE_BIRTH ... source_id=36 ... engine_driven=1` on the
+  censused live TEKI_Chappy carrier (position-follow `P2_BOMB_MGR_POS` x2).
+- `:917 P2_MUSE_BOMBOTAKARA573_BORN ... engine_driven=1 source_id=36`.
+- Zero stub/injection markers, no `CAPTAIN_DOWN`, live squad red=8, measured
+  960x540 + centered call.
+- Interruption path also demonstrated: `P2_BOMB_MGR_FORGET` with no stale
+  payload afterward (carrier loss; the death itself is unmarked — no death
+  hook exists for unbound actors — so it is reported as observed release,
+  not as a cited natural death).
+
+Consumer verification `03d067ba...` reported PASSED with
+prerequisite_resolved=True: the original no-birth-provider defect is fixed.
+
+Remaining exact gaps (gates stay honest):
+- Gate 1: joint-matrix capture is absent — the host vehicle has no `otakara`
+  joint, so capture is position-follow only. Birth itself is now candidate
+  evidence (engine-driven, live carrier, source_id=36).
+- Gate 3: no detonation driver fired, so no routed blast to live receivers
+  was observed; still BLOCKED.
+- Dynamic bridge still refuses source 93 (needs #186 review); the manager
+  binds directly, so this no longer blocks birth observation.
+
 ## Remaining work (proposed next bounded scope)
 
 Port (or provider-wrap) the Bomb enemy manager + birth path under #169
