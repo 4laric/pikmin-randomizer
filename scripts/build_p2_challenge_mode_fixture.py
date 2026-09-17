@@ -174,8 +174,13 @@ def lease_key():
     return "p2-challenge-host-mode-build-harness"
 
 
-def lease_generation():
-    return 2
+def lease_generation(reg=None):
+    """Current lane generation (never a stale hardcoded fence)."""
+    if reg is None:
+        from workflow.registry import Registry
+        reg = Registry(CANONICAL_ROOT / "output/workflow/registry.sqlite3",
+                       CANONICAL_ROOT)
+    return reg.status()["lanes"][lease_key()]["generation"]
 
 
 def acquire(resource, pid, ttl=300):
