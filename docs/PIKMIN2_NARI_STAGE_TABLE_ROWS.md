@@ -35,3 +35,18 @@ no abort/captain-down. Captain safety #632 vendored semantics.
 pc_bbft.cpp / CMakeLists.txt integration lands only via #186 review +
 integrator; this slice changes no shared target. Consumers #537 (02tile)
 and #746 (03toy) adopt after that landing. No ADMIT.
+
+## Generation-2 proof (this turn)
+
+- Native c2f30c31 (clean): module + fixture committed, no shared edits.
+- Leased production build passed (ninja pikmin_pc exit 0, source identity
+  unchanged); nectar.exe `8ea76b31...`; dry-run `ninja: no work to do.`
+- Fixture provenance built; fixture.exe
+  `12b65bd5cd49dbe0783361e4942ac0ccba528e3a0d2869d00a2ba4ea91adfd57`.
+- Guarded boots: 02tile RESOLVED pops 50, 03toy RESOLVED pops 100
+  (both-log `3807c6cd...`); self-test exit 0; negative exit 86; unknown ui
+  exit 2; --no-guard exit 2; zero captain-down. Root checker VERDICT PASS
+  (observer-verdict `8eff30e5...`).
+- Guard: vendored #632 semantics (canonical header sha256 d2f678c9...).
+- Serialized follow-on unchanged: pc_bbft.cpp/CMakeLists.txt via #186 +
+  integrator; consumers #537 + #746 adopt after landing. No ADMIT.
