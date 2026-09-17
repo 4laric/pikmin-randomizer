@@ -89,3 +89,30 @@ record guard/source hashes. The observer already maps captain-down tokens to
 
 No proposal/manifest writes; no family edits; no ADMIT; no ledger writes; no
 runtime/gameplay acceptance claimed.
+
+
+## Generation-3 reassessment (attempt 641f7f15)
+
+Three integrated prerequisites were inspected against this slice's blocker
+(no production driver for a natural free-squad death + stage-boundary reset +
+generator rebirth):
+
+- `shard-enemies-1-snagret70-p0` (native `009f0937`, issue #376): the merge is
+  the ElecBug28 delivery-bind + receipt fixture; it adds no DangoMushi
+  natural-death or reset driver.
+- `enemy-elecbug28-gate5-adjudication` (root `15fcbb69`, issue #585):
+  tooling adjudication only (native null); no driver.
+- `shard-enemies-1-pom-actor-provider` (native `c2790169`, issue #448): the
+  Candypop pom actor-birth seam; not the DangoMushi driver.
+
+The existing `experimental/pikmin2_dangomushi_behavior.py` stages the squad
+near the actor for FSM observation (gates 1-3) and does not drive combat,
+death, haul, or a stage-boundary reset. No registry lane or new artifact
+provides that driver. The dependency is therefore still unresolved and no
+prerequisite merge was needed (none touches this slice's files).
+
+Remaining concrete gap: a family-side (or approved lifecycle) driver that
+(a) lets a real free squad deal source damage to the live bound DangoMushi,
+(b) observes the host corpse pellet, and (c) performs a stage-boundary reset
+plus generator rebirth with re-bind. That is a family-module change requiring
+existing-owner review on #376; not requested here.
