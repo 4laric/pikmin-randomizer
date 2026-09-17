@@ -129,7 +129,8 @@ def phase_configure(native, build, ninja_dir, log_path):
            "-DCMAKE_C_COMPILER=C:/msys64/mingw64/bin/gcc.exe",
            "-DCMAKE_CXX_COMPILER=C:/msys64/mingw64/bin/g++.exe",
            "-DPIKMIN_NATIVE_JAUDIO=ON", "-DPIKMIN_NATIVE_OPTIMIZE=OFF",
-           "-DPIKMIN_RANDOMIZER_TEST_HOOKS=OFF"]
+           "-DPIKMIN_RANDOMIZER_TEST_HOOKS=OFF",
+           "-DP2_CHALLENGE_GUARD_INCLUDE_DIR=C:/Users/alari/pikmin-randomizer/scripts"]
     proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                           text=True, encoding="utf-8", errors="replace", timeout=900, env=env)
     Path(log_path).write_text(proc.stdout, encoding="utf-8")
