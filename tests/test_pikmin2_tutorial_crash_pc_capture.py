@@ -80,8 +80,15 @@ class ExportParseTests(unittest.TestCase):
         self.assertIsNone(capture.nearest_export({}, 0x2000))
 
     def test_real_exe_parses_without_crash(self):
-        exe = str(ROOT.parents[6] / "output" / "tutorial-p1-native-runtime-build"
-                  / "p2_tutorial_p1_runtime.exe")
+        # Integrator compat (#636): the parents[6] climb assumes a deep
+        # producer worktree; shallower maintained checkouts raise IndexError
+        # before the isfile check. Skip cleanly in that case (same intent as
+        # the pinned-exe-absent skip below).
+        try:
+            exe = str(ROOT.parents[6] / "output" / "tutorial-p1-native-runtime-build"
+                      / "p2_tutorial_p1_runtime.exe")
+        except IndexError:
+            self.skipTest("pinned exe not resolvable from this checkout depth")
         import os
         if not os.path.isfile(exe):
             self.skipTest("pinned exe absent")
