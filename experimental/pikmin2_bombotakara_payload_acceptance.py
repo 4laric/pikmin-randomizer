@@ -97,6 +97,12 @@ ENGINE_BIRTH_RE = re.compile(
 JOINT_CAPTURE_RE = re.compile(
     r"P2_OTAKARA_JOINT_CAPTURE generator=(\d+) teki=(\d+) joints=(\d+)")
 JOINT_ABSENT_RE = re.compile(r"P2_OTAKARA_JOINT_ABSENT carriers=0")
+# #732 production call-site proof: BIRTH_CALLSITE is emitted from the
+# research-mirror generalEnemyMgr TU (production graph, never a test TU)
+# immediately before the engine-hook notifier on a real 36/93 birth.
+CALLSITE_RE = re.compile(r"P2_GENERAL_ENEMY_MGR_BIRTH_CALLSITE enemyID=93")
+NOTIFY_RE = re.compile(r"P2_BOMB_BIRTH_HOOK_NOTIFY enemyID=93")
+CALLSITE_REFUSE_RE = re.compile(r"P2_GENERAL_ENEMY_MGR_REFUSE ")
 MGR_BIND_RE = re.compile(
     r"P2_BOMB_MGR_BIND generator=(\d+) source_id=(\d+)")
 ATTACH_L61_RE = re.compile(
@@ -126,6 +132,9 @@ def validate(path: str | Path) -> dict:
         "mgr_bind": {},
         "joint_capture": {},
         "joint_absent": False,
+        "birth_callsite_93": False,
+        "hook_notify_93": False,
+        "callsite_refused": [],
     }
     try:
         lines = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
@@ -168,6 +177,12 @@ def validate(path: str | Path) -> dict:
             verdict["joint_capture"][m.group(1)] = int(m.group(3))
         if JOINT_ABSENT_RE.search(line):
             verdict["joint_absent"] = True
+        if CALLSITE_RE.search(line):
+            verdict["birth_callsite_93"] = True
+        if NOTIFY_RE.search(line):
+            verdict["hook_notify_93"] = True
+        if CALLSITE_REFUSE_RE.search(line):
+            verdict["callsite_refused"].append("%d:%s" % (i, line.strip()[:100]))
         m = DETONATED_RE.search(line)
         if m:
             gen = m.group(1)
@@ -211,6 +226,9 @@ def validate(path: str | Path) -> dict:
         verdict["blast_natural"] and verdict["hit_natural"]
         and not verdict["exactly_once_violations"]
         and not verdict["stale_violations"] and not verdict["injected"])
+    verdict["engine_callsite_birth_93"] = bool(
+        verdict["birth_callsite_93"] and verdict["hook_notify_93"]
+        and not verdict["injected"])
     return verdict
 
 
@@ -225,6 +243,9 @@ def main(argv: list) -> int:
         verdict["stub_present"], len(verdict["injected"])))
     print("engine_birth=%s mgr_bind=%s" % (
         sorted(verdict["engine_birth"]), verdict["mgr_bind"]))
+    print("birth_callsite_93=%s hook_notify_93=%s engine_callsite_birth_93=%s refuses=%d" % (
+        verdict["birth_callsite_93"], verdict["hook_notify_93"],
+        verdict.get("engine_callsite_birth_93"), len(verdict["callsite_refused"])))
     print("joint_capture=%s joint_absent=%s gate1_birth_joint_candidate=%s" % (
         verdict["joint_capture"], verdict["joint_absent"],
         verdict.get("gate1_birth_joint_candidate")))

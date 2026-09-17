@@ -174,6 +174,35 @@ class TestPayloadObserver(unittest.TestCase):
         self.assertFalse(v["gate3_blast_provider_linked"])
         self.assertFalse(v["stub_present"])
 
+    def test_callsite_notify_proves_engine_caller(self):
+        # #732 production call-site proof: BIRTH_CALLSITE + HOOK_NOTIFY on a
+        # real 93 birth, with the engine-birth + joint-capture chain intact.
+        text = (
+            "P2_BOMB_MGR_BIND generator=349005 source_id=36 visual_only=0\n"
+            "P2_BOMB_ENGINE_BIRTH generator=349005 source_id=36 slot=0 generation=1 "
+            "x=60.0 y=30.0 z=1850.0 health=150.0 engine_driven=1\n"
+            "P2_OTAKARA_JOINT_CAPTURE generator=349005 teki=7 joints=17\n"
+            "P2_GENERAL_ENEMY_MGR_BIRTH_CALLSITE enemyID=93\n"
+            "P2_BOMB_BIRTH_HOOK_NOTIFY enemyID=93\n"
+        )
+        v = self._validate(text)
+        self.assertTrue(v["birth_callsite_93"])
+        self.assertTrue(v["hook_notify_93"])
+        self.assertTrue(v["engine_callsite_birth_93"])
+        self.assertTrue(v["gate1_birth_joint_candidate"])
+        self.assertFalse(v["gate3_blast_provider_linked"])
+
+    def test_callsite_without_notify_proves_nothing(self):
+        text = (
+            "P2_BOMB_ENGINE_BIRTH generator=349005 source_id=36 slot=0 generation=1 "
+            "x=60.0 y=30.0 z=1850.0 health=150.0 engine_driven=1\n"
+            "P2_GENERAL_ENEMY_MGR_BIRTH_CALLSITE enemyID=93\n"
+        )
+        v = self._validate(text)
+        self.assertTrue(v["birth_callsite_93"])
+        self.assertFalse(v["hook_notify_93"])
+        self.assertFalse(v["engine_callsite_birth_93"])
+
     def test_joint_capture_completes_gate1_candidate(self):
         text = (
             "P2_BOMB_MGR_BIND generator=349005 source_id=36 visual_only=0\n"
