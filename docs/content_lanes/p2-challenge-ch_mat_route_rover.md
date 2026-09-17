@@ -132,3 +132,25 @@ Higher floors: none (single-floor stage). P2 persistence (save/reload,
 death/extinction, reentry, receipts, deterministic replay, no leakage),
 spray/receipt semantics, TheKey/hole/geyser completion, scoring and retry
 stay OPEN with owners #136/#137/#132/#140 and family lanes.
+
+## P1 runtime evidence and corrected staging (gen 7, issue #561)
+
+Verified consumer chain on the integrated pins (native cherry-picks #679
+`960cd5ef`/`11665704` + #695 `8c7b97fd`; exe sha256 `6412e008`):
+
+- The engine resolves assets as `assets/dataDir/...` from the run cwd, so the
+  arena override MUST be applied to the run`s `assets` tree
+  (`overlay(ASSETS, run/"assets", {...})`), not to `run/dataDir`. #699
+  (`rover-spawn-count-reconciliation`) named this staging-path fault; the
+  entry checkpoint itself was correct.
+- Corrected run (`run-rover-12`): 60 `P2_CAVE_RESTORE species=0/1/2
+  maturity=2`, `P2_CAVE_READY floor=1 survivors=60 health=1`,
+  `P2_CAVE_GENERATE_SPAWN id=KumaChappy count=3` +
+  `id=KumaKochappy count=4`, `P2_CAVE_GENERATE_ANCHOR kind=hole x=0 y=0 z=0
+  radius=20`, `P2_CAVE_GENERATE_PASS rooms=1 spawns=2 links=0 anchor=hole`,
+  `P2_ROOM_READY treasure=bolt carry=5 repairs=1`; 960x540 centred window,
+  alive, no abort, no captain-down, no extinction. Log sha256
+  `238996404789a80260c7012bb2267acd076959b5609c0b0bfa1655f73ccc8416`.
+- Captain safety #632 adopted (`d2f678c9...`); captain parked, no input.
+- All six arena gates remain UNTESTED except the observed boot facts above;
+  no playability claim; no ADMIT.
