@@ -109,6 +109,10 @@ def main(argv=None, runner=None):
     parser.add_argument("--configure", action="store_true")
     parser.add_argument("--build", action="store_true")
     parser.add_argument("--run", action="store_true")
+    parser.add_argument("--wrapper", default=None,
+                        help=("fixed wrapper script to drive (default: "
+                              "<root>/scripts/build_p2_cave_guarded_boot_fixture.py); "
+                              "use the #686 fixed copy so -c stays tools/<fixture>"))
     parser.add_argument("--lane-key", default="tutorial1-fixture-build-support")
     parser.add_argument("--generation", type=int, default=2)
     parser.add_argument("--workdir", default=None,
@@ -126,8 +130,11 @@ def main(argv=None, runner=None):
     workdir = os.path.abspath(args.workdir) if args.workdir else None
     build_dir = os.path.join(workdir, "build") if workdir else None
     out_dir = os.path.join(workdir, "out") if workdir else None
-    wrapper = os.path.join(root, "scripts",
-                           "build_p2_cave_guarded_boot_fixture.py")
+    wrapper = os.path.abspath(args.wrapper) if args.wrapper else os.path.join(
+        root, "scripts", "build_p2_cave_guarded_boot_fixture.py")
+    if not os.path.isfile(wrapper):
+        print("wrapper script missing: %s" % wrapper)
+        return 2
 
     ok, detail, actual = verify_consumer_fixture(native_dir, args.expect_sha)
     if not ok:
