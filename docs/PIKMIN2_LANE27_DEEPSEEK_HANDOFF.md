@@ -1274,3 +1274,103 @@ py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE27_DEEPSEEK_HANDOFF.
   6. cleanup_reentry    accepted [PASS]
 EXIT=0 (no refused PASS rows)
 ```
+
+## Diagnostic slice: gate 1 (identity_spawn)
+
+Branch heads at diagnosis. Root `deepseek/p2-l27`:
+
+```
+67f64599 lane27: restore gate 4 death_corpse PASS (user-authorized; matches l28/l29) (#244)
+9c145d16 lane27: review fixes 5 — single gate table, PARTIAL death/corpse, pinned runs (#244)
+346bcb2e lane27: review fixes 5 — parameterize the shared room-preview squad reds (#244)
+9d60c6b0 lane27: bind the five-gate table to the generated-carrier run (#244)
+6deeafab lane27: handoff -- transport_reward landed at cf7fb2f6 (gates 4/5 PASS) (#244)
+```
+
+Native `deepseek/p2-l27-native` (clean, no edits this slice):
+
+```
+e2f520ab Merge branch 'claude/p2-deepseek-wave-native' into deepseek/p2-l27-native
+4493c45a wave-native: merge lane 03 persistence probe (probe link + otakara hoist)
+a0ae8fb0 wave-native: merge lane 06 provider-coverage (CTest registration)
+17865bf3 lane03: link P2 delivery host into randomizer probe (#439)
+6088ecda lane06: register lane-06 provider unit tests in CTest (#441)
+```
+
+### Route (a) — generated-seed birth for source 58: absent
+
+- `randomizer/p2_placement_catalog.py` `CANDIDATE_SPECS` covers sources
+  1/2/12/13/14/33/35/42/43/44/45/76 (lane 13), 15/28/65/68/79/84 (lane 14),
+  17/18/26/27/63 (lane 16), 54 (lane 19) — **no entry for 58**; `BOSS_COHORT`
+  lists only 71/101.
+- `docs/PIKMIN2_ADMITTED_PLACEMENT.json` is not present in this worktree; on
+  `claude/p2-deepseek-wave` its notes name only lane-13/14/16 cohort sources —
+  **no source-58 slot**.
+- `docs/PIKMIN2_LANE04_DEEPSEEK_HANDOFF.md` (wave) covers only 44/45; there is
+  no lane-04 candidate profile + accepted slot for 58.
+- `scripts/run_p2_generated_seed.py` (the lane-05 slice-5 runner) does not
+  exist in this worktree.
+- Native `pc_p2_generated_placement_bind`
+  (`native-l27/pc_port/pc_p2_generated_placement.cpp:7-30`) switches only on
+  source 23 (Sarai) and 59-62 (Otakara); **no `case 58` — `default: return
+  false`**, so a `P2_SEED_RESOLVE source_id=58` could never complete a bind.
+
+### Route (b) — arena generator 270001: P1 proxy, not P2 identity 58
+
+- `experimental/pikmin2_bombsarai_teki_stage.py:22,36-58` clones a Napkid row
+  (`row[80]=11`, `DEFAULT_GENERATOR=270001`); the sidecar requires `type==11`
+  (`native-l27/pc_port/pc_p2_bombsarai_teki.cpp:13,588-617`). The file header
+  states it outright: "Napkid placement vehicle only: EnemyID 58 NOT claimed".
+- All 41 `*.log` files under `C:/Users/alari/pikmin-randomizer/output/dsw/l27-out`
+  contain **zero `P2_SEED_RESOLVE` lines**; the authoritative run still opens
+  with `P2_BOMBSARAI_TEKI_READY generator=270001 type=11`.
+
+### Gate-1 verdict
+
+No update to the gate-1 row: it stays `UNTESTED (generated P1 TEKI_Napkid
+placement stand-in, not P2 identity 58)`, injected, with the "P1 Napkid proxy"
+caveat kept. The Napkid proxy was not relabelled natural.
+
+Root-side validator scaffolding for the future natural run is committed here:
+`experimental/pikmin2_bombsarai_teki_log.py` now parses `P2_SEED_RESOLVE` /
+`P2_PLACEMENT_SLOT` and exposes `validate_gate1_natural_spawn()` (PASS iff one
+closed `(generator, slot, 58)` chain exists: mapped slot + `SEED_RESOLVE
+source_id=58` for that slot + `P2_BOMBSARAI_TEKI_READY` for that generator);
+`tests/test_pikmin2_bombsarai_teki_log.py` adds 6 tests (PASS triple + 5 flips).
+`py -3.12 -m pytest tests/test_pikmin2_bombsarai_teki_log.py -q` → **40 passed**.
+
+### Checker output (fresh, wave script on current handoff)
+
+The checker lives on `claude/p2-deepseek-wave` (absent in this worktree); run
+from an uncommitted scratch copy per `prompts/gate-table-addendum.md`, pasted
+verbatim:
+
+```
+36 Bomb (role=projectile): ignored (role)
+58 BombSarai (role=source):
+  1. identity_spawn     ignored [UNTESTED]
+  2. movement_animation accepted [PASS]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   accepted [PASS]
+  6. cleanup_reentry    accepted [PASS]
+EXIT=0 (no refused PASS rows)
+```
+
+### Subagent usage
+
+Three subagents dispatched in parallel per `prompts/subagent-addendum.md`:
+- `explore` #1 (source audit) — returned the `P2_SEED_RESOLVE` emit site, the
+  270001/type-11 binding, the lane-05 slice-5 pattern, and the no-58 verdict
+  with file:line citations. Used as-is; I re-verified the decisive points
+  (catalog grep, `pc_p2_generated_placement.cpp` switch, 41-log `P2_SEED_RESOLVE`
+  sweep) before concluding BLOCKED.
+- `explore` #2 (candidate inventory) — module/marker inventory, verbatim gate-1
+  row, checker-absent note, log inventory. Used as-is.
+- `general` #3 (harness/tests) — wrote the gate-1 validator extension + 6
+  tests (40 passed). Used as-is; committed below.
+Net: est. 30-45 min saved; no corrections needed.
+
+### Verdict
+
+`BLOCKED gate1: no lane-04 candidate profile + accepted slot for source 58 and no native generated-placement bind case for 58 (pc_p2_generated_placement.cpp handles only 23/59-62); generator 270001 births P1 TEKI_Napkid type 11 only, and zero P2_SEED_RESOLVE lines exist across all 41 l27-out logs.`
