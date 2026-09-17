@@ -282,3 +282,142 @@ def audit_packet(details, roster=None, source_bytes=None, expected_sha256=SOURCE
                   coverage=check_floor_coverage(decoded['floors']),
                   resource_closure=resource_closure_requirements(decoded))
     return record
+
+
+# ---------------------------------------------------------------------------
+# P1 runtime-import path (lane p2-challenge-ch-nari-08tobasare-p1, gen 2).
+# Reuses this module's real-source decode helpers above; no forked parser.
+# Validates a P0-decoded stage manifest and stages a private run layout.
+# No runtime is executed here; all six gates stay UNTESTED unless genuinely
+# observed by a later runtime run.
+# ---------------------------------------------------------------------------
+
+import argparse
+import json
+import sys
+from pathlib import Path as _Path
+
+P1_SCHEMA = "p2-challenge-ch-nari-08tobasare-p1-v1"
+P1_EXPECTED_FLOORS = EXPECTED_FLOORS
+P1_EXPECTED_SECONDS = [150.0, 100.0]
+P1_EXPECTED_TOTAL = 50
+P1_EXPECTED_CELLS = [(0, 2), (1, 2), (3, 2)]
+P1_EXPECTED_SPRAYS = {"bitter": 2, "spicy": 0}
+P1_EXPECTED_UI = 24
+
+
+def validate_p1_manifest(manifest):
+    """Check a P0 manifest carries everything the P1 import needs."""
+    if not isinstance(manifest, dict):
+        raise ImportContractError("P1 manifest must be a mapping")
+    if manifest.get("cave_id") != SOURCE_ID:
+        raise ImportContractError("P1 stage mismatch")
+    floors = manifest.get("floors")
+    if not isinstance(floors, list) or len(floors) != P1_EXPECTED_FLOORS:
+        raise ImportContractError("P1 needs exactly the %d decoded floors" % P1_EXPECTED_FLOORS)
+    staged = []
+    for n, floor in enumerate(floors, 1):
+        if not isinstance(floor, dict):
+            raise ImportContractError("P1 floor malformed")
+        for key in ("unit_pool", "enemies", "treasures"):
+            if key not in floor:
+                raise ImportContractError("P1 floor missing field")
+        if not isinstance(floor["enemies"], list) or not floor["enemies"]:
+            raise ImportContractError("P1 floor has no enemy roster")
+        if not isinstance(floor["unit_pool"], str) or not floor["unit_pool"]:
+            raise ImportContractError("P1 floor has no unit pool")
+        staged.append({
+            "number": n,
+            "unit_pool": floor["unit_pool"],
+            "enemies": [e["source_token"] for e in floor["enemies"]],
+            "treasures": [t["treasure_id"] for t in floor["treasures"]],
+        })
+    population = starting_population(manifest.get("starting_roster"))
+    if population["total"] != P1_EXPECTED_TOTAL:
+        raise ImportContractError("P1 starting squad total must be %d" % P1_EXPECTED_TOTAL)
+    rows = manifest["starting_roster"]
+    for color, maturity in P1_EXPECTED_CELLS:
+        if rows[color][maturity] <= 0:
+            raise ImportContractError("P1 roster missing pinned cell [%d][%d]" % (color, maturity))
+    timers = manifest.get("floor_seconds")
+    if not isinstance(timers, list) or [float(v) for v in timers] != P1_EXPECTED_SECONDS:
+        raise ImportContractError("P1 floor timers must preserve %s" % (P1_EXPECTED_SECONDS,))
+    sprays = manifest.get("sprays", {})
+    if not isinstance(sprays, dict):
+        raise ImportContractError("P1 sprays malformed")
+    if int(sprays.get("bitter", -1)) != 2 or int(sprays.get("spicy", -1)) != 0:
+        raise ImportContractError("P1 sprays must preserve bitter 2 / spicy 0")
+    if manifest.get("ui_index") != P1_EXPECTED_UI:
+        raise ImportContractError("P1 ui_index must preserve 24")
+    return {
+        "cave_id": SOURCE_ID,
+        "floors": staged,
+        "squad_total": population["total"],
+        "floor_seconds": [float(v) for v in timers],
+        "sprays": {"bitter": int(sprays.get("bitter", 0)),
+                   "spicy": int(sprays.get("spicy", 0))},
+        "ui_index": int(manifest.get("ui_index", 0)),
+    }
+
+
+def stage_run_layout(manifest, output):
+    """Validate the manifest and write the private P1 run layout."""
+    staging = validate_p1_manifest(manifest)
+    output = _Path(output)
+    output.mkdir(parents=True, exist_ok=True)
+    files = {}
+
+    def write(name, payload):
+        text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
+        (output / name).write_text(text, encoding="utf-8")
+        files[name] = hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+    write("stage-manifest.json", manifest)
+    write("p1-input-package.json", {
+        "schema": P1_SCHEMA,
+        "cave_id": staging["cave_id"],
+        "floors": staging["floors"],
+        "squad_total": staging["squad_total"],
+        "floor_seconds": staging["floor_seconds"],
+        "sprays": staging["sprays"],
+        "ui_index": staging["ui_index"],
+    })
+    write("run-plan.json", {
+        "schema": P1_SCHEMA,
+        "order": [
+            "boot private runtime with the input package (fresh arena, starting-Pikmin overlay, centred 960x540)",
+            "captain guard FIRST (orimaDead/NaviDead/HP<=1, CAPTAIN_DOWN + BLOCKED, parked captain)",
+            "observe live starting squad (no immediate extinction)",
+            "observe actual collision/routes/actors per floor with receipt-parseable markers",
+            "record honest six-gate evidence; no playability claim beyond observed evidence",
+        ],
+        "gates": "all six UNTESTED unless genuinely observed",
+    })
+    return {"files": files, "cave_id": staging["cave_id"],
+            "floors": len(staging["floors"])}
+
+
+def p1_main(manifest_path, output):
+    """Stage the run layout from a manifest file on disk."""
+    manifest_path = _Path(manifest_path)
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ImportContractError("P1 manifest unreadable: %s" % exc) from None
+    result = stage_run_layout(manifest, _Path(output))
+    print("P1 staged cave=%s floors=%d files=%s" % (
+        result["cave_id"], result["floors"], sorted(result["files"])))
+    return result
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Stage the ch_NARI_08tobasare P1 run layout")
+    parser.add_argument("manifest", help="P0-decoded stage manifest JSON")
+    parser.add_argument("output", help="private run-layout directory")
+    args = parser.parse_args(argv)
+    p1_main(args.manifest, args.output)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

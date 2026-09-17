@@ -99,3 +99,27 @@ the tested boundary plus the pin/coverage contract above.
 - No seeded topology, hole selection, radial distribution, restart identity.
 - Metadata is not runtime acceptance; nothing here is playable content.
 - All six arena gates are UNTESTED in this P0 tooling slice by design.
+## P1 import path (lane p2-challenge-ch-nari-08tobasare-p1; no re-implementation)
+
+`validate_p1_manifest()` checks a P0 manifest carries everything the P1
+runtime import needs (2 decoded floors with unit pools + enemy/treasure
+rosters, 7-row starting roster totalling 50 at cells [0][2]/[1][2]/[3][2],
+timers [150.0, 100.0], sprays bitter 2 / spicy 0, ui_index 24) and normalizes
+a staging dict; anything else raises fail-closed via `ImportContractError`.
+`stage_run_layout()` writes a private run layout: `stage-manifest.json`
+(validated copy), `p1-input-package.json` (stage key, floors, squad total 50,
+timers, sprays, ui 24) and `run-plan.json` (ordered observation plan: fresh
+arena + starting-Pikmin overlay + centred 960x540 boot, captain guard FIRST
+with orimaDead/NaviDead/HP<=1 and CAPTAIN_DOWN + BLOCKED, live-squad check,
+collision/routes/actors markers, honest six-gate evidence). `p1_main()` drives
+it from a manifest file; `main()` is a thin CLI. All decode helpers are the
+P0 ones in this same file; no parser was forked.
+
+P1 validation evidence: `P1ImportTests`, 14 focused tests (valid manifest,
+wrong cave, floor count, empty enemies, missing unit pool, wrong squad total,
+missing pinned cell, bad timer, wrong sprays, wrong ui, three-file layout
+write + package schema/squad assertions, bad-manifest and missing-file
+rejections, end-to-end `p1_main`), all green alongside the 16 P0 tests
+(30 passed total). No runtime run, no build, no shared edits; all six gates
+UNTESTED. The runtime boot (leased build, fresh arena, guard adoption, live
+observation) remains explicitly future work once the host toolchain recovers.
