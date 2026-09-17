@@ -199,3 +199,146 @@ def main(argv=None):
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+SIDECAR_VERSION_GENERATE = "P2_CAVE_GENERATE_1"
+
+
+def parse_generate_sidecar(text):
+    if not isinstance(text, str):
+        raise ValueError("sidecar must be text")
+    tokens = text.split()
+    pos = [0]
+
+    def take():
+        if pos[0] >= len(tokens):
+            raise ValueError("truncated sidecar")
+        token = tokens[pos[0]]
+        pos[0] += 1
+        return token
+
+    def expect(word):
+        if take() != word:
+            raise ValueError("expected section marker")
+
+    def take_int(lo, hi, what):
+        token = take()
+        try:
+            value = int(token)
+        except ValueError:
+            raise ValueError("bad number")
+        if isinstance(value, bool) or not lo <= value <= hi:
+            raise ValueError("number out of range")
+        return value
+
+    def take_number(what):
+        token = take()
+        try:
+            value = float(token)
+        except ValueError:
+            raise ValueError("bad number")
+        if value != value or abs(value) > 100000:
+            raise ValueError("number not finite")
+        return value
+
+    expect(SIDECAR_VERSION_GENERATE)
+    expect("pool")
+    pool = take()
+    nunits = take_int(1, 64, "nunits")
+    units = []
+    for i in range(nunits):
+        expect("unit")
+        idx = take_int(0, 63, "unit idx")
+        name = take()
+        w = take_number("unit w")
+        d = take_number("unit d")
+        kind = take_int(0, 255, "unit kind")
+        if idx != i or not name or w <= 0 or d <= 0:
+            raise ValueError("bad unit row")
+        units.append({"name": name, "w": w, "d": d, "kind": kind})
+    expect("rooms")
+    nrooms = take_int(1, 256, "nrooms")
+    rooms = []
+    for i in range(nrooms):
+        expect("room")
+        idx = take_int(0, 255, "room idx")
+        unit = take_int(0, nunits - 1, "room unit")
+        turn = take_int(0, 3, "room turn")
+        ox, oy, oz = take_number("ox"), take_number("oy"), take_number("oz")
+        if idx != i:
+            raise ValueError("bad room idx")
+        rooms.append({"unit": unit, "turn": turn, "offset": [ox, oy, oz]})
+    expect("doors")
+    ndoors = take_int(0, 4096, "ndoors")
+    doors = []
+    for _ in range(ndoors):
+        expect("door")
+        doors.append({"unit": take_int(0, nunits - 1, "door unit"),
+                      "id": take_int(0, 1024, "door id"),
+                      "dir": take_int(0, 3, "door dir")})
+    expect("links")
+    nlinks = take_int(0, 4096, "nlinks")
+    links = []
+    for _ in range(nlinks):
+        expect("link")
+        links.append({"unit": take_int(0, nunits - 1, "link unit"),
+                      "door": take_int(0, 4096, "link door"),
+                      "peer_unit": take_int(0, nunits - 1, "peer unit"),
+                      "peer_door": take_int(0, 4096, "peer door"),
+                      "dist": take_number("link dist")})
+    expect("spawns")
+    nspawns = take_int(1, 256, "nspawns")
+    spawns = []
+    for _ in range(nspawns):
+        expect("spawn")
+        ident = take()
+        count = take_int(1, 10000, "spawn count")
+        if not ident:
+            raise ValueError("empty spawn id")
+        spawns.append({"id": ident, "count": count})
+    expect("anchor")
+    anchor = take()
+    if anchor not in ("hole", "geyser"):
+        raise ValueError("anchor must be hole|geyser")
+    if pos[0] != len(tokens):
+        raise ValueError("trailing tokens after anchor")
+    return {"pool": pool, "units": units, "rooms": rooms, "doors": doors,
+            "links": links, "spawns": spawns, "anchor": anchor}
+
+
+def check_generate_against_floor_one(packet, sidecar_text):
+    try:
+        manifest = parse_generate_sidecar(sidecar_text)
+    except ValueError as error:
+        return (["malformed sidecar: " + str(error)], [])
+    problems, notes = [], []
+    try:
+        floor = floor_one(packet)
+    except ValueError as error:
+        return (["bad P0 packet: " + str(error)], [])
+    if manifest["pool"] != floor.get("unit_pool"):
+        problems.append("pool mismatch vs floor-1 pool")
+    known_units = set(floor.get("unit_names") or [])
+    for unit in manifest["units"]:
+        if unit["name"] not in known_units:
+            problems.append("STAGED-EXTRA unit not in floor-1 decode: " + unit["name"])
+    pool_hash = (packet.get("unit_pool_sha256") or {}).get(floor.get("unit_pool"))
+    notes.append("STAGED unit dimensions/doors come from the unit-blob decode (pinned hash %s), not the P0 packet" % pool_hash)
+    notes.append("STAGED room topology: %d room(s); turns/offsets are staged, not retail facts" % len(manifest["rooms"]))
+    notes.append("STAGED anchor kind: %s (not in P0 decode)" % manifest["anchor"])
+    minima = {}
+    for row in floor.get("enemies") or []:
+        if row.get("minimum_count") is not None:
+            minima[row["enemy_id"]] = minima.get(row["enemy_id"], 0) + row["minimum_count"]
+    known_ids = {row["enemy_id"] for row in floor.get("enemies") or []}
+    for spawn in manifest["spawns"]:
+        if spawn["id"] not in known_ids:
+            problems.append("spawn id not in floor-1 roster: " + spawn["id"])
+        elif spawn["count"] < minima.get(spawn["id"], 0):
+            problems.append("spawn count below roster minimum: " + spawn["id"])
+    for row in floor.get("enemies") or []:
+        if row.get("target_count") is not None:
+            got = sum(s["count"] for s in manifest["spawns"] if s["id"] == row["enemy_id"])
+            if got != row["target_count"]:
+                notes.append("target deviation: %s staged %d vs P0 target %d" % (row["enemy_id"], got, row["target_count"]))
+    return (problems, notes)

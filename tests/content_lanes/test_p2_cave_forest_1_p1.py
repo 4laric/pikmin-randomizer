@@ -130,3 +130,65 @@ class Forest1P1AdapterTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+CONFORMING_SIDECAR = """P2_CAVE_GENERATE_1
+pool 1_units_cent3_tsuchi.txt 2
+unit 0 room_cent3_4_tsuchi 100.0 100.0 0
+unit 1 way3_tsuchi 50.0 50.0 0
+rooms 1
+room 0 0 0 0.0 0.0 0.0
+doors 0
+links 0
+spawns 2
+spawn UjiB 4
+spawn Clover 4
+anchor hole
+"""
+
+
+class GenerateConformanceTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = load_adapter()
+
+    def packet(self):
+        path = Path(tempfile.mkdtemp()) / "packet.json"
+        path.write_text(json.dumps(synthetic_packet()), encoding="utf-8")
+        return path
+
+    def test_conforming_sidecar_passes_with_staged_notes(self):
+        packet = self.mod.load_packet(self.packet())
+        problems, notes = self.mod.check_generate_against_floor_one(packet, CONFORMING_SIDECAR)
+        self.assertEqual(problems, [])
+        self.assertTrue(any("STAGED room topology" in n for n in notes))
+        self.assertTrue(any("STAGED anchor kind: hole" in n for n in notes))
+        self.assertTrue(any("STAGED unit dimensions" in n for n in notes))
+
+    def test_unknown_unit_and_spawn_fail_closed(self):
+        bad = CONFORMING_SIDECAR.replace("way3_tsuchi", "invented_unit")
+        packet = self.mod.load_packet(self.packet())
+        problems, _ = self.mod.check_generate_against_floor_one(packet, bad)
+        self.assertTrue(any("STAGED-EXTRA unit" in p for p in problems))
+        bad2 = CONFORMING_SIDECAR.replace("spawn Clover 4", "spawn Invented 4")
+        problems, _ = self.mod.check_generate_against_floor_one(packet, bad2)
+        self.assertTrue(any("not in floor-1 roster" in p for p in problems))
+
+    def test_below_minimum_and_pool_mismatch_fail(self):
+        bad = CONFORMING_SIDECAR.replace("spawn UjiB 4", "spawn UjiB 1")
+        packet = self.mod.load_packet(self.packet())
+        problems, _ = self.mod.check_generate_against_floor_one(packet, bad)
+        self.assertTrue(any("below roster minimum" in p for p in problems))
+        bad2 = CONFORMING_SIDECAR.replace("1_units_cent3_tsuchi.txt 2", "1_units_cent2_tsuchi.txt 2")
+        problems, _ = self.mod.check_generate_against_floor_one(packet, bad2)
+        self.assertTrue(any("pool mismatch" in p for p in problems))
+
+    def test_malformed_sidecar_and_bad_anchor_rejected(self):
+        packet = self.mod.load_packet(self.packet())
+        problems, _ = self.mod.check_generate_against_floor_one(packet, "P2_CAVE_GENERATE_1\npool")
+        self.assertTrue(any("malformed sidecar" in p for p in problems))
+        bad = CONFORMING_SIDECAR.replace("anchor hole", "anchor volcano")
+        problems, _ = self.mod.check_generate_against_floor_one(packet, bad)
+        self.assertTrue(any("malformed sidecar" in p for p in problems))
+        with self.assertRaises(ValueError):
+            self.mod.parse_generate_sidecar(None)

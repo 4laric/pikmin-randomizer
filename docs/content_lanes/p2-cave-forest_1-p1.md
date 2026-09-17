@@ -49,3 +49,20 @@ p2_forest1_p1_fixture.exe <private out>/p2-forest1-floor1.txt
   members block promotion, not this preparatory plan.
 - Floors 2-5, persistence, retreat/extinction/reload and natural collection
   remain OPEN.
+
+## Gen-4 update (consumed prerequisites, conformance gate)
+
+- Consumed accepted #129 consumer landing into the private native worktree
+  (cherry-pick `21caef9a` -> `1a0904ac`: `pc_p2_cave_generate.h`/`.cpp`,
+  `pc_p2_cave.cpp` hook, CMake line). It defines the `p2-cave-generate.txt`
+  sidecar contract the runtime fixture will feed.
+- New `check_generate_against_floor_one(packet, sidecar)`: strict-conformance
+  gate between any candidate generate sidecar and the pinned floor-1 decode.
+  Problems fail closed (unknown unit/spawn, below-minimum counts, pool
+  mismatch, malformed sidecar); notes label every STAGED choice (room
+  topology, unit dimensions, anchor kind, target deviations).
+- Honest gap confirmed: a faithful passing sidecar still needs the unit-blob
+  decode (dimensions/doors for `1_units_cent3_tsuchi.txt`, pinned hash
+  `5082b1e2...`, absent from every reachable checkout) plus staged room
+  topology and anchor kind. The runtime floor-1 boot remains BLOCKED on the
+  replacement-main fixture + leased build + captain guard #632.
