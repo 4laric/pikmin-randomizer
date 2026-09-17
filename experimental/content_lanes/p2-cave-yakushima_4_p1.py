@@ -332,6 +332,44 @@ def write_runtime_inputs(outdir, p0_path, root_worktree, native_worktree,
     return provenance
 
 
+def prune_arena_to_single_pr05(gen_bytes):
+    """Prune an arena gen to exactly one pr05 row, keeping the FIRST one.
+
+    The accepted provider keeps the lowest generator id, which is ambiguous
+    when several rows share id 0 (as in the raw assets chal0/default.gen).
+    This positional keep is deterministic and labelled; the header count is
+    repacked and the result is reparsed. Shared framing is reused, not forked.
+    """
+    from scripts.preview_pikmin2_room import records
+    import struct as _struct
+    import tempfile as _tempfile
+
+    with _tempfile.TemporaryDirectory() as tmp:
+        probe = Path(tmp) / "default.gen"
+        probe.write_bytes(bytes(gen_bytes))
+        rows = records(probe)
+    kept = []
+    dropped = 0
+    for row in rows:
+        if row[80:84] == b"50rp":
+            if any(r[80:84] == b"50rp" for r in kept):
+                dropped += 1
+                continue
+        kept.append(row)
+    if sum(1 for r in kept if r[80:84] == b"50rp") != 1:
+        raise StagingError("overlay must carry exactly one pr05 row")
+    header = bytearray(bytes(gen_bytes)[:24])
+    _struct.pack_into(">I", header, 20, len(kept))
+    overlay = bytes(header) + b"".join(kept)
+    with _tempfile.TemporaryDirectory() as tmp:
+        probe = Path(tmp) / "default.gen"
+        probe.write_bytes(overlay)
+        check = records(probe)
+    if len(check) != len(kept):
+        raise StagingError("overlay reparse mismatch")
+    return overlay, dropped
+
+
 def main(argv=None):
     import argparse
 

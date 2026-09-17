@@ -112,3 +112,26 @@ valid `p2-cargo.txt`), which is arena/fixture-data provisioning owned by the
 fixture-baseline / provider-runtime-fixtures lanes, not by this lane's four
 reserved files. Until then the guarded boot cannot reach the cave entry on a
 legal arena.
+
+
+## Generation 8: arena overlay provider integrated; headed boot stalls pre-stage
+
+Integrated the accepted `runtime-fixtures-cave-arena-overlay-pr05` (#654)
+provider (commit `722d7951`): the arena overlay input grammar, presence
+checker and 26 tests (all pass in my tree) are now available read-only-plus;
+no shared files were edited.
+
+Diagnosed the real stall root cause: the raw assets `chal0/default.gen`
+carries TWO pr05 rows (both generator_id 0), so the provider prune
+(lowest-id keep) fails closed. A positional keep (first row, deterministic,
+labelled) stages a single-pr05 overlay (`ecc37c92`, 79 records) into a
+private junction overlay tree; input package validates `INPUTS_PASS`.
+
+Two bounded headed guarded runs (150s and 280s) reached the 960x540 centred
+window and GL 3.3 with linked shaders, and the duplicate-treasure abort is
+GONE ? but the boot stalls silently after texture-filtering init, before any
+stage load. No DVD errors, no P2_CAVE_READY, no P2_CAVE_GENERATE_PASS. This is
+an engine-internal pre-stage stall outside my four reserved files and outside
+every integrated provider. All six gates stay UNTESTED. The exact remaining
+gap is a diagnosed engine boot stall, plus the authored yakushima_4 room
+graph for a genuine collision claim.
