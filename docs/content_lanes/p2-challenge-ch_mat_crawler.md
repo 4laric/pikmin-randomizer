@@ -208,3 +208,36 @@ Stage-specific remainder now waits on #694 (`challenge-content-loading-boot-nati
 native content-loading boot path for arena/actors/squad): it is lane-done but has
 no integrated receipt or compiled evidence yet, so no ch_MAT_crawler floor
 content is booted. Gates UNTESTED.
+
+## Gen-8 consumer verification: stage-specific content-loading boot (#694/#701)
+
+Consumed the accepted `challenge-content-loading-validate-land-native` (#701):
+native merge of `a85c5f79` (the #694 binder + completed fixture) into the
+private native worktree (merge `2e9f707f`; pure adds), root cherry-pick of
+`4a149f07`+`7f583c72` (build/run helper) as `b0ef47ca`/`a07022b2`. No conflicts.
+
+Built the content-loading fixture at native `2e9f707f` in the leased private
+build dir (exe `e40368de...`; maintained builder, `ninja` dry run no-work) and
+ran it over the staged `ch_MAT_crawler` floor-1 sidecars with the #632 guard.
+Exit 0:
+`P2_CHALLENGE_CONTENT_SELECTED cave=ch_MAT_crawler floor=1 pool=validation_pool.txt spawns=1 anchor=hole`,
+`P2_CHALLENGE_CONTENT_SPAWN_COVERED id=YellowChappy count=2`,
+`P2_CHALLENGE_CONTENT_READY cave=ch_MAT_crawler floor=1 squad=20 captain_parked=1`,
+`P2_CHALLENGE_CONTENT_LIVE squad=20 actors=1 tick=2`,
+`PASS P2_CHALLENGE_CONTENT_RUN content=1`, no captain-down.
+
+Reported via `workflow.consumer_verification` (verification `6cb3f051`) with
+`passed=true`, `prerequisite_resolved=true`; evidence
+`consumer-verify-content-loading.log` sha256 `99e71a06...`.
+
+Honest scope: the #694 binder is a thin selection/coverage + liveness layer, not
+a roster loader. The run selects the decoded stage/floor/pool/anchor and confirms
+staged spawn intents cover the roster, but the observed squad (20) is the
+preview starting squad and the single actor is not the decoded ch_MAT_crawler
+roster. Placing the real decoded floor content (pools
+`4_units_c_e_j_l_conc.txt` / `1_units_manh_conc.txt`, 14+7 enemy rows, gate) and
+observing collision/routes remain; the six behavior gates stay UNTESTED.
+
+Remaining gap: real decoded floor placement (unit-pool asset staging + generator
+roster) plus the six behavior gates. Producer: #129 cave-generate-provider and
+the actor-family observers.
