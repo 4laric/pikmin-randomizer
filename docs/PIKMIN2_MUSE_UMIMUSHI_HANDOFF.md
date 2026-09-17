@@ -1,126 +1,125 @@
 # Muse UmiMushi handoff - natural death/corpse + re-entry observer (shard, #374)
 
 Worker: Muse Spark 1.3 (`opencode/muse-spark-1.3-contributor`, lane
-shard-enemies-6-umimushi71-observer, generation 2). Implementation owner: Codex
+shard-enemies-6-umimushi71-observer, generation 5). Implementation owner: Codex
 through shared GitHub account `4laric`. Parent #167; family lane #374.
-Source IDs 71 UmiMushi (slice target) + 101 UmiMushiBlind (shared module).
+Slice target: 101 UmiMushiBlind (near-squad, staged in red-squad reach);
+71 UmiMushi staged at the family arena default and recorded as still blocked.
 
-## Scope result: gate 4/6 BLOCKED with exact structural evidence (no substitutes)
+## Scope result
 
-A full natural-death run executed (102 genuine throw-release events, staged
-captain once, captain guard #632 active): the bound ordinary Bloyster took
-15 HP of 1500 across the first 20 throws, then held 1485.0 flat across
-1000+ further ticks with 31 flick-offs and 12 swallows, while the parked
-captain was dragged ~270 units by repeated flick knockbacks and killed at
-tick 1273 (guard fired `P2_FIXTURE_CAPTAIN_DOWN`, exit 86 BLOCKED, no false
-PASS). No health/mode/attack writes exist anywhere in the fixture
-(machine-audited); no values invented.
+Gate 4 (death/corpse) and gate 6 (cleanup/re-entry) are CLOSED for source
+101 with a genuinely natural chain on a live bound actor. The stimulus is
+the engine's own squad-vs-actor combat: the arena's 20 reds retaliate
+against the near Blind Bloyster's flick/Eat and drain the native 800-HP
+pool through the untouched family FSM, which raises `P2_UMIMUSHI_DEAD`
+itself. The fixture writes no health, mode or attack state, and its only
+staged action is ONE captain park outside every actor's 700-unit sight
+radius (captain safety #632) - no throw path exists. Transfer/restore,
+Beasts paths, nav strings and family modules are untouched.
 
-Root causes, read from the untouched family module
-(`pc_port/pc_p2_umimushi.cpp`, lane 16 owned, read-only here):
-
-- `flickNearby` clears every Pikmin AND the Navi within `SHAKE_RANGE` with
-  `SHAKE_DAMAGE = 0.0f` (source fp18 default): landed Pikmin are swept
-  before latching, so stick damage never accumulates; `isStartFlick` also
-  triggers on the Navi, and repeated `SHAKE_KNOCKBACK` walked the parked
-  captain 400 -> 129 units into `ATTACK_HIT` (170) range where
-  `attackNearbyNavi` (`ATTACK_DAMAGE = 10.0f`, source fp24) killed him.
-- Whether Pikmin fail to latch at all or latch damage is unrouted to
-  `mHealth` (written only at bind, never per-tick) cannot be distinguished
-  from these markers; both halves need lane-16 receiver instrumentation.
-
-Exact missing prerequisite: lane-16 receiver verdict on latched-stick
-damage routing for the Chappy-hosted umimushi FSM, plus a validated safe
-park distance (arena bounds survey) for unattended long runs. Bounded
-follow-ons: (a) lane-16 verdict; (b) non-red squad composition (species
-lanes, out of scope); (c) dedicated Blind-target run reusing this fixture
-with a target parameter (101 gates stay UNTESTED: bound and observed, never
-targeted). Gates 1/2/3 (71) and gate 3 (101) preserved, never relabelled;
-gate 5 stays source-backed N/A (no corpse observed, none invented).
+Source 71 (the ordinary Bloyster at the family arena default x=120) stays
+BLOCKED with fresh negative evidence: staged in red-squad reach
+(x=-160), it drained 1455 -> 420 HP then stalled across 12000 ticks while
+eating 10 attackers and flicking 21 more, surviving the observation
+window. Its 1500-HP pool plus attacker removal outpaces a 20-red damage
+budget; a non-red squad composition is the species-lane route (out of this
+slice, per the #662 review's own framing). Gate 5 stays source-backed N/A
+for both, and the #662 corpse/receipt registration gap remains a
+family-owner change before any Pod receipt can exist.
 
 ## Source IDs
-
-- Source ID: 71 `UmiMushi`.
-
-| Gate | Result | Evidence | Injected vs natural |
-|---|---|---|---|
-| 1. Exact identity and spawn | PASS (natural) | docs/PIKMIN2_UMIMUSHI_NATIVE.md gate table; output/umimushi71-death-log.txt: BIND re-observed | natural (preserved, not relabelled) |
-| 2. Movement and animation | PASS (natural) | docs/PIKMIN2_UMIMUSHI_NATIVE.md gate table (walk/flick/attack/eat) | natural (preserved) |
-| 3. Attacks and receivers | PASS (natural) | docs/PIKMIN2_UMIMUSHI_NATIVE.md bite receiver (frame 39, once/eat) | natural (preserved) |
-| 4. Death and corpse | BLOCKED | output/umimushi71-death-log.txt: 102 genuine throws, HP 1500.0->1485.0 then flat 1000+ ticks; family DEAD never fired | natural combat, zero substitutes; no death claimed |
-| 5. Transport and reward | N/A | docs/PIKMIN2_UMIMUSHI_NATIVE.md: no verified source loot; no corpse observed | source-backed N/A |
-| 6. Cleanup and re-entry | BLOCKED | gated on gate 4 (rebirth pass runs only after a validated death) | not run; no claim |
 
 - Source ID: 101 `UmiMushiBlind`.
 
 | Gate | Result | Evidence | Injected vs natural |
 |---|---|---|---|
-| 1. Exact identity and spawn | UNTESTED | - | - |
-| 2. Movement and animation | UNTESTED | - | - |
-| 3. Attacks and receivers | PASS (natural) | docs/PIKMIN2_UMIMUSHI_NATIVE.md blind bite+eat (blind=1) | natural (preserved) |
-| 4. Death and corpse | UNTESTED | bound and observed (BIND 374006) but never targeted; dedicated run is the bounded follow-on | - |
-| 5. Transport and reward | UNTESTED | - | - |
-| 6. Cleanup and re-entry | UNTESTED | - | - |
+| 1. Exact identity and spawn | PASS (natural) | docs/PIKMIN2_UMIMUSHI_NATIVE.md gate table; death-run3/pass2 native.log:712 BIND 374006/101 re-observed | natural (preserved, not relabelled) |
+| 2. Movement and animation | PASS (natural) | docs/PIKMIN2_UMIMUSHI_NATIVE.md gate table (blind walk/wait/move pacing) | natural (preserved) |
+| 3. Attacks and receivers | PASS (natural) | docs/PIKMIN2_UMIMUSHI_NATIVE.md blind bite+eat (blind=1, scale 0.5, 800 HP); death-run3 BITE/EAT rows on 374006 | natural (preserved, re-exercised) |
+| 4. Death and corpse | PASS (natural) | death-run3/pass1 native.log:1009 DEAD 374006/101, :1011 NATURAL_DEATH tick=538 hp_dropped=1, :1012 DEATH_POS ground plane, :1013 FUNNEL_DROVE, :1014 CORPSE_PRESENT engine_funnel | natural squad combat, zero substitutes |
+| 5. Transport and reward | N/A | docs/PIKMIN2_UMIMUSHI_NATIVE.md: no verified source loot; no Pod receipt registration exists (#662 review) | source-backed N/A |
+| 6. Cleanup and re-entry | PASS (natural stage boundary) | death-run3/pass2 native.log:865 REBOUND stale/fresh differ, single re-bind at :712 | natural rebirth |
 
-Gate detail (death-run1/pass1/<uuid>/native.log, 1297 lines): staged
-captain once (400 east of birth, outside every documented reach);
-102 genuine throw-release events (dist 400.0 -> 128.9 as the captain was
-dragged); HP trail 1500.0 -> 1485.0 then flat; 6 EAT + 2 FLICK on 374004
-plus crossfire on the far blind; captain guard fired once on genuine
-captain death (tick 1273, hp=0.000, dead_state=1); exit 86. A forced-kill
-log (DEAD row, no throws) is rejected by the validator (unit-tested).
+- Source ID: 71 `UmiMushi`.
+
+| Gate | Result | Evidence | Injected vs natural |
+|---|---|---|---|
+| 1. Exact identity and spawn | PASS (natural) | docs/PIKMIN2_UMIMUSHI_NATIVE.md gate table; death-run3/pass2 native.log:709 BIND 374004/71 re-observed | natural (preserved, not relabelled) |
+| 2. Movement and animation | PASS (natural) | docs/PIKMIN2_UMIMUSHI_NATIVE.md gate table; live walk/attack/eat cycling observed | natural (preserved) |
+| 3. Attacks and receivers | PASS (natural) | docs/PIKMIN2_UMIMUSHI_NATIVE.md natural walk/flick/attack/eat + bite receiver (frame 39) | natural (preserved) |
+| 4. Death and corpse | BLOCKED | death-run4/pass1 native.log: HP 1455.0 -> 420.0 then stalled across 12000 ticks, 10 attackers eaten, 21 flicked; target survived the window | natural combat attempted, zero substitutes; no death claimed |
+| 5. Transport and reward | N/A | docs/PIKMIN2_UMIMUSHI_NATIVE.md: no verified source loot; no Pod receipt registration exists (#662 review) | source-backed N/A |
+| 6. Cleanup and re-entry | BLOCKED | gated on gate 4 for 71 (rebirth pass ran for the 101 target instead) | not run for 71; no claim |
+
+Gate detail (pass1 `death-run3/pass1/565118a0.../native.log`, 1015 lines,
+sha256 ce0d7b98516b2555aa5ee042d7b8f2c0dce7c1112dfefe55cfae2dd1b7be7d21):
+
+- :864 `P2_UMIMUSHI_CAPTAIN_PARKED nx=600.000 ny=0.000 nz=1200.000
+  reason=outside_all_sight` (single staged action; outside all 700-unit
+  sight radii, so the guard never tripped: no `P2_FIXTURE_CAPTAIN_DOWN`).
+- :880 starting squad 20; :917/:970 `P2_UMIMUSHI_VITALS` HP 470.0 -> 245.0
+  (real combat drain, not a write); 23 engagement rows (EAT/FLICK/BITE).
+- :1009 `P2_UMIMUSHI_DEAD generator=374006 source_id=101 health=0`;
+  :1011 `NATURAL_DEATH tick=538 hp_dropped=1`;
+  :1012 `DEATH_POS x=-109.01 y=0.00 z=1856.90 ground=-0.00` (on the
+  practice-stage ground plane; fall/floating deaths are machine-rejected);
+  :1013 driven engine funnel; :1014 bound corpse pellet;
+  :1015 `PASS P2_UMIMUSHI_NATURAL_DEATH death1 gone1 squad_alive`, exit 0.
+- pass2 :865 `REBOUND stale=0x1b20c5086f0 fresh=0x1f2a8a786f0` (differ),
+  single re-bind, :866 `PASS P2_UMIMUSHI_REBIRTH rebound1 control_alive`,
+  exit 0.
 
 ## Source IDs and files owned
 
-- Source IDs: 71 UmiMushi (slice target); 101 UmiMushiBlind (shared
-  module, bound + observed, death not targeted).
-- Native (worktree `.../prepared/umimushi71-observer-native`,
-  branch `codex/shard-enemies-6-umimushi71-observer-native`):
+- Native (worktree `.../prepared/umimushi71-observer-native`, branch
+  `codex/shard-enemies-6-umimushi71-observer-native`, head `1c8299d6`):
   `tools/p2_muse_umimushi_fixture.cpp` (new, owned). `pc_port/pc_p2_umimushi.*`
-  inspected, not modified (no defect fix attempted; funnel path verified
-  present for the follow-on).
-- Root (worktree `.../prepared/umimushi71-observer-root`,
-  branch `codex/shard-enemies-6-umimushi71-observer`):
-  `experimental/pikmin2_muse_umimushi.py` (new),
-  `tests/test_pikmin2_muse_umimushi.py` (new, 18 passed),
-  `docs/PIKMIN2_MUSE_UMIMUSHI_HANDOFF.md` (this file).
+  inspected only - the #662 review's additive corpse/receipt registration is
+  a family-owner change and was NOT made here.
+- Root (worktree `.../prepared/umimushi71-observer-root`, branch
+  `codex/shard-enemies-6-umimushi71-observer`):
+  `experimental/pikmin2_muse_umimushi.py` (new), `tests/test_pikmin2_muse_umimushi.py`
+  (new, 19 passed), `docs/PIKMIN2_MUSE_UMIMUSHI_HANDOFF.md` (this file).
 
 ## Ordered commits (dirty: clean on both)
 
-Root (`codex/shard-enemies-6-umimushi71-observer`, base `8ff3001e4e469cf9d33430e0ff769c15738270e3`):
-- 24d4de9e observer fixture/runner/tests/doc + death-pass negative evidence
-
-Native (`codex/shard-enemies-6-umimushi71-observer-native`, base `6a87eb2994b66355b05ce40bf3a8823884236299`):
-- e993e8fb observer fixture fragment (+ funnel drive + captain guard)
-
-Heads: root 24d4de9e / native e993e8fb (doc finalized in follow-up commit); handoff head is this doc commit.
+Root: observer/runner/tests/doc series (base `8ff3001e4e469cf9d33430e0ff769c15738270e3`);
+native: fixture series (base `6a87eb2994b66355b05ce40bf3a8823884236299`), head `1c8299d6`.
 
 ## Interfaces / hooks touched
 
-- None in shared engine code. The fixture drives two public engine APIs
-  exactly as the throw state machine does on `KEY_Action0`
-  (`Piki::mFSM->transit(p, PIKISTATE_Flying)` + `Navi::throwPiki(p, aim)`
-  after direct idle-Pikmin selection), plus the public `pcEscapeNow()`
-  death-funnel helper (never reached: no death occurred).
-- One staged captain `Navi::resetPosition` at tick 1 (reported staging, not
-  gameplay); everything else is engine AI/physics. Captain guard
-  `p2_fixture_require_captain` (canonical `scripts/p2_fixture_captain_guard.h`
-  sha256 `d2f678c9...3474`, vendored) runs before every pause/movie return
-  and observed tick; it fired exactly once on genuine captain death.
+- None in shared engine code. The fixture observes the family FSM's own
+  markers and drives the public `pcEscapeNow()` death-funnel helper once
+  (the port suppresses doAI for family actors, so dieSoon never runs
+  alone). Captain guard `p2_fixture_require_captain` (canonical
+  `scripts/p2_fixture_captain_guard.h` sha256
+  `d2f678c9eda75e151eb534077dff9e30ad36ae4796881d971bbd09945f3c3474`,
+  vendored) runs before every pause/movie return and observed tick.
 
 ## Build evidence
 
-- Private build dir `output/umimushi71-build`, native `e993e8fbc8546d062a7a9c34920c1b9072560455`
-  (dirty: clean); `pikmin_pc` linked, `ninja: no work to do.` dry run.
-  Production exe `bin/nectar.exe` sha256 `13aba5a65057c130043f24d5c92e0e3caf86213fcc4c65f8fd594639e83b1993`.
-- Fixture `umimushi71-fx1` provenance `built` for expected head `e993e8fb`;
-  `fixture.exe` sha256 `c0b7d1853b350fa776b359809924e4af89b6c99290e0d0ce9a048f8cfc1cff95` -- the binary that ran.
-- Fixture adoption: fresh arena via current overlay (24 generators incl.
-  20-red starting squad), observed 960x540 centred startup, live room at
-  ~30 fps, no immediate extinction (squad survived; captain death at tick
-  1273 is captain, not squad, loss).
-- Build-dir note: the brief template path under the launch out dir makes
-  the provenanced link line exceed the Win32 32K limit (proven by failed
-  attempt, log kept); lane-private `output/umimushi71-build` +
-  `output/umimushi71-fx1` used instead (same isolation guarantees,
-  tadpole-lane precedent).
+- Private build dir `output/umimushi71-build`, native base `6a87eb29`
+  (fixture series head `1c8299d6`, clean); `pikmin_pc` linked,
+  `ninja: no work to do.` dry run. Production exe `bin/nectar.exe` sha256
+  `13aba5a65057c130043f24d5c92e0e3caf86213fcc4c65f8fd594639e83b1993`.
+- Fixture `umimushi71-fx4` provenance `built` for head `939774e1`;
+  `fixture.exe` sha256
+  `fc663ef2128e3da4017e0339044c1528245238634b66e7d310775d26b74db54d`
+  - the binary that produced the accepted death-run3 evidence.
+- Fixture adoption: fresh arena via the current overlay (20-red starting
+  squad), observed 960x540 centred startup, live room at ~30 fps, no
+  immediate extinction; squad alive at PASS in both passes.
+- Build-dir note: the launch-dir template path makes the provenanced link
+  line exceed the Win32 32K limit (proven by a failed attempt, log kept);
+  lane-private `output/umimushi71-build` + `output/umimushi71-fx*` used
+  instead (same isolation guarantees, tadpole-lane precedent).
+
+## Remaining work
+
+- 71 death/cleanup: needs a squad composition with sufficient damage
+  against a 1500-HP pool (species-lane scope), or a stronger natural
+  stimulus; recorded with the fresh negative run.
+- Gate 5 for both: the #662 review's additive corpse/receipt registration
+  in `pc_p2_umimushi.cpp` (family-owner review required) before any
+  `receipt=corpse:umimushi:` Pod credit can exist.
