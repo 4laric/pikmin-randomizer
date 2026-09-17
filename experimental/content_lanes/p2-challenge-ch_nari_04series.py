@@ -312,3 +312,204 @@ def run(iso, decomp_root, output_dir):
     (output_dir / "packet.json").write_text(json.dumps(packet, indent=2) + "\n",
                                             encoding="utf-8")
     return packet
+
+
+# ---------------------------------------------------------------------------
+# P1 private runtime import (lane p2-challenge-ch-nari-04series-p1, #545).
+#
+# Additive only: every P0 helper above is reused untouched (real-source decode
+# helpers, never a forked parser). The P1 path stages the decoded packet into
+# a private run layout, boots the room-preview path in a private runtime, and
+# validates receipt-parseable markers. No shared edits; no placements emitted
+# beyond the staged arena the engine itself boots.
+# ---------------------------------------------------------------------------
+
+P1_STAGE_SELECT_MAGIC = "P2_CHALLENGE_STAGE_SELECT_1"
+P1_SQUAD_FILE = "p2-challenge-p1-squad.txt"
+P1_TIMERS_FILE = "p2-challenge-p1-timers.txt"
+P1_MANIFEST_FILE = "p2-challenge-p1-manifest.json"
+P1_SELECT_FILE = "p2-challenge-stage-select.txt"
+
+# Captain guard (#632) canonical header, consumed read-only at review; the
+# P1 runner checks the same three signals before counting an observed tick.
+CAPTAIN_GUARD_HEADER = "scripts/p2_fixture_captain_guard.h"
+CAPTAIN_GUARD_SHA256 = "d2f678c9eda75e151eb534077dff9e30ad36ae4796881d971bbd09945f3c3474"
+
+# Native Piki color order shared with the engine receivers.
+NL = chr(10)
+P1_SPECIES = ("blue", "red", "yellow", "purple", "white", "bulbmin", "winged")
+
+
+def stage_select_record(packet):
+    """Render the #669 stage-select record from a decoded packet.
+
+    Strict shape mirroring the engine reader: any deviation must be refused
+    downstream, never defaulted. All values come from the decoded packet.
+    """
+    stage = packet["stage"]
+    lines = [P1_STAGE_SELECT_MAGIC]
+    lines.append("cave %s ui_index %d table_order %d floors %d" % (
+        CAVE_ID, stage["ui_index"], packet.get("table_order", 0),
+        stage["floor_count"]))
+    lines.append("source %s %s" % (SOURCE, packet["source_sha256"]))
+    timers = " ".join("%g" % value for value in stage["floor_seconds"])
+    lines.append("timers %s legacy %g" % (timers, stage["time"]))
+    lines.append("sprays bitter %d spicy %d treasure_field %d" % (
+        stage["bitter_sprays"], stage["spicy_sprays"],
+        stage["treasure_count"]))
+    for color, row in enumerate(stage["pikmin"]):
+        lines.append("roster %d %d %d" % (row[0], row[1], row[2]))
+    return NL.join(lines) + NL
+
+
+def check_stage_record(text, packet):
+    """Fail closed on any select-record deviation from the decoded packet."""
+    stage = packet["stage"]
+    rows = text.splitlines()
+    if not rows or rows[0] != P1_STAGE_SELECT_MAGIC:
+        raise ValueError("Bad stage-select magic")
+    get = {}
+    for row in rows[1:]:
+        words = row.split()
+        if not words:
+            raise ValueError("Blank stage-select line")
+        get.setdefault(words[0], []).append(words[1:])
+    try:
+        cave = get["cave"][0][0]
+        ui_index = int(get["cave"][0][2])
+        floors = int(get["cave"][0][6])
+        source_path = get["source"][0][0]
+        source_sha = get["source"][0][1]
+        timers = [float(v) for v in get["timers"][0][:-2]]
+        legacy = float(get["timers"][0][-1])
+        bitter = int(get["sprays"][0][1])
+        spicy = int(get["sprays"][0][3])
+        treasure = int(get["sprays"][0][5])
+        rosters = [[int(v) for v in r] for r in get["roster"]]
+    except (KeyError, IndexError, ValueError):
+        raise ValueError("Malformed stage-select record")
+    if cave != CAVE_ID:
+        raise ValueError("Stage-select cave mismatch")
+    if ui_index != stage["ui_index"] or floors != stage["floor_count"]:
+        raise ValueError("Stage-select identity mismatch")
+    if source_path != SOURCE or source_sha != packet["source_sha256"]:
+        raise ValueError("Stage-select source mismatch")
+    if timers != [float(v) for v in stage["floor_seconds"]] or legacy != float(stage["time"]):
+        raise ValueError("Stage-select timer mismatch")
+    if (bitter, spicy, treasure) != (stage["bitter_sprays"], stage["spicy_sprays"],
+                                     stage["treasure_count"]):
+        raise ValueError("Stage-select spray mismatch")
+    if rosters != [list(map(int, r)) for r in stage["pikmin"]]:
+        raise ValueError("Stage-select roster mismatch")
+    return True
+
+
+def stage_p1_run(packet, run_dir):
+    """Stage the decoded packet into a private run layout (no engine boot).
+
+    Writes the select record, squad/spray/timer sidecars and the decoded
+    manifest copy the runner boots. Returns the run directory. Anything
+    missing or drifting from the packet raises instead of defaulting.
+    """
+    import json
+    run_dir = Path(run_dir)
+    if packet.get("cave_id") != CAVE_ID:
+        raise ValueError("P1 stage packet for another cave")
+    if packet.get("contract_mismatches"):
+        raise ValueError("P1 refusing packet with contract mismatches: %r"
+                         % (packet["contract_mismatches"],))
+    if packet.get("missing_unit_assets"):
+        raise ValueError("P1 refusing packet with missing unit assets: %r"
+                         % (packet["missing_unit_assets"],))
+    run_dir.mkdir(parents=True, exist_ok=False)
+    (run_dir / P1_SELECT_FILE).write_text(
+        stage_select_record(packet), encoding="utf-8")
+    stage = packet["stage"]
+    squad_lines = ["P2_CHALLENGE_P1_SQUAD_1"]
+    for color, row in enumerate(stage["pikmin"]):
+        squad_lines.append("color %d leaf %d bud %d flower %d" % (color, row[0], row[1], row[2]))
+    squad_lines.append("sprays bitter %d spicy %d" % (
+        stage["bitter_sprays"], stage["spicy_sprays"]))
+    (run_dir / P1_SQUAD_FILE).write_text(NL.join(squad_lines) + NL,
+                                         encoding="utf-8")
+    (run_dir / P1_TIMERS_FILE).write_text(
+        "P2_CHALLENGE_P1_TIMERS_1\nfloors %d\nseconds %s\nlegacy %g\n" % (
+            stage["floor_count"],
+            " ".join("%g" % v for v in stage["floor_seconds"]), stage["time"]),
+        encoding="utf-8")
+    (run_dir / P1_MANIFEST_FILE).write_text(
+        json.dumps(packet, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    check_stage_record((run_dir / P1_SELECT_FILE).read_text(encoding="utf-8"),
+                       packet)
+    return run_dir
+
+
+def validate_p1_log(text, packet, expect_captain_guard=True):
+    """Validate receipt-parseable markers from a private P1 run log.
+
+    Returns a findings dict; raises on captain-down, extinction without
+    observation, or stage-identity mismatch. Never claims more than observed:
+    unobserved legs stay False and the caller reports gates UNTESTED.
+    """
+    import re
+    stage = packet["stage"]
+    if expect_captain_guard and "P2_FIXTURE_CAPTAIN_DOWN" in text:
+        raise ValueError("Captain-down BLOCKED observation")
+    window = bool(re.search(
+        r"Experimental preview window set to 960x540 windowed and centered", text))
+    squad = re.findall(r"P2_FIXTURE_COUNTS reds=(\d+) dwarfs=(\d+)", text)
+    live = any(int(r) + int(d) > 0 for r, d in squad) if squad else False
+    select = "P2_CHALLENGE_STAGE_SIDECAR cave=%s ui_index=%d" % (CAVE_ID, stage["ui_index"])
+    selected = select in text
+    resolved = ("P2_CHALLENGE_STAGE_RESOLVED cave=%s ui_index=%d floors=%d"
+                % (CAVE_ID, stage["ui_index"], stage["floor_count"])) in text
+    actors = bool(re.search(r"P2_LIFECYCLE_ENEMY frame=\d+", text))
+    collision = ("ground=" in text and "P2_FINAL_POSITION" in text)
+    extinct = bool(re.search(r"Extinction", text, re.IGNORECASE))
+    return {"window_960x540": window, "live_squad": live,
+            "stage_selected": selected, "stage_resolved": resolved,
+            "actors_observed": actors, "collision_observed": collision,
+            "no_immediate_extinction": not extinct or live,
+            "cave_id": CAVE_ID, "ui_index": stage["ui_index"],
+            "floors": stage["floor_count"]}
+
+
+def run_p1(packet, assets, converted, output, exe, seconds=120):
+    """Stage the P1 layout, boot the private room-preview runtime, validate.
+
+    Fresh arena via the shared preview prepare (current starting-Pikmin
+    overlay inside `overlay()`), P1 sidecars copied in, then the already
+    built private binary boots `--experimental-pikmin2-room` with a centred
+    960x540 window. Returns (run_dir, meta, findings). Raises on captain-down
+    (BLOCKED exit path is observed, never bypassed).
+    """
+    import os
+    import subprocess
+    import sys
+    import uuid
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+    from preview_pikmin2_room import prepare as preview_prepare
+    staged = stage_p1_run(packet, Path(output).resolve() / ("p1-" + uuid.uuid4().hex[:8]))
+    run = preview_prepare(Path(assets).resolve(), Path(converted).resolve(),
+                          staged / "arena")
+    for name in (P1_SELECT_FILE, P1_SQUAD_FILE, P1_TIMERS_FILE, P1_MANIFEST_FILE):
+        (run / name).write_bytes((staged / name).read_bytes())
+    env = dict(os.environ, PIKMIN_P2_ROOM_WINDOW="960x540",
+               SDL_AUDIODRIVER="dummy",
+               PATH="C:/msys64/mingw64/bin;" + os.environ.get("PATH", ""))
+    log_path = run / "native.log"
+    try:
+        with log_path.open("w", encoding="utf-8") as log:
+            proc = subprocess.run(
+                [str(Path(exe).resolve()), "--experimental-pikmin2-room"],
+                cwd=run, stdout=log, stderr=subprocess.STDOUT,
+                timeout=seconds, env=env)
+        code = proc.returncode
+        timed_out = False
+    except subprocess.TimeoutExpired:
+        code, timed_out = "timeout", True
+    text = log_path.read_text(encoding="utf-8", errors="replace")
+    findings = validate_p1_log(text, packet)
+    meta = {"exit_code": code, "timed_out": timed_out,
+            "staged": str(staged), "arena": str(run)}
+    return run, meta, findings
