@@ -127,11 +127,18 @@ def main(argv=None):
                                        "p2_cave_guarded_boot_fixture.cpp")
             fixture_obj = os.path.join(build_dir, "p2_cave_guarded_boot_fixture.obj")
             ref_base = os.path.basename(ref_file)
-            if ref_base in ref_cmd:
+            if (ref_file.replace(chr(92), "/").endswith("tools/p2_kurage_runtime.cpp") and ref_base in ref_cmd):
                 compile_cmd = ref_cmd.replace(ref_base,
                                               "p2_cave_guarded_boot_fixture.cpp")
             else:
-                compile_cmd = ref_cmd + " " + fixture_src
+                compile_cmd = ref_cmd
+                for _form in (ref_file, ref_file.replace("/", chr(92)),
+                               ref_file.replace(chr(92), "/")):
+                    if _form in compile_cmd:
+                        compile_cmd = compile_cmd.replace(_form, fixture_src, 1)
+                        break
+                else:
+                    compile_cmd = ref_cmd + " " + fixture_src
             # Point the -o output at our own object (the reference -o path
             # belongs to the reference TU, not to this fixture).
             compile_cmd, n_sub = re.subn(r"-o\s+\S+", lambda m: "-o " + fixture_obj,
