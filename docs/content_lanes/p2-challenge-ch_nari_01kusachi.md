@@ -137,8 +137,15 @@ CAPTAIN_DOWN + BLOCKED exit, a parked captain and labelled protection.
 
 ## Runtime evidence and exact blocker
 
-**No runtime observation was possible this slice; all six gates stay
-UNTESTED and no playability is claimed.** Root cause, verified in source:
+**Partial runtime observation achieved this slice via the integrated
+#675 hook; all six gates stay UNTESTED and no playability is claimed.**
+Observed in this lane's fresh private run
+(`prepared/p1-kusachi-output/run-kusachi-01/`, exit 0, 1.9 s, no
+CAPTAIN_DOWN, no refusal), using the verified stage-boot fixture binary
+read-only (sha256
+`87577167ea8e8654b09ffe8eac352664cc7f1ffcf05cb5f6040a5a8780244d34`, built
+from native cap `328c214e`, merged fast-forward into this lane's native
+worktree with no conflicts):
 
 - The only challenge boot path in this native pin is
   `--experimental-challenge-level 0-4` (`pc_port/pc_bbft.cpp:47-51`), which
@@ -158,12 +165,20 @@ UNTESTED and no playability is claimed.** Root cause, verified in source:
   caveinfo floors but requires a generator sidecar from the cave-generation
   provider (#129) and emits `P2_CAVE_*` markers, not this lane's contract.
 
-Consequently a "private runtime boot with live starting squad, centred
-960x540 startup and observed collision/routes/actors" cannot be produced for
-this stage until a stage-selectable challenge boot fixture is registered.
-Exact remaining dependency: **#186** (shared-owner review/registration of the
-challenge host-mode fixture, lane #651) or an equivalent shared-owner
-decision to register a P2-challenge-stage boot fixture. A fresh heavy private
-build was deliberately not spent: it cannot observe the stage without that
-fixture and would consume the shared heavy-build budget with no acceptance
-value.
+Observed markers (verbatim from `native.log`): `P2_CHALLENGE_STAGE_FLAG
+cave=ch_NARI_01kusachi`, `SIDECAR`, `TABLE` and `RESOLVED` (ui_index=3,
+floors=1, roster_total=50), `WINDOW size=960x540 pos=373,263 display=1707x1067
+centered=1`, `READY observed=1`, `GATES all=UNTESTED content_wired=0`, and
+`PASS CHALLENGE_STAGE_BOOT`. The arena spawned 24+30 generators; the single
+placement probe names the dwarf scaffold only (terrain=none, route=0), and no
+squad/gameplay/extinction marker exists, so live squad, active gameplay,
+collision, routes and actors are NOT claimed.
+
+Exact remaining dependency: **arena/content wiring** for the boot arena,
+owned by challenge host-mode #651 and #656 per the #675 evidence packet
+("host-mode #651 and #656 remain the arena/content owners"). The boot
+fixture wires no P2 cave content by design (`content_wired=0`). A fresh
+heavy private build was deliberately not repeated: the accepted
+prerequisite binary was verified (hash + provenance head == merged head,
+source files byte-identical modulo checkout line endings) and reused
+read-only, so rebuilding identical source would only duplicate work.
