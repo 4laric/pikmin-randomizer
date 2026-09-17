@@ -67,7 +67,7 @@ Native (`output/autofill-native-573`, branch `codex/autofill-native-573`):
 
 Root (`output/autofill-root-573`, branch `codex/autofill-573`):
 - `experimental/pikmin2_bombotakara_payload_acceptance.py` — observer CLI.
-- `tests/test_pikmin2_bombotakara_payload_acceptance.py` — 10 tests.
+- `tests/test_pikmin2_bombotakara_payload_acceptance.py` — 18 tests.
 - `docs/PIKMIN2_BOMBOTAKARA_PAYLOAD_ACCEPTANCE.md` — this file.
 
 ## Tests
@@ -228,6 +228,46 @@ otakara joint per the accepted #700 contract — recorded, not ADMIT).
 Remaining exact gaps: routed blast (no detonation driver fired; detonation
 is owner runtime work per the brief, so gate 3 stays BLOCKED); dynamic bridge
 still refuses 93 pending #186 review.
+
+## Generation 18: production call-site wiring PROVEN (consumer verification passed)
+
+Integrated #732 (`bomb-birth-hook-callsite-native`, native `f9c0e312`):
+brought the call-site TU + `pikmin_pc` membership into the private native
+tree (both new-file blobs byte-identical to the landed pin; CMakeLists hunk
+adapted to drop the out-of-scope #722 context line for a file this base
+lacks), and routed the consumer fixture birth through the production entry
+`pc_p2_general_enemy_mgr_birth(93, actor)` (owned fixture only; unity
+includes of the now-production manager/payload TUs removed to avoid
+duplicate symbols; global seam decls added where the header only
+member-declares them).
+
+- Production rebuild (leased private build): `pikmin_pc` [618/618],
+  `ninja: no work to do`, nectar.exe sha256
+  `42bc25b9a0eac33bbbefb493882d0abaf28246d84f985a8391d811cbe12de994`.
+  `pc_p2_bomb_birth_hook_notify` + `pc_p2_general_enemy_mgr_birth` STRONG (T)
+  in the production object and in nectar.exe; U in fixture.obj.
+- Bounded real bomb-birth run (canonical `run_pikmin2_fixture.py`, fresh
+  arena, 8 live reds, 960x540, #632 guard, captain parked): exit 0, 181.9 s,
+  both markers present, zero CAPTAIN_DOWN. Run
+  `run-573/bombotakara573/c875daac6e6d4d0fa91e21e2971c5d31/native.log`:
+  :729 MGR_BIND 349005/36 -> :732 ENGINE_BIRTH engine_driven=1 ->
+  :733 BIRTH_CALLSITE 93 -> :734 HOOK_NOTIFY 93 (both emitted from the
+  production TU; the fixture contains those strings only in comments) ->
+  :735 BIND_REFUSED dynamic_bridge_59_62_only (#186) ->
+  :737 JOINT_CAPTURE 17 joints; :937 BORN engine_driven=1.
+- Observer: `engine_callsite_birth_93` TRUE, gate-1 birth+joint candidate
+  TRUE (candidate evidence only, no ADMIT), gate-1 provider attach FALSE,
+  gate 3 FALSE (no detonation driver; owner runtime work), zero
+  injections/stub.
+- Environment note: the shell PATH carried a codex-runtime poppler dir whose
+  libzstd.dll hijacked cc1plus (silent exit 1, even `--version`); builds run
+  with a sanitized PATH (CMake + msys64 first, codex dirs stripped).
+
+Consumer verification `5314fb4d...` reported PASSED with
+prerequisite_resolved=True and bound game-runtime proof: the gen-17 defect
+(notifier with no engine caller/membership) is FIXED. Remaining exact gaps:
+gate-3 detonation routing (owner runtime work) and the #616 bridge landing /
+#186 review.
 
 ## Remaining work (proposed next bounded scope)
 
