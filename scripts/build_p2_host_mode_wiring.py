@@ -37,7 +37,8 @@ CONFIGURE = ["cmake", "-S", "{native}", "-B", "{build}", "-G", "Ninja",
              "-DCMAKE_C_COMPILER=gcc", "-DCMAKE_CXX_COMPILER=g++",
              "-DCMAKE_MAKE_PROGRAM=" + NINJA, "-DCMAKE_BUILD_TYPE=Release",
              "-DPIKMIN_NATIVE_JAUDIO=ON", "-DPIKMIN_NATIVE_OPTIMIZE=OFF",
-             "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"]
+             "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+             "-DP2_CHALLENGE_GUARD_INCLUDE_DIR=C:/Users/alari/pikmin-randomizer/scripts"]
 
 
 def sha256_file(path):
@@ -71,6 +72,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Build/run the host-mode wiring fixture")
     parser.add_argument("--root", default=".",
                         help="lane root/ worktree (canonical checkout or private worktree)")
+    parser.add_argument("--native-dir", default=None,
+                        help="override native worktree (default: <lane>-native)")
     parser.add_argument("--configure", action="store_true")
     parser.add_argument("--build", action="store_true")
     parser.add_argument("--self-test", action="store_true")
@@ -83,7 +86,7 @@ def main(argv=None):
 
     root = os.path.abspath(args.root)
     lane_base = root[:-len("-root")] if root.endswith("-root") else root
-    native_dir = lane_base + "-native"
+    native_dir = args.native_dir or (lane_base + "-native")
     build_dir = os.path.join(lane_base, "build")
     out_dir = os.path.join(lane_base, "out")
     if not os.path.isdir(os.path.join(native_dir, "tools")):
