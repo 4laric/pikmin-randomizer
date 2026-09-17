@@ -84,6 +84,13 @@ TRANSPORT_DEPENDENCY = {
     'needs': ('existing-owner review of an additive pc_p2_mar_receipt() plus a '
               'pc_p2_preview_deliver registration; both files are outside this '
               'lane four owned files and are read-only here.'),
+    'resolved_by': ('mar-native-registration-668 (#668, issue #636): the #650 '
+                    'adapter pc_p2_mar_receipt.{h,cpp} plus the #186-approved '
+                    'Queen-preserving dispatch arm and family hook wiring landed '
+                    'on the species native line (integrated native commit '
+                    '07b460631013faa0b7eb8fc622be4fc95b0754f7) and were merged '
+                    'into this lane private native worktree. Runtime gates 4/5/6 '
+                    'still require a leased guarded GL run.'),
 }
 
 def dependency_report():

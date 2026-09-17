@@ -195,3 +195,84 @@ Concrete remaining gap (in order):
 
 Lane stays blocked. No shared source edit, no merge of the stale blob, no
 duplicate observer, no runtime run, no ADMIT, no ledger writes.
+
+## Generation 7 reassessment (mar-native-registration-668 integrated) - runtime slice
+
+A third prerequisite landed a real native change:
+`mar-native-registration-668` (#668), root `c20a22ec`, **native `07b46063`**,
+validation
+`output/workflow/integration-recovery/species-owner/mar668-batch-validation.log`
+(sha256 `fcd96dd6...e2`), native worktree
+`output/workflow/autofill/prerequisites/mar-native-registration-668-native`.
+
+### Prerequisite merge (accepted change brought into this private worktree)
+
+`07b46063` descends from this lane's native pin `e44b5d70`, and it touches no
+file this lane's fixture owns, so it was merged into the private native
+worktree `codex/mar29-repair631` (merge commit `bc8cc270`). Verified present
+after the merge: `pc_port/pc_p2_mar_receipt.{h,cpp}`, the Mar dispatch arm plus
+the Queen arm in `pc_port/pc_p2_preview.cpp`, the `pc_p2_mar.cpp` receive hooks,
+the CMake test target, and this lane's `tools/p2_muse_mar_fixture.cpp`.
+
+### Upstream integration defect found (fixed privately, needs re-land)
+
+The accepted native commit `07b46063` **does not compile**. The Queen-preserving
+merge resolution left a duplicate closing brace at `pc_port/pc_p2_preview.cpp`
+line 386 (immediately before the `else {` corpse fallback), which breaks the
+receipt `else if` chain. The producer commit `780de444` is structurally correct,
+so the defect was introduced by the integration resolution; the #668 integration
+"ran no new native build (no toolchain on PATH)" and therefore never caught it.
+Reported to #186/#668 for re-land.
+
+Private unblock (commit `645c0a49`): removed the single duplicate brace. No
+semantic change - this restores the #186-approved chain placement. Nothing else
+in the accepted change was altered.
+
+### Runtime slice (leased private build + guarded GL run)
+
+- Native build: `output/mar29-repair631-build`, configured Ninja + MinGW
+  (Release, JAUDIO=ON, OPTIMIZE=OFF); `pikmin_pc` build initially FAILED on the
+  duplicate brace above, then linked `bin/nectar.exe` SHA-256
+  `56e1979471fccbf5f8bd634bf5c01421f02bb2b65c08431cbf84c4ee0e180b89`.
+- Fixture: spliced `room.cpp` -> `output/mar29-fixture1/fixture.exe` SHA-256
+  `24d122c1c50442c34d878bd6be826bfd8826b4e305bf07728ae27ed03e259c93`
+  (`{"status": "built"}`).
+- Arena assets: GPVE01 flying bank freshly extracted to
+  `output/mar29-flying-out` (`flying.json` sha `9b9d9e13...`); batch-3 flying
+  arena + a staged pr05 Pod cargo for the corpse dispatch.
+- Run: `output/mar29-run/f3beffa386d2486cb92af70f0171c37a`, exit 1,
+  `native.log` SHA-256
+  `8c2eedc3167b05e83d022782050d8cde42ed3fb1c87e0ad475fd88fc287e30d3`.
+- Captain safety #632: `scripts/p2_fixture_captain_guard.h` adopted
+  (`p2_fixture_require_captain`); the run exited clean, no
+  `P2_FIXTURE_CAPTAIN_DOWN`, policy = unprotected observation, no blanket
+  invincibility.
+
+Observed: `P2_MUSE_MAR_READY squad=20`, `P2_MAR_BIND generator=375001
+source_id=29`, live wait/move/chase states, 41-52 real `P2_MAR_BLOW` wind
+events, `P2_ENEMY_READY species=Mar`, 960x540 window, `no_inject=1`,
+`captain_safe=1`. The fixture then hit `FAIL P2_MUSE_MAR drain_timeout`.
+
+### Concrete remaining gap: Mar is not attackable on the ground contract
+
+`PC_MAR_HP` stayed at `health=3000.00` with `atk=20` for the whole run (0 drain
+events) even after the fixture was changed to place the attacking squad at
+Mar's own altitude (commit `7c8311b6`) and re-run. Root cause:
+`pc_p2_mar_param_f` (`pc_port/pc_p2_mar.cpp:305-314`) returns `0.0f` for
+`TPF_AttackableRange` / `TPF_AttackableAngle` / `TPF_AttackHitRange`, and the
+engine computes the Pikmin attack window as `getAttackableRange() + 1.0f`
+(`src/plugPikiNakata/tekibteki.cpp:1328`). With a range of ~1 unit, a grounded
+squad cannot connect with the airborne P1 Mar (source flight height fp01=80,
+and Fall/Land/Ground are documented bounded gaps, so it never lands).
+
+Therefore `death_corpse`, `transport_reward` and `cleanup_reentry` cannot be
+closed naturally. Per the brief, no `mHealth`/HP injection was used and none
+will be, so gates 4/5/6 stay open. Clearing this needs an existing-owner review
+of a family change: `pc_p2_mar_param_f` must expose the source attackable range
+(or an equivalent accepted reach contract for airborne melee), tracked on #186
+and the flying family issue #166. The #668 dispatch arm + adapter otherwise make
+the transport path present and ready once Mar is killable.
+
+Lane stays blocked. No injection, no ADMIT, no ledger writes, no shared-source
+edit (the private brace fix is confined to this lane's worktree and is reported
+upstream for re-land).
