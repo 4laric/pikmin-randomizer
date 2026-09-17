@@ -1,66 +1,57 @@
-# P0 import contract — Perplexing Pool (yakushima, #150)
+# Perplexing Pool (p2-overworld-yakushima) P1 surface-session import (#150)
 
-Lane `p2-overworld-yakushima`, P0 only. Implementation owner: Codex through
-shared account `4laric`; executing contributor Muse Spark 1.3. No native
-build, no runtime, no playability claim, no ADMIT.
+Implementation owner: Codex through shared account `4laric`. Lane
+`p2-overworld-yakushima-p1-surface-session` (root-only tooling). This extends
+the P0 course-record boundary with a real-source decode path and a P1 import
+path that stages the decoded manifest into a private run layout and drives
+the integrated `p2-surface-session-1` checker (#132). No native build, no
+runtime run, no playability claim, no ADMIT.
 
-## Source identity
+## Source correction (documented, not a fork)
 
-- Course `yakushima` ("Perplexing Pool"), issue #150, parent #531.
-- Source file `user/Abe/stages.txt` — shared by all four overworld courses
-  (tutorial/forest/yakushima/last). **Bytes unavailable**: absent from the
-  decomp checkout (which carries only the loader below) and no local P2 disc
-  staged; lane `source_sha256` is null. Record the SHA-256 in the lane entry
-  when staged; never redistribute assets.
-- Loader (read-only, unmodified): `native/pikmin2-research/include/Game/gameStages.h`
-  (`CourseInfo` fields, `MAX_LEVELS (4)` = overworld course count) and
-  `native/pikmin2-research/src/plugProjectKandoU/gameStages.cpp`
-  (`CourseInfo::read` fixed key order; `LimitGenInfo::read` rows
-  name/minimum-day/maximum-day/day-limit; `CaveOtakaraInfo::read` rows
-  4-char ID32/otakara-count/definition-file).
+The P0 strict record validator requires a `farm` key, but retail
+`CourseInfo::read` treats EVERY key as optional
+(`src/plugProjectKandoU/gameStages.cpp:207-260`; `farm` is skipped when
+absent and `mFarmPath` stays null, guarded at :440-442). No shipped course
+block carries `farm`, and the block headers (`LimitGenInfo`, `CaveOtakara`,
+`Ground Otakara`) are `#` comments ? only the counts and rows are real
+stream data. The strict `decode_course_pairs` entry is preserved bit-for-bit
+for synthetic boundary tests; the real-source `decode_course_block` entry
+applies the source-faithful positional/optional-key semantics through the
+SAME field validators.
 
-## Adapter (`experimental/content_lanes/p2-overworld-yakushima.py`)
+## Real yakushima record (observed, never invented)
 
-- `decode_course_pairs(pairs)` — strict ordered validation of a decoded
-  course record (scalar keys in stream order, then `limit_gens`,
-  `loop_gens`, `cave_otakara`, `ground_otakara_max`). Finite numbers,
-  non-negative ints, non-empty names, 4-char cave IDs, `.txt` definition
-  files, no asset-tree escapes, `minimum_day <= maximum_day`. Raises
-  `CourseDecodeError` naming the exact field. The JSystem-Stream byte reader
-  over disc bytes is the recorded missing prerequisite; this boundary takes
-  decoded values so no retail bytes are fabricated.
-- `resource_closure(record, file_inventory=None)` — maps the record onto
-  exactly the five required-inventory items. With no disc staged every
-  record-derived item is `missing-source`; Onion/ship/bridge/gate fields and
-  return anchors (no loader field exists) are `unsupported-reference` naming
-  the owning system (#132/#140–146, cave lanes #158–161).
-- `missing_prerequisites()` — the three exact blockers: disc bytes + hash
-  recording, validated P1 publications (#128/#130/#131/#132/#140/#144/#145/#146),
-  sibling cave definitions (#158–161).
-- `implementation_packet()` — reviewed P0 packet incl. `floors: 0`
-  (overworld course; MAX_LEVELS is the course count) and an explicit
-  no-playability statement.
+`user/Abe/stages.txt` (3275 bytes, sha
+`4de9008c99e799b99b2746c0156846eeb7ad50895ad110fc7f2070db6de1fff8`):
+start (-369.326, 80.000, 974.444), startangle 99.695, 6+3 generator rows,
+caves y_01(11), y_02(14), y_03(14), y_04(13), test(0), ground max 7.
+Cave entries belong to sibling caves-yakushima lanes (#158-161); routed,
+never duplicated.
 
-## Tests (`tests/content_lanes/test_p2_overworld_yakushima.py`)
+## P1 path
 
-12 passed, 19 subtests (`output/workflow/content-expansion/p2-overworld-yakushima/pytest.log`,
-SHA-256 `ad69ed2074841d596107e33b44601c24d315098845a2418bc1f02d637cc8c3ab`):
-well-formed synthetic decode, lane constants, misordered/missing keys,
-non-list input, bad scalars/schedules/cave rows, full inventory coverage,
-honest missing-source vs present mapping, exact prerequisites, and a
-no-playability-claim assertion. All fixtures labeled synthetic; no value
-claimed as retail fact.
+- `load_surface_contract()` resolves the real checker from the live checkout
+  or byte-exact from content pin `b08e3bdc` (blob `3ba71fe9?` verified);
+  otherwise `P1GapError` names the exact gap.
+- `stage_p1_run()` writes `course-record.json` + `session-seed.json`
+  (checker `blank_session("yakushima", 1)`) + `boundaries.json` into a
+  private run dir.
+- `drive_session_boundaries()` runs day_transition (begin?sunset?save?
+  reload?begin), receipt_replay (deliver twice; the duplicate is contract-
+  rejected), and exit_reentry (exit-on-surface rejected, then
+  exit/enter/exit/enter) against expected outcomes, records the four
+  missing-native-integration requests, and reports wake flags
+  (`course_record_decoded` + `cave_entrances_known` true).
+- CLI `--p1-run DIR` writes `boundary-report.json`; all three boundaries
+  report `pass` on the pinned checker.
 
-## Native/framework blockers (exact)
+## Validation
 
-1. `user/Abe/stages.txt` bytes + SHA-256 (operator disc; see above).
-2. P1 runtime dependency publications #128, #130, #131, #132, #140, #144,
-   #145, #146 — none validated for this course yet.
-3. Sibling cave lanes #158–161 for entrance-to-cave cross-checks.
-4. Shared-seam note for existing owners: none required by P0 (no shared
-   file touched; no review requested).
-
-## Delivery packet
-
-Canonical: `output/deepseek-wave/inbox/content-150-p0.md` (expansion P0
-candidate; cherry-pick reserved files only, never merge this history).
+- `tests/content_lanes/test_p2_overworld_yakushima.py`: 13 green (strict
+  pairs, real-shape block decode incl. farm-absent, staging/drive incl.
+  gap paths, real ISO bytes pinned to hash/size/tags).
+- No runtime, no playability claim. Remaining P1/P2 blockers: save/
+  progression (#132), actor/asset closure (#128/#130/#131/#140/#144/#145/
+  #146); captain safety #632 (`scripts/p2_fixture_captain_guard.h`) is
+  mandatory before any runtime run.
