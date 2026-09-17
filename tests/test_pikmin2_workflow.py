@@ -143,6 +143,18 @@ class WorkflowTests(unittest.TestCase):
         self.health = 'dead'
         self.assertTrue(self.reg.acquire('two', 1, 'build:output/b', os.getpid())['acquired'])
 
+    def test_confirmed_dead_lease_reclaimed_before_expiry(self):
+        self.register();self.register('two')
+        first=self.reg.acquire('one',1,'build:output/a',os.getpid(),ttl=3600)
+        self.health='unknown'
+        self.assertFalse(self.reg.acquire('two',1,'build:output/a',os.getpid())['acquired'])
+        self.health='dead'
+        second=self.reg.acquire('two',1,'build:output/a',os.getpid())
+        self.assertTrue(second['acquired'])
+        self.assertNotEqual(first['lease']['token'],second['lease']['token'])
+        self.assertLess(self.now,first['lease']['expires_at'])
+        self.assertTrue(any(e['kind']=='lease_reaped' for e in self.reg.snapshot()['events']))
+
     def test_resource_alias_token_and_fifo(self):
         self.register()
         self.register('two')
@@ -159,6 +171,29 @@ class WorkflowTests(unittest.TestCase):
         self.reg.release('one', 1, 'build:output/a', a['lease']['token'])
         self.assertFalse(self.reg.acquire('three', 1, 'build:output/c', os.getpid())['acquired'])
         self.assertTrue(self.reg.acquire('two', 1, 'build:output/b', os.getpid())['acquired'])
+
+    def test_nonpolling_head_reserves_one_slot_not_entire_pool(self):
+        for key in ('one','two','three'):self.running(key)
+        self.reg.acquire('one',1,'build:output/occupied',os.getpid())
+        head=self.reg.acquire('two',1,'build:output/head',os.getpid())
+        self.assertFalse(head['acquired'])
+        self.now += 1
+        self.assertFalse(self.reg.acquire('three',1,'build:output/later',os.getpid())['acquired'])
+        with self.reg.transaction() as s:s['settings']['max_heavy_builds']=3
+        self.assertTrue(self.reg.acquire('three',1,'build:output/later',os.getpid())['acquired'])
+        self.assertIn(head['request']['id'],self.reg.snapshot()['queue'])
+        self.assertTrue(self.reg.acquire('two',1,'build:output/head',os.getpid())['acquired'])
+        self.assertFalse(self.reg.acquire('one',1,'build:output/overflow',os.getpid())['acquired'])
+
+    def test_spare_pool_capacity_does_not_bypass_directory_fifo(self):
+        for key in ('one','two','three'):self.running(key)
+        self.reg.acquire('one',1,'build:output/occupied',os.getpid())
+        self.reg.acquire('two',1,'build:output/shared',os.getpid())
+        self.now += 1
+        with self.reg.transaction() as s:s['settings']['max_heavy_builds']=4
+        self.assertFalse(self.reg.acquire('three',1,'build:output/shared',os.getpid())['acquired'])
+        self.assertTrue(self.reg.acquire('two',1,'build:output/shared',os.getpid())['acquired'])
+        self.assertFalse(self.reg.acquire('three',1,'build:output/shared',os.getpid())['acquired'])
 
     def test_simultaneous_lease_acquisition_is_exclusive(self):
         self.register()
@@ -202,6 +237,59 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(self.reg.status()['lanes']['one']['generation'], 2)
         with self.assertRaises(Rejected):
             self.reg.heartbeat('one', 1)
+
+    def test_phantom_shared_review_redispatched_when_producer_dead(self):
+        lane = self.running()
+        self.now += 40
+        data = self.handoff(lane)
+        data['shared_reviews'] = [{'file': 'workflow/never_touched.py', 'reason': 'Shared helper',
+                                    'issue_url': 'https://example/issues/1', 'status': 'requested', 'evidence': ['log']}]
+        self.reg.submit_handoff('one', 1, 2, self.save_handoff(data))
+        self.assertEqual(self.reg.status()['lanes']['one']['state'], 'handoff_ready')
+        self.health = 'dead'
+        actions = self.reg.watchdog()
+        self.assertEqual([a['kind'] for a in actions], ['recover'])
+        self.assertIn('never_touched.py', actions[0]['reason'])
+        self.reg.claim_action(actions[0]['id'], 'dispatcher-a')
+        replacement = {'task_id': 'replacement-task', 'pid': os.getpid()}
+        self.reg.complete_action(actions[0]['id'], 'dispatcher-a', 'output/checkpoint', replacement)
+        lane = self.reg.status()['lanes']['one']
+        self.assertEqual(lane['state'], 'ready')
+        self.assertEqual(lane['generation'], 2)
+        self.assertIsNone(lane['handoff'])
+
+    def test_legitimate_pending_review_not_redispatched(self):
+        lane = self.running()
+        self.now += 40
+        data = self.handoff(lane)
+        data['changed_files'] = list(lane['owned_files']) + ['workflow/actually_touched.py']
+        data['shared_reviews'] = [{'file': 'workflow/actually_touched.py', 'reason': 'Shared helper',
+                                    'issue_url': 'https://example/issues/1', 'status': 'requested', 'evidence': ['log']}]
+        self.reg.submit_handoff('one', 1, 2, self.save_handoff(data))
+        self.health = 'dead'
+        self.assertEqual(self.reg.watchdog(), [])
+
+    def test_phantom_shared_review_not_redispatched_while_producer_live(self):
+        lane = self.running()
+        self.now += 40
+        data = self.handoff(lane)
+        data['shared_reviews'] = [{'file': 'workflow/never_touched.py', 'reason': 'Shared helper',
+                                    'issue_url': 'https://example/issues/1', 'status': 'requested', 'evidence': ['log']}]
+        self.reg.submit_handoff('one', 1, 2, self.save_handoff(data))
+        self.health = 'alive'
+        self.assertNotIn('recover', [a['kind'] for a in self.reg.watchdog()])
+
+    def test_phantom_shared_review_not_redispatched_with_launch_in_flight(self):
+        lane = self.running()
+        self.now += 40
+        data = self.handoff(lane)
+        data['shared_reviews'] = [{'file': 'workflow/never_touched.py', 'reason': 'Shared helper',
+                                    'issue_url': 'https://example/issues/1', 'status': 'requested', 'evidence': ['log']}]
+        self.reg.submit_handoff('one', 1, 2, self.save_handoff(data))
+        self.health = 'dead'
+        with self.reg.transaction() as state:
+            state.setdefault('control', {}).setdefault('launches', {})['x'] = dict(lane='one', status='running')
+        self.assertEqual(self.reg.watchdog(), [])
 
     def test_live_resource_blocks_recovery_after_worker_death(self):
         self.running()

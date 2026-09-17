@@ -186,6 +186,27 @@ def validate_handoff(root, data, lane=None):
             'outstanding_gates': [k for k, g in gates.items() if g['status'] not in ('PASS', 'N/A')]}
 
 
+def phantom_shared_reviews(root, lane):
+    """Pending shared-review entries naming a file the producer never actually changed.
+
+    A stuck handoff_ready lane can carry a shared_reviews entry with no
+    backing diff (e.g. a stale/mistaken review request). Such an entry can
+    never be resolved through normal review evidence, so it is detected
+    here by comparing against the producer's own declared changed_files
+    in the same immutable handoff payload it already submitted.
+    """
+    handoff = lane.get('handoff')
+    if not handoff:
+        return []
+    path = local_path(root, handoff['path'])
+    if not path.is_file() or digest(path) != handoff['sha256']:
+        return []
+    data = json.loads(path.read_text(encoding='utf-8-sig'))
+    changed = set(data.get('changed_files', []))
+    return [r['file'] for r in data.get('shared_reviews', [])
+            if r.get('status') != 'approved' and r.get('file') not in changed]
+
+
 def validate_review(root, data, lane=None):
     """Review of existing evidence is not a fresh runtime or implementation handoff."""
     require(data.get('schema') == 1 and data.get('fresh_runtime') is False, 'Review must explicitly exclude a new runtime claim')
