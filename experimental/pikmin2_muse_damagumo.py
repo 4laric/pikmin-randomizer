@@ -59,6 +59,8 @@ DEAD_RE = re.compile(
     r"P2_LONG_LEGS_DEAD species=Damagumo generator=(\d+) health=0 prior_health=([\d.]+)")
 CHILD_RE = re.compile(
     r"P2_MUSE_DAMAGUMO_CHILD_BIRTH generator=(\d+) species=ShijimiChou count=(\d+)")
+FAMILY_BIRTH_RE = re.compile(
+    r"P2_LONG_LEGS_BIRTH species=Damagumo generator=(\d+) count=(\d+)")
 REENTRY_RE = re.compile(
     r"P2_MUSE_DAMAGUMO_REENTRY generator=(\d+) stale=(\d+) fresh=(\d+) rebind=(\d+)")
 
@@ -113,8 +115,10 @@ def validate(text, retail_root=None):
 
     births = [dict(generator=int(m.group(1)), count=int(m.group(2)))
               for m in CHILD_RE.finditer(text)]
+    family_births = [dict(generator=int(m.group(1)), count=int(m.group(2)))
+                     for m in FAMILY_BIRTH_RE.finditer(text)]
     child_ok = any(b["count"] == CHILD_COUNT and b["generator"] in generators
-                   for b in births)
+                   for b in births + family_births)
 
     reentry = [dict(generator=int(m.group(1)), stale=int(m.group(2)),
                     fresh=int(m.group(3)), rebind=int(m.group(4)))
