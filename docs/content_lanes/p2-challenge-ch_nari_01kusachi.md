@@ -257,3 +257,14 @@ stage-specific roster/actor content is not wired; the boot exercises the
 generic room preview with the 20-red starting overlay, not the 50-blue
 kusachi roster. Squad-of-record, stage actors, routes and the six gates
 therefore remain UNTESTED and no playability claim is made.
+### Generation-7 re-verification (verification 38ef855e)
+
+The integrated #695 producer set was unchanged, so the check was reproduced
+with a fresh independent run of the pinned fixture (no rebuild): exit 0 in
+1.242 s, live squad red=20, 4 ground samples, actor route probe
+(route_distance=805.3), `P2_ROOM_READY treasure=bolt`, centred 960x540,
+`PASS CHALLENGE_STAGE_BOOT`, no duplicate abort, no CAPTAIN_DOWN. Verdict
+recorded passed + prerequisite_resolved. Evidence:
+`prepared/p1-kusachi-output/gen7-runtime-evidence.json` (sha256
+`0d08fd1b950fd155f6c1e0bfc999aeecdeddb1a4cf2c818c2584f9362e8102f4`). The
+residual gap below is unchanged and still owner/runtime business.
