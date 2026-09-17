@@ -73,3 +73,20 @@ observed.
    no native files, so I cannot add or adapt a fixture variant. Running the
    stock preview unguarded would violate mandatory #632, so no acceptance
    run was performed and no gates are claimed.
+
+
+## Runtime evidence (generation 3)
+
+- Integrated #754 tutorial row + game-linked guarded fixture and adapted the
+  #675 stage-boot hook (flag + kusachi table) into the private native tree
+  for linking; no shared files edited.
+- Private leased build green; guard self-test and negative (exit 86
+  `P2_FIXTURE_CAPTAIN_DOWN`) pass.
+- Real `ch_ABEM_tutorial` guarded boot PASS: flag/record/lane-row agreement
+  (`P2_TUTORIAL_STAGE_RESOLVED cave=ch_ABEM_tutorial ui_index=0 floors=2
+  roster_total=50`), 960x540 centred window, `P2_TUTORIAL_STAGE_READY
+  observed=1`, `PASS TUTORIAL_STAGE_BOOT` exit 0, engine table correctly
+  null (serialized boundary honored), no abort, no captain-down.
+- Consumer verification accepted: passed=true, prerequisite_resolved=true.
+- Content wiring (actual P2 stage assets/actors) remains downstream work;
+  all six gameplay gates stay UNTESTED.
