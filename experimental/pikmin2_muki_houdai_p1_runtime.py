@@ -171,3 +171,66 @@ def main(argv=None):
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+# Markers the guarded P1 fixture emits (native/tools/p2_muki_houdai_p1_fixture.cpp).
+WINDOW_MARKER = "P2_MUKI_HOUDAI_P1_WINDOW width=960 height=540 centered=1"
+SQUAD_MARKER = "P2_ROOM_READY treasure=bolt carry=5 repairs=1"
+STAGE_ENTRY_PREFIX = "P2CHALLENGE_STAGE_ENTRY stage=ch_MUKI_houdai"
+BOOT_BLOCKED_MARKER = "BLOCKED MUKI_HOUDAI_P1_BOOT engine-table-row-pending"
+STAGE_PASS_MARKER = "PASS MUKI_HOUDAI_P1_STAGE"
+
+
+def read_run_log_file(path):
+    """Read a native run log from disk (utf-8 or utf-16) as text."""
+    raw = Path(path).read_bytes()
+    for encoding in ("utf-8-sig", "utf-16", "utf-16-le", "utf-8"):
+        try:
+            return raw.decode(encoding).replace(chr(0), "")
+        except (UnicodeDecodeError, ValueError):
+            continue
+    raise P1Error("run log is not decodable text: %s" % (path,))
+
+
+def evaluate_gates(text, exit_code=None):
+    """Map observed markers to honest gate rows. PASS only on an observed marker."""
+    if not isinstance(text, str):
+        raise P1Error("run log must be text")
+    window = WINDOW_MARKER in text
+    down = "P2_FIXTURE_CAPTAIN_DOWN" in text
+    squad = SQUAD_MARKER in text
+    stage_entry = STAGE_ENTRY_PREFIX in text
+    stage_pass = STAGE_PASS_MARKER in text
+    boot_blocked = BOOT_BLOCKED_MARKER in text
+    if window and not down:
+        guard = ("PASS", "guard silent during observed run")
+    elif down:
+        guard = ("BLOCKED", "P2_FIXTURE_CAPTAIN_DOWN observed")
+    else:
+        guard = ("UNTESTED", "no run observed")
+    if stage_entry:
+        boot = ("PASS", STAGE_ENTRY_PREFIX)
+    elif boot_blocked:
+        boot = ("BLOCKED", BOOT_BLOCKED_MARKER)
+    else:
+        boot = ("UNTESTED", "stage never entered")
+    if stage_pass and exit_code == 0:
+        done = ("PASS", "exit 0 with stage PASS")
+    elif boot_blocked or down or (exit_code is not None and exit_code != 0):
+        qualifier = "BLOCKED marker" if (boot_blocked or down) else "nonzero exit"
+        done = ("BLOCKED", "exit %r with %s" % (exit_code, qualifier))
+    elif exit_code is None:
+        done = ("UNTESTED", "exit code not recorded")
+    else:
+        done = ("UNTESTED", "exit %r without markers" % (exit_code,))
+    return [
+        {"token": "window-960x540-centred", "status": "PASS" if window else "UNTESTED",
+         "evidence": WINDOW_MARKER if window else "no window marker"},
+        {"token": "captain-guard-silent", "status": guard[0], "evidence": guard[1]},
+        {"token": "squad-ready", "status": "PASS" if squad else "UNTESTED",
+         "evidence": SQUAD_MARKER if squad else "no squad marker"},
+        {"token": "stage-boot", "status": boot[0], "evidence": boot[1]},
+        {"token": "challenge-arena", "status": "PASS" if stage_pass else "UNTESTED",
+         "evidence": STAGE_PASS_MARKER if stage_pass else "stage never entered"},
+        {"token": "exit-status", "status": done[0], "evidence": done[1]},
+    ]
+
