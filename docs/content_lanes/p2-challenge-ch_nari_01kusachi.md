@@ -205,3 +205,21 @@ actors, starting squad) for a boot — no producer lane owns it — plus the
 maintained CMake/CTest registration packet #661 still open under #186
 review. Squad, collision, routes and actors remain unobserved; all six gates
 UNTESTED; no playability claim.
+## Generation-5 consumer verification (integrated #688, verification 2ec42405)
+
+Consumer check PASSED (recorded via workflow.consumer_verification, status
+passed): the integrated #688 bridge (root `a2bd2122`, module verified
+identical to the lane worktree modulo checkout line endings) was run against
+the hash-verified real `ch_NARI_01kusachi.txt` decode (1267 bytes, sha256
+`b8d232f4...`) and this lane's freshly staged run layout. All 7 agreement
+points true: cave id, 1 floor, pool `1_MAT_ike_kusachi.txt`, squad total 50,
+timers, all 5 boot markers
+(`P2_KUSACHI_BOOT/ARENA_BOUND/SQUAD/PLACEMENT_ROWS/SELECT`), actor rows
+present. Evidence:
+`prepared/p1-kusachi-output/consumer-check-gen5.json` (sha256
+`40ef53754d51328c03ad0141b46fa6967f453f6f856e476cde2e6d24149e7f0c`).
+
+Scope honesty: the bridge emits arena/actor/squad BINDINGS as weighted
+definitions, never live placements or coordinates, and no boot with live
+engine content exists yet. Squad, collision, routes and actors remain
+unobserved; all six gates UNTESTED; no playability claim.
