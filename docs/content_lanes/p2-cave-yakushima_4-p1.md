@@ -194,3 +194,25 @@ unit staging), the slice now holds real floor-1 boot, unit staging, and
 authored route topology ? but still no physical collision traversal on a
 built yakushima_4 map and no `P2_CAVE_NAV` walk-inside samples. Higher
 floors, persistence and admission remain open.
+
+
+## Generation 12: walk-inside collision traversal observed (#690)
+
+Integrated the accepted `yakushima4-collision-traversal-native` (#690)
+prerequisite into private worktrees (native walk-inside grid sampling +
+guarded fixture `tools/p2_yakushima4_collision_traversal_fixture.cpp`; root
+leased build/run harness `scripts/build_p2_yakushima4_collision_traversal.py`).
+Skipped the duplicate authored-geometry re-port already present here.
+
+Leased chain on these pins: configure/build green, fixture provenance built,
+guard self-test + negcap(86) pass. The headed traversal run emits real
+walk-inside collision samples on the decoded yakushima_4 floor-1 geometry:
+`P2_YAKUSHIMA4_TRAVERSAL_PASS rooms=8 links=36 interior_contacts=39
+link_contacts=58` (119 samples, 44 link steps, 0 links blocked; chain pass,
+exit 0). Consumer verification `c0494c21...` accepted: passed=true,
+prerequisite_resolved=true.
+
+Combined slice record now holds: real floor-1 guarded boot (960x540, live
+20, unit staging), authored route topology (36 NAV rows), and walk-inside
+collision traversal samples. Remaining: higher floors, persistence and
+admission; no playability claim beyond the observed floor-1 evidence.
