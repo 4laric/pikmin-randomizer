@@ -393,8 +393,8 @@ def p1_squad_total(squad):
 def p1_write_cave_entry(path, token, floor, health, squad):
     """Write a grammar-checked P2_CAVE_ENTRY_1 checkpoint (mirrors the native
     reader: version token floor health count, then species/maturity pairs)."""
-    _require(isinstance(token, str) and token and all(
-        c.isalnum() or c in "_-" for c in token), "Bad entry token")
+    _require(isinstance(token, str) and re.fullmatch(r"[0-9a-f]{32}", token or ""),
+             "Bad entry token (Tutorial profile needs 32 lowercase hex)")
     _require(floor == 1, "Only floor 1 is staged by this P1")
     _require(isinstance(health, float) and 0 < health <= 1,
              "Entry health must be in (0, 1]")

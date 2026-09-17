@@ -1,4 +1,4 @@
-"""Focused P0 contract tests for the ch_MAT_route_rover adapter (#561).
+﻿"""Focused P0 contract tests for the ch_MAT_route_rover adapter (#561).
 
 The adapter module is loaded from its file path (no package init is owned by
 this lane) and exercised against the real pinned sources: the lane-plan
@@ -252,12 +252,12 @@ class MatRouteRoverP1ImportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "p2-cave-entry.txt"
             result = ADAPTER.p1_write_cave_entry(
-                str(path), "route-rover-p1-floor1", 1, 1.0,
+                str(path), "767135fd1617a1e9c67520f455e7f369", 1, 1.0,
                 ADAPTER.p1_stage_squad())
             self.assertEqual(result["squad_total"], 60)
             lines = path.read_text(encoding="utf-8").splitlines()
             self.assertEqual(lines[0],
-                             "P2_CAVE_ENTRY_1 route-rover-p1-floor1 1 1.0 60")
+                             "P2_CAVE_ENTRY_1 767135fd1617a1e9c67520f455e7f369 1 1.0 60")
             self.assertEqual(len(lines), 61)
             self.assertEqual(lines[1:21], ["0 2"] * 20)
             self.assertEqual(lines[21:41], ["1 2"] * 20)
