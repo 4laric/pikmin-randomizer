@@ -166,3 +166,31 @@ yakushima_4 authored geometry or collision, higher floors or persistence: no
 `P2_CAVE_NAV` route samples were produced, and the staged room graph is the
 real unit pool placed at identity, not the authored yakushima_4 room layout.
 Those remain the actual outstanding requirements.
+
+
+## Generation 11: authored yakushima_4 floor-1 geometry integrated (#682)
+
+Integrated the accepted `yakushima4-authored-geometry-native` prerequisite
+into private worktrees: native authored room/door/link tables baked into
+`pc_p2_cave.cpp` (purely additive) plus the guarded probe fixture
+`tools/p2_yakushima4_authored_geometry_fixture.cpp`, and root
+`scripts/build_p2_yakushima4_authored_geometry.py`.
+
+Leased harness chain on these pins (native `096f3082`): configure/build
+green, fixture provenance `built` (exe sha256
+`acb7c34347ea99746814891765550e2d8a2f30186e0783ab778e73de0071d093`),
+guard self-test (table matches real decode) and `negcap` negative (exit 86,
+`CAPTAIN_DOWN`) pass, and the live run emits the full authored topology:
+`P2_YAKUSHIMA4_AUTHORED valid=1 rooms=8 doors=19 links=36` plus all 36
+`P2_CAVE_NAV authored=1` route samples with real distances and enemy flags,
+diffed against an independent real re-decode of
+`user/Mukki/mapunits/caveinfo/yakushima_4.txt` + `2_units_gw_l_conc.txt`
+(caveinfo sha256 `3e3fc04e...` matches the P0 pin).
+
+This is a table-level route observation, not a windowed boot: the run emits
+41 marker lines and performs no GL/window, squad or collision traversal.
+Combined with the generation-10 windowed guarded boot (960x540, live 20,
+unit staging), the slice now holds real floor-1 boot, unit staging, and
+authored route topology ? but still no physical collision traversal on a
+built yakushima_4 map and no `P2_CAVE_NAV` walk-inside samples. Higher
+floors, persistence and admission remain open.
