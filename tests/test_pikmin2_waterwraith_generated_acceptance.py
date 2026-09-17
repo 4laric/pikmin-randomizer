@@ -7,13 +7,16 @@ from pathlib import Path
 
 from experimental import pikmin2_waterwraith_generated_acceptance as ga
 
-# Contract-logic sample in the reviewed l52 placement grammar. No engine
-# build emits source-99 placement markers today (no case-99 arm); this
+SLOT = '568677317'
+
+# Contract-logic sample in the reviewed placement99 grammar (#575): accepted
+# slot, placement generator, numeric register tie. No engine build can
+# complete this triple yet (register logs no generator field); this
 # exercises matcher logic only, never runtime evidence.
 TRIPLE_LOG = (
-    ':100 P2_SEED_RESOLVE source_id=99 target=424242 original_type=9 x=10.0 z=20.0\n'
-    ':101 P2_GENERATED_PLACEMENT source_id=99 target=424242 generator=424242 bound=1\n'
-    ':102 P2_WATERWRAITH_BIRTH phase=fall attached=1 id=99 helper=98\n'
+    ':100 P2_SEED_RESOLVE source_id=99 target=568677317 original_type=15 x=10.0 z=20.0\n'
+    ':101 P2_GENERATED_PLACEMENT source_id=99 target=568677317 generator=568677317 bound=1\n'
+    ':102 P2_WATERWRAITH_BIRTH phase=fall attached=1 id=99 helper=98 generator=568677317\n'
 )
 
 # Exact historical fixed-encounter marker (l63 encounter-run-2 stdout.log:892):
@@ -60,22 +63,41 @@ def generated_flag(output):
 
 
 class GeneratedAcceptanceTests(unittest.TestCase):
+    def test_accepted_slot_is_reviewed(self):
+        self.assertEqual(ga.ACCEPTED_SLOT, SLOT)
+
     def test_triple_correlation_passes(self):
         verdict, detail = ga.validate_generated_birth(TRIPLE_LOG)
         self.assertEqual(verdict, 'PASS')
-        self.assertIn('424242', detail)
+        self.assertIn(SLOT, detail)
         self.assertIn('helper=98', detail)
         self.assertTrue(ga.is_generated_identity(TRIPLE_LOG))
 
-    def test_numeric_register_tie_required_when_logged(self):
-        log = TRIPLE_LOG + ('P2_WATERWRAITH_BIRTH phase=fall attached=1 '
-                            'id=99 helper=98 generator=777001\n')
+    def test_register_generator_mismatch_fails(self):
+        log = TRIPLE_LOG.replace('id=99 helper=98 generator=568677317',
+                                 'id=99 helper=98 generator=777001')
         verdict, detail = ga.validate_generated_birth(log)
         self.assertEqual(verdict, 'FAIL')
         self.assertIn('disagreement', detail)
 
+    def test_untied_register_birth_never_passes(self):
+        log = (':100 P2_SEED_RESOLVE source_id=99 target=568677317 original_type=15 x=1.0 z=2.0\n'
+               ':101 P2_GENERATED_PLACEMENT source_id=99 target=568677317 generator=568677317 bound=1\n'
+               ':102 P2_WATERWRAITH_BIRTH phase=fall attached=1 id=99 helper=98\n')
+        verdict, detail = ga.validate_generated_birth(log)
+        self.assertEqual(verdict, 'FAIL')
+        self.assertIn('not numeric', detail)
+        self.assertFalse(ga.is_generated_identity(log))
+
+    def test_slot_not_accepted_fails(self):
+        log = TRIPLE_LOG.replace('568677317', '424242')
+        verdict, detail = ga.validate_generated_birth(log)
+        self.assertEqual(verdict, 'FAIL')
+        self.assertIn('slot-not-accepted', detail)
+        self.assertFalse(ga.is_generated_identity(log))
+
     def test_missing_placement_is_blocked_live_state(self):
-        log = (':100 P2_SEED_RESOLVE source_id=99 target=424242 original_type=9 x=1.0 z=2.0\n'
+        log = (':100 P2_SEED_RESOLVE source_id=99 target=568677317 original_type=15 x=1.0 z=2.0\n'
                ':102 P2_WATERWRAITH_BIRTH phase=fall attached=1 id=99 helper=98\n')
         verdict, detail = ga.validate_generated_birth(log)
         self.assertEqual(verdict, 'FAIL')
@@ -90,27 +112,27 @@ class GeneratedAcceptanceTests(unittest.TestCase):
         self.assertFalse(ga.is_generated_identity(FIXED_EXCERPT))
 
     def test_missing_resolve_fails(self):
-        log = ('P2_GENERATED_PLACEMENT source_id=99 target=424242 generator=424242 bound=1\n'
-               'P2_WATERWRAITH_BIRTH phase=fall attached=1 id=99 helper=98\n')
+        log = ('P2_GENERATED_PLACEMENT source_id=99 target=568677317 generator=568677317 bound=1\n'
+               'P2_WATERWRAITH_BIRTH phase=fall attached=1 id=99 helper=98 generator=568677317\n')
         verdict, _ = ga.validate_generated_birth(log)
         self.assertEqual(verdict, 'FAIL')
 
     def test_missing_birth_fails(self):
-        log = ('P2_SEED_RESOLVE source_id=99 target=424242 original_type=9 x=1.0 z=2.0\n'
-               'P2_GENERATED_PLACEMENT source_id=99 target=424242 generator=424242 bound=1\n')
+        log = ('P2_SEED_RESOLVE source_id=99 target=568677317 original_type=15 x=1.0 z=2.0\n'
+               'P2_GENERATED_PLACEMENT source_id=99 target=568677317 generator=568677317 bound=1\n')
         verdict, detail = ga.validate_generated_birth(log)
         self.assertEqual(verdict, 'FAIL')
         self.assertIn('register', detail)
 
     def test_bound_zero_refusal_fails(self):
-        log = ('P2_SEED_RESOLVE source_id=99 target=424242 original_type=9 x=1.0 z=2.0\n'
-               'P2_GENERATED_PLACEMENT source_id=99 target=424242 generator=424242 bound=0 reason=slot-rejected\n')
+        log = ('P2_SEED_RESOLVE source_id=99 target=568677317 original_type=15 x=1.0 z=2.0\n'
+               'P2_GENERATED_PLACEMENT source_id=99 target=568677317 generator=568677317 bound=0 reason=slot-rejected\n')
         verdict, detail = ga.validate_generated_birth(log)
         self.assertEqual(verdict, 'FAIL')
         self.assertIn('bound=0', detail)
 
     def test_target_disagreement_fails(self):
-        log = TRIPLE_LOG.replace('target=424242 generator=424242', 'target=111111 generator=111111')
+        log = TRIPLE_LOG.replace('target=568677317 generator=568677317', 'target=111111 generator=111111')
         verdict, detail = ga.validate_generated_birth(log)
         self.assertEqual(verdict, 'FAIL')
         self.assertIn('disagreement', detail)
@@ -123,7 +145,7 @@ class GeneratedAcceptanceTests(unittest.TestCase):
         self.assertEqual(verdict, 'FAIL')
 
     def test_injected_taint_fails(self):
-        log = TRIPLE_LOG + 'P2_WATERWRAITH_BIRTH phase=fall attached=1 id=99 helper=98 injected=1\n'
+        log = TRIPLE_LOG + 'P2_WATERWRAITH_BIRTH phase=fall attached=1 id=99 helper=98 generator=568677317 injected=1\n'
         verdict, detail = ga.validate_generated_birth(log)
         self.assertEqual(verdict, 'FAIL')
         self.assertIn('taint', detail.lower())
@@ -134,6 +156,29 @@ class GeneratedAcceptanceTests(unittest.TestCase):
         self.assertEqual(verdict, 'FAIL')
         self.assertFalse(ga.is_generated_identity(''))
         self.assertFalse(ga.fixed_birth_present(''))
+
+
+class CaptainSafetyScanTests(unittest.TestCase):
+    def test_clean_log_has_no_hits(self):
+        self.assertEqual(ga.captain_safety_scan(TRIPLE_LOG), [])
+        self.assertEqual(ga.captain_safety_scan(FIXED_FULL_EXCERPT), [])
+        self.assertEqual(ga.captain_safety_scan(''), [])
+
+    def test_death_markers_flagged(self):
+        log = (TRIPLE_LOG
+               + ':900 P2_FIXTURE_CAPTAIN_DOWN orima=1 navi=0 hp=0.0\n')
+        hits = ga.captain_safety_scan(log)
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0][0], 4)
+        self.assertIn('CAPTAIN_DOWN', hits[0][1])
+
+    def test_extinction_flagged(self):
+        hits = ga.captain_safety_scan('squad status: extinction imminent\n')
+        self.assertEqual(len(hits), 1)
+
+    def test_benign_substrings_not_flagged(self):
+        self.assertEqual(ga.captain_safety_scan(
+            'DVDOpen headcount=20 readout ready\n'), [])
 
 
 @unittest.skipUnless(GXX and FIXTURE_SRC.is_file(), 'needs g++ and the native fixture source')
@@ -164,6 +209,21 @@ class FixtureGeneratedModeTests(unittest.TestCase):
 
     def test_generated_mode_blocks_fixed_only(self):
         code, out = run_fixture(self.exe, FIXED_FULL_EXCERPT, '--generated')
+        self.assertEqual(code, 1, out)
+        self.assertIn('generated_ok=0', out)
+
+    def test_generated_mode_blocks_untied_register(self):
+        log = FIXED_FULL_EXCERPT + (
+            'P2_SEED_RESOLVE source_id=99 target=568677317 original_type=15 x=1.0 z=2.0\n'
+            'P2_GENERATED_PLACEMENT source_id=99 target=568677317 generator=568677317 bound=1\n'
+            'P2_WATERWRAITH_BIRTH phase=fall attached=1 id=99 helper=98\n')
+        code, out = run_fixture(self.exe, log, '--generated')
+        self.assertEqual(code, 1, out)
+        self.assertIn('generated_ok=0', out)
+
+    def test_generated_mode_blocks_wrong_slot(self):
+        log = TRIPLE_LOG.replace('568677317', '424242')
+        code, out = run_fixture(self.exe, log, '--generated')
         self.assertEqual(code, 1, out)
         self.assertIn('generated_ok=0', out)
 
