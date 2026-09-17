@@ -64,3 +64,26 @@ runtime gates UNTESTED (tooling/call-site proof, not gameplay).
 
 `p2-challenge-ch_mat_route_rover-p1` (#561) consumes the landed call site;
 the module stays the #713/#708 key+marker contract, consumed read-only.
+
+## Gen-3 integration-recovery rebase (isolation repair)
+
+The gen-2 handoff was isolated (`DEPENDS ON UNLANDED #710 NATIVE HOOK`): the
+candidate base `db245877` is not an ancestor of the native line and its
+`pc_bbft.cpp` context conflicts. Repair, preserving the old candidate
+commits on `codex/autofill-challenge-persistence-engine-callsite-native`:
+
+- New branch `codex/autofill-challenge-persistence-engine-callsite-native-rebase`
+  from the current line tip `be527446` (the #713 landing itself; remote tip
+  verified identical). The persistence module files are byte-identical on the
+  line already (nothing new); the #710-only `pc_p2_challenge_runtime.h` and
+  hook glue are absent there, so the call site was adapted to the line
+  context (the weak-ref block + one-shot call in `pc_bbft_update()`; the
+  fixture drops the runtime-header include for an extern declaration).
+- New native commits: `342db7ce` (adapted call site + callsite fixture) and
+  `3916d9a4` (fixture include fix). Old candidate `df7f2e1d` preserved.
+- Fresh private leased build proves the rebased engine links and the boot
+  emits 7/7 markers: fixture exe sha256
+  `75a1f8e6aa12ce5cff3827e460d5396c0e534ca079e714e5dc7c5461d7eb71c3`,
+  run-log sha256
+  `29bb90ecaca97f6ff9e4b7266a03356ee2b1e878e43713ba8fd7a0cf60dbb207`,
+  `ninja: no work to do.`, guard self-test 0 / negative 86.
