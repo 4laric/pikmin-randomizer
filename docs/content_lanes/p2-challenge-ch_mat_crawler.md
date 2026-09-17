@@ -241,3 +241,29 @@ observing collision/routes remain; the six behavior gates stay UNTESTED.
 Remaining gap: real decoded floor placement (unit-pool asset staging + generator
 roster) plus the six behavior gates. Producer: #129 cave-generate-provider and
 the actor-family observers.
+
+## Gen-9 consumer verification: real floor-1 content bound and booted (#706)
+
+Consumed the accepted `crawler-floor1-content-wiring` (#706): root cherry-pick
+`08d423e8` as `cc5081b1` (15 tests + 4 subtests pass at this pin). Ran the
+bridge over my staged layout + the live ISO decode (`cross_check` true) and
+emitted the floor-1 boot params from the decoded rows (pool
+`4_units_c_e_j_l_conc.txt`, 14 enemies + 3 treasures + 1 gate, squad 60, ui 29).
+
+Built a real-content rundir from the decoded rows (sidecar + manifest, 15 spawn
+lines) and ran my content-loading fixture (exe `d04fa398...`, leased build,
+#632 guard `d2f678c9...`) over it. Exit 0:
+`SELECTED cave=ch_MAT_crawler floor=1 pool=4_units_c_e_j_l_conc.txt spawns=15`,
+all 15 real roster ids `SPAWN_COVERED`, `READY squad=20 captain_parked=1`,
+`LIVE squad=20 actors=1`, `PASS P2_CHALLENGE_CONTENT_RUN`, no captain-down.
+
+Reported via `workflow.consumer_verification` (verification `4175a4aa`) with
+`passed=true`, `prerequisite_resolved=true`; evidence
+`consumer-verify-floor1-real.log` sha256 `bf404f31...`.
+
+Honest limits (the remaining gap): the observed squad/actors are preview
+liveness, not species-proven placement of the decoded roster; the ItemGateMgr
+gate (life 4000) is bound in the wiring packet but has no fixture sidecar
+grammar; collision/routes are not observed; the six behavior gates stay
+UNTESTED. Producer: real roster placement and the behavior gates (#129
+generator/actors, family observers).
