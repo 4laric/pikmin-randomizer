@@ -51,3 +51,10 @@ d2f678c9eda75e151eb534077dff9e30ad36ae4796881d971bbd09945f3c3474.
 pc_bbft.cpp stage-table wiring + CMakeLists.txt registration are NOT done
 here; they are specified as follow-on requiring explicit #186 review. Hashed
 packet names #735 + #744 as downstream consumers. No other edits.
+## Observed evidence (generation 2, leased private build)
+
+- Native 3c50ca44 (table + lookup + fixture; mode TU linked from pikmin_pc, not vendored). Root 98dc264f (pins + adapter + 10 tests + doc + harness with the canonical guard include flag).
+- Configured + built pikmin_pc 621/621 in output/muki-stage-table-build (lease-held); ninja -n -d explain reports "ninja: no work to do." (ninja-dry.log sha256 e58361b0...).
+- Fixture exe sha256 7caa3562ff59d43146a4fa783d81f2563a256d56ca5c1580a65c1948d2d00c3c; guard sha256 d2f678c9... (canonical, read-only via CPLUS_INCLUDE_PATH).
+- Guardcheck: self-test exit 0 (RESOLVED..BOOT..TICK..TABLE_DONE); negative guard TU exit 86 with P2_FIXTURE_CAPTAIN_DOWN and no PASS.
+- Run (both rows + single-stage ui 8 / ui 18), exit 0: houdai ui 8 pop 50 (100.0s -> 70.0s, descend 150.0s, retry) and redblue ui 18 pop 50 (200.0s -> 170.0s, descend 200.0s, retry); marker log sha256 8bfb0557.... No captain-down. Python tests 10/10 pass including live retail cross-check.
