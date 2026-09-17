@@ -11,6 +11,11 @@ Usage (from the canonical root):
   py -3.12 scripts/build_p2_challenge_content_loading.py --source <native> --build <build>
       --output <out> --expected-native-head <40hex> [--check-only] [--run <rundir>]
 
+  When driven under a leased lane worktree (whose cwd is the lane root), set
+  PIKMIN2_CANONICAL_ROOT to the canonical checkout so the maintained generic
+  fixture builder below is resolved there; otherwise it defaults to the cwd
+  (canonical-root usage).
+
 Steps: builder --check-only (or full build), ninja -n dry run, exe SHA-256,
 fixture provenance `built`, guarded run asserting PASS P2_CHALLENGE_CONTENT_RUN
 with live squad/actors markers and no CAPTAIN_DOWN / injection markers. Heavy
@@ -32,6 +37,12 @@ CAPTAIN_DOWN = "P2_FIXTURE_CAPTAIN_DOWN"
 INJECTED_TOKENS = ("P2_LL_INJECT", "P2_LIFECYCLE_INJECT", "injected_health",
                    "mHealth=", "Transport(")
 GUARD_SHA256 = "d2f678c9eda75e151eb534077dff9e30ad36ae4796881d971bbd09945f3c3474"
+# Maintained generic fixture builder. Resolved against the canonical checkout
+# (never the lane worktree, which may carry a stale copy): the leased runner
+# executes this helper with cwd set to the lane root.
+MAINTAINED_ROOT = os.environ.get("PIKMIN2_CANONICAL_ROOT", os.getcwd())
+MAINTAINED_BUILDER = os.path.join(MAINTAINED_ROOT, "scripts",
+                                  "build_pikmin2_fixture.py")
 
 
 def sha256_file(path):
@@ -67,10 +78,10 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     builder = [sys.executable,
-               os.path.join("scripts", "build_pikmin2_fixture.py"),
+               MAINTAINED_BUILDER,
                "--source", os.path.abspath(args.source),
                "--build", os.path.abspath(args.build),
-               "--fixture", FIXTURE,
+               "--fixture", os.path.join(os.path.abspath(args.source), FIXTURE),
                "--output", os.path.abspath(args.output),
                "--expected-native-head", args.expected_native_head]
     if args.check_only:
