@@ -6,7 +6,9 @@ literal end trailer); they assert no retail fact. The recorded real-source test
 runs only when the staged legal stages.txt is present.'''
 
 import importlib
+import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -209,6 +211,129 @@ class TestOverworldLastAdapter(unittest.TestCase):
         self.assertFalse(manifest['placements_emitted'])
         self.assertEqual(manifest['source_sha256'], REAL_SHA256)
 
+
+
+class TestOverworldLastP1SurfaceSession(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix='last-p1-')
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        courses = adapter.parse_stages(SYNTHETIC_STAGES)
+        self.course = adapter.select_course(courses, 'last')
+        self.manifest = adapter.build_manifest(self.course, '<synthetic>', '0' * 64)
+
+    def test_contract_module_loads(self):
+        contract = adapter.load_surface_contract()
+        self.assertEqual(contract.SCHEMA, adapter.SURFACE_SESSION_SCHEMA)
+        self.assertIn('begin_day', contract.EVENTS)
+        self.assertIn('deliver_receipt', contract.EVENTS)
+
+    def test_stage_run_layout_happy(self):
+        staged = adapter.stage_run_layout(self.manifest, self.tmp, source_path='<synthetic>')
+        self.assertEqual(staged['schema'], adapter.P1_RUN_SCHEMA)
+        self.assertTrue(Path(staged['manifest_path']).is_file())
+        self.assertTrue(Path(staged['metadata_path']).is_file())
+        metadata = json.loads(Path(staged['metadata_path']).read_text(encoding='utf-8'))
+        self.assertEqual(metadata['contract_schema'], 'p2-surface-session-1')
+        self.assertEqual(metadata['source_sha256'], '0' * 64)
+        self.assertFalse(metadata['ledger_writes'])
+        self.assertFalse(metadata['placements_emitted'])
+        self.assertEqual(metadata['manifest_sha256'], staged['manifest_sha256'])
+        self.assertIn('overworld-last/manifest.json', metadata['staged_files'])
+
+    def test_stage_run_layout_refuses_populated_dir(self):
+        adapter.stage_run_layout(self.manifest, self.tmp)
+        with self.assertRaises(adapter.StagesDecodeError) as ctx:
+            adapter.stage_run_layout(self.manifest, self.tmp)
+        self.assertIn('already populated', str(ctx.exception))
+
+    def test_stage_run_layout_refuses_placements(self):
+        bad = dict(self.manifest)
+        bad['placements_emitted'] = True
+        with self.assertRaises(adapter.StagesDecodeError):
+            adapter.stage_run_layout(bad, self.tmp)
+
+    def test_stage_run_layout_refuses_wrong_course(self):
+        bad = dict(self.manifest)
+        bad['course'] = 'forest'
+        with self.assertRaises(adapter.StagesDecodeError):
+            adapter.stage_run_layout(bad, self.tmp)
+
+    def test_surface_script_covers_boundaries_with_source_cave_id(self):
+        script = adapter.surface_session_script(self.manifest)
+        covered = {boundary for boundary, _event in script}
+        self.assertEqual(covered, set(adapter.BOUNDARIES))
+        cave_id = self.manifest['caves'][0]['cave_id']
+        enters = [e for _b, e in script if e['type'] == 'enter_cave']
+        self.assertTrue(all(e['cave_id'] == cave_id for e in enters))
+
+    def test_surface_script_rejects_bad_start_day(self):
+        with self.assertRaises(adapter.StagesDecodeError):
+            adapter.surface_session_script(self.manifest, start_day=0)
+
+    def test_drive_surface_session_boundaries(self):
+        report = adapter.drive_surface_session(self.manifest)
+        self.assertEqual(report['contract_schema'], 'p2-surface-session-1')
+        self.assertFalse(report['runtime_claim'])
+        self.assertTrue(report['existing_behavior_only'])
+        self.assertEqual(report['final_day'], 2)
+        for boundary in adapter.BOUNDARIES:
+            self.assertEqual(report['boundaries'][boundary]['steps'],
+                             len([s for s in report['steps'] if s['boundary'] == boundary]))
+        self.assertEqual(report['boundaries']['day_transition']['accepted'], 1)
+        self.assertEqual(report['boundaries']['save_reload']['rejected'], 0)
+        self.assertEqual(report['boundaries']['receipt_replay']['accepted'], 1)
+        self.assertEqual(report['boundaries']['receipt_replay']['rejected'], 1)
+        self.assertEqual(report['boundaries']['exit_reentry']['accepted'], 4)
+
+    def test_drive_surface_session_records_missing_integration(self):
+        report = adapter.drive_surface_session(self.manifest)
+        names = [m['name'] for m in report['missing_integration']]
+        self.assertEqual(names, list(adapter.load_surface_contract().MISSING_INTEGRATION))
+        self.assertTrue(all(m['ok'] is False for m in report['missing_integration']))
+        self.assertTrue(all('not existing behavior' in m['reason'] for m in report['missing_integration']))
+
+    def test_drive_surface_session_schema_mismatch_refused(self):
+        original = adapter.SURFACE_SESSION_SCHEMA
+        adapter.SURFACE_SESSION_SCHEMA = 'p2-surface-session-999'
+        try:
+            with self.assertRaises(adapter.SurfaceSessionUnavailableError):
+                adapter.drive_surface_session(self.manifest)
+        finally:
+            adapter.SURFACE_SESSION_SCHEMA = original
+
+    def test_missing_contract_module_reports_prerequisite(self):
+        original = adapter.load_surface_contract
+        def broken():
+            raise adapter.SurfaceSessionUnavailableError('missing integrated contract module')
+        adapter.load_surface_contract = broken
+        try:
+            with self.assertRaises(adapter.SurfaceSessionUnavailableError):
+                adapter.drive_surface_session(self.manifest)
+        finally:
+            adapter.load_surface_contract = original
+
+    def test_p1_missing_source_reports_prerequisite(self):
+        with self.assertRaises(adapter.SourceMissingError):
+            adapter.decode_course_file('definitely/not/stages.txt')
+        with self.assertRaises(adapter.SourceMissingError):
+            adapter.load_source_bytes('definitely/not/stages.txt')
+
+    @unittest.skipUnless(REAL_STAGES.is_file(), 'legal stages.txt not staged')
+    def test_real_source_p1_stage_and_drive(self):
+        course, digest = adapter.decode_course_file(str(REAL_STAGES))
+        self.assertEqual(digest, REAL_SHA256)
+        manifest = adapter.build_manifest(course, str(REAL_STAGES), digest)
+        staged = adapter.stage_run_layout(manifest, self.tmp, source_path=str(REAL_STAGES))
+        metadata = json.loads(Path(staged['metadata_path']).read_text(encoding='utf-8'))
+        self.assertEqual(metadata['source_sha256'], REAL_SHA256)
+        self.assertEqual(metadata['manifest_sha256'], staged['manifest_sha256'])
+        report = adapter.drive_surface_session(manifest)
+        caves = [c['cave_id'] for c in manifest['caves']]
+        self.assertTrue(all(c in {'l_01', 'l_02', 'l_03'} for c in caves))
+        self.assertEqual(report['boundaries']['receipt_replay']['rejected'], 1)
+        self.assertEqual(report['final_day'], 2)
+        self.assertEqual(len(report['missing_integration']), 4)
+        self.assertFalse(report['runtime_claim'])
 
 if __name__ == '__main__':
     unittest.main()

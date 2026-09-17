@@ -77,3 +77,66 @@ plus the recorded real-bytes decode of course last). Run from the prepared root:
     py -3.12 -m unittest tests.content_lanes.test_p2_overworld_last -v
  
 Test log: prepared/last-p0-output/test-real.log. No runtime or admission claim.
+
+## P1 runtime import + surface-session acceptance
+
+Lane p2-overworld-last-p1-surface-session, issue 151 (this slice). Consumes
+the integrated generic contract `surface-session-provider-contract` (#132,
+schema `p2-surface-session-1`, module
+`experimental/pikmin2_surface_session_contract.py`) instead of inventing
+local day/save semantics. No parser fork: the P1 path reuses
+`load_source_bytes`, `decode_course_file`, `select_course`,
+`validate_course`, `resource_closure` and `build_manifest`.
+
+### New adapter surface
+
+- `load_surface_contract()` - loads the integrated #132 module (package
+  import, else file fallback), refuses a missing module or a non-
+  `p2-surface-session-1` schema with an explicit prerequisite message.
+- `stage_run_layout(manifest, run_dir, source_path=None)` - stages the decoded
+  real-source manifest into a private run layout
+  (`<run_dir>/overworld-last/manifest.json` + `run-metadata.json` with schema
+  `p2-overworld-last-p1-run-1`, source + manifest SHA-256 pins, contract
+  schema, boundaries, `ledger_writes=false`, `placements_emitted=false`).
+  Refuses a populated layout, a placement-emitting manifest or a non-`last`
+  course. No ledger writes.
+- `surface_session_script(manifest, start_day=1)` - the boundary script over
+  the contract's existing events only: day transition (`begin_day`),
+  save/reload (`sunset`,`save`,`reload`), receipt replay
+  (`deliver_receipt` twice with the same identity/slot -> second rejected
+  exactly-once), exit/reentry (`enter_cave`,`exit_cave` twice). Cave ids come
+  from the decoded manifest.
+- `drive_surface_session(manifest, start_day=1)` - runs the script through the
+  contract checker, records per-step accept/reject plus per-boundary totals,
+  and probes every `MISSING_INTEGRATION` item (native sunset driver, save
+  serializer, receipt ledger endpoint, generator-cache restore) as rejected.
+  Explicitly `existing_behavior_only=true`, `runtime_claim=false`.
+
+### CLI
+
+    py -3.12 experimental/content_lanes/p2-overworld-last.py \
+      --source <stages.txt> --manifest-out <manifest.json> \
+      --p1-run-out <run-dir> --surface-report <report.json>
+
+Observed on the staged legal source (sha256 4de9008c...):
+`boundary=day_transition accepted=1/1`,
+`boundary=save_reload accepted=3/3`,
+`boundary=receipt_replay accepted=1 rejected=1 (duplicate exactly-once)`,
+`boundary=exit_reentry accepted=4/4`, `missing_integration=4`,
+`runtime_claim=False`.
+
+### Existing behavior vs missing integration
+
+Day monotonicity, sunset snapshot, snapshot save/reload, exactly-once receipt
+replay and cave exit/reentry carry-over are the contract's existing, engine-
+free behavior. The four `MISSING_INTEGRATION` items are real native work
+(NOT existing behavior) and are recorded as rejected prerequisites, not
+assumed. All six arena gates stay UNTESTED; no playability or runtime claim.
+
+### Tests
+
+`tests/content_lanes/test_p2_overworld_last.py`: 36 focused tests total (23 P0
++ 13 P1) covering staging happy/refusal paths, boundary coverage, duplicate
+receipt rejection, missing-integration recording, contract-schema/missing-
+module refusal, missing-source prerequisite, and the real-source P1
+stage-and-drive path. No runtime or admission claim.

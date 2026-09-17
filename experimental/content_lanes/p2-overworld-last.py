@@ -1,19 +1,24 @@
-'''P0 import-contract adapter for P2 overworld course last (Wistful Wild).
+'''P1 runtime-import + surface-session extension for the `last` adapter (#151).
 
-Lane p2-overworld-last-p0-real-source, issue 151. Decodes the REAL legal
-user/Abe/stages.txt for course last with byte-exact source hashing and a
-resource-closure manifest. Corrects synthetic-only assumptions against
-observed retail bytes (stages.txt sha256
-4de9008c99e799b99b2746c0156846eeb7ad50895ad110fc7f2070db6de1fff8):
-5 courses in brace blocks; # starts an end-of-line comment; no farm keyword;
-brace-wrapped cave ids; literal end trailer after startangle.
-Generator rows stay definitions, never actor counts or placements.
-No native build, no runtime run, no shared edits, no ADMIT.'''
+Consumes the integrated generic contract surface-session-provider-contract
+(#132, schema p2-surface-session-1, module
+experimental/pikmin2_surface_session_contract.py) instead of inventing local
+day/save semantics. This module never forks a parser: it reuses
+load_source_bytes/decode_course_file/select_course/validate_course/
+resource_closure/build_manifest.
+
+P1 path: stage the decoded real-source manifest into a private run layout,
+then drive the contract checker over the four required boundaries (day
+transition, save/reload, receipt replay, exit/reentry), explicitly separating
+contract-existing behavior from MISSING_INTEGRATION (rejected, not assumed).
+No shared edits, no ledger writes.'''
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib
+import importlib.util
 import json
 import math
 import sys
@@ -45,6 +50,10 @@ RUNTIME_PREREQUISITES = (
     '#145 actor/assets/species and hazards',
     '#146 actor/assets/species and hazards',)
 
+P1_RUN_SCHEMA = 'p2-overworld-last-p1-run-1'
+SURFACE_SESSION_SCHEMA = 'p2-surface-session-1'
+BOUNDARIES = ('day_transition', 'save_reload', 'receipt_replay', 'exit_reentry')
+
 
 class StagesDecodeError(ValueError):
     '''Raised for any malformed stages.txt content; message names the defect.'''
@@ -52,6 +61,10 @@ class StagesDecodeError(ValueError):
 
 class SourceMissingError(FileNotFoundError):
     '''Raised when the legal retail source file is unavailable.'''
+
+
+class SurfaceSessionUnavailableError(RuntimeError):
+    '''Raised when the integrated #132 contract module cannot be loaded.'''
 
 
 def prerequisite_message(source=SOURCE_PATH):
@@ -310,21 +323,193 @@ def decode_course_file(path, course_id=COURSE_ID):
         raise StagesDecodeError('course defects: ' + '; '.join(defects))
     return course, digest
 
+
+# --- P1: private run layout staging + surface-session driver -----------------
+
+def load_surface_contract():
+    '''Load the integrated #132 contract module (package or file fallback).'''
+    module = None
+    try:
+        module = importlib.import_module('experimental.pikmin2_surface_session_contract')
+    except ImportError:
+        module = None
+    if module is None:
+        path = Path(__file__).resolve().parents[1] / 'pikmin2_surface_session_contract.py'
+        if not path.is_file():
+            raise SurfaceSessionUnavailableError(
+                'missing integrated contract module experimental/pikmin2_surface_session_contract.py '
+                '(surface-session-provider-contract #132); no local day/save semantics are invented')
+        spec = importlib.util.spec_from_file_location('pikmin2_surface_session_contract', path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    if getattr(module, 'SCHEMA', None) != SURFACE_SESSION_SCHEMA:
+        raise SurfaceSessionUnavailableError('contract schema is not ' + SURFACE_SESSION_SCHEMA)
+    return module
+
+
+def _sha256_text(text):
+    return hashlib.sha256(text.encode('utf-8')).hexdigest()
+
+
+def _write_atomic(path, text):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + '.tmp')
+    tmp.write_text(text, encoding='utf-8')
+    tmp.replace(path)
+
+
+def stage_run_layout(manifest, run_dir, source_path=None):
+    '''Stage the decoded manifest into a private run layout. No ledger writes.
+
+    Layout: <run_dir>/overworld-last/manifest.json (decoded, verbatim) and
+    <run_dir>/overworld-last/run-metadata.json (schema + provenance + pins).
+    '''
+    if manifest.get('course') != COURSE_ID:
+        raise StagesDecodeError('manifest course is not ' + COURSE_ID)
+    if manifest.get('placements_emitted'):
+        raise StagesDecodeError('P1 staging refuses a placement-emitting manifest')
+    target = Path(run_dir) / 'overworld-last'
+    if target.exists() and any(target.iterdir()):
+        raise StagesDecodeError('run layout already populated: ' + str(target))
+    manifest_text = json.dumps(manifest, indent=1, sort_keys=True)
+    metadata = {
+        'schema': P1_RUN_SCHEMA,
+        'lane': 'p2-overworld-last-p1-surface-session',
+        'issue': 151,
+        'course': manifest['course'],
+        'source': source_path if source_path is not None else manifest.get('source'),
+        'source_sha256': manifest.get('source_sha256'),
+        'manifest_sha256': _sha256_text(manifest_text),
+        'contract_schema': SURFACE_SESSION_SCHEMA,
+        'boundaries': list(BOUNDARIES),
+        'placements_emitted': False,
+        'ledger_writes': False,
+        'staged_files': ['overworld-last/manifest.json'],
+    }
+    metadata_text = json.dumps(metadata, indent=1, sort_keys=True)
+    _write_atomic(target / 'manifest.json', manifest_text)
+    _write_atomic(target / 'run-metadata.json', metadata_text)
+    return {
+        'run_dir': str(Path(run_dir)),
+        'layout_dir': str(target),
+        'manifest_path': str(target / 'manifest.json'),
+        'metadata_path': str(target / 'run-metadata.json'),
+        'manifest_sha256': metadata['manifest_sha256'],
+        'metadata_sha256': _sha256_text(metadata_text),
+        'staged_files': list(metadata['staged_files']),
+        'schema': P1_RUN_SCHEMA,
+    }
+
+
+def surface_session_script(manifest, start_day=1):
+    '''The P1 boundary script over existing contract events (not a new grammar).
+
+    Returns a list of (boundary, event) pairs covering day transition,
+    save/reload, receipt replay and exit/reentry. Cave ids come from the
+    decoded manifest (first cave entrance) so the script is source-derived.
+    '''
+    if not isinstance(start_day, int) or isinstance(start_day, bool) or start_day < 1:
+        raise StagesDecodeError('start_day must be a positive int')
+    caves = manifest.get('caves') or []
+    cave_id = caves[0]['cave_id'] if caves else 'l_01'
+    anchor = caves[-1]['cave_id'] if caves else 'l_01'
+    return [
+        ('day_transition', {'type': 'begin_day', 'day': start_day + 1}),
+        ('save_reload', {'type': 'sunset', 'time_of_day': 1.0}),
+        ('save_reload', {'type': 'save'}),
+        ('save_reload', {'type': 'reload'}),
+        ('receipt_replay', {'type': 'deliver_receipt', 'identity': cave_id,
+                            'slot': 'surface', 'pokos': 10}),
+        ('receipt_replay', {'type': 'deliver_receipt', 'identity': cave_id,
+                            'slot': 'surface', 'pokos': 10}),
+        ('exit_reentry', {'type': 'enter_cave', 'cave_id': cave_id, 'floor': 1}),
+        ('exit_reentry', {'type': 'exit_cave', 'cave_pokos': 5}),
+        ('exit_reentry', {'type': 'enter_cave', 'cave_id': cave_id, 'floor': 1}),
+        ('exit_reentry', {'type': 'exit_cave', 'cave_pokos': 0}),
+    ]
+
+
+def drive_surface_session(manifest, start_day=1):
+    '''Run the boundary script through the integrated #132 checker.
+
+    Existing contract behavior is applied; MISSING_INTEGRATION requests are
+    probed and recorded as rejected (never assumed). Returns a JSON-able
+    report; performs no ledger writes and makes no runtime claim.
+    '''
+    contract = load_surface_contract()
+    state = contract.blank_session(course=manifest.get('course', COURSE_ID), day=start_day)
+    steps = []
+    for index, (boundary, event) in enumerate(surface_session_script(manifest, start_day)):
+        try:
+            ok, new_state, reason = contract.check_transition(state, event)
+        except contract.SessionContractError as exc:
+            ok, new_state, reason = False, None, 'contract error: ' + str(exc)
+        steps.append({'index': index, 'boundary': boundary, 'event': event['type'],
+                      'ok': bool(ok), 'reason': reason})
+        if ok and new_state is not None:
+            state = new_state
+    boundaries = {}
+    for boundary, _event in surface_session_script(manifest, start_day):
+        boundaries.setdefault(boundary, {'steps': 0, 'accepted': 0, 'rejected': 0})
+    for step in steps:
+        entry = boundaries[step['boundary']]
+        entry['steps'] += 1
+        entry['accepted' if step['ok'] else 'rejected'] += 1
+    missing = []
+    for name in contract.MISSING_INTEGRATION:
+        ok, _state, reason = contract.request_integration(name)
+        missing.append({'name': name, 'ok': bool(ok), 'reason': reason})
+    return {
+        'schema': 'p2-overworld-last-p1-surface-report-1',
+        'course': manifest.get('course', COURSE_ID),
+        'contract_schema': getattr(contract, 'SCHEMA', None),
+        'start_day': start_day,
+        'final_day': state['day'],
+        'final_pokos': state['pokos'],
+        'receipts': list(state['receipts']),
+        'in_cave': state['in_cave'],
+        'steps': steps,
+        'boundaries': boundaries,
+        'missing_integration': missing,
+        'existing_behavior_only': True,
+        'runtime_claim': False,
+    }
+
+
 def main(argv):
-    parser = argparse.ArgumentParser(description='P0 decode of user/Abe/stages.txt course last')
+    parser = argparse.ArgumentParser(description='P0 decode + P1 surface-session import of user/Abe/stages.txt course last')
     parser.add_argument('--source', required=True)
     parser.add_argument('--course', default=COURSE_ID)
     parser.add_argument('--manifest-out', required=True)
+    parser.add_argument('--p1-run-out', default=None,
+                        help='stage the decoded manifest into this private run layout')
+    parser.add_argument('--surface-report', default=None,
+                        help='write the p2-surface-session-1 boundary report here')
+    parser.add_argument('--start-day', type=int, default=1)
     args = parser.parse_args(argv)
     try:
         course, digest = decode_course_file(args.source, args.course)
-    except (SourceMissingError, StagesDecodeError) as exc:
+        manifest = build_manifest(course, args.source, digest)
+        Path(args.manifest_out).write_text(json.dumps(manifest, indent=1), encoding='utf-8')
+        print('course=' + course.name + ' index=' + str(course.index) + ' caves=' + str(len(course.caves)) + ' sha256=' + digest)
+        print('manifest=' + args.manifest_out + ' placements_emitted=False')
+        if args.p1_run_out:
+            staged = stage_run_layout(manifest, args.p1_run_out, source_path=args.source)
+            print('p1_run_layout=' + staged['layout_dir'] + ' manifest_sha256=' + staged['manifest_sha256'])
+        if args.surface_report or args.p1_run_out:
+            report = drive_surface_session(manifest, args.start_day)
+            if args.surface_report:
+                Path(args.surface_report).write_text(json.dumps(report, indent=1), encoding='utf-8')
+                print('surface_report=' + args.surface_report)
+            for boundary in BOUNDARIES:
+                entry = report['boundaries'][boundary]
+                print('boundary=' + boundary + ' steps=' + str(entry['steps'])
+                      + ' accepted=' + str(entry['accepted']) + ' rejected=' + str(entry['rejected']))
+            print('missing_integration=' + str(len(report['missing_integration'])) + ' runtime_claim=False')
+    except (SourceMissingError, StagesDecodeError, SurfaceSessionUnavailableError) as exc:
         print('ERROR ' + str(exc), file=sys.stderr)
         return 1
-    manifest = build_manifest(course, args.source, digest)
-    Path(args.manifest_out).write_text(json.dumps(manifest, indent=1), encoding='utf-8')
-    print('course=' + course.name + ' index=' + str(course.index) + ' caves=' + str(len(course.caves)) + ' sha256=' + digest)
-    print('manifest=' + args.manifest_out + ' placements_emitted=False')
     return 0
 
 
