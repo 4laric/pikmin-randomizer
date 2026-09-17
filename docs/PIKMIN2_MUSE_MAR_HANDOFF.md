@@ -107,3 +107,28 @@ invincibility is used.
 2. Re-run this lane (gates 4/5/6) on a leased build with the starting-Pikmin
    overlay and 960x540 adoption; emit the six-gate handoff and checker EXIT=0.
 3. Hanachirashi (55) and ShijimiChou (77) remain; admission still denied.
+
+## Generation 5 reassessment (armor15 prerequisite integrated)
+
+A prerequisite carries new verified integration evidence:
+`armor15-death-transport-reentry-observer` (#165), root `0eccc77c`, native
+`b1c5a1d4`, validation
+`output/workflow/autofill/armor15-death-transport-reentry-observer/integration-validations.log`
+(sha256 `baecf1ae...5f`). Reassessed against the Mar29 blocker:
+
+- Root `0eccc77c` is a single-file export: `engine/tools/p2_muse_armor_fixture.cpp`
+  (+136). Native `b1c5a1d4` is the matching single-file merge:
+  `tools/p2_muse_armor_fixture.cpp` (+136). Neither commit touches
+  `pc_p2_preview.cpp`, any `pc_p2_mar.*` family file, or any receipt/registration
+  path. Neither is an ancestor of this lane's pins, but that is immaterial: the
+  prerequisite contains no Mar-relevant change.
+- The necessary prerequisite set for the Mar29 slice is therefore EMPTY. No
+  merge, no conflict resolution, and no duplicate observer were created.
+- The `transport_reward` blocker is UNCHANGED: TEKI_Mar still has no
+  `pc_p2_mar_receipt`, and the generic Pod corpse path still registers only
+  TEKI_Chappy with an abort fallback. The required dependency remains
+  existing-owner review of an additive `pc_p2_mar_receipt()` plus a
+  `pc_p2_preview.cpp` registration (tracked on #186).
+
+Lane stays blocked on `4laric/pikmin-randomizer#186`. No runtime run, no ADMIT,
+no ledger writes.
