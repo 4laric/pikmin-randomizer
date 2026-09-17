@@ -176,8 +176,17 @@ def build_runtime_inputs(plan, output_dir, entry_builder=None):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     if entry_builder is None:
-        from experimental import pikmin2_cave_runtime_inputs as shared
-        entry_builder = shared
+        import importlib.util
+        import sys
+        repo = Path(__file__).resolve().parents[2]
+        if str(repo) not in sys.path:
+            sys.path.insert(0, str(repo))
+        shared_path = repo / "experimental" / "pikmin2_cave_runtime_inputs.py"
+        if not shared_path.is_file():
+            raise FileNotFoundError("Shared #642 input builder missing: " + str(shared_path))
+        spec = importlib.util.spec_from_file_location("pikmin2_cave_runtime_inputs_shared", shared_path)
+        entry_builder = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(entry_builder)
     cave = plan["cave_id"]
     entry_text = entry_builder.render_entry(_shared_preset(plan))
     generate_text = entry_builder.render_generate(_shared_preset(plan))
