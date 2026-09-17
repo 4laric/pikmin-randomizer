@@ -198,7 +198,13 @@ def release(reg, resource, token):
     return reg.release(lease_key(), lease_generation(), resource, token)
 
 
-def run_under_lease(resource, commands, cwd, log_path, poll=5):
+def child_env(ninja_dir):
+    return dict(os.environ,
+                PATH="C:/msys64/mingw64/bin;" + str(ninja_dir) + ";"
+                + os.environ.get("PATH", ""))
+
+
+def run_under_lease(resource, commands, cwd, log_path, poll=5, env=None):
     """Run shell commands under the private-build/pool lease.
 
     Mirrors the established leased-runner pattern: an idle child holds the
@@ -217,7 +223,7 @@ def run_under_lease(resource, commands, cwd, log_path, poll=5):
     with log_path.open("w", encoding="utf-8") as stream:
         child = subprocess.Popen(
             [sys.executable, "-u", "-c", code], stdin=subprocess.PIPE,
-            stdout=stream, stderr=subprocess.STDOUT, text=True,
+            stdout=stream, stderr=subprocess.STDOUT, text=True, env=env,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         from workflow.registry import Registry
         reg = Registry(CANONICAL_ROOT / "output/workflow/registry.sqlite3", CANONICAL_ROOT)
@@ -266,17 +272,17 @@ def phase_configure(native, build, ninja_dir, log_path):
           "-DCMAKE_MAKE_PROGRAM=" + str(Path(ninja_dir) / "ninja.exe"),
           "-DCMAKE_BUILD_TYPE=Release", "-DPIKMIN_NATIVE_JAUDIO=ON",
           "-DPIKMIN_NATIVE_OPTIMIZE=OFF"]],
-        native, log_path)
+        native, log_path, env=child_env(ninja_dir))
 
 
-def phase_build(build, log_path):
+def phase_build(build, log_path, ninja_dir):
     build = Path(build)
     return run_under_lease(
         "build:" + str(build.resolve()),
         [["cmake", "--build", str(build), "--target", "pikmin_pc", "-j", "6"],
          ["cmake", "--build", str(build), "--target", "pikmin_pc",
           "--", "-n"]],
-        build, log_path)
+        build, log_path, env=child_env(ninja_dir))
 
 
 def phase_fixture(native, build, output, expected_head, guard_dir, log_path):
@@ -369,7 +375,7 @@ def main(argv=None):
             code = phase_configure(args.native, args.build, ninja_dir,
                                    out / "configure.log")
         elif phase == "build":
-            code = phase_build(args.build, out / "build.log")
+            code = phase_build(args.build, out / "build.log", ninja_dir)
         elif phase == "fixture":
             head = args.expected_native_head
             if head is None:
