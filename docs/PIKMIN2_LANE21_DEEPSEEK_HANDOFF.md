@@ -671,3 +671,160 @@ cd C:/Users/alari/pikmin-randomizer/output/deepseek-wave
 $env:PATH="C:/msys64/mingw64/bin;"+$env:PATH
 py -3.12 slot.py run gl l21 -- py -3.12 C:/Users/alari/pikmin-randomizer/output/dsw/l21-out/run_groink_reentry.py
 ```
+
+## Diagnostic slice: gate 1 (identity_spawn)
+
+MiniHoudai gate 1 remains N/A. No native run was started because every
+unblocked inspection route ended at the same provider boundary: lane 21 can
+parse a natural-spawn requirement and observe the existing Frog-sidecar proxy,
+but no executable ordinary route can naturally instantiate source 78 in this
+worktree.
+
+### Source IDs, files, and branches
+
+- Identity under test: source 78, MiniHoudai.
+- The root investigation started at `35cbc8bc`. During the required parallel
+  delegation, the branch advanced to `b8fb3157` containing the requested gate-1
+  scaffolding, despite the subagent’s explicit no-git instruction. The corrected
+  validator/test files are retained in local root commit `1477d714`; no further
+  root changes precede this diagnostic handoff. The native worktree remained at
+  `3a2ee051`.
+- This slice retains those root filenames but corrects them:
+  `experimental/pikmin2_groink_spawn.py` and
+  `tests/test_pikmin2_groink_spawn.py`.
+- The required native `case 78` consumer and MiniHoudai registration were not
+  added, so there are no native-branch changes.
+- The existing six-gate tables are intentionally unchanged: gate 1 for 78 stays
+  N/A rather than being relabelled from a proxy, fixture, or test-manifest
+  observation.
+
+### Route A: generated-seed spawn
+
+Route A was attempted through the product seed/placement path, not merely read:
+
+- `randomizer/p2_placement_catalog.py:372` rejects the cohort:
+  `binding_targets_for_sources([78])` raises
+  `ValueError: source id 78 is not a non-boss lane-04 candidate`.
+- `CANDIDATE_SPECS` in that file contains lane 13, lane 14, lane 16 and lane 19
+  identities, but no MiniHoudai 78 or FminiHoudai 97 row; adding such a row is
+  lane 04's placement-schema ownership, not lane 21's family adapter.
+- The current admission set returned by the lane working copy is empty, and 78
+  is not admitted.
+- `docs/PIKMIN2_ADMITTED_PLACEMENT.json` and
+  `scripts/run_p2_generated_seed.py` do not exist in the lane-21 root worktree;
+  the brief requires those exact artifacts for the lane-05 44/45 pattern. Their
+  availability in other workers' directories was not used because the lane
+  brief confines this worker to its own two worktrees.
+
+Therefore a product seed cannot legitimately emit an accepted
+`ENEMY_P2 ... 78` mapping in this lane, and forcing 78 through a monkeypatched
+admission set would make the seed generated but not naturally admitted.
+
+### Route B: arena generator plus source-id resolve at birth
+
+Route B was also traced to the native ordinary-birth path:
+
+- `GenObjectTeki::birth()` already logs
+  `P2_SEED_RESOLVE source_id=%u target=%u original_type=%d x=%.1f z=%.1f` at
+  `src/plugPikiNakata/genteki.cpp:140-141`, then calls
+  `pc_p2_generated_placement_bind()` with the spawned actor, seed target,
+  generator identity and source.
+- `pc_port/pc_p2_generated_placement.cpp:7-30` handles only sources 23, 59, 60,
+  61 and 62; its default returns false. There is no `case 78`, so any
+  `source_id=78` birth would remain the spawned P1 stand-in and never reach a
+  MiniHoudai claim.
+- The Groink sidecar can only attach through the staged
+  `p2-groink-teki.txt` profile (`pc_port/pc_p2_groink_teki.cpp:230-258`); it has
+  no consumer for an `ENEMY_P2` target/source mapping.
+- A recursive filename search under the native `pc_port`, `src` and `include`
+  trees finds no `*MiniHoudai*` actor/module files; MiniHoudai currently exists
+  only in comments, extraction docs and policy-source references. There is no
+  live `MiniHoudai::Mgr`, `MiniHoudai::Obj`, or type-78 factory to bind.
+- Creating `case 78` without lane 03/04 placement acceptance and without a real
+  MiniHoudai actor/visual would bind a seeded Frog to Groink behavior and
+  relabel the same P1-host proxy that gate 1 already rejects as non-identity
+  evidence. That work would also intrude on lane 03/04 shared-seed and placement
+  ownership, so it was not implemented.
+
+### Exact blocker
+
+`BLOCKED gate1: no lane-04 MiniHoudai placement candidate for source 78, hence
+no accepted ordinary seed target; additionally no type-78 native actor and no
+case-78 generated-placement claim. Concretely: no `CANDIDATE_SPECS` row,
+`binding_targets_for_sources([78])` raises, native `pc_p2_generated_placement.cpp`
+returns false for the default 78 path, and the lane branch lacks a MiniHoudai
+registration file. The missing artifacts belong to lanes 04, 03 and 01/native
+registration respectively, not to lane-21 carcass/host policy.`
+
+### Tests and verification
+
+- `py -3.12 -m pytest tests/test_pikmin2_groink_spawn.py -q`: 9 passed.
+- `py -3.12 -m pytest tests/test_pikmin2_groink_spawn.py tests/test_pikmin2_groink_arena.py tests/test_pikmin2_groink_assets.py tests/test_pikmin2_groink_carcass.py tests/test_pikmin2_groink_carcass_teki.py -q`: 48 passed, 1 skipped.
+- No native build or GL execution was started. A build/GL run could not supply
+  the absent placement candidate, admitted target, claim branch, or native
+  actor, and slot capacity should not have been consumed for a predetermined
+  non-identity fixture.
+
+### Assumptions
+
+- Gate 1 requires the ordinary generated seed path's own `P2_SEED_RESOLVE`
+  plus a same-run MiniHoudai bind/ready marker; a staged Frog-sidecar observation
+  alone remains the evidence for gates 2-6, not identity.
+- A parsed `ENEMY_P2` 78 line or forced test-manifest bridge is not counted as a
+  natural ordinary spawn when lane-02 admission and lane-04 acceptance are absent.
+- Adding a `case 78` consumer to the shared generator dispatcher without a real
+  actor and placement acceptance would still be proxy attachment, not identity
+  spawn.
+
+### Subagent usage
+
+Three parallel subagents were used as required:
+
+1. `explore` source audit — used as-is. It supplied the exact existing route,
+   marker formats, and missing-claim table, and identified the native no-`case
+   78` boundary plus the absence of a 78 placement candidate.
+2. `explore` candidate inventory — used as-is. It confirmed what the existing
+   Groink stack proves and that the cited markers are currently proxy/test
+   evidence, not a natural 78 spawn.
+3. `general` test/harness scaffolding — used with corrections. It produced an
+   initial validator/test pair and reported seven focused tests passing, but the
+   scaffolding also advanced the lane branch to `b8fb3157` despite an explicit
+   no-git instruction. I retained the filenames, replaced its provisional broad
+   marker model with the exact ordinary-resolve/accepted-placement/claim/bind
+   chain, expanded it to nine passing tests, and documented the future-emitter
+   assumption. It saved scaffolding startup work, but the residual fix-up and
+   branch-history cleanup cost more than a clean implementation would have.
+
+The delegation saved the read-heavy source/inventory and test-scaffold work;
+core-route adjudication, implementation restraint, verification, and the handoff
+were kept local.
+
+### Gate-1 diagnostic reproduction
+
+```
+cd C:/Users/alari/pikmin-randomizer/output/dsw/l21-root
+$env:PYTHONUTF8='1'
+py -3.12 -m pytest tests/test_pikmin2_groink_spawn.py -q
+```
+
+### gate1 check_p2_handoff_gates output
+
+`py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE21_DEEPSEEK_HANDOFF.md`
+(exit 0):
+
+```
+78 MiniHoudai (role=source):
+  1. identity_spawn     ignored [N/A]
+  2. movement_animation accepted [PASS]
+  3. attacks_receivers  accepted [PASS]
+  4. death_corpse       accepted [PASS]
+  5. transport_reward   accepted [PASS]
+  6. cleanup_reentry    accepted [PASS]
+97 FminiHoudai (role=source):
+  1. identity_spawn     ignored [N/A]
+  2. movement_animation ignored [UNTESTED]
+  3. attacks_receivers  ignored [UNTESTED]
+  4. death_corpse       ignored [UNTESTED]
+  5. transport_reward   ignored [UNTESTED]
+  6. cleanup_reentry    ignored [UNTESTED]
+```
