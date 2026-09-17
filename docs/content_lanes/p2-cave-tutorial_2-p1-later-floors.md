@@ -78,3 +78,21 @@ markers, floor-parameterised for floors 2-9.
 - Persistence round-trip BLOCKED: needs the floor-1 lane descend handoff
   (descend originates on floor 1); recorded as an exact cross-lane
   dependency, not duplicated.
+
+
+## Generation 12: #690 walk-inside traversal integrated and observed
+
+Integrated the accepted `yakushima4-collision-traversal-native` (#690)
+prerequisite (native walk-inside grid sampling + guarded fixture; root leased
+build/run harness with guard fixes). Leased configure/build/fixture/guardcheck
+all green with built provenance; guard self-test and negcap(86) pass.
+
+Real walk-inside collision traversal samples on the decoded floor-1 geometry:
+`P2_YAKUSHIMA4_TRAVERSAL_PASS rooms=8 links=36 interior_contacts=39
+link_contacts=58` (119 samples, 44 link steps, 0 links blocked; chain pass,
+exit 0). Consumer verification accepted passed=true/prerequisite_resolved=true.
+
+Combined floor-1 record: real guarded boot (960x540, live 20, unit staging),
+authored route topology (36 NAV rows), walk-inside collision samples.
+Residual: floor 9 (light_a), higher floors beyond the tutorial_2 scope,
+persistence and admission.
