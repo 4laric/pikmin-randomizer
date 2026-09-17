@@ -204,6 +204,31 @@ Remaining exact gaps (gates stay honest):
 - Dynamic bridge still refuses source 93 (needs #186 review); the manager
   binds directly, so this no longer blocks birth observation.
 
+## Generation 11: joint capture OBSERVED (consumer verification passed)
+
+Integrated #700 (`bomb-joint-matrix-capture-native`, native `58df488e`) and
+drove its poll from the seam fixture (unity-included with a scoped `sReady`
+rename against the birth TU; no shared edits):
+
+- Run `output/workflow/autofill/enemy-bombotakara93-payload/run-573/bombotakara573/0eac72c99e07403a8a913e2b1025c9ee/native.log`
+  (exit 0, 935 lines; fixture provenance `built` at native `7a4dd44b`):
+- `:735 P2_OTAKARA_JOINT_CAPTURE generator=349005 teki=3 joints=17` plus
+  per-joint `P2_OTAKARA_JOINT` markers :736-752 (all 17 distinct).
+- Engine-birth regression holds on the same carrier
+  (`P2_BOMB_ENGINE_BIRTH ... engine_driven=1`, mgr BIND, position follow,
+  clean FORGET release).
+- Zero stub/injection markers, no `CAPTAIN_DOWN`, live squad red=8, measured
+  960x540 + centered call.
+
+Consumer verification `05e9213e...` reported PASSED with
+prerequisite_resolved=True (6/6 joint checks). Gate 1 now has candidate
+evidence (engine birth + 17-joint capture on the live carrier, no named
+otakara joint per the accepted #700 contract — recorded, not ADMIT).
+
+Remaining exact gaps: routed blast (no detonation driver fired; detonation
+is owner runtime work per the brief, so gate 3 stays BLOCKED); dynamic bridge
+still refuses 93 pending #186 review.
+
 ## Remaining work (proposed next bounded scope)
 
 Port (or provider-wrap) the Bomb enemy manager + birth path under #169
