@@ -152,10 +152,19 @@ def main(argv=None):
             ref_cmd, ref_file = reference_command(build_dir)
             record["steps"]["reference_tu"] = {"file": ref_file}
             fixture_obj = os.path.join(build_dir, stem + ".obj")
-            ref_base = os.path.basename(ref_file)
-            if ref_base in ref_cmd:
-                compile_cmd = ref_cmd.replace(ref_base, fixture_name)
-            else:
+            # Precise -c fix (#686): replace the full reference TU path, not
+            # its basename. A basename replace corrupts the -c directory
+            # (pc_port/<fixture>.cpp instead of tools/<fixture>.cpp) because
+            # the basename also matches inside the -o object path framing.
+            # Candidate spellings cover the compile_commands.json slash style.
+            replaced = False
+            for candidate in (ref_file, ref_file.replace("/", os.sep),
+                              ref_file.replace(os.sep, "/")):
+                if candidate in ref_cmd:
+                    compile_cmd = ref_cmd.replace(candidate, fixture_src)
+                    replaced = True
+                    break
+            if not replaced:
                 compile_cmd = ref_cmd + " " + fixture_src
             # Point the -o output at our own object (the reference -o path
             # belongs to the reference TU, not to this fixture).
