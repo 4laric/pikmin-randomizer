@@ -62,8 +62,14 @@ def main():
                 "guard_sha256": GUARD_SHA256, "course": args.course}
     evidence["configure_rc"] = run(
         ["cmake", "-S", native, "-B", build, "-G", "Ninja",
-         "-DCMAKE_BUILD_TYPE=Release", "-DCMAKE_MAKE_PROGRAM=" + ninja],
+         "-DCMAKE_BUILD_TYPE=Release", "-DCMAKE_MAKE_PROGRAM=" + ninja,
+         "-DPIKMIN_NATIVE_JAUDIO=ON"],
         os.path.join(out, "configure.log"), env=env)
+    # NOTE: JAUDIO=ON is a private-build configuration choice (documented in
+    # the lane packet): native pin a95040b6 does not link with the default
+    # OFF because moviePlayer.cpp calls Jac_NoteDemoSkipped() whose TU
+    # (src/jaudio/pikidemo.c) only compiles under JAUDIO=ON. Fixing the OFF
+    # link is another lane's scope; no source files are edited here.
     if evidence["configure_rc"] != 0:
         raise SystemExit("configure failed, see configure.log")
     evidence["build_rc"] = run(
