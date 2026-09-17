@@ -158,9 +158,8 @@ def phase_run(exe, assets, run_parent, deadline=60):
     run = run_parent / uuid.uuid4().hex
     run.mkdir()
     _winapi.CreateJunction(str(Path(assets).resolve()), str(run / 'assets'))
-    startup = subprocess.STARTUPINFO()
     with (run / 'native.log').open('w', encoding='utf-8') as log:
-        proc = subprocess.Popen([str(Path(exe).resolve()), '--experimental-challenge-level', str(LEVEL)], cwd=run, stdout=log, stderr=subprocess.STDOUT, startupinfo=startup, env=dict(os.environ, PATH='C:/msys64/mingw64/bin;' + os.environ.get('PATH', '')))
+        proc = subprocess.Popen([str(Path(exe).resolve()), '--experimental-challenge-level', str(LEVEL)], cwd=run, stdout=log, stderr=subprocess.STDOUT, env=dict(os.environ, PATH='C:/msys64/mingw64/bin;' + os.environ.get('PATH', '')))
         try:
             stop = time.monotonic() + deadline
             while proc.poll() is None and time.monotonic() < stop:
