@@ -276,3 +276,49 @@ the transport path present and ready once Mar is killable.
 Lane stays blocked. No injection, no ADMIT, no ledger writes, no shared-source
 edit (the private brace fix is confined to this lane's worktree and is reported
 upstream for re-land).
+
+## Generation 8 (mar-attackable-build-evidence-native #687) - consumer verification
+
+A fourth prerequisite landed the missing family change:
+`mar-attackable-build-evidence-native` (#687), root `5ed68649`, **native
+`b5a2611a`**, validation
+`output/workflow/integration-recovery/species-owner/mar687-attackable-batch-validation.log`
+(sha256 `dd9bade2...a3`). `pc_port/pc_p2_mar.cpp` now serves
+`TPF_AttackableRange` (fp20 = 200) and `ATTACKABLE_ANGLE` (0.785398), plus
+retail steering and landing-flag management. `b5a2611a` descends from `07b46063`
+and its preview already carries the brace correction (matching the private Gen-7
+fix), so it merged cleanly into the private native worktree (`31e2c40a`).
+
+### Consumer verification: PASSED (prerequisite_resolved=true)
+
+- Verification id `a0b1e493...`, consumer `shard-enemies-2-mar29-observer`,
+  generation 8, recorded via `python -m workflow.consumer_verification`.
+- Evidence (independent of the producer validation logs):
+  `output/workflow/autofill/planning-shards/enemies-2/prepared/mar29-observer-output/mar29-consumer-verification.json`
+  sha256 `e8c7f999...32`.
+- Command: the Gen-7-independent observer run
+  (`.../mar29-observer-output/run_mar29.py`) with `b5a2611a` merged into the
+  private native worktree and the owned guarded fixture.
+- Expected: the grounded squad lands natural damage (`P2_MUSE_MAR_HP`
+  decreases, >= 1 event); the pre-fix Gen-7 run stayed at `health=3000.00` with
+  0 drain for the whole run.
+- Observed: **health 3000.00 -> 270.00 with 167 damage events**, squad=20
+  atk=20, no `mHealth`/`TransportMode` write (`no_inject=1`), captain safe (no
+  `CAPTAIN_DOWN`). The original 0-drain defect is resolved.
+- Independent hashes: `native.log` `6d981e431b713db609205e9ec3003394e1bf2d27cd040aaaf057b09677ea0f33`, `fixture.exe`
+  `7c8d639aef72bcfa16da9b37ea732549ff3574af7cf8e15475f06c785c0419bd`,
+  `nectar.exe` (rebuilt on the merged tree, `[6/6] Linking`).
+
+### Remaining gap (blocked, different from the resolved one)
+
+The full natural kill did not complete: damage **stalled at 270.00 HP**
+(events=167 unchanged from tick ~12690 to 22140, ~9400 ticks), naming no
+state change and no injection. The P1-port Mar returns to source flight height
+(fp01=80) between ATTACK windows, and the grounded squad cannot convert the last
+~9% before the app exits (SDL window shutdown at ~742 s, exit 0, before the
+40 000-tick timeout). Gates 4/5/6 (`death_corpse`, `transport_reward`,
+`cleanup_reentry`) therefore remain open. The receipt/adapter path is present
+and the attackable contract now works; closing the remaining gap needs either a
+retail-faithful airborne-reach/landing cadence (family `pc_p2_mar.cpp`, #166) or
+an accepted accepted-melee/throw technique for the owner fixture - tracked on
+#186/#166.
