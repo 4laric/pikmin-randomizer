@@ -263,6 +263,73 @@ def run_under_lease(resource, commands, cwd, log_path, poll=5, env=None):
     return result
 
 
+def run_python_under_lease(resource, payload, log_path, poll=5):
+    """Execute one harness phase function inside the lease-holding child.
+
+    The child imports this module and calls the named phase with JSON
+    kwargs, so link-class work also runs under a normal build lease while
+    the parent only supervises, renews and releases.
+    """
+    from workflow.handoff import Rejected
+    code = ("import json,sys,traceback\n"
+            "sys.path.insert(0, r'" + str(ROOT) + "')\n"
+            "sys.path.insert(0, r'" + str(CANONICAL_ROOT) + "')\n"
+            "d=json.loads(sys.stdin.readline())\n"
+            "try:\n"
+            " import scripts.build_p2_challenge_mode_fixture as harness\n"
+            " fn=getattr(harness, d['fn'])\n"
+            " fn(**d['kwargs'])\n"
+            " print(json.dumps({'status': 'ok'}),flush=True)\n"
+            "except Exception as error:\n"
+            " traceback.print_exc()\n"
+            " print(json.dumps({'status': 'error', 'error': str(error)}),\n"
+            "       flush=True)\n"
+            " sys.exit(1)\n")
+    log_path = Path(log_path)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("w", encoding="utf-8") as stream:
+        child = subprocess.Popen(
+            [sys.executable, "-u", "-c", code], stdin=subprocess.PIPE,
+            stdout=stream, stderr=subprocess.STDOUT, text=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        from workflow.registry import Registry
+        reg = Registry(CANONICAL_ROOT / "output/workflow/registry.sqlite3",
+                       CANONICAL_ROOT)
+        lease = None
+        try:
+            waited = 0
+            while lease is None:
+                result = reg.acquire(lease_key(), lease_generation(reg),
+                                     resource, child.pid, ttl=300)
+                if result["acquired"]:
+                    lease = result["lease"]
+                    break
+                if waited % 60 == 0:
+                    stream.write("LEASE_WAIT reason=%s\n"
+                                 % result.get("reason", "queued"))
+                    stream.flush()
+                time.sleep(poll)
+                waited += poll
+            child.stdin.write(json.dumps(payload) + "\n")
+            child.stdin.close()
+            while child.poll() is None:
+                try:
+                    renew(reg, resource, lease["token"], ttl=300)
+                except Rejected:
+                    if child.poll() is None:
+                        raise
+                    break
+                time.sleep(poll)
+            result = child.wait()
+        finally:
+            if lease is not None and child.poll() is not None:
+                try:
+                    release(reg, resource, lease["token"])
+                except Rejected:
+                    pass
+    return result
+
+
 def phase_configure(native, build, ninja_dir, log_path):
     native, build = Path(native), Path(build)
     return run_under_lease(
