@@ -83,6 +83,10 @@ def main(argv=None):
                         help="run the engine-independent guard self-test")
     parser.add_argument("--run", metavar="RUNDIR",
                         help="run the fixture over an input-package rundir")
+    parser.add_argument("--verify-negative", action="store_true",
+                        help=("verify the captain-down interruption: the raw exe "
+                              "must exit 86 with CAPTAIN_DOWN and no PASS; "
+                              "this wrapper exits 0 iff all three hold"))
     args = parser.parse_args(argv)
 
     root = os.path.abspath(args.root)
@@ -186,6 +190,20 @@ def main(argv=None):
                 "pass": code == 0 and "P2_CAVE_GUARDED_SELFTEST_PASS" in out}
             if code != 0:
                 return code
+        if args.verify_negative:
+            if not os.path.isfile(exe):
+                print("fixture exe missing: build first")
+                return 2
+            code, out = run_logged(log, [exe, "--guard-negative-test"])
+            ok = (code == 86 and "P2_FIXTURE_CAPTAIN_DOWN" in out
+                  and "PASS CAVE_GUARDED_BOOT" not in out)
+            record["steps"]["verify_negative"] = {"exit": code, "verified": ok}
+            if ok:
+                log.write("P2_CAVE_GUARDED_NEGATIVETEST_PASS\n")
+                print("P2_CAVE_GUARDED_NEGATIVETEST_PASS")
+                return 0
+            print("negative behavior NOT verified")
+            return 1
         if args.run:
             if not os.path.isfile(exe):
                 print("fixture exe missing: build first")
