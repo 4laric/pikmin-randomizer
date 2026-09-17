@@ -107,6 +107,20 @@ class TestObserver(unittest.TestCase):
         self.assertFalse(verdict["passed"])
         self.assertIn("no-bind", verdict["failures"])
 
+    def test_unstaged_staged_marker_fails(self):
+        text = good_log("P2_JIGUMO573_RELATCH count=4 staged=1",
+                        "P2_JIGUMO573_RELATCH count=4")
+        verdict = observer.validate(text)
+        self.assertFalse(verdict["passed"])
+        self.assertIn("unstaged-staged-marker", verdict["failures"])
+
+    def test_cli_run_mode_requires_args(self):
+        import subprocess
+        proc = subprocess.run(
+            [sys.executable, "-m", "experimental.pikmin2_jigumo63_throughput_run"],
+            capture_output=True, text=True, timeout=60, cwd=str(ROOT))
+        self.assertEqual(proc.returncode, 2)
+
     def test_cli_pass_and_fail(self):
         import subprocess
         fd, path = tempfile.mkstemp(suffix=".log")
