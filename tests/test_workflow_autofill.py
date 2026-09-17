@@ -106,6 +106,55 @@ class AutofillTests(unittest.TestCase):
         self.assertEqual(pool['workstreams']['p2']['lanes'],['next'])
         self.assertFalse(self.reg.control_status()['launches'])
 
+    def adaptation(self):
+        self.spec.update(role='implementation', capabilities=['runtime-import'])
+        self.save([self.spec])
+        self.controller.config['throughput']['autofill']['worker_adaptation'] = dict(
+            enabled=True, authorized_by='operator via issue 635', profiles=[dict(
+                name='runtime-import', role='implementation', workstream='p2',
+                requires=['python'], grants=['runtime-import'])])
+
+    def test_adaptation_provisions_and_replays_once(self):
+        self.adaptation()
+        self.tick(); self.tick()
+        self.assertEqual(self.reg.status()['lanes']['next']['worker_id'], 'one')
+        self.assertEqual(self.reg.scheduling_status()['workers']['one']['capabilities'],
+                         ['python', 'runtime-import'])
+        with self.reg.transaction() as state:
+            events = [e for e in state['events'] if e['kind'] == 'pool_worker_adapted']
+        self.assertEqual(len(events), 1)
+        self.assertEqual(list(self.reg.scheduling_status()['jobs']), ['autofill:next'])
+
+    def test_adaptation_rejects_unsafe_or_unauthorized_workers(self):
+        self.adaptation()
+        with self.reg.transaction() as state:
+            baseline = copy.deepcopy(state)
+        cases = ['disabled', 'grant', 'requires', 'role', 'stream', 'live', 'unknown',
+                 'unfinished', 'assignment', 'launch', 'reserved', 'owner', 'invalid-proof']
+        policy = copy.deepcopy(self.controller.config['throughput']['autofill']['worker_adaptation'])
+        for case in cases:
+            with self.subTest(case=case):
+                self.controller.config['throughput']['autofill']['worker_adaptation'] = copy.deepcopy(policy)
+                p = self.controller.config['throughput']['autofill']['worker_adaptation']
+                with self.reg.transaction() as state:
+                    state.clear(); state.update(copy.deepcopy(baseline))
+                    if case == 'disabled': p['enabled'] = False
+                    if case in ('grant', 'requires'): p['profiles'][0]['grants' if case == 'grant' else 'requires'] = ['other']
+                    if case == 'role': state['throughput']['workers']['one']['roles'] = ['review']
+                    if case == 'stream': p['profiles'][0]['workstream'] = 'other'
+                    if case in ('live', 'unknown'): state['lanes']['one']['process']['health'] = 'alive' if case == 'live' else 'unknown'
+                    if case == 'unfinished': state['lanes']['one']['state'] = 'blocked'
+                    if case == 'assignment': state['throughput']['assignments']['busy'] = dict(worker_id='one', status='assigned')
+                    if case == 'launch': state.setdefault('control', {}).setdefault('launches', {})['busy'] = dict(lane='one', status='intent')
+                    if case == 'reserved':
+                        state.setdefault('throughput_runtime', {}).setdefault('autofill', {}).setdefault('items', {})['reserved'] = dict(
+                            worker_id='one', previous_lane='one', phase='intent')
+                    if case == 'owner': state['throughput']['workstreams']['other'] = dict(owner_lane='one')
+                self.remote[900]['state'] = 'CLOSED' if case == 'invalid-proof' else 'OPEN'
+                self.tick()
+                self.assertNotIn('next', self.reg.status()['lanes'])
+                self.assertEqual(self.reg.scheduling_status()['workers']['one']['capabilities'], ['python'])
+
     def test_crash_after_provision_resumes_same_worker(self):
         original=self.reg.provision_pool_lane
         def interrupted(*args):
@@ -115,6 +164,15 @@ class AutofillTests(unittest.TestCase):
         self.assertEqual(self.reg.status()['lanes']['next']['worker_id'],'one')
         self.tick()
         self.assertEqual(autofill_status(self.reg)['items']['next']['phase'],'enqueued')
+
+    def test_parked_owner_allows_full_provisioning_and_replay(self):
+        self.reg.finish('owner', 1, 'review-ready', 'Batch complete; standby', self.f.evidence)
+        with self.reg.transaction() as state:
+            state['lanes']['owner']['process']['health'] = 'dead'
+        self.tick()
+        self.tick()
+        self.assertEqual(autofill_status(self.reg)['items']['next']['phase'], 'enqueued')
+        self.assertEqual(list(self.reg.scheduling_status()['jobs']), ['autofill:next'])
 
     def test_crash_after_enqueue_recovers_without_duplicate(self):
         original=self.reg.enqueue_job
@@ -148,6 +206,9 @@ class AutofillTests(unittest.TestCase):
         self.save([self.spec,other]);self.tick()
         self.assertIn('other',self.reg.status()['lanes'])
         self.assertEqual(autofill_status(self.reg)['items']['next']['status'],'blocked')
+        item = autofill_status(self.reg)['items']['next']
+        self.assertEqual(item['dependency_kind'], 'workflow')
+        self.assertIn('blocked_at', item)
 
     def test_enemy_priority_over_existing_content_and_one_per_tick(self):
         self.second_worker()
@@ -321,6 +382,50 @@ class AutofillTests(unittest.TestCase):
         report=autofill_status(self.reg)
         self.assertEqual(report['ready_count'],0)
         self.assertEqual(len(self.reg.control_status()['launches']),1)
+
+
+from workflow.autofill import clustered_blockers
+
+
+class ClusteredBlockersTests(unittest.TestCase):
+    def test_shared_dependency_signature_across_lanes_is_surfaced(self):
+        state = {'lanes': {
+            'panmodoki38': {'state': 'blocked', 'dependencies': ['restart duplicate-cargo test capability'], 'scope': 'PanModoki38 acceptance'},
+            'elecbug28': {'state': 'waiting_resource', 'dependencies': ['Restart Duplicate-Cargo Test Capability'], 'scope': 'ElecBug28 acceptance'},
+        }}
+        clusters = clustered_blockers(state)
+        self.assertEqual(len(clusters), 1)
+        self.assertEqual(clusters[0]['count'], 2)
+        self.assertEqual(clusters[0]['lanes'], ['elecbug28', 'panmodoki38'])
+        self.assertEqual(clusters[0]['signature'], 'restart duplicate-cargo test capability')
+
+    def test_single_blocked_lane_is_not_a_cluster(self):
+        state = {'lanes': {'panmodoki38': {'state': 'blocked', 'dependencies': ['restart duplicate-cargo test capability'], 'scope': ''}}}
+        self.assertEqual(clustered_blockers(state), [])
+
+    def test_existing_scoped_fix_suppresses_the_cluster(self):
+        state = {'lanes': {
+            'panmodoki38': {'state': 'blocked', 'dependencies': ['restart duplicate-cargo test capability'], 'scope': ''},
+            'elecbug28': {'state': 'blocked', 'dependencies': ['restart duplicate-cargo test capability'], 'scope': ''},
+            'fixture-fix': {'state': 'ready', 'dependencies': [], 'scope': 'Implement restart duplicate-cargo test capability'},
+        }}
+        self.assertEqual(clustered_blockers(state), [])
+
+    def test_progress_detail_fallback_when_no_dependencies(self):
+        state = {'lanes': {
+            'a': {'state': 'blocked', 'dependencies': [], 'progress_detail': 'Needs shared fixture X', 'scope': ''},
+            'b': {'state': 'blocked', 'dependencies': [], 'progress_detail': '  needs   SHARED fixture X  ', 'scope': ''},
+        }}
+        clusters = clustered_blockers(state)
+        self.assertEqual(len(clusters), 1)
+        self.assertEqual(clusters[0]['lanes'], ['a', 'b'])
+
+    def test_differently_worded_blockers_do_not_cluster(self):
+        state = {'lanes': {
+            'a': {'state': 'blocked', 'dependencies': ['needs restart-duplicate-cargo capability'], 'scope': ''},
+            'b': {'state': 'blocked', 'dependencies': ['restart duplicate-cargo test capability'], 'scope': ''},
+        }}
+        self.assertEqual(clustered_blockers(state), [])
 
 
 if __name__ == '__main__': unittest.main()
