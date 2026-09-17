@@ -114,6 +114,20 @@ class TestObserver(unittest.TestCase):
         self.assertFalse(verdict["passed"])
         self.assertIn("unstaged-staged-marker", verdict["failures"])
 
+    def test_eat_rate_at_pass1_bound_fails(self):
+        text = good_log() + "P2_JIGUMO_EAT generator=374003 pikmin=1\n" * 6
+        verdict = observer.validate(text)
+        self.assertEqual(verdict["eats"], 7)
+        self.assertFalse(verdict["eats_below_pass1"])
+        self.assertFalse(verdict["passed"])
+        self.assertIn("eat-rate-at-or-above-pass1", verdict["failures"])
+
+    def test_eat_rate_below_pass1_passes(self):
+        verdict = observer.validate(good_log())
+        self.assertEqual(verdict["eats"], 1)
+        self.assertTrue(verdict["eats_below_pass1"])
+        self.assertTrue(verdict["passed"], verdict["failures"])
+
     def test_cli_run_mode_requires_args(self):
         import subprocess
         proc = subprocess.run(

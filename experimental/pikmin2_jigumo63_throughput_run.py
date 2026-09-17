@@ -27,6 +27,17 @@ from experimental.pikmin2_generator_pose import write_position
 CARRIER_GEN = 374003
 SQUAD = 20
 LIFE = 500.0
+# Family pose-bank sources, consumed read-only (sibling observer-lane pass1
+# staging; never edited). The batch3 visual registrar requires the bank
+# manifest plus the Jigumo pose bank beside the staged arena.
+BANK_SRC = Path(
+    "C:/Users/alari/pikmin-randomizer/output/workflow/autofill/"
+    "planning-shards/enemies-4/prepared/shard-enemies-4-jigumo63-observer/"
+    "out/jigumo-run/pass1/57adf491fd4742baaaf3ee5652505ba7/p2-aquatic-bank.txt")
+POSE_SRC_DIR = BANK_SRC.parent / "assets/dataDir/courses/pikmin2room"
+# pass1 EAT reference (observer lane, throw stimulus, no kill): latch-first
+# must stay below this bound.
+PASS1_EATS = 7
 
 BASELINE_RE = re.compile(r"P2_JIGUMO573_BASELINE red=(\d+) blue=(\d+) live=(\d+)")
 STAGE_RE = re.compile(r"P2_JIGUMO573_STAGE generator=(\d+) source_id=63")
@@ -80,7 +91,14 @@ def stage(assets: Path, output: Path) -> Path:
                  "dataDir/stages/chal0/default.gen": data}
     for p in (assets / "dataDir/stages/chal0").glob("*.gen"):
         overrides.setdefault("dataDir/stages/chal0/" + p.name, empty)
+    bank = BANK_SRC.read_bytes()
+    assert bank.startswith(b"P2_AQUATIC_BANK_1"), "aquatic bank manifest header"
+    pose_files = sorted(POSE_SRC_DIR.glob("aquatic_Jigumo_*.mod"))
+    assert len(pose_files) > 0, "jigumo pose bank present"
+    for mod in pose_files:
+        overrides["dataDir/courses/pikmin2room/" + mod.name] = mod.read_bytes()
     overlay(assets, run / "assets", overrides)
+    (run / "p2-aquatic-bank.txt").write_bytes(bank)
     (run / "p2-cargo-free.txt").write_bytes(b"P2_CARGO_FREE_1\n")
     (run / "p2-aquatic-actors.txt").write_text(
         "P2_AQUATIC_ACTORS_1\n1\n%d Jigumo\n" % CARRIER_GEN, encoding="utf-8")
@@ -99,6 +117,7 @@ def validate(text: str) -> dict:
         "dead": False, "carcass": False, "lost": -1, "ratio": None,
         "ratio_above_25": False, "bites": 0, "eats": 0, "flicks": 0,
         "captain_down": False, "injected": [], "blocked_reason": "",
+        "eats_below_pass1": None,
         "hp_curve": [], "passed": False, "failures": [],
     }
     lines = text.splitlines()
@@ -170,9 +189,13 @@ def validate(text: str) -> dict:
         verdict["failures"].append("ratio-at-or-below-25")
     if not verdict["bound"]:
         verdict["failures"].append("no-bind")
+    verdict["eats_below_pass1"] = verdict["eats"] < PASS1_EATS
+    if not verdict["eats_below_pass1"]:
+        verdict["failures"].append("eat-rate-at-or-above-pass1")
     verdict["passed"] = (verdict["dead"] and verdict["carcass"]
                          and verdict["ratio_above_25"] and verdict["bound"]
-                         and not verdict["captain_down"] and not verdict["injected"])
+                         and not verdict["captain_down"] and not verdict["injected"]
+                         and verdict["eats_below_pass1"])
     return verdict
 
 
