@@ -44,3 +44,32 @@ observed.
 ## Verification
 
 `py -3.12 -m unittest tests.test_pikmin2_abem_tutorial_p1_runtime_obs` -> 8 passed.
+
+
+## Build and runtime evidence (this turn)
+
+- Private leased build of native pin `b805d9c6` (no lane commits; clean):
+  `cmake --build ... --target pikmin_pc -j 6` exit 0, exe
+  `output/abem-tutorial-obs-build/bin/nectar.exe` sha256
+  `54e46d0558176800...`, `ninja -n pikmin_pc` reports "no work to do".
+  Toolchain works on this pin.
+- Arena staged (20-squad baseline `2f6fd495...`, 24 records, 24 staged ids;
+  23 untouched control ids from plants.gen) with floor-1 challenge roster
+  carried as observation targets.
+- 8/8 focused tests pass.
+
+## Concrete blockers (why no headed acceptance run)
+
+1. **No engine stage-boot path for ch_ABEM_tutorial.** The P2 stage decode
+   table available to this lane resolves only ch_NARI_01kusachi; the
+   #675 stage-boot fixture additionally hardcodes that source path, so it
+   refuses any other stage. A genuine ch_ABEM_tutorial boot needs a provider
+   table row plus #186 lookup wiring (owner #675), outside my three owned
+   files.
+2. **No game-linked guarded fixture compatible with this pin.** The #642
+   guarded cave boot fixture does not compile against native pin `b805d9c6`
+   (pre-existing engine-header multichar warnings become errors under its
+   strict flags; the engine itself builds with relaxed flags). My lane owns
+   no native files, so I cannot add or adapt a fixture variant. Running the
+   stock preview unguarded would violate mandatory #632, so no acceptance
+   run was performed and no gates are claimed.
