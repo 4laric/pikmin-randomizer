@@ -79,3 +79,41 @@ inputs, not placements.
   packet JSON at `output/workflow/autofill/p2-challenge-ch_mat_crawler/packet/`).
 
 No placements emitted, no runtime run, no ADMIT. P1/P2 acceptance stays OPEN.
+---
+
+# ch_MAT_crawler P1 runtime import (issue #562, lane p2-challenge-ch-mat-crawler-p1)
+
+Implementation owner: Codex through shared account `4laric`. This section
+extends the P0 packet above with the P1 private runtime import slice. The P0
+decode helpers are reused unchanged (no forked parser).
+
+## P1 staging (`stage_run_layout` / `verify_run_layout`)
+
+The decoded packet is staged into a private run layout:
+
+- `stage-manifest.json`: floors with unit pools, enemy/treasure tokens,
+  gates/caps, squad rows, timers, UI index, unsupported semantics and the
+  source hash. Weights stay definition inputs; nothing is placed.
+- `squad.json`: the starting squad (30 flower Red + 30 flower Yellow = 60).
+- `run-config.json`: `window: 960x540`, squad source, unsupported list.
+- `markers.txt`: the required receipt-parseable marker contract
+  (`P2_CRAWLER_WINDOW`, `P2_CRAWLER_SQUAD`, `P2_CRAWLER_FLOOR_READY`,
+  `P2_CRAWLER_ACTOR`, `P2_CRAWLER_PASS`).
+
+Staging fails closed on any packet/contract divergence (floor count, floor
+ranges, squad total, timers). `verify_run_layout` re-checks a staged layout
+without trusting it.
+
+## Unsupported semantics (recorded, not claimed)
+
+`challenge_host_mode`, `coop_2p`, `key_completion`, `result_screen` — mirrored
+from the contract consumer. No host-mode implementation lane exists; a staged
+run exercises the cave/arena path only, never Challenge-mode rules.
+
+## Runtime evidence
+
+Recorded in the lane handoff (`prepared/p1-crawler-output/`): leased private
+build, fixture provenance, fresh arena with the starting-Pikmin overlay,
+960x540 centred startup, captain-safety #632 adoption with guard/source
+hashes, and the observed marker log (or the exact defect if the boot cannot
+complete). Six gates stay UNTESTED unless genuinely observed.
