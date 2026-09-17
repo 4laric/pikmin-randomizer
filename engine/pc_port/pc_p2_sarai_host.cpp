@@ -8,7 +8,10 @@
 #include "Texture.h"
 #include "gameflow.h"
 #include "sysNew.h"
+#include "Generator.h"
+#include "teki.h"
 #include <cmath>
+#include <cstdio>
 #include <vector>
 
 namespace {
@@ -371,6 +374,19 @@ void P2SaraiHost::updateNatural()
 {
     const float dt = gsys ? gsys->getFrameTime() : 0.0f;
     if (!std::isfinite(dt) || dt <= 0.0f || dt > 1.0f) return;
+    // Ordinary anchor death: the spawned actor owns the corpse. Report once and
+    // stop the captor clock; the engine's corpse pipeline (dieSoon/becomePellet)
+    // handles the pellet that the Pod receipt resolves.
+    if (mBoundActor && !mBoundActor->isAlive()) {
+        if (!mDead) {
+            mDead = true;
+            const unsigned generator = mBoundActor->mGenerator ? mBoundActor->mGenerator->_70 : 0u;
+            std::printf("P2_SARAI_DEAD source_id=23 generator=%u\n", generator);
+            std::fflush(stdout);
+        }
+        release(nullptr);
+        return;
+    }
     // Source clocks advance in 30 fps animation frames, capped to one frame per
     // update so the Attack capture window cannot be skipped.
     float frames = dt * 30.0f;
@@ -436,7 +452,7 @@ void P2SaraiHost::updateNatural()
     // model; the captain is the only damageable actor in the chain.
     p2sarai::In in;
     in.deltaTime = dt;
-    in.health = 100.0f;
+    in.health = mBoundActor ? mBoundActor->mHealth : 100.0f;
     in.bodyStuckCount = 0;
     in.mouthCarried = mLifecycle.occupied() ? 1 : 0;
     in.purpleLatched = false;
@@ -484,4 +500,29 @@ void P2SaraiHost::updateNatural()
         }
     }
     updateMouths();
+}
+
+bool P2SaraiHost::bindNativeActor(BTeki* actor, unsigned generatorId, int tekiType)
+{
+    if (!actor || !actor->mGenerator || actor->mGenerator->_70 != generatorId || actor->mTekiType != tekiType)
+        return false;
+    if (mBoundActor && mBoundActor != actor) return false;
+    mBoundActor = actor;
+    mDead = false;
+    return true;
+}
+
+void P2SaraiHost::unbindNativeActor(BTeki* actor)
+{
+    if (actor && mBoundActor == actor) mBoundActor = nullptr;
+}
+
+bool P2SaraiHost::revalidateNativeActor(BTeki* actor, unsigned generatorId, int tekiType)
+{
+    if (!actor || mBoundActor != actor) return false;
+    if (!actor->mGenerator || actor->mGenerator->_70 != generatorId || actor->mTekiType != tekiType) {
+        mBoundActor = nullptr;
+        return false;
+    }
+    return true;
 }

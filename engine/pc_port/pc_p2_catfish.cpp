@@ -122,6 +122,14 @@ struct Catfish {
 
 std::map<PelletView*, Catfish> actors;
 std::map<std::string, Clip> clips;
+// Diagnostic natural-death registrations (actor -> generator) for the
+// Catfish corpse marker named by #641/#652. This map is local to this
+// translation unit and has no reader other than the emission guard below:
+// NO shared Pod dispatch or receipt bridge consumes it yet, and it grants no
+// reward, writes no ledger and changes no save. Keyed on the actor so a
+// forgotten/recreated actor cannot double-report; cleared on forget
+// (per-actor) and reset (whole registry).
+std::map<BTeki*, unsigned> corpses;
 bool ready = false;
 
 float wrapPi(float a) {
@@ -442,11 +450,13 @@ bool attackable(const Catfish& s, const Vector3f& pos, Creature* target) {
 void pc_p2_catfish_reset() {
     actors.clear();
     clips.clear();
+    corpses.clear();
     ready = false;
 }
 
 void pc_p2_catfish_forget(BTeki* actor) {
     actors.erase(static_cast<PelletView*>(actor));
+    corpses.erase(actor);
 }
 
 float pc_p2_catfish_param_f(const BTeki* actor, int idx, float fallback) {
@@ -594,6 +604,19 @@ void pc_p2_catfish_update(BTeki* actor) {
             std::printf("P2_CATFISH_DEAD generator=%u source_id=26 health=0\n", generator);
             std::fflush(stdout);
             s.deadLogged = true;
+            // Diagnostic death-registration marker (#641/#652): exactly one
+            // emission per natural death, beside the CATFISH_DEAD transition.
+            // It records the marker namespace only; the shared Pod receipt
+            // bridge and the natural receiver observation remain separate
+            // open work. Guarded by generator != 0 (staged actors always carry
+            // one) and by the corpses set (address reuse cannot double-report);
+            // no marker fires off this path.
+            if (generator != 0u && corpses.find(actor) == corpses.end()) {
+                corpses[actor] = generator;
+                std::printf("P2_CATFISH_CORPSE_READY generator=%u source_id=26 receipt=corpse:catfish:%u\n",
+                            generator, generator);
+                std::fflush(stdout);
+            }
         }
         transition(s, CATFISH_DEAD, "dead", generator);
     }

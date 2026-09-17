@@ -636,11 +636,13 @@
         "movement_animation": "PASS",
         "attacks_receivers": "PASS",
         "death_corpse": "PASS",
-        "transport_reward": "UNTESTED",
+        "transport_reward": "PASS",
         "cleanup_reentry": "PASS"
       },
+      "delivery_receipt": "corpse:queen:230010 (P2_POD_RECEIPT id=corpse:queen:230010 value=2 new=1 pokos=2 seeds=0) output/dsw/l24-out/queen-creature-runtime/queen/62b8ff57457c4edb90dd16958f665118/native.log:1386",
       "notes": [
-        "Queen (Empress Bulblax): queen vehicle + Baby child (boss_helper); natural combat/attachments/rewards remain (#172/#256)."
+        "Queen (Empress Bulblax): queen vehicle + Baby child (boss_helper); natural combat/attachments/rewards remain (#172/#256).",
+        "Lane 24 gate5 (2026-09-17): natural generated-sidecar transport/reward receipt corpse:queen:230010 (P2_POD_RECEIPT value=2 new=1 pokos=2 seeds=0) in the queen-creature-runtime run (native.log:1386); free-mode carry and engine-driven death, no forced transport writes."
       ]
     },
     "31": {

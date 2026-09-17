@@ -1,11 +1,13 @@
 """Long Legs family batch-2 private arena staging (#312, parent #173).
 
-Stages the two lane-owned family members (Houdai/Man-at-Legs, BigFoot/Raging
-Long Legs) plus an ordinary P1 control on the original Impact Site via the
-shared batch-2 arena builder, installing the batch-1 mesh bank with
+Stages the lane-owned family members (Houdai/Man-at-Legs, BigFoot/Raging
+Long Legs, Damagumo/Beady Long Legs via explicit demon-lane source #638)
+plus an ordinary P1 control on the original Impact Site via the shared
+batch-2 arena builder, installing the batch-1 mesh bank with
 :mod:`experimental.pikmin2_long_legs_install`. Long Legs has no teki type in
 this engine's ``teki.h``, so the neutral Chappy placement vehicle is used and
-identity is not claimed; Damagumo/Beady Long Legs (56) stays with the demon lane.
+identity is not claimed. Damagumo is staged only from its own source profile
+and mesh, never as an alias of another species.
 """
 import argparse
 from pathlib import Path
@@ -17,12 +19,12 @@ from experimental.pikmin2_long_legs_install import (MANIFEST, install,
                                                     verify_install)
 
 CFG = dict(
-    name='long-legs', parent='#173', manifest=MANIFEST, species={'Houdai': 66, 'BigFoot': 69},
-    actors=('Houdai', 'BigFoot'),
-    arena_ids=(312001, 312002, 312003),
-    arena_species=('Houdai', 'BigFoot', 'P1 Chappy'),
-    arena_positions=((-120.0, 30.0, 1850.0), (120.0, 30.0, 1850.0), (240.0, 30.0, 1500.0)),
-    arena_proxy={'Houdai': P1_CHAPPY_TYPE, 'BigFoot': P1_CHAPPY_TYPE,
+    name='long-legs', parent='#173', manifest=MANIFEST, species={'Houdai': 66, 'BigFoot': 69, 'Damagumo': 56},
+    actors=('Houdai', 'BigFoot', 'Damagumo'),
+    arena_ids=(312001, 312002, 312004, 312003),
+    arena_species=('Houdai', 'BigFoot', 'Damagumo', 'P1 Chappy'),
+    arena_positions=((-120.0, 30.0, 1850.0), (120.0, 30.0, 1850.0), (-240.0, 30.0, 1850.0), (240.0, 30.0, 1500.0)),
+    arena_proxy={'Houdai': P1_CHAPPY_TYPE, 'BigFoot': P1_CHAPPY_TYPE, 'Damagumo': P1_CHAPPY_TYPE,
                  'P1 Chappy': P1_CHAPPY_TYPE},
     arena_family={P1_CHAPPY_TYPE: 'Chappy (P1 Dwarf Bulborb)'},
     control='P1 Chappy', source_yaw=None,
@@ -44,7 +46,7 @@ CFG = dict(
         'Bind-pose mesh decode only; no animation pose bank, skeletal playback or event execution.',
         'Long Legs has no teki type in engine/include/teki.h; the Chappy placement vehicle is '
         'used purely to stage the source mesh and does not claim identity.',
-        'Damagumo/Beady Long Legs (56) is owned by the demon lane and is not staged here.',
+        'Damagumo/Beady Long Legs (56) stages only from the demon-lane 56 profile/mesh (#638); never aliased.',
         'Native IK, crush, gun-callback and reward behavior remain lane work (#173/#186).'])
 
 SPECIES = tuple(CFG['arena_species'])

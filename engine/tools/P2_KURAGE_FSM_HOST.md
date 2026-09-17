@@ -89,10 +89,8 @@ generated `TEKI_Frog`; that replacement is tracked separately.
   slot policy (`capture`, `advanceDefaultOffset`, `isNaviSuck`) drives the FSM
   `naviSucked`/`naviSuckFinished`, so a real capture (not the earlier seam)
   routes Attack END -> `Drop`.
-- Source-faithful release: the captain stays held through `Drop` -> `Land` ->
-  `Ground`, and `GroundFlick`'s KEY3 `flickNearby` (real `flick2.bca`) releases
-  it with the source `sep *= 50` knockback (`releaseCaptured` + `onDeath`), so
-  the captain is never lost or duplicated.  Owner death and `kill` still release.
+- Release on leaving `Drop` or on owner death calls
+  `releaseCaptured` + `onDeath`, so the captain is never lost or duplicated.
 - Probes: `pc_p2_kurage_arena_captain_occupied/captured`.
 - The isolated room has one real `Navi` mapped to captain A; captain B is a
   nominal present slot so the source zero-control guard is satisfied.  This is
@@ -131,22 +129,10 @@ wait/attack:
 - Both hosts draw the pose for the current FSM state (arena host and the
   ordinary sidecar-bound actor), so the actor no longer shows only wait/attack.
   Missing pose files keep the wait/attack fallback.
-- `P2_KURAGE_VISUAL_POSES lesser_optional=N/8 greater_optional=N/8` reports how
-  many optional poses shipped per variant; `P2_KURAGE_POSE motion=<name>
-  variant=<Lesser|Greater> available=1` logs each drawn state.
-- `tools/run_kurage_flight_fsm.py`: `--models <dir>` copies the Lesser poses as
-  `kurage_<motion>.mod`; `--greater-models <dir>` copies the OniKurage poses as
-  `onikurage_<motion>.mod`.  Both accept the flat `<motion>.mod` converted
-  layout or the `<motion>/patched.mod` material layout.  The Greater host draws
-  the OniKurage pose when present and falls back to the Lesser pose.
-- The material layout is lane 09's opt-in two-stage export
-  (`experimental.pikmin2_kurage_envmap`, #286; it composes the #282 base-opacity
-  fix and adds the NORMAL-generated environment stage with the `_UNUSED10=0xE6`
-  marker consumed by the integrated `pc_p2_envmap` bridge):
-  `py -3.12 -m experimental.pikmin2_kurage_envmap --model <enemy.bmd> --mod <converted pose.mod> --output <fresh>/<motion>`.
-  Run `output/p2-lane29-envmap-01`: shipped `kurage_wait.mod` SHA-256
-  `721A3316…b8e0` (the export's `after` hash), frame captured to
-  `kurage-host-flight.ppm`.
+- `P2_KURAGE_VISUAL_POSES optional_loaded=N/8` reports how many optional poses
+  shipped; `P2_KURAGE_POSE motion=<name> available=1` logs each drawn state.
+- `tools/run_kurage_flight_fsm.py`: `--models <dir>` copies `<motion>.mod` as
+  `kurage_<motion>.mod` into the run's room assets.
 
 This still does not animate within a pose (each converted MOD is a single static
 pose); it selects the correct static source pose per state.
@@ -176,14 +162,6 @@ behavior:
   `distToTargetXZ` back to the FSM.  Binding-only consumers are unchanged.
 - `tools/run_kurage_automatic_binding.py --scenario auto-fsm-move`.
 
-## Bittered captive death
-
-While a captain is held, `set_owner_facts(hasHealth=true, bittered=true)` now
-runs the OniKurage `escapeCheckNavi` escalation through the mouth policy:
-`MouthSlots::escapeCheck(slot, occupied=false, bittered=true)` returns
-`EnemyDied`, the host zeroes its health, and the source Dead state kills it and
-releases the captain.  `--flight-fsm-greater-bitter`.
-
 ## Natural death cycle
 
 The arena host consumes the FSM death outputs: `out.deathProcedure`/`bodyBomb`
@@ -195,14 +173,6 @@ Pikmin, marks itself dead and leaves the field.
 - `tools/p2_kurage_runtime.cpp`: `--flight-fsm-death-cycle` — admit a Pikmin,
   set owner health 0, let the source `dead1.bca` clock run to its KEY3
   procedure, and verify the END releases the Pikmin with restored scale.
-
-## Suction-candidate stability
-
-The admission scenarios intermittently timed out because `Piki::mayIstick()`
-rejects `PIKISTATE_LookAt`/`Flick`, which the live Piki AI can enter while
-approaching a flying actor.  The fixture now re-asserts `PIKISTATE_Normal` when
-it places the candidate (`placeCandidate`), so it stays stick-eligible.  Ordinary
-admission 5/5 and arena admission 4/4 after the change (previously intermittent).
 
 ## Fixture stabilization
 
@@ -218,32 +188,12 @@ admission/death/greater/greater-drop/ingestion/kill/transfer/stageexit).
 Private build `output/native-lane29-build` (Ninja Release/MinGW gcc 16.2.0,
 JAudio ON, test hooks OFF), `ninja -n pikmin_pc`: no work to do.
 `bin/nectar.exe` SHA-256
-`67891B0BD2C30E0CC6137DA228BDF8859F39E0D0294DB4E37E7E800AF03911E8`.
+`E9A9ACF2975A0BBF6B07C4F8C0E8529D18C1D1B95FC522F42CED946C635736E1`.
 
-Fixture `output/p2-lane29-bitter-fixture-02` (provenance `status=built`);
+Fixture `output/p2-lane29-move-fixture-01` (provenance `status=built`);
 `fixture.exe` SHA-256
-`757F4360A235BBEE58BA4ED63A8641011417A1B3B090C5F1E411A0B0ADCEBF4B`.  All runs
+`1D5A1A493F6FAA7B82054E30788B32290EC98A3F9797A250C3249B6ECF91196A`.  All runs
 use `PIKMIN_P2_ROOM_WINDOW=960x540` (centred `373,263`) and a 20-red squad.
-
-Bittered captive death (OniKurage `escapeCheckNavi` -> EnemyDied):
-
-```
-P2_KURAGE_CAPTAIN_CAPTURED captain=0 epoch=1
-P2_KURAGE_BITTER_DEATH
-state=0 (Dead) -> P2_KURAGE_KILL
-P2_KURAGE_GREATER_BITTER_PASS captured=1 bitter_death=1 released=1 occupied=0
-PASS KURAGE_RUNTIME flight_fsm_greater_bitter
-```
-
-Greater captain route held through to GroundFlick (real `flick2.bca` KEY3):
-
-```
-P2_KURAGE_CAPTAIN_CAPTURED captain=0 epoch=1
-state=11 (Drop) -> state=6 (Land) -> state=7 (Ground) -> state=10 (GroundFlick)
-P2_KURAGE_FLICK_NEARBY
-P2_KURAGE_CAPTAIN_RELEASED captain=0 state=10
-PASS KURAGE_RUNTIME flight_fsm_greater_captain
-```
 
 Ordinary actor flies under FSM control:
 
@@ -272,13 +222,13 @@ P2_KURAGE_DEATH_CYCLE_PASS killed=1 recv=0 piki_alive=1 scale_restored=1
 PASS KURAGE_RUNTIME flight_fsm_death_cycle
 ```
 
-Per-state converted poses, Lesser + Greater (10 + 10 mods shipped):
+Per-state converted poses (10 mods shipped):
 
 ```
-P2_KURAGE_VISUAL_POSES lesser_optional=8/8 greater_optional=8/8
-P2_KURAGE_POSE motion=wait variant=Greater available=1
-P2_KURAGE_POSE motion=attack variant=Greater available=1
-P2_KURAGE_POSE motion=type1 variant=Greater available=1
+P2_KURAGE_VISUAL_POSES optional_loaded=8/8
+P2_KURAGE_POSE motion=wait available=1
+P2_KURAGE_POSE motion=attack available=1
+P2_KURAGE_POSE motion=flick1 available=1
 ```
 
 Stuck -> flick -> eject (real `flick1.bca` KEY2):
@@ -339,7 +289,7 @@ checks=35`.
 |---|---|---|
 | A Identity/content | PARTIAL | Kurage (57) and OniKurage (72) variants run; the generated `TEKI_Frog` ordinary actor runs the Kurage FSM when the sidecar opts in. Visuals remain the private adapter. |
 | B Source behavior | PARTIAL | FSM flight for both variants on the arena host and ordinary actor; real per-state source animation event/duration clocks; the converted per-state source pose is drawn for each FSM state. No within-pose skeletal playback, and states without an imported clip still use the bounded motion-END. |
-| C Combat/receivers | PASS (bounded host + ordinary actor) | Ordinary Attack suction autonomously admits and attaches a live Pikmin in both hosts; Greater captures a live captain through lane 12's policy, releases it at GroundFlick flickNearby, and dies to the bittered-captive escape. |
+| C Combat/receivers | PASS (bounded host + ordinary actor) | Ordinary Attack suction autonomously admits and attaches a live Pikmin in both hosts; Greater captures and releases a live captain through lane 12's policy. |
 | D Death/drop/transport | PARTIAL | Natural FSM death releases owned Pikmin/captain and the host leaves the field; no corpse/pellet/Onion transport yet, and OniKurage `Drop` is not the Pikmin cargo path. |
 | E Lifetime | PARTIAL | FSM-death and owner-death release restore scale; late birth/recycled address not exercised. |
 | F Persistence | UNTESTED | No restart/save path in this slice. |

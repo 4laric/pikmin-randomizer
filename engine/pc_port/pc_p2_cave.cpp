@@ -53,6 +53,23 @@ unsigned navDrawCalls=0;
 bool navMarkerLogged=false;
 using Survivor = P2CaveSurvivor;
 void invalid(const char* reason){std::fprintf(stderr,"Invalid P2 cave entry: %s\n",reason);std::abort();}
+// Tutorial later-floors entry extension (lane tutorial2-descend-policy-native,
+// #757; consumer #747). The shared header pc_p2_cave_entry_policy.h stays
+// read-only for this lane, so the new version maps here: P2_CAVE_ENTRY_4
+// admits tutorial staged floors 3-8 under the same 32-hex token contract as
+// Tutorial floors 1-2, and routes them to the Tutorial (non-beasts) path.
+// All previously valid (version, floor) pairs behave exactly as before;
+// floor 9+ stays Invalid (floor-9 cargo + persistence are follow-ons).
+P2CaveEntryProfile p2_tutorial2_entry_profile(const std::string& version, int floor, const std::string& token){
+    if(version=="P2_CAVE_ENTRY_4" && floor>=3 && floor<=8 && token.size()==32
+        && token.find_first_not_of("0123456789abcdef")==std::string::npos)
+        return P2CaveEntryProfile::Tutorial;
+    return P2CaveEntryProfile::Invalid;
+}
+// Tutorial descend range: floors 1-7 transition downward (BulbminDescendFloor);
+// floor 8 is terminal until the floor-9 follow-on, so its transition exits.
+// Beasts behavior is untouched (separate arms below).
+bool p2_tutorial_descends(int floor){return floor>=1 && floor<=7;}
 bool active(){return floorId && !completed && p2CavePreviewReady(beasts,floorId,pc_p2_preview_cargo_free_ready(),pc_p2_preview_ready(),pc_p2_preview_goal()!=nullptr,pc_p2_preview_cargo_count(),pc_p2_preview_pokos(),cargoTerminal) && naviMgr && naviMgr->getNavi() && naviMgr->getNavi()->getCurrState();}
 bool safeTime(){return active() && !gameflow.mPauseAll && !gameflow.mIsUIOverlayActive
     && (!gameflow.mMoviePlayer || !gameflow.mMoviePlayer->mIsActive) && !playerState->mInDayEnd;}
@@ -85,17 +102,47 @@ int pc_p2_cave_floor(){return floorId;}
 bool pc_p2_cave_is_beasts(){return beasts;}
 std::string pc_p2_cave_boundary_token(){return token;}
 std::string pc_p2_cave_receipt_prefix(){return floorId?"floor"+std::to_string(floorId)+":":"";}
+// Non-aborting entry-header validator for the descend fixture's
+// --check-entry mode. Same mapping + header rules as pc_p2_cave_setup
+// (shared profile, tutorial2 extension, health/count/schema/trailing
+// checks) without touching engine state and never aborting. The header
+// pc_p2_cave.h stays read-only for this lane; the fixture extern-declares
+// this symbol (established pattern).
+bool pc_p2_tutorial2_entry_check(const char* path, int* floorOut){
+    std::ifstream in(path?path:"");
+    if(!in)return false;
+    std::string version,token,extra;int floor=0,count=0;float health=0;
+    if(!(in>>version>>token>>floor>>health>>count))return false;
+    P2CaveEntryProfile profile=p2_cave_entry_profile(version,floor,token);
+    if(profile==P2CaveEntryProfile::Invalid)profile=p2_tutorial2_entry_profile(version,floor,token);
+    if(profile==P2CaveEntryProfile::Invalid || !std::isfinite(health) || health<=0 || health>1 || count<1 || count>100)
+        return false;
+    const int schema=version=="P2_CAVE_ENTRY_3"?3:(version=="P2_CAVE_ENTRY_2"?2:1);
+    for(int i=0;i<count;++i){int species=0,maturity=0;
+        if(!(in>>species>>maturity) || !p2_schema_supports(schema,species))return false;}
+    if(in>>extra || !in.eof())return false;
+    if(floorOut)*floorOut=floor;
+    return true;
+}
 void pc_p2_cave_setup(){
     const char* opt=std::getenv("PIKMIN_CAVE_NAV_DIAGNOSTICS");
     navRate.reset(opt && opt[0]==49 && opt[1]==0);navDrawCalls=0;navMarkerLogged=false;
     floorId=0;checkpointSchema=1;beasts=false;cargoTerminal=false;token.clear();requested=false;completed=false;titleTimer=0;anchor=P2CaveAnchor{};transitionShape=nullptr;
-    if(!pc_pikipelago_room_preview())return;
-    std::ifstream in("p2-cave-entry.txt");if(!in)return;
+    // yakushima4 boot-stall fix (#673): the pre-stage stall was a SILENT return.
+    // Emit an explicit fail-closed marker naming the exact blocked precondition so
+    // the guarded boot cannot stall without evidence before any stage load.
+    const bool roomPreview=pc_pikipelago_room_preview();
+    std::printf("P2_CAVE_SETUP_PROBE room_preview=%d\n",int(roomPreview));std::fflush(stdout);
+    if(!roomPreview){std::printf("P2_CAVE_SETUP_BLOCK reason=room_preview_unavailable\n");std::fflush(stdout);return;}
+    std::ifstream in("p2-cave-entry.txt");
+    if(!in){std::printf("P2_CAVE_SETUP_BLOCK reason=entry_file_missing path=p2-cave-entry.txt\n");std::fflush(stdout);return;}
     std::string version,extra;int floor,count;float health;
     if(!(in>>version>>token>>floor>>health>>count))invalid("header");
     const P2CaveEntryProfile profile=p2_cave_entry_profile(version,floor,token);
-    beasts=profile==P2CaveEntryProfile::BeastsFloor2 || profile==P2CaveEntryProfile::BeastsFloor3 || profile==P2CaveEntryProfile::BeastsFloor4;
-    if(profile==P2CaveEntryProfile::Invalid || !std::isfinite(health) || health<=0 || health>1 || count<1 || count>100)
+    const P2CaveEntryProfile admitted=profile==P2CaveEntryProfile::Invalid
+        ?p2_tutorial2_entry_profile(version,floor,token):profile;
+    beasts=admitted==P2CaveEntryProfile::BeastsFloor2 || admitted==P2CaveEntryProfile::BeastsFloor3 || admitted==P2CaveEntryProfile::BeastsFloor4;
+    if(admitted==P2CaveEntryProfile::Invalid || !std::isfinite(health) || health<=0 || health>1 || count<1 || count>100)
         invalid("header");
     std::vector<Survivor> squad;
     checkpointSchema=version=="P2_CAVE_ENTRY_3"?3:(version=="P2_CAVE_ENTRY_2"?2:1);
@@ -116,6 +163,14 @@ void pc_p2_cave_setup(){
     Navi* n=naviMgr->getNavi();if(!n || C_NAVI_PARM(n,mHealth)<=0)invalid("captain unavailable");
     n->mHealth=C_NAVI_PARM(n,mHealth)*health;
     floorId=floor;
+    if(!beasts){
+        // In-band descend-policy proof (#757): emitted from the engine on
+        // every tutorial entry; floors 1-7 descend, floor 8 exits terminal
+        // until the floor-9 follow-on.
+        std::printf("P2_TUTORIAL2_DESCEND_POLICY floor=%d descend=%d\n",
+                    floor,p2_tutorial_descends(floor)?1:0);
+        std::fflush(stdout);
+    }
     std::ifstream terminal("p2-beasts-cargo-terminal.txt");
     if(terminal){
         if(!p2CargoTerminalOptIn(terminal,beasts,floor,token) || !pc_p2_preview_ready() || !pc_p2_preview_goal() || pc_p2_preview_cargo_count()!=1 || pc_p2_preview_pokos()!=0)
@@ -195,7 +250,7 @@ bool pc_p2_cave_checkpoint(bool confirm){
         if(confirm)notice(anchor.enabled?"Stand at the hole/geyser to descend or leave the cave.":"Return to the Research Pod to descend or leave the cave.");return false;
     }
     if(confirm && !failed){
-        const char* action=(beasts || floorId==1)?"Descend":"Leave cave";
+        const char* action=(beasts || p2_tutorial_descends(floorId))?"Descend":"Leave cave";
         std::string message=std::string(action)+" with all "+std::to_string(alive.size())+" surviving Pikmin?\n"
             "Uncollected treasure stays behind. Your squad and delivered treasure will be saved together.";
         const SDL_MessageBoxButtonData buttons[]={{SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT,0,"Stay"},{SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT,1,action}};
@@ -207,7 +262,7 @@ bool pc_p2_cave_checkpoint(bool confirm){
     // a descent; every tracked Bulbmin is dropped on a cave exit. The drop set is
     // computed non-mutatingly so a failed write can retry without leaking bodies;
     // the ledger is committed only after the transfer file is written.
-    const bool exiting=!beasts && floorId!=1;
+    const bool exiting=!beasts && !p2_tutorial_descends(floorId);
     const P2BulbminCaveTransition move=exiting?P2BulbminExitCave:P2BulbminDescendFloor;
     // Leader-down (alive cleared) saves an empty squad; do not touch the Bulbmin ledger then.
     const std::vector<Piki*> dropped=alive.empty()?std::vector<Piki*>{}:pc_p2_bulbmin_transition_removes(move);
@@ -255,7 +310,7 @@ void pc_p2_cave_tick(){
         titleTimer=0;
         int count=0,purples=0,whites=0;Iterator squad(pikiMgr);CI_LOOP(squad){Piki* p=static_cast<Piki*>(*squad);if(p->isAlive()){++count;if(pc_p2_is_purple(p))++purples;if(pc_p2_is_white(p))++whites;}}
         const std::string transition=beasts && floorId>=3?" | Floor "+std::to_string(floorId+1)+" descent unavailable":
-            " | F6 at "+(anchor.enabled?anchor.kind:std::string("Pod"))+": "+((beasts || floorId==1)?"descend":"leave cave")+" | Saves at floor boundaries";
+            " | F6 at "+(anchor.enabled?anchor.kind:std::string("Pod"))+": "+((beasts || p2_tutorial_descends(floorId))?"descend":"leave cave")+" | Saves at floor boundaries";
         std::string title=std::string("Pikipelago - ")+caveName()+" | Floor "+std::to_string(floorId)+" | "+std::to_string(count)+" Pikmin ("+std::to_string(purples)+" Purple, "+std::to_string(whites)+" White) | "+std::to_string(pc_p2_preview_pokos())+" Pokos"+transition;
         if(SDL_Window* w=SDL_GL_GetCurrentWindow())SDL_SetWindowTitle(w,title.c_str());
     }
@@ -302,4 +357,128 @@ void pc_p2_cave_draw_transition(Graphics& gfx){
     gfx.drawLine(Vector3f(anchor.x+18.f,wing,anchor.z),Vector3f(anchor.x,tip,anchor.z));
     gfx.setLineWidth(oldWidth);gfx.setColour(oldColour,true);gfx.mAuxiliaryColour=oldAux;
     gfx.setCBlending(oldBlend);gfx.useTexture(oldTexture,0);gfx.setLighting(oldLight,nullptr);
+}
+
+
+// ---- Authored yakushima_4 floor-1 room graph (#682) ----
+//
+// Decoded from user/Mukki/mapunits/caveinfo/yakushima_4.txt floor 1
+// (f008 2_units_gw_l_conc.txt) and
+// user/Mukki/mapunits/units/2_units_gw_l_conc.txt, both read from the local
+// US GPVE01 disc via experimental.pikmin2_assets.disc_files.
+//   caveinfo sha256 3e3fc04e1131673e22063eb2e395e22e7ac3d4252d2db9223400632696272de0
+//   units    sha256 742624fd2cae25ad6a3bab04a5d4440e721875f25a2185809324a59c25fc867e
+// 8 rooms / 19 doors / 36 door links, baked verbatim from the decode.
+// Higher floors, triangle-mesh collision and regrowth schedules are
+// explicitly OPEN (not decoded here); coverage is room/door/link topology
+// plus route reachability (see the lane harness, which re-decodes the real
+// files and diffs the emitted table).
+struct P2Yakushima4Room { const char *name; int cells[2]; int kind; int doors; };
+struct P2Yakushima4Link {
+    int room;
+    int door;
+    int waypoint;
+    int peer;
+    int distMilli;
+    int enemyFlag;
+};
+static const P2Yakushima4Room kYakushima4Rooms[] = {
+    {"item_cap_conc", 1, 1, 0, 1},
+    {"way3_conc", 1, 1, 2, 3},
+    {"way4_conc", 1, 1, 2, 4},
+    {"wayl_conc", 1, 1, 2, 2},
+    {"way2_conc", 1, 1, 2, 2},
+    {"way2x2_conc", 1, 2, 2, 2},
+    {"room_4x4g_water_4_conc", 4, 4, 1, 4},
+    {"room_north4x4l_1_conc", 4, 4, 1, 1},
+};
+static const P2Yakushima4Link kYakushima4Links[] = {
+    {1, 0, 0, 1, 170005, 1},
+    {1, 0, 0, 2, 170005, 1},
+    {1, 1, 1, 0, 170005, 1},
+    {1, 1, 1, 2, 170005, 1},
+    {1, 2, 2, 0, 170005, 1},
+    {1, 2, 2, 1, 170005, 1},
+    {2, 0, 0, 1, 170005, 1},
+    {2, 0, 0, 2, 170005, 1},
+    {2, 0, 0, 3, 170005, 1},
+    {2, 1, 1, 0, 170005, 1},
+    {2, 1, 1, 2, 170005, 1},
+    {2, 1, 1, 3, 170005, 1},
+    {2, 2, 2, 0, 170005, 1},
+    {2, 2, 2, 1, 170005, 1},
+    {2, 2, 2, 3, 170005, 1},
+    {2, 3, 3, 0, 170005, 1},
+    {2, 3, 3, 1, 170005, 1},
+    {2, 3, 3, 2, 170005, 1},
+    {3, 0, 0, 1, 136007, 1},
+    {3, 1, 1, 0, 136007, 1},
+    {4, 0, 0, 1, 170005, 1},
+    {4, 1, 1, 0, 170005, 1},
+    {5, 0, 0, 1, 340009, 1},
+    {5, 1, 1, 0, 340009, 1},
+    {6, 0, 0, 1, 850046, 1},
+    {6, 0, 0, 2, 997832, 1},
+    {6, 0, 0, 3, 680015, 1},
+    {6, 1, 1, 0, 850046, 1},
+    {6, 1, 1, 2, 707838, 1},
+    {6, 1, 1, 3, 1020044, 1},
+    {6, 2, 2, 0, 997832, 1},
+    {6, 2, 2, 1, 707838, 1},
+    {6, 2, 2, 3, 827848, 1},
+    {6, 3, 3, 0, 680015, 1},
+    {6, 3, 3, 1, 1020044, 1},
+    {6, 3, 3, 2, 827848, 1},
+};
+static const int kYakushima4RoomCount = 8;
+static const int kYakushima4DoorCount = 19;
+static const int kYakushima4LinkCount = 36;
+
+int pc_p2_yakushima4_room_count() { return kYakushima4RoomCount; }
+
+bool pc_p2_yakushima4_validate()
+{
+    int doors = 0;
+    for (int r = 0; r < kYakushima4RoomCount; ++r) {
+        if (!kYakushima4Rooms[r].name || kYakushima4Rooms[r].doors < 0) return false;
+        doors += kYakushima4Rooms[r].doors;
+    }
+    if (doors != kYakushima4DoorCount) return false;
+    int links = 0;
+    for (int i = 0; i < kYakushima4LinkCount; ++i) {
+        const P2Yakushima4Link &link = kYakushima4Links[i];
+        if (link.room < 0 || link.room >= kYakushima4RoomCount) return false;
+        if (link.door < 0 || link.door >= kYakushima4Rooms[link.room].doors) return false;
+        if (link.peer < 0 || link.peer >= kYakushima4Rooms[link.room].doors) return false;
+        if (link.door == link.peer || link.distMilli <= 0) return false;
+        bool symmetric = false;
+        for (int j = 0; j < kYakushima4LinkCount; ++j) {
+            const P2Yakushima4Link &back = kYakushima4Links[j];
+            if (back.room == link.room && back.door == link.peer && back.peer == link.door) {
+                symmetric = true;
+                break;
+            }
+        }
+        if (!symmetric) return false;
+        ++links;
+    }
+    return links == kYakushima4LinkCount;
+}
+
+int pc_p2_yakushima4_emit_nav()
+{
+    if (!pc_p2_yakushima4_validate()) {
+        std::printf("P2_YAKUSHIMA4_AUTHORED valid=0\n");
+        std::fflush(stdout);
+        return -1;
+    }
+    for (int i = 0; i < kYakushima4LinkCount; ++i) {
+        const P2Yakushima4Link &link = kYakushima4Links[i];
+        std::printf("P2_CAVE_NAV authored=1 room=%d door=%d waypoint=%d peer=%d dist_mm=%d enemy_flag=%d\n",
+                    link.room, link.door, link.waypoint, link.peer, link.distMilli, link.enemyFlag);
+    }
+    std::printf("P2_YAKUSHIMA4_AUTHORED valid=1 rooms=%d doors=%d links=%d\n",
+                kYakushima4RoomCount, kYakushima4DoorCount, kYakushima4LinkCount);
+    std::fflush(stdout);
+    return kYakushima4LinkCount;
 }

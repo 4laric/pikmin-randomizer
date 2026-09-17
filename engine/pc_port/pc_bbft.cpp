@@ -1,5 +1,8 @@
 #include "pc_bbft.h"
 #include "pc_randomizer.h"
+#include "pc_p2_challenge_persistence.h"
+#include "pc_p2_challenge_runtime.h"
+#include "pc_p2_challenge_content.h"
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
@@ -13,6 +16,74 @@ static int challengeLevel = -1;
 static bool p2RoomPreview = false;
 bool pc_pikipelago_room_preview() { return p2RoomPreview; }
 int pc_pikipelago_challenge_level() { return challengeLevel; }
+static std::string p2ChallengeStage;
+const char* pc_p2_challenge_stage() { return p2ChallengeStage.empty() ? nullptr : p2ChallengeStage.c_str(); }
+// Decoded P2 challenge stage table (lane challenge-stage-boot-native-hook,
+// #675). Keyed by cave_id and transcribed from the canonical plan/inventory
+// pins via the #669 selector record. The engine hook records the requested
+// key; this table resolves it; the guarded fixture cross-checks flag, table
+// and the #669 P2_CHALLENGE_STAGE_SELECT_1 record. P1
+// --experimental-challenge-level is a different namespace and stays untouched.
+struct P2ChallengeStageRow {
+    const char* caveId;
+    const char* cavePath;
+    const char* sourceSha256;
+    int uiIndex;
+    int tableOrder;
+    int floors;
+    float floorSeconds[8];
+    int roster[7][3];
+    int bitterSprays;
+    int spicySprays;
+    float legacyTime;
+    int treasureCountField;
+};
+static const P2ChallengeStageRow kP2ChallengeStages[] = {
+    { "ch_NARI_01kusachi",
+      "user/Mukki/mapunits/caveinfo/ch_NARI_01kusachi.txt",
+      "b8d232f417ce3fd4b2903571a1c53234e63dec49e127d5ef5b8ef3cc34bb8d85",
+      3, 3, 1,
+      { 180.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f },
+      { {0,0,50}, {0,0,0}, {0,0,0}, {0,0,0}, {0,0,0}, {0,0,0}, {0,0,0} },
+      1, 2, 350.0f, 0 },
+};
+const P2ChallengeStageRow* pc_p2_challenge_stage_lookup(const char* caveId) {
+    if (caveId == nullptr) return nullptr;
+    for (size_t i = 0; i < sizeof(kP2ChallengeStages) / sizeof(kP2ChallengeStages[0]); ++i)
+        if (!std::strcmp(kP2ChallengeStages[i].caveId, caveId)) return &kP2ChallengeStages[i];
+    return nullptr;
+}
+const P2ChallengeStageRow* pc_p2_challenge_stage_selected() {
+    return p2ChallengeStage.empty() ? nullptr : pc_p2_challenge_stage_lookup(p2ChallengeStage.c_str());
+}
+// Challenge runtime bridge glue (ported from #710 db245877, #722). Engine-free:
+// plain field copy plus a null-by-default hook pointer, so the small
+// pc_bbft_test target (no engine objects) keeps linking and runs inert. The
+// engine-dependent bridge registers itself at startup in pikmin_pc.
+bool p2_challenge_stage_params(P2ChallengeStageParams& out) {
+    const P2ChallengeStageRow* row = pc_p2_challenge_stage_selected();
+    if (row == nullptr) return false;
+    out.caveId = row->caveId;
+    out.uiIndex = row->uiIndex;
+    out.floors = row->floors;
+    for (int i = 0; i < 8; ++i) out.floorSeconds[i] = row->floorSeconds[i];
+    for (int c = 0; c < 7; ++c)
+        for (int h = 0; h < 3; ++h) out.roster[c][h] = row->roster[c][h];
+    out.bitterSprays = row->bitterSprays;
+    out.spicySprays = row->spicySprays;
+    return true;
+}
+static P2ChallengeRuntimeHook sChallengeRuntimeHook = nullptr;
+void p2_challenge_runtime_set_hook(P2ChallengeRuntimeHook hook) {
+    sChallengeRuntimeHook = hook;
+}
+// Challenge stage content wiring (#728). Same link-safety contract: plain
+// hook pointer, null by default, engine-free here; the engine-dependent
+// content module registers itself at startup in pikmin_pc only.
+static P2ChallengeContentHook sChallengeContentHook = nullptr;
+void p2_challenge_content_set_hook(P2ChallengeContentHook hook) {
+    sChallengeContentHook = hook;
+}
 static bool testBackground = false;
 void pc_bbft_milestone(const char* text) {
     if (!enabled) return;
@@ -23,7 +94,7 @@ void pc_bbft_milestone(const char* text) {
 }
 const char* pc_bbft_save_root() {
     if (pc_randomizer_enabled()) return pc_randomizer_save_root();
-    if (!enabled && challengeLevel < 0) return "save";
+    if (!enabled && challengeLevel < 0 && p2ChallengeStage.empty()) return "save";
     // A quick-boot run must never reuse a user's named memory-card slot.
     static const std::string session = "save/bbft_sessions/" + std::to_string(
         std::chrono::system_clock::now().time_since_epoch().count());
@@ -44,6 +115,18 @@ void pc_bbft_init(int argc, char** argv) {
         if (!std::strcmp(argv[i], "--experimental-pikmin2-room")) {
             if (challengeLevel >= 0) { std::fprintf(stderr,"Only one experimental preview may be selected\n"); std::exit(2); }
             p2RoomPreview = true; challengeLevel = 0;
+        } else if (!std::strcmp(argv[i], "--experimental-challenge-stage")) {
+            if (++i>=argc) { std::fprintf(stderr,"--experimental-challenge-stage needs a stage key\n"); std::exit(2); }
+            const char* key = argv[i];
+            size_t len = std::strlen(key);
+            bool ok = len >= 1 && len <= 64 && ((key[0]>='A'&&key[0]<='Z')||(key[0]>='a'&&key[0]<='z'));
+            for (size_t k = 1; ok && k < len; ++k) {
+                char c = key[k];
+                ok = (c>='A'&&c<='Z')||(c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='_';
+            }
+            if (!ok) { std::fprintf(stderr,"--experimental-challenge-stage needs a stage key ([A-Za-z][A-Za-z0-9_]{0,63})\n"); std::exit(2); }
+            p2ChallengeStage = key;
+            std::printf("P2_CHALLENGE_STAGE_FLAG cave=%s\n", key); std::fflush(stdout);
         } else if (!std::strcmp(argv[i], "--experimental-challenge-level")) {
             if (++i>=argc || challengeLevel>=0 || std::strlen(argv[i])!=1 || argv[i][0]<'0' || argv[i][0]>'4') {
                 std::fprintf(stderr,"--experimental-challenge-level requires one ID 0-4\n"); std::exit(2);
@@ -95,11 +178,85 @@ bool pc_bbft_skip_tutorial() {
     return false;
 #endif
 }
+
+// Challenge persistence call site (#718). The #713 module
+// (pc_p2_challenge_persistence.{h,cpp}) is engine-free and not yet in any
+// CMake target, so its recorders are referenced WEAKLY here: pc_bbft_test
+// stays link-inert without the module, while every build that does compile
+// the module (the #718 callsite fixture, and pikmin_pc once the module joins
+// its sources under #186) resolves them and emits the 7 probe markers for a
+// selected stage.
+#if defined(__GNUC__)
+namespace p2challengepersist {
+bool selectStage(const char*, StageAnchors*) __attribute__((weak));
+bool recordSave(StageAnchors*) __attribute__((weak));
+bool recordLoad(StageAnchors*) __attribute__((weak));
+bool recordClear(StageAnchors*) __attribute__((weak));
+bool recordHighscore(StageAnchors*, int, double, int) __attribute__((weak));
+bool recordUnlock(StageAnchors*) __attribute__((weak));
+bool recordReceipt(StageAnchors*, int) __attribute__((weak));
+bool recordReentry(StageAnchors*) __attribute__((weak));
+}
+#endif
+
+// Overworld save-serializer session call (#736). The module
+// (pc_p2_overworld_save.{h,cpp}) joins pikmin_pc sources, so the reference
+// below is weak: pc_bbft_test stays link-inert without the module, while
+// pikmin_pc resolves it. The poll itself is context-gated (no-op unless a
+// fixture set explicit session context), so production runs that never set
+// context perform no file I/O.
+#if defined(__GNUC__)
+void pc_p2_overworld_save_poll(void) __attribute__((weak));
+#endif
+
+static void p2OverworldSaveCallSite() {
+#if defined(__GNUC__)
+    if (pc_p2_overworld_save_poll == nullptr) return;
+    pc_p2_overworld_save_poll();
+#endif
+}
+
+static bool sPersistenceEmitted = false;
+static void p2ChallengePersistenceCallSite() {
+#if defined(__GNUC__)
+    if (sPersistenceEmitted) return;
+    if (p2challengepersist::selectStage == nullptr) return; // module not linked
+    const char* caveId = pc_p2_challenge_stage();
+    if (caveId == nullptr) return;
+    p2challengepersist::StageAnchors anchors;
+    if (!p2challengepersist::selectStage(caveId, &anchors)) {
+        sPersistenceEmitted = true; // refusal already emitted its marker
+        return;
+    }
+    p2challengepersist::recordSave(&anchors);
+    p2challengepersist::recordLoad(&anchors);
+    p2challengepersist::recordClear(&anchors);
+    // Deterministic result-screen sample (mirrors #713: 42 pokos, 120.5 s, 15 squad).
+    p2challengepersist::recordHighscore(&anchors, 42, 120.5, 15);
+    p2challengepersist::recordUnlock(&anchors);
+    p2challengepersist::recordReceipt(&anchors, 1);
+    p2challengepersist::recordReentry(&anchors);
+    sPersistenceEmitted = true;
+#endif
+}
 void pc_bbft_update() {
     if (pc_randomizer_enabled()) { pc_randomizer_update(); return; }
 #ifdef _WIN32
     if (enabled) bbft_transport_update();
 #endif
+    // Challenge persistence call site (#718): emits the 7 probe markers for a
+    // selected challenge stage via the #713 module; inert without it.
+    p2ChallengePersistenceCallSite();
+    // Overworld save-serializer session call (#736): context-gated save+verify
+    // via the overworld save module; inert without the module or context.
+    p2OverworldSaveCallSite();
+    // Challenge host-mode runtime bridge (#722, ported from #710). Null (inert)
+    // unless the pikmin_pc bridge registered at startup; pc_bbft_test never
+    // registers.
+    if (sChallengeRuntimeHook) sChallengeRuntimeHook();
+    // Challenge stage content wiring (#728). Null (inert) unless the pikmin_pc
+    // content module registered at startup; pc_bbft_test never registers.
+    if (sChallengeContentHook) sChallengeContentHook();
 }
 bool pc_bbft_hold() {
     if (pc_randomizer_enabled()) {

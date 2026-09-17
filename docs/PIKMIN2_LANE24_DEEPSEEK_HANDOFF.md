@@ -524,7 +524,7 @@ Net: ~40 min saved; no result discarded.
 | 2. Autonomous movement and animation | PASS (natural) | output/l24-out/queen-freemode-runtime2/queen/7db39ad455b044c4aa006917d336b423/native.log:865 | natural |
 | 3. Attacks and receivers | PASS (natural) | output/l24-out/queen-freemode-runtime2/queen/7db39ad455b044c4aa006917d336b423/native.log:851 | natural |
 | 4. Death and corpse | PASS (natural) | output/l24-out/queen-freemode-runtime2/queen/7db39ad455b044c4aa006917d336b423/native.log:1723 | natural |
-| 5. Actual transport and reward | N/A | docs/PIKMIN2_LANE24_DEEPSEEK_HANDOFF.md (policy actor; no carcass, no Pod receipt) | natural |
+| 5. Actual transport and reward | PASS (natural) | output/l24-out/queen-creature-runtime/queen/62b8ff57457c4edb90dd16958f665118/native.log:1386 | natural ([Pikipelago] P2_POD_RECEIPT id=corpse:queen:230010 value=2 new=1 pokos=2 seeds=0) |
 | 6. Cleanup and re-entry | PASS (natural) | output/l24-out/queen-freemode-runtime2/queen/7db39ad455b044c4aa006917d336b423/native.log:1724 | natural |
 
 ## Concrete source ID
@@ -557,7 +557,7 @@ the kill/flick/corpse/cleanup chain in the same log is complete.
   2. movement_animation accepted [PASS]
   3. attacks_receivers  accepted [PASS]
   4. death_corpse       accepted [PASS]
-  5. transport_reward   ignored [N/A]
+  5. transport_reward   accepted [PASS]
   6. cleanup_reentry    accepted [PASS]
 53 KingChappy (role=source):
   1. identity_spawn     ignored [PARTIAL]
@@ -715,3 +715,56 @@ line above; Queen 30 is unchanged. Checker output pasted below.
 
 Net: the carry-latch audit saved the whole remaining effort; ~45 min saved.
 
+
+
+## Diagnostic slice: gate 5 (transport_reward)
+
+Queen (source 30) was one gate from admission: only `transport_reward`. The King
+already lands a natural Pod receipt (`corpse:king:221010`); this slice applies the
+same self-contained recipe to the Queen (`output/deepseek-wave/docs/TRANSPORT_REWARD_RECIPE.md`).
+
+### What changed
+
+Native (`deepseek/p2-l24-native`): new sidecar `pc_p2_queen_teki.{h,cpp}` +
+`pc_p2_queen_teki_policy.h` mirroring `pc_p2_king_teki` - binds a generated
+TEKI_Chappy host (`P2_QUEEN_TEKI_1 1 <generator> 3`), holds the spawn, rewrites
+host life to the Empress's 5000 via the `getParameterF` seam (regen 0), zeroes the
+pellet-appear chance, suppresses the host's own sight/attack parms (armor/kogane
+9-index set), draws the Queen `wait1`/`dead` sampled bank, and applies the source
+shake thresholds (blows 30/35/45/50, sticking 5/10/15) to Pikmin attached in
+AttackMode. On natural death it logs `P2_QUEEN_TEKI_CORPSE`, stops re-pinning, and
+the Pod credits `corpse:queen:<gen>` via new `pc_p2_queen_teki_receipt` +
+`pc_p2_queen_teki_name` ("Empress Bulblax") branches in `pc_p2_preview.cpp`.
+Narrow hook commits: `CMakeLists.txt`, `include/teki.h` (param chain),
+`gameCoreSection.cpp` (setup/reset), `tekibteki.cpp` (tick/draw),
+`tekimgr.cpp` (3 resets), `pc_p2_teki_lifetime.cpp` (forget/reset).
+
+Root (`deepseek/p2-l24`): `experimental/pikmin2_queen_creature_runtime.py` stages
+the host + 64 reds + Pod package, releases the squad in FreeMode next to the
+corpse, parks the captain, rings until a carrier latches then stops; validates
+via `queen_creature_validate`.
+
+### Evidence (one GL log, no injection, no forced transport)
+
+`output/l24-out/queen-creature-runtime/queen/62b8ff57457c4edb90dd16958f665118/native.log`:
+READY 727 (health=5000.0), FLICK 777/785/789 (blows-driven), CORPSE 1346
+(health=0.0), CARRY/PELLET found, `P2_POD_RECEIPT id=corpse:queen:230010
+value=2 new=1 pokos=2 seeds=0` at 1386, `PASS P2_QUEEN_CREATURE_RUNTIME` at 1388
+(exit 0; 960x540 centred; 64 reds; no staging markers; no `P2_POD_CAPTAIN_RETURN`).
+
+Build: `py -3.12 .../build_lane.py l24` -> native `21e7819e...`, dirty=no,
+exe sha256 `19ac518b...`, `ninja: no work to do.`
+Tests: `py -3.12 -m pytest tests/test_pikmin2_lane24_gates.py -q` -> 26 passed.
+
+### Subagent usage
+
+- explore #1 (Queen source/corpse audit): Queen 5000 HP, receiver rules, carcass
+  20-30 carriers, and the decisive fact `pc_p2_queen` creates no Pellet (host
+  Teki required). Used as-is.
+- explore #2 (candidate inventory): confirmed the King sidecar as the exact
+  template, the missing `corpse:queen:` branch, and the scaffolded marker
+  contract. Used as-is.
+- general #3 (validator/tests): appended `queen_creature_validate` +
+  `queen_transport_validate` + tests, 26 passed first run. Used as-is.
+
+Net: ~30 min saved; nothing discarded.

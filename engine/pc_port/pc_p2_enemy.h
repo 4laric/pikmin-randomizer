@@ -31,9 +31,6 @@ class Teki;
 // Private normal-campaign opt-in; retains all P1 gameplay and reward identities.
 void pc_p2_snow_campaign_setup();
 void pc_p2_snow_campaign_bind(Teki*);
-// Generated-session opt-in: bind one ordinary spawned actor whose live generator
-// resolved to a bound P2 source identity from the ENEMY_P2 bridge.
-void pc_p2_generated_bind(Teki*, const void* generator);
 
 // Authoritative current clock, independent of whether this actor was rendered.
 bool pc_p2_snow_clock(BTeki*, const char*& clip, float& sourceFrame, bool corpse=false);
