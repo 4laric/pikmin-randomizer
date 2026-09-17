@@ -32,6 +32,7 @@
 //     view-angle/FOV search is a documented port adaptation.
 // No other lane's module is modified; every hook is a no-op for unregistered actors.
 #include "pc_p2_mar.h"
+#include "pc_p2_mar_receipt.h"
 #include "teki.h"
 #include "Interactions.h"
 #include "Piki.h"
@@ -79,6 +80,31 @@ constexpr float HOME_RADIUS = 100.0f;       // fp10 home radius
 constexpr float SIGHT = 275.0f;             // fp12 sight radius
 constexpr float SHAKE_KNOCKBACK = 200.0f;   // fp17 source shake knockback
 constexpr float MAX_ATTACK_RANGE = 200.0f;  // fp20
+constexpr float ATTACKABLE_ANGLE = 0.785398f; // 45-degree half-angle in radians; fp23 is absent
+                                              // from the extracted retail block (documented port value).
+constexpr float SWOOP_HEIGHT = 10.0f;       // port engagement descent: come down to
+                                              // grounded-Pikmin latch/hit reach while
+                                              // closing (CHASE) so the squad can hold
+                                              // contact; climb back when disengaged.
+constexpr float LAND_HEIGHT = 3.0f;         // port blow touchdown: sit nearly on the
+                                              // ground for the blow so grounded Pikmin pile
+                                              // on without throwing or latching mid-air.
+                                              // Retail lands via TAIAdescent/TAIAlandingMar
+                                              // when Pikmin stick (TAImar.cpp:716-717);
+                                              // without ever touching down, stk stays 0
+                                              // and no natural damage lands (observed).
+constexpr float TOUCHDOWN_BAND = 12.0f;     // below this height above ground the
+                                              // touchdown counts as landed (flag work
+                                              // below); comfortably inside Pikmin
+                                              // jump/strike reach of the 30-size body.
+constexpr float ATTACK_HOVER_SPEED = 12.0f; // port blow hover: retail WalkVelocity
+                                              // is 60 and RunVelocity 100, so the squad
+                                              // can never hold strike range against a
+                                              // full-speed pass (observed mind swings
+                                              // 10-47, facing rarely within the 18-degree
+                                              // entry cone). Serve this during MAR_ATTACK
+                                              // so retail itself slows to a hover while
+                                              // blowing; all other states keep retail.
 constexpr float ATTACK_RADIUS = 300.0f;     // fp22 wind radius
 constexpr float FLIGHT_HEIGHT = 80.0f;      // proper fp01
 constexpr float RISE_FACTOR = 1.0f;         // proper fp02
@@ -108,6 +134,7 @@ struct Mar {
     Vector3f home;
     Vector3f moveTarget;
     int attackFrame = FALLBACK_ATTACK_FRAME;
+    float heightTarget = FLIGHT_HEIGHT;
     bool blowFired = false;
     std::set<int> firedEvents;
     std::string clip = "move1";
@@ -180,7 +207,7 @@ void enter(Mar& s, State state, const char* clip) {
 void setHeightVelocity(BTeki* a, Mar& s, float dt) {
     const Vector3f pos = a->getPosition();
     const float groundY = groundHeight(pos);
-    float idealHeight = FLIGHT_HEIGHT;
+    float idealHeight = s.heightTarget;
     if (pos.y - groundY > idealHeight - VERTICAL_SWING_WIDTH) {
         s.pitchRatio += VERTICAL_SWING_SPEED * dt;
         if (s.pitchRatio > TAU) s.pitchRatio -= TAU;
@@ -294,18 +321,49 @@ void pc_p2_mar_reset() {
     actors.clear();
     clips.clear();
     ready = false;
+    pc_p2_mar_receipt_reset();
 }
-void pc_p2_mar_forget(BTeki* actor) { actors.erase(static_cast<PelletView*>(actor)); }
+void pc_p2_mar_forget(BTeki* actor) { actors.erase(static_cast<PelletView*>(actor)); pc_p2_mar_receipt_forget(actor); }
 
 float pc_p2_mar_param_f(const BTeki* actor, int idx, float fallback) {
     if (!ready || !actors.count(static_cast<PelletView*>(const_cast<BTeki*>(actor)))) return fallback;
     if (idx == TPF_Life) return LIFE;
     if (idx == TPF_LifeRecoverRate) return 0.0f;
+    // Grounded-squad targeting (#683): the engine gates Pikmin engagement on
+    // AttackableRange/Angle, so returning 0 made Mar unattackable. Serve the
+    // source fp20 range and the documented 45-degree port half-angle here;
+    // other combat params stay 0 (Mar deals fp24=0 damage; its wind reach uses
+    // the custom flick path, not these params).
+    if (idx == TPF_AttackableRange) return MAX_ATTACK_RANGE;
+    if (idx == TPF_AttackableAngle) return ATTACKABLE_ANGLE;
+    // Retail engagement descent (#687): the port's own velocity writes never
+    // take effect (the retail TAImar hover owns mVelocity every frame;
+    // observed mary ignored the port target and held retail fp FlightHeight
+    // 60 + terrain with stk=0 forever), but the retail hover reads
+    // TPF_FlightHeight live (TAIAmove.cpp:866,882,1231; tekiyteki.cpp:151)
+    // through this same hook. Serve SWOOP_HEIGHT while closing (CHASE) and
+    // LAND_HEIGHT for the blow (ATTACK) so retail itself brings Mar down to
+    // grounded-Pikmin pile-on reach; all other states keep retail 60.
+    if (idx == TPF_FlightHeight) {
+        auto entry = actors.find(static_cast<PelletView*>(const_cast<BTeki*>(actor)));
+        if (entry != actors.end()) {
+            if (entry->second.state == MAR_ATTACK) return LAND_HEIGHT;
+            if (entry->second.state == MAR_CHASE) return SWOOP_HEIGHT;
+        }
+        return fallback;
+    }
+    // Blow hover (#687): same retail-steering pattern as the swoop above.
+    // TAIAmove reads Walk/RunVelocity live; serving the hover speed during
+    // MAR_ATTACK slows retail to a hover while blowing so the grounded squad
+    // can close, face, and latch. Other states keep retail 60/100.
+    if (idx == TPF_WalkVelocity || idx == TPF_RunVelocity) {
+        auto entry = actors.find(static_cast<PelletView*>(const_cast<BTeki*>(actor)));
+        if (entry != actors.end() && entry->second.state == MAR_ATTACK) return ATTACK_HOVER_SPEED;
+        return fallback;
+    }
     switch (idx) {
     case TPF_VisibleRange:
     case TPF_VisibleAngle:
-    case TPF_AttackableRange:
-    case TPF_AttackableAngle:
     case TPF_AttackRange:
     case TPF_AttackHitRange:
     case TPF_AttackPower:
@@ -328,6 +386,7 @@ bool pc_p2_mar_clip(const BTeki* actor, const char*& name, float& phase) {
 
 void pc_p2_mar_setup() {
     pc_p2_mar_reset();
+    pc_p2_mar_receipt_setup();
     if (!tekiMgr) return;
 
     std::ifstream bank("p2-flying-bank.txt");
@@ -421,6 +480,7 @@ void pc_p2_mar_setup() {
         enter(s, MAR_WAIT, "move1");
         std::printf("P2_MAR_BIND generator=%u source_id=29 visual_only=0\n",
                     actor->mGenerator->_70);
+        pc_p2_mar_receipt_bind(actor);
         std::printf("P2_MAR_STATE generator=%u state=wait\n", actor->mGenerator->_70);
         std::fflush(stdout);
         const Vector3f pos = actor->getPosition();
@@ -459,6 +519,7 @@ void pc_p2_mar_update(BTeki* actor) {
     s.stateTime += dt;
     switch (s.state) {
     case MAR_WAIT: {
+        s.heightTarget = FLIGHT_HEIGHT;
         stopFlying(actor, s, dt);
         Creature* target = nearestTarget(pos);
         if (target) {
@@ -474,6 +535,7 @@ void pc_p2_mar_update(BTeki* actor) {
         break;
     }
     case MAR_MOVE: {
+        s.heightTarget = FLIGHT_HEIGHT;
         Creature* target = nearestTarget(pos);
         if (target) {
             std::printf("P2_MAR_STATE generator=%u state=chase\n", generator);
@@ -490,6 +552,10 @@ void pc_p2_mar_update(BTeki* actor) {
         break;
     }
     case MAR_CHASE: {
+        // Descend while closing so the touchdown is reached during the blow;
+        // the retail hover (steered via served FlightHeight below) descends
+        // too slowly if it only starts at attack entry.
+        s.heightTarget = SWOOP_HEIGHT;
         Creature* target = nearestTarget(pos);
         if (!target) {
             std::printf("P2_MAR_STATE generator=%u state=wait\n", generator);
@@ -513,6 +579,18 @@ void pc_p2_mar_update(BTeki* actor) {
         break;
     }
     case MAR_ATTACK: {
+        // Retail touchdown: sit nearly on the ground for the blow so the
+        // grounded squad piles on and deals natural damage; climb back on
+        // exit. Altitude steered through served FlightHeight (see
+        // pc_p2_mar_param_f): the port's own velocity writes never take
+        // effect. Landing flag (#687): ActAttack::exec refuses flying,
+        // unstuck targets (aiAttack.cpp:297), so grounded orders can never
+        // engage while CF_IsFlying holds. Use the engine's own
+        // finishFlying/startFlying pair: clear the flag once actually low so
+        // the wrapper delegates to ActJumpAttack, restore it while high.
+        s.heightTarget = LAND_HEIGHT;
+        if (pos.y - groundHeight(pos) < TOUCHDOWN_BAND) actor->finishFlying();
+        else actor->startFlying();
         stopFlying(actor, s, dt);
         const float frame = s.stateTime * 30.0f;
         if (!s.blowFired && frame >= float(s.attackFrame)) {
@@ -521,6 +599,7 @@ void pc_p2_mar_update(BTeki* actor) {
         }
         if (s.stateTime >= clipDuration("attack")) {
             std::printf("P2_MAR_STATE generator=%u state=wait\n", generator);
+            actor->startFlying();
             enter(s, MAR_WAIT, "move1");
         }
         break;

@@ -747,9 +747,6 @@ int main(int argc, char** argv) {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1); SDL_SetMainReady(); pc_gpu_preference_apply();
     _putenv_s("PIKMIN_RANDOMIZER_TEST_BACKGROUND", "1"); pc_bbft_init(argc, argv);
     require(pc_pikipelago_room_preview(), "room"); require(pc_window_init("Demon host fixture", 960, 540), "window");
-    pc_settings_init();
-    pc_window_set_display_mode(0);
-    pc_window_set_window_size(960, 540);
     pc_window_center();
     {
         SDL_Window* window = SDL_GL_GetCurrentWindow();
@@ -762,7 +759,7 @@ int main(int argc, char** argv) {
             width, height, x, y, bounds.w, bounds.h, int(centered));
         std::fflush(stdout);
     }
-    gsys->Initialise(); pc_settings_p2d_init(); nodeMgr = new NodeMgr();
+    pc_settings_init(); gsys->Initialise(); pc_settings_p2d_init(); nodeMgr = new NodeMgr();
     gsys->run(new DemonHostApp());
     return 0;
 }

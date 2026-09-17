@@ -13,6 +13,7 @@ class Graphics;
 class Shape;
 class CollPart;
 class Navi;
+class BTeki;
 
 // Private visual host for the staged P2 Sarai (Swooping Snitchbug, enemy ID 23)
 // model. It is deliberately not registered as a P1 teki. It loads the converted
@@ -48,6 +49,18 @@ public:
     CollPart* mouthPart(unsigned slot) const { return slot < 2 ? mMouths[slot] : nullptr; }
     std::uint64_t ownerToken() const { return mOwnerToken; }
     void sceneExit();
+
+    // Ordinary spawned anchor binding (#242 admission). The host binds to the
+    // spawned teki actor that owns the lane's generated slot; that actor is the
+    // damage/lifetime anchor (real health, engine corpse on death) while this
+    // host owns the Sarai behaviour and visual. Default-off; only the ordinary
+    // manager setup binds.
+    bool bindNativeActor(BTeki* actor, unsigned generatorId, int tekiType);
+    void unbindNativeActor(BTeki* actor);
+    bool revalidateNativeActor(BTeki* actor, unsigned generatorId, int tekiType);
+    BTeki* boundNativeActor() const { return mBoundActor; }
+    Vector3f position() const { return mSRT.t; }
+    bool dead() const { return mDead; }
 
     // Opt-in natural captor route (#457). When enabled, update() acquires a live
     // naviMgr captain through the Sarai source target geometry (pc_p2_sarai_policy.h),
@@ -98,6 +111,8 @@ private:
     bool mSceneExited;
     unsigned mRenderCount = 0;
     std::uint64_t mOwnerToken;
+    BTeki* mBoundActor = nullptr;
+    bool mDead = false;
     void updateMouths();
     void resetMouthPose();
 

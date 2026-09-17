@@ -8,9 +8,15 @@
 #include "NaviMgr.h"
 #include "Piki.h"
 #include "PikiMgr.h"
+#include "Generator.h"
+#include "teki.h"
+#include "pc_randomizer.h"
+#include "pc_p2_generated_placement.h"
 
 #include <cmath>
 #include <cstdio>
+#include <fstream>
+#include <string>
 
 namespace {
 constexpr int kMaxTargets = 64;
@@ -21,6 +27,106 @@ bool sStunEdge = false;
 P2WaterwraithSteerMode sLastSteerMode = P2WWSTEER_Hold;
 P2WaterwraithMotion sLastMotion = P2WWMOTION_None;
 bool sTiredEdge = false;
+
+// Generated-claim arm (consumer #572, gate1): bind the placement-owned
+// seeded Teki named by p2-waterwraith-generated.txt. Observation only:
+// verifies liveness, placement acceptance and seed source, then logs the
+// bind; per-tick revalidation forgets on loss. Never touches the fixed
+// rig, fixed markers, health, transport or receipts. The claimed pointer
+// is compared, never dereferenced after birth (a dead actor may be freed):
+// loss reasons stay coarse (lost/changed) by design.
+Teki* sClaimed = nullptr;
+bool sClaimSidecarTried = false;
+bool sClaimSidecarValid = false;
+unsigned sClaimGenerator = 0;
+unsigned sClaimSlot = 0;
+
+bool readGeneratedSidecar(unsigned& generator, unsigned& slot)
+{
+    generator = 0;
+    slot = 0;
+    std::ifstream in("p2-waterwraith-generated.txt");
+    if (!in) {
+        return false;
+    }
+    std::string magic;
+    unsigned gen = 0;
+    unsigned sl = 0;
+    std::string tail;
+    if (!(in >> magic) || magic != "P2_WATERWRAITH_GENERATED_1") {
+        std::printf("P2_WATERWRAITH_GENERATED_SIDECAR skipped=bad-magic\n");
+        std::fflush(stdout);
+        return false;
+    }
+    if (!(in >> gen >> sl) || !gen || !sl || (in >> tail)) {
+        std::printf("P2_WATERWRAITH_GENERATED_SIDECAR skipped=malformed\n");
+        std::fflush(stdout);
+        return false;
+    }
+    generator = gen;
+    slot = sl;
+    return true;
+}
+
+Teki* findGeneratedActor(unsigned generator, unsigned slot)
+{
+    if (!tekiMgr || !generator || !slot) {
+        return nullptr;
+    }
+    Iterator it(tekiMgr);
+    CI_LOOP(it)
+    {
+        Teki* candidate = static_cast<Teki*>(*it);
+        if (!candidate || !candidate->mGenerator
+            || candidate->mGenerator->_70 != generator) {
+            continue;
+        }
+        if (!candidate->isAlive()) {
+            continue;
+        }
+        if (!pc_p2_generated_placement_is_bound(static_cast<BTeki*>(candidate))) {
+            continue;
+        }
+        const unsigned uid = pc_randomizer_generator_id(candidate->mGenerator);
+        if (!uid || uid != slot) {
+            continue;
+        }
+        if (pc_randomizer_p2_source_for_id(uid) != 99) {
+            continue;
+        }
+        return candidate;
+    }
+    return nullptr;
+}
+
+void updateGeneratedClaim()
+{
+    if (!sClaimSidecarTried) {
+        sClaimSidecarTried = true;
+        sClaimSidecarValid = readGeneratedSidecar(sClaimGenerator, sClaimSlot);
+    }
+    if (!sClaimSidecarValid) {
+        return;
+    }
+    Teki* actor = findGeneratedActor(sClaimGenerator, sClaimSlot);
+    if (!sClaimed) {
+        if (!actor) {
+            return;
+        }
+        sClaimed = actor;
+        std::printf("P2_WATERWRAITH_GENERATED_BIND generator=%u slot=%u source=99 type=%d\n",
+                    sClaimGenerator, sClaimSlot, static_cast<int>(actor->mTekiType));
+        std::fflush(stdout);
+        return;
+    }
+    if (actor != sClaimed) {
+        const unsigned gen = sClaimGenerator;
+        sClaimed = nullptr;
+        std::printf("P2_WATERWRAITH_GENERATED_FORGET generator=%u reason=%s\n",
+                    gen, actor ? "changed" : "lost");
+        std::fflush(stdout);
+    }
+}
 
 bool hitRange(float ax, float az, float bx, float bz, float radius)
 {
@@ -35,6 +141,11 @@ void pc_p2_waterwraith_encounter_reset()
     sLastSteerMode = P2WWSTEER_Hold;
     sLastMotion = P2WWMOTION_None;
     sTiredEdge = false;
+    sClaimed = nullptr;
+    sClaimSidecarTried = false;
+    sClaimSidecarValid = false;
+    sClaimGenerator = 0;
+    sClaimSlot = 0;
 }
 
 bool pc_p2_waterwraith_encounter_ready()
@@ -53,6 +164,8 @@ void pc_p2_waterwraith_encounter_step(P2WaterwraithActor& actor, P2WaterwraithAc
     P2WaterwraithRig& rig = actor.rig();
 
     ++sStats.ticks;
+
+    updateGeneratedClaim();
 
     // Autonomous driver feeds (muse l63, #503). The live active-captain XZ is
     // the source walkFunc chase target (:874); read from the live engine with

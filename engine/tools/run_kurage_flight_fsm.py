@@ -30,7 +30,6 @@ SCENARIOS = {
     "flight-fsm-greater": "--flight-fsm-greater",
     "flight-fsm-greater-drop": "--flight-fsm-greater-drop",
     "flight-fsm-greater-captain": "--flight-fsm-greater-captain",
-    "flight-fsm-greater-bitter": "--flight-fsm-greater-bitter",
     "flight-fsm-stuck-flick": "--flight-fsm-stuck-flick",
     "flight-fsm-death-cycle": "--flight-fsm-death-cycle",
     "flight-fsm-patrol": "--flight-fsm-patrol",
@@ -50,9 +49,6 @@ parser.add_argument("--run", type=Path, required=True)
 parser.add_argument("--models", type=Path,
     help="optional converted Kurage pose directory; each <motion>.mod is copied "
          "as kurage_<motion>.mod so the host can draw the per-state source pose")
-parser.add_argument("--greater-models", type=Path,
-    help="optional converted OniKurage pose directory; copied as "
-         "onikurage_<motion>.mod for the Greater variant's per-state pose")
 args = parser.parse_args()
 
 flag = SCENARIOS[args.scenario]
@@ -67,27 +63,14 @@ for name in ("assets", "p2-kurage-arena.txt"):
 args.run.mkdir(parents=True)
 shutil.copytree(args.base_session / "assets", args.run / "assets")
 shutil.copy2(args.base_session / "p2-kurage-arena.txt", args.run / "p2-kurage-arena.txt")
-def copy_models(models, target, prefix):
-    copied = []
-    # Flat converted layout: <motion>.mod.  Material-patched/envmap layout:
-    # <motion>/patched.mod (experimental.pikmin2_kurage_material_patch #282 /
-    # _envmap #286).
-    for model in sorted(models.glob("*.mod")):
-        shutil.copy2(model, target / (prefix + model.name))
-        copied.append(model.name)
-    for patched in sorted(models.glob("*/patched.mod")):
-        shutil.copy2(patched, target / (prefix + patched.parent.name + ".mod"))
-        copied.append(patched.parent.name + "/patched.mod")
-    return copied
-
-
-target = args.run / "assets/dataDir/courses/pikmin2room"
-if args.models is not None or args.greater_models is not None:
-    target.mkdir(parents=True, exist_ok=True)
 if args.models is not None:
-    print("kurage models copied:", ", ".join(copy_models(args.models, target, "kurage_")))
-if args.greater_models is not None:
-    print("onikurage models copied:", ", ".join(copy_models(args.greater_models, target, "onikurage_")))
+    target = args.run / "assets/dataDir/courses/pikmin2room"
+    target.mkdir(parents=True, exist_ok=True)
+    copied = []
+    for model in sorted(args.models.glob("*.mod")):
+        shutil.copy2(model, target / ("kurage_" + model.name))
+        copied.append(model.name)
+    print("kurage models copied:", ", ".join(copied))
 
 environment = os.environ.copy()
 environment["PATH"] = "C:/msys64/mingw64/bin;" + environment["PATH"]

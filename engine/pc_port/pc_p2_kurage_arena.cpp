@@ -415,6 +415,7 @@ bool pc_p2_kurage_arena_update(float delta, bool ownerAlive)
             }
         }
         sHost.fsmAltitude = out.altitude;
+        const int prevState = sHost.lastFsmState;
         if ((int)out.state != sHost.lastFsmState) {
             sHost.lastFsmState = (int)out.state;
             const p2sampled::Clip* clip = stateClip((int)out.state);
@@ -466,23 +467,20 @@ bool pc_p2_kurage_arena_update(float delta, bool ownerAlive)
             if (sHost.captainCaptured) {
                 for (int slot = 0; slot < p2onikurage::kMouthSlotCount; ++slot)
                     sHost.captainSlots.advanceDefaultOffset(slot);
-                // Bounded attach: pin the held captain to the mouth-slot offset.
-                // The source keeps it held through Drop/Land/Ground and releases
-                // it at the GroundFlick flickNearby (KEY3), not at Drop exit.
+                // Bounded attach: pin the held captain to the mouth-slot offset
+                // until the source Drop lands and the captain is released.
                 const p2onikurage::Slot& held = sHost.captainSlots.slots()[0];
                 Vector3f target = sHost.mouth.mCentre;
                 target.x += held.offset.x;
                 target.y += held.offset.y;
                 target.z += held.offset.z;
                 if (valid(target)) sHost.captainNavi->resetPosition(target);
-                if (sHost.ownerBittered) {
-                    // OniKurage::escapeCheckNavi: a bittered captive escapes and
-                    // zeroes the enemy health (EnemyDied), routing to Dead.
-                    if (sHost.captainSlots.escapeCheck(0, false, true) == p2onikurage::Event::EnemyDied) {
-                        sHost.fsmHealth = 0.0f;
-                        sHost.ownerHasHealth = false;
-                        std::printf("P2_KURAGE_BITTER_DEATH\n");
-                    }
+                if (prevState == (int)p2kurage::State::Drop && (int)out.state != (int)p2kurage::State::Drop) {
+                    sHost.captainPolicy->releaseCaptured(sHost.captainTarget, sHost.captorEpoch);
+                    std::printf("P2_KURAGE_CAPTAIN_RELEASED captain=%d state=%d\n",
+                        sHost.captainTarget, (int)out.state);
+                    sHost.captainSlots.onDeath();
+                    sHost.captainCaptured = false;
                 }
             }
         }
@@ -492,28 +490,7 @@ bool pc_p2_kurage_arena_update(float delta, bool ownerAlive)
             pc_p2_kurage_receiver_release_all();
             std::printf("P2_KURAGE_FLICK_STICK released=%d\n", released);
         }
-        if (out.flickNearby) {
-            // KurageState GroundFlick KEY3: flickNearbyNavi releases the held
-            // captain (InteractFlick + InteractBomb) away from the body, and
-            // flickNearbyPikmin clears nearby Pikmin.
-            std::printf("P2_KURAGE_FLICK_NEARBY\n");
-            if (sHost.captainCaptured && sHost.captainPolicy && sHost.captainNavi) {
-                const float dx = sHost.captainNavi->mSRT.t.x - sHost.position.x;
-                const float dz = sHost.captainNavi->mSRT.t.z - sHost.position.z;
-                const float len = std::sqrt(dx * dx + dz * dz);
-                if (len > 1e-6f && valid(sHost.captainNavi->mSRT.t)) {
-                    Vector3f flung = sHost.captainNavi->mSRT.t;
-                    flung.x += dx / len * p2onikurage::kFlickSeparation;
-                    flung.z += dz / len * p2onikurage::kFlickSeparation;
-                    if (valid(flung)) sHost.captainNavi->resetPosition(flung);
-                }
-                sHost.captainPolicy->releaseCaptured(sHost.captainTarget, sHost.captorEpoch);
-                std::printf("P2_KURAGE_CAPTAIN_RELEASED captain=%d state=%d\n",
-                    sHost.captainTarget, (int)out.state);
-                sHost.captainSlots.onDeath();
-                sHost.captainCaptured = false;
-            }
-        }
+        if (out.flickNearby) std::printf("P2_KURAGE_FLICK_NEARBY\n");
         if (out.downEffect) std::printf("P2_KURAGE_DOWN_EFFECT\n");
         if (out.flickEffect) std::printf("P2_KURAGE_FLICK_EFFECT\n");
         if (out.deathProcedure) std::printf("P2_KURAGE_DEATH_PROCEDURE\n");
@@ -691,15 +668,11 @@ void pc_p2_kurage_arena_draw(Graphics& gfx)
     Shape* shape = nullptr;
     if (sHost.fsmEnabled) {
         const char* base = pc_p2_kurage_visual_motion_for_state(sHost.lastFsmState);
-        const bool greater = sHost.variant == p2kurage::Variant::Greater;
-        shape = pc_p2_kurage_visual_shape_variant(base, greater);
+        shape = pc_p2_kurage_visual_shape(base);
         static const char* lastBase = nullptr;
-        static int lastVariant = -1;
-        if (base && (base != lastBase || int(greater) != lastVariant)) {
+        if (base && base != lastBase) {
             lastBase = base;
-            lastVariant = int(greater);
-            std::printf("P2_KURAGE_POSE motion=%s variant=%s available=%d\n", base,
-                greater ? "Greater" : "Lesser", int(shape != nullptr));
+            std::printf("P2_KURAGE_POSE motion=%s available=%d\n", base, int(shape != nullptr));
             std::fflush(stdout);
         }
     }

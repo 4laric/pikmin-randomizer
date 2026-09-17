@@ -1,3 +1,8 @@
+// ADDITIVE-SCOPE GUARD (#678): standalone contract builds define
+// P2_DAMAGUMO_BINDING_STANDALONE to compile only the engine-free
+// profile/mesh/slot binding below. Production builds (macro undefined)
+// compile the original file content that follows, byte-identical.
+#ifndef P2_DAMAGUMO_BINDING_STANDALONE
 // Family-owned snagret-family source behavior for the batch-3 Chappy placement
 // vehicle: Segmented Crawbster (DangoMushi, EnemyID 94). Implements the source
 // DangoMushiState.cpp segmented roller FSM: Stay -> Appear (fly) -> Wait ->
@@ -1033,3 +1038,161 @@ void pc_p2_dangomushi_update(BTeki* actor) {
     // Step any live Rock/Egg children the hazard decisions created.
     tickRain(s, actor, pos, dt);
 }
+
+#else
+// pc_p2_dangomushi.cpp -- DangoMushi profile/mesh/slot binding, slot 312004 (#678).
+//
+// Binds the #670-derived Damagumo/Demon profile+mesh for arena slot 312004
+// under the #638 staging contract (installer accepts Damagumo ONLY from an
+// explicit demon-lane 56 profile/mesh, hash-gated, never aliased).
+//
+// Source facts (verified #670 record; read-only refs, nothing reimplemented):
+//   profile f9ec5030..., mesh 8fc0ac7f..., slot-312004 61019a39...,
+//   15 joints, 4 textures, BCA rows landing/wait/flick/dead.
+// Full artifact hashes are caller-supplied here: the emitted #670 artifact
+// files are not present on disk in this workspace, so this TU takes expected
+// hashes as explicit parameters and gates on exact match (fail-closed). The
+// recorded prefixes above are cross-checks, not substitutes.
+//
+// Engine-free core (stdlib only): compiles standalone for contract review and
+// links into the guarded fixture. Not wired into CMakeLists.txt by this lane
+// (shared registration stays serialized); never linked into production here.
+
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+
+namespace p2_dangomushi {
+
+constexpr int kSlotId = 312004;
+constexpr int kEnemyId = 56;
+constexpr int kJointCount = 15;
+constexpr int kTextureCount = 4;
+constexpr const char* kRecordedProfilePrefix = "f9ec5030";
+constexpr const char* kRecordedMeshPrefix = "8fc0ac7f";
+constexpr const char* kRecordedSlotPrefix = "61019a39";
+constexpr const char* kProfileName = "damagumo-family.json";
+constexpr const char* kMeshPath = "Demon/enemy.bmd";
+constexpr const char* kSlotName = "damagumo-slot-312004.json";
+constexpr const char* kRequiredClips[] = {"landing", "wait", "flick", "dead"};
+constexpr int kRequiredClipCount =
+    static_cast<int>(sizeof(kRequiredClips) / sizeof(kRequiredClips[0]));
+
+namespace {
+
+bool is_hex64(const char* value) {
+    if (!value) {
+        return false;
+    }
+    if (std::strlen(value) != 64) {
+        return false;
+    }
+    for (const char* p = value; *p; ++p) {
+        const char c = *p;
+        const bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
+                         (c >= 'A' && c <= 'F');
+        if (!hex) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool starts_with(const char* value, const char* prefix) {
+    if (!value || !prefix) {
+        return false;
+    }
+    return std::strncmp(value, prefix, std::strlen(prefix)) == 0;
+}
+
+bool has_clip(const char** clips, int count, const char* want) {
+    if (!clips || !want) {
+        return false;
+    }
+    for (int i = 0; i < count; ++i) {
+        if (clips[i] && std::strcmp(clips[i], want) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+}  // namespace
+
+struct ExpectedHashes {
+    char profile[65];
+    char mesh[65];
+    char slot[65];
+};
+
+struct SlotBinding {
+    int slot;
+    int enemy;
+    const char* profile_name;
+    const char* mesh_path;
+    const char* slot_name;
+    bool hash_gated;
+};
+
+// Fail-closed structural check against the verified #670 record. Returns
+// null on success or a static reason string.
+const char* check_structure(int joints, int textures, const char** clips,
+                            int clip_count) {
+    if (joints != kJointCount) {
+        return "joint count mismatch";
+    }
+    if (textures != kTextureCount) {
+        return "texture count mismatch";
+    }
+    for (int i = 0; i < kRequiredClipCount; ++i) {
+        if (!has_clip(clips, clip_count, kRequiredClips[i])) {
+            return "required clip absent";
+        }
+    }
+    return nullptr;
+}
+
+// Exact-match hash gate over caller-supplied expected hashes. All three must
+// be well-formed 64-hex and equal the observed values; recorded #670 prefixes
+// are cross-checked but never substitute for the full comparison.
+const char* check_hashes(const char* profile_sha, const char* mesh_sha,
+                         const char* slot_sha, const ExpectedHashes* exp) {
+    if (!exp) {
+        return "missing expected hashes";
+    }
+    if (!is_hex64(exp->profile) || !is_hex64(exp->mesh) || !is_hex64(exp->slot)) {
+        return "malformed expected hash";
+    }
+    if (!profile_sha || std::strcmp(profile_sha, exp->profile) != 0) {
+        return "profile hash mismatch";
+    }
+    if (!mesh_sha || std::strcmp(mesh_sha, exp->mesh) != 0) {
+        return "mesh hash mismatch";
+    }
+    if (!slot_sha || std::strcmp(slot_sha, exp->slot) != 0) {
+        return "slot hash mismatch";
+    }
+    if (!starts_with(exp->profile, kRecordedProfilePrefix) ||
+        !starts_with(exp->mesh, kRecordedMeshPrefix) ||
+        !starts_with(exp->slot, kRecordedSlotPrefix)) {
+        return "expected hash outside recorded #670 prefix";
+    }
+    return nullptr;
+}
+
+// Slot binding record consumed by the #638 staging contract: demon-lane 56
+// profile+mesh bound to arena actor slot 312004, hash-gated, never aliased.
+SlotBinding bind_slot(const ExpectedHashes* exp) {
+    SlotBinding out;
+    out.slot = kSlotId;
+    out.enemy = kEnemyId;
+    out.profile_name = kProfileName;
+    out.mesh_path = kMeshPath;
+    out.slot_name = kSlotName;
+    out.hash_gated = (exp != nullptr);
+    return out;
+}
+
+}  // namespace p2_dangomushi
+
+#endif  // P2_DAMAGUMO_BINDING_STANDALONE

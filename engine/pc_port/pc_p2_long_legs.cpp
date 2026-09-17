@@ -56,6 +56,7 @@ struct SpeciesDef {
 const SpeciesDef SPECIES[] = {
     {"Houdai", "longlegs_Houdai_bind_00.mod"},
     {"BigFoot", "longlegs_BigFoot_bind_00.mod"},
+    {"Damagumo", "longlegs_Damagumo_bind_00.mod"},
 };
 constexpr size_t MeshBytes = 4 * 1024 * 1024;    // per species
 constexpr size_t TotalBytes = 16 * 1024 * 1024;  // per setup
@@ -144,6 +145,7 @@ const SpeciesDef* findSpecies(const std::string& name) {
 
 P2LongLegsSpecies speciesEnum(const std::string& name) {
     if (name == "BigFoot") return P2LongLegsSpecies::BigFoot;
+    if (name == "Damagumo") return P2LongLegsSpecies::Damagumo;
     return P2LongLegsSpecies::Houdai;
 }
 

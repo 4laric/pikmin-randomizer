@@ -29,9 +29,7 @@ TekiAnimationManager::TekiAnimationManager(TekiMgr* mgr)
  */
 void TekiAnimationManager::read(RandomAccessStream& input)
 {
-	// Retail animation streams contain only the original 35 entries.
-	// PC-only placement identities load their bank through TekiMgr.
-	for (int i = 0; i <= TEKI_Nakata1; i++) {
+	for (int i = 0; i < TEKI_TypeCount; i++) {
 		mTekiMgr->mTekiShapes[i]->mAnimMgr->read(input);
 	}
 }
