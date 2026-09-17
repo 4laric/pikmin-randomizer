@@ -158,6 +158,22 @@ class TestPayloadObserver(unittest.TestCase):
         self.assertFalse(result["verdict"])
         self.assertTrue(any("injected" in p for p in result["problems"]))
 
+    def test_engine_birth_tracked_without_passing_gates(self):
+        # Accepted #691 provider vocabulary: an engine-driven birth on the
+        # staged carrier is RECORDED, but gates stay strict without a joint
+        # capture + routed blast chain.
+        text = (
+            "P2_BOMB_MGR_BIND generator=349005 source_id=36 visual_only=0\n"
+            "P2_BOMB_ENGINE_BIRTH generator=349005 source_id=36 slot=0 generation=1 "
+            "x=60.000 y=30.000 z=1850.000 health=150.0 engine_driven=1\n"
+        )
+        v = self._validate(text)
+        self.assertEqual(list(v["engine_birth"]), ["349005"])
+        self.assertEqual(v["mgr_bind"], {"349005": "36"})
+        self.assertFalse(v["gate1_attach_provider_linked"])
+        self.assertFalse(v["gate3_blast_provider_linked"])
+        self.assertFalse(v["stub_present"])
+
     def test_cli_exit_codes(self):
         for text, code in ((REQUEST_ONLY, 2), (FUTURE_NATURAL, 0), (STUB_ONLY, 1)):
             path = _write_tmp(text)

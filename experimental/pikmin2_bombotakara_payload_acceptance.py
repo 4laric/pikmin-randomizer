@@ -92,6 +92,10 @@ BLAST_RE = re.compile(
     r"P2_BOMBOTAKARA_BLAST generator=(\d+) payload=(\d+) .*receivers=(\d+) hits=(\d+) pikmin_hits=(\d+).*shared_primitive=1")
 HIT_RE = re.compile(
     r"P2_BOMBOTAKARA_BOMB_HIT generator=(\d+) payload=(\d+) .*accepted=(\d+) .*interaction=InteractBomb natural=1")
+ENGINE_BIRTH_RE = re.compile(
+    r"P2_BOMB_ENGINE_BIRTH generator=(\d+) source_id=(\d+) .*engine_driven=1")
+MGR_BIND_RE = re.compile(
+    r"P2_BOMB_MGR_BIND generator=(\d+) source_id=(\d+)")
 ATTACH_L61_RE = re.compile(
     r"P2_BOMBOTAKARA_ATTACH generator=(\d+) payload=(\d+) joint=otakara natural=1")
 
@@ -115,6 +119,8 @@ def validate(path: str | Path) -> dict:
         "gate1_attach_provider_linked": False,
         "gate3_blast_provider_linked": False,
         "accepted_provider": {},
+        "engine_birth": {},
+        "mgr_bind": {},
     }
     try:
         lines = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
@@ -146,6 +152,12 @@ def validate(path: str | Path) -> dict:
         m = ATTACH_L61_RE.search(line)
         if m:
             verdict["attach_observed_carrier_side"][m.group(1)] = m.group(2)
+        m = ENGINE_BIRTH_RE.search(line)
+        if m and m.group(2) == "36":
+            verdict["engine_birth"][m.group(1)] = i
+        m = MGR_BIND_RE.search(line)
+        if m:
+            verdict["mgr_bind"][m.group(1)] = m.group(2)
         m = DETONATED_RE.search(line)
         if m:
             gen = m.group(1)
@@ -197,6 +209,8 @@ def main(argv: list) -> int:
     print("provider_request=%s absent=%s stub=%s injected=%d" % (
         verdict["provider_request"], verdict["provider_absent"],
         verdict["stub_present"], len(verdict["injected"])))
+    print("engine_birth=%s mgr_bind=%s" % (
+        sorted(verdict["engine_birth"]), verdict["mgr_bind"]))
     print("gate1_provider_linked=%s gate3_provider_linked=%s" % (
         verdict["gate1_attach_provider_linked"],
         verdict["gate3_blast_provider_linked"]))
