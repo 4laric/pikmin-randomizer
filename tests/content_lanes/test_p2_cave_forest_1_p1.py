@@ -244,3 +244,44 @@ class GenerateSidecarTests(unittest.TestCase):
         self.assertEqual(len(result["sha256"]), 64)
         self.assertEqual(result["spawns"], 1)
         self.assertTrue(any("target deviation: Clover" in n for n in result["notes"]))
+
+
+class BootLegalityTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.mod = load_adapter()
+
+    def packet(self):
+        path = Path(tempfile.mkdtemp()) / "packet.json"
+        path.write_text(json.dumps(synthetic_packet()), encoding="utf-8")
+        return path
+
+    def sidecar(self):
+        return self.mod.generate_sidecar(self.mod.load_packet(self.packet()),
+                                         SYNTHETIC_UNIT_DEFS, anchor="hole")
+
+    def test_single_pr05_arena_is_bootable(self):
+        verdict, problems = self.mod.check_boot_inputs(
+            self.sidecar(), {"pr05": [{"generator_id": 7}]},
+            {"has_cargo_free": False, "has_cargo": False, "cargo_specs": []})
+        self.assertEqual(verdict["verdict"], "legal-single-treasure")
+        self.assertEqual(problems, [])
+
+    def test_duplicate_pr05_aborts_and_cargo_free_legal(self):
+        verdict, problems = self.mod.check_boot_inputs(
+            self.sidecar(), {"pr05": [{"generator_id": 7}, {"generator_id": 9}]},
+            {"has_cargo_free": False, "has_cargo": False, "cargo_specs": []})
+        self.assertTrue(verdict["verdict"].startswith("abort-"))
+        self.assertTrue(any("abort" in p for p in problems))
+        verdict, problems = self.mod.check_boot_inputs(
+            self.sidecar(), {"pr05": []},
+            {"has_cargo_free": True, "has_cargo": False, "cargo_specs": []})
+        self.assertEqual(verdict["verdict"], "legal-cargo-free")
+        self.assertEqual(problems, [])
+
+    def test_malformed_sidecar_refused_by_boot_gate(self):
+        verdict, problems = self.mod.check_boot_inputs(
+            "P2_CAVE_GENERATE_1\npool", {"pr05": []},
+            {"has_cargo_free": True, "has_cargo": False, "cargo_specs": []})
+        self.assertEqual(verdict["verdict"], "refused-sidecar")
+        self.assertTrue(any("malformed sidecar" in p for p in problems))

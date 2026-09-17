@@ -431,3 +431,29 @@ def write_generate_sidecar(packet_path, unit_defs, output_dir, anchor="hole"):
     return {"path": str(path), "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
             "rooms": len(parsed["rooms"]), "spawns": len(parsed["spawns"]),
             "units": len(parsed["units"]), "anchor": parsed["anchor"], "notes": notes}
+
+
+def check_boot_inputs(sidecar_text, arena_rows, run_inputs):
+    """Consumer legality gate for the forest_1 boot input package.
+
+    Combines this lane sidecar (spawn roster) with the #654 arena overlay
+    predicate so a forest_1 package is proven bootable (or refused with the
+    exact native abort) BEFORE any runtime is spent. ``arena_rows`` is the
+    decoded arena ``{"pr05": [...]}``; ``run_inputs`` is the #654
+    ``decode_run_inputs`` result. Returns (verdict, problems).
+    """
+    from experimental import pikmin2_cave_arena_overlay as overlay
+    problems = []
+    try:
+        parsed = parse_generate_sidecar(sidecar_text)
+    except ValueError as error:
+        return ({"verdict": "refused-sidecar"}, ["malformed sidecar: " + str(error)])
+    ids = [row["id"] for row in parsed["spawns"]]
+    if len(set(ids)) != len(ids):
+        problems.append("duplicate spawn ids would double-place: " + ",".join(sorted(ids)))
+    verdict = overlay.evaluate_boot_predicate(arena_rows, run_inputs)
+    if verdict["verdict"].startswith("abort-"):
+        problems.append("native would abort: %s (%s)" % (verdict["verdict"], verdict["detail"]))
+    if verdict["verdict"] == "no-treasure":
+        problems.append("no pr05 treasure: forest_1 preview can never become ready")
+    return (verdict, problems)

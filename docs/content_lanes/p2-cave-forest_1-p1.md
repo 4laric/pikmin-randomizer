@@ -86,3 +86,22 @@ p2_forest1_p1_fixture.exe <private out>/p2-forest1-floor1.txt
   reachable checkouts, so no sidecar is generated for the real floor. Runtime
   floor-1 boot additionally needs the replacement-main fixture under lease,
   #632 captain guard and an observed 960x540 boot.
+
+## Gen-7 update (boot-legality gate via #654 overlay provider)
+
+- Consumed integrated `runtime-fixtures-cave-arena-overlay-pr05` (#654) into
+  the private root tree (cherry-pick `722d7951` -> `e60a4060`; 26 provider
+  tests pass).
+- Added `check_boot_inputs(sidecar, arena_rows, run_inputs)`: the consumer
+  legality gate. It maps this lane generated sidecar onto the #654
+  `evaluate_boot_predicate`, so a forest_1 boot package is proven bootable
+  (`legal-single-treasure`/`legal-cargo`) or refused with the exact native
+  abort (`abort-duplicate-treasure`, `abort-cargo-binding`, `no-treasure`)
+  BEFORE any runtime is spent. Refuses malformed sidecars and duplicate spawn
+  ids.
+- Tests: 21 lane tests + 26 provider tests pass.
+- Remaining gaps (unchanged): real unit geometry from the pinned unit blob
+  (`1_units_cent3_tsuchi.txt`, sha `5082b1e2...`), legal assets for the
+  headed run (`courses/pikmin2room` data; #642 documented stall), then the
+  replacement-main guarded boot under lease with #632 guard and an observed
+  960x540 floor-1 boot.
