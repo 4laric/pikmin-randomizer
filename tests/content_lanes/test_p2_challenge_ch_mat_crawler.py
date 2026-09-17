@@ -186,5 +186,64 @@ class MatCrawlerContractTests(unittest.TestCase):
             decode_pool_live("C:/nonexistent.iso", "4_units_c_e_j_l_conc.txt")
 
 
+def packet():
+    return dict(lane="p2-challenge-ch_mat_crawler", source_id="ch_MAT_crawler",
+                source_sha256="ab" * 32, floor_count=2,
+                stage=dict(starting_pikmin=60, floor_seconds=[170.0, 120.0]),
+                coverage=[
+                    dict(floor=1, last=1, unit_pool="4_units_c_e_j_l_conc.txt",
+                         enemies=[dict(source_token="Hana_silver_medal")],
+                         treasures=[dict(treasure_id="key")],
+                         gates=[dict(gate_id="gate")], caps=[]),
+                    dict(floor=2, last=2, unit_pool="1_units_manh_conc.txt",
+                         enemies=[dict(source_token="SnakeWhole_key")],
+                         treasures=[], gates=[], caps=[])])
+
+
+class MatCrawlerP1StagingTests(unittest.TestCase):
+    def test_stage_run_layout(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            paths = _adapter.stage_run_layout(packet(), contract(), Path(directory) / "run")
+            self.assertEqual(sorted(paths), ["markers.txt", "run-config.json",
+                                             "squad.json", "stage-manifest.json"])
+            manifest = _adapter.verify_run_layout(Path(directory) / "run")
+            self.assertEqual(manifest["squad_total"], 60)
+            self.assertEqual(manifest["floor_seconds"], [170.0, 120.0])
+            self.assertEqual(manifest["ui_index"], 29)
+            self.assertIn("challenge_host_mode",
+                          manifest["unsupported_semantics"])
+
+    def test_squad_list(self):
+        rows = _adapter.squad_list(contract()["pikmin"])
+        self.assertEqual(rows, [{"color": 0, "maturity": 2, "count": 30},
+                                {"color": 1, "maturity": 2, "count": 30}])
+        with self.assertRaises(ContractMismatch):
+            _adapter.squad_list([[0, 0]])
+        with self.assertRaises(ContractMismatch):
+            _adapter.squad_list([[0, 0, -1]] + [[0, 0, 0]] * 6)
+
+    def test_staging_divergences_fail_closed(self):
+        import tempfile
+        bad = packet()
+        bad["floor_count"] = 3
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(ContractMismatch):
+                _adapter.stage_run_layout(bad, contract(), Path(directory) / "run")
+        bad = packet()
+        bad["stage"] = dict(bad["stage"], starting_pikmin=61)
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(ContractMismatch):
+                _adapter.stage_run_layout(bad, contract(), Path(directory) / "run")
+        bad = packet()
+        bad["coverage"][0]["last"] = 2
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(ContractMismatch):
+                _adapter.stage_run_layout(bad, contract(), Path(directory) / "run")
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(ContractMismatch):
+                _adapter.verify_run_layout(directory)
+
+
 if __name__ == "__main__":
     unittest.main()

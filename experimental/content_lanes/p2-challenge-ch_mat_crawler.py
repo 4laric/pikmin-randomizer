@@ -376,3 +376,127 @@ if __name__ == "__main__":
     print(json.dumps(dict(packet=str(path), floors=packet["floor_count"],
                           source_sha256=packet["source_sha256"],
                           stages_sha256=packet["stage_table"]["sha256"])))
+# ---------------------------------------------------------------------------
+# P1 runtime import path (lane p2-challenge-ch-mat-crawler-p1, issue #562).
+#
+# Extends the P0 decode above (reuses its helpers; no forked parser) with a
+# staging step that writes a private run layout for a runtime boot attempt.
+# Unsupported challenge semantics are RECORDED, never claimed.
+# ---------------------------------------------------------------------------
+
+# Challenge semantics this host cannot execute; mirrored from the contract
+# consumer unsupported list. Staging records them as open, never as done.
+UNSUPPORTED_CHALLENGE_SEMANTICS = (
+    "challenge_host_mode",
+    "coop_2p",
+    "key_completion",
+    "result_screen",
+)
+
+# Receipt-parseable markers a runtime MUST emit for observations to count.
+# P2_CRAWLER_WINDOW size=960x540     - observed centred window
+# P2_CRAWLER_SQUAD count=N          - live starting squad
+# P2_CRAWLER_FLOOR_READY floor=N    - floor collision/routes staged
+# P2_CRAWLER_ACTOR id=<id> x=<x> z=<z> - live actor observed
+# P2_CRAWLER_PASS floors=N actors=N - run summary
+MARKER_PREFIX = "P2_CRAWLER_"
+
+
+def squad_list(matrix):
+    """Flatten the 7x3 native color/maturity matrix to staged squad rows."""
+    if (not isinstance(matrix, list) or len(matrix) != COLORS
+            or any(not isinstance(row, list) or len(row) != MATURITY
+                   or any(type(v) is not int or v < 0 for v in row) for row in matrix)):
+        raise ContractMismatch("Squad matrix must be 7x3 nonnegative ints")
+    return [dict(color=color, maturity=maturity, count=count)
+            for color, row in enumerate(matrix)
+            for maturity, count in enumerate(row) if count]
+
+
+def stage_run_layout(packet, contract, output):
+    """Stage a decoded packet into a private run layout. Returns paths dict.
+
+    Writes stage-manifest.json (floors, pools, rosters, timers, squad),
+    squad.json (starting squad rows), markers.txt (required marker contract)
+    and run-config.json (window, squad source, unsupported list). Fails closed
+    on any packet/contract divergence: floor count, floor ranges, timers and
+    total squad must all agree.
+    """
+    if not isinstance(packet, dict) or not isinstance(contract, dict):
+        raise ContractMismatch("Packet and contract must be objects")
+    if packet.get("lane") != LANE or packet.get("source_id") != SOURCE_ID:
+        raise ContractMismatch("Packet identity does not match this lane")
+    if packet.get("floor_count") != contract.get("floors"):
+        raise ContractMismatch("Packet/contract floor count diverge")
+    coverage = packet.get("coverage") or []
+    if len(coverage) != contract["floors"]:
+        raise ContractMismatch("Packet coverage does not tile the contract floors")
+    ranges = [(row.get("floor"), row.get("last")) for row in coverage]
+    if ranges != [(index, index) for index in range(1, contract["floors"] + 1)]:
+        raise ContractMismatch("Packet floors must tile 1..floors exactly once")
+    squad = squad_list(contract["pikmin"])
+    staged_total = sum(row["count"] for row in squad)
+    packet_total = packet.get("stage", {}).get("starting_pikmin")
+    if staged_total != packet_total:
+        raise ContractMismatch("Staged squad total diverges from packet")
+    if list(contract["floor_seconds"]) != list(packet.get("stage", {}).get("floor_seconds", ())):
+        raise ContractMismatch("Staged timers diverge from packet")
+    floors = [dict(floor=row["floor"], unit_pool=row["unit_pool"],
+                   enemies=[e["source_token"] for e in row.get("enemies", ())],
+                   treasures=[t["treasure_id"] for t in row.get("treasures", ())],
+                   gates=row.get("gates", ()), caps=row.get("caps", ()))
+              for row in coverage]
+    manifest = dict(schema=1, lane=LANE, source_id=SOURCE_ID,
+                    floor_count=contract["floors"], floors=floors,
+                    squad=squad, squad_total=staged_total,
+                    floor_seconds=list(contract["floor_seconds"]),
+                    ui_index=contract["ui_index"],
+                    unsupported_semantics=list(UNSUPPORTED_CHALLENGE_SEMANTICS),
+                    source_sha256=packet.get("source_sha256"),
+                    generated=False)
+    output = Path(output)
+    output.mkdir(parents=True, exist_ok=False)
+    paths = {}
+    for name, payload in (("stage-manifest.json", manifest),
+                          ("squad.json", dict(squad=squad, total=staged_total)),
+                          ("run-config.json", dict(window="960x540",
+                                                   squad_source="contract matrix",
+                                                   unsupported_semantics=list(UNSUPPORTED_CHALLENGE_SEMANTICS)))):
+        target = output / name
+        target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        paths[name] = target
+    markers = output / "markers.txt"
+    markers.write_text(
+        "P2_CRAWLER_WINDOW size=960x540\n"
+        "P2_CRAWLER_SQUAD count=%d\n"
+        "P2_CRAWLER_FLOOR_READY floor=\n"
+        "P2_CRAWLER_ACTOR id= x= z=\n"
+        "P2_CRAWLER_PASS floors=%d actors=\n"
+        % (staged_total, contract["floors"]), encoding="utf-8")
+    paths["markers.txt"] = markers
+    return paths
+
+
+def verify_run_layout(output):
+    """Re-read a staged run layout and fail closed on any inconsistency."""
+    output = Path(output)
+    try:
+        manifest = json.loads((output / "stage-manifest.json").read_text(encoding="utf-8"))
+        squad_doc = json.loads((output / "squad.json").read_text(encoding="utf-8"))
+        text = (output / "markers.txt").read_text(encoding="utf-8")
+    except (OSError, ValueError) as error:
+        raise ContractMismatch("Unreadable staged run layout: " + str(error)) from None
+    if manifest.get("lane") != LANE or manifest.get("source_id") != SOURCE_ID:
+        raise ContractMismatch("Staged manifest identity drift")
+    if manifest.get("squad_total") != squad_doc.get("total"):
+        raise ContractMismatch("Staged manifest/squad totals diverge")
+    if sum(row["count"] for row in manifest.get("squad", ())) != manifest.get("squad_total"):
+        raise ContractMismatch("Staged squad rows do not sum to total")
+    if len(manifest.get("floors", ())) != manifest.get("floor_count"):
+        raise ContractMismatch("Staged floors do not cover the count")
+    for marker in ("P2_CRAWLER_WINDOW size=960x540", "P2_CRAWLER_SQUAD count=",
+                   "P2_CRAWLER_FLOOR_READY floor=", "P2_CRAWLER_ACTOR id=",
+                   "P2_CRAWLER_PASS floors="):
+        if marker not in text:
+            raise ContractMismatch("Staged marker contract missing %r" % marker)
+    return manifest
