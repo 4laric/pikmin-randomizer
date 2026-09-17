@@ -132,3 +132,66 @@ A prerequisite carries new verified integration evidence:
 
 Lane stays blocked on `4laric/pikmin-randomizer#186`. No runtime run, no ADMIT,
 no ledger writes.
+
+## Generation 6 reassessment (mar29-pod-dispatch-candidate #665 integrated)
+
+A second prerequisite carries new verified integration evidence:
+`mar29-pod-dispatch-candidate` (#665), root `6d9da34b`, **native `null`**,
+validation
+`output/workflow/integration-recovery/species-owner/hooks-665-666-batch-validation.log`
+(sha256 `75d8e568...c2`), source worktree
+`output/workflow/autofill/prerequisites/mar29-pod-dispatch-candidate-root`.
+
+This is the first prerequisite that is Mar-relevant, so it was inspected in
+full. Finding: it is a **root-only decision packet, not a landed change**.
+
+- The prerequisite commit `117b5ade` adds exactly three new root files:
+  `docs/PIKMIN2_MAR29_POD_DISPATCH_CANDIDATE.md`,
+  `experimental/pikmin2_mar29_pod_dispatch_candidate.py`,
+  `tests/test_pikmin2_mar29_pod_dispatch_candidate.py` (+304). It edits no
+  `pc_port/` file; `native_commit` is null.
+- The packet's own doc and its #186 decision record say the arm is
+  **APPROVED but must be re-derived** onto the current native-wave preview: the
+  candidate preview blob (`sha 14607674...`, base `7b9ecaa6`) is stale and
+  **lacks the Queen receipt arm** (`pc_p2_queen_teki.h` include,
+  `pc_p2_queen_teki_receipt` dispatch arm, `pc_p2_queen_teki_name` term), so
+  landing it verbatim would regress Queen. `186-decisions-gen45.md` line 42:
+  "Do NOT commit the stale candidate blob."
+- The adapter `pc_p2_mar_receipt.{h,cpp}` is **absent from the species native
+  line**; `186-decisions-gen45.md` lines 17-19 assign its landing to
+  `mar-native-registration-668` (#668).
+
+### Verified against this lane's pins (native e44b5d70)
+
+- `pc_p2_mar_receipt` is ABSENT from `pc_port/pc_p2_preview.cpp`; no
+  `pc_p2_mar_receipt.*` exists in the native tree.
+- The same preview already carries `pc_p2_queen_teki_receipt`,
+  `pc_p2_long_legs_receipt`, `pc_p2_groink_receipt` and the
+  `pc_p2_kurage_teki.h` include — i.e. the modern multi-arm chain the stale
+  candidate would clobber.
+- Registry: `enemies-2-mar29-receipt-provider` (#650) is `done` and **NOT
+  integrated**; `mar-native-registration-668` (#668) is `waiting_resource`.
+
+### Conclusion: dependency NOT cleared
+
+No accepted native change can be brought into this lane's private worktrees.
+The #186 decision approves the dispatch arm in principle but explicitly defers
+landing to the single writer, requires a re-derivation, and requires the #668
+adapter to land first. Applying the stale candidate blob here would be a
+forbidden shared source edit **and** would regress an already-integrated arm.
+Per the standing rule ("clear a dependency only with recorded supporting
+evidence"), the transport dependency remains open.
+
+Concrete remaining gap (in order):
+
+1. `mar-native-registration-668` (#668) lands the #650-owned
+   `pc_p2_mar_receipt.{h,cpp}` adapter + fixture on the native line.
+2. The single-writer integrator re-derives the #186-approved 4-line additive
+   `else if(pc_p2_mar_receipt(...))` arm directly after the longlegs arm in the
+   current `native-wave` `pc_p2_preview.cpp`, keeping every existing arm
+   (Queen included) intact.
+3. Leased rebuild + guarded GL fixture run (captain safety #632); only then may
+   #375 claim `transport_reward` and re-run gates 4/5/6.
+
+Lane stays blocked. No shared source edit, no merge of the stale blob, no
+duplicate observer, no runtime run, no ADMIT, no ledger writes.
