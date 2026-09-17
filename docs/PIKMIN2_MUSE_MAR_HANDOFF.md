@@ -322,3 +322,65 @@ and the attackable contract now works; closing the remaining gap needs either a
 retail-faithful airborne-reach/landing cadence (family `pc_p2_mar.cpp`, #166) or
 an accepted accepted-melee/throw technique for the owner fixture - tracked on
 #186/#166.
+
+## Generation 9 (mar-airborne-reach-technique #709) - natural kill completes
+
+A fifth prerequisite delivered the airborne-reach technique:
+`mar-airborne-reach-technique` (#709), root `c32ad57f`, **native null**,
+validation
+`output/workflow/integration-recovery/species-owner/mar709-airborne-batch-validation.log`
+(sha256 `48230619...c2`). Root-only cadence contract
+(`experimental/pikmin2_mar_airborne_reach_technique.py`): wait_for_chase,
+preposition, throw_on_landing, swarm_attack, reclump, hold, complete_kill,
+encoding the integrated #687 constants and the retail descent-landing rationale.
+No native file is touched, so nothing was merged; the technique was executed in
+the owned fixture.
+
+### Fixture cadence (owned file only)
+
+`native/tools/p2_muse_mar_fixture.cpp` now gates on Mar's height above ground:
+outside TOUCHDOWN_BAND (> 12) it only logs `hold_between_windows`; inside the
+low window it moves the captain onto the approach path, calls the engine's
+`Navi::throwPiki` on every non-stuck / non-attacking Pikmin, re-parks the
+captain, and logs `P2_MUSE_MAR_CADENCE action=throw_on_landing height=..
+thrown=..`. No `mHealth` or `TransportMode` write exists in the fixture.
+
+### Consumer verification: PASSED (prerequisite_resolved=true)
+
+- Verification id `4750d514...`, consumer `shard-enemies-2-mar29-observer`,
+  generation 9, recorded via `python -m workflow.consumer_verification`.
+- Independent evidence (distinct from producer validations):
+  `output/workflow/autofill/planning-shards/enemies-2/prepared/mar29-observer-output/mar29-consumer-verification-9.json`
+  sha256 `84480fc6...ea`.
+- #709 adapter (`validate_technique.py` against the accepted adapter):
+  `preconditions`, `reachable` (18 ATTACK windows), `captain_guard`, `no_nan`
+  all true, `cadence` valid (155 steps, 127 throws).
+- Runtime: **natural kill completes** - health `3000.00 -> 0.00` with 155 damage
+  events, `P2_MAR_DEAD generator=375001 source_id=29 health=0`,
+  `P2_MUSE_MAR_DRAIN events=155 min=15.00 start=3000.00`, exit 0, `no_inject=1`,
+  captain safe (`scripts/p2_fixture_captain_guard.h` adopted; no
+  `CAPTAIN_DOWN`). The Gen-8 stall (270 HP) is resolved.
+
+### Gate disposition
+
+| Gate | Status | Evidence |
+|---|---|---|
+| 4. death_corpse | death PASS; corpse OPEN (source-backed N/A) | `P2_MAR_DEAD`, drain min=15->0, `injected=0`; no corpse pellet |
+| 5. transport_reward | OPEN | no corpse pellet to carry/deliver on generator 375001 |
+| 6. cleanup_reentry | PASS | `P2_MUSE_MAR_FORGET count=0 registered=0`, `P2_MUSE_MAR_REENTRY ... stale=0 fresh=1 count=1` |
+
+### Remaining gap (blocked, different from the resolved technique defect)
+
+The port Mar leaves **no corpse pellet**: the fixture scans `pelletMgr` for a
+pellet whose `mPelletView` is the Mar actor for 9000 ticks after death and finds
+none, so it emits `P2_MUSE_MAR_CORPSE pellet=0 ... source_backed_na=1` and skips
+the carry/deliver stages (no null deref). `BTeki::die()` only sets `mDeadState`
+and calls `pc_p2_otakara_died` (a no-op for Mar); corpse creation lives in
+`dieSoon()` behind `TPI_CorpseType == TEKICORPSE_LeaveCorpse`, which the port's
+`pc_p2_mar_param_f` does not serve. `transport_reward` therefore cannot be
+demonstrated and stays open. Clearing it needs an existing-owner-reviewed family
+or engine change (Mar corpse emission / `TPI_CorpseType`) plus the present #668
+receipt arm - tracked on #166/#186. The kill path itself is now proven.
+
+Lane stays blocked. No injection, no ADMIT, no ledger writes, no shared-source
+edit.
