@@ -108,6 +108,21 @@ def registry(root):
 def leased_run(reg, lane_key, generation, build_dir, command, timeout=1800):
     """Run command in an idle child that holds the build lease; fail closed."""
     resource = "build:" + build_dir
+    try:
+        with reg.transaction() as state:
+            dead = [qid for qid, q in state.get("queue", {}).items()
+                    if q.get("lane") == lane_key and q.get("generation") == generation
+                    and q.get("resource", "").casefold() == resource.casefold()
+                    and reg.probe(q.get("process")) == "dead"]
+            for qid in dead:
+                del state["queue"][qid]
+                try:
+                    reg.event(state, 'request_cancelled', lane_key, resource=qid,
+                              wait_seconds=0)
+                except Exception:
+                    pass
+    except Exception:
+        pass
     child = subprocess.Popen([sys.executable, "-u", "-c", CHILD_CODE],
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT, text=True, errors="replace")
@@ -116,6 +131,15 @@ def leased_run(reg, lane_key, generation, build_dir, command, timeout=1800):
         if not acquired.get("acquired"):
             child.kill()
             child.wait(timeout=10)
+            try:
+                with reg.transaction() as state:
+                    for qid, q in list(state.get("queue", {}).items()):
+                        if (q.get("lane") == lane_key and q.get("generation") == generation
+                                and q.get("resource", "").casefold() == resource.casefold()
+                                and reg.probe(q.get("process")) == "dead"):
+                            del state["queue"][qid]
+            except Exception:
+                pass
             return {"acquired": False, "resource": resource,
                     "reason": acquired.get("reason")}, None
         lease = acquired["lease"]
