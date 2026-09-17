@@ -384,5 +384,140 @@ class ContractSyncTests(unittest.TestCase):
         self.assertIn('stages.txt', tutorial.missing_prerequisite())
 
 
-if __name__ == '__main__':
-    unittest.main()
+
+
+class P1ContractLoaderTests(unittest.TestCase):
+    """The P1 checker is consumed, never forked or vendored."""
+
+    def test_contract_pins(self):
+        self.assertEqual(tutorial.CONTRACT_SCHEMA, "p2-surface-session-1")
+        self.assertEqual(tutorial.CONTRACT_PATH,
+                         "experimental/pikmin2_surface_session_contract.py")
+        self.assertEqual(tutorial.CONTENT_PIN,
+                         "f16f272c85371dea6e8deafd86e562d4cd7d08fa")
+        self.assertEqual(tutorial.CONTRACT_BLOB_SHA256,
+                         "3ba71fe92a8989180358cbb1617cf040e3ebf9a25aac1754cec25a1e192460f1")
+
+    def test_load_real_contract(self):
+        checker, source = tutorial.load_surface_contract()
+        self.assertEqual(checker.SCHEMA, "p2-surface-session-1")
+        self.assertTrue(source == "tree" or source.startswith("pin:"))
+        self.assertIn("begin_day", checker.EVENTS)
+        self.assertTrue(checker.MISSING_INTEGRATION)
+
+    def test_malformed_event_raises_contract_error(self):
+        checker, _source = tutorial.load_surface_contract()
+        state = checker.blank_session(course="tutorial", day=1)
+        with self.assertRaises(ValueError):
+            checker.check_transition(state, {"no-type": True})
+
+    def test_unresolvable_pin_fails_closed(self):
+        import sys
+        import experimental
+        key = "experimental.pikmin2_surface_session_contract"
+        saved_mod, saved_pin = sys.modules.get(key), tutorial.CONTENT_PIN
+        saved_attr = getattr(experimental, "pikmin2_surface_session_contract", None)
+        had_attr = hasattr(experimental, "pikmin2_surface_session_contract")
+        sys.modules[key] = None
+        if had_attr:
+            delattr(experimental, "pikmin2_surface_session_contract")
+        tutorial.CONTENT_PIN = "0" * 40
+        try:
+            with self.assertRaisesRegex(tutorial.P1GapError, "checker unavailable"):
+                tutorial.load_surface_contract()
+        finally:
+            tutorial.CONTENT_PIN = saved_pin
+            if saved_mod is None:
+                sys.modules.pop(key, None)
+            else:
+                sys.modules[key] = saved_mod
+            if had_attr:
+                setattr(experimental, "pikmin2_surface_session_contract", saved_attr)
+
+
+def _p1_manifest():
+    sha = hashlib.sha256(b"tutorial-p1-synthetic-fixture").hexdigest()
+    return tutorial.build_manifest(FULL_DOC, parsed(), source_sha256=sha)
+
+
+class P1StageDriveTests(unittest.TestCase):
+    """Stage the real manifest shape and drive real checker boundaries."""
+
+    def test_stage_layout(self):
+        import tempfile
+        manifest = _p1_manifest()
+        with tempfile.TemporaryDirectory() as tmp:
+            staged = tutorial.stage_p1_run(manifest, Path(tmp) / "run")
+            for key in ("manifest", "seed", "boundaries"):
+                self.assertTrue(Path(staged[key]).is_file(), key)
+            seed = json.loads(Path(staged["seed"]).read_text(encoding="utf-8"))
+            self.assertEqual(seed["course"], "tutorial")
+            self.assertEqual(seed["day"], 1)
+            self.assertEqual(staged["contract_schema"], "p2-surface-session-1")
+            back = json.loads(Path(staged["manifest"]).read_text(encoding="utf-8"))
+            self.assertEqual(back["source_sha256"], manifest["source_sha256"])
+            tutorial.validate_manifest(back)
+
+    def test_drive_boundaries_pass(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp) / "run"
+            tutorial.stage_p1_run(_p1_manifest(), run)
+            report = tutorial.drive_session_boundaries(run)
+            for name, result in report["boundaries"].items():
+                self.assertEqual(result["verdict"], "pass", name)
+            for name, missing in report["missing_integration"].items():
+                self.assertFalse(missing["ok"], name)
+                self.assertIn("missing native integration", missing["reason"])
+            self.assertTrue(report["wake"]["course_record_decoded"])
+            self.assertTrue(report["wake"]["cave_entrances_known"])
+            self.assertFalse(report["wake"]["ready"])
+
+    def test_drive_missing_layout_fails_closed(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(tutorial.P1GapError):
+                tutorial.drive_session_boundaries(Path(tmp) / "nope")
+
+    def test_stage_rejects_bad_manifest(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                tutorial.stage_p1_run({"schema": 1}, Path(tmp) / "run")
+
+    def test_tampered_script_fails_closed(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp) / "run"
+            tutorial.stage_p1_run(_p1_manifest(), run)
+            scripts = json.loads((run / "boundaries.json").read_text(encoding="utf-8"))
+            scripts["receipt_replay"][1]["slot"] = "surface:2"
+            (run / "boundaries.json").write_text(
+                json.dumps(scripts), encoding="utf-8")
+            report = tutorial.drive_session_boundaries(run)
+            verdict = report["boundaries"]["receipt_replay"]["verdict"]
+            self.assertTrue(verdict.startswith("FAIL"), verdict)
+
+    def test_receipt_identity_uses_first_manifest_link(self):
+        manifest = _p1_manifest()
+        scripts = tutorial.boundary_scripts(manifest)
+        first_tag = manifest["cave_links"][0]["cave_tag"]
+        self.assertIn(first_tag, scripts["receipt_replay"][0]["identity"])
+        self.assertEqual(scripts["exit_reentry"][1]["cave_id"], first_tag)
+
+    @unittest.skipUnless(tutorial.locate_source()['available'],
+                         'supported local ISO not present')
+    def test_real_source_stage_and_drive(self):
+        raw = tutorial.extract_source_from_iso()
+        manifest = tutorial.build_manifest(
+            raw.decode('shift_jis'), stage_cave_links(raw.decode('shift_jis')),
+            source_sha256=tutorial.sha256_bytes(raw))
+        self.assertEqual(manifest['source_sha256'], REAL_STAGES_SHA256)
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            run = Path(tmp) / "run"
+            staged = tutorial.stage_p1_run(manifest, run)
+            self.assertEqual(staged["contract_schema"], "p2-surface-session-1")
+            report = tutorial.drive_session_boundaries(run)
+            for name, result in report["boundaries"].items():
+                self.assertEqual(result["verdict"], "pass", name)
