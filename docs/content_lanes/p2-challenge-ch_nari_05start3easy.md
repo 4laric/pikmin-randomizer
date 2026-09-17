@@ -71,3 +71,60 @@ Weights are definition inputs, not placements.
   packet JSON at `output/workflow/autofill/p2-challenge-ch_nari_05start3easy/packet/`).
 
 No placements emitted, no runtime run, no ADMIT. P1/P2 acceptance stays OPEN.
+
+## P1 private runtime import and first playable acceptance (#548)
+
+The module adds a P1 import path that reuses every P0 helper (no forked parser)
+and stages the decoded stage into a private run layout, then boots the
+integrated Challenge content-loading runtime.
+
+- `floor_manifest(cave, index)` / `content_sidecar` / `generate_sidecar` /
+  `preview_record` / `stage_manifest_record` build the run layout:
+  `p2-challenge-content.txt` (P2_CHALLENGE_CONTENT_1; stage/floor/pool/spawns/
+  anchor), `p2-cave-generate.txt`, `stage-manifest.json` and `preview.json`.
+- `stage_run_layout(...)` writes the four files, hashes them and fails closed on
+  any missing/undecodable input; boot floor is floor 1.
+- `parse_run_markers(log)` / `verify_receipt(markers)` parse and enforce the
+  receipt-parseable runtime markers (content SELECTED/SPAWN_COVERED/READY/LIVE/
+  PASS, room collision `P2_ROOM_GROUND`, actor `P2_PLACEMENT_PROBE`), and refuse
+  a captain-down receipt.
+
+Preserved stage facts: floors=2, floor_seconds=[120.0, 80.0], legacy_time=400.0,
+bitter_sprays=1, spicy_sprays=2, treasure_count=0, ui_index=15, roster 7x3 with
+starting_pikmin=3, ui_index 15; unit pool `2_MAT_cent_north_tsuchi.txt` on both
+floors.
+
+### Observed runtime receipt (private leased build)
+
+Fresh private leased build of native `f91c2143` (elastic cap respected, leased
+CLI) plus the content-loading fixture, run over the staged run layout with a
+960x540 centred window. Observed markers (runtime.log):
+
+```
+[PC Port] SDL2 Window & OpenGL Context initialized successfully (960x540)
+[Pikipelago] P2_ROOM_GROUND x=-85.0 z=0.0 y=0.000          (4 collision probes)
+P2_PLACEMENT_PROBE actors=1 evidence_slots=1
+P2_CHALLENGE_CONTENT_SELECTED cave=ch_NARI_05start3easy floor=1 pool=2_MAT_cent_north_tsuchi.txt spawns=10 anchor=hole
+P2_CHALLENGE_CONTENT_SPAWN_COVERED id=<10 ids> count=1
+P2_CHALLENGE_CONTENT_READY cave=ch_NARI_05start3easy floor=1 squad=20 captain_parked=1
+P2_CHALLENGE_CONTENT_LIVE squad=20 actors=1 tick=2
+PASS P2_CHALLENGE_CONTENT_RUN content=1
+```
+
+`verify_receipt` accepts this receipt (collision_probes=4, actor_probes=1). No
+`P2_FIXTURE_CAPTAIN_DOWN`, no FAIL/REFUSED.
+
+Captain safety (#632): the guard is adopted first-after-engine-idle, before
+movie/pause/UI returns and every observed tick; the captain is parked at
+`nx=+600` outside attack reach; guard header sha256
+`d2f678c9eda75e151eb534077dff9e30ad36ae4796881d971bbd09945f3c3474`. No blanket
+invincibility; this is labelled protected observation.
+
+Honest limits: the observed live squad is the current starting-Pikmin overlay
+(20); the stage roster (starting_pikmin=3) is the decoded contract carried in
+the manifest. All six arena gates stay UNTESTED; this is a boot/collision/actor
+receipt, not gameplay acceptance. The engine's host-mode stage table
+(`pc_port/pc_bbft.cpp` kP2ChallengeStages) still lists only `ch_NARI_01kusachi`,
+so the `--experimental-challenge-stage` arm is not yet generic for start3easy;
+that is the remaining P2 blocker for the stage-select path (scoped shared review
+to the host-mode owner), not for this content-loading boot receipt.

@@ -360,6 +360,196 @@ def build_packet(iso_path, research_root, lanes_path, catalog, output):
     return packet, path
 
 
+# ---------------------------------------------------------------------------
+# P1 private runtime import path (issue #548). Extends the P0 decode above;
+# reuses its real-source helpers and does NOT fork any parser. Stages the
+# decoded stage manifest into a private run layout consumed by the integrated
+# Challenge content-loading boot path (#701 binder) plus the host-mode module
+# contract (native/pc_port/pc_p2_challenge_mode.h StageEntry shape).
+# ---------------------------------------------------------------------------
+
+P1_WINDOW = "960x540"
+RUN_LAYOUT_FILES = ("p2-challenge-content.txt", "p2-cave-generate.txt",
+                    "stage-manifest.json", "preview.json")
+ANCHOR_BY_RETURN = {"0": "hole", "1": "geyser"}
+
+# Receipt-parseable runtime markers (content-loading boot path + room preview).
+CONTENT_SELECTED = "P2_CHALLENGE_CONTENT_SELECTED"
+CONTENT_SPAWN_COVERED = "P2_CHALLENGE_CONTENT_SPAWN_COVERED"
+CONTENT_READY = "P2_CHALLENGE_CONTENT_READY"
+CONTENT_LIVE = "P2_CHALLENGE_CONTENT_LIVE"
+CONTENT_PASS = "PASS P2_CHALLENGE_CONTENT_RUN"
+COLLISION_MARKER = "P2_ROOM_GROUND"
+ACTOR_MARKER = "P2_PLACEMENT_PROBE"
+CAPTAIN_DOWN_MARKER = "P2_FIXTURE_CAPTAIN_DOWN"
+GUARD_SHA256 = "d2f678c9eda75e151eb534077dff9e30ad36ae4796881d971bbd09945f3c3474"
+
+
+def floor_manifest(cave, index):
+    """Per-floor staging manifest: unit pool, anchor and spawn intents.
+
+    Spawn intents aggregate the decoded roster by token (deterministic sorted
+    order); they are definition inputs, never placements.
+    """
+    floors = cave.get("floors") or []
+    if index < 0 or index >= len(floors):
+        raise ContractMismatch("Floor index out of range: %r" % (index,))
+    floor = floors[index]
+    pool = (floor.get("parameters") or {}).get("f008")
+    if not pool or not re.fullmatch(r"[A-Za-z0-9_.\-]+\.txt", pool):
+        raise ContractMismatch("Floor %d has no usable unit pool" % (index + 1))
+    counts = {}
+    for entry in floor.get("enemies", []):
+        token = entry.get("source_token") or entry.get("enemy_id")
+        if not token:
+            raise ContractMismatch("Enemy entry without a source token")
+        counts[token] = counts.get(token, 0) + 1
+    for entry in floor.get("treasures", []):
+        token = entry.get("treasure_id")
+        if not token:
+            raise ContractMismatch("Treasure entry without an id")
+        counts[token] = counts.get(token, 0) + 1
+    if not counts:
+        raise ContractMismatch("Floor %d has an empty roster" % (index + 1))
+    anchor = ANCHOR_BY_RETURN.get(str((floor.get("parameters") or {}).get("f007")), "hole")
+    return dict(floor=floor.get("first_floor"), unit_pool=pool, anchor=anchor,
+                spawns=[dict(id=key, count=counts[key]) for key in sorted(counts)],
+                gates=list(floor.get("gates", [])))
+
+
+def content_sidecar(manifest):
+    """Exact `p2-challenge-content.txt` text the #701 binder consumes."""
+    lines = ["P2_CHALLENGE_CONTENT_1",
+             "stage %s %d" % (SOURCE_ID, manifest["floor"]),
+             "pool %s" % manifest["unit_pool"]]
+    lines.extend("spawn %s %d" % (s["id"], s["count"]) for s in manifest["spawns"])
+    lines.append("anchor %s" % manifest["anchor"])
+    return "\n".join(lines) + "\n"
+
+
+def generate_sidecar(manifest):
+    """Exact `p2-cave-generate.txt` coverage text the #701 binder scans."""
+    return "".join("spawn %s %d\n" % (s["id"], s["count"]) for s in manifest["spawns"])
+
+
+def preview_record(units):
+    """`preview.json` for the private room preview; room chosen deterministically."""
+    names = [u for u in (units or []) if u]
+    if not names:
+        raise ContractMismatch("No unit available for the preview room")
+    room = next((u for u in names if u.startswith("room")), names[0])
+    return {"room": room, "experimental": True, "ap": False, "save_resume": False}
+
+
+def stage_manifest_record(cave, stage, cave_sha, table_sha):
+    """Machine-readable staged stage manifest (source pins + per-floor intents)."""
+    record_floors = []
+    for index in range(len(cave.get("floors") or [])):
+        manifest = floor_manifest(cave, index)
+        record_floors.append(dict(floor=manifest["floor"],
+                                  unit_pool=manifest["unit_pool"],
+                                  anchor=manifest["anchor"],
+                                  spawns=manifest["spawns"],
+                                  enemy_rows=len(cave["floors"][index].get("enemies", [])),
+                                  treasure_rows=len(cave["floors"][index].get("treasures", [])),
+                                  gate_rows=len(cave["floors"][index].get("gates", []))))
+    return dict(schema=1, lane=LANE, source_id=SOURCE_ID, source_sha256=cave_sha,
+                stage_table_sha256=table_sha, floor_count=cave["floor_count"],
+                floor_seconds=list(stage["floor_seconds"]), legacy_time=stage["legacy_time"],
+                bitter_sprays=stage["bitter_sprays"], spicy_sprays=stage["spicy_sprays"],
+                ui_index=stage["ui_index"],
+                starting_pikmin=sum(sum(row) for row in stage["pikmin"]),
+                preview_window=P1_WINDOW, floors=record_floors, generated=False)
+
+
+def stage_run_layout(cave, stage, cave_sha, table_sha, closure, output, write=True):
+    """Stage the decoded stage into a private run layout (boot floor = floor 1).
+
+    Fail closed on any missing/undecodable input. With write=False the layout is
+    computed and hashed but no file is written (used by focused tests).
+    """
+    if not (cave.get("floors") or []):
+        raise ContractMismatch("No decoded floors to stage")
+    boot = floor_manifest(cave, 0)
+    units = []
+    for row in closure or []:
+        if row.get("floor") == boot["floor"]:
+            units = list(row.get("units") or [])
+    record = stage_manifest_record(cave, stage, cave_sha, table_sha)
+    files = {
+        "p2-challenge-content.txt": content_sidecar(boot),
+        "p2-cave-generate.txt": generate_sidecar(boot),
+        "stage-manifest.json": json.dumps(record, indent=1, sort_keys=True) + "\n",
+        "preview.json": json.dumps(preview_record(units), indent=1, sort_keys=True) + "\n",
+    }
+    digests = {name: hashlib.sha256(text.encode("utf-8")).hexdigest()
+               for name, text in files.items()}
+    if write:
+        out = Path(output)
+        out.mkdir(parents=True, exist_ok=True)
+        for name, text in files.items():
+            (out / name).write_text(text, encoding="utf-8")
+    return dict(run_layout=str(Path(output)), files=sorted(files), sha256=digests,
+                manifest=record, boot_floor=boot, window=P1_WINDOW)
+
+
+def parse_run_markers(log_text):
+    """Parse receipt-parseable runtime markers from a boot log."""
+    text = log_text or ""
+    lines = text.splitlines()
+
+    def has(token):
+        return any(token in line for line in lines)
+
+    stage = None
+    for line in lines:
+        if CONTENT_SELECTED in line and "cave=" in line:
+            stage = line.split("cave=")[-1].split()[0] if "cave=" in line else None
+            break
+    return dict(content_selected=has(CONTENT_SELECTED),
+                spawn_covered=[line for line in lines if CONTENT_SPAWN_COVERED in line],
+                ready=has(CONTENT_READY), live=has(CONTENT_LIVE),
+                pass_run=has(CONTENT_PASS),
+                collision=[line for line in lines if COLLISION_MARKER in line],
+                actors=[line for line in lines if ACTOR_MARKER in line],
+                captain_down=has(CAPTAIN_DOWN_MARKER),
+                window_960x540=(P1_WINDOW in text), stage=stage)
+
+
+def verify_receipt(markers, require_collision=True, require_actors=True):
+    """Fail closed unless the runtime receipt carries the observed evidence."""
+    if markers.get("captain_down"):
+        raise ContractMismatch("Captain-down run cannot substantiate a receipt")
+    missing = []
+    for key in ("content_selected", "ready", "live", "pass_run", "window_960x540"):
+        if not markers.get(key):
+            missing.append(key)
+    if not markers.get("spawn_covered"):
+        missing.append("spawn_covered")
+    if require_collision and not markers.get("collision"):
+        missing.append("collision")
+    if require_actors and not markers.get("actors"):
+        missing.append("actors")
+    if missing:
+        raise ContractMismatch("Incomplete runtime receipt: missing " + ", ".join(missing))
+    return dict(ok=True, stage=markers.get("stage"),
+                collision_probes=len(markers["collision"]),
+                actor_probes=len(markers["actors"]))
+
+
+def build_p1(iso_path, research_root, lanes_path, catalog, output):
+    """Run the P0 audit live and stage the P1 run layout from real sources."""
+    contract = lane_contract(lanes_path)
+    if contract["cave_path"] != CAVEINFO_PATH:
+        raise ContractMismatch("Lane contract cave path diverges from assigned source")
+    cave, cave_digest = decode_cave(iso_path, research_root)
+    stage, stages_digest = decode_stage(iso_path)
+    verify_stage(stage, contract)
+    coverage = verify_cave_contract(cave, contract)
+    closure, _ = verify_closure(cave, catalog, iso_path)
+    layout = stage_run_layout(cave, stage, cave_digest, stages_digest, closure, output)
+    return layout, coverage
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--iso", type=Path, required=True)
@@ -367,9 +557,16 @@ if __name__ == "__main__":
     parser.add_argument("--lanes", type=Path, required=True)
     parser.add_argument("--catalog", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--p1", action="store_true", help="stage the P1 private run layout")
     args = parser.parse_args()
-    catalog = json.loads(args.catalog.read_text(encoding="utf-8"))
-    packet, path = build_packet(args.iso, args.research, args.lanes, catalog, args.output)
-    print(json.dumps(dict(packet=str(path), floors=packet["floor_count"],
-                          source_sha256=packet["source_sha256"],
-                          stages_sha256=packet["stage_table"]["sha256"])))
+    catalog = json.loads(args.catalog.read_text(encoding="utf-8")) if args.catalog.is_file() else {}
+    if args.p1:
+        layout, coverage = build_p1(args.iso, args.research, args.lanes, catalog, args.output)
+        print(json.dumps(dict(run_layout=layout["run_layout"], files=layout["files"],
+                              sha256=layout["sha256"], window=layout["window"],
+                              floors=len(coverage))))
+    else:
+        packet, path = build_packet(args.iso, args.research, args.lanes, catalog, args.output)
+        print(json.dumps(dict(packet=str(path), floors=packet["floor_count"],
+                              source_sha256=packet["source_sha256"],
+                              stages_sha256=packet["stage_table"]["sha256"])))
