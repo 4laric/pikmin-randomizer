@@ -202,5 +202,109 @@ class LiveDecodeTests(unittest.TestCase):
         self.assertEqual(packet["stage"]["spicy_sprays"], 3)
 
 
+
+
+SAMPLE_PACKET = {
+    "cave_id": "ch_NARI_04series",
+    "source_sha256": "83cda0aa4e8fc96a68060ed1dba8e1e9ff53151a29856d813e23328618b70e18",
+    "contract_mismatches": [],
+    "missing_unit_assets": [],
+    "table_order": 0,
+    "stage": {
+        "cave_file": "ch_NARI_04series.txt",
+        "pikmin": [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0],
+                   [0, 0, 50], [0, 0, 0], [0, 0, 0]],
+        "time": 450.0, "bitter_sprays": 2, "spicy_sprays": 3,
+        "floor_count": 7, "treasure_count": 0, "ui_index": 12,
+        "floor_seconds": [40.0, 30.0, 40.0, 40.0, 40.0, 45.0, 60.0],
+    },
+}
+
+SAMPLE_LOG = """[PC Port] Experimental preview window set to 960x540 windowed and centered
+P2_FIXTURE_COUNTS reds=20 dwarfs=0
+P2_CHALLENGE_STAGE_SIDECAR cave=ch_NARI_04series ui_index=12
+P2_CHALLENGE_STAGE_RESOLVED cave=ch_NARI_04series ui_index=12 floors=7 roster_total=50
+P2_LIFECYCLE_ENEMY frame=120 phase=1 enemy=0x1 generator=0x2 x=10.00 y=30.00 z=1850.00
+P2_FINAL_POSITION x=10.000 y=30.000 z=1850.000 ground=30.000 velocity=0.000,0.000 stick=0,0
+"""
+
+
+class P1ImportTests(unittest.TestCase):
+    def test_stage_select_round_trip(self):
+        text = _lane.stage_select_record(SAMPLE_PACKET)
+        self.assertTrue(text.startswith("P2_CHALLENGE_STAGE_SELECT_1\n"))
+        self.assertTrue(_lane.check_stage_record(text, SAMPLE_PACKET))
+        self.assertIn("cave ch_NARI_04series ui_index 12", text)
+        self.assertIn("roster 0 0 50", text)
+
+    def test_stage_select_rejects_drift(self):
+        text = _lane.stage_select_record(SAMPLE_PACKET)
+        bad = text.replace("ui_index 12", "ui_index 13")
+        with self.assertRaises(ValueError):
+            _lane.check_stage_record(bad, SAMPLE_PACKET)
+        with self.assertRaises(ValueError):
+            _lane.check_stage_record("P2_WRONG_MAGIC\n", SAMPLE_PACKET)
+        with self.assertRaises(ValueError):
+            _lane.check_stage_record(text.replace(
+                "83cda0aa4e8fc96a68060ed1dba8e1e9ff53151a29856d813e23328618b70e18",
+                "00" * 32), SAMPLE_PACKET)
+
+    def test_stage_p1_run_layout(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            run = _lane.stage_p1_run(SAMPLE_PACKET, Path(tmp) / "run")
+            for name in (_lane.P1_SELECT_FILE, _lane.P1_SQUAD_FILE,
+                         _lane.P1_TIMERS_FILE, _lane.P1_MANIFEST_FILE):
+                self.assertTrue((run / name).is_file(), name)
+            squad = (run / _lane.P1_SQUAD_FILE).read_text(encoding="utf-8")
+            self.assertIn("color 4 leaf 0 bud 0 flower 50", squad)
+            self.assertIn("sprays bitter 2 spicy 3", squad)
+
+    def test_stage_p1_run_refuses_bad_packet(self):
+        import tempfile, copy
+        bad = copy.deepcopy(SAMPLE_PACKET)
+        bad["contract_mismatches"] = ["floor coverage is [1], expected 1-7"]
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                _lane.stage_p1_run(bad, Path(tmp) / "run")
+        bad2 = copy.deepcopy(SAMPLE_PACKET)
+        bad2["cave_id"] = "ch_NARI_01kusachi"
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                _lane.stage_p1_run(bad2, Path(tmp) / "run")
+
+    def test_validate_p1_log_observed(self):
+        findings = _lane.validate_p1_log(SAMPLE_LOG, SAMPLE_PACKET)
+        self.assertTrue(findings["window_960x540"])
+        self.assertTrue(findings["live_squad"])
+        self.assertTrue(findings["stage_selected"])
+        self.assertTrue(findings["stage_resolved"])
+        self.assertTrue(findings["actors_observed"])
+        self.assertTrue(findings["collision_observed"])
+        self.assertEqual(findings["floors"], 7)
+
+    def test_validate_p1_log_unobserved_stays_false(self):
+        findings = _lane.validate_p1_log("P2_FIXTURE_COUNTS reds=0 dwarfs=0\n",
+                                         SAMPLE_PACKET)
+        self.assertFalse(findings["window_960x540"])
+        self.assertFalse(findings["live_squad"])
+        self.assertFalse(findings["stage_selected"])
+        self.assertFalse(findings["actors_observed"])
+
+    def test_validate_p1_log_captain_down_blocked(self):
+        with self.assertRaises(ValueError):
+            _lane.validate_p1_log(SAMPLE_LOG + "P2_FIXTURE_CAPTAIN_DOWN tick=3\n",
+                                  SAMPLE_PACKET)
+
+    def test_captain_guard_header_pinned(self):
+        import hashlib
+        guard = (Path(__file__).resolve().parent.parent.parent
+                 / "scripts" / _lane.CAPTAIN_GUARD_HEADER.split("/", 1)[1])
+        if not guard.is_file():
+            self.skipTest("guard header not in this worktree")
+        digest = hashlib.sha256(guard.read_bytes()).hexdigest()
+        self.assertEqual(digest, _lane.CAPTAIN_GUARD_SHA256)
+
+
 if __name__ == "__main__":
     unittest.main()
