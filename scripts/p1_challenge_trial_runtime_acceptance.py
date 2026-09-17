@@ -33,6 +33,7 @@ LAYOUT_KEY = "challenge:trial"
 NATIVE_AREA_ID = 4
 STAGE_INFO_INDEX = 20
 SOURCE_INI = "stages/chal4.ini"
+NATIVE_BOOT_PIN = "c549997e7bdf66fb09c0f0756c56e65fdad55861"
 
 GUARD_REL = "scripts/p2_fixture_captain_guard.h"
 
@@ -108,8 +109,11 @@ def parse_run_log(text):
     return facts
 
 
-PIKI_BIRTH_OWNER = ("Piki birth path owner (src/plugPikiColin/newPikiGame.cpp; "
-                    "shared hook review #186, campaign contract #52)")
+PIKI_BIRTH_OWNER = ("Piki birth path owner (src/sysDolphin/system.cpp:1229 "
+                    "PIKI BIRTH FAILED; shared hook review #186, campaign "
+                    "contract #52, newPikiGame.cpp birth path)")
+PIKI_BIRTH_RE = re.compile(r"^\[PANIC\].*PIKI BIRTH FAILED", re.MULTILINE)
+CHAL4_GEN_FAIL_RE = re.compile(r"stages/chal4/(?:1|init)\.gen\"\) -> FAILED")
 
 
 def birth_limitation_record(facts, log_text):
@@ -124,6 +128,8 @@ def birth_limitation_record(facts, log_text):
     lines = [line.strip() for line in log_text.splitlines()]
     window = [l for l in lines if "Window & OpenGL Context" in l or "preview window" in l][:3]
     bootish = [l for l in lines if "CHALLENGE" in l or "P2_CHALLENGE" in l or "Generator" in l][:5]
+    panic = [l for l in lines if "PIKI BIRTH FAILED" in l or l.startswith("[PANIC]")][:3]
+    genfail = [l for l in lines if "stages/chal4/" in l and "FAILED" in l][:3]
     return {
         "kind": "piki_birth_limitation",
         "stage": STAGE,
@@ -132,7 +138,8 @@ def birth_limitation_record(facts, log_text):
                    "observed; the pre-existing PIKI BIRTH limitation blocks the trial "
                    "guarded run before the stage." % STAGE),
         "owner": PIKI_BIRTH_OWNER,
-        "log_lines": window + bootish,
+        "source_pin": "src/sysDolphin/system.cpp:1229 (native %s)" % NATIVE_BOOT_PIN,
+        "log_lines": panic + genfail + window + bootish,
         "blocks": "promotion (unresolved engine limitation), not preparatory work",
     }
 

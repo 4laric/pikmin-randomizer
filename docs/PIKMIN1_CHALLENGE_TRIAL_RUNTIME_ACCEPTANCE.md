@@ -73,6 +73,23 @@ lines and the named shared owner:
 An unresolved engine limitation blocks promotion; it never turns an unobserved
 gate into a PASS.
 
+### Observed run (this lane, native c549997e, fixture exe ea209738)
+
+The chal4 guarded run reached the stage identity and generators but the engine
+panicked before the squad was born:
+
+    [PC Port] SDL2 Window & OpenGL Context initialized successfully (960x540)
+    Experimental preview window set to 960x540 windowed and centered
+    [Pikipelago] CHALLENGE_LAYOUT_READY id=challenge-4 stage_index=20 file=stages/chal4.ini story=1
+    [PC Generator] default: initialised 63 recognised generators, spawned 162 creatures
+    [PC Generator] plant: initialised 49 recognised generators, spawned 49 creatures
+    [PANIC] .../src/sysDolphin/system.cpp:1229: *** PIKI BIRTH FAILED !!!
+
+No P2_CHALLENGE_SQUAD / P2_CHALLENGE_BOOT / PASS P2_CHALLENGE_GUARDED_BOOT
+line was emitted and no CAPTAIN_DOWN fired. The stage identity row is observed
+(layout_id=challenge-4), but with no live starting squad the identity_spawn
+gate stays UNTESTED rather than being upgraded on partial evidence.
+
 ## Not observed / not claimed
 
 No movement, attacks, deaths, transports, rewards, reentries, timers, scoring,
