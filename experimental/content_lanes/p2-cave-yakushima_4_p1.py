@@ -296,6 +296,42 @@ def build_generate_sidecar(plan, units, roster=None, anchor="hole"):
     return "\n".join(lines) + "\n"
 
 
+def write_runtime_inputs(outdir, p0_path, root_worktree, native_worktree,
+                         iso_path=None, research_root=None, pins=None):
+    """Build the guarded-boot input package with the REAL P0-derived sidecar.
+
+    Reuses the accepted prerequisite builder (experimental.pikmin2_cave_runtime_inputs)
+    for the entry + provenance, then substitutes the real sidecar (real unit
+    pool + roster) and re-records its hash so validate refuses any drift.
+    """
+    import importlib.util
+    import json as _json
+
+    builder_path = Path(root_worktree) / "experimental/pikmin2_cave_runtime_inputs.py"
+    if not builder_path.is_file():
+        raise StagingError("runtime input builder absent: " + str(builder_path))
+    spec = importlib.util.spec_from_file_location("p2_cave_runtime_inputs", builder_path)
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+    builder.build_package(str(outdir), "yakushima4", pins or {})
+    packet = load_p0_packet(p0_path)
+    plan = floor1_plan(packet)
+    sidecar = build_generate_sidecar(plan, decode_unit_pool(iso_path),
+                                     decode_floor1_roster(iso_path, research_root))
+    sidecar_path = Path(outdir) / "p2-cave-generate.txt"
+    sidecar_path.write_text(sidecar, encoding="utf-8", newline="\n")
+    provenance_path = Path(outdir) / "p2-cave-runtime-inputs.json"
+    provenance = _json.loads(provenance_path.read_text(encoding="utf-8"))
+    provenance["generate"]["sha256"] = hashlib.sha256(sidecar.encode("utf-8")).hexdigest()
+    provenance["generate"]["pool"] = plan["unit_pool"]
+    provenance["generate"]["source"] = "P0-derived real unit pool + roster (#161)"
+    provenance_path.write_text(_json.dumps(provenance, indent=2) + "\n", encoding="utf-8")
+    problems = builder.validate_package(str(outdir))
+    if problems:
+        raise StagingError("runtime input package refused: " + ", ".join(problems))
+    return provenance
+
+
 def main(argv=None):
     import argparse
 

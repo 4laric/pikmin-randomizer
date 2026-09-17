@@ -187,5 +187,15 @@ class ObservationContractTests(unittest.TestCase):
         self.assertNotIn("unit_staging_observed", m.validate_observation(events))
 
 
+class RuntimeInputTests(unittest.TestCase):
+    def test_helper_requires_prerequisite_builder(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(m.StagingError, "runtime input builder absent"):
+                m.write_runtime_inputs(directory, "missing.json", directory, directory)
+
+    def test_helper_is_exported(self):
+        self.assertTrue(callable(m.write_runtime_inputs))
+
+
 if __name__ == "__main__":
     unittest.main()

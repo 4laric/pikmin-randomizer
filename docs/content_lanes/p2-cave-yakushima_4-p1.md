@@ -75,3 +75,40 @@ Re-provision this lane on an integrated pin that contains both the #129
 `ad4a34e5` on `codex/shard-caves-yakushima-y4p0`), or authorize a scoped
 cross-line integration. Then a leased private engine build with the captain
 guard can observe the floor-1 boot and complete the runtime acceptance items.
+
+
+## Generation 7: guarded runtime fixture integrated (prerequisite #642)
+
+The blocked guarded-boot gap is resolved at the tooling level by integrating the
+accepted prerequisite `cave-guarded-runtime-fixture` (#642) into this lane's
+private worktrees: native `tools/p2_cave_guarded_boot_fixture.cpp` (real
+game-linked replacement-main fixture with the #632 captain guard) and root
+`experimental/pikmin2_cave_runtime_inputs.py` + builder/tests/doc.
+
+Verified this turn on lean pins root `a95c9517` / native `555981f0`:
+
+- Private leased build green (`pikmin_pc` exit 0, fixture TU compiled, linked
+  82 objects); exe sha256 `a9d82b1f87d0609caf72be6a23dd725d5379296b8c03044851dd6874d201005b`.
+- Captain guard (#632) adopted and verified: `--guard-self-test` exit 0
+  (`P2_CAVE_GUARDED_SELFTEST_PASS rows=7`); `FORCE_CAPTAIN_DOWN=1` negative run
+  exits 86 with `P2_FIXTURE_CAPTAIN_DOWN ... outcome=BLOCKED` and no PASS.
+  Canonical header `scripts/p2_fixture_captain_guard.h` sha256
+  `d2f678c9...09945f3c3474`, vendored verbatim.
+- Input package built with the REAL P0-derived sidecar (not the preset
+  placeholder) and validated `INPUTS_PASS`.
+- Headed guarded run reached the 960x540 centred window
+  (`P2_CAVE_GUARDED_WINDOW size=960x540 ... centered=1`) and GL 3.3, loaded the
+  preview generators (default 80, plants 30), then aborted in
+  `pc_p2_preview.cpp:128` with `P2 preview: duplicate treasure` BEFORE the cave
+  entry could activate. No `P2_CAVE_READY`, no `P2_CAVE_GENERATE_PASS`; all six
+  gates UNTESTED.
+
+## Remaining concrete gap (arena data, owner outside this lane)
+
+The preview abort fires because the generic chal0/practice arena exposes more
+than one `pr05` treasure and no `p2-cargo.txt` config disambiguates. A headed
+cave boot therefore needs a private arena overlay with exactly one `pr05` (or a
+valid `p2-cargo.txt`), which is arena/fixture-data provisioning owned by the
+fixture-baseline / provider-runtime-fixtures lanes, not by this lane's four
+reserved files. Until then the guarded boot cannot reach the cave entry on a
+legal arena.
