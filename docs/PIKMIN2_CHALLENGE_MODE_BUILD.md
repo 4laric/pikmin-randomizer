@@ -74,3 +74,30 @@ The guard runs before every observed fixture tick; captain-down exits 86
 tick. The negative path (dead captain, hp 0) is compiled from the same
 header and must exit 86 with no PASS marker. Protected observation cannot
 prove captain damage. Adoption and hashes are recorded per run.
+
+## Private module-wrapper (added gen 7, #656)
+
+The #651 fixture calls three symbols defined in
+`pc_port/pc_p2_challenge_mode.cpp`, which **no CMake target compiles** (that
+registration is the pending #186 / #661 decision). To keep the fixture
+read-only and avoid any shared edit, the harness generates a private
+provenance-pinned wrapper under its output dir that includes
+
+    pc_port/pc_p2_challenge_mode.h
+    pc_port/pc_p2_challenge_mode.cpp
+    tools/p2_challenge_mode_fixture.cpp
+
+in one translation unit. This is the same accepted "module TU rides along
+via include" technique the integrated #672 boot fixture
+(`tools/p2_challenge_boot_fixture.cpp`) uses. The included files are
+read-only and enter the shared builder's fixture-input snapshot, so
+provenance pins them.
+
+## Honest scope (do not overstate)
+
+The fixture is **game-linked** in the sense that it is compiled and linked
+against the private `pikmin_pc` object graph (613 objects / 201 link args)
+with the production compile flags. What it *executes* is the standalone
+host-mode state machine plus the #632 captain guard -- it is **not** an
+engine boot, not gameplay, and not real game-linked runtime. All six arena
+gates stay UNTESTED. Reported failures/refusals are the honest result.
