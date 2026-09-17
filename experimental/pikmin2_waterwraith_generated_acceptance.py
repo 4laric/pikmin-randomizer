@@ -5,25 +5,27 @@ owned Tyre helper (98):
 
 1. P2_SEED_RESOLVE source_id=99 target=<uid> (genteki birth, ENEMY_P2 seed).
 2. P2_GENERATED_PLACEMENT source_id=99 target=<uid> generator=<gen>
-   bound=1 (narrow native bind path; reviewed placement99 provider #575,
-   accepted slot 568677317).
-3. P2_WATERWRAITH_BIRTH phase=fall attached=1 id=99 helper=98
-   generator=<gen> (family register claim on the spawned actor; the
-   generator field does not exist yet -- a family marker follow-on owned
-   by this lane records it when the bind path lands).
+   bound=1 (narrow native bind path; placement99 provider #575, accepted
+   slot 568677317).
+3. P2_WATERWRAITH_GENERATED_BIND generator=<gen> slot=<uid> source=99
+   (family claim: the encounter verified the live seeded Teki -- alive,
+   placement-bound, seed source 99 on the same slot -- and owns it; the
+   fixed P2_WATERWRAITH_BIRTH phase=fall attached=1 id=99 helper=98
+   proves the family is alive but never satisfies the verdict alone).
 
 Tyre98 is attached helper evidence, never an identity: no gate table is
 produced for 98 and no 98 marker can satisfy this verdict. The legacy
-fixed-encounter birth (same BIRTH line with no resolve/placement
-markers, generator 0) is reported as fixed-encounter, never generated.
+fixed-encounter birth (BIRTH with no resolve/placement/BIND markers,
+generator 0) is reported as fixed-encounter, never generated. A
+P2_WATERWRAITH_GENERATED_FORGET for the bound generator after the bind
+fails the verdict (claim lost: dead, unbound, changed or gone).
 
 Verdict is PASS only when resolve and placement agree on the accepted
-slot 568677317, the family birth names id 99 with helper 98 attached,
-the birth generator field is present and equals the placement
-generator (numeric register tie -- staged-only ties never pass), and no
-injected-birth taint is present. Missing placement (the live state
-before #575) and untied register births fail closed with the exact
-reason. No generated slot UID beyond the reviewed 568677317 is accepted.
+slot 568677317, the BIND names the same generator and slot, the family
+birth names id 99 with helper 98 attached, no later FORGET names that
+generator, and no injected-birth taint is present. Anything else fails
+closed with the exact reason. No staged-only tie can pass: every leg
+is engine-emitted for the same live actor.
 """
 import re
 
@@ -44,10 +46,17 @@ _RE_PLACEMENT = re.compile(
     r'bound=(?P<bound>[01])\b')
 _RE_BIRTH = re.compile(
     r'P2_WATERWRAITH_BIRTH\s+phase=(?P<phase>\S+)\s+attached=(?P<attached>[01])\s+'
-    r'id=(?P<id>\d+)\s+helper=(?P<helper>\d+)(?:\s+generator=(?P<generator>\d+))?')
+    r'id=(?P<id>\d+)\s+helper=(?P<helper>\d+)')
+_RE_BIND = re.compile(
+    r'P2_WATERWRAITH_GENERATED_BIND\s+generator=(?P<generator>\d+)\s+'
+    r'slot=(?P<slot>\d+)\s+source=(?P<source>\d+)')
+_RE_FORGET = re.compile(
+    r'P2_WATERWRAITH_GENERATED_FORGET\s+generator=(?P<generator>\d+)\s+'
+    r'reason=(?P<reason>\S+)')
 
 _BIRTH_TOKENS = ('P2_SEED_RESOLVE', 'P2_GENERATED_PLACEMENT',
-                 'P2_WATERWRAITH_BIRTH')
+                 'P2_WATERWRAITH_BIRTH', 'P2_WATERWRAITH_GENERATED_BIND',
+                 'P2_WATERWRAITH_GENERATED_FORGET')
 
 # Captain-safety scan tokens (#632): engine death/extinction markers that
 # must never underlie a birth PASS. Advisory: reported separately, never
@@ -90,10 +99,10 @@ def validate_generated_birth(log_text):
     """Correlate the generated-birth triple for BlackMan 99.
 
     Returns (verdict, detail): verdict PASS only on full agreement on the
-    accepted slot with a numeric register tie; otherwise FAIL with the
-    exact missing/mismatched reason. Fixed-only births, missing placement
-    arms, refusals, non-accepted slots, untied register births and taint
-    all fail closed.
+    accepted slot with a live family bind; otherwise FAIL with the exact
+    missing/mismatched reason. Fixed-only births, missing placement arms,
+    refusals, non-accepted slots, missing/lost binds and taint all fail
+    closed.
     """
     if not log_text or not log_text.strip():
         return ('FAIL', 'empty log: no generated-birth markers')
@@ -104,9 +113,11 @@ def validate_generated_birth(log_text):
     placement_generators = []
     placement_refused = []
     births = []
+    binds = []
+    forgets = []
     tainted_markers = []
 
-    for line in lines:
+    for number, line in enumerate(lines, 1):
         match = _RE_RESOLVE.search(line)
         if match:
             if _tainted(line):
@@ -129,6 +140,18 @@ def validate_generated_birth(log_text):
                 tainted_markers.append(line.strip())
             else:
                 births.append(match)
+        match = _RE_BIND.search(line)
+        if match:
+            if _tainted(line):
+                tainted_markers.append(line.strip())
+            else:
+                binds.append((number, match))
+        match = _RE_FORGET.search(line)
+        if match:
+            if _tainted(line):
+                tainted_markers.append(line.strip())
+            else:
+                forgets.append((number, match))
 
     if tainted_markers:
         return ('FAIL',
@@ -156,7 +179,7 @@ def validate_generated_birth(log_text):
 
     if not births:
         return ('FAIL', 'missing P2_WATERWRAITH_BIRTH id=99 helper=98 '
-                        '(family register never claimed the actor)')
+                        '(family register never ran)')
 
     slots = set(resolve_targets) | set(placement_targets)
     if len(slots) > 1:
@@ -181,7 +204,6 @@ def validate_generated_birth(log_text):
         return ('FAIL',
                 'family birth does not name id=99 with attached helper=98; '
                 'Tyre98 is attached evidence, never the identity')
-    birth = good_births[-1]
 
     placed_gens = {g for g in placement_generators if g is not None}
     if len(placed_gens) != 1:
@@ -189,18 +211,28 @@ def validate_generated_birth(log_text):
                 'placement marker lacks a generator field; same-actor '
                 'correlation unproven')
     placed_gen = next(iter(placed_gens))
-    birth_gen = birth.group('generator')
-    if birth_gen is None:
-        return ('FAIL',
-                'register tie not numeric: P2_WATERWRAITH_BIRTH logs no '
-                'generator field (family marker follow-on open); '
-                'staged-only ties never pass')
-    if birth_gen != placed_gen:
-        return ('FAIL',
-                'actor disagreement: placement generator=%s register generator=%s; '
-                'same spawned actor required' % (placed_gen, birth_gen))
-    generator = placed_gen
 
+    good_binds = [(number, m) for number, m in binds
+                  if m.group('generator') == placed_gen
+                  and m.group('slot') == slot
+                  and m.group('source') == str(SOURCE_ID)]
+    if not good_binds:
+        return ('FAIL',
+                'family generated-claim missing: no '
+                'P2_WATERWRAITH_GENERATED_BIND for generator=%s slot=%s; '
+                'the register never bound the seeded actor' % (placed_gen, slot))
+    bind_number, _ = good_binds[-1]
+
+    lost = [(number, m) for number, m in forgets
+            if number > bind_number and m.group('generator') == placed_gen]
+    if lost:
+        return ('FAIL',
+                'family claim lost after bind: '
+                'P2_WATERWRAITH_GENERATED_FORGET generator=%s reason=%s; '
+                'dead, unbound, changed or gone actors never pass'
+                % (placed_gen, lost[-1][1].group('reason')))
+
+    generator = placed_gen
     for line in lines:
         if _tainted(line) and (any(tok in line for tok in _BIRTH_TOKENS)
                                or slot in line or generator in line):
@@ -210,7 +242,7 @@ def validate_generated_birth(log_text):
 
     return ('PASS',
             'generated BlackMan99 birth: slot=%s generator=%s helper=98 attached; '
-            'resolve+placement+register agree (numeric register tie)'
+            'resolve+placement+register-claim agree (live family bind)'
             % (slot, generator))
 
 
