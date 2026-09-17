@@ -57,9 +57,9 @@ class LaterFloorTests(unittest.TestCase):
             self.assertEqual(plan["placements"], [])
             self.assertEqual(adapter.validate_plan(plan), [])
 
-    def test_floor2_is_entry_bootable_floor3_is_not(self):
-        self.assertTrue(adapter.floor_plan(PACKET, 2)["entry_bootable"])
-        self.assertFalse(adapter.floor_plan(PACKET, 3)["entry_bootable"])
+    def test_floors2_through_8_are_entry_bootable(self):
+        for number in range(2, 9):
+            self.assertTrue(adapter.floor_plan(PACKET, number)["entry_bootable"])
 
     def test_counts_aggregate_tokens(self):
         plan = adapter.floor_plan(PACKET, 2)
@@ -69,14 +69,17 @@ class LaterFloorTests(unittest.TestCase):
     def test_sidecar_marks_bootability(self):
         text = adapter.sidecar_text(adapter.floor_plan(PACKET, 4))
         self.assertIn("P2_TUTORIAL2_LATER_1", text)
-        self.assertIn("entry_bootable 0", text)
+        self.assertIn("entry_bootable 1", text)
         text2 = adapter.sidecar_text(adapter.floor_plan(PACKET, 2))
         self.assertIn("entry_bootable 1", text2)
 
-    def test_runtime_inputs_refuse_non_bootable(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            with self.assertRaisesRegex(ValueError, "not directly entry-bootable"):
-                adapter.build_runtime_inputs(adapter.floor_plan(PACKET, 5), tmp)
+    def test_floor9_plan_refused_unknown_cargo(self):
+        bad = json.loads(json.dumps(PACKET))
+        bad["floors"][8]["tokens"] = [
+            {"source_token": "Houdai_light_a", "kind": "unknown_cargo",
+             "base": "Houdai", "carried": "light_a", "drop": 0}]
+        with self.assertRaisesRegex(ValueError, "unresolvable"):
+            adapter.floor_plan(bad, 9)
 
     def test_runtime_inputs_stub_for_floor2(self):
         class Stub:
@@ -96,6 +99,20 @@ class LaterFloorTests(unittest.TestCase):
             provenance = json.loads(
                 Path(tmp, "p2-cave-runtime-inputs.json").read_text(encoding="utf-8"))
             self.assertEqual(provenance["floor"], 2)
+
+    def test_entry4_version_swap_for_floor3(self):
+        class Stub:
+            @staticmethod
+            def render_entry(preset):
+                return "P2_CAVE_ENTRY_1 %s %d 1.0 20\n" % ("0" * 32, preset["floor"])
+            @staticmethod
+            def render_generate(preset):
+                return "GENERATE"
+        with tempfile.TemporaryDirectory() as tmp:
+            result = adapter.build_runtime_inputs(
+                adapter.floor_plan(PACKET, 3), tmp, entry_builder=Stub)
+            first = Path(result["entry"]).read_text(encoding="utf-8").split()[0]
+            self.assertEqual(first, "P2_CAVE_ENTRY_4")
 
     def test_descend_chain(self):
         chain = adapter.descend_plan(2)

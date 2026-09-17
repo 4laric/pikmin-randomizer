@@ -35,7 +35,9 @@ LATER_FLOORS = tuple(range(2, EXPECTED_FLOOR_COUNT + 1))
 SOURCE_PATH = "user/Mukki/mapunits/caveinfo/tutorial_2.txt"
 SOURCE_SHA256 = "05a38ab1e37c4ad11b5f48425bec3c2101ff199a4ea0b926fc9f35fde5620049"
 ENTRY_VERSION = "P2_CAVE_ENTRY_1"
+ENTRY_VERSION_LATER = "P2_CAVE_ENTRY_4"
 ENTRY_FLOORS = (1, 2)
+ENTRY_FLOORS_LATER = tuple(range(3, 9))
 
 
 def load_packet(path):
@@ -70,9 +72,11 @@ def floor_plan(packet, number):
     tokens = floor.get("tokens") or []
     if not tokens:
         raise ValueError("floor %d has no enemy tokens" % number)
-    kinds = {t.get("kind") for t in tokens}
-    if kinds != {"exact"}:
-        raise ValueError("floor %d carries non-exact tokens: %s" % (number, sorted(map(str, kinds))))
+    for token in tokens:
+        if token.get("kind") not in ("exact", "carrier", "generator_variant"):
+            raise ValueError("floor unresolvable token")
+        if not token.get("base"):
+            raise ValueError("floor token missing base id")
     counts = Counter(t["base"] for t in tokens)
     for base in counts:
         if not re.fullmatch(r"[A-Za-z0-9_]+", base):
@@ -88,13 +92,13 @@ def floor_plan(packet, number):
         "source": SOURCE_PATH,
         "source_sha256": SOURCE_SHA256,
         "unit_pool": pool,
-        "enemies": [{"enemy_id": base, "count": counts[base]} for base in sorted(counts)],
+        "enemies": [{"enemy_id": b, "count": c, "carried": sorted({x.get("carried") for x in tokens if x["base"] == b and x.get("carried")}), "variant": any(x.get("kind") == "generator_variant" for x in tokens if x["base"] == b)} for b, c in sorted(counts.items())],
         "treasure_count": treasure_count,
         "treasure_ids_unresolved": True,
         "missing_treasure": list(floor.get("missing_treasure") or []),
         "generated": False,
         "placements": [],
-        "entry_bootable": number in ENTRY_FLOORS,
+        "entry_bootable": number in ENTRY_FLOORS or number in ENTRY_FLOORS_LATER,
         "limitations": [
             "Weighted rows are definitions, not spawn instances or placements.",
             "No seeded topology, holes or placements are generated.",
@@ -152,7 +156,7 @@ def descend_plan(from_floor):
 
 def build_runtime_inputs(plan, output_dir, entry_builder=None):
     if not plan["entry_bootable"]:
-        raise ValueError("floor %d is not directly entry-bootable; use the descend chain" % plan["floor"])
+        raise ValueError("floor %d is not entry-bootable on this pin" % plan["floor"])
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     if entry_builder is None:
@@ -168,6 +172,17 @@ def build_runtime_inputs(plan, output_dir, entry_builder=None):
         entry_builder = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(entry_builder)
     entry_text = entry_builder.render_entry(_shared_preset(plan))
+    if plan["floor"] >= 3:
+        # Adapted #757 descend policy admits P2_CAVE_ENTRY_4 for staged
+        # floors 3-8 under the identical 32-hex token contract; the shared
+        # builder only renders ENTRY_1, so swap the version token and
+        # re-validate the exact header shape below.
+        head, _, rest = entry_text.partition(" ")
+        assert head == "P2_CAVE_ENTRY_1"
+        entry_text = ENTRY_VERSION_LATER + " " + rest
+        fields = entry_text.split()
+        assert fields[0] == ENTRY_VERSION_LATER and int(fields[2]) == plan["floor"]
+        assert len(fields[1]) == 32
     generate_text = entry_builder.render_generate(_shared_preset(plan))
     entry_path = output_dir / "p2-cave-entry.txt"
     generate_path = output_dir / "p2-cave-generate.txt"
