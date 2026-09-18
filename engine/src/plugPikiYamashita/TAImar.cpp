@@ -650,6 +650,7 @@ TAImarParameters::TAImarParameters()
 	multiP->setF(TAImarFloatParams::Unk56, 40.0f);
 
 	multiP->setI(TPI_SpawnType, TEKI_NULL);
+	multiP->setI(TPI_CorpseType, TEKICORPSE_LeaveCorpse);
 	multiP->setI(TPI_SwallowCount, 5);
 	multiP->setI(TPI_FlickPikiCount1, 10);
 	multiP->setI(TPI_FlickPikiCount2, 20);
