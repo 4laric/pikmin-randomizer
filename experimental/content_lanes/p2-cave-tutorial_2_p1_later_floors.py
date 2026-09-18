@@ -38,6 +38,14 @@ ENTRY_VERSION = "P2_CAVE_ENTRY_1"
 ENTRY_VERSION_LATER = "P2_CAVE_ENTRY_4"
 ENTRY_FLOORS = (1, 2)
 ENTRY_FLOORS_LATER = tuple(range(3, 9))
+# Floor-9 Houdai_light_a staging resolution (#805, read-only pin).
+HOUDAI_LIGHT_A_TOKEN = "Houdai_light_a"
+HOUDAI_LIGHT_A_ENEMY = "Houdai"
+HOUDAI_LIGHT_A_ENEMY_ID = 66
+HOUDAI_LIGHT_A_CARGO = "light_a"
+HOUDAI_LIGHT_A_POOL = "1_units_houdai_metal.txt"
+HOUDAI_LIGHT_A_PIN_SHA = "7fa6df04dc8a28b380844582494aa4937818a6bebb32b32b3e6ab36c0cc993df"
+DESCEND_POLICY_PIN_SHA = "3cacd9ac4cb778db1147e37ad71d257cd797d37f23bc6154b6bdebe2739f0128"
 
 
 def load_packet(path):
@@ -72,6 +80,15 @@ def floor_plan(packet, number):
     tokens = floor.get("tokens") or []
     if not tokens:
         raise ValueError("floor %d has no enemy tokens" % number)
+    resolved_cargo = []
+    if number == 9:
+        for token in tokens:
+            if token.get("kind") == "unknown_cargo":
+                if (token.get("source_token") == HOUDAI_LIGHT_A_TOKEN and token.get("base") == HOUDAI_LIGHT_A_ENEMY and token.get("carried") == HOUDAI_LIGHT_A_CARGO and floor.get("unit_pool") == HOUDAI_LIGHT_A_POOL):
+                    token["kind"] = "carrier"
+                    resolved_cargo.append({"token": HOUDAI_LIGHT_A_TOKEN, "enemy": HOUDAI_LIGHT_A_ENEMY, "enemy_id": HOUDAI_LIGHT_A_ENEMY_ID, "cargo": HOUDAI_LIGHT_A_CARGO, "pool": HOUDAI_LIGHT_A_POOL, "pin_sha256": HOUDAI_LIGHT_A_PIN_SHA})
+                else:
+                    raise ValueError("floor 9 unresolvable token")
     for token in tokens:
         if token.get("kind") not in ("exact", "carrier", "generator_variant"):
             raise ValueError("floor unresolvable token")
@@ -94,6 +111,7 @@ def floor_plan(packet, number):
         "unit_pool": pool,
         "enemies": [{"enemy_id": b, "count": c, "carried": sorted({x.get("carried") for x in tokens if x["base"] == b and x.get("carried")}), "variant": any(x.get("kind") == "generator_variant" for x in tokens if x["base"] == b)} for b, c in sorted(counts.items())],
         "treasure_count": treasure_count,
+        "resolved_cargo": resolved_cargo,
         "treasure_ids_unresolved": True,
         "missing_treasure": list(floor.get("missing_treasure") or []),
         "generated": False,

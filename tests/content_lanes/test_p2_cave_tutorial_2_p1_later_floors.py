@@ -73,6 +73,26 @@ class LaterFloorTests(unittest.TestCase):
         text2 = adapter.sidecar_text(adapter.floor_plan(PACKET, 2))
         self.assertIn("entry_bootable 1", text2)
 
+    def test_floor9_houdai_light_a_resolved_per_805(self):
+        good = json.loads(json.dumps(PACKET))
+        good["floors"][8]["unit_pool"] = "1_units_houdai_metal.txt"
+        good["floors"][8]["tokens"] = [
+            {"source_token": "Houdai_light_a", "kind": "unknown_cargo",
+             "base": "Houdai", "carried": "light_a", "drop": 0}]
+        plan = adapter.floor_plan(good, 9)
+        self.assertEqual(plan["resolved_cargo"][0]["token"], "Houdai_light_a")
+        self.assertEqual(plan["resolved_cargo"][0]["enemy_id"], 66)
+        self.assertEqual(adapter.validate_plan(plan), [])
+
+    def test_floor9_other_unknown_cargo_still_refused(self):
+        bad = json.loads(json.dumps(PACKET))
+        bad["floors"][8]["unit_pool"] = "1_units_houdai_metal.txt"
+        bad["floors"][8]["tokens"] = [
+            {"source_token": "Mystery_box", "kind": "unknown_cargo",
+             "base": "Mystery", "carried": "box", "drop": 0}]
+        with self.assertRaisesRegex(ValueError, "unresolvable"):
+            adapter.floor_plan(bad, 9)
+
     def test_floor9_plan_refused_unknown_cargo(self):
         bad = json.loads(json.dumps(PACKET))
         bad["floors"][8]["tokens"] = [
