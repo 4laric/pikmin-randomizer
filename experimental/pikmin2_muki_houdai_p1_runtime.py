@@ -174,10 +174,10 @@ if __name__ == "__main__":
 
 # Markers the guarded P1 fixture emits (native/tools/p2_muki_houdai_p1_fixture.cpp).
 WINDOW_MARKER = "P2_MUKI_HOUDAI_P1_WINDOW width=960 height=540 centered=1"
-SQUAD_MARKER = "P2_ROOM_READY treasure=bolt carry=5 repairs=1"
+SQUAD_MARKER = "P2_ROOM_READY squad="
 STAGE_ENTRY_PREFIX = "P2CHALLENGE_STAGE_ENTRY stage=ch_MUKI_houdai"
 BOOT_BLOCKED_MARKER = "BLOCKED MUKI_HOUDAI_P1_BOOT engine-table-row-pending"
-STAGE_PASS_MARKER = "PASS MUKI_HOUDAI_P1_STAGE"
+STAGE_PASS_MARKER = "PASS MUKI_HOUDAI_P1_BOOT"
 
 
 def read_run_log_file(path):

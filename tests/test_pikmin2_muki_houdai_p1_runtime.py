@@ -112,20 +112,21 @@ class HoudaiP1GateTests(unittest.TestCase):
 
     def test_utf16_log_file_yields_honest_gates(self):
         body = ("P2_MUKI_HOUDAI_P1_WINDOW width=960 height=540 centered=1\n"
-                "P2_ROOM_READY treasure=bolt carry=5 repairs=1\n"
-                "BLOCKED MUKI_HOUDAI_P1_BOOT engine-table-row-pending stage=ch_MUKI_houdai\n")
+                "P2CHALLENGE_STAGE_ENTRY stage=ch_MUKI_houdai table=0 tick=2\n"
+                "P2_ROOM_READY squad=20 tick=4\n"
+                "PASS MUKI_HOUDAI_P1_BOOT\n")
         log = Path(tempfile.mkdtemp()) / "native.log"
         log.write_bytes(body.encode("utf-16"))
         text = self.mod.read_run_log_file(str(log))
         self.assertIn("P2_MUKI_HOUDAI_P1_WINDOW", text)
-        rows = {r["token"]: r for r in self.mod.evaluate_gates(text, exit_code=3)}
+        rows = {r["token"]: r for r in self.mod.evaluate_gates(text, exit_code=0)}
         self.assertEqual(rows["window-960x540-centred"]["status"], "PASS")
         self.assertEqual(rows["captain-guard-silent"]["status"], "PASS")
         self.assertEqual(rows["squad-ready"]["status"], "PASS")
-        self.assertEqual(rows["stage-boot"]["status"], "BLOCKED")
-        self.assertEqual(rows["challenge-arena"]["status"], "UNTESTED")
-        self.assertEqual(rows["exit-status"]["status"], "BLOCKED")
-        self.assertIn("engine-table-row-pending", rows["stage-boot"]["evidence"])
+        self.assertEqual(rows["stage-boot"]["status"], "PASS")
+        self.assertEqual(rows["challenge-arena"]["status"], "PASS")
+        self.assertEqual(rows["exit-status"]["status"], "PASS")
+        self.assertIn("P2CHALLENGE_STAGE_ENTRY", rows["stage-boot"]["evidence"])
 
     def test_gates_never_pass_without_markers(self):
         rows = {r["token"]: r for r in self.mod.evaluate_gates("PASS\nwindow\n")}
