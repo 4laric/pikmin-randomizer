@@ -69,7 +69,6 @@ def main(argv=None):
     ap.add_argument("--timeout", type=int, default=900)
     args = ap.parse_args(argv)
     out = args.output
-    out.mkdir(parents=True, exist_ok=True)
     guard = guard_record(args.guard_dir)
     builder = [sys.executable, str(CANONICAL_ROOT / "scripts" / "build_pikmin2_fixture.py"),
                "--source", str(args.native.resolve()), "--build", str(args.build.resolve()),
@@ -77,6 +76,7 @@ def main(argv=None):
                "--expected-native-head", args.expected_native_head]
     proc = subprocess.run(builder, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                           text=True, errors="replace", timeout=3600)
+    (out / "builder.log").parent.mkdir(parents=True, exist_ok=True)
     (out / "builder.log").write_text(proc.stdout, encoding="utf-8")
     if proc.returncode != 0:
         print("builder step failed")
