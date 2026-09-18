@@ -28,19 +28,27 @@ a bare seed can no longer start an unstaged native process. The content route
 must cover seed identities; actor bindings and reviewed source assets remain
 required as documented in PIKMIN2_CONTENT_STAGING.md.
 
-## Remaining playtest blockers at this source pin
+## Current species-line validation
 
-The actual admitted cohort is 23, 44, 59, 60, 61, 62. The checked-in
-PIKMIN2_ADMITTED_PLACEMENT.json only contains Orange/Snow reviewed placements;
-the general campaign catalog has no accepted pairs. Actual generation with the
-reviewed document fails with unknown candidate identities Sarai, FireOtakara,
-WaterOtakara, GasOtakara and ElecOtakara. Their admitted status does not grant new
-campaign positions. The identity-keyed content installer resolves 44 but rejects
-23 and 59–62. Existing family installers need reviewed binding adapters.
+Rebased onto the actual species delivery line 3a33cbdefd5e4057eef9fb0d824cce4510ddab05,
+not the integrator's older l74 working checkout. That line already supports a
+default admitted placement document; an omitted AP placement uses its packaged
+snapshot. Explicit placement still goes through normal validation.
 
-Therefore this package is a tested plumbing fix, not a ready playable seed.
-Lane04 must deliver accepted campaign placements for the intended cohort and
-lane05 must deliver identity-keyed runtime adapters/content receipts. Then run
-actual AP generation and a bounded production-native launch using those exact
-pins and inputs before distributing a Play.cmd. Do not substitute arena-only
-flags, synthetic test placements, or changed admission to make generation pass.
+Actual Generate.main + Main.main produced AP seed 90474384339549028366, player
+Alari, with server multidata, spoiler and player manifest. It contains all 11
+admitted IDs [9,23,44,54,57,59,60,61,62,78,79], 33 bindings, Forest/Red start,
+capacity 50 and Emperor goal. Local output: output/p2-ap-playtest (canonical root).
+The isolated package test uses the real bundled placement document and a cwd
+outside the source tree; synthetic placement is used only as a denial fixture.
+
+## Native runtime work still required
+
+Generation is not a verified playable campaign. The species native source's
+pc_p2_generated_placement.cpp still restricts Kurage57 and MiniHoudai78 to fixed
+UIDs; the generated manifest can assign multiple copies to other targets. Their
+native sidecar parsers accept only one actor. Kogane setup aborts when a configured
+actor is absent, incompatible with a sidecar spanning different campaign areas.
+The full-pool runtime adapter/content chain and production-native campaign launch
+remain unverified. Do not distribute this as a working game launcher or grant
+ADMIT from the AP fill result. StartServer.cmd only starts the local AP server.
