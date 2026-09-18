@@ -95,7 +95,9 @@ def main(argv=None):
     run.mkdir(parents=True)
     import _winapi
     _winapi.CreateJunction(str(args.arena_src.resolve()), str(run / "assets"))
-    for name in ("arena.json", "mar-override.json", "p2-economy.txt", "muse-mar-validation.json"):
+    for name in ("arena.json", "mar-override.json", "p2-economy.txt",
+                 "muse-mar-validation.json", "flying-install.json",
+                 "p2-flying-actors.txt", "p2-flying-bank.txt"):
         src = args.arena_src / name
         if src.is_file():
             shutil.copy2(src, run / name)
