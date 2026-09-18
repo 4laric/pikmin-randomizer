@@ -1,6 +1,6 @@
 """Player-facing options for the Pikmin Randomizer world."""
 from dataclasses import dataclass
-from Options import PerGameCommonOptions, Toggle, Choice, Range, OptionSet, DeathLink
+from Options import PerGameCommonOptions, Toggle, Choice, Range, OptionSet, DeathLink, OptionDict
 
 
 class ExpandedChecks(Toggle):
@@ -47,6 +47,14 @@ class P2EnemyRandomizer(Toggle):
     """Experimental: place admitted Pikmin 2 source enemies in the randomizer through the versioned admission bridge. Off by default. When enabled, the admitted cohort is placed on the committed accepted-placement document (docs/PIKMIN2_ADMITTED_PLACEMENT.json); an empty or unaccepted admission set still fails closed with a clear error, and no P1 enemy is ever substituted."""
     display_name = 'Pikmin 2 Enemy Bridge (experimental)'
     default = 0
+
+
+class P2Placement(OptionDict):
+    """Experimental lane-04 p2-placement-v1 document. Required when enabling
+    P2 enemies. Supply reviewed placement evidence; empty or denied placements
+    fail generation. This option never grants enemy admission."""
+    display_name = 'Pikmin 2 placement document'
+    default = {}
 
 
 class GroupSpawnEnemies(Toggle):
@@ -211,6 +219,7 @@ class PikminOptions(PerGameCommonOptions):
     carry_upgrades: CarryUpgrades
     campaign_enemies: CampaignEnemies
     p2_enemy_randomizer: P2EnemyRandomizer
+    p2_placement: P2Placement
     group_spawn_enemies: GroupSpawnEnemies
     miniboss_enemies: MinibossEnemies
     per_spawn_enemies: PerSpawnEnemies

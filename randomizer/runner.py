@@ -263,6 +263,9 @@ def _launch(manifest, session_dir, exe=None, assets=None, server=None, content_m
     staged_paths = [path for path in (content_manifest, family_install, p2_content) if path is not None]
     if len(staged_paths) > 1:
         raise ValueError("--content-manifest, --family-install and --p2-content own the private asset tree; use exactly one")
+    if exe and manifest.get("p2_layout") and content_manifest is None and p2_content is None:
+        raise ValueError("P2 native launch requires --content-manifest or --p2-content "
+                         "covering the seed identities; unstaged P2 seeds cannot launch")
     session = Session(manifest, session_dir)
     run = NativeRun(session)
     if family_install is not None:
