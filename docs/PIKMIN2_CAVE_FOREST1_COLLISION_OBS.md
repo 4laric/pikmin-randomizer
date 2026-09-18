@@ -43,3 +43,25 @@ Recorded in the lane handoff (prepared/forest1-collision-obs-out): configured
 exit 0, negative guard exit 86 (no PASS), and the observed marker log with
 births/contacts/traverses plus the reader verdict. Criterion 3 PASS only if
 observed; otherwise UNTESTED with the exact defect.
+## Observed result (generation 2, leased private build): criterion 3 UNTESTED
+
+Built pikmin_pc + linked fixture in output/forest1-collision-obs-build
+(lease-held; ninja -n no-work); fixture exe + guard self-test exit 0 +
+negative exit 86 (no PASS). Ran over the gen-13 staged arena
+(run-forest1-collision, assets reused read-only) with the #632 guard.
+
+Observed (run-collision2.log, ~20k ticks): P2_CAVE_READY floor=1 survivors=20,
+ENTRY_READY, exactly ONE actor birth (teki at 173.6/-143.2, grounded y=0.0),
+ONE collision contact (grounded), ZERO route traversals, live squad 0 from the
+first check, no captain-down, clean engine shutdown (no fixture PASS/FAIL).
+
+Reader verdict on the real log: UNTESTED (missing P2_FOREST1_TRAVERSE;
+births=1 contacts=1 traverses=0). Fail-closed holds on real data.
+
+Exact defect for #154: the staged floor-1 manifest requests 10 spawns
+(UjiA6/UjiB4) but only one live actor ever appears and it never displaces
+(stationary over 20k ticks, so no route traversal is observable); the
+P2_CAVE_READY survivor count (20) never materializes as live Piki actors
+(live squad 0 throughout; no spawn/death traces in the engine log), so no
+sustained observation with a live squad is possible on this native line.
+Criterion 3 stays UNTESTED. No playability claim; no ADMIT.
