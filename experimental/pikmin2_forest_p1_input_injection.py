@@ -31,8 +31,9 @@ ENGINE_FACT_PREFIX = "P2_FOREST_P1_INPUT_ENGINE_FACT"
 # screen load after injection began also counts (compared against the
 # pre-injection baseline, never assumed).
 SAVE_START_RE = re.compile(r"SAVE Mgr START", re.IGNORECASE)
-UI_LOAD_RE = re.compile(r"ui[_ ]screen.*load|loading screen|Screen.*Load|"
-                        r"ogScr\w+\s+load|map.?select", re.IGNORECASE)
+# Real evidence pattern from the #751 audit: the engine logs each UI screen
+# bundle it opens as screen/eng_blo/<name>.blo.
+UI_LOAD_RE = re.compile(r"screen/eng_blo/([A-Za-z0-9_]+)\.blo", re.IGNORECASE)
 
 INJECTED_TOKENS = ("P2_FOREST_P1_INJECT", "forest-p1-inject", "injection=1")
 FAIL_TOKENS = ("P2_FIXTURE_CAPTAIN_DOWN", "duplicate treasure",

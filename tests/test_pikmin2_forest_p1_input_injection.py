@@ -27,7 +27,7 @@ GOOD_LOG = ("P2_FOREST_P1_INPUT_WINDOW size=960x540 centered=1\n"
             "P2_FOREST_P1_INPUT_ENGINE_FACT observed=120 squad_alive=20\n"
             "P2_FOREST_INPUT_INJECTED button=START tick=121 injected=1\n"
             "P2_FOREST_INPUT_CLEARED tick=126 injected=1\n"
-            "Loading map select screen\n"
+            "DVDOpen(\"dataDir/screen/eng_blo/save_x.blo\") -> OK, size = 224\n"
             "<<<<<<<<< SAVE Mgr START! >>>>>>>>>\n")
 
 
@@ -55,6 +55,7 @@ class ReaderTest(unittest.TestCase):
         self.assertEqual(observations["injected_presses"], 1)
         self.assertTrue(observations["save_started"])
         self.assertTrue(observations["window_960"])
+        self.assertEqual(len(observations["new_ui_screens"]), 1)
 
     def test_injection_alone_never_passes(self):
         text = ("P2_FOREST_INPUT_INJECTED button=START tick=1 injected=1\n"

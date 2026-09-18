@@ -1,4 +1,4 @@
-﻿# Forest P1 runtime input injection (#660, recovery 321e7b46)
+# Forest P1 runtime input injection (#660, recovery 321e7b46)
 
 Lane `p2-overworld-forest-runtime-input-injection`. Owner: Codex through
 shared account `4laric`. Root+native tooling/runtime observation slice; no
@@ -66,3 +66,34 @@ UNTESTED; there is no playability claim. Consumer #660/#149 stay OPEN.
 Recorded under the lane output directory: leased private build (exe SHA-256,
 `ninja: no work to do.`), fixture provenance, guard self/negative tests, the
 bounded staged run log with injected markers, and the reader verdict.
+
+## Generation-3 runtime result (honest: NO advance observed)
+
+Delivered and verified: leased private build
+(`output/forest-input-injection-build`, exe
+`9696b26fe0920c860b634bbdcc837d8985f242c41017c1afa3c3940249d79ea1`,
+`ninja: no work to do.`); private fixture link (native head `f511aba6`,
+fixture exe `65177ee943ee7b67ff2b1f066bb234b29af8c1da6128c24a815a1b3c2011c92`,
+provenance `built`); guard self-test `rows=7` exit 0 and negative exit 86
+BLOCKED; bounded staged run via `scripts/run_pikmin2_fixture.py`
+(960x540 centred window observed, engine fact observed, no captain-down).
+
+**Result: the stall did not break.** In the run log
+(`run-injection-03/native.log`) every one of the 44 UI screen-bundle loads
+completed BEFORE the first labelled press (last `eng_blo` line 1035; first
+injected press line 1044). 395 labelled START/A pulses then produced zero
+new screens, no `SAVE Mgr START`, and no state change.
+
+Concrete, source-anchored diagnosis: the sanctioned scripted-pad override
+writes `Controller::mCurrentInput` through
+`ControllerMgr::updateController`, but `ControllerMgr::keyDown` reads
+`sControllerPad` directly (`src/sysDolphin/controllerMgr.cpp`). Any UI code
+that polls `gsys->mControllerMgr.keyDown(...)` therefore never sees the
+injected pad. The exact next step (owner-reviewable) is to confirm which
+controller object the `ogScrResultMgr`/`ogSaveMgr` screens poll and extend
+the injection to that path — either by routing the override through
+`ControllerMgr::keyDown` or by driving the section controller the screens
+actually read.
+
+All six arena gates remain UNTESTED; no boundary is claimed; injection is
+labelled and never presented as natural play; consumer #660/#149 stay OPEN.
