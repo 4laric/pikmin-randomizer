@@ -7,12 +7,22 @@ the blocked #567 driver, the landed #649 guarded fixture and the #741
 INITSTAGE-CREATE-FINALSETUP order fix READ-ONLY. No native/shared/CMake edits,
 no engine change, no ADMIT.
 
-## What this slice found (fail-closed)
+## What this slice does
 
 #770 diagnosed retail chal4 saturation: `me=100` buried sprouts against the
 `cap=100` birth total, so `PikiMgr::birth` refuses and the trial squad never
 births (`me` incremented at `pikiheadItem.cpp:143`, summed at
 `gameStat.cpp:70`).
+
+Gen 3 found no repository `.gen` rewriter, so the slice stopped fail-closed.
+Gen 6 consumes the LANDED #795 gen-record thinner read-only
+(`trial-arena-gen-thinning-tool`, commit `72149cbe`, 16 tests green): the
+script mirrors the retail assets with symlinks, overlays ONLY the thinned
+`chal4/default.gen` (buried 100 -> 80, headroom for a 20-squad; every kept
+record byte-identical with per-record provenance), writes a thin manifest +
+stage package, and verifies the package on the existing `check_stage_package`
+path. The thinned arena then feeds a guarded headed run of the landed #649
+fixture for the squad-spawn verdict.
 
 Option A ("thin buried sprouts in the staged chal4 arena, no engine change")
 requires reducing the `GenObjectPiki` records that spawn buried sprouts
