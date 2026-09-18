@@ -62,5 +62,41 @@ class TrialArenaThinTests(unittest.TestCase):
             self.assertEqual(thin.main(["--gen-dir", tmp]), 3)
 
 
+class ThinArenaStagingTests(unittest.TestCase):
+    CHAL4 = Path("C:/Users/alari/pikmin-randomizer/output/workflow/autofill/planning-shards/p1-challenge/prepared/p1-challenge-trial-runtime-acceptance-output/run-chal4/assets/dataDir/stages/chal4")
+
+    @classmethod
+    def setUpClass(cls):
+        try:
+            cls.tool = thin.load_thin_tool()
+        except thin.ThinError as exc:
+            raise unittest.SkipTest("thinning tool unreadable: %s" % exc)
+
+    def test_tool_pin(self):
+        self.assertEqual(thin.THIN_TOOL_COMMIT, "72149cbea61d5dbb203ba84825369a5836c5b46a")
+
+    def test_assess_retail_buried(self):
+        data = (self.CHAL4 / "default.gen").read_bytes()
+        report = self.tool.assess(data)
+        self.assertEqual(report["buried_total"], 100)
+
+    def test_thin_reduces_buried(self):
+        data = (self.CHAL4 / "default.gen").read_bytes()
+        out, packet = self.tool.thin(data, cap=100, squad=20)
+        self.assertLessEqual(packet["buried_after"], 80)
+        self.assertTrue(packet["removed"])
+
+    def test_stage_and_package(self):
+        retail = self.CHAL4.parents[2]
+        with tempfile.TemporaryDirectory() as tmp:
+            arena, manifest = thin.stage_thinned_arena(self.tool, retail, tmp)
+            dest = arena / "dataDir/stages/chal4/default.gen"
+            self.assertTrue(dest.is_file())
+            self.assertFalse(dest.is_symlink())
+            self.assertLessEqual(manifest["gens"]["default.gen"]["buried_after"], 80)
+            package = thin.build_thin_package(tmp, manifest)
+            self.assertTrue(package.is_file())
+
+
 if __name__ == "__main__":
     unittest.main()
