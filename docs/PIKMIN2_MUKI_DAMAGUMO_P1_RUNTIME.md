@@ -15,10 +15,13 @@ read-only and following the accepted houdai P1 shape (#735, running).
 
 ## Stage-boot dependency (hard blocker)
 
-The challenge stage-boot table (the #705 landing, which resolves only
-`ch_NARI_01kusachi` and `ch_NARI_02tile`) does not name `ch_MUKI_damagumo`. A
-run would hit `SelectionError: unknown P2 challenge stage`. Extending the table
-is owned by the #705/#669 stage-boot owners, not this lane (no engine/family/
+The engine challenge stage-boot path does not name `ch_MUKI_damagumo`: the #705
+landing resolves only `ch_NARI_01kusachi` and `ch_NARI_02tile`, while the
+integrated #743 gap-record selector resolves the key for selection - but the
+#742 native row for the engine boot is unlanded. A run would hit
+`SelectionError: unknown P2 challenge stage` (or equivalent). Extending the
+table is owned by the #705/#669 stage-boot owners and the #742/#748 row owners,
+not this lane (no engine/family/
 shared edits without existing-owner review). The fixture therefore fails closed
 (`BLOCKED stage_boot_unresolved`, exit 1) instead of misbinding or injecting.
 
@@ -63,7 +66,8 @@ outcome=BLOCKED` and exiting 86. No blanket invincibility is used.
 
 ## Residual / next
 
-1. Stage-boot owners (#705/#669) extend the table to resolve `ch_MUKI_damagumo`
+1. Stage-boot owners (#705/#669) plus row owners (#742 native row, #748 MUKI rows,
+   #186 review) land the engine path to resolve `ch_MUKI_damagumo`
    (or the integrator directs an accepted alternative boot path).
 2. Re-run this lane: leased build + guarded run to boot/combat/receipt/exit,
    then claim gates with the reader and checker.

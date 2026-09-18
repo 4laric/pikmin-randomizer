@@ -4,8 +4,10 @@ Lane `p2-challenge-ch-muki-damagumo-p1`. P1 runtime acceptance for P2 Challenge
 08 (1 floor, 150 s, decoded starting roster, spicy 1), reusing the done P0 import
 base read-only and following the accepted #735 houdai shape. Gates 1/2/3 are P0
 import facts; gates 4/5/6 (playable boot/combat/receipt/exit) require the
-stage-boot path to resolve `ch_MUKI_damagumo`, which it currently does not (the
-#705 table resolves only kusachi/02tile). This module therefore stages fail-closed
+stage-boot path to resolve `ch_MUKI_damagumo` in the engine, which it currently
+does not (the #705 table resolves only kusachi/02tile; the integrated #743
+gap-record selector resolves the key for selection, but the #742 native row for
+the engine boot is unlanded). This module therefore stages fail-closed
 and validates honestly: no boot resolution means no runtime claim.
 
 Source facts (P0, read-only):
