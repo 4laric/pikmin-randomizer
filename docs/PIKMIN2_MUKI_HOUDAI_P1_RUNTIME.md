@@ -58,3 +58,12 @@ writes. Issue #735 stays OPEN.
 Remaining blockers: legal `ch_MUKI_houdai.txt` source bytes and the shared
 #710 `engine-table-row-pending` row. No ADMIT. No playability claim.
 
+
+
+## Gen-4 evidence (row resolution via pinned MUKI rows)
+
+- Fixture resolves ch_MUKI_houdai through p2challenge::muki::selectMukiByUiIndex(8), linked read-only from the #748 producer tree; miss stays BLOCKED.
+- Guard runs on EVERY tick including movie ticks (moved before the movie early-return).
+- Headed runs: P2CHALLENGE_STAGE_ENTRY stage=ch_MUKI_houdai table=0 tick=1, P2_ROOM_READY squad=20, no CAPTAIN_DOWN. Forced-down negative exits 86 with DOWN marker on tick 0; missing-flag exits 1.
+- Sustained observation unreachable: the preview boot plays day-end/result loops (demo32/56 tables) that requestSkip refuses by engine design, so observed ticks freeze (movie=1, 117 ticks) and no PASS is emitted. Fail-closed holds; remaining gap is the movie stall, not the table.
+
