@@ -50,3 +50,15 @@ and #746 (03toy) adopt after that landing. No ADMIT.
 - Guard: vendored #632 semantics (canonical header sha256 d2f678c9...).
 - Serialized follow-on unchanged: pc_bbft.cpp/CMakeLists.txt via #186 +
   integrator; consumers #537 + #746 adopt after landing. No ADMIT.
+
+## Generation-3 shared-file decision (recorded, not a code change)
+
+- integration-support-prep-5-cycle-4 APPROVED native/pc_port/
+  pc_p2_challenge_nari_stages.h (additive producer-owned file; no
+  shared-target edits; serialized pc_bbft/CMake follow-on remains).
+- Evidence: output/workflow/autofill/integration-preparation/
+  integration-support-prep-5/attempts/integration-support-prep-5-cycle-4/
+  nari-stage-table-rows-native/decision-evidence.md sha256
+  c13c806a61b13178fa29c7f33a9007aad230dd30734a82f8a8de37229e8a0639.
+- Approved is not integration, runtime acceptance, or ADMIT; unrelated
+  blockers preserved.
