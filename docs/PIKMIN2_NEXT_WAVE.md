@@ -196,7 +196,7 @@ Generated-session/revisit/restart result (or named remaining dependency):
 Combined-scene impact; known limitations; next consumer:
 ```
 
-Builds, fixtures, logs, saves, extracted assets and seeds stay under ignored output. Use lane-owned native worktrees/private Ninja builds with the maintained MinGW toolchain and JAudio ON; record actual flags. Follow [fixture build provenance](PIKMIN2_FIXTURE_BUILDS.md). Never push native origin. All GitHub issue/PR commands must explicitly target **4laric/pikmin-randomizer**; do not create coordination issues or comments upstream. Only the existing draft branch is the integration destination unless the user directs otherwise.
+Builds, fixtures, logs, saves, extracted assets and seeds stay under ignored output. Use lane-owned native worktrees/private Ninja builds with the maintained MinGW toolchain and JAudio ON; record actual flags. Follow [fixture build provenance](PIKMIN2_FIXTURE_BUILDS.md). Native work branches may be pushed to native origin under the AGENTS.md Git push policy (never default/p2-integration branches, tags or force-pushes). All GitHub issue/PR commands must explicitly target **4laric/pikmin-randomizer**; do not create coordination issues or comments upstream. Only the existing draft branch is the integration destination unless the user directs otherwise.
 
 ## Copy/paste session assignment
 

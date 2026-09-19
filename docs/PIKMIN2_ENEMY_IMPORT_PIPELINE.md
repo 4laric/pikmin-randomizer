@@ -85,7 +85,7 @@ cmake --build native/build-randomizer --target pikmin_pc -j 6
 cmake --build native/build-randomizer --target pikmin_pc -- -n
 ```
 
-Workers may export private native source into their own root branch using explicit source/destination paths. Integration commits native locally, reviews the combined export and pushes the maintained root source. Never push native origin. Keep fixed QA packages and player sessions unchanged.
+Workers may export private native source into their own root branch using explicit source/destination paths. Integration commits native locally, reviews the combined export and pushes the maintained root source. Native work branches may be pushed to native origin under the AGENTS.md Git push policy (never default/p2-integration branches, tags or force-pushes). Keep fixed QA packages and player sessions unchanged.
 
 ## 6. Validate behavior, visuals and lifecycle separately
 

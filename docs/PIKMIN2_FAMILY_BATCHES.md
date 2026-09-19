@@ -8,7 +8,7 @@ Live tracking: [PIKMIN2_FAMILY_STATUS.md](PIKMIN2_FAMILY_STATUS.md). Assets and 
 
 - Private disc copy: `output/pikmin2-runtime/pikmin2-source-test.iso` (GPVE01 rev 0). Never commit extracted assets, models, executables or saves.
 - Shared, serialized resources: the maintained `native/` build and any real-GL runtime fixture. Private per-family worktree builds are fine in parallel; coordinate before touching `native/` or `engine/`.
-- Never push native origin. Root source is exported with `py -3.12 scripts/export_native_source.py` and committed/pushed from the root repo.
+- Native work branches may be pushed to native origin under the AGENTS.md Git push policy (never default/p2-integration branches, tags or force-pushes). Root source is exported with `py -3.12 scripts/export_native_source.py` and committed/pushed from the root repo.
 - One issue per bounded slice; record progress, commit SHA, exact commands and raw evidence on the issue.
 - Stay inside your three families' files. Do not edit another batch's or another family's modules.
 - New files are family-prefixed (`experimental/pikmin2_<family>_*`, `tests/test_pikmin2_<family>_*`, `docs/PIKMIN2_<FAMILY>_*`, `native/pc_port/pc_p2_<family>*`).

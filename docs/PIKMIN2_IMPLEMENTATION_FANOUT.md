@@ -238,7 +238,7 @@ Always specify --repo 4laric/pikmin-randomizer for GitHub writes. Never post ups
 Implement the first bounded deliverable, then advance the lane's remaining gates
 within its scope; do not stop at a plan, source audit or pure policy if ordinary
 runtime is the requested gate. Reuse existing candidates and source contracts.
-Use private root/native worktrees and ignored output; never push native origin.
+Use private root/native worktrees and ignored output; Native work branches may be pushed to native origin under the AGENTS.md Git push policy (never default/p2-integration branches, tags or force-pushes).
 Coordinate shared interfaces and narrow hook commits with the named provider and
 lane 01. Preserve other workers' changes. Obtain current baseline from lane 01.
 Before runtime, rebuild exact-head, regenerate arena, verify live starting Pikmin
