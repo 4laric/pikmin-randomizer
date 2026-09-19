@@ -81,11 +81,112 @@ class SeedRandom:
         return values
 
 
+# Admission table for the playable P2 pool. Each row names one campaign-proven
+# species (source id + enum name) and cites the evidence that admitted it: what
+# was run and where the log lives, plus the family installer that stages it.
+# Adding a row does NOT admit a species on its own -- see
+# docs/PIKMIN2_PLAYABLE_POOL.md for the admission bar and procedure.
+# Do NOT add the other installer-capable species (1 Kochappy, 45 Snow,
+# 9 Kogane, 23 Sarai, 57 Kurage, 58 BombSarai, 78 MiniHoudai, 79 Sokkuri)
+# until their campaign evidence lands; that evidence is owned by other lanes.
+P2_PLAYABLE_POOL = (
+    {
+        "source_id": 44,
+        "enum_name": "BlueKochappy",
+        "family": "dwarf_orange",
+        "evidence": {
+            "run": "Dwarf Orange natural run (#461): BlueKochappy spawned, "
+                   "movement/animation and attack-state transition observed, "
+                   "native death at health 0, corpse, Bestiary delivery check",
+            "log": "docs/PIKMIN2_DWARF_ORANGE_NATURAL_RUN_461.md; "
+                   "docs/PIKMIN2_DWARF_ORANGE_ROUTE_ACCEPTANCE_440.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 44 -> dwarf_orange "
+                         "(experimental/pikmin2_dwarf_orange_install)",
+        },
+    },
+    {
+        "source_id": 54,
+        "enum_name": "Miulin",
+        "family": "mamuta",
+        "evidence": {
+            "run": "Mamuta natural territory/flick/kill observation "
+                   "(lane 19, #221): squad entered territory, three natural "
+                   "buries, natural kill at tick 957, carryable corpse",
+            "log": "docs/PIKMIN2_MAMUTA_NATURAL.md",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 54 -> mamuta "
+                         "(experimental/pikmin2_mamuta_install)",
+        },
+    },
+    {
+        "source_id": 59,
+        "enum_name": "FireOtakara",
+        "family": "dweevil",
+        "evidence": {
+            "run": "Lane-22 elemental dweevil native slice (#447): real "
+                   "actor-bound FSM (pc_p2_otakara) as a damageable enemy; "
+                   "runtime gate covers natural death, corpse, receipt, forget",
+            "log": "docs/PIKMIN2_DWEEVIL_NATIVE.md; "
+                   "tests/test_pikmin2_otakara_native.py; "
+                   "tests/test_pikmin2_otakara_runtime.py",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 59 -> dweevil (p2-dweevil-actors.txt)",
+        },
+    },
+    {
+        "source_id": 60,
+        "enum_name": "WaterOtakara",
+        "family": "dweevil",
+        "evidence": {
+            "run": "Lane-22 elemental dweevil native slice (#447): real "
+                   "actor-bound FSM (pc_p2_otakara) as a damageable enemy; "
+                   "runtime gate covers natural death, corpse, receipt, forget",
+            "log": "docs/PIKMIN2_DWEEVIL_NATIVE.md; "
+                   "tests/test_pikmin2_otakara_native.py; "
+                   "tests/test_pikmin2_otakara_runtime.py",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 60 -> dweevil (p2-dweevil-actors.txt)",
+        },
+    },
+    {
+        "source_id": 61,
+        "enum_name": "GasOtakara",
+        "family": "dweevil",
+        "evidence": {
+            "run": "Lane-22 elemental dweevil native slice (#447): real "
+                   "actor-bound FSM (pc_p2_otakara) as a damageable enemy; "
+                   "runtime gate covers natural death, corpse, receipt, forget",
+            "log": "docs/PIKMIN2_DWEEVIL_NATIVE.md; "
+                   "tests/test_pikmin2_otakara_native.py; "
+                   "tests/test_pikmin2_otakara_runtime.py",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 61 -> dweevil (p2-dweevil-actors.txt)",
+        },
+    },
+    {
+        "source_id": 62,
+        "enum_name": "ElecOtakara",
+        "family": "dweevil",
+        "evidence": {
+            "run": "Lane-22 elemental dweevil native slice (#447): real "
+                   "actor-bound FSM (pc_p2_otakara) as a damageable enemy; "
+                   "runtime gate covers natural death, corpse, receipt, forget",
+            "log": "docs/PIKMIN2_DWEEVIL_NATIVE.md; "
+                   "tests/test_pikmin2_otakara_native.py; "
+                   "tests/test_pikmin2_otakara_runtime.py",
+            "installer": "experimental/pikmin2_family_install.py "
+                         "IDENTITY_FAMILY 62 -> dweevil (p2-dweevil-actors.txt)",
+        },
+    },
+)
+
+
 # Admitted P2 species the current launcher and native campaign path can actually run:
-# each has a family installer (experimental/pikmin2_family_install.IDENTITY_FAMILY) and
-# a bridge-mode campaign setup. Excluded until fixed: 9 Kogane, 79 Sokkuri, 57 Kurage,
+# derived from P2_PLAYABLE_POOL so the table above is the single source of truth.
+# Excluded until fixed: 9 Kogane, 79 Sokkuri, 57 Kurage,
 # 78 MiniHoudai (no installer) and 23 Sarai (campaign setup needs a fixed generator).
-PLAYABLE_P2_SPECIES = (44, 54, 59, 60, 61, 62)
+PLAYABLE_P2_SPECIES = tuple(row["source_id"] for row in P2_PLAYABLE_POOL)
 
 
 def generate(seed, mode="solo", slot="Player1", *, expanded=False, starting_area="forest", starting_color="red", all_areas=False, enemy_shuffle=False, collection_checks=False, starting_flarlic=None, randomize_color_stats=False, progressive_color_stats=False, permanent_checks=False, legacy_checks=False, per_spawn_enemies=False, group_spawn_enemies=False, miniboss_enemies=False, campaign_enemies=False, initial_stat_bounds=None, stat_upgrade_counts=None, random_start_areas=None, bomb_rock_weight=0, goal_mode="repairs", combined_captain=False, bomb_trap_weight=0, progg_trap_weight=0, prerelease_trap_weight=0, death_link=False, death_link_pikmin=10, p2_enemies=False, p2_placement=None, p2_species=None):
