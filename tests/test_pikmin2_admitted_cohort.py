@@ -16,7 +16,7 @@ from randomizer.p2_placement import audit, normalize_profile
 from randomizer.seed import generate
 
 PLACEMENT = Path(__file__).resolve().parents[1] / 'docs/PIKMIN2_ADMITTED_PLACEMENT.json'
-IDENTITIES = {'Sarai', 'BlueKochappy', 'Miulin', 'Kurage', 'FireOtakara', 'WaterOtakara', 'GasOtakara', 'ElecOtakara', 'MiniHoudai'}
+IDENTITIES = {'Sarai', 'BlueKochappy', 'Miulin', 'Kurage', 'FireOtakara', 'WaterOtakara', 'GasOtakara', 'ElecOtakara', 'MiniHoudai', 'Kogane', 'Sokkuri'}
 
 
 def document():
@@ -31,10 +31,10 @@ def test_reviewed_pairs_only():
 
 @pytest.mark.parametrize('seed', ['cohort-a', 'cohort-b', 'cohort-c', 'cohort-d'])
 def test_product_generation_seeds_the_admitted_cohort(seed):
-    assert admitted_ids(load_and_validate()) == [23, 44, 54, 57, 59, 60, 61, 62, 78]
+    assert admitted_ids(load_and_validate()) == [9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79]
     manifest = generate(seed, p2_enemies=True, p2_placement=document())
     bound = {binding['source_id'] for binding in manifest['p2_layout']['bindings']}
-    assert bound == {23, 44, 54, 57, 59, 60, 61, 62, 78}
+    assert bound == {9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79}
 
 
 def test_p2_enemies_defaults_to_the_committed_document():
@@ -43,7 +43,7 @@ def test_p2_enemies_defaults_to_the_committed_document():
     explicit = generate('admitted-default', p2_enemies=True, p2_placement=document())
     assert default['p2_layout'] == explicit['p2_layout']
     bound = {binding['source_id'] for binding in default['p2_layout']['bindings']}
-    assert bound == {23, 44, 54, 57, 59, 60, 61, 62, 78}
+    assert bound == {9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79}
 
 
 def test_lost_accepted_slot_fails_closed():

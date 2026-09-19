@@ -27,6 +27,7 @@ from experimental.pikmin2_seed_bridge import SeedBridgeError, resolve_placement_
 ADMITTED_PLACEMENT_DOC = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) / "docs/PIKMIN2_ADMITTED_PLACEMENT.json"
 
 IDENTITY_BY_SOURCE = {
+    9: 'Kogane',
     23: 'Sarai',
     44: 'BlueKochappy',
     54: 'Miulin',
@@ -36,13 +37,14 @@ IDENTITY_BY_SOURCE = {
     61: 'GasOtakara',
     62: 'ElecOtakara',
     78: 'MiniHoudai',
+    79: 'Sokkuri',
 }
 
 
 def admitted_set():
     roster = load_and_validate()
     admitted = admitted_ids(roster)
-    assert admitted == [23, 44, 54, 57, 59, 60, 61, 62, 78]
+    assert admitted == [9, 23, 44, 54, 57, 59, 60, 61, 62, 78, 79]
     return roster, admitted
 
 

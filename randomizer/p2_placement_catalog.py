@@ -103,6 +103,8 @@ CANDIDATE_SPECS = (
     (26, 'Catfish', 16, ['water'], 30, False),
     (27, 'Tadpole', 16, ['water'], 25, False),
     (63, 'Jigumo', 16, ['water'], None, True),
+    # Lane 17 - Kogane beetle family (no P1 counterpart; new in Pikmin 2).
+    (9, 'Kogane', 17, ['ground'], None, False),
     # Lane 19 - Mamuta.
     (54, 'Miulin', 19, ['ground'], 24, False),
     # Lane 22 - elemental Otakara Dweevils (source ids 59-62). The port binds
