@@ -1,108 +1,177 @@
-# Lane 30 — Sarai (Swooping Snitchbug, ID 23) ordinary-spawn admission handoff
+# Lane 30 — DeepSeek handoff (Sarai Pikmin mouth-capture receiver)
 
-Lane 30 / #242 / parent #166. Executing session: opencode (`opencode/p2-l30-drive`,
-`opencode/p2-l30-drive-native`), branched off the integration line
-`claude/p2-deepseek-wave` / `claude/p2-deepseek-wave-native`.
+Tracking: #242. Implementation owner: Codex through shared account `4laric`; executing agent: DeepSeek lane-30 session (this worktree). Worktrees:
 
-This slice takes the previously fixture-only Sarai captor work to an **ordinary
-spawned, natural, killable and carriable** Sarai so identity 23 satisfies the
-lane-02 admission contract: natural PASS on all five `ADMISSION_GATES` plus a
-Pod `corpse:` delivery receipt.
+- Root: `C:/Users/alari/pikmin-randomizer/output/dsw/l30-root` — branch `deepseek/p2-l30`, base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`.
+- Native: `C:/Users/alari/pikmin-randomizer/output/dsw/native-l30` — branch `deepseek/p2-l30-native`, base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`.
 
-## Concrete source ID and files owned
+## Chosen slice
 
-- Source ID: 23 `Sarai` (Swooping Snitchbug), family Snitchbugs/Demon.
-- Native (`output/dsw/native-l30-drive`, branch `opencode/p2-l30-drive-native`):
-  `pc_port/pc_p2_sarai_manager.{h,cpp}` (new; ordinary-spawn binding, health
-  feed, death/forget reporting, Pod receipt), `pc_port/pc_p2_sarai_host.{h,cpp}`
-  (anchor bind + real health + death), plus additive hooks in
-  `pc_port/pc_p2_preview.cpp`, `pc_port/pc_p2_teki_lifetime.cpp`,
-  `src/plugPikiNakata/tekibteki.cpp`, `src/plugPikiKando/gameCoreSection.cpp`,
-  `CMakeLists.txt`. The lane also merges `opencode/p2-lane30-rebase` (captor
-  lifecycle + dedicated captor identity).
-- Root (`output/dsw/l30-drive-root`, branch `opencode/p2-l30-drive`): this handoff.
-- Runtime fixtures (private): base `tools/preview_p2_room.cpp` instrumented for
-  corpse-approach/transport (Pod receipt) and for the manager re-entry cycle;
-  staged 20-red / 960x540 arenas under `output/l30-drive-*-arena`.
+Enemy ID **23 — Swooping Snitchbug (`Sarai`)**. The ledger's open work is "remaining
+Sarai capture FSM, source actor parity and generated placement"; the next-wave goal for
+the family is "ordinary captor target/admission, moving attachment, escape/drop and
+teardown". The Demon (ID 32) captain captor is already integrated; the Pikmin side of the
+Sarai flight lifecycle had only an isolated FSM (`pc_p2_sarai_fsm.h`) and a visual host
+with two live mouth `CollPart`s — no receiver attached Pikmin to the mouth.
 
-No production input, shared-enemy-stat or GenTest semantics were changed; the
-Sarai manager is default-off (`PIKMIN_SARAI_ORDINARY=1`).
+This slice closes that gap: the **mouth capture/attachment receiver** — source-faithful
+admission (`eatPikmin`/`catchTarget`), carrying (stick-to-mouth, never swallowed), the
+`fallMeckGround` drop/damage receiver and the `flickStickTarget` escape receiver, plus
+owner/scene teardown. The still-open natural FSM-driven captor (Attack→catch→CatchFly→
+FallMeck→Move on an ordinary spawned actor) and generated placement remain separate gates.
 
-## Six-gate table (Sarai / source ID 23)
+**Plainly: there is no ordinary-spawned Sarai actor wired to this yet.** The receiver is
+exercised by a native unit test (dependency-free decisions), a Python parity harness, and
+a committed runtime fixture that captures *live* arena Pikmin into the host mouth. The
+runtime fixture has not been executed in this session (no reserved real-GL slot), so its
+gate is reported UNTESTED with the exact reproduction command below.
 
-| Gate | Result | Evidence | Injected vs natural |
-|---|---|---|---|
-| 1. Exact identity and spawn | PASS | output/l30-drive-arena/b4c465c48592419caed342a1aa6347e7/native.log:787 | natural |
-| 2. Autonomous movement and animation | PASS | output/l30-drive-arena/b4c465c48592419caed342a1aa6347e7/native.log:827 | natural |
-| 3. Attacks and receivers | PASS | output/l30-drive-arena/b4c465c48592419caed342a1aa6347e7/native.log:854 | natural |
-| 4. Death and corpse | PASS | output/l30-drive-pod-arena/15f359d18d8b4adc8cc9ac6fd7470bcf/native.log:840 | natural |
-| 5. Actual transport and reward | PASS | corpse:sarai:385875968 output/l30-drive-pod-arena/15f359d18d8b4adc8cc9ac6fd7470bcf/native.log:879 | natural |
-| 6. Cleanup and re-entry | PASS | output/l30-drive-reentry-arena/9f0bdb7023dd43798b6dbfe573157beb/native.log:868 | natural |
+## Source IDs and files owned
 
-## Evidence detail
+- Enemy ID 23 (`Sarai`, Swooping Snitchbug), family Snitchbugs/Demon (lane 30, #242).
+- Native (worktree `C:/Users/alari/pikmin-randomizer/output/dsw/native-l30`):
+  - `pc_port/pc_p2_sarai_capture.h` (new) — dependency-free capture/drop decision.
+  - `pc_port/pc_p2_sarai_capture_bridge.h/.cpp` (new) — Piki stick-to-mouth engine glue.
+  - `pc_port/pc_p2_sarai_host.h/.cpp` (modified) — capture/release/drop/flick surface.
+  - `tools/p2_sarai_capture_test.cpp` (new) — standalone unit test.
+  - `tools/p2_sarai_capture_runtime.cpp` (new) — live-Pikmin runtime fixture.
+  - `CMakeLists.txt` (modified, additive only) — bridge source + `p2_sarai_capture_test`.
+- Root (worktree `C:/Users/alari/pikmin-randomizer/output/dsw/l30-root`):
+  - `experimental/pikmin2_sarai_capture.py` (new) — Python parity mirror.
+  - `tests/test_pikmin2_sarai_capture.py` (new) — 13 pytest cases.
 
-- **Gate 1** `P2_SARAI_READY source_id=23 species=Sarai generator=385875968 type=3 health=130.0 behavior=source`
-  — the ordinary generated-slot actor, rebound and drawn as the source Sarai
-  (`native.log:787`).
-- **Gate 2** `P2_SARAI_TICK … phase=2 state=7` with advancing positions
-  (`:827,832,843,846,851`) — the source FSM Wait→Move→Attack on the live actor.
-- **Gate 3** `P2_SARAI_CAPTURE source_id=23 generator=385875968 slot=0 owner_exact=1`
-  (`:854`), then `phase=3 state=9` CatchFly carry (`:860,863,868`) and
-  `phase=4 state=10` FallMeck drop — the capture/drop receiver on the real mouth
-  `CollPart`.
-- **Gate 4** `P2_SARAI_DEAD source_id=23 generator=385875968 health=0.0`
-  (`pod native.log:840`), `P2_LIFECYCLE_DEATH … health=0.00` (`:841`) and
-  `P2_LIFECYCLE_BIRTH … pellet=…` (`:848`) — natural Pikmin damage kills the
-  actor and the engine births the corpse pellet.
-- **Gate 5** free Pikmin self-assign transport, the corpse traverses the room
-  (`P2_CORPSE_PROGRESS distance≈381`) and is delivered:
-  `P2_POD_RECEIPT id=corpse:sarai:385875968 value=2 new=1 pokos=2`
-  (`pod native.log:879`), `P2_LIFECYCLE_REMOVED … distance=397.94` (`:880`),
-  fixture `PASS p2 room … native combat kill, far corpse transport and delivery`
-  (`:1966`, exit 0).
-- **Gate 6** `P2_SARAI_FORGET generator=385875968 phase=cleanup`
-  (`reentry native.log:799`) after `TekiMgr::killAll`, then
-  `P2_SARAI_REENTRY … old_registry=clear new_bound=1` (`:868`) and a second
-  `P2_SARAI_READY …` (`:866`) proving the re-created actor re-binds
-  (`PASS P2_SARAI_REENTRY observation`, `:869`).
+## Ordered commits and dirty state
 
-## Reproduction
+Native branch `deepseek/p2-l30-native`, base `b805d9c626e4f4558c95aef7cac311a5d9a2068f`:
+
+- `4f40b54cbd7b2f01d6a68c22db39c32f0def383b` — `lane30: Sarai Pikmin mouth-capture receiver and bridge (#242)`.
+
+Root branch `deepseek/p2-l30`, base `ef1cace7fda5b4e57a0a40b08c3842733b3e7e91`:
+
+- `fd20fdd8563ee22cd1e3481e61d34eda17acbf3c` — `lane30: Sarai capture parity harness and tests (#242)`.
+
+Both worktrees are clean at handoff (`git status` empty). No push, no `main` mutation, no
+shared-checkout edit, no `gh`.
+
+## Interfaces / hooks touched and why
+
+- `pc_p2_sarai_capture.h` (header-only, composes `pc_p2_sarai_policy.h`): `captureEligible`
+  (alive && isPikmin && !stuckToMouth && !stickerIsSelf && withinMouthRadius),
+  `selectMouthCaptures` (nearest-first, up to `kMouthSlots=2`), `fallMeckReleaseVelocity`
+  (−fp41=200), `fallMeckDamage` (general attack damage 10). No engine objects, no I/O.
+- `pc_p2_sarai_capture_bridge.*`: per-`Piki*` binding map over `Creature::startStickMouth`/
+  `endStickMouth`; API `pc_p2_sarai_piki_capture` / `_bound` / `_owned_by` / `_slot` /
+  `_release`, `pc_p2_sarai_drop_owned` (FallMeck: `InteractFlick` detach+damage then
+  downward velocity), `pc_p2_sarai_flick_owned` (escape: detach, damage 0),
+  `pc_p2_sarai_carried_count`, `pc_p2_sarai_owner_lost`, `pc_p2_sarai_scene_exit`,
+  `pc_p2_sarai_forget`. Generation-qualified owner token for exactly-once/address reuse.
+- `P2SaraiHost`: `capturePiki`, `releasePiki`, `carriedCount`, `dropOwned`, `flickOwned`;
+  `sceneExit()` now revokes ownership (`pc_p2_sarai_owner_lost`) before mouth teardown.
+- No shared-file hooks (`teki.h`, `navi.cpp`, `tekibteki.cpp`, `tekimgr.cpp`,
+  `gameCoreSection.cpp`, `pc_p2_preview.cpp`) were modified. CMake got only two additive
+  lines (bridge source + one test name).
+
+Port adaptations (recorded, not retail-faithful): the source `eatPikmin` iterates the
+Pikmin manager in encounter order and admits the first eligible Pikmin per free slot;
+`selectMouthCaptures` selects **nearest-first** instead (matches the Demon target choice;
+harmless because the admit predicate and radius are unchanged). `InteractFallMeck` does
+not exist in P1, so the drop uses `InteractFlick` (which detaches the mouth link in
+`actCommon` and applies damage in `actPiki`) followed by the source `setVelocity(0,-200,0)`.
+The source `EatPikminDefaultCondition` does not explicitly test `isAlive`; the receiver
+keeps the `alive` guard as a super-set (dead Pikmin are never admitted).
+
+## Build evidence (`output/dsw/l30-build-evidence.txt`)
 
 ```
-# gate 1-3: ordinary arena (self-contained stage + private nectar build)
-py -3.12 output/deepseek-wave/build_lane.py l30-drive --target pikmin_pc
-py -3.12 output/deepseek-wave/slot.py run gl l30-drive -- py -3.12 output/l30-drive-stage.py
-# gates 4-5: combat/corpse -> Pod receipt fixture (base preview_p2_room, instrumented)
-py -3.12 output/deepseek-wave/slot.py run gl l30-drive -- py -3.12 output/l30-drive-pod.py
-# gate 6: manager replacement + re-bind
-py -3.12 output/deepseek-wave/slot.py run gl l30-drive -- py -3.12 output/l30-drive-reentry.py
-py -3.12 scripts/check_p2_handoff_gates.py docs/PIKMIN2_LANE30_DEEPSEEK_HANDOFF.md
+2026-09-15T05:32:42 lane=l30 target=pikmin_pc native=b805d9c626e4f4558c95aef7cac311a5d9a2068f dirty=yes build_dir=...native-l30-build exe=...bin\nectar.exe sha256=5795c473eb34e7b614f66e7796587a25d1c845f011fded9ab91b80385239a748 ninja_n="ninja: no work to do." seconds=115
+2026-09-15T05:32:49 lane=l30 target=p2_sarai_capture_test native=b805d9c626e4f4558c95aef7cac311a5d9a2068f dirty=yes build_dir=...native-l30-build exe=...p2_sarai_capture_test.exe sha256=afe49d62cdaf1b2a2a093e002e0cffeb530028bb0098217db85a8f1ef2439c2b ninja_n="ninja: no work to do." seconds=0
 ```
 
-All three runs log `Experimental preview window set to 960x540 windowed and
-centered`; every arena is a fresh 20-red `preview_pikmin2_room` overlay and no
-run reports `Extinction`.
+Production `pikmin_pc` links clean at head `4f40b54c` (the `b805d9c6` label above is the
+base recorded before the commit; the tree built is `4f40b54c`, `dirty=yes` because the
+commit landed after configure). `nectar.exe` SHA-256 `5795c473…85239a748`.
 
-## Assumptions / limits
+## Fixture adoption / runtime evidence
 
-- The ordinary Sarai's damage/lifetime anchor is the lane's generated `TEKI_Chappy`
-  slot (the same vehicle pattern the accepted Dwarf Orange/Sokkuri sidecars use);
-  the Sarai source FSM owns the behaviour and visual. No enemy health, state,
-  target or animation is written by any fixture.
-- Gates 1-3 come from the free-running ordinary run; gates 4-5 from a private
-  squad-deployment fixture (`PIKMIN_SARAI_STATIC=1`, captain parked, free reds);
-  gate 6 from a manager-swap fixture. Each is natural; the fixtures only place
-  the captain/squad and never inject enemy state.
-- Not claimed: generated-seed placement (lane 03/04), campaign save/re-entry,
-  whole-scene heap teardown, mixed-scene frame budget.
+Committed live-Pikmin fixture `tools/p2_sarai_capture_runtime.cpp` (fixture-driven, not a
+natural FSM captor): loads `sarai0.mod` + `sarai-attack-mouths.txt` /
+`sarai-attack-poses.txt`, opens a 960×540 centred window (logs
+`P2_SARAI_CAPTURE_WINDOW size=960x540 … centered=1`), finds a live arena Pikmin, then
+asserts capture admission, moving-mouth follow, FallMeck drop (`damage=10`, `vel=-200`),
+Flick escape (`damage=0`) and teardown, printing
+`PASS SARAI_CAPTURE live_pikmin_capture_drop_flick_teardown`.
 
-## Pushed (git push policy)
+- **Not executed this session** (no reserved GL slot). Run command in "Reproduction".
+- The receiver is not an "ordinary spawned captor": the anchor actor / signature spawn
+  path for Sarai ID 23 is separate, as is FSM-driven attack admission.
 
-- Root `origin` (4laric/pikmin-randomizer): `claude/p2-deepseek-wave`
-  `7d183286..27f7d656` (admission + engine re-export).
-- Native `fork` (4laric/Open-Nectar---Pikmin-Native-PC-Port):
-  `claude/p2-deepseek-wave-native` `1d0141c2..8f55bbc6`.
-- Lane branches `opencode/p2-l30-drive` / `opencode/p2-l30-drive-native` remain
-  local (the push policy covers `feature/**`, `fix/**`, `deepseek/**`,
-  `claude/**`, `codex/**`; the wave branches above carry the merged work).
+## Six-gate table (PASS/FAIL/BLOCKED/UNTESTED/source-backed N/A)
 
+| Gate | Result | Evidence / labels |
+|---|---|---|
+| 1 Exact identity and spawn | UNTESTED | No ordinary-spawned Sarai actor; host is fixture-loaded (`courses/pikmin2room/sarai0.mod`). |
+| 2 Autonomous movement and animation | UNTESTED | Visual host + two live mouth joints build/link; no run this session. |
+| 3 Attacks and receivers (capture admission + drop/escape) | PASS (unit/parity) / UNTESTED (runtime) | Native `p2_sarai_capture_test` 21 checks PASS; Python `test_pikmin2_sarai_capture.py` 13 PASS; `InteractFlick` drop/escape receiver wired but the live-Pikmin capture run is fixture-driven and **not yet executed** (labeled injected/fixture-driven). |
+| 4 Death and corpse | source-backed N/A | Sarai carries, does not swallow; no lethal path in this slice. |
+| 5 Actual transport and reward | source-backed N/A | Mouth-hold carry has no reward/transport endpoint here. |
+| 6 Cleanup and re-entry | PASS (unit) / UNTESTED (runtime) | `owner_lost`/`scene_exit`/`forget` detach exactly-once (bridge test coverage), runtime teardown in committed fixture, unrun. |
+
+## Tests run
+
+- `p2_sarai_capture_test.exe` → `p2_sarai_capture_test PASS checks=21`.
+- `py -3.12 -m pytest tests/test_pikmin2_sarai_capture.py -q` → `13 passed`.
+- `p2_sarai_fsm_test` / `p2_sarai_policy_test` → recompiled standalone (warning-clean)
+  `PASS checks=37` / `PASS checks=49`; unchanged by this slice. (Note: `cmake --build
+  --target p2_sarai_fsm_test/p2_sarai_policy_test/p2_demon_*_test` fails *silently* in this
+  CMake configure — the exact `g++` command succeeds when run by hand — a pre-existing
+  tooling anomaly on this base, unrelated to these changes; `p2_sarai_capture_test` builds
+  through CMake fine.)
+
+## Assumptions
+
+- Source general attack damage default 10.0f and `FallMeckSpeed` fp41 = 200 used as
+  receiver defaults (from `EnemyParmsBase.h` defaults / `Sarai.h:102`); retail data files
+  not read in this slice.
+- One-slot-at-a-time, two-slot maximum mouth capture, exactly-once per Pikmin via the
+  `Piki*`-keyed map.
+- Fixture is a bounded, injected capture harness; it is not a natural gameplay PASS.
+
+## Remaining blockers (provider lane named)
+
+- Natural FSM-driven captor (Attack catch window → `capturePiki` → CatchFly height
+  decision → FallMeck) on an ordinary spawned Sarai actor: needs lane **12** (captain/squad
+  semantics stay with the Demon captain path) and lane **07/08** (lifetime fixtures +
+  animation-event clock) plus a staged Sarai arena.
+- Generated placement / admission: lanes **03/04** seed-bridge + placement; Sarai has no
+  admitted identity yet (lane **02** roster remains deny-by-default).
+
+## Subagent usage
+
+- `explore` #1 (source audit): returned a full Sarai.cpp/SaraiState.cpp/Sarai.h/Demon.*
+  table with file:line citations. Used as-is to confirm the receiver constants
+  (radius 15, fp41=200, flick 10/0, attack damage 10, 2 slots rkamujnt/lkamujnt). Two
+  corrections adopted: `eatPikmin` iterates in encounter order (I keep nearest-first and
+  documented it), and `EatPikminDefaultCondition` omits an explicit `isAlive` (I keep the
+  alive guard as a super-set). Saved ~45 min of manual decomp reading.
+- `explore` #2 (candidate inventory): confirmed file/module surface, ctest registration,
+  marker lines, and that the header-only policy tests were previously compiled manually
+  (not via CMake) — this explained the silent CMake `--target` failure. Used as-is. Saved
+  ~30 min.
+- `general` #3 (Python tests): wrote `experimental/pikmin2_sarai_capture.py` +
+  `tests/test_pikmin2_sarai_capture.py`, ran `13 passed`. Reviewed and accepted as-is
+  (semantics match `pc_p2_sarai_capture.h`; one simplification — empty-list vs None input
+  — is fine). Saved ~20 min.
+
+## Reproduction (exact, verified)
+
+```
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/build_lane.py l30 --target p2_sarai_capture_test && C:/Users/alari/pikmin-randomizer/output/dsw/native-l30-build/p2_sarai_capture_test.exe
+py -3.12 -m pytest tests/test_pikmin2_sarai_capture.py -q
+```
+
+Pending GL run (not executed; requires stage with `sarai0.mod` + `sarai-attack-*.txt`
+pose banks in a fresh `preview_pikmin2_room.prepare()` arena, then run under the GL slot):
+
+```
+py -3.12 C:/Users/alari/pikmin-randomizer/output/deepseek-wave/slot.py run gl l30 -- env PIKMIN_P2_ROOM_WINDOW=960x540 PYTHONUTF8=1 fixture.exe --experimental-pikmin2-room
+```
