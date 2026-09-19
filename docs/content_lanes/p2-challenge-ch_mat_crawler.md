@@ -117,3 +117,153 @@ build, fixture provenance, fresh arena with the starting-Pikmin overlay,
 960x540 centred startup, captain-safety #632 adoption with guard/source
 hashes, and the observed marker log (or the exact defect if the boot cannot
 complete). Six gates stay UNTESTED unless genuinely observed.
+
+## P1 host-state boot (observed, generation 5)
+
+Consumed the accepted `challenge-boot-native-fixture` (#672) prerequisite into
+the private native worktree: fast-forwarded `fb6419d5` (native base
+`ab81cf5d`, validation receipt
+`output/workflow/integration-recovery/species-owner/challenge-boot-batch-validation.log`
+sha256 `80b05eed3bfb5250546f1c9920d550353ed857405432197888de07d454dd90fd`),
+then added the `ch_MAT_crawler` stage entry from the live P0 decode
+(ui 29, 2 floors 170.0/120.0 s, roster `[[0,0,30],[0,0,30],...]`, bitter 3,
+spicy 4) as native commit `69738be3` (private worktree only, not a shared
+edit). The #651 host-mode module TU is unchanged.
+
+Leased private build in `output/shard-challenge-0-p1crawler-build` via the
+canonical #672 harness (`configure`, `build` pikmin_pc 618/618 with
+`ninja -n` no-work, `fixture`, `guardcheck`): fixture exe sha256
+`735fc0c2d77a69cb98a73759e12e37a1049bbda6b85b8e48181a2c949c043c45`.
+Captain safety #632 adopted: canonical
+`scripts/p2_fixture_captain_guard.h` sha256
+`d2f678c9eda75e151eb534077dff9e30ad36ae4796881d971bbd09945f3c3474`
+consumed read-only via `CPLUS_INCLUDE_PATH` (never copied); guard runs before
+every observed tick; live self-test exit 0 with ordered
+BOOT..TICK(x3)..DONE markers; compiled negative guard path exits 86 with
+`P2_FIXTURE_CAPTAIN_DOWN` and no PASS.
+
+Observed run (`challenge-boot/run-ui29.log`, leased binary, `ui=29`, exit 0):
+`SQUAD_APPLIED`/`BOOT` (population 60, bitter 3, spicy 4, floor 0, 170 s),
+three `TICK`s (170 -> 140 s), `FLOOR_ADVANCE` (floor 1, 120 s),
+`RETRY_RESET`/`RETRY_STATE` (floor 0, 170 s), `P2_CHALLENGE_BOOT_DONE`
+(end=none, score 720). The #651 consumer provably drives this stage's decoded
+contract fields (stage select, squad/spray application, per-floor mTimeLimit,
+descend, retry).
+
+Scope honesty: host-state simulation only. No live squad, no 960x540 window,
+no collision/routes/actors observed; all six gates stay UNTESTED. The
+game-linked P2 stage boot (engine loads the cave floors with squad/actors)
+remains the open gap.
+
+## Consumer verification of #695 (game-linked no-cargo boot, generation 6)
+
+Consumed the accepted `preview-no-cargo-room-bolt-native` (#695) prerequisite:
+fast-forward merge of native `4a69502e` (the #679 + #695 preview reconciliation)
+into the private native worktree (merge `2528320f`), and cherry-pick of root
+`70596749` (fixture build/run helper) as `c485a321`. No conflicts.
+
+Independently rebuilt `pikmin_pc` in the leased private build directory and
+built the fixture with the accepted helper (exe sha256
+`007b03f5c8e3b8d81ef713eb1c75a8cab39d0a60dca1f18843f421b22e32a48b`); guard
+self-test PASS (7 rows), negative guard exit 86.
+
+Ran the previously-failing scenario (two generator-less room `pr05` bolts, no
+cargo) with my own binary in `output/preview-nocargo-runs/nocargo-two`: exit 0,
+window `960x540 centered=1`, `P2_PREVIEW_PR05 room_bolts=2 staged=0 cargo=0`,
+`P2_ROOM_READY treasure=bolt`, `P2_NOCARGO_RECONCILIATION_PASS treasure=1
+squad_alive=20 observed=600`, `PASS NOCARGO_RECONCILIATION`, no
+`P2_FIXTURE_CAPTAIN_DOWN`. Control: `nocargo-staged-double` (illegal two staged
+bolts) still aborts exit 3 with `P2 preview: duplicate treasure`; `nocargo-one`
+PASS. This is a game-linked boot with a live starting squad under #632.
+
+Reported via `workflow.consumer_verification` (verification `c0c9a24b`) with
+`passed=true`, `prerequisite_resolved=true`; evidence
+`consumer-verify-nocargo-two.log` sha256
+`18ef627a7d30545cc373ca93d954696a861ce51a5e6483deabdbd9012f2a9340`.
+
+Remaining gap (unchanged, stage-specific): the engine still cannot boot the
+decoded `ch_MAT_crawler` challenge floors with its own squad/actors; the only
+game-linked challenge boot available is the fixed preview room. Six gates stay
+UNTESTED.
+
+## Gen-7 consumer verification: re-link integrated #672 boot input
+
+The gen-5 #672 boot fixture was linked at native `69738be3`, before the #695
+merge, so its link was stale against the current integrated tree. Re-linked at
+native `2528320f` with the accepted #672 harness (fixture exe
+`bf3f9ebbe96d2502d6a451a955d1a74ae65e26a59cd1cbe14662b1457448e220`; guard
+self-test exit 0, negative exit 86). `fixture.exe 29` (ch_MAT_crawler,
+ui_index 29) exit 0: SQUAD_APPLIED population=60 bitter=3 spicy=4, BOOT
+170.0 s, three TICKs to 140.0 s, FLOOR_ADVANCE floor=1 120.0 s, RETRY reset,
+DONE score=720, no captain-down. Corroborated the engine-linked #695 no-cargo
+boot at gen 7 (exit 0, 960x540 centred, READY, PASS).
+
+Reported via `workflow.consumer_verification` (verification `232bfac7`) with
+`passed=true`, `prerequisite_resolved=true`; evidence `consumer-verify-gen7.log`
+sha256 `a4bbf5e509bbc2d904e469d3a2e7cd679049f0c410e512102ee4062f24cb17e1`.
+The #672 boot input is a simulated host-state hook, not engine/runtime; the
+engine/runtime evidence is the #695 game-linked boot.
+
+Stage-specific remainder now waits on #694 (`challenge-content-loading-boot-native`,
+native content-loading boot path for arena/actors/squad): it is lane-done but has
+no integrated receipt or compiled evidence yet, so no ch_MAT_crawler floor
+content is booted. Gates UNTESTED.
+
+## Gen-8 consumer verification: stage-specific content-loading boot (#694/#701)
+
+Consumed the accepted `challenge-content-loading-validate-land-native` (#701):
+native merge of `a85c5f79` (the #694 binder + completed fixture) into the
+private native worktree (merge `2e9f707f`; pure adds), root cherry-pick of
+`4a149f07`+`7f583c72` (build/run helper) as `b0ef47ca`/`a07022b2`. No conflicts.
+
+Built the content-loading fixture at native `2e9f707f` in the leased private
+build dir (exe `e40368de...`; maintained builder, `ninja` dry run no-work) and
+ran it over the staged `ch_MAT_crawler` floor-1 sidecars with the #632 guard.
+Exit 0:
+`P2_CHALLENGE_CONTENT_SELECTED cave=ch_MAT_crawler floor=1 pool=validation_pool.txt spawns=1 anchor=hole`,
+`P2_CHALLENGE_CONTENT_SPAWN_COVERED id=YellowChappy count=2`,
+`P2_CHALLENGE_CONTENT_READY cave=ch_MAT_crawler floor=1 squad=20 captain_parked=1`,
+`P2_CHALLENGE_CONTENT_LIVE squad=20 actors=1 tick=2`,
+`PASS P2_CHALLENGE_CONTENT_RUN content=1`, no captain-down.
+
+Reported via `workflow.consumer_verification` (verification `6cb3f051`) with
+`passed=true`, `prerequisite_resolved=true`; evidence
+`consumer-verify-content-loading.log` sha256 `99e71a06...`.
+
+Honest scope: the #694 binder is a thin selection/coverage + liveness layer, not
+a roster loader. The run selects the decoded stage/floor/pool/anchor and confirms
+staged spawn intents cover the roster, but the observed squad (20) is the
+preview starting squad and the single actor is not the decoded ch_MAT_crawler
+roster. Placing the real decoded floor content (pools
+`4_units_c_e_j_l_conc.txt` / `1_units_manh_conc.txt`, 14+7 enemy rows, gate) and
+observing collision/routes remain; the six behavior gates stay UNTESTED.
+
+Remaining gap: real decoded floor placement (unit-pool asset staging + generator
+roster) plus the six behavior gates. Producer: #129 cave-generate-provider and
+the actor-family observers.
+
+## Gen-9 consumer verification: real floor-1 content bound and booted (#706)
+
+Consumed the accepted `crawler-floor1-content-wiring` (#706): root cherry-pick
+`08d423e8` as `cc5081b1` (15 tests + 4 subtests pass at this pin). Ran the
+bridge over my staged layout + the live ISO decode (`cross_check` true) and
+emitted the floor-1 boot params from the decoded rows (pool
+`4_units_c_e_j_l_conc.txt`, 14 enemies + 3 treasures + 1 gate, squad 60, ui 29).
+
+Built a real-content rundir from the decoded rows (sidecar + manifest, 15 spawn
+lines) and ran my content-loading fixture (exe `d04fa398...`, leased build,
+#632 guard `d2f678c9...`) over it. Exit 0:
+`SELECTED cave=ch_MAT_crawler floor=1 pool=4_units_c_e_j_l_conc.txt spawns=15`,
+all 15 real roster ids `SPAWN_COVERED`, `READY squad=20 captain_parked=1`,
+`LIVE squad=20 actors=1`, `PASS P2_CHALLENGE_CONTENT_RUN`, no captain-down.
+
+Reported via `workflow.consumer_verification` (verification `4175a4aa`) with
+`passed=true`, `prerequisite_resolved=true`; evidence
+`consumer-verify-floor1-real.log` sha256 `bf404f31...`.
+
+Honest limits (the remaining gap): the observed squad/actors are preview
+liveness, not species-proven placement of the decoded roster; the ItemGateMgr
+gate (life 4000) is bound in the wiring packet but has no fixture sidecar
+grammar; collision/routes are not observed; the six behavior gates stay
+UNTESTED. Producer: real roster placement and the behavior gates (#129
+generator/actors, family observers).
