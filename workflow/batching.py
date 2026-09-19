@@ -253,6 +253,11 @@ class BatchingMixin:
                               state['lanes'][key]['state'] == 'done' and
                               state['lanes'][key].get('integration'))]
             require(not unfinished, 'Record per-lane integration receipts or explicitly isolate before closing: ' + ', '.join(unfinished))
+            # Every receipt goes through integrate(); a receipt without its landing proof was not verified.
+            unproven = [key for key in batch['candidates'] if key not in batch['isolated'] and
+                        (state['lanes'][key].get('integration_landing') or {}).get('root', {}).get('commit') !=
+                        state['lanes'][key]['integration'].get('root_commit')]
+            require(not unproven, 'Candidate receipts lack a verified landing proof: ' + ', '.join(unproven))
             batch.update(state='closed', closed_at=self.clock(), revision=revision + 1)
             self.event(state, 'batch_closed', integrator, batch_id=batch_id)
             return copy.deepcopy(batch)

@@ -225,6 +225,11 @@ def prepare_release(root, ref, config, python=None, tests=None, run=subprocess.r
     require(isinstance(output, str) and output.strip(), 'Controller config lacks output; the wrapper requires it')
     out = local_path(root, output)
     sha = resolve_ref(root, ref)
+    listed = Path(tests or TESTS).as_posix()
+    require(not Path(listed).is_absolute() and '..' not in Path(listed).parts, 'Release test list must be repository-relative')
+    # Checked in the canonical repo first, so a wrong ref never leaves a stray release worktree.
+    require(git(root, 'cat-file', '-e', f'{sha}:{listed}') is not None,
+            f'Release commit {sha[:12]} has no {listed}; it is not a workflow release')
     release = root / 'output/workflow/release' / sha[:12]
     if release.exists():
         require(_clean_worktree(release, sha), 'Release directory exists with different content: ' + str(release))

@@ -5,7 +5,7 @@ import subprocess
 import uuid
 from pathlib import Path
 
-from .handoff import digest, local_path, require, nonempty, validate_review
+from .handoff import Rejected, digest, local_path, require, nonempty, validate_review
 
 
 def fingerprint(value):
@@ -13,7 +13,11 @@ def fingerprint(value):
 
 
 def git(tree, *args):
-    p = subprocess.run(['git', '-C', str(tree), *args], capture_output=True, text=True)
+    """Bounded; a git that cannot run or finish refuses like a failed check."""
+    try:
+        p = subprocess.run(['git', '-C', str(tree), *args], capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise Rejected('Git verification failed: ' + (str(exc) or type(exc).__name__))
     require(p.returncode == 0, 'Git verification failed: ' + p.stderr.strip())
     return p.stdout.strip()
 
@@ -126,8 +130,10 @@ class ControlMixin:
             require(digest(target) == expected, 'Evidence archive is corrupt')
         return dict(path=str(target), sha256=expected)
 
-    def receipt(self, key, generation, record, root_worktree, native_worktree=None):
-        """Verify an existing integration, then replay its completion safely."""
+    def receipt(self, key, generation, record, root_worktree, native_worktree=None, lander=None):
+        """Verify an existing integration, then replay its completion safely.
+
+        Ancestry here is an extra, stricter gate; integrate() still proves the landed bytes."""
         self.evidence(dict(path=record.get('validation_path'), sha256=record.get('validation_sha256')))
         lane = self.status()['lanes'][key]
         require(lane['generation'] == generation, 'Stale ownership generation')
@@ -144,7 +150,7 @@ class ControlMixin:
         require(lane['state'] in ('handoff_ready', 'integrating'), 'Validated implementation handoff required')
         if lane['state'] != 'integrating':
             lane = self.checkpoint(key, generation, lane['revision'], {'state': 'integrating'})
-        return self.integrate(key, generation, lane['revision'], record)
+        return self.integrate(key, generation, lane['revision'], record, lander)
 
     def reconcile_handoff(self, key, generation, revision, summary, evidence):
         """Return a blocked lane with a still-valid handoff to handoff_ready.

@@ -20,8 +20,10 @@ class BatchTests(unittest.TestCase):
         f = self.fixture
         self.reg = BatchRegistry(f.db, f.root, clock=lambda: f.now, process_probe=lambda _: f.health)
         f.reg = self.reg
+        from tests.landing_git import source
         for key in ('one', 'two'):
-            lane = f.running(key)
+            f.running(key)
+            lane = source(self.reg, key, {'workflow/' + key + '.py': key})
             path = f.root / ('output/' + key + '.json')
             path.write_text(json.dumps(f.handoff(lane)))
             self.reg.submit_handoff(key, 1, lane['revision'], str(path))
@@ -103,6 +105,12 @@ class BatchTests(unittest.TestCase):
         lane=self.reg.checkpoint('two',1,lane['revision'],{'state':'integrating'})
         self.reg.integrate('two',1,lane['revision'],dict(root_commit=source['head'],
             validation_path=self.fixture.evidence['path'],validation_sha256=self.fixture.evidence['sha256']))
+        with self.reg.transaction() as state:
+            proof = state['lanes']['two'].pop('integration_landing')
+        with self.assertRaisesRegex(Rejected, 'lack a verified landing proof: two'):
+            self.reg.batch_close('batch', 'three', 1, 3)
+        with self.reg.transaction() as state:
+            state['lanes']['two']['integration_landing'] = proof
         self.reg.batch_close('batch', 'three', 1, 3)
 
     def test_source_file_overlap_rejected(self):

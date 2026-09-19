@@ -35,6 +35,52 @@ def output_access(config, output, root, brief=None):
     return data
 
 
+# OpenCode matches each parsed bash command against these wildcards; the last match wins,
+# so they follow any existing catch-all. `git *` also covers `git -C <tree> ...`.
+INTEGRATOR_GIT_DENY = (
+    'git *merge*-X*ours*', 'git *merge*-X*theirs*', 'git *merge*--strategy-option*', 'git *merge*-s*ours*',
+    'git *cherry-pick*-X*', 'git *rebase*-X*', 'git *reset*--hard*', 'git *clean*-*f*',
+    'git *checkout -- *', 'git *push*--force*', 'git *push* -f*', 'git *push*--mirror*', 'git *push* +*')
+
+
+def load_config(path):
+    """A launch config as a dict; tolerates only OpenCode's own schema-hint insertion. None if unreadable."""
+    try:
+        raw = Path(path).read_bytes()
+        try:
+            data = json.loads(raw.decode('utf-8-sig'))
+        except ValueError:
+            prefix = b'{\n  "$schema": "https://opencode.ai/config.json",'
+            if not raw.startswith(prefix):
+                return None
+            data = json.loads((b'{' + raw[len(prefix):]).decode('utf-8-sig'))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def integrator_guard(data):
+    """Deny destructive git in maintained worktrees for an integrator launch; None refuses the launch."""
+    data = dict(data)
+    permissions = data.get('permission', {})
+    if isinstance(permissions, str):
+        permissions = {'*': permissions}
+    if not isinstance(permissions, dict):
+        return None
+    bash = permissions.get('bash', permissions.get('*'))
+    if bash == 'deny':
+        return data  # Every shell command is already refused.
+    if bash is not None and not isinstance(bash, (str, dict)):
+        return None
+    # No bash rule keeps OpenCode's default for unmatched commands; denies are only added.
+    rules = {} if bash is None else {'*': bash} if isinstance(bash, str) else dict(bash)
+    for pattern in INTEGRATOR_GIT_DENY:
+        rules.pop(pattern, None)
+        rules[pattern] = 'deny'
+    data['permission'] = dict(permissions, bash=rules)
+    return data
+
+
 def permission_path_allowed(directory, rules):
     candidate = Path(directory).resolve()
     for rule in rules:

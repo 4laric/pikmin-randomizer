@@ -231,12 +231,14 @@ class StampTests(unittest.TestCase):
     def test_submit_handoff_and_integrate_keep_receipts_exact(self):
         f = fixture(workflow_fixtures.WorkflowTests, 'test_handoff_review_and_integration_metrics')
         self.addCleanup(f.doCleanups)
-        lane = f.running()
+        from tests.landing_git import source
+        f.running()
+        lane = source(f.reg, 'one', {'workflow/one.py': 'X = 1\n'})
         lane = f.reg.submit_handoff('one', 1, 2, f.save_handoff(f.handoff(lane)))
         self.assertEqual(lane['handoff_code_revision'], provenance.stamp())
         self.assertEqual(set(lane['handoff']), {'path', 'sha256', 'result'})
         f.reg.checkpoint('one', 1, 3, {'state': 'integrating'})
-        record = {'root_commit': 'b' * 40, 'validation_path': str(f.log), 'validation_sha256': digest(f.log)}
+        record = {'root_commit': lane['root']['head'], 'validation_path': str(f.log), 'validation_sha256': digest(f.log)}
         done = f.reg.integrate('one', 1, 4, copy.deepcopy(record))
         self.assertEqual(done['integration'], record)
         self.assertEqual(done['integration_code_revision'], provenance.stamp())

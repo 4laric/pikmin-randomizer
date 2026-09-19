@@ -79,6 +79,8 @@ class IntegrationWakeupTests(unittest.TestCase):
         self.f.setUp()
         self.addCleanup(self.f.doCleanups)
         self.reg, self.controller = self.f.reg, self.f.controller
+        config = self.f.out / 'opencode.json'; config.write_text('{}')  # Integrator launches must carry the git guard.
+        self.f.config['lanes']['consumer']['config'] = str(config)
         self.reg.finish('consumer', 1, 'review-ready', 'Previous batch completed', self.f.ev)
         with self.reg.transaction() as state:
             state['throughput'] = dict(workstreams={'content': dict(owner_lane='consumer', lanes=[])}, batches={})

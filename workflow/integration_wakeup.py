@@ -115,6 +115,7 @@ def tick(controller):
         if work:
             demand.setdefault(owner, []).extend(work)
     from .delivery_contracts import owner_work, INSTRUCTION as DELIVERY_INSTRUCTION
+    from .landing import INSTRUCTION as LANDING_INSTRUCTION
     for owner in {s.get('owner_lane') for s in pool.get('workstreams',{}).values()}:
         work=owner_work(snapshot,owner)
         if work:demand.setdefault(owner,[]).extend(work)
@@ -193,7 +194,7 @@ def tick(controller):
                 'Use canonical checkpoints/dependencies to make the result consumable; never mark a review '
                 'as source integration or clear runtime gates without evidence. '
                 'If neither handoffs nor review reports remain, record a bounded standby report; never invent acceptance. '
-                'No ADMIT. ' + DELIVERY_INSTRUCTION + 'Demand: ' + str(work), controller.config['models'])
+                'No ADMIT.' + LANDING_INSTRUCTION + ' ' + DELIVERY_INSTRUCTION + 'Demand: ' + str(work), controller.config['models'])
             with reg.transaction() as state:
                 state['control']['launches'][launch['id']]['shared_review_requests'] = sorted(
                     {item['shared_review_id'] for item in work if 'shared_review_id' in item})

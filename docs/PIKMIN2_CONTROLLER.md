@@ -74,8 +74,9 @@ tell). It warns, and exits 1, for dirty code, a running sha that differs from di
 missing provenance, an undeterminable checkout or an unsupervised controller.
 
 `prepare-release` resolves the ref to a commit (a worktree path is accepted only
-when it has no uncommitted changes) and creates a detached worktree at
-`<root>/output/workflow/release/<short-sha>`. The config must name `output` (the
+when it has no uncommitted changes), refuses a commit of the canonical repository
+that lacks `tests/workflow_release_tests.txt` before touching disk, and creates a
+detached worktree at `<root>/output/workflow/release/<short-sha>`. The config must name `output` (the
 wrapper has no default). An existing directory is reused only
 if it is a clean worktree at exactly that commit; anything else is refused. It then
 runs the pytest arguments listed in the release's `tests/workflow_release_tests.txt`
@@ -157,8 +158,10 @@ Configure the path in `receipts`. It contains the arguments to `workflow receipt
  "validation_sha256":"SHA256"}}
 ```
 
-The controller verifies accepted candidate ancestry with Git, the existing handoff,
-and validation/export hashes before marking completion. Replaying the same receipt
+The controller verifies accepted candidate ancestry with Git in the given worktrees,
+then `integrate` proves the landed bytes (docs/PIKMIN2_WORKFLOW.md section 5), the
+existing handoff and validation/export hashes before marking completion. A receipt
+may add `"lander":{"lane":...,"generation":...}`. Replaying the same receipt
 does not increment completion twice. Conflicting receipts fail closed. A root-only
 accepted handoff can exclude an auxiliary native fixture; record that exclusion
 explicitly in validation evidence. Receipt submission does not run a merge/export.
@@ -297,7 +300,7 @@ Enable `terminal_idle_recovery: {"enabled": true, "quiet_seconds": 60}` in the l
 
 Same-session recovery preserves the pool assignment and records its launch history after verifying the previous execution exited. `Registry.reconcile_pool_recovery(action_id)` can apply that same fenced link to an already-bound recovery during deployment. Completion uses valid recorded integration/review evidence before fallback evidence; changed hashes remain invalid.
 
-Unattended worker configurations should deny unknown external directories immediately, explicitly allow their authorized private workspace and necessary application temporary directory, and retain edit exclusions for shared/original checkouts. A permission-wait recovery requires independent idle-process verification; terminal-loop recovery does not treat a permission request as a completed loop.
+Unattended worker configurations should deny unknown external directories immediately, explicitly allow their authorized private workspace and necessary application temporary directory, and retain edit exclusions for shared/original checkouts. Launches of an integration owner (a workstream `owner_lane`, or any `integration-demand:` wakeup) get per-launch OpenCode `permission.bash` deny rules after any catch-all (last match wins) for `git merge -X ours|theirs`, `-s ours`, `--strategy-option`, `cherry-pick`/`rebase -X`, `reset --hard`, `clean -f*`, `checkout -- <path>` and force, mirror or `+refspec` pushes (`managed_config.INTEGRATOR_GIT_DENY`); an integrator config that cannot carry them is refused before spawning with an `integrator_guard_refused` notice. Wildcards match the command text, so this is a guard against accidents, not a sandbox. A permission-wait recovery requires independent idle-process verification; terminal-loop recovery does not treat a permission request as a completed loop.
 
 
 Heavy assignment reservations pause only when a lane is `blocked`, `review_ready`, `handoff_ready`, or `done` and its worker and every protected lease process are confirmed stopped. This frees prospective build capacity for dependency producers; it does not release any actual resource lease, change worker ownership, complete an assignment, or accept evidence. Live or unknown workers and protected children retain their reservations. Actual build leases always count separately toward the shared cap, including multiple leases held by one lane, and resuming a heavy assignment must reserve capacity again.

@@ -554,13 +554,32 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
         require(result['slice_passed'], 'Assigned slice criteria no longer pass')
         return result
 
-    def integrate(self, key, generation, revision, record):
-        """The receipt stays exactly as submitted (replays compare it); code is a sibling."""
+    def integrate(self, key, generation, revision, record, lander=None):
+        """The receipt stays exactly as submitted (replays compare it); code and landing proof are siblings.
+
+        The landing proof runs git against the lane read outside the writer lock; the
+        transaction then refuses if the proven pins moved in between."""
         from .provenance import stamp
+        from .landing import prove
+        from .storage import read_record
         code = stamp()
+        require(isinstance(record, dict), 'Integration record required')
+        require(lander is None or (isinstance(lander, dict) and set(lander) == {'lane', 'generation'} and
+                nonempty(lander['lane']) and type(lander['generation']) is int), 'lander must be {lane, generation}')
+        before = read_record(self, ('lanes',), key)
+        require(before is not None, 'Unknown lane: ' + key)
+        require(before['generation'] == generation, 'Stale ownership generation')
+        require(before['revision'] == revision, 'Stale lane revision; read status before retrying')
+        require(before['state'] == 'integrating', 'Begin integration before recording completion')
+        landing = prove(self.root, before, record, lander)
         with self.transaction() as state:
             lane = self.lane(state, key, generation, revision)
             require(lane['state'] == 'integrating', 'Begin integration before recording completion')
+            require(all(lane.get(k) == before.get(k) for k in ('root', 'native', 'handoff')),
+                    'Lane source or handoff changed while proving the landing')
+            if lander is not None:
+                require(self.lane(state, lander['lane'], lander['generation'])['state'] != 'done',
+                        'Lander lane is done')
             result = self.check_handoff(lane)
             require(not result['pending_reviews'], 'Resolve shared reviews before integration')
             for name in ('root_commit',):
@@ -583,7 +602,7 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
                 require(not isinstance(export_record, dict) or export_record.get('action') != 'none-performed',
                         'Export evidence explicitly records no export; obtain actual export evidence')
             lane.update(state='done', integrated_at=self.clock(), revision=revision + 1, integration=record,
-                        integration_code_revision=code)
+                        integration_code_revision=code, integration_landing=dict(landing, verified_at=self.clock()))
             self.event(state, 'integrated', key, lead_seconds=self.clock() - (lane['started_at'] or lane['created_at']))
             return lane
 

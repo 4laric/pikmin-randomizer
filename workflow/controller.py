@@ -131,8 +131,30 @@ class Controller:
             self.reg.event(state,'unbound_runner_recovered',item['lane'],action=item['id'],archive=str(archive))
         return True
 
+    def integrator_config(self, item, config):
+        """Launch config with destructive git denied for an integration owner; None for other lanes.
+
+        Refuses (Rejected) when an integrator's config cannot carry the guard."""
+        streams = self.reg.snapshot(section=('throughput', 'workstreams')) or {}
+        if not (item['reason'].startswith('integration-demand:') or
+                any(isinstance(s, dict) and s.get('owner_lane') == item['lane'] for s in streams.values())):
+            return None
+        from .managed_config import integrator_guard, load_config
+        data = config if isinstance(config, dict) else load_config(config)
+        guarded = integrator_guard(data) if data is not None else None
+        require(guarded is not None, 'Integrator launch config cannot carry the destructive-git guard: ' +
+                (str(config) if not isinstance(config, dict) else 'managed config'))
+        return guarded
+
     def dispatch(self, item):
         if not self.available(item['lane']): return
+        entry = self.config['lanes'].get(item['lane'])
+        if entry and not (self.launch_directory(item['id']) / 'spawn.json').exists():
+            try:  # Refuse before spawning: a bound integrator must never start unguarded.
+                self.integrator_config(item, str(local_path(self.reg.root, entry['config'])))
+            except Rejected as exc:
+                self.reg.notice(item['lane'], 'integrator_guard_refused', {'action': item['id'], 'error': str(exc)})
+                return
         directory = self.launch_directory(item['id'])
         self.recover_unbound(item,directory)
         directory.mkdir(parents=True, exist_ok=True)
@@ -181,7 +203,11 @@ class Controller:
             entry[field] = str(local_path(self.reg.root, entry[field]))
         from .managed_config import output_access
         managed = output_access(entry['config'], entry['output'], self.reg.root, entry['brief'])
-        if managed is not None:
+        guarded = self.integrator_config(item, managed or entry['config'])
+        if guarded is not None:
+            write(directory / 'opencode.json', guarded)
+            entry['config'] = str(directory / 'opencode.json')
+        elif managed is not None:
             write(directory / 'opencode.json', managed)
             entry['config'] = str(directory / 'opencode.json')
         else:

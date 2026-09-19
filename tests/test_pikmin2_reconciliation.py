@@ -63,9 +63,10 @@ class ReconcileTests(unittest.TestCase):
         return str(path)
 
     def blocked_with_handoff(self, key='one', reviews=None):
+        from tests.landing_git import source
         self.reg.register(self.data(key))
         self.reg.checkpoint(key, 1, 1, {'state': 'running'})
-        lane = self.reg.status()['lanes'][key]
+        lane = source(self.reg, key, {'workflow/' + key + '.py': 'X = 1'})
         path = self.save_handoff(self.handoff_doc(lane, reviews))
         self.reg.submit_handoff(key, 1, 2, path)
         lane = self.reg.status()['lanes'][key]
@@ -90,7 +91,7 @@ class ReconcileTests(unittest.TestCase):
         self.assertEqual(lane['reconcile']['pending_reviews'], [])
         validation = self.root / 'output/checks.log'
         validation.write_text('checker exit 0\n')
-        record = {'root_commit': 'b' * 40, 'validation_path': 'output/checks.log',
+        record = {'root_commit': lane['root']['head'], 'validation_path': 'output/checks.log',
                   'validation_sha256': digest(validation)}
         lane = self.reg.checkpoint('one', 1, lane['revision'], {'state': 'integrating'})
         lane = self.reg.integrate('one', 1, lane['revision'], record)
@@ -156,7 +157,7 @@ class ReconcileTests(unittest.TestCase):
         lane = self.reg.checkpoint('one', 1, lane['revision'], {'state': 'integrating'})
         validation = self.root / 'output/checks.log'
         validation.write_text('checker exit 0\n')
-        record = {'root_commit': 'b' * 40, 'validation_path': 'output/checks.log',
+        record = {'root_commit': lane['root']['head'], 'validation_path': 'output/checks.log',
                   'validation_sha256': digest(validation)}
         with self.assertRaisesRegex(Rejected, 'Resolve shared reviews before integration'):
             self.reg.integrate('one', 1, lane['revision'], record)

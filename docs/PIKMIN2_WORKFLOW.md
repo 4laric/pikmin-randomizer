@@ -345,13 +345,65 @@ preserves original queue age. Do not silently edit submitted evidence in place.
 Start integration with a checkpoint to `integrating`. Finish with `integrate`:
 
 ```json
-{"key":"species-receivers","generation":1,"revision":5,"record":{"root_commit":"FULL_INTEGRATED_ROOT_COMMIT","native_commit":"FULL_INTEGRATED_NATIVE_COMMIT","native_dirty":"RECORDED_DIRTY_STATE","export_evidence":"output/integration/export.json","export_sha256":"SHA256","validation_path":"output/integration/checks.log","validation_sha256":"SHA256"}}
+{"key":"species-receivers","generation":1,"revision":5,"lander":{"lane":"species-integration-owner","generation":42},"record":{"root_commit":"FULL_INTEGRATED_ROOT_COMMIT","native_commit":"FULL_INTEGRATED_NATIVE_COMMIT","native_dirty":"RECORDED_DIRTY_STATE","export_evidence":"output/integration/export.json","export_sha256":"SHA256","validation_path":"output/integration/checks.log","validation_sha256":"SHA256"}}
 ```
 
-Tooling-only integration omits native/export fields. Completion records evidence;
-the command never merges, builds or exports. Existing fixture provenance limitations
-still apply: hashes cannot establish natural play or certify historical source
-identity of reused objects. A human/focused integration review remains necessary.
+Tooling-only integration omits native/export fields; a lane without a native source
+must not name a `native_commit`. Completion records evidence; the command never
+merges, builds or exports. Existing fixture provenance limitations still apply:
+hashes cannot establish natural play or certify historical source identity of
+reused objects. A human/focused integration review remains necessary.
+
+**What `integrate` proves** (`workflow/landing.py`). Before taking the registry
+writer lock, it runs a handful of bounded, non-fetching git reads per repository:
+root in the canonical checkout, native in `<root>/native` (a declared integration
+line's `repo` replaces either). `root_commit`/`native_commit` must exist as commits
+there, and for every file the lane changed between its recorded `base` and `head`
+one of these must hold:
+
+- the blob at the receipt commit equals the blob at the lane head (a file the lane
+  deleted must be absent), which covers cherry-picks and re-landings;
+- the lane head is an ancestor of the receipt commit;
+- the record carries an explicit port declaration for that file (below).
+
+Anything else, a git error or timeout included, refuses with one line per file
+(`differs`, `is absent`, `was deleted by the lane but is present`, missing commit).
+Inside the transaction it refuses again if the lane's source pins or handoff moved
+while git ran. The proof is stored beside the unchanged receipt as
+`integration_landing` {kind, root, native (repo, commit, base, head,
+head_is_ancestor, per-file `[path, status, reviewed_blob, landed_blob, via]`,
+line_check), ports, lander, verified_at}. `lander` is the verified calling lane
+and generation when the request names one. `batch-close` refuses a candidate
+whose receipt carries no such proof.
+
+**Ports.** When an integrator had to adapt a file, it declares it in
+`record.ports`: `{"repo":"root|native","file":...,"reviewed_blob":BLOB_AT_LANE_HEAD,
+"landed_blob":BLOB_AT_RECEIPT_COMMIT,"interdiff_sha256":...,"reason":...,
+"evidence":{"path":...,"sha256":...}}` (`null` blob for an absent file). Both blobs
+must match git, the evidence must hash, and a port for a file that needs none is
+refused. Ports of files the lane routed through shared review (#186
+`shared_reviews`) or of engine paths (root `engine/`, `include/`; native
+`pc_port/`, `src/`, `include/`, `cmake/`, `CMakeLists.txt`) are refused with
+`shared-file port requires a landing review`: hand those back for a re-reviewed
+handoff instead of adapting them.
+
+**Already landed.** A lane that changed nothing, or whose bytes an earlier commit
+already carries, is recorded with `"kind":"already_landed"` naming the commit that
+actually contains the bytes; the same blob check applies and ports are not
+allowed. A lane without changes is refused unless it says `already_landed`.
+
+**Integration lines.** If the controller config
+(`output/workflow/controller/config.json`) declares
+`"integration_lines":{"root":{"repo":".","ref":"<branch>"},"native":{"repo":"native","ref":"<branch>"}}`,
+the receipt commit must be reachable from that ref (`merge-base --is-ancestor`).
+Otherwise the proof records `line_check: "undeclared"`; lines are never guessed.
+
+**Audit.** `<python> <checkout>/scripts/workflow_module.py landing_audit --root <root>
+[--out report.json] [--lane KEY]` runs the same checks over every existing receipt
+from one read-only snapshot and prints the mismatches (missing commits, files absent
+or different, deleted files present, not on a declared line, unverifiable pins). It
+never writes the registry; exit 1 means at least one receipt does not contain its
+reviewed bytes. Historical receipts are reported, never rewritten.
 
 ## 6. Throughput and dispatch
 

@@ -595,10 +595,12 @@ class ControllerTests(unittest.TestCase):
             result=subprocess.run(['git','-C',str(self.root),*args],text=True,capture_output=True)
             self.assertEqual(result.returncode,0,result.stderr);return result.stdout.strip()
         run('init');run('config','user.email','tests@example.invalid');run('config','user.name','Workflow tests')
+        (self.root/'base.py').write_text('pass\n');run('add','base.py');run('commit','-m','base')
+        base=run('rev-parse','HEAD')
         (self.root/'consumer.py').write_text('pass\n');run('add','consumer.py');run('commit','-m','candidate')
         head=run('rev-parse','HEAD')
         with self.reg.transaction() as state:
-            state['lanes']['consumer']['root'].update(base=head,head=head)
+            state['lanes']['consumer']['root'].update(base=base,head=head,commits=[head])
         lane=self.reg.status()['lanes']['consumer']
         # Reuse a fully validated synthetic tooling handoff; integration itself uses real git objects.
         helper=WorkflowTests();helper.root=self.root;helper.evidence=self.ev

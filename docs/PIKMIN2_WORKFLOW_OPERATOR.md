@@ -47,8 +47,12 @@ editing the checkout the controller runs from.
 ## Finish deliveries correctly
 
 A closed batch is not a lane completion. Only Registry.integrate records source
-integration and transitions the lane to done. Check the exact current generation,
-revision, candidate/landed source pins and hashed validation first. Native lanes
+integration and transitions the lane to done, and only when the receipt commits
+provably contain the lane's reviewed bytes (identical blobs, ancestry, or a declared
+non-shared port; `already_landed` names the commit that already holds them). Check
+the exact current generation, revision, candidate/landed source pins and hashed
+validation first. Audit existing receipts read-only with
+`py -3.12 scripts/workflow_module.py landing_audit --root C:/Users/alari/pikmin-randomizer --out <file>`. Native lanes
 also need actual export evidence and native dirty state. A file saying no export
 was performed is not export evidence. Only the integration lead performs the
 maintained export; the expected dirty baseline is not a blocker.
