@@ -353,7 +353,8 @@ enqueues immediately; one failure does not block other preparations. Source/issu
 validation remains mandatory. Worker selection, reservation and execution reserve
 checks are inside the same transaction, preventing parallel oversubscription.
 Per-scope preparation timestamps/durations record actual costs. The independent assignment loop
-refreshes reservation occupancy separately as counts_updated_at; updated_at still
+recounts reservation occupancy every pass but writes only a change, so counts_updated_at
+is when the counts last changed, not a freshness stamp; updated_at still
 marks target/demand calculation and must not imply fresher demand. No extra dispatcher
 or model worker pool is created.
 
@@ -484,12 +485,16 @@ queue pressure and helper-preparation timing (meta only), stage timing (meta +
 history tail; the 24 h trim loads history at most hourly), controller RAM scalars
 and model selection (`control_meta()`, the meta row alone). Admission
 reconciliation, worker parking and helper reservation counts compute from a
-committed read and write only when something changed. On the live registry a
+committed read and write only when something changed; worker parking still
+re-hashes each surviving candidate's evidence file under the writer. On the live registry a
 meta-only write holds the writer about 0.04 s against 0.6 s for a full transaction.
 Snapshots copy rows inside the read transaction and decode after it ends, so a
 reader holds SQLite's SHARED lock about 0.1 s instead of 0.45 s.
 Every BEGIN, COMMIT and snapshot read that meets `database is locked` retries up
-to three times (20 s SQLite timeout each, jittered backoff). After the budget it
+to three times (9 s SQLite timeout each, jittered backoff), at most about 28 s in
+all, within the former single 30 s wait: a thread retries while holding the
+in-process writer gate, so a longer budget would stall every thread queued behind
+it. After the budget it
 raises `RegistryBusy` (`Registry busy: ... nothing was committed, retry later`);
 `scripts/pikmin2_workflow.py` exits 75 with `"busy": true`, so callers rerun the
 same command instead of writing their own retry loops.
@@ -528,18 +533,25 @@ in the file, so older releases use it too. `--mode delete --apply` switches back
 Archive (operator-run, never automatic): `py -3.12 <checkout>/scripts/workflow_module.py
 registry_archive --root <root> --done-days N` reports what would move; `--apply`
 (quiesced registry required) moves events, control.launches and actions of lanes done
-for more than N >= 1 days into output/workflow/registry-archive.sqlite3 and VACUUMs.
+for more than N >= 1 days into output/workflow/registry-archive.sqlite3 and VACUUMs;
+with nothing to move it only VACUUMs. Exit 2 means refused and nothing was removed.
+Exit 3 means the records moved but marking the run or the VACUUM failed (for example
+`database is locked` because a client reopened the file); the JSON report carries
+`mark_error` or `vacuum_error`, and rerunning the same `--apply` finishes both.
 Each record is copied with its sha256 and re-read before one registry transaction
 removes it, and that transaction refuses unless every record is still identical.
 Lanes with an in-flight launch, claimed action, lease/queue entry, open assignment
 or pending consumer verification are skipped. Archived lanes carry `archived`
 tombstones naming the run; an interrupted run is settled on the next run (tombstoned:
 moved; otherwise discarded, its records never left the registry).
-`registry_archive.history()` and `merged()` give readers the full history. Lanes
-themselves never move, so landing_audit and the no-progress report read them as
-before; review-packet lander attribution uses running launches only; analytics and
-the dashboard look back at most a day. Anything that needs older events, launches
-or actions of done lanes reads `merged(root, snapshot)`.
+`registry_archive.history()` and `merged()` give the full history; `merged()` puts
+archived events back at their original registry positions (not re-sorted by `at`).
+No production reader opens the archive, deliberately: lanes themselves never move, so
+landing_audit and the no-progress report read them as before; review-packet lander
+attribution uses running launches only; analytics and the dashboard use a one-hour
+window by default. A `throughput-status` window longer than N days would miss the
+archived lanes' lease intervals and completions. Anything that needs older events,
+launches or actions of done lanes reads `merged(root, snapshot)`.
 
 Every later recovery generation of an unresolved consumer now gets its own pending
 verification record and current ID in the launch instructions, pinned to unchanged

@@ -1,5 +1,6 @@
 import copy
 import unittest
+from unittest.mock import patch
 
 from tests import test_workflow_autofill as fixtures
 from workflow.autofill import _workers
@@ -112,3 +113,13 @@ class WorkerCapacityTests(unittest.TestCase):
         with self.reg.transaction() as state:
             state['lanes']['one']['outcome']['evidence']['sha256'] = 'bad'
         self.assertEqual(park_blocked(self.reg), [])
+
+    def test_evidence_changed_after_the_committed_read_refuses_parking(self):
+        path = self.reg.evidence(self.f.f.evidence)
+        original, writes = self.reg.transaction, []
+        def change_then_write(**kw):  # After the pre-lock hash, before the writer rechecks.
+            writes.append(1); path.write_text('changed after the read', encoding='utf-8'); return original(**kw)
+        with patch.object(self.reg, 'transaction', side_effect=change_then_write):
+            self.assertEqual(park_blocked(self.reg), [])
+        self.assertEqual(writes, [1])
+        self.assertFalse(parked(self.reg.snapshot()['lanes']['one']))

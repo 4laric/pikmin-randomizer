@@ -6,19 +6,26 @@ from datetime import datetime, timezone
 
 TERMINAL = {'completed', 'superseded', 'released', 'cancelled', 'closed', 'integrated', 'rejected',
             'expired', 'exited', 'failed', 'resolved', 'done'}
-STAMPS = ('at', 'created_at', 'requested_at', 'assigned_at', 'dispatched_at', 'parked_at',
-          'completed_at', 'closed_at', 'updated_at')
+STAMPS = ('at', 'created_at', 'queued_at', 'requested_at', 'assigned_at', 'dispatched_at', 'parked_at',
+          'completed_at', 'closed_at', 'superseded_at', 'reassigned_at', 'released_at', 'cancelled_at', 'updated_at')
 RECENT_SECONDS, RECENT_LIMIT = 6 * 3600, 200
 
 
-def bounded(items, now, *, seconds=RECENT_SECONDS, limit=RECENT_LIMIT):
+def stamped(value):
+    found = [value.get(k) for k in STAMPS if isinstance(value, dict) and type(value.get(k)) in (int, float)
+             and math.isfinite(value.get(k))]
+    return max(found) if found else None
+
+
+def bounded(items, now, *, seconds=RECENT_SECONDS, limit=RECENT_LIMIT, related=None):
     """Every active record plus at most `limit` terminal/unstatused records newer than `seconds`.
+    related(record) names a linked record whose stamps also date it (a job by its assignment).
 
     Publication only: the registry keeps every record; (published, total) says what was left out."""
     if not isinstance(items, dict):
         return items, None
     def stamp(value):
-        found = [value.get(k) for k in STAMPS if type(value.get(k)) in (int, float) and math.isfinite(value.get(k))]
+        found = [t for t in (stamped(value), stamped(related(value)) if related else None) if t is not None]
         return max(found) if found else None
     def active(value):
         status = value.get('status', value.get('state')) if isinstance(value, dict) else None
@@ -35,8 +42,12 @@ def publishable(report, *, seconds=RECENT_SECONDS, limit=RECENT_LIMIT):
     now = report.get('at', 0)
     omitted = {}
     throughput = dict(report.get('throughput') or {})
+    assignments = throughput.get('assignments') if isinstance(throughput.get('assignments'), dict) else {}
+    # Live jobs carry only queued_at; a finished job is dated by its assignment's completion.
+    linked = dict(jobs=lambda job: assignments.get(job.get('assignment')) if isinstance(job.get('assignment'), str) else None)
     for name in ('jobs', 'assignments', 'costs', 'batches', 'snapshots', 'dispositions'):
-        throughput[name], counts = bounded(throughput.get(name, {}), now, seconds=seconds, limit=limit)
+        throughput[name], counts = bounded(throughput.get(name, {}), now, seconds=seconds, limit=limit,
+                                           related=linked.get(name))
         if counts: omitted['throughput.' + name] = counts
     autofill = dict(report.get('autofill') or {})
     if 'items' in autofill:

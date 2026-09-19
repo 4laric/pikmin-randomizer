@@ -714,8 +714,10 @@ owns repair routing; main maintenance does not race it.
 Stage timing observes preparation, assignment, launch, execution, build, resource
 wait, review, integration, dependency and consumer verification. Initial ages are
 lower bounds from first observation. Reason-text updates do not reset residence
-time; generation or stage changes do. Completed stage durations cover the last
-hour. Age flags are diagnostic, never permission to kill a worker. The dashboard
+time; generation or stage changes do. Each observation is stamped with the clock
+read before its snapshot, and an observation older than the recorded one is
+refused, so concurrent publishers never write an older read over a newer one.
+Completed stage durations cover the last hour. Age flags are diagnostic, never permission to kill a worker. The dashboard
 shows verified consumer unblocks/hour alongside integrated slices/hour.
 
 Newly published native implementation, repair and QA proposals require an explicit

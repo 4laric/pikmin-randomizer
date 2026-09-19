@@ -4,7 +4,7 @@
 
 Moves events, control.launches and actions of lanes done for more than N (>= 1) days into
 output/workflow/registry-archive.sqlite3, then VACUUMs the registry. Without --apply it
-only reports what would move. Every record is preserved: it is copied with its sha256,
+only reports what would move; --apply with nothing to move still VACUUMs. Every record is preserved: it is copied with its sha256,
 committed and re-read from the archive before one registry transaction removes it, and
 that transaction refuses unless each record is still byte-identical. Each archived lane
 keeps a tombstone (lane.archived) naming the run, so an interrupted run is settled later
@@ -12,7 +12,9 @@ keeps a tombstone (lane.archived) naming the run, so an interrupted run is settl
 records never left the registry. A lane is skipped while anything could still act on it:
 an in-flight launch, a claimed action, a lease or queued request, an open assignment or a
 pending consumer verification. --apply requires a quiesced registry (registry_wal.quiesced).
-Readers needing the full history use history()/merged().
+Exit codes: 0 done, 2 refused (nothing removed), 3 moved but marking the run or VACUUM failed
+(the JSON report says which; rerun --apply to finish). Readers needing the full history use
+history()/merged(); merged() restores events to their original registry positions.
 """
 import argparse
 import hashlib
@@ -161,68 +163,124 @@ def remove(reg, run, now, path, cutoff, selection):
                 actions=sum(v.get('lane') == key for v in selection['actions'].values())))
 
 
+def settle(path, state):
+    """Settle interrupted runs when nothing new is copied (copy_out does it otherwise)."""
+    if not Path(path).is_file(): return
+    db = sqlite3.connect(path, timeout=30)
+    try:
+        db.execute('BEGIN IMMEDIATE'); resolve(db, state); db.commit()
+    except BaseException:
+        if db.in_transaction: db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 def archive(reg, done_days, *, path=None, apply=False, vacuum=True, now=None, probe=None):
+    """Report, or with apply move then VACUUM. Once the registry removal commits nothing is
+    reported as refused: a later marking or VACUUM failure is returned as mark_error or
+    vacuum_error. apply with nothing to move still settles interrupted runs and VACUUMs."""
     require(type(done_days) in (int, float) and done_days >= 1, 'done-days must be at least 1')
     now = reg.clock() if now is None else now
     cutoff = now - done_days * 86400
     path = Path(path) if path else default_path(reg.root)
     state = reg.snapshot()
     selection = plan(state, cutoff)
-    report = dict(archive=str(path), cutoff=cutoff, applied=False, **summary(selection))
-    if not apply or not selection['lanes']:
+    report = dict(archive=str(path), cutoff=cutoff, applied=False, vacuumed=False, **summary(selection))
+    if not apply or not (selection['lanes'] or vacuum):
         return report
     from .registry_wal import quiesced
     reason = quiesced(reg, probe)
     require(reason is None, 'Refused: ' + str(reason))
-    run = uuid.uuid4().hex
-    copied = copy_out(path, reg.root, run, now, cutoff, selection, state)
-    try:
-        remove(reg, run, now, path, cutoff, selection)
-    except Rejected:
-        mark(path, run, 'abandoned')  # The removal rolled back: every record is still in the registry.
-        raise
-    mark(path, run, 'moved')
-    before = reg.path.stat().st_size
+    if selection['lanes']:
+        run = uuid.uuid4().hex
+        copied = copy_out(path, reg.root, run, now, cutoff, selection, state)
+        try:
+            remove(reg, run, now, path, cutoff, selection)
+        except Rejected:
+            mark(path, run, 'abandoned')  # The removal rolled back: every record is still in the registry.
+            raise
+        report.update(applied=True, run=run, copied=copied)
+        try:
+            mark(path, run, 'moved')
+        except (OSError, sqlite3.Error) as exc:  # The move committed; the lane tombstones settle the run later.
+            report['mark_error'] = str(exc)
+    else:
+        settle(path, state)
+    report['bytes_before'] = reg.path.stat().st_size
     if vacuum:
         db = sqlite3.connect(reg.path, timeout=30)
-        try: db.execute('VACUUM')
+        try:
+            db.execute('VACUUM'); report['vacuumed'] = True
+        except sqlite3.Error as exc:
+            report['vacuum_error'] = str(exc) + '; rerun with --apply to VACUUM'
         finally: db.close()
-    return dict(report, applied=True, run=run, copied=copied, bytes_before=before, bytes_after=reg.path.stat().st_size)
+    report['bytes_after'] = reg.path.stat().st_size
+    return report
+
+
+def records(root, *, path=None, lane=None, state=None):
+    """([(section, key, value, run, source_index)] of counted runs in archive order, runs newest first).
+
+    Only moved runs count, plus interrupted runs the given registry state tombstones."""
+    path = Path(path) if path else default_path(root)
+    if not path.is_file():
+        return [], []
+    db = sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True, timeout=30)
+    try:
+        runs = {r for (r,) in db.execute("SELECT run FROM archive_runs WHERE status='moved'")}
+        runs |= committed(state) if state is not None else set()
+        order = [r for (r,) in db.execute('SELECT run FROM archive_runs ORDER BY at DESC, rowid DESC') if r in runs]
+        result = []
+        query = ('SELECT section, key, body, sha256, run, source_index FROM archive' +
+                 (' WHERE lane=?' if lane else '') + ' ORDER BY rowid')
+        for section, key, body, digest, run, index in db.execute(query, (lane,) if lane else ()):
+            if run not in runs: continue
+            require(sha(body) == digest, 'Archived %s record %s fails its hash' % (section, key))
+            result.append((section, key, json.loads(body), run, index))
+    finally:
+        db.close()
+    return result, order
 
 
 def history(root, *, path=None, lane=None, state=None):
     """Archived records as {events: [...], launches: {...}, actions: {...}}; empty without an archive.
 
     Only moved runs count, plus interrupted runs the given registry state tombstones."""
-    path = Path(path) if path else default_path(root)
     result = dict(events=[], launches={}, actions={})
-    if not path.is_file():
-        return result
-    db = sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True, timeout=30)
-    try:
-        runs = {r for (r,) in db.execute("SELECT run FROM archive_runs WHERE status='moved'")}
-        runs |= committed(state) if state is not None else set()
-        query = 'SELECT section, key, body, sha256, run FROM archive' + (' WHERE lane=?' if lane else '') + ' ORDER BY rowid'
-        for section, key, body, digest, run in db.execute(query, (lane,) if lane else ()):
-            if run not in runs: continue
-            require(sha(body) == digest, 'Archived %s record %s fails its hash' % (section, key))
-            value = json.loads(body)
-            if section == 'events': result['events'].append(value)
-            else: result['launches' if section == 'control.launches' else 'actions'][key] = value
-    finally:
-        db.close()
+    for section, key, value, _, _ in records(root, path=path, lane=lane, state=state)[0]:
+        if section == 'events': result['events'].append(value)
+        else: result['launches' if section == 'control.launches' else 'actions'][key] = value
+    return result
+
+
+def restore(events, placed):
+    """Put one run's (source index, event) pairs, ascending, back at their recorded positions."""
+    result, live, gone = [], iter(events), object()
+    for index, value in placed:
+        while len(result) < index:
+            item = next(live, gone)
+            require(item is not gone, 'Archived event position %d is beyond the registry history' % index)
+            result.append(item)
+        result.append(value)
+    result.extend(live)
     return result
 
 
 def merged(root, state, *, path=None):
-    """A copy of state with archived events (ordered by time), launches and actions restored."""
-    old = history(root, path=path, state=state)
-    if not any(old.values()):
+    """A copy of state with archived launches, actions and events restored. Events go back to the
+    positions they held when archived (newest run first), reproducing the original registry order."""
+    rows, runs = records(root, path=path, state=state)
+    if not rows:
         return state
-    result = dict(state, events=sorted(old['events'] + list(state['events']), key=lambda e: e.get('at') or 0),
-                  actions={**old['actions'], **state.get('actions', {})})
+    events = list(state['events'])
+    for run in runs:
+        events = restore(events, sorted(((i, v) for section, _, v, r, i in rows if r == run and section == 'events'),
+                                        key=lambda pair: pair[0]))
+    old = {s: {k: v for section, k, v, _, _ in rows if section == s} for s in ('control.launches', 'actions')}
+    result = dict(state, events=events, actions={**old['actions'], **state.get('actions', {})})
     control = dict(state.get('control', {}))
-    control['launches'] = {**old['launches'], **control.get('launches', {})}
+    control['launches'] = {**old['control.launches'], **control.get('launches', {})}
     result['control'] = control
     return result
 
@@ -244,7 +302,7 @@ def main(argv=None):
         print('Refused: ' + str(exc))
         return 2
     print(json.dumps(report, indent=2))
-    return 0
+    return 3 if 'mark_error' in report or 'vacuum_error' in report else 0  # Moved; a follow-up step failed.
 
 
 if __name__ == '__main__':

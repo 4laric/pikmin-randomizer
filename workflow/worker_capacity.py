@@ -20,8 +20,8 @@ SECTIONS = [('lanes',), ('leases',), ('queue',), ('control', 'launches'), ('thro
 
 
 def parkable(reg, state, keys=None, hashed=None):
-    """(lane key, dispatched/assigned rows) that may release their worker. Evidence is hashed
-    only when hashed is None; otherwise it must equal the evidence hashed before the lock."""
+    """(lane key, dispatched/assigned rows) that may release their worker. The evidence file is
+    always re-hashed; with hashed, the record must also equal the one found before the lock."""
     pool = reg.scheduling(state)
     owners = {s['owner_lane'] for s in pool['workstreams'].values()}
     launches = state.get('control', {}).get('launches', {})
@@ -37,12 +37,11 @@ def parkable(reg, state, keys=None, hashed=None):
         outcome = lane.get('outcome') or {}
         if outcome.get('outcome') != 'blocked' or not lane.get('dependencies'):
             continue
-        if hashed is None:
-            try:
-                reg.evidence(outcome.get('evidence'))
-            except (Rejected, OSError, ValueError, TypeError):
-                continue
-        elif hashed.get(key) != outcome.get('evidence'):
+        if hashed is not None and hashed.get(key) != outcome.get('evidence'):
+            continue
+        try:
+            reg.evidence(outcome.get('evidence'))  # Under the writer too: the file may change after the read.
+        except (Rejected, OSError, ValueError, TypeError):
             continue
         assignments = [a for a in pool['assignments'].values()
                        if a['lane'] == key and a['status'] in ('assigned', 'dispatched')]
@@ -54,7 +53,8 @@ def parkable(reg, state, keys=None, hashed=None):
 
 
 def park_blocked(reg):
-    """Candidates and evidence hashes come from a committed read; the writer only rechecks them."""
+    """Candidates come from a committed read, so nothing parkable takes no writer; the writer
+    rechecks the survivors, evidence file hashes included."""
     seen = reg.snapshot(sections=SECTIONS)
     hashed = {key: seen['lanes'][key]['outcome']['evidence'] for key, _ in parkable(reg, seen)}
     if not hashed:

@@ -1,5 +1,6 @@
 """Observed pipeline transitions. Ages are lower bounds, never invented history."""
 from .control import fingerprint
+from .handoff import require
 
 
 def stages(state):
@@ -35,10 +36,13 @@ SECTIONS = [('lanes',), ('control', 'launches'), ('leases',), ('consumer_verific
 TRIM_SECONDS = 3600
 
 
-def observe(reg, snapshot=None):
-    """Stages come from one committed read (the caller's, when given). The write holds only the
-    meta row and an append-only history tail; the 24 h trim rewrites history at most hourly."""
-    now = reg.clock()
+def observe(reg, snapshot=None, *, now=None):
+    """Stages come from one committed read (the caller's, when given, with `now` read before
+    that snapshot). The observation is stamped before its read, so a later-started read, which
+    sees a version at least as new, carries the larger stamp and an older one is refused. The
+    write holds only the meta row and an append-only history tail; the 24 h trim is hourly."""
+    require(snapshot is None or now is not None, 'Pass the clock read before the caller snapshot')
+    if now is None: now = reg.clock()
     if snapshot is None: snapshot = reg.snapshot(sections=SECTIONS)
     current = stages(snapshot)
     signature = fingerprint(current)
@@ -48,7 +52,7 @@ def observe(reg, snapshot=None):
     history = [('stage_timing', 'history')]
     with reg.transaction(sections=history if trim else (), append=() if trim else history) as state:
         ledger = state.setdefault('stage_timing', dict(current={}, history=[]))
-        if ledger.get('observed_at', 0) > now: return  # Never replace a newer observation.
+        if ledger.get('observed_at', 0) > now: return  # Never replace an observation of a newer read.
         for key, old in list(ledger['current'].items()):
             new = current.get(key)
             if new is None or (new['stage'],new['generation']) != (old['stage'],old['generation']):

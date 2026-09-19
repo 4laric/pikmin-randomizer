@@ -66,7 +66,19 @@ def documents(state):
 
 
 PARTS = MAPS + LISTS
-BUSY_TIMEOUT, BUSY_ATTEMPTS = 20, 3
+# Worst case per BEGIN, COMMIT or read stays within the former single 30 s wait: the in-process
+# FIFO writer gate is held across the retries, so a longer budget would stall every thread behind it.
+BUSY_TIMEOUT, BUSY_ATTEMPTS, BUSY_BUDGET = 9, 3, 30
+
+
+def backoff(attempt):
+    return min(2.0, .2 * 2 ** attempt)
+
+
+def budget(attempts=None, timeout=None):
+    """Worst-case seconds one retried step can wait (SQLite timeouts plus maximal jitter)."""
+    attempts, timeout = attempts or BUSY_ATTEMPTS, BUSY_TIMEOUT if timeout is None else timeout
+    return attempts * timeout + sum(backoff(a) * 1.5 for a in range(attempts - 1))
 
 
 class RegistryBusy(sqlite3.OperationalError):
@@ -90,7 +102,7 @@ def retry(step, what, *, attempts=None, sleep=time.sleep, jitter=random.random):
             if attempt + 1 == attempts:
                 raise RegistryBusy('Registry busy: %s still locked after %d attempts over %.0f s (%s); nothing was '
                                    'committed, retry later' % (what, attempts, time.monotonic() - started, exc)) from exc
-            sleep(min(2.0, .2 * 2 ** attempt) * (.5 + jitter()))
+            sleep(backoff(attempt) * (.5 + jitter()))
 
 
 def begin(db, statement='BEGIN IMMEDIATE'):

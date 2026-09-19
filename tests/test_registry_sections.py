@@ -166,6 +166,17 @@ class BusyRetryTests(unittest.TestCase):
             storage.retry(lambda: (_ for _ in ()).throw(sqlite3.OperationalError('no such table')), 'x', sleep=sleeps.append)
         self.assertNotIsInstance(other.exception, storage.RegistryBusy)
 
+    def test_busy_budget_stays_within_the_former_single_wait(self):
+        self.assertLessEqual(storage.budget(), storage.BUSY_BUDGET)
+        sleeps = []
+        with self.assertRaises(storage.RegistryBusy):
+            storage.retry(lambda: (_ for _ in ()).throw(sqlite3.OperationalError('database is locked')), 'x',
+                          sleep=sleeps.append, jitter=lambda: 1.0)
+        self.assertEqual(len(sleeps), storage.BUSY_ATTEMPTS - 1)
+        self.assertAlmostEqual(storage.BUSY_ATTEMPTS * storage.BUSY_TIMEOUT + sum(sleeps), storage.budget())
+        db = sqlite3.connect(self.reg.path, timeout=storage.BUSY_TIMEOUT)  # The per-attempt SQLite wait.
+        self.assertEqual(db.execute('PRAGMA busy_timeout').fetchone()[0], storage.BUSY_TIMEOUT * 1000); db.close()
+
     def test_transaction_waits_out_a_held_writer_and_fails_clearly_after_budget(self):
         holder = sqlite3.connect(self.reg.path, check_same_thread=False); holder.execute('BEGIN IMMEDIATE')
         with patch.object(storage, 'BUSY_TIMEOUT', .05), patch.object(storage, 'BUSY_ATTEMPTS', 2):

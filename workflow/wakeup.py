@@ -52,3 +52,15 @@ class EventWaiter:
             if remaining <= 0:
                 return {'reason': 'timeout', 'cursor': latest}
             self.sleep(min(.5, remaining))
+
+    def paced(self, timeout, since, floor):
+        """Controller wait: a change still wakes early, but never sooner than `floor` seconds after
+        `since` (the tick start on this waiter's clock); STOP ends the pause at once."""
+        if not isinstance(floor, (int, float)) or isinstance(floor, bool) or not 0 <= floor <= timeout:
+            raise ValueError('Minimum tick spacing must be between 0 and the wait timeout')
+        result = self.wait(timeout)
+        while result['reason'] == 'changed' and not (self.stop and self.stop.exists()):
+            remaining = since + floor - self.clock()
+            if remaining <= 0: break
+            self.sleep(min(.5, remaining))
+        return result

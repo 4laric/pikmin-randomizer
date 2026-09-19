@@ -120,9 +120,17 @@ class DashboardPublicationTests(unittest.TestCase):
         f = self.f
         with f.reg.transaction() as s:
             pool = s.setdefault('throughput', {})
-            pool['jobs'] = {'old%d' % i: dict(status='completed', created_at=f.now - 30000) for i in range(300)}
-            pool['jobs'].update({'recent%d' % i: dict(status='completed', created_at=f.now - i) for i in range(250)})
-            pool['jobs']['live'] = dict(status='queued', created_at=0)
+            # Live record shapes: jobs carry only queued_at; the assignment dates completion.
+            pool['jobs'] = {'old%d' % i: dict(status='completed', queued_at=f.now - 30000, assignment='a-old%d' % i)
+                            for i in range(300)}
+            pool['jobs'].update({'recent%d' % i: dict(status='completed', queued_at=f.now - 30000 - i,
+                                                      assignment='a-recent%d' % i) for i in range(250)})
+            pool['jobs']['live'] = dict(status='queued', queued_at=0)
+            pool['jobs']['queued-late'] = dict(status='cancelled', queued_at=f.now - 5)
+            pool['assignments'] = {'a-old%d' % i: dict(status='completed', assigned_at=f.now - 30000,
+                                                      completed_at=f.now - 29000) for i in range(300)}
+            pool['assignments'].update({'a-recent%d' % i: dict(status='completed', assigned_at=f.now - 30000,
+                                                               completed_at=f.now - 10 - i) for i in range(250)})
             pool['costs'] = {'c%d' % i: dict(at=f.now - 30000, amount=1) for i in range(50)}
         full, probes = [], []
         original = f.reg.snapshot
@@ -135,11 +143,12 @@ class DashboardPublicationTests(unittest.TestCase):
         self.assertEqual(len(full), 1)
         report = json.loads((f.controller.base / 'throughput.json').read_text())
         jobs = report['throughput']['jobs']
-        self.assertIn('live', jobs); self.assertNotIn('old0', jobs)
+        self.assertIn('live', jobs); self.assertNotIn('old0', jobs); self.assertIn('queued-late', jobs)
         self.assertEqual(len(jobs), 201); self.assertIn('recent0', jobs); self.assertNotIn('recent249', jobs)
+        self.assertIn('a-recent0', report['throughput']['assignments'])
         self.assertEqual(report['throughput']['costs'], {})
-        self.assertEqual(report['publication']['maps']['throughput.jobs'], dict(published=201, total=551))
-        self.assertEqual(len(f.reg.snapshot()['throughput']['jobs']), 551)  # The registry keeps every record.
+        self.assertEqual(report['publication']['maps']['throughput.jobs'], dict(published=201, total=552))
+        self.assertEqual(len(f.reg.snapshot()['throughput']['jobs']), 552)  # The registry keeps every record.
 
     def test_idle_worker_count_uses_the_registry_dead_identity_cache(self):
         from workflow import analytics
@@ -193,6 +202,25 @@ class StageTimingWriteTests(unittest.TestCase):
         self.assertEqual(calls[3], ((('stage_timing', 'history'),), ()))
         ledger = f.reg.snapshot()['stage_timing']
         self.assertEqual(len(ledger['history']), 3); self.assertEqual(ledger['trimmed_at'], f.now)
+
+    def test_an_older_snapshot_published_after_a_newer_one_is_refused(self):
+        from workflow import stage_timing
+        from workflow.handoff import Rejected
+        f = controller_fixtures.ControllerTests(); f.setUp(); self.addCleanup(f.doCleanups)
+        migrate(f.reg)
+        with f.reg.transaction() as s: s['lanes']['consumer']['state'] = 'blocked'
+        stage_timing.observe(f.reg)
+        f.now += 10; stamp_a = f.reg.clock(); older = f.reg.snapshot()  # Publisher A reads first ...
+        with f.reg.transaction() as s: s['lanes']['consumer']['state'] = 'running'
+        f.now += 1; stamp_b = f.reg.clock(); newer = f.reg.snapshot()   # ... B reads later, decodes first.
+        stage_timing.observe(f.reg, newer, now=stamp_b)
+        f.now += 1  # A finishes decoding last; a post-decode clock would now exceed B's.
+        stage_timing.observe(f.reg, older, now=stamp_a)
+        ledger = f.reg.snapshot()['stage_timing']
+        self.assertEqual(ledger['current']['consumer']['stage'], 'execution')
+        self.assertEqual(ledger['current']['consumer']['observed_since'], stamp_b)
+        self.assertEqual([h['stage'] for h in ledger['history'] if h['lane'] == 'consumer'], ['dependency'])
+        with self.assertRaises(Rejected): stage_timing.observe(f.reg, newer)
 
 
 if __name__ == '__main__': unittest.main()

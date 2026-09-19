@@ -1,9 +1,12 @@
+import contextlib
 import copy
+import io
 import json
 import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from workflow import registry_archive, registry_wal
@@ -110,8 +113,8 @@ class ArchiveTests(MaintenanceFixture):
             if status == 'moved': crash.append(run); raise OSError('killed before marking the run')
             return real_mark(path, run, status)
         with patch.object(registry_archive, 'mark', side_effect=die):
-            with self.assertRaises(OSError):
-                registry_archive.archive(self.reg, 7, apply=True, vacuum=False)
+            report = registry_archive.archive(self.reg, 7, apply=True, vacuum=False)
+        self.assertTrue(report['applied']); self.assertIn('killed before marking', report['mark_error'])
         after = self.reg.snapshot()
         self.assertEqual(registry_archive.merged(self.root, after)['events'], self.before['events'])
         self.assertEqual(registry_archive.history(self.root)['events'], [])  # Unsettled without the registry state.
@@ -132,6 +135,53 @@ class ArchiveTests(MaintenanceFixture):
         with self.assertRaisesRegex(Rejected, 'not confirmed stopped'):
             registry_archive.archive(self.reg, 7, apply=True, probe=lambda p: 'alive')
         self.assertEqual(self.reg.snapshot(), self.before)
+
+    def test_merged_restores_the_original_event_order_across_runs(self):
+        with self.reg.transaction() as s:
+            s['events'].reverse()  # Registry order is append order, not 'at' order.
+            s['events'].insert(5, dict(at=0, kind='clock-skewed', lane='fresh'))
+        self.before = self.reg.snapshot()
+        first = registry_archive.archive(self.reg, 7, apply=True, vacuum=False)
+        self.now += 60
+        with self.reg.transaction() as s:
+            s['events'].append(dict(at=self.now, kind='later', lane=None))
+            s['lanes']['fresh'].update(integrated_at=self.now - 10 * DAY, progress_at=self.now - 10 * DAY, created_at=0)
+        expected = self.reg.snapshot()['events']
+        second = registry_archive.archive(self.reg, 7, apply=True, vacuum=False)
+        self.assertNotEqual(first['run'], second['run'])
+        self.assertFalse(any(e['lane'] in ('old', 'fresh') for e in self.reg.snapshot()['events']))
+        restored = registry_archive.merged(self.root, self.reg.snapshot())['events']
+        self.assertEqual(restored, self.before['events'] + [expected[-1]])
+        self.assertEqual(restored[5]['kind'], 'clock-skewed')
+
+    def vacuum_fails(self):
+        real = sqlite3.connect
+        class Locked:
+            def __init__(self, db): self.db = db
+            def execute(self, sql, *args):
+                if sql == 'VACUUM': raise sqlite3.OperationalError('database is locked')
+                return self.db.execute(sql, *args)
+            def close(self): self.db.close()
+        def connect(target, *args, **kw):
+            db = real(target, *args, **kw)
+            return Locked(db) if Path(str(target)) == self.reg.path else db
+        return patch.object(registry_archive, 'sqlite3', SimpleNamespace(connect=connect, Error=sqlite3.Error))
+
+    def test_a_failed_vacuum_after_the_move_is_reported_not_refused_and_can_be_finished(self):
+        with self.vacuum_fails():
+            report = registry_archive.archive(self.reg, 7, apply=True)
+        self.assertTrue(report['applied']); self.assertFalse(report['vacuumed'])
+        self.assertIn('database is locked', report['vacuum_error'])
+        self.assertIn('archived', self.reg.snapshot()['lanes']['old'])
+        again = registry_archive.archive(self.reg, 7, apply=True)  # Nothing left to move: VACUUM only.
+        self.assertFalse(again['applied']); self.assertTrue(again['vacuumed']); self.assertEqual(again['lanes'], 0)
+        self.assertEqual(registry_archive.archive(self.reg, 7)['vacuumed'], False)  # A report never vacuums.
+        self.now = 0  # The CLI uses the real clock, so every done lane qualifies; a moved run exits 3.
+        out = io.StringIO()
+        with self.vacuum_fails(), contextlib.redirect_stdout(out):
+            code = registry_archive.main(['--root', str(self.root), '--done-days', '7', '--apply'])
+        self.assertEqual(code, 3); self.assertNotIn('Refused', out.getvalue())
+        self.assertTrue(json.loads(out.getvalue())['applied'])
 
     def test_vacuum_shrinks_the_file(self):
         with self.reg.transaction() as s:

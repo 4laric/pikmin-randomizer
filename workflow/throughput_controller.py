@@ -252,9 +252,10 @@ def publish_status(controller):
 
     One committed snapshot feeds every section; historical maps are bounded before writing."""
     reg = controller.reg
+    observed = reg.clock()  # Before the read: orders concurrent publishers' stage observations.
     state = reg.snapshot()
     from .stage_timing import observe, alert
-    observe(reg, state)
+    observe(reg, state, now=observed)
     alert(reg, state)
     from .autofill import autofill_status
     status = reg.throughput_status(ram_percent=controller.memory(), state=state)

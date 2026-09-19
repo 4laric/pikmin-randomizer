@@ -48,6 +48,21 @@ class WakeupTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 waiter.wait(value)
 
+    def test_paced_wait_holds_a_change_wake_to_the_minimum_tick_spacing(self):
+        now = [100.0]
+        def sleep(seconds):
+            now[0] += seconds
+            with self.reg.transaction() as state: self.reg.event(state, 'test', None)
+        waiter = EventWaiter(self.reg.path, [], self.root / 'output/STOP', clock=lambda: now[0], sleep=sleep)
+        self.assertEqual(waiter.paced(15, 99.0, 5)['reason'], 'changed')
+        self.assertGreaterEqual(now[0], 104.0); self.assertLess(now[0], 105.0)  # Not the 15 s timeout.
+        now[0] = 200.0
+        self.assertEqual(waiter.paced(15, 190.0, 5)['reason'], 'changed'); self.assertEqual(now[0], 200.5)
+        (self.root / 'output/STOP').touch(); now[0] = 300.0
+        self.assertEqual(waiter.paced(15, 300.0, 5)['reason'], 'stopped'); self.assertEqual(now[0], 300.0)
+        for value in [-1, 16, True]:
+            with self.assertRaises(ValueError): waiter.paced(15, 0, value)
+
 
 if __name__ == '__main__':
     unittest.main()

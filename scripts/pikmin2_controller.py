@@ -25,6 +25,10 @@ def main():
     from workflow.landing import CONFIG
     if 'integration_lines' in config and args.config.resolve() != (args.root / CONFIG).resolve():
         parser.error(f'integration_lines is read only from <root>/{CONFIG}; declare it there')  # Never silently unchecked.
+    interval = max(1, min(30, config.get('interval', 15)))
+    spacing = config.get('min_tick_seconds', 5)  # Registry events arrive every few seconds.
+    if type(spacing) not in (int, float) or not 0 <= spacing <= interval:
+        parser.error('min_tick_seconds must be a number between 0 and the wait interval (%s)' % interval)
     registry = Registry(args.root / 'output/workflow/registry.sqlite3', args.root)
     registry.controller_claim(identify(os.getpid()))
     controller = Controller(registry, config)
@@ -57,6 +61,7 @@ def main():
     watched.extend(args.root / path for path in config.get('receipts', []))
     waiter = EventWaiter(registry.path, watched, controller.base / 'STOP')
     while not (controller.base / 'STOP').exists():
+        started = waiter.clock()
         try:
             controller.tick()
         except Exception as exc:
@@ -70,7 +75,7 @@ def main():
         if args.once:
             memory_monitor.set()
             return 0
-        waiter.wait(max(1, min(30, config.get('interval', 15))))
+        waiter.paced(interval, started, spacing)
     memory_monitor.set()
     if dashboard_monitor is not None: dashboard_monitor.set()
     if dispatch_monitor is not None: dispatch_monitor.set()

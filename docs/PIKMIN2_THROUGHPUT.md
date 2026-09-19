@@ -394,8 +394,9 @@ receipts remain necessary.
 configured controller directory; the HTML view refreshes every 15 seconds. Each
 publish takes one committed snapshot and passes it to every section. The published
 jobs, assignments, costs, batches, snapshots, dispositions and autofill items are
-bounded to active records plus at most 200 terminal records from the last six hours;
-`publication.maps` gives published/total counts, and the registry keeps every record
+bounded to active records plus at most 200 terminal records from the last six hours,
+dated by their newest timestamp (a job, which carries only `queued_at`, also by its
+assignment's `completed_at`); `publication.maps` gives published/total counts, and the registry keeps every record
 (on the live data: 26.1 MB to 4.7 MB JSON, 24.0 MB to 3.8 MB HTML). Metrics
 include integrated implementation slices/hour, oldest ready/review/integrating
 handoff, dependency-ready waiting time, heavy-slot lease utilization, staffing
