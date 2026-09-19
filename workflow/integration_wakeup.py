@@ -144,7 +144,8 @@ def tick(controller):
         try:
             launch = reg.plan_launch(owner, token,
                 'New admission or handoff demand needs your existing integration ownership. '
-                'Inspect the canonical registry and your preserved previous batch report. '
+                'Inspect the canonical registry (read-only: ' + cli('inspect') + ' --root <canonical-root> stuck | lane <key>) '
+                'and your preserved previous batch report. '
                 'Continue as the sole registered integration writer for your workstreams. '
                 'Resume your existing claimed batches first; recovery preserves candidate pins, builds and isolation '
                 'and rebinds batch ownership to your new generation. Reread batch revisions before any mutation. '

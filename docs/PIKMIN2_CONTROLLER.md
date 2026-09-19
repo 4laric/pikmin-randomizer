@@ -118,7 +118,7 @@ exits 1. Because `Start-Process` truncates `controller.stdout.log` and
 Running workers keep the CLI paths they were given; new launches get the release's.
 Keep old release worktrees until no launch refers to them.
 
-The standard interval is 30 seconds. A change to the config, WAKE, integrator
+The tick interval is config `interval` (default 15 seconds, at most 30). A change to the config, WAKE, integrator
 inbox or receipts ends the wait early, but a tick never starts sooner than
 `min_tick_seconds` (default 5, from 0 to the interval) after the previous one
 began. Registry events end the wait only with `wake_on_registry_events: true`
@@ -126,7 +126,8 @@ began. Registry events end the wait only with `wake_on_registry_events: true`
 roughly triples the tick rate while the writer lock is saturated. A wait that
 finds the registry locked past its 2-second read timeout keeps waiting instead of
 raising, and any other wait failure is written to `error.json` and falls back to
-the plain interval, so a wait can no longer end the service. A 72–77% RAM band limits new launches, one per
+the plain interval, so a wait can no longer end the service. New launches pause at `ram_high` and resume at
+`ram_low` percent RAM (code defaults 77/72; the live config sets 95/90), one per
 tick. Do not invent tasks to fill RAM. Existing jobs are not killed when memory
 rises. The common two-heavy-build pool remains authoritative. Live build processes
 with recently changing build logs suppress false model-progress alarms.

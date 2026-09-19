@@ -131,7 +131,10 @@ def throughput_metrics(state, now, window_seconds=3600):
                            basis='reported spend in window / integrated implementation slices; unreported spend unknown'))
 
 
-def staffing_recommendations(state, now, ram_percent=None, ram_ceiling_percent=None, *, process_probe=None):
+def staffing_recommendations(state, now, ram_percent=None, ram_ceiling_percent=None, *, process_probe=None, available=None):
+    """available: worker ids assignment could use now (autofill._workers, what Registry.throughput_status
+    passes), so staffing, the roster and autofill report one number; without it, workers owning no
+    unfinished lane and no open assignment."""
     if ram_ceiling_percent is None:
         ram_ceiling_percent = state.get('settings', {}).get('ram_ceiling_percent', 90)
     finite_number(now, 'now', minimum=0)
@@ -192,6 +195,9 @@ def staffing_recommendations(state, now, ram_percent=None, ram_ceiling_percent=N
     idle_workers = []
     for worker in workers:
         worker_id = worker.get('worker_id')
+        if available is not None:
+            if worker_id in available: idle_workers.append(worker)
+            continue
         if worker_id in busy:
             continue
         owned = [lane for lane in state.get('lanes', {}).values() if lane.get('worker_id') == worker_id]
@@ -217,7 +223,8 @@ def staffing_recommendations(state, now, ram_percent=None, ram_ceiling_percent=N
                 heavy_leases=len(heavy_leases), heavy_capacity=cap,
                 heavy_preparing_lanes=len(reservations - leased_lanes), build_admission_paused=paused,
                 heavy_slots_unoccupied=unoccupied, build_admission_pause_reason=pause_reason,
-                idle_workers=len(idle_workers), idle_worker_roles=idle_roles,
-                compatible_idle_workers=len(compatible_ids),
+                available_workers=len(idle_workers), idle_workers=len(idle_workers), idle_worker_roles=idle_roles,
+                workers_matching_ready_work=len(compatible_ids),
+                compatible_idle_workers=len(compatible_ids),  # Alias of workers_matching_ready_work for one release.
                 unmatched_ready_jobs=unmatched,
                 recommendations=recommendations)

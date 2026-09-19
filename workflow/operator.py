@@ -9,9 +9,11 @@ from .registry import Registry
 from .handoff import local_path, digest
 
 
-def report(state, now, root=None, on_disk=None):
-    """on_disk is the controller checkout's revision; found from its process and git only when root is given."""
+def report(state, now, root=None, on_disk=None, cfg=None, base=None, probe=None):
+    """on_disk is the controller checkout's revision; found from its process and git only when root is given.
+    stuck is workflow.inspect's view: Needs you, blocked lanes by structured blocker, parked lanes."""
     from .delivery_contracts import audit
+    from .inspect import stuck
     from .provenance import claimed, warnings
     lanes = state.get('lanes', {})
     autofill = state.get('throughput_runtime', {}).get('autofill', {})
@@ -76,7 +78,8 @@ def report(state, now, root=None, on_disk=None):
     else:
         running = claimed(control)
         code = dict(running=running, on_disk=on_disk, warnings=warnings(running, on_disk))
-    return dict(at=now, code=code, delivery_audit=audit(state), actions=sorted(actions, key=lambda x:(x['priority'],x.get('lane') or '')),
+    return dict(at=now, code=code, stuck=stuck(state, now, cfg=cfg, base=base, probe=probe),
+                delivery_audit=audit(state), actions=sorted(actions, key=lambda x:(x['priority'],x.get('lane') or '')),
                 handoffs=handoffs, blocked=blocked,
                 planning={k:pool.get(k) for k in ('active','target','target_reason','recovery_active','recovery_candidates','sleeping_scopes','cooling_scopes')},
                 worker_count=len(state.get('throughput', {}).get('workers', {})))
@@ -97,17 +100,28 @@ def main():
     parser.add_argument('--json', action='store_true', help='Machine-readable work and blocker details')
     args = parser.parse_args()
     root = args.root.resolve()
-    data = report(Registry(root/'output/workflow/registry.sqlite3', root).snapshot(), time.time(), root)
+    from .inspect import config, text
+    cfg = config(root)
+    reg = Registry(root/'output/workflow/registry.sqlite3', root)
+    data = report(reg.snapshot(), time.time(), root, cfg=cfg,
+                  base=local_path(root, cfg.get('output', 'output/workflow/controller')), probe=reg.probe)
     if args.json:
-        print(json.dumps(data, indent=2))
+        print(json.dumps(data, indent=2, default=sorted))
         return
     print(code_line(data['code']))
     print(f"Workers: {data['worker_count']} | Handoffs: {len(data['handoffs'])} | Blocked lanes: {len(data['blocked'])}")
     p = data['planning']
     print(f"Planning: {p['active']}/{p['target']} — {p['target_reason']}")
+    print(text('stuck', dict(data['stuck'], groups=data['stuck']['groups'][:10])))
+    audits = [a for a in data['actions'] if str(a['reason']).startswith('Recorded export evidence')]
     for action in data['actions']:
-        print(f"\n{action.get('lane')} : {action['reason']}\n  Next: {action['next_action']}")
-    print('\nUse --json for exact batch/generation pins and blocked consumer evidence.')
+        if action not in audits:
+            print(f"\n{action.get('lane')} : {action['reason']}\n  Next: {action['next_action']}")
+    if audits:
+        print(f'\nAudit: {len(audits)} integrated lanes have export evidence that is none-performed, mismatched or '
+              'unreadable (listed in --json actions).')
+    print('\nUse --json for exact batch/generation pins and blocked consumer evidence; '
+          '`workflow_module.py inspect lane <key>` explains one lane.')
     print('Operating guide: docs/PIKMIN2_WORKFLOW_OPERATOR.md')
 
 

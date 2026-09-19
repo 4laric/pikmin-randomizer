@@ -52,6 +52,8 @@ def _issue(record, number, body_hash):
 
 
 def validate_spec(reg, spec, issue_reader=github_issue, *, verified=False):
+    """Refuses an invalid spec; returns its acceptance lint (criteria only another owner can satisfy),
+    which is advisory and never refuses: specs published or admitted before the lint stay valid."""
     required = {'id', 'priority', 'workstream', 'role', 'capabilities', 'heavy', 'instruction',
                 'lane', 'launch', 'launch_hashes', 'issue_proof', 'issue_body_sha256'}
     require(required <= set(spec) <= required | {'producer_contract'}, 'Autofill spec fields must be explicit')
@@ -103,6 +105,8 @@ def validate_spec(reg, spec, issue_reader=github_issue, *, verified=False):
     _issue(json.loads(path.read_text(encoding='utf-8-sig')), lane['issue'], spec['issue_body_sha256'])
     if not verified:
         _issue(issue_reader(lane['issue']), lane['issue'], spec['issue_body_sha256'])
+    from .producer_contract import acceptance_lint
+    return acceptance_lint(lane['acceptance'])
 
 
 def _launch(spec):
@@ -125,7 +129,7 @@ def _workers(reg, state, spec=None, eligible=None):
         if row.get('expires_at',0)>reg.clock() and
         state['lanes'].get(key,{}).get('state')=='blocked' and
         state['lanes'][key]['generation']==row['generation'] and
-        not any(x['lane']==key and x['reason']==row['reason']
+        not any(x['lane']==key and x['reason']==row['reason'] and x.get('generation',row['generation'])==row['generation']
                 for x in state.get('control',{}).get('launches',{}).values())}
     candidates = []
     for worker in pool['workers'].values():
@@ -186,7 +190,7 @@ def autofill_status(reg, state=None):
     from contextlib import nullcontext
     with nullcontext(reg.snapshot() if state is None else state) as state:
         data = copy.deepcopy(_state(state))
-        data['idle_workers_count'] = len(_workers(reg, state))
+        data['idle_workers_count'] = data['available_workers'] = len(_workers(reg, state))
         data['ready_count'] = sum(i.get('ready', False) and
             (i['lane'] not in state['lanes'] or (state['lanes'][i['lane']]['state'] == 'ready' and
              reg.recovery_safe(state, state['lanes'][i['lane']]))) for i in data['items'].values())
@@ -226,7 +230,8 @@ def autofill_status(reg, state=None):
                         capabilities=sorted(capabilities), options=near_matches,
                         action='explicitly reassign an idle worker, then refresh readiness'))
         data['ready_compatibility'] = compatibility
-        data['compatible_idle_workers'] = len(compatible_ids)
+        data['workers_matching_ready_work'] = len(compatible_ids)
+        data['compatible_idle_workers'] = len(compatible_ids)  # Alias of workers_matching_ready_work for one release.
         data['unmatched_ready_items'] = unmatched
         data['reassignment_options'] = reassignment_options
         helpers = dict(running=0, queued=0, prepared=0, report_ready=0, recovery=0)
@@ -272,49 +277,30 @@ def active_enemy_lanes(state, items):
         and state['lanes'].get(item.get('lane'),{}).get('state') in ('running','waiting_resource')})
 
 
-def _blocker_signature(lane):
-    """Normalized text identifying why a lane is blocked, or None if nothing usable.
+def clustered_blockers(state, decisions=None):
+    """2+ blocked/waiting_resource lanes sharing one structured blocker ref, most lanes first.
 
-    Structured `dependencies` entries (plain lane names or '#issue' strings) are
-    preferred since they are exact data, not prose. Free-text `progress_detail`/
-    `next_action` is used only as a fallback, normalized by casefolding and
-    collapsing whitespace. This is intentionally a byte-exact-after-normalization
-    match, not fuzzy/keyword extraction: two lanes describing the same missing
-    capability in slightly different wording will NOT cluster unless their
-    recorded text normalizes identically.
-    """
-    deps = lane.get('dependencies') or []
-    text = ' '.join(sorted(d.strip() for d in deps if isinstance(d, str) and d.strip()))
-    if text:
-        return ' '.join(text.casefold().split())
-    detail = lane.get('progress_detail') or lane.get('next_action') or ''
-    if isinstance(detail, str) and detail.strip():
-        return ' '.join(detail.casefold().split())
-    return None
-
-
-def clustered_blockers(state):
-    """Surface 2+ blocked/waiting_resource lanes sharing one normalized blocker signature.
-
-    Propose-only, mirroring every other human-gated notice in this module: this
-    never creates a lane, dispatches work or mutates any lane. It only reports a
-    signature, its lane count and the affected lane names for an operator/planner
-    to act on. A cluster is suppressed if any lane's `scope` text already contains
-    the signature, on the assumption that scope text is human-authored and would
-    reference a fix already underway.
-    """
-    groups = {}
-    for name, lane in state['lanes'].items():
-        if lane.get('state') not in ('blocked', 'waiting_resource'):
-            continue
-        signature = _blocker_signature(lane)
-        if not signature:
-            continue
-        groups.setdefault(signature, []).append(name)
-    all_scopes = ' '.join((lane.get('scope') or '').casefold() for lane in state['lanes'].values())
-    clusters = [dict(signature=signature, count=len(lanes), lanes=sorted(lanes))
-                for signature, lanes in groups.items() if len(lanes) >= 2 and signature not in all_scopes]
-    return sorted(clusters, key=lambda c: c['signature'])
+    Refs come from dependency text ('#N', 'owner/repo#N', lane names), current-pin producer links
+    and dependency classifications (workflow.blockers). Each cluster names the ref's owner, its state
+    and one next action; `covered` marks a cluster whose owner is live or holds a handoff, so work is
+    already under way. Lanes with no structured ref still cluster on byte-identical normalized
+    dependency text, suppressed when some lane's scope text already names that text. Propose-only:
+    this never creates a lane, dispatches work or mutates any lane."""
+    from . import blockers
+    grouped = blockers.groups(state, *(() if decisions is None else (tuple(decisions),)))
+    clusters = [dict(signature=g['label'], ref=g['ref'], count=g['count'], lanes=g['lanes'], owner=g['owner'],
+                     owner_state=g['owner_state'], roots=g['roots'], accountable=g['accountable'],
+                     next_action=g['next_action'], covered=g['owner_state'] in ('live', 'handoff'))
+                for g in grouped['groups'] if g['count'] >= 2]
+    text = {}
+    for key in grouped['unstructured']:
+        signature = blockers.prose(state['lanes'][key])
+        if signature: text.setdefault(signature, []).append(key)
+    scopes = ' '.join((lane.get('scope') or '').casefold() for lane in state['lanes'].values())
+    clusters += [dict(signature=s, ref=None, count=len(k), lanes=sorted(k), owner=None, owner_state='unstructured',
+                      roots=[], accountable='planner', next_action='Classify these dependencies into issue or lane refs',
+                      covered=False) for s, k in sorted(text.items()) if len(k) >= 2 and s not in scopes]
+    return clusters
 
 
 def _blocked(reg, identity, reason):
@@ -536,12 +522,13 @@ def _refresh_readiness(controller, items, issue_reader):
                     required = len(held) + len(pending) + (0 if own else 1)
                     require(required <= state['settings']['max_heavy_builds'], 'Heavy build slots full')
                 verified = item['status'] != 'blocked' and item.get('readiness_verified_at') is not None and reg.clock()-item['readiness_verified_at'] < 86400
-            if lane is None:
-                validate_spec(reg, spec, issue_reader, verified=verified)
+            lint = validate_spec(reg, spec, issue_reader, verified=verified) if lane is None else None
             with reg.transaction() as state:
                 item = _state(state)['items'][identity]
                 item.update(role=spec.get('role'), capabilities=list(spec.get('capabilities', [])),
                             workstream=spec.get('workstream'))
+                if lint: item['acceptance_lint'] = lint  # Advisory: move these to shared_reviews/remaining_work.
+                elif lint is not None: item.pop('acceptance_lint', None)
                 waiting = lane is None and not _workers(reg, state, spec, eligible=eligible)
                 item.update(ready=True, awaiting_worker=waiting, reason='Awaiting compatible worker' if waiting else None,
                             status='queued' if lane else 'pending', updated_at=reg.clock())
@@ -811,10 +798,13 @@ def autofill_tick(controller, *, issue_reader=github_issue):
         except (Rejected, OSError, ValueError, KeyError, TypeError) as exc:
             with reg.transaction() as state:
                 _state(state).setdefault('planner_pool', {})['error'] = str(exc)
-        eligible = {l['worker_id'] for l in _workers(reg, reg.snapshot())}
+        seen = reg.snapshot()
+        eligible = {l['worker_id'] for l in _workers(reg, seen)}
+        umbrella = controller.config.get('consumer_wakeup', {}).get('umbrella_issues')
+        clusters = clustered_blockers(seen, umbrella)  # From the committed read: outside the writer lock.
         with reg.transaction() as state:
             data = _state(state)
-            data['clustered_blockers'] = clustered_blockers(state)
+            data['clustered_blockers'] = clusters
             idle = bool(_workers(reg, state, eligible=eligible))
             has_ready = any(i.get('ready') for i in data['items'].values())
             if admitted or not idle or has_ready:

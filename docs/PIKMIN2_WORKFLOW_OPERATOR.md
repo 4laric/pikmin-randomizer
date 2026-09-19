@@ -1,631 +1,296 @@
 # Operating the workflow
 
-Start in the canonical repository. Read AGENTS.md and PIKMIN2_WORKFLOW.md;
-native implementation also requires PIKMIN2_IMPLEMENTATION_FANOUT.md.
+Current-state guide for the person running the Pikmin 2 workflow. Contracts live in
+[PIKMIN2_WORKFLOW.md](PIKMIN2_WORKFLOW.md) (lanes, registry, handoffs, approvals),
+[PIKMIN2_CONTROLLER.md](PIKMIN2_CONTROLLER.md) (controller, deployment, wakes) and
+[PIKMIN2_THROUGHPUT.md](PIKMIN2_THROUGHPUT.md) (pool, batching, dashboard). Native work
+also follows [PIKMIN2_IMPLEMENTATION_FANOUT.md](PIKMIN2_IMPLEMENTATION_FANOUT.md).
+Commands below run from the canonical root, `C:/Users/alari/pikmin-randomizer`.
 
-```powershell
-py -3.12 -m workflow.operator --root C:/Users/alari/pikmin-randomizer
-py -3.12 -m workflow.operator --root C:/Users/alari/pikmin-randomizer --json
-py -3.12 scripts/workflow_module.py service status --root C:/Users/alari/pikmin-randomizer
+## Start here: read-only commands
+
+| Question | Command |
+|---|---|
+| What is stuck, why, and what only I can do? | `py -3.12 scripts/workflow_module.py inspect stuck` |
+| Only the asks waiting on me | `py -3.12 scripts/workflow_module.py inspect needs-you` |
+| Why is this lane where it is; why is it not being woken? | `py -3.12 scripts/workflow_module.py inspect lane <key>` |
+| Its launches (reason, exit code, tools started) | `py -3.12 scripts/workflow_module.py inspect launches <key> [--limit N]` |
+| A helper lane's open planner assignment | `py -3.12 scripts/workflow_module.py inspect assignment <lane>` |
+| Config, heads of every checkout, controller release | `py -3.12 scripts/workflow_module.py inspect config` |
+| Receipt, admission and batch actions | `py -3.12 -m workflow.operator [--json]` |
+| Is the controller alive, supervised and on clean code? | `py -3.12 scripts/workflow_module.py service status --root <root>` |
+| Stall streaks and parked lanes | `py -3.12 scripts/workflow_module.py no_progress --root <root>` |
+| Audit integration receipts / approvals | `py -3.12 scripts/workflow_module.py landing_audit --root <root> [--approvals]` |
+| Evaluate a committed review packet | `py -3.12 scripts/workflow_module.py review_packet verify --root <root> --packet <path>` |
+
+`inspect` defaults to `--root .`, reads with SQLite `mode=ro` and `PRAGMA query_only`,
+decodes only the sections a verb needs, never imports the registry's write path and
+works on the live WAL registry while the writer is contended. `--db <file>` reads a
+backup copy without the workspace check, `--config` another config, `--json` gives
+everything. `stuck` probes worker processes for the available-worker count (several
+seconds); `needs-you` does not. `workflow.operator` prints the same Needs-you and
+blocker sections above its receipt actions and folds done-lane export-evidence audit
+rows into one count line. The dashboard, output/workflow/controller/throughput.html,
+shows Needs you and the blocker groups at the top, bounded to 20 asks and 12 groups.
+Workers are told to read state with the same `inspect` command (the release's
+absolute path) instead of writing Registry or sqlite scripts.
+
+## Reading `inspect stuck`
+
+**Needs you** comes first, oldest and widest first:
+
+| Kind | Meaning | What to do |
+|---|---|---|
+| `user_decision` | A lane recorded a user-owned decision (support_actions `external`), grouped per lane and kind with how often it was asked, first-ask age and how many blocked lanes wait on it (transitively) | Decide. There is no operator write command yet: give the answer as hashed evidence the lane or a reviewer lane can cite, or retire the lane if the answer is no |
+| `user_asset` | A lane needs an asset only you can supply | Put it at a stable path and record its path and sha256 where the lane can cite it |
+| `toolchain` | An ask about the compiler/toolchain (listed for 72 h after the last ask, whatever the asking lane's state) | Fix the machine; native builds and fixture reruns fail until then |
+| `prerequisite_needs_human` | A prerequisite request was offered to the coordinator twice without a disposition | Link a producer (`prerequisite_queue` resolve) or record the user-owned `external_input` |
+| `unsupervised_lane` | A stopped lane has no launch config, so nothing wakes it | `configure-lane-launch`, or retire it |
+| `shared_review_target_dead` | A routed shared-review owner is stopped and unsupervised; its packet is held | Supervise the owner or fix `shared_review_routing.files` |
+| `shepherd_escalation` | Three failed shepherd calls for one packet, or an uncertain shepherd launch | Read output/workflow/controller/shepherd-attention.json and the escalated notices |
+| `packet_refused` | A review packet request was refused for lack of `integration_lines.root` | Declare the line, land the packet there, re-request |
+
+**Machine-wide** lists the controller down (or no claim), a RAM launch pause, a
+build-admission pause, and `integration_lines_undeclared` (review packets cannot be
+re-pinned, requested or decided; landings are checked against any branch).
+
+**Blocked lanes by structured blocker.** Each blocked or waiting lane's references
+come from its dependency text (`#N` and `owner/repo#N` both become `#N`; lane names
+become lanes), its producer link at current pins, the classification of its current
+snapshot, its structured `shared_hooks`, and open user asks. A lane's own issue and
+name are dropped; `#632` (captain safety policy) is never a blocker. A lane with
+several references appears in each group. Each reference resolves to its owner:
+
+| Owner state | Meaning | Accountable / next action |
+|---|---|---|
+| `decision` | `#186` (config `consumer_wakeup.umbrella_issues`): no lane owns it | reviewer: record the shared-hook decision (`approvals shared-hook` from a reviewer lane, or `review_packet request`) |
+| `missing` | No lane has that issue | planner: publish or link a producer |
+| `live` | Owner ready, running, waiting or reconciling | producer: nothing unless it stalls |
+| `handoff` | Owner holds a handoff or review-ready report | integrator: land it |
+| `done_unlanded` | Owner done without an integration receipt | integrator: land its commits and record the receipt |
+| `landed` | Owner integrated | the consumer verifies it on a prerequisite wake or holds on its own gap; `inspect lane` says which |
+| `blocked` | Owner is itself blocked | unblock the owner first; `roots` follows blocked owners to the end of the chain |
+
+Circular waits (A waits on B waits on A) are listed separately; break them by hand.
+Lanes whose dependencies name nothing structured are listed as prose only. **Parked,
+no progress** lists lanes the no-progress guard parked, with what they wait for and
+`wake_after`. **Acceptance criteria only another owner can satisfy** lists blocked
+lanes whose criteria require a `#186` decision, an integrator landing or the
+maintained export: such a slice can never pass, so it can never hand off. Move the
+criterion to the handoff's `shared_reviews` or `remaining_work` in a replacement
+spec; `autofill.validate_spec` flags these (advisory, never refused) and records
+them on the autofill item as `acceptance_lint`.
+
+`throughput_runtime.autofill.clustered_blockers` is the same grouping restricted to
+two or more lanes (field `covered` when the owner is live or holds a handoff); lanes
+with no structured reference still cluster on identical normalized text.
+
+## Lane states
+
+`registry.TRANSITIONS` is authoritative:
+
+| State | Meaning | Operator concern |
+|---|---|---|
+| `ready` | Waiting to launch | The controller dispatches it |
+| `running` | A worker session owns it | Check progress, not liveness |
+| `waiting_resource` | Waiting for a build lease | Leases and RAM admission decide |
+| `blocked` | Terminal blocked outcome with dependencies | `inspect stuck` / `inspect lane` |
+| `reconciling` | A stopped launch's outcome is being reconciled | Automatic; persistent means inspect the launch |
+| `handoff_ready` / `integrating` | Handoff awaiting / in integration | The sole integrator acts |
+| `review_ready` | Review-only report awaiting disposition | The integration owner accepts or rejects it |
+| `done` | Integrated or reviewed | Receipts audit through `landing_audit` |
+
+Two markers on blocked lanes: `capacity_parked` releases the lane's worker for other
+work while the lane keeps its dependencies; `parked` (no-progress guard) means two
+relaunches brought nothing new, so wakes wait for an unseen input or `wake_after`.
+Neither clears a dependency. A worker runs one active slice at a time; a blocked
+lane whose worker is busy elsewhere waits, and a due prerequisite wake reserves
+that worker (`inspect lane` shows `worker_busy`).
+
+## What to do
+
+- **Answer asks** from Needs you first; they gate the most lanes.
+- **Shared-hook (#186) decisions**: approvals are ledger rows written only by an
+  authenticated reviewer lane from its own launch session; a handoff's own
+  `approved` never counts and there is no operator approval command. A reviewer lane
+  may cite your statement as hashed evidence. Out-of-band decisions on files a
+  blocked lane does not own: `approvals shared-hook`; on ported landed bytes:
+  `approvals landing-review`. Review packets are committed under
+  `tools/review_packets/` ([PIKMIN2_REVIEW_PACKETS.md](PIKMIN2_REVIEW_PACKETS.md));
+  `review_packet verify` is read-only, lanes ask with `review_packet request`, pins
+  change only through `review_packet repin --show-diff`. Packets need
+  `integration_lines.root` declared and the packet landed on that line.
+- **Deliveries**: a closed batch is not a lane completion. Only `Registry.integrate`
+  records integration, and only when the receipt commits provably contain the
+  reviewed bytes (identical blobs, ancestry or a declared port). A port of a shared
+  or engine file also needs an approved landing review by another lane, and the
+  lander is the integrator's own launch session. Native lanes need actual export
+  evidence; a file saying no export was performed is not evidence. Never cherry-pick
+  a landed change again, rewrite hashes or reset a handoff's age.
+- **Feeding workers**: pending specs are in output/workflow/autofill/manifest.json;
+  planners publish through `planner_pool.merge_proposals`. A capability mismatch
+  needs an authorized worker adaptation profile. Helper ceilings
+  (`max_active`, `backpressure_planning_limit`, `integration_support_max_active`)
+  may be JSON `null`; demand, workers, the execution reserve and RAM still bound
+  concurrency.
+- **Progress**: verify a current-generation tool result, source or evidence change,
+  receipt or consumer check; running is not progress. Windows PIDs are identified by
+  host and creation time; never kill a numeric PID from an old report.
+- **Config**: output/workflow/controller/config.json; runtime launch specs live in
+  `throughput_runtime.launch_specs`. Read current state before any mutation. Record
+  scope, validation and remaining blockers on the assigned issue.
+
+## Deploy and roll back
+
+Production runs from an immutable release worktree under
+`output/workflow/release/<short-sha>`, never from the canonical checkout.
+
+1. `py -3.12 scripts/workflow_module.py service prepare-release --root <root> --ref <commit> --config <root>/output/workflow/controller/config.json --python <absolute python.exe>`
+   creates the clean detached worktree and runs `tests/workflow_release_tests.txt`
+   in it; it never touches the running controller.
+2. From an operator shell (never an agent session):
+   `& <root>\output\workflow\release\<sha>\scripts\Deploy-WorkflowRelease.ps1`.
+   It creates STOP, waits for every controller and restart wrapper to exit (workers
+   keep running; after `-TimeoutSeconds` it exits 1 leaving STOP), removes STOP,
+   starts that release's `Start-Pikmin2Controller.ps1` hidden and prints
+   `service status`.
+3. Confirm `service status --root <root>`: the new sha, `dirty=False`, a wrapper parent; then
+   `inspect stuck`.
+4. Roll back by running `Deploy-WorkflowRelease.ps1` from the older release folder.
+   Keep old release worktrees while any launch still names their CLI paths.
+
+The controller reads config.json at start, so a config change takes effect on the next
+deploy (rerun the running release's Deploy-WorkflowRelease.ps1). `integration_lines` is
+the exception: landing and review-packet checks read it from the canonical config file
+on every use, and the controller refuses to start with `integration_lines` from any
+other config path. Details: [controller guide](PIKMIN2_CONTROLLER.md#deployment-from-a-pinned-release).
+
+## Registry maintenance
+
+The registry is output/workflow/registry.sqlite3 in documents-v1 storage and WAL
+journal mode (`-wal` and `-shm` beside it). Readers use snapshots or `mode=ro`; do not
+open it with `immutable=1`, SELECT body JSON by hand or write with UPDATE scripts.
+Both commands below report only unless `--apply` is given, and `--apply` needs a
+quiesced registry: stop the controller and its wrapper (STOP) and let worker CLIs
+finish first.
+
+- WAL: `py -3.12 scripts/workflow_module.py registry_wal --root <root> [--mode wal|delete] [--apply]`.
+  It refuses unless the recorded controller is stopped and no connection holds the
+  file, verifies an unchanged snapshot, a `mode=ro` reader, the wake waiter and
+  `quick_check`, and restores the previous mode on failure. The mode lives in the
+  file, so older releases use it too.
+- Archive: `py -3.12 scripts/workflow_module.py registry_archive --root <root> --done-days N [--apply]`
+  moves events, launches and actions of lanes done for more than N >= 1 days into
+  output/workflow/registry-archive.sqlite3 and VACUUMs. Exit 2: refused, nothing
+  removed. Exit 3: records moved but marking or VACUUM failed; rerun the same
+  `--apply`. Lanes themselves never move; `registry_archive.history()` and `merged()`
+  give full history. Anything reading older events of done lanes uses `merged()`.
+- Storage migration (`workflow.storage --migrate`) is complete on the live registry;
+  its backup is migration-time history, not a rollback image.
+
+## Workspace topology
+
+| Path | What it is |
+|---|---|
+| `C:/Users/alari/pikmin-randomizer` | Canonical root: the repository humans run commands from, and the workspace every `--root` names. Never deploy by editing it |
+| `native/` | Maintained native tree, its own git repository (the `native` side of landings and exports) |
+| `native/pikmin2-research/` | Nested research repository inside the native tree; not an integration line |
+| config `integration_lines` | `{root: {repo, ref}, native: {repo, ref}}`: the reviewed lines landings and review packets are checked against; undeclared today |
+| `output/workflow/registry.sqlite3` (+ `-wal`, `-shm`), `registry-archive.sqlite3` | Registry and its archive |
+| `output/workflow/controller/` | Controller config, throughput.json/html, `*-stage-health.json`, error.json, shepherd-attention.json, `launches/<id>/` |
+| `output/workflow/release/<short-sha>/` | Release worktrees; the controller and worker CLIs run from one |
+| `output/workflow/autofill/` | Manifest, planning shards, `planning-shards/<scope>/prepared/<lane>-root|-native|-out` lane worktrees |
+| `output/dsw/`, other `output/<lane>-*` | Older lane worktrees and build directories |
+
+`inspect config` prints the heads of the root, native and research checkouts, the
+declared integration lines, the controller's recorded release and the release
+folders; `inspect lane <key>` compares a lane's worktree heads with the canonical
+ones.
+
+## Suggested Claude Code allowlist (read-only commands only)
+
+Nothing writes this for you; add it to a settings file yourself if you want these
+reads to run without prompts. Every entry below is read-only for all arguments.
+Do not allowlist `scripts/pikmin2_workflow.py`, `workflow_module.py` as a whole,
+`registry_wal`, `registry_archive`, `landing_audit` (its `--out` writes a file),
+`review_packet` beyond `verify`, `delivery_contracts` (`--request` writes) or
+`Deploy-WorkflowRelease.ps1`.
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(py -3.12 scripts/workflow_module.py inspect:*)",
+      "Bash(py -3.12 -m workflow.inspect:*)",
+      "Bash(py -3.12 -m workflow.operator:*)",
+      "Bash(py -3.12 scripts/workflow_module.py service status:*)",
+      "Bash(py -3.12 scripts/workflow_module.py no_progress:*)",
+      "Bash(py -3.12 scripts/workflow_module.py review_packet verify:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git worktree list:*)",
+      "Bash(git rev-parse:*)"
+    ]
+  }
+}
 ```
 
-This reads the current registry, lists actionable admission and receipt gaps,
-and supplies blocked consumer checks/evidence in JSON. It does not launch or
-complete work. The dashboard is output/workflow/controller/throughput.html.
-The first line gives the controller's running code sha and dirty flag against
-the checkout on disk; `!!! WARNING` lines mean dirty or mismatched code, or a
-controller started by code that records no provenance. `service status` adds the
-controller's liveness and whether the restart wrapper supervises it. Deploy code
-changes with `service prepare-release` (docs/PIKMIN2_CONTROLLER.md), not by
-editing the checkout the controller runs from.
-
-## Feed existing workers
-
-1. Inspect pending specs in output/workflow/autofill/manifest.json and the
-   operator report. Fix the reported readiness condition rather than repeatedly
-   restarting workers. A capability mismatch needs an explicitly authorized
-   matching worker adaptation profile, not a new identity or weaker checks.
-2. Existing planning helpers prepare issue-backed private proposals. Publish
-   through workflow.planner_pool.merge_proposals (see its request contract and
-   tests); never overwrite the shared manifest. Reuse the existing owner for
-   active scopes. A blocked linked producer does not prove the consumer resolved.
-3. The controller assigns and launches. Use only the configured Muse/DeepSeek
-   allowlist. Do not spawn a second dispatcher. Shared reviews and exclusive
-   build leases remain required even after capability adaptation.
-4. Backpressure normally prioritizes integration. The configured
-   planner_pool.backpressure_planning_limit permits a small number of helpers
-   to prepare unblock work while preserving ready-job capacity and the worker
-   reserve. Zero restores the full planning pause. No-work evidence and cooldown
-   still suppress repeated unchanged requests.
-
-   Set `max_active`, `backpressure_planning_limit`, and
-   `integration_support_max_active` to JSON `null` to remove helper concurrency
-   ceilings. Eligible demand, available workers, ready-job priority, the execution
-   reserve and RAM admission still determine actual concurrency. Launch burst size
-   controls dispatch pacing, not total concurrency.
-
-## Finish deliveries correctly
-
-A closed batch is not a lane completion. Only Registry.integrate records source
-integration and transitions the lane to done, and only when the receipt commits
-provably contain the lane's reviewed bytes (identical blobs, ancestry, or a declared
-port; `already_landed` names the commit that already holds them). A port of a
-shared or engine file also needs an approved landing review by a lane other than the
-lander, and the lander is the integrator's own launch session: `integrate` run from
-an operator shell has no authenticated lander, so such a port refuses there. Check
-the exact current generation, revision, candidate/landed source pins and hashed
-validation first. Audit existing receipts read-only with
-`py -3.12 scripts/workflow_module.py landing_audit --root C:/Users/alari/pikmin-randomizer --out <file>`,
-and approvals without ledger backing (marked `unauthenticated-legacy`) with the same
-command plus `--approvals`.
-The proof and the integrator git guard take effect only once the controller restarts
-on this code. Declare `integration_lines` in `output/workflow/controller/config.json`
-as a deploy step; until then a receipt only has to be on some branch outside the
-lane's own worktree. Native lanes
-also need actual export evidence and native dirty state. A file saying no export
-was performed is not export evidence. Only the integration lead performs the
-maintained export; the expected dirty baseline is not a blocker.
-
-Do not cherry-pick an already landed change again. Missing evidence must be
-recovered from exact immutable bytes or regenerated by its authorized owner.
-Do not rewrite hashes, invent acceptance, or reset an old handoff's age.
-Use workflow.review_decisions for a live integrator's explicit shared review
-decisions and workflow.consumer_verification for the consumer's actual check.
-Approvals are rows in the registry's `approvals` ledger, written only by an
-authenticated reviewer lane from inside its own launch session; a handoff's own
-`approved` status never counts, and `submit_handoff` refuses one without a matching
-row. There is no operator/human approval command yet: agents share this machine and
-GitHub account, so an agent-reachable flag cannot authenticate a person. A reviewer
-lane records its own decision and may cite a person's statement as hashed evidence;
-the ledger attributes the decision to that lane (see the deferred human writer in
-PIKMIN2_WORKFLOW.md). Out-of-band
-#186 decisions on files a blocked lane does not own go through
-`workflow_module.py approvals shared-hook` against the lane's structured
-`shared_hooks` dependency; decisions on ported landed bytes through
-`approvals landing-review`. A review packet is evidence until the controller verifies
-it: packets are committed under `tools/review_packets/` (docs/PIKMIN2_REVIEW_PACKETS.md),
-`py -3.12 scripts/workflow_module.py review_packet verify --root <root> --packet <path>`
-evaluates one read-only, lanes ask for a decision with `review_packet request`, and
-pins change only through the audited `review_packet repin --show-diff`. Never edit a
-packet's hashes or re-point it at working-copy bytes. Before packets can be re-pinned or
-decided, declare `integration_lines.root` in the controller config and land the packet on
-that line; `request` is refused until the running controller's recorded release contains
-`workflow/review_packet.py`, so switch the controller first. `review_packet_migration`
-reports, read-only, what a legacy working-copy packet would return. Every file in `shared_review_routing.files` must name a
-lane that can record the decision: the owner of the producer's workstream (today
-`species-integration-replacement`) run as a controller launch. A routed owner that
-fails that authority check gets no packet; the route is stored as
-`owner_cannot_decide` with a `shared_review_owner_cannot_decide` notice naming the
-producer and file, and packets resume once the config or ownership is fixed.
-
-## Check progress, not just occupancy
-
-Verify a current-generation tool result, source/evidence change, receipt or
-consumer check. Running alone is not evidence of progress. A blocked lane can
-release its worker while retaining its dependency. Windows PIDs are identified
-by host and creation time; never kill a numeric PID from an old report.
-
-The fast dispatcher detects an initial provider stream with no events after
-`terminal_idle_recovery.first_response_seconds` (default 300). It rechecks the
-exact session, process identities, logs, descendants and protected resources
-before stopping only the idle child. The real runner exit triggers bounded
-provider fallback; a session-specific APIError on process exit follows the same
-path. Runners stop their own child a few seconds after its turn ends (never while a tool process still runs below it) and never stop
-a session for a rate limit once a tool has started, so these sweeps are backstops. Permission requests, event bytes, tools and protected builds block this
-timeout recovery. Exhausted retries remain visible for inspection.
-
-When every outstanding linked prerequisite is blocked and has a hashed terminal
-outcome, repair planning can use that evidence without another no-work report.
-One repair-planning turn is admitted per unchanged chain, shared across equivalent
-partitions; source/dependency/state changes permit reassessment, a new evidence
-file from another unchanged generation does not. Existing live
-producers keep priority. Repair planners prepare issue-backed proposals for the
-missing input; they do not implement over another owner's files or grant acceptance.
-
-Supervision notices: `unsupervised_lane` names a stopped lane with no launch config
-(configure its launch or retire it). `shared_review_target_dead` names a routed
-shared-review owner that is not running: pending, and an undelivered packet is held
-with route status `owner_unsupervised`, when nothing supervises it (a delivered
-route keeps its record and resend throttle, marked `owner_state:
-unsupervised_stopped` while the owner is stopped); informational when the
-controller can wake it. Fix the routing (`shared_review_routing.files`) or
-supervise the owner. `completion_deferred` means a stopped launch could neither
-retry nor reconcile; it retries with backoff. `automatic_retry_exhausted` ends a
-retry chain in reconciliation.
-
-`reassign-pool-worker` changes an idle worker's roles/capabilities when none of its
-lanes has an open assignment or a launch in flight and every unfinished one is
-stopped; its `pool_worker_reassigned` event keeps the previous contract.
-`batch-reassign` requires the batch revision you read (`old_revision`) and refuses a
-replacement that is one of the batch's candidates.
-
-The controller config is output/workflow/controller/config.json; runtime launch
-specs also live in throughput_runtime.launch_specs. Read current state before
-every mutation. After Python controller code changes, restart only the exact
-controller wrapper/process (wrapper first), preserve worker descendants, and
-start one hidden scripts/Start-Pikmin2Controller.ps1 using the existing arguments.
-Record issue scope, validation and remaining blockers under the assigned issue.
-
-A lane relaunched twice with nothing changed is parked (`lane.parked`,
-`lane.wake_after`, a `lane_parked` event, one informational `no_progress_parked`
-notice and the dashboard's "Parked, no progress" count). Deploy the checkout, then
-restart the controller: streaks count only generations the new controller binds. It wakes on any input it has not already
-been offered (a new receipt, decision or pin change), at `wake_after`, or through a
-recovery continuation; see docs/PIKMIN2_CONTROLLER.md. Parking never clears a
-dependency. Prerequisite requests offered twice without a disposition carry
-`needs_human`: link a producer or record the user-owned `external_input`.
-
-## Dynamically delegated shared-file reviews (#635)
-
-With planner_pool.delegate_shared_reviews enabled, new integration-support cycles
-receive shared-files-v1 authority for their exact frozen target. Existing idle-worker
-allocation grows concurrent independent reviews with handoff demand and available
-workers, retaining the execution reserve. The configured support templates bound
-available review partitions (currently eight); there is no additional active cap.
-
-Reviewers inspect the source/evidence and submit all decisions in one request through
-`<python> <checkout>/scripts/workflow_module.py review_decisions` (the absolute command in their instruction) before finishing. The registry requires a live
-reviewer calling from its own launch session, unfinished authorized cycle, exact
-producer generation, source pins and handoff. It rejects cross-target and stale assignments. Missing evidence remains a
-blocker. Durable decisions use the existing immutable handoff application queue.
-Final source merges, export, integration receipts and gameplay ADMIT remain with the
-integration owner. This delegation does not authorize arbitrary report acceptance.
-
-Invalid handoff evidence recovery (#635): with invalid_handoff_recovery enabled,
-the controller validates stopped, unclaimed handoffs and records exact pinned
-repair demand for missing/corrupt evidence. It preserves the old submission and
-uses the existing bounded producer-repair dispatcher. Claimed batches, live or
-unknown processes and resource owners remain protected. Replacement evidence
-requires a new truthful handoff; unrelated archive bytes never satisfy old hashes.
-
-## Spare-worker recovery and dispatcher health (#635)
-
-planner_pool.cross_partition_recovery lets free existing planning partitions take
-one distinct aged blocked input outside their original topic. Work is ranked by
-downstream impact and age, with current hashed blocker evidence and source/dependency
-pins. Running producers and in-flight repair targets remain protected. An unchanged
-input gets one recovery planning attempt; heartbeats do not rearm it. New source,
-dependency or blocker evidence can. Recovery bypasses ordinary no-work cooldown,
-but retains execution reserves, provider/RAM constraints, issue-first publication,
-owned-file conflicts and the controller as sole dispatcher. These workers prepare
-executable issue-backed repair proposals; completion of a report is not repair proof.
-The original consumer check must still pass after implementation/integration.
-
-Inspect output/workflow/controller/dispatch-stage-health.json for per-stage success,
-error, consecutive failure count and duration. Independent stages continue after an
-exception; each stage retries on the next dispatcher pass through the same fenced
-registry APIs. This isolates exceptions, not hung calls; process/session watchdogs
-remain responsible for worker/provider hangs.
-
-Registry setting freeze_handoffs_on_submit preserves new handoffs with the existing
-immutable delivery bundle mechanism before publishing ready state. Large artifact
-copying occurs outside the registry write transaction, with generation/revision/source
-checks on commit. Original log/inbox cleanup cannot invalidate the retained submission.
-This does not reconstruct missing historical evidence or grant gameplay acceptance.
-Dispatch efficiency: assignment now visits only workers with queued/assigned jobs,
-and launch priority sorts only pending launches. RAM and ownership validation remain
-at actual assignment/launch; historical launches remain available for crash recovery.
-
-Launch dispatch now has one dedicated loop, independent of assignment and slow
-maintenance. The common stop event shuts down all three; only maintenance shares
-the lifecycle lock with main-thread provider recovery. Launch/assignment mutations
-retain registry transactions, exact process/generation fencing, durable model burst
-reservations and replay markers. No additional launcher owns the queue.
-Read launcher-stage-health.json and assignment-stage-health.json alongside
- dispatch-stage-health.json (maintenance). Assignment ignores already-dispatched
-workers; lightweight jobs do not probe heavy-build owners unnecessarily.
-
-## Actionable support outcomes (#635)
-
-planner_pool.actionable_support expands dynamic integration preparation to safely
-stopped blocked #186 shared-review requests and isolated handoff diagnoses. New
-cycles must record a durable action before finish review-ready; legacy running
-cycles keep their original contract. Shared decisions are restricted to the exact
-frozen generation/source/handoff assignment and actual producer-owned files.
-
-workflow.support_actions supports: pinned integration_packet (wakes the sole
-integrator), independently diagnosed repair (one extra attempt per source heads),
-verified queued/live producer, exact user-owned external input, and stale-target
-disposition. Hashed evidence is archived. Review prose alone is not resolution.
-Generic cross-partition recovery cycles use this action contract too. A blocked
-helper is recorded as unresolved and releases its planning reservation; it is not
-accepted as successful work. Existing owned-file/build leases and runtime gates
-continue to apply; support workers prepare private rebases/resolutions/build proof,
-but cannot perform shared merges/exports or write final integration receipts.
-
-For producer-scoped blocked reviews, workflow.shared_decisions requires
-reviewer_generation, authenticates the calling session and validates workstream
-ownership or the live delegated assignment; free-text reviewers are refused. The producer
-is woken for a rejection or for the approval that first completes its owned-file set
-at those pins; other approvals are recorded without a launch. Unrelated blockers are
-preserved. Future unimplemented wiring cannot be approved as landed code.
-Read canonical support_actions ledger and the immutable evidence for exact commands;
-prepared integration packets enter integration-demand automatically.
-Stopped blocked planning-only pool helpers are retired as unresolved archived turns
-before helper refill. Their original outcome/dependencies and hashed evidence remain;
-review_disposition.resolved=false distinguishes retirement from successful repair.
-Actual implementation lanes and live/unknown/resource-protected helpers are excluded.
-This releases issue uniqueness for subsequent bounded helper cycles without resolving
-producer dependencies or granting integration. Retirement is replay-safe.
-
-### Fast refill and admitted-family reconciliation (#635)
-
-Worker process checks cache only positively dead identities, keyed by host, PID
-and creation time. Live/unknown results are never cached. Helper preparation warms
-historical identities using a read snapshot before reserving workers; reservation
-still checks current assignments, leases and process identities transactionally.
-The cache is bounded and process-local, so controller restarts rebuild it safely.
-
-The canonical admission observation now audits outstanding lanes. Explicit
-`monster_admission.lane_families` mappings or lane `admission_family` metadata are
-preferred. Unambiguous enum+source-ID or full common-name matches only nominate a
-lane for review; they never close it. Newly admitted families are audited on the
-next dashboard publication. Changed lane generation/revision/source pins invalidate
-old decisions. Dashboard admission details and `python -m workflow.operator` expose
-pending work; the existing integration owner receives bounded reconciliation demand.
-
-The live integration owner can record a disposition with:
-`<python> <checkout>/scripts/workflow_module.py admission_reconciliation --root <root> --request <json>`.
-Request fields: `lane`, audit `token`, `reviewer`, `reviewer_generation`, `decision`
-(`retain` or `superseded`), `reason`, `evidence` (`path`, `sha256`). Retention also
-requires a concrete `next_action`. Supersession requires `no_remaining_delivery:
-true` and `covered_criteria`: the owner must actually verify that admission covers
-the original criteria and no source/export delivery remains. Pending handoffs,
-claimed batches, live/unknown targets and in-flight launches prevent disposition.
-Complete actual source/export receipts using normal integration APIs first.
-Supersession archives the decision and preserves the original outcome; it is not
-an integration receipt or a new gameplay admission. Independent follow-up work
-stays blocked with its explicit reason. The same decision cannot be replayed or
-applied to changed pins.
-
-Refill bookkeeping (already-enqueued checks, prerequisite-link reads, scope
-snapshots and completed-report safety observations) uses read snapshots. Worker
-discovery also happens outside the writer lock; only previously eligible workers
-are rechecked against current assignments, launches, process identities and leases
-when reserving. A newly freed worker may wait for the next pass, but a stale
-observation cannot authorize double booking.
-
-### Export preparation for isolated handoffs (#635)
-
-Missing-export blockers in both isolated handoffs and blocked repair history now
-create `export_preparation` targets. They receive priority among free integration
-preparation helpers; live helper assignments stay unchanged, and read-only review
-slots cannot take these jobs. Each target has one active helper. Source pins and
-process/resource safety checks remain required.
-
-Helpers rehearse minimal candidate-native-delta patches against the actual pinned
-root/native destination in exclusive private worktrees. They preserve curated
-engine changes and perform no maintained export or final integration. The required
-`integration_packet` details are `destination:{root,native}`, `source_native`,
-`export_patch:{path,sha256}`, `export_validation:{path,sha256}`, and
-`apply_commands:[...]`. Validation records before/after file hashes, unrelated-file
-preservation, private apply/check results and exact final-owner steps. Both patch
-and validation artifacts are archived by the canonical registry. A shared-file
-approval, producer referral or repeated repair request cannot substitute for this
-packet. Changed producer pins require a stale disposition. The final owner must
-revalidate destination changes and produce actual maintained export/receipt evidence.
-
-Dashboard Needs attention rows show export preparation assignment/worker status
-and packets ready for the integrator. The existing integrator receives the archived
-patch, validation and commands automatically. No worker-count increase is needed.
-
-Export packet validation now rejects UTF-16/NUL bytes and non-unified-diff patches
-before registration. Existing malformed packets remain immutable but no longer
-appear ready or wake the integrator. Their exact packet ID and validation error
-create a new bounded preparation assignment; helpers must emit UTF-8 bytes and
-rehearse git apply --check. Encoding validation does not replace destination-pin,
-conflict, source or final-owner acceptance checks.
-
-Repeated shared-file approvals are consumed by lane/source-head/file/status identity,
-not by helper generation or wording. An approval already delivered to a bound
-producer turn does not wake another turn at unchanged clean pins; an intervening
-rejection preserves re-approval demand. Shared-review helper/integrator discovery
-skips only scopes whose entire current owned-file set has latest approved decisions
-at exact clean root/native heads. Added files, changed heads, dirty sources and
-rejections remain reviewable. This suppresses repeated review-only turns without
-clearing runtime dependencies, integrating source, or granting ADMIT.
-
-Integration wakeup retry identity uses substantive handoffs, reviews, batches,
-receipt gaps, audits and preparation packets whenever these exist. Unrelated
-queued planner/publication jobs and admission-item churn do not reset the retry
-budget for unchanged delivery work. Helper jobs and the integration owner's own
-queued job are excluded from admission-only demand. Real new producer demand can
-still wake an unavailable owner; new packets or source pins get fresh identities.
-After upgrading, the new identity can receive the normal bounded two attempts;
-subsequent queue churn cannot grant additional attempts.
-
-
-Export packets left undelivered after two completed, bound integrator attempts
-that explicitly received them generate one private helper reassessment. The
-assignment includes the exact packet and integrator generations to inspect.
-Dashboard status becomes unconsumed/awaiting reassessment rather than ready;
-active helper status remains visible. The recovery identity uses producer pins,
-destination and patch bytes, so new report wording or equivalent resubmission
-does not repeatedly allocate workers. Changed source pins or a materially changed
-patch/destination can create fresh work. Helpers correct private preparation or
-record an honest blocked outcome; final export, handoff and receipt gates remain.
-
-
-Blocked recovery now grants one contract-corrected proposal follow-up after a
-terminal recovery turn produced no actionable delivery for that consumer. Existing
-proposal/packet/external outcomes and active producers remain protected. The extra
-attempt is persisted under the original semantic input identity; identical reports
-cannot rearm it. Active support targets are reserved against overlapping recovery.
-Planning recovery may record support_actions action=proposal with details.consumer,
-proposal_id and hashed proposal artifact containing items. Full validate_spec checks
-run before recording; publication/admission remain required and no consumer is
-marked resolved. Terminal reviewed helper topic claims are reconciled through the
-fenced controller release API; issue/provider/file claims remain protected. Dead
-original/current processes, no in-flight dispatch and disposition evidence remain
-mandatory. Unknown or live owners never lose their claims.
-Named shard-enemies-N and shard-caves-area recovery is assigned to its configured
-owning planning partition. Busy owning partitions retain that demand rather than
-routing it to an unrelated shard that will reject it. Partition correction has a
-stable bounded follow-up identity; it does not reset unrelated retry budgets.
-
-
-Helper refill selects and persists scopes serially, then provisions at most four
-independent specs concurrently (preparation_concurrency defaults to four, bounded
-1..4; provisions_per_tick still bounds total attempts). Each successful preparation
-enqueues immediately; one failure does not block other preparations. Source/issue
-validation remains mandatory. Worker selection, reservation and execution reserve
-checks are inside the same transaction, preventing parallel oversubscription.
-Per-scope preparation timestamps/durations record actual costs. The independent assignment loop
-recounts reservation occupancy every pass but writes only a change, so counts_updated_at
-is when the counts last changed, not a freshness stamp; updated_at still
-marks target/demand calculation and must not imply fresher demand. No extra dispatcher
-or model worker pool is created.
-
-
-Managed runner prompts are stored byte-exact UTF-8 in the launch directory's
-prompt.txt and supplied via OpenCode --file with a short instruction. Prompt size
-therefore cannot overflow Windows CreateProcess command-line limits. Popen errors
-write spawn_error/child_created=false results; fenced recovery uses the bounded
-dead-runner retry budget. Legacy WinError206 attempts require the preserved exact
-Python CreateProcess failure traceback, no child receipt, confirmed dead runner
-and normal recovery/resource fences; unknown spawn outcomes remain protected.
-
-
-Dispatch capacity checks avoid writer transactions while the RAM pause state is
-unchanged and telemetry is under15s old. Pause/resume transitions still recheck
-fresh memory inside the writer fence; they never wait for the telemetry interval.
-Launches reuse their durable model reservation rather than rewrite it. Newly
-spawned runner identity gets at most100ms for fast publication races; slow starts
-are bound on the next singleton-launcher pass without duplicate spawn.
-
-
-Blocked repaired producers with no current handoff and a valid exact-source export
-preparation packet receive one same-owner handoff re-presentation per root/native
-heads. Current/unknown processes, active launches, claimed non-isolated batches,
-existing handoffs and stale/invalid packets prevent it. The producer must submit
-truthful current-generation evidence through normal handoff validation; maintained
-export remains the final integrator's gate. Changed helper wording or generation
-alone cannot rearm this resumption. No receipt or ADMIT is synthesized.
-
-Aging review reports (30 minutes) now create pinned obligations on new integration
-launches. The owner cannot finish review-ready standby until each exact report is
-accepted with evidence, resumed for correction through normal launch fencing, or
-explicitly deferred using `<python> <checkout>/scripts/workflow_module.py review_followup --root <root> --request
-<json>`. Requests name key, generation, review_pin from demand, reviewer,
-reviewer_generation, waiting_on (independent unfinished lane), next_action, reason,
-and hashed evidence. Deferral preserves the report and source-delivery gates;
-changed prerequisite source/status/receipt reopens demand. No review is auto-accepted.
-A real same-worker completion receipt after an explicit WIP/ready-slot wait grants
-one additional handoff re-presentation for those source heads and release pins.
-Unrelated completions, prose changes and generation churn do not rearm it; normal
-process, packet, batch and WIP fences remain in force.
-
-Approved blocked source deliveries without historical export repair now receive
-one bounded handoff re-presentation when all owned files have exact-source
-approvals backed by the approvals ledger (older unauthenticated preflight rows do
-not count) and a current validated integration preparation packet exists. Approval
-from a prior producer generation remains valid only for identical clean source
-pins. Normal handoff validation, process fencing, WIP and integration gates remain.
-Explicit #186 landing-decision/approval requests in either next_action or
-structured dependencies feed shared-review demand; they no longer require the
-literal word review. Unrelated asset waits do not become review tasks.
-A validated pending handoff resumption reserves its existing worker for up to
-120 seconds while waiting for prior work to drain. Autofill rechecks this
-reservation before assigning new work. It is generation-pinned, ignored once
-consumed, and expires unless the delivery continues to pass packet checks. This
-prevents fresh planning from repeatedly taking a delivery-ready worker without
-interrupting live work or bypassing WIP.
-Blocked capacity parking now runs in the independent assignment loop, before
-helper occupancy refresh and job assignment. A resumed lane that blocks again
-gets its current-generation parking marker without waiting for the slow main
-planning pass. Exact dead-process/child/queue checks, hashed terminal evidence,
-and exclusion of in-flight launches remain mandatory. The operation is idempotent
-with the main pool tick and never closes the blocked lane.
-
-Completion latency: pool assignment completion reads one coherent registry
-snapshot, leaving full diagnostic/status scans to reporting. Live-run heartbeat
-observations are refreshed in one write after terminal outcomes, rechecking exact
-launch/producer generation, process identity, launch status and fresh liveness.
-Terminal build cleanup inspects eligibility read-only and retains the normal
-release API's generation/token/dead-owner fences for mutation.
-
-## Typed delivery contracts
-
-`py -3.12 -m workflow.delivery_contracts --root C:/Users/alari/pikmin-randomizer`
-prints grouped blocked chains and uncovered dependency declarations. Add
-`--request <json>` to register an evidence-backed contract containing consumer,
-consumer_generation, producer, kind, requirement, acceptance_check, owner and
-evidence {path,sha256}; optional supersedes retains the previous record as history.
-Use the exact existing dependency text as requirement during migration. Owner must
-be the registered consumer workstream owner. Self-links, helper producers, cycles,
-stale generations and missing evidence are rejected.
-
-Kinds: review_artifact requires an accepted review; source_integration requires a
-source integration receipt; consumer_behavior additionally requires independent
-consumer verification explicitly bound to this contract, current consumer source
-and generation and the exact producer delivery. Runtime checks retain actual game
-executable/log/supervisor proof. A review-only done producer cannot satisfy either
-source kind. Changing the required check creates a new contract, not a silent
-reinterpretation of old success. These requirements are separate from ADMIT.
-
-Existing prose dependencies are not automatically declared satisfied or assigned
-a guessed producer. The audit lists partially/unclassified consumers. Canonical
-operator JSON and dashboard show the highest-impact registered prerequisite groups
-and their accountable owners. The sole integrator receives bounded demand for
-stopped/missing deliveries; a review-only producer needs an issue-backed delivery
-successor, preserving old evidence and completed records. Explicit source contracts
-route consumer wakeups to the named producers instead of incidental issue mentions.
-Responsibility stays in the contract until delivery/verification, independent of
-whether any particular helper or owner session finishes.
-
-Typed delivery gaps now enter existing planning recovery grouped by producer and
-ranked by downstream consumers. One preparation is allowed per semantic requirement
-and producer source/receipt state. Active producer sessions, overlapping helper
-reservations and outstanding proposals are protected. A prior proposal whose lane
-is now blocked/done is not proof that the missing source is being delivered. The
-helper must produce an executable delivery successor or repair proposal through
-normal publication/admission; the sole integration owner retains final writes.
-Unclassified legacy dependencies remain visible. This consolidates typed delivery
-recovery into the existing planner lifecycle; it does not replace every historical
-watchdog or recovery policy.
-
-## Incremental registry storage
-
-Canonical Registry APIs support the legacy JSON format and the opt-in documents-v1
-format. The latter keeps lanes, launches, assignments, costs and other keyed data
-in indexed SQLite rows, with chunked event/stage histories. Transactions remain
-atomic across all rows and snapshots read a single committed version. Map insertion
-order and all evidence/ownership/generation records are preserved. Heartbeats,
-controller heartbeat batches and launch completion use narrow fenced updates.
-`transaction(sections=[...], append=[...])` loads and saves only the named
-documents-v1 partitions (storage.MAPS/LISTS) plus the meta row; an `append` history
-(events, stage_timing.history) exposes only its last chunk and accepts appends.
-Every other partition is a sealed placeholder: reading, copying or replacing it
-refuses with `Registry section not declared for this transaction` and rolls back,
-on both storage formats. `snapshot(sections=[...])` is the matching read. The
-controller's monitors use these: build capacity (meta + leases/queue + event tail),
-queue pressure and helper-preparation timing (meta only), stage timing (meta +
-history tail; the 24 h trim loads history at most hourly), controller RAM scalars
-and model selection (`control_meta()`, the meta row alone). Admission
-reconciliation, worker parking and helper reservation counts compute from a
-committed read and write only when something changed; worker parking still
-re-hashes each surviving candidate's evidence file under the writer. On the live registry a
-meta-only write holds the writer about 0.04 s against 0.6 s for a full transaction.
-Snapshots copy rows inside the read transaction and decode after it ends, so a
-reader holds SQLite's SHARED lock about 0.1 s instead of 0.45 s.
-Every BEGIN, COMMIT and snapshot read that meets `database is locked` retries up
-to three times (9 s SQLite timeout each, jittered backoff), at most about 28 s in
-all, within the former single 30 s wait: a thread retries while holding the
-in-process writer gate, so a longer budget would stall every thread queued behind
-it. After the budget it
-raises `RegistryBusy` (`Registry busy: ... nothing was committed, retry later`);
-`scripts/pikmin2_workflow.py` exits 75 with `"busy": true`, so callers rerun the
-same command instead of writing their own retry loops.
-Controller threads share a FIFO writer gate before SQLite acquisition, preventing
-fast maintenance loops from repeatedly overtaking refill. SQLite still provides
-the cross-process transaction fence. Unchanged published artifacts are verified
-read-only. Unknown exact process identities may be held conservatively for five
-seconds to avoid repeated expensive CIM probes; they never authorize recovery or
-termination. Alive identities are always rechecked. Helper refill exposes its
-current discovery/allocation stage in helper-refill-progress.json.
-
-Migration: after stopping only the exact sole controller/wrapper identities and
-checking for long-lived older Python registry clients, back up the database using
-SQLite backup, then run from the canonical checkout:
-`py -3.12 -m workflow.storage --root C:/Users/alari/pikmin-randomizer --migrate`.
-The migration atomically retains the original JSON in registry_legacy_backup and
-verifies exact round-trip equality before commit. It is idempotent. Restart only
-the controller; preserve managed worker processes. Use current canonical scripts
-and Registry.snapshot()/control_status() for inspection, never SELECT body JSON or
-direct UPDATE scripts: schema-2 headers and write guards reject legacy writers.
-The backup is migration-time history, not a current rollback image; restoring it
-after new progress would lose updates. Any downgrade must export the current state
-under the same single-writer maintenance fence.
-
-WAL journal (operator-run, never automatic). Stop the controller and its restart
-wrapper and let worker CLIs finish, then run
-`py -3.12 <checkout>/scripts/workflow_module.py registry_wal --root <root>` to see
-the current mode and whether the registry is quiesced, and add `--apply` to switch.
-It refuses unless the recorded controller is confirmed stopped and no connection
-holds the file, then sets `journal_mode=WAL` and verifies that a full snapshot is
-unchanged, a `mode=ro` reader and the wake-up waiter still read it, and
-`quick_check` passes; a failed check restores the previous mode. WAL keeps the
-BEGIN IMMEDIATE writer fence and stops readers blocking commits. The mode is stored
-in the file, so older releases use it too. `--mode delete --apply` switches back.
-
-Archive (operator-run, never automatic): `py -3.12 <checkout>/scripts/workflow_module.py
-registry_archive --root <root> --done-days N` reports what would move; `--apply`
-(quiesced registry required) moves events, control.launches and actions of lanes done
-for more than N >= 1 days into output/workflow/registry-archive.sqlite3 and VACUUMs;
-with nothing to move it only VACUUMs. Exit 2 means refused and nothing was removed.
-Exit 3 means the records moved but marking the run or the VACUUM failed (for example
-`database is locked` because a client reopened the file); the JSON report carries
-`mark_error` or `vacuum_error`, and rerunning the same `--apply` finishes both.
-Each record is copied with its sha256 and re-read before one registry transaction
-removes it, and that transaction refuses unless every record is still identical.
-Lanes with an in-flight launch, claimed action, lease/queue entry, open assignment
-or pending consumer verification are skipped. Archived lanes carry `archived`
-tombstones naming the run; an interrupted run is settled on the next run (tombstoned:
-moved; otherwise discarded, its records never left the registry).
-`registry_archive.history()` and `merged()` give the full history; `merged()` puts
-archived events back at their original registry positions (not re-sorted by `at`).
-No production reader opens the archive, deliberately: lanes themselves never move, so
-landing_audit and the no-progress report read them as before; review-packet lander
-attribution uses running launches only; analytics and the dashboard use a one-hour
-window by default. A `throughput-status` window longer than N days would miss the
-archived lanes' lease intervals and completions. Anything that needs older events,
-launches or actions of done lanes reads `merged(root, snapshot)`.
-
-Every later recovery generation of an unresolved consumer now gets its own pending
-verification record and current ID in the launch instructions, pinned to unchanged
-validated producer receipts. Historical evidence is retained; no pass is copied.
-Changed producer receipts require normal prerequisite discovery. This fixes stale
-verification IDs without weakening generation or runtime-proof checks.
-
-Dependency classification helpers (#635): blocked consumers without complete typed
-requirements are separately allocated through existing planning partitions. Each
-assignment freezes consumer source pins, dependencies and original evidence. The
-helper must record every dependency through `workflow.dependency_classification`,
-backed by typed delivery contracts or validated proposal/external support actions.
-A no-work report cannot complete classification. Classification never clears blocked
-state or grants source/gameplay acceptance. One attempt is allocated per unchanged
-semantic snapshot; failures remain `needs_attention`, while other consumers proceed.
-`python -m workflow.delivery_contracts --root <root>` and the operator JSON expose
-`classification_queue` with assigned helper identity and pending/assigned/attention
-status. Existing recovery/support ownership and worker reserves still apply.
-
-Classification contract v2: an evidenced `internal_blocker` is a valid completed
-classification disposition. Fields: kind (`missing_producer`, `owner_blocked`,
-`integration_review`), precise `missing` input, bounded `next_action`, and
-`inspected_lanes`; the latter two kinds also require an existing `owner_lane`.
-The consumer remains blocked. Separate `internal_followups` in the delivery audit
-show pending/assigned/awaiting_delivery/needs_attention. Follow-up preparation uses
-normal helper assignment and actionable support gates, protects live owners and
-existing proposals, and allows one attempt per unchanged consumer snapshot.
-Contract-v1 failures get one v2 classification attempt; active assignments and
-all historical outcomes are preserved. Classification prompts supersede ordinary
-partition discovery and do not require a proposal merely to report an internal gap.
-
-Action routing (#635): classified `owner_blocked` findings request one fenced
-resumption of the existing implementation owner per source/consumer snapshot.
-Live/unknown processes, duplicate launches, WIP and normal execution gates remain
-protected. Integration-review findings and evidenced existing-source landing
-requests go to the registered sole integrator via its bounded demand protocol.
-Planning helpers handle missing-producer discovery, not these owner-only actions.
-
-Prepared helper assignments older than five minutes precede fresh discovery in
-preparation order, while higher-pressure integration/publication work and the
-execution reserve retain priority. `prepared` counts unregistered assignments;
-`queued` counts registered ready jobs. Prepared assignments are not recovery.
-
-The sole controller runs one independent queue-pressure sampler, approximately
-every 30 seconds (actual timestamp/elapsed time in queue-pressure-monitor.json).
-The main pass skips duplicate sampling. Proposal feedback shares the sampler's
-single registry snapshot, avoiding one complete registry read per proposal.
-
-Stale build leases (#635): the existing independent build-capacity monitor reaps
-confirmed-dead private-build and maintained-build-export lease owners on its
-15-second cycle, even if their lane still says running after a reboot. It does not
-wait for lease expiry, a terminal lane state, or another acquire request. The
-current lease and exact process identity are checked while holding the registry
-transaction. Live/unknown identities and non-build resources remain protected;
-no process is terminated and lane/acceptance state is unchanged. Reclamation is
-recorded as lease_reaped events, with latest sample in build_lease_recovery.
-
-
-Completion record isolation (#635): an unreadable or malformed child.json/result.json affects only its own launch; later launches still complete and original bytes are preserved. With a dead runner and a proof that no child survives (runner started before the current boot by both its creation time and its recorded boot counter, or no process whose parent is the runner's PID started after it), the launch is a crash: `crash.json` records the reason, damaged-record hashes and proof, and it takes normal dead-runner recovery or reconciliation. Without that proof, or while the runner lives, it stays protected with a completion_record_unreadable notice; a corrupt identity never authorizes a stop or a fabricated result.
+## How the automation behaves (reference)
+
+- **Dispatch.** The controller is the sole dispatcher, with separate launch,
+  assignment and maintenance loops; a stage that raises is recorded in
+  `dispatch-stage-health.json`, `launcher-stage-health.json` or
+  `assignment-stage-health.json` and retried next pass. Prompts are written to the
+  launch directory's prompt.txt; spawn failures leave a `spawn_error` result.
+  Capacity checks skip the writer while the RAM pause state is unchanged and
+  telemetry is under 15 s old.
+- **Worker exits.** Runners stop their own child a few seconds after its turn ends
+  and never stop a session for a rate limit once a tool started. An initial stream
+  with no events after `terminal_idle_recovery.first_response_seconds` (default 300)
+  is stopped after rechecking identities, logs, descendants and resources; bounded
+  provider fallback follows. An unreadable child.json/result.json affects only its
+  launch; with a dead runner and a proof that no child survives it becomes a crash
+  (`crash.json`), otherwise it stays protected with `completion_record_unreadable`.
+- **Process checks.** Exact identities (host, PID, creation time) that are dead are
+  cached as dead; unknown results are cached for 5 seconds and only ever protect,
+  never authorize recovery; alive is always rechecked.
+- **Blocked work.** A blocked lane with hashed evidence and dead processes is
+  capacity-parked in the assignment loop, releasing its worker. Consumers wake on
+  new verified integration receipts of mapped producers (`consumer_wakeup`, see
+  [throughput guide](PIKMIN2_THROUGHPUT.md)); `inspect lane` names the gate holding
+  one. Repair planning gets one turn per unchanged blocked chain; dependency
+  classification helpers record every dependency through
+  `workflow.dependency_classification` as a typed contract, a support action or an
+  `internal_blocker`, and never clear blocked state. Classified `owner_blocked`
+  findings resume the owner once per snapshot; integration-review findings go to the
+  sole integrator.
+- **Support helpers.** `workflow.support_actions` records integration packets (wake
+  the integrator), independently diagnosed repairs (one per source heads), verified
+  producers, exact user-owned external inputs and stale dispositions, all with
+  archived hashed evidence. Export preparation helpers rehearse minimal patches
+  against the pinned destination; only the integrator exports and writes receipts.
+  Stopped blocked planning helpers retire as unresolved (`review_disposition.resolved
+  = false`).
+- **Handoffs.** `freeze_handoffs_on_submit` preserves new handoffs in immutable
+  bundles. A blocked producer with a valid exact-source export packet, or with every
+  owned file approved in the ledger plus a current packet, gets one handoff
+  re-presentation per source heads, and a validated pending resumption reserves its
+  worker for 120 seconds. Aging review reports put obligations on new integration
+  launches until accepted, resumed or deferred with `review_followup`.
+- **Admission reconciliation.** Admitted families with open lanes are audited on
+  each dashboard publication; the integration owner disposes them with
+  `admission_reconciliation` (`retain` with a next action, or `superseded` with
+  `no_remaining_delivery: true` and `covered_criteria`).
+- **Typed delivery contracts.** `py -3.12 -m workflow.delivery_contracts --root <root>`
+  prints grouped chains and unclassified dependencies; `--request` registers a
+  contract (consumer, generation, producer, kind `review_artifact` /
+  `source_integration` / `consumer_behavior`, requirement, acceptance_check, owner,
+  evidence). Existing prose dependencies are never assumed satisfied.
+- **Build leases.** The build-capacity monitor reaps confirmed-dead build lease
+  owners every 15 seconds (`lease_reaped` events); live or unknown owners stay
+  protected and no process is terminated.
+- **Registry contention.** Writes take a FIFO in-process gate, then SQLite's
+  writer lock; BEGIN, COMMIT and reads retry `database is locked` three times within
+  about 28 s, then raise `RegistryBusy`; `scripts/pikmin2_workflow.py` exits 75 with
+  `"busy": true`, so rerun the same command.

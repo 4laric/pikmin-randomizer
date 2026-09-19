@@ -58,6 +58,38 @@ def publishable(report, *, seconds=RECENT_SECONDS, limit=RECENT_LIMIT):
                                  basis='Active records plus recent terminal ones; the registry keeps every record.'))
 
 
+def render_stuck(stuck):
+    """Needs you and the blocked-lane groups from workflow.inspect (already bounded by the publisher)."""
+    if not isinstance(stuck, dict): return ''
+    def minutes(value):
+        return '?' if type(value) not in (int, float) else '%d min' % (value // 60) if value < 7200 else '%.1f h' % (value / 3600)
+    items = list(stuck.get('needs_you') or []) + [dict(r, machine=True) for r in stuck.get('machine') or []]
+    html = '<section class="needs-you"><h2>Needs you <span>' + str(len(items)) + '</span></h2>'
+    if not items: html += '<p>Nothing waits on you.</p>'
+    for r in items:
+        who = r.get('lane') or ', '.join(r.get('lanes') or []) or 'machine-wide'
+        facts = ' · '.join(s for s in (minutes(r.get('age_seconds')) + ' old' if r.get('age_seconds') is not None else '',
+            'asked %dx' % r['asked'] if r.get('asked') else '', '%d downstream' % r['downstream'] if r.get('downstream') else '') if s)
+        html += ('<article><div class="item-heading"><strong>' + escape(str(who)) + '</strong><span>' + escape(str(r.get('kind'))) +
+                 (' · ' + escape(facts) if facts else '') + '</span></div><p>' + escape(str(r.get('what'))[:400]) +
+                 '</p><p class="note">Next: ' + escape(str(r.get('next'))) + '</p></article>')
+    omitted = (stuck.get('omitted') or {}).get('needs_you')
+    if omitted: html += '<p class="note">' + str(omitted) + ' more in throughput.json and `inspect needs-you`.</p>'
+    groups = stuck.get('groups') or []
+    html += ('<details id="stuck-groups"><summary>Blocked lanes by blocker <span>' + escape(str(stuck.get('blocked', '?'))) +
+             ' lanes · ' + escape(str(stuck.get('total_groups', len(groups)))) + ' blockers · ' +
+             escape(str(len(stuck.get('parked') or []))) + ' parked</span></summary><div class="detail-body">')
+    for g in groups:
+        owner = (' · owner ' + str(g['owner'])) if g.get('owner') else ''
+        html += ('<article><div class="item-heading"><strong>' + escape(str(g.get('label'))) + ' · ' + str(g.get('count')) +
+                 ' lanes</strong><span>' + escape(str(g.get('owner_state')) + owner) + '</span></div><p>' +
+                 escape(str(g.get('accountable')) + ': ' + str(g.get('next_action'))) + '</p><p class="note">' +
+                 escape(', '.join(g.get('lanes') or [])) + '</p></article>')
+    if stuck.get('cycles'):
+        html += '<p class="warning">Circular waits: ' + escape('; '.join(' -> '.join(c) for c in stuck['cycles'])) + '</p>'
+    return html + '<p class="note">Full view: <code>workflow_module.py inspect stuck</code>.</p></div></details></section>'
+
+
 def render_dashboard(report):
     def table(items):
         return '<table>' + ''.join('<tr><th>' + escape(str(k).replace('_', ' ')) + '</th><td>' +
@@ -198,7 +230,9 @@ def render_dashboard(report):
         'Build admission': staffing.get('build_admission_pause_reason') or 'Open',
         'Build lanes preparing': staffing.get('heavy_preparing_lanes'),
         'New build admission': 'Paused' if staffing.get('build_admission_paused') else 'Open',
-        'Compatible idle workers': autofill.get('compatible_idle_workers', staffing.get('compatible_idle_workers')),
+        'Available workers': autofill.get('available_workers', staffing.get('available_workers')),
+        'Workers matching ready work': autofill.get('workers_matching_ready_work', autofill.get('compatible_idle_workers',
+            staffing.get('workers_matching_ready_work', staffing.get('compatible_idle_workers')))),
     }
     helper_breakdown = ' &middot; '.join(
         '<span>' + escape(str(planning.get(key, 0))) + ' ' + label + '</span>'
@@ -256,6 +290,7 @@ def render_dashboard(report):
         attention_html = '<details class="attention" id="attention"><summary>Needs attention <span>' + str(len(attention)) + ' items</span></summary><div class="detail-body">' + ''.join(
             '<article><div class="item-heading"><strong>' + escape(str(lane)) + '</strong><span>' + escape(str(kind)) + '</span></div><p>' + escape(str(reason)) + '</p></article>'
             for lane, kind, reason in attention) + '</div></details>'
+    stuck_html = render_stuck(report.get('stuck'))
     body = '<div class="diagnostics"><h2>Inspect details</h2><p>Expand a section for individual lanes, evidence, and scheduling decisions.</p>' + ''.join(
         '<details id="detail-' + str(i) + '"><summary>' + escape(name) + '</summary><div class="detail-body">' +
         table(value if isinstance(value, dict) else {'recommendations': value}) + '</div></details>'
@@ -269,12 +304,13 @@ def render_dashboard(report):
 .workforce{margin:18px 0;padding-bottom:8px;border-bottom:1px solid #344651}.worker-counts{display:flex;flex-wrap:wrap;gap:8px 22px;color:#b8c8d2}.worker-counts strong{color:#eef4f7}.roster-scroll{overflow-x:auto}.roster{min-width:740px}.roster th:nth-child(1){width:13%}.roster th:nth-child(2){width:18%}.roster th:nth-child(3){width:28%}.roster th:nth-child(4){width:41%}.roster small{display:block;color:#8fa5b3;margin-top:5px;font-size:11px}
 header{display:flex;align-items:end;justify-content:space-between;gap:24px;margin-bottom:24px}.eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#90bda9;margin:0 0 5px}h1{font-size:28px;letter-spacing:-.03em;margin:0}header p{margin:0}header small{display:block;color:#8fa5b3}.updated{text-align:right;font-size:12px;color:#adbfca}
 .cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:#344651;border:1px solid #344651;border-radius:12px;overflow:hidden;margin:20px 0}.cards>div{background:#192b30;padding:20px 24px}.cards span{display:block;color:#bdd0cb;font-size:12px}.cards strong{display:block;font-size:30px;font-weight:600;letter-spacing:-.03em;margin-top:4px}
+.needs-you{margin:0 0 24px;padding:16px 22px;border:1px solid #8a6a3a;border-radius:12px;background:#231f18}.needs-you h2{color:#efcb92;margin:0 0 8px}.needs-you h2 span{font-size:13px;color:#c7ae83;margin-left:8px}.needs-you article{background:#2b251c}
 .warning{border-left:3px solid #efba64;padding:12px 16px;background:#302a21;color:#ffe0a7;border-radius:4px;font-size:13px}.overview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;border-bottom:1px solid #344651;padding-bottom:20px}.overview section{min-width:0}h2{font-size:16px;font-weight:600;color:#a6dfc5;margin:8px 0 12px}.note{font-size:12px;margin:12px 0;color:#92aaa9}
 table{border-collapse:collapse;width:100%;table-layout:fixed}th,td{text-align:left;padding:10px 8px;vertical-align:top;border-bottom:1px solid #293c47;overflow-wrap:anywhere}th{width:28%;font-weight:500;color:#b8c8d2}.overview th{width:65%;padding-left:0;font-size:13px}.overview td{text-align:right;padding-right:0;font-variant-numeric:tabular-nums}.overview tr:last-child th,.overview tr:last-child td{border-bottom:0}p{color:#aebfc9}.diagnostics{margin-top:26px}.diagnostics>p{font-size:12px;margin-top:-6px}
 details{border-bottom:1px solid #344651}summary{cursor:pointer;padding:13px 4px;font-weight:500;color:#d8e6ec}summary:hover{color:#a6dfc5}summary:focus-visible{outline:2px solid #a6dfc5;outline-offset:3px}summary span{float:right;color:#c7ae83;font-size:12px}details[open]>summary{color:#a6dfc5}.detail-body{padding:4px 0 18px}.attention{margin-top:10px}.attention summary{color:#efcb92}article{padding:12px 16px;background:#1b2933;margin:8px 0;border-radius:6px}.item-heading{display:flex;justify-content:space-between;gap:12px;overflow-wrap:anywhere}.item-heading span{font-size:12px;color:#efcb92;flex-shrink:0}article p{margin:5px 0 0;font-size:13px}footer{margin-top:24px;font-size:12px;color:#8fa5b3}
 @media(max-width:850px){body{padding:20px}.overview{grid-template-columns:1fr;gap:16px}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.cards>div{padding:16px}.cards strong{font-size:25px}}
 @media(max-width:520px){body{padding:16px}header{display:block}.updated{text-align:left;margin-top:10px}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}h1{font-size:24px}.item-heading{display:block}.item-heading span{display:block}th{width:38%}}
-</style><header><div><p class="eyebrow">Pikmin randomizer · Operations</p><h1>Workflow throughput</h1></div><div class="updated">Updated ''' + timestamp + '''<small>Refreshes every 15 seconds</small></div></header><main>''' + milestone + warning + headline + workforce + overview + attention_html + body + '''</main><footer><details id="reading"><summary>Reading the numbers</summary><p>An accepted slice is not an enemy admission. The headline uses the maintained admission contract; when records cannot be read, enemy ADMIT status is unavailable. Missing prices are unavailable, not free. Provisional QA does not grant admission. Planner reservations include queued work; running helpers are reported separately. Isolated repairs do not count toward actionable integration pressure.</p></details></footer>
+</style><header><div><p class="eyebrow">Pikmin randomizer · Operations</p><h1>Workflow throughput</h1></div><div class="updated">Updated ''' + timestamp + '''<small>Refreshes every 15 seconds</small></div></header><main>''' + stuck_html + milestone + warning + headline + workforce + overview + attention_html + body + '''</main><footer><details id="reading"><summary>Reading the numbers</summary><p>An accepted slice is not an enemy admission. The headline uses the maintained admission contract; when records cannot be read, enemy ADMIT status is unavailable. Missing prices are unavailable, not free. Provisional QA does not grant admission. Planner reservations include queued work; running helpers are reported separately. Isolated repairs do not count toward actionable integration pressure.</p></details></footer>
 <script type="module">
 // Preserve expanded diagnostics across the automatic refresh.
 for(const panel of document.querySelectorAll('details[id]')){

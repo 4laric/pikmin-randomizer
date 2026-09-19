@@ -12,9 +12,9 @@ import traceback
 
 from .handoff import GATES, digest, local_path, nonempty, phantom_shared_reviews, require, source_record, validate_handoff
 from .processes import identify, probe, DeadIdentityCache
+from .worker_capacity import ACTIVE  # Lane states that hold their worker.
 
 STATES = {'ready', 'running', 'waiting_resource', 'blocked', 'handoff_ready', 'integrating', 'done', 'review_ready', 'reconciling'}
-ACTIVE = {'ready', 'running', 'waiting_resource', 'blocked', 'reconciling'}
 TRANSITIONS = {
     'ready': {'running', 'blocked'},
     'running': {'waiting_resource', 'blocked'},
@@ -152,11 +152,13 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
     def throughput_status(self, window_seconds=3600, ram_percent=None, state=None):
         """Reads the caller's snapshot when given; process checks use the dead-identity cache."""
         from .analytics import throughput_metrics, staffing_recommendations
+        from .autofill import _workers
         with nullcontext(self.snapshot() if state is None else state) as state:
             return dict(at=self.clock(), throughput=state.get('throughput', {}),
                         metrics=throughput_metrics(state, self.clock(), window_seconds=window_seconds),
                         staffing=staffing_recommendations(state, self.clock(), ram_percent=ram_percent,
-                                                          process_probe=self.probe))
+                                                          process_probe=self.probe,
+                                                          available={l['worker_id'] for l in _workers(self, state)}))
 
     def configure_lane_launch(self, key, root, output, brief, config, legacy_supervisors=None):
         """Attach local launch paths to an issue-backed pool lane without restarting service."""
@@ -193,11 +195,11 @@ class Registry(SchedulingMixin, DeliveryMixin, BatchingMixin, ControlMixin, Remo
         return lane
 
     def check_wip(self, state, lane):
-        from .worker_capacity import reusable
+        from .worker_capacity import occupant
         others = [l for l in state['lanes'].values()
                   if l['lane'] != lane['lane'] and l['worker_id'] == lane['worker_id']]
         if lane['state'] in ACTIVE:
-            require(not any(l['state'] in ACTIVE and not reusable(self, state, l) for l in others), 'Worker already has one active slice')
+            require(occupant(self, state, lane) is None, 'Worker already has one active slice')
         if lane['state'] in ('handoff_ready', 'review_ready', 'integrating'):
             require(not any(l['state'] in ('handoff_ready', 'review_ready', 'integrating') for l in others),
                     'Worker already has one ready/integrating handoff')

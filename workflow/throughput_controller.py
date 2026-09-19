@@ -282,6 +282,12 @@ def publish_status(controller):
     status['delivery_audit'] = delivery_audit(state)
     status['worker_roster'] = roster(state, {w['worker_id'] for w in _workers(reg, state)},
                                      status['worker_activity'])
+    from .inspect import stuck, bounded as bounded_stuck
+    try:  # A view only: a malformed record must not stop the dashboard publishing.
+        status['stuck'] = bounded_stuck(dict(stuck(state, status['at'], cfg=controller.config, base=controller.base,
+            probe=reg.probe), available_workers=status['worker_roster']['available_workers']))
+    except (Rejected, KeyError, TypeError, ValueError, AttributeError) as exc:
+        status['stuck'] = dict(error='Stuck view unavailable: %s' % (str(exc) or type(exc).__name__))
     spend_state = dict(lanes={k:dict(task_id=v.get('task_id', '')) for k,v in state['lanes'].items()},
                        control=dict(launches={k:dict(session=v.get('session')) for k,v in state.get('control', {}).get('launches', {}).items()}))
     status['hourly_spend'] = hourly_spend(spend_state, status['at'])

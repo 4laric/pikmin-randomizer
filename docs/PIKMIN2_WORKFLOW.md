@@ -40,10 +40,11 @@ acceptance. GitHub child issues hold scope, assignment, acceptance and handoffs.
 The local registry holds execution, resource reservations and recovery actions.
 Historical family reports are evidence references, not a work queue.
 
-For a compact live action list, run `py -3.12 -m workflow.operator` from the
-canonical root (add `--json` for pins and blocker evidence). See the
-[operator quickstart](PIKMIN2_WORKFLOW_OPERATOR.md) for feeding work, completing
-receipts and checking real progress.
+What is stuck and what only the operator can do: `py -3.12 scripts/workflow_module.py
+inspect stuck` from the canonical root (read-only; `inspect lane <key>` explains one
+lane). `py -3.12 -m workflow.operator` adds receipt and admission actions (`--json`
+for pins and blocker evidence). The [operator guide](PIKMIN2_WORKFLOW_OPERATOR.md)
+covers commands, states, deployment and workspace layout.
 
 ### Code provenance
 
@@ -195,12 +196,16 @@ File ownership is a coordination contract, not a filesystem permission mechanism
 Execution states:
 
 ```text
-ready -> running -> waiting_resource / blocked -> running
+ready -> running | blocked            blocked -> ready | running
+running -> waiting_resource | blocked waiting_resource -> running | blocked
 running -> handoff_ready -> integrating -> done
-handoff_ready / integrating -> running (implementation needs revision)
+handoff_ready / integrating -> running (implementation needs revision); integrating -> handoff_ready
+review_ready -> running | integrating | blocked (review-only outcome awaiting disposition)
+reconciling -> running | blocked | ready (stopped launch whose outcome is being reconciled)
 ```
 
-`handoff` enters `handoff_ready`; `integrate` alone enters `done`. A worker may
+`registry.TRANSITIONS` is authoritative. `handoff` enters `handoff_ready`; `integrate`
+alone enters `done`. A worker may
 have one active slice plus one handoff awaiting/in integration. Returning an older
 handoff to implementation must satisfy the same WIP limit.
 
@@ -629,6 +634,12 @@ cannot resume while that worker has another active task. Live or unknown process
 identities and pending launches prevent reuse. Parking runs before autonomous
 refill on each pool tick. The dashboard counts blocked lanes and parked lanes
 separately from worker availability; parking does not claim acceptance or ADMIT.
+When a due consumer-prerequisite wake finds its worker busy on another lane, the
+wake is skipped without taking the writer and the worker is reserved for it
+(`handoff_resume_reservations`, 10 minutes, refreshed while the wake stays due), so
+refill does not hand that worker to a new helper when its current lane stops.
+Available workers are one number, computed by `autofill._workers` (the function
+assignment uses) for the roster, staffing and autofill status.
 
 ### Bounded launch bursts
 

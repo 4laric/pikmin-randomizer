@@ -222,12 +222,16 @@ class ControlMixin:
         Only a still-open row (same status) absorbs repeats: once the shepherd resolves it, a distinct
         detail is a new notice and an identical one stays suppressed, as with exact-detail identities.
         A notice naming a launch (action) stays one per launch. status='info' is recorded for
-        visibility but never offered to the shepherd."""
+        visibility but never offered to the shepherd. A row written under the older exact-detail
+        identity still counts when the collapsed one has none, so a resolved notice stays resolved."""
         exact = fingerprint([key, kind, detail])
         error = detail.get('error') if isinstance(detail, dict) and 'action' not in detail else None
         identity = fingerprint([key, kind, error]) if isinstance(error, str) else exact
         from .storage import read_record, selected
         old = read_record(self, ('control', 'notices'), identity)
+        if old is None and identity != exact:
+            legacy = read_record(self, ('control', 'notices'), exact)
+            if legacy is not None: identity, old = exact, legacy
         if old is not None and old.get('status') != status:
             if old.get('detail') == detail: return identity
             identity, old = exact, read_record(self, ('control', 'notices'), exact)

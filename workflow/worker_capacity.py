@@ -2,6 +2,7 @@
 from .handoff import Rejected
 
 IN_FLIGHT = ('intent', 'spawned', 'running', 'exiting')
+ACTIVE = {'ready', 'running', 'waiting_resource', 'blocked', 'reconciling'}
 
 
 def parked(lane):
@@ -13,6 +14,12 @@ def reusable(reg, state, lane):
     return (parked(lane) and reg.recovery_safe(state, lane) and
             not any(x['lane'] == lane['lane'] and x['status'] in IN_FLIGHT
                     for x in state.get('control', {}).get('launches', {}).values()))
+
+
+def occupant(reg, state, lane):
+    """Another active, non-reusable lane holding this lane's worker (Registry.check_wip refuses), else None."""
+    return next((l['lane'] for l in state['lanes'].values() if l['lane'] != lane['lane'] and
+                 l.get('worker_id') == lane.get('worker_id') and l['state'] in ACTIVE and not reusable(reg, state, l)), None)
 
 
 SECTIONS = [('lanes',), ('leases',), ('queue',), ('control', 'launches'), ('throughput', 'workstreams'),

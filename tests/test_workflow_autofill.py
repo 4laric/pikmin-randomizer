@@ -358,6 +358,15 @@ class AutofillTests(unittest.TestCase):
         self.assertEqual(report['active_enemy_count'],0)
         self.assertEqual(report['starvation_seconds'],0)
 
+    def test_foreign_owner_acceptance_is_linted_but_never_refused(self):
+        from workflow.autofill import validate_spec
+        self.spec['lane']['acceptance'] = ['Verified disposition', 'Guard landed with #186 review']
+        self.save([self.spec])
+        lint = validate_spec(self.reg, self.spec, lambda n: copy.deepcopy(self.remote[n]))
+        self.assertEqual([(f['index'], f['move_to']) for f in lint], [(1, 'shared_reviews')])
+        self.tick()
+        self.assertIn('next', self.reg.status()['lanes'])  # Admitted: the lint is advisory.
+
     def test_malformed_sibling_does_not_block_valid_spec(self):
         self.save([{'missing':'id'},dict(self.spec,id='malformed',priority='invented',lane={}),self.spec])
         self.tick()

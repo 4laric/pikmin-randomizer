@@ -10,6 +10,7 @@ import time
 import threading
 
 from .control import fingerprint
+from .provenance import cli
 from .handoff import digest, local_path, require, Rejected
 from .processes import identify, probe
 from .runner import write, decisions_from_text
@@ -238,6 +239,8 @@ class Controller:
             f"{entry['output']}/session-ready.json. Require attempt_id={item['id']} and generation={lane['generation']} "
             "before edits. This continuation supersedes old missing-dependency instructions. Preserve committed work. "
             + item['instruction'] + '\nUse the canonical registry and private worktrees, common leased builds; no ADMIT writes. '
+            'Read registry state only with ' + cli('inspect') + ' --root ' + str(self.reg.root) + ' lane <key> | launches '
+            '<key> | assignment <your lane> | stuck | config (read-only); never write Registry or sqlite scripts to read it. '
             'Before any runtime acceptance run, adopt canonical docs/PIKMIN2_IMPLEMENTATION_FANOUT.md captain safety #632: '
             'check orimaDead, NaviDead and HP<=1 before pause/movie returns or observed ticks; emit CAPTAIN_DOWN and exit BLOCKED. '
             'Use scripts/p2_fixture_captain_guard.h or equivalent tested guard. Park captain outside attack reach when not testing captain hits. '
