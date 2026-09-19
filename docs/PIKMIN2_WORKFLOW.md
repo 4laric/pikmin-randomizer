@@ -377,16 +377,20 @@ ledger existed counts as `requested` until an authenticated decision is recorded
 (nothing is rewritten).
 
 Review packets (docs/PIKMIN2_REVIEW_PACKETS.md, template in `tools/review_packets/`)
-are declarative JSON read from a commit. Candidate inputs are pinned by blob id at
-their commit. Maintained inputs are read at the consuming line's branch tip; a dirty
-or untracked path, a nested untracked repository or a line worktree on another branch
-refuses. Maintained pins exist only as audited `packet_pins` registry records written by
-`review_packet repin` (a changed reviewed region needs an authenticated reviewer that
-is neither consumer nor lander), so a packet cannot be re-pinned by editing hashes.
-Agents only request an evaluation (`review_packet request`); the controller alone
-(`approvals.packet_decision`, refused in any other process) re-runs the packet's
-side-effect-free verify at its audited pins and records a `shared_hook` row with
-`decided_by: packet:<schema>@<blob>`. A packet that drifted records nothing.
+are declarative JSON read from a commit; re-pins, requests and decisions accept only a
+packet commit on the declared root integration line. Candidate inputs are pinned by
+blob id at their commit. Maintained inputs are read at the consuming line's branch tip;
+a dirty or untracked path, a nested untracked repository or a line worktree on another
+branch refuses. Maintained pins exist only as audited `packet_pins` registry records
+written by `review_packet repin`, so a packet cannot be re-pinned by editing hashes. A
+changed reviewed region needs the diff's sha256 and an authenticated reviewer with
+authority over a consumer lane that is not a consumer, lander, #issue hook holder or
+author/lander of the touching commits. Agents only request an evaluation
+(`review_packet request`) for declared consumers holding a hook the packet covers (same
+item, or files that are packet inputs); the controller alone (`approvals.packet_decision`,
+refused in any other process) re-runs the packet's side-effect-free verify at its audited
+pins and records a `shared_hook` row with `decided_by: packet:<schema>@<blob>`. A packet
+that drifted records nothing, and a standing reviewer rejection is never overwritten.
 
 Deferred: a human writer. Agents share this machine, its Windows user and the GitHub
 account, so no agent-reachable flag or command can authenticate a person. Proposal: a

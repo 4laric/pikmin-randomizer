@@ -87,7 +87,10 @@ it: packets are committed under `tools/review_packets/` (docs/PIKMIN2_REVIEW_PAC
 `py -3.12 scripts/workflow_module.py review_packet verify --root <root> --packet <path>`
 evaluates one read-only, lanes ask for a decision with `review_packet request`, and
 pins change only through the audited `review_packet repin --show-diff`. Never edit a
-packet's hashes or re-point it at working-copy bytes. `review_packet_migration`
+packet's hashes or re-point it at working-copy bytes. Before packets can be re-pinned or
+decided, declare `integration_lines.root` in the controller config and land the packet on
+that line; `request` is refused until the running controller's recorded release contains
+`workflow/review_packet.py`, so switch the controller first. `review_packet_migration`
 reports, read-only, what a legacy working-copy packet would return. Every file in `shared_review_routing.files` must name a
 lane that can record the decision: the owner of the producer's workstream (today
 `species-integration-replacement`) run as a controller launch. A routed owner that

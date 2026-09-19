@@ -6,19 +6,23 @@ by blob id. Maintained inputs name the consuming line (a worktree that has branc
 out) and pin {commit, blob, region_sha256}: the observed line commit, the whole-file blob and the
 sha256 of an anchor-delimited normalized region. A dirty or untracked maintained path, a path in a
 nested repository and a line worktree on another branch refuse (DriftError); nothing is hashed from
-disk. Maintained pins live only in the registry's packet_pins records, written by `repin`; a packet
-evaluates only while each maintained input still has the blob and region of its latest record.
+disk. Maintained pins live only in the registry's packet_pins records, written by `repin` and keyed
+by the input declaration plus the packet's consumers and landers; a packet evaluates only while each
+maintained input still has the blob and region of its latest record. repin, request and decisions
+read a packet only from a commit on the declared root integration line (the reviewed workflow line).
 
   <python> <checkout>/scripts/workflow_module.py review_packet verify --root <root> --packet <path> [--commit <sha>]
   <python> <checkout>/scripts/workflow_module.py review_packet repin --root <root> --request <json> [--show-diff] [--dry-run]
   <python> <checkout>/scripts/workflow_module.py review_packet request --root <root> --request <json>
 
 verify writes nothing. repin records {packet, input, old_pin, new_pin, commit, region_diff_sha256,
-actor, evidence}: always allowed to an authenticated lane when the reviewed region is unchanged;
-a changed region (or a first pin) needs approve:true from an authenticated lane that is not a
-declared consumer or lander and did not author or land the commits that touched the path.
-request asks the controller to evaluate a packet for lanes holding a structured shared_hook; only
-the controller (approvals.packet_decision) records the resulting ledger decision.
+actor, evidence}: always allowed to an authenticated lane when the reviewed region is unchanged at a
+commit descending from the old pin; a changed region (or a first pin) needs approve:true plus the
+region_diff_sha256 the reviewer read, from an authenticated lane with review authority over a
+consumer holding a hook the packet covers that is not a consumer, lander, holder of a hook of the
+issue, or author/producer/lander of the commits that touched the path. request asks the controller
+to evaluate a packet for consumer lanes holding a shared_hook the packet covers; only the controller
+(approvals.packet_decision) records the resulting ledger decision.
 """
 import copy
 import difflib
@@ -37,7 +41,8 @@ MANIFEST = 'CMakeLists.txt'
 HEX = re.compile(r'[0-9a-f]{40}([0-9a-f]{24})?')
 NAME = re.compile(r'[a-z0-9][a-z0-9._-]{0,127}')
 TOUCHING = 500  # rev-list bound when finding the commits that changed a re-pinned path.
-POLL_SECONDS, RETRY_SECONDS = 30, 300
+POLL_SECONDS, RETRY_SECONDS, ATTEMPTS = 30, 300, 3
+OPEN_REQUESTS, PRUNE_SECONDS = 3, 14 * 86400  # Open requests per requester; closed requests kept this long.
 DECISIONS = {'APPROVED': 'approved', 'CHANGES_REQUIRED': 'rejected'}
 
 
@@ -104,7 +109,7 @@ def validate(packet):
     require(isinstance(packet.get('schema'), str) and NAME.fullmatch(packet['schema']), 'Packet schema name required')
     require(type(packet.get('issue')) is int and packet['issue'] > 0, 'Packet issue number required')
     for field in ('consumers', 'landers'):
-        _strings(packet.get(field, []), field)
+        _strings(packet.get(field), field + ' (nonempty)', empty=False)
     inputs = packet.get('inputs')
     require(isinstance(inputs, dict) and inputs, 'Packet inputs required')
     for key, item in inputs.items():
@@ -211,12 +216,42 @@ def line_repo(root, line):
     return repo, commit_of(repo, line['ref']), problems
 
 
+CALL = re.compile(r'([A-Za-z_][A-Za-z0-9_]*)[ \t]*\(')
+
+
+def commands(text):
+    """(lowercase command name, argument text) of each CMake call, bracket and line comments removed."""
+    body = re.sub(r'#\[(=*)\[.*?\]\1\]', '', text.replace('\r\n', '\n'), flags=re.S)
+    body = '\n'.join(row.split('#', 1)[0] for row in body.split('\n'))
+    found = CALL.search(body)
+    while found:
+        depth, quoted, i = 1, False, found.end()
+        while i < len(body) and depth:
+            c = body[i]
+            if c == '"' and body[i - 1] != '\\':
+                quoted = not quoted
+            elif not quoted:
+                depth += (c == '(') - (c == ')')
+            i += 1
+        yield found.group(1).lower(), body[found.end():i - 1]
+        found = CALL.search(body, i)
+
+
 def listed(text, path, manifest):
-    """path (or its path relative to the manifest's directory) is named outside comments in the manifest."""
-    body = '\n'.join(row.split('#', 1)[0] for row in text.replace('\r\n', '\n').split('\n'))
+    """path (or its path relative to the manifest's directory) is named in a manifest call outside comments,
+    and in no call that removes or excludes it (list REMOVE_ITEM/FILTER, HEADER_FILE_ONLY)."""
     folder = str(PurePosixPath(manifest).parent)
     names = {path} | ({path[len(folder) + 1:]} if folder != '.' and path.startswith(folder + '/') else set())
-    return any(re.search(r'(?:^|(?<=[\s"\'(])|(?<=\}/))' + re.escape(n) + r'(?=[\s"\')]|$)', body, re.M) for n in names)
+    named = removed = False
+    for name, args in commands(text):
+        if not any(re.search(r'(?:^|(?<=[\s"\'(])|(?<=\}/))' + re.escape(n) + r'(?=[\s"\')]|$)', args, re.M) for n in names):
+            continue
+        if (name == 'list' and re.search(r'\b(REMOVE_ITEM|FILTER)\b', args)) or (
+                name == 'set_source_files_properties' and 'HEADER_FILE_ONLY' in args):
+            removed = True
+        elif name != 'set_source_files_properties':
+            named = True
+    return named and not removed
 
 
 def observe(root, item, strict=True):
@@ -241,8 +276,26 @@ def same(pin, observed):
     return bool(pin) and pin.get('blob') == observed.get('blob') and pin.get('region_sha256') == observed.get('region_sha256')
 
 
-def load(root, path, commit=None):
-    """(packet, blob id, commit) from the root repository; without commit, HEAD, refused while the path is uncommitted."""
+def ancestor(repo, old, new):
+    """old is new or an ancestor of it; a missing object is not."""
+    return _git(repo, 'merge-base', '--is-ancestor', old, new, codes=(0, 1, 128))[0] == 0
+
+
+def reviewed(root, commit):
+    """Refuses unless the packet commit is on the declared root integration line (the reviewed workflow line)."""
+    from .landing import lines, repository as side
+    declared = lines(root)
+    drift(declared.get('root'), 'No root integration line is declared (controller config integration_lines.root); '
+          'packets are re-pinned and decided only from the reviewed root line')
+    repo, ref = side(root, 'root', declared), declared['root']['ref']
+    drift(ancestor(repo, commit, commit_of(repo, ref)),
+          f'Packet commit {commit[:12]} is not on the reviewed root line {ref}; land the packet there first')
+
+
+def load(root, path, commit=None, line=False):
+    """(packet, blob id, commit) from the root repository; without commit, HEAD, refused while the path is uncommitted.
+
+    line: the commit must also be on the reviewed root line (repin, request and decisions)."""
     repo = repository(root, '.')
     _path(path, 'packet'); require(path.startswith(DIRECTORY) and path.endswith('.json'), 'Packets live in ' + DIRECTORY)
     if commit is None:
@@ -251,6 +304,8 @@ def load(root, path, commit=None):
     else:
         require(isinstance(commit, str) and re.fullmatch(r'[0-9a-f]{40}', commit), 'Full packet commit required')
     commit = commit_of(repo, commit)
+    if line:
+        reviewed(root, commit)
     blob = blob_at(repo, commit, path)
     drift(blob is not None, f'{path} is not committed at {commit[:12]}')
     try:
@@ -261,7 +316,35 @@ def load(root, path, commit=None):
 
 
 def declaration(packet, key):
-    return fingerprint(packet['inputs'][key])
+    """Pins belong to one input declaration under one consumer and lander set."""
+    return fingerprint(dict(input=packet['inputs'][key], consumers=sorted(packet['consumers']),
+                            landers=sorted(packet['landers'])))
+
+
+def _common(repo):
+    return (Path(repo) / _text(_git(repo, 'rev-parse', '--git-common-dir')[1]).strip()).resolve()
+
+
+def scope(root, packet, hook):
+    """Item ids a shared_hook is decided on; DriftError unless the packet covers the hook.
+
+    An item_id hook is one packet item. Every file of a files hook must be an input path of the
+    packet in the same repository (native/ files: the declared native line repository)."""
+    drift(hook.get('issue') == packet['issue'], f"Hook issue {hook.get('issue')} is not the packet's issue {packet['issue']}")
+    ids = [i['id'] for i in packet['items']]
+    if 'item_id' in hook:
+        drift(hook['item_id'] in ids, f"Packet does not cover hook scope: item {hook['item_id']!r} is not one of {ids}")
+        return [hook['item_id']]
+    from .landing import lines, repository as side
+    declared, stores = lines(root), {}
+    for item in packet['inputs'].values():
+        repo = repository(root, item['repo'] if item['role'] == 'candidate' else item['line']['repo'])
+        stores.setdefault(_common(repo), set()).add(item['path'])
+    for file in hook['files']:
+        name, path = ('native', file[len('native/'):]) if file.startswith('native/') else ('root', file)
+        drift(path in stores.get(_common(side(root, name, declared)), set()),
+              f'Packet does not cover hook scope: {file} is not an input path of the packet in the {name} repository')
+    return ids
 
 
 def latest(rows, packet, key):
@@ -299,8 +382,9 @@ def evaluate(root, packet, blob, records):
         drift(same(pin, now['pin']), f"Maintained input {key} moved from its audited pin ({pin.get('blob')}, region "
               f"{pin.get('region_sha256')}) to ({now['pin']['blob']}, region {now['pin']['region_sha256']}) at "
               f"{now['pin']['commit'][:12]}; review_packet repin --show-diff records the change")
-        code = _git(now['repo'], 'merge-base', '--is-ancestor', pin['commit'], now['pin']['commit'], codes=(0, 1))[0]
-        drift(code == 0, f"Maintained input {key}: audited commit {pin['commit'][:12]} is not on {item['line']['ref']}")
+        drift(ancestor(now['repo'], pin['commit'], now['pin']['commit']),
+              f"Maintained input {key}: audited commit {pin['commit'][:12]} is not on {item['line']['ref']} (the line "
+              'was rewritten); review_packet repin records the rewritten line')
         seen[key] = dict(now, record=record['id'])
     items = [verdict(root, packet, item, seen) for item in packet['items']]
     decision = 'APPROVED' if all(i['status'] == 'APPROVED' for i in items) else 'CHANGES_REQUIRED'
@@ -355,17 +439,38 @@ def touching(repo, old, new, path):
     return set(_text(out).split())
 
 
+def _lane(value):
+    return value.get('lane') if isinstance(value, dict) else None
+
+
 def excluded(state, packet, commits):
-    """Lanes that may not approve a changed region: declared consumers/landers, and authors/landers of those commits."""
-    result = set(packet.get('consumers', [])) | set(packet.get('landers', []))
+    """(lanes that may not approve a changed region, touching commits no lane record attributes).
+
+    Declared consumers and landers, every lane holding a shared_hook of the packet's issue, and the
+    authors, producers and landers of the touching commits. A landing's lander is its recorded or
+    claimed lander or its batch integrator; a commit with none of these counts as landed by the
+    declared landers."""
+    result = set(packet['consumers']) | set(packet['landers'])
+    integrators = {}
+    for batch in (state.get('throughput', {}).get('batches') or {}).values():
+        for key in batch.get('candidates') or {}:
+            integrators.setdefault(key, set()).update(
+                x for x in (batch.get('integrator'), batch.get('reassigned_from')) if isinstance(x, str))
+    known = set()
     for key, lane in state.get('lanes', {}).items():
+        if any(isinstance(h, dict) and h.get('issue') == packet['issue'] for h in lane.get('shared_hooks') or []):
+            result.add(key)
         mine = {c for n in ('root', 'native') for c in ((lane.get(n) or {}).get('commits') or []) + [(lane.get(n) or {}).get('head')]}
         landed = {(lane.get('integration') or {}).get(k) for k in ('root_commit', 'native_commit')}
-        if commits & (mine | landed):
-            result.add(key)
-            if commits & landed:
-                result.add(((lane.get('integration_landing') or {}).get('lander') or {}).get('lane'))
-    return result - {None}
+        if commits & mine:
+            result.add(key); known |= commits & mine
+        if commits & landed:
+            landing = lane.get('integration_landing') if isinstance(lane.get('integration_landing'), dict) else {}
+            by = ({_lane(landing.get('lander')), _lane(landing.get('claimed_lander'))} | integrators.get(key, set())) - {None}
+            result |= by | {key}
+            if by:
+                known |= commits & landed
+    return result - {None}, commits - known
 
 
 def prepare(root, packet, blob, commit, key, rows):
@@ -379,27 +484,61 @@ def prepare(root, packet, blob, commit, key, rows):
     if old_pin and old_pin.get('blob'):
         before = region(_text(content(now['repo'], old_pin['blob'])), item.get('region'))
     changed = not old_pin or old_pin.get('region_sha256') != now['pin']['region_sha256']
+    kept = bool(old_pin) and ancestor(now['repo'], old_pin['commit'], now['pin']['commit'])  # False after a rewrite.
     diff = region_diff(before, now['region'], key, old_pin and old_pin['commit'], now['pin']['commit'])
-    commits = touching(now['repo'], old_pin and old_pin['commit'], now['pin']['commit'], item['path']) if changed else set()
+    commits = touching(now['repo'], old_pin['commit'] if kept else None, now['pin']['commit'], item['path']) if changed else set()
     value = dict(packet=packet['schema'], packet_blob=blob, packet_commit=commit, input=key,
                  declaration=declaration(packet, key), line=item['line'], path=item['path'], old_pin=old_pin,
                  new_pin=now['pin'], commit=now['pin']['commit'], region_changed=changed,
                  region_diff_sha256=_sha(diff.encode('utf-8', 'surrogateescape')), supersedes=old and old['id'])
     return dict(value=value, diff=diff, previous=old and old['id'], commits=commits,
-                unchanged=same(old_pin, now['pin']))
+                unchanged=same(old_pin, now['pin']) and kept)
 
 
-def repin(reg, packet, input, actor, actor_generation, evidence, approve=False, commit=None, show=None, dry_run=False):
+def covered(reg, packet):
+    """{consumer lane: ids of its shared_hooks the packet covers}, from committed lane records (runs git)."""
+    from .storage import read_record
+    result = {}
+    for key in packet['consumers']:
+        ids = []
+        for hook in (read_record(reg, ('lanes',), key) or {}).get('shared_hooks') or []:
+            try:
+                scope(reg.root, packet, hook); ids.append(hook['id'])
+            except DriftError:
+                pass
+        if ids:
+            result[key] = ids
+    return result
+
+
+def _may(state, actor, lane):
+    from .approvals import authorize
+    try:
+        authorize(state, actor, lane)
+        return True
+    except Rejected:
+        return False
+
+
+def repin(reg, packet, input, actor, actor_generation, evidence, approve=False, commit=None, show=None, dry_run=False,
+          region_diff_sha256=None):
     """Record an audited re-pin of one maintained input (see module docstring for who may approve)."""
     from .approvals import ancestry, authenticate
     from .provenance import stamp
     require(isinstance(approve, bool), 'approve must be true or false')
-    definition, blob, commit = load(reg.root, packet, commit)
+    definition, blob, commit = load(reg.root, packet, commit, line=True)
     plan = prepare(reg.root, definition, blob, commit, input, reg.snapshot(section=('packet_pins',)))
     if show:
         show(plan['diff'])
     if dry_run or plan['unchanged']:
         return dict(plan['value'], dry_run=dry_run, unchanged=plan['unchanged'], recorded=plan['previous'] if plan['unchanged'] else None)
+    changed, expected = plan['value']['region_changed'], plan['value']['region_diff_sha256']
+    if changed:
+        require(approve, 'The reviewed region changed (or has never been pinned): read the diff (--show-diff) and record '
+                'approve:true with its region_diff_sha256 as an authenticated reviewer who is not a consumer or lander')
+        require(region_diff_sha256 == expected, f'region_diff_sha256 must be {expected} (sha256 of the region diff '
+                '--show-diff prints now); approve only the diff you read')
+    holders = covered(reg, definition) if changed else {}
     reg.evidence(evidence)
     chain = ancestry()
     code = stamp()
@@ -409,13 +548,19 @@ def repin(reg, packet, input, actor, actor_generation, evidence, approve=False, 
         current = latest(rows, definition, input)
         require((current and current['id']) == plan['previous'], 'Audited pin changed while diffing; rerun repin')
         value = plan['value']
-        if value['region_changed']:
-            require(approve, 'The reviewed region changed (or has never been pinned): read the diff (--show-diff) and '
-                    'record approve:true as an authenticated reviewer who is not a consumer or lander')
-            refused = excluded(state, definition, plan['commits'])
+        if changed:
+            refused, unknown = excluded(state, definition, plan['commits'])
             require(actor not in refused, f'Self re-pin refused: {actor} consumes, lands or authored this change; '
                     'another authenticated reviewer must approve it')
-        value = dict(value, approval='reviewer' if value['region_changed'] else 'region-unchanged', actor=identity,
+            lanes = [state['lanes'][k] for k, ids in sorted(holders.items()) if k in state['lanes'] and
+                     set(ids) & {h.get('id') for h in state['lanes'][k].get('shared_hooks') or []}]
+            require(lanes, 'No declared consumer holds a shared_hook this packet covers; a changed region is approved '
+                    'only by a reviewer with authority over such a lane')
+            require(any(_may(state, actor, lane) for lane in lanes), f'{actor} must own the workstream of, or hold the '
+                    'exact delegated assignment for, a consumer holding a hook this packet covers: ' +
+                    ', '.join(lane['lane'] for lane in lanes))
+            value = dict(value, unattributed_commits=len(unknown), unattributed_sample=sorted(unknown)[:20])
+        value = dict(value, approval='reviewer' if changed else 'region-unchanged', actor=identity,
                      evidence=evidence)
         identity_id = fingerprint(value)
         require(identity_id not in rows, 'Identical re-pin already recorded')
@@ -425,14 +570,31 @@ def repin(reg, packet, input, actor, actor_generation, evidence, approve=False, 
         return copy.deepcopy(rows[identity_id])
 
 
+def evaluator(reg):
+    """Refuses unless a live controller runs recorded code that contains this evaluator."""
+    from .provenance import claimed, git as quiet
+    from .storage import read_record
+    control = (read_record(reg, (), '') or {}).get('control') or {}
+    require(control.get('controller') and reg.probe(control['controller']) == 'alive',
+            'No live controller to evaluate packets; request again once it runs')
+    code = claimed(control) or {}
+    sha = code.get('sha')
+    require(isinstance(sha, str) and quiet(code.get('path') or reg.root, 'cat-file', '-e', sha + ':workflow/review_packet.py')
+            is not None, f"Controller {sha or 'of unrecorded revision'} cannot evaluate packets yet; switch it to a "
+            'release that contains workflow/review_packet.py first')
+
+
 def request(reg, requester, requester_generation, packet, lanes, hook, commit=None):
-    """An authenticated lane asks the controller to evaluate a packet for lanes holding this shared_hook."""
+    """An authenticated lane asks the controller to evaluate a packet for consumer lanes holding a hook it covers."""
     from .approvals import ancestry, authenticate, hooks
-    definition, blob, commit = load(reg.root, packet, commit)
+    definition, blob, commit = load(reg.root, packet, commit, line=True)
     spec = hooks([hook])[0]
-    require(spec['issue'] == definition['issue'], f"Hook issue {spec['issue']} is not the packet's issue {definition['issue']}")
+    scope(reg.root, definition, spec)
     require(isinstance(lanes, list) and lanes and all(isinstance(t, dict) and set(t) == {'key', 'generation'} for t in lanes)
             and len({t['key'] for t in lanes}) == len(lanes), 'lanes [{key, generation}] required')
+    outside = sorted(t['key'] for t in lanes if t['key'] not in definition['consumers'])
+    require(not outside, "Packet decisions go only to the packet's declared consumers: " + ', '.join(outside))
+    evaluator(reg)
     chain = ancestry()
     with reg.transaction() as state:
         identity = authenticate(reg, state, requester, requester_generation, chain)
@@ -440,21 +602,28 @@ def request(reg, requester, requester_generation, packet, lanes, hook, commit=No
             lane = reg.lane(state, target['key'], target['generation'])
             require(spec['id'] in [h.get('id') for h in lane.get('shared_hooks') or []],
                     target['key'] + ' holds no matching shared_hook dependency')
-        rows = state.setdefault('packet_requests', {})
-        value = dict(packet=packet, commit=commit, blob=blob, schema=definition['schema'], hook_id=spec['id'], hook=spec,
+        rows, now = state.setdefault('packet_requests', {}), reg.clock()
+        for key in [k for k, r in rows.items() if r['status'] != 'requested' and r.get('decided_at', now) < now - PRUNE_SECONDS]:
+            del rows[key]
+        value = dict(packet=packet, commit=commit, blob=blob, schema=definition['schema'], hook_id=spec['id'],
                      lanes=sorted(lanes, key=lambda t: t['key']))
         for row in rows.values():
             if row['status'] == 'requested' and {k: row.get(k) for k in value} == value:
                 return copy.deepcopy(row)
-        identity_id = fingerprint(dict(value, at=reg.clock(), seq=len(rows) + 1))
-        rows[identity_id] = dict(value, id=identity_id, status='requested', requested_by=identity, at=reg.clock(),
-                                 seq=len(rows) + 1)
+        require(sum(r['status'] == 'requested' and (r.get('requested_by') or {}).get('lane') == requester
+                    for r in rows.values()) < OPEN_REQUESTS,
+                f'{requester} already has {OPEN_REQUESTS} open packet requests; wait for the controller to decide them')
+        seq = max((r.get('seq', 0) for r in rows.values()), default=0) + 1
+        identity_id = fingerprint(dict(value, at=now, seq=seq))
+        rows[identity_id] = dict(value, id=identity_id, status='requested', requested_by=identity, at=now, seq=seq)
         reg.event(state, 'packet_evaluation_requested', requester, request=identity_id, packet=definition['schema'])
         return copy.deepcopy(rows[identity_id])
 
 
 def tick(controller):
-    """Evaluate the oldest requested packet, at most one per tick and one meta read per POLL_SECONDS."""
+    """Evaluate the oldest requested packet, at most one per tick and one meta read per POLL_SECONDS.
+
+    A failed evaluation is retried after RETRY_SECONDS; the ATTEMPTS-th failing attempt refuses the request."""
     from .approvals import packet_decision
     reg, now = controller.reg, controller.reg.clock()
     if getattr(controller, '_packet_poll', 0) > now:
@@ -463,12 +632,17 @@ def tick(controller):
     retry = getattr(controller, '_packet_retry', None)
     if retry is None:
         retry = {}; controller._packet_retry = retry
+    failures = getattr(controller, '_packet_failures', None)
+    if failures is None:
+        failures = {}; controller._packet_failures = failures
     rows = [r for r in reg.snapshot(section=('packet_requests',)).values()
             if r.get('status') == 'requested' and retry.get(r['id'], 0) <= now]
     for row in sorted(rows, key=lambda r: (r.get('at', 0), r.get('seq', 0)))[:1]:
         try:
-            return packet_decision(reg, row['id'], getattr(controller, 'base', None))
+            return packet_decision(reg, row['id'], getattr(controller, 'base', None),
+                                   final=failures.get(row['id'], 0) + 1 >= ATTEMPTS)
         except (Rejected, OSError, ValueError) as exc:
+            failures[row['id']] = failures.get(row['id'], 0) + 1
             retry[row['id']] = now + RETRY_SECONDS
             reg.notice(None, 'packet_evaluation_deferred', dict(request=row['id'], error=str(exc)))
     return None

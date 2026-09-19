@@ -63,42 +63,68 @@ def _controller(reg, control, me):
             'with review_packet request')
 
 
-def packet_decision(reg, request_id, directory=None):
+def _refuse(reg, me, request_id, error):
+    with reg.transaction() as state:
+        _controller(reg, reg.control(state), me)
+        row = state['packet_requests'][request_id]
+        if row['status'] == 'requested':
+            row.update(status='refused', error=error, decided_at=reg.clock())
+            reg.event(state, 'packet_evaluation_refused', None, request=request_id, error=error)
+        return copy.deepcopy(row)
+
+
+def _standing(rows, lane, hook_id, records):
+    """Why a reviewer's rejection at the lane's pins outranks this packet (no reviewer re-pin since), else None."""
+    row = _hook(rows, lane['lane'], hook_id)
+    if (row and row.get('source') != 'review_packet' and row['status'] == 'rejected' and row['pins'] == pins(lane) and
+            not any(r.get('approval') == 'reviewer' and r.get('at', 0) > row['at'] for r in records)):
+        return f"reviewer rejection {row['id']} stands at these pins"
+    return None
+
+
+def packet_decision(reg, request_id, directory=None, final=False):
     """Controller only: re-run a requested packet's verify at its audited pins and record the outcome.
 
-    APPROVED is an approved and CHANGES_REQUIRED a rejected shared_hook row (conditions: the missing
-    changes) for each requested lane still holding the hook at that generation. A drifted or
-    unpinned packet marks the request refused and records nothing. The evaluation JSON written
-    under output/workflow/review-packets/ is the rows' hashed evidence."""
+    The packet must still be on the reviewed root line and cover the hook: an item_id hook is decided
+    on that item only. APPROVED is an approved and CHANGES_REQUIRED a rejected shared_hook row
+    (conditions: the missing changes) for each requested lane that still holds the hook at that
+    generation, is a declared consumer, approved none of the pins used and has no standing reviewer
+    rejection at its pins. A drifted, unpinned or uncovered packet (or any failure when final) marks
+    the request refused and records nothing. The evaluation JSON written under
+    output/workflow/review-packets/ is the rows' hashed evidence."""
     from .handoff import digest
     from .provenance import stamp
-    from .review_packet import DECISIONS, DriftError, audited, evaluate, load
+    from .review_packet import DECISIONS, DriftError, audited, evaluate, load, scope
     from .storage import read_record
     me = identify(os.getpid())
     _controller(reg, (read_record(reg, (), '') or {}).get('control'), me)
     request = reg.snapshot(section=('packet_requests',)).get(request_id)
     require(isinstance(request, dict) and request.get('status') == 'requested', 'No open packet request: ' + str(request_id))
-    packet, blob, commit = load(reg.root, request['packet'], request['commit'])
-    require(blob == request['blob'], 'Packet blob differs from the request')
-    records = audited(reg.snapshot(section=('packet_pins',)), packet)
     try:
-        result = evaluate(reg.root, packet, blob, records)
-    except DriftError as exc:
-        with reg.transaction() as state:
-            _controller(reg, reg.control(state), me)
-            row = state['packet_requests'][request_id]
-            if row['status'] == 'requested':
-                row.update(status='refused', error=str(exc), decided_at=reg.clock())
-                reg.event(state, 'packet_evaluation_refused', None, request=request_id, error=str(exc))
-            return copy.deepcopy(row)
+        packet, blob, commit = load(reg.root, request['packet'], request['commit'], line=True)
+        if blob != request['blob']:
+            raise DriftError('Packet blob differs from the request')
+        hook = next((h for t in request['lanes'] for h in (read_record(reg, ('lanes',), t['key']) or {}).get('shared_hooks') or []
+                     if h.get('id') == request['hook_id']), None)
+        if hook is None:
+            raise DriftError('No requested lane still holds hook ' + request['hook_id'])
+        ids = scope(reg.root, packet, hook)
+        result = evaluate(reg.root, packet, blob, audited(reg.snapshot(section=('packet_pins',)), packet))
+    except (Rejected, OSError, ValueError) as exc:
+        if not (isinstance(exc, DriftError) or final):
+            raise
+        return _refuse(reg, me, request_id, str(exc) or type(exc).__name__)
+    chosen = [i for i in result['items'] if i['id'] in ids]
+    decision = 'APPROVED' if all(i['status'] == 'APPROVED' for i in chosen) else 'CHANGES_REQUIRED'
+    result = dict(result, hook=hook, scope=ids, hook_decision=decision)
     folder = Path(directory or reg.root / 'output/workflow') / 'review-packets'
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / (request_id + '.json')
     path.write_text(json.dumps(result, indent=1, sort_keys=True), encoding='utf-8')
     evidence = dict(path=str(path), sha256=digest(path))
     reg.evidence(evidence)
-    status = DECISIONS[result['decision']]
-    conditions = [f"{i['id']}: {i['missing_change']}" for i in result['items'] if i['status'] != 'APPROVED']
+    status = DECISIONS[decision]
+    conditions = [f"{i['id']}: {i['missing_change']}" for i in chosen if i['status'] != 'APPROVED']
     used = {k: v['record'] for k, v in result['pins'].items() if 'record' in v}
     code = stamp()
     with reg.transaction() as state:
@@ -107,23 +133,30 @@ def packet_decision(reg, request_id, directory=None):
         require(row and row['status'] == 'requested', 'Packet request already closed: ' + request_id)
         now = audited(state.get('packet_pins', {}), packet)
         require({k: (now.get(k) or {}).get('id') for k in used} == used, 'Audited pins changed during evaluation')
+        records = [now[k] for k in used]
+        approvers = {(r.get('actor') or {}).get('lane') for r in records if r.get('approval') == 'reviewer'}
         identity = dict(decided_by=result['decided_by'], controller=me, request=request_id, requested_by=row['requested_by'])
         written, skipped = [], []
         for target in row['lanes']:
             lane = state['lanes'].get(target['key'])
-            if not lane or lane['generation'] != target['generation'] or row['hook_id'] not in [
-                    h.get('id') for h in lane.get('shared_hooks') or []]:
-                skipped.append(target['key']); continue
+            held = next((h for h in (lane or {}).get('shared_hooks') or [] if h.get('id') == row['hook_id']), None)
+            reason = ('lane or generation changed' if not lane or lane['generation'] != target['generation'] else
+                      'no longer holds the hook' if held is None else
+                      'not a declared consumer of the packet' if lane['lane'] not in packet['consumers'] else
+                      'approved a pin this decision uses' if lane['lane'] in approvers else
+                      _standing(ledger(state), lane, row['hook_id'], records))
+            if reason:
+                skipped.append(dict(lane=target['key'], reason=reason)); continue
             item = write(reg, state, dict(kind='shared_hook', source='review_packet', lane=lane['lane'],
-                                          generation=lane['generation'], hook_id=row['hook_id'], hook=row['hook'],
+                                          generation=lane['generation'], hook_id=row['hook_id'], hook=held,
                                           pins=pins(lane), subject=dict(packet=row['packet'], commit=commit, blob=blob,
-                                          inputs=result['pins'], decision=result['decision']), status=status,
+                                          inputs=result['pins'], scope=ids, decision=decision), status=status,
                                           conditions=conditions, evidence=evidence, reviewer=identity,
                                           decided_by=result['decided_by']), code)
             reg.event(state, 'shared_hook_decided', lane['lane'], approval=item['id'], hook=row['hook_id'], status=status,
                       decided_by=result['decided_by'])
             written.append(item['id'])
-        row.update(status='decided' if written else 'stale', decision=result['decision'], decided_by=result['decided_by'],
+        row.update(status='decided' if written else 'stale', decision=decision, decided_by=result['decided_by'],
                    approvals=written, skipped=skipped, evidence=evidence, decided_at=reg.clock())
         return copy.deepcopy(row)
 
