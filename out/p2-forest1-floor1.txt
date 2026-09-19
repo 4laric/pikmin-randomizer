@@ -1,0 +1,22 @@
+P2_FOREST1_P1_1
+cave forest_1
+floor 1
+unit_pool 1_units_cent3_tsuchi.txt
+unit_pool_sha256 5082b1e21275b51b3b32ef0978e62b5de2c2339750fdf6ba30e60fdde9d89fff
+unit item_cap_tsuchi
+unit way3_tsuchi
+unit way4_tsuchi
+unit wayl_tsuchi
+unit way2_tsuchi
+unit way2x2_tsuchi
+unit room_cent3_4_tsuchi
+enemy UjiB min=4 weight=0 target=-
+enemy UjiA min=2 weight=0 target=-
+enemy UjiA min=2 weight=0 target=-
+enemy UjiA min=2 weight=0 target=-
+enemy Clover min=- weight=- target=4
+enemy Tukushi min=- weight=- target=2
+enemy KareOoinu_s min=- weight=- target=2
+treasure juji_key_fc
+cap_count 0
+end
