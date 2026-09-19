@@ -106,11 +106,15 @@ sessions must not restart production.
 Running workers keep the CLI paths they were given; new launches get the release's.
 Keep old release worktrees until no launch refers to them.
 
-The standard interval is 30 seconds. A registry event or a change to the config,
-WAKE, integrator inbox or receipts ends the wait early, but a tick never starts
-sooner than `min_tick_seconds` (default 5, from 0 to the interval) after the
-previous one began: live registry events arrive about every 5 seconds, so without
-this floor the main loop would tick about three times as often. A 72–77% RAM band limits new launches, one per
+The standard interval is 30 seconds. A change to the config, WAKE, integrator
+inbox or receipts ends the wait early, but a tick never starts sooner than
+`min_tick_seconds` (default 5, from 0 to the interval) after the previous one
+began. Registry events end the wait only with `wake_on_registry_events: true`
+(default false): live events arrive about every 5 seconds, so turning it on
+roughly triples the tick rate while the writer lock is saturated. A wait that
+finds the registry locked past its 2-second read timeout keeps waiting instead of
+raising, and any other wait failure is written to `error.json` and falls back to
+the plain interval, so a wait can no longer end the service. A 72–77% RAM band limits new launches, one per
 tick. Do not invent tasks to fill RAM. Existing jobs are not killed when memory
 rises. The common two-heavy-build pool remains authoritative. Live build processes
 with recently changing build logs suppress false model-progress alarms.

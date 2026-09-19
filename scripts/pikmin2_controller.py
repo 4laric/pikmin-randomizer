@@ -29,6 +29,9 @@ def main():
     spacing = config.get('min_tick_seconds', 5)  # Registry events arrive every few seconds.
     if type(spacing) not in (int, float) or not 0 <= spacing <= interval:
         parser.error('min_tick_seconds must be a number between 0 and the wait interval (%s)' % interval)
+    registry_events = config.get('wake_on_registry_events', False)  # Opt-in: ticks on every registry event.
+    if type(registry_events) is not bool:
+        parser.error('wake_on_registry_events must be true or false')
     registry = Registry(args.root / 'output/workflow/registry.sqlite3', args.root)
     registry.controller_claim(identify(os.getpid()))
     controller = Controller(registry, config)
@@ -59,7 +62,7 @@ def main():
     if config.get('integrator_inbox'):
         watched.append(args.root / config['integrator_inbox'])
     watched.extend(args.root / path for path in config.get('receipts', []))
-    waiter = EventWaiter(registry.path, watched, controller.base / 'STOP')
+    waiter = EventWaiter(registry.path, watched, controller.base / 'STOP', registry_events=registry_events)
     while not (controller.base / 'STOP').exists():
         started = waiter.clock()
         try:
@@ -75,7 +78,13 @@ def main():
         if args.once:
             memory_monitor.set()
             return 0
-        waiter.paced(interval, started, spacing)
+        try:
+            waiter.paced(interval, started, spacing)
+        except Exception as exc:  # A failed wait must not end the service; fall back to the plain interval.
+            write(controller.base / 'error.json', dict(at=time.time(), error=str(exc), type=type(exc).__name__, stage='wait',
+                traceback=''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))))
+            print(str(exc), file=sys.stderr, flush=True)
+            time.sleep(max(0, started + interval - waiter.clock()))
     memory_monitor.set()
     if dashboard_monitor is not None: dashboard_monitor.set()
     if dispatch_monitor is not None: dispatch_monitor.set()

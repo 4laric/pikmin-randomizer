@@ -63,6 +63,28 @@ class WakeupTests(unittest.TestCase):
         for value in [-1, 16, True]:
             with self.assertRaises(ValueError): waiter.paced(15, 0, value)
 
+    def test_registry_events_can_be_ignored_while_files_still_wake(self):
+        waiter = EventWaiter(self.reg.path, [self.mail], registry_events=False)
+        cursor = waiter.token()
+        with self.reg.transaction() as state:
+            self.reg.event(state, 'test', None)
+        self.assertEqual(waiter.wait(0, cursor)['reason'], 'timeout')
+        (self.mail / 'approval.md').write_text('ADMIT 54')
+        self.assertEqual(waiter.wait(0, cursor)['reason'], 'changed')
+
+    def test_locked_registry_keeps_waiting_instead_of_raising(self):
+        import sqlite3
+        waiter = EventWaiter(self.reg.path, [self.mail], busy_timeout=.05)
+        cursor = waiter.token()
+        holder = sqlite3.connect(self.reg.path, timeout=.05)
+        self.addCleanup(holder.close)
+        holder.execute('BEGIN EXCLUSIVE')
+        self.assertIsNone(waiter.poll())
+        self.assertEqual(waiter.wait(0, cursor)['reason'], 'timeout')
+        self.assertEqual(EventWaiter(self.reg.path, busy_timeout=.05).wait(0)['reason'], 'timeout')  # No cursor yet.
+        holder.rollback()
+        self.assertEqual(waiter.wait(0, cursor)['reason'], 'timeout')
+
 
 if __name__ == '__main__':
     unittest.main()
