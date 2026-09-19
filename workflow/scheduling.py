@@ -133,12 +133,12 @@ class SchedulingMixin:
     def reassign_pool_worker(self, worker_id, roles, capabilities, authorized_by, reason):
         """Change an idle worker's role/capability contract in place.
 
-        Reassignment is explicit and fenced: the worker must already be
-        registered, own a live lane, and have no open assignment. This lets an
-        operator promote idle capacity without manufacturing a duplicate
-        worker identity or stealing an active job.
+        Reassignment is explicit and fenced on the worker's lanes as a set: no open assignment, no
+        launch in flight for any of them, and every unfinished one stopped (recovery-safe). An idle
+        pool worker has no live process, so liveness is not required. The event keeps both contracts.
         """
-        require(nonempty(reason), 'Reassignment reason required')
+        require(nonempty(reason) and nonempty(authorized_by), 'Reassignment reason and authorization required')
+        require(isinstance(roles, list) and isinstance(capabilities, list), 'Explicit role and capability lists required')
         with self.transaction() as state:
             data = self.scheduling(state)
             old = data['workers'].get(worker_id)
@@ -146,17 +146,22 @@ class SchedulingMixin:
             require(not any(a['worker_id'] == worker_id and a['status'] in OPEN
                             for a in data['assignments'].values()),
                     'Cannot reassign worker with an open assignment')
-            lane = next((l for l in state['lanes'].values() if l['worker_id'] == worker_id), None)
-            require(lane is not None, 'Worker lane is not registered')
-            require(lane['state'] != 'done' and self.probe(lane['process']) == 'alive',
-                    'Worker lane must be live for reassignment')
+            lanes = [l for l in state['lanes'].values() if l.get('worker_id') == worker_id]
+            require(lanes, 'Worker lane is not registered')
+            keys = {l['lane'] for l in lanes}
+            require(not any(x.get('lane') in keys and x.get('status') in ('intent', 'spawned', 'running', 'exiting')
+                            for x in state.get('control', {}).get('launches', {}).values()),
+                    'Worker has a launch in flight')
+            require(all(self.recovery_safe(state, l) for l in lanes if l['state'] != 'done'),
+                    'Worker lane or protected child is live/unknown')
             record = dict(worker_id=worker_id, roles=sorted(set(roles)),
                           capabilities=sorted(set(capabilities)), authorized_by=authorized_by)
             require(record['roles'] and set(record['roles']) <= ROLES, 'Explicit known roles required')
             require(all(nonempty(c) for c in record['capabilities']), 'Explicit capability strings required')
             data['workers'][worker_id] = record
-            self.event(state, 'pool_worker_reassigned', lane['lane'], worker_id=worker_id,
-                       reason=reason, roles=record['roles'], capabilities=record['capabilities'])
+            latest = max(lanes, key=lambda l: (l['state'] != 'done', l.get('created_at') or 0))
+            self.event(state, 'pool_worker_reassigned', latest['lane'], worker_id=worker_id, reason=reason,
+                       roles=record['roles'], capabilities=record['capabilities'], previous=copy.deepcopy(old))
             return record
 
     def enqueue_job(self, record):
@@ -383,8 +388,12 @@ class SchedulingMixin:
             require(len(leases) + len(pending) <= state['settings']['max_heavy_builds'], 'Heavy-build capacity exhausted')
         return item
 
-    def plan_assignment(self, assignment_id, models, ram_percent):
-        """Atomic validation + existing controller launch-intent schema, never spawn."""
+    def plan_assignment(self, assignment_id, models, ram_percent, fresh_session=True):
+        """Atomic validation + existing controller launch-intent schema, never spawn.
+
+        A provisioned lane's first launch starts a fresh OpenCode session (fresh_session): the worker's
+        inherited session belongs to its previous, unrelated lane. The controller adopts the new session
+        as the lane's task once the runner publishes it; later launches of the lane resume it."""
         from .control import fingerprint
         from .provenance import stamp
         require(models and all(nonempty(m) and '/' in m for m in models), 'Provider/model chain required')
@@ -408,6 +417,8 @@ class SchedulingMixin:
                           status='intent', process=None, created_at=self.clock(), attempts=0,
                           work_class=data['jobs'][item['job']].get('work_class', 'existing'),
                           focus=data['jobs'][item['job']].get('focus', 'existing_content'), code_revision=code)
+            if fresh_session and lane.get('previous_lane') and lane['generation'] == 1 and not lane.get('session_lane'):
+                launch['fresh_session'] = True
             c['launches'][identity] = launch
             item.update(launch_id=identity, status='dispatched')
             self.event(state, 'launch_intent', lane['lane'], action=identity)

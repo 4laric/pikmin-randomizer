@@ -14,14 +14,19 @@ from workflow.runner import write
 from workflow.wakeup import EventWaiter
 import os
 
+FATAL = {}  # Where a last-resort traceback goes once the output directory is known.
 
-def main():
+
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--config', type=Path, required=True)
     parser.add_argument('--once', action='store_true', help='One real reconciliation/dispatch tick')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    FATAL.update(root=args.root, base=args.root / 'output/workflow/controller')
     config = json.loads(args.config.read_text(encoding='utf-8-sig'))
+    if isinstance(config, dict) and isinstance(config.get('output'), str):
+        FATAL['base'] = args.root / config['output']
     from workflow.landing import CONFIG
     if 'integration_lines' in config and args.config.resolve() != (args.root / CONFIG).resolve():
         parser.error(f'integration_lines is read only from <root>/{CONFIG}; declare it there')  # Never silently unchecked.
@@ -35,6 +40,8 @@ def main():
     registry = Registry(args.root / 'output/workflow/registry.sqlite3', args.root)
     registry.controller_claim(identify(os.getpid()))
     controller = Controller(registry, config)
+    from workflow.controller import record_restart
+    record_restart(registry, controller.base)  # The wrapper's saved crash logs, if the last run failed.
     from workflow.build_capacity import start_monitor
     memory_monitor = start_monitor(controller)
     dashboard_monitor = None
@@ -94,5 +101,24 @@ def main():
     return 0
 
 
+def run(argv=None):
+    """main(), but an exception escaping it (startup, monitors, shutdown) leaves its traceback in
+    <output>/error.json and on stderr before the non-zero exit the restart wrapper preserves."""
+    try:
+        return main(argv)
+    except Exception as exc:
+        text = ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        print(text, file=sys.stderr, flush=True)
+        base, root = FATAL.get('base'), FATAL.get('root')
+        try:
+            if base is not None and base.resolve().is_relative_to((root / 'output').resolve()):  # Private output only.
+                base.mkdir(parents=True, exist_ok=True)
+                write(base / 'error.json', dict(at=time.time(), error=str(exc), type=type(exc).__name__,
+                                                stage='fatal', pid=os.getpid(), traceback=text))
+        except OSError:
+            pass  # stderr already holds the traceback.
+        return 1
+
+
 if __name__ == '__main__':
-    raise SystemExit(main())
+    raise SystemExit(run())

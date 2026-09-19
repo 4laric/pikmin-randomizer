@@ -5,26 +5,40 @@ from .handoff import Rejected
 
 
 def prepare_batch(controller, work, issue_reader, config, prepare):
+    """Only an attempt that ran records a preparation and clears the scope's error; a skipped one
+    records why and keeps the error. Every exception is recorded; non-domain ones re-raise, and a
+    failed bookkeeping write never replaces the attempt's own exception."""
     reg=controller.reg
+    def record(scope,spec,started,**fields):
+        try:
+            with reg.transaction(sections=()) as state:  # planner_pool lives in the meta row.
+                row=state['throughput_runtime']['autofill']['planner_pool']['scopes'].get(scope,{})
+                if row.get('spec',{}).get('id')!=spec['id']:return
+                if 'skipped' in fields:
+                    row['preparation_skipped']=dict(at=reg.clock(),reason=fields['skipped']);return
+                row['preparation']=dict(at=reg.clock(),elapsed_seconds=time.monotonic()-started)
+                row.pop('preparation_skipped',None)
+                if fields.get('error'):row['error']=fields['error']
+                else:row.pop('error',None)
+        except Exception as exc:  # Bookkeeping only: log it beside the refill error file.
+            from .runner import write
+            write(controller.base/'helper-preparation-record-error.json',
+                  dict(at=reg.clock(),scope=scope,error=str(exc),type=type(exc).__name__))
     def one(entry):
         scope,spec=entry
         started=time.monotonic()
-        error=None
+        if not controller.capacity():
+            record(scope,spec,started,skipped='capacity');return False
+        if not 0<=controller.memory()<controller.config.get('ram_high',90):
+            record(scope,spec,started,skipped='memory');return False
         try:
-            if not controller.capacity() or not 0<=controller.memory()<controller.config.get('ram_high',90):
-                return False
             result=prepare(controller,spec,issue_reader)
-            return result
         except (Rejected,OSError,ValueError,KeyError) as exc:
-            error=str(exc)
-            return False
-        finally:
-            with reg.transaction(sections=()) as state:  # planner_pool lives in the meta row.
-                row=state['throughput_runtime']['autofill']['planner_pool']['scopes'].get(scope,{})
-                if row.get('spec',{}).get('id')==spec['id']:
-                    row['preparation']=dict(at=reg.clock(),elapsed_seconds=time.monotonic()-started)
-                    if error:row['error']=error
-                    else:row.pop('error',None)
+            record(scope,spec,started,error=str(exc));return False
+        except Exception as exc:
+            record(scope,spec,started,error=type(exc).__name__+': '+str(exc));raise
+        record(scope,spec,started)
+        return result
     if not work:return []
     concurrency=min(4,max(1,int(config.get('preparation_concurrency',4))),len(work))
     with ThreadPoolExecutor(max_workers=concurrency,thread_name_prefix='helper-prepare') as executor:

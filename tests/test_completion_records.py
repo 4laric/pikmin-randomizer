@@ -1,11 +1,12 @@
 import copy
+import json
 import unittest
 from tests import test_pikmin2_controller as fixtures
 from workflow.runner import write
 
 
 class CompletionRecordTests(unittest.TestCase):
-    def check_corruption(self, name, payload, normalized=False):
+    def check_corruption(self, name, payload, normalized=False, expected='running'):
         f=fixtures.ControllerTests();f.setUp();self.addCleanup(f.doCleanups)
         r,c=f.reg,f.controller
         if normalized:
@@ -28,18 +29,21 @@ class CompletionRecordTests(unittest.TestCase):
         write(good_dir/'result.json',{'kind':'exit','exit_code':0})
         c.complete_runs()
         launches=r.control_status()['launches']
-        self.assertEqual(launches[item['id']]['status'],'running')
+        self.assertEqual(launches[item['id']]['status'],expected)
         self.assertEqual(launches[good['id']]['status'],'exited')
         self.assertEqual((bad_dir/name).read_bytes(),payload)
         self.assertEqual(len(launches),2)
+        if expected=='exited':  # result.json proves the child exited; the damage stays as crash evidence.
+            self.assertEqual(list(json.loads((bad_dir/'crash.json').read_text())['damaged']),[name])
 
-    def test_nul_child_does_not_block_later_completion(self):
-        self.check_corruption('child.json',b'\0'*84)
+    def test_nul_child_with_runner_result_completes_and_keeps_evidence(self):
+        self.check_corruption('child.json',b'\0'*84,expected='exited')
 
     def test_normalized_storage(self):
-        self.check_corruption('child.json',b'\0'*84,True)
+        self.check_corruption('child.json',b'\0'*84,True,expected='exited')
 
     def test_corrupt_result_and_non_object_records(self):
-        for name,payload in [('result.json',b'{'),('child.json',b'null'),
-                             ('result.json',b'[]'),('result.json',b'{"exit_code":0}')]:
-            with self.subTest(name=name,payload=payload):self.check_corruption(name,payload)
+        # A damaged result leaves recovery to the dead-runner path, which waits for the live lane owner here.
+        for name,payload,expected in [('result.json',b'{','running'),('child.json',b'null','exited'),
+                                      ('result.json',b'[]','running'),('result.json',b'{"exit_code":0}','running')]:
+            with self.subTest(name=name,payload=payload):self.check_corruption(name,payload,expected=expected)

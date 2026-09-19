@@ -123,7 +123,7 @@ class ControllerTests(unittest.TestCase):
         self.reg.probe = lambda p: 'dead'
         self.config['models'] = ['allowed/deepseek']
         with self.reg.transaction() as state:
-            state['control']['terminal_recoveries'] = {'one': dict(launch=item['id'], evidence={'failure': 'provider_failure'})}
+            state['control']['terminal_recoveries'] = {'one': dict(launch=item['id'], status='child_stop_requested', evidence={'failure': 'provider_failure'})}
         self.controller.complete_runs()
         self.controller.complete_runs()
         launches = list(self.reg.control_status()['launches'].values())
@@ -137,7 +137,7 @@ class ControllerTests(unittest.TestCase):
         self.reg.probe=lambda p:'dead'
         self.config['models']=['allowed/deepseek']
         with self.reg.transaction() as state:
-            state['control']['terminal_recoveries']={'one':dict(launch=item['id'],evidence={'failure':'first_response_timeout'})}
+            state['control']['terminal_recoveries']={'one':dict(launch=item['id'],status='child_stop_requested',evidence={'failure':'first_response_timeout'})}
         self.controller.complete_runs();self.controller.complete_runs()
         follow=list(self.reg.control_status()['launches'].values())[-1]
         self.assertEqual(follow['models'],['allowed/deepseek'])
@@ -162,7 +162,7 @@ class ControllerTests(unittest.TestCase):
         write(directory/'result.json', {'kind': 'exit', 'exit_code': 1})
         self.reg.probe = lambda p: 'dead'
         with self.reg.transaction() as state:
-            state['control']['terminal_recoveries'] = {'one': dict(launch=item['id'], evidence={'failure': 'provider_failure'})}
+            state['control']['terminal_recoveries'] = {'one': dict(launch=item['id'], status='child_stop_requested', evidence={'failure': 'provider_failure'})}
         self.controller.complete_runs()
         follow = list(self.reg.control_status()['launches'].values())[-1]
         self.assertEqual(follow['models'], ['paid/muse', 'free/muse'])
@@ -181,7 +181,7 @@ class ControllerTests(unittest.TestCase):
         self.reg.probe = lambda p: 'dead'
         with self.reg.transaction() as state:
             state['control']['launches'][item['id']]['provider_failure_retries'] = 2
-            state['control']['terminal_recoveries'] = {'one': dict(launch=item['id'], evidence={'failure': 'output_permission'})}
+            state['control']['terminal_recoveries'] = {'one': dict(launch=item['id'], status='child_stop_requested', evidence={'failure': 'output_permission'})}
         self.controller.complete_runs()
         follow = list(self.reg.control_status()['launches'].values())[-1]
         self.assertEqual(follow['permission_retries'], 1)
@@ -202,7 +202,7 @@ class ControllerTests(unittest.TestCase):
         self.reg.probe = lambda p: 'dead'
         with self.reg.transaction() as state:
             state['control']['launches'][item['id']]['provider_failure_retries'] = 2
-            state['control']['terminal_recoveries'] = {'one': dict(launch=item['id'], evidence={'failure': 'provider_failure'})}
+            state['control']['terminal_recoveries'] = {'one': dict(launch=item['id'], status='child_stop_requested', evidence={'failure': 'provider_failure'})}
         self.controller.complete_runs()
         self.assertEqual(len(self.reg.control_status()['launches']), 1)
         self.assertEqual(self.reg.status()['lanes']['consumer']['state'], 'reconciling')

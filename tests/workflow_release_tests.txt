@@ -113,3 +113,6 @@ tests/test_workflow_landing.py
 tests/test_workflow_approvals.py
 tests/test_review_packets.py
 tests/test_no_progress.py
+tests/test_runner_turns.py
+tests/test_worker_lifecycle.py
+tests/test_controller_forensics.py

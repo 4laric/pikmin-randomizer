@@ -210,8 +210,6 @@ def recover(controller, *, table=process_table, stop=stop_exact):
                 continue  # Observe confirmed death on the next tick.
             if not reg.recovery_safe(current, fresh):
                 continue
-            if journal['launch']:
-                controller.mark_exited(journal['launch'])
             retry_models = list(models)
             failed_model = control['launches'].get(journal['launch'], {}).get('model')
             if failed_model:
@@ -221,14 +219,17 @@ def recover(controller, *, table=process_table, stop=stop_exact):
                     reset_after=policy.get('reset_after_seconds', 1800))
                 retry_models = [m for m in models if m != failed_model]
                 if failed_model in models: retry_models.append(failed_model)
+            from .consumer_verification import inherit
+            carry = {}
+            inherit(control['launches'].get(journal['launch']) or {}, carry)
+            # The stopped launch exits in the planning transaction; a refused plan leaves it for the next tick.
             item = reg.plan_launch(key, 'provider-stall:' + identity,
                 'Recover the same session after an idle provider rate-limit failure. '
                 'Inspect existing checkpoints, edits and commits; preserve completed work. '
                 'Continue only the assigned slice and record a terminal outcome. '
-                'Read docs/PIKMIN2_IMPLEMENTATION_FANOUT.md before the next runtime acceptance.', retry_models)
-            with reg.transaction() as db:
-                from .consumer_verification import inherit
-                inherit(control['launches'].get(journal['launch']) or {}, reg.control(db)['launches'][item['id']])
+                'Read docs/PIKMIN2_IMPLEMENTATION_FANOUT.md before the next runtime acceptance.', retry_models,
+                supersedes=journal['launch'] if journal['launch'] in control['launches'] else None, carry=carry)
+            with reg.transaction(sections=()) as db:  # provider_recoveries lives in the meta row.
                 reg.control(db).setdefault('provider_recoveries', {})[identity] = dict(journal, status='planned', action=item['id'])
         except (OSError, ValueError) as exc:
             reg.notice(key, 'provider_recovery_inspection_failed', {'generation': fresh['generation'], 'error': str(exc)})
@@ -404,7 +405,9 @@ def recover_terminal(controller, *, table=process_table, stop=stop_exact):
             child = json.loads((directory / 'child.json').read_text())
             runner = json.loads((directory / 'runner.json').read_text())
             start = json.loads((directory / 'start.json').read_text())
-            if start.get('session') != launch['session'] or start.get('action_id') != launch['id']:
+            # A fresh session is known only once the controller adopted the runner's published id.
+            expected = launch['session'] if start.get('fresh_session') and launch.get('session_adopted') else start.get('session')
+            if expected != launch['session'] or start.get('action_id') != launch['id']:
                 continue
             if not isinstance(child, dict) or not isinstance(runner, dict) or child == runner:
                 continue
@@ -483,9 +486,11 @@ def recover_terminal(controller, *, table=process_table, stop=stop_exact):
             with reg.transaction() as state:
                 if not fenced(state):
                     continue
-                reg.control(state).setdefault('terminal_recoveries', {}).setdefault(identity,
-                    dict(lane=key, launch=launch['id'], generation=launch['bound_generation'],
-                         child=child, runner=runner, evidence=evidence, status='stopping', at=reg.clock()))
+                journals = reg.control(state).setdefault('terminal_recoveries', {})
+                if (journals.get(identity) or {}).get('status') != 'child_stop_requested':
+                    # Each attempt records its own evidence; an aborted attempt's failure never survives.
+                    journals[identity] = dict(lane=key, launch=launch['id'], generation=launch['bound_generation'],
+                         child=child, runner=runner, evidence=evidence, status='stopping', at=reg.clock())
             # Revalidate after persisting intent. Never reuse stale liveness,
             # descendant, lease or log checks from a previous recovery attempt.
             with reg.transaction() as state:

@@ -172,13 +172,19 @@ class BatchingMixin:
 
     def batch_reassign(self, batch_id, old_integrator, old_generation, old_revision,
                        new_integrator, new_generation, new_revision, reason):
-        """Transfer a claimed batch after a fenced owner replacement."""
+        """Transfer a claimed batch after a fenced owner replacement.
+
+        old_revision is the batch revision the caller read (as for every batch operation); a stale one
+        refuses. The replacement can never be a candidate of the batch, the rule batch_claim enforces."""
         require(nonempty(reason), 'Batch reassignment reason required')
+        require(nonempty(new_integrator) and new_integrator != old_integrator, 'Distinct replacement integrator required')
         with self.transaction() as state:
             batch = _store(state).get(batch_id)
             require(batch and batch.get('state') == 'claimed', 'Claimed batch required')
             require(batch.get('integrator') == old_integrator and batch.get('generation') == old_generation,
                     'Old batch owner mismatch')
+            require(type(old_revision) is int and batch.get('revision') == old_revision, 'Stale batch revision; reread before transfer')
+            require(new_integrator not in batch.get('candidates', {}), 'Duplicate or self candidate: replacement owns a batch handoff')
             old = self.lane(state, old_integrator, old_generation)
             new = self.lane(state, new_integrator, new_generation, new_revision)
             require(self.probe(old.get('process')) == 'dead', 'Old integration owner must be stopped')
@@ -189,8 +195,9 @@ class BatchingMixin:
             require(isinstance(stream, dict) and stream.get('owner_lane') == old_integrator,
                     'Workstream owner changed; reread before transfer')
             stream.update(owner_lane=new_integrator, owner=new['owner'], issue=new['issue'])
+            self._batch_owner(state, batch['workstream'], new_integrator, new_generation)  # Same rule as every batch call.
             batch.update(integrator=new_integrator, generation=new_generation,
-                         revision=old_revision + 1, reassigned_at=self.clock(),
+                         revision=batch['revision'] + 1, reassigned_at=self.clock(),
                          reassigned_from=old_integrator, reassignment_reason=reason)
             self.event(state, 'batch_reassigned', new_integrator, batch_id=batch_id,
                        previous_owner=old_integrator, reason=reason)

@@ -36,6 +36,20 @@ def tick(controller):
             require(owner in lanes,'Shared-review owner not registered')
             identity=fingerprint([key,lane['generation'],review['file'],lane.get('root'),lane.get('native')])
             active.add(identity);old=ledger.get(identity,{})
+            target=lanes[owner]
+            if reg.probe(target.get('process'))!='alive':
+                # A stopped owner the controller can wake still gets the packet; one nothing supervises does not.
+                supervised=owner in controller.config.get('lanes',{}) and target['state']!='done'
+                reg.notice(owner,'shared_review_target_dead',dict(state=target['state'],supervised=supervised,
+                    error='Routed shared-review owner is not running'+('' if supervised else
+                          ' and has no controller launch config; routing held until it is supervised or rerouted')),
+                    status='info' if supervised else 'pending')
+                if not supervised:
+                    if old.get('status')!='owner_unsupervised':
+                        with reg.transaction(sections=()) as s:  # shared_review_routes lives in the meta row.
+                            s.setdefault('shared_review_routes',{})[identity]=dict(producer=key,generation=lane['generation'],
+                                file=review['file'],owner=owner,status='owner_unsupervised',at=now,attempts=old.get('attempts',0))
+                    continue
             try:authorize(auth,owner,lane)
             except Rejected as exc:
                 # Never send a packet the owner cannot decide; surface the misrouted config instead.

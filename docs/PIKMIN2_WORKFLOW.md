@@ -651,7 +651,9 @@ read snapshots; publication failures are recorded and retried on the next refres
 The publisher never dispatches workers or grants leases. One-shot controller
 runs retain synchronous publication.
 
-The first Muse rate-limit or verified provider failure pins that retry chain to
+Only a runner-stopped pre-tool rate limit (`kind: rate_limit`) is a rate-limit
+retry; a mid-tool limit the session did not survive is a provider failure. The
+first Muse rate-limit or verified provider failure pins that retry chain to
 the authorized DeepSeek model via `provider_fallbacks`. If DeepSeek is cooling
 down, the retry waits rather than reverting to Muse. Existing queued provider
 retries follow the same policy. Permission repairs and task failures do not

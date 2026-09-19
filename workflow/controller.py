@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import socket
 import time
 import threading
 
@@ -14,6 +15,8 @@ from .processes import identify, probe
 from .runner import write, decisions_from_text
 from .approvals import PRODUCER as SHARED_HOOKS
 from .consumer_verification import inherit
+
+TERMINAL = ('done', 'blocked', 'review_ready', 'handoff_ready', 'integrating')
 
 
 def ram_percent():
@@ -64,6 +67,9 @@ class Controller:
         require(self.base.is_relative_to(registry.root / 'output'), 'Controller output must be private')
         self.base.mkdir(parents=True, exist_ok=True)
         self.spawn = spawn or self.spawn_runner
+        from .processes import boot_time
+        from .provider_recovery import process_table
+        self.boot_time, self.process_table = boot_time, process_table  # Crash proofs; tests inject.
 
     def spawn_runner(self, directory):
         # Import implementation from its pinned checkout; workspace root stays canonical.
@@ -221,10 +227,14 @@ class Controller:
             # configuration bytes to mutate, even with an explicit policy.
             (directory / 'opencode.json').write_bytes(Path(entry['config']).read_bytes())
             entry['config'] = str(directory / 'opencode.json')
+        fresh = bool(item.get('fresh_session')) and not item.get('session_adopted')
         ready = dict(attempt_id=item['id'], lane=item['lane'], generation=lane['generation'],
-                     revision=lane['revision'], task_id=lane['task_id'], pid=identity['pid'], session=item['session'])
+                     revision=lane['revision'], task_id=lane['task_id'], pid=identity['pid'],
+                     session=None if fresh else item['session'], fresh_session=fresh)
         write(local_path(self.reg.root, entry['output']) / 'session-ready.json', ready)
-        prompt = (f"Continue your existing lane {item['lane']}. Read {entry['brief']} and "
+        opening = (f"Start lane {item['lane']} in this fresh session; earlier conversations do not apply. " if fresh else
+                   f"Continue your existing lane {item['lane']}. ")
+        prompt = (opening + f"Read {entry['brief']} and "
             f"{entry['output']}/session-ready.json. Require attempt_id={item['id']} and generation={lane['generation']} "
             "before edits. This continuation supersedes old missing-dependency instructions. Preserve committed work. "
             + item['instruction'] + '\nUse the canonical registry and private worktrees, common leased builds; no ADMIT writes. '
@@ -251,148 +261,257 @@ class Controller:
         if self.reg.control_status()['launches'][item['id']].get('model') != model:
             with self.reg.transaction() as state:
                 self.reg.control(state)['launches'][item['id']]['model'] = model
+        runner = self.config.get('runner', {})
         write(directory / 'start.json', dict(action_id=item['id'], executable=self.config['executable'],
-            worktree=entry['root'], config=entry['config'], model=model, session=item['session'], prompt=prompt))
+            worktree=entry['root'], config=entry['config'], model=model, session=None if fresh else item['session'],
+            fresh_session=fresh, prompt=prompt, exit_grace_seconds=runner.get('exit_grace_seconds', 10),
+            rate_limit_settle_seconds=runner.get('rate_limit_settle_seconds', 5)))
         return True
 
+    def child_death_proof(self, runner):
+        """Proof that no child of a stopped runner can still run, or None (the launch stays fenced).
+
+        A runner created before the current boot proves every child dead. Otherwise the process table
+        must hold no process whose parent PID is the runner's and that started after it: Windows keeps
+        an orphan's parent PID, and a recycled PID's children count as survivors."""
+        from .processes import started_before_boot
+        if started_before_boot(runner, self.boot_time):
+            return dict(kind='runner_started_before_boot', runner=runner)
+        try:
+            pid, born = int(runner['pid']), int(runner['started'])
+            require(pid > 0 and born > 0 and runner.get('host') == socket.gethostname(), 'Not a local identity')
+            rows = self.process_table()
+        except (Rejected, OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.SubprocessError):
+            return None
+        for row in rows:
+            if row.get('ParentProcessId') != pid: continue
+            started = row.get('Started')
+            if not (isinstance(started, str) and started.isdecimal()) or int(started) // 10 >= born // 10:
+                return None
+        return dict(kind='no_surviving_child', runner=runner, checked_at=self.reg.clock())
+
+    def adopt_sessions(self, snapshot):
+        """Record the fresh OpenCode session a runner published as the lane's task, fenced on the exact
+        launch, runner, generation and inherited session. Returns True when a record changed."""
+        from .runner import SESSION
+        from .storage import selected
+        changed = False
+        for item in snapshot.get('control', {}).get('launches', {}).values():
+            if (not item.get('fresh_session') or item.get('session_adopted') or
+                    item['status'] not in ('running', 'exiting')):
+                continue
+            try:
+                value = json.loads((self.launch_directory(item['id']) / 'session.json').read_text(encoding='utf-8'))
+                session = value.get('session') if isinstance(value, dict) and value.get('action_id') == item['id'] else None
+            except (OSError, ValueError):
+                continue
+            if not isinstance(session, str) or not SESSION.match(session): continue
+            with selected(self.reg, [(('control', 'launches'), item['id']), (('lanes',), item['lane'])]) as rows:
+                launch, lane = rows[(('control', 'launches'), item['id'])], rows[(('lanes',), item['lane'])]
+                if not (launch and lane and launch.get('status') in ('running', 'exiting') and
+                        not launch.get('session_adopted') and launch.get('process') == item['process'] and
+                        launch.get('session') == item['session'] and lane.get('process') == item['process'] and
+                        lane.get('generation') == launch.get('bound_generation') and
+                        lane.get('task_id') == 'opencode:' + item['session']):
+                    continue
+                lane['task_id'] = 'opencode:' + session
+                lane.setdefault('session_history', []).append(dict(session=item['session'], until=self.reg.clock(), launch=item['id']))
+                lane['session_lane'] = lane['lane']
+                launch.update(session=session, session_adopted=True, inherited_session=item['session'])
+                changed = True
+        return changed
+
     def complete_runs(self):
+        """Settle stopped launches. Recovery is planned before a launch is marked exited, and one failing
+        launch never skips the rest of the sweep or the live runners' heartbeat."""
+        import sqlite3
         snapshot = self.reg.snapshot()
+        if self.adopt_sessions(snapshot):
+            snapshot = self.reg.snapshot()
         heartbeats = []
         for item in snapshot.get('control', {}).get('launches', {}).values():
             if item['status'] not in ('running', 'exiting'): continue
-            directory = self.launch_directory(item['id']); result_path = directory / 'result.json'
-            # A damaged or partially published record belongs to this launch,
-            # not the whole completion sweep. Unknown child identity stays fenced.
-            records = {}
-            record_path = result_path
+            if item.get('completion_retry_after', 0) > self.reg.clock(): continue
             try:
-                for name in ('child.json', 'result.json'):
-                    record_path = directory / name
-                    if not record_path.exists():
-                        continue
-                    record = json.loads(record_path.read_text(encoding='utf-8'))
-                    if not isinstance(record, dict) or not record:
-                        raise ValueError('Expected a nonempty JSON object')
-                    if name == 'result.json' and not isinstance(record.get('kind'), str):
-                        raise ValueError('Runner result is missing its kind')
-                    records[name] = record
-            except (OSError, ValueError) as exc:
-                self.reg.notice(item['lane'], 'completion_record_unreadable',
-                    dict(action=item['id'], path=str(record_path),
-                         error=str(exc), type=type(exc).__name__))
-                continue
-            if 'result.json' not in records:
-                if self.reg.probe(item['process']) == 'alive':
-                    if snapshot['lanes'][item['lane']]['state'] != 'done':
-                        heartbeats.append(item)
-                else:
-                    self.reg.notice(item['lane'], 'missing_runner_result', {'action': item['id']})
-                    lane = self.reg.snapshot()['lanes'][item['lane']]
-                    if self.reg.probe(item['process']) == 'dead' and lane['generation'] == item.get('bound_generation'):
-                        child_path = directory / 'child.json'
-                        from .runner import legacy_spawn_failure
-                        if 'child.json' not in records and not legacy_spawn_failure(directory):
-                            continue  # Spawn status uncertain: do not manufacture a result.
-                        child = records.get('child.json')
-                        state = self.reg.snapshot()
-                        if (child is not None and self.reg.probe(child) != 'dead') or not self.reg.recovery_safe(state, lane):
-                            continue
-                        if any(v['lane'] == lane['lane'] and self.reg.probe(v['process']) != 'dead'
-                               for v in state.get('queue',{}).values()):
-                            continue
-                        self.mark_exited(item['id'])
-                        if lane['state'] in ('running', 'ready', 'reconciling'):
-                            retries = item.get('dead_runner_retries', 0)
-                            if retries < 2:
-                                follow = self.reg.plan_launch(item['lane'], 'dead-runner:' + item['id'],
-                                    'Runner and child stopped without a result. Inspect saved artifacts first. ' +
-                                    item['instruction'], self.config['models'], item.get('version'))
-                                with self.reg.transaction() as db:
-                                    planned = self.reg.control(db)['launches'][follow['id']]
-                                    inherit(item, planned)
-                                    planned['dead_runner_retries'] = retries + 1
-                            else:
-                                self.reg.notice(item['lane'], 'dead_runner_retry_exhausted', {'action': item['id']})
-                continue
-            if self.reg.probe(item['process']) != 'dead': continue
-            child_file = directory / 'child.json'
-            if 'child.json' in records and self.reg.probe(records['child.json']) != 'dead':
-                self.reg.notice(item['lane'], 'orphan_child', {'action': item['id']}); continue
-            result = records['result.json']
-            with self.reg.transaction() as state:
-                self.reg.control(state)['launches'][item['id']].update(status='exiting', result=result)
-            lane = self.reg.snapshot()['lanes'][item['lane']]
-            if lane['state'] in ('done', 'blocked', 'review_ready', 'handoff_ready', 'integrating'):
-                self.mark_exited(item['id']); continue
-            if result['kind']=='spawn_error' and result.get('child_created') is False:
-                self.mark_exited(item['id'])
-                retries=item.get('dead_runner_retries',0)
-                if retries<2 and self.reg.recovery_safe(self.reg.snapshot(),lane):
-                    follow=self.reg.plan_launch(item['lane'],'dead-runner:'+item['id'],
-                        item['instruction'],self.config['models'],item.get('version'))
-                    with self.reg.transaction() as state:
-                        planned=self.reg.control(state)['launches'][follow['id']]
-                        inherit(item,planned)
-                        planned['dead_runner_retries']=retries+1
-                else:
-                    self.reg.notice(item['lane'],'dead_runner_retry_exhausted',{'action':item['id']})
-                continue
-            if result['kind'] == 'rate_limit' or result.get('rate_limit'):
-                policy = self.config.get('model_rate_limit', {})
-                self.reg.model_rate_limit(item['model'], item['id'],
-                    initial=policy.get('initial_seconds', 30), maximum=policy.get('max_seconds', 300),
-                    reset_after=policy.get('reset_after_seconds', 1800))
-                retries = item.get('rate_limit_retries', 0)
-                if retries < policy.get('max_retries', 8):
-                    # Keep every authorized choice: exhausted models become eligible
-                    # after cooling, without dropping a single-model lane on the floor.
-                    models = list(dict.fromkeys(self.config['models']))
-                    models = [m for m in models if m != item['model']] + ([item['model']] if item['model'] in models else [])
-                    follow = self.reg.plan_launch(item['lane'], 'provider fallback:' + item['id'],
-                        item['instruction'], models, item['version'])
-                    with self.reg.transaction() as state:
-                        planned = self.reg.control(state)['launches'][follow['id']]
-                        planned['rate_limit_retries'] = retries + 1
-                        inherit(item, planned)  # Obligations survive the fallback; bind_context rebinds the check.
-                    self.mark_exited(item['id'])
-                    continue
-            recoveries = self.reg.control_status().get('terminal_recoveries', {}).values()
-            failure = next((j.get('evidence', {}).get('failure') for j in recoveries if
-                j.get('launch') == item['id'] and j.get('evidence', {}).get('failure') in
-                ('provider_failure', 'output_permission', 'first_response_timeout')), None)
-            if not failure and result.get('exit_code'):
-                from .provider_recovery import provider_error_event
-                if provider_error_event(directory / 'events.jsonl', item['session']):
-                    failure = 'provider_failure'
-            if failure:
-                permission_repair = failure == 'output_permission'
-                counter = 'permission_retries' if permission_repair else 'provider_failure_retries'
-                retries = item.get(counter, 0)
-                self.mark_exited(item['id'])
-                limit = 2 if permission_repair else self.config.get('provider_stall_recovery', {}).get('max_attempts_per_head', 2)
-                if retries < limit:
-                    # Recovery only uses today's allowlist, never historical models.
-                    models = [m for m in self.config['models'] if m != item.get('model')]
-                    if item.get('model') in self.config['models']:
-                        models.append(item['model'])
-                    follow = self.reg.plan_launch(item['lane'], ('permission-repair:' if permission_repair else 'provider-error:') + item['id'],
-                        'Managed session recovered. Inspect preserved work and continue the assigned slice. ' +
-                        item['instruction'], models, item.get('version'))
-                    with self.reg.transaction() as state:
-                        planned = self.reg.control(state)['launches'][follow['id']]
-                        inherit(item, planned)
-                        for field in ('permission_retries', 'provider_failure_retries', 'dead_runner_retries', 'rate_limit_retries'):
-                            if field in item: planned[field] = item[field]
-                        planned[counter] = retries + 1
-                    continue
-                self.reg.notice(item['lane'], 'permission_retry_exhausted' if permission_repair else 'provider_retry_exhausted', {'action': item['id']})
-            evidence = dict(path=str(result_path), sha256=digest(result_path))
-            self.reg.finish(item['lane'], lane['generation'], 'reconcile',
-                'Worker exited without terminal outcome; inspect existing artifacts before another attempt', evidence)
-            self.reg.notice(item['lane'], 'outcome_missing', {'action': item['id'], 'result': result})
-            self.mark_exited(item['id'])
-
+                if self.complete_run(snapshot, item): heartbeats.append(item)
+            except (ValueError, KeyError, TypeError, OSError) as exc:  # Rejected is a ValueError.
+                self.reg.notice(item['lane'], 'completion_deferred', dict(action=item['id'], error=str(exc) or type(exc).__name__))
+            except sqlite3.OperationalError as exc:  # Busy registry: nothing committed; the next sweep retries.
+                write(self.base / 'complete-runs-error.json', dict(at=self.reg.clock(), action=item['id'],
+                      error=str(exc), type=type(exc).__name__))
         self.heartbeat_runs(heartbeats)
+
+    def complete_run(self, snapshot, item):
+        """One running or exiting launch; True when its runner is live and the lane wants a heartbeat."""
+        from .storage import read_record
+        directory = self.launch_directory(item['id']); result_path = directory / 'result.json'
+        # A damaged record belongs to this launch, not the whole sweep. A record that parses to
+        # garbage (NUL bytes after a crash) is a crash once runner and child are proven stopped.
+        records, damaged = {}, {}
+        for name in ('child.json', 'result.json'):
+            path = directory / name
+            if not path.exists(): continue
+            try:
+                record = json.loads(path.read_text(encoding='utf-8'))
+                if not isinstance(record, dict) or not record:
+                    raise ValueError('Expected a nonempty JSON object')
+                if name == 'result.json' and not isinstance(record.get('kind'), str):
+                    raise ValueError('Runner result is missing its kind')
+                records[name] = record
+            except OSError as exc:  # Locked or vanished: transient, never a crash proof.
+                self.reg.notice(item['lane'], 'completion_record_unreadable',
+                    dict(action=item['id'], path=str(path), error=str(exc), type=type(exc).__name__))
+                return False
+            except ValueError as exc:
+                damaged[name] = dict(path=str(path), error=str(exc), type=type(exc).__name__,
+                                     size=path.stat().st_size, sha256=digest(path))
+        runner = self.reg.probe(item['process'])
+        if damaged and runner != 'dead':
+            for detail in damaged.values():
+                self.reg.notice(item['lane'], 'completion_record_unreadable', dict(detail, action=item['id']))
+            return False
+        if 'result.json' not in records:
+            if runner == 'alive':
+                return snapshot['lanes'][item['lane']]['state'] != 'done'
+            self.reg.notice(item['lane'], 'missing_runner_result', {'action': item['id']})
+            lane = read_record(self.reg, ('lanes',), item['lane'])
+            if runner != 'dead' or lane['generation'] != item.get('bound_generation'):
+                return False
+            from .runner import legacy_spawn_failure
+            child, proof = records.get('child.json'), None
+            if child is None and not legacy_spawn_failure(directory):
+                proof = self.child_death_proof(item['process'])  # No readable child record: prove none survives.
+                if proof is None:
+                    for detail in damaged.values():
+                        self.reg.notice(item['lane'], 'completion_record_unreadable',
+                                        dict(detail, action=item['id'], child='unproven'))
+                    return False
+            elif child is not None and self.reg.probe(child) != 'dead':
+                return False
+            state = self.reg.snapshot(sections=[('leases',), ('queue',)])
+            if not self.reg.recovery_safe(state, lane):
+                return False
+            crash = self.record_crash(item, directory, damaged, proof)
+            if lane['state'] in TERMINAL:
+                self.mark_exited(item['id']); return False
+            prefix = 'Runner and child stopped without a result. Inspect saved artifacts first. '
+            if (not self.retry(item, lane, 'dead-runner:', prefix + item['instruction'], self.config['models'],
+                               'dead_runner_retries', 2)):
+                self.reconcile_launch(item, lane, crash, dict(reason='runner_stopped_without_result'))
+            return False
+        if runner != 'dead': return False
+        if 'child.json' in records and self.reg.probe(records['child.json']) != 'dead':
+            self.reg.notice(item['lane'], 'orphan_child', {'action': item['id']}); return False
+        result = records['result.json']
+        if damaged:  # The runner writes result.json only after its child exited; keep the damaged bytes' evidence.
+            self.record_crash(item, directory, damaged, dict(kind='runner_result_after_child_exit'))
+        from .storage import selected
+        with selected(self.reg, [(('control', 'launches'), item['id'])]) as rows:
+            rows[(('control', 'launches'), item['id'])].update(status='exiting', result=result)
+        lane = read_record(self.reg, ('lanes',), item['lane'])
+        if lane['state'] in TERMINAL:
+            self.mark_exited(item['id']); return False
+        evidence = dict(path=str(result_path), sha256=digest(result_path))
+        if result['kind'] == 'spawn_error' and result.get('child_created') is False:
+            if not (self.reg.recovery_safe(self.reg.snapshot(sections=[('leases',), ('queue',)]), lane) and
+                    self.retry(item, lane, 'dead-runner:', item['instruction'], self.config['models'], 'dead_runner_retries', 2)):
+                self.reconcile_launch(item, lane, evidence, result)
+            return False
+        policy = self.config.get('model_rate_limit', {})
+        if result['kind'] == 'rate_limit':  # The runner stopped a pre-tool turn; mid-tool limits never stop it.
+            self.reg.model_rate_limit(item['model'], item['id'],
+                initial=policy.get('initial_seconds', 30), maximum=policy.get('max_seconds', 300),
+                reset_after=policy.get('reset_after_seconds', 1800))
+            # Keep every authorized choice: exhausted models become eligible
+            # after cooling, without dropping a single-model lane on the floor.
+            models = list(dict.fromkeys(self.config['models']))
+            models = [m for m in models if m != item['model']] + ([item['model']] if item['model'] in models else [])
+            if self.retry(item, lane, 'provider fallback:', item['instruction'], models,
+                          'rate_limit_retries', policy.get('max_retries', 8), 'rate_limit_retry_exhausted'):
+                return False
+        # Only a journal whose stop was actually requested classifies the exit; an aborted attempt's
+        # evidence may be stale.
+        recoveries = self.reg.control_status().get('terminal_recoveries', {}).values()
+        failure = next((j.get('evidence', {}).get('failure') for j in recoveries if
+            j.get('launch') == item['id'] and j.get('status') == 'child_stop_requested' and
+            j.get('evidence', {}).get('failure') in ('provider_failure', 'output_permission', 'first_response_timeout')), None)
+        if not failure and result['kind'] != 'rate_limit' and result.get('rate_limit') and not result.get('turn_end'):
+            failure = 'provider_failure'  # A mid-tool limit the session did not survive.
+        if not failure and result.get('exit_code') and not result.get('stopped_after_turn'):
+            from .provider_recovery import provider_error_event
+            if provider_error_event(directory / 'events.jsonl', item['session']):
+                failure = 'provider_failure'
+        if failure:
+            permission_repair = failure == 'output_permission'
+            counter = 'permission_retries' if permission_repair else 'provider_failure_retries'
+            limit = 2 if permission_repair else self.config.get('provider_stall_recovery', {}).get('max_attempts_per_head', 2)
+            # Recovery only uses today's allowlist, never historical models.
+            models = [m for m in self.config['models'] if m != item.get('model')]
+            if item.get('model') in self.config['models']:
+                models.append(item['model'])
+            if self.retry(item, lane, 'permission-repair:' if permission_repair else 'provider-error:',
+                          'Managed session recovered. Inspect preserved work and continue the assigned slice. ' +
+                          item['instruction'], models, counter, limit,
+                          'permission_retry_exhausted' if permission_repair else 'provider_retry_exhausted'):
+                return False
+        self.reconcile_launch(item, lane, evidence, result)
+        return False
+
+    RETRY_COUNTERS = ('permission_retries', 'provider_failure_retries', 'dead_runner_retries', 'rate_limit_retries',
+                      'automatic_retries')
+
+    def retry(self, item, lane, prefix, instruction, models, counter, limit, exhausted='dead_runner_retry_exhausted'):
+        """Plan one automatic recovery continuation; False (with a notice) when a budget is spent or the
+        plan is refused, so the caller reconciles instead. Every counter rides the whole chain, so
+        alternating failure kinds cannot reset each other, and automatic_retries caps the chain."""
+        retries, chain = item.get(counter, 0), item.get('automatic_retries', 0)
+        if retries >= limit:
+            self.reg.notice(item['lane'], exhausted, {'action': item['id']}); return False
+        if chain >= self.config.get('automatic_retry_limit', 8):
+            self.reg.notice(item['lane'], 'automatic_retry_exhausted', {'action': item['id'], 'chain': chain}); return False
+        carry = {}
+        inherit(item, carry)  # Obligations survive the retry; bind_context rebinds the check.
+        carry.update({f: item[f] for f in self.RETRY_COUNTERS if f in item})
+        carry.update({counter: retries + 1, 'automatic_retries': chain + 1})
+        if item.get('fresh_session') and not item.get('session_adopted'):
+            carry['fresh_session'] = True  # The lane never learned its own session: stay fresh.
+        try:  # One transaction plans the continuation, with its budget, and marks this launch exited.
+            self.reg.plan_launch(item['lane'], prefix + item['id'], instruction, models, item.get('version'),
+                                 supersedes=item['id'], carry=carry)
+        except Rejected as exc:  # Includes no_progress.Parked; the lane still reaches reconciliation.
+            self.reg.notice(item['lane'], 'recovery_retry_refused', {'action': item['id'], 'error': str(exc)})
+            return False
+        return True
+
+    def reconcile_launch(self, item, lane, evidence, result):
+        """Durable fallback when no automatic retry runs: the lane reconciles with hashed evidence, then
+        the launch exits. A refusal leaves the launch unexited and backs its next attempt off."""
+        from .storage import selected
+        try:
+            from .storage import read_record
+            if read_record(self.reg, ('lanes',), item['lane'])['state'] not in TERMINAL:
+                self.reg.finish(item['lane'], lane['generation'], 'reconcile',
+                    'Worker exited without terminal outcome; inspect existing artifacts before another attempt', evidence)
+        except Rejected as exc:
+            attempts = item.get('completion_attempts', 0) + 1
+            with selected(self.reg, [(('control', 'launches'), item['id'])]) as rows:
+                rows[(('control', 'launches'), item['id'])].update(completion_attempts=attempts,
+                    completion_retry_after=self.reg.clock() + min(3600, 60 * 2 ** min(attempts, 6)))
+            raise Rejected('Reconciliation refused: ' + str(exc)) from exc
+        self.reg.notice(item['lane'], 'outcome_missing', {'action': item['id'], 'result': result})
+        self.mark_exited(item['id'])
+
+    def record_crash(self, item, directory, damaged, proof):
+        """Persist the crash reason and its evidence; the damaged bytes stay where they are."""
+        path = directory / 'crash.json'
+        if not path.exists():
+            write(path, dict(action=item['id'], lane=item['lane'], generation=item.get('bound_generation'),
+                reason='completion_record_unreadable' if damaged else 'runner_stopped_without_result',
+                damaged=damaged, child_proof=proof, runner=item['process'], at=self.reg.clock()))
+            if damaged:
+                self.reg.notice(item['lane'], 'crashed_launch_recovered',
+                                dict(action=item['id'], records=sorted(damaged), proof=(proof or {}).get('kind')), status='info')
+        return dict(path=str(path), sha256=digest(path))
 
     def heartbeat_runs(self, items):
         """One fenced write for live runners; terminal processing comes first."""
@@ -477,13 +596,19 @@ class Controller:
             # worker config has been retired.
             if lane['state'] == 'done': continue
             configured = key in self.config['lanes']
-            if not configured and lane['state'] != 'handoff_ready': continue
+            if not configured and lane['state'] != 'handoff_ready':
+                # No launch config means no wake path: say so once instead of leaving it silently stopped.
+                if lane['state'] in ('ready', 'running', 'reconciling', 'waiting_resource') and self.reg.probe(lane['process']) == 'dead':
+                    self.reg.notice(key, 'unsupervised_lane', dict(state=lane['state'], generation=lane['generation'],
+                        error='Stopped lane has no controller launch config; configure-lane-launch or retire it'))
+                continue
             if lane['state'] == 'review_ready':
                 self.reg.notice(key, 'review_ready', lane.get('outcome', {})); continue
             if lane['state'] == 'handoff_ready':
                 attention = self._integration_attention(state, lane)
                 stable_attention = dict(attention)
-                stable_attention.pop('age_seconds', None)
+                for volatile in ('age_seconds', 'owner_alive', 'owner_state'):  # Owner turns must not mint notices.
+                    stable_attention.pop(volatile, None)
                 self.reg.notice(key, 'integration_needed', stable_attention)
                 # A ready handoff is not allowed to disappear into a generic
                 # notification. Re-emit an actionable escalation once per
@@ -499,7 +624,8 @@ class Controller:
             if lane['state'] in ('running', 'ready') and self.reg.recovery_safe(state, lane):
                 if not any(i['lane'] == key and i['status'] in ('intent', 'spawned', 'running')
                            for i in self.reg.control_status()['launches'].values()):
-                    self.reg.notice(key, 'stopped_without_outcome', {'generation': lane['generation'], 'progress': lane['progress_detail']})
+                    self.reg.notice(key, 'stopped_without_outcome', {'generation': lane['generation'], 'progress': lane['progress_detail'],
+                                    'error': 'Stopped without outcome at generation %s' % lane['generation']})
             if self.reg.clock() - lane['progress_at'] > state['settings']['progress_seconds']:
                 # Independent build evidence suppresses model-stall diagnoses during real builds.
                 entry = self.config['lanes'].get(key)
@@ -507,9 +633,10 @@ class Controller:
                 active_build = any(l['lane'] == key and self.reg.probe(l['process']) == 'alive' for l in state['leases'].values())
                 logs = list(local_path(self.reg.root, entry['output']).glob('build-*.log'))
                 building = active_build and any(self.reg.clock() - p.stat().st_mtime < 300 for p in logs)
-                if not building:
+                if not building:  # One notice per lane generation; repeats only bump its counter.
                     self.reg.notice(key, 'progress_stale', {'generation': lane['generation'], 'progress_at': lane['progress_at'],
-                        'progress': lane['progress_detail'], 'output': entry['output']})
+                        'progress': lane['progress_detail'], 'output': entry['output'],
+                        'error': 'No progress at generation %s' % lane['generation']})
 
     def _pending_reviews(self, state, lane):
         """Shared reviews without an approved ledger row at the lane's pins; a stored result may predate the
@@ -555,9 +682,10 @@ class Controller:
         elif not owner:
             blockers.append('integration_owner_missing')
         else:
+            # The scheduler's own predicate: a verified parked owner is available, not a blocker.
             if owner.get('state') in ('done', 'blocked'):
                 blockers.append('integration_owner_unavailable')
-            if self.reg.probe(owner.get('process')) != 'alive':
+            elif not self.reg.integration_owner_available(state, owner):
                 blockers.append('integration_owner_not_alive')
             members = stream.get('lanes', [])
             if lane.get('lane') not in members:
@@ -666,8 +794,14 @@ class Controller:
             return
         pending = {k: v for k, v in c['notices'].items() if v['status'] == 'pending'}
         if not pending or self.reg.clock() - c.get('shepherd_last', 0) < config.get('cooldown', 120): return
-        if c.get('shepherd_failures', {}).get(fingerprint(sorted(pending)), 0) >= 3:
-            write(self.base / 'shepherd-attention.json', {'reason': 'Three unsuccessful shepherd calls for unchanged events', 'events': list(pending)})
+        pending = self.collapse_stalls(pending)
+        offered = dict(list(pending.items())[:12])
+        signature = fingerprint(sorted(offered))  # The key a failed packet is recorded under.
+        if c.get('shepherd_failures', {}).get(signature, 0) >= 3:
+            # Three failures on this exact packet: hand it to a human and let the queue move on.
+            write(self.base / 'shepherd-attention.json', {'reason': 'Three unsuccessful shepherd calls for unchanged events',
+                                                          'events': list(offered), 'signature': signature})
+            self.set_notice_status(offered, 'escalated')
             return
         model = self.reg.select_model(config['models'])
         if not model: return
@@ -686,7 +820,7 @@ class Controller:
                     lane['available_evidence'].append(dict(path=str(path), sha256=digest(path)))
         # Repeat counters stay out of the offered body: an unchanged event set keeps its packet id.
         pending = {k: {f: x for f, x in v.items() if f not in ('repeats', 'last_at', 'last_detail')}
-                   for k, v in list(pending.items())[:12]}
+                   for k, v in offered.items()}
         packet = dict(notices=pending, lanes=lanes, artifacts=c['artifacts'], resources=state['metrics']['resource_waits'],
                       previous_error=c.get('shepherd_error'),
                       policy='No ADMIT, source edits, merges or process kills. Existing integrator is sole promotion owner.')
@@ -716,7 +850,33 @@ class Controller:
         with self.reg.transaction() as state:
             self.reg.control(state)['shepherd'] = dict(id=identity, packet=packet, start=start, at=self.reg.clock())
         write(directory / 'spawn.json', {'action': identity, 'at': self.reg.clock()})
+        # The directory is private and the runner's claim is exclusive: start.json need not wait a tick.
+        write(directory / 'start.json', start)
         self.spawn(directory)
+
+    STALLS = ('progress_stale', 'session_activity_stalled', 'stopped_without_outcome', 'outcome_missing', 'missing_runner_result')
+
+    def collapse_stalls(self, pending):
+        """One pending stall notice per (lane, kind) is offered; older repeats are superseded (at most
+        200 per call), so a stalled lane cannot fill the shepherd packet with copies of itself."""
+        newest = {}
+        for key, notice in pending.items():
+            if notice.get('kind') in self.STALLS:
+                group = (notice.get('lane'), notice['kind'])
+                if group not in newest or notice.get('at', 0) >= pending[newest[group]].get('at', 0):
+                    newest[group] = key
+        stale = [k for k, v in pending.items() if v.get('kind') in self.STALLS and newest[(v.get('lane'), v['kind'])] != k]
+        if stale:
+            self.set_notice_status(stale[:200], 'superseded')
+        return {k: v for k, v in pending.items() if k not in set(stale)}
+
+    def set_notice_status(self, ids, status):
+        """Move still-pending notices out of the shepherd queue; record-level, never the whole state."""
+        from .storage import selected
+        with selected(self.reg, [(('control', 'notices'), i) for i in ids]) as rows:
+            for row in rows.values():
+                if row is not None and row.get('status') == 'pending':
+                    row.update(status=status, status_at=self.reg.clock())
 
     def capture_decisions(self, directory):
         events = directory / 'events.jsonl'
@@ -873,6 +1033,31 @@ class Controller:
                                 json.dumps(decision, indent=2) + '\n', encoding='utf-8')
             with self.reg.transaction() as state:
                 self.reg.control(state).setdefault('delivered', []).append(identity)
+
+
+RESTART_FIELDS = ('previous_pid', 'exit_code', 'stderr_log', 'stdout_log', 'stamp')
+
+
+def record_restart(registry, base):
+    """Record the restart wrapper's note about a failed previous controller as one event, once.
+
+    Start-Pikmin2Controller.ps1 moves a non-zero exit's logs aside and writes controller-exit.json;
+    the note is renamed after the event commits, so a failed write is retried at the next start.
+    Never fatal: a controller must start even when the note is damaged."""
+    note = Path(base) / 'controller-exit.json'
+    try:
+        data = json.loads(note.read_text(encoding='utf-8-sig'))
+        require(isinstance(data, dict), 'Restart note must be an object')
+        detail = dict({k: data.get(k) for k in RESTART_FIELDS}, exited_at=data.get('at'))
+        with registry.transaction(sections=(), append=[('events',)]) as state:
+            registry.event(state, 'controller_restarted_after_exit', None, **detail)
+        os.replace(note, note.with_name('controller-exit.recorded.json'))
+        return detail
+    except FileNotFoundError:
+        return None
+    except Exception as exc:  # Startup continues; the traceback-free note stays for the operator.
+        print('Restart note not recorded: %s: %s' % (type(exc).__name__, exc), file=sys.stderr, flush=True)
+        return None
 
 
 def nonempty_text(value):

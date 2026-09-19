@@ -103,6 +103,18 @@ wrapper from its own folder and prints `service status`. Rolling back is running
 the same script from an older release folder. Run it from an operator shell; agent
 sessions must not restart production.
 
+Crash forensics: an exception escaping the controller anywhere (startup, monitors,
+shutdown; per-tick failures are still caught and written to `error.json`) writes its
+traceback to `<controller output>/error.json` with `stage: fatal` and to stderr, then
+exits 1. Because `Start-Process` truncates `controller.stdout.log` and
+`controller.stderr.log` on every start, the wrapper moves a non-zero exit's logs to
+`controller.<utc-stamp>.exit<code>.stdout.log`/`.stderr.log` (the newest
+`-KeepCrashLogs`, default 20, per stream are kept) and writes `controller-exit.json`
+(previous PID, exit code, saved log paths). The next controller records it as one
+`controller_restarted_after_exit` event and renames the note to
+`controller-exit.recorded.json`; a damaged note never blocks startup.
+`-RestartDelaySeconds` (default 15) scales the restart backoff.
+
 Running workers keep the CLI paths they were given; new launches get the release's.
 Keep old release worktrees until no launch refers to them.
 
@@ -250,18 +262,58 @@ the same gate on replay. An uncertain spawn without identifiable execution is
 reported for reconciliation, never blindly repeated. A live or unknown child blocks
 replacement even if its parent disappeared.
 
-Pre-tool rate limiting cools down the provider globally (default 15 minutes) and
-falls back through the configured model chain in the same session after the old
-process stops. Every recovery continuation (dead runner, spawn error, provider
+The runner owns its child's exit. OpenCode stays alive after its turn, so when the
+turn ends (stdout `step_finish` with reason `stop`, or stderr `"exiting loop"` for
+the launch's session) and neither stream has shown non-cleanup output for
+`runner.exit_grace_seconds` (default 10), the runner re-checks the recorded child
+identity and stops it through its own Popen handle. The result records
+`stopped_after_turn` and `turn_end`, and completes like a natural exit, so the slot
+is free seconds after the turn instead of after the cleanup sweepers.
+`terminal_idle_recovery` and `terminal_cleanup` remain backstops.
+
+OpenCode block-buffers stdout JSON on a pipe, so tool activity is read from both
+streams: any `tool_use` event, any stderr `evaluated permission=` line, or a loop
+step past 0. A rate-limit line stops the child only while no tool has started in the
+turn, and only after the limit and stdout have both been quiet for
+`runner.rate_limit_settle_seconds` (default 5), so buffered events are parsed first.
+That pre-tool stop is the only `kind: rate_limit` result: it cools the failed model
+and falls back through the configured chain in the same session. A mid-tool limit
+never stops the session (`rate_limit_phase: mid_tool`); if the session then dies
+without ending its turn the exit is a provider failure (provider-error retry), and
+if it ends its turn normally it completes normally.
+
+`complete_runs` plans a recovery continuation in the same transaction that marks the
+stopped launch exited (`plan_launch(supersedes=...)`), so a refused plan leaves it
+unexited. A refused or exhausted continuation falls through to `reconcile` with
+hashed evidence, and only then is the launch marked exited; if reconciliation is
+also refused the launch stays open with `completion_attempts` and backs off
+(`completion_retry_after`, 1 minute doubling to 1 hour) behind a
+`completion_deferred` notice. One launch's failure never skips the rest of the sweep
+or the live runners' heartbeat; a busy registry leaves the launch for the next sweep
+(`complete-runs-error.json`). Every retry counter (`dead_runner_retries`,
+`rate_limit_retries`, `provider_failure_retries`, `permission_retries`) rides the
+whole chain and `automatic_retries` caps it (`automatic_retry_limit`, default 8), so
+alternating failure kinds cannot reset each other.
+
+A `child.json` or `result.json` that parses to garbage (NUL bytes after a power
+loss; `runner.write` now fsyncs before its atomic replace) is a crash once the
+runner is dead and no child can survive: the runner started before the current boot,
+or the process table holds no process whose parent is the runner's PID and that
+started after it. The launch then takes the normal dead-runner path with a
+`crash.json` (reason, damaged record hashes, proof) as its evidence and an
+informational `crashed_launch_recovered` notice; the damaged bytes stay in place. A
+valid `result.json` already proves the child exited. Without a proof, a live runner,
+or a locked file, the launch stays fenced with `completion_record_unreadable`. A
+bound runner that died before writing `child.json` needs the same proof.
+
+Every recovery continuation (dead runner, spawn error, provider
 fallback, provider error, permission repair, provider stall) carries the failed
 launch's obligations: consumer verification, delivery contracts, acceptance check,
 review obligations and wake inputs. At bind, `bind_context` gives the new generation
 its own pending check and names it in the instruction; when the producer receipts
 drifted it instead tells the worker the old ID cannot be reported and emits
 `consumer_verification_rebind_declined`. Attempt counters stay with the original
-launch. Once tools have run, the controller does not kill the process to
-switch providers unless the guarded idle-provider recovery below is enabled.
-Every attempted endpoint is tried at most once in that chain.
+launch. Every attempted endpoint is tried at most once in that chain.
 
 ### Provider stalls after completed tools (#510)
 
@@ -296,10 +348,24 @@ Inspect `control.provider_recoveries` for the evidence, identities and replaceme
 launch. This policy is Windows-specific; other hosts require a process adapter.
 
 The smart shepherd wakes for changed notices, at most once every two minutes, with
-one active invocation. Three failed calls for an unchanged event set open a circuit
-and leave an attention record rather than spending indefinitely. Its session and
-decisions survive controller restarts. Model-generated commands are validated;
-stale decisions cannot overwrite newer lane progress.
+one active invocation; its `start.json` is written with the spawn. Its packet offers
+the first 12 pending notices after stall collapse: only the newest pending
+`progress_stale`, `session_activity_stalled`, `stopped_without_outcome`,
+`outcome_missing` or `missing_runner_result` per (lane, kind) is offered and older
+ones become `superseded`; the observer also keys `progress_stale` and
+`stopped_without_outcome` per lane generation. Three failures of the same packet
+(its notice-ID signature) write `shepherd-attention.json` and move those notices to
+`escalated`, so the next packet offers the rest. Its session and decisions survive
+controller restarts. Model-generated commands are validated; stale decisions cannot
+overwrite newer lane progress.
+
+Lanes without a controller launch config have no wake path. A stopped one in
+`ready`, `running`, `reconciling` or `waiting_resource` raises one
+`unsupervised_lane` notice; configure its launch or retire it. An integration
+notice reports `integration_owner_not_alive` only when
+`integration_owner_available` (the scheduler's predicate) is false, so a verified
+parked owner is not a blocker, and owner liveness/state are left out of the notice
+identity.
 
 ## Evidence, notifications and rollout
 
@@ -375,7 +441,7 @@ workers keep their current model until a safely fenced continuation.
 
 ## Headless worker recovery (#568)
 
-Enable `terminal_idle_recovery: {"enabled": true, "quiet_seconds": 60}` in the local controller configuration to release managed CLI children that remain alive after their exact session reports `exiting loop`. Recovery requires a quiet completed boundary, verified runner/child identities and ancestry, no active or unknown lease, and no tool descendants. It ignores only the known periodic cleanup message. Windows process creation times distinguish reused parent PIDs. The runner writes its real exit result; cleanup never creates an acceptance or terminal lane outcome.
+The runner stops its own child after the turn (see Crash and provider recovery); `terminal_idle_recovery` is the backstop for runners that predate it or missed the boundary. Enable `terminal_idle_recovery: {"enabled": true, "quiet_seconds": 60}` in the local controller configuration to release managed CLI children that remain alive after their exact session reports `exiting loop`. Its journal records each attempt's own evidence (an aborted attempt's evidence is replaced), and `complete_runs` classifies an exit only from a journal in `child_stop_requested`. Recovery requires a quiet completed boundary, verified runner/child identities and ancestry, no active or unknown lease, and no tool descendants. It ignores only the known periodic cleanup message. Windows process creation times distinguish reused parent PIDs. The runner writes its real exit result; cleanup never creates an acceptance or terminal lane outcome.
 
 Same-session recovery preserves the pool assignment and records its launch history after verifying the previous execution exited. `Registry.reconcile_pool_recovery(action_id)` can apply that same fenced link to an already-bound recovery during deployment. Completion uses valid recorded integration/review evidence before fallback evidence; changed hashes remain invalid.
 

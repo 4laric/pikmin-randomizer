@@ -76,6 +76,38 @@ class BatchTests(unittest.TestCase):
         self.assertEqual(len(new), 1)
         self.assertEqual(list(new[0]['candidates']), ['one'])
 
+    def reassignable(self):
+        batch = self.claim()
+        self.reg.register(dict(self.fixture.data('three'), lane='four', worker_id='four', task_id='task-four',
+                               issue=493, owned_files=['workflow/four.py']))
+        self.reg.checkpoint('four', 1, 1, {'state': 'running'})
+        with self.reg.transaction() as state:
+            state['lanes']['three']['process'] = {'pid': 3}
+        self.reg.probe = lambda p: 'dead' if p == {'pid': 3} else 'alive'
+        return batch, self.reg.status()['lanes']['four']
+
+    def test_batch_reassign_requires_current_revision(self):
+        batch, four = self.reassignable()
+        for stale in (0, 2, '1'):
+            with self.assertRaises(Rejected):
+                self.reg.batch_reassign(batch['id'], 'three', 1, stale, 'four', four['generation'], four['revision'], 'owner died')
+        moved = self.reg.batch_reassign(batch['id'], 'three', 1, 1, 'four', four['generation'], four['revision'], 'owner died')
+        self.assertEqual((moved['integrator'], moved['revision']), ('four', 2))
+        self.assertEqual(self.reg.scheduling_status()['workstreams']['cave']['owner_lane'], 'four')
+        with self.assertRaises(Rejected):  # A replay with the old revision cannot move it again.
+            self.reg.batch_reassign(batch['id'], 'three', 1, 1, 'four', four['generation'], four['revision'], 'owner died')
+
+    def test_batch_reassign_refuses_a_candidate_or_the_old_owner(self):
+        batch, four = self.reassignable()
+        one = self.reg.status()['lanes']['one']
+        with self.assertRaises(Rejected) as refused:
+            self.reg.batch_reassign(batch['id'], 'three', 1, 1, 'one', one['generation'], one['revision'], 'self-integrate')
+        self.assertIn('self candidate', str(refused.exception))
+        three = self.reg.status()['lanes']['three']
+        with self.assertRaises(Rejected):
+            self.reg.batch_reassign(batch['id'], 'three', 1, 1, 'three', three['generation'], three['revision'], 'same')
+        self.assertEqual(self.reg.scheduling_status()['batches'][batch['id']]['integrator'], 'three')
+
     def test_stale_owner_and_candidate_fences(self):
         self.pins[0]['generation'] = 2
         with self.assertRaises(Rejected): self.claim()

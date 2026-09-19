@@ -255,12 +255,16 @@ class ControlMixin:
                     'Integration batch workstream ownership changed')
         return batches
 
-    def plan_launch(self, key, reason, instruction, models, version=None, inputs=None, obligation=False):
+    def plan_launch(self, key, reason, instruction, models, version=None, inputs=None, obligation=False, supersedes=None,
+                    carry=None):
         """Commit intent before external spawn; repeat requests return the same intent.
 
         Wake-type reasons pass the substantive inputs they carry; no_progress parks a stalled lane
         whose wake brings none it has not already been offered (Parked). obligation marks a wake
-        that carries a non-deferrable duty (disposition_required reviews) and is never parked."""
+        that carries a non-deferrable duty (disposition_required reviews) and is never parked.
+        supersedes names the stopped launch a recovery continues: it is marked exited in the same
+        transaction, so a refused plan leaves it unexited for the next completion sweep. carry adds
+        fields (obligations, retry counters) to a new intent without overriding its own."""
         require(models and all(nonempty(m) and '/' in m for m in models), 'Provider/model chain required')
         require(nonempty(instruction), 'Resume instruction required')
         from . import no_progress
@@ -281,7 +285,11 @@ class ControlMixin:
             lane = self.lane(state, key)
             identity = fingerprint([key, reason, version, lane['generation']])
             old = c['launches'].get(identity)
+            stopped = c['launches'].get(supersedes) if supersedes else None
+            require(supersedes is None or (stopped and stopped['lane'] == key and
+                    stopped['status'] in ('running', 'exiting', 'exited')), 'Superseded launch must belong to this lane')
             if old:
+                if stopped: stopped['status'] = 'exited'
                 return old
             if reason.startswith('internal-owner-resume:'):
                 from .action_routing import validate_resume
@@ -300,7 +308,7 @@ class ControlMixin:
             require(self.recovery_safe(state, lane), 'Old worker or protected child still live/unknown')
             self.check_wip(state, dict(lane, state='running'))
             require(not any(l['lane'] == key and l['status'] in ('intent', 'spawned', 'running')
-                            for l in c['launches'].values()), 'Dispatch already in flight')
+                            and l['id'] != supersedes for l in c['launches'].values()), 'Dispatch already in flight')
             require(lane['task_id'].startswith('opencode:'), 'Only known OpenCode sessions can resume')
             refusal = wake and no_progress.verdict(lane, inputs, self.clock())
             if refusal:
@@ -308,12 +316,15 @@ class ControlMixin:
             else:
                 if wake:
                     no_progress.admit(self, state, lane, reason)
+                if stopped:
+                    stopped['status'] = 'exited'
                 item = dict(id=identity, lane=key, generation=lane['generation'], reason=reason,
                     instruction=instruction, models=models, model_index=0, version=version,
                     session=lane['task_id'].removeprefix('opencode:'), status='intent',
                     process=None, created_at=self.clock(), attempts=0, code_revision=code)
                 if inputs:
                     item['inputs'] = inputs
+                item.update({k: v for k, v in (carry or {}).items() if k not in item})
                 c['launches'][identity] = item
                 self.event(state, 'launch_intent', key, action=identity)
                 return item

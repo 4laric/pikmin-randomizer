@@ -110,7 +110,8 @@ The fast dispatcher detects an initial provider stream with no events after
 exact session, process identities, logs, descendants and protected resources
 before stopping only the idle child. The real runner exit triggers bounded
 provider fallback; a session-specific APIError on process exit follows the same
-path. Permission requests, event bytes, tools and protected builds block this
+path. Runners stop their own child a few seconds after its turn ends and never stop
+a session for a rate limit once a tool has started, so these sweeps are backstops. Permission requests, event bytes, tools and protected builds block this
 timeout recovery. Exhausted retries remain visible for inspection.
 
 When every outstanding linked prerequisite is blocked and has a hashed terminal
@@ -120,6 +121,21 @@ partitions; source/dependency/state changes permit reassessment, a new evidence
 file from another unchanged generation does not. Existing live
 producers keep priority. Repair planners prepare issue-backed proposals for the
 missing input; they do not implement over another owner's files or grant acceptance.
+
+Supervision notices: `unsupervised_lane` names a stopped lane with no launch config
+(configure its launch or retire it). `shared_review_target_dead` names a routed
+shared-review owner that is not running: pending, and the packet is held with route
+status `owner_unsupervised`, when nothing supervises it; informational when the
+controller can wake it. Fix the routing (`shared_review_routing.files`) or
+supervise the owner. `completion_deferred` means a stopped launch could neither
+retry nor reconcile; it retries with backoff. `automatic_retry_exhausted` ends a
+retry chain in reconciliation.
+
+`reassign-pool-worker` changes an idle worker's roles/capabilities when none of its
+lanes has an open assignment or a launch in flight and every unfinished one is
+stopped; its `pool_worker_reassigned` event keeps the previous contract.
+`batch-reassign` requires the batch revision you read (`old_revision`) and refuses a
+replacement that is one of the batch's candidates.
 
 The controller config is output/workflow/controller/config.json; runtime launch
 specs also live in throughput_runtime.launch_specs. Read current state before
@@ -610,4 +626,4 @@ no process is terminated and lane/acceptance state is unchanged. Reclamation is
 recorded as lease_reaped events, with latest sample in build_lease_recovery.
 
 
-Completion record isolation (#635): unreadable or malformed child.json/result.json files now produce a per-launch completion_record_unreadable notice and leave that launch protected. Later launches still complete. Original bytes are preserved; a corrupt child identity never authorizes cleanup, replacement, or a fabricated result. Repair requires independently verified identity evidence.
+Completion record isolation (#635): an unreadable or malformed child.json/result.json affects only its own launch; later launches still complete and original bytes are preserved. With a dead runner and a proof that no child survives (runner started before the current boot, or no process whose parent is the runner's PID started after it), the launch is a crash: `crash.json` records the reason, damaged-record hashes and proof, and it takes normal dead-runner recovery or reconciliation. Without that proof, or while the runner lives, it stays protected with a completion_record_unreadable notice; a corrupt identity never authorizes a stop or a fabricated result.

@@ -10,6 +10,7 @@ class RoutingTests(unittest.TestCase):
         self.c=self.f.controller;self.r=self.f.reg
         self.inbox=self.f.root/'output/inbox';self.c.config['integrator_inbox']=str(self.inbox)
         self.c.config['shared_review_routing']={'enabled':True,'files':{'native/shared.cpp':'provider'}}
+        self.c.config['lanes']['provider']=dict(self.c.config['lanes']['consumer'])  # Supervised: a stopped owner can be woken.
         with self.r.transaction() as s:  # Routing sends packets only to an owner that can record the decision.
             s.setdefault('throughput',{}).setdefault('workstreams',{})['routed']=dict(owner_lane='provider',lanes=['consumer'])
         self.path=self.f.out/'handoff.json';self.data={'shared_reviews':[{'file':'native/shared.cpp','status':'requested'}]}
@@ -41,6 +42,18 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(len(notices),1);self.assertIn('own producer workstream',notices[0]['detail']['error'])
         with self.r.transaction() as s:s['throughput']['workstreams']['routed']['owner_lane']='provider'
         tick(self.c);self.assertEqual(len(list(self.inbox.glob('*.md'))),1)
+    def test_stopped_unsupervised_owner_is_held_with_a_notice_until_supervised(self):
+        del self.c.config['lanes']['provider']
+        tick(self.c);tick(self.c)
+        self.assertFalse(list(self.inbox.glob('*.md')) if self.inbox.exists() else [])
+        state=self.r.snapshot();route=next(iter(state['shared_review_routes'].values()))
+        self.assertEqual((route['status'],route['owner']),('owner_unsupervised','provider'))
+        notices=[n for n in state['control']['notices'].values() if n['kind']=='shared_review_target_dead']
+        self.assertEqual([(n['lane'],n['status']) for n in notices],[('provider','pending')])
+        self.c.config['lanes']['provider']=dict(self.c.config['lanes']['consumer'])
+        tick(self.c);self.assertEqual(len(list(self.inbox.glob('*.md'))),1)
+        notices=[n for n in self.r.control_status()['notices'].values() if n['kind']=='shared_review_target_dead']
+        self.assertEqual(sorted(n['status'] for n in notices),['info','pending'])
     def test_unrouted_file_never_receives_invented_owner(self):
         self.c.config['shared_review_routing']['files']={};tick(self.c)
         self.assertFalse(self.inbox.exists())

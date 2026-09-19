@@ -138,7 +138,8 @@ def assign_pending(controller):
                     reg.notice(assignment['lane'], 'pool_launch_config_needed',
                                {'reason': 'Prepared launch spec or stopped legacy supervisor required'})
                     continue
-                reg.plan_assignment(assignment['id'], controller.config['models'], controller.memory())
+                reg.plan_assignment(assignment['id'], controller.config['models'], controller.memory(),
+                                    fresh_session=settings.get('fresh_session_per_lane', True))
                 assigned += 1
                 if assigned >= assignment_limit or not controller.capacity(): break
             except Rejected as exc:

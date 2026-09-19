@@ -208,6 +208,24 @@ class TerminalRecoveryTests(unittest.TestCase):
         journal = next(iter(self.reg.control_status()['terminal_recoveries'].values()))
         self.assertEqual(journal['evidence']['failure'], 'provider_failure')
 
+    def test_aborted_attempt_evidence_is_replaced_by_the_attempt_that_stops(self):
+        calls = []
+        def racing_table():
+            calls.append(1)
+            if len(calls) == 2:  # Work appears between persisting intent and revalidation.
+                self.errors.write_text(self.marker + 'new work\n')
+            return self.rows()
+        self.recover(table=racing_table)
+        self.assertFalse(self.stopped)
+        journal = next(iter(self.reg.control_status()['terminal_recoveries'].values()))
+        self.assertEqual((journal['status'], journal['evidence']['failure']), ('stopping', None))
+        self.errors.write_text('timestamp=1970-01-01T00:16:40Z level=ERROR run=abc '
+            'message=process session.id=session-consumer error="Insufficient balance"\n')
+        self.recover()
+        self.assertEqual(self.stopped, [self.child])
+        journal = next(iter(self.reg.control_status()['terminal_recoveries'].values()))
+        self.assertEqual((journal['status'], journal['evidence']['failure']), ('child_stop_requested', 'provider_failure'))
+
     def test_balance_error_other_session_or_later_work_does_not_stop(self):
         error = ('timestamp=1970-01-01T00:16:40Z level=ERROR run=abc '
                  'message=process session.id=session-other error="Insufficient balance"\n')

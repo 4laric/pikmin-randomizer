@@ -104,6 +104,28 @@ def identify(pid):
     return {'host': socket.gethostname(), 'pid': pid, 'started': started}
 
 
+def boot_time():
+    """Wall-clock seconds of this host's last boot, or None where it cannot be measured."""
+    if os.name != 'nt':
+        return None
+    kernel = ctypes.WinDLL('kernel32')
+    kernel.GetTickCount64.restype = ctypes.c_ulonglong
+    return time.time() - kernel.GetTickCount64() / 1000
+
+
+def started_before_boot(identity, boot=boot_time, margin=60):
+    """True only for a same-host Windows identity created before the current boot: nothing it
+    started can still run. Any missing or unparsable observation is False, never a proof."""
+    try:
+        if identity.get('host') != socket.gethostname() or os.name != 'nt':
+            return False
+        at = boot()
+        started = int(identity['started']) / 1e7 - 11644473600  # FILETIME (100 ns since 1601) to Unix.
+        return at is not None and 0 < started < at - margin
+    except (AttributeError, KeyError, TypeError, ValueError, OSError):
+        return False
+
+
 def probe(identity):
     if identity.get('host') != socket.gethostname():
         return 'unknown'

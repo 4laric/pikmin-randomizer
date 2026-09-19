@@ -200,7 +200,7 @@ Capabilities are explicit matching strings. Registration alone does not dispatch
 
 After the old slice is done, has an applied integration/review disposition, its
 assignment is completed, and its worker/resources/launch are stopped, use
-`provision-pool-lane` to create a bounded next slice in the **same session**:
+`provision-pool-lane` to create a bounded next slice for the same worker:
 
 ```json
 {
@@ -218,7 +218,14 @@ assignment is completed, and its worker/resources/launch are stopped, use
 ```
 
 This API inherits the historical worker, session, and process identity; do not
-supply `pid`, `task_id`, or `worker_id`. Its source record is the actual prepared
+supply `pid`, `task_id`, or `worker_id`. The inherited session belongs to the
+previous, unrelated lane, so the lane's first pool launch starts a fresh OpenCode
+session (`fresh_session`; `throughput.fresh_session_per_lane`, default true). The
+runner publishes the new id in `session.json`, and the controller adopts it as the
+lane's `task_id` (and the launch's `session`) only while the launch, runner,
+generation and inherited session still match; `lane.session_history` keeps the
+previous one. Later launches of the lane resume its own session; a recovery of a
+launch that never published its session starts fresh again. Its source record is the actual prepared
 worktree, and acceptance/owned files must match the issue. Native work includes
 a complete native source record and the usual private build/worktree isolation.
 
@@ -238,7 +245,7 @@ continues to block dispatch. Enqueue the scoped work with `enqueue-job`:
 ```
 
 The existing controller selects eligible jobs, persists a launch intent, and
-resumes the same session. Jobs target the registered worker; this is not arbitrary
+starts the lane's session (fresh on its first launch, resumed afterwards). Jobs target the registered worker; this is not arbitrary
 work stealing. Selection prioritizes repair, review, integration, QA, then
 implementation and respects dependencies, live owners, and heavy reservations.
 Manual API equivalents are `assign_job(worker_id, ram_percent)` and
@@ -734,8 +741,10 @@ stopping only the stranded OpenCode child. The runner records its real exit.
 Confirmed-dead runners with confirmed-dead children can also be resumed without
 inventing successful results. Unknown process identities remain fenced.
 
-Retries preserve the session, work and planning claims, use the current model
-allowlist, and stop after their retry budget with an actionable notice. Recovery
+Retries preserve the lane's session, work and planning claims, use the current model
+allowlist, carry every retry counter through the chain, and stop after their
+budget (or `automatic_retry_limit`) by reconciling with evidence and an actionable
+notice. Recovery
 does not mark slices completed, remove issue dependencies, or grant ADMIT.
 
 Managed launches derive a private configuration granting access within the

@@ -27,6 +27,30 @@ class HelperPreparationTests(unittest.TestCase):
         self.assertEqual(rows['0']['error'],'invalid proof')
         self.assertTrue(all('preparation' in row for row in rows.values()))
 
+    def scopes(self):
+        return self.reg.snapshot()['throughput_runtime']['autofill']['planner_pool']['scopes']
+
+    def test_skipped_attempt_keeps_the_recorded_error(self):
+        with self.reg.transaction() as state:
+            state['throughput_runtime']['autofill']['planner_pool']['scopes']['0']['error']='No authorized stopped worker'
+        from unittest.mock import patch
+        with patch.object(self.controller,'capacity',return_value=False):
+            self.assertEqual(prepare_batch(self.controller,self.work[:1],None,{},lambda *a:self.fail('ran')),[False])
+        row=self.scopes()['0']
+        self.assertEqual(row['error'],'No authorized stopped worker')
+        self.assertNotIn('preparation',row)
+        self.assertEqual(row['preparation_skipped']['reason'],'capacity')
+
+    def test_unexpected_exception_is_recorded_and_not_replaced_by_bookkeeping(self):
+        def prepare(controller,spec,reader):raise RuntimeError('boom')
+        with self.assertRaises(RuntimeError):prepare_batch(self.controller,self.work[:1],None,{},prepare)
+        self.assertEqual(self.scopes()['0']['error'],'RuntimeError: boom')
+        import sqlite3
+        from unittest.mock import patch
+        with patch.object(self.reg,'transaction',side_effect=sqlite3.OperationalError('database is locked')):
+            with self.assertRaises(RuntimeError):prepare_batch(self.controller,self.work[:1],None,{},prepare)
+        self.assertIn('database is locked',(self.controller.base/'helper-preparation-record-error.json').read_text())
+
     def test_fresh_counts_include_pending_exclude_completed_preserve_target_time(self):
         with self.reg.transaction() as state:
             state['lanes']['helper-0']={'state':'running'}

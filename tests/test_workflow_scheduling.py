@@ -98,15 +98,53 @@ class SchedulingTests(unittest.TestCase):
             self.reg.enqueue_job(self.job())
 
     def test_idle_worker_can_be_reassigned_with_explicit_fence(self):
-        with self.reg.transaction() as state:
-            state['lanes']['one']['process']['health'] = 'alive'
+        # Idle pool workers are stopped between lanes; the oldest lane being done must not matter.
+        self.finish(self.claim(), review=True)
+        self.reg.provision_pool_lane(self.slice_record(), 'one')
         record = self.reg.reassign_pool_worker('one', ['review', 'implementation'],
                                                ['python', 'fixture-build'], 'operator',
                                                'Promote idle worker for prepared fixture job')
         self.assertIn('implementation', record['roles'])
         self.assertIn('fixture-build', record['capabilities'])
+        event = [e for e in self.reg.snapshot()['events'] if e['kind'] == 'pool_worker_reassigned'][-1]
+        self.assertEqual((event['lane'], event['previous']['roles']), ('next', ['implementation', 'repair', 'review']))
         with self.assertRaises(Rejected):
             self.reg.reassign_pool_worker('one', ['review'], ['python'], 'operator', '')
+
+    def test_reassignment_refuses_live_unknown_or_in_flight_worker_lanes(self):
+        for health in ('alive', 'unknown'):
+            with self.reg.transaction() as state:
+                state['lanes']['one']['process']['health'] = health
+            with self.assertRaises(Rejected):
+                self.reg.reassign_pool_worker('one', ['review'], ['python'], 'operator', 'promote')
+        with self.reg.transaction() as state:
+            state['lanes']['one']['process']['health'] = 'dead'
+        assignment = self.claim()
+        with self.assertRaises(Rejected):  # Open assignment.
+            self.reg.reassign_pool_worker('one', ['review'], ['python'], 'operator', 'promote')
+        launch = self.reg.plan_assignment(assignment['id'], ['paid/muse'], 60)
+        with self.reg.transaction() as state:
+            state['throughput']['assignments'][assignment['id']]['status'] = 'completed'
+        with self.assertRaises(Rejected):  # Launch intent still in flight.
+            self.reg.reassign_pool_worker('one', ['review'], ['python'], 'operator', 'promote')
+
+    def test_provisioned_lane_starts_a_fresh_session_only_on_its_first_launch(self):
+        self.finish(self.claim(), review=True)
+        self.reg.provision_pool_lane(self.slice_record(), 'one')
+        self.reg.enqueue_job(self.job('next'))
+        launch = self.reg.plan_assignment(self.reg.assign_job('one', 60)['id'], ['paid/muse'], 60)
+        self.assertTrue(launch['fresh_session'])
+        self.assertEqual(launch['session'], 'session-one')  # Inherited until the runner names the new one.
+        first = self.reg.plan_assignment(self.claim_again('first'), ['paid/muse'], 60, fresh_session=False)
+        self.assertNotIn('fresh_session', first)
+
+    def claim_again(self, name):
+        with self.reg.transaction() as state:
+            for a in state['throughput']['assignments'].values(): a['status'] = 'completed'
+            for j in state['throughput']['jobs'].values(): j['status'] = 'completed'
+            for l in state['control']['launches'].values(): l['status'] = 'exited'
+        self.reg.enqueue_job(self.job('next', identity=name))
+        return self.reg.assign_job('one', 60)['id']
 
     def test_racing_claims_and_plans_are_idempotent(self):
         self.reg.enqueue_job(self.job())
